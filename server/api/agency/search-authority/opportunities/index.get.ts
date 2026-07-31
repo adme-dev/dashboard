@@ -1,6 +1,32 @@
 import { getQuery } from 'h3'
-import { queryRows } from '~~/server/utils/db'
+import { z } from 'zod'
+import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireAgencySearchAuthorityAccess } from '~~/server/utils/searchAuthority/access'
+import { searchConsoleSyncWindow } from '~~/server/utils/searchAuthority/dates'
+
+const Lifecycle = z.enum([
+  'new',
+  'under_review',
+  'accepted',
+  'task_created',
+  'in_progress',
+  'published',
+  'measuring',
+  'closed',
+  'dismissed',
+  'duplicate',
+  'expired',
+  'not_actionable'
+])
+
+const Query = z.object({
+  clientId: z.string().uuid(),
+  lifecycle: z.union([Lifecycle, z.literal('all')]).default('all'),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25)
+})
 
 interface OpportunityRow {
   id: string
@@ -22,29 +48,83 @@ interface OpportunityRow {
 }
 
 export default eventHandler(async (event) => {
-  const clientId = String(getQuery(event).clientId || '')
+  const parsed = Query.safeParse(getQuery(event))
+  if (!parsed.success) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid opportunity filters'
+    })
+  }
+  let window: { startDate: string, endDate: string } | null = null
+  if (parsed.data.startDate || parsed.data.endDate) {
+    try {
+      window = searchConsoleSyncWindow({
+        startDate: parsed.data.startDate,
+        endDate: parsed.data.endDate
+      })
+    } catch {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Invalid opportunity evidence window'
+      })
+    }
+  }
+  const {
+    clientId,
+    lifecycle,
+    page,
+    pageSize
+  } = parsed.data
   await requireAgencySearchAuthorityAccess(event, clientId)
-  const rows = await queryRows<OpportunityRow>(
-    `SELECT
-       opportunity.*,
-       map.data_through_date,
-       map.provisional_from_date
-     FROM search_authority_opportunities opportunity
-     LEFT JOIN search_console_property_maps map
-       ON map.client_id = opportunity.client_id
-      AND map.id = opportunity.property_map_id
-     WHERE opportunity.client_id = $1
-     ORDER BY
-       CASE opportunity.lifecycle_status
-         WHEN 'new' THEN 1
-         WHEN 'under_review' THEN 2
-         WHEN 'accepted' THEN 3
-         ELSE 4
-       END,
-       opportunity.score DESC,
-       opportunity.last_detected_at DESC`,
-    [clientId]
-  )
+  const params = [
+    clientId,
+    lifecycle === 'all' ? null : lifecycle,
+    window?.startDate ?? null,
+    window?.endDate ?? null
+  ]
+  const where = `opportunity.client_id = $1
+       AND opportunity.property_map_id = (
+         SELECT map.id
+         FROM search_console_property_maps map
+         WHERE map.client_id = $1
+           AND map.status IN ('active', 'restricted')
+         ORDER BY map.updated_at DESC
+         LIMIT 1
+       )
+       AND ($2::text IS NULL OR opportunity.lifecycle_status = $2)
+       AND ($3::date IS NULL OR opportunity.evidence_end_date >= $3::date)
+       AND ($4::date IS NULL OR opportunity.evidence_start_date <= $4::date)`
+  const [rows, count] = await Promise.all([
+    queryRows<OpportunityRow>(
+      `SELECT
+         opportunity.*,
+         map.data_through_date,
+         map.provisional_from_date
+       FROM search_authority_opportunities opportunity
+       LEFT JOIN search_console_property_maps map
+         ON map.client_id = opportunity.client_id
+        AND map.id = opportunity.property_map_id
+       WHERE ${where}
+       ORDER BY
+         CASE opportunity.lifecycle_status
+           WHEN 'new' THEN 1
+           WHEN 'under_review' THEN 2
+           WHEN 'accepted' THEN 3
+           ELSE 4
+         END,
+         opportunity.score DESC,
+         opportunity.last_detected_at DESC,
+         opportunity.id DESC
+       LIMIT $5 OFFSET $6`,
+      [...params, pageSize, (page - 1) * pageSize]
+    ),
+    queryOne<{ total: string }>(
+      `SELECT COUNT(*) AS total
+       FROM search_authority_opportunities opportunity
+       WHERE ${where}`,
+      params
+    )
+  ])
 
   return {
     opportunities: rows.map(row => ({
@@ -69,6 +149,11 @@ export default eventHandler(async (event) => {
           reason => reason.code === 'provider_data_provisional'
         )
       }
-    }))
+    })),
+    pagination: {
+      page,
+      pageSize,
+      total: Number(count?.total || 0)
+    }
   }
 })

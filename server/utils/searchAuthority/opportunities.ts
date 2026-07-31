@@ -154,20 +154,33 @@ export function scoreSearchAuthorityCandidate(
     candidate.opportunityType === 'declining'
     || candidate.opportunityType === 'growth'
   ) {
+    if (!candidate.previous) {
+      return {
+        score: 0,
+        confidence: 0,
+        scoringVersion: 'gsc-v1',
+        reasonCodes: [{
+          code: 'missing_comparison_window',
+          observed: null,
+          expected: 28,
+          contribution: 0
+        }]
+      }
+    }
     const clickChange = relativeChange(
       candidate.current.clicks,
-      candidate.previous?.clicks ?? 0
+      candidate.previous.clicks
     )
     const impressionChange = relativeChange(
       candidate.current.impressions,
-      candidate.previous?.impressions ?? 0
+      candidate.previous.impressions
     )
     const threshold = candidate.opportunityType === 'declining'
       ? (change: number) => change <= -0.2
       : (change: number) => change >= 0.2
     const hasMaterialImpressions = Math.max(
       candidate.current.impressions,
-      candidate.previous?.impressions ?? 0
+      candidate.previous.impressions
     ) >= minimumImpressions
     const changes = hasMaterialImpressions
       ? [
@@ -189,7 +202,7 @@ export function scoreSearchAuthorityCandidate(
       reasons.push({
         code: 'current_click_volume',
         observed: candidate.current.clicks,
-        expected: candidate.previous?.clicks ?? null,
+        expected: candidate.previous.clicks,
         contribution: Math.min(10, Math.log10(candidate.current.clicks + 1) * 5)
       })
     }
@@ -223,19 +236,6 @@ export function scoreSearchAuthorityCandidate(
       contribution: 0
     })
   }
-  if (
-    ['declining', 'growth'].includes(candidate.opportunityType)
-    && !candidate.previous
-  ) {
-    confidence -= 0.3
-    reasons.push({
-      code: 'missing_comparison_window',
-      observed: null,
-      expected: 28,
-      contribution: 0
-    })
-  }
-
   return {
     score: clampScore(reasons.reduce((sum, reason) => sum + reason.contribution, 0)),
     confidence: roundConfidence(confidence),
@@ -290,6 +290,10 @@ async function defaultLoadCandidates(
   window: OpportunityWindow
 ): Promise<RawCandidate[]> {
   const previous = previousWindow(window)
+  const expectedDays = Math.floor((
+    new Date(`${window.endDate}T00:00:00.000Z`).getTime()
+      - new Date(`${window.startDate}T00:00:00.000Z`).getTime()
+  ) / 86_400_000) + 1
   const rows = await queryRows<{
     property_map_id: string
     query_text: string
@@ -306,80 +310,109 @@ async function defaultLoadCandidates(
     previous_coverage_days: string
     provisional: boolean
   }>(
-    `WITH coverage AS (
+    `WITH selected_map AS (
+       SELECT id
+       FROM search_console_property_maps map
+       WHERE map.client_id = $1
+         AND map.status IN ('active', 'restricted')
+       ORDER BY map.updated_at DESC
+       LIMIT 1
+     ),
+     coverage AS (
        SELECT
-         property_map_id,
-         COUNT(DISTINCT metric_date) FILTER (
-           WHERE metric_date BETWEEN $2::date AND $3::date
+         checks.property_map_id,
+         LEAST(
+           COUNT(DISTINCT checks.metric_date) FILTER (
+             WHERE checks.projection = 'property'
+               AND checks.metric_date BETWEEN $2::date AND $3::date
+           ),
+           COUNT(DISTINCT checks.metric_date) FILTER (
+             WHERE checks.projection = 'query_page'
+               AND checks.metric_date BETWEEN $2::date AND $3::date
+           )
          ) AS coverage_days,
-         COUNT(DISTINCT metric_date) FILTER (
-           WHERE metric_date BETWEEN $4::date AND $5::date
+         LEAST(
+           COUNT(DISTINCT checks.metric_date) FILTER (
+             WHERE checks.projection = 'property'
+               AND checks.metric_date BETWEEN $4::date AND $5::date
+           ),
+           COUNT(DISTINCT checks.metric_date) FILTER (
+             WHERE checks.projection = 'query_page'
+               AND checks.metric_date BETWEEN $4::date AND $5::date
+           )
          ) AS previous_coverage_days,
-         BOOL_OR(provisional) FILTER (
-           WHERE metric_date BETWEEN $2::date AND $3::date
+         BOOL_OR(checks.provisional) FILTER (
+           WHERE checks.metric_date BETWEEN $2::date AND $3::date
          ) AS provisional
-       FROM gsc_daily_property
-       WHERE client_id = $1
-         AND search_type = 'web'
-         AND metric_date BETWEEN $4::date AND $3::date
-       GROUP BY property_map_id
+       FROM gsc_projection_checks checks
+       JOIN selected_map ON selected_map.id = checks.property_map_id
+       WHERE checks.client_id = $1
+         AND checks.search_type = 'web'
+         AND checks.metric_date BETWEEN $4::date AND $3::date
+       GROUP BY checks.property_map_id
      ),
      query_page AS (
        SELECT
-         property_map_id,
-         query_text,
-         page_url,
-         COALESCE(SUM(clicks) FILTER (
-           WHERE metric_date BETWEEN $2::date AND $3::date
+         evidence.property_map_id,
+         evidence.query_text,
+         evidence.page_url,
+         COALESCE(SUM(evidence.clicks) FILTER (
+           WHERE evidence.metric_date BETWEEN $2::date AND $3::date
          ), 0) AS current_clicks,
-         COALESCE(SUM(impressions) FILTER (
-           WHERE metric_date BETWEEN $2::date AND $3::date
+         COALESCE(SUM(evidence.impressions) FILTER (
+           WHERE evidence.metric_date BETWEEN $2::date AND $3::date
          ), 0) AS current_impressions,
-         COALESCE((SUM(clicks) FILTER (
-           WHERE metric_date BETWEEN $2::date AND $3::date
-         ))::numeric / NULLIF(SUM(impressions) FILTER (
-           WHERE metric_date BETWEEN $2::date AND $3::date
+         COALESCE((SUM(evidence.clicks) FILTER (
+           WHERE evidence.metric_date BETWEEN $2::date AND $3::date
+         ))::numeric / NULLIF(SUM(evidence.impressions) FILTER (
+           WHERE evidence.metric_date BETWEEN $2::date AND $3::date
          ), 0), 0) AS current_ctr,
-         COALESCE(SUM(position * impressions) FILTER (
-           WHERE metric_date BETWEEN $2::date AND $3::date
-         ) / NULLIF(SUM(impressions) FILTER (
-           WHERE metric_date BETWEEN $2::date AND $3::date
+         COALESCE(SUM(evidence.position * evidence.impressions) FILTER (
+           WHERE evidence.metric_date BETWEEN $2::date AND $3::date
+         ) / NULLIF(SUM(evidence.impressions) FILTER (
+           WHERE evidence.metric_date BETWEEN $2::date AND $3::date
          ), 0), 0) AS current_position,
-         COALESCE(SUM(clicks) FILTER (
-           WHERE metric_date BETWEEN $4::date AND $5::date
+         COALESCE(SUM(evidence.clicks) FILTER (
+           WHERE evidence.metric_date BETWEEN $4::date AND $5::date
          ), 0) AS previous_clicks,
-         COALESCE(SUM(impressions) FILTER (
-           WHERE metric_date BETWEEN $4::date AND $5::date
+         COALESCE(SUM(evidence.impressions) FILTER (
+           WHERE evidence.metric_date BETWEEN $4::date AND $5::date
          ), 0) AS previous_impressions,
-         COALESCE((SUM(clicks) FILTER (
-           WHERE metric_date BETWEEN $4::date AND $5::date
-         ))::numeric / NULLIF(SUM(impressions) FILTER (
-           WHERE metric_date BETWEEN $4::date AND $5::date
+         COALESCE((SUM(evidence.clicks) FILTER (
+           WHERE evidence.metric_date BETWEEN $4::date AND $5::date
+         ))::numeric / NULLIF(SUM(evidence.impressions) FILTER (
+           WHERE evidence.metric_date BETWEEN $4::date AND $5::date
          ), 0), 0) AS previous_ctr,
-         COALESCE(SUM(position * impressions) FILTER (
-           WHERE metric_date BETWEEN $4::date AND $5::date
-         ) / NULLIF(SUM(impressions) FILTER (
-           WHERE metric_date BETWEEN $4::date AND $5::date
+         COALESCE(SUM(evidence.position * evidence.impressions) FILTER (
+           WHERE evidence.metric_date BETWEEN $4::date AND $5::date
+         ) / NULLIF(SUM(evidence.impressions) FILTER (
+           WHERE evidence.metric_date BETWEEN $4::date AND $5::date
          ), 0), 0) AS previous_position
-       FROM gsc_daily_query_page
-       WHERE client_id = $1
-         AND search_type = 'web'
-         AND metric_date BETWEEN $4::date AND $3::date
-       GROUP BY property_map_id, query_text, page_url
+       FROM gsc_daily_query_page evidence
+       JOIN selected_map ON selected_map.id = evidence.property_map_id
+       WHERE evidence.client_id = $1
+         AND evidence.search_type = 'web'
+         AND evidence.metric_date BETWEEN $4::date AND $3::date
+       GROUP BY
+         evidence.property_map_id,
+         evidence.query_text,
+         evidence.page_url
      )
      SELECT
        query_page.*,
-       COALESCE(coverage.coverage_days, 0) AS coverage_days,
-       COALESCE(coverage.previous_coverage_days, 0) AS previous_coverage_days,
+       coverage.coverage_days,
+       coverage.previous_coverage_days,
        COALESCE(coverage.provisional, FALSE) AS provisional
      FROM query_page
-     LEFT JOIN coverage USING (property_map_id)`,
+     JOIN coverage USING (property_map_id)
+     WHERE coverage.coverage_days = $6`,
     [
       clientId,
       window.startDate,
       window.endDate,
       previous.startDate,
-      previous.endDate
+      previous.endDate,
+      expectedDays
     ]
   )
   return rows.map(row => ({
@@ -393,7 +426,7 @@ async function defaultLoadCandidates(
       ctr: Number(row.current_ctr),
       position: Number(row.current_position)
     },
-    previous: Number(row.previous_coverage_days) >= 28
+    previous: Number(row.previous_coverage_days) >= expectedDays
       ? {
           clicks: Number(row.previous_clicks),
           impressions: Number(row.previous_impressions),
@@ -504,14 +537,18 @@ export async function generateSearchAuthorityOpportunities(
     ?? defaultLoadCandidates)(clientId, window)
   const upsert = dependencies.upsertOpportunity ?? defaultUpsertOpportunity
   const fingerprints: string[] = []
+  const expectedDays = Math.floor((
+    new Date(`${window.endDate}T00:00:00.000Z`).getTime()
+      - new Date(`${window.startDate}T00:00:00.000Z`).getTime()
+  ) / 86_400_000) + 1
 
   for (const row of rows) {
+    if (row.coverageDays < expectedDays) continue
     const opportunityTypes: SearchAuthorityOpportunityType[] = [
       'low_ctr',
-      'striking_distance',
-      'declining',
-      'growth'
+      'striking_distance'
     ]
+    if (row.previous) opportunityTypes.push('declining', 'growth')
     for (const opportunityType of opportunityTypes) {
       const candidate: SearchAuthorityCandidate = { ...row, opportunityType }
       const scored = scoreSearchAuthorityCandidate(candidate)

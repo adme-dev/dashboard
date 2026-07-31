@@ -14,10 +14,12 @@ const Query = z.object({
 })
 
 interface ProviderRow {
+  property_map_id: string | null
   site_status: string | null
   connection_status: string | null
   last_success_at: string | null
   last_error_message: string | null
+  last_sync_status: string | null
   data_through_date: string | null
   provisional_from_date: string | null
 }
@@ -110,13 +112,14 @@ export default eventHandler(async (event) => {
   await requireAgencySearchAuthorityAccess(event, parsed.data.clientId)
   const previous = priorWindow(window.startDate, window.endDate)
 
-  const [provider, metricsRow, opportunityCounts] = await Promise.all([
-    queryOne<ProviderRow>(
-      `SELECT
+  const provider = await queryOne<ProviderRow>(
+    `SELECT
+         map.id AS property_map_id,
          site.status AS site_status,
          connection.status AS connection_status,
          connection.last_success_at,
          connection.last_error_message,
+         map.last_sync_status,
          map.data_through_date,
          map.provisional_from_date
        FROM search_authority_sites site
@@ -130,55 +133,67 @@ export default eventHandler(async (event) => {
        WHERE site.client_id = $1
        ORDER BY map.updated_at DESC NULLS LAST
        LIMIT 1`,
-      [parsed.data.clientId]
-    ),
+    [parsed.data.clientId]
+  )
+  const [metricsRow, opportunityCounts] = await Promise.all([
     queryOne<MetricsRow>(
-      `SELECT
-         COALESCE(SUM(data.clicks) FILTER (
-           WHERE data.metric_date BETWEEN $2::date AND $3::date
-         ), 0) AS current_clicks,
-         COALESCE(SUM(data.impressions) FILTER (
-           WHERE data.metric_date BETWEEN $2::date AND $3::date
-         ), 0) AS current_impressions,
-         COALESCE((SUM(data.clicks) FILTER (
-           WHERE data.metric_date BETWEEN $2::date AND $3::date
-         ))::numeric / NULLIF(SUM(data.impressions) FILTER (
-           WHERE data.metric_date BETWEEN $2::date AND $3::date
-         ), 0), 0) AS current_ctr,
-         COALESCE(SUM(data.position * data.impressions) FILTER (
-           WHERE data.metric_date BETWEEN $2::date AND $3::date
-         ) / NULLIF(SUM(data.impressions) FILTER (
-           WHERE data.metric_date BETWEEN $2::date AND $3::date
-         ), 0), 0) AS current_position,
-         COALESCE(SUM(data.clicks) FILTER (
-           WHERE data.metric_date BETWEEN $4::date AND $5::date
-         ), 0) AS previous_clicks,
-         COALESCE(SUM(data.impressions) FILTER (
-           WHERE data.metric_date BETWEEN $4::date AND $5::date
-         ), 0) AS previous_impressions,
-         COUNT(DISTINCT data.metric_date) FILTER (
-           WHERE data.metric_date BETWEEN $2::date AND $3::date
-         ) AS coverage_days,
-         COUNT(DISTINCT data.metric_date) FILTER (
-           WHERE data.metric_date BETWEEN $4::date AND $5::date
-         ) AS previous_coverage_days,
-         BOOL_OR(data.provisional) FILTER (
-           WHERE data.metric_date BETWEEN $2::date AND $3::date
-         ) AS provisional
-       FROM gsc_daily_property data
-       JOIN search_console_property_maps map
-         ON map.client_id = data.client_id
-        AND map.id = data.property_map_id
-        AND map.status IN ('active', 'restricted')
-       WHERE data.client_id = $1
-         AND data.search_type = 'web'
-         AND data.metric_date BETWEEN $4::date AND $3::date`,
+      `WITH coverage AS (
+         SELECT
+           COUNT(DISTINCT metric_date) FILTER (
+             WHERE metric_date BETWEEN $2::date AND $3::date
+           ) AS coverage_days,
+           COUNT(DISTINCT metric_date) FILTER (
+             WHERE metric_date BETWEEN $4::date AND $5::date
+           ) AS previous_coverage_days,
+           BOOL_OR(provisional) FILTER (
+             WHERE metric_date BETWEEN $2::date AND $3::date
+           ) AS provisional
+         FROM gsc_projection_checks
+         WHERE client_id = $1
+           AND property_map_id = $6
+           AND projection = 'property'
+           AND search_type = 'web'
+           AND metric_date BETWEEN $4::date AND $3::date
+       ),
+       totals AS (
+         SELECT
+           COALESCE(SUM(data.clicks) FILTER (
+             WHERE data.metric_date BETWEEN $2::date AND $3::date
+           ), 0) AS current_clicks,
+           COALESCE(SUM(data.impressions) FILTER (
+             WHERE data.metric_date BETWEEN $2::date AND $3::date
+           ), 0) AS current_impressions,
+           COALESCE((SUM(data.clicks) FILTER (
+             WHERE data.metric_date BETWEEN $2::date AND $3::date
+           ))::numeric / NULLIF(SUM(data.impressions) FILTER (
+             WHERE data.metric_date BETWEEN $2::date AND $3::date
+           ), 0), 0) AS current_ctr,
+           COALESCE(SUM(data.position * data.impressions) FILTER (
+             WHERE data.metric_date BETWEEN $2::date AND $3::date
+           ) / NULLIF(SUM(data.impressions) FILTER (
+             WHERE data.metric_date BETWEEN $2::date AND $3::date
+           ), 0), 0) AS current_position,
+           COALESCE(SUM(data.clicks) FILTER (
+             WHERE data.metric_date BETWEEN $4::date AND $5::date
+           ), 0) AS previous_clicks,
+           COALESCE(SUM(data.impressions) FILTER (
+             WHERE data.metric_date BETWEEN $4::date AND $5::date
+           ), 0) AS previous_impressions
+           FROM gsc_daily_property data
+           WHERE data.client_id = $1
+             AND data.property_map_id = $6
+             AND data.search_type = 'web'
+             AND data.metric_date BETWEEN $4::date AND $3::date
+       )
+       SELECT totals.*, coverage.*
+       FROM totals CROSS JOIN coverage`,
       [
         parsed.data.clientId,
         window.startDate,
         window.endDate,
         previous.startDate,
-        previous.endDate
+        previous.endDate,
+        provider?.property_map_id ?? null
       ]
     ),
     queryOne<OpportunityCountRow>(
@@ -189,8 +204,16 @@ export default eventHandler(async (event) => {
          COUNT(*) FILTER (WHERE lifecycle_status = 'accepted') AS accepted_count,
          COUNT(*) FILTER (WHERE lifecycle_status = 'task_created') AS task_created_count
        FROM search_authority_opportunities
-       WHERE client_id = $1`,
-      [parsed.data.clientId]
+       WHERE client_id = $1
+         AND property_map_id = $2
+         AND evidence_start_date <= $4::date
+         AND evidence_end_date >= $3::date`,
+      [
+        parsed.data.clientId,
+        provider?.property_map_id ?? null,
+        window.startDate,
+        window.endDate
+      ]
     )
   ])
 
@@ -213,6 +236,9 @@ export default eventHandler(async (event) => {
   } else {
     if (provider.connection_status === 'degraded') {
       caveats.push('The Search Console connection is degraded; showing the last successful evidence.')
+    }
+    if (['partial', 'failed'].includes(provider.last_sync_status || '')) {
+      caveats.push('The latest Search Console evidence refresh did not complete.')
     }
     if (provisional) {
       caveats.push('Google marks part of this reporting window as provisional.')
@@ -243,18 +269,20 @@ export default eventHandler(async (event) => {
       stale,
       caveats
     },
-    metrics: {
-      clicks: currentClicks,
-      impressions: currentImpressions,
-      ctr: Number(metricsRow?.current_ctr || 0),
-      position: Number(metricsRow?.current_position || 0),
-      clickChangePercent: comparisonComplete
-        ? percentChange(currentClicks, previousClicks)
-        : null,
-      impressionChangePercent: comparisonComplete
-        ? percentChange(currentImpressions, previousImpressions)
-        : null
-    },
+    metrics: currentCoverageDays >= expectedCoverageDays
+      ? {
+          clicks: currentClicks,
+          impressions: currentImpressions,
+          ctr: Number(metricsRow?.current_ctr || 0),
+          position: Number(metricsRow?.current_position || 0),
+          clickChangePercent: comparisonComplete
+            ? percentChange(currentClicks, previousClicks)
+            : null,
+          impressionChangePercent: comparisonComplete
+            ? percentChange(currentImpressions, previousImpressions)
+            : null
+        }
+      : null,
     opportunities: {
       total: Number(opportunityCounts?.total || 0),
       new: Number(opportunityCounts?.new_count || 0),

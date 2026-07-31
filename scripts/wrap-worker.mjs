@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import {
+  compactPrecomputedManifest,
   compactDeployedWorkerModules,
   compactWorkerModule
 } from './compact-worker-module.mjs'
@@ -111,7 +112,11 @@ if (await exists(precomputedManifest)) {
     const manifest = typeof manifestModule.default === 'function'
       ? await manifestModule.default()
       : manifestModule.default
-    const compressed = gzipSync(Buffer.from(JSON.stringify(manifest)), { level: 9 })
+    const compactManifest = compactPrecomputedManifest(manifest)
+    const compressed = gzipSync(
+      Buffer.from(JSON.stringify(compactManifest)),
+      { level: 9 }
+    )
     const compactSource = `const XEROFLOW_COMPACT_PRECOMPUTED='${compressed.toString('base64')}'
 let cache
 export default async function loadPrecomputedManifest() {

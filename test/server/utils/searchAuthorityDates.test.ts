@@ -19,7 +19,7 @@ describe('Search Console sync dates', () => {
   it('refreshes the trailing three provider days after the initial load', () => {
     expect(searchConsoleSyncWindow({
       now: new Date('2026-08-01T08:30:00.000Z'),
-      hasSuccessfulSync: true
+      baselineCompleted: true
     })).toEqual({
       startDate: '2026-07-30',
       endDate: '2026-08-01',
@@ -36,7 +36,7 @@ describe('Search Console sync dates', () => {
     })
   })
 
-  it('accepts valid manual leap-day ranges and caps them at 90 inclusive days', () => {
+  it('accepts valid manual leap-day ranges and caps them at 30 inclusive days', () => {
     expect(searchConsoleSyncWindow({
       startDate: '2028-02-29',
       endDate: '2028-03-01'
@@ -47,8 +47,9 @@ describe('Search Console sync dates', () => {
     })
     expect(() => searchConsoleSyncWindow({
       startDate: '2026-01-01',
-      endDate: '2026-04-01'
-    })).toThrow('90 days')
+      endDate: '2026-01-31',
+      maxManualDays: 30
+    })).toThrow('30 days')
     expect(() => searchConsoleSyncWindow({
       startDate: '2026-02-30',
       endDate: '2026-03-01'

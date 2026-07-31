@@ -31,9 +31,12 @@ boundary. Both must pass.
    level is not `siteUnverifiedUser`.
 5. Trigger the initial sync with an authenticated
    `POST /api/agency/search-authority/sync` body containing the Knox
-   `clientId`, or wait for the next scheduled run. The first run requests at
-   most 90 provider days and stores property, page, and query-page projections
-   independently.
+   `clientId`, or wait for the next scheduled run. The initial 90-day baseline
+   is processed in resumable chunks of at most 30 dates (90 projection calls)
+   per run. Its start and end dates are stored on the property map, so manual
+   short-range or legacy successful runs cannot bypass it. Re-run the sync
+   until the baseline completion timestamp is set; completed projections are
+   not fetched again during the backfill.
 6. Verify the agency workspace shows a data-through date, completeness caveats,
    and literal Search Console measures.
 
@@ -57,6 +60,11 @@ Each entitled active client runs in this order:
 1. trailing Search Console refresh;
 2. deterministic 28-day opportunity generation;
 3. at most 50 indexed-version URL inspections.
+
+Each selected property is protected by a renewable, token-bound two-hour sync
+lease. Ownership is renewed before every evidence date; a worker stops before
+provider writes if it loses the lease. Operator-requested manual refreshes are
+capped at 30 inclusive days, matching the per-run evidence limit.
 
 Confirm recent `gsc_sync_runs` are `succeeded` or intentionally `partial`, the
 property map has a current `data_through_date`, and failures retain a literal
@@ -86,9 +94,11 @@ connection identifiers, credentials, or cross-client benchmarks.
    revoked. Purpose-bound encrypted Google credentials remain governed by the
    shared credential-profile lifecycle.
 
-Migration `329_search_authority_phase_1.sql` is additive. Leave its tables in
-place during rollback; disabling flags and cron removes runtime exposure without
-destroying evidence or audit history.
+Migrations `329_search_authority_phase_1.sql` and
+`330_search_authority_evidence_hardening.sql` are additive. Leave their tables,
+checks and selected-property constraint in place during rollback; disabling
+flags and cron removes runtime exposure without destroying evidence or audit
+history.
 
 ## Provider limitations
 

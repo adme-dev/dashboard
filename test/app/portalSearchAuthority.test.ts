@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const source = readFileSync(
-  new URL('../../app/components/search-authority/PortalSummary.client.vue', import.meta.url),
+  new URL('../../app/components/search-authority/PortalSummary.vue', import.meta.url),
   'utf8'
 )
 const pageSource = readFileSync(

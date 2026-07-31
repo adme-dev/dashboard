@@ -5,6 +5,7 @@ import type {
   SearchAuthorityOpportunity,
   SearchAuthorityOverview
 } from '~/types'
+import { normalizeSearchAuthorityWindow } from '~/utils/searchAuthorityWindow'
 
 interface ClientOption {
   id: string
@@ -29,6 +30,7 @@ interface TeamMember {
 interface Project {
   id: string
   name: string
+  clientId?: string
   client_name?: string
 }
 
@@ -64,6 +66,9 @@ const startDate = ref('')
 const endDate = ref('')
 const overview = ref<SearchAuthorityOverview | null>(null)
 const opportunities = ref<SearchAuthorityOpportunity[]>([])
+const opportunityPage = ref(1)
+const opportunityPageSize = 25
+const opportunityTotal = ref(0)
 const loading = ref(true)
 const loadError = ref<string | null>(null)
 const busyOpportunityId = ref<string | null>(null)
@@ -83,7 +88,10 @@ const lifecycleOptions = [
   { label: 'Published', value: 'published' },
   { label: 'Measuring', value: 'measuring' },
   { label: 'Closed', value: 'closed' },
-  { label: 'Dismissed', value: 'dismissed' }
+  { label: 'Dismissed', value: 'dismissed' },
+  { label: 'Duplicate', value: 'duplicate' },
+  { label: 'Expired', value: 'expired' },
+  { label: 'Not actionable', value: 'not_actionable' }
 ]
 
 const clientOptions = computed(() => clients.value.map(client => ({
@@ -99,13 +107,9 @@ const boardOptions = computed(() => workspaces.value.flatMap(workspace => (
 const selectedBoard = computed(() => boardOptions.value.find(
   board => board.value === selectedBoardId.value
 ))
-const filteredOpportunities = computed(() => (
-  lifecycleFilter.value === 'all'
-    ? opportunities.value
-    : opportunities.value.filter(opportunity => (
-        opportunity.lifecycleStatus === lifecycleFilter.value
-      ))
-))
+const clientProjects = computed(() => projects.value.filter(project => (
+  project.clientId === selectedClientId.value
+)))
 const acceptedCount = computed(() => overview.value?.opportunities.accepted || 0)
 
 function errorMessage(error: unknown): string {
@@ -150,7 +154,14 @@ async function loadWorkspaceOptions() {
   try {
     const [clientRows, workspaceResponse, teamResponse, projectRows, labelRows]
       = await Promise.all([
-        $fetch<ClientOption[]>('/api/agency/clients?active=true'),
+        $fetch<{
+          sites: Array<{ clientId: string, clientName: string }>
+        }>('/api/agency/search-authority/sites').then(response => (
+          response.sites.map(site => ({
+            id: site.clientId,
+            name: site.clientName
+          }))
+        )),
         $fetch<{ workspaces: Workspace[] }>('/api/agency/workspaces')
           .catch(() => ({ workspaces: [] })),
         $fetch<{ members: TeamMember[] }>('/api/agency/team-members?active=true')
@@ -204,26 +215,46 @@ async function loadEvidence() {
   }
   loading.value = true
   loadError.value = null
-  const query = new URLSearchParams({ clientId })
-  if (startDate.value && endDate.value) {
-    query.set('startDate', startDate.value)
-    query.set('endDate', endDate.value)
-  }
 
   try {
+    let initialOverview: SearchAuthorityOverview | null = null
+    if (!startDate.value || !endDate.value) {
+      initialOverview = await $fetch<SearchAuthorityOverview>(
+        `/api/agency/search-authority/overview?${new URLSearchParams({ clientId })}`
+      )
+      if (requestId !== evidenceRequestId) return
+      const window = normalizeSearchAuthorityWindow(
+        startDate.value,
+        endDate.value,
+        initialOverview.window
+      )
+      startDate.value = window.startDate
+      endDate.value = window.endDate
+    }
+    const query = new URLSearchParams({
+      clientId,
+      startDate: startDate.value,
+      endDate: endDate.value
+    })
+    const opportunityQuery = new URLSearchParams(query)
+    opportunityQuery.set('lifecycle', lifecycleFilter.value)
+    opportunityQuery.set('page', String(opportunityPage.value))
+    opportunityQuery.set('pageSize', String(opportunityPageSize))
     const [overviewResponse, opportunityResponse] = await Promise.all([
-      $fetch<SearchAuthorityOverview>(
+      initialOverview ?? $fetch<SearchAuthorityOverview>(
         `/api/agency/search-authority/overview?${query.toString()}`
       ),
-      $fetch<{ opportunities: SearchAuthorityOpportunity[] }>(
-        `/api/agency/search-authority/opportunities?clientId=${encodeURIComponent(clientId)}`
+      $fetch<{
+        opportunities: SearchAuthorityOpportunity[]
+        pagination: { page: number, pageSize: number, total: number }
+      }>(
+        `/api/agency/search-authority/opportunities?${opportunityQuery.toString()}`
       )
     ])
     if (requestId !== evidenceRequestId) return
     overview.value = overviewResponse
     opportunities.value = opportunityResponse.opportunities
-    startDate.value ||= overviewResponse.window.startDate
-    endDate.value ||= overviewResponse.window.endDate
+    opportunityTotal.value = opportunityResponse.pagination.total
     if (
       pendingTaskLink.value
       && opportunities.value.some(opportunity => (
@@ -299,6 +330,14 @@ function openTaskHandoff(opportunity: SearchAuthorityOpportunity) {
     })
     return
   }
+  if (clientProjects.value.length === 0) {
+    toast.add({
+      title: 'Create a client project first',
+      description: 'Search Authority tasks must belong to a project owned by the selected client.',
+      color: 'warning'
+    })
+    return
+  }
   activeOpportunity.value = opportunity
   showTaskDialog.value = true
 }
@@ -354,7 +393,18 @@ async function retryPendingLink() {
 }
 
 watch(selectedClientId, () => {
+  opportunityPage.value = 1
   void loadEvidence()
+})
+watch(lifecycleFilter, () => {
+  opportunityPage.value = 1
+  void loadEvidence()
+})
+watch(opportunityPage, () => {
+  void loadEvidence()
+})
+watch([startDate, endDate], () => {
+  opportunityPage.value = 1
 })
 watch(selectedBoardId, () => {
   void loadStatuses()
@@ -535,11 +585,18 @@ onMounted(async () => {
           </div>
 
           <SearchAuthorityOpportunityTable
-            :opportunities="filteredOpportunities"
+            :opportunities="opportunities"
             :loading="loading"
             :busy-opportunity-id="busyOpportunityId"
             @transition="transitionOpportunity"
             @create-task="openTaskHandoff"
+          />
+          <UPagination
+            v-if="opportunityTotal > opportunityPageSize"
+            v-model:page="opportunityPage"
+            :total="opportunityTotal"
+            :items-per-page="opportunityPageSize"
+            class="justify-end"
           />
         </div>
 
@@ -590,12 +647,14 @@ onMounted(async () => {
       v-model:open="showTaskDialog"
       :statuses="statuses"
       :team-members="teamMembers"
-      :projects="projects"
+      :projects="clientProjects"
       :labels="labels"
       :department-id="selectedBoardId || undefined"
       :board-name="selectedBoard?.label"
       :initial-title="activeOpportunity.title"
       :initial-description="taskDescription(activeOpportunity)"
+      :initial-project-id="clientProjects.length === 1 ? clientProjects[0]?.id : undefined"
+      :project-required="true"
       @created="taskCreated"
     />
   </div>

@@ -42,7 +42,8 @@ describe('Search Authority evidence repository', () => {
     expect(harness.calls[0]?.sql).toContain('DELETE FROM gsc_daily_query_page')
     expect(harness.calls[1]?.sql).toContain('INSERT INTO gsc_daily_query_page')
     expect(harness.calls[1]?.params).toContain(true)
-    expect(harness.calls.at(-1)?.sql).toContain('data_through_date')
+    expect(harness.calls.at(-1)?.sql).toContain('gsc_projection_checks')
+    expect(harness.calls.at(-1)?.params).toContain('query_page')
   })
 
   it('replaces empty page results with zero rows while recording the checked day', async () => {
@@ -56,8 +57,9 @@ describe('Search Authority evidence repository', () => {
     expect(harness.calls).toHaveLength(2)
     expect(harness.calls[0]?.sql).toContain('DELETE FROM gsc_daily_page')
     expect(harness.calls.some(call => call.sql.includes('INSERT INTO gsc_daily_page'))).toBe(false)
-    expect(harness.calls[1]?.sql).toContain('data_through_date')
+    expect(harness.calls[1]?.sql).toContain('gsc_projection_checks')
     expect(harness.calls[1]?.params).toContain('2026-07-31')
+    expect(harness.calls[1]?.params).toContain(0)
   })
 
   it('stores property totals independently instead of deriving them from detail rows', async () => {
@@ -77,5 +79,6 @@ describe('Search Authority evidence repository', () => {
     expect(harness.calls[0]?.sql).toContain('DELETE FROM gsc_daily_property')
     expect(harness.calls[1]?.sql).toContain('INSERT INTO gsc_daily_property')
     expect(harness.calls[1]?.sql).not.toContain('gsc_daily_query_page')
+    expect(harness.calls.at(-1)?.params).toContain('property')
   })
 })

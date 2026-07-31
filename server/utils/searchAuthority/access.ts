@@ -5,7 +5,10 @@ import {
   isUuid,
   requireClientTrackingAccess
 } from '~~/server/utils/tracking/analytics-access'
-import { isSearchAuthorityEnabled } from './feature'
+import {
+  isSearchAuthorityEnabled,
+  isSearchAuthorityRolloutEnabled
+} from './feature'
 
 type AgencySearchAuthorityUser = Awaited<ReturnType<typeof requireClientTrackingAccess>>
 
@@ -16,6 +19,7 @@ export interface AgencySearchAuthorityAccessOptions {
     clientId: string
   ) => Promise<AgencySearchAuthorityUser>
   isEnabled?: (clientId: string) => Promise<boolean>
+  isGloballyEnabled?: () => boolean | Promise<boolean>
 }
 
 export interface PortalSearchAuthorityAccessOptions {
@@ -45,7 +49,11 @@ export async function requireAgencySearchAuthorityAccess(
   const requireClientAccess = options.requireClientAccess ?? requireClientTrackingAccess
   const user = await requireClientAccess(event, clientId)
 
-  if (options.requireEntitlement !== false) {
+  if (options.requireEntitlement === false) {
+    const isGloballyEnabled = options.isGloballyEnabled
+      ?? isSearchAuthorityRolloutEnabled
+    if (!await isGloballyEnabled()) featureUnavailable()
+  } else {
     const isEnabled = options.isEnabled ?? isSearchAuthorityEnabled
     if (!await isEnabled(clientId)) featureUnavailable()
   }

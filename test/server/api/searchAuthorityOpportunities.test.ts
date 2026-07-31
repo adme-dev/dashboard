@@ -34,6 +34,7 @@ describe('Search Authority opportunity APIs', () => {
   })
 
   it('lists scoped evidence with provider completeness and score reasons', async () => {
+    mocks.queryOne.mockResolvedValue({ total: '1' })
     mocks.queryRows.mockResolvedValue([{
       id: OPPORTUNITY_ID,
       client_id: CLIENT_ID,
@@ -70,6 +71,13 @@ describe('Search Authority opportunity APIs', () => {
         provisional: true
       }
     })
+    expect(result.pagination).toEqual({ page: 1, pageSize: 25, total: 1 })
+    expect(mocks.queryRows.mock.calls[0]?.[0]).toContain(
+      `map.status IN ('active', 'restricted')`
+    )
+    expect(mocks.queryRows.mock.calls[0]?.[0]).toContain(
+      'opportunity.id DESC'
+    )
 
     mocks.queryRows.mockResolvedValue([{
       id: OPPORTUNITY_ID,
@@ -93,6 +101,37 @@ describe('Search Authority opportunity APIs', () => {
     expect(finalEvidence.opportunities[0]?.provider.provisional).toBe(false)
   })
 
+  it('applies lifecycle, evidence-window and pagination filters in SQL', async () => {
+    mocks.query = {
+      clientId: CLIENT_ID,
+      lifecycle: 'accepted',
+      startDate: '2026-07-01',
+      endDate: '2026-07-28',
+      page: '2',
+      pageSize: '10'
+    }
+    mocks.queryRows.mockResolvedValue([])
+    mocks.queryOne.mockResolvedValue({ total: '14' })
+    const handler = (await import(
+      '~~/server/api/agency/search-authority/opportunities/index.get'
+    )).default
+
+    const result = await handler({} as never)
+
+    expect(mocks.queryRows).toHaveBeenCalledWith(
+      expect.stringContaining('LIMIT $5 OFFSET $6'),
+      [
+        CLIENT_ID,
+        'accepted',
+        '2026-07-01',
+        '2026-07-28',
+        10,
+        10
+      ]
+    )
+    expect(result.pagination).toEqual({ page: 2, pageSize: 10, total: 14 })
+  })
+
   it('allows forward lifecycle transitions and rejects invalid jumps with 409', async () => {
     mocks.body = { clientId: CLIENT_ID, status: 'under_review' }
     mocks.queryOne.mockResolvedValue({
@@ -109,8 +148,8 @@ describe('Search Authority opportunity APIs', () => {
       status: 'under_review'
     })
     expect(mocks.execute).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE search_authority_opportunities'),
-      [OPPORTUNITY_ID, CLIENT_ID, 'under_review', false]
+      expect.stringContaining('AND lifecycle_status = $5'),
+      [OPPORTUNITY_ID, CLIENT_ID, 'under_review', false, 'new']
     )
 
     mocks.body = { clientId: CLIENT_ID, status: 'published' }
@@ -120,7 +159,24 @@ describe('Search Authority opportunity APIs', () => {
       id: OPPORTUNITY_ID,
       lifecycle_status: 'accepted'
     })
+    mocks.body = { clientId: CLIENT_ID, status: 'task_created' }
+    await expect(handler({} as never)).rejects.toMatchObject({ statusCode: 409 })
+
     mocks.body = { clientId: CLIENT_ID, status: 'in_progress' }
+    await expect(handler({} as never)).rejects.toMatchObject({ statusCode: 409 })
+  })
+
+  it('rejects a lifecycle transition that loses an update race', async () => {
+    mocks.body = { clientId: CLIENT_ID, status: 'under_review' }
+    mocks.queryOne.mockResolvedValue({
+      id: OPPORTUNITY_ID,
+      lifecycle_status: 'new'
+    })
+    mocks.execute.mockResolvedValue(0)
+    const handler = (await import(
+      '~~/server/api/agency/search-authority/opportunities/[id].patch'
+    )).default
+
     await expect(handler({} as never)).rejects.toMatchObject({ statusCode: 409 })
   })
 })

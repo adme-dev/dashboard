@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { execute, queryOne } from '~~/server/utils/db'
+import { queryOne, transaction } from '~~/server/utils/db'
 import { requireAgencySearchAuthorityAccess } from '~~/server/utils/searchAuthority/access'
 import { resolveSearchConsoleCredential } from '~~/server/utils/searchAuthority/credentials'
 import { listSearchConsoleProperties } from '~~/server/utils/searchAuthority/googleClient'
@@ -74,30 +74,42 @@ export default eventHandler(async (event) => {
   const status = property.permissionLevel === 'siteRestrictedUser'
     ? 'restricted'
     : 'active'
-  await execute(
-    `INSERT INTO search_console_property_maps (
-       client_id, site_id, connection_id, property_uri,
-       permission_level, property_type, status
-     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (client_id, property_uri)
-     DO UPDATE SET
-       site_id = EXCLUDED.site_id,
-       connection_id = EXCLUDED.connection_id,
-       permission_level = EXCLUDED.permission_level,
-       property_type = EXCLUDED.property_type,
-       status = EXCLUDED.status,
-       updated_at = NOW()`,
-    [
-      input.clientId,
-      ownership.site_id,
-      input.connectionId,
-      property.propertyUri,
-      property.permissionLevel,
-      property.propertyType,
-      status
-    ]
-  )
+  await transaction(async (db) => {
+    await db.query(
+      `UPDATE search_console_property_maps
+       SET status = 'disconnected',
+           updated_at = NOW()
+       WHERE client_id = $1
+         AND site_id = $2
+         AND status IN ('active', 'restricted')
+         AND property_uri <> $3`,
+      [input.clientId, ownership.site_id, property.propertyUri]
+    )
+    await db.query(
+      `INSERT INTO search_console_property_maps (
+         client_id, site_id, connection_id, property_uri,
+         permission_level, property_type, status
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (client_id, property_uri)
+       DO UPDATE SET
+         site_id = EXCLUDED.site_id,
+         connection_id = EXCLUDED.connection_id,
+         permission_level = EXCLUDED.permission_level,
+         property_type = EXCLUDED.property_type,
+         status = EXCLUDED.status,
+         updated_at = NOW()`,
+      [
+        input.clientId,
+        ownership.site_id,
+        input.connectionId,
+        property.propertyUri,
+        property.permissionLevel,
+        property.propertyType,
+        status
+      ]
+    )
+  })
 
   return { ok: true }
 })

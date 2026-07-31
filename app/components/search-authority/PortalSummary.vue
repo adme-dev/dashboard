@@ -16,7 +16,7 @@ interface PortalSearchAuthority {
     position: number
     clickChangePercent: number | null
     impressionChangePercent: number | null
-  }
+  } | null
   actions: {
     total: number
     items: Array<{
@@ -116,7 +116,7 @@ function changeLabel(value: number | null): string {
         variant="subtle"
       />
 
-      <UCard>
+      <UCard v-if="data.provider.available && data.visibility">
         <template #header>
           <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>

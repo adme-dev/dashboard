@@ -24,7 +24,9 @@ export interface SearchAuthorityFeatureDependencies {
   ) => Promise<SearchAuthorityClientEntitlement[]>
 }
 
-function globalRolloutEnabled(dependencies: SearchAuthorityFeatureDependencies): boolean {
+export function isSearchAuthorityRolloutEnabled(
+  dependencies: SearchAuthorityFeatureDependencies = {}
+): boolean {
   if (typeof dependencies.searchAuthorityEnabled === 'boolean') {
     return dependencies.searchAuthorityEnabled
   }
@@ -54,7 +56,7 @@ export async function isSearchAuthorityEnabled(
   clientId: string,
   dependencies: SearchAuthorityFeatureDependencies = {}
 ): Promise<boolean> {
-  if (!globalRolloutEnabled(dependencies)) return false
+  if (!isSearchAuthorityRolloutEnabled(dependencies)) return false
 
   const queryEntitlement = dependencies.queryEntitlement
     ?? ((id: string, featureKey: string) => queryOne<SearchAuthorityEntitlement>(
@@ -76,7 +78,7 @@ export async function isSearchAuthorityEnabled(
 export async function listSearchAuthorityClientIds(
   dependencies: SearchAuthorityFeatureDependencies = {}
 ): Promise<string[]> {
-  if (!globalRolloutEnabled(dependencies)) return []
+  if (!isSearchAuthorityRolloutEnabled(dependencies)) return []
 
   const queryEntitlements = dependencies.queryEntitlements
     ?? ((featureKey: string) => query<SearchAuthorityClientEntitlement>(

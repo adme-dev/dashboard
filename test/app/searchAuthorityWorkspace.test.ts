@@ -151,6 +151,50 @@ describe('Search Authority task handoff', () => {
     }
   })
 
+  it('requires and submits the client-owned project for governed task handoff', async () => {
+    const fetchMock = vi.fn(async () => ({
+      id: '33333333-3333-4333-8333-333333333333',
+      title: 'Review H6 search snippet'
+    }))
+    Object.assign(globalThis, { $fetch: fetchMock })
+    const host = document.createElement('div')
+    const app = createApp({
+      render: () => h(TaskCreateDialog, {
+        open: true,
+        statuses: [],
+        teamMembers: [],
+        projects: [{
+          id: '44444444-4444-4444-8444-444444444444',
+          name: 'Knox Search Authority'
+        }],
+        labels: [],
+        departmentId: 'marketing',
+        initialTitle: 'Review H6 search snippet',
+        initialProjectId: '44444444-4444-4444-8444-444444444444',
+        projectRequired: true
+      })
+    })
+    Object.entries(stubs).forEach(([name, stub]) => app.component(name, stub))
+    app.mount(host)
+
+    try {
+      await flushUi()
+      host.querySelector<HTMLButtonElement>('[data-testid="task-create-submit"]')!.click()
+      await flushUi()
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/agency/tasks',
+        expect.objectContaining({
+          body: expect.objectContaining({
+            projectId: '44444444-4444-4444-8444-444444444444'
+          })
+        })
+      )
+    } finally {
+      app.unmount()
+    }
+  })
+
   it('keeps review and task creation behind explicit opportunity actions', async () => {
     const reviewed: string[] = []
     const taskRequests: string[] = []

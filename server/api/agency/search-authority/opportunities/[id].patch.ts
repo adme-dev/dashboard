@@ -34,7 +34,7 @@ const terminal = new Set<Status>([
 const transitions: Record<Status, Status[]> = {
   new: ['under_review', 'dismissed', 'duplicate', 'expired', 'not_actionable'],
   under_review: ['accepted', 'dismissed', 'duplicate', 'expired', 'not_actionable'],
-  accepted: ['task_created', 'dismissed', 'not_actionable'],
+  accepted: ['dismissed', 'not_actionable'],
   task_created: ['in_progress', 'dismissed', 'not_actionable'],
   in_progress: ['published', 'dismissed', 'not_actionable'],
   published: ['measuring', 'dismissed', 'not_actionable'],
@@ -73,13 +73,27 @@ export default eventHandler(async (event) => {
     })
   }
   const isTerminal = terminal.has(parsed.data.status)
-  await execute(
+  const updated = await execute(
     `UPDATE search_authority_opportunities
      SET lifecycle_status = $3,
          resolved_at = CASE WHEN $4 THEN NOW() ELSE NULL END,
          updated_at = NOW()
-     WHERE id = $1 AND client_id = $2`,
-    [opportunityId, parsed.data.clientId, parsed.data.status, isTerminal]
+     WHERE id = $1
+       AND client_id = $2
+       AND lifecycle_status = $5`,
+    [
+      opportunityId,
+      parsed.data.clientId,
+      parsed.data.status,
+      isTerminal,
+      opportunity.lifecycle_status
+    ]
   )
+  if (updated !== 1) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'The opportunity changed before the transition completed'
+    })
+  }
   return { ok: true, status: parsed.data.status }
 })

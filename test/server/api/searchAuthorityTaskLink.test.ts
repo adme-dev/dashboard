@@ -67,6 +67,11 @@ describe('Search Authority task linking', () => {
     const result = await handler({} as never)
 
     expect(mocks.requireAccess).toHaveBeenCalledWith(expect.anything(), CLIENT_ID)
+    expect(mocks.queryOne).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('JOIN projects project'),
+      [TASK_ID, CLIENT_ID]
+    )
     expect(mocks.execute).toHaveBeenCalledWith(
       expect.stringContaining(`lifecycle_status = 'task_created'`),
       [OPPORTUNITY_ID, CLIENT_ID, TASK_ID]
@@ -80,6 +85,26 @@ describe('Search Authority task linking', () => {
       },
       status: 'task_created'
     })
+  })
+
+  it('rejects tasks that are not attached to a project owned by the client', async () => {
+    mocks.queryOne
+      .mockReset()
+      .mockResolvedValueOnce({
+        id: OPPORTUNITY_ID,
+        client_id: CLIENT_ID,
+        lifecycle_status: 'accepted',
+        task_id: null
+      })
+      .mockResolvedValueOnce(null)
+    const handler = (await import(
+      '~~/server/api/agency/search-authority/opportunities/[id]/task-link.post'
+    )).default
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 404
+    })
+    expect(mocks.execute).not.toHaveBeenCalled()
   })
 
   it('rejects duplicate or stale linking attempts with 409', async () => {

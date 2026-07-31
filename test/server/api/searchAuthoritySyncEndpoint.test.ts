@@ -33,7 +33,7 @@ describe('Search Authority manual sync endpoint', () => {
   it('checks client access and starts a bounded manual range in the background', async () => {
     mocks.body = {
       clientId: '11111111-1111-4111-8111-111111111111',
-      startDate: '2026-07-01',
+      startDate: '2026-07-02',
       endDate: '2026-07-31'
     }
     const handler = (await import(
@@ -44,25 +44,25 @@ describe('Search Authority manual sync endpoint', () => {
 
     expect(mocks.requireAccess).toHaveBeenCalledWith(event, mocks.body.clientId)
     expect(mocks.runBackground).toHaveBeenCalledWith(event, expect.objectContaining({
-      label: expect.stringContaining('2026-07-01..2026-07-31'),
+      label: expect.stringContaining('2026-07-02..2026-07-31'),
       extra: { clientId: mocks.body.clientId }
     }))
     const sync = mocks.runBackground.mock.calls[0]?.[1].sync
     await sync()
     expect(mocks.syncClient).toHaveBeenCalledWith({
       clientId: mocks.body.clientId,
-      startDate: '2026-07-01',
+      startDate: '2026-07-02',
       endDate: '2026-07-31',
       triggerType: 'manual'
     })
     expect(response).toMatchObject({ status: 'started', clientId: mocks.body.clientId })
   })
 
-  it('rejects manual windows over 90 days before background work starts', async () => {
+  it('rejects manual windows over 30 days before background work starts', async () => {
     mocks.body = {
       clientId: '11111111-1111-4111-8111-111111111111',
       startDate: '2026-01-01',
-      endDate: '2026-04-01'
+      endDate: '2026-01-31'
     }
     const handler = (await import(
       '~~/server/api/agency/search-authority/sync.post'

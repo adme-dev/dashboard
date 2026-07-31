@@ -164,18 +164,37 @@ describe('Search Authority access gates', () => {
       is_active: true
     }
     const isEnabled = vi.fn(async () => false)
+    const isGloballyEnabled = vi.fn(() => true)
     const allowed = await access!.requireAgencySearchAuthorityAccess(
       {} as never,
       CLIENT_ID,
       {
         requireEntitlement: false,
         requireClientAccess: async () => manager,
+        isGloballyEnabled,
         isEnabled
       }
     )
 
     expect(allowed).toBe(manager)
+    expect(isGloballyEnabled).toHaveBeenCalledOnce()
     expect(isEnabled).not.toHaveBeenCalled()
+  })
+
+  it('keeps readiness setup behind the global rollout switch', async () => {
+    const access = await loadAccessModule()
+    expect(access).not.toBeNull()
+
+    await expect(
+      access!.requireAgencySearchAuthorityAccess({} as never, CLIENT_ID, {
+        requireEntitlement: false,
+        requireClientAccess: async () => ({
+          id: USER_ID,
+          role: 'owner'
+        } as never),
+        isGloballyEnabled: () => false
+      })
+    ).rejects.toMatchObject({ statusCode: 404 })
   })
 
   it('derives portal ownership from the authenticated client and requires analytics access', async () => {

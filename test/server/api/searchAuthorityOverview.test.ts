@@ -31,10 +31,12 @@ describe('Search Authority overview API', () => {
   it('returns provider caveats, literal search metrics and opportunity counts', async () => {
     mocks.queryOne
       .mockResolvedValueOnce({
+        property_map_id: '22222222-2222-4222-8222-222222222222',
         site_status: 'active',
         connection_status: 'degraded',
         last_success_at: '2026-07-30T01:00:00.000Z',
         last_error_message: 'Google quota retry pending',
+        last_sync_status: 'partial',
         data_through_date: '2026-07-30',
         provisional_from_date: '2026-07-29'
       })
@@ -96,6 +98,9 @@ describe('Search Authority overview API', () => {
       expect.stringMatching(/through 30 Jul(?:y)? 2026/i)
     ]))
     expect(result).not.toHaveProperty('aiVisibilityScore')
+    expect(mocks.queryOne.mock.calls[1]?.[1]).toContain(
+      '22222222-2222-4222-8222-222222222222'
+    )
   })
 
   it('rejects windows longer than 90 days', async () => {
@@ -117,10 +122,12 @@ describe('Search Authority overview API', () => {
   it('does not invent growth when the comparison window is incomplete', async () => {
     mocks.queryOne
       .mockResolvedValueOnce({
+        property_map_id: '22222222-2222-4222-8222-222222222222',
         site_status: 'active',
         connection_status: 'active',
         last_success_at: '2026-07-31T01:00:00.000Z',
         last_error_message: null,
+        last_sync_status: 'succeeded',
         data_through_date: '2026-07-31',
         provisional_from_date: null
       })
@@ -151,6 +158,48 @@ describe('Search Authority overview API', () => {
     expect(result.metrics.impressionChangePercent).toBeNull()
     expect(result.provider.caveats).toEqual(expect.arrayContaining([
       expect.stringMatching(/preceding comparison window is incomplete/i)
+    ]))
+  })
+
+  it('returns unavailable metrics instead of invented zeroes for incomplete evidence', async () => {
+    mocks.queryOne
+      .mockResolvedValueOnce({
+        property_map_id: '22222222-2222-4222-8222-222222222222',
+        site_status: 'active',
+        connection_status: 'degraded',
+        last_sync_status: 'failed',
+        last_success_at: null,
+        last_error_message: null,
+        data_through_date: null,
+        provisional_from_date: null
+      })
+      .mockResolvedValueOnce({
+        current_clicks: '0',
+        current_impressions: '0',
+        current_ctr: '0',
+        current_position: '0',
+        previous_clicks: '0',
+        previous_impressions: '0',
+        coverage_days: '0',
+        previous_coverage_days: '0',
+        provisional: false
+      })
+      .mockResolvedValueOnce({
+        total: '0',
+        new_count: '0',
+        under_review_count: '0',
+        accepted_count: '0',
+        task_created_count: '0'
+      })
+    const handler = (await import(
+      '~~/server/api/agency/search-authority/overview.get'
+    )).default
+
+    const result = await handler({} as never)
+    expect(result.metrics).toBeNull()
+    expect(result.provider.caveats).toEqual(expect.arrayContaining([
+      expect.stringMatching(/did not complete/i),
+      expect.stringMatching(/incomplete/i)
     ]))
   })
 })

@@ -21,7 +21,7 @@ const props = defineProps<{
   open: boolean
   statuses: Array<{ id: string, name: string, color: string, category?: string }>
   teamMembers: Array<{ id: string, name: string, email?: string, role?: string, avatar?: string, active_task_count?: number }>
-  projects: Array<{ id: string, name: string, client_name?: string }>
+  projects: Array<{ id: string, name: string, clientId?: string, client_name?: string }>
   labels: Array<{ id: string, name: string, color: string }>
   departmentId?: string
   workspaceId?: string
@@ -30,6 +30,8 @@ const props = defineProps<{
   initialDate?: string
   initialTitle?: string
   initialDescription?: string
+  initialProjectId?: string
+  projectRequired?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -93,7 +95,7 @@ watch(isOpen, (val) => {
     form.value = {
       title: props.initialTitle || '',
       description: props.initialDescription || '',
-      projectId: undefined,
+      projectId: props.initialProjectId,
       statusId: props.initialStatusId,
       priority: 'medium',
       assigneeId: undefined,
@@ -163,7 +165,13 @@ async function getAiSuggestion() {
       aiAssigneeReason.value = result.assigneeReason || null
       aiFields.value.add('assigneeId')
     }
-    if (result.projectId) {
+    if (
+      result.projectId
+      && (
+        !props.projectRequired
+        || props.projects.some(project => project.id === result.projectId)
+      )
+    ) {
       form.value.projectId = result.projectId
       aiFields.value.add('projectId')
     }
@@ -249,6 +257,14 @@ function isAiField(field: string) {
 async function createTask() {
   if (!form.value.title.trim()) {
     toast.add({ title: 'Task title is required', color: 'error' })
+    return
+  }
+  if (props.projectRequired && !form.value.projectId) {
+    toast.add({
+      title: 'Project is required',
+      description: 'Choose the client project that should own this task.',
+      color: 'error'
+    })
     return
   }
 
@@ -485,7 +501,7 @@ async function createTask() {
                   />
                 </UFormField>
 
-                <UFormField label="Project">
+                <UFormField label="Project" :required="projectRequired">
                   <template #label>
                     <span class="flex items-center gap-1">
                       Project
@@ -495,7 +511,7 @@ async function createTask() {
                   <USelectMenu
                     v-model="form.projectId"
                     :items="projects.map(p => ({ label: p.name, value: p.id }))"
-                    placeholder="No project"
+                    :placeholder="projectRequired ? 'Choose a project' : 'No project'"
                     value-key="value"
                     class="w-full"
                   />

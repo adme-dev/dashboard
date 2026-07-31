@@ -287,7 +287,7 @@ export interface SearchAuthorityOverview {
     position: number
     clickChangePercent: number | null
     impressionChangePercent: number | null
-  }
+  } | null
   opportunities: {
     total: number
     new: number

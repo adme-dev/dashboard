@@ -14,14 +14,19 @@ export default defineEventHandler(async (event) => {
 
   const clientIds = await listSearchAuthorityClientIds()
   const work = Promise.all(clientIds.map(async (clientId) => {
-    await syncSearchConsoleClient({
+    const syncResults = await syncSearchConsoleClient({
       clientId,
       triggerType: 'scheduled'
     })
-    await generateSearchAuthorityOpportunities(
-      clientId,
-      searchConsoleOpportunityWindow()
-    )
+    if (
+      syncResults.length > 0
+      && syncResults.every(result => result.status === 'succeeded')
+    ) {
+      await generateSearchAuthorityOpportunities(
+        clientId,
+        searchConsoleOpportunityWindow()
+      )
+    }
     return inspectPriorityUrls(clientId, 50)
   }))
   runAfterResponse(event, work, 'search-console-daily-sync')

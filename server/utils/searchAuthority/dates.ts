@@ -10,9 +10,10 @@ export interface SearchConsoleWindow {
 
 interface SearchConsoleWindowInput {
   now?: Date
-  hasSuccessfulSync?: boolean
+  baselineCompleted?: boolean
   startDate?: string
   endDate?: string
+  maxManualDays?: number
 }
 
 function parseIsoDate(value: string): Date {
@@ -73,8 +74,11 @@ export function searchConsoleSyncWindow(
     if (input.startDate > input.endDate) {
       throw new Error('Search Console startDate must be on or before endDate')
     }
-    if (inclusiveDays(input.startDate, input.endDate) > MAX_MANUAL_DAYS) {
-      throw new Error('Search Console manual sync cannot exceed 90 days')
+    const maxManualDays = input.maxManualDays ?? MAX_MANUAL_DAYS
+    if (inclusiveDays(input.startDate, input.endDate) > maxManualDays) {
+      throw new Error(
+        `Search Console manual sync cannot exceed ${maxManualDays} days`
+      )
     }
     return {
       startDate: input.startDate,
@@ -84,11 +88,11 @@ export function searchConsoleSyncWindow(
   }
 
   const endDate = searchConsoleProviderDate(input.now)
-  const days = input.hasSuccessfulSync ? 3 : 90
+  const days = input.baselineCompleted ? 3 : 90
   return {
     startDate: addDays(endDate, -(days - 1)),
     endDate,
-    mode: input.hasSuccessfulSync ? 'refresh' : 'initial'
+    mode: input.baselineCompleted ? 'refresh' : 'initial'
   }
 }
 

@@ -99,4 +99,21 @@ describe('Search Authority site readiness API', () => {
     await expect(handler({} as never)).rejects.toMatchObject({ statusCode: 400 })
     expect(mocks.transaction).not.toHaveBeenCalled()
   })
+
+  it('limits pilot activation to agency owners and admins', async () => {
+    mocks.body = {
+      clientId: '11111111-1111-4111-8111-111111111111',
+      canonicalHostname: 'www.knoxgwmhaval.com.au'
+    }
+    mocks.requireAccess.mockResolvedValue({
+      id: '22222222-2222-4222-8222-222222222222',
+      role: 'media'
+    })
+    const handler = (await import(
+      '~~/server/api/agency/search-authority/sites/index.post'
+    )).default
+
+    await expect(handler({} as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect(mocks.transaction).not.toHaveBeenCalled()
+  })
 })

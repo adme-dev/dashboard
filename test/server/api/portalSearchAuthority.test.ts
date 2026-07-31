@@ -26,7 +26,9 @@ describe('portal Search Authority API', () => {
     })
     mocks.queryOne
       .mockResolvedValueOnce({
+        property_map_id: '22222222-2222-4222-8222-222222222222',
         connection_status: 'active',
+        last_sync_status: 'succeeded',
         data_through_date: '2026-07-30',
         provisional: true
       })
@@ -43,7 +45,8 @@ describe('portal Search Authority API', () => {
     mocks.queryRows.mockResolvedValue([{
       opportunity_type: 'low_ctr',
       lifecycle_status: 'task_created',
-      task_id: 'task-1'
+      task_id: 'task-1',
+      total_count: '24'
     }])
   })
 
@@ -65,6 +68,7 @@ describe('portal Search Authority API', () => {
       label: 'Search result improvement',
       status: 'task_created'
     })
+    expect(result.actions.total).toBe(24)
     expect(serialized).not.toMatch(
       /queryText|query_text|reasonCodes|scoringVersion|connectionId|credential|baseline|weight|taskId|"id":/i
     )
@@ -77,7 +81,9 @@ describe('portal Search Authority API', () => {
     mocks.queryOne
       .mockReset()
       .mockResolvedValueOnce({
+        property_map_id: '22222222-2222-4222-8222-222222222222',
         connection_status: 'active',
+        last_sync_status: 'succeeded',
         data_through_date: '2026-07-30',
         provisional: false
       })
@@ -99,6 +105,35 @@ describe('portal Search Authority API', () => {
 
     expect(result.visibility.clickChangePercent).toBeNull()
     expect(result.visibility.impressionChangePercent).toBeNull()
+  })
+
+  it('returns no visibility metrics until the current provider window is complete', async () => {
+    mocks.queryOne
+      .mockReset()
+      .mockResolvedValueOnce({
+        property_map_id: '22222222-2222-4222-8222-222222222222',
+        connection_status: 'degraded',
+        last_sync_status: 'partial',
+        data_through_date: null,
+        provisional: false
+      })
+      .mockResolvedValueOnce({
+        clicks: '0',
+        impressions: '0',
+        ctr: '0',
+        position: '0',
+        previous_clicks: '0',
+        previous_impressions: '0',
+        coverage_days: '0',
+        previous_coverage_days: '0'
+      })
+    const handler = (await import(
+      '~~/server/api/portal/search-authority/overview.get'
+    )).default
+
+    const result = await handler({} as never)
+    expect(result.provider.available).toBe(false)
+    expect(result.visibility).toBeNull()
   })
 
   it('performs no data reads when portal access is denied', async () => {

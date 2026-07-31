@@ -36,29 +36,32 @@ function isProvisional(input: ReplaceProjectionDateInput): boolean {
   )
 }
 
-async function markDateChecked(
+async function markProjectionChecked(
   db: TransactionClient,
-  input: ReplaceProjectionDateInput
+  input: ReplaceProjectionDateInput,
+  projection: 'property' | 'page' | 'query_page',
+  rowCount: number
 ) {
   await db.query(
-    `UPDATE search_console_property_maps
-     SET data_through_date = CASE
-           WHEN data_through_date IS NULL OR data_through_date < $3::date
-             THEN $3::date
-           ELSE data_through_date
-         END,
-         provisional_from_date = CASE
-           WHEN $4::date IS NULL THEN provisional_from_date
-           WHEN provisional_from_date IS NULL OR provisional_from_date > $4::date
-             THEN $4::date
-           ELSE provisional_from_date
-         END,
-         updated_at = NOW()
-     WHERE client_id = $1 AND id = $2`,
+    `INSERT INTO gsc_projection_checks (
+       client_id, property_map_id, metric_date, search_type,
+       projection, row_count, provisional, first_incomplete_date
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (property_map_id, metric_date, search_type, projection)
+     DO UPDATE SET
+       row_count = EXCLUDED.row_count,
+       provisional = EXCLUDED.provisional,
+       first_incomplete_date = EXCLUDED.first_incomplete_date,
+       checked_at = NOW()`,
     [
       input.clientId,
       input.propertyMapId,
       input.metricDate,
+      input.searchType ?? 'web',
+      projection,
+      rowCount,
+      isProvisional(input),
       input.firstIncompleteDate
     ]
   )
@@ -122,7 +125,7 @@ export async function replaceQueryPageDate(
         params
       )
     })
-    await markDateChecked(db, input)
+    await markProjectionChecked(db, input, 'query_page', rows.length)
   })
 }
 
@@ -163,7 +166,7 @@ export async function replacePageDate(
         params
       )
     })
-    await markDateChecked(db, input)
+    await markProjectionChecked(db, input, 'page', rows.length)
   })
 }
 
@@ -202,6 +205,6 @@ export async function replacePropertyDate(
         ]
       )
     }
-    await markDateChecked(db, input)
+    await markProjectionChecked(db, input, 'property', row ? 1 : 0)
   })
 }

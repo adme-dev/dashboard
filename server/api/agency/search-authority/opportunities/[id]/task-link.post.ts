@@ -46,8 +46,13 @@ export default eventHandler(async (event) => {
   }
 
   const task = await queryOne<{ id: string, title: string }>(
-    'SELECT id, title FROM tasks WHERE id = $1 LIMIT 1',
-    [parsed.data.taskId]
+    `SELECT task.id, task.title
+     FROM tasks task
+     JOIN projects project ON project.id = task.project_id
+     WHERE task.id = $1
+       AND project.client_id = $2
+     LIMIT 1`,
+    [parsed.data.taskId, opportunity.client_id]
   )
   if (!task) {
     throw createError({ statusCode: 404, statusMessage: 'Task not found' })

@@ -6,6 +6,11 @@ const { user, stats, logout } = usePortalAuth()
 const route = useRoute()
 const config = useRuntimeConfig()
 const open = ref(false)
+const { data: searchAuthorityAvailability } = await useFetch<{
+  available: boolean
+}>('/api/portal/search-authority/availability', {
+  default: () => ({ available: false })
+})
 
 const close = () => {
   open.value = false
@@ -109,6 +114,7 @@ const mainNav = computed(() => ([
               onSelect: close
             },
             ...(config.public.searchAuthorityEnabled === true
+              && searchAuthorityAvailability.value.available
               ? [{
                   label: 'Search Authority',
                   to: '/portal/search-authority',

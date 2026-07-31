@@ -6,6 +6,13 @@ const migrationUrl = new URL(
   import.meta.url
 )
 const sql = existsSync(migrationUrl) ? readFileSync(migrationUrl, 'utf8') : ''
+const hardeningMigrationUrl = new URL(
+  '../../server/database/migrations/330_search_authority_evidence_hardening.sql',
+  import.meta.url
+)
+const hardeningSql = existsSync(hardeningMigrationUrl)
+  ? readFileSync(hardeningMigrationUrl, 'utf8')
+  : ''
 
 describe('Search Authority migration 329', () => {
   it('creates every client-scoped Search Console and opportunity relation', () => {
@@ -67,5 +74,32 @@ describe('Search Authority migration 329', () => {
     expect(sql).not.toMatch(/^\s*DROP\s+/im)
     expect(sql).toContain('Rollback guidance:')
     expect(sql).toContain('Search Console does not guarantee every result row')
+  })
+})
+
+describe('Search Authority migration 330', () => {
+  it('enforces one selected property and records empty successful projections', () => {
+    expect(hardeningSql).toContain(
+      'idx_search_console_property_maps_one_selected_per_site'
+    )
+    expect(hardeningSql).toContain(
+      `WHERE status IN ('active', 'restricted')`
+    )
+    expect(hardeningSql).toContain(
+      'CREATE TABLE IF NOT EXISTS gsc_projection_checks'
+    )
+    expect(hardeningSql).toContain(
+      `CHECK (projection IN ('property', 'page', 'query_page'))`
+    )
+    expect(hardeningSql).toContain('row_count INTEGER NOT NULL')
+  })
+
+  it('adds bounded sync lease state without destructive rollback statements', () => {
+    expect(hardeningSql).toContain('sync_lease_token UUID')
+    expect(hardeningSql).toContain('sync_lease_expires_at TIMESTAMPTZ')
+    expect(hardeningSql).toContain('baseline_start_date DATE')
+    expect(hardeningSql).toContain('baseline_end_date DATE')
+    expect(hardeningSql).toContain('baseline_completed_at TIMESTAMPTZ')
+    expect(hardeningSql).not.toMatch(/^\s*DROP\s+/im)
   })
 })

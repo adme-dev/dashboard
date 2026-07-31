@@ -226,6 +226,16 @@ function needsRefresh(
   )
 }
 
+function isQuotaFailure(error: unknown): boolean {
+  const candidate = error as {
+    statusCode?: number
+    status?: number
+    message?: string
+  }
+  const status = candidate?.statusCode ?? candidate?.status
+  return status === 429 || /quota|rate limit/i.test(candidate?.message || '')
+}
+
 async function defaultPersistInspection(
   input: PersistInspectionInput
 ): Promise<void> {
@@ -314,6 +324,7 @@ export async function inspectPriorityUrls(
         url: candidate.inspectedUrl,
         message: error instanceof Error ? error.message : 'Inspection failed'
       })
+      if (isQuotaFailure(error)) break
     }
   }
 

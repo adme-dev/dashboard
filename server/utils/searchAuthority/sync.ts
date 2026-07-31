@@ -28,7 +28,9 @@ export interface SearchConsolePropertyMap {
   propertyMapId: string
   connectionId: string
   propertyUri: string
-  hasSuccessfulSync?: boolean
+  baselineCompleted?: boolean
+  baselineStartDate?: string | null
+  baselineEndDate?: string | null
 }
 
 interface PropertySyncInput {
@@ -38,6 +40,8 @@ interface PropertySyncInput {
   triggerType: TriggerType
   credential?: ResolvedSearchConsoleCredential
   credentialError?: unknown
+  leaseToken?: string
+  resumeFromProjectionChecks?: boolean
 }
 
 interface ClientSyncInput {
@@ -49,6 +53,7 @@ interface ClientSyncInput {
 
 interface RunUpdate {
   status: 'running' | SyncStatus
+  leaseToken?: string
   rowsReceived?: number
   datesSucceeded?: number
   datesFailed?: number
@@ -70,6 +75,20 @@ interface SyncDependencies {
   ) => Promise<string>
   updateRun?: (runId: string, update: RunUpdate) => Promise<void>
   listMaps?: (clientId: string) => Promise<SearchConsolePropertyMap[]>
+  listCompletedProjections?: (
+    input: PropertySyncInput
+  ) => Promise<string[]>
+  acquireLease?: (propertyMapId: string) => Promise<string | null>
+  renewLease?: (propertyMapId: string, token: string) => Promise<boolean>
+  releaseLease?: (propertyMapId: string, token: string) => Promise<void>
+  initializeBaseline?: (
+    propertyMapId: string,
+    window: { startDate: string, endDate: string }
+  ) => Promise<{ startDate: string, endDate: string }>
+  completeBaseline?: (
+    propertyMapId: string,
+    window: { startDate: string, endDate: string }
+  ) => Promise<boolean>
   syncProperty?: (
     input: PropertySyncInput,
     dependencies?: SyncDependencies
@@ -78,6 +97,8 @@ interface SyncDependencies {
 
 const REFRESH_SKEW_MS = 5 * 60 * 1000
 const PROVIDER_ATTEMPTS = 3
+const MAX_DATES_PER_RUN = 30
+const SYNC_LEASE_INTERVAL = '2 hours'
 
 function needsRefresh(
   credential: ResolvedSearchConsoleCredential,
@@ -140,7 +161,10 @@ async function defaultCreateRun(input: PropertySyncInput): Promise<string> {
   return row.id
 }
 
-async function defaultUpdateRun(runId: string, update: RunUpdate): Promise<void> {
+export async function updateSearchConsoleSyncRun(
+  runId: string,
+  update: RunUpdate
+): Promise<void> {
   const terminal = update.status !== 'running'
   await execute(
     `UPDATE gsc_sync_runs
@@ -176,14 +200,99 @@ async function defaultUpdateRun(runId: string, update: RunUpdate): Promise<void>
            END,
            updated_at = NOW()
        FROM gsc_sync_runs run
-       WHERE run.id = $1 AND map.id = run.property_map_id`,
+       WHERE run.id = $1
+         AND map.id = run.property_map_id
+         AND ($4::uuid IS NULL OR map.sync_lease_token = $4::uuid)`,
       [
         runId,
         update.status,
-        update.errors?.length ? JSON.stringify(update.errors) : null
+        update.errors?.length ? JSON.stringify(update.errors) : null,
+        update.leaseToken ?? null
       ]
     )
+    await execute(
+      `WITH complete_dates AS (
+         SELECT
+           checks.metric_date,
+           BOOL_OR(checks.provisional) AS provisional
+         FROM gsc_projection_checks checks
+         JOIN gsc_sync_runs run
+           ON run.property_map_id = checks.property_map_id
+         WHERE run.id = $1
+           AND checks.search_type = 'web'
+         GROUP BY checks.metric_date
+         HAVING COUNT(DISTINCT checks.projection) = 3
+       )
+       UPDATE search_console_property_maps map
+       SET data_through_date = (
+             SELECT MAX(metric_date) FROM complete_dates
+           ),
+           provisional_from_date = (
+             SELECT MIN(metric_date)
+             FROM complete_dates
+             WHERE provisional
+           ),
+           updated_at = NOW()
+       FROM gsc_sync_runs run
+       WHERE run.id = $1
+         AND map.id = run.property_map_id
+         AND ($2::uuid IS NULL OR map.sync_lease_token = $2::uuid)`,
+      [runId, update.leaseToken ?? null]
+    )
+    await execute(
+      `UPDATE search_console_connections connection
+       SET status = CASE
+             WHEN $2 = 'succeeded' THEN 'active'
+             WHEN connection.status = 'disconnected' THEN 'disconnected'
+             ELSE 'degraded'
+           END,
+           last_checked_at = NOW(),
+           last_success_at = CASE
+             WHEN $2 = 'succeeded' THEN NOW()
+             ELSE connection.last_success_at
+           END,
+           last_error_code = CASE
+             WHEN $2 = 'succeeded' THEN NULL
+             ELSE 'search_console_sync_failed'
+           END,
+           last_error_message = CASE
+             WHEN $2 = 'succeeded' THEN NULL
+             ELSE 'Search Console evidence refresh did not complete.'
+           END,
+           updated_at = NOW()
+       FROM search_console_property_maps map, gsc_sync_runs run
+       WHERE run.id = $1
+         AND map.id = run.property_map_id
+         AND connection.id = map.connection_id
+         AND ($3::uuid IS NULL OR map.sync_lease_token = $3::uuid)`,
+      [runId, update.status, update.leaseToken ?? null]
+    )
   }
+}
+
+async function defaultListCompletedProjections(
+  input: PropertySyncInput
+): Promise<string[]> {
+  const rows = await queryRows<{
+    metric_date: string
+    projection: 'property' | 'page' | 'query_page'
+  }>(
+    `SELECT metric_date::text, projection
+     FROM gsc_projection_checks
+     WHERE client_id = $1
+       AND property_map_id = $2
+       AND search_type = 'web'
+       AND metric_date BETWEEN $3::date AND $4::date`,
+    [
+      input.map.clientId,
+      input.map.propertyMapId,
+      input.startDate,
+      input.endDate
+    ]
+  )
+  return rows.map(row => (
+    `${row.metric_date}:${row.projection === 'query_page' ? 'queryPage' : row.projection}`
+  ))
 }
 
 function errorRecord(
@@ -203,7 +312,7 @@ export async function syncSearchConsoleProperty(
   dependencies: SyncDependencies = {}
 ): Promise<{ runId: string, status: SyncStatus }> {
   const createRun = dependencies.createRun ?? defaultCreateRun
-  const updateRun = dependencies.updateRun ?? defaultUpdateRun
+  const updateRun = dependencies.updateRun ?? updateSearchConsoleSyncRun
   const runId = await createRun(input)
   await updateRun(runId, { status: 'running' })
 
@@ -234,7 +343,30 @@ export async function syncSearchConsoleProperty(
       queryPage: dependencies.replaceQueryPageDate ?? replaceQueryPageDate
     }
 
-    for (const metricDate of listSearchConsoleDates(input.startDate, input.endDate)) {
+    const resumeFromProjectionChecks = input.resumeFromProjectionChecks
+      ?? !input.map.baselineCompleted
+    const completed = new Set(!resumeFromProjectionChecks
+      ? []
+      : await (
+          dependencies.listCompletedProjections ?? defaultListCompletedProjections
+        )(input))
+    const incompleteDates = listSearchConsoleDates(input.startDate, input.endDate)
+      .filter(metricDate => (
+        ['property', 'page', 'queryPage']
+          .some(projection => !completed.has(`${metricDate}:${projection}`))
+      ))
+    const datesToProcess = incompleteDates.slice(0, MAX_DATES_PER_RUN)
+
+    for (const metricDate of datesToProcess) {
+      if (
+        input.leaseToken
+        && !await (dependencies.renewLease ?? defaultRenewLease)(
+          input.map.propertyMapId,
+          input.leaseToken
+        )
+      ) {
+        throw new Error('Search Console sync lease ownership was lost')
+      }
       const projections: Array<{
         name: 'property' | 'page' | 'queryPage'
         request: SearchAnalyticsRequest
@@ -257,7 +389,10 @@ export async function syncSearchConsoleProperty(
           }
         }
       ]
-      const providerResults = await Promise.all(projections.map(async (projection) => {
+      const pendingProjections = projections.filter(
+        projection => !completed.has(`${metricDate}:${projection.name}`)
+      )
+      const providerResults = await Promise.all(pendingProjections.map(async (projection) => {
         try {
           const result = await withProviderRetry(
             () => queryAnalytics(
@@ -288,6 +423,15 @@ export async function syncSearchConsoleProperty(
           continue
         }
         const { projection, result } = providerResult
+        if (result.truncated) {
+          dateComplete = false
+          errors.push({
+            date: metricDate,
+            projection: projection.name,
+            message: 'Provider result reached the 50,000-row safety cap'
+          })
+          continue
+        }
         rowsReceived += result.rows.length
         if (
           result.firstIncompleteDate
@@ -305,14 +449,6 @@ export async function syncSearchConsoleProperty(
             rows: result.rows
           })
           projectionsSucceeded += 1
-          if (result.truncated) {
-            dateComplete = false
-            errors.push({
-              date: metricDate,
-              projection: projection.name,
-              message: 'Provider result reached the 50,000-row safety cap'
-            })
-          }
         } catch (error: unknown) {
           dateComplete = false
           errors.push(errorRecord(metricDate, projection.name, error))
@@ -320,6 +456,13 @@ export async function syncSearchConsoleProperty(
       }
       if (dateComplete) datesSucceeded += 1
       else datesFailed += 1
+    }
+    if (incompleteDates.length > datesToProcess.length) {
+      errors.push({
+        date: datesToProcess.at(-1) ?? input.startDate,
+        projection: 'continuation',
+        message: 'Backfill paused at the per-run safety limit and will resume.'
+      })
     }
   } catch (error: unknown) {
     errors.push(errorRecord(input.startDate, 'connection', error))
@@ -337,7 +480,8 @@ export async function syncSearchConsoleProperty(
     datesSucceeded,
     datesFailed,
     firstIncompleteDate,
-    errors
+    errors,
+    leaseToken: input.leaseToken
   })
   return { runId, status }
 }
@@ -350,17 +494,18 @@ async function defaultListMaps(
     property_map_id: string
     connection_id: string
     property_uri: string
-    has_successful_sync: boolean
+    baseline_completed: boolean
+    baseline_start_date: string | null
+    baseline_end_date: string | null
   }>(
     `SELECT
        client_id,
        id AS property_map_id,
        connection_id,
        property_uri,
-       (
-         last_sync_status = 'succeeded'
-         AND last_sync_completed_at IS NOT NULL
-       ) AS has_successful_sync
+       baseline_completed_at IS NOT NULL AS baseline_completed,
+       baseline_start_date::text,
+       baseline_end_date::text
      FROM search_console_property_maps
      WHERE client_id = $1 AND status IN ('active', 'restricted')
      ORDER BY created_at`,
@@ -371,8 +516,115 @@ async function defaultListMaps(
     propertyMapId: row.property_map_id,
     connectionId: row.connection_id,
     propertyUri: row.property_uri,
-    hasSuccessfulSync: row.has_successful_sync
+    baselineCompleted: row.baseline_completed,
+    baselineStartDate: row.baseline_start_date,
+    baselineEndDate: row.baseline_end_date
   }))
+}
+
+async function defaultAcquireLease(propertyMapId: string): Promise<string | null> {
+  const row = await queryOne<{ sync_lease_token: string }>(
+    `UPDATE search_console_property_maps
+     SET sync_lease_token = gen_random_uuid(),
+         sync_lease_expires_at = NOW() + INTERVAL '${SYNC_LEASE_INTERVAL}',
+         updated_at = NOW()
+     WHERE id = $1
+       AND (
+         sync_lease_expires_at IS NULL
+         OR sync_lease_expires_at < NOW()
+       )
+     RETURNING sync_lease_token`,
+    [propertyMapId]
+  )
+  return row?.sync_lease_token ?? null
+}
+
+async function defaultRenewLease(
+  propertyMapId: string,
+  token: string
+): Promise<boolean> {
+  const updated = await execute(
+    `UPDATE search_console_property_maps
+     SET sync_lease_expires_at = NOW() + INTERVAL '${SYNC_LEASE_INTERVAL}',
+         updated_at = NOW()
+     WHERE id = $1 AND sync_lease_token = $2::uuid`,
+    [propertyMapId, token]
+  )
+  return updated === 1
+}
+
+async function defaultReleaseLease(
+  propertyMapId: string,
+  token: string
+): Promise<void> {
+  await execute(
+    `UPDATE search_console_property_maps
+     SET sync_lease_token = NULL,
+         sync_lease_expires_at = NULL,
+         updated_at = NOW()
+     WHERE id = $1 AND sync_lease_token = $2::uuid`,
+    [propertyMapId, token]
+  )
+}
+
+async function defaultInitializeBaseline(
+  propertyMapId: string,
+  window: { startDate: string, endDate: string }
+): Promise<{ startDate: string, endDate: string }> {
+  const row = await queryOne<{
+    baseline_start_date: string
+    baseline_end_date: string
+  }>(
+    `UPDATE search_console_property_maps
+     SET baseline_start_date = CASE
+           WHEN baseline_start_date IS NULL OR baseline_end_date IS NULL
+             THEN $2::date
+           ELSE baseline_start_date
+         END,
+         baseline_end_date = CASE
+           WHEN baseline_start_date IS NULL OR baseline_end_date IS NULL
+             THEN $3::date
+           ELSE baseline_end_date
+         END,
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING baseline_start_date::text, baseline_end_date::text`,
+    [propertyMapId, window.startDate, window.endDate]
+  )
+  if (!row) throw new Error('Unable to initialize Search Console baseline')
+  return {
+    startDate: row.baseline_start_date,
+    endDate: row.baseline_end_date
+  }
+}
+
+async function defaultCompleteBaseline(
+  propertyMapId: string,
+  window: { startDate: string, endDate: string }
+): Promise<boolean> {
+  const row = await queryOne<{ id: string }>(
+    `WITH complete_dates AS (
+       SELECT checks.metric_date
+       FROM gsc_projection_checks checks
+       WHERE checks.property_map_id = $1
+         AND checks.search_type = 'web'
+         AND checks.metric_date BETWEEN $2::date AND $3::date
+       GROUP BY checks.metric_date
+       HAVING COUNT(DISTINCT checks.projection) = 3
+     )
+     UPDATE search_console_property_maps map
+     SET baseline_completed_at = NOW(),
+         updated_at = NOW()
+     WHERE map.id = $1
+       AND map.baseline_start_date = $2::date
+       AND map.baseline_end_date = $3::date
+       AND (
+         SELECT COUNT(*) FROM complete_dates
+       ) = ($3::date - $2::date + 1)
+     RETURNING map.id`,
+    [propertyMapId, window.startDate, window.endDate]
+  )
+  return Boolean(row)
 }
 
 export async function syncSearchConsoleClient(
@@ -405,20 +657,54 @@ export async function syncSearchConsoleClient(
   const results = []
   for (const map of maps) {
     const cached = credentialCache.get(map.connectionId)!
-    const window = input.startDate && input.endDate
-      ? { startDate: input.startDate, endDate: input.endDate }
-      : searchConsoleSyncWindow({
-          now,
-          hasSuccessfulSync: map.hasSuccessfulSync
-        })
-    results.push(await syncProperty({
-      map,
-      startDate: window.startDate,
-      endDate: window.endDate,
-      triggerType: input.triggerType,
-      credential: cached.credential,
-      credentialError: cached.error
-    }, dependencies))
+    const leaseToken = await (
+      dependencies.acquireLease ?? defaultAcquireLease
+    )(map.propertyMapId)
+    if (!leaseToken) continue
+    try {
+      const explicitWindow = Boolean(input.startDate && input.endDate)
+      const isBaselineRun = !explicitWindow && !map.baselineCompleted
+      let window = explicitWindow
+        ? { startDate: input.startDate!, endDate: input.endDate! }
+        : searchConsoleSyncWindow({
+            now,
+            baselineCompleted: map.baselineCompleted
+          })
+      if (isBaselineRun) {
+        window = await (dependencies.initializeBaseline
+          ?? defaultInitializeBaseline)(
+          map.propertyMapId,
+          map.baselineStartDate && map.baselineEndDate
+            ? {
+                startDate: map.baselineStartDate,
+                endDate: map.baselineEndDate
+              }
+            : window
+        )
+      }
+      const result = await syncProperty({
+        map,
+        startDate: window.startDate,
+        endDate: window.endDate,
+        triggerType: input.triggerType,
+        credential: cached.credential,
+        credentialError: cached.error,
+        leaseToken,
+        resumeFromProjectionChecks: isBaselineRun
+      }, dependencies)
+      results.push(result)
+      if (isBaselineRun) {
+        await (dependencies.completeBaseline ?? defaultCompleteBaseline)(
+          map.propertyMapId,
+          window
+        )
+      }
+    } finally {
+      await (dependencies.releaseLease ?? defaultReleaseLease)(
+        map.propertyMapId,
+        leaseToken
+      )
+    }
   }
   return results
 }

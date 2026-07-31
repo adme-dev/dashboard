@@ -162,7 +162,13 @@ describe('Search Authority property discovery and mapping', () => {
       propertyType: 'url_prefix',
       permissionLevel: 'siteFullUser'
     }])
-    mocks.execute.mockResolvedValue(1)
+    const writes: Array<{ sql: string, params: unknown[] }> = []
+    mocks.transaction.mockImplementation(async callback => callback({
+      query: async (sql: string, params: unknown[]) => {
+        writes.push({ sql, params })
+        return { rows: [] }
+      }
+    }))
 
     const handler = (await import(
       '~~/server/api/agency/search-authority/google/map.post'
@@ -170,9 +176,15 @@ describe('Search Authority property discovery and mapping', () => {
     const result = await handler({} as never)
 
     expect(result).toEqual({ ok: true })
-    expect(mocks.execute).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO search_console_property_maps'),
-      [
+    expect(writes[0]?.sql).toContain(`SET status = 'disconnected'`)
+    expect(writes[0]?.params).toEqual([
+      CLIENT_ID,
+      '33333333-3333-4333-8333-333333333333',
+      'https://www.example.com/'
+    ])
+    expect(writes[1]).toEqual({
+      sql: expect.stringContaining('INSERT INTO search_console_property_maps'),
+      params: [
         CLIENT_ID,
         '33333333-3333-4333-8333-333333333333',
         CONNECTION_ID,
@@ -181,7 +193,7 @@ describe('Search Authority property discovery and mapping', () => {
         'url_prefix',
         'active'
       ]
-    )
+    })
   })
 
   it('disconnects only the client-owned connection and its encrypted profile', async () => {

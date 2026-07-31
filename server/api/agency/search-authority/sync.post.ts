@@ -27,7 +27,8 @@ export default eventHandler(async (event) => {
         try {
           return searchConsoleSyncWindow({
             startDate: parsed.data.startDate,
-            endDate: parsed.data.endDate
+            endDate: parsed.data.endDate,
+            maxManualDays: 30
           })
         } catch (error: unknown) {
           throw createError({

@@ -116,4 +116,47 @@ describe('Search Authority URL Inspection', () => {
       'https://example.com/used/recent'
     ])
   })
+
+  it('stops the client inspection batch when Google reports a quota limit', async () => {
+    const inspectUrl = vi.fn()
+      .mockRejectedValueOnce(
+        Object.assign(new Error('quota exceeded'), { statusCode: 429 })
+      )
+    const result = await inspectPriorityUrls(CLIENT_ID, 2, {
+      selectCandidates: vi.fn(async () => [
+        {
+          propertyMapId: MAP_ID,
+          connectionId: CONNECTION_ID,
+          propertyUri: 'sc-domain:example.com',
+          inspectedUrl: 'https://example.com/one',
+          priorityTier: 1,
+          priorityScore: 10
+        },
+        {
+          propertyMapId: MAP_ID,
+          connectionId: CONNECTION_ID,
+          propertyUri: 'sc-domain:example.com',
+          inspectedUrl: 'https://example.com/two',
+          priorityTier: 2,
+          priorityScore: 9
+        }
+      ]),
+      resolveCredential: vi.fn(async () => ({
+        connectionId: CONNECTION_ID,
+        clientId: CLIENT_ID,
+        googleSub: 'subject',
+        email: 'search@example.com',
+        scopes: [],
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        tokenExpiresAt: '2026-08-02T00:00:00.000Z',
+        profileId: '44444444-4444-4444-8444-444444444444'
+      })),
+      inspectUrl,
+      now: () => new Date('2026-08-01T00:00:00.000Z')
+    })
+
+    expect(inspectUrl).toHaveBeenCalledOnce()
+    expect(result).toMatchObject({ inspected: 0, failed: 1 })
+  })
 })

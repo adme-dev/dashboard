@@ -53,6 +53,12 @@ export default eventHandler(async (event) => {
     parsed.data.clientId,
     { requireEntitlement: false }
   )
+  if (!['owner', 'admin'].includes(user.role)) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Only an owner or admin can activate Search Authority'
+    })
+  }
   const canonicalHostname = normalizePublicRootHostname(
     parsed.data.canonicalHostname
   )

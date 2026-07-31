@@ -117,17 +117,14 @@ describe('Search Authority explainable opportunities', () => {
     ]))
   })
 
-  it('reduces trend confidence when the comparison window is missing', () => {
+  it('does not score a trend when the comparison window is missing', () => {
     const result = scoreSearchAuthorityCandidate({
       ...base,
       opportunityType: 'growth',
       previous: null
     })
 
-    expect(result.confidence).toBe(0.7)
-    expect(result.reasonCodes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: 'missing_comparison_window' })
-    ]))
+    expect(result.score).toBe(0)
   })
 
   it('uses one stable fingerprint per normalized type/query/page identity', () => {
@@ -209,14 +206,17 @@ describe('Search Authority explainable opportunities', () => {
     )
 
     expect(dbMocks.queryRows.mock.calls[0]?.[0]).toMatch(
-      /SUM\(clicks\) FILTER \([\s\S]+?\)\)::numeric/
+      /SUM\(evidence\.clicks\) FILTER \([\s\S]+?\)\)::numeric/
     )
     expect(dbMocks.queryRows.mock.calls[0]?.[0]).toContain(
-      'FROM gsc_daily_property'
+      'FROM gsc_projection_checks'
+    )
+    expect(dbMocks.queryRows.mock.calls[0]?.[0]).toContain(
+      `map.status IN ('active', 'restricted')`
     )
   })
 
-  it('marks trends as lower confidence when property comparison evidence is incomplete', async () => {
+  it('does not generate trends when comparison evidence is incomplete', async () => {
     const upsertOpportunity = vi.fn(async input => ({
       id: 'opportunity-1',
       fingerprint: input.fingerprint
@@ -247,13 +247,26 @@ describe('Search Authority explainable opportunities', () => {
     const growth = upsertOpportunity.mock.calls.find(call => (
       call[0].opportunityType === 'growth'
     ))?.[0]
-    expect(growth).toMatchObject({
-      confidence: 0.7,
-      previous: null
-    })
-    expect(growth.reasonCodes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: 'missing_comparison_window' })
-    ]))
+    expect(growth).toBeUndefined()
+  })
+
+  it('does not generate any provider opportunity from incomplete current evidence', async () => {
+    const upsertOpportunity = vi.fn(async input => ({
+      id: 'opportunity-1',
+      fingerprint: input.fingerprint
+    }))
+
+    const result = await generateSearchAuthorityOpportunities(
+      base.clientId,
+      { startDate: '2026-07-01', endDate: '2026-07-28' },
+      {
+        loadCandidates: vi.fn(async () => [{ ...base, coverageDays: 27 }]),
+        upsertOpportunity
+      }
+    )
+
+    expect(result.generated).toBe(0)
+    expect(upsertOpportunity).not.toHaveBeenCalled()
   })
 
   it('updates recurrence and appends immutable evidence in one transaction', async () => {
