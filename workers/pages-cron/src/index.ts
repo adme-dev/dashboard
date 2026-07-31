@@ -17,7 +17,7 @@ interface Env {
 
 // One cron expression may drive several endpoints. Keys MUST exactly match the
 // crons listed in wrangler.toml (controller.cron is matched verbatim).
-const ROUTES: Record<string, string[]> = {
+export const ROUTES: Record<string, string[]> = {
   // hourly — anomaly handler self-gates to 7am tenant-local; ga4-sync re-pulls
   // the trailing ~14d window (idempotent). ga4-sync was fixed in PR #49 to run
   // concurrently + batch upserts (~33s for 87 properties, was a >150s hang).
@@ -48,6 +48,9 @@ const ROUTES: Record<string, string[]> = {
   // every 15 min — keep the Xero customer cache and rollups fresh. Delta syncs
   // are idempotent and use the shared cron token resolver.
   '*/15 * * * *': ['/api/cron/xero-customer-sync'],
+  // daily — refresh entitled Search Console evidence and inspect up to 50
+  // priority URLs per client using Google's indexed-version inspection result.
+  '15 2 * * *': ['/api/cron/search-console-sync'],
   // daily — refresh the Xero invoice line-item cache (AGI / True Position).
   // Syncs current + previous month so month-end backdated entries are caught.
   '20 3 * * *': ['/api/cron/xero-invoice-lines-sync'],

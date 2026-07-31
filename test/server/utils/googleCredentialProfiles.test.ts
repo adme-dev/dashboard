@@ -16,6 +16,7 @@ describe('Google OAuth attempts', () => {
     const rawState = 'a'.repeat(43)
 
     const result = await createGoogleOAuthAttempt('user-1', {
+      purpose: 'search_console',
       randomState: () => rawState,
       insertAttempt
     })
@@ -23,6 +24,7 @@ describe('Google OAuth attempts', () => {
     expect(result).toEqual({ attemptId: 'attempt-1', state: rawState })
     expect(insertAttempt).toHaveBeenCalledWith({
       userId: 'user-1',
+      purpose: 'search_console',
       stateDigest: await hashGoogleOAuthState(rawState),
       expiresAt: expect.any(Date)
     })
@@ -33,12 +35,57 @@ describe('Google OAuth attempts', () => {
     const consumeAttempt = vi.fn().mockResolvedValue({ id: 'attempt-1' })
     const state = 'b'.repeat(43)
 
-    await expect(consumeGoogleOAuthAttempt(state, 'user-1', { consumeAttempt }))
+    await expect(consumeGoogleOAuthAttempt(state, 'user-1', {
+      purpose: 'search_console',
+      consumeAttempt
+    }))
       .resolves.toEqual({ id: 'attempt-1' })
 
     expect(consumeAttempt).toHaveBeenCalledWith({
       userId: 'user-1',
+      purpose: 'search_console',
       stateDigest: await hashGoogleOAuthState(state)
+    })
+  })
+
+  it('does not consume an OAuth attempt created for a different Google product', async () => {
+    const consumeAttempt = vi.fn(async (input: { purpose: string }) =>
+      input.purpose === 'google_ads' ? { id: 'ads-attempt' } : null)
+
+    await expect(consumeGoogleOAuthAttempt('d'.repeat(43), 'user-1', {
+      purpose: 'search_console',
+      consumeAttempt
+    })).resolves.toBeNull()
+  })
+
+  it('round-trips client context only through the server-side OAuth attempt', async () => {
+    const insertAttempt = vi.fn().mockResolvedValue({ id: 'attempt-2' })
+    const context = {
+      clientId: '11111111-1111-4111-8111-111111111111'
+    }
+
+    await createGoogleOAuthAttempt('user-1', {
+      purpose: 'search_console',
+      context,
+      randomState: () => 'e'.repeat(43),
+      insertAttempt
+    })
+
+    expect(insertAttempt).toHaveBeenCalledWith(expect.objectContaining({
+      purpose: 'search_console',
+      context
+    }))
+
+    const consumeAttempt = vi.fn().mockResolvedValue({
+      id: 'attempt-2',
+      context
+    })
+    await expect(consumeGoogleOAuthAttempt('e'.repeat(43), 'user-1', {
+      purpose: 'search_console',
+      consumeAttempt
+    })).resolves.toEqual({
+      id: 'attempt-2',
+      context
     })
   })
 

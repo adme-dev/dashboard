@@ -1,29 +1,49 @@
 <script setup lang="ts">
-import { CalendarDate, parseDate, type DateValue } from '@internationalized/date'
+import { parseDate } from '@internationalized/date'
+import type { CalendarDate, DateValue } from '@internationalized/date'
+
+interface TaskAssistResponse {
+  title?: string
+  description?: string
+  priority?: 'urgent' | 'high' | 'medium' | 'low'
+  assigneeId?: string
+  assigneeReason?: string
+  projectId?: string
+  dueDate?: string
+  startDate?: string
+  estimatedHours?: number
+  statusId?: string
+  confidence?: number
+  suggestions?: string[]
+}
 
 const props = defineProps<{
   open: boolean
-  statuses: Array<{ id: string; name: string; color: string; category?: string }>
-  teamMembers: Array<{ id: string; name: string; email?: string; role?: string; avatar?: string; active_task_count?: number }>
-  projects: Array<{ id: string; name: string; client_name?: string }>
-  labels: Array<{ id: string; name: string; color: string }>
+  statuses: Array<{ id: string, name: string, color: string, category?: string }>
+  teamMembers: Array<{ id: string, name: string, email?: string, role?: string, avatar?: string, active_task_count?: number }>
+  projects: Array<{ id: string, name: string, clientId?: string, client_name?: string }>
+  labels: Array<{ id: string, name: string, color: string }>
   departmentId?: string
   workspaceId?: string
   boardName?: string
   initialStatusId?: string
   initialDate?: string
+  initialTitle?: string
+  initialDescription?: string
+  initialProjectId?: string
+  projectRequired?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
-  'created': []
+  'created': [task: { id: string, title: string }]
 }>()
 
 const toast = useToast()
 
 const isOpen = computed({
   get: () => props.open,
-  set: (val) => emit('update:open', val)
+  set: val => emit('update:open', val)
 })
 
 // Form state
@@ -57,13 +77,25 @@ const priorityOptions = [
   { label: 'Low', value: 'low' }
 ]
 
+function errorMessage(error: unknown, fallback: string): string {
+  const candidate = error as {
+    data?: { statusMessage?: string }
+    statusMessage?: string
+    message?: string
+  } | null
+  return candidate?.data?.statusMessage
+    || candidate?.statusMessage
+    || candidate?.message
+    || fallback
+}
+
 // Reset when modal opens
 watch(isOpen, (val) => {
   if (val) {
     form.value = {
-      title: '',
-      description: '',
-      projectId: undefined,
+      title: props.initialTitle || '',
+      description: props.initialDescription || '',
+      projectId: props.initialProjectId,
       statusId: props.initialStatusId,
       priority: 'medium',
       assigneeId: undefined,
@@ -79,7 +111,7 @@ watch(isOpen, (val) => {
     aiSuggestions.value = []
     aiConfidence.value = 0
   }
-})
+}, { immediate: true })
 
 // Quick-start chips
 const quickChips = [
@@ -104,7 +136,7 @@ async function getAiSuggestion() {
   aiSuggestions.value = []
 
   try {
-    const result = await $fetch('/api/agency/ai/task-assist', {
+    const result = await $fetch<TaskAssistResponse>('/api/agency/ai/task-assist', {
       method: 'POST',
       body: {
         description: aiInput.value.trim(),
@@ -112,7 +144,7 @@ async function getAiSuggestion() {
         workspaceId: props.workspaceId,
         boardName: props.boardName
       }
-    }) as any
+    })
 
     // Apply AI suggestions to form
     if (result.title) {
@@ -133,7 +165,13 @@ async function getAiSuggestion() {
       aiAssigneeReason.value = result.assigneeReason || null
       aiFields.value.add('assigneeId')
     }
-    if (result.projectId) {
+    if (
+      result.projectId
+      && (
+        !props.projectRequired
+        || props.projects.some(project => project.id === result.projectId)
+      )
+    ) {
       form.value.projectId = result.projectId
       aiFields.value.add('projectId')
     }
@@ -156,10 +194,10 @@ async function getAiSuggestion() {
 
     aiConfidence.value = result.confidence || 0
     aiSuggestions.value = result.suggestions || []
-  } catch (error: any) {
+  } catch (error: unknown) {
     toast.add({
       title: 'AI suggestion failed',
-      description: error?.data?.statusMessage || 'Please fill in the fields manually.',
+      description: errorMessage(error, 'Please fill in the fields manually.'),
       color: 'warning'
     })
   } finally {
@@ -221,11 +259,19 @@ async function createTask() {
     toast.add({ title: 'Task title is required', color: 'error' })
     return
   }
+  if (props.projectRequired && !form.value.projectId) {
+    toast.add({
+      title: 'Project is required',
+      description: 'Choose the client project that should own this task.',
+      color: 'error'
+    })
+    return
+  }
 
   creating.value = true
 
   try {
-    await $fetch('/api/agency/tasks', {
+    const task = await $fetch<{ id: string, title: string }>('/api/agency/tasks', {
       method: 'POST',
       body: {
         departmentId: props.departmentId,
@@ -244,10 +290,10 @@ async function createTask() {
 
     toast.add({ title: 'Task created successfully', color: 'success' })
     isOpen.value = false
-    emit('created')
-  } catch (error: any) {
+    emit('created', { id: task.id, title: task.title })
+  } catch (error: unknown) {
     toast.add({
-      title: error?.data?.statusMessage || 'Failed to create task',
+      title: errorMessage(error, 'Failed to create task'),
       color: 'error'
     })
   } finally {
@@ -262,7 +308,9 @@ async function createTask() {
       <UCard class="w-full max-w-2xl">
         <template #header>
           <div class="flex items-center justify-between">
-            <h3 class="text-lg font-semibold">Create Task</h3>
+            <h3 class="text-lg font-semibold">
+              Create Task
+            </h3>
             <UButton
               icon="i-lucide-x"
               variant="ghost"
@@ -292,14 +340,16 @@ async function createTask() {
             />
 
             <div class="flex flex-wrap gap-1.5 mt-2">
-              <button
+              <UButton
                 v-for="chip in quickChips"
                 :key="chip"
-                class="text-[11px] px-2 py-0.5 rounded-full border border-default text-muted hover:text-default hover:bg-elevated transition-colors"
+                type="button"
+                :label="chip"
+                size="xs"
+                color="neutral"
+                variant="soft"
                 @click="useChip(chip)"
-              >
-                {{ chip }}
-              </button>
+              />
             </div>
 
             <div class="flex justify-end mt-3">
@@ -341,10 +391,12 @@ async function createTask() {
           </div>
 
           <!-- Zone B: Form Fields -->
-          <form class="space-y-6" @submit.prevent="createTask">
+          <form class="@container space-y-6" @submit.prevent="createTask">
             <!-- Section: Details -->
             <div class="space-y-4">
-              <p class="text-xs font-medium uppercase tracking-wide text-muted">Details</p>
+              <p class="text-xs font-medium uppercase tracking-wide text-muted">
+                Details
+              </p>
 
               <!-- Title -->
               <UFormField label="Title" required>
@@ -360,6 +412,7 @@ async function createTask() {
                   :ui="{ base: 'w-full' }"
                   placeholder="What needs to be done?"
                   autofocus
+                  data-testid="task-create-title"
                 />
               </UFormField>
 
@@ -377,98 +430,103 @@ async function createTask() {
                   :ui="{ base: 'w-full' }"
                   placeholder="Add context, links, or acceptance criteria…"
                   :rows="4"
+                  data-testid="task-create-description"
                 />
               </UFormField>
             </div>
 
             <!-- Section: Assignment -->
             <div class="space-y-4">
-              <p class="text-xs font-medium uppercase tracking-wide text-muted">Assignment</p>
+              <p class="text-xs font-medium uppercase tracking-wide text-muted">
+                Assignment
+              </p>
 
-            <!-- Status & Priority -->
-            <div class="grid grid-cols-2 gap-4">
-              <UFormField label="Status">
-                <template #label>
-                  <span class="flex items-center gap-1">
-                    Status
-                    <UIcon v-if="isAiField('statusId')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
-                  </span>
-                </template>
-                <USelectMenu
-                  v-model="form.statusId"
-                  :items="statuses.map(s => ({ label: s.name, value: s.id, color: s.color }))"
-                  placeholder="Select status..."
-                  value-key="value"
-                  class="w-full"
-                >
-                  <template #item="{ item }">
-                    <span
-                      class="w-2 h-2 rounded-full mr-2"
-                      :style="{ backgroundColor: item.color }"
-                    />
-                    {{ item.label }}
+              <!-- Status & Priority -->
+              <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+                <UFormField label="Status">
+                  <template #label>
+                    <span class="flex items-center gap-1">
+                      Status
+                      <UIcon v-if="isAiField('statusId')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
+                    </span>
                   </template>
-                </USelectMenu>
-              </UFormField>
+                  <USelectMenu
+                    v-model="form.statusId"
+                    :items="statuses.map(s => ({ label: s.name, value: s.id, color: s.color }))"
+                    placeholder="Select status..."
+                    value-key="value"
+                    class="w-full"
+                  >
+                    <template #item="{ item }">
+                      <span
+                        class="w-2 h-2 rounded-full mr-2"
+                        :style="{ backgroundColor: item.color }"
+                      />
+                      {{ item.label }}
+                    </template>
+                  </USelectMenu>
+                </UFormField>
 
-              <UFormField label="Priority">
-                <template #label>
-                  <span class="flex items-center gap-1">
-                    Priority
-                    <UIcon v-if="isAiField('priority')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
-                  </span>
-                </template>
-                <USelectMenu
-                  v-model="form.priority"
-                  :items="priorityOptions"
-                  value-key="value"
-                  class="w-full"
-                />
-              </UFormField>
-            </div>
+                <UFormField label="Priority">
+                  <template #label>
+                    <span class="flex items-center gap-1">
+                      Priority
+                      <UIcon v-if="isAiField('priority')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
+                    </span>
+                  </template>
+                  <USelectMenu
+                    v-model="form.priority"
+                    :items="priorityOptions"
+                    value-key="value"
+                    class="w-full"
+                  />
+                </UFormField>
+              </div>
 
-            <!-- Assignee & Project -->
-            <div class="grid grid-cols-2 gap-4">
-              <UFormField label="Assignee">
-                <template #label>
-                  <span class="flex items-center gap-1">
-                    Assignee
-                    <UIcon v-if="isAiField('assigneeId')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
-                  </span>
-                </template>
-                <WorkflowAssigneePicker
-                  v-model="form.assigneeId"
-                  :members="teamMembers"
-                  :ai-suggested-id="aiSuggestedAssigneeId"
-                  :ai-reason="aiAssigneeReason"
-                  class="w-full"
-                />
-              </UFormField>
+              <!-- Assignee & Project -->
+              <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+                <UFormField label="Assignee">
+                  <template #label>
+                    <span class="flex items-center gap-1">
+                      Assignee
+                      <UIcon v-if="isAiField('assigneeId')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
+                    </span>
+                  </template>
+                  <WorkflowAssigneePicker
+                    v-model="form.assigneeId"
+                    :members="teamMembers"
+                    :ai-suggested-id="aiSuggestedAssigneeId"
+                    :ai-reason="aiAssigneeReason"
+                    class="w-full"
+                  />
+                </UFormField>
 
-              <UFormField label="Project">
-                <template #label>
-                  <span class="flex items-center gap-1">
-                    Project
-                    <UIcon v-if="isAiField('projectId')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
-                  </span>
-                </template>
-                <USelectMenu
-                  v-model="form.projectId"
-                  :items="projects.map(p => ({ label: p.name, value: p.id }))"
-                  placeholder="No project"
-                  value-key="value"
-                  class="w-full"
-                />
-              </UFormField>
-            </div>
+                <UFormField label="Project" :required="projectRequired">
+                  <template #label>
+                    <span class="flex items-center gap-1">
+                      Project
+                      <UIcon v-if="isAiField('projectId')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
+                    </span>
+                  </template>
+                  <USelectMenu
+                    v-model="form.projectId"
+                    :items="projects.map(p => ({ label: p.name, value: p.id }))"
+                    :placeholder="projectRequired ? 'Choose a project' : 'No project'"
+                    value-key="value"
+                    class="w-full"
+                  />
+                </UFormField>
+              </div>
             </div>
 
             <!-- Section: Schedule -->
             <div class="space-y-4">
-              <p class="text-xs font-medium uppercase tracking-wide text-muted">Schedule</p>
+              <p class="text-xs font-medium uppercase tracking-wide text-muted">
+                Schedule
+              </p>
 
               <!-- Dates & Hours -->
-              <div class="grid grid-cols-3 gap-4">
+              <div class="grid grid-cols-1 gap-4 @lg:grid-cols-3">
                 <UFormField label="Start Date">
                   <template #label>
                     <span class="flex items-center gap-1">
@@ -489,7 +547,14 @@ async function createTask() {
                     <template #content>
                       <UCalendar v-model="startDateModel" class="p-2" />
                       <div v-if="form.startDate" class="border-t border-default p-2 flex justify-end">
-                        <UButton size="xs" variant="ghost" color="neutral" @click="form.startDate = ''">Clear</UButton>
+                        <UButton
+                          size="xs"
+                          variant="ghost"
+                          color="neutral"
+                          @click="form.startDate = ''"
+                        >
+                          Clear
+                        </UButton>
                       </div>
                     </template>
                   </UPopover>
@@ -515,7 +580,14 @@ async function createTask() {
                     <template #content>
                       <UCalendar v-model="dueDateModel" class="p-2" />
                       <div v-if="form.dueDate" class="border-t border-default p-2 flex justify-end">
-                        <UButton size="xs" variant="ghost" color="neutral" @click="form.dueDate = ''">Clear</UButton>
+                        <UButton
+                          size="xs"
+                          variant="ghost"
+                          color="neutral"
+                          @click="form.dueDate = ''"
+                        >
+                          Clear
+                        </UButton>
                       </div>
                     </template>
                   </UPopover>
@@ -548,21 +620,23 @@ async function createTask() {
             <!-- Labels -->
             <UFormField v-if="labels.length > 0" label="Labels">
               <div class="flex flex-wrap gap-2">
-                <button
+                <UButton
                   v-for="label in labels"
                   :key="label.id"
                   type="button"
-                  class="px-2 py-1 text-xs rounded-full border transition-all"
-                  :class="form.labels.includes(label.id)
-                    ? 'border-transparent'
-                    : 'border-gray-200 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800'"
+                  :label="label.name"
+                  size="xs"
+                  color="neutral"
+                  :variant="form.labels.includes(label.id) ? 'soft' : 'outline'"
                   :style="form.labels.includes(label.id)
-                    ? { backgroundColor: label.color + '30', color: label.color, borderColor: label.color }
+                    ? {
+                      backgroundColor: `color-mix(in srgb, ${label.color} 18%, transparent)`,
+                      color: label.color,
+                      borderColor: label.color
+                    }
                     : {}"
                   @click="toggleLabel(label.id)"
-                >
-                  {{ label.name }}
-                </button>
+                />
               </div>
             </UFormField>
           </form>
@@ -575,6 +649,7 @@ async function createTask() {
             </UButton>
             <UButton
               :loading="creating"
+              data-testid="task-create-submit"
               @click="createTask"
             >
               Create Task
