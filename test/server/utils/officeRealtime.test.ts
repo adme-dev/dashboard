@@ -32,11 +32,11 @@ describe('officeRealtime', () => {
     expect(init).toMatchObject({
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer secret-1',
-        'Content-Type': 'application/json'
+        'Authorization': 'Bearer secret-1'
       },
-      body: '{}'
+      body: undefined
     })
+    expect((init as RequestInit).headers).not.toHaveProperty('Content-Type')
   })
 
   it('adds local or remote tracks to an existing session', async () => {

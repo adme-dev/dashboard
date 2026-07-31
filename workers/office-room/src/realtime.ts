@@ -38,7 +38,6 @@ export type CreateZoneSessionInput = WorkerRealtimeInput & {
   officeId: string
   zoneId: string
   handle: ActorHandle
-  sessionDescription?: RealtimeSessionDescription
 }
 
 export type CreateZoneSessionResult = {
@@ -51,7 +50,7 @@ export type CreateZoneMediaSessionInput = CreateZoneSessionInput & {
   guestBadgeId: string | null
 }
 
-export type RefreshZoneMediaGrantInput = Omit<CreateZoneMediaSessionInput, 'sessionDescription'> & {
+export type RefreshZoneMediaGrantInput = CreateZoneMediaSessionInput & {
   media: OfficeMediaSession
 }
 
@@ -130,13 +129,14 @@ async function realtimeFetch<T>(
   const { appSecret } = requireRealtimeEnv(input.env)
   const fetcher = input.fetcher ?? fetch
   const url = realtimeUrl(input, path, params)
+  const serializedBody = body === undefined ? undefined : JSON.stringify(body)
   const response = await fetcher(url, {
     method,
     headers: {
       'Authorization': `Bearer ${appSecret}`,
-      'Content-Type': 'application/json'
+      ...(serializedBody === undefined ? {} : { 'Content-Type': 'application/json' })
     },
-    body: body === undefined ? undefined : JSON.stringify(body)
+    body: serializedBody
   })
   return readRealtimeJson<T>(response, method, url)
 }
@@ -152,7 +152,7 @@ export async function createZoneRealtimeSession(
     input,
     'POST',
     '/sessions/new',
-    input.sessionDescription ? { sessionDescription: input.sessionDescription } : {},
+    undefined,
     { correlationId: zoneCorrelationId(input) }
   )
 }
