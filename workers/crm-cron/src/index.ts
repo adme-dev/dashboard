@@ -32,10 +32,13 @@ export default {
           method: 'POST',
           headers: { 'x-cron-secret': env.CRON_SECRET },
         })
-        const text = await resp.text()
-        console.log('crm-cron.run', { job, status: resp.status, body: text.slice(0, 200) })
-      } catch (e) {
-        console.error('crm-cron.error', { job, error: String(e) })
+        if (!resp.ok) {
+          console.error('crm-cron.run.failed', { job, status: resp.status })
+          continue
+        }
+        console.log('crm-cron.run.completed', { job, status: resp.status })
+      } catch {
+        console.error('crm-cron.run.failed', { job, status: 'request_error' })
       }
     }
   },

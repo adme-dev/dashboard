@@ -38,6 +38,15 @@ export default {
           })
           return
         }
+        const payload = await resp.json().catch(() => null) as { ok?: unknown } | null
+        if (payload?.ok === false) {
+          console.error('cron.run.failed', {
+            cron: controller.cron,
+            path,
+            status: resp.status
+          })
+          return
+        }
         console.log('cron.run.completed', {
           cron: controller.cron,
           path,

@@ -42,7 +42,11 @@ const ERROR_CLASSES = new Set([
   'email_health_query_failed', 'email_health_global_failed',
   'email_health_state_failed', 'email_health_scan_failed',
   'internal_upstream_network', 'internal_upstream_401',
-  'internal_upstream_409', 'internal_upstream_4xx', 'internal_upstream_5xx'
+  'internal_upstream_409', 'internal_upstream_4xx', 'internal_upstream_5xx',
+  'recovery_policy_failed', 'recovery_r2_read_failed',
+  'recovery_decode_failed', 'recovery_ai_failed',
+  'recovery_envelope_failed', 'recovery_canonical_failed',
+  'recovery_transition_failed', 'recovery_r2_delete_failed'
 ])
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
