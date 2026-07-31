@@ -237,6 +237,36 @@ describe('email canonical ingress', () => {
     expect(transactionSql(/attempt_count = CASE/)).toMatch(/attempt_count = CASE[\s\S]*THEN 5/)
   })
 
+  it('passes the request-scoped identity secret into canonical acceptance', async () => {
+    const recoveryLeaseToken = '66666666-6666-4666-8666-666666666666'
+    mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({
+      rows: [ingestion({ recovery_lease_token: recoveryLeaseToken })]
+    }).mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
+
+    await expect(acceptEmailEnvelope(
+      {
+        context: {
+          cloudflare: {
+            env: { LEAD_IDENTITY_HMAC_KEY: 'request-scoped-identity-key' }
+          }
+        }
+      } as never,
+      INGESTION_ID,
+      envelope(),
+      { recoveryLeaseToken }
+    )).resolves.toEqual({
+      status: 'accepted',
+      leadId: '55555555-5555-4555-8555-555555555555'
+    })
+
+    expect(mocks.acceptLead).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        identityFingerprintSecret: 'request-scoped-identity-key'
+      })
+    )
+  })
+
   it('terminally quarantines the exact fifth canonical failure without a sixth attempt', async () => {
     mocks.query.mockResolvedValueOnce({ rows: [endpoint] }).mockResolvedValueOnce({ rows: [ingestion({ attempt_count: 4 })] })
       .mockResolvedValueOnce({ rows: [{ id: INGESTION_ID }] })
@@ -503,7 +533,9 @@ describe('email canonical ingress', () => {
 
   it('leases a claim so a concurrent retry cannot call canonical acceptance twice', async () => {
     let releaseAcceptance!: (value: { status: 'created', leadId: string }) => void
-    mocks.acceptLead.mockImplementationOnce(() => new Promise(resolve => { releaseAcceptance = resolve }))
+    mocks.acceptLead.mockImplementationOnce(() => new Promise((resolve) => {
+      releaseAcceptance = resolve
+    }))
     mocks.query
       .mockResolvedValueOnce({ rows: [endpoint] })
       .mockResolvedValueOnce({ rows: [ingestion()] })

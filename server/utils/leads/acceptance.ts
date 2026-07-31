@@ -39,6 +39,7 @@ export async function acceptLead(event: H3Event, input: {
   consentDecision?: CanonicalConsentDecision
   runRules?: boolean
   emailEvidenceGuard?: EmailEvidenceGuard
+  identityFingerprintSecret?: string
 }): Promise<AcceptLeadResult> {
   if (input.leadCaptureMode === 'analytics_only') {
     return { status: 'mode_skipped' }
@@ -52,7 +53,8 @@ export async function acceptLead(event: H3Event, input: {
         clientId: input.lead.client_id,
         fieldData: input.lead.field_data,
         submittedAt: input.lead.submitted_at,
-        formId: input.lead.form_id
+        formId: input.lead.form_id,
+        identityFingerprintSecret: input.identityFingerprintSecret
       })
     : null
   const lead = reservation

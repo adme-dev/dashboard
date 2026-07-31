@@ -19,6 +19,7 @@ import {
   hasCurrentEmailAiPrivacyApproval,
   resolveEmailEndpointToken
 } from '~~/server/utils/leads/emailEndpoint'
+import { resolveLeadIdentityFingerprintSecret } from '~~/server/utils/leads/submissionIntent'
 import { createOpaqueEmailObjectKey } from '~~/shared/leads/email/quarantine'
 import { isStrongEmailSecret } from '~~/shared/leads/email/secretPolicy'
 import { emitEmailIngestionEvent } from '~~/shared/leads/email/telemetry'
@@ -873,6 +874,7 @@ export async function acceptEmailEnvelope(
       lead,
       leadCaptureMode,
       consentDecision: 'unknown',
+      identityFingerprintSecret: resolveLeadIdentityFingerprintSecret(event),
       emailEvidenceGuard: {
         ingestionId,
         leaseToken: ownershipToken
