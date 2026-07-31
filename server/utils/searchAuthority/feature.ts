@@ -30,7 +30,8 @@ export function isSearchAuthorityRolloutEnabled(
   if (typeof dependencies.searchAuthorityEnabled === 'boolean') {
     return dependencies.searchAuthorityEnabled
   }
-  return Boolean(useRuntimeConfig().searchAuthorityEnabled)
+  const runtimeValue: unknown = useRuntimeConfig().searchAuthorityEnabled
+  return runtimeValue === true || runtimeValue === 'true'
 }
 
 function validDate(value: Date | string): Date | null {

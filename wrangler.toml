@@ -144,6 +144,10 @@ EMAIL_FROM = "notification@adme.net.au"
 # server still fails closed unless the requesting client has an active
 # search_authority.core entitlement.
 SEARCH_AUTHORITY_ENABLED = "true"
+# Nitro's runtime override is the private request-time kill switch. The public
+# counterpart keeps dynamically rendered agency and portal navigation aligned.
+NUXT_SEARCH_AUTHORITY_ENABLED = "true"
+NUXT_PUBLIC_SEARCH_AUTHORITY_ENABLED = "true"
 # Inbound-only CRM email wiring is active after the Queue-consumer production
 # proof and route-onboarding release. Secrets remain managed by Cloudflare:
 # CRM_EMAIL_WORKER_SECRET authenticates the standalone email Worker, while

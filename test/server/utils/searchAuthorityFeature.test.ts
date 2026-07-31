@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ServerClientUser } from '../../../server/utils/clientAuth'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
@@ -14,6 +14,23 @@ async function loadAccessModule() {
 }
 
 describe('Search Authority feature entitlement', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it.each([
+    [true, true],
+    [false, false],
+    ['true', true],
+    ['false', false]
+  ])('strictly evaluates the runtime rollout value %s', async (value, expected) => {
+    const feature = await loadFeatureModule()
+    expect(feature).not.toBeNull()
+    vi.stubGlobal('useRuntimeConfig', () => ({ searchAuthorityEnabled: value }))
+
+    expect(feature!.isSearchAuthorityRolloutEnabled()).toBe(expected)
+  })
+
   it('fails closed without the global rollout flag', async () => {
     const feature = await loadFeatureModule()
     expect(feature).not.toBeNull()

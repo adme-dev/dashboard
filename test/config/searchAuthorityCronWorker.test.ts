@@ -38,6 +38,8 @@ describe('Search Authority cron worker registration', () => {
 
     expect(cronConfig.triggers?.crons).toContain('15 2 * * *')
     expect(pagesConfig.vars?.SEARCH_AUTHORITY_ENABLED).toBe('true')
+    expect(pagesConfig.vars?.NUXT_SEARCH_AUTHORITY_ENABLED).toBe('true')
+    expect(pagesConfig.vars?.NUXT_PUBLIC_SEARCH_AUTHORITY_ENABLED).toBe('true')
     expect(productionWorkflow).toContain('SEARCH_AUTHORITY_ENABLED: \'true\'')
   })
 })
