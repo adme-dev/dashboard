@@ -3,6 +3,8 @@ import { getCachedBinding } from '~~/server/utils/email'
 
 export const GOOGLE_ADS_CALLBACK_PATH = '/api/agency/social/google/callback'
 export const GA4_CALLBACK_PATH = '/api/agency/social/ga4/callback'
+export const SEARCH_CONSOLE_CALLBACK_PATH
+  = '/api/agency/search-authority/google/callback'
 
 type CloudflareContext = {
   cloudflare?: {
@@ -15,6 +17,7 @@ interface GoogleOAuthRuntimeConfig {
   googleClientSecret: string
   googleRedirectUri: string
   ga4RedirectUri: string
+  searchConsoleRedirectUri: string
 }
 
 function eventBinding(event: H3Event | undefined, key: string): string | undefined {
@@ -53,7 +56,14 @@ export function resolveGoogleOAuthRuntimeConfig(
     googleClientId: readConfigValue(event, config, 'googleClientId', 'GOOGLE_CLIENT_ID'),
     googleClientSecret: readConfigValue(event, config, 'googleClientSecret', 'GOOGLE_CLIENT_SECRET'),
     googleRedirectUri: readConfigValue(event, config, 'googleRedirectUri', 'GOOGLE_REDIRECT_URI', GOOGLE_ADS_CALLBACK_PATH),
-    ga4RedirectUri: readConfigValue(event, config, 'ga4RedirectUri', 'GA4_REDIRECT_URI', GA4_CALLBACK_PATH)
+    ga4RedirectUri: readConfigValue(event, config, 'ga4RedirectUri', 'GA4_REDIRECT_URI', GA4_CALLBACK_PATH),
+    searchConsoleRedirectUri: readConfigValue(
+      event,
+      config,
+      'searchConsoleRedirectUri',
+      'SEARCH_CONSOLE_REDIRECT_URI',
+      SEARCH_CONSOLE_CALLBACK_PATH
+    )
   }
 }
 

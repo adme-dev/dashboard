@@ -169,6 +169,8 @@ export default defineNuxtConfig({
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || '/api/agency/social/google/callback',
     ga4RedirectUri: process.env.GA4_REDIRECT_URI || '/api/agency/social/ga4/callback',
+    searchConsoleRedirectUri: process.env.SEARCH_CONSOLE_REDIRECT_URI
+      || '/api/agency/search-authority/google/callback',
     googleDeveloperToken: process.env.GOOGLE_DEVELOPER_TOKEN || '',
     // Search Authority is a separate, fail-closed product entitlement. This
     // private gate is the server authorization boundary; do not mirror it to

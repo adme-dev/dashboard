@@ -76,6 +76,9 @@ CREATE TABLE IF NOT EXISTS search_console_connections (
 CREATE INDEX IF NOT EXISTS idx_search_console_connections_health
   ON search_console_connections (client_id, status, last_checked_at DESC);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_search_console_connections_client_subject
+  ON search_console_connections (client_id, google_subject);
+
 CREATE TABLE IF NOT EXISTS search_console_property_maps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id UUID NOT NULL REFERENCES agency_clients(id) ON DELETE CASCADE,

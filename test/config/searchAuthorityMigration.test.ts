@@ -42,6 +42,11 @@ describe('Search Authority migration 329', () => {
     expect(sql).toContain('idx_google_oauth_attempts_pending_purpose')
   })
 
+  it('deduplicates Search Console reconnects by client and Google subject', () => {
+    expect(sql).toContain('idx_search_console_connections_client_subject')
+    expect(sql).toContain('(client_id, google_subject)')
+  })
+
   it('enforces client identity and deterministic opportunity deduplication', () => {
     expect(sql).toContain('UNIQUE (client_id, id)')
     expect(sql).toContain('UNIQUE (client_id, property_uri)')
