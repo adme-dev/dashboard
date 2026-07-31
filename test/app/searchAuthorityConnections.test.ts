@@ -307,7 +307,7 @@ describe('Search Authority onboarding workspace', () => {
     expect(searchAuthorityNavItems(false, close)).toEqual([])
     expect(searchAuthorityNavItems(true, close)).toEqual([expect.objectContaining({
       label: 'Search Authority',
-      to: '/agency/search-authority/connections'
+      to: '/agency/search-authority'
     })])
   })
 })

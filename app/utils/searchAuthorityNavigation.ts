@@ -9,7 +9,7 @@ export function searchAuthorityNavItems(
   return [{
     label: 'Search Authority',
     icon: 'i-lucide-search-check',
-    to: '/agency/search-authority/connections',
+    to: '/agency/search-authority',
     onSelect: close
   }]
 }

@@ -212,6 +212,92 @@ export interface Task {
 }
 
 // ============================================
+// Search Authority Types
+// ============================================
+export type SearchAuthorityOpportunityType
+  = | 'low_ctr'
+    | 'striking_distance'
+    | 'declining'
+    | 'growth'
+    | 'indexing'
+    | 'technical'
+
+export type SearchAuthorityLifecycleStatus
+  = | 'new'
+    | 'under_review'
+    | 'accepted'
+    | 'task_created'
+    | 'in_progress'
+    | 'published'
+    | 'measuring'
+    | 'closed'
+    | 'dismissed'
+    | 'duplicate'
+    | 'expired'
+    | 'not_actionable'
+
+export interface SearchAuthorityReason {
+  code: string
+  observed: number | string | null
+  expected: number | string | null
+  contribution: number
+}
+
+export interface SearchAuthorityOpportunity {
+  id: string
+  opportunityType: SearchAuthorityOpportunityType
+  queryText: string | null
+  pageUrl: string | null
+  title: string
+  summary: string
+  score: number
+  confidence: number
+  scoringVersion: string
+  reasonCodes: SearchAuthorityReason[]
+  lifecycleStatus: SearchAuthorityLifecycleStatus
+  evidenceStartDate: string
+  evidenceEndDate: string
+  taskId: string | null
+  provider: {
+    dataThroughDate: string | null
+    provisionalFromDate: string | null
+    provisional: boolean
+  }
+}
+
+export interface SearchAuthorityOverview {
+  window: {
+    startDate: string
+    endDate: string
+  }
+  provider: {
+    siteStatus: string
+    connectionStatus: string
+    lastSuccessAt: string | null
+    dataThroughDate: string | null
+    provisionalFromDate: string | null
+    provisional: boolean
+    stale: boolean
+    caveats: string[]
+  }
+  metrics: {
+    clicks: number
+    impressions: number
+    ctr: number
+    position: number
+    clickChangePercent: number | null
+    impressionChangePercent: number | null
+  }
+  opportunities: {
+    total: number
+    new: number
+    underReview: number
+    accepted: number
+    taskCreated: number
+  }
+}
+
+// ============================================
 // Kanban & Board Types
 // ============================================
 export interface KanbanColumn {
