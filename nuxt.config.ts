@@ -169,7 +169,13 @@ export default defineNuxtConfig({
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || '/api/agency/social/google/callback',
     ga4RedirectUri: process.env.GA4_REDIRECT_URI || '/api/agency/social/ga4/callback',
+    searchConsoleRedirectUri: process.env.SEARCH_CONSOLE_REDIRECT_URI
+      || '/api/agency/search-authority/google/callback',
     googleDeveloperToken: process.env.GOOGLE_DEVELOPER_TOKEN || '',
+    // Search Authority is a separate, fail-closed product entitlement. This
+    // private gate remains the server authorization boundary; the public mirror
+    // below is presentation-only for its now-entitled operator route.
+    searchAuthorityEnabled: process.env.SEARCH_AUTHORITY_ENABLED === 'true',
     // Manager (MCC) account id sent as login-customer-id when querying client
     // ad accounts accessed via a manager link. Without it the Google Ads API
     // returns 403 USER_PERMISSION_DENIED for child accounts.
@@ -257,6 +263,9 @@ export default defineNuxtConfig({
       // Client-visible mirror of GOOGLE_BUSINESS_PUBLISHING_ENABLED. Server endpoints
       // remain the real boundary; this keeps the dormant channel hidden until approval.
       googleBusinessPublishingEnabled: process.env.GOOGLE_BUSINESS_PUBLISHING_ENABLED === 'true',
+      // Presentation-only mirror for the Search Authority pilot. Server endpoints
+      // still enforce the private feature flag, client entitlement and RBAC.
+      searchAuthorityEnabled: process.env.SEARCH_AUTHORITY_ENABLED === 'true',
       // Client-visible mirror of AI_PORTAL_ENABLED — gates ONLY the portal co-pilot launcher.
       // The /api/portal/ai/* endpoints 404 when off; this just hides the UI until go-live.
       aiPortalEnabled: process.env.AI_PORTAL_ENABLED === 'true',

@@ -66,7 +66,9 @@ describe('Google multi-profile OAuth routes', () => {
     const handler = (await import('~~/server/api/agency/social/google/connect.get')).default
     const result = await handler({} as never)
 
-    expect(mocks.createAttempt).toHaveBeenCalledWith('user-1')
+    expect(mocks.createAttempt).toHaveBeenCalledWith('user-1', {
+      purpose: 'google_ads'
+    })
     expect(mocks.getGoogleAuthUrl).toHaveBeenCalledWith(
       'client-id',
       'https://app.xeroflow.io/api/agency/social/google/callback',

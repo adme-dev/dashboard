@@ -2,9 +2,11 @@
 import type { CommandPaletteGroup, CommandPaletteItem, NavigationMenuItem } from '@nuxt/ui'
 import { socialSpendSuiteNavItems } from '~/utils/socialSpendNavigation'
 import { socialSuiteNavItems } from '~/utils/socialSuiteNavigation'
+import { searchAuthorityNavItems } from '~/utils/searchAuthorityNavigation'
 import { useAuthenticatedFetch } from '~/composables/useAuthenticatedFetch'
 
 const route = useRoute()
+const runtimeConfig = useRuntimeConfig()
 const open = ref(false)
 const selectedWorkspace = ref<string | null>(null)
 const isClientAnalyticsRoute = computed(() => route.path.startsWith('/agency/analytics/client/'))
@@ -216,7 +218,11 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { type: 'label', label: 'Budget Tracker' },
       { label: 'Analytics', icon: 'i-lucide-bar-chart-4', to: '/agency/analytics', onSelect: close },
       { label: 'Budget Health', icon: 'i-lucide-gauge', to: '/agency/budget-health', onSelect: close },
-      { label: 'Site Tracking', icon: 'i-lucide-radio', to: '/agency/tracking', onSelect: close }
+      { label: 'Site Tracking', icon: 'i-lucide-radio', to: '/agency/tracking', onSelect: close },
+      ...searchAuthorityNavItems(
+        Boolean(runtimeConfig.public.searchAuthorityEnabled),
+        close
+      )
     )
   }
 

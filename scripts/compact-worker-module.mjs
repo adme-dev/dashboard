@@ -8,6 +8,71 @@ export const WORKER_MODULE_COMPACTION_MARKER = 'XEROFLOW_COMPACT_WORKER_MODULE'
 
 initSync()
 
+const PRECOMPUTED_RESOURCE_KEYS = [
+  'file',
+  'resourceType',
+  'module',
+  'mimeType',
+  'preload',
+  'prefetch'
+]
+const PRECOMPUTED_TOP_LEVEL_KEYS = ['dependencies', 'entrypoints', 'modules']
+const PRECOMPUTED_DEPENDENCY_KEYS = ['scripts', 'styles', 'preload', 'prefetch']
+const PRECOMPUTED_KNOWN_RESOURCE_KEYS = [
+  ...PRECOMPUTED_RESOURCE_KEYS,
+  'name',
+  'src',
+  'isEntry',
+  'isDynamicEntry',
+  'imports',
+  'dynamicImports',
+  'css',
+  'assets'
+]
+
+function assertKnownKeys(value, supported, label) {
+  const unknown = Object.keys(value || {}).filter(key => !supported.includes(key))
+  if (unknown.length) {
+    throw new Error(
+      `[worker-manifest] Unsupported ${label} field(s): ${unknown.join(', ')}`
+    )
+  }
+}
+
+function compactPrecomputedResource(resource) {
+  assertKnownKeys(resource, PRECOMPUTED_KNOWN_RESOURCE_KEYS, 'resource')
+  return Object.fromEntries(PRECOMPUTED_RESOURCE_KEYS
+    .filter(key => resource[key] !== undefined && resource[key] !== false)
+    .map(key => [key, resource[key]]))
+}
+
+export function compactPrecomputedManifest(manifest) {
+  assertKnownKeys(manifest, PRECOMPUTED_TOP_LEVEL_KEYS, 'top-level')
+  const dependencies = Object.fromEntries(
+    Object.entries(manifest.dependencies || {}).map(([moduleId, dependency]) => {
+      assertKnownKeys(dependency, PRECOMPUTED_DEPENDENCY_KEYS, 'dependency')
+      return [
+        moduleId,
+        Object.fromEntries(
+          PRECOMPUTED_DEPENDENCY_KEYS.map(bucket => [
+            bucket,
+            Object.fromEntries(
+              Object.entries(dependency[bucket] || {}).map(([id, resource]) => [
+                id,
+                compactPrecomputedResource(resource)
+              ])
+            )
+          ])
+        )
+      ]
+    })
+  )
+  return {
+    dependencies,
+    entrypoints: manifest.entrypoints || []
+  }
+}
+
 export function compactPlatformImports(source) {
   const removableImports = parse(source)[0]
     .filter(entry => (

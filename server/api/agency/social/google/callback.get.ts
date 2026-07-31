@@ -29,7 +29,7 @@ export default eventHandler(async (event) => {
     const state = String(query.state || '')
     const errorParam = String(query.error || '')
     const attempt = state
-      ? await consumeGoogleOAuthAttempt(state, user.id)
+      ? await consumeGoogleOAuthAttempt(state, user.id, { purpose: 'google_ads' })
       : null
     if (!attempt) {
       return sendRedirect(event, '/auth/oauth-callback?platform=google&success=false&error=' + encodeURIComponent('Invalid OAuth state. Please try again.'), 302)

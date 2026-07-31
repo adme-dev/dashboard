@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   WORKER_MODULE_COMPACTION_MARKER,
   compactDeployedWorkerModules,
+  compactPrecomputedManifest,
   compactPlatformImports,
   compactWorkerModule
 } from '../../scripts/compact-worker-module.mjs'
@@ -22,6 +23,79 @@ afterEach(async () => {
 })
 
 describe('Pages Worker postbuild compaction', () => {
+  it('keeps only fields consumed by the precomputed SSR dependency renderer', () => {
+    const result = compactPrecomputedManifest({
+      dependencies: {
+        page: {
+          scripts: {
+            entry: {
+              file: 'entry.js',
+              module: true,
+              resourceType: 'script',
+              name: 'entry',
+              src: '/source/entry.ts',
+              isEntry: true,
+              imports: ['shared']
+            }
+          },
+          styles: {},
+          preload: {},
+          prefetch: {}
+        }
+      },
+      entrypoints: ['entry'],
+      modules: {
+        ignored: { file: 'unused.js' }
+      }
+    })
+
+    expect(result).toEqual({
+      dependencies: {
+        page: {
+          scripts: {
+            entry: {
+              file: 'entry.js',
+              module: true,
+              resourceType: 'script'
+            }
+          },
+          styles: {},
+          preload: {},
+          prefetch: {}
+        }
+      },
+      entrypoints: ['entry']
+    })
+  })
+
+  it('fails closed when Nuxt emits an unknown manifest schema field', () => {
+    expect(() => compactPrecomputedManifest({
+      dependencies: {},
+      entrypoints: [],
+      modules: {},
+      futureRuntimeContract: true
+    })).toThrow(/unsupported top-level field/i)
+
+    expect(() => compactPrecomputedManifest({
+      dependencies: {
+        page: {
+          scripts: {
+            entry: {
+              file: 'entry.js',
+              resourceType: 'script',
+              futureLoadDirective: 'critical'
+            }
+          },
+          styles: {},
+          preload: {},
+          prefetch: {}
+        }
+      },
+      entrypoints: [],
+      modules: {}
+    })).toThrow(/unsupported resource field/i)
+  })
+
   it('removes redundant bare platform imports without touching value imports', () => {
     const source = [
       'import "node:crypto";',
