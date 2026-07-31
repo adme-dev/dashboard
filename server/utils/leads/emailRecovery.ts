@@ -65,21 +65,24 @@ export interface EmailRecoveryClaim {
   allowed_sender_domains: string[] | string
 }
 
-export type EmailRecoveryReason
-  = | 'missing_evidence'
-    | 'corrupt_evidence'
-    | 'content_mismatch'
-    | 'identity_mismatch'
-    | 'parse_failed'
-    | 'endpoint_unavailable'
-    | 'capture_mode_ineligible'
-    | 'sender_policy_denied'
-    | 'attempts_exhausted'
-    | 'evidence_expired'
-    | 'legacy_evidence'
-    | 'canonical_window_elapsed'
-    | 'canonical_transient'
-    | 'lease_lost'
+export const EMAIL_RECOVERY_REASONS = [
+  'missing_evidence',
+  'corrupt_evidence',
+  'content_mismatch',
+  'identity_mismatch',
+  'parse_failed',
+  'endpoint_unavailable',
+  'capture_mode_ineligible',
+  'sender_policy_denied',
+  'attempts_exhausted',
+  'evidence_expired',
+  'legacy_evidence',
+  'canonical_window_elapsed',
+  'canonical_transient',
+  'lease_lost'
+] as const
+
+export type EmailRecoveryReason = typeof EMAIL_RECOVERY_REASONS[number]
 
 interface RecoveryObject {
   arrayBuffer(): Promise<ArrayBuffer>

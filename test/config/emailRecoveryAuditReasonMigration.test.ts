@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { EMAIL_RECOVERY_REASONS } from '../../server/utils/leads/emailRecovery'
 
 const migration = readFileSync(
   new URL(
@@ -11,22 +12,7 @@ const migration = readFileSync(
 
 describe('email recovery audit reason migration 327', () => {
   it('allows every recovery outcome that can be committed atomically', () => {
-    for (const reason of [
-      'missing_evidence',
-      'corrupt_evidence',
-      'content_mismatch',
-      'identity_mismatch',
-      'parse_failed',
-      'endpoint_unavailable',
-      'capture_mode_ineligible',
-      'sender_policy_denied',
-      'attempts_exhausted',
-      'evidence_expired',
-      'legacy_evidence',
-      'canonical_window_elapsed',
-      'canonical_transient',
-      'lease_lost'
-    ]) {
+    for (const reason of EMAIL_RECOVERY_REASONS) {
       expect(migration).toContain(`'${reason}'`)
     }
   })
