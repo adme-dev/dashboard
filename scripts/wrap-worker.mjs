@@ -29,6 +29,11 @@ const wsJs = path.join(distDir, '_ws.js')
 const wsSrc = path.join(projectRoot, 'worker-ws', 'index.ts')
 const precomputedManifest = path.join(distDir, 'chunks', 'build', 'client.precomputed.mjs')
 const nitroRuntime = path.join(distDir, 'chunks', 'nitro', 'nitro.mjs')
+const generatedRuntimeModules = [
+  ['Nitro runtime', nitroRuntime],
+  ['SSR renderer', path.join(distDir, 'chunks', 'routes', 'renderer.mjs')],
+  ['Vue server runtime', path.join(distDir, 'chunks', 'build', 'server.mjs')]
+]
 
 async function exists(p) {
   try {
@@ -124,18 +129,18 @@ export default async function loadPrecomputedManifest() {
   }
 }
 
-// Nitro's stable runtime chunk is emitted readable and is the single largest
-// deployed module. Compact only that generated boundary, preserve function
-// names for framework introspection, and mark it so repeated wrapper runs are
-// byte-stable.
-if (await exists(nitroRuntime)) {
-  const compacted = await compactWorkerModule(nitroRuntime)
+// These stable generated runtime boundaries are emitted readable. Compact
+// them while preserving function names for framework introspection, and mark
+// them so repeated wrapper runs remain byte-stable.
+for (const [label, modulePath] of generatedRuntimeModules) {
+  if (!await exists(modulePath)) continue
+  const compacted = await compactWorkerModule(modulePath)
   if (compacted.changed) {
     console.log(
-      `[wrap-worker] compacted Nitro runtime ${compacted.beforeBytes} → ${compacted.afterBytes} bytes`
+      `[wrap-worker] compacted ${label} ${compacted.beforeBytes} → ${compacted.afterBytes} bytes`
     )
   } else {
-    console.log('[wrap-worker] Nitro runtime already compact or smaller as emitted')
+    console.log(`[wrap-worker] ${label} already compact or smaller as emitted`)
   }
 }
 
