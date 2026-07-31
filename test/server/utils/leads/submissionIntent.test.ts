@@ -10,6 +10,18 @@ beforeEach(() => {
 })
 
 describe('lead submission intent reconciliation', () => {
+  it('uses an explicit request-scoped fingerprint secret when process env is unavailable', () => {
+    delete process.env.LEAD_IDENTITY_HMAC_KEY
+    delete process.env.CRON_SECRET
+
+    const fingerprint = fingerprintLeadIdentity(
+      { email: 'person@example.com' },
+      'request-scoped-identity-key'
+    )
+
+    expect(fingerprint.emailFingerprint).toMatch(/^[a-f0-9]{64}$/)
+  })
+
   it('normalizes equivalent email and Australian phone representations', () => {
     const first = fingerprintLeadIdentity({
       email: ' PERSON@Example.com ',

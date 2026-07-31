@@ -1,4 +1,5 @@
 import { createHmac, randomUUID } from 'node:crypto'
+import type { H3Event } from 'h3'
 import { z } from 'zod'
 import { queryOne, queryRows } from '~~/server/utils/db'
 import type { LeadTransactionClient } from '~~/server/utils/leads/db'
@@ -47,8 +48,28 @@ export interface IntentReservation {
   confidence: number
 }
 
-function fingerprintKey(): string {
-  const master = process.env.LEAD_IDENTITY_HMAC_KEY || process.env.CRON_SECRET
+export function resolveLeadIdentityFingerprintSecret(
+  event?: Pick<H3Event, 'context'>
+): string | undefined {
+  const env = (event as {
+    context?: {
+      cloudflare?: { env?: Record<string, unknown> }
+    }
+  } | undefined)?.context?.cloudflare?.env
+  const candidates = [
+    env?.LEAD_IDENTITY_HMAC_KEY,
+    env?.CRON_SECRET,
+    process.env.LEAD_IDENTITY_HMAC_KEY,
+    process.env.CRON_SECRET
+  ]
+  return candidates.find(
+    (value): value is string => typeof value === 'string' && value.length > 0
+  )
+}
+
+function fingerprintKey(explicitSecret?: string): string {
+  const master = explicitSecret
+    || resolveLeadIdentityFingerprintSecret()
   if (!master) throw new Error('LEAD_IDENTITY_HMAC_KEY is not configured')
   return createHmac('sha256', master)
     .update('zeroflow:lead-submission-identity:v1')
@@ -57,9 +78,10 @@ function fingerprintKey(): string {
 
 export function fingerprintLeadIdentityKey(
   kind: 'email' | 'phone' | 'browser' | 'provider',
-  value: string
+  value: string,
+  explicitSecret?: string
 ): string {
-  return createHmac('sha256', fingerprintKey())
+  return createHmac('sha256', fingerprintKey(explicitSecret))
     .update(`${kind}:${value}`)
     .digest('hex')
 }
@@ -67,7 +89,7 @@ export function fingerprintLeadIdentityKey(
 export function fingerprintLeadIdentity(input: {
   email?: string | null
   phone?: string | null
-}): { emailFingerprint: string | null, phoneFingerprint: string | null } {
+}, explicitSecret?: string): { emailFingerprint: string | null, phoneFingerprint: string | null } {
   const email = input.email
     ? normalizeEmailForDest(input.email, 'meta')
     : ''
@@ -75,8 +97,12 @@ export function fingerprintLeadIdentity(input: {
     ? normalizePhoneE164(input.phone)
     : ''
   return {
-    emailFingerprint: email ? fingerprintLeadIdentityKey('email', email) : null,
-    phoneFingerprint: phone ? fingerprintLeadIdentityKey('phone', phone) : null
+    emailFingerprint: email
+      ? fingerprintLeadIdentityKey('email', email, explicitSecret)
+      : null,
+    phoneFingerprint: phone
+      ? fingerprintLeadIdentityKey('phone', phone, explicitSecret)
+      : null
   }
 }
 
@@ -96,8 +122,12 @@ function safeAttribution(value: IntentCandidate['attribution']): Record<string, 
 export async function storeSubmissionIntent(input: {
   site: Pick<TrackingSite, 'id' | 'clientId'>
   payload: SubmissionIntentPayload
+  identityFingerprintSecret?: string
 }): Promise<boolean> {
-  const identity = fingerprintLeadIdentity(input.payload.identity)
+  const identity = fingerprintLeadIdentity(
+    input.payload.identity,
+    input.identityFingerprintSecret
+  )
   if (!identity.emailFingerprint && !identity.phoneFingerprint) return false
 
   const row = await queryOne<{ id: string }>(
@@ -143,8 +173,8 @@ function parseTime(value: string): number {
 
 export function scoreIntentCandidate(input: {
   candidate: Pick<IntentCandidate,
-    'email_fingerprint' | 'phone_fingerprint' | 'form_id' |
-    'vehicle_reference' | 'occurred_at'>
+  | 'email_fingerprint' | 'phone_fingerprint' | 'form_id'
+  | 'vehicle_reference' | 'occurred_at'>
   emailFingerprint: string | null
   phoneFingerprint: string | null
   formId: string | null
@@ -207,12 +237,16 @@ export async function reserveSubmissionIntentForLead(input: {
   fieldData: Record<string, string>
   submittedAt: string
   formId: string | null
+  identityFingerprintSecret?: string
 }): Promise<IntentReservation | null> {
   const email = fieldValue(input.fieldData, ['email', 'email_address', 'work_email'])
   const phone = fieldValue(input.fieldData, [
     'phone_number', 'phone', 'mobile', 'mobile_number', 'telephone', 'work_phone'
   ])
-  const identity = fingerprintLeadIdentity({ email, phone })
+  const identity = fingerprintLeadIdentity(
+    { email, phone },
+    input.identityFingerprintSecret
+  )
   if (!identity.emailFingerprint && !identity.phoneFingerprint) return null
 
   const vehicleReference = fieldValue(input.fieldData, [

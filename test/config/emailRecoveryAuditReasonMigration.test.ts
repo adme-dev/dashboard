@@ -2,18 +2,27 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { EMAIL_RECOVERY_REASONS } from '../../server/utils/leads/emailRecovery'
 
-const migration = readFileSync(
+const canonicalMigration = readFileSync(
   new URL(
-    '../../server/database/migrations/327_email_ingestion_recovery_audit_reasons.sql',
+    '../../server/database/migrations/328_email_ingestion_canonical_audit_reasons.sql',
     import.meta.url
   ),
   'utf8'
 )
 
-describe('email recovery audit reason migration 327', () => {
-  it('allows every recovery outcome that can be committed atomically', () => {
+describe('email recovery audit reason migrations', () => {
+  it('keeps every recovery outcome in the final replacement constraint', () => {
     for (const reason of EMAIL_RECOVERY_REASONS) {
-      expect(migration).toContain(`'${reason}'`)
+      expect(canonicalMigration).toContain(`'${reason}'`)
     }
+  })
+
+  it.each([
+    'extraction_requires_review',
+    'provider_policy_denied',
+    'truthful_contact_missing',
+    'canonical_outcome_invalid'
+  ])('allows the canonical recovery terminal reason %s', (reason) => {
+    expect(canonicalMigration).toContain(`'${reason}'`)
   })
 })

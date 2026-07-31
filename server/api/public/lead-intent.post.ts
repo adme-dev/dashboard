@@ -6,6 +6,7 @@ import {
   resolveSiteByWriteKey
 } from '~~/server/utils/tracking/site-config'
 import {
+  resolveLeadIdentityFingerprintSecret,
   storeSubmissionIntent,
   SubmissionIntentSchema
 } from '~~/server/utils/leads/submissionIntent'
@@ -90,7 +91,11 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    const stored = await storeSubmissionIntent({ site, payload: parsed.data })
+    const stored = await storeSubmissionIntent({
+      site,
+      payload: parsed.data,
+      identityFingerprintSecret: resolveLeadIdentityFingerprintSecret(event)
+    })
     setResponseStatus(event, 202)
     return { ok: true, stored }
   } catch (error) {
