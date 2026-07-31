@@ -12,8 +12,11 @@ const Query = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  const { appId, appSecret, officeId, sessionId } = await requireOfficeRealtimeAccess(event)
   const query = Query.parse(getQuery(event))
+  const { appId, appSecret, officeId, sessionId } = await requireOfficeRealtimeAccess(event, {
+    scope: 'state',
+    zoneId: query.zone_id
+  })
   await requireOfficeRealtimeZone(officeId, query.zone_id)
 
   return await getRealtimeSessionState({

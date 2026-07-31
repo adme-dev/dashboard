@@ -8,6 +8,7 @@ import type {
   OfficePresenceEventKind,
   OfficePresenceEventTarget,
   OfficeParticipant,
+  OfficeRemoteTrackCapability,
   OfficeMemberRole,
   ZoneAcl,
   ZoneType,
@@ -53,6 +54,11 @@ const props = defineProps<{
   currentZoneId?: string | null
   joinFailure?: OfficeJoinFailure | null
   mediaSession?: OfficeMediaSession | null
+  remoteTracks?: OfficeRemoteTrackCapability[]
+  announcePublishedTracks?: (
+    sessionId: string,
+    tracks: Array<{ trackName: string, kind: 'audio' | 'video' }>
+  ) => void
   mediaUnavailable?: OfficeMediaUnavailable | null
 }>()
 
@@ -1465,6 +1471,8 @@ watch(
       :locking-room="lockingRoomId === selectedZone.id"
       :join-failure-message="selectedJoinFailureMessage"
       :media-session="selectedMediaSession"
+      :remote-tracks="remoteTracks"
+      :announce-published-tracks="announcePublishedTracks"
       :media-unavailable-message="selectedMediaUnavailableMessage"
       @close="selectedTargetId = null"
       @enter="emit('enterZone', $event)"

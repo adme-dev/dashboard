@@ -1,9 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { signTestOfficeMediaGrant } from '../../utils/officeMediaGrant'
+
+const zoneId = '575d4c24-9032-400b-984b-9c9525e621b5'
+const renegotiateGrant = await signTestOfficeMediaGrant({
+  purpose: 'office-media',
+  officeId: 'office-1',
+  zoneId,
+  handle: 'user:user-1',
+  sessionId: 'session-1',
+  isGuest: false,
+  guestBadgeId: null,
+  scopes: ['renegotiate'],
+  exp: Math.floor(Date.now() / 1000) + 60
+})
+const stateOnlyGrant = await signTestOfficeMediaGrant({
+  purpose: 'office-media',
+  officeId: 'office-1',
+  zoneId,
+  handle: 'user:user-1',
+  sessionId: 'session-1',
+  isGuest: false,
+  guestBadgeId: null,
+  scopes: ['state'],
+  exp: Math.floor(Date.now() / 1000) + 60
+})
 
 type TestEvent = {
   context?: {
     params?: Record<string, string>
     body?: unknown
+    headers?: Record<string, string>
     cloudflare?: { env?: Record<string, unknown> }
   }
 }
@@ -11,6 +37,7 @@ type TestEvent = {
 const testGlobal = globalThis as typeof globalThis & {
   defineEventHandler: <T>(fn: T) => T
   getRouterParam: (event: TestEvent, key: string) => string | undefined
+  getHeader: (event: TestEvent, key: string) => string | undefined
   readBody: (event: TestEvent) => Promise<unknown>
   createError: (opts: { statusCode: number, statusMessage: string }) => Error & {
     statusCode: number
@@ -20,6 +47,7 @@ const testGlobal = globalThis as typeof globalThis & {
 
 testGlobal.defineEventHandler = fn => fn
 testGlobal.getRouterParam = (event, key) => event.context?.params?.[key]
+testGlobal.getHeader = (event, key) => event.context?.headers?.[key.toLowerCase()]
 testGlobal.readBody = async event => event.context?.body ?? {}
 testGlobal.createError = (opts) => {
   const error = new Error(opts.statusMessage) as Error & {
@@ -48,7 +76,7 @@ vi.mock('~~/server/utils/officeRealtime', () => ({
 }))
 
 const { default: handler } = await import(
-  '../../../../../server/api/office/[officeId]/realtime/[sessionId]/renegotiate.put'
+  '../../../server/api/office/[officeId]/realtime/[sessionId]/renegotiate.put'
 )
 
 function fakeEvent(overrides: Partial<TestEvent> = {}) {
@@ -56,11 +84,13 @@ function fakeEvent(overrides: Partial<TestEvent> = {}) {
     context: {
       params: { officeId: 'office-1', sessionId: 'session-1' },
       body: {
-        zone_id: '575d4c24-9032-400b-984b-9c9525e621b5',
+        zone_id: zoneId,
         sessionDescription: { type: 'answer', sdp: 'v=0 answer' }
       },
+      headers: { authorization: `Bearer ${renegotiateGrant}` },
       cloudflare: {
         env: {
+          OFFICE_SYNC_SECRET: 'office-secret',
           REALTIME_APP_ID: 'app-1',
           REALTIME_APP_SECRET: 'secret-1'
         }
@@ -101,10 +131,26 @@ describe('PUT /api/office/:officeId/realtime/:sessionId/renegotiate', () => {
     expect(mockRenegotiateRealtimeSession).not.toHaveBeenCalled()
   })
 
+  it('rejects a grant without the renegotiate scope', async () => {
+    await expect(handler(fakeEvent({
+      context: {
+        headers: { authorization: `Bearer ${stateOnlyGrant}` }
+      }
+    }))).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'Office media grant scope mismatch'
+    })
+    expect(mockRenegotiateRealtimeSession).not.toHaveBeenCalled()
+  })
+
   it('fails closed when Realtime credentials are missing', async () => {
     await expect(handler(fakeEvent({
       context: {
-        cloudflare: { env: {} }
+        cloudflare: {
+          env: {
+            OFFICE_SYNC_SECRET: 'office-secret'
+          }
+        }
       }
     }))).rejects.toMatchObject({
       statusCode: 503,

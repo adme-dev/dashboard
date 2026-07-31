@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { signOfficeJwt } from '~~/server/utils/officeJwt'
-import { verifyOfficeJwt } from '../../../workers/office-room/src/jwt'
+import * as realtimeAccess from '~~/server/utils/officeRealtimeAccess'
+import * as workerJwt from '../../../workers/office-room/src/jwt'
 
 const SECRET = 'worker-secret'
+const { verifyOfficeJwt } = workerJwt
+const { verifyOfficeMediaGrant } = realtimeAccess
 
 describe('office-room worker JWT verifier', () => {
   it('preserves staff token identity and sanitizes zone capacities', async () => {
@@ -99,5 +102,62 @@ describe('office-room worker JWT verifier', () => {
     }, SECRET)
 
     await expect(verifyOfficeJwt(token, SECRET)).resolves.toBeNull()
+  })
+
+  it('signs a participant session grant that the Pages proxy can verify', async () => {
+    const sign = (workerJwt as Record<string, unknown>).signOfficeMediaGrant
+    const token = typeof sign === 'function'
+      ? await (sign as (claims: Record<string, unknown>, secret: string) => Promise<string>)({
+          purpose: 'office-media',
+          officeId: 'office-1',
+          zoneId: 'zone-1',
+          handle: 'client:guest-1',
+          sessionId: 'session-1',
+          isGuest: true,
+          guestBadgeId: 'badge-1',
+          scopes: ['state', 'publish', 'pull', 'renegotiate', 'close'],
+          exp: Math.floor(Date.now() / 1000) + 60
+        }, SECRET)
+      : ''
+
+    await expect(verifyOfficeMediaGrant(token, SECRET)).resolves.toMatchObject({
+      purpose: 'office-media',
+      officeId: 'office-1',
+      zoneId: 'zone-1',
+      handle: 'client:guest-1',
+      sessionId: 'session-1',
+      isGuest: true,
+      guestBadgeId: 'badge-1'
+    })
+  })
+
+  it('signs a same-zone remote-track capability that the Pages proxy can verify', async () => {
+    const sign = (workerJwt as Record<string, unknown>).signOfficeRemoteTrackGrant
+    const verify = (realtimeAccess as Record<string, unknown>).verifyOfficeRemoteTrackGrant
+    const token = typeof sign === 'function'
+      ? await (sign as (claims: Record<string, unknown>, secret: string) => Promise<string>)({
+          purpose: 'office-remote-track',
+          officeId: 'office-1',
+          zoneId: 'zone-1',
+          publisherHandle: 'user:user-1',
+          publisherSessionId: 'publisher-session-1',
+          trackName: 'camera-track-1',
+          kind: 'video',
+          exp: Math.floor(Date.now() / 1000) + 60
+        }, SECRET)
+      : ''
+    const claims = typeof verify === 'function'
+      ? await (verify as (token: string, secret: string) => Promise<unknown>)(token, SECRET)
+      : null
+
+    expect(claims).toMatchObject({
+      purpose: 'office-remote-track',
+      officeId: 'office-1',
+      zoneId: 'zone-1',
+      publisherHandle: 'user:user-1',
+      publisherSessionId: 'publisher-session-1',
+      trackName: 'camera-track-1',
+      kind: 'video'
+    })
   })
 })

@@ -1,8 +1,10 @@
 import { DurableObject } from 'cloudflare:workers'
 import type {
   ActorHandle,
+  OfficeMediaSession,
   OfficeMediaUnavailableReason,
   OfficeParticipant,
+  OfficeRemoteTrackCapability,
   OfficeSnapshot,
   OfficeZoneAccessPolicy,
   OfficeZoneRow,
@@ -21,7 +23,12 @@ import {
   evaluateGuestBadgeIdentity,
   evaluateZoneEntry
 } from './handlers'
-import { buildZoneCorrelationId, createZoneRealtimeSession, type RealtimeEnv } from './realtime'
+import {
+  createZoneRealtimeMediaSession,
+  refreshZoneRealtimeMediaGrant,
+  type RealtimeEnv
+} from './realtime'
+import { signOfficeRemoteTrackGrant } from './jwt'
 
 interface Env extends RealtimeEnv {
   /** Base URL of the Pages app, e.g. https://agency-dashboard-6cm.pages.dev */
@@ -49,6 +56,17 @@ interface ParticipantState extends ConnMeta {
   currentZoneId: string | null
   lastSeenAt: number
   disconnectedAt: number | null
+  mediaSession: OfficeMediaSession | null
+  publishedTracks: Array<{ trackName: string, kind: 'audio' | 'video' }>
+}
+
+interface ParticipantAttachment extends ConnMeta {
+  status?: OfficeStatus
+  currentZoneId?: string | null
+  lastSeenAt?: number
+  disconnectedAt?: number | null
+  mediaSession?: OfficeMediaSession | null
+  publishedTracks?: Array<{ trackName: string, kind: 'audio' | 'video' }>
 }
 
 const GRACE_MS = 30_000
@@ -123,11 +141,11 @@ export class OfficeRoom extends DurableObject<Env> {
     // Restore handles AND participant identity from hibernation tags. Without
     // rehydrating `participants`, post-wakeup messages on existing WSs would
     // find no participant entry and silently drop status/zone changes.
-    // Note: ephemeral state (status, currentZoneId) resets to defaults across
-    // hibernation — only the identity (ConnMeta) is durable in attachments.
+    // Active zone and media state are also kept in the attachment so an
+    // isolate wake-up cannot widen or silently lose the media boundary.
     const now = Date.now()
     for (const ws of ctx.getWebSockets()) {
-      const tag = ws.deserializeAttachment() as Partial<ConnMeta> | undefined
+      const tag = ws.deserializeAttachment() as Partial<ParticipantAttachment> | undefined
       if (!tag?.handle) continue
       this.wsToHandle.set(ws, tag.handle)
       if (!this.participants.has(tag.handle)) {
@@ -143,10 +161,12 @@ export class OfficeRoom extends DurableObject<Env> {
           zoneCapacities: sanitizeZoneCapacities(tag.zoneCapacities),
           zoneAccessPolicies: sanitizeZoneAccessPolicies(tag.zoneAccessPolicies),
           joinedAt: tag.joinedAt ?? now,
-          status: 'available',
-          currentZoneId: null,
-          lastSeenAt: now,
-          disconnectedAt: null
+          status: tag.status ?? 'available',
+          currentZoneId: tag.currentZoneId ?? null,
+          lastSeenAt: tag.lastSeenAt ?? now,
+          disconnectedAt: tag.disconnectedAt ?? null,
+          mediaSession: tag.mediaSession ?? null,
+          publishedTracks: this.sanitizePublishedTracks(tag.publishedTracks)
         })
         this.mergeZoneCapacities(sanitizeZoneCapacities(tag.zoneCapacities))
       }
@@ -327,6 +347,7 @@ export class OfficeRoom extends DurableObject<Env> {
       existing.zoneCapacities = meta.zoneCapacities
       existing.zoneAccessPolicies = meta.zoneAccessPolicies
       this.mergeZoneCapacities(meta.zoneCapacities)
+      this.persistParticipant(existing)
       this.sendTo(ws, { type: 'snapshot', snapshot: this.buildSnapshot() })
       // If this was a within-grace reconnect, peers that joined during the
       // grace window never saw this participant in their snapshot. Re-announce.
@@ -352,7 +373,9 @@ export class OfficeRoom extends DurableObject<Env> {
       status: 'available',
       currentZoneId: null,
       lastSeenAt: Date.now(),
-      disconnectedAt: null
+      disconnectedAt: null,
+      mediaSession: null,
+      publishedTracks: []
     }
     this.participants.set(meta.handle, participant)
     this.mergeZoneCapacities(meta.zoneCapacities)
@@ -441,16 +464,28 @@ export class OfficeRoom extends DurableObject<Env> {
         }
         // 1a: no media token, no ACL check yet (full ACL in 1b/1c).
         // The Nitro WS endpoint gates membership; the DO trusts the upgrade.
+        const previousZoneId = p.currentZoneId
         const { send, broadcast } = applyZoneEnter(p, msg.zoneId, now)
+        this.clearParticipantMedia(p)
+        this.persistParticipant(p)
         this.sendTo(ws, send)
         this.broadcast(broadcast)
+        if (previousZoneId) {
+          await this.broadcastZoneMediaTracks(previousZoneId)
+        }
         this.ctx.waitUntil(this.reserveZoneMediaSession(p, ws, msg.zoneId))
         this.ctx.waitUntil(this.syncLocation(p.officeId, handle, msg.zoneId, 'online'))
         return
       }
       case 'zone:leave': {
+        const previousZoneId = p.currentZoneId
         const { broadcast } = applyZoneLeave(p, now)
+        this.clearParticipantMedia(p)
+        this.persistParticipant(p)
         this.broadcast(broadcast)
+        if (previousZoneId) {
+          await this.broadcastZoneMediaTracks(previousZoneId)
+        }
         this.ctx.waitUntil(this.syncLocation(p.officeId, handle, null, 'online'))
         return
       }
@@ -465,7 +500,15 @@ export class OfficeRoom extends DurableObject<Env> {
           return
         }
         this.sendToHandle(msg.handle, result.send)
+        const evictedZoneId = targetSnapshot?.zoneId ?? null
+        if (target) {
+          this.clearParticipantMedia(target)
+          this.persistParticipant(target)
+        }
         this.broadcast(result.broadcast)
+        if (evictedZoneId) {
+          await this.broadcastZoneMediaTracks(evictedZoneId)
+        }
         this.ctx.waitUntil(this.syncLocation(p.officeId, msg.handle, null, 'online'))
         this.ctx.waitUntil(this.syncAuditEvent({
           officeId: p.officeId,
@@ -479,6 +522,60 @@ export class OfficeRoom extends DurableObject<Env> {
             zone_id: targetSnapshot?.zoneId ?? result.send.zoneId
           }
         }))
+        return
+      }
+      case 'media:tracks-published': {
+        if (
+          !p.currentZoneId
+          || !p.mediaSession
+          || msg.sessionId !== p.mediaSession.sessionId
+        ) {
+          this.sendTo(ws, { type: 'error', message: 'media session does not match the active zone' })
+          return
+        }
+        p.publishedTracks = this.sanitizePublishedTracks(msg.tracks)
+        this.persistParticipant(p)
+        await this.broadcastZoneMediaTracks(p.currentZoneId)
+        return
+      }
+      case 'media:grant-refresh': {
+        if (
+          !p.currentZoneId
+          || !p.mediaSession
+          || msg.sessionId !== p.mediaSession.sessionId
+        ) {
+          this.sendTo(ws, { type: 'error', message: 'media session does not match the active zone' })
+          return
+        }
+        try {
+          p.mediaSession = await refreshZoneRealtimeMediaGrant({
+            env: this.env,
+            officeId: p.officeId,
+            zoneId: p.currentZoneId,
+            handle: p.handle,
+            isGuest: p.isGuest,
+            guestBadgeId: p.guestBadgeId,
+            media: p.mediaSession
+          })
+          this.persistParticipant(p)
+          this.sendTo(ws, {
+            type: 'zone:media-session',
+            zoneId: p.currentZoneId,
+            media: p.mediaSession
+          })
+          await this.broadcastZoneMediaTracks(p.currentZoneId)
+        } catch (error) {
+          const zoneId = p.currentZoneId
+          this.clearParticipantMedia(p)
+          this.persistParticipant(p)
+          this.sendTo(ws, {
+            type: 'zone:media-unavailable',
+            zoneId,
+            reason: mediaUnavailableReason(error),
+            message: error instanceof Error ? error.message : 'Realtime media is unavailable.'
+          })
+          await this.broadcastZoneMediaTracks(zoneId)
+        }
         return
       }
       case 'zone:notes-updated': {
@@ -553,6 +650,8 @@ export class OfficeRoom extends DurableObject<Env> {
       if (entry.allowed) continue
 
       p.currentZoneId = null
+      this.clearParticipantMedia(p)
+      this.persistParticipant(p)
       p.lastSeenAt = now
       this.sendToHandle(p.handle, {
         type: 'zone:access-revoked',
@@ -561,6 +660,7 @@ export class OfficeRoom extends DurableObject<Env> {
       })
       this.broadcast({ type: 'participant:moved', handle: p.handle, zoneId: null })
       this.ctx.waitUntil(this.syncLocation(p.officeId, p.handle, null, 'online'))
+      this.ctx.waitUntil(this.broadcastZoneMediaTracks(input.zoneId))
     }
   }
 
@@ -589,9 +689,12 @@ export class OfficeRoom extends DurableObject<Env> {
 
       if (p.currentZoneId !== zoneId) continue
       p.currentZoneId = null
+      this.clearParticipantMedia(p)
+      this.persistParticipant(p)
       p.lastSeenAt = now
       this.broadcast({ type: 'participant:moved', handle: p.handle, zoneId: null })
       this.ctx.waitUntil(this.syncLocation(p.officeId, p.handle, null, 'online'))
+      this.ctx.waitUntil(this.broadcastZoneMediaTracks(zoneId))
     }
 
     this.broadcast({
@@ -673,7 +776,11 @@ export class OfficeRoom extends DurableObject<Env> {
     ws: WebSocket,
     zoneId: string
   ): Promise<void> {
-    if (!this.env.REALTIME_APP_ID || !this.env.REALTIME_APP_SECRET) {
+    if (
+      !this.env.REALTIME_APP_ID
+      || !this.env.REALTIME_APP_SECRET
+      || !this.env.OFFICE_SYNC_SECRET
+    ) {
       this.sendTo(ws, {
         type: 'zone:media-unavailable',
         zoneId,
@@ -684,26 +791,24 @@ export class OfficeRoom extends DurableObject<Env> {
     }
 
     try {
-      const session = await createZoneRealtimeSession({
+      const media = await createZoneRealtimeMediaSession({
         env: this.env,
         officeId: participant.officeId,
         zoneId,
-        handle: participant.handle
+        handle: participant.handle,
+        isGuest: participant.isGuest,
+        guestBadgeId: participant.guestBadgeId
       })
+      if (participant.currentZoneId !== zoneId) return
+      participant.mediaSession = media
+      participant.publishedTracks = []
+      this.persistParticipant(participant)
       this.sendTo(ws, {
         type: 'zone:media-session',
         zoneId,
-        media: {
-          provider: 'cloudflare-realtime',
-          sessionId: session.sessionId,
-          correlationId: buildZoneCorrelationId({
-            officeId: participant.officeId,
-            zoneId,
-            handle: participant.handle
-          }),
-          createdAt: Date.now()
-        }
+        media
       })
+      await this.broadcastZoneMediaTracks(zoneId)
     } catch (error) {
       this.sendTo(ws, {
         type: 'zone:media-unavailable',
@@ -717,8 +822,94 @@ export class OfficeRoom extends DurableObject<Env> {
   private removeParticipant(handle: ActorHandle): void {
     const participant = this.participants.get(handle)
     if (!participant || !this.participants.delete(handle)) return
+    const previousZoneId = participant.currentZoneId
     this.broadcast({ type: 'participant:left', handle })
     this.ctx.waitUntil(this.syncLocation(participant.officeId, handle, null, 'offline'))
+    if (previousZoneId) {
+      this.ctx.waitUntil(this.broadcastZoneMediaTracks(previousZoneId))
+    }
+  }
+
+  private sanitizePublishedTracks(
+    value: unknown
+  ): Array<{ trackName: string, kind: 'audio' | 'video' }> {
+    if (!Array.isArray(value)) return []
+    const tracks: Array<{ trackName: string, kind: 'audio' | 'video' }> = []
+    const seen = new Set<string>()
+    for (const item of value.slice(0, 16)) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+      const track = item as { trackName?: unknown, kind?: unknown }
+      if (
+        typeof track.trackName !== 'string'
+        || !track.trackName.trim()
+        || track.trackName.length > 256
+        || (track.kind !== 'audio' && track.kind !== 'video')
+      ) continue
+      const key = `${track.kind}:${track.trackName}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      tracks.push({ trackName: track.trackName, kind: track.kind })
+    }
+    return tracks
+  }
+
+  private clearParticipantMedia(participant: ParticipantState): void {
+    participant.mediaSession = null
+    participant.publishedTracks = []
+  }
+
+  private persistParticipant(participant: ParticipantState): void {
+    for (const ws of this.ctx.getWebSockets()) {
+      const attachment = ws.deserializeAttachment() as { handle?: ActorHandle } | undefined
+      if (attachment?.handle !== participant.handle) continue
+      const hibernatingSocket = ws as WebSocket & {
+        serializeAttachment?: (value: unknown) => void
+      }
+      hibernatingSocket.serializeAttachment?.({
+        ...participant
+      } satisfies ParticipantAttachment)
+    }
+  }
+
+  private async broadcastZoneMediaTracks(zoneId: string): Promise<void> {
+    if (!this.env.OFFICE_SYNC_SECRET) return
+    const expiresAt = Date.now() + 4 * 60_000
+    const catalog: OfficeRemoteTrackCapability[] = []
+    for (const publisher of this.participants.values()) {
+      if (
+        publisher.disconnectedAt !== null
+        || publisher.currentZoneId !== zoneId
+        || !publisher.mediaSession
+      ) continue
+      for (const track of publisher.publishedTracks) {
+        catalog.push({
+          publisherHandle: publisher.handle,
+          publisherSessionId: publisher.mediaSession.sessionId,
+          trackName: track.trackName,
+          kind: track.kind,
+          expiresAt,
+          capability: await signOfficeRemoteTrackGrant({
+            purpose: 'office-remote-track',
+            officeId: publisher.officeId,
+            zoneId,
+            publisherHandle: publisher.handle,
+            publisherSessionId: publisher.mediaSession.sessionId,
+            trackName: track.trackName,
+            kind: track.kind,
+            exp: Math.floor(expiresAt / 1000)
+          }, this.env.OFFICE_SYNC_SECRET)
+        })
+      }
+    }
+
+    for (const subscriber of this.participants.values()) {
+      if (subscriber.disconnectedAt !== null || subscriber.currentZoneId !== zoneId) continue
+      this.sendToHandle(subscriber.handle, {
+        type: 'zone:media-tracks',
+        zoneId,
+        tracks: catalog.filter(track => track.publisherHandle !== subscriber.handle)
+      })
+    }
   }
 
   // ---------- Snapshot + broadcast helpers -----------------------------------

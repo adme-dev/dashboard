@@ -20,8 +20,11 @@ const Body = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  const { appId, appSecret, officeId, sessionId } = await requireOfficeRealtimeAccess(event)
   const body = Body.parse(await readBody(event))
+  const { appId, appSecret, officeId, sessionId } = await requireOfficeRealtimeAccess(event, {
+    scope: 'close',
+    zoneId: body.zone_id
+  })
   await requireOfficeRealtimeZone(officeId, body.zone_id)
 
   return await closeRealtimeTracks({

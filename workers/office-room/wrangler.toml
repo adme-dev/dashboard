@@ -25,3 +25,9 @@ SYNC_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
 #   cd workers/office-room && wrangler secret put REALTIME_APP_ID
 #   cd workers/office-room && wrangler secret put REALTIME_APP_SECRET
 # When absent, room entry still works and the client stays in local-preview mode.
+
+# Dealer guest media is fail-closed and requires both settings. Keep the
+# global switch false/absent until a named pilot Office is ready:
+#   OFFICE_GUEST_REALTIME_MEDIA_ENABLED=false
+#   OFFICE_GUEST_REALTIME_PILOT_OFFICE_IDS=<comma-separated Office UUIDs>
+# Set both on this Worker and the agency-dashboard Pages environment.

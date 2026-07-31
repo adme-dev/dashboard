@@ -22,6 +22,29 @@ export interface OfficeJwtClaims {
   exp: number
 }
 
+export interface OfficeMediaGrantClaims {
+  purpose: 'office-media'
+  officeId: string
+  zoneId: string
+  handle: ActorHandle
+  sessionId: string
+  isGuest: boolean
+  guestBadgeId?: string | null
+  scopes: Array<'state' | 'publish' | 'pull' | 'renegotiate' | 'close'>
+  exp: number
+}
+
+export interface OfficeRemoteTrackGrantClaims {
+  purpose: 'office-remote-track'
+  officeId: string
+  zoneId: string
+  publisherHandle: ActorHandle
+  publisherSessionId: string
+  trackName: string
+  kind: 'audio' | 'video'
+  exp: number
+}
+
 const ROLES = new Set(['admin', 'member', 'guest'])
 const ZONE_TYPES = new Set<ZoneType>(['lobby', 'meeting', 'focus', 'theater', 'client_lounge', 'desk'])
 
@@ -34,6 +57,15 @@ function base64UrlDecode(s: string): Uint8Array {
   return out
 }
 
+function base64UrlEncode(value: string | ArrayBuffer): string {
+  const bytes = typeof value === 'string'
+    ? new TextEncoder().encode(value)
+    : new Uint8Array(value)
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
 async function importKey(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     'raw',
@@ -42,6 +74,46 @@ async function importKey(secret: string): Promise<CryptoKey> {
     false,
     ['verify']
   )
+}
+
+async function importSigningKey(secret: string): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+}
+
+export async function signOfficeMediaGrant(
+  claims: OfficeMediaGrantClaims,
+  secret: string
+) {
+  return await signOfficeCapability(claims, secret)
+}
+
+export async function signOfficeRemoteTrackGrant(
+  claims: OfficeRemoteTrackGrantClaims,
+  secret: string
+) {
+  return await signOfficeCapability(claims, secret)
+}
+
+async function signOfficeCapability(
+  claims: OfficeMediaGrantClaims | OfficeRemoteTrackGrantClaims,
+  secret: string
+) {
+  const header = base64UrlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
+  const payload = base64UrlEncode(JSON.stringify(claims))
+  const data = `${header}.${payload}`
+  const key = await importSigningKey(secret)
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(data)
+  )
+  return `${data}.${base64UrlEncode(signature)}`
 }
 
 function stringOrNull(value: unknown) {

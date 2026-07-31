@@ -415,7 +415,18 @@ export interface OfficeMediaSession {
   provider: 'cloudflare-realtime'
   sessionId: string
   correlationId: string
+  grant: string
+  grantExpiresAt: number
   createdAt: number
+}
+
+export interface OfficeRemoteTrackCapability {
+  publisherHandle: ActorHandle
+  publisherSessionId: string
+  trackName: string
+  kind: 'audio' | 'video'
+  capability: string
+  expiresAt: number
 }
 
 export type OfficeMediaUnavailableReason

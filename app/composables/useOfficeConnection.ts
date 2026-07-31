@@ -6,6 +6,7 @@ import type {
   OfficePresenceEventKind,
   OfficePresenceEventTarget,
   OfficeParticipant,
+  OfficeRemoteTrackCapability,
   OfficeSnapshot,
   OfficeStatus,
   OfficeZoneRow,
@@ -47,6 +48,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
   const currentZoneId = ref<string | null>(null)
   const joinFailure = ref<OfficeJoinFailure | null>(null)
   const mediaSession = ref<OfficeMediaSession | null>(null)
+  const remoteTrackCapabilities = ref<OfficeRemoteTrackCapability[]>([])
   const mediaUnavailable = ref<OfficeMediaUnavailable | null>(null)
   const zoneNoteUpdates = ref<Record<string, Pick<OfficeZoneRow, 'notes' | 'notes_version' | 'notes_updated_at' | 'notes_updated_by'>>>({})
   const deletedZoneIds = ref<Set<string>>(new Set())
@@ -56,6 +58,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
   let reconnectAttempt = 0
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  let mediaGrantRefreshTimer: ReturnType<typeof setTimeout> | null = null
   const eventTimers = new Map<string, ReturnType<typeof setTimeout>>()
   let desiredStatus: OfficeStatus | null = null
   let desiredZoneId: string | null = opts.initialZoneId?.value ?? null
@@ -67,6 +70,21 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
     zoneOccupancy.value = { ...snap.zoneOccupancy }
   }
 
+  function clearMediaGrantRefreshTimer() {
+    if (!mediaGrantRefreshTimer) return
+    clearTimeout(mediaGrantRefreshTimer)
+    mediaGrantRefreshTimer = null
+  }
+
+  function scheduleMediaGrantRefresh(session: OfficeMediaSession) {
+    clearMediaGrantRefreshTimer()
+    const delay = Math.max(1000, session.grantExpiresAt - Date.now() - 60_000)
+    mediaGrantRefreshTimer = setTimeout(() => {
+      mediaGrantRefreshTimer = null
+      send({ type: 'media:grant-refresh', sessionId: session.sessionId })
+    }, delay)
+  }
+
   function clearPresenceState() {
     participants.value = new Map()
     zoneOccupancy.value = {}
@@ -74,10 +92,12 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
     currentZoneId.value = null
     joinFailure.value = null
     mediaSession.value = null
+    remoteTrackCapabilities.value = []
     mediaUnavailable.value = null
     zoneNoteUpdates.value = {}
     deletedZoneIds.value = new Set()
     upsertedZones.value = {}
+    clearMediaGrantRefreshTimer()
     for (const timer of eventTimers.values()) clearTimeout(timer)
     eventTimers.clear()
   }
@@ -162,6 +182,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
       case 'zone:denied':
         desiredZoneId = null
         currentZoneId.value = null
+        remoteTrackCapabilities.value = []
         joinFailure.value = {
           zoneId: msg.zoneId,
           reason: 'denied',
@@ -172,6 +193,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
       case 'zone:full':
         desiredZoneId = null
         currentZoneId.value = null
+        remoteTrackCapabilities.value = []
         joinFailure.value = {
           zoneId: msg.zoneId,
           reason: 'full',
@@ -184,6 +206,8 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
         currentZoneId.value = msg.zoneId
         joinFailure.value = null
         mediaSession.value = null
+        clearMediaGrantRefreshTimer()
+        remoteTrackCapabilities.value = []
         mediaUnavailable.value = null
         lastError.value = null
         return
@@ -191,11 +215,18 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
         if (currentZoneId.value === msg.zoneId) {
           mediaSession.value = msg.media
           mediaUnavailable.value = null
+          scheduleMediaGrantRefresh(msg.media)
+        }
+        return
+      case 'zone:media-tracks':
+        if (currentZoneId.value === msg.zoneId) {
+          remoteTrackCapabilities.value = msg.tracks.filter(track => track.expiresAt > Date.now())
         }
         return
       case 'zone:media-unavailable':
         if (currentZoneId.value === msg.zoneId) {
           mediaSession.value = null
+          clearMediaGrantRefreshTimer()
           mediaUnavailable.value = {
             zoneId: msg.zoneId,
             reason: msg.reason,
@@ -218,6 +249,8 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
         currentZoneId.value = null
         joinFailure.value = null
         mediaSession.value = null
+        clearMediaGrantRefreshTimer()
+        remoteTrackCapabilities.value = []
         mediaUnavailable.value = null
         lastError.value = 'This room session moved to another tab.'
         disconnect()
@@ -231,6 +264,8 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
           message: 'You were removed from this room by an office admin.'
         }
         mediaSession.value = null
+        clearMediaGrantRefreshTimer()
+        remoteTrackCapabilities.value = []
         mediaUnavailable.value = null
         lastError.value = joinFailure.value.message
         return
@@ -243,6 +278,8 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
           message: `Room access changed: ${msg.reason}`
         }
         mediaSession.value = null
+        clearMediaGrantRefreshTimer()
+        remoteTrackCapabilities.value = []
         mediaUnavailable.value = null
         lastError.value = joinFailure.value.message
         return
@@ -261,6 +298,8 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
             message: msg.reason
           }
           mediaSession.value = null
+          clearMediaGrantRefreshTimer()
+          remoteTrackCapabilities.value = []
           mediaUnavailable.value = null
           lastError.value = msg.reason
         }
@@ -417,6 +456,8 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
     desiredZoneId = zoneId
     joinFailure.value = null
     mediaSession.value = null
+    clearMediaGrantRefreshTimer()
+    remoteTrackCapabilities.value = []
     mediaUnavailable.value = null
     send({ type: 'zone:enter', zoneId })
   }
@@ -425,11 +466,19 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
     currentZoneId.value = null
     joinFailure.value = null
     mediaSession.value = null
+    clearMediaGrantRefreshTimer()
+    remoteTrackCapabilities.value = []
     mediaUnavailable.value = null
     send({ type: 'zone:leave' })
   }
   function sendPresenceEvent(kind: OfficePresenceEventKind, target: OfficePresenceEventTarget) {
     send({ type: 'presence:event', kind, target })
+  }
+  function announcePublishedTracks(
+    sessionId: string,
+    tracks: Array<{ trackName: string, kind: 'audio' | 'video' }>
+  ) {
+    return send({ type: 'media:tracks-published', sessionId, tracks })
   }
   function evictParticipant(handle: ActorHandle) {
     send({ type: 'participant:evict', handle })
@@ -461,6 +510,8 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
       desiredZoneId = zoneId
       joinFailure.value = null
       mediaSession.value = null
+      clearMediaGrantRefreshTimer()
+      remoteTrackCapabilities.value = []
       mediaUnavailable.value = null
       send({ type: 'zone:enter', zoneId })
     }
@@ -491,6 +542,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
     currentZoneId,
     joinFailure,
     mediaSession,
+    remoteTrackCapabilities,
     mediaUnavailable,
     zoneNoteUpdates,
     deletedZoneIds,
@@ -500,6 +552,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
     enterZone,
     leaveZone,
     sendPresenceEvent,
+    announcePublishedTracks,
     evictParticipant,
     sendZoneNotesUpdated
   }

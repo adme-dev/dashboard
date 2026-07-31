@@ -12,6 +12,10 @@ type LobbyRequestStatusResponse = {
 }
 
 type AccessEndReason = 'left' | 'ended'
+type RequestError = {
+  data?: { statusMessage?: string }
+  message?: string
+}
 
 definePageMeta({
   layout: false,
@@ -34,7 +38,23 @@ const lobbyPath = computed(() => `/lobby/${officeId.value}`)
 
 const handshake = ref<OfficeLobbyGuestRoomHandshake | null>(null)
 const pending = ref(false)
-const error = ref<any>(null)
+const error = ref<RequestError | null>(null)
+
+function toRequestError(value: unknown): RequestError {
+  if (!value || typeof value !== 'object') {
+    return { message: 'The guest room request failed.' }
+  }
+  const candidate = value as { data?: unknown, message?: unknown }
+  const data = candidate.data && typeof candidate.data === 'object'
+    ? candidate.data as { statusMessage?: unknown }
+    : null
+  return {
+    message: typeof candidate.message === 'string' ? candidate.message : undefined,
+    data: data && typeof data.statusMessage === 'string'
+      ? { statusMessage: data.statusMessage }
+      : undefined
+  }
+}
 
 async function refreshHandshake() {
   pending.value = true
@@ -43,7 +63,7 @@ async function refreshHandshake() {
     handshake.value = await apiFetch<OfficeLobbyGuestRoomHandshake>(tokenEndpoint.value, { method: 'POST' })
   } catch (err) {
     handshake.value = null
-    error.value = err
+    error.value = toRequestError(err)
   } finally {
     pending.value = false
   }
@@ -75,6 +95,18 @@ const connection = useOfficeConnection({
   officeId: connectionOfficeId,
   tokenEndpoint,
   initialZoneId
+})
+const realtimeOfficeId = computed(() => officeId.value)
+const realtimeZoneId = computed(() => initialZoneId.value ?? '')
+const realtime = useOfficeRealtime({
+  officeId: realtimeOfficeId,
+  zoneId: realtimeZoneId,
+  mediaSession: connection.mediaSession,
+  remoteTracks: connection.remoteTrackCapabilities,
+  announcePublishedTracks: connection.announcePublishedTracks,
+  getStreams: () =>
+    [localStream.value, screenStream.value]
+      .filter((stream): stream is MediaStream => Boolean(stream))
 })
 
 watch(status, value => connection.setStatus(value))
@@ -139,6 +171,12 @@ const connectionLabel = computed(() => {
   if (accessEndReason.value) return 'Ended'
   if (connection.isConnected.value) return 'Live'
   return 'Connecting'
+})
+const mediaConnectionLabel = computed(() => {
+  if (!connection.mediaSession.value) return 'Media preview'
+  if (realtime.state.value === 'connected') return 'Media live'
+  if (realtime.state.value === 'failed') return 'Media issue'
+  return 'Joining media'
 })
 const accessExpiryLabel = computed(() => {
   const expiresAt = handshake.value?.guest.accessExpiresAt
@@ -293,6 +331,7 @@ async function toggleMic() {
     releaseLocalMediaIfIdle()
   }
   status.value = micEnabled.value ? 'available' : 'busy'
+  await realtime.publish()
 }
 
 async function toggleCamera() {
@@ -309,6 +348,7 @@ async function toggleCamera() {
     cameraEnabled.value ? 'Your local camera preview is active.' : 'Camera capture has been stopped.',
     'i-lucide-video'
   )
+  await realtime.publish()
 }
 
 async function toggleScreenShare() {
@@ -317,6 +357,7 @@ async function toggleScreenShare() {
     screenStream.value = null
     screenSharing.value = false
     attachScreenVideo()
+    await realtime.publish()
     controlToast('Screen share stopped', 'Screen capture is no longer active.', 'i-lucide-monitor-up')
     return
   }
@@ -334,8 +375,10 @@ async function toggleScreenShare() {
       screenSharing.value = false
       screenStream.value = null
       attachScreenVideo()
+      void realtime.publish()
     }, { once: true })
     controlToast('Screen share ready', 'Your screen capture is active locally.', 'i-lucide-monitor-up')
+    await realtime.publish()
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Screen share permission was denied.'
     toast.add({
@@ -363,6 +406,7 @@ async function leaveRoom() {
   stopStatusPolling()
   stopTracks(localStream.value)
   stopTracks(screenStream.value)
+  realtime.disconnect()
   connection.disconnect()
   try {
     await apiFetch(`/api/public/office-lobby/${officeId.value}/request/${requestId.value}/cancel`, {
@@ -386,6 +430,7 @@ async function pollRequestStatus() {
       accessEndReason.value = 'ended'
       stopStatusPolling()
       connection.disconnect()
+      realtime.disconnect()
       toast.add({
         title: 'Room access ended',
         description: 'Ask the host to approve a new lobby request if you need to rejoin.',
@@ -430,6 +475,7 @@ onBeforeUnmount(() => {
   stopStatusPolling()
   stopTracks(localStream.value)
   stopTracks(screenStream.value)
+  realtime.disconnect()
   if (clockTimer) {
     clearInterval(clockTimer)
     clockTimer = null
@@ -445,6 +491,13 @@ onMounted(() => {
 watch(localVideo, attachLocalVideo)
 watch(screenVideo, attachScreenVideo)
 watch(screenSharing, attachScreenVideo)
+
+watch(
+  () => connection.mediaSession.value,
+  (session) => {
+    if (session) void realtime.publish()
+  }
+)
 
 watch(
   [micEnabled, cameraEnabled, handshake],
@@ -530,6 +583,18 @@ watch(
               style="background-image: radial-gradient(rgba(255,255,255,0.6) 1px, transparent 1px); background-size: 28px 28px"
             />
             <div class="relative">
+              <div
+                v-if="realtime.remoteStreams.value.length"
+                class="mb-5 grid gap-3"
+                :class="realtime.remoteStreams.value.length > 1 ? 'sm:grid-cols-2' : 'grid-cols-1'"
+              >
+                <OfficeRemoteMediaTile
+                  v-for="(stream, index) in realtime.remoteStreams.value"
+                  :key="stream.id"
+                  :stream="stream"
+                  :label="`Room participant ${index + 1}`"
+                />
+              </div>
               <div class="mb-5 grid max-w-3xl gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
                 <div class="relative aspect-video overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.04]">
                   <video
@@ -620,7 +685,9 @@ watch(
                 {{ handshake?.zone?.name || 'Office room' }}
               </h1>
               <p class="mt-4 max-w-xl text-sm leading-6 text-white/55">
-                You are visible to the team in this room. Keep your meeting state ready while the host brings the conversation into the live media layer.
+                {{ connection.mediaSession.value
+                  ? 'Your microphone, camera, screen, and the room’s live media are connected through the approved guest session.'
+                  : 'You are visible to the team in this room. Your device preview stays local until guest media is enabled for this room.' }}
               </p>
               <div
                 v-if="meetingLabel"
@@ -757,6 +824,21 @@ watch(
             </div>
 
             <div class="rounded-lg border border-white/[0.07] bg-white/[0.035] p-3">
+              <div class="flex items-center justify-between text-xs text-white/45">
+                <span>Call</span>
+                <span :class="realtime.state.value === 'failed' ? 'text-red-200' : 'text-emerald-200'">
+                  {{ mediaConnectionLabel }}
+                </span>
+              </div>
+              <p
+                v-if="realtime.error.value"
+                class="mt-2 text-xs leading-5 text-red-200/80"
+              >
+                {{ realtime.error.value }}
+              </p>
+            </div>
+
+            <div class="rounded-lg border border-white/[0.07] bg-white/[0.035] p-3">
               <div class="flex items-start gap-2">
                 <UIcon name="i-lucide-badge-check" class="mt-0.5 size-4 text-emerald-300/70" />
                 <div class="min-w-0">
@@ -781,7 +863,9 @@ watch(
                     Screen share active
                   </div>
                   <p class="mt-1 text-xs leading-5 text-sky-50/45">
-                    Your browser is capturing the selected screen locally for this room session.
+                    {{ connection.mediaSession.value
+                      ? 'The selected screen is being shared into this approved room session.'
+                      : 'Your browser is capturing the selected screen locally until guest media is enabled.' }}
                   </p>
                 </div>
               </div>

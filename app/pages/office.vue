@@ -119,7 +119,7 @@ const participantCount = computed(() => connection.participants.value.size)
 const presentUserIds = computed(() =>
   [...connection.participants.value.keys()]
     .filter(h => h.startsWith('user:'))
-    .map(h => h.slice('user:'.length)),
+    .map(h => h.slice('user:'.length))
 )
 const officeName = computed(() => detail.value?.office.name ?? '')
 const showSwitcher = computed(() => (listData.value?.offices.length ?? 0) > 1)
@@ -426,6 +426,8 @@ function openOfficeRecordings(meetingId?: string, recordingId?: string) {
         :current-zone-id="connection.currentZoneId.value"
         :join-failure="connection.joinFailure.value"
         :media-session="connection.mediaSession.value"
+        :remote-tracks="connection.remoteTrackCapabilities.value"
+        :announce-published-tracks="connection.announcePublishedTracks"
         :media-unavailable="connection.mediaUnavailable.value"
         @enter-zone="enterZone"
         @leave-zone="leaveZone"
