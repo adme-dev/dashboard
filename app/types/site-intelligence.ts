@@ -176,6 +176,7 @@ export interface SiteIntelligenceInsight {
   evidenceChangeIds: string[]
   evidenceUrls: string[]
   status: SiteIntelligenceInsightStatus
+  observedAt: string
   generatedAt: string
   assignedTo: string | null
   taskId: string | null
@@ -205,6 +206,8 @@ export interface SiteIntelligenceChangeResponse {
 export interface SiteIntelligenceGap {
   key: string
   type: 'offer' | 'content'
+  status: 'gap' | 'insufficient_data'
+  comparisonLevel: 'exact_model' | 'category' | 'none'
   clientId: string
   ownedPageId: string | null
   competitorPageIds: string[]

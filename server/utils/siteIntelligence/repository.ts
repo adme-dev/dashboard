@@ -1,10 +1,27 @@
-import type { SiteIntelligenceDomain } from '~~/app/types/site-intelligence'
+import type { AudienceRange } from '~~/app/types/audience-analytics'
+import type {
+  AutomotivePageFacts,
+  SiteIntelligenceChange,
+  SiteIntelligenceChangeResponse,
+  SiteIntelligenceDomain,
+  SiteIntelligenceGapResponse,
+  SiteIntelligenceOverviewResponse,
+  SiteIntelligenceRun
+} from '~~/app/types/site-intelligence'
 import type { SiteIntelligenceDomainInput } from '~~/server/utils/siteIntelligence/contracts'
 import type { SiteIntelligenceAuditActor } from '~~/server/utils/siteIntelligence/audit'
 import type { PreparedSiteIntelligenceRecord } from '~~/server/utils/siteIntelligence/storage'
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { writeSiteIntelligenceAudit } from '~~/server/utils/siteIntelligence/audit'
 import { diffAutomotiveFacts } from '~~/server/utils/siteIntelligence/diff'
+import {
+  compareAutomotiveOffers,
+  deriveSiteIntelligenceInsights,
+  joinOwnedAudienceContext,
+  type SiteIntelligenceCandidateChange,
+  type SiteIntelligenceCandidatePage
+} from '~~/server/utils/siteIntelligence/intelligence'
+import { getAudienceBreakdowns } from '~~/server/utils/tracking/audience-repository'
 
 interface SiteIntelligenceDomainRow {
   id: string
@@ -438,7 +455,7 @@ interface SiteIntelligencePageState {
   facts: PreparedSiteIntelligenceRecord['facts']
 }
 
-export interface SiteIntelligenceEnrichmentJobPayload {
+export interface SiteIntelligenceEnrichmentJobPayload extends Record<string, unknown> {
   clientId: string
   domainId: string
   pageId: string
@@ -547,4 +564,403 @@ export async function completeSiteIntelligenceRun(runId: string, input: {
     input.erroredPages ?? null, input.browserSeconds ?? null, input.errorCategory ?? null,
     input.errorSummary?.slice(0, 1000) ?? null
   ])
+}
+
+interface SiteIntelligenceReadPageRow {
+  id: string
+  client_id: string
+  domain_id: string
+  lane: 'owned' | 'competitor'
+  canonical_url: string
+  source_url: string
+  facts: Partial<AutomotivePageFacts>
+  last_seen_at: string | Date
+}
+
+interface SiteIntelligenceReadChangeRow {
+  id: string
+  client_id: string
+  domain_id: string
+  page_id: string
+  run_id: string
+  lane: 'owned' | 'competitor'
+  change_type: string
+  fact_diff: SiteIntelligenceChange['factDiff']
+  source_url: string
+  observed_at: string | Date
+  confidence: number | string
+  review_status: SiteIntelligenceChange['reviewStatus']
+}
+
+interface SiteIntelligenceReadRunRow {
+  id: string
+  client_id: string
+  domain_id: string
+  trigger: SiteIntelligenceRun['trigger']
+  status: SiteIntelligenceRun['status']
+  workflow_instance_id: string | null
+  cloudflare_job_id: string | null
+  settings: SiteIntelligenceRun['settings']
+  total_pages: number | string
+  completed_pages: number | string
+  changed_pages: number | string
+  disallowed_pages: number | string
+  errored_pages: number | string
+  browser_seconds: number | string | null
+  error_category: string | null
+  error_summary: string | null
+  requested_by: string | null
+  started_at: string | Date | null
+  completed_at: string | Date | null
+  created_at: string | Date
+  updated_at: string | Date
+}
+
+export interface SiteIntelligenceReadFilters {
+  clientIds: string[] | null
+  range: AudienceRange
+  lane?: 'owned' | 'competitor'
+}
+
+export interface SiteIntelligenceChangeReadFilters extends SiteIntelligenceReadFilters {
+  changeType?: 'page_added' | 'facts_changed'
+  cursor?: { observedAt: string, id: string }
+  limit: number
+}
+
+function readScopeSql(
+  clientIds: string[] | null,
+  params: unknown[],
+  alias: string
+): string[] {
+  if (clientIds === null) return []
+  if (clientIds.length === 0) return ['FALSE']
+  params.push(clientIds)
+  return [`${alias}.client_id = ANY($${params.length}::uuid[])`]
+}
+
+function readDateSql(range: AudienceRange, params: unknown[], alias: string, column: string): string[] {
+  params.push(range.fromDate, range.toDate)
+  return [
+    `${alias}.${column} >= $${params.length - 1}::date`,
+    `${alias}.${column} < ($${params.length}::date + INTERVAL '1 day')`
+  ]
+}
+
+function mapReadPage(row: SiteIntelligenceReadPageRow): SiteIntelligenceCandidatePage {
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    domainId: row.domain_id,
+    lane: row.lane,
+    canonicalUrl: row.canonical_url,
+    sourceUrl: row.source_url,
+    facts: row.facts,
+    observedAt: iso(row.last_seen_at)!
+  }
+}
+
+function mapReadChange(row: SiteIntelligenceReadChangeRow): SiteIntelligenceChange {
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    domainId: row.domain_id,
+    pageId: row.page_id,
+    runId: row.run_id,
+    lane: row.lane,
+    changeType: row.change_type,
+    factDiff: row.fact_diff,
+    sourceUrl: row.source_url,
+    observedAt: iso(row.observed_at)!,
+    confidence: Number(row.confidence),
+    reviewStatus: row.review_status
+  }
+}
+
+function toCandidateChange(change: SiteIntelligenceChange): SiteIntelligenceCandidateChange {
+  return {
+    id: change.id,
+    pageId: change.pageId,
+    lane: change.lane,
+    sourceUrl: change.sourceUrl,
+    observedAt: change.observedAt,
+    changedFields: change.factDiff.changedFields ?? [],
+    before: change.factDiff.before,
+    after: change.factDiff.after
+  }
+}
+
+function mapReadRun(row: SiteIntelligenceReadRunRow): SiteIntelligenceRun {
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    domainId: row.domain_id,
+    trigger: row.trigger,
+    status: row.status,
+    workflowInstanceId: row.workflow_instance_id,
+    cloudflareJobId: row.cloudflare_job_id,
+    settings: row.settings,
+    totalPages: Number(row.total_pages),
+    completedPages: Number(row.completed_pages),
+    changedPages: Number(row.changed_pages),
+    disallowedPages: Number(row.disallowed_pages),
+    erroredPages: Number(row.errored_pages),
+    browserSeconds: row.browser_seconds === null ? null : Number(row.browser_seconds),
+    errorCategory: row.error_category,
+    errorSummary: row.error_summary,
+    requestedBy: row.requested_by,
+    startedAt: iso(row.started_at),
+    completedAt: iso(row.completed_at),
+    createdAt: iso(row.created_at)!,
+    updatedAt: iso(row.updated_at)!
+  }
+}
+
+async function loadReadPages(filters: SiteIntelligenceReadFilters): Promise<SiteIntelligenceCandidatePage[]> {
+  const params: unknown[] = []
+  const conditions = readScopeSql(filters.clientIds, params, 'p')
+  conditions.push(`p.status = 'completed'`)
+  if (filters.lane) {
+    params.push(filters.lane)
+    conditions.push(`d.lane = $${params.length}`)
+  }
+  const rows = await queryRows<SiteIntelligenceReadPageRow>(`
+    SELECT p.id, p.client_id, p.domain_id, d.lane, p.canonical_url,
+           p.source_url, p.facts, p.last_seen_at
+    FROM site_intelligence_pages p
+    JOIN site_intelligence_domains d
+      ON d.id = p.domain_id AND d.client_id = p.client_id
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY p.client_id, p.last_seen_at DESC, p.id DESC
+  `, params)
+  return rows.map(mapReadPage)
+}
+
+async function loadLatestReadRuns(filters: SiteIntelligenceReadFilters): Promise<SiteIntelligenceRun[]> {
+  const params: unknown[] = []
+  const conditions = readScopeSql(filters.clientIds, params, 'r')
+  if (filters.lane) {
+    params.push(filters.lane)
+    conditions.push(`d.lane = $${params.length}`)
+  }
+  const rows = await queryRows<SiteIntelligenceReadRunRow>(`
+    SELECT DISTINCT ON (r.domain_id)
+      r.id, r.client_id, r.domain_id, r.trigger, r.status,
+      r.workflow_instance_id, r.cloudflare_job_id, r.settings,
+      r.total_pages, r.completed_pages, r.changed_pages,
+      r.disallowed_pages, r.errored_pages, r.browser_seconds,
+      r.error_category, r.error_summary, r.requested_by,
+      r.started_at, r.completed_at, r.created_at, r.updated_at
+    FROM site_intelligence_crawl_runs r
+    JOIN site_intelligence_domains d
+      ON d.id = r.domain_id AND d.client_id = r.client_id
+    ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+    ORDER BY r.domain_id, r.created_at DESC, r.id DESC
+  `, params)
+  return rows.map(mapReadRun)
+}
+
+async function loadRecentReadChanges(
+  filters: SiteIntelligenceReadFilters,
+  limit = 250
+): Promise<SiteIntelligenceChange[]> {
+  const params: unknown[] = []
+  const conditions = [
+    ...readScopeSql(filters.clientIds, params, 'ch'),
+    ...readDateSql(filters.range, params, 'ch', 'observed_at')
+  ]
+  if (filters.lane) {
+    params.push(filters.lane)
+    conditions.push(`ch.lane = $${params.length}`)
+  }
+  params.push(limit)
+  const rows = await queryRows<SiteIntelligenceReadChangeRow>(`
+    SELECT ch.id, ch.client_id, ch.domain_id, ch.page_id, ch.run_id,
+           ch.lane, ch.change_type, ch.fact_diff, ch.source_url,
+           ch.observed_at, ch.confidence, ch.review_status
+    FROM site_intelligence_changes ch
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY ch.observed_at DESC, ch.id DESC
+    LIMIT $${params.length}
+  `, params)
+  return rows.map(mapReadChange)
+}
+
+export async function getSiteIntelligenceOverviewRead(
+  filters: SiteIntelligenceReadFilters
+): Promise<SiteIntelligenceOverviewResponse> {
+  const [domains, runs, pages, changes] = await Promise.all([
+    listSiteIntelligenceDomains(filters.clientIds, { lane: filters.lane }),
+    loadLatestReadRuns(filters),
+    loadReadPages(filters),
+    loadRecentReadChanges(filters)
+  ])
+  const clientIds = Array.from(new Set(pages.map(page => page.clientId)))
+  const audienceByClient = new Map(await Promise.all(clientIds.map(async (clientId) => {
+    const breakdowns = await getAudienceBreakdowns({
+      range: filters.range,
+      clientIds: [clientId],
+      dimension: 'page'
+    })
+    return [clientId, joinOwnedAudienceContext(
+      pages.filter(page => page.clientId === clientId && page.lane === 'owned').map(page => ({
+        pageId: page.id,
+        canonicalUrl: page.canonicalUrl
+      })),
+      breakdowns.rows
+    )] as const
+  })))
+  const now = new Date()
+  const insights = clientIds.flatMap(clientId => deriveSiteIntelligenceInsights({
+    clientId,
+    pages: pages.filter(page => page.clientId === clientId),
+    changes: changes.filter(change => change.clientId === clientId).map(toCandidateChange),
+    audienceContext: audienceByClient.get(clientId) ?? [],
+    now
+  }))
+  const latestRun = new Map(runs.map(run => [run.domainId, run]))
+
+  return {
+    generatedAt: now.toISOString(),
+    domains,
+    runs,
+    insights,
+    coverage: {
+      total: domains.length,
+      active: domains.filter(domain => domain.status === 'active').length,
+      paused: domains.filter(domain => domain.status === 'paused').length,
+      neverRun: domains.filter(domain => !latestRun.has(domain.id)).length,
+      blocked: domains.filter(domain => latestRun.get(domain.id)?.status === 'blocked').length,
+      failed: domains.filter(domain => latestRun.get(domain.id)?.status === 'failed').length
+    }
+  }
+}
+
+export async function listSiteIntelligenceChangesRead(
+  filters: SiteIntelligenceChangeReadFilters
+): Promise<SiteIntelligenceChangeResponse> {
+  const params: unknown[] = []
+  const conditions = [
+    ...readScopeSql(filters.clientIds, params, 'ch'),
+    ...readDateSql(filters.range, params, 'ch', 'observed_at')
+  ]
+  if (filters.lane) {
+    params.push(filters.lane)
+    conditions.push(`ch.lane = $${params.length}`)
+  }
+  if (filters.changeType) {
+    params.push(filters.changeType)
+    conditions.push(`ch.change_type = $${params.length}`)
+  }
+  if (filters.cursor) {
+    params.push(filters.cursor.observedAt, filters.cursor.id)
+    conditions.push(`(ch.observed_at, ch.id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`)
+  }
+  params.push(filters.limit + 1)
+  const rows = await queryRows<SiteIntelligenceReadChangeRow>(`
+    SELECT ch.id, ch.client_id, ch.domain_id, ch.page_id, ch.run_id,
+           ch.lane, ch.change_type, ch.fact_diff, ch.source_url,
+           ch.observed_at, ch.confidence, ch.review_status
+    FROM site_intelligence_changes ch
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY ch.observed_at DESC, ch.id DESC
+    LIMIT $${params.length}
+  `, params)
+  const hasMore = rows.length > filters.limit
+  const visible = rows.slice(0, filters.limit).map(mapReadChange)
+  const last = visible.at(-1)
+  return {
+    generatedAt: new Date().toISOString(),
+    rows: visible,
+    pagination: {
+      cursor: hasMore && last ? `${last.observedAt}|${last.id}` : null,
+      hasMore
+    }
+  }
+}
+
+export async function getSiteIntelligenceGapsRead(
+  filters: SiteIntelligenceReadFilters & { limit: number }
+): Promise<SiteIntelligenceGapResponse> {
+  const pages = await loadReadPages({ ...filters, lane: undefined })
+  const now = new Date()
+  const rows = Array.from(new Set(pages.map(page => page.clientId))).flatMap((clientId) => {
+    const clientPages = pages.filter(page => page.clientId === clientId)
+    const owned = clientPages.filter(page => page.lane === 'owned')
+    const competitors = clientPages.filter(page => page.lane === 'competitor')
+    const offerRows = compareAutomotiveOffers(owned, competitors, now)
+      .filter(result => result.status !== 'matched')
+      .map(result => ({
+        key: result.key,
+        type: 'offer' as const,
+        status: result.status === 'gap' ? 'gap' as const : 'insufficient_data' as const,
+        comparisonLevel: result.comparisonLevel,
+        clientId,
+        ownedPageId: result.ownedPageId,
+        competitorPageIds: result.competitorPageIds,
+        title: result.status === 'gap' ? 'Current competitor offer gap' : 'Offer comparison needs more evidence',
+        explanation: result.explanation,
+        confidence: result.confidence,
+        evidenceUrls: result.evidenceUrls,
+        observedAt: result.observedAt
+      }))
+    const contentRows = deriveSiteIntelligenceInsights({ clientId, pages: clientPages, now })
+      .filter(insight => insight.type === 'content_gap')
+      .map(insight => ({
+        key: insight.id,
+        type: 'content' as const,
+        status: 'gap' as const,
+        comparisonLevel: 'none' as const,
+        clientId,
+        ownedPageId: null,
+        competitorPageIds: insight.evidencePageIds,
+        title: insight.title,
+        explanation: insight.summary,
+        confidence: insight.confidence,
+        evidenceUrls: insight.evidenceUrls,
+        observedAt: insight.observedAt
+      }))
+    return [...offerRows, ...contentRows]
+  })
+    .sort((a, b) => b.confidence - a.confidence || b.observedAt.localeCompare(a.observedAt) || a.key.localeCompare(b.key))
+    .slice(0, filters.limit)
+
+  return { generatedAt: now.toISOString(), rows }
+}
+
+export async function getSiteIntelligenceRunRead(input: {
+  clientIds: string[] | null
+  runId: string
+}): Promise<{ generatedAt: string, run: SiteIntelligenceRun, domain: SiteIntelligenceDomain, recentChanges: SiteIntelligenceChange[] } | null> {
+  const params: unknown[] = [input.runId]
+  const conditions = ['r.id = $1', ...readScopeSql(input.clientIds, params, 'r')]
+  const row = await queryOne<SiteIntelligenceReadRunRow>(`
+    SELECT r.id, r.client_id, r.domain_id, r.trigger, r.status,
+           r.workflow_instance_id, r.cloudflare_job_id, r.settings,
+           r.total_pages, r.completed_pages, r.changed_pages,
+           r.disallowed_pages, r.errored_pages, r.browser_seconds,
+           r.error_category, r.error_summary, r.requested_by,
+           r.started_at, r.completed_at, r.created_at, r.updated_at
+    FROM site_intelligence_crawl_runs r
+    WHERE ${conditions.join(' AND ')}
+    LIMIT 1
+  `, params)
+  if (!row) return null
+  const domain = await getSiteIntelligenceDomainForActor(input.clientIds, row.domain_id)
+  if (!domain) return null
+  const changes = await queryRows<SiteIntelligenceReadChangeRow>(`
+    SELECT ch.id, ch.client_id, ch.domain_id, ch.page_id, ch.run_id,
+           ch.lane, ch.change_type, ch.fact_diff, ch.source_url,
+           ch.observed_at, ch.confidence, ch.review_status
+    FROM site_intelligence_changes ch
+    WHERE ch.run_id = $1 AND ch.client_id = $2
+    ORDER BY ch.observed_at DESC, ch.id DESC
+    LIMIT 100
+  `, [row.id, row.client_id])
+  return {
+    generatedAt: new Date().toISOString(),
+    run: mapReadRun(row),
+    domain,
+    recentChanges: changes.map(mapReadChange)
+  }
 }

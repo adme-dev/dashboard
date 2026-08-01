@@ -605,7 +605,7 @@ git commit -m "feat: enrich site intelligence safely"
 - Consumes: current page facts, material changes, existing audience repository aggregates, and authorised client scope.
 - Produces: overview, change feed, run diagnostics, and conservative offer/content/performance gap responses.
 
-- [ ] **Step 1: Write failing deterministic insight tests**
+- [x] **Step 1: Write failing deterministic insight tests**
 
 Cover all six design rules. Exact-model comparisons outrank category comparisons;
 expired offers do not count as current; missing facts produce `insufficient_data`;
@@ -613,13 +613,13 @@ competitor facts never produce competitor performance fields. Each emitted insig
 must contain at least one supporting page/change ID, evidence URL, observed time,
 rule version, and confidence.
 
-- [ ] **Step 2: Write failing access and response-contract tests**
+- [x] **Step 2: Write failing access and response-contract tests**
 
 Assert management/scoped visibility, inaccessible-client rejection, stable
 pagination, bounded ranges, lane filters, change-type filters, no R2 keys/raw text,
 and no competitor keys matching `/visitor|audience|conversion|reach|spend/i`.
 
-- [ ] **Step 3: Run tests and observe missing services/routes**
+- [x] **Step 3: Run tests and observe missing services/routes**
 
 ```bash
 pnpm vitest run test/server/utils/siteIntelligence/intelligence.test.ts test/server/api/siteIntelligenceReadApi.test.ts
@@ -627,7 +627,7 @@ pnpm vitest run test/server/utils/siteIntelligence/intelligence.test.ts test/ser
 
 Expected: FAIL.
 
-- [ ] **Step 4: Implement pure candidate rules**
+- [x] **Step 4: Implement pure candidate rules**
 
 Expose:
 
@@ -641,17 +641,17 @@ Version rules as `automotive-intelligence-v1`. Use exact canonical URLs and mode
 facts to join owned pages to the existing page breakdown; never join anonymous
 visitor rows.
 
-- [ ] **Step 5: Implement scoped repository reads and thin APIs**
+- [x] **Step 5: Implement scoped repository reads and thin APIs**
 
 Resolve access before SQL, use allowlisted sort/filter mappings, cap change pages
 at 100 rows and gaps at 50, and generate agency totals only from accessible client
 IDs. Overview endpoint remains useful if AI enrichment is disabled.
 
-- [ ] **Step 6: Run focused tests to green**
+- [x] **Step 6: Run focused tests to green**
 
 Run the Step 3 command. Expected: PASS.
 
-- [ ] **Step 7: Commit the intelligence API slice**
+- [x] **Step 7: Commit the intelligence API slice**
 
 ```bash
 git add server/utils/siteIntelligence/intelligence.ts server/utils/siteIntelligence/repository.ts server/api/agency/site-intelligence/overview.get.ts server/api/agency/site-intelligence/changes.get.ts server/api/agency/site-intelligence/gaps.get.ts server/api/agency/site-intelligence/runs test/server/utils/siteIntelligence/intelligence.test.ts test/server/api/siteIntelligenceReadApi.test.ts

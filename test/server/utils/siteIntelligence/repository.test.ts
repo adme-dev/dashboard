@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mockQueryRows = vi.fn()
 const mockQueryOne = vi.fn()
 const mockTransaction = vi.fn()
+const mockAudienceBreakdowns = vi.fn()
 
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
@@ -10,14 +11,20 @@ vi.mock('~~/server/utils/db', () => ({
   transaction: (...args: unknown[]) => mockTransaction(...args)
 }))
 
+vi.mock('~~/server/utils/tracking/audience-repository', () => ({
+  getAudienceBreakdowns: (...args: unknown[]) => mockAudienceBreakdowns(...args)
+}))
+
 const {
   createSiteIntelligenceDomain,
+  getSiteIntelligenceOverviewRead,
   getSiteIntelligenceDomainForActor,
   listSiteIntelligenceDomains,
   updateSiteIntelligenceDomain
 } = await import('~~/server/utils/siteIntelligence/repository')
 
 const CLIENT_A = '11111111-1111-4111-8111-111111111111'
+const CLIENT_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const DOMAIN_A = '22222222-2222-4222-8222-222222222222'
 const USER_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 
@@ -74,6 +81,7 @@ beforeEach(() => {
   mockQueryRows.mockReset()
   mockQueryOne.mockReset()
   mockTransaction.mockReset()
+  mockAudienceBreakdowns.mockReset().mockResolvedValue({ rows: [] })
 })
 
 describe('site intelligence domain repository', () => {
@@ -172,5 +180,49 @@ describe('site intelligence domain repository', () => {
       expect.stringContaining('client_id = ANY($2::uuid[])'),
       [DOMAIN_A, [CLIENT_A]]
     )
+  })
+
+  it('loads owned audience aggregates separately for each accessible client', async () => {
+    mockQueryRows
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'page-a',
+          client_id: CLIENT_A,
+          domain_id: DOMAIN_A,
+          lane: 'owned',
+          canonical_url: 'https://shared.example/h6',
+          source_url: 'https://shared.example/h6',
+          facts: { pageType: 'model', model: 'Haval H6' },
+          last_seen_at: '2026-08-01T00:00:00.000Z'
+        },
+        {
+          id: 'page-b',
+          client_id: CLIENT_B,
+          domain_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          lane: 'owned',
+          canonical_url: 'https://shared.example/h6',
+          source_url: 'https://shared.example/h6',
+          facts: { pageType: 'model', model: 'Haval H6' },
+          last_seen_at: '2026-08-01T00:00:00.000Z'
+        }
+      ])
+      .mockResolvedValueOnce([])
+
+    await getSiteIntelligenceOverviewRead({
+      clientIds: [CLIENT_A, CLIENT_B],
+      range: {
+        fromDate: '2026-07-03',
+        toDate: '2026-08-01',
+        previousFromDate: '2026-06-03',
+        previousToDate: '2026-07-02',
+        days: 30
+      }
+    })
+
+    expect(mockAudienceBreakdowns).toHaveBeenCalledTimes(2)
+    expect(mockAudienceBreakdowns).toHaveBeenNthCalledWith(1, expect.objectContaining({ clientIds: [CLIENT_A] }))
+    expect(mockAudienceBreakdowns).toHaveBeenNthCalledWith(2, expect.objectContaining({ clientIds: [CLIENT_B] }))
   })
 })
