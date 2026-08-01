@@ -15,6 +15,10 @@ watch(() => props.job?.jobId, () => {
   expanded.value = false
 })
 
+function toggleExpanded() {
+  expanded.value = !expanded.value
+}
+
 const completedLabel = computed(() => {
   if (!warning.value?.finishedAt) return null
 
@@ -51,7 +55,7 @@ const completedLabel = computed(() => {
             class="px-0"
             :label="expanded ? 'Hide affected accounts' : `View ${warning.failedAccounts} affected account${warning.failedAccounts === 1 ? '' : 's'}`"
             :aria-expanded="expanded"
-            @click="expanded = !expanded"
+            @click="toggleExpanded"
           />
         </div>
       </template>
