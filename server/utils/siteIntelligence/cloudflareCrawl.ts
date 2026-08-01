@@ -280,7 +280,8 @@ async function requestCloudflare<T>(
   const url = `${CLOUDFLARE_API_BASE}/${encodeURIComponent(env.accountId)}/browser-rendering/crawl${suffix}`
   let response: Response
   try {
-    response = await env.fetchImpl(url, init)
+    const fetchImpl = env.fetchImpl
+    response = await fetchImpl(url, init)
   } catch (error) {
     throw crawlError(stage, 0, error instanceof Error ? error.message : 'Network request failed', env.apiToken)
   }

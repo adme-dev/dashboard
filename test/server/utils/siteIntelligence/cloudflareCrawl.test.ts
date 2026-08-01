@@ -70,6 +70,24 @@ describe('Cloudflare Browser Run crawl client', () => {
     })
   })
 
+  it('calls Worker-global fetch without rebinding its this reference', async () => {
+    const strictFetch = vi.fn(async function (
+      this: unknown,
+      _input: string | URL | Request,
+      _init?: RequestInit
+    ) {
+      if (this !== undefined) {
+        throw new TypeError('Illegal invocation: function called with incorrect this reference')
+      }
+      return apiResponse('job-123')
+    })
+
+    await expect(startCloudflareCrawl({
+      ...env,
+      fetchImpl: strictFetch as typeof fetch
+    }, config)).resolves.toEqual({ jobId: 'job-123' })
+  })
+
   it('constrains zero-depth requests to the start page without widening discovery', async () => {
     fetchMock.mockResolvedValue(apiResponse('job-123'))
 
