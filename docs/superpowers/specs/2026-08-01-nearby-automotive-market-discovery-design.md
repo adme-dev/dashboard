@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-01
 
-**Status:** Approved design, awaiting written-spec review
+**Status:** Approved
 
 **Parent capability:** [Automotive Site Intelligence](./2026-08-01-automotive-site-intelligence-design.md)
 
