@@ -30,7 +30,7 @@ const { requireTrackingAudienceScope } = await import(
 const CLIENT_A = '11111111-1111-4111-8111-111111111111'
 const CLIENT_B = '22222222-2222-4222-8222-222222222222'
 const CLIENT_C = '33333333-3333-4333-8333-333333333333'
-const event = {} as any
+const event = {} as Parameters<typeof requireTrackingAudienceScope>[0]
 
 beforeEach(() => {
   mockRequireAuth.mockReset()

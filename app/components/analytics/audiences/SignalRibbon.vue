@@ -79,8 +79,12 @@ function selectSite(site: AudienceSiteRow) {
 
     <div v-else class="rounded-lg border border-dashed border-default px-4 py-8 text-center">
       <UIcon name="i-lucide-radio-tower" class="mx-auto size-6 text-muted" />
-      <p class="mt-2 text-sm font-medium">No tracking endpoints in this scope</p>
-      <p class="mt-1 text-sm text-muted">Choose another client or provision a site endpoint.</p>
+      <p class="mt-2 text-sm font-medium">
+        No tracking endpoints in this scope
+      </p>
+      <p class="mt-1 text-sm text-muted">
+        Choose another client or provision a site endpoint.
+      </p>
     </div>
 
     <div

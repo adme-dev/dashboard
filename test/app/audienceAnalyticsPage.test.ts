@@ -8,8 +8,8 @@ describe('website audience intelligence page contract', () => {
   it('composes every deterministic evidence panel with agency media access', () => {
     const source = readFileSync(pagePath, 'utf8')
 
-    expect(source).toContain("layout: 'agency'")
-    expect(source).toContain("middleware: ['role-media']")
+    expect(source).toContain('layout: \'agency\'')
+    expect(source).toContain('middleware: [\'role-media\']')
     expect(source).toContain('<AnalyticsSectionNav active="audiences" />')
     expect(source).toContain('<AnalyticsAudiencesFilterBar')
     expect(source).toContain('<AnalyticsAudiencesSignalRibbon')

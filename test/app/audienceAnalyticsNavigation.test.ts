@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createApp, h, nextTick } from 'vue'
+import { createApp, h, nextTick, type Component } from 'vue'
 import {
   audiencePresetRange,
   audienceQueryParams
@@ -44,7 +44,7 @@ const stubs = {
   }
 }
 
-function mountComponent(component: any, props: Record<string, unknown>) {
+function mountComponent(component: Component, props: Record<string, unknown>) {
   const host = document.createElement('div')
   const app = createApp({ render: () => h(component, props) })
   Object.entries(stubs).forEach(([name, stub]) => app.component(name, stub))
@@ -112,10 +112,10 @@ describe('AudienceFilterBar', () => {
     vi.setSystemTime(new Date('2026-08-01T12:00:00+10:00'))
     const updates: Array<[string, string | null]> = []
     const { app, host } = mountComponent(AudienceFilterBar, {
-      from: '2026-07-03',
-      to: '2026-08-01',
-      clientId: null,
-      availableClients: [{ id: '11111111-1111-4111-8111-111111111111', name: 'Alpha Motors' }],
+      'from': '2026-07-03',
+      'to': '2026-08-01',
+      'clientId': null,
+      'availableClients': [{ id: '11111111-1111-4111-8111-111111111111', name: 'Alpha Motors' }],
       'onUpdate:from': (value: string) => updates.push(['from', value]),
       'onUpdate:to': (value: string) => updates.push(['to', value]),
       'onUpdate:clientId': (value: string | null) => updates.push(['clientId', value])

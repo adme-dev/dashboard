@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   AudienceBreakdownsResponse,
+  AudienceBreakdownRow,
   AudienceOverviewResponse,
   AudienceRange
 } from '../../../../app/types/audience-analytics'
 
 const testGlobal = globalThis as typeof globalThis & {
   defineEventHandler: <T>(handler: T) => T
-  readBody: (event: any) => Promise<unknown>
+  readBody: (event: unknown) => Promise<unknown>
   createError: (options: { statusCode: number, statusMessage: string }) => Error & {
     statusCode: number
     statusMessage: string
@@ -15,7 +16,7 @@ const testGlobal = globalThis as typeof globalThis & {
 }
 
 testGlobal.defineEventHandler = handler => handler
-testGlobal.readBody = async event => event.body
+testGlobal.readBody = async event => (event as { body?: unknown }).body
 testGlobal.createError = options => Object.assign(new Error(options.statusMessage), options)
 
 const mockRequireScope = vi.fn()
@@ -122,12 +123,12 @@ function breakdown(dimension: AudienceBreakdownsResponse['dimension']): Audience
       confirmedLeadRate: 10,
       gclid: 'must-not-leak',
       session_id: 'must-not-leak'
-    } as any]
+    } as unknown as AudienceBreakdownRow]
   }
 }
 
 function event(body: Record<string, unknown>) {
-  return { body } as any
+  return { body } as Parameters<typeof askHandler>[0]
 }
 
 beforeEach(() => {

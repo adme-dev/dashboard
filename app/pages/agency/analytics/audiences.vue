@@ -101,7 +101,13 @@ function updateMetric(metric: AudienceMetric) {
       :description="errors.overview || 'The existing trend and breakdown panels may still be available.'"
     >
       <template #actions>
-        <UButton label="Retry overview" color="error" variant="soft" size="sm" @click="refreshAll" />
+        <UButton
+          label="Retry overview"
+          color="error"
+          variant="soft"
+          size="sm"
+          @click="refreshAll"
+        />
       </template>
     </UAlert>
 
@@ -126,7 +132,13 @@ function updateMetric(metric: AudienceMetric) {
       :description="errors.timeseries || 'Overview and client evidence remain available.'"
     >
       <template #actions>
-        <UButton label="Retry trend" color="error" variant="soft" size="sm" @click="refreshAll" />
+        <UButton
+          label="Retry trend"
+          color="error"
+          variant="soft"
+          size="sm"
+          @click="refreshAll"
+        />
       </template>
     </UAlert>
 
@@ -149,13 +161,21 @@ function updateMetric(metric: AudienceMetric) {
       :description="errors.breakdowns || 'Overview, trend, and client evidence remain available.'"
     >
       <template #actions>
-        <UButton label="Retry breakdowns" color="error" variant="soft" size="sm" @click="refreshAll" />
+        <UButton
+          label="Retry breakdowns"
+          color="error"
+          variant="soft"
+          size="sm"
+          @click="refreshAll"
+        />
       </template>
     </UAlert>
 
     <section aria-labelledby="audience-breakdowns-heading">
       <div class="mb-3">
-        <p class="text-xs font-medium uppercase tracking-[0.18em] text-muted">Ranked evidence</p>
+        <p class="text-xs font-medium uppercase tracking-[0.18em] text-muted">
+          Ranked evidence
+        </p>
         <h2 id="audience-breakdowns-heading" class="mt-1 text-base font-semibold text-highlighted">
           Acquisition and behaviour
         </h2>

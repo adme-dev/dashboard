@@ -26,12 +26,21 @@ const breakdownRow = (row: unknown): AudienceBreakdownRow => (
   <UCard :ui="{ body: '!p-0' }">
     <template #header>
       <div>
-        <h3 class="text-sm font-semibold text-highlighted">{{ title }}</h3>
-        <p class="mt-1 text-xs text-muted">{{ description }}</p>
+        <h3 class="text-sm font-semibold text-highlighted">
+          {{ title }}
+        </h3>
+        <p class="mt-1 text-xs text-muted">
+          {{ description }}
+        </p>
       </div>
     </template>
 
-    <UTable v-if="rows.length" :data="rows" :columns="columns" class="min-w-[44rem]">
+    <UTable
+      v-if="rows.length"
+      :data="rows"
+      :columns="columns"
+      class="min-w-[44rem]"
+    >
       <template #key-cell="{ row }">
         <span class="block max-w-56 truncate font-medium text-highlighted" :title="breakdownRow(row).key">
           {{ breakdownRow(row).key || 'Unclassified' }}
@@ -56,8 +65,12 @@ const breakdownRow = (row: unknown): AudienceBreakdownRow => (
 
     <div v-else class="px-5 py-10 text-center">
       <UIcon name="i-lucide-list-filter" class="mx-auto size-6 text-muted" />
-      <p class="mt-2 text-sm font-medium">No ranked segments in this window</p>
-      <p class="mt-1 text-xs text-muted">This panel will populate as classified traffic and lead outcomes arrive.</p>
+      <p class="mt-2 text-sm font-medium">
+        No ranked segments in this window
+      </p>
+      <p class="mt-1 text-xs text-muted">
+        This panel will populate as classified traffic and lead outcomes arrive.
+      </p>
     </div>
   </UCard>
 </template>

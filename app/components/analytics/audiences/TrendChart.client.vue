@@ -71,8 +71,12 @@ const tooltip = (point: ChartPoint) => [
     <template #header>
       <div class="@container flex flex-col gap-4 @lg:flex-row @lg:items-end @lg:justify-between">
         <div>
-          <p class="text-xs font-medium uppercase tracking-[0.18em] text-muted">Period comparison</p>
-          <h2 class="mt-1 text-base font-semibold text-highlighted">Audience trend</h2>
+          <p class="text-xs font-medium uppercase tracking-[0.18em] text-muted">
+            Period comparison
+          </p>
+          <h2 class="mt-1 text-base font-semibold text-highlighted">
+            Audience trend
+          </h2>
         </div>
         <UFormField label="Metric" class="w-full @lg:w-56">
           <USelectMenu
@@ -87,8 +91,18 @@ const tooltip = (point: ChartPoint) => [
 
     <div v-if="chartData.length && hasActivity" class="h-80 px-3 pt-3 sm:px-5">
       <VisXYContainer :data="chartData" :padding="{ top: 20, right: 12, bottom: 36, left: 48 }" class="h-full">
-        <VisArea :x="x" :y="currentY" color="var(--ui-primary)" :opacity="0.1" />
-        <VisLine :x="x" :y="currentY" color="var(--ui-primary)" :line-width="2.5" />
+        <VisArea
+          :x="x"
+          :y="currentY"
+          color="var(--ui-primary)"
+          :opacity="0.1"
+        />
+        <VisLine
+          :x="x"
+          :y="currentY"
+          color="var(--ui-primary)"
+          :line-width="2.5"
+        />
         <VisLine
           :x="x"
           :y="previousY"
@@ -105,8 +119,12 @@ const tooltip = (point: ChartPoint) => [
 
     <div v-else class="flex h-80 flex-col items-center justify-center px-6 text-center">
       <UIcon name="i-lucide-chart-no-axes-combined" class="size-7 text-muted" />
-      <p class="mt-3 text-sm font-medium">No trend activity in either window</p>
-      <p class="mt-1 max-w-md text-sm text-muted">Try a longer date range or inspect tracking coverage above.</p>
+      <p class="mt-3 text-sm font-medium">
+        No trend activity in either window
+      </p>
+      <p class="mt-1 max-w-md text-sm text-muted">
+        Try a longer date range or inspect tracking coverage above.
+      </p>
     </div>
 
     <template #footer>

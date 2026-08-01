@@ -151,7 +151,9 @@ function generateBriefing() {
             <UIcon name="i-lucide-sparkles" class="size-4" />
           </div>
           <div>
-            <h2 class="text-sm font-semibold text-highlighted">Audience analyst</h2>
+            <h2 class="text-sm font-semibold text-highlighted">
+              Audience analyst
+            </h2>
             <p class="mt-1 max-w-2xl text-xs leading-5 text-muted">
               Ask for a concise reading of the aggregate evidence. Recommendations remain read-only and cite the active reporting window.
             </p>
@@ -218,19 +220,30 @@ function generateBriefing() {
       :description="error"
     >
       <template #actions>
-        <UButton label="Retry" color="warning" variant="soft" size="sm" :loading="loading" @click="ask(lastQuestion)" />
+        <UButton
+          label="Retry"
+          color="warning"
+          variant="soft"
+          size="sm"
+          :loading="loading"
+          @click="ask(lastQuestion)"
+        />
       </template>
     </UAlert>
 
     <div v-else-if="answer" class="mt-5 rounded-xl border border-default bg-elevated/40 p-4 sm:p-5">
       <div class="flex flex-wrap items-center gap-2 text-xs text-muted">
-        <UBadge color="primary" variant="soft">{{ scopeLabel }}</UBadge>
+        <UBadge color="primary" variant="soft">
+          {{ scopeLabel }}
+        </UBadge>
         <span>{{ answer.grounding.window.fromDate }} to {{ answer.grounding.window.toDate }}</span>
         <span aria-hidden="true">·</span>
         <span>{{ answer.grounding.window.days }} days</span>
       </div>
 
-      <p class="mt-4 whitespace-pre-line text-sm leading-6 text-default">{{ answer.answer }}</p>
+      <p class="mt-4 whitespace-pre-line text-sm leading-6 text-default">
+        {{ answer.answer }}
+      </p>
 
       <UButton
         :label="showEvidence ? 'Hide supporting evidence' : 'Show supporting evidence'"
@@ -244,15 +257,21 @@ function generateBriefing() {
 
       <div v-if="showEvidence" class="mt-3 space-y-4 border-t border-default pt-4">
         <div>
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">KPI evidence</h3>
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
+            KPI evidence
+          </h3>
           <UTable :data="kpiRows" :columns="kpiColumns" class="mt-2" />
         </div>
         <div v-if="opportunityRows.length">
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">Opportunity evidence</h3>
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
+            Opportunity evidence
+          </h3>
           <UTable :data="opportunityRows" :columns="opportunityColumns" class="mt-2" />
         </div>
         <div v-if="breakdownRows.length">
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">Ranked breakdown evidence</h3>
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
+            Ranked breakdown evidence
+          </h3>
           <UTable :data="breakdownRows" :columns="breakdownColumns" class="mt-2" />
         </div>
         <p class="text-xs text-muted">
