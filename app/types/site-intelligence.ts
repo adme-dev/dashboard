@@ -184,6 +184,7 @@ export interface SiteIntelligenceInsight {
 
 export interface SiteIntelligenceOverviewResponse {
   generatedAt: string
+  availableClients: Array<{ id: string, name: string }>
   domains: SiteIntelligenceDomain[]
   runs: SiteIntelligenceRun[]
   insights: SiteIntelligenceInsight[]

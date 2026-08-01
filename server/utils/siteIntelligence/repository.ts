@@ -786,14 +786,33 @@ async function loadRecentReadChanges(
   return rows.map(mapReadChange)
 }
 
+async function loadReadClients(clientIds: string[] | null): Promise<Array<{ id: string, name: string }>> {
+  const params: unknown[] = []
+  const conditions: string[] = []
+  if (clientIds !== null) {
+    if (clientIds.length === 0) conditions.push('FALSE')
+    else {
+      params.push(clientIds)
+      conditions.push(`c.id = ANY($${params.length}::uuid[])`)
+    }
+  }
+  return queryRows<{ id: string, name: string }>(`
+    SELECT c.id, c.name
+    FROM agency_clients c
+    ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+    ORDER BY c.name ASC, c.id ASC
+  `, params)
+}
+
 export async function getSiteIntelligenceOverviewRead(
   filters: SiteIntelligenceReadFilters
 ): Promise<SiteIntelligenceOverviewResponse> {
-  const [domains, runs, pages, changes] = await Promise.all([
+  const [domains, runs, pages, changes, availableClients] = await Promise.all([
     listSiteIntelligenceDomains(filters.clientIds, { lane: filters.lane }),
     loadLatestReadRuns(filters),
     loadReadPages(filters),
-    loadRecentReadChanges(filters)
+    loadRecentReadChanges(filters),
+    loadReadClients(filters.clientIds)
   ])
   const clientIds = Array.from(new Set(pages.map(page => page.clientId)))
   const audienceByClient = new Map(await Promise.all(clientIds.map(async (clientId) => {
@@ -822,6 +841,7 @@ export async function getSiteIntelligenceOverviewRead(
 
   return {
     generatedAt: now.toISOString(),
+    availableClients,
     domains,
     runs,
     insights,

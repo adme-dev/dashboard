@@ -58,9 +58,10 @@ export function extractAutomotiveFacts(
   const plainText = markdownToPlainText(canonicalText)
   const sourceUrl = typeof metadata.url === 'string' ? metadata.url : ''
   const structured = selectStructuredVehicle(metadata.jsonLd)
+  const structuredOffers = isRecord(structured?.offers) ? structured.offers : null
   const evidence: AutomotiveFactEvidence[] = []
 
-  const structuredPrice = parseMoney(structured?.offers?.price)
+  const structuredPrice = parseMoney(structuredOffers?.price)
   const visibleDriveAway = firstMatch(plainText, /((?:AUD\s*)?\$\s*[\d,]+(?:\.\d{1,2})?)\s*(?:drive[ -]?away|d\/a)\b/i)
   const driveAwayPrice = structuredPrice ?? parseMoney(visibleDriveAway?.[1])
   const driveAwayPriceDisplay = driveAwayPrice === null
@@ -82,9 +83,16 @@ export function extractAutomotiveFacts(
 
   const repaymentPeriod = normalizeRepaymentPeriod(repaymentMatch?.[2])
   const comparisonRateDisplay = normalizePercentDisplay(comparisonRateMatch?.[1])
-  const termDisplay = termMatch ? `${termMatch[1]} ${termMatch[2].toLowerCase()}` : null
-  const termMonths = termMatch ? normalizeTermMonths(Number(termMatch[1]), termMatch[2]) : null
-  const expiry = expiryMatch ? parseWrittenDate(expiryMatch[2], expiryMatch[3], expiryMatch[4]) : null
+  const termCount = termMatch?.[1]
+  const termUnit = termMatch?.[2]
+  const termDisplay = termCount && termUnit ? `${termCount} ${termUnit.toLowerCase()}` : null
+  const termMonths = termCount && termUnit ? normalizeTermMonths(Number(termCount), termUnit) : null
+  const expiryDay = expiryMatch?.[2]
+  const expiryMonth = expiryMatch?.[3]
+  const expiryYear = expiryMatch?.[4]
+  const expiry = expiryDay && expiryMonth && expiryYear
+    ? parseWrittenDate(expiryDay, expiryMonth, expiryYear)
+    : null
   addEvidence(evidence, 'finance.repayment', repaymentMatch ? `${normalizeMoneyDisplay(repaymentMatch[1])} per ${repaymentPeriod}` : null)
   addEvidence(evidence, 'finance.comparisonRate', comparisonRateDisplay)
   addEvidence(evidence, 'finance.termMonths', termDisplay)
@@ -97,7 +105,7 @@ export function extractAutomotiveFacts(
   const model = cleanText(structured?.model)
   const brand = cleanText(readNestedString(structured?.brand, 'name') ?? structured?.brand)
   const combinedVehicleText = [variant, model, plainText].filter(Boolean).join(' ')
-  const stockState = structuredAvailability(structured?.offers?.availability) ?? extractStockState(plainText)
+  const stockState = structuredAvailability(structuredOffers?.availability) ?? extractStockState(plainText)
   const offerTypes = extractOfferTypes(plainText, {
     hasPrice: driveAwayPrice !== null || listPriceMatch !== null || discountMatch !== null,
     hasFinance: repaymentMatch !== null || comparisonRateMatch !== null
@@ -280,7 +288,8 @@ function extractStockState(input: string): AutomotivePageFacts['stockState'] {
 
 function extractBodyType(input: string): string | null {
   const match = input.match(/\b(SUV|ute|sedan|hatch(?:back)?|wagon|coupe|convertible|van)\b/i)
-  return match ? match[1].toUpperCase() === 'SUV' ? 'SUV' : match[1].toLowerCase() : null
+  const bodyType = match?.[1]
+  return bodyType ? bodyType.toUpperCase() === 'SUV' ? 'SUV' : bodyType.toLowerCase() : null
 }
 
 function extractPowertrain(input: string): string | null {

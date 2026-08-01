@@ -209,6 +209,7 @@ describe('site intelligence domain repository', () => {
         }
       ])
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
 
     await getSiteIntelligenceOverviewRead({
       clientIds: [CLIENT_A, CLIENT_B],

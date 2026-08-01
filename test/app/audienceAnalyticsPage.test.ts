@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-const pagePath = 'app/pages/agency/analytics/audiences.vue'
+const pagePath = 'app/pages/agency/analytics/audiences/index.vue'
 const componentRoot = 'app/components/analytics/audiences'
 
 describe('website audience intelligence page contract', () => {
@@ -16,7 +16,7 @@ describe('website audience intelligence page contract', () => {
 
     expect(source).toContain('layout: \'agency\'')
     expect(source).toContain('middleware: [\'role-media\']')
-    expect(source).toContain('<AnalyticsSectionNav active="audiences" />')
+    expect(source).toContain('<AnalyticsSectionNav active="audiences" :query="$route.query" />')
     expect(source).toContain('<AnalyticsAudiencesFilterBar')
     expect(source).toContain('<AnalyticsAudiencesSignalRibbon')
     expect(source).toContain('<AnalyticsAudiencesKpiGrid')

@@ -668,7 +668,7 @@ git commit -m "feat: expose automotive site intelligence"
 - Create: `app/components/analytics/audiences/intelligence/OfferGapTable.vue`
 - Create: `app/components/analytics/audiences/intelligence/ChangeFeed.vue`
 - Create: `app/components/analytics/audiences/intelligence/RunDiagnostics.vue`
-- Modify: `app/pages/agency/analytics/audiences.vue`
+- Move: `app/pages/agency/analytics/audiences.vue` to `app/pages/agency/analytics/audiences/index.vue` so the sibling intelligence route renders independently
 - Modify: the existing audience section navigation component selected during implementation
 - Test: `test/app/siteIntelligencePage.test.ts`
 - Test: `test/app/siteIntelligenceNavigation.test.ts`
@@ -676,20 +676,23 @@ git commit -m "feat: expose automotive site intelligence"
 **Interfaces:**
 - Produces: route-backed `/agency/analytics/audiences/intelligence`, shareable client/date/lane filters, independent panel state, and direct evidence/diagnostic actions.
 
-- [ ] **Step 1: Re-read the frontend-design guidance before UI work**
+- [x] **Step 1: Re-read the frontend-design guidance before UI work**
 
 Apply the same signal-led evidence hierarchy as the parent Audience Intelligence
 design. The expressive device is a paired owned/competitor evidence rail; avoid a
 gradient hero, decorative AI treatment, and an interchangeable card wall.
+The project-referenced frontend-design path was unavailable in this environment,
+so the installed frontend-ui-engineering guidance was applied as the supported
+equivalent before form and page implementation.
 
-- [ ] **Step 2: Write failing page and navigation tests**
+- [x] **Step 2: Write failing page and navigation tests**
 
 Assert route-backed tabs, query preservation, independent loading/empty/error
 states, partial-data warning, no-data distinction, confidence and source labels,
 before/after evidence, external source links, blocked-state language, admin-only
 domain controls, and no competitor performance copy.
 
-- [ ] **Step 3: Run tests and observe missing UI**
+- [x] **Step 3: Run tests and observe missing UI**
 
 ```bash
 pnpm vitest run test/app/siteIntelligencePage.test.ts test/app/siteIntelligenceNavigation.test.ts
@@ -697,34 +700,34 @@ pnpm vitest run test/app/siteIntelligencePage.test.ts test/app/siteIntelligenceN
 
 Expected: FAIL.
 
-- [ ] **Step 4: Implement route state and progressive fetching**
+- [x] **Step 4: Implement route state and progressive fetching**
 
 `useSiteIntelligence` synchronises `clientId`, `from`, `to`, `lane`, and filter
 query values. Fetch overview first, then changes and gaps independently. Abort
 superseded requests and retain previous successful data during a lightweight
 refresh.
 
-- [ ] **Step 5: Implement evidence-led panels**
+- [x] **Step 5: Implement evidence-led panels**
 
 Use Nuxt UI `UAlert`, `UBadge`, `UTable`, `UAccordion`, `UTooltip`, `UButton`, and
 `USlideover`. Every insight shows deterministic/AI origin, confidence, evidence
 count, observed time, and source link. Run diagnostics explain disallowed/blocked
 states without offering circumvention.
 
-- [ ] **Step 6: Integrate governed domain management**
+- [x] **Step 6: Integrate governed domain management**
 
 Open `DomainModal` and run diagnostics only for authorised roles. Manual Crawl is
 a `UButton` that opens a confirmation `UModal`; never use `confirm()`. Refresh the
 specific domain/run after mutation rather than reloading the page.
 
-- [ ] **Step 7: Run UI tests to green**
+- [x] **Step 7: Run UI tests to green**
 
 Run the Step 3 command. Expected: PASS.
 
-- [ ] **Step 8: Commit the user-facing slice**
+- [x] **Step 8: Commit the user-facing slice**
 
 ```bash
-git add app/composables/useSiteIntelligence.ts app/pages/agency/analytics/audiences.vue app/pages/agency/analytics/audiences/intelligence.vue app/components/analytics/audiences/intelligence test/app/siteIntelligencePage.test.ts test/app/siteIntelligenceNavigation.test.ts
+git add app/composables/useSiteIntelligence.ts app/pages/agency/analytics/audiences/index.vue app/pages/agency/analytics/audiences/intelligence.vue app/components/analytics/audiences/intelligence test/app/siteIntelligencePage.test.ts test/app/siteIntelligenceNavigation.test.ts
 git commit -m "feat: add automotive site intelligence dashboard"
 ```
 

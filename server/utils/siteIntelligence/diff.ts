@@ -74,7 +74,7 @@ function readPath(input: Partial<AutomotivePageFacts> | null, path: string): unk
   if (!child) return input[parent as keyof AutomotivePageFacts] ?? null
   const nested = input[parent as keyof AutomotivePageFacts]
   if (!nested || typeof nested !== 'object' || Array.isArray(nested)) return null
-  return (nested as Record<string, unknown>)[child] ?? null
+  return (nested as unknown as Record<string, unknown>)[child] ?? null
 }
 
 function scalarValue(input: unknown): string | number | boolean | null {

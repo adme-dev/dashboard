@@ -11,6 +11,7 @@ defineProps<{
 const emit = defineEmits<{
   add: []
   edit: [domain: SiteIntelligenceDomain]
+  crawl: [domain: SiteIntelligenceDomain]
 }>()
 
 const columns: TableColumn<SiteIntelligenceDomain>[] = [
@@ -86,15 +87,25 @@ function displayDate(value: string | null): string {
         <span class="text-sm text-muted">{{ displayDate(row.original.lastRunAt) }}</span>
       </template>
       <template #actions-cell="{ row }">
-        <UButton
-          v-if="canManage"
-          label="Edit"
-          icon="i-lucide-settings-2"
-          color="neutral"
-          variant="ghost"
-          size="xs"
-          @click="emit('edit', row.original)"
-        />
+        <div v-if="canManage" class="flex justify-end gap-1">
+          <UButton
+            label="Crawl"
+            icon="i-lucide-scan-search"
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            :disabled="row.original.status !== 'active'"
+            @click="emit('crawl', row.original)"
+          />
+          <UButton
+            label="Edit"
+            icon="i-lucide-settings-2"
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            @click="emit('edit', row.original)"
+          />
+        </div>
       </template>
       <template #empty>
         <div class="py-10 text-center">

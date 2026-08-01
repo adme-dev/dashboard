@@ -22,9 +22,11 @@ export default defineEventHandler(async (event) => {
   await requireClientTrackingAccess(event, domain.clientId)
 
   const created = await createSiteIntelligenceCrawlRun(user, domainId!, 'manual')
-  if (created.status === 'active_run') throw createError({ statusCode: 409, statusMessage: 'A crawl is already active' })
-  if (created.status === 'inactive') throw createError({ statusCode: 409, statusMessage: 'The monitored domain is paused' })
-  if (created.status === 'not_found') throw createError({ statusCode: 404, statusMessage: 'Monitored domain not found' })
+  if (created.status !== 'created') {
+    if (created.status === 'active_run') throw createError({ statusCode: 409, statusMessage: 'A crawl is already active' })
+    if (created.status === 'inactive') throw createError({ statusCode: 409, statusMessage: 'The monitored domain is paused' })
+    throw createError({ statusCode: 404, statusMessage: 'Monitored domain not found' })
+  }
   const { run } = created
 
   try {
@@ -41,9 +43,13 @@ export default defineEventHandler(async (event) => {
     trigger: 'manual',
     requestedBy: user.id
   })
-  if (!started.ok || !started.instanceId) {
-    const summary = started.ok ? 'Workflow did not return an instance id' : started.error || started.reason
+  if (!started.ok) {
+    const summary = ('error' in started && started.error) || started.reason
     await failSiteIntelligenceRun(run.id, run.clientId, 'workflow_start', summary)
+    throw createError({ statusCode: 502, statusMessage: 'Crawl workflow could not be started' })
+  }
+  if (!started.instanceId) {
+    await failSiteIntelligenceRun(run.id, run.clientId, 'workflow_start', 'Workflow did not return an instance id')
     throw createError({ statusCode: 502, statusMessage: 'Crawl workflow could not be started' })
   }
   await markSiteIntelligenceRunWorkflowStarted(run.id, run.clientId, started.instanceId)

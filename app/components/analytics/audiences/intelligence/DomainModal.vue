@@ -134,6 +134,10 @@ function displayError(error: unknown): string {
 
 async function saveDomain() {
   if (!canSave.value) return
+  const apiFetch = $fetch as <T>(request: string, options: {
+    method: 'POST' | 'PUT'
+    body: unknown
+  }) => Promise<T>
   saving.value = true
   errorMessage.value = null
 
@@ -161,7 +165,7 @@ async function saveDomain() {
     const request = props.domain
       ? `/api/agency/site-intelligence/domains/${props.domain.id}`
       : '/api/agency/site-intelligence/domains'
-    const response = await $fetch<{ domain: SiteIntelligenceDomain }>(request, {
+    const response = await apiFetch<{ domain: SiteIntelligenceDomain }>(request, {
       method: props.domain ? 'PUT' : 'POST',
       body
     })

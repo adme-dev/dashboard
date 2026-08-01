@@ -74,7 +74,7 @@ function updateMetric(metric: AudienceMetric) {
       </div>
     </div>
 
-    <AnalyticsSectionNav active="audiences" />
+    <AnalyticsSectionNav active="audiences" :query="$route.query" />
 
     <AnalyticsAudiencesFilterBar
       :from="filters.from"
