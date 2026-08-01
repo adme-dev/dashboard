@@ -81,6 +81,10 @@ function deltaLabel(value: number | null): string {
   if (value === 0) return 'No change'
   return `${value > 0 ? '+' : ''}${value.toLocaleString('en-AU', { maximumFractionDigits: 1 })}%`
 }
+
+function toggleSortDirection() {
+  descending.value = !descending.value
+}
 </script>
 
 <template>
@@ -112,7 +116,7 @@ function deltaLabel(value: number | null): string {
             :icon="descending ? 'i-lucide-arrow-down-wide-narrow' : 'i-lucide-arrow-up-narrow-wide'"
             color="neutral"
             variant="outline"
-            @click="descending = !descending"
+            @click="toggleSortDirection"
           />
         </div>
       </div>
