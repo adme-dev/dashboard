@@ -8,6 +8,8 @@
 
 **Tech Stack:** Nuxt 4, Vue 3 Composition API, Nuxt UI v4, Unovis, `@internationalized/date`, Nitro/H3, Neon Postgres, Groq model routing, Vitest, happy-dom.
 
+**Next phase:** Continue with [Automotive Site Intelligence](./2026-08-01-automotive-site-intelligence.md) after this first-party analytics foundation is verified.
+
 ## Global Constraints
 
 - Canonical route: `/agency/analytics/audiences`.

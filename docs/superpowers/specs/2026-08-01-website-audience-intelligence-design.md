@@ -8,6 +8,8 @@
 
 **Route:** `/agency/analytics/audiences`
 
+**Approved follow-on:** [Automotive Site Intelligence](./2026-08-01-automotive-site-intelligence-design.md) adds owned-site semantic context and allowlisted public competitor change monitoring without changing the first-party measurement definitions in this document.
+
 ## Purpose
 
 Give the marketing team one agency-wide view of every first-party website tracking
