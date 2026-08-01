@@ -300,6 +300,12 @@ Immutable run identity plus status, Cloudflare job ID, requested settings,
 counts, browser seconds, timestamps, error category, and error summary. Raw tokens,
 response bodies, and stack traces are never stored.
 
+### `site_intelligence_ingest_batches`
+
+Operational idempotency ledger keyed by crawl run and bounded batch key. It lets a
+Workflow or Queue retry a result page without duplicating page state, changes, or
+enrichment work.
+
 ### `site_intelligence_pages`
 
 One current row per canonical page: status, content hash, R2 object key, metadata,
@@ -318,6 +324,12 @@ Evidence-backed owned, competitor, or cross-lane insights. Each insight stores i
 rule/model version, supporting page/change IDs, confidence, status, generated time,
 and optional assignee/task link. The MVP remains read-only with respect to ads and
 audiences.
+
+### `site_intelligence_audit_events`
+
+Tenant-scoped audit evidence for domain approval/configuration, manual or scheduled
+runs, change review, and insight actions. Metadata is bounded and excludes page
+bodies, credentials, tokens, and personal information.
 
 ## Intelligence rules
 

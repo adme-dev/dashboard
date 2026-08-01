@@ -34,7 +34,7 @@
 ### Contracts, persistence, and policy
 
 - Create `app/types/site-intelligence.ts` — shared public contracts and literal unions.
-- Create `server/database/migrations/288_automotive_site_intelligence.sql` — registry, runs, pages, changes, insights, constraints, and indexes.
+- Create `server/database/migrations/288_automotive_site_intelligence.sql` — registry, runs, ingest idempotency, pages, changes, insights, audit events, constraints, and indexes.
 - Create `server/utils/siteIntelligence/urlPolicy.ts` — URL normalisation and fail-closed public-origin validation.
 - Create `server/utils/siteIntelligence/contracts.ts` — Zod mutation, crawl, ingestion, and AI schemas.
 - Create `server/utils/siteIntelligence/repository.ts` — scoped domain/run/page/change/insight persistence.
@@ -101,7 +101,7 @@
 - Produces: `SiteIntelligenceLane`, `SiteIntelligenceDomain`, `SiteIntelligenceRunStatus`, `SiteIntelligenceChange`, `SiteIntelligenceInsight`, `normalizeSiteOrigin(input)`, and Zod schemas used by all later tasks.
 - Produces tables: `site_intelligence_domains`, `site_intelligence_crawl_runs`, `site_intelligence_pages`, `site_intelligence_changes`, and `site_intelligence_insights`.
 
-- [ ] **Step 1: Write failing URL-policy and migration contract tests**
+- [x] **Step 1: Write failing URL-policy and migration contract tests**
 
 Assert the following exact policy:
 
@@ -118,7 +118,7 @@ The migration test reads the SQL and verifies lane/status checks, unique
 canonical-page uniqueness, run idempotency, timestamps, JSON object checks, and
 indexes on client/domain/status/time columns.
 
-- [ ] **Step 2: Run the tests and observe missing modules/files**
+- [x] **Step 2: Run the tests and observe missing modules/files**
 
 Run:
 
@@ -128,7 +128,7 @@ pnpm vitest run test/server/utils/siteIntelligence/urlPolicy.test.ts test/config
 
 Expected: FAIL because the migration and modules do not exist.
 
-- [ ] **Step 3: Define shared literal unions and response contracts**
+- [x] **Step 3: Define shared literal unions and response contracts**
 
 Use these public unions:
 
@@ -144,25 +144,25 @@ Define contracts for domain rows, run summaries, page facts, fact diffs, change
 rows, insight rows, overview, change feed, gap response, and paginated API metadata.
 Do not include raw page bodies or R2 keys in browser-facing contracts.
 
-- [ ] **Step 4: Create the additive schema**
+- [x] **Step 4: Create the additive schema**
 
 Use UUID primary keys and `TIMESTAMPTZ`. Add CHECK constraints for lane, status,
 frequency, limits (`1..200` pages, `0..5` depth, `1..365` retention days), and
 ensure `crawl_purposes` cannot contain `ai-train`. Store typed facts/diffs as JSONB
 objects with defaults of `'{}'::jsonb`, never unbounded arbitrary arrays.
 
-- [ ] **Step 5: Implement fail-closed URL validation**
+- [x] **Step 5: Implement fail-closed URL validation**
 
 Parse with `URL`, reject credentials/fragments/non-HTTP protocols, normalise host
 and default ports, reject localhost and reserved literal IPv4/IPv6 ranges, then
 resolve DNS immediately before the crawl start and reject any private/reserved
 answer. Return the canonical origin only after every answer is public.
 
-- [ ] **Step 6: Run the focused tests to green**
+- [x] **Step 6: Run the focused tests to green**
 
 Run the command from Step 2. Expected: PASS.
 
-- [ ] **Step 7: Apply the migration automatically**
+- [x] **Step 7: Apply the migration automatically**
 
 Run:
 
@@ -177,7 +177,7 @@ Then verify:
 psql "$DATABASE_URL" -c "SELECT to_regclass('public.site_intelligence_domains'), to_regclass('public.site_intelligence_crawl_runs'), to_regclass('public.site_intelligence_pages'), to_regclass('public.site_intelligence_changes'), to_regclass('public.site_intelligence_insights')"
 ```
 
-- [ ] **Step 8: Commit the foundation**
+- [x] **Step 8: Commit the foundation**
 
 ```bash
 git add app/types/site-intelligence.ts server/database/migrations/288_automotive_site_intelligence.sql server/utils/siteIntelligence/contracts.ts server/utils/siteIntelligence/urlPolicy.ts test/server/utils/siteIntelligence/urlPolicy.test.ts test/config/automotiveSiteIntelligenceMigration.test.ts
