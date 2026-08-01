@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
   const q = Query.parse(getQuery(event))
   const extraConds = await visibilityConds(q.client_id, user)
   const rows = await fetchExportRows(q.entity, q.client_id, { q: q.q, filters: parseFilters(q.filters), extraConds })
-  const file = buildExportFile(q.entity, rows, q.format)
+  const file = await buildExportFile(q.entity, rows, q.format)
   setHeader(event, 'Content-Type', file.contentType)
   setHeader(event, 'Content-Disposition', `attachment; filename="${file.filename}"`)
   return file.body

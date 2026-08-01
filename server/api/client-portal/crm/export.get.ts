@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
   const client = await requireClientAuth(event)
   const q = Query.parse(getQuery(event))
   const rows = await fetchExportRows(q.entity, client.clientId, { q: q.q, filters: parseFilters(q.filters) })
-  const file = buildExportFile(q.entity, rows, q.format)
+  const file = await buildExportFile(q.entity, rows, q.format)
   setHeader(event, 'Content-Type', file.contentType)
   setHeader(event, 'Content-Disposition', `attachment; filename="${file.filename}"`)
   return file.body
