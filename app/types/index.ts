@@ -1083,6 +1083,26 @@ export interface MetaSpendSync {
   totalSpend: number
 }
 
+export interface SpendSyncFailure {
+  account: string
+  reason: string
+}
+
+export interface SpendSyncJobStatus {
+  jobId: string
+  platform: SocialPlatform
+  period: string
+  status: 'running' | 'completed' | 'failed'
+  syncedCount: number
+  totalSpend: number
+  failures: SpendSyncFailure[]
+  error: string | null
+  startedAt: string
+  finishedAt: string | null
+  totalAccounts: number | null
+  processedAccounts: number
+}
+
 // ============================================
 // Google Ads Types
 // ============================================

@@ -1,4 +1,8 @@
-import type { SocialConnection, MetaSpendRecord, CampaignDailySpendResponse, SocialPlatform } from '~/types'
+import type {
+  CampaignDailySpendResponse,
+  SocialPlatform,
+  SpendSyncJobStatus
+} from '~/types'
 
 interface SpendSummaryItem {
   groupKey: string
@@ -361,6 +365,13 @@ export function useSocialConnections() {
     )
   }
 
+  async function fetchLatestSpendSync(platform: SocialPlatform, month: number, year: number) {
+    const period = `${year}-${String(month).padStart(2, '0')}`
+    return await apiFetch<SpendSyncJobStatus | null>('/api/agency/social/spend/latest-sync', {
+      params: { platform, period }
+    })
+  }
+
   interface BudgetAuditEntry {
     id: string
     previousBudget: number
@@ -428,6 +439,7 @@ export function useSocialConnections() {
     updateCampaignBudget,
     fetchDailySpend,
     fetchCampaignDailySpend,
+    fetchLatestSpendSync,
     fetchBudgetHistory,
     importCsvSpend,
     importManualSpend,

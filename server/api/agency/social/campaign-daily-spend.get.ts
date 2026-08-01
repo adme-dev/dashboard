@@ -144,11 +144,14 @@ export default eventHandler(async (event) => {
     allDates.push(`${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`)
   }
 
+  let usedEstimatedFallback = false
+
   const campaigns = topCampaigns.map((c, i) => {
     let daily = dailyByMediaSpend[c.id] || []
 
     // Fallback: if no daily data but has monthly spend, estimate flat daily distribution
     if (daily.length === 0 && parseFloat(c.actual_spend) > 0) {
+      usedEstimatedFallback = true
       const monthlySpend = parseFloat(c.actual_spend)
       const monthlyImpressions = parseInt(c.impressions || '0', 10)
       const monthlyClicks = parseInt(c.clicks || '0', 10)
@@ -301,13 +304,7 @@ export default eventHandler(async (event) => {
       }))
   }
 
-  // Flag if any campaign data is estimated (no real daily_spend rows)
-  const estimated = campaigns.some(c => {
-    const realDaily = dailyByMediaSpend[(topCampaigns.find(tc => (tc.campaign_id || tc.id) === c.campaignId)?.id) || '']
-    return (!realDaily || realDaily.length === 0) && c.monthlySpend > 0
-  })
-
-  return { campaigns, totals, estimated }
+  return { campaigns, totals, estimated: usedEstimatedFallback }
   } // end fetcher
 
   if (cacheKey) {
