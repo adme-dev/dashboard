@@ -191,6 +191,7 @@ AI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/a5b299b3ad15c1b5b895dc66f
 # Cloudflare Workflows control plane. Secrets are managed in Cloudflare:
 # WORKFLOW_SERVICE_SECRET and WORKFLOW_CALLBACK_SECRET.
 AGENCY_WORKFLOWS_ENABLED = "true"
+SITE_INTELLIGENCE_ENABLED = "false"
 SITE_INTELLIGENCE_AI_ENABLED = "false"
 # High-entropy smoke secret verifier for CI diagnostics. GitHub Actions stores
 # the raw AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET; Pages only needs this hash.

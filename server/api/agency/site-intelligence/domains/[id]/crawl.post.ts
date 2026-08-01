@@ -1,13 +1,7 @@
 import { requireRole } from '~~/server/utils/auth'
-import { startSiteIntelligenceCrawlWorkflow } from '~~/server/utils/agencyWorkflows/client'
 import { isUuid, requireClientTrackingAccess, requireTrackingAudienceScope } from '~~/server/utils/tracking/analytics-access'
-import {
-  createSiteIntelligenceCrawlRun,
-  failSiteIntelligenceRun,
-  getSiteIntelligenceDomainForActor,
-  markSiteIntelligenceRunWorkflowStarted
-} from '~~/server/utils/siteIntelligence/repository'
-import { assertPublicSiteOrigin } from '~~/server/utils/siteIntelligence/urlPolicy'
+import { getSiteIntelligenceDomainForActor } from '~~/server/utils/siteIntelligence/repository'
+import { startGovernedSiteIntelligenceCrawl } from '~~/server/utils/siteIntelligence/crawlRunner'
 
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, ['owner', 'admin'])
@@ -21,37 +15,17 @@ export default defineEventHandler(async (event) => {
   if (!domain) throw createError({ statusCode: 404, statusMessage: 'Monitored domain not found' })
   await requireClientTrackingAccess(event, domain.clientId)
 
-  const created = await createSiteIntelligenceCrawlRun(user, domainId!, 'manual')
-  if (created.status !== 'created') {
-    if (created.status === 'active_run') throw createError({ statusCode: 409, statusMessage: 'A crawl is already active' })
-    if (created.status === 'inactive') throw createError({ statusCode: 409, statusMessage: 'The monitored domain is paused' })
+  const result = await startGovernedSiteIntelligenceCrawl(event, user, domainId!, 'manual')
+  if (result.status !== 'started') {
+    if (result.status === 'active_run') throw createError({ statusCode: 409, statusMessage: 'A crawl is already active' })
+    if (result.status === 'inactive') throw createError({ statusCode: 409, statusMessage: 'The monitored domain is paused' })
+    if (result.status === 'failed' && result.category === 'url_policy') {
+      throw createError({ statusCode: 400, statusMessage: 'Public origin revalidation failed' })
+    }
+    if (result.status === 'failed') {
+      throw createError({ statusCode: 502, statusMessage: 'Crawl workflow could not be started' })
+    }
     throw createError({ statusCode: 404, statusMessage: 'Monitored domain not found' })
   }
-  const { run } = created
-
-  try {
-    await assertPublicSiteOrigin(String(run.settings.origin))
-  } catch {
-    await failSiteIntelligenceRun(run.id, run.clientId, 'url_policy', 'Public origin revalidation failed')
-    throw createError({ statusCode: 400, statusMessage: 'Public origin revalidation failed' })
-  }
-
-  const started = await startSiteIntelligenceCrawlWorkflow(event, {
-    runId: run.id,
-    domainId: run.domainId,
-    clientId: run.clientId,
-    trigger: 'manual',
-    requestedBy: user.id
-  })
-  if (!started.ok) {
-    const summary = ('error' in started && started.error) || started.reason
-    await failSiteIntelligenceRun(run.id, run.clientId, 'workflow_start', summary)
-    throw createError({ statusCode: 502, statusMessage: 'Crawl workflow could not be started' })
-  }
-  if (!started.instanceId) {
-    await failSiteIntelligenceRun(run.id, run.clientId, 'workflow_start', 'Workflow did not return an instance id')
-    throw createError({ statusCode: 502, statusMessage: 'Crawl workflow could not be started' })
-  }
-  await markSiteIntelligenceRunWorkflowStarted(run.id, run.clientId, started.instanceId)
-  return { run: { ...run, workflowInstanceId: started.instanceId, status: 'running' } }
+  return { run: result.run }
 })

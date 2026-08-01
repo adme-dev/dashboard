@@ -409,7 +409,13 @@ export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWo
       ok: workflows.every(workflow => workflow.bindingConfigured),
       worker: 'agency-workflows',
       enabled: workflowFeatureEnabled(env),
-      workflows
+      workflows,
+      capabilities: {
+        browserRenderingApiConfigured: Boolean(
+          env.CLOUDFLARE_ACCOUNT_ID?.trim()
+          && env.BROWSER_RENDERING_API_TOKEN?.trim()
+        )
+      }
     })
   }
 

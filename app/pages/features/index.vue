@@ -23,7 +23,7 @@
     <section class="pb-20 md:pb-32">
       <div class="max-w-[1200px] mx-auto px-6">
         <div
-          v-for="(category, ci) in categories"
+          v-for="category in categories"
           :key="category.title"
           class="mb-24 last:mb-0"
         >
@@ -33,8 +33,12 @@
               <UIcon :name="category.icon" class="w-5 h-5" :class="category.iconColor" />
             </div>
             <div>
-              <h2 class="text-[clamp(24px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">{{ category.title }}</h2>
-              <p class="text-[14px] text-[#45474D]/70 dark:text-white/40">{{ category.subtitle }}</p>
+              <h2 class="text-[clamp(24px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">
+                {{ category.title }}
+              </h2>
+              <p class="text-[14px] text-[#45474D]/70 dark:text-white/40">
+                {{ category.subtitle }}
+              </p>
             </div>
           </div>
 
@@ -109,7 +113,7 @@ useSeoMeta({
   title: 'Features — XeroFlow',
   description: 'Explore 90+ features across work management, sales & CRM, creative production, financial operations, analytics, communication, AI intelligence, governed people operations, client portals, time tracking, briefs, and administration.',
   ogTitle: 'Features — XeroFlow',
-  ogDescription: 'Explore 90+ features across work management, sales & CRM, creative production, financial operations, analytics, communication, AI intelligence, governed people operations, client portals, time tracking, briefs, and administration.',
+  ogDescription: 'Explore 90+ features across work management, sales & CRM, creative production, financial operations, analytics, communication, AI intelligence, governed people operations, client portals, time tracking, briefs, and administration.'
 })
 
 const categories = [
@@ -128,7 +132,7 @@ const categories = [
       { title: 'Table View', slug: 'table-view', icon: 'i-lucide-table', description: 'Spreadsheet-style table with sortable columns, inline editing, and bulk actions.' },
       { title: 'Groups & Subtasks', slug: 'groups-subtasks', icon: 'i-lucide-list-tree', description: 'Organize tasks into collapsible groups with nested subtasks for complex projects.' },
       { title: 'Templates', slug: 'templates', icon: 'i-lucide-copy', description: 'Save board configurations as templates. Spin up new projects in seconds.' },
-      { title: 'Real-Time Updates', slug: 'real-time-sse', icon: 'i-lucide-radio', description: 'Live updates via SSE and Durable Objects — see changes from teammates instantly.' },
+      { title: 'Real-Time Updates', slug: 'real-time-sse', icon: 'i-lucide-radio', description: 'Live updates via SSE and Durable Objects — see changes from teammates instantly.' }
     ]
   },
   {
@@ -145,7 +149,7 @@ const categories = [
       { title: 'Insights & Forecasting', slug: 'crm-insights', icon: 'i-lucide-trending-up', description: 'Pipeline analytics, conversion funnels, weighted revenue forecasts, and a rep leaderboard — the numbers that run your sales review.' },
       { title: 'Saved Views & Export', slug: 'crm-saved-views', icon: 'i-lucide-bookmark', description: 'Save any filtered, sorted view of contacts or deals and switch between them in one click. Export any view to CSV for reporting.' },
       { title: 'Duplicate Detection & Merge', slug: 'crm-dedupe', icon: 'i-lucide-git-merge', description: 'Automatic duplicate detection across contacts and companies, with a safe side-by-side merge that preserves every linked activity and note.' },
-      { title: 'Quote Generation', slug: 'crm-quotes', icon: 'i-lucide-file-signature', description: 'Turn an opportunity\'s line items into a quote in one click — atomic, race-safe, sequentially numbered, and ready to push to Xero.' },
+      { title: 'Quote Generation', slug: 'crm-quotes', icon: 'i-lucide-file-signature', description: 'Turn an opportunity\'s line items into a quote in one click — atomic, race-safe, sequentially numbered, and ready to push to Xero.' }
     ]
   },
   {
@@ -166,7 +170,7 @@ const categories = [
       { title: 'Data Feeds & DCO', slug: 'data-feeds-dco', icon: 'i-lucide-database', description: 'Upload CSV/JSON feeds, bind columns to layers, and auto-generate per-row banner variants at scale.' },
       { title: 'Design Precision', slug: 'design-precision', icon: 'i-lucide-grid-3x3', description: 'Google Fonts, custom font upload, pixel grid, snap-to-grid, smart guides, and layer alignment tools.' },
       { title: 'AI Creative Assistant', slug: 'ai-creative-assistant', icon: 'i-lucide-sparkles', description: 'AI text-to-image generation, layer editing & decomposition, copy suggestions, URL-to-banner, auto-resize, and image recommendations.' },
-      { title: 'Real-Time Collaboration', slug: 'banner-collaboration', icon: 'i-lucide-users', description: 'Multi-user editing with live cursors, soft layer locking, presence indicators, and version history.' },
+      { title: 'Real-Time Collaboration', slug: 'banner-collaboration', icon: 'i-lucide-users', description: 'Multi-user editing with live cursors, soft layer locking, presence indicators, and version history.' }
     ]
   },
   {
@@ -184,7 +188,7 @@ const categories = [
       { title: 'Approvals', slug: 'social-approvals', icon: 'i-lucide-clipboard-check', description: 'Request → approve/reject workflow with notifications, so nothing goes out without sign-off.' },
       { title: 'Engagement Inbox', slug: 'social-inbox', icon: 'i-lucide-messages-square', description: 'Every comment, mention, and message across your networks in one unified inbox — read, triage, and reply without leaving the dashboard.' },
       { title: 'Reviews', slug: 'social-reviews', icon: 'i-lucide-star', description: 'Track and respond to Google Business and Facebook reviews in one place, with ratings at a glance.' },
-      { title: 'Reply Automation', slug: 'social-automation', icon: 'i-lucide-bot', description: 'AI drafts replies to comments and reviews — suggest, approve, or autopilot, with hard safety guardrails and a global kill-switch.' },
+      { title: 'Reply Automation', slug: 'social-automation', icon: 'i-lucide-bot', description: 'AI drafts replies to comments and reviews — suggest, approve, or autopilot, with hard safety guardrails and a global kill-switch.' }
     ]
   },
   {
@@ -201,7 +205,7 @@ const categories = [
       { title: 'Meta Upload Wizard', slug: 'meta-upload-wizard', icon: 'i-lucide-upload', description: 'Five-step wizard to publish directly to Meta — select account, campaign, ad set, creatives, and go live.' },
       { title: 'Audio Studio', slug: 'audio-studio', icon: 'i-lucide-mic', description: 'Generate owned AI voiceover and music that run legally across radio, TikTok and Meta — no clearance, no takedowns. Drops straight into Banner Studio audio layers.' },
       { title: 'Media Studio Editor', slug: 'media-studio-editor', icon: 'i-lucide-film', description: 'Browser-based multitrack audio editor — drag, trim, slice, and layer clips on a pixel-accurate timeline with undo/redo, autosave, and named version snapshots.' },
-      { title: 'AI Video Generation', slug: 'ai-video-generation', icon: 'i-lucide-video', description: 'Animate an approved product still into motion or generate short B-roll from a prompt — owned, brand-safe clips with per-client budget caps that drop straight into your video timeline.' },
+      { title: 'AI Video Generation', slug: 'ai-video-generation', icon: 'i-lucide-video', description: 'Animate an approved product still into motion or generate short B-roll from a prompt — owned, brand-safe clips with per-client budget caps that drop straight into your video timeline.' }
     ]
   },
   {
@@ -219,7 +223,7 @@ const categories = [
       { title: 'Profit & Loss', slug: 'profit-loss', icon: 'i-lucide-trending-up', description: 'Real-time P&L dashboards with revenue, expenses, and margin analysis per client.' },
       { title: 'Budget Management', slug: 'budget-management', icon: 'i-lucide-wallet', description: 'Set monthly budgets per client and campaign. Get alerts when spend approaches limits.' },
       { title: 'Rate Cards', slug: 'rate-cards', icon: 'i-lucide-credit-card', description: 'Define service pricing with rate cards. Fuzzy match to Xero accounts, variance dashboards, and AI integration.' },
-      { title: 'Quotes & Proposals', slug: 'quotes-proposals', icon: 'i-lucide-file-check', description: 'Generate quotes from briefs with rate card pricing. Push to Xero, sync status, and convert to invoices.' },
+      { title: 'Quotes & Proposals', slug: 'quotes-proposals', icon: 'i-lucide-file-check', description: 'Generate quotes from briefs with rate card pricing. Push to Xero, sync status, and convert to invoices.' }
     ]
   },
   {
@@ -237,11 +241,11 @@ const categories = [
       { title: 'On-Demand Sync', slug: 'on-demand-sync', icon: 'i-lucide-refresh-cw', description: 'Pull the latest data from ad platforms on demand — no waiting for scheduled syncs.' },
       { title: 'Export & Reporting', slug: 'export-reporting', icon: 'i-lucide-file-down', description: 'Export analytics to CSV with date ranges, breakdowns, and AI-generated summaries.' },
       { title: 'GA4 Funnel & Website Analytics', slug: 'ga4-funnel', icon: 'i-lucide-filter', description: 'Connect Google Analytics 4 and see the full funnel — ad spend through sessions, on-site conversions, and captured leads, attributed by channel.' },
-      { title: 'Website Audience Intelligence', slug: 'website-audience-intelligence', icon: 'i-lucide-radio-tower', description: 'Read tracking health, aggregate audience quality, lead outcomes, and cross-client opportunities from first-party website signals — with grounded, on-demand AI analysis.' },
+      { title: 'Website Audience Intelligence', slug: 'website-audience-intelligence', icon: 'i-lucide-radio-tower', description: 'Pair client-owned audience outcomes with approved public competitor changes, source-linked offer gaps, and controlled AI interpretation.' },
       { title: 'Ask Your Data', slug: 'analytics-ask', icon: 'i-lucide-sparkles', description: 'Ask a plain-English question about any client\'s performance and get an answer grounded only in your real numbers — with the per-channel figures it used one click away.' },
       { title: 'Portfolio Benchmarks', slug: 'analytics-benchmarks', icon: 'i-lucide-gauge', description: 'See exactly where a client sits against the rest of your book — engagement, conversion rate, CPL and CPA as percentile rankings, plus an agency-wide leaderboard.' },
       { title: 'Blend Presets', slug: 'analytics-presets', icon: 'i-lucide-sliders-horizontal', description: 'One-click views over the blended cross-channel table — paid mix, last-click, blended ROAS, organic vs paid — so the right metrics are always one selection away.' },
-      { title: 'Analytics Export API', slug: 'analytics-export-api', icon: 'i-lucide-database', description: 'Mint scoped bearer tokens to pull the canonical analytics fact into a warehouse or share with a client — agency-wide or locked to a single client, revocable anytime.' },
+      { title: 'Analytics Export API', slug: 'analytics-export-api', icon: 'i-lucide-database', description: 'Mint scoped bearer tokens to pull the canonical analytics fact into a warehouse or share with a client — agency-wide or locked to a single client, revocable anytime.' }
     ]
   },
   {
@@ -263,7 +267,7 @@ const categories = [
       { title: 'Email Campaigns', slug: 'email-campaigns', icon: 'i-lucide-send', description: 'Design, target, and send marketing email campaigns to subscriber lists — with merge tags, delivery tracking, and one-click unsubscribe built in.' },
       { title: 'Email Builder', slug: 'email-builder', icon: 'i-lucide-layout-template', description: 'Visual section-based email editor — drop in pre-designed sections, edit text right on the canvas, launch from a gallery of 12 starter templates, save your own sections as reusable custom modules, and render to bulletproof email HTML.' },
       { title: 'Subscriber Lists', slug: 'email-lists', icon: 'i-lucide-users', description: 'Build lists, import via CSV, and grow them with public subscribe forms — double opt-in, preference centre, and RFC 8058 compliant unsubscribe.' },
-      { title: 'Automations', slug: 'automations', icon: 'i-lucide-zap', description: 'Trigger → action recipes. Auto-notify on status changes, assignments, and due dates.' },
+      { title: 'Automations', slug: 'automations', icon: 'i-lucide-zap', description: 'Trigger → action recipes. Auto-notify on status changes, assignments, and due dates.' }
     ]
   },
   {
@@ -284,7 +288,7 @@ const categories = [
       { title: 'AI Training Pipeline', slug: 'ai-training-pipeline', icon: 'i-lucide-graduation-cap', description: 'Extract training data from conversations, upload knowledge entries, and manage training datasets.' },
       { title: 'Knowledge Base', slug: 'knowledge-base', icon: 'i-lucide-book-open', description: 'Curate and approve knowledge entries that enhance AI responses with agency-specific context.' },
       { title: 'LoRA Adapters', slug: 'lora-adapters', icon: 'i-lucide-cpu', description: 'Fine-tune AI models with your agency data. Custom adapters with traffic routing and A/B testing.' },
-      { title: 'AI Assistant Connectors', slug: 'ai-connectors', icon: 'i-lucide-plug', description: 'Use XeroFlow from inside Claude, Cursor, or ChatGPT. Each staff member connects with their own login and gets role-scoped access to live agency data — finance, ad spend, tasks, clients and more — plus owned-media generation (voiceover, music) for creative roles, with platform writes blocked and every request audited. Built on the Model Context Protocol (MCP).' },
+      { title: 'AI Assistant Connectors', slug: 'ai-connectors', icon: 'i-lucide-plug', description: 'Use XeroFlow from inside Claude, Cursor, or ChatGPT. Each staff member connects with their own login and gets role-scoped access to live agency data — finance, ad spend, tasks, clients and more — plus owned-media generation (voiceover, music) for creative roles, with platform writes blocked and every request audited. Built on the Model Context Protocol (MCP).' }
     ]
   },
   {
@@ -304,7 +308,7 @@ const categories = [
       { title: 'Campaign Analytics', slug: 'portal-campaign-analytics', icon: 'i-lucide-chart-no-axes-combined', description: 'Share permission-gated campaign performance, spend, platform trends, leads, outcomes, and exports without exposing internal agency data.' },
       { title: 'Measurement Health', slug: 'portal-measurement', icon: 'i-lucide-activity', description: 'Show clients how browser events, server delivery, and CRM outcomes contribute to measurement — with ownership and evidence kept distinct.' },
       { title: 'Meetings & Video Reviews', slug: 'portal-meetings-reviews', icon: 'i-lucide-video', description: 'Share upcoming meetings, recordings, and review-ready video so decisions and feedback stay attached to the client relationship.' },
-      { title: 'Briefs & Social Workspace', slug: 'portal-briefs-social', icon: 'i-lucide-panels-top-left', description: 'Let clients submit structured briefs and access approved social inbox, listening, reporting, and news workflows from the same portal.' },
+      { title: 'Briefs & Social Workspace', slug: 'portal-briefs-social', icon: 'i-lucide-panels-top-left', description: 'Let clients submit structured briefs and access approved social inbox, listening, reporting, and news workflows from the same portal.' }
     ]
   },
   {
@@ -317,7 +321,7 @@ const categories = [
       { title: 'Time Tracking', slug: 'time-tracking', icon: 'i-lucide-clock', description: 'Log time against projects and tasks. Start/stop timers or enter manually.' },
       { title: 'Weekly Timesheets', slug: 'weekly-timesheets', icon: 'i-lucide-calendar-days', description: 'Weekly grid view with submit, approval, and rejection workflows.' },
       { title: 'Manager Approvals', slug: 'manager-approvals', icon: 'i-lucide-shield-check', description: 'Review and approve team timesheets. Bulk approve, reject with reason, and lock entries.' },
-      { title: 'Task-Level Logging', slug: 'task-level-logging', icon: 'i-lucide-list-checks', description: 'Link time entries to specific tasks. See time spent per task with progress bars.' },
+      { title: 'Task-Level Logging', slug: 'task-level-logging', icon: 'i-lucide-list-checks', description: 'Link time entries to specific tasks. See time spent per task with progress bars.' }
     ]
   },
   {
@@ -332,7 +336,7 @@ const categories = [
       { title: 'AI Brief Tools', slug: 'ai-brief-tools', icon: 'i-lucide-sparkles', description: 'AI-powered field suggestions, brief scoring (completeness + quality), and full brief generation from minimal input.' },
       { title: 'Brief-to-Quote', slug: 'brief-to-quote', icon: 'i-lucide-receipt', description: 'Auto-generate quotes from approved briefs. Rate card matching, Xero push, and quote-to-invoice conversion.' },
       { title: 'Bulk Operations', slug: 'bulk-brief-operations', icon: 'i-lucide-layers', description: 'Multi-select briefs for bulk status changes, assignment, duplication, and export. Floating action bar for fast ops.' },
-      { title: 'Brief Analytics', slug: 'brief-analytics', icon: 'i-lucide-bar-chart-2', description: 'Cycle time funnels, completion rates, and aggregate analytics across all briefs and templates.' },
+      { title: 'Brief Analytics', slug: 'brief-analytics', icon: 'i-lucide-bar-chart-2', description: 'Cycle time funnels, completion rates, and aggregate analytics across all briefs and templates.' }
     ]
   },
   {
@@ -354,8 +358,8 @@ const categories = [
     features: [
       { title: 'Custom Roles', slug: 'custom-roles', icon: 'i-lucide-user-cog', description: 'Create custom roles beyond the 15 built-in levels. Define granular permissions for each role to match your org structure.' },
       { title: 'Permission System', slug: 'permission-system', icon: 'i-lucide-lock', description: 'Fine-grained RBAC with 15+ permission areas — finance, creative, media, clients, admin, and more. Server-enforced.' },
-      { title: 'Admin Dashboard', slug: 'admin-dashboard', icon: 'i-lucide-settings', description: 'Central admin panel with user management, role assignment, permission matrix, and audit controls.' },
+      { title: 'Admin Dashboard', slug: 'admin-dashboard', icon: 'i-lucide-settings', description: 'Central admin panel with user management, role assignment, permission matrix, and audit controls.' }
     ]
-  },
+  }
 ]
 </script>

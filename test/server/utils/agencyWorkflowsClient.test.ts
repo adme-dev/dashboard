@@ -420,6 +420,7 @@ describe('agency workflow client', () => {
       ok: true,
       worker: 'agency-workflows',
       enabled: true,
+      capabilities: { browserRenderingApiConfigured: true },
       workflows: [
         { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
         { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' },
@@ -448,6 +449,7 @@ describe('agency workflow client', () => {
         ok: true,
         worker: 'agency-workflows',
         enabled: true,
+        capabilities: { browserRenderingApiConfigured: true },
         workflows: [
           { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
           { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' },

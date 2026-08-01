@@ -736,18 +736,27 @@ git commit -m "feat: add automotive site intelligence dashboard"
 **Files:**
 - Create: `server/api/agency/site-intelligence/readiness.get.ts`
 - Create: `server/api/cron/site-intelligence.post.ts`
+- Create: `server/utils/siteIntelligence/crawlRunner.ts`
+- Create: `server/utils/siteIntelligence/scheduler.ts`
+- Modify: `server/api/agency/site-intelligence/domains/[id]/crawl.post.ts`
+- Modify: `server/utils/agencyWorkflows/client.ts`
+- Modify: `server/utils/siteIntelligence/audit.ts`
+- Modify: `workers/agency-workflows/src/index.ts`
+- Modify: `workers/agency-workflows/wrangler.toml`
 - Modify: `workers/pages-cron/src/index.ts`
+- Modify: `wrangler.toml`
 - Modify: `app/pages/features/index.vue`
 - Modify: `app/pages/features/[slug].vue`
 - Create: `docs/runbooks/site-intelligence-pilot.md`
 - Test: `test/server/api/siteIntelligenceReadiness.test.ts`
 - Test: `test/server/api/siteIntelligenceCron.test.ts`
+- Test: `test/server/utils/siteIntelligence/scheduler.test.ts`
 - Test: `test/app/siteIntelligenceFeaturePage.test.ts`
 
 **Interfaces:**
 - Produces: due-domain scheduling, fail-closed readiness diagnostics, truthful marketing copy, and an explicit activation/rollback procedure.
 
-- [ ] **Step 1: Write failing cron, readiness, and feature-copy tests**
+- [x] **Step 1: Write failing cron, readiness, and feature-copy tests**
 
 Readiness must report booleans for feature flag, workflow service, Browser API
 configuration, R2, Queue, AI flag, and Vectorize without returning IDs or secrets.
@@ -756,7 +765,7 @@ active run, and advance `next_run_at` deterministically. Public copy must say
 “public competitor changes” and must not claim traffic estimation or automatic ad
 activation.
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 ```bash
 pnpm vitest run test/server/api/siteIntelligenceReadiness.test.ts test/server/api/siteIntelligenceCron.test.ts test/app/siteIntelligenceFeaturePage.test.ts
@@ -764,20 +773,20 @@ pnpm vitest run test/server/api/siteIntelligenceReadiness.test.ts test/server/ap
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implement fail-closed readiness and due-domain scheduling**
+- [x] **Step 3: Implement fail-closed readiness and due-domain scheduling**
 
 Require existing admin analytics access for readiness and `x-cron-secret` for the
 cron route. Select due rows with `FOR UPDATE SKIP LOCKED`, create runs using the
 same service as manual crawling, and record per-domain success/failure without
 failing the whole batch.
 
-- [ ] **Step 4: Wire the pages-cron trigger**
+- [x] **Step 4: Wire the pages-cron trigger**
 
 Add an hourly call to `/api/cron/site-intelligence`; the route itself determines
 which domains are due. Keep `SITE_INTELLIGENCE_ENABLED=false` as the default in
 production until the pilot runbook readiness gate passes.
 
-- [ ] **Step 5: Update public feature pages**
+- [x] **Step 5: Update public feature pages**
 
 Add the capability beneath Analytics & Reporting and extend the existing Website
 Audience Intelligence detail entry with four sections: owned context, public
@@ -785,7 +794,7 @@ competitor changes, evidence-backed gaps, and controlled AI interpretation. Do n
 add a top-level mega-menu item unless the current menu enumerates analytics
 subfeatures.
 
-- [ ] **Step 6: Write the exact pilot runbook**
+- [x] **Step 6: Write the exact pilot runbook**
 
 Include creation of the private R2 bucket and lifecycle rules, the separate
 Vectorize index and metadata indexes, Browser Rendering API token permission,
@@ -795,14 +804,14 @@ scheduled-crawl activation, pause switches, queue/DLQ monitoring, tenant deletio
 and rollback. All deployment commands must use repository scripts; never direct
 `wrangler pages deploy` for the Pages app.
 
-- [ ] **Step 7: Run focused tests to green**
+- [x] **Step 7: Run focused tests to green**
 
 Run the Step 2 command. Expected: PASS.
 
-- [ ] **Step 8: Commit operational readiness**
+- [x] **Step 8: Commit operational readiness**
 
 ```bash
-git add server/api/agency/site-intelligence/readiness.get.ts server/api/cron/site-intelligence.post.ts workers/pages-cron/src/index.ts app/pages/features/index.vue 'app/pages/features/[slug].vue' docs/runbooks/site-intelligence-pilot.md test/server/api/siteIntelligenceReadiness.test.ts test/server/api/siteIntelligenceCron.test.ts test/app/siteIntelligenceFeaturePage.test.ts
+git add server/api/agency/site-intelligence/readiness.get.ts server/api/cron/site-intelligence.post.ts server/api/agency/site-intelligence/domains/[id]/crawl.post.ts server/utils/siteIntelligence/crawlRunner.ts server/utils/siteIntelligence/scheduler.ts server/utils/siteIntelligence/audit.ts server/utils/agencyWorkflows/client.ts workers/agency-workflows/src/index.ts workers/agency-workflows/wrangler.toml workers/pages-cron/src/index.ts wrangler.toml app/pages/features/index.vue 'app/pages/features/[slug].vue' docs/runbooks/site-intelligence-pilot.md test/server/api/siteIntelligenceReadiness.test.ts test/server/api/siteIntelligenceCron.test.ts test/server/utils/siteIntelligence/scheduler.test.ts test/server/utils/agencyWorkflowsClient.test.ts test/workers/agencyWorkflowsSiteIntelligence.test.ts test/app/siteIntelligenceFeaturePage.test.ts
 git commit -m "docs: prepare site intelligence pilot"
 ```
 

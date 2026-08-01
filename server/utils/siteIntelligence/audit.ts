@@ -5,7 +5,7 @@ interface SiteIntelligenceAuditExecutor {
 }
 
 export interface SiteIntelligenceAuditActor {
-  id: string
+  id: string | null
 }
 
 export type SiteIntelligenceAuditEntityType = 'domain' | 'run' | 'change' | 'insight'

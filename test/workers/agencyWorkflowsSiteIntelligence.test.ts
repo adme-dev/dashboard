@@ -56,6 +56,8 @@ function workflowEnv() {
     AGENCY_WORKFLOWS_ENABLED: 'true',
     WORKFLOW_SERVICE_SECRET: 'workflow-secret',
     WORKFLOW_CALLBACK_SECRET: 'callback-secret',
+    CLOUDFLARE_ACCOUNT_ID: 'account-id',
+    BROWSER_RENDERING_API_TOKEN: 'browser-token',
     SOCIAL_PUBLISHING_WORKFLOW: workflowBinding(),
     SOCIAL_INBOX_AUTOMATION_WORKFLOW: workflowBinding(),
     SOCIAL_SPEND_REVIEW_WORKFLOW: workflowBinding(),
@@ -108,6 +110,7 @@ describe('site intelligence workflow contract', () => {
     )
     await expect(health.json()).resolves.toMatchObject({
       ok: true,
+      capabilities: { browserRenderingApiConfigured: true },
       workflows: expect.arrayContaining([{
         kind: SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND,
         binding: 'SITE_INTELLIGENCE_CRAWL_WORKFLOW',

@@ -13,6 +13,9 @@ AGENCY_WORKFLOWS_ENABLED = "true"
 # Secrets, not plaintext vars:
 #   wrangler secret put WORKFLOW_SERVICE_SECRET
 #   wrangler secret put WORKFLOW_CALLBACK_SECRET
+#   wrangler secret put CLOUDFLARE_ACCOUNT_ID
+#   wrangler secret put BROWSER_RENDERING_API_TOKEN
+# The Browser token needs account-level Browser Rendering - Edit only.
 
 [[workflows]]
 name = "social-publishing-workflow"

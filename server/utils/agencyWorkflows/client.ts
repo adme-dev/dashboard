@@ -201,6 +201,9 @@ export interface AgencyWorkflowReadinessWorker {
   worker?: string
   enabled?: boolean
   workflows?: unknown[]
+  capabilities?: {
+    browserRenderingApiConfigured?: boolean
+  }
 }
 
 export interface AgencyWorkflowReadinessResult {
@@ -953,11 +956,17 @@ async function readResponseBody(response: Response): Promise<Record<string, unkn
 }
 
 function readinessWorker(body: Record<string, unknown>): AgencyWorkflowReadinessWorker {
+  const capabilities = body.capabilities && typeof body.capabilities === 'object' && !Array.isArray(body.capabilities)
+    ? body.capabilities as Record<string, unknown>
+    : null
   return {
     ...(typeof body.ok === 'boolean' ? { ok: body.ok } : {}),
     ...(typeof body.worker === 'string' ? { worker: body.worker } : {}),
     ...(typeof body.enabled === 'boolean' ? { enabled: body.enabled } : {}),
-    ...(Array.isArray(body.workflows) ? { workflows: body.workflows } : {})
+    ...(Array.isArray(body.workflows) ? { workflows: body.workflows } : {}),
+    ...(typeof capabilities?.browserRenderingApiConfigured === 'boolean'
+      ? { capabilities: { browserRenderingApiConfigured: capabilities.browserRenderingApiConfigured } }
+      : {})
   }
 }
 
