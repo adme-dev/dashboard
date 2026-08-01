@@ -237,6 +237,7 @@ async function processFinancialEmbed(payload: Record<string, any>, type: string)
     case 'cash': await mod.embedCashPosition(event); break
   }
 }
+
 async function processSiteIntelligenceEnrichment(payload: Record<string, unknown>): Promise<void> {
   const { enrichSiteIntelligencePage } = await import('~~/server/utils/siteIntelligence/enrich')
   await enrichSiteIntelligencePage(payload as Parameters<typeof enrichSiteIntelligencePage>[0])
