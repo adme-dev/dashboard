@@ -1,15 +1,20 @@
 import { BlockList, isIP } from 'node:net'
-import { lookup as dnsLookup } from 'node:dns/promises'
+import { resolve4 as dnsResolve4, resolve6 as dnsResolve6 } from 'node:dns/promises'
 
 export interface SiteIntelligenceDnsAddress {
   address: string
   family: number
 }
 
-export type SiteIntelligenceDnsResolver = (
-  hostname: string,
-  options: { all: true, verbatim: true }
-) => Promise<SiteIntelligenceDnsAddress[]>
+export interface SiteIntelligenceDnsResolver {
+  resolve4: (hostname: string) => Promise<string[]>
+  resolve6: (hostname: string) => Promise<string[]>
+}
+
+const workersDnsResolver: SiteIntelligenceDnsResolver = {
+  resolve4: dnsResolve4,
+  resolve6: dnsResolve6
+}
 
 const blockedIpv4Addresses = new BlockList()
 const blockedIpv6Addresses = new BlockList()
@@ -94,7 +99,7 @@ export function normalizeSiteOrigin(input: string): string {
 
 export async function assertPublicSiteOrigin(
   input: string,
-  resolver: SiteIntelligenceDnsResolver = dnsLookup as SiteIntelligenceDnsResolver
+  resolver: SiteIntelligenceDnsResolver = workersDnsResolver
 ): Promise<string> {
   const origin = normalizeSiteOrigin(input)
   const hostname = unbracketHostname(new URL(origin).hostname)
@@ -103,7 +108,14 @@ export async function assertPublicSiteOrigin(
 
   let addresses: SiteIntelligenceDnsAddress[]
   try {
-    addresses = await resolver(hostname, { all: true, verbatim: true })
+    const [ipv4, ipv6] = await Promise.all([
+      resolver.resolve4(hostname),
+      resolver.resolve6(hostname)
+    ])
+    addresses = [
+      ...ipv4.map(address => ({ address, family: 4 })),
+      ...ipv6.map(address => ({ address, family: 6 }))
+    ]
   } catch {
     throw new Error('Public HTTP(S) origin required')
   }
