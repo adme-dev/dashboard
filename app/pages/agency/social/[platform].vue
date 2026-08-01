@@ -31,7 +31,7 @@ const {
   loading, fetchConnections, disconnectConnection,
   syncSpend, fetchAccountSpend, fetchAccountCampaigns,
   updateCampaignBudget, fetchCampaignDailySpend,
-  fetchLatestSpendSync,
+  fetchLatestSpendSync
 } = useSocialConnections()
 
 const apiFetch = $fetch as <T>(
@@ -434,7 +434,7 @@ async function loadLatestSyncJob() {
     latestSyncJob.value = await fetchLatestSpendSync(
       platform.value as SocialPlatform,
       selectedMonth.value,
-      selectedYear.value,
+      selectedYear.value
     )
   } catch (error) {
     console.error('[SpendSyncStatus] fetch failed:', error)

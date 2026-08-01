@@ -17,7 +17,7 @@ export interface SpendSyncWarning {
 
 export function buildSpendSyncWarning(
   job: SpendSyncJobStatus | null,
-  platformName: string,
+  platformName: string
 ): SpendSyncWarning | null {
   if (!job || job.status === 'running') return null
 
@@ -41,7 +41,7 @@ export function buildSpendSyncWarning(
   const grouped = [...groups.entries()]
     .map(([reason, accounts]) => ({
       reason,
-      accounts: [...accounts].sort((a, b) => a.localeCompare(b)),
+      accounts: [...accounts].sort((a, b) => a.localeCompare(b))
     }))
     .sort((a, b) => a.reason.localeCompare(b.reason))
 
@@ -55,6 +55,6 @@ export function buildSpendSyncWarning(
     failedAccounts: failed,
     totalAccounts,
     finishedAt: job.finishedAt,
-    groups: grouped,
+    groups: grouped
   }
 }

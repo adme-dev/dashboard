@@ -7,9 +7,10 @@ let mockQuery: Record<string, unknown> = { platform: 'google', period: '2026-08'
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: (...args: unknown[]) => mockRequireAuth(...args) }))
 vi.mock('~~/server/utils/db', () => ({ queryOne: (...args: unknown[]) => mockQueryOne(...args) }))
 
-;(globalThis as any).eventHandler = (fn: any) => fn
-;(globalThis as any).getQuery = () => mockQuery
-;(globalThis as any).createError = (input: { statusCode: number, statusMessage: string }) => Object.assign(new Error(input.statusMessage), input)
+const testGlobals = globalThis as unknown as Record<string, unknown>
+testGlobals.eventHandler = <T>(fn: T) => fn
+testGlobals.getQuery = () => mockQuery
+testGlobals.createError = (input: { statusCode: number, statusMessage: string }) => Object.assign(new Error(input.statusMessage), input)
 
 describe('GET /api/agency/social/spend/latest-sync', () => {
   beforeEach(() => {
@@ -32,11 +33,11 @@ describe('GET /api/agency/social/spend/latest-sync', () => {
       started_at: '2026-08-01T03:19:22.000Z',
       finished_at: '2026-08-01T03:21:24.000Z',
       total_accounts: 108,
-      processed_accounts: 108,
+      processed_accounts: 108
     })
 
     const handler = (await import('~~/server/api/agency/social/spend/latest-sync.get')).default
-    const result = await handler({} as any)
+    const result = await handler({} as never)
 
     expect(mockQueryOne.mock.calls[0][0]).toContain('ORDER BY started_at DESC')
     expect(mockQueryOne.mock.calls[0][1]).toEqual(['google', '2026-08'])
@@ -47,17 +48,17 @@ describe('GET /api/agency/social/spend/latest-sync', () => {
   it('returns null when the period has no sync job', async () => {
     mockQueryOne.mockResolvedValue(null)
     const handler = (await import('~~/server/api/agency/social/spend/latest-sync.get')).default
-    await expect(handler({} as any)).resolves.toBeNull()
+    await expect(handler({} as never)).resolves.toBeNull()
   })
 
   it.each([
     [{ platform: 'unknown', period: '2026-08' }],
     [{ platform: 'google', period: '2026-13' }],
-    [{ platform: 'google', period: 'August' }],
+    [{ platform: 'google', period: 'August' }]
   ])('rejects invalid query input %#', async (query) => {
     mockQuery = query
     const handler = (await import('~~/server/api/agency/social/spend/latest-sync.get')).default
-    await expect(handler({} as any)).rejects.toMatchObject({ statusCode: 400 })
+    await expect(handler({} as never)).rejects.toMatchObject({ statusCode: 400 })
     expect(mockQueryOne).not.toHaveBeenCalled()
   })
 })

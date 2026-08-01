@@ -8,15 +8,15 @@ const stubs = {
   UAlert: {
     name: 'UAlert',
     props: ['title'],
-    template: '<section role="alert"><h3>{{ title }}</h3><slot name="description" /></section>',
+    template: '<section role="alert"><h3>{{ title }}</h3><slot name="description" /></section>'
   },
   UButton: {
     name: 'UButton',
     props: ['label'],
     emits: ['click'],
-    template: '<button @click="$emit(\'click\', $event)">{{ label }}<slot /></button>',
+    template: '<button @click="$emit(\'click\', $event)">{{ label }}<slot /></button>'
   },
-  UIcon: { name: 'UIcon', template: '<i />' },
+  UIcon: { name: 'UIcon', template: '<i />' }
 }
 
 const partialJob: SpendSyncJobStatus = {
@@ -28,19 +28,19 @@ const partialJob: SpendSyncJobStatus = {
   totalSpend: 231.73,
   failures: [
     { account: 'Zulu Motors', reason: 'Access denied (403)' },
-    { account: 'Alpha Motors', reason: 'Access denied (403)' },
+    { account: 'Alpha Motors', reason: 'Access denied (403)' }
   ],
   error: null,
   startedAt: '2026-08-01T03:19:22.000Z',
   finishedAt: '2026-08-01T03:21:24.000Z',
   totalAccounts: 108,
-  processedAccounts: 108,
+  processedAccounts: 108
 }
 
 function mountAlert(job: SpendSyncJobStatus) {
   const host = document.createElement('div')
   const app = createApp({
-    render: () => h(SpendPartialDataAlert, { platformName: 'Google Ads', job }),
+    render: () => h(SpendPartialDataAlert, { platformName: 'Google Ads', job })
   })
   Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
   app.mount(host)

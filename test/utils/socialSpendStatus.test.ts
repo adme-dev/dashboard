@@ -12,14 +12,14 @@ const job = (overrides: Partial<SpendSyncJobStatus> = {}): SpendSyncJobStatus =>
   failures: [
     { account: 'Zulu Motors', reason: 'Access denied (403)' },
     { account: 'Alpha Motors', reason: 'Access denied (403)' },
-    { account: 'Alpha Motors', reason: 'Access denied (403)' },
+    { account: 'Alpha Motors', reason: 'Access denied (403)' }
   ],
   error: null,
   startedAt: '2026-08-01T03:19:22.000Z',
   finishedAt: '2026-08-01T03:21:24.000Z',
   totalAccounts: 108,
   processedAccounts: 108,
-  ...overrides,
+  ...overrides
 })
 
 describe('buildSpendSyncWarning', () => {
@@ -30,13 +30,13 @@ describe('buildSpendSyncWarning', () => {
       title: 'Partial Google Ads data',
       failedAccounts: 2,
       completedAccounts: 106,
-      totalAccounts: 108,
+      totalAccounts: 108
     })
     expect(warning?.summary).toContain('106 of 108 accounts synced')
     expect(warning?.summary).toContain('incomplete or stale for 2 accounts')
     expect(warning?.groups).toEqual([{
       reason: 'Access denied (403)',
-      accounts: ['Alpha Motors', 'Zulu Motors'],
+      accounts: ['Alpha Motors', 'Zulu Motors']
     }])
   })
 
@@ -49,12 +49,12 @@ describe('buildSpendSyncWarning', () => {
     const warning = buildSpendSyncWarning(job({
       status: 'failed',
       failures: [],
-      error: 'Queue unavailable',
+      error: 'Queue unavailable'
     }), 'Google Ads')
 
     expect(warning).toMatchObject({
       title: 'Google Ads sync failed',
-      summary: 'Queue unavailable',
+      summary: 'Queue unavailable'
     })
   })
 })

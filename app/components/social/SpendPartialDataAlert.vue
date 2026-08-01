@@ -24,7 +24,7 @@ const completedLabel = computed(() => {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-    timeZone: 'Australia/Melbourne',
+    timeZone: 'Australia/Melbourne'
   })
 })
 </script>

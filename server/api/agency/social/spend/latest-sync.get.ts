@@ -3,12 +3,12 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import {
   sanitizeSpendSyncFailureReason,
-  sanitizeSpendSyncFailures,
+  sanitizeSpendSyncFailures
 } from '~~/server/utils/spendSyncFailureSanitizer'
 
 const QuerySchema = z.object({
   platform: z.enum(['meta', 'google', 'linkedin', 'tiktok', 'pinterest', 'snapchat', 'twitter', 'microsoft_ads']),
-  period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)
 })
 
 interface SpendSyncJobRow {
@@ -41,7 +41,7 @@ export default eventHandler(async (event) => {
       WHERE platform = $1 AND period = $2
       ORDER BY started_at DESC
       LIMIT 1`,
-    [parsed.data.platform, parsed.data.period],
+    [parsed.data.platform, parsed.data.period]
   )
 
   if (!row) return null
@@ -58,6 +58,6 @@ export default eventHandler(async (event) => {
     startedAt: row.started_at,
     finishedAt: row.finished_at,
     totalAccounts: row.total_accounts == null ? null : Number(row.total_accounts),
-    processedAccounts: Number(row.processed_accounts) || 0,
+    processedAccounts: Number(row.processed_accounts) || 0
   }
 })

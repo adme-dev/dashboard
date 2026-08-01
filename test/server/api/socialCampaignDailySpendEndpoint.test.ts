@@ -3,19 +3,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mockRequireAuth = vi.fn()
 const mockQueryRows = vi.fn()
 const mockQueryOne = vi.fn()
-let mockQuery: Record<string, unknown> = { platform: 'google', month: 8, year: 2026 }
+const mockQuery: Record<string, unknown> = { platform: 'google', month: 8, year: 2026 }
 
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: (...args: unknown[]) => mockRequireAuth(...args) }))
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
-  queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  queryOne: (...args: unknown[]) => mockQueryOne(...args)
 }))
 vi.mock('~~/server/utils/kv', () => ({
-  cachedFetch: (_event: unknown, _key: string, _ttl: number, fetcher: () => Promise<unknown>) => fetcher(),
+  cachedFetch: (_event: unknown, _key: string, _ttl: number, fetcher: () => Promise<unknown>) => fetcher()
 }))
 
-;(globalThis as any).eventHandler = (fn: any) => fn
-;(globalThis as any).getQuery = () => mockQuery
+const testGlobals = globalThis as unknown as Record<string, unknown>
+testGlobals.eventHandler = <T>(fn: T) => fn
+testGlobals.getQuery = () => mockQuery
 
 const campaign = (id: number) => ({
   id: `spend-${id}`,
@@ -26,7 +27,7 @@ const campaign = (id: number) => ({
   actual_spend: '10',
   budget_allocated: '0',
   impressions: '100',
-  clicks: '10',
+  clicks: '10'
 })
 
 describe('GET /api/agency/social/campaign-daily-spend estimation provenance', () => {
@@ -45,13 +46,13 @@ describe('GET /api/agency/social/campaign-daily-spend estimation provenance', ()
         spend_date: '2026-08-01',
         spend: '10',
         impressions: '100',
-        clicks: '10',
+        clicks: '10'
       })))
       .mockResolvedValueOnce([{
         spend_date: '2026-08-01',
         total_spend: '5',
         total_impressions: '50',
-        total_clicks: '5',
+        total_clicks: '5'
       }])
       .mockResolvedValueOnce([{
         spend_date: '2026-08-01',
@@ -59,7 +60,7 @@ describe('GET /api/agency/social/campaign-daily-spend estimation provenance', ()
         total_impressions: '1050',
         total_clicks: '105',
         total_conversions: '2',
-        total_revenue: '50',
+        total_revenue: '50'
       }])
     mockQueryOne
       .mockResolvedValueOnce({ cnt: '11' })
@@ -67,7 +68,7 @@ describe('GET /api/agency/social/campaign-daily-spend estimation provenance', ()
       .mockResolvedValueOnce({ total_budget: '0' })
 
     const handler = (await import('~~/server/api/agency/social/campaign-daily-spend.get')).default
-    const result = await handler({} as any)
+    const result = await handler({} as never)
 
     expect(result.campaigns.at(-1)?.campaignId).toBe('__other__')
     expect(result.estimated).toBe(false)
@@ -83,7 +84,7 @@ describe('GET /api/agency/social/campaign-daily-spend estimation provenance', ()
       .mockResolvedValueOnce({ total_budget: '0' })
 
     const handler = (await import('~~/server/api/agency/social/campaign-daily-spend.get')).default
-    const result = await handler({} as any)
+    const result = await handler({} as never)
 
     expect(result.campaigns[0]?.daily.length).toBeGreaterThan(0)
     expect(result.estimated).toBe(true)

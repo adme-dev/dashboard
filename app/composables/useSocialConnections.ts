@@ -1,9 +1,7 @@
 import type {
-  SocialConnection,
-  MetaSpendRecord,
   CampaignDailySpendResponse,
   SocialPlatform,
-  SpendSyncJobStatus,
+  SpendSyncJobStatus
 } from '~/types'
 
 interface SpendSummaryItem {
@@ -370,7 +368,7 @@ export function useSocialConnections() {
   async function fetchLatestSpendSync(platform: SocialPlatform, month: number, year: number) {
     const period = `${year}-${String(month).padStart(2, '0')}`
     return await apiFetch<SpendSyncJobStatus | null>('/api/agency/social/spend/latest-sync', {
-      params: { platform, period },
+      params: { platform, period }
     })
   }
 

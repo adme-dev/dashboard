@@ -6,7 +6,7 @@ const composable = readFileSync(new URL('../../app/composables/useSocialConnecti
 
 describe('social platform partial spend status integration', () => {
   it('loads latest status for the selected platform and period', () => {
-    expect(composable).toContain("'/api/agency/social/spend/latest-sync'")
+    expect(composable).toContain('\'/api/agency/social/spend/latest-sync\'')
     expect(composable).toContain('async function fetchLatestSpendSync')
     expect(page).toContain('const latestSyncJob = ref<SpendSyncJobStatus | null>(null)')
     expect(page).toMatch(/fetchLatestSpendSync\(\s*platform\.value as SocialPlatform,\s*selectedMonth\.value,\s*selectedYear\.value/)
