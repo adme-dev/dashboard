@@ -100,6 +100,10 @@ export async function processJob(job: QueueJob): Promise<void> {
         await processFinancialEmbed(job.payload, 'cash')
         break
 
+      case 'site-intelligence.enrich':
+        await processSiteIntelligenceEnrichment(job.payload)
+        break
+
       default:
         throw new Error(`Unknown queue job type: ${(job as any).type}`)
     }
@@ -232,4 +236,9 @@ async function processFinancialEmbed(payload: Record<string, any>, type: string)
     case 'pnl': await mod.embedPnlSnapshot(event, period); break
     case 'cash': await mod.embedCashPosition(event); break
   }
+}
+
+async function processSiteIntelligenceEnrichment(payload: Record<string, unknown>): Promise<void> {
+  const { enrichSiteIntelligencePage } = await import('~~/server/utils/siteIntelligence/enrich')
+  await enrichSiteIntelligencePage(payload as Parameters<typeof enrichSiteIntelligencePage>[0])
 }

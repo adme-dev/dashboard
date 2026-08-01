@@ -93,13 +93,12 @@ describe('AnalyticsSectionNav', () => {
       const buttons = [...host.querySelectorAll<HTMLButtonElement>('button')]
       expect(buttons.map(button => button.textContent)).toEqual([
         'Campaign performance',
-        'Website audiences'
+        'Website audiences',
+        'Site intelligence'
       ])
-      expect(buttons.map(button => button.dataset.to)).toEqual([
-        '/agency/analytics',
-        '/agency/analytics/audiences'
-      ])
+      expect(buttons[0]?.dataset.to).toBe('/agency/analytics')
       expect(buttons[1]?.dataset.active).toBe('true')
+      expect(buttons[2]?.dataset.active).toBe('false')
     } finally {
       app.unmount()
     }

@@ -30,6 +30,7 @@ export const ROUTES: Record<string, string[]> = {
     '/api/cron/hr-review-reminders',
     '/api/cron/monday-reconcile',
     '/api/cron/monday-health-notifications',
+    '/api/cron/site-intelligence'
   ],
   // hourly at :30 — GA4 richer dimension/event breakdowns. Offset 30 min from
   // ga4-sync to spread GA4 API load; the endpoint self-limits to the 25 stalest
@@ -43,7 +44,7 @@ export const ROUTES: Record<string, string[]> = {
     '/api/cron/office-assistant',
     '/api/cron/video-generation-reconcile',
     '/api/cron/monday-webhooks',
-    '/api/cron/measurement-outbox-repair',
+    '/api/cron/measurement-outbox-repair'
   ],
   // every 15 min — keep the Xero customer cache and rollups fresh. Delta syncs
   // are idempotent and use the shared cron token resolver.
@@ -69,7 +70,7 @@ export const ROUTES: Record<string, string[]> = {
   // platforms run as background syncs. The endpoint returns immediately so this
   // never hits the function time limit. Replaces the ai-agent-worker path,
   // which ran every platform synchronously and never completed.
-  '0 6 * * *': ['/api/cron/sync-spend'],
+  '0 6 * * *': ['/api/cron/sync-spend']
 }
 
 export default {
@@ -84,19 +85,19 @@ export default {
         try {
           const resp = await fetch(`${env.APP_BASE_URL}${path}`, {
             method: 'POST',
-            headers: { 'x-cron-secret': env.CRON_SECRET },
+            headers: { 'x-cron-secret': env.CRON_SECRET }
           })
           const text = await resp.text()
           console.log('pages-cron.run', {
             cron: controller.cron,
             path,
             status: resp.status,
-            body: text.slice(0, 200),
+            body: text.slice(0, 200)
           })
         } catch (err) {
           console.error('pages-cron.error', { cron: controller.cron, path, error: String(err) })
         }
-      }),
+      })
     )
-  },
+  }
 }

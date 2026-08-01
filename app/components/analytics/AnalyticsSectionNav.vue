@@ -1,9 +1,21 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 const props = defineProps<{
-  active: 'performance' | 'audiences'
+  active: 'performance' | 'audiences' | 'intelligence'
+  query?: Record<string, unknown>
 }>()
 
-const items = [
+const sharedAudienceQuery = computed(() => {
+  const query: Record<string, string> = {}
+  for (const key of ['from', 'to', 'clientId']) {
+    const value = props.query?.[key]
+    if (typeof value === 'string' && value) query[key] = value
+  }
+  return query
+})
+
+const items = computed(() => [
   {
     key: 'performance' as const,
     label: 'Campaign performance',
@@ -14,9 +26,15 @@ const items = [
     key: 'audiences' as const,
     label: 'Website audiences',
     icon: 'i-lucide-radio-tower',
-    to: '/agency/analytics/audiences'
+    to: { path: '/agency/analytics/audiences', query: sharedAudienceQuery.value }
+  },
+  {
+    key: 'intelligence' as const,
+    label: 'Site intelligence',
+    icon: 'i-lucide-scan-search',
+    to: { path: '/agency/analytics/audiences/intelligence', query: sharedAudienceQuery.value }
   }
-]
+])
 </script>
 
 <template>

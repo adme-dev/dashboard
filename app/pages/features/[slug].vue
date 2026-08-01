@@ -52,7 +52,9 @@
                 <div class="w-8 h-8 rounded-lg bg-[#f4f5f7] dark:bg-white/[0.06] flex items-center justify-center text-[14px] font-medium text-[#45474D] dark:text-white/60">
                   {{ String(i + 1).padStart(2, '0') }}
                 </div>
-                <h2 class="text-[22px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">{{ detail.title }}</h2>
+                <h2 class="text-[22px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">
+                  {{ detail.title }}
+                </h2>
               </div>
               <p class="text-[16px] text-[#45474D] dark:text-white/60 leading-[1.75] pl-11">
                 {{ detail.content }}
@@ -87,8 +89,12 @@
           <div class="w-16 h-16 rounded-2xl bg-[#f4f5f7] dark:bg-white/[0.06] flex items-center justify-center mx-auto mb-6">
             <UIcon name="i-lucide-search-x" class="w-8 h-8 text-[#45474D] dark:text-white/60" />
           </div>
-          <h1 class="text-[32px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-3">Feature not found</h1>
-          <p class="text-[16px] text-[#45474D] dark:text-white/60 mb-8">The feature you're looking for doesn't exist or may have been moved.</p>
+          <h1 class="text-[32px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-3">
+            Feature not found
+          </h1>
+          <p class="text-[16px] text-[#45474D] dark:text-white/60 mb-8">
+            The feature you're looking for doesn't exist or may have been moved.
+          </p>
           <NuxtLink
             to="/features"
             class="inline-flex items-center gap-2 px-6 py-3 bg-[#121317] dark:bg-white text-white dark:text-[#121317] text-[15px] font-medium rounded-full hover:bg-[#2a2b30] dark:hover:bg-white/90 transition-colors"
@@ -965,29 +971,29 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Real-time, not polled',
-        content: 'Native webhooks deliver leads within seconds, not Zapier\'s 1-15 minute polling window. Speed-to-lead matters — contacting a lead within 5 minutes is 21x more likely to convert. Each ingestion path enqueues routing immediately, and the SSE stream pushes new rows to any open inbox tab without a refresh.',
+        content: 'Native webhooks deliver leads within seconds, not Zapier\'s 1-15 minute polling window. Speed-to-lead matters — contacting a lead within 5 minutes is 21x more likely to convert. Each ingestion path enqueues routing immediately, and the SSE stream pushes new rows to any open inbox tab without a refresh.'
       },
       {
         title: 'Multi-tenant by design',
-        content: "One agency dashboard manages every client's lead routing. Each client gets their own webhook URL + secret key, their own form rules, and their own portal view — no Zap duplication, no per-task fees, no separate logins to maintain.",
+        content: 'One agency dashboard manages every client\'s lead routing. Each client gets their own webhook URL + secret key, their own form rules, and their own portal view — no Zap duplication, no per-task fees, no separate logins to maintain.'
       },
       {
         title: 'Client portal inbox built-in',
-        content: 'Add a "portal" destination to any rule and the client sees their leads inside the same XeroFlow portal where they already track invoices and projects. Branded, real-time, no extra login — and the client\'s "Mark contacted" actions sync back to the agency side automatically.',
+        content: 'Add a "portal" destination to any rule and the client sees their leads inside the same XeroFlow portal where they already track invoices and projects. Branded, real-time, no extra login — and the client\'s "Mark contacted" actions sync back to the agency side automatically.'
       },
       {
-        title: "Routing logic that's actually useful",
-        content: 'Per-destination filters: "SMS only if budget > $5,000", "Slack only if utm_source = facebook", "Email everyone but skip spam". Optional delays from immediate to 24 hours — common pattern: Slack ping immediately, email the team if no one\'s claimed in 30 minutes. HMAC-signed outbound webhooks with idempotency keys so receivers can safely dedupe our retries.',
+        title: 'Routing logic that\'s actually useful',
+        content: 'Per-destination filters: "SMS only if budget > $5,000", "Slack only if utm_source = facebook", "Email everyone but skip spam". Optional delays from immediate to 24 hours — common pattern: Slack ping immediately, email the team if no one\'s claimed in 30 minutes. HMAC-signed outbound webhooks with idempotency keys so receivers can safely dedupe our retries.'
       },
       {
-        title: "Senses test data and treats it differently",
-        content: 'Google\'s "Send test data" button (`is_test=true` flag) flows through ingestion but the lead is hidden from the default inbox view — toggle "Show test leads" to see them. No more weeding through synthetic submissions during setup, and no accidental Slack notifications when QA pokes a form.',
+        title: 'Senses test data and treats it differently',
+        content: 'Google\'s "Send test data" button (`is_test=true` flag) flows through ingestion but the lead is hidden from the default inbox view — toggle "Show test leads" to see them. No more weeding through synthetic submissions during setup, and no accidental Slack notifications when QA pokes a form.'
       },
       {
         title: 'Marketer-friendly setup',
-        content: 'In-product setup guide with platform-specific instructions, a destination-config wizard with one-click presets ("Slack: Lead alert", "Email: Sales notification"), a side panel that lists the actual fields each form has sent so template tokens can be copied without typing them, and a form picker that lists Google Ads lead forms across all connected accounts directly from the API.',
-      },
-    ],
+        content: 'In-product setup guide with platform-specific instructions, a destination-config wizard with one-click presets ("Slack: Lead alert", "Email: Sales notification"), a side panel that lists the actual fields each form has sent so template tokens can be copied without typing them, and a form picker that lists Google Ads lead forms across all connected accounts directly from the API.'
+      }
+    ]
   },
 
   'xero-integration': {
@@ -2833,6 +2839,22 @@ const features: Record<string, Feature> = {
       {
         title: 'Ask with the evidence attached',
         content: 'Generate a concise briefing or ask a plain-English question on demand. The analyst receives only the active reporting window and redacted aggregate KPIs, opportunity rules, and ranked breakdowns; every answer keeps the supporting numbers one click away. It cannot identify individual visitors, activate an audience, or change a campaign.'
+      },
+      {
+        title: 'Owned-site context',
+        content: 'Connect current, client-owned landing pages and offers to that client\'s aggregate audience outcomes. The join uses exact canonical pages inside the authorised client boundary, so the team can see where real attention and lead activity meet stale, missing, or mismatched site content without exposing visitor-level records.'
+      },
+      {
+        title: 'Public competitor changes',
+        content: 'Monitor only approved public competitor pages for material changes to models, offers, finance terms, calls to action, and content. Every change keeps its source URL, observed time, confidence, and structured before-and-after evidence. Access controls and declared content-use signals are respected, and blocked collection is shown as partial coverage rather than worked around.'
+      },
+      {
+        title: 'Evidence-backed gaps',
+        content: 'Compare current owned and public competitor facts conservatively. Exact model matches rank above category-level suggestions, expired offers are excluded, and low-evidence comparisons stay marked as insufficient data. Competitor audience size, traffic, spend, reach, and conversions are never inferred.'
+      },
+      {
+        title: 'Controlled AI interpretation',
+        content: 'Deterministic extraction and comparison remain the source of truth. Optional AI can summarise changed public content and improve retrieval only when the feature flag, site policy, and tenant controls permit it. AI output is labelled, source-linked, reviewable, and never activates an audience or changes an advertising campaign.'
       }
     ]
   },
@@ -3496,7 +3518,7 @@ const features: Record<string, Feature> = {
         content: 'Convert accepted quotes to DRAFT invoices with a single action. All line items, pricing, contact details, and account codes transfer from the quote to the invoice. This completes the brief-to-cash pipeline: intake, approval, quote, acceptance, invoice, payment tracking.'
       }
     ]
-  },
+  }
 }
 
 const feature = computed(() => features[slug] || null)
@@ -3505,6 +3527,6 @@ useSeoMeta({
   title: `${feature.value?.title ?? 'Feature'} — XeroFlow`,
   description: feature.value?.description ?? 'Explore this XeroFlow feature.',
   ogTitle: `${feature.value?.title ?? 'Feature'} — XeroFlow`,
-  ogDescription: feature.value?.description ?? 'Explore this XeroFlow feature.',
+  ogDescription: feature.value?.description ?? 'Explore this XeroFlow feature.'
 })
 </script>

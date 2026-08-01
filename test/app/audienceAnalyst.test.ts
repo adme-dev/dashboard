@@ -129,7 +129,7 @@ afterEach(() => {
 
 describe('Audience analyst', () => {
   it('is composed below audience filters with the active date and client scope', () => {
-    const source = readFileSync('app/pages/agency/analytics/audiences.vue', 'utf8')
+    const source = readFileSync('app/pages/agency/analytics/audiences/index.vue', 'utf8')
     expect(source).toContain('<AnalyticsAudiencesAnalyst')
     expect(source).toContain(':from="filters.from"')
     expect(source).toContain(':to="filters.to"')

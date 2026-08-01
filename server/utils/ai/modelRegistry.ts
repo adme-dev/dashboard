@@ -652,6 +652,17 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     sourceFile: 'server/api/agency/tracking/audiences/ask.post.ts'
   },
   {
+    featureKey: 'site_intelligence_enrichment',
+    label: 'Automotive site intelligence enrichment',
+    surface: '/agency/analytics/audiences/intelligence',
+    owner: 'Growth',
+    provider: 'groq',
+    modelId: GROQ_MODELS.LLAMA_8B,
+    modality: 'text',
+    riskTier: 'medium',
+    sourceFile: 'server/utils/siteIntelligence/enrich.ts'
+  },
+  {
     featureKey: 'rate_card_description',
     label: 'Rate card service description',
     surface: '/agency/rate-cards',

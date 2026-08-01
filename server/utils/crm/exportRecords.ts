@@ -2,7 +2,7 @@
 // F9 — export the *current filtered view* of a CRM list to CSV or XLSX. Reuses the
 // same filter grammar + client/visibility scoping as the list endpoints, so an
 // export contains exactly the rows the list would show (sans pagination).
-import * as XLSX from 'xlsx'
+import JSZip from 'jszip'
 import { queryRows } from '~~/server/utils/db'
 import { buildWhere, type Cond } from '~~/server/utils/crm/queryScope'
 import { buildFilterConds, type FilterClause } from '~~/server/utils/crm/filters'
@@ -45,9 +45,9 @@ export async function fetchExportRows(
   )
 }
 
-export function buildExportFile(
+export async function buildExportFile(
   entity: ExportEntity, rows: Record<string, unknown>[], format: ExportFormat,
-): { body: string | Buffer, contentType: string, filename: string } {
+): Promise<{ body: string | Buffer, contentType: string, filename: string }> {
   const columns = EXPORT_COLUMNS[entity]
   const stamp = entity
   if (format === 'xlsx') {
@@ -57,11 +57,118 @@ export function buildExportFile(
       for (const c of columns) o[c] = Array.isArray(r[c]) ? (r[c] as unknown[]).join('; ') : r[c]
       return o
     })
-    const ws = XLSX.utils.json_to_sheet(flat, { header: columns })
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'CRM')
-    const body = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+    const body = await buildXlsxBuffer('CRM', columns, flat)
     return { body, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename: `${stamp}.xlsx` }
   }
   return { body: toCsv(rows, columns), contentType: 'text/csv; charset=utf-8', filename: `${stamp}.csv` }
+}
+
+async function buildXlsxBuffer(
+  sheetName: string,
+  columns: string[],
+  rows: Record<string, unknown>[],
+): Promise<Buffer> {
+  const archive = new JSZip()
+  archive.file('[Content_Types].xml', contentTypesXml())
+  archive.folder('_rels')!.file('.rels', packageRelationshipsXml())
+  archive.folder('xl')!.file('workbook.xml', workbookXml(sheetName))
+  archive.folder('xl')!.folder('_rels')!.file('workbook.xml.rels', workbookRelationshipsXml())
+  archive.folder('xl')!.folder('worksheets')!.file('sheet1.xml', worksheetXml(columns, rows))
+
+  const bytes = await archive.generateAsync({
+    type: 'uint8array',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 }
+  })
+  return Buffer.from(bytes)
+}
+
+function worksheetXml(columns: string[], rows: Record<string, unknown>[]): string {
+  const sheetRows = [
+    columns.map(column => column),
+    ...rows.map(row => columns.map(column => row[column]))
+  ]
+  const body = sheetRows.map((values, rowIndex) => {
+    const cells = values.map((value, columnIndex) => xlsxCell(value, columnIndex, rowIndex + 1)).join('')
+    return `<row r="${rowIndex + 1}">${cells}</row>`
+  }).join('')
+
+  return xml(`
+    <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+      <sheetData>${body}</sheetData>
+    </worksheet>
+  `)
+}
+
+function xlsxCell(value: unknown, columnIndex: number, rowIndex: number): string {
+  const reference = `${xlsxColumnName(columnIndex)}${rowIndex}`
+  if (value === null || value === undefined) return `<c r="${reference}"/>`
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return `<c r="${reference}" t="n"><v>${value}</v></c>`
+  }
+  if (typeof value === 'boolean') {
+    return `<c r="${reference}" t="b"><v>${value ? 1 : 0}</v></c>`
+  }
+  return `<c r="${reference}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(String(value))}</t></is></c>`
+}
+
+function xlsxColumnName(index: number): string {
+  let value = index + 1
+  let name = ''
+  while (value > 0) {
+    const remainder = (value - 1) % 26
+    name = String.fromCharCode(65 + remainder) + name
+    value = Math.floor((value - 1) / 26)
+  }
+  return name
+}
+
+function workbookXml(sheetName: string): string {
+  return xml(`
+    <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+      xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+      <sheets><sheet name="${escapeXml(sheetName)}" sheetId="1" r:id="rId1"/></sheets>
+    </workbook>
+  `)
+}
+
+function workbookRelationshipsXml(): string {
+  return xml(`
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+      <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+    </Relationships>
+  `)
+}
+
+function packageRelationshipsXml(): string {
+  return xml(`
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+      <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+    </Relationships>
+  `)
+}
+
+function contentTypesXml(): string {
+  return xml(`
+    <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+      <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+      <Default Extension="xml" ContentType="application/xml"/>
+      <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+      <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+    </Types>
+  `)
+}
+
+function xml(value: string): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>${value.replace(/>\s+</g, '><').trim()}`
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '\uFFFD')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
 }
