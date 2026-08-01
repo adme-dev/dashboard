@@ -7,7 +7,12 @@ vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args)
 }))
 
-const { getAudienceOverview, withAudienceQueryTiming } = await import(
+const {
+  getAudienceBreakdowns,
+  getAudienceOverview,
+  getAudienceTimeseries,
+  withAudienceQueryTiming
+} = await import(
   '../../../../server/utils/tracking/audience-repository'
 )
 
@@ -102,6 +107,47 @@ function rowSet(sql: string) {
       lead_actions: '12',
       confirmed_leads: '8',
       attributed_leads: '6'
+    }]
+  }
+  if (sql.includes('audience:timeseries')) {
+    return [
+      {
+        period: 'current',
+        day: '2026-07-30',
+        visitors: '4',
+        sessions: '5',
+        engaged_sessions: '3',
+        lead_actions: '1',
+        confirmed_leads: '1'
+      },
+      {
+        period: 'current',
+        day: '2026-08-01',
+        visitors: '8',
+        sessions: '10',
+        engaged_sessions: '7',
+        lead_actions: '2',
+        confirmed_leads: '1'
+      },
+      {
+        period: 'previous',
+        day: '2026-07-27',
+        visitors: '3',
+        sessions: '4',
+        engaged_sessions: '2',
+        lead_actions: '0',
+        confirmed_leads: '0'
+      }
+    ]
+  }
+  if (sql.includes('audience:breakdown')) {
+    return [{
+      key: 'google',
+      visitors: '40',
+      sessions: '50',
+      engaged_sessions: '31',
+      lead_actions: '8',
+      confirmed_leads: '5'
     }]
   }
   throw new Error(`Unexpected audience query: ${sql.slice(0, 80)}`)
@@ -269,5 +315,74 @@ describe('withAudienceQueryTiming', () => {
       durationMs: 1601
     })
     expect(JSON.stringify(warning.mock.calls)).not.toMatch(new RegExp(CLIENT_A, 'i'))
+  })
+})
+
+describe('getAudienceTimeseries', () => {
+  it('returns equal zero-filled current and previous series with stable day indexes', async () => {
+    const shortRange: AudienceRange = {
+      fromDate: '2026-07-30',
+      toDate: '2026-08-01',
+      previousFromDate: '2026-07-27',
+      previousToDate: '2026-07-29',
+      days: 3
+    }
+
+    const result = await getAudienceTimeseries({
+      range: shortRange,
+      clientIds: [CLIENT_A],
+      metric: 'visitors'
+    })
+
+    expect(result).toEqual({
+      generatedAt: '2026-08-01T12:00:00.000Z',
+      window: shortRange,
+      metric: 'visitors',
+      current: [
+        { day: '2026-07-30', dayIndex: 0, visitors: 4, sessions: 5, engagedSessions: 3, leadActions: 1, confirmedLeads: 1 },
+        { day: '2026-07-31', dayIndex: 1, visitors: 0, sessions: 0, engagedSessions: 0, leadActions: 0, confirmedLeads: 0 },
+        { day: '2026-08-01', dayIndex: 2, visitors: 8, sessions: 10, engagedSessions: 7, leadActions: 2, confirmedLeads: 1 }
+      ],
+      previous: [
+        { day: '2026-07-27', dayIndex: 0, visitors: 3, sessions: 4, engagedSessions: 2, leadActions: 0, confirmedLeads: 0 },
+        { day: '2026-07-28', dayIndex: 1, visitors: 0, sessions: 0, engagedSessions: 0, leadActions: 0, confirmedLeads: 0 },
+        { day: '2026-07-29', dayIndex: 2, visitors: 0, sessions: 0, engagedSessions: 0, leadActions: 0, confirmedLeads: 0 }
+      ]
+    })
+  })
+
+  it('returns an empty-scope contract without querying', async () => {
+    const result = await getAudienceTimeseries({ range, clientIds: [], metric: 'sessions' })
+
+    expect(result.current).toHaveLength(30)
+    expect(result.previous).toHaveLength(30)
+    expect(result.current.every(point => point.sessions === 0)).toBe(true)
+    expect(mockQueryRows).not.toHaveBeenCalled()
+  })
+})
+
+describe('getAudienceBreakdowns', () => {
+  it('maps a fixed dimension into quality metrics without exposing source identifiers', async () => {
+    const result = await getAudienceBreakdowns({
+      range,
+      clientIds: [CLIENT_A],
+      dimension: 'source'
+    })
+
+    expect(result).toEqual({
+      generatedAt: '2026-08-01T12:00:00.000Z',
+      window: range,
+      dimension: 'source',
+      rows: [{
+        key: 'google',
+        visitors: 40,
+        sessions: 50,
+        engagementRate: 62,
+        leadActions: 8,
+        confirmedLeads: 5,
+        confirmedLeadRate: 10
+      }]
+    })
+    expect(JSON.stringify(result)).not.toMatch(/anon_id|session_id|gclid|fingerprint/i)
   })
 })

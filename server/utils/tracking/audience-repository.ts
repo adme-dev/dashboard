@@ -1,8 +1,12 @@
 import type {
+  AudienceBreakdownDimension,
+  AudienceBreakdownsResponse,
   AudienceClientRow,
   AudienceKpis,
+  AudienceMetric,
   AudienceOverviewResponse,
   AudienceRange,
+  AudienceTimeseriesResponse,
   AudienceSiteStatus
 } from '~~/app/types/audience-analytics'
 import { queryRows } from '~~/server/utils/db'
@@ -11,11 +15,19 @@ import {
   deriveAudienceOpportunities,
   deriveAudienceSiteStatus,
   periodDelta,
-  safeRate
+  safeRate,
+  zeroFillAudienceSeries
 } from '~~/server/utils/tracking/audience-analytics'
 
 type ClientScope = string[] | null
-type AudienceQueryOperation = 'available-clients' | 'sites' | 'kpis' | 'opportunities' | 'clients'
+type AudienceQueryOperation =
+  | 'available-clients'
+  | 'sites'
+  | 'kpis'
+  | 'opportunities'
+  | 'clients'
+  | 'timeseries'
+  | 'breakdown'
 
 interface AudienceOverviewInput {
   range: AudienceRange
@@ -83,6 +95,25 @@ interface ClientRow {
   lead_actions: string | number
   confirmed_leads: string | number
   attributed_leads: string | number
+}
+
+interface TimeseriesRow {
+  period: 'current' | 'previous'
+  day: string
+  visitors: string | number
+  sessions: string | number
+  engaged_sessions: string | number
+  lead_actions: string | number
+  confirmed_leads: string | number
+}
+
+interface BreakdownRow {
+  key: string
+  visitors: string | number
+  sessions: string | number
+  engaged_sessions: string | number
+  lead_actions: string | number
+  confirmed_leads: string | number
 }
 
 const ZERO_KPIS: AudienceKpis = {
@@ -698,5 +729,241 @@ export async function getAudienceOverview(input: AudienceOverviewInput): Promise
     opportunities,
     clients,
     availableClients: availableClients.map(client => ({ id: client.id, name: client.name }))
+  }
+}
+
+export async function getAudienceTimeseries(input: {
+  range: AudienceRange
+  clientIds: ClientScope
+  metric: AudienceMetric
+}): Promise<AudienceTimeseriesResponse> {
+  if (Array.isArray(input.clientIds) && input.clientIds.length === 0) {
+    return {
+      generatedAt: new Date().toISOString(),
+      window: input.range,
+      metric: input.metric,
+      current: zeroFillAudienceSeries([], input.range.fromDate, input.range.toDate),
+      previous: zeroFillAudienceSeries([], input.range.previousFromDate, input.range.previousToDate)
+    }
+  }
+
+  const rows = await withAudienceQueryTiming('timeseries', () => queryRows<TimeseriesRow>(
+    `/* audience:timeseries */
+     WITH periods(period, from_date, to_date) AS (
+       VALUES
+         ('current'::text, $2::date, $3::date),
+         ('previous'::text, $4::date, $5::date)
+     ),
+     event_daily AS (
+       SELECT p.period,
+              to_char((e.received_at AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))::date, 'YYYY-MM-DD') AS day,
+              COUNT(DISTINCT e.anon_id) AS visitors,
+              COUNT(DISTINCT e.session_id) AS sessions,
+              COUNT(DISTINCT e.session_id) FILTER (WHERE e.event_name = 'engagement') AS engaged_sessions,
+              COUNT(DISTINCT e.session_id) FILTER (
+                WHERE e.event_name IN ('form_submit', 'phone_click', 'generate_lead', 'test_drive_booking')
+              ) AS lead_actions
+         FROM periods p
+         JOIN agency_clients c
+           ON ($1::uuid[] IS NULL OR c.id = ANY($1::uuid[]))
+         JOIN tracking_events e ON e.client_id = c.id
+        WHERE e.received_at >= (p.from_date AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))
+          AND e.received_at < ((p.to_date + INTERVAL '1 day') AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))
+          AND ${QUALIFYING_EVENTS_SQL}
+        GROUP BY p.period, day
+     ),
+     outcome_daily AS (
+       SELECT p.period,
+              to_char((intent.occurred_at AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))::date, 'YYYY-MM-DD') AS day,
+              COUNT(DISTINCT intent.matched_lead_id)
+                FILTER (WHERE intent.matched_lead_id IS NOT NULL) AS confirmed_leads
+         FROM periods p
+         JOIN agency_clients c
+           ON ($1::uuid[] IS NULL OR c.id = ANY($1::uuid[]))
+         JOIN lead_submission_intents intent ON intent.client_id = c.id
+        WHERE intent.occurred_at >= (p.from_date AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))
+          AND intent.occurred_at < ((p.to_date + INTERVAL '1 day') AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))
+        GROUP BY p.period, day
+     ),
+     keys AS (
+       SELECT period, day FROM event_daily
+       UNION
+       SELECT period, day FROM outcome_daily
+     )
+     SELECT keys.period,
+            keys.day,
+            COALESCE(events.visitors, 0)::text AS visitors,
+            COALESCE(events.sessions, 0)::text AS sessions,
+            COALESCE(events.engaged_sessions, 0)::text AS engaged_sessions,
+            COALESCE(events.lead_actions, 0)::text AS lead_actions,
+            COALESCE(outcomes.confirmed_leads, 0)::text AS confirmed_leads
+       FROM keys
+       LEFT JOIN event_daily events USING (period, day)
+       LEFT JOIN outcome_daily outcomes USING (period, day)
+      ORDER BY keys.period, keys.day`,
+    [
+      input.clientIds,
+      input.range.fromDate,
+      input.range.toDate,
+      input.range.previousFromDate,
+      input.range.previousToDate
+    ]
+  ))
+
+  const mapped = rows.map(row => ({
+    day: row.day,
+    visitors: numberValue(row.visitors),
+    sessions: numberValue(row.sessions),
+    engagedSessions: numberValue(row.engaged_sessions),
+    leadActions: numberValue(row.lead_actions),
+    confirmedLeads: numberValue(row.confirmed_leads)
+  }))
+
+  return {
+    generatedAt: new Date().toISOString(),
+    window: input.range,
+    metric: input.metric,
+    current: zeroFillAudienceSeries(
+      mapped.filter((_, index) => rows[index]?.period === 'current'),
+      input.range.fromDate,
+      input.range.toDate
+    ),
+    previous: zeroFillAudienceSeries(
+      mapped.filter((_, index) => rows[index]?.period === 'previous'),
+      input.range.previousFromDate,
+      input.range.previousToDate
+    )
+  }
+}
+
+const BREAKDOWN_SQL: Record<AudienceBreakdownDimension, { expression: string, condition?: string }> = {
+  source: {
+    expression: `COALESCE(NULLIF(e.utm_source, ''), '(direct / untagged)')`
+  },
+  campaign: {
+    expression: `COALESCE(NULLIF(e.utm_campaign, ''), '(untagged)')`
+  },
+  page: {
+    expression: `COALESCE(NULLIF(e.page_url, ''), '(unknown page)')`
+  },
+  paid_organic: {
+    expression: `CASE
+      WHEN e.gclid IS NOT NULL OR e.gbraid IS NOT NULL OR e.wbraid IS NOT NULL
+        OR e.fbclid IS NOT NULL OR e.msclkid IS NOT NULL OR e.ttclid IS NOT NULL
+        OR e.utm_medium ~* '(cpc|ppc|paid|display)' THEN 'paid'
+      WHEN NULLIF(e.utm_source, '') IS NOT NULL OR NULLIF(e.referrer, '') IS NOT NULL THEN 'organic'
+      ELSE 'direct'
+    END`
+  },
+  device: {
+    expression: `CASE
+      WHEN e.ua ~* '(iPad|Tablet)' OR (e.ua ~* 'Android' AND e.ua !~* 'Mobile') THEN 'tablet'
+      WHEN e.ua ~* '(Mobi|iPhone|iPod|Android.*Mobile|Windows Phone)' THEN 'mobile'
+      WHEN e.ua IS NULL THEN 'unknown'
+      ELSE 'desktop'
+    END`
+  },
+  interest: {
+    expression: `COALESCE(
+      NULLIF(e.event_data->>'vehicle_model', ''),
+      NULLIF(e.event_data->>'vehicle_name', ''),
+      NULLIF(e.event_data->>'model', ''),
+      '(unspecified)'
+    )`,
+    condition: `AND e.event_name IN ('vehicle_view', 'vehicle_list_view', 'return_to_vehicle')`
+  }
+}
+
+export async function getAudienceBreakdowns(input: {
+  range: AudienceRange
+  clientIds: ClientScope
+  dimension: AudienceBreakdownDimension
+}): Promise<AudienceBreakdownsResponse> {
+  if (Array.isArray(input.clientIds) && input.clientIds.length === 0) {
+    return {
+      generatedAt: new Date().toISOString(),
+      window: input.range,
+      dimension: input.dimension,
+      rows: []
+    }
+  }
+
+  const definition = BREAKDOWN_SQL[input.dimension]
+  const rows = await withAudienceQueryTiming('breakdown', () => queryRows<BreakdownRow>(
+    `/* audience:breakdown */
+     WITH scoped AS (
+       SELECT e.site_id,
+              e.event_id,
+              e.client_id,
+              e.anon_id,
+              e.session_id,
+              e.event_name,
+              ${definition.expression} AS key
+         FROM tracking_events e
+         JOIN agency_clients c ON c.id = e.client_id
+        WHERE ($1::uuid[] IS NULL OR e.client_id = ANY($1::uuid[]))
+          AND e.received_at >= ($2::date AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))
+          AND e.received_at < (($3::date + INTERVAL '1 day') AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))
+          AND ${QUALIFYING_EVENTS_SQL}
+          ${definition.condition ?? ''}
+     ),
+     event_metrics AS (
+       SELECT key,
+              COUNT(DISTINCT anon_id) AS visitors
+         FROM scoped
+        GROUP BY key
+     ),
+     session_metrics AS (
+       SELECT key,
+              COUNT(DISTINCT session_id) AS sessions,
+              COUNT(DISTINCT session_id) FILTER (WHERE event_name = 'engagement') AS engaged_sessions,
+              COUNT(DISTINCT session_id) FILTER (
+                WHERE event_name IN ('form_submit', 'phone_click', 'generate_lead', 'test_drive_booking')
+              ) AS lead_actions
+         FROM scoped
+        GROUP BY key
+     ),
+     outcome_metrics AS (
+       SELECT scoped.key,
+              COUNT(DISTINCT intent.matched_lead_id)
+                FILTER (WHERE intent.matched_lead_id IS NOT NULL) AS confirmed_leads
+         FROM scoped
+         LEFT JOIN lead_submission_intents intent
+           ON intent.site_id = scoped.site_id
+          AND intent.browser_event_id = scoped.event_id
+        GROUP BY scoped.key
+     )
+     SELECT events.key,
+            events.visitors::text,
+            COALESCE(sessions.sessions, 0)::text AS sessions,
+            COALESCE(sessions.engaged_sessions, 0)::text AS engaged_sessions,
+            COALESCE(sessions.lead_actions, 0)::text AS lead_actions,
+            COALESCE(outcomes.confirmed_leads, 0)::text AS confirmed_leads
+       FROM event_metrics events
+       LEFT JOIN session_metrics sessions USING (key)
+       LEFT JOIN outcome_metrics outcomes USING (key)
+      ORDER BY events.visitors DESC, events.key
+      LIMIT 20`,
+    [input.clientIds, input.range.fromDate, input.range.toDate]
+  ))
+
+  return {
+    generatedAt: new Date().toISOString(),
+    window: input.range,
+    dimension: input.dimension,
+    rows: rows.map(row => {
+      const sessions = numberValue(row.sessions)
+      const engagedSessions = numberValue(row.engaged_sessions)
+      const confirmedLeads = numberValue(row.confirmed_leads)
+      return {
+        key: row.key,
+        visitors: numberValue(row.visitors),
+        sessions,
+        engagementRate: safeRate(engagedSessions, sessions),
+        leadActions: numberValue(row.lead_actions),
+        confirmedLeads,
+        confirmedLeadRate: safeRate(confirmedLeads, sessions)
+      }
+    })
   }
 }
