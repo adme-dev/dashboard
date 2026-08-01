@@ -8,6 +8,10 @@ const modal = readFileSync(
 const page = readFileSync(new URL('../../app/pages/agency/tracking/index.vue', import.meta.url), 'utf8')
 
 describe('tracking provider connection UI', () => {
+  it('owns a viewport-bounded vertical scroll container inside the agency shell', () => {
+    expect(page).toMatch(/<div class="[^"]*h-full[^"]*min-h-0[^"]*overflow-y-auto[^"]*"/)
+  })
+
   it('shows Podium connection status, identity allowlisting, and one-time credentials', () => {
     expect(modal).toContain('/api/leads/endpoints/podium/')
     expect(modal).toContain('organizationUid')
