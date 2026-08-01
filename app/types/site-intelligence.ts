@@ -16,6 +16,61 @@ export type SiteIntelligenceInsightType
     | 'content_gap' | 'conversion_context'
 export type SiteIntelligenceInsightStatus = 'open' | 'reviewing' | 'actioned' | 'dismissed'
 export type SiteIntelligenceReviewStatus = 'unreviewed' | 'confirmed' | 'dismissed'
+export type NearbyMarketRadius = 10 | 25 | 50
+export type DealerCategory = 'franchise_new' | 'used' | 'independent' | 'unclassified'
+export type SiteIntelligenceCandidateState = 'saved' | 'nominated' | 'approved' | 'dismissed'
+export type SiteIntelligenceCandidateSource = 'agency' | 'client_portal'
+export type CandidateState = SiteIntelligenceCandidateState
+export type CandidateSource = SiteIntelligenceCandidateSource
+export type PortalCandidateState = 'suggested' | 'under_review' | 'monitored' | 'not_selected'
+
+export interface ClientMarketLocation {
+  id: string
+  clientId: string
+  label: string
+  addressText: string
+  googlePlaceId: string
+  isPrimary: boolean
+  confirmedAt: string
+  confirmedBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NearbyMarketCandidate {
+  placeId: string
+  displayName: string
+  formattedAddress: string
+  location: { latitude: number, longitude: number }
+  distanceKm: number
+  category: DealerCategory
+  state: SiteIntelligenceCandidateState | null
+  source: SiteIntelligenceCandidateSource | null
+  approvedDomainId: string | null
+  portalState: PortalCandidateState | null
+}
+
+export interface NearbyMarketResponse {
+  clientId: string
+  marketLocation: ClientMarketLocation | null
+  radiusKm: NearbyMarketRadius
+  candidates: NearbyMarketCandidate[]
+  limited: boolean
+}
+
+export interface NearbyMarketCandidateReview {
+  placeId: string
+  websiteUri: string | null
+  canonicalOrigin: string | null
+  existingDomainId: string | null
+  canApprove: boolean
+}
+
+export interface NearbyMarketCandidateDecision {
+  action: 'save' | 'dismiss' | 'approve_and_index'
+  reviewerReason?: string
+  websiteUri?: string
+}
 
 export interface SiteIntelligenceDomain {
   id: string

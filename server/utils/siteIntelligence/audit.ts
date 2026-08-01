@@ -6,9 +6,10 @@ interface SiteIntelligenceAuditExecutor {
 
 export interface SiteIntelligenceAuditActor {
   id: string | null
+  clientUserId?: string | null
 }
 
-export type SiteIntelligenceAuditEntityType = 'domain' | 'run' | 'change' | 'insight'
+export type SiteIntelligenceAuditEntityType = 'domain' | 'run' | 'change' | 'insight' | 'market_location' | 'candidate'
 
 export async function writeSiteIntelligenceAudit(
   actor: SiteIntelligenceAuditActor,
@@ -19,14 +20,33 @@ export async function writeSiteIntelligenceAudit(
   safeMetadata: Record<string, unknown>,
   executor?: SiteIntelligenceAuditExecutor
 ): Promise<string | null> {
-  const sql = `
+  const legacySql = `
     INSERT INTO site_intelligence_audit_events (
       client_id, actor_id, action, entity_type, entity_id, metadata
     )
     VALUES ($1, $2, $3, $4, $5, $6::jsonb)
     RETURNING id
   `
-  const params = [clientId, actor.id, action, entityType, entityId, JSON.stringify(safeMetadata)]
+  const clientActorSql = `
+    INSERT INTO site_intelligence_audit_events (
+      client_id, actor_id, action, entity_type, entity_id, metadata, client_actor_id
+    )
+    VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+    RETURNING id
+  `
+  const legacyParams = [
+    clientId,
+    actor.id,
+    action,
+    entityType,
+    entityId,
+    JSON.stringify(safeMetadata)
+  ]
+  const hasClientActor = actor.clientUserId !== undefined
+  const sql = hasClientActor ? clientActorSql : legacySql
+  const params = hasClientActor
+    ? [...legacyParams, actor.clientUserId ?? null]
+    : legacyParams
 
   if (executor) {
     const result = await executor.query<{ id: string }>(sql, params)
