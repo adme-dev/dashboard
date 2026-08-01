@@ -54,28 +54,42 @@ describe('site intelligence URL policy', () => {
   )
 
   it('requires every DNS answer to be public immediately before use', async () => {
-    const resolver = vi.fn().mockResolvedValue([
-      { address: '1.1.1.1', family: 4 },
-      { address: '10.0.0.8', family: 4 }
-    ])
+    const resolver = {
+      resolve4: vi.fn().mockResolvedValue(['1.1.1.1', '10.0.0.8']),
+      resolve6: vi.fn().mockResolvedValue([])
+    }
 
     await expect(assertPublicSiteOrigin('https://dealer.example.com/offers', resolver))
       .rejects.toThrowError('Public HTTP(S) origin required')
-    expect(resolver).toHaveBeenCalledWith('dealer.example.com', { all: true, verbatim: true })
   })
 
-  it('returns the canonical origin when DNS resolves only to public addresses', async () => {
-    const resolver = vi.fn().mockResolvedValue([
-      { address: '1.1.1.1', family: 4 },
-      { address: '2606:4700:4700::1111', family: 6 }
-    ])
+  it('returns the canonical origin for an IPv4-only public host', async () => {
+    const resolver = {
+      resolve4: vi.fn().mockResolvedValue(['1.1.1.1']),
+      resolve6: vi.fn().mockResolvedValue([])
+    }
 
     await expect(assertPublicSiteOrigin('https://Dealer.Example.com/offers', resolver))
       .resolves.toBe('https://dealer.example.com')
   })
 
+  it('supports the resolve4 and resolve6 DNS APIs available in Cloudflare Workers', async () => {
+    const resolver = {
+      resolve4: vi.fn().mockResolvedValue(['1.1.1.1']),
+      resolve6: vi.fn().mockResolvedValue(['2606:4700:4700::1111'])
+    }
+
+    await expect(assertPublicSiteOrigin(
+      'https://Dealer.Example.com/offers',
+      resolver
+    )).resolves.toBe('https://dealer.example.com')
+  })
+
   it('fails closed when DNS returns no addresses', async () => {
-    const resolver = vi.fn().mockResolvedValue([])
+    const resolver = {
+      resolve4: vi.fn().mockResolvedValue([]),
+      resolve6: vi.fn().mockResolvedValue([])
+    }
 
     await expect(assertPublicSiteOrigin('https://dealer.example.com', resolver))
       .rejects.toThrowError('Public HTTP(S) origin required')
