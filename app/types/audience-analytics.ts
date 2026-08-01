@@ -1,19 +1,19 @@
 export type AudienceSiteStatus = 'receiving' | 'stale' | 'no_recent_data' | 'never_received' | 'inactive'
 
-export type AudienceMetric =
-  | 'visitors'
-  | 'sessions'
-  | 'engagedSessions'
-  | 'leadActions'
-  | 'confirmedLeads'
+export type AudienceMetric
+  = | 'visitors'
+    | 'sessions'
+    | 'engagedSessions'
+    | 'leadActions'
+    | 'confirmedLeads'
 
-export type AudienceBreakdownDimension =
-  | 'source'
-  | 'campaign'
-  | 'page'
-  | 'paid_organic'
-  | 'device'
-  | 'interest'
+export type AudienceBreakdownDimension
+  = | 'source'
+    | 'campaign'
+    | 'page'
+    | 'paid_organic'
+    | 'device'
+    | 'interest'
 
 export type AudienceOpportunityStatus = 'opportunity' | 'insufficient_data'
 
@@ -50,13 +50,13 @@ export interface AudienceSiteRow {
   eventsInWindow: number
 }
 
-export type AudienceOpportunityCode =
-  | 'high_intent_non_converters'
-  | 'repeat_non_converters'
-  | 'multi_interest'
-  | 'weak_paid_engagement'
-  | 'strong_organic_pages'
-  | 'intent_outcome_divergence'
+export type AudienceOpportunityCode
+  = | 'high_intent_non_converters'
+    | 'repeat_non_converters'
+    | 'multi_interest'
+    | 'weak_paid_engagement'
+    | 'strong_organic_pages'
+    | 'intent_outcome_divergence'
 
 export interface AudienceOpportunity {
   code: AudienceOpportunityCode

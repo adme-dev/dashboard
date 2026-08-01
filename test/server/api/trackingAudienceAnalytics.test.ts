@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const testGlobal = globalThis as typeof globalThis & {
   defineEventHandler: <T>(handler: T) => T
-  getQuery: (event: any) => Record<string, unknown>
+  getQuery: (event: unknown) => Record<string, unknown>
   createError: (options: { statusCode: number, statusMessage: string }) => Error & {
     statusCode: number
     statusMessage: string
@@ -10,7 +10,7 @@ const testGlobal = globalThis as typeof globalThis & {
 }
 
 testGlobal.defineEventHandler = handler => handler
-testGlobal.getQuery = event => event.query ?? {}
+testGlobal.getQuery = event => (event as { query?: Record<string, unknown> }).query ?? {}
 testGlobal.createError = options => Object.assign(new Error(options.statusMessage), options)
 
 const mockRequireScope = vi.fn()
@@ -42,7 +42,7 @@ const CLIENT_A = '11111111-1111-4111-8111-111111111111'
 const USER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 
 function event(query: Record<string, unknown> = {}) {
-  return { query } as any
+  return { query } as Parameters<typeof overviewHandler>[0]
 }
 
 beforeEach(() => {

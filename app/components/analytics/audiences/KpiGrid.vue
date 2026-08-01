@@ -32,16 +32,24 @@ function trendIcon(key: keyof AudienceKpis): string {
   <section aria-labelledby="audience-kpis-heading">
     <div class="mb-3 flex items-end justify-between gap-4">
       <div>
-        <p class="text-xs font-medium uppercase tracking-[0.18em] text-muted">Audience ledger</p>
-        <h2 id="audience-kpis-heading" class="mt-1 text-base font-semibold text-highlighted">Current window</h2>
+        <p class="text-xs font-medium uppercase tracking-[0.18em] text-muted">
+          Audience ledger
+        </p>
+        <h2 id="audience-kpis-heading" class="mt-1 text-base font-semibold text-highlighted">
+          Current window
+        </h2>
       </div>
-      <p class="hidden text-xs text-muted sm:block">Compared with the preceding equal-length window</p>
+      <p class="hidden text-xs text-muted sm:block">
+        Compared with the preceding equal-length window
+      </p>
     </div>
 
     <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
       <UCard v-for="metric in metrics" :key="metric.key" :ui="{ body: 'p-4' }">
         <div class="flex items-start justify-between gap-2">
-          <p class="text-xs font-medium text-muted">{{ metric.label }}</p>
+          <p class="text-xs font-medium text-muted">
+            {{ metric.label }}
+          </p>
           <UTooltip :text="metric.help">
             <UIcon name="i-lucide-info" class="size-3.5 text-dimmed" />
           </UTooltip>

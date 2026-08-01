@@ -20,14 +20,14 @@ import {
 } from '~~/server/utils/tracking/audience-analytics'
 
 type ClientScope = string[] | null
-type AudienceQueryOperation =
-  | 'available-clients'
-  | 'sites'
-  | 'kpis'
-  | 'opportunities'
-  | 'clients'
-  | 'timeseries'
-  | 'breakdown'
+type AudienceQueryOperation
+  = | 'available-clients'
+    | 'sites'
+    | 'kpis'
+    | 'opportunities'
+    | 'clients'
+    | 'timeseries'
+    | 'breakdown'
 
 interface AudienceOverviewInput {
   range: AudienceRange
@@ -691,7 +691,7 @@ export async function getAudienceOverview(input: AudienceOverviewInput): Promise
       })
     : []
 
-  const clients: AudienceClientRow[] = clientRows.map(row => {
+  const clients: AudienceClientRow[] = clientRows.map((row) => {
     const visitors = numberValue(row.visitors)
     const sessions = numberValue(row.sessions)
     const engagedSessions = numberValue(row.engaged_sessions)
@@ -951,7 +951,7 @@ export async function getAudienceBreakdowns(input: {
     generatedAt: new Date().toISOString(),
     window: input.range,
     dimension: input.dimension,
-    rows: rows.map(row => {
+    rows: rows.map((row) => {
       const sessions = numberValue(row.sessions)
       const engagedSessions = numberValue(row.engaged_sessions)
       const confirmedLeads = numberValue(row.confirmed_leads)
