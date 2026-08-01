@@ -66,11 +66,17 @@ export interface NearbyMarketCandidateReview {
   canApprove: boolean
 }
 
-export interface NearbyMarketCandidateDecision {
-  action: 'save' | 'dismiss' | 'approve_and_index'
-  reviewerReason?: string
-  websiteUri?: string
+export interface NearbyMarketCandidateDecisionContext {
+  clientId: string
+  marketLocationId: string
+  radiusKm: NearbyMarketRadius
 }
+
+export type NearbyMarketCandidateDecision = NearbyMarketCandidateDecisionContext & (
+  | { action: 'save' }
+  | { action: 'dismiss', reviewerReason: string }
+  | { action: 'approve_and_index', reviewerReason: string, websiteUri?: string }
+)
 
 export interface SiteIntelligenceDomain {
   id: string
