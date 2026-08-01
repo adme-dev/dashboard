@@ -1,5 +1,4 @@
 import { BlockList, isIP } from 'node:net'
-import { resolve4 as dnsResolve4, resolve6 as dnsResolve6 } from 'node:dns/promises'
 
 export interface SiteIntelligenceDnsAddress {
   address: string
@@ -11,10 +10,52 @@ export interface SiteIntelligenceDnsResolver {
   resolve6: (hostname: string) => Promise<string[]>
 }
 
-const workersDnsResolver: SiteIntelligenceDnsResolver = {
-  resolve4: dnsResolve4,
-  resolve6: dnsResolve6
+interface CloudflareDohAnswer {
+  type?: number
+  data?: string
 }
+
+interface CloudflareDohResponse {
+  Status?: number
+  TC?: boolean
+  Answer?: CloudflareDohAnswer[]
+}
+
+async function resolveCloudflareDoh(
+  hostname: string,
+  recordType: 'A' | 'AAAA',
+  fetcher: typeof fetch
+): Promise<string[]> {
+  const url = new URL('https://cloudflare-dns.com/dns-query')
+  url.searchParams.set('name', hostname)
+  url.searchParams.set('type', recordType)
+
+  const response = await fetcher(url.toString(), {
+    headers: { accept: 'application/dns-json' }
+  })
+  if (!response.ok) throw new Error('DNS resolution failed')
+
+  const payload = await response.json() as CloudflareDohResponse
+  if (payload.Status !== 0 || payload.TC === true) {
+    throw new Error('DNS resolution failed')
+  }
+
+  const expectedType = recordType === 'A' ? 1 : 28
+  return (payload.Answer || [])
+    .filter(answer => answer.type === expectedType && typeof answer.data === 'string')
+    .map(answer => answer.data as string)
+}
+
+export function createCloudflareDohResolver(
+  fetcher: typeof fetch = fetch
+): SiteIntelligenceDnsResolver {
+  return {
+    resolve4: hostname => resolveCloudflareDoh(hostname, 'A', fetcher),
+    resolve6: hostname => resolveCloudflareDoh(hostname, 'AAAA', fetcher)
+  }
+}
+
+const workersDnsResolver = createCloudflareDohResolver()
 
 const blockedIpv4Addresses = new BlockList()
 const blockedIpv6Addresses = new BlockList()
