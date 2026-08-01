@@ -283,7 +283,7 @@ git commit -m "feat: govern monitored site domains"
 **Interfaces:**
 - Produces workflow kind `site.intelligence.crawl`, payload `{ kind, runId, domainId, clientId, trigger, requestedBy? }`, Browser Run start/poll/page/cancel helpers, and deterministic workflow instance ID `site-intel-<runId>`.
 
-- [ ] **Step 1: Write failing REST-client and workflow contract tests**
+- [x] **Step 1: Write failing REST-client and workflow contract tests**
 
 Mock `fetch` and assert the client calls only:
 
@@ -297,7 +297,7 @@ bounded limit/depth, allowed formats, explicit `crawlPurposes`, cursor paginatio
 10 MB-safe page limits, and redacted errors. Assert the workflow parser rejects
 missing UUID-like identifiers and unsupported triggers.
 
-- [ ] **Step 2: Run tests and observe missing exports**
+- [x] **Step 2: Run tests and observe missing exports**
 
 ```bash
 pnpm vitest run test/server/utils/siteIntelligence/cloudflareCrawl.test.ts test/workers/agencyWorkflowsSiteIntelligence.test.ts
@@ -305,7 +305,7 @@ pnpm vitest run test/server/utils/siteIntelligence/cloudflareCrawl.test.ts test/
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implement the guarded Browser Run client**
+- [x] **Step 3: Implement the guarded Browser Run client**
 
 Expose:
 
@@ -320,14 +320,14 @@ Validate Cloudflare response envelopes with Zod. Permit terminal statuses only
 from the documented allowlist. Error objects include status, request stage, and a
 200-character safe summary; never include the API token or complete response body.
 
-- [ ] **Step 4: Add workflow contracts and binding configuration**
+- [x] **Step 4: Add workflow contracts and binding configuration**
 
 Add `SITE_INTELLIGENCE_CRAWL_WORKFLOW` to the Worker environment and
 `[[workflows]] name="site-intelligence-crawl-workflow"`. Update the `/health`
 response and `/workflows/start` discriminator without changing existing workflow
 contracts.
 
-- [ ] **Step 5: Run focused and existing workflow regression tests**
+- [x] **Step 5: Run focused and existing workflow regression tests**
 
 ```bash
 pnpm vitest run test/server/utils/siteIntelligence/cloudflareCrawl.test.ts test/workers/agencyWorkflowsSiteIntelligence.test.ts test/server/utils/agencyWorkflows
@@ -335,7 +335,7 @@ pnpm vitest run test/server/utils/siteIntelligence/cloudflareCrawl.test.ts test/
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit the crawl contract slice**
+- [x] **Step 6: Commit the crawl contract slice**
 
 ```bash
 git add server/utils/siteIntelligence/cloudflareCrawl.ts server/utils/agencyWorkflows/siteIntelligenceCrawl.ts workers/agency-workflows/src/contracts.ts workers/agency-workflows/src/index.ts workers/agency-workflows/wrangler.toml test/server/utils/siteIntelligence/cloudflareCrawl.test.ts test/workers/agencyWorkflowsSiteIntelligence.test.ts

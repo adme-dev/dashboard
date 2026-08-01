@@ -7,23 +7,27 @@ import {
   SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
   BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND,
   CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND,
+  SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND,
   type AgencyWorkflowEnv,
   type BriefLifecycleCheckWorkflowPayload,
   type CrmFollowupReviewWorkflowPayload,
   type SocialInboxAutomationWorkflowPayload,
   type SocialPublishingWorkflowPayload,
   type SocialSpendReviewWorkflowPayload,
+  type SiteIntelligenceCrawlWorkflowPayload,
   type WorkflowBindingLike,
   buildBriefLifecycleCheckWorkflowInstanceId,
   buildCrmFollowupReviewWorkflowInstanceId,
   buildSocialInboxAutomationWorkflowInstanceId,
   buildSocialPublishingWorkflowInstanceId,
   buildSocialSpendReviewWorkflowInstanceId,
+  buildSiteIntelligenceCrawlWorkflowInstanceId,
   normalizeBriefLifecycleCheckWorkflowPayload,
   normalizeCrmFollowupReviewWorkflowPayload,
   normalizeSocialInboxAutomationWorkflowPayload,
   normalizeSocialPublishingWorkflowPayload,
   normalizeSocialSpendReviewWorkflowPayload,
+  normalizeSiteIntelligenceCrawlWorkflowPayload,
   parseWorkflowRequestBody,
   workflowFeatureEnabled
 } from './contracts'
@@ -224,6 +228,14 @@ export class CrmFollowupReviewWorkflow extends WorkflowEntrypoint<AgencyWorkflow
   }
 }
 
+export class SiteIntelligenceCrawlWorkflow extends WorkflowEntrypoint<AgencyWorkflowEnv, SiteIntelligenceCrawlWorkflowPayload> {
+  async run(event: WorkflowEvent<SiteIntelligenceCrawlWorkflowPayload>, step: WorkflowStep) {
+    normalizeSiteIntelligenceCrawlWorkflowPayload(event.payload)
+    void step
+    throw new Error('Site intelligence crawl orchestration is not configured')
+  }
+}
+
 export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWorkflowEnv): Promise<Response> {
   const url = new URL(request.url)
 
@@ -252,7 +264,9 @@ export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWo
             ? await startSpendReviewWorkflowInstance(env, body.payload)
             : body.workflow === BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND
               ? await startBriefLifecycleCheckWorkflowInstance(env, body.payload)
-              : await startCrmFollowupReviewWorkflowInstance(env, body.payload)
+              : body.workflow === CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND
+                ? await startCrmFollowupReviewWorkflowInstance(env, body.payload)
+                : await startSiteIntelligenceCrawlWorkflowInstance(env, body.payload)
       return json({
         ok: true,
         workflow: body.workflow,
@@ -283,7 +297,9 @@ export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWo
           ? await env.SOCIAL_SPEND_REVIEW_WORKFLOW.get(instanceId)
           : workflow === BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND
             ? await env.BRIEF_LIFECYCLE_CHECK_WORKFLOW.get(instanceId)
-            : await env.CRM_FOLLOWUP_REVIEW_WORKFLOW.get(instanceId)
+            : workflow === CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND
+              ? await env.CRM_FOLLOWUP_REVIEW_WORKFLOW.get(instanceId)
+              : await env.SITE_INTELLIGENCE_CRAWL_WORKFLOW.get(instanceId)
     return json({ ok: true, workflow, instanceId: instance.id, status: await instance.status() })
   }
 
@@ -321,6 +337,14 @@ async function startBriefLifecycleCheckWorkflowInstance(env: AgencyWorkflowEnv, 
 async function startCrmFollowupReviewWorkflowInstance(env: AgencyWorkflowEnv, payload: CrmFollowupReviewWorkflowPayload) {
   const instanceId = buildCrmFollowupReviewWorkflowInstanceId(payload)
   return await startWorkflowInstance(env.CRM_FOLLOWUP_REVIEW_WORKFLOW, instanceId, payload)
+}
+
+async function startSiteIntelligenceCrawlWorkflowInstance(
+  env: AgencyWorkflowEnv,
+  payload: SiteIntelligenceCrawlWorkflowPayload
+) {
+  const instanceId = buildSiteIntelligenceCrawlWorkflowInstanceId(payload)
+  return await startWorkflowInstance(env.SITE_INTELLIGENCE_CRAWL_WORKFLOW, instanceId, payload)
 }
 
 async function startWorkflowInstance<TPayload>(
@@ -366,16 +390,22 @@ function workflowHealth(env: AgencyWorkflowEnv) {
       kind: CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND,
       binding: 'CRM_FOLLOWUP_REVIEW_WORKFLOW',
       bindingConfigured: isWorkflowBinding(env.CRM_FOLLOWUP_REVIEW_WORKFLOW)
+    },
+    {
+      kind: SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND,
+      binding: 'SITE_INTELLIGENCE_CRAWL_WORKFLOW',
+      bindingConfigured: isWorkflowBinding(env.SITE_INTELLIGENCE_CRAWL_WORKFLOW)
     }
   ]
 }
 
-function isSupportedWorkflowKind(input: string | null): input is typeof SOCIAL_PUBLISHING_WORKFLOW_KIND | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND | typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND | typeof BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND | typeof CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND {
+function isSupportedWorkflowKind(input: string | null): input is typeof SOCIAL_PUBLISHING_WORKFLOW_KIND | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND | typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND | typeof BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND | typeof CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND | typeof SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND {
   return input === SOCIAL_PUBLISHING_WORKFLOW_KIND
     || input === SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
     || input === SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
     || input === BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND
     || input === CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND
+    || input === SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND
 }
 
 function isWorkflowBinding(input: unknown): boolean {

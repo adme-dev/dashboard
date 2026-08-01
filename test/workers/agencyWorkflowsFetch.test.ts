@@ -38,6 +38,7 @@ function workflowEnv(overrides: Record<string, unknown> = {}) {
     SOCIAL_SPEND_REVIEW_WORKFLOW: workflowBinding(),
     BRIEF_LIFECYCLE_CHECK_WORKFLOW: workflowBinding(),
     CRM_FOLLOWUP_REVIEW_WORKFLOW: workflowBinding(),
+    SITE_INTELLIGENCE_CRAWL_WORKFLOW: workflowBinding(),
     ...overrides
   }
 }
@@ -59,7 +60,8 @@ describe('agency workflows worker fetch handler', () => {
         { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: true },
         { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true },
         { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW', bindingConfigured: true },
-        { kind: 'crm.followup.review', binding: 'CRM_FOLLOWUP_REVIEW_WORKFLOW', bindingConfigured: true }
+        { kind: 'crm.followup.review', binding: 'CRM_FOLLOWUP_REVIEW_WORKFLOW', bindingConfigured: true },
+        { kind: 'site.intelligence.crawl', binding: 'SITE_INTELLIGENCE_CRAWL_WORKFLOW', bindingConfigured: true }
       ]
     })
   })
@@ -80,7 +82,8 @@ describe('agency workflows worker fetch handler', () => {
         { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW', bindingConfigured: false },
         { kind: 'social.spend.review', binding: 'SOCIAL_SPEND_REVIEW_WORKFLOW', bindingConfigured: true },
         { kind: 'brief.lifecycle.check', binding: 'BRIEF_LIFECYCLE_CHECK_WORKFLOW', bindingConfigured: true },
-        { kind: 'crm.followup.review', binding: 'CRM_FOLLOWUP_REVIEW_WORKFLOW', bindingConfigured: true }
+        { kind: 'crm.followup.review', binding: 'CRM_FOLLOWUP_REVIEW_WORKFLOW', bindingConfigured: true },
+        { kind: 'site.intelligence.crawl', binding: 'SITE_INTELLIGENCE_CRAWL_WORKFLOW', bindingConfigured: true }
       ]
     })
   })

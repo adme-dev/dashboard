@@ -38,3 +38,8 @@ class_name = "BriefLifecycleCheckWorkflow"
 name = "crm-followup-review-workflow"
 binding = "CRM_FOLLOWUP_REVIEW_WORKFLOW"
 class_name = "CrmFollowupReviewWorkflow"
+
+[[workflows]]
+name = "site-intelligence-crawl-workflow"
+binding = "SITE_INTELLIGENCE_CRAWL_WORKFLOW"
+class_name = "SiteIntelligenceCrawlWorkflow"

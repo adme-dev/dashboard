@@ -3,8 +3,10 @@ export const SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND = 'social.inbox.automation' a
 export const SOCIAL_SPEND_REVIEW_WORKFLOW_KIND = 'social.spend.review' as const
 export const BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND = 'brief.lifecycle.check' as const
 export const CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND = 'crm.followup.review' as const
+export const SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND = 'site.intelligence.crawl' as const
 const WORKFLOW_INSTANCE_ID_MAX_LENGTH = 100
 const REVIEW_BUCKET_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}$/
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export type SupportedWorkflowKind
   = typeof SOCIAL_PUBLISHING_WORKFLOW_KIND
@@ -12,6 +14,7 @@ export type SupportedWorkflowKind
     | typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
     | typeof BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND
     | typeof CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND
+    | typeof SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND
 
 export type SocialPublishingWorkflowTrigger = 'manual' | 'schedule' | 'cron' | 'retry'
 export type SocialInboxAutomationWorkflowTrigger = 'inbound' | 'cron' | 'retry' | 'manual'
@@ -21,6 +24,7 @@ export type SocialSpendReviewPlatform = 'all' | 'meta' | 'google_ads'
 export type BriefLifecycleCheckWorkflowTrigger = 'submit' | 'manual' | 'cron' | 'retry'
 export type CrmFollowupReviewWorkflowTrigger = 'cron' | 'manual' | 'retry'
 export type CrmFollowupReviewWorkflowScope = 'all' | 'client'
+export type SiteIntelligenceCrawlWorkflowTrigger = 'manual' | 'schedule' | 'retry'
 
 export interface SocialPublishingWorkflowPayload {
   kind: typeof SOCIAL_PUBLISHING_WORKFLOW_KIND
@@ -67,12 +71,22 @@ export interface CrmFollowupReviewWorkflowPayload {
   requestedBy?: string
 }
 
+export interface SiteIntelligenceCrawlWorkflowPayload {
+  kind: typeof SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND
+  runId: string
+  domainId: string
+  clientId: string
+  trigger: SiteIntelligenceCrawlWorkflowTrigger
+  requestedBy?: string
+}
+
 export type WorkflowRequestBody
   = { workflow: typeof SOCIAL_PUBLISHING_WORKFLOW_KIND, payload: SocialPublishingWorkflowPayload }
     | { workflow: typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND, payload: SocialInboxAutomationWorkflowPayload }
     | { workflow: typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND, payload: SocialSpendReviewWorkflowPayload }
     | { workflow: typeof BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND, payload: BriefLifecycleCheckWorkflowPayload }
     | { workflow: typeof CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND, payload: CrmFollowupReviewWorkflowPayload }
+    | { workflow: typeof SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND, payload: SiteIntelligenceCrawlWorkflowPayload }
 
 export interface WorkflowFeatureEnv {
   AGENCY_WORKFLOWS_ENABLED?: string
@@ -97,6 +111,7 @@ export interface AgencyWorkflowEnv extends WorkflowFeatureEnv {
   SOCIAL_SPEND_REVIEW_WORKFLOW: WorkflowBindingLike<SocialSpendReviewWorkflowPayload>
   BRIEF_LIFECYCLE_CHECK_WORKFLOW: WorkflowBindingLike<BriefLifecycleCheckWorkflowPayload>
   CRM_FOLLOWUP_REVIEW_WORKFLOW: WorkflowBindingLike<CrmFollowupReviewWorkflowPayload>
+  SITE_INTELLIGENCE_CRAWL_WORKFLOW: WorkflowBindingLike<SiteIntelligenceCrawlWorkflowPayload>
 }
 
 export function workflowFeatureEnabled(env: WorkflowFeatureEnv): boolean {
@@ -134,6 +149,12 @@ export function parseWorkflowRequestBody(input: unknown): WorkflowRequestBody {
     return {
       workflow,
       payload: normalizeCrmFollowupReviewWorkflowPayload(body.payload)
+    }
+  }
+  if (workflow === SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND) {
+    return {
+      workflow,
+      payload: normalizeSiteIntelligenceCrawlWorkflowPayload(body.payload)
     }
   }
   throw new Error(`Unsupported workflow: ${workflow || 'missing'}`)
@@ -267,6 +288,32 @@ export function buildCrmFollowupReviewWorkflowInstanceId(payload: CrmFollowupRev
     .slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
 }
 
+export function normalizeSiteIntelligenceCrawlWorkflowPayload(
+  input: unknown
+): SiteIntelligenceCrawlWorkflowPayload {
+  const body = objectInput(input)
+  const runId = requiredUuid(body.runId, 'runId')
+  const domainId = requiredUuid(body.domainId, 'domainId')
+  const clientId = requiredUuid(body.clientId, 'clientId')
+  const trigger = normalizeSiteIntelligenceCrawlTrigger(body.trigger)
+  const requestedBy = optionalUuid(body.requestedBy, 'requestedBy')
+
+  return {
+    kind: SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND,
+    runId,
+    domainId,
+    clientId,
+    trigger,
+    ...(requestedBy ? { requestedBy } : {})
+  }
+}
+
+export function buildSiteIntelligenceCrawlWorkflowInstanceId(
+  payload: SiteIntelligenceCrawlWorkflowPayload
+): string {
+  return `site-intel-${payload.runId}`.slice(0, WORKFLOW_INSTANCE_ID_MAX_LENGTH)
+}
+
 function normalizeTrigger(input: unknown): SocialPublishingWorkflowTrigger {
   const value = optionalText(input) ?? 'manual'
   if (value === 'manual' || value === 'schedule' || value === 'cron' || value === 'retry') return value
@@ -324,6 +371,12 @@ function normalizeCrmFollowupReviewScope(input: unknown): CrmFollowupReviewWorkf
   throw new Error(`Unsupported scope: ${value}`)
 }
 
+function normalizeSiteIntelligenceCrawlTrigger(input: unknown): SiteIntelligenceCrawlWorkflowTrigger {
+  const value = requiredText(input, 'trigger')
+  if (value === 'manual' || value === 'schedule' || value === 'retry') return value
+  throw new Error(`Unsupported trigger: ${value}`)
+}
+
 function normalizeReviewBucket(input: unknown): string {
   const value = requiredText(input, 'bucket')
   if (REVIEW_BUCKET_PATTERN.test(value)) return value
@@ -337,6 +390,19 @@ function requiredText(input: unknown, field: string): string {
   const value = optionalText(input)
   if (!value) throw new Error(`${field} required`)
   return value
+}
+
+function requiredUuid(input: unknown, field: string): string {
+  const value = requiredText(input, field)
+  if (!UUID_PATTERN.test(value)) throw new Error(`${field} must be a UUID`)
+  return value.toLowerCase()
+}
+
+function optionalUuid(input: unknown, field: string): string | undefined {
+  const value = optionalText(input)
+  if (!value) return undefined
+  if (!UUID_PATTERN.test(value)) throw new Error(`${field} must be a UUID`)
+  return value.toLowerCase()
 }
 
 function optionalText(input: unknown): string | undefined {
