@@ -106,6 +106,8 @@ export interface AgencyWorkflowEnv extends WorkflowFeatureEnv {
   APP_BASE_URL?: string
   WORKFLOW_SERVICE_SECRET?: string
   WORKFLOW_CALLBACK_SECRET?: string
+  CLOUDFLARE_ACCOUNT_ID?: string
+  BROWSER_RENDERING_API_TOKEN?: string
   SOCIAL_PUBLISHING_WORKFLOW: WorkflowBindingLike<SocialPublishingWorkflowPayload>
   SOCIAL_INBOX_AUTOMATION_WORKFLOW: WorkflowBindingLike<SocialInboxAutomationWorkflowPayload>
   SOCIAL_SPEND_REVIEW_WORKFLOW: WorkflowBindingLike<SocialSpendReviewWorkflowPayload>

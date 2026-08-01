@@ -31,6 +31,12 @@ import {
   type CrmFollowupReviewWorkflowScope,
   type CrmFollowupReviewWorkflowTrigger
 } from '~~/server/utils/agencyWorkflows/crmFollowupReview'
+import {
+  SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND,
+  normalizeSiteIntelligenceCrawlWorkflowPayload,
+  type SiteIntelligenceCrawlWorkflowPayload,
+  type SiteIntelligenceCrawlWorkflowTrigger
+} from '~~/server/utils/agencyWorkflows/siteIntelligenceCrawl'
 import type { H3Event } from 'h3'
 
 const AGENCY_WORKFLOWS_BINDING = 'AGENCY_WORKFLOWS'
@@ -47,8 +53,8 @@ type WorkflowTransport = 'service-binding' | 'fetch'
 export type AgencyWorkflowKind = typeof SOCIAL_PUBLISHING_WORKFLOW_KIND | typeof SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND
   | typeof SOCIAL_SPEND_REVIEW_WORKFLOW_KIND
   | typeof BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND
-  | typeof CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND
-type AgencyWorkflowPayload = SocialPublishingWorkflowPayload | SocialInboxAutomationWorkflowPayload | SocialSpendReviewWorkflowPayload | BriefLifecycleCheckWorkflowPayload | CrmFollowupReviewWorkflowPayload
+  | typeof CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND | typeof SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND
+type AgencyWorkflowPayload = SocialPublishingWorkflowPayload | SocialInboxAutomationWorkflowPayload | SocialSpendReviewWorkflowPayload | BriefLifecycleCheckWorkflowPayload | CrmFollowupReviewWorkflowPayload | SiteIntelligenceCrawlWorkflowPayload
 
 interface AgencyWorkflowServiceBinding {
   fetch: (request: Request) => Promise<Response>
@@ -110,6 +116,15 @@ export interface StartCrmFollowupReviewWorkflowInput {
   fetchImpl?: (request: Request) => Promise<Response>
 }
 
+export interface StartSiteIntelligenceCrawlWorkflowInput {
+  runId: string
+  domainId: string
+  clientId: string
+  trigger: SiteIntelligenceCrawlWorkflowTrigger
+  requestedBy?: string
+  fetchImpl?: (request: Request) => Promise<Response>
+}
+
 export interface StartAgencyWorkflowSuccess<TWorkflow extends AgencyWorkflowKind> {
   ok: true
   enabled: true
@@ -161,6 +176,11 @@ export type StartBriefLifecycleCheckWorkflowResult
 
 export type StartCrmFollowupReviewWorkflowResult
   = StartAgencyWorkflowSuccess<typeof CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND>
+    | StartAgencyWorkflowDisabled
+    | StartAgencyWorkflowFailure
+
+export type StartSiteIntelligenceCrawlWorkflowResult
+  = StartAgencyWorkflowSuccess<typeof SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND>
     | StartAgencyWorkflowDisabled
     | StartAgencyWorkflowFailure
 
@@ -565,6 +585,43 @@ export async function startCrmFollowupReviewWorkflow(
   }
 }
 
+export async function startSiteIntelligenceCrawlWorkflow(
+  event: AgencyWorkflowEvent,
+  input: StartSiteIntelligenceCrawlWorkflowInput
+): Promise<StartSiteIntelligenceCrawlWorkflowResult> {
+  const env = getCloudflareEnv(event)
+  if (envText(env, 'AGENCY_WORKFLOWS_ENABLED') !== 'true') {
+    return { ok: false, enabled: false, reason: 'disabled' }
+  }
+  let payload: SiteIntelligenceCrawlWorkflowPayload
+  try {
+    payload = normalizeSiteIntelligenceCrawlWorkflowPayload({
+      kind: SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND,
+      ...input,
+      fetchImpl: undefined
+    })
+  } catch (error) {
+    return failedResult('request_failed', { error: safeError(error) })
+  }
+  const secret = envText(env, 'WORKFLOW_SERVICE_SECRET')
+  const target = secret
+    ? buildWorkflowStartTarget(env, SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND, payload, secret, input.fetchImpl)
+    : null
+  if (!target) return failedResult('not_configured')
+  try {
+    const response = await target.send(target.request)
+    const body = await readResponseBody(response)
+    if (!response.ok) return failedResult('bad_response', {
+      transport: target.transport,
+      status: response.status,
+      error: responseError(body, response.statusText, [secret])
+    })
+    return successResult(SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND, target.transport, body)
+  } catch (error) {
+    return failedResult('request_failed', { transport: target.transport, error: safeError(error, [secret]) })
+  }
+}
+
 export async function checkAgencyWorkflowReadiness(
   event: AgencyWorkflowEvent,
   input: CheckAgencyWorkflowReadinessInput = {}
@@ -910,7 +967,8 @@ function missingRequiredWorkflows(workflows: unknown[] | undefined): AgencyWorkf
     SOCIAL_INBOX_AUTOMATION_WORKFLOW_KIND,
     SOCIAL_SPEND_REVIEW_WORKFLOW_KIND,
     BRIEF_LIFECYCLE_CHECK_WORKFLOW_KIND,
-    CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND
+    CRM_FOLLOWUP_REVIEW_WORKFLOW_KIND,
+    SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND
   ]
   return required.filter(kind => !hasWorkflowKind(workflows, kind))
 }

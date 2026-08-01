@@ -357,7 +357,7 @@ git commit -m "feat: add site intelligence crawl workflow contract"
 **Interfaces:**
 - Produces: one idempotent manual-run path and workflow callback protocol. Ingest initially validates and records bounded raw results; Task 5 adds extraction/storage.
 
-- [ ] **Step 1: Write failing orchestration tests**
+- [x] **Step 1: Write failing orchestration tests**
 
 Assert a manual run requires an active authorised domain, feature flag, and admin
 role; creates one queued run; refuses a second active run with `409`; revalidates
@@ -368,7 +368,7 @@ Workflow tests assert: config callback → Browser Run start → durable polling
 Workflow sleeps → paginated ingestion → terminal completion. `disallowed` records
 produce a blocked/partial outcome and are never retried as bypass candidates.
 
-- [ ] **Step 2: Run the orchestration tests and confirm failure**
+- [x] **Step 2: Run the orchestration tests and confirm failure**
 
 ```bash
 pnpm vitest run test/server/api/siteIntelligenceCrawl.test.ts test/workers/siteIntelligenceWorkflowExecution.test.ts
@@ -376,31 +376,31 @@ pnpm vitest run test/server/api/siteIntelligenceCrawl.test.ts test/workers/siteI
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implement manual run creation**
+- [x] **Step 3: Implement manual run creation**
 
 In one transaction, lock the domain, check for an active run, create the immutable
 run snapshot, and write an audit event. Start the workflow after commit. If start
 fails, mark the run failed with category `workflow_start`; do not leave it queued.
 
-- [ ] **Step 4: Implement the durable Workflow loop**
+- [x] **Step 4: Implement the durable Workflow loop**
 
 Use `step.do` for external calls and `step.sleep('wait for crawl', '30 seconds')`
 between polls. Cap polling at 240 attempts and let the Browser Run seven-day
 terminal status remain authoritative. Fetch records in bounded pages and generate
 an idempotency key from run ID, cursor, and record status filter.
 
-- [ ] **Step 5: Implement callback authentication and idempotency**
+- [x] **Step 5: Implement callback authentication and idempotency**
 
 The config endpoint returns the immutable run settings, not the mutable domain
 row. The ingest endpoint accepts at most 100 records or 5 MB and records the batch
 key before processing. Replayed batches return success without duplicate writes.
 The completion endpoint accepts only documented terminal status transitions.
 
-- [ ] **Step 6: Run focused tests to green**
+- [x] **Step 6: Run focused tests to green**
 
 Run the Step 2 command. Expected: PASS.
 
-- [ ] **Step 7: Commit the end-to-end crawl control path**
+- [x] **Step 7: Commit the end-to-end crawl control path**
 
 ```bash
 git add server/api/agency/site-intelligence/domains server/api/internal/workflows/site-intelligence server/utils/siteIntelligence/repository.ts workers/agency-workflows/src/index.ts test/server/api/siteIntelligenceCrawl.test.ts test/workers/siteIntelligenceWorkflowExecution.test.ts

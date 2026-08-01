@@ -249,3 +249,143 @@ export async function updateSiteIntelligenceDomain(
     return mapSiteIntelligenceDomainRow(row)
   })
 }
+
+export interface SiteIntelligenceRunConfig {
+  id: string
+  clientId: string
+  domainId: string
+  trigger: 'manual' | 'schedule' | 'retry'
+  settings: Record<string, unknown>
+}
+
+export async function createSiteIntelligenceCrawlRun(
+  actor: SiteIntelligenceAuditActor,
+  domainId: string,
+  trigger: 'manual' | 'schedule' | 'retry'
+): Promise<{ status: 'created', run: SiteIntelligenceRunConfig } | { status: 'not_found' | 'inactive' | 'active_run', run: null }> {
+  return transaction(async (db) => {
+    const domainResult = await db.query<SiteIntelligenceDomainRow>(`
+      SELECT * FROM site_intelligence_domains WHERE id = $1 FOR UPDATE
+    `, [domainId])
+    const domain = domainResult.rows[0]
+    if (!domain) return { status: 'not_found' as const, run: null }
+    if (domain.status !== 'active') return { status: 'inactive' as const, run: null }
+
+    const active = await db.query<{ id: string }>(`
+      SELECT id FROM site_intelligence_crawl_runs
+      WHERE domain_id = $1 AND status IN ('queued', 'running') LIMIT 1
+    `, [domainId])
+    if (active.rows[0]) return { status: 'active_run' as const, run: null }
+
+    const settings = {
+      origin: domain.origin,
+      lane: domain.lane,
+      discoveryMode: domain.discovery_mode,
+      includePatterns: domain.include_patterns ?? [],
+      excludePatterns: domain.exclude_patterns ?? [],
+      includeSubdomains: domain.include_subdomains,
+      renderMode: domain.render_mode,
+      pageLimit: Number(domain.page_limit),
+      depth: Number(domain.crawl_depth),
+      crawlPurposes: domain.crawl_purposes,
+      aiInputAllowed: domain.ai_input_allowed,
+      retentionDays: Number(domain.retention_days)
+    }
+    const result = await db.query<{ id: string }>(`
+      INSERT INTO site_intelligence_crawl_runs (
+        client_id, domain_id, trigger, status, settings, requested_by
+      ) VALUES ($1, $2, $3, 'queued', $4::jsonb, $5)
+      RETURNING id
+    `, [domain.client_id, domain.id, trigger, JSON.stringify(settings), actor.id])
+    const id = result.rows[0]?.id
+    if (!id) throw new Error('Site intelligence crawl run insert returned no row')
+    await writeSiteIntelligenceAudit(actor, domain.client_id, 'run.created', 'run', id, {
+      trigger,
+      domainId: domain.id
+    }, db)
+    return {
+      status: 'created' as const,
+      run: { id, clientId: domain.client_id, domainId: domain.id, trigger, settings }
+    }
+  })
+}
+
+export async function markSiteIntelligenceRunWorkflowStarted(runId: string, clientId: string, instanceId: string) {
+  await queryOne(`UPDATE site_intelligence_crawl_runs
+    SET workflow_instance_id = $3, status = 'running', started_at = COALESCE(started_at, NOW())
+    WHERE id = $1 AND client_id = $2 AND status = 'queued' RETURNING id`, [runId, clientId, instanceId])
+}
+
+export async function failSiteIntelligenceRun(runId: string, clientId: string, category: string, summary: string) {
+  await queryOne(`UPDATE site_intelligence_crawl_runs
+    SET status = 'failed', error_category = $3, error_summary = $4, completed_at = NOW()
+    WHERE id = $1 AND client_id = $2 AND status IN ('queued', 'running') RETURNING id`,
+  [runId, clientId, category.slice(0, 120), summary.slice(0, 1000)])
+}
+
+export async function getSiteIntelligenceRunConfig(
+  runId: string,
+  clientId: string,
+  domainId: string
+): Promise<SiteIntelligenceRunConfig | null> {
+  const row = await queryOne<{ id: string, client_id: string, domain_id: string, trigger: SiteIntelligenceRunConfig['trigger'], settings: Record<string, unknown> }>(`
+    SELECT id, client_id, domain_id, trigger, settings
+    FROM site_intelligence_crawl_runs
+    WHERE id = $1 AND client_id = $2 AND domain_id = $3
+  `, [runId, clientId, domainId])
+  return row ? { id: row.id, clientId: row.client_id, domainId: row.domain_id, trigger: row.trigger, settings: row.settings } : null
+}
+
+export async function recordSiteIntelligenceIngestBatch(
+  runId: string,
+  input: { clientId: string, domainId: string, batchKey: string, records: Array<{ status: string }> }
+): Promise<{ replayed: boolean } | null> {
+  return transaction(async (db) => {
+    const run = await db.query<{ id: string }>(`SELECT id FROM site_intelligence_crawl_runs
+      WHERE id = $1 AND client_id = $2 AND domain_id = $3 FOR UPDATE`, [runId, input.clientId, input.domainId])
+    if (!run.rows[0]) return null
+    const inserted = await db.query<{ id: string }>(`INSERT INTO site_intelligence_ingest_batches
+      (client_id, run_id, batch_key, record_count) VALUES ($1, $2, $3, $4)
+      ON CONFLICT (run_id, batch_key) DO NOTHING RETURNING id`,
+    [input.clientId, runId, input.batchKey, input.records.length])
+    if (!inserted.rows[0]) return { replayed: true }
+    const completed = input.records.filter(record => record.status === 'completed').length
+    const disallowed = input.records.filter(record => record.status === 'disallowed').length
+    const errored = input.records.filter(record => record.status === 'errored').length
+    await db.query(`UPDATE site_intelligence_crawl_runs SET
+      completed_pages = completed_pages + $4,
+      disallowed_pages = disallowed_pages + $5,
+      errored_pages = errored_pages + $6
+      WHERE id = $1 AND client_id = $2 AND domain_id = $3`,
+    [runId, input.clientId, input.domainId, completed, disallowed, errored])
+    return { replayed: false }
+  })
+}
+
+export async function completeSiteIntelligenceRun(runId: string, input: {
+  clientId: string
+  domainId: string
+  status: 'completed' | 'partial' | 'blocked' | 'failed' | 'cancelled'
+  cloudflareJobId?: string
+  totalPages?: number
+  completedPages?: number
+  disallowedPages?: number
+  erroredPages?: number
+  browserSeconds?: number
+  errorCategory?: string
+  errorSummary?: string
+}) {
+  return queryOne<{ id: string, status: string }>(`UPDATE site_intelligence_crawl_runs SET
+    status = $4, cloudflare_job_id = COALESCE($5, cloudflare_job_id),
+    total_pages = COALESCE($6, total_pages), completed_pages = COALESCE($7, completed_pages),
+    disallowed_pages = COALESCE($8, disallowed_pages), errored_pages = COALESCE($9, errored_pages),
+    browser_seconds = COALESCE($10, browser_seconds), error_category = $11,
+    error_summary = $12, completed_at = NOW()
+    WHERE id = $1 AND client_id = $2 AND domain_id = $3
+      AND status IN ('queued', 'running') RETURNING id, status`, [
+    runId, input.clientId, input.domainId, input.status, input.cloudflareJobId ?? null,
+    input.totalPages ?? null, input.completedPages ?? null, input.disallowedPages ?? null,
+    input.erroredPages ?? null, input.browserSeconds ?? null, input.errorCategory ?? null,
+    input.errorSummary?.slice(0, 1000) ?? null
+  ])
+}
