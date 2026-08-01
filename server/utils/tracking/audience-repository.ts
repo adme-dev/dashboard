@@ -844,7 +844,10 @@ const BREAKDOWN_SQL: Record<AudienceBreakdownDimension, { expression: string, co
     expression: `COALESCE(NULLIF(e.utm_campaign, ''), '(untagged)')`
   },
   page: {
-    expression: `COALESCE(NULLIF(e.page_url, ''), '(unknown page)')`
+    expression: `COALESCE(
+      NULLIF(split_part(split_part(e.page_url, '?', 1), '#', 1), ''),
+      '(unknown page)'
+    )`
   },
   paid_organic: {
     expression: `CASE
@@ -894,7 +897,6 @@ export async function getAudienceBreakdowns(input: {
      WITH scoped AS (
        SELECT e.site_id,
               e.event_id,
-              e.client_id,
               e.anon_id,
               e.session_id,
               e.event_name,
@@ -906,43 +908,23 @@ export async function getAudienceBreakdowns(input: {
           AND e.received_at < (($3::date + INTERVAL '1 day') AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))
           AND ${QUALIFYING_EVENTS_SQL}
           ${definition.condition ?? ''}
-     ),
-     event_metrics AS (
-       SELECT key,
-              COUNT(DISTINCT anon_id) AS visitors
-         FROM scoped
-        GROUP BY key
-     ),
-     session_metrics AS (
-       SELECT key,
-              COUNT(DISTINCT session_id) AS sessions,
-              COUNT(DISTINCT session_id) FILTER (WHERE event_name = 'engagement') AS engaged_sessions,
-              COUNT(DISTINCT session_id) FILTER (
-                WHERE event_name IN ('form_submit', 'phone_click', 'generate_lead', 'test_drive_booking')
-              ) AS lead_actions
-         FROM scoped
-        GROUP BY key
-     ),
-     outcome_metrics AS (
-       SELECT scoped.key,
-              COUNT(DISTINCT intent.matched_lead_id)
-                FILTER (WHERE intent.matched_lead_id IS NOT NULL) AS confirmed_leads
-         FROM scoped
-         LEFT JOIN lead_submission_intents intent
-           ON intent.site_id = scoped.site_id
-          AND intent.browser_event_id = scoped.event_id
-        GROUP BY scoped.key
      )
-     SELECT events.key,
-            events.visitors::text,
-            COALESCE(sessions.sessions, 0)::text AS sessions,
-            COALESCE(sessions.engaged_sessions, 0)::text AS engaged_sessions,
-            COALESCE(sessions.lead_actions, 0)::text AS lead_actions,
-            COALESCE(outcomes.confirmed_leads, 0)::text AS confirmed_leads
-       FROM event_metrics events
-       LEFT JOIN session_metrics sessions USING (key)
-       LEFT JOIN outcome_metrics outcomes USING (key)
-      ORDER BY events.visitors DESC, events.key
+     SELECT scoped.key,
+            COUNT(DISTINCT scoped.anon_id)::text AS visitors,
+            COUNT(DISTINCT scoped.session_id)::text AS sessions,
+            COUNT(DISTINCT scoped.session_id)
+              FILTER (WHERE scoped.event_name = 'engagement')::text AS engaged_sessions,
+            COUNT(DISTINCT scoped.session_id) FILTER (
+              WHERE scoped.event_name IN ('form_submit', 'phone_click', 'generate_lead', 'test_drive_booking')
+            )::text AS lead_actions,
+            COUNT(DISTINCT intent.matched_lead_id)
+              FILTER (WHERE intent.matched_lead_id IS NOT NULL)::text AS confirmed_leads
+       FROM scoped
+       LEFT JOIN lead_submission_intents intent
+         ON intent.site_id = scoped.site_id
+        AND intent.browser_event_id = scoped.event_id
+      GROUP BY scoped.key
+      ORDER BY COUNT(DISTINCT scoped.anon_id) DESC, scoped.key
       LIMIT 20`,
     [input.clientIds, input.range.fromDate, input.range.toDate]
   ))

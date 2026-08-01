@@ -54,7 +54,7 @@ function updateMetric(metric: AudienceMetric) {
 </script>
 
 <template>
-  <div class="space-y-6 p-4 sm:p-6">
+  <div class="h-full min-h-0 overflow-y-auto overscroll-y-contain space-y-6 p-4 sm:p-6">
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div class="max-w-3xl">
         <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-primary">

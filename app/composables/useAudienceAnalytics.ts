@@ -18,10 +18,7 @@ export type AudienceResourceStatus = 'idle' | 'pending' | 'success' | 'error'
 const BREAKDOWN_DIMENSIONS: AudienceBreakdownDimension[] = [
   'source',
   'campaign',
-  'page',
-  'paid_organic',
-  'device',
-  'interest'
+  'page'
 ]
 
 function localDate(date: Date): string {
@@ -127,36 +124,37 @@ export function useAudienceAnalytics() {
       return [dimension, response] as const
     }))
 
-    const [overviewResult, timeseriesResult, breakdownResult] = await Promise.allSettled([
-      overviewRequest,
-      timeseriesRequest,
-      breakdownRequest
-    ])
-    if (version !== requestVersion) return
-
-    if (overviewResult.status === 'fulfilled') {
-      overview.value = overviewResult.value
+    const settleOverview = overviewRequest.then((response) => {
+      if (version !== requestVersion) return
+      overview.value = response
       status.overview = 'success'
-    } else {
+    }, (error) => {
+      if (version !== requestVersion) return
       status.overview = 'error'
-      errors.overview = errorMessage(overviewResult.reason)
-    }
+      errors.overview = errorMessage(error)
+    })
 
-    if (timeseriesResult.status === 'fulfilled') {
-      timeseries.value = timeseriesResult.value
+    const settleTimeseries = timeseriesRequest.then((response) => {
+      if (version !== requestVersion) return
+      timeseries.value = response
       status.timeseries = 'success'
-    } else {
+    }, (error) => {
+      if (version !== requestVersion) return
       status.timeseries = 'error'
-      errors.timeseries = errorMessage(timeseriesResult.reason)
-    }
+      errors.timeseries = errorMessage(error)
+    })
 
-    if (breakdownResult.status === 'fulfilled') {
-      breakdowns.value = Object.fromEntries(breakdownResult.value)
+    const settleBreakdowns = breakdownRequest.then((response) => {
+      if (version !== requestVersion) return
+      breakdowns.value = Object.fromEntries(response)
       status.breakdowns = 'success'
-    } else {
+    }, (error) => {
+      if (version !== requestVersion) return
       status.breakdowns = 'error'
-      errors.breakdowns = errorMessage(breakdownResult.reason)
-    }
+      errors.breakdowns = errorMessage(error)
+    })
+
+    await Promise.all([settleOverview, settleTimeseries, settleBreakdowns])
   }
 
   function updateFilters(patch: Partial<AudienceFilters>) {
