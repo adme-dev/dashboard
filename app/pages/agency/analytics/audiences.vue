@@ -86,6 +86,12 @@ function updateMetric(metric: AudienceMetric) {
       @update:client-id="updateFilters({ clientId: $event })"
     />
 
+    <AnalyticsAudiencesAnalyst
+      :from="filters.from"
+      :to="filters.to"
+      :client-id="filters.clientId"
+    />
+
     <UAlert
       v-if="status.overview === 'error'"
       color="error"
