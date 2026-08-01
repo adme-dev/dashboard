@@ -201,13 +201,16 @@ git commit -m "feat: define automotive site intelligence foundation"
 - Consumes: Task 1 contracts, `requireTrackingAudienceScope`, `requireRole`, and `queryRows/queryOne/execute`.
 - Produces: tenant-scoped list/create/update APIs and an administrator-only Nuxt UI management surface.
 
-- [ ] **Step 1: Invoke the mandatory frontend design guidance**
+- [x] **Step 1: Apply the available frontend design guidance**
 
 Read the complete frontend-design `SKILL.md` named in `AGENTS.md` before editing
 the form. Record the resulting hierarchy, spacing, responsive-field, and dark-mode
 decisions in the test description and component comments only where necessary.
+The exact legacy path named in `AGENTS.md` was unavailable in this environment;
+the available `frontend-ui-engineering` guidance was applied with all project form
+rules retained.
 
-- [ ] **Step 2: Write failing API and form tests**
+- [x] **Step 2: Write failing API and form tests**
 
 Test that scoped users see assigned clients only, management users can read all,
 non-admin mutations return `403`, duplicate client/origin/lane returns `409`, URL
@@ -218,7 +221,7 @@ For the form, assert `UModal`, `UFormField`, `UInput`, `USelectMenu`, `UCheckbox
 and `UButton` usage; no native input/select/button; no empty-string select value;
 and lane changes visibly reset purpose defaults.
 
-- [ ] **Step 3: Run tests and confirm missing-boundary failures**
+- [x] **Step 3: Run tests and confirm missing-boundary failures**
 
 ```bash
 pnpm vitest run test/server/api/siteIntelligenceDomains.test.ts test/app/siteIntelligenceDomainForm.test.ts
@@ -226,7 +229,7 @@ pnpm vitest run test/server/api/siteIntelligenceDomains.test.ts test/app/siteInt
 
 Expected: FAIL because the repository, handlers, and components do not exist.
 
-- [ ] **Step 4: Implement repository and audit boundaries**
+- [x] **Step 4: Implement repository and audit boundaries**
 
 Expose exact functions:
 
@@ -242,24 +245,24 @@ Every SQL method accepts already-resolved client scope and rechecks the row's
 client on mutation. Audit metadata contains changed field names and safe scalar
 values, never page content or tokens.
 
-- [ ] **Step 5: Implement thin authenticated handlers**
+- [x] **Step 5: Implement thin authenticated handlers**
 
 Validate bodies with Task 1 Zod schemas, role-gate before mutation, resolve client
 access before repository calls, return `409` for the unique domain constraint, and
 return stable status messages without SQL details.
 
-- [ ] **Step 6: Build the responsive domain modal and table**
+- [x] **Step 6: Build the responsive domain modal and table**
 
 Use a single-column form with `@container` and `@lg:grid-cols-2` only where fields
 fit. Show the competitor-public-content boundary next to the lane field. Put
 advanced crawl controls in `UAccordion`; default page limit and purposes from the
 selected lane. Use `UAlert` for blocked policy, not browser dialogs.
 
-- [ ] **Step 7: Run the focused tests to green**
+- [x] **Step 7: Run the focused tests to green**
 
 Run the Step 3 command. Expected: PASS.
 
-- [ ] **Step 8: Commit the governed registry slice**
+- [x] **Step 8: Commit the governed registry slice**
 
 ```bash
 git add server/utils/siteIntelligence/repository.ts server/utils/siteIntelligence/audit.ts server/api/agency/site-intelligence/domains app/components/analytics/audiences/intelligence/DomainModal.vue app/components/analytics/audiences/intelligence/DomainTable.vue test/server/api/siteIntelligenceDomains.test.ts test/app/siteIntelligenceDomainForm.test.ts
