@@ -3,7 +3,7 @@
 const DEFAULT_BASE_URL = 'https://agency-dashboard-6cm.pages.dev'
 const READINESS_PATH = '/api/agency/workflows/readiness'
 const STATUS_PATH = '/api/agency/workflows/status'
-const REQUIRED_WORKFLOWS = ['social.post.publish', 'social.inbox.automation', 'social.spend.review', 'brief.lifecycle.check', 'crm.followup.review']
+const REQUIRED_WORKFLOWS = ['social.post.publish', 'social.inbox.automation', 'social.spend.review', 'brief.lifecycle.check', 'crm.followup.review', 'site.intelligence.crawl']
 const SHARED_SECRET_HEADER = 'x-workflow-smoke-secret'
 const DEFAULT_READINESS_ATTEMPTS = 18
 const DEFAULT_READINESS_RETRY_DELAY_MS = 5000
