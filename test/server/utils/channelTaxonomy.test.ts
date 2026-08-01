@@ -29,10 +29,10 @@ describe('resolveFromTaxonomy', () => {
 
   it('records unmapped ad-platform/lead-source values instead of silently bucketing', () => {
     const unmapped = new Map<string, { system: SourceSystem; nativeValue: string }>()
-    expect(resolveFromTaxonomy(taxonomy, 'ad_platform', 'tiktok', unmapped)).toBeNull()
+    expect(resolveFromTaxonomy(taxonomy, 'ad_platform', 'other_network', unmapped)).toBeNull()
     expect(resolveFromTaxonomy(taxonomy, 'lead_source', 'carsales', unmapped)).toBeNull()
     expect([...unmapped.values()]).toEqual([
-      { system: 'ad_platform', nativeValue: 'tiktok' },
+      { system: 'ad_platform', nativeValue: 'other_network' },
       { system: 'lead_source', nativeValue: 'carsales' }
     ])
   })

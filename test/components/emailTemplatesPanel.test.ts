@@ -37,6 +37,7 @@ Object.assign(globalThis, {
   computed,
   useToast: () => ({ add: () => {} }),
   navigateTo: () => {},
+  $fetch: async () => ({ items: savedTemplates }),
   useFetch: async () => ({
     data: ref({ items: savedTemplates }),
     refresh: () => {},

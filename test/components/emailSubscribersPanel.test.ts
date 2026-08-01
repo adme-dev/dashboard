@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { computed, createSSRApp, h, ref } from 'vue'
+import { computed, createSSRApp, h, ref, watch } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import SubscribersPanel from '~~/app/components/email/SubscribersPanel.vue'
 
@@ -33,6 +33,10 @@ const subscriberRows = [
 Object.assign(globalThis, {
   ref,
   computed,
+  watch,
+  $fetch: async (url: string) => (url === '/api/email/lists'
+    ? { items: [] }
+    : { items: subscriberRows, total: subscriberRows.length }),
   useFetch: async (url: string) => ({
     data: ref(url === '/api/email/lists'
       ? { items: [] }

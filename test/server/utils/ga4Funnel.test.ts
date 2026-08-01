@@ -78,7 +78,8 @@ describe('channelMap', () => {
     expect(adPlatformToChannel('google')).toBe('Paid Search')
     expect(adPlatformToChannel('meta')).toBe('Paid Social')
     expect(adPlatformToChannel('meta_ads')).toBe('Paid Social')
-    expect(adPlatformToChannel('tiktok')).toBeNull() // → 'Other' bucket at the call site
+    expect(adPlatformToChannel('tiktok')).toBe('Paid Social')
+    expect(adPlatformToChannel('unknown')).toBeNull() // → 'Other' bucket at the call site
   })
 
   it('maps lead sources onto GA4 channel groups', () => {

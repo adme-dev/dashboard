@@ -33,6 +33,7 @@ async function render(props: Record<string, unknown> = {}) {
 describe('VideoStudioProducerRail', () => {
   beforeEach(() => {
     vi.stubGlobal('useToast', () => ({ add: vi.fn() }))
+    vi.stubGlobal('$fetch', vi.fn())
   })
 
   it('renders selected asset context and producer controls', async () => {

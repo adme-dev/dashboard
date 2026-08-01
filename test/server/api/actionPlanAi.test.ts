@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 type TestEvent = {
   body?: Record<string, unknown>
   headers?: Record<string, string>
+  $fetch: (...args: unknown[]) => Promise<unknown>
 }
 
 const mockGetSelectedTenant = vi.fn()
@@ -79,7 +80,11 @@ describe('POST /api/ai/action-plan telemetry', () => {
       tags: ['cashflow', 'collections'],
     }
 
-    const result = await handler({ body, headers: { cookie: 'sid=1' } } satisfies TestEvent)
+    const result = await handler({
+      body,
+      headers: { cookie: 'sid=1' },
+      $fetch: (...args: unknown[]) => mockFetch(...args),
+    } satisfies TestEvent)
 
     expect(result).toMatchObject({
       summary: 'Improve collections and update weekly cashflow controls.',

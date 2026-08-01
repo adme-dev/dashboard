@@ -26,6 +26,7 @@ async function render(props: Record<string, unknown> = {}) {
 describe('VideoStudioVoiceComposer', () => {
   beforeEach(() => {
     vi.stubGlobal('useToast', () => ({ add: vi.fn() }))
+    vi.stubGlobal('$fetch', vi.fn())
   })
 
   it('renders script, title, and generation controls', async () => {

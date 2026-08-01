@@ -42,6 +42,9 @@ vi.mock('~~/server/utils/socialVideoDraft', () => ({
 
 const mockGenerateGroqInsight = vi.fn()
 vi.mock('~~/server/utils/groqClient', () => ({
+  GROQ_MODELS: {
+    LLAMA_70B: 'llama-3.3-70b-versatile',
+  },
   generateGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
 }))
 
