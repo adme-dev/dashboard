@@ -515,7 +515,7 @@ git commit -m "feat: extract and diff automotive site facts"
 **Interfaces:**
 - Produces: enrichment feature key `site_intelligence_enrichment`, schema-validated page/change interpretation, dedicated `SITE_INTELLIGENCE_VECTORIZE` operations, and idempotent queue processing.
 
-- [ ] **Step 1: Write failing permission, safety, and tenant tests**
+- [x] **Step 1: Write failing permission, safety, and tenant tests**
 
 Assert no model call when AI flag is off, domain AI permission is false, the run
 did not declare `ai-input`, content hash is stale, or no relevant deterministic
@@ -526,7 +526,7 @@ Vector tests require filter `{ clientId }`, reject empty client IDs, store lane,
 domain ID, and page type metadata, and join search matches back through authorised
 Neon page IDs before returning excerpts.
 
-- [ ] **Step 2: Run tests and observe missing implementation**
+- [x] **Step 2: Run tests and observe missing implementation**
 
 ```bash
 pnpm vitest run test/server/utils/siteIntelligence/enrich.test.ts test/server/utils/siteIntelligence/vectorize.test.ts test/server/utils/siteIntelligence/queueConsumer.test.ts
@@ -534,7 +534,7 @@ pnpm vitest run test/server/utils/siteIntelligence/enrich.test.ts test/server/ut
 
 Expected: FAIL.
 
-- [ ] **Step 3: Register the model feature and strict output schema**
+- [x] **Step 3: Register the model feature and strict output schema**
 
 The model returns only:
 
@@ -552,7 +552,7 @@ The model returns only:
 Clamp summary lengths, theme counts, and confidence. Treat invalid output as an
 enrichment failure that leaves deterministic facts available.
 
-- [ ] **Step 4: Implement permission-gated enrichment**
+- [x] **Step 4: Implement permission-gated enrichment**
 
 Load the current page/domain/run by identifiers, verify hash and permission, read
 the private R2 object, construct an allowlisted prompt, call the existing
@@ -560,21 +560,21 @@ AI-Gateway-routed model assignment, validate output, and persist only the curren
 hash's enrichment. Record cost/latency metadata without storing prompts containing
 page copy.
 
-- [ ] **Step 5: Implement the dedicated Vectorize boundary**
+- [x] **Step 5: Implement the dedicated Vectorize boundary**
 
 Use Workers AI `@cf/baai/bge-base-en-v1.5` at 768 dimensions. Upsert only after
 enrichment or deterministic facts are current. Metadata includes `clientId`,
 `lane`, `domainId`, and `pageType`. Deletion removes the vector before clearing the
 Neon vector ID.
 
-- [ ] **Step 6: Add idempotent queue dispatch**
+- [x] **Step 6: Add idempotent queue dispatch**
 
 Extend `processJob` with `site-intelligence.enrich`. Re-read the current hash before
 work; return success for superseded/disabled jobs. Throw transient provider/storage
 errors for Queue retry and persist terminal validation/policy failures without
 retry loops.
 
-- [ ] **Step 7: Run focused and adjacent AI tests**
+- [x] **Step 7: Run focused and adjacent AI tests**
 
 ```bash
 pnpm vitest run test/server/utils/siteIntelligence/enrich.test.ts test/server/utils/siteIntelligence/vectorize.test.ts test/server/utils/siteIntelligence/queueConsumer.test.ts test/server/utils/aiModelRegistry.test.ts
@@ -582,7 +582,7 @@ pnpm vitest run test/server/utils/siteIntelligence/enrich.test.ts test/server/ut
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit enrichment and retrieval**
+- [x] **Step 8: Commit enrichment and retrieval**
 
 ```bash
 git add server/utils/siteIntelligence/enrich.ts server/utils/siteIntelligence/vectorize.ts server/utils/queueConsumer.ts server/utils/ai/modelAssignments.ts server/utils/ai/modelRegistry.ts wrangler.toml test/server/utils/siteIntelligence test/server/utils/aiModelRegistry.test.ts

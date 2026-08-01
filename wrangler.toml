@@ -117,6 +117,10 @@ binding = "AI"
 binding = "VECTORIZE"
 index_name = "agency-search"
 
+[[vectorize]]
+binding = "SITE_INTELLIGENCE_VECTORIZE"
+index_name = "automotive-site-intelligence"
+
 # Browser Rendering — headless Chromium for banner image export (PNG/JPG)
 # Enable in Cloudflare dashboard: Workers & Pages > Browser Rendering
 [browser]
@@ -187,6 +191,7 @@ AI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/a5b299b3ad15c1b5b895dc66f
 # Cloudflare Workflows control plane. Secrets are managed in Cloudflare:
 # WORKFLOW_SERVICE_SECRET and WORKFLOW_CALLBACK_SECRET.
 AGENCY_WORKFLOWS_ENABLED = "true"
+SITE_INTELLIGENCE_AI_ENABLED = "false"
 # High-entropy smoke secret verifier for CI diagnostics. GitHub Actions stores
 # the raw AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET; Pages only needs this hash.
 AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256 = "8aa2f98fd3d621bb0ac8f0157622d86cae347e14cdb35f32375b9467778462f2"

@@ -16,6 +16,7 @@ interface PrivateSiteIntelligenceBucket {
     httpMetadata?: { contentType?: string }
     customMetadata?: Record<string, string>
   }) => Promise<unknown | null>
+  get: (key: string) => Promise<{ text: () => Promise<string> } | null>
   delete: (key: string | string[]) => Promise<void>
 }
 
@@ -108,6 +109,14 @@ export async function deleteSiteIntelligenceSnapshots(
   const bucket = resolveBucket(event)
   if (!bucket) return
   await bucket.delete(keys)
+}
+
+export async function readSiteIntelligenceSnapshot(key: string): Promise<string> {
+  const bucket = resolveBucket(undefined)
+  if (!bucket) throw new Error('Private site intelligence storage is not configured')
+  const object = await bucket.get(key)
+  if (!object) throw new Error('Private site intelligence snapshot was not found')
+  return object.text()
 }
 
 export function recordOrphanSiteIntelligenceSnapshots(keys: string[], reason: unknown): void {

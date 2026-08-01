@@ -131,6 +131,7 @@ const FEATURE_RUNTIME_SUPPORTED_PROVIDERS: Record<string, RuntimeModelProvider[]
   agency_analytics_ai_summary: ['workers_ai', 'groq'],
   agency_analytics_ask: ['groq'],
   agency_audience_analytics_ask: ['groq'],
+  site_intelligence_enrichment: ['groq'],
   rate_card_description: ['groq'],
   notification_digest_narrative: ['groq'],
   notification_why_explanation: ['groq'],

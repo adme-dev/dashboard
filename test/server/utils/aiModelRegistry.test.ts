@@ -61,6 +61,7 @@ describe('ai model registry', () => {
     expect(features.has('agency_analytics_ai_summary')).toBe(true)
     expect(features.has('agency_analytics_ask')).toBe(true)
     expect(features.has('agency_audience_analytics_ask')).toBe(true)
+    expect(features.has('site_intelligence_enrichment')).toBe(true)
     expect(features.has('rate_card_description')).toBe(true)
     expect(features.has('notification_digest_narrative')).toBe(true)
     expect(features.has('notification_why_explanation')).toBe(true)
