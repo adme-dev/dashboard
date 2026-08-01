@@ -2776,6 +2776,35 @@ const features: Record<string, Feature> = {
     ]
   },
 
+  'website-audience-intelligence': {
+    title: 'Website Audience Intelligence',
+    slug: 'website-audience-intelligence',
+    icon: 'i-lucide-radio-tower',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'Turn first-party website telemetry into a read-only, aggregate view of tracking health, audience quality, lead outcomes, and cross-client opportunities.',
+    details: [
+      {
+        title: 'Know every tag is talking',
+        content: 'See every accessible website endpoint on one live signal ribbon: receiving, stale, missing recent data, never received, or inactive. Open any signal to see its freshness, event volume, origin, and direct route to tracking diagnostics, so broken or forgotten installs become visible before they weaken a report.'
+      },
+      {
+        title: 'Read audience quality',
+        content: 'Compare visitors, sessions, engagement, repeat behaviour, lead actions, confirmed leads, conversion rate, and attribution coverage against the preceding equal-length window. Ranked source, campaign, and page breakdowns put lead quality beside volume, while transparent opportunity rules explain the evidence and thresholds behind each recommendation.'
+      },
+      {
+        title: 'Compare clients on one ledger',
+        content: 'Give the marketing team an agency-wide ledger of tracking health and aggregate audience performance across every client they are allowed to access. Sort by freshness, visitors, engagement, lead outcomes, conversion, attribution coverage, or period change, then move directly into that client\'s tracking diagnostics when a signal needs attention.'
+      },
+      {
+        title: 'Ask with the evidence attached',
+        content: 'Generate a concise briefing or ask a plain-English question on demand. The analyst receives only the active reporting window and redacted aggregate KPIs, opportunity rules, and ranked breakdowns; every answer keeps the supporting numbers one click away. It cannot identify individual visitors, activate an audience, or change a campaign.'
+      }
+    ]
+  },
+
   'analytics-ask': {
     title: 'Ask Your Data',
     slug: 'analytics-ask',
