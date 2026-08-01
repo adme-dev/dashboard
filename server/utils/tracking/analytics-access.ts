@@ -53,6 +53,39 @@ export async function accessibleClientIds(user: { id: string, role: string }): P
   return rows.map(r => r.client_id)
 }
 
+/** Resolve the complete client option scope and the narrower query scope for
+ * agency-wide audience analytics. `null` is reserved for management access to
+ * every client; an empty array always remains fail-closed. */
+export async function requireTrackingAudienceScope(
+  event: H3Event,
+  requestedClientId?: string
+) {
+  const user = await requireAuth(event)
+  await requireRole(event, ANALYTICS_ROLES)
+
+  if (requestedClientId && !isUuid(requestedClientId)) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid clientId' })
+  }
+
+  const allowedIds = await accessibleClientIds(user)
+  if (requestedClientId) {
+    if (allowedIds !== null && !allowedIds.includes(requestedClientId)) {
+      throw createError({ statusCode: 403, statusMessage: 'No access to this client' })
+    }
+    return {
+      user,
+      accessibleClientIds: allowedIds,
+      clientIds: [requestedClientId]
+    }
+  }
+
+  return {
+    user,
+    accessibleClientIds: allowedIds,
+    clientIds: allowedIds
+  }
+}
+
 /** Resolve a tracking site's owning client and gate access on it (for endpoints
  *  keyed by site id, not client id). Returns the site's client_id. 404 if unknown. */
 export async function requireSiteTrackingAccess(event: H3Event, siteId: string | undefined): Promise<string> {
