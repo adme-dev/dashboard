@@ -15,6 +15,17 @@ describe('nearby market helpers', () => {
       .toBe('unclassified')
   })
 
+  it('matches franchise aliases as whole words or phrases, not name substrings', () => {
+    expect(classifyDealer({ displayName: 'Affordable Motors', primaryType: 'car_dealer', types: [] }))
+      .toBe('unclassified')
+    expect(classifyDealer({ displayName: 'Bertram Motors', primaryType: 'car_dealer', types: [] }))
+      .toBe('unclassified')
+    expect(classifyDealer({ displayName: 'South East Ford', primaryType: 'car_dealer', types: [] }))
+      .toBe('franchise_new')
+    expect(classifyDealer({ displayName: 'Land Rover Melbourne', primaryType: 'car_dealer', types: [] }))
+      .toBe('franchise_new')
+  })
+
   it('does not infer independent from the absence of evidence', () => {
     expect(classifyDealer({ displayName: 'Local Motors', primaryType: null, types: [] })).toBe('unclassified')
   })

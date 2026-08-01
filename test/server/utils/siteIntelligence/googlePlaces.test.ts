@@ -65,9 +65,10 @@ describe('GooglePlacesClient', () => {
     })
     expect(fetcher).toHaveBeenCalledWith(
       'https://places.googleapis.com/v1/places/place-1',
-      expect.objectContaining({ headers: expect.objectContaining({
-        'X-Goog-FieldMask': 'id,location'
-      }) })
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ 'X-Goog-FieldMask': 'id,location' })
+      })
     )
   })
 
@@ -104,6 +105,7 @@ describe('GooglePlacesClient', () => {
         }),
         body: JSON.stringify({
           includedTypes: ['car_dealer'], maxResultCount: 20, rankPreference: 'DISTANCE',
+          languageCode: 'en', regionCode: 'AU',
           locationRestriction: { circle: { center: { latitude: -37.81, longitude: 144.96 }, radius: 25000 } }
         })
       })
@@ -126,9 +128,10 @@ describe('GooglePlacesClient', () => {
     })
     expect(fetcher).toHaveBeenCalledWith(
       'https://places.googleapis.com/v1/places/dealer-1',
-      expect.objectContaining({ headers: expect.objectContaining({
-        'X-Goog-FieldMask': 'id,displayName,formattedAddress,googleMapsUri,websiteUri,businessStatus'
-      }) })
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ 'X-Goog-FieldMask': 'id,displayName,formattedAddress,googleMapsUri,websiteUri,businessStatus' })
+      })
     )
   })
 
@@ -164,6 +167,19 @@ describe('GooglePlacesClient', () => {
     expect(fetcher).toHaveBeenCalledTimes(2)
     expect(sleep).toHaveBeenCalledTimes(1)
   })
+
+  it.each([[429, 'rate_limited'], [500, 'unavailable']])(
+    'stops after two total attempts when retryable status %s persists',
+    async (status, code) => {
+      const fetcher = vi.fn().mockResolvedValue(jsonResponse({ secret: key }, status))
+      const sleep = vi.fn().mockResolvedValue(undefined)
+
+      await expect(new GooglePlacesClient({ apiKey: key, fetch: fetcher as typeof fetch, sleep })
+        .previewAddress('persistent failure')).rejects.toMatchObject({ code })
+      expect(fetcher).toHaveBeenCalledTimes(2)
+      expect(sleep).toHaveBeenCalledTimes(1)
+    }
+  )
 
   it.each([[400, 'invalid_request'], [401, 'auth'], [403, 'auth']])(
     'does not retry terminal provider status %s',

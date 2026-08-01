@@ -26,8 +26,8 @@ const AUSTRALIAN_FRANCHISE_ALIASES = [
 export function classifyDealer(input: DealerClassificationInput): DealerCategory {
   const name = input.displayName.trim()
   if (USED_DEALER_SIGNALS.some(signal => signal.test(name))) return 'used'
-  const normalised = name.toLocaleLowerCase('en-AU')
-  if (AUSTRALIAN_FRANCHISE_ALIASES.some(alias => normalised.includes(alias))) return 'franchise_new'
+  const normalised = ` ${name.toLocaleLowerCase('en-AU').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `
+  if (AUSTRALIAN_FRANCHISE_ALIASES.some(alias => normalised.includes(` ${alias} `))) return 'franchise_new'
   return 'unclassified'
 }
 

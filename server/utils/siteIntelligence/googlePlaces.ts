@@ -169,6 +169,8 @@ export class GooglePlacesClient {
       includedTypes: ['car_dealer'],
       maxResultCount: 20,
       rankPreference: 'DISTANCE',
+      languageCode: 'en',
+      regionCode: 'AU',
       locationRestriction: {
         circle: {
           center: { latitude: input.latitude, longitude: input.longitude },
