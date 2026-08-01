@@ -424,7 +424,7 @@ git commit -m "feat: orchestrate governed site crawls"
 **Interfaces:**
 - Produces: `extractAutomotiveFacts(markdown, metadata)`, `diffAutomotiveFacts(previous, current)`, private R2 storage helpers, current page upsert, append-only change rows, and `site-intelligence.enrich` jobs for changed pages.
 
-- [ ] **Step 1: Write failing fixtures and ingestion tests**
+- [x] **Step 1: Write failing fixtures and ingestion tests**
 
 Use short synthetic dealer pages covering drive-away price, weekly repayment,
 comparison rate, term, expiry, model/variant, stock state, test-drive CTA, JSON-LD,
@@ -436,7 +436,7 @@ Ingestion tests assert client-prefixed R2 keys, content hashing, insert/change/
 unchanged behaviour, no raw body in Neon change rows, and exactly one enrichment
 job per new material hash.
 
-- [ ] **Step 2: Run tests and observe missing implementation**
+- [x] **Step 2: Run tests and observe missing implementation**
 
 ```bash
 pnpm vitest run test/server/utils/siteIntelligence/extractAutomotiveFacts.test.ts test/server/utils/siteIntelligence/diff.test.ts test/server/api/siteIntelligenceIngest.test.ts
@@ -444,14 +444,14 @@ pnpm vitest run test/server/utils/siteIntelligence/extractAutomotiveFacts.test.t
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implement deterministic extraction and canonicalisation**
+- [x] **Step 3: Implement deterministic extraction and canonicalisation**
 
 Normalise whitespace and URLs, prefer JSON-LD/metadata over visible-copy regexes,
 retain short evidence excerpts, and version the extractor as
 `automotive-deterministic-v1`. Monetary and finance fields include raw display
 text plus parsed values; ambiguous parses remain null.
 
-- [ ] **Step 4: Implement material diffing**
+- [x] **Step 4: Implement material diffing**
 
 Return:
 
@@ -468,7 +468,7 @@ interface AutomotiveFactDiff {
 Exclude raw bodies. Sort field names and evidence deterministically so replays
 produce identical results.
 
-- [ ] **Step 5: Add private R2 and atomic page ingestion**
+- [x] **Step 5: Add private R2 and atomic page ingestion**
 
 Create `SITE_INTELLIGENCE_BUCKET` binding. Write the object before committing its
 Neon key. In a transaction, lock current page by domain/canonical URL, compare the
@@ -476,7 +476,7 @@ hash/facts, upsert current state, append a change only when material, and record
 the batch item. If DB commit fails after R2 write, record the orphan key for the
 daily cleanup path rather than exposing it.
 
-- [ ] **Step 6: Enqueue changed-page jobs**
+- [x] **Step 6: Enqueue changed-page jobs**
 
 Add this exact queue type:
 
@@ -488,11 +488,11 @@ payload: { clientId: string, domainId: string, pageId: string, changeId: string 
 Enqueue after the database commit. Processing will recheck the page hash, making
 duplicate queue delivery harmless.
 
-- [ ] **Step 7: Run focused tests to green**
+- [x] **Step 7: Run focused tests to green**
 
 Run the Step 2 command. Expected: PASS.
 
-- [ ] **Step 8: Commit the deterministic ingestion slice**
+- [x] **Step 8: Commit the deterministic ingestion slice**
 
 ```bash
 git add server/utils/siteIntelligence/storage.ts server/utils/siteIntelligence/extractAutomotiveFacts.ts server/utils/siteIntelligence/diff.ts server/api/internal/workflows/site-intelligence/runs server/utils/siteIntelligence/repository.ts server/utils/queue.ts wrangler.toml test/server/utils/siteIntelligence test/server/api/siteIntelligenceIngest.test.ts

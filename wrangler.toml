@@ -100,6 +100,13 @@ binding = "EMAIL_QUARANTINE_BUCKET"
 bucket_name = "email-lead-quarantine"
 preview_bucket_name = "email-lead-quarantine-preview"
 
+# Private raw crawl snapshots for governed automotive site intelligence. Objects
+# are never exposed through a public route; tenant/domain/run prefixes support
+# lifecycle cleanup and reconciliation without mixing client data.
+[[r2_buckets]]
+binding = "SITE_INTELLIGENCE_BUCKET"
+bucket_name = "agency-site-intelligence"
+
 # AI — Workers AI for embeddings and edge inference
 [ai]
 binding = "AI"

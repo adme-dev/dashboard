@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { setCfBindings } from '~~/server/utils/email'
 
 const testGlobal = globalThis as typeof globalThis & {
   defineEventHandler: <T>(handler: T) => T
@@ -113,13 +114,19 @@ beforeEach(() => {
     trigger: 'manual',
     settings
   })
-  mockRecordBatch.mockReset().mockResolvedValue({ replayed: false })
+  mockRecordBatch.mockReset().mockResolvedValue({ replayed: false, enrichmentJobs: [] })
   mockCompleteRun.mockReset().mockResolvedValue({ id: RUN_ID, status: 'completed' })
   mockAssertPublicOrigin.mockReset().mockResolvedValue(settings.origin)
   mockStartWorkflow.mockReset().mockResolvedValue({
     ok: true,
     enabled: true,
     instanceId: `site-intel-${RUN_ID}`
+  })
+  setCfBindings({
+    SITE_INTELLIGENCE_BUCKET: {
+      put: vi.fn(async (key: string) => ({ key })),
+      delete: vi.fn(async () => undefined)
+    }
   })
 })
 
@@ -207,7 +214,92 @@ describe('site intelligence workflow callbacks', () => {
     }
     await expect(ingestHandler(event({ params: { id: RUN_ID }, headers: auth, body }) as never))
       .resolves.toEqual({ ok: true, replayed: false })
-    expect(mockRecordBatch).toHaveBeenCalledWith(RUN_ID, body)
+    expect(mockRecordBatch).toHaveBeenCalledWith(RUN_ID, expect.objectContaining({
+      clientId: CLIENT_ID,
+      domainId: DOMAIN_ID,
+      batchKey: `${RUN_ID}:start:all`,
+      records: [expect.objectContaining({
+        canonicalUrl: `${settings.origin}/`,
+        sourceUrl: `${settings.origin}/`,
+        status: 'completed',
+        contentHash: expect.stringMatching(/^[a-f0-9]{64}$/)
+      })]
+    }))
+  })
+
+  it('enqueues one changed-page enrichment job after the ingest commit', async () => {
+    const payload = {
+      clientId: CLIENT_ID,
+      domainId: DOMAIN_ID,
+      pageId: '55555555-5555-4555-8555-555555555555',
+      changeId: '66666666-6666-4666-8666-666666666666',
+      contentHash: 'a'.repeat(64)
+    }
+    mockRecordBatch.mockResolvedValue({ replayed: false, enrichmentJobs: [payload] })
+    const send = vi.fn(async () => undefined)
+    const body = {
+      clientId: CLIENT_ID,
+      domainId: DOMAIN_ID,
+      batchKey: `${RUN_ID}:start:all`,
+      records: [{
+        url: settings.origin,
+        status: 'completed',
+        markdown: '# Offer',
+        metadata: { status: 200, url: settings.origin }
+      }]
+    }
+
+    await ingestHandler(event({
+      params: { id: RUN_ID },
+      headers: auth,
+      body,
+      context: {
+        cloudflare: {
+          env: {
+            SITE_INTELLIGENCE_BUCKET: { put: vi.fn(async (key: string) => ({ key })), delete: vi.fn() },
+            JOBS_QUEUE: { send }
+          }
+        }
+      }
+    }) as never)
+
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'site-intelligence.enrich',
+      payload
+    }), { contentType: 'json' })
+    expect(mockRecordBatch.mock.invocationCallOrder[0]).toBeLessThan(send.mock.invocationCallOrder[0]!)
+  })
+
+  it('records private snapshot keys for reconciliation when the database commit fails', async () => {
+    mockRecordBatch.mockRejectedValue(new Error('database unavailable'))
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const put = vi.fn(async (key: string) => ({ key }))
+    const body = {
+      clientId: CLIENT_ID,
+      domainId: DOMAIN_ID,
+      batchKey: `${RUN_ID}:start:all`,
+      records: [{
+        url: settings.origin,
+        status: 'completed',
+        markdown: '# Offer',
+        metadata: { status: 200, url: settings.origin }
+      }]
+    }
+
+    await expect(ingestHandler(event({
+      params: { id: RUN_ID },
+      headers: auth,
+      body,
+      context: { cloudflare: { env: { SITE_INTELLIGENCE_BUCKET: { put, delete: vi.fn() } } } }
+    }) as never)).rejects.toThrow('database unavailable')
+
+    expect(put).toHaveBeenCalledTimes(1)
+    expect(error).toHaveBeenCalledWith(
+      '[SiteIntelligence] orphan snapshots pending reconciliation',
+      expect.objectContaining({ keys: [expect.stringMatching(/^clients\/.+\.md$/)] })
+    )
+    error.mockRestore()
   })
 
   it('accepts only documented terminal completion states', async () => {

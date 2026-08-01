@@ -25,11 +25,12 @@ export type JobType =
   | 'embed.financial.clients'
   | 'embed.financial.pnl'
   | 'embed.financial.cash'
+  | 'site-intelligence.enrich'
 
 export interface QueueJob {
   jobId?: string
   type: JobType
-  payload: Record<string, any>
+  payload: Record<string, unknown>
   /** ISO timestamp when the job was enqueued */
   enqueuedAt: string
 }
@@ -64,7 +65,7 @@ async function runInline(job: QueueJob, fallback: () => Promise<void>) {
 
 /** Minimal Queue interface matching Cloudflare Queue producer */
 interface QueueProducer {
-  send(message: any, options?: { contentType?: string }): Promise<void>
+  send(message: unknown, options?: { contentType?: string }): Promise<void>
 }
 
 /**
@@ -73,7 +74,7 @@ interface QueueProducer {
  */
 export function getQueue(event: H3Event): QueueProducer | null {
   try {
-    const env = (event.context as any).cloudflare?.env
+    const env = (event.context as { cloudflare?: { env?: { JOBS_QUEUE?: QueueProducer } } }).cloudflare?.env
     return env?.JOBS_QUEUE ?? null
   } catch {
     return null
@@ -87,7 +88,7 @@ export function getQueue(event: H3Event): QueueProducer | null {
 export async function enqueue(
   event: H3Event,
   type: JobType,
-  payload: Record<string, any>,
+  payload: Record<string, unknown>,
   fallback?: () => Promise<void>
 ): Promise<boolean> {
   const queue = getQueue(event)

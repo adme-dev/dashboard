@@ -1,8 +1,10 @@
 import type { SiteIntelligenceDomain } from '~~/app/types/site-intelligence'
 import type { SiteIntelligenceDomainInput } from '~~/server/utils/siteIntelligence/contracts'
 import type { SiteIntelligenceAuditActor } from '~~/server/utils/siteIntelligence/audit'
+import type { PreparedSiteIntelligenceRecord } from '~~/server/utils/siteIntelligence/storage'
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { writeSiteIntelligenceAudit } from '~~/server/utils/siteIntelligence/audit'
+import { diffAutomotiveFacts } from '~~/server/utils/siteIntelligence/diff'
 
 interface SiteIntelligenceDomainRow {
   id: string
@@ -338,28 +340,185 @@ export async function getSiteIntelligenceRunConfig(
 
 export async function recordSiteIntelligenceIngestBatch(
   runId: string,
-  input: { clientId: string, domainId: string, batchKey: string, records: Array<{ status: string }> }
-): Promise<{ replayed: boolean } | null> {
+  input: {
+    clientId: string
+    domainId: string
+    batchKey: string
+    records: PreparedSiteIntelligenceRecord[]
+  }
+): Promise<{ replayed: boolean, enrichmentJobs: SiteIntelligenceEnrichmentJobPayload[] } | null> {
   return transaction(async (db) => {
-    const run = await db.query<{ id: string }>(`SELECT id FROM site_intelligence_crawl_runs
-      WHERE id = $1 AND client_id = $2 AND domain_id = $3 FOR UPDATE`, [runId, input.clientId, input.domainId])
+    const run = await db.query<{ id: string, lane: 'owned' | 'competitor' }>(`
+      SELECT r.id, d.lane
+      FROM site_intelligence_crawl_runs r
+      JOIN site_intelligence_domains d
+        ON d.id = r.domain_id AND d.client_id = r.client_id
+      WHERE r.id = $1 AND r.client_id = $2 AND r.domain_id = $3
+      FOR UPDATE OF r, d
+    `, [runId, input.clientId, input.domainId])
     if (!run.rows[0]) return null
     const inserted = await db.query<{ id: string }>(`INSERT INTO site_intelligence_ingest_batches
       (client_id, run_id, batch_key, record_count) VALUES ($1, $2, $3, $4)
       ON CONFLICT (run_id, batch_key) DO NOTHING RETURNING id`,
     [input.clientId, runId, input.batchKey, input.records.length])
-    if (!inserted.rows[0]) return { replayed: true }
+    if (!inserted.rows[0]) return { replayed: true, enrichmentJobs: [] }
+
+    const enrichmentJobs: SiteIntelligenceEnrichmentJobPayload[] = []
+    let changedPages = 0
+    for (const record of input.records) {
+      const existingResult = await db.query<SiteIntelligencePageState>(`
+        SELECT id, content_hash, facts
+        FROM site_intelligence_pages
+        WHERE client_id = $1 AND domain_id = $2 AND canonical_url = $3
+        FOR UPDATE
+      `, [input.clientId, input.domainId, record.canonicalUrl])
+      const existing = existingResult.rows[0]
+      const diff = diffAutomotiveFacts(existing?.facts ?? null, record.facts, {
+        currentEvidence: record.evidence
+      })
+      const material = record.status === 'completed'
+        && Boolean(record.contentHash)
+        && (!existing || (existing.content_hash !== record.contentHash && diff.material))
+      const pageId = existing
+        ? await updateSiteIntelligencePage(db, existing.id, input, record, material)
+        : await insertSiteIntelligencePage(db, input, record)
+
+      if (!pageId || record.status !== 'completed' || !record.contentHash) continue
+      if (!material) continue
+
+      const change = await db.query<{ id: string }>(`
+        INSERT INTO site_intelligence_changes (
+          client_id, domain_id, page_id, run_id, lane, change_type,
+          previous_hash, current_hash, fact_diff, evidence_excerpts, source_url
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11)
+        ON CONFLICT (page_id, current_hash) DO NOTHING
+        RETURNING id
+      `, [
+        input.clientId,
+        input.domainId,
+        pageId,
+        runId,
+        run.rows[0].lane,
+        existing ? 'facts_changed' : 'page_added',
+        existing?.content_hash ?? null,
+        record.contentHash,
+        JSON.stringify(diff),
+        JSON.stringify(diff.evidence),
+        record.sourceUrl
+      ])
+      const changeId = change.rows[0]?.id
+      if (!changeId) continue
+      changedPages += 1
+      enrichmentJobs.push({
+        clientId: input.clientId,
+        domainId: input.domainId,
+        pageId,
+        changeId,
+        contentHash: record.contentHash
+      })
+    }
+
     const completed = input.records.filter(record => record.status === 'completed').length
     const disallowed = input.records.filter(record => record.status === 'disallowed').length
     const errored = input.records.filter(record => record.status === 'errored').length
     await db.query(`UPDATE site_intelligence_crawl_runs SET
       completed_pages = completed_pages + $4,
       disallowed_pages = disallowed_pages + $5,
-      errored_pages = errored_pages + $6
+      errored_pages = errored_pages + $6,
+      changed_pages = changed_pages + $7
       WHERE id = $1 AND client_id = $2 AND domain_id = $3`,
-    [runId, input.clientId, input.domainId, completed, disallowed, errored])
-    return { replayed: false }
+    [runId, input.clientId, input.domainId, completed, disallowed, errored, changedPages])
+    return { replayed: false, enrichmentJobs }
   })
+}
+
+interface SiteIntelligencePageState {
+  id: string
+  content_hash: string | null
+  facts: PreparedSiteIntelligenceRecord['facts']
+}
+
+export interface SiteIntelligenceEnrichmentJobPayload {
+  clientId: string
+  domainId: string
+  pageId: string
+  changeId: string | null
+  contentHash: string
+}
+
+interface TransactionDb {
+  query: <T = unknown>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }>
+}
+
+async function insertSiteIntelligencePage(
+  db: TransactionDb,
+  input: { clientId: string, domainId: string },
+  record: PreparedSiteIntelligenceRecord
+): Promise<string | null> {
+  const result = await db.query<{ id: string }>(`
+    INSERT INTO site_intelligence_pages (
+      client_id, domain_id, canonical_url, source_url, status, http_status, title,
+      content_hash, r2_object_key, metadata, facts, extraction_version, last_changed_at
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12,
+      CASE WHEN $8::text IS NULL THEN NULL ELSE NOW() END
+    )
+    RETURNING id
+  `, [
+    input.clientId,
+    input.domainId,
+    record.canonicalUrl,
+    record.sourceUrl,
+    record.status,
+    record.httpStatus,
+    record.title,
+    record.contentHash,
+    record.r2ObjectKey,
+    JSON.stringify(record.metadata),
+    JSON.stringify(record.facts),
+    record.extractionVersion
+  ])
+  return result.rows[0]?.id ?? null
+}
+
+async function updateSiteIntelligencePage(
+  db: TransactionDb,
+  pageId: string,
+  input: { clientId: string, domainId: string },
+  record: PreparedSiteIntelligenceRecord,
+  material: boolean
+): Promise<string | null> {
+  const result = await db.query<{ id: string }>(`
+    UPDATE site_intelligence_pages
+    SET source_url = $4,
+        status = $5,
+        http_status = $6,
+        title = $7,
+        content_hash = COALESCE($8, content_hash),
+        r2_object_key = COALESCE($9, r2_object_key),
+        metadata = $10::jsonb,
+        facts = CASE WHEN $8::text IS NULL THEN facts ELSE $11::jsonb END,
+        extraction_version = CASE WHEN $8::text IS NULL THEN extraction_version ELSE $12 END,
+        last_seen_at = NOW(),
+        last_changed_at = CASE WHEN $13::boolean THEN NOW() ELSE last_changed_at END
+    WHERE id = $1 AND client_id = $2 AND domain_id = $3
+    RETURNING id
+  `, [
+    pageId,
+    input.clientId,
+    input.domainId,
+    record.sourceUrl,
+    record.status,
+    record.httpStatus,
+    record.title,
+    record.contentHash,
+    record.r2ObjectKey,
+    JSON.stringify(record.metadata),
+    JSON.stringify(record.facts),
+    record.extractionVersion,
+    material
+  ])
+  return result.rows[0]?.id ?? null
 }
 
 export async function completeSiteIntelligenceRun(runId: string, input: {

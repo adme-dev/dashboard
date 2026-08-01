@@ -87,11 +87,16 @@ export interface SiteIntelligenceRun {
 
 export interface AutomotiveFinanceFacts {
   deposit: number | null
+  depositDisplay: string | null
   repayment: number | null
+  repaymentDisplay: string | null
   repaymentPeriod: string | null
   comparisonRate: number | null
+  comparisonRateDisplay: string | null
   termMonths: number | null
+  termDisplay: string | null
   balloon: number | null
+  balloonDisplay: string | null
   eligibility: string | null
 }
 
@@ -105,8 +110,11 @@ export interface AutomotivePageFacts {
   modelYear: number | null
   stockState: 'new' | 'demonstrator' | 'used' | 'in_stock' | null
   driveAwayPrice: number | null
+  driveAwayPriceDisplay: string | null
   listPrice: number | null
+  listPriceDisplay: string | null
   discount: number | null
+  discountDisplay: string | null
   offerTypes: string[]
   finance: AutomotiveFinanceFacts
   expiry: string | null
