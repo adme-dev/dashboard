@@ -56,6 +56,10 @@ export function audienceQueryParams(filters: AudienceFilters): Record<string, st
 }
 
 export function useAudienceAnalytics() {
+  const apiFetch = $fetch as <T = unknown>(
+    request: string,
+    options?: { query?: Record<string, string>, signal?: AbortSignal }
+  ) => Promise<T>
   const route = useRoute()
   const router = useRouter()
   const defaults = audiencePresetRange(30)
@@ -107,16 +111,16 @@ export function useAudienceAnalytics() {
     errors.timeseries = null
     errors.breakdowns = null
 
-    const overviewRequest = $fetch<AudienceOverviewResponse>('/api/agency/tracking/audiences/overview', {
+    const overviewRequest = apiFetch<AudienceOverviewResponse>('/api/agency/tracking/audiences/overview', {
       query: baseQuery.value,
       signal: controller.signal
     })
-    const timeseriesRequest = $fetch<AudienceTimeseriesResponse>('/api/agency/tracking/audiences/timeseries', {
+    const timeseriesRequest = apiFetch<AudienceTimeseriesResponse>('/api/agency/tracking/audiences/timeseries', {
       query: { ...baseQuery.value, metric: filters.value.metric },
       signal: controller.signal
     })
     const breakdownRequest = Promise.all(BREAKDOWN_DIMENSIONS.map(async (dimension) => {
-      const response = await $fetch<AudienceBreakdownsResponse>('/api/agency/tracking/audiences/breakdowns', {
+      const response = await apiFetch<AudienceBreakdownsResponse>('/api/agency/tracking/audiences/breakdowns', {
         query: { ...baseQuery.value, dimension },
         signal: controller.signal
       })
