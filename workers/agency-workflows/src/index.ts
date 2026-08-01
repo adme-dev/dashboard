@@ -276,18 +276,34 @@ export class SiteIntelligenceCrawlWorkflow extends WorkflowEntrypoint<AgencyWork
       apiToken: requiredEnv(this.env.BROWSER_RENDERING_API_TOKEN, 'BROWSER_RENDERING_API_TOKEN')
     }
     const settings = run.settings
-    const started = await step.do('start Browser Run crawl', async () => startCloudflareCrawl(browserEnv, {
-      url: String(settings.origin),
-      source: settings.discoveryMode as 'all' | 'sitemaps' | 'links',
-      formats: ['html', 'markdown'],
-      render: settings.renderMode === 'browser',
-      limit: Number(settings.pageLimit),
-      depth: Number(settings.depth),
-      crawlPurposes: settings.crawlPurposes as Array<'search' | 'ai-input'>,
-      includePatterns: settings.includePatterns as string[],
-      excludePatterns: settings.excludePatterns as string[],
-      includeSubdomains: Boolean(settings.includeSubdomains)
-    }))
+    let started: Awaited<ReturnType<typeof startCloudflareCrawl>>
+    try {
+      started = await step.do('start Browser Run crawl', async () => startCloudflareCrawl(browserEnv, {
+        url: String(settings.origin),
+        source: settings.discoveryMode as 'all' | 'sitemaps' | 'links',
+        formats: ['html', 'markdown'],
+        render: settings.renderMode === 'browser',
+        limit: Number(settings.pageLimit),
+        depth: Number(settings.depth),
+        crawlPurposes: settings.crawlPurposes as Array<'search' | 'ai-input'>,
+        includePatterns: settings.includePatterns as string[],
+        excludePatterns: settings.excludePatterns as string[],
+        includeSubdomains: Boolean(settings.includeSubdomains)
+      }))
+    } catch (error) {
+      const failure = {
+        clientId: payload.clientId,
+        domainId: payload.domainId,
+        status: 'failed' as const,
+        errorCategory: 'browser_run',
+        errorSummary: safeCrawlWorkflowError(error)
+      }
+      await step.do('complete failed crawl run', async () => {
+        await workflowCallback(this.env, `/api/internal/workflows/site-intelligence/runs/${payload.runId}/complete`, failure)
+        return { ok: true }
+      })
+      return failure
+    }
 
     let crawlStatus: Awaited<ReturnType<typeof getCloudflareCrawlStatus>> | null = null
     for (let attempt = 0; attempt < 240; attempt++) {
@@ -362,6 +378,17 @@ export class SiteIntelligenceCrawlWorkflow extends WorkflowEntrypoint<AgencyWork
     })
     return completion
   }
+}
+
+function safeCrawlWorkflowError(error: unknown): string {
+  const candidate = error && typeof error === 'object' && 'safeSummary' in error
+    ? String(error.safeSummary || '')
+    : ''
+  return candidate
+    .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, 'Bearer [redacted]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200) || 'Site intelligence crawl workflow failed'
 }
 
 function requiredEnv(value: string | undefined, name: string): string {
