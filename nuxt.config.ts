@@ -172,6 +172,10 @@ export default defineNuxtConfig({
     searchConsoleRedirectUri: process.env.SEARCH_CONSOLE_REDIRECT_URI
       || '/api/agency/search-authority/google/callback',
     googleDeveloperToken: process.env.GOOGLE_DEVELOPER_TOKEN || '',
+    // Places is a billable server-only boundary. Keep this key out of `public`.
+    googlePlacesServerApiKey: process.env.GOOGLE_PLACES_SERVER_API_KEY || '',
+    // Remains dormant until an operator explicitly enables discovery per environment.
+    nearbyMarketDiscoveryEnabled: process.env.NEARBY_MARKET_DISCOVERY_ENABLED === 'true',
     // Search Authority is a separate, fail-closed product entitlement. This
     // private gate remains the server authorization boundary; the public mirror
     // below is presentation-only for its now-entitled operator route.
@@ -244,6 +248,11 @@ export default defineNuxtConfig({
     public: {
       appName: process.env.APP_NAME || 'XeroFlow Agency',
       appUrl: process.env.APP_URL || 'http://localhost:3000',
+      // Presentation-only mirror; routes independently enforce the private gate.
+      nearbyMarketDiscoveryEnabled: process.env.NEARBY_MARKET_DISCOVERY_ENABLED === 'true',
+      // Restricted browser-only Maps credentials; never reuse the server Places key here.
+      googleMapsBrowserApiKey: process.env.NUXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY || '',
+      googleMapsMapId: process.env.NUXT_PUBLIC_GOOGLE_MAPS_MAP_ID || '',
       zeroServerUrl: process.env.NUXT_PUBLIC_ZERO_SERVER_URL || 'http://localhost:4848',
       sendEnabled: process.env.NUXT_PUBLIC_SEND_ENABLED === 'true',
       // Cloudflare Turnstile site key for the public email subscribe form. Empty
