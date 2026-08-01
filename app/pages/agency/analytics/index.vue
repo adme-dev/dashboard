@@ -234,6 +234,8 @@ async function syncAll() {
       </div>
     </div>
 
+    <AnalyticsSectionNav active="performance" />
+
     <!-- Filter Bar -->
     <AnalyticsFilterBar />
 
