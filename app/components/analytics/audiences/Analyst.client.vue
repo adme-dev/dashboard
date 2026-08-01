@@ -13,6 +13,11 @@ const props = defineProps<{
   clientId: string | null
 }>()
 
+const apiFetch = $fetch as <T = unknown>(
+  request: string,
+  options?: { method?: string, body?: unknown }
+) => Promise<T>
+
 const BRIEFING_QUESTION = 'Brief the marketing team on this audience window.'
 const examples = [
   'Which audience pattern deserves attention first?',
@@ -119,7 +124,7 @@ async function ask(value = question.value) {
   showEvidence.value = false
 
   try {
-    answer.value = await $fetch<AudienceAskResponse>('/api/agency/tracking/audiences/ask', {
+    answer.value = await apiFetch<AudienceAskResponse>('/api/agency/tracking/audiences/ask', {
       method: 'POST',
       body: {
         question: prompt,
@@ -139,6 +144,10 @@ async function ask(value = question.value) {
 function generateBriefing() {
   question.value = BRIEFING_QUESTION
   void ask(BRIEFING_QUESTION)
+}
+
+function toggleEvidence() {
+  showEvidence.value = !showEvidence.value
 }
 </script>
 
@@ -252,7 +261,7 @@ function generateBriefing() {
         variant="link"
         size="sm"
         class="mt-3 px-0"
-        @click="showEvidence = !showEvidence"
+        @click="toggleEvidence"
       />
 
       <div v-if="showEvidence" class="mt-3 space-y-4 border-t border-default pt-4">

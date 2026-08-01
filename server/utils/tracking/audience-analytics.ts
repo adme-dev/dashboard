@@ -334,7 +334,7 @@ export function deriveAudienceOpportunities(input: AudienceOpportunityInput): Au
   return opportunities.filter((item): item is AudienceOpportunity => item !== null)
 }
 
-function pickKpis(input: AudienceKpis & Record<string, unknown>): AudienceKpis {
+function pickKpis(input: AudienceKpis): AudienceKpis {
   return {
     visitors: input.visitors,
     sessions: input.sessions,
@@ -349,7 +349,7 @@ function pickKpis(input: AudienceKpis & Record<string, unknown>): AudienceKpis {
   }
 }
 
-function pickOpportunity(input: AudienceOpportunity & Record<string, unknown>): AudienceOpportunity {
+function pickOpportunity(input: AudienceOpportunity): AudienceOpportunity {
   return {
     code: input.code,
     title: input.title,
@@ -362,7 +362,7 @@ function pickOpportunity(input: AudienceOpportunity & Record<string, unknown>): 
   }
 }
 
-function pickBreakdownRow(input: AudienceBreakdownRow & Record<string, unknown>): AudienceBreakdownRow {
+function pickBreakdownRow(input: AudienceBreakdownRow): AudienceBreakdownRow {
   return {
     key: input.key,
     visitors: input.visitors,
@@ -380,7 +380,7 @@ export function buildAudienceGrounding(input: AudienceGroundingInput): AudienceG
     if (!BREAKDOWN_DIMENSIONS.has(dimension as AudienceBreakdownDimension) || !Array.isArray(rows)) continue
     breakdowns[dimension as AudienceBreakdownDimension] = rows
       .slice(0, 10)
-      .map(row => pickBreakdownRow(row as AudienceBreakdownRow & Record<string, unknown>))
+      .map(row => pickBreakdownRow(row))
   }
 
   return {
