@@ -5,6 +5,12 @@ const pagePath = 'app/pages/agency/analytics/audiences.vue'
 const componentRoot = 'app/components/analytics/audiences'
 
 describe('website audience intelligence page contract', () => {
+  it('owns a viewport-bounded vertical scroll container inside the agency shell', () => {
+    const source = readFileSync(pagePath, 'utf8')
+
+    expect(source).toMatch(/<div class="[^"]*h-full[^"]*min-h-0[^"]*overflow-y-auto[^"]*"/)
+  })
+
   it('composes every deterministic evidence panel with agency media access', () => {
     const source = readFileSync(pagePath, 'utf8')
 

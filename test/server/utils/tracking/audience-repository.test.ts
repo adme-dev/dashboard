@@ -362,6 +362,18 @@ describe('getAudienceTimeseries', () => {
 })
 
 describe('getAudienceBreakdowns', () => {
+  it('normalizes page URLs and computes page quality metrics in one aggregate pass', async () => {
+    await getAudienceBreakdowns({
+      range,
+      clientIds: [CLIENT_A],
+      dimension: 'page'
+    })
+
+    const sql = String(mockQueryRows.mock.calls[0]?.[0])
+    expect(sql).toContain(`split_part(split_part(e.page_url, '?', 1), '#', 1)`)
+    expect((sql.match(/GROUP BY (?:scoped\.)?key/g) ?? [])).toHaveLength(1)
+  })
+
   it('maps a fixed dimension into quality metrics without exposing source identifiers', async () => {
     const result = await getAudienceBreakdowns({
       range,
