@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { SocialPlatform, SpendSyncJobStatus } from '~/types'
+
 definePageMeta({ layout: 'agency' })
 
 const route = useRoute()
@@ -29,6 +31,7 @@ const {
   loading, fetchConnections, disconnectConnection,
   syncSpend, fetchAccountSpend, fetchAccountCampaigns,
   updateCampaignBudget, fetchCampaignDailySpend,
+  fetchLatestSpendSync,
 } = useSocialConnections()
 
 const apiFetch = $fetch as <T>(
@@ -69,6 +72,7 @@ async function assignClient(connectionId: string, clientId: string) {
 const now = new Date()
 const selectedMonth = ref(now.getMonth() + 1)
 const selectedYear = ref(now.getFullYear())
+const latestSyncJob = ref<SpendSyncJobStatus | null>(null)
 
 // Week filter (optional — narrows chart/table to a week within the month)
 const weekFilter = ref<{ start: string; end: string } | null>(null)
@@ -361,7 +365,7 @@ async function finishSync(s: SyncStatusResponse) {
 async function refreshContent() {
   // refresh:true bypasses the KV cache — the sync may have run on the queue
   // consumer, which can't bust the cache itself.
-  await Promise.all([loadSpendData(true), loadBankCharges({ refresh: true })])
+  await Promise.all([loadSpendData(true), loadBankCharges({ refresh: true }), loadLatestSyncJob()])
   // loadSpendData refreshes the global chart; only re-scope if a single account
   // chart is active (it would otherwise have been overwritten with global data).
   if (chartAccountId.value) loadChartData(chartAccountId.value, true)
@@ -425,6 +429,19 @@ async function loadChartData(connectionId?: string, refresh = false) {
   }
 }
 
+async function loadLatestSyncJob() {
+  try {
+    latestSyncJob.value = await fetchLatestSpendSync(
+      platform.value as SocialPlatform,
+      selectedMonth.value,
+      selectedYear.value,
+    )
+  } catch (error) {
+    console.error('[SpendSyncStatus] fetch failed:', error)
+    latestSyncJob.value = null
+  }
+}
+
 // Reload when month/year changes
 watch([selectedMonth, selectedYear], () => {
   expandedAccounts.value.clear()
@@ -434,6 +451,7 @@ watch([selectedMonth, selectedYear], () => {
   weekFilter.value = null
   loadSpendData()
   loadBankCharges()
+  loadLatestSyncJob()
 })
 
 function formatCurrency(val: number) {
@@ -516,6 +534,7 @@ onMounted(async () => {
   await fetchConnections()
   loadSpendData()
   loadBankCharges()
+  loadLatestSyncJob()
 })
 
 // Disconnect confirmation modal
@@ -583,6 +602,12 @@ async function confirmDisconnect() {
         />
       </div>
     </div>
+
+    <SocialSpendPartialDataAlert
+      class="mx-4 mt-5 sm:mx-6"
+      :job="latestSyncJob"
+      :platform-name="platformConfig.displayName"
+    />
 
     <div class="px-6 pt-5">
       <SocialSpendSectionNav />
