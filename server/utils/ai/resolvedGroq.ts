@@ -12,7 +12,7 @@ export async function generateModelRoutedGroqInsight(
   prompt: string,
   options: ModelRoutedGroqOptions
 ): Promise<string> {
-  let model = options.defaultModelId
+  let model: GroqModel
   try {
     const { groqModelIdFromAssignment, resolveAiModelAssignment } = await import('~~/server/utils/ai/modelAssignments')
     const assignment = await resolveAiModelAssignment({
@@ -20,18 +20,25 @@ export async function generateModelRoutedGroqInsight(
       defaultProvider: 'groq',
       defaultModelId: options.defaultModelId,
       defaultFallbackModelId: options.defaultFallbackModelId ?? null,
-      supportedProviders: ['groq'],
+      supportedProviders: ['groq']
     })
     model = groqModelIdFromAssignment(assignment.modelId) as GroqModel
   } catch {
     model = options.defaultModelId
   }
-  const { defaultModelId: _defaultModelId, defaultFallbackModelId: _defaultFallbackModelId, metadata, ...rest } = options
+  const {
+    defaultModelId: _defaultModelId,
+    defaultFallbackModelId: _defaultFallbackModelId,
+    featureKey,
+    metadata,
+    ...rest
+  } = options
   const { generateGroqInsight } = await import('~~/server/utils/groqClient')
 
   return generateGroqInsight(prompt, {
     ...rest,
     model,
-    metadata,
+    featureKey,
+    metadata
   })
 }

@@ -641,6 +641,17 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     sourceFile: 'server/api/agency/analytics/ask.post.ts'
   },
   {
+    featureKey: 'agency_audience_analytics_ask',
+    label: 'Website audience analytics Q&A',
+    surface: '/agency/analytics/audiences',
+    owner: 'Growth',
+    provider: 'groq',
+    modelId: GROQ_MODELS.LLAMA_70B,
+    modality: 'text',
+    riskTier: 'medium',
+    sourceFile: 'server/api/agency/tracking/audiences/ask.post.ts'
+  },
+  {
     featureKey: 'rate_card_description',
     label: 'Rate card service description',
     surface: '/agency/rate-cards',

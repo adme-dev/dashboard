@@ -30,6 +30,7 @@ async function render(props: Record<string, unknown>) {
 describe('MediaAssetHarness embedded mode', () => {
   beforeEach(() => {
     vi.stubGlobal('useToast', () => ({ add: vi.fn() }))
+    vi.stubGlobal('$fetch', vi.fn())
   })
 
   it('renders producer regions without accordion chrome', async () => {

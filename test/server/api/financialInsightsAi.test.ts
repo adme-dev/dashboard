@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 type TestEvent = {
   headers?: Record<string, string>
+  $fetch: (...args: unknown[]) => Promise<unknown>
 }
 
 const mockGetSelectedTenant = vi.fn()
@@ -95,7 +96,10 @@ describe('GET /api/ai/insights telemetry', () => {
   })
 
   it('records Model Ops metadata for headline and recommendation generation', async () => {
-    const result = await handler({ headers: { cookie: 'sid=1' } } satisfies TestEvent)
+    const result = await handler({
+      headers: { cookie: 'sid=1' },
+      $fetch: (...args: unknown[]) => mockFetch(...args),
+    } satisfies TestEvent)
 
     expect(result.executiveSummary.headline).toBe('Margins are under pressure while cash needs monitoring.')
     expect(result.recommendations.some((item: any) => item.title === 'Tighten weekly cash reviews')).toBe(true)

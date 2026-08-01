@@ -4,11 +4,25 @@ import { computed, createApp, h, nextTick, reactive, ref, Suspense, watch } from
 import SuppressionPanel from '~~/app/components/email/SuppressionPanel.vue'
 
 const fetchMock = vi.fn()
-const refreshMock = vi.fn()
+const mutationMock = vi.fn()
 const toastAddMock = vi.fn()
 const promptMock = vi.fn()
 const confirmMock = vi.fn()
 const originalConsoleInfo = console.info
+const suppressionResponse = {
+  items: [
+    {
+      email: 'person@example.com',
+      reason: 'manual',
+      subscriber_name: 'Person',
+      subscriber_status: 'enabled',
+      created_at: '2026-06-05T00:00:00.000Z'
+    }
+  ],
+  total: 1,
+  page: 1,
+  page_size: 50
+}
 
 Object.assign(globalThis, {
   computed,
@@ -18,21 +32,8 @@ Object.assign(globalThis, {
   $fetch: (...args: unknown[]) => fetchMock(...args),
   useToast: () => ({ add: toastAddMock }),
   useFetch: async () => ({
-    data: ref({
-      items: [
-        {
-          email: 'person@example.com',
-          reason: 'manual',
-          subscriber_name: 'Person',
-          subscriber_status: 'enabled',
-          created_at: '2026-06-05T00:00:00.000Z'
-        }
-      ],
-      total: 1,
-      page: 1,
-      page_size: 50
-    }),
-    refresh: refreshMock,
+    data: ref(suppressionResponse),
+    refresh: vi.fn(),
     pending: ref(false)
   })
 })
@@ -101,6 +102,12 @@ describe('EmailSuppressionPanel', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
     vi.clearAllMocks()
+    mutationMock.mockResolvedValue({ action: 'added', email: 'person@example.com' })
+    fetchMock.mockImplementation((url: string, options?: { method?: string }) => (
+      url === '/api/email/suppressions' && !options?.method
+        ? Promise.resolve(suppressionResponse)
+        : mutationMock(url, options)
+    ))
     Object.defineProperty(window, 'prompt', {
       value: promptMock,
       configurable: true
@@ -151,14 +158,14 @@ describe('EmailSuppressionPanel', () => {
     suppressButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await flush()
 
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(mutationMock).not.toHaveBeenCalled()
     expect(toastAddMock).toHaveBeenCalledWith({ title: 'Suppression reason required', color: 'error' })
 
     app.unmount()
   })
 
   it('shows an updated toast when manual suppression upgrades an existing soft-bounce suppression', async () => {
-    fetchMock.mockResolvedValueOnce({ action: 'updated', email: 'soft@example.com' })
+    mutationMock.mockResolvedValueOnce({ action: 'updated', email: 'soft@example.com' })
     const { app, host } = await mountPanel()
     const emailInput = Array.from(host.querySelectorAll('input'))
       .find(input => input.getAttribute('placeholder') === 'person@example.com') as HTMLInputElement | undefined
@@ -189,13 +196,15 @@ describe('EmailSuppressionPanel', () => {
       description: 'soft@example.com',
       color: 'success'
     })
-    expect(refreshMock).toHaveBeenCalled()
+    expect(fetchMock.mock.calls.filter(([url, options]) => (
+      url === '/api/email/suppressions' && !options?.method
+    ))).toHaveLength(2)
 
     app.unmount()
   })
 
   it('surfaces backend validation details when manual suppression fails', async () => {
-    fetchMock.mockRejectedValueOnce({
+    mutationMock.mockRejectedValueOnce({
       data: {
         statusMessage: 'invalid_body',
         data: [
@@ -232,7 +241,7 @@ describe('EmailSuppressionPanel', () => {
   })
 
   it('surfaces backend validation details when suppression removal fails', async () => {
-    fetchMock.mockRejectedValueOnce({
+    mutationMock.mockRejectedValueOnce({
       data: {
         statusMessage: 'invalid_body',
         data: [

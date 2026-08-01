@@ -52,6 +52,11 @@ Object.assign(globalThis, {
   ref,
   computed,
   useToast: () => ({ add: () => {} }),
+  $fetch: async (url: string) => (url === '/api/email/campaigns'
+    ? { campaigns: campaignRows }
+    : url === '/api/email/campaigns/config'
+      ? { sending_enabled: true }
+      : { items: [] }),
   useFetch: async (url: string) => ({
     data: ref(url === '/api/email/campaigns'
       ? { campaigns: campaignRows }

@@ -283,8 +283,8 @@ describe('permissionGroupForRoles (singular — first match)', () => {
     expect(permissionGroupForRoles([])).toBeNull()
   })
 
-  it('should return null for partial match', () => {
-    expect(permissionGroupForRoles(['owner'])).toBeNull()
+  it('should reverse-lookup the owner-only HR_ADMIN group', () => {
+    expect(permissionGroupForRoles(['owner'])).toBe('HR_ADMIN')
   })
 })
 
@@ -336,8 +336,8 @@ describe('isReadOnlyRole', () => {
 })
 
 describe('SYSTEM_ROLE_PERMISSIONS static map', () => {
-  it('should give owner all 10 permission groups', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS['owner']).toHaveLength(10)
+  it('should give owner all 11 permission groups', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS['owner']).toHaveLength(11)
     for (const group of PERMISSION_GROUPS) {
       expect(SYSTEM_ROLE_PERMISSIONS['owner']).toContain(group)
     }

@@ -7,6 +7,32 @@ import EdmImageLibraryPicker from '~~/app/components/email/builder/EdmImageLibra
 const fetchMock = vi.fn()
 const refreshMock = vi.fn()
 const toastAddMock = vi.fn()
+const imageAssets = [
+  {
+    id: 'asset-1',
+    name: 'Hero car.png',
+    mimeType: 'image/png',
+    fileSize: 1536,
+    r2Key: 'banner-assets/u/hero.png',
+    url: '/uploads/hero.png',
+    thumbnailUrl: null,
+    tags: ['email'],
+    uploadedBy: 'user-1',
+    createdAt: '2026-06-05T00:00:00.000Z'
+  },
+  {
+    id: 'asset-2',
+    name: 'Deck.pdf',
+    mimeType: 'application/pdf',
+    fileSize: 2048,
+    r2Key: 'banner-assets/u/deck.pdf',
+    url: '/uploads/deck.pdf',
+    thumbnailUrl: null,
+    tags: [],
+    uploadedBy: 'user-1',
+    createdAt: '2026-06-05T00:00:00.000Z'
+  }
+]
 
 Object.assign(globalThis, {
   ref,
@@ -14,34 +40,7 @@ Object.assign(globalThis, {
   $fetch: (...args: unknown[]) => fetchMock(...args),
   useToast: () => ({ add: toastAddMock }),
   useFetch: async () => ({
-    data: ref({
-      assets: [
-        {
-          id: 'asset-1',
-          name: 'Hero car.png',
-          mimeType: 'image/png',
-          fileSize: 1536,
-          r2Key: 'banner-assets/u/hero.png',
-          url: '/uploads/hero.png',
-          thumbnailUrl: null,
-          tags: ['email'],
-          uploadedBy: 'user-1',
-          createdAt: '2026-06-05T00:00:00.000Z'
-        },
-        {
-          id: 'asset-2',
-          name: 'Deck.pdf',
-          mimeType: 'application/pdf',
-          fileSize: 2048,
-          r2Key: 'banner-assets/u/deck.pdf',
-          url: '/uploads/deck.pdf',
-          thumbnailUrl: null,
-          tags: [],
-          uploadedBy: 'user-1',
-          createdAt: '2026-06-05T00:00:00.000Z'
-        }
-      ]
-    }),
+    data: ref({ assets: imageAssets }),
     refresh: refreshMock,
     pending: ref(false)
   })
@@ -94,6 +93,9 @@ describe('EmailBuilderEdmImageLibraryPicker', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
     vi.clearAllMocks()
+    fetchMock.mockImplementation(async (url: string) => (
+      url === '/api/agency/email/assets' ? { assets: imageAssets } : {}
+    ))
     vi.spyOn(console, 'info').mockImplementation(() => {})
   })
 
@@ -108,18 +110,22 @@ describe('EmailBuilderEdmImageLibraryPicker', () => {
   })
 
   it('surfaces backend validation details when upload fails', async () => {
-    fetchMock.mockRejectedValueOnce({
-      data: {
-        statusMessage: 'invalid_body',
-        data: [
-          { message: 'Image file is required.' },
-          { message: 'Unsupported image type.' }
-        ]
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === '/api/agency/email/assets') return { assets: imageAssets }
+      throw {
+        data: {
+          statusMessage: 'invalid_body',
+          data: [
+            { message: 'Image file is required.' },
+            { message: 'Unsupported image type.' }
+          ]
+        }
       }
     })
 
     const { app, host } = await mountPicker()
     const input = host.querySelector('input[type="file"]') as HTMLInputElement
+    expect(input).not.toBeNull()
     const file = new File(['image'], 'hero.png', { type: 'image/png' })
     Object.defineProperty(input, 'files', {
       value: [file],

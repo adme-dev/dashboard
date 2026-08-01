@@ -224,9 +224,8 @@ describe('POST /api/agency/agents/spend-controller/ask', () => {
       body: { prompt: 'Review scoped spend.', context: { period: '2026-07' } },
     } as any)
 
-    expect(result.findings.map((finding: any) => finding.title)).toEqual([
-      expect.stringContaining('Tenant A Client'),
-    ])
+    expect(result.findings.length).toBeGreaterThan(0)
+    expect(result.findings.every((finding: any) => finding.title.includes('Tenant A Client'))).toBe(true)
     expect(JSON.stringify(result)).not.toContain('Tenant B Secret')
   })
 

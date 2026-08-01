@@ -11,8 +11,9 @@ describe('adPlatformToChannel', () => {
     expect(adPlatformToChannel('meta')).toBe('Paid Social')
     expect(adPlatformToChannel('meta_ads')).toBe('Paid Social')
   })
-  it('returns null for unknown platforms', () => {
-    expect(adPlatformToChannel('tiktok')).toBeNull()
+  it('maps additional paid-social platforms and returns null for unknown platforms', () => {
+    expect(adPlatformToChannel('tiktok')).toBe('Paid Social')
+    expect(adPlatformToChannel('unknown')).toBeNull()
     expect(adPlatformToChannel('')).toBeNull()
   })
 })
@@ -22,8 +23,8 @@ describe('leadSourceToChannel', () => {
     expect(leadSourceToChannel('google')).toBe('Paid Search')
     expect(leadSourceToChannel('meta')).toBe('Paid Social')
   })
-  it('returns null for non-attributable sources', () => {
-    expect(leadSourceToChannel('manual')).toBeNull()
+  it('maps manual leads to Direct and returns null for non-attributable sources', () => {
+    expect(leadSourceToChannel('manual')).toBe('Direct')
     expect(leadSourceToChannel('webhook')).toBeNull()
     expect(leadSourceToChannel('csv')).toBeNull()
   })

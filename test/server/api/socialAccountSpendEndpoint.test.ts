@@ -138,6 +138,7 @@ describe('social account spend endpoints', () => {
         },
       ])
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
     const handler = (await import('~~/server/api/agency/social/meta/account-campaigns.get')).default
 
     const result = await handler({} as any)
@@ -191,6 +192,7 @@ describe('social account spend endpoints', () => {
         },
       ])
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
     const handler = (await import('~~/server/api/agency/social/meta/account-campaigns.get')).default
 
     const result = await handler({} as any)
@@ -205,8 +207,8 @@ describe('social account spend endpoints', () => {
   it('returns Google campaign rows for a synthetic unlinked unmapped group', async () => {
     mockQuery = { connectionId: 'unlinked:google:unmapped', month: 6, year: 2026 }
     mockQueryRows.mockReset()
-    mockQueryRows.mockResolvedValueOnce([
-      {
+    mockQueryRows
+      .mockResolvedValueOnce([{
         id: 'spend-1',
         campaign_id: 'campaign-1',
         campaign_name: 'Manual Google campaign',
@@ -220,8 +222,8 @@ describe('social account spend endpoints', () => {
         campaign_type: null,
         campaign_status: 'ENABLED',
         synced_at: '2026-06-20T00:00:00.000Z',
-      },
-    ])
+      }])
+      .mockResolvedValueOnce([])
     const handler = (await import('~~/server/api/agency/social/google/account-campaigns.get')).default
 
     const result = await handler({} as any)
@@ -243,8 +245,8 @@ describe('social account spend endpoints', () => {
   it('returns a canonical budget key for connected Google campaign rows', async () => {
     mockQuery = { connectionId: 'connection-1', month: 6, year: 2026 }
     mockQueryRows.mockReset()
-    mockQueryRows.mockResolvedValueOnce([
-      {
+    mockQueryRows
+      .mockResolvedValueOnce([{
         id: 'spend-1',
         campaign_id: 'campaign-1',
         campaign_name: 'Connected Google campaign',
@@ -261,8 +263,8 @@ describe('social account spend endpoints', () => {
         client_id: 'client-1',
         connection_id: 'connection-1',
         budget_account_id: '123',
-      },
-    ])
+      }])
+      .mockResolvedValueOnce([])
     const handler = (await import('~~/server/api/agency/social/google/account-campaigns.get')).default
 
     const result = await handler({} as any)
