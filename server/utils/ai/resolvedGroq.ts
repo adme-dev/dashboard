@@ -37,6 +37,7 @@ export async function generateModelRoutedGroqInsight(
 
   return generateGroqInsight(prompt, {
     ...rest,
+    featureKey,
     model,
     featureKey,
     metadata
