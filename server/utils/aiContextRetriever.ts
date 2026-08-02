@@ -299,6 +299,13 @@ async function searchClients(
   }))
 }
 
+/** Compact, model-readable description of why an internal Xero fetch failed. */
+export function describeXeroFailure(err: any): string {
+  const status = err?.response?.status ?? err?.response?.statusCode ?? err?.statusCode ?? err?.status
+  const message = err?.data?.statusMessage ?? err?.statusMessage ?? err?.message ?? String(err ?? 'unknown error')
+  return status ? `${status}: ${message}` : String(message)
+}
+
 async function searchFinancial(keywords: string[], question?: string, event?: H3Event): Promise<ContextItem[]> {
   const items: ContextItem[] = []
 
@@ -316,6 +323,31 @@ async function searchFinancial(keywords: string[], question?: string, event?: H3
       eventFetch<any>('/api/xero/expenses', fetchOpts),
       eventFetch<any>('/api/xero/reports/pnl', fetchOpts),
     ])
+
+    // A rejected fetch used to be dropped on the floor: the model saw no cash
+    // item and concluded the data did not exist, when in fact the lookup had
+    // failed. Emit an explicit placeholder so "couldn't load" is distinguishable
+    // from "not applicable", and the model reports the failure instead of
+    // asserting the figure is unavailable.
+    const unavailable: Array<[PromiseSettledResult<any>, string, string, string]> = [
+      [bankRes, 'xero-cash-position', 'Cash Position', '/cashflow'],
+      [invoiceRes, 'xero-invoices', 'Invoice Summary', '/invoices'],
+      [expenseRes, 'xero-expenses', 'Expense Summary', '/expenses'],
+      [pnlRes, 'xero-pnl', 'Profit & Loss', '/profit-loss']
+    ]
+    for (const [result, id, title, url] of unavailable) {
+      if (result.status !== 'rejected') continue
+      const reason = describeXeroFailure(result.reason)
+      console.warn(`[aiContextRetriever] ${title} unavailable:`, reason)
+      items.push({
+        type: 'financial',
+        id: `${id}-unavailable`,
+        title: `${title} — LOOKUP FAILED`,
+        snippet: `This data could NOT be retrieved from Xero (${reason}). The figure exists but the lookup failed — say the lookup failed and suggest retrying. Do NOT tell the user the data is unavailable or cannot be determined.`,
+        url,
+        updatedAt: new Date().toISOString()
+      })
+    }
 
     // Cash position — response shape: { portfolio: { totalBalance, riskLevel, ... }, accounts: [...], alerts: [...] }
     const bank = bankRes.status === 'fulfilled' ? bankRes.value : null

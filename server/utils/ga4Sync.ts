@@ -8,6 +8,7 @@
 import { queryRows, execute } from './db'
 import { refreshGoogleToken } from './googleAdsClient'
 import { ga4RunReport, type Ga4ReportRow } from './ga4Client'
+import { mapWithConcurrency } from './concurrency'
 
 /** Max GA4 property report fetches in flight at once. Kept ≤6 to respect
  *  Cloudflare's per-invocation simultaneous-connection cap. */
@@ -19,28 +20,9 @@ const GA4_UPSERT_COLS = 13
 
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
-/**
- * Run `fn` over `items` with at most `limit` in flight, preserving input order.
- * `fn` should not throw — callers fold per-item errors into the result.
- */
-export async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T, index: number) => Promise<R>
-): Promise<R[]> {
-  const results = new Array<R>(items.length)
-  let next = 0
-  const workerCount = Math.max(1, Math.min(limit, items.length))
-  const workers = Array.from({ length: workerCount }, async () => {
-    for (;;) {
-      const i = next++
-      if (i >= items.length) return
-      results[i] = await fn(items[i], i)
-    }
-  })
-  await Promise.all(workers)
-  return results
-}
+// `mapWithConcurrency` now lives in ./concurrency (Xero bank-monitoring needs it
+// too) and is imported above. Deliberately NOT re-exported: Nuxt auto-imports
+// server utils, and two modules exporting the same name makes it ambiguous.
 
 /**
  * Build a single multi-row upsert into ga4_daily_channel for one property's

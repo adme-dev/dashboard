@@ -3,7 +3,13 @@ import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
 import { cachedFetch } from '../../../utils/kv'
 import { dedupedXeroCall } from '../../../utils/xeroRateLimit'
-import { ensureDateString, flattenRows } from '../../../utils/xeroDataFetcher'
+import {
+  creditCardAccountIdsFrom,
+  ensureDateString,
+  extractBankBalances,
+  fetchBankAccounts,
+  flattenRows
+} from '../../../utils/xeroDataFetcher'
 
 export default eventHandler(async (event) => {
   const token = await getActiveTokenForSession(event)
@@ -62,7 +68,17 @@ export default eventHandler(async (event) => {
         }, 0)
       }
 
-      return { date, totalBalance }
+      // Credit cards arrive as Type=BANK, so `totalBalance` nets card debt
+      // against cash. Break the two apart so callers can show real liquidity.
+      const accountsBody = await fetchBankAccounts(accessToken, tenantId).catch(() => null)
+      const balances = extractBankBalances(report, creditCardAccountIdsFrom(accountsBody))
+
+      return {
+        date,
+        totalBalance,
+        totalCash: balances.cash,
+        totalCreditCard: balances.creditCard
+      }
     } catch {
       // Fallback to Balance Sheet: sum bank/cash assets
       const report = await dedupedXeroCall(
@@ -89,7 +105,9 @@ export default eventHandler(async (event) => {
         }
       }
 
-      return { date, totalBalance }
+      // Balance Sheet path already sums only bank/cash asset lines — card debt
+      // sits under liabilities and is never picked up — so cash == total here.
+      return { date, totalBalance, totalCash: totalBalance, totalCreditCard: 0 }
     }
   })
 })

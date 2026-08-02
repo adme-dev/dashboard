@@ -6,8 +6,7 @@ import { cachedFetch } from '../../../utils/kv'
 import {
   ensureDateString,
   addDays,
-  extractCurrentCash,
-  fetchBankSummary,
+  fetchBankBalances,
   fetchReceivables,
   fetchPayables,
   fetchRecentPaidExpenses
@@ -31,14 +30,15 @@ export default eventHandler(async (event) => {
 
     const accessToken = token.access_token!
 
-    const [bankReportBody, receivablesBody, payablesBody, expensesBody] = await Promise.all([
-      fetchBankSummary(accessToken, tenantId),
+    const [bankBalances, receivablesBody, payablesBody, expensesBody] = await Promise.all([
+      fetchBankBalances(accessToken, tenantId),
       fetchReceivables(accessToken, tenantId),
       fetchPayables(accessToken, tenantId),
       fetchRecentPaidExpenses(accessToken, tenantId)
     ])
 
-    const startingBalance = extractCurrentCash(bankReportBody)
+    // Liquid cash only — credit-card debt is a payable, not negative cash.
+    const startingBalance = bankBalances.cash
 
     // Process receivables by categories
     const receivableCategories = new Map<string, number>()

@@ -14,8 +14,7 @@ import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
 import {
-  extractCurrentCash,
-  fetchBankSummary,
+  fetchBankBalances,
   fetchRecentPaidExpenses,
 } from '~~/server/utils/xeroDataFetcher'
 import { loadGetOutConfig, summariseConfig } from '~~/server/utils/getOutConfig'
@@ -34,12 +33,15 @@ export default defineEventHandler(async (event) => {
   const accessToken = token.access_token!
 
   return cachedFetch(event, `xero-get-out:${tenantId}:cash-position`, 300, async () => {
-    const [bankReport, expenses] = await Promise.all([
-      fetchBankSummary(accessToken, tenantId),
+    const [balances, expenses] = await Promise.all([
+      fetchBankBalances(accessToken, tenantId),
       fetchRecentPaidExpenses(accessToken, tenantId),
     ])
 
-    const cashOnHand = extractCurrentCash(bankReport)
+    // Liquid cash only. Credit cards are reported by Xero as bank accounts, but
+    // card debt is a payable, not negative cash — folding it in here would both
+    // understate available funds and make the runway division meaningless.
+    const cashOnHand = balances.cash
 
     // 90-day rolling outflow → daily average. Using actual paid expenses
     // is more accurate than the configured monthly target (which is
@@ -83,6 +85,15 @@ export default defineEventHandler(async (event) => {
 
     return {
       cashOnHand: Math.round(cashOnHand * 100) / 100,
+      // Surfaced separately so card debt stays visible rather than silently
+      // netted away: netPosition is what the old (over-counted) figure meant.
+      creditCardBalance: Math.round(balances.creditCard * 100) / 100,
+      netPosition: Math.round(balances.net * 100) / 100,
+      accounts: balances.accounts.map(a => ({
+        name: a.name,
+        balance: Math.round(a.balance * 100) / 100,
+        isCreditCard: a.isCreditCard
+      })),
       avgDailyOutflow: Math.round(dailyOutflow * 100) / 100,
       avgMonthlyOutflow: Math.round(dailyOutflow * 30 * 100) / 100,
       daysOfCash,

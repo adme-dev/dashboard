@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
-  mapWithConcurrency,
   buildGa4ChannelUpsert,
   GA4_FETCH_CONCURRENCY
 } from '~~/server/utils/ga4Sync'
+import { mapWithConcurrency } from '~~/server/utils/concurrency'
 
 describe('mapWithConcurrency', () => {
   it('returns results in input order', async () => {

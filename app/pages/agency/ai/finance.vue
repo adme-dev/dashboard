@@ -264,22 +264,64 @@ const { data: embedStatus, refresh: refreshEmbedStatus } = useFetch('/api/ai/fin
 const reembedding = ref(false)
 const reembedType = ref<string | null>(null)
 
+/**
+ * Re-embed every type, one request per type.
+ *
+ * This used to POST once with no `types`, letting the server run all five jobs
+ * in a single request. Each one fans out to a heavy Xero-backed endpoint, and
+ * the combined run outgrew Cloudflare's per-request execution budget — it died
+ * partway with an opaque 500, after silently completing some types. Because the
+ * server catches every embed error internally, a 500 there is always the runtime
+ * killing the request, never a reportable failure.
+ *
+ * Sequencing per type keeps each request small and makes a failing type name
+ * itself instead of taking the whole run down.
+ */
 async function reembedAll() {
   reembedding.value = true
-  try {
-    const result = await apiFetch<any>('/api/ai/finance/embed', { method: 'POST' })
-    toast.add({ title: 'Done', description: `${result.processed} embedded, ${result.skipped} skipped, ${result.errors} errors`, color: 'success' })
+  const totals = { processed: 0, skipped: 0, errors: 0 }
+  const failures: string[] = []
+  const partial: string[] = []
+
+  for (const et of embedTypes) {
+    reembedType.value = et.key
+    try {
+      const result = await apiFetch<any>('/api/ai/finance/embed', { method: 'POST', body: { types: [et.key] } })
+      totals.processed += result.processed ?? 0
+      totals.skipped += result.skipped ?? 0
+      totals.errors += result.errors ?? 0
+      if (result.errors) failures.push(`${et.label}: ${result.details?.[0] ?? 'error'}`)
+      // Partial pass — the server stopped inside its budget. Already-embedded
+      // records hash-skip next time, so running again picks up where it left off.
+      if (result.remaining?.length) partial.push(et.label)
+    } catch (err: any) {
+      totals.errors++
+      failures.push(`${et.label}: ${err.data?.statusMessage || err.message || 'request failed'}`)
+    }
     refreshEmbedStatus()
-  } catch (err: any) {
-    toast.add({ title: 'Error', description: err.data?.statusMessage || 'Failed', color: 'error' })
-  } finally { reembedding.value = false }
+  }
+
+  reembedType.value = null
+  reembedding.value = false
+  toast.add({
+    title: failures.length ? 'Finished with errors' : partial.length ? 'Partially embedded' : 'Done',
+    description: `${totals.processed} embedded, ${totals.skipped} skipped, ${totals.errors} errors`
+      + (failures.length ? ` — ${failures.join('; ')}` : '')
+      + (partial.length ? ` — ${partial.join(', ')} only partly done, run again to continue` : ''),
+    color: failures.length || partial.length ? 'warning' : 'success'
+  })
 }
 
 async function reembedSingle(type: string) {
   reembedType.value = type
   try {
     const result = await apiFetch<any>('/api/ai/finance/embed', { method: 'POST', body: { types: [type] } })
-    toast.add({ title: `${type} embedded`, description: result.details?.[0] || 'Done', color: 'success' })
+    const more = result.remaining?.length ? ' — run again to continue' : ''
+    toast.add({
+      title: `${type} embedded`,
+      description: (result.details?.[0] || 'Done') + more,
+      color: result.remaining?.length ? 'warning' : 'success'
+    })
     refreshEmbedStatus()
   } catch (err: any) {
     toast.add({ title: 'Error', description: err.data?.statusMessage || 'Failed', color: 'error' })

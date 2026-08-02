@@ -307,88 +307,140 @@ export interface BatchEmbedResult {
   errors: number
   skipped: number
   details: string[]
+  /**
+   * Types that were not completed within the request budget. Present only when
+   * work was deferred; call again with these types to continue. Progress is
+   * durable — anything already embedded is hash-skipped on the next pass, so
+   * repeated calls converge.
+   */
+  remaining?: string[]
 }
+
+export interface BatchEmbedOptions {
+  /**
+   * Wall-clock budget for the whole call. Each stage fans out to a heavy
+   * Xero-backed endpoint, and running all five unbounded is what pushed this
+   * past Cloudflare's per-request execution limit and returned an opaque 500.
+   * Stop early and report instead of being killed.
+   */
+  budgetMs?: number
+  /** Injectable clock, for tests. */
+  now?: () => number
+}
+
+const DEFAULT_BATCH_BUDGET_MS = 20_000
+
+/**
+ * Client embeds run in small waves rather than one 20-wide Promise.allSettled.
+ * Each client costs an embedding call, a Vectorize upsert and a DB write, so
+ * the old shape fired ~60 subrequests simultaneously.
+ */
+const CLIENT_EMBED_CONCURRENCY = 4
+
+/** Top-N clients by outstanding balance to embed. */
+const CLIENT_EMBED_LIMIT = 20
 
 export async function embedAllFinancialSnapshots(
   event: H3Event,
   period?: string,
   types?: string[],
   preData?: Record<string, any>,
+  options: BatchEmbedOptions = {},
 ): Promise<BatchEmbedResult> {
+  const now = options.now ?? (() => Date.now())
+  const budgetMs = options.budgetMs ?? DEFAULT_BATCH_BUDGET_MS
+  const startedAt = now()
+  const outOfBudget = () => now() - startedAt >= budgetMs
+
   const results: EmbedResult[] = []
   const details: string[] = []
+  const remaining: string[] = []
   const allTypes = types || ['expenses', 'invoices', 'pnl', 'cash', 'clients']
 
-  if (allTypes.includes('expenses')) {
-    const r = await embedExpenseSnapshot(event, period, preData?.expenses)
+  const snapshotJobs: Array<[string, () => Promise<EmbedResult>]> = [
+    ['expenses', () => embedExpenseSnapshot(event, period, preData?.expenses)],
+    ['invoices', () => embedInvoiceSnapshot(event, period, preData?.invoices)],
+    ['pnl', () => embedPnlSnapshot(event, period, preData?.pnl)],
+    ['cash', () => embedCashPosition(event, preData?.cash)],
+  ]
+
+  for (const [name, run] of snapshotJobs) {
+    if (!allTypes.includes(name)) continue
+    if (outOfBudget()) {
+      remaining.push(name)
+      details.push(`${name}: deferred (request budget exhausted)`)
+      continue
+    }
+    const r = await run()
     results.push(r)
-    details.push(`expenses: ${r.status}${r.error ? ` (${r.error})` : ''}`)
+    details.push(`${name}: ${r.status}${r.error ? ` (${r.error})` : ''}`)
   }
 
-  if (allTypes.includes('invoices')) {
-    const r = await embedInvoiceSnapshot(event, period, preData?.invoices)
-    results.push(r)
-    details.push(`invoices: ${r.status}${r.error ? ` (${r.error})` : ''}`)
-  }
-
-  if (allTypes.includes('pnl')) {
-    const r = await embedPnlSnapshot(event, period, preData?.pnl)
-    results.push(r)
-    details.push(`pnl: ${r.status}${r.error ? ` (${r.error})` : ''}`)
-  }
-
-  if (allTypes.includes('cash')) {
-    const r = await embedCashPosition(event, preData?.cash)
-    results.push(r)
-    details.push(`cash: ${r.status}${r.error ? ` (${r.error})` : ''}`)
-  }
-
-  // Client embeddings — top 20 by outstanding balance
+  // Client embeddings — top N by outstanding balance
   if (allTypes.includes('clients')) {
-    try {
-      const contacts = preData?.contacts || await $fetch('/api/xero/contacts', {
-        headers: event.headers,
-      })
-      const contactList = (contacts as any)?.contacts || (Array.isArray(contacts) ? contacts : [])
-
-      // Sort by outstanding balance, take top 20
-      const topClients = contactList
-        .filter((c: any) => c.balances?.accountsReceivable?.outstanding > 0 || c.balances?.accountsPayable?.outstanding > 0)
-        .sort((a: any, b: any) => {
-          const aOut = (a.balances?.accountsReceivable?.outstanding || 0) + (a.balances?.accountsPayable?.outstanding || 0)
-          const bOut = (b.balances?.accountsReceivable?.outstanding || 0) + (b.balances?.accountsPayable?.outstanding || 0)
-          return bOut - aOut
+    if (outOfBudget()) {
+      remaining.push('clients')
+      details.push('clients: deferred (request budget exhausted)')
+    } else {
+      try {
+        const contacts = preData?.contacts || await $fetch('/api/xero/contacts', {
+          headers: event.headers,
         })
-        .slice(0, 20)
+        const contactList = (contacts as any)?.contacts || (Array.isArray(contacts) ? contacts : [])
 
-      const clientResults = await Promise.allSettled(
-        topClients.map((c: any) => {
-          const clientData = {
-            revenue: c.balances?.accountsReceivable?.outstanding || 0,
-            outstanding: c.balances?.accountsReceivable?.outstanding || 0,
-            overdue: c.balances?.accountsReceivable?.overdue || 0,
-            metaSpend: 0,
-            googleSpend: 0,
+        // Sort by outstanding balance, take top N
+        const topClients = contactList
+          .filter((c: any) => c.balances?.accountsReceivable?.outstanding > 0 || c.balances?.accountsPayable?.outstanding > 0)
+          .sort((a: any, b: any) => {
+            const aOut = (a.balances?.accountsReceivable?.outstanding || 0) + (a.balances?.accountsPayable?.outstanding || 0)
+            const bOut = (b.balances?.accountsReceivable?.outstanding || 0) + (b.balances?.accountsPayable?.outstanding || 0)
+            return bOut - aOut
+          })
+          .slice(0, CLIENT_EMBED_LIMIT)
+
+        let clientEmbedded = 0, clientSkipped = 0, clientErrors = 0, notReached = 0
+
+        for (let i = 0; i < topClients.length; i += CLIENT_EMBED_CONCURRENCY) {
+          if (outOfBudget()) {
+            notReached = topClients.length - i
+            break
           }
-          return embedClientFinancials(event, c.contactID, c.name, period, clientData)
-        })
-      )
+          const wave = topClients.slice(i, i + CLIENT_EMBED_CONCURRENCY)
+          const waveResults = await Promise.allSettled(
+            wave.map((c: any) => {
+              const clientData = {
+                revenue: c.balances?.accountsReceivable?.outstanding || 0,
+                outstanding: c.balances?.accountsReceivable?.outstanding || 0,
+                overdue: c.balances?.accountsReceivable?.overdue || 0,
+                metaSpend: 0,
+                googleSpend: 0,
+              }
+              return embedClientFinancials(event, c.contactID, c.name, period, clientData)
+            })
+          )
 
-      let clientEmbedded = 0, clientSkipped = 0, clientErrors = 0
-      for (const cr of clientResults) {
-        if (cr.status === 'fulfilled') {
-          if (cr.value.status === 'embedded') clientEmbedded++
-          else if (cr.value.status === 'skipped') clientSkipped++
-          else clientErrors++
-          results.push(cr.value)
-        } else {
-          clientErrors++
-          results.push({ status: 'error', entityId: 'unknown-client', error: String(cr.reason) })
+          for (const cr of waveResults) {
+            if (cr.status === 'fulfilled') {
+              if (cr.value.status === 'embedded') clientEmbedded++
+              else if (cr.value.status === 'skipped') clientSkipped++
+              else clientErrors++
+              results.push(cr.value)
+            } else {
+              clientErrors++
+              results.push({ status: 'error', entityId: 'unknown-client', error: String(cr.reason) })
+            }
+          }
         }
+
+        if (notReached > 0) remaining.push('clients')
+        details.push(
+          `clients: ${clientEmbedded} embedded, ${clientSkipped} skipped, ${clientErrors} errors`
+          + (notReached > 0 ? `, ${notReached} not reached (request budget exhausted)` : '')
+          + ` (${topClients.length} total)`
+        )
+      } catch (err: any) {
+        details.push(`clients: error (${err.message || String(err)})`)
       }
-      details.push(`clients: ${clientEmbedded} embedded, ${clientSkipped} skipped, ${clientErrors} errors (${topClients.length} total)`)
-    } catch (err: any) {
-      details.push(`clients: error (${err.message || String(err)})`)
     }
   }
 
@@ -397,5 +449,6 @@ export async function embedAllFinancialSnapshots(
     errors: results.filter(r => r.status === 'error').length,
     skipped: results.filter(r => r.status === 'skipped').length,
     details,
+    ...(remaining.length ? { remaining } : {}),
   }
 }

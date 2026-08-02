@@ -129,6 +129,9 @@ const cashState = createGetOutState<{
   cashOnHand: number; daysOfCash: number | null; monthsRunway: number | null
   band: 'critical'|'tight'|'healthy'|'strong'|'unknown'; avgMonthlyOutflow: number
   overdrawn: boolean
+  // cashOnHand is liquid bank cash only. Card debt is reported separately so a
+  // healthy-looking cash figure can't hide a large drawn balance.
+  creditCardBalance?: number; netPosition?: number
 }>('/api/xero/get-out/cash-position')
 const cash = cashState.data
 
@@ -582,6 +585,13 @@ function fmtMonthLabel(label: string): string {
                 <span v-if="cash?.monthsRunway != null" class="text-sm text-muted">~{{ cash.monthsRunway }}mo</span>
               </template>
             </div>
+            <p
+              v-if="cash?.creditCardBalance"
+              class="text-xs text-muted mt-1.5 tabular-nums"
+              :title="'Credit cards are excluded from cash on hand. Net position: ' + formatCurrency(cash.netPosition ?? 0)"
+            >
+              excl. {{ formatCurrency(Math.abs(cash.creditCardBalance)) }} card debt
+            </p>
           </UCard>
 
           <!-- AR aging snapshot -->
