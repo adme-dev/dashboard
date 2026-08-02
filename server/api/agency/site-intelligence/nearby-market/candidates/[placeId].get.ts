@@ -43,6 +43,7 @@ export default defineEventHandler(async (event) => {
   if (!review.websiteUri) {
     return {
       placeId,
+      displayName: review.displayName,
       websiteUri: null,
       canonicalOrigin: null,
       existingDomainId: null,
@@ -56,6 +57,7 @@ export default defineEventHandler(async (event) => {
   } catch {
     return {
       placeId,
+      displayName: review.displayName,
       websiteUri: null,
       canonicalOrigin: null,
       existingDomainId: null,
@@ -70,6 +72,7 @@ export default defineEventHandler(async (event) => {
   )
   return {
     placeId,
+    displayName: review.displayName,
     websiteUri: review.websiteUri,
     canonicalOrigin,
     existingDomainId: existing?.id ?? null,

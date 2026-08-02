@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => ({
   reviewCandidateWebsite: vi.fn(),
   assertPublicOrigin: vi.fn(),
   findDomain: vi.fn(),
+  lockDomainOrigin: vi.fn(),
   getDomainForClient: vi.fn(),
   createDomain: vi.fn(),
   getDomainRunState: vi.fn(),
@@ -90,6 +91,7 @@ vi.mock('~~/server/utils/siteIntelligence/urlPolicy', () => ({
 
 vi.mock('~~/server/utils/siteIntelligence/repository', () => ({
   findSiteIntelligenceDomainByOrigin: (...args: unknown[]) => mocks.findDomain(...args),
+  lockSiteIntelligenceDomainOrigin: (...args: unknown[]) => mocks.lockDomainOrigin(...args),
   getSiteIntelligenceDomainForClient: (...args: unknown[]) => mocks.getDomainForClient(...args),
   createSiteIntelligenceDomain: (...args: unknown[]) => mocks.createDomain(...args),
   getSiteIntelligenceDomainRunState: (...args: unknown[]) => mocks.getDomainRunState(...args)
@@ -232,6 +234,7 @@ beforeEach(() => {
   mocks.reviewCandidateWebsite.mockReset().mockResolvedValue(providerReview)
   mocks.assertPublicOrigin.mockReset().mockResolvedValue('https://dealer.example.com')
   mocks.findDomain.mockReset().mockResolvedValue(null)
+  mocks.lockDomainOrigin.mockReset().mockResolvedValue(undefined)
   mocks.getDomainForClient.mockReset().mockResolvedValue(domain)
   mocks.createDomain.mockReset().mockResolvedValue(domain)
   mocks.getDomainRunState.mockReset().mockResolvedValue({ hasRun: false, run: null })
@@ -478,6 +481,21 @@ describe('agency candidate decisions', () => {
       },
       transactionExecutor
     )
+    expect(mocks.lockDomainOrigin).toHaveBeenCalledWith(
+      CLIENT_ID,
+      'https://www.dealer.example.com',
+      'competitor',
+      transactionExecutor
+    )
+    expect(mocks.lockDomainOrigin.mock.invocationCallOrder[0]!)
+      .toBeLessThan(mocks.findDomain.mock.invocationCallOrder[0]!)
+    expect(mocks.startCrawl).toHaveBeenCalledWith(
+      expect.anything(),
+      { id: USER_ID, role: 'owner' },
+      DOMAIN_ID,
+      'manual',
+      { onlyIfNeverRun: true }
+    )
     expect(JSON.stringify(mocks.createDomain.mock.calls[0]?.[1]))
       .not.toContain('Transient Google Dealer Name')
   })
@@ -575,52 +593,91 @@ describe('agency candidate decisions', () => {
     expect(mocks.startCrawl).not.toHaveBeenCalled()
   })
 
-  it('serializes two simultaneous approvals into one domain and at most one first crawl', async () => {
-    let sharedCandidate = { ...savedCandidate }
+  it('serializes distinct Place approvals sharing one origin into one domain and one first-run claim', async () => {
+    const candidateByPlace = new Map<string, typeof savedCandidate>()
+    let sharedDomain: typeof domain | null = null
     let domainCreates = 0
-    let releaseTail = Promise.resolve()
+    let firstRunClaims = 0
+    let originLockTail = Promise.resolve()
 
     mocks.transaction.mockImplementation(async (callback) => {
-      const previous = releaseTail
+      const db = { query: vi.fn(), releaseOriginLock: undefined as undefined | (() => void) }
+      try {
+        return await callback(db)
+      } finally {
+        db.releaseOriginLock?.()
+      }
+    })
+    mocks.lockDomainOrigin.mockImplementation(async (_clientId, _origin, _lane, db) => {
+      const previous = originLockTail
       let release!: () => void
-      releaseTail = new Promise<void>((resolve) => {
+      originLockTail = new Promise<void>((resolve) => {
         release = resolve
       })
       await previous
-      try {
-        return await callback(transactionExecutor)
-      } finally {
-        release()
-      }
+      db.releaseOriginLock = release
     })
-    mocks.materializeAndLockCandidate.mockImplementation(async () => ({ ...sharedCandidate }))
+    mocks.materializeAndLockCandidate.mockImplementation(async (_clientId, input) => {
+      const candidate = candidateByPlace.get(input.googlePlaceId) ?? {
+        ...savedCandidate,
+        id: `candidate-${input.googlePlaceId}`,
+        googlePlaceId: input.googlePlaceId
+      }
+      candidateByPlace.set(input.googlePlaceId, candidate)
+      return { ...candidate }
+    })
     mocks.updateCandidateDecision.mockImplementation(async (_clientId, input) => {
-      sharedCandidate = {
-        ...sharedCandidate,
+      const current = candidateByPlace.get(input.googlePlaceId)!
+      const updated = {
+        ...current,
         state: input.state,
         approvedDomainId: input.approvedDomainId,
         agencyReviewReason: input.agencyReviewReason,
         reviewedAt: input.reviewedAt,
         reviewedByUserId: input.reviewedByUserId
       }
-      return { ...sharedCandidate }
+      candidateByPlace.set(input.googlePlaceId, updated)
+      return { ...updated }
+    })
+    mocks.findDomain.mockImplementation(async () => {
+      const snapshot = sharedDomain
+      await Promise.resolve()
+      return snapshot
     })
     mocks.createDomain.mockImplementation(async () => {
       domainCreates += 1
+      sharedDomain = domain
       return domain
     })
+    mocks.reviewCandidateWebsite.mockImplementation(async placeId => ({
+      ...providerReview,
+      placeId
+    }))
+    mocks.startCrawl.mockImplementation(async (_event, _user, _domainId, _trigger, options) => {
+      expect(options).toEqual({ onlyIfNeverRun: true })
+      if (firstRunClaims > 0) {
+        return { status: 'existing_run', run: { id: RUN_ID, status: 'running' } }
+      }
+      firstRunClaims += 1
+      return { status: 'started', run: { id: RUN_ID, domainId: DOMAIN_ID, status: 'running' } }
+    })
 
-    const request = () => decisionHandler(event({
-      params: { placeId: 'candidate-place' },
+    const request = (placeId: string) => decisionHandler(event({
+      params: { placeId },
       body: decisionBody('approve_and_index', {
         reviewerReason: 'Approve the selected competitor once.'
       })
     }))
-    const [first, second] = await Promise.all([request(), request()])
+    const [first, second] = await Promise.all([
+      request('candidate-place-a'),
+      request('candidate-place-b')
+    ])
 
     expect(domainCreates).toBe(1)
-    expect(mocks.startCrawl).toHaveBeenCalledTimes(1)
-    expect(mocks.writeAudit.mock.calls.filter(call => call[2] === 'candidate.approved')).toHaveLength(1)
+    expect(firstRunClaims).toBe(1)
+    expect(mocks.lockDomainOrigin).toHaveBeenCalledTimes(2)
+    expect(mocks.startCrawl).toHaveBeenCalledTimes(2)
+    expect(mocks.writeAudit.mock.calls.filter(call => call[2] === 'candidate.approved')).toHaveLength(2)
     expect(first.candidate.approvedDomainId).toBe(DOMAIN_ID)
     expect(second.candidate.approvedDomainId).toBe(DOMAIN_ID)
   })

@@ -212,13 +212,14 @@ describe('agency candidate website review', () => {
     )
     expect(result).toEqual({
       placeId: 'candidate-place',
+      displayName: 'Transient Google Dealer Name',
       websiteUri: 'https://Dealer.Example.com/offers',
       canonicalOrigin: 'https://dealer.example.com',
       existingDomainId: DOMAIN_ID,
       canApprove: true
     })
     expect(JSON.stringify(result)).not.toMatch(
-      /Transient Google Dealer Name|Provider Street|googleMapsUri|businessStatus|server-places-key|sensitive provider detail/i
+      /Provider Street|googleMapsUri|businessStatus|server-places-key|sensitive provider detail/i
     )
   })
 
@@ -243,6 +244,7 @@ describe('agency candidate website review', () => {
       query: { clientId: CLIENT_ID, marketLocationId: LOCATION_ID }
     }))).resolves.toEqual({
       placeId: 'candidate-place',
+      displayName: 'Transient Google Dealer Name',
       websiteUri: null,
       canonicalOrigin: null,
       existingDomainId: null,
@@ -261,6 +263,7 @@ describe('agency candidate website review', () => {
     }))
     expect(invalid).toEqual({
       placeId: 'candidate-place',
+      displayName: 'Transient Google Dealer Name',
       websiteUri: null,
       canonicalOrigin: null,
       existingDomainId: null,

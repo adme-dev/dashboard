@@ -180,6 +180,19 @@ export async function findSiteIntelligenceDomainByOrigin(
   return row ? mapSiteIntelligenceDomainRow(row) : null
 }
 
+export async function lockSiteIntelligenceDomainOrigin(
+  clientId: string,
+  origin: string,
+  lane: SiteIntelligenceDomain['lane'],
+  executor: SiteIntelligenceRepositoryExecutor
+): Promise<void> {
+  const lockKey = `site-intelligence-domain:${clientId}:${lane}:${origin}`
+  await executor.query(
+    'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+    [lockKey]
+  )
+}
+
 function domainWriteValues(input: SiteIntelligenceDomainInput): unknown[] {
   return [
     input.name,
@@ -324,6 +337,15 @@ export interface SiteIntelligenceDomainRunState {
   run: { id: string, status: SiteIntelligenceRun['status'] } | null
 }
 
+export interface SiteIntelligenceCrawlRunCreateOptions {
+  onlyIfNeverRun?: boolean
+}
+
+export type SiteIntelligenceCrawlRunCreateResult
+  = { status: 'created', run: SiteIntelligenceRunConfig }
+    | { status: 'existing_run', run: { id: string, status: SiteIntelligenceRun['status'] } }
+    | { status: 'not_found' | 'inactive' | 'active_run', run: null }
+
 export async function getSiteIntelligenceDomainRunState(
   domainId: string,
   executor?: SiteIntelligenceRepositoryExecutor
@@ -346,8 +368,9 @@ export async function getSiteIntelligenceDomainRunState(
 export async function createSiteIntelligenceCrawlRun(
   actor: SiteIntelligenceAuditActor,
   domainId: string,
-  trigger: 'manual' | 'schedule' | 'retry'
-): Promise<{ status: 'created', run: SiteIntelligenceRunConfig } | { status: 'not_found' | 'inactive' | 'active_run', run: null }> {
+  trigger: 'manual' | 'schedule' | 'retry',
+  options: SiteIntelligenceCrawlRunCreateOptions = {}
+): Promise<SiteIntelligenceCrawlRunCreateResult> {
   return transaction(async (db) => {
     const domainResult = await db.query<SiteIntelligenceDomainRow>(`
       SELECT * FROM site_intelligence_domains WHERE id = $1 FOR UPDATE
@@ -355,6 +378,18 @@ export async function createSiteIntelligenceCrawlRun(
     const domain = domainResult.rows[0]
     if (!domain) return { status: 'not_found' as const, run: null }
     if (domain.status !== 'active') return { status: 'inactive' as const, run: null }
+
+    if (options.onlyIfNeverRun) {
+      const existing = await db.query<{ id: string, status: SiteIntelligenceRun['status'] }>(`
+        SELECT id, status FROM site_intelligence_crawl_runs
+        WHERE domain_id = $1
+        ORDER BY created_at ASC
+        LIMIT 1
+      `, [domainId])
+      if (existing.rows[0]) {
+        return { status: 'existing_run' as const, run: existing.rows[0] }
+      }
+    }
 
     const active = await db.query<{ id: string }>(`
       SELECT id FROM site_intelligence_crawl_runs

@@ -60,6 +60,7 @@ export interface NearbyMarketResponse {
 
 export interface NearbyMarketCandidateReview {
   placeId: string
+  displayName: string
   websiteUri: string | null
   canonicalOrigin: string | null
   existingDomainId: string | null

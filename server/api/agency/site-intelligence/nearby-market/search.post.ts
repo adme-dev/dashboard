@@ -9,7 +9,12 @@ import {
   GooglePlacesError,
   googlePlacesClientFromRuntimeConfig
 } from '~~/server/utils/siteIntelligence/googlePlaces'
-import { classifyDealer, haversineDistanceKm } from '~~/server/utils/siteIntelligence/nearbyMarket'
+import {
+  classifyDealer,
+  haversineDistanceKm,
+  requireNearbyMarketProviderConfiguration,
+  throwNearbyMarketProviderError
+} from '~~/server/utils/siteIntelligence/nearbyMarket'
 import { nearbySearchSchema } from '~~/server/utils/siteIntelligence/nearbyMarketContracts'
 import {
   getPrimaryClientMarketLocation,
@@ -25,36 +30,6 @@ const PORTAL_STATE: Record<SiteIntelligenceCandidateState, PortalCandidateState>
   dismissed: 'not_selected'
 }
 
-function requireNearbyMarketConfiguration() {
-  const config = useRuntimeConfig()
-  if (config.nearbyMarketDiscoveryEnabled !== true) {
-    throw createError({ statusCode: 503, statusMessage: 'Nearby market discovery is disabled' })
-  }
-  if (typeof config.googlePlacesServerApiKey !== 'string' || !config.googlePlacesServerApiKey.trim()) {
-    throw createError({ statusCode: 503, statusMessage: 'Nearby market provider is not configured' })
-  }
-  return config
-}
-
-function throwNearbyProviderError(error: unknown): never {
-  if (!(error instanceof GooglePlacesError)) {
-    throw createError({ statusCode: 503, statusMessage: 'Nearby market provider is unavailable' })
-  }
-  if (error.code === 'not_configured' || error.code === 'auth') {
-    throw createError({ statusCode: 503, statusMessage: 'Nearby market provider is misconfigured' })
-  }
-  if (error.code === 'rate_limited') {
-    throw createError({ statusCode: 429, statusMessage: 'Nearby market provider is rate-limited' })
-  }
-  if (error.code === 'quota') {
-    throw createError({ statusCode: 503, statusMessage: 'Nearby market provider quota is exhausted' })
-  }
-  if (error.code === 'invalid_request' || error.code === 'malformed_response') {
-    throw createError({ statusCode: 502, statusMessage: 'Nearby market provider returned an invalid response' })
-  }
-  throw createError({ statusCode: 503, statusMessage: 'Nearby market provider is unavailable' })
-}
-
 export default defineEventHandler(async (event) => {
   const parsed = nearbySearchSchema.safeParse(await readBody(event))
   if (!parsed.success) {
@@ -63,7 +38,7 @@ export default defineEventHandler(async (event) => {
 
   const { clientId, radiusKm, includeUsedIndependent, brand, monitoringStatus } = parsed.data
   const user = await requireClientTrackingAccess(event, clientId)
-  const config = requireNearbyMarketConfiguration()
+  const config = requireNearbyMarketProviderConfiguration()
   const marketLocation = await getPrimaryClientMarketLocation(clientId)
 
   if (!marketLocation) {
@@ -95,7 +70,7 @@ export default defineEventHandler(async (event) => {
     origin = resolved.location
     nearbyPlaces = await places.searchNearbyDealers({ ...origin, radiusKm })
   } catch (error) {
-    throwNearbyProviderError(error)
+    throwNearbyMarketProviderError(error)
   }
 
   const decisions = await listNearbyMarketCandidates(

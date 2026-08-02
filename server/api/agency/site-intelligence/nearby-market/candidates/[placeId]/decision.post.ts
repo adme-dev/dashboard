@@ -20,7 +20,8 @@ import {
   createSiteIntelligenceDomain,
   findSiteIntelligenceDomainByOrigin,
   getSiteIntelligenceDomainForClient,
-  getSiteIntelligenceDomainRunState
+  getSiteIntelligenceDomainRunState,
+  lockSiteIntelligenceDomainOrigin
 } from '~~/server/utils/siteIntelligence/repository'
 import { assertPublicSiteOrigin } from '~~/server/utils/siteIntelligence/urlPolicy'
 
@@ -131,6 +132,7 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 409, statusMessage: 'Candidate decision changed; retry review' })
     }
     const origin = approvedOrigin
+    await lockSiteIntelligenceDomainOrigin(clientId, origin, 'competitor', db)
     const domain = await findSiteIntelligenceDomainByOrigin(
       clientId,
       origin,
@@ -198,7 +200,8 @@ export default defineEventHandler(async (event) => {
       event,
       user,
       decision.domain.id,
-      'manual'
+      'manual',
+      { onlyIfNeverRun: true }
     )
   } catch {
     return {
