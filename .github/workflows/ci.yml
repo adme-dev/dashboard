@@ -39,6 +39,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Runs first: broadest signal, and `deploy` gates on this job. Until this
+      # step existed CI ran ~750 of ~8200 tests, so a regression anywhere else
+      # reached production behind a green check — main deploys on merge.
+      - name: Full test suite
+        run: pnpm run test:run
+        timeout-minutes: 20
+
+      # Kept as separate steps despite being subsets of the run above: both are
+      # named safety gates, and a distinct red step names the blast radius
+      # faster than one failure buried in the full run.
       - name: Social publishing regression tests
         run: pnpm run test:social-publishing
         timeout-minutes: 15
