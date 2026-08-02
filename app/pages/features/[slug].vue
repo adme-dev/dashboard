@@ -2822,7 +2822,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-chart-area',
     categoryIconBg: 'bg-cyan-50',
     categoryIconColor: 'text-cyan-600',
-    description: 'Turn first-party website telemetry into a read-only, aggregate view of tracking health, audience quality, lead outcomes, and cross-client opportunities.',
+    description: 'Combine first-party website evidence with governed nearby-dealership discovery and approved public competitor monitoring.',
     details: [
       {
         title: 'Know every tag is talking',
@@ -2845,12 +2845,16 @@ const features: Record<string, Feature> = {
         content: 'Connect current, client-owned landing pages and offers to that client\'s aggregate audience outcomes. The join uses exact canonical pages inside the authorised client boundary, so the team can see where real attention and lead activity meet stale, missing, or mismatched site content without exposing visitor-level records.'
       },
       {
+        title: 'Governed nearby dealership discovery',
+        content: 'Explore a non-exhaustive list of up to 20 nearby dealership candidates around a confirmed client location. Agency staff review each candidate, validate its public website, and give explicit human approval before XeroFlow creates or crawls a monitored competitor domain. Permitted portal users can nominate a Place ID for the same agency review; a nomination never starts monitoring.'
+      },
+      {
         title: 'Public competitor changes',
         content: 'Monitor only approved public competitor pages for material changes to models, offers, finance terms, calls to action, and content. Every change keeps its source URL, observed time, confidence, and structured before-and-after evidence. Access controls and declared content-use signals are respected, and blocked collection is shown as partial coverage rather than worked around.'
       },
       {
         title: 'Evidence-backed gaps',
-        content: 'Compare current owned and public competitor facts conservatively. Exact model matches rank above category-level suggestions, expired offers are excluded, and low-evidence comparisons stay marked as insufficient data. Competitor audience size, traffic, spend, reach, and conversions are never inferred.'
+        content: 'Compare current owned and public competitor facts conservatively. Exact model matches rank above category-level suggestions, expired offers are excluded, and low-evidence comparisons stay marked as insufficient data. XeroFlow never claims or infers competitor traffic, audience size, conversions, spend, or reach.'
       },
       {
         title: 'Controlled AI interpretation',

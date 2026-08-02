@@ -9,7 +9,7 @@
         <h1 class="text-[clamp(36px,6vw,56px)] font-[450] text-white leading-[1.1] tracking-[-0.03em] mb-6">
           Terms of Service
         </h1>
-        <p class="text-[15px] text-white/40">Last updated: February 2026</p>
+        <p class="text-[15px] text-white/40">Last updated: 2 August 2026</p>
       </div>
     </section>
 
@@ -34,8 +34,16 @@
 
           <section>
             <h2 class="text-[20px] font-[450] text-[#121317] dark:text-white mb-4">3. Permitted Use</h2>
-            <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed">
+            <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed mb-3">
               XeroFlow is provided for legitimate business use by digital marketing agencies and their teams. You agree not to reverse-engineer, decompile, or attempt to extract source code from the platform. You may not use the service for any unlawful purpose or in violation of any applicable regulations.
+            </p>
+            <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed">
+              Nearby dealership discovery uses Google Maps Platform and is also subject to the applicable <a
+                href="https://cloud.google.com/maps-platform/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-[#121317] dark:text-white underline underline-offset-2"
+              >Google Maps Platform Terms</a>. You must not misuse Maps or Places data, obscure required attribution, scrape or bulk-download results, circumvent technical or usage limits, create an exhaustive places directory, or use the feature to harass, surveil, or make unlawful decisions about another business or person.
             </p>
           </section>
 
