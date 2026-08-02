@@ -87,6 +87,7 @@ interface PortalUser {
     canViewBudgets?: boolean
     canViewTimeEntries?: boolean
     canViewAnalytics?: boolean
+    canNominateCompetitors?: boolean
     canSubmitRequests?: boolean
     canViewCrm?: boolean
     canEditCrm?: boolean
@@ -1259,6 +1260,7 @@ const portalUserModules = (user: PortalUser) => [
   { label: 'Jobs', enabled: user.permissions?.canViewProjects !== false },
   { label: 'Billing', enabled: Boolean(user.permissions?.canViewInvoices) },
   { label: 'Analytics', enabled: Boolean(user.permissions?.canViewAnalytics) },
+  { label: 'Competitor nominations', enabled: Boolean(user.permissions?.canNominateCompetitors) },
   { label: 'Approvals', enabled: Boolean(user.permissions?.canApproveWork) },
   { label: 'Requests', enabled: Boolean(user.permissions?.canSubmitRequests) },
   { label: 'CRM', enabled: Boolean(user.permissions?.canViewCrm) }
@@ -1280,6 +1282,7 @@ const accessForm = ref({
     canViewTimeEntries: false,
     canViewBudgets: false,
     canViewAnalytics: true,
+    canNominateCompetitors: false,
     canSubmitRequests: true,
     canViewCrm: true,
     canEditCrm: false,
@@ -1298,6 +1301,7 @@ const editPortalUserAccess = (user: PortalUser) => {
       canViewTimeEntries: Boolean(user.permissions?.canViewTimeEntries),
       canViewBudgets: Boolean(user.permissions?.canViewBudgets),
       canViewAnalytics: user.permissions?.canViewAnalytics !== false,
+      canNominateCompetitors: Boolean(user.permissions?.canNominateCompetitors),
       canSubmitRequests: user.permissions?.canSubmitRequests !== false,
       canViewCrm: Boolean(user.permissions?.canViewCrm),
       canEditCrm: Boolean(user.permissions?.canEditCrm),
@@ -1503,6 +1507,7 @@ const inviteForm = ref({
     canViewTimeEntries: false,
     canViewBudgets: false,
     canViewAnalytics: true,
+    canNominateCompetitors: false,
     canSubmitRequests: true,
     canViewCrm: true,
     canEditCrm: false,
@@ -1521,6 +1526,7 @@ const invitePermissionPresets = [
       canViewTimeEntries: false,
       canViewBudgets: true,
       canViewAnalytics: true,
+      canNominateCompetitors: false,
       canSubmitRequests: true,
       canViewCrm: true,
       canEditCrm: false,
@@ -1538,6 +1544,7 @@ const invitePermissionPresets = [
       canViewTimeEntries: false,
       canViewBudgets: false,
       canViewAnalytics: true,
+      canNominateCompetitors: false,
       canSubmitRequests: true,
       canViewCrm: true,
       canEditCrm: true,
@@ -1555,6 +1562,7 @@ const invitePermissionPresets = [
       canViewTimeEntries: false,
       canViewBudgets: true,
       canViewAnalytics: false,
+      canNominateCompetitors: false,
       canSubmitRequests: false,
       canViewCrm: false,
       canEditCrm: false,
@@ -1752,6 +1760,7 @@ const resetInviteForm = () => {
       canViewTimeEntries: false,
       canViewBudgets: false,
       canViewAnalytics: true,
+      canNominateCompetitors: false,
       canSubmitRequests: true,
       canViewCrm: true,
       canEditCrm: false,
@@ -3943,6 +3952,16 @@ const enterpriseRollout = [
                 </div>
               </label>
 
+              <UFormField
+                label="Competitor nominations"
+                help="Opt in separately from analytics access."
+              >
+                <UCheckbox
+                  v-model="inviteForm.permissions.canNominateCompetitors"
+                  label="Nominate nearby competitors for agency review"
+                />
+              </UFormField>
+
               <label class="flex items-center gap-3 cursor-pointer">
                 <UCheckbox v-model="inviteForm.permissions.canSubmitRequests" />
                 <div>
@@ -4110,6 +4129,16 @@ const enterpriseRollout = [
                 <p class="text-[12px] text-[var(--ui-text-muted)]">View campaign metrics, lead performance, and exports.</p>
               </div>
             </label>
+
+            <UFormField
+              label="Competitor nominations"
+              help="Opt in separately from analytics access."
+            >
+              <UCheckbox
+                v-model="accessForm.permissions.canNominateCompetitors"
+                label="Nominate nearby competitors for agency review"
+              />
+            </UFormField>
 
             <label class="flex items-center gap-3 cursor-pointer">
               <UCheckbox v-model="accessForm.permissions.canApproveWork" />

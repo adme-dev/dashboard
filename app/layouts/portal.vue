@@ -109,6 +109,11 @@ const mainNav = computed(() => ([
               onSelect: close
             },
             {
+              label: 'Nearby market',
+              to: '/portal/analytics/market',
+              onSelect: close
+            },
+            {
               label: 'Identity Reconciliation',
               to: '/portal/analytics/identity',
               onSelect: close

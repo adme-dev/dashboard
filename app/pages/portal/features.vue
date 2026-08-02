@@ -58,6 +58,14 @@ const features = computed<FeatureCard[]>(() => {
       permission: canViewAnalytics.value
     },
     {
+      title: 'Nearby market',
+      description: 'Explore nearby dealerships and nominate relevant competitors for your agency to review.',
+      icon: 'i-lucide-map-pinned',
+      iconColor: 'text-teal-500',
+      to: '/portal/analytics/market',
+      permission: canViewAnalytics.value
+    },
+    {
       title: 'Booked Jobs',
       description: 'Monitor booked work, upcoming jobs, completed job history, tasks, and delivery timelines.',
       icon: 'i-lucide-folder-kanban',
