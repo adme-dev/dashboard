@@ -22,7 +22,8 @@ const {
   filters, selectedPlaceId, location, market, candidates, candidateReview,
   decision, nominations, status, errors, updateFilters, selectCandidate,
   loadLocation, retryLocation, search, retrySearch, reviewCandidate,
-  retryCandidateReview, decideCandidate, loadNominations, retryNominations
+  retryCandidateReview, decideCandidate, loadNominations, retryNominations,
+  activateClient, reviewNomination
 } = nearby
 
 const locationOpen = ref(false)
@@ -65,16 +66,9 @@ const providerAlert = computed(() => {
   return { title: 'Nearby market provider unavailable', category: 'unavailable', detail }
 })
 
-watch(() => props.clientId, async (clientId) => {
+watch(() => [props.clientId, props.canManage] as const, ([clientId, canManage]) => {
   reviewOpen.value = false
-  if (!clientId) {
-    if (props.canManage) void loadNominations()
-    return
-  }
-  const requests = [loadLocation(clientId)]
-  if (props.canManage) requests.push(loadNominations(clientId))
-  await Promise.allSettled(requests)
-  if (location.value) await search(clientId)
+  void activateClient(clientId ?? null, canManage)
 }, { immediate: true })
 
 watch(selectedPlaceId, async (placeId) => {
@@ -119,6 +113,15 @@ async function openReview(placeId: string) {
   selectCandidate(placeId)
   reviewOpen.value = true
   await reviewCandidate(placeId)
+}
+
+async function openNomination(nomination: typeof nominations.value[number]) {
+  if (nomination.clientId && nomination.clientId !== props.clientId) {
+    emit('update:clientId', nomination.clientId)
+    await nextTick()
+  }
+  reviewOpen.value = true
+  await reviewNomination(nomination)
 }
 
 async function decide(input: NearbyMarketDecisionInput) {
@@ -401,7 +404,7 @@ function updateMonitoringStatus(value: unknown) {
         :status="status.nominations"
         :error="errors.nominations"
         @retry="retryNominations"
-        @review="openReview"
+        @review="openNomination"
       />
     </section>
 

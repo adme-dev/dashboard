@@ -7,7 +7,7 @@ defineProps<{
   error: string | null
 }>()
 defineEmits<{
-  review: [placeId: string]
+  review: [nomination: NearbyMarketNomination]
   retry: []
 }>()
 
@@ -88,7 +88,7 @@ function nominationAge(value: string | null | undefined) {
             icon="i-lucide-panel-right-open"
             size="sm"
             variant="soft"
-            @click="$emit('review', nomination.googlePlaceId)"
+            @click="$emit('review', nomination)"
           />
         </div>
       </li>

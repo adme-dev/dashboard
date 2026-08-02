@@ -73,6 +73,7 @@ export function useNearbyMarket() {
   const market = ref<NearbyMarketResponse | null>(null)
   const candidateReview = ref<NearbyMarketCandidateReview | null>(null)
   const decision = ref<DecisionResponse | null>(null)
+  const decisionPlaceId = ref<string | null>(null)
   const nominations = ref<NearbyMarketNomination[]>([])
   const status = reactive<Record<NearbyMarketResource, NearbyMarketResourceStatus>>({
     location: 'idle',
@@ -97,6 +98,7 @@ export function useNearbyMarket() {
   let lastDecision: { placeId: string, input: NearbyMarketDecisionInput } | null = null
   let lastNominationsClientId: string | null | undefined
   let hasNominationsRequest = false
+  let activationGeneration = 0
 
   const candidates = computed(() => market.value?.candidates ?? [])
 
@@ -119,16 +121,46 @@ export function useNearbyMarket() {
     if (status[resource] === 'pending') status[resource] = 'idle'
   }
 
-  function setActiveClient(clientId: string) {
-    if (activeClientId.value === clientId) return
-    activeClientId.value = clientId
-    for (const resource of ['location', 'search', 'candidateReview', 'decision'] as const) {
+  function resetDecision() {
+    invalidate('decision')
+    decision.value = null
+    decisionPlaceId.value = null
+    lastDecision = null
+    status.decision = 'idle'
+    errors.decision = null
+  }
+
+  function clearClient() {
+    activationGeneration += 1
+    activeClientId.value = null
+    for (const resource of ['location', 'search', 'candidateReview', 'nominations'] as const) {
       invalidate(resource)
+      status[resource] = 'idle'
+      errors[resource] = null
     }
+    resetDecision()
     location.value = null
     market.value = null
     candidateReview.value = null
-    decision.value = null
+    nominations.value = []
+    selectedPlaceId.value = null
+    lastLocationClientId = null
+    lastSearchClientId = null
+    lastReviewPlaceId = null
+    lastNominationsClientId = undefined
+    hasNominationsRequest = false
+  }
+
+  function setActiveClient(clientId: string) {
+    if (activeClientId.value === clientId) return
+    activeClientId.value = clientId
+    for (const resource of ['location', 'search', 'candidateReview'] as const) {
+      invalidate(resource)
+    }
+    resetDecision()
+    location.value = null
+    market.value = null
+    candidateReview.value = null
     selectedPlaceId.value = null
   }
 
@@ -171,6 +203,7 @@ export function useNearbyMarket() {
     filters.value = next
     invalidate('search')
     invalidate('candidateReview')
+    resetDecision()
     candidateReview.value = null
     selectedPlaceId.value = null
   }
@@ -178,6 +211,7 @@ export function useNearbyMarket() {
   function selectCandidate(placeId: string | null) {
     if (selectedPlaceId.value === placeId) return
     invalidate('candidateReview')
+    resetDecision()
     candidateReview.value = null
     selectedPlaceId.value = placeId
   }
@@ -186,10 +220,9 @@ export function useNearbyMarket() {
     setActiveClient(clientId)
     invalidate('search')
     invalidate('candidateReview')
-    invalidate('decision')
+    resetDecision()
     market.value = null
     candidateReview.value = null
-    decision.value = null
     selectedPlaceId.value = null
     lastLocationClientId = clientId
     return runResource<{ marketLocation: ClientMarketLocation | null }>(
@@ -273,6 +306,16 @@ export function useNearbyMarket() {
       errors.decision = 'Confirm a market location before recording a decision.'
       return undefined
     }
+    const alreadyApproved = (
+      (decisionPlaceId.value === placeId && decision.value?.candidate.state === 'approved')
+      || candidates.value.some(candidate => candidate.placeId === placeId && candidate.state === 'approved')
+    )
+    if (alreadyApproved && input.action !== 'approve_and_index') {
+      status.decision = 'error'
+      errors.decision = 'This candidate is already approved; use crawl retry or diagnostics.'
+      return undefined
+    }
+    if (decisionPlaceId.value !== placeId) resetDecision()
     lastDecision = { placeId, input }
     const body: NearbyMarketCandidateDecision = {
       ...input,
@@ -287,7 +330,10 @@ export function useNearbyMarket() {
         body,
         signal
       }),
-      (response) => { decision.value = response }
+      (response) => {
+        decision.value = response
+        decisionPlaceId.value = placeId
+      }
     )
   }
 
@@ -316,6 +362,41 @@ export function useNearbyMarket() {
       : Promise.resolve(undefined)
   }
 
+  async function activateClient(clientId: string | null, includeNominations: boolean) {
+    const generation = activationGeneration + 1
+    activationGeneration = generation
+    if (!clientId) {
+      clearClient()
+      return undefined
+    }
+    setActiveClient(clientId)
+    const requests: Array<Promise<unknown>> = [loadLocation(clientId)]
+    if (includeNominations) requests.push(loadNominations(clientId))
+    await Promise.allSettled(requests)
+    if (generation !== activationGeneration || activeClientId.value !== clientId) return undefined
+    if (location.value?.clientId !== clientId) return undefined
+    await search(clientId)
+    if (generation !== activationGeneration || activeClientId.value !== clientId) return undefined
+    return location.value
+  }
+
+  async function reviewNomination(nomination: NearbyMarketNomination) {
+    const { clientId, marketLocationId, googlePlaceId } = nomination
+    if (!clientId || !marketLocationId || !googlePlaceId) {
+      status.candidateReview = 'error'
+      errors.candidateReview = 'This nomination is missing its client or market location context.'
+      return undefined
+    }
+    await loadLocation(clientId)
+    if (activeClientId.value !== clientId || location.value?.id !== marketLocationId) {
+      status.candidateReview = 'error'
+      errors.candidateReview = 'The nominated market location is no longer current for this client.'
+      return undefined
+    }
+    selectCandidate(googlePlaceId)
+    return reviewCandidate(googlePlaceId)
+  }
+
   function abortAll() {
     for (const resource of RESOURCES) invalidate(resource)
   }
@@ -331,10 +412,13 @@ export function useNearbyMarket() {
     candidates,
     candidateReview,
     decision,
+    decisionPlaceId,
     nominations,
     status,
     errors,
     updateFilters,
+    activateClient,
+    clearClient,
     selectCandidate,
     loadLocation,
     retryLocation,
@@ -342,6 +426,7 @@ export function useNearbyMarket() {
     retrySearch,
     reviewCandidate,
     retryCandidateReview,
+    reviewNomination,
     decideCandidate,
     retryDecision,
     loadNominations,

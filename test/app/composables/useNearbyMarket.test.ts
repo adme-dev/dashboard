@@ -3,6 +3,8 @@ import type { NearbyMarketResponse } from '~~/app/types/site-intelligence'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const LOCATION_ID = '22222222-2222-4222-8222-222222222222'
+const CLIENT_B_ID = '44444444-4444-4444-8444-444444444444'
+const LOCATION_B_ID = '55555555-5555-4555-8555-555555555555'
 
 const location = {
   id: LOCATION_ID,
@@ -21,6 +23,7 @@ function market(radiusKm: 10 | 25 | 50, placeId = `place-${radiusKm}`): NearbyMa
   return {
     clientId: CLIENT_ID,
     marketLocation: location,
+    center: { latitude: -37.8, longitude: 144.95 },
     radiusKm,
     candidates: [{
       placeId,
@@ -231,5 +234,135 @@ describe('useNearbyMarket', () => {
       decision: null,
       nominations: null
     })
+  })
+
+  it('keeps an approved decision terminal and clears it when selection changes', async () => {
+    let decisionCalls = 0
+    vi.stubGlobal('$fetch', vi.fn((request: string) => {
+      if (request.includes('market-locations')) return Promise.resolve({ marketLocation: location })
+      decisionCalls += 1
+      return Promise.resolve({
+        candidate: { id: 'candidate-a', state: 'approved' },
+        domain: { id: 'domain-a' },
+        run: null,
+        crawlStart: { status: 'failed', category: 'workflow_start' }
+      })
+    }))
+    const { useNearbyMarket } = await import('~~/app/composables/useNearbyMarket')
+    const nearby = useNearbyMarket()
+    await nearby.loadLocation(CLIENT_ID)
+    nearby.selectCandidate('place-a')
+
+    await nearby.decideCandidate('place-a', { action: 'approve_and_index', reviewerReason: 'Relevant competitor' })
+    await nearby.decideCandidate('place-a', { action: 'save' })
+
+    expect(decisionCalls).toBe(1)
+    expect(nearby.decision.value?.candidate.state).toBe('approved')
+    expect(nearby.errors.decision).toMatch(/already approved/i)
+
+    nearby.selectCandidate('place-b')
+    expect(nearby.decision.value).toBeNull()
+    expect(nearby.status.decision).toBe('idle')
+    expect(nearby.errors.decision).toBeNull()
+  })
+
+  it('aborts candidate A decision state before candidate B can inherit it', async () => {
+    const pending = deferred<{
+      candidate: Record<string, unknown>
+      domain: Record<string, unknown> | null
+      run: null
+      crawlStart: Record<string, unknown> | null
+    }>()
+    let signal: AbortSignal | undefined
+    vi.stubGlobal('$fetch', vi.fn((request: string, options: { signal?: AbortSignal }) => {
+      if (request.includes('market-locations')) return Promise.resolve({ marketLocation: location })
+      signal = options.signal
+      return pending.promise
+    }))
+    const { useNearbyMarket } = await import('~~/app/composables/useNearbyMarket')
+    const nearby = useNearbyMarket()
+    await nearby.loadLocation(CLIENT_ID)
+    nearby.selectCandidate('place-a')
+    const stale = nearby.decideCandidate('place-a', { action: 'save' })
+
+    nearby.selectCandidate('place-b')
+    pending.resolve({ candidate: { state: 'saved' }, domain: null, run: null, crawlStart: null })
+    await stale
+
+    expect(signal?.aborted).toBe(true)
+    expect(nearby.selectedPlaceId.value).toBe('place-b')
+    expect(nearby.decision.value).toBeNull()
+    expect(nearby.status.decision).toBe('idle')
+  })
+
+  it('keeps the newest client after deferred A to B activation and explicitly clears on null', async () => {
+    const locationA = deferred<{ marketLocation: typeof location }>()
+    const locationB = deferred<{ marketLocation: typeof location }>()
+    const searches: string[] = []
+    vi.stubGlobal('$fetch', vi.fn((request: string, options: { query?: { clientId?: string }, body?: { clientId?: string } }) => {
+      if (request.includes('market-locations')) {
+        return options.query?.clientId === CLIENT_ID ? locationA.promise : locationB.promise
+      }
+      searches.push(options.body?.clientId || '')
+      return Promise.resolve({
+        ...market(25, 'place-b'),
+        clientId: CLIENT_B_ID,
+        marketLocation: { ...location, id: LOCATION_B_ID, clientId: CLIENT_B_ID },
+        center: { latitude: -37.9, longitude: 145.1 }
+      })
+    }))
+    const { useNearbyMarket } = await import('~~/app/composables/useNearbyMarket')
+    const nearby = useNearbyMarket()
+
+    const stale = nearby.activateClient(CLIENT_ID, false)
+    const current = nearby.activateClient(CLIENT_B_ID, false)
+    locationB.resolve({ marketLocation: { ...location, id: LOCATION_B_ID, clientId: CLIENT_B_ID } })
+    await current
+    locationA.resolve({ marketLocation: location })
+    await stale
+
+    expect(searches).toEqual([CLIENT_B_ID])
+    expect(nearby.activeClientId.value).toBe(CLIENT_B_ID)
+    expect(nearby.location.value?.id).toBe(LOCATION_B_ID)
+    expect(nearby.market.value?.clientId).toBe(CLIENT_B_ID)
+
+    await nearby.activateClient(null, false)
+    expect(nearby.activeClientId.value).toBeNull()
+    expect(nearby.location.value).toBeNull()
+    expect(nearby.market.value).toBeNull()
+    expect(nearby.selectedPlaceId.value).toBeNull()
+    expect(nearby.candidateReview.value).toBeNull()
+    expect(nearby.decision.value).toBeNull()
+  })
+
+  it('loads a nomination client and location before requesting its candidate review', async () => {
+    const locationB = { ...location, id: LOCATION_B_ID, clientId: CLIENT_B_ID }
+    const reviewQueries: Array<Record<string, string> | undefined> = []
+    vi.stubGlobal('$fetch', vi.fn((request: string, options: { query?: Record<string, string> }) => {
+      if (request.includes('market-locations')) return Promise.resolve({ marketLocation: locationB })
+      reviewQueries.push(options.query)
+      return Promise.resolve({
+        placeId: 'nominee-place',
+        displayName: 'Nominee Motors',
+        websiteUri: 'https://nominee.example',
+        canonicalOrigin: 'https://nominee.example',
+        existingDomainId: null,
+        canApprove: true
+      })
+    }))
+    const { useNearbyMarket } = await import('~~/app/composables/useNearbyMarket')
+    const nearby = useNearbyMarket()
+
+    await nearby.reviewNomination({
+      id: 'nomination-b',
+      clientId: CLIENT_B_ID,
+      marketLocationId: LOCATION_B_ID,
+      googlePlaceId: 'nominee-place'
+    })
+
+    expect(nearby.activeClientId.value).toBe(CLIENT_B_ID)
+    expect(nearby.location.value?.id).toBe(LOCATION_B_ID)
+    expect(nearby.selectedPlaceId.value).toBe('nominee-place')
+    expect(reviewQueries).toEqual([{ clientId: CLIENT_B_ID, marketLocationId: LOCATION_B_ID }])
   })
 })

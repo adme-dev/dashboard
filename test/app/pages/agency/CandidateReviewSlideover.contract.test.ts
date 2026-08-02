@@ -43,5 +43,6 @@ describe('agency candidate review contract', () => {
     expect(review).toMatch(/v-if="crawlStartFailed"[\s\S]*Retry crawl/)
     expect(review).toMatch(/v-else[\s\S]*Approve & index/)
     expect(review.match(/label="Retry crawl"/g)).toHaveLength(1)
+    expect(review).toMatch(/template v-if="crawlStartFailed"[\s\S]*Retry crawl[\s\S]*View diagnostics[\s\S]*template v-else[\s\S]*Save for later[\s\S]*Dismiss[\s\S]*Approve & index/)
   })
 })

@@ -108,188 +108,186 @@ function approve() {
         </UAlert>
 
         <template v-else-if="review">
-          <div class="space-y-3 rounded-lg border border-default bg-elevated p-4">
-            <div>
-              <p class="text-xs font-medium text-muted">
-                Provider website
-              </p>
-              <p class="mt-1 break-all text-sm text-highlighted">
-                {{ review.websiteUri || 'No public website returned' }}
-              </p>
-            </div>
-            <div>
-              <p class="text-xs font-medium text-muted">
-                Canonical origin
-              </p>
-              <p class="mt-1 break-all text-sm text-highlighted">
-                {{ review.canonicalOrigin || 'Awaiting a valid public website' }}
-              </p>
-            </div>
-            <UBadge
-              v-if="review.existingDomainId"
-              color="success"
+          <template v-if="crawlStartFailed">
+            <UAlert
+              color="error"
               variant="subtle"
-              label="Already monitored"
+              title="Approved, but the first crawl did not start"
+              description="The approval and domain remain saved. Retry the crawl or open diagnostics; approval will not be repeated."
             />
-            <UBadge
-              v-else-if="hasCurrentValidation"
-              color="success"
-              variant="subtle"
-              label="Website validation is current"
-            />
-            <UBadge
-              v-else
-              color="warning"
-              variant="subtle"
-              label="Current validation required"
-            />
-          </div>
-
-          <UAlert
-            v-if="review.existingDomainId"
-            color="success"
-            variant="subtle"
-            title="This domain is already monitored"
-            description="Open the existing domain and crawl history instead of approving a duplicate."
-          />
-
-          <div class="grid grid-cols-1 gap-4">
-            <UFormField
-              label="Manual website"
-              help="Use only when the provider returned no website. The server applies the same public-origin and duplicate validation."
-            >
-              <UInput
-                v-model="manualWebsite"
-                class="w-full"
-                inputmode="url"
-                placeholder="https://dealer.example"
+            <div class="grid grid-cols-1 gap-2 @lg:grid-cols-2">
+              <UButton
+                label="Retry crawl"
+                icon="i-lucide-refresh-cw"
+                @click="$emit('retryCrawl', decisionResult!.domain!)"
               />
-            </UFormField>
-            <UFormField
-              label="Reviewer reason"
-              help="Approval requires at least 10 characters; dismissals require an audit reason."
-            >
-              <UTextarea
-                v-model="reviewerReason"
-                class="w-full"
-                :rows="4"
-                placeholder="Explain why this dealership is relevant to the client's market."
-              />
-            </UFormField>
-          </div>
-
-          <section aria-labelledby="crawl-preview-heading" class="space-y-3 rounded-lg border border-default p-4">
-            <div>
-              <h3 id="crawl-preview-heading" class="text-sm font-semibold text-highlighted">
-                Fixed first crawl
-              </h3>
-              <p class="mt-1 text-xs leading-5 text-muted">
-                These settings cannot be changed from nearby-market approval.
-              </p>
-            </div>
-            <dl class="grid grid-cols-1 gap-2 text-sm @lg:grid-cols-2">
-              <div>
-                <dt class="text-muted">
-                  Lane
-                </dt><dd class="font-medium text-highlighted">
-                  Competitor
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Boundary
-                </dt><dd class="font-medium text-highlighted">
-                  25 pages · Depth 1
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Rendering
-                </dt><dd class="font-medium text-highlighted">
-                  Automatic rendering
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Schedule
-                </dt><dd class="font-medium text-highlighted">
-                  Manual frequency
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Retention
-                </dt><dd class="font-medium text-highlighted">
-                  30-day raw retention
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Use
-                </dt><dd class="font-medium text-highlighted">
-                  Search purpose · AI input off
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Scope
-                </dt><dd class="font-medium text-highlighted">
-                  Exact origin · No subdomains
-                </dd>
-              </div>
-            </dl>
-          </section>
-
-          <UAlert
-            v-if="crawlStartFailed"
-            color="error"
-            variant="subtle"
-            title="Approved, but the first crawl did not start"
-            description="The approval and domain remain saved. Retry the crawl or open diagnostics; approval will not be repeated."
-          >
-            <template #actions>
               <UButton
                 label="View diagnostics"
                 color="neutral"
                 variant="soft"
-                size="sm"
                 @click="$emit('viewDiagnostics', decisionResult!.domain!, decisionResult!.run || null)"
               />
-            </template>
-          </UAlert>
-
-          <div class="flex flex-col-reverse gap-2 border-t border-default pt-4">
-            <div class="grid grid-cols-1 gap-2 @lg:grid-cols-2">
-              <UButton
-                label="Save for later"
-                color="neutral"
-                variant="soft"
-                :loading="deciding"
-                @click="$emit('decide', { action: 'save' })"
+            </div>
+          </template>
+          <template v-else>
+            <div class="space-y-3 rounded-lg border border-default bg-elevated p-4">
+              <div>
+                <p class="text-xs font-medium text-muted">
+                  Provider website
+                </p>
+                <p class="mt-1 break-all text-sm text-highlighted">
+                  {{ review.websiteUri || 'No public website returned' }}
+                </p>
+              </div>
+              <div>
+                <p class="text-xs font-medium text-muted">
+                  Canonical origin
+                </p>
+                <p class="mt-1 break-all text-sm text-highlighted">
+                  {{ review.canonicalOrigin || 'Awaiting a valid public website' }}
+                </p>
+              </div>
+              <UBadge
+                v-if="review.existingDomainId"
+                color="success"
+                variant="subtle"
+                label="Already monitored"
               />
-              <UButton
-                label="Dismiss"
-                color="neutral"
-                variant="outline"
-                :disabled="!canDismiss"
-                @click="$emit('decide', { action: 'dismiss', reviewerReason: reviewerReason.trim() })"
+              <UBadge
+                v-else-if="hasCurrentValidation"
+                color="success"
+                variant="subtle"
+                label="Website validation is current"
+              />
+              <UBadge
+                v-else
+                color="warning"
+                variant="subtle"
+                label="Current validation required"
               />
             </div>
-            <UButton
-              v-if="crawlStartFailed"
-              label="Retry crawl"
-              icon="i-lucide-refresh-cw"
-              @click="$emit('retryCrawl', decisionResult!.domain!)"
+
+            <UAlert
+              v-if="review.existingDomainId"
+              color="success"
+              variant="subtle"
+              title="This domain is already monitored"
+              description="Open the existing domain and crawl history instead of approving a duplicate."
             />
-            <UButton
-              v-else
-              label="Approve & index"
-              icon="i-lucide-scan-search"
-              :loading="deciding"
-              :disabled="!canApprove"
-              @click="approve"
-            />
-          </div>
+
+            <div class="grid grid-cols-1 gap-4">
+              <UFormField
+                label="Manual website"
+                help="Use only when the provider returned no website. The server applies the same public-origin and duplicate validation."
+              >
+                <UInput
+                  v-model="manualWebsite"
+                  class="w-full"
+                  inputmode="url"
+                  placeholder="https://dealer.example"
+                />
+              </UFormField>
+              <UFormField
+                label="Reviewer reason"
+                help="Approval requires at least 10 characters; dismissals require an audit reason."
+              >
+                <UTextarea
+                  v-model="reviewerReason"
+                  class="w-full"
+                  :rows="4"
+                  placeholder="Explain why this dealership is relevant to the client's market."
+                />
+              </UFormField>
+            </div>
+
+            <section aria-labelledby="crawl-preview-heading" class="space-y-3 rounded-lg border border-default p-4">
+              <div>
+                <h3 id="crawl-preview-heading" class="text-sm font-semibold text-highlighted">
+                  Fixed first crawl
+                </h3>
+                <p class="mt-1 text-xs leading-5 text-muted">
+                  These settings cannot be changed from nearby-market approval.
+                </p>
+              </div>
+              <dl class="grid grid-cols-1 gap-2 text-sm @lg:grid-cols-2">
+                <div>
+                  <dt class="text-muted">
+                    Lane
+                  </dt><dd class="font-medium text-highlighted">
+                    Competitor
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-muted">
+                    Boundary
+                  </dt><dd class="font-medium text-highlighted">
+                    25 pages · Depth 1
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-muted">
+                    Rendering
+                  </dt><dd class="font-medium text-highlighted">
+                    Automatic rendering
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-muted">
+                    Schedule
+                  </dt><dd class="font-medium text-highlighted">
+                    Manual frequency
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-muted">
+                    Retention
+                  </dt><dd class="font-medium text-highlighted">
+                    30-day raw retention
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-muted">
+                    Use
+                  </dt><dd class="font-medium text-highlighted">
+                    Search purpose · AI input off
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-muted">
+                    Scope
+                  </dt><dd class="font-medium text-highlighted">
+                    Exact origin · No subdomains
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <div class="flex flex-col-reverse gap-2 border-t border-default pt-4">
+              <div class="grid grid-cols-1 gap-2 @lg:grid-cols-2">
+                <UButton
+                  label="Save for later"
+                  color="neutral"
+                  variant="soft"
+                  :loading="deciding"
+                  @click="$emit('decide', { action: 'save' })"
+                />
+                <UButton
+                  label="Dismiss"
+                  color="neutral"
+                  variant="outline"
+                  :disabled="!canDismiss"
+                  @click="$emit('decide', { action: 'dismiss', reviewerReason: reviewerReason.trim() })"
+                />
+              </div>
+              <UButton
+                label="Approve & index"
+                icon="i-lucide-scan-search"
+                :loading="deciding"
+                :disabled="!canApprove"
+                @click="approve"
+              />
+            </div>
+          </template>
         </template>
       </div>
     </template>

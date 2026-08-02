@@ -53,6 +53,7 @@ describe('agency nearby market panel contract', () => {
     expect(queue).toMatch(/nominationReason/)
     expect(queue).toMatch(/Retry nominations/)
     expect(queue).toMatch(/Review/)
+    expect(queue).toMatch(/\$emit\('review', nomination\)/)
     expect(queue).toMatch(/UAlert/)
   })
 })
