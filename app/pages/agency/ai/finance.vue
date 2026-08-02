@@ -281,6 +281,7 @@ async function reembedAll() {
   reembedding.value = true
   const totals = { processed: 0, skipped: 0, errors: 0 }
   const failures: string[] = []
+  const partial: string[] = []
 
   for (const et of embedTypes) {
     reembedType.value = et.key
@@ -290,6 +291,9 @@ async function reembedAll() {
       totals.skipped += result.skipped ?? 0
       totals.errors += result.errors ?? 0
       if (result.errors) failures.push(`${et.label}: ${result.details?.[0] ?? 'error'}`)
+      // Partial pass — the server stopped inside its budget. Already-embedded
+      // records hash-skip next time, so running again picks up where it left off.
+      if (result.remaining?.length) partial.push(et.label)
     } catch (err: any) {
       totals.errors++
       failures.push(`${et.label}: ${err.data?.statusMessage || err.message || 'request failed'}`)
@@ -300,10 +304,11 @@ async function reembedAll() {
   reembedType.value = null
   reembedding.value = false
   toast.add({
-    title: failures.length ? 'Finished with errors' : 'Done',
+    title: failures.length ? 'Finished with errors' : partial.length ? 'Partially embedded' : 'Done',
     description: `${totals.processed} embedded, ${totals.skipped} skipped, ${totals.errors} errors`
-      + (failures.length ? ` — ${failures.join('; ')}` : ''),
-    color: failures.length ? 'warning' : 'success'
+      + (failures.length ? ` — ${failures.join('; ')}` : '')
+      + (partial.length ? ` — ${partial.join(', ')} only partly done, run again to continue` : ''),
+    color: failures.length || partial.length ? 'warning' : 'success'
   })
 }
 
@@ -311,7 +316,12 @@ async function reembedSingle(type: string) {
   reembedType.value = type
   try {
     const result = await apiFetch<any>('/api/ai/finance/embed', { method: 'POST', body: { types: [type] } })
-    toast.add({ title: `${type} embedded`, description: result.details?.[0] || 'Done', color: 'success' })
+    const more = result.remaining?.length ? ' — run again to continue' : ''
+    toast.add({
+      title: `${type} embedded`,
+      description: (result.details?.[0] || 'Done') + more,
+      color: result.remaining?.length ? 'warning' : 'success'
+    })
     refreshEmbedStatus()
   } catch (err: any) {
     toast.add({ title: 'Error', description: err.data?.statusMessage || 'Failed', color: 'error' })

@@ -232,7 +232,10 @@ async function processFinancialEmbed(payload: Record<string, any>, type: string)
   switch (type) {
     case 'expenses': await mod.embedExpenseSnapshot(event, period); break
     case 'invoices': await mod.embedInvoiceSnapshot(event, period); break
-    case 'clients': await mod.embedAllFinancialSnapshots(event, period, ['clients']); break
+    // Queue messages are not bound by the HTTP request budget, so opt into a
+    // longer one — the default is tuned for the interactive endpoint and would
+    // otherwise truncate a large client set here without anyone noticing.
+    case 'clients': await mod.embedAllFinancialSnapshots(event, period, ['clients'], undefined, { budgetMs: 120_000 }); break
     case 'pnl': await mod.embedPnlSnapshot(event, period); break
     case 'cash': await mod.embedCashPosition(event); break
   }
