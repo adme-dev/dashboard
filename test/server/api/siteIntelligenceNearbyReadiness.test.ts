@@ -48,7 +48,10 @@ describe('nearby market readiness', () => {
     mockRequireRole.mockResolvedValue({ id: 'admin-1', role: 'admin' })
     mockCheckWorkflowReadiness.mockResolvedValue({
       ok: true,
-      worker: { capabilities: { browserRenderingApiConfigured: true } }
+      // `ready` keys off browserRenderingApiAuthenticated, not ...Configured —
+      // renamed on main in #361 after this branch was cut. Mirrors the mock in
+      // siteIntelligenceReadiness.test.ts.
+      worker: { capabilities: { browserRenderingApiConfigured: true, browserRenderingApiAuthenticated: true } }
     })
   })
 
