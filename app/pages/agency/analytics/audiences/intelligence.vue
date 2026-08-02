@@ -119,6 +119,46 @@ async function confirmCrawl() {
     crawlPending.value = false
   }
 }
+
+async function retryNearbyCrawl(domain: Record<string, unknown>) {
+  if (typeof domain.id !== 'string') return
+  try {
+    const run = await crawlDomain(domain.id)
+    toast.add({
+      title: 'Crawl retry queued',
+      description: 'The approved competitor is now using the existing governed crawl path.',
+      color: 'success'
+    })
+    await inspectRun(run)
+  } catch (error: unknown) {
+    const candidate = error as { data?: { statusMessage?: string }, message?: string }
+    toast.add({
+      title: 'Crawl retry could not start',
+      description: candidate.data?.statusMessage || candidate.message || 'Open run diagnostics and try again.',
+      color: 'error'
+    })
+  }
+}
+
+async function viewNearbyDiagnostics(
+  domain: Record<string, unknown>,
+  run: Record<string, unknown> | null
+) {
+  if (typeof run?.id === 'string') {
+    runOpen.value = true
+    await loadRun(run.id)
+    return
+  }
+  const existing = overview.value?.runs.find(candidate => candidate.domainId === domain.id)
+  if (existing) {
+    await inspectRun(existing)
+    return
+  }
+  document.getElementById('site-intelligence-run-diagnostics')?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start'
+  })
+}
 </script>
 
 <template>
@@ -176,6 +216,15 @@ async function confirmCrawl() {
         </UFormField>
       </div>
     </UCard>
+
+    <AnalyticsAudiencesIntelligenceNearbyMarketPanel
+      :client-id="filters.clientId"
+      :clients="availableClients"
+      :can-manage="isAdmin"
+      @update:client-id="updateFilters({ clientId: $event })"
+      @retry-crawl="retryNearbyCrawl"
+      @view-diagnostics="viewNearbyDiagnostics"
+    />
 
     <UAlert
       v-if="status.overview === 'error'"
@@ -307,6 +356,7 @@ async function confirmCrawl() {
 
     <AnalyticsAudiencesIntelligenceRunDiagnostics
       v-if="overview"
+      id="site-intelligence-run-diagnostics"
       :runs="overview.runs"
       :domains="overview.domains"
       :loading="status.overview === 'pending'"

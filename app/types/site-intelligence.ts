@@ -53,6 +53,7 @@ export interface NearbyMarketCandidate {
 export interface NearbyMarketResponse {
   clientId: string
   marketLocation: ClientMarketLocation | null
+  center: { latitude: number, longitude: number } | null
   radiusKm: NearbyMarketRadius
   candidates: NearbyMarketCandidate[]
   limited: boolean

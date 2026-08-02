@@ -45,6 +45,7 @@ export default defineEventHandler(async (event) => {
     return {
       clientId,
       marketLocation: null,
+      center: null,
       radiusKm,
       candidates: [],
       limited: false,
@@ -110,6 +111,7 @@ export default defineEventHandler(async (event) => {
   return {
     clientId,
     marketLocation,
+    center: origin,
     radiusKm,
     candidates,
     limited: candidates.length === 20,

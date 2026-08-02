@@ -242,6 +242,7 @@ describe('agency nearby market search', () => {
     const result = await searchHandler(event({ clientId: CLIENT_ID, radiusKm: 25 }))
 
     expect(result).toMatchObject({ marketLocation: null, candidates: [], limited: false })
+    expect(result.center).toBeNull()
     expect(JSON.stringify(result)).toMatch(/up to 20 discovery candidates/i)
     expect(JSON.stringify(result)).toMatch(/not exhaustive/i)
     expect(mocks.enforceRateLimit).not.toHaveBeenCalled()
@@ -271,6 +272,7 @@ describe('agency nearby market search', () => {
       longitude: 144.9631,
       radiusKm: 25
     })
+    expect(result.center).toEqual({ latitude: -37.8136, longitude: 144.9631 })
     expect(mocks.listCandidates).toHaveBeenCalledWith(CLIENT_ID, LOCATION_ID, [
       'place-toyota', 'place-used', 'place-local', 'place-dismissed'
     ])
