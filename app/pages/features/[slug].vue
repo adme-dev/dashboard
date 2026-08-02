@@ -2838,7 +2838,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Ask with the evidence attached',
-        content: 'Generate a concise briefing or ask a plain-English question on demand. The analyst receives only the active reporting window and redacted aggregate KPIs, opportunity rules, and ranked breakdowns; every answer keeps the supporting numbers one click away. It cannot identify individual visitors, activate an audience, or change a campaign.'
+        content: 'Generate a concise read-only briefing or ask a plain-English question on demand. The analyst receives only the active reporting window and redacted aggregate KPIs, opportunity rules, and ranked breakdowns; every answer keeps the supporting numbers one click away. It cannot identify individual visitors, activate an audience, or change a campaign.'
       },
       {
         title: 'Owned-site context',
