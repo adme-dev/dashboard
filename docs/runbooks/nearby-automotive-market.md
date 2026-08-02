@@ -25,10 +25,21 @@ API, and Places API (New). Create two unrelated credentials:
    preview origin such as `https://preview.agency-dashboard-6cm.pages.dev/*`.
    Do not use `*.pages.dev`, `*`, localhost, or deployment-ID origins in
    production. Apply API restrictions for Maps JavaScript API only.
-2. Server key: apply an API restriction for Places API (New) only. Never place
-   it in public runtime config, browser code, a tracked file, or an operator log.
-   Apply the strongest application restriction supported by the deployed
-   server path and review provider usage for unexpected sources.
+2. Server key: apply an API restriction for Places API (New) only and an
+   application restriction of **IP addresses** containing only the exact stable
+   controlled-egress IPv4 and IPv6 addresses used by the Places request path.
+   Record the allowlist in restricted operations evidence; use individual
+   `/32` entries for IPv4 addresses rather than a broad network range. Never
+   place the key or allowlist in public runtime config, browser code, a tracked
+   file, or an operator log.
+
+Cloudflare Pages and Workers default outbound addresses are not assumed to be
+stable or exclusively assigned. Route server-side Places calls through an
+approved controlled-egress or static-IP proxy before activation, and verify the
+observed source addresses match the Google Cloud key allowlist. If an exact,
+stable, allowlistable egress path and Google application restriction cannot be
+provided, activation is a **hard no-go**: keep
+`NEARBY_MARKET_DISCOVERY_ENABLED=false`.
 
 Set conservative per-minute and per-day Places quotas for the Knox pilot. Create
 a Google Cloud budget and billing alerts below and at the budget threshold, plus
@@ -64,26 +75,35 @@ GET /api/agency/site-intelligence/readiness
 booleans only, never credential values. The existing crawler `ready` result must
 remain unchanged while nearby discovery is disabled.
 
+These readiness booleans do not prove the Google Cloud Console policy. Attach
+manual evidence showing the server key's Places API (New) restriction, exact IP
+address application allowlist, and a controlled-egress request whose observed
+source address matches that allowlist. Missing or mismatched evidence is a hard
+no-go.
+
 ## 4. Knox-first pilot
 
 After the prerequisite terminal Knox crawl and explicit approval:
 
 1. Confirm the Knox GWM Haval primary trading location and Google Place ID.
-2. Enable `NEARBY_MARKET_DISCOVERY_ENABLED=true`, review the change, deploy only
+2. Re-check the restricted server key and controlled-egress evidence described
+   above. Confirm every exact allowlisted address and a matching observed source
+   address; otherwise stop with the feature flag false.
+3. Enable `NEARBY_MARKET_DISCOVERY_ENABLED=true`, review the change, deploy only
    through the guarded production script, and repeat the readiness call. Require
    all five `nearbyMarket` booleans to be `true`.
-3. Search 25 km around Knox. Confirm the UI says results are non-exhaustive and
+4. Search 25 km around Knox. Confirm the UI says results are non-exhaustive and
    limited to up to 20 discovery candidates.
-4. Verify Lilydale GWM Haval appears and is labelled already monitored. Stop if
+5. Verify Lilydale GWM Haval appears and is labelled already monitored. Stop if
    it appears as a new candidate, creates a duplicate domain, or requests a
    second crawl.
-5. Review one unmonitored dealership without approval. Confirm website details
+6. Review one unmonitored dealership without approval. Confirm website details
    are fetched only for that selected candidate and no domain or crawl exists.
-6. Approve one public competitor using the 25-page, depth-1, automatic-rendering,
+7. Approve one public competitor using the 25-page, depth-1, automatic-rendering,
    manual-frequency, 30-day raw-retention, `search`-purpose, AI-off preview.
    Confirm exactly one competitor domain and one crawl run, then observe its
    terminal diagnostics and retention evidence.
-7. Grant `canNominateCompetitors` to one Knox portal user only. Confirm a single
+8. Grant `canNominateCompetitors` to one Knox portal user only. Confirm a single
    nomination reaches the agency queue without website lookup, domain creation,
    or crawl, and requires explicit agency approval before monitoring.
 
