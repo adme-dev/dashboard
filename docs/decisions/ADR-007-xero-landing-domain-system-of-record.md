@@ -154,8 +154,11 @@ Nothing currently uses it. Every sync re-pulls everything.
 
 ### Quota budget in a Durable Object
 
-Replace the per-isolate gate with a single DO holding a token bucket, a shared
-429 cooldown honouring the real `Retry-After`, and a daily budget counter. DOs
+Replace the per-isolate gate with **one DO per Xero tenant**, holding a token
+bucket, a shared 429 cooldown honouring the real `Retry-After`, and a daily
+budget counter. Per-tenant, not global: Xero's 5,000/day cap is scoped to the
+connected org, so a single global bucket would throttle tenant A because tenant
+B is mid-backfill — inventing a noisy-neighbour problem Xero does not impose. DOs
 are already in use (`chat-rooms`, `board-events`, `banner-rooms`), so this is an
 established pattern here.
 
@@ -173,6 +176,39 @@ is most of what the dashboard actually renders.
 
 The split is *Xero owns the ledger, we own the operating picture*. Not "replace
 Xero"; "stop asking Xero questions we can answer ourselves."
+
+## Multi-tenancy
+
+The product is intended to become multi-tenant, so this decision assumes it.
+**Agency = tenant; clients are data inside a tenant.** `agency_clients` and the
+client portal are not tenancy boundaries. Each agency tenant connects its own
+Xero org, and therefore carries its own quota.
+
+The landing schema in migration 332 is already tenant-scoped — every table has
+`tenant_id NOT NULL` with a `(tenant_id, xero_updated_utc)` index, and
+`xero_sync_state` is keyed `(tenant_id, entity)`. That is inherited rather than
+designed: Xero's own model is tenant-first, so a faithful mirror gets it free.
+
+Two consequences that are easy to get wrong and expensive to unpick:
+
+- **Quota budget is per tenant** (see above). One DO per Xero tenant.
+- **Sync must fan out per tenant**, one queue message per `(tenant, entity)` —
+  not a loop over tenants inside one invocation. A loop over a growing N inside
+  a single request is the exact shape that produced the `bank-monitoring` 504
+  and the earlier `ga4-sync` timeout, just at a coarser grain.
+
+Nothing else in this ADR is tenancy-sensitive. The landing/domain split,
+`raw_payload` replay, incremental sync and the ledger boundary are all
+tenant-agnostic — and multi-tenancy makes them more valuable, since live reads
+through to N Xero orgs are unaffordable in a way that one org can mask.
+
+### Pre-existing single-tenant assumptions
+
+The new tables are clean; the existing read path is not. `xero_org_connection`
+currently holds a row literally keyed `__default__` alongside the real tenant,
+and `getSelectedTenant()` falls back to a single org-level tenant when no
+`xero_tenant_id` cookie is present. Those need auditing before a second tenant
+is onboarded — they are latent, not urgent.
 
 ## Phasing
 
