@@ -10,6 +10,7 @@
  * (no need for KV/Redis bindings). For very high-throughput endpoints
  * we'd swap to KV; for the current usage this is plenty.
  */
+import type { H3Event } from 'h3'
 import { queryOneFresh, execute } from '~~/server/utils/db'
 
 export interface RateLimitOptions {
@@ -19,6 +20,8 @@ export interface RateLimitOptions {
   limit: number
   /** Window length in seconds */
   windowSeconds: number
+  /** Default open preserves legacy availability; billable endpoints opt into closed. */
+  failureMode?: 'open' | 'closed'
 }
 
 export interface RateLimitResult {
@@ -61,9 +64,16 @@ export async function checkAndConsume(opts: RateLimitOptions): Promise<RateLimit
     return {
       allowed: count <= opts.limit,
       remaining: Math.max(0, opts.limit - count),
-      resetAt,
+      resetAt
     }
   } catch (err) {
+    if (opts.failureMode === 'closed') {
+      console.error('[rateLimit] DB error — failing closed')
+      throw createError({
+        statusCode: 503,
+        statusMessage: 'Rate limit service unavailable'
+      })
+    }
     console.error('[rateLimit] DB error — failing open:', err)
     return { allowed: true, remaining: opts.limit, resetAt: new Date(now.getTime() + windowMs) }
   }
@@ -72,12 +82,12 @@ export async function checkAndConsume(opts: RateLimitOptions): Promise<RateLimit
 /**
  * Convenience: enforce a limit, throwing 429 when exceeded.
  */
-export async function enforceRateLimit(event: any, opts: RateLimitOptions): Promise<void> {
+export async function enforceRateLimit(_event: H3Event, opts: RateLimitOptions): Promise<void> {
   const result = await checkAndConsume(opts)
   if (!result.allowed) {
     throw createError({
       statusCode: 429,
-      statusMessage: `Rate limit exceeded. Try again after ${result.resetAt.toISOString()}`,
+      statusMessage: `Rate limit exceeded. Try again after ${result.resetAt.toISOString()}`
     })
   }
 }

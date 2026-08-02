@@ -23,6 +23,7 @@ interface UpdateClientUserBody {
     canUploadFiles?: boolean
     canInviteUsers?: boolean
     canViewAnalytics?: boolean
+    canNominateCompetitors?: boolean
     canSubmitRequests?: boolean
     canViewCrm?: boolean
     canEditCrm?: boolean
@@ -174,6 +175,11 @@ export default defineEventHandler(async (event) => {
         values.push(p.canViewAnalytics)
         idx++
       }
+      if (p.canNominateCompetitors !== undefined) {
+        fields.push(`can_nominate_competitors = $${idx}`)
+        values.push(p.canNominateCompetitors)
+        idx++
+      }
       if (p.canSubmitRequests !== undefined) {
         fields.push(`can_submit_requests = $${idx}`)
         values.push(p.canSubmitRequests)
@@ -234,6 +240,7 @@ export default defineEventHandler(async (event) => {
           canUploadFiles: user.can_upload_files,
           canInviteUsers: user.can_invite_users,
           canViewAnalytics: user.can_view_analytics ?? true,
+          canNominateCompetitors: user.can_nominate_competitors ?? false,
           canSubmitRequests: user.can_submit_requests ?? true,
           canViewCrm: Boolean(user.can_view_crm),
           canEditCrm: Boolean(user.can_edit_crm),

@@ -34,6 +34,7 @@ export interface ServerClientUser {
     canUploadFiles: boolean
     canInviteUsers: boolean
     canViewAnalytics: boolean
+    canNominateCompetitors: boolean
     canSubmitRequests: boolean
     canViewCrm: boolean
     canEditCrm: boolean
@@ -75,6 +76,7 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
       cu.can_upload_files,
       cu.can_invite_users,
       cu.can_view_analytics,
+      cu.can_nominate_competitors,
       cu.can_submit_requests,
       cu.can_view_crm,
       cu.can_edit_crm,
@@ -132,6 +134,7 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
       canUploadFiles: user.can_upload_files,
       canInviteUsers: user.can_invite_users,
       canViewAnalytics: user.can_view_analytics ?? true,
+      canNominateCompetitors: user.can_nominate_competitors ?? false,
       canSubmitRequests: user.can_submit_requests ?? true,
       canViewCrm: Boolean(user.can_view_crm),
       canEditCrm: Boolean(user.can_edit_crm),

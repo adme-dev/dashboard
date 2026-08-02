@@ -16,9 +16,11 @@ vi.mock('~~/server/utils/tracking/audience-repository', () => ({
 }))
 
 const {
+  createSiteIntelligenceCrawlRun,
   createSiteIntelligenceDomain,
   getSiteIntelligenceOverviewRead,
   getSiteIntelligenceDomainForActor,
+  lockSiteIntelligenceDomainOrigin,
   listSiteIntelligenceDomains,
   updateSiteIntelligenceDomain
 } = await import('~~/server/utils/siteIntelligence/repository')
@@ -85,6 +87,42 @@ beforeEach(() => {
 })
 
 describe('site intelligence domain repository', () => {
+  it('takes a transaction-scoped advisory lock for the tenant lane and canonical origin', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] })
+
+    await lockSiteIntelligenceDomainOrigin(
+      CLIENT_A,
+      'https://bravo.example.com',
+      'competitor',
+      { query }
+    )
+
+    expect(query).toHaveBeenCalledWith(
+      expect.stringMatching(/pg_advisory_xact_lock[\s\S]*hashtextextended/i),
+      [`site-intelligence-domain:${CLIENT_A}:competitor:https://bravo.example.com`]
+    )
+  })
+
+  it('first-run-only creation treats a failed historical run as already claimed', async () => {
+    const txQuery = vi.fn()
+      .mockResolvedValueOnce({ rows: [domainRow] })
+      .mockResolvedValueOnce({ rows: [{ id: 'failed-run', status: 'failed' }] })
+    mockTransaction.mockImplementation(async callback => callback({ query: txQuery }))
+
+    await expect(createSiteIntelligenceCrawlRun(
+      { id: USER_A },
+      DOMAIN_A,
+      'manual',
+      { onlyIfNeverRun: true }
+    )).resolves.toEqual({
+      status: 'existing_run',
+      run: { id: 'failed-run', status: 'failed' }
+    })
+
+    expect(txQuery).toHaveBeenCalledTimes(2)
+    expect(txQuery.mock.calls[1]?.[0]).toMatch(/site_intelligence_crawl_runs[\s\S]*ORDER BY created_at ASC/i)
+  })
+
   it('returns no rows and does not query for an empty client scope', async () => {
     await expect(listSiteIntelligenceDomains([], {})).resolves.toEqual([])
     expect(mockQueryRows).not.toHaveBeenCalled()

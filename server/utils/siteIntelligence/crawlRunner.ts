@@ -1,16 +1,18 @@
 import type { H3Event } from 'h3'
 import type { SiteIntelligenceAuditActor } from '~~/server/utils/siteIntelligence/audit'
-import type { SiteIntelligenceRunTrigger } from '~~/app/types/site-intelligence'
+import type { SiteIntelligenceRunStatus, SiteIntelligenceRunTrigger } from '~~/app/types/site-intelligence'
 import { startSiteIntelligenceCrawlWorkflow } from '~~/server/utils/agencyWorkflows/client'
 import {
   createSiteIntelligenceCrawlRun,
   failSiteIntelligenceRun,
-  markSiteIntelligenceRunWorkflowStarted
+  markSiteIntelligenceRunWorkflowStarted,
+  type SiteIntelligenceCrawlRunCreateOptions
 } from '~~/server/utils/siteIntelligence/repository'
 import { assertPublicSiteOrigin } from '~~/server/utils/siteIntelligence/urlPolicy'
 
 export type GovernedSiteIntelligenceCrawlResult
   = { status: 'started', run: Record<string, unknown> & { id: string } }
+    | { status: 'existing_run', run: { id: string, status: SiteIntelligenceRunStatus } }
     | { status: 'not_found' | 'inactive' | 'active_run', run: null }
     | { status: 'failed', run: { id: string }, category: 'url_policy' | 'workflow_start' }
 
@@ -18,9 +20,12 @@ export async function startGovernedSiteIntelligenceCrawl(
   event: H3Event,
   actor: SiteIntelligenceAuditActor,
   domainId: string,
-  trigger: SiteIntelligenceRunTrigger
+  trigger: SiteIntelligenceRunTrigger,
+  options?: SiteIntelligenceCrawlRunCreateOptions
 ): Promise<GovernedSiteIntelligenceCrawlResult> {
-  const created = await createSiteIntelligenceCrawlRun(actor, domainId, trigger)
+  const created = options
+    ? await createSiteIntelligenceCrawlRun(actor, domainId, trigger, options)
+    : await createSiteIntelligenceCrawlRun(actor, domainId, trigger)
   if (created.status !== 'created') return created
   const { run } = created
 
