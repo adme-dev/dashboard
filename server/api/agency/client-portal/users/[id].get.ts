@@ -39,6 +39,7 @@ export default defineEventHandler(async (event) => {
         cu.can_add_comments,
         cu.can_upload_files,
         cu.can_invite_users,
+        cu.can_nominate_competitors,
         cu.can_view_crm,
         cu.can_edit_crm,
         cu.can_admin_crm,
@@ -91,6 +92,7 @@ export default defineEventHandler(async (event) => {
           canAddComments: user.can_add_comments,
           canUploadFiles: user.can_upload_files,
           canInviteUsers: user.can_invite_users,
+          canNominateCompetitors: user.can_nominate_competitors ?? false,
           canViewCrm: Boolean(user.can_view_crm),
           canEditCrm: Boolean(user.can_edit_crm),
           canAdminCrm: Boolean(user.can_admin_crm)

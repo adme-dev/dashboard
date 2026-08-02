@@ -18,6 +18,10 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
 
   const { clientId, email, name, permissions = {} } = body
+  const invitationPermissions = {
+    ...permissions,
+    canNominateCompetitors: permissions.canNominateCompetitors ?? false
+  }
 
   if (!clientId || !email || !name) {
     throw createError({
@@ -73,7 +77,7 @@ export default defineEventHandler(async (event) => {
       email,
       name,
       token,
-      JSON.stringify(permissions),
+      JSON.stringify(invitationPermissions),
       user.id,
       expiresAt.toISOString()
     ])
@@ -95,11 +99,12 @@ export default defineEventHandler(async (event) => {
         can_add_comments,
         can_upload_files,
         can_view_analytics,
+        can_nominate_competitors,
         can_submit_requests,
         can_view_crm,
         can_edit_crm,
         can_admin_crm
-      ) VALUES ($1, $2, $3, 'pending', NOW(), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      ) VALUES ($1, $2, $3, 'pending', NOW(), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING *
     `, [
       clientId,
@@ -114,6 +119,7 @@ export default defineEventHandler(async (event) => {
       permissions.canAddComments ?? true,
       permissions.canUploadFiles ?? true,
       permissions.canViewAnalytics ?? true,
+      invitationPermissions.canNominateCompetitors,
       permissions.canSubmitRequests ?? true,
       permissions.canViewCrm ?? true,
       permissions.canEditCrm ?? false,

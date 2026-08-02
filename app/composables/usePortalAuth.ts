@@ -94,7 +94,10 @@ export function usePortalAuth() {
         clientName: data.client.name,
         clientLogo: data.client.logo,
         leadCaptureMode: data.client.leadCaptureMode,
-        permissions: data.user.permissions,
+        permissions: {
+          ...data.user.permissions,
+          canNominateCompetitors: data.user.permissions.canNominateCompetitors ?? false
+        },
         notificationPreferences: data.user.notificationPreferences || {},
         timezone: data.user.timezone || 'UTC'
       } as ClientUser

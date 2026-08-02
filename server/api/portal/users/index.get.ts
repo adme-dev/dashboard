@@ -19,6 +19,7 @@ type PortalUserRow = {
   can_view_invoices: boolean
   can_approve_work: boolean
   can_view_analytics: boolean
+  can_nominate_competitors: boolean
   can_submit_requests: boolean
   last_login_at: string | null
   invited_at: string | null
@@ -50,6 +51,7 @@ export default defineEventHandler(async (event) => {
         can_view_invoices,
         can_approve_work,
         can_view_analytics,
+        can_nominate_competitors,
         can_submit_requests,
         last_login_at,
         invited_at,
@@ -79,6 +81,7 @@ export default defineEventHandler(async (event) => {
         canViewInvoices: user.can_view_invoices,
         canApproveWork: user.can_approve_work,
         canViewAnalytics: user.can_view_analytics,
+        canNominateCompetitors: user.can_nominate_competitors ?? false,
         canSubmitRequests: user.can_submit_requests
       },
       lastLoginAt: user.last_login_at,

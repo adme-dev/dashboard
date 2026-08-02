@@ -1507,6 +1507,7 @@ export interface ClientPermissions {
   canUploadFiles: boolean
   canInviteUsers: boolean
   canViewAnalytics: boolean
+  canNominateCompetitors: boolean
   canSubmitRequests: boolean
   canViewCrm: boolean
   canEditCrm: boolean
