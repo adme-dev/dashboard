@@ -79,6 +79,17 @@ const publicRoutes = [
   '/api/public/contact'
 ]
 
+// These operational diagnostics accept either an admin session or the
+// dedicated smoke secret in their handlers. They must reach that inline guard
+// before this middleware tries to interpret the machine secret as a user JWT.
+// Keep this exact-match allowlist narrow: Workflow mutation routes still use
+// the normal staff-session boundary.
+const selfAuthenticatingRoutes = new Set([
+  '/api/agency/workflows/readiness',
+  '/api/agency/workflows/status',
+  '/api/agency/social/publishing/workflows/readiness'
+])
+
 // Paths that an authenticated cron can read with X-Internal-Cron-Secret.
 // Narrow to read-only Xero + advisor surfaces — never include auth/
 // admin/mutation endpoints, even with the secret.
@@ -110,6 +121,10 @@ function getErrorMessage(error: unknown) {
 
 export default defineEventHandler(async (event) => {
   const { pathname } = getRequestURL(event)
+
+  if (selfAuthenticatingRoutes.has(pathname)) {
+    return
+  }
 
   // Skip auth for public API routes
   if (publicRoutes.some(route => pathname.startsWith(route))) {

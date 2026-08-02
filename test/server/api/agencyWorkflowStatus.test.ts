@@ -192,6 +192,21 @@ describe('agency workflow status endpoint', () => {
     })
   })
 
+  it('rejects an invalid smoke secret at the status handler boundary', async () => {
+    process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET = 'machine-secret'
+    mockRequireRole.mockRejectedValue(Object.assign(new Error('Authentication required'), {
+      statusCode: 401
+    }))
+    const event: TestEvent = {
+      context: {},
+      headers: { 'x-workflow-smoke-secret': 'wrong-secret' }
+    }
+
+    await expect(workflowStatus(event)).rejects.toMatchObject({ statusCode: 401 })
+    expect(mockRequireRole).toHaveBeenCalledWith(event, ['owner', 'admin'])
+    expect(mockGetAgencyWorkflowStatus).not.toHaveBeenCalled()
+  })
+
   it('derives a scheduled publishing workflow instance id from identity query fields', async () => {
     mockQuery = {
       workflow: 'social.post.publish',
