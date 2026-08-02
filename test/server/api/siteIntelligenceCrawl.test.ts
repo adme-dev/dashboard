@@ -69,6 +69,9 @@ const { default: ingestHandler } = await import(
 const { default: completeHandler } = await import(
   '../../../../server/api/internal/workflows/site-intelligence/runs/[id]/complete.post'
 )
+const { startGovernedSiteIntelligenceCrawl } = await import(
+  '~~/server/utils/siteIntelligence/crawlRunner'
+)
 
 const RUN_ID = '11111111-1111-4111-8111-111111111111'
 const DOMAIN_ID = '22222222-2222-4222-8222-222222222222'
@@ -131,6 +134,33 @@ beforeEach(() => {
 })
 
 describe('manual site intelligence crawl', () => {
+  it('atomically returns any prior run when first-run-only creation is requested', async () => {
+    mockCreateRun.mockResolvedValue({
+      status: 'existing_run',
+      run: { id: RUN_ID, status: 'failed' }
+    })
+
+    await expect(startGovernedSiteIntelligenceCrawl(
+      event(),
+      { id: USER_ID },
+      DOMAIN_ID,
+      'manual',
+      { onlyIfNeverRun: true }
+    )).resolves.toEqual({
+      status: 'existing_run',
+      run: { id: RUN_ID, status: 'failed' }
+    })
+
+    expect(mockCreateRun).toHaveBeenCalledWith(
+      { id: USER_ID },
+      DOMAIN_ID,
+      'manual',
+      { onlyIfNeverRun: true }
+    )
+    expect(mockAssertPublicOrigin).not.toHaveBeenCalled()
+    expect(mockStartWorkflow).not.toHaveBeenCalled()
+  })
+
   it('creates, revalidates, and starts one authorised active-domain run', async () => {
     const response = await crawlHandler(event({ params: { id: DOMAIN_ID } }))
 

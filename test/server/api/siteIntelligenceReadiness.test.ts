@@ -71,6 +71,13 @@ describe('site intelligence readiness', () => {
         aiEnabled: true,
         workersAi: true,
         vectorize: true
+      },
+      nearbyMarket: {
+        enabled: false,
+        browserKeyConfigured: false,
+        mapIdConfigured: false,
+        serverKeyConfigured: false,
+        placesReady: false
       }
     })
     expect(JSON.stringify(response)).not.toMatch(/secret|token|accountId|bucketName|indexName/i)

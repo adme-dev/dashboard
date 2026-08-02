@@ -41,6 +41,7 @@ export default defineEventHandler(async (event) => {
         cu.can_add_comments,
         cu.can_upload_files,
         cu.can_invite_users,
+        cu.can_nominate_competitors,
         cu.notification_preferences,
         cu.timezone,
         c.id as client_id,
@@ -153,7 +154,8 @@ export default defineEventHandler(async (event) => {
           canViewBudgets: user.can_view_budgets,
           canAddComments: user.can_add_comments,
           canUploadFiles: user.can_upload_files,
-          canInviteUsers: user.can_invite_users
+          canInviteUsers: user.can_invite_users,
+          canNominateCompetitors: user.can_nominate_competitors ?? false
         },
         notificationPreferences: user.notification_preferences,
         timezone: user.timezone

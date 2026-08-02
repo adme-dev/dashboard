@@ -9,7 +9,7 @@
         <h1 class="text-[clamp(36px,6vw,56px)] font-[450] text-white leading-[1.1] tracking-[-0.03em] mb-6">
           Privacy Policy
         </h1>
-        <p class="text-[15px] text-white/40">Last updated: 24 July 2026</p>
+        <p class="text-[15px] text-white/40">Last updated: 2 August 2026</p>
       </div>
     </section>
 
@@ -74,7 +74,22 @@
             </p>
 
             <h3 class="text-[16px] font-[450] text-[#121317] dark:text-white/80 mb-2 mt-5">
-              1.5 Sensitive information, anonymity, and pseudonymity
+              1.5 Nearby dealership discovery
+            </h3>
+            <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed mb-3">
+              When an authorised user opens nearby dealership discovery, XeroFlow uses Google Maps and Places to preview or resolve a user-confirmed market location, display nearby dealerships, and retrieve a selected candidate's public website for agency review. Google may process the location, search area, IP address, device and request information under its own <a
+                href="https://policies.google.com/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-[#121317] dark:text-white underline underline-offset-2"
+              >Privacy Policy</a>.
+            </p>
+            <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed">
+              Google-supplied names, formatted addresses, coordinates, distances, place types, map links, and website values are transient display data and are refreshed rather than retained by XeroFlow. We may persist the Google Place ID permitted for this purpose, user-confirmed address text, review decisions and actors, and an independently validated public domain only after explicit human approval. Raw Google Places responses are not stored in our databases, object storage, analytics, logs, AI inputs, or search indexes.
+            </p>
+
+            <h3 class="text-[16px] font-[450] text-[#121317] dark:text-white/80 mb-2 mt-5">
+              1.6 Sensitive information, anonymity, and pseudonymity
             </h3>
             <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed">
               The Service is not designed to collect sensitive information through general website tracking. Customers must not configure forms, free-text fields, imports, or integrations to collect sensitive information unless it is necessary, lawful, and any required consent has been obtained. You may browse XeroFlow's public website without creating an account, but we generally need identifying information to provide an account, billing, support, CRM, or lead services. Website tracking initially uses pseudonymous identifiers, but those identifiers may become personal information when linked with an enquiry or other identifiable record.
@@ -130,6 +145,7 @@
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Email delivery</strong> &mdash; Resend, Inc. (transactional and notification emails).</li>
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">AI processing</strong> &mdash; Groq, Inc. (LLM inference for AI chat and classification); Cloudflare Workers AI (edge inference and embeddings).</li>
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">User-initiated integrations</strong> &mdash; Xero Limited (accounting), Meta Platforms, Inc. (advertising), Google LLC (advertising). These connections are established by you and governed by each provider's own privacy policy.</li>
+              <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Mapping and place discovery</strong> &mdash; Google LLC (Google Maps and Places), when an authorised user uses nearby dealership discovery.</li>
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Customer-configured recipients</strong> &mdash; CRM systems, dealerships, dealer groups, lead-management services, spreadsheets, webhooks, advertising platforms, analytics services, and other destinations selected by the customer.</li>
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Professional and corporate recipients</strong> &mdash; advisers, auditors, insurers, and a successor in connection with a merger, acquisition, financing, or sale of assets, subject to appropriate confidentiality and legal safeguards.</li>
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Legal requirements</strong> &mdash; we may disclose information to law enforcement or regulatory authorities where legally required or to protect rights, safety, or property.</li>
@@ -160,6 +176,7 @@
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Lead and CRM Customer Data</strong> &mdash; retained for the customer account term and any additional period required by the customer's documented instructions, configured lifecycle rules, or applicable law. Customers may export, correct, or delete records using available Service functions.</li>
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Security and operational logs</strong> &mdash; retained only for a reasonable period needed for security, troubleshooting, fraud prevention, and legal compliance.</li>
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">AI conversation data</strong> &mdash; retained for 90 days to improve AI quality, then automatically purged unless you choose to save a conversation.</li>
+              <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Nearby market records</strong> &mdash; Google-supplied display data remains transient; Place IDs, user-confirmed address text, decisions, actors, and independently validated domains are retained with the relevant customer record and audit history.</li>
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Backups</strong> &mdash; encrypted backups may persist for up to 30 days after data deletion from the live system.</li>
             </ul>
           </section>

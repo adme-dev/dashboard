@@ -108,6 +108,13 @@ const mainNav = computed(() => ([
               to: '/portal/analytics/audiences',
               onSelect: close
             },
+            ...(config.public.nearbyMarketDiscoveryEnabled === true
+              ? [{
+                  label: 'Nearby market',
+                  to: '/portal/analytics/market',
+                  onSelect: close
+                }]
+              : []),
             {
               label: 'Identity Reconciliation',
               to: '/portal/analytics/identity',

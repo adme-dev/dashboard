@@ -9,6 +9,12 @@ function source(path: string): string {
 }
 
 describe('automotive site intelligence page contract', () => {
+  it('owns a viewport-bounded vertical scroll container inside the agency shell', () => {
+    const page = source(pagePath)
+
+    expect(page).toMatch(/<div class="[^"]*h-full[^"]*min-h-0[^"]*overflow-y-auto[^"]*"/)
+  })
+
   it('composes the evidence-led page with independent resource states', () => {
     const page = source(pagePath)
 

@@ -58,6 +58,10 @@ export interface SiteIntelligenceDomainFilters {
   status?: SiteIntelligenceDomain['status']
 }
 
+export interface SiteIntelligenceRepositoryExecutor {
+  query: <T = unknown>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }>
+}
+
 function iso(value: string | Date | null): string | null {
   if (value === null) return null
   return value instanceof Date ? value.toISOString() : value
@@ -141,6 +145,54 @@ export async function getSiteIntelligenceDomainForActor(
   return row ? mapSiteIntelligenceDomainRow(row) : null
 }
 
+export async function getSiteIntelligenceDomainForClient(
+  clientId: string,
+  domainId: string,
+  executor?: SiteIntelligenceRepositoryExecutor
+): Promise<SiteIntelligenceDomain | null> {
+  const sql = `SELECT * FROM site_intelligence_domains WHERE client_id = $1 AND id = $2 LIMIT 1`
+  const params = [clientId, domainId]
+  if (executor) {
+    const result = await executor.query<SiteIntelligenceDomainRow>(sql, params)
+    return result.rows[0] ? mapSiteIntelligenceDomainRow(result.rows[0]) : null
+  }
+  const row = await queryOne<SiteIntelligenceDomainRow>(sql, params)
+  return row ? mapSiteIntelligenceDomainRow(row) : null
+}
+
+export async function findSiteIntelligenceDomainByOrigin(
+  clientId: string,
+  origin: string,
+  lane: SiteIntelligenceDomain['lane'],
+  executor?: SiteIntelligenceRepositoryExecutor
+): Promise<SiteIntelligenceDomain | null> {
+  const sql = `
+    SELECT * FROM site_intelligence_domains
+    WHERE client_id = $1 AND origin = $2 AND lane = $3
+    LIMIT 1
+  `
+  const params = [clientId, origin, lane]
+  if (executor) {
+    const result = await executor.query<SiteIntelligenceDomainRow>(sql, params)
+    return result.rows[0] ? mapSiteIntelligenceDomainRow(result.rows[0]) : null
+  }
+  const row = await queryOne<SiteIntelligenceDomainRow>(sql, params)
+  return row ? mapSiteIntelligenceDomainRow(row) : null
+}
+
+export async function lockSiteIntelligenceDomainOrigin(
+  clientId: string,
+  origin: string,
+  lane: SiteIntelligenceDomain['lane'],
+  executor: SiteIntelligenceRepositoryExecutor
+): Promise<void> {
+  const lockKey = `site-intelligence-domain:${clientId}:${lane}:${origin}`
+  await executor.query(
+    'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+    [lockKey]
+  )
+}
+
 function domainWriteValues(input: SiteIntelligenceDomainInput): unknown[] {
   return [
     input.name,
@@ -181,9 +233,10 @@ const DOMAIN_CHANGED_FIELDS = [
 
 export async function createSiteIntelligenceDomain(
   actor: SiteIntelligenceAuditActor,
-  input: SiteIntelligenceDomainInput
+  input: SiteIntelligenceDomainInput,
+  executor?: SiteIntelligenceRepositoryExecutor
 ): Promise<SiteIntelligenceDomain> {
-  return transaction(async (db) => {
+  const create = async (db: SiteIntelligenceRepositoryExecutor) => {
     const result = await db.query<SiteIntelligenceDomainRow>(`
       INSERT INTO site_intelligence_domains (
         client_id, lane, name, origin, justification, approved_by, approved_at,
@@ -216,7 +269,9 @@ export async function createSiteIntelligenceDomain(
     )
 
     return mapSiteIntelligenceDomainRow(row)
-  })
+  }
+  if (executor) return create(executor)
+  return transaction(async db => create(db as SiteIntelligenceRepositoryExecutor))
 }
 
 export async function updateSiteIntelligenceDomain(
@@ -277,11 +332,45 @@ export interface SiteIntelligenceRunConfig {
   settings: Record<string, unknown>
 }
 
+export interface SiteIntelligenceDomainRunState {
+  hasRun: boolean
+  run: { id: string, status: SiteIntelligenceRun['status'] } | null
+}
+
+export interface SiteIntelligenceCrawlRunCreateOptions {
+  onlyIfNeverRun?: boolean
+}
+
+export type SiteIntelligenceCrawlRunCreateResult
+  = { status: 'created', run: SiteIntelligenceRunConfig }
+    | { status: 'existing_run', run: { id: string, status: SiteIntelligenceRun['status'] } }
+    | { status: 'not_found' | 'inactive' | 'active_run', run: null }
+
+export async function getSiteIntelligenceDomainRunState(
+  domainId: string,
+  executor?: SiteIntelligenceRepositoryExecutor
+): Promise<SiteIntelligenceDomainRunState> {
+  const sql = `
+    SELECT id, status FROM site_intelligence_crawl_runs
+    WHERE domain_id = $1
+    ORDER BY created_at DESC
+    LIMIT 1
+  `
+  const params = [domainId]
+  if (executor) {
+    const result = await executor.query<{ id: string, status: SiteIntelligenceRun['status'] }>(sql, params)
+    return { hasRun: Boolean(result.rows[0]), run: result.rows[0] ?? null }
+  }
+  const row = await queryOne<{ id: string, status: SiteIntelligenceRun['status'] }>(sql, params)
+  return { hasRun: Boolean(row), run: row }
+}
+
 export async function createSiteIntelligenceCrawlRun(
   actor: SiteIntelligenceAuditActor,
   domainId: string,
-  trigger: 'manual' | 'schedule' | 'retry'
-): Promise<{ status: 'created', run: SiteIntelligenceRunConfig } | { status: 'not_found' | 'inactive' | 'active_run', run: null }> {
+  trigger: 'manual' | 'schedule' | 'retry',
+  options: SiteIntelligenceCrawlRunCreateOptions = {}
+): Promise<SiteIntelligenceCrawlRunCreateResult> {
   return transaction(async (db) => {
     const domainResult = await db.query<SiteIntelligenceDomainRow>(`
       SELECT * FROM site_intelligence_domains WHERE id = $1 FOR UPDATE
@@ -289,6 +378,18 @@ export async function createSiteIntelligenceCrawlRun(
     const domain = domainResult.rows[0]
     if (!domain) return { status: 'not_found' as const, run: null }
     if (domain.status !== 'active') return { status: 'inactive' as const, run: null }
+
+    if (options.onlyIfNeverRun) {
+      const existing = await db.query<{ id: string, status: SiteIntelligenceRun['status'] }>(`
+        SELECT id, status FROM site_intelligence_crawl_runs
+        WHERE domain_id = $1
+        ORDER BY created_at ASC
+        LIMIT 1
+      `, [domainId])
+      if (existing.rows[0]) {
+        return { status: 'existing_run' as const, run: existing.rows[0] }
+      }
+    }
 
     const active = await db.query<{ id: string }>(`
       SELECT id FROM site_intelligence_crawl_runs

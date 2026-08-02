@@ -193,6 +193,9 @@ AI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/a5b299b3ad15c1b5b895dc66f
 AGENCY_WORKFLOWS_ENABLED = "true"
 SITE_INTELLIGENCE_ENABLED = "true"
 SITE_INTELLIGENCE_AI_ENABLED = "false"
+# Google Places discovery is billable and remains dormant until operator approval.
+# API keys are environment secrets, never committed in this file.
+NEARBY_MARKET_DISCOVERY_ENABLED = "false"
 # High-entropy smoke secret verifier for CI diagnostics. GitHub Actions stores
 # the raw AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET; Pages only needs this hash.
 AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256 = "8aa2f98fd3d621bb0ac8f0157622d86cae347e14cdb35f32375b9467778462f2"

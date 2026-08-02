@@ -79,7 +79,10 @@ export default defineEventHandler(async (event) => {
         agencyAccess: clientUser.agencyAccess,
         notificationPreferences: clientUser.notificationPreferences,
         timezone: clientUser.timezone,
-        permissions: clientUser.permissions
+        permissions: {
+          ...clientUser.permissions,
+          canNominateCompetitors: clientUser.permissions.canNominateCompetitors ?? false
+        }
       },
       client: {
         id: clientUser.clientId,
