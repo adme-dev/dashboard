@@ -89,6 +89,10 @@ async function confirmLocation() {
     pending.value = false
   }
 }
+
+function closeModal() {
+  modalOpen.value = false
+}
 </script>
 
 <template>
@@ -153,7 +157,7 @@ async function confirmLocation() {
             label="Cancel"
             color="neutral"
             variant="ghost"
-            @click="modalOpen = false"
+            @click="closeModal"
           />
           <UButton
             label="Confirm this location"

@@ -93,6 +93,10 @@ function updateClient(value: unknown) {
   if (typeof value === 'string' && value) emit('update:clientId', value)
 }
 
+function openLocationModal() {
+  locationOpen.value = true
+}
+
 async function updateDiscoveryFilters(patch: Parameters<typeof updateFilters>[0]) {
   updateFilters(patch)
   if (props.clientId && location.value) await search(props.clientId)
@@ -239,7 +243,7 @@ function updateMonitoringStatus(value: unknown) {
           :label="location ? 'Change location' : 'Confirm market location'"
           icon="i-lucide-map-pin-check"
           variant="soft"
-          @click="locationOpen = true"
+          @click="openLocationModal"
         />
       </div>
 

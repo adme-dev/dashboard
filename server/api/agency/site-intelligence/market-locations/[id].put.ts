@@ -54,19 +54,25 @@ export default defineEventHandler(async (event) => {
   const config = requireNearbyMarketConfiguration()
   const places = googlePlacesClientFromRuntimeConfig(config)
 
-  if (parsed.data.action === 'preview') {
+  const request = parsed.data
+
+  if (request.action === 'preview') {
     try {
-      const choices = await places.previewAddress(parsed.data.addressText)
+      const choices = await places.previewAddress(request.addressText)
       return { choices: choices.slice(0, 5) }
     } catch (error) {
       throwNearbyProviderError(error)
     }
   }
 
+  if (request.action !== 'confirm') {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid market location update' })
+  }
+
   let resolvedPlaceId: string
   try {
-    const resolved = await places.resolvePlaceLocation(parsed.data.placeId)
-    if (resolved.placeId !== parsed.data.placeId) {
+    const resolved = await places.resolvePlaceLocation(request.placeId)
+    if (resolved.placeId !== request.placeId) {
       throw new GooglePlacesError('malformed_response')
     }
     resolvedPlaceId = resolved.placeId
@@ -76,8 +82,8 @@ export default defineEventHandler(async (event) => {
 
   const marketLocation = await transaction(async (db) => {
     const saved = await upsertPrimaryClientMarketLocation(clientId!, {
-      label: parsed.data.label,
-      addressText: parsed.data.addressText,
+      label: request.label,
+      addressText: request.addressText,
       googlePlaceId: resolvedPlaceId,
       confirmedBy: user.id
     }, db)
@@ -88,7 +94,7 @@ export default defineEventHandler(async (event) => {
       'market_location.confirmed',
       'market_location',
       saved.id,
-      { googlePlaceId: resolvedPlaceId, label: parsed.data.label },
+      { googlePlaceId: resolvedPlaceId, label: request.label },
       db
     )
     return saved

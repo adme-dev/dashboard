@@ -51,6 +51,10 @@ async function submitNomination() {
     submitting.value = false
   }
 }
+
+function closeModal() {
+  open.value = false
+}
 </script>
 
 <template>
@@ -108,7 +112,7 @@ async function submitNomination() {
             color="neutral"
             variant="ghost"
             class="justify-center"
-            @click="open = false"
+            @click="closeModal"
           />
           <UButton
             label="Send nomination"
