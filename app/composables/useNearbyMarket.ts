@@ -170,15 +170,27 @@ export function useNearbyMarket() {
     if (!changed) return
     filters.value = next
     invalidate('search')
+    invalidate('candidateReview')
+    candidateReview.value = null
     selectedPlaceId.value = null
   }
 
   function selectCandidate(placeId: string | null) {
+    if (selectedPlaceId.value === placeId) return
+    invalidate('candidateReview')
+    candidateReview.value = null
     selectedPlaceId.value = placeId
   }
 
   async function loadLocation(clientId: string) {
     setActiveClient(clientId)
+    invalidate('search')
+    invalidate('candidateReview')
+    invalidate('decision')
+    market.value = null
+    candidateReview.value = null
+    decision.value = null
+    selectedPlaceId.value = null
     lastLocationClientId = clientId
     return runResource<{ marketLocation: ClientMarketLocation | null }>(
       'location',
@@ -215,7 +227,6 @@ export function useNearbyMarket() {
       }),
       (response) => {
         market.value = response
-        location.value = response.marketLocation
         if (selectedPlaceId.value
           && !response.candidates.some(candidate => candidate.placeId === selectedPlaceId.value)) {
           selectedPlaceId.value = null

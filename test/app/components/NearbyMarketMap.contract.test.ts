@@ -53,6 +53,7 @@ class FakeCircle {
 
 class FakeMarker {
   map: unknown
+  position: unknown
   listeners = new Map<string, () => void>()
 
   constructor(public options: {
@@ -63,6 +64,7 @@ class FakeMarker {
     [key: string]: unknown
   }) {
     this.map = options.map
+    this.position = options.position
     markerInstances.push(this)
   }
 
@@ -79,7 +81,14 @@ class FakeMarker {
 const UAlert = {
   inheritAttrs: false,
   props: ['title', 'description'],
-  template: '<aside v-bind="$attrs"><strong>{{ title }}</strong><span>{{ description }}</span></aside>'
+  template: '<aside v-bind="$attrs"><strong>{{ title }}</strong><span>{{ description }}</span><slot name="actions" /></aside>'
+}
+
+const UButton = {
+  inheritAttrs: false,
+  props: ['label'],
+  emits: ['click'],
+  template: '<button v-bind="$attrs" type="button" @click="$emit(\'click\')">{{ label }}<slot /></button>'
 }
 
 async function flushUi() {
@@ -89,15 +98,19 @@ async function flushUi() {
   }
 }
 
-async function mountMap(options: { importError?: Error, items?: NearbyMarketCandidate[] } = {}) {
+async function mountMap(options: { importFailures?: number, items?: NearbyMarketCandidate[] } = {}) {
   vi.stubGlobal('useRuntimeConfig', () => ({
     public: {
       googleMapsBrowserApiKey: 'browser-key',
       googleMapsMapId: 'market-map-id'
     }
   }))
+  let importFailures = options.importFailures ?? 0
   const importLibrary = vi.fn(async (library: string) => {
-    if (options.importError) throw options.importError
+    if (importFailures > 0) {
+      importFailures -= 1
+      throw new Error('Maps unavailable')
+    }
     return library === 'maps'
       ? { Map: FakeMap, Circle: FakeCircle }
       : { AdvancedMarkerElement: FakeMarker }
@@ -106,13 +119,14 @@ async function mountMap(options: { importError?: Error, items?: NearbyMarketCand
   const NearbyMarketMap = (await import('~~/app/components/site-intelligence/NearbyMarketMap.client.vue')).default
   const host = document.createElement('div')
   document.body.appendChild(host)
+  const center = ref({ latitude: -37.81, longitude: 144.96 })
   const selected = ref<string | null>('saved-place')
   const onSelect = vi.fn((placeId: string) => {
     selected.value = placeId
   })
   const app = createApp({
     render: () => h(NearbyMarketMap, {
-      center: { latitude: -37.81, longitude: 144.96 },
+      center: center.value,
       radiusKm: 25,
       candidates: options.items ?? candidates,
       selectedPlaceId: selected.value,
@@ -120,9 +134,10 @@ async function mountMap(options: { importError?: Error, items?: NearbyMarketCand
     })
   })
   app.component('UAlert', UAlert)
+  app.component('UButton', UButton)
   app.mount(host)
   await flushUi()
-  return { app, host, selected, onSelect, importLibrary }
+  return { app, host, center, selected, onSelect, importLibrary }
 }
 
 afterEach(() => {
@@ -162,12 +177,28 @@ describe('NearbyMarketMap', () => {
     }
   })
 
-  it('announces provider failure while explicitly preserving the external ranked-list alternative', async () => {
-    const { app, host } = await mountMap({ importError: new Error('Maps unavailable') })
+  it('announces provider failure, preserves the ranked list, and retries the map in place', async () => {
+    const { app, host } = await mountMap({ importFailures: 1 })
     try {
       expect(host.querySelector('[role="alert"]')?.textContent).toMatch(/map unavailable/i)
       expect(host.textContent).toMatch(/ranked list remains available/i)
       expect(host.querySelector('[data-nearby-market-ranked-list-required="true"]')).not.toBeNull()
+      host.querySelector<HTMLButtonElement>('[data-testid="nearby-market-map-retry"]')!.click()
+      await flushUi()
+      expect(host.querySelector('[role="alert"]')).toBeNull()
+      expect(mapInstances).toHaveLength(1)
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('moves the client marker when the reactive center changes', async () => {
+    const { app, center } = await mountMap()
+    try {
+      const client = markerInstances.find(marker => marker.options.title === 'Confirmed client trading location')!
+      center.value = { latitude: -37.9, longitude: 145.1 }
+      await flushUi()
+      expect(client.position).toEqual({ lat: -37.9, lng: 145.1 })
     } finally {
       app.unmount()
     }

@@ -105,6 +105,66 @@ describe('useNearbyMarket', () => {
     expect(nearby.status.search).toBe('success')
   })
 
+  it('does not let a stale candidate review reset selection after the user moves on', async () => {
+    const reviewRequest = deferred<{
+      placeId: string
+      displayName: string
+      websiteUri: string
+      canonicalOrigin: string
+      existingDomainId: null
+      canApprove: boolean
+    }>()
+    let reviewSignal: AbortSignal | undefined
+    vi.stubGlobal('$fetch', vi.fn((request: string, options: { signal?: AbortSignal }) => {
+      if (request.includes('market-locations')) return Promise.resolve({ marketLocation: location })
+      reviewSignal = options.signal
+      return reviewRequest.promise
+    }))
+    const { useNearbyMarket } = await import('~~/app/composables/useNearbyMarket')
+    const nearby = useNearbyMarket()
+    await nearby.loadLocation(CLIENT_ID)
+
+    const staleReview = nearby.reviewCandidate('place-a')
+    nearby.selectCandidate('place-b')
+    reviewRequest.resolve({
+      placeId: 'place-a',
+      displayName: 'Dealer A',
+      websiteUri: 'https://dealer-a.example',
+      canonicalOrigin: 'https://dealer-a.example',
+      existingDomainId: null,
+      canApprove: true
+    })
+    await staleReview
+
+    expect(reviewSignal?.aborted).toBe(true)
+    expect(nearby.selectedPlaceId.value).toBe('place-b')
+    expect(nearby.candidateReview.value).toBeNull()
+  })
+
+  it('does not let an older search overwrite a newer location refresh', async () => {
+    const searchRequest = deferred<NearbyMarketResponse>()
+    const newLocation = { ...location, id: '33333333-3333-4333-8333-333333333333', addressText: '9 New Motor Way' }
+    let searchSignal: AbortSignal | undefined
+    vi.stubGlobal('$fetch', vi.fn((request: string, options: { signal?: AbortSignal }) => {
+      if (request.endsWith('/search')) {
+        searchSignal = options.signal
+        return searchRequest.promise
+      }
+      return Promise.resolve({ marketLocation: newLocation })
+    }))
+    const { useNearbyMarket } = await import('~~/app/composables/useNearbyMarket')
+    const nearby = useNearbyMarket()
+
+    const staleSearch = nearby.search(CLIENT_ID)
+    await nearby.loadLocation(CLIENT_ID)
+    searchRequest.resolve(market(25))
+    await staleSearch
+
+    expect(searchSignal?.aborted).toBe(true)
+    expect(nearby.location.value?.id).toBe('33333333-3333-4333-8333-333333333333')
+    expect(nearby.location.value?.addressText).toBe('9 New Motor Way')
+  })
+
   it('retries location, search, candidate review, decision, and nominations independently', async () => {
     const attempts = new Map<string, number>()
     const fetchMock = vi.fn(async (request: string, options: { method?: string, body?: unknown }) => {

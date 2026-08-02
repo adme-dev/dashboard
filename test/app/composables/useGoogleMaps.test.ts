@@ -68,6 +68,41 @@ describe('useGoogleMaps', () => {
     expect(appendChild).not.toHaveBeenCalled()
   })
 
+  it('removes a failed script and allows a later load attempt to succeed', async () => {
+    class FakeMap { readonly kind = 'map' }
+    class FakeCircle { readonly kind = 'circle' }
+    class FakeMarker { readonly kind = 'marker' }
+    const importLibrary = vi.fn(async (name: string) => name === 'maps'
+      ? { Map: FakeMap, Circle: FakeCircle }
+      : { AdvancedMarkerElement: FakeMarker })
+    vi.stubGlobal('useRuntimeConfig', () => runtimeConfig())
+    let attempt = 0
+    let failedScriptRemove: ReturnType<typeof vi.fn> | undefined
+    const appendChild = vi.spyOn(document.head, 'appendChild').mockImplementation((node) => {
+      attempt += 1
+      const script = node as HTMLScriptElement
+      if (attempt === 1) {
+        failedScriptRemove = vi.fn()
+        script.remove = failedScriptRemove
+        queueMicrotask(() => script.dispatchEvent(new Event('error')))
+      } else {
+        ;(window as Window & { google?: unknown }).google = { maps: { importLibrary } }
+        queueMicrotask(() => script.dispatchEvent(new Event('load')))
+      }
+      return node
+    })
+    const { useGoogleMaps } = await import('~~/app/composables/useGoogleMaps')
+    const maps = useGoogleMaps()
+
+    await expect(maps.load()).rejects.toThrow('could not be loaded')
+    expect(failedScriptRemove).toHaveBeenCalledOnce()
+    await expect(maps.load()).resolves.toMatchObject({ Map: expect.any(Function) })
+
+    expect(appendChild).toHaveBeenCalledTimes(2)
+    expect(maps.status.value).toBe('success')
+    expect(maps.error.value).toBeNull()
+  })
+
   it('does not access browser globals when load is called during SSR', async () => {
     vi.stubGlobal('useRuntimeConfig', () => runtimeConfig())
     vi.stubGlobal('window', undefined)

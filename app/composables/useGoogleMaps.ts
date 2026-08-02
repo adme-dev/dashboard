@@ -23,6 +23,7 @@ export interface GoogleMapsLibraries {
   }
   AdvancedMarkerElement: new (options: Record<string, unknown>) => {
     map: GoogleMapInstance | null
+    position?: GoogleMapsPosition
     addListener(name: string, listener: () => void): { remove(): void }
   }
 }
@@ -60,7 +61,10 @@ function injectOfficialScript(apiKey: string): Promise<void> {
 
   return new Promise((resolve, reject) => {
     script.addEventListener('load', () => resolve(), { once: true })
-    script.addEventListener('error', () => reject(new Error('Google Maps could not be loaded.')), { once: true })
+    script.addEventListener('error', () => {
+      script.remove()
+      reject(new Error('Google Maps could not be loaded.'))
+    }, { once: true })
     if (!existing) document.head.appendChild(script)
   })
 }
@@ -109,6 +113,10 @@ export function useGoogleMaps() {
       const message = cause instanceof Error ? cause.message : 'Google Maps could not be loaded.'
       status.value = 'error'
       error.value = message
+      if (typeof document !== 'undefined') {
+        document.querySelector<HTMLScriptElement>('script[data-xeroflow-google-maps]')?.remove()
+      }
+      loadPromise = null
       throw cause
     })
     return loadPromise

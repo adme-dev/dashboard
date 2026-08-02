@@ -18,7 +18,7 @@ const localError = ref<string | null>(null)
 const { load, error: loaderError } = useGoogleMaps()
 const errorMessage = computed(() => localError.value ?? loaderError.value)
 
-type Marker = { map: GoogleMapInstance | null, addListener(name: string, fn: () => void): { remove(): void } }
+type Marker = { map: GoogleMapInstance | null, position?: { lat: number, lng: number }, addListener(name: string, fn: () => void): { remove(): void } }
 type Circle = { map: GoogleMapInstance | null, setCenter?(center: unknown): void, setRadius?(radius: number): void }
 let map: GoogleMapInstance | null = null
 let circle: Circle | null = null
@@ -140,12 +140,20 @@ async function initialize() {
   }
 }
 
+async function retryMap() {
+  localError.value = null
+  loading.value = true
+  await initialize()
+}
+
 watch(() => props.candidates, renderMarkers, { deep: true })
 watch(() => props.selectedPlaceId, () => selectMarker())
 watch(() => props.radiusKm, value => circle?.setRadius?.(value * 1000))
 watch(() => props.center, (value) => {
-  map?.panTo(position(value))
-  circle?.setCenter?.(position(value))
+  const nextPosition = position(value)
+  map?.panTo(nextPosition)
+  circle?.setCenter?.(nextPosition)
+  if (clientMarker) clientMarker.position = nextPosition
 }, { deep: true })
 
 onMounted(initialize)
@@ -168,7 +176,19 @@ onBeforeUnmount(() => {
       icon="i-lucide-map-pin-off"
       title="Map unavailable"
       description="The map could not load. The ranked list remains available for reviewing and selecting dealerships."
-    />
+    >
+      <template #actions>
+        <UButton
+          label="Retry map"
+          color="error"
+          variant="soft"
+          size="sm"
+          icon="i-lucide-refresh-cw"
+          data-testid="nearby-market-map-retry"
+          @click="retryMap"
+        />
+      </template>
+    </UAlert>
     <UAlert
       v-else-if="!loading && candidates.length === 0"
       role="status"
