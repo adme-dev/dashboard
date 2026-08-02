@@ -34,15 +34,20 @@ export async function cashflowAnalyser(
       }
     }
 
-    // Low cash reserves
-    if (typeof portfolio?.totalBalance === 'number' && portfolio.totalBalance < 10000 && portfolio.totalBalance >= 0) {
+    // Low cash reserves.
+    // Keyed off totalCash, not totalBalance: the latter nets drawn credit cards
+    // against real cash, and a card-heavy org lands negative — which failed the
+    // `>= 0` guard and silently suppressed this alert entirely. Falls back to
+    // totalBalance so a stale cached response still evaluates.
+    const totalCash = typeof portfolio?.totalCash === 'number' ? portfolio.totalCash : portfolio?.totalBalance
+    if (typeof totalCash === 'number' && totalCash < 10000 && totalCash >= 0) {
       out.push({
         fingerprint: buildFingerprint('cashflow', 'low-cash-reserves'),
         type: 'cashflow',
         severity: 'warning',
         title: 'Low cash reserves',
-        description: `Total cash across all accounts is $${portfolio.totalBalance.toFixed(0)}, below the $10,000 safety threshold.`,
-        metric: { label: 'Total Cash', value: toCurrency(portfolio.totalBalance), format: 'currency' },
+        description: `Total cash across all accounts is $${totalCash.toFixed(0)}, below the $10,000 safety threshold.`,
+        metric: { label: 'Total Cash', value: toCurrency(totalCash), format: 'currency' },
         recommendation: 'Accelerate receivable collection, defer non-essential spending, or arrange a credit facility.',
         tags: ['cash reserves', 'liquidity'],
         dataSources: ['Bank Monitoring'],
@@ -65,11 +70,13 @@ export async function cashflowAnalyser(
     }
 
     // High burn rate — running out in <30 days
-    if (typeof portfolio?.totalBalance === 'number' && typeof portfolio?.totalOutflows === 'number' && portfolio.totalOutflows > 0) {
+    // Runway divides liquid cash by burn — netting card debt in produced a
+    // negative runway that could never satisfy the `>= 0` guard below.
+    if (typeof totalCash === 'number' && typeof portfolio?.totalOutflows === 'number' && portfolio.totalOutflows > 0) {
       const period = bankMonitoring.period
       const days = period?.days || 30
       const dailyBurn = portfolio.totalOutflows / days
-      const runwayDays = dailyBurn > 0 ? portfolio.totalBalance / dailyBurn : Infinity
+      const runwayDays = dailyBurn > 0 ? totalCash / dailyBurn : Infinity
       if (runwayDays < 30 && runwayDays >= 0) {
         out.push({
           fingerprint: buildFingerprint('cashflow', 'high-burn-rate'),
