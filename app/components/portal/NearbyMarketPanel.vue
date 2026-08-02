@@ -114,6 +114,7 @@ async function loadMarket() {
   }
   loading.value = true
   loadError.value = ''
+  selectionOrigin.value = 'list'
   data.value = null
   selectedPlaceId.value = null
   nominationOpen.value = false

@@ -138,6 +138,37 @@ describe('portal nearby market behavior', () => {
       app.unmount()
     }
   })
+
+  it('preserves filter focus when results resolve after an earlier marker selection', async () => {
+    let resolveReload!: (value: typeof market) => void
+    const reload = new Promise<typeof market>((resolve) => {
+      resolveReload = resolve
+    })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(market)
+      .mockReturnValueOnce(reload)
+    const { app, host } = await mountPanel(fetchMock)
+    try {
+      host.querySelector<HTMLButtonElement>('[data-testid="map-marker"]')!.click()
+      await flushUi()
+      host.querySelector<HTMLButtonElement>('[data-testid="map-marker"]')!.click()
+      await flushUi()
+
+      const filter = host.querySelector<HTMLSelectElement>('[data-testid="monitoring-status"]')!
+      filter.focus()
+      filter.value = 'not_selected'
+      filter.dispatchEvent(new Event('change', { bubbles: true }))
+      await flushUi()
+      expect(document.activeElement).toBe(filter)
+
+      resolveReload({ ...market, candidates: [{ ...candidate, portalState: 'not_selected' }] })
+      await flushUi()
+
+      expect(document.activeElement).toBe(filter)
+    } finally {
+      app.unmount()
+    }
+  })
 })
 
 describe('portal competitor nomination behavior', () => {
