@@ -27,12 +27,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const { marketLocationId, radiusKm, reason } = parsed.data
-  const marketLocation = await getPrimaryClientMarketLocation(client.clientId)
-  if (!marketLocation || marketLocation.id !== marketLocationId) {
-    throw createError({ statusCode: 409, statusMessage: 'Current confirmed market location required' })
-  }
-
   await transaction(async (db) => {
+    const marketLocation = await getPrimaryClientMarketLocation(client.clientId, db)
+    if (!marketLocation || !marketLocation.isPrimary || marketLocation.id !== marketLocationId) {
+      throw createError({ statusCode: 409, statusMessage: 'Current confirmed market location required' })
+    }
     const candidate = await nominateNearbyMarketCandidate(client.clientId, {
       marketLocationId,
       googlePlaceId: placeId,

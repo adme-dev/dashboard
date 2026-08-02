@@ -245,7 +245,7 @@ describe('client portal competitor nomination', () => {
     expect(mocks.transaction).not.toHaveBeenCalled()
   })
 
-  it('requires the authenticated client current market location tuple', async () => {
+  it('rejects a mismatched current location inside the nomination transaction', async () => {
     mocks.getPrimaryLocation.mockResolvedValue({ ...marketLocation, id: SECOND_PORTAL_USER_ID })
 
     await expect(nominationHandler(event({
@@ -255,8 +255,26 @@ describe('client portal competitor nomination', () => {
       statusCode: 409,
       statusMessage: 'Current confirmed market location required'
     })
-    expect(mocks.getPrimaryLocation).toHaveBeenCalledWith(CLIENT_ID)
-    expect(mocks.transaction).not.toHaveBeenCalled()
+    expect(mocks.transaction).toHaveBeenCalledOnce()
+    expect(mocks.getPrimaryLocation).toHaveBeenCalledWith(CLIENT_ID, transactionExecutor)
+    expect(mocks.nominateCandidate).not.toHaveBeenCalled()
+    expect(mocks.writeAudit).not.toHaveBeenCalled()
+  })
+
+  it('rejects a non-primary location inside the nomination transaction', async () => {
+    mocks.getPrimaryLocation.mockResolvedValue({ ...marketLocation, isPrimary: false })
+
+    await expect(nominationHandler(event({
+      params: { placeId: 'candidate-place' },
+      body: nominationBody()
+    }))).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: 'Current confirmed market location required'
+    })
+    expect(mocks.transaction).toHaveBeenCalledOnce()
+    expect(mocks.getPrimaryLocation).toHaveBeenCalledWith(CLIENT_ID, transactionExecutor)
+    expect(mocks.nominateCandidate).not.toHaveBeenCalled()
+    expect(mocks.writeAudit).not.toHaveBeenCalled()
   })
 
   it('upserts one scoped tuple and appends a client-actor audit in the same transaction', async () => {
@@ -265,6 +283,7 @@ describe('client portal competitor nomination', () => {
       body: nominationBody()
     }))
 
+    expect(mocks.getPrimaryLocation).toHaveBeenCalledWith(CLIENT_ID, transactionExecutor)
     expect(mocks.nominateCandidate).toHaveBeenCalledWith(CLIENT_ID, {
       marketLocationId: LOCATION_ID,
       googlePlaceId: 'candidate-place',
@@ -350,6 +369,32 @@ describe('client portal competitor nomination', () => {
     expect(mocks.indexVectors).not.toHaveBeenCalled()
     expect(mocks.sendQueue).not.toHaveBeenCalled()
     expect(mocks.runAi).not.toHaveBeenCalled()
+  })
+
+  it('locks the authenticated client primary location through the supplied transaction executor', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{
+        id: LOCATION_ID,
+        client_id: CLIENT_ID,
+        label: marketLocation.label,
+        address_text: marketLocation.addressText,
+        google_place_id: marketLocation.googlePlaceId,
+        is_primary: true,
+        confirmed_at: marketLocation.confirmedAt,
+        confirmed_by: marketLocation.confirmedBy,
+        created_at: marketLocation.createdAt,
+        updated_at: marketLocation.updatedAt
+      }]
+    })
+
+    await expect(actualRepository.getPrimaryClientMarketLocation(CLIENT_ID, { query }))
+      .resolves.toMatchObject({ id: LOCATION_ID, clientId: CLIENT_ID, isPrimary: true })
+
+    expect(query).toHaveBeenCalledOnce()
+    expect(query.mock.calls[0]?.[0]).toMatch(
+      /FROM client_market_locations[\s\S]*client_id = \$1[\s\S]*is_primary = TRUE[\s\S]*FOR UPDATE/i
+    )
+    expect(query.mock.calls[0]?.[1]).toEqual([CLIENT_ID])
   })
 
   it('updates the one tuple to the latest bounded portal nomination on conflict', async () => {

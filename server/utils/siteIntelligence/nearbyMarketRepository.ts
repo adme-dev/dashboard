@@ -166,11 +166,19 @@ function mapCandidate(row: SiteIntelligenceCandidateRow): PersistedNearbyMarketC
   }
 }
 
-export async function getPrimaryClientMarketLocation(clientId: string): Promise<ClientMarketLocation | null> {
-  const row = await queryOne<ClientMarketLocationRow>(`
+export async function getPrimaryClientMarketLocation(
+  clientId: string,
+  executor?: NearbyMarketExecutor
+): Promise<ClientMarketLocation | null> {
+  const sql = `
     SELECT * FROM client_market_locations
     WHERE client_id = $1 AND is_primary = TRUE
-  `, [clientId])
+  `
+  if (executor) {
+    const result = await executor.query<ClientMarketLocationRow>(`${sql} FOR UPDATE`, [clientId])
+    return result.rows[0] ? mapMarketLocation(result.rows[0]) : null
+  }
+  const row = await queryOne<ClientMarketLocationRow>(sql, [clientId])
   return row ? mapMarketLocation(row) : null
 }
 
