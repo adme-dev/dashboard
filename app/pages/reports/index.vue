@@ -234,7 +234,7 @@ const pipelineState = createReportState<PipelineReport>('/api/xero/invoice-pipel
 const pipeline = pipelineState.data
 const pipelinePending = pipelineState.pending
 
-const bankSummaryState = createReportState<{ totalBalance: number }>('/api/xero/reports/bank-summary')
+const bankSummaryState = createReportState<{ totalBalance: number, totalCash?: number }>('/api/xero/reports/bank-summary')
 const bankSummary = bankSummaryState.data
 const bankPending = bankSummaryState.pending
 
@@ -548,7 +548,8 @@ const scorecard = computed(() => {
   const s = summary.value
   if (!s) return []
 
-  const cashPosition = bankSummary.value?.totalBalance ?? 0
+  // Liquid cash, not net-of-credit-card — see /api/xero/reports/bank-summary.
+  const cashPosition = bankSummary.value?.totalCash ?? bankSummary.value?.totalBalance ?? 0
   const grossMargin = s.revenue.month !== 0 ? s.grossProfit.month / s.revenue.month : 0
   const netMargin = s.netMargin.month
 

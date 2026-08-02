@@ -4,6 +4,12 @@ import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
 import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
+import { mapWithConcurrency } from '~~/server/utils/concurrency'
+import { bankSummaryAccountNames, partitionAccountsForTrends } from '~~/server/utils/xeroDataFetcher'
+
+/** Concurrent bank-transaction fetches. Xero allows 5 concurrent calls per
+ *  tenant; the shared rate limiter also spaces calls, so 4 stays well inside. */
+const BANK_TX_CONCURRENCY = 4
 
 function ensureDateString(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -101,49 +107,74 @@ export default eventHandler(async (event) => {
     }
   }
 
-  // Get bank transactions for trend analysis — sequential to avoid concurrent rate limits
-  const bankTransactionResults: Array<{ accountId: string, accountName: string, transactions: any[] }> = []
-  for (const account of bankAccounts) {
-    try {
-      const body = await dedupedXeroCall(
-        `bank-tx:${tenantId}:${account.accountID}`,
-        'bank-tx',
-        async () => {
-          const { body } = await client.accountingApi.getBankTransactions(
-            tenantId,
-            undefined,
-            `BankAccount.AccountID==Guid("${account.accountID}")&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(today)}`,
-            'Date DESC',
-            1,
-            undefined,
-            100
-          )
-          return body
-        }
-      )
-      bankTransactionResults.push({
-        accountId: account.accountID!,
-        accountName: account.name!,
-        transactions: body?.bankTransactions || []
-      })
-    } catch (err) {
-      console.warn(`Failed to fetch transactions for ${account.name}:`, err)
-      bankTransactionResults.push({
-        accountId: account.accountID!,
-        accountName: account.name!,
-        transactions: []
-      })
-    }
+  // Bank transactions drive the trend/history charts, one Xero round-trip per
+  // account. This used to be a fully sequential loop over every Type=BANK
+  // account — with a dozen accounts (incl. closed ones and 6 credit cards) that
+  // was ~12 serial calls and routinely blew the request budget, which is why
+  // callers like the AI context retriever saw this endpoint time out.
+  //
+  // Two changes: skip accounts Xero's own summary doesn't list (they can only
+  // return an empty series), and run the rest with bounded concurrency.
+  const { withActivity, skipped } = partitionAccountsForTrends(
+    bankAccounts,
+    bankSummaryAccountNames(bankSummary)
+  )
+  if (skipped.length) {
+    console.info(`[bank-monitoring] skipped transaction fetch for ${skipped.length} account(s) absent from the bank summary`)
   }
+
+  const bankTransactionResults = await mapWithConcurrency(
+    withActivity,
+    BANK_TX_CONCURRENCY,
+    async (account) => {
+      try {
+        const body = await dedupedXeroCall(
+          `bank-tx:${tenantId}:${account.accountID}`,
+          'bank-tx',
+          async () => {
+            const { body } = await client.accountingApi.getBankTransactions(
+              tenantId,
+              undefined,
+              `BankAccount.AccountID==Guid("${account.accountID}")&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(today)}`,
+              'Date DESC',
+              1,
+              undefined,
+              100
+            )
+            return body
+          }
+        )
+        return {
+          accountId: account.accountID!,
+          accountName: account.name!,
+          transactions: body?.bankTransactions || []
+        }
+      } catch (err) {
+        console.warn(`Failed to fetch transactions for ${account.name}:`, err)
+        return {
+          accountId: account.accountID!,
+          accountName: account.name!,
+          transactions: [] as any[]
+        }
+      }
+    }
+  )
 
   // Process account data
   const accountSummaries = []
   let totalBalance = 0
+  let totalCash = 0
+  let totalCreditCard = 0
   let totalInflows = 0
   let totalOutflows = 0
 
   for (const account of bankAccounts) {
     const accountName = account.name || 'Unknown Account'
+    // Xero files credit cards under Type=BANK; only BankAccountType tells them
+    // apart. Card debt is a payable, so it must not be treated as cash.
+    const isCreditCard = String(
+      (account as any).bankAccountType ?? (account as any).BankAccountType ?? ''
+    ).toUpperCase() === 'CREDITCARD'
     const currentBalance = currentBalances.get(accountName) || 0
     const transactionData = bankTransactionResults.find(r => r.accountId === account.accountID)
     const transactions = transactionData?.transactions || []
@@ -207,7 +238,17 @@ export default eventHandler(async (event) => {
     let healthStatus = 'healthy'
     let alerts = []
 
-    if (currentBalance < 0) {
+    if (isCreditCard) {
+      // A negative balance on a card means it is drawn down, which is normal —
+      // flagging it as an overdraft made every card look critical. Xero exposes
+      // no credit limit, so utilisation can't be assessed here.
+      if (currentBalance < 0) {
+        alerts.push({
+          type: 'credit_drawn',
+          message: `Card drawn down by $${Math.abs(currentBalance).toFixed(2)}`
+        })
+      }
+    } else if (currentBalance < 0) {
       healthStatus = 'critical'
       alerts.push({ type: 'overdraft', message: 'Account is overdrawn' })
     } else if (currentBalance < 1000) {
@@ -234,6 +275,7 @@ export default eventHandler(async (event) => {
       accountId: account.accountID,
       accountName,
       accountCode: account.code,
+      isCreditCard,
       currentBalance: Math.round(currentBalance * 100) / 100,
       balanceChange: Math.round(balanceChange * 100) / 100,
       balanceChangePercent: Math.round(balanceChangePercent * 100) / 100,
@@ -256,6 +298,8 @@ export default eventHandler(async (event) => {
       })
     })
 
+    if (isCreditCard) totalCreditCard += currentBalance
+    else totalCash += currentBalance
     totalBalance += currentBalance
     totalInflows += accountInflows
     totalOutflows += accountOutflows
@@ -263,15 +307,18 @@ export default eventHandler(async (event) => {
 
   // Overall portfolio analysis
   const netCashFlow = totalInflows - totalOutflows
-  const cashVelocity = totalBalance > 0 ? (totalInflows + totalOutflows) / totalBalance : 0
-  
-  // Risk assessment
-  const lowBalanceAccounts = accountSummaries.filter(acc => acc.currentBalance < 1000)
-  const overdraftAccounts = accountSummaries.filter(acc => acc.currentBalance < 0)
+  // Velocity and liquidity risk are about spendable cash, so they key off
+  // totalCash — netting drawn credit cards in made both meaningless.
+  const cashVelocity = totalCash > 0 ? (totalInflows + totalOutflows) / totalCash : 0
+
+  // Risk assessment — cash accounts only. A drawn-down card is not an overdraft.
+  const cashAccounts = accountSummaries.filter(acc => !acc.isCreditCard)
+  const lowBalanceAccounts = cashAccounts.filter(acc => acc.currentBalance < 1000)
+  const overdraftAccounts = cashAccounts.filter(acc => acc.currentBalance < 0)
   const volatileAccounts = accountSummaries.filter(acc => Math.abs(acc.balanceChangePercent) > 25)
 
   let overallRiskLevel = 'low'
-  if (overdraftAccounts.length > 0 || totalBalance < 5000) {
+  if (overdraftAccounts.length > 0 || totalCash < 5000) {
     overallRiskLevel = 'high'
   } else if (lowBalanceAccounts.length > 0 || netCashFlow < -5000) {
     overallRiskLevel = 'medium'
@@ -282,7 +329,7 @@ export default eventHandler(async (event) => {
   if (netCashFlow < 0) {
     insights.push(`Net cash outflow of $${Math.abs(netCashFlow).toFixed(2)} over ${daysBack} days`)
   }
-  if (totalBalance < 10000) {
+  if (totalCash < 10000) {
     insights.push('Total cash reserves are below recommended levels')
   }
   if (volatileAccounts.length > 0) {
@@ -302,7 +349,12 @@ export default eventHandler(async (event) => {
     
     // Portfolio overview
     portfolio: {
+      /** Net across every bank-type account, credit cards included. */
       totalBalance: Math.round(totalBalance * 100) / 100,
+      /** Liquid cash — the figure to use for runway and liquidity. */
+      totalCash: Math.round(totalCash * 100) / 100,
+      /** Credit-card balances, negative when drawn down. */
+      totalCreditCard: Math.round(totalCreditCard * 100) / 100,
       totalInflows: Math.round(totalInflows * 100) / 100,
       totalOutflows: Math.round(totalOutflows * 100) / 100,
       netCashFlow: Math.round(netCashFlow * 100) / 100,
@@ -335,7 +387,7 @@ export default eventHandler(async (event) => {
     
     // Recommendations
     recommendations: [
-      ...(totalBalance < 10000 ? ['Consider building larger cash reserves'] : []),
+      ...(totalCash < 10000 ? ['Consider building larger cash reserves'] : []),
       ...(overdraftAccounts.length > 0 ? ['Address overdrawn accounts immediately'] : []),
       ...(netCashFlow < -1000 ? ['Review and reduce cash outflows'] : []),
       ...(accountSummaries.length === 1 ? ['Consider opening additional bank accounts for diversification'] : []),

@@ -97,6 +97,42 @@ describe('aiContextRetriever — composite scoring', () => {
     })
   })
 
+  it('surfaces a failed Xero fetch instead of silently omitting it', async () => {
+    // Regression: a rejected bank-monitoring fetch was dropped by allSettled, so
+    // the model saw no cash item and told the user the cash position could not
+    // be determined — when Xero was live and the lookup had merely timed out.
+    mockedQueryRows.mockResolvedValue([])
+    mockedClassifyIntent.mockResolvedValue({ intent: 'financial_query', confidence: 0.9, entities: [] })
+
+    const event: any = {
+      headers: {},
+      $fetch: vi.fn(async (url: string) => {
+        if (url === '/api/xero/bank-monitoring') {
+          throw { statusCode: 504, statusMessage: 'upstream timeout' }
+        }
+        return {}
+      })
+    }
+
+    const result = await retrieveContext('user-1', 'admin', 'what is our cash position?', event)
+    const failed = result.items.find(i => i.id === 'xero-cash-position-unavailable')
+
+    expect(failed).toBeDefined()
+    expect(failed!.title).toMatch(/LOOKUP FAILED/)
+    expect(failed!.snippet).toContain('504: upstream timeout')
+    // Must steer the model away from the exact wording this bug produced.
+    expect(failed!.snippet).toMatch(/Do NOT tell the user the data is unavailable/i)
+  })
+
+  it('emits no failure placeholder when the Xero fetches resolve', async () => {
+    mockedQueryRows.mockResolvedValue([])
+    mockedClassifyIntent.mockResolvedValue({ intent: 'financial_query', confidence: 0.9, entities: [] })
+    const event: any = { headers: {}, $fetch: vi.fn(async () => ({})) }
+
+    const result = await retrieveContext('user-1', 'admin', 'what is our cash position?', event)
+    expect(result.items.some(i => i.id.endsWith('-unavailable'))).toBe(false)
+  })
+
   it('returns a valid ContextBundle shape', async () => {
     mockedQueryRows.mockResolvedValue([])
     const result = await retrieveContext('user-1', 'admin', 'hello')

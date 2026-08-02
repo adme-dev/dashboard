@@ -15,7 +15,7 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
-import { extractCurrentCash, fetchBankSummary } from '~~/server/utils/xeroDataFetcher'
+import { fetchBankBalances } from '~~/server/utils/xeroDataFetcher'
 import { loadGetOutConfig, summariseConfig } from '~~/server/utils/getOutConfig'
 
 interface InvoiceWeekRow {
@@ -67,8 +67,7 @@ export default defineEventHandler(async (event) => {
   // Opening cash (live Xero — balance is current as of today)
   let openingCash = 0
   try {
-    const bank = await fetchBankSummary(token.access_token!, tenantId)
-    openingCash = extractCurrentCash(bank)
+    openingCash = (await fetchBankBalances(token.access_token!, tenantId)).cash
   } catch (err: any) {
     console.warn('[cashflow-13w] bank summary failed:', err?.message)
   }

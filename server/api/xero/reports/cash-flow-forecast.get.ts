@@ -5,7 +5,9 @@ import { cachedFetch } from '../../../utils/kv'
 import {
   ensureDateString,
   addDays,
-  extractCurrentCash
+  creditCardAccountIdsFrom,
+  extractCurrentCash,
+  fetchBankAccounts
 } from '../../../utils/xeroDataFetcher'
 import { fetchCashFlowInputs } from '../../../utils/xeroCashFlowInputs'
 
@@ -25,12 +27,16 @@ export default eventHandler(async (event) => {
     const today = new Date()
     const accessToken = token.access_token!
 
-    const [bankReportBody, receivablesBody, payablesBody, expensesBody] = await fetchCashFlowInputs(
-      accessToken,
-      tenantId
-    )
+    const [[bankReportBody, receivablesBody, payablesBody, expensesBody], accountsBody] = await Promise.all([
+      fetchCashFlowInputs(accessToken, tenantId),
+      // Only refines the cash/credit split — a failure here still leaves a
+      // usable (if card-inclusive) balance rather than failing the forecast.
+      fetchBankAccounts(accessToken, tenantId).catch(() => null)
+    ])
 
-    const currentCash = extractCurrentCash(bankReportBody)
+    // Liquid cash only — credit-card debt is a payable, not negative cash, and
+    // projecting a card-netted balance forward is meaningless.
+    const currentCash = extractCurrentCash(bankReportBody, creditCardAccountIdsFrom(accountsBody))
 
     const totalHistoricalExpenses = (expensesBody?.invoices || [])
       .reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0)

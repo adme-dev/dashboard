@@ -15,7 +15,7 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
-import { extractCurrentCash, fetchBankSummary } from '~~/server/utils/xeroDataFetcher'
+import { fetchBankBalances } from '~~/server/utils/xeroDataFetcher'
 import { loadGetOutConfig, summariseConfig } from '~~/server/utils/getOutConfig'
 
 function n(v: unknown): number {
@@ -34,8 +34,7 @@ export default defineEventHandler(async (event) => {
   // Live bank balance.
   let currentCash = 0
   try {
-    const bank = await fetchBankSummary(token.access_token!, tenantId)
-    currentCash = extractCurrentCash(bank)
+    currentCash = (await fetchBankBalances(token.access_token!, tenantId)).cash
   } catch (err: any) {
     console.warn('[cash-runway] bank summary failed:', err?.message)
   }
