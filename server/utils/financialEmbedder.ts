@@ -340,6 +340,37 @@ const CLIENT_EMBED_CONCURRENCY = 4
 /** Top-N clients by outstanding balance to embed. */
 const CLIENT_EMBED_LIMIT = 20
 
+/**
+ * Normalise a contact from /api/xero/contacts.
+ *
+ * That endpoint reshapes Xero's payload before returning it: the nested
+ * `balances.accountsReceivable.outstanding` is flattened to
+ * `balances.receivableOutstanding`, and `contactID` is renamed to `id`. This
+ * module was reading the raw Xero shape, so every field came back undefined —
+ * which made the outstanding-balance filter reject every contact and left
+ * Client Profiles permanently unable to embed anything.
+ *
+ * Reads the endpoint's shape first and falls back to the raw Xero shape, so
+ * callers passing unreshaped contacts through `preData` still work.
+ */
+function normaliseContact(c: any): {
+  id: string | undefined
+  name: string
+  receivableOutstanding: number
+  receivableOverdue: number
+  payableOutstanding: number
+} {
+  const b = c?.balances ?? {}
+  const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0)
+  return {
+    id: c?.id ?? c?.contactID,
+    name: c?.name ?? 'Unknown',
+    receivableOutstanding: num(b.receivableOutstanding ?? b.accountsReceivable?.outstanding),
+    receivableOverdue: num(b.receivableOverdue ?? b.accountsReceivable?.overdue),
+    payableOutstanding: num(b.payableOutstanding ?? b.accountsPayable?.outstanding),
+  }
+}
+
 export async function embedAllFinancialSnapshots(
   event: H3Event,
   period?: string,
@@ -390,12 +421,11 @@ export async function embedAllFinancialSnapshots(
 
         // Sort by outstanding balance, take top N
         const topClients = contactList
-          .filter((c: any) => c.balances?.accountsReceivable?.outstanding > 0 || c.balances?.accountsPayable?.outstanding > 0)
-          .sort((a: any, b: any) => {
-            const aOut = (a.balances?.accountsReceivable?.outstanding || 0) + (a.balances?.accountsPayable?.outstanding || 0)
-            const bOut = (b.balances?.accountsReceivable?.outstanding || 0) + (b.balances?.accountsPayable?.outstanding || 0)
-            return bOut - aOut
-          })
+          .map(normaliseContact)
+          .filter((c: any) => c.id && (c.receivableOutstanding > 0 || c.payableOutstanding > 0))
+          .sort((a: any, b: any) =>
+            (b.receivableOutstanding + b.payableOutstanding) - (a.receivableOutstanding + a.payableOutstanding)
+          )
           .slice(0, CLIENT_EMBED_LIMIT)
 
         let clientEmbedded = 0, clientSkipped = 0, clientErrors = 0, notReached = 0
@@ -409,13 +439,13 @@ export async function embedAllFinancialSnapshots(
           const waveResults = await Promise.allSettled(
             wave.map((c: any) => {
               const clientData = {
-                revenue: c.balances?.accountsReceivable?.outstanding || 0,
-                outstanding: c.balances?.accountsReceivable?.outstanding || 0,
-                overdue: c.balances?.accountsReceivable?.overdue || 0,
+                revenue: c.receivableOutstanding,
+                outstanding: c.receivableOutstanding,
+                overdue: c.receivableOverdue,
                 metaSpend: 0,
                 googleSpend: 0,
               }
-              return embedClientFinancials(event, c.contactID, c.name, period, clientData)
+              return embedClientFinancials(event, c.id, c.name, period, clientData)
             })
           )
 

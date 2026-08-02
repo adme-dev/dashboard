@@ -12,6 +12,7 @@ vi.mock('~~/server/utils/aiVectorize', () => ({
 }))
 
 import { embedAllFinancialSnapshots } from '~~/server/utils/financialEmbedder'
+import { upsertVector } from '~~/server/utils/aiVectorize'
 
 const event: any = { headers: {} }
 
@@ -29,11 +30,16 @@ function makePreData(clientCount = 0) {
     invoices: { summary: { outstandingTotal: 100, outstandingCount: 1 }, outstanding: [], overdue: [] },
     pnl: { revenueTotal: 5000, expensesTotal: 3000, netProfit: 2000 },
     cash: { portfolio: { totalBalance: 1000, riskLevel: 'low' }, accounts: [], alerts: [] },
+    // NOTE: this must mirror what /api/xero/contacts actually returns — `id`,
+    // and a FLATTENED balances object. The original fixture here used Xero's raw
+    // nested shape, which the endpoint never emits; that masked a bug where the
+    // embedder read `contactID` / `balances.accountsReceivable.outstanding` and
+    // silently filtered out every contact.
     contacts: {
       contacts: Array.from({ length: clientCount }, (_, i) => ({
-        contactID: `c-${i}`,
+        id: `c-${i}`,
         name: `Client ${i}`,
-        balances: { accountsReceivable: { outstanding: 1000 - i, overdue: 0 } }
+        balances: { receivableOutstanding: 1000 - i, receivableOverdue: 0, payableOutstanding: 0 }
       }))
     }
   }
@@ -102,6 +108,75 @@ describe('embedAllFinancialSnapshots — request budget', () => {
     })
     expect(res.processed).toBe(20)
     expect(res.details[0]).toContain('(20 total)')
+  })
+
+  it('embeds contacts in the shape /api/xero/contacts actually returns', async () => {
+    // Regression: Client Profiles could never embed. The endpoint renames
+    // contactID -> id and flattens balances.accountsReceivable.outstanding ->
+    // balances.receivableOutstanding, but the embedder read the raw Xero shape,
+    // so every contact was filtered out and topClients was always empty.
+    const res = await embedAllFinancialSnapshots(event, '2026-08', ['clients'], {
+      contacts: {
+        contacts: [
+          { id: 'ct-1', name: 'Acme', balances: { receivableOutstanding: 5000, receivableOverdue: 200 } },
+          { id: 'ct-2', name: 'Globex', balances: { payableOutstanding: 900 } }
+        ]
+      }
+    }, { budgetMs: 60_000 })
+
+    expect(res.processed).toBe(2)
+    expect(res.details[0]).toContain('2 embedded')
+    expect(res.details[0]).toContain('(2 total)')
+  })
+
+  it('still accepts the raw nested Xero contact shape', async () => {
+    // preData may come from a caller that never went through the endpoint.
+    const res = await embedAllFinancialSnapshots(event, '2026-08', ['clients'], {
+      contacts: {
+        contacts: [
+          { contactID: 'raw-1', name: 'Raw', balances: { accountsReceivable: { outstanding: 300, overdue: 0 } } }
+        ]
+      }
+    }, { budgetMs: 60_000 })
+
+    expect(res.processed).toBe(1)
+  })
+
+  it('excludes contacts with no outstanding balance or no id', async () => {
+    const res = await embedAllFinancialSnapshots(event, '2026-08', ['clients'], {
+      contacts: {
+        contacts: [
+          { id: 'ok', name: 'Has balance', balances: { receivableOutstanding: 10 } },
+          { id: 'zero', name: 'Zero', balances: { receivableOutstanding: 0 } },
+          { id: 'none', name: 'No balances' },
+          { name: 'No id', balances: { receivableOutstanding: 999 } }
+        ]
+      }
+    }, { budgetMs: 60_000 })
+
+    expect(res.processed).toBe(1)
+    expect(res.details[0]).toContain('(1 total)')
+  })
+
+  it('keeps the largest balances when more contacts are eligible than the limit', async () => {
+    // 25 eligible contacts, ascending balances — only the top 20 should embed,
+    // which pins the sort without depending on concurrent call ordering.
+    const contacts = Array.from({ length: 25 }, (_, i) => ({
+      id: `c-${i}`,
+      name: `C${i}`,
+      balances: { receivableOutstanding: i + 1 }
+    }))
+    const res = await embedAllFinancialSnapshots(event, '2026-08', ['clients'], {
+      contacts: { contacts }
+    }, { budgetMs: 60_000 })
+
+    expect(res.processed).toBe(20)
+    const embeddedIds = vi.mocked(upsertVector).mock.calls.map(c => c[1])
+    // The five smallest must have been dropped, the largest kept.
+    for (const i of [0, 1, 2, 3, 4]) {
+      expect(embeddedIds).not.toContain(`fin-client-c-${i}-2026-08`)
+    }
+    expect(embeddedIds).toContain('fin-client-c-24-2026-08')
   })
 
   it('still honours an explicit types filter', async () => {
