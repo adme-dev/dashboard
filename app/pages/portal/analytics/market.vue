@@ -2,8 +2,10 @@
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 const { user } = usePortalAuth()
+const config = useRuntimeConfig()
 
-if (!user.value?.permissions?.canViewAnalytics) {
+if (!user.value?.permissions?.canViewAnalytics
+  || config.public.nearbyMarketDiscoveryEnabled !== true) {
   await navigateTo('/portal')
 }
 </script>

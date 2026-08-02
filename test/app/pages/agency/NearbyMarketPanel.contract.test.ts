@@ -9,6 +9,8 @@ describe('agency nearby market panel contract', () => {
     const page = read('app/pages/agency/analytics/audiences/intelligence.vue')
 
     expect(page).toContain('AnalyticsAudiencesIntelligenceNearbyMarketPanel')
+    expect(page).toMatch(/nearbyMarketDiscoveryEnabled/)
+    expect(page).toMatch(/AnalyticsAudiencesIntelligenceNearbyMarketPanel[\s\S]*v-if="nearbyMarketEnabled"/)
     expect(page).toContain('id="site-intelligence-run-diagnostics"')
     expect(page.indexOf('AnalyticsAudiencesIntelligenceNearbyMarketPanel'))
       .toBeLessThan(page.indexOf('<template v-if="overview">'))

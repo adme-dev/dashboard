@@ -2,6 +2,8 @@
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 const { user } = usePortalAuth()
+const runtimeConfig = useRuntimeConfig()
+const nearbyMarketEnabled = runtimeConfig.public.nearbyMarketDiscoveryEnabled === true
 
 const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 const dashboard = ref<any | null>(null)
@@ -63,7 +65,7 @@ const features = computed<FeatureCard[]>(() => {
       icon: 'i-lucide-map-pinned',
       iconColor: 'text-teal-500',
       to: '/portal/analytics/market',
-      permission: canViewAnalytics.value
+      permission: canViewAnalytics.value && nearbyMarketEnabled
     },
     {
       title: 'Booked Jobs',

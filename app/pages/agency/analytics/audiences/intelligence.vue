@@ -28,6 +28,8 @@ const {
 } = useSiteIntelligence()
 const { isAdmin } = useAuth()
 const toast = useToast()
+const runtimeConfig = useRuntimeConfig()
+const nearbyMarketEnabled = runtimeConfig.public.nearbyMarketDiscoveryEnabled === true
 
 const laneOptions = [
   { label: 'All evidence lanes', value: 'all' },
@@ -218,6 +220,7 @@ async function viewNearbyDiagnostics(
     </UCard>
 
     <AnalyticsAudiencesIntelligenceNearbyMarketPanel
+      v-if="nearbyMarketEnabled"
       :client-id="filters.clientId"
       :clients="availableClients"
       :can-manage="isAdmin"

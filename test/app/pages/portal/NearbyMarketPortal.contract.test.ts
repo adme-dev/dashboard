@@ -12,15 +12,16 @@ describe('client portal nearby market contract', () => {
 
     expect(page).toMatch(/definePageMeta\(\{\s*layout:\s*'portal',\s*middleware:\s*'portal-auth'/)
     expect(page).toMatch(/canViewAnalytics/)
+    expect(page).toMatch(/nearbyMarketDiscoveryEnabled/)
     expect(page).toMatch(/navigateTo\('\/portal'\)/)
     expect(page).toMatch(/PortalNearbyMarketPanel/)
     expect(page).toMatch(/min-h-0/)
 
-    expect(layout).toMatch(/canViewAnalytics[\s\S]*label:\s*'Nearby market'[\s\S]*to:\s*'\/portal\/analytics\/market'/)
+    expect(layout).toMatch(/nearbyMarketDiscoveryEnabled[\s\S]*label:\s*'Nearby market'[\s\S]*to:\s*'\/portal\/analytics\/market'/)
     expect(layout).toMatch(/overflow-y-auto/)
     expect(features).toMatch(/Nearby market/)
     expect(features).toMatch(/to:\s*'\/portal\/analytics\/market'/)
-    expect(features).toMatch(/permission:\s*canViewAnalytics\.value/)
+    expect(features).toMatch(/permission:\s*canViewAnalytics\.value\s*&&\s*nearbyMarketEnabled/)
 
     expect(panel).toMatch(/data-nearby-market-list/)
     expect(panel).toMatch(/max-h-\[28rem\][^"']*overflow-y-auto/)
