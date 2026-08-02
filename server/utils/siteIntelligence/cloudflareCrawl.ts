@@ -6,6 +6,7 @@ const STATUS_PAGE_LIMIT = 1
 const MAX_SUCCESS_RESPONSE_BYTES = 10 * 1024 * 1024
 const MAX_ERROR_RESPONSE_BYTES = 16 * 1024
 const MAX_SAFE_SUMMARY_LENGTH = 200
+const ACCESS_PROBE_TIMEOUT_MS = 2_000
 
 export type CloudflareCrawlStage = 'start' | 'status' | 'records' | 'cancel'
 
@@ -131,6 +132,43 @@ export class CloudflareCrawlError extends Error {
     this.status = status
     this.stage = stage
     this.safeSummary = safeSummary
+  }
+}
+
+export async function checkCloudflareCrawlAccess(
+  inputEnv: CloudflareCrawlEnv
+): Promise<boolean> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), ACCESS_PROBE_TIMEOUT_MS)
+  try {
+    const env = parseEnvironment(inputEnv, 'start')
+    const fetchImpl = env.fetchImpl
+    const response = await fetchImpl(
+      `${CLOUDFLARE_API_BASE}/${encodeURIComponent(env.accountId)}/browser-rendering/crawl`,
+      {
+        method: 'POST',
+        headers: requestHeaders(env.apiToken),
+        body: '{}',
+        signal: controller.signal
+      }
+    )
+    if (response.status !== 400) {
+      await response.body?.cancel().catch(() => undefined)
+      return false
+    }
+    const text = await readBoundedText(response, MAX_ERROR_RESPONSE_BYTES)
+    const envelope = apiEnvelopeSchema.safeParse(parseJson(text))
+    return envelope.success
+      && envelope.data.success === false
+      && Boolean(envelope.data.errors?.some((error) => {
+        const message = error.message?.toLowerCase() ?? ''
+        return message.includes('url')
+          && /required|missing|invalid|validation/.test(message)
+      }))
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timeout)
   }
 }
 

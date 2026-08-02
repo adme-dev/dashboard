@@ -32,7 +32,10 @@ describe('site intelligence readiness', () => {
       ok: true,
       status: 'ready',
       worker: {
-        capabilities: { browserRenderingApiConfigured: true }
+        capabilities: {
+          browserRenderingApiConfigured: true,
+          browserRenderingApiAuthenticated: true
+        }
       }
     })
   })
@@ -90,6 +93,37 @@ describe('site intelligence readiness', () => {
     expect(response).toMatchObject({
       ready: false,
       checks: { workersAi: false, vectorize: false }
+    })
+  })
+
+  it('fails closed when Browser Run credentials exist but Cloudflare rejects them', async () => {
+    mockCheckWorkflowReadiness.mockResolvedValue({
+      ok: true,
+      status: 'ready',
+      worker: {
+        capabilities: {
+          browserRenderingApiConfigured: true,
+          browserRenderingApiAuthenticated: false
+        }
+      }
+    })
+
+    const response = await readiness({
+      context: {
+        cloudflare: {
+          env: {
+            SITE_INTELLIGENCE_ENABLED: 'true',
+            SITE_INTELLIGENCE_AI_ENABLED: 'false',
+            SITE_INTELLIGENCE_BUCKET: { put() {}, get() {}, delete() {} },
+            JOBS_QUEUE: { send() {} }
+          }
+        }
+      }
+    })
+
+    expect(response).toMatchObject({
+      ready: false,
+      checks: { browserRenderingApi: false }
     })
   })
 })

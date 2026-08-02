@@ -203,6 +203,7 @@ export interface AgencyWorkflowReadinessWorker {
   workflows?: unknown[]
   capabilities?: {
     browserRenderingApiConfigured?: boolean
+    browserRenderingApiAuthenticated?: boolean
   }
 }
 
@@ -661,7 +662,7 @@ export async function checkAgencyWorkflowReadiness(
     return result
   }
 
-  const target = buildWorkflowReadinessTarget(env, input.fetchImpl)
+  const target = buildWorkflowReadinessTarget(env, secret, input.fetchImpl)
   if (!target) {
     const result: AgencyWorkflowReadinessResult = {
       ok: false,
@@ -824,13 +825,14 @@ function buildWorkflowStartTarget(
 
 function buildWorkflowReadinessTarget(
   env: Record<string, unknown>,
+  secret: string,
   fetchImpl?: (request: Request) => Promise<Response>
 ): WorkflowRequestTarget | null {
   const binding = env[AGENCY_WORKFLOWS_BINDING]
   if (isServiceBinding(binding)) {
     return {
       transport: 'service-binding',
-      request: workflowHealthRequest(WORKFLOW_HEALTH_URL),
+      request: workflowHealthRequest(WORKFLOW_HEALTH_URL, secret),
       send: request => binding.fetch(request)
     }
   }
@@ -841,7 +843,7 @@ function buildWorkflowReadinessTarget(
 
   return {
     transport: 'fetch',
-    request: workflowHealthRequest(url),
+    request: workflowHealthRequest(url, secret),
     send: request => fetcher(request)
   }
 }
@@ -890,10 +892,13 @@ function workflowStartRequest(url: string, body: string, secret: string): Reques
   })
 }
 
-function workflowHealthRequest(url: string): Request {
+function workflowHealthRequest(url: string, secret: string): Request {
   const signal = workflowRequestSignal()
   return new Request(url, {
     method: 'GET',
+    headers: {
+      authorization: `Bearer ${secret}`
+    },
     ...(signal ? { signal } : {})
   })
 }
@@ -965,7 +970,17 @@ function readinessWorker(body: Record<string, unknown>): AgencyWorkflowReadiness
     ...(typeof body.enabled === 'boolean' ? { enabled: body.enabled } : {}),
     ...(Array.isArray(body.workflows) ? { workflows: body.workflows } : {}),
     ...(typeof capabilities?.browserRenderingApiConfigured === 'boolean'
-      ? { capabilities: { browserRenderingApiConfigured: capabilities.browserRenderingApiConfigured } }
+      || typeof capabilities?.browserRenderingApiAuthenticated === 'boolean'
+      ? {
+          capabilities: {
+            ...(typeof capabilities?.browserRenderingApiConfigured === 'boolean'
+              ? { browserRenderingApiConfigured: capabilities.browserRenderingApiConfigured }
+              : {}),
+            ...(typeof capabilities?.browserRenderingApiAuthenticated === 'boolean'
+              ? { browserRenderingApiAuthenticated: capabilities.browserRenderingApiAuthenticated }
+              : {})
+          }
+        }
       : {})
   }
 }

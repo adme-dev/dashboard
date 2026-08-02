@@ -110,6 +110,22 @@ pnpm readiness:agency-workflows
 The readiness response may expose booleans and workflow names, but never account
 IDs, bucket/index names, tokens, or secrets.
 
+The Site Intelligence readiness route performs an authenticated, no-job Browser
+Rendering probe against the documented crawl endpoint. It deliberately submits
+an empty JSON body: only HTTP 400 with Cloudflare's expected missing/invalid URL
+validation error proves the request reached validation. Authentication errors,
+unrelated 400s, rate limits, timeouts, network failures, and server responses all
+fail readiness closed. The two-second probe never supplies a URL and cannot
+start a crawl job.
+
+If readiness reports `browserRenderingApi: false` while the two secrets are
+present, rotate `BROWSER_RENDERING_API_TOKEN`. Create a custom Cloudflare API
+token scoped to the pilot account with `Browser Rendering - Edit`, avoid an IP
+restriction the Worker egress cannot satisfy, then replace the Worker secret
+through the interactive command above. Never paste the token into shell history,
+tracked environment files, tickets, or logs. A crawl 401 is permanent and must
+not be retried until the credential is replaced.
+
 ## Gate 5 — verify Pages bindings without deploying
 
 The production Pages configuration must contain bindings named exactly:
@@ -168,9 +184,11 @@ Do not deploy `pages-cron` yet. Authenticate as an owner/admin and call:
 GET /api/agency/site-intelligence/readiness
 ```
 
-Expected before activation: every infrastructure boolean is true and only
-`featureEnabled` is false. If AI remains disabled, `aiEnabled` may be false;
-`workersAi` and `vectorize` must still report their actual binding state.
+Expected before activation: every required infrastructure boolean is true and
+only `featureEnabled` is false. `browserRenderingApi` means the credential passed
+the authenticated no-job probe, not merely that a secret exists. If AI remains
+disabled, `aiEnabled` may be false; `workersAi` and `vectorize` must still report
+their actual binding state.
 
 ## Gate 8 — activate manual-only pilot and smoke both lanes
 

@@ -1,6 +1,9 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
+import { NonRetryableError } from 'cloudflare:workflows'
 import {
+  CloudflareCrawlError,
+  checkCloudflareCrawlAccess,
   getCloudflareCrawlRecords,
   getCloudflareCrawlStatus,
   startCloudflareCrawl
@@ -38,6 +41,7 @@ import {
 } from './contracts'
 
 type JsonRecord = Record<string, unknown>
+const BROWSER_RENDERING_AUTH_FAILURE_SUMMARY = 'Browser Rendering authentication failed'
 interface CrawlWorkflowSettings {
   origin: string
   discoveryMode: 'all' | 'sitemaps' | 'links'
@@ -278,25 +282,37 @@ export class SiteIntelligenceCrawlWorkflow extends WorkflowEntrypoint<AgencyWork
     const settings = run.settings
     let started: Awaited<ReturnType<typeof startCloudflareCrawl>>
     try {
-      started = await step.do('start Browser Run crawl', async () => startCloudflareCrawl(browserEnv, {
-        url: String(settings.origin),
-        source: settings.discoveryMode as 'all' | 'sitemaps' | 'links',
-        formats: ['html', 'markdown'],
-        render: settings.renderMode === 'browser',
-        limit: Number(settings.pageLimit),
-        depth: Number(settings.depth),
-        crawlPurposes: settings.crawlPurposes as Array<'search' | 'ai-input'>,
-        includePatterns: settings.includePatterns as string[],
-        excludePatterns: settings.excludePatterns as string[],
-        includeSubdomains: Boolean(settings.includeSubdomains)
-      }))
+      started = await step.do('start Browser Run crawl', async () => {
+        try {
+          return await startCloudflareCrawl(browserEnv, {
+            url: String(settings.origin),
+            source: settings.discoveryMode as 'all' | 'sitemaps' | 'links',
+            formats: ['html', 'markdown'],
+            render: settings.renderMode === 'browser',
+            limit: Number(settings.pageLimit),
+            depth: Number(settings.depth),
+            crawlPurposes: settings.crawlPurposes as Array<'search' | 'ai-input'>,
+            includePatterns: settings.includePatterns as string[],
+            excludePatterns: settings.excludePatterns as string[],
+            includeSubdomains: Boolean(settings.includeSubdomains)
+          })
+        } catch (error) {
+          if (
+            error instanceof CloudflareCrawlError
+            && (error.status === 401 || error.status === 403)
+          ) {
+            throw new NonRetryableError(BROWSER_RENDERING_AUTH_FAILURE_SUMMARY)
+          }
+          throw error
+        }
+      })
     } catch (error) {
       const failure = {
         clientId: payload.clientId,
         domainId: payload.domainId,
         status: 'failed' as const,
         errorCategory: 'browser_run',
-        errorSummary: safeCrawlWorkflowError(error)
+        errorSummary: safeCrawlWorkflowError(error, [browserEnv.apiToken])
       }
       await step.do('complete failed crawl run', async () => {
         await workflowCallback(this.env, `/api/internal/workflows/site-intelligence/runs/${payload.runId}/complete`, failure)
@@ -380,11 +396,22 @@ export class SiteIntelligenceCrawlWorkflow extends WorkflowEntrypoint<AgencyWork
   }
 }
 
-function safeCrawlWorkflowError(error: unknown): string {
-  const candidate = error && typeof error === 'object' && 'safeSummary' in error
-    ? String(error.safeSummary || '')
-    : ''
-  return candidate
+function safeCrawlWorkflowError(error: unknown, secrets: string[] = []): string {
+  const serializedCrawlError = error && typeof error === 'object'
+    && (error as { name?: unknown }).name === 'CloudflareCrawlError'
+    && typeof (error as { safeSummary?: unknown }).safeSummary === 'string'
+  const candidate = error instanceof CloudflareCrawlError
+    ? error.safeSummary
+    : serializedCrawlError
+      ? String((error as { safeSummary: string }).safeSummary)
+      : error instanceof Error && error.message === BROWSER_RENDERING_AUTH_FAILURE_SUMMARY
+        ? BROWSER_RENDERING_AUTH_FAILURE_SUMMARY
+        : ''
+  let safe = candidate
+  for (const secret of secrets) {
+    if (secret) safe = safe.split(secret).join('[redacted]')
+  }
+  return safe
     .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, 'Bearer [redacted]')
     .replace(/\s+/g, ' ')
     .trim()
@@ -431,17 +458,27 @@ export async function handleAgencyWorkflowsFetch(request: Request, env: AgencyWo
   const url = new URL(request.url)
 
   if (request.method === 'GET' && url.pathname === '/health') {
+    const authResponse = requireServiceAuth(request, env)
+    if (authResponse) return authResponse
     const workflows = workflowHealth(env)
+    const browserRenderingApiConfigured = Boolean(
+      env.CLOUDFLARE_ACCOUNT_ID?.trim()
+      && env.BROWSER_RENDERING_API_TOKEN?.trim()
+    )
+    const browserRenderingApiAuthenticated = browserRenderingApiConfigured
+      ? await checkCloudflareCrawlAccess({
+          accountId: env.CLOUDFLARE_ACCOUNT_ID!,
+          apiToken: env.BROWSER_RENDERING_API_TOKEN!
+        })
+      : false
     return json({
       ok: workflows.every(workflow => workflow.bindingConfigured),
       worker: 'agency-workflows',
       enabled: workflowFeatureEnabled(env),
       workflows,
       capabilities: {
-        browserRenderingApiConfigured: Boolean(
-          env.CLOUDFLARE_ACCOUNT_ID?.trim()
-          && env.BROWSER_RENDERING_API_TOKEN?.trim()
-        )
+        browserRenderingApiConfigured,
+        browserRenderingApiAuthenticated
       }
     })
   }

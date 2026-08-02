@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
   const featureEnabled = flag(env, 'SITE_INTELLIGENCE_ENABLED')
   const aiEnabled = flag(env, 'SITE_INTELLIGENCE_AI_ENABLED')
   const workflowService = workflow.ok === true
-  const browserRenderingApi = workflow.worker?.capabilities?.browserRenderingApiConfigured === true
+  const browserRenderingApi = workflow.worker?.capabilities?.browserRenderingApiAuthenticated === true
   const r2 = hasMethods(env.SITE_INTELLIGENCE_BUCKET, ['put', 'get', 'delete'])
   const queue = hasMethods(env.JOBS_QUEUE, ['send'])
   const workersAi = hasMethods(env.AI, ['run'])

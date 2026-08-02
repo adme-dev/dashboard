@@ -10,6 +10,10 @@ vi.mock('cloudflare:workers', () => ({
   }
 }))
 
+vi.mock('cloudflare:workflows', () => ({
+  NonRetryableError: class extends Error {}
+}))
+
 const {
   handleAgencyWorkflowsFetch
 } = await import('../../workers/agency-workflows/src/index')
@@ -44,9 +48,20 @@ function workflowEnv(overrides: Record<string, unknown> = {}) {
 }
 
 describe('agency workflows worker fetch handler', () => {
-  it('advertises the publishing and inbox automation workflows in health', async () => {
+  it('protects health capability checks with the service credential', async () => {
     const response = await handleAgencyWorkflowsFetch(
       new Request('https://agency-workflows.example.com/health'),
+      workflowEnv() as never
+    )
+
+    expect(response.status).toBe(401)
+  })
+
+  it('advertises the publishing and inbox automation workflows in health', async () => {
+    const response = await handleAgencyWorkflowsFetch(
+      new Request('https://agency-workflows.example.com/health', {
+        headers: { authorization: 'Bearer workflow-secret' }
+      }),
       workflowEnv() as never
     )
 
@@ -68,7 +83,9 @@ describe('agency workflows worker fetch handler', () => {
 
   it('reports degraded health when a workflow binding is missing', async () => {
     const response = await handleAgencyWorkflowsFetch(
-      new Request('https://agency-workflows.example.com/health'),
+      new Request('https://agency-workflows.example.com/health', {
+        headers: { authorization: 'Bearer workflow-secret' }
+      }),
       workflowEnv({ SOCIAL_INBOX_AUTOMATION_WORKFLOW: undefined }) as never
     )
 
