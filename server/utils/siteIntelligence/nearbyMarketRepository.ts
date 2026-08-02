@@ -83,6 +83,14 @@ export interface UpsertNearbyMarketCandidateInput {
   reviewedByUserId: string | null
 }
 
+export interface NominateNearbyMarketCandidateInput {
+  marketLocationId: string
+  googlePlaceId: string
+  radiusKmAtDecision: NearbyMarketRadius
+  nominationReason: string
+  nominatedByClientUserId: string
+}
+
 export interface NearbyMarketCandidateDecisionUpdate {
   marketLocationId: string
   googlePlaceId: string
@@ -338,6 +346,45 @@ export async function listNearbyMarketNominations(
     approvedDomainId: row.approved_domain_id,
     updatedAt: iso(row.updated_at)!
   }))
+}
+
+export async function nominateNearbyMarketCandidate(
+  clientId: string,
+  input: NominateNearbyMarketCandidateInput,
+  executor: NearbyMarketExecutor
+): Promise<PersistedNearbyMarketCandidate> {
+  const result = await executor.query<SiteIntelligenceCandidateRow>(`
+    INSERT INTO site_intelligence_candidates (
+      client_id, market_location_id, google_place_id, state, source,
+      approved_domain_id, radius_km_at_decision, nomination_reason, nominated_at,
+      nominated_by_client_user_id, agency_review_reason, reviewed_at, reviewed_by_user_id
+    ) VALUES ($1, $2, $3, 'nominated', 'client_portal', NULL, $4, $5, NOW(), $6, NULL, NULL, NULL)
+    ON CONFLICT (client_id, market_location_id, google_place_id)
+    DO UPDATE SET
+      state = 'nominated',
+      source = 'client_portal',
+      approved_domain_id = NULL,
+      radius_km_at_decision = EXCLUDED.radius_km_at_decision,
+      nomination_reason = EXCLUDED.nomination_reason,
+      nominated_at = NOW(),
+      nominated_by_client_user_id = EXCLUDED.nominated_by_client_user_id,
+      agency_review_reason = NULL,
+      reviewed_at = NULL,
+      reviewed_by_user_id = NULL,
+      updated_at = NOW()
+    WHERE site_intelligence_candidates.client_id = $1
+    RETURNING *
+  `, [
+    clientId,
+    input.marketLocationId,
+    input.googlePlaceId,
+    input.radiusKmAtDecision,
+    input.nominationReason,
+    input.nominatedByClientUserId
+  ])
+  const row = result.rows[0]
+  if (!row) throw new Error('Nearby market candidate nomination returned no row')
+  return mapCandidate(row)
 }
 
 export async function upsertNearbyMarketCandidate(
