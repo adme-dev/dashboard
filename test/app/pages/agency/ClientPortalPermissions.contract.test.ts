@@ -15,13 +15,18 @@ describe('agency client portal nomination permission contract', () => {
     expect(page).toMatch(/portalUserModules[\s\S]*Competitor nominations/)
     expect(page.match(/v-model="inviteForm\.permissions\.canNominateCompetitors"/g)).toHaveLength(1)
     expect(page.match(/v-model="accessForm\.permissions\.canNominateCompetitors"/g)).toHaveLength(1)
+    expect(page).toMatch(/inviteClientUser[\s\S]*resetInviteForm\(clientId/)
+    expect(page).toMatch(/closeInviteModal/)
   })
 
   it('keeps all defaults and standard presets disabled until explicitly enabled', () => {
     const page = source()
+    const defaults = readFileSync('app/utils/clientPortalInviteForm.ts', 'utf8')
+    const presets = page.slice(page.indexOf('const invitePermissionPresets'), page.indexOf('const selectedInviteClient'))
 
     expect(page).toMatch(/canNominateCompetitors:\s*Boolean\(user\.permissions\?\.canNominateCompetitors\)/)
-    expect(page.match(/canNominateCompetitors:\s*false/g)?.length).toBeGreaterThanOrEqual(6)
-    expect(page).not.toMatch(/canNominateCompetitors:\s*true/)
+    expect(presets.match(/canNominateCompetitors:\s*false/g)).toHaveLength(3)
+    expect(presets).not.toMatch(/canNominateCompetitors:\s*true/)
+    expect(defaults).toMatch(/canNominateCompetitors:\s*false/)
   })
 })

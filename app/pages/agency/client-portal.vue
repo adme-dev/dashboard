@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { format } from 'date-fns'
 import { navigateToPortalDocument } from '~/utils/portalAgencyAccessNavigation'
+import { createClientPortalInviteForm } from '~/utils/clientPortalInviteForm'
 import { useAuthenticatedFetch } from '~/composables/useAuthenticatedFetch'
 
 definePageMeta({
@@ -1267,7 +1268,7 @@ const portalUserModules = (user: PortalUser) => [
 ]
 
 const inviteClientUser = (clientId?: string | null) => {
-  inviteForm.value.clientId = clientId || null
+  resetInviteForm(clientId || null)
   showInviteModal.value = true
 }
 
@@ -1496,24 +1497,7 @@ const formatActivityAction = (action: string) => {
 
 // Invite slideover
 const showInviteModal = ref(false)
-const inviteForm = ref({
-  clientId: null as string | null,
-  email: '',
-  name: '',
-  permissions: {
-    canViewProjects: true,
-    canViewInvoices: true,
-    canApproveWork: false,
-    canViewTimeEntries: false,
-    canViewBudgets: false,
-    canViewAnalytics: true,
-    canNominateCompetitors: false,
-    canSubmitRequests: true,
-    canViewCrm: true,
-    canEditCrm: false,
-    canAdminCrm: false
-  }
-})
+const inviteForm = ref(createClientPortalInviteForm())
 const invitePermissionPresets = [
   {
     label: 'Executive',
@@ -1748,25 +1732,17 @@ const sendRequestReply = async () => {
   }
 }
 
-const resetInviteForm = () => {
-  inviteForm.value = {
-    clientId: null,
-    email: '',
-    name: '',
-    permissions: {
-      canViewProjects: true,
-      canViewInvoices: true,
-      canApproveWork: false,
-      canViewTimeEntries: false,
-      canViewBudgets: false,
-      canViewAnalytics: true,
-      canNominateCompetitors: false,
-      canSubmitRequests: true,
-      canViewCrm: true,
-      canEditCrm: false,
-      canAdminCrm: false
-    }
-  }
+function resetInviteForm(clientId: string | null = null) {
+  inviteForm.value = createClientPortalInviteForm(clientId)
+}
+
+function closeInviteModal() {
+  showInviteModal.value = false
+  resetInviteForm()
+}
+
+function handleInviteModalOpen(open: boolean) {
+  if (!open) resetInviteForm()
 }
 
 // User columns (v4 format)
@@ -3787,7 +3763,7 @@ const enterpriseRollout = [
     </UDashboardPanel>
 
     <!-- Invite Slideover -->
-    <USlideover v-model:open="showInviteModal">
+    <USlideover v-model:open="showInviteModal" @update:open="handleInviteModalOpen">
       <template #header>
         <div class="flex items-start gap-3">
           <div class="size-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
@@ -4004,7 +3980,7 @@ const enterpriseRollout = [
             color="neutral"
             label="Cancel"
             size="lg"
-            @click="showInviteModal = false"
+            @click="closeInviteModal"
           />
           <UButton
             color="primary"

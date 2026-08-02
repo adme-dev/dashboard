@@ -15,9 +15,20 @@ const candidates: NearbyMarketCandidate[] = [{
   approvedDomainId: null,
   portalState: 'suggested'
 }, {
+  placeId: 'review-place',
+  displayName: 'Review Ford',
+  formattedAddress: '3 Dealer Road, Melbourne VIC',
+  location: { latitude: -37.825, longitude: 144.975 },
+  distanceKm: 4.8,
+  category: 'franchise_new',
+  state: 'nominated',
+  source: 'client_portal',
+  approvedDomainId: null,
+  portalState: 'under_review'
+}, {
   placeId: 'monitored-place',
   displayName: 'Monitored Mazda',
-  formattedAddress: '3 Dealer Road, Melbourne VIC',
+  formattedAddress: '4 Dealer Road, Melbourne VIC',
   location: { latitude: -37.83, longitude: 144.98 },
   distanceKm: 5.3,
   category: 'franchise_new',
@@ -25,6 +36,17 @@ const candidates: NearbyMarketCandidate[] = [{
   source: 'agency',
   approvedDomainId: 'domain-1',
   portalState: 'monitored'
+}, {
+  placeId: 'not-selected-place',
+  displayName: 'Not Selected Kia',
+  formattedAddress: '5 Dealer Road, Melbourne VIC',
+  location: { latitude: -37.84, longitude: 144.99 },
+  distanceKm: 6.4,
+  category: 'franchise_new',
+  state: 'dismissed',
+  source: 'agency',
+  approvedDomainId: null,
+  portalState: 'not_selected'
 }]
 
 const mapInstances: FakeMap[] = []
@@ -158,12 +180,17 @@ describe('NearbyMarketMap', () => {
     try {
       expect(mapInstances[0]?.options).toMatchObject({ mapId: 'market-map-id' })
       expect(circleInstances[0]?.options).toMatchObject({ radius: 25_000 })
-      expect(markerInstances).toHaveLength(3)
+      expect(markerInstances).toHaveLength(5)
       const saved = markerInstances.find(marker => marker.options.title.includes('Saved Toyota'))!
+      const review = markerInstances.find(marker => marker.options.title.includes('Review Ford'))!
       const monitored = markerInstances.find(marker => marker.options.title.includes('Monitored Mazda'))!
+      const notSelected = markerInstances.find(marker => marker.options.title.includes('Not Selected Kia'))!
       expect(saved.options.gmpClickable).toBe(true)
-      expect(saved.options.title).toMatch(/Saved Toyota.*Saved/i)
+      expect(saved.options.title).toMatch(/Saved Toyota.*Suggested/i)
+      expect(saved.options.content.getAttribute('aria-label')).toMatch(/Suggested/)
+      expect(review.options.title).toMatch(/Review Ford.*Under review/i)
       expect(monitored.options.title).toMatch(/Monitored Mazda.*Monitored/i)
+      expect(notSelected.options.title).toMatch(/Not Selected Kia.*Not selected/i)
 
       monitored.trigger('click')
       await flushUi()
@@ -172,6 +199,23 @@ describe('NearbyMarketMap', () => {
       expect(selected.value).toBe('monitored-place')
       expect((monitored.options.content as HTMLElement).dataset.selected).toBe('true')
       expect(mapInstances[0]?.panTo).toHaveBeenCalledWith({ lat: -37.83, lng: 144.98 })
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('pans and highlights a list-driven selection without stealing focus into the map', async () => {
+    const { app, selected } = await mountMap()
+    const listControl = document.createElement('button')
+    document.body.appendChild(listControl)
+    listControl.focus()
+    try {
+      selected.value = 'monitored-place'
+      await flushUi()
+
+      expect(mapInstances[0]?.panTo).toHaveBeenCalledWith({ lat: -37.83, lng: 144.98 })
+      expect(document.activeElement).toBe(listControl)
+      expect(markerInstances.find(marker => marker.options.title.includes('Monitored Mazda'))?.options.content.dataset.selected).toBe('true')
     } finally {
       app.unmount()
     }

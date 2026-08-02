@@ -2,7 +2,6 @@
 import type { ComponentPublicInstance } from 'vue'
 import type {
   DealerCategory,
-  NearbyMarketCandidate,
   NearbyMarketRadius,
   PortalCandidateState
 } from '~/types/site-intelligence'
@@ -36,6 +35,7 @@ interface PortalMarketResponse {
 
 const radiusKm = ref<NearbyMarketRadius>(25)
 const includeUsedIndependent = ref(false)
+const monitoringStatus = ref<PortalCandidateState | 'all'>('all')
 const data = ref<PortalMarketResponse | null>(null)
 const loading = ref(false)
 const loadError = ref('')
@@ -43,6 +43,7 @@ const selectedPlaceId = ref<string | null>(null)
 const nominationOpen = ref(false)
 const nominationCandidate = ref<PortalMarketCandidate | null>(null)
 const rowElements = new Map<string, HTMLElement>()
+const selectionOrigin = ref<'list' | 'map'>('list')
 let requestGeneration = 0
 
 const radiusOptions: Array<{ label: string, value: NearbyMarketRadius }> = [
@@ -50,8 +51,14 @@ const radiusOptions: Array<{ label: string, value: NearbyMarketRadius }> = [
   { label: '25 km', value: 25 },
   { label: '50 km', value: 50 }
 ]
+const monitoringStatusOptions: Array<{ label: string, value: PortalCandidateState | 'all' }> = [
+  { label: 'All current suggestions', value: 'all' },
+  { label: 'Suggested', value: 'suggested' },
+  { label: 'Under review', value: 'under_review' },
+  { label: 'Monitored', value: 'monitored' },
+  { label: 'Not selected', value: 'not_selected' }
+]
 const candidates = computed(() => data.value?.candidates || [])
-const mapCandidates = computed(() => candidates.value as unknown as NearbyMarketCandidate[])
 
 const statePresentation: Record<PortalCandidateState, { label: string, color: 'neutral' | 'warning' | 'success' }> = {
   suggested: { label: 'Suggested', color: 'neutral' },
@@ -77,11 +84,13 @@ function setRowRef(placeId: string, value: Element | ComponentPublicInstance | n
   else rowElements.delete(placeId)
 }
 
-function selectCandidate(placeId: string) {
+function selectCandidate(placeId: string, origin: 'list' | 'map' = 'list') {
+  selectionOrigin.value = origin
+  if (origin === 'map' && selectedPlaceId.value === placeId) void focusCandidateRow(placeId)
   selectedPlaceId.value = placeId
 }
 
-watch(selectedPlaceId, async (placeId) => {
+async function focusCandidateRow(placeId: string) {
   if (!placeId) return
   await nextTick()
   const row = rowElements.get(placeId)
@@ -89,18 +98,29 @@ watch(selectedPlaceId, async (placeId) => {
   if (row && !row.contains(document.activeElement)) {
     row.querySelector<HTMLElement>('[data-select-candidate]')?.focus()
   }
+}
+
+watch(selectedPlaceId, (placeId) => {
+  if (!placeId || selectionOrigin.value !== 'map') return
+  void focusCandidateRow(placeId)
 })
 
 async function loadMarket() {
   const generation = ++requestGeneration
+  const query = {
+    radiusKm: radiusKm.value,
+    includeUsedIndependent: includeUsedIndependent.value,
+    monitoringStatus: monitoringStatus.value === 'all' ? undefined : monitoringStatus.value
+  }
   loading.value = true
   loadError.value = ''
+  data.value = null
+  selectedPlaceId.value = null
+  nominationOpen.value = false
+  nominationCandidate.value = null
   try {
     const response = await $fetch<PortalMarketResponse>('/api/client-portal/site-intelligence/nearby-market', {
-      query: {
-        radiusKm: radiusKm.value,
-        includeUsedIndependent: includeUsedIndependent.value
-      }
+      query
     })
     if (generation !== requestGeneration) return
     data.value = response
@@ -129,6 +149,13 @@ function setRadius(value: NearbyMarketRadius) {
 function toggleDealerCategories(value: boolean | 'indeterminate') {
   includeUsedIndependent.value = value === true
   void loadMarket()
+}
+
+function setMonitoringStatus(value: unknown) {
+  if (value === 'all' || ['suggested', 'under_review', 'monitored', 'not_selected'].includes(String(value))) {
+    monitoringStatus.value = value as PortalCandidateState | 'all'
+    void loadMarket()
+  }
 }
 
 function openNomination(candidate: PortalMarketCandidate) {
@@ -168,7 +195,7 @@ onMounted(loadMarket)
         description="Contact your agency to request competitor nomination access."
       />
 
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:items-end">
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end lg:grid-cols-3">
         <UFormField label="Discovery radius">
           <div class="flex flex-wrap gap-2" role="group" aria-label="Discovery radius">
             <UButton
@@ -187,6 +214,15 @@ onMounted(loadMarket)
             :model-value="includeUsedIndependent"
             label="Include used and independent dealers"
             @update:model-value="toggleDealerCategories"
+          />
+        </UFormField>
+        <UFormField label="Monitoring status">
+          <USelectMenu
+            :model-value="monitoringStatus"
+            class="w-full"
+            :items="monitoringStatusOptions"
+            value-key="value"
+            @update:model-value="setMonitoringStatus"
           />
         </UFormField>
       </div>
@@ -316,10 +352,10 @@ onMounted(loadMarket)
         <div class="min-w-0">
           <NearbyMarketMap
             :center="data.marketLocation.location"
-            :radius-km="radiusKm"
-            :candidates="mapCandidates"
+            :radius-km="data.radiusKm"
+            :candidates="candidates"
             :selected-place-id="selectedPlaceId"
-            @select="selectCandidate"
+            @select="selectCandidate($event, 'map')"
           />
         </div>
       </div>
@@ -330,7 +366,7 @@ onMounted(loadMarket)
     v-model:open="nominationOpen"
     :candidate="nominationCandidate"
     :market-location-id="data?.marketLocation?.id || null"
-    :radius-km="radiusKm"
+    :radius-km="data?.radiusKm || radiusKm"
     @nominated="markNominated"
   />
 </template>

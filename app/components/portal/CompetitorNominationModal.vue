@@ -30,7 +30,7 @@ async function submitNomination() {
   submitting.value = true
   submitError.value = ''
   try {
-    await $fetch(`/api/client-portal/site-intelligence/candidates/${candidate.placeId}/nominate`, {
+    await $fetch(`/api/client-portal/site-intelligence/candidates/${encodeURIComponent(candidate.placeId)}/nominate`, {
       method: 'POST',
       body: {
         marketLocationId,

@@ -45,13 +45,17 @@ describe('client portal nearby market contract', () => {
     expect(panel).toMatch(/Not selected/)
     expect(panel).toMatch(/canNominateCompetitors/)
     expect(panel).toMatch(/Contact your agency/)
+    expect(panel).toMatch(/UFormField[\s\S]*Monitoring status[\s\S]*USelectMenu/)
+    expect(panel).toMatch(/value:\s*'not_selected'/)
+    expect(panel).toMatch(/monitoringStatus/)
+    expect(panel).not.toMatch(/as unknown as NearbyMarketCandidate/)
 
     expect(modal).toMatch(/UModal/)
     expect(modal).toMatch(/UFormField[\s\S]*Reason[\s\S]*UTextarea/)
     expect(modal).toMatch(/maxlength="1000"/)
     expect(modal).toMatch(/reason\.value\.trim\(\)/)
     expect(modal).toMatch(/nomination does not start indexing/i)
-    expect(modal).toMatch(/\/api\/client-portal\/site-intelligence\/candidates\/\$\{candidate\.placeId\}\/nominate/)
+    expect(modal).toMatch(/encodeURIComponent\(candidate\.placeId\)/)
     expect(modal).toMatch(/marketLocationId[\s\S]*radiusKm[\s\S]*reason/)
 
     expect(portalUi).not.toMatch(/Review website|Manual website|Provider diagnostics|Crawler settings|Approve & index|Save for later|Dismiss|Retry crawl|agencyReviewReason|raw provider error/i)

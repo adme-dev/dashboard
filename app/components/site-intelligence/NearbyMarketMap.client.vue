@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { NearbyMarketCandidate, NearbyMarketRadius } from '~/types/site-intelligence'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { NearbyMarketCandidate, NearbyMarketRadius, PortalCandidateState } from '~/types/site-intelligence'
 import { useGoogleMaps } from '~/composables/useGoogleMaps'
 import type { GoogleMapInstance, GoogleMapsLatLng } from '~/composables/useGoogleMaps'
+
+type NearbyMarketMapCandidate = Pick<NearbyMarketCandidate,
+  'placeId' | 'displayName' | 'location' | 'distanceKm'>
+  & Partial<Pick<NearbyMarketCandidate, 'state' | 'approvedDomainId'>>
+  & { portalState?: PortalCandidateState | null }
 
 const props = defineProps<{
   center: GoogleMapsLatLng
   radiusKm: NearbyMarketRadius
-  candidates: NearbyMarketCandidate[]
+  candidates: NearbyMarketMapCandidate[]
   selectedPlaceId: string | null
 }>()
 const emit = defineEmits<{ select: [placeId: string] }>()
@@ -28,7 +33,11 @@ const markers = new Map<string, { marker: Marker, content: HTMLElement, position
 
 const position = (point: GoogleMapsLatLng) => ({ lat: point.latitude, lng: point.longitude })
 
-function statusFor(candidate: NearbyMarketCandidate) {
+function statusFor(candidate: NearbyMarketMapCandidate) {
+  if (candidate.portalState === 'suggested') return { label: 'Suggested', icon: '•', tone: 'bg-primary text-inverted' }
+  if (candidate.portalState === 'under_review') return { label: 'Under review', icon: '!', tone: 'bg-warning text-inverted' }
+  if (candidate.portalState === 'monitored') return { label: 'Monitored', icon: '✓', tone: 'bg-success text-inverted' }
+  if (candidate.portalState === 'not_selected') return { label: 'Not selected', icon: '×', tone: 'bg-muted text-muted' }
   if (candidate.approvedDomainId || candidate.state === 'approved') return { label: 'Monitored', icon: '✓', tone: 'bg-success text-inverted' }
   if (candidate.state === 'saved') return { label: 'Saved', icon: '◆', tone: 'bg-info text-inverted' }
   if (candidate.state === 'nominated') return { label: 'Under review', icon: '!', tone: 'bg-warning text-inverted' }
@@ -44,7 +53,7 @@ function clearMarkers() {
   markers.clear()
 }
 
-function selectMarker(focus = true) {
+function selectMarker() {
   for (const [placeId, entry] of markers) {
     const selected = placeId === props.selectedPlaceId
     entry.content.dataset.selected = String(selected)
@@ -53,7 +62,6 @@ function selectMarker(focus = true) {
   const selected = props.selectedPlaceId ? markers.get(props.selectedPlaceId) : undefined
   if (!selected) return
   map?.panTo(selected.position)
-  if (focus) void nextTick(() => selected.content.focus())
 }
 
 function renderMarkers() {
@@ -95,7 +103,7 @@ function renderMarkers() {
       }
     })
   }
-  selectMarker(false)
+  selectMarker()
 }
 
 async function initialize() {
@@ -147,7 +155,7 @@ async function retryMap() {
 }
 
 watch(() => props.candidates, renderMarkers, { deep: true })
-watch(() => props.selectedPlaceId, () => selectMarker())
+watch(() => props.selectedPlaceId, selectMarker)
 watch(() => props.radiusKm, value => circle?.setRadius?.(value * 1000))
 watch(() => props.center, (value) => {
   const nextPosition = position(value)
