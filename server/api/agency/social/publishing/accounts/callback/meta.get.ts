@@ -5,6 +5,7 @@ import { listManagedPages, mapPagesToAccountRows, subscribePageWebhook, type Man
 import { upsertSocialAccount, markWebhookSubscribed } from '~~/server/utils/socialOAuth/store'
 import { putPending } from '~~/server/utils/socialOAuth/pending'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { logOAuthFailure } from '~~/server/utils/socialOAuth/diagnostics'
 
 const ACCOUNTS_PATH = '/agency/social/publishing/accounts'
 
@@ -35,7 +36,8 @@ export default defineEventHandler(async (event) => {
   if (!state) return fail('invalid_state')
   try {
     await requireSocialClientAccess(event, state.clientId)
-  } catch {
+  } catch (err) {
+    logOAuthFailure('meta', 'client_access_required', err, state.clientId)
     return fail('client_access_required', state.clientId)
   }
   if (!q.code) return fail('no_code')
@@ -47,14 +49,16 @@ export default defineEventHandler(async (event) => {
     const long = await exchangeForLongLivedToken(short.access_token, appId, appSecret)
     userToken = long.access_token
     if (long.expires_in) expiresAt = new Date(Date.now() + long.expires_in * 1000).toISOString()
-  } catch {
+  } catch (err) {
+    logOAuthFailure('meta', 'token_exchange_failed', err, state.clientId)
     return fail('token_exchange_failed', state.clientId)
   }
 
   let pages: ManagedPage[]
   try {
     pages = await listManagedPages(userToken)
-  } catch {
+  } catch (err) {
+    logOAuthFailure('meta', 'page_list_failed', err, state.clientId)
     return fail('page_list_failed', state.clientId)
   }
   if (!pages.length) return fail('no_pages', state.clientId)

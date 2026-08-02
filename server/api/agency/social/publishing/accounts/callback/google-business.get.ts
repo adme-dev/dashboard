@@ -14,6 +14,7 @@ import {
   getSocialOauthStateSecret
 } from '~~/server/utils/socialOAuth/env'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { logOAuthFailure } from '~~/server/utils/socialOAuth/diagnostics'
 
 const GOOGLE_BUSINESS_ACCOUNTS_PATH = '/agency/social/publishing/accounts'
 
@@ -42,7 +43,8 @@ export default defineEventHandler(async (event) => {
   if (!state || state.platform !== 'google-business') return fail('invalid_state')
   try {
     await requireSocialClientAccess(event, state.clientId)
-  } catch {
+  } catch (err) {
+    logOAuthFailure('google_business', 'client_access_required', err, state.clientId)
     return fail('client_access_required', state.clientId)
   }
   if (!q.code) return fail('no_code', state.clientId)
@@ -61,7 +63,8 @@ export default defineEventHandler(async (event) => {
     accessToken = token.access_token
     refreshToken = token.refresh_token || null
     expiresAt = new Date(Date.now() + (token.expires_in || 3600) * 1000).toISOString()
-  } catch {
+  } catch (err) {
+    logOAuthFailure('google_business', 'token_exchange_failed', err, state.clientId)
     return fail('token_exchange_failed', state.clientId)
   }
 

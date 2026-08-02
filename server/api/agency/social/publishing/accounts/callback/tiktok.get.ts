@@ -13,6 +13,7 @@ import {
   getTikTokContentOAuthConfig
 } from '~~/server/utils/socialOAuth/env'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { logOAuthFailure } from '~~/server/utils/socialOAuth/diagnostics'
 
 const TIKTOK_ACCOUNTS_PATH = '/agency/social/publishing/accounts'
 
@@ -41,7 +42,8 @@ export default defineEventHandler(async (event) => {
   if (!state || state.platform !== 'tiktok') return fail('invalid_state')
   try {
     await requireSocialClientAccess(event, state.clientId)
-  } catch {
+  } catch (err) {
+    logOAuthFailure('tiktok', 'client_access_required', err, state.clientId)
     return fail('client_access_required', state.clientId)
   }
   if (!q.code) return fail('no_code', state.clientId)
@@ -60,7 +62,8 @@ export default defineEventHandler(async (event) => {
     accessToken = token.access_token
     refreshToken = token.refresh_token || null
     expiresAt = new Date(Date.now() + (token.expires_in || 86_400) * 1000).toISOString()
-  } catch {
+  } catch (err) {
+    logOAuthFailure('tiktok', 'tiktok_token_exchange_failed', err, state.clientId)
     return fail('tiktok_token_exchange_failed', state.clientId)
   }
 
