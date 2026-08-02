@@ -82,6 +82,22 @@ describe('auth middleware internal bearer endpoints', () => {
     expect(validateSession).not.toHaveBeenCalled()
   })
 
+  it.each([
+    '/api/agency/workflows/readiness',
+    '/api/agency/workflows/status',
+    '/api/agency/social/publishing/workflows/readiness'
+  ])('lets the self-authenticating workflow diagnostic %s reach its inline guard', async (pathname) => {
+    await expect(handler(fakeEvent(pathname))).resolves.toBeUndefined()
+    expect(validateSession).not.toHaveBeenCalled()
+  })
+
+  it('does not broaden the workflow diagnostic bypass to mutation routes', async () => {
+    await expect(handler(fakeEvent('/api/agency/workflows/start'))).rejects.toMatchObject({
+      statusCode: 401,
+      statusMessage: 'Authentication required'
+    })
+  })
+
   it('still requires a session for normal API routes', async () => {
     await expect(handler(fakeEvent('/api/agency/social/spend'))).rejects.toMatchObject({
       statusCode: 401,

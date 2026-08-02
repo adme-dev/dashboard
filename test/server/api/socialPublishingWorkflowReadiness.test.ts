@@ -166,4 +166,22 @@ describe('agency workflow readiness endpoints', () => {
     expect(mockCheckAgencyWorkflowReadiness).toHaveBeenCalledWith(event)
     expect(result).toMatchObject({ ok: true, status: 'ready' })
   })
+
+  it.each([
+    ['canonical', agencyWorkflowReadiness],
+    ['compatibility', publishingWorkflowReadiness]
+  ])('rejects an invalid smoke secret at the %s handler boundary', async (_label, endpoint) => {
+    process.env.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET = 'machine-secret'
+    mockRequireRole.mockRejectedValue(Object.assign(new Error('Authentication required'), {
+      statusCode: 401
+    }))
+    const event: TestEvent = {
+      context: {},
+      headers: { 'x-workflow-smoke-secret': 'wrong-secret' }
+    }
+
+    await expect(endpoint(event)).rejects.toMatchObject({ statusCode: 401 })
+    expect(mockRequireRole).toHaveBeenCalledWith(event, ['owner', 'admin'])
+    expect(mockCheckAgencyWorkflowReadiness).not.toHaveBeenCalled()
+  })
 })
