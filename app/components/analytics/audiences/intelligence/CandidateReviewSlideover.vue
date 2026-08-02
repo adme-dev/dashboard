@@ -47,9 +47,17 @@ const hasCurrentValidation = computed(() => Boolean(
 ))
 const canApprove = computed(() => (
   reviewerReason.value.trim().length >= 10
-  && !props.review?.existingDomainId
-  && (hasCurrentValidation.value || manualWebsiteValid.value)
+  && (
+    hasCurrentValidation.value
+    || (!props.review?.existingDomainId && manualWebsiteValid.value)
+  )
   && !props.deciding
+))
+const approvalLabel = computed(() => (
+  props.review?.existingDomainId ? 'Link monitored domain' : 'Approve & index'
+))
+const approvalIcon = computed(() => (
+  props.review?.existingDomainId ? 'i-lucide-link-2' : 'i-lucide-scan-search'
 ))
 const canDismiss = computed(() => reviewerReason.value.trim().length > 0 && !props.deciding)
 const crawlStartFailed = computed(() => (
@@ -67,7 +75,9 @@ function approve() {
   emit('decide', {
     action: 'approve_and_index',
     reviewerReason: reviewerReason.value.trim(),
-    ...(manualWebsite.value.trim() ? { websiteUri: manualWebsite.value.trim() } : {})
+    ...(!props.review?.existingDomainId && manualWebsite.value.trim()
+      ? { websiteUri: manualWebsite.value.trim() }
+      : {})
   })
 }
 </script>
@@ -172,11 +182,12 @@ function approve() {
               color="success"
               variant="subtle"
               title="This domain is already monitored"
-              description="Open the existing domain and crawl history instead of approving a duplicate."
+              description="Link this candidate to the monitored domain so its existing crawl history remains the single source of truth."
             />
 
             <div class="grid grid-cols-1 gap-4">
               <UFormField
+                v-if="!review.existingDomainId"
                 label="Manual website"
                 help="Use only when the provider returned no website. The server applies the same public-origin and duplicate validation."
               >
@@ -280,8 +291,8 @@ function approve() {
                 />
               </div>
               <UButton
-                label="Approve & index"
-                icon="i-lucide-scan-search"
+                :label="approvalLabel"
+                :icon="approvalIcon"
                 :loading="deciding"
                 :disabled="!canApprove"
                 @click="approve"

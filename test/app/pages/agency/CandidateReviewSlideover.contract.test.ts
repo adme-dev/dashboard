@@ -41,8 +41,18 @@ describe('agency candidate review contract', () => {
     expect(review).toMatch(/Retry crawl/)
     expect(review).toMatch(/View diagnostics/)
     expect(review).toMatch(/v-if="crawlStartFailed"[\s\S]*Retry crawl/)
-    expect(review).toMatch(/v-else[\s\S]*Approve & index/)
+    expect(review).toMatch(/v-else[\s\S]*:label="approvalLabel"/)
     expect(review.match(/label="Retry crawl"/g)).toHaveLength(1)
-    expect(review).toMatch(/template v-if="crawlStartFailed"[\s\S]*Retry crawl[\s\S]*View diagnostics[\s\S]*template v-else[\s\S]*Save for later[\s\S]*Dismiss[\s\S]*Approve & index/)
+    expect(review).toMatch(/template v-if="crawlStartFailed"[\s\S]*Retry crawl[\s\S]*View diagnostics[\s\S]*template v-else[\s\S]*Save for later[\s\S]*Dismiss[\s\S]*approvalLabel/)
+  })
+
+  it('allows an existing monitored domain to be linked to the reviewed candidate', () => {
+    const review = source()
+
+    expect(review).toMatch(/approvalLabel/)
+    expect(review).toMatch(/Link monitored domain/)
+    expect(review).toMatch(/existingDomainId[\s\S]*already monitored[\s\S]*link/i)
+    expect(review).not.toMatch(/&&\s*!props\.review\?\.existingDomainId/)
+    expect(review).toMatch(/:label="approvalLabel"/)
   })
 })
