@@ -420,7 +420,10 @@ describe('agency workflow client', () => {
       ok: true,
       worker: 'agency-workflows',
       enabled: true,
-      capabilities: { browserRenderingApiConfigured: true },
+      capabilities: {
+        browserRenderingApiConfigured: true,
+        browserRenderingApiAuthenticated: true
+      },
       workflows: [
         { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
         { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' },
@@ -449,7 +452,10 @@ describe('agency workflow client', () => {
         ok: true,
         worker: 'agency-workflows',
         enabled: true,
-        capabilities: { browserRenderingApiConfigured: true },
+        capabilities: {
+          browserRenderingApiConfigured: true,
+          browserRenderingApiAuthenticated: true
+        },
         workflows: [
           { kind: 'social.post.publish', binding: 'SOCIAL_PUBLISHING_WORKFLOW' },
           { kind: 'social.inbox.automation', binding: 'SOCIAL_INBOX_AUTOMATION_WORKFLOW' },
@@ -464,7 +470,41 @@ describe('agency workflow client', () => {
     const request = bindingFetch.mock.calls[0][0] as Request
     expect(request.url).toBe('https://agency-workflows.internal/health')
     expect(request.method).toBe('GET')
-    expect(request.headers.has('authorization')).toBe(false)
+    expect(request.headers.get('authorization')).toBe('Bearer workflow-secret')
+  })
+
+  it('keeps generic workflow readiness ready when only Browser Rendering authentication is unavailable', async () => {
+    const bindingFetch = vi.fn(async () => Response.json({
+      ok: true,
+      worker: 'agency-workflows',
+      enabled: true,
+      capabilities: {
+        browserRenderingApiConfigured: true,
+        browserRenderingApiAuthenticated: false
+      },
+      workflows: [
+        { kind: 'social.post.publish' },
+        { kind: 'social.inbox.automation' },
+        { kind: 'social.spend.review' },
+        { kind: 'brief.lifecycle.check' },
+        { kind: 'crm.followup.review' },
+        { kind: 'site.intelligence.crawl' }
+      ]
+    }))
+
+    const result = await checkAgencyWorkflowReadiness(eventWithEnv({
+      AGENCY_WORKFLOWS_ENABLED: 'true',
+      WORKFLOW_SERVICE_SECRET: 'workflow-secret',
+      AGENCY_WORKFLOWS: { fetch: bindingFetch }
+    }))
+
+    expect(result).toMatchObject({
+      ok: true,
+      status: 'ready',
+      worker: {
+        capabilities: { browserRenderingApiAuthenticated: false }
+      }
+    })
   })
 
   it('reports degraded readiness when Pages is enabled but the Worker health is disabled', async () => {

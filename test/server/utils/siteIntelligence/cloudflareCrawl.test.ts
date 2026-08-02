@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   CloudflareCrawlError,
   cancelCloudflareCrawl,
+  checkCloudflareCrawlAccess,
   getCloudflareCrawlRecords,
   getCloudflareCrawlStatus,
   startCloudflareCrawl
@@ -40,6 +41,67 @@ beforeEach(() => {
 })
 
 describe('Cloudflare Browser Run crawl client', () => {
+  it('probes the documented crawl endpoint without starting a job', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      success: false,
+      errors: [{ code: 1000, message: 'A URL is required' }]
+    }), { status: 400 }))
+
+    await expect(checkCloudflareCrawlAccess(env)).resolves.toBe(true)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://api.cloudflare.com/client/v4/accounts/account-123/browser-rendering/crawl')
+    expect(request).toMatchObject({
+      method: 'POST',
+      headers: {
+        'authorization': 'Bearer super-secret-browser-token',
+        'content-type': 'application/json'
+      },
+      body: '{}'
+    })
+  })
+
+  it.each([401, 403, 500])('fails the access probe closed on HTTP %s', async (status) => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      success: false,
+      errors: [{ code: 10000, message: 'Authentication error' }]
+    }), { status }))
+
+    await expect(checkCloudflareCrawlAccess(env)).resolves.toBe(false)
+  })
+
+  it('does not mistake a 400 authentication error for a validated credential', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      success: false,
+      errors: [{ code: 10000, message: 'Authentication error' }]
+    }), { status: 400 }))
+
+    await expect(checkCloudflareCrawlAccess(env)).resolves.toBe(false)
+  })
+
+  it('aborts a stalled access probe within its local timeout', async () => {
+    vi.useFakeTimers()
+    let signal: AbortSignal | undefined
+    fetchMock.mockImplementation(async (_url, request: RequestInit) => {
+      signal = request.signal ?? undefined
+      if (!signal) throw new Error('Probe signal is missing')
+      return await new Promise<Response>((_resolve, reject) => {
+        signal!.addEventListener('abort', () => reject(signal!.reason), { once: true })
+      })
+    })
+
+    try {
+      const probe = checkCloudflareCrawlAccess(env)
+      await vi.waitFor(() => expect(signal).toBeDefined())
+      await vi.advanceTimersByTimeAsync(5_000)
+      await expect(probe).resolves.toBe(false)
+      expect(signal?.aborted).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('starts a static, same-site crawl with explicit content purposes', async () => {
     fetchMock.mockResolvedValue(apiResponse('job-123'))
 

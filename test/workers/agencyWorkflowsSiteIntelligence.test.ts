@@ -22,6 +22,9 @@ vi.mock('cloudflare:workers', () => ({
     }
   }
 }))
+vi.mock('cloudflare:workflows', () => ({
+  NonRetryableError: class NonRetryableError extends Error {}
+}))
 
 const RUN_ID = '11111111-1111-4111-8111-111111111111'
 const DOMAIN_ID = '22222222-2222-4222-8222-222222222222'
@@ -104,13 +107,22 @@ describe('site intelligence workflow contract', () => {
 
   it('advertises and starts the crawl workflow on its own binding', async () => {
     const env = workflowEnv()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      success: false,
+      errors: [{ code: 1000, message: 'A URL is required' }]
+    }), { status: 400 })))
     const health = await handleAgencyWorkflowsFetch(
-      new Request('https://agency-workflows.example.com/health'),
+      new Request('https://agency-workflows.example.com/health', {
+        headers: { authorization: 'Bearer workflow-secret' }
+      }),
       env as never
     )
     await expect(health.json()).resolves.toMatchObject({
       ok: true,
-      capabilities: { browserRenderingApiConfigured: true },
+      capabilities: {
+        browserRenderingApiConfigured: true,
+        browserRenderingApiAuthenticated: true
+      },
       workflows: expect.arrayContaining([{
         kind: SITE_INTELLIGENCE_CRAWL_WORKFLOW_KIND,
         binding: 'SITE_INTELLIGENCE_CRAWL_WORKFLOW',
@@ -142,6 +154,30 @@ describe('site intelligence workflow contract', () => {
     expect(env.SITE_INTELLIGENCE_CRAWL_WORKFLOW.create).toHaveBeenCalledWith({
       id: `site-intel-${RUN_ID}`,
       params: payloadInput
+    })
+  })
+
+  it('fails Browser Rendering readiness closed when configured credentials are rejected', async () => {
+    const env = workflowEnv()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      success: false,
+      errors: [{ code: 10000, message: 'Authentication error' }]
+    }), { status: 401 })))
+
+    const response = await handleAgencyWorkflowsFetch(
+      new Request('https://agency-workflows.example.com/health', {
+        headers: { authorization: 'Bearer workflow-secret' }
+      }),
+      env as never
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      capabilities: {
+        browserRenderingApiConfigured: true,
+        browserRenderingApiAuthenticated: false
+      }
     })
   })
 
