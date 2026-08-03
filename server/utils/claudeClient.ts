@@ -6,6 +6,7 @@ import { createGroq } from '@ai-sdk/groq'
 import { createWorkersAI } from 'workers-ai-provider'
 import type { LanguageModel } from 'ai'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
+import { getCachedCfBinding } from '~~/server/utils/cfBindings'
 
 let client: Anthropic | null = null
 
@@ -212,7 +213,9 @@ export async function generateClaudeStructured<T extends z.ZodType>(
  */
 function gatewayBase(provider: 'anthropic' | 'groq'): string | undefined {
   const cfg = useRuntimeConfig()
-  const base = (cfg as any).aiGatewayUrl || process.env.AI_GATEWAY_URL
+  const base = runtimeConfigValue(cfg, 'aiGatewayUrl')
+    || getCachedCfBinding('AI_GATEWAY_URL')
+    || process.env.AI_GATEWAY_URL
   if (!base) return undefined
   const root = String(base)
     .replace(/\/(groq|anthropic|perplexity-ai)\/?$/, '')
@@ -220,19 +223,48 @@ function gatewayBase(provider: 'anthropic' | 'groq'): string | undefined {
   return `${root}/${provider}`
 }
 
+function runtimeConfigValue(config: ReturnType<typeof useRuntimeConfig>, key: string): string | undefined {
+  const value = (config as Record<string, unknown>)[key]
+  return typeof value === 'string' ? value : undefined
+}
+
+function gatewayAuthHeaders(gatewayUrl: string | undefined, cfg: ReturnType<typeof useRuntimeConfig>): Record<string, string> | undefined {
+  if (!gatewayUrl) return undefined
+  const token = runtimeConfigValue(cfg, 'aiGatewayAuthToken')
+    || getCachedCfBinding('AI_GATEWAY_AUTH_TOKEN')
+    || process.env.AI_GATEWAY_AUTH_TOKEN
+    || runtimeConfigValue(cfg, 'cfApiToken')
+    || getCachedCfBinding('CF_API_TOKEN')
+    || process.env.CF_API_TOKEN
+    || getCachedCfBinding('CLOUDFLARE_API_TOKEN')
+    || process.env.CLOUDFLARE_API_TOKEN
+  const bearer = typeof token === 'string' ? token.trim().replace(/^Bearer\s+/i, '') : ''
+  return bearer ? { 'cf-aig-authorization': `Bearer ${bearer}` } : undefined
+}
+
 export function getAnthropicProvider() {
   const cfg = useRuntimeConfig()
+  const baseURL = gatewayBase('anthropic')
+  const headers = gatewayAuthHeaders(baseURL, cfg)
   return createAnthropic({
-    apiKey: (cfg as any).anthropicApiKey || process.env.ANTHROPIC_API_KEY,
-    baseURL: gatewayBase('anthropic'),
+    apiKey: runtimeConfigValue(cfg, 'anthropicApiKey')
+      || getCachedCfBinding('ANTHROPIC_API_KEY')
+      || process.env.ANTHROPIC_API_KEY,
+    baseURL,
+    ...(headers ? { headers } : {})
   })
 }
 
 export function getGroqProvider() {
   const cfg = useRuntimeConfig()
+  const baseURL = gatewayBase('groq')
+  const headers = gatewayAuthHeaders(baseURL, cfg)
   return createGroq({
-    apiKey: (cfg as any).groqApiKey || process.env.GROQ_API_KEY,
-    baseURL: gatewayBase('groq'),
+    apiKey: runtimeConfigValue(cfg, 'groqApiKey')
+      || getCachedCfBinding('GROQ_API_KEY')
+      || process.env.GROQ_API_KEY,
+    baseURL,
+    ...(headers ? { headers } : {})
   })
 }
 
