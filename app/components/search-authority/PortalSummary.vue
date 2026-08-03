@@ -24,6 +24,26 @@ interface PortalSearchAuthority {
       status: string
     }>
   }
+  contentReviews: Array<{
+    id: string
+    title: string
+    status: string
+    versionNumber: number
+    updatedAt: string
+    requiresDecision: boolean
+  }>
+  outcomes: {
+    totals: {
+      measuredViews: number
+      measuredCtaHandoffs: number
+      directLeads: number
+      assistedLeads: number
+    }
+    unlinkedLeads: number
+    ga4: { available: boolean, sessions: number | null, dataThroughDate: string | null }
+    firstParty: { available: boolean }
+    limitations: string[]
+  }
   nextSteps: string[]
 }
 
@@ -55,6 +75,10 @@ function dateLabel(value: string | null): string {
 function changeLabel(value: number | null): string {
   if (value === null) return 'Comparison unavailable'
   return `${value > 0 ? '+' : ''}${value.toFixed(1)}% vs prior period`
+}
+
+function retry() {
+  void refresh()
 }
 </script>
 
@@ -92,7 +116,7 @@ function changeLabel(value: number | null): string {
           size="sm"
           color="warning"
           variant="soft"
-          @click="refresh"
+          @click="retry"
         />
       </template>
     </UAlert>
@@ -231,6 +255,103 @@ function changeLabel(value: number | null): string {
           </div>
         </UCard>
       </div>
+
+      <UCard>
+        <template #header>
+          <div>
+            <h2 class="font-semibold text-highlighted">
+              Content reviews
+            </h2>
+            <p class="mt-1 text-sm text-muted">
+              Source-backed guides and the exact version currently awaiting or carrying approval.
+            </p>
+          </div>
+        </template>
+        <div v-if="data.contentReviews.length" class="divide-y divide-default">
+          <NuxtLink
+            v-for="review in data.contentReviews"
+            :key="review.id"
+            :to="`/portal/search-authority/content/${review.id}`"
+            class="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0"
+          >
+            <div class="min-w-0">
+              <p class="truncate text-sm font-medium text-highlighted">{{ review.title }}</p>
+              <p class="mt-1 text-xs text-muted">Version {{ review.versionNumber }}</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <UBadge
+                v-if="review.requiresDecision"
+                label="Decision needed"
+                color="warning"
+                variant="subtle"
+              />
+              <UBadge :label="label(review.status)" color="neutral" variant="outline" />
+              <UIcon name="i-lucide-chevron-right" class="size-4 text-muted" />
+            </div>
+          </NuxtLink>
+        </div>
+        <p v-else class="text-sm text-muted">
+          No guide is currently ready for client review.
+        </p>
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <div>
+            <h2 class="font-semibold text-highlighted">
+              Published guide outcomes
+            </h2>
+            <p class="mt-1 text-sm text-muted">
+              Measured activity and explicit lead linkage. Unknown attribution is not estimated.
+            </p>
+          </div>
+        </template>
+        <div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg bg-elevated lg:grid-cols-4">
+          <div class="bg-default p-4">
+            <p class="text-xs text-muted">
+              Guide views
+            </p>
+            <p class="mt-1 text-xl font-semibold text-highlighted">
+              {{ data.outcomes.firstParty.available ? data.outcomes.totals.measuredViews : 'Unavailable' }}
+            </p>
+          </div>
+          <div class="bg-default p-4">
+            <p class="text-xs text-muted">
+              Dealership handoffs
+            </p>
+            <p class="mt-1 text-xl font-semibold text-highlighted">
+              {{ data.outcomes.firstParty.available ? data.outcomes.totals.measuredCtaHandoffs : 'Unavailable' }}
+            </p>
+          </div>
+          <div class="bg-default p-4">
+            <p class="text-xs text-muted">
+              Direct leads
+            </p>
+            <p class="mt-1 text-xl font-semibold text-highlighted">
+              {{ data.outcomes.totals.directLeads }}
+            </p>
+          </div>
+          <div class="bg-default p-4">
+            <p class="text-xs text-muted">
+              Assisted leads
+            </p>
+            <p class="mt-1 text-xl font-semibold text-highlighted">
+              {{ data.outcomes.totals.assistedLeads }}
+            </p>
+          </div>
+        </div>
+        <UAlert
+          v-if="!data.outcomes.ga4.available"
+          class="mt-4"
+          title="GA4 landing-page evidence unavailable"
+          description="No matching provider rows exist for this window; the dashboard does not substitute a zero."
+          color="neutral"
+          variant="subtle"
+        />
+        <p class="mt-4 text-xs text-muted">
+          {{ data.outcomes.unlinkedLeads }} leads have unknown publication linkage and remain unassigned.
+        </p>
+      </UCard>
     </template>
   </div>
 </template>

@@ -107,6 +107,14 @@ preview_bucket_name = "email-lead-quarantine-preview"
 binding = "SITE_INTELLIGENCE_BUCKET"
 bucket_name = "agency-site-intelligence"
 
+# Immutable, approved Search Authority publication objects. Pages writes only
+# through governed agency routes; the standalone public Worker has read access
+# to the same private bucket and exposes only manifest-allowlisted objects.
+[[r2_buckets]]
+binding = "SEARCH_AUTHORITY_BUCKET"
+bucket_name = "agency-search-authority-publications"
+preview_bucket_name = "agency-search-authority-publications-preview"
+
 # AI — Workers AI for embeddings and edge inference
 [ai]
 binding = "AI"

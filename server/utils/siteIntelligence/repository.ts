@@ -11,6 +11,7 @@ import type {
 import type { SiteIntelligenceDomainInput } from '~~/server/utils/siteIntelligence/contracts'
 import type { SiteIntelligenceAuditActor } from '~~/server/utils/siteIntelligence/audit'
 import type { PreparedSiteIntelligenceRecord } from '~~/server/utils/siteIntelligence/storage'
+import { reconcileSearchAuthorityTrustFindings } from '~~/server/utils/searchAuthority/trustRepository'
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { writeSiteIntelligenceAudit } from '~~/server/utils/siteIntelligence/audit'
 import { diffAutomotiveFacts } from '~~/server/utils/siteIntelligence/diff'
@@ -500,6 +501,23 @@ export async function recordSiteIntelligenceIngestBatch(
       const pageId = existing
         ? await updateSiteIntelligencePage(db, existing.id, input, record, material)
         : await insertSiteIntelligencePage(db, input, record)
+
+      if (pageId) {
+        await reconcileSearchAuthorityTrustFindings(
+          (sql, params) => db.query(sql, params),
+          {
+            clientId: input.clientId,
+            domainId: input.domainId,
+            pageId,
+            runId,
+            canonicalUrl: record.canonicalUrl,
+            observationComplete: record.status === 'completed'
+              && Boolean(record.contentHash)
+              && (record.httpStatus === null || record.httpStatus < 400),
+            findings: record.trustFindings
+          }
+        )
+      }
 
       if (!pageId || record.status !== 'completed' || !record.contentHash) continue
       if (!material) continue

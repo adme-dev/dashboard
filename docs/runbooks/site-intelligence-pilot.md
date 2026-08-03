@@ -24,6 +24,21 @@ Record these before provisioning:
 Do not add authenticated pages, robots-disallowed paths, private portals,
 personal profiles, or domains outside the approved automotive comparison set.
 
+### Knox record — 3 August 2026
+
+- Client: Knox GWM Haval (`b6d459d4-aeaa-4c78-9868-e6682a0dbc68`).
+- Owned: `https://www.knoxgwmhaval.com.au`, domain
+  `6c4ab974-8af3-4ec3-b996-5ea8aa131aee`, active, manual-only, 90-day retention.
+- Competitor: `https://www.lilydalegwm.com.au`, domain
+  `d58df6dc-a640-4e5d-9428-22c2c4704e0c`, active, manual-only, 30-day retention.
+- Four owned crawl attempts exist; zero collected pages. The latest run is
+  `failed` with safe category `browser_run`.
+- No competitor crawl has passed. Keep the competitor lane untouched until the
+  Browser Rendering no-job probe passes and Knox is observed first.
+
+This is a blocked production gate, not a successful pilot smoke. Do not enable
+scheduled collection or infer a healthy empty result.
+
 ## Gate 1 — verify code and immutable deployment target
 
 From the repository root:

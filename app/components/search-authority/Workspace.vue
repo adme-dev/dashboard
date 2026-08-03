@@ -3,13 +3,16 @@ import { parseDate, type DateValue } from '@internationalized/date'
 import type {
   SearchAuthorityLifecycleStatus,
   SearchAuthorityOpportunity,
-  SearchAuthorityOverview
+  SearchAuthorityOverview,
+  SearchAuthorityTrustFinding,
+  SearchAuthorityTrustResponse
 } from '~/types'
 import { normalizeSearchAuthorityWindow } from '~/utils/searchAuthorityWindow'
 
 interface ClientOption {
   id: string
   name: string
+  siteId: string
 }
 
 interface Workspace {
@@ -48,7 +51,8 @@ interface TaskLabel {
 }
 
 interface PendingTaskLink {
-  opportunityId: string
+  source: 'opportunity' | 'finding'
+  sourceId: string
   task: { id: string, title: string }
 }
 
@@ -66,6 +70,7 @@ const startDate = ref('')
 const endDate = ref('')
 const overview = ref<SearchAuthorityOverview | null>(null)
 const opportunities = ref<SearchAuthorityOpportunity[]>([])
+const trustResponse = ref<SearchAuthorityTrustResponse | null>(null)
 const opportunityPage = ref(1)
 const opportunityPageSize = 25
 const opportunityTotal = ref(0)
@@ -74,7 +79,9 @@ const loadError = ref<string | null>(null)
 const busyOpportunityId = ref<string | null>(null)
 const showTaskDialog = ref(false)
 const activeOpportunity = ref<SearchAuthorityOpportunity | null>(null)
+const activeTrustFinding = ref<SearchAuthorityTrustFinding | null>(null)
 const pendingTaskLink = ref<PendingTaskLink | null>(null)
+const refreshingPerformance = ref(false)
 let loadedClientId: string | null = null
 let evidenceRequestId = 0
 
@@ -111,6 +118,9 @@ const clientProjects = computed(() => projects.value.filter(project => (
   project.clientId === selectedClientId.value
 )))
 const acceptedCount = computed(() => overview.value?.opportunities.accepted || 0)
+const selectedSiteId = computed(() => clients.value.find(client => (
+  client.id === selectedClientId.value
+))?.siteId || null)
 
 function errorMessage(error: unknown): string {
   const candidate = error as {
@@ -150,16 +160,25 @@ function formatDate(value: string): string {
   }).format(new Date(`${value}T00:00:00.000Z`))
 }
 
+function clearStartDate() {
+  startDate.value = ''
+}
+
+function clearEndDate() {
+  endDate.value = ''
+}
+
 async function loadWorkspaceOptions() {
   try {
     const [clientRows, workspaceResponse, teamResponse, projectRows, labelRows]
       = await Promise.all([
         $fetch<{
-          sites: Array<{ clientId: string, clientName: string }>
+          sites: Array<{ id: string, clientId: string, clientName: string }>
         }>('/api/agency/search-authority/sites').then(response => (
           response.sites.map(site => ({
             id: site.clientId,
-            name: site.clientName
+            name: site.clientName,
+            siteId: site.id
           }))
         )),
         $fetch<{ workspaces: Workspace[] }>('/api/agency/workspaces')
@@ -211,6 +230,7 @@ async function loadEvidence() {
   if (loadedClientId !== clientId) {
     overview.value = null
     opportunities.value = []
+    trustResponse.value = null
     loadedClientId = clientId
   }
   loading.value = true
@@ -240,7 +260,7 @@ async function loadEvidence() {
     opportunityQuery.set('lifecycle', lifecycleFilter.value)
     opportunityQuery.set('page', String(opportunityPage.value))
     opportunityQuery.set('pageSize', String(opportunityPageSize))
-    const [overviewResponse, opportunityResponse] = await Promise.all([
+    const [overviewResponse, opportunityResponse, trustResult] = await Promise.all([
       initialOverview ?? $fetch<SearchAuthorityOverview>(
         `/api/agency/search-authority/overview?${query.toString()}`
       ),
@@ -249,18 +269,29 @@ async function loadEvidence() {
         pagination: { page: number, pageSize: number, total: number }
       }>(
         `/api/agency/search-authority/opportunities?${opportunityQuery.toString()}`
+      ),
+      $fetch<SearchAuthorityTrustResponse>(
+        `/api/agency/search-authority/trust/findings?${new URLSearchParams({ clientId, status: 'open' }).toString()}`
       )
     ])
     if (requestId !== evidenceRequestId) return
     overview.value = overviewResponse
     opportunities.value = opportunityResponse.opportunities
+    trustResponse.value = trustResult
     opportunityTotal.value = opportunityResponse.pagination.total
     if (
       pendingTaskLink.value
-      && opportunities.value.some(opportunity => (
-        opportunity.id === pendingTaskLink.value?.opportunityId
-        && opportunity.taskId === pendingTaskLink.value?.task.id
-      ))
+      && (
+        pendingTaskLink.value.source === 'opportunity'
+          ? opportunities.value.some(opportunity => (
+              opportunity.id === pendingTaskLink.value?.sourceId
+              && opportunity.taskId === pendingTaskLink.value?.task.id
+            ))
+          : trustResponse.value.findings.some(finding => (
+              finding.id === pendingTaskLink.value?.sourceId
+              && finding.taskId === pendingTaskLink.value?.task.id
+            ))
+      )
     ) {
       pendingTaskLink.value = null
     }
@@ -339,6 +370,21 @@ function openTaskHandoff(opportunity: SearchAuthorityOpportunity) {
     return
   }
   activeOpportunity.value = opportunity
+  activeTrustFinding.value = null
+  showTaskDialog.value = true
+}
+
+function openTrustTask(finding: SearchAuthorityTrustFinding) {
+  if (!selectedBoardId.value || clientProjects.value.length === 0) {
+    toast.add({
+      title: !selectedBoardId.value ? 'Choose a task board' : 'Create a client project first',
+      description: 'Technical findings use the same client-owned XeroFlow task workflow.',
+      color: 'warning'
+    })
+    return
+  }
+  activeOpportunity.value = null
+  activeTrustFinding.value = finding
   showTaskDialog.value = true
 }
 
@@ -363,7 +409,7 @@ async function linkTask(
     })
     await loadEvidence()
   } catch (error: unknown) {
-    pendingTaskLink.value = { opportunityId, task }
+    pendingTaskLink.value = { source: 'opportunity', sourceId: opportunityId, task }
     await loadEvidence()
     if (pendingTaskLink.value) {
       toast.add({
@@ -379,18 +425,78 @@ async function linkTask(
 
 async function taskCreated(task: { id: string, title: string }) {
   const opportunity = activeOpportunity.value
+  const finding = activeTrustFinding.value
   activeOpportunity.value = null
-  if (!opportunity) return
-  await linkTask(opportunity.id, task)
+  activeTrustFinding.value = null
+  if (opportunity) {
+    await linkTask(opportunity.id, task)
+  } else if (finding) {
+    await linkTrustTask(finding.id, task)
+  }
+}
+
+async function linkTrustTask(findingId: string, task: { id: string, title: string }) {
+  try {
+    await $fetch(`/api/agency/search-authority/trust/findings/${findingId}/task-link`, {
+      method: 'POST',
+      body: { taskId: task.id }
+    })
+    pendingTaskLink.value = null
+    toast.add({ title: 'Task linked', description: `${task.title} now carries the technical evidence.`, color: 'success' })
+    await loadEvidence()
+  } catch (error: unknown) {
+    pendingTaskLink.value = { source: 'finding', sourceId: findingId, task }
+    toast.add({ title: 'Task created, link still pending', description: errorMessage(error), color: 'warning' })
+  }
 }
 
 async function retryPendingLink() {
   if (!pendingTaskLink.value) return
-  await linkTask(
-    pendingTaskLink.value.opportunityId,
-    pendingTaskLink.value.task
-  )
+  if (pendingTaskLink.value.source === 'opportunity') {
+    await linkTask(pendingTaskLink.value.sourceId, pendingTaskLink.value.task)
+  } else {
+    await linkTrustTask(pendingTaskLink.value.sourceId, pendingTaskLink.value.task)
+  }
 }
+
+async function refreshPerformance() {
+  if (!selectedClientId.value) return
+  refreshingPerformance.value = true
+  try {
+    const result = await $fetch<{ stored: number, unavailable: number }>(
+      '/api/agency/search-authority/trust/refresh',
+      { method: 'POST', body: { clientId: selectedClientId.value, pageLimit: 3 } }
+    )
+    toast.add({
+      title: 'Mobile evidence refreshed',
+      description: `${result.stored} page${result.stored === 1 ? '' : 's'} checked; ${result.unavailable} unavailable.`,
+      color: result.unavailable === result.stored && result.stored > 0 ? 'warning' : 'success'
+    })
+    await loadEvidence()
+  } catch (error: unknown) {
+    toast.add({ title: 'Mobile check failed', description: errorMessage(error), color: 'error' })
+  } finally {
+    refreshingPerformance.value = false
+  }
+}
+
+const activeTaskTitle = computed(() => activeOpportunity.value?.title ?? activeTrustFinding.value?.title ?? '')
+const activeTaskDescription = computed(() => {
+  if (activeOpportunity.value) return taskDescription(activeOpportunity.value)
+  if (!activeTrustFinding.value) return ''
+  return [
+    'Search Authority technical trust finding',
+    '',
+    activeTrustFinding.value.summary,
+    '',
+    `Check: ${activeTrustFinding.value.checkKey}`,
+    `Severity: ${activeTrustFinding.value.severity}`,
+    `Owner: ${activeTrustFinding.value.owner}`,
+    `Page: ${activeTrustFinding.value.pageUrl}`,
+    `Observed: ${activeTrustFinding.value.lastSeenAt}`,
+    `Recurrence: ${activeTrustFinding.value.recurrenceCount}`
+  ].join('\n')
+})
 
 watch(selectedClientId, () => {
   opportunityPage.value = 1
@@ -473,7 +579,7 @@ onMounted(async () => {
             label="Retry link"
             size="sm"
             color="warning"
-            :loading="busyOpportunityId === pendingTaskLink.opportunityId"
+            :loading="pendingTaskLink.source === 'opportunity' && busyOpportunityId === pendingTaskLink.sourceId"
             @click="retryPendingLink"
           />
         </template>
@@ -509,7 +615,7 @@ onMounted(async () => {
                     size="xs"
                     color="neutral"
                     variant="ghost"
-                    @click="startDate = ''"
+                    @click="clearStartDate"
                   />
                 </div>
               </template>
@@ -533,7 +639,7 @@ onMounted(async () => {
                     size="xs"
                     color="neutral"
                     variant="ghost"
-                    @click="endDate = ''"
+                    @click="clearEndDate"
                   />
                 </div>
               </template>
@@ -552,6 +658,33 @@ onMounted(async () => {
           </div>
         </div>
       </UCard>
+
+      <SearchAuthorityPilotReadinessCard :client-id="selectedClientId" />
+
+      <SearchAuthorityContentLibrary :client-id="selectedClientId" :site-id="selectedSiteId" />
+
+      <SearchAuthorityMenuAgentCard :client-id="selectedClientId" :site-id="selectedSiteId" />
+
+      <SearchAuthorityOutcomeReporting
+        :client-id="selectedClientId"
+        :start-date="startDate"
+        :end-date="endDate"
+      />
+
+      <SearchAuthorityGoogleBusinessEvidenceCard :client-id="selectedClientId" />
+
+      <SearchAuthorityTrustPerformanceCard
+        :evidence="trustResponse?.performance || []"
+        :loading="loading"
+        :refreshing="refreshingPerformance"
+        @refresh="refreshPerformance"
+      />
+
+      <SearchAuthorityTrustFindingsTable
+        :findings="trustResponse?.findings || []"
+        :loading="loading"
+        @create-task="openTrustTask"
+      />
 
       <SearchAuthorityOverviewMetrics
         :metrics="overview?.metrics || null"
@@ -643,7 +776,7 @@ onMounted(async () => {
     </div>
 
     <WorkflowTaskCreateDialog
-      v-if="activeOpportunity"
+      v-if="activeOpportunity || activeTrustFinding"
       v-model:open="showTaskDialog"
       :statuses="statuses"
       :team-members="teamMembers"
@@ -651,8 +784,8 @@ onMounted(async () => {
       :labels="labels"
       :department-id="selectedBoardId || undefined"
       :board-name="selectedBoard?.label"
-      :initial-title="activeOpportunity.title"
-      :initial-description="taskDescription(activeOpportunity)"
+      :initial-title="activeTaskTitle"
+      :initial-description="activeTaskDescription"
       :initial-project-id="clientProjects.length === 1 ? clientProjects[0]?.id : undefined"
       :project-required="true"
       @created="taskCreated"

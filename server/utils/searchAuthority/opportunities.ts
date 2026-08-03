@@ -54,6 +54,36 @@ interface OpportunityWindow {
   endDate: string
 }
 
+export interface ReviewedPmaxSuggestionInput {
+  id: string
+  title: string
+  summary: string
+  queryText: string | null
+  pageUrl: string | null
+  evidenceStartDate: string
+  evidenceEndDate: string
+}
+
+export function buildReviewedPmaxSuggestion(input: ReviewedPmaxSuggestionInput) {
+  return {
+    reviewState: 'review_required' as const,
+    mutationPerformed: false,
+    taskPayload: {
+      title: `Review Search evidence for PMax: ${input.title}`,
+      intendedAssetGroup: 'Reviewer selects the relevant active vehicle or offer asset group',
+      hypothesis: input.summary,
+      sourceEvidence: {
+        opportunityId: input.id,
+        query: input.queryText,
+        pageUrl: input.pageUrl,
+        window: { startDate: input.evidenceStartDate, endDate: input.evidenceEndDate }
+      },
+      reviewer: null,
+      guardrail: 'Copy into a normal XeroFlow task or brief only after a media buyer reviews the evidence.'
+    }
+  }
+}
+
 interface UpsertOpportunityInput extends SearchAuthorityCandidate, OpportunityScore {
   fingerprint: string
   title: string

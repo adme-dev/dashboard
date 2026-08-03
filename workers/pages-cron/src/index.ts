@@ -52,6 +52,9 @@ export const ROUTES: Record<string, string[]> = {
   // daily — refresh entitled Search Console evidence and inspect up to 50
   // priority URLs per client using Google's indexed-version inspection result.
   '15 2 * * *': ['/api/cron/search-console-sync'],
+  // daily — optional Google Business Profile Performance API evidence. The
+  // endpoint is a safe no-op until provider access is explicitly enabled.
+  '40 2 * * *': ['/api/cron/google-business-performance'],
   // daily — refresh the Xero invoice line-item cache (AGI / True Position).
   // Syncs current + previous month so month-end backdated entries are caught.
   '20 3 * * *': ['/api/cron/xero-invoice-lines-sync'],

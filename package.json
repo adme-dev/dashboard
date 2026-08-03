@@ -26,6 +26,8 @@
     "deploy:workflows": "pnpm --dir workers/agency-workflows run deploy",
     "deploy:workflows:dry-run": "pnpm --dir workers/agency-workflows run deploy:dry-run",
     "deploy:workers": "node scripts/deploy-workers.mjs",
+    "deploy:search-authority-publisher": "node scripts/deploy-search-authority-publisher.mjs",
+    "deploy:search-authority-publisher:dry-run": "node scripts/deploy-search-authority-publisher.mjs --dry-run",
     "test": "vitest",
     "test:measurement-db-smoke": "vitest run test/integration/measurementOnboarding.database.test.ts",
     "test:run": "vitest run",

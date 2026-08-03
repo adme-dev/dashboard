@@ -84,6 +84,7 @@ export default defineNuxtConfig({
 
     // Database
     databaseUrl: process.env.DATABASE_URL || '',
+    pagespeedApiKey: process.env.PAGESPEED_API_KEY || '',
 
     // Security
     jwtSecret: process.env.JWT_SECRET || '',
@@ -187,6 +188,7 @@ export default defineNuxtConfig({
 
     // Google Business Profile publishing
     googleBusinessPublishingEnabled: process.env.GOOGLE_BUSINESS_PUBLISHING_ENABLED === 'true',
+    googleBusinessPerformanceEnabled: process.env.GOOGLE_BUSINESS_PERFORMANCE_ENABLED === 'true',
     googleBusinessClientId: process.env.GOOGLE_BUSINESS_CLIENT_ID || '',
     googleBusinessClientSecret: process.env.GOOGLE_BUSINESS_CLIENT_SECRET || '',
     googleBusinessRedirectUri: process.env.GOOGLE_BUSINESS_REDIRECT_URI || '/api/agency/social/publishing/accounts/callback/google-business',
