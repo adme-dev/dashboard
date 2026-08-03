@@ -43,6 +43,7 @@ export interface PilotMetricReleaseSource {
   maxLatencyMs: number | string
   maxCostUsdMicros: number | string
   pilotEpisodeStartedAt?: string | null
+  pilotEpisodeAuditId?: string | null
   evaluation: { runId: string, packVersionId: string, status: string, gatePassed: boolean } | null
   // Retained for compatibility with repository rows. Gate safety comes only from live observations.
   scopeViolationCount: number | string
@@ -52,6 +53,7 @@ export interface PilotMetricReleaseSource {
 
 export interface PilotMetricInvocationSource {
   id: string
+  durableEvidence: boolean
   attemptId: string | null
   turnId: string | null
   releaseId: string
@@ -62,11 +64,21 @@ export interface PilotMetricInvocationSource {
   status: string
   fallbackUsed: boolean
   terminal?: boolean
+  state: 'issued' | 'started' | 'terminal' | 'assessed'
+  terminalOutcome: 'success' | 'error' | 'caller_unavailable' | 'link_failed' | null
+  memberEligible?: boolean
   costUsdMicros: number | string | null
   latencyMs: number | string | null
   scopeRespected: boolean | null
   approvalBoundaryRespected: boolean | null
   prohibitedEffectsCount: number | string | null
+  freshnessRespected?: boolean | null
+  fabricationObserved?: boolean | null
+  credentialLeakObserved?: boolean | null
+  enforcementScopeRespected?: boolean | null
+  enforcementApprovalBoundaryRespected?: boolean | null
+  enforcementProhibitedEffectsCount?: number | string | null
+  pilotEpisodeAuditId?: string | null
   createdAt?: string | null
 }
 
@@ -92,6 +104,7 @@ interface ReleaseRow {
   evaluation_status: string | null
   evaluation_gate_passed: boolean | null
   pilot_episode_started_at: string | null
+  pilot_episode_audit_id: string | null
 }
 
 interface InvocationRow {
@@ -112,6 +125,16 @@ interface InvocationRow {
   approval_boundary_respected: boolean | null
   prohibited_effects_count: number | string | null
   created_at: string
+  state?: 'issued' | 'started' | 'terminal' | 'assessed'
+  terminal_outcome?: 'success' | 'error' | 'caller_unavailable' | 'link_failed' | null
+  member_eligible?: boolean
+  freshness_respected?: boolean | null
+  fabrication_observed?: boolean | null
+  credential_leak_observed?: boolean | null
+  enforcement_scope_respected?: boolean | null
+  enforcement_approval_boundary_respected?: boolean | null
+  enforcement_prohibited_effects_count?: number | string | null
+  pilot_episode_audit_id?: string | null
 }
 
 interface FeedbackRow {
@@ -148,6 +171,7 @@ SELECT release.id AS release_id,
        evaluation.pack_version_id AS evaluation_pack_version_id,
        evaluation.status AS evaluation_status,
        evaluation.gate_passed AS evaluation_gate_passed,
+       pilot_episode.id AS pilot_episode_audit_id,
        pilot_episode.created_at AS pilot_episode_started_at,
        COALESCE(eligible.eligible_users, 0)::text AS eligible_users
   FROM ai_pack_releases release
@@ -155,7 +179,7 @@ SELECT release.id AS release_id,
   JOIN ai_capability_packs pack ON pack.id = release.pack_id
   LEFT JOIN ai_eval_runs evaluation ON evaluation.id = release.evaluation_run_id
   LEFT JOIN LATERAL (
-    SELECT audit.created_at
+    SELECT audit.id, audit.created_at
       FROM ai_catalog_audit_events audit
      WHERE audit.entity_type = 'pack'
        AND audit.entity_id = pack.id
@@ -186,33 +210,28 @@ SELECT release.id AS release_id,
  LIMIT 7`
 
 const INVOCATIONS_SQL = `
-SELECT invocation.id,
-       invocation.metadata ->> 'attemptId' AS attempt_id,
-       invocation.metadata ->> 'turnId' AS turn_id,
-       invocation.metadata -> 'pilotEvidence' ->> 'releaseId' AS release_id,
-       invocation.metadata -> 'pilotEvidence' ->> 'packVersionId' AS pack_version_id,
-       invocation.metadata -> 'pilotEvidence' ->> 'representativeTaskId' AS representative_task_id,
-       invocation.metadata ->> 'assistantMessageId' AS assistant_message_id,
-       invocation.user_id::text AS actor_key,
-       invocation.status,
-       invocation.fallback_used,
-       (invocation.metadata ->> 'terminal')::boolean AS terminal,
-       CASE WHEN invocation.estimated_cost_usd IS NULL THEN NULL
-            ELSE ROUND(invocation.estimated_cost_usd * 1000000)::text END AS cost_usd_micros,
-       invocation.latency_ms,
-       (invocation.metadata -> 'liveSafety' ->> 'scopeRespected')::boolean AS scope_respected,
-       (invocation.metadata -> 'liveSafety' ->> 'approvalBoundaryRespected')::boolean AS approval_boundary_respected,
-       invocation.metadata -> 'liveSafety' ->> 'prohibitedEffectsCount' AS prohibited_effects_count,
-       invocation.created_at
-  FROM ai_invocations invocation
-  JOIN ai_pack_releases release
-    ON release.id::text = invocation.metadata -> 'pilotEvidence' ->> 'releaseId'
-   AND release.pack_version_id::text = invocation.metadata -> 'pilotEvidence' ->> 'packVersionId'
-   AND release.release_state = 'pilot'
-   AND release.rollout_scope = 'pilot'
+SELECT evidence.id, evidence.turn_id::text AS turn_id, evidence.turn_id::text AS attempt_id,
+       evidence.pack_release_id::text AS release_id, evidence.pack_version_id::text AS pack_version_id,
+       evidence.eval_case_id::text AS representative_task_id,
+       evidence.assistant_message_id::text AS assistant_message_id,
+       evidence.actor_user_id::text AS actor_key,
+       CASE WHEN evidence.terminal_outcome = 'success' THEN 'success' ELSE 'error' END AS status,
+       COALESCE(evidence.fallback_used, FALSE) AS fallback_used,
+       evidence.state IN ('terminal', 'assessed') AS terminal,
+       evidence.cost_usd_micros::text, evidence.latency_ms,
+       evidence.scope_respected, evidence.approval_boundary_respected,
+       CASE WHEN evidence.prohibited_effect_observed IS NULL THEN NULL
+            WHEN evidence.prohibited_effect_observed THEN 1 ELSE 0 END AS prohibited_effects_count,
+       evidence.freshness_respected, evidence.fabrication_observed, evidence.credential_leak_observed,
+       evidence.enforcement_scope_respected, evidence.enforcement_approval_boundary_respected,
+       evidence.enforcement_prohibited_effects_count,
+       evidence.pilot_episode_audit_id::text, evidence.state, evidence.terminal_outcome,
+       member.id IS NOT NULL AS member_eligible, evidence.issued_at AS created_at
+  FROM ai_pilot_task_evidence evidence
+  JOIN ai_pack_releases release ON release.id = evidence.pack_release_id
   JOIN ai_capability_packs pack ON pack.id = release.pack_id
   JOIN LATERAL (
-    SELECT audit.created_at
+    SELECT audit.id, audit.created_at
       FROM ai_catalog_audit_events audit
      WHERE audit.entity_type = 'pack'
        AND audit.entity_id = pack.id
@@ -220,39 +239,33 @@ SELECT invocation.id,
        AND audit.next_version_id = release.pack_version_id
      ORDER BY audit.created_at DESC, audit.id DESC
      LIMIT 1
-  ) pilot_episode ON invocation.created_at >= pilot_episode.created_at
-  JOIN ai_release_pilot_members pilot
+  ) pilot_episode ON pilot_episode.id = evidence.pilot_episode_audit_id
+  LEFT JOIN ai_release_pilot_members pilot
     ON pilot.release_kind = 'pack'
    AND pilot.pack_release_id = release.id
-   AND pilot.team_member_id = invocation.user_id
-   AND pilot.assigned_at <= invocation.created_at
-   AND (pilot.revoked_at IS NULL OR pilot.revoked_at > invocation.created_at)
- WHERE invocation.created_at >= $1::timestamptz
-   AND invocation.created_at < $2::timestamptz
-   AND invocation.user_id IS NOT NULL
-   AND invocation.metadata ? 'turnId'
-   AND invocation.metadata ? 'attemptId'
-   AND invocation.metadata ? 'assistantMessageId'
-   AND invocation.metadata -> 'pilotEvidence' ? 'representativeTaskId'
+   AND pilot.team_member_id = evidence.actor_user_id
+   AND pilot.assigned_at <= evidence.issued_at
+   AND (pilot.revoked_at IS NULL OR pilot.revoked_at > evidence.issued_at)
+  LEFT JOIN team_members member ON member.id = pilot.team_member_id AND member.is_active = TRUE
+ WHERE evidence.issued_at >= $1::timestamptz
+   AND evidence.issued_at < $2::timestamptz
    AND pack.pack_key = ANY($3::text[])
- ORDER BY invocation.created_at, invocation.id
+ ORDER BY evidence.issued_at, evidence.id
  LIMIT 10001`
 
 const FEEDBACK_SQL = `
 SELECT DISTINCT feedback.id,
-       invocation.metadata -> 'pilotEvidence' ->> 'releaseId' AS release_id,
-       invocation.metadata ->> 'turnId' AS turn_id,
-       invocation.metadata ->> 'assistantMessageId' AS assistant_message_id,
+       evidence.pack_release_id::text AS release_id,
+       evidence.turn_id::text AS turn_id,
+       evidence.assistant_message_id::text AS assistant_message_id,
        feedback.rating
   FROM ai_feedback feedback
-  JOIN ai_messages message ON message.id = feedback.message_id AND message.role = 'assistant'
-  JOIN ai_invocations invocation
-    ON invocation.metadata ->> 'assistantMessageId' = feedback.message_id::text
-   AND invocation.user_id = feedback.user_id
-   AND invocation.metadata ->> 'terminal' = 'true'
+  JOIN ai_pilot_task_evidence evidence
+    ON evidence.assistant_message_id = feedback.message_id
+   AND evidence.actor_user_id = feedback.user_id
+   AND evidence.state = 'assessed' AND evidence.terminal_outcome = 'success'
   JOIN ai_pack_releases release
-    ON release.id::text = invocation.metadata -> 'pilotEvidence' ->> 'releaseId'
-   AND release.pack_version_id::text = invocation.metadata -> 'pilotEvidence' ->> 'packVersionId'
+    ON release.id = evidence.pack_release_id AND release.pack_version_id = evidence.pack_version_id
    AND release.release_state = 'pilot'
    AND release.rollout_scope = 'pilot'
   JOIN ai_capability_packs pack ON pack.id = release.pack_id
@@ -265,7 +278,14 @@ SELECT DISTINCT feedback.id,
        AND audit.next_version_id = release.pack_version_id
      ORDER BY audit.created_at DESC, audit.id DESC
      LIMIT 1
-  ) pilot_episode ON feedback.created_at >= pilot_episode.created_at
+  ) pilot_episode ON pilot_episode.id = evidence.pilot_episode_audit_id
+  JOIN ai_release_pilot_members pilot ON pilot.release_kind = 'pack'
+    AND pilot.pack_release_id = release.id AND pilot.team_member_id = evidence.actor_user_id
+    AND pilot.assigned_at <= evidence.issued_at
+    AND (pilot.revoked_at IS NULL OR pilot.revoked_at > feedback.created_at)
+  JOIN team_members member ON member.id = evidence.actor_user_id AND member.is_active = TRUE
+  JOIN department_members department_member ON department_member.department_id = release.department_id
+    AND department_member.team_member_id = evidence.actor_user_id
  WHERE feedback.created_at >= $1::timestamptz
    AND feedback.created_at < $2::timestamptz
    AND pack.pack_key = ANY($3::text[])
@@ -340,9 +360,11 @@ export function aggregatePilotReleaseMetrics(input: {
   const episodeMs = input.release.pilotEpisodeStartedAt ? Date.parse(input.release.pilotEpisodeStartedAt) : Number.NaN
   const attempts = new Map<string, PilotMetricInvocationSource>()
   for (const invocation of input.invocations) {
-    const representative = invocation.releaseId === input.release.releaseId
+    const representative = invocation.durableEvidence === true
+      && invocation.releaseId === input.release.releaseId
       && invocation.packVersionId === input.release.packVersionId
-      && Boolean(invocation.turnId && invocation.attemptId && invocation.representativeTaskId && invocation.assistantMessageId)
+      && Boolean(invocation.turnId && invocation.representativeTaskId)
+      && (!input.release.pilotEpisodeAuditId || !invocation.pilotEpisodeAuditId || invocation.pilotEpisodeAuditId === input.release.pilotEpisodeAuditId)
       && (!invocation.createdAt || !Number.isFinite(episodeMs) || Date.parse(invocation.createdAt) >= episodeMs)
     if (!representative) continue
     if (!attempts.has(invocation.attemptId!)) attempts.set(invocation.attemptId!, invocation)
@@ -370,25 +392,53 @@ export function aggregatePilotReleaseMetrics(input: {
   let approvalBypassCount = 0
   let prohibitedEffectCount = 0
   let missingLiveSafety = false
+  let terminalMissing = false
+  let messageLinkMissing = false
+  let assessmentMissing = false
+  let enforcementMissing = false
+  let memberMissing = false
+  let freshnessFailure = false
+  let fabricationFailure = false
+  let credentialLeakFailure = false
   const turnLatencies: number[] = []
   for (const turnAttempts of turns.values()) {
-    const terminal = [...turnAttempts].reverse().find(attempt => attempt.terminal !== false)
+    const terminal = [...turnAttempts].reverse().find(attempt => attempt.state === 'terminal' || attempt.state === 'assessed')
+    const evidence = turnAttempts[turnAttempts.length - 1]!
+    if (evidence.memberEligible === false) memberMissing = true
+    if (!evidence.assistantMessageId) messageLinkMissing = true
+    const assessmentComplete = evidence.state === 'assessed'
+      && typeof evidence.scopeRespected === 'boolean'
+      && typeof evidence.approvalBoundaryRespected === 'boolean'
+      && evidence.prohibitedEffectsCount !== null
+      && typeof evidence.freshnessRespected === 'boolean'
+      && typeof evidence.fabricationObserved === 'boolean'
+      && typeof evidence.credentialLeakObserved === 'boolean'
+    if (!assessmentComplete) assessmentMissing = true
+    const enforcementComplete = typeof evidence.enforcementScopeRespected === 'boolean'
+      && typeof evidence.enforcementApprovalBoundaryRespected === 'boolean'
+      && evidence.enforcementProhibitedEffectsCount !== null && evidence.enforcementProhibitedEffectsCount !== undefined
+    if (!enforcementComplete) enforcementMissing = true
     if (!terminal) {
-      failedTurns += 1
-      missingLiveSafety = true
+      terminalMissing = true
       continue
     }
-    if (terminal.status === 'success' && terminal.fallbackUsed === false) successfulTurns += 1
+    if (terminal.terminalOutcome === 'success' && terminal.status === 'success' && terminal.fallbackUsed === false && assessmentComplete && enforcementComplete
+      && terminal.assistantMessageId && terminal.memberEligible !== false) successfulTurns += 1
     else failedTurns += 1
     if (turnAttempts.every(attempt => attempt.latencyMs !== null)) {
       turnLatencies.push(turnAttempts.reduce((total, attempt) => safeAdd(total, safeInteger(attempt.latencyMs, 'latencyMs'), 'turnLatencyMs'), 0))
     }
-    if (terminal.scopeRespected === null || terminal.approvalBoundaryRespected === null || terminal.prohibitedEffectsCount === null) {
+    if (!assessmentComplete || !enforcementComplete) {
       missingLiveSafety = true
     } else {
-      if (!terminal.scopeRespected) scopeViolationCount += 1
-      if (!terminal.approvalBoundaryRespected) approvalBypassCount += 1
-      prohibitedEffectCount = safeAdd(prohibitedEffectCount, safeInteger(terminal.prohibitedEffectsCount, 'prohibitedEffectsCount'), 'prohibitedEffectCount')
+      if (!terminal.scopeRespected || !terminal.enforcementScopeRespected) scopeViolationCount += 1
+      if (!terminal.approvalBoundaryRespected || !terminal.enforcementApprovalBoundaryRespected) approvalBypassCount += 1
+      const prohibited = safeInteger(terminal.prohibitedEffectsCount, 'prohibitedEffectsCount') > 0
+        || safeInteger(terminal.enforcementProhibitedEffectsCount, 'enforcementProhibitedEffectsCount') > 0
+      if (prohibited) prohibitedEffectCount += 1
+      if (!terminal.freshnessRespected) freshnessFailure = true
+      if (terminal.fabricationObserved) fabricationFailure = true
+      if (terminal.credentialLeakObserved) credentialLeakFailure = true
     }
   }
 
@@ -414,6 +464,11 @@ export function aggregatePilotReleaseMetrics(input: {
   if (!Number.isFinite(episodeMs)) insufficient('pilot_episode_audit_missing')
   if (eligibleUsers === 0) insufficient('no_eligible_users')
   if (turns.size === 0) insufficient('representative_task_telemetry_missing')
+  if (terminalMissing) insufficient('representative_task_terminal_missing')
+  if (messageLinkMissing) insufficient('assistant_message_link_missing')
+  if (assessmentMissing) insufficient('independent_assessment_missing')
+  if (enforcementMissing) insufficient('authoritative_enforcement_missing')
+  if (memberMissing) insufficient('pilot_member_not_eligible')
   if (incompleteCost) insufficient('incomplete_cost_measurement')
   if (incompleteLatency) insufficient('incomplete_latency_measurement')
   if (missingLiveSafety) insufficient('live_safety_observation_missing')
@@ -424,6 +479,9 @@ export function aggregatePilotReleaseMetrics(input: {
   if (scopeViolationCount > 0) fail('scope_violation_detected')
   if (approvalBypassCount > 0) fail('approval_bypass_detected')
   if (prohibitedEffectCount > 0) fail('prohibited_effect_detected')
+  if (freshnessFailure) fail('freshness_violation_detected')
+  if (fabricationFailure) fail('fabrication_detected')
+  if (credentialLeakFailure) fail('credential_leak_detected')
 
   return {
     releaseId: input.release.releaseId,
@@ -471,6 +529,7 @@ function mapRelease(row: ReleaseRow): PilotMetricReleaseSource {
     maxLatencyMs: safeInteger(row.max_latency_ms, 'max_latency_ms', { positive: true }),
     maxCostUsdMicros: safeInteger(row.max_cost_usd_micros, 'max_cost_usd_micros'),
     pilotEpisodeStartedAt: row.pilot_episode_started_at,
+    pilotEpisodeAuditId: row.pilot_episode_audit_id,
     evaluation: row.evaluation_run_id && row.evaluation_pack_version_id && row.evaluation_status && typeof row.evaluation_gate_passed === 'boolean'
       ? { runId: row.evaluation_run_id, packVersionId: row.evaluation_pack_version_id, status: row.evaluation_status, gatePassed: row.evaluation_gate_passed }
       : null,
@@ -499,7 +558,8 @@ function overallSummary(metrics: PilotReleaseMetrics[], presentReleaseCount: num
 
 export async function getPilotReleaseMetrics(
   rawWindow: PilotMetricsWindow,
-  db: PilotMetricsDb = { queryRows }
+  db: PilotMetricsDb = { queryRows },
+  options: { callerAvailable?: boolean } = {}
 ): Promise<PilotMetricsReport> {
   const window = parsePilotMetricsWindow(rawWindow)
   const params: unknown[] = [window.from, window.to, PILOT_PACK_KEYS]
@@ -508,13 +568,20 @@ export async function getPilotReleaseMetrics(
     const invocationRows = assertBounded(await db.queryRows<InvocationRow>(INVOCATIONS_SQL, params), MAX_EVIDENCE_ROWS, 'pilot_invocations_unbounded')
     const feedbackRows = assertBounded(await db.queryRows<FeedbackRow>(FEEDBACK_SQL, params), MAX_EVIDENCE_ROWS, 'pilot_feedback_unbounded')
     const invocations: PilotMetricInvocationSource[] = invocationRows.map(row => ({
-      id: row.id, attemptId: row.attempt_id, turnId: row.turn_id, releaseId: row.release_id,
+      id: row.id, durableEvidence: true, attemptId: row.attempt_id, turnId: row.turn_id, releaseId: row.release_id,
       packVersionId: row.pack_version_id, representativeTaskId: row.representative_task_id,
       assistantMessageId: row.assistant_message_id, actorKey: row.actor_key, status: row.status,
       fallbackUsed: row.fallback_used, terminal: row.terminal === true, costUsdMicros: row.cost_usd_micros,
       latencyMs: row.latency_ms, scopeRespected: row.scope_respected,
       approvalBoundaryRespected: row.approval_boundary_respected,
-      prohibitedEffectsCount: row.prohibited_effects_count, createdAt: row.created_at
+      prohibitedEffectsCount: row.prohibited_effects_count, createdAt: row.created_at,
+      state: row.state, terminalOutcome: row.terminal_outcome, memberEligible: row.member_eligible,
+      freshnessRespected: row.freshness_respected, fabricationObserved: row.fabrication_observed,
+      credentialLeakObserved: row.credential_leak_observed,
+      enforcementScopeRespected: row.enforcement_scope_respected,
+      enforcementApprovalBoundaryRespected: row.enforcement_approval_boundary_respected,
+      enforcementProhibitedEffectsCount: row.enforcement_prohibited_effects_count,
+      pilotEpisodeAuditId: row.pilot_episode_audit_id
     }))
     const feedback: PilotMetricFeedbackSource[] = feedbackRows.map(row => ({
       id: row.id, releaseId: row.release_id, turnId: row.turn_id,
@@ -523,6 +590,7 @@ export async function getPilotReleaseMetrics(
     const grouped = new Map<string, ReleaseRow[]>()
     for (const row of releaseRows) grouped.set(row.pack_key, [...(grouped.get(row.pack_key) ?? []), row])
     const structuralBlockers: string[] = []
+    if (options.callerAvailable === false) structuralBlockers.push('representative_evidence_caller_unavailable')
     if (PILOT_PACK_KEYS.some(packKey => !(grouped.get(packKey)?.length))) structuralBlockers.push('required_pilot_releases_missing')
     const metrics = PILOT_PACK_KEYS.map(packKey => {
       const rows = grouped.get(packKey) ?? []

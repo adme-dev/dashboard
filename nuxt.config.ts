@@ -112,6 +112,7 @@ export default defineNuxtConfig({
 
     // AI tool-calling (Slice 1) — OFF by default; flip per-env to enable the loop
     aiToolsEnabled: process.env.AI_TOOLS_ENABLED === 'true',
+    aiPilotUatEnabled: process.env.AI_PILOT_UAT_ENABLED === 'true',
     aiLoopModel: process.env.AI_LOOP_MODEL || 'groq/openai/gpt-oss-120b', // Option 2: Groq open-source default
     // Fallback was kimi-k2 but Groq returns 404 for it (not on the account) — gpt-oss-20b is the valid sibling.
     aiLoopFallbackModel: process.env.AI_LOOP_FALLBACK_MODEL || 'groq/openai/gpt-oss-20b',

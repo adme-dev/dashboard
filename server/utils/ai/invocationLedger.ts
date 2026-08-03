@@ -153,16 +153,23 @@ export async function recordAiInvocation(input: AiInvocationInput): Promise<void
 /** Attach the persisted assistant message to every attempt in one server-generated turn. */
 export async function linkAiInvocationTurnMessage(turnId: string, userId: string, assistantMessageId: string): Promise<void> {
   try {
-    await execute(`
+    const linked = await execute(`
       UPDATE ai_invocations
          SET metadata = metadata || jsonb_build_object('assistantMessageId', $3::text)
        WHERE metadata ->> 'turnId' = $1
          AND user_id = $2::uuid
          AND (NOT (metadata ? 'assistantMessageId') OR metadata ->> 'assistantMessageId' = $3)
     `, [turnId, userId, assistantMessageId])
+    if (linked < 1) throw new AiInvocationLinkError()
   } catch (error) {
-    if (isMissingLedgerError(error)) return
-    const message = error instanceof Error ? error.message : String(error)
-    console.warn('[ai-invocation-ledger] turn link failed:', message)
+    if (error instanceof AiInvocationLinkError) throw error
+    throw new AiInvocationLinkError()
+  }
+}
+
+export class AiInvocationLinkError extends Error {
+  constructor() {
+    super('Assistant message linkage was not acknowledged')
+    this.name = 'AiInvocationLinkError'
   }
 }

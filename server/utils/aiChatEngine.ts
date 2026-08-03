@@ -15,6 +15,7 @@ import { fetchScopedMentionedEntities } from '~~/server/utils/ai/mentionedEntity
 import { resolveServerCatalogRuntimePolicy } from '~~/server/utils/ai/governance/catalogComposition'
 import { resolveObserveAndLearnRuntimePolicy } from '~~/server/utils/ai/observe/runtimePolicy'
 import { linkAiInvocationTurnMessage } from '~~/server/utils/ai/invocationLedger'
+import { bindPilotUatContext } from '~~/server/utils/ai/governance/pilotRuntimeBinding'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
 export interface ChatResponse {
@@ -223,20 +224,24 @@ export async function processUserMessage(
   boardId?: string,
   persona?: string,
   room?: { officeId: string, meetingId?: string, presentUserIds?: string[], transcriptTail?: string },
+  pilotUat?: { evidenceId: string, turnId: string, releaseId: string },
 ): Promise<ChatResponse> {
   const startTime = Date.now()
-  const turnId = crypto.randomUUID()
+  const turnId = pilotUat?.turnId ?? crypto.randomUUID()
   const cfg = useRuntimeConfig(event) as any
   const runtimePolicy = resolveServerCatalogRuntimePolicy(event, cfg)
   // Re-admit the actor from current server state for every turn. This is the authority source for
   // role, departments, clients, personal narrowing, and evaluated catalog releases; the role passed
   // by older callers is deliberately not trusted as the runtime authorization decision.
-  const assistantContext = await resolvePersonalAssistantContext({
+  const resolvedAssistantContext = await resolvePersonalAssistantContext({
     userId,
     event,
     runtimePolicy,
     observedMemoryEnabled: resolveObserveAndLearnRuntimePolicy(event, { runtimeConfig: cfg }).enabled
   })
+  const assistantContext = pilotUat
+    ? bindPilotUatContext(resolvedAssistantContext, pilotUat.releaseId)
+    : resolvedAssistantContext
   const effectiveUserRole = assistantContext.identity.role
   const agentConfig = assistantContext.preferences
   // Persona = one skill-pack per turn (narrows tools ∩ RBAC + a focus preamble). An explicit arg (chat
@@ -252,7 +257,7 @@ export async function processUserMessage(
   explicitOrPersisted ??= agentConfig.personaKey
   // Persist an explicit choice (migration-free: system_context JSONB) so it sticks across reloads and
   // for the voice/quick-action paths. Non-fatal if persistence fails.
-  if (persona && event) {
+  if (persona && event && !pilotUat) {
     await execute(
       `UPDATE ai_conversations
        SET system_context = COALESCE(system_context, '{}'::jsonb) || jsonb_build_object('persona', $2::text)
@@ -420,7 +425,7 @@ export async function processUserMessage(
   let toolCostUsd: number | null = null
   let promptTokens: number | null = null
   let completionTokens: number | null = null
-  if (event && shouldUseToolLoop({ aiToolsEnabled: !!cfg.aiToolsEnabled, hasEvent: !!event, intent: contextBundle.intent })) {
+  if (event && (pilotUat || shouldUseToolLoop({ aiToolsEnabled: !!cfg.aiToolsEnabled, hasEvent: !!event, intent: contextBundle.intent }))) {
     try {
       const { runToolLoop } = await import('~~/server/utils/ai/toolLoop')
       const loopMessages = history
@@ -488,6 +493,7 @@ export async function processUserMessage(
                   requestId: conversationId,
                   turnId,
                   loopId: `l2:${pk}`,
+                  pilotEvidenceId: pilotUat?.evidenceId,
                   metadata: { specialistPersona: pk, controller: 'l2' },
                 })
                 l2Cost += sub.costUsd ?? 0
@@ -556,6 +562,7 @@ export async function processUserMessage(
           requestId: conversationId,
           turnId,
           loopId: 'l1',
+          pilotEvidenceId: pilotUat?.evidenceId,
         })
         aiContent = loop.text
         toolTrace = loop.toolCalls
@@ -571,6 +578,7 @@ export async function processUserMessage(
           : 'I looked into that but didn’t find anything to report.'
       }
     } catch (err) {
+      if (pilotUat) throw err
       console.error('AI tool loop failed; falling back to single-shot:', err)
       // fall through to the existing LoRA/Groq path
     }
@@ -665,13 +673,13 @@ export async function processUserMessage(
     promptTokens,
     completionTokens,
   ])
-  if (assistantMsg?.id) await linkAiInvocationTurnMessage(turnId, userId, assistantMsg.id)
+  if (assistantMsg?.id && usedToolLoop) await linkAiInvocationTurnMessage(turnId, userId, assistantMsg.id)
 
   // 10b. Inferred memory distillation (Phase-0 WS-A.8b) — fire-and-forget AFTER the response, gated
   // by AI_MEMORY_DISTILL_ENABLED (dormant by default). Distils ≤3 durable `inferred` memories from
   // this turn for future recall. Strictly user-scoped, fully fail-safe (never throws), and registered
   // via runAfterResponse so it survives on Cloudflare without blocking the reply.
-  if (event && cfg.aiMemoryDistillEnabled && !isError && aiContent.trim()) {
+  if (event && cfg.aiMemoryDistillEnabled && !pilotUat && !isError && aiContent.trim()) {
     const distillWork = import('~~/server/utils/ai/memory/orchestrate')
       .then(({ distillAndStoreMemories }) =>
         distillAndStoreMemories({ userId, turn: { userMessage: content, assistantMessage: aiContent }, event }))

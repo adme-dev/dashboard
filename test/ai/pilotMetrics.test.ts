@@ -30,6 +30,7 @@ function release(overrides: Partial<PilotMetricReleaseSource> = {}): PilotMetric
     approvalBypassCount: 0,
     prohibitedEffectCount: 0,
     pilotEpisodeStartedAt: WINDOW.from,
+    pilotEpisodeAuditId: '40000000-0000-4000-8000-000000000001',
     ...overrides
   }
 }
@@ -37,6 +38,7 @@ function release(overrides: Partial<PilotMetricReleaseSource> = {}): PilotMetric
 function successfulTurns(count: number, overrides: Record<string, unknown> = {}) {
   return Array.from({ length: count }, (_, index) => ({
     id: `invocation-${index}`,
+    durableEvidence: true,
     attemptId: `turn-${index}:l1:primary`,
     turnId: `turn-${index}`,
     releaseId: '10000000-0000-4000-8000-000000000001',
@@ -45,12 +47,21 @@ function successfulTurns(count: number, overrides: Record<string, unknown> = {})
     assistantMessageId: `message-${index}`,
     actorKey: `actor-${index % 5}`,
     status: 'success',
+    state: 'assessed',
+    terminalOutcome: 'success',
+    memberEligible: true,
     fallbackUsed: false,
     costUsdMicros: '50',
     latencyMs: 500,
     scopeRespected: true,
     approvalBoundaryRespected: true,
     prohibitedEffectsCount: 0,
+    freshnessRespected: true,
+    fabricationObserved: false,
+    credentialLeakObserved: false,
+    enforcementScopeRespected: true,
+    enforcementApprovalBoundaryRespected: true,
+    enforcementProhibitedEffectsCount: 0,
     ...overrides
   }))
 }
@@ -188,7 +199,7 @@ describe('governed assistant pilot metrics', () => {
         approval_bypass_count: '0',
         prohibited_effect_count: '0'
       }]
-      if (sql.includes('FROM ai_invocations')) return []
+      if (sql.includes('FROM ai_pilot_task_evidence')) return []
       if (sql.includes('FROM ai_feedback')) return []
       throw new Error('unexpected query')
     })
@@ -276,7 +287,11 @@ describe('governed assistant pilot metrics', () => {
     const base = {
       releaseId: release().releaseId, packVersionId: release().packVersionId, actorKey: 'actor-1',
       turnId: 'turn-1', representativeTaskId: 'case-1', assistantMessageId: 'message-1',
-      scopeRespected: true, approvalBoundaryRespected: true, prohibitedEffectsCount: 0
+      durableEvidence: true, state: 'assessed', terminalOutcome: 'success', memberEligible: true,
+      scopeRespected: true, approvalBoundaryRespected: true, prohibitedEffectsCount: 0,
+      freshnessRespected: true, fabricationObserved: false, credentialLeakObserved: false,
+      enforcementScopeRespected: true, enforcementApprovalBoundaryRespected: true,
+      enforcementProhibitedEffectsCount: 0
     }
     const result = aggregatePilotReleaseMetrics({
       release: release({ pilotEpisodeStartedAt: WINDOW.from } as any), window: WINDOW,
@@ -301,12 +316,53 @@ describe('governed assistant pilot metrics', () => {
         id: 'row', attemptId: 'turn-1:l1:primary', turnId: 'turn-1', releaseId: release().releaseId,
         packVersionId: release().packVersionId, actorKey: 'actor', representativeTaskId: 'case-1',
         assistantMessageId: 'message-1', status: 'success', fallbackUsed: false,
+        durableEvidence: true, state: 'assessed', terminalOutcome: 'success', memberEligible: true,
         costUsdMicros: '10', latencyMs: 100, scopeRespected: false,
-        approvalBoundaryRespected: false, prohibitedEffectsCount: 1
+        approvalBoundaryRespected: false, prohibitedEffectsCount: 1,
+        freshnessRespected: true, fabricationObserved: false, credentialLeakObserved: false,
+        enforcementScopeRespected: false, enforcementApprovalBoundaryRespected: false,
+        enforcementProhibitedEffectsCount: 1
       }] as any,
       feedback: []
     }) as any
 
     expect(result).toMatchObject({ scopeViolationCount: 1, approvalBypassCount: 1, prohibitedEffectCount: 1, gate: 'fail' })
+  })
+
+  it('blocks every issued durable task until terminal message linkage and independent assessment are complete', () => {
+    const result = aggregatePilotReleaseMetrics({
+      release: release(), window: WINDOW,
+      invocations: [{
+        ...successfulTurns(1)[0], state: 'issued', terminalOutcome: null,
+        assistantMessageId: null, scopeRespected: null, approvalBoundaryRespected: null,
+        prohibitedEffectsCount: null, freshnessRespected: null, fabricationObserved: null,
+        credentialLeakObserved: null
+      } as any], feedback: []
+    })
+    expect(result.successfulTurns).toBe(0)
+    expect(result.blockers).toEqual(expect.arrayContaining([
+      'representative_task_terminal_missing', 'assistant_message_link_missing',
+      'independent_assessment_missing'
+    ]))
+  })
+
+  it('reads durable evidence as authority and never joins invocation metadata for qualification', async () => {
+    const queryRows = vi.fn(async (sql: string) => sql.includes('FROM ai_pack_releases') ? [] : [])
+    await getPilotReleaseMetrics(WINDOW, { queryRows })
+    expect(queryRows.mock.calls[1]![0]).toContain('FROM ai_pilot_task_evidence')
+    expect(queryRows.mock.calls[1]![0]).not.toContain("metadata -> 'pilotEvidence'")
+    expect(queryRows.mock.calls[2]![0]).toContain('JOIN ai_pilot_task_evidence evidence')
+    expect(queryRows.mock.calls[2]![0]).toContain('pilot_episode_audit_id')
+    expect(queryRows.mock.calls[2]![0]).toContain('ai_release_pilot_members')
+  })
+
+  it('never qualifies legacy invocation-shaped telemetry without durable evidence state', () => {
+    const legacy = successfulTurns(20).map(({ durableEvidence: _durable, state: _state, terminalOutcome: _outcome,
+      freshnessRespected: _freshness, fabricationObserved: _fabrication, credentialLeakObserved: _credential,
+      enforcementScopeRespected: _scope, enforcementApprovalBoundaryRespected: _approval,
+      enforcementProhibitedEffectsCount: _effects, ...row }) => row)
+    const result = aggregatePilotReleaseMetrics({ release: release(), window: WINDOW, invocations: legacy, feedback: [] })
+    expect(result.successfulTurns).toBe(0)
+    expect(result.blockers).toContain('representative_task_telemetry_missing')
   })
 })

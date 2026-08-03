@@ -37,6 +37,7 @@ The approver verifies deployed values from the target environment, not from a lo
 | Control | Required pilot value | Verified value / evidence |
 |---|---|---|
 | `AI_GOVERNED_CATALOG_MODE` | `pilot` | `[required]` |
+| `AI_PILOT_UAT_ENABLED` | `true` only during an approved evidence window; otherwise `false` | `[operator change record required]` |
 | `AI_OBSERVE_ENABLED` | `false` | `[required]` |
 | `AI_OBSERVE_PROACTIVE_ENABLED` | `false` | `[required]` |
 | `PLATFORM_AGENT_THINK_TURNS_ENABLED` | `false` | `[required]` |
@@ -63,11 +64,12 @@ The approver verifies deployed values from the target environment, not from a lo
 
 - [ ] Metrics response and stored evidence are prompt-free and response-free.
 - [ ] Metrics exclude memories, email/contact data, names, user IDs, per-person activity, rankings, individual performance scores, raw traces/tokens, and credentials.
-- [ ] Invocation metadata records only bounded operational fields needed for release evidence.
-- [ ] Representative telemetry carries a server-issued exact release/version/evaluation-case capability; browser objects, ordinary requests, and catalog release arrays cannot qualify.
-- [ ] Every primary/fallback attempt has an immutable attempt ID and terminal state, and the server turn is linked to the exact persisted assistant message.
-- [ ] Unknown cost, missing latency, missing live safety, terminal provider failure, or absent exact-message linkage blocks the gate and is never converted to zero or omitted.
-- [ ] Feedback is counted only when `ai_feedback.message_id` directly matches the terminal invocation's exact assistant-message link and release; unlinked feedback is not inferred.
+- [ ] Invocation metadata contains bounded correlation fields only and is not used as representative, safety, or feedback authority.
+- [ ] The IDs-only ADMIN/write-access UAT harness loads its prompt, case, and tool bindings server-side and validates the exact passing release/version/suite, latest pilot episode, active cohort member, and actor-owned conversation.
+- [ ] Each request has one durable, replay-safe `issued → started → terminal → assessed` evidence record with immutable request, turn, release, version, suite, case, episode, actor, and issuer identities.
+- [ ] Every terminal record has an acknowledged outcome and exact persisted assistant-message link, or an explicit durable caller/provider/link failure. No evidence write fails softly.
+- [ ] Unknown cost, missing latency, missing assessment, terminal provider failure, inactive membership, or absent exact-message linkage blocks the gate and is never converted to zero or omitted.
+- [ ] Feedback is counted only when `ai_feedback.message_id` and user directly match successful assessed evidence in the exact current release/version, latest pilot episode, evidence window, and active current cohort/department membership.
 - [ ] The evidence window is recorded as canonical `pilotFrom`/`pilotTo` instants and begins no earlier than the latest exact-version pilot audit event.
 - [ ] Retention period and deletion owner are documented: `[period / policy / owner required]`.
 - [ ] Access to raw operational tables is limited and audited: `[evidence required]`.
@@ -93,7 +95,8 @@ Required statement:
 - [ ] Cross-client and cross-tenant requests were denied without leaking existence or content.
 - [ ] Denials were understandable and contained no sensitive detail.
 - [ ] No write proposal or live side effect was produced by any read/draft pack.
-- [ ] Live terminal-turn safety observations, separate from evaluation simulation, prove scope and approval boundaries for every counted representative task.
+- [ ] A different ADMIN assessor reviewed each terminal response and recorded prompt-free verdicts for scope, approval boundary, prohibited effects, source freshness, fabrication, and credential leakage. The actor, issuer, and tool loop did not self-assess.
+- [ ] Independent assessment and authoritative enforcement evidence agree for scope, approval boundaries, and prohibited effects; either missing source blocks the task.
 - [ ] Scope violation count is zero for every release.
 - [ ] Approval bypass count is zero for every release.
 - [ ] Prohibited effect count is zero for every release.

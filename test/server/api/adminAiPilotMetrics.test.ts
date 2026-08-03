@@ -15,6 +15,7 @@ describe('GET /api/admin/ai/governance/pilot-metrics', () => {
   const getQuery = vi.fn()
   const getMetrics = vi.fn()
   const now = vi.fn(() => new Date('2026-08-03T01:02:03.000Z'))
+  const callerAvailable = vi.fn(() => false)
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -24,7 +25,7 @@ describe('GET /api/admin/ai/governance/pilot-metrics', () => {
   })
 
   function handler() {
-    return createPilotMetricsGetHandler({ requirePermission, setResponseHeader, getQuery, getMetrics, now })
+    return createPilotMetricsGetHandler({ requirePermission, setResponseHeader, getQuery, getMetrics, now, callerAvailable })
   }
 
   it('requires ADMIN before parsing or reading metrics and always disables caching', async () => {
@@ -39,6 +40,7 @@ describe('GET /api/admin/ai/governance/pilot-metrics', () => {
     await handler()(event)
     expect(requirePermission).toHaveBeenCalledWith(event, 'ADMIN')
     expect(setResponseHeader).toHaveBeenCalledWith(event, 'Cache-Control', 'private, no-store')
+    expect(getMetrics).toHaveBeenCalledWith(WINDOW, { callerAvailable: false })
   })
 
   it('strictly validates a bounded from/to query without accepting arrays or extra keys', async () => {

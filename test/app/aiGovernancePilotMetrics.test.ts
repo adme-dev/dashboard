@@ -67,7 +67,7 @@ describe('AI governance pilot metrics UI', () => {
     const result = mount({
       data: {
         generatedAt: '2026-08-03T00:00:00.000Z', window: WINDOW,
-        summary: { gate: 'fail', blockers: [], requiredPackCount: 5, presentReleaseCount: 5 },
+        summary: { gate: 'fail', blockers: ['representative_evidence_caller_unavailable'], requiredPackCount: 5, presentReleaseCount: 5 },
         metrics: [{ ...passingMetric, gate: 'fail', blockers: ['scope_violation_detected'], scopeViolationCount: 1 }]
       },
       window: WINDOW,
@@ -82,6 +82,7 @@ describe('AI governance pilot metrics UI', () => {
     expect(text).toContain('Zero tolerance')
     expect(text).toContain('Evidence from')
     expect(text).toContain('Evidence through')
+    expect(text).toContain('Representative evidence caller unavailable')
     expect(text).toContain('Scope violation detected')
     for (const forbidden of ['leaderboard', 'employee ranking', 'user id', 'Taylor', 'email', 'prompt', 'response', 'memory', 'trace', 'token']) {
       expect(text.toLowerCase()).not.toContain(forbidden.toLowerCase())

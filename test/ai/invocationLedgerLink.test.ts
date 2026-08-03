@@ -22,4 +22,9 @@ describe('AI invocation exact turn linkage', () => {
 
     expect(execute.mock.calls[0]?.[1]?.[12]).toBeNull()
   })
+
+  it('throws when exact assistant-message linkage is not acknowledged', async () => {
+    execute.mockResolvedValueOnce(0)
+    await expect(linkAiInvocationTurnMessage('turn-1', 'user-1', 'message-1')).rejects.toMatchObject({ name: 'AiInvocationLinkError' })
+  })
 })

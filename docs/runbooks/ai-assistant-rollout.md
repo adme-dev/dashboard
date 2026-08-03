@@ -51,10 +51,13 @@ Record the environment, immutable deployment SHA, operator, rollback owner, plan
 
 ```env
 AI_GOVERNED_CATALOG_MODE=pilot
+AI_PILOT_UAT_ENABLED=false
 AI_OBSERVE_ENABLED=false
 AI_OBSERVE_PROACTIVE_ENABLED=false
 PLATFORM_AGENT_THINK_TURNS_ENABLED=false
 ```
+
+`AI_PILOT_UAT_ENABLED` is fail-closed and must remain false until the named operator has approval to incur model calls. While it is false, the aggregate gate reports `representative_evidence_caller_unavailable`. Enabling it is a separate, recorded operator action after deployment and migration verification; it is not authorized by this runbook or by an engineering test session.
 
 Do not change any other AI surface flag as part of this pilot-mode change. Before deploying, separately verify that every memory, proactive, portal-write, MCP-write, financial-write, social publishing, email send, budget execution, and other action-specific write flag in the target remains off. At minimum, confirm these known assistant flags are false or unset: `AI_MEMORY_DISTILL_ENABLED`, `AI_CONTROLLER_L2_ENABLED`, `AI_PORTAL_WRITES_ENABLED`, `MCP_WRITE_TOOLS_ENABLED`, and `MCP_FINANCIAL_TOOLS_ENABLED`. `AI_TOOLS_ENABLED` is not part of this change request; preserve its already-approved target value.
 
@@ -99,7 +102,11 @@ For every cohort, run the approved suite tasks plus one real, non-sensitive dail
 
 Stop the cohort on any scope violation, approval bypass, prohibited effect, unexpected write proposal, stale/uncited material fact, or access surviving revocation. Do not repair the evidence by deleting failed turns.
 
-Representative automation must obtain the server-only evidence capability for the exact pilot release, exact pack version, and evaluation case in that release's approved suite, then pass that opaque capability directly to the governed tool loop. A browser-supplied object, ordinary assistant request, catalog release array, or arbitrary metadata field is not representative evidence. Preserve the server-generated turn ID across primary/fallback attempts and link the turn to the exact persisted assistant message before collecting feedback.
+Representative automation uses the ADMIN and write-access protected `POST /api/admin/ai/governance/pilot-uat` harness. Its body contains IDs only: request, release, evaluation case, actor, and conversation. The server loads the approved prompt and tool bindings from the exact passing suite, validates the current pilot episode, active cohort membership, actor-owned conversation, and exact release/version identities, then issues one durable `ai_pilot_task_evidence` record. Never send a prompt, tool list, expected answer, safety verdict, or arbitrary evidence metadata from the browser.
+
+The harness advances one replay-safe state machine from `issued` to `started` to `terminal`, with a unique request ID and turn ID. It preserves the turn across primary/fallback attempts, requires the exact persisted assistant-message link, and records link/caller/provider failures as terminal blockers. Invocation metadata contains correlation IDs only; it is not the source of representative, safety, or feedback authority. Every evidence update must return an acknowledged row or fail the request.
+
+After reviewing the actual persisted response and operational evidence, a different ADMIN assessor submits all six prompt-free verdicts to `POST /api/admin/ai/governance/pilot-uat/<evidence-id>/assessment`: scope, approval boundary, prohibited effects, source freshness, fabrication, and credential leakage. The actor or issuer cannot assess their own evidence. A tool loop cannot self-declare these dimensions green. Failed or missing assessment remains durable evidence and blocks promotion.
 
 ### 5. Review aggregate evidence and security approval
 
@@ -112,9 +119,9 @@ In `/admin/ai/governance`, set a canonical ISO window no longer than 31 days and
 - nearest-rank P95 latency no higher than the pack budget;
 - total recorded invocation cost divided by successful turns no higher than the pack per-task budget.
 
-Every counted turn must include a unique server turn ID, immutable attempt ID, approved representative task ID, exact release/version identity, terminal outcome, exact assistant-message link, latency, cost, and a live safety observation. Primary and fallback attempts remain separately recorded, but the task is counted once per turn and release. A fallback success is not a qualifying non-fallback success. Missing latency, unknown cost, missing live safety, a provider terminal failure, or absent exact-message linkage blocks the gate rather than disappearing or becoming zero.
+Every issued evidence record in the selected current pilot episode and window is included, including incomplete and failed records. A qualifying turn must reach independently `assessed`, have a successful terminal outcome, exact assistant-message link, current active pilot membership, latency, cost, non-fallback execution, authoritative enforcement evidence, and all six independent assessment dimensions. Missing terminal state, link, assessment, latency, cost, membership, or enforcement evidence blocks the gate rather than disappearing or becoming zero.
 
-Use the explicit **Evidence from** and **Evidence through** calendars. Applying a window stores canonical `pilotFrom`/`pilotTo` instants in the page URL, and refreshes reuse those exact values. The endpoint is ADMIN-only, `private, no-store`, and returns aggregate release/cohort evidence only. It deliberately omits employee identities, prompts, responses, memories, contact details, rankings, individual scores, raw traces/tokens, and credentials. Feedback joins directly from `ai_feedback.message_id` to the terminal invocation's exact `assistantMessageId`; historical or otherwise unlinked feedback is excluded rather than inferred. Treat absent linked ratings as a telemetry limitation, never as positive evidence.
+Use the explicit **Evidence from** and **Evidence through** calendars. Applying a window stores canonical `pilotFrom`/`pilotTo` instants in the page URL, and refreshes reuse those exact values. The endpoint is ADMIN-only, `private, no-store`, and returns aggregate release/cohort evidence only. It deliberately omits employee identities, prompts, responses, memories, contact details, rankings, individual scores, raw traces/tokens, and credentials. Feedback is accepted only when it joins the assessed successful evidence's exact assistant message, actor, release/version, latest pilot episode, evidence window, current active membership, and department membership. Historical, revoked, inactive, cross-turn, or otherwise unlinked feedback is excluded rather than inferred. Treat absent linked ratings as a telemetry limitation, never as positive evidence.
 
 Complete [the independent approval packet](../security/ai-assistant-read-draft-pilot-approval.md). The approver must be independent of implementation and must sign it externally; an engineer or AI agent cannot self-approve.
 

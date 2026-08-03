@@ -146,13 +146,15 @@ describe('runToolLoop (injected mock model)', () => {
     ])
   })
 
-  it('does not serialize an unissued representative evidence object', async () => {
+  it('records only a durable evidence correlation id and does not self-assert live safety', async () => {
     await runToolLoop({
       ctx: ctx as any, system: 'sys', messages: [{ role: 'user', content: 'hi' }], seed: 'c1', model: textModel('Done'),
       turnId: 'turn-untrusted', loopId: 'l1',
-      pilotEvidence: { releaseId: 'forged', packVersionId: 'forged', representativeTaskId: 'forged' }
+      pilotEvidenceId: '10000000-0000-4000-8000-000000000001'
     } as any)
+    expect(mockRecordAiInvocation.mock.calls[0]?.[0].metadata).toMatchObject({ pilotEvidenceId: '10000000-0000-4000-8000-000000000001' })
     expect(mockRecordAiInvocation.mock.calls[0]?.[0].metadata.pilotEvidence).toBeUndefined()
+    expect(mockRecordAiInvocation.mock.calls[0]?.[0].metadata.liveSafety).toBeUndefined()
   })
 
   it('intersects the live registry with evaluated active catalog releases', async () => {

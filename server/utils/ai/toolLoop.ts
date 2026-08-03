@@ -13,10 +13,6 @@ import {
   type CatalogRuntimePolicy
 } from '~~/server/utils/ai/governance/catalogComposition'
 import type { PermissionGroup } from '~~/server/utils/permissions'
-import {
-  readTrustedPilotRepresentativeEvidence,
-  type PilotRepresentativeEvidence
-} from '~~/server/utils/ai/governance/pilotEvidence'
 
 export interface LoopOutput {
   text: string
@@ -145,8 +141,8 @@ export async function runToolLoop(opts: {
   turnId?: string
   /** Stable identity for this loop within the turn (for example l1 or l2:finance). */
   loopId?: string
-  /** Opaque server-issued proof that this turn is an approved representative pilot task. */
-  pilotEvidence?: PilotRepresentativeEvidence
+  /** Correlation only. Durable ai_pilot_task_evidence is the authority. */
+  pilotEvidenceId?: string
 }): Promise<LoopOutput> {
   const cfg = useRuntimeConfig() as any
   const persona = opts.persona ?? DEFAULT_PERSONA
@@ -169,12 +165,6 @@ export async function runToolLoop(opts: {
   const sdkTools = toSdkTools(tools, opts.ctx, opts.seed)
   const turnId = opts.turnId ?? crypto.randomUUID()
   const loopId = opts.loopId ?? 'l1'
-  const trustedEvidence = readTrustedPilotRepresentativeEvidence(opts.pilotEvidence)
-  const exercisedEvidence = trustedEvidence
-    && composition.releaseIds.includes(trustedEvidence.releaseId)
-    && composition.packVersionIds.includes(trustedEvidence.packVersionId)
-    ? trustedEvidence
-    : null
 
   const system = [
     opts.system,
@@ -235,7 +225,8 @@ export async function runToolLoop(opts: {
     modelAssignmentSource: assignment?.source ?? 'default',
     modelAssignmentIgnoredReason: assignment?.ignoredReason ?? null,
     turnId,
-    loopId
+    loopId,
+    ...(opts.pilotEvidenceId ? { pilotEvidenceId: opts.pilotEvidenceId } : {})
   }
   const recordAttempt = async (input: {
     spec: string
@@ -247,17 +238,6 @@ export async function runToolLoop(opts: {
     output?: LoopOutput
     error?: unknown
   }) => {
-    const mutatingToolNames = new Set(tools.filter(tool => tool.mutates).map(tool => tool.name))
-    const mutatingCalls = input.output?.toolCalls.filter(call => mutatingToolNames.has(call.name)) ?? []
-    const prohibitedEffectsCount = mutatingCalls.length
-      + (input.output?.proposedAction && !mutatingToolNames.has(input.output.proposedAction.toolName) ? 1 : 0)
-    const terminalLiveSafety = input.terminal && exercisedEvidence && input.output
-      ? {
-          scopeRespected: input.output.toolCalls.every(call => tools.some(tool => tool.name === call.name)),
-          approvalBoundaryRespected: prohibitedEffectsCount === 0 && input.output.proposedAction === null,
-          prohibitedEffectsCount
-        }
-      : undefined
     await recordAiInvocation({
       featureKey: opts.featureKey ?? 'agency_ai_tool_loop',
       provider: input.spec.startsWith('anthropic/') ? 'anthropic' : input.spec.startsWith('workersai/') ? 'workers_ai' : 'groq',
@@ -280,9 +260,7 @@ export async function runToolLoop(opts: {
         attemptRole: input.role,
         terminal: input.terminal,
         toolCalls: input.output?.toolCalls.map(call => call.name).slice(0, 20) ?? [],
-        proposedTool: input.output?.proposedAction?.toolName ?? null,
-        ...(exercisedEvidence ? { pilotEvidence: exercisedEvidence } : {}),
-        ...(terminalLiveSafety ? { liveSafety: terminalLiveSafety } : {})
+        proposedTool: input.output?.proposedAction?.toolName ?? null
       }
     })
   }

@@ -13,7 +13,8 @@ interface PilotMetricsGetDependencies {
   requirePermission(event: H3Event, permission: 'ADMIN'): Promise<User>
   setResponseHeader(event: H3Event, name: string, value: string): void
   getQuery(event: H3Event): Record<string, unknown>
-  getMetrics(window: PilotMetricsWindow): Promise<PilotMetricsReport>
+  getMetrics(window: PilotMetricsWindow, options: { callerAvailable: boolean }): Promise<PilotMetricsReport>
+  callerAvailable(event: H3Event): boolean
   now(): Date
 }
 
@@ -21,7 +22,8 @@ const defaultDependencies: PilotMetricsGetDependencies = {
   requirePermission,
   setResponseHeader,
   getQuery: event => getQuery(event),
-  getMetrics: getPilotReleaseMetrics,
+  getMetrics: (window, options) => getPilotReleaseMetrics(window, undefined, options),
+  callerAvailable: event => (useRuntimeConfig(event) as any).aiPilotUatEnabled === true,
   now: () => new Date()
 }
 
@@ -62,7 +64,7 @@ export function createPilotMetricsGetHandler(dependencies: PilotMetricsGetDepend
       throw error
     }
     try {
-      const report = await dependencies.getMetrics(window)
+      const report = await dependencies.getMetrics(window, { callerAvailable: dependencies.callerAvailable(event) })
       return {
         generatedAt: dependencies.now().toISOString(),
         window,

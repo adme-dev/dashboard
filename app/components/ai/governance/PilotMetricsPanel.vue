@@ -139,6 +139,11 @@ function cost(value: number) {
         :title="`Overall pilot gate: ${gateLabel(data.summary.gate)}`"
         :description="`${data.summary.presentReleaseCount} of ${data.summary.requiredPackCount} required releases present.`"
       />
+      <ul v-if="data.summary.blockers.length" class="space-y-1 text-xs text-error" aria-label="Overall pilot gate blockers">
+        <li v-for="blocker in data.summary.blockers" :key="blocker" class="flex items-start gap-1.5">
+          <UIcon name="i-lucide-circle-x" class="mt-0.5 size-3 shrink-0" />{{ blockerLabel(blocker) }}
+        </li>
+      </ul>
 
       <div class="flex flex-wrap gap-x-5 gap-y-2 border-y border-default py-3 text-xs text-muted">
         <span><strong class="font-medium text-default">Window</strong> {{ new Date(data.window.from).toLocaleDateString() }}–{{ new Date(data.window.to).toLocaleDateString() }}</span>
