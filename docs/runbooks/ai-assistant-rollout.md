@@ -43,6 +43,8 @@ The pilot covers five exact pack keys mapped to three reporting cohorts:
 
 Pilot evidence is release-specific. Never combine an older evaluation, another pack version, or unlinked assistant telemetry with the selected release.
 
+The evidence gate always returns the complete five-pack matrix. A missing pack is `insufficient_data`; multiple current pilot releases for one required pack are a hard failure. Evidence starts at the latest append-only `pilot` audit event for the exact pack version, so a new pilot episode cannot reuse tasks or ratings from an earlier episode.
+
 ### 1. Record the preview change request
 
 Record the environment, immutable deployment SHA, operator, rollback owner, planned evidence window, and approved maintenance window. In the preview/branch environment configure only these pilot variables:
@@ -97,6 +99,8 @@ For every cohort, run the approved suite tasks plus one real, non-sensitive dail
 
 Stop the cohort on any scope violation, approval bypass, prohibited effect, unexpected write proposal, stale/uncited material fact, or access surviving revocation. Do not repair the evidence by deleting failed turns.
 
+Representative automation must obtain the server-only evidence capability for the exact pilot release, exact pack version, and evaluation case in that release's approved suite, then pass that opaque capability directly to the governed tool loop. A browser-supplied object, ordinary assistant request, catalog release array, or arbitrary metadata field is not representative evidence. Preserve the server-generated turn ID across primary/fallback attempts and link the turn to the exact persisted assistant message before collecting feedback.
+
 ### 5. Review aggregate evidence and security approval
 
 In `/admin/ai/governance`, set a canonical ISO window no longer than 31 days and review Three-cohort pilot evidence. The automated release gate requires:
@@ -108,7 +112,9 @@ In `/admin/ai/governance`, set a canonical ISO window no longer than 31 days and
 - nearest-rank P95 latency no higher than the pack budget;
 - total recorded invocation cost divided by successful turns no higher than the pack per-task budget.
 
-The endpoint is ADMIN-only, `private, no-store`, and returns cohort aggregates only. It deliberately omits employee identities, prompts, responses, memories, contact details, rankings, individual scores, raw traces/tokens, and credentials. Current L1 invocation telemetry does not supply a deterministic conversation request ID, so historical feedback without an exact invocation/conversation/release link is excluded rather than inferred. Treat unexpectedly absent linked ratings as a telemetry limitation, never as positive evidence.
+Every counted turn must include a unique server turn ID, immutable attempt ID, approved representative task ID, exact release/version identity, terminal outcome, exact assistant-message link, latency, cost, and a live safety observation. Primary and fallback attempts remain separately recorded, but the task is counted once per turn and release. A fallback success is not a qualifying non-fallback success. Missing latency, unknown cost, missing live safety, a provider terminal failure, or absent exact-message linkage blocks the gate rather than disappearing or becoming zero.
+
+Use the explicit **Evidence from** and **Evidence through** calendars. Applying a window stores canonical `pilotFrom`/`pilotTo` instants in the page URL, and refreshes reuse those exact values. The endpoint is ADMIN-only, `private, no-store`, and returns aggregate release/cohort evidence only. It deliberately omits employee identities, prompts, responses, memories, contact details, rankings, individual scores, raw traces/tokens, and credentials. Feedback joins directly from `ai_feedback.message_id` to the terminal invocation's exact `assistantMessageId`; historical or otherwise unlinked feedback is excluded rather than inferred. Treat absent linked ratings as a telemetry limitation, never as positive evidence.
 
 Complete [the independent approval packet](../security/ai-assistant-read-draft-pilot-approval.md). The approver must be independent of implementation and must sign it externally; an engineer or AI agent cannot self-approve.
 

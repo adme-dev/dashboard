@@ -18,11 +18,41 @@ const apiFetch = $fetch as <T>(
   options?: { method?: string, body?: unknown, query?: Record<string, string | number> }
 ) => Promise<T>
 
+function defaultPilotWindow() {
+  const through = new Date()
+  through.setUTCHours(0, 0, 0, 0)
+  through.setUTCDate(through.getUTCDate() + 1)
+  const from = new Date(through)
+  from.setUTCDate(from.getUTCDate() - 30)
+  return { from: from.toISOString(), to: through.toISOString() }
+}
+
+function initialPilotWindow() {
+  const query = typeof window === 'undefined' ? null : new URL(window.location.href).searchParams
+  const from = query?.get('pilotFrom') ?? ''
+  const to = query?.get('pilotTo') ?? ''
+  const fromMs = Date.parse(from)
+  const toMs = Date.parse(to)
+  if (Number.isFinite(fromMs) && Number.isFinite(toMs)
+    && new Date(fromMs).toISOString() === from && new Date(toMs).toISOString() === to
+    && fromMs < toMs && toMs - fromMs <= 31 * 24 * 60 * 60 * 1_000) return { from, to }
+  return defaultPilotWindow()
+}
+
+function persistPilotWindow(windowValue: { from: string, to: string }) {
+  if (typeof window === 'undefined') return
+  const url = new URL(window.location.href)
+  url.searchParams.set('pilotFrom', windowValue.from)
+  url.searchParams.set('pilotTo', windowValue.to)
+  window.history.replaceState(window.history.state, '', url)
+}
+
 const data = ref<AiDepartmentReadinessResponse | null>(null)
 const catalogItems = ref<AiCatalogGovernanceItem[]>([])
 const evaluationRuns = ref<AiEvaluationRunView[]>([])
 const rollout = ref<AiCompanyRolloutReadiness | null>(null)
 const pilotMetrics = ref<AiPilotMetricsResponse | null>(null)
+const pilotWindow = ref(initialPilotWindow())
 const pending = ref(false)
 const error = ref<unknown>(null)
 const catalogPending = ref(false)
@@ -35,6 +65,8 @@ const pilotMetricsPending = ref(false)
 const pilotMetricsError = ref<string | null>(null)
 const seedOpen = ref(false)
 const selectedSeedItem = ref<AiDepartmentReadinessItem | null>(null)
+
+persistPilotWindow(pilotWindow.value)
 
 function errorMessage(caught: unknown, fallback: string) {
   return (caught as { data?: { statusMessage?: string } })?.data?.statusMessage ?? fallback
@@ -95,17 +127,21 @@ async function refreshRollout() {
 async function refreshPilotMetrics() {
   pilotMetricsPending.value = true
   pilotMetricsError.value = null
-  const to = new Date()
-  const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1_000)
   try {
     pilotMetrics.value = await apiFetch<AiPilotMetricsResponse>('/api/admin/ai/governance/pilot-metrics', {
-      query: { from: from.toISOString(), to: to.toISOString() }
+      query: { from: pilotWindow.value.from, to: pilotWindow.value.to }
     })
   } catch (caught) {
     pilotMetricsError.value = errorMessage(caught, 'The pilot evidence service could not be loaded.')
   } finally {
     pilotMetricsPending.value = false
   }
+}
+
+async function applyPilotWindow(window: { from: string, to: string }) {
+  pilotWindow.value = window
+  persistPilotWindow(window)
+  await refreshPilotMetrics()
 }
 
 async function refreshReadiness() {
@@ -256,9 +292,11 @@ async function refreshEvaluations() {
 
       <AiGovernancePilotMetricsPanel
         :data="pilotMetrics"
+        :window="pilotWindow"
         :pending="pilotMetricsPending"
         :error="pilotMetricsError"
         @refresh="refreshPilotMetrics"
+        @apply-window="applyPilotWindow"
       />
 
       <UAlert

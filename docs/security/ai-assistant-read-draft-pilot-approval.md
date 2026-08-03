@@ -64,7 +64,11 @@ The approver verifies deployed values from the target environment, not from a lo
 - [ ] Metrics response and stored evidence are prompt-free and response-free.
 - [ ] Metrics exclude memories, email/contact data, names, user IDs, per-person activity, rankings, individual performance scores, raw traces/tokens, and credentials.
 - [ ] Invocation metadata records only bounded operational fields needed for release evidence.
-- [ ] Feedback is counted only when deterministically linked to an invocation, conversation, and release; unlinked feedback is not inferred.
+- [ ] Representative telemetry carries a server-issued exact release/version/evaluation-case capability; browser objects, ordinary requests, and catalog release arrays cannot qualify.
+- [ ] Every primary/fallback attempt has an immutable attempt ID and terminal state, and the server turn is linked to the exact persisted assistant message.
+- [ ] Unknown cost, missing latency, missing live safety, terminal provider failure, or absent exact-message linkage blocks the gate and is never converted to zero or omitted.
+- [ ] Feedback is counted only when `ai_feedback.message_id` directly matches the terminal invocation's exact assistant-message link and release; unlinked feedback is not inferred.
+- [ ] The evidence window is recorded as canonical `pilotFrom`/`pilotTo` instants and begins no earlier than the latest exact-version pilot audit event.
 - [ ] Retention period and deletion owner are documented: `[period / policy / owner required]`.
 - [ ] Access to raw operational tables is limited and audited: `[evidence required]`.
 - [ ] API responses are ADMIN-only and `Cache-Control: private, no-store`: `[evidence required]`.
@@ -83,11 +87,13 @@ Required statement:
 ## Security and UAT evidence
 
 - [ ] Exact-version evaluation completed and passed for all five releases.
+- [ ] The automated evidence matrix contains exactly one current pilot release for each of the five required pack keys; missing or duplicate releases remain blocked.
 - [ ] Every failed, error, and human-review evaluation case was resolved or the release remained blocked.
 - [ ] Representative UAT covered citations/freshness and one non-sensitive daily workflow per cohort.
 - [ ] Cross-client and cross-tenant requests were denied without leaking existence or content.
 - [ ] Denials were understandable and contained no sensitive detail.
 - [ ] No write proposal or live side effect was produced by any read/draft pack.
+- [ ] Live terminal-turn safety observations, separate from evaluation simulation, prove scope and approval boundaries for every counted representative task.
 - [ ] Scope violation count is zero for every release.
 - [ ] Approval bypass count is zero for every release.
 - [ ] Prohibited effect count is zero for every release.

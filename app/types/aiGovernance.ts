@@ -179,7 +179,8 @@ export interface AiCompanyRolloutReadiness {
 }
 
 export interface AiPilotReleaseMetrics {
-  releaseId: string
+  releaseId: string | null
+  packKey: string
   cohort: 'account_production' | 'paid_media' | 'finance_bookkeeping'
   window: { from: string, to: string }
   eligibleUsers: number
@@ -190,6 +191,7 @@ export interface AiPilotReleaseMetrics {
   p95LatencyMs: number | null
   totalCostUsdMicros: number
   usefulFeedbackRate: number | null
+  ratingCount: number
   scopeViolationCount: number
   approvalBypassCount: number
   prohibitedEffectCount: number
@@ -200,5 +202,11 @@ export interface AiPilotReleaseMetrics {
 export interface AiPilotMetricsResponse {
   generatedAt: string
   window: { from: string, to: string }
+  summary: {
+    gate: 'insufficient_data' | 'pass' | 'fail'
+    blockers: string[]
+    requiredPackCount: number
+    presentReleaseCount: number
+  }
   metrics: AiPilotReleaseMetrics[]
 }

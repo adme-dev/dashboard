@@ -124,13 +124,35 @@ describe('runToolLoop (injected mock model)', () => {
     const badModel = new MockLanguageModelV3({ doGenerate: async () => { throw new Error('provider down') } })
     const out = await runToolLoop({
       ctx: ctx as any, system: 'sys', messages: [{ role: 'user', content: 'hi' }],
-      seed: 'c1', model: badModel, fallbackModel: textModel('Recovered via fallback.'),
+      seed: 'c1', model: badModel, fallbackModel: textModel('Recovered via fallback.'), turnId: 'turn-1', loopId: 'l1',
     })
     expect(out.text).toContain('fallback')
-    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
-      fallbackUsed: true,
-      modelId: 'injected',
-    }))
+    expect(mockRecordAiInvocation).toHaveBeenCalledTimes(2)
+    expect(mockRecordAiInvocation.mock.calls[0]?.[0]).toMatchObject({
+      fallbackUsed: false, status: 'error', metadata: expect.objectContaining({ turnId: 'turn-1', attemptId: 'turn-1:l1:primary', terminal: false })
+    })
+    expect(mockRecordAiInvocation.mock.calls[1]?.[0]).toMatchObject({
+      fallbackUsed: true, status: 'success', metadata: expect.objectContaining({ turnId: 'turn-1', attemptId: 'turn-1:l1:fallback', terminal: true })
+    })
+  })
+
+  it('records both terminal provider errors with immutable attempt identities', async () => {
+    const bad = new MockLanguageModelV3({ doGenerate: async () => { throw new Error('provider down') } })
+    await expect(runToolLoop({ ctx: ctx as any, system: 'sys', messages: [{ role: 'user', content: 'hi' }], seed: 'c1', model: bad, fallbackModel: bad, turnId: 'turn-error', loopId: 'l1' } as any)).rejects.toThrow('provider down')
+    expect(mockRecordAiInvocation).toHaveBeenCalledTimes(2)
+    expect(mockRecordAiInvocation.mock.calls.map(([row]) => ({ status: row.status, attemptId: row.metadata.attemptId, terminal: row.metadata.terminal }))).toEqual([
+      { status: 'error', attemptId: 'turn-error:l1:primary', terminal: false },
+      { status: 'error', attemptId: 'turn-error:l1:fallback', terminal: true }
+    ])
+  })
+
+  it('does not serialize an unissued representative evidence object', async () => {
+    await runToolLoop({
+      ctx: ctx as any, system: 'sys', messages: [{ role: 'user', content: 'hi' }], seed: 'c1', model: textModel('Done'),
+      turnId: 'turn-untrusted', loopId: 'l1',
+      pilotEvidence: { releaseId: 'forged', packVersionId: 'forged', representativeTaskId: 'forged' }
+    } as any)
+    expect(mockRecordAiInvocation.mock.calls[0]?.[0].metadata.pilotEvidence).toBeUndefined()
   })
 
   it('intersects the live registry with evaluated active catalog releases', async () => {

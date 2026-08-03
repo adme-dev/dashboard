@@ -5,14 +5,15 @@ import {
   getPilotReleaseMetrics,
   parsePilotMetricsWindow,
   type PilotMetricsWindow,
-  type PilotReleaseMetrics
+  type PilotReleaseMetrics,
+  type PilotMetricsReport
 } from '~~/server/utils/ai/governance/pilotMetrics'
 
 interface PilotMetricsGetDependencies {
   requirePermission(event: H3Event, permission: 'ADMIN'): Promise<User>
   setResponseHeader(event: H3Event, name: string, value: string): void
   getQuery(event: H3Event): Record<string, unknown>
-  getMetrics(window: PilotMetricsWindow): Promise<PilotReleaseMetrics[]>
+  getMetrics(window: PilotMetricsWindow): Promise<PilotMetricsReport>
   now(): Date
 }
 
@@ -27,6 +28,7 @@ const defaultDependencies: PilotMetricsGetDependencies = {
 function publicMetric(metric: PilotReleaseMetrics): PilotReleaseMetrics {
   return {
     releaseId: metric.releaseId,
+    packKey: metric.packKey,
     cohort: metric.cohort,
     window: { from: metric.window.from, to: metric.window.to },
     eligibleUsers: metric.eligibleUsers,
@@ -37,6 +39,7 @@ function publicMetric(metric: PilotReleaseMetrics): PilotReleaseMetrics {
     p95LatencyMs: metric.p95LatencyMs,
     totalCostUsdMicros: metric.totalCostUsdMicros,
     usefulFeedbackRate: metric.usefulFeedbackRate,
+    ratingCount: metric.ratingCount,
     scopeViolationCount: metric.scopeViolationCount,
     approvalBypassCount: metric.approvalBypassCount,
     prohibitedEffectCount: metric.prohibitedEffectCount,
@@ -59,11 +62,17 @@ export function createPilotMetricsGetHandler(dependencies: PilotMetricsGetDepend
       throw error
     }
     try {
-      const metrics = await dependencies.getMetrics(window)
+      const report = await dependencies.getMetrics(window)
       return {
         generatedAt: dependencies.now().toISOString(),
         window,
-        metrics: metrics.map(publicMetric)
+        summary: {
+          gate: report.summary.gate,
+          blockers: [...report.summary.blockers],
+          requiredPackCount: report.summary.requiredPackCount,
+          presentReleaseCount: report.summary.presentReleaseCount
+        },
+        metrics: report.metrics.map(publicMetric)
       }
     } catch {
       throw createError({

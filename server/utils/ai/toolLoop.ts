@@ -13,6 +13,10 @@ import {
   type CatalogRuntimePolicy
 } from '~~/server/utils/ai/governance/catalogComposition'
 import type { PermissionGroup } from '~~/server/utils/permissions'
+import {
+  readTrustedPilotRepresentativeEvidence,
+  type PilotRepresentativeEvidence
+} from '~~/server/utils/ai/governance/pilotEvidence'
 
 export interface LoopOutput {
   text: string
@@ -60,9 +64,19 @@ function modelIdFromSpec(spec: string): string {
 
 /** Estimate a turn's cost in USD from token usage + the model spec. Returns 0 when unknown. */
 export function estimateCostUsd(usage: { inputTokens?: number, outputTokens?: number } | undefined, modelSpec = ''): number {
+  return estimateKnownCostUsd(usage, modelSpec) ?? 0
+}
+
+function estimateKnownCostUsd(usage: { inputTokens?: number, outputTokens?: number } | undefined, modelSpec = ''): number | null {
   const entry = Object.entries(PRICE_PER_MTOK).find(([k]) => modelSpec.includes(k))?.[1]
-  if (!entry || !usage) return 0
-  return ((usage.inputTokens ?? 0) * entry.in + (usage.outputTokens ?? 0) * entry.out) / 1_000_000
+  if (!entry || usage?.inputTokens == null || usage.outputTokens == null) return null
+  return (usage.inputTokens * entry.in + usage.outputTokens * entry.out) / 1_000_000
+}
+
+function errorCode(error: unknown): string {
+  const value = error as { code?: unknown, name?: unknown }
+  const raw = typeof value?.code === 'string' ? value.code : typeof value?.name === 'string' ? value.name : 'provider_error'
+  return raw.replace(/[^a-zA-Z0-9_:-]/g, '_').slice(0, 120) || 'provider_error'
 }
 
 /**
@@ -127,8 +141,13 @@ export async function runToolLoop(opts: {
   clientId?: string | null
   requestId?: string | null
   metadata?: Record<string, unknown>
+  /** One server-generated identity shared by all model attempts that produce a user-visible reply. */
+  turnId?: string
+  /** Stable identity for this loop within the turn (for example l1 or l2:finance). */
+  loopId?: string
+  /** Opaque server-issued proof that this turn is an approved representative pilot task. */
+  pilotEvidence?: PilotRepresentativeEvidence
 }): Promise<LoopOutput> {
-  const startedAt = Date.now()
   const cfg = useRuntimeConfig() as any
   const persona = opts.persona ?? DEFAULT_PERSONA
 
@@ -148,6 +167,14 @@ export async function runToolLoop(opts: {
   })
   const tools = composition.tools
   const sdkTools = toSdkTools(tools, opts.ctx, opts.seed)
+  const turnId = opts.turnId ?? crypto.randomUUID()
+  const loopId = opts.loopId ?? 'l1'
+  const trustedEvidence = readTrustedPilotRepresentativeEvidence(opts.pilotEvidence)
+  const exercisedEvidence = trustedEvidence
+    && composition.releaseIds.includes(trustedEvidence.releaseId)
+    && composition.packVersionIds.includes(trustedEvidence.packVersionId)
+    ? trustedEvidence
+    : null
 
   const system = [
     opts.system,
@@ -191,56 +218,112 @@ export async function runToolLoop(opts: {
   let usedSpec: string = opts.model ? 'injected' : primarySpec
   let fallbackUsed = false
   let result
+  let successfulAttemptStartedAt: number
+  const baseMetadata = {
+    ...(opts.metadata ?? {}),
+    persona: persona.key,
+    readOnly: Boolean(opts.readOnly),
+    toolCount: tools.length,
+    catalogMode: composition.mode,
+    catalogRuntimeMode: opts.runtimePolicy?.mode ?? 'legacy',
+    catalogCoverageStatus: composition.coverageStatus,
+    catalogReleaseIds: composition.releaseIds,
+    catalogPackVersionIds: composition.packVersionIds,
+    catalogCapabilityVersionIds: composition.capabilityVersionIds,
+    catalogDenials: composition.denials.slice(0, 100),
+    injectedModel: Boolean(opts.model),
+    modelAssignmentSource: assignment?.source ?? 'default',
+    modelAssignmentIgnoredReason: assignment?.ignoredReason ?? null,
+    turnId,
+    loopId
+  }
+  const recordAttempt = async (input: {
+    spec: string
+    role: 'primary' | 'fallback'
+    status: 'success' | 'error'
+    terminal: boolean
+    fallbackUsed: boolean
+    startedAt: number
+    output?: LoopOutput
+    error?: unknown
+  }) => {
+    const mutatingToolNames = new Set(tools.filter(tool => tool.mutates).map(tool => tool.name))
+    const mutatingCalls = input.output?.toolCalls.filter(call => mutatingToolNames.has(call.name)) ?? []
+    const prohibitedEffectsCount = mutatingCalls.length
+      + (input.output?.proposedAction && !mutatingToolNames.has(input.output.proposedAction.toolName) ? 1 : 0)
+    const terminalLiveSafety = input.terminal && exercisedEvidence && input.output
+      ? {
+          scopeRespected: input.output.toolCalls.every(call => tools.some(tool => tool.name === call.name)),
+          approvalBoundaryRespected: prohibitedEffectsCount === 0 && input.output.proposedAction === null,
+          prohibitedEffectsCount
+        }
+      : undefined
+    await recordAiInvocation({
+      featureKey: opts.featureKey ?? 'agency_ai_tool_loop',
+      provider: input.spec.startsWith('anthropic/') ? 'anthropic' : input.spec.startsWith('workersai/') ? 'workers_ai' : 'groq',
+      modelId: input.spec.replace(/^(groq|anthropic|workersai)\//, ''),
+      gatewayUsed: !opts.model && !input.spec.startsWith('workersai/'),
+      fallbackUsed: input.fallbackUsed,
+      userId: opts.ctx.userId,
+      clientId: opts.clientId ?? null,
+      requestId: opts.requestId ?? null,
+      promptTokens: input.output?.usage?.inputTokens ?? null,
+      completionTokens: input.output?.usage?.outputTokens ?? null,
+      totalTokens: input.output?.usage?.totalTokens ?? null,
+      estimatedCostUsd: input.output ? estimateKnownCostUsd(input.output.usage, input.spec) : null,
+      status: input.status,
+      errorCode: input.error ? errorCode(input.error) : null,
+      latencyMs: Date.now() - input.startedAt,
+      metadata: {
+        ...baseMetadata,
+        attemptId: `${turnId}:${loopId}:${input.role}`,
+        attemptRole: input.role,
+        terminal: input.terminal,
+        toolCalls: input.output?.toolCalls.map(call => call.name).slice(0, 20) ?? [],
+        proposedTool: input.output?.proposedAction?.toolName ?? null,
+        ...(exercisedEvidence ? { pilotEvidence: exercisedEvidence } : {}),
+        ...(terminalLiveSafety ? { liveSafety: terminalLiveSafety } : {})
+      }
+    })
+  }
+  const primaryStartedAt = Date.now()
   try {
     result = await run(opts.model ?? resolveModel(primarySpec, { aiBinding }))
+    successfulAttemptStartedAt = primaryStartedAt
   } catch (err) {
     // Provider/gateway failure → ordered fallback to a second model.
-    const fb = opts.fallbackModel ?? (fallbackSpec ? resolveModel(fallbackSpec, { aiBinding }) : null)
+    let fb: LanguageModel | null = null
+    try {
+      fb = opts.fallbackModel ?? (fallbackSpec ? resolveModel(fallbackSpec, { aiBinding }) : null)
+    } catch {
+      await recordAttempt({ spec: usedSpec, role: 'primary', status: 'error', terminal: true, fallbackUsed: false, startedAt: primaryStartedAt, error: err })
+      throw err
+    }
+    await recordAttempt({ spec: usedSpec, role: 'primary', status: 'error', terminal: !fb, fallbackUsed: false, startedAt: primaryStartedAt, error: err })
     if (!fb) throw err
     usedSpec = opts.fallbackModel ? 'injected' : fallbackSpec
     fallbackUsed = true
-    result = await run(fb)
+    const fallbackStartedAt = Date.now()
+    try {
+      result = await run(fb)
+      successfulAttemptStartedAt = fallbackStartedAt
+    } catch (fallbackError) {
+      await recordAttempt({ spec: usedSpec, role: 'fallback', status: 'error', terminal: true, fallbackUsed: true, startedAt: fallbackStartedAt, error: fallbackError })
+      throw fallbackError
+    }
   }
 
   const out = extractLoopOutput(result)
-  out.costUsd = estimateCostUsd(out.usage, usedSpec)
-  await recordAiInvocation({
-    featureKey: opts.featureKey ?? 'agency_ai_tool_loop',
-    provider: usedSpec.startsWith('anthropic/')
-      ? 'anthropic'
-      : usedSpec.startsWith('workersai/')
-        ? 'workers_ai'
-        : 'groq',
-    modelId: usedSpec.replace(/^(groq|anthropic|workersai)\//, ''),
-    gatewayUsed: !opts.model && !usedSpec.startsWith('workersai/'),
-    fallbackUsed,
-    userId: opts.ctx.userId,
-    clientId: opts.clientId ?? null,
-    requestId: opts.requestId ?? null,
-    promptTokens: out.usage?.inputTokens ?? null,
-    completionTokens: out.usage?.outputTokens ?? null,
-    totalTokens: out.usage?.totalTokens ?? null,
-    estimatedCostUsd: out.costUsd ?? null,
+  const knownCost = estimateKnownCostUsd(out.usage, usedSpec)
+  if (knownCost !== null) out.costUsd = knownCost
+  await recordAttempt({
+    spec: usedSpec,
+    role: fallbackUsed ? 'fallback' : 'primary',
     status: 'success',
-    latencyMs: Date.now() - startedAt,
-    metadata: {
-      persona: persona.key,
-      readOnly: Boolean(opts.readOnly),
-      toolCount: tools.length,
-      catalogMode: composition.mode,
-      catalogRuntimeMode: opts.runtimePolicy?.mode ?? 'legacy',
-      catalogCoverageStatus: composition.coverageStatus,
-      catalogReleaseIds: composition.releaseIds,
-      catalogPackVersionIds: composition.packVersionIds,
-      catalogCapabilityVersionIds: composition.capabilityVersionIds,
-      catalogDenials: composition.denials.slice(0, 100),
-      toolCalls: out.toolCalls.map((call) => call.name).slice(0, 20),
-      proposedTool: out.proposedAction?.toolName ?? null,
-      injectedModel: Boolean(opts.model),
-      modelAssignmentSource: assignment?.source ?? 'default',
-      modelAssignmentIgnoredReason: assignment?.ignoredReason ?? null,
-      ...(opts.metadata ?? {}),
-    },
+    terminal: true,
+    fallbackUsed,
+    startedAt: successfulAttemptStartedAt,
+    output: out
   })
   return out
 }

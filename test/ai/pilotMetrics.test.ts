@@ -29,6 +29,7 @@ function release(overrides: Partial<PilotMetricReleaseSource> = {}): PilotMetric
     scopeViolationCount: 0,
     approvalBypassCount: 0,
     prohibitedEffectCount: 0,
+    pilotEpisodeStartedAt: WINDOW.from,
     ...overrides
   }
 }
@@ -36,12 +37,20 @@ function release(overrides: Partial<PilotMetricReleaseSource> = {}): PilotMetric
 function successfulTurns(count: number, overrides: Record<string, unknown> = {}) {
   return Array.from({ length: count }, (_, index) => ({
     id: `invocation-${index}`,
+    attemptId: `turn-${index}:l1:primary`,
+    turnId: `turn-${index}`,
     releaseId: '10000000-0000-4000-8000-000000000001',
+    packVersionId: '20000000-0000-4000-8000-000000000001',
+    representativeTaskId: `case-${index}`,
+    assistantMessageId: `message-${index}`,
     actorKey: `actor-${index % 5}`,
     status: 'success',
     fallbackUsed: false,
     costUsdMicros: '50',
     latencyMs: 500,
+    scopeRespected: true,
+    approvalBoundaryRespected: true,
+    prohibitedEffectsCount: 0,
     ...overrides
   }))
 }
@@ -57,6 +66,7 @@ describe('governed assistant pilot metrics', () => {
   it('returns insufficient aggregate evidence for an empty window without inventing ratings or latency', () => {
     expect(aggregatePilotReleaseMetrics({ release: release(), window: WINDOW, invocations: [], feedback: [] })).toEqual({
       releaseId: '10000000-0000-4000-8000-000000000001',
+      packKey: 'paid_media_read_draft',
       cohort: 'paid_media',
       window: WINDOW,
       eligibleUsers: 6,
@@ -67,19 +77,20 @@ describe('governed assistant pilot metrics', () => {
       p95LatencyMs: null,
       totalCostUsdMicros: 0,
       usefulFeedbackRate: null,
+      ratingCount: 0,
       scopeViolationCount: 0,
       approvalBypassCount: 0,
       prohibitedEffectCount: 0,
       gate: 'insufficient_data',
-      blockers: ['successful_tasks_below_minimum']
+      blockers: ['representative_task_telemetry_missing', 'successful_tasks_below_minimum']
     })
   })
 
   it('de-duplicates invocation rows by ledger id and treats fallback or non-success rows as failed turns', () => {
     const invocations = successfulTurns(20)
     invocations.push({ ...invocations[0]! })
-    invocations.push({ ...invocations[1]!, id: 'fallback', fallbackUsed: true })
-    invocations.push({ ...invocations[2]!, id: 'error', status: 'error' })
+    invocations.push({ ...invocations[1]!, id: 'fallback', attemptId: 'turn-fallback:l1:fallback', turnId: 'turn-fallback', fallbackUsed: true })
+    invocations.push({ ...invocations[2]!, id: 'error', attemptId: 'turn-error:l1:primary', turnId: 'turn-error', status: 'error' })
     invocations.push({ ...invocations[3]!, id: 'foreign', releaseId: '90000000-0000-4000-8000-000000000009' })
 
     const result = aggregatePilotReleaseMetrics({ release: release(), window: WINDOW, invocations, feedback: [] })
@@ -126,16 +137,19 @@ describe('governed assistant pilot metrics', () => {
     })
   })
 
-  it('fails on any exact-version evaluation mismatch or zero-tolerance event', () => {
+  it('fails on any exact-version evaluation mismatch or live zero-tolerance event', () => {
     const metrics = aggregatePilotReleaseMetrics({
       release: release({
         evaluation: { runId: 'run', packVersionId: 'wrong-version', status: 'completed', gatePassed: true },
-        scopeViolationCount: 1,
-        approvalBypassCount: 2,
-        prohibitedEffectCount: 1
+        scopeViolationCount: 0,
+        approvalBypassCount: 0,
+        prohibitedEffectCount: 0
       }),
       window: WINDOW,
-      invocations: successfulTurns(20, { costUsdMicros: '10', latencyMs: 100 }),
+      invocations: successfulTurns(20, {
+        costUsdMicros: '10', latencyMs: 100, scopeRespected: false,
+        approvalBoundaryRespected: false, prohibitedEffectsCount: 1
+      }),
       feedback: []
     })
 
@@ -179,13 +193,120 @@ describe('governed assistant pilot metrics', () => {
       throw new Error('unexpected query')
     })
 
-    const metrics = await getPilotReleaseMetrics(WINDOW, { queryRows })
+    const report = await getPilotReleaseMetrics(WINDOW, { queryRows })
 
-    expect(metrics).toHaveLength(1)
-    expect(metrics[0]).toMatchObject({ cohort: 'finance_bookkeeping', releaseId: release().releaseId })
+    expect(report.metrics).toHaveLength(5)
+    expect(report.metrics.find(metric => metric.packKey === 'finance_read_draft')).toMatchObject({ cohort: 'finance_bookkeeping', releaseId: release().releaseId })
     expect(queryRows.mock.calls.every(([, params]) => params.includes(WINDOW.from) && params.includes(WINDOW.to))).toBe(true)
-    expect(queryRows.mock.calls[0]![0]).toContain('LIMIT 6')
+    expect(queryRows.mock.calls[0]![0]).toContain('LIMIT 7')
     expect(queryRows.mock.calls[1]![0]).toContain('LIMIT 10001')
     expect(queryRows.mock.calls[2]![0]).toContain('LIMIT 10001')
+  })
+
+  it('returns the complete five-pack matrix and an insufficient overall gate when required releases are missing', async () => {
+    const queryRows = vi.fn(async (sql: string) => {
+      if (sql.includes('FROM ai_pack_releases')) return [{
+        release_id: release().releaseId,
+        pack_key: 'paid_media_read_draft',
+        pack_version_id: release().packVersionId,
+        eligible_users: '5',
+        max_latency_ms: '1000',
+        max_cost_usd_micros: '100',
+        evaluation_run_id: release().evaluation!.runId,
+        evaluation_pack_version_id: release().packVersionId,
+        evaluation_status: 'completed',
+        evaluation_gate_passed: true,
+        pilot_episode_started_at: '2026-07-01T00:00:00.000Z',
+        scope_violation_count: '0', approval_bypass_count: '0', prohibited_effect_count: '0'
+      }]
+      return []
+    })
+
+    const report = await getPilotReleaseMetrics(WINDOW, { queryRows }) as any
+
+    expect(report.metrics.map((metric: any) => metric.packKey)).toEqual([
+      'account_management_read_draft', 'production_read_draft', 'paid_media_read_draft',
+      'finance_read_draft', 'bookkeeping_read_draft'
+    ])
+    expect(report.summary).toMatchObject({ gate: 'insufficient_data', requiredPackCount: 5, presentReleaseCount: 1 })
+    expect(report.summary.blockers).toContain('required_pilot_releases_missing')
+    expect(report.metrics.filter((metric: any) => metric.releaseId === null)).toHaveLength(4)
+  })
+
+  it('fails the overall matrix closed when one required pack has duplicate current pilot releases', async () => {
+    const duplicateRows = ['10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002'].map(releaseId => ({
+      release_id: releaseId, pack_key: 'paid_media_read_draft', pack_version_id: release().packVersionId,
+      eligible_users: '5', max_latency_ms: '1000', max_cost_usd_micros: '100',
+      evaluation_run_id: release().evaluation!.runId, evaluation_pack_version_id: release().packVersionId,
+      evaluation_status: 'completed', evaluation_gate_passed: true,
+      pilot_episode_started_at: '2026-07-01T00:00:00.000Z',
+      scope_violation_count: '0', approval_bypass_count: '0', prohibited_effect_count: '0'
+    }))
+    const queryRows = vi.fn(async (sql: string) => sql.includes('FROM ai_pack_releases') ? duplicateRows : [])
+
+    const report = await getPilotReleaseMetrics(WINDOW, { queryRows }) as any
+
+    expect(report.summary.gate).toBe('fail')
+    expect(report.summary.blockers).toContain('duplicate_pilot_release:paid_media_read_draft')
+    expect(report.metrics.find((metric: any) => metric.packKey === 'paid_media_read_draft')).toMatchObject({ releaseId: null, gate: 'fail' })
+  })
+
+  it('excludes ordinary turns and blocks missing representative, episode, safety, and measurement telemetry', () => {
+    const result = aggregatePilotReleaseMetrics({
+      release: release({ pilotEpisodeStartedAt: null } as any),
+      window: WINDOW,
+      invocations: [{
+        ...successfulTurns(1)[0]!, turnId: 'turn-ordinary', attemptId: 'turn-ordinary:primary',
+        representativeTaskId: null, packVersionId: release().packVersionId,
+        assistantMessageId: null, scopeRespected: null, approvalBoundaryRespected: null,
+        prohibitedEffectsCount: null, costUsdMicros: null, latencyMs: null
+      } as any],
+      feedback: []
+    }) as any
+
+    expect(result.successfulTurns).toBe(0)
+    expect(result.gate).toBe('insufficient_data')
+    expect(result.blockers).toEqual(expect.arrayContaining([
+      'pilot_episode_audit_missing',
+      'representative_task_telemetry_missing'
+    ]))
+  })
+
+  it('de-duplicates attempts once per trusted turn and exact release while preserving incomplete terminal evidence', () => {
+    const base = {
+      releaseId: release().releaseId, packVersionId: release().packVersionId, actorKey: 'actor-1',
+      turnId: 'turn-1', representativeTaskId: 'case-1', assistantMessageId: 'message-1',
+      scopeRespected: true, approvalBoundaryRespected: true, prohibitedEffectsCount: 0
+    }
+    const result = aggregatePilotReleaseMetrics({
+      release: release({ pilotEpisodeStartedAt: WINDOW.from } as any), window: WINDOW,
+      invocations: [
+        { ...base, id: 'row-primary', attemptId: 'turn-1:l1:primary', status: 'error', fallbackUsed: false, costUsdMicros: null, latencyMs: 40 },
+        { ...base, id: 'row-fallback', attemptId: 'turn-1:l1:fallback', status: 'success', fallbackUsed: true, costUsdMicros: '20', latencyMs: 80 },
+        { ...base, id: 'duplicate', attemptId: 'turn-1:l1:fallback', status: 'success', fallbackUsed: true, costUsdMicros: '20', latencyMs: 80 }
+      ] as any,
+      feedback: [{ id: 'feedback-1', releaseId: release().releaseId, turnId: 'turn-1', assistantMessageId: 'message-1', rating: 1 } as any]
+    }) as any
+
+    expect(result.successfulTurns).toBe(0)
+    expect(result.failedTurns).toBe(1)
+    expect(result.ratingCount).toBe(1)
+    expect(result.blockers).toContain('incomplete_cost_measurement')
+  })
+
+  it('counts live safety observations independently and never substitutes evaluation safety', () => {
+    const result = aggregatePilotReleaseMetrics({
+      release: release({ pilotEpisodeStartedAt: WINDOW.from } as any), window: WINDOW,
+      invocations: [{
+        id: 'row', attemptId: 'turn-1:l1:primary', turnId: 'turn-1', releaseId: release().releaseId,
+        packVersionId: release().packVersionId, actorKey: 'actor', representativeTaskId: 'case-1',
+        assistantMessageId: 'message-1', status: 'success', fallbackUsed: false,
+        costUsdMicros: '10', latencyMs: 100, scopeRespected: false,
+        approvalBoundaryRespected: false, prohibitedEffectsCount: 1
+      }] as any,
+      feedback: []
+    }) as any
+
+    expect(result).toMatchObject({ scopeViolationCount: 1, approvalBypassCount: 1, prohibitedEffectCount: 1, gate: 'fail' })
   })
 })

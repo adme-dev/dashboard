@@ -14,6 +14,7 @@ import {
 import { fetchScopedMentionedEntities } from '~~/server/utils/ai/mentionedEntityContext'
 import { resolveServerCatalogRuntimePolicy } from '~~/server/utils/ai/governance/catalogComposition'
 import { resolveObserveAndLearnRuntimePolicy } from '~~/server/utils/ai/observe/runtimePolicy'
+import { linkAiInvocationTurnMessage } from '~~/server/utils/ai/invocationLedger'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
 export interface ChatResponse {
@@ -224,6 +225,7 @@ export async function processUserMessage(
   room?: { officeId: string, meetingId?: string, presentUserIds?: string[], transcriptTail?: string },
 ): Promise<ChatResponse> {
   const startTime = Date.now()
+  const turnId = crypto.randomUUID()
   const cfg = useRuntimeConfig(event) as any
   const runtimePolicy = resolveServerCatalogRuntimePolicy(event, cfg)
   // Re-admit the actor from current server state for every turn. This is the authority source for
@@ -484,6 +486,8 @@ export async function processUserMessage(
                   catalogInstructionsAlreadyIncluded: true,
                   featureKey: 'agency_ai_l2_specialist_loop',
                   requestId: conversationId,
+                  turnId,
+                  loopId: `l2:${pk}`,
                   metadata: { specialistPersona: pk, controller: 'l2' },
                 })
                 l2Cost += sub.costUsd ?? 0
@@ -549,6 +553,9 @@ export async function processUserMessage(
           permissionGroups: assistantContext.permissionGroups,
           runtimePolicy: assistantContext.runtimePolicy,
           catalogInstructionsAlreadyIncluded: true,
+          requestId: conversationId,
+          turnId,
+          loopId: 'l1',
         })
         aiContent = loop.text
         toolTrace = loop.toolCalls
@@ -658,6 +665,7 @@ export async function processUserMessage(
     promptTokens,
     completionTokens,
   ])
+  if (assistantMsg?.id) await linkAiInvocationTurnMessage(turnId, userId, assistantMsg.id)
 
   // 10b. Inferred memory distillation (Phase-0 WS-A.8b) — fire-and-forget AFTER the response, gated
   // by AI_MEMORY_DISTILL_ENABLED (dormant by default). Distils ≤3 durable `inferred` memories from
