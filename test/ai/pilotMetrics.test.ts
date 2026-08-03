@@ -66,6 +66,31 @@ function successfulTurns(count: number, overrides: Record<string, unknown> = {})
   }))
 }
 
+async function capturePilotMetricQueries() {
+  const queries: string[] = []
+  await getPilotReleaseMetrics(WINDOW, {
+    queryRows: vi.fn(async (sql: string) => {
+      queries.push(sql)
+      return []
+    })
+  })
+  return queries
+}
+
+function lateralProjectionContract(sql: string, alias: string) {
+  const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = sql.match(new RegExp(
+    `JOIN LATERAL \\(\\s*SELECT\\s+([\\s\\S]*?)\\s+FROM[\\s\\S]*?\\)\\s+${escapedAlias}\\s+ON\\s+([^\\n]+)`
+  ))
+  if (!match) throw new Error(`Missing lateral join contract for ${alias}`)
+  const projected = new Set(
+    match[1]!.split(',').map(expression => expression.trim().match(/(?:\\s+AS\\s+)?([a-z_][a-z0-9_]*)$/i)?.[1]).filter(Boolean)
+  )
+  const referenced = [...match[2]!.matchAll(new RegExp(`${escapedAlias}\\.([a-z_][a-z0-9_]*)`, 'gi'))]
+    .map(reference => reference[1]!)
+  return { projected, referenced }
+}
+
 describe('governed assistant pilot metrics', () => {
   it('rejects invalid, reversed, and longer-than-31-day windows', () => {
     expect(() => parsePilotMetricsWindow({ from: 'not-a-date', to: WINDOW.to })).toThrowError(PilotMetricsError)
@@ -354,6 +379,22 @@ describe('governed assistant pilot metrics', () => {
     expect(queryRows.mock.calls[2]![0]).toContain('JOIN ai_pilot_task_evidence evidence')
     expect(queryRows.mock.calls[2]![0]).toContain('pilot_episode_audit_id')
     expect(queryRows.mock.calls[2]![0]).toContain('ai_release_pilot_members')
+  })
+
+  it('projects every pilot episode column referenced by the feedback lateral join', async () => {
+    const feedbackSql = (await capturePilotMetricQueries())[2]!
+    const contract = lateralProjectionContract(feedbackSql, 'pilot_episode')
+
+    expect(contract.referenced).toEqual(['id'])
+    expect([...contract.projected]).toContain('id')
+  })
+
+  it('bounds feedback by evidence issuance with an inclusive start and exclusive end', async () => {
+    const feedbackSql = (await capturePilotMetricQueries())[2]!.replace(/\s+/g, ' ')
+
+    expect(feedbackSql).toMatch(/WHERE feedback\.created_at >= \$1::timestamptz .* evidence\.issued_at >= \$1::timestamptz/)
+    expect(feedbackSql).toMatch(/evidence\.issued_at >= \$1::timestamptz .* evidence\.issued_at < \$2::timestamptz/)
+    expect(feedbackSql).not.toMatch(/evidence\.issued_at <= \$2::timestamptz/)
   })
 
   it('never qualifies legacy invocation-shaped telemetry without durable evidence state', () => {

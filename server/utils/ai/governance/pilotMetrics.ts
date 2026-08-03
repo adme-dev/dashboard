@@ -125,8 +125,8 @@ interface InvocationRow {
   approval_boundary_respected: boolean | null
   prohibited_effects_count: number | string | null
   created_at: string
-  state?: 'issued' | 'started' | 'terminal' | 'assessed'
-  terminal_outcome?: 'success' | 'error' | 'caller_unavailable' | 'link_failed' | null
+  state: 'issued' | 'started' | 'terminal' | 'assessed'
+  terminal_outcome: 'success' | 'error' | 'caller_unavailable' | 'link_failed' | null
   member_eligible?: boolean
   freshness_respected?: boolean | null
   fabrication_observed?: boolean | null
@@ -270,7 +270,7 @@ SELECT DISTINCT feedback.id,
    AND release.rollout_scope = 'pilot'
   JOIN ai_capability_packs pack ON pack.id = release.pack_id
   JOIN LATERAL (
-    SELECT audit.created_at
+    SELECT audit.id, audit.created_at
       FROM ai_catalog_audit_events audit
      WHERE audit.entity_type = 'pack'
        AND audit.entity_id = pack.id
@@ -288,6 +288,8 @@ SELECT DISTINCT feedback.id,
     AND department_member.team_member_id = evidence.actor_user_id
  WHERE feedback.created_at >= $1::timestamptz
    AND feedback.created_at < $2::timestamptz
+   AND evidence.issued_at >= $1::timestamptz
+   AND evidence.issued_at < $2::timestamptz
    AND pack.pack_key = ANY($3::text[])
  ORDER BY feedback.id, release_id
  LIMIT 10001`
