@@ -157,12 +157,12 @@ const features: Record<string, Feature> = {
         content: 'Monitor status, robots, canonicals, sitemap evidence, structured-data parity, soft 404s, and image hygiene from bounded owned-site crawls. Mobile performance keeps CrUX field experience separate from Lighthouse lab tests, with unavailable provider evidence labelled honestly instead of shown as zero or passing.'
       },
       {
-        title: 'Governed Content Workflow',
-        content: 'Deterministic rules turn material evidence into explainable opportunities. Agency staff review, accept, dismiss, and explicitly create normal XeroFlow tasks; nothing is published or actioned autonomously.'
+        title: 'Governed Guides, Without CMS Dependence',
+        content: 'Sales-team sources, claims, disclaimers, immutable versions and attributable approvals are kept together. Approved guides can publish on a client-owned XeroFlow content host with server-rendered metadata, structured data, a sitemap and instant manifest rollback. A bounded GTM Menu Agent may add one approved discovery link without editing Dealer Studio or pretending GTM can create an indexable page.'
       },
       {
-        title: 'Transparent Measurement',
-        content: 'Agency and client views show measured search movement, evidence freshness, approved actions, and provider caveats. Private queries, scoring weights, credentials, and cross-client comparisons remain protected.'
+        title: 'Transparent Outcomes and Provider Evidence',
+        content: 'Agency and client views keep first-party guide events, explicit direct or assisted lead attribution, aggregate GA4 evidence and unavailable data separate. PMax output is a review brief, never an automatic Ads change. Optional Google Business Profile metrics stay off until provider access and a healthy client location are proven; private queries, credentials and cross-client comparisons remain protected.'
       }
     ]
   },

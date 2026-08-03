@@ -2,9 +2,17 @@
 
 ## Purpose
 
-Operate the Knox GWM Haval design-client pilot without enabling later technical
-crawling, edge publishing, Menu Agent, or Google Business Profile phases.
-Phase 1 is read-only provider ingestion plus human-reviewed task handoff.
+Operate the Knox GWM Haval design-client pilot from read-only Search Console
+evidence through technical trust, governed guide publishing, safe menu discovery
+and evidence-labelled outcomes. Every later capability remains independently
+gated: configuring Search Console does not authorise a crawl, content approval
+does not authorise publication, and a menu heartbeat does not prove a live link.
+
+Use [Search Authority publishing](./search-authority-publishing.md) for the
+content-host, Menu Agent, measurement and rollback sequence. Use
+[Automotive Site Intelligence](./site-intelligence-pilot.md) for bounded crawl
+activation. The live Knox decision record is
+[Knox pilot acceptance](../evidence/knox-gwm-pilot-acceptance.md).
 
 ## Runtime prerequisites
 
@@ -19,6 +27,12 @@ Phase 1 is read-only provider ingestion plus human-reviewed task handoff.
 - Google OAuth client configured with the Search Console read-only scope and the
   exact XeroFlow callback URL.
 - The Knox client has an active `search_authority.core` entitlement.
+- Private R2 bindings `SEARCH_AUTHORITY_BUCKET` on Pages and `PUBLICATIONS` on
+  the dedicated `search-authority-publisher` Worker.
+- A separately authorised DNS change for `learn.knoxgwmhaval.com.au`; XeroFlow
+  does not require Dealer Studio or dealership CMS access.
+- `GOOGLE_BUSINESS_PERFORMANCE_ENABLED=false` until a healthy Knox location and
+  Google production quota are proven. GBP is optional and cannot block core.
 
 The global flag is the kill switch. The client entitlement is the tenant
 boundary. Both must pass.
@@ -30,7 +44,8 @@ boundary. Both must pass.
 - Owner: XeroFlow operations.
 - Initial cohort: Knox GWM Haval only.
 - Canonical hostname: `www.knoxgwmhaval.com.au`.
-- Content hostname: unset for Phase 1.
+- Content hostname: currently unset; `learn.knoxgwmhaval.com.au` is the approved
+  candidate and remains an external production gate.
 - First review: after the initial baseline completes, then weekly during the
   pilot.
 - Roll back immediately for cross-client exposure, provider writes outside the
@@ -107,6 +122,26 @@ Confirm recent `gsc_sync_runs` are `succeeded` or intentionally `partial`, the
 property map has a current `data_through_date`, and failures retain a literal
 provider error rather than zeroing prior evidence.
 
+The same Worker calls the optional Google Business performance route at
+`40 2 * * *`. The endpoint returns an explicit disabled no-op until
+`GOOGLE_BUSINESS_PERFORMANCE_ENABLED=true`. Enabling the cron schedule alone is
+not provider activation.
+
+## Technical trust and content handoff
+
+After a tenant-correct owned crawl, refresh technical trust from the Search
+Authority workspace. Persisted findings cover response status, robots,
+canonical, sitemap evidence, soft-404 indicators, supported schema parity and
+image hygiene. Mobile CrUX field evidence and Lighthouse lab evidence are
+labelled separately; a missing provider result is unavailable, never a pass.
+
+Create a content asset only from a consented Sales Manager source. Every version
+must contain source references, bounded claims and a disclaimer. Submit the
+immutable current version for review; the author cannot approve their own
+version. Portal approval is attributable to the portal actor. AI assistance may
+help draft from recorded evidence but cannot add a claim, approve, publish or
+change Google Ads.
+
 ## Review and task handoff
 
 Agency staff move opportunities through `new → under_review → accepted`.
@@ -150,5 +185,10 @@ history.
 - Inspection quota is provider-controlled; XeroFlow caps each client run at 50.
 - There is no provider-supplied AI Overview impression field in this release,
   so XeroFlow does not claim one.
-- Phase 1 does not crawl arbitrary URLs, modify the dealer CMS, publish pages,
-  inject navigation, or publish to Google Business Profile.
+- Collection is limited to separately approved public origins; the Search
+  Console connection cannot be used to authorise arbitrary crawling.
+- XeroFlow never modifies Dealer Studio. Approved pages are served from the
+  bounded XeroFlow content hostname and the GTM Menu Agent may add only one
+  configured navigation link.
+- Google Business performance and promotion remain unavailable until a healthy
+  location, production access/quota and separate human approval exist.

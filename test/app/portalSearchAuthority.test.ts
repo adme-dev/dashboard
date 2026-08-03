@@ -51,7 +51,7 @@ describe('public Search Authority feature contract', () => {
   it('publishes the four promised capability sections', () => {
     expect(featureDetailSource).toContain('Search Evidence')
     expect(featureDetailSource).toContain('Technical Trust')
-    expect(featureDetailSource).toContain('Governed Content Workflow')
-    expect(featureDetailSource).toContain('Transparent Measurement')
+    expect(featureDetailSource).toContain('Governed Guides, Without CMS Dependence')
+    expect(featureDetailSource).toContain('Transparent Outcomes and Provider Evidence')
   })
 })

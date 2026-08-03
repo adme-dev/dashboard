@@ -65,7 +65,7 @@ The core pilot is complete only when every `Core` item below is checked and back
 - [ ] Search Console connection count is zero.
 - [ ] Search Console property-map, sync-run and evidence-row counts are zero.
 - [ ] Search Authority opportunity count is zero.
-- [ ] Knox has three failed crawl runs and zero collected pages; the latest failure category is `browser_run`.
+- [ ] Knox has four failed crawl runs and zero collected pages; the latest failure category is `browser_run`.
 - [ ] Lilydale has no crawl run.
 - [ ] Site Intelligence page, change and insight counts are zero.
 - [ ] `content_hostname` is null and `learn.knoxgwmhaval.com.au` does not resolve.
@@ -83,6 +83,7 @@ The core pilot is complete only when every `Core` item below is checked and back
 - **2026-08-03:** Completed Task 9 engineering. Migration 338 was applied to Neon, including an append-only site audit trigger. Added a public-ID configuration contract, tenant-scoped agency controls, a heartbeat explicitly labelled as non-proof, and a versioned Menu Agent that inserts only text links into bounded selectors, deduplicates shared responsive menus, observes rerenders for at most 30 seconds, polls the remote kill switch and removes only its own nodes. Four focused files passed 13 tests and targeted ESLint passed. Full Nuxt typecheck found one slice-local return-type error in the heartbeat endpoint; it was corrected. GTM publication and live browser proof remain production acceptance gates.
 - **2026-08-03:** Completed Task 10 engineering. Migration 339 was applied to Neon so each immutable publication records whether first-party measurement was actually embedded. Approved guides can now load the existing XeroFlow tag from the allowlisted app origin, carry version-specific UTM handoff markers, and report deduplicated guide views, CTA handoffs, direct leads, assisted leads, unknown linkage and aggregate GA4 landing-page evidence. Version activation time prevents shared canonical URLs from double-counting. Agency reporting includes a copy-only, review-required PMax brief and no Ads mutation; portal reporting omits raw queries and internal evidence. Seven focused files passed 20 tests, targeted ESLint, Worker typecheck and a 6.27 KiB named publisher dry run passed. Full Nuxt typecheck reached only the known unrelated backlog after the earlier slice-local issue was fixed. A live journey remains a production acceptance gate.
 - **2026-08-03:** Completed Task 11 engineering and closed the optional GBP track as unavailable, not live. Google documents the separate `businessprofileperformance.googleapis.com/v1` service, `business.manage` scope and a possible zero-quota approval gate. Migration 340 was applied to Neon with composite tenant/account integrity. Added fixed-origin, documented-metric-only 90-day ingestion, token refresh through the existing social credential path, redacted failure reasons, a disabled-by-default daily cron and an agency evidence card that never fills missing dates with inferred values. Seven focused files passed 17 tests, targeted ESLint and full Nuxt typecheck passed. Knox still has no connected GBP location; both performance collection and promotion remain explicitly deferred until provider access, quota, connection health and a separate approval are proven.
+- **2026-08-03:** Completed the pre-PR convergence review. Tenant authorization now precedes every agency content read, review, publish and rollback query; the publisher keeps generated bindings small while sourcing explicit Cloudflare runtime types. The pilot regression passed 95 files/491 tests, the repository suite passed 1,443 files and 8,470 tests with 5 files/10 tests skipped, targeted ESLint passed, the publisher contract/typecheck/R2 dry run passed at 6.27 KiB, and the Pages guard resolved only `agency-dashboard / main`. The production build prerendered 160 routes and passed the 23.44 MiB worker-size guard. Repository typecheck still reports 860 unrelated existing diagnostics and zero pilot-changed file matches. Independent PR review and all live production evidence gates remain open.
 
 ### Execution order and external gates
 
@@ -711,11 +712,11 @@ git commit -m "feat: add Google Business search evidence"
 - Consumes: completed Tasks 1–11 and human-approved Knox content/DNS/GTM actions.
 - Produces: live guide, safe menu link, measured test journey, rollback proof and stakeholder evidence pack.
 
-- [ ] **Step 1: Complete the mandatory deep review and focused regression suites**
+- [x] **Step 1: Complete the mandatory deep review and focused regression suites**
 
 Run the Search Authority, Site Intelligence, content, publisher, Menu Agent, measurement and GBP tests. Reread every modified file, check Nitro aliases, SSRF, USelectMenu values, form reactivity, dark mode and CSS construction.
 
-- [ ] **Step 2: Run static and production builds**
+- [x] **Step 2: Run static and production builds**
 
 Run: `pnpm run typecheck`
 
@@ -759,7 +760,7 @@ Roll the public manifest back to the prior approved version, verify the previous
 
 `docs/evidence/knox-gwm-pilot-acceptance.md` must record URLs, dates, version IDs, run IDs, screenshots, metric windows, provider limitations, rollback proof, unresolved origin-owned findings and the next monthly content question. Never include secrets, raw search queries or customer personal information.
 
-- [ ] **Step 11: Update public feature pages and commit final documentation**
+- [x] **Step 11: Update public feature pages and commit final documentation**
 
 ```bash
 git add docs/runbooks/search-authority-phase-1.md docs/runbooks/site-intelligence-pilot.md docs/runbooks/search-authority-publishing.md docs/evidence/knox-gwm-pilot-acceptance.md docs/superpowers/plans/2026-08-03-knox-gwm-pilot-completion.md app/pages/features/index.vue app/pages/features/[slug].vue app/components/MarketingNav.vue
