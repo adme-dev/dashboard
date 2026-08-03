@@ -2,6 +2,7 @@
 import type {
   AiCatalogGovernanceItem,
   AiCompanyRolloutReadiness,
+  AiPilotMetricsResponse,
   AiDepartmentDraftSeedInput,
   AiDepartmentDraftSeedResult,
   AiDepartmentOwnerCandidate,
@@ -21,6 +22,7 @@ const data = ref<AiDepartmentReadinessResponse | null>(null)
 const catalogItems = ref<AiCatalogGovernanceItem[]>([])
 const evaluationRuns = ref<AiEvaluationRunView[]>([])
 const rollout = ref<AiCompanyRolloutReadiness | null>(null)
+const pilotMetrics = ref<AiPilotMetricsResponse | null>(null)
 const pending = ref(false)
 const error = ref<unknown>(null)
 const catalogPending = ref(false)
@@ -29,6 +31,8 @@ const evaluationsPending = ref(false)
 const evaluationsError = ref<string | null>(null)
 const rolloutPending = ref(false)
 const rolloutError = ref<string | null>(null)
+const pilotMetricsPending = ref(false)
+const pilotMetricsError = ref<string | null>(null)
 const seedOpen = ref(false)
 const selectedSeedItem = ref<AiDepartmentReadinessItem | null>(null)
 
@@ -37,7 +41,7 @@ function errorMessage(caught: unknown, fallback: string) {
 }
 
 async function refresh() {
-  await Promise.all([refreshReadiness(), refreshCatalog(), refreshEvaluations(), refreshRollout()])
+  await Promise.all([refreshReadiness(), refreshCatalog(), refreshEvaluations(), refreshRollout(), refreshPilotMetrics()])
 }
 
 await refresh()
@@ -85,6 +89,22 @@ async function refreshRollout() {
     rolloutError.value = errorMessage(caught, 'The company rollout readiness service could not be loaded.')
   } finally {
     rolloutPending.value = false
+  }
+}
+
+async function refreshPilotMetrics() {
+  pilotMetricsPending.value = true
+  pilotMetricsError.value = null
+  const to = new Date()
+  const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1_000)
+  try {
+    pilotMetrics.value = await apiFetch<AiPilotMetricsResponse>('/api/admin/ai/governance/pilot-metrics', {
+      query: { from: from.toISOString(), to: to.toISOString() }
+    })
+  } catch (caught) {
+    pilotMetricsError.value = errorMessage(caught, 'The pilot evidence service could not be loaded.')
+  } finally {
+    pilotMetricsPending.value = false
   }
 }
 
@@ -232,6 +252,13 @@ async function refreshEvaluations() {
         :pending="rolloutPending"
         :error="rolloutError"
         @refresh="refreshRollout"
+      />
+
+      <AiGovernancePilotMetricsPanel
+        :data="pilotMetrics"
+        :pending="pilotMetricsPending"
+        :error="pilotMetricsError"
+        @refresh="refreshPilotMetrics"
       />
 
       <UAlert
