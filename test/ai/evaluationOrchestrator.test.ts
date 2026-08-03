@@ -457,13 +457,13 @@ describe('evaluation orchestration', () => {
     snapshot = material({
       instructionsPreamble: '',
       packBudget: {
-        maxInputTokens: 1_000,
+        maxInputTokens: 3_000,
         maxOutputTokens: 20,
         maxCostUsdMicros: 1_000,
         maxLatencyMs: 20
       }
     })
-    const emptyBudget = { ...budget, maxInputTokensPerCase: 1_000 }
+    const emptyBudget = { ...budget, maxInputTokensPerCase: 3_000 }
     const realFactory = vi.fn((options: any) => createEvaluationModelExecutor({
       ...options,
       invoke: vi.fn().mockResolvedValue({
