@@ -1,0 +1,128 @@
+import { describe, expect, it, vi } from 'vitest'
+import {
+  EvaluationModelExecutorError,
+  createEvaluationModelExecutor,
+  type EvaluationModelInvocationRequest
+} from '~~/server/utils/ai/governance/evaluationModelExecutor'
+
+const CASE_ID = '10000000-0000-4000-8000-000000000001'
+
+const rateCard = {
+  modelProvider: 'groq',
+  modelId: 'openai/gpt-oss-120b',
+  inputUsdMicrosPerMillionTokens: 150_000,
+  outputUsdMicrosPerMillionTokens: 600_000,
+  sourceDigest: 'a'.repeat(64),
+  validFrom: '2026-08-03T00:00:00.000Z',
+  validUntil: '2026-08-10T00:00:00.000Z'
+}
+
+const request = {
+  evaluationRunId: '20000000-0000-4000-8000-000000000001',
+  evaluationCaseId: CASE_ID,
+  caseKey: 'representative_read',
+  caseVersion: 1,
+  prompt: 'Read the frozen fixture.',
+  context: { sourceRef: 'fixture_authoritative_record' },
+  scopeFixture: { actorRef: 'fixture_actor' },
+  availableTools: ['search_knowledge'],
+  executionMode: 'simulation' as const,
+  sideEffectsAllowed: false as const
+}
+
+function executor(invoke: (input: EvaluationModelInvocationRequest) => Promise<any>) {
+  return createEvaluationModelExecutor({
+    modelProvider: 'groq',
+    modelId: 'openai/gpt-oss-120b',
+    rateCard,
+    cases: [{
+      evaluationCaseId: CASE_ID,
+      instructionsPreamble: 'Use only the frozen fixture.',
+      allowedSourceIds: ['fixture_authoritative_record'],
+      declaredEffectSignals: ['live_mutation']
+    }],
+    invoke,
+    now: (() => {
+      let value = 1_000
+      return () => (value += 25)
+    })()
+  })
+}
+
+describe('evaluation model executor', () => {
+  it('exposes record-only descriptors and returns a bounded simulation observation', async () => {
+    const invoke = vi.fn(async (input: EvaluationModelInvocationRequest) => {
+      expect(input.executionMode).toBe('simulation')
+      expect(input.sideEffectsAllowed).toBe(false)
+      expect(Object.isFrozen(input.scopeFixture)).toBe(true)
+      expect(Object.isFrozen(input.context)).toBe(true)
+      expect(input.tools).toHaveLength(1)
+      await input.tools[0]!.record({ ignored: 'there is no real handler' })
+      return {
+        observedTools: ['search_knowledge'],
+        sourceRefs: ['fixture_authoritative_record'],
+        effectSignals: [],
+        scopeViolationObserved: false,
+        approvalBypassObserved: false,
+        traceRef: 'trace:evaluation:opaque',
+        inputTokens: 100,
+        outputTokens: 20
+      }
+    })
+
+    await expect(executor(invoke).execute(request)).resolves.toEqual({
+      observedTools: ['search_knowledge'],
+      sourceRefs: ['fixture_authoritative_record'],
+      effectSignals: [],
+      scopeViolationObserved: false,
+      approvalBypassObserved: false,
+      traceRef: 'trace:evaluation:opaque',
+      inputTokens: 100,
+      outputTokens: 20,
+      costUsdMicros: 27,
+      latencyMs: 25
+    })
+    expect(invoke).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ['an unavailable tool', { observedTools: ['delete_everything'] }, 'observation_tool_unavailable'],
+    ['a non-fixture source', { sourceRefs: ['live_customer_record'] }, 'observation_source_unavailable'],
+    ['an undeclared effect signal', { effectSignals: ['email_sent'] }, 'observation_effect_undeclared'],
+    ['a non-opaque trace reference', { traceRef: 'customer@example.com' }, 'model_observation_invalid']
+  ])('rejects %s reported by the model', async (_label, override, code) => {
+    const invoke = async () => ({
+      observedTools: [],
+      sourceRefs: [],
+      effectSignals: [],
+      scopeViolationObserved: false,
+      approvalBypassObserved: false,
+      traceRef: null,
+      inputTokens: 1,
+      outputTokens: 1,
+      ...override
+    })
+
+    await expect(executor(invoke).execute(request)).rejects.toMatchObject<EvaluationModelExecutorError>({ code })
+  })
+
+  it('rejects an unknown case before making a model call', async () => {
+    const invoke = vi.fn()
+
+    await expect(executor(invoke).execute({
+      ...request,
+      evaluationCaseId: '30000000-0000-4000-8000-000000000001'
+    })).rejects.toMatchObject({ code: 'evaluation_case_policy_missing' })
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('rejects mismatched execution controls before making a model call', async () => {
+    const invoke = vi.fn()
+
+    await expect(executor(invoke).execute({
+      ...request,
+      sideEffectsAllowed: true
+    } as never)).rejects.toMatchObject({ code: 'simulation_controls_invalid' })
+    expect(invoke).not.toHaveBeenCalled()
+  })
+})
