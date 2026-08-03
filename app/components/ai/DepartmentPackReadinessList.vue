@@ -1,13 +1,20 @@
 <script setup lang="ts">
 import type {
+  AiCatalogGovernanceItem,
   AiDepartmentOwnerCandidate,
   AiDepartmentReadinessItem,
-  AiDepartmentReadinessStatus
+  AiDepartmentReadinessStatus,
+  AiEvaluationRunView
 } from '~/types/aiGovernance'
 
-defineProps<{ items: AiDepartmentReadinessItem[] }>()
+const props = defineProps<{
+  items: AiDepartmentReadinessItem[]
+  catalogItems?: AiCatalogGovernanceItem[]
+  evaluationRuns?: AiEvaluationRunView[]
+}>()
 const emit = defineEmits<{
   seed: [item: AiDepartmentReadinessItem, candidate?: AiDepartmentOwnerCandidate]
+  changed: []
 }>()
 
 const OWNER_RESOLUTION_STATUSES = new Set<AiDepartmentReadinessStatus>([
@@ -50,6 +57,14 @@ function candidateRole(candidate: AiDepartmentOwnerCandidate) {
 
 function candidateIsEligible(candidate: AiDepartmentOwnerCandidate) {
   return candidate.eligible && candidate.source === 'department_member'
+}
+
+function catalogFor(item: AiDepartmentReadinessItem) {
+  return props.catalogItems?.find(candidate => candidate.kind === 'pack' && candidate.department.id === item.department?.id) ?? null
+}
+
+function evaluationCount(item: AiDepartmentReadinessItem) {
+  return item.coverage.evaluationCases || 1
 }
 </script>
 
@@ -117,11 +132,46 @@ function candidateIsEligible(candidate: AiDepartmentOwnerCandidate) {
           </UBadge>
         </div>
 
+        <p class="text-xs font-semibold uppercase tracking-wide text-muted">Overview</p>
+
         <ul v-if="item.blockers.length" class="space-y-1.5 text-sm" aria-label="Activation blockers">
           <li v-for="blocker in item.blockers" :key="blocker" class="flex items-start gap-2 text-warning">
             <UIcon name="i-lucide-shield-alert" class="mt-0.5 size-4 shrink-0" /><span>{{ blocker }}</span>
           </li>
         </ul>
+
+        <template v-if="catalogFor(item)">
+          <div class="border-t border-default pt-4">
+            <AiGovernanceEvaluationRunPanel
+              :item="catalogFor(item)!"
+              :runs="evaluationRuns ?? []"
+              :default-case-count="evaluationCount(item)"
+              @changed="emit('changed')"
+            />
+          </div>
+          <div class="border-t border-default pt-4">
+            <AiGovernancePilotMembershipDialog
+              :item="catalogFor(item)!"
+              :candidates="item.ownerCandidates"
+              @changed="emit('changed')"
+            />
+          </div>
+          <div class="border-t border-default pt-4">
+            <AiGovernanceCatalogReleasePanel
+              :item="catalogFor(item)!"
+              :runs="evaluationRuns ?? []"
+              @changed="emit('changed')"
+            />
+          </div>
+        </template>
+        <UAlert
+          v-else-if="item.releaseState === 'draft'"
+          color="neutral"
+          variant="soft"
+          icon="i-lucide-clock-3"
+          title="Catalog controls loading"
+          description="The draft is seeded. Refresh to load its governed evaluation, pilot, and release controls."
+        />
 
         <div
           v-if="item.releaseState === 'not_seeded' && item.ownerCandidates.length"

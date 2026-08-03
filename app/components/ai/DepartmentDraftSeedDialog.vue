@@ -83,7 +83,7 @@ async function seed() {
     @update:open="emit('update:open', $event)"
   >
     <template #body>
-      <div v-if="item" class="space-y-4">
+      <div v-if="item" class="@container space-y-4">
         <UAlert
           color="warning"
           variant="soft"
@@ -111,10 +111,10 @@ async function seed() {
           </div>
         </dl>
 
-        <div>
-          <label for="seed-draft-reason" class="mb-1.5 block text-sm font-medium text-default">
-            Audit reason
-          </label>
+        <UFormField
+          label="Audit reason"
+          help="Minimum 10 characters; stored in the append-only governance audit."
+        >
           <UTextarea
             id="seed-draft-reason"
             v-model="reason"
@@ -125,15 +125,9 @@ async function seed() {
             placeholder="Record who approved this owner and why the draft is being created."
             class="w-full"
           />
-          <p class="mt-1 text-xs text-muted">
-            Minimum 10 characters; stored in the append-only governance audit.
-          </p>
-        </div>
+        </UFormField>
 
-        <div>
-          <label for="seed-draft-confirmation" class="mb-1.5 block text-sm font-medium text-default">
-            Type SEED_DRAFT to confirm
-          </label>
+        <UFormField label="Confirmation" help="Type SEED_DRAFT to confirm and enable draft creation.">
           <UInput
             id="seed-draft-confirmation"
             v-model="confirmation"
@@ -144,7 +138,7 @@ async function seed() {
             placeholder="SEED_DRAFT"
             class="w-full font-mono"
           />
-        </div>
+        </UFormField>
 
         <div
           v-if="error"

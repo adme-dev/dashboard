@@ -59,3 +59,121 @@ export interface AiDepartmentDraftSeedResult {
   capabilityCount?: number
   evaluationCaseCount?: number
 }
+
+export type AiCatalogReleaseKind = 'pack' | 'capability'
+export type AiCatalogReleaseState = 'draft' | 'pilot' | 'active' | 'suspended' | 'retired'
+
+export interface AiCatalogGovernanceItem {
+  kind: AiCatalogReleaseKind
+  id: string
+  key: string
+  name: string
+  description: string
+  department: { id: string, name: string, slug: string }
+  owner: { id: string, name: string }
+  version: { id: string, number: number, label: string | null }
+  release: {
+    id: string
+    state: AiCatalogReleaseState
+    rolloutScope: 'pilot' | 'department'
+    evaluationRunId: string | null
+    evaluationGatePassed: boolean | null
+    reason: string
+    changedBy: string
+    createdAt: string
+    updatedAt: string
+  }
+  evaluation: {
+    runId: string
+    status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+    gatePassed: boolean | null
+    caseCount: number
+    passedCount: number
+    failedCount: number
+    humanReviewCount: number
+  } | null
+  controls: {
+    modelFeatureKey: string
+    permissionGroup: string | null
+    riskClass: string | null
+    dataClass: string | null
+    approvalMode: string | null
+    maxInputTokens: number
+    maxOutputTokens: number
+    maxCostUsdMicros: number
+    maxLatencyMs: number
+    capabilityCount: number
+    toolCount: number
+    toolNames: string[]
+    toolsTruncated: boolean
+  }
+}
+
+export interface AiEvaluationRunView {
+  id: string
+  departmentId: string
+  materialIdentity: {
+    evaluationSuiteVersionId: string
+    packVersionId: string | null
+    capabilityVersionId: string | null
+    modelProvider: string
+    modelId: string
+    promptVersionDigest: string
+    toolsetVersionDigest: string
+  }
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  gatePassed: boolean | null
+  caseCount: number
+  passedCount: number
+  failedCount: number
+  humanReviewCount: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalCostUsdMicros: number
+  startedAt: string | null
+  completedAt: string | null
+  createdAt: string
+}
+
+export interface AiEvaluationCaseResultView {
+  evaluationCaseId: string
+  outcome: 'pass' | 'fail' | 'error' | 'human_review'
+  score: number | null
+  inputTokens: number
+  outputTokens: number
+  costUsdMicros: number
+  latencyMs: number
+}
+
+export interface AiPilotMemberView {
+  id: string
+  releaseId: string
+  kind: AiCatalogReleaseKind
+  departmentId: string
+  memberUserId: string
+  memberName: string
+  assignedAt: string
+  eligible: boolean
+}
+
+export interface AiCompanyRolloutReadiness {
+  readyForPilot: boolean
+  readyForEnforcement: boolean
+  activeEmployeeCount: number
+  coveredEmployeeCount: number
+  uncoveredEmployees: Array<{
+    userId: string
+    name: string
+    role: string
+    reasons: Array<'no_department' | 'no_mapped_pack' | 'no_evaluated_release'>
+  }>
+  departmentCoverage: Array<{
+    departmentId: string
+    name: string
+    ownerReady: boolean
+    releaseState: 'missing' | AiCatalogReleaseState
+    latestGatePassed: boolean
+    activeEmployeeCount: number
+  }>
+  blockers: string[]
+}

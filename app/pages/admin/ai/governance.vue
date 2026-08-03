@@ -1,34 +1,58 @@
 <script setup lang="ts">
 import type {
+  AiCatalogGovernanceItem,
+  AiCompanyRolloutReadiness,
   AiDepartmentDraftSeedInput,
   AiDepartmentDraftSeedResult,
   AiDepartmentOwnerCandidate,
   AiDepartmentReadinessItem,
-  AiDepartmentReadinessResponse
+  AiDepartmentReadinessResponse,
+  AiEvaluationRunView
 } from '~/types/aiGovernance'
 
 definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 const apiFetch = $fetch as <T>(
   request: string,
-  options?: { method?: string, body?: unknown }
+  options?: { method?: string, body?: unknown, query?: Record<string, string> }
 ) => Promise<T>
 
 const data = ref<AiDepartmentReadinessResponse | null>(null)
+const catalogItems = ref<AiCatalogGovernanceItem[]>([])
+const evaluationRuns = ref<AiEvaluationRunView[]>([])
+const rollout = ref<AiCompanyRolloutReadiness | null>(null)
 const pending = ref(false)
 const error = ref<unknown>(null)
+const rolloutPending = ref(false)
+const rolloutError = ref<string | null>(null)
 const seedOpen = ref(false)
 const selectedSeedItem = ref<AiDepartmentReadinessItem | null>(null)
+
+function errorMessage(caught: unknown, fallback: string) {
+  return (caught as { data?: { statusMessage?: string } })?.data?.statusMessage ?? fallback
+}
 
 async function refresh() {
   pending.value = true
   error.value = null
+  rolloutPending.value = true
+  rolloutError.value = null
   try {
-    data.value = await apiFetch<AiDepartmentReadinessResponse>('/api/admin/ai/governance/readiness')
-  } catch (caught) {
-    error.value = caught
+    const [readiness, catalog, evaluations, readinessRollout] = await Promise.allSettled([
+      apiFetch<AiDepartmentReadinessResponse>('/api/admin/ai/governance/readiness'),
+      apiFetch<{ items: AiCatalogGovernanceItem[] }>('/api/admin/ai/governance/catalog'),
+      apiFetch<{ items: AiEvaluationRunView[] }>('/api/admin/ai/governance/evaluations'),
+      apiFetch<AiCompanyRolloutReadiness>('/api/admin/ai/governance/rollout')
+    ])
+    if (readiness.status === 'fulfilled') data.value = readiness.value
+    else error.value = readiness.reason
+    if (catalog.status === 'fulfilled') catalogItems.value = catalog.value.items
+    if (evaluations.status === 'fulfilled') evaluationRuns.value = evaluations.value.items
+    if (readinessRollout.status === 'fulfilled') rollout.value = readinessRollout.value
+    else rolloutError.value = errorMessage(readinessRollout.reason, 'The company rollout readiness service could not be loaded.')
   } finally {
     pending.value = false
+    rolloutPending.value = false
   }
 }
 
@@ -67,6 +91,18 @@ async function seedDraft(input: AiDepartmentDraftSeedInput) {
   await refresh()
   return result
 }
+
+async function refreshRollout() {
+  rolloutPending.value = true
+  rolloutError.value = null
+  try {
+    rollout.value = await apiFetch<AiCompanyRolloutReadiness>('/api/admin/ai/governance/rollout')
+  } catch (caught) {
+    rolloutError.value = errorMessage(caught, 'The company rollout readiness service could not be loaded.')
+  } finally {
+    rolloutPending.value = false
+  }
+}
 </script>
 
 <template>
@@ -76,9 +112,7 @@ async function seedDraft(input: AiDepartmentDraftSeedInput) {
         <div class="mb-2 flex items-center gap-2 text-xs text-muted">
           <span>Admin</span><UIcon name="i-lucide-chevron-right" class="size-3" /><span>AI governance</span>
         </div>
-        <h1 class="text-xl font-semibold text-highlighted">
-          Department pack readiness
-        </h1>
+        <h1 class="text-xl font-semibold text-highlighted">Department pack readiness</h1>
         <p class="mt-1 max-w-3xl text-sm text-muted">
           Review department matches, eligible owners, capability coverage, draft seeding, and governed release state.
         </p>
@@ -108,8 +142,8 @@ async function seedDraft(input: AiDepartmentDraftSeedInput) {
       color="info"
       variant="soft"
       icon="i-lucide-shield-check"
-      title="Guarded draft control plane"
-      description="Readiness is read-only by default. A confirmed admin may seed one dormant draft at a time; activation, pilot assignment, AI execution, permission changes, and notifications remain unavailable here."
+      title="Governance command centre"
+      description="Drafts, evaluations, pilot membership, and release transitions are separate audited steps. Runtime access changes only after exact-version evidence and explicit confirmation."
     />
 
     <div
@@ -160,6 +194,13 @@ async function seedDraft(input: AiDepartmentDraftSeedInput) {
         </div>
       </section>
 
+      <AiGovernanceRolloutReadinessPanel
+        :data="rollout"
+        :pending="rolloutPending"
+        :error="rolloutError"
+        @refresh="refreshRollout"
+      />
+
       <UAlert
         v-if="data.unmappedDepartments.length"
         color="warning"
@@ -169,7 +210,13 @@ async function seedDraft(input: AiDepartmentDraftSeedInput) {
         :description="data.unmappedDepartments.map(item => item.name).join(', ')"
       />
 
-      <AiDepartmentPackReadinessList :items="data.items" @seed="openSeedDialog" />
+      <AiDepartmentPackReadinessList
+        :items="data.items"
+        :catalog-items="catalogItems"
+        :evaluation-runs="evaluationRuns"
+        @seed="openSeedDialog"
+        @changed="refresh"
+      />
     </template>
 
     <AiDepartmentDraftSeedDialog
