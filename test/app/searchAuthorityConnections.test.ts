@@ -304,10 +304,37 @@ describe('Search Authority onboarding workspace', () => {
 
   it('only contributes agency navigation when presentation gating is enabled', () => {
     const close = vi.fn()
-    expect(searchAuthorityNavItems(false, close)).toEqual([])
-    expect(searchAuthorityNavItems(true, close)).toEqual([expect.objectContaining({
-      label: 'Search Authority',
-      to: '/agency/search-authority'
-    })])
+    expect(searchAuthorityNavItems(false, '/agency/search-authority', close)).toEqual([])
+
+    expect(searchAuthorityNavItems(true, '/agency/search-authority/connections', close)).toEqual([
+      expect.objectContaining({
+        label: 'Search Authority',
+        icon: 'i-lucide-search-check',
+        type: 'trigger',
+        defaultOpen: true,
+        children: [
+          expect.objectContaining({
+            label: 'Overview',
+            to: '/agency/search-authority',
+            onSelect: close
+          }),
+          expect.objectContaining({
+            label: 'Connections',
+            to: '/agency/search-authority/connections',
+            onSelect: close
+          })
+        ]
+      })
+    ])
+  })
+
+  it.each([
+    ['/agency/search-authority', true],
+    ['/agency/search-authority/connections', true],
+    ['/agency/search-authority/content/example', true],
+    ['/agency/analytics', false]
+  ])('sets route-aware expansion for %s', (currentPath, defaultOpen) => {
+    const [item] = searchAuthorityNavItems(true, currentPath, vi.fn())
+    expect(item?.defaultOpen).toBe(defaultOpen)
   })
 })

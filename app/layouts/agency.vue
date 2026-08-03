@@ -221,6 +221,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Site Tracking', icon: 'i-lucide-radio', to: '/agency/tracking', onSelect: close },
       ...searchAuthorityNavItems(
         Boolean(runtimeConfig.public.searchAuthorityEnabled),
+        route.path,
         close
       )
     )
