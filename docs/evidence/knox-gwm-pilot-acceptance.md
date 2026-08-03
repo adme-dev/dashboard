@@ -58,7 +58,8 @@ files and 8,470 tests with 5 files/10 tests skipped. Targeted lint, the 6.27 KiB
 publisher typecheck/dry run, the immutable Pages target check, 160-route
 production build and 23.44 MiB worker-size guard passed. Repository typecheck
 still reports 860 unrelated existing diagnostics and zero pilot-changed file
-matches. PR #370 is open for independent review and CI evidence.
+matches. Both Node 24 CI runs for PR #370 passed; independent review remains
+open.
 
 ## Production acceptance register
 
