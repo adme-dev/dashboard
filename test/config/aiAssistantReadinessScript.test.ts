@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import {
   parseAiAssistantReadinessArgs,
   runAiAssistantReadiness
@@ -26,7 +28,18 @@ describe('AI assistant readiness CLI arguments', () => {
 
     await expect(runAiAssistantReadiness(['--gate', 'pilot', '--json'], { getReadiness, write })).resolves.toBe(0)
     expect(getReadiness).toHaveBeenCalledOnce()
-    expect(JSON.parse(write.mock.calls[0]?.[0])).toMatchObject({ gate: 'pilot', passed: true })
+    expect(JSON.parse(write.mock.calls[0]?.[0])).toMatchObject({ gate: 'pilot', passed: true, blockers: [] })
+
+    write.mockClear()
+    await expect(runAiAssistantReadiness(['--gate', 'pilot'], { getReadiness, write })).resolves.toBe(0)
+    expect(write).toHaveBeenCalledWith('AI assistant pilot readiness: PASS')
+
+    write.mockClear()
+    await expect(runAiAssistantReadiness(['--gate', 'enforced'], {
+      getReadiness: vi.fn().mockResolvedValue({ ...readiness, readyForEnforcement: true }),
+      write
+    })).resolves.toBe(0)
+    expect(write).toHaveBeenCalledWith('AI assistant enforced readiness: PASS')
 
     write.mockClear()
     await expect(runAiAssistantReadiness(['--gate', 'enforced', '--json'], { getReadiness, write })).resolves.toBe(1)
@@ -42,5 +55,65 @@ describe('AI assistant readiness CLI arguments', () => {
       passed: false,
       error: { code: 'readiness_query_failed' }
     })
+  })
+
+  it('prints only pilot gate blockers when pilot is blocked', async () => {
+    const write = vi.fn()
+    await expect(runAiAssistantReadiness(['--gate', 'pilot'], {
+      getReadiness: vi.fn().mockResolvedValue({
+        readyForPilot: false,
+        readyForEnforcement: false,
+        activeEmployeeCount: 1,
+        coveredEmployeeCount: 0,
+        uncoveredEmployees: [],
+        departmentCoverage: [],
+        blockers: [
+          'employee:20000000-0000-4000-8000-000000000001:no_department',
+          'no_evaluated_pilot_release',
+          'no_eligible_pilot_membership'
+        ]
+      }),
+      write
+    })).resolves.toBe(1)
+
+    expect(write).toHaveBeenCalledWith([
+      'AI assistant pilot readiness: BLOCKED',
+      'no_evaluated_pilot_release',
+      'no_eligible_pilot_membership'
+    ].join('\n'))
+  })
+
+  it('writes a coded structured failure at the runner boundary for invalid arguments', async () => {
+    const write = vi.fn()
+    const getReadiness = vi.fn()
+
+    await expect(runAiAssistantReadiness(['--json', '--gate', 'unknown'], { getReadiness, write })).resolves.toBe(1)
+    expect(getReadiness).not.toHaveBeenCalled()
+    expect(JSON.parse(write.mock.calls[0]?.[0])).toEqual({
+      gate: null,
+      passed: false,
+      error: { code: 'invalid_arguments' }
+    })
+  })
+
+  it('exits one and emits JSON from the CLI process for invalid arguments', () => {
+    const tsxCli = fileURLToPath(new URL('./cli.mjs', import.meta.resolve('tsx')))
+    const result = spawnSync(process.execPath, [
+      tsxCli,
+      '--tsconfig', '.nuxt/tsconfig.server.json',
+      'scripts/ai-assistant-readiness.ts',
+      '--json', '--gate', 'unknown'
+    ], {
+      cwd: process.cwd(),
+      encoding: 'utf8'
+    })
+
+    expect(result.status).toBe(1)
+    expect(JSON.parse(result.stdout)).toEqual({
+      gate: null,
+      passed: false,
+      error: { code: 'invalid_arguments' }
+    })
+    expect(result.stderr).toBe('')
   })
 })

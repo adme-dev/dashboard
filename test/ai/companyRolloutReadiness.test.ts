@@ -55,6 +55,23 @@ function readinessDb(rows: unknown[][]): CompanyRolloutReadinessDb {
   return { queryRows: vi.fn().mockImplementation(async () => rows.shift() ?? []) }
 }
 
+function repositoryFixture(input: {
+  members: Array<{ id: string, name: string, role: string, active: boolean, departmentIds: string[] }>
+  releases: unknown[]
+  pilots: Array<ReturnType<typeof pilot> & { revoked: boolean }>
+}): CompanyRolloutReadinessDb {
+  const activeMembers = input.members.filter(member => member.active)
+  return readinessDb([
+    [department()],
+    activeMembers.map(member => ({ id: member.id, name: member.name, role: member.role })),
+    activeMembers.map(member => membership(member.id, member.departmentIds)),
+    input.releases,
+    input.pilots
+      .filter(member => !member.revoked && activeMembers.some(active => active.id === member.team_member_id))
+      .map(({ revoked: _revoked, ...member }) => member)
+  ])
+}
+
 describe('company assistant rollout readiness', () => {
   it('blocks enforcement when one active employee has no organizational department', async () => {
     const result = await getCompanyAssistantRolloutReadiness(readinessDb([
@@ -212,21 +229,16 @@ describe('company assistant rollout readiness', () => {
     expect(result.blockers).toContain('no_evaluated_pilot_release')
   })
 
-  it('filters inactive employees and revoked pilot memberships in the bounded source queries', async () => {
+  it('ignores inactive employees and revoked pilot memberships from repository fixtures', async () => {
     const inactiveEmployeeId = '20000000-0000-4000-8000-000000000003'
-    const queryRows = vi.fn(async (sql: string) => {
-      if (sql.includes('ai_capability_packs pack')) return [release({ release_state: 'pilot' })]
-      if (sql.includes('ARRAY_AGG')) return [membership()]
-      if (sql.includes('FROM departments department')) return [department()]
-      if (sql.includes('FROM team_members member')) {
-        return sql.includes('member.is_active = TRUE')
-          ? [employee()]
-          : [employee(), employee(inactiveEmployeeId)]
-      }
-      return sql.includes('pilot.revoked_at IS NULL') ? [] : [pilot()]
-    })
-
-    const result = await getCompanyAssistantRolloutReadiness({ queryRows })
+    const result = await getCompanyAssistantRolloutReadiness(repositoryFixture({
+      members: [
+        { id: employeeId, name: 'Alex Example', role: 'staff', active: true, departmentIds: [departmentId] },
+        { id: inactiveEmployeeId, name: 'Former Example', role: 'staff', active: false, departmentIds: [departmentId] }
+      ],
+      releases: [release({ release_state: 'pilot' })],
+      pilots: [{ ...pilot(), revoked: true }]
+    }))
 
     expect(result.activeEmployeeCount).toBe(1)
     expect(result.readyForPilot).toBe(false)
@@ -234,7 +246,16 @@ describe('company assistant rollout readiness', () => {
 
   it('passes pilot readiness while other non-pilot departments remain draft', async () => {
     const result = await getCompanyAssistantRolloutReadiness(readinessDb([
-      [department(), department(secondDepartmentId)], [employee()], [membership()], [release({ release_state: 'pilot' }), release({ department_id: secondDepartmentId, release_id: '30000000-0000-4000-8000-000000000002', release_state: 'draft', evaluation_gate_passed: null, evaluation_run_status: null })], [pilot()]
+      [department(), department(secondDepartmentId, { name: 'Paid Media', slug: 'paid-media' })], [employee()], [membership()], [release({ release_state: 'pilot' }), release({
+        department_id: secondDepartmentId,
+        pack_id: '40000000-0000-4000-8000-000000000002',
+        pack_key: 'paid_media_read_draft',
+        pack_version_id: '50000000-0000-4000-8000-000000000002',
+        release_id: '30000000-0000-4000-8000-000000000002',
+        release_state: 'draft',
+        evaluation_gate_passed: null,
+        evaluation_run_status: null
+      })], [pilot()]
     ]))
 
     expect(result.readyForPilot).toBe(true)
@@ -261,13 +282,23 @@ describe('company assistant rollout readiness', () => {
     expect(result.blockers).toContain(`department:${departmentId}:release_pilot`)
   })
 
-  it('fails closed with stable codes for 101-row sentinels and invalid catalog rows', async () => {
-    await expect(getCompanyAssistantRolloutReadiness(readinessDb([
-      Array.from({ length: 101 }, () => department()), [], [], [], []
-    ]))).rejects.toMatchObject({ code: 'departments_unbounded' })
+  it.each([
+    ['departments', 'departments_unbounded', [Array.from({ length: 101 }, () => department()), [], [], [], []]],
+    ['employees', 'employees_unbounded', [[department()], Array.from({ length: 101 }, () => employee()), [], [], []]],
+    ['employee departments', 'employee_departments_unbounded', [[department()], [employee()], Array.from({ length: 101 }, () => membership()), [], []]],
+    ['releases', 'releases_unbounded', [[department()], [employee()], [membership()], Array.from({ length: 101 }, () => release()), []]],
+    ['pilot memberships', 'pilot_memberships_unbounded', [[department()], [employee()], [membership()], [release({ release_state: 'pilot' })], Array.from({ length: 101 }, () => pilot())]]
+  ])('fails closed with a stable code when %s exceed the 101-row sentinel', async (_source, code, rows) => {
+    await expect(getCompanyAssistantRolloutReadiness(readinessDb(rows))).rejects.toMatchObject({ code })
+  })
 
+  it('fails closed with stable codes for invalid catalog identifiers and states', async () => {
     await expect(getCompanyAssistantRolloutReadiness(readinessDb([
       [department()], [employee()], [membership()], [release({ release_id: 'not-a-uuid' })], []
+    ]))).rejects.toMatchObject({ code: 'invalid_release_row' })
+
+    await expect(getCompanyAssistantRolloutReadiness(readinessDb([
+      [department()], [employee()], [membership()], [release({ release_state: 'deleted' })], []
     ]))).rejects.toMatchObject({ code: 'invalid_release_row' })
   })
 
