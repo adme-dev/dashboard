@@ -109,6 +109,25 @@ onMounted(loadWorkspace)
         />
         <SearchAuthoritySearchConsoleConnectCard :sites="sites" />
       </div>
+
+      <section v-if="sites.length" class="space-y-4" aria-labelledby="pilot-readiness-heading">
+        <div>
+          <h2 id="pilot-readiness-heading" class="text-lg font-semibold text-highlighted">
+            Pilot activation status
+          </h2>
+          <p class="mt-1 text-sm text-muted">
+            Provider setup, evidence collection and publishing remain separate gates.
+          </p>
+        </div>
+        <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <SearchAuthorityPilotReadinessCard
+            v-for="site in sites"
+            :key="site.clientId"
+            :client-id="site.clientId"
+            :client-name="site.clientName"
+          />
+        </div>
+      </section>
     </div>
   </div>
 </template>

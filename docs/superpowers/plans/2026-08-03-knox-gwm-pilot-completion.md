@@ -34,6 +34,7 @@ The core pilot is complete only when every `Core` item below is checked and back
 | --- | --- | --- | --- | --- |
 | Platform | Search Authority agency workspace, portal summary and entitlement gates deployed | Core | [x] | Production release and focused tests |
 | Platform | Site Intelligence registry, Workflow contract, tenant isolation and readiness deployed | Core | [x] | Production release and authenticated service-binding smoke |
+| Platform | Tenant-scoped pilot completion contract and agency readiness card implemented | Core | [x] | Task 1 tests, lint and Nuxt typecheck |
 | Pilot setup | Knox canonical site and trial entitlement configured | Core | [x] | Production database row for `www.knoxgwmhaval.com.au` |
 | Pilot setup | Knox owned and Lilydale competitor monitoring boundaries configured manual-only | Core | [x] | Production domain rows with 90/30-day retention |
 | Collection | Browser Rendering credential passes authenticated no-job readiness | Core | [ ] | Readiness response reports `browserRenderingApi: true` |
@@ -73,6 +74,7 @@ The core pilot is complete only when every `Core` item below is checked and back
 ### Progress journal
 
 - **2026-08-03:** Reconciled the approved PRD with production. Created isolated branch `agent/knox-pilot-completion-20260803`. Installed dependencies with Node 24.18.0. Baseline Search Authority and Site Intelligence suite passed: 12 files, 86 tests.
+- **2026-08-03:** Completed Task 1. Added a tenant-scoped readiness aggregator/API and reusable agency card. Five related files passed 17 tests; targeted ESLint and full Nuxt typecheck passed.
 
 ### Execution order and external gates
 
@@ -95,7 +97,7 @@ Implement Task 1 first. Tasks 4–11 are the XeroFlow-owned engineering lane and
 - Consumes: existing Search Authority site/property state, Site Intelligence domain/run state, social account state and runtime feature flags.
 - Produces: `getSearchAuthorityPilotReadiness(clientId): Promise<PilotReadiness>` and an agency-only response containing booleans, counts, safe failure categories and operator actions without credentials.
 
-- [ ] **Step 1: Write failing readiness aggregation tests**
+- [x] **Step 1: Write failing readiness aggregation tests**
 
 ```ts
 expect(result.coreReady).toBe(false)
@@ -104,13 +106,13 @@ expect(result.gates.siteCollection.reasonCode).toBe('no_successful_owned_run')
 expect(JSON.stringify(result)).not.toContain('access_token')
 ```
 
-- [ ] **Step 2: Run the focused tests and confirm the route/service are missing**
+- [x] **Step 2: Run the focused tests and confirm the route/service are missing**
 
 Run: `pnpm exec vitest run test/server/api/searchAuthorityPilotReadiness.test.ts test/app/searchAuthorityPilotReadiness.test.ts`
 
 Expected: FAIL because the readiness service, endpoint and card do not exist.
 
-- [ ] **Step 3: Implement the tenant-scoped readiness service and endpoint**
+- [x] **Step 3: Implement the tenant-scoped readiness service and endpoint**
 
 ```ts
 export type PilotGateState = 'ready' | 'blocked' | 'unavailable' | 'not_started'
@@ -129,17 +131,17 @@ export interface PilotReadiness {
 
 The endpoint must require Search Authority agency access, resolve only the selected client and return no token, email, raw provider payload or crawl body.
 
-- [ ] **Step 4: Add the readiness card to both agency Search Authority surfaces**
+- [x] **Step 4: Add the readiness card to both agency Search Authority surfaces**
 
 Use `UCard`, `UBadge`, `UAlert`, `UTooltip` and `UButton`. Provider or DNS actions must be copyable instructions; buttons must never imply XeroFlow can rotate a human-owned secret.
 
-- [ ] **Step 5: Run tests, lint the new files and complete the pre-commit review**
+- [x] **Step 5: Run tests, lint the new files and complete the pre-commit review**
 
 Run: `pnpm exec vitest run test/server/api/searchAuthorityPilotReadiness.test.ts test/app/searchAuthorityPilotReadiness.test.ts`
 
 Run: `pnpm exec eslint server/utils/searchAuthority/pilotReadiness.ts server/api/agency/search-authority/pilot-readiness.get.ts app/components/search-authority/PilotReadinessCard.vue`
 
-- [ ] **Step 6: Commit the truthful readiness contract**
+- [x] **Step 6: Commit the truthful readiness contract**
 
 ```bash
 git add server/utils/searchAuthority/pilotReadiness.ts server/api/agency/search-authority/pilot-readiness.get.ts app/components/search-authority/PilotReadinessCard.vue app/components/search-authority/Workspace.vue app/components/search-authority/ConnectionsWorkspace.vue test/server/api/searchAuthorityPilotReadiness.test.ts test/app/searchAuthorityPilotReadiness.test.ts

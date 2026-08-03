@@ -553,6 +553,8 @@ onMounted(async () => {
         </div>
       </UCard>
 
+      <SearchAuthorityPilotReadinessCard :client-id="selectedClientId" />
+
       <SearchAuthorityOverviewMetrics
         :metrics="overview?.metrics || null"
         :loading="loading"
