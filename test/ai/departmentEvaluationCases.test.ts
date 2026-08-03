@@ -5,7 +5,7 @@ import { runDeterministicEvaluation, type EvaluationExecutorRequest } from '~~/s
 import { registry } from '~~/server/utils/ai/tools'
 import { filterToolsForUser } from '~~/server/utils/ai/toolRegistry'
 import { DEFAULT_PERSONA } from '~~/server/utils/ai/personas'
-import { buildDepartmentEvaluationMatrix } from '~~/server/utils/ai/governance/departmentEvaluationCases/matrix'
+import { buildDepartmentEvaluationMatrix, renderDepartmentEvaluationMatrix } from '~~/server/utils/ai/governance/departmentEvaluationCases/matrix'
 import { readFileSync } from 'node:fs'
 
 const COMMON_CASE_KEYS = [
@@ -208,7 +208,8 @@ describe('release-grade department evaluation cases', () => {
   it('keeps the human review matrix executable-consistent with every case definition', () => {
     const document = readFileSync('docs/ai/department-evaluation-matrix.md', 'utf8')
     const rows = buildDepartmentEvaluationMatrix(DEPARTMENT_PACK_BLUEPRINTS)
-    expect(document).toContain('departmentEvaluationCases/matrix.ts')
+    const renderedSection = document.match(/<!-- generated-matrix:start -->\n([\s\S]*?)\n<!-- generated-matrix:end -->/)?.[1]
+    expect(renderedSection).toBe(renderDepartmentEvaluationMatrix(rows))
     expect(rows).toHaveLength(DEPARTMENT_PACK_BLUEPRINTS.reduce((total, pack) => total + pack.evaluationCases.length, 0))
     expect(new Set(rows.map(row => `${row.departmentKey}:${row.caseKey}:v${row.caseVersion}`)).size).toBe(rows.length)
     expect(rows.every(row => row.humanReviewRequired === false)).toBe(true)

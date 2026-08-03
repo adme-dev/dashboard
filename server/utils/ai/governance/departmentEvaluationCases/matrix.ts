@@ -40,3 +40,25 @@ export function buildDepartmentEvaluationMatrix(blueprints: readonly DepartmentP
 export function serializeDepartmentEvaluationMatrix(rows: readonly DepartmentEvaluationMatrixRow[]): string {
   return JSON.stringify(rows)
 }
+
+function cell(values: readonly string[]): string {
+  return values.length === 0 ? 'None' : values.map(value => `\`${value}\``).join(', ')
+}
+
+/** Deterministic checked-in Markdown section; keep the documentation byte-for-byte in sync via its test. */
+export function renderDepartmentEvaluationMatrix(rows: readonly DepartmentEvaluationMatrixRow[]): string {
+  return [
+    '| Department | Case key | Version | Required sources | Expected tools | No tool | Zero tolerance | Human review |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- |',
+    ...rows.map(row => [
+      `\`${row.departmentKey}\``,
+      `\`${row.caseKey}\``,
+      String(row.caseVersion),
+      cell(row.requiredSources),
+      row.expectedNoTool ? 'None' : cell(row.expectedTools),
+      row.expectedNoTool ? 'Yes' : 'No',
+      cell(row.zeroTolerance),
+      row.humanReviewRequired ? 'Yes' : 'No'
+    ].join(' | ').replace(/^/, '| ').concat(' |'))
+  ].join('\n')
+}
