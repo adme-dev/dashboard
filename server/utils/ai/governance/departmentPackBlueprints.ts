@@ -168,8 +168,7 @@ export const DEPARTMENT_PACK_BLUEPRINTS: DepartmentPackBlueprint[] = [
       capability('client_context', 'Client context', 'Inspect approved client and CRM context.', 'CLIENTS', [
         { toolName: 'get_client_overview', accessMode: 'read' },
         { toolName: 'search_crm', accessMode: 'read' },
-        { toolName: 'get_crm_pipeline', accessMode: 'read' },
-        { toolName: 'draft_followup', accessMode: 'draft' }
+        { toolName: 'get_crm_pipeline', accessMode: 'read' }
       ], { dataClass: 'confidential' }),
       capability('delivery_context', 'Delivery context', 'Inspect projects and briefs and assess brief completeness.', 'AUTHENTICATED', [
         { toolName: 'get_project_status', accessMode: 'read' },

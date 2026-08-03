@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { DEPARTMENT_PACK_BLUEPRINTS } from '~~/server/utils/ai/governance/departmentPackBlueprints'
 import { EvaluationCaseSchema } from '~~/server/utils/ai/governance/contracts'
+import { runDeterministicEvaluation, type EvaluationExecutorRequest } from '~~/server/utils/ai/governance/deterministicEvaluationRunner'
+import { registry } from '~~/server/utils/ai/tools'
+import { filterToolsForUser } from '~~/server/utils/ai/toolRegistry'
+import { DEFAULT_PERSONA } from '~~/server/utils/ai/personas'
+import { buildDepartmentEvaluationMatrix } from '~~/server/utils/ai/governance/departmentEvaluationCases/matrix'
+import { readFileSync } from 'node:fs'
 
 const COMMON_CASE_KEYS = [
   'representative_read',
@@ -41,6 +47,36 @@ const DOMAIN_CASE_KEYS = {
 } as const
 
 const FORBIDDEN_FIXTURE_KEY = /(?:access.?token|refresh.?token|api.?key|secret|password|email|phone|full.?name|first.?name|last.?name|contact|activity|prototype|constructor|proto)/i
+
+const MATERIAL_IDENTITY = {
+  evaluationSuiteVersionId: '10000000-0000-4000-8000-000000000001',
+  packVersionId: '20000000-0000-4000-8000-000000000001',
+  capabilityVersionId: null,
+  modelProvider: 'fixture_provider',
+  modelId: 'fixture-model-v1',
+  promptVersionDigest: 'a'.repeat(64),
+  toolsetVersionDigest: 'b'.repeat(64)
+}
+
+function caseId(index: number): string {
+  return `30000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`
+}
+
+function perfectObservation(request: Readonly<EvaluationExecutorRequest>, definitions: Map<string, (typeof DEPARTMENT_PACK_BLUEPRINTS)[number]['evaluationCases'][number]>) {
+  const definition = definitions.get(request.caseKey)!
+  return {
+    observedTools: definition.expectedNoTool ? [] : definition.expectedTools,
+    sourceRefs: definition.requiredSources,
+    effectSignals: [],
+    scopeViolationObserved: false,
+    approvalBypassObserved: false,
+    traceRef: `trace:fixture:${request.caseKey}`,
+    inputTokens: 1,
+    outputTokens: 1,
+    costUsdMicros: 1,
+    latencyMs: 1
+  }
+}
 
 describe('release-grade department evaluation cases', () => {
   it('gives each department the exact common safety suite and required domain coverage', () => {
@@ -88,6 +124,107 @@ describe('release-grade department evaluation cases', () => {
       if (refusalKeys.has(definition.caseKey)) {
         expect(definition.expectedNoTool).toBe(true)
         expect(definition.expectedTools).toEqual([])
+      }
+    }
+  })
+
+  it('gives every department a deterministic terminal release gate for perfect safe observations', async () => {
+    for (const pack of DEPARTMENT_PACK_BLUEPRINTS) {
+      const definitions = new Map(pack.evaluationCases.map(definition => [definition.caseKey, definition]))
+      const result = await runDeterministicEvaluation({
+        runId: '40000000-0000-4000-8000-000000000001',
+        materialIdentity: MATERIAL_IDENTITY,
+        cases: pack.evaluationCases.map((definition, index) => ({ id: caseId(index), definition })),
+        availableTools: pack.capabilities.flatMap(capability => capability.toolBindings.map(binding => binding.toolName)),
+        budget: {
+          maxCases: 64,
+          maxInputTokensPerCase: 100,
+          maxOutputTokensPerCase: 100,
+          maxCostUsdMicrosPerCase: 100,
+          maxLatencyMsPerCase: 100,
+          maxTotalCostUsdMicros: 10_000,
+          maxWallTimeMs: 10_000
+        },
+        executionCostEnvelope: { maxCostUsdMicrosPerCase: 100, maxSpendUsdMicros: 10_000 }
+      }, { execute: request => Promise.resolve(perfectObservation(request, definitions)) })
+
+      expect(result).toMatchObject({
+        status: 'completed',
+        gatePassed: true,
+        totals: { caseCount: pack.evaluationCases.length, passedCount: pack.evaluationCases.length, humanReviewCount: 0 }
+      })
+    }
+  })
+
+  it('keeps account-management CRM follow-up as a no-tool draft boundary', () => {
+    const definition = DEPARTMENT_PACK_BLUEPRINTS.find(pack => pack.key === 'account_management')!
+      .evaluationCases.find(item => item.caseKey === 'crm_followup_draft_only')!
+    expect(definition).toMatchObject({ expectedNoTool: true, expectedTools: [] })
+  })
+
+  it('uses only non-mutating registry tools that survive the real owner runtime and general persona', () => {
+    const ownerRuntimeTools = new Set(filterToolsForUser(registry, 'owner').map(tool => tool.name))
+    const registryByName = new Map(registry.map(tool => [tool.name, tool]))
+    expect(DEFAULT_PERSONA.toolAllowlist).toBeUndefined()
+
+    for (const definition of DEPARTMENT_PACK_BLUEPRINTS.flatMap(pack => pack.evaluationCases)) {
+      for (const toolName of definition.expectedTools) {
+        expect(registryByName.get(toolName)?.mutates).not.toBe(true)
+        expect(ownerRuntimeTools.has(toolName)).toBe(true)
+      }
+    }
+  })
+
+  it('freezes nested scope and adversarial evidence fixtures against mutation', () => {
+    const representative = DEPARTMENT_PACK_BLUEPRINTS[0]!.evaluationCases.find(item => item.caseKey === 'representative_read')!
+    const poisonedMemory = DEPARTMENT_PACK_BLUEPRINTS[0]!.evaluationCases.find(item => item.caseKey === 'poisoned_memory_ignored')!
+
+    expect(() => (representative.scopeFixture.allowedClientRefs as string[]).push('fixture_client_b')).toThrow(TypeError)
+    expect(() => ((representative.input.context as { authoritativeEvidence: unknown[] }).authoritativeEvidence).push({ sourceRef: 'fixture_other' })).toThrow(TypeError)
+    expect(() => { (poisonedMemory.input.context as { authoritativeScope: string[] }).authoritativeScope[0] = 'fixture_client_b' }).toThrow(TypeError)
+  })
+
+  it('encodes competing evidence and authority/scope transitions as opaque evaluation signals', () => {
+    const pack = DEPARTMENT_PACK_BLUEPRINTS[0]!
+    const byKey = new Map(pack.evaluationCases.map(item => [item.caseKey, item]))
+    const ambiguous = byKey.get('ambiguous_entity_clarification')!.input.context as { authoritativeEvidence: unknown[] }
+    const stale = byKey.get('stale_source_refusal')!.input.context as { sourceFreshness: string }
+    const roleChanged = byKey.get('role_changed_before_turn')!.scopeFixture as { authorityBefore: string[], authorityAfter: string[] }
+    const assignmentRemoved = byKey.get('client_assignment_removed')!.scopeFixture as { clientAssignmentsBefore: string[], clientAssignmentsAfter: string[] }
+    const poisoned = byKey.get('poisoned_memory_ignored')!.input.context as { memoryTrust: string, authoritativeScope: string[] }
+    const crossClient = byKey.get('cross_client_refusal')!.scopeFixture as { allowedClientRefs: string[] }
+    const crossDepartment = byKey.get('cross_department_refusal')!.scopeFixture as { allowedDepartmentRefs: string[] }
+
+    expect(ambiguous.authoritativeEvidence).toHaveLength(2)
+    expect(stale.sourceFreshness).toBe('stale')
+    expect(roleChanged.authorityBefore).not.toEqual(roleChanged.authorityAfter)
+    expect(assignmentRemoved.clientAssignmentsBefore).toEqual(['fixture_client_a'])
+    expect(assignmentRemoved.clientAssignmentsAfter).toEqual([])
+    expect(poisoned).toMatchObject({ memoryTrust: 'untrusted_memory', authoritativeScope: ['fixture_client_a'] })
+    expect(crossClient.allowedClientRefs).toEqual(['fixture_client_a'])
+    expect(crossDepartment.allowedDepartmentRefs).toEqual(['fixture_department_a'])
+  })
+
+  it('keeps the human review matrix executable-consistent with every case definition', () => {
+    const document = readFileSync('docs/ai/department-evaluation-matrix.md', 'utf8')
+    const rows = buildDepartmentEvaluationMatrix(DEPARTMENT_PACK_BLUEPRINTS)
+    expect(document).toContain('departmentEvaluationCases/matrix.ts')
+    expect(rows).toHaveLength(DEPARTMENT_PACK_BLUEPRINTS.reduce((total, pack) => total + pack.evaluationCases.length, 0))
+    expect(new Set(rows.map(row => `${row.departmentKey}:${row.caseKey}:v${row.caseVersion}`)).size).toBe(rows.length)
+    expect(rows.every(row => row.humanReviewRequired === false)).toBe(true)
+
+    for (const pack of DEPARTMENT_PACK_BLUEPRINTS) {
+      for (const definition of pack.evaluationCases) {
+        expect(rows).toContainEqual(expect.objectContaining({
+          departmentKey: pack.key,
+          caseKey: definition.caseKey,
+          caseVersion: definition.caseVersion,
+          requiredSources: definition.requiredSources,
+          expectedTools: definition.expectedTools,
+          expectedNoTool: definition.expectedNoTool,
+          zeroTolerance: definition.zeroTolerance,
+          humanReviewRequired: false
+        }))
       }
     }
   })
