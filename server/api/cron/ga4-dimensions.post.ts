@@ -1,5 +1,6 @@
 import { defineEventHandler, getHeader, createError } from 'h3'
 import { syncGa4Dimensions } from '~~/server/utils/ga4DimensionSync'
+import { resolveGoogleOAuthRuntimeConfig } from '~~/server/utils/googleOAuthRuntimeConfig'
 
 /**
  * POST /api/cron/ga4-dimensions
@@ -16,6 +17,10 @@ export default defineEventHandler(async (event) => {
   if (!import.meta.dev && cronSecret !== process.env.CRON_SECRET) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
-  const dimensions = await syncGa4Dimensions({ lookbackDays: 14 })
+  const { googleClientId, googleClientSecret } = resolveGoogleOAuthRuntimeConfig(event)
+  const dimensions = await syncGa4Dimensions({
+    lookbackDays: 14,
+    oauthConfig: { googleClientId, googleClientSecret }
+  })
   return { ok: true, dimensions }
 })

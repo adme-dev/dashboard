@@ -24,7 +24,8 @@ import {
   quotaShouldThrottle,
   type Ga4DimensionType
 } from './ga4Client'
-import { ensureFreshGa4Token, ga4SyncWindow, type MapRow } from './ga4Sync'
+import { ensureFreshGa4Token, ga4SyncWindow, type Ga4SyncOAuthConfig, type MapRow } from './ga4Sync'
+import { resolveGoogleOAuthRuntimeConfig } from './googleOAuthRuntimeConfig'
 
 export interface Ga4DimensionSyncResult {
   propertiesSynced: number
@@ -177,9 +178,16 @@ async function flushEventRows(rows: EvtRow[]): Promise<number> {
 }
 
 export async function syncGa4Dimensions(
-  opts: { clientId?: string, lookbackDays?: number, startDate?: string, endDate?: string, maxProperties?: number } = {}
+  opts: {
+    clientId?: string
+    lookbackDays?: number
+    startDate?: string
+    endDate?: string
+    maxProperties?: number
+    oauthConfig?: Ga4SyncOAuthConfig
+  } = {}
 ): Promise<Ga4DimensionSyncResult> {
-  const config = useRuntimeConfig()
+  const config = opts.oauthConfig ?? resolveGoogleOAuthRuntimeConfig()
   const result: Ga4DimensionSyncResult = {
     propertiesSynced: 0, dimensionRowsUpserted: 0, eventRowsUpserted: 0, throttled: false, errors: []
   }

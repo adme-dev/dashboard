@@ -9,6 +9,7 @@ import { queryRows, execute } from './db'
 import { refreshGoogleToken } from './googleAdsClient'
 import { ga4RunReport, type Ga4ReportRow } from './ga4Client'
 import { mapWithConcurrency } from './concurrency'
+import { resolveGoogleOAuthRuntimeConfig } from './googleOAuthRuntimeConfig'
 
 /** Max GA4 property report fetches in flight at once. Kept ≤6 to respect
  *  Cloudflare's per-invocation simultaneous-connection cap. */
@@ -67,6 +68,11 @@ export interface Ga4SyncResult {
   propertiesSynced: number
   rowsUpserted: number
   errors: string[]
+}
+
+export interface Ga4SyncOAuthConfig {
+  googleClientId: string
+  googleClientSecret: string
 }
 
 export interface MapRow {
@@ -148,10 +154,16 @@ export function ga4SyncWindow(
 }
 
 export async function syncGa4(
-  opts: { clientId?: string, lookbackDays?: number, startDate?: string, endDate?: string } = {}
+  opts: {
+    clientId?: string
+    lookbackDays?: number
+    startDate?: string
+    endDate?: string
+    oauthConfig?: Ga4SyncOAuthConfig
+  } = {}
 ): Promise<Ga4SyncResult> {
   const { clientId } = opts
-  const config = useRuntimeConfig()
+  const config = opts.oauthConfig ?? resolveGoogleOAuthRuntimeConfig()
   const result: Ga4SyncResult = { propertiesSynced: 0, rowsUpserted: 0, errors: [] }
 
   const maps = await loadGa4Maps(clientId)
