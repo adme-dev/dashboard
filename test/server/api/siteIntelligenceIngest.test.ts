@@ -35,6 +35,7 @@ describe('site intelligence snapshot preparation', () => {
       record: {
         url: 'https://dealer.example.com/offers/h6?utm_source=paid#hero',
         status: 'completed',
+        html: '<html><head><meta name="robots" content="noindex"><link rel="canonical" href="https://dealer.example.com/offers/h6"></head></html>',
         markdown: RAW_MARKDOWN,
         metadata: { url: 'https://dealer.example.com/offers/h6?utm_source=paid#hero', status: 200, title: 'H6 Offer' }
       }
@@ -55,6 +56,9 @@ describe('site intelligence snapshot preparation', () => {
       }
     })
     expect(JSON.stringify(prepared.metadata)).not.toContain(RAW_MARKDOWN)
+    expect(prepared.trustFindings).toEqual([
+      expect.objectContaining({ checkKey: 'indexability.robots_noindex', severity: 'critical' })
+    ])
   })
 })
 
@@ -82,6 +86,7 @@ describe('atomic site intelligence batch ingestion', () => {
       expiry: null, ctas: ['test_drive'], disclaimers: []
     },
     evidence: [{ field: 'driveAwayPrice', excerpt: '$42,990 drive away' }],
+    trustFindings: [],
     extractionVersion: 'automotive-deterministic-v1'
   }
 
@@ -91,6 +96,7 @@ describe('atomic site intelligence batch ingestion', () => {
       .mockResolvedValueOnce({ rows: [{ id: 'batch-1' }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: PAGE_ID }] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: CHANGE_ID }] })
       .mockResolvedValueOnce({ rows: [] })
     const replayQuery = vi.fn()
@@ -126,6 +132,7 @@ describe('atomic site intelligence batch ingestion', () => {
       .mockResolvedValueOnce({ rows: [existing] })
       .mockResolvedValueOnce({ rows: [{ id: PAGE_ID }] })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
     mockTransaction.mockImplementation(async callback => callback({ query }))
 
     const result = await recordSiteIntelligenceIngestBatch(RUN_ID, {
@@ -152,6 +159,7 @@ describe('atomic site intelligence batch ingestion', () => {
       .mockResolvedValueOnce({ rows: [{ id: 'batch-3' }] })
       .mockResolvedValueOnce({ rows: [existing] })
       .mockResolvedValueOnce({ rows: [{ id: PAGE_ID }] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: CHANGE_ID }] })
       .mockResolvedValueOnce({ rows: [] })
     mockTransaction.mockImplementation(async callback => callback({ query }))

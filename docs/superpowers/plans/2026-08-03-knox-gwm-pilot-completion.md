@@ -75,6 +75,7 @@ The core pilot is complete only when every `Core` item below is checked and back
 
 - **2026-08-03:** Reconciled the approved PRD with production. Created isolated branch `agent/knox-pilot-completion-20260803`. Installed dependencies with Node 24.18.0. Baseline Search Authority and Site Intelligence suite passed: 12 files, 86 tests.
 - **2026-08-03:** Completed Task 1. Added a tenant-scoped readiness aggregator/API and reusable agency card. Five related files passed 17 tests; targeted ESLint and full Nuxt typecheck passed.
+- **2026-08-03:** Completed Task 4 engineering. Migration 333 was applied to Neon. Deterministic crawl, robots, canonical, explicit sitemap evidence, soft-404, JSON-LD price-parity and image checks now reconcile into a tenant-scoped findings ledger. Four focused files passed 11 tests and targeted ESLint passed. The repository-wide typecheck currently fails in unrelated pre-existing files; the typecheck log contains no errors for this slice.
 
 ### Execution order and external gates
 
@@ -244,23 +245,24 @@ git commit -m "docs: record Knox Search Console activation"
 - Create: `server/database/migrations/333_search_authority_trust_findings.sql`
 - Create: `server/utils/searchAuthority/trustChecks.ts`
 - Create: `server/utils/searchAuthority/trustRepository.ts`
-- Modify: `server/utils/siteIntelligence/crawlRunner.ts`
-- Modify: `app/types/index.ts`
+- Modify: `server/utils/siteIntelligence/storage.ts`
+- Modify: `server/utils/siteIntelligence/repository.ts`
 - Test: `test/config/searchAuthorityTrustMigration.test.ts`
 - Test: `test/server/utils/searchAuthorityTrustChecks.test.ts`
 - Test: `test/server/utils/searchAuthorityTrustRepository.test.ts`
+- Test: `test/server/api/siteIntelligenceIngest.test.ts`
 
 **Interfaces:**
 - Consumes: completed Site Intelligence page facts/metadata and live source URLs.
-- Produces: `evaluateTrustPage(input): TrustFindingCandidate[]` and deduplicated findings with `owner: 'xeroflow' | 'dealer_origin' | 'external_provider'`.
+- Produces: `evaluateSearchAuthorityTrust(input): SearchAuthorityTrustFindingCandidate[]` and deduplicated findings with `owner: 'xeroflow' | 'dealer_origin' | 'external_provider'`.
 
-- [ ] **Step 1: Recheck the highest migration number before editing**
+- [x] **Step 1: Recheck the highest migration number before editing**
 
 Run: `git ls-tree -r --name-only origin/main server/database/migrations | tail -20`
 
 If `333` is occupied, rename the migration and its test to the next free numeric prefix before writing either file.
 
-- [ ] **Step 2: Write failing schema and pure-rule tests**
+- [x] **Step 2: Write failing schema and pure-rule tests**
 
 ```ts
 expect(findings).toContainEqual(expect.objectContaining({
@@ -273,11 +275,11 @@ expect(findings).toContainEqual(expect.objectContaining({ checkKey: 'canonical.c
 
 Cover HTTP status, robots directives, canonical absence/cross-origin, sitemap discovery, soft-404 heuristics, JSON-LD parsing, Vehicle/Product visible-value parity, image URL/alt/naming fundamentals and unchanged-finding dedupe.
 
-- [ ] **Step 3: Create the additive finding schema**
+- [x] **Step 3: Create the additive finding schema**
 
 The table stores client/domain/page/run IDs, deterministic fingerprint, check key, severity, owner, status, bounded evidence, first/last seen timestamps, recurrence count, task link and resolution metadata. Add a unique active fingerprint per domain and prohibit raw HTML/body storage.
 
-- [ ] **Step 4: Implement pure deterministic checks**
+- [x] **Step 4: Implement pure deterministic checks**
 
 ```ts
 export interface TrustFindingCandidate {
@@ -292,20 +294,20 @@ export interface TrustFindingCandidate {
 
 Unknown or unavailable evidence must create an `unavailable` observation or no finding; it must never be converted to a healthy result.
 
-- [ ] **Step 5: Persist findings after page ingestion**
+- [x] **Step 5: Persist findings after page ingestion**
 
 Upsert active findings by deterministic fingerprint, increment recurrence for repeated failures, resolve only after a successful observation proves recovery, and never resolve findings when collection failed.
 
-- [ ] **Step 6: Apply the migration automatically and run tests**
+- [x] **Step 6: Apply the migration automatically and run tests**
 
 Load `DATABASE_URL` from `.env` without printing it, apply the exact migration with `psql -v ON_ERROR_STOP=1`, then run:
 
 `pnpm exec vitest run test/config/searchAuthorityTrustMigration.test.ts test/server/utils/searchAuthorityTrustChecks.test.ts test/server/utils/searchAuthorityTrustRepository.test.ts test/server/api/siteIntelligenceIngest.test.ts`
 
-- [ ] **Step 7: Commit the deterministic trust engine**
+- [x] **Step 7: Commit the deterministic trust engine**
 
 ```bash
-git add server/database/migrations/333_search_authority_trust_findings.sql server/utils/searchAuthority/trustChecks.ts server/utils/searchAuthority/trustRepository.ts server/utils/siteIntelligence/crawlRunner.ts app/types/index.ts test/config/searchAuthorityTrustMigration.test.ts test/server/utils/searchAuthorityTrustChecks.test.ts test/server/utils/searchAuthorityTrustRepository.test.ts test/server/api/siteIntelligenceIngest.test.ts
+git add server/database/migrations/333_search_authority_trust_findings.sql server/utils/searchAuthority/trustChecks.ts server/utils/searchAuthority/trustRepository.ts server/utils/siteIntelligence/storage.ts server/utils/siteIntelligence/repository.ts test/config/searchAuthorityTrustMigration.test.ts test/server/utils/searchAuthorityTrustChecks.test.ts test/server/utils/searchAuthorityTrustRepository.test.ts test/server/api/siteIntelligenceIngest.test.ts docs/superpowers/plans/2026-08-03-knox-gwm-pilot-completion.md
 git commit -m "feat: add deterministic search trust findings"
 ```
 

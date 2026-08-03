@@ -4,6 +4,10 @@ import type { AutomotivePageFacts, SiteIntelligencePageStatus } from '~~/app/typ
 import type { SiteIntelligenceCrawlRecord } from '~~/server/utils/siteIntelligence/contracts'
 import { getCachedObjectBinding } from '~~/server/utils/email'
 import {
+  evaluateSearchAuthorityTrust,
+  type SearchAuthorityTrustFindingCandidate
+} from '~~/server/utils/searchAuthority/trustChecks'
+import {
   AUTOMOTIVE_EXTRACTION_VERSION,
   canonicalizeAutomotiveContent,
   canonicalizeSiteIntelligenceUrl,
@@ -31,6 +35,7 @@ export interface PreparedSiteIntelligenceRecord {
   metadata: Record<string, string | number>
   facts: Partial<AutomotivePageFacts>
   evidence: AutomotiveFactEvidence[]
+  trustFindings: SearchAuthorityTrustFindingCandidate[]
   extractionVersion: string
 }
 
@@ -62,6 +67,16 @@ export async function prepareSiteIntelligenceSnapshot(
       metadata: safeMetadata,
       facts: {},
       evidence: [],
+      trustFindings: evaluateSearchAuthorityTrust({
+        sourceUrl,
+        canonicalUrl,
+        status: input.record.status,
+        httpStatus: input.record.metadata.status ?? null,
+        title: input.record.metadata.title?.trim().slice(0, 1000) || null,
+        metadata: input.record.metadata,
+        markdown: input.record.markdown,
+        html: input.record.html
+      }),
       extractionVersion: AUTOMOTIVE_EXTRACTION_VERSION
     }
   }
@@ -97,6 +112,16 @@ export async function prepareSiteIntelligenceSnapshot(
     metadata: safeMetadata,
     facts: extraction.facts,
     evidence: extraction.evidence,
+    trustFindings: evaluateSearchAuthorityTrust({
+      sourceUrl,
+      canonicalUrl: extraction.canonicalUrl || canonicalUrl,
+      status: input.record.status,
+      httpStatus: input.record.metadata.status ?? null,
+      title: input.record.metadata.title?.trim().slice(0, 1000) || null,
+      metadata: input.record.metadata,
+      markdown: input.record.markdown ?? stripHtml(input.record.html ?? ''),
+      html: input.record.html
+    }),
     extractionVersion: extraction.extractionVersion
   }
 }
