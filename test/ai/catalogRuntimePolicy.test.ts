@@ -1,11 +1,19 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   composeEffectiveAssistantTools,
+  loadCatalogControlRows,
   resolveCatalogRuntimePolicy,
   resolveServerCatalogRuntimePolicy,
   type ActiveCatalogRow,
+  type CatalogCompositionDb,
   type CatalogRuntimePolicy
 } from '~~/server/utils/ai/governance/catalogComposition'
+
+const DEPARTMENT_ID = '10000000-0000-4000-8000-000000000001'
+const USER_ID = '50000000-0000-4000-8000-000000000001'
+const PACK_ID = '60000000-0000-4000-8000-000000000001'
+const OLD_PACK_VERSION_ID = '30000000-0000-4000-8000-000000000001'
+const LATEST_PACK_VERSION_ID = '30000000-0000-4000-8000-000000000002'
 
 const policy = (mode: CatalogRuntimePolicy['mode']): CatalogRuntimePolicy => ({
   mode,
@@ -94,6 +102,97 @@ describe('catalog runtime policy validation', () => {
 })
 
 describe('catalog rollout modes', () => {
+  it('treats an evaluated older release as stale when the latest pack version is draft and unevaluated', async () => {
+    const packVersions = [
+      { pack_id: PACK_ID, pack_version_id: OLD_PACK_VERSION_ID, version: 1 },
+      { pack_id: PACK_ID, pack_version_id: LATEST_PACK_VERSION_ID, version: 2 }
+    ]
+    const releases = [
+      {
+        source_type: 'pack',
+        release_state: 'active',
+        release_id: '20000000-0000-4000-8000-000000000001',
+        department_id: DEPARTMENT_ID,
+        pack_version_id: OLD_PACK_VERSION_ID,
+        pack_version: 1,
+        pack_label: 'Old evaluated release',
+        pack_key: 'finance_operations',
+        instructions_preamble: 'This stale release must not govern runtime.',
+        pack_model_feature_key: 'finance_assistant',
+        pack_max_input_tokens: 6000,
+        pack_max_output_tokens: 900,
+        pack_max_cost_usd_micros: 50000,
+        pack_max_latency_ms: 15000,
+        capability_version_id: '40000000-0000-4000-8000-000000000001',
+        capability_key: 'finance_snapshot',
+        required_permission_group: 'FINANCE',
+        capability_model_feature_key: 'finance_assistant',
+        capability_max_input_tokens: 5000,
+        capability_max_output_tokens: 800,
+        capability_max_cost_usd_micros: 40000,
+        capability_max_latency_ms: 12000,
+        tool_name: 'get_finance_snapshot',
+        access_mode: 'read',
+        evaluation_gate_passed: true,
+        evaluation_run_status: 'completed'
+      },
+      {
+        source_type: 'pack',
+        release_state: 'draft',
+        release_id: '20000000-0000-4000-8000-000000000002',
+        department_id: DEPARTMENT_ID,
+        pack_version_id: LATEST_PACK_VERSION_ID,
+        evaluation_gate_passed: false,
+        evaluation_run_status: 'pending'
+      }
+    ]
+    const queryRows = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('ranked_pack_versions')) {
+        const maxVersion = Math.max(...packVersions.map(version => version.version))
+        return packVersions.filter(version => version.version === maxVersion)
+      }
+
+      const admittedPackVersionIds = new Set((params?.[2] as string[] | undefined)
+        ?? packVersions.map(version => version.pack_version_id))
+      return releases.filter(release =>
+        admittedPackVersionIds.has(release.pack_version_id)
+        && ['pilot', 'active', 'suspended', 'retired'].includes(release.release_state)
+        && (
+          !['pilot', 'active'].includes(release.release_state)
+          || (release.evaluation_gate_passed && release.evaluation_run_status === 'completed')
+        )
+      )
+    })
+    const catalogRows = await loadCatalogControlRows(
+      [DEPARTMENT_ID],
+      USER_ID,
+      { queryRows } as CatalogCompositionDb
+    )
+
+    expect(queryRows).toHaveBeenCalledTimes(2)
+    expect(catalogRows).toEqual([])
+    expect(compose({ mode: 'pilot', catalogRows }).coverageStatus).toBe('legacy')
+    expect(compose({ mode: 'enforced', catalogRows }).coverageStatus).toBe('authenticated_core')
+  })
+
+  it('fails closed when the latest numeric pack version is ambiguous', async () => {
+    const queryRows = vi.fn().mockResolvedValue([
+      { pack_id: PACK_ID, pack_version_id: LATEST_PACK_VERSION_ID, version: 2 },
+      {
+        pack_id: PACK_ID,
+        pack_version_id: '30000000-0000-4000-8000-000000000003',
+        version: 2
+      }
+    ])
+
+    await expect(loadCatalogControlRows(
+      [DEPARTMENT_ID],
+      USER_ID,
+      { queryRows } as CatalogCompositionDb
+    )).rejects.toThrow('ambiguous latest version')
+    expect(queryRows).toHaveBeenCalledTimes(1)
+  })
+
   it('applies each mode without expanding admin, employee, viewer, or custom read-only RBAC', () => {
     const roleCases = [
       { label: 'admin', rbacFilteredTools: tools, readOnly: false },

@@ -10,6 +10,8 @@ import {
 
 const DEPARTMENT_ID = '10000000-0000-4000-8000-000000000001'
 const USER_ID = '50000000-0000-4000-8000-000000000001'
+const PACK_ID = '60000000-0000-4000-8000-000000000001'
+const PACK_VERSION_ID = '30000000-0000-4000-8000-000000000001'
 
 const tools = [
   { name: 'get_budget_health' },
@@ -243,13 +245,20 @@ describe('composeEffectiveAssistantTools', () => {
 
 describe('loadCatalogControlRows', () => {
   it('loads completed active releases and inactive control markers with a parameterized department list', async () => {
-    const queryRows = vi.fn().mockResolvedValue([])
+    const queryRows = vi.fn(async (sql: string) => sql.includes('ranked_pack_versions')
+      ? [{ pack_id: PACK_ID, pack_version_id: PACK_VERSION_ID, version: 1 }]
+      : [])
     const db: CatalogCompositionDb = { queryRows }
 
     await loadCatalogControlRows([DEPARTMENT_ID], USER_ID, db)
 
-    const [sql, params] = queryRows.mock.calls[0]!
-    expect(params).toEqual([[DEPARTMENT_ID], USER_ID])
+    const [latestSql, latestParams] = queryRows.mock.calls[0]!
+    expect(latestParams).toEqual([[DEPARTMENT_ID]])
+    expect(latestSql).toContain('DENSE_RANK() OVER')
+    expect(latestSql).toContain('ORDER BY candidate.version DESC')
+    const [sql, params] = queryRows.mock.calls[1]!
+    expect(params).toEqual([[DEPARTMENT_ID], USER_ID, [PACK_VERSION_ID]])
+    expect(sql).toContain('pack_release.pack_version_id = ANY($3::uuid[])')
     expect(sql).toContain('release_state IN (\'pilot\', \'active\', \'suspended\', \'retired\')')
     expect(sql).toContain('ai_release_pilot_members')
     expect(sql).toContain('pilot_member.team_member_id = $2')

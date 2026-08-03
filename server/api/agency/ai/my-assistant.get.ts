@@ -17,8 +17,9 @@ import {
   resolveServerCatalogRuntimePolicy,
   type CatalogRuntimePolicy
 } from '~~/server/utils/ai/governance/catalogComposition'
+import { resolveObserveAndLearnRuntimePolicy } from '~~/server/utils/ai/observe/runtimePolicy'
 
-interface MyAssistantGetDependencies {
+export interface MyAssistantGetDependencies {
   requireAuth: typeof requireAuth
   resolvePersonalAssistantContext: (input: {
     userId: string
@@ -43,16 +44,15 @@ const defaultDependencies: MyAssistantGetDependencies = {
     return resolveServerCatalogRuntimePolicy(event, useRuntimeConfig(event) as any)
   },
   getObservedMemoryEnabled(event) {
-    const cloudflareValue = (event.context as any)?.cloudflare?.env?.AI_OBSERVE_ENABLED
-    const configuredValue = (useRuntimeConfig(event) as any).aiObserveEnabled
-    return String(cloudflareValue ?? configuredValue ?? false) === 'true'
+    return resolveObserveAndLearnRuntimePolicy(event).enabled
   },
   tools: registry
 }
 
 export function createMyAssistantGetHandler(
-  dependencies: MyAssistantGetDependencies = defaultDependencies
+  overrides: Partial<MyAssistantGetDependencies> = {}
 ) {
+  const dependencies: MyAssistantGetDependencies = { ...defaultDependencies, ...overrides }
   return async (event: H3Event) => {
     const user = await dependencies.requireAuth(event)
     const context = await dependencies.resolvePersonalAssistantContext({

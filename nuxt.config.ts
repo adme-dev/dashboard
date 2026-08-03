@@ -125,7 +125,7 @@ export default defineNuxtConfig({
     aiControllerL2Enabled: process.env.AI_CONTROLLER_L2_ENABLED === 'true',
     // Observe & Learn W-2 (observe-and-learn spec §4) — OFF by default. When enabled, a daily cron
     // distils each staff member's OWN recurring routines into source='observed', user-scoped memories.
-    // Read only at the cron boundary (observe-and-learn.post.ts checks process.env directly). Hard gate.
+    // The shared request policy prefers Cloudflare bindings and fails closed on malformed values.
     aiObserveEnabled: process.env.AI_OBSERVE_ENABLED === 'true',
     // Observe & Learn W-4 proactive suggestion — HELD for explicit sign-off; DOUBLY dormant (also needs
     // AI_OBSERVE_ENABLED). No proactive routine suggestion fires until this is on. Hard gate.

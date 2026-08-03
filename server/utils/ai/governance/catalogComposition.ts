@@ -105,6 +105,12 @@ interface ActiveCatalogDbRow {
   access_mode: string | null
 }
 
+interface LatestPackVersionDbRow {
+  pack_id: string
+  pack_version_id: string
+  version: number | string
+}
+
 const defaultDb: CatalogCompositionDb = { queryRows: realQueryRows as CatalogCompositionDb['queryRows'] }
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const PERMISSION_CEILING_SET = new Set<string>([...PERMISSION_GROUPS, 'AUTHENTICATED'])
@@ -168,6 +174,45 @@ export async function loadCatalogControlRows(
   }
   if (!UUID_PATTERN.test(userId)) throw new Error('Catalog user identifier must be a valid UUID value.')
 
+  const latestPackVersions = await db.queryRows<LatestPackVersionDbRow>(
+    `WITH ranked_pack_versions AS (
+       SELECT
+         pack.id AS pack_id,
+         candidate.id AS pack_version_id,
+         candidate.version,
+         DENSE_RANK() OVER (
+           PARTITION BY pack.id
+           ORDER BY candidate.version DESC
+         ) AS version_rank
+       FROM ai_capability_packs pack
+       JOIN ai_capability_pack_versions candidate ON candidate.pack_id = pack.id
+       WHERE pack.department_id = ANY($1::uuid[])
+     )
+     SELECT pack_id, pack_version_id, version
+       FROM ranked_pack_versions
+      WHERE version_rank = 1
+      ORDER BY pack_id, pack_version_id`,
+    [departmentIds]
+  )
+  const latestPackVersionIds = new Set<string>()
+  const seenPackIds = new Set<string>()
+  for (const row of latestPackVersions) {
+    const version = boundedNumber(row.version)
+    if (
+      !UUID_PATTERN.test(row.pack_id)
+      || !UUID_PATTERN.test(row.pack_version_id)
+      || version == null
+      || version < 1
+    ) {
+      throw new Error('Catalog latest pack version data is invalid.')
+    }
+    if (seenPackIds.has(row.pack_id)) {
+      throw new Error(`Catalog pack ${row.pack_id} has an ambiguous latest version.`)
+    }
+    seenPackIds.add(row.pack_id)
+    latestPackVersionIds.add(row.pack_version_id)
+  }
+
   const rows = await db.queryRows<ActiveCatalogDbRow>(
     `WITH active_pack_rows AS (
        SELECT
@@ -205,6 +250,7 @@ export async function loadCatalogControlRows(
        LEFT JOIN ai_capabilities capability ON capability.id = capability_version.capability_id
        LEFT JOIN ai_capability_tool_bindings binding ON binding.capability_version_id = capability_version.id
        WHERE pack_release.department_id = ANY($1::uuid[])
+         AND pack_release.pack_version_id = ANY($3::uuid[])
          AND pack_release.release_state IN ('pilot', 'active', 'suspended', 'retired')
          AND (
            pack_release.rollout_scope <> 'pilot'
@@ -293,10 +339,13 @@ export async function loadCatalogControlRows(
      UNION ALL
      SELECT * FROM active_capability_rows
      ORDER BY department_id, source_type, release_id, capability_sort_order, tool_sort_order`,
-    [departmentIds, userId]
+    [departmentIds, userId, [...latestPackVersionIds]]
   )
 
-  return rows.map(mapCatalogRow)
+  return rows
+    .filter(row => row.source_type === 'capability'
+      || (row.pack_version_id != null && latestPackVersionIds.has(row.pack_version_id)))
+    .map(mapCatalogRow)
 }
 
 /**

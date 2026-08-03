@@ -13,6 +13,7 @@ import {
 } from '~~/server/utils/ai/personalAssistantContext'
 import { fetchScopedMentionedEntities } from '~~/server/utils/ai/mentionedEntityContext'
 import { resolveServerCatalogRuntimePolicy } from '~~/server/utils/ai/governance/catalogComposition'
+import { resolveObserveAndLearnRuntimePolicy } from '~~/server/utils/ai/observe/runtimePolicy'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
 export interface ChatResponse {
@@ -224,7 +225,6 @@ export async function processUserMessage(
 ): Promise<ChatResponse> {
   const startTime = Date.now()
   const cfg = useRuntimeConfig(event) as any
-  const cloudflareEnv = (event?.context as any)?.cloudflare?.env
   const runtimePolicy = resolveServerCatalogRuntimePolicy(event, cfg)
   // Re-admit the actor from current server state for every turn. This is the authority source for
   // role, departments, clients, personal narrowing, and evaluated catalog releases; the role passed
@@ -233,9 +233,7 @@ export async function processUserMessage(
     userId,
     event,
     runtimePolicy,
-    observedMemoryEnabled: String(
-      cloudflareEnv?.AI_OBSERVE_ENABLED ?? cfg.aiObserveEnabled ?? false
-    ) === 'true'
+    observedMemoryEnabled: resolveObserveAndLearnRuntimePolicy(event, { runtimeConfig: cfg }).enabled
   })
   const effectiveUserRole = assistantContext.identity.role
   const agentConfig = assistantContext.preferences

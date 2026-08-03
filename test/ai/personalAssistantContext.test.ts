@@ -13,6 +13,8 @@ const USER_ID = '50000000-0000-4000-8000-000000000001'
 const CREATIVE_ID = '10000000-0000-4000-8000-000000000001'
 const PRODUCTION_ID = '10000000-0000-4000-8000-000000000002'
 const CLIENT_ID = '60000000-0000-4000-8000-000000000001'
+const PACK_ID = '60000000-0000-4000-8000-000000000002'
+const PACK_VERSION_ID = '30000000-0000-4000-8000-000000000001'
 const pilotPolicy: CatalogRuntimePolicy = {
   mode: 'pilot',
   authenticatedCoreTools: ['search_knowledge', 'get_tasks']
@@ -63,13 +65,16 @@ function db(overrides: Partial<PersonalAssistantContextDb> = {}): PersonalAssist
       if (sql.includes('FROM client_team_assignments assignment')) {
         return [{ client_id: CLIENT_ID, client_name: 'Example Client', assignment_role: 'support' }]
       }
+      if (sql.includes('ranked_pack_versions')) {
+        return [{ pack_id: PACK_ID, pack_version_id: PACK_VERSION_ID, version: 3 }]
+      }
       if (sql.includes('WITH active_pack_rows')) {
         return [{
           source_type: 'pack',
           release_state: 'active',
           release_id: '20000000-0000-4000-8000-000000000001',
           department_id: CREATIVE_ID,
-          pack_version_id: '30000000-0000-4000-8000-000000000001',
+          pack_version_id: PACK_VERSION_ID,
           pack_version: 3,
           pack_label: 'Creative Studio',
           pack_key: 'creative_studio',
@@ -136,7 +141,7 @@ describe('resolvePersonalAssistantContext', () => {
     expect(context.activePacks).toEqual([{
       releaseId: '20000000-0000-4000-8000-000000000001',
       departmentId: CREATIVE_ID,
-      packVersionId: '30000000-0000-4000-8000-000000000001',
+      packVersionId: PACK_VERSION_ID,
       packKey: 'creative_studio',
       version: 3,
       label: 'Creative Studio',
@@ -149,7 +154,7 @@ describe('resolvePersonalAssistantContext', () => {
     const catalogCall = vi.mocked(contextDb.queryRows).mock.calls.find(([sql]) =>
       sql.includes('WITH active_pack_rows')
     )
-    expect(catalogCall?.[1]).toEqual([[CREATIVE_ID, PRODUCTION_ID], USER_ID])
+    expect(catalogCall?.[1]).toEqual([[CREATIVE_ID, PRODUCTION_ID], USER_ID, [PACK_VERSION_ID]])
 
     const rendered = renderPersonalAssistantContext(context)
     expect(rendered).toContain('Governed personal assistant scope')
