@@ -32,7 +32,7 @@ run('pnpm', [
   'test/config/searchAuthorityPublisherDeploy.test.ts'
 ], root)
 run('pnpm', ['--dir', 'workers/search-authority-publisher', 'typecheck'], root)
-run('pnpm', ['--dir', 'workers/search-authority-publisher', dryRun ? 'deploy:dry-run' : 'deploy'], root)
+run('pnpm', ['--dir', 'workers/search-authority-publisher', 'run', dryRun ? 'deploy:dry-run' : 'deploy'], root)
 
 function run(command, args, cwd) {
   const result = spawnSync(command, args, {
