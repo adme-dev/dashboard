@@ -81,6 +81,7 @@ The core pilot is complete only when every `Core` item below is checked and back
 - **2026-08-03:** Completed Task 7 engineering. Migrations 336–337 were applied to Neon. Added attributable portal-user decisions, an explicit version-bound disclaimer, the structured agency content library/editor/approval flow, and a tenant-scoped portal review page that exposes only proposed copy, source labels, claims and decision controls. Nine focused files passed 17 tests and targeted ESLint passed. The repository-wide typecheck reached its known unrelated diagnostic backlog with no Search Authority file visible in the reported output.
 - **2026-08-03:** Completed Task 8 engineering. Added a deterministic, HTML-escaping publisher; immutable hash-verified R2 objects; manifest-only activation and rollback; tenant-scoped publish/rollback routes; and a standalone host-allowlisted Cloudflare Worker with real 404s, security headers and a fail-closed deploy wrapper. Five focused files passed 14 tests, targeted ESLint and the generated Cloudflare Worker type contract passed, and the named Wrangler deployment completed a 6.22 KiB dry-run bundle against the approved R2 binding. DNS, a human-approved Knox guide and live rollback proof remain production acceptance gates.
 - **2026-08-03:** Completed Task 9 engineering. Migration 338 was applied to Neon, including an append-only site audit trigger. Added a public-ID configuration contract, tenant-scoped agency controls, a heartbeat explicitly labelled as non-proof, and a versioned Menu Agent that inserts only text links into bounded selectors, deduplicates shared responsive menus, observes rerenders for at most 30 seconds, polls the remote kill switch and removes only its own nodes. Four focused files passed 13 tests and targeted ESLint passed. Full Nuxt typecheck found one slice-local return-type error in the heartbeat endpoint; it was corrected. GTM publication and live browser proof remain production acceptance gates.
+- **2026-08-03:** Completed Task 10 engineering. Migration 339 was applied to Neon so each immutable publication records whether first-party measurement was actually embedded. Approved guides can now load the existing XeroFlow tag from the allowlisted app origin, carry version-specific UTM handoff markers, and report deduplicated guide views, CTA handoffs, direct leads, assisted leads, unknown linkage and aggregate GA4 landing-page evidence. Version activation time prevents shared canonical URLs from double-counting. Agency reporting includes a copy-only, review-required PMax brief and no Ads mutation; portal reporting omits raw queries and internal evidence. Seven focused files passed 20 tests, targeted ESLint, Worker typecheck and a 6.27 KiB named publisher dry run passed. Full Nuxt typecheck reached only the known unrelated backlog after the earlier slice-local issue was fixed. A live journey remains a production acceptance gate.
 
 ### Execution order and external gates
 
@@ -598,42 +599,49 @@ git commit -m "feat: add bounded search authority menu agent"
 ## Task 10: Add measurement and reviewed PMax handoff
 
 **Files:**
+- Create: `server/database/migrations/339_search_authority_publication_measurement.sql`
 - Create: `server/utils/searchAuthority/measurement.ts`
 - Create: `server/api/agency/search-authority/reporting/overview.get.ts`
+- Create: `server/api/portal/search-authority/reporting.get.ts`
 - Create: `app/components/search-authority/OutcomeReporting.vue`
 - Modify: `server/utils/searchAuthority/opportunities.ts`
+- Modify: `server/utils/searchAuthority/publicationRenderer.ts`
+- Modify: `server/api/agency/search-authority/content/[id]/publish.post.ts`
+- Modify: `server/api/portal/search-authority/overview.get.ts`
+- Modify: `workers/search-authority-publisher/src/index.ts`
 - Modify: `app/components/search-authority/Workspace.vue`
 - Modify: `app/components/search-authority/PortalSummary.vue`
 - Test: `test/server/utils/searchAuthorityMeasurement.test.ts`
 - Test: `test/server/api/searchAuthorityReporting.test.ts`
 - Test: `test/app/searchAuthorityOutcomeReporting.test.ts`
+- Test: `test/config/searchAuthorityMeasurementMigration.test.ts`
 
 **Interfaces:**
 - Consumes: Search Console evidence, publication versions, tracking events, GA4 landing-page evidence, leads and existing task/brief associations.
 - Produces: fact-labelled journey summaries and a reviewed PMax brief suggestion; never a Google Ads mutation.
 
-- [ ] **Step 1: Write failing attribution and honesty tests**
+- [x] **Step 1: Write failing attribution and honesty tests**
 
 Test direct publication attribution, assisted attribution, unknown lead linkage, date-window boundaries, absent GA4 data, unavailable GBP data and duplicate event suppression.
 
-- [ ] **Step 2: Implement evidence joins without identity invention**
+- [x] **Step 2: Implement evidence joins without identity invention**
 
 Join by explicit publication/page/campaign/task IDs and consented lead attribution. Do not infer a person from anonymous Search Console queries or competitor evidence.
 
-- [ ] **Step 3: Add reviewed PMax suggestion output**
+- [x] **Step 3: Add reviewed PMax suggestion output**
 
 Produce a copyable task/brief payload containing source query/page evidence, intended asset group, hypothesis and reviewer. Do not claim conventional keyword Quality Score improvement and do not call the Ads mutation API.
 
-- [ ] **Step 4: Build agency and portal reporting**
+- [x] **Step 4: Build agency and portal reporting**
 
 Agency view shows evidence and limitations; portal view shows measured visibility, approved actions, engagement and confirmed outcomes without raw queries or internal weights.
 
-- [ ] **Step 5: Run tests and commit**
+- [x] **Step 5: Run tests and commit**
 
 Run: `pnpm exec vitest run test/server/utils/searchAuthorityMeasurement.test.ts test/server/api/searchAuthorityReporting.test.ts test/app/searchAuthorityOutcomeReporting.test.ts test/app/portalSearchAuthority.test.ts`
 
 ```bash
-git add server/utils/searchAuthority/measurement.ts server/utils/searchAuthority/opportunities.ts server/api/agency/search-authority/reporting/overview.get.ts app/components/search-authority/OutcomeReporting.vue app/components/search-authority/Workspace.vue app/components/search-authority/PortalSummary.vue test/server/utils/searchAuthorityMeasurement.test.ts test/server/api/searchAuthorityReporting.test.ts test/app/searchAuthorityOutcomeReporting.test.ts
+git add server/database/migrations/339_search_authority_publication_measurement.sql server/utils/searchAuthority/measurement.ts server/utils/searchAuthority/opportunities.ts server/utils/searchAuthority/publicationRenderer.ts server/api/agency/search-authority/content/[id]/publish.post.ts server/api/agency/search-authority/reporting/overview.get.ts server/api/portal/search-authority/reporting.get.ts server/api/portal/search-authority/overview.get.ts workers/search-authority-publisher/src/index.ts app/components/search-authority/OutcomeReporting.vue app/components/search-authority/Workspace.vue app/components/search-authority/PortalSummary.vue test/server/utils/searchAuthorityMeasurement.test.ts test/server/api/searchAuthorityReporting.test.ts test/app/searchAuthorityOutcomeReporting.test.ts test/config/searchAuthorityMeasurementMigration.test.ts test/server/utils/searchAuthorityPublicationRenderer.test.ts docs/superpowers/plans/2026-08-03-knox-gwm-pilot-completion.md
 git commit -m "feat: connect search authority outcomes"
 ```
 

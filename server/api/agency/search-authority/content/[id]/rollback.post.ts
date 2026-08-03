@@ -20,6 +20,7 @@ interface RollbackRow {
   version_id: string
   manifest_version: string | null
   public_url: string | null
+  measurement_enabled: boolean
 }
 
 export default eventHandler(async (event) => {
@@ -30,7 +31,7 @@ export default eventHandler(async (event) => {
   }
   const target = await queryOne<RollbackRow>(`
     SELECT publication.client_id, site.content_hostname, publication.version_id,
-      publication.manifest_version, publication.public_url
+      publication.manifest_version, publication.public_url, publication.measurement_enabled
     FROM search_authority_publications publication
     JOIN search_authority_content_assets asset
       ON asset.client_id = publication.client_id AND asset.id = publication.asset_id
@@ -52,15 +53,19 @@ export default eventHandler(async (event) => {
     targetManifestVersion: target.manifest_version,
     rolledBackAt
   })
+  let activationPublicationId: string
   try {
-    await transaction(async (db) => {
+    activationPublicationId = await transaction(async (db) => {
       await db.query(`UPDATE search_authority_publications SET status = 'rolled_back'
         WHERE client_id = $1 AND asset_id = $2 AND status = 'published'`, [target.client_id, assetId.data])
-      await db.query(`UPDATE search_authority_publications SET
-        status = 'published', published_by = $4, published_at = $5
-        WHERE id = $1 AND client_id = $2 AND asset_id = $3`, [
-        body.data.targetPublicationId, target.client_id, assetId.data, user.id, rolledBackAt
-      ])
+      const activation = await db.query<{ id: string }>(`INSERT INTO search_authority_publications (
+        client_id, asset_id, version_id, status, public_url, manifest_version,
+        measurement_enabled, published_by, published_at
+      ) VALUES ($1, $2, $3, 'published', $4, $5, $6, $7, $8)
+      RETURNING id`, [target.client_id, assetId.data, target.version_id,
+        target.public_url, target.manifest_version, target.measurement_enabled, user.id, rolledBackAt])
+      const active = activation.rows[0]
+      if (!active) throw new Error('Rollback activation could not be recorded')
       await db.query(`UPDATE search_authority_content_assets SET
         status = 'published', current_version_id = $3, updated_at = NOW()
         WHERE id = $1 AND client_id = $2`, [assetId.data, target.client_id, target.version_id])
@@ -68,8 +73,9 @@ export default eventHandler(async (event) => {
         client_id, asset_id, version_id, actor_id, actor_type, event_type, details
       ) VALUES ($1, $2, $3, $4, 'agency', 'publication.rolled_back', $5::jsonb)`, [
         target.client_id, assetId.data, target.version_id, user.id,
-        JSON.stringify({ targetPublicationId: body.data.targetPublicationId, manifestVersion: target.manifest_version, rationale: body.data.rationale })
+        JSON.stringify({ targetPublicationId: body.data.targetPublicationId, activationPublicationId: active.id, manifestVersion: target.manifest_version, rationale: body.data.rationale })
       ])
+      return active.id
     })
   } catch (error: unknown) {
     if (previous) {
@@ -83,7 +89,8 @@ export default eventHandler(async (event) => {
   }
   return {
     ok: true,
-    publicationId: body.data.targetPublicationId,
+    publicationId: activationPublicationId,
+    targetPublicationId: body.data.targetPublicationId,
     versionId: target.version_id,
     manifestVersion: target.manifest_version,
     publicUrl: target.public_url

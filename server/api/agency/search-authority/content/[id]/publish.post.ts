@@ -56,7 +56,7 @@ export default eventHandler(async (event) => {
   const bucket = resolveSearchAuthorityPublicationBucket(event)
   if (!bucket) throw createError({ statusCode: 503, statusMessage: 'Publication storage is unavailable' })
 
-  const [sources, claims] = await Promise.all([
+  const [sources, claims, tracking] = await Promise.all([
     queryRows<{ name: string, role: string }>(`
       SELECT interviewee_name AS name, interviewee_role AS role
       FROM search_authority_source_interviews interview
@@ -71,14 +71,21 @@ export default eventHandler(async (event) => {
       FROM search_authority_version_claims
       WHERE client_id = $1 AND version_id = $2
       ORDER BY created_at
-    `, [asset.client_id, asset.current_version_id])
+    `, [asset.client_id, asset.current_version_id]),
+    queryOne<{ write_key: string }>(`
+      SELECT write_key FROM tracking_sites
+      WHERE client_id = $1 AND is_active = TRUE
+        AND (cardinality(allowed_origins) = 0 OR $2 = ANY(allowed_origins))
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `, [asset.client_id, `https://${asset.content_hostname}`])
   ])
   const activatedAt = new Date().toISOString()
   const publication = await transaction(async (db) => {
     const result = await db.query(`INSERT INTO search_authority_publications (
-      client_id, asset_id, version_id, status
-    ) VALUES ($1, $2, $3, 'pending') RETURNING id`, [
-      asset.client_id, asset.id, asset.current_version_id
+      client_id, asset_id, version_id, status, measurement_enabled
+    ) VALUES ($1, $2, $3, 'pending', $4) RETURNING id`, [
+      asset.client_id, asset.id, asset.current_version_id, Boolean(tracking)
     ])
     return result.rows[0] as { id: string }
   })
@@ -98,7 +105,11 @@ export default eventHandler(async (event) => {
       sourceType: claim.source_type,
       sourceReference: claim.source_reference
     })),
-    dealershipUrl: `https://${asset.canonical_hostname}/`
+    dealershipUrl: `https://${asset.canonical_hostname}/`,
+    publicationId: publication.id,
+    tracking: tracking
+      ? { origin: 'https://app.xeroflow.io', writeKey: tracking.write_key }
+      : null
   })
 
   let activation: Awaited<ReturnType<typeof activateSearchAuthorityPublication>>

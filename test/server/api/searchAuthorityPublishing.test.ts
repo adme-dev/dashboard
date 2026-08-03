@@ -117,6 +117,8 @@ describe('Search Authority publishing routes', () => {
     const rollback = route('rollback.post.ts')
     expect(rollback).toContain('rollbackSearchAuthorityPublication')
     expect(rollback).toContain('search_authority_content_audit_events')
+    expect(rollback).toContain('INSERT INTO search_authority_publications')
+    expect(rollback).not.toMatch(/UPDATE search_authority_publications SET[\s\S]{0,180}published_at/i)
     expect(rollback).not.toMatch(/UPDATE search_authority_content_versions/i)
   })
 })

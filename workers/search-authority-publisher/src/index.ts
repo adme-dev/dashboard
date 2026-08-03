@@ -147,7 +147,7 @@ function response(body: BodyInit | null, status: number, contentType: string): R
 }
 
 function applySecurityHeaders(headers: Headers): void {
-  headers.set('content-security-policy', 'default-src \'self\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' https: data:; script-src \'none\'; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\'; form-action \'self\'')
+  headers.set('content-security-policy', 'default-src \'self\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' https: data:; script-src https://app.xeroflow.io; connect-src https://app.xeroflow.io; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\'; form-action \'self\'')
   headers.set('referrer-policy', 'strict-origin-when-cross-origin')
   headers.set('x-content-type-options', 'nosniff')
   headers.set('x-frame-options', 'DENY')

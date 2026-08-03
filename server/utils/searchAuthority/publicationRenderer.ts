@@ -13,6 +13,8 @@ export interface SearchAuthorityPublicationRenderInput {
   sourceLabels: Array<{ name: string, role: string }>
   claims: Array<{ claim: string, sourceType: string, sourceReference: string }>
   dealershipUrl: string
+  publicationId: string
+  tracking?: { origin: string, writeKey: string } | null
 }
 
 export interface RenderedPublication {
@@ -37,8 +39,22 @@ export function renderSearchAuthorityPublication(
   if (dealershipUrl.protocol !== 'https:' || dealershipUrl.username || dealershipUrl.password) {
     throw new Error('The dealership URL must be public HTTPS without credentials')
   }
+  if (!/^[a-f0-9-]{36}$/.test(input.publicationId)) {
+    throw new Error('A valid publication identifier is required')
+  }
+  if (input.tracking && (
+    input.tracking.origin !== 'https://app.xeroflow.io'
+    || !/^xf_[a-zA-Z0-9_-]{8,200}$/.test(input.tracking.writeKey)
+  )) {
+    throw new Error('Tracking configuration is invalid')
+  }
 
   const canonicalUrl = `https://${hostname}/guides/${input.slug}`
+  const trackedDealershipUrl = new URL(dealershipUrl)
+  trackedDealershipUrl.searchParams.set('utm_source', 'xeroflow_search_authority')
+  trackedDealershipUrl.searchParams.set('utm_medium', 'organic')
+  trackedDealershipUrl.searchParams.set('utm_campaign', 'search_authority')
+  trackedDealershipUrl.searchParams.set('utm_content', `publication_${input.publicationId}`)
   const visibleBody = renderMarkdown(input.bodyMarkdown)
   const faqPairs = extractFaqPairs(input.bodyMarkdown)
   const schema = input.schemaType === 'FAQPage' && faqPairs.length >= 2
@@ -75,10 +91,11 @@ export function renderSearchAuthorityPublication(
       <div class="guide-body">${visibleBody}</div>
       <aside class="disclaimer"><h2>Important information</h2><p>${escapeHtml(input.disclaimer)}</p></aside>
       <section class="evidence"><h2>Sources reviewed</h2><ul>${sourceLabels}</ul><h2>Claims checked</h2><ul>${claimLabels}</ul></section>
-      <a class="cta" href="${escapeAttribute(dealershipUrl.href)}">Confirm current details with Knox GWM</a>
+      <a class="cta" data-track="search-authority-cta" href="${escapeAttribute(trackedDealershipUrl.href)}">Confirm current details with Knox GWM</a>
     </article>
   </main>
   <footer>Publication version ${escapeHtml(input.versionId)}</footer>
+  ${input.tracking ? `<script src="${input.tracking.origin}/track.js" data-key="${escapeAttribute(input.tracking.writeKey)}" data-behavioral="false" async></script>` : ''}
 </body>
 </html>`
 

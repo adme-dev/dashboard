@@ -17,7 +17,9 @@ const input = {
     sourceType: 'sales_interview',
     sourceReference: 'Sales Manager interview 2026-08-03'
   }],
-  dealershipUrl: 'https://www.knoxgwmhaval.com.au/'
+  dealershipUrl: 'https://www.knoxgwmhaval.com.au/',
+  publicationId: '33333333-3333-4333-8333-333333333333',
+  tracking: { origin: 'https://app.xeroflow.io', writeKey: 'xf_public_example' }
 }
 
 describe('Search Authority publication renderer', () => {
@@ -33,6 +35,9 @@ describe('Search Authority publication renderer', () => {
     expect(rendered.html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
     expect(rendered.html).not.toContain('<script>alert(1)</script>')
     expect(rendered.html).toContain(input.disclaimer)
+    expect(rendered.html).toContain('src="https://app.xeroflow.io/track.js"')
+    expect(rendered.html).toContain('data-key="xf_public_example"')
+    expect(rendered.html).toContain('utm_content=publication_33333333-3333-4333-8333-333333333333')
   })
 
   it('emits FAQ schema only when matching questions and answers are visible', () => {

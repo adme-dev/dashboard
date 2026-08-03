@@ -32,6 +32,18 @@ interface PortalSearchAuthority {
     updatedAt: string
     requiresDecision: boolean
   }>
+  outcomes: {
+    totals: {
+      measuredViews: number
+      measuredCtaHandoffs: number
+      directLeads: number
+      assistedLeads: number
+    }
+    unlinkedLeads: number
+    ga4: { available: boolean, sessions: number | null, dataThroughDate: string | null }
+    firstParty: { available: boolean }
+    limitations: string[]
+  }
   nextSteps: string[]
 }
 
@@ -280,6 +292,64 @@ function retry() {
         </div>
         <p v-else class="text-sm text-muted">
           No guide is currently ready for client review.
+        </p>
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <div>
+            <h2 class="font-semibold text-highlighted">
+              Published guide outcomes
+            </h2>
+            <p class="mt-1 text-sm text-muted">
+              Measured activity and explicit lead linkage. Unknown attribution is not estimated.
+            </p>
+          </div>
+        </template>
+        <div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg bg-elevated lg:grid-cols-4">
+          <div class="bg-default p-4">
+            <p class="text-xs text-muted">
+              Guide views
+            </p>
+            <p class="mt-1 text-xl font-semibold text-highlighted">
+              {{ data.outcomes.firstParty.available ? data.outcomes.totals.measuredViews : 'Unavailable' }}
+            </p>
+          </div>
+          <div class="bg-default p-4">
+            <p class="text-xs text-muted">
+              Dealership handoffs
+            </p>
+            <p class="mt-1 text-xl font-semibold text-highlighted">
+              {{ data.outcomes.firstParty.available ? data.outcomes.totals.measuredCtaHandoffs : 'Unavailable' }}
+            </p>
+          </div>
+          <div class="bg-default p-4">
+            <p class="text-xs text-muted">
+              Direct leads
+            </p>
+            <p class="mt-1 text-xl font-semibold text-highlighted">
+              {{ data.outcomes.totals.directLeads }}
+            </p>
+          </div>
+          <div class="bg-default p-4">
+            <p class="text-xs text-muted">
+              Assisted leads
+            </p>
+            <p class="mt-1 text-xl font-semibold text-highlighted">
+              {{ data.outcomes.totals.assistedLeads }}
+            </p>
+          </div>
+        </div>
+        <UAlert
+          v-if="!data.outcomes.ga4.available"
+          class="mt-4"
+          title="GA4 landing-page evidence unavailable"
+          description="No matching provider rows exist for this window; the dashboard does not substitute a zero."
+          color="neutral"
+          variant="subtle"
+        />
+        <p class="mt-4 text-xs text-muted">
+          {{ data.outcomes.unlinkedLeads }} leads have unknown publication linkage and remain unassigned.
         </p>
       </UCard>
     </template>
