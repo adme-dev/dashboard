@@ -4,8 +4,9 @@
 **Client:** Knox GWM Haval  
 **Client ID:** `b6d459d4-aeaa-4c78-9868-e6682a0dbc68`  
 **Engineering branch:** `agent/knox-pilot-completion-20260803`  
-**Decision:** Engineering implementation ready for PR; core production pilot not
-complete.
+**Pull request:** [#370 — complete Knox Search Authority pilot engineering](https://github.com/adme-dev/dashboard/pull/370)
+**Decision:** Engineering implementation is in PR review; core production pilot
+is not complete.
 
 ## Executive verdict
 
@@ -57,7 +58,7 @@ files and 8,470 tests with 5 files/10 tests skipped. Targeted lint, the 6.27 KiB
 publisher typecheck/dry run, the immutable Pages target check, 160-route
 production build and 23.44 MiB worker-size guard passed. Repository typecheck
 still reports 860 unrelated existing diagnostics and zero pilot-changed file
-matches. PR/check URLs are added after the branch is pushed.
+matches. PR #370 is open for independent review and CI evidence.
 
 ## Production acceptance register
 
