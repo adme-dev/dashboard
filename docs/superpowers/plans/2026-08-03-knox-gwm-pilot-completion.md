@@ -80,6 +80,7 @@ The core pilot is complete only when every `Core` item below is checked and back
 - **2026-08-03:** Completed Task 6 engineering. Migration 335 was applied to Neon. Added consented Sales Manager source interviews, append-only versions, evidence-bound claims, submit/approve/reject transitions, self-approval prevention and append-only audit events behind tenant-scoped routes. Three focused files passed 6 tests and targeted ESLint passed; the one slice-local type error found by the global check was corrected.
 - **2026-08-03:** Completed Task 7 engineering. Migrations 336–337 were applied to Neon. Added attributable portal-user decisions, an explicit version-bound disclaimer, the structured agency content library/editor/approval flow, and a tenant-scoped portal review page that exposes only proposed copy, source labels, claims and decision controls. Nine focused files passed 17 tests and targeted ESLint passed. The repository-wide typecheck reached its known unrelated diagnostic backlog with no Search Authority file visible in the reported output.
 - **2026-08-03:** Completed Task 8 engineering. Added a deterministic, HTML-escaping publisher; immutable hash-verified R2 objects; manifest-only activation and rollback; tenant-scoped publish/rollback routes; and a standalone host-allowlisted Cloudflare Worker with real 404s, security headers and a fail-closed deploy wrapper. Five focused files passed 14 tests, targeted ESLint and the generated Cloudflare Worker type contract passed, and the named Wrangler deployment completed a 6.22 KiB dry-run bundle against the approved R2 binding. DNS, a human-approved Knox guide and live rollback proof remain production acceptance gates.
+- **2026-08-03:** Completed Task 9 engineering. Migration 338 was applied to Neon, including an append-only site audit trigger. Added a public-ID configuration contract, tenant-scoped agency controls, a heartbeat explicitly labelled as non-proof, and a versioned Menu Agent that inserts only text links into bounded selectors, deduplicates shared responsive menus, observes rerenders for at most 30 seconds, polls the remote kill switch and removes only its own nodes. Four focused files passed 13 tests and targeted ESLint passed. Full Nuxt typecheck found one slice-local return-type error in the heartbeat endpoint; it was corrected. GTM publication and live browser proof remain production acceptance gates.
 
 ### Execution order and external gates
 
@@ -541,10 +542,13 @@ git commit -m "feat: add search authority edge publisher"
 ## Task 9: Add the bounded GTM Menu Agent
 
 **Files:**
+- Create: `server/database/migrations/338_search_authority_menu_agent.sql`
 - Create: `public/search-authority/menu-agent.v1.js`
 - Create: `server/utils/searchAuthority/menuAgent.ts`
 - Create: `server/api/agency/search-authority/menu/config.get.ts`
 - Create: `server/api/agency/search-authority/menu/config.put.ts`
+- Create: `server/api/public/search-authority/menu/[publicId].get.ts`
+- Create: `server/api/public/search-authority/menu/[publicId]/observed.post.ts`
 - Create: `app/components/search-authority/MenuAgentCard.vue`
 - Modify: `app/components/search-authority/Workspace.vue`
 - Test: `test/public/searchAuthorityMenuAgent.test.ts`
@@ -555,11 +559,11 @@ git commit -m "feat: add search authority edge publisher"
 - Consumes: allowlisted canonical/content hostnames and approved desktop/mobile selectors.
 - Produces: a versioned, idempotent DOM agent that inserts exactly one accessible `<a>` and a kill-switchable configuration.
 
-- [ ] **Step 1: Write failing DOM safety tests in happy-dom**
+- [x] **Step 1: Write failing DOM safety tests in happy-dom**
 
 Cover initial insertion, duplicate loads, missing selectors, desktop/mobile menus, Next.js rerender, client navigation, disabled configuration, malicious labels/URLs and removal on kill switch.
 
-- [ ] **Step 2: Implement strict menu configuration**
+- [x] **Step 2: Implement strict menu configuration**
 
 ```ts
 export interface MenuAgentConfig {
@@ -574,20 +578,20 @@ export interface MenuAgentConfig {
 
 Allow only `https://<configured-content-host>/` links, plain-text labels and bounded selectors. Store actor/time changes in Search Authority audit events.
 
-- [ ] **Step 3: Implement the versioned agent**
+- [x] **Step 3: Implement the versioned agent**
 
 Use a single namespaced marker, a bounded `MutationObserver`, idempotent reconciliation and a maximum retry window. Do not alter unrelated menu nodes, override site styles globally, inject schema, fetch credentials or prevent navigation.
 
-- [ ] **Step 4: Add setup and health UI**
+- [x] **Step 4: Add setup and health UI**
 
 Show the exact GTM bootstrap snippet, enabled state, last successful observation and kill switch. Do not place the secretless snippet in a field that implies it is a credential.
 
-- [ ] **Step 5: Run tests, lint and commit**
+- [x] **Step 5: Run tests, lint and commit**
 
 Run: `pnpm exec vitest run test/public/searchAuthorityMenuAgent.test.ts test/server/api/searchAuthorityMenuConfig.test.ts test/app/searchAuthorityMenuAgentCard.test.ts`
 
 ```bash
-git add public/search-authority/menu-agent.v1.js server/utils/searchAuthority/menuAgent.ts server/api/agency/search-authority/menu/config.get.ts server/api/agency/search-authority/menu/config.put.ts app/components/search-authority/MenuAgentCard.vue app/components/search-authority/Workspace.vue test/public/searchAuthorityMenuAgent.test.ts test/server/api/searchAuthorityMenuConfig.test.ts test/app/searchAuthorityMenuAgentCard.test.ts
+git add server/database/migrations/338_search_authority_menu_agent.sql public/search-authority/menu-agent.v1.js server/utils/searchAuthority/menuAgent.ts server/api/agency/search-authority/menu/config.get.ts server/api/agency/search-authority/menu/config.put.ts server/api/public/search-authority/menu/[publicId].get.ts server/api/public/search-authority/menu/[publicId]/observed.post.ts app/components/search-authority/MenuAgentCard.vue app/components/search-authority/Workspace.vue test/public/searchAuthorityMenuAgent.test.ts test/server/api/searchAuthorityMenuConfig.test.ts test/app/searchAuthorityMenuAgentCard.test.ts test/config/searchAuthorityMenuMigration.test.ts docs/superpowers/plans/2026-08-03-knox-gwm-pilot-completion.md
 git commit -m "feat: add bounded search authority menu agent"
 ```
 

@@ -663,6 +663,8 @@ onMounted(async () => {
 
       <SearchAuthorityContentLibrary :client-id="selectedClientId" :site-id="selectedSiteId" />
 
+      <SearchAuthorityMenuAgentCard :client-id="selectedClientId" :site-id="selectedSiteId" />
+
       <SearchAuthorityTrustPerformanceCard
         :evidence="trustResponse?.performance || []"
         :loading="loading"
