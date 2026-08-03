@@ -14,6 +14,7 @@ import type {
 } from '~~/server/utils/ai/governance/evaluationRunPersistence'
 import type { EvaluationCaseResult } from '~~/server/utils/ai/governance/contracts'
 import { getAiModelCatalogOption } from '~~/server/utils/ai/modelRegistry'
+import { createEvaluationModelExecutor } from '~~/server/utils/ai/governance/evaluationModelExecutor'
 
 const IDS = {
   pack: '10000000-0000-4000-8000-000000000001',
@@ -139,6 +140,7 @@ describe('evaluation orchestration', () => {
   let runs: FakeRunRepository
   let approvals: FakeApprovalStore
   let createExecutor: ReturnType<typeof vi.fn>
+  let modelExecute: ReturnType<typeof vi.fn>
   let materialRepository: EvaluationMaterialRepository
   let preflightRepository: EvaluationPreflightArtifactRepository
   let nextId: number
@@ -147,20 +149,19 @@ describe('evaluation orchestration', () => {
     snapshot = material()
     runs = new FakeRunRepository()
     approvals = new FakeApprovalStore()
-    createExecutor = vi.fn(() => ({
-      execute: vi.fn().mockResolvedValue({
-        observedTools: ['search_knowledge'],
-        sourceRefs: ['fixture_authoritative_record'],
-        effectSignals: [],
-        scopeViolationObserved: false,
-        approvalBypassObserved: false,
-        traceRef: null,
-        inputTokens: 10,
-        outputTokens: 5,
-        costUsdMicros: 5,
-        latencyMs: 1
-      })
-    }))
+    modelExecute = vi.fn().mockResolvedValue({
+      observedTools: ['search_knowledge'],
+      sourceRefs: ['fixture_authoritative_record'],
+      effectSignals: [],
+      scopeViolationObserved: false,
+      approvalBypassObserved: false,
+      traceRef: null,
+      inputTokens: 10,
+      outputTokens: 5,
+      costUsdMicros: 5,
+      latencyMs: 1
+    })
+    createExecutor = vi.fn(() => ({ execute: modelExecute }))
     materialRepository = {
       loadForPackVersion: vi.fn(async id => id === IDS.pack ? structuredClone(snapshot) : null),
       loadForEvaluationRun: vi.fn(async id => id === runs.current?.id && runs.current
@@ -433,8 +434,9 @@ describe('evaluation orchestration', () => {
       approvalId: timeoutSetup.approval.approvalId
     }, IDS.actor)
     expect(timedOut).toMatchObject({
-      status: 'failed', gatePassed: null, failedCount: 1, totalCostUsdMicros: 1_000
+      status: 'failed', gatePassed: null, failedCount: 1, totalCostUsdMicros: 27
     })
+    expect(timedOut.totalCostUsdMicros).toBeLessThanOrEqual(timeoutSetup.preflight.estimatedUpperBoundUsdMicros)
 
     runs = new FakeRunRepository()
     approvals = new FakeApprovalStore()
@@ -449,6 +451,116 @@ describe('evaluation orchestration', () => {
       approvalId: abortedSetup.approval.approvalId
     }, IDS.actor)
     expect(aborted).toMatchObject({ status: 'cancelled', gatePassed: null })
+  })
+
+  it('validates a DB-valid empty preamble before claim and never strands a running run', async () => {
+    snapshot = material({
+      instructionsPreamble: '',
+      packBudget: {
+        maxInputTokens: 1_000,
+        maxOutputTokens: 20,
+        maxCostUsdMicros: 1_000,
+        maxLatencyMs: 20
+      }
+    })
+    const emptyBudget = { ...budget, maxInputTokensPerCase: 1_000 }
+    const realFactory = vi.fn((options: any) => createEvaluationModelExecutor({
+      ...options,
+      invoke: vi.fn().mockResolvedValue({
+        observedTools: ['search_knowledge'],
+        sourceRefs: ['fixture_authoritative_record'],
+        effectSignals: [],
+        scopeViolationObserved: false,
+        approvalBypassObserved: false,
+        traceRef: null,
+        inputTokens: 10,
+        outputTokens: 5
+      }),
+      now: () => 1
+    }))
+    const svc = service({ createExecutor: realFactory })
+    const preflight = await svc.preflightEvaluation({
+      packVersionId: IDS.pack,
+      modelProvider: 'groq',
+      modelId: 'openai/gpt-oss-120b',
+      budget: emptyBudget
+    }, IDS.actor)
+    const approval = await svc.approveEvaluationCost({
+      evaluationRunId: preflight.evaluationRunId,
+      planDigest: preflight.planDigest,
+      maxSpendUsdMicros: preflight.estimatedUpperBoundUsdMicros,
+      expiresAt: '2026-08-03T03:00:00.000Z',
+      reason: 'Approved for the DB-valid empty preamble regression.'
+    }, IDS.actor)
+
+    const result = await svc.executeApprovedEvaluation({
+      evaluationRunId: preflight.evaluationRunId,
+      planDigest: preflight.planDigest,
+      rateCardId: preflight.rateCardId,
+      approvalId: approval.approvalId
+    }, IDS.actor)
+
+    expect(result).toMatchObject({ status: 'completed', gatePassed: true })
+    expect(runs.current?.status).not.toBe('running')
+  })
+
+  it('keeps an empty-preamble run queued when pure executor construction rejects it', async () => {
+    snapshot = material({ instructionsPreamble: '' })
+    const rejectingFactory = vi.fn(() => {
+      throw new Error('injected executor validation failure')
+    })
+    const { svc, preflight, approval } = await preflightAndApprove(service({ createExecutor: rejectingFactory }))
+
+    await expect(svc.executeApprovedEvaluation({
+      evaluationRunId: preflight.evaluationRunId,
+      planDigest: preflight.planDigest,
+      rateCardId: preflight.rateCardId,
+      approvalId: approval.approvalId
+    }, IDS.actor)).rejects.toThrow('injected executor validation failure')
+
+    expect(rejectingFactory).toHaveBeenCalledOnce()
+    expect(runs.current).toMatchObject({ status: 'queued', startedAt: null })
+    expect(modelExecute).not.toHaveBeenCalled()
+  })
+
+  it('seals bounded spend evidence when an external abort interrupts an active model call', async () => {
+    const controller = new AbortController()
+    let markStarted!: () => void
+    const started = new Promise<void>(resolve => { markStarted = resolve })
+    const activeExecute = vi.fn(() => {
+      markStarted()
+      return new Promise(() => {})
+    })
+    const setup = await preflightAndApprove(service({
+      signal: controller.signal,
+      createExecutor: vi.fn(() => ({ execute: activeExecute }))
+    }))
+    const pending = setup.svc.executeApprovedEvaluation({
+      evaluationRunId: setup.preflight.evaluationRunId,
+      planDigest: setup.preflight.planDigest,
+      rateCardId: setup.preflight.rateCardId,
+      approvalId: setup.approval.approvalId
+    }, IDS.actor)
+
+    await started
+    controller.abort()
+    const cancelled = await pending
+
+    expect(cancelled).toMatchObject({
+      status: 'cancelled',
+      gatePassed: null,
+      totalCostUsdMicros: 27,
+      totalInputTokens: 100,
+      totalOutputTokens: 20
+    })
+    expect(runs.results).toEqual([
+      expect.objectContaining({
+        outcome: 'error',
+        costUsdMicros: 27,
+        deterministicChecks: { executionAborted: true, caseBudgetRespected: false }
+      })
+    ])
+    expect(activeExecute).toHaveBeenCalledOnce()
   })
 
   it('atomically admits only one concurrent execution before model spend', async () => {
@@ -469,7 +581,8 @@ describe('evaluation orchestration', () => {
     expect(settled.filter(item => item.status === 'rejected')).toEqual([
       expect.objectContaining({ reason: expect.objectContaining({ code: 'evaluation_run_claim_conflict', statusCode: 409 }) })
     ])
-    expect(createExecutor).toHaveBeenCalledOnce()
+    expect(createExecutor).toHaveBeenCalledTimes(2)
+    expect(modelExecute).toHaveBeenCalledOnce()
     expect(runs.results).toHaveLength(1)
   })
 

@@ -22,6 +22,14 @@ export const EvaluationRunnerBudgetSchema = z.object({
   maxWallTimeMs: z.number().int().positive().max(3_600_000)
 }).strict()
 
+export const EvaluationRunnerCostEnvelopeSchema = z.strictObject({
+  maxCostUsdMicrosPerCase: z.number().int().nonnegative().max(1_000_000_000),
+  maxSpendUsdMicros: z.number().int().nonnegative().max(10_000_000_000)
+}).refine(value => value.maxCostUsdMicrosPerCase <= value.maxSpendUsdMicros, {
+  message: 'The per-case execution cost cannot exceed the approved total spend.',
+  path: ['maxCostUsdMicrosPerCase']
+})
+
 const ExecutorObservationSchema = z.object({
   observedTools: z.array(TOOL_NAME).max(64),
   sourceRefs: z.array(MACHINE_KEY).max(128),
@@ -43,6 +51,7 @@ export interface EvaluationRunnerCase {
 }
 
 export type EvaluationRunnerBudget = z.infer<typeof EvaluationRunnerBudgetSchema>
+export type EvaluationRunnerCostEnvelope = z.infer<typeof EvaluationRunnerCostEnvelopeSchema>
 
 export interface EvaluationRunnerRequest {
   runId: string
@@ -50,6 +59,7 @@ export interface EvaluationRunnerRequest {
   cases: EvaluationRunnerCase[]
   availableTools: string[]
   budget: EvaluationRunnerBudget
+  executionCostEnvelope: EvaluationRunnerCostEnvelope
   signal?: AbortSignal
 }
 
@@ -111,6 +121,13 @@ class EvaluationExecutionTimeoutError extends Error {
   constructor() {
     super('Evaluation executor exceeded its deadline')
     this.name = 'EvaluationExecutionTimeoutError'
+  }
+}
+
+class EvaluationExecutionAbortError extends Error {
+  constructor(public readonly invocationStarted: boolean) {
+    super('Evaluation aborted')
+    this.name = 'AbortError'
   }
 }
 
@@ -176,7 +193,7 @@ function errorResult(
     traceRef: null,
     inputTokens: chargeUnknownSpend ? request.budget.maxInputTokensPerCase : 0,
     outputTokens: chargeUnknownSpend ? request.budget.maxOutputTokensPerCase : 0,
-    costUsdMicros: chargeUnknownSpend ? request.budget.maxCostUsdMicrosPerCase : 0,
+    costUsdMicros: chargeUnknownSpend ? request.executionCostEnvelope.maxCostUsdMicrosPerCase : 0,
     latencyMs: chargeUnknownSpend ? latencyMs : 0
   })
 }
@@ -282,6 +299,13 @@ function validateRequest(request: EvaluationRunnerRequest): EvaluationRunnerRequ
   UUID.parse(request.runId)
   const materialIdentity = EvaluationMaterialIdentitySchema.parse(request.materialIdentity)
   const budget = EvaluationRunnerBudgetSchema.parse(request.budget)
+  const executionCostEnvelope = EvaluationRunnerCostEnvelopeSchema.parse(request.executionCostEnvelope)
+  if (
+    executionCostEnvelope.maxCostUsdMicrosPerCase > budget.maxCostUsdMicrosPerCase
+    || executionCostEnvelope.maxSpendUsdMicros > budget.maxTotalCostUsdMicros
+  ) {
+    throw new Error('Evaluation execution cost envelope exceeds the frozen runner budget')
+  }
   if (request.cases.length < 1 || request.cases.length > budget.maxCases) {
     throw new Error(`Evaluation cases must contain between 1 and maxCases (${budget.maxCases}) items`)
   }
@@ -308,7 +332,8 @@ function validateRequest(request: EvaluationRunnerRequest): EvaluationRunnerRequ
     materialIdentity,
     cases,
     availableTools: [...request.availableTools],
-    budget
+    budget,
+    executionCostEnvelope
   }
 }
 
@@ -325,17 +350,18 @@ async function executeWithDeadline(
   const controller = new AbortController()
   let timeoutId: ReturnType<typeof setTimeout> | undefined
   let rejectAbort: ((error: Error) => void) | undefined
-  const abortError = () => Object.assign(new Error('Evaluation aborted'), { name: 'AbortError' })
+  let invocationStarted = false
+  const abortError = () => new EvaluationExecutionAbortError(invocationStarted)
   const onExternalAbort = () => {
-    controller.abort()
     rejectAbort?.(abortError())
+    controller.abort()
   }
 
   const deadline = new Promise<never>((_resolve, reject) => {
     rejectAbort = reject
     timeoutId = setTimeout(() => {
-      controller.abort()
       reject(new EvaluationExecutionTimeoutError())
+      controller.abort()
     }, timeoutMs)
     externalSignal?.addEventListener('abort', onExternalAbort, { once: true })
   })
@@ -343,6 +369,7 @@ async function executeWithDeadline(
   try {
     if (externalSignal?.aborted) throw abortError()
     const executorRequest = Object.freeze({ ...request, signal: controller.signal })
+    invocationStarted = true
     return await Promise.race([executor.execute(executorRequest), deadline])
   } finally {
     if (timeoutId) clearTimeout(timeoutId)
@@ -363,6 +390,12 @@ export async function runDeterministicEvaluation(
     if (request.signal?.aborted) return stopped('cancelled', 'aborted', results)
     if (dependencies.now() - startedAt > request.budget.maxWallTimeMs) {
       return stopped('failed', 'wall_time_exceeded', results)
+    }
+    if (
+      totals(results).costUsdMicros + request.executionCostEnvelope.maxCostUsdMicrosPerCase
+      > request.executionCostEnvelope.maxSpendUsdMicros
+    ) {
+      return stopped('failed', 'total_cost_exceeded', results)
     }
 
     const definition = frozenJsonClone(item.definition)
@@ -386,13 +419,27 @@ export async function runDeterministicEvaluation(
 
     try {
       const rawObservation = await executeWithDeadline(executor, executorRequest, timeoutMs, request.signal)
-      if (request.signal?.aborted) return stopped('cancelled', 'aborted', results)
       const parsedObservation = ExecutorObservationSchema.safeParse(rawObservation)
-      results.push(parsedObservation.success
+      const withinExecutionEnvelope = parsedObservation.success
+        && parsedObservation.data.costUsdMicros <= request.executionCostEnvelope.maxCostUsdMicrosPerCase
+        && totals(results).costUsdMicros + parsedObservation.data.costUsdMicros <= request.executionCostEnvelope.maxSpendUsdMicros
+      results.push(withinExecutionEnvelope
         ? scoreObservation(request, item, parsedObservation.data)
         : errorResult(request, item, { executorObservationInvalid: true }, true, timeoutMs))
+      if (request.signal?.aborted) return stopped('cancelled', 'aborted', results)
     } catch (error) {
-      if (request.signal?.aborted || isAbortError(error)) return stopped('cancelled', 'aborted', results)
+      if (request.signal?.aborted || isAbortError(error)) {
+        if (error instanceof EvaluationExecutionAbortError && error.invocationStarted) {
+          results.push(errorResult(
+            request,
+            item,
+            { executionAborted: true, caseBudgetRespected: false },
+            true,
+            timeoutMs
+          ))
+        }
+        return stopped('cancelled', 'aborted', results)
+      }
       if (error instanceof EvaluationExecutionTimeoutError && wallDeadlineControlsCase) {
         results.push(errorResult(
           request,
@@ -411,7 +458,7 @@ export async function runDeterministicEvaluation(
           true,
           timeoutMs
         ))
-        if (totals(results).costUsdMicros >= request.budget.maxTotalCostUsdMicros) {
+        if (totals(results).costUsdMicros >= request.executionCostEnvelope.maxSpendUsdMicros) {
           return stopped('failed', 'total_cost_exceeded', results)
         }
         continue
@@ -419,7 +466,7 @@ export async function runDeterministicEvaluation(
       results.push(errorResult(request, item, { executorError: true }, true, timeoutMs))
     }
 
-    if (totals(results).costUsdMicros > request.budget.maxTotalCostUsdMicros) {
+    if (totals(results).costUsdMicros > request.executionCostEnvelope.maxSpendUsdMicros) {
       return stopped('failed', 'total_cost_exceeded', results)
     }
     if (dependencies.now() - startedAt > request.budget.maxWallTimeMs) {

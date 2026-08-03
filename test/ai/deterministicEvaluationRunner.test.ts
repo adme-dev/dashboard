@@ -76,6 +76,10 @@ function request(overrides: Partial<EvaluationRunnerRequest> = {}): EvaluationRu
       maxTotalCostUsdMicros: 1_000_000,
       maxWallTimeMs: 60_000
     },
+    executionCostEnvelope: {
+      maxCostUsdMicrosPerCase: 120_000,
+      maxSpendUsdMicros: 1_000_000
+    },
     ...overrides
   }
 }
@@ -188,11 +192,13 @@ describe('runDeterministicEvaluation', () => {
 
     const result = await runDeterministicEvaluation(request({
       cases,
-      budget: { ...request().budget, maxTotalCostUsdMicros: 1_000 }
+      budget: { ...request().budget, maxTotalCostUsdMicros: 1_000 },
+      executionCostEnvelope: { maxCostUsdMicrosPerCase: 700, maxSpendUsdMicros: 1_000 }
     }), { execute })
 
     expect(result).toMatchObject({ status: 'failed', gatePassed: null, failureCode: 'total_cost_exceeded' })
-    expect(result.results).toHaveLength(2)
+    expect(result.results).toHaveLength(1)
+    expect(execute).toHaveBeenCalledOnce()
   })
 
   it('honours abort before execution and does not call the model executor', async () => {
@@ -247,6 +253,10 @@ describe('runDeterministicEvaluation', () => {
           maxLatencyMsPerCase: 5,
           maxCostUsdMicrosPerCase: 120_000,
           maxTotalCostUsdMicros: 120_000
+        },
+        executionCostEnvelope: {
+          maxCostUsdMicrosPerCase: 120_000,
+          maxSpendUsdMicros: 120_000
         }
       }), { execute })
 
@@ -285,17 +295,36 @@ describe('runDeterministicEvaluation', () => {
     }
   })
 
-  it('cancels a running executor when the caller aborts', async () => {
+  it('persists bounded conservative evidence when the caller aborts an active invocation', async () => {
     const controller = new AbortController()
-    const execute = vi.fn((_input: { signal?: AbortSignal }) => new Promise<EvaluationExecutorObservation>(() => {}))
-    const pending = runDeterministicEvaluation(request({ signal: controller.signal }), { execute })
+    let markStarted!: () => void
+    const started = new Promise<void>(resolve => { markStarted = resolve })
+    const execute = vi.fn((_input: { signal?: AbortSignal }) => {
+      markStarted()
+      return new Promise<EvaluationExecutorObservation>(() => {})
+    })
+    const pending = runDeterministicEvaluation(request({
+      signal: controller.signal,
+      cases: [
+        { id: CASE_ID, definition: evaluationCase() },
+        { id: '20000000-0000-4000-8000-000000000002', definition: evaluationCase({ caseKey: 'second_case' }) }
+      ],
+      executionCostEnvelope: { maxCostUsdMicrosPerCase: 27, maxSpendUsdMicros: 27 }
+    }), { execute })
 
+    await started
     controller.abort()
     const result = await pending
 
     expect(result).toMatchObject({ status: 'cancelled', gatePassed: null, failureCode: 'aborted' })
-    expect(result.results).toEqual([])
+    expect(result.results).toHaveLength(1)
+    expect(result.results[0]).toMatchObject({
+      outcome: 'error',
+      costUsdMicros: 27,
+      deterministicChecks: { executionAborted: true, caseBudgetRespected: false }
+    })
     expect(execute.mock.calls[0]![0].signal?.aborted).toBe(true)
+    expect(execute).toHaveBeenCalledOnce()
   })
 
   it('provides only a frozen simulation request and never a live tool executor', async () => {

@@ -117,7 +117,8 @@ describe('evaluation execution admission', () => {
         planDigest: pending.planDigest,
         approvedBy: APPROVER_ID,
         notAfter: '2026-07-22T05:00:00.000Z',
-        maxSpendUsdMicros: 5_760
+        maxSpendUsdMicros: 5_760,
+        maxCostUsdMicrosPerCase: 1_920
       }
     })
   })

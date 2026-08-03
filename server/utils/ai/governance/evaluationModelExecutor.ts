@@ -30,7 +30,7 @@ const ModelSignalsSchema = InvocationResultSchema.omit({ inputTokens: true, outp
 
 const CasePolicySchema = z.strictObject({
   evaluationCaseId: UUID,
-  instructionsPreamble: z.string().trim().min(1).max(20_000),
+  instructionsPreamble: z.string().max(20_000),
   allowedSourceIds: z.array(MACHINE_KEY).max(128),
   declaredEffectSignals: z.array(MACHINE_KEY).max(64)
 })

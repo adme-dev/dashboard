@@ -527,6 +527,20 @@ export function createEvaluationOrchestrator(rawDependencies: Partial<Evaluation
         throw new EvaluationOrchestrationError('evaluation_plan_digest_stale', 409, 'The evaluation plan changed after preflight')
       }
       const budget = admission.executionEnvelope.budget
+      const executor = dependencies.createExecutor({
+        modelProvider: currentIdentity.modelProvider as 'groq' | 'anthropic' | 'workers_ai',
+        modelId: currentIdentity.modelId,
+        rateCard: artifacts.rateCard,
+        cases: material.cases.map(item => ({
+          evaluationCaseId: item.id,
+          instructionsPreamble: material.instructionsPreamble,
+          allowedSourceIds: item.definition.requiredSources,
+          declaredEffectSignals: item.definition.prohibitedEffects
+        })),
+        maxInputTokensPerCase: budget.maxInputTokensPerCase,
+        maxOutputTokensPerCase: budget.maxOutputTokensPerCase,
+        aiBinding: dependencies.aiBinding
+      })
       try {
         await claimEvaluationRun({
           runId: input.evaluationRunId,
@@ -538,27 +552,16 @@ export function createEvaluationOrchestrator(rawDependencies: Partial<Evaluation
       } catch (error: any) {
         throw new EvaluationOrchestrationError(error?.code ?? 'evaluation_run_claim_conflict', error?.statusCode ?? 409, 'Evaluation run could not be claimed')
       }
-      const executor = dependencies.createExecutor({
-        modelProvider: currentIdentity.modelProvider as 'groq' | 'anthropic' | 'workers_ai',
-        modelId: currentIdentity.modelId,
-        rateCard: artifacts.rateCard,
-        instructionsPreamble: material.instructionsPreamble,
-        cases: material.cases.map(item => ({
-          evaluationCaseId: item.id,
-          instructionsPreamble: material.instructionsPreamble,
-          allowedSourceIds: item.definition.requiredSources,
-          declaredEffectSignals: item.definition.prohibitedEffects
-        })),
-        maxInputTokensPerCase: budget.maxInputTokensPerCase,
-        maxOutputTokensPerCase: budget.maxOutputTokensPerCase,
-        aiBinding: dependencies.aiBinding
-      })
       const result = await runDeterministicEvaluation({
         runId: input.evaluationRunId,
         materialIdentity: currentIdentity,
         cases: material.cases,
         availableTools: material.availableTools,
         budget,
+        executionCostEnvelope: {
+          maxCostUsdMicrosPerCase: admission.executionEnvelope.maxCostUsdMicrosPerCase,
+          maxSpendUsdMicros: admission.executionEnvelope.maxSpendUsdMicros
+        },
         signal: dependencies.signal
       }, executor)
       return finalizeEvaluationRun(input.evaluationRunId, result, dependencies.runRepository)
