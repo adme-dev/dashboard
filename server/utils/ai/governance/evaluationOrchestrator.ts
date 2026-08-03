@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { query, queryRows } from '~~/server/utils/db'
+import { query, queryRows, transaction } from '~~/server/utils/db'
 import {
   findEditableAssignmentFeature,
   resolveAiModelAssignment
@@ -36,8 +36,10 @@ import {
 } from './evaluationApprovalStore'
 import {
   finalizeEvaluationRun,
+  claimEvaluationRun,
+  createPostgresEvaluationRunTransaction,
+  createQueuedEvaluationRun,
   postgresEvaluationRunRepository,
-  startEvaluationRun,
   type EvaluationRunRecord,
   type EvaluationRunRepository
 } from './evaluationRunPersistence'
@@ -122,6 +124,15 @@ export interface EvaluationRunDetail {
   results: EvaluationCaseResult[]
 }
 
+export interface EvaluationPreflightArtifactTransaction {
+  runRepository: EvaluationRunRepository
+  approvalStore: EvaluationApprovalStore
+}
+
+export interface EvaluationPreflightArtifactRepository {
+  transaction<T>(callback: (artifacts: EvaluationPreflightArtifactTransaction) => Promise<T>): Promise<T>
+}
+
 export interface EvaluationMaterialRepository {
   loadForPackVersion(packVersionId: string): Promise<EvaluationMaterialSnapshot | null>
   loadForEvaluationRun(evaluationRunId: string): Promise<{
@@ -147,6 +158,7 @@ interface EvaluationOrchestratorDependencies {
   materialRepository: EvaluationMaterialRepository
   approvalStore: EvaluationApprovalStore
   runRepository: EvaluationRunRepository
+  preflightRepository: EvaluationPreflightArtifactRepository
   resolveModelAssignment(featureKey: string): Promise<{ provider: string, modelId: string }>
   getModelCatalogOption(provider: string, modelId: string): AiModelCatalogOption | null
   createExecutor(options: EvaluationModelExecutorOptions): EvaluationModelExecutor
@@ -322,10 +334,24 @@ const postgresApprovalStore = createPostgresEvaluationApprovalStore({
   }
 })
 
+const postgresPreflightRepository: EvaluationPreflightArtifactRepository = {
+  transaction(callback) {
+    return transaction(async (db) => {
+      const sqlClient = db as unknown as { query(sql: string, params?: unknown[]): Promise<{ rows: unknown[] }> }
+      const runTx = createPostgresEvaluationRunTransaction(sqlClient)
+      return callback({
+        runRepository: { transaction: nested => nested(runTx) },
+        approvalStore: createPostgresEvaluationApprovalStore(sqlClient)
+      })
+    })
+  }
+}
+
 const defaultDependencies: EvaluationOrchestratorDependencies = {
   materialRepository: null as unknown as EvaluationMaterialRepository,
   approvalStore: postgresApprovalStore,
   runRepository: postgresEvaluationRunRepository,
+  preflightRepository: postgresPreflightRepository,
   resolveModelAssignment: defaultResolveModelAssignment,
   getModelCatalogOption: getAiModelCatalogOption,
   createExecutor: createEvaluationModelExecutor,
@@ -383,25 +409,27 @@ export function createEvaluationOrchestrator(rawDependencies: Partial<Evaluation
       if (admission.decision !== 'requires_cost_approval') {
         throw new EvaluationOrchestrationError('evaluation_preflight_invalid', 500, 'Evaluation preflight produced an invalid decision')
       }
-      await startEvaluationRun({
-        runId: evaluationRunId,
-        departmentId: material.departmentId,
-        materialIdentity: identity,
-        createdBy: actorId
-      }, dependencies.runRepository)
-      await dependencies.approvalStore.registerRateCard({
-        id: rateCardId,
-        ...rateCard,
-        createdBy: actorId
-      })
-      await dependencies.approvalStore.persistPlan({
-        evaluationRunId,
-        departmentId: material.departmentId,
-        planDigest: admission.planDigest,
-        rateCardId,
-        estimatedUpperBoundUsdMicros: admission.estimatedUpperBoundUsdMicros,
-        maxModelCalls: material.cases.length,
-        createdBy: actorId
+      await dependencies.preflightRepository.transaction(async artifacts => {
+        await createQueuedEvaluationRun({
+          runId: evaluationRunId,
+          departmentId: material.departmentId,
+          materialIdentity: identity,
+          createdBy: actorId
+        }, artifacts.runRepository)
+        await artifacts.approvalStore.registerRateCard({
+          id: rateCardId,
+          ...rateCard,
+          createdBy: actorId
+        })
+        await artifacts.approvalStore.persistPlan({
+          evaluationRunId,
+          departmentId: material.departmentId,
+          planDigest: admission.planDigest,
+          rateCardId,
+          estimatedUpperBoundUsdMicros: admission.estimatedUpperBoundUsdMicros,
+          maxModelCalls: material.cases.length,
+          createdBy: actorId
+        })
       })
       return {
         evaluationRunId,
@@ -499,6 +527,17 @@ export function createEvaluationOrchestrator(rawDependencies: Partial<Evaluation
         throw new EvaluationOrchestrationError('evaluation_plan_digest_stale', 409, 'The evaluation plan changed after preflight')
       }
       const budget = admission.executionEnvelope.budget
+      try {
+        await claimEvaluationRun({
+          runId: input.evaluationRunId,
+          planDigest: input.planDigest,
+          rateCardId: input.rateCardId,
+          approvalId: input.approvalId,
+          claimedAt: dependencies.now().toISOString()
+        }, dependencies.runRepository)
+      } catch (error: any) {
+        throw new EvaluationOrchestrationError(error?.code ?? 'evaluation_run_claim_conflict', error?.statusCode ?? 409, 'Evaluation run could not be claimed')
+      }
       const executor = dependencies.createExecutor({
         modelProvider: currentIdentity.modelProvider as 'groq' | 'anthropic' | 'workers_ai',
         modelId: currentIdentity.modelId,
@@ -510,8 +549,10 @@ export function createEvaluationOrchestrator(rawDependencies: Partial<Evaluation
           allowedSourceIds: item.definition.requiredSources,
           declaredEffectSignals: item.definition.prohibitedEffects
         })),
+        maxInputTokensPerCase: budget.maxInputTokensPerCase,
+        maxOutputTokensPerCase: budget.maxOutputTokensPerCase,
         aiBinding: dependencies.aiBinding
-      } as EvaluationModelExecutorOptions)
+      })
       const result = await runDeterministicEvaluation({
         runId: input.evaluationRunId,
         materialIdentity: currentIdentity,

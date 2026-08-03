@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   EvaluationOrchestrationError,
   createEvaluationOrchestrator,
+  type EvaluationPreflightArtifactRepository,
   type EvaluationMaterialRepository,
   type EvaluationMaterialSnapshot
 } from '~~/server/utils/ai/governance/evaluationOrchestrator'
@@ -88,6 +89,11 @@ class FakeRunRepository implements EvaluationRunRepository, EvaluationRunTransac
     this.current ??= structuredClone(input)
     return structuredClone(this.current)
   }
+  async claimRun(input: any) {
+    if (!this.current || this.current.id !== input.runId || this.current.status !== 'queued') return null
+    this.current = { ...this.current, status: 'running', startedAt: input.claimedAt }
+    return structuredClone(this.current)
+  }
   async lockRun(id: string) { return this.current?.id === id ? structuredClone(this.current) : null }
   async listResults(id: string) { return id === this.current?.id ? structuredClone(this.results) : [] }
   async insertResult(_departmentId: string, result: EvaluationCaseResult) { this.results.push(structuredClone(result)) }
@@ -134,6 +140,7 @@ describe('evaluation orchestration', () => {
   let approvals: FakeApprovalStore
   let createExecutor: ReturnType<typeof vi.fn>
   let materialRepository: EvaluationMaterialRepository
+  let preflightRepository: EvaluationPreflightArtifactRepository
   let nextId: number
 
   beforeEach(() => {
@@ -164,6 +171,21 @@ describe('evaluation orchestration', () => {
         ? { run: structuredClone(runs.current), results: structuredClone(runs.results) }
         : null)
     }
+    preflightRepository = {
+      async transaction(callback) {
+        const runSnapshot = structuredClone(runs.current)
+        const rateSnapshot = structuredClone(approvals.rateCard)
+        const planSnapshot = structuredClone(approvals.plan)
+        try {
+          return await callback({ runRepository: runs, approvalStore: approvals })
+        } catch (error) {
+          runs.current = runSnapshot
+          approvals.rateCard = rateSnapshot
+          approvals.plan = planSnapshot
+          throw error
+        }
+      }
+    }
     nextId = 0
   })
 
@@ -172,6 +194,7 @@ describe('evaluation orchestration', () => {
       materialRepository,
       approvalStore: approvals,
       runRepository: runs,
+      preflightRepository,
       resolveModelAssignment: vi.fn().mockResolvedValue({
         provider: 'groq',
         modelId: 'openai/gpt-oss-120b'
@@ -248,6 +271,7 @@ describe('evaluation orchestration', () => {
       promptVersionDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
       toolsetVersionDigest: expect.stringMatching(/^[a-f0-9]{64}$/)
     })
+    expect(runs.current).toMatchObject({ status: 'queued', startedAt: null })
     expect(approvals.rateCard).toMatchObject({
       inputUsdMicrosPerMillionTokens: 150_000,
       outputUsdMicrosPerMillionTokens: 600_000,
@@ -408,7 +432,9 @@ describe('evaluation orchestration', () => {
       rateCardId: timeoutSetup.preflight.rateCardId,
       approvalId: timeoutSetup.approval.approvalId
     }, IDS.actor)
-    expect(timedOut).toMatchObject({ status: 'completed', gatePassed: false, failedCount: 1 })
+    expect(timedOut).toMatchObject({
+      status: 'failed', gatePassed: null, failedCount: 1, totalCostUsdMicros: 1_000
+    })
 
     runs = new FakeRunRepository()
     approvals = new FakeApprovalStore()
@@ -423,5 +449,93 @@ describe('evaluation orchestration', () => {
       approvalId: abortedSetup.approval.approvalId
     }, IDS.actor)
     expect(aborted).toMatchObject({ status: 'cancelled', gatePassed: null })
+  })
+
+  it('atomically admits only one concurrent execution before model spend', async () => {
+    const { svc, preflight, approval } = await preflightAndApprove()
+    const command = {
+      evaluationRunId: preflight.evaluationRunId,
+      planDigest: preflight.planDigest,
+      rateCardId: preflight.rateCardId,
+      approvalId: approval.approvalId
+    }
+
+    const settled = await Promise.allSettled([
+      svc.executeApprovedEvaluation(command, IDS.actor),
+      svc.executeApprovedEvaluation(command, IDS.actor)
+    ])
+
+    expect(settled.filter(item => item.status === 'fulfilled')).toHaveLength(1)
+    expect(settled.filter(item => item.status === 'rejected')).toEqual([
+      expect.objectContaining({ reason: expect.objectContaining({ code: 'evaluation_run_claim_conflict', statusCode: 409 }) })
+    ])
+    expect(createExecutor).toHaveBeenCalledOnce()
+    expect(runs.results).toHaveLength(1)
+  })
+
+  it.each([1, 2, 3])('rolls back every preflight artifact when write %s fails', async (failAfter) => {
+    let writes = 0
+    let injectFault = true
+    const faulting: EvaluationPreflightArtifactRepository = {
+      async transaction(callback) {
+        const snapshot = {
+          run: structuredClone(runs.current),
+          rateCard: structuredClone(approvals.rateCard),
+          plan: structuredClone(approvals.plan)
+        }
+        const fail = () => {
+          writes += 1
+          if (injectFault && writes === failAfter) throw new Error(`injected-preflight-write-${failAfter}`)
+        }
+        const runRepository: EvaluationRunRepository = {
+          transaction: nested => nested({
+            createOrGetRun: async input => { const value = await runs.createOrGetRun(input); fail(); return value },
+            claimRun: input => runs.claimRun(input),
+            lockRun: id => runs.lockRun(id),
+            listResults: id => runs.listResults(id),
+            insertResult: (departmentId, result) => runs.insertResult(departmentId, result),
+            finalizeRun: (id, terminal) => runs.finalizeRun(id, terminal)
+          })
+        }
+        const approvalStore: EvaluationApprovalStore = {
+          registerRateCard: async input => { const value = await approvals.registerRateCard(input); fail(); return value },
+          persistPlan: async input => { const value = await approvals.persistPlan(input); fail(); return value },
+          approvePlan: input => approvals.approvePlan(input),
+          loadTrustedArtifacts: input => approvals.loadTrustedArtifacts(input),
+          revokeRateCard: input => approvals.revokeRateCard(input),
+          revokeApproval: input => approvals.revokeApproval(input)
+        }
+        try {
+          return await callback({ runRepository, approvalStore })
+        } catch (error) {
+          runs.current = snapshot.run
+          approvals.rateCard = snapshot.rateCard
+          approvals.plan = snapshot.plan
+          throw error
+        }
+      }
+    }
+    const svc = service({ preflightRepository: faulting })
+
+    await expect(svc.preflightEvaluation({
+      packVersionId: IDS.pack,
+      modelProvider: 'groq',
+      modelId: 'openai/gpt-oss-120b',
+      budget
+    }, IDS.actor)).rejects.toThrow(`injected-preflight-write-${failAfter}`)
+    expect(runs.current).toBeNull()
+    expect(approvals.rateCard).toBeNull()
+    expect(approvals.plan).toBeNull()
+
+    writes = 0
+    nextId = 0
+    injectFault = false
+    await expect(svc.preflightEvaluation({
+      packVersionId: IDS.pack,
+      modelProvider: 'groq',
+      modelId: 'openai/gpt-oss-120b',
+      budget
+    }, IDS.actor)).resolves.toMatchObject({ evaluationRunId: IDS.run })
+    expect(runs.current).toMatchObject({ status: 'queued', startedAt: null })
   })
 })

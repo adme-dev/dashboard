@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   EvaluationPersistenceError,
+  claimEvaluationRun,
+  createQueuedEvaluationRun,
   finalizeEvaluationRun,
   startEvaluationRun,
   type EvaluationRunRecord,
@@ -16,6 +18,9 @@ const SUITE_VERSION_ID = '30000000-0000-4000-8000-000000000001'
 const CAPABILITY_VERSION_ID = '40000000-0000-4000-8000-000000000001'
 const DEPARTMENT_ID = '50000000-0000-4000-8000-000000000001'
 const ACTOR_ID = '60000000-0000-4000-8000-000000000001'
+const RATE_CARD_ID = '70000000-0000-4000-8000-000000000001'
+const APPROVAL_ID = '80000000-0000-4000-8000-000000000001'
+const PLAN_DIGEST = 'c'.repeat(64)
 
 const identity = {
   evaluationSuiteVersionId: SUITE_VERSION_ID,
@@ -108,6 +113,12 @@ class FakeRepository implements EvaluationRunRepository, EvaluationRunTransactio
     return structuredClone(this.current)
   }
 
+  async claimRun(input: any) {
+    if (!this.current || this.current.id !== input.runId || this.current.status !== 'queued') return null
+    this.current = { ...this.current, status: 'running', startedAt: input.claimedAt }
+    return structuredClone(this.current)
+  }
+
   async lockRun(id: string) {
     return this.current?.id === id ? structuredClone(this.current) : null
   }
@@ -130,6 +141,29 @@ class FakeRepository implements EvaluationRunRepository, EvaluationRunTransactio
 }
 
 describe('evaluation run persistence', () => {
+  it('creates a queued preflight run and atomically claims it once for exact artifacts', async () => {
+    const repository = new FakeRepository()
+    const queued = await createQueuedEvaluationRun({
+      runId: RUN_ID,
+      departmentId: DEPARTMENT_ID,
+      materialIdentity: identity,
+      createdBy: ACTOR_ID
+    }, repository)
+
+    expect(queued).toMatchObject({ status: 'queued', startedAt: null })
+    const claim = {
+      runId: RUN_ID,
+      planDigest: PLAN_DIGEST,
+      rateCardId: RATE_CARD_ID,
+      approvalId: APPROVAL_ID,
+      claimedAt: '2026-08-03T02:00:00.000Z'
+    }
+    await expect(claimEvaluationRun(claim, repository)).resolves.toMatchObject({ status: 'running' })
+    await expect(claimEvaluationRun(claim, repository)).rejects.toMatchObject({
+      code: 'evaluation_run_claim_conflict', statusCode: 409
+    })
+  })
+
   it('starts a version-bound running run idempotently', async () => {
     const repository = new FakeRepository()
     const request = {

@@ -159,7 +159,9 @@ function stopped(
 function errorResult(
   request: EvaluationRunnerRequest,
   item: EvaluationRunnerCase,
-  checks: Record<string, unknown> = { executorError: true }
+  checks: Record<string, unknown> = { executorError: true },
+  chargeUnknownSpend = false,
+  latencyMs = 0
 ): EvaluationCaseResult {
   return EvaluationCaseResultSchema.parse({
     evaluationRunId: request.runId,
@@ -172,10 +174,10 @@ function errorResult(
     sourceRefs: [],
     prohibitedEffectsObserved: [],
     traceRef: null,
-    inputTokens: 0,
-    outputTokens: 0,
-    costUsdMicros: 0,
-    latencyMs: 0
+    inputTokens: chargeUnknownSpend ? request.budget.maxInputTokensPerCase : 0,
+    outputTokens: chargeUnknownSpend ? request.budget.maxOutputTokensPerCase : 0,
+    costUsdMicros: chargeUnknownSpend ? request.budget.maxCostUsdMicrosPerCase : 0,
+    latencyMs: chargeUnknownSpend ? latencyMs : 0
   })
 }
 
@@ -388,17 +390,33 @@ export async function runDeterministicEvaluation(
       const parsedObservation = ExecutorObservationSchema.safeParse(rawObservation)
       results.push(parsedObservation.success
         ? scoreObservation(request, item, parsedObservation.data)
-        : errorResult(request, item, { executorObservationInvalid: true }))
+        : errorResult(request, item, { executorObservationInvalid: true }, true, timeoutMs))
     } catch (error) {
       if (request.signal?.aborted || isAbortError(error)) return stopped('cancelled', 'aborted', results)
       if (error instanceof EvaluationExecutionTimeoutError && wallDeadlineControlsCase) {
+        results.push(errorResult(
+          request,
+          item,
+          { executionTimedOut: true, wallTimeExceeded: true, caseBudgetRespected: false },
+          true,
+          timeoutMs
+        ))
         return stopped('failed', 'wall_time_exceeded', results)
       }
       if (error instanceof EvaluationExecutionTimeoutError) {
-        results.push(errorResult(request, item, { executionTimedOut: true, caseBudgetRespected: false }))
+        results.push(errorResult(
+          request,
+          item,
+          { executionTimedOut: true, caseBudgetRespected: false },
+          true,
+          timeoutMs
+        ))
+        if (totals(results).costUsdMicros >= request.budget.maxTotalCostUsdMicros) {
+          return stopped('failed', 'total_cost_exceeded', results)
+        }
         continue
       }
-      results.push(errorResult(request, item))
+      results.push(errorResult(request, item, { executorError: true }, true, timeoutMs))
     }
 
     if (totals(results).costUsdMicros > request.budget.maxTotalCostUsdMicros) {

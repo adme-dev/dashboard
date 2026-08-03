@@ -221,9 +221,65 @@ describe('runDeterministicEvaluation', () => {
       expect(result).toMatchObject({ status: 'completed', gatePassed: false })
       expect(result.results[0]).toMatchObject({
         outcome: 'error',
-        deterministicChecks: { executionTimedOut: true, caseBudgetRespected: false }
+        deterministicChecks: { executionTimedOut: true, caseBudgetRespected: false },
+        inputTokens: 8_000,
+        outputTokens: 1_200,
+        costUsdMicros: 120_000,
+        latencyMs: 5
       })
       expect(execute.mock.calls[0]![0].signal?.aborted).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('charges the conservative envelope for an unknown timeout and stops before another call', async () => {
+    vi.useFakeTimers()
+    try {
+      const execute = vi.fn(() => new Promise<EvaluationExecutorObservation>(() => {}))
+      const pending = runDeterministicEvaluation(request({
+        cases: [
+          { id: CASE_ID, definition: evaluationCase() },
+          { id: '20000000-0000-4000-8000-000000000002', definition: evaluationCase({ caseKey: 'second_case' }) }
+        ],
+        budget: {
+          ...request().budget,
+          maxLatencyMsPerCase: 5,
+          maxCostUsdMicrosPerCase: 120_000,
+          maxTotalCostUsdMicros: 120_000
+        }
+      }), { execute })
+
+      await vi.advanceTimersByTimeAsync(6)
+      const result = await pending
+
+      expect(result).toMatchObject({ status: 'failed', failureCode: 'total_cost_exceeded' })
+      expect(result.totals.costUsdMicros).toBe(120_000)
+      expect(execute).toHaveBeenCalledOnce()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('preserves conservative spend evidence when the wall deadline times out an active call', async () => {
+    vi.useFakeTimers()
+    try {
+      const execute = vi.fn(() => new Promise<EvaluationExecutorObservation>(() => {}))
+      const pending = runDeterministicEvaluation(request({
+        budget: { ...request().budget, maxLatencyMsPerCase: 5, maxWallTimeMs: 3 }
+      }), { execute })
+
+      await vi.advanceTimersByTimeAsync(4)
+      const result = await pending
+
+      expect(result).toMatchObject({ status: 'failed', failureCode: 'wall_time_exceeded' })
+      expect(result.results[0]).toMatchObject({
+        outcome: 'error',
+        inputTokens: 8_000,
+        outputTokens: 1_200,
+        costUsdMicros: 120_000,
+        deterministicChecks: { executionTimedOut: true, wallTimeExceeded: true }
+      })
     } finally {
       vi.useRealTimers()
     }
