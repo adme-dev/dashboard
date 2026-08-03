@@ -2,6 +2,7 @@ import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { runSpendSyncInBackground } from '~~/server/utils/asyncBackground'
 import { syncGa4 } from '~~/server/utils/ga4Sync'
+import { resolveGoogleOAuthRuntimeConfig } from '~~/server/utils/googleOAuthRuntimeConfig'
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -36,9 +37,17 @@ export default eventHandler(async (event) => {
     ? `ga4 backfill ${clientId || 'all'} ${startDate}..${endDate}`
     : `ga4 sync ${clientId || 'all'}`
 
+  const { googleClientId, googleClientSecret } = resolveGoogleOAuthRuntimeConfig(event)
+
   return runSpendSyncInBackground(event, {
     label,
-    sync: () => syncGa4({ clientId, lookbackDays, startDate, endDate }),
+    sync: () => syncGa4({
+      clientId,
+      lookbackDays,
+      startDate,
+      endDate,
+      oauthConfig: { googleClientId, googleClientSecret }
+    }),
     kvKeys: []
   })
 })
