@@ -4,6 +4,7 @@ import type { AiCatalogGovernanceItem, AiDepartmentOwnerCandidate, AiPilotMember
 const props = defineProps<{
   item: AiCatalogGovernanceItem
   candidates: AiDepartmentOwnerCandidate[]
+  headingId?: string
 }>()
 const emit = defineEmits<{ changed: [] }>()
 
@@ -11,15 +12,17 @@ const open = ref(false)
 const pending = ref(false)
 const error = ref<string | null>(null)
 const members = ref<AiPilotMemberView[]>([])
-const memberId = ref('')
+const memberId = ref('__select_member__')
 const reason = ref('')
 const acknowledged = ref(false)
 const mode = ref<'enroll' | 'revoke'>('enroll')
 
-const eligibleCandidates = computed(() => props.candidates.filter(candidate => candidate.eligible && candidate.source === 'department_member'))
-const candidateOptions = computed(() => eligibleCandidates.value.map(candidate => ({ label: candidate.name, value: candidate.id })))
+const headingId = computed(() => props.headingId ?? `pilots-${props.item.release.id}`)
+const enrolledIds = computed(() => new Set(members.value.map(member => member.memberUserId)))
+const eligibleCandidates = computed(() => props.candidates.filter(candidate => candidate.eligible && candidate.source === 'department_member' && !enrolledIds.value.has(candidate.id)))
+const candidateOptions = computed(() => [{ label: 'Choose an active member', value: '__select_member__' }, ...eligibleCandidates.value.map(candidate => ({ label: candidate.name, value: candidate.id }))])
 const currentMembers = computed(() => members.value.filter(member => member.eligible))
-const canSubmit = computed(() => Boolean(memberId.value && reason.value.trim().length >= 10 && acknowledged.value && !pending.value))
+const canSubmit = computed(() => Boolean(memberId.value !== '__select_member__' && reason.value.trim().length >= 10 && acknowledged.value && !pending.value))
 
 function errorMessage(caught: unknown) {
   return (caught as { data?: { statusMessage?: string } })?.data?.statusMessage ?? 'Pilot membership could not be updated.'
@@ -41,7 +44,7 @@ async function load() {
 }
 
 function reset() {
-  memberId.value = ''
+  memberId.value = '__select_member__'
   reason.value = ''
   acknowledged.value = false
   mode.value = 'enroll'
@@ -78,9 +81,9 @@ watch(open, value => { if (value) { reset(); load() } })
 </script>
 
 <template>
-  <section class="space-y-3" aria-labelledby="pilots-title">
+  <section class="space-y-3" :aria-labelledby="headingId">
     <div class="flex flex-wrap items-start justify-between gap-3">
-      <div><h4 id="pilots-title" class="text-sm font-semibold text-highlighted">Pilots</h4><p class="mt-0.5 text-xs text-muted">Pilot access is individual, department-bound, and auditable.</p></div>
+      <div><h4 :id="headingId" class="text-sm font-semibold text-highlighted">Pilots</h4><p class="mt-0.5 text-xs text-muted">Pilot access is individual, department-bound, and auditable.</p></div>
       <UButton size="sm" color="neutral" variant="soft" icon="i-lucide-users" @click="open = true">Manage pilot members</UButton>
     </div>
 

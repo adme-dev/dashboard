@@ -14,7 +14,7 @@ definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 const apiFetch = $fetch as <T>(
   request: string,
-  options?: { method?: string, body?: unknown, query?: Record<string, string> }
+  options?: { method?: string, body?: unknown, query?: Record<string, string | number> }
 ) => Promise<T>
 
 const data = ref<AiDepartmentReadinessResponse | null>(null)
@@ -23,6 +23,10 @@ const evaluationRuns = ref<AiEvaluationRunView[]>([])
 const rollout = ref<AiCompanyRolloutReadiness | null>(null)
 const pending = ref(false)
 const error = ref<unknown>(null)
+const catalogPending = ref(false)
+const catalogError = ref<string | null>(null)
+const evaluationsPending = ref(false)
+const evaluationsError = ref<string | null>(null)
 const rolloutPending = ref(false)
 const rolloutError = ref<string | null>(null)
 const seedOpen = ref(false)
@@ -33,27 +37,7 @@ function errorMessage(caught: unknown, fallback: string) {
 }
 
 async function refresh() {
-  pending.value = true
-  error.value = null
-  rolloutPending.value = true
-  rolloutError.value = null
-  try {
-    const [readiness, catalog, evaluations, readinessRollout] = await Promise.allSettled([
-      apiFetch<AiDepartmentReadinessResponse>('/api/admin/ai/governance/readiness'),
-      apiFetch<{ items: AiCatalogGovernanceItem[] }>('/api/admin/ai/governance/catalog'),
-      apiFetch<{ items: AiEvaluationRunView[] }>('/api/admin/ai/governance/evaluations'),
-      apiFetch<AiCompanyRolloutReadiness>('/api/admin/ai/governance/rollout')
-    ])
-    if (readiness.status === 'fulfilled') data.value = readiness.value
-    else error.value = readiness.reason
-    if (catalog.status === 'fulfilled') catalogItems.value = catalog.value.items
-    if (evaluations.status === 'fulfilled') evaluationRuns.value = evaluations.value.items
-    if (readinessRollout.status === 'fulfilled') rollout.value = readinessRollout.value
-    else rolloutError.value = errorMessage(readinessRollout.reason, 'The company rollout readiness service could not be loaded.')
-  } finally {
-    pending.value = false
-    rolloutPending.value = false
-  }
+  await Promise.all([refreshReadiness(), refreshCatalog(), refreshEvaluations(), refreshRollout()])
 }
 
 await refresh()
@@ -101,6 +85,54 @@ async function refreshRollout() {
     rolloutError.value = errorMessage(caught, 'The company rollout readiness service could not be loaded.')
   } finally {
     rolloutPending.value = false
+  }
+}
+
+async function refreshReadiness() {
+  pending.value = true
+  error.value = null
+  try {
+    data.value = await apiFetch<AiDepartmentReadinessResponse>('/api/admin/ai/governance/readiness')
+  } catch (caught) {
+    error.value = caught
+  } finally {
+    pending.value = false
+  }
+}
+
+async function refreshCatalog() {
+  const maxPages = 5
+  catalogPending.value = true
+  catalogError.value = null
+  try {
+    const items: AiCatalogGovernanceItem[] = []
+    let cursor: string | null = null
+    for (let page = 0; page < maxPages; page += 1) {
+      const response = await apiFetch<{ items: AiCatalogGovernanceItem[], nextCursor: string | null }>('/api/admin/ai/governance/catalog', {
+        query: { kind: 'pack', limit: 100, ...(cursor ? { cursor } : {}) }
+      })
+      items.push(...response.items)
+      cursor = response.nextCursor
+      if (!cursor) break
+    }
+    if (cursor) throw new Error('Catalog exceeds the supported 500-pack control-plane bound.')
+    catalogItems.value = items
+  } catch (caught) {
+    catalogError.value = errorMessage(caught, 'The catalog governance service could not be loaded.')
+  } finally {
+    catalogPending.value = false
+  }
+}
+
+async function refreshEvaluations() {
+  evaluationsPending.value = true
+  evaluationsError.value = null
+  try {
+    evaluationRuns.value = (await apiFetch<{ items: AiEvaluationRunView[] }>('/api/admin/ai/governance/evaluations')).items
+  } catch (caught) {
+    evaluationsError.value = errorMessage(caught, 'The evaluation service could not be loaded.')
+  } finally {
+    evaluationsPending.value = false
   }
 }
 </script>
@@ -177,6 +209,7 @@ async function refreshRollout() {
     </UAlert>
 
     <template v-else-if="data">
+      <UAlert v-if="error" color="warning" variant="soft" icon="i-lucide-clock-alert" title="Readiness data may be stale" :description="errorDescription()"><template #actions><UButton color="warning" variant="soft" @click="refreshReadiness">Retry readiness</UButton></template></UAlert>
       <section aria-labelledby="readiness-summary-title">
         <h2 id="readiness-summary-title" class="sr-only">
           Readiness summary
@@ -214,8 +247,14 @@ async function refreshRollout() {
         :items="data.items"
         :catalog-items="catalogItems"
         :evaluation-runs="evaluationRuns"
+        :catalog-pending="catalogPending"
+        :catalog-error="catalogError"
+        :evaluations-pending="evaluationsPending"
+        :evaluations-error="evaluationsError"
         @seed="openSeedDialog"
         @changed="refresh"
+        @retry-catalog="refreshCatalog"
+        @retry-evaluations="refreshEvaluations"
       />
     </template>
 

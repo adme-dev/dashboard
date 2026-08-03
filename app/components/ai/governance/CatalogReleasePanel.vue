@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AiCatalogGovernanceItem, AiCatalogReleaseState, AiEvaluationRunView } from '~/types/aiGovernance'
 
-const props = defineProps<{ item: AiCatalogGovernanceItem, runs: AiEvaluationRunView[] }>()
+const props = defineProps<{ item: AiCatalogGovernanceItem, runs: AiEvaluationRunView[], headingId?: string }>()
 const emit = defineEmits<{ changed: [] }>()
 
 const open = ref(false)
@@ -10,6 +10,9 @@ const error = ref<string | null>(null)
 const target = ref<Exclude<AiCatalogReleaseState, 'draft'> | null>(null)
 const reason = ref('')
 const acknowledged = ref(false)
+const conflictNotice = ref<string | null>(null)
+
+const headingId = computed(() => props.headingId ?? `release-${props.item.release.id}`)
 
 const latestEvaluation = computed(() => [...props.runs]
   .filter(run => run.materialIdentity.packVersionId === props.item.version.id)
@@ -39,11 +42,16 @@ function openConfirmation(next: Exclude<AiCatalogReleaseState, 'draft'>) {
   reason.value = ''
   acknowledged.value = false
   error.value = null
+  conflictNotice.value = null
   open.value = true
 }
 
 function errorMessage(caught: unknown) {
   return (caught as { data?: { statusMessage?: string } })?.data?.statusMessage ?? 'The release transition could not be recorded.'
+}
+
+function isConflict(caught: unknown) {
+  return (caught as { data?: { code?: string } })?.data?.code === 'release_version_conflict'
 }
 
 async function transition() {
@@ -65,7 +73,16 @@ async function transition() {
     open.value = false
     emit('changed')
   } catch (caught) {
-    error.value = errorMessage(caught)
+    if (isConflict(caught)) {
+      target.value = null
+      reason.value = ''
+      acknowledged.value = false
+      open.value = false
+      conflictNotice.value = 'Release changed by another admin. Current state reloaded; review it before retrying.'
+      emit('changed')
+    } else {
+      error.value = errorMessage(caught)
+    }
   } finally {
     pending.value = false
   }
@@ -73,15 +90,16 @@ async function transition() {
 </script>
 
 <template>
-  <section class="space-y-3" aria-labelledby="release-title">
+  <section class="space-y-3" :aria-labelledby="headingId">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h4 id="release-title" class="text-sm font-semibold text-highlighted">Release</h4>
+        <h4 :id="headingId" class="text-sm font-semibold text-highlighted">Release</h4>
         <p class="mt-0.5 text-xs text-muted">Current state: {{ item.release.state }} · scope: {{ item.release.rolloutScope }}</p>
       </div>
       <UBadge :color="evidenceStale ? 'warning' : 'success'" variant="soft"><UIcon :name="evidenceStale ? 'i-lucide-clock-alert' : 'i-lucide-badge-check'" class="mr-1 size-3" />{{ evidenceStale ? 'Evidence is stale' : 'Evidence current' }}</UBadge>
     </div>
     <UAlert v-if="evidenceStale" color="warning" variant="soft" icon="i-lucide-clock-alert" title="Evidence is stale" description="Promotion is blocked until an exact-version evaluation passes. Suspension and retirement remain available." />
+    <UAlert v-if="conflictNotice" color="warning" variant="soft" icon="i-lucide-refresh-cw" title="Release state changed" :description="conflictNotice" />
     <div class="flex flex-wrap gap-2">
       <UButton v-for="next in nextTargets" :key="next" size="sm" :color="color(next)" :variant="next === 'suspended' || next === 'retired' ? 'outline' : 'soft'" :disabled="(next === 'pilot' || next === 'active') && evidenceStale" @click="openConfirmation(next)">{{ label(next) }}</UButton>
     </div>

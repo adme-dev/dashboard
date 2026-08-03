@@ -5,6 +5,7 @@ const props = defineProps<{
   item: AiCatalogGovernanceItem
   runs: AiEvaluationRunView[]
   defaultCaseCount: number
+  headingId?: string
 }>()
 const emit = defineEmits<{ changed: [] }>()
 
@@ -21,12 +22,14 @@ type Preflight = {
 const open = ref(false)
 const pending = ref(false)
 const error = ref<string | null>(null)
+const assignmentError = ref<string | null>(null)
+const assignmentPending = ref(false)
 const preflight = ref<Preflight | null>(null)
 const approvalId = ref<string | null>(null)
+const executedRun = ref<AiEvaluationRunView | null>(null)
 const approvalReason = ref('')
 const costAcknowledged = ref(false)
-const provider = ref<'groq' | 'anthropic' | 'workers_ai'>('groq')
-const modelId = ref('llama-3.3-70b-versatile')
+const assignedModel = ref<{ provider: 'groq' | 'anthropic' | 'workers_ai', modelId: string } | null>(null)
 const budget = reactive({
   maxCases: 1,
   maxInputTokensPerCase: 1,
@@ -37,20 +40,18 @@ const budget = reactive({
   maxWallTimeMs: 1
 })
 
-const providerOptions = [
-  { label: 'Groq', value: 'groq' },
-  { label: 'Anthropic', value: 'anthropic' },
-  { label: 'Workers AI', value: 'workers_ai' }
-]
-
-const latestRun = computed(() => [...props.runs]
+const headingId = computed(() => props.headingId ?? `evaluation-${props.item.release.id}`)
+const latestRun = computed(() => [executedRun.value, ...props.runs]
+  .filter((run): run is AiEvaluationRunView => Boolean(run))
   .filter(run => run.materialIdentity.packVersionId === props.item.version.id)
   .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null)
 const canApprove = computed(() => Boolean(preflight.value && approvalReason.value.trim().length >= 10 && costAcknowledged.value && !pending.value))
+const canPreflight = computed(() => Boolean(assignedModel.value && !assignmentPending.value && !pending.value))
 
 function reset() {
   preflight.value = null
   approvalId.value = null
+  executedRun.value = null
   approvalReason.value = ''
   costAcknowledged.value = false
   error.value = null
@@ -63,17 +64,37 @@ function reset() {
   budget.maxWallTimeMs = Math.min(3_600_000, (props.item.controls.maxLatencyMs * Math.max(1, props.defaultCaseCount)) + 5_000)
 }
 
+async function loadAssignment() {
+  assignmentPending.value = true
+  assignmentError.value = null
+  assignedModel.value = null
+  try {
+    const response = await $fetch<{ rows: Array<{ featureKey: string, assignedProvider: string, assignedModelId: string }> }>('/api/admin/ai/model-ops/model-map')
+    const row = response.rows.find(candidate => candidate.featureKey === props.item.controls.modelFeatureKey)
+    if (!row || !['groq', 'anthropic', 'workers_ai'].includes(row.assignedProvider) || !row.assignedModelId) {
+      assignmentError.value = 'Current model assignment unavailable for this pack. Update Model Ops, then retry preflight.'
+      return
+    }
+    assignedModel.value = { provider: row.assignedProvider as 'groq' | 'anthropic' | 'workers_ai', modelId: row.assignedModelId }
+  } catch {
+    assignmentError.value = 'Current model assignment unavailable for this pack. Update Model Ops, then retry preflight.'
+  } finally {
+    assignmentPending.value = false
+  }
+}
+
 function message(caught: unknown, fallback: string) {
   return (caught as { data?: { statusMessage?: string } })?.data?.statusMessage ?? fallback
 }
 
 async function createPreflight() {
+  if (!assignedModel.value || !canPreflight.value) return
   pending.value = true
   error.value = null
   try {
     preflight.value = await $fetch<Preflight>('/api/admin/ai/governance/evaluations', {
       method: 'POST',
-      body: { packVersionId: props.item.version.id, modelProvider: provider.value, modelId: modelId.value.trim(), budget }
+      body: { packVersionId: props.item.version.id, modelProvider: assignedModel.value.provider, modelId: assignedModel.value.modelId, budget }
     })
   } catch (caught) {
     error.value = message(caught, 'The evaluation preflight could not be created.')
@@ -109,10 +130,11 @@ async function execute() {
   pending.value = true
   error.value = null
   try {
-    await $fetch(`/api/admin/ai/governance/evaluations/${preflight.value.evaluationRunId}/run`, {
+    const result = await $fetch<AiEvaluationRunView>(`/api/admin/ai/governance/evaluations/${preflight.value.evaluationRunId}/run`, {
       method: 'POST',
       body: { planDigest: preflight.value.planDigest, rateCardId: preflight.value.rateCardId, approvalId: approvalId.value }
     })
+    executedRun.value = result
     emit('changed')
   } catch (caught) {
     error.value = message(caught, 'The approved evaluation could not be executed.')
@@ -121,14 +143,14 @@ async function execute() {
   }
 }
 
-watch(open, value => { if (value) reset() })
+watch(open, value => { if (value) { reset(); loadAssignment() } })
 </script>
 
 <template>
-  <section class="space-y-3" aria-labelledby="evaluation-title">
+  <section class="space-y-3" :aria-labelledby="headingId">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h4 id="evaluation-title" class="text-sm font-semibold text-highlighted">Evaluation</h4>
+        <h4 :id="headingId" class="text-sm font-semibold text-highlighted">Evaluation</h4>
         <p class="mt-0.5 text-xs text-muted">Preflight, cost approval, and execution are separate audited steps.</p>
       </div>
       <UButton color="primary" variant="soft" size="sm" icon="i-lucide-flask-conical" @click="open = true">Run evaluation</UButton>
@@ -158,15 +180,10 @@ watch(open, value => { if (value) reset() })
       <template #body>
         <div class="@container space-y-4">
           <UAlert color="info" variant="soft" icon="i-lucide-shield-check" title="No one-click execution" description="Cost approval is required after preflight and before execution." />
-          <div v-if="!preflight" class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
-            <UFormField label="Model provider"><USelectMenu v-model="provider" :items="providerOptions" value-key="value" class="w-full" /></UFormField>
-            <UFormField label="Model ID"><UInput v-model="modelId" class="w-full" /></UFormField>
-            <UFormField label="Maximum cases"><UInput v-model.number="budget.maxCases" type="number" class="w-full" /></UFormField>
-            <UFormField label="Input tokens per case"><UInput v-model.number="budget.maxInputTokensPerCase" type="number" class="w-full" /></UFormField>
-            <UFormField label="Output tokens per case"><UInput v-model.number="budget.maxOutputTokensPerCase" type="number" class="w-full" /></UFormField>
-            <UFormField label="Cost per case (micros)"><UInput v-model.number="budget.maxCostUsdMicrosPerCase" type="number" class="w-full" /></UFormField>
-            <UFormField label="Latency per case (ms)"><UInput v-model.number="budget.maxLatencyMsPerCase" type="number" class="w-full" /></UFormField>
-            <UFormField label="Maximum total cost (micros)"><UInput v-model.number="budget.maxTotalCostUsdMicros" type="number" class="w-full" /></UFormField>
+          <div v-if="!preflight" class="space-y-3">
+            <div v-if="assignmentPending" aria-busy="true" aria-label="Loading current model assignment"><USkeleton class="h-12 w-full" /></div>
+            <UAlert v-else-if="assignmentError" color="error" variant="soft" icon="i-lucide-triangle-alert" title="Current model assignment unavailable" :description="assignmentError"><template #actions><UButton size="xs" color="error" variant="soft" @click="loadAssignment">Retry assignment</UButton></template></UAlert>
+            <UAlert v-else-if="assignedModel" color="info" variant="soft" icon="i-lucide-cpu" title="Current model assignment" :description="`${assignedModel.provider} · ${assignedModel.modelId}`" />
           </div>
           <div v-else class="space-y-4">
             <dl class="grid grid-cols-1 gap-3 text-sm @lg:grid-cols-2">
@@ -183,7 +200,7 @@ watch(open, value => { if (value) reset() })
         </div>
       </template>
       <template #footer>
-        <div class="flex w-full justify-between gap-2"><UButton color="neutral" variant="ghost" @click="open = false">Cancel</UButton><div class="flex gap-2"><UButton v-if="!preflight" :loading="pending" @click="createPreflight">Preflight evaluation</UButton><UButton v-else-if="!approvalId" :loading="pending" :disabled="!canApprove" @click="approveCost">Approve cost</UButton><UButton v-else :loading="pending" color="primary" @click="execute">Execute approved evaluation</UButton></div></div>
+        <div class="flex w-full justify-between gap-2"><UButton color="neutral" variant="ghost" @click="open = false">{{ executedRun ? 'Done' : 'Cancel' }}</UButton><div class="flex gap-2"><UButton v-if="!preflight" :loading="pending || assignmentPending" :disabled="!canPreflight" @click="createPreflight">Preflight evaluation</UButton><UButton v-else-if="!approvalId" :loading="pending" :disabled="!canApprove" @click="approveCost">Approve cost</UButton><UButton v-else-if="!executedRun" :loading="pending" color="primary" @click="execute">Execute approved evaluation</UButton></div></div>
       </template>
     </UModal>
   </section>
