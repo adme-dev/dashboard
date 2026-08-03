@@ -13,6 +13,7 @@ const props = defineProps<{ clientId: string | null, siteId: string | null }>()
 const toast = useToast()
 const assets = ref<ContentAsset[]>([])
 const loading = ref(false)
+const publishingAssetId = ref<string | null>(null)
 const editorOpen = ref(false)
 const selectedAssetId = ref<string | null>(null)
 
@@ -60,12 +61,30 @@ function editAsset(id: string) {
   editorOpen.value = true
 }
 
-function notifyPublisherPending() {
-  toast.add({
-    title: 'Publisher activation follows approval',
-    description: 'The immutable edge publisher is the next pilot gate.',
-    color: 'info'
-  })
+async function publishAsset(asset: ContentAsset) {
+  if (!props.clientId) return
+  publishingAssetId.value = asset.id
+  try {
+    const result = await $fetch<{ publicUrl: string }>(
+      `/api/agency/search-authority/content/${asset.id}/publish`,
+      { method: 'POST', body: { clientId: props.clientId } }
+    )
+    toast.add({
+      title: 'Approved guide published',
+      description: result.publicUrl,
+      color: 'success'
+    })
+    await refresh()
+  } catch (error: unknown) {
+    const candidate = error as { data?: { statusMessage?: string }, message?: string }
+    toast.add({
+      title: 'Guide not published',
+      description: candidate?.data?.statusMessage || candidate?.message,
+      color: 'error'
+    })
+  } finally {
+    publishingAssetId.value = null
+  }
 }
 
 watch(() => props.clientId, () => void refresh(), { immediate: true })
@@ -135,9 +154,10 @@ watch(() => props.clientId, () => void refresh(), { immediate: true })
           :asset-id="asset.id"
           :version-id="asset.current_version_id"
           :status="asset.status"
+          :busy="publishingAssetId === asset.id"
           @edit="editAsset(asset.id)"
           @refreshed="refresh"
-          @publish="notifyPublisherPending"
+          @publish="publishAsset(asset)"
         />
       </article>
     </div>

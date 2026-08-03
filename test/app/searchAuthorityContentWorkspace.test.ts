@@ -17,6 +17,8 @@ describe('Search Authority content workspace', () => {
 
   it('creates versions rather than editing approved content and gates publish', () => {
     expect(library()).toContain('/versions')
+    expect(library()).toContain('/publish')
+    expect(library()).toContain('method: \'POST\'')
     expect(approval()).toContain('Create a new version')
     expect(approval()).toContain('status === \'approved\'')
     expect(approval()).toContain('Publish is enabled only after explicit approval')

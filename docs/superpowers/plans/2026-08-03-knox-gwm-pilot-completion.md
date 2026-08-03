@@ -79,6 +79,7 @@ The core pilot is complete only when every `Core` item below is checked and back
 - **2026-08-03:** Completed Task 5 engineering. Migration 334 was applied to Neon. Added a public-HTTPS/owned-origin PageSpeed adapter with a 15-second hard ceiling, persistent normalized mobile evidence, tenant-scoped read/refresh APIs, explicit CrUX-field versus Lighthouse-lab presentation, and normal XeroFlow task handoff for open findings. Five focused files passed 14 tests and targeted ESLint passed. The repository-wide typecheck remains red only outside this slice.
 - **2026-08-03:** Completed Task 6 engineering. Migration 335 was applied to Neon. Added consented Sales Manager source interviews, append-only versions, evidence-bound claims, submit/approve/reject transitions, self-approval prevention and append-only audit events behind tenant-scoped routes. Three focused files passed 6 tests and targeted ESLint passed; the one slice-local type error found by the global check was corrected.
 - **2026-08-03:** Completed Task 7 engineering. Migrations 336–337 were applied to Neon. Added attributable portal-user decisions, an explicit version-bound disclaimer, the structured agency content library/editor/approval flow, and a tenant-scoped portal review page that exposes only proposed copy, source labels, claims and decision controls. Nine focused files passed 17 tests and targeted ESLint passed. The repository-wide typecheck reached its known unrelated diagnostic backlog with no Search Authority file visible in the reported output.
+- **2026-08-03:** Completed Task 8 engineering. Added a deterministic, HTML-escaping publisher; immutable hash-verified R2 objects; manifest-only activation and rollback; tenant-scoped publish/rollback routes; and a standalone host-allowlisted Cloudflare Worker with real 404s, security headers and a fail-closed deploy wrapper. Five focused files passed 14 tests, targeted ESLint and the generated Cloudflare Worker type contract passed, and the named Wrangler deployment completed a 6.22 KiB dry-run bundle against the approved R2 binding. DNS, a human-approved Knox guide and live rollback proof remain production acceptance gates.
 
 ### Execution order and external gates
 
@@ -478,24 +479,30 @@ git commit -m "feat: add search content approval workspace"
 - Create: `server/api/agency/search-authority/content/[id]/rollback.post.ts`
 - Create: `workers/search-authority-publisher/package.json`
 - Create: `workers/search-authority-publisher/tsconfig.json`
-- Create: `workers/search-authority-publisher/wrangler.toml`
+- Create: `workers/search-authority-publisher/wrangler.jsonc`
+- Create: `workers/search-authority-publisher/worker-configuration.d.ts`
 - Create: `workers/search-authority-publisher/src/index.ts`
+- Create: `shared/searchAuthorityPublication.ts`
 - Create: `scripts/deploy-search-authority-publisher.mjs`
 - Modify: `package.json`
 - Modify: `wrangler.toml`
+- Modify: `app/components/search-authority/ContentLibrary.vue`
+- Modify: `app/components/search-authority/ContentApprovalPanel.vue`
 - Test: `test/server/utils/searchAuthorityPublicationRenderer.test.ts`
 - Test: `test/server/api/searchAuthorityPublishing.test.ts`
 - Test: `test/workers/searchAuthorityPublisher.test.ts`
+- Test: `test/config/searchAuthorityPublisherDeploy.test.ts`
+- Test: `test/app/searchAuthorityContentWorkspace.test.ts`
 
 **Interfaces:**
 - Consumes: approved immutable content version and `search_authority_sites.content_hostname`.
 - Produces: versioned HTML/asset objects plus an atomic host manifest consumed by the edge Worker.
 
-- [ ] **Step 1: Write failing renderer, publication and Worker tests**
+- [x] **Step 1: Write failing renderer, publication and Worker tests**
 
 Require escaped/sanitized Markdown, SSR-visible primary content, canonical/title/description/Open Graph, `Article` or `FAQPage` JSON-LD only when visible content supports it, XML sitemap, robots, security headers and real 404 responses.
 
-- [ ] **Step 2: Implement deterministic rendering**
+- [x] **Step 2: Implement deterministic rendering**
 
 ```ts
 export interface RenderedPublication {
@@ -508,26 +515,26 @@ export interface RenderedPublication {
 
 The renderer must not fetch arbitrary URLs or execute source HTML. Images must resolve from approved assets or allowlisted HTTPS origins and include meaningful alt text.
 
-- [ ] **Step 3: Store immutable versions and atomically update the manifest**
+- [x] **Step 3: Store immutable versions and atomically update the manifest**
 
 Write versioned content first, verify its hash, then update the small host manifest. Rollback changes only the manifest pointer and creates a new audit event; never overwrite an approved version object.
 
-- [ ] **Step 4: Implement the edge Worker**
+- [x] **Step 4: Implement the edge Worker**
 
 Resolve the request host through an allowlisted manifest, serve `/`, `/guides/<slug>`, `/sitemap.xml`, `/robots.txt` and health paths, cache only published objects and return a real 404 for unknown hosts/slugs. The Worker exposes no dashboard or database API.
 
-- [ ] **Step 5: Add a fail-closed deployment wrapper**
+- [x] **Step 5: Add a fail-closed deployment wrapper**
 
 The script must verify the immutable Worker name `search-authority-publisher`, run tests/build first and refuse a different target.
 
-- [ ] **Step 6: Run tests, dry-run deploy and commit**
+- [x] **Step 6: Run tests, dry-run deploy and commit**
 
 Run: `pnpm exec vitest run test/server/utils/searchAuthorityPublicationRenderer.test.ts test/server/api/searchAuthorityPublishing.test.ts test/workers/searchAuthorityPublisher.test.ts`
 
 Run: `pnpm deploy:search-authority-publisher:dry-run`
 
 ```bash
-git add server/utils/searchAuthority/publicationRenderer.ts server/utils/searchAuthority/publicationStore.ts server/api/agency/search-authority/content/[id]/publish.post.ts server/api/agency/search-authority/content/[id]/rollback.post.ts workers/search-authority-publisher/package.json workers/search-authority-publisher/tsconfig.json workers/search-authority-publisher/wrangler.toml workers/search-authority-publisher/src/index.ts scripts/deploy-search-authority-publisher.mjs package.json wrangler.toml test/server/utils/searchAuthorityPublicationRenderer.test.ts test/server/api/searchAuthorityPublishing.test.ts test/workers/searchAuthorityPublisher.test.ts
+git add server/utils/searchAuthority/publicationRenderer.ts server/utils/searchAuthority/publicationStore.ts server/api/agency/search-authority/content/[id]/publish.post.ts server/api/agency/search-authority/content/[id]/rollback.post.ts shared/searchAuthorityPublication.ts workers/search-authority-publisher/package.json workers/search-authority-publisher/tsconfig.json workers/search-authority-publisher/wrangler.jsonc workers/search-authority-publisher/worker-configuration.d.ts workers/search-authority-publisher/src/index.ts scripts/deploy-search-authority-publisher.mjs package.json wrangler.toml app/components/search-authority/ContentLibrary.vue app/components/search-authority/ContentApprovalPanel.vue test/server/utils/searchAuthorityPublicationRenderer.test.ts test/server/api/searchAuthorityPublishing.test.ts test/workers/searchAuthorityPublisher.test.ts test/config/searchAuthorityPublisherDeploy.test.ts test/app/searchAuthorityContentWorkspace.test.ts docs/superpowers/plans/2026-08-03-knox-gwm-pilot-completion.md
 git commit -m "feat: add search authority edge publisher"
 ```
 

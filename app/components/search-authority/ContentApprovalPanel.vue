@@ -81,7 +81,15 @@ async function saveDecision() {
 <template>
   <div class="space-y-3">
     <UAlert
-      v-if="!canPublish"
+      v-if="status === 'published'"
+      title="Guide is live"
+      description="This immutable version is the active public publication. Create a new version for any change."
+      icon="i-lucide-globe-2"
+      color="success"
+      variant="subtle"
+    />
+    <UAlert
+      v-else-if="!canPublish"
       title="Publication locked"
       description="Publish is enabled only after explicit approval of the current immutable version."
       icon="i-lucide-lock-keyhole"
