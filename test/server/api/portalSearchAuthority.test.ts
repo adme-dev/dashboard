@@ -56,6 +56,12 @@ describe('portal Search Authority API', () => {
         version_number: '2',
         updated_at: '2026-08-03T00:00:00.000Z'
       }])
+      // Published guides, first-party events, leads, and GA4 landing pages.
+      // Empty arrays are deliberate: unavailable evidence must stay unavailable.
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
   })
 
   it('derives client scope and omits private agency evidence', async () => {
