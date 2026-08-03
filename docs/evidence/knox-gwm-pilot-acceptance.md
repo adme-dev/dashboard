@@ -5,6 +5,7 @@
 **Client ID:** `b6d459d4-aeaa-4c78-9868-e6682a0dbc68`  
 **Engineering branch:** `agent/knox-pilot-completion-20260803`  
 **Pull request:** [#370 — complete Knox Search Authority pilot engineering](https://github.com/adme-dev/dashboard/pull/370)
+
 **Decision:** Engineering implementation is in PR review; core production pilot
 is not complete.
 
