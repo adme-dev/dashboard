@@ -1,6 +1,20 @@
-import { getCompanyAssistantRolloutReadiness } from '~~/server/utils/ai/governance/companyRolloutReadiness'
+import {
+  CompanyRolloutReadinessError,
+  getCompanyAssistantRolloutReadiness,
+  type CompanyAssistantRolloutReadiness
+} from '~~/server/utils/ai/governance/companyRolloutReadiness'
 
 export type AiAssistantReadinessGate = 'pilot' | 'enforced'
+
+export interface AiAssistantReadinessDependencies {
+  getReadiness(): Promise<CompanyAssistantRolloutReadiness>
+  write(output: string): void
+}
+
+const defaultDependencies: AiAssistantReadinessDependencies = {
+  getReadiness: getCompanyAssistantRolloutReadiness,
+  write: output => console.log(output)
+}
 
 export function parseAiAssistantReadinessArgs(args: string[]): { gate: AiAssistantReadinessGate, json: boolean } {
   let gate: AiAssistantReadinessGate | null = null
@@ -24,21 +38,36 @@ export function parseAiAssistantReadinessArgs(args: string[]): { gate: AiAssista
   return { gate, json }
 }
 
-export async function runAiAssistantReadiness(args: string[] = process.argv.slice(2)): Promise<number> {
-  const options = parseAiAssistantReadinessArgs(args)
-  const readiness = await getCompanyAssistantRolloutReadiness()
-  const passed = options.gate === 'pilot' ? readiness.readyForPilot : readiness.readyForEnforcement
-  if (options.json) console.log(JSON.stringify({ gate: options.gate, passed, ...readiness }, null, 2))
-  else {
-    console.log(`AI assistant ${options.gate} readiness: ${passed ? 'PASS' : 'BLOCKED'}`)
-    for (const blocker of readiness.blockers) console.log(blocker)
-  }
-  return passed ? 0 : 1
+function errorCode(error: unknown): string {
+  if (error instanceof CompanyRolloutReadinessError) return error.code
+  const code = error && typeof error === 'object' ? (error as { code?: unknown }).code : null
+  return typeof code === 'string' && /^(?:readiness_query_failed|[a-z_]+_unbounded|invalid_[a-z_]+_row|missing_employee_department_row)$/.test(code)
+    ? code
+    : 'readiness_unavailable'
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  runAiAssistantReadiness().then(code => { process.exitCode = code }).catch(error => {
-    console.error(error instanceof Error ? error.message : String(error))
-    process.exitCode = 1
-  })
+export async function runAiAssistantReadiness(
+  args: string[] = process.argv.slice(2),
+  dependencies: AiAssistantReadinessDependencies = defaultDependencies
+): Promise<number> {
+  const options = parseAiAssistantReadinessArgs(args)
+  try {
+    const readiness = await dependencies.getReadiness()
+    const passed = options.gate === 'pilot' ? readiness.readyForPilot : readiness.readyForEnforcement
+    if (options.json) dependencies.write(JSON.stringify({ gate: options.gate, passed, ...readiness }))
+    else {
+      dependencies.write([
+        `AI assistant ${options.gate} readiness: ${passed ? 'PASS' : 'BLOCKED'}`,
+        ...readiness.blockers
+      ].join('\n'))
+    }
+    return passed ? 0 : 1
+  } catch (error) {
+    const code = errorCode(error)
+    if (options.json) dependencies.write(JSON.stringify({ gate: options.gate, passed: false, error: { code } }))
+    else dependencies.write(`AI assistant ${options.gate} readiness: BLOCKED\n${code}`)
+    return 1
+  }
 }
+
+if (import.meta.url === `file://${process.argv[1]}`) runAiAssistantReadiness().then(code => { process.exitCode = code })

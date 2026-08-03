@@ -30,7 +30,14 @@ function publicReadiness(readiness: CompanyAssistantRolloutReadiness): CompanyAs
       role: employee.role,
       reasons: [...employee.reasons]
     })),
-    departmentCoverage: readiness.departmentCoverage.map(department => ({ ...department })),
+    departmentCoverage: readiness.departmentCoverage.map(department => ({
+      departmentId: department.departmentId,
+      name: department.name,
+      ownerReady: department.ownerReady,
+      releaseState: department.releaseState,
+      latestGatePassed: department.latestGatePassed,
+      activeEmployeeCount: department.activeEmployeeCount
+    })),
     blockers: [...readiness.blockers]
   }
 }

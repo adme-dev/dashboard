@@ -43,6 +43,25 @@ describe('GET /api/admin/ai/governance/rollout', () => {
   })
 
   it('returns uncached privacy-safe readiness to administrators', async () => {
+    getReadiness.mockResolvedValue({
+      readyForPilot: true,
+      readyForEnforcement: true,
+      activeEmployeeCount: 1,
+      coveredEmployeeCount: 1,
+      uncoveredEmployees: [],
+      departmentCoverage: [{
+        departmentId: '10000000-0000-4000-8000-000000000001',
+        name: 'Creative',
+        ownerReady: true,
+        releaseState: 'active',
+        latestGatePassed: true,
+        activeEmployeeCount: 1,
+        email: 'hidden@example.test',
+        prompt: 'hidden',
+        credentials: 'hidden'
+      }],
+      blockers: []
+    } as any)
     const event = { context: {} } as never
     const result = await handler()(event)
     const serialized = JSON.stringify(result).toLowerCase()

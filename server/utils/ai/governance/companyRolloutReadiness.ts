@@ -1,4 +1,5 @@
 import { queryRows as realQueryRows } from '~~/server/utils/db'
+import { DEPARTMENT_PACK_BLUEPRINTS, normalizeDepartmentLabel } from './departmentPackBlueprints'
 
 export interface CompanyAssistantRolloutReadiness {
   readyForPilot: boolean
@@ -35,17 +36,30 @@ export class CompanyRolloutReadinessError extends Error {
 
 type ReleaseState = CompanyAssistantRolloutReadiness['departmentCoverage'][number]['releaseState']
 
-interface DepartmentRow { id: string, name: string, owner_ready: boolean }
+interface DepartmentRow { id: string, name: string, slug: string }
 interface EmployeeRow { id: string, name: string, role: string | null }
 interface EmployeeDepartmentRow { user_id: string, department_ids: string[] | null }
 interface ReleaseRow {
   department_id: string
+  pack_id: string
+  pack_key: string
+  pack_version_id: string
+  pack_version: number | string
   release_id: string
   release_state: Exclude<ReleaseState, 'missing'>
   evaluation_gate_passed: boolean | null
   evaluation_run_status: string | null
+  owner_user_id: string
+  owner_is_active: boolean
+  owner_is_department_member: boolean
 }
-interface PilotRow { team_member_id: string, release_id: string }
+interface PilotRow {
+  team_member_id: string
+  release_id: string
+  department_id: string
+  release_department_id: string
+  is_current_department_member: boolean
+}
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const RELEASE_STATES = new Set<Exclude<ReleaseState, 'missing'>>(['draft', 'pilot', 'active', 'suspended', 'retired'])
@@ -54,17 +68,8 @@ const DEPARTMENTS_SQL = `
 SELECT
   department.id,
   department.name,
-  (
-    department.manager_id IS NOT NULL
-    AND manager.is_active = TRUE
-    AND EXISTS (
-      SELECT 1 FROM department_members owner_membership
-       WHERE owner_membership.department_id = department.id
-         AND owner_membership.team_member_id = department.manager_id
-    )
-  ) AS owner_ready
+  department.slug
 FROM departments department
-LEFT JOIN team_members manager ON manager.id = department.manager_id
 WHERE department.department_kind = 'organizational'
   AND department.is_active = TRUE
 ORDER BY department.name, department.id
@@ -113,35 +118,55 @@ ORDER BY member.id
 LIMIT 101
 `
 
-const LATEST_PACK_RELEASES_SQL = `
+const PACK_RELEASES_SQL = `
 SELECT
   department.id AS department_id,
+  pack.id AS pack_id,
+  pack.pack_key,
+  version.id AS pack_version_id,
+  version.version AS pack_version,
   release.id AS release_id,
   release.release_state,
   release.evaluation_gate_passed,
-  release.evaluation_run_status
+  release.evaluation_run_status,
+  pack.owner_user_id,
+  owner.is_active AS owner_is_active,
+  EXISTS (
+    SELECT 1 FROM department_members owner_membership
+     WHERE owner_membership.department_id = department.id
+       AND owner_membership.team_member_id = pack.owner_user_id
+  ) AS owner_is_department_member
 FROM departments department
+JOIN ai_capability_packs pack ON pack.department_id = department.id
+JOIN team_members owner ON owner.id = pack.owner_user_id
 JOIN LATERAL (
-  SELECT candidate.id, candidate.release_state, candidate.evaluation_gate_passed,
-         candidate.evaluation_run_status, candidate.updated_at
-  FROM ai_capability_packs pack
-  JOIN ai_capability_pack_versions version ON version.pack_id = pack.id
-  JOIN ai_pack_releases candidate ON candidate.pack_version_id = version.id
-  WHERE pack.department_id = department.id
-  ORDER BY candidate.updated_at DESC, candidate.id DESC
+  SELECT candidate.id, candidate.version
+  FROM ai_capability_pack_versions candidate
+  WHERE candidate.pack_id = pack.id
+  ORDER BY candidate.version DESC, candidate.id DESC
   LIMIT 1
-) release ON TRUE
+) version ON TRUE
+JOIN ai_pack_releases release ON release.pack_version_id = version.id
 WHERE department.department_kind = 'organizational'
   AND department.is_active = TRUE
-ORDER BY department.id
+ORDER BY department.id, pack.pack_key, pack.id
 LIMIT 101
 `
 
 const ELIGIBLE_PILOTS_SQL = `
-SELECT DISTINCT pilot.team_member_id, pilot.pack_release_id AS release_id
+SELECT DISTINCT
+  pilot.team_member_id,
+  pilot.pack_release_id AS release_id,
+  pilot.department_id,
+  release.department_id AS release_department_id,
+  TRUE AS is_current_department_member
 FROM ai_release_pilot_members pilot
 JOIN team_members member ON member.id = pilot.team_member_id
 JOIN ai_pack_releases release ON release.id = pilot.pack_release_id
+  AND release.department_id = pilot.department_id
+JOIN department_members current_membership
+  ON current_membership.department_id = pilot.department_id
+  AND current_membership.team_member_id = pilot.team_member_id
 WHERE pilot.release_kind = 'pack'
   AND pilot.revoked_at IS NULL
   AND member.is_active = TRUE
@@ -173,18 +198,43 @@ function latestGatePassed(row: ReleaseRow): boolean {
   return row.evaluation_gate_passed === true && row.evaluation_run_status === 'completed'
 }
 
+function canonicalPackKey(department: DepartmentRow): string | null | 'ambiguous' {
+  const labels = new Set([normalizeDepartmentLabel(department.name), normalizeDepartmentLabel(department.slug)])
+  const matches = DEPARTMENT_PACK_BLUEPRINTS.filter(blueprint =>
+    blueprint.departmentAliases.some(alias => labels.has(normalizeDepartmentLabel(alias)))
+  )
+  if (matches.length === 0) return null
+  if (matches.length > 1) return 'ambiguous'
+  return matches[0]!.packKey
+}
+
+function asPositiveInteger(value: unknown): number | null {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
+
 export async function getCompanyAssistantRolloutReadiness(
   db: CompanyRolloutReadinessDb = defaultDb
 ): Promise<CompanyAssistantRolloutReadiness> {
-  const departments = assertBounded(await db.queryRows<DepartmentRow>(DEPARTMENTS_SQL), 'departments_unbounded')
-  const employees = assertBounded(await db.queryRows<EmployeeRow>(EMPLOYEES_SQL), 'employees_unbounded')
-  const employeeDepartments = assertBounded(await db.queryRows<EmployeeDepartmentRow>(EMPLOYEE_DEPARTMENTS_SQL), 'employee_departments_unbounded')
-  const releases = assertBounded(await db.queryRows<ReleaseRow>(LATEST_PACK_RELEASES_SQL), 'releases_unbounded')
-  const pilots = assertBounded(await db.queryRows<PilotRow>(ELIGIBLE_PILOTS_SQL), 'pilot_memberships_unbounded')
+  let departments: DepartmentRow[]
+  let employees: EmployeeRow[]
+  let employeeDepartments: EmployeeDepartmentRow[]
+  let releases: ReleaseRow[]
+  let pilots: PilotRow[]
+  try {
+    departments = assertBounded(await db.queryRows<DepartmentRow>(DEPARTMENTS_SQL), 'departments_unbounded')
+    employees = assertBounded(await db.queryRows<EmployeeRow>(EMPLOYEES_SQL), 'employees_unbounded')
+    employeeDepartments = assertBounded(await db.queryRows<EmployeeDepartmentRow>(EMPLOYEE_DEPARTMENTS_SQL), 'employee_departments_unbounded')
+    releases = assertBounded(await db.queryRows<ReleaseRow>(PACK_RELEASES_SQL), 'releases_unbounded')
+    pilots = assertBounded(await db.queryRows<PilotRow>(ELIGIBLE_PILOTS_SQL), 'pilot_memberships_unbounded')
+  } catch (error) {
+    if (error instanceof CompanyRolloutReadinessError) throw error
+    fail('readiness_query_failed')
+  }
 
   const departmentById = new Map<string, DepartmentRow>()
   for (const department of departments) {
-    if (!validUuid(department.id) || typeof department.name !== 'string' || typeof department.owner_ready !== 'boolean' || departmentById.has(department.id)) fail('invalid_department_row')
+    if (!validUuid(department.id) || typeof department.name !== 'string' || typeof department.slug !== 'string' || departmentById.has(department.id)) fail('invalid_department_row')
     departmentById.set(department.id, department)
   }
 
@@ -203,16 +253,43 @@ export async function getCompanyAssistantRolloutReadiness(
     if (!departmentIdsByEmployee.has(employeeId)) fail('missing_employee_department_row')
   }
 
-  const releaseByDepartment = new Map<string, ReleaseRow>()
+  const releasesByDepartment = new Map<string, ReleaseRow[]>()
   for (const release of releases) {
-    if (!validUuid(release.department_id) || !departmentById.has(release.department_id) || !validUuid(release.release_id) || !RELEASE_STATES.has(release.release_state) || typeof release.evaluation_gate_passed !== 'boolean' && release.evaluation_gate_passed !== null || typeof release.evaluation_run_status !== 'string' && release.evaluation_run_status !== null || releaseByDepartment.has(release.department_id)) fail('invalid_release_row')
-    releaseByDepartment.set(release.department_id, release)
+    if (!validUuid(release.department_id) || !departmentById.has(release.department_id) || !validUuid(release.pack_id) || typeof release.pack_key !== 'string' || !validUuid(release.pack_version_id) || asPositiveInteger(release.pack_version) === null || !validUuid(release.release_id) || !validUuid(release.owner_user_id) || !RELEASE_STATES.has(release.release_state) || typeof release.evaluation_gate_passed !== 'boolean' && release.evaluation_gate_passed !== null || typeof release.evaluation_run_status !== 'string' && release.evaluation_run_status !== null || typeof release.owner_is_active !== 'boolean' || typeof release.owner_is_department_member !== 'boolean') fail('invalid_release_row')
+    releasesByDepartment.set(release.department_id, [...(releasesByDepartment.get(release.department_id) ?? []), release])
+  }
+
+  const releaseByDepartment = new Map<string, ReleaseRow>()
+  const ambiguousDepartmentIds = new Set<string>()
+  for (const department of departmentById.values()) {
+    const expectedPackKey = canonicalPackKey(department)
+    if (expectedPackKey === 'ambiguous') {
+      ambiguousDepartmentIds.add(department.id)
+      continue
+    }
+    if (!expectedPackKey) continue
+    const candidates = (releasesByDepartment.get(department.id) ?? []).filter(release => release.pack_key === expectedPackKey)
+    if (candidates.length === 0) continue
+    const packIds = new Set(candidates.map(candidate => candidate.pack_id))
+    if (packIds.size !== 1) {
+      ambiguousDepartmentIds.add(department.id)
+      continue
+    }
+    const sorted = [...candidates].sort((left, right) => {
+      const versionDifference = asPositiveInteger(right.pack_version)! - asPositiveInteger(left.pack_version)!
+      return versionDifference || right.pack_version_id.localeCompare(left.pack_version_id)
+    })
+    if (sorted.length > 1 && asPositiveInteger(sorted[0]!.pack_version) === asPositiveInteger(sorted[1]!.pack_version)) {
+      ambiguousDepartmentIds.add(department.id)
+      continue
+    }
+    releaseByDepartment.set(department.id, sorted[0]!)
   }
 
   const eligiblePilotReleaseIds = new Set<string>()
   for (const pilot of pilots) {
-    if (!validUuid(pilot.team_member_id) || !employeeById.has(pilot.team_member_id) || !validUuid(pilot.release_id)) fail('invalid_pilot_membership_row')
-    eligiblePilotReleaseIds.add(pilot.release_id)
+    if (!validUuid(pilot.team_member_id) || !employeeById.has(pilot.team_member_id) || !validUuid(pilot.release_id) || !validUuid(pilot.department_id) || !validUuid(pilot.release_department_id) || typeof pilot.is_current_department_member !== 'boolean') fail('invalid_pilot_membership_row')
+    if (pilot.department_id === pilot.release_department_id && pilot.is_current_department_member) eligiblePilotReleaseIds.add(pilot.release_id)
   }
 
   const departmentCoverage = [...departmentById.values()].map(department => {
@@ -220,7 +297,7 @@ export async function getCompanyAssistantRolloutReadiness(
     return {
       departmentId: department.id,
       name: department.name,
-      ownerReady: department.owner_ready,
+      ownerReady: release?.owner_is_active === true && release.owner_is_department_member === true,
       releaseState: release?.release_state ?? 'missing',
       latestGatePassed: release ? latestGatePassed(release) : false,
       activeEmployeeCount: 0
@@ -233,10 +310,15 @@ export async function getCompanyAssistantRolloutReadiness(
 
   const blockers: string[] = []
   for (const coverage of departmentCoverage) {
-    if (!coverage.ownerReady) blockers.push(`department:${coverage.departmentId}:owner_not_ready`)
+    if (ambiguousDepartmentIds.has(coverage.departmentId)) {
+      blockers.push(`department:${coverage.departmentId}:ambiguous_mapped_pack`)
+      continue
+    }
     if (coverage.releaseState === 'missing') blockers.push(`department:${coverage.departmentId}:no_mapped_pack`)
     else {
+      if (!coverage.ownerReady) blockers.push(`department:${coverage.departmentId}:owner_not_ready`)
       if (coverage.releaseState === 'draft') blockers.push(`department:${coverage.departmentId}:release_draft`)
+      if (coverage.releaseState === 'pilot') blockers.push(`department:${coverage.departmentId}:release_pilot`)
       if (releaseByDepartment.get(coverage.departmentId)?.evaluation_gate_passed === false) blockers.push(`department:${coverage.departmentId}:evaluation_gate_failed`)
       if (coverage.releaseState === 'suspended' || coverage.releaseState === 'retired') blockers.push(`department:${coverage.departmentId}:release_${coverage.releaseState}`)
     }
@@ -260,7 +342,9 @@ export async function getCompanyAssistantRolloutReadiness(
   for (const employee of uncoveredEmployees) blockers.push(`employee:${employee.userId}:${employee.reasons.join('+')}`)
 
   const evaluatedPilotReleaseIds = new Set(
-    releases.filter(release => release.release_state === 'pilot' && latestGatePassed(release)).map(release => release.release_id)
+    [...releaseByDepartment.values()]
+      .filter(release => release.release_state === 'pilot' && latestGatePassed(release))
+      .map(release => release.release_id)
   )
   const hasEligiblePilot = [...eligiblePilotReleaseIds].some(id => evaluatedPilotReleaseIds.has(id))
   if (evaluatedPilotReleaseIds.size === 0) blockers.push('no_evaluated_pilot_release')
