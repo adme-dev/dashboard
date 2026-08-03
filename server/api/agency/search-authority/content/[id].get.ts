@@ -10,10 +10,17 @@ export default eventHandler(async (event) => {
     `SELECT * FROM search_authority_content_assets WHERE id = $1`, [id.data])
   if (!asset) throw createError({ statusCode: 404, statusMessage: 'Content asset not found' })
   await requireAgencySearchAuthorityAccess(event, asset.client_id)
-  const [versions, interviews, decisions] = await Promise.all([
+  const [versions, interviews, decisions, claims] = await Promise.all([
     queryRows(`SELECT * FROM search_authority_content_versions WHERE client_id = $1 AND asset_id = $2 ORDER BY version_number DESC`, [asset.client_id, id.data]),
     queryRows(`SELECT * FROM search_authority_source_interviews WHERE client_id = $1 AND asset_id = $2 ORDER BY occurred_at DESC`, [asset.client_id, id.data]),
-    queryRows(`SELECT * FROM search_authority_approval_decisions WHERE client_id = $1 AND asset_id = $2 ORDER BY decided_at DESC`, [asset.client_id, id.data])
+    queryRows(`SELECT * FROM search_authority_approval_decisions WHERE client_id = $1 AND asset_id = $2 ORDER BY decided_at DESC`, [asset.client_id, id.data]),
+    queryRows(`SELECT claim.id, claim.version_id, claim.claim, claim.source_type,
+      claim.source_reference, claim.expires_at
+      FROM search_authority_version_claims claim
+      JOIN search_authority_content_versions version
+        ON version.client_id = claim.client_id AND version.id = claim.version_id
+      WHERE claim.client_id = $1 AND version.asset_id = $2
+      ORDER BY claim.created_at`, [asset.client_id, id.data])
   ])
-  return { asset, versions, interviews, decisions }
+  return { asset, versions, interviews, decisions, claims }
 })

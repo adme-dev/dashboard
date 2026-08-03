@@ -24,6 +24,14 @@ interface PortalSearchAuthority {
       status: string
     }>
   }
+  contentReviews: Array<{
+    id: string
+    title: string
+    status: string
+    versionNumber: number
+    updatedAt: string
+    requiresDecision: boolean
+  }>
   nextSteps: string[]
 }
 
@@ -55,6 +63,10 @@ function dateLabel(value: string | null): string {
 function changeLabel(value: number | null): string {
   if (value === null) return 'Comparison unavailable'
   return `${value > 0 ? '+' : ''}${value.toFixed(1)}% vs prior period`
+}
+
+function retry() {
+  void refresh()
 }
 </script>
 
@@ -92,7 +104,7 @@ function changeLabel(value: number | null): string {
           size="sm"
           color="warning"
           variant="soft"
-          @click="refresh"
+          @click="retry"
         />
       </template>
     </UAlert>
@@ -231,6 +243,45 @@ function changeLabel(value: number | null): string {
           </div>
         </UCard>
       </div>
+
+      <UCard>
+        <template #header>
+          <div>
+            <h2 class="font-semibold text-highlighted">
+              Content reviews
+            </h2>
+            <p class="mt-1 text-sm text-muted">
+              Source-backed guides and the exact version currently awaiting or carrying approval.
+            </p>
+          </div>
+        </template>
+        <div v-if="data.contentReviews.length" class="divide-y divide-default">
+          <NuxtLink
+            v-for="review in data.contentReviews"
+            :key="review.id"
+            :to="`/portal/search-authority/content/${review.id}`"
+            class="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0"
+          >
+            <div class="min-w-0">
+              <p class="truncate text-sm font-medium text-highlighted">{{ review.title }}</p>
+              <p class="mt-1 text-xs text-muted">Version {{ review.versionNumber }}</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <UBadge
+                v-if="review.requiresDecision"
+                label="Decision needed"
+                color="warning"
+                variant="subtle"
+              />
+              <UBadge :label="label(review.status)" color="neutral" variant="outline" />
+              <UIcon name="i-lucide-chevron-right" class="size-4 text-muted" />
+            </div>
+          </NuxtLink>
+        </div>
+        <p v-else class="text-sm text-muted">
+          No guide is currently ready for client review.
+        </p>
+      </UCard>
     </template>
   </div>
 </template>

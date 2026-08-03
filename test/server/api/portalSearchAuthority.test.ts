@@ -22,7 +22,7 @@ describe('portal Search Authority API', () => {
     mocks.requireAccess.mockResolvedValue({
       clientId: CLIENT_ID,
       clientName: 'Knox GWM Haval',
-      permissions: { canViewAnalytics: true }
+      permissions: { canViewAnalytics: true, canApproveWork: true }
     })
     mocks.queryOne
       .mockResolvedValueOnce({
@@ -42,12 +42,20 @@ describe('portal Search Authority API', () => {
         coverage_days: '28',
         previous_coverage_days: '28'
       })
-    mocks.queryRows.mockResolvedValue([{
-      opportunity_type: 'low_ctr',
-      lifecycle_status: 'task_created',
-      task_id: 'task-1',
-      total_count: '24'
-    }])
+    mocks.queryRows
+      .mockResolvedValueOnce([{
+        opportunity_type: 'low_ctr',
+        lifecycle_status: 'task_created',
+        task_id: 'task-1',
+        total_count: '24'
+      }])
+      .mockResolvedValueOnce([{
+        id: '33333333-3333-4333-8333-333333333333',
+        title: 'Cannon Alpha towing guide',
+        status: 'in_review',
+        version_number: '2',
+        updated_at: '2026-08-03T00:00:00.000Z'
+      }])
   })
 
   it('derives client scope and omits private agency evidence', async () => {
@@ -69,8 +77,14 @@ describe('portal Search Authority API', () => {
       status: 'task_created'
     })
     expect(result.actions.total).toBe(24)
+    expect(result.contentReviews[0]).toMatchObject({
+      title: 'Cannon Alpha towing guide',
+      status: 'in_review',
+      versionNumber: 2,
+      requiresDecision: true
+    })
     expect(serialized).not.toMatch(
-      /queryText|query_text|reasonCodes|scoringVersion|connectionId|credential|baseline|weight|taskId|"id":/i
+      /queryText|query_text|reasonCodes|scoringVersion|connectionId|credential|baseline|weight|taskId/i
     )
     expect(mocks.queryOne.mock.calls.every(call => (
       (call[1] as unknown[])[0] === CLIENT_ID

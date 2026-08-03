@@ -78,6 +78,7 @@ The core pilot is complete only when every `Core` item below is checked and back
 - **2026-08-03:** Completed Task 4 engineering. Migration 333 was applied to Neon. Deterministic crawl, robots, canonical, explicit sitemap evidence, soft-404, JSON-LD price-parity and image checks now reconcile into a tenant-scoped findings ledger. Four focused files passed 11 tests and targeted ESLint passed. The repository-wide typecheck currently fails in unrelated pre-existing files; the typecheck log contains no errors for this slice.
 - **2026-08-03:** Completed Task 5 engineering. Migration 334 was applied to Neon. Added a public-HTTPS/owned-origin PageSpeed adapter with a 15-second hard ceiling, persistent normalized mobile evidence, tenant-scoped read/refresh APIs, explicit CrUX-field versus Lighthouse-lab presentation, and normal XeroFlow task handoff for open findings. Five focused files passed 14 tests and targeted ESLint passed. The repository-wide typecheck remains red only outside this slice.
 - **2026-08-03:** Completed Task 6 engineering. Migration 335 was applied to Neon. Added consented Sales Manager source interviews, append-only versions, evidence-bound claims, submit/approve/reject transitions, self-approval prevention and append-only audit events behind tenant-scoped routes. Three focused files passed 6 tests and targeted ESLint passed; the one slice-local type error found by the global check was corrected.
+- **2026-08-03:** Completed Task 7 engineering. Migrations 336–337 were applied to Neon. Added attributable portal-user decisions, an explicit version-bound disclaimer, the structured agency content library/editor/approval flow, and a tenant-scoped portal review page that exposes only proposed copy, source labels, claims and decision controls. Nine focused files passed 17 tests and targeted ESLint passed. The repository-wide typecheck reached its known unrelated diagnostic backlog with no Search Authority file visible in the reported output.
 
 ### Execution order and external gates
 
@@ -426,6 +427,10 @@ git commit -m "feat: add governed search content workflow"
 ## Task 7: Build the content workspace and client approval surface
 
 **Files:**
+- Create: `server/database/migrations/336_search_authority_portal_approval_actor.sql`
+- Create: `server/database/migrations/337_search_authority_content_disclaimer.sql`
+- Create: `server/api/portal/search-authority/content/[id].get.ts`
+- Create: `server/api/portal/search-authority/content/[id]/decision.post.ts`
 - Create: `app/components/search-authority/ContentLibrary.vue`
 - Create: `app/components/search-authority/ContentEditorSlideover.vue`
 - Create: `app/components/search-authority/ContentApprovalPanel.vue`
@@ -439,23 +444,23 @@ git commit -m "feat: add governed search content workflow"
 - Consumes: Task 6 content APIs.
 - Produces: one operator workflow for interview capture, claim review, version submission and explicit approval; one restricted portal approval view.
 
-- [ ] **Step 1: Read the mandatory frontend-design skill before modifying forms**
+- [x] **Step 1: Read the mandatory frontend-design skill before modifying forms**
 
 Apply its hierarchy, spacing and form-composition guidance together with `UFormField`, `UInput`, `UTextarea`, `USelectMenu`, `UModal`, `USlideover` and responsive container grids.
 
-- [ ] **Step 2: Write failing UI contract tests**
+- [x] **Step 2: Write failing UI contract tests**
 
 Test that every field has a `UFormField`, an approved version is read-only, a changed draft creates a new version, and publish remains unavailable until approval succeeds.
 
-- [ ] **Step 3: Implement the agency workflow**
+- [x] **Step 3: Implement the agency workflow**
 
 Keep the pilot editor intentionally structured: customer question, interview transcript/notes, title, summary, Markdown body, claim list, disclaimers and schema preview. Do not build a new general-purpose WYSIWYG editor.
 
-- [ ] **Step 4: Implement the portal review surface**
+- [x] **Step 4: Implement the portal review surface**
 
 Expose only the proposed version, source labels, claims, disclaimer and approve/reject controls. Hide internal scores, raw queries, provider IDs and credentials.
 
-- [ ] **Step 5: Run tests, lint and commit**
+- [x] **Step 5: Run tests, lint and commit**
 
 Run: `pnpm exec vitest run test/app/searchAuthorityContentWorkspace.test.ts test/app/portalSearchAuthorityContentApproval.test.ts`
 

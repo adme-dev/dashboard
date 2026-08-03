@@ -24,6 +24,7 @@ describe('Search Authority governed content repository', () => {
       actorId: ACTOR_ID,
       bodyMarkdown: '# Haval H6 Hybrid ownership\n\nVerified dealer guidance.',
       excerpt: 'Verified Haval H6 Hybrid ownership guidance.',
+      disclaimer: 'Specifications and availability must be confirmed with Knox GWM.',
       schemaType: 'Article',
       sourceInterviewIds: ['55555555-5555-4555-8555-555555555555'],
       claims: [{

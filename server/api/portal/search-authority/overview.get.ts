@@ -27,6 +27,14 @@ interface ActionRow {
   total_count: string
 }
 
+interface ContentReviewRow {
+  id: string
+  title: string
+  status: string
+  version_number: string
+  updated_at: string
+}
+
 function previousWindow(startDate: string, endDate: string) {
   const start = new Date(`${startDate}T00:00:00.000Z`)
   const end = new Date(`${endDate}T00:00:00.000Z`)
@@ -89,7 +97,7 @@ export default eventHandler(async (event) => {
        LIMIT 1`,
     [user.clientId, window.startDate, window.endDate]
   )
-  const [metricsRow, actionRows] = await Promise.all([
+  const [metricsRow, actionRows, contentReviewRows] = await Promise.all([
     queryOne<MetricsRow>(
       `WITH coverage AS (
          SELECT
@@ -162,7 +170,19 @@ export default eventHandler(async (event) => {
        ORDER BY last_detected_at DESC
        LIMIT 20`,
       [user.clientId, provider?.property_map_id ?? null]
-    )
+    ),
+    queryRows<ContentReviewRow>(`
+      SELECT asset.id, asset.title, asset.status, version.version_number, asset.updated_at
+      FROM search_authority_content_assets asset
+      JOIN search_authority_content_versions version
+        ON version.client_id = asset.client_id AND version.id = asset.current_version_id
+      WHERE asset.client_id = $1
+        AND asset.status IN ('in_review', 'approved', 'published')
+      ORDER BY
+        CASE WHEN asset.status = 'in_review' THEN 0 ELSE 1 END,
+        asset.updated_at DESC
+      LIMIT 10
+    `, [user.clientId])
   ])
 
   const clicks = Number(metricsRow?.clicks || 0)
@@ -219,6 +239,14 @@ export default eventHandler(async (event) => {
         status: row.lifecycle_status
       }))
     },
+    contentReviews: contentReviewRows.map(review => ({
+      id: review.id,
+      title: review.title,
+      status: review.status,
+      versionNumber: Number(review.version_number),
+      updatedAt: review.updated_at,
+      requiresDecision: review.status === 'in_review' && user.permissions.canApproveWork
+    })),
     nextSteps: actionRows.length > 0
       ? ['Your agency is reviewing and delivering the approved search actions shown here.']
       : ['Your agency will review new evidence before recommending any action.']

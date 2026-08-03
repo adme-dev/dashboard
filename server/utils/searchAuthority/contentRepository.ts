@@ -16,6 +16,7 @@ interface DecisionInput {
   assetId: string
   versionId: string
   actorId: string
+  actorType?: 'agency' | 'portal'
   rationale: string
 }
 
@@ -77,12 +78,12 @@ export async function createContentVersion(db: Db, input: CreateVersionInput) {
   const versionNumber = Number(next?.next_version ?? 1)
   const version = (await db.query(`
     INSERT INTO search_authority_content_versions (
-      client_id, asset_id, version_number, body_markdown, excerpt, schema_type,
-      source_interview_ids, source_version_id, ai_metadata, created_by
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7::uuid[], $8, $9::jsonb, $10)
+      client_id, asset_id, version_number, body_markdown, excerpt, disclaimer,
+      schema_type, source_interview_ids, source_version_id, ai_metadata, created_by
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::uuid[], $9, $10::jsonb, $11)
     RETURNING id, version_number
   `, [input.clientId, input.assetId, versionNumber, parsed.bodyMarkdown, parsed.excerpt,
-    parsed.schemaType, parsed.sourceInterviewIds, parsed.sourceVersionId ?? null,
+    parsed.disclaimer, parsed.schemaType, parsed.sourceInterviewIds, parsed.sourceVersionId ?? null,
     JSON.stringify(parsed.aiMetadata ?? {}), input.actorId])).rows[0]
   if (!version) throw new Error('Content version insert returned no row')
   const versionId = String(version.id)
@@ -112,13 +113,16 @@ export async function approveContentVersion(db: Db, input: DecisionInput): Promi
   `, [input.versionId, input.assetId, input.clientId])).rows[0]
   if (!version) throw new Error('Content version not found')
   if (version.status !== 'in_review') throw new Error('Only a submitted version can be approved')
-  if (version.created_by === input.actorId) throw new Error('Authors cannot approve their own content version')
+  if ((input.actorType ?? 'agency') === 'agency' && version.created_by === input.actorId) {
+    throw new Error('Authors cannot approve their own content version')
+  }
   if (input.rationale.trim().length < 5) throw new Error('Approval rationale is required')
 
   await db.query(`INSERT INTO search_authority_approval_decisions (
-    client_id, asset_id, version_id, decision, rationale, decided_by
-  ) VALUES ($1, $2, $3, 'approved', $4, $5)`, [input.clientId, input.assetId,
-    input.versionId, input.rationale.trim(), input.actorId])
+    client_id, asset_id, version_id, decision, rationale, decided_by,
+    decided_by_client_user_id, actor_type
+  ) VALUES ($1, $2, $3, 'approved', $4, $5, $6, $7)`, [input.clientId, input.assetId,
+    input.versionId, input.rationale.trim(), agencyActor(input), portalActor(input), input.actorType ?? 'agency'])
   await db.query(`UPDATE search_authority_content_assets SET
     status = 'approved', current_version_id = $3, updated_at = NOW()
     WHERE id = $1 AND client_id = $2`, [input.assetId, input.clientId, input.versionId])
@@ -144,15 +148,26 @@ export async function rejectContentVersion(db: Db, input: DecisionInput): Promis
       AND asset.current_version_id = $3 RETURNING asset.id`, [input.assetId, input.clientId, input.versionId])
   if (!updated.rows[0]) throw new Error('Only a submitted current version can be rejected')
   await db.query(`INSERT INTO search_authority_approval_decisions (
-    client_id, asset_id, version_id, decision, rationale, decided_by
-  ) VALUES ($1, $2, $3, 'rejected', $4, $5)`, [input.clientId, input.assetId,
-    input.versionId, input.rationale.trim(), input.actorId])
+    client_id, asset_id, version_id, decision, rationale, decided_by,
+    decided_by_client_user_id, actor_type
+  ) VALUES ($1, $2, $3, 'rejected', $4, $5, $6, $7)`, [input.clientId, input.assetId,
+    input.versionId, input.rationale.trim(), agencyActor(input), portalActor(input), input.actorType ?? 'agency'])
   await audit(db, input, input.versionId, 'version.rejected', {})
 }
 
-async function audit(db: Db, input: { clientId: string, assetId: string, actorId: string }, versionId: string, eventType: string, details: object) {
+async function audit(db: Db, input: { clientId: string, assetId: string, actorId: string, actorType?: 'agency' | 'portal' }, versionId: string, eventType: string, details: object) {
   await db.query(`INSERT INTO search_authority_content_audit_events (
-    client_id, asset_id, version_id, actor_id, event_type, details
-  ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)`, [input.clientId, input.assetId,
-    versionId || null, input.actorId, eventType, JSON.stringify(details)])
+    client_id, asset_id, version_id, actor_id, actor_client_user_id, actor_type,
+    event_type, details
+  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`, [input.clientId, input.assetId,
+    versionId || null, agencyActor(input), portalActor(input), input.actorType ?? 'agency',
+    eventType, JSON.stringify(details)])
+}
+
+function agencyActor(input: { actorId: string, actorType?: 'agency' | 'portal' }): string | null {
+  return (input.actorType ?? 'agency') === 'agency' ? input.actorId : null
+}
+
+function portalActor(input: { actorId: string, actorType?: 'agency' | 'portal' }): string | null {
+  return input.actorType === 'portal' ? input.actorId : null
 }

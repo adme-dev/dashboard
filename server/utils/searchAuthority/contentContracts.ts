@@ -13,6 +13,7 @@ export const contentClaimInputSchema = z.object({
 export const contentVersionInputSchema = z.object({
   bodyMarkdown: bounded(20, 100000),
   excerpt: bounded(10, 1000),
+  disclaimer: bounded(5, 5000),
   schemaType: z.enum(['Article', 'FAQPage']),
   sourceInterviewIds: z.array(uuid).min(1).max(20),
   sourceVersionId: uuid.nullable().optional(),

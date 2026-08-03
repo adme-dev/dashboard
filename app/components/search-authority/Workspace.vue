@@ -12,6 +12,7 @@ import { normalizeSearchAuthorityWindow } from '~/utils/searchAuthorityWindow'
 interface ClientOption {
   id: string
   name: string
+  siteId: string
 }
 
 interface Workspace {
@@ -117,6 +118,9 @@ const clientProjects = computed(() => projects.value.filter(project => (
   project.clientId === selectedClientId.value
 )))
 const acceptedCount = computed(() => overview.value?.opportunities.accepted || 0)
+const selectedSiteId = computed(() => clients.value.find(client => (
+  client.id === selectedClientId.value
+))?.siteId || null)
 
 function errorMessage(error: unknown): string {
   const candidate = error as {
@@ -156,16 +160,25 @@ function formatDate(value: string): string {
   }).format(new Date(`${value}T00:00:00.000Z`))
 }
 
+function clearStartDate() {
+  startDate.value = ''
+}
+
+function clearEndDate() {
+  endDate.value = ''
+}
+
 async function loadWorkspaceOptions() {
   try {
     const [clientRows, workspaceResponse, teamResponse, projectRows, labelRows]
       = await Promise.all([
         $fetch<{
-          sites: Array<{ clientId: string, clientName: string }>
+          sites: Array<{ id: string, clientId: string, clientName: string }>
         }>('/api/agency/search-authority/sites').then(response => (
           response.sites.map(site => ({
             id: site.clientId,
-            name: site.clientName
+            name: site.clientName,
+            siteId: site.id
           }))
         )),
         $fetch<{ workspaces: Workspace[] }>('/api/agency/workspaces')
@@ -602,7 +615,7 @@ onMounted(async () => {
                     size="xs"
                     color="neutral"
                     variant="ghost"
-                    @click="startDate = ''"
+                    @click="clearStartDate"
                   />
                 </div>
               </template>
@@ -626,7 +639,7 @@ onMounted(async () => {
                     size="xs"
                     color="neutral"
                     variant="ghost"
-                    @click="endDate = ''"
+                    @click="clearEndDate"
                   />
                 </div>
               </template>
@@ -647,6 +660,8 @@ onMounted(async () => {
       </UCard>
 
       <SearchAuthorityPilotReadinessCard :client-id="selectedClientId" />
+
+      <SearchAuthorityContentLibrary :client-id="selectedClientId" :site-id="selectedSiteId" />
 
       <SearchAuthorityTrustPerformanceCard
         :evidence="trustResponse?.performance || []"
