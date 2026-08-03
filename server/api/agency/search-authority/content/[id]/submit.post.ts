@@ -9,9 +9,9 @@ export default eventHandler(async (event) => {
   const assetId = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   const parsed = Body.safeParse(await readBody(event))
   if (!assetId.success || !parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid review submission' })
-  const asset = await queryOne<{ client_id: string }>(`SELECT client_id FROM search_authority_content_assets WHERE id = $1`, [assetId.data])
-  if (!asset || asset.client_id !== parsed.data.clientId) throw createError({ statusCode: 404, statusMessage: 'Content asset not found' })
-  const user = await requireAgencySearchAuthorityAccess(event, asset.client_id)
+  const user = await requireAgencySearchAuthorityAccess(event, parsed.data.clientId)
+  const asset = await queryOne<{ id: string }>(`SELECT id FROM search_authority_content_assets WHERE id = $1 AND client_id = $2`, [assetId.data, parsed.data.clientId])
+  if (!asset) throw createError({ statusCode: 404, statusMessage: 'Content asset not found' })
   await transaction(db => submitContentVersion(db, { ...parsed.data, assetId: assetId.data, actorId: user.id }))
   return { ok: true, status: 'in_review' }
 })

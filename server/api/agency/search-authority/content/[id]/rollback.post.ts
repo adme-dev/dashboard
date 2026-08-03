@@ -29,6 +29,7 @@ export default eventHandler(async (event) => {
   if (!assetId.success || !body.success) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid rollback request' })
   }
+  const user = await requireAgencySearchAuthorityAccess(event, body.data.clientId)
   const target = await queryOne<RollbackRow>(`
     SELECT publication.client_id, site.content_hostname, publication.version_id,
       publication.manifest_version, publication.public_url, publication.measurement_enabled
@@ -43,7 +44,6 @@ export default eventHandler(async (event) => {
   if (!target?.content_hostname || !target.manifest_version) {
     throw createError({ statusCode: 404, statusMessage: 'Rollback publication not found' })
   }
-  const user = await requireAgencySearchAuthorityAccess(event, target.client_id)
   const bucket = resolveSearchAuthorityPublicationBucket(event)
   if (!bucket) throw createError({ statusCode: 503, statusMessage: 'Publication storage is unavailable' })
   const previous = await getCurrentSearchAuthorityManifest(bucket, target.content_hostname)

@@ -108,6 +108,7 @@ describe('Search Authority publishing routes', () => {
   it('requires tenant access and an approved immutable version for publishing', () => {
     const publish = route('publish.post.ts')
     expect(publish).toContain('requireAgencySearchAuthorityAccess')
+    expect(publish).toMatch(/await requireAgencySearchAuthorityAccess[\s\S]+await queryOne/)
     expect(publish).toMatch(/status[^\n]+approved/i)
     expect(publish).toContain('current_version_id')
     expect(publish).toContain('transaction')
@@ -115,6 +116,7 @@ describe('Search Authority publishing routes', () => {
 
   it('records audited rollback and never mutates a version object', () => {
     const rollback = route('rollback.post.ts')
+    expect(rollback).toMatch(/await requireAgencySearchAuthorityAccess[\s\S]+await queryOne/)
     expect(rollback).toContain('rollbackSearchAuthorityPublication')
     expect(rollback).toContain('search_authority_content_audit_events')
     expect(rollback).toContain('INSERT INTO search_authority_publications')

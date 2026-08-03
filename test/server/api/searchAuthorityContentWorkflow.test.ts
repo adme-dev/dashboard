@@ -18,4 +18,14 @@ describe('Search Authority content workflow routes', () => {
     expect(read('[id]/approve.post.ts')).toContain('transaction(db => approveContentVersion')
     expect(read('[id]/reject.post.ts')).toContain('transaction(db => rejectContentVersion')
   })
+
+  it('authorizes the supplied tenant before reading a content asset', () => {
+    for (const path of [
+      '[id].get.ts', '[id]/versions.post.ts', '[id]/submit.post.ts',
+      '[id]/approve.post.ts', '[id]/reject.post.ts'
+    ]) {
+      expect(read(path)).toMatch(/await requireAgencySearchAuthorityAccess[\s\S]+await queryOne/)
+      expect(read(path)).toMatch(/WHERE id = \$1 AND client_id = \$2/)
+    }
+  })
 })

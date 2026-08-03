@@ -33,6 +33,7 @@ export default eventHandler(async (event) => {
   if (!assetId.success || !body.success) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid publication request' })
   }
+  const user = await requireAgencySearchAuthorityAccess(event, body.data.clientId)
   const asset = await queryOne<PublishRow>(`
     SELECT asset.id, asset.client_id, asset.title, asset.slug, asset.status,
       asset.current_version_id, site.content_hostname, site.canonical_hostname,
@@ -46,7 +47,6 @@ export default eventHandler(async (event) => {
     WHERE asset.id = $1 AND asset.client_id = $2
   `, [assetId.data, body.data.clientId])
   if (!asset) throw createError({ statusCode: 404, statusMessage: 'Content asset not found' })
-  const user = await requireAgencySearchAuthorityAccess(event, asset.client_id)
   if (asset.status !== 'approved') {
     throw createError({ statusCode: 409, statusMessage: 'Only the current approved version can be published' })
   }

@@ -83,7 +83,9 @@ async function loadAsset() {
   if (!props.assetId) return
   loading.value = true
   try {
-    const detail = await $fetch<DetailResponse>(`/api/agency/search-authority/content/${props.assetId}`)
+    const detail = await $fetch<DetailResponse>(
+      `/api/agency/search-authority/content/${props.assetId}?clientId=${encodeURIComponent(props.clientId)}`
+    )
     const asset = detail.asset
     const currentId = field(asset, 'currentVersionId', 'current_version_id')
     const version = detail.versions.find(item => field(item, 'id', 'id') === currentId) || detail.versions[0]

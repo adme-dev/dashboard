@@ -1,4 +1,4 @@
-import type { SiteIntelligencePageStatus } from '~~/app/types/site-intelligence'
+type SiteIntelligencePageStatus = 'completed' | 'disallowed' | 'skipped' | 'errored' | 'cancelled'
 
 export type SearchAuthorityTrustSeverity = 'info' | 'low' | 'medium' | 'high' | 'critical'
 export type SearchAuthorityTrustOwner = 'xeroflow' | 'dealer_origin' | 'external_provider'
