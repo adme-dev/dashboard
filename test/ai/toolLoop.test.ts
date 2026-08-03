@@ -136,6 +136,7 @@ describe('runToolLoop (injected mock model)', () => {
   it('intersects the live registry with evaluated active catalog releases', async () => {
     const catalogRow: ActiveCatalogRow = {
       sourceType: 'pack',
+      isLatestPackVersion: true,
       releaseState: 'active',
       releaseId: '20000000-0000-4000-8000-000000000001',
       departmentId: '10000000-0000-4000-8000-000000000001',

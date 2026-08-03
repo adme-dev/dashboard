@@ -30,6 +30,7 @@ const tools = [
 function row(overrides: Partial<ActiveCatalogRow> = {}): ActiveCatalogRow {
   return {
     sourceType: 'pack',
+    isLatestPackVersion: true,
     releaseState: 'active',
     releaseId: '20000000-0000-4000-8000-000000000001',
     departmentId: '10000000-0000-4000-8000-000000000001',
@@ -102,7 +103,7 @@ describe('catalog runtime policy validation', () => {
 })
 
 describe('catalog rollout modes', () => {
-  it('treats an evaluated older release as stale when the latest pack version is draft and unevaluated', async () => {
+  it('preserves legacy intersection but denies latest-version coverage for old active and newer draft releases', async () => {
     const packVersions = [
       { pack_id: PACK_ID, pack_version_id: OLD_PACK_VERSION_ID, version: 1 },
       { pack_id: PACK_ID, pack_version_id: LATEST_PACK_VERSION_ID, version: 2 }
@@ -170,9 +171,23 @@ describe('catalog rollout modes', () => {
     )
 
     expect(queryRows).toHaveBeenCalledTimes(2)
-    expect(catalogRows).toEqual([])
-    expect(compose({ mode: 'pilot', catalogRows }).coverageStatus).toBe('legacy')
-    expect(compose({ mode: 'enforced', catalogRows }).coverageStatus).toBe('authenticated_core')
+    expect(catalogRows).toEqual([
+      expect.objectContaining({
+        packVersionId: OLD_PACK_VERSION_ID,
+        releaseState: 'active',
+        isLatestPackVersion: false
+      })
+    ])
+
+    const legacy = compose({ mode: 'legacy', catalogRows })
+    const pilot = compose({ mode: 'pilot', catalogRows })
+    const enforced = compose({ mode: 'enforced', catalogRows })
+    expect(legacy.tools.map(tool => tool.name)).toEqual(['get_finance_snapshot'])
+    expect(legacy.coverageStatus).toBe('governed')
+    expect(pilot.tools).toEqual(legacy.tools)
+    expect(pilot.coverageStatus).toBe(legacy.coverageStatus)
+    expect(enforced.tools.map(tool => tool.name)).toEqual(['search_knowledge', 'get_tasks'])
+    expect(enforced.coverageStatus).toBe('authenticated_core')
   })
 
   it('fails closed when the latest numeric pack version is ambiguous', async () => {
@@ -241,12 +256,13 @@ describe('catalog rollout modes', () => {
     }
   })
 
-  it('leaves non-pilot, revoked, stale, suspended, no-department, and no-row users on legacy behavior in pilot mode', () => {
+  it('uses the exact rollback composition for ineligible catalog rows in pilot mode', () => {
     for (const catalogRows of [[], [row({ releaseState: 'suspended' })], [row({ releaseState: 'retired' })]]) {
-      const result = compose({ mode: 'pilot', catalogRows })
-      expect(result.tools).toEqual(tools)
-      expect(result.coverageStatus).toBe('legacy')
-      expect(result.denials).toEqual([])
+      const legacy = compose({ mode: 'legacy', catalogRows })
+      const pilot = compose({ mode: 'pilot', catalogRows })
+      expect(pilot.tools).toEqual(legacy.tools)
+      expect(pilot.coverageStatus).toBe(legacy.coverageStatus)
+      expect(pilot.denials).toEqual(legacy.denials)
     }
   })
 
@@ -268,7 +284,8 @@ describe('catalog rollout modes', () => {
     const result = compose({ mode: 'enforced', catalogRows: [row({ releaseState: 'suspended' })] })
 
     expect(legacy.tools).toEqual([])
-    expect(pilot.tools).toEqual(tools)
+    expect(pilot.tools).toEqual(legacy.tools)
+    expect(pilot.coverageStatus).toBe(legacy.coverageStatus)
     expect(result.tools.map(tool => tool.name)).toEqual(['search_knowledge', 'get_tasks'])
     expect(result.denials).toContainEqual({
       toolName: 'get_finance_snapshot',
@@ -280,7 +297,7 @@ describe('catalog rollout modes', () => {
     })
   })
 
-  it('does not treat a standalone capability release as evaluated pack coverage', () => {
+  it('does not treat a standalone capability release as latest-pack coverage', () => {
     const capabilityOnly = [row({
       sourceType: 'capability',
       packVersionId: null,
@@ -295,7 +312,10 @@ describe('catalog rollout modes', () => {
       packMaxLatencyMs: null
     })]
 
-    expect(compose({ mode: 'pilot', catalogRows: capabilityOnly }).coverageStatus).toBe('legacy')
+    const legacy = compose({ mode: 'legacy', catalogRows: capabilityOnly })
+    const pilot = compose({ mode: 'pilot', catalogRows: capabilityOnly })
+    expect(pilot.tools).toEqual(legacy.tools)
+    expect(pilot.coverageStatus).toBe(legacy.coverageStatus)
     expect(compose({ mode: 'enforced', catalogRows: capabilityOnly }).coverageStatus)
       .toBe('authenticated_core')
   })

@@ -49,6 +49,8 @@ export type CatalogPermissionCeiling = PermissionGroup | 'AUTHENTICATED'
 
 export interface ActiveCatalogRow {
   sourceType: CatalogSourceType
+  /** Pack rows are marked against the deterministic latest numeric version preflight. */
+  isLatestPackVersion: boolean
   releaseState: CatalogControlReleaseState
   releaseId: string
   departmentId: string
@@ -122,9 +124,15 @@ function boundedNumber(value: number | string | null): number | null {
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null
 }
 
-function mapCatalogRow(row: ActiveCatalogDbRow): ActiveCatalogRow {
+function mapCatalogRow(
+  row: ActiveCatalogDbRow,
+  latestPackVersionIds: ReadonlySet<string>
+): ActiveCatalogRow {
   return {
     sourceType: row.source_type === 'capability' ? 'capability' : 'pack',
+    isLatestPackVersion: row.source_type === 'pack'
+      && row.pack_version_id != null
+      && latestPackVersionIds.has(row.pack_version_id),
     releaseState: row.release_state === 'pilot'
       || row.release_state === 'active'
       || row.release_state === 'suspended'
@@ -250,7 +258,6 @@ export async function loadCatalogControlRows(
        LEFT JOIN ai_capabilities capability ON capability.id = capability_version.capability_id
        LEFT JOIN ai_capability_tool_bindings binding ON binding.capability_version_id = capability_version.id
        WHERE pack_release.department_id = ANY($1::uuid[])
-         AND pack_release.pack_version_id = ANY($3::uuid[])
          AND pack_release.release_state IN ('pilot', 'active', 'suspended', 'retired')
          AND (
            pack_release.rollout_scope <> 'pilot'
@@ -339,13 +346,10 @@ export async function loadCatalogControlRows(
      UNION ALL
      SELECT * FROM active_capability_rows
      ORDER BY department_id, source_type, release_id, capability_sort_order, tool_sort_order`,
-    [departmentIds, userId, [...latestPackVersionIds]]
+    [departmentIds, userId]
   )
 
-  return rows
-    .filter(row => row.source_type === 'capability'
-      || (row.pack_version_id != null && latestPackVersionIds.has(row.pack_version_id)))
-    .map(mapCatalogRow)
+  return rows.map(row => mapCatalogRow(row, latestPackVersionIds))
 }
 
 /**
@@ -612,25 +616,29 @@ export function composeEffectiveAssistantTools<T extends { name: string, mutates
   input: EffectiveAssistantCompositionInput<T>
 ): GovernedCatalogComposition<T> {
   const runtimePolicy = resolveCatalogRuntimePolicy(input.runtimePolicy?.mode)
-  const hasEligiblePackRelease = input.catalogRows.some(row =>
+  const latestCatalogRows = input.catalogRows.filter(row =>
+    row.sourceType === 'capability' || row.isLatestPackVersion === true
+  )
+  const hasEligiblePackRelease = latestCatalogRows.some(row =>
     row.sourceType === 'pack'
     && (row.releaseState === 'pilot' || row.releaseState === 'active')
   )
+  const legacyComposed = composeGovernedCatalog(
+    input.rbacFilteredTools,
+    input.catalogRows,
+    input.grantedPermissionGroups
+  )
   const composed = runtimePolicy.mode === 'legacy'
-    ? composeGovernedCatalog(
-        input.rbacFilteredTools,
-        input.catalogRows,
-        input.grantedPermissionGroups
-      )
+    ? legacyComposed
     : hasEligiblePackRelease
       ? composeGovernedCatalog(
           input.rbacFilteredTools,
-          input.catalogRows,
+          latestCatalogRows,
           input.grantedPermissionGroups
         )
       : runtimePolicy.mode === 'enforced'
         ? authenticatedCoreComposition(input.rbacFilteredTools, runtimePolicy)
-        : legacyComposition(input.rbacFilteredTools)
+        : legacyComposed
   let tools = composed.tools
   const denials = [...composed.denials]
 

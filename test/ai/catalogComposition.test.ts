@@ -22,6 +22,7 @@ const tools = [
 function row(overrides: Partial<ActiveCatalogRow> = {}): ActiveCatalogRow {
   return {
     sourceType: 'pack',
+    isLatestPackVersion: true,
     releaseState: 'active',
     releaseId: '20000000-0000-4000-8000-000000000001',
     departmentId: DEPARTMENT_ID,
@@ -257,8 +258,8 @@ describe('loadCatalogControlRows', () => {
     expect(latestSql).toContain('DENSE_RANK() OVER')
     expect(latestSql).toContain('ORDER BY candidate.version DESC')
     const [sql, params] = queryRows.mock.calls[1]!
-    expect(params).toEqual([[DEPARTMENT_ID], USER_ID, [PACK_VERSION_ID]])
-    expect(sql).toContain('pack_release.pack_version_id = ANY($3::uuid[])')
+    expect(params).toEqual([[DEPARTMENT_ID], USER_ID])
+    expect(sql).not.toContain('pack_release.pack_version_id = ANY($3::uuid[])')
     expect(sql).toContain('release_state IN (\'pilot\', \'active\', \'suspended\', \'retired\')')
     expect(sql).toContain('ai_release_pilot_members')
     expect(sql).toContain('pilot_member.team_member_id = $2')

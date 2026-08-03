@@ -154,7 +154,7 @@ describe('resolvePersonalAssistantContext', () => {
     const catalogCall = vi.mocked(contextDb.queryRows).mock.calls.find(([sql]) =>
       sql.includes('WITH active_pack_rows')
     )
-    expect(catalogCall?.[1]).toEqual([[CREATIVE_ID, PRODUCTION_ID], USER_ID, [PACK_VERSION_ID]])
+    expect(catalogCall?.[1]).toEqual([[CREATIVE_ID, PRODUCTION_ID], USER_ID])
 
     const rendered = renderPersonalAssistantContext(context)
     expect(rendered).toContain('Governed personal assistant scope')
