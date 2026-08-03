@@ -77,6 +77,7 @@ The core pilot is complete only when every `Core` item below is checked and back
 - **2026-08-03:** Completed Task 1. Added a tenant-scoped readiness aggregator/API and reusable agency card. Five related files passed 17 tests; targeted ESLint and full Nuxt typecheck passed.
 - **2026-08-03:** Completed Task 4 engineering. Migration 333 was applied to Neon. Deterministic crawl, robots, canonical, explicit sitemap evidence, soft-404, JSON-LD price-parity and image checks now reconcile into a tenant-scoped findings ledger. Four focused files passed 11 tests and targeted ESLint passed. The repository-wide typecheck currently fails in unrelated pre-existing files; the typecheck log contains no errors for this slice.
 - **2026-08-03:** Completed Task 5 engineering. Migration 334 was applied to Neon. Added a public-HTTPS/owned-origin PageSpeed adapter with a 15-second hard ceiling, persistent normalized mobile evidence, tenant-scoped read/refresh APIs, explicit CrUX-field versus Lighthouse-lab presentation, and normal XeroFlow task handoff for open findings. Five focused files passed 14 tests and targeted ESLint passed. The repository-wide typecheck remains red only outside this slice.
+- **2026-08-03:** Completed Task 6 engineering. Migration 335 was applied to Neon. Added consented Sales Manager source interviews, append-only versions, evidence-bound claims, submit/approve/reject transitions, self-approval prevention and append-only audit events behind tenant-scoped routes. Three focused files passed 6 tests and targeted ESLint passed; the one slice-local type error found by the global check was corrected.
 
 ### Execution order and external gates
 
@@ -373,9 +374,9 @@ git commit -m "feat: expose technical trust monitoring"
 - Create: `server/api/agency/search-authority/content/index.post.ts`
 - Create: `server/api/agency/search-authority/content/[id].get.ts`
 - Create: `server/api/agency/search-authority/content/[id]/versions.post.ts`
+- Create: `server/api/agency/search-authority/content/[id]/submit.post.ts`
 - Create: `server/api/agency/search-authority/content/[id]/approve.post.ts`
 - Create: `server/api/agency/search-authority/content/[id]/reject.post.ts`
-- Modify: `app/types/index.ts`
 - Test: `test/config/searchAuthorityContentMigration.test.ts`
 - Test: `test/server/utils/searchAuthorityContentRepository.test.ts`
 - Test: `test/server/api/searchAuthorityContentWorkflow.test.ts`
@@ -384,19 +385,19 @@ git commit -m "feat: expose technical trust monitoring"
 - Produces: source interviews, immutable content versions, claim evidence, approval decisions and append-only audit events.
 - Consumes: Search Authority site, authenticated agency users and optional accepted opportunity/task IDs.
 
-- [ ] **Step 1: Recheck and reserve migration numbers**
+- [x] **Step 1: Recheck and reserve migration numbers**
 
 Rebase on current `origin/main` before reserving the two migration filenames. Renumber both content and trust migrations if another branch has occupied them.
 
-- [ ] **Step 2: Write failing lifecycle and immutability tests**
+- [x] **Step 2: Write failing lifecycle and immutability tests**
 
 Cover `draft → in_review → approved → published`, self-approval policy, rejected versions, editing after approval creating a new version, claim/source requirements and cross-tenant rejection.
 
-- [ ] **Step 3: Create the additive content schema**
+- [x] **Step 3: Create the additive content schema**
 
 Use separate tables for assets, source interviews, immutable versions, version claims, approval decisions, publications and audit events. A publication always references one approved version and an approved version body is never updated.
 
-- [ ] **Step 4: Implement strict contracts and repository transactions**
+- [x] **Step 4: Implement strict contracts and repository transactions**
 
 ```ts
 export interface ContentClaimInput {
@@ -409,16 +410,16 @@ export interface ContentClaimInput {
 
 Reject blank sources, unsupported schema types, unapproved vehicle specifications and duplicate live slugs.
 
-- [ ] **Step 5: Implement thin authenticated routes**
+- [x] **Step 5: Implement thin authenticated routes**
 
 Every mutation records actor, timestamp and source version. AI-generated draft metadata is optional and must record model/provider plus source IDs; it never changes lifecycle state.
 
-- [ ] **Step 6: Apply the migration, run tests and commit**
+- [x] **Step 6: Apply the migration, run tests and commit**
 
 Run: `pnpm exec vitest run test/config/searchAuthorityContentMigration.test.ts test/server/utils/searchAuthorityContentRepository.test.ts test/server/api/searchAuthorityContentWorkflow.test.ts`
 
 ```bash
-git add server/database/migrations/335_search_authority_content_workflow.sql server/utils/searchAuthority/contentContracts.ts server/utils/searchAuthority/contentRepository.ts server/api/agency/search-authority/content/index.get.ts server/api/agency/search-authority/content/index.post.ts server/api/agency/search-authority/content/[id].get.ts server/api/agency/search-authority/content/[id]/versions.post.ts server/api/agency/search-authority/content/[id]/approve.post.ts server/api/agency/search-authority/content/[id]/reject.post.ts app/types/index.ts test/config/searchAuthorityContentMigration.test.ts test/server/utils/searchAuthorityContentRepository.test.ts test/server/api/searchAuthorityContentWorkflow.test.ts
+git add server/database/migrations/335_search_authority_content_workflow.sql server/utils/searchAuthority/contentContracts.ts server/utils/searchAuthority/contentRepository.ts server/api/agency/search-authority/content/index.get.ts server/api/agency/search-authority/content/index.post.ts server/api/agency/search-authority/content/[id].get.ts server/api/agency/search-authority/content/[id]/versions.post.ts server/api/agency/search-authority/content/[id]/submit.post.ts server/api/agency/search-authority/content/[id]/approve.post.ts server/api/agency/search-authority/content/[id]/reject.post.ts test/config/searchAuthorityContentMigration.test.ts test/server/utils/searchAuthorityContentRepository.test.ts test/server/api/searchAuthorityContentWorkflow.test.ts docs/superpowers/plans/2026-08-03-knox-gwm-pilot-completion.md
 git commit -m "feat: add governed search content workflow"
 ```
 
