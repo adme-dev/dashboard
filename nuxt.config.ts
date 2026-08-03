@@ -84,6 +84,7 @@ export default defineNuxtConfig({
 
     // Database
     databaseUrl: process.env.DATABASE_URL || '',
+    pagespeedApiKey: process.env.PAGESPEED_API_KEY || '',
 
     // Security
     jwtSecret: process.env.JWT_SECRET || '',

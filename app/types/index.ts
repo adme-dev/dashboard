@@ -297,6 +297,56 @@ export interface SearchAuthorityOverview {
   }
 }
 
+export type SearchAuthorityPerformanceKind = 'field' | 'lab' | 'unavailable'
+export type SearchAuthorityPerformanceRating = 'good' | 'needs_improvement' | 'poor' | 'unavailable'
+
+export interface SearchAuthorityPerformanceMetric {
+  kind: SearchAuthorityPerformanceKind
+  value: number | null
+  unit: 'ms' | 'score'
+  rating: SearchAuthorityPerformanceRating
+  source: 'crux_url' | 'crux_origin' | 'lighthouse' | 'unavailable'
+}
+
+export interface SearchAuthorityPerformanceEvidence {
+  status: 'available' | 'partial' | 'unavailable'
+  reasonCode: string | null
+  url: string
+  strategy: 'mobile'
+  observedAt: string
+  providerAt: string | null
+  providerVersion: string | null
+  lcp: SearchAuthorityPerformanceMetric
+  inp: SearchAuthorityPerformanceMetric
+  cls: SearchAuthorityPerformanceMetric
+  field: Record<'lcp' | 'inp' | 'cls', SearchAuthorityPerformanceMetric>
+  lab: Record<'lcp' | 'inp' | 'cls', SearchAuthorityPerformanceMetric>
+}
+
+export interface SearchAuthorityTrustFinding {
+  id: string
+  pageId: string
+  pageUrl: string
+  checkKey: string
+  severity: 'info' | 'low' | 'medium' | 'high' | 'critical'
+  owner: 'xeroflow' | 'dealer_origin' | 'external_provider'
+  lifecycleStatus: 'open' | 'actioned' | 'resolved' | 'dismissed'
+  title: string
+  summary: string
+  evidence: Record<string, string | number | boolean | null>
+  recurrenceCount: number
+  taskId: string | null
+  firstSeenAt: string
+  lastSeenAt: string
+  performance: SearchAuthorityPerformanceEvidence | null
+}
+
+export interface SearchAuthorityTrustResponse {
+  generatedAt: string
+  performance: SearchAuthorityPerformanceEvidence[]
+  findings: SearchAuthorityTrustFinding[]
+}
+
 // ============================================
 // Kanban & Board Types
 // ============================================

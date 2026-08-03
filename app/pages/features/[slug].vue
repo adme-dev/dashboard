@@ -154,7 +154,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Technical Trust',
-        content: 'Prioritise bounded URL Inspection for important and changing pages, retain Google’s indexed-version verdicts, and surface data health clearly so crawl and indexing evidence is never confused with a live page test.'
+        content: 'Monitor status, robots, canonicals, sitemap evidence, structured-data parity, soft 404s, and image hygiene from bounded owned-site crawls. Mobile performance keeps CrUX field experience separate from Lighthouse lab tests, with unavailable provider evidence labelled honestly instead of shown as zero or passing.'
       },
       {
         title: 'Governed Content Workflow',

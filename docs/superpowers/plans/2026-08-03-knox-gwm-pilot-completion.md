@@ -76,6 +76,7 @@ The core pilot is complete only when every `Core` item below is checked and back
 - **2026-08-03:** Reconciled the approved PRD with production. Created isolated branch `agent/knox-pilot-completion-20260803`. Installed dependencies with Node 24.18.0. Baseline Search Authority and Site Intelligence suite passed: 12 files, 86 tests.
 - **2026-08-03:** Completed Task 1. Added a tenant-scoped readiness aggregator/API and reusable agency card. Five related files passed 17 tests; targeted ESLint and full Nuxt typecheck passed.
 - **2026-08-03:** Completed Task 4 engineering. Migration 333 was applied to Neon. Deterministic crawl, robots, canonical, explicit sitemap evidence, soft-404, JSON-LD price-parity and image checks now reconcile into a tenant-scoped findings ledger. Four focused files passed 11 tests and targeted ESLint passed. The repository-wide typecheck currently fails in unrelated pre-existing files; the typecheck log contains no errors for this slice.
+- **2026-08-03:** Completed Task 5 engineering. Migration 334 was applied to Neon. Added a public-HTTPS/owned-origin PageSpeed adapter with a 15-second hard ceiling, persistent normalized mobile evidence, tenant-scoped read/refresh APIs, explicit CrUX-field versus Lighthouse-lab presentation, and normal XeroFlow task handoff for open findings. Five focused files passed 14 tests and targeted ESLint passed. The repository-wide typecheck remains red only outside this slice.
 
 ### Execution order and external gates
 
@@ -314,12 +315,18 @@ git commit -m "feat: add deterministic search trust findings"
 ## Task 5: Add performance evidence and the trust-monitor workspace
 
 **Files:**
+- Create: `server/database/migrations/334_search_authority_performance_evidence.sql`
 - Create: `server/utils/searchAuthority/performanceEvidence.ts`
 - Create: `server/api/agency/search-authority/trust/findings.get.ts`
 - Create: `server/api/agency/search-authority/trust/refresh.post.ts`
+- Create: `server/api/agency/search-authority/trust/findings/[id]/task-link.post.ts`
 - Create: `app/components/search-authority/TrustFindingsTable.vue`
 - Create: `app/components/search-authority/TrustPerformanceCard.vue`
 - Modify: `app/components/search-authority/Workspace.vue`
+- Modify: `app/types/index.ts`
+- Modify: `app/pages/features/[slug].vue`
+- Modify: `nuxt.config.ts`
+- Test: `test/config/searchAuthorityPerformanceMigration.test.ts`
 - Test: `test/server/utils/searchAuthorityPerformanceEvidence.test.ts`
 - Test: `test/server/api/searchAuthorityTrustFindings.test.ts`
 - Test: `test/app/searchAuthorityTrustWorkspace.test.ts`
@@ -328,38 +335,38 @@ git commit -m "feat: add deterministic search trust findings"
 - Consumes: trust findings, optional PageSpeed/CrUX provider evidence and existing task handoff.
 - Produces: bounded refresh and read APIs that label `lab`, `field` and `unavailable` evidence explicitly.
 
-- [ ] **Step 1: Write failing performance parsing and API access tests**
+- [x] **Step 1: Write failing performance parsing and API access tests**
 
 ```ts
 expect(normalizePerformanceEvidence(input).lcp.kind).toBe('field')
 expect(normalizePerformanceEvidence({} as never).status).toBe('unavailable')
 ```
 
-- [ ] **Step 2: Implement a provider adapter with strict timeouts and URL policy**
+- [x] **Step 2: Implement a provider adapter with strict timeouts and URL policy**
 
 Inspect only allowlisted owned URLs, cap the number per run, store provider timestamp and raw-status metadata, and redact API keys/errors. A missing provider key or insufficient CrUX sample is `unavailable`, not zero or passing.
 
-- [ ] **Step 3: Add tenant-scoped findings/read-refresh endpoints**
+- [x] **Step 3: Add tenant-scoped findings/read-refresh endpoints**
 
 The refresh route requires an admin/operator and explicit client ID. It must reject competitor URLs for performance collection unless separately approved.
 
-- [ ] **Step 4: Build the trust UI**
+- [x] **Step 4: Build the trust UI**
 
 Show severity, check, page, ownership, evidence time, recurrence and action. Reuse the normal task dialog; do not create a parallel work-management system.
 
-- [ ] **Step 5: Run tests and commit**
+- [x] **Step 5: Run tests and commit**
 
 Run: `pnpm exec vitest run test/server/utils/searchAuthorityPerformanceEvidence.test.ts test/server/api/searchAuthorityTrustFindings.test.ts test/app/searchAuthorityTrustWorkspace.test.ts`
 
 ```bash
-git add server/utils/searchAuthority/performanceEvidence.ts server/api/agency/search-authority/trust/findings.get.ts server/api/agency/search-authority/trust/refresh.post.ts app/components/search-authority/TrustFindingsTable.vue app/components/search-authority/TrustPerformanceCard.vue app/components/search-authority/Workspace.vue test/server/utils/searchAuthorityPerformanceEvidence.test.ts test/server/api/searchAuthorityTrustFindings.test.ts test/app/searchAuthorityTrustWorkspace.test.ts
+git add server/database/migrations/334_search_authority_performance_evidence.sql server/utils/searchAuthority/performanceEvidence.ts server/api/agency/search-authority/trust/findings.get.ts server/api/agency/search-authority/trust/refresh.post.ts 'server/api/agency/search-authority/trust/findings/[id]/task-link.post.ts' app/components/search-authority/TrustFindingsTable.vue app/components/search-authority/TrustPerformanceCard.vue app/components/search-authority/Workspace.vue app/types/index.ts 'app/pages/features/[slug].vue' nuxt.config.ts test/config/searchAuthorityPerformanceMigration.test.ts test/server/utils/searchAuthorityPerformanceEvidence.test.ts test/server/api/searchAuthorityTrustFindings.test.ts test/app/searchAuthorityTrustWorkspace.test.ts docs/superpowers/plans/2026-08-03-knox-gwm-pilot-completion.md
 git commit -m "feat: expose technical trust monitoring"
 ```
 
 ## Task 6: Add the governed interview-to-approval content workflow
 
 **Files:**
-- Create: `server/database/migrations/334_search_authority_content_workflow.sql`
+- Create: `server/database/migrations/335_search_authority_content_workflow.sql`
 - Create: `server/utils/searchAuthority/contentContracts.ts`
 - Create: `server/utils/searchAuthority/contentRepository.ts`
 - Create: `server/api/agency/search-authority/content/index.get.ts`
@@ -411,7 +418,7 @@ Every mutation records actor, timestamp and source version. AI-generated draft m
 Run: `pnpm exec vitest run test/config/searchAuthorityContentMigration.test.ts test/server/utils/searchAuthorityContentRepository.test.ts test/server/api/searchAuthorityContentWorkflow.test.ts`
 
 ```bash
-git add server/database/migrations/334_search_authority_content_workflow.sql server/utils/searchAuthority/contentContracts.ts server/utils/searchAuthority/contentRepository.ts server/api/agency/search-authority/content/index.get.ts server/api/agency/search-authority/content/index.post.ts server/api/agency/search-authority/content/[id].get.ts server/api/agency/search-authority/content/[id]/versions.post.ts server/api/agency/search-authority/content/[id]/approve.post.ts server/api/agency/search-authority/content/[id]/reject.post.ts app/types/index.ts test/config/searchAuthorityContentMigration.test.ts test/server/utils/searchAuthorityContentRepository.test.ts test/server/api/searchAuthorityContentWorkflow.test.ts
+git add server/database/migrations/335_search_authority_content_workflow.sql server/utils/searchAuthority/contentContracts.ts server/utils/searchAuthority/contentRepository.ts server/api/agency/search-authority/content/index.get.ts server/api/agency/search-authority/content/index.post.ts server/api/agency/search-authority/content/[id].get.ts server/api/agency/search-authority/content/[id]/versions.post.ts server/api/agency/search-authority/content/[id]/approve.post.ts server/api/agency/search-authority/content/[id]/reject.post.ts app/types/index.ts test/config/searchAuthorityContentMigration.test.ts test/server/utils/searchAuthorityContentRepository.test.ts test/server/api/searchAuthorityContentWorkflow.test.ts
 git commit -m "feat: add governed search content workflow"
 ```
 
@@ -736,6 +743,7 @@ git commit -m "docs: complete Knox search authority pilot"
 | Action | Owner | Blocks | Safe handling |
 | --- | --- | --- | --- |
 | Rotate Browser Rendering token | XeroFlow Cloudflare owner | Owned/competitor crawl proof | Enter only through interactive Wrangler or Cloudflare dashboard |
+| Configure `PAGESPEED_API_KEY` | XeroFlow Google Cloud owner | Mobile lab/field evidence refresh | Restrict the key to the PageSpeed Insights API and store it only as a Pages secret |
 | Authorise Search Console read access | Knox/ADME Google property owner | Search baseline and opportunities | Use XeroFlow OAuth; no token sharing |
 | Approve Sales Manager source and claims | Knox Sales Manager/brand approver | First guide | Approval occurs against immutable version |
 | Create `learn` DNS record and validate certificate | Knox authorised DNS administrator | Public publisher | Use only the issued hostname target; no whole-site proxy |
