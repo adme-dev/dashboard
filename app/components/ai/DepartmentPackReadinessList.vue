@@ -176,6 +176,7 @@ function headingId(prefix: string, item: AiDepartmentReadinessItem, catalog: AiC
               :item="catalogFor(item)!"
               :runs="evaluationRuns ?? []"
               :heading-id="headingId('release', item, catalogFor(item)!)"
+              :evidence-unavailable="evaluationsPending || Boolean(evaluationsError)"
               @changed="emit('changed')"
             />
           </div>

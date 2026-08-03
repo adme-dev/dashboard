@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import type { AiCatalogGovernanceItem, AiCatalogReleaseState, AiEvaluationRunView } from '~/types/aiGovernance'
 
-const props = defineProps<{ item: AiCatalogGovernanceItem, runs: AiEvaluationRunView[], headingId?: string }>()
+const props = defineProps<{
+  item: AiCatalogGovernanceItem
+  runs: AiEvaluationRunView[]
+  headingId?: string
+  evidenceUnavailable?: boolean
+}>()
 const emit = defineEmits<{ changed: [] }>()
 
 const open = ref(false)
@@ -17,7 +22,7 @@ const headingId = computed(() => props.headingId ?? `release-${props.item.releas
 const latestEvaluation = computed(() => [...props.runs]
   .filter(run => run.materialIdentity.packVersionId === props.item.version.id)
   .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null)
-const evidenceStale = computed(() => !latestEvaluation.value || latestEvaluation.value.gatePassed !== true || latestEvaluation.value.materialIdentity.packVersionId !== props.item.version.id)
+const evidenceStale = computed(() => props.evidenceUnavailable || !latestEvaluation.value || latestEvaluation.value.gatePassed !== true || latestEvaluation.value.materialIdentity.packVersionId !== props.item.version.id)
 const canConfirm = computed(() => Boolean(target.value && reason.value.trim().length >= 10 && acknowledged.value && !pending.value))
 
 const nextTargets = computed(() => {
@@ -51,7 +56,12 @@ function errorMessage(caught: unknown) {
 }
 
 function isConflict(caught: unknown) {
-  return (caught as { data?: { code?: string } })?.data?.code === 'release_version_conflict'
+  const data = (caught as { data?: unknown })?.data
+  if (!data || typeof data !== 'object') return false
+  const serialized = (data as { data?: unknown }).data
+  return serialized != null
+    && typeof serialized === 'object'
+    && (serialized as { code?: unknown }).code === 'release_version_conflict'
 }
 
 async function transition() {

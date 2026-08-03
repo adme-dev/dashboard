@@ -87,7 +87,7 @@ describe('AI governance command centre', () => {
   it('refreshes after a release conflict and retries with the current expected timestamp', async () => {
     const state = reactive({ value: item() }); const changed = vi.fn()
     let attempts = 0
-    const fetchMock = vi.fn(async () => { attempts += 1; if (attempts === 1) throw { data: { code: 'release_version_conflict', statusMessage: 'Changed' } }; return { release: {} } })
+    const fetchMock = vi.fn(async () => { attempts += 1; if (attempts === 1) throw { data: { data: { code: 'release_version_conflict' }, statusMessage: 'Changed' } }; return { release: {} } })
     ;(globalThis as any).$fetch = fetchMock
     const host = document.createElement('div'); document.body.appendChild(host)
     const app = createApp({ render: () => h(CatalogReleasePanel, { item: state.value, runs: [], onChanged: changed }) }); Object.entries(stubs).forEach(([name, component]) => app.component(name, component)); app.mount(host)
@@ -130,6 +130,37 @@ describe('AI governance command centre', () => {
     const { app, host } = mount(DepartmentPackReadinessList, { items: [readinessItem('pack-a')], catalogItems: [item('pack-a', 'release-a')], evaluationRuns: [], catalogError: 'Catalog refresh failed', onRetryCatalog: retried }, vi.fn(), children)
     await flush(); expect(host.textContent).toContain('Catalog data may be stale'); expect(host.textContent).toContain('Release release-a'); click(host, 'Retry catalog'); expect(retried).toHaveBeenCalledTimes(1)
     app.unmount(); host.remove()
+  })
+
+  it('fails pilot promotion closed while evaluation evidence is pending or unavailable, without disabling suspend', async () => {
+    const passingRun: AiEvaluationRunView = {
+      id: 'passing-run', departmentId: item().department.id,
+      materialIdentity: { packVersionId: item().version.id, capabilityVersionId: null, evaluationSuiteVersionId: 'suite-1', modelProvider: 'anthropic', modelId: 'claude-sonnet-4-6', promptVersionDigest: 'a'.repeat(64), toolsetVersionDigest: 'b'.repeat(64) },
+      status: 'completed', gatePassed: true, caseCount: 2, passedCount: 2, failedCount: 0, humanReviewCount: 0, totalInputTokens: 2, totalOutputTokens: 2, totalCostUsdMicros: 10, startedAt: null, completedAt: '2026-08-03T00:00:01.000Z', createdAt: '2026-08-03T00:00:00.000Z'
+    }
+    const fetchMock = vi.fn(async () => ({ release: {} }))
+    const { app, host } = mount(CatalogReleasePanel, { item: item(), runs: [passingRun], evidenceUnavailable: true }, fetchMock)
+    const pilot = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Activate release'))!
+    const suspend = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Suspend release'))!
+    expect(pilot.disabled).toBe(true)
+    expect(suspend.disabled).toBe(false)
+    click(host, 'Suspend release'); await flush(); input(host, 'Audit reason', 'Suspend while fresh evaluation evidence is unavailable.'); check(host, 'I confirm this release transition'); await flush(); clickLast(host, 'Suspend release'); await flush()
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/releases/'), expect.objectContaining({ body: expect.objectContaining({ targetState: 'suspended' }) }))
+    app.unmount(); host.remove()
+  })
+
+  it('marks release evidence unavailable for both pending and stale-error evaluation resources', async () => {
+    const captured: boolean[] = []
+    const children = {
+      AiGovernanceEvaluationRunPanel: { template: '<div />' },
+      AiGovernancePilotMembershipDialog: { template: '<div />' },
+      AiGovernanceCatalogReleasePanel: { props: ['evidenceUnavailable'], setup(props: any) { captured.push(props.evidenceUnavailable); return () => h('div') } }
+    }
+    const pending = mount(DepartmentPackReadinessList, { items: [readinessItem('pack-a')], catalogItems: [item('pack-a')], evaluationRuns: [], evaluationsPending: true }, vi.fn(), children)
+    await flush(); pending.app.unmount(); pending.host.remove()
+    const failed = mount(DepartmentPackReadinessList, { items: [readinessItem('pack-a')], catalogItems: [item('pack-a')], evaluationRuns: [], evaluationsError: 'Latest evaluation refresh failed' }, vi.fn(), children)
+    await flush(); failed.app.unmount(); failed.host.remove()
+    expect(captured).toEqual([true, true])
   })
 
   it('explains why release controls are unavailable when no exact catalog identity was returned', async () => {
