@@ -42,4 +42,27 @@ describe('Search Authority cron worker registration', () => {
     expect(pagesConfig.vars?.NUXT_PUBLIC_SEARCH_AUTHORITY_ENABLED).toBe('true')
     expect(productionWorkflow).toContain('SEARCH_AUTHORITY_ENABLED: \'true\'')
   })
+
+  it('dispatches the optional Google Business performance refresh on its own offset', async () => {
+    const fetchMock = vi.fn(async () => ({
+      status: 200,
+      text: async () => '{"ok":true,"enabled":false,"queued":false}'
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await worker.scheduled(
+      { cron: '40 2 * * *' } as ScheduledController,
+      { APP_BASE_URL: 'https://app.example.com', CRON_SECRET: 'secret' },
+      {} as ExecutionContext
+    )
+
+    expect(ROUTES['40 2 * * *']).toEqual(['/api/cron/google-business-performance'])
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://app.example.com/api/cron/google-business-performance',
+      {
+        method: 'POST',
+        headers: { 'x-cron-secret': 'secret' }
+      }
+    )
+  })
 })

@@ -671,6 +671,8 @@ onMounted(async () => {
         :end-date="endDate"
       />
 
+      <SearchAuthorityGoogleBusinessEvidenceCard :client-id="selectedClientId" />
+
       <SearchAuthorityTrustPerformanceCard
         :evidence="trustResponse?.performance || []"
         :loading="loading"

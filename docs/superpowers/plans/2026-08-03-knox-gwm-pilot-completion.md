@@ -51,9 +51,9 @@ The core pilot is complete only when every `Core` item below is checked and back
 | Menu | Versioned GTM Menu Agent adds exactly one desktop/mobile Buying Guides link | Core | [ ] | Browser evidence across initial load and Next.js rerender |
 | Measurement | Guide view, CTA and test lead retain source/publication attribution | Core | [ ] | GA4/XeroFlow test journey without false self-referral |
 | Reporting | Stakeholder summary separates facts, recommendations, unavailable data and actions | Core | [ ] | Exported monthly pilot evidence pack |
-| GBP | Knox Google Business Profile account is connected and healthy | GBP | [ ] | Connected location or provider-access unavailability record |
-| GBP | Supported performance metrics are ingested | GBP | [ ] | Dated provider metrics or provider-access unavailability record |
-| GBP | One separately approved guide promotion publishes | GBP | [ ] | Provider post ID and audit event, or explicit deferral |
+| GBP | Knox Google Business Profile account is connected and healthy | GBP | [x] | Unavailable 3 August 2026: no Knox location is connected and production access/quota is not proven |
+| GBP | Supported performance metrics are ingested | GBP | [x] | Provider-ready ingestion is deployed behind a disabled flag; live evidence deferred with provider access |
+| GBP | One separately approved guide promotion publishes | GBP | [x] | Explicitly deferred until the Knox location, Google approval/quota and a separate human-approved promotion exist |
 | Productisation | A second automotive client can be onboarded without schema/code changes | Follow-on | [ ] | Repeated onboarding using the same templates after Knox acceptance |
 
 ### Production evidence recorded 3 August 2026
@@ -82,6 +82,7 @@ The core pilot is complete only when every `Core` item below is checked and back
 - **2026-08-03:** Completed Task 8 engineering. Added a deterministic, HTML-escaping publisher; immutable hash-verified R2 objects; manifest-only activation and rollback; tenant-scoped publish/rollback routes; and a standalone host-allowlisted Cloudflare Worker with real 404s, security headers and a fail-closed deploy wrapper. Five focused files passed 14 tests, targeted ESLint and the generated Cloudflare Worker type contract passed, and the named Wrangler deployment completed a 6.22 KiB dry-run bundle against the approved R2 binding. DNS, a human-approved Knox guide and live rollback proof remain production acceptance gates.
 - **2026-08-03:** Completed Task 9 engineering. Migration 338 was applied to Neon, including an append-only site audit trigger. Added a public-ID configuration contract, tenant-scoped agency controls, a heartbeat explicitly labelled as non-proof, and a versioned Menu Agent that inserts only text links into bounded selectors, deduplicates shared responsive menus, observes rerenders for at most 30 seconds, polls the remote kill switch and removes only its own nodes. Four focused files passed 13 tests and targeted ESLint passed. Full Nuxt typecheck found one slice-local return-type error in the heartbeat endpoint; it was corrected. GTM publication and live browser proof remain production acceptance gates.
 - **2026-08-03:** Completed Task 10 engineering. Migration 339 was applied to Neon so each immutable publication records whether first-party measurement was actually embedded. Approved guides can now load the existing XeroFlow tag from the allowlisted app origin, carry version-specific UTM handoff markers, and report deduplicated guide views, CTA handoffs, direct leads, assisted leads, unknown linkage and aggregate GA4 landing-page evidence. Version activation time prevents shared canonical URLs from double-counting. Agency reporting includes a copy-only, review-required PMax brief and no Ads mutation; portal reporting omits raw queries and internal evidence. Seven focused files passed 20 tests, targeted ESLint, Worker typecheck and a 6.27 KiB named publisher dry run passed. Full Nuxt typecheck reached only the known unrelated backlog after the earlier slice-local issue was fixed. A live journey remains a production acceptance gate.
+- **2026-08-03:** Completed Task 11 engineering and closed the optional GBP track as unavailable, not live. Google documents the separate `businessprofileperformance.googleapis.com/v1` service, `business.manage` scope and a possible zero-quota approval gate. Migration 340 was applied to Neon with composite tenant/account integrity. Added fixed-origin, documented-metric-only 90-day ingestion, token refresh through the existing social credential path, redacted failure reasons, a disabled-by-default daily cron and an agency evidence card that never fills missing dates with inferred values. Seven focused files passed 17 tests, targeted ESLint and full Nuxt typecheck passed. Knox still has no connected GBP location; both performance collection and promotion remain explicitly deferred until provider access, quota, connection health and a separate approval are proven.
 
 ### Execution order and external gates
 
@@ -661,27 +662,31 @@ git commit -m "feat: connect search authority outcomes"
 - Consumes: existing `social_accounts` Google Business connection and approved publication URL.
 - Produces: supported dated location metrics and a separately approved promotion through the existing social publishing provider.
 
-- [ ] **Step 1: Confirm Google production approval and quota before enabling**
+- [x] **Step 1: Confirm Google production approval and quota before enabling**
 
 If unavailable, record the provider status and keep `GOOGLE_BUSINESS_PUBLISHING_ENABLED=false`. This closes the GBP track as explicitly unavailable without blocking the core pilot.
 
-- [ ] **Step 2: Write failing provider, normalization and cron tests**
+Recorded 3 August 2026: Knox has no connected Google Business Profile location, and no production approval/quota evidence is available. Publishing and performance activation remain off; the GBP track is explicitly unavailable for this pilot release.
+
+- [x] **Step 2: Write failing provider, normalization and cron tests**
 
 Only documented provider metrics may be stored. Missing dates/metrics remain unavailable and are not backfilled as zero.
 
-- [ ] **Step 3: Implement least-privilege performance ingestion**
+- [x] **Step 3: Implement least-privilege performance ingestion**
 
 Refresh tokens through the existing Google credential flow, scope by client/location, store metric name/date/value plus provider freshness, and redact tokens/provider bodies from errors.
 
-- [ ] **Step 4: Add the scheduled refresh only after connection health is proven**
+- [x] **Step 4: Add the scheduled refresh only after connection health is proven**
 
 Use a dedicated daily offset in `pages-cron`; the endpoint must no-op safely while the global flag is false.
 
-- [ ] **Step 5: Publish one separately approved guide promotion**
+- [x] **Step 5: Explicitly defer the separately approved guide promotion**
 
 Create the draft through the existing social composer, require the normal approval path, publish to the connected Knox location and record the provider post ID.
 
-- [ ] **Step 6: Run tests and commit**
+Deferred: no connected Knox location or proven provider access exists. No draft was auto-created and no provider write was attempted.
+
+- [x] **Step 6: Run tests and commit**
 
 Run: `pnpm exec vitest run test/social/googleBusinessPerformance.test.ts test/server/api/googleBusinessPerformanceCron.test.ts test/social/googleBusinessPublishing.test.ts`
 
