@@ -115,6 +115,8 @@ export default defineNuxtConfig({
     aiLoopModel: process.env.AI_LOOP_MODEL || 'groq/openai/gpt-oss-120b', // Option 2: Groq open-source default
     // Fallback was kimi-k2 but Groq returns 404 for it (not on the account) — gpt-oss-20b is the valid sibling.
     aiLoopFallbackModel: process.env.AI_LOOP_FALLBACK_MODEL || 'groq/openai/gpt-oss-20b',
+    // Governed catalog rollout remains private and fails back to legacy for missing/unknown values.
+    aiGovernedCatalogMode: process.env.AI_GOVERNED_CATALOG_MODE || 'legacy',
     // Inferred personal-memory distillation (Phase-0 WS-A.8b) — OFF by default. When enabled, the
     // chat engine distils ≤3 durable memories per turn fire-and-forget. Hard gate per the build loop.
     aiMemoryDistillEnabled: process.env.AI_MEMORY_DISTILL_ENABLED === 'true',

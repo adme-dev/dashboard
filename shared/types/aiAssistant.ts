@@ -43,6 +43,8 @@ export interface MyAssistantActivePackView {
 }
 
 export interface MyAssistantAuthorityView {
+  runtimeMode: 'legacy' | 'pilot' | 'enforced'
+  coverageStatus: 'legacy' | 'governed' | 'authenticated_core'
   currentRole: string
   readOnly: boolean
   permissionGroups: string[]
@@ -68,6 +70,7 @@ export interface MyAssistantToolRestrictionView {
 }
 
 export interface MyAssistantView extends MyAssistantConfig {
+  observedMemoryEnabled: boolean
   authority: MyAssistantAuthorityView
   tools: MyAssistantToolView[]
   restrictions: MyAssistantToolRestrictionView[]

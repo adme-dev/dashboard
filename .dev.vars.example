@@ -37,6 +37,7 @@ RESEND_API_KEY=re_your_resend_api_key
 # ============================================
 # Get from: https://console.groq.com/keys
 GROQ_API_KEY=gsk_your_groq_api_key
+AI_GOVERNED_CATALOG_MODE=legacy
 
 # ============================================
 # Optional: Monday.com Integration

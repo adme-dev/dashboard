@@ -73,6 +73,22 @@ const restrictions = computed(() => config.value?.restrictions ?? [])
 const prettyTool = (t: string) => t.replace(/^(propose_|get_)/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 const prettyKey = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 const roleLabel = computed(() => authority.value ? prettyKey(authority.value.currentRole) : '')
+const rolloutModeLabel = computed(() => {
+  const mode = authority.value?.runtimeMode ?? 'legacy'
+  return mode === 'enforced' ? 'Enforced rollout' : mode === 'pilot' ? 'Pilot rollout' : 'Legacy rollback'
+})
+const coverageLabel = computed(() => {
+  const status = authority.value?.coverageStatus
+  if (status === 'governed') return 'Governed catalog'
+  if (status === 'authenticated_core') return 'Authenticated core tools'
+  return 'Legacy role-based tools'
+})
+const coverageDescription = computed(() => {
+  const status = authority.value?.coverageStatus
+  if (status === 'governed') return 'Only tools in active or assigned-pilot evaluated releases are available.'
+  if (status === 'authenticated_core') return 'No active evaluated pack covers this scope, so only the authenticated core may be available after role and personal restrictions.'
+  return 'Your existing role-based tool access applies while this rollout mode is in effect.'
+})
 const clientScopeLabel = computed(() => authority.value?.clientScope.mode === 'all_active'
   ? 'All active clients'
   : `${authority.value?.clientScope.assignments.length ?? 0} assigned client${authority.value?.clientScope.assignments.length === 1 ? '' : 's'}`)
@@ -182,12 +198,13 @@ async function save() {
             Capability policy
           </p>
           <p class="mt-1 text-sm font-semibold text-highlighted">
-            {{ authority?.catalogMode === 'governed' ? 'Governed catalog' : 'Core role-based tools' }}
+            {{ coverageLabel }}
           </p>
           <p class="mt-2 text-xs text-muted">
-            {{ authority?.catalogMode === 'governed'
-              ? 'Only tools in active or assigned-pilot evaluated releases are available.'
-              : 'No governed pack release is active for this scope yet.' }}
+            {{ coverageDescription }}
+          </p>
+          <p class="mt-2 text-xs text-muted">
+            Runtime: {{ rolloutModeLabel }} ({{ authority?.runtimeMode }}) · Coverage: {{ authority?.coverageStatus }}
           </p>
         </section>
       </div>
@@ -235,7 +252,7 @@ async function save() {
           </div>
         </template>
         <div v-if="!authority?.activePacks.length" class="py-5 text-sm text-muted">
-          No evaluated departmental pack is active or assigned to you as a pilot yet. Your existing role-based assistant remains available.
+          No evaluated departmental pack is active or assigned to you as a pilot yet. The capability policy above shows the access available in the current rollout mode.
         </div>
         <ul v-else class="divide-y divide-default">
           <li v-for="pack in authority.activePacks" :key="`${pack.key}:${pack.version}:${pack.departmentName}`" class="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
@@ -283,7 +300,7 @@ async function save() {
             Remember helpful details about you
           </p>
           <p class="mt-0.5 text-xs text-muted">
-            Lets the assistant recall your accounts, preferences and routines between chats. Turn off to keep every chat fresh.
+            Controls whether saved personal details and preferences can be recalled between chats. Turn off to keep every chat fresh.
           </p>
         </div>
         <USwitch v-model="memoryEnabled" />
@@ -293,19 +310,26 @@ async function save() {
     <!-- What I've learned from your work (Observe & Learn W-3) -->
     <UCard>
       <template #header>
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between gap-3">
           <h2 class="text-sm font-semibold text-highlighted">
             What I’ve learned from your work
           </h2>
-          <span class="text-xs text-muted">{{ observedMemories.length }} learned</span>
+          <UBadge :color="config?.observedMemoryEnabled ? 'success' : 'neutral'" variant="soft" size="sm">
+            {{ config?.observedMemoryEnabled ? 'Observe and learn is on' : 'Observe and learn is off' }}
+          </UBadge>
         </div>
       </template>
-      <p class="mb-3 text-xs text-muted">
-        Routines and facts the assistant noticed from your activity in the platform. These are private to you — remove anything you’d rather it didn’t keep.
+      <p v-if="config?.observedMemoryEnabled" class="mb-3 text-xs text-muted">
+        Private observations previously retained for you appear here. You can remove anything you would rather the assistant forget.
+      </p>
+      <p v-else class="mb-3 text-xs text-muted">
+        Automatic routine learning is not running. Existing private observations remain visible so you can review or remove them.
       </p>
 
       <div v-if="!observedMemories.length" class="py-6 text-center text-sm text-muted">
-        Nothing learned yet. As you work, the assistant will pick up your recurring routines here.
+        {{ config?.observedMemoryEnabled
+          ? 'No private observations have been retained.'
+          : 'No private observations are stored, and automatic routine learning is off.' }}
       </div>
       <ul v-else class="divide-y divide-default">
         <li v-for="m in observedMemories" :key="m.id" class="flex items-start justify-between gap-4 py-2.5">

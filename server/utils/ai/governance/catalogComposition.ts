@@ -1,5 +1,46 @@
+import type { H3Event } from 'h3'
 import { queryRows as realQueryRows } from '~~/server/utils/db'
 import { PERMISSION_GROUPS, type PermissionGroup } from '~~/server/utils/permissions'
+
+export type AssistantCatalogRuntimeMode = 'legacy' | 'pilot' | 'enforced'
+export type AssistantCatalogCoverageStatus = 'legacy' | 'governed' | 'authenticated_core'
+
+export interface CatalogRuntimePolicy {
+  mode: AssistantCatalogRuntimeMode
+  authenticatedCoreTools: readonly ['search_knowledge', 'get_tasks']
+}
+
+const AUTHENTICATED_CORE_TOOLS = ['search_knowledge', 'get_tasks'] as const
+
+/** Validate server configuration into the only runtime-policy shape admitted downstream. */
+export function resolveCatalogRuntimePolicy(configuredMode: unknown): CatalogRuntimePolicy {
+  const mode: AssistantCatalogRuntimeMode = configuredMode === 'pilot' || configuredMode === 'enforced'
+    ? configuredMode
+    : 'legacy'
+  return { mode, authenticatedCoreTools: AUTHENTICATED_CORE_TOOLS }
+}
+
+/**
+ * Resolve private request-time Cloudflare bindings before Nuxt's private runtime config. Browser
+ * input is deliberately absent from this boundary, and malformed/missing values fail to legacy.
+ */
+export function resolveServerCatalogRuntimePolicy(
+  event?: H3Event,
+  runtimeConfig?: { aiGovernedCatalogMode?: unknown }
+): CatalogRuntimePolicy {
+  const cloudflareMode = (event?.context as any)?.cloudflare?.env?.AI_GOVERNED_CATALOG_MODE
+  let configuredMode = runtimeConfig?.aiGovernedCatalogMode
+  if (configuredMode === undefined && cloudflareMode === undefined) {
+    try {
+      configuredMode = (useRuntimeConfig(event) as { aiGovernedCatalogMode?: unknown })
+        .aiGovernedCatalogMode
+    } catch {
+      // Unit/non-Nuxt callers continue to the process fallback below.
+    }
+  }
+  configuredMode ??= process.env.AI_GOVERNED_CATALOG_MODE
+  return resolveCatalogRuntimePolicy(cloudflareMode ?? configuredMode)
+}
 
 export type CatalogSourceType = 'pack' | 'capability'
 export type CatalogAccessMode = 'read' | 'draft' | 'propose'
@@ -299,6 +340,7 @@ export interface CatalogBudgetCeiling {
 
 export interface GovernedCatalogComposition<T> {
   mode: 'legacy' | 'governed'
+  coverageStatus: AssistantCatalogCoverageStatus
   tools: T[]
   instructionsPreamble: string
   budget: CatalogBudgetCeiling | null
@@ -347,6 +389,7 @@ export function composeGovernedCatalog<T extends { name: string, mutates?: boole
   if (catalogRows.length === 0) {
     return {
       mode: 'legacy',
+      coverageStatus: 'legacy',
       tools: rbacFilteredTools,
       instructionsPreamble: '',
       budget: null,
@@ -457,6 +500,7 @@ export function composeGovernedCatalog<T extends { name: string, mutates?: boole
 
   return {
     mode: 'governed',
+    coverageStatus: 'governed',
     tools,
     instructionsPreamble: [...preambles.values()].join('\n\n'),
     budget,
@@ -479,17 +523,65 @@ export interface EffectiveAssistantCompositionInput<T> {
   personaToolAllowlist?: readonly string[]
   disabledTools?: readonly string[]
   readOnly?: boolean
+  /** Validated private server policy. Omission preserves the safe legacy rollout behavior. */
+  runtimePolicy?: CatalogRuntimePolicy
+}
+
+function legacyComposition<T>(tools: T[]): GovernedCatalogComposition<T> {
+  return {
+    mode: 'legacy',
+    coverageStatus: 'legacy',
+    tools,
+    instructionsPreamble: '',
+    budget: null,
+    releaseIds: [],
+    departmentIds: [],
+    packVersionIds: [],
+    capabilityVersionIds: [],
+    modelFeatureKeys: [],
+    denials: []
+  }
+}
+
+function authenticatedCoreComposition<T extends { name: string }>(
+  rbacFilteredTools: T[],
+  runtimePolicy: CatalogRuntimePolicy
+): GovernedCatalogComposition<T> {
+  const core = new Set<string>(runtimePolicy.authenticatedCoreTools)
+  const tools = rbacFilteredTools.filter(tool => core.has(tool.name))
+  return {
+    ...legacyComposition(tools),
+    coverageStatus: 'authenticated_core',
+    denials: rbacFilteredTools
+      .filter(tool => !core.has(tool.name))
+      .map(tool => ({ toolName: tool.name, reason: 'not_in_active_catalog' as const }))
+  }
 }
 
 /** Apply every configuration layer after RBAC strictly by subtraction, preserving denial evidence. */
 export function composeEffectiveAssistantTools<T extends { name: string, mutates?: boolean }>(
   input: EffectiveAssistantCompositionInput<T>
 ): GovernedCatalogComposition<T> {
-  const composed = composeGovernedCatalog(
-    input.rbacFilteredTools,
-    input.catalogRows,
-    input.grantedPermissionGroups
+  const runtimePolicy = resolveCatalogRuntimePolicy(input.runtimePolicy?.mode)
+  const hasEligiblePackRelease = input.catalogRows.some(row =>
+    row.sourceType === 'pack'
+    && (row.releaseState === 'pilot' || row.releaseState === 'active')
   )
+  const composed = runtimePolicy.mode === 'legacy'
+    ? composeGovernedCatalog(
+        input.rbacFilteredTools,
+        input.catalogRows,
+        input.grantedPermissionGroups
+      )
+    : hasEligiblePackRelease
+      ? composeGovernedCatalog(
+          input.rbacFilteredTools,
+          input.catalogRows,
+          input.grantedPermissionGroups
+        )
+      : runtimePolicy.mode === 'enforced'
+        ? authenticatedCoreComposition(input.rbacFilteredTools, runtimePolicy)
+        : legacyComposition(input.rbacFilteredTools)
   let tools = composed.tools
   const denials = [...composed.denials]
 

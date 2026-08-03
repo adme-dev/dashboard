@@ -2,10 +2,12 @@ import type { H3Event } from 'h3'
 import { queryOne as realQueryOne, queryRows as realQueryRows } from '~~/server/utils/db'
 import { PERMISSION_GROUPS, SYSTEM_ROLE_PERMISSIONS, type PermissionGroup } from '~~/server/utils/permissions'
 import {
-  composeGovernedCatalog,
+  composeEffectiveAssistantTools,
   loadCatalogControlRows,
+  resolveServerCatalogRuntimePolicy,
   type ActiveCatalogRow,
-  type CatalogCompositionDb
+  type CatalogCompositionDb,
+  type CatalogRuntimePolicy
 } from './governance/catalogComposition'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -59,6 +61,10 @@ export interface PersonalAssistantClientAssignment {
 
 export interface PersonalAssistantContext {
   identity: { userId: string, role: string }
+  /** Private server-owned rollout policy resolved once for this request/turn. */
+  runtimePolicy: CatalogRuntimePolicy
+  /** Whether automatic observe-and-learn distillation is enabled server-side. */
+  observedMemoryEnabled: boolean
   permissionGroups: PermissionGroup[]
   isReadOnly: boolean
   departments: PersonalAssistantDepartment[]
@@ -211,7 +217,12 @@ function mapAssignment(row: ClientAssignmentRow): PersonalAssistantClientAssignm
  * caller-supplied role. Every downstream layer may subtract from this context; none may expand it.
  */
 export async function resolvePersonalAssistantContext(
-  input: { userId: string, event?: H3Event },
+  input: {
+    userId: string
+    event?: H3Event
+    runtimePolicy?: CatalogRuntimePolicy
+    observedMemoryEnabled?: boolean
+  },
   db: PersonalAssistantContextDb = defaultDb
 ): Promise<PersonalAssistantContext> {
   if (!UUID_PATTERN.test(input.userId)) {
@@ -340,11 +351,19 @@ export async function resolvePersonalAssistantContext(
     })
   }
   const activePacks = [...activePackMap.values()]
-  const catalogInstructionsPreamble = composeGovernedCatalog([], catalogRows, permissionGroups)
+  const runtimePolicy = input.runtimePolicy ?? resolveServerCatalogRuntimePolicy(input.event)
+  const catalogInstructionsPreamble = composeEffectiveAssistantTools({
+    rbacFilteredTools: [],
+    catalogRows,
+    grantedPermissionGroups: permissionGroups,
+    runtimePolicy
+  })
     .instructionsPreamble
 
   return {
     identity: { userId: identity.id, role: identity.role },
+    runtimePolicy,
+    observedMemoryEnabled: input.observedMemoryEnabled === true,
     permissionGroups,
     isReadOnly: permissions.isReadOnly,
     departments,

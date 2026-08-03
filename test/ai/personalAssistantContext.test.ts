@@ -7,11 +7,16 @@ import type {
   PersonalAssistantAdmissionError,
   PersonalAssistantContextDb
 } from '~~/server/utils/ai/personalAssistantContext'
+import type { CatalogRuntimePolicy } from '~~/server/utils/ai/governance/catalogComposition'
 
 const USER_ID = '50000000-0000-4000-8000-000000000001'
 const CREATIVE_ID = '10000000-0000-4000-8000-000000000001'
 const PRODUCTION_ID = '10000000-0000-4000-8000-000000000002'
 const CLIENT_ID = '60000000-0000-4000-8000-000000000001'
+const pilotPolicy: CatalogRuntimePolicy = {
+  mode: 'pilot',
+  authenticatedCoreTools: ['search_knowledge', 'get_tasks']
+}
 
 function db(overrides: Partial<PersonalAssistantContextDb> = {}): PersonalAssistantContextDb {
   return {
@@ -100,7 +105,11 @@ describe('resolvePersonalAssistantContext', () => {
   it('composes minimal multi-department, manager, client, preference, and active-pack context', async () => {
     const contextDb = db()
 
-    const context = await resolvePersonalAssistantContext({ userId: USER_ID }, contextDb)
+    const context = await resolvePersonalAssistantContext({
+      userId: USER_ID,
+      runtimePolicy: pilotPolicy,
+      observedMemoryEnabled: false
+    }, contextDb)
 
     expect(context.identity).toEqual({ userId: USER_ID, role: 'creative' })
     expect(context.permissionGroups).toEqual(['CREATIVE'])
@@ -134,6 +143,8 @@ describe('resolvePersonalAssistantContext', () => {
       releaseState: 'active'
     }])
     expect(context.catalogRows).toHaveLength(1)
+    expect(context.runtimePolicy).toBe(pilotPolicy)
+    expect(context.observedMemoryEnabled).toBe(false)
 
     const catalogCall = vi.mocked(contextDb.queryRows).mock.calls.find(([sql]) =>
       sql.includes('WITH active_pack_rows')
@@ -169,10 +180,15 @@ describe('resolvePersonalAssistantContext', () => {
     const queryRows = vi.fn()
     const contextDb = db({ queryOne, queryRows })
 
-    await expect(resolvePersonalAssistantContext({ userId: USER_ID }, contextDb))
-      .rejects.toMatchObject<Partial<PersonalAssistantAdmissionError>>({
-        code: 'assistant_identity_inactive'
-      })
+    for (const mode of ['legacy', 'pilot', 'enforced'] as const) {
+      await expect(resolvePersonalAssistantContext({
+        userId: USER_ID,
+        runtimePolicy: { ...pilotPolicy, mode }
+      }, contextDb))
+        .rejects.toMatchObject<Partial<PersonalAssistantAdmissionError>>({
+          code: 'assistant_identity_inactive'
+        })
+    }
     expect(queryRows).not.toHaveBeenCalled()
     expect(contextDb.resolvePermissions).not.toHaveBeenCalled()
   })

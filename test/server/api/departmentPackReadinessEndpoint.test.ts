@@ -10,6 +10,7 @@ describe('GET /api/admin/ai/governance/readiness', () => {
   const requirePermission = vi.fn()
   const setResponseHeader = vi.fn()
   const getReadiness = vi.fn()
+  const getRuntimePolicy = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -26,10 +27,19 @@ describe('GET /api/admin/ai/governance/readiness', () => {
       items: [],
       unmappedDepartments: []
     })
+    getRuntimePolicy.mockReturnValue({
+      mode: 'pilot',
+      authenticatedCoreTools: ['search_knowledge', 'get_tasks']
+    })
   })
 
   function handler() {
-    return createDepartmentPackReadinessGetHandler({ requirePermission, setResponseHeader, getReadiness })
+    return createDepartmentPackReadinessGetHandler({
+      requirePermission,
+      setResponseHeader,
+      getReadiness,
+      getRuntimePolicy
+    })
   }
 
   it('requires company governance permission and returns uncached readiness', async () => {
@@ -39,6 +49,8 @@ describe('GET /api/admin/ai/governance/readiness', () => {
     expect(requirePermission).toHaveBeenCalledWith(event, 'ADMIN')
     expect(setResponseHeader).toHaveBeenCalledWith(event, 'Cache-Control', 'private, no-store')
     expect(getReadiness).toHaveBeenCalledOnce()
+    expect(getRuntimePolicy).toHaveBeenCalledWith(event)
+    expect(result.runtimeMode).toBe('pilot')
     expect(result.summary).toMatchObject({ total: 12, blocked: 11 })
   })
 

@@ -12,6 +12,11 @@ const context: PersonalAssistantContext = {
   },
   permissionGroups: ['CREATIVE'],
   isReadOnly: true,
+  runtimePolicy: {
+    mode: 'enforced',
+    authenticatedCoreTools: ['search_knowledge', 'get_tasks']
+  },
+  observedMemoryEnabled: false,
   departments: [{
     departmentId: '10000000-0000-4000-8000-000000000001',
     name: 'Creative',
@@ -79,7 +84,10 @@ describe('buildMyAssistantExplainability', () => {
       personaKey: 'marketing',
       disabledTools: ['search_knowledge'],
       memoryEnabled: false,
+      observedMemoryEnabled: false,
       authority: {
+        runtimeMode: 'enforced',
+        coverageStatus: 'authenticated_core',
         currentRole: 'creative',
         readOnly: true,
         permissionGroups: ['CREATIVE'],
@@ -122,7 +130,7 @@ describe('buildMyAssistantExplainability', () => {
       currentFocusReason: 'personal_disabled'
     }])
     expect(view.restrictions).toEqual(expect.arrayContaining([
-      expect.objectContaining({ toolName: 'create_task', reason: 'read_only' }),
+      expect.objectContaining({ toolName: 'create_task', reason: 'not_in_active_catalog' }),
       expect.objectContaining({ toolName: 'search_knowledge', reason: 'personal_disabled' })
     ]))
     expect(view.restrictions.every(item => item.message.length > 20)).toBe(true)
@@ -137,5 +145,16 @@ describe('buildMyAssistantExplainability', () => {
 
     expect(view.authority.clientScope).toEqual({ mode: 'all_active', assignments: [] })
     expect(JSON.stringify(view)).not.toContain('Example Client')
+  })
+
+  it('reports explicit memory separately from disabled observe-and-learn', () => {
+    const view = buildMyAssistantExplainability({
+      ...context,
+      preferences: { ...context.preferences, memoryEnabled: true },
+      observedMemoryEnabled: false
+    }, tools)
+
+    expect(view.memoryEnabled).toBe(true)
+    expect(view.observedMemoryEnabled).toBe(false)
   })
 })

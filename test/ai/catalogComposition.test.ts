@@ -50,6 +50,7 @@ describe('composeGovernedCatalog', () => {
     const composed = composeGovernedCatalog(tools, [], ['MEDIA_BUYING'])
 
     expect(composed.mode).toBe('legacy')
+    expect(composed.coverageStatus).toBe('legacy')
     expect(composed.tools).toEqual(tools)
     expect(composed.instructionsPreamble).toBe('')
   })
@@ -222,10 +223,15 @@ describe('composeEffectiveAssistantTools', () => {
       grantedPermissionGroups: ['MEDIA_BUYING'],
       personaToolAllowlist: ['get_budget_health', 'propose_budget_change'],
       disabledTools: ['get_budget_health'],
-      readOnly: true
+      readOnly: true,
+      runtimePolicy: {
+        mode: 'pilot',
+        authenticatedCoreTools: ['search_knowledge', 'get_tasks']
+      }
     })
 
     expect(composed.tools).toEqual([])
+    expect(composed.coverageStatus).toBe('governed')
     expect(composed.denials).toEqual(expect.arrayContaining([
       { toolName: 'search_knowledge', reason: 'persona_narrowed' },
       { toolName: 'propose_budget_change', reason: 'read_only' },

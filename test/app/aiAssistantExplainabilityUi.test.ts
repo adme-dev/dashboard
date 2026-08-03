@@ -25,4 +25,13 @@ describe('My Assistant explainability UI', () => {
     expect(page).toContain('escalationManagerName')
     expect(page).toContain('pack.version')
   })
+
+  it('truthfully separates rollout coverage, explicit memory, and observe-and-learn state', () => {
+    expect(page).toContain('authority?.runtimeMode')
+    expect(page).toContain('authority?.coverageStatus')
+    expect(page).toContain('config?.observedMemoryEnabled')
+    expect(page).toContain('Observe and learn is off')
+    expect(page).toContain('Automatic routine learning is not running')
+    expect(page).not.toContain('As you work, the assistant will pick up your recurring routines here.')
+  })
 })

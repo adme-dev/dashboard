@@ -5,17 +5,25 @@ import {
   getDepartmentPackReadiness,
   type DepartmentPackReadinessResult
 } from '~~/server/utils/ai/governance/departmentPackReadiness'
+import {
+  resolveServerCatalogRuntimePolicy,
+  type CatalogRuntimePolicy
+} from '~~/server/utils/ai/governance/catalogComposition'
 
 interface DepartmentPackReadinessGetDependencies {
   requirePermission(event: H3Event, permission: 'ADMIN'): Promise<User>
   setResponseHeader(event: H3Event, name: string, value: string): void
   getReadiness(): Promise<DepartmentPackReadinessResult>
+  getRuntimePolicy(event: H3Event): CatalogRuntimePolicy
 }
 
 const defaultDependencies: DepartmentPackReadinessGetDependencies = {
   requirePermission,
   setResponseHeader,
-  getReadiness: getDepartmentPackReadiness
+  getReadiness: getDepartmentPackReadiness,
+  getRuntimePolicy(event) {
+    return resolveServerCatalogRuntimePolicy(event, useRuntimeConfig(event) as any)
+  }
 }
 
 export function createDepartmentPackReadinessGetHandler(
@@ -26,7 +34,11 @@ export function createDepartmentPackReadinessGetHandler(
     dependencies.setResponseHeader(event, 'Cache-Control', 'private, no-store')
 
     try {
-      return await dependencies.getReadiness()
+      const readiness = await dependencies.getReadiness()
+      return {
+        ...readiness,
+        runtimeMode: dependencies.getRuntimePolicy(event).mode
+      }
     } catch (error) {
       if (error instanceof DepartmentPackReadinessError) {
         throw createError({

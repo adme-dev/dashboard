@@ -166,12 +166,18 @@ describe('runToolLoop (injected mock model)', () => {
       seed: 'c1',
       model: textModel('Done.'),
       catalogRows: [catalogRow],
-      permissionGroups: ['FINANCE']
+      permissionGroups: ['FINANCE'],
+      runtimePolicy: {
+        mode: 'pilot',
+        authenticatedCoreTools: ['search_knowledge', 'get_tasks']
+      }
     })
 
     expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
       metadata: expect.objectContaining({
         catalogMode: 'governed',
+        catalogRuntimeMode: 'pilot',
+        catalogCoverageStatus: 'governed',
         catalogReleaseIds: [catalogRow.releaseId],
         toolCount: 1
       })

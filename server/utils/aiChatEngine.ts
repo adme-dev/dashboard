@@ -12,6 +12,7 @@ import {
   resolvePersonalAssistantContext
 } from '~~/server/utils/ai/personalAssistantContext'
 import { fetchScopedMentionedEntities } from '~~/server/utils/ai/mentionedEntityContext'
+import { resolveServerCatalogRuntimePolicy } from '~~/server/utils/ai/governance/catalogComposition'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
 export interface ChatResponse {
@@ -222,10 +223,20 @@ export async function processUserMessage(
   room?: { officeId: string, meetingId?: string, presentUserIds?: string[], transcriptTail?: string },
 ): Promise<ChatResponse> {
   const startTime = Date.now()
+  const cfg = useRuntimeConfig(event) as any
+  const cloudflareEnv = (event?.context as any)?.cloudflare?.env
+  const runtimePolicy = resolveServerCatalogRuntimePolicy(event, cfg)
   // Re-admit the actor from current server state for every turn. This is the authority source for
   // role, departments, clients, personal narrowing, and evaluated catalog releases; the role passed
   // by older callers is deliberately not trusted as the runtime authorization decision.
-  const assistantContext = await resolvePersonalAssistantContext({ userId, event })
+  const assistantContext = await resolvePersonalAssistantContext({
+    userId,
+    event,
+    runtimePolicy,
+    observedMemoryEnabled: String(
+      cloudflareEnv?.AI_OBSERVE_ENABLED ?? cfg.aiObserveEnabled ?? false
+    ) === 'true'
+  })
   const effectiveUserRole = assistantContext.identity.role
   const agentConfig = assistantContext.preferences
   // Persona = one skill-pack per turn (narrows tools ∩ RBAC + a focus preamble). An explicit arg (chat
@@ -402,7 +413,6 @@ export async function processUserMessage(
   // 7a. GATE → gated tool-calling loop (Slice 1, behind AI_TOOLS_ENABLED). Trivial chit-chat keeps
   // the existing fast path; data/action intents route through the agentic loop. Failures degrade
   // to the existing single-shot path below.
-  const cfg = useRuntimeConfig() as any
   let proposedAction: { proposalId: string, resolved: unknown, toolName?: string } | null = null
   let toolTrace: Array<{ name: string, args: unknown }> = []
   let usedToolLoop = false
@@ -472,6 +482,7 @@ export async function processUserMessage(
                   disabledTools: agentConfig.disabledTools,
                   catalogRows: assistantContext.catalogRows,
                   permissionGroups: assistantContext.permissionGroups,
+                  runtimePolicy: assistantContext.runtimePolicy,
                   catalogInstructionsAlreadyIncluded: true,
                   featureKey: 'agency_ai_l2_specialist_loop',
                   requestId: conversationId,
@@ -538,6 +549,7 @@ export async function processUserMessage(
           disabledTools: agentConfig.disabledTools,
           catalogRows: assistantContext.catalogRows,
           permissionGroups: assistantContext.permissionGroups,
+          runtimePolicy: assistantContext.runtimePolicy,
           catalogInstructionsAlreadyIncluded: true,
         })
         aiContent = loop.text

@@ -9,7 +9,8 @@ import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 import { resolveAiModelAssignment, type RuntimeModelProvider } from '~~/server/utils/ai/modelAssignments'
 import {
   composeEffectiveAssistantTools,
-  type ActiveCatalogRow
+  type ActiveCatalogRow,
+  type CatalogRuntimePolicy
 } from '~~/server/utils/ai/governance/catalogComposition'
 import type { PermissionGroup } from '~~/server/utils/permissions'
 
@@ -117,6 +118,8 @@ export async function runToolLoop(opts: {
   catalogRows?: ActiveCatalogRow[]
   /** Current server-resolved permissions used as an additional catalog capability gate. */
   permissionGroups?: PermissionGroup[]
+  /** Private server-validated rollout policy resolved during turn admission. */
+  runtimePolicy?: CatalogRuntimePolicy
   /** Avoid repeating the catalog preamble when a caller already included it for its fast path. */
   catalogInstructionsAlreadyIncluded?: boolean
   /** Model Ops telemetry metadata. Content/prompts are never recorded. */
@@ -140,7 +143,8 @@ export async function runToolLoop(opts: {
     grantedPermissionGroups: opts.permissionGroups ?? [],
     personaToolAllowlist: persona.toolAllowlist,
     readOnly: opts.readOnly,
-    disabledTools: opts.disabledTools
+    disabledTools: opts.disabledTools,
+    runtimePolicy: opts.runtimePolicy
   })
   const tools = composition.tools
   const sdkTools = toSdkTools(tools, opts.ctx, opts.seed)
@@ -224,6 +228,8 @@ export async function runToolLoop(opts: {
       readOnly: Boolean(opts.readOnly),
       toolCount: tools.length,
       catalogMode: composition.mode,
+      catalogRuntimeMode: opts.runtimePolicy?.mode ?? 'legacy',
+      catalogCoverageStatus: composition.coverageStatus,
       catalogReleaseIds: composition.releaseIds,
       catalogPackVersionIds: composition.packVersionIds,
       catalogCapabilityVersionIds: composition.capabilityVersionIds,

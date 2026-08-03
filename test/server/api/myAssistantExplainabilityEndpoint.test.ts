@@ -9,6 +9,12 @@ describe('GET /api/agency/ai/my-assistant', () => {
     const requireAuth = vi.fn().mockResolvedValue(user)
     const resolvePersonalAssistantContext = vi.fn().mockResolvedValue(context)
     const buildMyAssistantExplainability = vi.fn().mockReturnValue(response)
+    const runtimePolicy = {
+      mode: 'pilot' as const,
+      authenticatedCoreTools: ['search_knowledge', 'get_tasks'] as const
+    }
+    const getRuntimePolicy = vi.fn().mockReturnValue(runtimePolicy)
+    const getObservedMemoryEnabled = vi.fn().mockReturnValue(false)
     const tools = [{ name: 'search_knowledge', description: 'Search knowledge.' }]
     const { createMyAssistantGetHandler } = await import(
       '~~/server/api/agency/ai/my-assistant.get'
@@ -18,6 +24,8 @@ describe('GET /api/agency/ai/my-assistant', () => {
       requireAuth,
       resolvePersonalAssistantContext,
       buildMyAssistantExplainability,
+      getRuntimePolicy,
+      getObservedMemoryEnabled,
       tools
     })
 
@@ -25,7 +33,9 @@ describe('GET /api/agency/ai/my-assistant', () => {
     expect(requireAuth).toHaveBeenCalledWith(event)
     expect(resolvePersonalAssistantContext).toHaveBeenCalledWith({
       userId: user.id,
-      event
+      event,
+      runtimePolicy,
+      observedMemoryEnabled: false
     })
     expect(buildMyAssistantExplainability).toHaveBeenCalledWith(context, tools)
   })
