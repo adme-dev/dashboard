@@ -91,6 +91,46 @@ describe('God mode reconciliation', () => {
     expect(h.deps.appendTerminalAndClose).not.toHaveBeenCalled()
   })
 
+  it('never reconciles a dispatched supplemental execution to failed without a bounded provider result', async () => {
+    const lookup = reconciliationModule.lookupGodModeExecutionOutcome
+    await expect(lookup(candidate({
+      channel: 'mcp',
+      routeOrTool: 'start_music_generation',
+      state: 'ambiguous',
+      executionPhase: 'dispatched',
+      executionMetadata: { supplemental: true },
+      resultReference: null
+    }))).resolves.toEqual({ state: 'unknown' })
+  })
+
+  it('reconciles a captured supplemental result by its bounded durable reference', async () => {
+    const lookup = reconciliationModule.lookupGodModeExecutionOutcome
+    await expect(lookup(candidate({
+      channel: 'mcp',
+      routeOrTool: 'start_music_generation',
+      state: 'ambiguous',
+      executionPhase: 'result_captured',
+      executionMetadata: { supplemental: true },
+      resultReference: 'music-job-7'
+    }), {
+      getAudioAsset: vi.fn(async () => ({ id: 'music-job-7', status: 'queued' }))
+    } as any)).resolves.toEqual({ state: 'succeeded', resultReference: 'music-job-7' })
+  })
+
+  it('keeps a captured music result unknown when bounded provider lookup cannot find the job', async () => {
+    const lookup = reconciliationModule.lookupGodModeExecutionOutcome
+    await expect(lookup(candidate({
+      channel: 'mcp',
+      routeOrTool: 'start_music_generation',
+      state: 'ambiguous',
+      executionPhase: 'result_captured',
+      executionMetadata: { supplemental: true },
+      resultReference: 'music-job-missing'
+    }), {
+      getAudioAsset: vi.fn(async () => null)
+    } as any)).resolves.toEqual({ state: 'unknown' })
+  })
+
   it('is idempotent when a terminal already exists', async () => {
     const h = harness()
     vi.mocked(h.deps.findTerminal).mockResolvedValue({ phase: 'succeeded', outcomeCode: 'executed' })

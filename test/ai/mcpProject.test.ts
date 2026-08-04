@@ -223,6 +223,32 @@ describe('authoritative registered MCP suite projection', () => {
       .toThrow(/exactly one MCP execution resolver.*get_overview/i)
   })
 
+  it('fails closed when a local-transactional resolver has no transaction-aware executor', () => {
+    const localTool = tool({
+      name: 'future_local_write',
+      description: 'Synthetic local write requiring an atomic transaction.',
+      mutates: true
+    })
+    const invalidLocalSuite: RegisteredMcpSuite = {
+      key: 'invalid-local-suite',
+      project: () => [{
+        name: localTool.name,
+        description: localTool.description,
+        inputSchema: z.toJSONSchema(localTool.parameters) as Record<string, unknown>
+      }],
+      executions: () => [{
+        name: localTool.name,
+        canonicalName: localTool.name,
+        kind: 'supplemental',
+        executionClass: 'local-transactional',
+        tool: localTool
+      }]
+    }
+
+    expect(() => resolveGodModeMcpExecutions(context, [...registeredMcpSuites, invalidLocalSuite]))
+      .toThrow(/transaction-aware executor/i)
+  })
+
   it('keeps ordinary projection governed by suite flags, role permissions, and signed scopes', () => {
     const names = projectRegisteredMcpTools(context).map(tool => tool.name)
 
@@ -230,6 +256,26 @@ describe('authoritative registered MCP suite projection', () => {
     expect(names).not.toContain('create_task')
     expect(names).not.toContain('generate_voiceover')
     expect(names).not.toContain('propose_create_task')
+  })
+
+  it('advertises remember to ordinary callers only when the signed write scope is present', () => {
+    const readOnly = projectRegisteredMcpTools({
+      ...context,
+      tools: applicationRegistry,
+      role: 'owner',
+      scopes: ['mcp:read'],
+      requireWriteScope: true
+    }).map(tool => tool.name)
+    const writable = projectRegisteredMcpTools({
+      ...context,
+      tools: applicationRegistry,
+      role: 'owner',
+      scopes: ['mcp:read', 'mcp:write'],
+      requireWriteScope: true
+    }).map(tool => tool.name)
+
+    expect(readOnly).not.toContain('remember')
+    expect(writable).toContain('remember')
   })
 
   it('preserves the legacy ordinary manifest order, descriptions, and first-wins confirm definition', () => {
@@ -249,6 +295,11 @@ describe('authoritative registered MCP suite projection', () => {
     }
     const legacyAssembled = [
       ...projectReadOnlyTools(applicationRegistry, 'admin'),
+      ...applicationRegistry.filter(tool => tool.directMutation).map(tool => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: z.toJSONSchema(tool.parameters) as Record<string, unknown>
+      })),
       ...generationModule.projectGenerationTools('admin', true),
       ...writeModule.projectWriteTools(applicationRegistry, 'admin', true),
       ...videoModule.projectVideoTools('admin', { suite: true, gen: true }),

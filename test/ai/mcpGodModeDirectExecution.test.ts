@@ -133,6 +133,7 @@ describe('God mode MCP direct execution adapter', () => {
     ['propose_budget_change', 'catalog', true, 'propose_budget_change'],
     ['propose_create_task', 'catalog', true, 'create_task'],
     ['propose_team_memory', 'catalog', true, 'propose_team_memory']
+    ,['remember', 'supplemental', true, 'remember']
   ] as const)('routes %s through its sole %s resolver', async (name, kind, _mutates, canonicalName) => {
     const requestEvent = event()
     const authority = await ownerAuthority(requestEvent)
@@ -180,6 +181,41 @@ describe('God mode MCP direct execution adapter', () => {
       }))
       expect(executeResolvedMutation).not.toHaveBeenCalled()
     }
+  })
+
+  it('routes remember through the local transactional mutation coordinator with owner scope-bypass audit', async () => {
+    const requestEvent = event()
+    const authority = await ownerAuthority(requestEvent)
+    const descriptor = resolveGodModeMcpExecution({
+      tools: registry,
+      role: 'owner',
+      scopes: ['mcp:read'],
+      requireWriteScope: true,
+      suiteFlags: { generation: false, writes: false, financial: false, video: false, videoGeneration: false, banners: false }
+    }, 'remember')!
+    const executeResolvedMutation = vi.fn(async () => ({ ok: true as const, data: { remembered: true } }))
+    const execute = createGodModeMcpCallExecutor({
+      resolveExecution: vi.fn(() => descriptor),
+      executeWrite: vi.fn() as any,
+      executeRead: vi.fn() as any,
+      executeResolvedMutation: executeResolvedMutation as any
+    })
+
+    await execute({
+      event: requestEvent,
+      claim: { ...claim(['mcp:read']), toolName: 'remember' },
+      authority,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      toolName: 'remember',
+      args: { content: 'Reports are always in AUD' },
+      requireWriteScope: true
+    })
+
+    expect(descriptor).toMatchObject({ kind: 'supplemental', executionClass: 'local-transactional' })
+    expect(executeResolvedMutation).toHaveBeenCalledWith(expect.objectContaining({
+      executionClass: 'local-transactional',
+      bypassedControls: expect.arrayContaining(['mcp_scope'])
+    }))
   })
 
   it('rejects a subject mismatch or structural authority clone before either execution path', async () => {

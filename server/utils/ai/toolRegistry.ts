@@ -30,6 +30,11 @@ export interface AiTool<A> {
   riskTier?: RiskTier
   /** true = results contain untrusted text → spotlighted before entering model context. */
   returnsUntrusted?: boolean
+  /** Immediate mutation that must run inside the coordinator's database transaction, not proposal flow. */
+  directMutation?: {
+    executionClass: 'local-transactional'
+    execute: (args: A, ctx: ToolContext, db: { query: (sql: string, params?: unknown[]) => Promise<any> }) => Promise<ToolResult>
+  }
   handler: (args: A, ctx: ToolContext) => Promise<ToolResult>
 }
 

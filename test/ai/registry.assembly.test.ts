@@ -32,7 +32,7 @@ const SHARED_MEMORY_WRITES = ['propose_team_memory']
 const OPS_AUTOPILOT_READS = ['check_pacing', 'check_brief_completeness']
 // Read-coverage expansion (sub-project 1): CRM/leads/listening/inbox/EDM reads — auto-projected over MCP.
 const READ_COVERAGE_TOOLS = ['search_crm', 'get_crm_pipeline', 'get_leads', 'get_social_listening', 'get_social_inbox', 'get_email_campaign_performance', 'recommend_social_news']
-// remember = personal-memory capture (non-mutating; available to every authed role).
+// remember = immediate personal-memory mutation; MCP coordinates it transactionally without confirmation.
 const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, ...CRM_WRITES, ...CRM_READS, ...FINANCE_WRITES, ...CREATIVE_READS, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES, ...OPS_AUTOPILOT_READS, ...READ_COVERAGE_TOOLS, 'remember']
 
 describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2 writes)', () => {
@@ -48,9 +48,9 @@ describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2
     }
   })
 
-  it('the mutating tools are exactly the propose→confirm writes', () => {
+  it('classifies proposal writes and the immediate transactional memory write as mutations', () => {
     expect(registry.filter(t => t.mutates).map(t => t.name).sort()).toEqual(
-      [...WRITE_TOOLS, ...DELIVERY_TOOLS, ...CRM_WRITES, ...FINANCE_WRITES, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES].sort())
+      [...WRITE_TOOLS, ...DELIVERY_TOOLS, ...CRM_WRITES, ...FINANCE_WRITES, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES, 'remember'].sort())
   })
 
   it('RBAC filter hides FINANCE/CLIENTS tools from a low-privilege role but keeps create_task', () => {

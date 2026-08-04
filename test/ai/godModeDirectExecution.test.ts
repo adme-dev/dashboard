@@ -16,6 +16,7 @@ import { listRegisteredGodModeMutationFamilies } from '~~/server/utils/godMode/f
 import { registerGodModeChatMutationFamily } from '~~/server/utils/ai/godModeMutationFamily'
 import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
 import { markTrustedPreDispatchError } from '~~/server/utils/ai/executionErrorProvenance'
+import { resolveGenerationMcpExecutions } from '~~/server/utils/ai/mcp/generationTools'
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111'
 const OTHER_ID = '22222222-2222-4222-8222-222222222222'
@@ -38,6 +39,7 @@ function harness(options: {
   attemptError?: Error
   terminalError?: Error
   failedAuditError?: Error
+  progressErrorAt?: string
   expectedIdempotencyKey?: string
 } = {}) {
   const toolName = options.toolName ?? 'create_task'
@@ -136,7 +138,10 @@ function harness(options: {
         resultDigest: input.resultDigest ?? current.resultDigest
       })
     }),
-    recordExecutionProgress: vi.fn(async () => undefined),
+    recordExecutionProgress: vi.fn(async input => {
+      calls.push(`progress:${input.phase}`)
+      if (options.progressErrorAt === input.phase) throw new Error(`progress ${input.phase} unavailable`)
+    }),
     installInternalExecutionDelegator: vi.fn(() => { calls.push('delegation') }),
     transaction: vi.fn(async callback => callback({ query: vi.fn() } as any)),
     enqueueTerminalAudit: vi.fn(async () => true),
@@ -255,6 +260,236 @@ describe('God mode direct execution', () => {
     const audits = vi.mocked(h.deps.appendAudit).mock.calls.map(([audit]) => audit)
     expect(audits.map(audit => audit.phase)).toEqual(['attempt', 'bypass', 'succeeded'])
     expect(audits.every(audit => audit.bypassedControls.includes('mcp_scope'))).toBe(true)
+    expect(h.calls.indexOf('progress:dispatched')).toBeLessThan(h.calls.indexOf('progress:result_captured'))
+  })
+
+  it('fails a supplemental provider preflight before dispatch with no side effect', async () => {
+    const idempotencyKey = `mcp:${'1'.repeat(64)}`
+    const h = harness({ expectedIdempotencyKey: idempotencyKey })
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    const provider = vi.fn(async () => ok({ jobId: 'job-1' }))
+
+    await expect(createTrustedMcpGodModeResolvedMutationExecutor(h.deps)({
+      event: authorityEvent,
+      authenticatedUserId: OWNER_ID,
+      authority,
+      sessionDigest: 'b'.repeat(64),
+      toolName: 'start_music_generation',
+      args: { prompt: 'Warm acoustic bed' },
+      idempotencyKey,
+      tool: {
+        name: 'start_music_generation',
+        description: 'Start music generation.',
+        parameters: z.object({ prompt: z.string() }),
+        mutates: true,
+        handler: provider
+      },
+      preflight: resolveGenerationMcpExecutions().find(row => row.name === 'start_music_generation')!.preflight
+    } as any)).rejects.toMatchObject({ statusCode: 503, statusMessage: 'Music generation provider is unavailable.' })
+
+    expect(provider).not.toHaveBeenCalled()
+    expect(h.calls).not.toContain('progress:dispatched')
+    expect(h.ledger.get(idempotencyKey)?.state).toBe('failed')
+    expect(h.deps.appendAudit).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'failed', outcomeCode: 'provider_unavailable' }),
+      expect.anything()
+    )
+  })
+
+  it('marks music dispatched only after the real queue preflight and captures a queued result', async () => {
+    const idempotencyKey = `mcp:${'7'.repeat(64)}`
+    const h = harness({ expectedIdempotencyKey: idempotencyKey })
+    const send = vi.fn(async () => undefined)
+    const authorityEvent = {
+      ...event(),
+      context: { cloudflare: { env: { MUSIC_QUEUE: { send } } } }
+    } as any
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    const provider = vi.fn(async () => {
+      await send({ assetId: 'music-job-7' })
+      return ok({ jobId: 'music-job-7', status: 'queued' })
+    })
+    const execution = resolveGenerationMcpExecutions().find(row => row.name === 'start_music_generation')!
+
+    await expect(createTrustedMcpGodModeResolvedMutationExecutor(h.deps)({
+      event: authorityEvent,
+      authenticatedUserId: OWNER_ID,
+      authority,
+      sessionDigest: 'b'.repeat(64),
+      toolName: 'start_music_generation',
+      args: { prompt: 'Warm acoustic bed' },
+      idempotencyKey,
+      executionClass: execution.executionClass,
+      preflight: execution.preflight,
+      tool: {
+        ...execution.tool,
+        parameters: z.object({ prompt: z.string() }),
+        handler: provider
+      }
+    })).resolves.toEqual(ok({ jobId: 'music-job-7', status: 'queued' }))
+
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(h.calls.indexOf('progress:dispatched')).toBeLessThan(h.calls.indexOf('progress:result_captured'))
+    expect(h.ledger.get(idempotencyKey)).toMatchObject({ state: 'succeeded', resultReference: 'music-job-7' })
+  })
+
+  it('keeps a supplemental action ambiguous when dispatch throws and never redispatches on retry', async () => {
+    const idempotencyKey = `mcp:${'2'.repeat(64)}`
+    const h = harness({ expectedIdempotencyKey: idempotencyKey })
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    const provider = vi.fn(async () => { throw new Error('response lost after queue accepted') })
+    const executeResolved = createTrustedMcpGodModeResolvedMutationExecutor(h.deps)
+    const request = {
+      event: authorityEvent,
+      authenticatedUserId: OWNER_ID,
+      authority,
+      sessionDigest: 'b'.repeat(64),
+      toolName: 'start_music_generation',
+      args: { prompt: 'Warm acoustic bed' },
+      idempotencyKey,
+      tool: {
+        name: 'start_music_generation', description: 'Start music generation.',
+        parameters: z.object({ prompt: z.string() }), mutates: true, handler: provider
+      }
+    }
+
+    await expect(executeResolved(request as any)).resolves.toEqual({ ok: false, error: 'Action outcome is pending reconciliation.' })
+    await expect(executeResolved(request as any)).resolves.toEqual({ ok: false, error: 'Action outcome is pending reconciliation.' })
+    expect(provider).toHaveBeenCalledTimes(1)
+    expect(h.calls).toContain('progress:dispatched')
+    expect(h.ledger.get(idempotencyKey)?.state).toBe('ambiguous')
+  })
+
+  it('captures a supplemental result durably before terminal bookkeeping', async () => {
+    const idempotencyKey = `mcp:${'3'.repeat(64)}`
+    const h = harness({ expectedIdempotencyKey: idempotencyKey, terminalError: new Error('terminal audit unavailable') })
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    const provider = vi.fn(async () => ok({ jobId: 'job-3', status: 'queued' }))
+    const executeResolved = createTrustedMcpGodModeResolvedMutationExecutor(h.deps)
+    const request = {
+      event: authorityEvent, authenticatedUserId: OWNER_ID, authority, sessionDigest: 'b'.repeat(64),
+      toolName: 'start_music_generation', args: { prompt: 'Warm acoustic bed' }, idempotencyKey,
+      tool: {
+        name: 'start_music_generation', description: 'Start music generation.',
+        parameters: z.object({ prompt: z.string() }), mutates: true, handler: provider
+      }
+    }
+
+    await expect(executeResolved(request as any)).resolves.toEqual({ ok: false, error: 'Action outcome is pending reconciliation.' })
+    await expect(executeResolved(request as any)).resolves.toEqual({ ok: false, error: 'Action outcome is pending reconciliation.' })
+    expect(provider).toHaveBeenCalledTimes(1)
+    expect(h.calls).toContain('progress:result_captured')
+    expect(h.ledger.get(idempotencyKey)).toMatchObject({ state: 'ambiguous', resultReference: 'job-3' })
+  })
+
+  it('marks provider success ambiguous if durable result capture fails and never redispatches', async () => {
+    const idempotencyKey = `mcp:${'4'.repeat(64)}`
+    const h = harness({ expectedIdempotencyKey: idempotencyKey, progressErrorAt: 'result_captured' })
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    const provider = vi.fn(async () => ok({ jobId: 'job-4', status: 'queued' }))
+    const executeResolved = createTrustedMcpGodModeResolvedMutationExecutor(h.deps)
+    const request = {
+      event: authorityEvent, authenticatedUserId: OWNER_ID, authority, sessionDigest: 'b'.repeat(64),
+      toolName: 'start_music_generation', args: { prompt: 'Warm acoustic bed' }, idempotencyKey,
+      tool: {
+        name: 'start_music_generation', description: 'Start music generation.',
+        parameters: z.object({ prompt: z.string() }), mutates: true, handler: provider
+      }
+    }
+
+    await expect(executeResolved(request as any)).resolves.toEqual({ ok: false, error: 'Action outcome is pending reconciliation.' })
+    await expect(executeResolved(request as any)).resolves.toEqual({ ok: false, error: 'Action outcome is pending reconciliation.' })
+    expect(provider).toHaveBeenCalledTimes(1)
+    expect(h.ledger.get(idempotencyKey)).toMatchObject({ state: 'ambiguous', resultReference: 'job-4' })
+  })
+
+  it('commits a local supplemental mutation, success audit, and ledger outcome atomically and replays once', async () => {
+    const idempotencyKey = `mcp:${'5'.repeat(64)}`
+    const h = harness({ expectedIdempotencyKey: idempotencyKey })
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    let committedWrites = 0
+    vi.mocked(h.deps.transaction).mockImplementation(async callback => await callback({
+      query: vi.fn(async () => { committedWrites++; return { rows: [] } })
+    } as any))
+    const localMutation = vi.fn(async (_args, _ctx, db) => {
+      await db.query('INSERT memory', [])
+      return ok({ remembered: true, id: 'memory-5' })
+    })
+    const executeResolved = createTrustedMcpGodModeResolvedMutationExecutor(h.deps)
+    const request = {
+      event: authorityEvent, authenticatedUserId: OWNER_ID, authority, sessionDigest: 'b'.repeat(64),
+      toolName: 'remember', args: { content: 'Reports are in AUD' }, idempotencyKey,
+      executionClass: 'local-transactional' as const,
+      executeMutation: localMutation,
+      tool: {
+        name: 'remember', description: 'Remember a preference.',
+        parameters: z.object({ content: z.string() }), mutates: true,
+        handler: vi.fn(async () => { throw new Error('non-transactional handler must not run') })
+      }
+    }
+
+    await expect(executeResolved(request as any)).resolves.toEqual(ok({ remembered: true, id: 'memory-5' }))
+    await expect(executeResolved(request as any)).resolves.toMatchObject({ ok: true, data: { replayed: true } })
+    expect(localMutation).toHaveBeenCalledTimes(1)
+    expect(committedWrites).toBe(1)
+  })
+
+  it('rolls a local supplemental mutation back when success audit fails and blocks retry', async () => {
+    const idempotencyKey = `mcp:${'6'.repeat(64)}`
+    const h = harness({ expectedIdempotencyKey: idempotencyKey, terminalError: new Error('audit unavailable') })
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    let committedWrites = 0
+    vi.mocked(h.deps.transaction).mockImplementation(async callback => {
+      let stagedWrites = 0
+      try {
+        const result = await callback({ query: vi.fn(async () => { stagedWrites++; return { rows: [] } }) } as any)
+        committedWrites += stagedWrites
+        return result
+      } catch (error) {
+        throw error
+      }
+    })
+    const localMutation = vi.fn(async (_args, _ctx, db) => {
+      await db.query('INSERT memory', [])
+      return ok({ remembered: true, id: 'memory-6' })
+    })
+    const executeResolved = createTrustedMcpGodModeResolvedMutationExecutor(h.deps)
+    const request = {
+      event: authorityEvent, authenticatedUserId: OWNER_ID, authority, sessionDigest: 'b'.repeat(64),
+      toolName: 'remember', args: { content: 'Reports are in AUD' }, idempotencyKey,
+      executionClass: 'local-transactional' as const,
+      executeMutation: localMutation,
+      tool: {
+        name: 'remember', description: 'Remember a preference.',
+        parameters: z.object({ content: z.string() }), mutates: true, handler: vi.fn()
+      }
+    }
+
+    await expect(executeResolved(request as any)).resolves.toMatchObject({ ok: false })
+    await expect(executeResolved(request as any)).resolves.toMatchObject({ ok: false })
+    expect(localMutation).toHaveBeenCalledTimes(1)
+    expect(committedWrites).toBe(0)
+    expect(h.ledger.get(idempotencyKey)?.state).toBe('failed')
   })
 
   it('does not reach a supplemental provider when its attempt audit insert fails', async () => {
@@ -412,7 +647,7 @@ describe('God mode direct execution', () => {
 
     expect(result).toEqual({ ok: true, data: { resultRef: `${toolName}-result`, summary: `executed ${toolName}`, directExecution: true } })
     expect(h.calls).toEqual([
-      'authority', 'ledger', 'attempt', 'scope', 'handler', 'proposal', 'executor',
+      'authority', 'ledger', 'attempt', 'scope', 'handler', 'proposal', 'progress:dispatched', 'executor',
       'succeeded', 'ledger:succeeded'
     ])
     expect(JSON.stringify(result)).not.toContain('proposalId')

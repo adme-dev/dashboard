@@ -185,6 +185,12 @@ function resolveOwnerCatalog(
         || descriptor.tool?.name !== descriptor.name
         || (descriptor.kind !== 'catalog' && descriptor.kind !== 'supplemental')
       ) throw new Error(`Invalid MCP execution resolver in suite ${suite.key}`)
+      if (
+        descriptor.executionClass === 'local-transactional'
+        && (descriptor.kind !== 'supplemental' || !descriptor.tool.mutates || typeof descriptor.executeMutation !== 'function')
+      ) {
+        throw new Error(`Local-transactional MCP resolver requires a transaction-aware executor: ${descriptor.name}`)
+      }
       const rows = executionRows.get(descriptor.name) ?? []
       rows.push({ suiteKey: suite.key, descriptor })
       executionRows.set(descriptor.name, rows)

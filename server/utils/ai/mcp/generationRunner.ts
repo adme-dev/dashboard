@@ -30,6 +30,10 @@ function isJsonKvBinding(value: unknown): value is JsonKvBinding {
   return !!value && typeof value === 'object' && typeof (value as { get?: unknown }).get === 'function'
 }
 
+export function isMusicGenerationProviderAvailable(event: ToolContext['event']): boolean {
+  return !!event && getMusicQueue(event) !== null
+}
+
 export function buildGenerationRunner(): GenerationRunner {
   return {
     // Synchronous: generate the VO and return the ready asset (with a playback URL).
@@ -76,7 +80,12 @@ export function buildGenerationRunner(): GenerationRunner {
       }
 
       const queue = getMusicQueue(ctx.event)
-      if (!queue) return { status: 'unavailable', reason: 'Music generation is not enabled.' }
+      if (!queue) {
+        throw Object.assign(new Error('music generation provider unavailable'), {
+          boundedCode: 'provider_unavailable',
+          statusCode: 503
+        })
+      }
 
       const idempotencyKey = musicIdempotencyKey({
         createdBy: ctx.userId,

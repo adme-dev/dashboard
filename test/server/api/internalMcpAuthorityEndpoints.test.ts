@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   executeGodModeMcpCall: vi.fn(),
   isActiveAuthority: vi.fn(),
   appendAudit: vi.fn()
+  ,executeRemember: vi.fn()
 }))
 
 vi.mock('h3', async (importOriginal) => {
@@ -53,6 +54,9 @@ vi.mock('~~/server/utils/db', () => ({
   queryRows: vi.fn(async () => [])
 }))
 vi.mock('~~/server/utils/ai/tools', () => ({ registry: [] }))
+vi.mock('~~/server/utils/ai/tools/remember', () => ({
+  executeOrdinaryMcpRememberMutation: mocks.executeRemember
+}))
 vi.mock('~~/server/utils/ai/mcp/project', () => ({
   projectReadOnlyTools: mocks.projectReadOnly,
   projectGodModeCatalogTools: mocks.projectOwnerCatalog,
@@ -192,6 +196,7 @@ describe('signed internal MCP list/call endpoints', () => {
     mocks.executeGodModeMcpCall.mockResolvedValue({ ok: true, data: { resultRef: 'task-1', directExecution: true } })
     mocks.executeWriteConfirm.mockResolvedValue({ ok: true, data: { resultRef: 'task-ordinary' } })
     mocks.appendAudit.mockResolvedValue(undefined)
+    mocks.executeRemember.mockResolvedValue({ ok: true, data: { remembered: true, id: 'memory-1' } })
   })
 
   it('requires the signed claim in addition to the service secret before list projection', async () => {
@@ -243,6 +248,50 @@ describe('signed internal MCP list/call endpoints', () => {
     })
     expect(mocks.consumeClaim).toHaveBeenCalledWith(requestEvent, CLAIM, USER_ID)
     expect(String(mocks.queryOne.mock.calls[0]?.[0])).toContain('SELECT user_role AS role')
+  })
+
+  it('blocks ordinary remember calls when the signed claim has read scope only', async () => {
+    const requestEvent = event(
+      {
+        userId: USER_ID,
+        tool: 'remember',
+        args: { content: 'Reports are in AUD' },
+        idempotencyKey: `mcp:${'b'.repeat(64)}`
+      },
+      {
+        'x-mcp-secret': INTERNAL_SECRET,
+        'x-mcp-assertion': CLAIM,
+        'x-mcp-scope': 'mcp:read mcp:write'
+      }
+    )
+    requestEvent.path = '/api/internal/mcp/call'
+
+    await expect(callHandler(requestEvent)).resolves.toMatchObject({
+      ok: false,
+      code: 'insufficient_scope'
+    })
+    expect(mocks.executeReadOnly).not.toHaveBeenCalled()
+    expect(mocks.executeRemember).not.toHaveBeenCalled()
+  })
+
+  it('routes an ordinary write-scoped remember call through its durable local coordinator', async () => {
+    mocks.consumeClaim.mockResolvedValue({ uid: USER_ID, scope: ['mcp:read', 'mcp:write'], bodyDigest: 'e'.repeat(64) })
+    const requestEvent = event({
+      userId: USER_ID,
+      tool: 'remember',
+      args: { content: 'Reports are in AUD' },
+      idempotencyKey: `mcp:${'d'.repeat(64)}`
+    }, { 'x-mcp-secret': INTERNAL_SECRET, 'x-mcp-assertion': CLAIM })
+    requestEvent.path = '/api/internal/mcp/call'
+
+    await expect(callHandler(requestEvent)).resolves.toMatchObject({ ok: true, data: { remembered: true } })
+    expect(mocks.executeRemember).toHaveBeenCalledWith(expect.objectContaining({
+      userId: USER_ID,
+      idempotencyKey: `mcp:${'d'.repeat(64)}`,
+      sessionDigest: 'e'.repeat(64),
+      args: { content: 'Reports are in AUD' }
+    }))
+    expect(mocks.executeReadOnly).not.toHaveBeenCalled()
   })
 
   it('projects the complete registered owner catalog from the consumed fresh authority, not role or suite flags', async () => {

@@ -34,7 +34,8 @@ const GEN_WRITE_NAMES = new Set(generationTools.map(t => t.name).filter(n => n !
  * Single source of truth used by both the manifest filter (tools.post) and execution gate (call.post).
  */
 export function isWriteScopeToolName(name: string): boolean {
-  return name === MCP_CONFIRM_TOOL
+  return name === 'remember'
+    || name === MCP_CONFIRM_TOOL
     || resolveProposeAction(name) !== null
     || isFinancialAction(name)
     || resolveVideoProposeAction(name) !== null

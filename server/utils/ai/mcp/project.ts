@@ -31,6 +31,19 @@ export interface McpExecutionDescriptor {
   kind: 'catalog' | 'supplemental'
   /** Schema and executable handler. Its name always matches the advertised MCP name. */
   tool: AiTool<any>
+  /** Durability boundary for supplemental mutations. Catalog proposal tools omit this. */
+  executionClass?: 'local-transactional' | 'internal-http' | 'external-provider'
+  /** Binding/provider check that must complete before the durable dispatched marker. */
+  preflight?: (
+    args: unknown,
+    ctx: ToolContext
+  ) => Promise<{ ok: true } | { ok: false, code: string, message: string, statusCode: number }>
+  /** Transaction-aware immediate mutation; required when executionClass is local-transactional. */
+  executeMutation?: (
+    args: unknown,
+    ctx: ToolContext,
+    db: { query: (sql: string, params?: unknown[]) => Promise<any> }
+  ) => Promise<ToolResult>
 }
 
 export type McpExecutionResolver = (context: McpProjectionContext) => McpExecutionDescriptor[]
@@ -81,9 +94,15 @@ export function projectGodModeCatalogTools(
 
 /** Authoritative base-registry suite adapter. Future AiTool registrations flow through automatically. */
 export function projectCatalogMcpSuite(context: McpProjectionContext): McpToolManifest[] {
-  return context.governanceBypass
-    ? projectGodModeCatalogTools(context.tools, { includeWrites: true })
-    : projectReadOnlyTools(context.tools, context.role)
+  if (context.governanceBypass) return projectGodModeCatalogTools(context.tools, { includeWrites: true })
+  const immediateMutations = filterToolsForUser(context.tools, context.role)
+    .filter(tool => !!tool.directMutation)
+    .map(tool => ({
+      name: tool.name,
+      description: mcpDescription(tool),
+      inputSchema: z.toJSONSchema(tool.parameters) as Record<string, unknown>
+    }))
+  return [...projectReadOnlyTools(context.tools, context.role), ...immediateMutations]
 }
 
 /** Base AiTools automatically receive one catalog execution descriptor. */
@@ -91,8 +110,14 @@ export function resolveCatalogMcpExecutions(context: McpProjectionContext): McpE
   return context.tools.map(tool => ({
     name: tool.name,
     canonicalName: tool.name,
-    kind: 'catalog',
-    tool
+    kind: tool.directMutation ? 'supplemental' : 'catalog',
+    tool,
+    ...(tool.directMutation
+      ? {
+          executionClass: tool.directMutation.executionClass,
+          executeMutation: tool.directMutation.execute
+        }
+      : {})
   }))
 }
 

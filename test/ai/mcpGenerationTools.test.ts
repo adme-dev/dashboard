@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   generationTools,
   projectGenerationTools,
+  resolveGenerationMcpExecutions,
   executeGenerationTool,
   type GenerationRunner
 } from '~~/server/utils/ai/mcp/generationTools'
@@ -45,6 +46,27 @@ describe('projectGenerationTools', () => {
 })
 
 describe('executeGenerationTool', () => {
+  it('registers a fail-closed provider preflight for music generation', async () => {
+    const execution = resolveGenerationMcpExecutions().find(row => row.name === 'start_music_generation')!
+    expect(execution.preflight).toBeTypeOf('function')
+    if (!execution.preflight) return
+
+    await expect(execution.preflight({}, ctx('admin'))).resolves.toMatchObject({
+      ok: false,
+      code: 'provider_unavailable',
+      statusCode: 503
+    })
+
+    await expect(execution.preflight({}, {
+      ...ctx('admin'),
+      event: { context: { cloudflare: { env: { MUSIC_QUEUE: {} } } } } as any
+    })).resolves.toMatchObject({
+      ok: false,
+      code: 'provider_unavailable',
+      statusCode: 503
+    })
+  })
+
   it('refuses when the group flag is off, without touching the runner (disabled)', async () => {
     const runner = okRunner()
     const res = await executeGenerationTool('generate_voiceover', { text: 'hello there' }, ctx('admin'), { enabled: false, runner })

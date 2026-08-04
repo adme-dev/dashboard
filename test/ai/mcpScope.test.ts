@@ -33,6 +33,7 @@ describe('isWriteScopeToolName', () => {
       'propose_banner_render',      // banner propose
       'generate_voiceover',         // billing generation
       'start_music_generation',     // billing generation
+      'remember',                   // durable personal-memory write
     ]) {
       expect(isWriteScopeToolName(name), name).toBe(true)
     }

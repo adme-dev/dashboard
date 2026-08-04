@@ -88,6 +88,9 @@ export function createGodModeMcpCallExecutor(deps: GodModeMcpCallDependencies) {
         args: input.args,
         idempotencyKey: input.idempotencyKey,
         tool: execution.tool,
+        executionClass: execution.executionClass,
+        preflight: execution.preflight,
+        executeMutation: execution.executeMutation,
         bypassedControls
       })
     }

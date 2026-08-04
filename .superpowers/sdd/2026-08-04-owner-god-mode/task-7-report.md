@@ -72,3 +72,56 @@ Round-one TDD and verification evidence:
 - Live inventory probe: 6 frozen suites, 62 manifests, 62 resolvers, 62 unique names on each side.
 - Fresh changed-path typecheck filter: zero diagnostics; the project-wide inherited TypeScript baseline remains unchanged.
 - `git diff --check`, credential-pattern scan, and final security/diff review passed before the scoped fix commit.
+
+## Review fix round 2/5 — supplemental durability and durable memory writes
+
+Resolved all three round-two findings:
+
+- Supplemental owner mutations now persist `execution_phase='dispatched'` immediately before the
+  registered handler/provider/queue boundary and persist a bounded reference, result digest, and
+  supplemental metadata as `result_captured` immediately after a successful response. Any throw,
+  typed rejection, or result-capture failure after `dispatched` becomes `ambiguous`; transport retry
+  returns the reconciliation outcome and never invokes the handler again. Definitive schema, scope,
+  provider-preflight, and dispatch-checkpoint failures remain pre-dispatch `failed` outcomes.
+- Reconciliation leaves dispatched supplemental operations unknown and alertable when no bounded
+  provider result exists. Captured music job references are checked against the durable audio-asset
+  record; a missing job remains unknown rather than being falsely closed as succeeded or failed.
+- `remember` is now explicitly classified as a mutation and as a local-transactional direct mutation.
+  Ordinary read-only signed claims neither discover nor execute it. An active owner with a signed
+  read-only claim may execute it only through the owner coordinator, with `mcp_scope` present in the
+  attempt/bypass/terminal audit identity before the write. Ordinary write-scoped MCP calls use an
+  atomic transaction containing the idempotency claim, memory upsert, `ai_action_audit` insert, and
+  terminal ledger update. Audit failure rolls back the memory; retry commits one durable row, and a
+  completed retry replays without reinforcing or duplicating it. Vector indexing is intentionally
+  omitted inside that transaction so a rollback cannot publish an orphan vector.
+- Music generation now has a registered queue-provider preflight. A missing or structurally invalid
+  `MUSIC_QUEUE` binding produces bounded `provider_unavailable` / HTTP 503 before the dispatched
+  checkpoint and a failed terminal audit. The real runner also throws fail-closed if invoked without
+  the binding; it can no longer return a successful `{ status: 'unavailable' }` payload. With a valid
+  producer, dispatch and result capture proceed in order.
+- The frozen registry remains six suites with exactly 62 owner manifests and 62 unique executable
+  resolvers. The `remember` manifest changes execution strategy, not catalog cardinality; ordinary
+  manifest compatibility changes only for its correct write-scope classification.
+
+Round-two TDD evidence:
+
+- Primary RED: 13 expected failures across six files while 93 assertions stayed green.
+- Subsequent RED slices covered ordinary-memory atomic idempotency (3 failures), bounded music lookup
+  (1), write-scoped ordinary discovery (1), missing local transaction handler (1), transactional
+  vector suppression (1), and malformed queue binding preflight (1) before each implementation.
+
+Round-two verification evidence:
+
+- Final focused durability/scope/registry/audio suite: 13 files passed, 160 tests passed.
+- Broad MCP, God-mode, config, inventory, authority, and audit suite: 34 files passed, 361 passed and
+  10 environment-gated tests skipped.
+- Adjacent God-mode middleware/audit suite: 9 files passed, 89 tests passed.
+- Worker MCP authority unit suite: 1 file passed, 5 tests passed. Audio queue regressions: 2 files
+  passed, 7 tests passed.
+- Full Node 24 typecheck retains the inherited repository baseline; the fresh changed-path filter
+  emitted zero diagnostics after the final fixes.
+- `git diff --check`, credential-pattern scan, and final source/security review passed.
+- The real workerd signer/verifier compatibility command could not be refreshed in this sandbox: the
+  local-listener run did not return and was interrupted. Exact controller command:
+  `pnpm exec vitest run test/workers/mcpRequestClaimRuntimeCompatibility.test.ts`.
+- No migration, external secret, deployment, or unrelated application change was performed.

@@ -35,6 +35,7 @@ import {
 import { executeGodModeMcpCall } from '~~/server/utils/ai/mcp/directExecution'
 import { isActiveGodModeAuthority } from '~~/server/utils/godMode/authority'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
+import { executeOrdinaryMcpRememberMutation } from '~~/server/utils/ai/tools/remember'
 
 export default defineEventHandler(async (event) => {
   if (process.env.MCP_SERVER_ENABLED !== 'true') {
@@ -95,6 +96,7 @@ export default defineEventHandler(async (event) => {
   // assets, so they go through executeGenerationTool (gated by MCP_GEN_TOOLS_ENABLED + CREATIVE), NOT
   // the read-only guard (which would write_blocked them). Read tools take the Phase-1 path unchanged.
   const isGeneration = generationTools.some(t => t.name === toolName)
+  const isRemember = toolName === 'remember'
   const writeAction = resolveProposeAction(toolName) // non-null for a safe propose_<action> write tool
   const isConfirm = toolName === MCP_CONFIRM_TOOL
   // Video suite (Phase 2b): reads gated by MCP_VIDEO_TOOLS_ENABLED; confirm-tier propose/create gated
@@ -145,6 +147,17 @@ export default defineEventHandler(async (event) => {
   let outcome: { ok: boolean, data?: unknown, error?: string, code?: string }
   if (requireWriteScope && isWriteScopeToolName(toolName) && !hasWriteScope(grantedScopes)) {
     outcome = { ok: false, error: 'This action requires write access. Reconnect your AI assistant and grant write (mcp:write) to use it.', code: 'insufficient_scope' }
+  } else if (isRemember) {
+    // Unlike proposal writes, remember is an immediate private write. Its coordinator atomically owns
+    // the idempotency claim, memory upsert, action audit, and terminal ledger state, so do not append
+    // the generic best-effort audit below or run it through the read-only handler.
+    return await executeOrdinaryMcpRememberMutation({
+      userId,
+      idempotencyKey,
+      sessionDigest: claim.bodyDigest,
+      args,
+      ctx
+    })
   } else if (isConfirm) {
     // Shared confirm: atomically claim the MCP+user-scoped pending row, then dispatch. Available when
     // EITHER the 2c write group OR the 2b video-gen group is on. videoDispatch handles video tool_names

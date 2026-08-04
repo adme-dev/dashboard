@@ -769,6 +769,16 @@ export const executeTrustedMcpGodModeTool = createTrustedMcpGodModeToolExecutor(
 export interface TrustedMcpGodModeResolvedMutationRequest extends TrustedMcpGodModeExecutionRequest {
   /** Supplemental executable registered beside its manifest. */
   tool: AiTool<any>
+  executionClass?: ExecutorClass
+  preflight?: (
+    args: unknown,
+    ctx: ToolContext
+  ) => Promise<{ ok: true } | { ok: false, code: string, message: string, statusCode: number }>
+  executeMutation?: (
+    args: unknown,
+    ctx: ToolContext,
+    db: { query: (sql: string, params?: unknown[]) => Promise<any> }
+  ) => Promise<ToolResult>
 }
 
 function resolvedResultIdentity(result: ToolResult): { resultReference: string, resultDigest: string } {
@@ -809,7 +819,7 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
         idempotencyKey: request.idempotencyKey,
         correlationId: deps.correlationId(),
         toolName: request.toolName,
-        executorClass: 'internal-http',
+        executorClass: request.executionClass ?? 'internal-http',
         tenantId: request.tenantId,
         clientId: request.clientId,
         sessionDigest: request.sessionDigest
@@ -893,15 +903,124 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
       }
     }
 
+    if (request.preflight) {
+      let preflight: Awaited<ReturnType<NonNullable<typeof request.preflight>>>
+      try {
+        preflight = await request.preflight(parsed.data, ctx)
+      } catch {
+        await terminateBeforeDispatch('provider_preflight_failed', 'Provider availability could not be verified.')
+        operationalError(503, 'Provider availability could not be verified.')
+      }
+      if (preflight.ok === false) {
+        await terminateBeforeDispatch(preflight.code, preflight.message)
+        operationalError(preflight.statusCode, preflight.message)
+      }
+    }
+
+    if (request.executionClass === 'local-transactional') {
+      if (!request.executeMutation) {
+        await terminateBeforeDispatch('local_executor_unavailable', 'God mode action failed.')
+        operationalError(503, 'God mode local executor unavailable')
+      }
+      let localFailureMessage = 'God mode action failed.'
+      try {
+        const result = await deps.transaction(async db => {
+          const executed = await request.executeMutation!(parsed.data, ctx, db)
+          if (!executed.ok) {
+            localFailureMessage = executed.error
+            throw Object.assign(new Error('local mutation rejected'), { boundedCode: 'handler_rejected' })
+          }
+          const identity = resolvedResultIdentity(executed)
+          await deps.appendAudit(auditEvent(auditIdentity, 'succeeded', 'executed'), db)
+          await deps.setExecutionState({
+            actorUserId: request.authenticatedUserId,
+            channel: 'mcp',
+            idempotencyKey: request.idempotencyKey,
+            state: 'succeeded',
+            resultReference: identity.resultReference,
+            resultDigest: identity.resultDigest
+          }, db)
+          return executed
+        })
+        return result
+      } catch (error) {
+        const code = typeof (error as any)?.boundedCode === 'string'
+          ? String((error as any).boundedCode).slice(0, 64)
+          : 'local_transaction_failed'
+        return await terminateBeforeDispatch(code, localFailureMessage)
+      }
+    }
+
+    const markDispatchAmbiguous = async (
+      resultIdentity?: { resultReference: string, resultDigest: string }
+    ): Promise<ToolResult> => {
+      try {
+        await deps.transaction(async db => {
+          await deps.appendAudit(auditEvent(auditIdentity, 'ambiguous', 'dispatch_outcome_unknown'), db)
+          await deps.setExecutionState({
+            actorUserId: request.authenticatedUserId,
+            channel: 'mcp',
+            idempotencyKey: request.idempotencyKey,
+            state: 'ambiguous',
+            resultReference: resultIdentity?.resultReference ?? null,
+            resultDigest: resultIdentity?.resultDigest ?? null
+          }, db)
+        })
+      } catch {
+        await deps.setExecutionState({
+          actorUserId: request.authenticatedUserId,
+          channel: 'mcp',
+          idempotencyKey: request.idempotencyKey,
+          state: 'ambiguous',
+          resultReference: resultIdentity?.resultReference ?? null,
+          resultDigest: resultIdentity?.resultDigest ?? null
+        }).catch(() => {})
+        operationalError(503, 'God mode audit unavailable')
+      }
+      return fail('Action outcome is pending reconciliation.')
+    }
+
+    try {
+      await deps.recordExecutionProgress({
+        actorUserId: request.authenticatedUserId,
+        channel: 'mcp',
+        idempotencyKey: request.idempotencyKey,
+        phase: 'dispatched',
+        metadata: {
+          supplemental: true,
+          executionClass: request.executionClass ?? 'internal-http'
+        }
+      })
+    } catch {
+      await terminateBeforeDispatch('dispatch_checkpoint_failed', 'God mode action failed.')
+      operationalError(503, 'God mode execution ledger unavailable')
+    }
+
     let result: ToolResult
     try {
       result = await request.tool.handler(parsed.data, ctx)
     } catch {
-      return await terminateBeforeDispatch('handler_failed', 'God mode action failed.')
+      return await markDispatchAmbiguous()
     }
-    if (!result.ok) return await terminateBeforeDispatch('handler_rejected', result.error)
+    if (!result.ok) return await markDispatchAmbiguous()
 
     const identity = resolvedResultIdentity(result)
+    try {
+      await deps.recordExecutionProgress({
+        actorUserId: request.authenticatedUserId,
+        channel: 'mcp',
+        idempotencyKey: request.idempotencyKey,
+        phase: 'result_captured',
+        resultReference: identity.resultReference,
+        metadata: {
+          supplemental: true,
+          executionClass: request.executionClass ?? 'internal-http',
+          resultDigest: identity.resultDigest
+        }
+      })
+    } catch {
+      return await markDispatchAmbiguous(identity)
+    }
     const terminal = auditEvent(auditIdentity, 'succeeded', 'executed')
     try {
       await deps.transaction(async db => {

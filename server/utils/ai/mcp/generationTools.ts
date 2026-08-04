@@ -100,6 +100,24 @@ export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
     name: descriptor.name,
     canonicalName: descriptor.name,
     kind: 'supplemental' as const,
+    ...(descriptor.name !== 'get_generation_status'
+      ? { executionClass: 'external-provider' as const }
+      : {}),
+    ...(descriptor.name === 'start_music_generation'
+      ? {
+          preflight: async (_args: unknown, ctx: ToolContext) => {
+            const { isMusicGenerationProviderAvailable } = await import('./generationRunner')
+            return isMusicGenerationProviderAvailable(ctx.event)
+              ? { ok: true as const }
+              : {
+                  ok: false as const,
+                  code: 'provider_unavailable',
+                  message: 'Music generation provider is unavailable.',
+                  statusCode: 503
+                }
+          }
+        }
+      : {}),
     tool: {
       ...descriptor,
       mutates: descriptor.name !== 'get_generation_status',

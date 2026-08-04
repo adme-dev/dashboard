@@ -5,6 +5,7 @@ import {
   type GodModeChannel
 } from './audit'
 import type { ExecutorClass } from '~~/server/utils/ai/executors/types'
+import { getAsset } from '~~/server/utils/audio/assets'
 
 export interface ReconciliationCandidate {
   actorUserId: string
@@ -25,6 +26,14 @@ export interface ReconciliationCandidate {
 export interface ReconciledProviderOutcome {
   state: 'succeeded' | 'failed' | 'unknown'
   resultReference?: string | null
+}
+
+export interface GodModeProviderLookupDependencies {
+  getAudioAsset: (id: string) => Promise<{ id: string, status: string } | null>
+}
+
+const providerLookupDependencies: GodModeProviderLookupDependencies = {
+  getAudioAsset: async id => await getAsset(id)
 }
 
 export interface GodModeReconciliationDependencies {
@@ -114,7 +123,8 @@ export async function repairSocialCaseTaskLink(
 }
 
 export async function lookupGodModeExecutionOutcome(
-  candidate: ReconciliationCandidate
+  candidate: ReconciliationCandidate,
+  dependencies: GodModeProviderLookupDependencies = providerLookupDependencies
 ): Promise<ReconciledProviderOutcome> {
   if (candidate.routeOrTool === 'create_social_case_task') {
     return candidate.executionMetadata
@@ -124,6 +134,16 @@ export async function lookupGodModeExecutionOutcome(
   if (candidate.state === 'in_progress'
     && ['claimed', 'proposal_prepared'].includes(candidate.executionPhase ?? 'claimed')) {
     return { state: 'failed' }
+  }
+  if (
+    candidate.routeOrTool === 'start_music_generation'
+    && candidate.executionPhase === 'result_captured'
+    && candidate.resultReference
+  ) {
+    const asset = await dependencies.getAudioAsset(candidate.resultReference)
+    return asset?.id === candidate.resultReference
+      ? { state: 'succeeded', resultReference: candidate.resultReference }
+      : { state: 'unknown' }
   }
   // A reference is a bounded captured response only for non-composite internal mutations.
   if (candidate.resultReference) {
