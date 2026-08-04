@@ -1,7 +1,11 @@
 import type { H3Event } from 'h3'
 import { createError, getRequestURL } from 'h3'
 
-import type { GodModeAuditEventInput, GodModeBypassedControl } from '~~/server/utils/godMode/audit'
+import {
+  appendGodModeAuditEvent,
+  type GodModeAuditEventInput,
+  type GodModeBypassedControl
+} from '~~/server/utils/godMode/audit'
 import {
   isActiveGodModeAuthority,
   resolveGodModeAuthority
@@ -9,6 +13,7 @@ import {
 
 const READ_ONLY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const requestAuditStateKey = Symbol('godModeRouteAuditState')
+const requestAuditInternalsKey = Symbol('godModeRouteAuditInternals')
 const mutationCoordinationKey = Symbol('godModeMutationCoordination')
 const TRUSTED_BYPASS_CONTROLS = new Set<GodModeBypassedControl>([
   'permission',
@@ -103,6 +108,20 @@ export interface GodModeRouteAuditState extends GodModeRouteAuditSeed {
   mutationCoordination?: GodModeMutationCoordination
 }
 
+export interface GodModeRouteAuditDependencies {
+  appendGodModeAuditEvent: typeof appendGodModeAuditEvent
+}
+
+interface GodModeRouteAuditInternals {
+  seed: Readonly<GodModeRouteAuditSeed>
+  dependencies: GodModeRouteAuditDependencies
+  bypassPersistence: Map<string, Promise<void>>
+}
+
+const defaultRouteAuditDependencies: GodModeRouteAuditDependencies = {
+  appendGodModeAuditEvent
+}
+
 function context(event: H3Event): Record<PropertyKey, unknown> {
   return event.context as Record<PropertyKey, unknown>
 }
@@ -127,7 +146,11 @@ export function isGodModeMutationRequest(event: H3Event): boolean {
   return !READ_ONLY_METHODS.has(requestMethod(event))
 }
 
-export function seedGodModeRouteAuditState(event: H3Event, seed: GodModeRouteAuditSeed): GodModeRouteAuditState {
+export function seedGodModeRouteAuditState(
+  event: H3Event,
+  seed: GodModeRouteAuditSeed,
+  dependencies: GodModeRouteAuditDependencies = defaultRouteAuditDependencies
+): GodModeRouteAuditState {
   const existing = context(event)[requestAuditStateKey]
   if (existing) return existing as GodModeRouteAuditState
 
@@ -137,6 +160,11 @@ export function seedGodModeRouteAuditState(event: H3Event, seed: GodModeRouteAud
     handlerFailed: false
   }
   context(event)[requestAuditStateKey] = state
+  context(event)[requestAuditInternalsKey] = {
+    seed: Object.freeze({ ...seed }),
+    dependencies: Object.freeze({ ...dependencies }),
+    bypassPersistence: new Map()
+  } satisfies GodModeRouteAuditInternals
   return state
 }
 
@@ -150,9 +178,10 @@ export function markGodModeRouteFailure(event: H3Event): void {
 }
 
 /**
- * Add server-classified bypasses to the immutable request terminal. The state exists only after
- * Task 3 durably wrote the attempt event. Missing/mismatched/late state fails before the caller may
- * execute the bypassed operation; client data is never accepted at this boundary.
+ * Persist server-classified bypasses as immutable pre-execution evidence, then add them to the
+ * request terminal summary. The state exists only after Task 3 durably wrote the attempt event.
+ * Missing, mismatched, late, or failed persistence stops the bypassed operation; client data is
+ * never accepted at this boundary.
  */
 export async function recordGodModeBypassedControls(
   event: H3Event,
@@ -162,6 +191,7 @@ export async function recordGodModeBypassedControls(
   const method = requestMethod(event)
   const path = requestPath(event)
   const state = getGodModeRouteAuditState(event)
+  const internals = context(event)[requestAuditInternalsKey] as GodModeRouteAuditInternals | undefined
   const authority = typeof actorUserId === 'string'
     ? await resolveGodModeAuthority(event, actorUserId)
     : null
@@ -170,8 +200,14 @@ export async function recordGodModeBypassedControls(
     typeof actorUserId !== 'string'
     || !isActiveGodModeAuthority(authority, actorUserId)
     || !state
+    || !internals
     || state.actorUserId !== actorUserId
+    || internals.seed.actorUserId !== actorUserId
+    || state.correlationId !== internals.seed.correlationId
+    || state.sessionDigest !== internals.seed.sessionDigest
     || state.routeOrTool !== `${method} ${path}`
+    || internals.seed.routeOrTool !== `${method} ${path}`
+    || state.emergencyDisabled !== internals.seed.emergencyDisabled
     || state.terminalPromise
     || controls.length === 0
     || controls.some(control => !TRUSTED_BYPASS_CONTROLS.has(control))
@@ -179,7 +215,32 @@ export async function recordGodModeBypassedControls(
     throw createError({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
   }
 
-  for (const control of controls) state.bypassedControls.add(control)
+  const normalizedControls = [...new Set(controls)].sort()
+  const persistenceKey = normalizedControls.join('\u0000')
+  let persistence = internals.bypassPersistence.get(persistenceKey)
+  if (!persistence) {
+    persistence = (async () => {
+      await internals.dependencies.appendGodModeAuditEvent({
+        actorUserId: internals.seed.actorUserId,
+        correlationId: internals.seed.correlationId,
+        sessionDigest: internals.seed.sessionDigest,
+        channel: 'application',
+        routeOrTool: internals.seed.routeOrTool,
+        phase: 'bypass',
+        bypassedControls: normalizedControls,
+        outcomeCode: 'pre_execution',
+        emergencyDisabled: internals.seed.emergencyDisabled
+      })
+      for (const control of controls) state.bypassedControls.add(control)
+    })()
+    internals.bypassPersistence.set(persistenceKey, persistence)
+  }
+
+  try {
+    await persistence
+  } catch {
+    throw createError({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
+  }
 }
 
 export function registerGodModeMutationCoordination(

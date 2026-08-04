@@ -43,7 +43,9 @@ const emergencyDisabledAuthority = await resolveGodModeAuthority(
   { queryOneFresh: async () => ({ id: USER_ID }), processEnv: { GOD_MODE_DISABLED: 'true' } }
 )
 
-async function auditedGodModeEvent() {
+async function auditedGodModeEvent(
+  appendGodModeAuditEvent = vi.fn().mockResolvedValue(undefined)
+) {
   const path = '/api/agency/ai/chat/conversations/90000000-0000-4000-8000-000000000001/messages'
   const event = {
     method: 'POST',
@@ -63,8 +65,10 @@ async function auditedGodModeEvent() {
     sessionDigest: 'a'.repeat(64),
     routeOrTool: `POST ${path}`,
     emergencyDisabled: false
+  }, {
+    appendGodModeAuditEvent
   })
-  return { event, authority }
+  return { event, authority, appendGodModeAuditEvent }
 }
 
 function catalogRow(overrides: Partial<ActiveCatalogRow> = {}): ActiveCatalogRow {
@@ -459,6 +463,89 @@ describe('God-mode model hard boundaries and budgets', () => {
     mockRecordAiInvocation.mockReset()
     mockRecordAiInvocation.mockResolvedValue(undefined)
     mockResolveModelWithTransport.mockReset()
+  })
+
+  it('durably persists exact server-classified bypasses before provider resolution', async () => {
+    const order: string[] = []
+    let releasePersistence!: () => void
+    const persistence = new Promise<void>((resolve) => {
+      releasePersistence = resolve
+    })
+    const appendGodModeAuditEvent = vi.fn(async () => {
+      order.push('persistence-started')
+      await persistence
+      order.push('persistence-resolved')
+    })
+    mockResolveModelWithTransport.mockImplementation(() => {
+      order.push('provider-resolved')
+      return { model: textModel, gatewayUsed: true }
+    })
+    const { event, authority } = await auditedGodModeEvent(appendGodModeAuditEvent)
+
+    const result = runToolLoop({
+      ctx: { userId: USER_ID, userRole: 'owner', event },
+      system: 'system',
+      messages: [{ role: 'user', content: 'hello' }],
+      seed: 'owner',
+      modelSpec: 'groq/openai/gpt-oss-120b',
+      fallbackSpec: '',
+      catalogRows: [catalogRow()],
+      runtimePolicy: {
+        mode: 'enforced',
+        authenticatedCoreTools: ['search_knowledge', 'get_tasks']
+      },
+      authority
+    } as any)
+
+    await vi.waitFor(() => expect(appendGodModeAuditEvent).toHaveBeenCalledTimes(1))
+    expect(mockResolveModelWithTransport).not.toHaveBeenCalled()
+    expect(appendGodModeAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      actorUserId: USER_ID,
+      correlationId: '70000000-0000-4000-8000-000000000001',
+      sessionDigest: 'a'.repeat(64),
+      phase: 'bypass',
+      outcomeCode: 'pre_execution',
+      bypassedControls: [
+        'budget',
+        'evaluation_policy',
+        'feature_flag',
+        'permission',
+        'personal_policy',
+        'rate_limit',
+        'release_policy'
+      ]
+    }))
+
+    releasePersistence()
+    await result
+
+    expect(order).toEqual(['persistence-started', 'persistence-resolved', 'provider-resolved'])
+  })
+
+  it('prevents provider resolution when durable pre-execution persistence fails', async () => {
+    const appendGodModeAuditEvent = vi.fn().mockRejectedValue(new Error('database unavailable'))
+    mockResolveModelWithTransport.mockReturnValue({ model: textModel, gatewayUsed: true })
+    const { event, authority } = await auditedGodModeEvent(appendGodModeAuditEvent)
+
+    await expect(runToolLoop({
+      ctx: { userId: USER_ID, userRole: 'owner', event },
+      system: 'system',
+      messages: [{ role: 'user', content: 'hello' }],
+      seed: 'owner',
+      modelSpec: 'groq/openai/gpt-oss-120b',
+      fallbackSpec: '',
+      catalogRows: [catalogRow()],
+      runtimePolicy: {
+        mode: 'enforced',
+        authenticatedCoreTools: ['search_knowledge', 'get_tasks']
+      },
+      authority
+    } as any)).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: 'God mode audit unavailable'
+    })
+
+    expect(mockResolveModelWithTransport).not.toHaveBeenCalled()
   })
 
   it('uses Cloudflare AI Gateway while ignoring application token/cost/latency/usage/rate ceilings', async () => {

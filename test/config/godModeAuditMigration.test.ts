@@ -3,6 +3,8 @@ import { Client } from 'pg'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 const migrationPath = new URL('../../server/database/migrations/345_god_mode_audit_events.sql', import.meta.url)
+const preExecutionMigrationPath = new URL('../../server/database/migrations/346_god_mode_pre_execution_audit.sql', import.meta.url)
+const migrationPaths = [migrationPath, preExecutionMigrationPath]
 const auditDatabaseUrl = process.env.GOD_MODE_AUDIT_TEST_DATABASE_URL
 const schemaName = `god_mode_audit_test_${crypto.randomUUID().replaceAll('-', '')}`
 let client: Client | undefined
@@ -35,6 +37,20 @@ describe('God mode audit migration', () => {
     expect(migration).toContain('BEFORE UPDATE OR DELETE ON god_mode_audit_events')
     expect(migration).not.toMatch(/\b(prompt|raw_payload|access_token|provider_body|claims)\b/i)
   })
+
+  it('adds immutable, attempt-bound, idempotent pre-execution bypass evidence', () => {
+    const migration = readFileSync(preExecutionMigrationPath, 'utf8')
+
+    expect(migration).toMatch(/phase[\s\S]*'bypass'/i)
+    expect(migration).toMatch(/CREATE UNIQUE INDEX[\s\S]*WHERE phase = 'bypass'/i)
+    expect(migration).toMatch(/bypass event requires matching attempt/i)
+    expect(migration).toContain('NEW.actor_user_id')
+    expect(migration).toContain('NEW.session_digest')
+    expect(migration).toContain('NEW.channel')
+    expect(migration).toContain('NEW.route_or_tool')
+    expect(migration).toContain('NEW.emergency_disabled')
+    expect(migration).not.toMatch(/\b(prompt|raw_payload|access_token|provider_body|claims)\b/i)
+  })
 })
 
 const databaseDescribe = auditDatabaseUrl ? describe : describe.skip
@@ -44,10 +60,12 @@ databaseDescribe('God mode audit migration database regression', () => {
     client = await connectToAuditSchema()
     await client.query(`CREATE SCHEMA ${schemaName}`)
     await beginInAuditSchema(client)
-    const migration = readFileSync(migrationPath, 'utf8')
-      .replace(/^\s*BEGIN;\s*/, '')
-      .replace(/\s*COMMIT;\s*$/, '')
-    await client.query(migration)
+    for (const path of migrationPaths) {
+      const migration = readFileSync(path, 'utf8')
+        .replace(/^\s*BEGIN;\s*/, '')
+        .replace(/\s*COMMIT;\s*$/, '')
+      await client.query(migration)
+    }
     const tableSchema = await client.query<{ schema: string }>(
       `SELECT namespace.nspname AS schema
          FROM pg_catalog.pg_class relation
@@ -96,6 +114,47 @@ databaseDescribe('God mode audit migration database regression', () => {
     await client!.query(`INSERT INTO god_mode_mcp_request_nonces (jti, actor_user_id, expires_at) VALUES ($1, $2, NOW() + INTERVAL '5 minutes')`, [nonce, actor])
     await client!.query('SAVEPOINT nonce_test')
     await expect(client!.query(`INSERT INTO god_mode_mcp_request_nonces (jti, actor_user_id, expires_at) VALUES ($1, $2, NOW() + INTERVAL '5 minutes')`, [nonce, actor])).rejects.toThrow(/duplicate key/i)
+  })
+
+  it('binds bypass evidence to the exact attempt and deduplicates normalized controls', async () => {
+    const actor = '12111111-1111-4111-8111-111111111111'
+    const otherActor = '13111111-1111-4111-8111-111111111111'
+    const correlation = '24222222-2222-4222-8222-222222222222'
+    const digest = 'e'.repeat(64)
+    await client!.query(
+      `INSERT INTO god_mode_audit_events (actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase, bypassed_controls, outcome_code, emergency_disabled)
+       VALUES ($1, $2, $3, 'application', 'POST /api/agency/ai/chat', 'attempt', '{}', 'started', FALSE)`,
+      [actor, correlation, digest]
+    )
+    await client!.query(
+      `INSERT INTO god_mode_audit_events (actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase, bypassed_controls, outcome_code, emergency_disabled)
+       VALUES ($1, $2, $3, 'application', 'POST /api/agency/ai/chat', 'bypass', ARRAY['rate_limit', 'budget'], 'pre_execution', FALSE)`,
+      [actor, correlation, digest]
+    )
+
+    await client!.query('SAVEPOINT duplicate_bypass')
+    await expect(client!.query(
+      `INSERT INTO god_mode_audit_events (actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase, bypassed_controls, outcome_code, emergency_disabled)
+       VALUES ($1, $2, $3, 'application', 'POST /api/agency/ai/chat', 'bypass', ARRAY['budget', 'rate_limit'], 'pre_execution', FALSE)`,
+      [actor, correlation, digest]
+    )).rejects.toThrow(/duplicate key/i)
+    await client!.query('ROLLBACK TO SAVEPOINT duplicate_bypass')
+
+    await client!.query('SAVEPOINT mismatched_bypass')
+    await expect(client!.query(
+      `INSERT INTO god_mode_audit_events (actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase, bypassed_controls, outcome_code, emergency_disabled)
+       VALUES ($1, $2, $3, 'application', 'POST /api/agency/ai/chat', 'bypass', ARRAY['budget'], 'pre_execution', FALSE)`,
+      [otherActor, correlation, digest]
+    )).rejects.toThrow(/matching attempt/i)
+    await client!.query('ROLLBACK TO SAVEPOINT mismatched_bypass')
+
+    const result = await client!.query<{ controls: string[] }>(
+      `SELECT bypassed_controls AS controls
+         FROM god_mode_audit_events
+        WHERE correlation_id = $1 AND phase = 'bypass'`,
+      [correlation]
+    )
+    expect(result.rows).toEqual([{ controls: ['rate_limit', 'budget'] }])
   })
 
   it('rejects NULL entries in an otherwise allowlisted control array', async () => {

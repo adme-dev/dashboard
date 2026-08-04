@@ -20,6 +20,7 @@ describe('appendGodModeAuditEvent', () => {
 
     await appendGodModeAuditEvent(validInput, db)
 
+    expect(db.query.mock.calls[0]?.[0]).not.toContain('ON CONFLICT DO NOTHING')
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO god_mode_audit_events'),
       [
@@ -37,6 +38,36 @@ describe('appendGodModeAuditEvent', () => {
         'started',
         false
       ]
+    )
+  })
+
+  it('normalizes and idempotently inserts a durable pre-execution bypass event', async () => {
+    const db = { query: vi.fn().mockResolvedValue({ rows: [] }) }
+
+    await appendGodModeAuditEvent({
+      ...validInput,
+      phase: 'bypass',
+      bypassedControls: ['rate_limit', 'budget', 'rate_limit'],
+      outcomeCode: 'pre_execution'
+    }, db)
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('ON CONFLICT DO NOTHING'),
+      expect.arrayContaining([
+        validInput.actorUserId,
+        validInput.correlationId,
+        validInput.sessionDigest,
+        'application',
+        'admin.god-mode',
+        'bypass',
+        null,
+        null,
+        null,
+        null,
+        ['budget', 'rate_limit'],
+        'pre_execution',
+        false
+      ])
     )
   })
 

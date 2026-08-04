@@ -7,6 +7,7 @@ testGlobal.defineNitroPlugin = plugin => plugin
 
 const { persistGodModeTerminalAudit } = await import('../../../server/plugins/godModeAudit')
 const {
+  getGodModeRouteAuditState,
   recordGodModeBypassedControls,
   registerGodModeMutationCoordination,
   seedGodModeRouteAuditState
@@ -38,13 +39,15 @@ function event(method = 'GET', queue?: { send: ReturnType<typeof vi.fn> }) {
   } as any
 }
 
-function seed(request: any) {
+function seed(request: any, appendGodModeAuditEvent = vi.fn().mockResolvedValue(undefined)) {
   seedGodModeRouteAuditState(request, {
     actorUserId: OWNER_ID,
     correlationId: CORRELATION_ID,
     sessionDigest: 'a'.repeat(64),
     routeOrTool: `${request.method} /api/agency/clients`,
     emergencyDisabled: false
+  }, {
+    appendGodModeAuditEvent
   })
 }
 
@@ -63,7 +66,7 @@ describe('God mode terminal audit plugin', () => {
   it('appends exactly one successful terminal event without response content', async () => {
     const request = event()
     const response = { body: { secret: 'must never enter audit' } }
-    seed(request)
+    seed(request, appendGodModeAuditEvent)
 
     await persistGodModeTerminalAudit(request, response, { appendGodModeAuditEvent, setResponseStatus })
     await persistGodModeTerminalAudit(request, response, { appendGodModeAuditEvent, setResponseStatus })
@@ -86,7 +89,7 @@ describe('God mode terminal audit plugin', () => {
   it('carries trusted runtime bypass controls into the immutable terminal event', async () => {
     const request = event()
     const response = { body: { ok: true } }
-    seed(request)
+    seed(request, appendGodModeAuditEvent)
     await resolveGodModeAuthority(request, OWNER_ID, {
       queryOneFresh: vi.fn().mockResolvedValue({ id: OWNER_ID }),
       processEnv: {}
@@ -95,9 +98,72 @@ describe('God mode terminal audit plugin', () => {
     await recordGodModeBypassedControls(request, ['release_policy', 'budget', 'rate_limit'])
     await persistGodModeTerminalAudit(request, response, { appendGodModeAuditEvent, setResponseStatus })
 
-    expect(appendGodModeAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+    expect(appendGodModeAuditEvent).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      actorUserId: OWNER_ID,
+      correlationId: CORRELATION_ID,
+      sessionDigest: 'a'.repeat(64),
+      routeOrTool: 'GET /api/agency/clients',
+      phase: 'bypass',
+      outcomeCode: 'pre_execution',
+      bypassedControls: ['budget', 'rate_limit', 'release_policy']
+    }))
+    expect(appendGodModeAuditEvent).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      phase: 'succeeded',
       bypassedControls: ['release_policy', 'budget', 'rate_limit']
     }))
+  })
+
+  it('deduplicates repeated pre-execution persistence while retaining one terminal event', async () => {
+    const request = event()
+    const response = { body: { ok: true } }
+    seed(request, appendGodModeAuditEvent)
+    await resolveGodModeAuthority(request, OWNER_ID, {
+      queryOneFresh: vi.fn().mockResolvedValue({ id: OWNER_ID }),
+      processEnv: {}
+    })
+
+    await Promise.all([
+      recordGodModeBypassedControls(request, ['rate_limit', 'budget']),
+      recordGodModeBypassedControls(request, ['budget', 'rate_limit'])
+    ])
+    await persistGodModeTerminalAudit(request, response, { appendGodModeAuditEvent, setResponseStatus })
+    await persistGodModeTerminalAudit(request, response, { appendGodModeAuditEvent, setResponseStatus })
+
+    const phases = appendGodModeAuditEvent.mock.calls.map(([auditEvent]) => auditEvent.phase)
+    expect(phases).toEqual(['bypass', 'succeeded'])
+    expect(appendGodModeAuditEvent).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      bypassedControls: ['budget', 'rate_limit']
+    }))
+  })
+
+  it('fails closed and does not add terminal controls when pre-execution persistence fails', async () => {
+    const request = event()
+    seed(request, appendGodModeAuditEvent)
+    await resolveGodModeAuthority(request, OWNER_ID, {
+      queryOneFresh: vi.fn().mockResolvedValue({ id: OWNER_ID }),
+      processEnv: {}
+    })
+    appendGodModeAuditEvent.mockRejectedValueOnce(new Error('database unavailable'))
+
+    await expect(recordGodModeBypassedControls(request, ['budget']))
+      .rejects.toMatchObject({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
+
+    expect(appendGodModeAuditEvent).toHaveBeenCalledTimes(1)
+    expect(getGodModeRouteAuditState(request)?.bypassedControls.size).toBe(0)
+  })
+
+  it('rejects route-state identity tampering instead of persisting a different correlation', async () => {
+    const request = event()
+    seed(request, appendGodModeAuditEvent)
+    await resolveGodModeAuthority(request, OWNER_ID, {
+      queryOneFresh: vi.fn().mockResolvedValue({ id: OWNER_ID }),
+      processEnv: {}
+    })
+    getGodModeRouteAuditState(request)!.correlationId = '33333333-3333-4333-8333-333333333333'
+
+    await expect(recordGodModeBypassedControls(request, ['budget']))
+      .rejects.toMatchObject({ statusCode: 503 })
+    expect(appendGodModeAuditEvent).not.toHaveBeenCalled()
   })
 
   it('fails closed before execution when trusted route audit state is absent', async () => {
@@ -115,7 +181,7 @@ describe('God mode terminal audit plugin', () => {
     const request = event()
     request.node.res.statusCode = 403
     const response = { body: new Error('contains provider secret') }
-    seed(request)
+    seed(request, appendGodModeAuditEvent)
 
     await persistGodModeTerminalAudit(request, response, { appendGodModeAuditEvent, setResponseStatus })
 
@@ -130,7 +196,7 @@ describe('God mode terminal audit plugin', () => {
     const queue = { send: vi.fn().mockResolvedValue(undefined) }
     const request = event('GET', queue)
     const response = { body: { ok: true } }
-    seed(request)
+    seed(request, appendGodModeAuditEvent)
     appendGodModeAuditEvent.mockRejectedValue(new Error('database unavailable'))
 
     await persistGodModeTerminalAudit(request, response, { appendGodModeAuditEvent, setResponseStatus })
@@ -151,7 +217,7 @@ describe('God mode terminal audit plugin', () => {
     const queue = { send: vi.fn().mockRejectedValue(new Error('queue unavailable')) }
     const request = event('GET', queue)
     const response = { body: { ok: true, secret: 'do not leak' } }
-    seed(request)
+    seed(request, appendGodModeAuditEvent)
     appendGodModeAuditEvent.mockRejectedValue(new Error('database unavailable'))
 
     await persistGodModeTerminalAudit(request, response, { appendGodModeAuditEvent, setResponseStatus })
@@ -168,7 +234,7 @@ describe('God mode terminal audit plugin', () => {
     const queue = { send: vi.fn().mockResolvedValue(undefined) }
     const request = event('POST', queue)
     const response = { body: { ok: true } }
-    seed(request)
+    seed(request, appendGodModeAuditEvent)
     appendGodModeAuditEvent.mockRejectedValue(new Error('database unavailable'))
 
     await persistGodModeTerminalAudit(request, response, { appendGodModeAuditEvent, setResponseStatus })
@@ -181,7 +247,7 @@ describe('God mode terminal audit plugin', () => {
     const request = event('POST')
     const response = { body: { ok: true } }
     const persistTerminal = vi.fn().mockResolvedValue(undefined)
-    seed(request)
+    seed(request, appendGodModeAuditEvent)
     registerGodModeMutationCoordination(request, {
       strategy: 'task5-execution-ledger',
       method: 'POST',

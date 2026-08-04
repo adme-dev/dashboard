@@ -111,6 +111,8 @@ export async function handleGodModeRequest(
     sessionDigest,
     routeOrTool,
     emergencyDisabled: false
+  }, {
+    appendGodModeAuditEvent: dependencies.appendGodModeAuditEvent
   })
 
   try {

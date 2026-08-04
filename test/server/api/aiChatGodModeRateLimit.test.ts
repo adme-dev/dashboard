@@ -4,7 +4,8 @@ const mocks = vi.hoisted(() => ({
   requireAuth: vi.fn(),
   queryOne: vi.fn(),
   queryOneFresh: vi.fn(),
-  processUserMessage: vi.fn()
+  processUserMessage: vi.fn(),
+  appendGodModeAuditEvent: vi.fn()
 }))
 
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: mocks.requireAuth }))
@@ -66,6 +67,8 @@ async function ownerRequest(path: string) {
     sessionDigest: SESSION_DIGEST,
     routeOrTool: `POST ${path}`,
     emergencyDisabled: false
+  }, {
+    appendGodModeAuditEvent: mocks.appendGodModeAuditEvent
   })
   return event
 }
@@ -76,6 +79,8 @@ describe('AI chat God-mode application rate limits', () => {
     mocks.queryOne.mockReset()
     mocks.queryOneFresh.mockReset()
     mocks.processUserMessage.mockReset()
+    mocks.appendGodModeAuditEvent.mockReset()
+    mocks.appendGodModeAuditEvent.mockResolvedValue(undefined)
     mocks.queryOne.mockResolvedValueOnce({ cnt: 12 }).mockResolvedValueOnce(null)
   })
 
@@ -88,6 +93,11 @@ describe('AI chat God-mode application rate limits', () => {
 
     await expect(handler(event)).rejects.toMatchObject({ statusCode: 404 })
     expect(getGodModeRouteAuditState(event)?.bypassedControls.has('rate_limit')).toBe(true)
+    expect(mocks.appendGodModeAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      phase: 'bypass',
+      bypassedControls: ['rate_limit'],
+      outcomeCode: 'pre_execution'
+    }))
     expect(mocks.queryOne).toHaveBeenCalledTimes(2)
   })
 

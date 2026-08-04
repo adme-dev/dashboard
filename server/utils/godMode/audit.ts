@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 
 export type GodModeChannel = 'application' | 'mcp'
-export type GodModeAuditPhase = 'attempt' | 'succeeded' | 'failed'
+export type GodModeAuditPhase = 'attempt' | 'bypass' | 'succeeded' | 'failed'
 export type GodModeBypassedControl =
   | 'permission'
   | 'feature_flag'
@@ -54,7 +54,7 @@ const GodModeAuditEventSchema = z.object({
   sessionDigest: z.string().regex(/^[0-9a-f]{64}$/),
   channel: z.enum(['application', 'mcp']),
   routeOrTool: z.string().min(1).max(160),
-  phase: z.enum(['attempt', 'succeeded', 'failed']),
+  phase: z.enum(['attempt', 'bypass', 'succeeded', 'failed']),
   tenantId: nullableUuid,
   clientId: nullableUuid,
   entityType: z.string().min(1).max(64).nullable().optional(),
@@ -76,7 +76,14 @@ export async function appendGodModeAuditEvent(
   input: GodModeAuditEventInput,
   db: AuditDb = defaultAuditDb
 ): Promise<void> {
-  const event = GodModeAuditEventSchema.parse(input)
+  const parsed = GodModeAuditEventSchema.parse(input)
+  const event = parsed.phase === 'bypass'
+    ? {
+        ...parsed,
+        bypassedControls: [...new Set(parsed.bypassedControls)].sort()
+      }
+    : parsed
+  const conflictClause = event.phase === 'bypass' ? 'ON CONFLICT DO NOTHING' : ''
 
   await db.query(
     `INSERT INTO god_mode_audit_events (
@@ -85,7 +92,8 @@ export async function appendGodModeAuditEvent(
        emergency_disabled
      ) VALUES (
        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
-     )`,
+     )
+     ${conflictClause}`,
     [
       event.actorUserId,
       event.correlationId,
