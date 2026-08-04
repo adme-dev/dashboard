@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { gzipSync } from 'node:zlib'
 import { initSync, parse } from 'es-module-lexer'
 import { transform } from 'esbuild'
 
@@ -29,6 +30,7 @@ const PRECOMPUTED_KNOWN_RESOURCE_KEYS = [
   'css',
   'assets'
 ]
+const PRECOMPUTED_BUCKET_KEYS = ['scripts', 'styles', 'preload', 'prefetch']
 
 function assertKnownKeys(value, supported, label) {
   const unknown = Object.keys(value || {}).filter(key => !supported.includes(key))
@@ -73,6 +75,63 @@ export function compactPrecomputedManifest(manifest) {
   }
 }
 
+function encodePrecomputedResource(resource) {
+  const values = PRECOMPUTED_RESOURCE_KEYS.map(key => (
+    resource[key] === undefined ? 0 : resource[key]
+  ))
+  while (values.at(-1) === 0) values.pop()
+  return values
+}
+
+function encodePrecomputedBucket(bucket) {
+  return Object.fromEntries(
+    Object.entries(bucket || {}).map(([id, resource]) => [
+      id,
+      encodePrecomputedResource(resource)
+    ])
+  )
+}
+
+export function buildCompressedPrecomputedManifestModule(manifest) {
+  const packed = {
+    d: Object.fromEntries(
+      Object.entries(manifest.dependencies || {}).map(([moduleId, dependency]) => [
+        moduleId,
+        PRECOMPUTED_BUCKET_KEYS.map(key => encodePrecomputedBucket(dependency[key]))
+      ])
+    ),
+    e: manifest.entrypoints || []
+  }
+  const compressed = gzipSync(Buffer.from(JSON.stringify(packed)), { level: 9 })
+
+  return `const XEROFLOW_COMPACT_PRECOMPUTED='${compressed.toString('base64')}'
+let cache
+const resourceKeys=['file','resourceType','module','mimeType','preload','prefetch']
+const bucketKeys=['scripts','styles','preload','prefetch']
+function decodeBucket(bucket) {
+  return Object.fromEntries(Object.entries(bucket).map(([id, values]) => [id,
+    Object.fromEntries(values
+      .map((value, index) => [resourceKeys[index], value])
+      .filter(([, value]) => value !== 0))
+  ]))
+}
+export default async function loadPrecomputedManifest() {
+  if (cache) return cache
+  const bytes = Uint8Array.from(atob(XEROFLOW_COMPACT_PRECOMPUTED), char => char.charCodeAt(0))
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
+  const packed = JSON.parse(await new Response(stream).text())
+  cache = {
+    dependencies: Object.fromEntries(Object.entries(packed.d).map(([moduleId, buckets]) => [
+      moduleId,
+      Object.fromEntries(buckets.map((bucket, index) => [bucketKeys[index], decodeBucket(bucket)]))
+    ])),
+    entrypoints: packed.e
+  }
+  return cache
+}
+`
+}
+
 export function compactPlatformImports(source) {
   const removableImports = parse(source)[0]
     .filter(entry => (
@@ -101,6 +160,31 @@ function compactDeployedModuleSource(source) {
   )
 }
 
+async function minifyDeployedModuleToFixedPoint(source, sourcefile) {
+  let compacted = source
+
+  for (let pass = 0; pass < 8; pass += 1) {
+    const transformed = await transform(compacted, {
+      sourcefile,
+      loader: 'js',
+      format: 'esm',
+      platform: 'neutral',
+      target: 'esnext',
+      minify: true,
+      keepNames: true,
+      legalComments: 'none'
+    })
+    if (Buffer.byteLength(transformed.code) >= Buffer.byteLength(compacted)) {
+      return compacted
+    }
+    compacted = transformed.code
+  }
+
+  throw new Error(
+    `[worker-compaction] ${sourcefile} did not converge after 8 shrinking passes`
+  )
+}
+
 export async function compactDeployedWorkerModules(directory) {
   let changedFiles = 0
   let savedBytes = 0
@@ -116,7 +200,14 @@ export async function compactDeployedWorkerModules(directory) {
     if (!entry.isFile() || !entry.name.endsWith('.mjs')) continue
 
     const source = await readFile(entryPath, 'utf8')
-    const compacted = compactDeployedModuleSource(source)
+    const stripped = compactDeployedModuleSource(source)
+    const preservesCompactionMarker = (
+      source.includes('XEROFLOW_COMPACT_PRECOMPUTED')
+      || source.includes(WORKER_MODULE_COMPACTION_MARKER)
+    )
+    const compacted = preservesCompactionMarker
+      ? stripped
+      : await minifyDeployedModuleToFixedPoint(stripped, entry.name)
     if (compacted === source) continue
 
     await atomicWriteFile(entryPath, compacted)

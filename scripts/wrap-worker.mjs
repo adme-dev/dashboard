@@ -10,11 +10,11 @@
  */
 
 import { build } from 'esbuild'
-import { gzipSync } from 'node:zlib'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import {
+  buildCompressedPrecomputedManifestModule,
   compactPrecomputedManifest,
   compactDeployedWorkerModules,
   compactWorkerModule
@@ -113,20 +113,7 @@ if (await exists(precomputedManifest)) {
       ? await manifestModule.default()
       : manifestModule.default
     const compactManifest = compactPrecomputedManifest(manifest)
-    const compressed = gzipSync(
-      Buffer.from(JSON.stringify(compactManifest)),
-      { level: 9 }
-    )
-    const compactSource = `const XEROFLOW_COMPACT_PRECOMPUTED='${compressed.toString('base64')}'
-let cache
-export default async function loadPrecomputedManifest() {
-  if (cache) return cache
-  const bytes = Uint8Array.from(atob(XEROFLOW_COMPACT_PRECOMPUTED), char => char.charCodeAt(0))
-  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
-  cache = JSON.parse(await new Response(stream).text())
-  return cache
-}
-`
+    const compactSource = buildCompressedPrecomputedManifestModule(compactManifest)
     await fs.writeFile(precomputedManifest, compactSource, 'utf8')
     console.log(
       `[wrap-worker] compacted Nuxt client manifest ${source.length} → ${compactSource.length} bytes`
