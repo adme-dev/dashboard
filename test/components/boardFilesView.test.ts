@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
-import BoardFilesView from '~~/app/components/board/views/BoardFilesView.vue'
+import BoardFilesView from '~~/app/components/board/views/BoardFilesView.client.vue'
 
 const fetchMock = vi.fn()
 const toastAddMock = vi.fn()

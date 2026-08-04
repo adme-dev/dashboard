@@ -7,6 +7,7 @@ import {
   createSubmission,
   getSubmissionReviewDetailForBoard,
   listBoardKnowledge,
+  listQueuedBoardKnowledgeDeindex,
   resolveKnowledgeSource
 } from '~~/server/utils/boardKnowledge/repository'
 import { transitionSubmission, type BoardKnowledgeTransitionAction } from '~~/server/utils/boardKnowledge/lifecycle'
@@ -79,10 +80,26 @@ export async function transitionKnowledgeForBoard(
     const resolvedQueueType = action === 'retry' && submission.reviewStatus === 'approved'
       ? 'knowledge.index'
       : queueType
-    queued = await enqueue(event, resolvedQueueType, {
+    const jobs = [{
       submissionId: submission.id,
       expectedVersionKey: submission.sourceVersionKey
-    })
+    }]
+    if (action === 'approve') {
+      const superseded = await listQueuedBoardKnowledgeDeindex(
+        submission.departmentId,
+        submission.sourceType,
+        submission.sourceId,
+        submission.id
+      )
+      jobs.push(...superseded.map(item => ({
+        submissionId: item.id,
+        expectedVersionKey: item.sourceVersionKey
+      })))
+    }
+    queued = true
+    for (const job of jobs) {
+      queued = await enqueue(event, resolvedQueueType, job) && queued
+    }
     setResponseStatus(event, 202)
   }
   return { accepted: Boolean(queueType), queued, submission }

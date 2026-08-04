@@ -206,7 +206,7 @@ Jobs are idempotent against submission ID, expected source version, calculated c
 
 ### Native extraction first
 
-The processor downloads the source through `downloadFileBuffer` using the database-resolved storage key and applies size, decompression, and parsing limits.
+The processor downloads the source through `downloadFileBuffer` using the database-resolved storage key and applies size, decompression, and parsing limits. Heavy deterministic parsing executes in the private `board-knowledge-extractor` companion Worker through the `BOARD_KNOWLEDGE_EXTRACTOR` service binding; it has no public route, does not access storage or the database, returns `no-store` responses, and keeps pdfjs/SheetJS outside the Pages Worker release budget.
 
 - TXT, CSV, and JSON: validated text decoding; JSON is rendered into readable structured text.
 - XLS/XLSX: use the existing direct `xlsx` dependency, preserving sheet names and bounded row/column context.

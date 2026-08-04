@@ -7,6 +7,7 @@ Board Knowledge submission and management review can ship independently. AI retr
 - Keep `BOARD_KNOWLEDGE_SEARCH_ENABLED=false` in every environment.
 - Confirm migration `342_board_knowledge.sql` and `343_board_knowledge_agency_chunks.sql` have been applied.
 - Confirm `KNOWLEDGE_VECTORIZE` points to `agency-knowledge`; it must never point to the shared `VECTORIZE` index.
+- Build and deploy `workers/board-knowledge-extractor` before the Pages application, then confirm the private `BOARD_KNOWLEDGE_EXTRACTOR` service binding resolves to `board-knowledge-extractor`. The Worker has `workers_dev=false` and must not be given a public route.
 - For the one-off Node backfill, provide `DATABASE_URL`, `CLOUDFLARE_ACCOUNT_ID`, and `CLOUDFLARE_API_TOKEN`. The token needs Workers AI inference and Vectorize write access. Do not print these values.
 - Confirm the AI Gateway route used for document extraction has paid Google credentials. `GOOGLE_AI_STUDIO_PAID=true` is an explicit operator assertion, not credential discovery.
 - In AI Gateway, confirm request and response payload logging and caching are disabled for document extraction. The application also sends the no-store and payload-logging opt-out headers.
@@ -30,6 +31,7 @@ Do not insert vectors until `scopeKey` appears as a string metadata index. Cloud
 ## 3. Queue and failure-path readiness
 
 - Confirm the `agency-jobs` producer binding is present and the deployed consumer routes `knowledge.extract` and `knowledge.index` jobs.
+- Run `pnpm --dir workers/board-knowledge-extractor build` and verify the parser Worker dry-run bundle succeeds. Native extraction fails closed with `NATIVE_EXTRACTOR_UNAVAILABLE` when the Pages service binding is absent.
 - Confirm queue retries and the dead-letter queue are configured in Cloudflare before enabling broad submission.
 - Run the queue routing and processor tests:
 
@@ -88,9 +90,10 @@ Vectorize writes are asynchronous. Wait until the reported mutation has been pro
 
 1. Set `BOARD_KNOWLEDGE_SEARCH_ENABLED=false` and redeploy. Submission and review remain available, while assistant retrieval uses the existing published agency knowledge path.
 2. Stop or pause the `agency-jobs` consumer if indexing is unhealthy. Do not delete source files or review records.
-3. Leave the additive Postgres migrations in place. They are safe while the feature flag is off.
-4. Keep legacy knowledge vectors until dedicated-index parity has been accepted. Cleanup is a separate, reviewed operation.
-5. If the dedicated index must be rebuilt, create a new index name, recreate the `scopeKey` metadata index before insertion, update `KNOWLEDGE_VECTORIZE`, rerun dry-run/backfill/parity, and only then remove the old dedicated index.
+3. Keep the private parser Worker deployed while any extraction jobs are queued. Removing its service binding makes new native extraction fail closed; it does not expose or publish content.
+4. Leave the additive Postgres migrations in place. They are safe while the feature flag is off.
+5. Keep legacy knowledge vectors until dedicated-index parity has been accepted. Cleanup is a separate, reviewed operation.
+6. If the dedicated index must be rebuilt, create a new index name, recreate the `scopeKey` metadata index before insertion, update `KNOWLEDGE_VECTORIZE`, rerun dry-run/backfill/parity, and only then remove the old dedicated index.
 
 ## References
 

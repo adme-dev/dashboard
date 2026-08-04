@@ -1,0 +1,11 @@
+name = "board-knowledge-extractor"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+# Private service-binding target. The Pages application owns source ACLs,
+# storage access, review state, and persistence; this Worker only parses bounded
+# bytes and returns structured native extraction blocks.
+[limits]
+cpu_ms = 30000

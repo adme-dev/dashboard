@@ -71,10 +71,17 @@ const previewTruncated = computed(() => {
 })
 const metricEntries = computed(() => {
   const metrics = submission.value?.extractionMetrics || {}
-  return (['pages', 'sheets', 'slides', 'characters', 'chunks'] as const)
-    .flatMap((key) => {
+  const fields = [
+    { key: 'pages', label: 'pages' },
+    { key: 'sheets', label: 'sheets' },
+    { key: 'slides', label: 'slides' },
+    { key: 'characters', label: 'characters' },
+    { key: 'chunkCount', label: 'chunks' }
+  ] as const
+  return fields
+    .flatMap(({ key, label }) => {
       const value = Number(metrics[key])
-      return Number.isFinite(value) && value >= 0 ? [{ key, value }] : []
+      return Number.isFinite(value) && value >= 0 ? [{ key, label, value }] : []
     })
 })
 
@@ -352,7 +359,7 @@ watch(
               <UBadge
                 v-for="metric in metricEntries"
                 :key="metric.key"
-                :label="formatMetric(metric.key, metric.value)"
+                :label="formatMetric(metric.label, metric.value)"
                 color="neutral"
                 variant="subtle"
                 size="sm"

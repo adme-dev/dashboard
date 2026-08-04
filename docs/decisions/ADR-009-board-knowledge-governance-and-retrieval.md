@@ -42,6 +42,8 @@ Vectorize filtering narrows candidates, but Postgres remains the authorization b
 
 Text, structured data, Office documents, and text-layer PDFs use bounded native parsers first. AI is invoked only for scans, insufficient text density, parsing failure, or layout recovery. This reduces cost, latency, and document-content egress.
 
+The heavy native parser runs in the private `board-knowledge-extractor` companion Worker and is reached only through the Pages `BOARD_KNOWLEDGE_EXTRACTOR` service binding. The Pages app retains source authorization, R2 access, governance, and persistence; the parser receives bounded bytes plus filename/MIME metadata and returns bounded extraction blocks with `no-store`. This keeps pdfjs and SheetJS outside the Pages Worker release budget without creating a public document-processing endpoint.
+
 AI extraction must go through Cloudflare AI Gateway. Raw request/response payload logging and caching are disabled, direct/free-tier fallback is prohibited, and provider failure leaves a retryable extraction failure rather than silently changing the data-processing route.
 
 ### 4. Admin Model Ops controls the extraction model
@@ -90,6 +92,7 @@ Rejected for launch. AI Gateway can proxy Hugging Face, but model availability s
 - A second Vectorize index and backfill runbook must be operated.
 - Extraction, review, and indexing become separate asynchronous states that the UI must explain.
 - Office/PDF parsing needs bounded adapters and a maintained reference corpus.
+- The private parser Worker must be deployed before the Pages binding is activated; a missing binding fails extraction closed.
 - Approval does not make a document immediately searchable; indexing must finish first.
 - Source deletion and replacement must coordinate with de-indexing.
 

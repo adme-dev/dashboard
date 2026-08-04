@@ -30,6 +30,7 @@ const mockCreateSubmission = vi.fn()
 const mockGetSubmissionForBoard = vi.fn()
 const mockGetSubmissionReviewDetailForBoard = vi.fn()
 const mockListBoardKnowledge = vi.fn()
+const mockListQueuedBoardKnowledgeDeindex = vi.fn()
 const mockTransitionSubmission = vi.fn()
 const mockEnqueue = vi.fn()
 
@@ -47,7 +48,8 @@ vi.mock('~~/server/utils/boardKnowledge/repository', () => ({
   createSubmission: (...args: unknown[]) => mockCreateSubmission(...args),
   getSubmissionForBoard: (...args: unknown[]) => mockGetSubmissionForBoard(...args),
   getSubmissionReviewDetailForBoard: (...args: unknown[]) => mockGetSubmissionReviewDetailForBoard(...args),
-  listBoardKnowledge: (...args: unknown[]) => mockListBoardKnowledge(...args)
+  listBoardKnowledge: (...args: unknown[]) => mockListBoardKnowledge(...args),
+  listQueuedBoardKnowledgeDeindex: (...args: unknown[]) => mockListQueuedBoardKnowledgeDeindex(...args)
 }))
 
 vi.mock('~~/server/utils/boardKnowledge/lifecycle', () => ({
@@ -76,6 +78,8 @@ const UPDATED_AT = '2026-08-04T01:00:00.000Z'
 const submission = {
   id: SUBMISSION_ID,
   departmentId: BOARD_ID,
+  sourceType: 'board_file',
+  sourceId: SOURCE_ID,
   sourceVersionKey: 'record:source-v1',
   extractionStatus: 'ready',
   reviewStatus: 'pending',
@@ -102,6 +106,7 @@ describe('Board Knowledge API', () => {
       history: []
     })
     mockListBoardKnowledge.mockReset().mockResolvedValue([submission])
+    mockListQueuedBoardKnowledgeDeindex.mockReset().mockResolvedValue([])
     mockTransitionSubmission.mockReset().mockResolvedValue(submission)
     mockEnqueue.mockReset().mockResolvedValue(true)
   })
@@ -190,6 +195,31 @@ describe('Board Knowledge API', () => {
     expect(mockEnqueue).toHaveBeenCalledWith(event, 'knowledge.index', expect.objectContaining({
       submissionId: SUBMISSION_ID
     }))
+  })
+
+  it('dispatches superseded approved versions for vector deletion after approval', async () => {
+    const supersededId = '50000000-0000-4000-8000-000000000005'
+    mockListQueuedBoardKnowledgeDeindex.mockResolvedValueOnce([{
+      id: supersededId,
+      sourceVersionKey: 'record:source-v0'
+    }])
+    const event: TestEvent = {
+      params: { id: BOARD_ID, submissionId: SUBMISSION_ID },
+      body: { expectedUpdatedAt: UPDATED_AT }
+    }
+
+    await approveKnowledge(event as never)
+
+    expect(mockListQueuedBoardKnowledgeDeindex).toHaveBeenCalledWith(
+      BOARD_ID,
+      'board_file',
+      SOURCE_ID,
+      SUBMISSION_ID
+    )
+    expect(mockEnqueue).toHaveBeenCalledWith(event, 'knowledge.index', {
+      submissionId: supersededId,
+      expectedVersionKey: 'record:source-v0'
+    })
   })
 
   it('requires a bounded rejection reason', async () => {

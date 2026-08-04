@@ -1,4 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  createSubmission,
+  getSubmissionReviewDetailForBoard,
+  getSubmissionForBoard,
+  listBoardKnowledge,
+  listQueuedBoardKnowledgeDeindex,
+  resolveKnowledgeSource
+} from '~~/server/utils/boardKnowledge/repository'
 
 const db = vi.hoisted(() => ({
   queryOne: vi.fn(),
@@ -8,14 +16,6 @@ const db = vi.hoisted(() => ({
 }))
 
 vi.mock('~~/server/utils/db', () => db)
-
-import {
-  createSubmission,
-  getSubmissionReviewDetailForBoard,
-  getSubmissionForBoard,
-  listBoardKnowledge,
-  resolveKnowledgeSource
-} from '~~/server/utils/boardKnowledge/repository'
 
 const BOARD_ID = '11111111-1111-4111-8111-111111111111'
 const FILE_ID = '22222222-2222-4222-8222-222222222222'
@@ -177,6 +177,25 @@ describe('board knowledge repository', () => {
     const summarySql = String(db.queryRows.mock.calls[0]?.[0])
     expect(summarySql).toMatch(/WHERE bks\.department_id = \$1/i)
     expect(summarySql).not.toMatch(/\ba\.content\b/i)
+  })
+
+  it('lists only superseded queued versions for de-index dispatch', async () => {
+    db.queryRows.mockResolvedValueOnce([{
+      id: SUBMISSION_ID,
+      source_version_key: 'sha256:old'
+    }])
+
+    await expect(listQueuedBoardKnowledgeDeindex(
+      BOARD_ID,
+      'board_file',
+      FILE_ID,
+      '55555555-5555-4555-8555-555555555555'
+    )).resolves.toEqual([{ id: SUBMISSION_ID, sourceVersionKey: 'sha256:old' }])
+
+    expect(db.queryRows).toHaveBeenCalledWith(
+      expect.stringMatching(/review_status IN \('archived', 'rejected'\)[\s\S]*index_status = 'queued'/i),
+      [BOARD_ID, 'board_file', FILE_ID, '55555555-5555-4555-8555-555555555555']
+    )
   })
 
   it('returns a board-scoped, bounded review preview with context and audit history', async () => {

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, ref } from 'vue'
-import BoardKnowledgeReviewSlideover from '~~/app/components/board/knowledge/BoardKnowledgeReviewSlideover.vue'
+import BoardKnowledgeReviewSlideover from '~~/app/components/board/knowledge/BoardKnowledgeReviewSlideover.client.vue'
 
 const BOARD_ID = '11111111-1111-4111-8111-111111111111'
 const SUBMISSION_ID = '22222222-2222-4222-8222-222222222222'
@@ -38,7 +38,7 @@ function reviewDetail() {
       extractionModel: 'gemini-3.6-flash',
       extractionStartedAt: '2026-08-04T01:01:00.000Z',
       extractionCompletedAt: '2026-08-04T01:02:00.000Z',
-      extractionMetrics: { pages: 8, characters: 24560, chunks: 18 },
+      extractionMetrics: { pages: 8, characters: 24560, chunkCount: 18 },
       extractionWarnings: ['OCR_USED', 'LOW_TEXT_DENSITY'],
       extractionErrorCode: null,
       extractionErrorMessage: null,
@@ -156,6 +156,7 @@ describe('BoardKnowledgeReviewSlideover', () => {
     expect(host.textContent).toContain('Gemini')
     expect(host.textContent).toContain('8 pages')
     expect(host.textContent).toContain('24,560 characters')
+    expect(host.textContent).toContain('18 chunks')
     expect(host.textContent).toContain('Page 2')
     expect(host.textContent).toContain('OCR used')
     expect(host.textContent).toContain('Preview truncated')

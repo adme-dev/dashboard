@@ -86,14 +86,17 @@ describe('agency Board Knowledge review queue', () => {
   })
 
   it('renders a compact queue whose links open the source board review', () => {
-    const page = readFileSync('app/pages/agency/ai/knowledge/index.vue', 'utf8')
-    const boardFiles = readFileSync('app/components/board/views/BoardFilesView.vue', 'utf8')
+    const page = readFileSync('app/components/knowledge/AiKnowledgeWorkspace.client.vue', 'utf8')
+    const boardFiles = readFileSync('app/components/board/views/BoardFilesView.client.vue', 'utf8')
 
     expect(page).toContain('data-testid="board-knowledge-review-queue"')
     expect(page).toContain('/api/agency/ai/knowledge/board-review')
     expect(page).toContain(`view: 'files'`)
     expect(page).toContain('knowledge: item.id')
     expect(page).toContain('Open in board')
+    expect(page).toContain('<UFormField label="Title" required>')
+    expect(page).toContain('{ label: \'No category\', value: \'__none__\' }')
+    expect(page).not.toContain('{ label: \'No category\', value: \'\' }')
     expect(boardFiles).toContain('route.query.knowledge')
     expect(boardFiles).toContain('requestedKnowledgeSubmission')
   })

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   createCorruptZipFixture,
   createDocxFixture,
@@ -8,7 +8,8 @@ import {
   createPptxFixture,
   createXlsxFixture
 } from '../../helpers/boardKnowledgeFixtures'
-import { extractNativeDocument } from '~~/server/utils/boardKnowledge/extractNative'
+import { extractNativeDocument as extractViaService } from '~~/server/utils/boardKnowledge/extractNative'
+import { extractNativeDocument } from '~~/workers/board-knowledge-extractor/src/nativeParser'
 
 const fixture = (name: string) => readFileSync(`test/fixtures/board-knowledge/${name}`)
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -16,6 +17,33 @@ const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingm
 const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 
 describe('bounded native text extraction', () => {
+  it('uses the private extractor binding and validates its bounded response', async () => {
+    const fetch = vi.fn(async (_request: Request) => Response.json({
+      outcome: 'usable',
+      method: 'native',
+      blocks: [{ kind: 'text', content: 'Parsed by private worker' }],
+      metrics: { characters: 24, blankRatio: 0, replacementRatio: 0 },
+      warnings: [],
+      errorCode: null
+    }))
+    const event = {
+      context: { cloudflare: { env: { BOARD_KNOWLEDGE_EXTRACTOR: { fetch } } } }
+    }
+
+    const result = await extractViaService({
+      event: event as never,
+      bytes: Buffer.from('private document'),
+      fileName: 'Board policy.txt',
+      mimeType: 'text/plain'
+    })
+
+    expect(result.blocks[0]?.content).toBe('Parsed by private worker')
+    const request = fetch.mock.calls[0]?.[0]
+    expect(request?.url).toBe('https://board-knowledge-extractor.internal/extract')
+    expect(request?.headers.get('x-document-file-name')).toBe('Board%20policy.txt')
+    expect(Buffer.from(await request!.arrayBuffer()).toString()).toBe('private document')
+  })
+
   it.each([
     ['sample.txt', 'text/plain', 'Supplier bills'],
     ['sample.csv', 'text/csv', 'Example Media'],

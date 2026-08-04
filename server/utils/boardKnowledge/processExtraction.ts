@@ -476,7 +476,8 @@ export async function processBoardKnowledgeExtraction(
     const native = await dependencies.extractNative({
       bytes,
       fileName: source.fileName,
-      mimeType: source.mimeType
+      mimeType: source.mimeType,
+      event: context.event
     })
     let blocks = native.blocks
     let extractionMethod: BoardKnowledgeExtractionMethod = 'native'

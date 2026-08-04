@@ -499,6 +499,26 @@ export async function listBoardKnowledge(departmentId: string): Promise<BoardKno
   return rows.map(mapBoardKnowledgeSubmission)
 }
 
+export async function listQueuedBoardKnowledgeDeindex(
+  departmentId: string,
+  sourceType: BoardKnowledgeSourceType,
+  sourceId: string,
+  excludeSubmissionId: string
+): Promise<Array<{ id: string, sourceVersionKey: string }>> {
+  const rows = await queryRows<{ id: string, source_version_key: string }>(`
+    SELECT id, source_version_key
+    FROM board_knowledge_submissions
+    WHERE department_id = $1
+      AND source_type = $2
+      AND source_entity_id = $3
+      AND id <> $4
+      AND review_status IN ('archived', 'rejected')
+      AND index_status = 'queued'
+    ORDER BY created_at
+  `, [departmentId, sourceType, sourceId, excludeSubmissionId])
+  return rows.map(row => ({ id: row.id, sourceVersionKey: row.source_version_key }))
+}
+
 export async function recordKnowledgeAudit(
   input: BoardKnowledgeAuditInput,
   client?: BoardKnowledgeQueryClient
