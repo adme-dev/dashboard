@@ -125,6 +125,34 @@ describe('board files API', () => {
     expect(mockUploadFile).not.toHaveBeenCalled()
   })
 
+  it('rejects missing files, unsupported categories, MIME types, and oversized content', async () => {
+    mockReadMultipartFormData.mockResolvedValueOnce([])
+    await expect(uploadHandler({ context: {} } as never)).rejects.toMatchObject({ statusCode: 400 })
+
+    mockReadMultipartFormData.mockResolvedValueOnce([
+      { name: 'file', filename: 'policy.pdf', type: 'application/pdf', data: Buffer.from('%PDF-policy') },
+      { name: 'category', data: Buffer.from('evidence') }
+    ])
+    await expect(uploadHandler({ context: {} } as never)).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'Invalid board file category'
+    })
+
+    mockReadMultipartFormData.mockResolvedValueOnce([
+      { name: 'file', filename: 'payload.exe', type: 'application/x-msdownload', data: Buffer.from('binary') }
+    ])
+    mockValidateFileType.mockReturnValueOnce(false)
+    await expect(uploadHandler({ context: {} } as never)).rejects.toMatchObject({ statusCode: 400 })
+
+    mockReadMultipartFormData.mockResolvedValueOnce([
+      { name: 'file', filename: 'large.pdf', type: 'application/pdf', data: Buffer.from('%PDF-large') }
+    ])
+    mockValidateFileSize.mockReturnValueOnce(false)
+    await expect(uploadHandler({ context: {} } as never)).rejects.toMatchObject({ statusCode: 413 })
+
+    expect(mockUploadFile).not.toHaveBeenCalled()
+  })
+
   it('attributes a valid multipart upload to the authenticated user', async () => {
     mockQueryOne
       .mockResolvedValueOnce(null)
