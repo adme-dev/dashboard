@@ -1,7 +1,7 @@
 # Owner-Wide AI Release Access
 
-**Date:** 2026-08-04  
-**Status:** Approved design  
+**Date:** 2026-08-04
+**Status:** Approved design
 **Scope:** Employee AI assistant governed-catalog access
 
 ## Problem

@@ -1,5 +1,5 @@
 import { generateText, stepCountIs, type LanguageModel } from 'ai'
-import { resolveModel } from '~~/server/utils/claudeClient'
+import { resolveModelWithTransport } from '~~/server/utils/claudeClient'
 import { filterToolsForUser, toSdkTools } from './toolRegistry'
 import { registry } from './tools/index'
 import { DEFAULT_PERSONA, type Persona } from './personas'
@@ -230,6 +230,7 @@ export async function runToolLoop(opts: {
   }
   const recordAttempt = async (input: {
     spec: string
+    gatewayUsed: boolean
     role: 'primary' | 'fallback'
     status: 'success' | 'error'
     terminal: boolean
@@ -242,7 +243,7 @@ export async function runToolLoop(opts: {
       featureKey: opts.featureKey ?? 'agency_ai_tool_loop',
       provider: input.spec.startsWith('anthropic/') ? 'anthropic' : input.spec.startsWith('workersai/') ? 'workers_ai' : 'groq',
       modelId: input.spec.replace(/^(groq|anthropic|workersai)\//, ''),
-      gatewayUsed: !opts.model && !input.spec.startsWith('workersai/'),
+      gatewayUsed: input.gatewayUsed,
       fallbackUsed: input.fallbackUsed,
       userId: opts.ctx.userId,
       clientId: opts.clientId ?? null,
@@ -265,28 +266,38 @@ export async function runToolLoop(opts: {
     })
   }
   const primaryStartedAt = Date.now()
+  let usedGatewayUsed = false
   try {
-    result = await run(opts.model ?? resolveModel(primarySpec, { aiBinding }))
+    const primary = opts.model
+      ? { model: opts.model, gatewayUsed: false }
+      : resolveModelWithTransport(primarySpec, { aiBinding })
+    usedGatewayUsed = primary.gatewayUsed
+    result = await run(primary.model)
     successfulAttemptStartedAt = primaryStartedAt
   } catch (err) {
     // Provider/gateway failure → ordered fallback to a second model.
-    let fb: LanguageModel | null = null
+    let fb: { model: LanguageModel, gatewayUsed: boolean } | null = null
     try {
-      fb = opts.fallbackModel ?? (fallbackSpec ? resolveModel(fallbackSpec, { aiBinding }) : null)
+      fb = opts.fallbackModel
+        ? { model: opts.fallbackModel, gatewayUsed: false }
+        : fallbackSpec
+          ? resolveModelWithTransport(fallbackSpec, { aiBinding })
+          : null
     } catch {
-      await recordAttempt({ spec: usedSpec, role: 'primary', status: 'error', terminal: true, fallbackUsed: false, startedAt: primaryStartedAt, error: err })
+      await recordAttempt({ spec: usedSpec, gatewayUsed: usedGatewayUsed, role: 'primary', status: 'error', terminal: true, fallbackUsed: false, startedAt: primaryStartedAt, error: err })
       throw err
     }
-    await recordAttempt({ spec: usedSpec, role: 'primary', status: 'error', terminal: !fb, fallbackUsed: false, startedAt: primaryStartedAt, error: err })
+    await recordAttempt({ spec: usedSpec, gatewayUsed: usedGatewayUsed, role: 'primary', status: 'error', terminal: !fb, fallbackUsed: false, startedAt: primaryStartedAt, error: err })
     if (!fb) throw err
     usedSpec = opts.fallbackModel ? 'injected' : fallbackSpec
+    usedGatewayUsed = fb.gatewayUsed
     fallbackUsed = true
     const fallbackStartedAt = Date.now()
     try {
-      result = await run(fb)
+      result = await run(fb.model)
       successfulAttemptStartedAt = fallbackStartedAt
     } catch (fallbackError) {
-      await recordAttempt({ spec: usedSpec, role: 'fallback', status: 'error', terminal: true, fallbackUsed: true, startedAt: fallbackStartedAt, error: fallbackError })
+      await recordAttempt({ spec: usedSpec, gatewayUsed: usedGatewayUsed, role: 'fallback', status: 'error', terminal: true, fallbackUsed: true, startedAt: fallbackStartedAt, error: fallbackError })
       throw fallbackError
     }
   }
@@ -296,6 +307,7 @@ export async function runToolLoop(opts: {
   if (knownCost !== null) out.costUsd = knownCost
   await recordAttempt({
     spec: usedSpec,
+    gatewayUsed: usedGatewayUsed,
     role: fallbackUsed ? 'fallback' : 'primary',
     status: 'success',
     terminal: true,

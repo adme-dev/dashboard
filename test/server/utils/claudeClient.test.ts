@@ -62,6 +62,35 @@ afterEach(() => {
 })
 
 describe('AI Gateway provider authentication', () => {
+  it('reports direct transport when resolving a provider model without a Gateway URL', async () => {
+    runtimeConfig = { groqApiKey: 'test-groq-key' }
+
+    const { resolveModelWithTransport } = await import('~~/server/utils/claudeClient')
+    const resolved = resolveModelWithTransport('groq/openai/gpt-oss-120b')
+
+    expect(resolved.gatewayUsed).toBe(false)
+    expect(mockCreateGroq).toHaveBeenCalledWith({
+      apiKey: 'test-groq-key',
+      baseURL: undefined
+    })
+  })
+
+  it('reports Gateway transport when resolving a provider model with a Gateway URL', async () => {
+    runtimeConfig = {
+      groqApiKey: 'test-groq-key',
+      aiGatewayUrl: 'https://gateway.ai.cloudflare.com/v1/account/default'
+    }
+
+    const { resolveModelWithTransport } = await import('~~/server/utils/claudeClient')
+    const resolved = resolveModelWithTransport('groq/openai/gpt-oss-120b')
+
+    expect(resolved.gatewayUsed).toBe(true)
+    expect(mockCreateGroq).toHaveBeenCalledWith({
+      apiKey: 'test-groq-key',
+      baseURL: 'https://gateway.ai.cloudflare.com/v1/account/default/groq'
+    })
+  })
+
   it('sends the normalized highest-precedence Gateway token to both providers', async () => {
     runtimeConfig = {
       anthropicApiKey: 'test-anthropic-key',

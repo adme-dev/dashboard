@@ -5,6 +5,20 @@ import * as economics from '~~/server/utils/ai/tools/economics'
 import type { ActiveCatalogRow } from '~~/server/utils/ai/governance/catalogComposition'
 
 const mockRecordAiInvocation = vi.fn()
+const mockResolveModelWithTransport = vi.fn()
+
+vi.mock('~~/server/utils/claudeClient', async (importOriginal) => ({
+  ...await importOriginal<typeof import('~~/server/utils/claudeClient')>(),
+  resolveModelWithTransport: (...args: unknown[]) => mockResolveModelWithTransport(...args),
+}))
+
+vi.mock('~~/server/utils/ai/modelAssignments', async (importOriginal) => {
+  const original = await importOriginal<typeof import('~~/server/utils/ai/modelAssignments')>()
+  return {
+    ...original,
+    resolveAiModelAssignment: vi.fn().mockResolvedValue(null),
+  }
+})
 
 // Stub fetchClientEconomics so the get_client_profitability handler never touches the DB.
 // Imported back via `economics` so tests can assert the REAL registered handler ran (the loop's
@@ -102,6 +116,7 @@ describe('runToolLoop (injected mock model)', () => {
   beforeEach(() => {
     mockRecordAiInvocation.mockReset()
     mockRecordAiInvocation.mockResolvedValue(undefined)
+    mockResolveModelWithTransport.mockReset()
   })
 
   it('returns the model text with no tool calls when the model just answers', async () => {
@@ -117,6 +132,34 @@ describe('runToolLoop (injected mock model)', () => {
       modelId: 'injected',
       userId: 'u1',
       status: 'success',
+    }))
+  })
+
+  it('records direct provider calls as not using the Gateway', async () => {
+    mockResolveModelWithTransport.mockReturnValue({ model: textModel('Direct provider response.'), gatewayUsed: false })
+
+    await runToolLoop({
+      ctx: ctx as any, system: 'sys', messages: [{ role: 'user', content: 'hi' }],
+      seed: 'c1', modelSpec: 'groq/openai/gpt-oss-120b',
+    })
+
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      gatewayUsed: false,
+      provider: 'groq',
+    }))
+  })
+
+  it('records Gateway-configured provider calls as using the Gateway', async () => {
+    mockResolveModelWithTransport.mockReturnValue({ model: textModel('Gateway provider response.'), gatewayUsed: true })
+
+    await runToolLoop({
+      ctx: ctx as any, system: 'sys', messages: [{ role: 'user', content: 'hi' }],
+      seed: 'c1', modelSpec: 'groq/openai/gpt-oss-120b',
+    })
+
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      gatewayUsed: true,
+      provider: 'groq',
     }))
   })
 

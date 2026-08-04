@@ -242,30 +242,44 @@ function gatewayAuthHeaders(gatewayUrl: string | undefined, cfg: ReturnType<type
   return bearer ? { 'cf-aig-authorization': `Bearer ${bearer}` } : undefined
 }
 
-export function getAnthropicProvider() {
+function getAnthropicProviderWithTransport() {
   const cfg = useRuntimeConfig()
   const baseURL = gatewayBase('anthropic')
   const headers = gatewayAuthHeaders(baseURL, cfg)
-  return createAnthropic({
-    apiKey: runtimeConfigValue(cfg, 'anthropicApiKey')
-      || getCachedCfBinding('ANTHROPIC_API_KEY')
-      || process.env.ANTHROPIC_API_KEY,
-    baseURL,
-    ...(headers ? { headers } : {})
-  })
+  return {
+    provider: createAnthropic({
+      apiKey: runtimeConfigValue(cfg, 'anthropicApiKey')
+        || getCachedCfBinding('ANTHROPIC_API_KEY')
+        || process.env.ANTHROPIC_API_KEY,
+      baseURL,
+      ...(headers ? { headers } : {})
+    }),
+    gatewayUsed: Boolean(baseURL)
+  }
 }
 
-export function getGroqProvider() {
+export function getAnthropicProvider() {
+  return getAnthropicProviderWithTransport().provider
+}
+
+function getGroqProviderWithTransport() {
   const cfg = useRuntimeConfig()
   const baseURL = gatewayBase('groq')
   const headers = gatewayAuthHeaders(baseURL, cfg)
-  return createGroq({
-    apiKey: runtimeConfigValue(cfg, 'groqApiKey')
-      || getCachedCfBinding('GROQ_API_KEY')
-      || process.env.GROQ_API_KEY,
-    baseURL,
-    ...(headers ? { headers } : {})
-  })
+  return {
+    provider: createGroq({
+      apiKey: runtimeConfigValue(cfg, 'groqApiKey')
+        || getCachedCfBinding('GROQ_API_KEY')
+        || process.env.GROQ_API_KEY,
+      baseURL,
+      ...(headers ? { headers } : {})
+    }),
+    gatewayUsed: Boolean(baseURL)
+  }
+}
+
+export function getGroqProvider() {
+  return getGroqProviderWithTransport().provider
 }
 
 /**
@@ -285,9 +299,26 @@ export function getWorkersAiProvider(binding: unknown) {
  *   'anthropic/claude-sonnet-4-6'                    → Anthropic, model 'claude-sonnet-4-6'
  *   'workersai/@cf/meta/llama-3.3-70b-instruct-fp8-fast' → Cloudflare Workers AI (needs opts.aiBinding)
  */
-export function resolveModel(spec: string, opts?: { aiBinding?: unknown }): LanguageModel {
-  if (spec.startsWith('anthropic/')) return getAnthropicProvider()(spec.slice('anthropic/'.length))
-  if (spec.startsWith('groq/')) return getGroqProvider()(spec.slice('groq/'.length))
-  if (spec.startsWith('workersai/')) return getWorkersAiProvider(opts?.aiBinding)(spec.slice('workersai/'.length) as any)
+export interface ResolvedAiSdkModel {
+  model: LanguageModel
+  gatewayUsed: boolean
+}
+
+/** Resolve both an AI SDK model and the transport selected by its provider factory. */
+export function resolveModelWithTransport(spec: string, opts?: { aiBinding?: unknown }): ResolvedAiSdkModel {
+  if (spec.startsWith('anthropic/')) {
+    const resolved = getAnthropicProviderWithTransport()
+    return { model: resolved.provider(spec.slice('anthropic/'.length)), gatewayUsed: resolved.gatewayUsed }
+  }
+  if (spec.startsWith('groq/')) {
+    const resolved = getGroqProviderWithTransport()
+    return { model: resolved.provider(spec.slice('groq/'.length)), gatewayUsed: resolved.gatewayUsed }
+  }
+  if (spec.startsWith('workersai/')) return { model: getWorkersAiProvider(opts?.aiBinding)(spec.slice('workersai/'.length) as any), gatewayUsed: false }
   throw new Error(`Unknown model spec: ${spec}`)
+}
+
+/** Backwards-compatible model-only resolver for callers that do not record transport telemetry. */
+export function resolveModel(spec: string, opts?: { aiBinding?: unknown }): LanguageModel {
+  return resolveModelWithTransport(spec, opts).model
 }
