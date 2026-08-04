@@ -21,7 +21,7 @@ const headingId = computed(() => props.headingId ?? `pilots-${props.item.release
 const enrolledIds = computed(() => new Set(members.value.map(member => member.memberUserId)))
 const eligibleCandidates = computed(() => props.candidates.filter(candidate => candidate.eligible && candidate.source === 'department_member' && !enrolledIds.value.has(candidate.id)))
 const candidateOptions = computed(() => [{ label: 'Choose an active member', value: '__select_member__' }, ...eligibleCandidates.value.map(candidate => ({ label: candidate.name, value: candidate.id }))])
-const currentMembers = computed(() => members.value.filter(member => member.eligible))
+const currentMembers = computed(() => members.value)
 const canSubmit = computed(() => Boolean(memberId.value !== '__select_member__' && reason.value.trim().length >= 10 && acknowledged.value && !pending.value))
 
 function errorMessage(caught: unknown) {
@@ -98,16 +98,16 @@ watch(open, value => { if (value) { reset(); load() } })
     <UModal v-model:open="open" title="Pilot membership" description="Assign or revoke only active members of this department.">
       <template #body>
         <div class="@container space-y-4">
-          <UAlert color="info" variant="soft" icon="i-lucide-users-round" title="Active department members only" description="Inactive people and people without a current department membership are excluded." />
+          <UAlert color="info" variant="soft" icon="i-lucide-users-round" title="New pilot memberships require active department members" description="Inactive people and people without a current department membership are excluded from enrollment. Existing stale memberships remain visible for audit and revocation." />
           <div v-if="pending && !members.length" class="space-y-2" aria-busy="true" aria-label="Loading pilot members"><USkeleton class="h-12 w-full" /><USkeleton class="h-12 w-full" /></div>
           <UAlert v-else-if="error && !members.length" color="error" variant="soft" icon="i-lucide-triangle-alert" title="Pilot members unavailable" :description="error"><template #actions><UButton size="xs" color="error" variant="soft" @click="load">Try again</UButton></template></UAlert>
           <template v-else>
             <div class="rounded-md border border-default p-3">
-              <p class="text-xs font-medium text-default">Current eligible pilot members</p>
-              <ul v-if="currentMembers.length" class="mt-2 divide-y divide-default" aria-label="Eligible department pilot members">
-                <li v-for="member in currentMembers" :key="member.id" class="flex items-center justify-between gap-3 py-2"><span class="min-w-0 truncate text-sm text-default">{{ member.memberName }}</span><UButton size="xs" color="error" variant="ghost" icon="i-lucide-user-minus" @click="revoke(member)">Revoke</UButton></li>
+              <p class="text-xs font-medium text-default">Current pilot members</p>
+              <ul v-if="currentMembers.length" class="mt-2 divide-y divide-default" aria-label="Current pilot members">
+                <li v-for="member in currentMembers" :key="member.id" class="flex items-center justify-between gap-3 py-2"><div class="min-w-0"><p class="truncate text-sm text-default">{{ member.memberName }}</p><UBadge v-if="!member.eligible" color="warning" variant="subtle" class="mt-1">Stale / ineligible</UBadge></div><UButton size="xs" color="error" variant="ghost" icon="i-lucide-user-minus" @click="revoke(member)">Revoke</UButton></li>
               </ul>
-              <p v-else class="mt-1 text-sm text-muted">No eligible pilot members</p>
+              <p v-else class="mt-1 text-sm text-muted">No active pilot memberships</p>
             </div>
             <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
               <UFormField :label="mode === 'revoke' ? 'Member to revoke' : 'Eligible department member'">

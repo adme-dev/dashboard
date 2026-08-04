@@ -107,6 +107,44 @@ describe('AI governance command centre', () => {
     app.unmount(); host.remove()
   })
 
+  it('keeps an ineligible active membership visible and revocable while excluding it from new enrollment', async () => {
+    const pilot = item()
+    const staleMembership = { id: 'membership-stale', releaseId: pilot.release.id, kind: 'pack' as const, departmentId: pilot.department.id, memberUserId: 'member-stale', memberName: 'Former department member', assignedAt: '2026-08-03T00:00:00.000Z', eligible: false }
+    const fetchMock = vi.fn(async (_url: string, options?: { method?: string }) => {
+      if (options?.method === 'DELETE') return { removed: true }
+      return { memberships: [staleMembership] }
+    })
+    const { app, host } = mount(PilotMembershipDialog, {
+      item: pilot,
+      candidates: [
+        { id: 'member-stale', name: 'Former department member', source: 'department_member', membershipRole: 'member', isManager: false, eligible: false },
+        { id: 'member-current', name: 'Current department member', source: 'department_member', membershipRole: 'member', isManager: false, eligible: true }
+      ]
+    }, fetchMock)
+
+    click(host, 'Manage pilot members'); await flush()
+
+    expect(host.textContent).toContain('Former department member')
+    expect(host.textContent).toContain('Stale / ineligible')
+    const select = host.querySelector('select') as HTMLSelectElement
+    expect(Array.from(select.options).map(option => option.value)).not.toContain('member-stale')
+    expect(Array.from(select.options).map(option => option.value)).toContain('member-current')
+
+    click(host, 'Revoke'); await flush()
+    input(host, 'Audit reason', 'Revoke stale membership after department departure.')
+    check(host, 'I confirm this pilot access revocation.')
+    await flush()
+    const revoke = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Confirm revoke'))!
+    expect(revoke.disabled).toBe(false)
+    revoke.click(); await flush()
+
+    expect(fetchMock).toHaveBeenCalledWith(`/api/admin/ai/governance/releases/${pilot.release.id}/pilots`, expect.objectContaining({
+      method: 'DELETE',
+      body: { kind: 'pack', memberUserId: 'member-stale', reason: 'Revoke stale membership after department departure.' }
+    }))
+    app.unmount(); host.remove()
+  })
+
   it('binds same-department controls to the canonical pack key and gives every repeated panel a unique heading id', async () => {
     const captured: Record<string, any[]> = { evaluation: [], pilot: [], release: [] }
     const children = {
