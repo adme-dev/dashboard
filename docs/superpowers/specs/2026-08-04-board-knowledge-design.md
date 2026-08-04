@@ -125,7 +125,8 @@ Create an additive table containing:
 
 - `id UUID PRIMARY KEY`
 - `department_id UUID NOT NULL REFERENCES departments(id)`
-- nullable `board_file_id` and `task_attachment_id`, with a check requiring exactly one
+- nullable live `board_file_id` and `task_attachment_id` references, with a check requiring exactly one while the source exists
+- immutable `source_type` and `source_entity_id` identity retained after an archived source is deleted
 - source snapshot: `source_file_name`, `source_mime_type`, `source_size`, `source_version_key`, and a nullable `source_checksum_sha256` populated by extraction
 - `submitted_by`, `submitted_at`
 - `review_status`: `pending`, `approved`, `rejected`, or `archived`
@@ -139,7 +140,7 @@ Create an additive table containing:
 - optional `ai_knowledge_article_id`
 - `created_at`, `updated_at`
 
-The source version key uses the existing checksum when available and otherwise a server-generated digest of immutable source-record properties. A unique source/version constraint makes repeated submission idempotent. A partial unique index permits only one approved version per source; an older approved version may coexist with a newer pending version until the newer approval transaction supersedes it. A changed source is a new immutable knowledge version and never mutates an approved version in place.
+The source version key uses the existing checksum when available and otherwise a server-generated digest of immutable source-record properties. A unique immutable-source/version constraint makes repeated submission idempotent even after the live file reference is removed. Archived submissions may tombstone their live foreign key while preserving source identity and audit history. A partial unique index permits only one approved version per source; an older approved version may coexist with a newer pending version until the newer approval transaction supersedes it. A changed source is a new immutable knowledge version and never mutates an approved version in place.
 
 ### `ai_knowledge_chunks`
 

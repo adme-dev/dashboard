@@ -43,7 +43,7 @@
 - Produces: `BoardKnowledgeSubmission`, `BoardKnowledgeProjection`, `BoardKnowledgeReviewStatus`, `BoardKnowledgeExtractionStatus`, `BoardKnowledgeIndexStatus`, `BoardKnowledgeSourceType`, `isIndexableBoardKnowledgeFile()`, and `sourceVersionKey()`.
 - Consumes: `board_files`, `task_attachments`, `departments`, `team_members`, and `ai_knowledge_articles` created by earlier migrations.
 
-- [ ] **Step 1: Write the migration contract test**
+- [x] **Step 1: Write the migration contract test**
 
 Assert that migration 342 contains all three new tables, the one-of-source check, state checks, source/version uniqueness, one-approved-version partial indexes, chunk uniqueness, audit indexes, nullable board scope on articles, and non-destructive `IF NOT EXISTS`/`ADD COLUMN IF NOT EXISTS` guards.
 
@@ -58,13 +58,13 @@ expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS ai_knowledge_chunks/i)
 expect(sql).toMatch(/ALTER TABLE ai_knowledge_articles[\s\S]*ADD COLUMN IF NOT EXISTS department_id/i)
 ```
 
-- [ ] **Step 2: Run the migration test and verify RED**
+- [x] **Step 2: Run the migration test and verify RED**
 
 Run: `pnpm vitest run test/config/boardKnowledgeMigration.test.ts`
 
 Expected: FAIL because `342_board_knowledge.sql` does not exist.
 
-- [ ] **Step 3: Add migration 342**
+- [x] **Step 3: Add migration 342**
 
 Implement the schema from the accepted specification. Use explicit foreign-key delete policies: source deletion is guarded by application lifecycle code, submissions retain auditability, articles cascade their derived chunks, and audit rows cascade with their submission.
 
@@ -80,6 +80,8 @@ CREATE TABLE IF NOT EXISTS board_knowledge_submissions (
   department_id UUID NOT NULL REFERENCES departments(id),
   board_file_id UUID REFERENCES board_files(id),
   task_attachment_id UUID REFERENCES task_attachments(id),
+  source_type TEXT NOT NULL CHECK (source_type IN ('board_file', 'task_attachment')),
+  source_entity_id UUID NOT NULL,
   source_file_name TEXT NOT NULL,
   source_mime_type TEXT NOT NULL,
   source_size BIGINT NOT NULL DEFAULT 0,
@@ -114,7 +116,7 @@ CREATE TABLE IF NOT EXISTS board_knowledge_submissions (
 
 Add `ai_knowledge_chunks` and `board_knowledge_audit`, then add the deferred article-to-submission foreign key after both tables exist.
 
-- [ ] **Step 4: Write pure domain tests**
+- [x] **Step 4: Write pure domain tests**
 
 Lock supported MIME/extension pairs and deterministic version keys. A mismatched executable MIME with a `.pdf` name must be rejected.
 
@@ -126,13 +128,13 @@ expect(sourceVersionKey({ id: 'f1', checksum: 'abc', storageKey: 'k', size: 3, u
 expect(sourceVersionKey({ id: 'f1', checksum: null, storageKey: 'k', size: 3, updatedAt: 'x' })).toMatch(/^record:/)
 ```
 
-- [ ] **Step 5: Run domain tests and verify RED**
+- [x] **Step 5: Run domain tests and verify RED**
 
 Run: `pnpm vitest run test/config/boardKnowledgeMigration.test.ts test/server/utils/boardKnowledgeTypes.test.ts`
 
 Expected: migration assertions pass; type test fails because the module is missing.
 
-- [ ] **Step 6: Implement domain types and frontend projections**
+- [x] **Step 6: Implement domain types and frontend projections**
 
 Define the exact projection included on every file row:
 
@@ -151,24 +153,24 @@ export interface BoardKnowledgeProjection {
 
 Export the same runtime-facing types from `app/types/index.ts`; do not rely on `index.d.ts`.
 
-- [ ] **Step 7: Run focused tests**
+- [x] **Step 7: Run focused tests**
 
 Run: `pnpm vitest run test/config/boardKnowledgeMigration.test.ts test/server/utils/boardKnowledgeTypes.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 8: Apply and verify migration 342**
+- [x] **Step 8: Apply and verify migration 342**
 
 Load the configured database connection without printing it, apply the additive migration, and verify the three tables exist:
 
 ```bash
-/bin/zsh -lc 'set -a; source .env; set +a; psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/database/migrations/342_board_knowledge.sql'
-/bin/zsh -lc 'set -a; source .env; set +a; psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT to_regclass('"'"'public.board_knowledge_submissions'"'"'), to_regclass('"'"'public.ai_knowledge_chunks'"'"'), to_regclass('"'"'public.board_knowledge_audit'"'"');"'
+/bin/zsh -lc 'set -a; source /Users/paulgiurin/Documents/Projects/dashboard/.env; set +a; psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/database/migrations/342_board_knowledge.sql'
+/bin/zsh -lc 'set -a; source /Users/paulgiurin/Documents/Projects/dashboard/.env; set +a; psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT to_regclass('"'"'public.board_knowledge_submissions'"'"'), to_regclass('"'"'public.ai_knowledge_chunks'"'"'), to_regclass('"'"'public.board_knowledge_audit'"'"');"'
 ```
 
 Expected: migration succeeds and all three table names are non-null.
 
-- [ ] **Step 9: Commit the persistence slice**
+- [x] **Step 9: Commit the persistence slice**
 
 Commit: `feat: add board knowledge persistence contracts`
 
@@ -186,7 +188,7 @@ Commit: `feat: add board knowledge persistence contracts`
 - Consumes: domain types from Task 1, `queryOne`, `queryRows`, `execute`, and `transaction` from `server/utils/db.ts`.
 - Produces: `resolveKnowledgeSource(departmentId, sourceType, sourceId)`, `createSubmission(input)`, `getSubmissionForBoard(id, departmentId)`, `listBoardKnowledge(departmentId)`, `transitionSubmission(input)`, `recordKnowledgeAudit(input)`, and `guardKnowledgeSourceDeletion(input)`.
 
-- [ ] **Step 1: Write repository tests**
+- [x] **Step 1: Write repository tests**
 
 Cover board-file and task-attachment resolution with a mandatory board predicate, missing storage keys, file metadata projection, idempotent existing submissions, and list/detail queries that never select extracted content for the summary list.
 
@@ -201,13 +203,13 @@ expect(mockQueryOne).toHaveBeenCalledWith(
 )
 ```
 
-- [ ] **Step 2: Run repository tests and verify RED**
+- [x] **Step 2: Run repository tests and verify RED**
 
 Run: `pnpm vitest run test/server/utils/boardKnowledgeRepository.test.ts`
 
 Expected: FAIL because the repository module is missing.
 
-- [ ] **Step 3: Implement source resolution and repository queries**
+- [x] **Step 3: Implement source resolution and repository queries**
 
 Return only server-resolved storage metadata:
 
@@ -228,7 +230,7 @@ export interface ResolvedKnowledgeSource {
 
 Map unique violations for the source/version index to the existing submission instead of returning a generic 500.
 
-- [ ] **Step 4: Write lifecycle transition tests**
+- [x] **Step 4: Write lifecycle transition tests**
 
 Test the allowed transitions and stale expected-state checks:
 
@@ -240,13 +242,13 @@ expect(canTransition({ review: 'rejected', extraction: 'ready', index: 'not_inde
 
 Assert approval publishes the draft article, archives the previous approved source version, marks indexing queued, and inserts an audit row in one transaction. Assert archive unpublishes before vector cleanup is dispatched.
 
-- [ ] **Step 5: Run lifecycle tests and verify RED**
+- [x] **Step 5: Run lifecycle tests and verify RED**
 
 Run: `pnpm vitest run test/server/utils/boardKnowledgeLifecycle.test.ts`
 
 Expected: FAIL because lifecycle exports are missing.
 
-- [ ] **Step 6: Implement the state machine**
+- [x] **Step 6: Implement the state machine**
 
 Use a pure transition guard plus transactional persistence. Reject stale state with:
 
@@ -256,7 +258,7 @@ throw createError({ statusCode: 409, statusMessage: 'Knowledge submission change
 
 `guardKnowledgeSourceDeletion` must return `clear`, `archive_required`, or `blocked_extraction`; callers never infer deletion safety from labels.
 
-- [ ] **Step 7: Run focused tests and commit**
+- [x] **Step 7: Run focused tests and commit**
 
 Run: `pnpm vitest run test/server/utils/boardKnowledgeRepository.test.ts test/server/utils/boardKnowledgeLifecycle.test.ts`
 
