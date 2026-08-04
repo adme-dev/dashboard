@@ -943,14 +943,14 @@ Start the app and test at 320 px and desktop widths: unsupported file, submit, e
 
 Partial verification recorded 4 August 2026: local Chrome/Playwright confirmed the management review queue and article form at 320 px and desktop widths, dark mode, labelled fields, and no horizontal overflow. Public Boards, Knowledge Base, and work-management guidance were also checked at both widths. The full state matrix remains represented by component/API tests because this review branch was not deployed and no live authenticated board fixture was mutated during review.
 
-- [ ] **Step 9: Finalize atomic commits and push**
+- [x] **Step 9: Finalize atomic commits and push**
 
 Verify the worktree is clean, then push `feature/board-knowledge-governance`. Do not force-push.
 
-- [ ] **Step 10: Create the stacked PR**
+- [x] **Step 10: Create the stacked PR**
 
 Create a PR whose base is `feature/board-files-library` while PR #374 remains open. The PR body must state the review-first workflow, privacy posture, Model Ops defaults, migration/resource runbook, test/build evidence, benchmark status, feature-flag default, and that production deployment was not performed.
 
-- [ ] **Step 11: Request review**
+- [x] **Step 11: Request review**
 
 Request review only after checks are visible. Keep resource creation/backfill/deployment as explicit rollout gates, not hidden PR side effects.
