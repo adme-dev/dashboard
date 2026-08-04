@@ -20,7 +20,7 @@ const mockGetHeader = vi.fn()
 const mockReadMultipartFormData = vi.fn()
 const mockSendRedirect = vi.fn()
 
-const routeParams: Record<string, string> = { id: BOARD_ID, fileId: FILE_ID }
+const routeParams: Record<string, string> = { id: BOARD_ID, fileId: FILE_ID, attachmentId: 'task-file-1' }
 
 const testGlobal = globalThis as typeof globalThis & {
   defineEventHandler: <T>(handler: T) => T
@@ -70,6 +70,7 @@ vi.mock('~~/server/utils/storage', () => ({
 const { default: listHandler } = await import('~~/server/api/agency/boards/[id]/files/index.get')
 const { default: uploadHandler } = await import('~~/server/api/agency/boards/[id]/files/index.post')
 const { default: downloadHandler } = await import('~~/server/api/agency/boards/[id]/files/[fileId]/download.get')
+const { default: taskDownloadHandler } = await import('~~/server/api/agency/boards/[id]/files/task/[attachmentId]/download.get')
 const { default: deleteHandler } = await import('~~/server/api/agency/boards/[id]/files/[fileId].delete')
 
 describe('board files API', () => {
@@ -77,6 +78,7 @@ describe('board files API', () => {
     vi.clearAllMocks()
     routeParams.id = BOARD_ID
     routeParams.fileId = FILE_ID
+    routeParams.attachmentId = 'task-file-1'
     mockResolveAccessibleBoard.mockResolvedValue({ id: BOARD_ID, name: 'Finance', slug: 'finance', user: { id: USER_ID, role: 'member' } })
     mockRequireWriteAccess.mockResolvedValue({ id: USER_ID, role: 'member' })
     mockListBoardFiles.mockResolvedValue({
@@ -175,6 +177,23 @@ describe('board files API', () => {
       [FILE_ID, BOARD_ID]
     )
     expect(mockGetPresignedDownloadUrl).toHaveBeenCalledWith(`attachments/${BOARD_ID}/policy.pdf`, 900)
+    expect(response).toEqual({ url: 'https://signed.example/policy.pdf', statusCode: 302 })
+  })
+
+  it('refreshes task attachment download access through its parent board', async () => {
+    mockQueryOne.mockResolvedValueOnce({
+      id: 'task-file-1',
+      storage_key: `attachments/task-1/instruction.pdf`,
+      file_url: 'https://expired.example/instruction.pdf'
+    })
+
+    const response = await taskDownloadHandler({ context: {} } as never)
+
+    expect(mockQueryOne).toHaveBeenCalledWith(
+      expect.stringMatching(/task_attachments[\s\S]*JOIN tasks[\s\S]*t\.department_id = \$2/),
+      ['task-file-1', BOARD_ID]
+    )
+    expect(mockGetPresignedDownloadUrl).toHaveBeenCalledWith(`attachments/task-1/instruction.pdf`, 900)
     expect(response).toEqual({ url: 'https://signed.example/policy.pdf', statusCode: 302 })
   })
 
