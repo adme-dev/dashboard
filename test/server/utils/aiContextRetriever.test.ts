@@ -338,8 +338,12 @@ describe('aiContextRetriever — composite scoring', () => {
     }]
     const tasks = makeTasks(3, 5)
 
+    let knowledgeSql = ''
     mockedQueryRows.mockImplementation(async (sql: string) => {
-      if (sql.includes('ai_knowledge_articles')) return knowledge
+      if (sql.includes('ai_knowledge_articles')) {
+        knowledgeSql = sql
+        return knowledge
+      }
       if (sql.includes('tasks')) return tasks
       return []
     })
@@ -353,6 +357,7 @@ describe('aiContextRetriever — composite scoring', () => {
     const result = await retrieveContext('user-1', 'admin', 'how do I do EOM')
     const knowledgeItems = result.items.filter(i => i.type === 'knowledge')
     expect(knowledgeItems.length).toBeGreaterThan(0)
+    expect(knowledgeSql).toMatch(/board_knowledge_submission_id IS NULL/)
 
     // Knowledge should rank at or near the top
     if (result.items.length > 1) {

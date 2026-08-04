@@ -578,6 +578,7 @@ async function searchKnowledge(keywords: string[], question: string, event?: H3E
         SELECT id, title, content, category, tags, view_count, updated_at
         FROM ai_knowledge_articles
         WHERE is_published = true
+          AND board_knowledge_submission_id IS NULL
           AND (title ~* $1 OR content ~* $1)
         ORDER BY usefulness_score DESC, view_count DESC
         LIMIT 3

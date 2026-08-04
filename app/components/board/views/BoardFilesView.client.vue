@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import type { BoardFileItem, BoardFileListResponse } from '~/types'
+import { boardKnowledgeApiError, useBoardKnowledge } from '~/composables/useBoardKnowledge'
 import { filterBoardFileItems } from '~/utils/boardFiles'
 import { safeMediaUrl } from '~/utils/safe-url'
 
 const props = defineProps<{ boardId: string }>()
 const emit = defineEmits<{ openTask: [taskId: string] }>()
 const toast = useToast()
+const route = useRoute()
+const router = useRouter()
 
 const response = ref<BoardFileListResponse | null>(null)
 const loading = ref(true)
@@ -14,6 +17,7 @@ const loadError = ref('')
 const search = ref('')
 const scope = ref<'all' | 'board' | 'task'>('all')
 const category = ref<'all' | BoardFileItem['category']>('all')
+const knowledge = ref<'all' | 'review' | 'approved' | 'failed' | 'not_submitted'>('all')
 const uploadOpen = ref(false)
 const uploading = ref(false)
 const uploadFileValue = ref<File | null>(null)
@@ -21,6 +25,16 @@ const uploadCategory = ref<'reference' | 'policy' | 'template' | 'other'>('refer
 const uploadDescription = ref('')
 const deleteTarget = ref<BoardFileItem | null>(null)
 const deleting = ref(false)
+const reviewSubmissionId = ref<string | null>(null)
+const reviewCanReview = ref(false)
+const reviewReturnFocus = ref<HTMLElement | undefined>()
+const requestedKnowledgeSubmission = computed(() => (
+  typeof route.query.knowledge === 'string' ? route.query.knowledge : null
+))
+const {
+  isSubmitting: isSubmittingKnowledge,
+  submit: submitKnowledge
+} = useBoardKnowledge(() => props.boardId)
 
 const scopeOptions = [
   { label: 'All files', value: 'all' },
@@ -36,13 +50,21 @@ const categoryOptions = [
   { label: 'Task evidence', value: 'evidence' }
 ]
 const uploadCategoryOptions = categoryOptions.filter(option => option.value !== 'all' && option.value !== 'evidence')
+const knowledgeOptions = [
+  { label: 'All knowledge states', value: 'all' },
+  { label: 'Knowledge review', value: 'review' },
+  { label: 'Approved for AI', value: 'approved' },
+  { label: 'Extraction or indexing failed', value: 'failed' },
+  { label: 'Not submitted', value: 'not_submitted' }
+]
 
 const files = computed(() => response.value?.files || [])
 const summary = computed(() => response.value?.summary || { total: 0, boardDocuments: 0, taskEvidence: 0 })
 const filteredFiles = computed(() => filterBoardFileItems(files.value, {
   search: search.value,
   scope: scope.value,
-  category: category.value
+  category: category.value,
+  knowledge: knowledge.value
 }))
 
 function apiErrorMessage(error: unknown, fallback: string) {
@@ -56,11 +78,21 @@ async function loadFiles() {
   loadError.value = ''
   try {
     response.value = await $fetch<BoardFileListResponse>(`/api/agency/boards/${props.boardId}/files`)
+    openRequestedKnowledgeReview()
   } catch (error) {
     loadError.value = apiErrorMessage(error, 'The board file library is unavailable.')
   } finally {
     loading.value = false
   }
+}
+
+function openRequestedKnowledgeReview() {
+  const submissionId = requestedKnowledgeSubmission.value
+  if (!submissionId) return
+  const source = files.value.find(file => file.knowledge.submissionId === submissionId)
+  if (!source) return
+  reviewSubmissionId.value = submissionId
+  reviewCanReview.value = source.knowledge.canReview
 }
 
 function onFileChange(event: Event) {
@@ -128,6 +160,49 @@ async function deleteBoardFile() {
   }
 }
 
+async function submitFileForKnowledge(file: BoardFileItem) {
+  if (!file.knowledge.canSubmit || isSubmittingKnowledge(file)) return
+  try {
+    await submitKnowledge(file)
+    await loadFiles()
+    toast.add({
+      title: 'Submitted for knowledge review',
+      description: 'Extraction has been queued. The status will update here as processing completes.',
+      color: 'success'
+    })
+  } catch (error) {
+    toast.add({
+      title: 'Submission failed',
+      description: boardKnowledgeApiError(error, 'The source could not be submitted for review.'),
+      color: 'error'
+    })
+  }
+}
+
+function openKnowledgeReview(file: BoardFileItem, event: MouseEvent) {
+  if (!file.knowledge.submissionId) return
+  reviewSubmissionId.value = file.knowledge.submissionId
+  reviewCanReview.value = file.knowledge.canReview
+  reviewReturnFocus.value = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined
+}
+
+function closeKnowledgeReview() {
+  reviewSubmissionId.value = null
+  reviewCanReview.value = false
+  if (route.query.knowledge) {
+    const { knowledge: _knowledge, ...query } = route.query
+    void router.replace({ query })
+  }
+}
+
+function handleKnowledgeReviewOpen(value: boolean) {
+  if (!value) closeKnowledgeReview()
+}
+
+async function handleKnowledgeChanged() {
+  await loadFiles()
+}
+
 function formatFileSize(bytes: number) {
   if (!bytes) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']
@@ -151,6 +226,15 @@ function categoryLabel(value: BoardFileItem['category']) {
   return categoryOptions.find(option => option.value === value)?.label || value
 }
 
+function knowledgeColor(label: BoardFileItem['knowledge']['label']) {
+  if (label === 'Used by AI') return 'success'
+  if (label === 'Ready for review') return 'warning'
+  if (label === 'Extraction failed' || label === 'Rejected') return 'error'
+  if (label === 'Approved · indexing' || label === 'Extracting') return 'info'
+  return 'neutral'
+}
+
+watch(requestedKnowledgeSubmission, openRequestedKnowledgeReview)
 onMounted(loadFiles)
 </script>
 
@@ -175,7 +259,7 @@ onMounted(loadFiles)
         <span>{{ summary.taskEvidence }} task attachment{{ summary.taskEvidence === 1 ? '' : 's' }}</span>
       </div>
 
-      <div class="grid grid-cols-1 gap-3 rounded-lg border border-default bg-default p-3 sm:grid-cols-[minmax(16rem,1fr)_12rem_12rem]">
+      <div class="grid grid-cols-1 gap-3 rounded-lg border border-default bg-default p-3 sm:grid-cols-2 lg:grid-cols-[minmax(16rem,1fr)_11rem_11rem_14rem]">
         <UInput
           v-model="search"
           icon="i-lucide-search"
@@ -195,6 +279,13 @@ onMounted(loadFiles)
           value-key="value"
           class="w-full"
           aria-label="Filter file category"
+        />
+        <USelect
+          v-model="knowledge"
+          :items="knowledgeOptions"
+          value-key="value"
+          class="w-full"
+          aria-label="Filter knowledge status"
         />
       </div>
 
@@ -232,10 +323,11 @@ onMounted(loadFiles)
         aria-label="Board file library"
         class="overflow-hidden rounded-lg border border-default bg-default"
       >
-        <div role="row" class="hidden grid-cols-[minmax(16rem,2fr)_minmax(11rem,1fr)_9rem_9rem_7rem] gap-4 border-b border-default bg-elevated/50 px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted md:grid">
+        <div role="row" class="hidden grid-cols-[minmax(12rem,2fr)_minmax(8rem,1fr)_7rem_minmax(9rem,1fr)_7rem_6rem] gap-4 border-b border-default bg-elevated/50 px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted lg:grid">
           <span role="columnheader">File</span>
           <span role="columnheader">Location</span>
           <span role="columnheader">Type</span>
+          <span role="columnheader">Knowledge</span>
           <span role="columnheader">Added</span>
           <span role="columnheader" class="text-right">Actions</span>
         </div>
@@ -243,7 +335,7 @@ onMounted(loadFiles)
           v-for="file in filteredFiles"
           :key="`${file.scope}-${file.id}`"
           role="row"
-          class="grid grid-cols-1 gap-3 border-b border-default px-4 py-3 last:border-b-0 md:grid-cols-[minmax(16rem,2fr)_minmax(11rem,1fr)_9rem_9rem_7rem] md:items-center md:gap-4"
+          class="grid grid-cols-1 gap-3 border-b border-default px-4 py-3 last:border-b-0 lg:grid-cols-[minmax(12rem,2fr)_minmax(8rem,1fr)_7rem_minmax(9rem,1fr)_7rem_6rem] lg:items-center lg:gap-4"
         >
           <div role="cell" class="flex min-w-0 items-start gap-3">
             <span class="flex size-9 shrink-0 items-center justify-center rounded-md bg-elevated text-muted">
@@ -273,11 +365,42 @@ onMounted(loadFiles)
             />
           </div>
           <div role="cell" class="flex items-center gap-2 text-sm text-muted">
-            <span class="md:hidden">Type:</span>
+            <span class="lg:hidden">Type:</span>
             <span>{{ categoryLabel(file.category) }} · {{ file.source }}</span>
           </div>
+          <div role="cell" class="flex min-w-0 items-center gap-2">
+            <span class="text-sm text-muted lg:hidden">Knowledge:</span>
+            <UButton
+              v-if="file.knowledge.canSubmit"
+              :data-testid="`submit-knowledge-${file.id}`"
+              label="Submit for review"
+              icon="i-lucide-sparkles"
+              variant="soft"
+              color="neutral"
+              size="xs"
+              :loading="isSubmittingKnowledge(file)"
+              @click.stop="submitFileForKnowledge(file)"
+            />
+            <UButton
+              v-else-if="file.knowledge.submissionId"
+              :data-testid="`review-knowledge-${file.id}`"
+              :label="file.knowledge.label"
+              :color="knowledgeColor(file.knowledge.label)"
+              variant="soft"
+              size="xs"
+              class="max-w-full"
+              @click.stop="openKnowledgeReview(file, $event)"
+            />
+            <UBadge
+              v-else
+              :label="file.knowledge.label"
+              :color="knowledgeColor(file.knowledge.label)"
+              variant="subtle"
+              size="sm"
+            />
+          </div>
           <div role="cell" class="text-sm text-muted">
-            <span class="md:hidden">Added: </span>{{ formatDate(file.createdAt) }}
+            <span class="lg:hidden">Added: </span>{{ formatDate(file.createdAt) }}
           </div>
           <div role="cell" class="flex items-center justify-end gap-1">
             <UTooltip text="Download">
@@ -396,5 +519,15 @@ onMounted(loadFiles)
         </div>
       </template>
     </UModal>
+
+    <BoardKnowledgeReviewSlideover
+      :open="!!reviewSubmissionId"
+      :board-id="boardId"
+      :submission-id="reviewSubmissionId"
+      :can-review="reviewCanReview"
+      :return-focus="reviewReturnFocus"
+      @update:open="handleKnowledgeReviewOpen"
+      @changed="handleKnowledgeChanged"
+    />
   </section>
 </template>

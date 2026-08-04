@@ -1,14 +1,18 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick } from 'vue'
-import BoardFilesView from '~~/app/components/board/views/BoardFilesView.vue'
+import BoardFilesView from '~~/app/components/board/views/BoardFilesView.client.vue'
 
 const fetchMock = vi.fn()
 const toastAddMock = vi.fn()
+const routeMock = { query: {} as Record<string, string> }
+const routerReplaceMock = vi.fn()
 
 Object.assign(globalThis, {
   $fetch: (...args: unknown[]) => fetchMock(...args),
-  useToast: () => ({ add: toastAddMock })
+  useToast: () => ({ add: toastAddMock }),
+  useRoute: () => routeMock,
+  useRouter: () => ({ replace: routerReplaceMock })
 })
 
 const response = {
@@ -28,7 +32,17 @@ const response = {
       createdAt: '2026-08-04T00:00:00.000Z',
       uploadedBy: { id: 'user-1', name: 'Clara', email: 'clara@adme.net.au' },
       canDelete: true,
-      task: null
+      task: null,
+      knowledge: {
+        submissionId: null,
+        reviewStatus: null,
+        extractionStatus: null,
+        indexStatus: null,
+        indexable: true,
+        label: 'Not submitted',
+        canSubmit: true,
+        canReview: false
+      }
     },
     {
       id: 'task-file-1',
@@ -45,7 +59,17 @@ const response = {
       createdAt: '2026-08-03T00:00:00.000Z',
       uploadedBy: null,
       canDelete: false,
-      task: { id: 'task-1', title: 'Reference PDFs' }
+      task: { id: 'task-1', title: 'Reference PDFs' },
+      knowledge: {
+        submissionId: 'submission-1',
+        reviewStatus: 'pending',
+        extractionStatus: 'ready',
+        indexStatus: 'not_indexed',
+        indexable: true,
+        label: 'Ready for review',
+        canSubmit: false,
+        canReview: true
+      }
     }
   ],
   summary: { total: 2, boardDocuments: 1, taskEvidence: 1 }
@@ -78,7 +102,12 @@ const stubs: Record<string, unknown> = {
     emits: ['update:modelValue'],
     template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
   },
-  UTooltip: { template: '<span><slot /></span>' }
+  UTooltip: { template: '<span><slot /></span>' },
+  BoardKnowledgeReviewSlideover: {
+    props: ['open', 'submissionId'],
+    emits: ['update:open', 'changed'],
+    template: '<aside v-if="open" data-testid="knowledge-review-stub">{{ submissionId }}<button data-testid="review-changed" @click="$emit(\'changed\')">Changed</button></aside>'
+  }
 }
 
 async function flush() {
@@ -113,6 +142,7 @@ describe('BoardFilesView', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
     vi.clearAllMocks()
+    routeMock.query = {}
     fetchMock.mockImplementation(async (_url: string, options?: { method?: string }) => {
       if (!options?.method || options.method === 'GET') return structuredClone(response)
       if (options.method === 'POST') return { id: 'new-file' }
@@ -130,6 +160,98 @@ describe('BoardFilesView', () => {
     expect(host.textContent).toContain('1 task attachment')
     expect(host.textContent).toContain('Cashflow policy.pdf')
     expect(host.textContent).toContain('Bookkeeper instruction.pdf')
+    expect(host.textContent).toContain('Not submitted')
+    expect(host.textContent).toContain('Ready for review')
+    app.unmount()
+  })
+
+  it('submits an eligible source once and refreshes the file projection', async () => {
+    let releaseSubmit!: () => void
+    const submitGate = new Promise<void>((resolve) => {
+      releaseSubmit = resolve
+    })
+    fetchMock.mockImplementation(async (url: string, options?: { method?: string }) => {
+      if (options?.method === 'POST' && url.endsWith('/knowledge/submit')) {
+        await submitGate
+        return { accepted: true, queued: true, submission: { id: 'submission-new' } }
+      }
+      return structuredClone(response)
+    })
+    const { app, host } = mountView()
+    await flush()
+
+    const submit = host.querySelector('[data-testid="submit-knowledge-board-file-1"]') as HTMLButtonElement
+    submit.click()
+    submit.click()
+    await nextTick()
+    expect(fetchMock.mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(1)
+
+    releaseSubmit()
+    await flush()
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/agency/boards/board-1/files/board-file-1/knowledge/submit',
+      { method: 'POST' }
+    )
+    expect(fetchMock.mock.calls.filter(call => !call[1]?.method)).toHaveLength(2)
+    app.unmount()
+  })
+
+  it('does not offer submission for a non-indexable source', async () => {
+    const nonIndexable = structuredClone(response)
+    nonIndexable.files[0].knowledge = {
+      submissionId: null,
+      reviewStatus: null,
+      extractionStatus: null,
+      indexStatus: null,
+      indexable: false,
+      label: 'Not indexable',
+      canSubmit: false,
+      canReview: false
+    }
+    fetchMock.mockResolvedValue(nonIndexable)
+    const { app, host } = mountView()
+    await flush()
+
+    expect(host.textContent).toContain('Not indexable')
+    expect(host.querySelector('[data-testid="submit-knowledge-board-file-1"]')).toBeNull()
+    app.unmount()
+  })
+
+  it('filters the table to knowledge review work', async () => {
+    const { app, host } = mountView()
+    await flush()
+
+    const knowledgeSelect = [...host.querySelectorAll('select')].find(select => select.textContent?.includes('Knowledge review')) as HTMLSelectElement
+    knowledgeSelect.value = 'review'
+    knowledgeSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+
+    expect(host.textContent).not.toContain('Cashflow policy.pdf')
+    expect(host.textContent).toContain('Bookkeeper instruction.pdf')
+    app.unmount()
+  })
+
+  it('opens review from the status without triggering task navigation and refreshes after change', async () => {
+    const { app, host, events } = mountView()
+    await flush()
+
+    ;(host.querySelector('[data-testid="review-knowledge-task-file-1"]') as HTMLButtonElement).click()
+    await nextTick()
+    expect(host.querySelector('[data-testid="knowledge-review-stub"]')?.textContent).toContain('submission-1')
+    expect(events).toEqual([])
+
+    ;(host.querySelector('[data-testid="review-changed"]') as HTMLButtonElement).click()
+    await flush()
+    expect(fetchMock.mock.calls.filter(call => !call[1]?.method)).toHaveLength(2)
+    app.unmount()
+  })
+
+  it('opens a linked knowledge submission when arriving from the management queue', async () => {
+    routeMock.query = { view: 'files', knowledge: 'submission-1' }
+    const { app, host } = mountView()
+    await flush()
+
+    expect(host.querySelector('[data-testid="knowledge-review-stub"]')?.textContent).toContain('submission-1')
     app.unmount()
   })
 

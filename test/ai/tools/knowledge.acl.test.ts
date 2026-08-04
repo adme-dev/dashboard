@@ -81,6 +81,7 @@ describe('defaultSearch (real production retrieval path)', () => {
 
     // The DB re-fetch is scoped to KB article ids only — non-KB ids never reach the query.
     expect(queryRows).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(queryRows).mock.calls[0][0]).toMatch(/board_knowledge_submission_id IS NULL/)
     const passedIds = vi.mocked(queryRows).mock.calls[0][1] as string[]
     expect(passedIds.sort()).toEqual(['aaa', 'bbb'])
     expect(passedIds).not.toContain('fin-pnl-2026-Q2')

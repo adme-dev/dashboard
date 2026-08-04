@@ -41,6 +41,10 @@ function aiConfigReadiness() {
     || present(process.env.CF_API_TOKEN)
     || present(process.env.CLOUDFLARE_API_TOKEN)
   const workersAiEvalConfigured = present(process.env.CLOUDFLARE_ACCOUNT_ID) && present(process.env.CLOUDFLARE_API_KEY)
+  const googleAiStudioConfigured = present(process.env.GOOGLE_AI_STUDIO_API_KEY)
+  const googleAiStudioPaid = process.env.GOOGLE_AI_STUDIO_PAID === 'true'
+  const huggingFaceConfigured = present(process.env.HUGGINGFACE_API_TOKEN)
+  const huggingFaceProductionReady = process.env.HUGGINGFACE_BOARD_KNOWLEDGE_PRODUCTION_READY === 'true'
   const orchestratorWorkerUrl = process.env.AI_ORCHESTRATOR_WORKER_URL
   const orchestratorWorkerHost = host(orchestratorWorkerUrl)
   const platformAgentsWorkerUrl = process.env.PLATFORM_AGENTS_WORKER_URL || 'https://platform-agents.adme-dev.workers.dev'
@@ -79,6 +83,22 @@ function aiConfigReadiness() {
         label: 'Workers AI external eval',
         configured: workersAiEvalConfigured,
         requiredFor: 'Local/server-side evaluation of @cf Workers AI models outside bound Workers',
+      },
+      {
+        key: 'google_ai_studio_document',
+        label: 'Google AI Studio document extraction',
+        configured: googleAiStudioConfigured && googleAiStudioPaid,
+        paidCredentialsConfirmed: googleAiStudioPaid,
+        gatewayReady: gatewayConfigured,
+        requiredFor: 'Board Knowledge OCR and document-layout recovery through Cloudflare AI Gateway',
+      },
+      {
+        key: 'huggingface_document_preview',
+        label: 'Hugging Face document extraction preview',
+        configured: huggingFaceConfigured,
+        productionReady: huggingFaceConfigured && huggingFaceProductionReady,
+        operationalStatus: 'preview',
+        requiredFor: 'Board Knowledge OCR benchmarking only; production requests remain blocked',
       },
     ],
     loop: {

@@ -19,6 +19,7 @@ const mockValidateFileSize = vi.fn()
 const mockGetHeader = vi.fn()
 const mockReadMultipartFormData = vi.fn()
 const mockSendRedirect = vi.fn()
+const mockPrepareKnowledgeSourceDeletion = vi.fn()
 
 const routeParams: Record<string, string> = { id: BOARD_ID, fileId: FILE_ID, attachmentId: 'task-file-1' }
 
@@ -44,6 +45,10 @@ testGlobal.createError = input => Object.assign(new Error(input.statusMessage), 
 vi.mock('~~/server/utils/boardFiles', () => ({
   resolveAccessibleBoard: (...args: unknown[]) => mockResolveAccessibleBoard(...args),
   listBoardFiles: (...args: unknown[]) => mockListBoardFiles(...args)
+}))
+
+vi.mock('~~/server/utils/boardKnowledge/deletion', () => ({
+  prepareKnowledgeSourceDeletion: (...args: unknown[]) => mockPrepareKnowledgeSourceDeletion(...args)
 }))
 
 vi.mock('~~/server/utils/auth', () => ({
@@ -104,6 +109,7 @@ describe('board files API', () => {
     mockIsStorageConfigured.mockReturnValue(true)
     mockGetPresignedDownloadUrl.mockResolvedValue('https://signed.example/policy.pdf')
     mockSendRedirect.mockImplementation((_event, url, statusCode) => ({ url, statusCode }))
+    mockPrepareKnowledgeSourceDeletion.mockResolvedValue({ archived: false, queued: false })
   })
 
   it('lists files only after resolving board access', async () => {
@@ -248,6 +254,12 @@ describe('board files API', () => {
       .mockResolvedValueOnce({ id: FILE_ID })
 
     await expect(deleteHandler({ context: {} } as never)).resolves.toEqual({ success: true })
+    expect(mockPrepareKnowledgeSourceDeletion).toHaveBeenCalledWith(expect.anything(), {
+      departmentId: BOARD_ID,
+      sourceType: 'board_file',
+      sourceId: FILE_ID,
+      actorId: USER_ID
+    })
     expect(mockQueryOne).toHaveBeenLastCalledWith(
       expect.stringContaining('DELETE FROM board_files'),
       [FILE_ID, BOARD_ID]

@@ -94,6 +94,97 @@ export type DepartmentRole = 'lead' | 'senior' | 'member' | 'junior'
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'skipped'
 export type BoardViewType = 'kanban' | 'table' | 'timeline' | 'calendar' | 'list' | 'gallery' | 'files'
 
+export type BoardKnowledgeSourceType = 'board_file' | 'task_attachment'
+export type BoardKnowledgeReviewStatus = 'pending' | 'approved' | 'rejected' | 'archived'
+export type BoardKnowledgeExtractionStatus = 'queued' | 'processing' | 'ready' | 'failed'
+export type BoardKnowledgeExtractionMethod = 'native' | 'gemini' | 'huggingface'
+export type BoardKnowledgeIndexStatus = 'not_indexed' | 'queued' | 'indexing' | 'indexed' | 'failed' | 'removed'
+export type BoardKnowledgeLabel =
+  | 'Not submitted'
+  | 'Extracting'
+  | 'Ready for review'
+  | 'Approved · indexing'
+  | 'Used by AI'
+  | 'Rejected'
+  | 'Extraction failed'
+  | 'Archived'
+  | 'Not indexable'
+
+export interface BoardKnowledgeSubmission {
+  id: string
+  departmentId: string
+  sourceType: BoardKnowledgeSourceType
+  sourceId: string
+  sourceFileName: string
+  sourceMimeType: string
+  sourceSize: number
+  sourceVersionKey: string
+  sourceChecksumSha256: string | null
+  sourceDeletedAt: string | null
+  submittedBy: string
+  submittedAt: string
+  reviewStatus: BoardKnowledgeReviewStatus
+  reviewedBy: string | null
+  reviewedAt: string | null
+  reviewReason: string | null
+  extractionStatus: BoardKnowledgeExtractionStatus
+  extractionMethod: BoardKnowledgeExtractionMethod | null
+  extractionProvider: string | null
+  extractionModel: string | null
+  extractionStartedAt: string | null
+  extractionCompletedAt: string | null
+  extractionMetrics: Record<string, unknown>
+  extractionWarnings: string[]
+  extractionErrorCode: string | null
+  extractionErrorMessage: string | null
+  indexStatus: BoardKnowledgeIndexStatus
+  aiKnowledgeArticleId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface BoardKnowledgeProjection {
+  submissionId: string | null
+  reviewStatus: BoardKnowledgeReviewStatus | null
+  extractionStatus: BoardKnowledgeExtractionStatus | null
+  indexStatus: BoardKnowledgeIndexStatus | null
+  indexable: boolean
+  label: BoardKnowledgeLabel
+  canSubmit: boolean
+  canReview: boolean
+}
+
+export interface BoardKnowledgePreviewChunk {
+  chunkIndex: number
+  content: string
+  heading: string | null
+  pageStart: number | null
+  pageEnd: number | null
+  sheetName: string | null
+  slideNumber: number | null
+}
+
+export interface BoardKnowledgeReviewHistoryItem {
+  action: string
+  actorName: string | null
+  createdAt: string
+}
+
+export interface BoardKnowledgeReviewDetail {
+  submission: BoardKnowledgeSubmission
+  context: {
+    boardName: string
+    task: { id: string, title: string } | null
+    submittedBy: { id: string, name: string, email: string } | null
+  }
+  preview: {
+    chunks: BoardKnowledgePreviewChunk[]
+    totalChunks: number
+    truncated: boolean
+  }
+  history: BoardKnowledgeReviewHistoryItem[]
+}
+
 export interface BoardFileItem {
   id: string
   boardId: string
@@ -110,6 +201,7 @@ export interface BoardFileItem {
   uploadedBy: { id: string, name: string, email: string } | null
   canDelete: boolean
   task: { id: string, title: string } | null
+  knowledge: BoardKnowledgeProjection
 }
 
 export interface BoardFileListResponse {

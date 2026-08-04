@@ -1,5 +1,6 @@
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { resolveAccessibleBoard } from '~~/server/utils/boardFiles'
+import { prepareKnowledgeSourceDeletion } from '~~/server/utils/boardKnowledge/deletion'
 import { queryOne } from '~~/server/utils/db'
 import { deleteFile } from '~~/server/utils/storage'
 
@@ -25,6 +26,13 @@ export default defineEventHandler(async (event) => {
   if (!canDelete) {
     throw createError({ statusCode: 403, statusMessage: 'You can only delete board files you uploaded' })
   }
+
+  await prepareKnowledgeSourceDeletion(event, {
+    departmentId: board.id,
+    sourceType: 'board_file',
+    sourceId: file.id,
+    actorId: user.id
+  })
 
   await queryOne(
     'DELETE FROM board_files WHERE id = $1 AND department_id = $2 RETURNING id',

@@ -5,6 +5,7 @@ import {
   type AiModelAssignmentRow,
   type RuntimeModelProvider,
 } from '~~/server/utils/ai/modelAssignments'
+import { gatewayDocumentModelForId } from '~~/server/utils/boardKnowledge/modelCatalog'
 
 export type CloudflareCatalogSource = 'cloudflare_hosted' | 'third_party' | 'local_registry' | 'unknown'
 export type CloudflareCatalogStatus = 'production' | 'preview' | 'deprecated' | 'unknown'
@@ -148,6 +149,36 @@ function localCatalogModels(): CloudflareCatalogModel[] {
   return listAiModelCatalogOptions().map((model) => {
     const provider = providerForModel(model.modelId) as RuntimeModelProvider
     const isWorkersAi = provider === 'workers_ai'
+    const documentModel = gatewayDocumentModelForId(model.modelId)
+    if (documentModel) {
+      const providerLabel = documentModel.upstreamProvider === 'google-ai-studio'
+        ? 'Google AI Studio via AI Gateway'
+        : 'Hugging Face via AI Gateway'
+      return {
+        id: model.modelId,
+        label: documentModel.label,
+        modelId: model.modelId,
+        provider: 'aigateway',
+        providerLabel,
+        task: 'document_extraction',
+        taskLabel: 'Document extraction',
+        modality: 'multimodal',
+        author: documentModel.upstreamProvider === 'google-ai-studio' ? 'Google' : 'PaddlePaddle',
+        capabilities: [
+          ...(documentModel.supportsPdf ? ['pdf'] : []),
+          ...(documentModel.supportsStructuredOutput ? ['structured_output'] : [])
+        ],
+        source: 'third_party',
+        status: documentModel.operationalStatus,
+        description: documentModel.operationalStatus === 'production'
+          ? 'Curated paid-provider route through Cloudflare AI Gateway.'
+          : 'Preview route; blocked from production document extraction until endpoint verification and benchmark approval.',
+        raw: {
+          upstreamProvider: documentModel.upstreamProvider,
+          operationalStatus: documentModel.operationalStatus
+        }
+      }
+    }
     return {
       id: model.modelId,
       label: model.modelId,

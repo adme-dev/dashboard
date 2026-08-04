@@ -136,7 +136,6 @@ import BoardTimelineView from '~/components/board/views/BoardTimelineView.vue'
 import BoardCalendarView from '~/components/board/views/BoardCalendarView.vue'
 import BoardListView from '~/components/board/views/BoardListView.vue'
 import BoardGalleryView from '~/components/board/views/BoardGalleryView.vue'
-import BoardFilesView from '~/components/board/views/BoardFilesView.vue'
 
 const props = defineProps<{
   boardId: string

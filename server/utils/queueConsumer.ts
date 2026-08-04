@@ -5,13 +5,18 @@
  * each job to the appropriate processor based on its type.
  */
 
-import type { QueueJob } from './queue'
+import type { H3Event } from 'h3'
+import { boardKnowledgeQueuePayload, type QueueJob } from './queue'
+
+export interface QueueProcessingContext {
+  event?: H3Event
+}
 
 /**
  * Process a single queue job. Called by the queue consumer handler.
  * Throws on failure so the queue runtime can retry.
  */
-export async function processJob(job: QueueJob): Promise<void> {
+export async function processJob(job: QueueJob, context: QueueProcessingContext = {}): Promise<void> {
   const startTime = Date.now()
 
   try {
@@ -102,6 +107,14 @@ export async function processJob(job: QueueJob): Promise<void> {
 
       case 'site-intelligence.enrich':
         await processSiteIntelligenceEnrichment(job.payload)
+        break
+
+      case 'knowledge.extract':
+        await processBoardKnowledgeExtract(job.payload, context)
+        break
+
+      case 'knowledge.index':
+        await processBoardKnowledgeIndex(job.payload, context)
         break
 
       default:
@@ -244,4 +257,26 @@ async function processFinancialEmbed(payload: Record<string, any>, type: string)
 async function processSiteIntelligenceEnrichment(payload: Record<string, unknown>): Promise<void> {
   const { enrichSiteIntelligencePage } = await import('~~/server/utils/siteIntelligence/enrich')
   await enrichSiteIntelligencePage(payload as Parameters<typeof enrichSiteIntelligencePage>[0])
+}
+
+async function processBoardKnowledgeExtract(
+  payload: Record<string, unknown>,
+  context: QueueProcessingContext
+): Promise<void> {
+  const { processBoardKnowledgeExtraction } = await import('~~/server/utils/boardKnowledge/processExtraction')
+  await processBoardKnowledgeExtraction(
+    { event: context.event },
+    boardKnowledgeQueuePayload(payload) as Parameters<typeof processBoardKnowledgeExtraction>[1]
+  )
+}
+
+async function processBoardKnowledgeIndex(
+  payload: Record<string, unknown>,
+  context: QueueProcessingContext
+): Promise<void> {
+  const { processBoardKnowledgeIndexing } = await import('~~/server/utils/boardKnowledge/processIndexing')
+  await processBoardKnowledgeIndexing(
+    { event: context.event },
+    boardKnowledgeQueuePayload(payload) as Parameters<typeof processBoardKnowledgeIndexing>[1]
+  )
 }

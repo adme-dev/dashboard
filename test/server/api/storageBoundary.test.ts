@@ -11,6 +11,7 @@ const mockGetPresignedUploadUrl = vi.fn()
 const mockGetPublicUrl = vi.fn()
 const mockIsStorageConfigured = vi.fn()
 const mockQueryOne = vi.fn()
+const mockQueryRows = vi.fn()
 const mockTransaction = vi.fn()
 const mockCanDeleteStorageObject = vi.fn()
 const mockRequireStorageEntityAccess = vi.fn()
@@ -56,6 +57,7 @@ vi.mock('~~/server/utils/auth', () => ({
 
 vi.mock('~~/server/utils/db', () => ({
   queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  queryRows: (...args: unknown[]) => mockQueryRows(...args),
   transaction: (...args: unknown[]) => mockTransaction(...args)
 }))
 

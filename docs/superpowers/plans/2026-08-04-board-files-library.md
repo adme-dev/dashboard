@@ -4,7 +4,7 @@
 
 **Goal:** Add a secure, searchable board-level Files view that stores board documents and aggregates existing task evidence without duplicating it.
 
-**Architecture:** A new `board_files` table owns board-wide documents. A focused server utility resolves boards, maps database rows, and provides the union of board files and task attachments; Nitro routes provide list, upload, download, and delete operations. A dedicated `BoardFilesView.vue` handles the user interface while `useBoardData`, `BoardHeader`, and `BoardContainer` only integrate the new view type.
+**Architecture:** A new `board_files` table owns board-wide documents. A focused server utility resolves boards, maps database rows, and provides the union of board files and task attachments; Nitro routes provide list, upload, download, and delete operations. A dedicated `BoardFilesView.client.vue` handles the user interface while `useBoardData`, `BoardHeader`, and `BoardContainer` only integrate the new view type.
 
 **Tech Stack:** Nuxt 4, Vue 3 Composition API, Nuxt UI v4, Nitro/h3, Neon PostgreSQL, Cloudflare R2 storage utilities, Vitest, happy-dom.
 
@@ -64,7 +64,7 @@
 ### Task 3: Files view and board integration
 
 **Files:**
-- Create: `app/components/board/views/BoardFilesView.vue`
+- Create: `app/components/board/views/BoardFilesView.client.vue`
 - Modify: `app/components/board/BoardContainer.vue`
 - Modify: `app/components/board/BoardHeader.vue`
 - Modify: `app/composables/useBoardData.ts`

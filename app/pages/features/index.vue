@@ -124,7 +124,7 @@ const categories = [
     iconBg: 'bg-blue-50 dark:bg-blue-500/10',
     iconColor: 'text-blue-600',
     features: [
-      { title: 'Boards', slug: 'boards', icon: 'i-lucide-kanban', description: 'Six connected work views, 20+ column types, and a searchable board-wide file library for reference documents and task evidence.' },
+      { title: 'Boards', slug: 'boards', icon: 'i-lucide-kanban', description: 'Six connected work views, 20+ column types, and a board-wide file library where supported documents can be submitted for management approval before permission-aware AI use.' },
       { title: 'Kanban View', slug: 'kanban-view', icon: 'i-lucide-columns-3', description: 'Drag-and-drop Kanban boards grouped by any status column with real-time updates.' },
       { title: 'Timeline View', slug: 'timeline-view', icon: 'i-lucide-gantt-chart', description: 'Gantt-style timeline with date range bars, drag-to-reschedule, and dependency tracking.' },
       { title: 'Calendar View', slug: 'calendar-view', icon: 'i-lucide-calendar', description: 'Monthly calendar with task cards, drag-to-reschedule, and date-based filtering.' },
@@ -286,7 +286,7 @@ const categories = [
       { title: 'AI Reports', slug: 'ai-reports', icon: 'i-lucide-file-text', description: 'Auto-generated reports with insights, trends, and recommendations for your agency.' },
       { title: 'Advisor Backlog', slug: 'advisor-backlog', icon: 'i-lucide-target', description: 'AI-generated CFO recommendations with categorisation, snooze, comments, bulk triage, and Kanban view. Track impact at 30/60/90 days.' },
       { title: 'AI Training Pipeline', slug: 'ai-training-pipeline', icon: 'i-lucide-graduation-cap', description: 'Extract training data from conversations, upload knowledge entries, and manage training datasets.' },
-      { title: 'Knowledge Base', slug: 'knowledge-base', icon: 'i-lucide-book-open', description: 'Curate and approve knowledge entries that enhance AI responses with agency-specific context.' },
+      { title: 'Knowledge Base', slug: 'knowledge-base', icon: 'i-lucide-book-open', description: 'Curate agency guidance and management-approved board documents with source citations and permission-aware retrieval.' },
       { title: 'LoRA Adapters', slug: 'lora-adapters', icon: 'i-lucide-cpu', description: 'Fine-tune AI models with your agency data. Custom adapters with traffic routing and A/B testing.' },
       { title: 'AI Assistant Connectors', slug: 'ai-connectors', icon: 'i-lucide-plug', description: 'Use XeroFlow from inside Claude, Cursor, or ChatGPT. Each staff member connects with their own login and gets role-scoped access to live agency data — finance, ad spend, tasks, clients and more — plus owned-media generation (voiceover, music) for creative roles, with platform writes blocked and every request audited. Built on the Model Context Protocol (MCP).' }
     ]

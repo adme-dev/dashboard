@@ -1,0 +1,3 @@
+Cashflow policy
+
+Supplier bills must be entered before the Friday forecast review.

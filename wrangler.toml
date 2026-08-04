@@ -129,6 +129,12 @@ index_name = "agency-search"
 binding = "SITE_INTELLIGENCE_VECTORIZE"
 index_name = "automotive-site-intelligence"
 
+# Governed Board Knowledge uses a dedicated index so ACL metadata and lifecycle
+# operations can never affect the shared agency semantic-search index.
+[[vectorize]]
+binding = "KNOWLEDGE_VECTORIZE"
+index_name = "agency-knowledge"
+
 # Browser Rendering — headless Chromium for banner image export (PNG/JPG)
 # Enable in Cloudflare dashboard: Workers & Pages > Browser Rendering
 [browser]
@@ -151,6 +157,12 @@ id = "90228af3e2cc461bbc09accc3b47bd9f"
 [[services]]
 binding = "AGENCY_WORKFLOWS"
 service = "agency-workflows"
+
+# Private native PDF/Office parser. Keeping pdfjs and SheetJS in this companion
+# Worker protects the Pages Worker release-size budget.
+[[services]]
+binding = "BOARD_KNOWLEDGE_EXTRACTOR"
+service = "board-knowledge-extractor"
 
 # ============================================
 # Environment Variables (non-secret)

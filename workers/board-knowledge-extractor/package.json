@@ -1,0 +1,24 @@
+{
+  "name": "board-knowledge-extractor",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "WRANGLER_LOG_PATH=/tmp/board-knowledge-extractor-wrangler.log wrangler deploy --dry-run --config wrangler.toml --outdir=dist",
+    "deploy": "WRANGLER_LOG_PATH=/tmp/board-knowledge-extractor-wrangler.log wrangler deploy --config wrangler.toml",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.10.1",
+    "jszip": "^3.10.1",
+    "unpdf": "^1.8.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "*",
+    "typescript": "*",
+    "wrangler": "^4.95.0"
+  }
+}
