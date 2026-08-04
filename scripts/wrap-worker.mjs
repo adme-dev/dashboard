@@ -15,6 +15,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import {
   buildCompressedPrecomputedManifestModule,
+  buildWorkerDispatcherModule,
   compactPrecomputedManifest,
   compactDeployedWorkerModules,
   compactWorkerModule
@@ -150,39 +151,6 @@ console.log(
 
 // Write the dispatcher entry. Routes WebSocket upgrades on the three known
 // paths to the WS handler; everything else delegates to Nitro unchanged.
-const dispatcher = `import nitro from './_nitro.js'
-import { handleBoardConnect, handleChatConnect, handleBannerConnect } from './_ws.js'
-
-const BOARD_RE = /^\\/api\\/agency\\/boards\\/([^/]+)\\/connect$/
-const CHAT_RE = /^\\/api\\/chat\\/([^/]+)\\/connect$/
-const BANNER_RE = /^\\/api\\/agency\\/banner-studio\\/([^/]+)\\/connect$/
-
-export default {
-  async fetch(request, env, ctx) {
-    if (request.headers.get('Upgrade') === 'websocket') {
-      try {
-        const { pathname } = new URL(request.url)
-        const m1 = pathname.match(BOARD_RE)
-        if (m1) return await handleBoardConnect(request, env, decodeURIComponent(m1[1]))
-        const m2 = pathname.match(CHAT_RE)
-        if (m2) return await handleChatConnect(request, env, decodeURIComponent(m2[1]))
-        const m3 = pathname.match(BANNER_RE)
-        if (m3) return await handleBannerConnect(request, env, decodeURIComponent(m3[1]))
-      } catch (err) {
-        console.error('[ws-wrap]', err && err.stack || err)
-        return new Response('WebSocket handler error', { status: 500 })
-      }
-    }
-    return nitro.fetch(request, env, ctx)
-  },
-  scheduled(event, env, ctx) {
-    if (typeof nitro.scheduled === 'function') {
-      return nitro.scheduled(event, env, ctx)
-    }
-  },
-}
-`
-
-await fs.writeFile(indexJs, dispatcher, 'utf8')
+await fs.writeFile(indexJs, buildWorkerDispatcherModule(), 'utf8')
 console.log('[wrap-worker] wrote dispatcher → index.js')
 console.log('[wrap-worker] done')

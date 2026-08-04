@@ -65,6 +65,38 @@ describe('Pages Worker postbuild compaction', () => {
     expect(source).not.toContain('"resourceType"')
   })
 
+  it('round-trips numeric zero without treating it as a missing resource field', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-manifest-zero-'))
+    temporaryDirectories.push(directory)
+    const modulePath = path.join(directory, 'client.precomputed.mjs')
+    const manifest = {
+      dependencies: {
+        page: {
+          scripts: {
+            entry: {
+              file: 0,
+              module: false,
+              resourceType: 'script'
+            }
+          },
+          styles: {},
+          preload: {},
+          prefetch: {}
+        }
+      },
+      entrypoints: []
+    }
+
+    await writeFile(
+      modulePath,
+      buildCompressedPrecomputedManifestModule(manifest),
+      'utf8'
+    )
+    const loaded = await (await import(`${pathToFileURL(modulePath).href}?v=zero`)).default()
+
+    expect(loaded).toEqual(manifest)
+  })
+
   it('preserves the compact-manifest marker during deployed-module compaction', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'worker-manifest-marker-'))
     temporaryDirectories.push(directory)

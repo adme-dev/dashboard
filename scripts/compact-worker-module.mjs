@@ -77,9 +77,9 @@ export function compactPrecomputedManifest(manifest) {
 
 function encodePrecomputedResource(resource) {
   const values = PRECOMPUTED_RESOURCE_KEYS.map(key => (
-    resource[key] === undefined ? 0 : resource[key]
+    resource[key] === undefined ? null : resource[key]
   ))
-  while (values.at(-1) === 0) values.pop()
+  while (values.at(-1) === null) values.pop()
   return values
 }
 
@@ -112,7 +112,7 @@ function decodeBucket(bucket) {
   return Object.fromEntries(Object.entries(bucket).map(([id, values]) => [id,
     Object.fromEntries(values
       .map((value, index) => [resourceKeys[index], value])
-      .filter(([, value]) => value !== 0))
+      .filter(([, value]) => value !== null))
   ]))
 }
 export default async function loadPrecomputedManifest() {
@@ -128,6 +128,41 @@ export default async function loadPrecomputedManifest() {
     entrypoints: packed.e
   }
   return cache
+}
+`
+}
+
+export function buildWorkerDispatcherModule() {
+  return `import nitro from './_nitro.js'
+import { handleBoardConnect, handleChatConnect, handleBannerConnect } from './_ws.js'
+
+const BOARD_RE = /^\\/api\\/agency\\/boards\\/([^/]+)\\/connect$/
+const CHAT_RE = /^\\/api\\/chat\\/([^/]+)\\/connect$/
+const BANNER_RE = /^\\/api\\/agency\\/banner-studio\\/([^/]+)\\/connect$/
+
+export default {
+  async fetch(request, env, ctx) {
+    if (request.headers.get('Upgrade') === 'websocket') {
+      try {
+        const { pathname } = new URL(request.url)
+        const m1 = pathname.match(BOARD_RE)
+        if (m1) return await handleBoardConnect(request, env, decodeURIComponent(m1[1]))
+        const m2 = pathname.match(CHAT_RE)
+        if (m2) return await handleChatConnect(request, env, decodeURIComponent(m2[1]))
+        const m3 = pathname.match(BANNER_RE)
+        if (m3) return await handleBannerConnect(request, env, decodeURIComponent(m3[1]))
+      } catch (err) {
+        console.error('[ws-wrap]', err && err.stack || err)
+        return new Response('WebSocket handler error', { status: 500 })
+      }
+    }
+    return nitro.fetch(request, env, ctx)
+  },
+  scheduled(event, env, ctx) {
+    if (typeof nitro.scheduled === 'function') {
+      return nitro.scheduled(event, env, ctx)
+    }
+  },
 }
 `
 }
