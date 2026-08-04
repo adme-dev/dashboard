@@ -36,4 +36,8 @@ describe('spotlight', () => {
   it('exposes a system-prompt clause describing the marker', () => {
     expect(spotlightSystemClause()).toMatch(/never.*instructions/i)
   })
+
+  it('defines recalled memory as untrusted data when it uses the marker', () => {
+    expect(spotlightSystemClause()).toMatch(/recalled memory/i)
+  })
 })
