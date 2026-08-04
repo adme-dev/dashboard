@@ -173,6 +173,25 @@ describe('Board Knowledge API', () => {
     expect(mockEnqueue).toHaveBeenCalledWith(event, queueType, expect.objectContaining({ submissionId: SUBMISSION_ID }))
   })
 
+  it('routes an approved indexing failure back to the indexing queue on retry', async () => {
+    mockTransitionSubmission.mockResolvedValueOnce({
+      ...submission,
+      reviewStatus: 'approved',
+      extractionStatus: 'ready',
+      indexStatus: 'queued'
+    })
+    const event: TestEvent = {
+      params: { id: BOARD_ID, submissionId: SUBMISSION_ID },
+      body: { expectedUpdatedAt: UPDATED_AT }
+    }
+
+    await retryKnowledge(event as never)
+
+    expect(mockEnqueue).toHaveBeenCalledWith(event, 'knowledge.index', expect.objectContaining({
+      submissionId: SUBMISSION_ID
+    }))
+  })
+
   it('requires a bounded rejection reason', async () => {
     const base = { params: { id: BOARD_ID, submissionId: SUBMISSION_ID } }
     await expect(rejectKnowledge({ ...base, body: { expectedUpdatedAt: UPDATED_AT, reason: '' } } as never))

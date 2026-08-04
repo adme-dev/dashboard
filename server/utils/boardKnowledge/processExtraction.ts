@@ -268,11 +268,11 @@ export async function persistBoardKnowledgeDraft(
     }))
     await client.query(`
       INSERT INTO ai_knowledge_chunks (
-        article_id, submission_id, department_id, chunk_index, content,
+        article_id, submission_id, department_id, scope_key, chunk_index, content,
         heading, page_start, page_end, sheet_name, slide_number,
         content_hash, token_estimate
       )
-      SELECT $1, $2, $3, chunk_index, content, heading, page_start, page_end,
+      SELECT $1, $2, $3, 'board:' || $3::text, chunk_index, content, heading, page_start, page_end,
         sheet_name, slide_number, content_hash, token_estimate
       FROM jsonb_to_recordset($4::jsonb) AS chunk(
         chunk_index INTEGER,

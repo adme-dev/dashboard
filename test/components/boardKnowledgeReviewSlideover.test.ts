@@ -214,13 +214,14 @@ describe('BoardKnowledgeReviewSlideover', () => {
   })
 
   it.each([
-    ['failed', 'pending', 'Retry extraction', 'retry'],
-    ['ready', 'approved', 'Archive', 'archive']
-  ] as const)('offers the valid %s/%s lifecycle action', async (extractionStatus, reviewStatus, label, action) => {
+    ['failed', 'pending', 'not_indexed', 'Retry extraction', 'retry'],
+    ['ready', 'approved', 'failed', 'Retry indexing', 'retry'],
+    ['ready', 'approved', 'indexed', 'Archive', 'archive']
+  ] as const)('offers the valid %s/%s lifecycle action', async (extractionStatus, reviewStatus, indexStatus, label, action) => {
     const state = reviewDetail()
     state.submission.extractionStatus = extractionStatus
     state.submission.reviewStatus = reviewStatus
-    state.submission.indexStatus = reviewStatus === 'approved' ? 'indexed' : 'not_indexed'
+    state.submission.indexStatus = indexStatus
     fetchMock.mockImplementation(async (_url: string, options?: { method?: string }) => {
       if (!options?.method || options.method === 'GET') return structuredClone(state)
       return { accepted: true, queued: true, submission: state.submission }

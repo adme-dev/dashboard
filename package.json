@@ -39,6 +39,7 @@
     "smoke:agency-workflows:ci": "node scripts/agency-workflows-ci-smoke-gate.mjs",
     "smoke:social-publishing-theme": "node scripts/social-publishing-theme-smoke.mjs",
     "eval:ai:export": "tsx --tsconfig .nuxt/tsconfig.server.json scripts/export-ai-tools.ts",
+    "board-knowledge:backfill": "node --env-file=.env node_modules/tsx/dist/cli.mjs --tsconfig .nuxt/tsconfig.server.json scripts/board-knowledge-backfill.ts",
     "eval:ai": "promptfoo eval -c evals/ai-tools/promptfooconfig.yaml",
     "eval:ai:injection": "promptfoo eval -c evals/ai-tools/injection.yaml",
     "audit:inventory-feeds": "node --env-file=.env node_modules/tsx/dist/cli.mjs --tsconfig .nuxt/tsconfig.server.json scripts/audit-inventory-feeds.ts",

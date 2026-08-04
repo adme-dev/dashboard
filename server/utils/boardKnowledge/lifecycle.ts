@@ -66,7 +66,8 @@ export function canTransitionBoardKnowledge(state: BoardKnowledgeState, action: 
     case 'reject':
       return state.review === 'pending' && state.extraction === 'ready' && state.index === 'not_indexed'
     case 'retry':
-      return state.review === 'pending' && state.extraction === 'failed' && state.index !== 'indexing'
+      return (state.review === 'pending' && state.extraction === 'failed' && state.index !== 'indexing')
+        || (state.review === 'approved' && state.extraction === 'ready' && state.index === 'failed')
     case 'archive':
       return state.review !== 'archived' && state.extraction !== 'processing' && state.index !== 'indexing'
   }
@@ -192,6 +193,15 @@ async function transitionRetry(
   client: BoardKnowledgeQueryClient,
   row: BoardKnowledgeSubmissionRow
 ): Promise<BoardKnowledgeSubmissionRow> {
+  if (row.review_status === 'approved' && row.extraction_status === 'ready' && row.index_status === 'failed') {
+    const requeued = await client.query(`
+      UPDATE board_knowledge_submissions
+      SET index_status = 'queued', updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `, [row.id])
+    return requeued.rows?.[0] as BoardKnowledgeSubmissionRow
+  }
   const updated = await client.query(`
     UPDATE board_knowledge_submissions
     SET

@@ -662,9 +662,12 @@ Commit: `feat: add board knowledge review experience`
 - Modify: `wrangler.toml`
 - Create: `server/utils/boardKnowledge/vectorize.ts`
 - Complete: `server/utils/boardKnowledge/processIndexing.ts`
+- Create: `server/database/migrations/343_board_knowledge_agency_chunks.sql`
 - Create: `scripts/board-knowledge-backfill.ts`
 - Create: `docs/runbooks/board-knowledge.md`
 - Test: `test/server/utils/boardKnowledgeVectorize.test.ts`
+- Test: `test/server/utils/boardKnowledgeIndexing.test.ts`
+- Test: `test/config/boardKnowledgeAgencyBackfillMigration.test.ts`
 - Test: `test/scripts/boardKnowledgeBackfill.test.ts`
 - Modify: `package.json`
 
@@ -672,7 +675,7 @@ Commit: `feat: add board knowledge review experience`
 - Consumes: Workers AI `AI` binding, new `KNOWLEDGE_VECTORIZE` binding, article chunks, and queue context.
 - Produces: `generateKnowledgeEmbedding`, `upsertKnowledgeChunks`, `deleteKnowledgeVectors`, `queryKnowledgeVectors`, and an idempotent backfill command.
 
-- [ ] **Step 1: Write Vectorize adapter tests**
+- [x] **Step 1: Write Vectorize adapter tests**
 
 Assert it never falls back to shared `VECTORIZE`, upserts compact metadata, deletes by stored vector IDs, passes `scopeKey` filters before `topK`, and returns empty/error state when either binding is missing.
 
@@ -684,13 +687,13 @@ expect(mockIndex.query).toHaveBeenCalledWith(expect.any(Array), {
 })
 ```
 
-- [ ] **Step 2: Run adapter tests and verify RED**
+- [x] **Step 2: Run adapter tests and verify RED**
 
 Run: `pnpm vitest run test/server/utils/boardKnowledgeVectorize.test.ts`
 
 Expected: FAIL because the adapter is missing.
 
-- [ ] **Step 3: Implement binding and adapter**
+- [x] **Step 3: Implement binding and adapter**
 
 Add:
 
@@ -702,11 +705,11 @@ index_name = "agency-knowledge"
 
 Generate 768-dimension embeddings with `@cf/baai/bge-base-en-v1.5`. Do not truncate below the chunk contract. Mark a submission indexed only after every expected current chunk has a stored vector ID and successful upsert.
 
-- [ ] **Step 4: Write backfill tests**
+- [x] **Step 4: Write backfill tests**
 
 Assert dry-run output, agency `scopeKey`, deterministic chunks, skip-on-matching-content-hash, bounded batches, restart safety, and parity counts. The script refuses to run without `BOARD_KNOWLEDGE_BACKFILL_ACK=true`.
 
-- [ ] **Step 5: Implement script, package command, and runbook**
+- [x] **Step 5: Implement script, package command, and runbook**
 
 Add `pnpm board-knowledge:backfill`. Document exact resource commands:
 
@@ -718,7 +721,7 @@ pnpm exec wrangler vectorize list-metadata-index agency-knowledge
 
 Document AI Gateway paid-key readiness, payload-log/caching checks, queue/DLQ checks, feature flag, dry run, backfill, parity verification, enablement, and rollback.
 
-- [ ] **Step 6: Run focused tests and commit**
+- [x] **Step 6: Run focused tests and commit**
 
 Run: `pnpm vitest run test/server/utils/boardKnowledgeVectorize.test.ts test/scripts/boardKnowledgeBackfill.test.ts`
 

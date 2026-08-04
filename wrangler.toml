@@ -129,6 +129,12 @@ index_name = "agency-search"
 binding = "SITE_INTELLIGENCE_VECTORIZE"
 index_name = "automotive-site-intelligence"
 
+# Governed Board Knowledge uses a dedicated index so ACL metadata and lifecycle
+# operations can never affect the shared agency semantic-search index.
+[[vectorize]]
+binding = "KNOWLEDGE_VECTORIZE"
+index_name = "agency-knowledge"
+
 # Browser Rendering — headless Chromium for banner image export (PNG/JPG)
 # Enable in Cloudflare dashboard: Workers & Pages > Browser Rendering
 [browser]

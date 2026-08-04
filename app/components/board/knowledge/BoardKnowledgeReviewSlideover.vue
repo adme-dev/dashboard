@@ -35,9 +35,14 @@ const canApproveOrReject = computed(() => props.canReview
   && submission.value.extractionStatus === 'ready'
   && submission.value.indexStatus === 'not_indexed')
 const canRetry = computed(() => props.canReview
-  && submission.value?.reviewStatus === 'pending'
-  && submission.value.extractionStatus === 'failed'
-  && submission.value.indexStatus !== 'indexing')
+  && ((submission.value?.reviewStatus === 'pending'
+    && submission.value.extractionStatus === 'failed'
+    && submission.value.indexStatus !== 'indexing')
+  || (submission.value?.reviewStatus === 'approved'
+    && submission.value.extractionStatus === 'ready'
+    && submission.value.indexStatus === 'failed')))
+const retryIsIndexing = computed(() => submission.value?.reviewStatus === 'approved'
+  && submission.value.indexStatus === 'failed')
 const canArchive = computed(() => props.canReview
   && Boolean(submission.value)
   && submission.value?.reviewStatus !== 'archived'
@@ -114,7 +119,7 @@ async function perform(action: 'approve' | 'reject' | 'retry' | 'archive', reaso
         : action === 'reject'
           ? 'Knowledge rejected'
           : action === 'retry'
-            ? 'Extraction queued'
+            ? retryIsIndexing.value ? 'Indexing queued' : 'Extraction queued'
             : 'Knowledge archived',
       color: 'success'
     })
@@ -430,7 +435,7 @@ watch(
           />
           <UButton
             v-if="canRetry"
-            label="Retry extraction"
+            :label="retryIsIndexing ? 'Retry indexing' : 'Retry extraction'"
             icon="i-lucide-refresh-cw"
             variant="soft"
             :loading="pendingAction === 'retry'"

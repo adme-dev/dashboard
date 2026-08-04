@@ -76,7 +76,10 @@ export async function transitionKnowledgeForBoard(
   })
   let queued = false
   if (queueType) {
-    queued = await enqueue(event, queueType, {
+    const resolvedQueueType = action === 'retry' && submission.reviewStatus === 'approved'
+      ? 'knowledge.index'
+      : queueType
+    queued = await enqueue(event, resolvedQueueType, {
       submissionId: submission.id,
       expectedVersionKey: submission.sourceVersionKey
     })

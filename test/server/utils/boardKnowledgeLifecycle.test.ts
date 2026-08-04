@@ -9,12 +9,12 @@ const db = vi.hoisted(() => ({
 
 vi.mock('~~/server/utils/db', () => db)
 
-import {
+const {
   archiveKnowledgeSourceForDeletion,
   canTransitionBoardKnowledge,
   guardKnowledgeSourceDeletion,
   transitionSubmission
-} from '~~/server/utils/boardKnowledge/lifecycle'
+} = await import('~~/server/utils/boardKnowledge/lifecycle')
 
 const BOARD_ID = '11111111-1111-4111-8111-111111111111'
 const FILE_ID = '22222222-2222-4222-8222-222222222222'
@@ -65,8 +65,9 @@ describe('board knowledge transition rules', () => {
     expect(canTransitionBoardKnowledge({ review: 'approved', extraction: 'ready', index: 'indexed' }, 'approve')).toBe(false)
   })
 
-  it('allows extraction retry only for a pending failed submission', () => {
+  it('allows the correct extraction or indexing retry states', () => {
     expect(canTransitionBoardKnowledge({ review: 'pending', extraction: 'failed', index: 'not_indexed' }, 'retry')).toBe(true)
+    expect(canTransitionBoardKnowledge({ review: 'approved', extraction: 'ready', index: 'failed' }, 'retry')).toBe(true)
     expect(canTransitionBoardKnowledge({ review: 'rejected', extraction: 'ready', index: 'not_indexed' }, 'retry')).toBe(false)
   })
 
@@ -177,6 +178,29 @@ describe('board knowledge transactional lifecycle', () => {
     expect(unpublishIndex).toBeGreaterThan(0)
     expect(archiveIndex).toBeGreaterThan(unpublishIndex)
     expect(statements[unpublishIndex]).not.toMatch(/review_status\s*=/i)
+  })
+
+  it('requeues indexing without resetting a successfully extracted approved source', async () => {
+    const failed = submissionRow({ review_status: 'approved', extraction_status: 'ready', index_status: 'failed' })
+    const query = vi.fn(async (sql: string) => {
+      if (/SELECT[\s\S]*FOR UPDATE/i.test(sql)) return { rows: [failed] }
+      if (/SET index_status = 'queued'/i.test(sql)) {
+        return { rows: [{ ...failed, index_status: 'queued', updated_at: '2026-08-04T01:05:00.000Z' }] }
+      }
+      return { rows: [] }
+    })
+    db.transaction.mockImplementation(async callback => callback({ query }))
+
+    const result = await transitionSubmission({
+      submissionId: SUBMISSION_ID,
+      departmentId: BOARD_ID,
+      actorId: 'manager-1',
+      action: 'retry',
+      expectedUpdatedAt: UPDATED_AT
+    })
+
+    expect(result).toMatchObject({ reviewStatus: 'approved', extractionStatus: 'ready', indexStatus: 'queued' })
+    expect(query.mock.calls.some(call => /extraction_status = 'queued'/i.test(String(call[0])))).toBe(false)
   })
 })
 
