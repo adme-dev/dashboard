@@ -5,13 +5,14 @@
  * each job to the appropriate processor based on its type.
  */
 
-import type { QueueJob } from './queue'
+import type { QueueConsumerJob } from './queue'
+import type { GodModeAuditEventInput } from './godMode/audit'
 
 /**
  * Process a single queue job. Called by the queue consumer handler.
  * Throws on failure so the queue runtime can retry.
  */
-export async function processJob(job: QueueJob): Promise<void> {
+export async function processJob(job: QueueConsumerJob): Promise<void> {
   const startTime = Date.now()
 
   try {
@@ -102,6 +103,10 @@ export async function processJob(job: QueueJob): Promise<void> {
 
       case 'site-intelligence.enrich':
         await processSiteIntelligenceEnrichment(job.payload)
+        break
+
+      case 'god-mode.audit-terminal':
+        await processGodModeAuditTerminal(job.payload)
         break
 
       default:
@@ -244,4 +249,9 @@ async function processFinancialEmbed(payload: Record<string, any>, type: string)
 async function processSiteIntelligenceEnrichment(payload: Record<string, unknown>): Promise<void> {
   const { enrichSiteIntelligencePage } = await import('~~/server/utils/siteIntelligence/enrich')
   await enrichSiteIntelligencePage(payload as Parameters<typeof enrichSiteIntelligencePage>[0])
+}
+
+async function processGodModeAuditTerminal(payload: GodModeAuditEventInput): Promise<void> {
+  const { appendGodModeAuditEvent } = await import('~~/server/utils/godMode/audit')
+  await appendGodModeAuditEvent(payload)
 }

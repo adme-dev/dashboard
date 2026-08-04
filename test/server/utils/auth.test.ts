@@ -45,6 +45,11 @@ vi.mock('../../../server/utils/roleResolver', () => ({
   resolveUserPermissions: (...args: any[]) => mockResolveUserPermissions(...args)
 }))
 
+const mockResolveGodModeAuthority = vi.fn()
+vi.mock('../../../server/utils/godMode/authority', () => ({
+  resolveGodModeAuthority: (...args: any[]) => mockResolveGodModeAuthority(...args)
+}))
+
 // auth.ts uses Nuxt auto-imports (bare getHeader/getCookie/createError) — provide
 // them as globals. createError is already supplied by test/setup.ts.
 const mockGetHeader = vi.fn()
@@ -81,6 +86,12 @@ import {
 beforeEach(() => {
   vi.clearAllMocks()
   mockResolveUserPermissions.mockResolvedValue({ groups: ['MANAGEMENT'], isReadOnly: false })
+  mockResolveGodModeAuthority.mockResolvedValue({
+    active: false,
+    actorUserId: '00000000-0000-4000-8000-000000000000',
+    reason: 'not_owner',
+    emergencyDisabled: false
+  })
 })
 
 describe('auth utility', () => {
@@ -308,6 +319,23 @@ describe('auth utility', () => {
       })
     })
 
+    it('does not bypass authentication even when an unrelated authority lookup would be active', async () => {
+      mockResolveGodModeAuthority.mockResolvedValue({
+        active: true,
+        actorUserId: '11111111-1111-4111-8111-111111111111',
+        reason: 'active_owner',
+        emergencyDisabled: false
+      })
+      mockGetHeader.mockReturnValue(null)
+      mockGetCookie.mockReturnValue(null)
+
+      await expect(requireAuth({ method: 'GET', context: {} } as any)).rejects.toMatchObject({
+        statusCode: 401,
+        statusMessage: 'Unauthorized - No token'
+      })
+      expect(mockResolveGodModeAuthority).not.toHaveBeenCalled()
+    })
+
     it('throws 401 when the session is invalid', async () => {
       mockGetHeader.mockImplementation((_e: any, h: string) => (h === 'authorization' ? 'Bearer not-a-jwt' : null))
       await expect(requireAuth({ context: {} } as any)).rejects.toMatchObject({
@@ -338,6 +366,33 @@ describe('auth utility', () => {
         statusMessage: 'Forbidden - Insufficient permissions'
       })
     })
+
+    it('allows a freshly verified active owner when the normal role decision denies', async () => {
+      const user = { id: '11111111-1111-4111-8111-111111111111', role: 'viewer', permissionGroups: [] }
+      const event = { method: 'GET', context: { user } } as any
+      mockResolveGodModeAuthority.mockResolvedValue({
+        active: true,
+        actorUserId: user.id,
+        reason: 'active_owner',
+        emergencyDisabled: false
+      })
+
+      await expect(requireRole(event, ['admin'])).resolves.toBe(user)
+    })
+
+    it.each([
+      ['inactive_or_missing', false],
+      ['not_owner', false],
+      ['emergency_disabled', true]
+    ])('preserves the original denial for %s authority', async (reason, emergencyDisabled) => {
+      const user = { id: '22222222-2222-4222-8222-222222222222', role: 'viewer', permissionGroups: [] }
+      mockResolveGodModeAuthority.mockResolvedValue({ active: false, actorUserId: user.id, reason, emergencyDisabled })
+
+      await expect(requireRole({ method: 'GET', context: { user } } as any, ['admin'])).rejects.toMatchObject({
+        statusCode: 403,
+        statusMessage: 'Forbidden - Insufficient permissions'
+      })
+    })
   })
 
   describe('requirePermission (group-based RBAC)', () => {
@@ -359,6 +414,18 @@ describe('auth utility', () => {
         statusCode: 403
       })
     })
+
+    it('allows a freshly verified active owner when normal group RBAC denies', async () => {
+      const user = { id: '11111111-1111-4111-8111-111111111111', role: 'media_buyer', permissionGroups: [] }
+      mockResolveGodModeAuthority.mockResolvedValue({
+        active: true,
+        actorUserId: user.id,
+        reason: 'active_owner',
+        emergencyDisabled: false
+      })
+
+      await expect(requirePermission({ method: 'GET', context: { user } } as any, 'FINANCE' as any)).resolves.toBe(user)
+    })
   })
 
   describe('requireWriteAccess', () => {
@@ -378,6 +445,41 @@ describe('auth utility', () => {
     it('throws 403 for a custom read-only role', async () => {
       const user = { id: 'u1', role: 'custom_x', permissionGroups: [], isCustomReadOnly: true }
       await expect(requireWriteAccess({ context: { user } } as any)).rejects.toMatchObject({ statusCode: 403 })
+    })
+
+    it('allows a freshly verified active owner through a read-only application check', async () => {
+      const user = {
+        id: '11111111-1111-4111-8111-111111111111',
+        role: 'viewer',
+        permissionGroups: []
+      }
+      mockResolveGodModeAuthority.mockResolvedValue({
+        active: true,
+        actorUserId: user.id,
+        reason: 'active_owner',
+        emergencyDisabled: false
+      })
+
+      await expect(requireWriteAccess({ method: 'GET', context: { user } } as any)).resolves.toBe(user)
+    })
+
+    it('does not make an uncoordinated mutation newly reachable', async () => {
+      const user = {
+        id: '11111111-1111-4111-8111-111111111111',
+        role: 'viewer',
+        permissionGroups: []
+      }
+      mockResolveGodModeAuthority.mockResolvedValue({
+        active: true,
+        actorUserId: user.id,
+        reason: 'active_owner',
+        emergencyDisabled: false
+      })
+
+      await expect(requireWriteAccess({ method: 'POST', context: { user } } as any)).rejects.toMatchObject({
+        statusCode: 403,
+        statusMessage: 'Forbidden - Read-only access'
+      })
     })
   })
 
@@ -410,6 +512,23 @@ describe('auth utility', () => {
     it('returns false when there is no matching row', async () => {
       mockQueryOne.mockResolvedValueOnce(null)
       await expect(canAccessImplementation('u1', 'impl-1')).resolves.toBe(false)
+    })
+
+    it('does not bypass the implementation assignment query for active owner authority', async () => {
+      mockResolveGodModeAuthority.mockResolvedValue({
+        active: true,
+        actorUserId: '11111111-1111-4111-8111-111111111111',
+        reason: 'active_owner',
+        emergencyDisabled: false
+      })
+      mockQueryOne.mockResolvedValueOnce(null)
+
+      await expect(canAccessImplementation('11111111-1111-4111-8111-111111111111', 'impl-1')).resolves.toBe(false)
+      expect(mockQueryOne).toHaveBeenCalledWith(expect.stringContaining('project_manager_id = $2'), [
+        'impl-1',
+        '11111111-1111-4111-8111-111111111111'
+      ])
+      expect(mockResolveGodModeAuthority).not.toHaveBeenCalled()
     })
   })
 

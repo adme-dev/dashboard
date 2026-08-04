@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { queryOne, queryRows, execute } from './db'
 import { isReadOnlyRole, PERMISSIONS, permissionGroupsForRoles, roleHasPermission, type PermissionGroup } from './permissions'
 import { resolveUserPermissions } from './roleResolver'
+import { canBypassApplicationControl } from './godMode/featureGate'
 
 export interface User {
   id: string
@@ -245,6 +246,7 @@ export async function requireRole(event: any, roles: readonly string[]): Promise
   }
 
   if (!hasRole(user, roles)) {
+    if (await canBypassApplicationControl(event, 'permission')) return user
     throw createError({ statusCode: 403, statusMessage: 'Forbidden - Insufficient permissions' })
   }
 
@@ -261,6 +263,7 @@ export async function requirePermission(event: any, group: PermissionGroup): Pro
   if (import.meta.dev) return user
   if (roleHasPermission(user.role, group)) return user
   if (user.permissionGroups?.includes(group)) return user
+  if (await canBypassApplicationControl(event, 'permission')) return user
   throw createError({ statusCode: 403, statusMessage: 'Forbidden - Insufficient permissions' })
 }
 
@@ -268,6 +271,7 @@ export async function requirePermission(event: any, group: PermissionGroup): Pro
 export async function requireWriteAccess(event: any): Promise<User> {
   const user = await requireAuth(event)
   if (isReadOnlyRole(user.role) || (user as any).isCustomReadOnly) {
+    if (await canBypassApplicationControl(event, 'permission')) return user
     throw createError({ statusCode: 403, statusMessage: 'Forbidden - Read-only access' })
   }
   return user

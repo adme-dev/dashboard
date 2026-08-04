@@ -30,6 +30,11 @@ vi.mock('../../../server/utils/kv', () => ({
   kvDelete: (...args: any[]) => mockKvDelete(...args)
 }))
 
+const mockResolveGodModeAuthority = vi.fn()
+vi.mock('../../../server/utils/godMode/authority', () => ({
+  resolveGodModeAuthority: (...args: any[]) => mockResolveGodModeAuthority(...args)
+}))
+
 // Mock Nuxt/h3 globals
 const mockGetHeader = vi.fn()
 const mockGetCookie = vi.fn()
@@ -65,6 +70,12 @@ const mockEvent = {} as any
 describe('roleResolver', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockResolveGodModeAuthority.mockResolvedValue({
+      active: false,
+      actorUserId: '00000000-0000-4000-8000-000000000000',
+      reason: 'not_owner',
+      emergencyDisabled: false
+    })
   })
 
   describe('resolveUserPermissions', () => {
@@ -82,6 +93,39 @@ describe('roleResolver', () => {
       expect(result).toEqual(cached)
       expect(mockKvGet).toHaveBeenCalledWith(mockEvent, 'role-perms:user-1')
       expect(mockQueryOne).not.toHaveBeenCalled() // No DB query needed
+    })
+
+    it('returns every permission group only for server-verified active owner authority', async () => {
+      const ownerId = '11111111-1111-4111-8111-111111111111'
+      mockResolveGodModeAuthority.mockResolvedValue({
+        active: true,
+        actorUserId: ownerId,
+        reason: 'active_owner',
+        emergencyDisabled: false
+      })
+
+      const result = await resolveUserPermissions({ context: {} } as any, ownerId, 'viewer', null)
+
+      expect(result.groups).toEqual([...PERMISSION_GROUPS])
+      expect(result.isReadOnly).toBe(false)
+      expect(result.godModeElevated).toBe(true)
+      expect(mockKvGet).not.toHaveBeenCalled()
+      expect(mockQueryOne).not.toHaveBeenCalled()
+    })
+
+    it('does not create a role-string-only owner shortcut without an H3 event', async () => {
+      mockKvGet.mockResolvedValue(null)
+      mockQueryOne.mockResolvedValue(null)
+
+      const result = await resolveUserPermissions(null as any, 'user-without-event', 'owner', null)
+
+      expect(mockResolveGodModeAuthority).not.toHaveBeenCalled()
+      expect(result).toEqual({
+        groups: SYSTEM_ROLE_PERMISSIONS.owner,
+        customRoleId: null,
+        roleName: 'owner',
+        isReadOnly: false
+      })
     })
 
     it('should query DB by custom_role_id when provided', async () => {

@@ -1,13 +1,16 @@
 import type { H3Event } from 'h3'
 import { kvGet, kvPut, kvDelete } from './kv'
 import { queryOne } from './db'
-import { SYSTEM_ROLE_PERMISSIONS, type PermissionGroup } from './permissions'
+import { PERMISSION_GROUPS, SYSTEM_ROLE_PERMISSIONS, type PermissionGroup } from './permissions'
+import { resolveGodModeAuthority } from './godMode/authority'
 
 export interface ResolvedPermissions {
   groups: PermissionGroup[]
   customRoleId: string | null
   roleName: string
   isReadOnly: boolean
+  /** Request-local authority result; callers must never place these expanded groups in shared/session caches. */
+  godModeElevated?: true
 }
 
 /**
@@ -20,6 +23,19 @@ export async function resolveUserPermissions(
   userRole: string,
   customRoleId?: string | null
 ): Promise<ResolvedPermissions> {
+  if (event?.context) {
+    const authority = await resolveGodModeAuthority(event, userId)
+    if (authority.active) {
+      return {
+        groups: [...PERMISSION_GROUPS],
+        customRoleId: customRoleId || null,
+        roleName: userRole,
+        isReadOnly: false,
+        godModeElevated: true
+      }
+    }
+  }
+
   const cacheKey = `role-perms:${userId}`
   const cached = await kvGet<ResolvedPermissions>(event, cacheKey)
   if (cached) return cached

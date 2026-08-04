@@ -208,8 +208,9 @@ export default defineEventHandler(async (event) => {
     user.permissionGroups = resolved.groups
     ;(user as MiddlewareUser).isCustomReadOnly = resolved.isReadOnly && !isReadOnlyRole(user.role)
 
-    // Cache in KV for 5 minutes (includes permissionGroups + custom_role_id)
-    kvPut(event, cacheKey, user, 300)
+    // Cache ordinary permissions only. God-mode expansion is request-local so an
+    // emergency disable or owner downgrade cannot inherit five minutes of stale authority.
+    if (!resolved.godModeElevated) kvPut(event, cacheKey, user, 300)
 
     event.context.user = user
     event.context.auth = { userId: user.id, role: user.role }

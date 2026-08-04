@@ -9,13 +9,13 @@
  */
 
 import { processJob } from '~~/server/utils/queueConsumer'
-import type { QueueJob } from '~~/server/utils/queue'
+import type { QueueConsumerJob } from '~~/server/utils/queue'
 
 export default defineNitroPlugin((nitroApp) => {
   // Hook into Cloudflare's module worker queue handler
   // This is called when messages arrive from the JOBS_QUEUE binding
   nitroApp.hooks.hook('cloudflare:queue' as any, async (batch: any) => {
-    const messages: Array<{ body: QueueJob; ack: () => void; retry: () => void }> = batch?.messages || []
+    const messages: Array<{ body: QueueConsumerJob; ack: () => void; retry: () => void }> = batch?.messages || []
 
     for (const msg of messages) {
       try {

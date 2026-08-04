@@ -1,4 +1,5 @@
 import { isReadOnlyRole } from '../utils/permissions'
+import { canBypassApplicationControl } from '../utils/godMode/featureGate'
 
 /**
  * RBAC middleware: blocks all POST/PUT/PATCH/DELETE from viewer/guest roles.
@@ -21,7 +22,7 @@ const EXEMPT_PREFIXES = [
 
 const READ_ONLY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
-export default defineEventHandler((event) => {
+export default defineEventHandler(async (event) => {
   const { pathname } = getRequestURL(event)
 
   // Only gate /api/* routes
@@ -40,6 +41,7 @@ export default defineEventHandler((event) => {
 
   // Check system read-only roles (viewer/guest) or custom roles with is_read_only flag
   if (isReadOnlyRole(user.role) || user.isCustomReadOnly) {
+    if (await canBypassApplicationControl(event, 'permission')) return
     throw createError({
       statusCode: 403,
       statusMessage: 'Forbidden - Read-only access.',

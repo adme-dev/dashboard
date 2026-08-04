@@ -1,0 +1,239 @@
+import { createHash } from 'node:crypto'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const mockResolveGodModeAuthority = vi.fn()
+vi.mock('../../server/utils/godMode/authority', () => ({
+  resolveGodModeAuthority: (...args: any[]) => mockResolveGodModeAuthority(...args)
+}))
+
+import {
+  getGodModeRouteAuditState,
+  isApplicationCapabilityEnabled,
+  prepareRegisteredGodModeMutation,
+  registerGodModeMutationFamily,
+  seedGodModeRouteAuditState
+} from '../../server/utils/godMode/featureGate'
+
+const INVENTORY_ROOTS = ['server', 'app', 'shared'] as const
+const TASK_3_OWNED_FILES = new Set([
+  'server/utils/auth.ts',
+  'server/utils/roleResolver.ts',
+  'server/utils/godMode/featureGate.ts',
+  'server/middleware/godMode.ts',
+  'server/plugins/godModeAudit.ts'
+])
+const GATE_PATTERN = /process\.env\.|useRuntimeConfig\(|runtimeConfig\.|feature.?flag|suite.?enabled|roleHasPermission\(|hasRole\(|user\.role|user_role|permissionGroups|requirePermission\(|requireRole\(|requireWriteAccess\(|isReadOnlyRole\(/i
+
+const CENTRAL_HELPER_BY_CLASS = {
+  identity_tenant_hard_boundary: 'unchanged independent scope helper',
+  provider_infrastructure_availability: 'unchanged provider/configuration check',
+  application_governance_bypass: 'canBypassApplicationControl / isApplicationCapabilityEnabled',
+  ordinary_user_behavior: 'unchanged presentation/ordinary decision',
+  unrelated_configuration: 'unchanged runtime configuration'
+} as const
+
+const TASK_3_GATE_ROUTING = [
+  ['server/utils/auth.ts', 'requireRole / requirePermission / requireWriteAccess', 'application_governance_bypass', 'canBypassApplicationControl'],
+  ['server/utils/roleResolver.ts', 'permissionGroups', 'application_governance_bypass', 'resolveGodModeAuthority'],
+  ['server/middleware/rbac.ts', 'isReadOnlyRole', 'application_governance_bypass', 'canBypassApplicationControl'],
+  ['server/utils/godMode/featureGate.ts', 'feature flag adapter', 'application_governance_bypass', 'isApplicationCapabilityEnabled'],
+  ['server/middleware/godMode.ts', 'authenticated actor id', 'identity_tenant_hard_boundary', 'resolveGodModeAuthority'],
+  ['server/plugins/godModeAudit.ts', 'terminal persistence', 'ordinary_user_behavior', 'trusted request audit state']
+] as const
+
+type GateClass =
+  | 'identity_tenant_hard_boundary'
+  | 'provider_infrastructure_availability'
+  | 'application_governance_bypass'
+  | 'ordinary_user_behavior'
+  | 'unrelated_configuration'
+
+function listSourceFiles(root: string): string[] {
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(root, entry.name)
+    if (entry.isDirectory()) return listSourceFiles(path)
+    return /\.(ts|vue)$/.test(path) ? [path] : []
+  })
+}
+
+function classifyGate(file: string, line: string): GateClass {
+  if (/requirePermission\(|requireRole\(|requireWriteAccess\(|roleHasPermission\(|hasRole\(|isReadOnlyRole\(|feature.?flag|suite.?enabled|(?:^|[_A-Z])ENABLED(?:\b|_)/i.test(line)) {
+    return 'application_governance_bypass'
+  }
+  if (/secret|api.?key|token|binding|provider|credential|database_url|account_id|bucket|r2_|resend|groq|anthropic|xero|google.?maps/i.test(line)) {
+    return 'provider_infrastructure_availability'
+  }
+  if (/user_role|tenant|client_id|implementation|ownership|assigned_consultant|project_manager_id/i.test(line)
+    || /server\/(middleware\/auth|utils\/(?:auth|client|.*access))/.test(file)) {
+    return 'identity_tenant_hard_boundary'
+  }
+  if (/app\/|\.role|permissionGroups/.test(line)) return 'ordinary_user_behavior'
+  return 'unrelated_configuration'
+}
+
+function legacyInventory() {
+  const rows = INVENTORY_ROOTS
+    .flatMap(root => listSourceFiles(root))
+    .filter(file => !TASK_3_OWNED_FILES.has(file))
+    .sort()
+    .flatMap(file => readFileSync(file, 'utf8').split(/\r?\n/).flatMap((line) => {
+      if (!GATE_PATTERN.test(line)) return []
+      const normalized = line.trim().replace(/\s+/g, ' ')
+      return [`${file}\t${normalized}\t${classifyGate(file, normalized)}`]
+    }))
+  const counts = rows.reduce<Record<GateClass, number>>((result, row) => {
+    const gateClass = row.slice(row.lastIndexOf('\t') + 1) as GateClass
+    result[gateClass]++
+    return result
+  }, {
+    identity_tenant_hard_boundary: 0,
+    provider_infrastructure_availability: 0,
+    application_governance_bypass: 0,
+    ordinary_user_behavior: 0,
+    unrelated_configuration: 0
+  })
+  return {
+    rows,
+    counts,
+    digest: createHash('sha256').update(rows.join('\n')).digest('hex')
+  }
+}
+
+describe('God mode gate inventory', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockResolveGodModeAuthority.mockResolvedValue({
+      active: false,
+      actorUserId: '22222222-2222-4222-8222-222222222222',
+      reason: 'not_owner',
+      emergencyDisabled: false
+    })
+  })
+
+  it('freezes every pre-existing direct gate with an explicit classification', () => {
+    const inventory = legacyInventory()
+    expect(inventory.rows).toHaveLength(1311)
+    expect(inventory.counts).toEqual({
+      identity_tenant_hard_boundary: 88,
+      provider_infrastructure_availability: 184,
+      application_governance_bypass: 666,
+      ordinary_user_behavior: 164,
+      unrelated_configuration: 209
+    })
+    expect(inventory.digest).toBe('fad0f0622a4c6b793c59f28a5fa51b83d3e68c080c22ab2da88b8736011abed7')
+    expect(CENTRAL_HELPER_BY_CLASS).toEqual({
+      identity_tenant_hard_boundary: 'unchanged independent scope helper',
+      provider_infrastructure_availability: 'unchanged provider/configuration check',
+      application_governance_bypass: 'canBypassApplicationControl / isApplicationCapabilityEnabled',
+      ordinary_user_behavior: 'unchanged presentation/ordinary decision',
+      unrelated_configuration: 'unchanged runtime configuration'
+    })
+    expect(TASK_3_GATE_ROUTING).toHaveLength(6)
+  })
+
+  it('preserves the normal application gate for non-owners', async () => {
+    const event = { method: 'GET', context: { user: { id: '22222222-2222-4222-8222-222222222222' } } } as any
+    await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(false)
+  })
+
+  it('evaluates asynchronous normal gates before applying active-owner authority', async () => {
+    const normalGate = vi.fn().mockResolvedValue(true)
+    const event = { method: 'GET', context: { user: { id: '22222222-2222-4222-8222-222222222222' } } } as any
+    await expect(isApplicationCapabilityEnabled(event, normalGate)).resolves.toBe(true)
+    expect(normalGate).toHaveBeenCalledTimes(1)
+  })
+
+  it('enables a denied application gate for a freshly verified active owner read', async () => {
+    const ownerId = '11111111-1111-4111-8111-111111111111'
+    mockResolveGodModeAuthority.mockResolvedValue({
+      active: true,
+      actorUserId: ownerId,
+      reason: 'active_owner',
+      emergencyDisabled: false
+    })
+    const event = { method: 'GET', context: { user: { id: ownerId } } } as any
+    await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(true)
+  })
+
+  it('does not enable an uncoordinated mutation gate', async () => {
+    const ownerId = '11111111-1111-4111-8111-111111111111'
+    mockResolveGodModeAuthority.mockResolvedValue({
+      active: true,
+      actorUserId: ownerId,
+      reason: 'active_owner',
+      emergencyDisabled: false
+    })
+    const event = { method: 'POST', context: { user: { id: ownerId } } } as any
+    await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(false)
+  })
+
+  it('admits only an exact-route mutation with a prepared durable coordinator', async () => {
+    const ownerId = '11111111-1111-4111-8111-111111111111'
+    mockResolveGodModeAuthority.mockResolvedValue({
+      active: true,
+      actorUserId: ownerId,
+      reason: 'active_owner',
+      emergencyDisabled: false
+    })
+    const event = {
+      method: 'PUT',
+      context: { user: { id: ownerId } },
+      path: '/api/agency/briefs/templates/template-1/mapping'
+    } as any
+    seedGodModeRouteAuditState(event, {
+      actorUserId: ownerId,
+      correlationId: '33333333-3333-4333-8333-333333333333',
+      sessionDigest: 'a'.repeat(64),
+      routeOrTool: 'PUT /api/agency/briefs/templates/template-1/mapping',
+      emergencyDisabled: false
+    })
+    const persistTerminal = vi.fn()
+    const unregister = registerGodModeMutationFamily({
+      family: 'brief-template-mapping',
+      method: 'PUT',
+      matchesPath: path => path === '/api/agency/briefs/templates/template-1/mapping',
+      prepare: vi.fn().mockResolvedValue({
+        strategy: 'task5-execution-ledger',
+        prepared: true,
+        persistTerminal
+      })
+    })
+
+    await prepareRegisteredGodModeMutation(event, request => request.path)
+
+    expect(getGodModeRouteAuditState(event)?.mutationCoordination?.strategy).toBe('task5-execution-ledger')
+    await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(true)
+    unregister()
+  })
+
+  it('rejects a prepared mutation coordinator when mandatory attempt state is absent', async () => {
+    const ownerId = '11111111-1111-4111-8111-111111111111'
+    mockResolveGodModeAuthority.mockResolvedValue({
+      active: true,
+      actorUserId: ownerId,
+      reason: 'active_owner',
+      emergencyDisabled: false
+    })
+    const event = {
+      method: 'PUT',
+      context: { user: { id: ownerId } },
+      path: '/api/agency/briefs/templates/template-2/mapping'
+    } as any
+    const unregister = registerGodModeMutationFamily({
+      family: 'missing-attempt-state',
+      method: 'PUT',
+      matchesPath: path => path.endsWith('/template-2/mapping'),
+      prepare: vi.fn().mockResolvedValue({
+        strategy: 'task5-execution-ledger',
+        prepared: true,
+        persistTerminal: vi.fn()
+      })
+    })
+    await prepareRegisteredGodModeMutation(event, request => request.path)
+
+    await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(false)
+    unregister()
+  })
+})

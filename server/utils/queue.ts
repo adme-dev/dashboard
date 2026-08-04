@@ -1,4 +1,5 @@
 import type { H3Event } from 'h3'
+import type { GodModeAuditEventInput } from '~~/server/utils/godMode/audit'
 
 /**
  * Job types that can be dispatched to the queue.
@@ -34,6 +35,13 @@ export interface QueueJob {
   /** ISO timestamp when the job was enqueued */
   enqueuedAt: string
 }
+
+export interface GodModeAuditTerminalQueueJob {
+  type: 'god-mode.audit-terminal'
+  payload: GodModeAuditEventInput
+}
+
+export type QueueConsumerJob = QueueJob | GodModeAuditTerminalQueueJob
 
 async function recordQueued(job: QueueJob, dispatchMode: 'queue' | 'inline') {
   const { recordJobQueued } = await import('~~/server/utils/jobExecutionLedger')
