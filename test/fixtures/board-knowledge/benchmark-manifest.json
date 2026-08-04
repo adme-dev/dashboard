@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "digital-pdf",
+      "documentClass": "digital_pdf",
+      "fileName": "cashflow-policy.pdf",
+      "mimeType": "application/pdf",
+      "fixture": { "kind": "generated", "generator": "digital_pdf" },
+      "expected": {
+        "textAnchors": ["Cashflow policy", "Supplier review"],
+        "tables": [],
+        "pageNumbers": [1, 2],
+        "sheetNames": [],
+        "slideNumbers": [],
+        "minimumCoverage": { "native": 1, "ai": 0.8 }
+      }
+    },
+    {
+      "id": "scanned-invoice",
+      "documentClass": "scanned_invoice",
+      "fileName": "scanned-invoice.pdf",
+      "mimeType": "application/pdf",
+      "fixture": { "kind": "generated", "generator": "scanned_invoice" },
+      "expected": {
+        "textAnchors": ["INVOICE 2048", "TOTAL 1250", "DUE 7 AUG 2026"],
+        "tables": [],
+        "pageNumbers": [1],
+        "sheetNames": [],
+        "slideNumbers": [],
+        "minimumCoverage": { "native": 0, "ai": 0.75 }
+      }
+    },
+    {
+      "id": "table-pdf",
+      "documentClass": "table_pdf",
+      "fileName": "supplier-table.pdf",
+      "mimeType": "application/pdf",
+      "fixture": { "kind": "generated", "generator": "table_pdf" },
+      "expected": {
+        "textAnchors": ["Example Media", "Example Hosting"],
+        "tables": [{ "headers": ["Supplier", "Due Date", "Amount"], "rowAnchors": ["Example Media", "1250"] }],
+        "pageNumbers": [1],
+        "sheetNames": [],
+        "slideNumbers": [],
+        "minimumCoverage": { "native": 1, "ai": 0.8 }
+      }
+    },
+    {
+      "id": "docx-work-instruction",
+      "documentClass": "docx",
+      "fileName": "bookkeeper-instruction.docx",
+      "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "fixture": { "kind": "generated", "generator": "docx" },
+      "expected": {
+        "textAnchors": ["Bookkeeper work instruction", "Enter approved bills before Friday"],
+        "tables": [],
+        "pageNumbers": [],
+        "sheetNames": [],
+        "slideNumbers": [],
+        "minimumCoverage": { "native": 1, "ai": 0.8 }
+      }
+    },
+    {
+      "id": "xlsx-forecast",
+      "documentClass": "xlsx",
+      "fileName": "weekly-forecast.xlsx",
+      "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "fixture": { "kind": "generated", "generator": "xlsx" },
+      "expected": {
+        "textAnchors": ["Example Media", "2026-08-07", "1250"],
+        "tables": [{ "headers": ["Supplier", "Due Date", "Amount"], "rowAnchors": ["Example Media"] }],
+        "pageNumbers": [],
+        "sheetNames": ["Weekly forecast"],
+        "slideNumbers": [],
+        "minimumCoverage": { "native": 1, "ai": 0.8 }
+      }
+    },
+    {
+      "id": "pptx-procedure",
+      "documentClass": "pptx",
+      "fileName": "cashflow-procedure.pptx",
+      "mimeType": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "fixture": { "kind": "generated", "generator": "pptx" },
+      "expected": {
+        "textAnchors": ["Review bills due", "Approve weekly forecast"],
+        "tables": [],
+        "pageNumbers": [],
+        "sheetNames": [],
+        "slideNumbers": [1, 2],
+        "minimumCoverage": { "native": 1, "ai": 0.8 }
+      }
+    },
+    {
+      "id": "csv-suppliers",
+      "documentClass": "csv",
+      "fileName": "sample.csv",
+      "mimeType": "text/csv",
+      "fixture": { "kind": "file", "path": "test/fixtures/board-knowledge/sample.csv" },
+      "expected": {
+        "textAnchors": ["Example Media", "Example Hosting"],
+        "tables": [{ "headers": ["Supplier", "Due Date", "Amount"], "rowAnchors": ["1250.00"] }],
+        "pageNumbers": [],
+        "sheetNames": [],
+        "slideNumbers": [],
+        "minimumCoverage": { "native": 1, "ai": 0.8 }
+      }
+    },
+    {
+      "id": "txt-policy",
+      "documentClass": "txt",
+      "fileName": "sample.txt",
+      "mimeType": "text/plain",
+      "fixture": { "kind": "file", "path": "test/fixtures/board-knowledge/sample.txt" },
+      "expected": {
+        "textAnchors": ["Cashflow policy", "Friday forecast review"],
+        "tables": [],
+        "pageNumbers": [],
+        "sheetNames": [],
+        "slideNumbers": [],
+        "minimumCoverage": { "native": 1, "ai": 0.8 }
+      }
+    },
+    {
+      "id": "json-policy",
+      "documentClass": "json",
+      "fileName": "sample.json",
+      "mimeType": "application/json",
+      "fixture": { "kind": "file", "path": "test/fixtures/board-knowledge/sample.json" },
+      "expected": {
+        "textAnchors": ["Weekly cashflow review", "Finance"],
+        "tables": [],
+        "pageNumbers": [],
+        "sheetNames": [],
+        "slideNumbers": [],
+        "minimumCoverage": { "native": 1, "ai": 0.8 }
+      }
+    }
+  ]
+}

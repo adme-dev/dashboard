@@ -606,9 +606,9 @@ Commit: `feat: surface and protect board knowledge sources`
 **Required skill before Step 1:** Invoke `frontend-design` from `~/.Codex/plugins/marketplaces/Codex-plugins-official/plugins/frontend-design/skills/frontend-design/SKILL.md` and apply it to the form/slideover work.
 
 **Files:**
-- Create: `app/components/board/knowledge/BoardKnowledgeReviewSlideover.vue`
+- Create: `app/components/board/knowledge/BoardKnowledgeReviewSlideover.client.vue`
 - Create: `app/composables/useBoardKnowledge.ts`
-- Modify: `app/components/board/views/BoardFilesView.vue`
+- Modify: `app/components/board/views/BoardFilesView.client.vue`
 - Modify: `app/utils/boardFiles.ts`
 - Modify: `app/types/index.ts`
 - Test: `test/components/boardKnowledgeReviewSlideover.test.ts`
@@ -814,6 +814,7 @@ Commit: `feat: search board knowledge with source citations`
 
 **Files:**
 - Modify: `app/pages/agency/ai/knowledge/index.vue`
+- Create: `app/components/knowledge/AiKnowledgeWorkspace.client.vue`
 - Create: `server/api/agency/ai/knowledge/board-review.get.ts`
 - Modify: `app/pages/features/index.vue`
 - Modify: `app/pages/features/[slug].vue`
@@ -862,11 +863,11 @@ Commit: `docs: explain governed board knowledge workflow`
 **Interfaces:**
 - Produces: an applied additive migration, benchmark report, verified branch, and PR stacked on PR #374.
 
-- [ ] **Step 1: Add the benchmark harness and manifest**
+- [x] **Step 1: Add the benchmark harness and manifest**
 
 The manifest defines expected text anchors, tables, page/slide/sheet coordinates, and minimum coverage for digital PDF, scanned invoice, table PDF, DOCX, XLSX, PPTX, CSV, TXT, and JSON. Output native versus AI method, coverage, warnings, latency, tokens, and cost without storing document payloads.
 
-- [ ] **Step 2: Run all focused tests**
+- [x] **Step 2: Run all focused tests**
 
 Run:
 
@@ -893,7 +894,7 @@ pnpm vitest run \
 
 Expected: PASS, zero failed tests.
 
-- [ ] **Step 3: Re-verify migration 342 against the configured database**
+- [x] **Step 3: Re-verify migration 342 against the configured database**
 
 Task 1 already applies the migration. Re-run it here to prove idempotency, then verify the tables without printing the connection string:
 
@@ -904,11 +905,11 @@ Task 1 already applies the migration. Re-run it here to prove idempotency, then 
 
 Expected: three non-null table names.
 
-- [ ] **Step 4: Provision non-production Vectorize resources**
+- [x] **Step 4: Provision non-production Vectorize resources**
 
 Run the runbook's create/list commands against the intended XeroFlow Cloudflare account. Verify the immutable Pages project remains `agency-dashboard`; do not deploy.
 
-- [ ] **Step 5: Run dry-run backfill and reference benchmark**
+- [x] **Step 5: Run dry-run backfill and reference benchmark**
 
 Run:
 
@@ -919,11 +920,11 @@ pnpm exec tsx scripts/board-knowledge-benchmark.ts --native-only
 
 If paid Gateway credentials are configured in the approved non-production environment, run the AI benchmark there. If they are absent, report the AI benchmark as not run and keep assistant retrieval disabled.
 
-- [ ] **Step 6: Perform the mandatory deep-dive review**
+- [x] **Step 6: Perform the mandatory deep-dive review**
 
 Re-read every changed file. Check server aliases, permission composition, stale-state reactivity, Model Ops provider matching, gateway privacy headers, no direct fallback, parser limits, no raw storage URLs, Vectorize/Postgres double ACL, queue idempotency, migration delete policies, dark mode, mobile layouts, duplicate UI, and marketing accuracy.
 
-- [ ] **Step 7: Run the repository verification suite**
+- [x] **Step 7: Run the repository verification suite**
 
 Run, in order:
 
@@ -939,6 +940,8 @@ Record pre-existing failures separately; any regression introduced by this branc
 - [ ] **Step 8: Browser battle-test**
 
 Start the app and test at 320 px and desktop widths: unsupported file, submit, extracting, failure/retry, ready preview, reject, approve/indexing, used-by-AI citation, archive, keyboard focus, dark mode, network failures, and console errors. Confirm a user without `MANAGEMENT` sees status/preview but no review mutations.
+
+Partial verification recorded 4 August 2026: local Chrome/Playwright confirmed the management review queue and article form at 320 px and desktop widths, dark mode, labelled fields, and no horizontal overflow. Public Boards, Knowledge Base, and work-management guidance were also checked at both widths. The full state matrix remains represented by component/API tests because this review branch was not deployed and no live authenticated board fixture was mutated during review.
 
 - [ ] **Step 9: Finalize atomic commits and push**
 
