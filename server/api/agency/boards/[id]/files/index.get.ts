@@ -7,5 +7,5 @@ export default defineEventHandler(async (event) => {
   }
 
   const board = await resolveAccessibleBoard(event, boardId)
-  return listBoardFiles(board.id)
+  return listBoardFiles(board.id, board.user)
 })

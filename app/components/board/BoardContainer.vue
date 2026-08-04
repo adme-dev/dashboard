@@ -13,6 +13,7 @@
 
     <!-- Toolbar -->
     <BoardToolbar
+      v-if="activeView !== 'files'"
       v-model:filters="filters"
       v-model:sort-rules="sortRules"
       v-model:group-by-column-id="groupByColumnId"
@@ -113,6 +114,13 @@
         @open-task="$emit('openTask', $event)"
         @cell-update="(taskId, colId, payload) => handleCellUpdate(taskId, colId, payload)"
       />
+
+      <!-- Board Files View -->
+      <BoardFilesView
+        v-else-if="activeView === 'files'"
+        :board-id="props.boardId"
+        @open-task="$emit('openTask', $event)"
+      />
     </template>
 
     <!-- Bulk Actions -->
@@ -129,6 +137,7 @@ import BoardTimelineView from '~/components/board/views/BoardTimelineView.vue'
 import BoardCalendarView from '~/components/board/views/BoardCalendarView.vue'
 import BoardListView from '~/components/board/views/BoardListView.vue'
 import BoardGalleryView from '~/components/board/views/BoardGalleryView.vue'
+import BoardFilesView from '~/components/board/views/BoardFilesView.vue'
 
 const props = defineProps<{
   boardId: string

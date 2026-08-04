@@ -20,6 +20,7 @@ export interface BoardFileItem {
   sourceReference: string | null
   createdAt: string
   uploadedBy: { id: string; name: string; email: string } | null
+  canDelete: boolean
   task: { id: string; title: string } | null
 }
 
@@ -32,10 +33,11 @@ export interface BoardFileListResponse {
   }
 }
 
-interface BoardIdentity {
+interface AccessibleBoard {
   id: string
   name: string
   slug: string
+  user: User
 }
 
 function toIsoString(value: string | Date): string {
@@ -54,7 +56,8 @@ function uploaderFromRow(row: Record<string, any>): BoardFileItem['uploadedBy'] 
 export function mapBoardFileRows(
   boardId: string,
   boardRows: Record<string, any>[],
-  taskRows: Record<string, any>[]
+  taskRows: Record<string, any>[],
+  user: User
 ): BoardFileListResponse {
   const boardDocuments: BoardFileItem[] = boardRows.map(row => ({
     id: row.id,
@@ -70,6 +73,7 @@ export function mapBoardFileRows(
     sourceReference: row.source_reference || null,
     createdAt: toIsoString(row.created_at),
     uploadedBy: uploaderFromRow(row),
+    canDelete: user.role === 'owner' || user.role === 'admin' || row.uploader_id === user.id,
     task: null
   }))
 
@@ -87,6 +91,7 @@ export function mapBoardFileRows(
     sourceReference: row.monday_asset_id || null,
     createdAt: toIsoString(row.created_at),
     uploadedBy: uploaderFromRow(row),
+    canDelete: false,
     task: { id: row.task_id, title: row.task_title }
   }))
 
@@ -103,21 +108,21 @@ export function mapBoardFileRows(
   }
 }
 
-export async function resolveAccessibleBoard(event: any, boardId: string): Promise<BoardIdentity> {
+export async function resolveAccessibleBoard(event: any, boardId: string): Promise<AccessibleBoard> {
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(boardId)
   const board = isUuid
-    ? await queryOne<BoardIdentity>('SELECT id, name, slug FROM departments WHERE id = $1', [boardId])
-    : await queryOne<BoardIdentity>('SELECT id, name, slug FROM departments WHERE slug = $1', [boardId])
+    ? await queryOne<Omit<AccessibleBoard, 'user'>>('SELECT id, name, slug FROM departments WHERE id = $1', [boardId])
+    : await queryOne<Omit<AccessibleBoard, 'user'>>('SELECT id, name, slug FROM departments WHERE slug = $1', [boardId])
 
   if (!board) {
     throw createError({ statusCode: 404, statusMessage: 'Board not found' })
   }
 
-  await requireBoardAccess(event, board.id)
-  return board
+  const user = await requireBoardAccess(event, board.id)
+  return { ...board, user }
 }
 
-export async function listBoardFiles(departmentId: string, _user: User): Promise<BoardFileListResponse> {
+export async function listBoardFiles(departmentId: string, user: User): Promise<BoardFileListResponse> {
   const [boardRows, taskRows] = await Promise.all([
     queryRows(`
       SELECT
@@ -159,5 +164,5 @@ export async function listBoardFiles(departmentId: string, _user: User): Promise
     `, [departmentId])
   ])
 
-  return mapBoardFileRows(departmentId, boardRows, taskRows)
+  return mapBoardFileRows(departmentId, boardRows, taskRows, user)
 }

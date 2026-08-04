@@ -34,7 +34,7 @@ describe('board file aggregation', () => {
         uploader_email: 'accounts@adme.net.au',
         monday_asset_id: '3155321317'
       }
-    ])
+    ], { id: 'user-1', role: 'member' } as any)
 
     expect(result).toEqual({
       files: [
@@ -52,6 +52,7 @@ describe('board file aggregation', () => {
           sourceReference: null,
           createdAt: '2026-08-04T01:00:00.000Z',
           uploadedBy: { id: 'user-1', name: 'Clara', email: 'clara@adme.net.au' },
+          canDelete: true,
           task: null
         },
         {
@@ -68,6 +69,7 @@ describe('board file aggregation', () => {
           sourceReference: '3155321317',
           createdAt: '2026-08-03T01:00:00.000Z',
           uploadedBy: { id: 'user-2', name: 'Kellie', email: 'accounts@adme.net.au' },
+          canDelete: false,
           task: { id: 'task-1', title: 'Reference PDFs' }
         }
       ],
@@ -89,13 +91,14 @@ describe('board file aggregation', () => {
       uploader_name: null,
       uploader_email: null,
       monday_asset_id: null
-    }])
+    }], { id: 'owner-1', role: 'owner' } as any)
 
     expect(result.files[0]).toMatchObject({
       source: 'task',
       sourceReference: null,
       fileSize: 0,
-      uploadedBy: null
+      uploadedBy: null,
+      canDelete: false
     })
   })
 })

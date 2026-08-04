@@ -77,7 +77,7 @@ describe('board files API', () => {
     vi.clearAllMocks()
     routeParams.id = BOARD_ID
     routeParams.fileId = FILE_ID
-    mockResolveAccessibleBoard.mockResolvedValue({ id: BOARD_ID, name: 'Finance', slug: 'finance' })
+    mockResolveAccessibleBoard.mockResolvedValue({ id: BOARD_ID, name: 'Finance', slug: 'finance', user: { id: USER_ID, role: 'member' } })
     mockRequireWriteAccess.mockResolvedValue({ id: USER_ID, role: 'member' })
     mockListBoardFiles.mockResolvedValue({
       files: [],
@@ -108,7 +108,7 @@ describe('board files API', () => {
     const response = await listHandler({ context: {} } as never)
 
     expect(mockResolveAccessibleBoard).toHaveBeenCalledWith(expect.anything(), BOARD_ID)
-    expect(mockListBoardFiles).toHaveBeenCalledWith(BOARD_ID)
+    expect(mockListBoardFiles).toHaveBeenCalledWith(BOARD_ID, { id: USER_ID, role: 'member' })
     expect(response.summary).toEqual({ total: 0, boardDocuments: 0, taskEvidence: 0 })
   })
 

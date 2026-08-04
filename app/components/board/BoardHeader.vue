@@ -128,6 +128,7 @@
         </button>
       </div>
       <UInput
+        v-if="activeView !== 'files'"
         :model-value="searchQuery"
         icon="i-lucide-search"
         placeholder="Search Items..."
@@ -141,6 +142,7 @@
 
 <script setup lang="ts">
 import type { BoardViewType } from '~/composables/useBoardData'
+import { BOARD_VIEW_OPTIONS } from '~/utils/boardViews'
 
 const props = defineProps<{
   boardName: string
@@ -157,14 +159,7 @@ defineEmits<{
   newItem: []
 }>()
 
-const views: { id: BoardViewType; label: string; icon: string }[] = [
-  { id: 'table', label: 'Table', icon: 'i-lucide-table-2' },
-  { id: 'kanban', label: 'Kanban', icon: 'i-lucide-kanban' },
-  { id: 'timeline', label: 'Timeline', icon: 'i-lucide-gantt-chart' },
-  { id: 'calendar', label: 'Calendar', icon: 'i-lucide-calendar' },
-  { id: 'list', label: 'List', icon: 'i-lucide-list' },
-  { id: 'gallery', label: 'Gallery', icon: 'i-lucide-layout-grid' },
-]
+const views: readonly { id: BoardViewType; label: string; icon: string }[] = BOARD_VIEW_OPTIONS
 
 // Subscription state
 const isSubscribed = ref(false)
