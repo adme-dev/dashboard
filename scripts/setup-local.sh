@@ -40,7 +40,7 @@ cat > .dev.vars << EOF
 
 # Database (Neon PostgreSQL)
 # Get your connection string from: https://console.neon.tech
-DATABASE_URL=postgresql://username:password@ep-xxx.us-east-1.aws.neon.tech/database?sslmode=require
+DATABASE_URL=
 
 # Security Secrets
 JWT_SECRET=$JWT_SECRET

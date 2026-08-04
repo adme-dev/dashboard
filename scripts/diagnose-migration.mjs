@@ -5,8 +5,14 @@
 
 import { Pool } from '@neondatabase/serverless'
 
+const DATABASE_URL = process.env.DATABASE_URL
+
+if (!DATABASE_URL) {
+  throw new Error('DATABASE_URL is required')
+}
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_61XeGcIwAORL@ep-lively-fog-a4dum154-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require',
+  connectionString: DATABASE_URL,
 })
 
 async function diagnose() {

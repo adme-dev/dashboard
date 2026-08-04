@@ -5,7 +5,11 @@
 
 const { Pool } = require('@neondatabase/serverless')
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_61XeGcIwAORL@ep-lively-fog-a4dum154-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require'
+const DATABASE_URL = process.env.DATABASE_URL
+
+if (!DATABASE_URL) {
+  throw new Error('DATABASE_URL is required')
+}
 
 async function addSuperAdmin() {
   const pool = new Pool({ connectionString: DATABASE_URL })
@@ -13,7 +17,7 @@ async function addSuperAdmin() {
   try {
     // Check if user exists
     const checkResult = await pool.query(
-      'SELECT id, name, email, role, is_active FROM team_members WHERE email = $1',
+      'SELECT id, name, email, user_role AS role, is_active FROM team_members WHERE email = $1',
       ['paul@adme.net.au']
     )
     
@@ -45,7 +49,7 @@ async function addSuperAdmin() {
     
     // Verify
     const verifyResult = await pool.query(
-      'SELECT id, name, email, role, is_active FROM team_members WHERE email = $1',
+      'SELECT id, name, email, user_role AS role, is_active FROM team_members WHERE email = $1',
       ['paul@adme.net.au']
     )
     console.log('\n✅ Verification:')

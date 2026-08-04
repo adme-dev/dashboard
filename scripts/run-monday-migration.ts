@@ -6,7 +6,11 @@
 import { createMondayClient } from '../server/utils/mondayClient'
 import { query, transaction } from '../server/utils/db'
 
-const API_TOKEN = process.env.MONDAY_API_TOKEN || 'eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjExMTU2MTI1NSwiYWFpIjoxMSwidWlkIjo1NzQxNzUsImlhZCI6IjIwMjEtMDUtMjdUMTI6MjI6MDAuMDAwWiIsInBlciI6Im1lOndyaXRlIiwiYWN0aWQiOjIyOTIyNCwicmduIjoidXNlMSJ9.ezQH-YElr0wqgirNHIRcRYApXZb0FOg_mqt0l_cO8lc'
+const API_TOKEN = process.env.MONDAY_API_TOKEN
+
+if (!API_TOKEN) {
+  throw new Error('MONDAY_API_TOKEN is required')
+}
 
 // Workspace to Department mapping
 const WORKSPACE_MAP: Record<string, { name: string; deptSlug: string }> = {

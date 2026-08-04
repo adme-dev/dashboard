@@ -5,11 +5,19 @@
 
 import { Pool } from '@neondatabase/serverless'
 
-const pool = new Pool({
-  connectionString: 'postgresql://neondb_owner:npg_61XeGcIwAORL@ep-lively-fog-a4dum154-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require',
-})
-
+const DATABASE_URL = process.env.DATABASE_URL
 const MONDAY_TOKEN = process.env.MONDAY_API_TOKEN
+
+if (!DATABASE_URL) {
+  throw new Error('DATABASE_URL is required')
+}
+if (!MONDAY_TOKEN) {
+  throw new Error('MONDAY_API_TOKEN is required')
+}
+
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+})
 
 async function fetchMondayItems(boardId) {
   const resp = await fetch('https://api.monday.com/v2', {
@@ -32,26 +40,13 @@ async function fetchMondayItems(boardId) {
 }
 
 async function main() {
-  if (!MONDAY_TOKEN) {
-    console.log('MONDAY_API_TOKEN not set, reading from .env...')
-    const fs = await import('fs')
-    const envContent = fs.readFileSync('.env', 'utf-8')
-    const match = envContent.match(/MONDAY_API_TOKEN=(.+)/)
-    if (match) {
-      process.env.MONDAY_API_TOKEN = match[1].trim()
-    } else {
-      console.log('ERROR: No MONDAY_API_TOKEN found in .env')
-      process.exit(1)
-    }
-  }
-
   // Get MCP Getting Started board (small, 1 item)
   // First, list boards to find a small one
   console.log('=== FETCHING BOARDS FROM MONDAY.COM ===')
   const boardsResp = await fetch('https://api.monday.com/v2', {
     method: 'POST',
     headers: {
-      'Authorization': process.env.MONDAY_API_TOKEN,
+      'Authorization': MONDAY_TOKEN,
       'Content-Type': 'application/json',
       'API-Version': '2024-01',
     },

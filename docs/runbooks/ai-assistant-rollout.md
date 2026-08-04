@@ -3,8 +3,8 @@
 Use the readiness gate before enrolling a company-wide AI assistant pilot or enforcing governed assistant coverage.
 
 ```bash
-pnpm readiness:ai-assistants -- --gate pilot --json
-pnpm readiness:ai-assistants -- --gate enforced --json
+pnpm readiness:ai-assistants --gate pilot --json
+pnpm readiness:ai-assistants --gate enforced --json
 ```
 
 The command exits `0` only when the selected gate passes. A successful command prints no blockers. A blocked command exits `1` and prints only stable blocker codes relevant to the selected gate. `--json` emits the same bounded readiness contract used by `GET /api/admin/ai/governance/rollout`, with its blocker list filtered to the selected gate.
@@ -137,7 +137,7 @@ From the exact deployment SHA, with Node 24 and read-only database credentials w
 
 ```bash
 pnpm vitest run test/ai/pilotMetrics.test.ts test/server/api/adminAiPilotMetrics.test.ts test/app/aiGovernancePilotMetrics.test.ts
-pnpm readiness:ai-assistants -- --gate pilot --json
+pnpm readiness:ai-assistants --gate pilot --json
 pnpm typecheck
 ```
 

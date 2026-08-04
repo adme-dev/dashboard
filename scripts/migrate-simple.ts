@@ -1,7 +1,11 @@
 import { createMondayClient } from '../server/utils/mondayClient'
 import { query, transaction } from '../server/utils/db'
 
-const TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjExMTU2MTI1NSwiYWFpIjoxMSwidWlkIjo1NzQxNzUsImlhZCI6IjIwMjEtMDUtMjdUMTI6MjI6MDAuMDAwWiIsInBlciI6Im1lOndyaXRlIiwiYWN0aWQiOjIyOTIyNCwicmduIjoidXNlMSJ9.ezQH-YElr0wqgirNHIRcRYApXZb0FOg_mqt0l_cO8lc'
+const TOKEN = process.env.MONDAY_API_TOKEN
+
+if (!TOKEN) {
+  throw new Error('MONDAY_API_TOKEN is required')
+}
 
 async function migrate() {
   console.log('Starting migration...\n')
