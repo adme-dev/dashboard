@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { roleHasPermission } from '~~/server/utils/permissions'
 import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
-import type { McpToolManifest } from './project'
+import type { McpProjectionContext, McpToolManifest } from './project'
 
 /**
  * MCP Server Phase 2a — owned media-generation tools (spec: ai-copilot-mcp-server-phase2 §4).
@@ -70,15 +70,28 @@ export const generationTools: GenerationToolDescriptor[] = [
 ]
 
 /** The generation tools a role may call, as MCP manifests — empty unless the group flag is on. */
-export function projectGenerationTools(role: string, enabled: boolean): McpToolManifest[] {
+export function projectGenerationTools(
+  role: string,
+  enabled: boolean,
+  options: { bypassPermissions?: boolean } = {}
+): McpToolManifest[] {
   if (!enabled) return []
   return generationTools
-    .filter(t => roleHasPermission(role, t.requiredPermission))
+    .filter(t => options.bypassPermissions || roleHasPermission(role, t.requiredPermission))
     .map(t => ({
       name: t.name,
       description: t.description,
       inputSchema: z.toJSONSchema(t.parameters) as Record<string, unknown>
     }))
+}
+
+/** Registered-suite adapter. God mode bypasses both the suite flag and role permission narrowing. */
+export function projectGenerationMcpSuite(context: McpProjectionContext): McpToolManifest[] {
+  return projectGenerationTools(
+    context.role,
+    context.governanceBypass || context.suiteFlags.generation,
+    { bypassPermissions: context.governanceBypass }
+  )
 }
 
 export type GenExecuteOutcome

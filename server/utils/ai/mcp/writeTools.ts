@@ -3,7 +3,7 @@ import { roleHasPermission } from '~~/server/utils/permissions'
 import { filterToolsForUser, type AiTool } from '~~/server/utils/ai/toolRegistry'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import type { ActionExecutor } from '~~/server/utils/ai/executors/types'
-import type { McpToolManifest } from './project'
+import type { McpProjectionContext, McpToolManifest } from './project'
 
 // ---------------------------------------------------------------------------
 // Shared confirm plumbing (used by both 2c and D4 branches)
@@ -11,6 +11,23 @@ import type { McpToolManifest } from './project'
 
 export const MCP_CONFIRM_TOOL = 'confirm_action'
 const ConfirmParams = z.object({ proposalId: z.string().min(8), ack: z.boolean().optional() })
+export const MCP_WRITE_CONFIRM_DESCRIPTION =
+  'Execute a previously proposed write action by its proposalId. Some actions require ack:true.'
+export const MCP_VIDEO_CONFIRM_DESCRIPTION =
+  'Execute a previously proposed action by its proposalId (e.g. a video generation or project create).'
+export const MCP_BANNER_CONFIRM_DESCRIPTION =
+  'Execute a previously proposed banner render action by its proposalId.'
+
+/** One canonical manifest shared by every proposal suite so duplicate registration is unambiguous. */
+export function projectConfirmActionManifest(
+  description = MCP_WRITE_CONFIRM_DESCRIPTION
+): McpToolManifest {
+  return {
+    name: MCP_CONFIRM_TOOL,
+    description,
+    inputSchema: z.toJSONSchema(ConfirmParams) as Record<string, unknown>
+  }
+}
 
 /** MCP-facing propose tool name for a registry action (avoids double 'propose_' prefixing). */
 export function mcpProposeName(action: string): string {
@@ -48,26 +65,59 @@ export function isFinancialAction(name: string): boolean {
 }
 
 /** The financial tools a role may call, as MCP manifests — empty unless the financial flag is on. */
-export function projectFinancialTools(registryTools: AiTool<unknown>[], role: string, enabled: boolean): McpToolManifest[] {
+export function projectFinancialTools(
+  registryTools: AiTool<unknown>[],
+  role: string,
+  enabled: boolean,
+  options: { bypassPermissions?: boolean, confirmDescription?: string } = {}
+): McpToolManifest[] {
   if (!enabled) return []
-  const allowed = filterToolsForUser(registryTools, role)
+  const allowed = options.bypassPermissions ? registryTools : filterToolsForUser(registryTools, role)
   const picks = MCP_FINANCIAL_ACTIONS
     .map(a => allowed.find(t => t.name === a))
     .filter((t): t is AiTool<unknown> => !!t && !!t.mutates)
   if (!picks.length) return []
   const proposeManifests = picks.map(t => ({
     name: mcpProposeName(t.name),
-    description: `Propose (does NOT execute yet): ${t.description} Returns a proposalId — call ${MCP_CONFIRM_TOOL} to execute.`,
+    description: options.bypassPermissions
+      ? t.description
+      : `Propose (does NOT execute yet): ${t.description} Returns a proposalId — call ${MCP_CONFIRM_TOOL} to execute.`,
     inputSchema: z.toJSONSchema(t.parameters) as Record<string, unknown>
   }))
-  return [
-    ...proposeManifests,
+  return [...proposeManifests, projectConfirmActionManifest(options.confirmDescription)]
+}
+
+/**
+ * Reproduce the legacy endpoint's first-emitted confirm_action description while making every active
+ * registered suite emit an identical definition for deterministic deduplication.
+ */
+export function resolveRegisteredConfirmDescription(context: McpProjectionContext): string {
+  if (context.governanceBypass) return MCP_WRITE_CONFIRM_DESCRIPTION
+  const writeEmitsConfirm = projectWriteTools(
+    context.tools,
+    context.role,
+    context.suiteFlags.writes
+  ).some(tool => tool.name === MCP_CONFIRM_TOOL)
+  if (writeEmitsConfirm) return MCP_WRITE_CONFIRM_DESCRIPTION
+  const creativeAllowed = roleHasPermission(context.role, 'CREATIVE')
+  if (creativeAllowed && context.suiteFlags.video && context.suiteFlags.videoGeneration) {
+    return MCP_VIDEO_CONFIRM_DESCRIPTION
+  }
+  if (creativeAllowed && context.suiteFlags.banners) return MCP_BANNER_CONFIRM_DESCRIPTION
+  return MCP_WRITE_CONFIRM_DESCRIPTION
+}
+
+/** Registered finance-suite adapter. */
+export function projectFinancialMcpSuite(context: McpProjectionContext): McpToolManifest[] {
+  return projectFinancialTools(
+    context.tools,
+    context.role,
+    context.governanceBypass || context.suiteFlags.financial,
     {
-      name: MCP_CONFIRM_TOOL,
-      description: 'Execute a previously proposed write action by its proposalId. Some actions require ack:true.',
-      inputSchema: z.toJSONSchema(ConfirmParams) as Record<string, unknown>
+      bypassPermissions: context.governanceBypass,
+      confirmDescription: resolveRegisteredConfirmDescription(context)
     }
-  ]
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -110,26 +160,39 @@ export function resolveProposeAction(proposeName: string): string | null {
 }
 
 /** The write tools a role may call, as MCP manifests — empty unless the group flag is on. */
-export function projectWriteTools(registryTools: AiTool<unknown>[], role: string, enabled: boolean): McpToolManifest[] {
+export function projectWriteTools(
+  registryTools: AiTool<unknown>[],
+  role: string,
+  enabled: boolean,
+  options: { bypassPermissions?: boolean, confirmDescription?: string } = {}
+): McpToolManifest[] {
   if (!enabled) return []
-  const allowed = filterToolsForUser(registryTools, role)
+  const allowed = options.bypassPermissions ? registryTools : filterToolsForUser(registryTools, role)
   const picks = MCP_WRITE_SAFE_ACTIONS
     .map(a => allowed.find(t => t.name === a))
     .filter((t): t is AiTool<unknown> => !!t && !!t.mutates)
   if (!picks.length) return []
   const proposeManifests = picks.map(t => ({
     name: mcpProposeName(t.name),
-    description: `Propose (does NOT execute yet): ${t.description} Returns a proposalId — call ${MCP_CONFIRM_TOOL} to execute.`,
+    description: options.bypassPermissions
+      ? t.description
+      : `Propose (does NOT execute yet): ${t.description} Returns a proposalId — call ${MCP_CONFIRM_TOOL} to execute.`,
     inputSchema: z.toJSONSchema(t.parameters) as Record<string, unknown>
   }))
-  return [
-    ...proposeManifests,
+  return [...proposeManifests, projectConfirmActionManifest(options.confirmDescription)]
+}
+
+/** Registered general-write suite adapter. */
+export function projectWriteMcpSuite(context: McpProjectionContext): McpToolManifest[] {
+  return projectWriteTools(
+    context.tools,
+    context.role,
+    context.governanceBypass || context.suiteFlags.writes,
     {
-      name: MCP_CONFIRM_TOOL,
-      description: 'Execute a previously proposed write action by its proposalId. Some actions require ack:true.',
-      inputSchema: z.toJSONSchema(ConfirmParams) as Record<string, unknown>
+      bypassPermissions: context.governanceBypass,
+      confirmDescription: resolveRegisteredConfirmDescription(context)
     }
-  ]
+  )
 }
 
 // ---------------------------------------------------------------------------

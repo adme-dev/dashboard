@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   projectBanner: vi.fn(),
   projectFinancial: vi.fn(),
   projectOwnerCatalog: vi.fn(),
+  projectRegistered: vi.fn(),
+  projectGodMode: vi.fn(),
   executeReadOnly: vi.fn(),
   executeWriteConfirm: vi.fn(),
   executeGodModeMcpCall: vi.fn(),
@@ -55,6 +57,10 @@ vi.mock('~~/server/utils/ai/mcp/project', () => ({
   projectReadOnlyTools: mocks.projectReadOnly,
   projectGodModeCatalogTools: mocks.projectOwnerCatalog,
   executeReadOnlyTool: mocks.executeReadOnly
+}))
+vi.mock('~~/server/utils/ai/mcp/registry', () => ({
+  projectRegisteredMcpTools: mocks.projectRegistered,
+  projectGodModeTools: mocks.projectGodMode
 }))
 vi.mock('~~/server/utils/ai/mcp/directExecution', () => ({
   executeGodModeMcpCall: mocks.executeGodModeMcpCall
@@ -172,6 +178,13 @@ describe('signed internal MCP list/call endpoints', () => {
       { name: 'get_tasks', description: 'owner read', inputSchema: {} },
       { name: 'create_task', description: 'owner write', inputSchema: {} }
     ])
+    mocks.projectGodMode.mockReturnValue([
+      { name: 'get_tasks', description: 'owner read', inputSchema: {} },
+      { name: 'create_task', description: 'owner write', inputSchema: {} }
+    ])
+    mocks.projectRegistered.mockReturnValue([
+      { name: 'get_tasks', description: 'read', inputSchema: {} }
+    ])
     mocks.executeGodModeMcpCall.mockResolvedValue({ ok: true, data: { resultRef: 'task-1', directExecution: true } })
     mocks.executeWriteConfirm.mockResolvedValue({ ok: true, data: { resultRef: 'task-ordinary' } })
     mocks.appendAudit.mockResolvedValue(undefined)
@@ -231,7 +244,7 @@ describe('signed internal MCP list/call endpoints', () => {
   it('projects the complete registered owner catalog from the consumed fresh authority, not role or suite flags', async () => {
     mocks.consumeClaim.mockResolvedValue({
       uid: USER_ID,
-      scope: ['mcp:read', 'mcp:write'],
+      scope: ['mcp:read'],
       godMode: false,
       bodyDigest: 'a'.repeat(64)
     })
@@ -239,6 +252,15 @@ describe('signed internal MCP list/call endpoints', () => {
     mocks.getAuthority.mockReturnValue(authority)
     mocks.isActiveAuthority.mockImplementation((candidate, actor) => candidate === authority && actor === USER_ID)
     process.env.MCP_WRITE_TOOLS_ENABLED = 'false'
+    const ordering: string[] = []
+    mocks.appendAudit.mockImplementation(async audit => { ordering.push(`audit:${audit.phase}`) })
+    mocks.projectGodMode.mockImplementation(() => {
+      ordering.push('project')
+      return [
+        { name: 'get_tasks', description: 'owner read', inputSchema: {} },
+        { name: 'create_task', description: 'owner write', inputSchema: {} }
+      ]
+    })
 
     const requestEvent = event(
       { userId: USER_ID },
@@ -252,9 +274,19 @@ describe('signed internal MCP list/call endpoints', () => {
       ]
     })
     expect(mocks.getAuthority).toHaveBeenCalledWith(requestEvent, USER_ID)
-    expect(mocks.projectOwnerCatalog).toHaveBeenCalled()
-    expect(mocks.projectWrite).not.toHaveBeenCalled()
+    expect(mocks.projectGodMode).toHaveBeenCalledWith(expect.objectContaining({
+      role: 'owner',
+      scopes: ['mcp:read'],
+      requireWriteScope: true,
+      suiteFlags: expect.objectContaining({ writes: false })
+    }))
+    expect(mocks.projectRegistered).not.toHaveBeenCalled()
     expect(mocks.appendAudit.mock.calls.map(([audit]) => audit.phase)).toEqual(['attempt', 'succeeded'])
+    expect(ordering).toEqual(['audit:attempt', 'project', 'audit:succeeded'])
+    expect(mocks.appendAudit.mock.calls[0]?.[0].bypassedControls).toEqual(expect.arrayContaining([
+      'mcp_scope',
+      'mcp_suite_flag'
+    ]))
   })
 
   it('blocks an owner manifest and records a failed terminal when projection fails after its attempt', async () => {
@@ -267,7 +299,7 @@ describe('signed internal MCP list/call endpoints', () => {
     const authority = { active: true, actorUserId: USER_ID }
     mocks.getAuthority.mockReturnValue(authority)
     mocks.isActiveAuthority.mockImplementation((candidate, actor) => candidate === authority && actor === USER_ID)
-    mocks.projectOwnerCatalog.mockImplementation(() => { throw new Error('schema content must not leak') })
+    mocks.projectGodMode.mockImplementation(() => { throw new Error('schema content must not leak') })
 
     await expect(toolsHandler(event(
       { userId: USER_ID },
@@ -277,6 +309,33 @@ describe('signed internal MCP list/call endpoints', () => {
     expect(mocks.appendAudit.mock.calls.map(([audit]) => [audit.phase, audit.outcomeCode])).toEqual([
       ['attempt', 'started'],
       ['failed', 'catalog_projection_failed']
+    ])
+  })
+
+  it('blocks an owner manifest when the terminal discovery audit cannot be persisted', async () => {
+    mocks.consumeClaim.mockResolvedValue({
+      uid: USER_ID,
+      scope: ['mcp:read'],
+      godMode: true,
+      bodyDigest: 'a'.repeat(64)
+    })
+    const authority = { active: true, actorUserId: USER_ID }
+    mocks.getAuthority.mockReturnValue(authority)
+    mocks.isActiveAuthority.mockImplementation((candidate, actor) => candidate === authority && actor === USER_ID)
+    mocks.appendAudit.mockImplementation(async audit => {
+      if (audit.phase !== 'attempt') throw new Error('audit unavailable')
+    })
+
+    await expect(toolsHandler(event(
+      { userId: USER_ID },
+      { 'x-mcp-secret': INTERNAL_SECRET, 'x-mcp-assertion': CLAIM }
+    ))).rejects.toMatchObject({ statusCode: 503, statusMessage: 'God mode MCP audit unavailable' })
+
+    expect(mocks.projectGodMode).toHaveBeenCalledTimes(1)
+    expect(mocks.appendAudit.mock.calls.map(([audit]) => [audit.phase, audit.outcomeCode])).toEqual([
+      ['attempt', 'started'],
+      ['succeeded', 'catalog_projected'],
+      ['failed', 'catalog_terminal_audit_failed']
     ])
   })
 
@@ -324,8 +383,12 @@ describe('signed internal MCP list/call endpoints', () => {
     )
     await toolsHandler(requestEvent)
 
-    expect(mocks.projectWrite).toHaveBeenCalled()
-    expect(mocks.projectOwnerCatalog).not.toHaveBeenCalled()
+    expect(mocks.projectRegistered).toHaveBeenCalledWith(expect.objectContaining({
+      role: 'member',
+      scopes: ['mcp:read', 'mcp:write'],
+      requireWriteScope: true
+    }))
+    expect(mocks.projectGodMode).not.toHaveBeenCalled()
 
     const confirmEvent = event(
       {

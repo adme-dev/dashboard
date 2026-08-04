@@ -22,6 +22,29 @@ export interface McpToolManifest {
   inputSchema: Record<string, unknown>
 }
 
+export interface McpSuiteFlags {
+  generation: boolean
+  writes: boolean
+  financial: boolean
+  video: boolean
+  videoGeneration: boolean
+  banners: boolean
+}
+
+/**
+ * Trusted projection inputs assembled by an authenticated route. `scopes` must come from the signed
+ * MCP request claim for the internal route; suite projectors never read unsigned headers.
+ */
+export interface McpProjectionContext {
+  tools: AiTool<unknown>[]
+  role: string
+  scopes: readonly string[]
+  requireWriteScope: boolean
+  suiteFlags: McpSuiteFlags
+  /** Set only by projectGodModeTools after runtime-branded authority has passed at the route. */
+  governanceBypass?: boolean
+}
+
 /** Append a data-not-instructions note for tools whose output carries untrusted text (prompt-injection). */
 function mcpDescription(t: AiTool<unknown>): string {
   return t.returnsUntrusted
@@ -41,6 +64,13 @@ export function projectGodModeCatalogTools(
       description: mcpDescription(tool),
       inputSchema: z.toJSONSchema(tool.parameters) as Record<string, unknown>
     }))
+}
+
+/** Authoritative base-registry suite adapter. Future AiTool registrations flow through automatically. */
+export function projectCatalogMcpSuite(context: McpProjectionContext): McpToolManifest[] {
+  return context.governanceBypass
+    ? projectGodModeCatalogTools(context.tools, { includeWrites: true })
+    : projectReadOnlyTools(context.tools, context.role)
 }
 
 /** The read-only tools a role may call, as MCP manifests. Mutating tools are filtered out unconditionally. */

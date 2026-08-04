@@ -9,12 +9,7 @@ import { defineEventHandler, getHeader, readBody, createError } from 'h3'
 import { randomUUID } from 'node:crypto'
 import { queryOne } from '~~/server/utils/db'
 import { registry } from '~~/server/utils/ai/tools'
-import { projectGodModeCatalogTools, projectReadOnlyTools } from '~~/server/utils/ai/mcp/project'
-import { projectGenerationTools } from '~~/server/utils/ai/mcp/generationTools'
-import { projectWriteTools, projectFinancialTools } from '~~/server/utils/ai/mcp/writeTools'
-import { projectVideoTools } from '~~/server/utils/ai/mcp/videoTools'
-import { projectBannerTools } from '~~/server/utils/ai/mcp/bannerTools'
-import { isWriteScopeToolName, hasWriteScope } from '~~/server/utils/ai/mcp/scope'
+import { projectGodModeTools, projectRegisteredMcpTools } from '~~/server/utils/ai/mcp/registry'
 import {
   consumeMcpRequestClaim,
   getMcpRequestGodModeAuthority
@@ -50,8 +45,31 @@ export default defineEventHandler(async (event) => {
   )
 
   const authority = getMcpRequestGodModeAuthority(event, userId)
+  const requireWriteScope = process.env.MCP_REQUIRE_WRITE_SCOPE === 'true'
+  const projectionContext = {
+    tools: registry as AiTool<unknown>[],
+    role: 'owner',
+    scopes: claim.scope,
+    requireWriteScope,
+    suiteFlags: {
+      generation: process.env.MCP_GEN_TOOLS_ENABLED === 'true',
+      writes: process.env.MCP_WRITE_TOOLS_ENABLED === 'true',
+      financial: process.env.MCP_FINANCIAL_TOOLS_ENABLED === 'true',
+      video: process.env.MCP_VIDEO_TOOLS_ENABLED === 'true',
+      videoGeneration: process.env.MCP_VIDEO_GEN_ENABLED === 'true',
+      banners: process.env.MCP_BANNER_TOOLS_ENABLED === 'true'
+    }
+  }
   if (isActiveGodModeAuthority(authority, userId)) {
     const correlationId = randomUUID()
+    const bypassedControls: GodModeBypassedControl[] = [
+      'permission', 'feature_flag', 'release_policy', 'evaluation_policy',
+      'personal_policy', 'budget', 'rate_limit'
+    ]
+    if (requireWriteScope && !claim.scope.includes('mcp:write')) bypassedControls.push('mcp_scope')
+    if (Object.values(projectionContext.suiteFlags).some(enabled => !enabled)) {
+      bypassedControls.push('mcp_suite_flag')
+    }
     const audit = {
       actorUserId: userId,
       correlationId,
@@ -60,25 +78,25 @@ export default defineEventHandler(async (event) => {
       routeOrTool: 'tools/list',
       tenantId: null,
       clientId: null,
-      bypassedControls: [
-        'permission', 'feature_flag', 'release_policy', 'evaluation_policy',
-        'personal_policy', 'budget', 'rate_limit', 'mcp_suite_flag'
-      ] as GodModeBypassedControl[],
+      bypassedControls,
       emergencyDisabled: false
     }
     let attemptWritten = false
+    let failureOutcome = 'catalog_projection_failed'
     try {
       await appendGodModeAuditEvent({ ...audit, phase: 'attempt', outcomeCode: 'started' })
       attemptWritten = true
-      const tools = projectGodModeCatalogTools(registry as AiTool<unknown>[], {
-        includeWrites: claim.scope.includes('mcp:write')
-      })
+      const tools = projectGodModeTools(projectionContext)
+      failureOutcome = 'catalog_terminal_audit_failed'
       await appendGodModeAuditEvent({ ...audit, phase: 'succeeded', outcomeCode: 'catalog_projected' })
       return { tools }
     } catch {
       if (attemptWritten) {
-        await appendGodModeAuditEvent({ ...audit, phase: 'failed', outcomeCode: 'catalog_projection_failed' })
-          .catch(() => {})
+        try {
+          await appendGodModeAuditEvent({ ...audit, phase: 'failed', outcomeCode: failureOutcome })
+        } catch {
+          throw createError({ statusCode: 503, statusMessage: 'God mode MCP audit unavailable' })
+        }
       }
       throw createError({ statusCode: 503, statusMessage: 'God mode MCP audit unavailable' })
     }
@@ -90,31 +108,10 @@ export default defineEventHandler(async (event) => {
   )
   if (!user) throw createError({ statusCode: 403, statusMessage: 'Unknown or inactive user' })
 
-  // Read tools (Phase 1) + generation tools (2a, MCP_GEN_TOOLS_ENABLED) + confirm-tier write
-  // propose/confirm tools (2c, MCP_WRITE_TOOLS_ENABLED) + video suite reads (2b,
-  // MCP_VIDEO_TOOLS_ENABLED). Each group flag-gated independently. Deduped by name so a tool emitted
-  // by more than one group (e.g. confirm_action, once 2b's propose/confirm lands) appears once.
+  // The registered suite list is the only assembly authority. For ordinary users its projectors retain
+  // the existing per-suite flags, role permissions, and signed-claim write-scope narrowing.
   const role = user.role ?? ''
-  const assembled = [
-    ...projectReadOnlyTools(registry as AiTool<unknown>[], role),
-    ...projectGenerationTools(role, process.env.MCP_GEN_TOOLS_ENABLED === 'true'),
-    ...projectWriteTools(registry as AiTool<unknown>[], role, process.env.MCP_WRITE_TOOLS_ENABLED === 'true'),
-    ...projectVideoTools(role, {
-      suite: process.env.MCP_VIDEO_TOOLS_ENABLED === 'true',
-      gen: process.env.MCP_VIDEO_GEN_ENABLED === 'true'
-    }),
-    ...projectBannerTools(role, process.env.MCP_BANNER_TOOLS_ENABLED === 'true'),
-    ...projectFinancialTools(registry as AiTool<unknown>[], role, process.env.MCP_FINANCIAL_TOOLS_ENABLED === 'true')
-  ]
-  const seen = new Set<string>()
-  const tools = assembled.filter(t => (seen.has(t.name) ? false : (seen.add(t.name), true)))
-
-  // CRITICAL-B: when write-scope enforcement is on, a read-only-consented connector (no mcp:write) must
-  // not even SEE write-class tools in its manifest. Flag OFF (default) → manifest unchanged (non-breaking).
-  const requireWriteScope = process.env.MCP_REQUIRE_WRITE_SCOPE === 'true'
-  const grantedScopes = new Set(claim.scope)
-  const scopedTools = requireWriteScope && !hasWriteScope(grantedScopes)
-    ? tools.filter(t => !isWriteScopeToolName(t.name))
-    : tools
-  return { tools: scopedTools }
+  return {
+    tools: projectRegisteredMcpTools({ ...projectionContext, role })
+  }
 })

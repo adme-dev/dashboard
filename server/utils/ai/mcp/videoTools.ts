@@ -2,8 +2,12 @@ import { z } from 'zod'
 import { roleHasPermission } from '~~/server/utils/permissions'
 import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
-import type { McpToolManifest } from './project'
-import { MCP_CONFIRM_TOOL } from './writeTools'
+import type { McpProjectionContext, McpToolManifest } from './project'
+import {
+  MCP_VIDEO_CONFIRM_DESCRIPTION,
+  projectConfirmActionManifest,
+  resolveRegisteredConfirmDescription
+} from './writeTools'
 import type {
   VideoGenerationModel,
   VideoGenerationMode,
@@ -116,10 +120,14 @@ export const videoReadTools: VideoToolDescriptor[] = [
 ]
 
 /** The video READ tools a role may call, as MCP manifests — empty unless the suite flag is on. */
-export function projectVideoReadTools(role: string, suiteEnabled: boolean): McpToolManifest[] {
+export function projectVideoReadTools(
+  role: string,
+  suiteEnabled: boolean,
+  options: { bypassPermissions?: boolean } = {}
+): McpToolManifest[] {
   if (!suiteEnabled) return []
   return videoReadTools
-    .filter(t => roleHasPermission(role, t.requiredPermission))
+    .filter(t => options.bypassPermissions || roleHasPermission(role, t.requiredPermission))
     .map(t => ({
       name: t.name,
       description: t.description,
@@ -460,22 +468,38 @@ export async function dispatchVideoConfirm(
 
 export type VideoFlags = { suite: boolean, gen: boolean }
 
-const ConfirmParams = z.object({ proposalId: z.string().min(8), ack: z.boolean().optional() })
-
-export function projectVideoTools(role: string, flags: VideoFlags): McpToolManifest[] {
+export function projectVideoTools(
+  role: string,
+  flags: VideoFlags,
+  options: { bypassPermissions?: boolean, confirmDescription?: string } = {}
+): McpToolManifest[] {
   if (!flags.suite) return []
-  if (!roleHasPermission(role, 'CREATIVE')) return []
-  const reads = projectVideoReadTools(role, true)
+  if (!options.bypassPermissions && !roleHasPermission(role, 'CREATIVE')) return []
+  const reads = projectVideoReadTools(role, true, options)
   if (!flags.gen) return reads
   const proposes = videoProposeTools.map(t => ({
     name: t.name,
     description: t.description,
     inputSchema: z.toJSONSchema(t.parameters) as Record<string, unknown>
   }))
-  const confirm: McpToolManifest = {
-    name: MCP_CONFIRM_TOOL,
-    description: 'Execute a previously proposed action by its proposalId (e.g. a video generation or project create).',
-    inputSchema: z.toJSONSchema(ConfirmParams) as Record<string, unknown>
-  }
-  return [...reads, ...proposes, confirm]
+  return [
+    ...reads,
+    ...proposes,
+    projectConfirmActionManifest(options.confirmDescription ?? MCP_VIDEO_CONFIRM_DESCRIPTION)
+  ]
+}
+
+/** Registered video/media-suite adapter. */
+export function projectVideoMcpSuite(context: McpProjectionContext): McpToolManifest[] {
+  return projectVideoTools(
+    context.role,
+    {
+      suite: context.governanceBypass || context.suiteFlags.video,
+      gen: context.governanceBypass || context.suiteFlags.videoGeneration
+    },
+    {
+      bypassPermissions: context.governanceBypass,
+      confirmDescription: resolveRegisteredConfirmDescription(context)
+    }
+  )
 }
