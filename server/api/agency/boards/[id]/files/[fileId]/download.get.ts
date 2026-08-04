@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const board = await resolveAccessibleBoard(event, boardId)
-  const file = await queryOne<{ storage_key: string | null; file_url: string }>(`
+  const file = await queryOne<{ storage_key: string | null, file_url: string }>(`
     SELECT storage_key, file_url
     FROM board_files
     WHERE id = $1 AND department_id = $2

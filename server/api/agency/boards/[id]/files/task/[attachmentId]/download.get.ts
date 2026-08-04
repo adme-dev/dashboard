@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const board = await resolveAccessibleBoard(event, boardId)
-  const file = await queryOne<{ storage_key: string | null; file_url: string }>(`
+  const file = await queryOne<{ storage_key: string | null, file_url: string }>(`
     SELECT ta.storage_key, ta.file_url
     FROM task_attachments ta
     JOIN tasks t ON t.id = ta.task_id

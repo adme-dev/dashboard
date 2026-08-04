@@ -9,7 +9,7 @@ export interface BoardFileFilters {
 export function filterBoardFileItems(files: BoardFileItem[], filters: BoardFileFilters): BoardFileItem[] {
   const search = filters.search.trim().toLowerCase()
 
-  return files.filter(file => {
+  return files.filter((file) => {
     if (filters.scope !== 'all' && file.scope !== filters.scope) return false
     if (filters.category !== 'all' && file.category !== filters.category) return false
     if (!search) return true

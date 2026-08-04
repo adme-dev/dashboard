@@ -10,6 +10,6 @@ describe('board Files public feature copy', () => {
     expect(index).toContain('searchable board-wide file library')
     expect(detail).toContain('Six Connected Views and a File Library')
     expect(detail).toContain('task attachments remain attached to their source task')
-    expect(nav).toContain("subtitle: 'Six views and a board file library'")
+    expect(nav).toContain('subtitle: \'Six views and a board file library\'')
   })
 })

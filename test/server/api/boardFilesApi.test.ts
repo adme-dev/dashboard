@@ -28,7 +28,7 @@ const testGlobal = globalThis as typeof globalThis & {
   getHeader: typeof mockGetHeader
   readMultipartFormData: typeof mockReadMultipartFormData
   sendRedirect: typeof mockSendRedirect
-  createError: (input: { statusCode: number; statusMessage: string }) => Error & {
+  createError: (input: { statusCode: number, statusMessage: string }) => Error & {
     statusCode: number
     statusMessage: string
   }

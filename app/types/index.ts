@@ -107,9 +107,9 @@ export interface BoardFileItem {
   source: 'xeroflow' | 'monday' | 'xero' | 'task'
   sourceReference: string | null
   createdAt: string
-  uploadedBy: { id: string; name: string; email: string } | null
+  uploadedBy: { id: string, name: string, email: string } | null
   canDelete: boolean
-  task: { id: string; title: string } | null
+  task: { id: string, title: string } | null
 }
 
 export interface BoardFileListResponse {

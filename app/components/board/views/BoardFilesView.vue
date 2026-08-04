@@ -45,8 +45,10 @@ const filteredFiles = computed(() => filterBoardFileItems(files.value, {
   category: category.value
 }))
 
-function apiErrorMessage(error: any, fallback: string) {
-  return error?.data?.statusMessage || error?.statusMessage || error?.message || fallback
+function apiErrorMessage(error: unknown, fallback: string) {
+  if (!error || typeof error !== 'object') return fallback
+  const details = error as { data?: { statusMessage?: string }, statusMessage?: string, message?: string }
+  return details.data?.statusMessage || details.statusMessage || details.message || fallback
 }
 
 async function loadFiles() {
@@ -137,7 +139,9 @@ onMounted(loadFiles)
     <div class="mx-auto max-w-[1500px] space-y-4">
       <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h2 id="board-files-heading" class="text-lg font-semibold text-highlighted">Board files</h2>
+          <h2 id="board-files-heading" class="text-lg font-semibold text-highlighted">
+            Board files
+          </h2>
           <p class="mt-1 max-w-2xl text-sm text-muted">
             Board documents live here for the whole team. Task attachments remain attached to their task and appear here for discovery.
           </p>
@@ -152,12 +156,34 @@ onMounted(loadFiles)
       </div>
 
       <div class="grid grid-cols-1 gap-3 rounded-lg border border-default bg-default p-3 sm:grid-cols-[minmax(16rem,1fr)_12rem_12rem]">
-        <UInput v-model="search" icon="i-lucide-search" placeholder="Search names, tasks, people or sources" class="w-full" />
-        <USelect v-model="scope" :items="scopeOptions" value-key="value" class="w-full" aria-label="Filter file scope" />
-        <USelect v-model="category" :items="categoryOptions" value-key="value" class="w-full" aria-label="Filter file category" />
+        <UInput
+          v-model="search"
+          icon="i-lucide-search"
+          placeholder="Search names, tasks, people or sources"
+          class="w-full"
+        />
+        <USelect
+          v-model="scope"
+          :items="scopeOptions"
+          value-key="value"
+          class="w-full"
+          aria-label="Filter file scope"
+        />
+        <USelect
+          v-model="category"
+          :items="categoryOptions"
+          value-key="value"
+          class="w-full"
+          aria-label="Filter file category"
+        />
       </div>
 
-      <div v-if="loading" class="space-y-2 rounded-lg border border-default bg-default p-4" aria-busy="true" aria-label="Loading board files">
+      <div
+        v-if="loading"
+        class="space-y-2 rounded-lg border border-default bg-default p-4"
+        aria-busy="true"
+        aria-label="Loading board files"
+      >
         <USkeleton v-for="index in 4" :key="index" class="h-14 w-full" />
       </div>
 
@@ -170,11 +196,22 @@ onMounted(loadFiles)
         variant="subtle"
       >
         <template #actions>
-          <UButton label="Try again" color="error" variant="soft" size="sm" @click="loadFiles" />
+          <UButton
+            label="Try again"
+            color="error"
+            variant="soft"
+            size="sm"
+            @click="loadFiles"
+          />
         </template>
       </UAlert>
 
-      <div v-else-if="filteredFiles.length" role="table" aria-label="Board file library" class="overflow-hidden rounded-lg border border-default bg-default">
+      <div
+        v-else-if="filteredFiles.length"
+        role="table"
+        aria-label="Board file library"
+        class="overflow-hidden rounded-lg border border-default bg-default"
+      >
         <div role="row" class="hidden grid-cols-[minmax(16rem,2fr)_minmax(11rem,1fr)_9rem_9rem_7rem] gap-4 border-b border-default bg-elevated/50 px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted md:grid">
           <span role="columnheader">File</span>
           <span role="columnheader">Location</span>
@@ -193,8 +230,12 @@ onMounted(loadFiles)
               <UIcon :name="fileIcon(file.fileType)" class="size-4" />
             </span>
             <div class="min-w-0">
-              <p class="truncate text-sm font-medium text-highlighted">{{ file.fileName }}</p>
-              <p class="mt-0.5 truncate text-xs text-muted">{{ file.description || `${formatFileSize(file.fileSize)} · ${file.uploadedBy?.name || 'Unknown uploader'}` }}</p>
+              <p class="truncate text-sm font-medium text-highlighted">
+                {{ file.fileName }}
+              </p>
+              <p class="mt-0.5 truncate text-xs text-muted">
+                {{ file.description || `${formatFileSize(file.fileSize)} · ${file.uploadedBy?.name || 'Unknown uploader'}` }}
+              </p>
             </div>
           </div>
           <div role="cell" class="min-w-0">
@@ -232,7 +273,14 @@ onMounted(loadFiles)
               />
             </UTooltip>
             <UTooltip v-if="file.canDelete" text="Delete board file">
-              <UButton aria-label="Delete file" icon="i-lucide-trash-2" variant="ghost" color="error" size="xs" @click="deleteTarget = file" />
+              <UButton
+                aria-label="Delete file"
+                icon="i-lucide-trash-2"
+                variant="ghost"
+                color="error"
+                size="xs"
+                @click="deleteTarget = file"
+              />
             </UTooltip>
           </div>
         </div>
@@ -240,8 +288,12 @@ onMounted(loadFiles)
 
       <div v-else class="rounded-lg border border-dashed border-default bg-default px-6 py-12 text-center">
         <UIcon :name="files.length ? 'i-lucide-search-x' : 'i-lucide-folder-open'" class="mx-auto size-8 text-muted" />
-        <h3 class="mt-3 text-sm font-medium text-highlighted">{{ files.length ? 'No files match these filters' : 'No files on this board yet' }}</h3>
-        <p class="mt-1 text-sm text-muted">{{ files.length ? 'Clear or change the search filters.' : 'Upload a board reference, or attach evidence to a task.' }}</p>
+        <h3 class="mt-3 text-sm font-medium text-highlighted">
+          {{ files.length ? 'No files match these filters' : 'No files on this board yet' }}
+        </h3>
+        <p class="mt-1 text-sm text-muted">
+          {{ files.length ? 'Clear or change the search filters.' : 'Upload a board reference, or attach evidence to a task.' }}
+        </p>
       </div>
     </div>
 
@@ -249,23 +301,48 @@ onMounted(loadFiles)
       <template #content>
         <div class="space-y-5 p-5">
           <div>
-            <h3 class="text-base font-semibold text-highlighted">Upload board file</h3>
-            <p class="mt-1 text-sm text-muted">This document will be visible from the board to everyone who can access it.</p>
+            <h3 class="text-base font-semibold text-highlighted">
+              Upload board file
+            </h3>
+            <p class="mt-1 text-sm text-muted">
+              This document will be visible from the board to everyone who can access it.
+            </p>
           </div>
           <div class="grid grid-cols-1 gap-4">
             <UFormField label="File" help="PDF, Office, image, text, CSV, JSON or archive · 50 MB maximum" required>
               <UInput type="file" class="w-full" @change="onFileChange" />
             </UFormField>
             <UFormField label="Category" required>
-              <USelect v-model="uploadCategory" :items="uploadCategoryOptions" value-key="value" class="w-full" />
+              <USelect
+                v-model="uploadCategory"
+                :items="uploadCategoryOptions"
+                value-key="value"
+                class="w-full"
+              />
             </UFormField>
             <UFormField label="Description" help="Optional context to help the team understand when to use this file.">
-              <UTextarea v-model="uploadDescription" :rows="3" maxlength="2000" class="w-full" />
+              <UTextarea
+                v-model="uploadDescription"
+                :rows="3"
+                maxlength="2000"
+                class="w-full"
+              />
             </UFormField>
           </div>
           <div class="flex justify-end gap-2 border-t border-default pt-4">
-            <UButton label="Cancel" variant="ghost" color="neutral" @click="uploadOpen = false" />
-            <UButton label="Upload file" icon="i-lucide-upload" :loading="uploading" :disabled="!uploadFileValue" @click="uploadBoardFile" />
+            <UButton
+              label="Cancel"
+              variant="ghost"
+              color="neutral"
+              @click="uploadOpen = false"
+            />
+            <UButton
+              label="Upload file"
+              icon="i-lucide-upload"
+              :loading="uploading"
+              :disabled="!uploadFileValue"
+              @click="uploadBoardFile"
+            />
           </div>
         </div>
       </template>
@@ -275,12 +352,26 @@ onMounted(loadFiles)
       <template #content>
         <div class="space-y-4 p-5">
           <div>
-            <h3 class="text-base font-semibold text-highlighted">Delete board file?</h3>
-            <p class="mt-1 text-sm text-muted">{{ deleteTarget?.fileName }} will be removed from this board and storage. Task attachments are not affected.</p>
+            <h3 class="text-base font-semibold text-highlighted">
+              Delete board file?
+            </h3>
+            <p class="mt-1 text-sm text-muted">
+              {{ deleteTarget?.fileName }} will be removed from this board and storage. Task attachments are not affected.
+            </p>
           </div>
           <div class="flex justify-end gap-2">
-            <UButton label="Cancel" variant="ghost" color="neutral" @click="deleteTarget = null" />
-            <UButton label="Delete board file" color="error" :loading="deleting" @click="deleteBoardFile" />
+            <UButton
+              label="Cancel"
+              variant="ghost"
+              color="neutral"
+              @click="deleteTarget = null"
+            />
+            <UButton
+              label="Delete board file"
+              color="error"
+              :loading="deleting"
+              @click="deleteBoardFile"
+            />
           </div>
         </div>
       </template>

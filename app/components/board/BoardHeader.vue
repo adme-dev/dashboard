@@ -141,8 +141,7 @@
 </template>
 
 <script setup lang="ts">
-import type { BoardViewType } from '~/composables/useBoardData'
-import { BOARD_VIEW_OPTIONS } from '~/utils/boardViews'
+import { BOARD_VIEW_OPTIONS, type BoardViewType } from '~/utils/boardViews'
 
 const props = defineProps<{
   boardName: string
@@ -159,7 +158,7 @@ defineEmits<{
   newItem: []
 }>()
 
-const views: readonly { id: BoardViewType; label: string; icon: string }[] = BOARD_VIEW_OPTIONS
+const views: readonly { id: BoardViewType, label: string, icon: string }[] = BOARD_VIEW_OPTIONS
 
 // Subscription state
 const isSubscribed = ref(false)

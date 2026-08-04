@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const board = await resolveAccessibleBoard(event, boardId)
-  const file = await queryOne<{ id: string; uploaded_by: string | null; storage_key: string | null }>(`
+  const file = await queryOne<{ id: string, uploaded_by: string | null, storage_key: string | null }>(`
     SELECT id, uploaded_by, storage_key
     FROM board_files
     WHERE id = $1 AND department_id = $2
@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
   )
 
   if (file.storage_key) {
-    await deleteFile(file.storage_key).catch(error => {
+    await deleteFile(file.storage_key).catch((error) => {
       console.warn('Failed to remove board file from storage:', error)
     })
   }

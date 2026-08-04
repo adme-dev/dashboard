@@ -7,8 +7,6 @@
 import type { CustomColumn, TaskColumnValue } from '~/types'
 import { isBoardViewType, type BoardViewType } from '~/utils/boardViews'
 
-export type { BoardViewType } from '~/utils/boardViews'
-
 const apiFetch = $fetch as <T = unknown>(
   request: string,
   options?: { method?: string; body?: unknown; query?: Record<string, unknown> },

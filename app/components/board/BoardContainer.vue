@@ -129,7 +129,6 @@
 </template>
 
 <script setup lang="ts">
-import type { BoardViewType } from '~/composables/useBoardData'
 import BoardHeader from '~/components/board/BoardHeader.vue'
 import BoardToolbar from '~/components/board/BoardToolbar.vue'
 import BoardKanbanView from '~/components/board/views/BoardKanbanView.vue'

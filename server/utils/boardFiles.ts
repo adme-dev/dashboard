@@ -1,4 +1,4 @@
-import { createError } from 'h3'
+import { createError, type H3Event } from 'h3'
 import { requireBoardAccess, type User } from '~~/server/utils/auth'
 import { queryOne, queryRows } from '~~/server/utils/db'
 
@@ -19,9 +19,9 @@ export interface BoardFileItem {
   source: BoardFileSource
   sourceReference: string | null
   createdAt: string
-  uploadedBy: { id: string; name: string; email: string } | null
+  uploadedBy: { id: string, name: string, email: string } | null
   canDelete: boolean
-  task: { id: string; title: string } | null
+  task: { id: string, title: string } | null
 }
 
 export interface BoardFileListResponse {
@@ -40,11 +40,40 @@ interface AccessibleBoard {
   user: User
 }
 
+interface UploaderRow {
+  uploader_id: string | null
+  uploader_name: string | null
+  uploader_email: string | null
+}
+
+interface BoardFileRow extends UploaderRow {
+  id: string
+  file_name: string
+  file_type: string | null
+  file_size: string | number | null
+  category: Exclude<BoardFileCategory, 'evidence'>
+  description: string | null
+  source: Exclude<BoardFileSource, 'task'>
+  source_reference: string | null
+  created_at: string | Date
+}
+
+interface TaskFileRow extends UploaderRow {
+  id: string
+  task_id: string
+  task_title: string
+  file_name: string
+  file_type: string | null
+  file_size: string | number | null
+  created_at: string | Date
+  monday_asset_id: string | null
+}
+
 function toIsoString(value: string | Date): string {
   return value instanceof Date ? value.toISOString() : value
 }
 
-function uploaderFromRow(row: Record<string, any>): BoardFileItem['uploadedBy'] {
+function uploaderFromRow(row: UploaderRow): BoardFileItem['uploadedBy'] {
   if (!row.uploader_id) return null
   return {
     id: row.uploader_id,
@@ -55,8 +84,8 @@ function uploaderFromRow(row: Record<string, any>): BoardFileItem['uploadedBy'] 
 
 export function mapBoardFileRows(
   boardId: string,
-  boardRows: Record<string, any>[],
-  taskRows: Record<string, any>[],
+  boardRows: BoardFileRow[],
+  taskRows: TaskFileRow[],
   user: User
 ): BoardFileListResponse {
   const boardDocuments: BoardFileItem[] = boardRows.map(row => ({
@@ -108,7 +137,7 @@ export function mapBoardFileRows(
   }
 }
 
-export async function resolveAccessibleBoard(event: any, boardId: string): Promise<AccessibleBoard> {
+export async function resolveAccessibleBoard(event: H3Event, boardId: string): Promise<AccessibleBoard> {
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(boardId)
   const board = isUuid
     ? await queryOne<Omit<AccessibleBoard, 'user'>>('SELECT id, name, slug FROM departments WHERE id = $1', [boardId])
@@ -124,7 +153,7 @@ export async function resolveAccessibleBoard(event: any, boardId: string): Promi
 
 export async function listBoardFiles(departmentId: string, user: User): Promise<BoardFileListResponse> {
   const [boardRows, taskRows] = await Promise.all([
-    queryRows(`
+    queryRows<BoardFileRow>(`
       SELECT
         bf.id,
         bf.file_name,
@@ -142,7 +171,7 @@ export async function listBoardFiles(departmentId: string, user: User): Promise<
       LEFT JOIN team_members tm ON tm.id = bf.uploaded_by
       WHERE bf.department_id = $1
     `, [departmentId]),
-    queryRows(`
+    queryRows<TaskFileRow>(`
       SELECT
         ta.id,
         ta.task_id,

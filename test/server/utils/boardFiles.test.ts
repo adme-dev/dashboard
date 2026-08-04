@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'vitest'
+import type { User } from '~~/server/utils/auth'
 import { mapBoardFileRows } from '~~/server/utils/boardFiles'
+
+const member = {
+  id: 'user-1',
+  email: 'user@example.com',
+  name: 'Member',
+  role: 'member',
+  is_active: true
+} satisfies User
+
+const owner = {
+  id: 'owner-1',
+  email: 'owner@example.com',
+  name: 'Owner',
+  role: 'owner',
+  is_active: true
+} satisfies User
 
 describe('board file aggregation', () => {
   it('maps board documents and task evidence without changing ownership', () => {
@@ -34,7 +51,7 @@ describe('board file aggregation', () => {
         uploader_email: 'accounts@adme.net.au',
         monday_asset_id: '3155321317'
       }
-    ], { id: 'user-1', role: 'member' } as any)
+    ], member)
 
     expect(result).toEqual({
       files: [
@@ -92,7 +109,7 @@ describe('board file aggregation', () => {
       uploader_name: null,
       uploader_email: null,
       monday_asset_id: null
-    }], { id: 'owner-1', role: 'owner' } as any)
+    }], owner)
 
     expect(result.files[0]).toMatchObject({
       source: 'task',

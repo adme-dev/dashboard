@@ -14,6 +14,17 @@ import {
 
 const BOARD_FILE_CATEGORIES = new Set<BoardFileCategory>(['reference', 'policy', 'template', 'other'])
 
+interface InsertedBoardFile {
+  id: string
+  file_name: string
+  file_type: string
+  file_size: string | number
+  category: string
+  description: string | null
+  source: string
+  created_at: string | Date
+}
+
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
   const boardId = getRouterParam(event, 'id')
@@ -74,7 +85,7 @@ export default defineEventHandler(async (event) => {
   })
 
   try {
-    const inserted = await queryOne<Record<string, any>>(`
+    const inserted = await queryOne<InsertedBoardFile>(`
       INSERT INTO board_files (
         department_id, uploaded_by, file_name, file_url, file_type, file_size,
         storage_key, category, description, source, checksum_sha256
@@ -105,14 +116,17 @@ export default defineEventHandler(async (event) => {
       source: inserted.source,
       createdAt: inserted.created_at
     }
-  } catch (error: any) {
-    await deleteFile(storageKey).catch(storageError => {
+  } catch (error: unknown) {
+    await deleteFile(storageKey).catch((storageError) => {
       console.warn('Failed to clean up board file after database error:', storageError)
     })
-    if (error?.code === '23505') {
+    const details = error && typeof error === 'object'
+      ? error as { code?: string, statusCode?: number }
+      : null
+    if (details?.code === '23505') {
       throw createError({ statusCode: 409, statusMessage: 'This file is already in the board library' })
     }
-    if (error?.statusCode) throw error
+    if (details?.statusCode) throw error
     console.error('Failed to record board file:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to save board file' })
   }
