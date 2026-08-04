@@ -64,6 +64,14 @@ function reset() {
   budget.maxWallTimeMs = Math.min(3_600_000, (props.item.controls.maxLatencyMs * Math.max(1, props.defaultCaseCount)) + 5_000)
 }
 
+function openDialog() {
+  open.value = true
+}
+
+function closeDialog() {
+  open.value = false
+}
+
 async function loadAssignment() {
   assignmentPending.value = true
   assignmentError.value = null
@@ -153,7 +161,7 @@ watch(open, value => { if (value) { reset(); loadAssignment() } })
         <h4 :id="headingId" class="text-sm font-semibold text-highlighted">Evaluation</h4>
         <p class="mt-0.5 text-xs text-muted">Preflight, cost approval, and execution are separate audited steps.</p>
       </div>
-      <UButton color="primary" variant="soft" size="sm" icon="i-lucide-flask-conical" @click="open = true">Run evaluation</UButton>
+      <UButton color="primary" variant="soft" size="sm" icon="i-lucide-flask-conical" @click="openDialog">Run evaluation</UButton>
     </div>
 
     <div v-if="latestRun" class="grid grid-cols-1 gap-3 text-sm @container @lg:grid-cols-2">
@@ -200,7 +208,7 @@ watch(open, value => { if (value) { reset(); loadAssignment() } })
         </div>
       </template>
       <template #footer>
-        <div class="flex w-full justify-between gap-2"><UButton color="neutral" variant="ghost" @click="open = false">{{ executedRun ? 'Done' : 'Cancel' }}</UButton><div class="flex gap-2"><UButton v-if="!preflight" :loading="pending || assignmentPending" :disabled="!canPreflight" @click="createPreflight">Preflight evaluation</UButton><UButton v-else-if="!approvalId" :loading="pending" :disabled="!canApprove" @click="approveCost">Approve cost</UButton><UButton v-else-if="!executedRun" :loading="pending" color="primary" @click="execute">Execute approved evaluation</UButton></div></div>
+        <div class="flex w-full justify-between gap-2"><UButton color="neutral" variant="ghost" @click="closeDialog">{{ executedRun ? 'Done' : 'Cancel' }}</UButton><div class="flex gap-2"><UButton v-if="!preflight" :loading="pending || assignmentPending" :disabled="!canPreflight" @click="createPreflight">Preflight evaluation</UButton><UButton v-else-if="!approvalId" :loading="pending" :disabled="!canApprove" @click="approveCost">Approve cost</UButton><UButton v-else-if="!executedRun" :loading="pending" color="primary" @click="execute">Execute approved evaluation</UButton></div></div>
       </template>
     </UModal>
   </section>

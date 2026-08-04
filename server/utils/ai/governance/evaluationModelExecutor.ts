@@ -208,7 +208,7 @@ export function createEvaluationModelExecutor(options: EvaluationModelExecutorOp
       const descriptors = toolDefinitions.map(tool => Object.freeze({
         name: tool.name,
         description: tool.description,
-        async record() { recordedTools.add(tool.name); return { recorded: true as const } }
+        async record(_args: unknown) { recordedTools.add(tool.name); return { recorded: true as const } }
       }))
       const simulationInput = buildEvaluationSimulationInput({
         evaluationCaseId: rawRequest.evaluationCaseId,

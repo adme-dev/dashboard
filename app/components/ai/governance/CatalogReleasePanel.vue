@@ -51,6 +51,10 @@ function openConfirmation(next: Exclude<AiCatalogReleaseState, 'draft'>) {
   open.value = true
 }
 
+function closeConfirmation() {
+  open.value = false
+}
+
 function errorMessage(caught: unknown) {
   return (caught as { data?: { statusMessage?: string } })?.data?.statusMessage ?? 'The release transition could not be recorded.'
 }
@@ -124,7 +128,7 @@ async function transition() {
           <UAlert v-if="error" color="error" variant="soft" icon="i-lucide-triangle-alert" title="Transition not applied" :description="error" />
         </div>
       </template>
-      <template #footer><div class="flex w-full justify-end gap-2"><UButton color="neutral" variant="ghost" @click="open = false">Cancel</UButton><UButton :color="target && (target === 'suspended' || target === 'retired') ? 'error' : 'primary'" :loading="pending" :disabled="!canConfirm || ((target === 'pilot' || target === 'active') && evidenceStale)" @click="transition">{{ target ? label(target) : 'Confirm' }}</UButton></div></template>
+      <template #footer><div class="flex w-full justify-end gap-2"><UButton color="neutral" variant="ghost" @click="closeConfirmation">Cancel</UButton><UButton :color="target && (target === 'suspended' || target === 'retired') ? 'error' : 'primary'" :loading="pending" :disabled="!canConfirm || ((target === 'pilot' || target === 'active') && evidenceStale)" @click="transition">{{ target ? label(target) : 'Confirm' }}</UButton></div></template>
     </UModal>
   </section>
 </template>

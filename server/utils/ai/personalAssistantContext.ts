@@ -169,9 +169,10 @@ function mapPreferences(row: PersonalConfigRow | null): PersonalAssistantContext
       'The personal assistant tool configuration is invalid.'
     )
   }
-  const disabledTools = (disabled ?? []).filter((value): value is string =>
+  const disabledValues: unknown[] = Array.isArray(disabled) ? disabled : []
+  const disabledTools = disabledValues.filter((value): value is string =>
     typeof value === 'string' && SAFE_KEY_PATTERN.test(value))
-  if (disabledTools.length !== (disabled ?? []).length || disabledTools.length > MAX_DISABLED_TOOLS) {
+  if (disabledTools.length !== disabledValues.length || disabledTools.length > MAX_DISABLED_TOOLS) {
     throw new PersonalAssistantAdmissionError(
       'assistant_personal_config_invalid',
       'The personal assistant tool configuration is invalid.'

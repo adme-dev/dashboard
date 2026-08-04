@@ -292,7 +292,7 @@ export async function getCompanyAssistantRolloutReadiness(
     if (pilot.department_id === pilot.release_department_id && pilot.is_current_department_member) eligiblePilotReleaseIds.add(pilot.release_id)
   }
 
-  const departmentCoverage = [...departmentById.values()].map(department => {
+  const departmentCoverage: CompanyAssistantRolloutReadiness['departmentCoverage'] = [...departmentById.values()].map(department => {
     const release = releaseByDepartment.get(department.id)
     return {
       departmentId: department.id,

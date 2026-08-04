@@ -51,6 +51,14 @@ function reset() {
   error.value = null
 }
 
+function openDialog() {
+  open.value = true
+}
+
+function closeDialog() {
+  open.value = false
+}
+
 function revoke(member: AiPilotMemberView) {
   mode.value = 'revoke'
   memberId.value = member.memberUserId
@@ -84,7 +92,7 @@ watch(open, value => { if (value) { reset(); load() } })
   <section class="space-y-3" :aria-labelledby="headingId">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div><h4 :id="headingId" class="text-sm font-semibold text-highlighted">Pilots</h4><p class="mt-0.5 text-xs text-muted">Pilot access is individual, department-bound, and auditable.</p></div>
-      <UButton size="sm" color="neutral" variant="soft" icon="i-lucide-users" @click="open = true">Manage pilot members</UButton>
+      <UButton size="sm" color="neutral" variant="soft" icon="i-lucide-users" @click="openDialog">Manage pilot members</UButton>
     </div>
 
     <UModal v-model:open="open" title="Pilot membership" description="Assign or revoke only active members of this department.">
@@ -113,7 +121,7 @@ watch(open, value => { if (value) { reset(); load() } })
           </template>
         </div>
       </template>
-      <template #footer><div class="flex w-full justify-between gap-2"><UButton color="neutral" variant="ghost" @click="open = false">Cancel</UButton><UButton :color="mode === 'revoke' ? 'error' : 'primary'" :loading="pending" :disabled="!canSubmit" @click="submit">{{ mode === 'revoke' ? 'Confirm revoke' : 'Add pilot member' }}</UButton></div></template>
+      <template #footer><div class="flex w-full justify-between gap-2"><UButton color="neutral" variant="ghost" @click="closeDialog">Cancel</UButton><UButton :color="mode === 'revoke' ? 'error' : 'primary'" :loading="pending" :disabled="!canSubmit" @click="submit">{{ mode === 'revoke' ? 'Confirm revoke' : 'Add pilot member' }}</UButton></div></template>
     </UModal>
   </section>
 </template>
