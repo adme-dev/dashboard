@@ -1,0 +1,226 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const mocks = vi.hoisted(() => ({
+  verifyAssertion: vi.fn(),
+  resolveAuthority: vi.fn(),
+  consumeClaim: vi.fn(),
+  getAuthority: vi.fn(),
+  queryOne: vi.fn(),
+  execute: vi.fn(),
+  projectReadOnly: vi.fn(),
+  projectGeneration: vi.fn(),
+  projectWrite: vi.fn(),
+  projectVideo: vi.fn(),
+  projectBanner: vi.fn(),
+  projectFinancial: vi.fn(),
+  executeReadOnly: vi.fn()
+}))
+
+vi.mock('h3', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('h3')>()
+  return {
+    ...actual,
+    defineEventHandler: <T>(handler: T) => handler,
+    getHeader: (event: any, name: string) => event.headers?.[name.toLowerCase()],
+    readBody: async (event: any) => event.body
+  }
+})
+
+vi.mock('~~/server/utils/ai/mcp/assertion', () => ({
+  verifyMcpAssertion: mocks.verifyAssertion
+}))
+vi.mock('~~/server/utils/godMode/authority', () => ({
+  resolveGodModeAuthority: mocks.resolveAuthority
+}))
+vi.mock('~~/server/utils/ai/mcp/requestClaim', () => ({
+  consumeMcpRequestClaim: mocks.consumeClaim,
+  getMcpRequestGodModeAuthority: mocks.getAuthority
+}))
+vi.mock('~~/server/utils/db', () => ({
+  queryOne: mocks.queryOne,
+  execute: mocks.execute
+}))
+vi.mock('~~/server/utils/ai/tools', () => ({ registry: [] }))
+vi.mock('~~/server/utils/ai/mcp/project', () => ({
+  projectReadOnlyTools: mocks.projectReadOnly,
+  executeReadOnlyTool: mocks.executeReadOnly
+}))
+vi.mock('~~/server/utils/ai/mcp/generationTools', () => ({
+  generationTools: [],
+  projectGenerationTools: mocks.projectGeneration,
+  executeGenerationTool: vi.fn()
+}))
+vi.mock('~~/server/utils/ai/mcp/generationRunner', () => ({ buildGenerationRunner: vi.fn() }))
+vi.mock('~~/server/utils/ai/mcp/videoTools', () => ({
+  videoReadTools: [],
+  projectVideoTools: mocks.projectVideo,
+  executeVideoTool: vi.fn(),
+  executeVideoPropose: vi.fn(),
+  resolveVideoProposeAction: vi.fn(() => null),
+  dispatchVideoConfirm: vi.fn()
+}))
+vi.mock('~~/server/utils/ai/mcp/videoRunner', () => ({
+  buildVideoReadRunner: vi.fn(),
+  buildVideoProposeDeps: vi.fn(),
+  buildVideoConfirmDeps: vi.fn(() => ({}))
+}))
+vi.mock('~~/server/utils/ai/mcp/bannerTools', () => ({
+  bannerReadTools: [],
+  projectBannerTools: mocks.projectBanner,
+  executeBannerTool: vi.fn(),
+  executeBannerPropose: vi.fn(),
+  resolveBannerProposeAction: vi.fn(() => null)
+}))
+vi.mock('~~/server/utils/ai/mcp/bannerRunner', () => ({
+  buildBannerReadRunner: vi.fn(),
+  buildBannerProposeDeps: vi.fn(),
+  buildBannerConfirmDeps: vi.fn(),
+  dispatchBannerConfirm: vi.fn()
+}))
+vi.mock('~~/server/utils/ai/mcp/rateLimit', () => ({
+  isGenerationRateLimited: vi.fn(() => false),
+  MCP_GEN_RATE_WINDOW_MIN: 10
+}))
+vi.mock('~~/server/utils/ai/mcp/writeTools', () => ({
+  projectWriteTools: mocks.projectWrite,
+  projectFinancialTools: mocks.projectFinancial,
+  resolveProposeAction: vi.fn((name: string) => name === 'propose_create_task' ? 'create_task' : null),
+  executeWriteConfirm: vi.fn(),
+  MCP_CONFIRM_TOOL: 'confirm_action',
+  isFinancialAction: vi.fn(() => false),
+  MCP_FINANCIAL_ACTIONS: [],
+  MCP_FINANCIAL_RICH_CONFIRM: []
+}))
+vi.mock('~~/server/utils/ai/executors', () => ({ getExecutor: vi.fn() }))
+vi.mock('~~/server/utils/ai/toolRegistry', () => ({ filterToolsForUser: vi.fn(() => []) }))
+
+const { default: exchangeHandler } = await import('../../../../server/api/internal/mcp/exchange.post')
+const { default: toolsHandler } = await import('../../../../server/api/internal/mcp/tools.post')
+const { default: callHandler } = await import('../../../../server/api/internal/mcp/call.post')
+
+const USER_ID = '11111111-1111-4111-8111-111111111111'
+const INTERNAL_SECRET = 'internal-service-secret'
+const CLAIM = 'signed-request-claim-redacted'
+
+function event(body: Record<string, unknown>, headers: Record<string, string> = {}) {
+  return { body, headers, context: {}, method: 'POST', path: '/api/internal/mcp/tools' } as any
+}
+
+describe('internal MCP exchange authority', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.MCP_SERVER_ENABLED = 'true'
+    process.env.MCP_INTERNAL_SECRET = INTERNAL_SECRET
+    process.env.MCP_HANDSHAKE_SECRET = 'handshake-secret'
+    mocks.verifyAssertion.mockResolvedValue({ uid: USER_ID, scope: ['mcp:read'] })
+    mocks.resolveAuthority.mockResolvedValue({ active: true, actorUserId: USER_ID })
+  })
+
+  it('resolves the OAuth assertion subject freshly and returns only that server-derived owner bit', async () => {
+    const requestEvent = event(
+      { assertion: 'oauth-assertion', godMode: false },
+      { 'x-mcp-secret': INTERNAL_SECRET }
+    )
+
+    await expect(exchangeHandler(requestEvent)).resolves.toEqual({
+      userId: USER_ID,
+      scope: ['mcp:read'],
+      godMode: true
+    })
+    expect(mocks.resolveAuthority).toHaveBeenCalledWith(requestEvent, USER_ID)
+  })
+})
+
+describe('signed internal MCP list/call endpoints', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.MCP_SERVER_ENABLED = 'true'
+    process.env.MCP_INTERNAL_SECRET = INTERNAL_SECRET
+    process.env.MCP_REQUIRE_WRITE_SCOPE = 'true'
+    process.env.MCP_WRITE_TOOLS_ENABLED = 'true'
+    mocks.consumeClaim.mockResolvedValue({
+      uid: USER_ID,
+      scope: ['mcp:read'],
+      godMode: false
+    })
+    mocks.queryOne.mockResolvedValue({ role: 'member' })
+    mocks.execute.mockResolvedValue(1)
+    mocks.projectReadOnly.mockReturnValue([{ name: 'get_tasks', description: 'read', inputSchema: {} }])
+    mocks.projectGeneration.mockReturnValue([])
+    mocks.projectWrite.mockReturnValue([{ name: 'propose_create_task', description: 'write', inputSchema: {} }])
+    mocks.projectVideo.mockReturnValue([])
+    mocks.projectBanner.mockReturnValue([])
+    mocks.projectFinancial.mockReturnValue([])
+    mocks.executeReadOnly.mockResolvedValue({ ok: true, data: { count: 1 } })
+  })
+
+  it('requires the signed claim in addition to the service secret before list projection', async () => {
+    const requestEvent = event(
+      { userId: USER_ID },
+      {
+        'x-mcp-secret': INTERNAL_SECRET,
+        'x-mcp-assertion': CLAIM,
+        'x-mcp-scope': 'mcp:read mcp:write'
+      }
+    )
+    const ordering: string[] = []
+    mocks.consumeClaim.mockImplementation(async () => {
+      ordering.push('claim-consumed')
+      return { uid: USER_ID, scope: ['mcp:read'], godMode: false }
+    })
+    mocks.queryOne.mockImplementation(async () => {
+      ordering.push('projected')
+      return { role: 'member' }
+    })
+
+    await expect(toolsHandler(requestEvent)).resolves.toEqual({
+      tools: [{ name: 'get_tasks', description: 'read', inputSchema: {} }]
+    })
+    expect(mocks.consumeClaim).toHaveBeenCalledWith(requestEvent, CLAIM, USER_ID)
+    expect(ordering).toEqual(['claim-consumed', 'projected'])
+    expect(String(mocks.queryOne.mock.calls[0]?.[0])).toContain('SELECT user_role AS role')
+  })
+
+  it('uses only signed scopes so an unsigned header cannot grant call write scope', async () => {
+    const requestEvent = event(
+      {
+        userId: USER_ID,
+        tool: 'propose_create_task',
+        args: { title: 'Do the thing' },
+        idempotencyKey: `mcp:${'a'.repeat(64)}`
+      },
+      {
+        'x-mcp-secret': INTERNAL_SECRET,
+        'x-mcp-assertion': CLAIM,
+        'x-mcp-scope': 'mcp:read mcp:write'
+      }
+    )
+    requestEvent.path = '/api/internal/mcp/call'
+
+    await expect(callHandler(requestEvent)).resolves.toMatchObject({
+      ok: false,
+      code: 'insufficient_scope'
+    })
+    expect(mocks.consumeClaim).toHaveBeenCalledWith(requestEvent, CLAIM, USER_ID)
+    expect(String(mocks.queryOne.mock.calls[0]?.[0])).toContain('SELECT user_role AS role')
+  })
+
+  it('does not verify or consume a claim when the independent service secret is absent', async () => {
+    await expect(toolsHandler(event(
+      { userId: USER_ID },
+      { 'x-mcp-assertion': CLAIM }
+    ))).rejects.toMatchObject({ statusCode: 401 })
+    expect(mocks.consumeClaim).not.toHaveBeenCalled()
+  })
+
+  it('rejects a non-protocol logical idempotency key before consuming the claim', async () => {
+    const requestEvent = event(
+      { userId: USER_ID, tool: 'get_tasks', args: {}, idempotencyKey: 'mcp:timestamp-or-jti' },
+      { 'x-mcp-secret': INTERNAL_SECRET, 'x-mcp-assertion': CLAIM }
+    )
+    requestEvent.path = '/api/internal/mcp/call'
+
+    await expect(callHandler(requestEvent)).rejects.toMatchObject({ statusCode: 400 })
+    expect(mocks.consumeClaim).not.toHaveBeenCalled()
+  })
+})

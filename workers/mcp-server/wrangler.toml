@@ -4,9 +4,9 @@ compatibility_date = "2025-12-01"
 compatibility_flags = ["nodejs_compat"]
 
 # MCP Server Phase 1 (mcp-server-phase1 spec §2). Standalone Worker — the DO-backed McpAgent can't live
-# in the Pages app. Exposes the agency's READ-only tools over MCP (Streamable HTTP + OAuth) to ChatGPT /
+# in the Pages app. Exposes the agency's governed tools over MCP (Streamable HTTP + OAuth) to ChatGPT /
 # Claude / Cursor. It is a THIN PROXY: it validates the user's OAuth token, then calls the Pages app's
-# /api/internal/mcp/{tools,call} endpoints (which run the real, audited, RBAC-filtered tools). No tool
+# /api/internal/mcp/{tools,call} endpoints (which run the real, audited, current-authority projection). No tool
 # logic or DB access lives here.
 #
 # DORMANT until: MCP_SERVER_ENABLED=true on the Pages project AND this Worker deployed AND the OAuth IdP
@@ -34,5 +34,6 @@ id = "25d997bb896048329250606a8c232f17"
 
 # Secrets (set via `wrangler secret put`, NOT vars):
 #   MCP_INTERNAL_SECRET   — must match the Pages project's MCP_INTERNAL_SECRET (Worker→app auth + exchange)
-#   MCP_HANDSHAKE_SECRET  — must match the Pages project's MCP_HANDSHAKE_SECRET (assertion HMAC)
+#   MCP_REQUEST_SIGNING_SECRET — must match the Pages secret (one-time exact-request claim HMAC)
+# Pages also requires MCP_HANDSHAKE_SECRET for its OAuth identity assertion; it is not a Worker secret.
 # Also set MCP_WORKER_ORIGIN on the PAGES project to this Worker's origin (open-redirect guard).

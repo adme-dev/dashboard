@@ -5,6 +5,7 @@
 // HARD-gated by MCP_SERVER_ENABLED.
 import { defineEventHandler, getHeader, readBody, createError } from 'h3'
 import { verifyMcpAssertion } from '~~/server/utils/ai/mcp/assertion'
+import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
 
 export default defineEventHandler(async (event) => {
   if (process.env.MCP_SERVER_ENABLED !== 'true') {
@@ -24,6 +25,8 @@ export default defineEventHandler(async (event) => {
   const verified = await verifyMcpAssertion(body?.assertion || '', hs)
   if (!verified) throw createError({ statusCode: 401, statusMessage: 'Invalid or expired assertion' })
 
-  // Return the granted scope so the Worker mints the OAuth token with it (and forwards it to the app).
-  return { userId: verified.uid, scope: verified.scope }
+  // The OAuth assertion carries identity + consented scope only. Resolve owner authority here from the
+  // verified subject; a client-provided role/God-mode bit is never accepted by this exchange.
+  const authority = await resolveGodModeAuthority(event, verified.uid)
+  return { userId: verified.uid, scope: verified.scope, godMode: authority.active }
 })

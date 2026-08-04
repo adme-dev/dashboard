@@ -1,25 +1,29 @@
 # mcp-server — deployment & go-live
 
-Standalone Worker that exposes XeroFlow's **read-only** tools over MCP to ChatGPT / Claude / Cursor.
+Standalone Worker that exposes XeroFlow's governed tools over MCP to ChatGPT / Claude / Cursor.
 Thin proxy: it does OAuth + MCP transport, then calls the Pages app's `/api/internal/mcp/{tools,call}`
-(the single, audited, RBAC-enforcing execution authority). Spec: `docs/specs/ai-copilot-mcp-server-phase1.md`.
+(the single authenticated, tenant-isolated, audited execution authority). Ordinary users retain scoped
+RBAC and proposal/confirmation governance; a freshly revalidated active owner can execute registered
+writes directly without a second confirmation.
 
 ## Status: SCAFFOLD — not yet live
 
-Both integration points are now scaffolded + verified-to-compile. What remains is **infra config + a live
-connection test** (no more app code).
+The OAuth transport and exact-request signing path are implemented and verified to compile. Production
+activation remains coordinated with the matching Pages owner projection/execution release, secret setup,
+and a live connection test.
 
 - **(A) OAuth IdP — SCAFFOLDED (2026-06-20), reuse-app-identity.** Wired `@cloudflare/workers-oauth-provider@0.8.1`:
   the Worker is the MCP-facing OAuth server (`/token`, `/register` auto); `/authorize` bounces the browser to
   the app's `/api/mcp/authorize` (existing login), which mints a short-lived **HMAC-signed assertion** of the
   userId; the Worker's `/callback` posts it to `/api/internal/mcp/exchange` to resolve `userId`, then
-  `completeAuthorization({ props:{userId}, scope:['mcp:read'] })`. Assertion sign/verify is single-sourced +
+  `completeAuthorization({ props:{userId,scope,godMode,oauthSessionId} })`. The owner bit comes only from
+  Pages after fresh database resolution; the OAuth client cannot supply it. Assertion sign/verify is single-sourced +
   unit-tested in `server/utils/ai/mcp/assertion.ts` (HMAC-SHA256, 120s TTL, fail-safe). Compiles clean
   against the real lib. **Remaining = config, not code:**
   - `wrangler kv namespace create OAUTH_KV` → put the id in `wrangler.toml`.
-  - Set matching secrets on BOTH sides: `MCP_INTERNAL_SECRET`, `MCP_HANDSHAKE_SECRET` (Pages project + this
-    Worker via `wrangler secret put`), and `MCP_WORKER_ORIGIN` (Pages project = this Worker's origin, the
-    open-redirect guard).
+  - Set matching `MCP_INTERNAL_SECRET` and `MCP_REQUEST_SIGNING_SECRET` secrets on BOTH the Pages project
+    and this Worker. Set `MCP_HANDSHAKE_SECRET` and `MCP_WORKER_ORIGIN` on Pages; the latter is this
+    Worker's origin and protects the OAuth redirect.
   - **Refinement (optional):** add an explicit consent screen on `/api/mcp/authorize` before minting; the
     scaffold mints on confirmed login. And `/sign-in?redirect=` round-trip assumes that login route exists.
 
@@ -35,8 +39,9 @@ connection test** (no more app code).
 ## Prerequisites
 
 1. **App side already shipped** (slices 1+2): `server/utils/ai/mcp/project.ts` + `/api/internal/mcp/*`.
-2. **On the Pages project**, set `MCP_SERVER_ENABLED=true` and `MCP_INTERNAL_SECRET=<random>` (prod env).
-   The endpoints 503 until the flag is on and 401 without the matching secret.
+2. **On the Pages project**, set `MCP_SERVER_ENABLED=true`, `MCP_INTERNAL_SECRET`,
+   `MCP_REQUEST_SIGNING_SECRET`, and `MCP_HANDSHAKE_SECRET` in Production environment secrets.
+   Internal tools/call requests require both the service secret and a signed one-time request claim.
 
 ## Deploy
 
@@ -44,29 +49,41 @@ connection test** (no more app code).
 # Deploy from a copy OUTSIDE the repo tree — the root .wrangler/deploy/config.json redirect breaks
 # in-place sub-worker deploys (same gotcha as observe-cron).
 REPO=/path/to/dashboard
-rm -rf /tmp/mcp-server-deploy && cp -R "$REPO/workers/mcp-server" /tmp/mcp-server-deploy
-cd /tmp/mcp-server-deploy && npm install
-"$REPO/node_modules/.bin/wrangler" deploy
+MCP_DEPLOY_DIR=$(mktemp -d /private/tmp/xeroflow-mcp-deploy.XXXXXX)
+mkdir -p "$MCP_DEPLOY_DIR/workers"
+cp -R "$REPO/workers/mcp-server" "$MCP_DEPLOY_DIR/workers/mcp-server"
+cp -R "$REPO/shared" "$MCP_DEPLOY_DIR/shared"
+npm --prefix "$MCP_DEPLOY_DIR/workers/mcp-server" install --legacy-peer-deps
+"$MCP_DEPLOY_DIR/workers/mcp-server/node_modules/.bin/wrangler" deploy \
+  --cwd "$MCP_DEPLOY_DIR/workers/mcp-server"
 
-# Secret must match the Pages project's MCP_INTERNAL_SECRET:
-printf '%s' "$MCP_INTERNAL_SECRET" | "$REPO/node_modules/.bin/wrangler" secret put MCP_INTERNAL_SECRET
-# + any OAuth signing secrets per (A).
+# Prompts for values; both must match the corresponding Pages secrets.
+"$MCP_DEPLOY_DIR/workers/mcp-server/node_modules/.bin/wrangler" secret put MCP_INTERNAL_SECRET \
+  --cwd "$MCP_DEPLOY_DIR/workers/mcp-server"
+"$MCP_DEPLOY_DIR/workers/mcp-server/node_modules/.bin/wrangler" secret put MCP_REQUEST_SIGNING_SECRET \
+  --cwd "$MCP_DEPLOY_DIR/workers/mcp-server"
 ```
+
+On Pages, set/rotate the same two names in Workers & Pages → `agency-dashboard` → Settings →
+Environment Variables → Production. Never place a secret value in `wrangler.toml`, a commit, or logs.
 
 ## Verify (pilot = Claude Pro — lowest friction)
 
 1. In Claude → Settings → Connectors → add custom connector → `https://mcp-server.<acct>.workers.dev/mcp`.
 2. Complete the OAuth consent (logs in as a XeroFlow user).
-3. Confirm Claude lists **only read tools**, and **only the ones that user's role allows** (a lower-role
-   user should see fewer). Run one (e.g. a client overview) and confirm data returns.
-4. Confirm a write tool is **absent** and cannot be invoked (Phase-1 invariant; also enforced server-side).
-5. Check `ai_action_audit` has a row per call (`payload.source = 'mcp'`).
+3. For an ordinary user, confirm the catalog respects role, enabled suites, and consented scopes. Confirm
+   writes continue through proposal plus `confirm_action` where that suite requires it.
+4. For an active owner, confirm the server revalidates current owner status, returns registered tools, and
+   executes a representative write directly without `confirm_action`. Downgrade the test owner and confirm
+   the next list/call is governed or rejected.
+5. Check the MCP and God-mode audit records. They must contain bounded metadata only—never the service
+   secret, signed claim, request body, or OAuth assertion.
 
 ChatGPT works the same but needs a **Team/Business/Enterprise** workspace with Developer Mode enabled by an
 admin — **not** consumer Plus/Pro. Cursor: Settings → Tools & Integrations → add the URL.
 
-## Out of scope (Phase 2)
+## Request-authority rotation
 
-Writes over MCP (submit brief / create project / **sign off**) via MCP **elicitation** mapped to the
-existing `riskTier`, with a mandatory server-enforced second confirm for `rich_confirm` (e-sign). Separate
-spec + sign-off. The app guard (`executeReadOnlyTool`) hard-blocks writes until then.
+Rotate `MCP_REQUEST_SIGNING_SECRET` on Worker and Pages together. During a mismatch, tools/list and
+tools/call fail closed; `MCP_INTERNAL_SECRET` remains a separate required control. Existing OAuth sessions
+must reconnect if their token predates the persisted `oauthSessionId` property.

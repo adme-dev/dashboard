@@ -1,9 +1,8 @@
 // server/api/internal/mcp/call.post.ts
-// MCP Server Phase 1 (mcp-server-phase1 spec §2,§5) — executes ONE read tool for the authenticated user.
-// The Worker validated the OAuth token and asserts `userId`; we re-derive ROLE from the DB and run the
-// tool through executeReadOnlyTool, which HARD-blocks any write (Phase-1 invariant) and re-checks the
-// RBAC ceiling. Every call is written to ai_action_audit (security trail for the external surface);
-// payload stores arg KEYS only, never values, to avoid persisting sensitive data.
+// Executes one MCP tool for the authenticated user. The Worker validates OAuth; Pages independently
+// requires the service secret plus an exact one-time request claim, re-derives current role/authority,
+// and routes through the existing governed tool suites. Every ordinary call is written to
+// ai_action_audit with arg keys only, never values.
 //
 // Auth: x-mcp-secret == MCP_INTERNAL_SECRET. HARD-gated by MCP_SERVER_ENABLED.
 import { defineEventHandler, getHeader, readBody, createError } from 'h3'
@@ -28,7 +27,8 @@ import {
 } from '~~/server/utils/ai/mcp/writeTools'
 import { getExecutor } from '~~/server/utils/ai/executors'
 import { filterToolsForUser, type AiTool } from '~~/server/utils/ai/toolRegistry'
-import { isWriteScopeToolName, parseScopeHeader, hasWriteScope } from '~~/server/utils/ai/mcp/scope'
+import { isWriteScopeToolName, hasWriteScope } from '~~/server/utils/ai/mcp/scope'
+import { consumeMcpRequestClaim } from '~~/server/utils/ai/mcp/requestClaim'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 
 export default defineEventHandler(async (event) => {
@@ -43,13 +43,27 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
-  const body = await readBody<{ userId?: string, tool?: string, args?: unknown }>(event).catch(() => null)
+  const body = await readBody<{ userId?: string, tool?: string, args?: unknown, idempotencyKey?: string }>(event).catch(() => null)
   const userId = body?.userId
   const toolName = body?.tool
-  if (!userId || !toolName) throw createError({ statusCode: 400, statusMessage: 'userId and tool required' })
+  const idempotencyKey = body?.idempotencyKey
+  if (!userId || !toolName || !idempotencyKey) {
+    throw createError({ statusCode: 400, statusMessage: 'userId, tool and idempotencyKey required' })
+  }
+  if (!/^mcp:[0-9a-f]{64}$/.test(idempotencyKey)) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid MCP logical idempotency key' })
+  }
+
+  // Consume the one-time exact-request claim before role projection, rate checks, proposal lookup, or
+  // execution. The stable logical idempotency key is separately bound inside the signed body.
+  const claim = await consumeMcpRequestClaim(
+    event,
+    getHeader(event, 'x-mcp-assertion') ?? '',
+    userId
+  )
 
   const user = await queryOne<{ role: string }>(
-    `SELECT role FROM team_members WHERE id = $1 AND is_active = TRUE`,
+    `SELECT user_role AS role FROM team_members WHERE id = $1 AND is_active = TRUE`,
     [userId]
   )
   if (!user) throw createError({ statusCode: 403, statusMessage: 'Unknown or inactive user' })
@@ -103,12 +117,12 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // CRITICAL-B: OAuth write-scope enforcement. The Worker forwards the session's granted scope. When
+  // CRITICAL-B: OAuth write-scope enforcement. Scope comes only from the verified signed claim. When
   // MCP_REQUIRE_WRITE_SCOPE is on, any WRITE-class tool (propose_*/confirm_action/generation/banner/
   // financial) requires mcp:write — so a connector consented as read-only cannot drive writes/money-movers
   // even if the user's ROLE would allow it. Flag OFF (default) → no scope check (non-breaking rollout).
   const requireWriteScope = process.env.MCP_REQUIRE_WRITE_SCOPE === 'true'
-  const grantedScopes = parseScopeHeader(getHeader(event, 'x-mcp-scope'))
+  const grantedScopes = new Set(claim.scope)
 
   let outcome: { ok: boolean, data?: unknown, error?: string, code?: string }
   if (requireWriteScope && isWriteScopeToolName(toolName) && !hasWriteScope(grantedScopes)) {

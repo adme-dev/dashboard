@@ -14,6 +14,16 @@ describe('MCP assertion sign/verify', () => {
     expect(await verifyMcpAssertion(a, SECRET)).toEqual({ uid: 'user-123', scope: ['mcp:read', 'mcp:write'] })
   })
 
+  it('does not accept or carry a client-supplied God-mode bit', async () => {
+    const a = await signMcpAssertion('user-123', SECRET, {
+      scope: ['mcp:read'],
+      godMode: true
+    } as any)
+
+    expect(await verifyMcpAssertion(a, SECRET)).toEqual({ uid: 'user-123', scope: ['mcp:read'] })
+    expect(Buffer.from(a.split('.')[0], 'base64url').toString()).not.toContain('godMode')
+  })
+
   it('scope is integrity-protected (tampering the scp breaks the signature)', async () => {
     const a = await signMcpAssertion('user-123', SECRET, { scope: ['mcp:read'] })
     const [, sig] = a.split('.')

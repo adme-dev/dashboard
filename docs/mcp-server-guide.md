@@ -16,7 +16,7 @@ MCP host (Claude/ChatGPT/Cursor)
       │  MCP over HTTP + OAuth
       ▼
 mcp-server.adme-dev.workers.dev        ← standalone Cloudflare Worker (OAuth + MCP transport only)
-      │  x-mcp-secret + asserted userId
+      │  service secret + signed one-time exact-request claim
       ▼
 agency-dashboard (Pages app)
    /api/internal/mcp/{tools,call}       ← the single, audited, RBAC-enforcing execution authority
@@ -24,8 +24,10 @@ agency-dashboard (Pages app)
 
 The Worker is a **thin proxy**: it does OAuth and MCP framing, then calls the app's internal endpoints.
 **All authorization, role-scoping, auditing, and execution happen in the app** — never in the Worker.
-Every call is re-checked against the user's DB role (the asserted role is never trusted) and written to
-`ai_action_audit` (arg **keys** only, never values).
+Every call resolves current database authority (an asserted role is never trusted). The signed claim binds
+the OAuth user, scopes, exchange owner evidence, path, method, tool, body digest, expiry, and unique nonce.
+Pages validates every binding and current authority before atomically consuming the nonce and beginning
+projection/execution. Claims, service secrets, and raw payloads are never audit content.
 
 ## 2. Connecting a host
 
@@ -33,8 +35,8 @@ Every call is re-checked against the user's DB role (the asserted role is never 
 2. The host opens an **OAuth** flow → you're bounced to the XeroFlow login (`/api/mcp/authorize`).
 3. On confirmed login the app mints a short-lived **HMAC assertion** of your `userId`; the Worker
    exchanges it for your identity and completes authorization.
-4. The host calls `tools/list` → it receives exactly the tools **your role** is allowed (see §4), filtered
-   by which capability flags are on.
+4. Every `tools/list` is fetched fresh from Pages. Ordinary users receive the role/scope/flag-governed
+   catalog; active owners receive current owner behavior only after a fresh database check.
 
 **In-app view of your tools:** `/agency/ai/connectors` (or `GET /api/agency/ai/mcp/my-tools`) shows the
 tools your account can currently call over MCP.
@@ -43,7 +45,8 @@ tools your account can currently call over MCP.
 
 Each group is gated independently by an env var in `wrangler.toml [vars]` (NOT the CF dashboard — the
 Direct-Upload deploy bakes `[vars]` and **replaces** dashboard plaintext vars; secrets survive). Activating
-a group is **uncomment + redeploy**, and is always an **operator decision**.
+a group is **uncomment + redeploy**, and is always an **operator decision** for ordinary users. Active
+owner projection bypasses suite and read/write-scope governance only after current owner revalidation.
 
 | Group | Flag | Default | What it adds |
 |---|---|---|---|
@@ -51,11 +54,12 @@ a group is **uncomment + redeploy**, and is always an **operator decision**.
 | **Phase 1** reads | (always on when server on) | **on** | Read-only, role-scoped business data |
 | **2a** generation | `MCP_GEN_TOOLS_ENABLED` | **on** | Owned voiceover/music generation |
 | **2c** writes | `MCP_WRITE_TOOLS_ENABLED` | off | Non-financial propose→confirm writes |
-| **2b** video reads | `MCP_VIDEO_TOOLS_ENABLED` | off | Video discovery + status (no spend) |
+| **2b** video reads | `MCP_VIDEO_TOOLS_ENABLED` | **on** | Video discovery + status (no spend) |
 | **2b** video gen | `MCP_VIDEO_GEN_ENABLED` | off | `propose_video_generation` + `create_video_project` |
 
-Secrets (set via `wrangler pages secret put … --project-name agency-dashboard`, they survive deploys):
-`MCP_INTERNAL_SECRET`, `MCP_HANDSHAKE_SECRET`.
+Secrets: Pages requires `MCP_INTERNAL_SECRET`, `MCP_REQUEST_SIGNING_SECRET`, and
+`MCP_HANDSHAKE_SECRET`; the standalone Worker requires matching `MCP_INTERNAL_SECRET` and
+`MCP_REQUEST_SIGNING_SECRET`. Configure them through Cloudflare secret controls, never `[vars]` or source.
 
 ## 4. Tool catalog
 
@@ -72,12 +76,17 @@ Reads can never mutate — the read guard hard-blocks any `mutates` tool.
 - `start_music_generation` — async; returns a `jobId` (poll `get_generation_status`).
 - `get_generation_status(jobId)` — poll an async generation job.
 
-### 4.3 2c — writes (`MCP_WRITE_TOOLS_ENABLED`) · two-step propose→confirm · non-financial only
+### 4.3 2c — ordinary-user writes (`MCP_WRITE_TOOLS_ENABLED`) · two-step propose→confirm
 `propose_create_task`, `propose_assign_task` (`assign_task`), `propose_status_change`,
 `propose_brief_convert`, `propose_opportunity`, `log_crm_activity`, `propose_proof_status`,
 `propose_team_memory`, `propose_knowledge_article`, `propose_schedule_post` → each returns a `proposalId`;
 **`confirm_action(proposalId)`** executes it. Financial writes (budget/quote/EOM/expense) are **excluded**
 (held for decision D4).
+
+For ordinary users, this confirmation behavior is unchanged. For a freshly revalidated active owner,
+registered write tools execute through the direct audited owner coordinator and do not require a second
+`confirm_action` or rich acknowledgement. Authentication, tenant/client validation, schemas, provider
+availability, durable idempotency, and immutable attempt/outcome audit remain mandatory.
 
 ### 4.4 2b — video suite (`MCP_VIDEO_TOOLS_ENABLED` + `MCP_VIDEO_GEN_ENABLED`, CREATIVE role)
 **Reads (gated `MCP_VIDEO_TOOLS_ENABLED`, no spend):**
@@ -99,7 +108,7 @@ Reads can never mutate — the read guard hard-blocks any `mutates` tool.
 > Video spend is its **own** confirm action under its **own** flags — it is *not* part of the 2c financial
 > set and is never reachable via `MCP_WRITE_TOOLS_ENABLED`.
 
-## 5. Using it — a video generation walk-through (host side)
+## 5. Using it — an ordinary-user video generation walk-through
 
 ```
 1. list_av_projects                    → pick a projectId (or call create_video_project → confirm_action)
@@ -112,18 +121,28 @@ Reads can never mutate — the read guard hard-blocks any `mutates` tool.
 6. get_video_generation_status { jobId } (poll)      → status → assetUrl when 'succeeded'
 ```
 
-The propose→confirm split means **a human approves the spend** before any budget is reserved, and the cost
-+ compliance verdict are shown up front.
+For an ordinary user, the propose→confirm split means **a human approves the spend** before any budget is
+reserved, and the cost + compliance verdict are shown up front. A current active owner invokes the
+registered direct tool instead; the same cost, compliance, cap, tenant, idempotency, and audit boundaries
+still apply without a second confirmation call.
 
 ## 6. Safety model
 
-- **RBAC re-derived from the DB** on every call; the asserted role is never trusted.
-- **Two-step HITL** for every write/spend (propose persists a single-use pending row; confirm atomically
-  claims it — a double-confirm can't double-execute or double-bill).
+- **Two independent Worker→Pages controls**: the internal service secret and a short-lived HMAC claim.
+- **Exact one-time binding**: user, scopes, owner evidence, audience, method, path, tool, canonical body
+  digest, expiry, and cryptographically random JTI; the JTI is consumed atomically before work begins.
+- **Fresh authority**: current active-owner database state outranks the signed exchange evidence. A
+  downgrade rejects a claimed-owner request; a newly active owner receives current owner behavior.
+- **Stable operation idempotency**: OAuth session identity plus the MCP SDK JSON-RPC request ID; never JTI.
+- **Ordinary users retain HITL**: proposal/confirmation and scope/RBAC/suite controls remain unchanged.
+- **Owners execute directly**: registered writes bypass application governance, not authentication,
+  tenant/client boundaries, input validation, durable execution coordination, or immutable auditing.
 - **Per-actor rate limit** (20 / 10 min) on generation + video propose/create; cheap polls exempt.
 - **Compliance + hard per-tenant budget cap** enforced by the existing engine on every video generation.
 - **Audit**: every call → `ai_action_audit` with `source='mcp'`, arg **keys** only.
-- **Financial exclusion**: Xero-financial writes are excluded everywhere pending decision D4.
+- **Ordinary financial governance**: financial writes retain their dedicated flag, scope, acknowledgement,
+  and confirmation controls. A current owner reaches only registered financial executors through the
+  direct audited coordinator; missing providers or target authorization still fail.
 
 ## 7. Activation (operator) & live-verify
 
@@ -134,6 +153,8 @@ clean worktree (`pnpm deploy:production`).
 baked into `[vars]` and a tenant with video-gen enabled — otherwise the engine 404s.
 
 **Live-verify checklists:**
+- *Owner:* call one registered write directly, confirm there is no `confirm_action`, verify one durable
+  execution identity plus immutable attempt/outcome, then downgrade the account and retry to prove denial.
 - *2a:* generate a voiceover + a music track from the Claude connector → confirm the R2 asset + an
   `ai_action_audit` row.
 - *2c:* `propose_create_task` → `confirm_action` → confirm a single execution + audit row (`source='mcp'`).
@@ -146,6 +167,8 @@ baked into `[vars]` and a tenant with video-gen enabled — otherwise the engine
 |---|---|
 | `503 MCP server disabled` | `MCP_SERVER_ENABLED` is off |
 | `401 Unauthorized` on internal calls | `x-mcp-secret` ≠ `MCP_INTERNAL_SECRET` (secret drifted between Worker + Pages) |
+| `401 Invalid or expired MCP request assertion` | `MCP_REQUEST_SIGNING_SECRET` drifted, claim expired, or claim malformed; verify both deployment-side secret names without printing values |
+| `409 MCP request assertion already consumed` | A one-time claim was replayed; the Worker must mint a new claim while retaining the same logical idempotency key for a transport retry |
 | `{ code: 'disabled', error: 'Write tools are not enabled over MCP.' }` | `MCP_WRITE_TOOLS_ENABLED` off |
 | `{ code: 'disabled', error: 'Video generation is not enabled over MCP.' }` | `MCP_VIDEO_GEN_ENABLED` off |
 | Video tools missing from `tools/list` | `MCP_VIDEO_TOOLS_ENABLED` off, or your role lacks CREATIVE |

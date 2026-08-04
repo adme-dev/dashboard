@@ -1,9 +1,7 @@
 // server/api/internal/mcp/tools.post.ts
-// MCP Server Phase 1 (mcp-server-phase1 spec §2,§4) — the manifest endpoint the MCP Worker calls on
-// session start to learn which READ tools the authenticated user may call. The Worker has already
-// validated the user's OAuth token and asserts their `userId`; we re-derive the ROLE from the DB (never
-// trust an asserted role) and project the read-only, RBAC-filtered toolset. Staff-first: serves the
-// staff `registry`; client/portal (`portalRegistry`, different tool type) is a later phase.
+// MCP manifest endpoint. The Worker calls this for every tools/list request after validating OAuth;
+// Pages then requires an exact one-time claim, revalidates current authority, and projects the scoped
+// toolset. Staff-first: serves the staff registry; client/portal is a separate surface.
 //
 // Auth: x-mcp-secret must match MCP_INTERNAL_SECRET (the Worker holds the same secret). HARD-gated by
 // MCP_SERVER_ENABLED — 503 until the operator turns the expose layer on.
@@ -15,7 +13,8 @@ import { projectGenerationTools } from '~~/server/utils/ai/mcp/generationTools'
 import { projectWriteTools, projectFinancialTools } from '~~/server/utils/ai/mcp/writeTools'
 import { projectVideoTools } from '~~/server/utils/ai/mcp/videoTools'
 import { projectBannerTools } from '~~/server/utils/ai/mcp/bannerTools'
-import { isWriteScopeToolName, parseScopeHeader, hasWriteScope } from '~~/server/utils/ai/mcp/scope'
+import { isWriteScopeToolName, hasWriteScope } from '~~/server/utils/ai/mcp/scope'
+import { consumeMcpRequestClaim } from '~~/server/utils/ai/mcp/requestClaim'
 import type { AiTool } from '~~/server/utils/ai/toolRegistry'
 
 export default defineEventHandler(async (event) => {
@@ -33,8 +32,16 @@ export default defineEventHandler(async (event) => {
   const userId = body?.userId
   if (!userId) throw createError({ statusCode: 400, statusMessage: 'userId required' })
 
+  // The service secret authenticates the Worker; this unique signed claim authenticates and binds this
+  // exact Worker request. It is consumed before any user projection/database-backed tool discovery.
+  const claim = await consumeMcpRequestClaim(
+    event,
+    getHeader(event, 'x-mcp-assertion') ?? '',
+    userId
+  )
+
   const user = await queryOne<{ role: string }>(
-    `SELECT role FROM team_members WHERE id = $1 AND is_active = TRUE`,
+    `SELECT user_role AS role FROM team_members WHERE id = $1 AND is_active = TRUE`,
     [userId]
   )
   if (!user) throw createError({ statusCode: 403, statusMessage: 'Unknown or inactive user' })
@@ -61,7 +68,7 @@ export default defineEventHandler(async (event) => {
   // CRITICAL-B: when write-scope enforcement is on, a read-only-consented connector (no mcp:write) must
   // not even SEE write-class tools in its manifest. Flag OFF (default) → manifest unchanged (non-breaking).
   const requireWriteScope = process.env.MCP_REQUIRE_WRITE_SCOPE === 'true'
-  const grantedScopes = parseScopeHeader(getHeader(event, 'x-mcp-scope'))
+  const grantedScopes = new Set(claim.scope)
   const scopedTools = requireWriteScope && !hasWriteScope(grantedScopes)
     ? tools.filter(t => !isWriteScopeToolName(t.name))
     : tools

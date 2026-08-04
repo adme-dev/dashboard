@@ -1,14 +1,13 @@
 // workers/mcp-server/src/index.ts
 //
-// MCP Server Phase 1 — SCAFFOLD (mcp-server-phase1 spec §2-§5).
+// XeroFlow standalone MCP transport.
 //
-// ⚠️ Deploy-verified scaffold, not a unit-tested module. The security-critical logic (RBAC projection +
-// read-only/write-block guard) lives and is fully tested in the Pages app at server/utils/ai/mcp/project.ts
-// and is reached over HTTP via /api/internal/mcp/{tools,call}. This Worker is the thin transport: MCP
-// protocol + (TODO A) OAuth + proxy. No tool logic or DB here.
+// Security-critical projection/execution remains in Pages and is reached over
+// /api/internal/mcp/{tools,call}. This Worker is the thin OAuth + MCP transport and signs every exact
+// list/call request with an independent short-lived one-time claim. No tool logic or DB lives here.
 //
 // Architecture (thin proxy):
-//   external host ──OAuth──▶ this Worker ──x-mcp-secret + {userId}──▶ Pages /api/internal/mcp/*
+//   external host ──OAuth──▶ Worker ──service secret + signed exact-request claim──▶ Pages
 //
 // API NOTE (resolved TODO B, 2026-06-20): McpAgent mandates the high-level McpServer, whose registerTool
 // takes a Zod shape — but the app already emits JSON-Schema inputSchema (z.toJSONSchema). So we serve
@@ -16,7 +15,6 @@
 // JSON Schema through unchanged — exactly what the MCP wire protocol expects of a proxy. Pinned to
 // agents@0.16.2 / @modelcontextprotocol/sdk@1.29.0.
 //
-// Remaining: TODO (A) OAuth IdP wiring (see DEPLOYMENT.md) — until done, do NOT deploy publicly.
 // Verify-on-deploy: that registerCapabilities()+setRequestHandler() in init() take effect before the
 // McpAgent connects its transport (standard McpAgent lifecycle; confirm on first Claude connection).
 
@@ -24,10 +22,18 @@ import { McpAgent } from 'agents/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import OAuthProvider, { type OAuthHelpers } from '@cloudflare/workers-oauth-provider'
+import {
+  MCP_REQUEST_AUDIENCE,
+  deriveMcpLogicalIdempotencyKey,
+  digestMcpRequestBody,
+  signMcpRequestClaim,
+  type McpRequestPath
+} from '../../../shared/utils/mcpRequestClaim'
 
 interface Env {
   APP_BASE_URL: string
   MCP_INTERNAL_SECRET: string
+  MCP_REQUEST_SIGNING_SECRET: string
   MCP_OBJECT: DurableObjectNamespace
   OAUTH_KV: KVNamespace
   OAUTH_PROVIDER: OAuthHelpers
@@ -40,20 +46,42 @@ const b64urlDecode = (s: string) => atob(s.replace(/-/g, '+').replace(/_/g, '/')
 // Per-session props the OAuth layer puts on the token. userId is the validated XeroFlow user; scope is
 // the granted OAuth scope (['mcp:read'] or ['mcp:read','mcp:write']) — forwarded to the app, which
 // enforces mcp:write for write-class tools when MCP_REQUIRE_WRITE_SCOPE is on.
-type Props = { userId: string, scope: string[] }
+type Props = {
+  userId: string
+  scope: string[]
+  godMode: boolean
+  /** Minted once per OAuth grant and persisted in token props; combines with SDK requestId for retries. */
+  oauthSessionId: string
+}
 
 // Matches the MCP `Tool` shape — the app's manifest endpoint returns this directly.
 type ToolManifest = { name: string, description: string, inputSchema: Record<string, unknown> }
 
-/** Call the Pages app's internal MCP endpoints (the single, audited, RBAC-enforcing execution authority).
- *  Forwards the session's granted OAuth scope as x-mcp-scope so the app can enforce write scope. */
-async function appFetch(env: Env, path: string, body: unknown, scope: string[] = []): Promise<Response> {
+/** Call Pages with both independent service authentication and a one-time exact-request claim. */
+async function appFetch(
+  env: Env,
+  path: McpRequestPath,
+  body: unknown,
+  props: Props,
+  toolName?: string
+): Promise<Response> {
+  if (!env.MCP_REQUEST_SIGNING_SECRET) throw new Error('MCP request signing is not configured')
+  const assertion = await signMcpRequestClaim({
+    uid: props.userId,
+    scope: props.scope,
+    godMode: props.godMode,
+    audience: MCP_REQUEST_AUDIENCE,
+    method: 'POST',
+    path,
+    ...(path === '/api/internal/mcp/call' ? { toolName } : {}),
+    bodyDigest: await digestMcpRequestBody(body)
+  }, env.MCP_REQUEST_SIGNING_SECRET)
   return fetch(`${env.APP_BASE_URL}${path}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'x-mcp-secret': env.MCP_INTERNAL_SECRET,
-      'x-mcp-scope': scope.join(' '),
+      'x-mcp-assertion': assertion,
     },
     body: JSON.stringify(body),
   })
@@ -66,28 +94,42 @@ export class XeroFlowMcpAgent extends McpAgent<Env, unknown, Props> {
     // props are populated by the OAuth layer; no validated user → expose nothing.
     const userId = this.props?.userId
     if (!userId) throw new Error('unauthenticated: no userId in session props')
-    // Granted OAuth scope for this session — forwarded to the app so it can filter the manifest + gate
-    // execution by mcp:write (when MCP_REQUIRE_WRITE_SCOPE is on). Fail-safe to read-only.
-    const scope = this.props?.scope ?? ['mcp:read']
+    const props: Props = {
+      userId,
+      scope: this.props?.scope ?? ['mcp:read'],
+      godMode: this.props?.godMode === true,
+      oauthSessionId: this.props?.oauthSessionId ?? ''
+    }
+    if (!props.oauthSessionId) throw new Error('unauthenticated: reconnect to establish an OAuth session identity')
 
-    // 1. Fetch the toolset this user may call (RBAC + scope enforced server-side in the app).
-    const res = await appFetch(this.env, '/api/internal/mcp/tools', { userId }, scope)
-    if (!res.ok) throw new Error(`manifest fetch failed: ${res.status}`)
-    const { tools } = await res.json() as { tools: ToolManifest[] }
-
-    // 2. Serve tools/list + tools/call on the low-level server so our JSON-Schema inputSchema passes
+    // Serve tools/list + tools/call on the low-level server so our JSON-Schema inputSchema passes
     //    through verbatim (high-level registerTool would require Zod). Pure proxy — no schema parsing here.
     const low = this.server.server
     low.registerCapabilities({ tools: {} })
 
-    low.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }))
+    low.setRequestHandler(ListToolsRequestSchema, async () => {
+      // A fresh Pages fetch means a fresh claim and fresh database authority check for every list.
+      const res = await appFetch(this.env, '/api/internal/mcp/tools', { userId }, props)
+      if (!res.ok) throw new Error(`manifest fetch failed: ${res.status}`)
+      const { tools } = await res.json() as { tools: ToolManifest[] }
+      return { tools }
+    })
 
-    low.setRequestHandler(CallToolRequestSchema, async (req) => {
-      const callRes = await appFetch(this.env, '/api/internal/mcp/call', {
+    low.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
+      const idempotencyKey = await deriveMcpLogicalIdempotencyKey(props.oauthSessionId, extra.requestId)
+      const callBody = {
         userId,
         tool: req.params.name,
         args: req.params.arguments ?? {},
-      }, scope)
+        idempotencyKey
+      }
+      const callRes = await appFetch(
+        this.env,
+        '/api/internal/mcp/call',
+        callBody,
+        props,
+        req.params.name
+      )
       const outcome = await callRes.json() as { ok: boolean, data?: unknown, error?: string }
       if (!outcome.ok) {
         return { content: [{ type: 'text' as const, text: `Error: ${outcome.error ?? 'tool failed'}` }], isError: true }
@@ -122,7 +164,11 @@ const authHandler = {
         body: JSON.stringify({ assertion }),
       })
       if (!res.ok) return new Response('Authentication failed', { status: 401 })
-      const { userId, scope } = await res.json() as { userId: string, scope?: string[] }
+      const { userId, scope, godMode } = await res.json() as {
+        userId: string
+        scope?: string[]
+        godMode?: boolean
+      }
       // Mint the token with exactly the scope the user consented to (read-only, or read + write).
       const granted = Array.isArray(scope) && scope.length ? scope : ['mcp:read']
 
@@ -132,7 +178,12 @@ const authHandler = {
         userId,
         scope: granted,
         metadata: {},
-        props: { userId, scope: granted },
+        props: {
+          userId,
+          scope: granted,
+          godMode: godMode === true,
+          oauthSessionId: crypto.randomUUID()
+        },
       })
       return Response.redirect(redirectTo, 302)
     }
