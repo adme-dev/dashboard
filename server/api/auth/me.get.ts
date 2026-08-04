@@ -1,5 +1,6 @@
 import { validateSession, TransientAuthError } from '../../utils/auth'
 import { resolveUserPermissions } from '../../utils/roleResolver'
+import { resolveGodModeAuthority } from '../../utils/godMode/authority'
 import { getHeader } from 'h3'
 
 export default defineEventHandler(async (event) => {
@@ -33,6 +34,7 @@ export default defineEventHandler(async (event) => {
 
     // Resolve permission groups
     const resolved = await resolveUserPermissions(event, user.id, user.role, user.custom_role_id)
+    const godModeAuthority = await resolveGodModeAuthority(event, user.id)
 
     return {
       success: true,
@@ -45,7 +47,11 @@ export default defineEventHandler(async (event) => {
         is_active: user.is_active,
         custom_role_id: user.custom_role_id || null,
         permissionGroups: resolved.groups,
-        isCustomReadOnly: resolved.isReadOnly && !['viewer', 'guest'].includes(user.role)
+        isCustomReadOnly: resolved.isReadOnly && !['viewer', 'guest'].includes(user.role),
+        godMode: {
+          active: godModeAuthority.active,
+          label: 'God mode active'
+        }
       }
     }
   } catch (error: any) {

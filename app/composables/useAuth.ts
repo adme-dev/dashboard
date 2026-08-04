@@ -32,6 +32,7 @@ export const useAuth = () => {
   }
   
   const isOwner = computed(() => user.value?.role === 'owner')
+  const isGodMode = computed(() => user.value?.godMode?.active === true)
   const isAdmin = computed(() => hasRole(PERMISSIONS.ADMIN))
   const isManager = computed(() => hasRole(PERMISSIONS.MANAGEMENT))
   const isLead = computed(() => hasRole(['owner', 'admin', 'lead']))
@@ -158,6 +159,7 @@ export const useAuth = () => {
     loading: readonly(isLoading),
     userRole,
     isOwner,
+    isGodMode,
     isAdmin,
     isManager,
     isLead,

@@ -16,6 +16,10 @@ export interface User {
   custom_role_id?: string | null
   permissionGroups?: string[]
   isCustomReadOnly?: boolean
+  godMode?: {
+    active: boolean
+    label: 'God mode active'
+  }
   timezone?: string
   locale?: string
   emailVerifiedAt?: string | null
