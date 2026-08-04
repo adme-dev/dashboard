@@ -235,9 +235,9 @@ Map unique violations for the source/version index to the existing submission in
 Test the allowed transitions and stale expected-state checks:
 
 ```ts
-expect(canTransition({ review: 'pending', extraction: 'ready', index: 'not_indexed' }, 'approve')).toBe(true)
-expect(canTransition({ review: 'pending', extraction: 'processing', index: 'not_indexed' }, 'approve')).toBe(false)
-expect(canTransition({ review: 'rejected', extraction: 'ready', index: 'not_indexed' }, 'retry')).toBe(false)
+expect(canTransitionBoardKnowledge({ review: 'pending', extraction: 'ready', index: 'not_indexed' }, 'approve')).toBe(true)
+expect(canTransitionBoardKnowledge({ review: 'pending', extraction: 'processing', index: 'not_indexed' }, 'approve')).toBe(false)
+expect(canTransitionBoardKnowledge({ review: 'rejected', extraction: 'ready', index: 'not_indexed' }, 'retry')).toBe(false)
 ```
 
 Assert approval publishes the draft article, archives the previous approved source version, marks indexing queued, and inserts an audit row in one transaction. Assert archive unpublishes before vector cleanup is dispatched.
@@ -369,7 +369,7 @@ Commit: `feat: add bounded board document extraction`
 - Consumes: `resolveAiModelAssignment`, `recordAiInvocation`, `AI_GATEWAY_URL`, `AI_GATEWAY_AUTH_TOKEN`, and paid Google/Hugging Face credentials.
 - Produces: curated `GatewayDocumentModel`, `parseGatewayModelId()`, `extractDocumentWithAi(input)`, and Model Ops feature `board_knowledge_document_extraction`.
 
-- [ ] **Step 1: Write Model Ops tests**
+- [x] **Step 1: Write Model Ops tests**
 
 Assert that the registry exposes one unique, runtime-controllable multimodal feature and that provider detection maps curated prefixes to `aigateway`:
 
@@ -382,13 +382,13 @@ expect(providerForModel('huggingface/PaddlePaddle/PaddleOCR-VL-1.6')).toBe('aiga
 
 The Hugging Face entry must be `preview` or `unknown`, never `production`.
 
-- [ ] **Step 2: Run Model Ops tests and verify RED**
+- [x] **Step 2: Run Model Ops tests and verify RED**
 
 Run: `pnpm vitest run test/server/utils/boardKnowledgeModelOps.test.ts`
 
 Expected: FAIL because the feature and curated models are absent.
 
-- [ ] **Step 3: Add curated upstream metadata and runtime assignment support**
+- [x] **Step 3: Add curated upstream metadata and runtime assignment support**
 
 Use canonical IDs:
 
@@ -402,7 +402,7 @@ export const BOARD_DOCUMENT_MODELS = {
 
 Keep `provider = 'aigateway'`; add `upstreamProvider`, `supportsPdf`, `supportsStructuredOutput`, and `operationalStatus` to curated catalog metadata. The Cloudflare Workers AI catalog remains additive and is not treated as a complete third-party Gateway catalog.
 
-- [ ] **Step 4: Write AI adapter tests**
+- [x] **Step 4: Write AI adapter tests**
 
 Mock `fetch` and assert Google URL construction, model fallback, structured response validation, 15 MB inline batch cap, no direct-provider retry, and exact privacy headers:
 
@@ -420,17 +420,17 @@ expect(fetcher).toHaveBeenCalledWith(
 
 Assert `recordAiInvocation` metadata contains submission ID, document class, and batch number but no filename or extracted text.
 
-- [ ] **Step 5: Run adapter tests and verify RED**
+- [x] **Step 5: Run adapter tests and verify RED**
 
 Run: `pnpm vitest run test/server/utils/boardKnowledgeAiExtraction.test.ts`
 
 Expected: FAIL because `extractAi.ts` is missing.
 
-- [ ] **Step 6: Implement Google adapter and guarded Hugging Face seam**
+- [x] **Step 6: Implement Google adapter and guarded Hugging Face seam**
 
 Resolve the assignment once per extraction. Call Google through `${AI_GATEWAY_URL root}/google-ai-studio/v1/models/${model}:generateContent`. Require Zod-validated structured output. Attempt the configured fallback through Gateway only when the primary returns an operational error; validation failures are recorded and fail closed. The Hugging Face adapter returns `model_endpoint_unverified` unless its curated status and environment health flag are both production-ready.
 
-- [ ] **Step 7: Run focused tests and commit**
+- [x] **Step 7: Run focused tests and commit**
 
 Run: `pnpm vitest run test/server/utils/boardKnowledgeModelOps.test.ts test/server/utils/boardKnowledgeAiExtraction.test.ts test/server/api/adminAiModelOps.test.ts`
 

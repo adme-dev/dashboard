@@ -2,6 +2,7 @@ import { CLAUDE_MODELS } from '~~/server/utils/claudeClient'
 import { GROQ_AUDIO_MODELS, GROQ_MODELS } from '~~/server/utils/groqClient'
 import { listSelectableVideoGenerationModels } from '~~/server/utils/video-generation/modelRegistry'
 import { listAssetIntelligenceModels } from '~~/server/utils/video-asset-intelligence/registry'
+import { BOARD_DOCUMENT_MODELS } from '~~/server/utils/boardKnowledge/modelCatalog'
 
 export type AiModelStatus = 'production' | 'preview' | 'deprecated' | 'unknown'
 export type AiRiskTier = 'low' | 'medium' | 'high'
@@ -127,6 +128,15 @@ const MODEL_CATALOG: Record<string, ModelCatalogEntry> = {
   },
   '@cf/black-forest-labs/flux-1-schnell': {
     status: 'production'
+  },
+  [BOARD_DOCUMENT_MODELS.GEMINI_36_FLASH]: {
+    status: 'production'
+  },
+  [BOARD_DOCUMENT_MODELS.GEMINI_35_FLASH_LITE]: {
+    status: 'production'
+  },
+  [BOARD_DOCUMENT_MODELS.PADDLE_OCR_VL_16]: {
+    status: 'preview'
   }
 }
 
@@ -918,6 +928,18 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     modality: 'text',
     riskTier: 'medium',
     sourceFile: 'server/utils/edgeAi.ts'
+  },
+  {
+    featureKey: 'board_knowledge_document_extraction',
+    label: 'Board knowledge document extraction',
+    surface: '/agency/boards',
+    owner: 'Platform',
+    provider: 'aigateway',
+    modelId: BOARD_DOCUMENT_MODELS.GEMINI_36_FLASH,
+    fallback: BOARD_DOCUMENT_MODELS.GEMINI_35_FLASH_LITE,
+    modality: 'multimodal',
+    riskTier: 'high',
+    sourceFile: 'server/utils/boardKnowledge/extractAi.ts'
   }
 ]
 
@@ -944,6 +966,7 @@ export function providerForModel(modelId: string) {
   if (modelId.startsWith('groq/')) return 'groq'
   if (modelId.startsWith('anthropic/')) return 'anthropic'
   if (modelId.startsWith('minimax/')) return 'minimax'
+  if (modelId.startsWith('google-ai-studio/') || modelId.startsWith('huggingface/')) return 'aigateway'
   if (modelId.includes('claude')) return 'anthropic'
   return 'groq'
 }

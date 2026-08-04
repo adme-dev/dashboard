@@ -86,6 +86,10 @@ describe('GET /api/admin/ai/model-ops/model-map', () => {
     process.env.AI_LOOP_MODEL = 'groq/openai/gpt-oss-120b'
     process.env.AI_LOOP_FALLBACK_MODEL = 'groq/openai/gpt-oss-20b'
     process.env.AI_LOOP_BUDGET_USD = '0.50'
+    process.env.GOOGLE_AI_STUDIO_API_KEY = 'paid-google-secret'
+    process.env.GOOGLE_AI_STUDIO_PAID = 'true'
+    process.env.HUGGINGFACE_API_TOKEN = 'paid-huggingface-secret'
+    process.env.HUGGINGFACE_BOARD_KNOWLEDGE_PRODUCTION_READY = 'false'
     process.env.INTERNAL_API_KEY = 'internal-secret'
     process.env.AI_ORCHESTRATOR_WORKER_URL = 'https://ai-orchestrator-agent.example.workers.dev'
     process.env.PLATFORM_AGENTS_WORKER_URL = 'https://platform-agents.example.workers.dev'
@@ -141,6 +145,16 @@ describe('GET /api/admin/ai/model-ops/model-map', () => {
     })
     expect(result.config.providers.find((provider: any) => provider.key === 'groq')).toMatchObject({
       configured: true,
+    })
+    expect(result.config.providers.find((provider: any) => provider.key === 'google_ai_studio_document')).toMatchObject({
+      configured: true,
+      paidCredentialsConfirmed: true,
+      gatewayReady: true,
+    })
+    expect(result.config.providers.find((provider: any) => provider.key === 'huggingface_document_preview')).toMatchObject({
+      configured: true,
+      productionReady: false,
+      operationalStatus: 'preview',
     })
     expect(result.config.loop).toMatchObject({
       toolsEnabled: false,

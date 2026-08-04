@@ -10,7 +10,7 @@ const db = vi.hoisted(() => ({
 vi.mock('~~/server/utils/db', () => db)
 
 import {
-  canTransition,
+  canTransitionBoardKnowledge,
   guardKnowledgeSourceDeletion,
   transitionSubmission
 } from '~~/server/utils/boardKnowledge/lifecycle'
@@ -59,20 +59,20 @@ function submissionRow(overrides: Record<string, unknown> = {}) {
 
 describe('board knowledge transition rules', () => {
   it('allows approval only after extraction is ready', () => {
-    expect(canTransition({ review: 'pending', extraction: 'ready', index: 'not_indexed' }, 'approve')).toBe(true)
-    expect(canTransition({ review: 'pending', extraction: 'processing', index: 'not_indexed' }, 'approve')).toBe(false)
-    expect(canTransition({ review: 'approved', extraction: 'ready', index: 'indexed' }, 'approve')).toBe(false)
+    expect(canTransitionBoardKnowledge({ review: 'pending', extraction: 'ready', index: 'not_indexed' }, 'approve')).toBe(true)
+    expect(canTransitionBoardKnowledge({ review: 'pending', extraction: 'processing', index: 'not_indexed' }, 'approve')).toBe(false)
+    expect(canTransitionBoardKnowledge({ review: 'approved', extraction: 'ready', index: 'indexed' }, 'approve')).toBe(false)
   })
 
   it('allows extraction retry only for a pending failed submission', () => {
-    expect(canTransition({ review: 'pending', extraction: 'failed', index: 'not_indexed' }, 'retry')).toBe(true)
-    expect(canTransition({ review: 'rejected', extraction: 'ready', index: 'not_indexed' }, 'retry')).toBe(false)
+    expect(canTransitionBoardKnowledge({ review: 'pending', extraction: 'failed', index: 'not_indexed' }, 'retry')).toBe(true)
+    expect(canTransitionBoardKnowledge({ review: 'rejected', extraction: 'ready', index: 'not_indexed' }, 'retry')).toBe(false)
   })
 
   it('blocks archival while extraction or indexing is actively mutating state', () => {
-    expect(canTransition({ review: 'pending', extraction: 'processing', index: 'not_indexed' }, 'archive')).toBe(false)
-    expect(canTransition({ review: 'approved', extraction: 'ready', index: 'indexing' }, 'archive')).toBe(false)
-    expect(canTransition({ review: 'approved', extraction: 'ready', index: 'indexed' }, 'archive')).toBe(true)
+    expect(canTransitionBoardKnowledge({ review: 'pending', extraction: 'processing', index: 'not_indexed' }, 'archive')).toBe(false)
+    expect(canTransitionBoardKnowledge({ review: 'approved', extraction: 'ready', index: 'indexing' }, 'archive')).toBe(false)
+    expect(canTransitionBoardKnowledge({ review: 'approved', extraction: 'ready', index: 'indexed' }, 'archive')).toBe(true)
   })
 })
 

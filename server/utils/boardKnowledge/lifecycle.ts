@@ -17,7 +17,7 @@ import type {
 export type BoardKnowledgeTransitionAction = 'approve' | 'reject' | 'retry' | 'archive'
 export type BoardKnowledgeDeletionDecision = 'clear' | 'archive_required' | 'blocked_extraction'
 
-export interface BoardKnowledgeState {
+export interface BoardKnowledgeState extends Record<string, unknown> {
   review: BoardKnowledgeReviewStatus
   extraction: BoardKnowledgeExtractionStatus
   index: BoardKnowledgeIndexStatus
@@ -56,7 +56,7 @@ function iso(value: string | Date): string {
   return value instanceof Date ? value.toISOString() : value
 }
 
-export function canTransition(state: BoardKnowledgeState, action: BoardKnowledgeTransitionAction): boolean {
+export function canTransitionBoardKnowledge(state: BoardKnowledgeState, action: BoardKnowledgeTransitionAction): boolean {
   switch (action) {
     case 'approve':
     case 'reject':
@@ -244,7 +244,7 @@ export async function transitionSubmission(input: TransitionBoardKnowledgeInput)
     `, [input.submissionId, input.departmentId])
     const row = locked.rows?.[0] as BoardKnowledgeSubmissionRow | undefined
     if (!row) throw createError({ statusCode: 404, statusMessage: 'Knowledge submission not found' })
-    if (iso(row.updated_at) !== input.expectedUpdatedAt || !canTransition(stateFromRow(row), input.action)) {
+    if (iso(row.updated_at) !== input.expectedUpdatedAt || !canTransitionBoardKnowledge(stateFromRow(row), input.action)) {
       transitionConflict()
     }
 

@@ -94,6 +94,7 @@ export interface ResolveAiModelAssignmentInput {
 }
 
 const FEATURE_RUNTIME_SUPPORTED_PROVIDERS: Record<string, RuntimeModelProvider[]> = {
+  board_knowledge_document_extraction: ['aigateway'],
   agency_ai_tool_loop: ['groq', 'anthropic', 'workers_ai'],
   agency_ai_l2_specialist_loop: ['groq', 'anthropic', 'workers_ai'],
   portal_ai_tool_loop: ['groq', 'anthropic', 'workers_ai'],
