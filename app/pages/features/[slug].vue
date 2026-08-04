@@ -1451,6 +1451,10 @@ const features: Record<string, Feature> = {
         content: 'Pick the assistant that fits the job — Finance, Marketing, Sales, Media Buyer, or Account Management — or stay with the general Agency Assistant. Each persona keeps the same engine but leads with the right focus and narrows to the tools that matter for that role, always within your permissions. Switching is one click in the chat bar, and your choice sticks to the conversation, including on voice.'
       },
       {
+        title: 'Company-Owner Access, Still Governed',
+        content: 'Active company owners inherit every evaluation-approved pilot and active employee-assistant release across organisational departments, while draft, failed, suspended and retired releases remain blocked. Owner access does not turn on a draft release or any runtime flag: the same release checks, permissions, tool limits, confirmation steps and audit trail still apply.'
+      },
+      {
         title: '@Entity Mentions',
         content: 'Type @ to mention specific clients, tasks, projects, or briefs in your AI conversation. Mentioned entities are pinned to the top of the AI context, ensuring the response is grounded in the exact data you are asking about. The autocomplete supports prefix-matching search across all entity types, so finding the right reference is fast even in agencies with hundreds of active projects.'
       },

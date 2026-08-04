@@ -16,6 +16,12 @@ The command exits `0` only when the selected gate passes. A successful command p
 
 The response contains only employee IDs, display names, roles, department summaries, and deterministic blocker codes. It deliberately excludes email addresses, assistant prompts, memories, messages, tokens, credentials, and client or vendor data. The admin endpoint requires `ADMIN` permission and sends `Cache-Control: private, no-store`.
 
+## Company-owner release inheritance
+
+Active company owners inherit every evaluation-approved pilot and active employee-assistant release across organisational departments, while draft, failed, suspended and retired releases remain blocked. This applies only to an authenticated, active company owner; administrators and other roles continue to need the existing explicit pilot membership where it is required.
+
+Owner inheritance is an access decision, not a release-management action. It creates no synthetic department or pilot membership, does not activate a draft release or transition any release state, and does not activate runtime or production flags. Existing evaluation, release-state, permission, tool, confirmation, budget, and audit checks still apply every time access is resolved.
+
 ## Common blocker codes
 
 - `employee:<uuid>:no_department` — add the active employee to an organizational department.
