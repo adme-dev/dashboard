@@ -1,4 +1,5 @@
 import type { H3Event } from 'h3'
+import type { AssistantReleaseAccessBasis } from '~~/shared/types/aiAssistant'
 import { queryOne as realQueryOne, queryRows as realQueryRows } from '~~/server/utils/db'
 import { PERMISSION_GROUPS, SYSTEM_ROLE_PERMISSIONS, type PermissionGroup } from '~~/server/utils/permissions'
 import {
@@ -85,7 +86,7 @@ export interface PersonalAssistantContext {
     version: number
     label: string
     releaseState: 'pilot' | 'active'
-    accessBasis: 'company_owner' | 'catalog_policy'
+    accessBasis: AssistantReleaseAccessBasis
   }>
   catalogInstructionsPreamble: string
   /** Internal governance material used to narrow the runtime tool registry. Never send to clients. */

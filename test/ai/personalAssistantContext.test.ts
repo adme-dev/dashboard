@@ -262,6 +262,28 @@ describe('resolvePersonalAssistantContext', () => {
     expect(catalogCall?.[1]).toEqual([[CREATIVE_ID, PRODUCTION_ID], USER_ID])
   })
 
+  it('keeps active admin pack access on catalog policy', async () => {
+    const contextDb = db({
+      queryOne: vi.fn(async (sql: string) => {
+        if (sql.includes('FROM team_members actor')) {
+          return { id: USER_ID, role: 'admin', custom_role_id: null }
+        }
+        if (sql.includes('FROM ai_agent_configs')) {
+          return {
+            persona_key: 'creative',
+            tool_overrides: { disabled: ['propose_budget_change'] },
+            memory_enabled: false
+          }
+        }
+        return null
+      }) as PersonalAssistantContextDb['queryOne']
+    })
+
+    const context = await resolvePersonalAssistantContext({ userId: USER_ID }, contextDb)
+
+    expect(context.activePacks[0]?.accessBasis).toBe('catalog_policy')
+  })
+
   it('rejects unbounded department context instead of silently truncating authority', async () => {
     const queryRows = vi.fn(async (sql: string) => {
       if (sql.includes('FROM departments department')) {
