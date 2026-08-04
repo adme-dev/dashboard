@@ -324,4 +324,31 @@ describe('evaluation model executor', () => {
       costUsdMicros: 27
     })
   })
+
+  it.each([
+    ['missing usage', undefined],
+    ['negative usage', { inputTokens: -1, outputTokens: 20 }],
+    ['fractional usage', { inputTokens: 100.5, outputTokens: 20 }],
+    ['unsafe-integer usage', { inputTokens: Number.MAX_SAFE_INTEGER + 1, outputTokens: 20 }]
+  ])('rejects successful model signals with %s instead of producing zero-cost evidence', async (_label, totalUsage) => {
+    const invoke = createDefaultEvaluationModelInvoker({
+      generateText: vi.fn().mockResolvedValue({
+        text: JSON.stringify({
+          observedTools: ['search_knowledge'],
+          sourceRefs: ['fixture_authoritative_record'],
+          effectSignals: [],
+          scopeViolationObserved: false,
+          approvalBypassObserved: false,
+          traceRef: null
+        }),
+        ...(totalUsage === undefined ? {} : { totalUsage })
+      }) as never,
+      resolveModel: () => 'test-model' as never
+    })
+
+    await expect(executor(invoke).execute(request)).rejects.toMatchObject({
+      name: 'EvaluationModelExecutorError',
+      code: 'model_usage_unmetered'
+    })
+  })
 })

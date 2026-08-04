@@ -4,6 +4,7 @@ import {
   type EvaluationExecutorObservation,
   type EvaluationRunnerRequest
 } from '~~/server/utils/ai/governance/deterministicEvaluationRunner'
+import { EvaluationModelExecutorError } from '~~/server/utils/ai/governance/evaluationModelExecutor'
 import type { EvaluationCase } from '~~/server/utils/ai/governance/contracts'
 
 const RUN_ID = '10000000-0000-4000-8000-000000000001'
@@ -269,6 +270,35 @@ describe('runDeterministicEvaluation', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('charges unmetered executor failures to the approved envelope and excludes them from passing evidence', async () => {
+    const execute = vi.fn().mockRejectedValue(new EvaluationModelExecutorError(
+      'model_usage_unmetered',
+      'The model did not provide complete usage metering'
+    ))
+
+    const result = await runDeterministicEvaluation(request({
+      cases: [
+        { id: CASE_ID, definition: evaluationCase() },
+        { id: '20000000-0000-4000-8000-000000000002', definition: evaluationCase({ caseKey: 'second_case' }) }
+      ],
+      budget: { ...request().budget, maxTotalCostUsdMicros: 120_000 },
+      executionCostEnvelope: { maxCostUsdMicrosPerCase: 120_000, maxSpendUsdMicros: 120_000 }
+    }), { execute })
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      gatePassed: null,
+      failureCode: 'total_cost_exceeded',
+      totals: { passedCount: 0, errorCount: 1, inputTokens: 8_000, outputTokens: 1_200, costUsdMicros: 120_000 }
+    })
+    expect(result.results[0]).toMatchObject({
+      outcome: 'error',
+      score: null,
+      deterministicChecks: { executorUnmetered: true, caseBudgetRespected: false }
+    })
+    expect(execute).toHaveBeenCalledOnce()
   })
 
   it('preserves conservative spend evidence when the wall deadline times out an active call', async () => {

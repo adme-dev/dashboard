@@ -111,12 +111,37 @@ function modelSpec(provider: EvaluationModelExecutorOptions['modelProvider'], mo
   return `${provider}/${normalized}`
 }
 
-function normalizedUsage(result: any): { inputTokens: number, outputTokens: number } {
-  const usage = result?.totalUsage ?? result?.usage ?? result?.response?.usage ?? {}
-  return {
-    inputTokens: usage.inputTokens ?? usage.promptTokens ?? usage.prompt_tokens ?? result?.inputTokens ?? 0,
-    outputTokens: usage.outputTokens ?? usage.completionTokens ?? usage.completion_tokens ?? result?.outputTokens ?? 0
-  }
+function isSafeTokenCount(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && Number.isSafeInteger(value)
+    && value >= 0
+}
+
+function usageCandidate(value: unknown): { inputTokens: number, outputTokens: number } | null {
+  if (!value || typeof value !== 'object') return null
+  const usage = value as Record<string, unknown>
+  const inputTokens = usage.inputTokens ?? usage.promptTokens ?? usage.prompt_tokens
+  const outputTokens = usage.outputTokens ?? usage.completionTokens ?? usage.completion_tokens
+  return isSafeTokenCount(inputTokens) && isSafeTokenCount(outputTokens)
+    ? { inputTokens, outputTokens }
+    : null
+}
+
+function normalizedUsage(result: unknown): { inputTokens: number, outputTokens: number } | null {
+  if (!result || typeof result !== 'object') return null
+  const response = result as { totalUsage?: unknown, usage?: unknown, response?: { usage?: unknown } }
+  return usageCandidate(response.totalUsage)
+    ?? usageCandidate(response.usage)
+    ?? usageCandidate(response.response?.usage)
+    ?? usageCandidate(result)
+}
+
+function unmeteredUsageError(): EvaluationModelExecutorError {
+  return new EvaluationModelExecutorError(
+    'model_usage_unmetered',
+    'The model did not provide complete usage metering for this simulation'
+  )
 }
 
 export function createDefaultEvaluationModelInvoker(overrides: {
@@ -141,6 +166,7 @@ export function createDefaultEvaluationModelInvoker(overrides: {
       }
     } as never)
     const usage = normalizedUsage(result)
+    if (!usage) throw unmeteredUsageError()
     let json: unknown
     try {
       json = JSON.parse(result.text)
@@ -255,12 +281,14 @@ export function createEvaluationModelExecutor(options: EvaluationModelExecutorOp
         }
         throw error
       }
-      const parsed = InvocationResultSchema.safeParse(raw)
       const elapsed = Math.max(0, Math.round(now() - startedAt))
-      if (!parsed.success) {
-        const usage = normalizedUsage(raw)
-        return safeFailure(usage, elapsed, rateCard)
-      }
+      const usage = normalizedUsage(raw)
+      if (!usage) throw unmeteredUsageError()
+      const { inputTokens: _inputTokens, outputTokens: _outputTokens, ...rawSignals } = raw as Record<string, unknown>
+      const signals = ModelSignalsSchema.safeParse(rawSignals)
+      if (!signals.success) return safeFailure(usage, elapsed, rateCard)
+      const parsed = InvocationResultSchema.safeParse({ ...signals.data, ...usage })
+      if (!parsed.success) return safeFailure(usage, elapsed, rateCard)
       const observation = parsed.data
       const invalid = !unique(observation.observedTools)
         || !unique(observation.sourceRefs)

@@ -341,6 +341,11 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError'
 }
 
+function isUnmeteredExecutorError(error: unknown): boolean {
+  return error instanceof Error
+    && (error as { code?: unknown }).code === 'model_usage_unmetered'
+}
+
 async function executeWithDeadline(
   executor: EvaluationModelExecutor,
   request: Omit<EvaluationExecutorRequest, 'signal'>,
@@ -463,7 +468,15 @@ export async function runDeterministicEvaluation(
         }
         continue
       }
-      results.push(errorResult(request, item, { executorError: true }, true, timeoutMs))
+      results.push(errorResult(
+        request,
+        item,
+        isUnmeteredExecutorError(error)
+          ? { executorUnmetered: true, caseBudgetRespected: false }
+          : { executorError: true },
+        true,
+        timeoutMs
+      ))
     }
 
     if (totals(results).costUsdMicros > request.executionCostEnvelope.maxSpendUsdMicros) {
