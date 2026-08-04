@@ -319,6 +319,63 @@ git commit -m "docs(ai): document owner release inheritance"
 
 ---
 
+### Task 4: Align Active-Pack Explainability With Effective Runtime Composition
+
+**Files:**
+- Modify: `server/utils/ai/personalAssistantContext.ts`
+- Test: `test/ai/personalAssistantContext.test.ts`
+
+- [ ] Add owner and ordinary-user regressions where an older active/pilot pack has a newer draft version under `pilot` and `enforced` catalog modes.
+- [ ] Prove `activePacks` contains only pack-version IDs retained by the same effective composition used for runtime tools.
+- [ ] Implement the smallest shared-composition alignment; preserve owner admission, release/evaluation gates, and client-safe fields.
+- [ ] Run the context, catalog-composition, runtime-policy, and explainability suites; scoped typecheck; `git diff --check`; commit atomically.
+
+### Task 5: Make Covered-Employee Counts Require Active Evaluated Releases
+
+**Files:**
+- Modify: `server/utils/ai/governance/companyRolloutReadiness.ts`
+- Test: `test/ai/companyRolloutReadiness.test.ts`
+
+- [ ] Add evaluated-draft and evaluated-pilot regressions proving neither counts as covered.
+- [ ] Require canonical department coverage to have `release_state = 'active'` and `latestGatePassed`; keep pilot readiness separate.
+- [ ] Run focused readiness/API/UI tests, scoped typecheck, `git diff --check`, and commit atomically.
+
+### Task 6: Keep Stale Pilot Memberships Revocable
+
+**Files:**
+- Modify: `app/components/ai/governance/PilotMembershipDialog.vue`
+- Test: the closest mounted governance dialog test (create one if absent).
+
+- [ ] Apply the frontend UI guidance before editing.
+- [ ] Add a mounted regression proving an `eligible: false` active membership remains visible, is labelled stale/ineligible, and can invoke audited revoke.
+- [ ] Keep ineligible members out of enrollment choices while preserving revoke controls and accessible status text.
+- [ ] Run focused governance UI/API tests, scoped typecheck, `git diff --check`, and commit atomically.
+
+### Task 7: Fail Closed on Unmetered Evaluation Generations
+
+**Files:**
+- Modify: `server/utils/ai/governance/evaluationModelExecutor.ts`
+- Test: `test/ai/evaluationModelExecutor.test.ts` and runner coverage as required.
+
+- [ ] Add a successful-signal response with missing/invalid usage and prove it cannot become a zero-cost passing observation.
+- [ ] Require finite non-negative safe-integer input/output usage for non-empty generations; surface a typed unmetered executor failure.
+- [ ] Ensure the runner charges the approved per-case envelope conservatively and cannot bind the result as passing evidence.
+- [ ] Run focused executor/runner/release-gate tests, scoped typecheck, `git diff --check`, and commit atomically.
+
+### Task 8: Report Actual Gateway Transport and Restore Diff Hygiene
+
+**Files:**
+- Modify: `server/utils/ai/toolLoop.ts` and the smallest provider-factory contract needed to expose transport mode.
+- Test: focused tool-loop/provider telemetry tests.
+- Modify: `docs/superpowers/specs/2026-08-04-owner-wide-ai-release-access-design.md`
+
+- [ ] Add direct-provider and configured-gateway telemetry regressions.
+- [ ] Persist `gateway_used` from the resolved transport rather than assuming every non-injected call uses Cloudflare Gateway.
+- [ ] Remove trailing whitespace from the owner design document.
+- [ ] Run focused telemetry/runtime tests, scoped typecheck, full `git diff --check`, and commit atomically.
+
+---
+
 ## Completion Gate
 
 - Both release CTEs revalidate active owner authority.
