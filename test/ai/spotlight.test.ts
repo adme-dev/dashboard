@@ -37,7 +37,9 @@ describe('spotlight', () => {
     expect(spotlightSystemClause()).toMatch(/never.*instructions/i)
   })
 
-  it('defines recalled memory as untrusted data when it uses the marker', () => {
+  it('defines each spotlighted runtime data channel as untrusted', () => {
+    expect(spotlightSystemClause()).toMatch(/retrieved source records/i)
     expect(spotlightSystemClause()).toMatch(/recalled memory/i)
+    expect(spotlightSystemClause()).toMatch(/feedback-derived patterns/i)
   })
 })

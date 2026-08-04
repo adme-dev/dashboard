@@ -16,6 +16,7 @@ import { resolveServerCatalogRuntimePolicy } from '~~/server/utils/ai/governance
 import { resolveObserveAndLearnRuntimePolicy } from '~~/server/utils/ai/observe/runtimePolicy'
 import { linkAiInvocationTurnMessage } from '~~/server/utils/ai/invocationLedger'
 import { bindPilotUatContext } from '~~/server/utils/ai/governance/pilotRuntimeBinding'
+import { spotlight, spotlightSystemClause } from '~~/server/utils/ai/spotlight'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
 export interface ChatResponse {
@@ -43,7 +44,7 @@ function selectModel(intent: AiIntent, contentLength: number): string {
   return GROQ_MODELS.LLAMA_70B
 }
 
-function buildSystemPrompt(
+export function buildSystemPrompt(
   userRole: string,
   contextItems: AiContextSource[],
   learnedPatterns?: string[],
@@ -77,7 +78,13 @@ Help them be productive. Only share information relevant to their work.`
     contextBlock = `\n\n## Relevant Agency Data\nHere is live data from the agency's systems that may be relevant to the user's question:\n\n`
     for (const item of contextItems) {
       const pinMarker = pinnedEntityIds?.has(item.id) ? ' ⭐ (user referenced this directly)' : ''
-      contextBlock += `- **[${item.type}] ${item.title}**${pinMarker}: ${item.snippet}\n`
+      const source = spotlight(JSON.stringify({
+        type: item.type,
+        title: item.title,
+        snippet: item.snippet,
+        url: item.url
+      }), `context:${item.id}`)
+      contextBlock += `- ${source}${pinMarker}\n`
     }
     contextBlock += `\nUse this data to give specific, accurate answers. Reference concrete names, numbers, and statuses when available. Items marked with ⭐ were explicitly referenced by the user — prioritize answering about those. If the data doesn't answer the question, say so honestly rather than guessing.`
   }
@@ -86,8 +93,8 @@ Help them be productive. Only share information relevant to their work.`
   let patternsBlock = ''
   if (learnedPatterns && learnedPatterns.length > 0) {
     patternsBlock = `\n\n## Learned Preferences\nBased on previous feedback, keep these corrections and preferences in mind:\n`
-    for (const p of learnedPatterns) {
-      patternsBlock += `- ${p}\n`
+    for (const [index, pattern] of learnedPatterns.entries()) {
+      patternsBlock += `- ${spotlight(pattern, `feedback-pattern:${index}`)}\n`
     }
   }
 
@@ -165,7 +172,9 @@ You help agency staff with their day-to-day work, providing insights about tasks
 
 ## User Context
 ${roleGuidance}
-${contextBlock}${patternsBlock}${formatGuidance}`
+${contextBlock}${patternsBlock}${formatGuidance}
+
+${spotlightSystemClause()}`
 }
 
 // Post-process AI response: auto-link entity references to their URLs
