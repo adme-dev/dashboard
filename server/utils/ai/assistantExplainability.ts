@@ -55,16 +55,20 @@ export function buildMyAssistantExplainability(
 ): MyAssistantView {
   // The route supplies the registry so this presenter remains pure and inexpensive to unit-test.
   const registry = availableTools
+  const godModeActive = context.godModeAuthority?.active === true
+    && context.godModeAuthority.actorUserId === context.identity.userId
   const granted = new Set(context.permissionGroups)
-  const permissionTools = registry.filter(tool =>
-    !tool.requiredPermission || granted.has(tool.requiredPermission)
-  )
+  const permissionTools = godModeActive
+    ? registry
+    : registry.filter(tool => !tool.requiredPermission || granted.has(tool.requiredPermission))
   const baseline = composeEffectiveAssistantTools({
     rbacFilteredTools: permissionTools,
     catalogRows: context.catalogRows,
     grantedPermissionGroups: context.permissionGroups,
     readOnly: context.isReadOnly,
-    runtimePolicy: context.runtimePolicy
+    runtimePolicy: context.runtimePolicy,
+    authority: context.godModeAuthority,
+    actorUserId: context.identity.userId
   })
   const persona = resolvePersona(context.preferences.personaKey)
   const effective = composeEffectiveAssistantTools({
@@ -74,7 +78,9 @@ export function buildMyAssistantExplainability(
     personaToolAllowlist: persona.toolAllowlist,
     disabledTools: context.preferences.disabledTools,
     readOnly: context.isReadOnly,
-    runtimePolicy: context.runtimePolicy
+    runtimePolicy: context.runtimePolicy,
+    authority: context.godModeAuthority,
+    actorUserId: context.identity.userId
   })
   const effectiveNames = new Set(effective.tools.map(tool => tool.name))
   const disabledNames = new Set(context.preferences.disabledTools)
@@ -86,7 +92,7 @@ export function buildMyAssistantExplainability(
   }
 
   const tools = baseline.tools.map(tool => {
-    const personallyEnabled = !disabledNames.has(tool.name)
+    const personallyEnabled = godModeActive || !disabledNames.has(tool.name)
     return {
       name: tool.name,
       description: tool.description,
@@ -104,7 +110,7 @@ export function buildMyAssistantExplainability(
   const departmentNames = new Map(
     context.departments.map(department => [department.departmentId, department.name])
   )
-  const personallyDisabledRestrictions = baseline.tools
+  const personallyDisabledRestrictions = godModeActive ? [] : baseline.tools
     .filter(tool => disabledNames.has(tool.name))
     .map(tool => restriction(tool.name, 'personal_disabled'))
   const restrictions = uniqueRestrictions([
@@ -118,6 +124,20 @@ export function buildMyAssistantExplainability(
     memoryEnabled: context.preferences.memoryEnabled,
     observedMemoryEnabled: context.observedMemoryEnabled,
     authority: {
+      ...(context.identity.role === 'owner'
+        ? {
+            accessBasis: godModeActive ? 'god_mode' as const : 'company_owner' as const,
+            label: godModeActive ? 'God mode active' : 'Company owner access',
+            description: godModeActive
+              ? 'All registered tools are available. Authenticated identity, tenant isolation, and immutable audit still apply.'
+              : 'Tools remain governed by catalog, permission, role, and personal assistant policy.',
+            toolCoverage: {
+              available: effective.tools.length,
+              registered: registry.length,
+              complete: effective.tools.length === registry.length
+            }
+          }
+        : {}),
       runtimeMode: context.runtimePolicy.mode,
       coverageStatus: baseline.coverageStatus,
       currentRole: context.identity.role,

@@ -7,6 +7,7 @@ import { spotlightSystemClause } from './spotlight'
 import type { ToolContext } from './toolContext'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 import { resolveAiModelAssignment, type RuntimeModelProvider } from '~~/server/utils/ai/modelAssignments'
+import type { GodModeAuthority } from '~~/server/utils/godMode/authority'
 import {
   composeEffectiveAssistantTools,
   type ActiveCatalogRow,
@@ -35,6 +36,8 @@ function normalizeUsage(result: any): LoopOutput['usage'] {
 
 const STEP_CAP = 5
 const DEADLINE_MS = 25_000
+const GOD_MODE_MAX_OUTPUT_TOKENS = 32_768
+const PROVIDER_SAFE_REQUEST_BYTES = 4_000_000
 
 // $/Mtok (input, output). Keyed by the provider-relative model id (matched as a substring of the
 // spec, e.g. 'groq/openai/gpt-oss-120b'). Rough — for budgeting/observability, not billing.
@@ -119,8 +122,8 @@ export async function runToolLoop(opts: {
   model?: LanguageModel
   fallbackModel?: LanguageModel
   signal?: AbortSignal
-  /** Exclude mutating (propose) tools — used for L2 controller sub-runs so a delegated specialist
-   *  can only READ; it can never stage a write proposal that would persist as an orphan. */
+  /** Exclude mutating (propose) tools for governed L2 sub-runs. Server-derived God mode bypasses
+   *  this application policy, although handlers remain proposal-only until direct execution lands. */
   readOnly?: boolean
   /** The user's self-disabled tools (config narrows, never grants — applied by subtraction). */
   disabledTools?: string[]
@@ -130,6 +133,8 @@ export async function runToolLoop(opts: {
   permissionGroups?: PermissionGroup[]
   /** Private server-validated rollout policy resolved during turn admission. */
   runtimePolicy?: CatalogRuntimePolicy
+  /** Fresh server-resolved owner authority bound to `ctx.userId`. */
+  authority?: GodModeAuthority
   /** Avoid repeating the catalog preamble when a caller already included it for its fast path. */
   catalogInstructionsAlreadyIncluded?: boolean
   /** Model Ops telemetry metadata. Content/prompts are never recorded. */
@@ -146,23 +151,29 @@ export async function runToolLoop(opts: {
 }): Promise<LoopOutput> {
   const cfg = useRuntimeConfig() as any
   const persona = opts.persona ?? DEFAULT_PERSONA
+  const godModeActive = opts.authority?.active === true
+    && opts.authority.actorUserId === opts.ctx.userId
 
   const composition = composeEffectiveAssistantTools({
     rbacFilteredTools: filterToolsForUser(
       registry,
       opts.ctx.userRole,
       opts.permissionGroups,
-      opts.ctx.assistantReadOnly
+      opts.ctx.assistantReadOnly,
+      opts.authority,
+      opts.ctx.userId
     ),
     catalogRows: opts.catalogRows ?? [],
     grantedPermissionGroups: opts.permissionGroups ?? [],
     personaToolAllowlist: persona.toolAllowlist,
     readOnly: opts.readOnly,
     disabledTools: opts.disabledTools,
-    runtimePolicy: opts.runtimePolicy
+    runtimePolicy: opts.runtimePolicy,
+    authority: opts.authority,
+    actorUserId: opts.ctx.userId
   })
   const tools = composition.tools
-  const sdkTools = toSdkTools(tools, opts.ctx, opts.seed)
+  const sdkTools = toSdkTools(tools, opts.ctx, opts.seed, opts.authority)
   const turnId = opts.turnId ?? crypto.randomUUID()
   const loopId = opts.loopId ?? 'l1'
 
@@ -178,6 +189,12 @@ export async function runToolLoop(opts: {
   // Fresh deadline per attempt: if a caller signal is injected both attempts share it, otherwise
   // each gets its own timeout so a primary TIMEOUT doesn't instantly abort the fallback too.
   const deadlineMs = Math.min(DEADLINE_MS, composition.budget?.maxLatencyMs ?? DEADLINE_MS)
+  if (godModeActive) {
+    const requestBytes = new TextEncoder().encode(JSON.stringify({ system, messages: opts.messages })).byteLength
+    if (requestBytes > PROVIDER_SAFE_REQUEST_BYTES) {
+      throw new Error('AI provider request exceeds the finite safety bound.')
+    }
+  }
   const run = (m: LanguageModel) => generateText({
     model: m,
     system,
@@ -185,7 +202,9 @@ export async function runToolLoop(opts: {
     tools: sdkTools,
     stopWhen: [stepCountIs(STEP_CAP)],
     abortSignal: opts.signal ?? AbortSignal.timeout(deadlineMs),
-    maxOutputTokens: composition.budget?.maxOutputTokens,
+    maxOutputTokens: godModeActive
+      ? GOD_MODE_MAX_OUTPUT_TOKENS
+      : composition.budget?.maxOutputTokens,
     // OTel GenAI spans — metadata only (no prompt/arg/output capture). No-op unless a tracer is registered.
     experimental_telemetry: { isEnabled: true, recordInputs: false, recordOutputs: false, functionId: 'ai-tool-loop' },
   })
@@ -221,6 +240,9 @@ export async function runToolLoop(opts: {
     catalogPackVersionIds: composition.packVersionIds,
     catalogCapabilityVersionIds: composition.capabilityVersionIds,
     catalogDenials: composition.denials.slice(0, 100),
+    ...(composition.bypassedControls
+      ? { bypassedControls: composition.bypassedControls }
+      : {}),
     injectedModel: Boolean(opts.model),
     modelAssignmentSource: assignment?.source ?? 'default',
     modelAssignmentIgnoredReason: assignment?.ignoredReason ?? null,
@@ -271,6 +293,9 @@ export async function runToolLoop(opts: {
     const primary = opts.model
       ? { model: opts.model, gatewayUsed: false }
       : resolveModelWithTransport(primarySpec, { aiBinding })
+    if (godModeActive && !opts.model && !primary.gatewayUsed) {
+      throw new Error('God mode AI requests require Cloudflare AI Gateway.')
+    }
     usedGatewayUsed = primary.gatewayUsed
     result = await run(primary.model)
     successfulAttemptStartedAt = primaryStartedAt
@@ -283,6 +308,9 @@ export async function runToolLoop(opts: {
         : fallbackSpec
           ? resolveModelWithTransport(fallbackSpec, { aiBinding })
           : null
+      if (godModeActive && !opts.fallbackModel && fb && !fb.gatewayUsed) {
+        throw new Error('God mode AI requests require Cloudflare AI Gateway.')
+      }
     } catch {
       await recordAttempt({ spec: usedSpec, gatewayUsed: usedGatewayUsed, role: 'primary', status: 'error', terminal: true, fallbackUsed: false, startedAt: primaryStartedAt, error: err })
       throw err

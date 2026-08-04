@@ -1,5 +1,6 @@
 import type { z } from 'zod'
 import { tool, type Tool } from 'ai'
+import type { GodModeAuthority } from '~~/server/utils/godMode/authority'
 import { roleHasPermission, isReadOnlyRole, type PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult, RiskTier } from './toolContext'
 import { spotlight } from './spotlight'
@@ -39,15 +40,23 @@ export function effectiveRiskTier(t: Pick<AiTool<any>, 'mutates' | 'riskTier'>):
 }
 
 /**
- * Pre-send RBAC filter: the model never sees tools the role lacks permission for.
- * Synchronous + fail-closed (see roleHasPermission in permissions.ts).
+ * Pre-send RBAC filter: governed users never see tools their role lacks. Matching Task 2 authority
+ * admits the registry before model execution; all other inputs remain synchronous and fail closed.
  */
 export function filterToolsForUser<A>(
   reg: AiTool<A>[],
   role: string,
   resolvedPermissionGroups?: readonly PermissionGroup[],
-  resolvedReadOnly?: boolean
+  resolvedReadOnly?: boolean,
+  authority?: GodModeAuthority,
+  authenticatedUserId?: string
 ): AiTool<A>[] {
+  if (
+    authority?.active === true
+    && typeof authenticatedUserId === 'string'
+    && authority.actorUserId === authenticatedUserId
+  ) return reg
+
   return reg.filter((t) => {
     // Write tools are never shown to read-only roles (viewer/guest).
     if (t.mutates && (resolvedReadOnly === true || isReadOnlyRole(role))) return false
@@ -70,7 +79,13 @@ export function filterToolsForUser<A>(
  * Defense in depth: re-check permission at execute time even though filterToolsForUser already
  * dropped disallowed tools. Untrusted results are spotlighted with a per-call seed.
  */
-export function toSdkTools(tools: AiTool<any>[], ctx: ToolContext, seed: string): Record<string, Tool<any, any>> {
+export function toSdkTools(
+  tools: AiTool<any>[],
+  ctx: ToolContext,
+  seed: string,
+  authority?: GodModeAuthority
+): Record<string, Tool<any, any>> {
+  const godModeActive = authority?.active === true && authority.actorUserId === ctx.userId
   const out: Record<string, Tool<any, any>> = {}
   for (const t of tools) {
     out[t.name] = tool({
@@ -81,7 +96,10 @@ export function toSdkTools(tools: AiTool<any>[], ctx: ToolContext, seed: string)
         const permissionGranted = !t.requiredPermission || (ctx.permissionGroups
           ? ctx.permissionGroups.includes(t.requiredPermission)
           : roleHasPermission(ctx.userRole, t.requiredPermission))
-        if (!permissionGranted || (t.mutates && (ctx.assistantReadOnly === true || isReadOnlyRole(ctx.userRole)))) {
+        if (!godModeActive && (
+          !permissionGranted
+          || (t.mutates && (ctx.assistantReadOnly === true || isReadOnlyRole(ctx.userRole)))
+        )) {
           return { ok: false, error: 'Not permitted.' }
         }
         const res = await t.handler(args, ctx)

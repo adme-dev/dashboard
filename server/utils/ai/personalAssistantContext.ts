@@ -1,6 +1,10 @@
 import type { H3Event } from 'h3'
 import type { AssistantReleaseAccessBasis } from '~~/shared/types/aiAssistant'
 import { queryOne as realQueryOne, queryRows as realQueryRows } from '~~/server/utils/db'
+import {
+  resolveGodModeAuthority,
+  type GodModeAuthority
+} from '~~/server/utils/godMode/authority'
 import { PERMISSION_GROUPS, SYSTEM_ROLE_PERMISSIONS, type PermissionGroup } from '~~/server/utils/permissions'
 import {
   composeEffectiveAssistantTools,
@@ -62,6 +66,8 @@ export interface PersonalAssistantClientAssignment {
 
 export interface PersonalAssistantContext {
   identity: { userId: string, role: string }
+  /** Fresh server-owned authority; never derived from role/email/request payload shortcuts. */
+  godModeAuthority?: GodModeAuthority
   /** Private server-owned rollout policy resolved once for this request/turn. */
   runtimePolicy: CatalogRuntimePolicy
   /** Whether automatic observe-and-learn distillation is enabled server-side. */
@@ -85,7 +91,7 @@ export interface PersonalAssistantContext {
     packKey: string
     version: number
     label: string
-    releaseState: 'pilot' | 'active'
+    releaseState: 'draft' | 'pilot' | 'active' | 'suspended' | 'retired'
     accessBasis: AssistantReleaseAccessBasis
   }>
   catalogInstructionsPreamble: string
@@ -217,7 +223,8 @@ function mapAssignment(row: ClientAssignmentRow): PersonalAssistantClientAssignm
 /**
  * Resolve the complete narrowing context for one authenticated turn. Identity is read again from
  * the database so role changes and offboarding take effect at admission rather than trusting a
- * caller-supplied role. Every downstream layer may subtract from this context; none may expand it.
+ * caller-supplied role. Governed callers can only be narrowed downstream; matching Task 2 authority
+ * admits the registered God-mode catalog while leaving identity and tenant scope intact.
  */
 export async function resolvePersonalAssistantContext(
   input: {
@@ -225,6 +232,8 @@ export async function resolvePersonalAssistantContext(
     event?: H3Event
     runtimePolicy?: CatalogRuntimePolicy
     observedMemoryEnabled?: boolean
+    /** Test/internal injection only: must be a Task 2 server-resolved object for this actor. */
+    authority?: GodModeAuthority
   },
   db: PersonalAssistantContextDb = defaultDb
 ): Promise<PersonalAssistantContext> {
@@ -252,6 +261,24 @@ export async function resolvePersonalAssistantContext(
     )
   }
 
+  const resolvedAuthority = input.authority
+    ?? (input.event
+      ? await resolveGodModeAuthority(input.event, identity.id)
+      : {
+          active: false,
+          actorUserId: identity.id,
+          reason: 'verification_failed' as const,
+          emergencyDisabled: false
+        })
+  const godModeAuthority: GodModeAuthority = resolvedAuthority.actorUserId === identity.id
+    ? resolvedAuthority
+    : {
+        active: false,
+        actorUserId: identity.id,
+        reason: 'verification_failed',
+        emergencyDisabled: false
+      }
+
   const permissions = await db.resolvePermissions({
     userId: identity.id,
     role: identity.role,
@@ -261,7 +288,9 @@ export async function resolvePersonalAssistantContext(
   const permissionGroups = [...new Set(
     permissions.groups.filter(group => PERMISSION_GROUP_SET.has(group))
   )]
-  const companyWideDepartments = identity.role === 'owner' || identity.role === 'admin'
+  const companyWideDepartments = godModeAuthority.active
+    || identity.role === 'owner'
+    || identity.role === 'admin'
 
   const departmentRows = await db.queryRows<DepartmentRow>(
     `SELECT department.id::text AS department_id,
@@ -316,7 +345,9 @@ export async function resolvePersonalAssistantContext(
       `The personal assistant supports at most ${MAX_ASSIGNMENTS} explicit client assignments per turn.`
     )
   }
-  const hasCompanyClientAccess = permissionGroups.includes('ADMIN') || permissionGroups.includes('MANAGEMENT')
+  const hasCompanyClientAccess = godModeAuthority.active
+    || permissionGroups.includes('ADMIN')
+    || permissionGroups.includes('MANAGEMENT')
 
   const config = await db.queryOne<PersonalConfigRow>(
     `SELECT persona_key, tool_overrides, memory_enabled
@@ -330,14 +361,17 @@ export async function resolvePersonalAssistantContext(
   const catalogRows = await loadCatalogControlRows(
     departments.map(department => department.departmentId),
     identity.id,
-    db
+    db,
+    godModeAuthority
   )
   const runtimePolicy = input.runtimePolicy ?? resolveServerCatalogRuntimePolicy(input.event)
   const effectiveCatalog = composeEffectiveAssistantTools({
     rbacFilteredTools: [],
     catalogRows,
     grantedPermissionGroups: permissionGroups,
-    runtimePolicy
+    runtimePolicy,
+    authority: godModeAuthority,
+    actorUserId: identity.id
   })
   const effectivePackVersionIds = new Set(effectiveCatalog.packVersionIds)
 
@@ -345,7 +379,7 @@ export async function resolvePersonalAssistantContext(
   for (const row of catalogRows) {
     if (
       row.sourceType !== 'pack'
-      || (row.releaseState !== 'active' && row.releaseState !== 'pilot')
+      || (!godModeAuthority.active && row.releaseState !== 'active' && row.releaseState !== 'pilot')
       || !row.packVersionId
       || !row.packKey
       || !row.packVersion
@@ -360,7 +394,11 @@ export async function resolvePersonalAssistantContext(
       version: row.packVersion,
       label: row.packLabel,
       releaseState: row.releaseState,
-      accessBasis: identity.role === 'owner' ? 'company_owner' : 'catalog_policy'
+      accessBasis: godModeAuthority.active
+        ? 'god_mode'
+        : identity.role === 'owner'
+          ? 'company_owner'
+          : 'catalog_policy'
     })
   }
   const activePacks = [...activePackMap.values()]
@@ -368,6 +406,7 @@ export async function resolvePersonalAssistantContext(
 
   return {
     identity: { userId: identity.id, role: identity.role },
+    godModeAuthority,
     runtimePolicy,
     observedMemoryEnabled: input.observedMemoryEnabled === true,
     permissionGroups,
@@ -388,6 +427,7 @@ export async function resolvePersonalAssistantContext(
 export function renderPersonalAssistantContext(context: PersonalAssistantContext): string {
   const payload = {
     currentRole: context.identity.role,
+    ...(context.godModeAuthority?.active ? { accessBasis: 'god_mode' as const } : {}),
     permissionGroups: context.permissionGroups,
     readOnly: context.isReadOnly,
     departments: context.departments.map(department => ({

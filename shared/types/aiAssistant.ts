@@ -1,6 +1,6 @@
-export type AssistantCatalogMode = 'legacy' | 'governed'
+export type AssistantCatalogMode = 'legacy' | 'governed' | 'god_mode'
 
-export type AssistantReleaseAccessBasis = 'company_owner' | 'catalog_policy'
+export type AssistantReleaseAccessBasis = 'god_mode' | 'company_owner' | 'catalog_policy'
 
 export type AssistantToolRestrictionReason
   = 'release_suspended'
@@ -41,13 +41,21 @@ export interface MyAssistantActivePackView {
   label: string
   version: number
   departmentName: string
-  releaseState: 'pilot' | 'active'
+  releaseState: 'draft' | 'pilot' | 'active' | 'suspended' | 'retired'
   accessBasis: AssistantReleaseAccessBasis
 }
 
 export interface MyAssistantAuthorityView {
+  accessBasis?: AssistantReleaseAccessBasis
+  label?: string
+  description?: string
+  toolCoverage?: {
+    available: number
+    registered: number
+    complete: boolean
+  }
   runtimeMode: 'legacy' | 'pilot' | 'enforced'
-  coverageStatus: 'legacy' | 'governed' | 'authenticated_core'
+  coverageStatus: 'legacy' | 'governed' | 'authenticated_core' | 'god_mode'
   currentRole: string
   readOnly: boolean
   permissionGroups: string[]

@@ -251,6 +251,8 @@ export async function processUserMessage(
   const assistantContext = pilotUat
     ? bindPilotUatContext(resolvedAssistantContext, pilotUat.releaseId)
     : resolvedAssistantContext
+  const godModeActive = assistantContext.godModeAuthority?.active === true
+    && assistantContext.godModeAuthority.actorUserId === userId
   const effectiveUserRole = assistantContext.identity.role
   const agentConfig = assistantContext.preferences
   // Persona = one skill-pack per turn (narrows tools ∩ RBAC + a focus preamble). An explicit arg (chat
@@ -434,7 +436,11 @@ export async function processUserMessage(
   let toolCostUsd: number | null = null
   let promptTokens: number | null = null
   let completionTokens: number | null = null
-  if (event && (pilotUat || shouldUseToolLoop({ aiToolsEnabled: !!cfg.aiToolsEnabled, hasEvent: !!event, intent: contextBundle.intent }))) {
+  if (event && (
+    pilotUat
+    || godModeActive
+    || shouldUseToolLoop({ aiToolsEnabled: !!cfg.aiToolsEnabled, hasEvent: !!event, intent: contextBundle.intent })
+  )) {
     try {
       const { runToolLoop } = await import('~~/server/utils/ai/toolLoop')
       const loopMessages = history
@@ -450,7 +456,7 @@ export async function processUserMessage(
       // specialist findings degrades to the normal L1 single-pack loop below.
       let l2Answer: string | null = null
       let l2Cost = 0
-      if (cfg.aiControllerL2Enabled && !explicitOrPersisted) {
+      if (cfg.aiControllerL2Enabled && !explicitOrPersisted && !godModeActive) {
         try {
           const [{ classifyRequest }, { planSpecialists }, { delegateToSpecialists }, { synthesizeAnswer }] = await Promise.all([
             import('~~/server/utils/ai/controller/classify'),
@@ -497,6 +503,7 @@ export async function processUserMessage(
                   catalogRows: assistantContext.catalogRows,
                   permissionGroups: assistantContext.permissionGroups,
                   runtimePolicy: assistantContext.runtimePolicy,
+                  authority: assistantContext.godModeAuthority,
                   catalogInstructionsAlreadyIncluded: true,
                   featureKey: 'agency_ai_l2_specialist_loop',
                   requestId: conversationId,
@@ -567,6 +574,7 @@ export async function processUserMessage(
           catalogRows: assistantContext.catalogRows,
           permissionGroups: assistantContext.permissionGroups,
           runtimePolicy: assistantContext.runtimePolicy,
+          authority: assistantContext.godModeAuthority,
           catalogInstructionsAlreadyIncluded: true,
           requestId: conversationId,
           turnId,
@@ -587,7 +595,7 @@ export async function processUserMessage(
           : 'I looked into that but didn’t find anything to report.'
       }
     } catch (err) {
-      if (pilotUat) throw err
+      if (pilotUat || godModeActive) throw err
       console.error('AI tool loop failed; falling back to single-shot:', err)
       // fall through to the existing LoRA/Groq path
     }
