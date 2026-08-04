@@ -284,11 +284,11 @@ Commit: `feat: add governed board knowledge lifecycle`
 - Consumes: `xlsx`, existing `jszip`, existing `fast-xml-parser`, and new direct dependency `unpdf`.
 - Produces: `extractNativeDocument(input): Promise<NativeExtractionResult>` and `buildKnowledgeChunks(result): KnowledgeChunkDraft[]`.
 
-- [ ] **Step 1: Add small deterministic fixtures**
+- [x] **Step 1: Add small deterministic fixtures**
 
 Create plain-text TXT, CSV, and JSON fixtures with no customer data. Add `test/helpers/boardKnowledgeFixtures.ts` to generate XLSX, DOCX, PPTX, digital PDF, blank/scanned-like PDF, corrupt ZIP, and oversized-expansion buffers deterministically in memory so binary files do not need to be patched into the repository.
 
-- [ ] **Step 2: Write failing native extraction tests**
+- [x] **Step 2: Write failing native extraction tests**
 
 Assert preserved source coordinates and bounded output:
 
@@ -302,13 +302,13 @@ expect(result.blocks).toEqual(expect.arrayContaining([
 
 Test PDF page limits before fan-out, OOXML uncompressed-byte limits, XML entities disabled, spreadsheet row/column caps, invalid UTF-8 warnings, and scan fallback signals.
 
-- [ ] **Step 3: Run extraction tests and verify RED**
+- [x] **Step 3: Run extraction tests and verify RED**
 
 Run: `pnpm vitest run test/server/utils/boardKnowledgeNativeExtraction.test.ts`
 
 Expected: FAIL because the extractor does not exist.
 
-- [ ] **Step 4: Install and implement the native adapters**
+- [x] **Step 4: Install and implement the native adapters**
 
 Run: `pnpm add unpdf`
 
@@ -327,7 +327,7 @@ export interface NativeExtractionResult {
 }
 ```
 
-- [ ] **Step 5: Write failing chunking tests**
+- [x] **Step 5: Write failing chunking tests**
 
 Assert headings, page/sheet/slide boundaries, maximum chunk size, bounded overlap, stable hashes, and removal of empty/duplicate chunks.
 
@@ -337,11 +337,11 @@ expect(chunks[0]).toMatchObject({ chunkIndex: 0, pageStart: 1, pageEnd: 1 })
 expect(new Set(chunks.map(chunk => chunk.contentHash)).size).toBe(chunks.length)
 ```
 
-- [ ] **Step 6: Implement semantic chunking**
+- [x] **Step 6: Implement semantic chunking**
 
 Use 1,800 target characters, 2,200 hard maximum, and at most 200 characters of overlap only when splitting a single structural block. Never merge two sheets or slides into one chunk.
 
-- [ ] **Step 7: Run focused tests and commit**
+- [x] **Step 7: Run focused tests and commit**
 
 Run: `pnpm vitest run test/server/utils/boardKnowledgeNativeExtraction.test.ts test/server/utils/boardKnowledgeChunking.test.ts`
 
