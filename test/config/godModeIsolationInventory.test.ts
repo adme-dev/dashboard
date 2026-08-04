@@ -2,14 +2,17 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
+import {
+  listRegisteredGodModeMutationFamilies,
+  listReviewedGodModeReadRoutes
+} from '../../server/utils/godMode/featureGate'
+
 const API_INVENTORY = {
   totalRouteFiles: 1930,
   mutationRouteFiles: 1056,
   explicitlyGuardedMutationFiles: 362,
   guardedMutationFilesWithTransactionCall: 25
 } as const
-
-const NEWLY_REACHABLE_MUTATIONS: readonly never[] = []
 
 const DEFERRED_MUTATION_FAMILIES = [{
   route: '/api/agency/briefs/templates/:id/mapping',
@@ -52,14 +55,50 @@ describe('God mode route isolation inventory', () => {
     })
   })
 
+  it('classifies each reviewed read route by exact method, gate, scope, and terminal strategy', () => {
+    expect(listReviewedGodModeReadRoutes()).toEqual([
+      {
+        method: 'GET',
+        path: '/api/agency/operations/queue-health',
+        file: 'server/api/agency/operations/queue-health.get.ts',
+        bypassedGate: 'permission',
+        independentScope: 'agency-global authenticated staff operations telemetry',
+        mutationClass: 'read-only',
+        terminalStrategy: 'route attempt plus DB terminal with strict queue fallback'
+      },
+      {
+        method: 'GET',
+        path: '/api/crm/ai/status',
+        file: 'server/api/crm/ai/status.get.ts',
+        bypassedGate: 'feature_flag',
+        independentScope: 'agency-global authenticated staff status',
+        mutationClass: 'read-only',
+        terminalStrategy: 'route attempt plus DB terminal with strict queue fallback'
+      }
+    ])
+
+    const [permissionRoute, featureRoute] = listReviewedGodModeReadRoutes()
+    expect(readFileSync(permissionRoute!.file, 'utf8')).toContain("requirePermission(event, 'ADMIN')")
+    expect(readFileSync(featureRoute!.file, 'utf8')).toContain('isApplicationCapabilityEnabled(event, isCrmAiEnabled)')
+  })
+
   it('keeps every mutation lacking independent scope and durable terminal coordination unreachable', () => {
-    expect(NEWLY_REACHABLE_MUTATIONS).toEqual([])
+    expect(listRegisteredGodModeMutationFamilies()).toEqual([])
     expect(DEFERRED_MUTATION_FAMILIES).toEqual([
       expect.objectContaining({
         file: 'server/api/agency/briefs/templates/[id]/mapping.put.ts',
         decision: 'deny God-mode-only mutation bypass'
       })
     ])
+  })
+
+  it('has no production mutation registration and exactly one reviewed feature-gate consumer', () => {
+    const files = listApiFiles()
+    const mutationRegistrations = files.filter(file => readFileSync(file, 'utf8').includes('registerGodModeMutationFamily('))
+    const featureConsumers = files.filter(file => readFileSync(file, 'utf8').includes('isApplicationCapabilityEnabled('))
+
+    expect(mutationRegistrations).toEqual([])
+    expect(featureConsumers).toEqual(['server/api/crm/ai/status.get.ts'])
   })
 
   it('pins the concrete uncoordinated mutation evidence', () => {

@@ -95,7 +95,7 @@ describe('roleResolver', () => {
       expect(mockQueryOne).not.toHaveBeenCalled() // No DB query needed
     })
 
-    it('returns every permission group only for server-verified active owner authority', async () => {
+    it('preserves custom-role read-only policy while expanding active-owner permission groups', async () => {
       const ownerId = '11111111-1111-4111-8111-111111111111'
       mockResolveGodModeAuthority.mockResolvedValue({
         active: true,
@@ -103,14 +103,19 @@ describe('roleResolver', () => {
         reason: 'active_owner',
         emergencyDisabled: false
       })
+      mockKvGet.mockResolvedValue(null)
+      mockQueryOne.mockResolvedValue({
+        name: 'Restricted Owner',
+        is_read_only: true,
+        permission_groups: ['CLIENTS']
+      })
 
-      const result = await resolveUserPermissions({ context: {} } as any, ownerId, 'viewer', null)
+      const result = await resolveUserPermissions({ context: {} } as any, ownerId, 'owner', 'restricted-owner-role')
 
       expect(result.groups).toEqual([...PERMISSION_GROUPS])
-      expect(result.isReadOnly).toBe(false)
+      expect(result.isReadOnly).toBe(true)
       expect(result.godModeElevated).toBe(true)
-      expect(mockKvGet).not.toHaveBeenCalled()
-      expect(mockQueryOne).not.toHaveBeenCalled()
+      expect(mockQueryOne).toHaveBeenCalledWith(expect.stringContaining('WHERE cr.id = $1'), ['restricted-owner-role'])
     })
 
     it('does not create a role-string-only owner shortcut without an H3 event', async () => {

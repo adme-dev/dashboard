@@ -22,7 +22,8 @@ const TASK_3_OWNED_FILES = new Set([
   'server/utils/roleResolver.ts',
   'server/utils/godMode/featureGate.ts',
   'server/middleware/godMode.ts',
-  'server/plugins/godModeAudit.ts'
+  'server/plugins/godModeAudit.ts',
+  'server/api/crm/ai/status.get.ts'
 ])
 const GATE_PATTERN = /process\.env\.|useRuntimeConfig\(|runtimeConfig\.|feature.?flag|suite.?enabled|roleHasPermission\(|hasRole\(|user\.role|user_role|permissionGroups|requirePermission\(|requireRole\(|requireWriteAccess\(|isReadOnlyRole\(/i
 
@@ -102,6 +103,20 @@ function legacyInventory() {
 }
 
 describe('God mode gate inventory', () => {
+  const request = (path: string, method = 'GET', userId = '11111111-1111-4111-8111-111111111111') => ({
+    method,
+    path,
+    context: { user: { id: userId } },
+    node: {
+      req: {
+        originalUrl: path,
+        headers: { host: 'app.xeroflow.test' },
+        connection: {}
+      },
+      res: { statusCode: 200, statusMessage: 'OK' }
+    }
+  }) as any
+
   beforeEach(() => {
     vi.clearAllMocks()
     mockResolveGodModeAuthority.mockResolvedValue({
@@ -114,15 +129,15 @@ describe('God mode gate inventory', () => {
 
   it('freezes every pre-existing direct gate with an explicit classification', () => {
     const inventory = legacyInventory()
-    expect(inventory.rows).toHaveLength(1311)
+    expect(inventory.rows).toHaveLength(1313)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 88,
+      identity_tenant_hard_boundary: 90,
       provider_infrastructure_availability: 184,
       application_governance_bypass: 666,
       ordinary_user_behavior: 164,
       unrelated_configuration: 209
     })
-    expect(inventory.digest).toBe('fad0f0622a4c6b793c59f28a5fa51b83d3e68c080c22ab2da88b8736011abed7')
+    expect(inventory.digest).toBe('c6034846b51d0efbee272cacaa192c20d591ce73e708eab0943c0289b4c15cf5')
     expect(CENTRAL_HELPER_BY_CLASS).toEqual({
       identity_tenant_hard_boundary: 'unchanged independent scope helper',
       provider_infrastructure_availability: 'unchanged provider/configuration check',
@@ -153,8 +168,35 @@ describe('God mode gate inventory', () => {
       reason: 'active_owner',
       emergencyDisabled: false
     })
-    const event = { method: 'GET', context: { user: { id: ownerId } } } as any
+    const event = request('/api/crm/ai/status', 'GET', ownerId)
+    seedGodModeRouteAuditState(event, {
+      actorUserId: ownerId,
+      correlationId: '33333333-3333-4333-8333-333333333333',
+      sessionDigest: 'a'.repeat(64),
+      routeOrTool: 'GET /api/crm/ai/status',
+      emergencyDisabled: false
+    })
     await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(true)
+  })
+
+  it('keeps an unreviewed active-owner read feature gate unavailable', async () => {
+    const ownerId = '11111111-1111-4111-8111-111111111111'
+    mockResolveGodModeAuthority.mockResolvedValue({
+      active: true,
+      actorUserId: ownerId,
+      reason: 'active_owner',
+      emergencyDisabled: false
+    })
+    const event = request('/api/unreviewed/feature', 'GET', ownerId)
+    seedGodModeRouteAuditState(event, {
+      actorUserId: ownerId,
+      correlationId: '44444444-4444-4444-8444-444444444444',
+      sessionDigest: 'b'.repeat(64),
+      routeOrTool: 'GET /api/unreviewed/feature',
+      emergencyDisabled: false
+    })
+
+    await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(false)
   })
 
   it('does not enable an uncoordinated mutation gate', async () => {
@@ -165,7 +207,7 @@ describe('God mode gate inventory', () => {
       reason: 'active_owner',
       emergencyDisabled: false
     })
-    const event = { method: 'POST', context: { user: { id: ownerId } } } as any
+    const event = request('/api/agency/clients', 'POST', ownerId)
     await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(false)
   })
 
@@ -177,11 +219,7 @@ describe('God mode gate inventory', () => {
       reason: 'active_owner',
       emergencyDisabled: false
     })
-    const event = {
-      method: 'PUT',
-      context: { user: { id: ownerId } },
-      path: '/api/agency/briefs/templates/template-1/mapping'
-    } as any
+    const event = request('/api/agency/briefs/templates/template-1/mapping?retry=1', 'PUT', ownerId)
     seedGodModeRouteAuditState(event, {
       actorUserId: ownerId,
       correlationId: '33333333-3333-4333-8333-333333333333',
@@ -201,7 +239,7 @@ describe('God mode gate inventory', () => {
       })
     })
 
-    await prepareRegisteredGodModeMutation(event, request => request.path)
+    await prepareRegisteredGodModeMutation(event)
 
     expect(getGodModeRouteAuditState(event)?.mutationCoordination?.strategy).toBe('task5-execution-ledger')
     await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(true)
@@ -216,11 +254,7 @@ describe('God mode gate inventory', () => {
       reason: 'active_owner',
       emergencyDisabled: false
     })
-    const event = {
-      method: 'PUT',
-      context: { user: { id: ownerId } },
-      path: '/api/agency/briefs/templates/template-2/mapping'
-    } as any
+    const event = request('/api/agency/briefs/templates/template-2/mapping', 'PUT', ownerId)
     const unregister = registerGodModeMutationFamily({
       family: 'missing-attempt-state',
       method: 'PUT',
@@ -231,7 +265,8 @@ describe('God mode gate inventory', () => {
         persistTerminal: vi.fn()
       })
     })
-    await prepareRegisteredGodModeMutation(event, request => request.path)
+    await expect(prepareRegisteredGodModeMutation(event))
+      .rejects.toThrow('God mode route attempt required')
 
     await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(false)
     unregister()

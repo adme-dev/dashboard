@@ -178,7 +178,10 @@ export default defineEventHandler(async (event) => {
   const cacheKey = `auth-session:${token.slice(0, 16)}`
   const cachedUser = await kvGet<{ id: string, email: string, name: string, role: string, is_active: boolean, avatar_url?: string, custom_role_id?: string | null, permissionGroups?: string[], isCustomReadOnly?: boolean }>(event, cacheKey)
 
-  if (cachedUser) {
+  // Owner identity and authority are revalidated on every request. Legacy owner
+  // cache entries are deliberately ignored so revocation and emergency changes
+  // cannot inherit the ordinary five-minute session fast path.
+  if (cachedUser && cachedUser.role.toLowerCase() !== 'owner') {
     event.context.user = cachedUser
     event.context.auth = { userId: cachedUser.id, role: cachedUser.role }
     return
@@ -186,9 +189,9 @@ export default defineEventHandler(async (event) => {
 
   // Validate session via DB
   try {
-    const user = await validateSession(token)
+    const sessionUser = await validateSession(token)
 
-    if (!user) {
+    if (!sessionUser) {
       // Token is genuinely invalid or user deactivated — clear cookies
       deleteCookie(event, 'auth_token')
       deleteCookie(event, 'auth_token_client')
@@ -203,6 +206,10 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    // Permission decoration is request-local. Do not mutate an object retained
+    // by an auth provider, test double, or future in-process session cache.
+    const user = { ...sessionUser }
+
     // Resolve permission groups
     const resolved = await resolveUserPermissions(event, user.id, user.role, user.custom_role_id)
     user.permissionGroups = resolved.groups
@@ -210,7 +217,9 @@ export default defineEventHandler(async (event) => {
 
     // Cache ordinary permissions only. God-mode expansion is request-local so an
     // emergency disable or owner downgrade cannot inherit five minutes of stale authority.
-    if (!resolved.godModeElevated) kvPut(event, cacheKey, user, 300)
+    if (user.role.toLowerCase() !== 'owner' && !resolved.godModeElevated) {
+      kvPut(event, cacheKey, user, 300)
+    }
 
     event.context.user = user
     event.context.auth = { userId: user.id, role: user.role }

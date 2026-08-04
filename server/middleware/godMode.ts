@@ -5,6 +5,7 @@ import { createError, getCookie, getHeader, getRequestURL } from 'h3'
 import { appendGodModeAuditEvent } from '~~/server/utils/godMode/audit'
 import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
 import {
+  GodModeMutationCoordinationError,
   prepareRegisteredGodModeMutation,
   seedGodModeRouteAuditState
 } from '~~/server/utils/godMode/featureGate'
@@ -42,7 +43,6 @@ const EXCLUDED_EXACT = new Set([
 interface GodModeMiddlewareDependencies {
   resolveGodModeAuthority: typeof resolveGodModeAuthority
   appendGodModeAuditEvent: typeof appendGodModeAuditEvent
-  getPath: (event: H3Event) => string
   getSessionToken: (event: H3Event) => string | null
   randomUUID: () => string
 }
@@ -50,7 +50,6 @@ interface GodModeMiddlewareDependencies {
 const defaultDependencies: GodModeMiddlewareDependencies = {
   resolveGodModeAuthority,
   appendGodModeAuditEvent,
-  getPath: event => getRequestURL(event).pathname,
   getSessionToken: (event) => {
     const cookieToken = getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client')
     const authorization = getHeader(event, 'authorization')
@@ -62,14 +61,17 @@ const defaultDependencies: GodModeMiddlewareDependencies = {
 function isExcluded(path: string): boolean {
   return !path.startsWith('/api/')
     || EXCLUDED_EXACT.has(path)
-    || EXCLUDED_PREFIXES.some(prefix => path.startsWith(prefix))
+    || EXCLUDED_PREFIXES.some((prefix) => {
+      const segment = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix
+      return path === segment || path.startsWith(`${segment}/`)
+    })
 }
 
 export async function handleGodModeRequest(
   event: H3Event,
   dependencies: GodModeMiddlewareDependencies = defaultDependencies
 ): Promise<void> {
-  const path = dependencies.getPath(event)
+  const path = getRequestURL(event).pathname
   if (isExcluded(path)) return
 
   const actorUserId = (event.context as any).user?.id
@@ -112,8 +114,11 @@ export async function handleGodModeRequest(
   })
 
   try {
-    await prepareRegisteredGodModeMutation(event, dependencies.getPath)
-  } catch {
+    await prepareRegisteredGodModeMutation(event)
+  } catch (error) {
+    if (error instanceof GodModeMutationCoordinationError && error.reason === 'required') {
+      throw createError({ statusCode: 503, statusMessage: 'God mode mutation coordination required' })
+    }
     throw createError({ statusCode: 503, statusMessage: 'God mode mutation coordination unavailable' })
   }
 }

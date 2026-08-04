@@ -82,6 +82,31 @@ import {
   verifyMagicLink,
   invalidateUserMagicLinks
 } from '../../../server/utils/auth'
+import { seedGodModeRouteAuditState } from '../../../server/utils/godMode/featureGate'
+
+function auditedGodModeReadEvent(user: any) {
+  const event = {
+    method: 'GET',
+    path: '/api/agency/operations/queue-health',
+    context: { user },
+    node: {
+      req: {
+        originalUrl: '/api/agency/operations/queue-health',
+        headers: { host: 'app.xeroflow.test' },
+        connection: {}
+      },
+      res: { statusCode: 200, statusMessage: 'OK' }
+    }
+  } as any
+  seedGodModeRouteAuditState(event, {
+    actorUserId: user.id,
+    correlationId: '33333333-3333-4333-8333-333333333333',
+    sessionDigest: 'a'.repeat(64),
+    routeOrTool: 'GET /api/agency/operations/queue-health',
+    emergencyDisabled: false
+  })
+  return event
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -369,7 +394,7 @@ describe('auth utility', () => {
 
     it('allows a freshly verified active owner when the normal role decision denies', async () => {
       const user = { id: '11111111-1111-4111-8111-111111111111', role: 'viewer', permissionGroups: [] }
-      const event = { method: 'GET', context: { user } } as any
+      const event = auditedGodModeReadEvent(user)
       mockResolveGodModeAuthority.mockResolvedValue({
         active: true,
         actorUserId: user.id,
@@ -424,7 +449,7 @@ describe('auth utility', () => {
         emergencyDisabled: false
       })
 
-      await expect(requirePermission({ method: 'GET', context: { user } } as any, 'FINANCE' as any)).resolves.toBe(user)
+      await expect(requirePermission(auditedGodModeReadEvent(user), 'FINANCE' as any)).resolves.toBe(user)
     })
   })
 
@@ -460,7 +485,7 @@ describe('auth utility', () => {
         emergencyDisabled: false
       })
 
-      await expect(requireWriteAccess({ method: 'GET', context: { user } } as any)).resolves.toBe(user)
+      await expect(requireWriteAccess(auditedGodModeReadEvent(user))).resolves.toBe(user)
     })
 
     it('does not make an uncoordinated mutation newly reachable', async () => {

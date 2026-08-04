@@ -23,29 +23,17 @@ export async function resolveUserPermissions(
   userRole: string,
   customRoleId?: string | null
 ): Promise<ResolvedPermissions> {
-  if (event?.context) {
-    const authority = await resolveGodModeAuthority(event, userId)
-    if (authority.active) {
-      return {
-        groups: [...PERMISSION_GROUPS],
-        customRoleId: customRoleId || null,
-        roleName: userRole,
-        isReadOnly: false,
-        godModeElevated: true
-      }
-    }
-  }
-
   const cacheKey = `role-perms:${userId}`
   const cached = await kvGet<ResolvedPermissions>(event, cacheKey)
-  if (cached) return cached
-
   let resolved: ResolvedPermissions
 
-  try {
-    // Query by custom_role_id if set, otherwise look up the system role by slug
-    const query = customRoleId
-      ? `SELECT cr.name, cr.is_read_only,
+  if (cached) {
+    resolved = cached
+  } else {
+    try {
+      // Query by custom_role_id if set, otherwise look up the system role by slug
+      const query = customRoleId
+        ? `SELECT cr.name, cr.is_read_only,
            COALESCE(
              array_agg(rpg.permission_group) FILTER (WHERE rpg.permission_group IS NOT NULL),
              '{}'
@@ -64,25 +52,39 @@ export async function resolveUserPermissions(
          WHERE cr.slug = $1 AND cr.is_system = true
          GROUP BY cr.id`
 
-    const param = customRoleId || userRole
-    const role = await queryOne<{ name: string; is_read_only: boolean; permission_groups: string[] }>(query, [param])
+      const param = customRoleId || userRole
+      const role = await queryOne<{ name: string; is_read_only: boolean; permission_groups: string[] }>(query, [param])
 
-    if (role) {
-      resolved = {
-        groups: role.permission_groups as PermissionGroup[],
-        customRoleId: customRoleId || null,
-        roleName: role.name,
-        isReadOnly: role.is_read_only
+      if (role) {
+        resolved = {
+          groups: role.permission_groups as PermissionGroup[],
+          customRoleId: customRoleId || null,
+          roleName: role.name,
+          isReadOnly: role.is_read_only
+        }
+      } else {
+        resolved = staticFallback(userRole)
       }
-    } else {
+    } catch {
       resolved = staticFallback(userRole)
     }
-  } catch {
-    resolved = staticFallback(userRole)
+
+    // Cache ordinary role policy only. Any owner elevation below is request-local.
+    kvPut(event, cacheKey, resolved, 300)
   }
 
-  // Cache for 5 minutes (fire-and-forget)
-  kvPut(event, cacheKey, resolved, 300)
+  if (event?.context) {
+    const authority = await resolveGodModeAuthority(event, userId)
+    if (authority.active) {
+      return {
+        ...resolved,
+        groups: [...PERMISSION_GROUPS],
+        isReadOnly: resolved.isReadOnly,
+        godModeElevated: true
+      }
+    }
+  }
+
   return resolved
 }
 

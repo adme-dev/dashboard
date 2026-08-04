@@ -22,6 +22,11 @@ function event(method = 'GET', queue?: { send: ReturnType<typeof vi.fn> }) {
       cloudflare: { env: { JOBS_QUEUE: queue } }
     },
     node: {
+      req: {
+        originalUrl: '/api/agency/clients',
+        headers: { host: 'app.xeroflow.test' },
+        connection: {}
+      },
       res: {
         statusCode: 200,
         statusMessage: 'OK'
@@ -152,7 +157,7 @@ describe('God mode terminal audit plugin', () => {
       route: '/api/agency/clients',
       prepared: true,
       persistTerminal
-    }, current => current.path)
+    })
 
     await persistGodModeTerminalAudit(request, response, { appendGodModeAuditEvent, setResponseStatus })
 

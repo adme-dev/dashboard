@@ -8,6 +8,37 @@ const READ_ONLY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const requestAuditStateKey = Symbol('godModeRouteAuditState')
 const mutationCoordinationKey = Symbol('godModeMutationCoordination')
 
+export interface ReviewedGodModeReadRoute {
+  method: 'GET' | 'HEAD' | 'OPTIONS'
+  path: string
+  file: string
+  bypassedGate: GodModeBypassedControl
+  independentScope: string
+  mutationClass: 'read-only'
+  terminalStrategy: string
+}
+
+const REVIEWED_READ_ROUTES: readonly ReviewedGodModeReadRoute[] = [
+  {
+    method: 'GET',
+    path: '/api/agency/operations/queue-health',
+    file: 'server/api/agency/operations/queue-health.get.ts',
+    bypassedGate: 'permission',
+    independentScope: 'agency-global authenticated staff operations telemetry',
+    mutationClass: 'read-only',
+    terminalStrategy: 'route attempt plus DB terminal with strict queue fallback'
+  },
+  {
+    method: 'GET',
+    path: '/api/crm/ai/status',
+    file: 'server/api/crm/ai/status.get.ts',
+    bypassedGate: 'feature_flag',
+    independentScope: 'agency-global authenticated staff status',
+    mutationClass: 'read-only',
+    terminalStrategy: 'route attempt plus DB terminal with strict queue fallback'
+  }
+]
+
 export type GodModeMutationAuditStrategy = 'transaction-bound' | 'task5-execution-ledger'
 
 export interface GodModeMutationCoordination {
@@ -31,6 +62,16 @@ export interface GodModeMutationFamily {
 }
 
 const mutationFamilies = new Map<string, GodModeMutationFamily>()
+
+export class GodModeMutationCoordinationError extends Error {
+  constructor(
+    message: string,
+    readonly reason: 'required' | 'ambiguous' | 'unavailable'
+  ) {
+    super(message)
+    this.name = 'GodModeMutationCoordinationError'
+  }
+}
 
 export interface GodModeRouteAuditSeed {
   actorUserId: string
@@ -56,9 +97,15 @@ function requestMethod(event: H3Event): string {
 }
 
 function requestPath(event: H3Event): string {
-  const injectedPath = (event as H3Event & { path?: unknown }).path
-  if (typeof injectedPath === 'string') return injectedPath
   return getRequestURL(event).pathname
+}
+
+export function listReviewedGodModeReadRoutes(): ReviewedGodModeReadRoute[] {
+  return REVIEWED_READ_ROUTES.map(route => ({ ...route }))
+}
+
+export function listRegisteredGodModeMutationFamilies(): Array<{ family: string, method: string }> {
+  return [...mutationFamilies.values()].map(({ family, method }) => ({ family, method }))
 }
 
 export function isGodModeMutationRequest(event: H3Event): boolean {
@@ -89,11 +136,14 @@ export function markGodModeRouteFailure(event: H3Event): void {
 
 export function registerGodModeMutationCoordination(
   event: H3Event,
-  coordination: GodModeMutationCoordination,
-  getPath: (event: H3Event) => string = requestPath
+  coordination: GodModeMutationCoordination
 ): void {
   const method = requestMethod(event)
-  const path = getPath(event)
+  const path = requestPath(event)
+  const state = getGodModeRouteAuditState(event)
+  if (!state || state.routeOrTool !== `${method} ${path}`) {
+    throw new GodModeMutationCoordinationError('God mode route attempt required', 'unavailable')
+  }
   if (coordination.prepared !== true
     || !['transaction-bound', 'task5-execution-ledger'].includes(coordination.strategy)
     || coordination.method.toUpperCase() !== method
@@ -102,8 +152,7 @@ export function registerGodModeMutationCoordination(
     throw new Error('Invalid God mode mutation coordination')
   }
   context(event)[mutationCoordinationKey] = coordination
-  const state = getGodModeRouteAuditState(event)
-  if (state) state.mutationCoordination = coordination
+  state.mutationCoordination = coordination
 }
 
 export function registerGodModeMutationFamily(family: GodModeMutationFamily): () => void {
@@ -123,16 +172,23 @@ export function registerGodModeMutationFamily(family: GodModeMutationFamily): ()
 }
 
 export async function prepareRegisteredGodModeMutation(
-  event: H3Event,
-  getPath: (event: H3Event) => string = requestPath
+  event: H3Event
 ): Promise<void> {
   if (!isGodModeMutationRequest(event)) return
   const method = requestMethod(event)
-  const path = getPath(event)
+  const path = requestPath(event)
+  const state = getGodModeRouteAuditState(event)
+  if (!state || state.routeOrTool !== `${method} ${path}`) {
+    throw new GodModeMutationCoordinationError('God mode route attempt required', 'unavailable')
+  }
   const matches = [...mutationFamilies.values()]
     .filter(family => family.method === method && family.matchesPath(path))
-  if (matches.length === 0) return
-  if (matches.length !== 1) throw new Error('Ambiguous God mode mutation family')
+  if (matches.length === 0) {
+    throw new GodModeMutationCoordinationError('God mode mutation coordination required', 'required')
+  }
+  if (matches.length !== 1) {
+    throw new GodModeMutationCoordinationError('Ambiguous God mode mutation family', 'ambiguous')
+  }
 
   const family = matches[0]
   if (!family) throw new Error('God mode mutation family disappeared')
@@ -141,7 +197,7 @@ export async function prepareRegisteredGodModeMutation(
     ...prepared,
     method,
     route: path
-  }, getPath)
+  })
 }
 
 function exactMutationCoordination(event: H3Event): GodModeMutationCoordination | null {
@@ -167,7 +223,15 @@ export async function canBypassApplicationControl(
 
   const state = getGodModeRouteAuditState(event)
   if (!isGodModeMutationRequest(event)) {
-    state?.bypassedControls.add(control)
+    const method = requestMethod(event)
+    const path = requestPath(event)
+    const reviewed = REVIEWED_READ_ROUTES.some(route => (
+      route.method === method
+      && route.path === path
+      && route.bypassedGate === control
+    ))
+    if (!reviewed || !state || state.routeOrTool !== `${method} ${path}`) return false
+    state.bypassedControls.add(control)
     return true
   }
 
