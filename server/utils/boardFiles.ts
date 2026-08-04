@@ -77,8 +77,8 @@ function uploaderFromRow(row: UploaderRow): BoardFileItem['uploadedBy'] {
   if (!row.uploader_id) return null
   return {
     id: row.uploader_id,
-    name: row.uploader_name,
-    email: row.uploader_email
+    name: row.uploader_name || 'Unknown user',
+    email: row.uploader_email || ''
   }
 }
 

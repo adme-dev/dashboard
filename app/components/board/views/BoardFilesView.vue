@@ -73,6 +73,26 @@ function resetUploadForm() {
   uploadDescription.value = ''
 }
 
+function openUpload() {
+  uploadOpen.value = true
+}
+
+function closeUpload() {
+  uploadOpen.value = false
+}
+
+function confirmDelete(file: BoardFileItem) {
+  deleteTarget.value = file
+}
+
+function closeDelete() {
+  deleteTarget.value = null
+}
+
+function onDeleteModalOpenChange(value: boolean) {
+  if (!value) closeDelete()
+}
+
 async function uploadBoardFile() {
   if (!uploadFileValue.value) return
   uploading.value = true
@@ -146,7 +166,7 @@ onMounted(loadFiles)
             Board documents live here for the whole team. Task attachments remain attached to their task and appear here for discovery.
           </p>
         </div>
-        <UButton label="Upload board file" icon="i-lucide-upload" @click="uploadOpen = true" />
+        <UButton label="Upload board file" icon="i-lucide-upload" @click="openUpload" />
       </div>
 
       <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted" aria-live="polite">
@@ -279,7 +299,7 @@ onMounted(loadFiles)
                 variant="ghost"
                 color="error"
                 size="xs"
-                @click="deleteTarget = file"
+                @click="confirmDelete(file)"
               />
             </UTooltip>
           </div>
@@ -334,7 +354,7 @@ onMounted(loadFiles)
               label="Cancel"
               variant="ghost"
               color="neutral"
-              @click="uploadOpen = false"
+              @click="closeUpload"
             />
             <UButton
               label="Upload file"
@@ -348,7 +368,7 @@ onMounted(loadFiles)
       </template>
     </UModal>
 
-    <UModal :open="!!deleteTarget" :ui="{ content: 'max-w-md' }" @update:open="value => { if (!value) deleteTarget = null }">
+    <UModal :open="!!deleteTarget" :ui="{ content: 'max-w-md' }" @update:open="onDeleteModalOpenChange">
       <template #content>
         <div class="space-y-4 p-5">
           <div>
@@ -364,7 +384,7 @@ onMounted(loadFiles)
               label="Cancel"
               variant="ghost"
               color="neutral"
-              @click="deleteTarget = null"
+              @click="closeDelete"
             />
             <UButton
               label="Delete board file"

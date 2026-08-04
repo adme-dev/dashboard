@@ -119,4 +119,28 @@ describe('board file aggregation', () => {
       canDelete: false
     })
   })
+
+  it('falls back safely when an uploader record has incomplete profile metadata', () => {
+    const result = mapBoardFileRows('board-1', [{
+      id: 'board-file-2',
+      file_name: 'Forecast template.xlsx',
+      file_url: 'https://files.example/forecast.xlsx',
+      file_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      file_size: '1024',
+      category: 'template',
+      description: null,
+      source: 'xeroflow',
+      source_reference: null,
+      created_at: '2026-08-04T01:00:00.000Z',
+      uploader_id: 'deleted-user',
+      uploader_name: null,
+      uploader_email: null
+    }], [], owner)
+
+    expect(result.files[0]?.uploadedBy).toEqual({
+      id: 'deleted-user',
+      name: 'Unknown user',
+      email: ''
+    })
+  })
 })
