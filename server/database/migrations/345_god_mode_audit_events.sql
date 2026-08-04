@@ -10,12 +10,16 @@ LANGUAGE sql
 IMMUTABLE
 STRICT
 AS $$
-  SELECT COALESCE(bool_and(control IN (
-    'permission', 'feature_flag', 'release_policy', 'evaluation_policy',
-    'personal_policy', 'budget', 'rate_limit', 'confirmation', 'mcp_scope',
-    'mcp_suite_flag'
-  )), TRUE)
-  FROM unnest(controls) AS control
+  SELECT NOT EXISTS (
+    SELECT 1
+      FROM unnest(controls) AS bypassed_control(value)
+     WHERE bypassed_control.value IS NULL
+        OR bypassed_control.value NOT IN (
+          'permission', 'feature_flag', 'release_policy', 'evaluation_policy',
+          'personal_policy', 'budget', 'rate_limit', 'confirmation', 'mcp_scope',
+          'mcp_suite_flag'
+        )
+  )
 $$;
 
 CREATE TABLE IF NOT EXISTS god_mode_audit_events (
