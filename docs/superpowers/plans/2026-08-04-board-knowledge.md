@@ -520,11 +520,11 @@ Commit: `feat: process board knowledge asynchronously`
 - Consumes: board resolution from `boardFiles.ts`, `requireWriteAccess`, `requirePermission`, repository/lifecycle functions, and `enqueue`.
 - Produces: the API surface from the accepted specification.
 
-- [ ] **Step 1: Write route tests for every authorization boundary**
+- [x] **Step 1: Write route tests for every authorization boundary**
 
 Assert submit calls both board resolution and write admission; review calls board resolution and `requirePermission(event, 'MANAGEMENT')`. Ensure inaccessible submission IDs return 404 without leaking source metadata.
 
-- [ ] **Step 2: Write transition and validation tests**
+- [x] **Step 2: Write transition and validation tests**
 
 Cover unsupported formats, idempotent submit, stale `expectedUpdatedAt`, missing rejection reason, reason length limit, approve-before-ready, retry-after-failure, and archive dispatching de-index work.
 
@@ -533,17 +533,17 @@ await expect(rejectHandler(eventWith({ reason: '' }))).rejects.toMatchObject({ s
 expect(mockRequirePermission).toHaveBeenCalledWith(expect.anything(), 'MANAGEMENT')
 ```
 
-- [ ] **Step 3: Run API tests and verify RED**
+- [x] **Step 3: Run API tests and verify RED**
 
 Run: `pnpm vitest run test/server/api/boardKnowledgeApi.test.ts`
 
 Expected: FAIL because the routes are missing.
 
-- [ ] **Step 4: Implement routes as thin adapters**
+- [x] **Step 4: Implement routes as thin adapters**
 
 Do not place SQL or model calls in route files. Return `202` semantics in the response body for queued work and the canonical submission projection. Use `readBody` plus Zod for transition inputs.
 
-- [ ] **Step 5: Run API tests and commit**
+- [x] **Step 5: Run API tests and commit**
 
 Run: `pnpm vitest run test/server/api/boardKnowledgeApi.test.ts test/server/api/boardFilesApi.test.ts`
 
