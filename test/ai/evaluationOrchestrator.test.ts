@@ -16,6 +16,7 @@ import type { EvaluationCaseResult } from '~~/server/utils/ai/governance/contrac
 import { getAiModelCatalogOption } from '~~/server/utils/ai/modelRegistry'
 import { createEvaluationModelExecutor } from '~~/server/utils/ai/governance/evaluationModelExecutor'
 import { registry as toolRegistry } from '~~/server/utils/ai/tools'
+import * as sharedSafetyPolicy from '~~/server/utils/ai/spotlight'
 
 const IDS = {
   pack: '10000000-0000-4000-8000-000000000001',
@@ -431,6 +432,26 @@ describe('evaluation orchestration', () => {
     }
   })
 
+  it('rejects a queued approval when the shared runtime safety policy is removed', async () => {
+    const { svc, preflight, approval } = await preflightAndApprove()
+    const clause = vi.spyOn(sharedSafetyPolicy, 'spotlightSystemClause').mockReturnValue('')
+
+    try {
+      await expect(svc.executeApprovedEvaluation({
+        evaluationRunId: preflight.evaluationRunId,
+        planDigest: preflight.planDigest,
+        rateCardId: preflight.rateCardId,
+        approvalId: approval.approvalId
+      }, IDS.actor)).rejects.toMatchObject({
+        code: 'evaluation_prompt_digest_stale',
+        statusCode: 409
+      })
+      expect(createExecutor).not.toHaveBeenCalled()
+    } finally {
+      clause.mockRestore()
+    }
+  })
+
   it('rejects duplicate execution once the run has terminal evidence', async () => {
     const { svc, preflight, approval } = await preflightAndApprove()
     runs.current = { ...runs.current!, status: 'completed', gatePassed: true, completedAt: NOW.toISOString() }
@@ -508,13 +529,13 @@ describe('evaluation orchestration', () => {
     snapshot = material({
       instructionsPreamble: '',
       packBudget: {
-        maxInputTokens: 3_000,
+        maxInputTokens: 4_000,
         maxOutputTokens: 20,
         maxCostUsdMicros: 1_000,
         maxLatencyMs: 20
       }
     })
-    const emptyBudget = { ...budget, maxInputTokensPerCase: 3_000 }
+    const emptyBudget = { ...budget, maxInputTokensPerCase: 4_000 }
     const realFactory = vi.fn((options: any) => createEvaluationModelExecutor({
       ...options,
       invoke: vi.fn().mockResolvedValue({

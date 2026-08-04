@@ -42,4 +42,12 @@ describe('spotlight', () => {
     expect(spotlightSystemClause()).toMatch(/recalled memory/i)
     expect(spotlightSystemClause()).toMatch(/feedback-derived patterns/i)
   })
+
+  it('requires clarification before acting on a non-unique entity match', () => {
+    const clause = spotlightSystemClause()
+
+    expect(clause).toContain('When supplied or retrieved data contains multiple plausible matching entities')
+    expect(clause).toContain('ask the user to choose')
+    expect(clause).toContain('Do not guess, act, prepare a proposal, or claim an effect')
+  })
 })

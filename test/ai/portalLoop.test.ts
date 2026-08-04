@@ -51,6 +51,31 @@ describe('runPortalToolLoop', () => {
     }))
   })
 
+  it('passes the shared non-unique entity guard to the portal model', async () => {
+    let system = ''
+    const model = new MockLanguageModelV3({
+      doGenerate: async (options: any) => {
+        system = options.prompt.find((message: { role: string }) => message.role === 'system')?.content ?? ''
+        return {
+          content: [{ type: 'text', text: 'Please choose one.' }],
+          finishReason: 'stop',
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          warnings: []
+        }
+      }
+    })
+
+    await runPortalToolLoop({
+      ctx: ctx(),
+      messages: [{ role: 'user', content: 'Which record do you mean?' }],
+      seed: 's',
+      model
+    })
+
+    expect(system).toContain('When supplied or retrieved data contains multiple plausible matching entities')
+    expect(system).toContain('Do not guess, act, prepare a proposal, or claim an effect')
+  })
+
   it('only exposes the portal registry tools to the model (no agency tools)', async () => {
     let seenTools: string[] = []
     const spyModel = new MockLanguageModelV3({

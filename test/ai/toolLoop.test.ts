@@ -120,6 +120,32 @@ describe('runToolLoop (injected mock model)', () => {
     }))
   })
 
+  it('passes the shared non-unique entity guard to the agency tool model', async () => {
+    let system = ''
+    const model = new MockLanguageModelV3({
+      doGenerate: async (options: any) => {
+        system = options.prompt.find((message: { role: string }) => message.role === 'system')?.content ?? ''
+        return {
+          content: [{ type: 'text', text: 'Please choose one.' }],
+          finishReason: 'stop',
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          warnings: []
+        }
+      }
+    })
+
+    await runToolLoop({
+      ctx: ctx as any,
+      system: 'sys',
+      messages: [{ role: 'user', content: 'Which record do you mean?' }],
+      seed: 'c1',
+      model
+    })
+
+    expect(system).toContain('When supplied or retrieved data contains multiple plausible matching entities')
+    expect(system).toContain('Do not guess, act, prepare a proposal, or claim an effect')
+  })
+
   it('falls back to the second model when the primary throws', async () => {
     const badModel = new MockLanguageModelV3({ doGenerate: async () => { throw new Error('provider down') } })
     const out = await runToolLoop({
