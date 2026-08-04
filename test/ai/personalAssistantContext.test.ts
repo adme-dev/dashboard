@@ -11,6 +11,7 @@ import {
   composeEffectiveAssistantTools,
   type CatalogRuntimePolicy
 } from '~~/server/utils/ai/governance/catalogComposition'
+import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
 
 const USER_ID = '50000000-0000-4000-8000-000000000001'
 const CREATIVE_ID = '10000000-0000-4000-8000-000000000001'
@@ -111,6 +112,24 @@ function db(overrides: Partial<PersonalAssistantContextDb> = {}): PersonalAssist
 }
 
 describe('resolvePersonalAssistantContext', () => {
+  it('does not trust an actor-matching authority object supplied by a caller', async () => {
+    const forgedAuthority = {
+      active: true,
+      actorUserId: USER_ID,
+      reason: 'active_owner',
+      emergencyDisabled: false
+    }
+
+    const context = await resolvePersonalAssistantContext({
+      userId: USER_ID,
+      authority: forgedAuthority
+    } as any, db())
+
+    expect(context.godModeAuthority?.active).not.toBe(true)
+    expect(context.clientScope.mode).toBe('assigned')
+    expect(context.activePacks[0]?.accessBasis).toBe('catalog_policy')
+  })
+
   it('composes minimal multi-department, manager, client, preference, and active-pack context', async () => {
     const contextDb = db()
 
@@ -352,6 +371,44 @@ describe('resolvePersonalAssistantContext', () => {
 
     await expect(resolvePersonalAssistantContext({ userId: USER_ID }, db({ queryRows })))
       .rejects.toMatchObject({ code: 'assistant_department_scope_unbounded' })
+  })
+
+  it('paginates every server-derived department for resolver-issued God mode', async () => {
+    const departments = Array.from({ length: 205 }, (_, index) => ({
+      department_id: `10000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      department_name: `Department ${index + 1}`,
+      department_slug: `department-${index + 1}`,
+      department_kind: 'organizational',
+      membership_role: null,
+      is_primary: false,
+      is_manager: false,
+      manager_id: null,
+      manager_name: null
+    }))
+    const queryRows = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('FROM departments department')) {
+        const offset = params?.[2]
+        return typeof offset === 'number' ? departments.slice(offset, offset + 100) : departments
+      }
+      return []
+    }) as PersonalAssistantContextDb['queryRows']
+    const contextDb = db({ queryRows })
+    const event = { context: {} } as any
+    const authority = await resolveGodModeAuthority(event, USER_ID, {
+      queryOneFresh: vi.fn().mockResolvedValue({ id: USER_ID }),
+      processEnv: {}
+    })
+
+    const context = await resolvePersonalAssistantContext(
+      { userId: USER_ID, event },
+      contextDb,
+      { resolveAuthority: vi.fn().mockResolvedValue(authority) }
+    )
+
+    expect(context.departments).toHaveLength(205)
+    expect(vi.mocked(queryRows).mock.calls
+      .filter(([sql]) => sql.includes('FROM departments department'))
+      .map(([, params]) => params?.[2])).toEqual([0, 100, 200])
   })
 
   it('does not bypass personal narrowing when its configuration read fails', async () => {

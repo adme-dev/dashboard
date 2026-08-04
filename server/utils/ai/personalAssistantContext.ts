@@ -2,6 +2,8 @@ import type { H3Event } from 'h3'
 import type { AssistantReleaseAccessBasis } from '~~/shared/types/aiAssistant'
 import { queryOne as realQueryOne, queryRows as realQueryRows } from '~~/server/utils/db'
 import {
+  isActiveGodModeAuthority,
+  isGodModeAuthorityForActor,
   resolveGodModeAuthority,
   type GodModeAuthority
 } from '~~/server/utils/godMode/authority'
@@ -44,6 +46,11 @@ export interface PersonalAssistantContextDb extends CatalogCompositionDb {
     customRoleId: string | null
     event?: H3Event
   }) => Promise<{ groups: PermissionGroup[], isReadOnly: boolean }>
+}
+
+export interface PersonalAssistantContextDependencies {
+  /** Injectable resolver function for unit tests; returned authority must still be resolver-issued. */
+  resolveAuthority: typeof resolveGodModeAuthority
 }
 
 export interface PersonalAssistantDepartment {
@@ -162,6 +169,10 @@ const defaultDb: PersonalAssistantContextDb = {
   }
 }
 
+const defaultDependencies: PersonalAssistantContextDependencies = {
+  resolveAuthority: resolveGodModeAuthority
+}
+
 function mapPreferences(row: PersonalConfigRow | null): PersonalAssistantContext['preferences'] {
   if (!row) return { personaKey: null, disabledTools: [], memoryEnabled: true }
   if (row.persona_key != null && !SAFE_KEY_PATTERN.test(row.persona_key)) {
@@ -220,6 +231,53 @@ function mapAssignment(row: ClientAssignmentRow): PersonalAssistantClientAssignm
   return { clientId: row.client_id, name: row.client_name, role }
 }
 
+async function loadDepartmentRows(
+  userId: string,
+  companyWide: boolean,
+  godModeActive: boolean,
+  db: PersonalAssistantContextDb
+): Promise<DepartmentRow[]> {
+  const select = `SELECT department.id::text AS department_id,
+            department.name AS department_name,
+            department.slug AS department_slug,
+            department.department_kind,
+            membership.role AS membership_role,
+            membership.is_primary,
+            (department.manager_id = $1) AS is_manager,
+            manager.id::text AS manager_id,
+            manager.name AS manager_name
+       FROM departments department
+       LEFT JOIN department_members membership
+         ON membership.department_id = department.id
+        AND membership.team_member_id = $1
+       LEFT JOIN team_members manager
+         ON manager.id = department.manager_id
+        AND manager.is_active = TRUE
+      WHERE department.is_active = TRUE
+        AND (
+          (department.department_kind = 'organizational' AND $2::boolean)
+          OR membership.team_member_id IS NOT NULL
+          OR department.manager_id = $1
+        )
+      ORDER BY membership.is_primary DESC NULLS LAST, department.name, department.id`
+
+  if (!godModeActive) {
+    return await db.queryRows<DepartmentRow>(`${select}
+      LIMIT 101`, [userId, companyWide])
+  }
+
+  const rowsById = new Map<string, DepartmentRow>()
+  let offset = 0
+  while (true) {
+    const page = await db.queryRows<DepartmentRow>(`${select}
+      LIMIT 100 OFFSET $3`, [userId, true, offset])
+    for (const row of page) rowsById.set(row.department_id, row)
+    if (page.length < MAX_DEPARTMENTS) break
+    offset += page.length
+  }
+  return [...rowsById.values()]
+}
+
 /**
  * Resolve the complete narrowing context for one authenticated turn. Identity is read again from
  * the database so role changes and offboarding take effect at admission rather than trusting a
@@ -232,10 +290,9 @@ export async function resolvePersonalAssistantContext(
     event?: H3Event
     runtimePolicy?: CatalogRuntimePolicy
     observedMemoryEnabled?: boolean
-    /** Test/internal injection only: must be a Task 2 server-resolved object for this actor. */
-    authority?: GodModeAuthority
   },
-  db: PersonalAssistantContextDb = defaultDb
+  db: PersonalAssistantContextDb = defaultDb,
+  dependencies: PersonalAssistantContextDependencies = defaultDependencies
 ): Promise<PersonalAssistantContext> {
   if (!UUID_PATTERN.test(input.userId)) {
     throw new PersonalAssistantAdmissionError(
@@ -261,23 +318,13 @@ export async function resolvePersonalAssistantContext(
     )
   }
 
-  const resolvedAuthority = input.authority
-    ?? (input.event
-      ? await resolveGodModeAuthority(input.event, identity.id)
-      : {
-          active: false,
-          actorUserId: identity.id,
-          reason: 'verification_failed' as const,
-          emergencyDisabled: false
-        })
-  const godModeAuthority: GodModeAuthority = resolvedAuthority.actorUserId === identity.id
+  const resolvedAuthority = input.event
+    ? await dependencies.resolveAuthority(input.event, identity.id)
+    : undefined
+  const godModeAuthority = isGodModeAuthorityForActor(resolvedAuthority, identity.id)
     ? resolvedAuthority
-    : {
-        active: false,
-        actorUserId: identity.id,
-        reason: 'verification_failed',
-        emergencyDisabled: false
-      }
+    : undefined
+  const godModeActive = isActiveGodModeAuthority(godModeAuthority, identity.id)
 
   const permissions = await db.resolvePermissions({
     userId: identity.id,
@@ -288,38 +335,17 @@ export async function resolvePersonalAssistantContext(
   const permissionGroups = [...new Set(
     permissions.groups.filter(group => PERMISSION_GROUP_SET.has(group))
   )]
-  const companyWideDepartments = godModeAuthority.active
+  const companyWideDepartments = godModeActive
     || identity.role === 'owner'
     || identity.role === 'admin'
 
-  const departmentRows = await db.queryRows<DepartmentRow>(
-    `SELECT department.id::text AS department_id,
-            department.name AS department_name,
-            department.slug AS department_slug,
-            department.department_kind,
-            membership.role AS membership_role,
-            membership.is_primary,
-            (department.manager_id = $1) AS is_manager,
-            manager.id::text AS manager_id,
-            manager.name AS manager_name
-       FROM departments department
-       LEFT JOIN department_members membership
-         ON membership.department_id = department.id
-        AND membership.team_member_id = $1
-       LEFT JOIN team_members manager
-         ON manager.id = department.manager_id
-        AND manager.is_active = TRUE
-      WHERE department.is_active = TRUE
-        AND (
-          (department.department_kind = 'organizational' AND $2::boolean)
-          OR membership.team_member_id IS NOT NULL
-          OR department.manager_id = $1
-        )
-      ORDER BY membership.is_primary DESC NULLS LAST, department.name, department.id
-      LIMIT 101`,
-    [identity.id, companyWideDepartments]
+  const departmentRows = await loadDepartmentRows(
+    identity.id,
+    companyWideDepartments,
+    godModeActive,
+    db
   )
-  if (departmentRows.length > MAX_DEPARTMENTS) {
+  if (!godModeActive && departmentRows.length > MAX_DEPARTMENTS) {
     throw new PersonalAssistantAdmissionError(
       'assistant_department_scope_unbounded',
       `The personal assistant supports at most ${MAX_DEPARTMENTS} departments per turn.`
@@ -345,7 +371,7 @@ export async function resolvePersonalAssistantContext(
       `The personal assistant supports at most ${MAX_ASSIGNMENTS} explicit client assignments per turn.`
     )
   }
-  const hasCompanyClientAccess = godModeAuthority.active
+  const hasCompanyClientAccess = godModeActive
     || permissionGroups.includes('ADMIN')
     || permissionGroups.includes('MANAGEMENT')
 
@@ -379,7 +405,7 @@ export async function resolvePersonalAssistantContext(
   for (const row of catalogRows) {
     if (
       row.sourceType !== 'pack'
-      || (!godModeAuthority.active && row.releaseState !== 'active' && row.releaseState !== 'pilot')
+      || (!godModeActive && row.releaseState !== 'active' && row.releaseState !== 'pilot')
       || !row.packVersionId
       || !row.packKey
       || !row.packVersion
@@ -394,7 +420,7 @@ export async function resolvePersonalAssistantContext(
       version: row.packVersion,
       label: row.packLabel,
       releaseState: row.releaseState,
-      accessBasis: godModeAuthority.active
+      accessBasis: godModeActive
         ? 'god_mode'
         : identity.role === 'owner'
           ? 'company_owner'
@@ -427,7 +453,9 @@ export async function resolvePersonalAssistantContext(
 export function renderPersonalAssistantContext(context: PersonalAssistantContext): string {
   const payload = {
     currentRole: context.identity.role,
-    ...(context.godModeAuthority?.active ? { accessBasis: 'god_mode' as const } : {}),
+    ...(isActiveGodModeAuthority(context.godModeAuthority, context.identity.userId)
+      ? { accessBasis: 'god_mode' as const }
+      : {}),
     permissionGroups: context.permissionGroups,
     readOnly: context.isReadOnly,
     departments: context.departments.map(department => ({

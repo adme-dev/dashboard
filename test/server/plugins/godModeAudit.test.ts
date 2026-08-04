@@ -7,9 +7,11 @@ testGlobal.defineNitroPlugin = plugin => plugin
 
 const { persistGodModeTerminalAudit } = await import('../../../server/plugins/godModeAudit')
 const {
+  recordGodModeBypassedControls,
   registerGodModeMutationCoordination,
   seedGodModeRouteAuditState
 } = await import('../../../server/utils/godMode/featureGate')
+const { resolveGodModeAuthority } = await import('../../../server/utils/godMode/authority')
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111'
 const CORRELATION_ID = '22222222-2222-4222-8222-222222222222'
@@ -19,6 +21,7 @@ function event(method = 'GET', queue?: { send: ReturnType<typeof vi.fn> }) {
     method,
     path: '/api/agency/clients',
     context: {
+      user: { id: OWNER_ID },
       cloudflare: { env: { JOBS_QUEUE: queue } }
     },
     node: {
@@ -78,6 +81,34 @@ describe('God mode terminal audit plugin', () => {
       emergencyDisabled: false
     })
     expect(JSON.stringify(appendGodModeAuditEvent.mock.calls)).not.toContain('must never enter audit')
+  })
+
+  it('carries trusted runtime bypass controls into the immutable terminal event', async () => {
+    const request = event()
+    const response = { body: { ok: true } }
+    seed(request)
+    await resolveGodModeAuthority(request, OWNER_ID, {
+      queryOneFresh: vi.fn().mockResolvedValue({ id: OWNER_ID }),
+      processEnv: {}
+    })
+
+    await recordGodModeBypassedControls(request, ['release_policy', 'budget', 'rate_limit'])
+    await persistGodModeTerminalAudit(request, response, { appendGodModeAuditEvent, setResponseStatus })
+
+    expect(appendGodModeAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      bypassedControls: ['release_policy', 'budget', 'rate_limit']
+    }))
+  })
+
+  it('fails closed before execution when trusted route audit state is absent', async () => {
+    const request = event()
+    await resolveGodModeAuthority(request, OWNER_ID, {
+      queryOneFresh: vi.fn().mockResolvedValue({ id: OWNER_ID }),
+      processEnv: {}
+    })
+
+    await expect(recordGodModeBypassedControls(request, ['budget']))
+      .rejects.toMatchObject({ statusCode: 503 })
   })
 
   it('records a bounded failed terminal for an error response', async () => {

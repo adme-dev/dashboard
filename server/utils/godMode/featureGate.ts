@@ -1,12 +1,27 @@
 import type { H3Event } from 'h3'
-import { getRequestURL } from 'h3'
+import { createError, getRequestURL } from 'h3'
 
 import type { GodModeAuditEventInput, GodModeBypassedControl } from '~~/server/utils/godMode/audit'
-import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
+import {
+  isActiveGodModeAuthority,
+  resolveGodModeAuthority
+} from '~~/server/utils/godMode/authority'
 
 const READ_ONLY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const requestAuditStateKey = Symbol('godModeRouteAuditState')
 const mutationCoordinationKey = Symbol('godModeMutationCoordination')
+const TRUSTED_BYPASS_CONTROLS = new Set<GodModeBypassedControl>([
+  'permission',
+  'feature_flag',
+  'release_policy',
+  'evaluation_policy',
+  'personal_policy',
+  'budget',
+  'rate_limit',
+  'confirmation',
+  'mcp_scope',
+  'mcp_suite_flag'
+])
 
 export interface ReviewedGodModeReadRoute {
   method: 'GET' | 'HEAD' | 'OPTIONS'
@@ -134,6 +149,39 @@ export function markGodModeRouteFailure(event: H3Event): void {
   if (state) state.handlerFailed = true
 }
 
+/**
+ * Add server-classified bypasses to the immutable request terminal. The state exists only after
+ * Task 3 durably wrote the attempt event. Missing/mismatched/late state fails before the caller may
+ * execute the bypassed operation; client data is never accepted at this boundary.
+ */
+export async function recordGodModeBypassedControls(
+  event: H3Event,
+  controls: readonly GodModeBypassedControl[]
+): Promise<void> {
+  const actorUserId = (event.context as any).user?.id
+  const method = requestMethod(event)
+  const path = requestPath(event)
+  const state = getGodModeRouteAuditState(event)
+  const authority = typeof actorUserId === 'string'
+    ? await resolveGodModeAuthority(event, actorUserId)
+    : null
+
+  if (
+    typeof actorUserId !== 'string'
+    || !isActiveGodModeAuthority(authority, actorUserId)
+    || !state
+    || state.actorUserId !== actorUserId
+    || state.routeOrTool !== `${method} ${path}`
+    || state.terminalPromise
+    || controls.length === 0
+    || controls.some(control => !TRUSTED_BYPASS_CONTROLS.has(control))
+  ) {
+    throw createError({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
+  }
+
+  for (const control of controls) state.bypassedControls.add(control)
+}
+
 export function registerGodModeMutationCoordination(
   event: H3Event,
   coordination: GodModeMutationCoordination
@@ -219,6 +267,8 @@ export async function canBypassApplicationControl(
   if (typeof userId !== 'string') return false
 
   const authority = await resolveGodModeAuthority(event, userId)
+  // This Task 3 path accepts only the direct result of the resolver call above; no authority data
+  // enters through a caller-facing parameter here.
   if (!authority.active) return false
 
   const state = getGodModeRouteAuditState(event)

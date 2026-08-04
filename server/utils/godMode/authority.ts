@@ -9,11 +9,14 @@ export type GodModeAuthorityReason =
   | 'emergency_disabled'
   | 'verification_failed'
 
+const authorityBrand: unique symbol = Symbol('GodModeAuthority')
+
 export interface GodModeAuthority {
-  active: boolean
-  actorUserId: string
-  reason: GodModeAuthorityReason
-  emergencyDisabled: boolean
+  readonly [authorityBrand]: true
+  readonly active: boolean
+  readonly actorUserId: string
+  readonly reason: GodModeAuthorityReason
+  readonly emergencyDisabled: boolean
 }
 
 export interface GodModeAuthorityDeps {
@@ -23,6 +26,7 @@ export interface GodModeAuthorityDeps {
 }
 
 const authorityCacheKey = Symbol('godModeAuthority')
+const issuedAuthorities = new WeakSet<object>()
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 type AuthorityCache = Map<string, Promise<GodModeAuthority>>
@@ -61,12 +65,48 @@ function getEmergencyDisabled(event: H3Event, deps: GodModeAuthorityDeps): boole
   return parsed.disabled
 }
 
+type GodModeAuthoritySeed = Omit<GodModeAuthority, typeof authorityBrand>
+
+function issue(authority: GodModeAuthoritySeed): GodModeAuthority {
+  const issued = authority as GodModeAuthority
+  Object.defineProperty(issued, authorityBrand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false
+  })
+  Object.freeze(issued)
+  issuedAuthorities.add(issued)
+  return issued
+}
+
 function denied(
   actorUserId: string,
   reason: Exclude<GodModeAuthorityReason, 'active_owner'>,
   emergencyDisabled = false
 ): GodModeAuthority {
-  return { active: false, actorUserId, reason, emergencyDisabled }
+  return issue({ active: false, actorUserId, reason, emergencyDisabled })
+}
+
+/** Runtime provenance check. Structural lookalikes, clones, JSON, headers, and bodies always fail. */
+export function isGodModeAuthorityForActor(
+  authority: unknown,
+  authenticatedUserId: string
+): authority is GodModeAuthority {
+  return typeof authority === 'object'
+    && authority !== null
+    && issuedAuthorities.has(authority)
+    && (authority as GodModeAuthority).actorUserId === authenticatedUserId
+}
+
+export function isActiveGodModeAuthority(
+  authority: unknown,
+  authenticatedUserId: string
+): authority is GodModeAuthority {
+  return isGodModeAuthorityForActor(authority, authenticatedUserId)
+    && authority.active === true
+    && authority.reason === 'active_owner'
+    && authority.emergencyDisabled === false
 }
 
 export async function resolveGodModeAuthority(
@@ -96,12 +136,12 @@ export async function resolveGodModeAuthority(
       )
 
       if (owner?.id === authenticatedUserId) {
-        return {
+        return issue({
           active: true,
           actorUserId: authenticatedUserId,
           reason: 'active_owner',
           emergencyDisabled: false
-        }
+        })
       }
 
       return denied(authenticatedUserId, 'inactive_or_missing')

@@ -1,7 +1,10 @@
 import type { H3Event } from 'h3'
 import { queryRows as realQueryRows } from '~~/server/utils/db'
 import type { GodModeBypassedControl } from '~~/server/utils/godMode/audit'
-import type { GodModeAuthority } from '~~/server/utils/godMode/authority'
+import {
+  isActiveGodModeAuthority,
+  type GodModeAuthority
+} from '~~/server/utils/godMode/authority'
 import { PERMISSION_GROUPS, type PermissionGroup } from '~~/server/utils/permissions'
 
 export type AssistantCatalogRuntimeMode = 'legacy' | 'pilot' | 'enforced'
@@ -117,6 +120,7 @@ interface LatestPackVersionDbRow {
 
 const defaultDb: CatalogCompositionDb = { queryRows: realQueryRows as CatalogCompositionDb['queryRows'] }
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const CATALOG_DEPARTMENT_CHUNK_SIZE = 100
 const PERMISSION_CEILING_SET = new Set<string>([...PERMISSION_GROUPS, 'AUTHENTICATED'])
 const ACCESS_MODE_SET = new Set<string>(['read', 'draft', 'propose'])
 
@@ -168,6 +172,26 @@ function mapCatalogRow(
   }
 }
 
+function catalogRowIdentity(row: ActiveCatalogRow): string {
+  return [
+    row.departmentId,
+    row.sourceType,
+    row.releaseId,
+    row.packVersionId ?? '',
+    row.capabilityVersionId ?? '',
+    row.toolName ?? '',
+    row.accessMode ?? ''
+  ].join(':')
+}
+
+function mergeCatalogChunks(chunks: ActiveCatalogRow[][]): ActiveCatalogRow[] {
+  const byIdentity = new Map<string, ActiveCatalogRow>()
+  for (const row of chunks.flat()) byIdentity.set(catalogRowIdentity(row), row)
+  return [...byIdentity.values()].sort((left, right) =>
+    catalogRowIdentity(left).localeCompare(catalogRowIdentity(right))
+  )
+}
+
 /**
  * Read governed catalog control material for an already-authorized department scope. The normal
  * path is unchanged; matching server-resolved God-mode authority selects the latest registered
@@ -180,25 +204,54 @@ export async function loadCatalogControlRows(
   authority?: GodModeAuthority
 ): Promise<ActiveCatalogRow[]> {
   if (departmentIds.length === 0) return []
-  if (departmentIds.length > 100) throw new Error('Catalog composition accepts at most 100 departments.')
   if (departmentIds.some(id => !UUID_PATTERN.test(id))) {
     throw new Error('Catalog department identifiers must be valid UUID values.')
   }
   if (!UUID_PATTERN.test(userId)) throw new Error('Catalog user identifier must be a valid UUID value.')
 
+  const godModeActive = isActiveGodModeAuthority(authority, userId)
+  if (!godModeActive && departmentIds.length > CATALOG_DEPARTMENT_CHUNK_SIZE) {
+    throw new Error('Catalog composition accepts at most 100 departments.')
+  }
+  if (godModeActive && departmentIds.length > CATALOG_DEPARTMENT_CHUNK_SIZE) {
+    const uniqueDepartmentIds = [...new Set(departmentIds)].sort()
+    const chunks: ActiveCatalogRow[][] = []
+    for (let offset = 0; offset < uniqueDepartmentIds.length; offset += CATALOG_DEPARTMENT_CHUNK_SIZE) {
+      chunks.push(await loadCatalogControlRows(
+        uniqueDepartmentIds.slice(offset, offset + CATALOG_DEPARTMENT_CHUNK_SIZE),
+        userId,
+        db,
+        authority
+      ))
+    }
+    return mergeCatalogChunks(chunks)
+  }
+
   const latestPackVersions = await db.queryRows<LatestPackVersionDbRow>(
-    `WITH ranked_pack_versions AS (
-       SELECT
+    `WITH registered_pack_versions AS (
+       SELECT DISTINCT
          pack.id AS pack_id,
          candidate.id AS pack_version_id,
-         candidate.version,
-         DENSE_RANK() OVER (
-           PARTITION BY pack.id
-           ORDER BY candidate.version DESC
-         ) AS version_rank
+         candidate.version
        FROM ai_capability_packs pack
-       JOIN ai_capability_pack_versions candidate ON candidate.pack_id = pack.id
+       JOIN ai_pack_releases registered_release
+         ON registered_release.pack_id = pack.id
+        AND registered_release.department_id = pack.department_id
+       JOIN ai_capability_pack_versions candidate
+         ON candidate.id = registered_release.pack_version_id
        WHERE pack.department_id = ANY($1::uuid[])
+         AND registered_release.release_state IN ('draft', 'pilot', 'active', 'suspended', 'retired')
+     ),
+     ranked_pack_versions AS (
+       SELECT
+         registered.pack_id,
+         registered.pack_version_id,
+         registered.version,
+         DENSE_RANK() OVER (
+           PARTITION BY registered.pack_id
+           ORDER BY registered.version DESC
+         ) AS version_rank
+       FROM registered_pack_versions registered
      )
      SELECT pack_id, pack_version_id, version
        FROM ranked_pack_versions
@@ -225,7 +278,6 @@ export async function loadCatalogControlRows(
     latestPackVersionIds.add(row.pack_version_id)
   }
 
-  const godModeActive = authority?.active === true && authority.actorUserId === userId
   if (godModeActive) {
     const rows = await db.queryRows<ActiveCatalogDbRow>(
       `WITH registered_pack_rows AS (
@@ -775,9 +827,8 @@ export function composeEffectiveAssistantTools<T extends { name: string, mutates
   input: EffectiveAssistantCompositionInput<T>
 ): GovernedCatalogComposition<T> {
   if (
-    input.authority?.active === true
-    && typeof input.actorUserId === 'string'
-    && input.authority.actorUserId === input.actorUserId
+    typeof input.actorUserId === 'string'
+    && isActiveGodModeAuthority(input.authority, input.actorUserId)
   ) {
     return godModeComposition(input.rbacFilteredTools, input.catalogRows)
   }

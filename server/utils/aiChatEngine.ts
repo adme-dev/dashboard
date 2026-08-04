@@ -16,6 +16,7 @@ import { resolveServerCatalogRuntimePolicy } from '~~/server/utils/ai/governance
 import { resolveObserveAndLearnRuntimePolicy } from '~~/server/utils/ai/observe/runtimePolicy'
 import { linkAiInvocationTurnMessage } from '~~/server/utils/ai/invocationLedger'
 import { bindPilotUatContext } from '~~/server/utils/ai/governance/pilotRuntimeBinding'
+import { isActiveGodModeAuthority } from '~~/server/utils/godMode/authority'
 import { spotlight, spotlightSystemClause } from '~~/server/utils/ai/spotlight'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
@@ -251,8 +252,7 @@ export async function processUserMessage(
   const assistantContext = pilotUat
     ? bindPilotUatContext(resolvedAssistantContext, pilotUat.releaseId)
     : resolvedAssistantContext
-  const godModeActive = assistantContext.godModeAuthority?.active === true
-    && assistantContext.godModeAuthority.actorUserId === userId
+  const godModeActive = isActiveGodModeAuthority(assistantContext.godModeAuthority, userId)
   const effectiveUserRole = assistantContext.identity.role
   const agentConfig = assistantContext.preferences
   // Persona = one skill-pack per turn (narrows tools ∩ RBAC + a focus preamble). An explicit arg (chat

@@ -1,12 +1,19 @@
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { processUserMessage } from '~~/server/utils/aiChatEngine'
+import {
+  isActiveGodModeAuthority,
+  resolveGodModeAuthority
+} from '~~/server/utils/godMode/authority'
+import { recordGodModeBypassedControls } from '~~/server/utils/godMode/featureGate'
 
 const RATE_LIMIT_MAX_MESSAGES = 12
 const ALLOWED_ENTITY_TYPES = new Set(['task', 'client', 'project', 'brief'])
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
+  const authority = await resolveGodModeAuthority(event, user.id)
+  const godModeActive = isActiveGodModeAuthority(authority, user.id)
   const id = getRouterParam(event, 'id')
 
   if (!id) {
@@ -35,10 +42,14 @@ export default defineEventHandler(async (event) => {
   `, [user.id])
 
   if (rateCheck && rateCheck.cnt >= RATE_LIMIT_MAX_MESSAGES) {
-    throw createError({
-      statusCode: 429,
-      statusMessage: 'Too many messages. Please wait a moment before sending another.',
-    })
+    if (godModeActive) {
+      await recordGodModeBypassedControls(event, ['rate_limit'])
+    } else {
+      throw createError({
+        statusCode: 429,
+        statusMessage: 'Too many messages. Please wait a moment before sending another.',
+      })
+    }
   }
 
   // Verify ownership

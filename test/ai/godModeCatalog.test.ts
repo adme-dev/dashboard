@@ -2,7 +2,14 @@ import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vites
 import { MockLanguageModelV3 } from 'ai/test'
 import { z } from 'zod'
 
-import type { GodModeAuthority } from '~~/server/utils/godMode/authority'
+import {
+  resolveGodModeAuthority,
+  type GodModeAuthority
+} from '~~/server/utils/godMode/authority'
+import {
+  getGodModeRouteAuditState,
+  seedGodModeRouteAuditState
+} from '~~/server/utils/godMode/featureGate'
 import {
   composeEffectiveAssistantTools,
   loadCatalogControlRows,
@@ -21,18 +28,43 @@ const DEPARTMENT_ID = '10000000-0000-4000-8000-000000000001'
 const PACK_ID = '60000000-0000-4000-8000-000000000001'
 const PACK_VERSION_ID = '30000000-0000-4000-8000-000000000001'
 
-const godModeAuthority: GodModeAuthority = {
-  active: true,
-  actorUserId: USER_ID,
-  reason: 'active_owner',
-  emergencyDisabled: false
+async function issueActiveAuthority(actorUserId: string): Promise<GodModeAuthority> {
+  return await resolveGodModeAuthority({ context: {} } as any, actorUserId, {
+    queryOneFresh: async () => ({ id: actorUserId }),
+    processEnv: {}
+  })
 }
 
-const emergencyDisabledAuthority: GodModeAuthority = {
-  active: false,
-  actorUserId: USER_ID,
-  reason: 'emergency_disabled',
-  emergencyDisabled: true
+const godModeAuthority = await issueActiveAuthority(USER_ID)
+const otherActorAuthority = await issueActiveAuthority(OTHER_USER_ID)
+const emergencyDisabledAuthority = await resolveGodModeAuthority(
+  { context: {} } as any,
+  USER_ID,
+  { queryOneFresh: async () => ({ id: USER_ID }), processEnv: { GOD_MODE_DISABLED: 'true' } }
+)
+
+async function auditedGodModeEvent() {
+  const path = '/api/agency/ai/chat/conversations/90000000-0000-4000-8000-000000000001/messages'
+  const event = {
+    method: 'POST',
+    context: { user: { id: USER_ID } },
+    node: {
+      req: { originalUrl: path, headers: { host: 'app.xeroflow.test' }, connection: {} },
+      res: { statusCode: 200, statusMessage: 'OK' }
+    }
+  } as any
+  const authority = await resolveGodModeAuthority(event, USER_ID, {
+    queryOneFresh: async () => ({ id: USER_ID }),
+    processEnv: {}
+  })
+  seedGodModeRouteAuditState(event, {
+    actorUserId: USER_ID,
+    correlationId: '70000000-0000-4000-8000-000000000001',
+    sessionDigest: 'a'.repeat(64),
+    routeOrTool: `POST ${path}`,
+    emergencyDisabled: false
+  })
+  return { event, authority }
 }
 
 function catalogRow(overrides: Partial<ActiveCatalogRow> = {}): ActiveCatalogRow {
@@ -140,7 +172,16 @@ describe('God-mode catalog admission', () => {
 
   it('does not accept an active authority object resolved for a different actor', () => {
     const result = composeGodMode({
-      authority: { ...godModeAuthority, actorUserId: OTHER_USER_ID }
+      authority: otherActorAuthority
+    } as any)
+
+    expect(result.tools).toEqual([])
+    expect(result.coverageStatus).toBe('governed')
+  })
+
+  it('does not accept an actor-matching structural authority forgery', () => {
+    const result = composeGodMode({
+      authority: { ...godModeAuthority }
     } as any)
 
     expect(result.tools).toEqual([])
@@ -212,6 +253,103 @@ describe('God-mode catalog loading', () => {
     expect(sql).not.toContain('department_members')
     expect(sql).not.toContain("user_role = 'owner'")
   })
+
+  it('selects the newest registered pack version rather than a newer unpublished version', async () => {
+    const unpublishedV2 = '30000000-0000-4000-8000-000000000002'
+    const queryRows = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('ranked_pack_versions')) {
+        return sql.includes('JOIN ai_pack_releases registered_release')
+          ? [{ pack_id: PACK_ID, pack_version_id: PACK_VERSION_ID, version: 1 }]
+          : [{ pack_id: PACK_ID, pack_version_id: unpublishedV2, version: 2 }]
+      }
+      const selectedVersionId = (params?.[1] as string[])[0]
+      return [{
+        source_type: 'pack',
+        release_state: 'active',
+        release_id: '20000000-0000-4000-8000-000000000001',
+        department_id: DEPARTMENT_ID,
+        pack_version_id: selectedVersionId,
+        pack_version: selectedVersionId === PACK_VERSION_ID ? 1 : 2,
+        pack_label: selectedVersionId === PACK_VERSION_ID ? 'Registered v1' : 'Unpublished v2',
+        pack_key: 'owner_operations',
+        instructions_preamble: 'registered',
+        pack_model_feature_key: null,
+        pack_max_input_tokens: null,
+        pack_max_output_tokens: null,
+        pack_max_cost_usd_micros: null,
+        pack_max_latency_ms: null,
+        capability_version_id: null,
+        capability_key: null,
+        required_permission_group: null,
+        capability_model_feature_key: null,
+        capability_max_input_tokens: null,
+        capability_max_output_tokens: null,
+        capability_max_cost_usd_micros: null,
+        capability_max_latency_ms: null,
+        tool_name: null,
+        access_mode: null
+      }]
+    })
+
+    const rows = await loadCatalogControlRows(
+      [DEPARTMENT_ID],
+      USER_ID,
+      { queryRows } as CatalogCompositionDb,
+      godModeAuthority
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ packVersionId: PACK_VERSION_ID, isLatestPackVersion: true })
+  })
+
+  it('batches more than 100 server-derived departments and deterministically merges the catalog', async () => {
+    const departmentIds = Array.from({ length: 205 }, (_, index) =>
+      `10000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`)
+    const queryRows = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('ranked_pack_versions')) return []
+      const chunk = params?.[0] as string[]
+      return chunk.map(departmentId => ({
+        source_type: 'capability',
+        release_state: 'draft',
+        release_id: `20000000-0000-4000-8000-${departmentId.slice(-12)}`,
+        department_id: departmentId,
+        pack_version_id: null,
+        pack_version: null,
+        pack_label: null,
+        pack_key: null,
+        instructions_preamble: '',
+        pack_model_feature_key: null,
+        pack_max_input_tokens: null,
+        pack_max_output_tokens: null,
+        pack_max_cost_usd_micros: null,
+        pack_max_latency_ms: null,
+        capability_version_id: `40000000-0000-4000-8000-${departmentId.slice(-12)}`,
+        capability_key: 'registered',
+        required_permission_group: 'AUTHENTICATED',
+        capability_model_feature_key: null,
+        capability_max_input_tokens: null,
+        capability_max_output_tokens: null,
+        capability_max_cost_usd_micros: null,
+        capability_max_latency_ms: null,
+        tool_name: 'search_knowledge',
+        access_mode: 'read'
+      }))
+    })
+
+    const rows = await loadCatalogControlRows(
+      [...departmentIds].reverse(),
+      USER_ID,
+      { queryRows } as CatalogCompositionDb,
+      godModeAuthority
+    )
+
+    const queriedChunks = queryRows.mock.calls
+      .filter(([sql]) => sql.includes('ranked_pack_versions'))
+      .map(([, params]) => (params?.[0] as string[]).length)
+    expect(queriedChunks).toEqual([100, 100, 5])
+    expect(rows).toHaveLength(205)
+    expect(rows.map(row => row.departmentId)).toEqual([...departmentIds].sort())
+  })
 })
 
 describe('God-mode SDK wrapper admission', () => {
@@ -265,10 +403,7 @@ describe('God-mode SDK wrapper admission', () => {
 
   it('does not allow owner role strings, mismatched authority, or emergency-disabled authority to bypass', async () => {
     expect(filterToolsForUser(tools, 'owner', [], true)).toEqual([])
-    expect(filterToolsForUser(tools, 'viewer', [], true, {
-      ...godModeAuthority,
-      actorUserId: OTHER_USER_ID
-    }, USER_ID)).toEqual([])
+    expect(filterToolsForUser(tools, 'viewer', [], true, otherActorAuthority, USER_ID)).toEqual([])
     expect(filterToolsForUser(tools, 'viewer', [], true, emergencyDisabledAuthority, USER_ID)).toEqual([])
 
     const sdkTools = toSdkTools(tools, {
@@ -328,9 +463,10 @@ describe('God-mode model hard boundaries and budgets', () => {
 
   it('uses Cloudflare AI Gateway while ignoring application token/cost/latency/usage/rate ceilings', async () => {
     mockResolveModelWithTransport.mockReturnValue({ model: textModel, gatewayUsed: true })
+    const { event, authority } = await auditedGodModeEvent()
 
     await runToolLoop({
-      ctx: { userId: USER_ID, userRole: 'owner', event: {} as any },
+      ctx: { userId: USER_ID, userRole: 'owner', event },
       system: 'system',
       messages: [{ role: 'user', content: 'hello' }],
       seed: 'owner',
@@ -341,7 +477,7 @@ describe('God-mode model hard boundaries and budgets', () => {
         mode: 'enforced',
         authenticatedCoreTools: ['search_knowledge', 'get_tasks']
       },
-      authority: godModeAuthority
+      authority
     } as any)
 
     expect(mockResolveModelWithTransport).toHaveBeenCalledWith(
@@ -355,19 +491,60 @@ describe('God-mode model hard boundaries and budgets', () => {
         bypassedControls: expect.arrayContaining(['budget', 'rate_limit'])
       })
     }))
+    expect([...getGodModeRouteAuditState(event)!.bypassedControls]).toEqual(expect.arrayContaining([
+      'permission',
+      'feature_flag',
+      'release_policy',
+      'evaluation_policy',
+      'personal_policy',
+      'budget',
+      'rate_limit'
+    ]))
   })
 
-  it('fails closed instead of calling a provider directly when AI_GATEWAY_URL is unavailable', async () => {
-    mockResolveModelWithTransport.mockReturnValue({ model: textModel, gatewayUsed: false })
+  it('fails before provider resolution when immutable route audit state is absent', async () => {
+    const event = {
+      method: 'POST',
+      context: { user: { id: USER_ID } },
+      node: {
+        req: {
+          originalUrl: '/api/agency/ai/chat/conversations/90000000-0000-4000-8000-000000000001/messages',
+          headers: { host: 'app.xeroflow.test' },
+          connection: {}
+        },
+        res: { statusCode: 200, statusMessage: 'OK' }
+      }
+    } as any
+    const authority = await resolveGodModeAuthority(event, USER_ID, {
+      queryOneFresh: async () => ({ id: USER_ID }),
+      processEnv: {}
+    })
+    mockResolveModelWithTransport.mockReturnValue({ model: textModel, gatewayUsed: true })
 
     await expect(runToolLoop({
-      ctx: { userId: USER_ID, userRole: 'owner', event: {} as any },
+      ctx: { userId: USER_ID, userRole: 'owner', event },
       system: 'system',
       messages: [{ role: 'user', content: 'hello' }],
       seed: 'owner',
       modelSpec: 'groq/openai/gpt-oss-120b',
       fallbackSpec: '',
-      authority: godModeAuthority
+      authority
+    } as any)).rejects.toMatchObject({ statusCode: 503 })
+    expect(mockResolveModelWithTransport).not.toHaveBeenCalled()
+  })
+
+  it('fails closed instead of calling a provider directly when AI_GATEWAY_URL is unavailable', async () => {
+    mockResolveModelWithTransport.mockReturnValue({ model: textModel, gatewayUsed: false })
+    const { event, authority } = await auditedGodModeEvent()
+
+    await expect(runToolLoop({
+      ctx: { userId: USER_ID, userRole: 'owner', event },
+      system: 'system',
+      messages: [{ role: 'user', content: 'hello' }],
+      seed: 'owner',
+      modelSpec: 'groq/openai/gpt-oss-120b',
+      fallbackSpec: '',
+      authority
     } as any)).rejects.toThrow('AI Gateway')
   })
 
@@ -376,15 +553,41 @@ describe('God-mode model hard boundaries and budgets', () => {
       throw new Error('provider credentials unavailable')
     })
 
+    const { event, authority } = await auditedGodModeEvent()
+    await expect(runToolLoop({
+      ctx: { userId: USER_ID, userRole: 'owner', event },
+      system: 'system',
+      messages: [{ role: 'user', content: 'hello' }],
+      seed: 'owner',
+      modelSpec: 'groq/openai/gpt-oss-120b',
+      fallbackSpec: '',
+      authority
+    } as any)).rejects.toThrow('provider credentials unavailable')
+  })
+
+  it('rejects an injected primary model before active God-mode execution', async () => {
+    await expect(runToolLoop({
+      ctx: { userId: USER_ID, userRole: 'owner', event: {} as any },
+      system: 'system',
+      messages: [{ role: 'user', content: 'hello' }],
+      seed: 'owner',
+      model: textModel,
+      authority: godModeAuthority
+    } as any)).rejects.toThrow(/inject/i)
+  })
+
+  it('rejects an injected fallback model before active God-mode execution', async () => {
+    mockResolveModelWithTransport.mockReturnValue({ model: textModel, gatewayUsed: true })
+
     await expect(runToolLoop({
       ctx: { userId: USER_ID, userRole: 'owner', event: {} as any },
       system: 'system',
       messages: [{ role: 'user', content: 'hello' }],
       seed: 'owner',
       modelSpec: 'groq/openai/gpt-oss-120b',
-      fallbackSpec: '',
+      fallbackModel: textModel,
       authority: godModeAuthority
-    } as any)).rejects.toThrow('provider credentials unavailable')
+    } as any)).rejects.toThrow(/inject/i)
   })
 })
 

@@ -1,6 +1,9 @@
 import type { z } from 'zod'
 import { tool, type Tool } from 'ai'
-import type { GodModeAuthority } from '~~/server/utils/godMode/authority'
+import {
+  isActiveGodModeAuthority,
+  type GodModeAuthority
+} from '~~/server/utils/godMode/authority'
 import { roleHasPermission, isReadOnlyRole, type PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult, RiskTier } from './toolContext'
 import { spotlight } from './spotlight'
@@ -52,9 +55,8 @@ export function filterToolsForUser<A>(
   authenticatedUserId?: string
 ): AiTool<A>[] {
   if (
-    authority?.active === true
-    && typeof authenticatedUserId === 'string'
-    && authority.actorUserId === authenticatedUserId
+    typeof authenticatedUserId === 'string'
+    && isActiveGodModeAuthority(authority, authenticatedUserId)
   ) return reg
 
   return reg.filter((t) => {
@@ -85,7 +87,7 @@ export function toSdkTools(
   seed: string,
   authority?: GodModeAuthority
 ): Record<string, Tool<any, any>> {
-  const godModeActive = authority?.active === true && authority.actorUserId === ctx.userId
+  const godModeActive = isActiveGodModeAuthority(authority, ctx.userId)
   const out: Record<string, Tool<any, any>> = {}
   for (const t of tools) {
     out[t.name] = tool({

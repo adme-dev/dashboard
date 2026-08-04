@@ -4,6 +4,7 @@ import type {
   MyAssistantToolRestrictionView,
   MyAssistantView
 } from '~~/shared/types/aiAssistant'
+import { isActiveGodModeAuthority } from '~~/server/utils/godMode/authority'
 import { composeEffectiveAssistantTools } from './governance/catalogComposition'
 import type { PersonalAssistantContext } from './personalAssistantContext'
 import { resolvePersona } from './personas'
@@ -55,8 +56,10 @@ export function buildMyAssistantExplainability(
 ): MyAssistantView {
   // The route supplies the registry so this presenter remains pure and inexpensive to unit-test.
   const registry = availableTools
-  const godModeActive = context.godModeAuthority?.active === true
-    && context.godModeAuthority.actorUserId === context.identity.userId
+  const godModeActive = isActiveGodModeAuthority(
+    context.godModeAuthority,
+    context.identity.userId
+  )
   const granted = new Set(context.permissionGroups)
   const permissionTools = godModeActive
     ? registry

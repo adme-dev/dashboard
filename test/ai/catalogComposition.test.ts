@@ -302,7 +302,7 @@ describe('loadCatalogControlRows', () => {
     const [latestSql, latestParams] = queryRows.mock.calls[0]!
     expect(latestParams).toEqual([[DEPARTMENT_ID]])
     expect(latestSql).toContain('DENSE_RANK() OVER')
-    expect(latestSql).toContain('ORDER BY candidate.version DESC')
+    expect(latestSql).toContain('ORDER BY registered.version DESC')
     const [sql, params] = queryRows.mock.calls[1]!
     expect(params).toEqual([[DEPARTMENT_ID], USER_ID])
     expect(sql).not.toContain('pack_release.pack_version_id = ANY($3::uuid[])')

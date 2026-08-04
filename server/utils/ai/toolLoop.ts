@@ -7,13 +7,17 @@ import { spotlightSystemClause } from './spotlight'
 import type { ToolContext } from './toolContext'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 import { resolveAiModelAssignment, type RuntimeModelProvider } from '~~/server/utils/ai/modelAssignments'
-import type { GodModeAuthority } from '~~/server/utils/godMode/authority'
+import {
+  isActiveGodModeAuthority,
+  type GodModeAuthority
+} from '~~/server/utils/godMode/authority'
 import {
   composeEffectiveAssistantTools,
   type ActiveCatalogRow,
   type CatalogRuntimePolicy
 } from '~~/server/utils/ai/governance/catalogComposition'
 import type { PermissionGroup } from '~~/server/utils/permissions'
+import { recordGodModeBypassedControls } from '~~/server/utils/godMode/featureGate'
 
 export interface LoopOutput {
   text: string
@@ -151,8 +155,10 @@ export async function runToolLoop(opts: {
 }): Promise<LoopOutput> {
   const cfg = useRuntimeConfig() as any
   const persona = opts.persona ?? DEFAULT_PERSONA
-  const godModeActive = opts.authority?.active === true
-    && opts.authority.actorUserId === opts.ctx.userId
+  const godModeActive = isActiveGodModeAuthority(opts.authority, opts.ctx.userId)
+  if (godModeActive && (opts.model || opts.fallbackModel)) {
+    throw new Error('Injected models are unavailable for God mode execution.')
+  }
 
   const composition = composeEffectiveAssistantTools({
     rbacFilteredTools: filterToolsForUser(
@@ -173,6 +179,10 @@ export async function runToolLoop(opts: {
     actorUserId: opts.ctx.userId
   })
   const tools = composition.tools
+  if (composition.bypassedControls?.length) {
+    if (!opts.ctx.event) throw new Error('God mode audit state is unavailable.')
+    await recordGodModeBypassedControls(opts.ctx.event, composition.bypassedControls)
+  }
   const sdkTools = toSdkTools(tools, opts.ctx, opts.seed, opts.authority)
   const turnId = opts.turnId ?? crypto.randomUUID()
   const loopId = opts.loopId ?? 'l1'

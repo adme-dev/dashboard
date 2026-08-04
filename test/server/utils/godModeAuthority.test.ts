@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
+import {
+  isActiveGodModeAuthority,
+  resolveGodModeAuthority
+} from '~~/server/utils/godMode/authority'
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111'
 const MEMBER_ID = '22222222-2222-4222-8222-222222222222'
@@ -39,6 +42,21 @@ describe('resolveGodModeAuthority', () => {
       expect.stringContaining("user_role = 'owner'"),
       [OWNER_ID]
     )
+  })
+
+  it('recognizes only resolver-issued authority and rejects an actor-matching structural forgery', async () => {
+    queryOneFresh.mockResolvedValue({ id: OWNER_ID })
+    const issued = await resolve(createEvent(), OWNER_ID)
+    const forged = {
+      active: true,
+      actorUserId: OWNER_ID,
+      reason: 'active_owner',
+      emergencyDisabled: false
+    }
+
+    expect(isActiveGodModeAuthority(issued, OWNER_ID)).toBe(true)
+    expect(isActiveGodModeAuthority(forged, OWNER_ID)).toBe(false)
+    expect(isActiveGodModeAuthority({ ...issued }, OWNER_ID)).toBe(false)
   })
 
   it.each([
