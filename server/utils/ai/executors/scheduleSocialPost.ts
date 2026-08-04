@@ -1,6 +1,7 @@
 import type { ToolContext } from '../toolContext'
 import { proposalToSocialPostBody } from '../tools/scheduleSocialPost'
 import type { ActionExecutor, ExecutorResult } from './types'
+import { fetchInternalExecution } from './internalExecutionFetch'
 
 /**
  * The propose_schedule_post executor (Phase 2). On a confirmed proposal it creates the social post
@@ -10,16 +11,8 @@ import type { ActionExecutor, ExecutorResult } from './types'
  */
 export type SocialPostPoster = (body: ReturnType<typeof proposalToSocialPostBody>, ctx: ToolContext) => Promise<{ id: string }>
 
-const internalFetch = (<T = unknown>(
-  request: string,
-  options: { method: string; body?: unknown; headers?: unknown }
-) => (globalThis as any).$fetch(request, options) as Promise<T>) as <T = unknown>(
-  request: string,
-  options: { method: string; body?: unknown; headers?: unknown }
-) => Promise<T>
-
 const defaultPoster: SocialPostPoster = (body, ctx) =>
-  internalFetch<{ id: string }>('/api/agency/social/publishing/posts', { method: 'POST', body, headers: ctx.event.headers as any })
+  fetchInternalExecution<{ id: string }>('/api/agency/social/publishing/posts', { method: 'POST', body }, ctx)
 
 export function makeScheduleSocialPostExecutor(post: SocialPostPoster = defaultPoster): ActionExecutor {
   return {

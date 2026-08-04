@@ -13,6 +13,10 @@ import {
   type GodModeAuthority
 } from '~~/server/utils/godMode/authority'
 import { getGodModeRouteAuditState } from '~~/server/utils/godMode/featureGate'
+import {
+  installGodModeInternalExecutionDelegator,
+  type InstallGodModeInternalExecutionDelegatorInput
+} from '~~/server/utils/godMode/internalExecutionDelegation'
 import { sendGodModeAuditTerminal } from '~~/server/utils/queue'
 import { getExecutor } from './executors'
 import type { ActionExecutor, ExecutorClass, ExecutorResult, ExecutionServices } from './executors/types'
@@ -204,6 +208,9 @@ export interface GodModeExecutionDependencies {
     resultReference?: string | null
     metadata?: Record<string, unknown>
   }) => Promise<void>
+  installInternalExecutionDelegator: (
+    input: InstallGodModeInternalExecutionDelegatorInput & { event: H3Event }
+  ) => void
   transaction: <T>(callback: (db: TransactionDb) => Promise<T>) => Promise<T>
   enqueueTerminalAudit: (event: H3Event, terminal: GodModeAuditEventInput) => Promise<boolean>
   sessionDigest: (event: H3Event) => string
@@ -376,6 +383,7 @@ const defaultDependencies: GodModeExecutionDependencies = {
     )
     if (!updated) throw new Error('God mode execution progress rejected')
   },
+  installInternalExecutionDelegator: input => installGodModeInternalExecutionDelegator(input.event, input),
   transaction: callback => transaction(callback as any),
   enqueueTerminalAudit: sendGodModeAuditTerminal,
   sessionDigest: event => {
@@ -576,6 +584,23 @@ function createGodModeExecutionCore(deps: GodModeExecutionDependencies) {
               }
             }
           : {})
+      }
+      if (channel === 'mcp' && executor.executionClass === 'internal-http') {
+        try {
+          deps.installInternalExecutionDelegator({
+            event: request.event,
+            actorUserId: user.id,
+            authority,
+            correlationId: auditIdentity.correlationId,
+            idempotencyKey: request.idempotencyKey,
+            routeOrTool: request.toolName
+          })
+        } catch (error) {
+          throw Object.assign(error instanceof Error ? error : new Error('delegation unavailable'), {
+            boundedCode: 'internal_delegation_unavailable',
+            preDispatch: true
+          })
+        }
       }
       const result = await executor.execute(proposal.resolved_payload, ctx, services)
       capturedResultReference = result.resultRef

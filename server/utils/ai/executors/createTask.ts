@@ -1,6 +1,7 @@
 import type { ToolContext } from '../toolContext'
 import { proposalToTaskBody } from '../tools/createTask'
 import type { ActionExecutor, ExecutorResult } from './types'
+import { fetchInternalExecution } from './internalExecutionFetch'
 
 /**
  * The create_task executor — the existing confirm path, extracted verbatim (behavior-preserving).
@@ -10,16 +11,8 @@ import type { ActionExecutor, ExecutorResult } from './types'
  */
 export type TaskPoster = (body: ReturnType<typeof proposalToTaskBody>, ctx: ToolContext) => Promise<{ id: string }>
 
-const internalFetch = (<T = unknown>(
-  request: string,
-  options: { method: string; body?: unknown; headers?: unknown }
-) => (globalThis as any).$fetch(request, options) as Promise<T>) as <T = unknown>(
-  request: string,
-  options: { method: string; body?: unknown; headers?: unknown }
-) => Promise<T>
-
 const defaultPoster: TaskPoster = (body, ctx) =>
-  internalFetch<{ id: string }>('/api/agency/tasks', { method: 'POST', body, headers: ctx.event.headers as any })
+  fetchInternalExecution<{ id: string }>('/api/agency/tasks', { method: 'POST', body }, ctx)
 
 export function makeCreateTaskExecutor(post: TaskPoster = defaultPoster): ActionExecutor {
   return {

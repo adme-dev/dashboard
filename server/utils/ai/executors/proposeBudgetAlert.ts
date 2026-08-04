@@ -1,6 +1,7 @@
 import type { ToolContext } from '../toolContext'
 import { proposalToBudgetAlertBody } from '../tools/proposeBudgetAlert'
 import type { ActionExecutor, ExecutorResult } from './types'
+import { fetchInternalExecution } from './internalExecutionFetch'
 
 /**
  * The propose_budget_alert executor (Phase 2). On a confirmed proposal it creates the alert via the
@@ -11,16 +12,8 @@ import type { ActionExecutor, ExecutorResult } from './types'
 // The endpoint responds { success, alert: { id, ... } } — the id is nested under `alert`.
 export type BudgetAlertPoster = (body: ReturnType<typeof proposalToBudgetAlertBody>, ctx: ToolContext) => Promise<{ alert?: { id?: string }, id?: string }>
 
-const internalFetch = (<T = unknown>(
-  request: string,
-  options: { method: string; body?: unknown; headers?: unknown }
-) => (globalThis as any).$fetch(request, options) as Promise<T>) as <T = unknown>(
-  request: string,
-  options: { method: string; body?: unknown; headers?: unknown }
-) => Promise<T>
-
 const defaultPoster: BudgetAlertPoster = (body, ctx) =>
-  internalFetch('/api/agency/budget-alerts', { method: 'POST', body, headers: ctx.event.headers as any })
+  fetchInternalExecution('/api/agency/budget-alerts', { method: 'POST', body }, ctx)
 
 export function makeBudgetAlertExecutor(post: BudgetAlertPoster = defaultPoster): ActionExecutor {
   return {

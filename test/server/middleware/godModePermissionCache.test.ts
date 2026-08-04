@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const validateSession = vi.fn()
+const acceptGodModeInternalExecution = vi.fn(async () => null)
 const kvGet = vi.fn().mockResolvedValue(null)
 const kvPut = vi.fn()
 const resolveUserPermissions = vi.fn()
 
 vi.mock('../../../server/utils/auth', () => ({
   validateSession,
+  acceptGodModeInternalExecution,
   TransientAuthError: class TransientAuthError extends Error {}
 }))
 vi.mock('../../../server/utils/kv', () => ({ kvGet, kvPut }))

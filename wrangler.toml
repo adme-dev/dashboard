@@ -218,8 +218,10 @@ AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED = "false"
 AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY = "false"
 # MCP server (Phase 1) — non-secret plaintext vars MUST live here, not the CF dashboard:
 # deployConfig bakes [vars] into the Direct-Upload deploy config, which REPLACES dashboard
-# plaintext vars (secrets survive). MCP_INTERNAL_SECRET, MCP_REQUEST_SIGNING_SECRET, and
-# MCP_HANDSHAKE_SECRET stay as Pages dashboard secrets; never add their values to [vars].
+# plaintext vars (secrets survive). MCP_INTERNAL_SECRET, MCP_REQUEST_SIGNING_SECRET,
+# GOD_MODE_INTERNAL_EXECUTION_SECRET, and MCP_HANDSHAKE_SECRET stay as Pages dashboard secrets;
+# never add their values to [vars]. GOD_MODE_INTERNAL_EXECUTION_SECRET is Pages-only and must never be
+# configured on the standalone MCP Worker.
 MCP_SERVER_ENABLED = "true"
 MCP_WORKER_ORIGIN = "https://mcp-server.adme-dev.workers.dev"
 # MCP Phase 2a — owned generation tools (generate_voiceover, start_music_generation,

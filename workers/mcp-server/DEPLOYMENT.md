@@ -40,21 +40,31 @@ and a live connection test.
 
 1. **App side already shipped** (slices 1+2): `server/utils/ai/mcp/project.ts` + `/api/internal/mcp/*`.
 2. **On the Pages project**, set `MCP_SERVER_ENABLED=true`, `MCP_INTERNAL_SECRET`,
-   `MCP_REQUEST_SIGNING_SECRET`, and `MCP_HANDSHAKE_SECRET` in Production environment secrets.
+   `MCP_REQUEST_SIGNING_SECRET`, `GOD_MODE_INTERNAL_EXECUTION_SECRET`, and `MCP_HANDSHAKE_SECRET` in
+   Production environment secrets. `GOD_MODE_INTERNAL_EXECUTION_SECRET` is Pages-only; never configure it
+   on this Worker.
    Internal tools/call requests require both the service secret and a signed one-time request claim.
 
 ## Deploy
 
-Initial activation order is security-sensitive:
+Initial activation requires a coordinated maintenance window; it is not availability-safe:
 
-1. Generate one signing secret through an approved secret-management path.
-2. Set that identical `MCP_REQUEST_SIGNING_SECRET` on both the existing Pages project and Worker before
-   either enforcing release is deployed. Do not print or commit the value.
-3. Deploy the Worker release first so every list/call emits a signed assertion while the old Pages
-   release still accepts its existing request shape.
-4. Verify a safe read, then deploy Pages so signed assertions become mandatory.
+1. Announce the outage and stop accepting MCP traffic.
+2. Generate the request-signing and Pages-only internal-execution secrets through an approved
+   secret-management path.
+3. Set the identical `MCP_REQUEST_SIGNING_SECRET` on the existing Pages project and Worker, and set
+   `GOD_MODE_INTERNAL_EXECUTION_SECRET` only on Pages, before either enforcing release is deployed. Do not
+   print or commit either value.
+4. Deploy the Worker release first so every new list/call emits a signed assertion while the old Pages
+   release still accepts its existing request shape. Existing token props without `oauthSessionId` reject
+   and fail closed at this point.
+5. Force all existing OAuth connectors to reconnect at Worker activation, before traffic reopens. Verify
+   a safe read only from a reconnected session, then deploy Pages so signed assertions become mandatory.
+6. Verify owner and ordinary safe reads, then reopen MCP traffic.
 
-This ordering avoids enabling Pages enforcement while the Worker is still unable to sign requests.
+This ordering avoids enabling Pages enforcement while the Worker is still unable to sign requests, but
+it does not preserve existing connector availability because legacy OAuth props have no stable session
+identity. Do not perform the Worker-first step outside the maintenance window.
 
 ```bash
 # Deploy from a copy OUTSIDE the repo tree — the root .wrangler/deploy/config.json redirect breaks
@@ -77,8 +87,9 @@ npm --prefix "$MCP_DEPLOY_DIR/workers/mcp-server" install --legacy-peer-deps
   --cwd "$MCP_DEPLOY_DIR/workers/mcp-server"
 ```
 
-On Pages, set/rotate the same two names in Workers & Pages → `agency-dashboard` → Settings →
-Environment Variables → Production. Never place a secret value in `wrangler.toml`, a commit, or logs.
+On Pages, set/rotate the matching Worker/Pages secrets plus the Pages-only internal execution secret in
+Workers & Pages → `agency-dashboard` → Settings → Environment Variables → Production. Never place a
+secret value in `wrangler.toml`, a commit, or logs.
 
 ## Verify (pilot = Claude Pro — lowest friction)
 

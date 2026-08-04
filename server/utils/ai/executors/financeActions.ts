@@ -1,5 +1,6 @@
 import type { ToolContext } from '../toolContext'
 import type { ActionExecutor, ExecutorResult } from './types'
+import { fetchInternalExecution } from './internalExecutionFetch'
 
 /**
  * Executors for the Finance write tools. Run the real mutation on a confirmed proposal via the existing
@@ -8,14 +9,7 @@ import type { ActionExecutor, ExecutorResult } from './types'
  */
 
 export type Poster = (url: string, body: any, ctx: ToolContext) => Promise<any>
-const internalFetch = (<T = unknown>(
-  request: string,
-  options: { method: string; body?: unknown; headers?: unknown }
-) => (globalThis as any).$fetch(request, options) as Promise<T>) as <T = unknown>(
-  request: string,
-  options: { method: string; body?: unknown; headers?: unknown }
-) => Promise<T>
-const defaultPost: Poster = (url, body, ctx) => internalFetch(url, { method: 'POST', body, headers: ctx.event.headers as any })
+const defaultPost: Poster = (url, body, ctx) => fetchInternalExecution(url, { method: 'POST', body }, ctx)
 
 export function makeExpenseApprovalExecutor(post: Poster = defaultPost): ActionExecutor {
   return {
@@ -51,7 +45,7 @@ export function makeEomGenerateExecutor(post: Poster = defaultPost): ActionExecu
 }
 
 export type Putter = (url: string, body: any, ctx: ToolContext) => Promise<any>
-const defaultPut: Putter = (url, body, ctx) => internalFetch(url, { method: 'PUT', body, headers: ctx.event.headers as any })
+const defaultPut: Putter = (url, body, ctx) => fetchInternalExecution(url, { method: 'PUT', body }, ctx)
 
 export function makeExpenseClassifyExecutor(put: Putter = defaultPut): ActionExecutor {
   return {

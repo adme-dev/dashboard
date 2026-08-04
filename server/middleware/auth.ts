@@ -1,4 +1,9 @@
-import { validateSession, TransientAuthError, type User } from '../utils/auth'
+import {
+  acceptGodModeInternalExecution,
+  validateSession,
+  TransientAuthError,
+  type User
+} from '../utils/auth'
 import { kvGet, kvPut } from '../utils/kv'
 import { resolveUserPermissions } from '../utils/roleResolver'
 import { isReadOnlyRole } from '../utils/permissions'
@@ -135,6 +140,12 @@ export default defineEventHandler(async (event) => {
   if (!pathname.startsWith('/api/')) {
     return
   }
+
+  // Server-only MCP execution delegation is accepted only after its exact method/path/body binding,
+  // nonce, and fresh active-owner authority pass. Header absence is a no-op; malformed/forged/replayed
+  // headers fail closed and never fall through to session auth.
+  const delegatedUser = await acceptGodModeInternalExecution(event)
+  if (delegatedUser) return
 
   // Internal cron bypass: a process inside CF with the shared secret
   // can hit whitelisted read endpoints as a synthetic "cron" user.

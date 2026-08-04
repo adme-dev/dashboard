@@ -24,4 +24,18 @@ describe('MCP exact-request signing deployment contract', () => {
       expect(document).not.toMatch(/MCP_REQUEST_SIGNING_SECRET\s*=\s*["'][^"']+["']/)
     }
   })
+
+  it('keeps internal execution delegation Pages-only and makes initial connector migration an explicit outage', () => {
+    expect(pagesWrangler).toContain('GOD_MODE_INTERNAL_EXECUTION_SECRET')
+    expect(pagesWrangler).not.toMatch(/^\s*GOD_MODE_INTERNAL_EXECUTION_SECRET\s*=/m)
+    expect(wrangler).not.toContain('GOD_MODE_INTERNAL_EXECUTION_SECRET')
+
+    for (const document of [deployment, operatorGuide]) {
+      expect(document).toMatch(/initial activation[\s\S]*maintenance window/i)
+      expect(document).toMatch(/all existing (?:OAuth )?connectors[\s\S]*reconnect[\s\S]*(?:before|at) Worker activation[\s\S]*before traffic reopens/i)
+      expect(document).toMatch(/oauthSessionId[\s\S]*(?:fail closed|reject)/i)
+      expect(document).toMatch(/initial activation[\s\S]*(?:not availability-safe|never describe[\s\S]*availability-safe)/i)
+      expect(document).not.toMatch(/initial activation is (?:zero[- ]downtime|availability-safe)/i)
+    }
+  })
 })

@@ -1,5 +1,6 @@
 import type { ToolContext } from '../toolContext'
 import type { ActionExecutor, ExecutorResult } from './types'
+import { fetchInternalExecution } from './internalExecutionFetch'
 
 /**
  * Executors for the delivery write tools (assign_task / propose_status_change / propose_brief_convert).
@@ -9,15 +10,8 @@ import type { ActionExecutor, ExecutorResult } from './types'
  */
 
 export type Patcher = (url: string, body: any, ctx: ToolContext) => Promise<any>
-const internalFetch = (<T = unknown>(
-  request: string,
-  options: { method: string; body?: unknown; headers?: unknown }
-) => (globalThis as any).$fetch(request, options) as Promise<T>) as <T = unknown>(
-  request: string,
-  options: { method: string; body?: unknown; headers?: unknown }
-) => Promise<T>
-const defaultPatch: Patcher = (url, body, ctx) => internalFetch(url, { method: 'PATCH', body, headers: ctx.event.headers as any })
-const defaultPost: Patcher = (url, body, ctx) => internalFetch(url, { method: 'POST', body, headers: ctx.event.headers as any })
+const defaultPatch: Patcher = (url, body, ctx) => fetchInternalExecution(url, { method: 'PATCH', body }, ctx)
+const defaultPost: Patcher = (url, body, ctx) => fetchInternalExecution(url, { method: 'POST', body }, ctx)
 
 export function makeAssignTaskExecutor(patch: Patcher = defaultPatch): ActionExecutor {
   return {

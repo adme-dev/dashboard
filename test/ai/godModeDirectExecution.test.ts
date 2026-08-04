@@ -135,6 +135,7 @@ function harness(options: {
       })
     }),
     recordExecutionProgress: vi.fn(async () => undefined),
+    installInternalExecutionDelegator: vi.fn(() => { calls.push('delegation') }),
     transaction: vi.fn(async callback => callback({ query: vi.fn() } as any)),
     enqueueTerminalAudit: vi.fn(async () => true),
     sessionDigest: vi.fn(() => 'a'.repeat(64)),
@@ -181,6 +182,15 @@ describe('God mode direct execution', () => {
       channel: 'mcp',
       routeOrTool: 'create_task'
     }))
+    expect(h.deps.installInternalExecutionDelegator).toHaveBeenCalledWith(expect.objectContaining({
+      event: authorityEvent,
+      actorUserId: OWNER_ID,
+      authority,
+      correlationId: CORRELATION_ID,
+      idempotencyKey: `mcp:${'c'.repeat(64)}`,
+      routeOrTool: 'create_task'
+    }))
+    expect(h.calls.indexOf('delegation')).toBeLessThan(h.calls.indexOf('executor'))
   })
 
   it('replays a completed MCP ledger result without redispatching the write', async () => {
@@ -493,6 +503,40 @@ describe('God mode direct execution', () => {
     )
   })
 
+  it('classifies a proven downstream auth 401 as failed rather than ambiguous', async () => {
+    const idempotencyKey = `mcp:${'d'.repeat(64)}`
+    const h = harness({
+      expectedIdempotencyKey: idempotencyKey,
+      executorError: Object.assign(new Error('downstream authentication rejected'), {
+        statusCode: 401,
+        boundedCode: 'internal_delegation_rejected',
+        preDispatch: true
+      })
+    })
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+
+    await expect(createTrustedMcpGodModeToolExecutor(h.deps)({
+      event: authorityEvent,
+      authenticatedUserId: OWNER_ID,
+      authority,
+      sessionDigest: 'b'.repeat(64),
+      toolName: 'create_task',
+      args: { title: 'Ship', clientId: CLIENT_ID },
+      idempotencyKey,
+      tenantId: TENANT_ID,
+      clientId: CLIENT_ID
+    })).rejects.toMatchObject({ statusCode: 502, statusMessage: 'God mode action failed' })
+
+    expect(h.ledger.get(idempotencyKey)?.state).toBe('failed')
+    expect(h.deps.appendAudit).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'failed', outcomeCode: 'internal_delegation_rejected' }),
+      expect.anything()
+    )
+  })
+
   it('captures the returned reference before proposal bookkeeping and marks bookkeeping failure ambiguous', async () => {
     const h = harness()
     vi.mocked(h.deps.completeProposal).mockRejectedValue(new Error('database response lost'))
@@ -591,6 +635,28 @@ describe('executor durability classification', () => {
       link_social_conversation_task: 'local-transactional'
     })
     expect(Object.values(classes).every(value => ['local-transactional', 'internal-http', 'external-provider'].includes(String(value)))).toBe(true)
+    expect(Object.entries(classes).filter(([, value]) => value === 'internal-http').map(([name]) => name).sort()).toEqual([
+      'assign_task',
+      'create_task',
+      'log_crm_activity',
+      'propose_brief_convert',
+      'propose_budget_alert',
+      'propose_budget_change',
+      'propose_eom_generate',
+      'propose_expense_approval',
+      'propose_expense_classify',
+      'propose_opportunity',
+      'propose_proof_status',
+      'propose_quote',
+      'propose_schedule_post',
+      'propose_status_change'
+    ])
+    expect(Object.entries(classes).filter(([, value]) => value === 'local-transactional').map(([name]) => name).sort()).toEqual([
+      'create_social_case_task',
+      'link_social_conversation_task',
+      'propose_knowledge_article',
+      'propose_team_memory'
+    ])
   })
 })
 

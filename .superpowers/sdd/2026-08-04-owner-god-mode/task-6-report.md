@@ -227,3 +227,63 @@ Final verification:
 ### Fix-round commit
 
 - Scoped fix commit: `fix(mcp): route owner calls through audited execution`
+
+## Fix round 2 — authenticated Pages-internal owner execution
+
+### Findings addressed
+
+1. Every registered `internal-http` executor now uses one server-internal transport. For trusted MCP
+   execution, the Task 5 coordinator installs a request-local signer only after it has received the exact
+   branded active-owner authority and immutable MCP attempt identity. The transport mints a random-JTI,
+   30-second HMAC claim bound to the actor, MCP channel, correlation ID, stable MCP idempotency key, tool,
+   exact method, exact path, canonical body digest, and a dedicated audience.
+2. Downstream Pages auth accepts that delegation only on the 14 exact mutation targets, verifies every
+   binding, freshly revalidates current owner authority, atomically consumes the nonce, reloads the exact
+   active owner, resolves normal permission context, and seeds the same `event.context.user` / auth shape
+   used by session authentication. Wrong method/path/body/actor, expiry, downgrade, forgery, and replay
+   reject before a route handler. Header absence leaves ordinary cookie/bearer auth unchanged.
+3. Trusted MCP hops strip cookie, bearer, MCP assertion, MCP service-secret, and MCP scope material before
+   setting the dedicated delegation header. No actor header is introduced. Ordinary chat/session hops
+   preserve their existing headers. Missing signing configuration fails before `$fetch`; downstream
+   401/403/409 auth rejection is marked proven pre-dispatch so Task 5 persists `failed`, not `ambiguous`.
+4. The dedicated `GOD_MODE_INTERNAL_EXECUTION_SECRET` is Pages-only. It appears as a required secret name
+   in the Pages config/docs with no value and is explicitly prohibited from the standalone Worker.
+5. The live executor inventory is now frozen at exactly 14 `internal-http` executors and four unchanged
+   `local-transactional` executors. Task, delivery, finance, social, CRM, and creative/banner implementations
+   all use the shared transport; local transaction semantics were not changed.
+6. Initial activation documentation now requires a coordinated maintenance window. All existing OAuth
+   connectors whose token props predate `oauthSessionId` must reconnect at Worker activation before MCP
+   traffic reopens. The guide explicitly rejects availability-safe and zero-downtime descriptions.
+
+### TDD and security evidence
+
+Observed RED before production changes included a missing delegation module, real representative executor
+401s, absent coordinator signer installation, exact-request substitution gaps, an unbounded missing-body
+digest error, and the stale availability-safe config contract. The final focused delegation/auth/coordinator
+and rollout suite passes 62 tests. Coverage proves all 14 allowed targets, representative task/finance/
+social/CRM/creative authentication, exact path/body mismatch, replay, forged raw header, owner downgrade,
+expiry, missing secret, credential stripping, ordinary session preservation, and downstream 401 failed-state
+classification.
+
+No secret or signed claim is logged, persisted outside the replay table, or embedded in config. Production
+code contains no new console logging. The nonce insert is atomic (`ON CONFLICT DO NOTHING`), the signer is
+stored behind a module-private symbol, and signed claims have an exact allowlisted schema and constant-time
+HMAC verification. No database migration, production secret operation, deployment, or live external write
+was performed.
+
+### Verification
+
+- Related auth/God-mode/MCP regression: 27 files passed; 331 tests passed; 10 skipped; 0 failed.
+- Full Worker/config suite under Node 24 outside the filesystem sandbox: 211 files passed; 1 skipped;
+  970 tests passed; 12 skipped; 0 failed.
+- Root Node 24 Nuxt typecheck: exit 0.
+- Standalone Worker source/shared signer are byte-identical to the verified isolated deployment copy;
+  isolated TypeScript exits 0 and Wrangler dry-run exits 0 at 2,197.25 KiB / 390.38 KiB gzip.
+- God-mode gate inventory intentionally changes from 1,327 to 1,328 entries solely for the new Pages
+  secret/configuration boundary (`provider_infrastructure_availability` 186→187); digest refreshed.
+- Final `git diff --check`, scoped secret/log scan, modified-file reread, staged diff review, and commit SHA
+  are completed in the controller handoff after this report is staged.
+
+### Fix-round commit
+
+- Scoped fix commit: `fix(mcp): delegate owner executor authentication`

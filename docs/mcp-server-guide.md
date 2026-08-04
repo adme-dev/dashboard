@@ -59,9 +59,10 @@ after current owner revalidation. The signed OAuth scope remains transport autho
 | **2b** video reads | `MCP_VIDEO_TOOLS_ENABLED` | **on** | Video discovery + status (no spend) |
 | **2b** video gen | `MCP_VIDEO_GEN_ENABLED` | off | `propose_video_generation` + `create_video_project` |
 
-Secrets: Pages requires `MCP_INTERNAL_SECRET`, `MCP_REQUEST_SIGNING_SECRET`, and
-`MCP_HANDSHAKE_SECRET`; the standalone Worker requires matching `MCP_INTERNAL_SECRET` and
-`MCP_REQUEST_SIGNING_SECRET`. Configure them through Cloudflare secret controls, never `[vars]` or source.
+Secrets: Pages requires `MCP_INTERNAL_SECRET`, `MCP_REQUEST_SIGNING_SECRET`,
+`GOD_MODE_INTERNAL_EXECUTION_SECRET`, and `MCP_HANDSHAKE_SECRET`; the standalone Worker requires only
+`MCP_INTERNAL_SECRET` and `MCP_REQUEST_SIGNING_SECRET`. The internal-execution secret is Pages-only and
+must never reach the Worker, a client, logs, `[vars]`, or source.
 
 ## 4. Tool catalog
 
@@ -151,10 +152,13 @@ still apply without a second confirmation call.
 
 ## 7. Activation (operator) & live-verify
 
-For initial request-signing activation, first set an identical `MCP_REQUEST_SIGNING_SECRET` on Pages and
-the standalone Worker. Deploy the Worker so it emits assertions, verify a safe read against the existing
-Pages release, and only then deploy Pages enforcement. Never deploy Pages enforcement before both secret
-bindings exist and the signing Worker is ready.
+Initial activation requires a coordinated maintenance window. Stop MCP traffic, set the identical
+`MCP_REQUEST_SIGNING_SECRET` on Pages and the standalone Worker, and set the dedicated
+`GOD_MODE_INTERNAL_EXECUTION_SECRET` on Pages only. Deploy the Worker first. Its current secure token
+loader ensures every existing connector whose props lack `oauthSessionId` is rejected and fails closed, so force
+all existing OAuth connectors to reconnect at Worker activation before traffic reopens. Verify a safe read
+from a reconnected session against the existing Pages release, deploy Pages enforcement, verify again,
+then reopen traffic. Never describe this initial rollout as availability-safe or zero-downtime.
 
 The current single-key verifier cannot rotate without an availability break. Use a coordinated
 maintenance window: stop MCP traffic, replace the secret on both sides, deploy/restart both, reconnect

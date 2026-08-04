@@ -1,9 +1,10 @@
 import bcrypt from 'bcryptjs'
 import { createHash } from 'node:crypto'
-import { queryOne, queryRows, execute } from './db'
+import { queryOne, queryOneFresh, queryRows, execute } from './db'
 import { isReadOnlyRole, PERMISSIONS, permissionGroupsForRoles, roleHasPermission, type PermissionGroup } from './permissions'
 import { resolveUserPermissions } from './roleResolver'
 import { canBypassApplicationControl } from './godMode/featureGate'
+import { consumeGodModeInternalExecutionDelegation } from './godMode/internalExecutionDelegation'
 
 export interface User {
   id: string
@@ -200,6 +201,12 @@ export async function requireAuth(event: any): Promise<User> {
     return event.context.user as User
   }
 
+  // Exact server-only MCP execution delegation. A raw header is never sufficient: the verifier binds
+  // the signed actor/method/path/body/execution identity, consumes its nonce, and freshly revalidates the
+  // active owner before this function seeds the same user shape as normal session authentication.
+  const delegatedUser = await acceptGodModeInternalExecution(event)
+  if (delegatedUser) return delegatedUser
+
   // Prefer HttpOnly/session cookies over fallback Authorization headers.
   // Using cookie-first prevents stale `auth_token_backup` values from forcing
   // false 401s after logout or token rotation.
@@ -234,6 +241,30 @@ export async function requireAuth(event: any): Promise<User> {
     }
     throw createError({ statusCode: 503, statusMessage: 'Service temporarily unavailable' })
   }
+}
+
+export async function acceptGodModeInternalExecution(event: any): Promise<User | null> {
+  const delegation = await consumeGodModeInternalExecutionDelegation(event)
+  if (!delegation) return null
+
+  const row = await queryOneFresh<User>(
+    `SELECT id, email, name, user_role AS role, user_role, is_active, avatar_url, custom_role_id
+       FROM team_members
+      WHERE id = $1 AND is_active = TRUE AND user_role = 'owner'
+      LIMIT 1`,
+    [delegation.actorUserId]
+  )
+  if (!row || row.id !== delegation.actorUserId || row.role !== 'owner' || row.is_active !== true) {
+    throw createError({ statusCode: 403, statusMessage: 'Internal execution owner is unavailable' })
+  }
+
+  const user = { ...row }
+  const resolved = await resolveUserPermissions(event, user.id, user.role, user.custom_role_id)
+  user.permissionGroups = resolved.groups
+  ;(user as any).isCustomReadOnly = resolved.isReadOnly && !isReadOnlyRole(user.role)
+  event.context.user = user
+  event.context.auth = { userId: user.id, role: user.role }
+  return user
 }
 
 // Require role helper for API routes
