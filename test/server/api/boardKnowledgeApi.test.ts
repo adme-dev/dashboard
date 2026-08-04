@@ -28,6 +28,7 @@ const mockResolveAccessibleBoard = vi.fn()
 const mockResolveKnowledgeSource = vi.fn()
 const mockCreateSubmission = vi.fn()
 const mockGetSubmissionForBoard = vi.fn()
+const mockGetSubmissionReviewDetailForBoard = vi.fn()
 const mockListBoardKnowledge = vi.fn()
 const mockTransitionSubmission = vi.fn()
 const mockEnqueue = vi.fn()
@@ -45,6 +46,7 @@ vi.mock('~~/server/utils/boardKnowledge/repository', () => ({
   resolveKnowledgeSource: (...args: unknown[]) => mockResolveKnowledgeSource(...args),
   createSubmission: (...args: unknown[]) => mockCreateSubmission(...args),
   getSubmissionForBoard: (...args: unknown[]) => mockGetSubmissionForBoard(...args),
+  getSubmissionReviewDetailForBoard: (...args: unknown[]) => mockGetSubmissionReviewDetailForBoard(...args),
   listBoardKnowledge: (...args: unknown[]) => mockListBoardKnowledge(...args)
 }))
 
@@ -93,6 +95,12 @@ describe('Board Knowledge API', () => {
     })
     mockCreateSubmission.mockReset().mockResolvedValue(submission)
     mockGetSubmissionForBoard.mockReset().mockResolvedValue(submission)
+    mockGetSubmissionReviewDetailForBoard.mockReset().mockResolvedValue({
+      submission,
+      context: { boardName: 'Finance', task: null, submittedBy: null },
+      preview: { chunks: [], totalChunks: 0, truncated: false },
+      history: []
+    })
     mockListBoardKnowledge.mockReset().mockResolvedValue([submission])
     mockTransitionSubmission.mockReset().mockResolvedValue(submission)
     mockEnqueue.mockReset().mockResolvedValue(true)
@@ -120,11 +128,11 @@ describe('Board Knowledge API', () => {
   it('lists and reads knowledge only through board-scoped repository calls', async () => {
     await expect(listKnowledge({ params: { id: BOARD_ID } } as never)).resolves.toMatchObject({ submissions: [submission] })
     await expect(getKnowledge({ params: { id: BOARD_ID, submissionId: SUBMISSION_ID } } as never)).resolves.toMatchObject({ submission })
-    expect(mockGetSubmissionForBoard).toHaveBeenCalledWith(SUBMISSION_ID, BOARD_ID)
+    expect(mockGetSubmissionReviewDetailForBoard).toHaveBeenCalledWith(SUBMISSION_ID, BOARD_ID)
   })
 
   it('returns a board-scoped 404 without leaking inaccessible submission metadata', async () => {
-    mockGetSubmissionForBoard.mockResolvedValue(null)
+    mockGetSubmissionReviewDetailForBoard.mockResolvedValue(null)
     await expect(getKnowledge({ params: { id: BOARD_ID, submissionId: SUBMISSION_ID } } as never))
       .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Knowledge submission not found' })
   })

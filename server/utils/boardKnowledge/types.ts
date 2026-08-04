@@ -60,6 +60,35 @@ export interface BoardKnowledgeProjection {
   canReview: boolean
 }
 
+export interface BoardKnowledgePreviewChunk {
+  chunkIndex: number
+  content: string
+  heading: string | null
+  pageStart: number | null
+  pageEnd: number | null
+  sheetName: string | null
+  slideNumber: number | null
+}
+
+export interface BoardKnowledgeReviewDetail {
+  submission: BoardKnowledgeSubmission
+  context: {
+    boardName: string
+    task: { id: string, title: string } | null
+    submittedBy: { id: string, name: string, email: string } | null
+  }
+  preview: {
+    chunks: BoardKnowledgePreviewChunk[]
+    totalChunks: number
+    truncated: boolean
+  }
+  history: Array<{
+    action: string
+    actorName: string | null
+    createdAt: string
+  }>
+}
+
 export interface BoardKnowledgeSourceVersionInput {
   id: string
   checksum: string | null

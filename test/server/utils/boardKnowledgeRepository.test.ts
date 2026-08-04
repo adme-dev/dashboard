@@ -11,6 +11,7 @@ vi.mock('~~/server/utils/db', () => db)
 
 import {
   createSubmission,
+  getSubmissionReviewDetailForBoard,
   getSubmissionForBoard,
   listBoardKnowledge,
   resolveKnowledgeSource
@@ -176,5 +177,58 @@ describe('board knowledge repository', () => {
     const summarySql = String(db.queryRows.mock.calls[0]?.[0])
     expect(summarySql).toMatch(/WHERE bks\.department_id = \$1/i)
     expect(summarySql).not.toMatch(/\ba\.content\b/i)
+  })
+
+  it('returns a board-scoped, bounded review preview with context and audit history', async () => {
+    db.queryOne
+      .mockResolvedValueOnce({
+        ...submissionRow,
+        source_type: 'task_attachment',
+        source_entity_id: ATTACHMENT_ID,
+        task_attachment_id: ATTACHMENT_ID,
+        extraction_status: 'ready',
+        ai_knowledge_article_id: 'article-1'
+      })
+      .mockResolvedValueOnce({
+        board_name: 'Finance',
+        submitter_id: 'user-1',
+        submitter_name: 'Clara',
+        submitter_email: 'clara@adme.net.au',
+        task_id: 'task-1',
+        task_title: 'Reference PDFs'
+      })
+    db.queryRows
+      .mockResolvedValueOnce([{
+        chunk_index: 0,
+        content: `Opening cash ${'x'.repeat(22_000)}`,
+        heading: 'Cash position',
+        page_start: 2,
+        page_end: 2,
+        sheet_name: null,
+        slide_number: null,
+        total_chunks: '14',
+        content_truncated: true
+      }])
+      .mockResolvedValueOnce([{
+        action: 'extraction_success',
+        actor_name: null,
+        created_at: '2026-08-04T01:02:00.000Z'
+      }])
+
+    const detail = await getSubmissionReviewDetailForBoard(SUBMISSION_ID, BOARD_ID)
+
+    expect(detail).toMatchObject({
+      submission: { id: SUBMISSION_ID, departmentId: BOARD_ID },
+      context: {
+        boardName: 'Finance',
+        task: { id: 'task-1', title: 'Reference PDFs' },
+        submittedBy: { id: 'user-1', name: 'Clara', email: 'clara@adme.net.au' }
+      },
+      preview: { totalChunks: 14, truncated: true },
+      history: [{ action: 'extraction_success', actorName: null, createdAt: '2026-08-04T01:02:00.000Z' }]
+    })
+    expect(detail?.preview.chunks[0]?.content).toHaveLength(20_000)
+    expect(String(db.queryRows.mock.calls[0]?.[0])).toMatch(/FROM ai_knowledge_chunks[\s\S]*submission_id = \$1[\s\S]*LIMIT 12/i)
+    expect(String(db.queryRows.mock.calls[1]?.[0])).toMatch(/FROM board_knowledge_audit[\s\S]*submission_id = \$1[\s\S]*LIMIT 50/i)
   })
 })

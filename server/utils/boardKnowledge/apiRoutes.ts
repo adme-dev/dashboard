@@ -5,7 +5,7 @@ import { resolveAccessibleBoard } from '~~/server/utils/boardFiles'
 import { isIndexableBoardKnowledgeFile, type BoardKnowledgeSourceType } from '~~/server/utils/boardKnowledge/types'
 import {
   createSubmission,
-  getSubmissionForBoard,
+  getSubmissionReviewDetailForBoard,
   listBoardKnowledge,
   resolveKnowledgeSource
 } from '~~/server/utils/boardKnowledge/repository'
@@ -50,9 +50,9 @@ export async function listKnowledgeForBoard(event: H3Event) {
 
 export async function getKnowledgeForBoard(event: H3Event) {
   const board = await resolveAccessibleBoard(event, requiredParam(event, 'id'))
-  const submission = await getSubmissionForBoard(requiredParam(event, 'submissionId'), board.id)
-  if (!submission) throw createError({ statusCode: 404, statusMessage: 'Knowledge submission not found' })
-  return { submission }
+  const detail = await getSubmissionReviewDetailForBoard(requiredParam(event, 'submissionId'), board.id)
+  if (!detail) throw createError({ statusCode: 404, statusMessage: 'Knowledge submission not found' })
+  return detail
 }
 
 export async function transitionKnowledgeForBoard(

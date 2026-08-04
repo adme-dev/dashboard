@@ -71,11 +71,13 @@ describe('board Files view integration contracts', () => {
   })
 
   it('filters by searchable metadata, scope, and category using all sentinels', () => {
-    expect(filterBoardFileItems(files, { search: 'clara', scope: 'all', category: 'all' }))
+    expect(filterBoardFileItems(files, { search: 'clara', scope: 'all', category: 'all', knowledge: 'all' }))
       .toEqual([files[0]])
-    expect(filterBoardFileItems(files, { search: 'reference pdfs', scope: 'task', category: 'evidence' }))
+    expect(filterBoardFileItems(files, { search: 'reference pdfs', scope: 'task', category: 'evidence', knowledge: 'all' }))
       .toEqual([files[1]])
-    expect(filterBoardFileItems(files, { search: '', scope: 'board', category: 'policy' }))
+    expect(filterBoardFileItems(files, { search: '', scope: 'board', category: 'policy', knowledge: 'all' }))
       .toEqual([files[0]])
+    expect(filterBoardFileItems(files, { search: '', scope: 'all', category: 'all', knowledge: 'approved' }))
+      .toEqual([files[1]])
   })
 })

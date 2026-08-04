@@ -2,6 +2,7 @@ import { createError } from 'h3'
 import { execute, queryOne, queryRows } from '~~/server/utils/db'
 import {
   sourceVersionKey,
+  type BoardKnowledgeReviewDetail,
   type BoardKnowledgeSubmission,
   type BoardKnowledgeSourceType
 } from '~~/server/utils/boardKnowledge/types'
@@ -45,6 +46,33 @@ interface TaskAttachmentSourceRow {
   created_at: string | Date
   task_id: string
   task_title: string
+}
+
+interface ReviewContextRow {
+  board_name: string
+  submitter_id: string | null
+  submitter_name: string | null
+  submitter_email: string | null
+  task_id: string | null
+  task_title: string | null
+}
+
+interface ReviewPreviewRow {
+  chunk_index: number
+  content: string
+  heading: string | null
+  page_start: number | null
+  page_end: number | null
+  sheet_name: string | null
+  slide_number: number | null
+  total_chunks: string | number
+  content_truncated: boolean
+}
+
+interface ReviewHistoryRow {
+  action: string
+  actor_name: string | null
+  created_at: string | Date
 }
 
 export interface BoardKnowledgeSubmissionRow {
@@ -360,6 +388,105 @@ export async function getSubmissionForBoard(
     WHERE bks.id = $1 AND bks.department_id = $2
   `, [submissionId, departmentId])
   return row ? mapBoardKnowledgeSubmission(row) : null
+}
+
+export async function getSubmissionReviewDetailForBoard(
+  submissionId: string,
+  departmentId: string
+): Promise<BoardKnowledgeReviewDetail | null> {
+  const submission = await getSubmissionForBoard(submissionId, departmentId)
+  if (!submission) return null
+
+  const [context, previewRows, historyRows] = await Promise.all([
+    queryOne<ReviewContextRow>(`
+      SELECT
+        d.name AS board_name,
+        tm.id AS submitter_id,
+        tm.name AS submitter_name,
+        tm.email AS submitter_email,
+        t.id AS task_id,
+        t.title AS task_title
+      FROM departments d
+      LEFT JOIN team_members tm ON tm.id = $2
+      LEFT JOIN task_attachments ta
+        ON $3::text = 'task_attachment' AND ta.id = $4
+      LEFT JOIN tasks t ON t.id = ta.task_id AND t.department_id = d.id
+      WHERE d.id = $1
+    `, [departmentId, submission.submittedBy, submission.sourceType, submission.sourceId]),
+    queryRows<ReviewPreviewRow>(`
+      SELECT
+        chunk_index,
+        LEFT(content, 4000) AS content,
+        heading,
+        page_start,
+        page_end,
+        sheet_name,
+        slide_number,
+        COUNT(*) OVER () AS total_chunks,
+        LENGTH(content) > 4000 AS content_truncated
+      FROM ai_knowledge_chunks
+      WHERE submission_id = $1
+      ORDER BY chunk_index
+      LIMIT 12
+    `, [submissionId]),
+    queryRows<ReviewHistoryRow>(`
+      SELECT audit.action, tm.name AS actor_name, audit.created_at
+      FROM board_knowledge_audit audit
+      LEFT JOIN team_members tm ON tm.id = audit.actor_id
+      WHERE audit.submission_id = $1
+      ORDER BY audit.created_at DESC
+      LIMIT 50
+    `, [submissionId])
+  ])
+
+  let remainingCharacters = 20_000
+  let aggregateTruncated = false
+  const chunks = previewRows.flatMap((row) => {
+    if (remainingCharacters <= 0) {
+      aggregateTruncated = true
+      return []
+    }
+    const content = row.content.slice(0, remainingCharacters)
+    if (content.length < row.content.length || row.content_truncated) aggregateTruncated = true
+    remainingCharacters -= content.length
+    return [{
+      chunkIndex: row.chunk_index,
+      content,
+      heading: row.heading,
+      pageStart: row.page_start,
+      pageEnd: row.page_end,
+      sheetName: row.sheet_name,
+      slideNumber: row.slide_number
+    }]
+  })
+  const totalChunks = Number(previewRows[0]?.total_chunks || 0)
+
+  return {
+    submission,
+    context: {
+      boardName: context?.board_name || 'Unknown board',
+      task: context?.task_id
+        ? { id: context.task_id, title: context.task_title || 'Untitled task' }
+        : null,
+      submittedBy: context?.submitter_id
+        ? {
+            id: context.submitter_id,
+            name: context.submitter_name || 'Unknown user',
+            email: context.submitter_email || ''
+          }
+        : null
+    },
+    preview: {
+      chunks,
+      totalChunks,
+      truncated: aggregateTruncated || totalChunks > previewRows.length
+    },
+    history: historyRows.map(row => ({
+      action: row.action,
+      actorName: row.actor_name,
+      createdAt: toIsoString(row.created_at)
+    }))
+  }
 }
 
 export async function listBoardKnowledge(departmentId: string): Promise<BoardKnowledgeSubmission[]> {

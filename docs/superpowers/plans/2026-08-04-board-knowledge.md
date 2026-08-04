@@ -618,7 +618,7 @@ Commit: `feat: surface and protect board knowledge sources`
 - Consumes: Task 6 APIs and Task 7 file projections.
 - Produces: submission action, knowledge filter/status column, extracted preview, management review actions, and retry/archive controls.
 
-- [ ] **Step 1: Write Files-view integration tests**
+- [x] **Step 1: Write Files-view integration tests**
 
 Cover `Submit for review`, disabled/not-indexable rows, idempotent loading, knowledge-status filtering, and refreshing the file list after a mutation.
 
@@ -628,25 +628,25 @@ await wrapper.get('[data-testid="submit-knowledge-board-file-1"]').trigger('clic
 expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/knowledge/submit'), expect.objectContaining({ method: 'POST' }))
 ```
 
-- [ ] **Step 2: Write slideover tests**
+- [x] **Step 2: Write slideover tests**
 
 Cover bounded preview, provenance, quality warnings, management-only buttons, rejection reason form, stale conflict reload, retry, archive, focus return, and error toasts.
 
-- [ ] **Step 3: Run component tests and verify RED**
+- [x] **Step 3: Run component tests and verify RED**
 
 Run: `pnpm vitest run test/components/boardFilesView.test.ts test/components/boardKnowledgeReviewSlideover.test.ts`
 
 Expected: FAIL because the knowledge UI does not exist.
 
-- [ ] **Step 4: Implement composable and slideover**
+- [x] **Step 4: Implement composable and slideover**
 
 Use `$fetch` mutations, `UFormField`, `UTextarea`, `UButton`, `UBadge`, `UAlert`, `USkeleton`, `UModal`, and `USlideover`. Keep the review layout as a single column in constrained width; do not use viewport `grid-cols-2` inside the slideover.
 
-- [ ] **Step 5: Integrate the status column and review filter**
+- [x] **Step 5: Integrate the status column and review filter**
 
 Add `knowledge: 'all' | 'review' | 'approved' | 'failed' | 'not_submitted'` to `filterBoardFileItems`. Ensure action buttons do not trigger download or task navigation.
 
-- [ ] **Step 6: Run component tests and commit**
+- [x] **Step 6: Run component tests and commit**
 
 Run: `pnpm vitest run test/components/boardFilesView.test.ts test/components/boardKnowledgeReviewSlideover.test.ts test/app/boardFilesViewIntegration.test.ts`
 
