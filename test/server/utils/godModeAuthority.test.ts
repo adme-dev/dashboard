@@ -178,6 +178,29 @@ describe('resolveGodModeAuthority', () => {
     expect(queryOneFresh.mock.calls.map(([, params]) => params)).toEqual([[OWNER_ID], [MEMBER_ID]])
   })
 
+  it('does not reuse a member denial when an active owner is resolved next in the same event', async () => {
+    queryOneFresh.mockImplementation(async (_sql: string, [actorUserId]: [string]) =>
+      actorUserId === OWNER_ID ? { id: OWNER_ID } : null
+    )
+    const event = createEvent()
+
+    const member = await resolve(event, MEMBER_ID)
+    const owner = await resolve(event, OWNER_ID)
+
+    expect(member).toMatchObject({
+      active: false,
+      actorUserId: MEMBER_ID,
+      reason: 'inactive_or_missing'
+    })
+    expect(owner).toMatchObject({
+      active: true,
+      actorUserId: OWNER_ID,
+      reason: 'active_owner'
+    })
+    expect(queryOneFresh).toHaveBeenCalledTimes(2)
+    expect(queryOneFresh.mock.calls.map(([, params]) => params)).toEqual([[MEMBER_ID], [OWNER_ID]])
+  })
+
   it('performs a new fresh lookup for the same actor in a separate event', async () => {
     queryOneFresh.mockResolvedValue({ id: OWNER_ID })
 
