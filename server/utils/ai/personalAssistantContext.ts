@@ -332,6 +332,14 @@ export async function resolvePersonalAssistantContext(
     identity.id,
     db
   )
+  const runtimePolicy = input.runtimePolicy ?? resolveServerCatalogRuntimePolicy(input.event)
+  const effectiveCatalog = composeEffectiveAssistantTools({
+    rbacFilteredTools: [],
+    catalogRows,
+    grantedPermissionGroups: permissionGroups,
+    runtimePolicy
+  })
+  const effectivePackVersionIds = new Set(effectiveCatalog.packVersionIds)
 
   const activePackMap = new Map<string, PersonalAssistantContext['activePacks'][number]>()
   for (const row of catalogRows) {
@@ -342,6 +350,7 @@ export async function resolvePersonalAssistantContext(
       || !row.packKey
       || !row.packVersion
       || !row.packLabel
+      || !effectivePackVersionIds.has(row.packVersionId)
     ) continue
     activePackMap.set(row.releaseId, {
       releaseId: row.releaseId,
@@ -355,14 +364,7 @@ export async function resolvePersonalAssistantContext(
     })
   }
   const activePacks = [...activePackMap.values()]
-  const runtimePolicy = input.runtimePolicy ?? resolveServerCatalogRuntimePolicy(input.event)
-  const catalogInstructionsPreamble = composeEffectiveAssistantTools({
-    rbacFilteredTools: [],
-    catalogRows,
-    grantedPermissionGroups: permissionGroups,
-    runtimePolicy
-  })
-    .instructionsPreamble
+  const catalogInstructionsPreamble = effectiveCatalog.instructionsPreamble
 
   return {
     identity: { userId: identity.id, role: identity.role },

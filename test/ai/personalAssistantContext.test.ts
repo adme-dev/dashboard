@@ -7,7 +7,10 @@ import type {
   PersonalAssistantAdmissionError,
   PersonalAssistantContextDb
 } from '~~/server/utils/ai/personalAssistantContext'
-import type { CatalogRuntimePolicy } from '~~/server/utils/ai/governance/catalogComposition'
+import {
+  composeEffectiveAssistantTools,
+  type CatalogRuntimePolicy
+} from '~~/server/utils/ai/governance/catalogComposition'
 
 const USER_ID = '50000000-0000-4000-8000-000000000001'
 const CREATIVE_ID = '10000000-0000-4000-8000-000000000001'
@@ -15,6 +18,7 @@ const PRODUCTION_ID = '10000000-0000-4000-8000-000000000002'
 const CLIENT_ID = '60000000-0000-4000-8000-000000000001'
 const PACK_ID = '60000000-0000-4000-8000-000000000002'
 const PACK_VERSION_ID = '30000000-0000-4000-8000-000000000001'
+const NEWER_DRAFT_PACK_VERSION_ID = '30000000-0000-4000-8000-000000000002'
 const pilotPolicy: CatalogRuntimePolicy = {
   mode: 'pilot',
   authenticatedCoreTools: ['search_knowledge', 'get_tasks']
@@ -282,6 +286,50 @@ describe('resolvePersonalAssistantContext', () => {
     const context = await resolvePersonalAssistantContext({ userId: USER_ID }, contextDb)
 
     expect(context.activePacks[0]?.accessBasis).toBe('catalog_policy')
+  })
+
+  it.each([
+    { label: 'an owner active release', role: 'owner', releaseState: 'active', accessBasis: 'company_owner' },
+    { label: 'an ordinary user pilot release', role: 'creative', releaseState: 'pilot', accessBasis: 'catalog_policy' }
+  ] as const)('keeps only runtime-effective versions for $label', async ({ role, releaseState, accessBasis }) => {
+    const baseline = db()
+    const queryRows = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('ranked_pack_versions')) {
+        return [{ pack_id: PACK_ID, pack_version_id: NEWER_DRAFT_PACK_VERSION_ID, version: 4 }]
+      }
+      const rows = await baseline.queryRows<Record<string, unknown>>(sql, params)
+      return sql.includes('active_pack_rows AS')
+        ? rows.map(row => ({ ...row, release_state: releaseState }))
+        : rows
+    }) as PersonalAssistantContextDb['queryRows']
+    const contextDb = {
+      ...baseline,
+      queryOne: vi.fn(async (sql: string) => {
+        if (sql.includes('FROM team_members actor')) {
+          return { id: USER_ID, role, custom_role_id: null }
+        }
+        return baseline.queryOne(sql)
+      }) as PersonalAssistantContextDb['queryOne'],
+      queryRows
+    }
+
+    for (const mode of ['pilot', 'enforced'] as const) {
+      const runtimePolicy = { ...pilotPolicy, mode }
+      const context = await resolvePersonalAssistantContext({ userId: USER_ID, runtimePolicy }, contextDb)
+      const effective = composeEffectiveAssistantTools({
+        rbacFilteredTools: [],
+        catalogRows: context.catalogRows,
+        grantedPermissionGroups: context.permissionGroups,
+        runtimePolicy
+      })
+      const expectedPackVersionIds = mode === 'pilot' ? [PACK_VERSION_ID] : []
+
+      expect(effective.packVersionIds).toEqual(expectedPackVersionIds)
+      expect(context.activePacks.map(pack => pack.packVersionId)).toEqual(expectedPackVersionIds)
+      expect(context.activePacks.map(pack => pack.accessBasis)).toEqual(
+        mode === 'pilot' ? [accessBasis] : []
+      )
+    }
   })
 
   it('rejects unbounded department context instead of silently truncating authority', async () => {
