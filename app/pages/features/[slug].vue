@@ -709,7 +709,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-kanban',
     categoryIconBg: 'bg-blue-50',
     categoryIconColor: 'text-blue-600',
-    description: 'Monday-style boards with 20+ column types — status, people, date, numbers, formulas, and more. The foundation of every project in XeroFlow.',
+    description: 'Monday-style boards with 20+ column types, six connected views, and a searchable file library. The foundation of every project in XeroFlow.',
     details: [
       {
         title: '20+ Column Types',
@@ -724,8 +724,8 @@ const features: Record<string, Feature> = {
         content: 'Every cell in your board is editable in place — click a status to change it, pick a person from a dropdown, or type directly into a text cell. No modals, no separate edit screens. Changes are saved instantly and broadcast to everyone viewing the board via real-time Server-Sent Events, so your whole team stays in sync.'
       },
       {
-        title: 'Five Connected Views',
-        content: 'Each board can be viewed as a table, Kanban, timeline, calendar, or gallery — all reading from the same underlying data. Switch views instantly without losing filters or group state. Your media buyers might prefer Kanban while your project managers live in timeline view, and both see the same tasks.'
+        title: 'Six Connected Views and a File Library',
+        content: 'Each board can be viewed as a table, Kanban, timeline, calendar, list, gallery, or a searchable Files workspace — all reading from the same underlying data. Board-wide policies, templates, and references live in the library, while task attachments remain attached to their source task and are aggregated for discovery without copying them. Scope, category, source, uploader, and related-task context make documents easy to find.'
       }
     ]
   },
