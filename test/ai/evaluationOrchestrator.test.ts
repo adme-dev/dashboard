@@ -15,6 +15,7 @@ import type {
 import type { EvaluationCaseResult } from '~~/server/utils/ai/governance/contracts'
 import { getAiModelCatalogOption } from '~~/server/utils/ai/modelRegistry'
 import { createEvaluationModelExecutor } from '~~/server/utils/ai/governance/evaluationModelExecutor'
+import { registry as toolRegistry } from '~~/server/utils/ai/tools'
 
 const IDS = {
   pack: '10000000-0000-4000-8000-000000000001',
@@ -378,6 +379,29 @@ describe('evaluation orchestration', () => {
       approvalId: approval.approvalId
     }, IDS.actor)).rejects.toMatchObject({ code, statusCode: 409 })
     expect(createExecutor).not.toHaveBeenCalled()
+  })
+
+  it('rejects a queued approval when a registered tool description changes the simulation input', async () => {
+    const tool = toolRegistry.find(candidate => candidate.name === 'search_knowledge')!
+    const originalDescription = tool.description
+    const { svc, preflight, approval } = await preflightAndApprove()
+
+    try {
+      tool.description = `${originalDescription} The evaluator must cite the approved knowledge record.`
+
+      await expect(svc.executeApprovedEvaluation({
+        evaluationRunId: preflight.evaluationRunId,
+        planDigest: preflight.planDigest,
+        rateCardId: preflight.rateCardId,
+        approvalId: approval.approvalId
+      }, IDS.actor)).rejects.toMatchObject({
+        code: 'evaluation_toolset_digest_stale',
+        statusCode: 409
+      })
+      expect(createExecutor).not.toHaveBeenCalled()
+    } finally {
+      tool.description = originalDescription
+    }
   })
 
   it('rejects duplicate execution once the run has terminal evidence', async () => {

@@ -47,6 +47,11 @@ import {
   createEvaluationModelExecutor,
   type EvaluationModelExecutorOptions
 } from './evaluationModelExecutor'
+import {
+  buildEvaluationSimulationInput,
+  resolveEvaluationSimulationToolDefinitions,
+  type EvaluationSimulationToolDefinition
+} from './evaluationModelInput'
 
 const UUID = z.uuid()
 const DIGEST = z.string().regex(/^[a-f0-9]{64}$/)
@@ -210,26 +215,63 @@ function validateMaterial(raw: EvaluationMaterialSnapshot): EvaluationMaterialSn
   return { ...raw, cases, availableTools, capabilityVersionIds }
 }
 
+interface EvaluationModelInputContract {
+  toolDefinitions: readonly EvaluationSimulationToolDefinition[]
+  caseInputs: readonly {
+    evaluationCaseId: string
+    system: string
+    serializedInput: string
+  }[]
+}
+
+/**
+ * Builds the exact per-case model input used for both release identity and execution.
+ * This is deliberately shared with the executor: identity cannot be updated without
+ * reflecting the system prompt, serialized response contract, fixture envelope, and
+ * registered descriptor semantics that the model actually receives.
+ */
+function evaluationModelInputContract(material: EvaluationMaterialSnapshot): EvaluationModelInputContract {
+  const toolDefinitions = resolveEvaluationSimulationToolDefinitions(material.availableTools)
+  const caseInputs = sortedCases(material.cases).map((item) => {
+    const input = buildEvaluationSimulationInput({
+      evaluationCaseId: item.id,
+      instructionsPreamble: material.instructionsPreamble,
+      prompt: item.definition.input.prompt,
+      context: item.definition.input.context,
+      scopeFixture: item.definition.scopeFixture,
+      toolDefinitions,
+      allowedSourceIds: item.definition.requiredSources,
+      declaredEffectSignals: item.definition.prohibitedEffects
+    })
+    return Object.freeze({
+      evaluationCaseId: item.id,
+      system: input.system,
+      serializedInput: input.serializedInput
+    })
+  })
+  return Object.freeze({ toolDefinitions, caseInputs: Object.freeze(caseInputs) })
+}
+
 function materialIdentity(
   material: EvaluationMaterialSnapshot,
   provider: string,
-  modelId: string
+  modelId: string,
+  inputContract = evaluationModelInputContract(material)
 ): EvaluationMaterialIdentity {
   const promptVersionDigest = digest({
-    schemaVersion: 1,
+    schemaVersion: 2,
     packVersionId: material.packVersionId,
     packMaterialDigest: material.packMaterialDigest,
     evaluationSuiteVersionId: material.evaluationSuiteVersionId,
     caseManifestDigest: material.caseManifestDigest,
-    instructionsPreamble: material.instructionsPreamble,
-    cases: sortedCases(material.cases).map(item => ({ id: item.id, definition: item.definition }))
+    exactModelInputs: inputContract.caseInputs
   })
   const toolsetVersionDigest = digest({
-    schemaVersion: 1,
+    schemaVersion: 2,
     packVersionId: material.packVersionId,
     packMaterialDigest: material.packMaterialDigest,
     capabilityVersionIds: [...material.capabilityVersionIds].sort(),
-    availableTools: [...material.availableTools].sort()
+    toolDefinitions: inputContract.toolDefinitions
   })
   return EvaluationMaterialIdentitySchema.parse({
     evaluationSuiteVersionId: material.evaluationSuiteVersionId,
@@ -391,7 +433,8 @@ export function createEvaluationOrchestrator(rawDependencies: Partial<Evaluation
       const rateCard = buildRateCard(option, validFrom, validUntil)
       const evaluationRunId = UUID.parse(dependencies.randomUUID())
       const rateCardId = UUID.parse(dependencies.randomUUID())
-      const identity = materialIdentity(material, input.modelProvider, input.modelId)
+      const inputContract = evaluationModelInputContract(material)
+      const identity = materialIdentity(material, input.modelProvider, input.modelId, inputContract)
       const admission = planEvaluationExecution({
         mode: 'model_simulation',
         evaluationRunId,
@@ -476,16 +519,18 @@ export function createEvaluationOrchestrator(rawDependencies: Partial<Evaluation
         throw new EvaluationOrchestrationError('evaluation_run_already_terminal', 409, 'Evaluation run is already terminal')
       }
       const material = validateMaterial(loaded.material)
+      const inputContract = evaluationModelInputContract(material)
       const currentIdentity = materialIdentity(
         material,
         loaded.run.materialIdentity.modelProvider,
-        loaded.run.materialIdentity.modelId
+        loaded.run.materialIdentity.modelId,
+        inputContract
       )
-      if (currentIdentity.promptVersionDigest !== loaded.run.materialIdentity.promptVersionDigest) {
-        throw new EvaluationOrchestrationError('evaluation_prompt_digest_stale', 409, 'Evaluation prompt material changed after preflight')
-      }
       if (currentIdentity.toolsetVersionDigest !== loaded.run.materialIdentity.toolsetVersionDigest) {
         throw new EvaluationOrchestrationError('evaluation_toolset_digest_stale', 409, 'Evaluation tool material changed after preflight')
+      }
+      if (currentIdentity.promptVersionDigest !== loaded.run.materialIdentity.promptVersionDigest) {
+        throw new EvaluationOrchestrationError('evaluation_prompt_digest_stale', 409, 'Evaluation prompt material changed after preflight')
       }
       if (
         currentIdentity.evaluationSuiteVersionId !== loaded.run.materialIdentity.evaluationSuiteVersionId
@@ -537,6 +582,7 @@ export function createEvaluationOrchestrator(rawDependencies: Partial<Evaluation
           allowedSourceIds: item.definition.requiredSources,
           declaredEffectSignals: item.definition.prohibitedEffects
         })),
+        toolDefinitions: inputContract.toolDefinitions,
         maxInputTokensPerCase: budget.maxInputTokensPerCase,
         maxOutputTokensPerCase: budget.maxOutputTokensPerCase,
         aiBinding: dependencies.aiBinding
