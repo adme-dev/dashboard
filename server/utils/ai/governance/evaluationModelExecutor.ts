@@ -149,19 +149,12 @@ function simulationContext(
   evaluationCaseId: string
 ): Readonly<Record<string, unknown>> | null {
   if (!rawContext) return null
-  const context = structuredClone(rawContext) as Record<string, unknown>
-  const untrustedPairs = [
-    ['sourceTrust', 'sourceExcerpt'],
-    ['memoryTrust', 'memoryExcerpt']
-  ] as const
-  for (const [trustField, contentField] of untrustedPairs) {
-    const trust = context[trustField]
-    const content = context[contentField]
-    if (typeof trust === 'string' && trust.startsWith('untrusted_') && typeof content === 'string') {
-      context[contentField] = spotlight(content, `evaluation:${evaluationCaseId}:${contentField}`)
-    }
-  }
-  return frozenClone(context)
+  // Cases may model retrieved sources, recalled memory, or learned feedback with arbitrary nesting.
+  // Keep that fixture data inside one breakout-safe envelope; scopeFixture remains separately visible
+  // because it is server-authored evaluation control used to assess scope and approval behavior.
+  return frozenClone({
+    data: spotlight(JSON.stringify(rawContext), `evaluation:${evaluationCaseId}:context`)
+  })
 }
 
 function serializedModelInput(request: Omit<EvaluationModelInvocationRequest, 'serializedInput'>): string {
