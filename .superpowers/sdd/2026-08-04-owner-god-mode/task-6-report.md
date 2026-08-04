@@ -351,3 +351,39 @@ written.
 ### Fix-round commit
 
 - Scoped fix commit: `fix(mcp): preserve delegated execution provenance`
+
+## Fix round 4 — exact H3Event identity
+
+### Finding addressed
+
+The fix-round-3 Task 5 marker was runtime branded, but the trusted marker itself was stored on
+`event.context`. A shallow `{ ...event }` clone retained the same context object and could therefore read
+the same branded marker. All actor/method/path/body/expiry/allowlist checks still passed because the clone
+shared the underlying request state; trust was not bound to the exact H3Event object.
+
+The delegation boundary now stores each branded marker only in a module-private
+`WeakMap<H3Event, TrustedTask5DelegatedExecution>`. WeakSet membership remains defense in depth, while the
+WeakMap event key is the sole lookup authority. No context property grants marker trust. The accessor still
+revalidates the event's current actor, MCP channel, method, path, canonical body digest, expiry, and the
+14-target allowlist after exact event identity succeeds.
+
+### TDD and verification
+
+RED proved `{ ...event }` with the identical context returned the trusted marker. Regressions now prove:
+
+- the exact original H3Event succeeds;
+- a shallow event clone sharing the identical context is rejected;
+- a newly constructed event with the same context/request/user/path/body is rejected;
+- a clone with copied context is rejected; and
+- an unrelated event cannot receive or transfer the marker.
+
+The existing full auth → God-mode → RBAC → real representative handler-chain suite remains green.
+Focused marker plus real-chain verification passes 26 tests. The related Task 3–6/auth/MCP suite passes
+39 files, 456 tests, with 10 existing skips and zero failures. Root Node 24 Nuxt typecheck exits 0;
+God-mode and MCP config contracts pass within the related suite. Worker code/config is unchanged and no
+deployment, secret, database, migration, or external system was touched. Final diff/security review and
+commit SHA are recorded in the controller handoff.
+
+### Fix-round commit
+
+- Scoped fix commit: `fix(mcp): bind delegation to exact event`

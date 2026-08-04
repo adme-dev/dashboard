@@ -120,8 +120,38 @@ describe('God mode internal execution delegation', () => {
       path: PATH
     })
 
+    const shallowEventCopy = { ...event }
+    expect(shallowEventCopy.context).toBe(event.context)
+    await expect(getTrustedTask5DelegatedExecution(shallowEventCopy, {
+      now: NOW_MS,
+      method: 'POST',
+      path: PATH,
+      body: BODY
+    })).resolves.toBeNull()
+
+    const sameRequestAndContext = {
+      method: event.method,
+      path: event.path,
+      node: event.node,
+      context: event.context
+    } as any
+    await expect(getTrustedTask5DelegatedExecution(sameRequestAndContext, {
+      now: NOW_MS,
+      method: 'POST',
+      path: PATH,
+      body: BODY
+    })).resolves.toBeNull()
+
     const clone = { ...event, context: { ...event.context } }
     await expect(getTrustedTask5DelegatedExecution(clone, {
+      now: NOW_MS,
+      method: 'POST',
+      path: PATH,
+      body: BODY
+    })).resolves.toBeNull()
+
+    const unrelatedEvent = { method: 'POST', path: PATH, context: { user: { id: ACTOR_ID } } } as any
+    await expect(getTrustedTask5DelegatedExecution(unrelatedEvent, {
       now: NOW_MS,
       method: 'POST',
       path: PATH,

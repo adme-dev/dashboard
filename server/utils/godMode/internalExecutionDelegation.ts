@@ -75,8 +75,8 @@ const digestPattern = /^[0-9a-f]{64}$/
 const idempotencyPattern = /^mcp:[0-9a-f]{64}$/
 const boundedId = '[A-Za-z0-9_-]{1,128}'
 const delegatorContextKey = Symbol('godModeInternalExecutionDelegator')
-const trustedExecutionContextKey = Symbol('trustedTask5DelegatedExecution')
 const trustedExecutions = new WeakSet<object>()
+const trustedExecutionByEvent = new WeakMap<H3Event, TrustedTask5DelegatedExecution>()
 
 const allowedTargets: Array<{ method: DelegatedMethod, path: RegExp }> = [
   { method: 'POST', path: /^\/api\/agency\/tasks$/ },
@@ -241,14 +241,14 @@ export async function mintInstalledGodModeInternalExecutionDelegation(
 
 /**
  * Returns the runtime-branded Task 5 coordination marker only while it still matches this exact H3
- * request. The marker is non-enumerable, module-symbol keyed, and WeakSet branded, so structural clones,
- * JSON, and caller headers cannot manufacture or forward it.
+ * request. The marker is keyed by the H3Event object itself and WeakSet branded, so structural clones,
+ * shared context, JSON, and caller headers cannot manufacture or forward it.
  */
 export async function getTrustedTask5DelegatedExecution(
   event: H3Event,
   dependencies: TrustedTask5DelegatedExecutionDependencies = {}
 ): Promise<TrustedTask5DelegatedExecution | null> {
-  const marker = (event.context as Record<PropertyKey, unknown>)[trustedExecutionContextKey]
+  const marker = trustedExecutionByEvent.get(event)
   if (marker === undefined) return null
   if (!marker || typeof marker !== 'object' || !trustedExecutions.has(marker)) {
     deny(403, 'Invalid Task 5 delegated execution marker')
@@ -351,11 +351,6 @@ export async function consumeGodModeInternalExecutionDelegation(
   if (!consumed) deny(409, 'Internal execution delegation already consumed')
   const marker = Object.freeze({ ...claim })
   trustedExecutions.add(marker)
-  Object.defineProperty(event.context, trustedExecutionContextKey, {
-    value: marker,
-    configurable: false,
-    enumerable: false,
-    writable: false
-  })
+  trustedExecutionByEvent.set(event, marker)
   return claim
 }
