@@ -158,6 +158,26 @@ describe('board knowledge AI document extraction', () => {
     }))
   })
 
+  it('rejects aggregate AI output beyond the bounded document text limit', async () => {
+    const fetcher = vi.fn().mockResolvedValue(googleResponse({
+      blocks: Array.from({ length: 9 }, () => ({ kind: 'text', content: 'x'.repeat(250_000) })),
+      warnings: [],
+      confidence: 0.8
+    }))
+
+    await expect(extractDocumentWithAi({
+      submissionId: 'submission-large-output',
+      documentClass: 'scanned_pdf',
+      batchNumber: 1,
+      bytes: new Uint8Array([1]),
+      mimeType: 'application/pdf',
+      env: gatewayEnv,
+      fetcher
+    })).rejects.toThrow('ai_document_response_invalid')
+
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
   it('rejects batches larger than 15 MB before resolving a model or making a request', async () => {
     const fetcher = vi.fn()
 

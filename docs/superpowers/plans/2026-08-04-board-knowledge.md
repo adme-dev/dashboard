@@ -457,7 +457,7 @@ Commit: `feat: route board OCR through Model Ops`
 - Consumes: repository, native extractor, AI extractor, chunker, storage download, and queue ledger.
 - Produces: queue types `knowledge.extract` and `knowledge.index`, `processBoardKnowledgeExtraction(context, payload)`, and `processBoardKnowledgeIndexing(context, payload)`.
 
-- [ ] **Step 1: Write failing processor tests**
+- [x] **Step 1: Write failing processor tests**
 
 Cover native success, native-to-AI escalation, checksum calculation, draft article creation, atomic chunk replacement, extraction failure, idempotent already-ready jobs, and stale version refusal.
 
@@ -470,21 +470,21 @@ expect(mockPersistDraft).toHaveBeenCalledWith(expect.objectContaining({
 }))
 ```
 
-- [ ] **Step 2: Run processor tests and verify RED**
+- [x] **Step 2: Run processor tests and verify RED**
 
 Run: `pnpm vitest run test/server/utils/boardKnowledgeProcessing.test.ts`
 
 Expected: FAIL because processors do not exist.
 
-- [ ] **Step 3: Implement extraction orchestration**
+- [x] **Step 3: Implement extraction orchestration**
 
 State progression is `queued -> processing -> ready|failed`. Persist the checksum before ready. Replace draft chunks transactionally only when the source version and processing lease still match. Bound error codes/messages and record every state change in `board_knowledge_audit`.
 
-- [ ] **Step 4: Write queue routing and event-context tests**
+- [x] **Step 4: Write queue routing and event-context tests**
 
 Assert `processJob(job, { event })` routes both new types and that the internal route supplies its actual H3 event. The legacy one-argument call remains supported for job types that do not need bindings.
 
-- [ ] **Step 5: Modify queue contracts and consumers**
+- [x] **Step 5: Modify queue contracts and consumers**
 
 ```ts
 export interface QueueProcessingContext { event?: H3Event }
@@ -493,7 +493,7 @@ export async function processJob(job: QueueJob, context: QueueProcessingContext 
 
 The standalone consumer still posts identifiers only. The Pages internal route provides the event; local inline fallback calls the extraction processor with the submission request event.
 
-- [ ] **Step 6: Run focused tests and commit**
+- [x] **Step 6: Run focused tests and commit**
 
 Run: `pnpm vitest run test/server/utils/boardKnowledgeProcessing.test.ts test/server/utils/queueConsumerBoardKnowledge.test.ts test/server/api/processJobContext.test.ts`
 

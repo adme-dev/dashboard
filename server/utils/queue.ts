@@ -26,6 +26,8 @@ export type JobType =
   | 'embed.financial.pnl'
   | 'embed.financial.cash'
   | 'site-intelligence.enrich'
+  | 'knowledge.extract'
+  | 'knowledge.index'
 
 export interface QueueJob {
   jobId?: string
@@ -33,6 +35,27 @@ export interface QueueJob {
   payload: Record<string, unknown>
   /** ISO timestamp when the job was enqueued */
   enqueuedAt: string
+}
+
+export function boardKnowledgeQueuePayload(payload: Record<string, unknown>): {
+  submissionId: string
+  expectedVersionKey: string
+} {
+  const keys = Object.keys(payload)
+  if (keys.length !== 2
+    || !keys.includes('submissionId')
+    || !keys.includes('expectedVersionKey')
+    || typeof payload.submissionId !== 'string'
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.submissionId)
+    || typeof payload.expectedVersionKey !== 'string'
+    || payload.expectedVersionKey.length < 1
+    || payload.expectedVersionKey.length > 500) {
+    throw new Error('invalid_board_knowledge_queue_payload')
+  }
+  return {
+    submissionId: payload.submissionId,
+    expectedVersionKey: payload.expectedVersionKey
+  }
 }
 
 async function recordQueued(job: QueueJob, dispatchMode: 'queue' | 'inline') {
@@ -91,6 +114,9 @@ export async function enqueue(
   payload: Record<string, unknown>,
   fallback?: () => Promise<void>
 ): Promise<boolean> {
+  if (type === 'knowledge.extract' || type === 'knowledge.index') {
+    boardKnowledgeQueuePayload(payload)
+  }
   const queue = getQueue(event)
   const job: QueueJob = {
     jobId: globalThis.crypto.randomUUID(),
@@ -111,10 +137,21 @@ export async function enqueue(
     }
   }
 
+  // Binding-aware knowledge jobs can run inline during local development while
+  // preserving the originating H3 event. Queue messages themselves remain IDs only.
+  const inlineFallback = fallback ?? (
+    type === 'knowledge.extract' || type === 'knowledge.index'
+      ? async () => {
+          const { processJob } = await import('~~/server/utils/queueConsumer')
+          await processJob(job, { event })
+        }
+      : undefined
+  )
+
   // Fallback: run inline (local dev or queue failure)
-  if (fallback) {
+  if (inlineFallback) {
     await recordQueued(job, 'inline')
-    void runInline(job, fallback)
+    void runInline(job, inlineFallback)
   } else {
     await recordDispatchFailure(job)
   }

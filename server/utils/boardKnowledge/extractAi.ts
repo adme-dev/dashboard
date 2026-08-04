@@ -31,6 +31,11 @@ const extractionPayloadSchema = z.object({
   blocks: z.array(extractionBlockSchema).min(1).max(2_000),
   warnings: z.array(z.string().trim().min(1).max(160)).max(100).default([]),
   confidence: z.number().min(0).max(1)
+}).superRefine((payload, context) => {
+  const totalCharacters = payload.blocks.reduce((total, block) => total + block.content.length, 0)
+  if (totalCharacters > 2_000_000) {
+    context.addIssue({ code: 'custom', message: 'aggregate extracted text exceeds the safe limit' })
+  }
 })
 
 const googleGatewayResponseSchema = z.object({

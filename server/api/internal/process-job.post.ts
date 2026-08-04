@@ -68,7 +68,7 @@ export default defineEventHandler(async (event) => {
     dispatchMode: 'queue'
   })
   try {
-    await processJob(job)
+    await processJob(job, { event })
     await finishJobExecution(execution, 'succeeded', startedAt)
   } catch (error) {
     await finishJobExecution(execution, 'failed', startedAt, error)

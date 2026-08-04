@@ -19,7 +19,9 @@ export default defineNitroPlugin((nitroApp) => {
 
     for (const msg of messages) {
       try {
-        await processJob(msg.body)
+        // Native Pages queue hooks do not provide an H3 request event. Jobs that
+        // need bindings are normally bridged through /api/internal/process-job.
+        await processJob(msg.body, {})
         msg.ack()
       } catch (err) {
         console.error(`[Queue] Job ${msg.body?.type} failed, will retry:`, err)
