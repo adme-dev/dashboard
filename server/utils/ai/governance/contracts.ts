@@ -90,6 +90,8 @@ const FORBIDDEN_FIXTURE_KEYS = new Set([
  */
 const FORBIDDEN_GRADING_FIXTURE_KEYS = new Set([
   'expectedanswer',
+  'expectedresult',
+  'expectedoutcome',
   'expectedtools',
   'expectednotool',
   'scoringrubric',

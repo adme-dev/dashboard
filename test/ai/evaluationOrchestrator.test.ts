@@ -385,7 +385,13 @@ describe('evaluation orchestration', () => {
     ['Expected Answer', 'use search_knowledge'],
     ['expected_tools', ['search_knowledge']],
     ['Scoring-Rubric', [{ key: 'correct_tool', minimumScore: 1 }]],
-    ['result', 'pass']
+    ['result', 'pass'],
+    ['expectedResult', 'pass'],
+    ['Expected-Result', 'pass'],
+    ['expected_result', 'pass'],
+    ['expectedOutcome', 'pass'],
+    ['Expected-Outcome', 'pass'],
+    ['expected_outcome', 'pass']
   ])('fails closed before preflight when nested %s fixture metadata could reach the model', async (key, value) => {
     snapshot.cases[0]!.definition.input.context = {
       sourceRef: 'fixture_authoritative_record',
