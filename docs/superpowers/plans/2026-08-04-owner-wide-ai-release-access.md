@@ -374,6 +374,17 @@ git commit -m "docs(ai): document owner release inheritance"
 - [ ] Remove trailing whitespace from the owner design document.
 - [ ] Run focused telemetry/runtime tests, scoped typecheck, full `git diff --check`, and commit atomically.
 
+### Task 9: Bring the Cloudflare Pages Worker Under the Immutable Release Budget
+
+**Files:**
+- Modify: the smallest build/wrapper configuration or duplicated server modules required by measured bundle evidence.
+- Test: Worker wrapper/size guard tests and production build.
+
+- [ ] Capture exact current deployed-byte composition and identify name-preserving, behavior-safe reductions.
+- [ ] Add or strengthen a regression contract that preserves the 24,750,000-byte budget and required worker entry points.
+- [ ] Reduce the generated Worker below budget without raising/disabling the guard, unsafe global name mangling, removing required functionality, or changing the deployment target.
+- [ ] Run focused wrapper/deployment-guard tests, full repository tests, typecheck, production build, and exact byte measurement; deep-review and commit atomically.
+
 ---
 
 ## Completion Gate
