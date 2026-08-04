@@ -160,6 +160,7 @@ const MIN_SUCCESSFUL_TASKS = 20
 const MIN_RATINGS_FOR_THRESHOLD = 10
 const MIN_USEFUL_FEEDBACK_RATE = 0.8
 const MAX_WINDOW_MS = 31 * 24 * 60 * 60 * 1_000
+const BIGINT_ZERO = BigInt(0)
 
 const RELEASES_SQL = `
 SELECT release.id AS release_id,
@@ -305,7 +306,7 @@ function safeInteger(value: unknown, field: string, options: { positive?: boolea
   const normalized = typeof value === 'number' ? String(value) : String(value ?? '')
   if (!/^\d+$/.test(normalized)) throw new PilotMetricsError('invalid_pilot_metric_row', `${field} must be a non-negative integer`)
   const parsed = BigInt(normalized)
-  if (parsed > BigInt(Number.MAX_SAFE_INTEGER) || (options.positive && parsed === 0n)) {
+  if (parsed > BigInt(Number.MAX_SAFE_INTEGER) || (options.positive && parsed === BIGINT_ZERO)) {
     throw new PilotMetricsError('invalid_pilot_metric_row', `${field} is outside the supported range`)
   }
   return Number(parsed)

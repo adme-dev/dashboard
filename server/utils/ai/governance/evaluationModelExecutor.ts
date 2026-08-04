@@ -19,6 +19,9 @@ import {
 const UUID = z.uuid()
 const MACHINE_KEY = z.string().min(2).max(120).regex(/^[a-z][a-z0-9_:-]*$/)
 const TOOL_NAME = z.string().min(2).max(120).regex(/^[a-z][a-z0-9_]*$/)
+const BIGINT_ZERO = BigInt(0)
+const BIGINT_ONE = BigInt(1)
+const TOKENS_PER_MILLION = BigInt(1_000_000)
 
 const InvocationResultSchema = z.strictObject({
   observedTools: z.array(TOOL_NAME).max(64),
@@ -153,7 +156,9 @@ export function createDefaultEvaluationModelInvoker(overrides: {
 function actualCostMicros(inputTokens: number, outputTokens: number, rateCard: EvaluationModelRateCard): number {
   const numerator = (BigInt(inputTokens) * BigInt(rateCard.inputUsdMicrosPerMillionTokens))
     + (BigInt(outputTokens) * BigInt(rateCard.outputUsdMicrosPerMillionTokens))
-  const cost = numerator === 0n ? 0n : ((numerator - 1n) / 1_000_000n) + 1n
+  const cost = numerator === BIGINT_ZERO
+    ? BIGINT_ZERO
+    : ((numerator - BIGINT_ONE) / TOKENS_PER_MILLION) + BIGINT_ONE
   if (cost > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new EvaluationModelExecutorError('model_cost_overflow', 'The model cost exceeds the supported integer range')
   }
