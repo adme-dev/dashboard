@@ -5,7 +5,20 @@ describe('GET /api/agency/ai/my-assistant', () => {
     const user = { id: '50000000-0000-4000-8000-000000000001' }
     const event = { context: {} } as never
     const context = { preferences: { personaKey: null } } as never
-    const response = { personaKey: null, authority: { currentRole: 'creative' } }
+    const response = {
+      personaKey: null,
+      authority: {
+        currentRole: 'owner',
+        activePacks: [{
+          key: 'creative_studio',
+          label: 'Creative Studio',
+          version: 3,
+          departmentName: 'Creative',
+          releaseState: 'active',
+          accessBasis: 'company_owner'
+        }]
+      }
+    }
     const requireAuth = vi.fn().mockResolvedValue(user)
     const resolvePersonalAssistantContext = vi.fn().mockResolvedValue(context)
     const buildMyAssistantExplainability = vi.fn().mockReturnValue(response)
@@ -30,6 +43,7 @@ describe('GET /api/agency/ai/my-assistant', () => {
     })
 
     await expect(handler(event)).resolves.toBe(response)
+    expect(response.authority.activePacks[0]?.accessBasis).toBe('company_owner')
     expect(requireAuth).toHaveBeenCalledWith(event)
     expect(resolvePersonalAssistantContext).toHaveBeenCalledWith({
       userId: user.id,

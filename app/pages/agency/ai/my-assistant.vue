@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { AI_PERSONA_OPTIONS } from '~~/app/utils/aiPersonas'
-import type { MyAssistantView } from '~~/shared/types/aiAssistant'
+import type { AssistantReleaseAccessBasis, MyAssistantView } from '~~/shared/types/aiAssistant'
 
 definePageMeta({ layout: 'agency' })
 
@@ -97,6 +97,9 @@ const accessReasonLabel = (reason: 'membership' | 'manager' | 'company_policy') 
   manager: 'Department manager',
   company_policy: 'Company-wide role'
 })[reason]
+const releaseAccessLabel = (basis: AssistantReleaseAccessBasis) => basis === 'company_owner'
+  ? 'Company owner access'
+  : 'Governed catalog access'
 const isEnabled = (name: string) => !disabled.value.has(name)
 function toggleTool(name: string, on: boolean) {
   const next = new Set(disabled.value)
@@ -262,6 +265,9 @@ async function save() {
               </p>
               <p class="mt-1 text-xs text-muted">
                 {{ pack.departmentName }}
+              </p>
+              <p class="mt-1 text-xs text-muted">
+                {{ releaseAccessLabel(pack.accessBasis) }}
               </p>
             </div>
             <UBadge :color="pack.releaseState === 'pilot' ? 'warning' : 'success'" variant="soft" size="sm">

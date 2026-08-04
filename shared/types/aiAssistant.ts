@@ -1,5 +1,7 @@
 export type AssistantCatalogMode = 'legacy' | 'governed'
 
+export type AssistantReleaseAccessBasis = 'company_owner' | 'catalog_policy'
+
 export type AssistantToolRestrictionReason
   = 'release_suspended'
     | 'release_retired'
@@ -40,6 +42,7 @@ export interface MyAssistantActivePackView {
   version: number
   departmentName: string
   releaseState: 'pilot' | 'active'
+  accessBasis: AssistantReleaseAccessBasis
 }
 
 export interface MyAssistantAuthorityView {

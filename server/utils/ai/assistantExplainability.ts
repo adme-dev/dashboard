@@ -146,7 +146,8 @@ export function buildMyAssistantExplainability(
         label: pack.label,
         version: pack.version,
         departmentName: departmentNames.get(pack.departmentId) ?? 'Company',
-        releaseState: pack.releaseState
+        releaseState: pack.releaseState,
+        accessBasis: pack.accessBasis
       })),
       catalogMode: baseline.mode
     },

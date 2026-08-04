@@ -68,7 +68,7 @@ function db(overrides: Partial<PersonalAssistantContextDb> = {}): PersonalAssist
       if (sql.includes('ranked_pack_versions')) {
         return [{ pack_id: PACK_ID, pack_version_id: PACK_VERSION_ID, version: 3 }]
       }
-      if (sql.includes('WITH active_pack_rows')) {
+      if (sql.includes('active_pack_rows AS')) {
         return [{
           source_type: 'pack',
           release_state: 'active',
@@ -145,14 +145,15 @@ describe('resolvePersonalAssistantContext', () => {
       packKey: 'creative_studio',
       version: 3,
       label: 'Creative Studio',
-      releaseState: 'active'
+      releaseState: 'active',
+      accessBasis: 'catalog_policy'
     }])
     expect(context.catalogRows).toHaveLength(1)
     expect(context.runtimePolicy).toBe(pilotPolicy)
     expect(context.observedMemoryEnabled).toBe(false)
 
     const catalogCall = vi.mocked(contextDb.queryRows).mock.calls.find(([sql]) =>
-      sql.includes('WITH active_pack_rows')
+      sql.includes('active_pack_rows AS')
     )
     expect(catalogCall?.[1]).toEqual([[CREATIVE_ID, PRODUCTION_ID], USER_ID])
 
@@ -233,6 +234,32 @@ describe('resolvePersonalAssistantContext', () => {
       "department.department_kind = 'organizational' AND $2::boolean"
     )
     expect(departmentCall?.[1]).toEqual([USER_ID, true])
+  })
+
+  it('derives owner pack access from the database identity', async () => {
+    const contextDb = db({
+      queryOne: vi.fn(async (sql: string) => {
+        if (sql.includes('FROM team_members actor')) {
+          return { id: USER_ID, role: 'owner', custom_role_id: null }
+        }
+        if (sql.includes('FROM ai_agent_configs')) {
+          return {
+            persona_key: 'creative',
+            tool_overrides: { disabled: ['propose_budget_change'] },
+            memory_enabled: false
+          }
+        }
+        return null
+      }) as PersonalAssistantContextDb['queryOne']
+    })
+
+    const context = await resolvePersonalAssistantContext({ userId: USER_ID }, contextDb)
+
+    expect(context.activePacks[0]?.accessBasis).toBe('company_owner')
+    const catalogCall = vi.mocked(contextDb.queryRows).mock.calls.find(([sql]) =>
+      sql.includes('active_pack_rows AS')
+    )
+    expect(catalogCall?.[1]).toEqual([[CREATIVE_ID, PRODUCTION_ID], USER_ID])
   })
 
   it('rejects unbounded department context instead of silently truncating authority', async () => {

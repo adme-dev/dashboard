@@ -85,6 +85,7 @@ export interface PersonalAssistantContext {
     version: number
     label: string
     releaseState: 'pilot' | 'active'
+    accessBasis: 'company_owner' | 'catalog_policy'
   }>
   catalogInstructionsPreamble: string
   /** Internal governance material used to narrow the runtime tool registry. Never send to clients. */
@@ -348,7 +349,8 @@ export async function resolvePersonalAssistantContext(
       packKey: row.packKey,
       version: row.packVersion,
       label: row.packLabel,
-      releaseState: row.releaseState
+      releaseState: row.releaseState,
+      accessBasis: identity.role === 'owner' ? 'company_owner' : 'catalog_policy'
     })
   }
   const activePacks = [...activePackMap.values()]

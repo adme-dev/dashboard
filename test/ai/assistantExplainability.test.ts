@@ -51,7 +51,8 @@ const context: PersonalAssistantContext = {
     packKey: 'creative_studio',
     version: 3,
     label: 'Creative Studio',
-    releaseState: 'pilot'
+    releaseState: 'pilot',
+    accessBasis: 'catalog_policy'
   }],
   catalogInstructionsPreamble: 'PRIVATE GOVERNANCE INSTRUCTIONS',
   catalogRows: []
@@ -106,7 +107,8 @@ describe('buildMyAssistantExplainability', () => {
           label: 'Creative Studio',
           version: 3,
           departmentName: 'Creative',
-          releaseState: 'pilot'
+          releaseState: 'pilot',
+          accessBasis: 'catalog_policy'
         }]
       }
     })
@@ -156,5 +158,20 @@ describe('buildMyAssistantExplainability', () => {
 
     expect(view.memoryEnabled).toBe(true)
     expect(view.observedMemoryEnabled).toBe(false)
+  })
+
+  it('includes a client-safe company owner basis for active packs', () => {
+    const view = buildMyAssistantExplainability({
+      ...context,
+      identity: { ...context.identity, role: 'owner' },
+      activePacks: context.activePacks.map(pack => ({
+        ...pack,
+        accessBasis: 'company_owner' as const
+      }))
+    }, tools)
+
+    expect(view.authority.activePacks[0]).toMatchObject({
+      accessBasis: 'company_owner'
+    })
   })
 })
