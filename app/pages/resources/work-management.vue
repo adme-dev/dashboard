@@ -178,6 +178,22 @@
             </div>
           </section>
 
+          <!-- Section 7 -->
+          <section>
+            <h2 class="text-[22px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-4">
+              Files and Governed Knowledge
+            </h2>
+            <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed mb-4">
+              The Files view is the board's working-document library. Board policies, templates, and references live there, while task attachments stay attached to their source task and are also discoverable from the board. Uploading a file does not automatically make it AI knowledge. This separation lets the team keep drafts, evidence, and working documents together without treating every upload as approved guidance.
+            </p>
+            <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed mb-4">
+              To make a document available to the assistant, choose a supported PDF, DOCX, XLSX, PPTX, CSV, TXT, or JSON file and select <strong class="font-medium text-[#121317] dark:text-white">Submit for knowledge review</strong>. XeroFlow extracts text and source coordinates, but the document remains unavailable to AI until a user with management approval rights reviews the preview and approves it. Rejected, archived, deleted, stale, or failed submissions are not returned as knowledge.
+            </p>
+            <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed">
+              Once approved and indexed, retrieval remains permission-aware: people can search agency-wide guidance plus knowledge from boards they can already access. Answers can carry authenticated links and source-aware citations for the file, board, page range, spreadsheet sheet, or presentation slide. Keep frequently revised working drafts in Files; submit stable policies, procedures, work instructions, and approved reference material to Knowledge.
+            </p>
+          </section>
+
           <!-- Next Steps -->
           <section class="mt-4 pt-10 border-t border-[#121317]/[0.06] dark:border-white/[0.06]">
             <h2 class="text-[18px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-5">Next Steps</h2>

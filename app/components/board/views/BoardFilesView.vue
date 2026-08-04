@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import type { BoardFileItem, BoardFileListResponse } from '~/types'
 import { boardKnowledgeApiError, useBoardKnowledge } from '~/composables/useBoardKnowledge'
 import { filterBoardFileItems } from '~/utils/boardFiles'
@@ -8,6 +8,8 @@ import { safeMediaUrl } from '~/utils/safe-url'
 const props = defineProps<{ boardId: string }>()
 const emit = defineEmits<{ openTask: [taskId: string] }>()
 const toast = useToast()
+const route = useRoute()
+const router = useRouter()
 
 const response = ref<BoardFileListResponse | null>(null)
 const loading = ref(true)
@@ -26,6 +28,9 @@ const deleting = ref(false)
 const reviewSubmissionId = ref<string | null>(null)
 const reviewCanReview = ref(false)
 const reviewReturnFocus = ref<HTMLElement | undefined>()
+const requestedKnowledgeSubmission = computed(() => (
+  typeof route.query.knowledge === 'string' ? route.query.knowledge : null
+))
 const {
   isSubmitting: isSubmittingKnowledge,
   submit: submitKnowledge
@@ -73,11 +78,21 @@ async function loadFiles() {
   loadError.value = ''
   try {
     response.value = await $fetch<BoardFileListResponse>(`/api/agency/boards/${props.boardId}/files`)
+    openRequestedKnowledgeReview()
   } catch (error) {
     loadError.value = apiErrorMessage(error, 'The board file library is unavailable.')
   } finally {
     loading.value = false
   }
+}
+
+function openRequestedKnowledgeReview() {
+  const submissionId = requestedKnowledgeSubmission.value
+  if (!submissionId) return
+  const source = files.value.find(file => file.knowledge.submissionId === submissionId)
+  if (!source) return
+  reviewSubmissionId.value = submissionId
+  reviewCanReview.value = source.knowledge.canReview
 }
 
 function onFileChange(event: Event) {
@@ -174,6 +189,10 @@ function openKnowledgeReview(file: BoardFileItem, event: MouseEvent) {
 function closeKnowledgeReview() {
   reviewSubmissionId.value = null
   reviewCanReview.value = false
+  if (route.query.knowledge) {
+    const { knowledge: _knowledge, ...query } = route.query
+    void router.replace({ query })
+  }
 }
 
 function handleKnowledgeReviewOpen(value: boolean) {
@@ -215,6 +234,7 @@ function knowledgeColor(label: BoardFileItem['knowledge']['label']) {
   return 'neutral'
 }
 
+watch(requestedKnowledgeSubmission, openRequestedKnowledgeReview)
 onMounted(loadFiles)
 </script>
 

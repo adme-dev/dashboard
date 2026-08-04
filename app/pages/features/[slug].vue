@@ -724,8 +724,8 @@ const features: Record<string, Feature> = {
         content: 'Every cell in your board is editable in place — click a status to change it, pick a person from a dropdown, or type directly into a text cell. No modals, no separate edit screens. Changes are saved instantly and broadcast to everyone viewing the board via real-time Server-Sent Events, so your whole team stays in sync.'
       },
       {
-        title: 'Six Connected Views and a File Library',
-        content: 'Each board can be viewed as a table, Kanban, timeline, calendar, list, gallery, or a searchable Files workspace — all reading from the same underlying data. Board-wide policies, templates, and references live in the library, while task attachments remain attached to their source task and are aggregated for discovery without copying them. Scope, category, source, uploader, and related-task context make documents easy to find.'
+        title: 'Six Connected Views and a File Library — Files and Governed Knowledge',
+        content: 'Each board can be viewed as a table, Kanban, timeline, calendar, list, gallery, or a searchable Files workspace — all reading from the same underlying data. Board-wide policies, templates, and references live in the library, while task attachments remain attached to their source task and are aggregated for discovery without copying them. Files remain working documents by default. A team member can submit a supported PDF, DOCX, XLSX, PPTX, CSV, TXT, or JSON source for extraction; management must review and approve it before the permission-aware assistant can use it. Approved results retain source-aware citations such as board, file, page, sheet, or slide.'
       }
     ]
   },
@@ -3158,12 +3158,12 @@ const features: Record<string, Feature> = {
     description: 'Curate and approve knowledge entries that enhance AI responses with agency-specific context and domain expertise.',
     details: [
       {
-        title: 'Knowledge Upload',
-        content: 'Upload knowledge entries individually or in bulk via CSV/JSONL. Each entry has a title, content, category, and source reference. The upload process validates format and content length, then queues entries for Vectorize embedding so they become searchable by the AI system immediately.'
+        title: 'Governed Knowledge Sources',
+        content: 'Create agency-wide knowledge entries, or submit supported board files for governed extraction. Board files support PDF, DOCX, XLSX, PPTX, CSV, TXT, and JSON. Submission does not publish a document: extraction runs first, management reviews the recovered content and source coordinates, and only approved material is indexed.'
       },
       {
         title: 'Approval Workflow',
-        content: 'Knowledge entries go through an approval workflow before they influence AI responses. New entries start as pending, reviewers can approve or reject with comments, and only approved entries are included in the AI context retrieval pipeline. This prevents inaccurate or outdated information from degrading AI quality.'
+        content: 'Knowledge entries go through an approval workflow before they influence AI responses. New entries start as pending, reviewers can approve or reject with comments, and only approved entries are included in the AI context retrieval pipeline. Board documents remain limited to people who can access their source board, and source-aware citations link an answer back to the authenticated XeroFlow workspace.'
       },
       {
         title: 'Vectorize Deduplication',

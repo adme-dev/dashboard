@@ -5,10 +5,14 @@ import BoardFilesView from '~~/app/components/board/views/BoardFilesView.vue'
 
 const fetchMock = vi.fn()
 const toastAddMock = vi.fn()
+const routeMock = { query: {} as Record<string, string> }
+const routerReplaceMock = vi.fn()
 
 Object.assign(globalThis, {
   $fetch: (...args: unknown[]) => fetchMock(...args),
-  useToast: () => ({ add: toastAddMock })
+  useToast: () => ({ add: toastAddMock }),
+  useRoute: () => routeMock,
+  useRouter: () => ({ replace: routerReplaceMock })
 })
 
 const response = {
@@ -138,6 +142,7 @@ describe('BoardFilesView', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
     vi.clearAllMocks()
+    routeMock.query = {}
     fetchMock.mockImplementation(async (_url: string, options?: { method?: string }) => {
       if (!options?.method || options.method === 'GET') return structuredClone(response)
       if (options.method === 'POST') return { id: 'new-file' }
@@ -238,6 +243,15 @@ describe('BoardFilesView', () => {
     ;(host.querySelector('[data-testid="review-changed"]') as HTMLButtonElement).click()
     await flush()
     expect(fetchMock.mock.calls.filter(call => !call[1]?.method)).toHaveLength(2)
+    app.unmount()
+  })
+
+  it('opens a linked knowledge submission when arriving from the management queue', async () => {
+    routeMock.query = { view: 'files', knowledge: 'submission-1' }
+    const { app, host } = mountView()
+    await flush()
+
+    expect(host.querySelector('[data-testid="knowledge-review-stub"]')?.textContent).toContain('submission-1')
     app.unmount()
   })
 

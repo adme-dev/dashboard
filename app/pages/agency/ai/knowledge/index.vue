@@ -10,6 +10,64 @@ const {
   setCategory, nextPage, prevPage,
 } = useAiKnowledge()
 
+interface BoardReviewQueueItem {
+  id: string
+  boardId: string
+  boardName: string
+  fileName: string
+  sourceType: 'board_file' | 'task_attachment'
+  reviewStatus: string
+  extractionStatus: string
+  indexStatus: string
+  errorMessage: string | null
+  submittedAt: string
+  submittedByName: string | null
+}
+
+const boardReviewStatus = ref<'pending' | 'failed' | 'all'>('pending')
+const boardReviewItems = ref<BoardReviewQueueItem[]>([])
+const boardReviewLoading = ref(false)
+const boardReviewError = ref('')
+const boardReviewStatusOptions = [
+  { label: 'Awaiting review', value: 'pending' },
+  { label: 'Processing failures', value: 'failed' },
+  { label: 'All current submissions', value: 'all' }
+]
+
+async function loadBoardReviewQueue() {
+  boardReviewLoading.value = true
+  boardReviewError.value = ''
+  try {
+    const result = await $fetch<{ items: BoardReviewQueueItem[] }>('/api/agency/ai/knowledge/board-review', {
+      query: { status: boardReviewStatus.value }
+    })
+    boardReviewItems.value = result.items
+  } catch (error) {
+    const detail = error as { data?: { statusMessage?: string } }
+    boardReviewItems.value = []
+    boardReviewError.value = detail.data?.statusMessage || 'The board review queue could not be loaded.'
+  } finally {
+    boardReviewLoading.value = false
+  }
+}
+
+function boardReviewState(item: BoardReviewQueueItem) {
+  if (item.extractionStatus === 'failed') return 'Extraction failed'
+  if (item.indexStatus === 'failed') return 'Indexing failed'
+  if (item.extractionStatus !== 'ready') return 'Extracting'
+  return 'Ready for review'
+}
+
+function boardReviewColor(item: BoardReviewQueueItem): 'error' | 'info' | 'warning' {
+  if (item.extractionStatus === 'failed' || item.indexStatus === 'failed') return 'error'
+  if (item.extractionStatus !== 'ready') return 'info'
+  return 'warning'
+}
+
+function formatReviewDate(value: string) {
+  return new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
+}
+
 // Modal state
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
@@ -136,8 +194,11 @@ const categoryColors: Record<string, string> = {
 const hasMore = computed(() => offset.value + limit < total.value)
 const hasPrev = computed(() => offset.value > 0)
 
+watch(boardReviewStatus, loadBoardReviewQueue)
+
 onMounted(() => {
   fetchArticles()
+  loadBoardReviewQueue()
 })
 </script>
 
@@ -150,6 +211,98 @@ onMounted(() => {
       </div>
       <UButton icon="i-lucide-plus" label="New Article" @click="openCreate" />
     </div>
+
+    <UCard data-testid="board-knowledge-review-queue" class="mb-6">
+      <template #header>
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-highlighted">
+              Board Knowledge review
+            </h2>
+            <p class="mt-1 text-xs text-muted">
+              Management review for documents submitted from boards you can access.
+            </p>
+          </div>
+          <UFormField label="Queue status" class="w-full sm:w-48">
+            <USelect
+              v-model="boardReviewStatus"
+              :items="boardReviewStatusOptions"
+              class="w-full"
+            />
+          </UFormField>
+        </div>
+      </template>
+
+      <div
+        v-if="boardReviewLoading"
+        class="space-y-3"
+        aria-busy="true"
+        aria-label="Loading Board Knowledge review queue"
+      >
+        <USkeleton v-for="index in 3" :key="index" class="h-14 w-full" />
+      </div>
+
+      <UAlert
+        v-else-if="boardReviewError"
+        color="error"
+        variant="soft"
+        icon="i-lucide-triangle-alert"
+        title="Review queue unavailable"
+        :description="boardReviewError"
+      >
+        <template #actions>
+          <UButton
+            label="Try again"
+            color="error"
+            variant="soft"
+            size="xs"
+            @click="loadBoardReviewQueue"
+          />
+        </template>
+      </UAlert>
+
+      <div v-else-if="!boardReviewItems.length" class="py-6 text-center">
+        <UIcon name="i-lucide-shield-check" class="mx-auto size-8 text-muted" />
+        <p class="mt-2 text-sm font-medium text-highlighted">
+          No matching submissions
+        </p>
+        <p class="mt-1 text-xs text-muted">
+          Documents submitted from accessible boards will appear here.
+        </p>
+      </div>
+
+      <ul v-else class="divide-y divide-default">
+        <li v-for="item in boardReviewItems" :key="item.id" class="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <p class="truncate text-sm font-medium text-highlighted">
+                {{ item.fileName }}
+              </p>
+              <UBadge :color="boardReviewColor(item)" variant="soft" size="sm">
+                {{ boardReviewState(item) }}
+              </UBadge>
+            </div>
+            <p class="mt-1 text-xs text-muted">
+              {{ item.boardName }} · {{ item.sourceType === 'task_attachment' ? 'Task attachment' : 'Board file' }}
+              · submitted {{ formatReviewDate(item.submittedAt) }}<template v-if="item.submittedByName">
+                by {{ item.submittedByName }}
+              </template>
+            </p>
+            <p v-if="item.errorMessage" class="mt-1 line-clamp-1 text-xs text-error">
+              {{ item.errorMessage }}
+            </p>
+          </div>
+          <UButton
+            label="Open in board"
+            icon="i-lucide-arrow-up-right"
+            color="neutral"
+            variant="soft"
+            size="sm"
+            :to="{ path: `/agency/boards/${item.boardId}`, query: { view: 'files', knowledge: item.id } }"
+          />
+        </li>
+      </ul>
+    </UCard>
 
     <!-- Search + Category Tabs -->
     <div class="flex flex-col sm:flex-row gap-4 mb-6">

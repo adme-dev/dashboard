@@ -826,23 +826,23 @@ Commit: `feat: search board knowledge with source citations`
 - Consumes: board-scoped review list API and management permission.
 - Produces: an agency-wide pending review queue that filters inaccessible boards, accurate public copy, and bookkeeper/team operating guidance.
 
-- [ ] **Step 1: Write review-queue authorization and UI tests**
+- [x] **Step 1: Write review-queue authorization and UI tests**
 
 Assert `MANAGEMENT` is required, inaccessible boards are omitted, pending/failed filters work, and row links open the source board's review slideover.
 
-- [ ] **Step 2: Implement the compact review queue**
+- [x] **Step 2: Implement the compact review queue**
 
 Reuse the board submission projections and avoid copying the full review form. The global page links into the board context for the actual decision.
 
-- [ ] **Step 3: Write marketing/help contract tests**
+- [x] **Step 3: Write marketing/help contract tests**
 
 Assert public copy says files are submitted and management-approved before AI use; reject phrases implying automatic indexing of every upload.
 
-- [ ] **Step 4: Update public and help content**
+- [x] **Step 4: Update public and help content**
 
 Describe Files versus Knowledge, supported formats, submission, review, citations, and permission-aware assistant search. Correct the existing claim that uploaded entries become searchable “immediately.”
 
-- [ ] **Step 5: Run focused tests and commit**
+- [x] **Step 5: Run focused tests and commit**
 
 Run: `pnpm vitest run test/app/boardKnowledgeReviewQueue.test.ts test/app/boardKnowledgeMarketing.test.ts`
 
