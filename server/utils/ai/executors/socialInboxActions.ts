@@ -1,6 +1,6 @@
 import { getRequestHeaders } from 'h3'
 import type { ToolContext } from '../toolContext'
-import type { ActionExecutor, ExecutionServices, ExecutorResult } from './types'
+import { ambiguousDispatchError, type ActionExecutor, type ExecutionServices, type ExecutorResult } from './types'
 import {
   recordSocialInboxNativeLinkEvent,
   updateSocialInboxNativeLinks
@@ -60,7 +60,12 @@ async function linkTask(payload: Record<string, unknown>, ctx: ToolContext, serv
   }
 }
 
-export function makeCreateSocialCaseTaskExecutor(postTask: SocialCaseTaskPoster = defaultPostTask): ActionExecutor {
+export type SocialCaseTaskLinker = typeof linkTask
+
+export function makeCreateSocialCaseTaskExecutor(
+  postTask: SocialCaseTaskPoster = defaultPostTask,
+  linkCreatedTask: SocialCaseTaskLinker = linkTask
+): ActionExecutor {
   return {
     toolName: 'create_social_case_task',
     label: 'social case task',
@@ -86,12 +91,39 @@ export function makeCreateSocialCaseTaskExecutor(postTask: SocialCaseTaskPoster 
         reporterId: ctx.userId
       }, ctx)
 
-      await linkTask({
+      const executionMetadata = {
+        compositePhase: 'task_created',
+        taskId: created.id,
         socialConversationId: conversationId,
         clientId,
-        taskId: created.id,
         taskTitle: title
-      }, ctx, services)
+      }
+      try {
+        await services?.recordProgress?.({
+          phase: 'task_created',
+          resultReference: created.id,
+          metadata: executionMetadata
+        })
+      } catch {
+        throw ambiguousDispatchError('Task created but composite progress could not persist', {
+          resultRef: created.id,
+          executionMetadata
+        })
+      }
+
+      try {
+        await linkCreatedTask({
+          socialConversationId: conversationId,
+          clientId,
+          taskId: created.id,
+          taskTitle: title
+        }, ctx, services)
+      } catch {
+        throw ambiguousDispatchError('Task created but social link outcome is unknown', {
+          resultRef: created.id,
+          executionMetadata
+        })
+      }
 
       return {
         resultRef: created.id,

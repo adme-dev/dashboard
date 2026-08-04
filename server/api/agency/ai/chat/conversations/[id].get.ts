@@ -69,6 +69,7 @@ export default defineEventHandler(async (event) => {
           SELECT id, tool_name, resolved_payload
           FROM ai_pending_actions
           WHERE conversation_id = $1 AND user_id = $2
+            AND source = 'chat'
             AND status = 'proposed' AND expires_at > NOW()
           ORDER BY created_at DESC
           LIMIT 1

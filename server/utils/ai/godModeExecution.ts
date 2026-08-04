@@ -37,9 +37,63 @@ export interface GodModeReadExecutionRequest {
   clientId?: string
 }
 
-export function deriveGodModeIdempotencyKey(persistedIdentity: string, toolCallId: string): string {
-  const digest = createHash('sha256').update(`${persistedIdentity}\u0000${toolCallId}`).digest('hex')
-  return `tool:${digest}`
+export interface GodModeToolCallClaimRequest {
+  messageId: string
+  ordinal: number
+  toolName: string
+  args: unknown
+}
+
+export interface GodModeToolCallClaim {
+  claimId: string
+  messageId: string
+  ordinal: number
+  toolName: string
+  argsDigest: string
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+export async function claimGodModeToolCall(request: GodModeToolCallClaimRequest): Promise<GodModeToolCallClaim> {
+  const argsDigest = createHash('sha256').update(stableJson(request.args)).digest('hex')
+  const claimId = randomUUID()
+  const inserted = await queryOneFresh<any>(
+    `INSERT INTO god_mode_tool_call_claims (id, message_id, ordinal, tool_name, args_digest)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (message_id, ordinal) DO NOTHING
+     RETURNING id, message_id, ordinal, tool_name, args_digest`,
+    [claimId, request.messageId, request.ordinal, request.toolName, argsDigest]
+  )
+  const row = inserted ?? await queryOneFresh<any>(
+    `SELECT id, message_id, ordinal, tool_name, args_digest
+       FROM god_mode_tool_call_claims
+      WHERE message_id = $1 AND ordinal = $2`,
+    [request.messageId, request.ordinal]
+  )
+  if (!row || row.tool_name !== request.toolName || row.args_digest !== argsDigest) {
+    operationalError(409, 'Persisted tool-call identity does not match this request')
+  }
+  return {
+    claimId: row.id,
+    messageId: row.message_id,
+    ordinal: row.ordinal,
+    toolName: row.tool_name,
+    argsDigest: row.args_digest
+  }
+}
+
+export function deriveGodModeToolClaimIdempotencyKey(messageId: string, claimId: string): string {
+  return `tool-claim:${createHash('sha256').update(`${messageId}\u0000${claimId}`).digest('hex')}`
 }
 
 export interface GodModeExecutionLedgerRow {
@@ -99,9 +153,16 @@ export interface GodModeExecutionDependencies {
   claimProposal: (input: {
     proposalId: string
     actorUserId: string
+    idempotencyKey: string
     conversationId?: string
     db?: TransactionDb
   }) => Promise<GodModeClaimedProposal | null>
+  associateProposal: (input: {
+    proposalId: string
+    actorUserId: string
+    idempotencyKey: string
+  }) => Promise<void>
+  dismissProposals: (input: { actorUserId: string, idempotencyKey: string }) => Promise<void>
   completeProposal: (input: { proposalId: string, resultReference: string, db?: TransactionDb }) => Promise<void>
   setExecutionState: (input: SetExecutionStateInput, db?: TransactionDb) => Promise<void>
   setExecutionScope?: (input: {
@@ -109,6 +170,13 @@ export interface GodModeExecutionDependencies {
     idempotencyKey: string
     tenantId: string | null
     clientId: string | null
+  }) => Promise<void>
+  recordExecutionProgress: (input: {
+    actorUserId: string
+    idempotencyKey: string
+    phase: string
+    resultReference?: string | null
+    metadata?: Record<string, unknown>
   }) => Promise<void>
   transaction: <T>(callback: (db: TransactionDb) => Promise<T>) => Promise<T>
   enqueueTerminalAudit: (event: H3Event, terminal: GodModeAuditEventInput) => Promise<boolean>
@@ -196,17 +264,46 @@ const defaultDependencies: GodModeExecutionDependencies = {
   },
   claimProposal: async input => await dbQueryOne<GodModeClaimedProposal>(input.db,
     `UPDATE ai_pending_actions
-        SET status = 'executed', confirmed_by = $1, executed_at = NOW()
+        SET status = 'executed', confirmed_by = $1, executed_at = NOW(), god_mode_state = 'consumed'
       WHERE id = $2 AND user_id = $1
         AND ($3::uuid IS NULL OR conversation_id = $3)
+        AND source = 'god_mode_preparation' AND god_mode_execution_key = $4
         AND status = 'proposed' AND expires_at > NOW()
       RETURNING id, tool_name, resolved_payload, user_id`,
-    [input.actorUserId, input.proposalId, input.conversationId ?? null]
+    [input.actorUserId, input.proposalId, input.conversationId ?? null, input.idempotencyKey]
   ),
+  associateProposal: async input => await transaction(async db => {
+    const proposal = await db.query(
+      `UPDATE ai_pending_actions
+          SET god_mode_state = 'associated'
+        WHERE id = $1 AND user_id = $2 AND source = 'god_mode_preparation'
+          AND god_mode_execution_key = $3 AND status = 'proposed' AND god_mode_state = 'preparing'`,
+      [input.proposalId, input.actorUserId, input.idempotencyKey]
+    )
+    if ((proposal.rowCount ?? 0) !== 1) throw new Error('God mode proposal association rejected')
+    const ledger = await db.query(
+      `UPDATE god_mode_execution_ledger
+          SET proposal_id = $3, execution_phase = 'proposal_prepared', updated_at = NOW()
+        WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2
+          AND state = 'in_progress'`,
+      [input.actorUserId, input.idempotencyKey, input.proposalId]
+    )
+    if ((ledger.rowCount ?? 0) !== 1) throw new Error('God mode ledger association rejected')
+  }),
+  dismissProposals: async input => {
+    await queryOneFresh(
+      `UPDATE ai_pending_actions
+          SET status = 'cancelled', god_mode_state = 'dismissed'
+        WHERE user_id = $1 AND source = 'god_mode_preparation'
+          AND god_mode_execution_key = $2 AND status = 'proposed'
+        RETURNING id`,
+      [input.actorUserId, input.idempotencyKey]
+    )
+  },
   completeProposal: async input => {
     const result = input.db
-      ? await input.db.query('UPDATE ai_pending_actions SET result_ref = $1 WHERE id = $2', [input.resultReference, input.proposalId])
-      : await queryOneFresh('UPDATE ai_pending_actions SET result_ref = $1 WHERE id = $2 RETURNING id', [input.resultReference, input.proposalId])
+      ? await input.db.query("UPDATE ai_pending_actions SET result_ref = $1, god_mode_state = 'completed' WHERE id = $2", [input.resultReference, input.proposalId])
+      : await queryOneFresh("UPDATE ai_pending_actions SET result_ref = $1, god_mode_state = 'completed' WHERE id = $2 RETURNING id", [input.resultReference, input.proposalId])
     void result
   },
   setExecutionState: async (input, db) => {
@@ -226,6 +323,24 @@ const defaultDependencies: GodModeExecutionDependencies = {
         RETURNING actor_user_id`,
       [input.actorUserId, input.idempotencyKey, input.tenantId, input.clientId]
     )
+  },
+  recordExecutionProgress: async input => {
+    const updated = await queryOneFresh(
+      `UPDATE god_mode_execution_ledger
+          SET execution_phase = $3, result_reference = COALESCE($4, result_reference),
+              execution_metadata = COALESCE($5::jsonb, execution_metadata), updated_at = NOW()
+        WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2
+          AND state = 'in_progress'
+        RETURNING actor_user_id`,
+      [
+        input.actorUserId,
+        input.idempotencyKey,
+        input.phase,
+        input.resultReference ?? null,
+        input.metadata ? JSON.stringify(input.metadata) : null
+      ]
+    )
+    if (!updated) throw new Error('God mode execution progress rejected')
   },
   transaction: callback => transaction(callback as any),
   enqueueTerminalAudit: sendGodModeAuditTerminal,
@@ -319,6 +434,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
 
     const failBeforeDispatch = async (code: string, message: string): Promise<ToolResult> => {
       try {
+        await deps.dismissProposals({ actorUserId: user.id, idempotencyKey: request.idempotencyKey })
         await deps.transaction(async db => {
           await deps.appendAudit(auditEvent(row, 'failed', code), db)
           await deps.setExecutionState({ actorUserId: user.id, idempotencyKey: request.idempotencyKey, state: 'failed' }, db)
@@ -338,6 +454,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
       permissionGroups: (user.permissionGroups ?? []) as any,
       conversationId: request.conversationId,
       source: 'chat',
+      godModeExecutionKey: request.idempotencyKey,
       event: request.event
     }
     const scope = await deps.validateScope({
@@ -365,7 +482,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
 
     let proposalId: string
     try {
-      const proposed = await tool.handler(parsed.data, ctx)
+      const proposed = await tool.handler(parsed.data, { ...ctx, source: 'god_mode_preparation' })
       if (!proposed.ok) return await failBeforeDispatch('proposal_rejected', proposed.error)
       const data = proposed.data as { proposalId?: unknown }
       if (typeof data?.proposalId !== 'string') {
@@ -376,17 +493,56 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
         return proposed
       }
       proposalId = data.proposalId
+      await deps.associateProposal({
+        proposalId,
+        actorUserId: user.id,
+        idempotencyKey: request.idempotencyKey
+      })
     } catch {
       return await failBeforeDispatch('handler_failed', 'Could not prepare the action.')
     }
 
+    let capturedResultReference: string | null = null
     const executeClaimed = async (db?: TransactionDb): Promise<ExecutorResult> => {
-      const proposal = await deps.claimProposal({ proposalId, actorUserId: user.id, conversationId: request.conversationId, db })
+      const proposal = await deps.claimProposal({
+        proposalId,
+        actorUserId: user.id,
+        idempotencyKey: request.idempotencyKey,
+        conversationId: request.conversationId,
+        db
+      })
       if (!proposal || proposal.user_id !== user.id || proposal.tool_name !== request.toolName) {
-        throw Object.assign(new Error('proposal claim rejected'), { boundedCode: 'proposal_claim_failed' })
+        throw Object.assign(new Error('proposal claim rejected'), {
+          boundedCode: 'proposal_claim_failed',
+          preDispatch: true
+        })
       }
-      const services: ExecutionServices = { idempotencyKey: request.idempotencyKey, ...(db ? { db } : {}) }
+      if (!db) {
+        await deps.recordExecutionProgress({
+          actorUserId: user.id,
+          idempotencyKey: request.idempotencyKey,
+          phase: 'dispatched'
+        })
+      }
+      const services: ExecutionServices = {
+        idempotencyKey: request.idempotencyKey,
+        ...(db ? { db } : {}),
+        ...(!db
+          ? {
+              recordProgress: async (progress: Parameters<NonNullable<ExecutionServices['recordProgress']>>[0]) => {
+                await deps.recordExecutionProgress!({
+                  actorUserId: user.id,
+                  idempotencyKey: request.idempotencyKey,
+                  phase: progress.phase,
+                  resultReference: progress.resultReference,
+                  metadata: progress.metadata
+                })
+              }
+            }
+          : {})
+      }
       const result = await executor.execute(proposal.resolved_payload, ctx, services)
+      capturedResultReference = result.resultRef
       if (!result.resultRef || result.resultRef.length > 128) {
         throw Object.assign(new Error('executor result reference invalid'), { boundedCode: 'executor_result_invalid' })
       }
@@ -415,7 +571,13 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
           await deps.transaction(async db => {
             // The failed local transaction rolled the proposal claim back with the mutation. Claim it
             // again in the failure transaction so no confirmation card can reappear.
-            await deps.claimProposal({ proposalId, actorUserId: user.id, conversationId: request.conversationId, db })
+            await deps.claimProposal({
+              proposalId,
+              actorUserId: user.id,
+              idempotencyKey: request.idempotencyKey,
+              conversationId: request.conversationId,
+              db
+            })
             await deps.appendAudit(auditEvent(row, 'failed', code), db)
             await deps.setExecutionState({ actorUserId: user.id, idempotencyKey: request.idempotencyKey, state: 'failed' }, db)
           })
@@ -431,6 +593,27 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
       result = await executeClaimed()
     } catch (error) {
       const code = (error as any)?.boundedCode ?? 'executor_failed'
+      const errorResultRef = typeof (error as any)?.resultRef === 'string'
+        ? String((error as any).resultRef).slice(0, 128)
+        : null
+      const dispatchUnknown = (error as any)?.preDispatch !== true
+      if (dispatchUnknown) {
+        const boundedReference = capturedResultReference ?? errorResultRef
+        try {
+          await deps.transaction(async db => {
+            await deps.appendAudit(auditEvent(row, 'ambiguous', 'dispatch_outcome_unknown'), db)
+            await deps.setExecutionState({
+              actorUserId: user.id,
+              idempotencyKey: request.idempotencyKey,
+              state: 'ambiguous',
+              resultReference: boundedReference
+            }, db)
+          })
+        } catch {
+          operationalError(503, 'God mode audit unavailable')
+        }
+        return fail('Action outcome is pending reconciliation.')
+      }
       try {
         await deps.transaction(async db => {
           await deps.appendAudit(auditEvent(row, 'failed', code), db)

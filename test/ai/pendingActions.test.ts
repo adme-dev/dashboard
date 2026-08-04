@@ -58,6 +58,22 @@ describe('executeProposal', () => {
     expect(db.revertToProposed).not.toHaveBeenCalled()
   })
 
+  it('does not re-offer a composite action whose first mutation may already have committed', async () => {
+    const db: PendingActionDb = {
+      claim: vi.fn().mockResolvedValue(row()),
+      createTask: vi.fn().mockRejectedValue(Object.assign(new Error('link response lost'), {
+        dispatchState: 'ambiguous',
+        resultRef: 'task-7'
+      })),
+      markExecuted: vi.fn(),
+      revertToProposed: vi.fn()
+    }
+    const result = await executeProposal('p1', ctx() as any, db)
+    expect(result).toEqual({ ok: false, error: 'The action may have completed and needs reconciliation.' })
+    expect(db.revertToProposed).not.toHaveBeenCalled()
+    expect(db.markExecuted).toHaveBeenCalledWith('p1', 'task-7')
+  })
+
   it('honors the atomic-claim contract: expired / wrong-user → claim returns null → fail (stateful fake)', async () => {
     // Stateful fake modeling the real WHERE status='proposed' AND expires_at>NOW() AND user_id=$user.
     const store: Record<string, PendingRow & { expiresMs: number }> = {
@@ -97,6 +113,16 @@ describe('loadOpenProposal (reload rehydration)', () => {
 
   it('is fail-safe: a query error yields null (conversation load must not break)', async () => {
     const res = await loadOpenProposal('c1', 'u1', vi.fn().mockRejectedValue(new Error('relation does not exist')))
+    expect(res).toBeNull()
+  })
+
+  it('never exposes a server-only God mode preparation as a confirmation card', async () => {
+    const res = await loadOpenProposal('c1', 'u1', vi.fn().mockResolvedValue({
+      id: 'p1',
+      tool_name: 'create_task',
+      resolved_payload: { title: 'Hidden' },
+      source: 'god_mode_preparation'
+    }) as any)
     expect(res).toBeNull()
   })
 })
@@ -142,6 +168,21 @@ describe('executeRegisteredPendingAction', () => {
       recordAudit: vi.fn()
     })
     expect(result).toMatchObject({ ok: false, requiresRichConfirm: true })
+    expect(claim).not.toHaveBeenCalled()
+  })
+
+  it('refuses a server-only God mode preparation on the ordinary confirmation path', async () => {
+    const claim = vi.fn()
+    const result = await executeRegisteredPendingAction({ proposalId: 'p1', ctx: ctx() as any }, {
+      peek: vi.fn().mockResolvedValue({ tool_name: 'create_task', source: 'god_mode_preparation' }),
+      claim,
+      markExecuted: vi.fn(),
+      getExecutor: vi.fn(() => ({
+        toolName: 'create_task', label: 'task', riskTier: 'confirm', executionClass: 'internal-http', execute: vi.fn()
+      } as any)),
+      recordAudit: vi.fn()
+    } as any)
+    expect(result).toEqual({ ok: false, error: 'This action is not available for manual confirmation.' })
     expect(claim).not.toHaveBeenCalled()
   })
 })

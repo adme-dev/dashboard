@@ -43,9 +43,10 @@ export default defineEventHandler(async (event) => {
     ctx,
     richConfirmAck: body?.richConfirmAck
   }, {
-    peek: async (id, userId) => await queryOne<{ tool_name: string }>(
-      `SELECT tool_name FROM ai_pending_actions
+    peek: async (id, userId) => await queryOne<{ tool_name: string, source: string }>(
+      `SELECT tool_name, source FROM ai_pending_actions
         WHERE id = $1 AND conversation_id = $2 AND user_id = $3
+          AND source = 'chat' AND god_mode_execution_key IS NULL
           AND status = 'proposed' AND expires_at > NOW()`,
       [id, conversationId, userId]
     ),
@@ -54,6 +55,7 @@ export default defineEventHandler(async (event) => {
         `UPDATE ai_pending_actions
            SET status = 'executed', confirmed_by = $1, executed_at = NOW()
          WHERE id = $2 AND conversation_id = $3 AND user_id = $1
+           AND source = 'chat' AND god_mode_execution_key IS NULL
            AND status = 'proposed' AND expires_at > NOW()
         RETURNING id, status, tool_name, resolved_payload, user_id, expires_at`,
         [userId, id, conversationId],

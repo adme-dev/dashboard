@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 
 export type GodModeChannel = 'application' | 'mcp'
-export type GodModeAuditPhase = 'attempt' | 'bypass' | 'succeeded' | 'failed'
+export type GodModeAuditPhase = 'attempt' | 'bypass' | 'ambiguous' | 'succeeded' | 'failed'
 export type GodModeBypassedControl =
   | 'permission'
   | 'feature_flag'
@@ -54,7 +54,7 @@ const GodModeAuditEventSchema = z.object({
   sessionDigest: z.string().regex(/^[0-9a-f]{64}$/),
   channel: z.enum(['application', 'mcp']),
   routeOrTool: z.string().min(1).max(160),
-  phase: z.enum(['attempt', 'bypass', 'succeeded', 'failed']),
+  phase: z.enum(['attempt', 'bypass', 'ambiguous', 'succeeded', 'failed']),
   tenantId: nullableUuid,
   clientId: nullableUuid,
   entityType: z.string().min(1).max(64).nullable().optional(),

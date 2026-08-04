@@ -13,6 +13,8 @@ export interface ReconciliationCandidate {
   tenantId: string | null
   clientId: string | null
   resultReference: string | null
+  executionPhase?: string
+  executionMetadata?: Record<string, unknown> | null
 }
 
 export interface ReconciledProviderOutcome {
@@ -23,18 +25,89 @@ export interface ReconciledProviderOutcome {
 export interface GodModeReconciliationDependencies {
   listCandidates: (limit: number) => Promise<ReconciliationCandidate[]>
   findTerminal: (correlationId: string) => Promise<{ phase: 'succeeded' | 'failed', outcomeCode: string } | null>
-  /** Lookup only. Implementations must never dispatch or repeat an action. */
+  /** Never dispatch/repeat the primary action; only bounded lookup or an idempotent local link repair. */
   lookupOutcome: (candidate: ReconciliationCandidate) => Promise<ReconciledProviderOutcome>
   /** A null terminal means an immutable terminal already exists; close only the coordination row. */
   appendTerminalAndClose: (candidate: ReconciliationCandidate, terminal: GodModeAuditEventInput | null) => Promise<boolean>
   markAlertable: (candidate: ReconciliationCandidate, reason: 'provider_outcome_unknown' | 'provider_lookup_failed') => Promise<void>
 }
 
+export interface SocialCaseLinkRepairDependencies {
+  findTask: (taskId: string) => Promise<{ id: string } | null>
+  findConversation: (conversationId: string, clientId: string) => Promise<{ id: string, linkedTaskId: string | null } | null>
+  linkExistingTask: (input: {
+    taskId: string
+    socialConversationId: string
+    clientId: string
+    actorUserId: string
+  }) => Promise<boolean>
+}
+
+const defaultSocialRepairDependencies: SocialCaseLinkRepairDependencies = {
+  findTask: async taskId => await queryOneFresh('SELECT id FROM tasks WHERE id = $1 LIMIT 1', [taskId]),
+  findConversation: async (conversationId, clientId) => await queryOneFresh(
+    `SELECT id, linked_task_id AS "linkedTaskId"
+       FROM social_conversations WHERE id = $1 AND client_id = $2 LIMIT 1`,
+    [conversationId, clientId]
+  ),
+  linkExistingTask: async input => await transaction(async db => {
+    const updated = await db.query(
+      `UPDATE social_conversations
+          SET linked_task_id = $3, native_linked_by = $4, native_linked_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND client_id = $2 AND linked_task_id IS NULL`,
+      [input.socialConversationId, input.clientId, input.taskId, input.actorUserId]
+    )
+    if ((updated.rowCount ?? 0) === 0) {
+      const existing = (await db.query<{ linked_task_id: string | null }>(
+        'SELECT linked_task_id FROM social_conversations WHERE id = $1 AND client_id = $2',
+        [input.socialConversationId, input.clientId]
+      )).rows[0]
+      return existing?.linked_task_id === input.taskId
+    }
+    await db.query(
+      `INSERT INTO social_conversation_events
+        (conversation_id, client_id, actor_id, event_type, content, metadata)
+       VALUES ($1, $2, $3, 'native_link_update', 'Linked task', $4::jsonb)`,
+      [
+        input.socialConversationId,
+        input.clientId,
+        input.actorUserId,
+        JSON.stringify({ linked_task_id: input.taskId, reconciliation: true })
+      ]
+    )
+    return true
+  })
+}
+
+export async function repairSocialCaseTaskLink(
+  metadata: Record<string, unknown>,
+  actorUserId: string,
+  dependencies: SocialCaseLinkRepairDependencies = defaultSocialRepairDependencies
+): Promise<ReconciledProviderOutcome> {
+  const taskId = typeof metadata.taskId === 'string' ? metadata.taskId : ''
+  const socialConversationId = typeof metadata.socialConversationId === 'string' ? metadata.socialConversationId : ''
+  const clientId = typeof metadata.clientId === 'string' ? metadata.clientId : ''
+  if (metadata.compositePhase !== 'task_created' || !taskId || !socialConversationId || !clientId) {
+    return { state: 'unknown' }
+  }
+  const [task, conversation] = await Promise.all([
+    dependencies.findTask(taskId),
+    dependencies.findConversation(socialConversationId, clientId)
+  ])
+  if (!task || !conversation) return { state: 'failed' }
+  if (conversation.linkedTaskId && conversation.linkedTaskId !== taskId) return { state: 'unknown' }
+  if (conversation.linkedTaskId === taskId) return { state: 'succeeded', resultReference: taskId }
+  return await dependencies.linkExistingTask({ taskId, socialConversationId, clientId, actorUserId })
+    ? { state: 'succeeded', resultReference: taskId }
+    : { state: 'unknown' }
+}
+
 const defaultDependencies: GodModeReconciliationDependencies = {
   listCandidates: async limit => {
     const rows = await queryRows<any>(
       `SELECT actor_user_id, correlation_id, idempotency_key, state, route_or_tool,
-              executor_class, session_digest, tenant_id, client_id, result_reference
+              executor_class, session_digest, tenant_id, client_id, result_reference,
+              execution_phase, execution_metadata
          FROM god_mode_execution_ledger
         WHERE channel = 'application'
           AND state IN ('in_progress', 'ambiguous')
@@ -53,7 +126,9 @@ const defaultDependencies: GodModeReconciliationDependencies = {
       sessionDigest: row.session_digest,
       tenantId: row.tenant_id,
       clientId: row.client_id,
-      resultReference: row.result_reference
+      resultReference: row.result_reference,
+      executionPhase: row.execution_phase,
+      executionMetadata: row.execution_metadata
     }))
   },
   findTerminal: async correlationId => await queryOneFresh(
@@ -64,6 +139,13 @@ const defaultDependencies: GodModeReconciliationDependencies = {
     [correlationId]
   ),
   lookupOutcome: async candidate => {
+    if (candidate.routeOrTool === 'create_social_case_task' && candidate.executionMetadata) {
+      return await repairSocialCaseTaskLink(candidate.executionMetadata, candidate.actorUserId)
+    }
+    if (candidate.state === 'in_progress'
+      && ['claimed', 'proposal_prepared'].includes(candidate.executionPhase ?? 'claimed')) {
+      return { state: 'failed' }
+    }
     // No current executor talks directly to an external provider. For internal HTTP calls, a
     // persisted result reference is the captured bounded response from the completed dispatch.
     // Missing references remain unknown; reconciliation never calls the mutation endpoint.
@@ -86,6 +168,16 @@ const defaultDependencies: GodModeReconciliationDependencies = {
         WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2
           AND correlation_id = $3 AND state IN ('in_progress', 'ambiguous')`,
       [candidate.actorUserId, candidate.idempotencyKey, candidate.correlationId, terminalPhase]
+    )
+    await db.query(
+      `UPDATE ai_pending_actions
+          SET status = CASE WHEN status = 'proposed' THEN 'cancelled' ELSE status END,
+              god_mode_state = CASE
+                WHEN $3 = 'succeeded' THEN 'completed'
+                ELSE 'dismissed'
+              END
+        WHERE user_id = $1 AND source = 'god_mode_preparation' AND god_mode_execution_key = $2`,
+      [candidate.actorUserId, candidate.idempotencyKey, terminalPhase]
     )
     return (updated.rowCount ?? 0) > 0
   }),

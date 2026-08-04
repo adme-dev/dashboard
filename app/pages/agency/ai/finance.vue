@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createAiChatSubmissionBody, postAiChatSubmission } from '~/utils/aiChatTransport'
 definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 const { user } = useAuth()
@@ -233,9 +234,10 @@ async function runAdvisor(prompt: string) {
     }
 
     // Send directly via API — bypasses useAiChat shared state
-    const result = await apiFetch<any>(
+    const result = await postAiChatSubmission<any>(
+      apiFetch,
       `/api/agency/ai/chat/conversations/${advisorConvId.value}/messages`,
-      { method: 'POST', body: { content: prompt } }
+      createAiChatSubmissionBody({ content: prompt })
     )
 
     if (result?.message?.content) {

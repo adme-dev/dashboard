@@ -89,17 +89,20 @@ export function toSdkTools(
   godModeExecution?: {
     /** Persisted message/request identity; never a timestamp or caller role/email. */
     executionIdentity: string
+    claimGodModeToolCall?: (request: import('./godModeExecution').GodModeToolCallClaimRequest) => Promise<import('./godModeExecution').GodModeToolCallClaim>
     executeGodModeTool?: (request: import('./godModeExecution').GodModeExecutionRequest) => Promise<ToolResult>
     executeGodModeReadTool?: (request: import('./godModeExecution').GodModeReadExecutionRequest) => Promise<ToolResult>
   }
 ): Record<string, Tool<any, any>> {
   const godModeActive = isActiveGodModeAuthority(authority, ctx.userId)
   const out: Record<string, Tool<any, any>> = {}
+  let nextToolOrdinal = 0
   for (const t of tools) {
     out[t.name] = tool({
       description: t.description,
       inputSchema: t.parameters,
-      execute: async (args: any, callOptions: any) => {
+      execute: async (args: any, _callOptions: any) => {
+        const ordinal = nextToolOrdinal++
         // Defense-in-depth re-check at execution time.
         const permissionGranted = !t.requiredPermission || (ctx.permissionGroups
           ? ctx.permissionGroups.includes(t.requiredPermission)
@@ -114,16 +117,21 @@ export function toSdkTools(
         if (godModeActive) {
           const mod = await import('./godModeExecution')
           if (t.mutates) {
-            const toolCallId = typeof callOptions?.toolCallId === 'string' ? callOptions.toolCallId : ''
-            if (!godModeExecution?.executionIdentity || !toolCallId || !ctx.event) {
+            if (!godModeExecution?.executionIdentity || !ctx.event) {
               return { ok: false, error: 'Durable tool-call identity is unavailable.' }
             }
+            const claim = await (godModeExecution.claimGodModeToolCall ?? mod.claimGodModeToolCall)({
+              messageId: godModeExecution.executionIdentity,
+              ordinal,
+              toolName: t.name,
+              args
+            })
             res = await (godModeExecution?.executeGodModeTool ?? mod.executeGodModeTool)({
               event: ctx.event,
               conversationId: ctx.conversationId,
               toolName: t.name,
               args,
-              idempotencyKey: mod.deriveGodModeIdempotencyKey(godModeExecution.executionIdentity, toolCallId),
+              idempotencyKey: mod.deriveGodModeToolClaimIdempotencyKey(claim.messageId, claim.claimId),
               clientId: ctx.clientScope
             })
           } else {

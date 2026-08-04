@@ -9,6 +9,23 @@ export interface ExecutionServices {
   idempotencyKey: string
   /** Present only for local-transactional executors. Never supplied to HTTP/provider executors. */
   db?: Pick<Pool, 'query'>
+  /** Durably capture a composite/provider checkpoint before the executor advances. */
+  recordProgress?: (progress: {
+    phase: string
+    resultReference?: string | null
+    metadata?: Record<string, unknown>
+  }) => Promise<void>
+}
+
+export function ambiguousDispatchError(
+  message: string,
+  details: { resultRef?: string, executionMetadata?: Record<string, unknown> } = {}
+): Error {
+  return Object.assign(new Error(message), {
+    dispatchState: 'ambiguous' as const,
+    resultRef: details.resultRef,
+    executionMetadata: details.executionMetadata
+  })
 }
 
 /**

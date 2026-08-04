@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createAiChatSubmissionBody, postAiChatSubmission } from '~/utils/aiChatTransport'
 /**
  * Office co-pilot dock (virtual-office Mode A). Embeds the agency co-pilot in the office, room-scoped:
  * each turn passes the current `room` (officeId + who's present) to /api/agency/ai/chat so the engine
@@ -49,17 +50,19 @@ async function send(text?: string) {
   sending.value = true
   try {
     const id = await ensureConversation()
-    const res = await apiFetch<SendResponse>(`/api/agency/ai/chat/conversations/${id}/messages`, {
-      method: 'POST',
-      body: {
-        content,
-        room: {
-          officeId: props.officeId,
-          meetingId: props.meetingId || undefined,
-          presentUserIds: props.presentUserIds?.length ? props.presentUserIds : undefined,
-        },
-      },
+    const body = createAiChatSubmissionBody({
+      content,
+      room: {
+        officeId: props.officeId,
+        meetingId: props.meetingId || undefined,
+        presentUserIds: props.presentUserIds?.length ? props.presentUserIds : undefined,
+      }
     })
+    const res = await postAiChatSubmission<SendResponse>(
+      apiFetch,
+      `/api/agency/ai/chat/conversations/${id}/messages`,
+      body
+    )
     messages.value.push({ role: 'assistant', content: res.message?.content || 'Done.' })
   } catch (e: any) {
     messages.value.push({ role: 'assistant', content: 'Sorry — I couldn’t answer that just now. Please try again.' })
@@ -76,7 +79,7 @@ async function send(text?: string) {
       icon="i-lucide-sparkles"
       size="lg"
       class="fixed bottom-5 right-5 z-40 rounded-full shadow-lg"
-      @click="open = true"
+      @click="() => { open = true }"
     >
       Assistant
     </UButton>

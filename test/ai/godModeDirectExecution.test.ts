@@ -29,6 +29,7 @@ function harness(options: {
   authorityActive?: boolean
   scopeValid?: boolean
   executorError?: Error
+  executorErrorAfterDispatch?: boolean
   attemptError?: Error
   terminalError?: Error
   failedAuditError?: Error
@@ -46,10 +47,13 @@ function harness(options: {
     executionClass,
     async execute(payload, ctx, services) {
       calls.push('executor')
-      if (options.executorError) throw options.executorError
       expect(ctx.userId).toBe(options.actorId ?? OWNER_ID)
       expect(services.idempotencyKey).toBe('message-7:tool-call-2')
       sideEffects++
+      if (options.executorError) {
+        if (!options.executorErrorAfterDispatch) sideEffects--
+        throw options.executorError
+      }
       return { resultRef: `${toolName}-result`, summary: `executed ${toolName}` }
     }
   }
@@ -113,6 +117,8 @@ function harness(options: {
       proposalClaimed = true
       return { id: input.proposalId, tool_name: toolName, resolved_payload: { title: 'Ship', clientId: CLIENT_ID }, user_id: input.actorUserId }
     }),
+    associateProposal: vi.fn(async () => undefined),
+    dismissProposals: vi.fn(async () => undefined),
     completeProposal: vi.fn(async () => undefined),
     setExecutionState: vi.fn(async input => {
       calls.push(`ledger:${input.state}`)
@@ -124,6 +130,7 @@ function harness(options: {
         resultDigest: input.resultDigest ?? current.resultDigest
       })
     }),
+    recordExecutionProgress: vi.fn(async () => undefined),
     transaction: vi.fn(async callback => callback({ query: vi.fn() } as any)),
     enqueueTerminalAudit: vi.fn(async () => true),
     sessionDigest: vi.fn(() => 'a'.repeat(64)),
@@ -183,7 +190,7 @@ describe('God mode direct execution', () => {
   })
 
   it('records a bounded failed outcome and sanitizes executor failures', async () => {
-    const h = harness({ executorError: new Error('provider token=secret') })
+    const h = harness({ executorError: Object.assign(new Error('provider token=secret'), { preDispatch: true }) })
     await expect(h.execute({ event: event(), toolName: 'create_task', args: { title: 'Ship' }, idempotencyKey: 'message-7:tool-call-2' }))
       .rejects.toMatchObject({ statusCode: 502, statusMessage: 'God mode action failed' })
     expect(h.deps.appendAudit).toHaveBeenLastCalledWith(
@@ -194,7 +201,10 @@ describe('God mode direct execution', () => {
   })
 
   it('returns only a generic audit failure if the failed terminal cannot persist', async () => {
-    const h = harness({ executorError: new Error('provider token=secret'), failedAuditError: new Error('db password') })
+    const h = harness({
+      executorError: Object.assign(new Error('provider token=secret'), { preDispatch: true }),
+      failedAuditError: new Error('db password')
+    })
     await expect(h.execute({ event: event(), toolName: 'create_task', args: { title: 'Ship' }, idempotencyKey: 'message-7:tool-call-2' }))
       .rejects.toMatchObject({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
   })
@@ -281,6 +291,90 @@ describe('God mode direct execution', () => {
     expect(h.sideEffects()).toBe(1)
     expect(h.ledger.get(request.idempotencyKey)?.state).toBe('ambiguous')
     expect(h.deps.enqueueTerminalAudit).toHaveBeenCalledTimes(1)
+  })
+
+  it('classifies an internal HTTP rejection as ambiguous because the endpoint may have committed', async () => {
+    const h = harness({
+      executorError: new Error('response lost after commit'),
+      executorErrorAfterDispatch: true
+    })
+    const result = await h.execute({
+      event: event(), toolName: 'create_task', args: { title: 'Ship' },
+      idempotencyKey: 'message-7:tool-call-2'
+    })
+
+    expect(result).toEqual({ ok: false, error: 'Action outcome is pending reconciliation.' })
+    expect(h.ledger.get('message-7:tool-call-2')?.state).toBe('ambiguous')
+    expect(h.sideEffects()).toBe(1)
+    expect(h.deps.appendAudit).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'ambiguous', outcomeCode: 'dispatch_outcome_unknown' }),
+      expect.anything()
+    )
+  })
+
+  it('captures the returned reference before proposal bookkeeping and marks bookkeeping failure ambiguous', async () => {
+    const h = harness()
+    vi.mocked(h.deps.completeProposal).mockRejectedValue(new Error('database response lost'))
+
+    const result = await h.execute({
+      event: event(), toolName: 'create_task', args: { title: 'Ship' },
+      idempotencyKey: 'message-7:tool-call-2'
+    })
+
+    expect(result).toEqual({ ok: false, error: 'Action outcome is pending reconciliation.' })
+    expect(h.ledger.get('message-7:tool-call-2')).toMatchObject({
+      state: 'ambiguous',
+      resultReference: 'create_task-result'
+    })
+    expect(h.sideEffects()).toBe(1)
+  })
+
+  it('marks proposals as server-only preparation and durably associates them before claim', async () => {
+    const h = harness()
+    const associateProposal = vi.fn().mockResolvedValue(undefined)
+    ;(h.deps as any).associateProposal = associateProposal
+    vi.mocked(h.deps.resolveTool).mockReturnValue({
+      name: 'create_task',
+      parameters: z.object({ title: z.string() }),
+      mutates: true,
+      handler: vi.fn(async (_args, ctx) => {
+        expect(ctx.source).toBe('god_mode_preparation')
+        return ok({ proposalId: 'proposal-1' })
+      })
+    } as any)
+
+    await h.execute({
+      event: event(), conversationId: 'conversation-1', toolName: 'create_task', args: { title: 'Ship' },
+      idempotencyKey: 'message-7:tool-call-2'
+    })
+
+    expect(associateProposal).toHaveBeenCalledWith(expect.objectContaining({
+      proposalId: 'proposal-1',
+      actorUserId: OWNER_ID,
+      idempotencyKey: 'message-7:tool-call-2'
+    }))
+    expect(associateProposal.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(h.deps.claimProposal).mock.invocationCallOrder[0]!
+    )
+  })
+
+  it('dismisses a hidden preparation and never dispatches when durable association fails', async () => {
+    const h = harness()
+    const dismissProposals = vi.fn().mockResolvedValue(undefined)
+    ;(h.deps as any).associateProposal = vi.fn().mockRejectedValue(new Error('association unavailable'))
+    ;(h.deps as any).dismissProposals = dismissProposals
+
+    const result = await h.execute({
+      event: event(), conversationId: 'conversation-1', toolName: 'create_task', args: { title: 'Ship' },
+      idempotencyKey: 'message-7:tool-call-2'
+    })
+
+    expect(result).toEqual({ ok: false, error: 'Could not prepare the action.' })
+    expect(dismissProposals).toHaveBeenCalledWith(expect.objectContaining({
+      actorUserId: OWNER_ID,
+      idempotencyKey: 'message-7:tool-call-2'
+    }))
+    expect(h.sideEffects()).toBe(0)
   })
 
   it('rolls a local mutation and success audit back together', async () => {

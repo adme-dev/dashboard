@@ -55,11 +55,23 @@ export async function proposeAction(
   toolName: string,
   resolvedPayload: unknown,
 ): Promise<string> {
+  const godModePreparation = ctx.source === 'god_mode_preparation'
   const row = await queryOne<{ id: string }>(
-    `INSERT INTO ai_pending_actions (conversation_id, user_id, tool_name, resolved_payload, status, source)
-     VALUES ($1, $2, $3, $4, 'proposed', $5)
+    `INSERT INTO ai_pending_actions (
+       conversation_id, user_id, tool_name, resolved_payload, status, source,
+       god_mode_execution_key, god_mode_state
+     )
+     VALUES ($1, $2, $3, $4, 'proposed', $5, $6, $7)
      RETURNING id`,
-    [conversationId, ctx.userId, toolName, JSON.stringify(resolvedPayload), ctx.source ?? 'chat'],
+    [
+      conversationId,
+      ctx.userId,
+      toolName,
+      JSON.stringify(resolvedPayload),
+      ctx.source ?? 'chat',
+      godModePreparation ? ctx.godModeExecutionKey ?? null : null,
+      godModePreparation ? 'preparing' : null
+    ],
   )
   if (!row) throw new Error('Failed to persist proposed action')
   return row.id
@@ -82,11 +94,11 @@ export interface OpenProposal {
 export async function loadOpenProposal(
   conversationId: string,
   userId: string,
-  query: (conversationId: string, userId: string) => Promise<{ id: string, tool_name: string, resolved_payload: unknown } | null>,
+  query: (conversationId: string, userId: string) => Promise<{ id: string, tool_name: string, resolved_payload: unknown, source?: string } | null>,
 ): Promise<OpenProposal | null> {
   try {
     const row = await query(conversationId, userId)
-    if (!row) return null
+    if (!row || row.source === 'god_mode_preparation') return null
     return { proposalId: row.id, toolName: row.tool_name, resolved: row.resolved_payload }
   } catch {
     return null
@@ -118,10 +130,23 @@ export async function executeProposal(id: string, ctx: ToolContext, db: PendingA
     // infinitely re-confirmable with the same error. Leaving it 'executed' (already claimed) is the
     // correct terminal state. Only a genuine mutation failure reverts so the user can retry.
     const terminal = !!(err as { terminal?: boolean } | null)?.terminal
-    if (db.revertToProposed && !terminal) await db.revertToProposed(id)
+    const ambiguous = (err as { dispatchState?: string } | null)?.dispatchState === 'ambiguous'
+    const ambiguousResultRef = ambiguous && typeof (err as { resultRef?: unknown }).resultRef === 'string'
+      ? String((err as { resultRef: string }).resultRef).slice(0, 128)
+      : null
+    if (db.revertToProposed && !terminal && !ambiguous) await db.revertToProposed(id)
+    if (ambiguousResultRef) {
+      try {
+        await db.markExecuted(id, ambiguousResultRef)
+      } catch {
+        // The proposal remains claimed even if this bounded reference cannot be persisted.
+      }
+    }
     return fail(terminal
       ? 'This action can no longer be completed and has been dismissed.'
-      : 'Could not complete the action — the task was not created. Please try again.')
+      : ambiguous
+        ? 'The action may have completed and needs reconciliation.'
+        : 'Could not complete the action — the task was not created. Please try again.')
   }
 
   try {
@@ -134,7 +159,7 @@ export async function executeProposal(id: string, ctx: ToolContext, db: PendingA
 }
 
 export interface RegisteredPendingActionDependencies {
-  peek(id: string, userId: string, conversationId?: string): Promise<{ tool_name: string } | null>
+  peek(id: string, userId: string, conversationId?: string): Promise<{ tool_name: string, source?: string } | null>
   claim(id: string, userId: string): Promise<PendingRow | null>
   markExecuted(id: string, resultRef: string): Promise<void>
   revertToProposed?(id: string): Promise<void>
@@ -168,6 +193,9 @@ export async function executeRegisteredPendingAction(
     request.ctx.conversationId
   )
   const peekExecutor = peek ? dependencies.getExecutor(peek.tool_name) : null
+  if (peek?.source === 'god_mode_preparation') {
+    return { ok: false, error: 'This action is not available for manual confirmation.' }
+  }
   if (peekExecutor?.requiredPermission && !roleHasPermission(request.ctx.userRole, peekExecutor.requiredPermission)) {
     return { ok: false, error: 'You do not have permission to confirm this action.' }
   }

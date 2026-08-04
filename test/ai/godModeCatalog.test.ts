@@ -398,6 +398,13 @@ describe('God-mode SDK wrapper admission', () => {
       event: {} as any
     }, 'seed', godModeAuthority, {
       executionIdentity: 'message-7',
+      claimGodModeToolCall: vi.fn().mockResolvedValue({
+        claimId: '77777777-7777-4777-8777-777777777777',
+        messageId: 'message-7',
+        ordinal: 1,
+        toolName: 'denied_write',
+        argsDigest: 'a'.repeat(64)
+      }),
       executeGodModeTool,
       executeGodModeReadTool
     })
@@ -414,9 +421,46 @@ describe('God-mode SDK wrapper admission', () => {
     expect(executeGodModeTool).toHaveBeenCalledWith(expect.objectContaining({
       event: expect.anything(),
       toolName: 'denied_write',
-      idempotencyKey: expect.stringMatching(/^tool:/),
+      idempotencyKey: expect.stringMatching(/^tool-claim:/),
       args: {}
     }))
+  })
+
+  it('derives write identity from a persisted DB tool-call claim, never the provider toolCallId', async () => {
+    const requests: any[] = []
+    const claimGodModeToolCall = vi.fn().mockResolvedValue({
+      claimId: '77777777-7777-4777-8777-777777777777',
+      messageId: 'message-7',
+      ordinal: 0,
+      toolName: 'denied_write',
+      argsDigest: 'a'.repeat(64)
+    })
+    const makeTools = () => toSdkTools(filterToolsForUser(tools, 'viewer', [], true, godModeAuthority, USER_ID), {
+      userId: USER_ID,
+      userRole: 'viewer',
+      permissionGroups: [],
+      assistantReadOnly: true,
+      event: {} as any
+    }, 'seed', godModeAuthority, {
+      executionIdentity: 'message-7',
+      claimGodModeToolCall,
+      executeGodModeTool: vi.fn(async request => {
+        requests.push(request)
+        return ok({ resultRef: 'task-1' })
+      }),
+      executeGodModeReadTool: vi.fn()
+    } as any)
+
+    await (makeTools().denied_write as any).execute({}, { toolCallId: 'provider-call-a' })
+    await (makeTools().denied_write as any).execute({}, { toolCallId: 'provider-call-b' })
+
+    expect(claimGodModeToolCall).toHaveBeenCalledTimes(2)
+    expect(claimGodModeToolCall).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      messageId: 'message-7', ordinal: 0, toolName: 'denied_write', args: {}
+    }))
+    expect(requests[0].idempotencyKey).toBe(requests[1].idempotencyKey)
+    expect(requests[0].idempotencyKey).toMatch(/^tool-claim:/)
+    expect(JSON.stringify(requests)).not.toContain('provider-call-')
   })
 
   it('does not allow owner role strings, mismatched authority, or emergency-disabled authority to bypass', async () => {

@@ -1,4 +1,5 @@
 import type { AiConversation, AiMessage, AiContextSource } from '~/types'
+import { createAiChatSubmissionBody, postAiChatSubmission } from '~/utils/aiChatTransport'
 
 interface ConversationListResponse {
   conversations: AiConversation[]
@@ -201,7 +202,7 @@ export function useAiChat() {
     messages.value.push(tempUserMsg)
 
     try {
-      const body: Record<string, any> = { content }
+      const body: Record<string, any> = createAiChatSubmissionBody({ content })
       if (mentionedEntities && mentionedEntities.length > 0) {
         body.mentionedEntities = mentionedEntities
       }
@@ -209,12 +210,10 @@ export function useAiChat() {
       if (selectedPersona.value) body.persona = selectedPersona.value
       if (room?.officeId) body.room = room
 
-      const result = await apiFetch<ChatMessageResponse>(
+      const result = await postAiChatSubmission<ChatMessageResponse>(
+        apiFetch,
         `/api/agency/ai/chat/conversations/${activeConversation.value.id}/messages`,
-        {
-          method: 'POST',
-          body,
-        }
+        body as ReturnType<typeof createAiChatSubmissionBody>
       )
 
       // The server returns the assistant message; the user message was already added optimistically.

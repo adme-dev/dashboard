@@ -20,7 +20,9 @@ export type ToolContext = {
   /** Set by the loop; required for write tools that persist a proposal (create_task). */
   conversationId?: string
   /** Origin of the call. Non-chat surfaces persist proposals with conversation_id NULL and source set. */
-  source?: 'chat' | 'mcp' | 'social_inbox'
+  source?: 'chat' | 'mcp' | 'social_inbox' | 'god_mode_preparation'
+  /** Server-issued execution key used only to bind hidden God-mode preparations to their ledger. */
+  godModeExecutionKey?: string
   /** Server-derived admission scope. This is a narrowing hint for handlers and never authorizes a
    * model-supplied identifier by itself; handlers must still enforce their storage-level ACL. */
   assistantScope?: {

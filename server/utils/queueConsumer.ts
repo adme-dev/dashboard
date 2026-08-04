@@ -260,11 +260,32 @@ async function processGodModeAuditTerminal(payload: GodModeAuditEventInput): Pro
     // malformed payloads and all other database failures still throw for retry/dead-letter.
     if ((error as { code?: string } | null)?.code !== '23505') throw error
     const { queryOneFresh } = await import('~~/server/utils/db')
-    const existing = await queryOneFresh<{ phase: string }>(
-      `SELECT phase FROM god_mode_audit_events
+    const existing = await queryOneFresh<any>(
+      `SELECT actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase,
+              tenant_id, client_id, entity_type, entity_id, bypassed_controls, outcome_code,
+              emergency_disabled
+         FROM god_mode_audit_events
         WHERE correlation_id = $1 AND phase IN ('succeeded', 'failed') LIMIT 1`,
       [payload.correlationId]
     )
-    if (!existing) throw error
+    const normalizedControls = (values: string[] | undefined) => [...new Set(values ?? [])].sort()
+    const exactDuplicate = existing
+      && existing.actor_user_id === payload.actorUserId
+      && existing.correlation_id === payload.correlationId
+      && existing.session_digest === payload.sessionDigest
+      && existing.channel === payload.channel
+      && existing.route_or_tool === payload.routeOrTool
+      && existing.phase === payload.phase
+      && (existing.tenant_id ?? null) === (payload.tenantId ?? null)
+      && (existing.client_id ?? null) === (payload.clientId ?? null)
+      && (existing.entity_type ?? null) === (payload.entityType ?? null)
+      && (existing.entity_id ?? null) === (payload.entityId ?? null)
+      && JSON.stringify(normalizedControls(existing.bypassed_controls)) === JSON.stringify(normalizedControls(payload.bypassedControls))
+      && existing.outcome_code === payload.outcomeCode
+      && existing.emergency_disabled === payload.emergencyDisabled
+    if (!exactDuplicate) {
+      console.error('[God mode audit] conflicting terminal correlation', { correlationId: payload.correlationId })
+      throw error
+    }
   }
 }

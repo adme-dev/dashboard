@@ -5,6 +5,7 @@ import {
   type GodModeReconciliationDependencies,
   type ReconciliationCandidate
 } from '~~/server/utils/godMode/reconciliation'
+import * as reconciliationModule from '~~/server/utils/godMode/reconciliation'
 import { sendGodModeAuditTerminal } from '~~/server/utils/queue'
 import { processJob } from '~~/server/utils/queueConsumer'
 import { ROUTES } from '../../workers/pages-cron/src/index'
@@ -102,5 +103,27 @@ describe('God mode reconciliation', () => {
       '/api/cron/god-mode-reconciliation'
     ]))
     expect(ROUTES['0 * * * *']).toContain('/api/cron/anomaly-detection')
+  })
+
+  it('repairs only the persisted social link after verifying the existing task', async () => {
+    const repair = (reconciliationModule as any).repairSocialCaseTaskLink
+    expect(repair).toBeTypeOf('function')
+    if (typeof repair !== 'function') return
+
+    const findTask = vi.fn().mockResolvedValue({ id: 'task-7' })
+    const findConversation = vi.fn().mockResolvedValue({ id: 'conversation-7', linkedTaskId: null })
+    const linkExistingTask = vi.fn().mockResolvedValue(true)
+    const outcome = await repair({
+      compositePhase: 'task_created',
+      taskId: 'task-7',
+      socialConversationId: 'conversation-7',
+      clientId: 'client-7'
+    }, candidate().actorUserId, { findTask, findConversation, linkExistingTask })
+
+    expect(outcome).toEqual({ state: 'succeeded', resultReference: 'task-7' })
+    expect(findTask).toHaveBeenCalledWith('task-7')
+    expect(linkExistingTask).toHaveBeenCalledWith(expect.objectContaining({
+      taskId: 'task-7', socialConversationId: 'conversation-7', actorUserId: candidate().actorUserId
+    }))
   })
 })

@@ -137,7 +137,7 @@ describe('God mode gate inventory', () => {
       ordinary_user_behavior: 168,
       unrelated_configuration: 209
     })
-    expect(inventory.digest).toBe('603b34af54c7366f28986f8e9b7e5631ddd2c31c48ddd4575a487675c5f06ca2')
+    expect(inventory.digest).toBe('c61b76fa299667da67b96dd21f85a6c8c29926ad9a598ec2998d4ecee364cb1e')
     expect(CENTRAL_HELPER_BY_CLASS).toEqual({
       identity_tenant_hard_boundary: 'unchanged independent scope helper',
       provider_infrastructure_availability: 'unchanged provider/configuration check',

@@ -235,6 +235,7 @@ export async function processUserMessage(
   persona?: string,
   room?: { officeId: string, meetingId?: string, presentUserIds?: string[], transcriptTail?: string },
   pilotUat?: { evidenceId: string, turnId: string, releaseId: string },
+  durableSubmission?: { userMessageId: string },
 ): Promise<ChatResponse> {
   const startTime = Date.now()
   const turnId = pilotUat?.turnId ?? crypto.randomUUID()
@@ -411,11 +412,17 @@ export async function processUserMessage(
     : content
 
   // 6. Save the user message
-  const userMsg = await queryOne<any>(`
-    INSERT INTO ai_messages (conversation_id, role, content, context_sources)
-    VALUES ($1, 'user', $2, '[]'::jsonb)
-    RETURNING *
-  `, [conversationId, content])
+  const userMsg = durableSubmission
+    ? await queryOne<any>(`
+        INSERT INTO ai_messages (id, conversation_id, role, content, context_sources)
+        VALUES ($1, $2, 'user', $3, '[]'::jsonb)
+        RETURNING *
+      `, [durableSubmission.userMessageId, conversationId, content])
+    : await queryOne<any>(`
+        INSERT INTO ai_messages (conversation_id, role, content, context_sources)
+        VALUES ($1, 'user', $2, '[]'::jsonb)
+        RETURNING *
+      `, [conversationId, content])
 
   // 7. Multi-model routing: select the best model based on intent
   const selectedModel = selectModel(contextBundle.intent, content.length)

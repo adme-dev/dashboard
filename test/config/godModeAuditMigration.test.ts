@@ -4,7 +4,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 const migrationPath = new URL('../../server/database/migrations/345_god_mode_audit_events.sql', import.meta.url)
 const preExecutionMigrationPath = new URL('../../server/database/migrations/346_god_mode_pre_execution_audit.sql', import.meta.url)
-const migrationPaths = [migrationPath, preExecutionMigrationPath]
+const executionMigrationPath = new URL('../../server/database/migrations/347_god_mode_execution_reconciliation.sql', import.meta.url)
+const migrationPaths = [migrationPath, preExecutionMigrationPath, executionMigrationPath]
 const auditDatabaseUrl = process.env.GOD_MODE_AUDIT_TEST_DATABASE_URL
 const schemaName = `god_mode_audit_test_${crypto.randomUUID().replaceAll('-', '')}`
 let client: Client | undefined
@@ -51,6 +52,20 @@ describe('God mode audit migration', () => {
     expect(migration).toContain('NEW.emergency_disabled')
     expect(migration).not.toMatch(/\b(prompt|raw_payload|access_token|provider_body|claims)\b/i)
   })
+
+  it('adds hashed chat submissions, persisted tool claims, hidden proposal binding, and ambiguous evidence', () => {
+    const migration = readFileSync(executionMigrationPath, 'utf8')
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS ai_chat_submissions')
+    expect(migration).toContain('transport_token_hash')
+    expect(migration).not.toMatch(/transport_retry_token|raw_token/i)
+    expect(migration).toContain('UNIQUE (actor_user_id, conversation_id, transport_token_hash)')
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS god_mode_tool_call_claims')
+    expect(migration).toContain('UNIQUE (message_id, ordinal)')
+    expect(migration).toContain('god_mode_execution_key')
+    expect(migration).toContain('proposal_id')
+    expect(migration).toContain('execution_metadata')
+    expect(migration).toMatch(/phase[\s\S]*'ambiguous'/i)
+  })
 })
 
 const databaseDescribe = auditDatabaseUrl ? describe : describe.skip
@@ -60,6 +75,23 @@ databaseDescribe('God mode audit migration database regression', () => {
     client = await connectToAuditSchema()
     await client.query(`CREATE SCHEMA ${schemaName}`)
     await beginInAuditSchema(client)
+    await client.query(`
+      CREATE TABLE ai_conversations (id UUID PRIMARY KEY);
+      CREATE TABLE ai_messages (
+        id UUID PRIMARY KEY,
+        conversation_id UUID NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE,
+        role VARCHAR(20) NOT NULL,
+        content TEXT NOT NULL,
+        context_sources JSONB DEFAULT '[]'::jsonb
+      );
+      CREATE TABLE ai_pending_actions (
+        id UUID PRIMARY KEY,
+        conversation_id UUID,
+        user_id UUID NOT NULL,
+        source TEXT NOT NULL DEFAULT 'chat',
+        status TEXT NOT NULL DEFAULT 'proposed'
+      );
+    `)
     for (const path of migrationPaths) {
       const migration = readFileSync(path, 'utf8')
         .replace(/^\s*BEGIN;\s*/, '')
@@ -227,4 +259,86 @@ databaseDescribe('God mode audit migration database regression', () => {
       await Promise.all([setup.end(), succeeded.end(), failed.end(), verify.end()])
     }
   }, 30_000)
+
+  it('scopes hashed submission keys to actor and conversation and fixes tool ordinals to the persisted message', async () => {
+    const conversation = '10111111-1111-4111-8111-111111111111'
+    const messageOne = '10222222-2222-4222-8222-222222222222'
+    const messageTwo = '10333333-3333-4333-8333-333333333333'
+    const actorOne = '10444444-4444-4444-8444-444444444444'
+    const actorTwo = '10555555-5555-4555-8555-555555555555'
+    await client!.query('INSERT INTO ai_conversations (id) VALUES ($1)', [conversation])
+    await client!.query(
+      `INSERT INTO ai_messages (id, conversation_id, role, content) VALUES
+       ($1, $3, 'user', 'one'), ($2, $3, 'user', 'two')`,
+      [messageOne, messageTwo, conversation]
+    )
+    await client!.query(
+      `INSERT INTO ai_chat_submissions
+        (actor_user_id, conversation_id, transport_token_hash, request_digest, user_message_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [actorOne, conversation, 'a'.repeat(64), 'b'.repeat(64), messageOne]
+    )
+    await client!.query('SAVEPOINT duplicate_submission')
+    await expect(client!.query(
+      `INSERT INTO ai_chat_submissions
+        (actor_user_id, conversation_id, transport_token_hash, request_digest, user_message_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [actorOne, conversation, 'a'.repeat(64), 'b'.repeat(64), messageTwo]
+    )).rejects.toThrow(/duplicate key/i)
+    await client!.query('ROLLBACK TO SAVEPOINT duplicate_submission')
+    await expect(client!.query(
+      `INSERT INTO ai_chat_submissions
+        (actor_user_id, conversation_id, transport_token_hash, request_digest, user_message_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [actorTwo, conversation, 'a'.repeat(64), 'b'.repeat(64), messageTwo]
+    )).resolves.toBeDefined()
+
+    await client!.query(
+      `INSERT INTO god_mode_tool_call_claims (message_id, ordinal, tool_name, args_digest)
+       VALUES ($1, 0, 'create_task', $2)`,
+      [messageOne, 'c'.repeat(64)]
+    )
+    await client!.query('SAVEPOINT duplicate_ordinal')
+    await expect(client!.query(
+      `INSERT INTO god_mode_tool_call_claims (message_id, ordinal, tool_name, args_digest)
+       VALUES ($1, 0, 'propose_budget_change', $2)`,
+      [messageOne, 'd'.repeat(64)]
+    )).rejects.toThrow(/duplicate key/i)
+  })
+
+  it('allows one immutable ambiguous checkpoint followed by one terminal', async () => {
+    const actor = '10666666-6666-4666-8666-666666666666'
+    const correlation = '10777777-7777-4777-8777-777777777777'
+    const digest = 'e'.repeat(64)
+    await client!.query(
+      `INSERT INTO god_mode_audit_events
+        (actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase,
+         bypassed_controls, outcome_code, emergency_disabled)
+       VALUES ($1, $2, $3, 'application', 'create_task', 'attempt', '{}', 'started', FALSE)`,
+      [actor, correlation, digest]
+    )
+    await client!.query(
+      `INSERT INTO god_mode_audit_events
+        (actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase,
+         bypassed_controls, outcome_code, emergency_disabled)
+       VALUES ($1, $2, $3, 'application', 'create_task', 'ambiguous', ARRAY['confirmation'], 'dispatch_outcome_unknown', FALSE)`,
+      [actor, correlation, digest]
+    )
+    await client!.query('SAVEPOINT duplicate_ambiguous')
+    await expect(client!.query(
+      `INSERT INTO god_mode_audit_events
+        (actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase,
+         bypassed_controls, outcome_code, emergency_disabled)
+       VALUES ($1, $2, $3, 'application', 'create_task', 'ambiguous', ARRAY['confirmation'], 'dispatch_outcome_unknown', FALSE)`,
+      [actor, correlation, digest]
+    )).rejects.toThrow(/duplicate key/i)
+    await client!.query('ROLLBACK TO SAVEPOINT duplicate_ambiguous')
+    await expect(client!.query(
+      `INSERT INTO god_mode_audit_events
+        (actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase,
+         bypassed_controls, outcome_code, emergency_disabled)
+       VALUES ($1, $2, $3, 'application', 'create_task', 'succeeded', ARRAY['confirmation'], 'reconciled_succeeded', FALSE)`,
+      [actor, correlation, digest]
+    )).resolves.toBeDefined()
+  })
 })
