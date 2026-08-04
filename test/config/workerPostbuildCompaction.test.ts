@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   WORKER_MODULE_COMPACTION_MARKER,
+  buildCompressedPrecomputedManifestModule,
   compactDeployedWorkerModules,
   compactPrecomputedManifest,
   compactPlatformImports,
@@ -23,6 +24,96 @@ afterEach(async () => {
 })
 
 describe('Pages Worker postbuild compaction', () => {
+  it('encodes the SSR manifest compactly and reconstructs its exact runtime contract', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-manifest-module-'))
+    temporaryDirectories.push(directory)
+    const modulePath = path.join(directory, 'client.precomputed.mjs')
+    const manifest = {
+      dependencies: {
+        page: {
+          scripts: {
+            entry: {
+              file: 'entry.js',
+              module: true,
+              resourceType: 'script',
+              preload: true,
+              prefetch: true
+            }
+          },
+          styles: {
+            theme: {
+              file: 'theme.css',
+              resourceType: 'style',
+              preload: true,
+              prefetch: false
+            }
+          },
+          preload: {},
+          prefetch: {}
+        }
+      },
+      entrypoints: ['entry']
+    }
+
+    expect(typeof buildCompressedPrecomputedManifestModule).toBe('function')
+    const source = buildCompressedPrecomputedManifestModule(manifest)
+    await writeFile(modulePath, source, 'utf8')
+    const loaded = await (await import(`${pathToFileURL(modulePath).href}?v=1`)).default()
+
+    expect(loaded).toEqual(manifest)
+    expect(source).toContain('XEROFLOW_COMPACT_PRECOMPUTED')
+    expect(source).not.toContain('"resourceType"')
+  })
+
+  it('round-trips numeric zero without treating it as a missing resource field', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-manifest-zero-'))
+    temporaryDirectories.push(directory)
+    const modulePath = path.join(directory, 'client.precomputed.mjs')
+    const manifest = {
+      dependencies: {
+        page: {
+          scripts: {
+            entry: {
+              file: 0,
+              module: false,
+              resourceType: 'script'
+            }
+          },
+          styles: {},
+          preload: {},
+          prefetch: {}
+        }
+      },
+      entrypoints: []
+    }
+
+    await writeFile(
+      modulePath,
+      buildCompressedPrecomputedManifestModule(manifest),
+      'utf8'
+    )
+    const loaded = await (await import(`${pathToFileURL(modulePath).href}?v=zero`)).default()
+
+    expect(loaded).toEqual(manifest)
+  })
+
+  it('preserves the compact-manifest marker during deployed-module compaction', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-manifest-marker-'))
+    temporaryDirectories.push(directory)
+    const modulePath = path.join(directory, 'client.precomputed.mjs')
+    const source = buildCompressedPrecomputedManifestModule({
+      dependencies: {},
+      entrypoints: []
+    })
+    await writeFile(modulePath, source, 'utf8')
+
+    await compactDeployedWorkerModules(directory)
+
+    await expect(readFile(modulePath, 'utf8')).resolves.toContain(
+      'XEROFLOW_COMPACT_PRECOMPUTED'
+    )
+  })
+
   it('keeps only fields consumed by the precomputed SSR dependency renderer', () => {
     const result = compactPrecomputedManifest({
       dependencies: {
@@ -154,6 +245,81 @@ describe('Pages Worker postbuild compaction', () => {
       'import{Buffer}from"node:buffer";export{Buffer};\n'
     )
     await expect(readFile(sourceMap, 'utf8')).resolves.toBe('{"version":3}')
+    await expect(compactDeployedWorkerModules(directory)).resolves.toEqual({
+      changedFiles: 0,
+      savedBytes: 0
+    })
+  })
+
+  it('name-preservingly minifies deployed modules without changing exports', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-deployed-minify-'))
+    temporaryDirectories.push(directory)
+    const modulePath = path.join(directory, 'route.mjs')
+    const mapPath = `${modulePath}.map`
+    const repeatedRuntimeSteps = Array.from(
+      { length: 30 },
+      () => '  deliberatelyVerboseIntermediateValue += 0'
+    ).join('\n')
+    const source = `export function stableRuntimeHandler(inputValue) {
+  let deliberatelyVerboseIntermediateValue = inputValue
+${repeatedRuntimeSteps}
+  return deliberatelyVerboseIntermediateValue + 1
+}
+//# source${'MappingURL'}=route.mjs.map
+`
+    await writeFile(modulePath, source, 'utf8')
+    await writeFile(mapPath, JSON.stringify({
+      version: 3,
+      sources: ['route.ts'],
+      names: [],
+      mappings: ''
+    }), 'utf8')
+
+    const first = await compactDeployedWorkerModules(directory)
+    const compacted = await readFile(modulePath, 'utf8')
+    const imported = await import(`${pathToFileURL(modulePath).href}?v=1`)
+
+    expect(first.changedFiles).toBe(1)
+    expect(first.savedBytes).toBeGreaterThan(500)
+    expect(compacted).not.toContain('sourceMappingURL')
+    expect(compacted.length).toBeLessThan(source.length)
+    expect(imported.stableRuntimeHandler.name).toBe('stableRuntimeHandler')
+    expect(imported.stableRuntimeHandler(4)).toBe(5)
+    expect(JSON.parse(await readFile(mapPath, 'utf8'))).toMatchObject({ version: 3 })
+    await expect(compactDeployedWorkerModules(directory)).resolves.toEqual({
+      changedFiles: 0,
+      savedBytes: 0
+    })
+    await expect(readFile(modulePath, 'utf8')).resolves.toBe(compacted)
+  })
+
+  it('converges keepNames compaction before writing a deployed module', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-convergent-minify-'))
+    temporaryDirectories.push(directory)
+    const modulePath = path.join(directory, 'route.mjs')
+    const source = `import{af as defineHandler,aH as requireAuthentication,f as readRequestBody,aD as queryOne,c as createHttpError}from"../../../../nitro/nitro.mjs";const handler=defineHandler(async event=>{await requireAuthentication(event);const body=await readRequestBody(event),{publishedId,projectId,formatKey}=body;let selectedId=publishedId;if(!selectedId&&projectId&&formatKey&&(selectedId=(await queryOne("SELECT id FROM banner_published WHERE project_id = $1 AND format_key = $2 AND schedule_status = 'scheduled'",[projectId,formatKey]))?.id),!selectedId)throw createHttpError({statusCode:404,statusMessage:"Scheduled publish not found"});const result=await queryOne(\`
+    UPDATE banner_published
+    SET schedule_status = 'cancelled', scheduled_at = NULL, updated_at = NOW()
+    WHERE id = $1 AND schedule_status = 'scheduled'
+    RETURNING id, format_key AS "formatKey", schedule_status AS "scheduleStatus"
+  \`,[selectedId]);if(!result)throw createHttpError({statusCode:404,statusMessage:"No scheduled publish found to cancel"});return result});export{handler as default};`
+    await writeFile(modulePath, source, 'utf8')
+
+    await compactDeployedWorkerModules(directory)
+    const compacted = await readFile(modulePath, 'utf8')
+    const nextTransform = await transform(compacted, {
+      loader: 'js',
+      format: 'esm',
+      platform: 'neutral',
+      target: 'esnext',
+      minify: true,
+      keepNames: true,
+      legalComments: 'none'
+    })
+
+    expect(Buffer.byteLength(nextTransform.code)).toBeGreaterThanOrEqual(
+      Buffer.byteLength(compacted)
+    )
     await expect(compactDeployedWorkerModules(directory)).resolves.toEqual({
       changedFiles: 0,
       savedBytes: 0

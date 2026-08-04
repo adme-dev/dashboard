@@ -4,6 +4,7 @@ import {
   type EvaluationExecutorObservation,
   type EvaluationRunnerRequest
 } from '~~/server/utils/ai/governance/deterministicEvaluationRunner'
+import { EvaluationModelExecutorError } from '~~/server/utils/ai/governance/evaluationModelExecutor'
 import type { EvaluationCase } from '~~/server/utils/ai/governance/contracts'
 
 const RUN_ID = '10000000-0000-4000-8000-000000000001'
@@ -75,6 +76,10 @@ function request(overrides: Partial<EvaluationRunnerRequest> = {}): EvaluationRu
       maxLatencyMsPerCase: 20_000,
       maxTotalCostUsdMicros: 1_000_000,
       maxWallTimeMs: 60_000
+    },
+    executionCostEnvelope: {
+      maxCostUsdMicrosPerCase: 120_000,
+      maxSpendUsdMicros: 1_000_000
     },
     ...overrides
   }
@@ -188,11 +193,13 @@ describe('runDeterministicEvaluation', () => {
 
     const result = await runDeterministicEvaluation(request({
       cases,
-      budget: { ...request().budget, maxTotalCostUsdMicros: 1_000 }
+      budget: { ...request().budget, maxTotalCostUsdMicros: 1_000 },
+      executionCostEnvelope: { maxCostUsdMicrosPerCase: 700, maxSpendUsdMicros: 1_000 }
     }), { execute })
 
     expect(result).toMatchObject({ status: 'failed', gatePassed: null, failureCode: 'total_cost_exceeded' })
-    expect(result.results).toHaveLength(2)
+    expect(result.results).toHaveLength(1)
+    expect(execute).toHaveBeenCalledOnce()
   })
 
   it('honours abort before execution and does not call the model executor', async () => {
@@ -221,7 +228,11 @@ describe('runDeterministicEvaluation', () => {
       expect(result).toMatchObject({ status: 'completed', gatePassed: false })
       expect(result.results[0]).toMatchObject({
         outcome: 'error',
-        deterministicChecks: { executionTimedOut: true, caseBudgetRespected: false }
+        deterministicChecks: { executionTimedOut: true, caseBudgetRespected: false },
+        inputTokens: 8_000,
+        outputTokens: 1_200,
+        costUsdMicros: 120_000,
+        latencyMs: 5
       })
       expect(execute.mock.calls[0]![0].signal?.aborted).toBe(true)
     } finally {
@@ -229,17 +240,121 @@ describe('runDeterministicEvaluation', () => {
     }
   })
 
-  it('cancels a running executor when the caller aborts', async () => {
-    const controller = new AbortController()
-    const execute = vi.fn((_input: { signal?: AbortSignal }) => new Promise<EvaluationExecutorObservation>(() => {}))
-    const pending = runDeterministicEvaluation(request({ signal: controller.signal }), { execute })
+  it('charges the conservative envelope for an unknown timeout and stops before another call', async () => {
+    vi.useFakeTimers()
+    try {
+      const execute = vi.fn(() => new Promise<EvaluationExecutorObservation>(() => {}))
+      const pending = runDeterministicEvaluation(request({
+        cases: [
+          { id: CASE_ID, definition: evaluationCase() },
+          { id: '20000000-0000-4000-8000-000000000002', definition: evaluationCase({ caseKey: 'second_case' }) }
+        ],
+        budget: {
+          ...request().budget,
+          maxLatencyMsPerCase: 5,
+          maxCostUsdMicrosPerCase: 120_000,
+          maxTotalCostUsdMicros: 120_000
+        },
+        executionCostEnvelope: {
+          maxCostUsdMicrosPerCase: 120_000,
+          maxSpendUsdMicros: 120_000
+        }
+      }), { execute })
 
+      await vi.advanceTimersByTimeAsync(6)
+      const result = await pending
+
+      expect(result).toMatchObject({ status: 'failed', failureCode: 'total_cost_exceeded' })
+      expect(result.totals.costUsdMicros).toBe(120_000)
+      expect(execute).toHaveBeenCalledOnce()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('charges unmetered executor failures to the approved envelope and excludes them from passing evidence', async () => {
+    const execute = vi.fn().mockRejectedValue(new EvaluationModelExecutorError(
+      'model_usage_unmetered',
+      'The model did not provide complete usage metering'
+    ))
+
+    const result = await runDeterministicEvaluation(request({
+      cases: [
+        { id: CASE_ID, definition: evaluationCase() },
+        { id: '20000000-0000-4000-8000-000000000002', definition: evaluationCase({ caseKey: 'second_case' }) }
+      ],
+      budget: { ...request().budget, maxTotalCostUsdMicros: 120_000 },
+      executionCostEnvelope: { maxCostUsdMicrosPerCase: 120_000, maxSpendUsdMicros: 120_000 }
+    }), { execute })
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      gatePassed: null,
+      failureCode: 'total_cost_exceeded',
+      totals: { passedCount: 0, errorCount: 1, inputTokens: 8_000, outputTokens: 1_200, costUsdMicros: 120_000 }
+    })
+    expect(result.results[0]).toMatchObject({
+      outcome: 'error',
+      score: null,
+      deterministicChecks: { executorUnmetered: true, caseBudgetRespected: false }
+    })
+    expect(execute).toHaveBeenCalledOnce()
+  })
+
+  it('preserves conservative spend evidence when the wall deadline times out an active call', async () => {
+    vi.useFakeTimers()
+    try {
+      const execute = vi.fn(() => new Promise<EvaluationExecutorObservation>(() => {}))
+      const pending = runDeterministicEvaluation(request({
+        budget: { ...request().budget, maxLatencyMsPerCase: 5, maxWallTimeMs: 3 }
+      }), { execute })
+
+      await vi.advanceTimersByTimeAsync(4)
+      const result = await pending
+
+      expect(result).toMatchObject({ status: 'failed', failureCode: 'wall_time_exceeded' })
+      expect(result.results[0]).toMatchObject({
+        outcome: 'error',
+        inputTokens: 8_000,
+        outputTokens: 1_200,
+        costUsdMicros: 120_000,
+        deterministicChecks: { executionTimedOut: true, wallTimeExceeded: true }
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('persists bounded conservative evidence when the caller aborts an active invocation', async () => {
+    const controller = new AbortController()
+    let markStarted!: () => void
+    const started = new Promise<void>(resolve => { markStarted = resolve })
+    const execute = vi.fn((_input: { signal?: AbortSignal }) => {
+      markStarted()
+      return new Promise<EvaluationExecutorObservation>(() => {})
+    })
+    const pending = runDeterministicEvaluation(request({
+      signal: controller.signal,
+      cases: [
+        { id: CASE_ID, definition: evaluationCase() },
+        { id: '20000000-0000-4000-8000-000000000002', definition: evaluationCase({ caseKey: 'second_case' }) }
+      ],
+      executionCostEnvelope: { maxCostUsdMicrosPerCase: 27, maxSpendUsdMicros: 27 }
+    }), { execute })
+
+    await started
     controller.abort()
     const result = await pending
 
     expect(result).toMatchObject({ status: 'cancelled', gatePassed: null, failureCode: 'aborted' })
-    expect(result.results).toEqual([])
+    expect(result.results).toHaveLength(1)
+    expect(result.results[0]).toMatchObject({
+      outcome: 'error',
+      costUsdMicros: 27,
+      deterministicChecks: { executionAborted: true, caseBudgetRespected: false }
+    })
     expect(execute.mock.calls[0]![0].signal?.aborted).toBe(true)
+    expect(execute).toHaveBeenCalledOnce()
   })
 
   it('provides only a frozen simulation request and never a live tool executor', async () => {

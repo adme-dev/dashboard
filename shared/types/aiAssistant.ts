@@ -1,5 +1,7 @@
 export type AssistantCatalogMode = 'legacy' | 'governed'
 
+export type AssistantReleaseAccessBasis = 'company_owner' | 'catalog_policy'
+
 export type AssistantToolRestrictionReason
   = 'release_suspended'
     | 'release_retired'
@@ -40,9 +42,12 @@ export interface MyAssistantActivePackView {
   version: number
   departmentName: string
   releaseState: 'pilot' | 'active'
+  accessBasis: AssistantReleaseAccessBasis
 }
 
 export interface MyAssistantAuthorityView {
+  runtimeMode: 'legacy' | 'pilot' | 'enforced'
+  coverageStatus: 'legacy' | 'governed' | 'authenticated_core'
   currentRole: string
   readOnly: boolean
   permissionGroups: string[]
@@ -68,6 +73,7 @@ export interface MyAssistantToolRestrictionView {
 }
 
 export interface MyAssistantView extends MyAssistantConfig {
+  observedMemoryEnabled: boolean
   authority: MyAssistantAuthorityView
   tools: MyAssistantToolView[]
   restrictions: MyAssistantToolRestrictionView[]

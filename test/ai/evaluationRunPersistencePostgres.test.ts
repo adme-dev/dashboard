@@ -118,9 +118,29 @@ describe('Postgres evaluation persistence adapter', () => {
       'openai/gpt-oss-120b',
       'a'.repeat(64),
       'b'.repeat(64),
+      'running',
       '2026-07-21T08:00:00.000Z',
       ACTOR_ID
     ])
+  })
+
+  it('claims a queued run only while exact approval artifacts remain current and unrevoked', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [dbRunRow()] })
+    const adapter = createPostgresEvaluationRunTransaction({ query })
+
+    await adapter.claimRun({
+      runId: RUN_ID,
+      planDigest: 'c'.repeat(64),
+      rateCardId: '70000000-0000-4000-8000-000000000001',
+      approvalId: '80000000-0000-4000-8000-000000000001',
+      claimedAt: '2026-08-03T02:00:00.000Z'
+    })
+
+    const [sql] = query.mock.calls[0]!
+    expect(sql).toMatch(/status = 'running'[\s\S]*run\.status = 'queued'/)
+    expect(sql).toMatch(/plan\.plan_digest = \$2[\s\S]*plan\.rate_card_id = \$3::uuid[\s\S]*approval\.id = \$4::uuid/)
+    expect(sql).toMatch(/rate_card\.valid_from[\s\S]*rate_card\.valid_until[\s\S]*approval\.approved_at[\s\S]*approval\.expires_at/)
+    expect(sql).toMatch(/rate_revocation\.rate_card_id IS NULL[\s\S]*approval_revocation\.approval_id IS NULL/)
   })
 
   it('locks the run before accepting evidence', async () => {

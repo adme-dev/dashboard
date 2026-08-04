@@ -963,6 +963,15 @@ export function listAiModelCatalogOptions(): AiModelCatalogOption[] {
     .sort((a, b) => a.provider.localeCompare(b.provider) || a.modelId.localeCompare(b.modelId))
 }
 
+/** Pure provider-scoped lookup used before converting trusted text-token prices. */
+export function getAiModelCatalogOption(provider: string, modelId: string): AiModelCatalogOption | null {
+  const prefix = provider === 'workers_ai' ? 'workersai/' : `${provider}/`
+  const normalizedModelId = modelId.startsWith(prefix) ? modelId.slice(prefix.length) : modelId
+  return listAiModelCatalogOptions().find(
+    option => option.provider === provider && option.modelId === normalizedModelId
+  ) ?? null
+}
+
 function toRow(seed: FeatureSeed): AiModelMapRow {
   const meta = metadataForModel(seed.modelId)
   return {

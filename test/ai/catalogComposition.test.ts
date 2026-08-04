@@ -10,6 +10,8 @@ import {
 
 const DEPARTMENT_ID = '10000000-0000-4000-8000-000000000001'
 const USER_ID = '50000000-0000-4000-8000-000000000001'
+const PACK_ID = '60000000-0000-4000-8000-000000000001'
+const PACK_VERSION_ID = '30000000-0000-4000-8000-000000000001'
 
 const tools = [
   { name: 'get_budget_health' },
@@ -20,6 +22,7 @@ const tools = [
 function row(overrides: Partial<ActiveCatalogRow> = {}): ActiveCatalogRow {
   return {
     sourceType: 'pack',
+    isLatestPackVersion: true,
     releaseState: 'active',
     releaseId: '20000000-0000-4000-8000-000000000001',
     departmentId: DEPARTMENT_ID,
@@ -50,6 +53,7 @@ describe('composeGovernedCatalog', () => {
     const composed = composeGovernedCatalog(tools, [], ['MEDIA_BUYING'])
 
     expect(composed.mode).toBe('legacy')
+    expect(composed.coverageStatus).toBe('legacy')
     expect(composed.tools).toEqual(tools)
     expect(composed.instructionsPreamble).toBe('')
   })
@@ -222,10 +226,15 @@ describe('composeEffectiveAssistantTools', () => {
       grantedPermissionGroups: ['MEDIA_BUYING'],
       personaToolAllowlist: ['get_budget_health', 'propose_budget_change'],
       disabledTools: ['get_budget_health'],
-      readOnly: true
+      readOnly: true,
+      runtimePolicy: {
+        mode: 'pilot',
+        authenticatedCoreTools: ['search_knowledge', 'get_tasks']
+      }
     })
 
     expect(composed.tools).toEqual([])
+    expect(composed.coverageStatus).toBe('governed')
     expect(composed.denials).toEqual(expect.arrayContaining([
       { toolName: 'search_knowledge', reason: 'persona_narrowed' },
       { toolName: 'propose_budget_change', reason: 'read_only' },
@@ -236,14 +245,67 @@ describe('composeEffectiveAssistantTools', () => {
 })
 
 describe('loadCatalogControlRows', () => {
+  it('admits pilot releases for a database-confirmed active owner without weakening evaluation gates', async () => {
+    const queryRows = vi.fn(async (sql: string) => sql.includes('ranked_pack_versions')
+      ? [{ pack_id: PACK_ID, pack_version_id: PACK_VERSION_ID, version: 1 }]
+      : [])
+
+    await loadCatalogControlRows([DEPARTMENT_ID], USER_ID, { queryRows })
+
+    const [sql, params] = queryRows.mock.calls[1]!
+    expect(params).toEqual([[DEPARTMENT_ID], USER_ID])
+    expect(sql).toContain("owner_actor.user_role = 'owner'")
+    expect(sql).toContain('owner_actor.is_active = TRUE')
+    expect(sql).toContain('owner_actor.id = $2')
+
+    const packCteStart = sql.indexOf('active_pack_rows AS (')
+    const capabilityCteStart = sql.indexOf('active_capability_rows AS (')
+    const capabilityCteEnd = sql.indexOf('SELECT * FROM active_pack_rows')
+    expect(packCteStart).toBeGreaterThanOrEqual(0)
+    expect(capabilityCteStart).toBeGreaterThan(packCteStart)
+    expect(capabilityCteEnd).toBeGreaterThan(capabilityCteStart)
+
+    const packCte = sql.slice(packCteStart, capabilityCteStart)
+    const capabilityCte = sql.slice(capabilityCteStart, capabilityCteEnd)
+
+    expect(packCte).toContain("pack_release.release_state IN ('pilot', 'active', 'suspended', 'retired')")
+    expect(packCte).not.toContain("'draft'")
+    expect(packCte).toMatch(
+      /pack_release\.rollout_scope <> 'pilot'\s+OR \(SELECT is_active_owner FROM actor_authority\)\s+OR EXISTS \(/
+    )
+    expect(packCte).toContain("pilot_member.release_kind = 'pack'")
+    expect(packCte).toContain('pilot_member.team_member_id = $2')
+    expect(packCte).toMatch(
+      /pack_release\.evaluation_gate_passed = TRUE AND pack_release\.evaluation_run_status = 'completed'/
+    )
+
+    expect(capabilityCte).toContain("capability_release.release_state IN ('pilot', 'active', 'suspended', 'retired')")
+    expect(capabilityCte).not.toContain("'draft'")
+    expect(capabilityCte).toMatch(
+      /capability_release\.rollout_scope <> 'pilot'\s+OR \(SELECT is_active_owner FROM actor_authority\)\s+OR EXISTS \(/
+    )
+    expect(capabilityCte).toContain("pilot_member.release_kind = 'capability'")
+    expect(capabilityCte).toContain('pilot_member.team_member_id = $2')
+    expect(capabilityCte).toMatch(
+      /capability_release\.evaluation_gate_passed = TRUE\s+AND capability_release\.evaluation_run_status = 'completed'/
+    )
+  })
+
   it('loads completed active releases and inactive control markers with a parameterized department list', async () => {
-    const queryRows = vi.fn().mockResolvedValue([])
+    const queryRows = vi.fn(async (sql: string) => sql.includes('ranked_pack_versions')
+      ? [{ pack_id: PACK_ID, pack_version_id: PACK_VERSION_ID, version: 1 }]
+      : [])
     const db: CatalogCompositionDb = { queryRows }
 
     await loadCatalogControlRows([DEPARTMENT_ID], USER_ID, db)
 
-    const [sql, params] = queryRows.mock.calls[0]!
+    const [latestSql, latestParams] = queryRows.mock.calls[0]!
+    expect(latestParams).toEqual([[DEPARTMENT_ID]])
+    expect(latestSql).toContain('DENSE_RANK() OVER')
+    expect(latestSql).toContain('ORDER BY candidate.version DESC')
+    const [sql, params] = queryRows.mock.calls[1]!
     expect(params).toEqual([[DEPARTMENT_ID], USER_ID])
+    expect(sql).not.toContain('pack_release.pack_version_id = ANY($3::uuid[])')
     expect(sql).toContain('release_state IN (\'pilot\', \'active\', \'suspended\', \'retired\')')
     expect(sql).toContain('ai_release_pilot_members')
     expect(sql).toContain('pilot_member.team_member_id = $2')

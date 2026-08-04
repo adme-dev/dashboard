@@ -113,6 +113,7 @@ export interface EvaluationExecutionEnvelope {
   approvedBy: string
   notAfter: string
   maxSpendUsdMicros: number
+  maxCostUsdMicrosPerCase: number
   maxModelCalls: number
   rateCard: Readonly<EvaluationModelRateCard>
   materialIdentity: EvaluationMaterialIdentity
@@ -345,6 +346,7 @@ export function planEvaluationExecution(
       approvedBy: input.approval.approvedBy,
       notAfter: new Date(Math.min(approvalExpiresAt, rateValidUntil)).toISOString(),
       maxSpendUsdMicros: boundedEstimate,
+      maxCostUsdMicrosPerCase: Number(estimate.perCase),
       maxModelCalls: input.caseCount,
       rateCard: Object.freeze(structuredClone(input.rateCard)),
       materialIdentity: Object.freeze(structuredClone(input.materialIdentity)),

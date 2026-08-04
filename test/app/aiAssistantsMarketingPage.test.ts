@@ -6,6 +6,13 @@ import { shouldRedirectAppHostPath } from '../../server/middleware/01-app-host-r
 const read = (path: string) => readFileSync(path, 'utf8')
 
 describe('AI Assistants public launch surface', () => {
+  it('explains that company-owner access remains evaluation-governed', () => {
+    const source = read('app/pages/features/[slug].vue')
+
+    expect(source).toContain('company owners')
+    expect(source).toContain('evaluation-approved')
+  })
+
   it('publishes a dedicated, indexable page with honest product positioning', () => {
     const page = read('app/pages/ai-assistants.vue')
     const hero = read('app/components/marketing/AiAssistantsHero.vue')

@@ -38,6 +38,7 @@ const TOKEN_PRICING_PER_MILLION: Record<string, { input: number, output: number,
 }
 
 function finiteNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
   const numberValue = Number(value)
   return Number.isFinite(numberValue) ? numberValue : null
 }
@@ -62,8 +63,11 @@ export function estimateAiInvocationCostUsd(input: {
   const pricing = TOKEN_PRICING_PER_MILLION[normalized]
   if (!pricing) return null
 
-  const promptTokens = nullableInteger(input.promptTokens) ?? 0
-  const completionTokens = nullableInteger(input.completionTokens) ?? 0
+  const measuredPromptTokens = nullableInteger(input.promptTokens)
+  const measuredCompletionTokens = nullableInteger(input.completionTokens)
+  if (measuredPromptTokens === null || measuredCompletionTokens === null) return null
+  const promptTokens = measuredPromptTokens
+  const completionTokens = measuredCompletionTokens
   const cachedInputTokens = Math.min(
     promptTokens,
     nullableInteger(input.cachedInputTokens) ?? 0
@@ -143,5 +147,29 @@ export async function recordAiInvocation(input: AiInvocationInput): Promise<void
     }
     const message = error instanceof Error ? error.message : String(error)
     console.warn('[ai-invocation-ledger] record failed:', message)
+  }
+}
+
+/** Attach the persisted assistant message to every attempt in one server-generated turn. */
+export async function linkAiInvocationTurnMessage(turnId: string, userId: string, assistantMessageId: string): Promise<void> {
+  try {
+    const linked = await execute(`
+      UPDATE ai_invocations
+         SET metadata = metadata || jsonb_build_object('assistantMessageId', $3::text)
+       WHERE metadata ->> 'turnId' = $1
+         AND user_id = $2::uuid
+         AND (NOT (metadata ? 'assistantMessageId') OR metadata ->> 'assistantMessageId' = $3)
+    `, [turnId, userId, assistantMessageId])
+    if (linked < 1) throw new AiInvocationLinkError()
+  } catch (error) {
+    if (error instanceof AiInvocationLinkError) throw error
+    throw new AiInvocationLinkError()
+  }
+}
+
+export class AiInvocationLinkError extends Error {
+  constructor() {
+    super('Assistant message linkage was not acknowledged')
+    this.name = 'AiInvocationLinkError'
   }
 }

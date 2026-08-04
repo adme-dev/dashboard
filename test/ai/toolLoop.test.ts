@@ -5,6 +5,20 @@ import * as economics from '~~/server/utils/ai/tools/economics'
 import type { ActiveCatalogRow } from '~~/server/utils/ai/governance/catalogComposition'
 
 const mockRecordAiInvocation = vi.fn()
+const mockResolveModelWithTransport = vi.fn()
+
+vi.mock('~~/server/utils/claudeClient', async (importOriginal) => ({
+  ...await importOriginal<typeof import('~~/server/utils/claudeClient')>(),
+  resolveModelWithTransport: (...args: unknown[]) => mockResolveModelWithTransport(...args),
+}))
+
+vi.mock('~~/server/utils/ai/modelAssignments', async (importOriginal) => {
+  const original = await importOriginal<typeof import('~~/server/utils/ai/modelAssignments')>()
+  return {
+    ...original,
+    resolveAiModelAssignment: vi.fn().mockResolvedValue(null),
+  }
+})
 
 // Stub fetchClientEconomics so the get_client_profitability handler never touches the DB.
 // Imported back via `economics` so tests can assert the REAL registered handler ran (the loop's
@@ -102,6 +116,7 @@ describe('runToolLoop (injected mock model)', () => {
   beforeEach(() => {
     mockRecordAiInvocation.mockReset()
     mockRecordAiInvocation.mockResolvedValue(undefined)
+    mockResolveModelWithTransport.mockReset()
   })
 
   it('returns the model text with no tool calls when the model just answers', async () => {
@@ -120,22 +135,101 @@ describe('runToolLoop (injected mock model)', () => {
     }))
   })
 
+  it('records direct provider calls as not using the Gateway', async () => {
+    mockResolveModelWithTransport.mockReturnValue({ model: textModel('Direct provider response.'), gatewayUsed: false })
+
+    await runToolLoop({
+      ctx: ctx as any, system: 'sys', messages: [{ role: 'user', content: 'hi' }],
+      seed: 'c1', modelSpec: 'groq/openai/gpt-oss-120b',
+    })
+
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      gatewayUsed: false,
+      provider: 'groq',
+    }))
+  })
+
+  it('records Gateway-configured provider calls as using the Gateway', async () => {
+    mockResolveModelWithTransport.mockReturnValue({ model: textModel('Gateway provider response.'), gatewayUsed: true })
+
+    await runToolLoop({
+      ctx: ctx as any, system: 'sys', messages: [{ role: 'user', content: 'hi' }],
+      seed: 'c1', modelSpec: 'groq/openai/gpt-oss-120b',
+    })
+
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      gatewayUsed: true,
+      provider: 'groq',
+    }))
+  })
+
+  it('passes the shared non-unique entity guard to the agency tool model', async () => {
+    let system = ''
+    const model = new MockLanguageModelV3({
+      doGenerate: async (options: any) => {
+        system = options.prompt.find((message: { role: string }) => message.role === 'system')?.content ?? ''
+        return {
+          content: [{ type: 'text', text: 'Please choose one.' }],
+          finishReason: 'stop',
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          warnings: []
+        }
+      }
+    })
+
+    await runToolLoop({
+      ctx: ctx as any,
+      system: 'sys',
+      messages: [{ role: 'user', content: 'Which record do you mean?' }],
+      seed: 'c1',
+      model
+    })
+
+    expect(system).toContain('When supplied or retrieved data contains multiple plausible matching entities')
+    expect(system).toContain('Do not guess, act, prepare a proposal, or claim an effect')
+  })
+
   it('falls back to the second model when the primary throws', async () => {
     const badModel = new MockLanguageModelV3({ doGenerate: async () => { throw new Error('provider down') } })
     const out = await runToolLoop({
       ctx: ctx as any, system: 'sys', messages: [{ role: 'user', content: 'hi' }],
-      seed: 'c1', model: badModel, fallbackModel: textModel('Recovered via fallback.'),
+      seed: 'c1', model: badModel, fallbackModel: textModel('Recovered via fallback.'), turnId: 'turn-1', loopId: 'l1',
     })
     expect(out.text).toContain('fallback')
-    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
-      fallbackUsed: true,
-      modelId: 'injected',
-    }))
+    expect(mockRecordAiInvocation).toHaveBeenCalledTimes(2)
+    expect(mockRecordAiInvocation.mock.calls[0]?.[0]).toMatchObject({
+      fallbackUsed: false, status: 'error', metadata: expect.objectContaining({ turnId: 'turn-1', attemptId: 'turn-1:l1:primary', terminal: false })
+    })
+    expect(mockRecordAiInvocation.mock.calls[1]?.[0]).toMatchObject({
+      fallbackUsed: true, status: 'success', metadata: expect.objectContaining({ turnId: 'turn-1', attemptId: 'turn-1:l1:fallback', terminal: true })
+    })
+  })
+
+  it('records both terminal provider errors with immutable attempt identities', async () => {
+    const bad = new MockLanguageModelV3({ doGenerate: async () => { throw new Error('provider down') } })
+    await expect(runToolLoop({ ctx: ctx as any, system: 'sys', messages: [{ role: 'user', content: 'hi' }], seed: 'c1', model: bad, fallbackModel: bad, turnId: 'turn-error', loopId: 'l1' } as any)).rejects.toThrow('provider down')
+    expect(mockRecordAiInvocation).toHaveBeenCalledTimes(2)
+    expect(mockRecordAiInvocation.mock.calls.map(([row]) => ({ status: row.status, attemptId: row.metadata.attemptId, terminal: row.metadata.terminal }))).toEqual([
+      { status: 'error', attemptId: 'turn-error:l1:primary', terminal: false },
+      { status: 'error', attemptId: 'turn-error:l1:fallback', terminal: true }
+    ])
+  })
+
+  it('records only a durable evidence correlation id and does not self-assert live safety', async () => {
+    await runToolLoop({
+      ctx: ctx as any, system: 'sys', messages: [{ role: 'user', content: 'hi' }], seed: 'c1', model: textModel('Done'),
+      turnId: 'turn-untrusted', loopId: 'l1',
+      pilotEvidenceId: '10000000-0000-4000-8000-000000000001'
+    } as any)
+    expect(mockRecordAiInvocation.mock.calls[0]?.[0].metadata).toMatchObject({ pilotEvidenceId: '10000000-0000-4000-8000-000000000001' })
+    expect(mockRecordAiInvocation.mock.calls[0]?.[0].metadata.pilotEvidence).toBeUndefined()
+    expect(mockRecordAiInvocation.mock.calls[0]?.[0].metadata.liveSafety).toBeUndefined()
   })
 
   it('intersects the live registry with evaluated active catalog releases', async () => {
     const catalogRow: ActiveCatalogRow = {
       sourceType: 'pack',
+      isLatestPackVersion: true,
       releaseState: 'active',
       releaseId: '20000000-0000-4000-8000-000000000001',
       departmentId: '10000000-0000-4000-8000-000000000001',
@@ -166,12 +260,18 @@ describe('runToolLoop (injected mock model)', () => {
       seed: 'c1',
       model: textModel('Done.'),
       catalogRows: [catalogRow],
-      permissionGroups: ['FINANCE']
+      permissionGroups: ['FINANCE'],
+      runtimePolicy: {
+        mode: 'pilot',
+        authenticatedCoreTools: ['search_knowledge', 'get_tasks']
+      }
     })
 
     expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
       metadata: expect.objectContaining({
         catalogMode: 'governed',
+        catalogRuntimeMode: 'pilot',
+        catalogCoverageStatus: 'governed',
         catalogReleaseIds: [catalogRow.releaseId],
         toolCount: 1
       })

@@ -117,6 +117,8 @@ describe('department draft pack seeder', () => {
 
   it('atomically creates immutable evaluation material and draft-only releases', async () => {
     const repository = new FakeRepository()
+    const expectedEvaluationCaseCount = DEPARTMENT_PACK_BLUEPRINTS
+      .find(blueprint => blueprint.key === 'creative')!.evaluationCases.length
 
     const result = await seedDepartmentDraftPack(request(), repository)
 
@@ -127,11 +129,11 @@ describe('department draft pack seeder', () => {
       ownerUserId: OWNER_ID,
       releaseState: 'draft',
       version: 1,
-      evaluationCaseCount: 3
+      evaluationCaseCount: expectedEvaluationCaseCount
     })
     expect(result.materialDigest).toMatch(/^[a-f0-9]{64}$/)
     expect(repository.calls[0]).toMatchObject({ method: 'lockSeed' })
-    expect(repository.calls.filter(call => call.method === 'insertEvaluationCase')).toHaveLength(3)
+    expect(repository.calls.filter(call => call.method === 'insertEvaluationCase')).toHaveLength(expectedEvaluationCaseCount)
     expect(repository.calls.filter(call => call.method === 'insertCapability')).toHaveLength(2)
     expect(repository.calls.filter(call => call.method === 'insertCapabilityRelease'))
       .toHaveLength(2)

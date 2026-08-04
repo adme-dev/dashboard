@@ -39,8 +39,17 @@ export interface EvaluationRunStartRequest {
   createdBy: string
 }
 
+export interface EvaluationRunClaimRequest {
+  runId: string
+  planDigest: string
+  rateCardId: string
+  approvalId: string
+  claimedAt: string
+}
+
 export interface EvaluationRunTransaction {
   createOrGetRun(input: EvaluationRunRecord): Promise<EvaluationRunRecord>
+  claimRun(input: EvaluationRunClaimRequest): Promise<EvaluationRunRecord | null>
   lockRun(id: string): Promise<EvaluationRunRecord | null>
   listResults(id: string): Promise<EvaluationCaseResult[]>
   insertResult(departmentId: string, result: EvaluationCaseResult): Promise<void>
@@ -186,8 +195,9 @@ function validateRunnerResult(
   return { results, summary }
 }
 
-export async function startEvaluationRun(
+async function createEvaluationRunWithStatus(
   rawRequest: EvaluationRunStartRequest,
+  status: 'queued' | 'running',
   repository: EvaluationRunRepository = postgresEvaluationRunRepository
 ): Promise<EvaluationRunRecord> {
   const request: EvaluationRunStartRequest = {
@@ -201,7 +211,7 @@ export async function startEvaluationRun(
     id: request.runId,
     departmentId: request.departmentId,
     materialIdentity: request.materialIdentity,
-    status: 'running',
+    status,
     gatePassed: null,
     caseCount: 0,
     passedCount: 0,
@@ -210,7 +220,7 @@ export async function startEvaluationRun(
     totalInputTokens: 0,
     totalOutputTokens: 0,
     totalCostUsdMicros: 0,
-    startedAt: now,
+    startedAt: status === 'running' ? now : null,
     completedAt: null,
     createdBy: request.createdBy,
     createdAt: now
@@ -218,7 +228,7 @@ export async function startEvaluationRun(
 
   return repository.transaction(async (tx) => {
     const current = await tx.createOrGetRun(initial)
-    if (!sameStartIdentity(current, request)) {
+    if (!sameStartIdentity(current, request) || current.status !== status) {
       throw new EvaluationPersistenceError(
         'evaluation_run_identity_conflict',
         409,
@@ -226,6 +236,38 @@ export async function startEvaluationRun(
       )
     }
     return current
+  })
+}
+
+export function startEvaluationRun(rawRequest: EvaluationRunStartRequest, repository: EvaluationRunRepository = postgresEvaluationRunRepository) {
+  return createEvaluationRunWithStatus(rawRequest, 'running', repository)
+}
+
+export function createQueuedEvaluationRun(rawRequest: EvaluationRunStartRequest, repository: EvaluationRunRepository = postgresEvaluationRunRepository) {
+  return createEvaluationRunWithStatus(rawRequest, 'queued', repository)
+}
+
+export async function claimEvaluationRun(
+  rawRequest: EvaluationRunClaimRequest,
+  repository: EvaluationRunRepository = postgresEvaluationRunRepository
+): Promise<EvaluationRunRecord> {
+  const request = {
+    runId: UUID.parse(rawRequest.runId),
+    planDigest: z.string().regex(/^[a-f0-9]{64}$/).parse(rawRequest.planDigest),
+    rateCardId: UUID.parse(rawRequest.rateCardId),
+    approvalId: UUID.parse(rawRequest.approvalId),
+    claimedAt: z.string().datetime({ offset: true }).parse(rawRequest.claimedAt)
+  }
+  return repository.transaction(async (tx) => {
+    const claimed = await tx.claimRun(request)
+    if (claimed) return claimed
+    const current = await tx.lockRun(request.runId)
+    if (!current) throw new EvaluationPersistenceError('evaluation_run_not_found', 404, 'Evaluation run not found')
+    throw new EvaluationPersistenceError(
+      current.status === 'queued' ? 'evaluation_run_claim_artifacts_invalid' : 'evaluation_run_claim_conflict',
+      409,
+      'Evaluation run could not be claimed for these current approval artifacts'
+    )
   })
 }
 
@@ -320,6 +362,11 @@ const RUN_COLUMNS = `id, department_id, eval_suite_version_id, pack_version_id,
   toolset_version_digest, status, gate_passed, case_count, passed_count,
   failed_count, human_review_count, total_input_tokens, total_output_tokens,
   total_cost_usd_micros, started_at, completed_at, created_by, created_at`
+const CLAIMED_RUN_COLUMNS = `run.id, run.department_id, run.eval_suite_version_id, run.pack_version_id,
+  run.capability_version_id, run.model_provider, run.model_id, run.prompt_version_digest,
+  run.toolset_version_digest, run.status, run.gate_passed, run.case_count, run.passed_count,
+  run.failed_count, run.human_review_count, run.total_input_tokens, run.total_output_tokens,
+  run.total_cost_usd_micros, run.started_at, run.completed_at, run.created_by, run.created_at`
 
 function safeDbInteger(value: string | number): number {
   const parsed = typeof value === 'number' ? value : Number(value)
@@ -385,7 +432,7 @@ export function createPostgresEvaluationRunTransaction(db: EvaluationSqlClient):
            id, department_id, eval_suite_version_id, pack_version_id, capability_version_id,
            model_provider, model_id, prompt_version_digest, toolset_version_digest,
            status, started_at, created_by
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'running', $10, $11)
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          ON CONFLICT (id) DO NOTHING`,
         [
           input.id,
@@ -397,6 +444,7 @@ export function createPostgresEvaluationRunTransaction(db: EvaluationSqlClient):
           input.materialIdentity.modelId,
           input.materialIdentity.promptVersionDigest,
           input.materialIdentity.toolsetVersionDigest,
+          input.status,
           input.startedAt,
           input.createdBy
         ]
@@ -405,6 +453,40 @@ export function createPostgresEvaluationRunTransaction(db: EvaluationSqlClient):
       const row = result.rows[0] as DbEvaluationRunRow | undefined
       if (!row) throw new EvaluationPersistenceError('evaluation_run_create_failed', 409, 'Evaluation run could not be created')
       return mapRun(row)
+    },
+
+    async claimRun(input) {
+      const result = await db.query(
+        `UPDATE ai_eval_runs run
+            SET status = 'running', started_at = $5::timestamptz
+           FROM ai_eval_execution_plans plan
+           JOIN ai_eval_model_rate_cards rate_card ON rate_card.id = plan.rate_card_id
+           JOIN ai_eval_cost_approvals approval
+             ON approval.evaluation_run_id = plan.evaluation_run_id
+            AND approval.plan_digest = plan.plan_digest
+            AND approval.rate_card_id = plan.rate_card_id
+           LEFT JOIN ai_eval_model_rate_card_revocations rate_revocation
+             ON rate_revocation.rate_card_id = rate_card.id
+           LEFT JOIN ai_eval_cost_approval_revocations approval_revocation
+             ON approval_revocation.approval_id = approval.id
+          WHERE run.id = $1::uuid
+            AND run.status = 'queued'
+            AND plan.evaluation_run_id = run.id
+            AND plan.plan_digest = $2
+            AND plan.rate_card_id = $3::uuid
+            AND approval.id = $4::uuid
+            AND $5::timestamptz >= rate_card.valid_from
+            AND $5::timestamptz < rate_card.valid_until
+            AND $5::timestamptz >= approval.approved_at
+            AND $5::timestamptz < approval.expires_at
+            AND approval.max_spend_usd_micros >= plan.estimated_upper_bound_usd_micros
+            AND rate_revocation.rate_card_id IS NULL
+            AND approval_revocation.approval_id IS NULL
+        RETURNING ${CLAIMED_RUN_COLUMNS}`,
+        [input.runId, input.planDigest, input.rateCardId, input.approvalId, input.claimedAt]
+      )
+      const row = result.rows[0] as DbEvaluationRunRow | undefined
+      return row ? mapRun(row) : null
     },
 
     async lockRun(id) {

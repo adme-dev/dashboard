@@ -63,7 +63,8 @@ export function buildMyAssistantExplainability(
     rbacFilteredTools: permissionTools,
     catalogRows: context.catalogRows,
     grantedPermissionGroups: context.permissionGroups,
-    readOnly: context.isReadOnly
+    readOnly: context.isReadOnly,
+    runtimePolicy: context.runtimePolicy
   })
   const persona = resolvePersona(context.preferences.personaKey)
   const effective = composeEffectiveAssistantTools({
@@ -72,7 +73,8 @@ export function buildMyAssistantExplainability(
     grantedPermissionGroups: context.permissionGroups,
     personaToolAllowlist: persona.toolAllowlist,
     disabledTools: context.preferences.disabledTools,
-    readOnly: context.isReadOnly
+    readOnly: context.isReadOnly,
+    runtimePolicy: context.runtimePolicy
   })
   const effectiveNames = new Set(effective.tools.map(tool => tool.name))
   const disabledNames = new Set(context.preferences.disabledTools)
@@ -114,7 +116,10 @@ export function buildMyAssistantExplainability(
     personaKey: context.preferences.personaKey,
     disabledTools: [...context.preferences.disabledTools],
     memoryEnabled: context.preferences.memoryEnabled,
+    observedMemoryEnabled: context.observedMemoryEnabled,
     authority: {
+      runtimeMode: context.runtimePolicy.mode,
+      coverageStatus: baseline.coverageStatus,
       currentRole: context.identity.role,
       readOnly: context.isReadOnly,
       permissionGroups: [...context.permissionGroups],
@@ -141,7 +146,8 @@ export function buildMyAssistantExplainability(
         label: pack.label,
         version: pack.version,
         departmentName: departmentNames.get(pack.departmentId) ?? 'Company',
-        releaseState: pack.releaseState
+        releaseState: pack.releaseState,
+        accessBasis: pack.accessBasis
       })),
       catalogMode: baseline.mode
     },

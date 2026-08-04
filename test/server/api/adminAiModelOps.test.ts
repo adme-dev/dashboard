@@ -86,6 +86,7 @@ describe('GET /api/admin/ai/model-ops/model-map', () => {
     process.env.AI_LOOP_MODEL = 'groq/openai/gpt-oss-120b'
     process.env.AI_LOOP_FALLBACK_MODEL = 'groq/openai/gpt-oss-20b'
     process.env.AI_LOOP_BUDGET_USD = '0.50'
+    process.env.AI_GOVERNED_CATALOG_MODE = 'enforced'
     process.env.INTERNAL_API_KEY = 'internal-secret'
     process.env.AI_ORCHESTRATOR_WORKER_URL = 'https://ai-orchestrator-agent.example.workers.dev'
     process.env.PLATFORM_AGENTS_WORKER_URL = 'https://platform-agents.example.workers.dev'
@@ -148,6 +149,7 @@ describe('GET /api/admin/ai/model-ops/model-map', () => {
       fallbackModel: 'groq/openai/gpt-oss-20b',
       budgetUsd: 0.5,
       advisorBackend: 'groq',
+      governedCatalogMode: 'enforced',
     })
     expect(result.config.orchestrator).toMatchObject({
       internalApiKeyConfigured: true,
@@ -169,6 +171,14 @@ describe('GET /api/admin/ai/model-ops/model-map', () => {
       agent: 'Spend Controller',
       mode: 'Read-only + proposal drafts',
     })
+  })
+
+  it('reports the safe legacy mode for unknown catalog rollout configuration', async () => {
+    process.env.AI_GOVERNED_CATALOG_MODE = 'not-a-mode'
+
+    const result = await modelMapHandler({ context: {} })
+
+    expect(result.config.loop.governedCatalogMode).toBe('legacy')
   })
 
   it('treats a whitespace-only INTERNAL_API_KEY as not ready for manual orchestrator checks', async () => {

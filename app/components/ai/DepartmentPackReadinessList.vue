@@ -1,13 +1,26 @@
 <script setup lang="ts">
 import type {
+  AiCatalogGovernanceItem,
   AiDepartmentOwnerCandidate,
   AiDepartmentReadinessItem,
-  AiDepartmentReadinessStatus
+  AiDepartmentReadinessStatus,
+  AiEvaluationRunView
 } from '~/types/aiGovernance'
 
-defineProps<{ items: AiDepartmentReadinessItem[] }>()
+const props = defineProps<{
+  items: AiDepartmentReadinessItem[]
+  catalogItems?: AiCatalogGovernanceItem[]
+  evaluationRuns?: AiEvaluationRunView[]
+  catalogPending?: boolean
+  catalogError?: string | null
+  evaluationsPending?: boolean
+  evaluationsError?: string | null
+}>()
 const emit = defineEmits<{
   seed: [item: AiDepartmentReadinessItem, candidate?: AiDepartmentOwnerCandidate]
+  changed: []
+  retryCatalog: []
+  retryEvaluations: []
 }>()
 
 const OWNER_RESOLUTION_STATUSES = new Set<AiDepartmentReadinessStatus>([
@@ -50,6 +63,18 @@ function candidateRole(candidate: AiDepartmentOwnerCandidate) {
 
 function candidateIsEligible(candidate: AiDepartmentOwnerCandidate) {
   return candidate.eligible && candidate.source === 'department_member'
+}
+
+function catalogFor(item: AiDepartmentReadinessItem) {
+  return props.catalogItems?.find(candidate => candidate.kind === 'pack' && candidate.key === item.packKey && candidate.department.id === item.department?.id) ?? null
+}
+
+function evaluationCount(item: AiDepartmentReadinessItem) {
+  return item.coverage.evaluationCases || 1
+}
+
+function headingId(prefix: string, item: AiDepartmentReadinessItem, catalog: AiCatalogGovernanceItem) {
+  return `${prefix}-${item.key}-${catalog.release.id}`
 }
 </script>
 
@@ -117,11 +142,81 @@ function candidateIsEligible(candidate: AiDepartmentOwnerCandidate) {
           </UBadge>
         </div>
 
+        <p class="text-xs font-semibold uppercase tracking-wide text-muted">Overview</p>
+
         <ul v-if="item.blockers.length" class="space-y-1.5 text-sm" aria-label="Activation blockers">
           <li v-for="blocker in item.blockers" :key="blocker" class="flex items-start gap-2 text-warning">
             <UIcon name="i-lucide-shield-alert" class="mt-0.5 size-4 shrink-0" /><span>{{ blocker }}</span>
           </li>
         </ul>
+
+        <template v-if="catalogFor(item)">
+          <UAlert v-if="catalogError" color="warning" variant="soft" icon="i-lucide-clock-alert" title="Catalog data may be stale" :description="catalogError"><template #actions><UButton size="xs" color="warning" variant="soft" @click="emit('retryCatalog')">Retry catalog</UButton></template></UAlert>
+          <UAlert v-if="evaluationsPending" color="neutral" variant="soft" icon="i-lucide-loader-circle" title="Evaluation evidence loading" description="Loading the latest exact-version evaluation results." />
+          <UAlert v-else-if="evaluationsError" color="error" variant="soft" icon="i-lucide-triangle-alert" title="Evaluation evidence unavailable" :description="evaluationsError"><template #actions><UButton size="xs" color="error" variant="soft" @click="emit('retryEvaluations')">Retry evaluations</UButton></template></UAlert>
+          <div class="border-t border-default pt-4">
+            <AiGovernanceEvaluationRunPanel
+              :item="catalogFor(item)!"
+              :runs="evaluationRuns ?? []"
+              :default-case-count="evaluationCount(item)"
+              :heading-id="headingId('evaluation', item, catalogFor(item)!)"
+              @changed="emit('changed')"
+            />
+          </div>
+          <div class="border-t border-default pt-4">
+            <AiGovernancePilotMembershipDialog
+              :item="catalogFor(item)!"
+              :candidates="item.ownerCandidates"
+              :heading-id="headingId('pilots', item, catalogFor(item)!)"
+              @changed="emit('changed')"
+            />
+          </div>
+          <div class="border-t border-default pt-4">
+            <AiGovernanceCatalogReleasePanel
+              :item="catalogFor(item)!"
+              :runs="evaluationRuns ?? []"
+              :heading-id="headingId('release', item, catalogFor(item)!)"
+              :evidence-unavailable="evaluationsPending || Boolean(evaluationsError)"
+              @changed="emit('changed')"
+            />
+          </div>
+        </template>
+        <UAlert
+          v-else-if="catalogPending"
+          color="neutral"
+          variant="soft"
+          icon="i-lucide-clock-3"
+          title="Catalog controls loading"
+          description="Loading the exact catalog release identity before controls are shown."
+        />
+        <UAlert
+          v-else-if="catalogError"
+          color="error"
+          variant="soft"
+          icon="i-lucide-triangle-alert"
+          title="Catalog controls unavailable"
+          :description="`${catalogError} Suspend and retire will be available after the exact catalog release identity is reloaded.`"
+        >
+          <template #actions><UButton size="xs" color="error" variant="soft" @click="emit('retryCatalog')">Retry catalog</UButton></template>
+        </UAlert>
+        <UAlert
+          v-else-if="item.releaseState === 'draft'"
+          color="neutral"
+          variant="soft"
+          icon="i-lucide-clock-3"
+          title="Catalog controls unavailable"
+          description="The draft is seeded. Refresh to load its governed evaluation, pilot, and release controls."
+        />
+        <UAlert
+          v-else
+          color="warning"
+          variant="soft"
+          icon="i-lucide-triangle-alert"
+          title="Catalog controls unavailable"
+          description="Suspend and retire remain unavailable until the exact catalog release identity is loaded."
+        >
+          <template #actions><UButton size="xs" color="warning" variant="soft" @click="emit('retryCatalog')">Retry catalog</UButton></template>
+        </UAlert>
 
         <div
           v-if="item.releaseState === 'not_seeded' && item.ownerCandidates.length"

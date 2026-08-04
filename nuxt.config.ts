@@ -112,9 +112,12 @@ export default defineNuxtConfig({
 
     // AI tool-calling (Slice 1) — OFF by default; flip per-env to enable the loop
     aiToolsEnabled: process.env.AI_TOOLS_ENABLED === 'true',
+    aiPilotUatEnabled: process.env.AI_PILOT_UAT_ENABLED === 'true',
     aiLoopModel: process.env.AI_LOOP_MODEL || 'groq/openai/gpt-oss-120b', // Option 2: Groq open-source default
     // Fallback was kimi-k2 but Groq returns 404 for it (not on the account) — gpt-oss-20b is the valid sibling.
     aiLoopFallbackModel: process.env.AI_LOOP_FALLBACK_MODEL || 'groq/openai/gpt-oss-20b',
+    // Governed catalog rollout remains private and fails back to legacy for missing/unknown values.
+    aiGovernedCatalogMode: process.env.AI_GOVERNED_CATALOG_MODE || 'legacy',
     // Inferred personal-memory distillation (Phase-0 WS-A.8b) — OFF by default. When enabled, the
     // chat engine distils ≤3 durable memories per turn fire-and-forget. Hard gate per the build loop.
     aiMemoryDistillEnabled: process.env.AI_MEMORY_DISTILL_ENABLED === 'true',
@@ -123,7 +126,7 @@ export default defineNuxtConfig({
     aiControllerL2Enabled: process.env.AI_CONTROLLER_L2_ENABLED === 'true',
     // Observe & Learn W-2 (observe-and-learn spec §4) — OFF by default. When enabled, a daily cron
     // distils each staff member's OWN recurring routines into source='observed', user-scoped memories.
-    // Read only at the cron boundary (observe-and-learn.post.ts checks process.env directly). Hard gate.
+    // The shared request policy prefers Cloudflare bindings and fails closed on malformed values.
     aiObserveEnabled: process.env.AI_OBSERVE_ENABLED === 'true',
     // Observe & Learn W-4 proactive suggestion — HELD for explicit sign-off; DOUBLY dormant (also needs
     // AI_OBSERVE_ENABLED). No proactive routine suggestion fires until this is on. Hard gate.

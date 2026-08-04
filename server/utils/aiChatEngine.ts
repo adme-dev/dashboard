@@ -12,6 +12,11 @@ import {
   resolvePersonalAssistantContext
 } from '~~/server/utils/ai/personalAssistantContext'
 import { fetchScopedMentionedEntities } from '~~/server/utils/ai/mentionedEntityContext'
+import { resolveServerCatalogRuntimePolicy } from '~~/server/utils/ai/governance/catalogComposition'
+import { resolveObserveAndLearnRuntimePolicy } from '~~/server/utils/ai/observe/runtimePolicy'
+import { linkAiInvocationTurnMessage } from '~~/server/utils/ai/invocationLedger'
+import { bindPilotUatContext } from '~~/server/utils/ai/governance/pilotRuntimeBinding'
+import { spotlight, spotlightSystemClause } from '~~/server/utils/ai/spotlight'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
 export interface ChatResponse {
@@ -39,7 +44,7 @@ function selectModel(intent: AiIntent, contentLength: number): string {
   return GROQ_MODELS.LLAMA_70B
 }
 
-function buildSystemPrompt(
+export function buildSystemPrompt(
   userRole: string,
   contextItems: AiContextSource[],
   learnedPatterns?: string[],
@@ -73,7 +78,13 @@ Help them be productive. Only share information relevant to their work.`
     contextBlock = `\n\n## Relevant Agency Data\nHere is live data from the agency's systems that may be relevant to the user's question:\n\n`
     for (const item of contextItems) {
       const pinMarker = pinnedEntityIds?.has(item.id) ? ' ⭐ (user referenced this directly)' : ''
-      contextBlock += `- **[${item.type}] ${item.title}**${pinMarker}: ${item.snippet}\n`
+      const source = spotlight(JSON.stringify({
+        type: item.type,
+        title: item.title,
+        snippet: item.snippet,
+        url: item.url
+      }), `context:${item.id}`)
+      contextBlock += `- ${source}${pinMarker}\n`
     }
     contextBlock += `\nUse this data to give specific, accurate answers. Reference concrete names, numbers, and statuses when available. Items marked with ⭐ were explicitly referenced by the user — prioritize answering about those. If the data doesn't answer the question, say so honestly rather than guessing.`
   }
@@ -82,8 +93,8 @@ Help them be productive. Only share information relevant to their work.`
   let patternsBlock = ''
   if (learnedPatterns && learnedPatterns.length > 0) {
     patternsBlock = `\n\n## Learned Preferences\nBased on previous feedback, keep these corrections and preferences in mind:\n`
-    for (const p of learnedPatterns) {
-      patternsBlock += `- ${p}\n`
+    for (const [index, pattern] of learnedPatterns.entries()) {
+      patternsBlock += `- ${spotlight(pattern, `feedback-pattern:${index}`)}\n`
     }
   }
 
@@ -161,7 +172,9 @@ You help agency staff with their day-to-day work, providing insights about tasks
 
 ## User Context
 ${roleGuidance}
-${contextBlock}${patternsBlock}${formatGuidance}`
+${contextBlock}${patternsBlock}${formatGuidance}
+
+${spotlightSystemClause()}`
 }
 
 // Post-process AI response: auto-link entity references to their URLs
@@ -220,12 +233,24 @@ export async function processUserMessage(
   boardId?: string,
   persona?: string,
   room?: { officeId: string, meetingId?: string, presentUserIds?: string[], transcriptTail?: string },
+  pilotUat?: { evidenceId: string, turnId: string, releaseId: string },
 ): Promise<ChatResponse> {
   const startTime = Date.now()
+  const turnId = pilotUat?.turnId ?? crypto.randomUUID()
+  const cfg = useRuntimeConfig(event) as any
+  const runtimePolicy = resolveServerCatalogRuntimePolicy(event, cfg)
   // Re-admit the actor from current server state for every turn. This is the authority source for
   // role, departments, clients, personal narrowing, and evaluated catalog releases; the role passed
   // by older callers is deliberately not trusted as the runtime authorization decision.
-  const assistantContext = await resolvePersonalAssistantContext({ userId, event })
+  const resolvedAssistantContext = await resolvePersonalAssistantContext({
+    userId,
+    event,
+    runtimePolicy,
+    observedMemoryEnabled: resolveObserveAndLearnRuntimePolicy(event, { runtimeConfig: cfg }).enabled
+  })
+  const assistantContext = pilotUat
+    ? bindPilotUatContext(resolvedAssistantContext, pilotUat.releaseId)
+    : resolvedAssistantContext
   const effectiveUserRole = assistantContext.identity.role
   const agentConfig = assistantContext.preferences
   // Persona = one skill-pack per turn (narrows tools ∩ RBAC + a focus preamble). An explicit arg (chat
@@ -241,7 +266,7 @@ export async function processUserMessage(
   explicitOrPersisted ??= agentConfig.personaKey
   // Persist an explicit choice (migration-free: system_context JSONB) so it sticks across reloads and
   // for the voice/quick-action paths. Non-fatal if persistence fails.
-  if (persona && event) {
+  if (persona && event && !pilotUat) {
     await execute(
       `UPDATE ai_conversations
        SET system_context = COALESCE(system_context, '{}'::jsonb) || jsonb_build_object('persona', $2::text)
@@ -402,7 +427,6 @@ export async function processUserMessage(
   // 7a. GATE → gated tool-calling loop (Slice 1, behind AI_TOOLS_ENABLED). Trivial chit-chat keeps
   // the existing fast path; data/action intents route through the agentic loop. Failures degrade
   // to the existing single-shot path below.
-  const cfg = useRuntimeConfig() as any
   let proposedAction: { proposalId: string, resolved: unknown, toolName?: string } | null = null
   let toolTrace: Array<{ name: string, args: unknown }> = []
   let usedToolLoop = false
@@ -410,7 +434,7 @@ export async function processUserMessage(
   let toolCostUsd: number | null = null
   let promptTokens: number | null = null
   let completionTokens: number | null = null
-  if (event && shouldUseToolLoop({ aiToolsEnabled: !!cfg.aiToolsEnabled, hasEvent: !!event, intent: contextBundle.intent })) {
+  if (event && (pilotUat || shouldUseToolLoop({ aiToolsEnabled: !!cfg.aiToolsEnabled, hasEvent: !!event, intent: contextBundle.intent }))) {
     try {
       const { runToolLoop } = await import('~~/server/utils/ai/toolLoop')
       const loopMessages = history
@@ -472,9 +496,13 @@ export async function processUserMessage(
                   disabledTools: agentConfig.disabledTools,
                   catalogRows: assistantContext.catalogRows,
                   permissionGroups: assistantContext.permissionGroups,
+                  runtimePolicy: assistantContext.runtimePolicy,
                   catalogInstructionsAlreadyIncluded: true,
                   featureKey: 'agency_ai_l2_specialist_loop',
                   requestId: conversationId,
+                  turnId,
+                  loopId: `l2:${pk}`,
+                  pilotEvidenceId: pilotUat?.evidenceId,
                   metadata: { specialistPersona: pk, controller: 'l2' },
                 })
                 l2Cost += sub.costUsd ?? 0
@@ -538,7 +566,12 @@ export async function processUserMessage(
           disabledTools: agentConfig.disabledTools,
           catalogRows: assistantContext.catalogRows,
           permissionGroups: assistantContext.permissionGroups,
+          runtimePolicy: assistantContext.runtimePolicy,
           catalogInstructionsAlreadyIncluded: true,
+          requestId: conversationId,
+          turnId,
+          loopId: 'l1',
+          pilotEvidenceId: pilotUat?.evidenceId,
         })
         aiContent = loop.text
         toolTrace = loop.toolCalls
@@ -554,6 +587,7 @@ export async function processUserMessage(
           : 'I looked into that but didn’t find anything to report.'
       }
     } catch (err) {
+      if (pilotUat) throw err
       console.error('AI tool loop failed; falling back to single-shot:', err)
       // fall through to the existing LoRA/Groq path
     }
@@ -648,12 +682,13 @@ export async function processUserMessage(
     promptTokens,
     completionTokens,
   ])
+  if (assistantMsg?.id && usedToolLoop) await linkAiInvocationTurnMessage(turnId, userId, assistantMsg.id)
 
   // 10b. Inferred memory distillation (Phase-0 WS-A.8b) — fire-and-forget AFTER the response, gated
   // by AI_MEMORY_DISTILL_ENABLED (dormant by default). Distils ≤3 durable `inferred` memories from
   // this turn for future recall. Strictly user-scoped, fully fail-safe (never throws), and registered
   // via runAfterResponse so it survives on Cloudflare without blocking the reply.
-  if (event && cfg.aiMemoryDistillEnabled && !isError && aiContent.trim()) {
+  if (event && cfg.aiMemoryDistillEnabled && !pilotUat && !isError && aiContent.trim()) {
     const distillWork = import('~~/server/utils/ai/memory/orchestrate')
       .then(({ distillAndStoreMemories }) =>
         distillAndStoreMemories({ userId, turn: { userMessage: content, assistantMessage: aiContent }, event }))

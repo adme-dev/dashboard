@@ -1,5 +1,46 @@
+import type { H3Event } from 'h3'
 import { queryRows as realQueryRows } from '~~/server/utils/db'
 import { PERMISSION_GROUPS, type PermissionGroup } from '~~/server/utils/permissions'
+
+export type AssistantCatalogRuntimeMode = 'legacy' | 'pilot' | 'enforced'
+export type AssistantCatalogCoverageStatus = 'legacy' | 'governed' | 'authenticated_core'
+
+export interface CatalogRuntimePolicy {
+  mode: AssistantCatalogRuntimeMode
+  authenticatedCoreTools: readonly ['search_knowledge', 'get_tasks']
+}
+
+const AUTHENTICATED_CORE_TOOLS = ['search_knowledge', 'get_tasks'] as const
+
+/** Validate server configuration into the only runtime-policy shape admitted downstream. */
+export function resolveCatalogRuntimePolicy(configuredMode: unknown): CatalogRuntimePolicy {
+  const mode: AssistantCatalogRuntimeMode = configuredMode === 'pilot' || configuredMode === 'enforced'
+    ? configuredMode
+    : 'legacy'
+  return { mode, authenticatedCoreTools: AUTHENTICATED_CORE_TOOLS }
+}
+
+/**
+ * Resolve private request-time Cloudflare bindings before Nuxt's private runtime config. Browser
+ * input is deliberately absent from this boundary, and malformed/missing values fail to legacy.
+ */
+export function resolveServerCatalogRuntimePolicy(
+  event?: H3Event,
+  runtimeConfig?: { aiGovernedCatalogMode?: unknown }
+): CatalogRuntimePolicy {
+  const cloudflareMode = (event?.context as any)?.cloudflare?.env?.AI_GOVERNED_CATALOG_MODE
+  let configuredMode = runtimeConfig?.aiGovernedCatalogMode
+  if (configuredMode === undefined && cloudflareMode === undefined) {
+    try {
+      configuredMode = (useRuntimeConfig(event) as { aiGovernedCatalogMode?: unknown })
+        .aiGovernedCatalogMode
+    } catch {
+      // Unit/non-Nuxt callers continue to the process fallback below.
+    }
+  }
+  configuredMode ??= process.env.AI_GOVERNED_CATALOG_MODE
+  return resolveCatalogRuntimePolicy(cloudflareMode ?? configuredMode)
+}
 
 export type CatalogSourceType = 'pack' | 'capability'
 export type CatalogAccessMode = 'read' | 'draft' | 'propose'
@@ -8,6 +49,8 @@ export type CatalogPermissionCeiling = PermissionGroup | 'AUTHENTICATED'
 
 export interface ActiveCatalogRow {
   sourceType: CatalogSourceType
+  /** Pack rows are marked against the deterministic latest numeric version preflight. */
+  isLatestPackVersion: boolean
   releaseState: CatalogControlReleaseState
   releaseId: string
   departmentId: string
@@ -64,6 +107,12 @@ interface ActiveCatalogDbRow {
   access_mode: string | null
 }
 
+interface LatestPackVersionDbRow {
+  pack_id: string
+  pack_version_id: string
+  version: number | string
+}
+
 const defaultDb: CatalogCompositionDb = { queryRows: realQueryRows as CatalogCompositionDb['queryRows'] }
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const PERMISSION_CEILING_SET = new Set<string>([...PERMISSION_GROUPS, 'AUTHENTICATED'])
@@ -75,9 +124,15 @@ function boundedNumber(value: number | string | null): number | null {
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null
 }
 
-function mapCatalogRow(row: ActiveCatalogDbRow): ActiveCatalogRow {
+function mapCatalogRow(
+  row: ActiveCatalogDbRow,
+  latestPackVersionIds: ReadonlySet<string>
+): ActiveCatalogRow {
   return {
     sourceType: row.source_type === 'capability' ? 'capability' : 'pack',
+    isLatestPackVersion: row.source_type === 'pack'
+      && row.pack_version_id != null
+      && latestPackVersionIds.has(row.pack_version_id),
     releaseState: row.release_state === 'pilot'
       || row.release_state === 'active'
       || row.release_state === 'suspended'
@@ -127,8 +182,56 @@ export async function loadCatalogControlRows(
   }
   if (!UUID_PATTERN.test(userId)) throw new Error('Catalog user identifier must be a valid UUID value.')
 
+  const latestPackVersions = await db.queryRows<LatestPackVersionDbRow>(
+    `WITH ranked_pack_versions AS (
+       SELECT
+         pack.id AS pack_id,
+         candidate.id AS pack_version_id,
+         candidate.version,
+         DENSE_RANK() OVER (
+           PARTITION BY pack.id
+           ORDER BY candidate.version DESC
+         ) AS version_rank
+       FROM ai_capability_packs pack
+       JOIN ai_capability_pack_versions candidate ON candidate.pack_id = pack.id
+       WHERE pack.department_id = ANY($1::uuid[])
+     )
+     SELECT pack_id, pack_version_id, version
+       FROM ranked_pack_versions
+      WHERE version_rank = 1
+      ORDER BY pack_id, pack_version_id`,
+    [departmentIds]
+  )
+  const latestPackVersionIds = new Set<string>()
+  const seenPackIds = new Set<string>()
+  for (const row of latestPackVersions) {
+    const version = boundedNumber(row.version)
+    if (
+      !UUID_PATTERN.test(row.pack_id)
+      || !UUID_PATTERN.test(row.pack_version_id)
+      || version == null
+      || version < 1
+    ) {
+      throw new Error('Catalog latest pack version data is invalid.')
+    }
+    if (seenPackIds.has(row.pack_id)) {
+      throw new Error(`Catalog pack ${row.pack_id} has an ambiguous latest version.`)
+    }
+    seenPackIds.add(row.pack_id)
+    latestPackVersionIds.add(row.pack_version_id)
+  }
+
   const rows = await db.queryRows<ActiveCatalogDbRow>(
-    `WITH active_pack_rows AS (
+    `WITH actor_authority AS (
+       SELECT EXISTS (
+         SELECT 1
+           FROM team_members owner_actor
+          WHERE owner_actor.id = $2
+            AND owner_actor.is_active = TRUE
+            AND owner_actor.user_role = 'owner'
+       ) AS is_active_owner
+     ),
+     active_pack_rows AS (
        SELECT
          'pack'::text AS source_type,
          pack_release.release_state,
@@ -167,6 +270,7 @@ export async function loadCatalogControlRows(
          AND pack_release.release_state IN ('pilot', 'active', 'suspended', 'retired')
          AND (
            pack_release.rollout_scope <> 'pilot'
+           OR (SELECT is_active_owner FROM actor_authority)
            OR EXISTS (
              SELECT 1
                FROM ai_release_pilot_members pilot_member
@@ -224,6 +328,7 @@ export async function loadCatalogControlRows(
          AND capability_release.release_state IN ('pilot', 'active', 'suspended', 'retired')
          AND (
            capability_release.rollout_scope <> 'pilot'
+           OR (SELECT is_active_owner FROM actor_authority)
            OR EXISTS (
              SELECT 1
                FROM ai_release_pilot_members pilot_member
@@ -255,7 +360,7 @@ export async function loadCatalogControlRows(
     [departmentIds, userId]
   )
 
-  return rows.map(mapCatalogRow)
+  return rows.map(row => mapCatalogRow(row, latestPackVersionIds))
 }
 
 /**
@@ -299,6 +404,7 @@ export interface CatalogBudgetCeiling {
 
 export interface GovernedCatalogComposition<T> {
   mode: 'legacy' | 'governed'
+  coverageStatus: AssistantCatalogCoverageStatus
   tools: T[]
   instructionsPreamble: string
   budget: CatalogBudgetCeiling | null
@@ -347,6 +453,7 @@ export function composeGovernedCatalog<T extends { name: string, mutates?: boole
   if (catalogRows.length === 0) {
     return {
       mode: 'legacy',
+      coverageStatus: 'legacy',
       tools: rbacFilteredTools,
       instructionsPreamble: '',
       budget: null,
@@ -457,6 +564,7 @@ export function composeGovernedCatalog<T extends { name: string, mutates?: boole
 
   return {
     mode: 'governed',
+    coverageStatus: 'governed',
     tools,
     instructionsPreamble: [...preambles.values()].join('\n\n'),
     budget,
@@ -479,17 +587,69 @@ export interface EffectiveAssistantCompositionInput<T> {
   personaToolAllowlist?: readonly string[]
   disabledTools?: readonly string[]
   readOnly?: boolean
+  /** Validated private server policy. Omission preserves the safe legacy rollout behavior. */
+  runtimePolicy?: CatalogRuntimePolicy
+}
+
+function legacyComposition<T>(tools: T[]): GovernedCatalogComposition<T> {
+  return {
+    mode: 'legacy',
+    coverageStatus: 'legacy',
+    tools,
+    instructionsPreamble: '',
+    budget: null,
+    releaseIds: [],
+    departmentIds: [],
+    packVersionIds: [],
+    capabilityVersionIds: [],
+    modelFeatureKeys: [],
+    denials: []
+  }
+}
+
+function authenticatedCoreComposition<T extends { name: string }>(
+  rbacFilteredTools: T[],
+  runtimePolicy: CatalogRuntimePolicy
+): GovernedCatalogComposition<T> {
+  const core = new Set<string>(runtimePolicy.authenticatedCoreTools)
+  const tools = rbacFilteredTools.filter(tool => core.has(tool.name))
+  return {
+    ...legacyComposition(tools),
+    coverageStatus: 'authenticated_core',
+    denials: rbacFilteredTools
+      .filter(tool => !core.has(tool.name))
+      .map(tool => ({ toolName: tool.name, reason: 'not_in_active_catalog' as const }))
+  }
 }
 
 /** Apply every configuration layer after RBAC strictly by subtraction, preserving denial evidence. */
 export function composeEffectiveAssistantTools<T extends { name: string, mutates?: boolean }>(
   input: EffectiveAssistantCompositionInput<T>
 ): GovernedCatalogComposition<T> {
-  const composed = composeGovernedCatalog(
+  const runtimePolicy = resolveCatalogRuntimePolicy(input.runtimePolicy?.mode)
+  const latestCatalogRows = input.catalogRows.filter(row =>
+    row.sourceType === 'capability' || row.isLatestPackVersion === true
+  )
+  const hasEligiblePackRelease = latestCatalogRows.some(row =>
+    row.sourceType === 'pack'
+    && (row.releaseState === 'pilot' || row.releaseState === 'active')
+  )
+  const legacyComposed = composeGovernedCatalog(
     input.rbacFilteredTools,
     input.catalogRows,
     input.grantedPermissionGroups
   )
+  const composed = runtimePolicy.mode === 'legacy'
+    ? legacyComposed
+    : hasEligiblePackRelease
+      ? composeGovernedCatalog(
+          input.rbacFilteredTools,
+          latestCatalogRows,
+          input.grantedPermissionGroups
+        )
+      : runtimePolicy.mode === 'enforced'
+        ? authenticatedCoreComposition(input.rbacFilteredTools, runtimePolicy)
+        : legacyComposed
   let tools = composed.tools
   const denials = [...composed.denials]
 

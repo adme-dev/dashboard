@@ -158,6 +158,7 @@ service = "agency-workflows"
 [vars]
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
+AI_GOVERNED_CATALOG_MODE = "legacy"
 EMAIL_FROM = "notification@adme.net.au"
 # Search Authority is globally armed for the Knox design-client pilot. The
 # server still fails closed unless the requesting client has an active

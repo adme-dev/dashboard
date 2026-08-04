@@ -6,6 +6,7 @@ import { createGroq } from '@ai-sdk/groq'
 import { createWorkersAI } from 'workers-ai-provider'
 import type { LanguageModel } from 'ai'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
+import { getCachedCfBinding } from '~~/server/utils/cfBindings'
 
 let client: Anthropic | null = null
 
@@ -212,7 +213,9 @@ export async function generateClaudeStructured<T extends z.ZodType>(
  */
 function gatewayBase(provider: 'anthropic' | 'groq'): string | undefined {
   const cfg = useRuntimeConfig()
-  const base = (cfg as any).aiGatewayUrl || process.env.AI_GATEWAY_URL
+  const base = runtimeConfigValue(cfg, 'aiGatewayUrl')
+    || getCachedCfBinding('AI_GATEWAY_URL')
+    || process.env.AI_GATEWAY_URL
   if (!base) return undefined
   const root = String(base)
     .replace(/\/(groq|anthropic|perplexity-ai)\/?$/, '')
@@ -220,20 +223,63 @@ function gatewayBase(provider: 'anthropic' | 'groq'): string | undefined {
   return `${root}/${provider}`
 }
 
-export function getAnthropicProvider() {
+function runtimeConfigValue(config: ReturnType<typeof useRuntimeConfig>, key: string): string | undefined {
+  const value = (config as Record<string, unknown>)[key]
+  return typeof value === 'string' ? value : undefined
+}
+
+function gatewayAuthHeaders(gatewayUrl: string | undefined, cfg: ReturnType<typeof useRuntimeConfig>): Record<string, string> | undefined {
+  if (!gatewayUrl) return undefined
+  const token = runtimeConfigValue(cfg, 'aiGatewayAuthToken')
+    || getCachedCfBinding('AI_GATEWAY_AUTH_TOKEN')
+    || process.env.AI_GATEWAY_AUTH_TOKEN
+    || runtimeConfigValue(cfg, 'cfApiToken')
+    || getCachedCfBinding('CF_API_TOKEN')
+    || process.env.CF_API_TOKEN
+    || getCachedCfBinding('CLOUDFLARE_API_TOKEN')
+    || process.env.CLOUDFLARE_API_TOKEN
+  const bearer = typeof token === 'string' ? token.trim().replace(/^Bearer\s+/i, '') : ''
+  return bearer ? { 'cf-aig-authorization': `Bearer ${bearer}` } : undefined
+}
+
+function getAnthropicProviderWithTransport() {
   const cfg = useRuntimeConfig()
-  return createAnthropic({
-    apiKey: (cfg as any).anthropicApiKey || process.env.ANTHROPIC_API_KEY,
-    baseURL: gatewayBase('anthropic'),
-  })
+  const baseURL = gatewayBase('anthropic')
+  const headers = gatewayAuthHeaders(baseURL, cfg)
+  return {
+    provider: createAnthropic({
+      apiKey: runtimeConfigValue(cfg, 'anthropicApiKey')
+        || getCachedCfBinding('ANTHROPIC_API_KEY')
+        || process.env.ANTHROPIC_API_KEY,
+      baseURL,
+      ...(headers ? { headers } : {})
+    }),
+    gatewayUsed: Boolean(baseURL)
+  }
+}
+
+export function getAnthropicProvider() {
+  return getAnthropicProviderWithTransport().provider
+}
+
+function getGroqProviderWithTransport() {
+  const cfg = useRuntimeConfig()
+  const baseURL = gatewayBase('groq')
+  const headers = gatewayAuthHeaders(baseURL, cfg)
+  return {
+    provider: createGroq({
+      apiKey: runtimeConfigValue(cfg, 'groqApiKey')
+        || getCachedCfBinding('GROQ_API_KEY')
+        || process.env.GROQ_API_KEY,
+      baseURL,
+      ...(headers ? { headers } : {})
+    }),
+    gatewayUsed: Boolean(baseURL)
+  }
 }
 
 export function getGroqProvider() {
-  const cfg = useRuntimeConfig()
-  return createGroq({
-    apiKey: (cfg as any).groqApiKey || process.env.GROQ_API_KEY,
-    baseURL: gatewayBase('groq'),
-  })
+  return getGroqProviderWithTransport().provider
 }
 
 /**
@@ -253,9 +299,26 @@ export function getWorkersAiProvider(binding: unknown) {
  *   'anthropic/claude-sonnet-4-6'                    → Anthropic, model 'claude-sonnet-4-6'
  *   'workersai/@cf/meta/llama-3.3-70b-instruct-fp8-fast' → Cloudflare Workers AI (needs opts.aiBinding)
  */
-export function resolveModel(spec: string, opts?: { aiBinding?: unknown }): LanguageModel {
-  if (spec.startsWith('anthropic/')) return getAnthropicProvider()(spec.slice('anthropic/'.length))
-  if (spec.startsWith('groq/')) return getGroqProvider()(spec.slice('groq/'.length))
-  if (spec.startsWith('workersai/')) return getWorkersAiProvider(opts?.aiBinding)(spec.slice('workersai/'.length) as any)
+export interface ResolvedAiSdkModel {
+  model: LanguageModel
+  gatewayUsed: boolean
+}
+
+/** Resolve both an AI SDK model and the transport selected by its provider factory. */
+export function resolveModelWithTransport(spec: string, opts?: { aiBinding?: unknown }): ResolvedAiSdkModel {
+  if (spec.startsWith('anthropic/')) {
+    const resolved = getAnthropicProviderWithTransport()
+    return { model: resolved.provider(spec.slice('anthropic/'.length)), gatewayUsed: resolved.gatewayUsed }
+  }
+  if (spec.startsWith('groq/')) {
+    const resolved = getGroqProviderWithTransport()
+    return { model: resolved.provider(spec.slice('groq/'.length)), gatewayUsed: resolved.gatewayUsed }
+  }
+  if (spec.startsWith('workersai/')) return { model: getWorkersAiProvider(opts?.aiBinding)(spec.slice('workersai/'.length) as any), gatewayUsed: false }
   throw new Error(`Unknown model spec: ${spec}`)
+}
+
+/** Backwards-compatible model-only resolver for callers that do not record transport telemetry. */
+export function resolveModel(spec: string, opts?: { aiBinding?: unknown }): LanguageModel {
+  return resolveModelWithTransport(spec, opts).model
 }

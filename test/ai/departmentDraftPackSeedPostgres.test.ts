@@ -4,6 +4,7 @@ import {
   createPostgresDepartmentDraftPackSeedTransaction,
   type DepartmentDraftPackSeedSqlClient
 } from '~~/server/utils/ai/governance/departmentDraftPackSeedPostgres'
+import { DEPARTMENT_PACK_BLUEPRINTS } from '~~/server/utils/ai/governance/departmentPackBlueprints'
 
 const DEPARTMENT_ID = '10000000-0000-4000-8000-000000000001'
 const OWNER_ID = '20000000-0000-4000-8000-000000000001'
@@ -35,6 +36,8 @@ describe('department draft pack Postgres adapter', () => {
     })
     const client: DepartmentDraftPackSeedSqlClient = { query }
     const transaction = createPostgresDepartmentDraftPackSeedTransaction(client)
+    const expectedEvaluationCaseCount = DEPARTMENT_PACK_BLUEPRINTS
+      .find(blueprint => blueprint.key === 'creative')!.evaluationCases.length
 
     const result = await seedDepartmentDraftPack({
       blueprintKey: 'creative',
@@ -44,7 +47,12 @@ describe('department draft pack Postgres adapter', () => {
       reason: 'Owner confirmed for the first read/draft evaluation cycle.'
     }, { transaction: callback => callback(transaction) })
 
-    expect(result).toMatchObject({ outcome: 'created', releaseState: 'draft', capabilityCount: 2, evaluationCaseCount: 3 })
+    expect(result).toMatchObject({
+      outcome: 'created',
+      releaseState: 'draft',
+      capabilityCount: 2,
+      evaluationCaseCount: expectedEvaluationCaseCount
+    })
     expect(query.mock.calls.some(([sql]) => String(sql).includes('pg_advisory_xact_lock'))).toBe(true)
     expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO ai_eval_cases'))).toBe(true)
     expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO ai_capability_tool_bindings'))).toBe(true)

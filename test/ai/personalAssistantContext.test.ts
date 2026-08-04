@@ -7,11 +7,22 @@ import type {
   PersonalAssistantAdmissionError,
   PersonalAssistantContextDb
 } from '~~/server/utils/ai/personalAssistantContext'
+import {
+  composeEffectiveAssistantTools,
+  type CatalogRuntimePolicy
+} from '~~/server/utils/ai/governance/catalogComposition'
 
 const USER_ID = '50000000-0000-4000-8000-000000000001'
 const CREATIVE_ID = '10000000-0000-4000-8000-000000000001'
 const PRODUCTION_ID = '10000000-0000-4000-8000-000000000002'
 const CLIENT_ID = '60000000-0000-4000-8000-000000000001'
+const PACK_ID = '60000000-0000-4000-8000-000000000002'
+const PACK_VERSION_ID = '30000000-0000-4000-8000-000000000001'
+const NEWER_DRAFT_PACK_VERSION_ID = '30000000-0000-4000-8000-000000000002'
+const pilotPolicy: CatalogRuntimePolicy = {
+  mode: 'pilot',
+  authenticatedCoreTools: ['search_knowledge', 'get_tasks']
+}
 
 function db(overrides: Partial<PersonalAssistantContextDb> = {}): PersonalAssistantContextDb {
   return {
@@ -58,13 +69,16 @@ function db(overrides: Partial<PersonalAssistantContextDb> = {}): PersonalAssist
       if (sql.includes('FROM client_team_assignments assignment')) {
         return [{ client_id: CLIENT_ID, client_name: 'Example Client', assignment_role: 'support' }]
       }
-      if (sql.includes('WITH active_pack_rows')) {
+      if (sql.includes('ranked_pack_versions')) {
+        return [{ pack_id: PACK_ID, pack_version_id: PACK_VERSION_ID, version: 3 }]
+      }
+      if (sql.includes('active_pack_rows AS')) {
         return [{
           source_type: 'pack',
           release_state: 'active',
           release_id: '20000000-0000-4000-8000-000000000001',
           department_id: CREATIVE_ID,
-          pack_version_id: '30000000-0000-4000-8000-000000000001',
+          pack_version_id: PACK_VERSION_ID,
           pack_version: 3,
           pack_label: 'Creative Studio',
           pack_key: 'creative_studio',
@@ -100,7 +114,11 @@ describe('resolvePersonalAssistantContext', () => {
   it('composes minimal multi-department, manager, client, preference, and active-pack context', async () => {
     const contextDb = db()
 
-    const context = await resolvePersonalAssistantContext({ userId: USER_ID }, contextDb)
+    const context = await resolvePersonalAssistantContext({
+      userId: USER_ID,
+      runtimePolicy: pilotPolicy,
+      observedMemoryEnabled: false
+    }, contextDb)
 
     expect(context.identity).toEqual({ userId: USER_ID, role: 'creative' })
     expect(context.permissionGroups).toEqual(['CREATIVE'])
@@ -127,16 +145,19 @@ describe('resolvePersonalAssistantContext', () => {
     expect(context.activePacks).toEqual([{
       releaseId: '20000000-0000-4000-8000-000000000001',
       departmentId: CREATIVE_ID,
-      packVersionId: '30000000-0000-4000-8000-000000000001',
+      packVersionId: PACK_VERSION_ID,
       packKey: 'creative_studio',
       version: 3,
       label: 'Creative Studio',
-      releaseState: 'active'
+      releaseState: 'active',
+      accessBasis: 'catalog_policy'
     }])
     expect(context.catalogRows).toHaveLength(1)
+    expect(context.runtimePolicy).toBe(pilotPolicy)
+    expect(context.observedMemoryEnabled).toBe(false)
 
     const catalogCall = vi.mocked(contextDb.queryRows).mock.calls.find(([sql]) =>
-      sql.includes('WITH active_pack_rows')
+      sql.includes('active_pack_rows AS')
     )
     expect(catalogCall?.[1]).toEqual([[CREATIVE_ID, PRODUCTION_ID], USER_ID])
 
@@ -169,10 +190,15 @@ describe('resolvePersonalAssistantContext', () => {
     const queryRows = vi.fn()
     const contextDb = db({ queryOne, queryRows })
 
-    await expect(resolvePersonalAssistantContext({ userId: USER_ID }, contextDb))
-      .rejects.toMatchObject<Partial<PersonalAssistantAdmissionError>>({
-        code: 'assistant_identity_inactive'
-      })
+    for (const mode of ['legacy', 'pilot', 'enforced'] as const) {
+      await expect(resolvePersonalAssistantContext({
+        userId: USER_ID,
+        runtimePolicy: { ...pilotPolicy, mode }
+      }, contextDb))
+        .rejects.toMatchObject<Partial<PersonalAssistantAdmissionError>>({
+          code: 'assistant_identity_inactive'
+        })
+    }
     expect(queryRows).not.toHaveBeenCalled()
     expect(contextDb.resolvePermissions).not.toHaveBeenCalled()
   })
@@ -212,6 +238,98 @@ describe('resolvePersonalAssistantContext', () => {
       "department.department_kind = 'organizational' AND $2::boolean"
     )
     expect(departmentCall?.[1]).toEqual([USER_ID, true])
+  })
+
+  it('derives owner pack access from the database identity', async () => {
+    const contextDb = db({
+      queryOne: vi.fn(async (sql: string) => {
+        if (sql.includes('FROM team_members actor')) {
+          return { id: USER_ID, role: 'owner', custom_role_id: null }
+        }
+        if (sql.includes('FROM ai_agent_configs')) {
+          return {
+            persona_key: 'creative',
+            tool_overrides: { disabled: ['propose_budget_change'] },
+            memory_enabled: false
+          }
+        }
+        return null
+      }) as PersonalAssistantContextDb['queryOne']
+    })
+
+    const context = await resolvePersonalAssistantContext({ userId: USER_ID }, contextDb)
+
+    expect(context.activePacks[0]?.accessBasis).toBe('company_owner')
+    const catalogCall = vi.mocked(contextDb.queryRows).mock.calls.find(([sql]) =>
+      sql.includes('active_pack_rows AS')
+    )
+    expect(catalogCall?.[1]).toEqual([[CREATIVE_ID, PRODUCTION_ID], USER_ID])
+  })
+
+  it('keeps active admin pack access on catalog policy', async () => {
+    const contextDb = db({
+      queryOne: vi.fn(async (sql: string) => {
+        if (sql.includes('FROM team_members actor')) {
+          return { id: USER_ID, role: 'admin', custom_role_id: null }
+        }
+        if (sql.includes('FROM ai_agent_configs')) {
+          return {
+            persona_key: 'creative',
+            tool_overrides: { disabled: ['propose_budget_change'] },
+            memory_enabled: false
+          }
+        }
+        return null
+      }) as PersonalAssistantContextDb['queryOne']
+    })
+
+    const context = await resolvePersonalAssistantContext({ userId: USER_ID }, contextDb)
+
+    expect(context.activePacks[0]?.accessBasis).toBe('catalog_policy')
+  })
+
+  it.each([
+    { label: 'an owner active release', role: 'owner', releaseState: 'active', accessBasis: 'company_owner' },
+    { label: 'an ordinary user pilot release', role: 'creative', releaseState: 'pilot', accessBasis: 'catalog_policy' }
+  ] as const)('keeps only runtime-effective versions for $label', async ({ role, releaseState, accessBasis }) => {
+    const baseline = db()
+    const queryRows = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('ranked_pack_versions')) {
+        return [{ pack_id: PACK_ID, pack_version_id: NEWER_DRAFT_PACK_VERSION_ID, version: 4 }]
+      }
+      const rows = await baseline.queryRows<Record<string, unknown>>(sql, params)
+      return sql.includes('active_pack_rows AS')
+        ? rows.map(row => ({ ...row, release_state: releaseState }))
+        : rows
+    }) as PersonalAssistantContextDb['queryRows']
+    const contextDb = {
+      ...baseline,
+      queryOne: vi.fn(async (sql: string) => {
+        if (sql.includes('FROM team_members actor')) {
+          return { id: USER_ID, role, custom_role_id: null }
+        }
+        return baseline.queryOne(sql)
+      }) as PersonalAssistantContextDb['queryOne'],
+      queryRows
+    }
+
+    for (const mode of ['pilot', 'enforced'] as const) {
+      const runtimePolicy = { ...pilotPolicy, mode }
+      const context = await resolvePersonalAssistantContext({ userId: USER_ID, runtimePolicy }, contextDb)
+      const effective = composeEffectiveAssistantTools({
+        rbacFilteredTools: [],
+        catalogRows: context.catalogRows,
+        grantedPermissionGroups: context.permissionGroups,
+        runtimePolicy
+      })
+      const expectedPackVersionIds = mode === 'pilot' ? [PACK_VERSION_ID] : []
+
+      expect(effective.packVersionIds).toEqual(expectedPackVersionIds)
+      expect(context.activePacks.map(pack => pack.packVersionId)).toEqual(expectedPackVersionIds)
+      expect(context.activePacks.map(pack => pack.accessBasis)).toEqual(
+        mode === 'pilot' ? [accessBasis] : []
+      )
+    }
   })
 
   it('rejects unbounded department context instead of silently truncating authority', async () => {

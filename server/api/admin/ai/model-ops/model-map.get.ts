@@ -1,5 +1,6 @@
 import { requireRole } from '~~/server/utils/auth'
 import { listAiModelAssignments } from '~~/server/utils/ai/modelAssignments'
+import { resolveServerCatalogRuntimePolicy } from '~~/server/utils/ai/governance/catalogComposition'
 
 const ORCHESTRATOR_READ_TOOL_COUNT = 5
 const PLATFORM_AGENT_FLAGS = [
@@ -32,7 +33,7 @@ function host(value: string | undefined): string | null {
   }
 }
 
-function aiConfigReadiness() {
+function aiConfigReadiness(event: Parameters<typeof resolveServerCatalogRuntimePolicy>[0]) {
   const gatewayUrl = process.env.AI_GATEWAY_URL
   const groqConfigured = present(process.env.GROQ_API_KEY) || present(process.env.GROQ_API)
   const anthropicConfigured = present(process.env.ANTHROPIC_API_KEY)
@@ -87,6 +88,9 @@ function aiConfigReadiness() {
       fallbackModel: process.env.AI_LOOP_FALLBACK_MODEL || 'groq/openai/gpt-oss-20b',
       budgetUsd: Number(process.env.AI_LOOP_BUDGET_USD || '0.25'),
       advisorBackend: (process.env.ADVISOR_BACKEND || 'groq').toLowerCase(),
+      governedCatalogMode: resolveServerCatalogRuntimePolicy(event, {
+        aiGovernedCatalogMode: process.env.AI_GOVERNED_CATALOG_MODE
+      }).mode,
     },
     orchestrator: {
       internalApiKeyConfigured,
@@ -120,7 +124,7 @@ export default eventHandler(async (event) => {
   return {
     rows,
     summary,
-    config: aiConfigReadiness(),
+    config: aiConfigReadiness(event),
     assignments,
   }
 })

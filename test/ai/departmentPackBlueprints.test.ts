@@ -21,8 +21,12 @@ describe('department assistant pack blueprints', () => {
         && capability.toolBindings.some(binding => binding.toolName === 'search_knowledge')
       )
     )).toBe(true)
-    expect(DEPARTMENT_PACK_BLUEPRINTS.every(pack => pack.evaluationCases.length >= 3)).toBe(true)
-    expect(DEPARTMENT_PACK_BLUEPRINTS.flatMap(pack => pack.evaluationCases)).toHaveLength(36)
+    expect(DEPARTMENT_PACK_BLUEPRINTS.every(pack => pack.evaluationCases.length >= 21)).toBe(true)
+    expect(DEPARTMENT_PACK_BLUEPRINTS.find(pack => pack.key === 'hr')?.evaluationCases).toHaveLength(22)
+    expect(DEPARTMENT_PACK_BLUEPRINTS.find(pack => pack.key === 'engineering')?.evaluationCases).toHaveLength(22)
+    expect(DEPARTMENT_PACK_BLUEPRINTS.filter(pack => [
+      'account_management', 'production', 'paid_media', 'finance', 'bookkeeping'
+    ].includes(pack.key)).every(pack => pack.evaluationCases.length >= 25)).toBe(true)
     expect(DEPARTMENT_PACK_BLUEPRINTS.flatMap(pack => pack.capabilities)
       .flatMap(capability => capability.toolBindings)
       .some(binding => binding.accessMode === 'propose')).toBe(false)
@@ -38,6 +42,20 @@ describe('department assistant pack blueprints', () => {
     mutatingTool[0]!.capabilities[0]!.toolBindings[0]!.toolName = 'create_task'
     expect(validateDepartmentPackBlueprints(mutatingTool, toolMetadata).issues)
       .toContainEqual(expect.objectContaining({ code: 'mutation_not_allowed' }))
+
+    const unboundExpectedTool = structuredClone(DEPARTMENT_PACK_BLUEPRINTS)
+    unboundExpectedTool[0]!.evaluationCases[0]!.expectedTools = ['create_task']
+    unboundExpectedTool[0]!.knownGaps.push('The requested mutation remains intentionally unavailable.')
+    expect(validateDepartmentPackBlueprints(unboundExpectedTool, toolMetadata).issues)
+      .toContainEqual(expect.objectContaining({ code: 'unbound_expected_tool' }))
+  })
+
+  it('fails closed when a suite repeats a versioned evaluation case key', () => {
+    const duplicateCase = structuredClone(DEPARTMENT_PACK_BLUEPRINTS)
+    duplicateCase[0]!.evaluationCases.push(structuredClone(duplicateCase[0]!.evaluationCases[0]!))
+
+    expect(validateDepartmentPackBlueprints(duplicateCase, toolMetadata).issues)
+      .toContainEqual(expect.objectContaining({ code: 'duplicate_evaluation_case_key' }))
   })
 
   it('fails closed when required coverage or machine keys are duplicated', () => {
