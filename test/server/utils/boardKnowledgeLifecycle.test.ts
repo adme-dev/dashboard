@@ -10,6 +10,7 @@ const db = vi.hoisted(() => ({
 vi.mock('~~/server/utils/db', () => db)
 
 import {
+  archiveKnowledgeSourceForDeletion,
   canTransitionBoardKnowledge,
   guardKnowledgeSourceDeletion,
   transitionSubmission
@@ -197,5 +198,73 @@ describe('board knowledge source deletion guard', () => {
       sourceType: 'board_file',
       sourceId: FILE_ID
     })).resolves.toBe(expected)
+  })
+
+  it('archives every source version, marks it deleted, unpublishes articles, and audits atomically', async () => {
+    const olderId = '55555555-5555-4555-8555-555555555555'
+    const rows = [
+      submissionRow({ review_status: 'approved', index_status: 'indexed' }),
+      submissionRow({
+        id: olderId,
+        review_status: 'rejected',
+        extraction_status: 'queued',
+        index_status: 'not_indexed',
+        ai_knowledge_article_id: null
+      })
+    ]
+    const archivedRows = rows.map(row => ({
+      ...row,
+      review_status: 'archived',
+      source_deleted_at: '2026-08-04T06:00:00.000Z',
+      extraction_status: row.extraction_status === 'queued' ? 'failed' : row.extraction_status,
+      index_status: row.ai_knowledge_article_id ? 'queued' : 'removed',
+      updated_at: '2026-08-04T06:00:00.000Z'
+    }))
+    const query = vi.fn(async (sql: string) => {
+      if (/SELECT[\s\S]*FOR UPDATE/i.test(sql)) return { rows }
+      if (/UPDATE board_knowledge_submissions[\s\S]*source_deleted_at = NOW\(\)[\s\S]*RETURNING/i.test(sql)) {
+        return { rows: archivedRows }
+      }
+      return { rows: [] }
+    })
+    db.transaction.mockImplementation(async callback => callback({ query }))
+
+    const result = await archiveKnowledgeSourceForDeletion({
+      departmentId: BOARD_ID,
+      sourceType: 'board_file',
+      sourceId: FILE_ID,
+      actorId: 'manager-1'
+    })
+
+    expect(result).toHaveLength(2)
+    expect(result.every(row => row.reviewStatus === 'archived' && row.sourceDeletedAt)).toBe(true)
+    expect(result.find(row => row.id === olderId)?.extractionStatus).toBe('failed')
+    expect(query).toHaveBeenCalledWith(
+      expect.stringMatching(/UPDATE ai_knowledge_articles[\s\S]*is_published = false/),
+      [[ARTICLE_ID]]
+    )
+    expect(query).toHaveBeenCalledWith(
+      expect.stringMatching(/UPDATE board_knowledge_submissions[\s\S]*extraction_status = CASE[\s\S]*extraction_status = 'queued'[\s\S]*source_deleted_at = NOW\(\)/),
+      [BOARD_ID, 'board_file', FILE_ID, 'manager-1']
+    )
+    expect(query.mock.calls.filter(call => /INSERT INTO board_knowledge_audit/i.test(String(call[0])))).toHaveLength(2)
+  })
+
+  it('rechecks every source version under lock and blocks if any one is active', async () => {
+    const query = vi.fn().mockResolvedValueOnce({
+      rows: [
+        submissionRow({ review_status: 'archived', index_status: 'removed' }),
+        submissionRow({ id: 'older', extraction_status: 'processing' })
+      ]
+    })
+    db.transaction.mockImplementation(async callback => callback({ query }))
+
+    await expect(archiveKnowledgeSourceForDeletion({
+      departmentId: BOARD_ID,
+      sourceType: 'board_file',
+      sourceId: FILE_ID,
+      actorId: 'manager-1'
+    })).rejects.toMatchObject({ statusCode: 409 })
+    expect(query).toHaveBeenCalledTimes(1)
   })
 })

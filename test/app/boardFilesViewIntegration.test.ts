@@ -18,7 +18,17 @@ const files = [
     createdAt: '2026-08-04T00:00:00.000Z',
     uploadedBy: { id: 'user-1', name: 'Clara', email: 'clara@adme.net.au' },
     canDelete: true,
-    task: null
+    task: null,
+    knowledge: {
+      submissionId: null,
+      reviewStatus: null,
+      extractionStatus: null,
+      indexStatus: null,
+      indexable: true,
+      label: 'Not submitted' as const,
+      canSubmit: true,
+      canReview: false
+    }
   },
   {
     id: 'task-file-1',
@@ -35,7 +45,17 @@ const files = [
     createdAt: '2026-08-03T00:00:00.000Z',
     uploadedBy: null,
     canDelete: false,
-    task: { id: 'task-1', title: 'Reference PDFs' }
+    task: { id: 'task-1', title: 'Reference PDFs' },
+    knowledge: {
+      submissionId: 'submission-1',
+      reviewStatus: 'approved' as const,
+      extractionStatus: 'ready' as const,
+      indexStatus: 'indexed' as const,
+      indexable: true,
+      label: 'Used by AI' as const,
+      canSubmit: false,
+      canReview: false
+    }
   }
 ]
 

@@ -38,6 +38,10 @@ export interface GuardBoardKnowledgeSourceDeletionInput {
   sourceId: string
 }
 
+export interface ArchiveKnowledgeSourceForDeletionInput extends GuardBoardKnowledgeSourceDeletionInput {
+  actorId: string
+}
+
 interface DeletionStateRow {
   review_status: BoardKnowledgeReviewStatus
   extraction_status: BoardKnowledgeExtractionStatus
@@ -234,7 +238,7 @@ async function transitionArchive(
 }
 
 export async function transitionSubmission(input: TransitionBoardKnowledgeInput): Promise<BoardKnowledgeSubmission> {
-  return transaction(async databaseClient => {
+  return transaction(async (databaseClient) => {
     const client = databaseClient as unknown as BoardKnowledgeQueryClient
     const locked = await client.query(`
       SELECT *
@@ -293,4 +297,92 @@ export async function guardKnowledgeSourceDeletion(
   if (!row || (row.review_status === 'archived' && row.index_status !== 'indexing')) return 'clear'
   if (row.extraction_status === 'processing' || row.index_status === 'indexing') return 'blocked_extraction'
   return 'archive_required'
+}
+
+export async function archiveKnowledgeSourceForDeletion(
+  input: ArchiveKnowledgeSourceForDeletionInput
+): Promise<BoardKnowledgeSubmission[]> {
+  return transaction(async (databaseClient) => {
+    const client = databaseClient as unknown as BoardKnowledgeQueryClient
+    const locked = await client.query(`
+      SELECT *
+      FROM board_knowledge_submissions
+      WHERE department_id = $1
+        AND source_type = $2
+        AND source_entity_id = $3
+      ORDER BY created_at DESC
+      FOR UPDATE
+    `, [input.departmentId, input.sourceType, input.sourceId])
+    const rows = (locked.rows || []) as BoardKnowledgeSubmissionRow[]
+    if (rows.length === 0) return []
+
+    if (rows.some(row => row.extraction_status === 'processing' || row.index_status === 'indexing')) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'Knowledge extraction or indexing is in progress'
+      })
+    }
+
+    const articleIds = rows
+      .map(row => row.ai_knowledge_article_id)
+      .filter((articleId): articleId is string => Boolean(articleId))
+    if (articleIds.length > 0) {
+      await client.query(`
+        UPDATE ai_knowledge_articles
+        SET is_published = false, updated_at = NOW()
+        WHERE id = ANY($1::uuid[])
+      `, [articleIds])
+    }
+
+    const result = await client.query(`
+      UPDATE board_knowledge_submissions
+      SET
+        review_status = 'archived',
+        reviewed_by = $4,
+        reviewed_at = NOW(),
+        review_reason = COALESCE(review_reason, 'Source file deleted'),
+        extraction_status = CASE
+          WHEN extraction_status = 'queued' THEN 'failed'
+          ELSE extraction_status
+        END,
+        extraction_completed_at = CASE
+          WHEN extraction_status = 'queued' THEN NOW()
+          ELSE extraction_completed_at
+        END,
+        extraction_error_code = CASE
+          WHEN extraction_status = 'queued' THEN 'SOURCE_DELETED'
+          ELSE extraction_error_code
+        END,
+        extraction_error_message = CASE
+          WHEN extraction_status = 'queued' THEN 'Source file deleted before extraction started'
+          ELSE extraction_error_message
+        END,
+        source_deleted_at = NOW(),
+        index_status = CASE
+          WHEN ai_knowledge_article_id IS NULL THEN 'removed'
+          ELSE 'queued'
+        END,
+        updated_at = NOW()
+      WHERE department_id = $1
+        AND source_type = $2
+        AND source_entity_id = $3
+      RETURNING *
+    `, [input.departmentId, input.sourceType, input.sourceId, input.actorId])
+    const updatedRows = (result.rows || []) as BoardKnowledgeSubmissionRow[]
+    const previousById = new Map(rows.map(row => [row.id, row]))
+
+    for (const updated of updatedRows) {
+      const previous = previousById.get(updated.id)
+      await recordKnowledgeAudit({
+        submissionId: updated.id,
+        action: 'archive',
+        actorId: input.actorId,
+        previousState: previous ? stateFromRow(previous) : null,
+        nextState: stateFromRow(updated),
+        metadata: { sourceDeleted: true }
+      }, client)
+    }
+
+    return updatedRows.map(mapBoardKnowledgeSubmission)
+  })
 }

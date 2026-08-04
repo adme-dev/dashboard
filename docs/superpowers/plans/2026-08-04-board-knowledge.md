@@ -569,29 +569,29 @@ Commit: `feat: add board knowledge review APIs`
 - Consumes: `BoardKnowledgeProjection` and `guardKnowledgeSourceDeletion`.
 - Produces: `BoardFileItem.knowledge` for board and task rows; deletion routes that archive/de-index or block processing sources before removing storage.
 
-- [ ] **Step 1: Extend aggregation tests**
+- [x] **Step 1: Extend aggregation tests**
 
 Add latest-submission rows to the mapper and assert every file receives a correct label, `indexable`, `canSubmit`, and `canReview` projection. Unsupported formats receive `Not indexable` even with no submission.
 
-- [ ] **Step 2: Run mapper tests and verify RED**
+- [x] **Step 2: Run mapper tests and verify RED**
 
 Run: `pnpm vitest run test/server/utils/boardFiles.test.ts`
 
 Expected: FAIL because `knowledge` is absent.
 
-- [ ] **Step 3: Join latest knowledge state into both file queries**
+- [x] **Step 3: Join latest knowledge state into both file queries**
 
 Use a `LEFT JOIN LATERAL` ordered by submission creation time. Do not add one query per file. Derive authorization booleans from the admitted user and permission groups, not from database role strings alone.
 
-- [ ] **Step 4: Write deletion lifecycle tests**
+- [x] **Step 4: Write deletion lifecycle tests**
 
 Assert processing sources return 409, approved sources are unpublished and queued for de-index before delete, and ordinary files retain existing deletion behaviour. Repeat for task attachments.
 
-- [ ] **Step 5: Implement the shared deletion guard calls**
+- [x] **Step 5: Implement the shared deletion guard calls**
 
 Keep storage deletion after the database/lifecycle transaction, matching the existing board-file cleanup posture. If de-index dispatch fails, the article is already unpublished and retrieval remains closed.
 
-- [ ] **Step 6: Run focused tests and commit**
+- [x] **Step 6: Run focused tests and commit**
 
 Run: `pnpm vitest run test/server/utils/boardFiles.test.ts test/server/api/boardKnowledgeDeletion.test.ts test/server/api/boardFilesApi.test.ts`
 

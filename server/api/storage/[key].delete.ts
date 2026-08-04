@@ -7,9 +7,16 @@
  */
 
 import { requireWriteAccess } from '~~/server/utils/auth'
+import { prepareKnowledgeSourceDeletion } from '~~/server/utils/boardKnowledge/deletion'
 import { deleteFile, fileExists, isStorageConfigured } from '~~/server/utils/storage'
-import { queryOne } from '~~/server/utils/db'
+import { queryRows, transaction } from '~~/server/utils/db'
 import { canDeleteStorageObject } from '~~/server/utils/storageAccess'
+
+interface KnowledgeStorageReference {
+  source_type: 'board_file' | 'task_attachment'
+  source_id: string
+  department_id: string
+}
 
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
@@ -58,11 +65,31 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Delete from R2
-    await deleteFile(key)
+    const knowledgeReferences = await queryRows<KnowledgeStorageReference>(`
+      SELECT 'board_file'::text AS source_type, bf.id AS source_id, bf.department_id
+      FROM board_files bf
+      WHERE bf.storage_key = $1
+      UNION ALL
+      SELECT 'task_attachment'::text AS source_type, ta.id AS source_id, t.department_id
+      FROM task_attachments ta
+      JOIN tasks t ON t.id = ta.task_id
+      WHERE ta.storage_key = $1
+    `, [key])
+
+    for (const reference of knowledgeReferences) {
+      await prepareKnowledgeSourceDeletion(event, {
+        departmentId: reference.department_id,
+        sourceType: reference.source_type,
+        sourceId: reference.source_id,
+        actorId: user.id
+      })
+    }
 
     // Clean up database references
     await cleanupDatabaseReferences(key)
+
+    // Storage is removed only after governance and database state are durable.
+    await deleteFile(key)
 
     return {
       success: true,
@@ -82,21 +109,29 @@ export default defineEventHandler(async (event) => {
  * Remove database references to the deleted file
  */
 async function cleanupDatabaseReferences(key: string): Promise<void> {
-  // Clean up task attachments
-  await queryOne(
-    `DELETE FROM task_attachments WHERE storage_key = $1 RETURNING id`,
-    [key]
-  )
+  await transaction(async (client) => {
+    // Clean up board files
+    await client.query(
+      `DELETE FROM board_files WHERE storage_key = $1 RETURNING id`,
+      [key]
+    )
 
-  // Clean up expense receipts
-  await queryOne(
-    `UPDATE expenses SET receipt_url = NULL, receipt_storage_key = NULL WHERE receipt_storage_key = $1 RETURNING id`,
-    [key]
-  )
+    // Clean up task attachments
+    await client.query(
+      `DELETE FROM task_attachments WHERE storage_key = $1 RETURNING id`,
+      [key]
+    )
 
-  // Clean up avatars
-  await queryOne(
-    `UPDATE team_members SET avatar_url = NULL, avatar_storage_key = NULL WHERE avatar_storage_key = $1 RETURNING id`,
-    [key]
-  )
+    // Clean up expense receipts
+    await client.query(
+      `UPDATE expenses SET receipt_url = NULL, receipt_storage_key = NULL WHERE receipt_storage_key = $1 RETURNING id`,
+      [key]
+    )
+
+    // Clean up avatars
+    await client.query(
+      `UPDATE team_members SET avatar_url = NULL, avatar_storage_key = NULL WHERE avatar_storage_key = $1 RETURNING id`,
+      [key]
+    )
+  })
 }

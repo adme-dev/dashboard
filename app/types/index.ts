@@ -170,6 +170,7 @@ export interface BoardFileItem {
   uploadedBy: { id: string, name: string, email: string } | null
   canDelete: boolean
   task: { id: string, title: string } | null
+  knowledge: BoardKnowledgeProjection
 }
 
 export interface BoardFileListResponse {

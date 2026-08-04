@@ -4,11 +4,12 @@
  */
 
 import { queryOne, transaction } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { requireWriteAccess } from '~~/server/utils/auth'
+import { prepareKnowledgeSourceDeletion } from '~~/server/utils/boardKnowledge/deletion'
 import { deleteFile, isStorageConfigured } from '~~/server/utils/storage'
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
+  const user = await requireWriteAccess(event)
 
   const taskId = getRouterParam(event, 'id')
   const attachmentId = getRouterParam(event, 'attachmentId')
@@ -37,7 +38,8 @@ export default defineEventHandler(async (event) => {
         ta.storage_key,
         ta.uploaded_by,
         t.assignee_id,
-        t.reporter_id
+        t.reporter_id,
+        t.department_id
       FROM task_attachments ta
       JOIN tasks t ON ta.task_id = t.id
       WHERE ta.id = $1 AND ta.task_id = $2
@@ -51,9 +53,9 @@ export default defineEventHandler(async (event) => {
     }
 
     // Check permission - uploader, assignee, or reporter can delete
-    const canDelete = attachment.uploaded_by === user.id ||
-                      attachment.assignee_id === user.id ||
-                      attachment.reporter_id === user.id
+    const canDelete = attachment.uploaded_by === user.id
+      || attachment.assignee_id === user.id
+      || attachment.reporter_id === user.id
 
     if (!canDelete) {
       throw createError({
@@ -61,6 +63,13 @@ export default defineEventHandler(async (event) => {
         statusMessage: 'You do not have permission to delete this attachment'
       })
     }
+
+    await prepareKnowledgeSourceDeletion(event, {
+      departmentId: attachment.department_id,
+      sourceType: 'task_attachment',
+      sourceId: attachment.id,
+      actorId: user.id
+    })
 
     await transaction(async (client) => {
       // Delete from database
@@ -90,8 +99,8 @@ export default defineEventHandler(async (event) => {
       success: true,
       message: 'Attachment deleted successfully'
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to delete attachment:', error)
     throw createError({
       statusCode: 500,

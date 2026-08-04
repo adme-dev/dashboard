@@ -2,9 +2,13 @@
  * Delete a task (soft delete by marking as cancelled)
  */
 
-import { queryOne, transaction } from '~~/server/utils/db'
+import { requireWriteAccess } from '~~/server/utils/auth'
+import { prepareKnowledgeSourceDeletion } from '~~/server/utils/boardKnowledge/deletion'
+import { queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { deleteFile, isStorageConfigured } from '~~/server/utils/storage'
 
 export default defineEventHandler(async (event) => {
+  const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
   const query = getQuery(event)
   const hardDelete = query.hard === 'true'
@@ -18,7 +22,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if task exists
-    const task = await queryOne('SELECT id, title FROM tasks WHERE id = $1', [id])
+    const task = await queryOne('SELECT id, title, department_id FROM tasks WHERE id = $1', [id])
     if (!task) {
       throw createError({
         statusCode: 404,
@@ -27,6 +31,21 @@ export default defineEventHandler(async (event) => {
     }
 
     if (hardDelete) {
+      const attachments = await queryRows<{ id: string, storage_key: string | null }>(`
+        SELECT id, storage_key
+        FROM task_attachments
+        WHERE task_id = $1
+      `, [id])
+
+      for (const attachment of attachments) {
+        await prepareKnowledgeSourceDeletion(event, {
+          departmentId: task.department_id,
+          sourceType: 'task_attachment',
+          sourceId: attachment.id,
+          actorId: user.id
+        })
+      }
+
       // Hard delete - remove completely (cascades to related tables)
       await transaction(async (client) => {
         // Delete dependencies
@@ -54,6 +73,15 @@ export default defineEventHandler(async (event) => {
         // Delete the task
         await client.query('DELETE FROM tasks WHERE id = $1', [id])
       })
+
+      if (isStorageConfigured()) {
+        for (const attachment of attachments) {
+          if (!attachment.storage_key) continue
+          await deleteFile(attachment.storage_key).catch((storageError) => {
+            console.warn('Failed to delete task attachment from storage:', storageError)
+          })
+        }
+      }
 
       return { success: true, message: 'Task permanently deleted' }
     } else {
@@ -90,8 +118,8 @@ export default defineEventHandler(async (event) => {
 
       return { success: true, message: 'Task marked as cancelled' }
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to delete task:', error)
     throw createError({
       statusCode: 500,
