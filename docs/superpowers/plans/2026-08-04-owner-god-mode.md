@@ -165,10 +165,11 @@ CREATE TABLE IF NOT EXISTS god_mode_mcp_request_nonces
 CREATE TABLE IF NOT EXISTS god_mode_execution_ledger
 WHERE phase = 'attempt'
 WHERE phase IN ('succeeded', 'failed')
+terminal event requires matching attempt
 BEFORE UPDATE OR DELETE ON god_mode_audit_events
 ```
 
-Test that the serializer rejects unknown bypass-control names, more than 24 controls, overlong individual control/entity/route/outcome values, malformed UUIDs/digests, and any unexpected metadata key. Test that database errors propagate.
+Test that the serializer rejects unknown bypass-control names, more than 24 controls, overlong individual control/entity/route/outcome values, malformed UUIDs/digests, and any unexpected metadata key. Add a database regression proving a terminal event cannot be inserted unless the same correlation already has an attempt. Test that database errors propagate.
 
 - [ ] **Step 3: Run RED**
 
@@ -182,7 +183,7 @@ Expected: FAIL because the migration and repository do not exist.
 
 - [ ] **Step 4: Implement migration 345**
 
-Use UUID keys, `TIMESTAMPTZ`, bounded `VARCHAR`, bounded/allowlisted control values, nullable tenant/client/entity identifiers, and no free-form request payload column. Add check constraints for channel/phase, individual lengths, and array cardinality. Add an immutable trigger function that raises on `UPDATE OR DELETE`. Use two partial unique indexes so each correlation has exactly one attempt and at most one terminal row; a success and failure must never coexist. Add `god_mode_mcp_request_nonces(jti UUID PRIMARY KEY, actor_user_id UUID, expires_at TIMESTAMPTZ, consumed_at TIMESTAMPTZ DEFAULT NOW())` for atomic replay rejection, with an expiry index and opportunistic bounded cleanup that never removes an unexpired nonce.
+Use UUID keys, `TIMESTAMPTZ`, bounded `VARCHAR`, bounded/allowlisted control values, nullable tenant/client/entity identifiers, and no free-form request payload column. Add check constraints for channel/phase, individual lengths, and array cardinality. Add an immutable trigger function that raises on `UPDATE OR DELETE`. Use two partial unique indexes so each correlation has exactly one attempt and at most one terminal row; a success and failure must never coexist. Add an insert trigger for terminal phases that takes an advisory/row lock and rejects the insert unless the matching attempt already exists, preventing orphan terminal events under concurrency. Add `god_mode_mcp_request_nonces(jti UUID PRIMARY KEY, actor_user_id UUID, expires_at TIMESTAMPTZ, consumed_at TIMESTAMPTZ DEFAULT NOW())` for atomic replay rejection, with an expiry index and opportunistic bounded cleanup that never removes an unexpired nonce.
 
 Add `god_mode_execution_ledger` keyed by actor, channel, and stable logical idempotency key. It records `in_progress`, `succeeded`, `failed`, or `ambiguous` plus a bounded result reference/digest, never a raw payload. This mutable coordination ledger is separate from immutable audit history. An `in_progress`/`ambiguous` high-risk operation blocks duplicate execution until provider reconciliation proves the outcome.
 
@@ -339,13 +340,15 @@ rg -n "process\.env\.|useRuntimeConfig\(|runtimeConfig\.|feature.?flag|suite.?en
 
 Classify every server and client result as identity/tenant hard boundary, provider/infrastructure availability, application governance bypass, ordinary-user behavior, or unrelated configuration. Include non-AI suites such as Finance, Marketing, Banners, publishing, Search Authority, Agency Workflows, Workspace Send, dealer feeds, nearby-market tools, social-budget writes, and platform agents. Record file, line-pattern class, and chosen central helper in `godModeGateInventory.test.ts`; fail when an unclassified direct gate is added or an inventoried line disappears without the fixture being updated.
 
-For every route newly reachable through a bypassed role/permission/read-only/feature gate, record its independent tenant/client/entity boundary in `godModeIsolationInventory.test.ts`. A role check is not sufficient evidence. Add negative endpoint tests for each mutation family; any route without an independent scope boundary blocks implementation until one is added.
+For every route newly reachable through a bypassed role/permission/read-only/feature gate, record its independent tenant/client/entity boundary in `godModeIsolationInventory.test.ts`. A role check is not sufficient evidence. Classify each owner mutation route as local-transactional or coordinated-external. Local mutations must accept a transaction-bound audit dependency; external/internal-HTTP mutations must use the Task 5 idempotency/outbox coordinator. Add negative endpoint and audit-atomicity tests for each mutation family; any route without an independent scope boundary and durable terminal strategy blocks implementation until both are added.
 
 - [ ] **Step 2: Write failing permission and inventory tests**
 
 For active owner authority, require `requireRole`, `requirePermission`, and `requireWriteAccess` to allow access even when the normal role/group/read-only result denies. For inactive/non-owner/emergency-disabled cases, require byte-for-byte existing decisions. Explicitly test that `requireAuth`, `canAccessImplementation`, tenant lookup helpers, and entity ownership checks are not bypassed.
 
-For every authenticated active-owner API request (not only one that normal RBAC would deny), require one durable route-level attempt event before the route handler begins. This makes always-on owner operations auditable even when the legacy owner role would already pass. Require the Nitro response/error hook to append exactly one `succeeded` or `failed` terminal event with only the route, response class, and bounded outcome code. Attempt-audit failure blocks the route; terminal-audit failure enters durable reconciliation and converts the response to an audit-system failure where H3 still permits replacement. Tool-specific execution audit remains separate and more precise.
+For every authenticated active-owner API request (not only one that normal RBAC would deny), require one durable route-level attempt event before the route handler begins. This makes always-on owner operations auditable even when the legacy owner role would already pass. Require the Nitro response/error hook to append exactly one `succeeded` or `failed` terminal event with only the route, response class, and bounded outcome code. Attempt-audit failure blocks the route.
+
+For read-only routes, if direct terminal insertion fails, send the already-bounded terminal event directly to the existing `JOBS_QUEUE` binding without first touching the database job ledger; the queue message is the durable recovery record and the response is withheld until either DB or Queue persistence succeeds. For mutation routes, the inventory must route terminal audit through the same local database transaction or Task 5 execution ledger/outbox; post-response middleware alone is never accepted as mutation audit. Tool-specific execution audit remains separate and more precise.
 
 - [ ] **Step 3: Run RED**
 
@@ -365,7 +368,7 @@ After `requireAuth(event)` succeeds, resolve God mode using `user.id`. Admit act
 
 Replace in-scope AI/application flag checks with `isApplicationCapabilityEnabled(event, normalGate)`. Keep infrastructure availability gates such as missing secrets/bindings/providers outside the bypass adapter.
 
-Implement `server/plugins/godModeAudit.ts` with Nitro/H3 response and error hooks fed only by trusted state placed on `event.context` by the bypass helpers. It must not infer authority from response bodies or client headers and must deduplicate multiple bypass helpers in the same route.
+Implement `server/plugins/godModeAudit.ts` with Nitro/H3 response and error hooks fed only by trusted state placed on `event.context` by the owner-audit middleware. It must not infer authority from response bodies or client headers and must deduplicate multiple helpers in the same route. Its queue fallback contains only the strict audit schema, never a request/response body, and uses a dedicated `god-mode.audit-terminal` job handler.
 
 - [ ] **Step 5: Run GREEN and security controls**
 
@@ -456,6 +459,8 @@ git commit -m "feat(ai): unlock complete owner catalog"
 - Create: `server/utils/ai/godModeExecution.ts`
 - Create: `server/utils/godMode/reconciliation.ts`
 - Create: `server/api/cron/god-mode-reconciliation.post.ts`
+- Modify: `server/utils/queue.ts`
+- Modify: `server/utils/queueConsumer.ts`
 - Modify: `workers/pages-cron/src/index.ts`
 - Modify: `server/utils/ai/pendingActions.ts`
 - Modify: `server/utils/ai/executors/types.ts`
@@ -520,7 +525,9 @@ For in-app calls, derive the idempotency key from the persisted conversation/mes
 
 For explicitly classified local transactional actions, insert the success event using the same `transaction()` client as the mutation and add rollback tests. For internal-HTTP/external-provider actions, persist the execution-ledger/outbox row before dispatch and send provider-supported idempotency keys, then persist the terminal audit and ledger state. If terminal persistence fails after a reported provider success, return `outcome_ambiguous`, leave the durable pre-dispatch row blocked from replay, and require reconciliation rather than returning a generic retryable failure.
 
-Implement a `CRON_SECRET`-protected reconciliation route that scans bounded stale `in_progress`/`ambiguous` rows, queries providers by their idempotency/reference keys without repeating the action, appends the missing immutable terminal event, and closes the coordination row. Add it to the existing `workers/pages-cron` schedule/route list. Unknown outcomes remain blocked and alertable. Add tests for success, failure, still-unknown, duplicate reconciliation, provider lookup outage, and pages-cron wiring.
+Add `god-mode.audit-terminal` to the existing Queue job union and consumer. Provide a security-specific direct producer that sends only a strict terminal audit message to `JOBS_QUEUE` without calling `recordJobQueued` first, so a database outage cannot prevent the independent durable fallback. The consumer validates the strict schema and idempotently appends the terminal event; retry/dead-letter behavior remains the existing jobs-consumer behavior.
+
+Implement a `CRON_SECRET`-protected reconciliation route that scans bounded stale `in_progress`/`ambiguous` execution rows and attempt events missing a terminal, queries providers by their idempotency/reference keys without repeating the action, appends the missing immutable terminal event, and closes the coordination row. Add it to the existing `workers/pages-cron` schedule/route list. Unknown mutation outcomes remain blocked and alertable; read-route queue events replay their captured bounded outcome. Add tests for success, failure, still-unknown, duplicate reconciliation, provider lookup outage, direct Queue fallback during DB outage, dead-letter visibility, and pages-cron wiring.
 
 Always write the attempt before calling the handler or provider. On error, write a bounded failed event and rethrow a sanitized operational error. If the failed event itself cannot persist, return a generic audit-system failure without leaking the underlying secret/provider message.
 
@@ -535,7 +542,7 @@ Add a double-submit test proving only one executor claim wins. Run the Step 2 su
 ```bash
 git add server/utils/ai/godModeExecution.ts server/utils/godMode/reconciliation.ts \
   server/api/cron/god-mode-reconciliation.post.ts workers/pages-cron/src/index.ts \
-  server/utils/ai/pendingActions.ts \
+  server/utils/queue.ts server/utils/queueConsumer.ts server/utils/ai/pendingActions.ts \
   server/utils/ai/executors/types.ts server/utils/ai/executors/index.ts \
   'server/api/agency/ai/chat/conversations/[id]/confirm-action.post.ts' \
   server/utils/ai/toolLoop.ts test/ai
