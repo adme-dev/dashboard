@@ -55,6 +55,15 @@ export interface InstallGodModeInternalExecutionDelegatorInput {
   routeOrTool: string
 }
 
+export type TrustedTask5DelegatedExecution = Readonly<GodModeInternalExecutionClaim>
+
+export interface TrustedTask5DelegatedExecutionDependencies {
+  now?: number
+  method?: string
+  path?: string
+  body?: unknown
+}
+
 interface InternalExecutionRequest {
   method: DelegatedMethod
   path: string
@@ -66,6 +75,8 @@ const digestPattern = /^[0-9a-f]{64}$/
 const idempotencyPattern = /^mcp:[0-9a-f]{64}$/
 const boundedId = '[A-Za-z0-9_-]{1,128}'
 const delegatorContextKey = Symbol('godModeInternalExecutionDelegator')
+const trustedExecutionContextKey = Symbol('trustedTask5DelegatedExecution')
+const trustedExecutions = new WeakSet<object>()
 
 const allowedTargets: Array<{ method: DelegatedMethod, path: RegExp }> = [
   { method: 'POST', path: /^\/api\/agency\/tasks$/ },
@@ -228,6 +239,54 @@ export async function mintInstalledGodModeInternalExecutionDelegation(
   return await (signer as (request: InternalExecutionRequest) => Promise<string>)(request)
 }
 
+/**
+ * Returns the runtime-branded Task 5 coordination marker only while it still matches this exact H3
+ * request. The marker is non-enumerable, module-symbol keyed, and WeakSet branded, so structural clones,
+ * JSON, and caller headers cannot manufacture or forward it.
+ */
+export async function getTrustedTask5DelegatedExecution(
+  event: H3Event,
+  dependencies: TrustedTask5DelegatedExecutionDependencies = {}
+): Promise<TrustedTask5DelegatedExecution | null> {
+  const marker = (event.context as Record<PropertyKey, unknown>)[trustedExecutionContextKey]
+  if (marker === undefined) return null
+  if (!marker || typeof marker !== 'object' || !trustedExecutions.has(marker)) {
+    deny(403, 'Invalid Task 5 delegated execution marker')
+  }
+
+  const claim = marker as TrustedTask5DelegatedExecution
+  const actorUserId = (event.context as any).user?.id
+  const method = (dependencies.method ?? getMethod(event)).toUpperCase()
+  const path = dependencies.path ?? (() => {
+    const url = getRequestURL(event)
+    return `${url.pathname}${url.search}`
+  })()
+  const body = Object.prototype.hasOwnProperty.call(dependencies, 'body')
+    ? dependencies.body
+    : await readBody(event).catch(() => null)
+  let bodyDigest: string
+  try {
+    bodyDigest = await digestMcpRequestBody(body)
+  } catch {
+    deny(403, 'Invalid Task 5 delegated execution marker')
+  }
+  const nowSec = Math.floor((dependencies.now ?? Date.now()) / 1000)
+
+  if (
+    typeof actorUserId !== 'string'
+    || actorUserId !== claim.actorUserId
+    || claim.channel !== 'mcp'
+    || method !== claim.method
+    || path !== claim.path
+    || bodyDigest !== claim.bodyDigest
+    || claim.exp <= nowSec
+    || claim.exp - nowSec > GOD_MODE_INTERNAL_EXECUTION_MAX_TTL_SEC
+    || !isAllowedGodModeInternalExecutionTarget(method, path)
+  ) deny(403, 'Invalid Task 5 delegated execution marker')
+
+  return claim
+}
+
 async function defaultConsumeNonce(jti: string, actorUserId: string, exp: number): Promise<boolean> {
   const inserted = await queryOneFresh<{ jti: string }>(
     `INSERT INTO god_mode_mcp_request_nonces (jti, actor_user_id, expires_at)
@@ -290,5 +349,13 @@ export async function consumeGodModeInternalExecutionDelegation(
     deny(503, 'Internal execution replay protection unavailable')
   }
   if (!consumed) deny(409, 'Internal execution delegation already consumed')
+  const marker = Object.freeze({ ...claim })
+  trustedExecutions.add(marker)
+  Object.defineProperty(event.context, trustedExecutionContextKey, {
+    value: marker,
+    configurable: false,
+    enumerable: false,
+    writable: false
+  })
   return claim
 }

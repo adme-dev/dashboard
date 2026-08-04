@@ -20,6 +20,7 @@ import {
 import { sendGodModeAuditTerminal } from '~~/server/utils/queue'
 import { getExecutor } from './executors'
 import type { ActionExecutor, ExecutorClass, ExecutorResult, ExecutionServices } from './executors/types'
+import { isTrustedPreDispatchError, markTrustedPreDispatchError } from './executionErrorProvenance'
 import { registry } from './tools'
 import type { AiTool } from './toolRegistry'
 import { fail, ok, type ToolContext, type ToolResult } from './toolContext'
@@ -554,10 +555,7 @@ function createGodModeExecutionCore(deps: GodModeExecutionDependencies) {
         db
       })
       if (!proposal || proposal.user_id !== user.id || proposal.tool_name !== request.toolName) {
-        throw Object.assign(new Error('proposal claim rejected'), {
-          boundedCode: 'proposal_claim_failed',
-          preDispatch: true
-        })
+        throw markTrustedPreDispatchError(new Error('proposal claim rejected'), 'proposal_claim_failed')
       }
       if (!db) {
         await deps.recordExecutionProgress({
@@ -596,10 +594,10 @@ function createGodModeExecutionCore(deps: GodModeExecutionDependencies) {
             routeOrTool: request.toolName
           })
         } catch (error) {
-          throw Object.assign(error instanceof Error ? error : new Error('delegation unavailable'), {
-            boundedCode: 'internal_delegation_unavailable',
-            preDispatch: true
-          })
+          throw markTrustedPreDispatchError(
+            error instanceof Error ? error : new Error('delegation unavailable'),
+            'internal_delegation_unavailable'
+          )
         }
       }
       const result = await executor.execute(proposal.resolved_payload, ctx, services)
@@ -658,7 +656,7 @@ function createGodModeExecutionCore(deps: GodModeExecutionDependencies) {
       const errorResultRef = typeof (error as any)?.resultRef === 'string'
         ? String((error as any).resultRef).slice(0, 128)
         : null
-      const dispatchUnknown = (error as any)?.preDispatch !== true
+      const dispatchUnknown = !isTrustedPreDispatchError(error)
       if (dispatchUnknown) {
         const boundedReference = capturedResultReference ?? errorResultRef
         try {

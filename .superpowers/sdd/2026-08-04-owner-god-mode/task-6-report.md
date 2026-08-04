@@ -287,3 +287,67 @@ was performed.
 ### Fix-round commit
 
 - Scoped fix commit: `fix(mcp): delegate owner executor authentication`
+
+## Fix round 3 — real middleware coordination and trusted error provenance
+
+### Findings addressed
+
+1. Delegated executor requests now traverse the real Pages chain: global auth, God-mode middleware,
+   RBAC middleware, and the existing route handler. After exact claim verification, fresh owner
+   resolution, and atomic nonce consumption, the delegation boundary installs a non-enumerable,
+   module-symbol-keyed, WeakSet-branded Task 5 marker on that exact H3 event.
+2. Reading the trusted marker rebinds current `event.context.user.id`, MCP channel, exact method, exact
+   path, canonical body digest, expiry, and the existing 14-target allowlist. Structural clones do not
+   copy it; actor/method/path/body drift and stale markers fail closed. A caller header cannot create the
+   private symbol or WeakSet membership.
+3. Global God-mode middleware recognizes only that verified runtime marker and returns before creating a
+   second application-session route attempt or mutation-family coordination. The response audit plugin
+   therefore sees no downstream Task 3 state: the Task 5 MCP ledger/audit remains the sole attempt and
+   terminal coordinator.
+4. The central application-control bypass recognizes the same exact marker, allowing a Task 5-coordinated
+   owner through downstream role, permission, write, read-only, and feature controls without loosening any
+   unrelated mutation. Existing handler-level tenant/client/entity/provider and payload validation still
+   runs because the original route handler executes unchanged.
+5. Status-only dispatch inference was removed. Once `$fetch` begins, 401, 403, 409, connection loss, and
+   other downstream errors are conservatively ambiguous because a handler may have committed before
+   returning any of them. This supersedes fix round 2's unsafe 401 failed-state claim.
+6. Pre-dispatch classification now has runtime provenance of its own. A private WeakSet brand, not a
+   caller-visible `preDispatch` field, marks local proposal-claim, delegation-installation, signing,
+   configuration, and serialization failures that happen before `$fetch`. A handler-supplied
+   `preDispatch: true` cannot convert an ambiguous side effect into a failed ledger terminal.
+
+### TDD evidence
+
+RED was observed before each production change:
+
+- the new marker test failed because the trusted accessor did not exist;
+- both real-chain tests failed at global God-mode middleware with `503 God mode audit unavailable` after
+  auth successfully consumed delegation but no session token remained;
+- executor transport tests showed downstream 401/403/409 were still tagged `internal_delegation_rejected`
+  and `preDispatch` solely from status;
+- a 409-after-side-effect carrying an untrusted `preDispatch: true` was incorrectly persisted as failed.
+
+GREEN coverage uses actual `server/middleware/auth.ts`, `server/middleware/godMode.ts`,
+`server/middleware/rbac.ts`, real `requireAuth`/`requireRole`, and the real task, expense, social publishing,
+CRM opportunity, and creative proof/banner route handlers behind the default executors. It proves each
+handler reaches its mutation exactly once; unrelated-path substitution, raw header, owner downgrade, and
+replay reject before another handler execution; an ordinary admin cookie reaches the unchanged task flow;
+an owner-excluding centralized gate accepts only the trusted marker; and no downstream Task 3 audit is
+written.
+
+### Verification
+
+- Focused real-chain, delegation, executor, and error-provenance suite: 4 files, 70 tests passed.
+- Related Task 3–6/auth/MCP regression: 39 files passed; 456 tests passed; 10 skipped; 0 failed.
+- Full Worker/config suite under Node 24 outside the filesystem sandbox: 211 files passed; 1 skipped;
+  970 tests passed; 12 skipped; 0 failed.
+- Root Node 24 Nuxt typecheck: exit 0.
+- Standalone Worker/shared signer remain byte-identical to the isolated verified copy; isolated TypeScript
+  exits 0 and Wrangler dry-run exits 0 at 2,197.25 KiB / 390.38 KiB gzip.
+- No Worker source/config, executor target inventory, local transaction path, rollout requirement,
+  migration, production secret, deployment, database, or external system was changed.
+- Final diff/security review, report staging, and commit SHA are recorded in the controller handoff.
+
+### Fix-round commit
+
+- Scoped fix commit: `fix(mcp): preserve delegated execution provenance`

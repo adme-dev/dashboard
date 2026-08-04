@@ -1,4 +1,5 @@
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
+import { markTrustedPreDispatchError } from '~~/server/utils/ai/executionErrorProvenance'
 import {
   GOD_MODE_INTERNAL_EXECUTION_HEADER,
   mintInstalledGodModeInternalExecutionDelegation
@@ -7,15 +8,10 @@ import {
 type InternalMethod = 'POST' | 'PUT' | 'PATCH'
 
 function boundedPreDispatchError(error: unknown, code: string): Error {
-  const candidate = error instanceof Error ? error : new Error('internal execution delegation failed')
-  return Object.assign(candidate, { boundedCode: code, preDispatch: true })
-}
-
-function statusCode(error: unknown): number | null {
-  if (!error || typeof error !== 'object') return null
-  const candidate = error as { statusCode?: unknown, status?: unknown, response?: { status?: unknown } }
-  const value = candidate.statusCode ?? candidate.status ?? candidate.response?.status
-  return typeof value === 'number' ? value : null
+  return markTrustedPreDispatchError(
+    error instanceof Error ? error : new Error('internal execution delegation failed'),
+    code
+  )
 }
 
 /**
@@ -53,18 +49,12 @@ export async function fetchInternalExecution<T = unknown>(
     headers.set(GOD_MODE_INTERNAL_EXECUTION_HEADER, delegation)
   }
 
-  try {
-    return await (globalThis as any).$fetch(path, {
-      method: options.method,
-      body: options.body,
-      headers
-    }) as T
-  } catch (error) {
-    // The downstream auth boundary rejects before its handler. This is a proven no-dispatch outcome,
-    // unlike connection loss/5xx after the request may have reached a mutation handler.
-    if ([401, 403, 409].includes(statusCode(error) ?? 0)) {
-      throw boundedPreDispatchError(error, 'internal_delegation_rejected')
-    }
-    throw error
-  }
+  // Once `$fetch` begins there is no trustworthy status-only proof of dispatch state. A route handler
+  // may perform a side effect and then return 401/403/409, so every downstream error remains ambiguous
+  // unless a future cryptographically authenticated rejection receipt proves middleware rejection.
+  return await (globalThis as any).$fetch(path, {
+    method: options.method,
+    body: options.body,
+    headers
+  }) as T
 }

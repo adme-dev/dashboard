@@ -234,22 +234,22 @@ describe('MCP God mode internal HTTP execution', () => {
     expect(downstreamExecutions).toHaveLength(1)
   })
 
-  it('marks a downstream auth 401 as proven pre-dispatch', async () => {
+  it.each([401, 403, 409])('does not infer pre-dispatch provenance from downstream HTTP %s alone', async statusCode => {
     vi.stubGlobal('$fetch', vi.fn(async () => {
-      throw Object.assign(new Error('downstream authentication rejected'), { statusCode: 401 })
+      throw Object.assign(new Error(`downstream ${statusCode}`), { statusCode })
     }))
-    const event = await originEvent(11, 'create_task')
+    const event = await originEvent(11 + statusCode, 'create_task')
 
-    await expect(makeCreateTaskExecutor().execute({ title: 'Rejected', clientId: CLIENT_ID }, {
+    const error = await makeCreateTaskExecutor().execute({ title: 'Rejected', clientId: CLIENT_ID }, {
       userId: OWNER_ID,
       userRole: 'owner',
       source: 'mcp',
       event
-    })).rejects.toMatchObject({
-      statusCode: 401,
-      boundedCode: 'internal_delegation_rejected',
-      preDispatch: true
-    })
+    }).catch(value => value)
+
+    expect(error).toMatchObject({ statusCode })
+    expect(error).not.toHaveProperty('boundedCode')
+    expect(error).not.toHaveProperty('preDispatch')
   })
 
   it('fails closed before dispatch when the Pages-only delegation secret is unavailable', async () => {

@@ -14,6 +14,7 @@ import { ok } from '~~/server/utils/ai/toolContext'
 import { listRegisteredGodModeMutationFamilies } from '~~/server/utils/godMode/featureGate'
 import { registerGodModeChatMutationFamily } from '~~/server/utils/ai/godModeMutationFamily'
 import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
+import { markTrustedPreDispatchError } from '~~/server/utils/ai/executionErrorProvenance'
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111'
 const OTHER_ID = '22222222-2222-4222-8222-222222222222'
@@ -347,7 +348,7 @@ describe('God mode direct execution', () => {
   })
 
   it('records a bounded failed outcome and sanitizes executor failures', async () => {
-    const h = harness({ executorError: Object.assign(new Error('provider token=secret'), { preDispatch: true }) })
+    const h = harness({ executorError: markTrustedPreDispatchError(new Error('provider token=secret'), 'executor_failed') })
     await expect(h.execute({ event: event(), toolName: 'create_task', args: { title: 'Ship' }, idempotencyKey: 'message-7:tool-call-2' }))
       .rejects.toMatchObject({ statusCode: 502, statusMessage: 'God mode action failed' })
     expect(h.deps.appendAudit).toHaveBeenLastCalledWith(
@@ -359,7 +360,7 @@ describe('God mode direct execution', () => {
 
   it('returns only a generic audit failure if the failed terminal cannot persist', async () => {
     const h = harness({
-      executorError: Object.assign(new Error('provider token=secret'), { preDispatch: true }),
+      executorError: markTrustedPreDispatchError(new Error('provider token=secret'), 'executor_failed'),
       failedAuditError: new Error('db password')
     })
     await expect(h.execute({ event: event(), toolName: 'create_task', args: { title: 'Ship' }, idempotencyKey: 'message-7:tool-call-2' }))
@@ -503,15 +504,20 @@ describe('God mode direct execution', () => {
     )
   })
 
-  it('classifies a proven downstream auth 401 as failed rather than ambiguous', async () => {
-    const idempotencyKey = `mcp:${'d'.repeat(64)}`
+  it.each([
+    ['auth 401 before the route handler', 401, false],
+    ['handler 403 after a side effect', 403, true],
+    ['handler 409 after a side effect', 409, true],
+    ['handler 409 with an untrusted preDispatch field after a side effect', 409, true, true]
+  ])('conservatively classifies %s as ambiguous without authenticated rejection provenance', async (_label, statusCode, afterDispatch, forgedPreDispatch = false) => {
+    const idempotencyKey = `mcp:${String(statusCode).repeat(64).slice(0, 64)}`
     const h = harness({
       expectedIdempotencyKey: idempotencyKey,
       executorError: Object.assign(new Error('downstream authentication rejected'), {
-        statusCode: 401,
-        boundedCode: 'internal_delegation_rejected',
-        preDispatch: true
-      })
+        statusCode,
+        ...(forgedPreDispatch ? { preDispatch: true } : {})
+      }),
+      executorErrorAfterDispatch: afterDispatch
     })
     const authorityEvent = event()
     const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
@@ -528,11 +534,12 @@ describe('God mode direct execution', () => {
       idempotencyKey,
       tenantId: TENANT_ID,
       clientId: CLIENT_ID
-    })).rejects.toMatchObject({ statusCode: 502, statusMessage: 'God mode action failed' })
+    })).resolves.toEqual({ ok: false, error: 'Action outcome is pending reconciliation.' })
 
-    expect(h.ledger.get(idempotencyKey)?.state).toBe('failed')
+    expect(h.ledger.get(idempotencyKey)?.state).toBe('ambiguous')
+    expect(h.sideEffects()).toBe(afterDispatch ? 1 : 0)
     expect(h.deps.appendAudit).toHaveBeenLastCalledWith(
-      expect.objectContaining({ phase: 'failed', outcomeCode: 'internal_delegation_rejected' }),
+      expect.objectContaining({ phase: 'ambiguous', outcomeCode: 'dispatch_outcome_unknown' }),
       expect.anything()
     )
   })

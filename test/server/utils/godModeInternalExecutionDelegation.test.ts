@@ -5,6 +5,7 @@ import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
 import {
   GOD_MODE_INTERNAL_EXECUTION_AUDIENCE,
   consumeGodModeInternalExecutionDelegation,
+  getTrustedTask5DelegatedExecution,
   isAllowedGodModeInternalExecutionTarget,
   signGodModeInternalExecutionClaim,
   verifyGodModeInternalExecutionClaim
@@ -88,6 +89,61 @@ describe('God mode internal execution delegation', () => {
 
     await expect(consumeGodModeInternalExecutionDelegation({ context: {} } as any, dependencies))
       .rejects.toMatchObject({ statusCode: 409 })
+  })
+
+  it('installs a runtime-branded exact Task 5 marker that rejects actor, method, path, body, and expiry drift', async () => {
+    const event = { method: 'POST', context: {}, path: PATH } as any
+    await consumeGodModeInternalExecutionDelegation(event, {
+      signingSecret: SECRET,
+      now: NOW_MS,
+      encoded: await signed(),
+      method: 'POST',
+      path: PATH,
+      body: BODY,
+      resolveAuthority: async request => await activeOwner(request),
+      consumeNonce: async () => true
+    })
+    event.context.user = { id: ACTOR_ID }
+
+    await expect(getTrustedTask5DelegatedExecution(event, {
+      now: NOW_MS,
+      method: 'POST',
+      path: PATH,
+      body: BODY
+    })).resolves.toMatchObject({
+      actorUserId: ACTOR_ID,
+      channel: 'mcp',
+      correlationId: CORRELATION_ID,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      routeOrTool: 'create_task',
+      method: 'POST',
+      path: PATH
+    })
+
+    const clone = { ...event, context: { ...event.context } }
+    await expect(getTrustedTask5DelegatedExecution(clone, {
+      now: NOW_MS,
+      method: 'POST',
+      path: PATH,
+      body: BODY
+    })).resolves.toBeNull()
+
+    for (const changed of [
+      { method: 'PATCH', path: PATH, body: BODY, now: NOW_MS },
+      { method: 'POST', path: '/api/crm/opportunities', body: BODY, now: NOW_MS },
+      { method: 'POST', path: PATH, body: { ...BODY, title: 'changed' }, now: NOW_MS },
+      { method: 'POST', path: PATH, body: BODY, now: NOW_MS + 61_000 }
+    ]) {
+      await expect(getTrustedTask5DelegatedExecution(event, changed)).rejects.toMatchObject({ statusCode: 403 })
+    }
+
+    event.context.user = { id: '99999999-9999-4999-8999-999999999999' }
+    await expect(getTrustedTask5DelegatedExecution(event, {
+      now: NOW_MS,
+      method: 'POST',
+      path: PATH,
+      body: BODY
+    })).rejects.toMatchObject({ statusCode: 403 })
   })
 
   it.each([

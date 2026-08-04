@@ -4,6 +4,7 @@ import { createError, getCookie, getHeader, getRequestURL } from 'h3'
 
 import { appendGodModeAuditEvent } from '~~/server/utils/godMode/audit'
 import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
+import { getTrustedTask5DelegatedExecution } from '~~/server/utils/godMode/internalExecutionDelegation'
 import {
   GodModeMutationCoordinationError,
   prepareRegisteredGodModeMutation,
@@ -73,6 +74,11 @@ export async function handleGodModeRequest(
 ): Promise<void> {
   const path = getRequestURL(event).pathname
   if (isExcluded(path)) return
+
+  // Task 5 already durably coordinates delegated MCP mutations. Its runtime-branded exact-request
+  // marker suppresses this application-session route attempt and mutation-family admission only for
+  // the verified downstream event; raw headers and cloned/mismatched markers cannot reach this branch.
+  if (await getTrustedTask5DelegatedExecution(event)) return
 
   const actorUserId = (event.context as any).user?.id
   if (typeof actorUserId !== 'string') return

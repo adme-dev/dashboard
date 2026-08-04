@@ -10,6 +10,7 @@ import {
   isActiveGodModeAuthority,
   resolveGodModeAuthority
 } from '~~/server/utils/godMode/authority'
+import { getTrustedTask5DelegatedExecution } from '~~/server/utils/godMode/internalExecutionDelegation'
 
 const READ_ONLY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const requestAuditStateKey = Symbol('godModeRouteAuditState')
@@ -326,6 +327,11 @@ export async function canBypassApplicationControl(
 ): Promise<boolean> {
   const userId = (event.context as any).user?.id
   if (typeof userId !== 'string') return false
+
+  // A valid runtime marker proves Task 5 already persisted the sole MCP attempt and owns its terminal.
+  // Do not create Task 3 route state or another terminal; allow only the exact 14-target event to pass
+  // centralized application permission/feature controls while all independent handler validation runs.
+  if (await getTrustedTask5DelegatedExecution(event)) return true
 
   const authority = await resolveGodModeAuthority(event, userId)
   // This Task 3 path accepts only the direct result of the resolver call above; no authority data
