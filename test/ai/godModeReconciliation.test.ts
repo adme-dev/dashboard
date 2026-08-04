@@ -126,4 +126,19 @@ describe('God mode reconciliation', () => {
       taskId: 'task-7', socialConversationId: 'conversation-7', actorUserId: candidate().actorUserId
     }))
   })
+
+  it('never treats a social task id alone as success when no durable link metadata exists', async () => {
+    const lookup = (reconciliationModule as any).lookupGodModeExecutionOutcome
+    expect(lookup).toBeTypeOf('function')
+    if (typeof lookup !== 'function') return
+
+    const outcome = await lookup(candidate({
+      routeOrTool: 'create_social_case_task',
+      resultReference: 'task-7',
+      executionPhase: 'task_created',
+      executionMetadata: null
+    }))
+
+    expect(outcome).toEqual({ state: 'unknown' })
+  })
 })

@@ -7,24 +7,27 @@ import {
 } from '~~/server/utils/godMode/authority'
 import { recordGodModeBypassedControls } from '~~/server/utils/godMode/featureGate'
 import {
-  claimGodModeChatSubmission,
-  completeGodModeChatSubmission,
+  claimChatSubmission,
+  completeChatSubmission,
   isTransportRetryToken,
-  type GodModeChatSubmissionClaim
+  lookupChatSubmission,
+  type ChatSubmissionClaim
 } from '~~/server/utils/ai/godModeChatSubmission'
 
 const RATE_LIMIT_MAX_MESSAGES = 12
 const ALLOWED_ENTITY_TYPES = new Set(['task', 'client', 'project', 'brief'])
 
 interface MessagesRouteDependencies {
-  claimSubmission: typeof claimGodModeChatSubmission
-  completeSubmission: typeof completeGodModeChatSubmission
+  lookupSubmission: typeof lookupChatSubmission
+  claimSubmission: typeof claimChatSubmission
+  completeSubmission: typeof completeChatSubmission
   processMessage: typeof processUserMessage
 }
 
 const defaultDependencies: MessagesRouteDependencies = {
-  claimSubmission: claimGodModeChatSubmission,
-  completeSubmission: completeGodModeChatSubmission,
+  lookupSubmission: lookupChatSubmission,
+  claimSubmission: claimChatSubmission,
+  completeSubmission: completeChatSubmission,
   processMessage: processUserMessage
 }
 
@@ -48,27 +51,6 @@ export function createMessagesPostHandler(dependencies: MessagesRouteDependencie
 
     if (content.length > 10000) {
       throw createError({ statusCode: 400, statusMessage: 'Message too long (max 10,000 characters)' })
-    }
-
-    // Rate limit: max messages per minute across all conversations
-    const rateCheck = await queryOne(`
-      SELECT COUNT(*)::int as cnt
-      FROM ai_messages m
-      JOIN ai_conversations c ON c.id = m.conversation_id
-      WHERE c.user_id = $1
-        AND m.role = 'user'
-        AND m.created_at > NOW() - INTERVAL '60 seconds'
-    `, [user.id])
-
-    if (rateCheck && rateCheck.cnt >= RATE_LIMIT_MAX_MESSAGES) {
-      if (godModeActive) {
-        await recordGodModeBypassedControls(event, ['rate_limit'])
-      } else {
-        throw createError({
-          statusCode: 429,
-          statusMessage: 'Too many messages. Please wait a moment before sending another.',
-        })
-      }
     }
 
     // Verify ownership
@@ -97,42 +79,67 @@ export function createMessagesPostHandler(dependencies: MessagesRouteDependencie
         }
       : undefined
 
-    let submission: Extract<GodModeChatSubmissionClaim, { state: 'claimed' }> | null = null
     const transportRetryToken = body?.transportRetryToken
-    if (godModeActive) {
-      if (!isTransportRetryToken(transportRetryToken)) {
-        throw createError({ statusCode: 400, statusMessage: 'A valid transportRetryToken is required' })
-      }
-      const claim = await dependencies.claimSubmission({
-        actorUserId: user.id,
-        conversationId: id,
-        transportRetryToken,
-        content,
-        request: { content, mentionedEntities, boardId, persona, room }
-      })
-      if (claim.state === 'completed') return { ...claim.response, transportRetryToken }
-      if (claim.state === 'blocked') {
-        throw createError({ statusCode: 409, statusMessage: 'This submission is already being processed' })
-      }
-      submission = claim
+    if (!isTransportRetryToken(transportRetryToken)) {
+      throw createError({ statusCode: 400, statusMessage: 'A valid transportRetryToken is required' })
     }
+    const submissionRequest = {
+      actorUserId: user.id,
+      conversationId: id,
+      transportRetryToken,
+      content,
+      request: { content, mentionedEntities, boardId, persona, room },
+      executionMode: godModeActive ? 'god_mode' as const : 'ordinary' as const
+    }
+    const existing = await dependencies.lookupSubmission(submissionRequest)
+    if (existing?.state === 'completed') return { ...existing.response, transportRetryToken }
+    if (existing?.state === 'blocked') {
+      throw createError({ statusCode: 409, statusMessage: 'This submission is already being processed' })
+    }
+
+    // Rate limit only new turns. A retry of a persisted turn replays/fails closed above even after
+    // an authority downgrade or emergency disable.
+    const rateCheck = await queryOne(`
+      SELECT COUNT(*)::int as cnt
+      FROM ai_messages m
+      JOIN ai_conversations c ON c.id = m.conversation_id
+      WHERE c.user_id = $1
+        AND m.role = 'user'
+        AND m.created_at > NOW() - INTERVAL '60 seconds'
+    `, [user.id])
+
+    if (rateCheck && rateCheck.cnt >= RATE_LIMIT_MAX_MESSAGES) {
+      if (godModeActive) {
+        await recordGodModeBypassedControls(event, ['rate_limit'])
+      } else {
+        throw createError({
+          statusCode: 429,
+          statusMessage: 'Too many messages. Please wait a moment before sending another.',
+        })
+      }
+    }
+
+    let submission: Extract<ChatSubmissionClaim, { state: 'claimed' }>
+    const claim = await dependencies.claimSubmission(submissionRequest)
+    if (claim.state === 'completed') return { ...claim.response, transportRetryToken }
+    if (claim.state === 'blocked') {
+      throw createError({ statusCode: 409, statusMessage: 'This submission is already being processed' })
+    }
+    submission = claim
 
     try {
       const result = await dependencies.processMessage(
         id, user.id, user.role, content, event, mentionedEntities, boardId, persona, room,
         undefined,
-        submission ? { userMessageId: submission.userMessageId } : undefined
+        { userMessageId: submission.userMessageId }
       )
-      if (submission) {
-        await dependencies.completeSubmission({
-          submissionId: submission.submissionId,
-          actorUserId: user.id,
-          response: result as unknown as Record<string, unknown>,
-          assistantMessageId: result.message?.id
-        })
-        return { ...result, transportRetryToken }
-      }
-      return result
+      await dependencies.completeSubmission({
+        submissionId: submission.submissionId,
+        actorUserId: user.id,
+        response: result as unknown as Record<string, unknown>,
+        assistantMessageId: result.message?.id
+      })
+      return { ...result, transportRetryToken }
     } catch (err: any) {
       console.error('Failed to process AI message:', err)
       throw createError({ statusCode: 500, statusMessage: 'Failed to process message' })

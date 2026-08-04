@@ -162,3 +162,37 @@ Migration 347 was extended in place because it remains unapplied. It now contain
 ### Fix-round commit
 
 - This scoped fix commit — `fix(ai): make owner action retries durable`
+
+## Fix round 2 — authority-safe replay, generic submissions, and atomic social cases
+
+### Findings addressed
+
+1. Persisted submission lookup now runs for every authenticated owner of the conversation before any new-turn rate or authority-dependent behavior. Completed submissions replay their bounded stored response and processing/failed/request-mismatched submissions fail closed. A retry of a turn created in active God mode therefore never re-enters the model or tools after an owner downgrade or emergency disable. Only a new active-owner turn is recorded with `execution_mode = 'god_mode'`; all other new authenticated turns are recorded as `ordinary`.
+2. Submission durability is now generic rather than God-mode-only. Every production chat caller already creates a UUID before its first POST; the route now claims a single actor+conversation+token row, reserves one persisted user-message ID, completes one bounded response, and replays it for ordinary users as well. Route concurrency tests invoke the production claim/lookup/completion SQL through a serialized transactional seam that enforces the advisory-lock and unique-key decisions instead of replacing the claim with an in-memory route fake.
+3. `create_social_case_task` is now `local-transactional`. Task insertion, creation activity, conversation row lock, native link, and native-link event commit or roll back in one server-owned Postgres transaction. The same executor is used by ordinary confirmation and God-mode direct execution; God mode supplies its existing ledger transaction while ordinary confirmation opens the transaction in the executor. Progress-checkpoint failure can no longer split the operation, link failure leaves no task, and a subsequent confirmation retry commits exactly one linked task. Legacy reconciliation remains link-only and refuses to infer success from a task ID without the durable conversation/link metadata; it never calls the task-create endpoint.
+4. Migration 347 now binds every ambiguous or terminal insert to the exact immutable attempt identity: actor, correlation, session digest, channel, route/tool, null-safe tenant/client/entity scope, normalized attempt-plus-bypass controls, and emergency state. Direct execution freezes its attempt identity before later scope resolution so its terminal is admissible under the same exact guard. The generic submission table also records bounded `ordinary`/`god_mode` execution mode.
+
+### TDD evidence
+
+RED cycles were observed before each production change:
+
+- Route durability: 4 intended failures out of 7 tests for active-to-downgraded replay, active-to-disabled replay, ordinary response-loss replay, and ordinary concurrent duplicate execution.
+- Atomic social case: 2 intended failures out of 2 tests because checkpoint failure produced ambiguity and no atomic create+link service existed.
+- Reconciliation: 1 intended failure because a social task reference without link metadata could still be treated as success.
+- Exact audit producer identity: 1 intended failure because later scope resolution changed terminal tenant/client scope relative to the immutable attempt.
+- Migration structure: 1 intended static failure because generic submission execution mode was absent; ten disposable-schema cases were environment-gated.
+
+Final verification:
+
+- Focused route, concurrency, direct execution, social atomicity, reconciliation, ordinary pending actions, catalog, and schema suite: 8 files passed; 90 tests passed; 10 live-database cases skipped; 0 failed.
+- Combined Task 1–5 security, audit, route/concurrency, ordinary confirmation, executor, inventory, and schema suite: 24 files passed; 240 tests passed; 10 live-database cases skipped; 0 failed.
+- Full Node 24 Nuxt typecheck retains the inherited repository baseline. Filtering the complete output to all eleven changed source/test paths produced no diagnostics.
+- `git diff --check`: passed before report append; it is rerun at the final commit boundary.
+
+### Migration review boundary
+
+Migration 347 remains unapplied per controller instruction. The disposable-schema suite now includes separate ambiguous and succeeded cases that reject mismatched actor, session digest, channel, route/tool, tenant, client, entity type, entity ID, normalized controls, and emergency state, then accept the exact identity. Those ten live-database cases remain skipped because `GOD_MODE_AUDIT_TEST_DATABASE_URL` is unavailable in this worktree; static migration checks and all non-database regressions pass.
+
+### Fix-round commit
+
+- This scoped fix commit — `fix(ai): make chat retries authority safe`

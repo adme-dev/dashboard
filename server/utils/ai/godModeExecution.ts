@@ -424,9 +424,10 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
       if (row.state === 'failed') return fail('Action previously failed.')
       return fail('Action outcome is pending reconciliation.')
     }
+    const auditIdentity = { ...row }
 
     try {
-      await deps.appendAudit(auditEvent(row, 'attempt', 'started', []))
+      await deps.appendAudit(auditEvent(auditIdentity, 'attempt', 'started'))
     } catch {
       await deps.setExecutionState({ actorUserId: user.id, idempotencyKey: request.idempotencyKey, state: 'failed' }).catch(() => {})
       operationalError(503, 'God mode audit unavailable')
@@ -436,7 +437,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
       try {
         await deps.dismissProposals({ actorUserId: user.id, idempotencyKey: request.idempotencyKey })
         await deps.transaction(async db => {
-          await deps.appendAudit(auditEvent(row, 'failed', code), db)
+          await deps.appendAudit(auditEvent(auditIdentity, 'failed', code), db)
           await deps.setExecutionState({ actorUserId: user.id, idempotencyKey: request.idempotencyKey, state: 'failed' }, db)
         })
       } catch {
@@ -487,7 +488,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
       const data = proposed.data as { proposalId?: unknown }
       if (typeof data?.proposalId !== 'string') {
         await deps.transaction(async db => {
-          await deps.appendAudit(auditEvent(row, 'succeeded', 'no_mutation'), db)
+          await deps.appendAudit(auditEvent(auditIdentity, 'succeeded', 'no_mutation'), db)
           await deps.setExecutionState({ actorUserId: user.id, idempotencyKey: request.idempotencyKey, state: 'succeeded' }, db)
         })
         return proposed
@@ -554,7 +555,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
       try {
         const result = await deps.transaction(async db => {
           const executed = await executeClaimed(db)
-          await deps.appendAudit(auditEvent(row, 'succeeded', 'executed'), db)
+          await deps.appendAudit(auditEvent(auditIdentity, 'succeeded', 'executed'), db)
           await deps.setExecutionState({
             actorUserId: user.id,
             idempotencyKey: request.idempotencyKey,
@@ -578,7 +579,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
               conversationId: request.conversationId,
               db
             })
-            await deps.appendAudit(auditEvent(row, 'failed', code), db)
+            await deps.appendAudit(auditEvent(auditIdentity, 'failed', code), db)
             await deps.setExecutionState({ actorUserId: user.id, idempotencyKey: request.idempotencyKey, state: 'failed' }, db)
           })
         } catch {
@@ -601,7 +602,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
         const boundedReference = capturedResultReference ?? errorResultRef
         try {
           await deps.transaction(async db => {
-            await deps.appendAudit(auditEvent(row, 'ambiguous', 'dispatch_outcome_unknown'), db)
+            await deps.appendAudit(auditEvent(auditIdentity, 'ambiguous', 'dispatch_outcome_unknown'), db)
             await deps.setExecutionState({
               actorUserId: user.id,
               idempotencyKey: request.idempotencyKey,
@@ -616,7 +617,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
       }
       try {
         await deps.transaction(async db => {
-          await deps.appendAudit(auditEvent(row, 'failed', code), db)
+          await deps.appendAudit(auditEvent(auditIdentity, 'failed', code), db)
           await deps.setExecutionState({ actorUserId: user.id, idempotencyKey: request.idempotencyKey, state: 'failed' }, db)
         })
       } catch {
@@ -625,7 +626,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
       operationalError(502, 'God mode action failed')
     }
 
-    const terminal = auditEvent(row, 'succeeded', 'executed')
+    const terminal = auditEvent(auditIdentity, 'succeeded', 'executed')
     try {
       await deps.transaction(async db => {
         await deps.appendAudit(terminal, db)

@@ -220,6 +220,40 @@ describe('God mode direct execution', () => {
     expect(h.calls).not.toContain('executor')
   })
 
+  it('keeps terminal audit identity equal to the immutable attempt when scope is resolved later', async () => {
+    const h = harness()
+    await h.execute({
+      event: event(), toolName: 'create_task', args: { title: 'Ship', clientId: CLIENT_ID },
+      idempotencyKey: 'message-7:tool-call-2'
+    })
+
+    const attempt = vi.mocked(h.deps.appendAudit).mock.calls.find(([input]) => input.phase === 'attempt')?.[0]
+    const terminal = vi.mocked(h.deps.appendAudit).mock.calls.find(([input]) => input.phase === 'succeeded')?.[0]
+    expect({
+      actorUserId: terminal?.actorUserId,
+      sessionDigest: terminal?.sessionDigest,
+      channel: terminal?.channel,
+      routeOrTool: terminal?.routeOrTool,
+      tenantId: terminal?.tenantId ?? null,
+      clientId: terminal?.clientId ?? null,
+      entityType: terminal?.entityType ?? null,
+      entityId: terminal?.entityId ?? null,
+      bypassedControls: terminal?.bypassedControls,
+      emergencyDisabled: terminal?.emergencyDisabled
+    }).toEqual({
+      actorUserId: attempt?.actorUserId,
+      sessionDigest: attempt?.sessionDigest,
+      channel: attempt?.channel,
+      routeOrTool: attempt?.routeOrTool,
+      tenantId: attempt?.tenantId ?? null,
+      clientId: attempt?.clientId ?? null,
+      entityType: attempt?.entityType ?? null,
+      entityId: attempt?.entityId ?? null,
+      bypassedControls: attempt?.bypassedControls,
+      emergencyDisabled: attempt?.emergencyDisabled
+    })
+  })
+
   it('derives the actor from requireAuth and ignores actor-looking args', async () => {
     const h = harness({ actorId: OTHER_ID, authorityActive: false })
     await expect(h.execute({

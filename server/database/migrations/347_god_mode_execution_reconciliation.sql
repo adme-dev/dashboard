@@ -31,8 +31,29 @@ BEGIN
   END IF;
 
   IF NEW.phase IN ('ambiguous', 'succeeded', 'failed') AND NOT EXISTS (
-    SELECT 1 FROM god_mode_audit_events
-     WHERE correlation_id = NEW.correlation_id AND phase = 'attempt'
+    SELECT 1
+      FROM god_mode_audit_events attempt
+     WHERE attempt.correlation_id = NEW.correlation_id
+       AND attempt.phase = 'attempt'
+       AND attempt.actor_user_id = NEW.actor_user_id
+       AND attempt.session_digest = NEW.session_digest
+       AND attempt.channel = NEW.channel
+       AND attempt.route_or_tool = NEW.route_or_tool
+       AND attempt.tenant_id IS NOT DISTINCT FROM NEW.tenant_id
+       AND attempt.client_id IS NOT DISTINCT FROM NEW.client_id
+       AND attempt.entity_type IS NOT DISTINCT FROM NEW.entity_type
+       AND attempt.entity_id IS NOT DISTINCT FROM NEW.entity_id
+       AND attempt.emergency_disabled = NEW.emergency_disabled
+       AND god_mode_normalize_bypassed_controls(NEW.bypassed_controls) =
+           god_mode_normalize_bypassed_controls(
+             attempt.bypassed_controls || COALESCE((
+               SELECT array_agg(bypassed_control.value)
+                 FROM god_mode_audit_events bypass
+                 CROSS JOIN LATERAL unnest(bypass.bypassed_controls) AS bypassed_control(value)
+                WHERE bypass.correlation_id = attempt.correlation_id
+                  AND bypass.phase = 'bypass'
+             ), ARRAY[]::VARCHAR[])
+           )
   ) THEN
     RAISE EXCEPTION 'outcome event requires matching attempt';
   END IF;
@@ -50,6 +71,7 @@ CREATE TABLE IF NOT EXISTS ai_chat_submissions (
   -- Reserved before the turn and inserted into ai_messages after history is loaded but before tools.
   user_message_id UUID NOT NULL,
   assistant_message_id UUID REFERENCES ai_messages(id) ON DELETE SET NULL,
+  execution_mode VARCHAR(16) NOT NULL DEFAULT 'ordinary',
   state VARCHAR(16) NOT NULL DEFAULT 'processing',
   response_payload JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -61,6 +83,8 @@ CREATE TABLE IF NOT EXISTS ai_chat_submissions (
     CHECK (request_digest ~ '^[0-9a-f]{64}$'),
   CONSTRAINT ai_chat_submissions_state_check
     CHECK (state IN ('processing', 'completed', 'failed')),
+  CONSTRAINT ai_chat_submissions_execution_mode_check
+    CHECK (execution_mode IN ('ordinary', 'god_mode')),
   CONSTRAINT ai_chat_submissions_response_size_check
     CHECK (response_payload IS NULL OR octet_length(response_payload::TEXT) <= 1048576),
   UNIQUE (actor_user_id, conversation_id, transport_token_hash)

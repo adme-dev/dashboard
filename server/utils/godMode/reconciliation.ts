@@ -102,6 +102,25 @@ export async function repairSocialCaseTaskLink(
     : { state: 'unknown' }
 }
 
+export async function lookupGodModeExecutionOutcome(
+  candidate: ReconciliationCandidate
+): Promise<ReconciledProviderOutcome> {
+  if (candidate.routeOrTool === 'create_social_case_task') {
+    return candidate.executionMetadata
+      ? await repairSocialCaseTaskLink(candidate.executionMetadata, candidate.actorUserId)
+      : { state: 'unknown' }
+  }
+  if (candidate.state === 'in_progress'
+    && ['claimed', 'proposal_prepared'].includes(candidate.executionPhase ?? 'claimed')) {
+    return { state: 'failed' }
+  }
+  // A reference is a bounded captured response only for non-composite internal mutations.
+  if (candidate.resultReference) {
+    return { state: 'succeeded', resultReference: candidate.resultReference }
+  }
+  return { state: 'unknown' }
+}
+
 const defaultDependencies: GodModeReconciliationDependencies = {
   listCandidates: async limit => {
     const rows = await queryRows<any>(
@@ -138,22 +157,7 @@ const defaultDependencies: GodModeReconciliationDependencies = {
       LIMIT 1`,
     [correlationId]
   ),
-  lookupOutcome: async candidate => {
-    if (candidate.routeOrTool === 'create_social_case_task' && candidate.executionMetadata) {
-      return await repairSocialCaseTaskLink(candidate.executionMetadata, candidate.actorUserId)
-    }
-    if (candidate.state === 'in_progress'
-      && ['claimed', 'proposal_prepared'].includes(candidate.executionPhase ?? 'claimed')) {
-      return { state: 'failed' }
-    }
-    // No current executor talks directly to an external provider. For internal HTTP calls, a
-    // persisted result reference is the captured bounded response from the completed dispatch.
-    // Missing references remain unknown; reconciliation never calls the mutation endpoint.
-    if (candidate.resultReference) {
-      return { state: 'succeeded', resultReference: candidate.resultReference }
-    }
-    return { state: 'unknown' }
-  },
+  lookupOutcome: lookupGodModeExecutionOutcome,
   appendTerminalAndClose: async (candidate, terminal) => await transaction(async db => {
     if (terminal) await appendGodModeAuditEvent(terminal, db as any)
     const terminalPhase = terminal?.phase ?? (await db.query<{ phase: 'succeeded' | 'failed' }>(

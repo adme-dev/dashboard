@@ -5,15 +5,16 @@ import { transaction } from '~~/server/utils/db'
 
 type TransactionDb = Pick<Pool, 'query'>
 
-export interface GodModeChatSubmissionRequest {
+export interface ChatSubmissionRequest {
   actorUserId: string
   conversationId: string
   transportRetryToken: string
   content: string
   request: unknown
+  executionMode?: 'ordinary' | 'god_mode'
 }
 
-export type GodModeChatSubmissionClaim =
+export type ChatSubmissionClaim =
   | { state: 'claimed'; submissionId: string; userMessageId: string }
   | {
       state: 'completed'
@@ -48,12 +49,53 @@ export function isTransportRetryToken(value: unknown): value is string {
   )
 }
 
-export async function claimGodModeChatSubmission(
-  request: GodModeChatSubmissionRequest,
+function existingClaim(
+  existing: any,
+  requestDigest: string
+): Exclude<ChatSubmissionClaim, { state: 'claimed' }> {
+  if (existing.request_digest !== requestDigest)
+    return { state: 'blocked', reason: 'token_reused' }
+  if (existing.state === 'completed' && existing.response_payload) {
+    return {
+      state: 'completed',
+      submissionId: existing.id,
+      userMessageId: existing.user_message_id,
+      response: existing.response_payload,
+    }
+  }
+  return {
+    state: 'blocked',
+    reason: existing.state === 'failed' ? 'failed' : 'processing',
+  }
+}
+
+export async function lookupChatSubmission(
+  request: ChatSubmissionRequest,
   runTransaction: <T>(
     callback: (db: TransactionDb) => Promise<T>,
   ) => Promise<T> = (callback) => transaction(callback as any),
-): Promise<GodModeChatSubmissionClaim> {
+): Promise<Exclude<ChatSubmissionClaim, { state: 'claimed' }> | null> {
+  const tokenHash = digest(request.transportRetryToken)
+  const requestDigest = digest(stableJson(request.request))
+  return await runTransaction(async db => {
+    const existing = (
+      await db.query<any>(
+        `SELECT id, user_message_id, request_digest, state, response_payload
+           FROM ai_chat_submissions
+          WHERE actor_user_id = $1 AND conversation_id = $2 AND transport_token_hash = $3`,
+        [request.actorUserId, request.conversationId, tokenHash],
+      )
+    ).rows[0]
+    return existing ? existingClaim(existing, requestDigest) : null
+  })
+}
+
+export async function claimChatSubmission(
+  request: ChatSubmissionRequest,
+  runTransaction: <T>(
+    callback: (db: TransactionDb) => Promise<T>,
+  ) => Promise<T> = (callback) => transaction(callback as any),
+): Promise<ChatSubmissionClaim> {
   const tokenHash = digest(request.transportRetryToken)
   const requestDigest = digest(stableJson(request.request))
   return await runTransaction(async (db) => {
@@ -70,20 +112,7 @@ export async function claimGodModeChatSubmission(
       )
     ).rows[0]
     if (existing) {
-      if (existing.request_digest !== requestDigest)
-        return { state: 'blocked', reason: 'token_reused' }
-      if (existing.state === 'completed' && existing.response_payload) {
-        return {
-          state: 'completed',
-          submissionId: existing.id,
-          userMessageId: existing.user_message_id,
-          response: existing.response_payload,
-        }
-      }
-      return {
-        state: 'blocked',
-        reason: existing.state === 'failed' ? 'failed' : 'processing',
-      }
+      return existingClaim(existing, requestDigest)
     }
 
     const submissionId = randomUUID()
@@ -91,8 +120,8 @@ export async function claimGodModeChatSubmission(
     await db.query(
       `INSERT INTO ai_chat_submissions (
          id, actor_user_id, conversation_id, transport_token_hash, request_digest,
-         user_message_id, state
-       ) VALUES ($1, $2, $3, $4, $5, $6, 'processing')`,
+         user_message_id, execution_mode, state
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'processing')`,
       [
         submissionId,
         request.actorUserId,
@@ -100,13 +129,14 @@ export async function claimGodModeChatSubmission(
         tokenHash,
         requestDigest,
         userMessageId,
+        request.executionMode ?? 'ordinary',
       ],
     )
     return { state: 'claimed', submissionId, userMessageId }
   })
 }
 
-export async function completeGodModeChatSubmission(
+export async function completeChatSubmission(
   input: {
     submissionId: string
     actorUserId: string
@@ -131,6 +161,6 @@ export async function completeGodModeChatSubmission(
       ],
     )
     if ((updated.rowCount ?? 0) !== 1)
-      throw new Error('God mode chat submission completion rejected')
+      throw new Error('Chat submission completion rejected')
   })
 }

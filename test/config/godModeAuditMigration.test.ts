@@ -64,6 +64,7 @@ describe('God mode audit migration', () => {
     expect(migration).toContain('god_mode_execution_key')
     expect(migration).toContain('proposal_id')
     expect(migration).toContain('execution_metadata')
+    expect(migration).toContain('execution_mode')
     expect(migration).toMatch(/phase[\s\S]*'ambiguous'/i)
   })
 })
@@ -314,7 +315,7 @@ databaseDescribe('God mode audit migration database regression', () => {
       `INSERT INTO god_mode_audit_events
         (actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase,
          bypassed_controls, outcome_code, emergency_disabled)
-       VALUES ($1, $2, $3, 'application', 'create_task', 'attempt', '{}', 'started', FALSE)`,
+       VALUES ($1, $2, $3, 'application', 'create_task', 'attempt', ARRAY['confirmation'], 'started', FALSE)`,
       [actor, correlation, digest]
     )
     await client!.query(
@@ -341,4 +342,90 @@ databaseDescribe('God mode audit migration database regression', () => {
       [actor, correlation, digest]
     )).resolves.toBeDefined()
   })
+
+  it.each(['ambiguous', 'succeeded'] as const)(
+    'rejects %s evidence unless its complete bounded identity matches the attempt',
+    async phase => {
+      const actor = '20111111-1111-4111-8111-111111111111'
+      const correlation = phase === 'ambiguous'
+        ? '20222222-2222-4222-8222-222222222222'
+        : '20333333-3333-4333-8333-333333333333'
+      const digest = 'f'.repeat(64)
+      const tenant = '20444444-4444-4444-8444-444444444444'
+      const clientId = '20555555-5555-4555-8555-555555555555'
+      const entityId = '20666666-6666-4666-8666-666666666666'
+      const base = {
+        actor,
+        digest,
+        channel: 'application',
+        route: 'create_social_case_task',
+        tenant,
+        clientId,
+        entityType: 'social_conversation',
+        entityId,
+        controls: ['confirmation'],
+        emergency: false
+      }
+      await client!.query(
+        `INSERT INTO god_mode_audit_events
+          (actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase,
+           tenant_id, client_id, entity_type, entity_id, bypassed_controls, outcome_code,
+           emergency_disabled)
+         VALUES ($1, $2, $3, $4, $5, 'attempt', $6, $7, $8, $9, $10, 'started', $11)`,
+        [
+          base.actor, correlation, base.digest, base.channel, base.route, base.tenant,
+          base.clientId, base.entityType, base.entityId, base.controls, base.emergency
+        ]
+      )
+
+      const mismatches = [
+        { ...base, actor: '21111111-1111-4111-8111-111111111111' },
+        { ...base, digest: '0'.repeat(64) },
+        { ...base, channel: 'mcp' },
+        { ...base, route: 'create_task' },
+        { ...base, tenant: '21444444-4444-4444-8444-444444444444' },
+        { ...base, clientId: '21555555-5555-4555-8555-555555555555' },
+        { ...base, entityType: 'task' },
+        { ...base, entityId: '21666666-6666-4666-8666-666666666666' },
+        { ...base, controls: ['confirmation', 'budget'] },
+        { ...base, emergency: true }
+      ]
+      for (const [index, mismatch] of mismatches.entries()) {
+        await client!.query(`SAVEPOINT exact_identity_${index}`)
+        let insertError: unknown
+        try {
+          await client!.query(
+            `INSERT INTO god_mode_audit_events
+              (actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase,
+               tenant_id, client_id, entity_type, entity_id, bypassed_controls, outcome_code,
+               emergency_disabled)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'bounded_outcome', $12)`,
+            [
+              mismatch.actor, correlation, mismatch.digest, mismatch.channel, mismatch.route,
+              phase, mismatch.tenant, mismatch.clientId, mismatch.entityType, mismatch.entityId,
+              mismatch.controls, mismatch.emergency
+            ]
+          )
+        } catch (error) {
+          insertError = error
+        }
+        await client!.query(`ROLLBACK TO SAVEPOINT exact_identity_${index}`)
+        expect(insertError, `mismatch ${index} was accepted`).toMatchObject({
+          message: expect.stringMatching(/matching attempt/i)
+        })
+      }
+
+      await expect(client!.query(
+        `INSERT INTO god_mode_audit_events
+          (actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase,
+           tenant_id, client_id, entity_type, entity_id, bypassed_controls, outcome_code,
+           emergency_disabled)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'bounded_outcome', $12)`,
+        [
+          base.actor, correlation, base.digest, base.channel, base.route, phase, base.tenant,
+          base.clientId, base.entityType, base.entityId, base.controls, base.emergency
+        ]
+      )).resolves.toBeDefined()
+    }
+  )
 })
