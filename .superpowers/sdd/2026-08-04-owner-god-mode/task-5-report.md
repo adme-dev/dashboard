@@ -247,3 +247,9 @@ The database regression suite is now explicitly sequential. Each `ambiguous` and
 ### Fix-round commit
 
 - This scoped fix commit — `test(ai): isolate live audit identity cases`
+
+## Controller database verification
+
+- The deterministic disposable-Neon suite passed 13/13 in 91.18 seconds with no overlapping-client warning.
+- Migration 347 was applied to the configured Neon database and reapplied successfully to prove idempotency.
+- Live verification confirmed `ai_chat_submissions`, `god_mode_tool_call_claims`, and `god_mode_execution_ledger`; their uniqueness/check/foreign-key constraints; hidden God-mode proposal state; the ambiguous audit index; and the exact immutable audit guard functions.
