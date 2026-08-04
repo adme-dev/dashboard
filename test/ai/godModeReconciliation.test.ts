@@ -9,6 +9,7 @@ import * as reconciliationModule from '~~/server/utils/godMode/reconciliation'
 import { sendGodModeAuditTerminal } from '~~/server/utils/queue'
 import { processJob } from '~~/server/utils/queueConsumer'
 import { ROUTES } from '../../workers/pages-cron/src/index'
+import type { GodModeAuditEventInput } from '~~/server/utils/godMode/audit'
 
 const candidate = (over: Partial<ReconciliationCandidate> = {}): ReconciliationCandidate => ({
   actorUserId: '11111111-1111-4111-8111-111111111111',
@@ -24,11 +25,29 @@ const candidate = (over: Partial<ReconciliationCandidate> = {}): ReconciliationC
   ...over
 })
 
+const attempt = (over: Partial<GodModeAuditEventInput> = {}): GodModeAuditEventInput => ({
+  actorUserId: candidate().actorUserId,
+  correlationId: candidate().correlationId,
+  sessionDigest: candidate().sessionDigest,
+  channel: 'application',
+  routeOrTool: candidate().routeOrTool,
+  phase: 'attempt',
+  tenantId: null,
+  clientId: null,
+  entityType: null,
+  entityId: null,
+  bypassedControls: ['confirmation'],
+  outcomeCode: 'started',
+  emergencyDisabled: false,
+  ...over
+})
+
 function harness(status: 'succeeded' | 'failed' | 'unknown' = 'succeeded') {
   const candidates = [candidate()]
   const deps: GodModeReconciliationDependencies = {
     listCandidates: vi.fn(async () => candidates),
     findTerminal: vi.fn(async () => null),
+    findAttempt: vi.fn(async () => attempt()),
     lookupOutcome: vi.fn(async () => status === 'unknown'
       ? { state: 'unknown' }
       : { state: status, resultReference: status === 'succeeded' ? 'post-7' : null }),
@@ -69,6 +88,52 @@ describe('God mode reconciliation', () => {
     const result = await h.run()
     expect(result).toEqual({ scanned: 1, reconciled: 0, unknown: 0, failed: 1 })
     expect(h.deps.markAlertable).toHaveBeenCalledWith(expect.anything(), 'provider_lookup_failed')
+  })
+
+  it('constructs a terminal from the immutable attempt when ledger client scope was resolved later', async () => {
+    const h = harness('succeeded')
+    const resolvedClient = '33333333-3333-4333-8333-333333333333'
+    vi.mocked(h.deps.listCandidates).mockResolvedValue([candidate({ clientId: resolvedClient })])
+    vi.mocked(h.deps.findAttempt).mockResolvedValue(attempt({
+      clientId: null,
+      entityType: 'task',
+      entityId: '44444444-4444-4444-8444-444444444444'
+    }))
+
+    const result = await h.run()
+
+    expect(result).toEqual({ scanned: 1, reconciled: 1, unknown: 0, failed: 0 })
+    expect(h.deps.lookupOutcome).toHaveBeenCalledWith(expect.objectContaining({ clientId: resolvedClient }))
+    expect(h.deps.appendTerminalAndClose).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      clientId: null,
+      entityType: 'task',
+      entityId: '44444444-4444-4444-8444-444444444444',
+      phase: 'succeeded'
+    }))
+  })
+
+  it('does not look up or append when the immutable attempt is missing', async () => {
+    const h = harness()
+    vi.mocked(h.deps.findAttempt).mockResolvedValue(null)
+
+    const result = await h.run()
+
+    expect(result).toEqual({ scanned: 1, reconciled: 0, unknown: 0, failed: 1 })
+    expect(h.deps.lookupOutcome).not.toHaveBeenCalled()
+    expect(h.deps.appendTerminalAndClose).not.toHaveBeenCalled()
+    expect(h.deps.markAlertable).toHaveBeenCalledWith(expect.anything(), 'attempt_identity_missing')
+  })
+
+  it('does not look up or append when immutable attempt identity conflicts with the ledger', async () => {
+    const h = harness()
+    vi.mocked(h.deps.findAttempt).mockResolvedValue(attempt({ routeOrTool: 'create_task' }))
+
+    const result = await h.run()
+
+    expect(result).toEqual({ scanned: 1, reconciled: 0, unknown: 0, failed: 1 })
+    expect(h.deps.lookupOutcome).not.toHaveBeenCalled()
+    expect(h.deps.appendTerminalAndClose).not.toHaveBeenCalled()
+    expect(h.deps.markAlertable).toHaveBeenCalledWith(expect.anything(), 'attempt_identity_mismatch')
   })
 
   it('uses the strict direct Queue producer without a DB job-ledger prerequisite', async () => {

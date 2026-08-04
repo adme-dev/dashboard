@@ -34,8 +34,6 @@ const defaultDependencies: MessagesRouteDependencies = {
 export function createMessagesPostHandler(dependencies: MessagesRouteDependencies = defaultDependencies) {
   return async (event: any) => {
     const user = await requireAuth(event)
-    const authority = await resolveGodModeAuthority(event, user.id)
-    const godModeActive = isActiveGodModeAuthority(authority, user.id)
     const id = getRouterParam(event, 'id')
 
     if (!id) {
@@ -83,18 +81,24 @@ export function createMessagesPostHandler(dependencies: MessagesRouteDependencie
     if (!isTransportRetryToken(transportRetryToken)) {
       throw createError({ statusCode: 400, statusMessage: 'A valid transportRetryToken is required' })
     }
-    const submissionRequest = {
+    const submissionIdentity = {
       actorUserId: user.id,
       conversationId: id,
       transportRetryToken,
       content,
-      request: { content, mentionedEntities, boardId, persona, room },
-      executionMode: godModeActive ? 'god_mode' as const : 'ordinary' as const
+      request: { content, mentionedEntities, boardId, persona, room }
     }
-    const existing = await dependencies.lookupSubmission(submissionRequest)
+    const existing = await dependencies.lookupSubmission(submissionIdentity)
     if (existing?.state === 'completed') return { ...existing.response, transportRetryToken }
     if (existing?.state === 'blocked') {
       throw createError({ statusCode: 409, statusMessage: 'This submission is already being processed' })
+    }
+
+    const authority = await resolveGodModeAuthority(event, user.id)
+    const godModeActive = isActiveGodModeAuthority(authority, user.id)
+    const submissionRequest = {
+      ...submissionIdentity,
+      executionMode: godModeActive ? 'god_mode' as const : 'ordinary' as const
     }
 
     // Rate limit only new turns. A retry of a persisted turn replays/fails closed above even after

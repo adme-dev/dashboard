@@ -196,3 +196,33 @@ Migration 347 remains unapplied per controller instruction. The disposable-schem
 ### Fix-round commit
 
 - This scoped fix commit — `fix(ai): make chat retries authority safe`
+
+## Fix round 3 — replay-first ordering, immutable reconciliation identity, and creator auto-watch
+
+### Findings addressed
+
+1. The message route now performs only authentication, bounded body/token validation, and an independent conversation-ownership check before looking up the persisted actor+conversation+token submission. Completed responses replay and processing/failed/token-conflicting rows fail closed before the fresh God-mode resolver, rate policy, new submission claim, model, or tools are reached. Only a lookup miss resolves current authority and selects the new turn's `ordinary`/`god_mode` execution mode.
+2. Reconciliation now loads the immutable `attempt` audit row by correlation before provider lookup or link repair. It verifies the ledger's stable actor/correlation/session/channel/route identity, while deliberately allowing mutable operational tenant/client scope to differ. The provider lookup still receives the ledger scope; the immutable terminal is constructed exclusively from the attempt's actor, session, channel, route, tenant/client/entity scope, controls, and emergency state. Missing or conflicting attempts are alertable failures and cannot cause lookup, mutation repair, or terminal append.
+3. The shared atomic social-case service once again auto-watches the creating user when their `auto_subscribe_on_participation` preference permits it. The standard subscription utility now exposes the same preference check and idempotent insert through a caller-supplied Postgres transaction. Ordinary confirmation uses the service-owned transaction and God mode supplies its ledger transaction, so task, activity, subscription, conversation link, and native-link event commit or roll back together.
+
+### TDD evidence
+
+RED was observed before production changes:
+
+- Replay ordering: 5 intended failures out of 10 tests. Downgraded, emergency-disabled, and resolver-error completed retries still invoked authority; persisted processing/failed rows also reached authority instead of blocking first.
+- Reconciliation identity: 3 intended failures out of 13 tests. An inferred ledger client leaked into terminal identity, while missing and conflicting attempts still allowed provider lookup and terminal append.
+- Creator auto-watch: 1 intended failure out of 2 tests. A successfully linked social task committed without the creator's standard item subscription.
+
+Focused GREEN after implementation: 3 files passed; 26 tests passed; 0 failed. This includes ordinary transaction rollback, exact-one retry, preference-based subscription insert, and the supplied God-mode transaction path.
+
+Combined Task 1–5 security/audit, route/concurrency, ordinary confirmation, executor, schema, subscription-adjacent, and inventory verification: 26 files passed; 256 tests passed; 10 live-database cases skipped; 0 failed.
+
+The final Node 24 Nuxt typecheck retains the inherited repository baseline; filtering its complete output to every changed production and test path produced no diagnostics. `git diff --check` passed.
+
+### Migration review boundary
+
+Migration 347 is unchanged in this round and remains unapplied per controller instruction. Reconciliation now emits terminals from the immutable attempt identity required by its existing exact insert guard; operational ledger scope is retained only for bounded outcome lookup.
+
+### Fix-round commit
+
+- This scoped fix commit — `fix(ai): replay chat submissions before policy`

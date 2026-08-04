@@ -24,12 +24,18 @@ export interface ReconciledProviderOutcome {
 
 export interface GodModeReconciliationDependencies {
   listCandidates: (limit: number) => Promise<ReconciliationCandidate[]>
+  findAttempt: (correlationId: string) => Promise<GodModeAuditEventInput | null>
   findTerminal: (correlationId: string) => Promise<{ phase: 'succeeded' | 'failed', outcomeCode: string } | null>
   /** Never dispatch/repeat the primary action; only bounded lookup or an idempotent local link repair. */
   lookupOutcome: (candidate: ReconciliationCandidate) => Promise<ReconciledProviderOutcome>
   /** A null terminal means an immutable terminal already exists; close only the coordination row. */
   appendTerminalAndClose: (candidate: ReconciliationCandidate, terminal: GodModeAuditEventInput | null) => Promise<boolean>
-  markAlertable: (candidate: ReconciliationCandidate, reason: 'provider_outcome_unknown' | 'provider_lookup_failed') => Promise<void>
+  markAlertable: (candidate: ReconciliationCandidate, reason:
+    | 'provider_outcome_unknown'
+    | 'provider_lookup_failed'
+    | 'attempt_identity_missing'
+    | 'attempt_identity_mismatch'
+  ) => Promise<void>
 }
 
 export interface SocialCaseLinkRepairDependencies {
@@ -150,6 +156,34 @@ const defaultDependencies: GodModeReconciliationDependencies = {
       executionMetadata: row.execution_metadata
     }))
   },
+  findAttempt: async correlationId => {
+    const row = await queryOneFresh<any>(
+      `SELECT actor_user_id, correlation_id, session_digest, channel, route_or_tool,
+              tenant_id, client_id, entity_type, entity_id, bypassed_controls,
+              outcome_code, emergency_disabled
+         FROM god_mode_audit_events
+        WHERE correlation_id = $1 AND phase = 'attempt'
+        LIMIT 1`,
+      [correlationId]
+    )
+    return row
+      ? {
+          actorUserId: row.actor_user_id,
+          correlationId: row.correlation_id,
+          sessionDigest: row.session_digest,
+          channel: row.channel,
+          routeOrTool: row.route_or_tool,
+          phase: 'attempt',
+          tenantId: row.tenant_id,
+          clientId: row.client_id,
+          entityType: row.entity_type,
+          entityId: row.entity_id,
+          bypassedControls: row.bypassed_controls,
+          outcomeCode: row.outcome_code,
+          emergencyDisabled: row.emergency_disabled
+        }
+      : null
+  },
   findTerminal: async correlationId => await queryOneFresh(
     `SELECT phase, outcome_code AS "outcomeCode"
        FROM god_mode_audit_events
@@ -195,19 +229,33 @@ const defaultDependencies: GodModeReconciliationDependencies = {
   }
 }
 
-function terminal(candidate: ReconciliationCandidate, outcome: Exclude<ReconciledProviderOutcome['state'], 'unknown'>): GodModeAuditEventInput {
+function attemptMatchesCandidate(attempt: GodModeAuditEventInput, candidate: ReconciliationCandidate): boolean {
+  return attempt.phase === 'attempt'
+    && attempt.actorUserId === candidate.actorUserId
+    && attempt.correlationId === candidate.correlationId
+    && attempt.sessionDigest === candidate.sessionDigest
+    && attempt.channel === 'application'
+    && attempt.routeOrTool === candidate.routeOrTool
+}
+
+function terminal(
+  attempt: GodModeAuditEventInput,
+  outcome: Exclude<ReconciledProviderOutcome['state'], 'unknown'>
+): GodModeAuditEventInput {
   return {
-    actorUserId: candidate.actorUserId,
-    correlationId: candidate.correlationId,
-    sessionDigest: candidate.sessionDigest,
-    channel: 'application',
-    routeOrTool: candidate.routeOrTool,
+    actorUserId: attempt.actorUserId,
+    correlationId: attempt.correlationId,
+    sessionDigest: attempt.sessionDigest,
+    channel: attempt.channel,
+    routeOrTool: attempt.routeOrTool,
     phase: outcome,
-    tenantId: candidate.tenantId,
-    clientId: candidate.clientId,
-    bypassedControls: ['confirmation'],
+    tenantId: attempt.tenantId ?? null,
+    clientId: attempt.clientId ?? null,
+    entityType: attempt.entityType ?? null,
+    entityId: attempt.entityId ?? null,
+    bypassedControls: [...attempt.bypassedControls],
     outcomeCode: outcome === 'succeeded' ? 'reconciled_succeeded' : 'reconciled_failed',
-    emergencyDisabled: false
+    emergencyDisabled: attempt.emergencyDisabled
   }
 }
 
@@ -221,6 +269,17 @@ export async function reconcileGodModeExecutions(
 
   for (const candidate of candidates) {
     try {
+      const attempt = await dependencies.findAttempt(candidate.correlationId)
+      if (!attempt) {
+        result.failed++
+        await dependencies.markAlertable(candidate, 'attempt_identity_missing')
+        continue
+      }
+      if (!attemptMatchesCandidate(attempt, candidate)) {
+        result.failed++
+        await dependencies.markAlertable(candidate, 'attempt_identity_mismatch')
+        continue
+      }
       const existing = await dependencies.findTerminal(candidate.correlationId)
       if (existing) {
         if (await dependencies.appendTerminalAndClose(candidate, null)) result.reconciled++
@@ -239,7 +298,7 @@ export async function reconcileGodModeExecutions(
         await dependencies.markAlertable(candidate, 'provider_outcome_unknown')
         continue
       }
-      if (await dependencies.appendTerminalAndClose(candidate, terminal(candidate, outcome.state))) {
+      if (await dependencies.appendTerminalAndClose(candidate, terminal(attempt, outcome.state))) {
         result.reconciled++
       }
     } catch {

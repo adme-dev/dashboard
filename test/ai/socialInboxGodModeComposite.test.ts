@@ -40,12 +40,20 @@ describe('create_social_case_task atomic durability', () => {
     expect(createAndLink).toBeTypeOf('function')
     if (typeof createAndLink !== 'function') return
 
-    const committed = { taskIds: [] as string[], linkedTaskId: null as string | null }
+    const committed = {
+      taskIds: [] as string[],
+      linkedTaskId: null as string | null,
+      subscriptions: [] as string[]
+    }
     let failLink = true
     const transaction = async (callback: (db: { query: (sql: string, params?: unknown[]) => Promise<any> }) => Promise<any>) => {
-      const draft = { taskIds: [...committed.taskIds], linkedTaskId: committed.linkedTaskId }
+      const draft = {
+        taskIds: [...committed.taskIds],
+        linkedTaskId: committed.linkedTaskId,
+        subscriptions: [...committed.subscriptions]
+      }
       const db = {
-        query: vi.fn(async (sql: string) => {
+        query: vi.fn(async (sql: string, params: unknown[] = []) => {
           if (sql.includes('FROM social_conversations')) {
             return { rows: [{ id: 'conversation-7', client_id: payload.clientId, linked_task_id: draft.linkedTaskId }] }
           }
@@ -57,6 +65,13 @@ describe('create_social_case_task atomic durability', () => {
             return { rows: [{ id: 'task-7', title: payload.title }] }
           }
           if (sql.includes('INSERT INTO task_activities')) return { rows: [], rowCount: 1 }
+          if (sql.includes('SELECT auto_subscribe_on_participation')) {
+            return { rows: [{ auto_subscribe_on_participation: true }] }
+          }
+          if (sql.includes('INSERT INTO board_subscriptions')) {
+            draft.subscriptions.push(`${params[0]}:${params[1]}:${params[2]}`)
+            return { rows: [], rowCount: 1 }
+          }
           if (sql.includes('UPDATE social_conversations')) {
             if (failLink) throw new Error('link constraint failed')
             draft.linkedTaskId = 'task-7'
@@ -69,14 +84,49 @@ describe('create_social_case_task atomic durability', () => {
       const result = await callback(db)
       committed.taskIds = draft.taskIds
       committed.linkedTaskId = draft.linkedTaskId
+      committed.subscriptions = draft.subscriptions
       return result
     }
 
     await expect(createAndLink(payload, ctx, { transaction })).rejects.toThrow('link constraint failed')
-    expect(committed).toEqual({ taskIds: [], linkedTaskId: null })
+    expect(committed).toEqual({ taskIds: [], linkedTaskId: null, subscriptions: [] })
 
     failLink = false
     await expect(createAndLink(payload, ctx, { transaction })).resolves.toEqual({ id: 'task-7' })
-    expect(committed).toEqual({ taskIds: ['task-7'], linkedTaskId: 'task-7' })
+    expect(committed).toEqual({
+      taskIds: ['task-7'],
+      linkedTaskId: 'task-7',
+      subscriptions: [`${ctx.userId}:${payload.departmentId}:task-7`]
+    })
+  })
+
+  it('uses the supplied God-mode transaction for the same creator auto-watch', async () => {
+    const subscriptions: string[] = []
+    const db = {
+      query: vi.fn(async (sql: string, params: unknown[] = []) => {
+        if (sql.includes('FROM social_conversations')) {
+          return { rows: [{ id: 'conversation-7', client_id: payload.clientId, linked_task_id: null }] }
+        }
+        if (sql.includes('FROM departments')) return { rows: [{ id: payload.departmentId }] }
+        if (sql.includes('FROM projects')) return { rows: [{ id: payload.projectId }] }
+        if (sql.includes('FROM task_statuses')) return { rows: [{ id: 'status-1' }] }
+        if (sql.includes('INSERT INTO tasks')) return { rows: [{ id: 'task-7', title: payload.title }] }
+        if (sql.includes('INSERT INTO task_activities')) return { rows: [], rowCount: 1 }
+        if (sql.includes('SELECT auto_subscribe_on_participation')) {
+          return { rows: [{ auto_subscribe_on_participation: true }] }
+        }
+        if (sql.includes('INSERT INTO board_subscriptions')) {
+          subscriptions.push(`${params[0]}:${params[1]}:${params[2]}`)
+          return { rows: [], rowCount: 1 }
+        }
+        if (sql.includes('UPDATE social_conversations')) return { rows: [{ id: 'conversation-7' }], rowCount: 1 }
+        if (sql.includes('INSERT INTO social_conversation_events')) return { rows: [{ id: 'event-1' }] }
+        throw new Error(`Unexpected God-mode social SQL: ${sql}`)
+      })
+    }
+
+    await expect((socialActions as any).createAndLinkSocialCaseTask(payload, ctx, { db }))
+      .resolves.toEqual({ id: 'task-7' })
+    expect(subscriptions).toEqual([`${ctx.userId}:${payload.departmentId}:task-7`])
   })
 })

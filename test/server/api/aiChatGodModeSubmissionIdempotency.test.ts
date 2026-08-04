@@ -5,7 +5,11 @@ const mocks = vi.hoisted(() => ({
   queryOne: vi.fn(),
   queryOneFresh: vi.fn(),
   processUserMessage: vi.fn(),
-  readBody: vi.fn()
+  readBody: vi.fn(),
+  resolveAuthority: vi.fn(),
+  isActiveAuthority: vi.fn((authority: any, actorId: string) =>
+    authority?.active === true && authority?.actorUserId === actorId && authority?.emergencyDisabled === false
+  )
 }))
 
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: mocks.requireAuth }))
@@ -14,6 +18,10 @@ vi.mock('~~/server/utils/db', () => ({
   queryOneFresh: mocks.queryOneFresh
 }))
 vi.mock('~~/server/utils/aiChatEngine', () => ({ processUserMessage: mocks.processUserMessage }))
+vi.mock('~~/server/utils/godMode/authority', () => ({
+  resolveGodModeAuthority: mocks.resolveAuthority,
+  isActiveGodModeAuthority: mocks.isActiveAuthority
+}))
 
 vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
 vi.stubGlobal('getRouterParam', () => '90000000-0000-4000-8000-000000000001')
@@ -135,6 +143,12 @@ describe('God mode chat transport idempotency', () => {
     vi.clearAllMocks()
     mocks.requireAuth.mockResolvedValue({ id: OWNER_ID, role: 'owner' })
     mocks.queryOneFresh.mockResolvedValue({ id: OWNER_ID })
+    mocks.resolveAuthority.mockResolvedValue({
+      active: true,
+      actorUserId: OWNER_ID,
+      reason: 'active_owner',
+      emergencyDisabled: false
+    })
     mocks.readBody.mockResolvedValue({ content: 'Create the task', transportRetryToken: RETRY_TOKEN })
     mocks.queryOne.mockImplementation(async (sql: string) => {
       if (sql.includes('COUNT(*)')) return { cnt: 0 }
@@ -214,13 +228,20 @@ describe('God mode chat transport idempotency', () => {
     mocks.processUserMessage.mockResolvedValue(response)
 
     await handler(event())
-    mocks.queryOneFresh.mockResolvedValue(null)
+    mocks.resolveAuthority.mockClear()
+    mocks.resolveAuthority.mockResolvedValue({
+      active: false,
+      actorUserId: OWNER_ID,
+      reason: 'inactive_or_missing',
+      emergencyDisabled: false
+    })
     mocks.requireAuth.mockResolvedValue({ id: OWNER_ID, role: 'member' })
     const retry = await handler(event())
 
     expect(retry).toMatchObject({ ...response, transportRetryToken: RETRY_TOKEN })
     expect(mocks.processUserMessage).toHaveBeenCalledTimes(1)
     expect([...store.rows.values()][0]?.executionMode).toBe('god_mode')
+    expect(mocks.resolveAuthority).not.toHaveBeenCalled()
   })
 
   it('replays an active submission after emergency disable without rerunning the turn', async () => {
@@ -230,19 +251,27 @@ describe('God mode chat transport idempotency', () => {
     mocks.processUserMessage.mockResolvedValue(response)
 
     await handler(event())
+    mocks.resolveAuthority.mockClear()
+    mocks.resolveAuthority.mockRejectedValue(new Error('resolver must not run'))
     const disabledEvent = event()
     disabledEvent.context.cloudflare = { env: { GOD_MODE_DISABLED: 'true' } }
     const retry = await handler(disabledEvent)
 
     expect(retry).toMatchObject({ ...response, transportRetryToken: RETRY_TOKEN })
     expect(mocks.processUserMessage).toHaveBeenCalledTimes(1)
+    expect(mocks.resolveAuthority).not.toHaveBeenCalled()
   })
 
   it('deduplicates an ordinary response-loss retry through the production SQL claim', async () => {
     const store = sqlSubmissionStore()
     handler = handlerWithProductionSubmissionSql(store)
     mocks.requireAuth.mockResolvedValue({ id: OWNER_ID, role: 'member' })
-    mocks.queryOneFresh.mockResolvedValue(null)
+    mocks.resolveAuthority.mockResolvedValue({
+      active: false,
+      actorUserId: OWNER_ID,
+      reason: 'inactive_or_missing',
+      emergencyDisabled: false
+    })
     const response = { message: { id: 'assistant-2', content: 'Drafted' }, contextSources: [], proposedAction: null }
     mocks.processUserMessage.mockResolvedValue(response)
 
@@ -263,7 +292,12 @@ describe('God mode chat transport idempotency', () => {
     const store = sqlSubmissionStore()
     handler = handlerWithProductionSubmissionSql(store)
     mocks.requireAuth.mockResolvedValue({ id: OWNER_ID, role })
-    mocks.queryOneFresh.mockResolvedValue(active ? { id: OWNER_ID } : null)
+    mocks.resolveAuthority.mockResolvedValue({
+      active,
+      actorUserId: OWNER_ID,
+      reason: active ? 'active_owner' : 'inactive_or_missing',
+      emergencyDisabled: false
+    })
     let release!: (value: any) => void
     const turn = new Promise(resolve => { release = resolve })
     mocks.processUserMessage.mockReturnValue(turn)
@@ -280,5 +314,46 @@ describe('God mode chat transport idempotency', () => {
       expect.objectContaining({ reason: expect.objectContaining({ statusCode: 409 }) })
     ])
     expect(store.rows.size).toBe(1)
+  })
+
+  it('replays a completed submission without invoking a resolver that would throw', async () => {
+    const store = sqlSubmissionStore()
+    handler = handlerWithProductionSubmissionSql(store)
+    const response = { message: { id: 'assistant-4', content: 'Done' }, contextSources: [], proposedAction: null }
+    mocks.processUserMessage.mockResolvedValue(response)
+    await handler(event())
+    mocks.resolveAuthority.mockClear()
+    mocks.resolveAuthority.mockRejectedValue(new Error('authority database unavailable'))
+
+    await expect(handler(event())).resolves.toMatchObject({
+      message: response.message,
+      transportRetryToken: RETRY_TOKEN
+    })
+    expect(mocks.resolveAuthority).not.toHaveBeenCalled()
+    expect(mocks.processUserMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['processing', 'failed'] as const)('blocks a persisted %s submission before authority resolution', async state => {
+    const store = sqlSubmissionStore()
+    handler = handlerWithProductionSubmissionSql(store)
+    let release!: (value: any) => void
+    mocks.processUserMessage.mockReturnValue(new Promise(resolve => { release = resolve }))
+    const first = handler(event())
+    await vi.waitFor(() => expect(store.rows.size).toBe(1))
+    if (state === 'failed') [...store.rows.values()][0]!.state = 'failed'
+    mocks.resolveAuthority.mockClear()
+    mocks.resolveAuthority.mockRejectedValue(new Error('resolver must not run'))
+
+    await expect(handler(event())).rejects.toMatchObject({ statusCode: 409 })
+    expect(mocks.resolveAuthority).not.toHaveBeenCalled()
+
+    if (state === 'processing') {
+      release({ message: { id: 'assistant-5', content: 'Done' }, contextSources: [], proposedAction: null })
+      await first
+    } else {
+      void first.catch(() => {})
+      release({ message: { id: 'assistant-5', content: 'Done' }, contextSources: [], proposedAction: null })
+      await first.catch(() => {})
+    }
   })
 })

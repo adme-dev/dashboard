@@ -3,6 +3,7 @@ import type { Pool } from '@neondatabase/serverless'
 import type { ToolContext } from '../toolContext'
 import type { ActionExecutor, ExecutionServices, ExecutorResult } from './types'
 import { transaction } from '~~/server/utils/db'
+import { autoSubscribeIfEnabledInTransaction } from '~~/server/utils/subscriptions'
 import {
   recordSocialInboxNativeLinkEvent,
   updateSocialInboxNativeLinks
@@ -95,6 +96,8 @@ export async function createAndLinkSocialCaseTask(
        VALUES ($1, $2, 'created', $3)`,
       [task.id, ctx.userId, `Created task "${task.title}"`]
     )
+
+    await autoSubscribeIfEnabledInTransaction(db, ctx.userId, departmentId, task.id)
 
     const updated = await db.query(
       `UPDATE social_conversations
