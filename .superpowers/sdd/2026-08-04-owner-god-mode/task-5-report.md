@@ -226,3 +226,24 @@ Migration 347 is unchanged in this round and remains unapplied per controller in
 ### Fix-round commit
 
 - This scoped fix commit — `fix(ai): replay chat submissions before policy`
+
+## Fix round 4 — deterministic disposable-Neon identity matrix
+
+### Diagnosis and harness fix
+
+The controller's live disposable-Neon RED run passed 11 of 13 cases. The `ambiguous` identity row exceeded Vitest's default five-second timeout while a network-backed query still owned the suite-level `pg.Client`. Vitest then ran the suite `afterEach` rollback against that executing client, producing the `client.query() when client already executing` warning. The following `succeeded` row began on the same overlapping/aborted transaction and failed with `current transaction is aborted`. This is a test-lifecycle failure, not evidence of a migration defect.
+
+The database regression suite is now explicitly sequential. Each `ambiguous` and `succeeded` identity row is also explicitly sequential and owns a fresh client plus transaction instead of using the suite-level client. Every expected rejected insert resets its savepoint from `finally`; the row transaction is rolled back and its client closed from an outer `finally`. Both real network-backed rows have a 60-second Vitest timeout. The matrix still independently rejects mismatched actor, session digest, channel, route/tool, tenant, client, entity type, entity ID, controls, and emergency state before accepting the exact attempt identity.
+
+### Verification boundary
+
+- Focused local migration suite: 3 static tests passed; 10 environment-gated live tests skipped; 0 failed.
+- Combined Task 1–5 verification: 26 files passed; 256 tests passed; 10 environment-gated live tests skipped; 0 failed.
+- Full Node 24 Nuxt typecheck retains the inherited repository baseline; the complete log contains no diagnostic for `test/config/godModeAuditMigration.test.ts` or this report.
+- Live rerun remains controller-owned because `GOD_MODE_AUDIT_TEST_DATABASE_URL` is unset in this worktree. Exact command:
+  `GOD_MODE_AUDIT_TEST_DATABASE_URL="$DISPOSABLE_NEON_DATABASE_URL" pnpm exec vitest run test/config/godModeAuditMigration.test.ts --reporter=verbose`
+- Migration 347 is unchanged and remains unapplied.
+
+### Fix-round commit
+
+- This scoped fix commit — `test(ai): isolate live audit identity cases`
