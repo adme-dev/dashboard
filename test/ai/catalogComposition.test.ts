@@ -245,6 +245,26 @@ describe('composeEffectiveAssistantTools', () => {
 })
 
 describe('loadCatalogControlRows', () => {
+  it('admits pilot releases for a database-confirmed active owner without weakening evaluation gates', async () => {
+    const queryRows = vi.fn(async (sql: string) => sql.includes('ranked_pack_versions')
+      ? [{ pack_id: PACK_ID, pack_version_id: PACK_VERSION_ID, version: 1 }]
+      : [])
+
+    await loadCatalogControlRows([DEPARTMENT_ID], USER_ID, { queryRows })
+
+    const [sql, params] = queryRows.mock.calls[1]!
+    expect(params).toEqual([[DEPARTMENT_ID], USER_ID])
+    expect(sql).toContain("owner_actor.user_role = 'owner'")
+    expect(sql).toContain('owner_actor.is_active = TRUE')
+    expect(sql).toContain('owner_actor.id = $2')
+    expect(sql).toContain('pilot_member.team_member_id = $2')
+    expect(sql).toContain('evaluation_gate_passed = TRUE')
+    expect(sql).toContain("evaluation_run_status = 'completed'")
+    expect(sql.match(/OR \(SELECT is_active_owner FROM actor_authority\)/g)).toHaveLength(2)
+    expect(sql.match(/release_state IN \('pilot', 'active', 'suspended', 'retired'\)/g)).toHaveLength(2)
+    expect(sql).not.toContain("'draft'")
+  })
+
   it('loads completed active releases and inactive control markers with a parameterized department list', async () => {
     const queryRows = vi.fn(async (sql: string) => sql.includes('ranked_pack_versions')
       ? [{ pack_id: PACK_ID, pack_version_id: PACK_VERSION_ID, version: 1 }]

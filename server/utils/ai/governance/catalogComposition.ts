@@ -222,7 +222,16 @@ export async function loadCatalogControlRows(
   }
 
   const rows = await db.queryRows<ActiveCatalogDbRow>(
-    `WITH active_pack_rows AS (
+    `WITH actor_authority AS (
+       SELECT EXISTS (
+         SELECT 1
+           FROM team_members owner_actor
+          WHERE owner_actor.id = $2
+            AND owner_actor.is_active = TRUE
+            AND owner_actor.user_role = 'owner'
+       ) AS is_active_owner
+     ),
+     active_pack_rows AS (
        SELECT
          'pack'::text AS source_type,
          pack_release.release_state,
@@ -261,6 +270,7 @@ export async function loadCatalogControlRows(
          AND pack_release.release_state IN ('pilot', 'active', 'suspended', 'retired')
          AND (
            pack_release.rollout_scope <> 'pilot'
+           OR (SELECT is_active_owner FROM actor_authority)
            OR EXISTS (
              SELECT 1
                FROM ai_release_pilot_members pilot_member
@@ -318,6 +328,7 @@ export async function loadCatalogControlRows(
          AND capability_release.release_state IN ('pilot', 'active', 'suspended', 'retired')
          AND (
            capability_release.rollout_scope <> 'pilot'
+           OR (SELECT is_active_owner FROM actor_authority)
            OR EXISTS (
              SELECT 1
                FROM ai_release_pilot_members pilot_member
