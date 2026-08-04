@@ -257,12 +257,38 @@ describe('loadCatalogControlRows', () => {
     expect(sql).toContain("owner_actor.user_role = 'owner'")
     expect(sql).toContain('owner_actor.is_active = TRUE')
     expect(sql).toContain('owner_actor.id = $2')
-    expect(sql).toContain('pilot_member.team_member_id = $2')
-    expect(sql).toContain('evaluation_gate_passed = TRUE')
-    expect(sql).toContain("evaluation_run_status = 'completed'")
-    expect(sql.match(/OR \(SELECT is_active_owner FROM actor_authority\)/g)).toHaveLength(2)
-    expect(sql.match(/release_state IN \('pilot', 'active', 'suspended', 'retired'\)/g)).toHaveLength(2)
-    expect(sql).not.toContain("'draft'")
+
+    const packCteStart = sql.indexOf('active_pack_rows AS (')
+    const capabilityCteStart = sql.indexOf('active_capability_rows AS (')
+    const capabilityCteEnd = sql.indexOf('SELECT * FROM active_pack_rows')
+    expect(packCteStart).toBeGreaterThanOrEqual(0)
+    expect(capabilityCteStart).toBeGreaterThan(packCteStart)
+    expect(capabilityCteEnd).toBeGreaterThan(capabilityCteStart)
+
+    const packCte = sql.slice(packCteStart, capabilityCteStart)
+    const capabilityCte = sql.slice(capabilityCteStart, capabilityCteEnd)
+
+    expect(packCte).toContain("pack_release.release_state IN ('pilot', 'active', 'suspended', 'retired')")
+    expect(packCte).not.toContain("'draft'")
+    expect(packCte).toMatch(
+      /pack_release\.rollout_scope <> 'pilot'\s+OR \(SELECT is_active_owner FROM actor_authority\)\s+OR EXISTS \(/
+    )
+    expect(packCte).toContain("pilot_member.release_kind = 'pack'")
+    expect(packCte).toContain('pilot_member.team_member_id = $2')
+    expect(packCte).toMatch(
+      /pack_release\.evaluation_gate_passed = TRUE AND pack_release\.evaluation_run_status = 'completed'/
+    )
+
+    expect(capabilityCte).toContain("capability_release.release_state IN ('pilot', 'active', 'suspended', 'retired')")
+    expect(capabilityCte).not.toContain("'draft'")
+    expect(capabilityCte).toMatch(
+      /capability_release\.rollout_scope <> 'pilot'\s+OR \(SELECT is_active_owner FROM actor_authority\)\s+OR EXISTS \(/
+    )
+    expect(capabilityCte).toContain("pilot_member.release_kind = 'capability'")
+    expect(capabilityCte).toContain('pilot_member.team_member_id = $2')
+    expect(capabilityCte).toMatch(
+      /capability_release\.evaluation_gate_passed = TRUE\s+AND capability_release\.evaluation_run_status = 'completed'/
+    )
   })
 
   it('loads completed active releases and inactive control markers with a parameterized department list', async () => {
