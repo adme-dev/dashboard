@@ -4,6 +4,7 @@ import { z } from 'zod'
 import {
   createGodModeToolExecutor,
   createTrustedMcpGodModeReadExecutor,
+  createTrustedMcpGodModeResolvedMutationExecutor,
   createTrustedMcpGodModeToolExecutor,
   type GodModeExecutionDependencies,
   type GodModeExecutionLedgerRow
@@ -192,6 +193,97 @@ describe('God mode direct execution', () => {
       routeOrTool: 'create_task'
     }))
     expect(h.calls.indexOf('delegation')).toBeLessThan(h.calls.indexOf('executor'))
+  })
+
+  it('persists an owner write-scope bypass in attempt, bypass, and outcome before dispatch', async () => {
+    const idempotencyKey = `mcp:${'d'.repeat(64)}`
+    const h = harness({ expectedIdempotencyKey: idempotencyKey })
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+
+    await createTrustedMcpGodModeToolExecutor(h.deps)({
+      event: authorityEvent,
+      authenticatedUserId: OWNER_ID,
+      authority,
+      sessionDigest: 'b'.repeat(64),
+      toolName: 'create_task',
+      args: { title: 'Ship', clientId: CLIENT_ID },
+      idempotencyKey,
+      bypassedControls: ['confirmation', 'mcp_scope']
+    })
+
+    const audits = vi.mocked(h.deps.appendAudit).mock.calls.map(([audit]) => audit)
+    expect(audits.map(audit => audit.phase)).toEqual(['attempt', 'bypass', 'succeeded'])
+    expect(audits.every(audit => audit.bypassedControls.includes('mcp_scope'))).toBe(true)
+    expect(h.calls.indexOf('bypass')).toBeLessThan(h.calls.indexOf('handler'))
+    expect(h.calls.indexOf('bypass')).toBeLessThan(h.calls.indexOf('executor'))
+  })
+
+  it('audits and idempotently coordinates a supplemental provider mutation', async () => {
+    const idempotencyKey = `mcp:${'e'.repeat(64)}`
+    const h = harness({ expectedIdempotencyKey: idempotencyKey })
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    const provider = vi.fn(async () => ok({ assetId: 'asset-1' }))
+    const executeResolved = createTrustedMcpGodModeResolvedMutationExecutor(h.deps)
+    const request = {
+      event: authorityEvent,
+      authenticatedUserId: OWNER_ID,
+      authority,
+      sessionDigest: 'b'.repeat(64),
+      toolName: 'generate_voiceover',
+      args: { text: 'Ship it' },
+      idempotencyKey,
+      bypassedControls: ['confirmation', 'mcp_scope'],
+      tool: {
+        name: 'generate_voiceover',
+        description: 'Generate a voiceover.',
+        parameters: z.object({ text: z.string().min(2) }),
+        mutates: true,
+        handler: provider
+      }
+    }
+
+    await expect(executeResolved(request as any)).resolves.toEqual(ok({ assetId: 'asset-1' }))
+    await expect(executeResolved(request as any)).resolves.toMatchObject({ ok: true, data: { replayed: true } })
+
+    expect(provider).toHaveBeenCalledTimes(1)
+    const audits = vi.mocked(h.deps.appendAudit).mock.calls.map(([audit]) => audit)
+    expect(audits.map(audit => audit.phase)).toEqual(['attempt', 'bypass', 'succeeded'])
+    expect(audits.every(audit => audit.bypassedControls.includes('mcp_scope'))).toBe(true)
+  })
+
+  it('does not reach a supplemental provider when its attempt audit insert fails', async () => {
+    const h = harness({ attemptError: new Error('audit unavailable') })
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    const provider = vi.fn(async () => ok({ assetId: 'asset-1' }))
+
+    await expect(createTrustedMcpGodModeResolvedMutationExecutor(h.deps)({
+      event: authorityEvent,
+      authenticatedUserId: OWNER_ID,
+      authority,
+      sessionDigest: 'b'.repeat(64),
+      toolName: 'generate_voiceover',
+      args: { text: 'Ship it' },
+      idempotencyKey: `mcp:${'f'.repeat(64)}`,
+      bypassedControls: ['confirmation', 'mcp_scope'],
+      tool: {
+        name: 'generate_voiceover',
+        description: 'Generate a voiceover.',
+        parameters: z.object({ text: z.string().min(2) }),
+        mutates: true,
+        handler: provider
+      }
+    })).rejects.toMatchObject({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
+
+    expect(provider).not.toHaveBeenCalled()
   })
 
   it('replays a completed MCP ledger result without redispatching the write', async () => {

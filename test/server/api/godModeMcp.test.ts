@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   requireAuth: vi.fn(),
@@ -28,11 +28,13 @@ const { default: handler } = await import('../../../../server/api/agency/ai/mcp/
 const USER_ID = '11111111-1111-4111-8111-111111111111'
 
 describe('owner-visible MCP manifest', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
   beforeEach(() => {
     vi.clearAllMocks()
-    process.env.MCP_SERVER_ENABLED = 'true'
-    process.env.MCP_WORKER_ORIGIN = 'https://mcp.example.test'
-    process.env.MCP_REQUIRE_WRITE_SCOPE = 'true'
+    vi.stubEnv('MCP_SERVER_ENABLED', 'true')
+    vi.stubEnv('MCP_WORKER_ORIGIN', 'https://mcp.example.test')
+    vi.stubEnv('MCP_REQUIRE_WRITE_SCOPE', 'true')
     mocks.requireAuth.mockResolvedValue({ id: USER_ID, role: 'owner' })
     mocks.projectGodMode.mockReturnValue([
       { name: 'get_tasks', description: 'Core read', inputSchema: {} },

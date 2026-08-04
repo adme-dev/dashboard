@@ -75,7 +75,8 @@ export default defineEventHandler(async (event) => {
       authority,
       idempotencyKey,
       toolName,
-      args: body?.args ?? {}
+      args: body?.args ?? {},
+      requireWriteScope: process.env.MCP_REQUIRE_WRITE_SCOPE === 'true'
     })
   }
 

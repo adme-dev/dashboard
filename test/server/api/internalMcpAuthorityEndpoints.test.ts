@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   verifyAssertion: vi.fn(),
@@ -127,11 +127,13 @@ function event(body: Record<string, unknown>, headers: Record<string, string> = 
 }
 
 describe('internal MCP exchange authority', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
   beforeEach(() => {
     vi.clearAllMocks()
-    process.env.MCP_SERVER_ENABLED = 'true'
-    process.env.MCP_INTERNAL_SECRET = INTERNAL_SECRET
-    process.env.MCP_HANDSHAKE_SECRET = 'handshake-secret'
+    vi.stubEnv('MCP_SERVER_ENABLED', 'true')
+    vi.stubEnv('MCP_INTERNAL_SECRET', INTERNAL_SECRET)
+    vi.stubEnv('MCP_HANDSHAKE_SECRET', 'handshake-secret')
     mocks.verifyAssertion.mockResolvedValue({ uid: USER_ID, scope: ['mcp:read'] })
     mocks.resolveAuthority.mockResolvedValue({ active: true, actorUserId: USER_ID })
   })
@@ -152,12 +154,14 @@ describe('internal MCP exchange authority', () => {
 })
 
 describe('signed internal MCP list/call endpoints', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
   beforeEach(() => {
     vi.clearAllMocks()
-    process.env.MCP_SERVER_ENABLED = 'true'
-    process.env.MCP_INTERNAL_SECRET = INTERNAL_SECRET
-    process.env.MCP_REQUIRE_WRITE_SCOPE = 'true'
-    process.env.MCP_WRITE_TOOLS_ENABLED = 'true'
+    vi.stubEnv('MCP_SERVER_ENABLED', 'true')
+    vi.stubEnv('MCP_INTERNAL_SECRET', INTERNAL_SECRET)
+    vi.stubEnv('MCP_REQUIRE_WRITE_SCOPE', 'true')
+    vi.stubEnv('MCP_WRITE_TOOLS_ENABLED', 'true')
     mocks.consumeClaim.mockResolvedValue({
       uid: USER_ID,
       scope: ['mcp:read'],
@@ -251,7 +255,7 @@ describe('signed internal MCP list/call endpoints', () => {
     const authority = { active: true, actorUserId: USER_ID }
     mocks.getAuthority.mockReturnValue(authority)
     mocks.isActiveAuthority.mockImplementation((candidate, actor) => candidate === authority && actor === USER_ID)
-    process.env.MCP_WRITE_TOOLS_ENABLED = 'false'
+    vi.stubEnv('MCP_WRITE_TOOLS_ENABLED', 'false')
     const ordering: string[] = []
     mocks.appendAudit.mockImplementation(async audit => { ordering.push(`audit:${audit.phase}`) })
     mocks.projectGodMode.mockImplementation(() => {
@@ -312,6 +316,28 @@ describe('signed internal MCP list/call endpoints', () => {
     ])
   })
 
+  it('does not project an owner manifest when its immutable attempt insert fails', async () => {
+    mocks.consumeClaim.mockResolvedValue({
+      uid: USER_ID,
+      scope: ['mcp:read'],
+      godMode: true,
+      bodyDigest: 'a'.repeat(64)
+    })
+    const authority = { active: true, actorUserId: USER_ID }
+    mocks.getAuthority.mockReturnValue(authority)
+    mocks.isActiveAuthority.mockImplementation((candidate, actor) => candidate === authority && actor === USER_ID)
+    mocks.appendAudit.mockRejectedValueOnce(new Error('attempt insert unavailable'))
+
+    await expect(toolsHandler(event(
+      { userId: USER_ID },
+      { 'x-mcp-secret': INTERNAL_SECRET, 'x-mcp-assertion': CLAIM }
+    ))).rejects.toMatchObject({ statusCode: 503, statusMessage: 'God mode MCP audit unavailable' })
+
+    expect(mocks.appendAudit).toHaveBeenCalledTimes(1)
+    expect(mocks.appendAudit).toHaveBeenCalledWith(expect.objectContaining({ phase: 'attempt', outcomeCode: 'started' }))
+    expect(mocks.projectGodMode).not.toHaveBeenCalled()
+  })
+
   it('blocks an owner manifest when the terminal discovery audit cannot be persisted', async () => {
     mocks.consumeClaim.mockResolvedValue({
       uid: USER_ID,
@@ -366,7 +392,8 @@ describe('signed internal MCP list/call endpoints', () => {
       authority,
       idempotencyKey,
       toolName: 'create_task',
-      args: { title: 'Ship' }
+      args: { title: 'Ship' },
+      requireWriteScope: true
     })
     expect(mocks.executeReadOnly).not.toHaveBeenCalled()
     expect(mocks.execute).not.toHaveBeenCalled()

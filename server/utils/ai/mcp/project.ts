@@ -22,6 +22,19 @@ export interface McpToolManifest {
   inputSchema: Record<string, unknown>
 }
 
+export interface McpExecutionDescriptor {
+  /** Advertised MCP name. */
+  name: string
+  /** Canonical registry operation used by the Task 5 coordinator. */
+  canonicalName: string
+  /** Catalog operations use Task 5/read execution; supplemental operations use their registered handler. */
+  kind: 'catalog' | 'supplemental'
+  /** Schema and executable handler. Its name always matches the advertised MCP name. */
+  tool: AiTool<any>
+}
+
+export type McpExecutionResolver = (context: McpProjectionContext) => McpExecutionDescriptor[]
+
 export interface McpSuiteFlags {
   generation: boolean
   writes: boolean
@@ -71,6 +84,16 @@ export function projectCatalogMcpSuite(context: McpProjectionContext): McpToolMa
   return context.governanceBypass
     ? projectGodModeCatalogTools(context.tools, { includeWrites: true })
     : projectReadOnlyTools(context.tools, context.role)
+}
+
+/** Base AiTools automatically receive one catalog execution descriptor. */
+export function resolveCatalogMcpExecutions(context: McpProjectionContext): McpExecutionDescriptor[] {
+  return context.tools.map(tool => ({
+    name: tool.name,
+    canonicalName: tool.name,
+    kind: 'catalog',
+    tool
+  }))
 }
 
 /** The read-only tools a role may call, as MCP manifests. Mutating tools are filtered out unconditionally. */

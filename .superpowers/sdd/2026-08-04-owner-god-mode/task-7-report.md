@@ -49,3 +49,26 @@ GREEN after implementation and self-review:
 - Canonical confirmation manifests are coordinated per projection so ordinary output remains legacy-compatible while owner duplicates are byte-equivalent.
 - Re-read every changed production and test file, checked server aliases, authority provenance, signed-scope provenance, bypass auditing, projection/audit ordering, duplicate conflicts, schema validation, and fail-closed error handling.
 - No forms, migrations, secrets, external writes, deployment, or unrelated application features were touched.
+
+## Review fix round 1/5 — manifest/execution parity
+
+Resolved every round-one review finding:
+
+- Extended each registered suite with an execution resolver. The owner catalog now validates 62 projected manifests against exactly 62 unique executable descriptors, including schema equality; missing, extra, or conflicting resolvers fail closed before discovery.
+- Kept base, finance, social, and administration `AiTool` mutations on the Task 5 coordinator. Write aliases resolve deterministically to canonical operations while retaining the advertised alias as immutable audit identity.
+- Connected generation, video/media, and banner descriptors to their real runner/dependency factories. Supplemental mutations use a new execution-ledger coordinator that persists attempt and applicable bypass audit before schema, tenant/client scope, handler, provider, or pending-action claim; terminal audit and ledger state are coordinated afterward.
+- Retained `confirm_action` with a real owner-audited execution path. It atomically claims existing actor-owned `source='mcp'` pending actions and dispatches write, finance, video, and banner confirmations through their existing executors/provider boundaries.
+- Active owners may execute mutations from a signed read-only claim when write-scope enforcement is active. `mcp_scope` is persisted in attempt, dedicated bypass, and terminal audit events before dispatch. Ordinary users still receive `insufficient_scope`.
+- Runtime-froze the suite registry and changed synthetic tests to inject suite lists. A synthetic suite registered once with projection plus execution becomes both discoverable and executable without mutating global state.
+- Replaced the hard-coded projector module list with filesystem discovery of every `*Tools.ts` export plus the base projector module. Omitted suite projectors or execution resolvers now fail the contract.
+- Replaced test environment mutation with `vi.stubEnv`/`vi.unstubAllEnvs`, corrected the obsolete scope wording, and added explicit attempt-insert failure coverage proving projection/provider dispatch never starts.
+
+Round-one TDD and verification evidence:
+
+- RED: 17 expected failures (10 direct-execution routing/scope contracts and 7 registry parity/freeze/injection contracts).
+- Focused execution/MCP suite: 12 files passed, 180 tests passed.
+- Broad Task 4–7, MCP, audit, config, inventory, and authority suite: 45 files passed, 425 passed and 10 skipped.
+- Worker request-claim runtime compatibility: 1 file passed, 1 test passed.
+- Live inventory probe: 6 frozen suites, 62 manifests, 62 resolvers, 62 unique names on each side.
+- Fresh changed-path typecheck filter: zero diagnostics; the project-wide inherited TypeScript baseline remains unchanged.
+- `git diff --check`, credential-pattern scan, and final security/diff review passed before the scoped fix commit.

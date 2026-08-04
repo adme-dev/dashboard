@@ -3,11 +3,14 @@ import { createError, type H3Event } from 'h3'
 import type { McpRequestClaim } from '~~/shared/utils/mcpRequestClaim'
 import {
   executeTrustedMcpGodModeReadTool,
+  executeTrustedMcpGodModeResolvedMutation,
   executeTrustedMcpGodModeTool
 } from '~~/server/utils/ai/godModeExecution'
 import { registry } from '~~/server/utils/ai/tools'
-import type { AiTool } from '~~/server/utils/ai/toolRegistry'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
+import type { GodModeBypassedControl } from '~~/server/utils/godMode/audit'
+import { resolveGodModeMcpExecution } from './registry'
+import type { McpExecutionDescriptor, McpProjectionContext } from './project'
 import {
   isActiveGodModeAuthority,
   type GodModeAuthority
@@ -20,18 +23,36 @@ export interface GodModeMcpCallInput {
   idempotencyKey: string
   toolName: string
   args: unknown
+  requireWriteScope?: boolean
 }
 
 export interface GodModeMcpCallDependencies {
-  resolveTool: (name: string) => AiTool<any> | null
+  resolveExecution: (name: string) => McpExecutionDescriptor | null
   executeWrite: typeof executeTrustedMcpGodModeTool
   executeRead: typeof executeTrustedMcpGodModeReadTool
+  executeResolvedMutation: typeof executeTrustedMcpGodModeResolvedMutation
+}
+
+const ownerProjectionContext: McpProjectionContext = {
+  tools: registry,
+  role: 'owner',
+  scopes: ['mcp:read'],
+  requireWriteScope: true,
+  suiteFlags: {
+    generation: false,
+    writes: false,
+    financial: false,
+    video: false,
+    videoGeneration: false,
+    banners: false
+  }
 }
 
 const defaultDependencies: GodModeMcpCallDependencies = {
-  resolveTool: name => registry.find(tool => tool.name === name) ?? null,
+  resolveExecution: name => resolveGodModeMcpExecution(ownerProjectionContext, name),
   executeWrite: executeTrustedMcpGodModeTool,
-  executeRead: executeTrustedMcpGodModeReadTool
+  executeRead: executeTrustedMcpGodModeReadTool,
+  executeResolvedMutation: executeTrustedMcpGodModeResolvedMutation
 }
 
 function forbidden(statusMessage: string): never {
@@ -48,21 +69,40 @@ export function createGodModeMcpCallExecutor(deps: GodModeMcpCallDependencies) {
       throw createError({ statusCode: 400, statusMessage: 'Invalid MCP logical idempotency key' })
     }
 
-    const tool = deps.resolveTool(input.toolName)
-    if (!tool) throw createError({ statusCode: 404, statusMessage: 'God mode MCP tool is unavailable' })
-    if (tool.mutates && !input.claim.scope.includes('mcp:write')) {
-      return { ok: false, error: 'This action requires write access. Reconnect your AI assistant and grant write (mcp:write) to use it.' }
+    const execution = deps.resolveExecution(input.toolName)
+    if (!execution) throw createError({ statusCode: 404, statusMessage: 'God mode MCP tool is unavailable' })
+    const missingWriteScope = !!execution.tool.mutates
+      && input.requireWriteScope === true
+      && !input.claim.scope.includes('mcp:write')
+    const bypassedControls: GodModeBypassedControl[] = execution.tool.mutates
+      ? (missingWriteScope ? ['confirmation', 'mcp_scope'] : ['confirmation'])
+      : []
+
+    if (execution.tool.mutates && execution.kind === 'supplemental') {
+      return await deps.executeResolvedMutation({
+        event: input.event,
+        authenticatedUserId: input.claim.uid,
+        authority: input.authority,
+        sessionDigest: input.claim.bodyDigest,
+        toolName: execution.name,
+        args: input.args,
+        idempotencyKey: input.idempotencyKey,
+        tool: execution.tool,
+        bypassedControls
+      })
     }
 
-    if (tool.mutates) {
+    if (execution.tool.mutates) {
       return await deps.executeWrite({
         event: input.event,
         authenticatedUserId: input.claim.uid,
         authority: input.authority,
         sessionDigest: input.claim.bodyDigest,
-        toolName: input.toolName,
+        toolName: execution.canonicalName,
+        auditToolName: execution.name,
         args: input.args,
-        idempotencyKey: input.idempotencyKey
+        idempotencyKey: input.idempotencyKey,
+        bypassedControls
       })
     }
 
@@ -79,7 +119,7 @@ export function createGodModeMcpCallExecutor(deps: GodModeMcpCallDependencies) {
       authority: input.authority,
       sessionDigest: input.claim.bodyDigest,
       idempotencyKey: input.idempotencyKey,
-      tool,
+      tool: execution.tool,
       args: input.args,
       ctx
     })

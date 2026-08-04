@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import { roleHasPermission } from '~~/server/utils/permissions'
 import type { PermissionGroup } from '~~/server/utils/permissions'
-import type { ToolContext } from '~~/server/utils/ai/toolContext'
-import type { McpProjectionContext, McpToolManifest } from './project'
+import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
+import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
 
 /**
  * MCP Server Phase 2a — owned media-generation tools (spec: ai-copilot-mcp-server-phase2 §4).
@@ -94,6 +94,30 @@ export function projectGenerationMcpSuite(context: McpProjectionContext): McpToo
   )
 }
 
+/** Complete executable descriptors for the supplemental generation suite. */
+export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
+  return generationTools.map(descriptor => ({
+    name: descriptor.name,
+    canonicalName: descriptor.name,
+    kind: 'supplemental' as const,
+    tool: {
+      ...descriptor,
+      mutates: descriptor.name !== 'get_generation_status',
+      handler: async (args: unknown, ctx: ToolContext): Promise<ToolResult> => {
+        const { buildGenerationRunner } = await import('./generationRunner')
+        const outcome = await executeGenerationTool(descriptor.name, args, ctx, {
+          enabled: true,
+          bypassPermissions: true,
+          runner: buildGenerationRunner()
+        })
+        return outcome.ok
+          ? { ok: true, data: outcome.data }
+          : { ok: false, error: 'error' in outcome ? outcome.error : 'Generation failed.' }
+      }
+    }
+  }))
+}
+
 export type GenExecuteOutcome
   = | { ok: true, data: unknown }
     | { ok: false, error: string, code: 'disabled' | 'not_found' | 'forbidden' | 'bad_args' | 'handler_error' }
@@ -114,14 +138,14 @@ export async function executeGenerationTool(
   name: string,
   args: unknown,
   ctx: ToolContext,
-  deps: { enabled: boolean, runner: GenerationRunner }
+  deps: { enabled: boolean, runner: GenerationRunner, bypassPermissions?: boolean }
 ): Promise<GenExecuteOutcome> {
   if (!deps.enabled) return { ok: false, error: 'Generation tools are not enabled over MCP.', code: 'disabled' }
 
   const tool = generationTools.find(t => t.name === name)
   if (!tool) return { ok: false, error: `Unknown generation tool: ${name}`, code: 'not_found' }
 
-  if (!roleHasPermission(ctx.userRole, tool.requiredPermission)) {
+  if (!deps.bypassPermissions && !roleHasPermission(ctx.userRole, tool.requiredPermission)) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 

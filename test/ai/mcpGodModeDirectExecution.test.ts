@@ -3,6 +3,8 @@ import { z } from 'zod'
 
 import { MCP_REQUEST_AUDIENCE, type McpRequestClaim } from '~~/shared/utils/mcpRequestClaim'
 import { createGodModeMcpCallExecutor } from '~~/server/utils/ai/mcp/directExecution'
+import { resolveGodModeMcpExecution } from '~~/server/utils/ai/mcp/registry'
+import { registry } from '~~/server/utils/ai/tools'
 import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
 
 const USER_ID = '11111111-1111-4111-8111-111111111111'
@@ -37,19 +39,27 @@ function claim(scope: string[] = ['mcp:read', 'mcp:write']): McpRequestClaim {
 function harness(mutates: boolean) {
   const executeWrite = vi.fn(async () => ({ ok: true as const, data: { directExecution: true } }))
   const executeRead = vi.fn(async () => ({ ok: true as const, data: { count: 1 } }))
+  const executeResolvedMutation = vi.fn(async () => ({ ok: true as const, data: { supplemental: true } }))
   return {
     executeWrite,
     executeRead,
+    executeResolvedMutation,
     execute: createGodModeMcpCallExecutor({
-      resolveTool: vi.fn(() => ({
+      resolveExecution: vi.fn(() => ({
         name: mutates ? 'create_task' : 'get_tasks',
-        description: 'Test tool',
-        parameters: z.object({}),
-        mutates,
-        handler: vi.fn()
+        canonicalName: mutates ? 'create_task' : 'get_tasks',
+        kind: 'catalog',
+        tool: {
+          name: mutates ? 'create_task' : 'get_tasks',
+          description: 'Test tool',
+          parameters: z.object({}),
+          mutates,
+          handler: vi.fn()
+        }
       }) as any),
       executeWrite: executeWrite as any,
-      executeRead: executeRead as any
+      executeRead: executeRead as any,
+      executeResolvedMutation: executeResolvedMutation as any
     })
   }
 }
@@ -66,7 +76,8 @@ describe('God mode MCP direct execution adapter', () => {
       authority,
       idempotencyKey: IDEMPOTENCY_KEY,
       toolName: 'create_task',
-      args: { title: 'Ship' }
+      args: { title: 'Ship' },
+      requireWriteScope: true
     })).resolves.toEqual({ ok: true, data: { directExecution: true } })
 
     expect(h.executeWrite).toHaveBeenCalledWith(expect.objectContaining({
@@ -95,7 +106,7 @@ describe('God mode MCP direct execution adapter', () => {
     expect(h.executeWrite).not.toHaveBeenCalled()
   })
 
-  it('retains signed write scope as transport authority for an owner', async () => {
+  it('bypasses missing signed write scope for an active owner and passes immutable audit controls', async () => {
     const requestEvent = event()
     const h = harness(true)
 
@@ -105,10 +116,70 @@ describe('God mode MCP direct execution adapter', () => {
       authority: await ownerAuthority(requestEvent),
       idempotencyKey: IDEMPOTENCY_KEY,
       toolName: 'create_task',
-      args: { title: 'Ship' }
-    })).resolves.toMatchObject({ ok: false, error: expect.stringContaining('write access') })
+      args: { title: 'Ship' },
+      requireWriteScope: true
+    })).resolves.toEqual({ ok: true, data: { directExecution: true } })
 
-    expect(h.executeWrite).not.toHaveBeenCalled()
+    expect(h.executeWrite).toHaveBeenCalledWith(expect.objectContaining({
+      bypassedControls: expect.arrayContaining(['confirmation', 'mcp_scope'])
+    }))
+  })
+
+  it.each([
+    ['generate_voiceover', 'supplemental', true, 'generate_voiceover'],
+    ['propose_video_generation', 'supplemental', true, 'propose_video_generation'],
+    ['propose_banner_render', 'supplemental', true, 'propose_banner_render'],
+    ['confirm_action', 'supplemental', true, 'confirm_action'],
+    ['propose_budget_change', 'catalog', true, 'propose_budget_change'],
+    ['propose_create_task', 'catalog', true, 'create_task'],
+    ['propose_team_memory', 'catalog', true, 'propose_team_memory']
+  ] as const)('routes %s through its sole %s resolver', async (name, kind, _mutates, canonicalName) => {
+    const requestEvent = event()
+    const authority = await ownerAuthority(requestEvent)
+    const executeWrite = vi.fn(async () => ({ ok: true as const, data: { directExecution: true } }))
+    const executeRead = vi.fn(async () => ({ ok: true as const, data: { count: 1 } }))
+    const executeResolvedMutation = vi.fn(async () => ({ ok: true as const, data: { supplemental: true } }))
+    const descriptor = resolveGodModeMcpExecution({
+      tools: registry,
+      role: 'owner',
+      scopes: ['mcp:read'],
+      requireWriteScope: true,
+      suiteFlags: {
+        generation: false,
+        writes: false,
+        financial: false,
+        video: false,
+        videoGeneration: false,
+        banners: false
+      }
+    }, name)!
+    expect(descriptor).toMatchObject({ name, canonicalName, kind })
+    const execute = createGodModeMcpCallExecutor({
+      resolveExecution: vi.fn(() => descriptor as any),
+      executeWrite: executeWrite as any,
+      executeRead: executeRead as any,
+      executeResolvedMutation: executeResolvedMutation as any
+    })
+
+    await execute({
+      event: requestEvent,
+      claim: { ...claim(), toolName: name },
+      authority,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      toolName: name,
+      args: {}
+    })
+
+    if (kind === 'supplemental') {
+      expect(executeResolvedMutation).toHaveBeenCalledWith(expect.objectContaining({ tool: descriptor.tool }))
+      expect(executeWrite).not.toHaveBeenCalled()
+    } else {
+      expect(executeWrite).toHaveBeenCalledWith(expect.objectContaining({
+        toolName: canonicalName,
+        auditToolName: name
+      }))
+      expect(executeResolvedMutation).not.toHaveBeenCalled()
+    }
   })
 
   it('rejects a subject mismatch or structural authority clone before either execution path', async () => {

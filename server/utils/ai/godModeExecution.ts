@@ -36,6 +36,10 @@ export interface GodModeExecutionRequest {
   idempotencyKey: string
   tenantId?: string
   clientId?: string
+  /** Advertised alias retained in immutable audit while toolName remains the canonical operation. */
+  auditToolName?: string
+  /** Controls actually bypassed by this trusted execution request. */
+  bypassedControls?: GodModeAuditEventInput['bypassedControls']
 }
 
 export interface GodModeReadExecutionRequest {
@@ -399,8 +403,11 @@ function auditEvent(
   row: GodModeExecutionLedgerRow,
   phase: GodModeAuditEventInput['phase'],
   outcomeCode: string,
-  bypassedControls: GodModeAuditEventInput['bypassedControls'] = ['confirmation']
+  bypassedControls?: GodModeAuditEventInput['bypassedControls']
 ): GodModeAuditEventInput {
+  const controls = bypassedControls
+    ?? (row as GodModeExecutionLedgerRow & { bypassedControls?: GodModeAuditEventInput['bypassedControls'] }).bypassedControls
+    ?? ['confirmation']
   return {
     actorUserId: row.actorUserId,
     correlationId: row.correlationId,
@@ -410,7 +417,7 @@ function auditEvent(
     phase,
     tenantId: row.tenantId,
     clientId: row.clientId,
-    bypassedControls,
+    bypassedControls: controls,
     outcomeCode,
     emergencyDisabled: false
   }
@@ -437,6 +444,7 @@ function createGodModeExecutionCore(deps: GodModeExecutionDependencies) {
       operationalError(400, 'Invalid execution identity')
     }
 
+    const auditToolName = request.auditToolName ?? request.toolName
     const tool = deps.resolveTool(request.toolName)
     const executor = deps.resolveExecutor(request.toolName)
     if (!tool || !executor || !tool.mutates) operationalError(404, 'God mode tool is unavailable')
@@ -448,7 +456,7 @@ function createGodModeExecutionCore(deps: GodModeExecutionDependencies) {
         channel,
         idempotencyKey: request.idempotencyKey,
         correlationId: deps.correlationId(),
-        toolName: request.toolName,
+        toolName: auditToolName,
         executorClass: executor.executionClass,
         tenantId: request.tenantId,
         clientId: request.clientId,
@@ -457,9 +465,12 @@ function createGodModeExecutionCore(deps: GodModeExecutionDependencies) {
     } catch {
       operationalError(503, 'God mode execution ledger unavailable')
     }
-    const row = Object.assign(claim.row, { sessionDigest })
+    const row = Object.assign(claim.row, {
+      sessionDigest,
+      bypassedControls: request.bypassedControls ?? ['confirmation']
+    })
     if (!claim.claimed) {
-      if (row.routeOrTool !== request.toolName) operationalError(409, 'Execution identity already used')
+      if (row.routeOrTool !== auditToolName) operationalError(409, 'Execution identity already used')
       if (row.state === 'succeeded') return ok({ resultRef: row.resultReference, replayed: true })
       if (row.state === 'failed') return fail('Action previously failed.')
       return fail('Action outcome is pending reconciliation.')
@@ -468,6 +479,9 @@ function createGodModeExecutionCore(deps: GodModeExecutionDependencies) {
 
     try {
       await deps.appendAudit(auditEvent(auditIdentity, 'attempt', 'started'))
+      if (row.bypassedControls.includes('mcp_scope')) {
+        await deps.appendAudit(auditEvent(auditIdentity, 'bypass', 'pre_execution'))
+      }
     } catch {
       await deps.setExecutionState({ actorUserId: user.id, channel, idempotencyKey: request.idempotencyKey, state: 'failed' }).catch(() => {})
       operationalError(503, 'God mode audit unavailable')
@@ -751,6 +765,174 @@ export function createTrustedMcpGodModeToolExecutor(deps: GodModeExecutionDepend
 
 export const executeGodModeTool = createGodModeToolExecutor(defaultDependencies)
 export const executeTrustedMcpGodModeTool = createTrustedMcpGodModeToolExecutor(defaultDependencies)
+
+export interface TrustedMcpGodModeResolvedMutationRequest extends TrustedMcpGodModeExecutionRequest {
+  /** Supplemental executable registered beside its manifest. */
+  tool: AiTool<any>
+}
+
+function resolvedResultIdentity(result: ToolResult): { resultReference: string, resultDigest: string } {
+  const digest = createHash('sha256').update(stableJson(result)).digest('hex')
+  const data = result.ok && result.data && typeof result.data === 'object'
+    ? result.data as Record<string, unknown>
+    : {}
+  const preferred = ['resultRef', 'proposalId', 'jobId', 'assetId', 'projectId']
+    .map(key => data[key])
+    .find(value => typeof value === 'string' && value.length > 0)
+  return {
+    resultReference: typeof preferred === 'string' ? preferred.slice(0, 128) : `mcp-result:${digest.slice(0, 64)}`,
+    resultDigest: digest
+  }
+}
+
+/**
+ * Idempotent audited execution for supplemental MCP mutations which do not use the Task 5 proposal
+ * executor registry (generation, media/banner proposals, and confirm_action). The immutable ledger
+ * claim and attempt/bypass audit happen before schema, scope, handler, provider, or pending-row claim.
+ */
+export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExecutionDependencies) {
+  return async function execute(request: TrustedMcpGodModeResolvedMutationRequest): Promise<ToolResult> {
+    if (
+      request.authenticatedUserId !== request.authority.actorUserId
+      || !isActiveGodModeAuthority(request.authority, request.authenticatedUserId)
+      || !/^mcp:[0-9a-f]{64}$/.test(request.idempotencyKey)
+      || !/^[0-9a-f]{64}$/.test(request.sessionDigest)
+      || !request.tool.mutates
+      || request.tool.name !== request.toolName
+    ) operationalError(403, 'Invalid MCP owner execution authority')
+
+    let claim: { claimed: boolean, row: GodModeExecutionLedgerRow }
+    try {
+      claim = await deps.claimExecution({
+        actorUserId: request.authenticatedUserId,
+        channel: 'mcp',
+        idempotencyKey: request.idempotencyKey,
+        correlationId: deps.correlationId(),
+        toolName: request.toolName,
+        executorClass: 'internal-http',
+        tenantId: request.tenantId,
+        clientId: request.clientId,
+        sessionDigest: request.sessionDigest
+      })
+    } catch {
+      operationalError(503, 'God mode execution ledger unavailable')
+    }
+    const row = Object.assign(claim.row, {
+      sessionDigest: request.sessionDigest,
+      bypassedControls: request.bypassedControls ?? ['confirmation']
+    })
+    if (!claim.claimed) {
+      if (row.routeOrTool !== request.toolName) operationalError(409, 'Execution identity already used')
+      if (row.state === 'succeeded') return ok({ resultRef: row.resultReference, replayed: true })
+      if (row.state === 'failed') return fail('Action previously failed.')
+      return fail('Action outcome is pending reconciliation.')
+    }
+    const auditIdentity = { ...row }
+    try {
+      await deps.appendAudit(auditEvent(auditIdentity, 'attempt', 'started'))
+      if (row.bypassedControls.includes('mcp_scope')) {
+        await deps.appendAudit(auditEvent(auditIdentity, 'bypass', 'pre_execution'))
+      }
+    } catch {
+      await deps.setExecutionState({
+        actorUserId: request.authenticatedUserId,
+        channel: 'mcp',
+        idempotencyKey: request.idempotencyKey,
+        state: 'failed'
+      }).catch(() => {})
+      operationalError(503, 'God mode audit unavailable')
+    }
+
+    const terminateBeforeDispatch = async (code: string, message: string): Promise<ToolResult> => {
+      try {
+        await deps.transaction(async db => {
+          await deps.appendAudit(auditEvent(auditIdentity, 'failed', code), db)
+          await deps.setExecutionState({
+            actorUserId: request.authenticatedUserId,
+            channel: 'mcp',
+            idempotencyKey: request.idempotencyKey,
+            state: 'failed'
+          }, db)
+        })
+      } catch {
+        operationalError(503, 'God mode audit unavailable')
+      }
+      return fail(message)
+    }
+
+    const parsed = request.tool.parameters.safeParse(request.args)
+    if (!parsed.success) return await terminateBeforeDispatch('schema_invalid', 'Invalid tool input.')
+
+    const ctx: ToolContext = {
+      userId: request.authenticatedUserId,
+      userRole: 'owner',
+      permissionGroups: [],
+      source: 'mcp',
+      godModeExecutionKey: request.idempotencyKey,
+      event: request.event
+    }
+    const scope = await deps.validateScope({
+      actorUserId: request.authenticatedUserId,
+      tenantId: request.tenantId,
+      clientId: request.clientId,
+      args: parsed.data,
+      ctx
+    })
+    if (scope.ok === false) return await terminateBeforeDispatch(scope.code, 'Target is outside the authenticated scope.')
+    if (deps.setExecutionScope) {
+      try {
+        await deps.setExecutionScope({
+          actorUserId: request.authenticatedUserId,
+          channel: 'mcp',
+          idempotencyKey: request.idempotencyKey,
+          tenantId: scope.tenantId,
+          clientId: scope.clientId
+        })
+      } catch {
+        return await terminateBeforeDispatch('scope_persistence_failed', 'Could not verify the target scope.')
+      }
+    }
+
+    let result: ToolResult
+    try {
+      result = await request.tool.handler(parsed.data, ctx)
+    } catch {
+      return await terminateBeforeDispatch('handler_failed', 'God mode action failed.')
+    }
+    if (!result.ok) return await terminateBeforeDispatch('handler_rejected', result.error)
+
+    const identity = resolvedResultIdentity(result)
+    const terminal = auditEvent(auditIdentity, 'succeeded', 'executed')
+    try {
+      await deps.transaction(async db => {
+        await deps.appendAudit(terminal, db)
+        await deps.setExecutionState({
+          actorUserId: request.authenticatedUserId,
+          channel: 'mcp',
+          idempotencyKey: request.idempotencyKey,
+          state: 'succeeded',
+          resultReference: identity.resultReference,
+          resultDigest: identity.resultDigest
+        }, db)
+      })
+    } catch {
+      await deps.setExecutionState({
+        actorUserId: request.authenticatedUserId,
+        channel: 'mcp',
+        idempotencyKey: request.idempotencyKey,
+        state: 'ambiguous',
+        resultReference: identity.resultReference,
+        resultDigest: identity.resultDigest
+      }).catch(() => {})
+      await deps.enqueueTerminalAudit(request.event, terminal).catch(() => false)
+      return fail('Action outcome is pending reconciliation.')
+    }
+    return result
+  }
+}
+
+export const executeTrustedMcpGodModeResolvedMutation =
+  createTrustedMcpGodModeResolvedMutationExecutor(defaultDependencies)
 
 interface TrustedReadIdentity extends TrustedExecutionIdentity {
   correlationId: string

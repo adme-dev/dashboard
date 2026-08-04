@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { z } from 'zod'
 import Ajv from 'ajv'
 
@@ -15,6 +15,8 @@ import * as videoModule from '~~/server/utils/ai/mcp/videoTools'
 import * as bannerModule from '~~/server/utils/ai/mcp/bannerTools'
 import {
   projectGodModeTools,
+  resolveGodModeMcpExecution,
+  resolveGodModeMcpExecutions,
   projectRegisteredMcpTools,
   registeredMcpSuites,
   type RegisteredMcpSuite
@@ -92,7 +94,6 @@ describe('projectGodModeCatalogTools', () => {
 })
 
 describe('authoritative registered MCP suite projection', () => {
-  const originalSuiteCount = registeredMcpSuites.length
   const context = {
     tools,
     role: 'viewer',
@@ -107,10 +108,6 @@ describe('authoritative registered MCP suite projection', () => {
       banners: false
     }
   }
-
-  afterEach(() => {
-    ;(registeredMcpSuites as RegisteredMcpSuite[]).splice(originalSuiteCount)
-  })
 
   it('gives God mode the union of every registered suite despite ordinary flags and OAuth scope', () => {
     const names = projectGodModeTools(context).map(tool => tool.name)
@@ -142,17 +139,88 @@ describe('authoritative registered MCP suite projection', () => {
     ]))
   })
 
-  it('includes a newly registered synthetic suite without another allowlist change', () => {
-    ;(registeredMcpSuites as RegisteredMcpSuite[]).push({
+  it('makes a newly injected synthetic suite discoverable and executable without another allowlist', async () => {
+    const futureTool = tool({
+      name: 'future_registered_tool',
+      description: 'Synthetic future suite tool used to prove default-on registry projection.'
+    })
+    const syntheticSuite: RegisteredMcpSuite = {
       key: 'synthetic-future-suite',
       project: () => [{
         name: 'future_registered_tool',
         description: 'Synthetic future suite tool used to prove default-on registry projection.',
-        inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+        inputSchema: z.toJSONSchema(futureTool.parameters) as Record<string, unknown>
+      }],
+      executions: () => [{
+        name: 'future_registered_tool',
+        canonicalName: 'future_registered_tool',
+        kind: 'supplemental',
+        tool: futureTool
       }]
-    })
+    }
+    const suites = [...registeredMcpSuites, syntheticSuite]
 
-    expect(projectGodModeTools(context).map(tool => tool.name)).toContain('future_registered_tool')
+    expect(projectGodModeTools(context, suites).map(tool => tool.name)).toContain('future_registered_tool')
+    const execution = resolveGodModeMcpExecution(context, 'future_registered_tool', suites)
+    expect(execution).toMatchObject({
+      name: 'future_registered_tool',
+      kind: 'supplemental'
+    })
+    await expect(execution!.tool.handler({ id: 'future-1' }, ctx('admin'))).resolves.toEqual({
+      ok: true,
+      data: { ok: 1 }
+    })
+  })
+
+  it('freezes the production registry and accepts injected suites without mutating global state', () => {
+    expect(Object.isFrozen(registeredMcpSuites)).toBe(true)
+    expect(registeredMcpSuites.every(suite => Object.isFrozen(suite))).toBe(true)
+    const before = [...registeredMcpSuites]
+    const injected = [...registeredMcpSuites]
+
+    projectGodModeTools(context, injected)
+
+    expect(registeredMcpSuites).toEqual(before)
+  })
+
+  it('gives every projected owner manifest exactly one executable resolver', () => {
+    const ownerContext = { ...context, tools: applicationRegistry }
+    const manifests = projectGodModeTools(ownerContext)
+    const executions = resolveGodModeMcpExecutions(ownerContext)
+
+    expect(manifests).toHaveLength(62)
+    expect(executions).toHaveLength(62)
+    expect(new Set(executions.map(execution => execution.name)).size).toBe(62)
+    for (const manifest of manifests) {
+      expect(resolveGodModeMcpExecution(ownerContext, manifest.name)).toMatchObject({ name: manifest.name })
+    }
+  })
+
+  it('fails closed when a projected tool has no resolver or more than one resolver', () => {
+    const unresolvedSuite: RegisteredMcpSuite = {
+      key: 'unresolved-suite',
+      project: () => [{
+        name: 'unresolved_tool',
+        description: 'Must never be advertised without execution.',
+        inputSchema: { type: 'object', properties: {} }
+      }],
+      executions: () => []
+    }
+    expect(() => projectGodModeTools(context, [...registeredMcpSuites, unresolvedSuite]))
+      .toThrow(/exactly one MCP execution resolver.*unresolved_tool/i)
+
+    const conflictingResolverSuite: RegisteredMcpSuite = {
+      key: 'conflicting-resolver-suite',
+      project: () => [],
+      executions: () => [{
+        name: 'get_overview',
+        canonicalName: 'get_overview',
+        kind: 'supplemental',
+        tool: tools[0]!
+      }]
+    }
+    expect(() => resolveGodModeMcpExecutions(context, [...registeredMcpSuites, conflictingResolverSuite]))
+      .toThrow(/exactly one MCP execution resolver.*get_overview/i)
   })
 
   it('keeps ordinary projection governed by suite flags, role permissions, and signed scopes', () => {
@@ -210,42 +278,51 @@ describe('authoritative registered MCP suite projection', () => {
   })
 
   it('deduplicates identical definitions and fails closed on conflicting definitions', () => {
-    ;(registeredMcpSuites as RegisteredMcpSuite[]).push({
+    const identicalSuite: RegisteredMcpSuite = {
       key: 'identical-duplicate',
       project: () => [{
         name: 'get_overview',
         description: 'Reads a thing.',
         inputSchema: z.toJSONSchema(z.object({ id: z.string() })) as Record<string, unknown>
-      }]
-    })
-    expect(projectGodModeTools(context).filter(tool => tool.name === 'get_overview')).toHaveLength(1)
+      }],
+      executions: () => []
+    }
+    expect(projectGodModeTools(context, [...registeredMcpSuites, identicalSuite])
+      .filter(tool => tool.name === 'get_overview')).toHaveLength(1)
 
-    ;(registeredMcpSuites as RegisteredMcpSuite[]).push({
+    const conflictingSuite: RegisteredMcpSuite = {
       key: 'conflicting-duplicate',
       project: () => [{
         name: 'get_overview',
         description: 'Conflicting definition must never silently shadow the registered tool.',
         inputSchema: { type: 'object', properties: {} }
-      }]
-    })
-    expect(() => projectGodModeTools(context)).toThrow(/conflicting MCP tool definition.*get_overview/i)
+      }],
+      executions: () => []
+    }
+    expect(() => projectGodModeTools(context, [...registeredMcpSuites, identicalSuite, conflictingSuite]))
+      .toThrow(/conflicting MCP tool definition.*get_overview/i)
   })
 
   it('fails closed when a registered suite emits an invalid JSON Schema', () => {
-    ;(registeredMcpSuites as RegisteredMcpSuite[]).push({
+    const invalidSuite: RegisteredMcpSuite = {
       key: 'invalid-schema-suite',
       project: () => [{
         name: 'invalid_schema_tool',
         description: 'A malformed schema must block discovery instead of reaching an MCP host.',
         inputSchema: { type: 'not-a-json-schema-type' }
-      }]
-    })
+      }],
+      executions: () => []
+    }
 
-    expect(() => projectGodModeTools(context)).toThrow(/invalid JSON Schema.*invalid_schema_tool/i)
+    expect(() => projectGodModeTools(context, [...registeredMcpSuites, invalidSuite]))
+      .toThrow(/invalid JSON Schema.*invalid_schema_tool/i)
   })
 
-  it('registers every exported suite projector exactly once', () => {
-    const modules = [projectModule, generationModule, writeModule, videoModule, bannerModule]
+  it('registers every filesystem-discovered MCP suite, tool projector, and execution resolver exactly once', () => {
+    const modules = [
+      projectModule,
+      ...Object.values(import.meta.glob('../../server/utils/ai/mcp/*Tools.ts', { eager: true }))
+    ] as Record<string, unknown>[]
     const exportedProjectors = modules.flatMap(module => Object.entries(module))
       .filter(([name, value]) => name.endsWith('McpSuite') && typeof value === 'function')
       .map(([, value]) => value)
@@ -254,6 +331,10 @@ describe('authoritative registered MCP suite projection', () => {
       .filter(([name, value]) => name.startsWith('project') && name.endsWith('Tools') && typeof value === 'function')
       .map(([, value]) => value)
     const registeredSourceProjectors = registeredMcpSuites.flatMap(suite => suite.sourceProjectors ?? [])
+    const exportedExecutionResolvers = modules.flatMap(module => Object.entries(module))
+      .filter(([name, value]) => name.startsWith('resolve') && name.endsWith('McpExecutions') && typeof value === 'function')
+      .map(([, value]) => value)
+    const registeredExecutionResolvers = registeredMcpSuites.map(suite => suite.executions)
 
     expect(projectCatalogMcpSuite).toBeTypeOf('function')
     expect(new Set(registeredMcpSuites.map(suite => suite.key)).size).toBe(registeredMcpSuites.length)
@@ -264,6 +345,10 @@ describe('authoritative registered MCP suite projection', () => {
     expect(registeredSourceProjectors).toHaveLength(exportedSourceProjectors.length)
     for (const projector of exportedSourceProjectors) {
       expect(registeredSourceProjectors.filter(candidate => candidate === projector)).toHaveLength(1)
+    }
+    expect(registeredExecutionResolvers).toHaveLength(exportedExecutionResolvers.length)
+    for (const resolver of exportedExecutionResolvers) {
+      expect(registeredExecutionResolvers.filter(candidate => candidate === resolver)).toHaveLength(1)
     }
   })
 })

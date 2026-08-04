@@ -1,16 +1,16 @@
 import { z } from 'zod'
 import { roleHasPermission } from '~~/server/utils/permissions'
 import { filterToolsForUser, type AiTool } from '~~/server/utils/ai/toolRegistry'
-import type { ToolContext } from '~~/server/utils/ai/toolContext'
+import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type { ActionExecutor } from '~~/server/utils/ai/executors/types'
-import type { McpProjectionContext, McpToolManifest } from './project'
+import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
 
 // ---------------------------------------------------------------------------
 // Shared confirm plumbing (used by both 2c and D4 branches)
 // ---------------------------------------------------------------------------
 
 export const MCP_CONFIRM_TOOL = 'confirm_action'
-const ConfirmParams = z.object({ proposalId: z.string().min(8), ack: z.boolean().optional() })
+export const ConfirmParams = z.object({ proposalId: z.string().min(8), ack: z.boolean().optional() })
 export const MCP_WRITE_CONFIRM_DESCRIPTION =
   'Execute a previously proposed write action by its proposalId. Some actions require ack:true.'
 export const MCP_VIDEO_CONFIRM_DESCRIPTION =
@@ -120,6 +120,11 @@ export function projectFinancialMcpSuite(context: McpProjectionContext): McpTool
   )
 }
 
+/** Finance manifests are canonical base AiTools, so the catalog owns their sole resolvers. */
+export function resolveFinancialMcpExecutions(): McpExecutionDescriptor[] {
+  return []
+}
+
 // ---------------------------------------------------------------------------
 // Phase 2c — non-financial safe-action set
 // ---------------------------------------------------------------------------
@@ -193,6 +198,39 @@ export function projectWriteMcpSuite(context: McpProjectionContext): McpToolMani
       confirmDescription: resolveRegisteredConfirmDescription(context)
     }
   )
+}
+
+/** Alias resolvers plus the single shared confirmation dispatcher. */
+export function resolveWriteMcpExecutions(context: McpProjectionContext): McpExecutionDescriptor[] {
+  const aliases = MCP_WRITE_SAFE_ACTIONS
+    .map(canonicalName => context.tools.find(tool => tool.name === canonicalName))
+    .filter((tool): tool is AiTool<any> => !!tool && !!tool.mutates)
+    .filter(tool => mcpProposeName(tool.name) !== tool.name)
+    .map(tool => {
+      const name = mcpProposeName(tool.name)
+      return {
+        name,
+        canonicalName: tool.name,
+        kind: 'catalog' as const,
+        tool: { ...tool, name }
+      }
+    })
+  const confirm: McpExecutionDescriptor = {
+    name: MCP_CONFIRM_TOOL,
+    canonicalName: MCP_CONFIRM_TOOL,
+    kind: 'supplemental',
+    tool: {
+      name: MCP_CONFIRM_TOOL,
+      description: MCP_WRITE_CONFIRM_DESCRIPTION,
+      parameters: ConfirmParams,
+      mutates: true,
+      handler: async (args: unknown, ctx: ToolContext): Promise<ToolResult> => {
+        const { executeOwnerMcpConfirm } = await import('./ownerConfirm')
+        return await executeOwnerMcpConfirm(args, ctx)
+      }
+    }
+  }
+  return [...aliases, confirm]
 }
 
 // ---------------------------------------------------------------------------

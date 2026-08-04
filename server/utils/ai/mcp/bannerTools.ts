@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import { roleHasPermission } from '~~/server/utils/permissions'
 import type { PermissionGroup } from '~~/server/utils/permissions'
-import type { ToolContext } from '~~/server/utils/ai/toolContext'
-import type { McpProjectionContext, McpToolManifest } from './project'
+import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
+import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
 import {
   MCP_BANNER_CONFIRM_DESCRIPTION,
   projectConfirmActionManifest,
@@ -152,13 +152,14 @@ export async function executeBannerTool(
   args: unknown,
   ctx: ToolContext,
   enabled: boolean,
+  options: { bypassPermissions?: boolean } = {}
 ): Promise<BannerExecuteOutcome> {
   if (!enabled) return { ok: false, error: 'Banner tools are not enabled over MCP.', code: 'disabled' }
 
   const tool = bannerReadTools.find(t => t.name === name)
   if (!tool) return { ok: false, error: `Unknown banner tool: ${name}`, code: 'not_found' }
 
-  if (!roleHasPermission(ctx.userRole, tool.requiredPermission)) {
+  if (!options.bypassPermissions && !roleHasPermission(ctx.userRole, tool.requiredPermission)) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 
@@ -204,9 +205,12 @@ export async function executeBannerPropose(
   ctx: ToolContext,
   deps: BannerProposeDeps,
   enabled: boolean,
+  options: { bypassPermissions?: boolean } = {}
 ): Promise<BannerProposeOutcome> {
   if (!enabled) return { ok: false, error: 'Banner tools are not enabled over MCP.', code: 'disabled' }
-  if (!roleHasPermission(ctx.userRole, 'CREATIVE')) return { ok: false, error: 'Not permitted.', code: 'forbidden' }
+  if (!options.bypassPermissions && !roleHasPermission(ctx.userRole, 'CREATIVE')) {
+    return { ok: false, error: 'Not permitted.', code: 'forbidden' }
+  }
 
   if (name !== 'propose_banner_render') {
     return { ok: false, error: `Unknown banner propose tool: ${name}`, code: 'not_found' }
@@ -235,4 +239,55 @@ export async function executeBannerPropose(
   } catch {
     return { ok: false, error: 'Propose failed.', code: 'handler_error' }
   }
+}
+
+/** Complete executable descriptors for banner reads and proposal writers. */
+export function resolveBannerMcpExecutions(): McpExecutionDescriptor[] {
+  const reads = bannerReadTools.map(descriptor => ({
+    name: descriptor.name,
+    canonicalName: descriptor.name,
+    kind: 'supplemental' as const,
+    tool: {
+      ...descriptor,
+      mutates: false,
+      handler: async (args: unknown, ctx: ToolContext): Promise<ToolResult> => {
+        const { buildBannerReadRunner } = await import('./bannerRunner')
+        const outcome = await executeBannerTool(
+          buildBannerReadRunner(),
+          descriptor.name,
+          args,
+          ctx,
+          true,
+          { bypassPermissions: true }
+        )
+        return outcome.ok
+          ? { ok: true, data: outcome.data }
+          : { ok: false, error: 'error' in outcome ? outcome.error : 'Banner tool failed.' }
+      }
+    }
+  }))
+  const proposals = bannerProposeTools.map(descriptor => ({
+    name: descriptor.name,
+    canonicalName: descriptor.name,
+    kind: 'supplemental' as const,
+    tool: {
+      ...descriptor,
+      mutates: true,
+      handler: async (args: unknown, ctx: ToolContext): Promise<ToolResult> => {
+        const { buildBannerProposeDeps } = await import('./bannerRunner')
+        const outcome = await executeBannerPropose(
+          descriptor.name,
+          args,
+          ctx,
+          buildBannerProposeDeps(),
+          true,
+          { bypassPermissions: true }
+        )
+        return outcome.ok
+          ? { ok: true, data: { proposalId: outcome.proposalId } }
+          : { ok: false, error: 'error' in outcome ? outcome.error : 'Banner proposal failed.' }
+      }
+    }
+  }))
+  return [...reads, ...proposals]
 }

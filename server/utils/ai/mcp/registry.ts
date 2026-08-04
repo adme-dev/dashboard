@@ -4,22 +4,37 @@ import {
   projectGodModeCatalogTools,
   projectReadOnlyTools,
   projectCatalogMcpSuite,
+  resolveCatalogMcpExecutions,
+  type McpExecutionDescriptor,
+  type McpExecutionResolver,
   type McpProjectionContext,
   type McpToolManifest
 } from './project'
-import { projectGenerationMcpSuite, projectGenerationTools } from './generationTools'
+import {
+  projectGenerationMcpSuite,
+  projectGenerationTools,
+  resolveGenerationMcpExecutions
+} from './generationTools'
 import {
   projectFinancialMcpSuite,
   projectFinancialTools,
   projectWriteMcpSuite,
-  projectWriteTools
+  projectWriteTools,
+  resolveFinancialMcpExecutions,
+  resolveWriteMcpExecutions
 } from './writeTools'
-import { projectVideoMcpSuite, projectVideoReadTools, projectVideoTools } from './videoTools'
-import { projectBannerMcpSuite, projectBannerTools } from './bannerTools'
+import {
+  projectVideoMcpSuite,
+  projectVideoReadTools,
+  projectVideoTools,
+  resolveVideoMcpExecutions
+} from './videoTools'
+import { projectBannerMcpSuite, projectBannerTools, resolveBannerMcpExecutions } from './bannerTools'
 
 export interface RegisteredMcpSuite {
   key: string
   project: (context: McpProjectionContext) => McpToolManifest[]
+  executions: McpExecutionResolver
   /** Lower-level exported projectors covered by this registered suite (contract-test inventory). */
   sourceProjectors?: readonly ((...args: any[]) => unknown)[]
 }
@@ -29,22 +44,51 @@ export interface RegisteredMcpSuite {
  * newly registered AiTool needs no MCP allowlist edit. Supplemental, non-AiTool suites register once
  * here and God mode receives them automatically.
  */
-export const registeredMcpSuites: readonly RegisteredMcpSuite[] = [
+const suiteDefinitions: RegisteredMcpSuite[] = [
   {
     key: 'catalog',
     project: projectCatalogMcpSuite,
+    executions: resolveCatalogMcpExecutions,
     sourceProjectors: [projectReadOnlyTools, projectGodModeCatalogTools]
   },
-  { key: 'generation', project: projectGenerationMcpSuite, sourceProjectors: [projectGenerationTools] },
-  { key: 'writes', project: projectWriteMcpSuite, sourceProjectors: [projectWriteTools] },
+  {
+    key: 'generation',
+    project: projectGenerationMcpSuite,
+    executions: resolveGenerationMcpExecutions,
+    sourceProjectors: [projectGenerationTools]
+  },
+  {
+    key: 'writes',
+    project: projectWriteMcpSuite,
+    executions: resolveWriteMcpExecutions,
+    sourceProjectors: [projectWriteTools]
+  },
   {
     key: 'video-media',
     project: projectVideoMcpSuite,
+    executions: resolveVideoMcpExecutions,
     sourceProjectors: [projectVideoReadTools, projectVideoTools]
   },
-  { key: 'banners', project: projectBannerMcpSuite, sourceProjectors: [projectBannerTools] },
-  { key: 'finance', project: projectFinancialMcpSuite, sourceProjectors: [projectFinancialTools] }
+  {
+    key: 'banners',
+    project: projectBannerMcpSuite,
+    executions: resolveBannerMcpExecutions,
+    sourceProjectors: [projectBannerTools]
+  },
+  {
+    key: 'finance',
+    project: projectFinancialMcpSuite,
+    executions: resolveFinancialMcpExecutions,
+    sourceProjectors: [projectFinancialTools]
+  }
 ]
+
+export const registeredMcpSuites: readonly RegisteredMcpSuite[] = Object.freeze(
+  suiteDefinitions.map(suite => Object.freeze({
+    ...suite,
+    sourceProjectors: suite.sourceProjectors ? Object.freeze([...suite.sourceProjectors]) : undefined
+  }))
+)
 
 function sortedJsonValue(value: unknown, seen = new Set<object>()): unknown {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value
@@ -91,11 +135,14 @@ function manifestFingerprint(manifest: McpToolManifest): string {
   }))
 }
 
-function projectSuites(context: McpProjectionContext): McpToolManifest[] {
+function projectSuites(
+  context: McpProjectionContext,
+  suites: readonly RegisteredMcpSuite[]
+): McpToolManifest[] {
   const suiteKeys = new Set<string>()
   const byName = new Map<string, { manifest: McpToolManifest, fingerprint: string, suiteKey: string }>()
 
-  for (const suite of registeredMcpSuites) {
+  for (const suite of suites) {
     if (!suite.key.trim() || suiteKeys.has(suite.key)) {
       throw new Error(`Duplicate or invalid registered MCP suite key: ${suite.key}`)
     }
@@ -120,9 +167,55 @@ function projectSuites(context: McpProjectionContext): McpToolManifest[] {
   return [...byName.values()].map(entry => entry.manifest)
 }
 
+function resolveOwnerCatalog(
+  context: McpProjectionContext,
+  suites: readonly RegisteredMcpSuite[]
+): { manifests: McpToolManifest[], executions: McpExecutionDescriptor[] } {
+  const ownerContext = { ...context, governanceBypass: true }
+  const manifests = projectSuites(ownerContext, suites)
+  const executionRows = new Map<string, Array<{ suiteKey: string, descriptor: McpExecutionDescriptor }>>()
+  for (const suite of suites) {
+    for (const descriptor of suite.executions(ownerContext)) {
+      if (
+        !descriptor
+        || typeof descriptor.name !== 'string'
+        || !descriptor.name.trim()
+        || typeof descriptor.canonicalName !== 'string'
+        || !descriptor.canonicalName.trim()
+        || descriptor.tool?.name !== descriptor.name
+        || (descriptor.kind !== 'catalog' && descriptor.kind !== 'supplemental')
+      ) throw new Error(`Invalid MCP execution resolver in suite ${suite.key}`)
+      const rows = executionRows.get(descriptor.name) ?? []
+      rows.push({ suiteKey: suite.key, descriptor })
+      executionRows.set(descriptor.name, rows)
+    }
+  }
+
+  const manifestNames = new Set(manifests.map(manifest => manifest.name))
+  for (const name of executionRows.keys()) {
+    if (!manifestNames.has(name)) throw new Error(`MCP execution resolver has no projected manifest: ${name}`)
+  }
+  const executions = manifests.map(manifest => {
+    const rows = executionRows.get(manifest.name) ?? []
+    if (rows.length !== 1) {
+      throw new Error(`Expected exactly one MCP execution resolver for ${manifest.name}; received ${rows.length}`)
+    }
+    const descriptor = rows[0]!.descriptor
+    const descriptorSchema = z.toJSONSchema(descriptor.tool.parameters) as Record<string, unknown>
+    if (JSON.stringify(sortedJsonValue(descriptorSchema)) !== JSON.stringify(sortedJsonValue(manifest.inputSchema))) {
+      throw new Error(`MCP execution schema conflicts with projected manifest for ${manifest.name}`)
+    }
+    return descriptor
+  })
+  return { manifests, executions }
+}
+
 /** Existing governed projection: role, suite flags, and the signed OAuth scope continue to narrow. */
-export function projectRegisteredMcpTools(context: McpProjectionContext): McpToolManifest[] {
-  const tools = projectSuites({ ...context, governanceBypass: false })
+export function projectRegisteredMcpTools(
+  context: McpProjectionContext,
+  suites: readonly RegisteredMcpSuite[] = registeredMcpSuites
+): McpToolManifest[] {
+  const tools = projectSuites({ ...context, governanceBypass: false }, suites)
   const signedScopes = new Set(context.scopes)
   return context.requireWriteScope && !hasWriteScope(signedScopes)
     ? tools.filter(tool => !isWriteScopeToolName(tool.name))
@@ -134,6 +227,24 @@ export function projectRegisteredMcpTools(context: McpProjectionContext): McpToo
  * deliberately bypasses application suite flags and OAuth read/write narrowing, but not route auth,
  * claim verification, tenancy, provider availability, schema validation, execution idempotency, or audit.
  */
-export function projectGodModeTools(context: McpProjectionContext): McpToolManifest[] {
-  return projectSuites({ ...context, governanceBypass: true })
+export function projectGodModeTools(
+  context: McpProjectionContext,
+  suites: readonly RegisteredMcpSuite[] = registeredMcpSuites
+): McpToolManifest[] {
+  return resolveOwnerCatalog(context, suites).manifests
+}
+
+export function resolveGodModeMcpExecutions(
+  context: McpProjectionContext,
+  suites: readonly RegisteredMcpSuite[] = registeredMcpSuites
+): McpExecutionDescriptor[] {
+  return resolveOwnerCatalog(context, suites).executions
+}
+
+export function resolveGodModeMcpExecution(
+  context: McpProjectionContext,
+  name: string,
+  suites: readonly RegisteredMcpSuite[] = registeredMcpSuites
+): McpExecutionDescriptor | null {
+  return resolveGodModeMcpExecutions(context, suites).find(descriptor => descriptor.name === name) ?? null
 }

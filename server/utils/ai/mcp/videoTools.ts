@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import { roleHasPermission } from '~~/server/utils/permissions'
 import type { PermissionGroup } from '~~/server/utils/permissions'
-import type { ToolContext } from '~~/server/utils/ai/toolContext'
-import type { McpProjectionContext, McpToolManifest } from './project'
+import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
+import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
 import {
   MCP_VIDEO_CONFIRM_DESCRIPTION,
   projectConfirmActionManifest,
@@ -161,14 +161,14 @@ export async function executeVideoTool(
   name: string,
   args: unknown,
   ctx: ToolContext,
-  deps: { enabled: boolean, runner: VideoReadRunner }
+  deps: { enabled: boolean, runner: VideoReadRunner, bypassPermissions?: boolean }
 ): Promise<VideoExecuteOutcome> {
   if (!deps.enabled) return { ok: false, error: 'Video tools are not enabled over MCP.', code: 'disabled' }
 
   const tool = videoReadTools.find(t => t.name === name)
   if (!tool) return { ok: false, error: `Unknown video tool: ${name}`, code: 'not_found' }
 
-  if (!roleHasPermission(ctx.userRole, tool.requiredPermission)) {
+  if (!deps.bypassPermissions && !roleHasPermission(ctx.userRole, tool.requiredPermission)) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 
@@ -287,6 +287,7 @@ export type VideoProposeOutcome
 export interface VideoProposeDeps {
   suiteEnabled: boolean
   genEnabled: boolean
+  bypassPermissions?: boolean
   resolveProject: (projectId: string, ctx: ToolContext) => Promise<ResolvedAvProject | null>
   getModel: (modelId: string) => VideoGenerationModel | null | undefined
   isTenantModel: (model: VideoGenerationModel) => boolean
@@ -321,7 +322,9 @@ export async function executeVideoPropose(
   if ((action === 'video_generation' || action === 'video_project_create') && !deps.genEnabled) {
     return { ok: false, error: 'Video generation is not enabled over MCP.', code: 'disabled' }
   }
-  if (!roleHasPermission(ctx.userRole, 'CREATIVE')) return { ok: false, error: 'Not permitted.', code: 'forbidden' }
+  if (!deps.bypassPermissions && !roleHasPermission(ctx.userRole, 'CREATIVE')) {
+    return { ok: false, error: 'Not permitted.', code: 'forbidden' }
+  }
 
   if (action === 'video_timeline_edit') {
     const parsed = TimelineEditParams.safeParse(args)
@@ -502,4 +505,52 @@ export function projectVideoMcpSuite(context: McpProjectionContext): McpToolMani
       confirmDescription: resolveRegisteredConfirmDescription(context)
     }
   )
+}
+
+/** Complete executable descriptors for video/media reads and proposal writers. */
+export function resolveVideoMcpExecutions(): McpExecutionDescriptor[] {
+  const reads = videoReadTools.map(descriptor => ({
+    name: descriptor.name,
+    canonicalName: descriptor.name,
+    kind: 'supplemental' as const,
+    tool: {
+      ...descriptor,
+      mutates: false,
+      handler: async (args: unknown, ctx: ToolContext): Promise<ToolResult> => {
+        const { buildVideoReadRunner } = await import('./videoRunner')
+        const outcome = await executeVideoTool(descriptor.name, args, ctx, {
+          enabled: true,
+          bypassPermissions: true,
+          runner: buildVideoReadRunner()
+        })
+        return outcome.ok
+          ? { ok: true, data: outcome.data }
+          : { ok: false, error: 'error' in outcome ? outcome.error : 'Video tool failed.' }
+      }
+    }
+  }))
+  const proposals = videoProposeTools.map(descriptor => ({
+    name: descriptor.name,
+    canonicalName: descriptor.name,
+    kind: 'supplemental' as const,
+    tool: {
+      ...descriptor,
+      mutates: true,
+      handler: async (args: unknown, ctx: ToolContext): Promise<ToolResult> => {
+        const action = resolveVideoProposeAction(descriptor.name)
+        if (!action) return { ok: false, error: 'Video action is unavailable.' }
+        const { buildVideoProposeDeps } = await import('./videoRunner')
+        const outcome = await executeVideoPropose(action, args, ctx, {
+          suiteEnabled: true,
+          genEnabled: true,
+          bypassPermissions: true,
+          ...buildVideoProposeDeps()
+        })
+        return outcome.ok
+          ? { ok: true, data: outcome.data }
+          : { ok: false, error: 'error' in outcome ? outcome.error : 'Video proposal failed.' }
+      }
+    }
+  }))
+  return [...reads, ...proposals]
 }
