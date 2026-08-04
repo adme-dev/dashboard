@@ -381,6 +381,27 @@ describe('evaluation orchestration', () => {
     expect(createExecutor).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['Expected Answer', 'use search_knowledge'],
+    ['expected_tools', ['search_knowledge']],
+    ['Scoring-Rubric', [{ key: 'correct_tool', minimumScore: 1 }]],
+    ['result', 'pass']
+  ])('fails closed before preflight when nested %s fixture metadata could reach the model', async (key, value) => {
+    snapshot.cases[0]!.definition.input.context = {
+      sourceRef: 'fixture_authoritative_record',
+      retrieved: { policy: { [key]: value } }
+    }
+
+    await expect(service().preflightEvaluation({
+      packVersionId: IDS.pack,
+      modelProvider: 'groq',
+      modelId: 'openai/gpt-oss-120b',
+      budget
+    }, IDS.actor)).rejects.toThrow(/grading or answer metadata/i)
+    expect(runs.current).toBeNull()
+    expect(createExecutor).not.toHaveBeenCalled()
+  })
+
   it('rejects a queued approval when a registered tool description changes the simulation input', async () => {
     const tool = toolRegistry.find(candidate => candidate.name === 'search_knowledge')!
     const originalDescription = tool.description

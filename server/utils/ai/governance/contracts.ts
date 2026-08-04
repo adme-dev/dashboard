@@ -83,8 +83,34 @@ const FORBIDDEN_FIXTURE_KEYS = new Set([
   'proto'
 ])
 
+/**
+ * Evaluation fixtures are model-visible data. Grading and answer fields belong only to the
+ * surrounding case definition, never in `input.context` or `scopeFixture`, where they could
+ * steer the model or disclose the deterministic scorer's expectation.
+ */
+const FORBIDDEN_GRADING_FIXTURE_KEYS = new Set([
+  'expectedanswer',
+  'expectedtools',
+  'expectednotool',
+  'scoringrubric',
+  'score',
+  'outcome',
+  'result'
+])
+
 function normalizedFixtureKey(key: string) {
   return key.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function forbiddenFixtureKeyMessage(key: string): string | null {
+  const normalized = normalizedFixtureKey(key)
+  if (FORBIDDEN_FIXTURE_KEYS.has(normalized)) {
+    return 'Evaluation fixtures must use opaque references and cannot store secrets or direct PII.'
+  }
+  if (FORBIDDEN_GRADING_FIXTURE_KEYS.has(normalized)) {
+    return 'Evaluation fixtures cannot contain grading or answer metadata.'
+  }
+  return null
 }
 
 interface FixtureViolation {
@@ -129,9 +155,10 @@ function validateSafeFixture(value: unknown): FixtureViolation | null {
       }
       for (const [key, item] of entries) {
         const nextPath = [...current.path, key]
-        if (FORBIDDEN_FIXTURE_KEYS.has(normalizedFixtureKey(key))) {
+        const forbiddenMessage = forbiddenFixtureKeyMessage(key)
+        if (forbiddenMessage) {
           return {
-            message: 'Evaluation fixtures must use opaque references and cannot store secrets or direct PII.',
+            message: forbiddenMessage,
             path: nextPath
           }
         }
