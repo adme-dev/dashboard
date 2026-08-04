@@ -192,10 +192,28 @@ export async function queryKnowledgeVectors(
   context: BoardKnowledgeVectorizeContext,
   input: { query: string, scopeKeys: string[], topK?: number }
 ): Promise<KnowledgeVectorMatch[]> {
+  // Preserve fail-closed precedence: report a missing dedicated index before attempting AI work.
+  requireBinding<VectorizeBinding>(context, 'KNOWLEDGE_VECTORIZE')
+  const values = await generateKnowledgeEmbedding(context, input.query)
+  return queryKnowledgeVectorMatches(context, {
+    values,
+    scopeKeys: input.scopeKeys,
+    topK: input.topK
+  })
+}
+
+/** Query with a caller-supplied embedding so multi-scope search embeds the query only once. */
+export async function queryKnowledgeVectorMatches(
+  context: BoardKnowledgeVectorizeContext,
+  input: { values: number[], scopeKeys: string[], topK?: number }
+): Promise<KnowledgeVectorMatch[]> {
   const scopeKeys = requireScopeKeys(input.scopeKeys)
   const topK = Math.max(1, Math.min(MAX_QUERY_RESULTS, Math.trunc(input.topK ?? 12)))
   const index = requireBinding<VectorizeBinding>(context, 'KNOWLEDGE_VECTORIZE')
-  const values = await generateKnowledgeEmbedding(context, input.query)
+  const values = input.values
+  if (values.length !== EMBEDDING_DIMENSIONS || values.some(value => !Number.isFinite(value))) {
+    throw new Error('Knowledge query embedding is invalid')
+  }
   const response = await index.query(values, {
     topK,
     returnMetadata: 'all',

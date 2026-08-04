@@ -747,7 +747,7 @@ Commit: `feat: index approved knowledge in dedicated Vectorize`
 - Consumes: `assistantScope.departmentIds`, verified active board, dedicated Vectorize adapter, and authoritative Postgres rows.
 - Produces: `ToolContext.activeBoardId`, `searchBoardKnowledge(query, context)`, and cited `search_knowledge` results.
 
-- [ ] **Step 1: Write search ranking and ACL tests**
+- [x] **Step 1: Write search ranking and ACL tests**
 
 Cover agency knowledge, multiple accessible boards, inaccessible high-score vectors, active-board boost, irrelevant active-board content, duplicate chunks, stale/unpublished rows, missing bindings, and `$in` batching below 2,048-byte filter JSON.
 
@@ -760,21 +760,21 @@ expect(result.items[0]).toMatchObject({
 expect(result.items.some(item => item.boardId === INACCESSIBLE_BOARD_ID)).toBe(false)
 ```
 
-- [ ] **Step 2: Run search tests and verify RED**
+- [x] **Step 2: Run search tests and verify RED**
 
 Run: `pnpm vitest run test/server/utils/boardKnowledgeSearch.test.ts`
 
 Expected: FAIL because scoped search is missing.
 
-- [ ] **Step 3: Implement batched retrieval and authoritative re-fetch**
+- [x] **Step 3: Implement batched retrieval and authoritative re-fetch**
 
 Generate the query embedding once. Query active scope and accessible scopes, merge by chunk ID, apply a bounded active-board boost, then run one Postgres query with published/review/index state and department predicates. If the caller has no department IDs, only `agency` is searchable.
 
-- [ ] **Step 4: Write tool-context and citation tests**
+- [x] **Step 4: Write tool-context and citation tests**
 
 Assert an unverified caller-provided board ID never reaches `ToolContext.activeBoardId`. The server must canonicalise it and confirm it appears in `assistantScope.departmentIds`. Assert tool output includes authenticated application URLs but no storage key/permanent object URL.
 
-- [ ] **Step 5: Integrate the knowledge tool**
+- [x] **Step 5: Integrate the knowledge tool**
 
 Return compact citations:
 
@@ -798,7 +798,7 @@ Return compact citations:
 
 Keep `returnsUntrusted: true`. The dedicated-index path is enabled only when `BOARD_KNOWLEDGE_SEARCH_ENABLED=true`; otherwise retain the existing published agency KB search until backfill gates pass.
 
-- [ ] **Step 6: Run focused tests and commit**
+- [x] **Step 6: Run focused tests and commit**
 
 Run: `pnpm vitest run test/server/utils/boardKnowledgeSearch.test.ts test/ai/tools/knowledge.boardScope.test.ts test/ai/tools/knowledge.acl.test.ts test/server/utils/aiContextRetriever.test.ts`
 

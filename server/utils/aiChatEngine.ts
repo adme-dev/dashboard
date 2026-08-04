@@ -12,6 +12,7 @@ import {
   resolvePersonalAssistantContext
 } from '~~/server/utils/ai/personalAssistantContext'
 import { fetchScopedMentionedEntities } from '~~/server/utils/ai/mentionedEntityContext'
+import { resolveActiveBoardId } from '~~/server/utils/ai/toolContext'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
 export interface ChatResponse {
@@ -228,6 +229,15 @@ export async function processUserMessage(
   const assistantContext = await resolvePersonalAssistantContext({ userId, event })
   const effectiveUserRole = assistantContext.identity.role
   const agentConfig = assistantContext.preferences
+  const assistantScope = {
+    departmentIds: assistantContext.departments.map(department => department.departmentId),
+    clientAccessMode: assistantContext.clientScope.mode,
+    assignedClientIds: assistantContext.clientScope.assignments.map(assignment => assignment.clientId),
+    catalogReleaseIds: assistantContext.catalogRows.map(row => row.releaseId)
+  }
+  // `boardId` came from the request surface. It becomes assistant context only after matching the
+  // current server-derived department scope; an arbitrary or stale id is discarded here.
+  const activeBoardId = resolveActiveBoardId(boardId, assistantScope)
   // Persona = one skill-pack per turn (narrows tools ∩ RBAC + a focus preamble). An explicit arg (chat
   // picker) or the persona persisted on the conversation wins and sticks; otherwise the L1 traffic
   // controller auto-selects by intent+role AFTER context retrieval (below). Resolve the pinned choice
@@ -270,9 +280,9 @@ export async function processUserMessage(
     effectiveUserRole,
     content,
     event,
-    boardId,
+    activeBoardId,
     {
-      departmentIds: assistantContext.departments.map(department => department.departmentId),
+      departmentIds: assistantScope.departmentIds,
       clientAccess: {
         mode: assistantContext.clientScope.mode,
         assignedClientIds: assistantContext.clientScope.assignments.map(assignment => assignment.clientId)
@@ -458,12 +468,8 @@ export async function processUserMessage(
                     assistantReadOnly: assistantContext.isReadOnly,
                     conversationId,
                     event,
-                    assistantScope: {
-                      departmentIds: assistantContext.departments.map(department => department.departmentId),
-                      clientAccessMode: assistantContext.clientScope.mode,
-                      assignedClientIds: assistantContext.clientScope.assignments.map(assignment => assignment.clientId),
-                      catalogReleaseIds: assistantContext.catalogRows.map(row => row.releaseId)
-                    },
+                    assistantScope,
+                    activeBoardId,
                     officeId: roomCtx?.officeId,
                     meetingId: roomCtx?.meetingId
                   },
@@ -522,12 +528,8 @@ export async function processUserMessage(
             assistantReadOnly: assistantContext.isReadOnly,
             conversationId,
             event,
-            assistantScope: {
-              departmentIds: assistantContext.departments.map(department => department.departmentId),
-              clientAccessMode: assistantContext.clientScope.mode,
-              assignedClientIds: assistantContext.clientScope.assignments.map(assignment => assignment.clientId),
-              catalogReleaseIds: assistantContext.catalogRows.map(row => row.releaseId)
-            },
+            assistantScope,
+            activeBoardId,
             officeId: roomCtx?.officeId,
             meetingId: roomCtx?.meetingId
           },

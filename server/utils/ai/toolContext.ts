@@ -29,11 +29,25 @@ export type ToolContext = {
     assignedClientIds: string[]
     catalogReleaseIds: string[]
   }
+  /** Canonical board id verified against assistantScope by the chat boundary. Never caller-trusted. */
+  activeBoardId?: string
   /** Optional — set when the co-pilot is docked in a virtual office room (Mode A). Read-only context;
    *  membership is verified server-side before these are populated (see office/roomContext.ts §7). */
   officeId?: string
   meetingId?: string
   event: H3Event
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+/** Narrow a caller-provided board id to a canonical id already present in server-derived scope. */
+export function resolveActiveBoardId(
+  requestedBoardId: string | undefined,
+  scope: ToolContext['assistantScope']
+): string | undefined {
+  const requested = requestedBoardId?.trim().toLowerCase()
+  if (!requested || !UUID_PATTERN.test(requested)) return undefined
+  return scope?.departmentIds.find(id => id.toLowerCase() === requested)
 }
 
 /** Tool results are recoverable: handlers return a typed result, never throw to the loop. */
