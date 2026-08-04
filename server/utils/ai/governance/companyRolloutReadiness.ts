@@ -334,7 +334,7 @@ export async function getCompanyAssistantRolloutReadiness(
     } else {
       const releasesForEmployee = departmentIds.map(id => releaseByDepartment.get(id)).filter((release): release is ReleaseRow => Boolean(release))
       if (releasesForEmployee.length === 0) reasons.push('no_mapped_pack')
-      else if (!releasesForEmployee.some(latestGatePassed)) reasons.push('no_evaluated_release')
+      else if (!releasesForEmployee.some(release => release.release_state === 'active' && latestGatePassed(release))) reasons.push('no_evaluated_release')
     }
     if (reasons.length === 0) coveredEmployeeCount++
     else uncoveredEmployees.push({ userId: employee.id, name: employee.name, role: employee.role ?? 'unknown', reasons })

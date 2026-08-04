@@ -94,6 +94,27 @@ describe('company assistant rollout readiness', () => {
     expect(result.blockers).toContain(`department:${departmentId}:release_draft`)
   })
 
+  it('does not count an employee as covered by an evaluated draft release', async () => {
+    const result = await getCompanyAssistantRolloutReadiness(readinessDb([
+      [department()], [employee()], [membership()], [release({ release_state: 'draft' })], []
+    ]))
+
+    expect(result.coveredEmployeeCount).toBe(0)
+    expect(result.uncoveredEmployees).toEqual([{ userId: employeeId, name: 'Alex Example', role: 'staff', reasons: ['no_evaluated_release'] }])
+    expect(result.readyForEnforcement).toBe(false)
+  })
+
+  it('does not count an employee as covered by an evaluated pilot release', async () => {
+    const result = await getCompanyAssistantRolloutReadiness(readinessDb([
+      [department()], [employee()], [membership()], [release({ release_state: 'pilot' })], [pilot()]
+    ]))
+
+    expect(result.coveredEmployeeCount).toBe(0)
+    expect(result.uncoveredEmployees).toEqual([{ userId: employeeId, name: 'Alex Example', role: 'staff', reasons: ['no_evaluated_release'] }])
+    expect(result.readyForPilot).toBe(true)
+    expect(result.readyForEnforcement).toBe(false)
+  })
+
   it('blocks enforcement when the latest evaluation gate failed', async () => {
     const result = await getCompanyAssistantRolloutReadiness(readinessDb([
       [department()], [employee()], [membership()], [release({ release_state: 'draft', evaluation_gate_passed: false, evaluation_run_status: 'completed' })], []
