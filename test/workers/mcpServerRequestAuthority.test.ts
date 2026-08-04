@@ -147,6 +147,39 @@ describe('standalone MCP Worker request authority', () => {
     })
   })
 
+  it('does not collide when one OAuth session reuses a protocol request ID for a different body or tool', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => responseJson({ ok: true, data: { count: 1 } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const agent = new XeroFlowMcpAgent() as any
+    agent.env = env()
+    agent.props = props()
+    await agent.init()
+    const call = mocks.handlers.get(mocks.callSchema)!
+
+    await call({ params: { name: 'get_tasks', arguments: { status: 'open' } } }, { requestId: 'rpc-reused' })
+    await call({ params: { name: 'get_tasks', arguments: { status: 'closed' } } }, { requestId: 'rpc-reused' })
+    await call({ params: { name: 'get_briefs', arguments: { status: 'open' } } }, { requestId: 'rpc-reused' })
+
+    const keys = fetchMock.mock.calls.map(callArgs => JSON.parse(String((callArgs[1] as RequestInit).body)).idempotencyKey)
+    expect(new Set(keys).size).toBe(3)
+  })
+
+  it('rejects unsupported or non-finite SDK request IDs before calling Pages', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const agent = new XeroFlowMcpAgent() as any
+    agent.env = env()
+    agent.props = props()
+    await agent.init()
+    const call = mocks.handlers.get(mocks.callSchema)!
+    const request = { params: { name: 'get_tasks', arguments: {} } }
+
+    await expect(call(request, { requestId: Number.NaN })).rejects.toThrow(TypeError)
+    await expect(call(request, { requestId: Number.POSITIVE_INFINITY })).rejects.toThrow(TypeError)
+    await expect(call(request, { requestId: { nested: true } })).rejects.toThrow(TypeError)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('stores only the exchange-derived owner bit and a persistent OAuth session ID in token props', async () => {
     const requestState = Buffer.from(JSON.stringify({ clientId: 'client-1', scope: ['mcp:read'] })).toString('base64url')
     const fetchMock = vi.fn().mockResolvedValue(responseJson({

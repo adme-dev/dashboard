@@ -29,6 +29,20 @@ function mcpDescription(t: AiTool<unknown>): string {
     : t.description
 }
 
+/** Complete base AiTool registry projection for a freshly branded owner authority. */
+export function projectGodModeCatalogTools(
+  tools: AiTool<unknown>[],
+  options: { includeWrites: boolean }
+): McpToolManifest[] {
+  return tools
+    .filter(tool => options.includeWrites || !tool.mutates)
+    .map(tool => ({
+      name: tool.name,
+      description: mcpDescription(tool),
+      inputSchema: z.toJSONSchema(tool.parameters) as Record<string, unknown>
+    }))
+}
+
 /** The read-only tools a role may call, as MCP manifests. Mutating tools are filtered out unconditionally. */
 export function projectReadOnlyTools(tools: AiTool<unknown>[], role: string): McpToolManifest[] {
   return filterToolsForUser(tools, role)

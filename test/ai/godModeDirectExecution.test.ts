@@ -3,6 +3,8 @@ import { z } from 'zod'
 
 import {
   createGodModeToolExecutor,
+  createTrustedMcpGodModeReadExecutor,
+  createTrustedMcpGodModeToolExecutor,
   type GodModeExecutionDependencies,
   type GodModeExecutionLedgerRow
 } from '~~/server/utils/ai/godModeExecution'
@@ -11,6 +13,7 @@ import { executors } from '~~/server/utils/ai/executors'
 import { ok } from '~~/server/utils/ai/toolContext'
 import { listRegisteredGodModeMutationFamilies } from '~~/server/utils/godMode/featureGate'
 import { registerGodModeChatMutationFamily } from '~~/server/utils/ai/godModeMutationFamily'
+import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111'
 const OTHER_ID = '22222222-2222-4222-8222-222222222222'
@@ -33,6 +36,7 @@ function harness(options: {
   attemptError?: Error
   terminalError?: Error
   failedAuditError?: Error
+  expectedIdempotencyKey?: string
 } = {}) {
   const toolName = options.toolName ?? 'create_task'
   const executionClass = options.executionClass ?? 'internal-http'
@@ -48,7 +52,7 @@ function harness(options: {
     async execute(payload, ctx, services) {
       calls.push('executor')
       expect(ctx.userId).toBe(options.actorId ?? OWNER_ID)
-      expect(services.idempotencyKey).toBe('message-7:tool-call-2')
+      expect(services.idempotencyKey).toBe(options.expectedIdempotencyKey ?? 'message-7:tool-call-2')
       sideEffects++
       if (options.executorError) {
         if (!options.executorErrorAfterDispatch) sideEffects--
@@ -85,7 +89,7 @@ function harness(options: {
       if (existing) return { claimed: false, row: existing }
       const row: GodModeExecutionLedgerRow = {
         actorUserId: input.actorUserId,
-        channel: 'application',
+        channel: input.channel,
         idempotencyKey: input.idempotencyKey,
         state: 'in_progress',
         correlationId: CORRELATION_ID,
@@ -146,6 +150,149 @@ function harness(options: {
 }
 
 describe('God mode direct execution', () => {
+  it('executes a trusted MCP write through the same coordinator with an MCP ledger and audit identity', async () => {
+    const h = harness({ expectedIdempotencyKey: `mcp:${'c'.repeat(64)}` })
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    const result = await createTrustedMcpGodModeToolExecutor(h.deps)({
+      event: authorityEvent,
+      authenticatedUserId: OWNER_ID,
+      authority,
+      sessionDigest: 'b'.repeat(64),
+      toolName: 'create_task',
+      args: { title: 'Ship', clientId: CLIENT_ID },
+      idempotencyKey: `mcp:${'c'.repeat(64)}`,
+      tenantId: TENANT_ID,
+      clientId: CLIENT_ID
+    })
+
+    expect(result).toMatchObject({ ok: true, data: { directExecution: true } })
+    expect(h.deps.requireAuth).not.toHaveBeenCalled()
+    expect(h.deps.resolveGodModeAuthority).not.toHaveBeenCalled()
+    expect(h.deps.claimExecution).toHaveBeenCalledWith(expect.objectContaining({
+      actorUserId: OWNER_ID,
+      channel: 'mcp',
+      idempotencyKey: `mcp:${'c'.repeat(64)}`
+    }))
+    expect(h.deps.appendAudit).toHaveBeenCalledWith(expect.objectContaining({
+      actorUserId: OWNER_ID,
+      channel: 'mcp',
+      routeOrTool: 'create_task'
+    }))
+  })
+
+  it('replays a completed MCP ledger result without redispatching the write', async () => {
+    const idempotencyKey = `mcp:${'9'.repeat(64)}`
+    const h = harness({ expectedIdempotencyKey: idempotencyKey })
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    const execute = createTrustedMcpGodModeToolExecutor(h.deps)
+    const request = {
+      event: authorityEvent,
+      authenticatedUserId: OWNER_ID,
+      authority,
+      sessionDigest: 'b'.repeat(64),
+      toolName: 'create_task',
+      args: { title: 'Ship', clientId: CLIENT_ID },
+      idempotencyKey,
+      tenantId: TENANT_ID,
+      clientId: CLIENT_ID
+    }
+
+    await expect(execute(request)).resolves.toMatchObject({ ok: true, data: { directExecution: true } })
+    await expect(execute(request)).resolves.toMatchObject({ ok: true, data: { replayed: true } })
+
+    expect(h.sideEffects()).toBe(1)
+    expect(h.calls.filter(call => call === 'executor')).toHaveLength(1)
+  })
+
+  it('audits a trusted MCP read with the stable identity but creates no mutation-ledger row', async () => {
+    const h = harness()
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    const readTool = {
+      name: 'get_tasks',
+      parameters: z.object({ clientId: z.string().uuid() }),
+      handler: vi.fn(async () => ok({ count: 1 }))
+    } as any
+    const result = await createTrustedMcpGodModeReadExecutor(h.deps)({
+      event: authorityEvent,
+      authenticatedUserId: OWNER_ID,
+      authority,
+      sessionDigest: 'd'.repeat(64),
+      idempotencyKey: `mcp:${'e'.repeat(64)}`,
+      tool: readTool,
+      args: { clientId: CLIENT_ID },
+      ctx: { userId: OWNER_ID, userRole: 'owner', event: authorityEvent, source: 'mcp' }
+    })
+
+    expect(result).toEqual({ ok: true, data: { count: 1 } })
+    expect(h.deps.claimExecution).not.toHaveBeenCalled()
+    expect(h.deps.appendAudit).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      channel: 'mcp',
+      phase: 'attempt',
+      routeOrTool: 'get_tasks',
+      clientId: null,
+      correlationId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+    }))
+    expect(h.deps.appendAudit).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      channel: 'mcp', phase: 'succeeded', routeOrTool: 'get_tasks', clientId: null
+    }))
+  })
+
+  it('rejects a structural clone before an MCP ledger or audit claim', async () => {
+    const h = harness({ expectedIdempotencyKey: `mcp:${'c'.repeat(64)}` })
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+
+    await expect(createTrustedMcpGodModeToolExecutor(h.deps)({
+      event: authorityEvent,
+      authenticatedUserId: OWNER_ID,
+      authority: { ...authority } as any,
+      sessionDigest: 'b'.repeat(64),
+      toolName: 'create_task',
+      args: { title: 'Ship' },
+      idempotencyKey: `mcp:${'c'.repeat(64)}`
+    })).rejects.toMatchObject({ statusCode: 403 })
+
+    expect(h.deps.claimExecution).not.toHaveBeenCalled()
+    expect(h.deps.appendAudit).not.toHaveBeenCalled()
+  })
+
+  it('audits and rejects an MCP tenant mismatch before invoking the read handler', async () => {
+    const h = harness({ scopeValid: false })
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    const handler = vi.fn(async () => ok({ count: 1 }))
+    const result = await createTrustedMcpGodModeReadExecutor(h.deps)({
+      event: authorityEvent,
+      authenticatedUserId: OWNER_ID,
+      authority,
+      sessionDigest: 'f'.repeat(64),
+      idempotencyKey: `mcp:${'a'.repeat(64)}`,
+      tool: { name: 'get_finance', parameters: z.object({ tenantId: z.string().uuid() }), handler } as any,
+      args: { tenantId: OTHER_ID },
+      ctx: { userId: OWNER_ID, userRole: 'owner', event: authorityEvent, source: 'mcp' },
+      tenantId: TENANT_ID
+    })
+
+    expect(result).toEqual({ ok: false, error: 'Target is outside the authenticated scope.' })
+    expect(handler).not.toHaveBeenCalled()
+    expect(h.deps.appendAudit).toHaveBeenLastCalledWith(expect.objectContaining({
+      channel: 'mcp', phase: 'failed', outcomeCode: 'tenant_mismatch'
+    }))
+  })
+
   it.each([
     ['finance', 'propose_expense_approval'],
     ['social publishing', 'propose_schedule_post'],

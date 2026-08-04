@@ -116,11 +116,18 @@ export class XeroFlowMcpAgent extends McpAgent<Env, unknown, Props> {
     })
 
     low.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
-      const idempotencyKey = await deriveMcpLogicalIdempotencyKey(props.oauthSessionId, extra.requestId)
+      const args = req.params.arguments ?? {}
+      const operationBodyDigest = await digestMcpRequestBody({ tool: req.params.name, args })
+      const idempotencyKey = await deriveMcpLogicalIdempotencyKey(
+        props.oauthSessionId,
+        extra.requestId,
+        req.params.name,
+        operationBodyDigest
+      )
       const callBody = {
         userId,
         tool: req.params.name,
-        args: req.params.arguments ?? {},
+        args,
         idempotencyKey
       }
       const callRes = await appFetch(

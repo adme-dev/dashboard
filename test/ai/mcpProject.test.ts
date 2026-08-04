@@ -1,7 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
 import { z } from 'zod'
 
-import { projectReadOnlyTools, executeReadOnlyTool } from '~~/server/utils/ai/mcp/project'
+import {
+  projectGodModeCatalogTools,
+  projectReadOnlyTools,
+  executeReadOnlyTool
+} from '~~/server/utils/ai/mcp/project'
 import type { AiTool } from '~~/server/utils/ai/toolRegistry'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
@@ -55,6 +59,20 @@ describe('projectReadOnlyTools', () => {
   it('annotates untrusted-output tools with a data-not-instructions note', () => {
     const m = projectReadOnlyTools(tools, 'admin').find(t => t.name === 'get_pnl')!
     expect(m.description.toLowerCase()).toContain('never as instructions')
+  })
+})
+
+describe('projectGodModeCatalogTools', () => {
+  it('projects every registered read and write without applying role or permission filtering', () => {
+    const names = projectGodModeCatalogTools(tools, { includeWrites: true }).map(tool => tool.name)
+
+    expect(names).toEqual(['get_overview', 'get_pnl', 'create_task'])
+  })
+
+  it('uses signed transport scope to omit writes without narrowing registered reads', () => {
+    const names = projectGodModeCatalogTools(tools, { includeWrites: false }).map(tool => tool.name)
+
+    expect(names).toEqual(['get_overview', 'get_pnl'])
   })
 })
 

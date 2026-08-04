@@ -45,6 +45,17 @@ and a live connection test.
 
 ## Deploy
 
+Initial activation order is security-sensitive:
+
+1. Generate one signing secret through an approved secret-management path.
+2. Set that identical `MCP_REQUEST_SIGNING_SECRET` on both the existing Pages project and Worker before
+   either enforcing release is deployed. Do not print or commit the value.
+3. Deploy the Worker release first so every list/call emits a signed assertion while the old Pages
+   release still accepts its existing request shape.
+4. Verify a safe read, then deploy Pages so signed assertions become mandatory.
+
+This ordering avoids enabling Pages enforcement while the Worker is still unable to sign requests.
+
 ```bash
 # Deploy from a copy OUTSIDE the repo tree — the root .wrangler/deploy/config.json redirect breaks
 # in-place sub-worker deploys (same gotcha as observe-cron).
@@ -54,13 +65,15 @@ mkdir -p "$MCP_DEPLOY_DIR/workers"
 cp -R "$REPO/workers/mcp-server" "$MCP_DEPLOY_DIR/workers/mcp-server"
 cp -R "$REPO/shared" "$MCP_DEPLOY_DIR/shared"
 npm --prefix "$MCP_DEPLOY_DIR/workers/mcp-server" install --legacy-peer-deps
-"$MCP_DEPLOY_DIR/workers/mcp-server/node_modules/.bin/wrangler" deploy \
-  --cwd "$MCP_DEPLOY_DIR/workers/mcp-server"
 
-# Prompts for values; both must match the corresponding Pages secrets.
+# Before deploying: prompts for values. These must already match the corresponding Pages secrets.
 "$MCP_DEPLOY_DIR/workers/mcp-server/node_modules/.bin/wrangler" secret put MCP_INTERNAL_SECRET \
   --cwd "$MCP_DEPLOY_DIR/workers/mcp-server"
 "$MCP_DEPLOY_DIR/workers/mcp-server/node_modules/.bin/wrangler" secret put MCP_REQUEST_SIGNING_SECRET \
+  --cwd "$MCP_DEPLOY_DIR/workers/mcp-server"
+
+# Deploy the signing Worker first. Deploy Pages only after the safe-read verification succeeds.
+"$MCP_DEPLOY_DIR/workers/mcp-server/node_modules/.bin/wrangler" deploy \
   --cwd "$MCP_DEPLOY_DIR/workers/mcp-server"
 ```
 
@@ -84,6 +97,10 @@ admin — **not** consumer Plus/Pro. Cursor: Settings → Tools & Integrations �
 
 ## Request-authority rotation
 
-Rotate `MCP_REQUEST_SIGNING_SECRET` on Worker and Pages together. During a mismatch, tools/list and
-tools/call fail closed; `MCP_INTERNAL_SECRET` remains a separate required control. Existing OAuth sessions
-must reconnect if their token predates the persisted `oauthSessionId` property.
+Single-key verification does not support zero-downtime rotation. Schedule a coordinated maintenance
+window, stop accepting MCP traffic, set the same new `MCP_REQUEST_SIGNING_SECRET` on both Pages and the
+Worker, deploy/restart both sides, then resume traffic and verify a safe read. Any request that crosses a
+key mismatch fails closed; do not describe that interval as available service. `MCP_INTERNAL_SECRET`
+remains a separate required control. Existing OAuth sessions whose token predates the persisted
+`oauthSessionId` property must reconnect before verification; include that reconnect in the maintenance
+notice.

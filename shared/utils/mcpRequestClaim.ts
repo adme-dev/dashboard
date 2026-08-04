@@ -186,7 +186,8 @@ export async function verifyMcpRequestClaim(
     if (!encoded || !secret) return null
     const parts = encoded.split('.')
     if (parts.length !== 2) return null
-    const [body, encodedSignature] = parts
+    const body = parts[0]!
+    const encodedSignature = parts[1]!
     const bodyBytes = base64UrlToBytes(body)
     const signature = base64UrlToBytes(encodedSignature)
     if (!bodyBytes || !signature) return null
@@ -204,13 +205,31 @@ export async function verifyMcpRequestClaim(
   }
 }
 
-/** Stable operation identity: OAuth grant + SDK JSON-RPC request ID. Never uses the one-time JTI. */
+/**
+ * Stable operation identity: OAuth grant + SDK JSON-RPC request ID + exact operation. Never uses JTI.
+ * JSON-RPC IDs are only strings or finite numbers; accepting objects/non-finite values would collapse
+ * distinct protocol requests during canonical JSON encoding.
+ */
 export async function deriveMcpLogicalIdempotencyKey(
   oauthSessionId: string,
-  protocolRequestId: string | number
+  protocolRequestId: string | number,
+  toolName: string,
+  operationBodyDigest: string
 ): Promise<string> {
-  if (!oauthSessionId || (typeof protocolRequestId !== 'string' && typeof protocolRequestId !== 'number')) {
-    throw new TypeError('OAuth session and MCP protocol request ID are required')
+  const validRequestId = (typeof protocolRequestId === 'string' && protocolRequestId.length > 0)
+    || (typeof protocolRequestId === 'number' && Number.isFinite(protocolRequestId))
+  if (
+    !oauthSessionId
+    || !validRequestId
+    || !toolName
+    || !sha256Pattern.test(operationBodyDigest)
+  ) {
+    throw new TypeError('OAuth session, valid MCP protocol request ID, tool, and operation digest are required')
   }
-  return `mcp:${await sha256Hex(canonicalMcpJson({ oauthSessionId, protocolRequestId }))}`
+  return `mcp:${await sha256Hex(canonicalMcpJson({
+    oauthSessionId,
+    operationBodyDigest,
+    protocolRequestId,
+    toolName
+  }))}`
 }

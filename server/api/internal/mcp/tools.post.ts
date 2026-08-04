@@ -6,16 +6,25 @@
 // Auth: x-mcp-secret must match MCP_INTERNAL_SECRET (the Worker holds the same secret). HARD-gated by
 // MCP_SERVER_ENABLED — 503 until the operator turns the expose layer on.
 import { defineEventHandler, getHeader, readBody, createError } from 'h3'
+import { randomUUID } from 'node:crypto'
 import { queryOne } from '~~/server/utils/db'
 import { registry } from '~~/server/utils/ai/tools'
-import { projectReadOnlyTools } from '~~/server/utils/ai/mcp/project'
+import { projectGodModeCatalogTools, projectReadOnlyTools } from '~~/server/utils/ai/mcp/project'
 import { projectGenerationTools } from '~~/server/utils/ai/mcp/generationTools'
 import { projectWriteTools, projectFinancialTools } from '~~/server/utils/ai/mcp/writeTools'
 import { projectVideoTools } from '~~/server/utils/ai/mcp/videoTools'
 import { projectBannerTools } from '~~/server/utils/ai/mcp/bannerTools'
 import { isWriteScopeToolName, hasWriteScope } from '~~/server/utils/ai/mcp/scope'
-import { consumeMcpRequestClaim } from '~~/server/utils/ai/mcp/requestClaim'
+import {
+  consumeMcpRequestClaim,
+  getMcpRequestGodModeAuthority
+} from '~~/server/utils/ai/mcp/requestClaim'
 import type { AiTool } from '~~/server/utils/ai/toolRegistry'
+import { isActiveGodModeAuthority } from '~~/server/utils/godMode/authority'
+import {
+  appendGodModeAuditEvent,
+  type GodModeBypassedControl
+} from '~~/server/utils/godMode/audit'
 
 export default defineEventHandler(async (event) => {
   if (process.env.MCP_SERVER_ENABLED !== 'true') {
@@ -39,6 +48,41 @@ export default defineEventHandler(async (event) => {
     getHeader(event, 'x-mcp-assertion') ?? '',
     userId
   )
+
+  const authority = getMcpRequestGodModeAuthority(event, userId)
+  if (isActiveGodModeAuthority(authority, userId)) {
+    const correlationId = randomUUID()
+    const audit = {
+      actorUserId: userId,
+      correlationId,
+      sessionDigest: claim.bodyDigest,
+      channel: 'mcp' as const,
+      routeOrTool: 'tools/list',
+      tenantId: null,
+      clientId: null,
+      bypassedControls: [
+        'permission', 'feature_flag', 'release_policy', 'evaluation_policy',
+        'personal_policy', 'budget', 'rate_limit', 'mcp_suite_flag'
+      ] as GodModeBypassedControl[],
+      emergencyDisabled: false
+    }
+    let attemptWritten = false
+    try {
+      await appendGodModeAuditEvent({ ...audit, phase: 'attempt', outcomeCode: 'started' })
+      attemptWritten = true
+      const tools = projectGodModeCatalogTools(registry as AiTool<unknown>[], {
+        includeWrites: claim.scope.includes('mcp:write')
+      })
+      await appendGodModeAuditEvent({ ...audit, phase: 'succeeded', outcomeCode: 'catalog_projected' })
+      return { tools }
+    } catch {
+      if (attemptWritten) {
+        await appendGodModeAuditEvent({ ...audit, phase: 'failed', outcomeCode: 'catalog_projection_failed' })
+          .catch(() => {})
+      }
+      throw createError({ statusCode: 503, statusMessage: 'God mode MCP audit unavailable' })
+    }
+  }
 
   const user = await queryOne<{ role: string }>(
     `SELECT user_role AS role FROM team_members WHERE id = $1 AND is_active = TRUE`,

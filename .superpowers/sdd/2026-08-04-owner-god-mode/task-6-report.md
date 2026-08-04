@@ -85,11 +85,13 @@ The installed MCP SDK exposes `extra.requestId` to `CallToolRequestSchema` handl
 fallback ledger is needed. The Worker mints one cryptographically random `oauthSessionId` when Pages has
 validated the OAuth assertion and persists it in OAuth token `Props`. The logical operation key is:
 
-`mcp:` + SHA-256(canonical JSON `{ oauthSessionId, protocolRequestId }`)
+`mcp:` + SHA-256(canonical JSON `{ oauthSessionId, operationBodyDigest, protocolRequestId, toolName }`)
 
 Transport retries for the same OAuth grant and JSON-RPC request ID retain exactly one operation key while
-every Worker→Pages attempt receives a new random JTI. No timestamp, random fallback, or one-time JTI is
-used as logical operation identity. OAuth tokens predating `oauthSessionId` fail closed and must reconnect.
+every Worker→Pages attempt receives a new random JTI. Changing the exact tool or canonical `{ tool, args }`
+digest produces another key even when the protocol ID is reused. No timestamp, random fallback, or one-time
+JTI is used as logical operation identity. OAuth tokens predating `oauthSessionId` fail closed and must
+reconnect.
 
 ## Endpoint validation and authority ordering
 
@@ -170,3 +172,58 @@ never add write access. Both role queries now correctly select `team_members.use
   upload / 390.29 KiB gzip.
 - Final `git diff --check`, secret/log scan, staged diff review, and commit SHA are reported in the
   controller handoff after this report is included in the scoped commit.
+
+## Fix round 1 — owner execution integration and collision hardening
+
+### Findings addressed
+
+1. `tools/list` now consumes the fresh branded authority stored by exact-request verification. A current
+   owner receives the complete registered Task 4 base `AiTool` catalog without application role, suite,
+   department, personal-policy, or catalog projection controls. Signed OAuth write scope remains the
+   transport boundary: read-only consent omits registered mutations. Catalog attempts and outcomes use
+   immutable MCP God-mode audit events and fail closed when audit persistence fails.
+2. `tools/call` now routes a current owner through a private MCP adapter into the Task 5 coordinator.
+   Writes use `god_mode_execution_ledger.channel = 'mcp'`, preserve tenant/client/schema/provider
+   boundaries, execute without application confirmation, and reconcile ambiguous outcomes against their
+   exact MCP-channel attempt identity. Reads emit immutable tool attempt/outcome events but never create
+   mutation-ledger rows. Both paths accept only the exact branded authority and signed subject recovered
+   after claim consumption; body role, email, and authority values are ignored.
+3. Stable logical operation identity now binds OAuth session, finite string/number JSON-RPC request ID,
+   exact tool, and canonical `{ tool, args }` digest. Reusing one protocol ID with another body or tool no
+   longer collides. `NaN`, infinities, objects, empty IDs, malformed digests, and non-protocol keys fail
+   before Pages execution. Completed MCP ledger retries replay without redispatch.
+4. MCP reads retain the immutable attempt scope in their terminal event even when runtime validation
+   resolves a tenant or client from arguments later. This satisfies the exact terminal-identity database
+   guard without weakening scope validation.
+5. Deployment docs now require identical signing secrets on both bindings first, Worker signing release
+   first, a safe read, then Pages enforcement. Rotation is explicitly a coordinated maintenance-window,
+   fail-closed outage; the current single-key verifier does not support zero downtime.
+6. A real workerd fixture mints an assertion with the shared signer and the Node/Nitro-side shared verifier
+   accepts it, covering the actual Worker Web Crypto runtime rather than a Node-only simulation.
+
+### TDD evidence
+
+Observed RED cycles covered four idempotency collisions/unsupported IDs, two endpoint authority-routing
+failures, two missing owner-catalog projections, one application-only MCP reconciliation failure, and one
+read-terminal scope-identity mismatch. A broad rerun also exposed three stale text-chat rate-limit harness
+failures after Task 5 made transport retry identity mandatory; the harness now supplies the token and
+injects its persistence seam without altering production chat behavior.
+
+Final verification:
+
+- Combined MCP plus full Task 4/5 suite: 43 files passed; 514 tests passed; 10 environment-gated tests
+  skipped; 0 failed.
+- Full Worker/config suite under Node 24 outside the filesystem sandbox: 210 files passed; 1 skipped;
+  968 tests passed; 12 skipped; 0 failed. The outside-sandbox rerun was required only because tsx and
+  workerd need local IPC/listener access.
+- Actual workerd signer-to-shared-verifier compatibility: 1 file and 1 test passed.
+- Standalone Worker isolated TypeScript: exit 0. Wrangler dry-run: exit 0; 2,197.25 KiB upload /
+  390.38 KiB gzip.
+- Fresh root Node 24 Nuxt typecheck retains the inherited repository baseline (2,134 log lines, exit 2);
+  filtering the complete output to every changed production and test path produced no diagnostics.
+- `git diff --check`, scoped secret/log scan, final diff review, and staged diff review passed. No secret
+  was read or set, and no Worker/Pages release was deployed.
+
+### Fix-round commit
+
+- Scoped fix commit: `fix(mcp): route owner calls through audited execution`

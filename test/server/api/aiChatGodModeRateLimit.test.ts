@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   queryOne: vi.fn(),
   queryOneFresh: vi.fn(),
   processUserMessage: vi.fn(),
+  lookupSubmission: vi.fn(),
+  claimSubmission: vi.fn(),
+  completeSubmission: vi.fn(),
   appendGodModeAuditEvent: vi.fn()
 }))
 
@@ -17,7 +20,10 @@ vi.mock('~~/server/utils/aiChatEngine', () => ({ processUserMessage: mocks.proce
 
 vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
 vi.stubGlobal('getRouterParam', () => '90000000-0000-4000-8000-000000000001')
-vi.stubGlobal('readBody', async () => ({ content: 'hello' }))
+vi.stubGlobal('readBody', async () => ({
+  content: 'hello',
+  transportRetryToken: '44444444-4444-4444-8444-444444444444'
+}))
 vi.stubGlobal('createError', (input: Record<string, unknown>) => Object.assign(
   new Error(String(input.statusMessage ?? 'request failed')),
   input
@@ -32,9 +38,15 @@ const {
   getGodModeRouteAuditState,
   seedGodModeRouteAuditState
 } = await import('../../../server/utils/godMode/featureGate')
-const messageHandler = (await import(
+const messageModule = await import(
   '../../../server/api/agency/ai/chat/conversations/[id]/messages.post'
-)).default as (event: any) => Promise<unknown>
+)
+const messageHandler = messageModule.createMessagesPostHandler({
+  lookupSubmission: mocks.lookupSubmission,
+  claimSubmission: mocks.claimSubmission,
+  completeSubmission: mocks.completeSubmission,
+  processMessage: mocks.processUserMessage
+}) as (event: any) => Promise<unknown>
 const voiceHandler = (await import(
   '../../../server/api/agency/ai/chat/conversations/[id]/voice.post'
 )).default as (event: any) => Promise<unknown>
@@ -79,9 +91,14 @@ describe('AI chat God-mode application rate limits', () => {
     mocks.queryOne.mockReset()
     mocks.queryOneFresh.mockReset()
     mocks.processUserMessage.mockReset()
+    mocks.lookupSubmission.mockReset()
+    mocks.claimSubmission.mockReset()
+    mocks.completeSubmission.mockReset()
     mocks.appendGodModeAuditEvent.mockReset()
     mocks.appendGodModeAuditEvent.mockResolvedValue(undefined)
-    mocks.queryOne.mockResolvedValueOnce({ cnt: 12 }).mockResolvedValueOnce(null)
+    mocks.lookupSubmission.mockResolvedValue(null)
+    mocks.claimSubmission.mockResolvedValue({ state: 'blocked', reason: 'processing' })
+    mocks.completeSubmission.mockResolvedValue(undefined)
   })
 
   it.each([
@@ -89,9 +106,15 @@ describe('AI chat God-mode application rate limits', () => {
     ['voice', '/api/agency/ai/chat/conversations/90000000-0000-4000-8000-000000000001/voice', voiceHandler]
   ] as const)('bypasses only the %s application limiter and records rate_limit', async (_label, path, handler) => {
     mocks.requireAuth.mockResolvedValue({ id: OWNER_ID, role: 'owner' })
+    if (_label === 'text') {
+      mocks.queryOne.mockResolvedValueOnce({ id: '90000000-0000-4000-8000-000000000001' })
+        .mockResolvedValueOnce({ cnt: 12 })
+    } else {
+      mocks.queryOne.mockResolvedValueOnce({ cnt: 12 }).mockResolvedValueOnce(null)
+    }
     const event = await ownerRequest(path)
 
-    await expect(handler(event)).rejects.toMatchObject({ statusCode: 404 })
+    await expect(handler(event)).rejects.toMatchObject({ statusCode: _label === 'text' ? 409 : 404 })
     expect(getGodModeRouteAuditState(event)?.bypassedControls.has('rate_limit')).toBe(true)
     expect(mocks.appendGodModeAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
       phase: 'bypass',
@@ -107,9 +130,15 @@ describe('AI chat God-mode application rate limits', () => {
   ] as const)('keeps the %s limiter unchanged for an ordinary member', async (_label, path, handler) => {
     mocks.requireAuth.mockResolvedValue({ id: MEMBER_ID, role: 'member' })
     mocks.queryOneFresh.mockResolvedValue(null)
+    if (_label === 'text') {
+      mocks.queryOne.mockResolvedValueOnce({ id: '90000000-0000-4000-8000-000000000001' })
+        .mockResolvedValueOnce({ cnt: 12 })
+    } else {
+      mocks.queryOne.mockResolvedValueOnce({ cnt: 12 })
+    }
 
     await expect(handler(request(path, MEMBER_ID))).rejects.toMatchObject({ statusCode: 429 })
-    expect(mocks.queryOne).toHaveBeenCalledTimes(1)
+    expect(mocks.queryOne).toHaveBeenCalledTimes(_label === 'text' ? 2 : 1)
   })
 
   it.each([
@@ -119,12 +148,18 @@ describe('AI chat God-mode application rate limits', () => {
     mocks.requireAuth.mockResolvedValue({ id: OWNER_ID, role: 'owner' })
     const event = request(path, OWNER_ID)
     mocks.queryOneFresh.mockResolvedValue({ id: OWNER_ID })
+    if (_label === 'text') {
+      mocks.queryOne.mockResolvedValueOnce({ id: '90000000-0000-4000-8000-000000000001' })
+        .mockResolvedValueOnce({ cnt: 12 })
+    } else {
+      mocks.queryOne.mockResolvedValueOnce({ cnt: 12 })
+    }
     await resolveGodModeAuthority(event, OWNER_ID, {
       queryOneFresh: mocks.queryOneFresh,
       processEnv: {}
     })
 
     await expect(handler(event)).rejects.toMatchObject({ statusCode: 503 })
-    expect(mocks.queryOne).toHaveBeenCalledTimes(1)
+    expect(mocks.queryOne).toHaveBeenCalledTimes(_label === 'text' ? 2 : 1)
   })
 })

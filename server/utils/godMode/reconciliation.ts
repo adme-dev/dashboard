@@ -1,9 +1,14 @@
 import { queryOneFresh, queryRows, transaction } from '~~/server/utils/db'
-import { appendGodModeAuditEvent, type GodModeAuditEventInput } from './audit'
+import {
+  appendGodModeAuditEvent,
+  type GodModeAuditEventInput,
+  type GodModeChannel
+} from './audit'
 import type { ExecutorClass } from '~~/server/utils/ai/executors/types'
 
 export interface ReconciliationCandidate {
   actorUserId: string
+  channel: GodModeChannel
   correlationId: string
   idempotencyKey: string
   state: 'in_progress' | 'ambiguous'
@@ -130,11 +135,11 @@ export async function lookupGodModeExecutionOutcome(
 const defaultDependencies: GodModeReconciliationDependencies = {
   listCandidates: async limit => {
     const rows = await queryRows<any>(
-      `SELECT actor_user_id, correlation_id, idempotency_key, state, route_or_tool,
+      `SELECT actor_user_id, channel, correlation_id, idempotency_key, state, route_or_tool,
               executor_class, session_digest, tenant_id, client_id, result_reference,
               execution_phase, execution_metadata
          FROM god_mode_execution_ledger
-        WHERE channel = 'application'
+        WHERE channel IN ('application', 'mcp')
           AND state IN ('in_progress', 'ambiguous')
           AND updated_at < NOW() - INTERVAL '5 minutes'
         ORDER BY updated_at, actor_user_id, idempotency_key
@@ -143,6 +148,7 @@ const defaultDependencies: GodModeReconciliationDependencies = {
     )
     return rows.map(row => ({
       actorUserId: row.actor_user_id,
+      channel: row.channel,
       correlationId: row.correlation_id,
       idempotencyKey: row.idempotency_key,
       state: row.state,
@@ -202,10 +208,10 @@ const defaultDependencies: GodModeReconciliationDependencies = {
     if (!terminalPhase) return false
     const updated = await db.query(
       `UPDATE god_mode_execution_ledger
-          SET state = $4, updated_at = NOW()
-        WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2
-          AND correlation_id = $3 AND state IN ('in_progress', 'ambiguous')`,
-      [candidate.actorUserId, candidate.idempotencyKey, candidate.correlationId, terminalPhase]
+          SET state = $5, updated_at = NOW()
+        WHERE actor_user_id = $1 AND channel = $2 AND idempotency_key = $3
+          AND correlation_id = $4 AND state IN ('in_progress', 'ambiguous')`,
+      [candidate.actorUserId, candidate.channel, candidate.idempotencyKey, candidate.correlationId, terminalPhase]
     )
     await db.query(
       `UPDATE ai_pending_actions
@@ -234,7 +240,7 @@ function attemptMatchesCandidate(attempt: GodModeAuditEventInput, candidate: Rec
     && attempt.actorUserId === candidate.actorUserId
     && attempt.correlationId === candidate.correlationId
     && attempt.sessionDigest === candidate.sessionDigest
-    && attempt.channel === 'application'
+    && attempt.channel === candidate.channel
     && attempt.routeOrTool === candidate.routeOrTool
 }
 

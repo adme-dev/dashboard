@@ -28,7 +28,12 @@ import {
 import { getExecutor } from '~~/server/utils/ai/executors'
 import { filterToolsForUser, type AiTool } from '~~/server/utils/ai/toolRegistry'
 import { isWriteScopeToolName, hasWriteScope } from '~~/server/utils/ai/mcp/scope'
-import { consumeMcpRequestClaim } from '~~/server/utils/ai/mcp/requestClaim'
+import {
+  consumeMcpRequestClaim,
+  getMcpRequestGodModeAuthority
+} from '~~/server/utils/ai/mcp/requestClaim'
+import { executeGodModeMcpCall } from '~~/server/utils/ai/mcp/directExecution'
+import { isActiveGodModeAuthority } from '~~/server/utils/godMode/authority'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 
 export default defineEventHandler(async (event) => {
@@ -61,6 +66,18 @@ export default defineEventHandler(async (event) => {
     getHeader(event, 'x-mcp-assertion') ?? '',
     userId
   )
+
+  const authority = getMcpRequestGodModeAuthority(event, userId)
+  if (isActiveGodModeAuthority(authority, userId)) {
+    return await executeGodModeMcpCall({
+      event,
+      claim,
+      authority,
+      idempotencyKey,
+      toolName,
+      args: body?.args ?? {}
+    })
+  }
 
   const user = await queryOne<{ role: string }>(
     `SELECT user_role AS role FROM team_members WHERE id = $1 AND is_active = TRUE`,

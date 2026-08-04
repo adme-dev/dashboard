@@ -119,17 +119,35 @@ describe('MCP exact-request claim Web Crypto contract', () => {
     await expect(verifyMcpRequestClaim(missingJti, SECRET, { now: NOW_MS })).resolves.toBeNull()
   })
 
-  it('derives stable logical idempotency from OAuth session plus protocol request ID, never JTI', async () => {
-    const first = await deriveMcpLogicalIdempotencyKey('oauth-session-a', 42)
-    const retry = await deriveMcpLogicalIdempotencyKey('oauth-session-a', 42)
-    const nextRequest = await deriveMcpLogicalIdempotencyKey('oauth-session-a', 43)
-    const otherSession = await deriveMcpLogicalIdempotencyKey('oauth-session-b', 42)
+  it('binds stable logical idempotency to the OAuth session, protocol ID, tool, and exact operation body', async () => {
+    const openDigest = await digestMcpRequestBody({ tool: 'get_tasks', args: { status: 'open' } })
+    const closedDigest = await digestMcpRequestBody({ tool: 'get_tasks', args: { status: 'closed' } })
+    const otherToolDigest = await digestMcpRequestBody({ tool: 'get_briefs', args: { status: 'open' } })
+    const first = await deriveMcpLogicalIdempotencyKey('oauth-session-a', 42, 'get_tasks', openDigest)
+    const retry = await deriveMcpLogicalIdempotencyKey('oauth-session-a', 42, 'get_tasks', openDigest)
+    const nextRequest = await deriveMcpLogicalIdempotencyKey('oauth-session-a', 43, 'get_tasks', openDigest)
+    const otherSession = await deriveMcpLogicalIdempotencyKey('oauth-session-b', 42, 'get_tasks', openDigest)
+    const changedBody = await deriveMcpLogicalIdempotencyKey('oauth-session-a', 42, 'get_tasks', closedDigest)
+    const changedTool = await deriveMcpLogicalIdempotencyKey('oauth-session-a', 42, 'get_briefs', otherToolDigest)
 
     expect(first).toBe(retry)
     expect(first).toMatch(/^mcp:[0-9a-f]{64}$/)
     expect(nextRequest).not.toBe(first)
     expect(otherSession).not.toBe(first)
+    expect(changedBody).not.toBe(first)
+    expect(changedTool).not.toBe(first)
     expect(first).not.toContain(JTI)
+  })
+
+  it('rejects non-finite numeric protocol IDs and unsupported ID types', async () => {
+    const digest = await digestMcpRequestBody({ tool: 'get_tasks', args: {} })
+
+    await expect(deriveMcpLogicalIdempotencyKey('oauth-session-a', Number.NaN, 'get_tasks', digest))
+      .rejects.toThrow(TypeError)
+    await expect(deriveMcpLogicalIdempotencyKey('oauth-session-a', Number.POSITIVE_INFINITY, 'get_tasks', digest))
+      .rejects.toThrow(TypeError)
+    await expect(deriveMcpLogicalIdempotencyKey('oauth-session-a', { request: 7 } as any, 'get_tasks', digest))
+      .rejects.toThrow(TypeError)
   })
 })
 

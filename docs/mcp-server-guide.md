@@ -46,7 +46,9 @@ tools your account can currently call over MCP.
 Each group is gated independently by an env var in `wrangler.toml [vars]` (NOT the CF dashboard — the
 Direct-Upload deploy bakes `[vars]` and **replaces** dashboard plaintext vars; secrets survive). Activating
 a group is **uncomment + redeploy**, and is always an **operator decision** for ordinary users. Active
-owner projection bypasses suite and read/write-scope governance only after current owner revalidation.
+owner projection bypasses application role, suite, catalog, department, and personal governance only
+after current owner revalidation. The signed OAuth scope remains transport authority: a token without
+`mcp:write` cannot discover or execute registered writes.
 
 | Group | Flag | Default | What it adds |
 |---|---|---|---|
@@ -133,18 +135,32 @@ still apply without a second confirmation call.
   digest, expiry, and cryptographically random JTI; the JTI is consumed atomically before work begins.
 - **Fresh authority**: current active-owner database state outranks the signed exchange evidence. A
   downgrade rejects a claimed-owner request; a newly active owner receives current owner behavior.
-- **Stable operation idempotency**: OAuth session identity plus the MCP SDK JSON-RPC request ID; never JTI.
+- **Stable operation idempotency**: OAuth session identity plus the MCP SDK JSON-RPC request ID, exact
+  tool, and canonical operation-body digest; never JTI. Reusing one protocol ID for a different tool or
+  body produces a different execution key rather than replaying or suppressing the wrong operation.
 - **Ordinary users retain HITL**: proposal/confirmation and scope/RBAC/suite controls remain unchanged.
 - **Owners execute directly**: registered writes bypass application governance, not authentication,
   tenant/client boundaries, input validation, durable execution coordination, or immutable auditing.
 - **Per-actor rate limit** (20 / 10 min) on generation + video propose/create; cheap polls exempt.
 - **Compliance + hard per-tenant budget cap** enforced by the existing engine on every video generation.
-- **Audit**: every call → `ai_action_audit` with `source='mcp'`, arg **keys** only.
+- **Audit**: ordinary calls continue to use `ai_action_audit` with `source='mcp'` and arg **keys** only;
+  owner calls use immutable God-mode attempt/outcome events, plus the `mcp` execution ledger for writes.
 - **Ordinary financial governance**: financial writes retain their dedicated flag, scope, acknowledgement,
   and confirmation controls. A current owner reaches only registered financial executors through the
   direct audited coordinator; missing providers or target authorization still fail.
 
 ## 7. Activation (operator) & live-verify
+
+For initial request-signing activation, first set an identical `MCP_REQUEST_SIGNING_SECRET` on Pages and
+the standalone Worker. Deploy the Worker so it emits assertions, verify a safe read against the existing
+Pages release, and only then deploy Pages enforcement. Never deploy Pages enforcement before both secret
+bindings exist and the signing Worker is ready.
+
+The current single-key verifier cannot rotate without an availability break. Use a coordinated
+maintenance window: stop MCP traffic, replace the secret on both sides, deploy/restart both, reconnect
+sessions that predate `oauthSessionId`, verify a safe read, then reopen traffic. Mismatched-key requests
+fail closed; zero-downtime rotation is not supported until overlapping current/next verification keys are
+implemented.
 
 **Activate a group** (after sign-off): uncomment its flag in `wrangler.toml [vars]` → deploy from the
 clean worktree (`pnpm deploy:production`).

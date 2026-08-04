@@ -6,7 +6,12 @@ import { createError } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOneFresh, transaction } from '~~/server/utils/db'
 import { appendGodModeAuditEvent, type GodModeAuditEventInput } from '~~/server/utils/godMode/audit'
-import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
+import type { GodModeChannel } from '~~/server/utils/godMode/audit'
+import {
+  isActiveGodModeAuthority,
+  resolveGodModeAuthority,
+  type GodModeAuthority
+} from '~~/server/utils/godMode/authority'
 import { getGodModeRouteAuditState } from '~~/server/utils/godMode/featureGate'
 import { sendGodModeAuditTerminal } from '~~/server/utils/queue'
 import { getExecutor } from './executors'
@@ -35,6 +40,22 @@ export interface GodModeReadExecutionRequest {
   ctx: ToolContext
   tenantId?: string
   clientId?: string
+}
+
+export interface TrustedMcpGodModeExecutionRequest extends GodModeExecutionRequest {
+  /** Exact claim subject, never a body-supplied actor. */
+  authenticatedUserId: string
+  /** Private branded authority recovered after signed-claim consumption. */
+  authority: GodModeAuthority
+  /** Bounded digest from the verified exact-request claim. */
+  sessionDigest: string
+}
+
+interface TrustedExecutionIdentity {
+  user: { id: string, role: string, permissionGroups?: unknown[] }
+  authority: GodModeAuthority
+  channel: GodModeChannel
+  sessionDigest: string
 }
 
 export interface GodModeToolCallClaimRequest {
@@ -98,7 +119,7 @@ export function deriveGodModeToolClaimIdempotencyKey(messageId: string, claimId:
 
 export interface GodModeExecutionLedgerRow {
   actorUserId: string
-  channel: 'application'
+  channel: GodModeChannel
   idempotencyKey: string
   state: LedgerState
   correlationId: string
@@ -119,6 +140,7 @@ interface GodModeClaimedProposal {
 
 interface ClaimExecutionInput {
   actorUserId: string
+  channel: GodModeChannel
   idempotencyKey: string
   correlationId: string
   toolName: string
@@ -130,6 +152,7 @@ interface ClaimExecutionInput {
 
 interface SetExecutionStateInput {
   actorUserId: string
+  channel: GodModeChannel
   idempotencyKey: string
   state: Exclude<LedgerState, 'in_progress'>
   resultReference?: string | null
@@ -161,6 +184,7 @@ export interface GodModeExecutionDependencies {
     proposalId: string
     actorUserId: string
     idempotencyKey: string
+    channel: GodModeChannel
   }) => Promise<void>
   dismissProposals: (input: { actorUserId: string, idempotencyKey: string }) => Promise<void>
   completeProposal: (input: { proposalId: string, resultReference: string, db?: TransactionDb }) => Promise<void>
@@ -168,12 +192,14 @@ export interface GodModeExecutionDependencies {
   setExecutionScope?: (input: {
     actorUserId: string
     idempotencyKey: string
+    channel: GodModeChannel
     tenantId: string | null
     clientId: string | null
   }) => Promise<void>
   recordExecutionProgress: (input: {
     actorUserId: string
     idempotencyKey: string
+    channel: GodModeChannel
     phase: string
     resultReference?: string | null
     metadata?: Record<string, unknown>
@@ -187,7 +213,7 @@ export interface GodModeExecutionDependencies {
 function mapLedger(row: any): GodModeExecutionLedgerRow {
   return {
     actorUserId: row.actor_user_id,
-    channel: 'application',
+    channel: row.channel,
     idempotencyKey: row.idempotency_key,
     state: row.state,
     correlationId: row.correlation_id,
@@ -215,19 +241,19 @@ const defaultDependencies: GodModeExecutionDependencies = {
       `INSERT INTO god_mode_execution_ledger (
          actor_user_id, channel, idempotency_key, state, correlation_id, route_or_tool,
          executor_class, tenant_id, client_id, session_digest
-       ) VALUES ($1, 'application', $2, 'in_progress', $3, $4, $5, $6, $7, $8)
+       ) VALUES ($1, $2, $3, 'in_progress', $4, $5, $6, $7, $8, $9)
        ON CONFLICT (actor_user_id, channel, idempotency_key) DO NOTHING
        RETURNING *`,
       [
-        input.actorUserId, input.idempotencyKey, input.correlationId, input.toolName,
+        input.actorUserId, input.channel, input.idempotencyKey, input.correlationId, input.toolName,
         input.executorClass, input.tenantId ?? null, input.clientId ?? null, input.sessionDigest
       ]
     )
     if (inserted) return { claimed: true, row: mapLedger(inserted) }
     const existing = await queryOneFresh<any>(
       `SELECT * FROM god_mode_execution_ledger
-        WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2`,
-      [input.actorUserId, input.idempotencyKey]
+        WHERE actor_user_id = $1 AND channel = $2 AND idempotency_key = $3`,
+      [input.actorUserId, input.channel, input.idempotencyKey]
     )
     if (!existing) throw new Error('execution ledger conflict could not be resolved')
     return { claimed: false, row: mapLedger(existing) }
@@ -242,6 +268,13 @@ const defaultDependencies: GodModeExecutionDependencies = {
       return { ok: false, code: 'client_mismatch' }
     }
     const clientId = input.clientId ?? argClientId
+    const argTenantId = typeof args.tenantId === 'string'
+      ? args.tenantId
+      : typeof args.tenant_id === 'string' ? args.tenant_id : undefined
+    if (input.tenantId && argTenantId && input.tenantId !== argTenantId) {
+      return { ok: false, code: 'tenant_mismatch' }
+    }
+    const tenantId = input.tenantId ?? argTenantId
     if (clientId) {
       const assigned = input.ctx.assistantScope?.clientAccessMode === 'assigned'
       if (assigned && !input.ctx.assistantScope?.assignedClientIds.includes(clientId)) {
@@ -253,14 +286,14 @@ const defaultDependencies: GodModeExecutionDependencies = {
       )
       if (!client) return { ok: false, code: 'client_mismatch' }
     }
-    if (input.tenantId) {
+    if (tenantId) {
       const tenant = await queryOneFresh<{ tenant_id: string }>(
         'SELECT tenant_id FROM xero_org_connection WHERE tenant_id = $1 LIMIT 1',
-        [input.tenantId]
+        [tenantId]
       )
       if (!tenant) return { ok: false, code: 'tenant_mismatch' }
     }
-    return { ok: true, tenantId: input.tenantId ?? null, clientId: clientId ?? null }
+    return { ok: true, tenantId: tenantId ?? null, clientId: clientId ?? null }
   },
   claimProposal: async input => await dbQueryOne<GodModeClaimedProposal>(input.db,
     `UPDATE ai_pending_actions
@@ -283,10 +316,10 @@ const defaultDependencies: GodModeExecutionDependencies = {
     if ((proposal.rowCount ?? 0) !== 1) throw new Error('God mode proposal association rejected')
     const ledger = await db.query(
       `UPDATE god_mode_execution_ledger
-          SET proposal_id = $3, execution_phase = 'proposal_prepared', updated_at = NOW()
-        WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2
+          SET proposal_id = $4, execution_phase = 'proposal_prepared', updated_at = NOW()
+        WHERE actor_user_id = $1 AND channel = $2 AND idempotency_key = $3
           AND state = 'in_progress'`,
-      [input.actorUserId, input.idempotencyKey, input.proposalId]
+      [input.actorUserId, input.channel, input.idempotencyKey, input.proposalId]
     )
     if ((ledger.rowCount ?? 0) !== 1) throw new Error('God mode ledger association rejected')
   }),
@@ -308,32 +341,33 @@ const defaultDependencies: GodModeExecutionDependencies = {
   },
   setExecutionState: async (input, db) => {
     const sql = `UPDATE god_mode_execution_ledger
-                    SET state = $3, result_reference = $4, result_digest = $5, updated_at = NOW()
-                  WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2`
-    const params = [input.actorUserId, input.idempotencyKey, input.state, input.resultReference ?? null, input.resultDigest ?? null]
+                    SET state = $4, result_reference = $5, result_digest = $6, updated_at = NOW()
+                  WHERE actor_user_id = $1 AND channel = $2 AND idempotency_key = $3`
+    const params = [input.actorUserId, input.channel, input.idempotencyKey, input.state, input.resultReference ?? null, input.resultDigest ?? null]
     if (db) await db.query(sql, params)
     else await queryOneFresh(`${sql} RETURNING actor_user_id`, params)
   },
   setExecutionScope: async input => {
     await queryOneFresh(
       `UPDATE god_mode_execution_ledger
-          SET tenant_id = $3, client_id = $4, updated_at = NOW()
-        WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2
+          SET tenant_id = $4, client_id = $5, updated_at = NOW()
+        WHERE actor_user_id = $1 AND channel = $2 AND idempotency_key = $3
           AND state = 'in_progress'
         RETURNING actor_user_id`,
-      [input.actorUserId, input.idempotencyKey, input.tenantId, input.clientId]
+      [input.actorUserId, input.channel, input.idempotencyKey, input.tenantId, input.clientId]
     )
   },
   recordExecutionProgress: async input => {
     const updated = await queryOneFresh(
       `UPDATE god_mode_execution_ledger
-          SET execution_phase = $3, result_reference = COALESCE($4, result_reference),
-              execution_metadata = COALESCE($5::jsonb, execution_metadata), updated_at = NOW()
-        WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2
+          SET execution_phase = $4, result_reference = COALESCE($5, result_reference),
+              execution_metadata = COALESCE($6::jsonb, execution_metadata), updated_at = NOW()
+        WHERE actor_user_id = $1 AND channel = $2 AND idempotency_key = $3
           AND state = 'in_progress'
         RETURNING actor_user_id`,
       [
         input.actorUserId,
+        input.channel,
         input.idempotencyKey,
         input.phase,
         input.resultReference ?? null,
@@ -362,7 +396,7 @@ function auditEvent(
     actorUserId: row.actorUserId,
     correlationId: row.correlationId,
     sessionDigest: (row as GodModeExecutionLedgerRow & { sessionDigest?: string }).sessionDigest ?? '0'.repeat(64),
-    channel: 'application',
+    channel: row.channel,
     routeOrTool: row.routeOrTool,
     phase,
     tenantId: row.tenantId,
@@ -381,10 +415,12 @@ function operationalError(statusCode: number, statusMessage: string): never {
   throw createError({ statusCode, statusMessage })
 }
 
-export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
-  return async function execute(request: GodModeExecutionRequest): Promise<ToolResult> {
-    const user = await deps.requireAuth(request.event)
-    const authority = await deps.resolveGodModeAuthority(request.event, user.id)
+function createGodModeExecutionCore(deps: GodModeExecutionDependencies) {
+  return async function execute(
+    request: GodModeExecutionRequest,
+    identity: TrustedExecutionIdentity
+  ): Promise<ToolResult> {
+    const { user, authority, channel, sessionDigest } = identity
     if (!authority.active || authority.actorUserId !== user.id || authority.emergencyDisabled) {
       operationalError(403, 'God mode is not active')
     }
@@ -396,16 +432,11 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
     const executor = deps.resolveExecutor(request.toolName)
     if (!tool || !executor || !tool.mutates) operationalError(404, 'God mode tool is unavailable')
 
-    let sessionDigest: string
-    try {
-      sessionDigest = deps.sessionDigest(request.event)
-    } catch {
-      operationalError(503, 'God mode audit unavailable')
-    }
     let claim: { claimed: boolean, row: GodModeExecutionLedgerRow }
     try {
       claim = await deps.claimExecution({
         actorUserId: user.id,
+        channel,
         idempotencyKey: request.idempotencyKey,
         correlationId: deps.correlationId(),
         toolName: request.toolName,
@@ -429,7 +460,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
     try {
       await deps.appendAudit(auditEvent(auditIdentity, 'attempt', 'started'))
     } catch {
-      await deps.setExecutionState({ actorUserId: user.id, idempotencyKey: request.idempotencyKey, state: 'failed' }).catch(() => {})
+      await deps.setExecutionState({ actorUserId: user.id, channel, idempotencyKey: request.idempotencyKey, state: 'failed' }).catch(() => {})
       operationalError(503, 'God mode audit unavailable')
     }
 
@@ -438,7 +469,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
         await deps.dismissProposals({ actorUserId: user.id, idempotencyKey: request.idempotencyKey })
         await deps.transaction(async db => {
           await deps.appendAudit(auditEvent(auditIdentity, 'failed', code), db)
-          await deps.setExecutionState({ actorUserId: user.id, idempotencyKey: request.idempotencyKey, state: 'failed' }, db)
+          await deps.setExecutionState({ actorUserId: user.id, channel, idempotencyKey: request.idempotencyKey, state: 'failed' }, db)
         })
       } catch {
         operationalError(503, 'God mode audit unavailable')
@@ -454,7 +485,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
       userRole: user.role,
       permissionGroups: (user.permissionGroups ?? []) as any,
       conversationId: request.conversationId,
-      source: 'chat',
+      source: channel === 'mcp' ? 'mcp' : 'chat',
       godModeExecutionKey: request.idempotencyKey,
       event: request.event
     }
@@ -472,6 +503,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
       try {
         await deps.setExecutionScope({
           actorUserId: user.id,
+          channel,
           idempotencyKey: request.idempotencyKey,
           tenantId: scope.tenantId,
           clientId: scope.clientId
@@ -489,7 +521,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
       if (typeof data?.proposalId !== 'string') {
         await deps.transaction(async db => {
           await deps.appendAudit(auditEvent(auditIdentity, 'succeeded', 'no_mutation'), db)
-          await deps.setExecutionState({ actorUserId: user.id, idempotencyKey: request.idempotencyKey, state: 'succeeded' }, db)
+          await deps.setExecutionState({ actorUserId: user.id, channel, idempotencyKey: request.idempotencyKey, state: 'succeeded' }, db)
         })
         return proposed
       }
@@ -497,7 +529,8 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
       await deps.associateProposal({
         proposalId,
         actorUserId: user.id,
-        idempotencyKey: request.idempotencyKey
+        idempotencyKey: request.idempotencyKey,
+        channel
       })
     } catch {
       return await failBeforeDispatch('handler_failed', 'Could not prepare the action.')
@@ -521,6 +554,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
       if (!db) {
         await deps.recordExecutionProgress({
           actorUserId: user.id,
+          channel,
           idempotencyKey: request.idempotencyKey,
           phase: 'dispatched'
         })
@@ -533,6 +567,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
               recordProgress: async (progress: Parameters<NonNullable<ExecutionServices['recordProgress']>>[0]) => {
                 await deps.recordExecutionProgress!({
                   actorUserId: user.id,
+                  channel,
                   idempotencyKey: request.idempotencyKey,
                   phase: progress.phase,
                   resultReference: progress.resultReference,
@@ -558,6 +593,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
           await deps.appendAudit(auditEvent(auditIdentity, 'succeeded', 'executed'), db)
           await deps.setExecutionState({
             actorUserId: user.id,
+            channel,
             idempotencyKey: request.idempotencyKey,
             state: 'succeeded',
             resultReference: executed.resultRef,
@@ -580,7 +616,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
               db
             })
             await deps.appendAudit(auditEvent(auditIdentity, 'failed', code), db)
-            await deps.setExecutionState({ actorUserId: user.id, idempotencyKey: request.idempotencyKey, state: 'failed' }, db)
+            await deps.setExecutionState({ actorUserId: user.id, channel, idempotencyKey: request.idempotencyKey, state: 'failed' }, db)
           })
         } catch {
           operationalError(503, 'God mode audit unavailable')
@@ -605,6 +641,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
             await deps.appendAudit(auditEvent(auditIdentity, 'ambiguous', 'dispatch_outcome_unknown'), db)
             await deps.setExecutionState({
               actorUserId: user.id,
+              channel,
               idempotencyKey: request.idempotencyKey,
               state: 'ambiguous',
               resultReference: boundedReference
@@ -618,7 +655,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
       try {
         await deps.transaction(async db => {
           await deps.appendAudit(auditEvent(auditIdentity, 'failed', code), db)
-          await deps.setExecutionState({ actorUserId: user.id, idempotencyKey: request.idempotencyKey, state: 'failed' }, db)
+          await deps.setExecutionState({ actorUserId: user.id, channel, idempotencyKey: request.idempotencyKey, state: 'failed' }, db)
         })
       } catch {
         operationalError(503, 'God mode audit unavailable')
@@ -632,6 +669,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
         await deps.appendAudit(terminal, db)
         await deps.setExecutionState({
           actorUserId: user.id,
+          channel,
           idempotencyKey: request.idempotencyKey,
           state: 'succeeded',
           resultReference: result.resultRef,
@@ -641,6 +679,7 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
     } catch {
       await deps.setExecutionState({
         actorUserId: user.id,
+        channel,
         idempotencyKey: request.idempotencyKey,
         state: 'ambiguous',
         resultReference: result.resultRef,
@@ -653,25 +692,66 @@ export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
   }
 }
 
-export const executeGodModeTool = createGodModeToolExecutor(defaultDependencies)
+export function createGodModeToolExecutor(deps: GodModeExecutionDependencies) {
+  const executeCore = createGodModeExecutionCore(deps)
+  return async function execute(request: GodModeExecutionRequest): Promise<ToolResult> {
+    const user = await deps.requireAuth(request.event)
+    const authority = await deps.resolveGodModeAuthority(request.event, user.id)
+    let sessionDigest: string
+    try {
+      sessionDigest = deps.sessionDigest(request.event)
+    } catch {
+      operationalError(503, 'God mode audit unavailable')
+    }
+    return await executeCore(request, { user, authority, channel: 'application', sessionDigest })
+  }
+}
 
-/** Audited read path. Reads do not enter the mutation ledger and never dispatch a reconciliation job. */
-export async function executeGodModeReadTool(request: GodModeReadExecutionRequest): Promise<ToolResult> {
-  const user = await defaultDependencies.requireAuth(request.event)
-  const authority = await defaultDependencies.resolveGodModeAuthority(request.event, user.id)
+export function createTrustedMcpGodModeToolExecutor(deps: GodModeExecutionDependencies) {
+  const executeCore = createGodModeExecutionCore(deps)
+  return async function execute(request: TrustedMcpGodModeExecutionRequest): Promise<ToolResult> {
+    if (
+      request.authenticatedUserId !== request.authority.actorUserId
+      || !isActiveGodModeAuthority(request.authority, request.authenticatedUserId)
+      || !/^mcp:[0-9a-f]{64}$/.test(request.idempotencyKey)
+      || !/^[0-9a-f]{64}$/.test(request.sessionDigest)
+    ) operationalError(403, 'Invalid MCP owner execution authority')
+
+    return await executeCore(request, {
+      user: { id: request.authenticatedUserId, role: 'owner', permissionGroups: [] },
+      authority: request.authority,
+      channel: 'mcp',
+      sessionDigest: request.sessionDigest
+    })
+  }
+}
+
+export const executeGodModeTool = createGodModeToolExecutor(defaultDependencies)
+export const executeTrustedMcpGodModeTool = createTrustedMcpGodModeToolExecutor(defaultDependencies)
+
+interface TrustedReadIdentity extends TrustedExecutionIdentity {
+  correlationId: string
+}
+
+function mcpReadCorrelationId(idempotencyKey: string): string {
+  if (!/^mcp:[0-9a-f]{64}$/.test(idempotencyKey)) operationalError(400, 'Invalid MCP execution identity')
+  const hex = idempotencyKey.slice(4, 36)
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`
+}
+
+/** Reads claim their immutable attempt by correlation, but never enter the mutation execution ledger. */
+async function executeGodModeReadCore(
+  deps: GodModeExecutionDependencies,
+  request: GodModeReadExecutionRequest,
+  identity: TrustedReadIdentity
+): Promise<ToolResult> {
+  const { user, authority, channel, sessionDigest, correlationId } = identity
   if (!authority.active || authority.actorUserId !== user.id || authority.emergencyDisabled) {
     operationalError(403, 'God mode is not active')
   }
-  const correlationId = defaultDependencies.correlationId()
-  let sessionDigest: string
-  try {
-    sessionDigest = defaultDependencies.sessionDigest(request.event)
-  } catch {
-    operationalError(503, 'God mode audit unavailable')
-  }
   const row: GodModeExecutionLedgerRow & { sessionDigest: string } = {
     actorUserId: user.id,
-    channel: 'application',
+    channel,
     idempotencyKey: 'read',
     state: 'in_progress',
     correlationId,
@@ -683,18 +763,19 @@ export async function executeGodModeReadTool(request: GodModeReadExecutionReques
     resultDigest: null,
     sessionDigest
   }
+  const auditIdentity = { ...row }
   try {
-    await defaultDependencies.appendAudit(auditEvent(row, 'attempt', 'started', []))
+    await deps.appendAudit(auditEvent(auditIdentity, 'attempt', 'started', []))
   } catch {
     operationalError(503, 'God mode audit unavailable')
   }
   const parsed = request.tool.parameters.safeParse(request.args)
   if (!parsed.success) {
-    await defaultDependencies.appendAudit(auditEvent(row, 'failed', 'schema_invalid', []))
+    await deps.appendAudit(auditEvent(auditIdentity, 'failed', 'schema_invalid', []))
       .catch(() => operationalError(503, 'God mode audit unavailable'))
     return fail('Invalid tool input.')
   }
-  const scope = await defaultDependencies.validateScope({
+  const scope = await deps.validateScope({
     actorUserId: user.id,
     tenantId: request.tenantId,
     clientId: request.clientId,
@@ -702,22 +783,66 @@ export async function executeGodModeReadTool(request: GodModeReadExecutionReques
     ctx: request.ctx
   })
   if (scope.ok === false) {
-    await defaultDependencies.appendAudit(auditEvent(row, 'failed', scope.code, []))
+    await deps.appendAudit(auditEvent(auditIdentity, 'failed', scope.code, []))
       .catch(() => operationalError(503, 'God mode audit unavailable'))
     return fail('Target is outside the authenticated scope.')
   }
-  row.tenantId = scope.tenantId
-  row.clientId = scope.clientId
   try {
     const result = await request.tool.handler(parsed.data, { ...request.ctx, userId: user.id, userRole: user.role })
-    await defaultDependencies.appendAudit(auditEvent(row, result.ok ? 'succeeded' : 'failed', result.ok ? 'read_completed' : 'read_failed', []))
+    await deps.appendAudit(auditEvent(auditIdentity, result.ok ? 'succeeded' : 'failed', result.ok ? 'read_completed' : 'read_failed', []))
     return result
   } catch {
     try {
-      await defaultDependencies.appendAudit(auditEvent(row, 'failed', 'read_failed', []))
+      await deps.appendAudit(auditEvent(auditIdentity, 'failed', 'read_failed', []))
     } catch {
       operationalError(503, 'God mode audit unavailable')
     }
     operationalError(502, 'God mode read failed')
   }
 }
+
+/** Audited in-application read path. */
+export async function executeGodModeReadTool(request: GodModeReadExecutionRequest): Promise<ToolResult> {
+  const user = await defaultDependencies.requireAuth(request.event)
+  const authority = await defaultDependencies.resolveGodModeAuthority(request.event, user.id)
+  let sessionDigest: string
+  try {
+    sessionDigest = defaultDependencies.sessionDigest(request.event)
+  } catch {
+    operationalError(503, 'God mode audit unavailable')
+  }
+  return await executeGodModeReadCore(defaultDependencies, request, {
+    user,
+    authority,
+    channel: 'application',
+    sessionDigest,
+    correlationId: defaultDependencies.correlationId()
+  })
+}
+
+export interface TrustedMcpGodModeReadRequest extends GodModeReadExecutionRequest {
+  authenticatedUserId: string
+  authority: GodModeAuthority
+  sessionDigest: string
+  idempotencyKey: string
+}
+
+export function createTrustedMcpGodModeReadExecutor(deps: GodModeExecutionDependencies) {
+  return async function execute(request: TrustedMcpGodModeReadRequest): Promise<ToolResult> {
+    if (
+      !isActiveGodModeAuthority(request.authority, request.authenticatedUserId)
+      || request.authority.actorUserId !== request.authenticatedUserId
+      || !/^[0-9a-f]{64}$/.test(request.sessionDigest)
+    ) operationalError(403, 'Invalid MCP owner execution authority')
+
+    return await executeGodModeReadCore(deps, request, {
+      user: { id: request.authenticatedUserId, role: 'owner', permissionGroups: [] },
+      authority: request.authority,
+      channel: 'mcp',
+      sessionDigest: request.sessionDigest,
+      correlationId: mcpReadCorrelationId(request.idempotencyKey)
+    })
+  }
+}
+
+export const executeTrustedMcpGodModeReadTool = createTrustedMcpGodModeReadExecutor(defaultDependencies)

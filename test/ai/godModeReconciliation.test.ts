@@ -13,6 +13,7 @@ import type { GodModeAuditEventInput } from '~~/server/utils/godMode/audit'
 
 const candidate = (over: Partial<ReconciliationCandidate> = {}): ReconciliationCandidate => ({
   actorUserId: '11111111-1111-4111-8111-111111111111',
+  channel: 'application',
   correlationId: '22222222-2222-4222-8222-222222222222',
   idempotencyKey: 'message-7:tool-call-2',
   state: 'ambiguous',
@@ -29,7 +30,7 @@ const attempt = (over: Partial<GodModeAuditEventInput> = {}): GodModeAuditEventI
   actorUserId: candidate().actorUserId,
   correlationId: candidate().correlationId,
   sessionDigest: candidate().sessionDigest,
-  channel: 'application',
+  channel: candidate().channel,
   routeOrTool: candidate().routeOrTool,
   phase: 'attempt',
   tenantId: null,
@@ -58,6 +59,22 @@ function harness(status: 'succeeded' | 'failed' | 'unknown' = 'succeeded') {
 }
 
 describe('God mode reconciliation', () => {
+  it('reconciles an ambiguous MCP write only against its matching MCP attempt identity', async () => {
+    const h = harness('succeeded')
+    const mcpCandidate = candidate({
+      channel: 'mcp',
+      idempotencyKey: `mcp:${'a'.repeat(64)}`
+    })
+    vi.mocked(h.deps.listCandidates).mockResolvedValue([mcpCandidate])
+    vi.mocked(h.deps.findAttempt).mockResolvedValue(attempt({ channel: 'mcp' }))
+
+    await expect(h.run()).resolves.toEqual({ scanned: 1, reconciled: 1, unknown: 0, failed: 0 })
+    expect(h.deps.appendTerminalAndClose).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: 'mcp' }),
+      expect.objectContaining({ channel: 'mcp', phase: 'succeeded' })
+    )
+  })
+
   it.each(['succeeded', 'failed'] as const)('closes a provider-confirmed %s outcome without repeating the action', async status => {
     const h = harness(status)
     const result = await h.run()

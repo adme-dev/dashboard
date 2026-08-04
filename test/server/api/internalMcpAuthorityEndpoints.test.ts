@@ -13,7 +13,12 @@ const mocks = vi.hoisted(() => ({
   projectVideo: vi.fn(),
   projectBanner: vi.fn(),
   projectFinancial: vi.fn(),
-  executeReadOnly: vi.fn()
+  projectOwnerCatalog: vi.fn(),
+  executeReadOnly: vi.fn(),
+  executeWriteConfirm: vi.fn(),
+  executeGodModeMcpCall: vi.fn(),
+  isActiveAuthority: vi.fn(),
+  appendAudit: vi.fn()
 }))
 
 vi.mock('h3', async (importOriginal) => {
@@ -30,7 +35,11 @@ vi.mock('~~/server/utils/ai/mcp/assertion', () => ({
   verifyMcpAssertion: mocks.verifyAssertion
 }))
 vi.mock('~~/server/utils/godMode/authority', () => ({
-  resolveGodModeAuthority: mocks.resolveAuthority
+  resolveGodModeAuthority: mocks.resolveAuthority,
+  isActiveGodModeAuthority: mocks.isActiveAuthority
+}))
+vi.mock('~~/server/utils/godMode/audit', () => ({
+  appendGodModeAuditEvent: mocks.appendAudit
 }))
 vi.mock('~~/server/utils/ai/mcp/requestClaim', () => ({
   consumeMcpRequestClaim: mocks.consumeClaim,
@@ -38,12 +47,17 @@ vi.mock('~~/server/utils/ai/mcp/requestClaim', () => ({
 }))
 vi.mock('~~/server/utils/db', () => ({
   queryOne: mocks.queryOne,
-  execute: mocks.execute
+  execute: mocks.execute,
+  queryRows: vi.fn(async () => [])
 }))
 vi.mock('~~/server/utils/ai/tools', () => ({ registry: [] }))
 vi.mock('~~/server/utils/ai/mcp/project', () => ({
   projectReadOnlyTools: mocks.projectReadOnly,
+  projectGodModeCatalogTools: mocks.projectOwnerCatalog,
   executeReadOnlyTool: mocks.executeReadOnly
+}))
+vi.mock('~~/server/utils/ai/mcp/directExecution', () => ({
+  executeGodModeMcpCall: mocks.executeGodModeMcpCall
 }))
 vi.mock('~~/server/utils/ai/mcp/generationTools', () => ({
   generationTools: [],
@@ -85,7 +99,7 @@ vi.mock('~~/server/utils/ai/mcp/writeTools', () => ({
   projectWriteTools: mocks.projectWrite,
   projectFinancialTools: mocks.projectFinancial,
   resolveProposeAction: vi.fn((name: string) => name === 'propose_create_task' ? 'create_task' : null),
-  executeWriteConfirm: vi.fn(),
+  executeWriteConfirm: mocks.executeWriteConfirm,
   MCP_CONFIRM_TOOL: 'confirm_action',
   isFinancialAction: vi.fn(() => false),
   MCP_FINANCIAL_ACTIONS: [],
@@ -152,6 +166,15 @@ describe('signed internal MCP list/call endpoints', () => {
     mocks.projectBanner.mockReturnValue([])
     mocks.projectFinancial.mockReturnValue([])
     mocks.executeReadOnly.mockResolvedValue({ ok: true, data: { count: 1 } })
+    mocks.getAuthority.mockReturnValue({ active: false, actorUserId: USER_ID })
+    mocks.isActiveAuthority.mockReturnValue(false)
+    mocks.projectOwnerCatalog.mockReturnValue([
+      { name: 'get_tasks', description: 'owner read', inputSchema: {} },
+      { name: 'create_task', description: 'owner write', inputSchema: {} }
+    ])
+    mocks.executeGodModeMcpCall.mockResolvedValue({ ok: true, data: { resultRef: 'task-1', directExecution: true } })
+    mocks.executeWriteConfirm.mockResolvedValue({ ok: true, data: { resultRef: 'task-ordinary' } })
+    mocks.appendAudit.mockResolvedValue(undefined)
   })
 
   it('requires the signed claim in addition to the service secret before list projection', async () => {
@@ -203,6 +226,123 @@ describe('signed internal MCP list/call endpoints', () => {
     })
     expect(mocks.consumeClaim).toHaveBeenCalledWith(requestEvent, CLAIM, USER_ID)
     expect(String(mocks.queryOne.mock.calls[0]?.[0])).toContain('SELECT user_role AS role')
+  })
+
+  it('projects the complete registered owner catalog from the consumed fresh authority, not role or suite flags', async () => {
+    mocks.consumeClaim.mockResolvedValue({
+      uid: USER_ID,
+      scope: ['mcp:read', 'mcp:write'],
+      godMode: false,
+      bodyDigest: 'a'.repeat(64)
+    })
+    const authority = { active: true, actorUserId: USER_ID }
+    mocks.getAuthority.mockReturnValue(authority)
+    mocks.isActiveAuthority.mockImplementation((candidate, actor) => candidate === authority && actor === USER_ID)
+    process.env.MCP_WRITE_TOOLS_ENABLED = 'false'
+
+    const requestEvent = event(
+      { userId: USER_ID },
+      { 'x-mcp-secret': INTERNAL_SECRET, 'x-mcp-assertion': CLAIM }
+    )
+
+    await expect(toolsHandler(requestEvent)).resolves.toEqual({
+      tools: [
+        { name: 'get_tasks', description: 'owner read', inputSchema: {} },
+        { name: 'create_task', description: 'owner write', inputSchema: {} }
+      ]
+    })
+    expect(mocks.getAuthority).toHaveBeenCalledWith(requestEvent, USER_ID)
+    expect(mocks.projectOwnerCatalog).toHaveBeenCalled()
+    expect(mocks.projectWrite).not.toHaveBeenCalled()
+    expect(mocks.appendAudit.mock.calls.map(([audit]) => audit.phase)).toEqual(['attempt', 'succeeded'])
+  })
+
+  it('blocks an owner manifest and records a failed terminal when projection fails after its attempt', async () => {
+    mocks.consumeClaim.mockResolvedValue({
+      uid: USER_ID,
+      scope: ['mcp:read', 'mcp:write'],
+      godMode: true,
+      bodyDigest: 'a'.repeat(64)
+    })
+    const authority = { active: true, actorUserId: USER_ID }
+    mocks.getAuthority.mockReturnValue(authority)
+    mocks.isActiveAuthority.mockImplementation((candidate, actor) => candidate === authority && actor === USER_ID)
+    mocks.projectOwnerCatalog.mockImplementation(() => { throw new Error('schema content must not leak') })
+
+    await expect(toolsHandler(event(
+      { userId: USER_ID },
+      { 'x-mcp-secret': INTERNAL_SECRET, 'x-mcp-assertion': CLAIM }
+    ))).rejects.toMatchObject({ statusCode: 503, statusMessage: 'God mode MCP audit unavailable' })
+
+    expect(mocks.appendAudit.mock.calls.map(([audit]) => [audit.phase, audit.outcomeCode])).toEqual([
+      ['attempt', 'started'],
+      ['failed', 'catalog_projection_failed']
+    ])
+  })
+
+  it('upgrades a stale signed false bit to current owner behavior and executes a write directly through Task 5', async () => {
+    mocks.consumeClaim.mockResolvedValue({
+      uid: USER_ID,
+      scope: ['mcp:read', 'mcp:write'],
+      godMode: false,
+      bodyDigest: 'b'.repeat(64)
+    })
+    const authority = { active: true, actorUserId: USER_ID }
+    mocks.getAuthority.mockReturnValue(authority)
+    mocks.isActiveAuthority.mockImplementation((candidate, actor) => candidate === authority && actor === USER_ID)
+    const idempotencyKey = `mcp:${'c'.repeat(64)}`
+    const requestEvent = event(
+      { userId: USER_ID, tool: 'create_task', args: { title: 'Ship' }, idempotencyKey },
+      { 'x-mcp-secret': INTERNAL_SECRET, 'x-mcp-assertion': CLAIM }
+    )
+    requestEvent.path = '/api/internal/mcp/call'
+
+    await expect(callHandler(requestEvent)).resolves.toEqual({
+      ok: true,
+      data: { resultRef: 'task-1', directExecution: true }
+    })
+    expect(mocks.executeGodModeMcpCall).toHaveBeenCalledWith({
+      event: requestEvent,
+      claim: expect.objectContaining({ uid: USER_ID, godMode: false }),
+      authority,
+      idempotencyKey,
+      toolName: 'create_task',
+      args: { title: 'Ship' }
+    })
+    expect(mocks.executeReadOnly).not.toHaveBeenCalled()
+    expect(mocks.execute).not.toHaveBeenCalled()
+  })
+
+  it('keeps ordinary write projection and confirmation behavior unchanged', async () => {
+    mocks.consumeClaim.mockResolvedValue({ uid: USER_ID, scope: ['mcp:read', 'mcp:write'], godMode: false })
+    mocks.getAuthority.mockReturnValue({ active: false, actorUserId: USER_ID })
+    mocks.isActiveAuthority.mockReturnValue(false)
+
+    const requestEvent = event(
+      { userId: USER_ID },
+      { 'x-mcp-secret': INTERNAL_SECRET, 'x-mcp-assertion': CLAIM }
+    )
+    await toolsHandler(requestEvent)
+
+    expect(mocks.projectWrite).toHaveBeenCalled()
+    expect(mocks.projectOwnerCatalog).not.toHaveBeenCalled()
+
+    const confirmEvent = event(
+      {
+        userId: USER_ID,
+        tool: 'confirm_action',
+        args: { proposalId: '22222222-2222-4222-8222-222222222222' },
+        idempotencyKey: `mcp:${'d'.repeat(64)}`
+      },
+      { 'x-mcp-secret': INTERNAL_SECRET, 'x-mcp-assertion': CLAIM }
+    )
+    confirmEvent.path = '/api/internal/mcp/call'
+    await expect(callHandler(confirmEvent)).resolves.toEqual({
+      ok: true,
+      data: { resultRef: 'task-ordinary' }
+    })
+    expect(mocks.executeWriteConfirm).toHaveBeenCalled()
+    expect(mocks.executeGodModeMcpCall).not.toHaveBeenCalled()
   })
 
   it('does not verify or consume a claim when the independent service secret is absent', async () => {
