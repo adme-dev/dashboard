@@ -52,6 +52,37 @@ function executor(invoke: (input: EvaluationModelInvocationRequest) => Promise<a
 }
 
 describe('evaluation model executor', () => {
+  it('gives the simulation evaluator the registered client-tool purpose without exposing a live handler', async () => {
+    const invoke = vi.fn(async (input: EvaluationModelInvocationRequest) => {
+      const descriptor = input.tools[0]!
+      const serialized = JSON.parse(input.serializedInput)
+
+      expect(descriptor.name).toBe('get_client_overview')
+      expect(descriptor.description).toContain('Look up one agency client')
+      expect(descriptor.description).not.toContain('Simulation-only descriptor')
+      expect(serialized.availableToolDescriptors).toEqual([{
+        name: 'get_client_overview',
+        description: expect.stringContaining('Look up one agency client')
+      }])
+
+      return {
+        observedTools: ['get_client_overview'],
+        sourceRefs: ['fixture_authoritative_record'],
+        effectSignals: [],
+        scopeViolationObserved: false,
+        approvalBypassObserved: false,
+        traceRef: null,
+        inputTokens: 100,
+        outputTokens: 20
+      }
+    })
+
+    await expect(executor(invoke).execute({
+      ...request,
+      availableTools: ['get_client_overview']
+    })).resolves.toMatchObject({ observedTools: ['get_client_overview'] })
+  })
+
   it('exposes record-only descriptors and returns a bounded simulation observation', async () => {
     const invoke = vi.fn(async (input: EvaluationModelInvocationRequest) => {
       expect(input.executionMode).toBe('simulation')

@@ -1,6 +1,7 @@
 import { generateText } from 'ai'
 import { z } from 'zod'
 import { resolveModel } from '~~/server/utils/claudeClient'
+import { registry as toolRegistry } from '~~/server/utils/ai/tools'
 import type {
   EvaluationExecutorObservation,
   EvaluationExecutorRequest,
@@ -105,6 +106,14 @@ function deepFreeze<T>(value: T): T {
 
 function frozenClone<T>(value: T): T {
   return deepFreeze(structuredClone(value))
+}
+
+function simulationToolDescription(name: string): string {
+  const description = toolRegistry.find(tool => tool.name === name)?.description
+  if (!description) {
+    throw new EvaluationModelExecutorError('evaluation_tool_descriptor_missing', 'A simulation tool is not registered')
+  }
+  return `${description} Simulation only: selecting this descriptor is recorded and never executes the tool.`
 }
 
 function modelSpec(provider: EvaluationModelExecutorOptions['modelProvider'], modelId: string): string {
@@ -244,7 +253,7 @@ export function createEvaluationModelExecutor(options: EvaluationModelExecutorOp
       const recordedTools = new Set<string>()
       const descriptors = availableTools.map(name => Object.freeze({
         name,
-        description: `Simulation-only descriptor for ${name}; selection is recorded and never executed.`,
+        description: simulationToolDescription(name),
         async record() { recordedTools.add(name); return { recorded: true as const } }
       }))
       const base = {
