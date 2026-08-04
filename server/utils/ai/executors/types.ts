@@ -1,5 +1,15 @@
 import type { ToolContext, RiskTier } from '../toolContext'
 import type { PermissionGroup } from '~~/server/utils/permissions'
+import type { Pool } from '@neondatabase/serverless'
+
+export type ExecutorClass = 'local-transactional' | 'internal-http' | 'external-provider'
+
+export interface ExecutionServices {
+  /** Stable logical key claimed before dispatch; forward to providers that support idempotency. */
+  idempotencyKey: string
+  /** Present only for local-transactional executors. Never supplied to HTTP/provider executors. */
+  db?: Pick<Pool, 'query'>
+}
 
 /**
  * Phase-0 WS-B: the executor registry generalizes the confirm step.
@@ -33,6 +43,8 @@ export interface ActionExecutor {
    * Undefined = any write-capable role (the create_task default; still blocked for read-only roles).
    */
   requiredPermission?: PermissionGroup
+  /** Explicit durability boundary; callers must never infer this from implementation details. */
+  executionClass: ExecutorClass
   /** Run the real mutation from a confirmed, resolved payload. Throws on failure (caller reverts). */
-  execute: (payload: any, ctx: ToolContext) => Promise<ExecutorResult>
+  execute: (payload: any, ctx: ToolContext, services?: ExecutionServices) => Promise<ExecutorResult>
 }

@@ -28,6 +28,7 @@ export function makeBudgetAlertExecutor(post: BudgetAlertPoster = defaultPoster)
     label: 'budget alert',
     riskTier: 'confirm',
     requiredPermission: 'ADMIN',
+    executionClass: 'internal-http',
     async execute(payload: any, ctx: ToolContext): Promise<ExecutorResult> {
       const created = await post(proposalToBudgetAlertBody(payload), ctx)
       const id = created?.alert?.id ?? created?.id

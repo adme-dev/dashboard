@@ -253,5 +253,18 @@ async function processSiteIntelligenceEnrichment(payload: Record<string, unknown
 
 async function processGodModeAuditTerminal(payload: GodModeAuditEventInput): Promise<void> {
   const { appendGodModeAuditEvent } = await import('~~/server/utils/godMode/audit')
-  await appendGodModeAuditEvent(payload)
+  try {
+    await appendGodModeAuditEvent(payload)
+  } catch (error) {
+    // Queue delivery is at-least-once. A matching immutable terminal already present is success;
+    // malformed payloads and all other database failures still throw for retry/dead-letter.
+    if ((error as { code?: string } | null)?.code !== '23505') throw error
+    const { queryOneFresh } = await import('~~/server/utils/db')
+    const existing = await queryOneFresh<{ phase: string }>(
+      `SELECT phase FROM god_mode_audit_events
+        WHERE correlation_id = $1 AND phase IN ('succeeded', 'failed') LIMIT 1`,
+      [payload.correlationId]
+    )
+    if (!existing) throw error
+  }
 }

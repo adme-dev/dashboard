@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { executeProposal, loadOpenProposal, terminalError, type PendingActionDb, type PendingRow } from '~~/server/utils/ai/pendingActions'
+import { executeProposal, executeRegisteredPendingAction, loadOpenProposal, terminalError, type PendingActionDb, type PendingRow } from '~~/server/utils/ai/pendingActions'
 
 const ctx = (role = 'owner', userId = 'u1') => ({ userId, userRole: role, event: {} as any })
 const row = (): PendingRow => ({
@@ -98,5 +98,50 @@ describe('loadOpenProposal (reload rehydration)', () => {
   it('is fail-safe: a query error yields null (conversation load must not break)', async () => {
     const res = await loadOpenProposal('c1', 'u1', vi.fn().mockRejectedValue(new Error('relation does not exist')))
     expect(res).toBeNull()
+  })
+})
+
+describe('executeRegisteredPendingAction', () => {
+  it('centralizes executor lookup, rich-confirm policy, claim, result mapping, and audit', async () => {
+    const pending = row()
+    const executor = {
+      toolName: 'create_task', label: 'task', riskTier: 'confirm' as const,
+      executionClass: 'internal-http' as const,
+      execute: vi.fn().mockResolvedValue({ resultRef: 'task-7', summary: 'Created task.' })
+    }
+    const recordAudit = vi.fn().mockResolvedValue(undefined)
+    const result = await executeRegisteredPendingAction({
+      proposalId: 'p1',
+      ctx: ctx() as any,
+      richConfirmAck: false
+    }, {
+      peek: vi.fn().mockResolvedValue({ tool_name: 'create_task' }),
+      claim: vi.fn().mockResolvedValue(pending),
+      markExecuted: vi.fn().mockResolvedValue(undefined),
+      revertToProposed: vi.fn().mockResolvedValue(undefined),
+      getExecutor: vi.fn(() => executor as any),
+      recordAudit
+    })
+    expect(result).toMatchObject({ ok: true, resultRef: 'task-7', summary: 'Created task.' })
+    expect(executor.execute).toHaveBeenCalledTimes(1)
+    expect(recordAudit).toHaveBeenCalledWith(expect.objectContaining({
+      pendingId: 'p1', toolName: 'create_task', outcome: 'executed', resultRef: 'task-7'
+    }))
+  })
+
+  it('preserves the ordinary rich-confirm gate before claim', async () => {
+    const claim = vi.fn()
+    const result = await executeRegisteredPendingAction({ proposalId: 'p1', ctx: ctx() as any }, {
+      peek: vi.fn().mockResolvedValue({ tool_name: 'propose_eom_generate' }),
+      claim,
+      markExecuted: vi.fn(),
+      getExecutor: vi.fn(() => ({
+        toolName: 'propose_eom_generate', label: 'EOM', riskTier: 'rich_confirm', requiredPermission: 'ADMIN',
+        executionClass: 'internal-http', execute: vi.fn()
+      } as any)),
+      recordAudit: vi.fn()
+    })
+    expect(result).toMatchObject({ ok: false, requiresRichConfirm: true })
+    expect(claim).not.toHaveBeenCalled()
   })
 })

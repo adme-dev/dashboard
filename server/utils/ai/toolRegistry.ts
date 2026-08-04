@@ -85,7 +85,13 @@ export function toSdkTools(
   tools: AiTool<any>[],
   ctx: ToolContext,
   seed: string,
-  authority?: GodModeAuthority
+  authority?: GodModeAuthority,
+  godModeExecution?: {
+    /** Persisted message/request identity; never a timestamp or caller role/email. */
+    executionIdentity: string
+    executeGodModeTool?: (request: import('./godModeExecution').GodModeExecutionRequest) => Promise<ToolResult>
+    executeGodModeReadTool?: (request: import('./godModeExecution').GodModeReadExecutionRequest) => Promise<ToolResult>
+  }
 ): Record<string, Tool<any, any>> {
   const godModeActive = isActiveGodModeAuthority(authority, ctx.userId)
   const out: Record<string, Tool<any, any>> = {}
@@ -93,7 +99,7 @@ export function toSdkTools(
     out[t.name] = tool({
       description: t.description,
       inputSchema: t.parameters,
-      execute: async (args: any) => {
+      execute: async (args: any, callOptions: any) => {
         // Defense-in-depth re-check at execution time.
         const permissionGranted = !t.requiredPermission || (ctx.permissionGroups
           ? ctx.permissionGroups.includes(t.requiredPermission)
@@ -104,7 +110,34 @@ export function toSdkTools(
         )) {
           return { ok: false, error: 'Not permitted.' }
         }
-        const res = await t.handler(args, ctx)
+        let res: ToolResult
+        if (godModeActive) {
+          const mod = await import('./godModeExecution')
+          if (t.mutates) {
+            const toolCallId = typeof callOptions?.toolCallId === 'string' ? callOptions.toolCallId : ''
+            if (!godModeExecution?.executionIdentity || !toolCallId || !ctx.event) {
+              return { ok: false, error: 'Durable tool-call identity is unavailable.' }
+            }
+            res = await (godModeExecution?.executeGodModeTool ?? mod.executeGodModeTool)({
+              event: ctx.event,
+              conversationId: ctx.conversationId,
+              toolName: t.name,
+              args,
+              idempotencyKey: mod.deriveGodModeIdempotencyKey(godModeExecution.executionIdentity, toolCallId),
+              clientId: ctx.clientScope
+            })
+          } else {
+            res = await (godModeExecution?.executeGodModeReadTool ?? mod.executeGodModeReadTool)({
+              event: ctx.event,
+              tool: t,
+              args,
+              ctx,
+              clientId: ctx.clientScope
+            })
+          }
+        } else {
+          res = await t.handler(args, ctx)
+        }
         if (res.ok && t.returnsUntrusted) {
           return { ok: true, data: spotlight(JSON.stringify(res.data), `${seed}:${t.name}`) }
         }

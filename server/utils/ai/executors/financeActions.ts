@@ -23,6 +23,7 @@ export function makeExpenseApprovalExecutor(post: Poster = defaultPost): ActionE
     label: 'expense approval',
     riskTier: 'confirm',
     requiredPermission: 'FINANCE',
+    executionClass: 'internal-http',
     async execute(p: any, ctx: ToolContext): Promise<ExecutorResult> {
       const r = await post(`/api/agency/expenses/${p.expenseId}/approve`, { action: p.action, reason: p.reason ?? undefined }, ctx)
       const id = r?.expense?.id ?? p.expenseId
@@ -38,6 +39,7 @@ export function makeEomGenerateExecutor(post: Poster = defaultPost): ActionExecu
     label: 'EOM run',
     riskTier: 'rich_confirm',
     requiredPermission: 'ADMIN',
+    executionClass: 'internal-http',
     async execute(p: any, ctx: ToolContext): Promise<ExecutorResult> {
       const r = await post('/api/agency/eom/generate', { month: p.month, year: p.year }, ctx)
       const id = r?.id
@@ -57,6 +59,7 @@ export function makeExpenseClassifyExecutor(put: Putter = defaultPut): ActionExe
     label: 'expense classification',
     riskTier: 'confirm',
     requiredPermission: 'FINANCE',
+    executionClass: 'internal-http',
     async execute(p: any, ctx: ToolContext): Promise<ExecutorResult> {
       const body: any = {}
       if (p.categoryId) body.categoryId = p.categoryId

@@ -90,6 +90,23 @@ export function getQueue(event: H3Event): QueueProducer | null {
 }
 
 /**
+ * Security fallback for a terminal God-mode event. This intentionally bypasses the normal DB-backed
+ * job ledger: its only purpose is preserving immutable terminal evidence while the database path is
+ * unavailable. Cloudflare Queue retry/DLQ behavior owns delivery visibility.
+ */
+export async function sendGodModeAuditTerminal(
+  event: H3Event,
+  payload: GodModeAuditEventInput
+): Promise<boolean> {
+  const queue = getQueue(event)
+  if (!queue) return false
+  await queue.send({ type: 'god-mode.audit-terminal', payload } satisfies GodModeAuditTerminalQueueJob, {
+    contentType: 'json'
+  })
+  return true
+}
+
+/**
  * Enqueue a job. If the queue is unavailable (local dev), runs the fallback synchronously.
  * Returns true if enqueued, false if fallback was used.
  */

@@ -27,6 +27,7 @@ export function makeScheduleSocialPostExecutor(post: SocialPostPoster = defaultP
     label: 'social post',
     riskTier: 'confirm',
     requiredPermission: 'CREATIVE',
+    executionClass: 'internal-http',
     async execute(payload: any, ctx: ToolContext): Promise<ExecutorResult> {
       const created = await post(proposalToSocialPostBody(payload), ctx)
       const client = payload?.clientName ?? 'the client'

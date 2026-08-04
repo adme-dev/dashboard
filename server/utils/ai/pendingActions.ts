@@ -1,6 +1,9 @@
 import { queryOne } from '~~/server/utils/db'
 import { isReadOnlyRole } from '~~/server/utils/permissions'
+import { roleHasPermission } from '~~/server/utils/permissions'
 import { ok, fail, type ToolContext, type ToolResult } from './toolContext'
+import type { AuditInput } from './audit'
+import type { ActionExecutor, ExecutionServices } from './executors/types'
 
 /**
  * Option B (spec §8): the model only PROPOSES a write. proposeAction() persists a server-issued,
@@ -128,4 +131,95 @@ export async function executeProposal(id: string, ctx: ToolContext, db: PendingA
     console.error(`[pendingActions] markExecuted failed for ${id} (task ${created.id} created)`)
   }
   return ok({ taskId: created.id })
+}
+
+export interface RegisteredPendingActionDependencies {
+  peek(id: string, userId: string, conversationId?: string): Promise<{ tool_name: string } | null>
+  claim(id: string, userId: string): Promise<PendingRow | null>
+  markExecuted(id: string, resultRef: string): Promise<void>
+  revertToProposed?(id: string): Promise<void>
+  getExecutor(toolName: string): ActionExecutor | null
+  recordAudit(input: AuditInput): Promise<void>
+}
+
+export interface RegisteredPendingActionRequest {
+  proposalId: string
+  ctx: ToolContext
+  richConfirmAck?: boolean
+  executionServices?: ExecutionServices
+}
+
+export type RegisteredPendingActionResult =
+  | { ok: true, resultRef: string, summary: string, executor: ActionExecutor, claimedRow: PendingRow }
+  | { ok: false, error: string, requiresRichConfirm?: boolean }
+
+/**
+ * Shared proposal execution used by the ordinary confirmation route. Its default policy is exactly
+ * the historical human-confirm path; God-mode direct execution is coordinated separately and never
+ * weakens these checks.
+ */
+export async function executeRegisteredPendingAction(
+  request: RegisteredPendingActionRequest,
+  dependencies: RegisteredPendingActionDependencies
+): Promise<RegisteredPendingActionResult> {
+  const peek = await dependencies.peek(
+    request.proposalId,
+    request.ctx.userId,
+    request.ctx.conversationId
+  )
+  const peekExecutor = peek ? dependencies.getExecutor(peek.tool_name) : null
+  if (peekExecutor?.requiredPermission && !roleHasPermission(request.ctx.userRole, peekExecutor.requiredPermission)) {
+    return { ok: false, error: 'You do not have permission to confirm this action.' }
+  }
+  if (peekExecutor?.riskTier === 'rich_confirm' && request.richConfirmAck !== true) {
+    return { ok: false, requiresRichConfirm: true, error: 'This change needs explicit confirmation before it can be applied.' }
+  }
+
+  let executor: ActionExecutor | null = null
+  let claimedRow: PendingRow | null = null
+  let summary = ''
+  const result = await executeProposal(request.proposalId, request.ctx, {
+    claim: async (id, userId) => {
+      const claimed = await dependencies.claim(id, userId)
+      if (claimed) {
+        claimedRow = claimed
+        executor = dependencies.getExecutor(claimed.tool_name)
+      }
+      return claimed
+    },
+    createTask: async (payload, ctx) => {
+      if (!executor) throw terminalError('No executor registered for this action.')
+      const executed = await executor.execute(payload, ctx, request.executionServices)
+      summary = executed.summary
+      return { id: executed.resultRef }
+    },
+    markExecuted: dependencies.markExecuted,
+    revertToProposed: dependencies.revertToProposed
+  })
+  const resolvedExecutor = executor as ActionExecutor | null
+
+  if (claimedRow) {
+    const row = claimedRow as PendingRow
+    await dependencies.recordAudit({
+      pendingId: row.id,
+      userId: row.user_id,
+      confirmedBy: request.ctx.userId,
+      toolName: row.tool_name,
+      riskTier: resolvedExecutor?.riskTier ?? 'confirm',
+      clientScope: request.ctx.clientScope ?? null,
+      payload: row.resolved_payload,
+      resultRef: result.ok ? ((result.data as any)?.taskId ?? null) : null,
+      outcome: result.ok ? 'executed' : 'failed'
+    })
+  }
+  if (!result.ok || !claimedRow || !resolvedExecutor) {
+    return { ok: false, error: !result.ok && 'error' in result ? result.error : 'Could not complete the action.' }
+  }
+  return {
+    ok: true,
+    resultRef: String((result.data as any).taskId),
+    summary,
+    executor: resolvedExecutor,
+    claimedRow
+  }
 }

@@ -21,6 +21,7 @@ export function makeProofStatusExecutor(put: Putter = defaultPut): ActionExecuto
     label: 'proof status',
     riskTier: 'confirm',
     requiredPermission: 'CREATIVE',
+    executionClass: 'internal-http',
     async execute(p: any, ctx: ToolContext): Promise<ExecutorResult> {
       const r = await put(`/api/agency/proofs/${p.proofId}/status`, { status: p.status }, ctx)
       const id = r?.proof?.id ?? p.proofId

@@ -148,6 +148,8 @@ export async function runToolLoop(opts: {
   metadata?: Record<string, unknown>
   /** One server-generated identity shared by all model attempts that produce a user-visible reply. */
   turnId?: string
+  /** Persisted user-message identity used to derive stable write tool-call idempotency keys. */
+  messageId?: string
   /** Stable identity for this loop within the turn (for example l1 or l2:finance). */
   loopId?: string
   /** Correlation only. Durable ai_pilot_task_evidence is the authority. */
@@ -183,9 +185,11 @@ export async function runToolLoop(opts: {
     if (!opts.ctx.event) throw new Error('God mode audit state is unavailable.')
     await recordGodModeBypassedControls(opts.ctx.event, composition.bypassedControls)
   }
-  const sdkTools = toSdkTools(tools, opts.ctx, opts.seed, opts.authority)
   const turnId = opts.turnId ?? crypto.randomUUID()
   const loopId = opts.loopId ?? 'l1'
+  const sdkTools = toSdkTools(tools, opts.ctx, opts.seed, opts.authority, godModeActive && opts.messageId
+    ? { executionIdentity: opts.messageId }
+    : undefined)
 
   const system = [
     opts.system,

@@ -508,6 +508,7 @@ export async function processUserMessage(
                   featureKey: 'agency_ai_l2_specialist_loop',
                   requestId: conversationId,
                   turnId,
+                  messageId: userMsg.id,
                   loopId: `l2:${pk}`,
                   pilotEvidenceId: pilotUat?.evidenceId,
                   metadata: { specialistPersona: pk, controller: 'l2' },
@@ -578,6 +579,7 @@ export async function processUserMessage(
           catalogInstructionsAlreadyIncluded: true,
           requestId: conversationId,
           turnId,
+          messageId: userMsg.id,
           loopId: 'l1',
           pilotEvidenceId: pilotUat?.evidenceId,
         })

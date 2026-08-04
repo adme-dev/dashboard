@@ -7,7 +7,7 @@ import {
   isGodModeMutationRequest,
   markGodModeRouteFailure
 } from '~~/server/utils/godMode/featureGate'
-import { getQueue } from '~~/server/utils/queue'
+import { sendGodModeAuditTerminal } from '~~/server/utils/queue'
 
 interface ResponseEnvelope {
   body?: unknown
@@ -41,14 +41,8 @@ function replaceWithAuditFailure(
 }
 
 async function persistReadFallback(event: H3Event, terminal: GodModeAuditEventInput): Promise<boolean> {
-  const queue = getQueue(event)
-  if (!queue) return false
   try {
-    await queue.send({
-      type: 'god-mode.audit-terminal',
-      payload: terminal
-    }, { contentType: 'json' })
-    return true
+    return await sendGodModeAuditTerminal(event, terminal)
   } catch {
     return false
   }

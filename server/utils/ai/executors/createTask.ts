@@ -26,6 +26,7 @@ export function makeCreateTaskExecutor(post: TaskPoster = defaultPoster): Action
     toolName: 'create_task',
     label: 'task',
     riskTier: 'confirm',
+    executionClass: 'internal-http',
     async execute(payload: any, ctx: ToolContext): Promise<ExecutorResult> {
       const created = await post(proposalToTaskBody(payload, ctx.userId), ctx)
       const title = payload?.title ?? 'task'

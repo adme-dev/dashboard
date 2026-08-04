@@ -24,6 +24,7 @@ export function makeAssignTaskExecutor(patch: Patcher = defaultPatch): ActionExe
     toolName: 'assign_task',
     label: 'task assignment',
     riskTier: 'confirm',
+    executionClass: 'internal-http',
     async execute(payload: any, ctx: ToolContext): Promise<ExecutorResult> {
       const res = await patch(`/api/agency/tasks/${payload.taskId}/assignee`, { assigneeId: payload.assigneeId }, ctx)
       const id = res?.id ?? payload.taskId
@@ -37,6 +38,7 @@ export function makeStatusChangeExecutor(patch: Patcher = defaultPatch): ActionE
     toolName: 'propose_status_change',
     label: 'status change',
     riskTier: 'confirm',
+    executionClass: 'internal-http',
     async execute(payload: any, ctx: ToolContext): Promise<ExecutorResult> {
       const res = await patch(`/api/agency/tasks/${payload.taskId}/status`, { statusId: payload.statusId }, ctx)
       const id = res?.id ?? payload.taskId
@@ -50,6 +52,7 @@ export function makeBriefConvertExecutor(post: Patcher = defaultPost): ActionExe
     toolName: 'propose_brief_convert',
     label: 'brief conversion',
     riskTier: 'confirm',
+    executionClass: 'internal-http',
     async execute(payload: any, ctx: ToolContext): Promise<ExecutorResult> {
       const res = await post(`/api/agency/briefs/${payload.briefId}/convert`, payload.projectName ? { projectName: payload.projectName } : {}, ctx)
       const projectId = res?.project?.id

@@ -1,0 +1,330 @@
+import { describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
+
+import {
+  createGodModeToolExecutor,
+  type GodModeExecutionDependencies,
+  type GodModeExecutionLedgerRow
+} from '~~/server/utils/ai/godModeExecution'
+import type { ActionExecutor, ExecutionServices } from '~~/server/utils/ai/executors/types'
+import { executors } from '~~/server/utils/ai/executors'
+import { ok } from '~~/server/utils/ai/toolContext'
+import { listRegisteredGodModeMutationFamilies } from '~~/server/utils/godMode/featureGate'
+import { registerGodModeChatMutationFamily } from '~~/server/utils/ai/godModeMutationFamily'
+
+const OWNER_ID = '11111111-1111-4111-8111-111111111111'
+const OTHER_ID = '22222222-2222-4222-8222-222222222222'
+const TENANT_ID = '33333333-3333-4333-8333-333333333333'
+const CLIENT_ID = '44444444-4444-4444-8444-444444444444'
+const CORRELATION_ID = '55555555-5555-4555-8555-555555555555'
+
+function event(userId = OWNER_ID) {
+  return { context: { user: { id: userId } }, headers: new Headers() } as any
+}
+
+function harness(options: {
+  toolName?: string
+  executionClass?: ActionExecutor['executionClass']
+  actorId?: string
+  authorityActive?: boolean
+  scopeValid?: boolean
+  executorError?: Error
+  attemptError?: Error
+  terminalError?: Error
+  failedAuditError?: Error
+} = {}) {
+  const toolName = options.toolName ?? 'create_task'
+  const executionClass = options.executionClass ?? 'internal-http'
+  const calls: string[] = []
+  const ledger = new Map<string, GodModeExecutionLedgerRow>()
+  let proposalClaimed = false
+  let sideEffects = 0
+  const executor: ActionExecutor = {
+    toolName,
+    label: toolName,
+    riskTier: 'confirm',
+    executionClass,
+    async execute(payload, ctx, services) {
+      calls.push('executor')
+      if (options.executorError) throw options.executorError
+      expect(ctx.userId).toBe(options.actorId ?? OWNER_ID)
+      expect(services.idempotencyKey).toBe('message-7:tool-call-2')
+      sideEffects++
+      return { resultRef: `${toolName}-result`, summary: `executed ${toolName}` }
+    }
+  }
+  const deps: GodModeExecutionDependencies = {
+    requireAuth: vi.fn(async () => {
+      calls.push('authority')
+      return { id: options.actorId ?? OWNER_ID, role: 'owner' } as any
+    }),
+    resolveGodModeAuthority: vi.fn(async (_event, actorId) => ({
+      active: options.authorityActive ?? true,
+      actorUserId: actorId,
+      reason: options.authorityActive === false ? 'inactive_or_missing' : 'active_owner',
+      emergencyDisabled: false
+    }) as any),
+    resolveTool: vi.fn(() => ({
+      name: toolName,
+      parameters: z.object({ title: z.string().min(1), clientId: z.string().uuid().optional() }),
+      mutates: true,
+      handler: vi.fn(async (_args, ctx) => {
+        calls.push('handler')
+        expect(ctx.userId).toBe(options.actorId ?? OWNER_ID)
+        return ok({ proposalId: 'proposal-1', resolved: { title: 'Ship', clientId: CLIENT_ID } })
+      })
+    }) as any),
+    resolveExecutor: vi.fn(() => executor),
+    claimExecution: vi.fn(async input => {
+      calls.push('ledger')
+      const existing = ledger.get(input.idempotencyKey)
+      if (existing) return { claimed: false, row: existing }
+      const row: GodModeExecutionLedgerRow = {
+        actorUserId: input.actorUserId,
+        channel: 'application',
+        idempotencyKey: input.idempotencyKey,
+        state: 'in_progress',
+        correlationId: CORRELATION_ID,
+        routeOrTool: input.toolName,
+        executorClass: input.executorClass,
+        tenantId: input.tenantId ?? null,
+        clientId: input.clientId ?? null,
+        resultReference: null,
+        resultDigest: null
+      }
+      ledger.set(input.idempotencyKey, row)
+      return { claimed: true, row }
+    }),
+    appendAudit: vi.fn(async input => {
+      calls.push(input.phase === 'attempt' ? 'attempt' : input.phase)
+      if (input.phase === 'attempt' && options.attemptError) throw options.attemptError
+      if (input.phase === 'succeeded' && options.terminalError) throw options.terminalError
+      if (input.phase === 'failed' && options.failedAuditError) throw options.failedAuditError
+    }),
+    validateScope: vi.fn(async input => {
+      calls.push('scope')
+      return options.scopeValid === false
+        ? { ok: false, code: 'tenant_mismatch' as const }
+        : { ok: true as const, tenantId: input.tenantId ?? TENANT_ID, clientId: input.clientId ?? CLIENT_ID }
+    }),
+    claimProposal: vi.fn(async input => {
+      calls.push('proposal')
+      if (proposalClaimed || input.actorUserId !== (options.actorId ?? OWNER_ID)) return null
+      proposalClaimed = true
+      return { id: input.proposalId, tool_name: toolName, resolved_payload: { title: 'Ship', clientId: CLIENT_ID }, user_id: input.actorUserId }
+    }),
+    completeProposal: vi.fn(async () => undefined),
+    setExecutionState: vi.fn(async input => {
+      calls.push(`ledger:${input.state}`)
+      const current = ledger.get(input.idempotencyKey)!
+      ledger.set(input.idempotencyKey, {
+        ...current,
+        state: input.state,
+        resultReference: input.resultReference ?? current.resultReference,
+        resultDigest: input.resultDigest ?? current.resultDigest
+      })
+    }),
+    transaction: vi.fn(async callback => callback({ query: vi.fn() } as any)),
+    enqueueTerminalAudit: vi.fn(async () => true),
+    sessionDigest: vi.fn(() => 'a'.repeat(64)),
+    correlationId: vi.fn(() => CORRELATION_ID)
+  }
+  return {
+    calls,
+    deps,
+    ledger,
+    execute: createGodModeToolExecutor(deps),
+    sideEffects: () => sideEffects
+  }
+}
+
+describe('God mode direct execution', () => {
+  it.each([
+    ['finance', 'propose_expense_approval'],
+    ['social publishing', 'propose_schedule_post'],
+    ['creative/banner', 'propose_proof_status'],
+    ['CRM/administration', 'propose_opportunity'],
+    ['task writes', 'create_task']
+  ])('executes %s without surfacing a confirmation card', async (_family, toolName) => {
+    const h = harness({ toolName })
+    const result = await h.execute({
+      event: event(), conversationId: 'conversation-1', toolName,
+      args: { title: 'Ship', clientId: CLIENT_ID }, idempotencyKey: 'message-7:tool-call-2',
+      tenantId: TENANT_ID, clientId: CLIENT_ID
+    })
+
+    expect(result).toEqual({ ok: true, data: { resultRef: `${toolName}-result`, summary: `executed ${toolName}`, directExecution: true } })
+    expect(h.calls).toEqual([
+      'authority', 'ledger', 'attempt', 'scope', 'handler', 'proposal', 'executor',
+      'succeeded', 'ledger:succeeded'
+    ])
+    expect(JSON.stringify(result)).not.toContain('proposalId')
+    expect(JSON.stringify(result)).not.toContain('confirm_action')
+  })
+
+  it('validates the tool schema after the durable attempt and before the handler', async () => {
+    const h = harness()
+    const result = await h.execute({
+      event: event(), toolName: 'create_task', args: { title: '' },
+      idempotencyKey: 'message-7:tool-call-2'
+    })
+    expect(result).toEqual({ ok: false, error: 'Invalid tool input.' })
+    expect(h.calls.slice(0, 3)).toEqual(['authority', 'ledger', 'attempt'])
+    expect(h.calls).not.toContain('handler')
+    expect(h.calls).not.toContain('executor')
+  })
+
+  it('fails closed before handler/provider when the attempt audit cannot persist', async () => {
+    const h = harness({ attemptError: new Error('database secret') })
+    await expect(h.execute({ event: event(), toolName: 'create_task', args: { title: 'Ship' }, idempotencyKey: 'message-7:tool-call-2' }))
+      .rejects.toMatchObject({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
+    expect(h.calls).toEqual(['authority', 'ledger', 'attempt', 'ledger:failed'])
+    expect(h.sideEffects()).toBe(0)
+  })
+
+  it('records a bounded failed outcome and sanitizes executor failures', async () => {
+    const h = harness({ executorError: new Error('provider token=secret') })
+    await expect(h.execute({ event: event(), toolName: 'create_task', args: { title: 'Ship' }, idempotencyKey: 'message-7:tool-call-2' }))
+      .rejects.toMatchObject({ statusCode: 502, statusMessage: 'God mode action failed' })
+    expect(h.deps.appendAudit).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'failed', outcomeCode: 'executor_failed' }),
+      expect.anything()
+    )
+    expect(JSON.stringify(vi.mocked(h.deps.appendAudit).mock.calls)).not.toContain('provider token')
+  })
+
+  it('returns only a generic audit failure if the failed terminal cannot persist', async () => {
+    const h = harness({ executorError: new Error('provider token=secret'), failedAuditError: new Error('db password') })
+    await expect(h.execute({ event: event(), toolName: 'create_task', args: { title: 'Ship' }, idempotencyKey: 'message-7:tool-call-2' }))
+      .rejects.toMatchObject({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
+  })
+
+  it('rejects tenant/client mismatch after attempt and before handler/executor', async () => {
+    const h = harness({ scopeValid: false })
+    const result = await h.execute({
+      event: event(), toolName: 'create_task', args: { title: 'Ship', clientId: OTHER_ID },
+      idempotencyKey: 'message-7:tool-call-2', tenantId: TENANT_ID, clientId: OTHER_ID
+    })
+    expect(result).toEqual({ ok: false, error: 'Target is outside the authenticated scope.' })
+    expect(h.calls).not.toContain('handler')
+    expect(h.calls).not.toContain('executor')
+  })
+
+  it('derives the actor from requireAuth and ignores actor-looking args', async () => {
+    const h = harness({ actorId: OTHER_ID, authorityActive: false })
+    await expect(h.execute({
+      event: event(OTHER_ID), toolName: 'create_task',
+      args: { title: 'Ship', actorUserId: OWNER_ID, role: 'owner', email: 'owner@example.test' },
+      idempotencyKey: 'message-7:tool-call-2'
+    })).rejects.toMatchObject({ statusCode: 403, statusMessage: 'God mode is not active' })
+    expect(h.deps.resolveGodModeAuthority).toHaveBeenCalledWith(expect.anything(), OTHER_ID)
+    expect(h.deps.claimExecution).not.toHaveBeenCalled()
+  })
+
+  it('re-resolves authority on the next request so a role downgrade blocks execution', async () => {
+    const h = harness()
+    vi.mocked(h.deps.resolveGodModeAuthority)
+      .mockResolvedValueOnce({ active: true, actorUserId: OWNER_ID, reason: 'active_owner', emergencyDisabled: false } as any)
+      .mockResolvedValueOnce({ active: false, actorUserId: OWNER_ID, reason: 'inactive_or_missing', emergencyDisabled: false } as any)
+    await h.execute({ event: event(), toolName: 'create_task', args: { title: 'Ship' }, idempotencyKey: 'message-7:tool-call-2' })
+    await expect(h.execute({ event: event(), toolName: 'create_task', args: { title: 'Again' }, idempotencyKey: 'message-8:tool-call-1' }))
+      .rejects.toMatchObject({ statusCode: 403 })
+    expect(h.sideEffects()).toBe(1)
+  })
+
+  it('returns the bounded recorded result for a completed transport retry', async () => {
+    const h = harness()
+    const request = { event: event(), toolName: 'create_task', args: { title: 'Ship' }, idempotencyKey: 'message-7:tool-call-2' }
+    await h.execute(request)
+    const replay = await h.execute(request)
+    expect(replay).toEqual({ ok: true, data: { resultRef: 'create_task-result', replayed: true } })
+    expect(h.sideEffects()).toBe(1)
+  })
+
+  it('fails closed on a duplicate correlation claim without leaking database details', async () => {
+    const h = harness()
+    vi.mocked(h.deps.claimExecution).mockRejectedValue(Object.assign(new Error('duplicate key table=secret'), { code: '23505' }))
+    await expect(h.execute({
+      event: event(), toolName: 'create_task', args: { title: 'Ship' },
+      idempotencyKey: 'message-7:tool-call-2'
+    })).rejects.toMatchObject({ statusCode: 503, statusMessage: 'God mode execution ledger unavailable' })
+    expect(h.sideEffects()).toBe(0)
+  })
+
+  it.each(['in_progress', 'ambiguous'] as const)('never automatically re-executes an existing %s claim', async state => {
+    const h = harness()
+    h.ledger.set('message-7:tool-call-2', {
+      actorUserId: OWNER_ID, channel: 'application', idempotencyKey: 'message-7:tool-call-2', state,
+      correlationId: CORRELATION_ID, routeOrTool: 'create_task', executorClass: 'internal-http',
+      tenantId: null, clientId: null, resultReference: null, resultDigest: null
+    })
+    const result = await h.execute({ event: event(), toolName: 'create_task', args: { title: 'Ship' }, idempotencyKey: 'message-7:tool-call-2' })
+    expect(result).toEqual({ ok: false, error: 'Action outcome is pending reconciliation.' })
+    expect(h.sideEffects()).toBe(0)
+  })
+
+  it('allows only one concurrent double-submit to execute', async () => {
+    const h = harness()
+    const request = { event: event(), toolName: 'create_task', args: { title: 'Ship' }, idempotencyKey: 'message-7:tool-call-2' }
+    const [a, b] = await Promise.all([h.execute(request), h.execute(request)])
+    expect([a.ok, b.ok].sort()).toEqual([false, true])
+    expect(h.sideEffects()).toBe(1)
+  })
+
+  it('blocks replay after provider success when success audit persistence fails', async () => {
+    const h = harness({ toolName: 'propose_schedule_post', terminalError: new Error('database unavailable') })
+    const request = { event: event(), toolName: 'propose_schedule_post', args: { title: 'Ship' }, idempotencyKey: 'message-7:tool-call-2' }
+    const first = await h.execute(request)
+    const retry = await h.execute(request)
+    expect(first).toEqual({ ok: false, error: 'Action outcome is pending reconciliation.' })
+    expect(retry).toEqual({ ok: false, error: 'Action outcome is pending reconciliation.' })
+    expect(h.sideEffects()).toBe(1)
+    expect(h.ledger.get(request.idempotencyKey)?.state).toBe('ambiguous')
+    expect(h.deps.enqueueTerminalAudit).toHaveBeenCalledTimes(1)
+  })
+
+  it('rolls a local mutation and success audit back together', async () => {
+    let committed = 0
+    const h = harness({ executionClass: 'local-transactional', terminalError: new Error('audit insert failed') })
+    vi.mocked(h.deps.transaction).mockImplementation(async callback => {
+      const services = { query: vi.fn(async () => { committed++; return { rows: [] } }) } as any
+      try {
+        return await callback(services)
+      } catch (error) {
+        committed = 0
+        throw error
+      }
+    })
+    const result = await h.execute({ event: event(), toolName: 'create_task', args: { title: 'Ship' }, idempotencyKey: 'message-7:tool-call-2' })
+    expect(result.ok).toBe(false)
+    expect(committed).toBe(0)
+    expect(h.ledger.get('message-7:tool-call-2')?.state).toBe('failed')
+  })
+})
+
+describe('executor durability classification', () => {
+  it('classifies every registered executor explicitly and keeps HTTP calls off fake DB transactions', () => {
+    const classes = Object.fromEntries(Object.entries(executors).map(([name, executor]) => [name, executor.executionClass]))
+    expect(classes).toMatchObject({
+      create_task: 'internal-http',
+      propose_schedule_post: 'internal-http',
+      propose_expense_approval: 'internal-http',
+      propose_proof_status: 'internal-http',
+      propose_opportunity: 'internal-http',
+      propose_knowledge_article: 'local-transactional',
+      propose_team_memory: 'local-transactional',
+      link_social_conversation_task: 'local-transactional'
+    })
+    expect(Object.values(classes).every(value => ['local-transactional', 'internal-http', 'external-provider'].includes(String(value)))).toBe(true)
+  })
+})
+
+describe('God mode chat mutation family', () => {
+  it('activates only the persisted conversation messages route family', () => {
+    const unregister = registerGodModeChatMutationFamily()
+    expect(listRegisteredGodModeMutationFamilies()).toEqual([
+      { family: 'ai-chat-direct-execution', method: 'POST' }
+    ])
+    unregister()
+  })
+})

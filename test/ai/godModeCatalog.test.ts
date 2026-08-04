@@ -384,7 +384,11 @@ describe('God-mode SDK wrapper admission', () => {
 
   beforeEach(() => executed.splice(0))
 
-  it('admits and executes registered reads and proposal handlers only from matching server authority', async () => {
+  it('admits reads but routes owner writes directly through the audited coordinator', async () => {
+    const executeGodModeTool = vi.fn().mockResolvedValue(ok({ resultRef: 'task-1', directExecution: true }))
+    const executeGodModeReadTool = vi.fn(async ({ args, tool }: any) => tool.handler(args, {
+      userId: USER_ID, userRole: 'viewer', event: {} as any
+    }))
     const admitted = filterToolsForUser(tools, 'viewer', [], true, godModeAuthority, USER_ID)
     const sdkTools = toSdkTools(admitted, {
       userId: USER_ID,
@@ -392,17 +396,27 @@ describe('God-mode SDK wrapper admission', () => {
       permissionGroups: [],
       assistantReadOnly: true,
       event: {} as any
-    }, 'seed', godModeAuthority)
+    }, 'seed', godModeAuthority, {
+      executionIdentity: 'message-7',
+      executeGodModeTool,
+      executeGodModeReadTool
+    })
 
-    await expect((sdkTools.denied_read as any).execute({}, {})).resolves.toEqual({
+    await expect((sdkTools.denied_read as any).execute({}, { toolCallId: 'read-1' })).resolves.toEqual({
       ok: true,
       data: { admitted: true }
     })
-    await expect((sdkTools.denied_write as any).execute({}, {})).resolves.toEqual({
+    await expect((sdkTools.denied_write as any).execute({}, { toolCallId: 'write-1' })).resolves.toEqual({
       ok: true,
-      data: { proposalId: 'proposal-1' }
+      data: { resultRef: 'task-1', directExecution: true }
     })
-    expect(executed).toEqual(['denied_read', 'denied_write'])
+    expect(executed).toEqual(['denied_read'])
+    expect(executeGodModeTool).toHaveBeenCalledWith(expect.objectContaining({
+      event: expect.anything(),
+      toolName: 'denied_write',
+      idempotencyKey: expect.stringMatching(/^tool:/),
+      args: {}
+    }))
   })
 
   it('does not allow owner role strings, mismatched authority, or emergency-disabled authority to bypass', async () => {

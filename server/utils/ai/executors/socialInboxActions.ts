@@ -1,6 +1,6 @@
 import { getRequestHeaders } from 'h3'
 import type { ToolContext } from '../toolContext'
-import type { ActionExecutor, ExecutorResult } from './types'
+import type { ActionExecutor, ExecutionServices, ExecutorResult } from './types'
 import {
   recordSocialInboxNativeLinkEvent,
   updateSocialInboxNativeLinks
@@ -41,15 +41,18 @@ const defaultPostTask: SocialCaseTaskPoster = (body, ctx) =>
     headers: getRequestHeaders(ctx.event)
   })
 
-async function linkTask(payload: Record<string, unknown>, ctx: ToolContext): Promise<ExecutorResult> {
+async function linkTask(payload: Record<string, unknown>, ctx: ToolContext, services?: ExecutionServices): Promise<ExecutorResult> {
   const conversationId = String(payload.socialConversationId || '')
   const clientId = String(payload.clientId || '')
   const taskId = String(payload.taskId || '')
   if (!conversationId || !clientId || !taskId) throw new Error('Missing social inbox link payload')
 
-  const updated = await updateSocialInboxNativeLinks(db, conversationId, { linked_task_id: taskId }, ctx.userId)
+  const linkDb = services?.db
+    ? { queryOne: async <T>(sql: string, params?: unknown[]) => (await services.db!.query(sql, params)).rows[0] as T ?? null }
+    : db
+  const updated = await updateSocialInboxNativeLinks(linkDb, conversationId, { linked_task_id: taskId }, ctx.userId)
   if (!updated) throw new Error('Conversation not found')
-  await recordSocialInboxNativeLinkEvent(db, conversationId, clientId, { linked_task_id: taskId }, ctx.userId)
+  await recordSocialInboxNativeLinkEvent(linkDb, conversationId, clientId, { linked_task_id: taskId }, ctx.userId)
 
   return {
     resultRef: taskId,
@@ -62,7 +65,8 @@ export function makeCreateSocialCaseTaskExecutor(postTask: SocialCaseTaskPoster 
     toolName: 'create_social_case_task',
     label: 'social case task',
     riskTier: 'confirm',
-    async execute(payload: Record<string, unknown>, ctx: ToolContext): Promise<ExecutorResult> {
+    executionClass: 'internal-http',
+    async execute(payload: Record<string, unknown>, ctx: ToolContext, services?: ExecutionServices): Promise<ExecutorResult> {
       const conversationId = String(payload.socialConversationId || '')
       const clientId = String(payload.clientId || '')
       const departmentId = String(payload.departmentId || '')
@@ -87,7 +91,7 @@ export function makeCreateSocialCaseTaskExecutor(postTask: SocialCaseTaskPoster 
         clientId,
         taskId: created.id,
         taskTitle: title
-      }, ctx)
+      }, ctx, services)
 
       return {
         resultRef: created.id,
@@ -101,6 +105,7 @@ export const linkSocialConversationTaskExecutor: ActionExecutor = {
   toolName: 'link_social_conversation_task',
   label: 'social task link',
   riskTier: 'confirm',
+  executionClass: 'local-transactional',
   execute: linkTask
 }
 
