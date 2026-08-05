@@ -11,7 +11,6 @@ import { FetchHttpHandler } from '@smithy/fetch-http-handler'
 import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
 import { join, dirname } from 'path'
-import { getCachedObjectBinding } from '~~/server/utils/email'
 
 // Local upload directory for dev without R2
 const LOCAL_UPLOAD_DIR = join(process.cwd(), 'server', 'uploads')
@@ -78,7 +77,7 @@ export interface R2BucketBinding {
  */
 function getNativeBucket(requestBucket?: R2BucketBinding): R2BucketBinding | undefined {
   if (R2_BUCKET_NAME !== 'agency-files') return undefined
-  return requestBucket ?? getCachedObjectBinding<R2BucketBinding>('MEDIA_BUCKET')
+  return requestBucket
 }
 
 // File type categories for organization
@@ -251,7 +250,7 @@ export async function uploadFile(
 /**
  * Delete a file from R2, or from local filesystem if R2 is not configured
  */
-export async function deleteFile(key: string): Promise<void> {
+export async function deleteFile(key: string, requestBucket?: R2BucketBinding): Promise<void> {
   if (!isStorageConfigured()) {
     const filePath = join(LOCAL_UPLOAD_DIR, key)
     try {
@@ -262,7 +261,7 @@ export async function deleteFile(key: string): Promise<void> {
     return
   }
 
-  const bucket = getNativeBucket()
+  const bucket = getNativeBucket(requestBucket)
   if (bucket) {
     await bucket.delete(key)
     return
@@ -311,8 +310,8 @@ export async function downloadFileBuffer(key: string): Promise<Buffer> {
 /**
  * Check if a file exists
  */
-export async function fileExists(key: string): Promise<boolean> {
-  const bucket = getNativeBucket()
+export async function fileExists(key: string, requestBucket?: R2BucketBinding): Promise<boolean> {
+  const bucket = getNativeBucket(requestBucket)
   if (bucket) return !!await bucket.head(key)
 
   const client = getR2Client()
@@ -367,14 +366,14 @@ export async function getPresignedDownloadUrl(
 /**
  * Get file metadata
  */
-export async function getFileMetadata(key: string): Promise<{
+export async function getFileMetadata(key: string, requestBucket?: R2BucketBinding): Promise<{
   size: number
   contentType: string
   etag: string | null
   lastModified: Date | undefined
   metadata: Record<string, string> | undefined
 } | null> {
-  const bucket = getNativeBucket()
+  const bucket = getNativeBucket(requestBucket)
   if (bucket) {
     const object = await bucket.head(key)
     if (!object) return null

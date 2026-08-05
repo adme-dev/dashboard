@@ -4,6 +4,7 @@ import type { H3Event } from 'h3'
 const mockRequireAuth = vi.fn()
 const mockReadMultipartFormData = vi.fn()
 const mockUploadBannerAsset = vi.fn()
+const mockDeleteBannerFile = vi.fn()
 const mockCreateBannerAssetStorageKey = vi.fn()
 const mockCreateBannerAssetId = vi.fn()
 const mockBannerAssetDeliveryUrl = vi.fn()
@@ -39,7 +40,8 @@ vi.mock('~~/server/utils/bannerStorage', () => ({
   createBannerAssetId: (...args: unknown[]) => mockCreateBannerAssetId(...args),
   createBannerAssetStorageKey: (...args: unknown[]) => mockCreateBannerAssetStorageKey(...args),
   bannerAssetDeliveryUrl: (...args: unknown[]) => mockBannerAssetDeliveryUrl(...args),
-  uploadBannerAsset: (...args: unknown[]) => mockUploadBannerAsset(...args)
+  uploadBannerAsset: (...args: unknown[]) => mockUploadBannerAsset(...args),
+  deleteBannerFile: (...args: unknown[]) => mockDeleteBannerFile(...args)
 }))
 
 vi.mock('~~/server/utils/appUrl', () => ({
@@ -176,6 +178,11 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
       ASSET.url,
       USER.id
     ])
+
+    const mutation = mockExecuteUpload.mock.calls[0]?.[1]
+    expect(mutation.deleteFile).toBeTypeOf('function')
+    await mutation.deleteFile(ASSET.r2Key)
+    expect(mockDeleteBannerFile).toHaveBeenCalledWith(ASSET.r2Key, mediaBucket)
   })
 
   it('fails closed in Workers instead of entering AWS fallback when binding delivery is incomplete', async () => {

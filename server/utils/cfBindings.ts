@@ -1,11 +1,11 @@
 /**
- * Process-local cache of Cloudflare Pages bindings.
+ * Process-local cache of primitive Cloudflare Pages configuration.
  *
  * Pages exposes bindings on each request context rather than process.env.
- * The middleware refreshes this cache on every request so event-less helpers
- * can read deploy-time-stable configuration without importing the email layer.
+ * Native object bindings are deliberately excluded: request-owned capabilities
+ * must be threaded from event.context.cloudflare.env to the operation using them.
  */
-let cachedCfBindings: Record<string, unknown> | null = null
+let cachedCfBindings: Record<string, string> = {}
 
 interface CloudflarePlatformContext {
   env?: Record<string, unknown>
@@ -35,15 +35,17 @@ export function promoteCloudflarePlatformContext(context: NitroCloudflareContext
 }
 
 export function setCachedCfBindings(env: Record<string, unknown> | null | undefined): void {
-  if (env && typeof env === 'object') cachedCfBindings = env
+  if (!env || typeof env !== 'object') return
+  cachedCfBindings = Object.fromEntries(
+    Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+  )
 }
 
 export function getCachedCfBinding(key: string): string | undefined {
-  const value = cachedCfBindings?.[key]
-  return typeof value === 'string' ? value : undefined
+  return cachedCfBindings[key]
 }
 
 export function getCachedCfObjectBinding<T = unknown>(key: string): T | undefined {
-  const value = cachedCfBindings?.[key]
-  return value && typeof value === 'object' ? value as T : undefined
+  void key
+  return undefined
 }

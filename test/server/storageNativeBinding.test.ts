@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 
-// uploadFile must prefer the Cloudflare native R2 binding (MEDIA_BUCKET) when the
-// cfEnv middleware has cached it — the S3-SDK-over-fetch path silently drops
-// PutObject bodies in the Pages/workerd runtime.
+// Worker-native R2 operations receive MEDIA_BUCKET explicitly from the request;
+// object capabilities are never recovered from module-global mutable state.
 
 const ENV_KEYS = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET_NAME', 'R2_PUBLIC_URL'] as const
 const saved: Record<string, string | undefined> = {}
@@ -51,8 +50,7 @@ describe('uploadFile native R2 binding', () => {
     })
   })
 
-  it('writes via the cached MEDIA_BUCKET binding and verifies persistence', async () => {
-    const { setCfBindings } = await import('~~/server/utils/email')
+  it('writes via the originating MEDIA_BUCKET binding and verifies persistence', async () => {
     const { uploadFile } = await import('~~/server/utils/storage')
 
     const stored = new Map<string, Uint8Array>()
@@ -63,9 +61,15 @@ describe('uploadFile native R2 binding', () => {
       const v = stored.get(key)
       return v ? { size: v.byteLength } : null
     })
-    setCfBindings({ MEDIA_BUCKET: { put, head, delete: vi.fn() } })
+    const mediaBucket = { put, head, delete: vi.fn() }
 
-    const result = await uploadFile(Buffer.from('hello r2'), 'media-image/test.png', 'image/png', { source: 'test' })
+    const result = await uploadFile(
+      Buffer.from('hello r2'),
+      'media-image/test.png',
+      'image/png',
+      { source: 'test' },
+      mediaBucket
+    )
 
     expect(put).toHaveBeenCalledTimes(1)
     expect(put.mock.calls[0]![0]).toBe('media-image/test.png')
@@ -75,23 +79,19 @@ describe('uploadFile native R2 binding', () => {
   })
 
   it('throws loudly when the native put does not persist', async () => {
-    const { setCfBindings } = await import('~~/server/utils/email')
     const { uploadFile } = await import('~~/server/utils/storage')
 
-    setCfBindings({
-      MEDIA_BUCKET: {
-        put: vi.fn(async () => {}),
-        head: vi.fn(async () => null),
-        delete: vi.fn()
-      }
-    })
+    const mediaBucket = {
+      put: vi.fn(async () => {}),
+      head: vi.fn(async () => null),
+      delete: vi.fn()
+    }
 
-    await expect(uploadFile(Buffer.from('x'), 'media-image/gone.png', 'image/png'))
+    await expect(uploadFile(Buffer.from('x'), 'media-image/gone.png', 'image/png', undefined, mediaBucket))
       .rejects.toThrow(/R2 write failed/)
   })
 
   it('reads canonical confirmation metadata through the native binding', async () => {
-    const { setCfBindings } = await import('~~/server/utils/email')
     const { getFileMetadata } = await import('~~/server/utils/storage')
     const uploaded = new Date('2026-07-21T00:00:00.000Z')
     const head = vi.fn(async () => ({
@@ -103,9 +103,9 @@ describe('uploadFile native R2 binding', () => {
       httpMetadata: { contentType: 'application/pdf' },
       customMetadata: { source: 'send' }
     }))
-    setCfBindings({ MEDIA_BUCKET: { put: vi.fn(), head, delete: vi.fn() } })
+    const mediaBucket = { put: vi.fn(), head, delete: vi.fn() }
 
-    await expect(getFileMetadata('send/transfer/file')).resolves.toEqual({
+    await expect(getFileMetadata('send/transfer/file', mediaBucket)).resolves.toEqual({
       size: 2048,
       contentType: 'application/pdf',
       etag: 'etag-1',

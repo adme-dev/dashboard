@@ -197,6 +197,6 @@ export async function uploadBannerThumbnail(
   return uploadFile(buffer, key, 'image/png')
 }
 
-export async function deleteBannerFile(r2Key: string): Promise<void> {
-  return deleteFile(r2Key)
+export async function deleteBannerFile(r2Key: string, requestBucket?: R2BucketBinding): Promise<void> {
+  return deleteFile(r2Key, requestBucket)
 }

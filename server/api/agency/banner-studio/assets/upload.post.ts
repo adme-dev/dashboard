@@ -6,6 +6,7 @@ import {
   bannerAssetDeliveryUrl,
   createBannerAssetId,
   createBannerAssetStorageKey,
+  deleteBannerFile,
   uploadBannerAsset
 } from '~~/server/utils/bannerStorage'
 import {
@@ -78,6 +79,7 @@ export default defineEventHandler(async (event) => {
       if (!requestBucket
         || typeof requestBucket.put !== 'function'
         || typeof requestBucket.head !== 'function'
+        || typeof requestBucket.delete !== 'function'
         || typeof signingSecret !== 'string'
         || new TextEncoder().encode(signingSecret).byteLength < 32) {
         throw createError({
@@ -92,6 +94,7 @@ export default defineEventHandler(async (event) => {
     }
     return await executeGodModeBannerAssetUpload(event, {
       r2Key,
+      deleteFile: async key => await deleteBannerFile(key, nativeUpload?.bucket),
       uploadFile: async key => nativeUpload
         ? await uploadBannerAsset(
             validated.buffer,

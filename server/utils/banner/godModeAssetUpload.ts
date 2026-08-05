@@ -45,6 +45,7 @@ export interface StoredBannerAssetUpload {
 export interface BannerAssetUploadMutation {
   r2Key: string
   uploadFile: (r2Key: string) => Promise<StoredBannerAssetUpload>
+  deleteFile?: (r2Key: string) => Promise<void>
   insertAsset: (
     db: TransactionDb | null,
     stored: StoredBannerAssetUpload
@@ -344,6 +345,7 @@ export async function executeGodModeBannerAssetUpload(
     return replay.rows[0] as BannerAssetUploadResult
   }
 
+  if (upload.deleteFile) current.deleteBannerFile = upload.deleteFile
   current.newR2Key = upload.r2Key
   try {
     const stored = await upload.uploadFile(upload.r2Key)

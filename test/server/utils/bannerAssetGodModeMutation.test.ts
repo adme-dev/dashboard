@@ -280,6 +280,43 @@ describe('God mode banner asset upload coordination', () => {
     expect(deleteBannerFile).toHaveBeenCalledWith(R2_KEY)
   })
 
+  it('keeps concurrent rollback deletion bound to each upload request bucket', async () => {
+    const firstKey = 'banner-assets/owner-a/object-a/launch-car.jpg'
+    const secondKey = 'banner-assets/owner-b/object-b/launch-car.jpg'
+    const firstDelete = vi.fn()
+    const secondDelete = vi.fn()
+    const firstEvent = request({ idempotencyKey: 'banner-upload-first-1234' })
+    const secondEvent = request({ idempotencyKey: 'banner-upload-second-123' })
+    const firstPrepared = await prepareGodModeBannerAssetUpload(firstEvent, dependencies)
+    const secondPrepared = await prepareGodModeBannerAssetUpload(secondEvent, dependencies)
+
+    const firstExecution = executeGodModeBannerAssetUpload(firstEvent, {
+      r2Key: firstKey,
+      uploadFile: vi.fn().mockResolvedValue({ key: firstKey, url: asset.url, size: asset.fileSize }),
+      deleteFile: firstDelete,
+      insertAsset: vi.fn().mockRejectedValue(new Error('first insert failed'))
+    })
+    const secondExecution = executeGodModeBannerAssetUpload(secondEvent, {
+      r2Key: secondKey,
+      uploadFile: vi.fn().mockResolvedValue({ key: secondKey, url: asset.url, size: asset.fileSize }),
+      deleteFile: secondDelete,
+      insertAsset: vi.fn().mockRejectedValue(new Error('second insert failed'))
+    })
+
+    await expect(firstExecution).rejects.toThrow('first insert failed')
+    await expect(secondExecution).rejects.toThrow('second insert failed')
+    await Promise.all([
+      firstPrepared.persistTerminal(terminal('failed')),
+      secondPrepared.persistTerminal(terminal('failed'))
+    ])
+
+    expect(firstDelete).toHaveBeenCalledWith(firstKey)
+    expect(firstDelete).not.toHaveBeenCalledWith(secondKey)
+    expect(secondDelete).toHaveBeenCalledWith(secondKey)
+    expect(secondDelete).not.toHaveBeenCalledWith(firstKey)
+    expect(deleteBannerFile).not.toHaveBeenCalled()
+  })
+
   it('still deletes the new R2 object when savepoint rollback also fails', async () => {
     query.mockImplementation(async (sql: string) => {
       if (sql.includes('INSERT INTO god_mode_execution_ledger')) return { rows: [{ state: 'in_progress' }] }
