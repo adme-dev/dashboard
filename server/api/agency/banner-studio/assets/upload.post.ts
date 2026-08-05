@@ -133,7 +133,9 @@ export default defineEventHandler(async (event) => {
     })
   } catch (error: unknown) {
     if (isHttpError(error)) throw error
-    console.error('Failed to upload banner asset:', error)
+    console.error('Failed to upload banner asset', {
+      errorName: error instanceof Error ? error.name : typeof error
+    })
     throw createError({ statusCode: 500, statusMessage: 'Failed to upload banner asset' })
   }
 })

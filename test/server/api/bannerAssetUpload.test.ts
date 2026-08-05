@@ -243,10 +243,14 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
 
   it('returns the bounded upload error while preserving coordinator HTTP failures', async () => {
     const handler = (await import('~~/server/api/agency/banner-studio/assets/upload.post')).default
-    mockExecuteUpload.mockRejectedValueOnce(new Error('R2 unavailable'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockExecuteUpload.mockRejectedValueOnce(new Error(`R2 unavailable for ${ASSET.r2Key}`))
     await expect(handler(event())).rejects.toMatchObject({ statusCode: 500, statusMessage: 'Failed to upload banner asset' })
+    expect(consoleError).toHaveBeenCalledWith('Failed to upload banner asset', { errorName: 'Error' })
+    expect(String(consoleError.mock.calls[0]?.[1])).not.toContain(ASSET.r2Key)
 
     mockExecuteUpload.mockRejectedValueOnce(Object.assign(new Error('not replayable'), { statusCode: 409, statusMessage: 'not replayable' }))
     await expect(handler(event())).rejects.toMatchObject({ statusCode: 409, statusMessage: 'not replayable' })
+    consoleError.mockRestore()
   })
 })
