@@ -84,6 +84,10 @@ const publicRoutes = [
   '/api/public/contact'
 ]
 
+// Private Banner Studio objects are exposed only through one exact signed
+// asset-id path segment; the route verifies the HMAC and live database row.
+const BANNER_ASSET_CAPABILITY_PATH = /^\/api\/public\/banner-assets\/v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
+
 // These operational diagnostics accept either an admin session or the
 // dedicated smoke secret in their handlers. They must reach that inline guard
 // before this middleware tries to interpret the machine secret as a user JWT.
@@ -132,7 +136,8 @@ export default defineEventHandler(async (event) => {
   }
 
   // Skip auth for public API routes
-  if (publicRoutes.some(route => pathname.startsWith(route))) {
+  if (publicRoutes.some(route => pathname.startsWith(route))
+    || BANNER_ASSET_CAPABILITY_PATH.test(pathname)) {
     return
   }
 

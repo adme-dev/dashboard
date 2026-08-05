@@ -5,6 +5,8 @@ const mockRequireAuth = vi.fn()
 const mockReadMultipartFormData = vi.fn()
 const mockUploadBannerAsset = vi.fn()
 const mockCreateBannerAssetStorageKey = vi.fn()
+const mockCreateBannerAssetId = vi.fn()
+const mockBannerAssetDeliveryUrl = vi.fn()
 const mockQueryOne = vi.fn()
 const mockExecuteUpload = vi.fn()
 
@@ -34,8 +36,14 @@ vi.mock('~~/server/utils/auth', () => ({
 }))
 
 vi.mock('~~/server/utils/bannerStorage', () => ({
+  createBannerAssetId: (...args: unknown[]) => mockCreateBannerAssetId(...args),
   createBannerAssetStorageKey: (...args: unknown[]) => mockCreateBannerAssetStorageKey(...args),
+  bannerAssetDeliveryUrl: (...args: unknown[]) => mockBannerAssetDeliveryUrl(...args),
   uploadBannerAsset: (...args: unknown[]) => mockUploadBannerAsset(...args)
+}))
+
+vi.mock('~~/server/utils/appUrl', () => ({
+  getAppUrl: () => 'https://app.xeroflow.test'
 }))
 
 vi.mock('~~/server/utils/db', () => ({
@@ -54,7 +62,7 @@ const ASSET = {
   mimeType: 'image/jpeg',
   fileSize: JPEG.length,
   r2Key: 'banner-assets/owner/object/Launch-Car.jpg',
-  url: 'https://cdn.example.com/Launch-Car.jpg',
+  url: 'https://app.xeroflow.test/api/public/banner-assets/v1.asset.signature',
   thumbnailUrl: null,
   tags: [],
   uploadedBy: USER.id,
@@ -88,6 +96,8 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
       data: JPEG
     }])
     mockUploadBannerAsset.mockResolvedValue({ key: ASSET.r2Key, url: ASSET.url, size: JPEG.length })
+    mockBannerAssetDeliveryUrl.mockResolvedValue(ASSET.url)
+    mockCreateBannerAssetId.mockReturnValue(ASSET.id)
     mockCreateBannerAssetStorageKey.mockReturnValue(ASSET.r2Key)
     mockQueryOne.mockResolvedValue(ASSET)
     mockExecuteUpload.mockImplementation(async (_event, mutation) => {
@@ -120,6 +130,7 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
     expect(mockCreateBannerAssetStorageKey).toHaveBeenCalledWith('Launch-Car.jpg', USER.id)
     expect(mockUploadBannerAsset).toHaveBeenCalledWith(JPEG, 'Launch-Car.jpg', 'image/jpeg', USER.id, ASSET.r2Key)
     expect(mockQueryOne).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO banner_assets'), [
+      ASSET.id,
       'Launch-Car.jpg',
       'image/jpeg',
       JPEG.length,
@@ -133,7 +144,11 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
     const mediaBucket = { put: vi.fn(), head: vi.fn(), delete: vi.fn() }
     const request = event()
     ;(request.context as Record<string, unknown>).cloudflare = {
-      env: { MEDIA_BUCKET: mediaBucket }
+      env: {
+        APP_URL: 'https://app.xeroflow.test',
+        MEDIA_BUCKET: mediaBucket,
+        RENDER_LINK_SECRET: 'render-link-secret-with-at-least-thirty-two-bytes'
+      }
     }
     const handler = (await import('~~/server/api/agency/banner-studio/assets/upload.post')).default
 
@@ -145,8 +160,39 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
       'image/jpeg',
       USER.id,
       ASSET.r2Key,
-      mediaBucket
+      { bucket: mediaBucket, assetUrl: ASSET.url }
     )
+    expect(mockBannerAssetDeliveryUrl).toHaveBeenCalledWith(
+      ASSET.id,
+      'https://app.xeroflow.test',
+      'render-link-secret-with-at-least-thirty-two-bytes'
+    )
+    expect(mockQueryOne).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO banner_assets'), [
+      ASSET.id,
+      'Launch-Car.jpg',
+      'image/jpeg',
+      JPEG.length,
+      ASSET.r2Key,
+      ASSET.url,
+      USER.id
+    ])
+  })
+
+  it('fails closed in Workers instead of entering AWS fallback when binding delivery is incomplete', async () => {
+    const handler = (await import('~~/server/api/agency/banner-studio/assets/upload.post')).default
+    const missingBucket = event()
+    ;(missingBucket.context as Record<string, unknown>).cloudflare = {
+      env: { RENDER_LINK_SECRET: 'render-link-secret-with-at-least-thirty-two-bytes' }
+    }
+
+    await expect(handler(missingBucket)).rejects.toMatchObject({ statusCode: 503 })
+
+    const missingSecret = event()
+    ;(missingSecret.context as Record<string, unknown>).cloudflare = {
+      env: { MEDIA_BUCKET: { put: vi.fn(), head: vi.fn(), delete: vi.fn() } }
+    }
+    await expect(handler(missingSecret)).rejects.toMatchObject({ statusCode: 503 })
+    expect(mockUploadBannerAsset).not.toHaveBeenCalled()
   })
 
   it('preserves ordinary uploads without owner coordination headers', async () => {

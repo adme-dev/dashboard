@@ -1,7 +1,13 @@
 import { createError, getHeader, readMultipartFormData } from 'h3'
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
-import { createBannerAssetStorageKey, uploadBannerAsset } from '~~/server/utils/bannerStorage'
+import { getAppUrl } from '~~/server/utils/appUrl'
+import {
+  bannerAssetDeliveryUrl,
+  createBannerAssetId,
+  createBannerAssetStorageKey,
+  uploadBannerAsset
+} from '~~/server/utils/bannerStorage'
 import {
   validateBannerAssetUpload,
   type ValidatedBannerAssetUpload
@@ -59,20 +65,41 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
+    const assetId = createBannerAssetId()
     const r2Key = createBannerAssetStorageKey(validated.fileName, user.id)
-    const requestBucket = (event.context as {
-      cloudflare?: { env?: { MEDIA_BUCKET?: R2BucketBinding } }
-    }).cloudflare?.env?.MEDIA_BUCKET
+    const cloudflare = (event.context as {
+      cloudflare?: { env?: Record<string, unknown> }
+    }).cloudflare
+    const cloudflareEnv = cloudflare?.env
+    let nativeUpload: { bucket: R2BucketBinding, assetUrl: string } | undefined
+    if (cloudflare) {
+      const requestBucket = cloudflareEnv?.MEDIA_BUCKET as R2BucketBinding | undefined
+      const signingSecret = cloudflareEnv?.RENDER_LINK_SECRET
+      if (!requestBucket
+        || typeof requestBucket.put !== 'function'
+        || typeof requestBucket.head !== 'function'
+        || typeof signingSecret !== 'string'
+        || new TextEncoder().encode(signingSecret).byteLength < 32) {
+        throw createError({
+          statusCode: 503,
+          statusMessage: 'Banner asset storage is unavailable'
+        })
+      }
+      nativeUpload = {
+        bucket: requestBucket,
+        assetUrl: await bannerAssetDeliveryUrl(assetId, getAppUrl(event), signingSecret)
+      }
+    }
     return await executeGodModeBannerAssetUpload(event, {
       r2Key,
-      uploadFile: async key => requestBucket
+      uploadFile: async key => nativeUpload
         ? await uploadBannerAsset(
             validated.buffer,
             validated.fileName,
             validated.mimeType,
             user.id,
             key,
-            requestBucket
+            nativeUpload
           )
         : await uploadBannerAsset(
             validated.buffer,
@@ -83,8 +110,8 @@ export default defineEventHandler(async (event) => {
           ),
       insertAsset: async (db, stored: StoredBannerAssetUpload) => {
         const sql = `
-          INSERT INTO banner_assets (name, mime_type, file_size, r2_key, url, uploaded_by)
-          VALUES ($1, $2, $3, $4, $5, $6)
+          INSERT INTO banner_assets (id, name, mime_type, file_size, r2_key, url, uploaded_by)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
           RETURNING
             id, name,
             mime_type AS "mimeType",
@@ -96,7 +123,7 @@ export default defineEventHandler(async (event) => {
             uploaded_by AS "uploadedBy",
             created_at AS "createdAt"
         `
-        const params = [validated.fileName, validated.mimeType, stored.size, stored.key, stored.url, user.id]
+        const params = [assetId, validated.fileName, validated.mimeType, stored.size, stored.key, stored.url, user.id]
         const row = db
           ? (await db.query(sql, params)).rows[0]
           : await queryOne(sql, params)

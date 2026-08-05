@@ -84,6 +84,18 @@ describe('auth middleware internal bearer endpoints', () => {
     expect(validateSession).not.toHaveBeenCalled()
   })
 
+  it('lets a Banner Studio asset capability reach its inline HMAC guard', async () => {
+    await expect(handler(fakeEvent('/api/public/banner-assets/v1.asset.signature'))).resolves.toBeUndefined()
+    expect(validateSession).not.toHaveBeenCalled()
+  })
+
+  it('does not broaden the Banner Studio capability bypass to nested sibling routes', async () => {
+    await expect(handler(fakeEvent('/api/public/banner-assets/v1.asset.signature/admin'))).rejects.toMatchObject({
+      statusCode: 401,
+      statusMessage: 'Authentication required'
+    })
+  })
+
   it.each([
     '/api/agency/workflows/readiness',
     '/api/agency/workflows/status',
