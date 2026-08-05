@@ -28,7 +28,7 @@ export function resolveWorkersAiGatewayId(event: H3Event): string | null {
   try {
     const url = new URL(configured)
     const parts = url.pathname.split('/').filter(Boolean)
-    const id = parts[0] === 'v1' && parts.length >= 3 ? parts[2] : ''
+    const id = parts[0] === 'v1' && parts.length >= 3 ? (parts[2] ?? '') : ''
     return url.hostname === 'gateway.ai.cloudflare.com' && /^[a-zA-Z0-9_-]{1,64}$/.test(id) ? id : null
   } catch {
     return null
@@ -53,6 +53,8 @@ export async function speechToText(
 ): Promise<{ text: string; durationMs: number } | null> {
   const ai = getAI(event)
   if (!ai) return null
+  const gatewayId = resolveWorkersAiGatewayId(event)
+  if (!gatewayId) return null
 
   if (!audioBuffer || (audioBuffer instanceof ArrayBuffer ? audioBuffer.byteLength : audioBuffer.length) === 0) {
     return null
@@ -73,6 +75,11 @@ export async function speechToText(
     })
     const result = await ai.run(assignment.modelId, {
       audio: base64Audio,
+    }, {
+      gateway: {
+        id: gatewayId,
+        metadata: { featureKey: options.featureKey ?? 'workers_ai_speech_to_text' },
+      },
     })
     const durationMs = Date.now() - start
 
@@ -82,7 +89,7 @@ export async function speechToText(
       featureKey: options.featureKey ?? 'workers_ai_speech_to_text',
       provider: 'workers_ai',
       modelId: assignment.modelId,
-      gatewayUsed: false,
+      gatewayUsed: true,
       fallbackUsed: false,
       userId: options.userId,
       clientId: options.clientId,
@@ -104,6 +111,8 @@ export async function speechToText(
       featureKey: options.featureKey ?? 'workers_ai_speech_to_text',
       provider: 'workers_ai',
       modelId: '@cf/openai/whisper-large-v3-turbo',
+      gatewayUsed: true,
+      fallbackUsed: false,
       status: 'error',
       errorCode: err instanceof Error ? err.message.slice(0, 160) : 'unknown_error',
       metadata: options.metadata ?? {},

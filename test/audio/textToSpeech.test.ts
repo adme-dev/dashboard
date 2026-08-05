@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { textToSpeech, detectAudioFormat } from '~~/server/utils/aiVoice'
+import { speechToText, textToSpeech, detectAudioFormat } from '~~/server/utils/aiVoice'
 
 const mockRecordAiInvocation = vi.fn()
 
@@ -22,6 +22,36 @@ const b64 = (bytes: number[]) => Buffer.from(Uint8Array.from(bytes)).toString('b
 const WAV = [0x52, 0x49, 0x46, 0x46, 0x10, 0, 0, 0, 0x57, 0x41, 0x56, 0x45, 1, 2, 3, 4]
 // MPEG frame sync
 const MP3 = [0xff, 0xfb, 0x90, 0x00, 0x11, 0x22]
+
+describe('speechToText (Workers AI Gateway enforcement)', () => {
+  it('routes transcription through the configured Cloudflare AI Gateway', async () => {
+    mockRecordAiInvocation.mockReset()
+    mockRecordAiInvocation.mockResolvedValue(undefined)
+    const event = eventWithAI(async () => ({ text: 'approved transcript' }))
+
+    await expect(speechToText(event, Uint8Array.from(MP3))).resolves.toEqual({
+      text: 'approved transcript',
+      durationMs: expect.any(Number),
+    })
+    expect((event as any).context.cloudflare.env.AI.run).toHaveBeenCalledWith(
+      '@cf/openai/whisper-large-v3-turbo',
+      expect.objectContaining({ audio: expect.any(String) }),
+      { gateway: { id: 'agency-gateway', metadata: expect.objectContaining({ featureKey: 'workers_ai_speech_to_text' }) } },
+    )
+    expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      gatewayUsed: true,
+      fallbackUsed: false,
+    }))
+  })
+
+  it('fails closed before transcription when the configured gateway is absent or invalid', async () => {
+    for (const gatewayUrl of ['', 'https://gateway.ai.cloudflare.com/not-a-gateway']) {
+      const event = eventWithAI(async () => ({ text: 'must not run' }), gatewayUrl)
+      await expect(speechToText(event, Uint8Array.from(MP3))).resolves.toBeNull()
+      expect((event as any).context.cloudflare.env.AI.run).not.toHaveBeenCalled()
+    }
+  })
+})
 
 describe('textToSpeech (Workers AI melotts response handling)', () => {
   it('decodes the real { audio: <base64> } response shape into bytes (regression: used to 503)', async () => {
