@@ -129,15 +129,15 @@ describe('God mode gate inventory', () => {
 
   it('freezes every pre-existing direct gate with an explicit classification', () => {
     const inventory = legacyInventory()
-    expect(inventory.rows).toHaveLength(1336)
+    expect(inventory.rows).toHaveLength(1344)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 92,
+      identity_tenant_hard_boundary: 98,
       provider_infrastructure_availability: 188,
       application_governance_bypass: 671,
       ordinary_user_behavior: 174,
-      unrelated_configuration: 211
+      unrelated_configuration: 213
     })
-    expect(inventory.digest).toBe('7d575610e9e384e7e1a59bdf3d94d5f2914313656f2300abd129e2d2cc335734')
+    expect(inventory.digest).toBe('3f5e9d14f6554a0ffe5af78e7040822d1fd9d417486452a542b291300c1ec1cf')
     expect(CENTRAL_HELPER_BY_CLASS).toEqual({
       identity_tenant_hard_boundary: 'unchanged independent scope helper',
       provider_infrastructure_availability: 'unchanged provider/configuration check',
