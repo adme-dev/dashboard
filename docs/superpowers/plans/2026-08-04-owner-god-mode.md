@@ -375,7 +375,7 @@ Implement `server/plugins/godModeAudit.ts` with Nitro/H3 response and error hook
 Run the Step 3 tests plus the complete route-isolation inventory and permission, board-access, client-isolation, and SSRF suites discovered with:
 
 ```bash
-rg --files test | rg '(permission|boardAccess|client.*isolation|ssrf)' 
+rg --files test | rg '(permission|boardAccess|client.*isolation|ssrf)'
 ```
 
 Expected: God-mode cases pass and all negative controls remain denied.

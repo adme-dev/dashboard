@@ -1,7 +1,9 @@
 # Owner God Mode — Design Specification
 
-**Date:** 2026-08-04  
-**Status:** Approved design  
+**Date:** 2026-08-04
+
+**Status:** Approved design
+
 **Scope:** XeroFlow Agency application and its MCP surface
 
 ## Goal
