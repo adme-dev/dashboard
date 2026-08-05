@@ -3,6 +3,7 @@ import {
   diffGoogleAiMaxMaterialState,
   type GoogleAiMaxCampaignState,
 } from '~~/server/utils/googleAiMax'
+import { buildCampaignDeepLink } from '~~/server/utils/platformDeepLinks'
 
 export type GoogleAiMaxStateEventType =
   | 'first_seen'
@@ -284,6 +285,10 @@ function stateParams(
     state.observedAt,
     scanRunId,
     JSON.stringify(state),
+    buildCampaignDeepLink('google_ads', state.campaignId, {
+      accountId: state.customerId,
+      metadata: null,
+    }),
   ]
 }
 
@@ -301,12 +306,12 @@ async function insertState(
       search_term_matching_disabled_ad_group_count, migration_reason,
       readiness_status, risk_flags, effective_search_term_matching,
       effective_text_customisation, effective_final_url_expansion,
-      first_observed_at, last_observed_at, last_changed_at, last_scan_run_id,
+      deep_link, first_observed_at, last_observed_at, last_changed_at, last_scan_run_id,
       raw_evidence
     ) VALUES (
       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-      $15, $16, $17, $18::jsonb, $19, $20, $21, $22, $22, $22, $23,
-      $24::jsonb
+      $15, $16, $17, $18::jsonb, $19, $20, $21, $25, $22, $22, $22,
+      $23, $24::jsonb
     )
     RETURNING id
   `, stateParams(state, scanRunId))
@@ -343,12 +348,13 @@ async function updateState(
         effective_search_term_matching = $19,
         effective_text_customisation = $20,
         effective_final_url_expansion = $21,
+        deep_link = $25,
         last_observed_at = $22,
         last_scan_run_id = $23,
         raw_evidence = $24::jsonb,
-        last_changed_at = $25,
+        last_changed_at = $26,
         updated_at = NOW()
-    WHERE id = $26
+    WHERE id = $27
       AND tenant_id = $1
       AND connection_id = $2
   `, [...stateParams(state, scanRunId), lastChangedAt, stateId])

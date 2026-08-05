@@ -87,6 +87,12 @@ describe('persistGoogleAiMaxCampaignStates', () => {
     expect(mockClientQuery.mock.calls.filter(
       call => String(call[0]).includes('INSERT INTO google_ai_max_state_events'),
     )).toHaveLength(1)
+    const stateInsert = mockClientQuery.mock.calls.find(
+      call => String(call[0]).includes('INSERT INTO google_ai_max_campaign_state'),
+    )
+    expect(stateInsert?.[1]).toContain(
+      'https://ads.google.com/aw/campaigns?campaignId=456&ocid=1234567890',
+    )
   })
 
   it('refreshes identical evidence without creating a state event', async () => {
