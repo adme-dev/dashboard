@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { BannerBrandKit, BrandKitFont, BrandKitLogo } from '~/types/banner-studio'
-import { isAmbiguousApiFailure } from '~/utils/apiError'
-import { nextBannerUploadKey, prepareBannerUploadRequest } from '~/utils/bannerUpload'
+import { createBannerUploadSession } from '~/utils/bannerUpload'
 
 defineProps<{
   /** When true, shows compact view for sidebar embed */
@@ -90,51 +89,35 @@ const availableWeights = [100, 200, 300, 400, 500, 600, 700, 800, 900]
 
 // ── Logo management ────────────────────
 const logoFileInput = ref<HTMLInputElement | null>(null)
-let pendingLogoFile: File | null = null
-let pendingLogoUploadKey = nextBannerUploadKey()
-
-function logoUploadKeyFor(file: File): string {
-  if (pendingLogoFile && pendingLogoFile !== file) pendingLogoUploadKey = nextBannerUploadKey()
-  pendingLogoFile = file
-  return pendingLogoUploadKey
-}
-
-function rotateLogoUploadKey() {
-  pendingLogoFile = null
-  pendingLogoUploadKey = nextBannerUploadKey()
-}
+const logoUploadSession = createBannerUploadSession()
 
 async function uploadLogo(files: FileList | File[]) {
-  for (const file of files) {
-    let requestStarted = false
-    let requestCompleted = false
-    try {
-      const request = await prepareBannerUploadRequest(file, logoUploadKeyFor(file))
-      requestStarted = true
-      const result = await apiFetch<{ url: string; r2Key: string }>('/api/agency/banner-studio/assets/upload', {
-        method: 'POST',
-        ...request
-      })
-      requestCompleted = true
-      rotateLogoUploadKey()
+  const outcomes = await logoUploadSession.attemptFiles(files, async (request) => {
+    return await apiFetch<{ url: string; r2Key: string }>('/api/agency/banner-studio/assets/upload', {
+      method: 'POST',
+      ...request
+    })
+  })
+  for (const outcome of outcomes) {
+    if (outcome.ok) {
       formLogos.value.push({
-        name: file.name.replace(/\.[^.]+$/, ''),
-        url: result.url,
-        r2Key: result.r2Key,
+        name: outcome.file.name.replace(/\.[^.]+$/, ''),
+        url: outcome.value.url,
+        r2Key: outcome.value.r2Key,
       })
-    } catch (error: unknown) {
-      const ambiguous = requestStarted && !requestCompleted && isAmbiguousApiFailure(error)
-      if (!ambiguous) rotateLogoUploadKey()
-      toast.add({ title: 'Upload failed', description: `Failed to upload ${file.name}`, color: 'error' })
-      if (ambiguous) break
+    } else {
+      toast.add({ title: 'Upload failed', description: `Failed to upload ${outcome.file.name}`, color: 'error' })
     }
   }
 }
 
-function onLogoFileSelect(e: Event) {
+async function onLogoFileSelect(e: Event) {
   const input = e.target as HTMLInputElement
-  if (input.files?.length) uploadLogo(input.files)
-  input.value = ''
+  try {
+    if (input.files?.length) await uploadLogo(input.files)
+  } finally {
+    input.value = ''
+  }
 }
 
 function removeLogo(index: number) {

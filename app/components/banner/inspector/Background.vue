@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import type { BannerAsset, AnimInType } from '~/types/banner-studio'
 import { ANIM_IN, EASES, EASE_GROUPS, easeSvgPath } from '~/utils/banner-constants'
-import { isAmbiguousApiFailure } from '~/utils/apiError'
-import { nextBannerUploadKey, prepareBannerUploadRequest } from '~/utils/bannerUpload'
+import { createBannerUploadSession } from '~/utils/bannerUpload'
 
 const { state, activeLayers, updateLayer, addBgLayer, removeLayer } = useBannerStudio()
 const toast = useToast()
@@ -17,21 +16,10 @@ const accentPresets = ['#e8c84a', '#4a8fe8', '#e84a4a', '#3ddd7a', '#c04ae8']
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const videoFileInput = ref<HTMLInputElement | null>(null)
-const isUploading = ref(false)
+const uploadOperationCount = ref(0)
+const isUploading = computed(() => uploadOperationCount.value > 0)
 const showAssetPicker = ref(false)
-let pendingUploadFile: File | null = null
-let pendingUploadKey = nextBannerUploadKey()
-
-function uploadKeyFor(file: File): string {
-  if (pendingUploadFile && pendingUploadFile !== file) pendingUploadKey = nextBannerUploadKey()
-  pendingUploadFile = file
-  return pendingUploadKey
-}
-
-function rotateUploadKey() {
-  pendingUploadFile = null
-  pendingUploadKey = nextBannerUploadKey()
-}
+const uploadSession = createBannerUploadSession()
 
 // Multi-bg support
 const bgLayers = computed(() =>
@@ -144,68 +132,62 @@ function onRemoveBg() {
 
 async function uploadBgImage(files: FileList | File[]) {
   if (!files.length || !activeBg.value) return
-  const file = files[0]
-  if (!file) return
-  isUploading.value = true
-  let requestStarted = false
-  let requestCompleted = false
+  uploadOperationCount.value++
   try {
-    const request = await prepareBannerUploadRequest(file, uploadKeyFor(file))
-    requestStarted = true
-    const result = await apiFetch<BannerAsset>('/api/agency/banner-studio/assets/upload', {
-      method: 'POST',
-      ...request
+    const [outcome] = await uploadSession.attemptFiles(files, async (request) => {
+      return await apiFetch<BannerAsset>('/api/agency/banner-studio/assets/upload', {
+        method: 'POST',
+        ...request
+      })
     })
-    requestCompleted = true
-    rotateUploadKey()
-    updateLayer(activeBg.value!.id, { src: result.url, srcType: 'image', fit: activeBg.value!.fit || 'cover' })
-    toast.add({ title: 'Background set', description: 'Image uploaded and applied', color: 'success' })
-  } catch (error: unknown) {
-    const ambiguous = requestStarted && !requestCompleted && isAmbiguousApiFailure(error)
-    if (!ambiguous) rotateUploadKey()
-    toast.add({ title: 'Upload failed', description: 'Failed to upload image', color: 'error' })
+    if (outcome?.ok) {
+      updateLayer(activeBg.value!.id, { src: outcome.value.url, srcType: 'image', fit: activeBg.value!.fit || 'cover' })
+      toast.add({ title: 'Background set', description: 'Image uploaded and applied', color: 'success' })
+    } else {
+      toast.add({ title: 'Upload failed', description: 'Failed to upload image', color: 'error' })
+    }
   } finally {
-    isUploading.value = false
+    uploadOperationCount.value--
   }
 }
 
-function onFileSelect(e: Event) {
+async function onFileSelect(e: Event) {
   const input = e.target as HTMLInputElement
-  if (input.files?.length) uploadBgImage(input.files)
-  input.value = ''
+  try {
+    if (input.files?.length) await uploadBgImage(input.files)
+  } finally {
+    input.value = ''
+  }
 }
 
 async function uploadBgVideo(files: FileList | File[]) {
   if (!files.length || !activeBg.value) return
-  const file = files[0]
-  if (!file) return
-  isUploading.value = true
-  let requestStarted = false
-  let requestCompleted = false
+  uploadOperationCount.value++
   try {
-    const request = await prepareBannerUploadRequest(file, uploadKeyFor(file))
-    requestStarted = true
-    const result = await apiFetch<BannerAsset>('/api/agency/banner-studio/assets/upload', {
-      method: 'POST',
-      ...request
+    const [outcome] = await uploadSession.attemptFiles(files, async (request) => {
+      return await apiFetch<BannerAsset>('/api/agency/banner-studio/assets/upload', {
+        method: 'POST',
+        ...request
+      })
     })
-    requestCompleted = true
-    rotateUploadKey()
-    updateLayer(activeBg.value!.id, { src: result.url, srcType: 'video', fit: activeBg.value!.fit || 'cover' })
-    toast.add({ title: 'Video set', description: 'Video uploaded and applied', color: 'success' })
-  } catch (error: unknown) {
-    const ambiguous = requestStarted && !requestCompleted && isAmbiguousApiFailure(error)
-    if (!ambiguous) rotateUploadKey()
-    toast.add({ title: 'Upload failed', description: 'Failed to upload video', color: 'error' })
+    if (outcome?.ok) {
+      updateLayer(activeBg.value!.id, { src: outcome.value.url, srcType: 'video', fit: activeBg.value!.fit || 'cover' })
+      toast.add({ title: 'Video set', description: 'Video uploaded and applied', color: 'success' })
+    } else {
+      toast.add({ title: 'Upload failed', description: 'Failed to upload video', color: 'error' })
+    }
   } finally {
-    isUploading.value = false
+    uploadOperationCount.value--
   }
 }
 
-function onVideoFileSelect(e: Event) {
+async function onVideoFileSelect(e: Event) {
   const input = e.target as HTMLInputElement
-  if (input.files?.length) uploadBgVideo(input.files)
-  input.value = ''
+  try {
+    if (input.files?.length) await uploadBgVideo(input.files)
+  } finally {
+    input.value = ''
+  }
 }
 
 function pickVideoAsset(asset: BannerAsset) {

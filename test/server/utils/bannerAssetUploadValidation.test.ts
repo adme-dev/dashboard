@@ -36,6 +36,11 @@ describe('validateBannerAssetUpload', () => {
       })
   })
 
+  it('accepts supported bytes when the multipart MIME claim is empty', () => {
+    expect(validateBannerAssetUpload({ filename: 'Leap Motor C10.JPG', type: '', data: signatures.jpeg }))
+      .toMatchObject({ fileName: 'Leap-Motor-C10.jpg', mimeType: 'image/jpeg' })
+  })
+
   it.each([
     ['PNG', signatures.png, 'image/png', 'banner.png'],
     ['GIF', signatures.gif, 'image/gif', 'banner.gif'],

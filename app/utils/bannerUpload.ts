@@ -1,48 +1,25 @@
-type SupportedBannerUploadMime
-  = | 'image/jpeg'
-    | 'image/png'
-    | 'image/gif'
-    | 'image/webp'
-    | 'video/mp4'
-    | 'video/webm'
+import { isAmbiguousApiFailure } from '~/utils/apiError'
+import {
+  canonicalBannerAssetIdentity,
+  serializeBannerAssetIdentity
+} from '~~/shared/utils/bannerAssetIdentity'
 
-const MIME_EXTENSIONS: Record<SupportedBannerUploadMime, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/gif': 'gif',
-  'image/webp': 'webp',
-  'video/mp4': 'mp4',
-  'video/webm': 'webm'
+export interface PreparedBannerUploadRequest {
+  body: FormData
+  headers: Record<string, string>
 }
 
-function canonicalMimeType(type: string): SupportedBannerUploadMime {
-  const mimeType = type.split(';', 1)[0]?.trim().toLowerCase()
-  if (!mimeType || !(mimeType in MIME_EXTENSIONS)) {
-    throw new Error('Unsupported banner asset MIME type')
-  }
-  return mimeType as SupportedBannerUploadMime
-}
+export type BannerUploadOutcome<T>
+  = | { ok: true, ambiguous: false, file: File, value: T }
+    | { ok: false, ambiguous: boolean, file: File, error: unknown }
 
-function canonicalFileName(filename: string, mimeType: SupportedBannerUploadMime): string {
-  if ([...filename].some((character) => {
-    const code = character.charCodeAt(0)
-    return code <= 0x1f || code === 0x7f
-  })) {
-    throw new Error('Filename contains control characters')
-  }
+export type BannerUploadSender<T> = (
+  request: PreparedBannerUploadRequest,
+  file: File
+) => Promise<T>
 
-  const rawFilename = filename.trim() || 'banner-asset'
-  const basename = rawFilename.split(/[\\/]/).pop() || ''
-  const stem = basename.replace(/\.[^.]*$/, '')
-    .replace(/[^A-Za-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 96)
-
-  if (stem.length < 6) {
-    throw new Error('Filename must have a safe basename of at least six characters')
-  }
-
-  return `${stem}.${MIME_EXTENSIONS[mimeType]}`
+interface BannerUploadSessionOptions {
+  nextKey?: () => string
 }
 
 async function sha256Hex(value: BufferSource): Promise<string> {
@@ -54,21 +31,16 @@ export function nextBannerUploadKey(): string {
   return `banner-upload:${globalThis.crypto.randomUUID()}`
 }
 
-export async function prepareBannerUploadRequest(file: File, key: string): Promise<{
-  body: FormData
-  headers: Record<string, string>
-}> {
-  const bytes = await file.arrayBuffer()
-  const mimeType = canonicalMimeType(file.type)
-  const fileName = canonicalFileName(file.name, mimeType)
+export async function prepareBannerUploadRequest(file: File, key: string): Promise<PreparedBannerUploadRequest> {
+  const bytes = new Uint8Array(await file.arrayBuffer())
   const contentSha256 = await sha256Hex(bytes)
-  const identity = JSON.stringify({
-    fileName,
-    mimeType,
-    size: bytes.byteLength,
+  const identity = canonicalBannerAssetIdentity({
+    bytes,
+    filename: file.name,
+    claimedMimeType: file.type,
     contentSha256
   })
-  const requestDigest = await sha256Hex(new TextEncoder().encode(identity))
+  const requestDigest = await sha256Hex(new TextEncoder().encode(serializeBannerAssetIdentity(identity)))
   const body = new FormData()
   body.append('file', file)
 
@@ -77,6 +49,66 @@ export async function prepareBannerUploadRequest(file: File, key: string): Promi
     headers: {
       'Idempotency-Key': key,
       'X-Banner-Upload-Digest': requestDigest
+    }
+  }
+}
+
+export function createBannerUploadSession(options: BannerUploadSessionOptions = {}) {
+  const keyFactory = options.nextKey ?? nextBannerUploadKey
+  let currentKey = keyFactory()
+  let retainedDigest: string | null = null
+  let tail = Promise.resolve()
+
+  function rotate() {
+    retainedDigest = null
+    currentKey = keyFactory()
+  }
+
+  async function execute<T>(file: File, send: BannerUploadSender<T>): Promise<BannerUploadOutcome<T>> {
+    let request: PreparedBannerUploadRequest
+    try {
+      request = await prepareBannerUploadRequest(file, currentKey)
+    } catch (error: unknown) {
+      rotate()
+      return { ok: false, ambiguous: false, file, error }
+    }
+
+    const digest = request.headers['X-Banner-Upload-Digest']
+    if (retainedDigest && retainedDigest !== digest) rotate()
+    request.headers['Idempotency-Key'] = currentKey
+
+    try {
+      const value = await send(request, file)
+      rotate()
+      return { ok: true, ambiguous: false, file, value }
+    } catch (error: unknown) {
+      const ambiguous = isAmbiguousApiFailure(error)
+      if (ambiguous) retainedDigest = digest
+      else rotate()
+      return { ok: false, ambiguous, file, error }
+    }
+  }
+
+  function enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const result = tail.then(operation, operation)
+    tail = result.then(() => undefined, () => undefined)
+    return result
+  }
+
+  return {
+    attempt<T>(file: File, send: BannerUploadSender<T>): Promise<BannerUploadOutcome<T>> {
+      return enqueue(async () => await execute(file, send))
+    },
+    attemptFiles<T>(files: FileList | File[], send: BannerUploadSender<T>): Promise<Array<BannerUploadOutcome<T>>> {
+      return enqueue(async () => {
+        const outcomes: Array<BannerUploadOutcome<T>> = []
+        for (const file of files) {
+          const outcome = await execute(file, send)
+          outcomes.push(outcome)
+          if (!outcome.ok && outcome.ambiguous) break
+        }
+        return outcomes
+      })
     }
   }
 }

@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import type { BannerAsset } from '~/types/banner-studio'
 import type { AudioAsset } from '~/types'
-import { isAmbiguousApiFailure } from '~/utils/apiError'
-import { nextBannerUploadKey, prepareBannerUploadRequest } from '~/utils/bannerUpload'
+import { createBannerUploadSession } from '~/utils/bannerUpload'
 
 const { addLayer, nextId, activeLayers } = useBannerStudio()
 const { decomposingAssetId, decomposeFromUrl } = useDecompose()
@@ -18,19 +17,7 @@ const apiFetch = $fetch as <T = unknown>(request: string, options?: {
 const searchQuery = ref('')
 const isDragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
-let pendingUploadFile: File | null = null
-let pendingUploadKey = nextBannerUploadKey()
-
-function uploadKeyFor(file: File): string {
-  if (pendingUploadFile && pendingUploadFile !== file) pendingUploadKey = nextBannerUploadKey()
-  pendingUploadFile = file
-  return pendingUploadKey
-}
-
-function rotateUploadKey() {
-  pendingUploadFile = null
-  pendingUploadKey = nextBannerUploadKey()
-}
+const uploadSession = createBannerUploadSession()
 
 // AI Image Suggestions
 const aiSuggestions = ref<{ keyword: string, description: string, style: string }[]>([])
@@ -158,32 +145,27 @@ function addAudioLayer(a: AudioAsset) {
 }
 
 async function uploadFiles(files: FileList | File[]) {
-  for (const file of files) {
-    let requestStarted = false
-    let requestCompleted = false
-    try {
-      const request = await prepareBannerUploadRequest(file, uploadKeyFor(file))
-      requestStarted = true
-      await apiFetch('/api/agency/banner-studio/assets/upload', {
-        method: 'POST',
-        ...request
-      })
-      requestCompleted = true
-      rotateUploadKey()
-      toast.add({ title: 'Uploaded', description: `${file.name} uploaded`, color: 'success' })
-    } catch (error: unknown) {
-      const ambiguous = requestStarted && !requestCompleted && isAmbiguousApiFailure(error)
-      if (!ambiguous) rotateUploadKey()
-      toast.add({ title: 'Upload failed', description: `Failed to upload ${file.name}`, color: 'error' })
-      if (ambiguous) break
-    }
+  const outcomes = await uploadSession.attemptFiles(files, async (request) => {
+    return await apiFetch('/api/agency/banner-studio/assets/upload', {
+      method: 'POST',
+      ...request
+    })
+  })
+  for (const outcome of outcomes) {
+    toast.add(outcome.ok
+      ? { title: 'Uploaded', description: `${outcome.file.name} uploaded`, color: 'success' }
+      : { title: 'Upload failed', description: `Failed to upload ${outcome.file.name}`, color: 'error' })
   }
   await refreshAssets()
 }
 
-function onFileSelect(e: Event) {
+async function onFileSelect(e: Event) {
   const input = e.target as HTMLInputElement
-  if (input.files?.length) uploadFiles(input.files)
+  try {
+    if (input.files?.length) await uploadFiles(input.files)
+  } finally {
+    input.value = ''
+  }
 }
 
 function onDrop(e: DragEvent) {
