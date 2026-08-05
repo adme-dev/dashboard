@@ -82,6 +82,10 @@ const boundedId = '[A-Za-z0-9_-]{1,128}'
 const delegatorContextKey = Symbol('godModeInternalExecutionDelegator')
 const trustedExecutions = new WeakSet<object>()
 const trustedExecutionByEvent = new WeakMap<H3Event, TrustedTask5DelegatedExecution>()
+const pendingConsumptionByEvent = new WeakMap<H3Event, {
+  claim: GodModeInternalExecutionClaim
+  promise: Promise<GodModeInternalExecutionClaim>
+}>()
 
 const allowedTargets: Array<{ method: DelegatedMethod, path: RegExp }> = [
   { method: 'POST', path: /^\/api\/agency\/tasks$/ },
@@ -293,6 +297,10 @@ function parseClaim(value: unknown): GodModeInternalExecutionClaim | null {
   ) return null
 
   return claim as unknown as GodModeInternalExecutionClaim
+}
+
+function claimsMatch(left: GodModeInternalExecutionClaim, right: GodModeInternalExecutionClaim): boolean {
+  return canonicalMcpJson(left) === canonicalMcpJson(right)
 }
 
 function signature(encodedBody: string, secret: string): Buffer {
@@ -553,15 +561,37 @@ export async function consumeGodModeInternalExecutionDelegation(
     deny(403, 'Internal execution owner authority is no longer active')
   }
 
-  let consumed = false
-  try {
-    consumed = await (dependencies.consumeNonce ?? defaultConsumeNonce)(claim.jti, claim.actorUserId, claim.exp)
-  } catch {
-    deny(503, 'Internal execution replay protection unavailable')
+  const trusted = trustedExecutionByEvent.get(event)
+  if (trusted) {
+    if (!claimsMatch(trusted, claim)) deny(403, 'Internal execution delegation does not match this request')
+    return trusted
   }
-  if (!consumed) deny(409, 'Internal execution delegation already consumed')
-  const marker = Object.freeze({ ...claim })
-  trustedExecutions.add(marker)
-  trustedExecutionByEvent.set(event, marker)
-  return claim
+
+  const pending = pendingConsumptionByEvent.get(event)
+  if (pending) {
+    if (!claimsMatch(pending.claim, claim)) deny(403, 'Internal execution delegation does not match this request')
+    return await pending.promise
+  }
+
+  const consumption = (async () => {
+    let consumed = false
+    try {
+      consumed = await (dependencies.consumeNonce ?? defaultConsumeNonce)(claim.jti, claim.actorUserId, claim.exp)
+    } catch {
+      deny(503, 'Internal execution replay protection unavailable')
+    }
+    if (!consumed) deny(409, 'Internal execution delegation already consumed')
+    const marker = Object.freeze({ ...claim })
+    trustedExecutions.add(marker)
+    trustedExecutionByEvent.set(event, marker)
+    return claim
+  })()
+  pendingConsumptionByEvent.set(event, { claim, promise: consumption })
+  try {
+    return await consumption
+  } finally {
+    if (pendingConsumptionByEvent.get(event)?.promise === consumption) {
+      pendingConsumptionByEvent.delete(event)
+    }
+  }
 }

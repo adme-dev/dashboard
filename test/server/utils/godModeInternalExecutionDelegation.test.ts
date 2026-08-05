@@ -93,6 +93,63 @@ describe('God mode internal execution delegation', () => {
       .rejects.toMatchObject({ statusCode: 409 })
   })
 
+  it('coalesces concurrent authentication layers for one exact event without weakening cross-event replay protection', async () => {
+    const encoded = await signed()
+    const consumed = new Set<string>()
+    const consumeNonce = vi.fn(async (jti: string) => {
+      await Promise.resolve()
+      if (consumed.has(jti)) return false
+      consumed.add(jti)
+      return true
+    })
+    const event = { context: {} } as any
+    const dependencies = {
+      signingSecret: SECRET,
+      now: NOW_MS,
+      encoded,
+      method: 'POST',
+      path: PATH,
+      body: BODY,
+      resolveAuthority: async (request: any, actor: string) => await activeOwner(request, actor),
+      consumeNonce
+    }
+
+    const [middlewareClaim, routeClaim] = await Promise.all([
+      consumeGodModeInternalExecutionDelegation(event, dependencies),
+      consumeGodModeInternalExecutionDelegation(event, dependencies)
+    ])
+
+    expect(middlewareClaim).toMatchObject({ actorUserId: ACTOR_ID, jti: JTI })
+    expect(routeClaim).toEqual(middlewareClaim)
+    expect(consumeNonce).toHaveBeenCalledTimes(1)
+
+    await expect(consumeGodModeInternalExecutionDelegation({ context: {} } as any, dependencies))
+      .rejects.toMatchObject({ statusCode: 409 })
+  })
+
+  it('does not coalesce a different signed execution identity that reuses a JTI on the same event', async () => {
+    const event = { context: {} } as any
+    const dependencies = {
+      signingSecret: SECRET,
+      now: NOW_MS,
+      method: 'POST',
+      path: PATH,
+      body: BODY,
+      resolveAuthority: async (request: any, actor: string) => await activeOwner(request, actor),
+      consumeNonce: async () => true
+    }
+
+    await consumeGodModeInternalExecutionDelegation(event, {
+      ...dependencies,
+      encoded: await signed()
+    })
+
+    await expect(consumeGodModeInternalExecutionDelegation(event, {
+      ...dependencies,
+      encoded: await signed({ routeOrTool: 'different_tool_identity' })
+    })).rejects.toMatchObject({ statusCode: 403 })
+  })
+
   it('installs a runtime-branded exact Task 5 marker that rejects actor, method, path, body, and expiry drift', async () => {
     const event = { method: 'POST', context: {}, path: PATH } as any
     await consumeGodModeInternalExecutionDelegation(event, {
