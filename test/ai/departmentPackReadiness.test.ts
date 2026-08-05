@@ -134,6 +134,61 @@ describe('department assistant pack readiness', () => {
     expect(candidateSql).not.toContain('member.email')
   })
 
+  it('accepts an explicit department head as an eligible owner candidate and ranks heads before leads', async () => {
+    const queryRows = vi.fn()
+      .mockResolvedValueOnce([
+        department(1, { name: 'Marketing', slug: 'marketing' })
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          department_id: '10000000-0000-4000-8000-000000000001',
+          user_id: '20000000-0000-4000-8000-000000000001',
+          user_name: 'Harper Head',
+          membership_role: 'head',
+          is_explicit_member: true,
+          is_primary_assignment: true,
+          is_department_manager: false
+        },
+        {
+          department_id: '10000000-0000-4000-8000-000000000001',
+          user_id: '20000000-0000-4000-8000-000000000002',
+          user_name: 'Morgan Lead',
+          membership_role: 'lead',
+          is_explicit_member: true,
+          is_primary_assignment: false,
+          is_department_manager: false
+        }
+      ])
+
+    const result = await getDepartmentPackReadiness(
+      { queryRows },
+      DEPARTMENT_PACK_BLUEPRINTS,
+      toolMetadata
+    )
+
+    expect(result.items.find(item => item.key === 'marketing')?.ownerCandidates).toEqual([
+      {
+        id: '20000000-0000-4000-8000-000000000001',
+        name: 'Harper Head',
+        source: 'department_member',
+        membershipRole: 'head',
+        isManager: false,
+        eligible: true
+      },
+      {
+        id: '20000000-0000-4000-8000-000000000002',
+        name: 'Morgan Lead',
+        source: 'department_member',
+        membershipRole: 'lead',
+        isManager: false,
+        eligible: true
+      }
+    ])
+    const candidateSql = queryRows.mock.calls[2]?.[0]
+    expect(candidateSql.indexOf("WHEN 'head' THEN 0")).toBeLessThan(candidateSql.indexOf("WHEN 'lead' THEN 1"))
+  })
+
   it('reports an existing draft from catalog authority instead of claiming it is unseeded', async () => {
     const queryRows = vi.fn()
       .mockResolvedValueOnce([
@@ -224,7 +279,7 @@ describe('department assistant pack readiness', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{
         department_id: '10000000-0000-4000-8000-000000000001',
-        user_id: 'not-a-uuid',
+        user_id: '20000000-0000-4000-8000-000000000001',
         user_name: 'Invalid Candidate',
         membership_role: 'owner',
         is_explicit_member: true,

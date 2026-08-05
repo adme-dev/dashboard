@@ -49,7 +49,7 @@ interface OwnerCandidateRow {
   department_id: string
   user_id: string
   user_name: string
-  membership_role: 'lead' | 'senior' | 'member' | 'junior' | null
+  membership_role: 'head' | 'lead' | 'senior' | 'member' | 'junior' | null
   is_explicit_member: boolean
   is_primary_assignment: boolean
   is_department_manager: boolean
@@ -210,11 +210,12 @@ ORDER BY
   COALESCE(department.manager_id = member.id, FALSE) DESC,
   candidate.is_explicit_member DESC,
   CASE candidate.membership_role
-    WHEN 'lead' THEN 0
-    WHEN 'senior' THEN 1
-    WHEN 'member' THEN 2
-    WHEN 'junior' THEN 3
-    ELSE 4
+    WHEN 'head' THEN 0
+    WHEN 'lead' THEN 1
+    WHEN 'senior' THEN 2
+    WHEN 'member' THEN 3
+    WHEN 'junior' THEN 4
+    ELSE 5
   END,
   member.name,
   member.id
@@ -366,7 +367,7 @@ export async function getDepartmentPackReadiness(
     throw new DepartmentPackReadinessError('owner_candidate_limit_exceeded', 500, 'Department readiness supports at most 1000 owner candidates.')
   }
   const candidateKeys = new Set<string>()
-  const membershipRoles = new Set<NonNullable<OwnerCandidateRow['membership_role']>>(['lead', 'senior', 'member', 'junior'])
+  const membershipRoles = new Set<NonNullable<OwnerCandidateRow['membership_role']>>(['head', 'lead', 'senior', 'member', 'junior'])
   for (const row of ownerCandidateRows) {
     const candidateKey = `${row.department_id}:${row.user_id}`
     if (
