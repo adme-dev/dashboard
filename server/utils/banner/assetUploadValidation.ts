@@ -56,14 +56,15 @@ function detectBannerAssetMime(buffer: Buffer): SupportedBannerAssetMime | null 
 }
 
 function normaliseFileName(filename: string | undefined, mimeType: SupportedBannerAssetMime): string {
-  const rawFilename = filename?.trim() || 'banner-asset'
-  if ([...rawFilename].some((character) => {
+  const suppliedFilename = filename || ''
+  if ([...suppliedFilename].some((character) => {
     const code = character.charCodeAt(0)
     return code <= 0x1f || code === 0x7f
   })) {
     throw new Error('Filename contains control characters')
   }
 
+  const rawFilename = suppliedFilename.trim() || 'banner-asset'
   const basename = rawFilename.split(/[\\/]/).pop() || ''
   const stem = basename.replace(/\.[^.]*$/, '')
     .replace(/[^A-Za-z0-9]+/g, '-')
@@ -92,6 +93,10 @@ export function digestBannerAssetUpload(input: BannerAssetUploadDigestInput): st
 }
 
 export function validateBannerAssetUpload(file: BannerAssetUploadFile): ValidatedBannerAssetUpload {
+  if (file.data.byteLength > MAX_BANNER_VIDEO_BYTES) {
+    throw new Error('Banner asset upload exceeds the 100 MiB limit')
+  }
+
   const buffer = Buffer.from(file.data)
   if (buffer.length === 0) throw new Error('Banner asset upload is empty')
 

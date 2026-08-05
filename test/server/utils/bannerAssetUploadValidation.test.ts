@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   MAX_BANNER_IMAGE_BYTES,
@@ -88,10 +88,34 @@ describe('validateBannerAssetUpload', () => {
     })).toThrowError(/filename/i)
   })
 
+  it.each(['\tbanner.jpg', 'banner.jpg\n'])('rejects a filename with an edge control character', (filename) => {
+    expect(() => validateBannerAssetUpload({
+      filename, type: 'image/jpeg', data: signatures.jpeg
+    })).toThrowError(/filename/i)
+  })
+
   it('requires a six-character safe basename', () => {
     expect(() => validateBannerAssetUpload({
       filename: 'car.jpg', type: 'image/jpeg', data: signatures.jpeg
     })).toThrowError(/six characters/i)
+  })
+
+  it('rejects data above the absolute ceiling before copying a Uint8Array', () => {
+    const data = new Uint8Array(MAX_BANNER_VIDEO_BYTES + 1)
+    data.set(signatures.mp4)
+    const bufferFrom = vi.spyOn(Buffer, 'from')
+    let thrown: unknown
+    try {
+      validateBannerAssetUpload({ filename: 'banner.mp4', type: 'video/mp4', data })
+    } catch (error) {
+      thrown = error
+    }
+    const copyCalls = bufferFrom.mock.calls.length
+    bufferFrom.mockRestore()
+
+    expect(copyCalls).toBe(0)
+    expect(thrown).toBeInstanceOf(Error)
+    expect((thrown as Error).message).toMatch(/100 MiB/i)
   })
 })
 
