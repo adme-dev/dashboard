@@ -6,6 +6,10 @@ export interface CompanyAssistantRolloutReadiness {
   readyForEnforcement: boolean
   activeEmployeeCount: number
   coveredEmployeeCount: number
+  godMode: {
+    activeOwnerCount: number
+    emergencyDisabled: boolean
+  }
   uncoveredEmployees: Array<{
     userId: string
     name: string
@@ -60,6 +64,11 @@ interface PilotRow {
   release_department_id: string
   is_current_department_member: boolean
 }
+interface ActiveOwnerCountRow { active_owner_count: number | string }
+
+export interface CompanyRolloutReadinessOptions {
+  emergencyDisabled?: boolean
+}
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const RELEASE_STATES = new Set<Exclude<ReleaseState, 'missing'>>(['draft', 'pilot', 'active', 'suspended', 'retired'])
@@ -80,6 +89,7 @@ const EMPLOYEES_SQL = `
 SELECT member.id, member.name, member.role
 FROM team_members member
 WHERE member.is_active = TRUE
+  AND member.user_role <> 'owner'
 ORDER BY member.name, member.id
 LIMIT 101
 `
@@ -92,6 +102,7 @@ WITH organizational_assignments AS (
     AND department.department_kind = 'organizational'
     AND department.is_active = TRUE
   WHERE member.is_active = TRUE
+    AND member.user_role <> 'owner'
     AND member.department_id IS NOT NULL
 
   UNION
@@ -100,6 +111,7 @@ WITH organizational_assignments AS (
   FROM department_members membership
   JOIN team_members member ON member.id = membership.team_member_id
     AND member.is_active = TRUE
+    AND member.user_role <> 'owner'
   JOIN departments department ON department.id = membership.department_id
     AND department.department_kind = 'organizational'
     AND department.is_active = TRUE
@@ -113,6 +125,7 @@ SELECT
 FROM team_members member
 LEFT JOIN organizational_assignments assignment ON assignment.user_id = member.id
 WHERE member.is_active = TRUE
+  AND member.user_role <> 'owner'
 GROUP BY member.id
 ORDER BY member.id
 LIMIT 101
@@ -170,11 +183,19 @@ JOIN department_members current_membership
 WHERE pilot.release_kind = 'pack'
   AND pilot.revoked_at IS NULL
   AND member.is_active = TRUE
+  AND member.user_role <> 'owner'
   AND release.release_state = 'pilot'
   AND release.evaluation_gate_passed = TRUE
   AND release.evaluation_run_status = 'completed'
 ORDER BY pilot.team_member_id, pilot.pack_release_id
 LIMIT 101
+`
+
+const ACTIVE_OWNER_COUNT_SQL = `
+SELECT COUNT(*)::integer AS active_owner_count
+FROM team_members member
+WHERE member.is_active = TRUE
+  AND member.user_role = 'owner'
 `
 
 const defaultDb: CompanyRolloutReadinessDb = {
@@ -214,23 +235,30 @@ function asPositiveInteger(value: unknown): number | null {
 }
 
 export async function getCompanyAssistantRolloutReadiness(
-  db: CompanyRolloutReadinessDb = defaultDb
+  db: CompanyRolloutReadinessDb = defaultDb,
+  options: CompanyRolloutReadinessOptions = {}
 ): Promise<CompanyAssistantRolloutReadiness> {
   let departments: DepartmentRow[]
   let employees: EmployeeRow[]
   let employeeDepartments: EmployeeDepartmentRow[]
   let releases: ReleaseRow[]
   let pilots: PilotRow[]
+  let ownerCountRows: ActiveOwnerCountRow[]
   try {
     departments = assertBounded(await db.queryRows<DepartmentRow>(DEPARTMENTS_SQL), 'departments_unbounded')
     employees = assertBounded(await db.queryRows<EmployeeRow>(EMPLOYEES_SQL), 'employees_unbounded')
     employeeDepartments = assertBounded(await db.queryRows<EmployeeDepartmentRow>(EMPLOYEE_DEPARTMENTS_SQL), 'employee_departments_unbounded')
     releases = assertBounded(await db.queryRows<ReleaseRow>(PACK_RELEASES_SQL), 'releases_unbounded')
     pilots = assertBounded(await db.queryRows<PilotRow>(ELIGIBLE_PILOTS_SQL), 'pilot_memberships_unbounded')
+    ownerCountRows = await db.queryRows<ActiveOwnerCountRow>(ACTIVE_OWNER_COUNT_SQL)
   } catch (error) {
     if (error instanceof CompanyRolloutReadinessError) throw error
     fail('readiness_query_failed')
   }
+
+  if (ownerCountRows.length !== 1) fail('invalid_active_owner_count')
+  const activeOwnerCount = Number(ownerCountRows[0]!.active_owner_count)
+  if (!Number.isSafeInteger(activeOwnerCount) || activeOwnerCount < 0) fail('invalid_active_owner_count')
 
   const departmentById = new Map<string, DepartmentRow>()
   for (const department of departments) {
@@ -355,6 +383,10 @@ export async function getCompanyAssistantRolloutReadiness(
     readyForEnforcement: uncoveredEmployees.length === 0 && departmentCoverage.every(coverage => coverage.ownerReady && coverage.releaseState === 'active' && coverage.latestGatePassed),
     activeEmployeeCount: employeeById.size,
     coveredEmployeeCount,
+    godMode: {
+      activeOwnerCount,
+      emergencyDisabled: options.emergencyDisabled === true
+    },
     uncoveredEmployees,
     departmentCoverage,
     blockers

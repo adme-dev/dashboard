@@ -6,11 +6,17 @@ import { shouldRedirectAppHostPath } from '../../server/middleware/01-app-host-r
 const read = (path: string) => readFileSync(path, 'utf8')
 
 describe('AI Assistants public launch surface', () => {
-  it('explains that company-owner access remains evaluation-governed', () => {
-    const source = read('app/pages/features/[slug].vue')
+  it('truthfully separates always-on active-owner God mode from governed employees', () => {
+    const detail = read('app/pages/features/[slug].vue')
+    const index = read('app/pages/features/index.vue')
+    const source = `${index}\n${detail}`
 
-    expect(source).toContain('company owners')
-    expect(source).toContain('evaluation-approved')
+    expect(source).toContain('Owner God Mode')
+    expect(source).toContain('active owners')
+    expect(source.toLowerCase()).toContain('ordinary employees')
+    expect(source.toLowerCase()).toContain('tenant')
+    expect(source.toLowerCase()).toContain('audit')
+    expect(source).not.toContain('Active company owners inherit every evaluation-approved')
   })
 
   it('publishes a dedicated, indexable page with honest product positioning', () => {

@@ -18,6 +18,7 @@ describe('GET /api/admin/ai/governance/rollout', () => {
       readyForEnforcement: true,
       activeEmployeeCount: 1,
       coveredEmployeeCount: 1,
+      godMode: { activeOwnerCount: 2, emergencyDisabled: false },
       uncoveredEmployees: [],
       departmentCoverage: [],
       blockers: []
@@ -25,7 +26,12 @@ describe('GET /api/admin/ai/governance/rollout', () => {
   })
 
   function handler() {
-    return createCompanyRolloutReadinessGetHandler({ requirePermission, setResponseHeader, getReadiness })
+    return createCompanyRolloutReadinessGetHandler({
+      requirePermission,
+      setResponseHeader,
+      getReadiness,
+      getGodModeEmergencyDisabled: vi.fn(() => false)
+    })
   }
 
   it('rejects unauthenticated requests before inspecting readiness', async () => {
@@ -48,6 +54,12 @@ describe('GET /api/admin/ai/governance/rollout', () => {
       readyForEnforcement: true,
       activeEmployeeCount: 1,
       coveredEmployeeCount: 1,
+      godMode: {
+        activeOwnerCount: 2,
+        emergencyDisabled: false,
+        ownerEmails: ['hidden@example.test'],
+        ownerIds: ['20000000-0000-4000-8000-000000000001']
+      },
       uncoveredEmployees: [],
       departmentCoverage: [{
         departmentId: '10000000-0000-4000-8000-000000000001',
@@ -61,7 +73,7 @@ describe('GET /api/admin/ai/governance/rollout', () => {
         credentials: 'hidden'
       }],
       blockers: []
-    } as any)
+    })
     const event = { context: {} } as never
     const result = await handler()(event)
     const serialized = JSON.stringify(result).toLowerCase()
@@ -69,8 +81,19 @@ describe('GET /api/admin/ai/governance/rollout', () => {
     expect(requirePermission).toHaveBeenCalledWith(event, 'ADMIN')
     expect(setResponseHeader).toHaveBeenCalledWith(event, 'Cache-Control', 'private, no-store')
     expect(getReadiness).toHaveBeenCalledOnce()
-    for (const forbidden of ['email', 'prompt', 'memory', 'message', 'token', 'credential', 'vendor', 'client']) {
+    expect(result.godMode).toEqual({ activeOwnerCount: 2, emergencyDisabled: false })
+    expect(getReadiness).toHaveBeenCalledWith({ emergencyDisabled: false })
+    for (const forbidden of ['email', 'ownerid', 'prompt', 'memory', 'message', 'token', 'credential', 'vendor', 'client']) {
       expect(serialized).not.toContain(forbidden)
     }
+  })
+
+  it('passes the request-scoped emergency state into readiness reporting', async () => {
+    const getGodModeEmergencyDisabled = vi.fn(() => true)
+    const event = { context: { cloudflare: { env: { GOD_MODE_DISABLED: 'true' } } } } as never
+    await createCompanyRolloutReadinessGetHandler({ requirePermission, setResponseHeader, getReadiness, getGodModeEmergencyDisabled })(event)
+
+    expect(getGodModeEmergencyDisabled).toHaveBeenCalledWith(event)
+    expect(getReadiness).toHaveBeenCalledWith({ emergencyDisabled: true })
   })
 })

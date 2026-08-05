@@ -161,6 +161,10 @@ export interface AiCompanyRolloutReadiness {
   readyForEnforcement: boolean
   activeEmployeeCount: number
   coveredEmployeeCount: number
+  godMode: {
+    activeOwnerCount: number
+    emergencyDisabled: boolean
+  }
   uncoveredEmployees: Array<{
     userId: string
     name: string

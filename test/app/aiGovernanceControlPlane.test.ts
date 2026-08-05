@@ -255,7 +255,11 @@ describe('AI governance command centre', () => {
     expect(host.textContent).toContain('Rollout readiness unavailable'); click(host, 'Try again'); expect(refreshed).toHaveBeenCalledTimes(1)
     app.unmount(); host.remove()
 
-    const privacy = mount(RolloutReadinessPanel, { data: { readyForPilot: false, readyForEnforcement: false, activeEmployeeCount: 1, coveredEmployeeCount: 0, uncoveredEmployees: [{ name: 'Taylor Staff', reasons: ['no_department'], email: 'taylor@example.test', recentActivity: 'private activity' }], departmentCoverage: [], blockers: [] } as any, pending: false, error: null })
+    const privacy = mount(RolloutReadinessPanel, { data: { readyForPilot: false, readyForEnforcement: false, activeEmployeeCount: 1, coveredEmployeeCount: 0, godMode: { activeOwnerCount: 2, emergencyDisabled: false }, uncoveredEmployees: [{ name: 'Taylor Staff', reasons: ['no_department'], email: 'taylor@example.test', recentActivity: 'private activity' }], departmentCoverage: [{ departmentId: 'department-1', name: 'Creative', activeEmployeeCount: 1, ownerReady: true, releaseState: 'suspended', latestGatePassed: false }], blockers: [] } as any, pending: false, error: null })
+    expect(privacy.host.textContent).toContain('Owner God mode coverage')
+    expect(privacy.host.textContent).toContain('2 active owners')
+    expect(privacy.host.textContent).toContain('Employee rollout readiness')
+    expect(privacy.host.textContent).toContain('suspended')
     expect(privacy.host.textContent).toContain('Taylor Staff')
     expect(privacy.host.textContent).not.toContain('taylor@example.test')
     expect(privacy.host.textContent).not.toContain('private activity')

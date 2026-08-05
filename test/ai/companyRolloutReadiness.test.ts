@@ -52,7 +52,11 @@ function pilot(overrides: Record<string, unknown> = {}) {
 }
 
 function readinessDb(rows: unknown[][]): CompanyRolloutReadinessDb {
-  return { queryRows: vi.fn().mockImplementation(async () => rows.shift() ?? []) }
+  return {
+    queryRows: vi.fn().mockImplementation(async (sql: string) => sql.includes('active_owner_count')
+      ? [{ active_owner_count: 0 }]
+      : rows.shift() ?? [])
+  }
 }
 
 function repositoryFixture(input: {
@@ -73,6 +77,40 @@ function repositoryFixture(input: {
 }
 
 describe('company assistant rollout readiness', () => {
+  it('counts only active exact-role owners independently of pilot membership', async () => {
+    const queryRows = vi.fn(async (sql: string) => {
+      if (sql.includes('active_owner_count')) return [{ active_owner_count: 2 }]
+      if (sql.includes('ai_release_pilot_members')) return Array.from({ length: 20 }, () => pilot())
+      if (sql.includes('ai_capability_packs pack')) return [release({ release_state: 'pilot' })]
+      if (sql.includes('ARRAY_AGG')) return [membership()]
+      if (sql.includes('FROM departments department')) return [department()]
+      if (sql.includes('FROM team_members member')) return [employee()]
+      return []
+    })
+
+    const result = await getCompanyAssistantRolloutReadiness({ queryRows }, { emergencyDisabled: false })
+    const ownerSql = queryRows.mock.calls.map(([sql]) => sql).find(sql => sql.includes('active_owner_count'))!
+
+    expect(result.godMode).toEqual({ activeOwnerCount: 2, emergencyDisabled: false })
+    expect(ownerSql).toContain('member.user_role = \'owner\'')
+    expect(ownerSql).toContain('member.is_active = TRUE')
+    expect(ownerSql).not.toContain('ai_release_pilot_members')
+    const employeeSql = queryRows.mock.calls.map(([sql]) => sql).find(sql => sql.includes('SELECT member.id, member.name, member.role'))!
+    const pilotSql = queryRows.mock.calls.map(([sql]) => sql).find(sql => sql.includes('ai_release_pilot_members'))!
+    expect(employeeSql).toContain('member.user_role <> \'owner\'')
+    expect(pilotSql).toContain('member.user_role <> \'owner\'')
+  })
+
+  it('reports the emergency disable state without changing employee rollout metrics', async () => {
+    const result = await getCompanyAssistantRolloutReadiness(readinessDb([
+      [department()], [employee()], [membership()], [release({ release_state: 'draft' })], []
+    ]), { emergencyDisabled: true })
+
+    expect(result.godMode).toEqual({ activeOwnerCount: 0, emergencyDisabled: true })
+    expect(result.departmentCoverage[0]).toMatchObject({ releaseState: 'draft', latestGatePassed: true })
+    expect(result.readyForEnforcement).toBe(false)
+  })
+
   it('blocks enforcement when one active employee has no organizational department', async () => {
     const result = await getCompanyAssistantRolloutReadiness(readinessDb([
       [department()], [employee()], [membership(employeeId, [])], [release()], [pilot()]
@@ -137,6 +175,7 @@ describe('company assistant rollout readiness', () => {
 
   it('recognizes a primary organizational department assignment as coverage', async () => {
     const queryRows = vi.fn(async (sql: string) => {
+      if (sql.includes('active_owner_count')) return [{ active_owner_count: 0 }]
       if (sql.includes('ai_capability_packs pack')) return [release()]
       if (sql.includes('ARRAY_AGG')) {
         return sql.includes('member.department_id') ? [membership()] : [membership(employeeId, [])]

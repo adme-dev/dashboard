@@ -8,7 +8,9 @@ const props = defineProps<{
 
 const colorMode = useColorMode()
 const appConfig = useAppConfig()
-const { user, logout, isAuthenticated } = useAuth()
+const { user, logout, isAuthenticated, isGodMode } = useAuth()
+
+const godModeStatusDescription = 'All registered application and MCP capabilities are available. Authentication and session checks, exact active-owner authority, tenant, client and entity isolation, mandatory audit, emergency disable, provider bindings and secrets, and SSRF protections remain enforced.'
 
 // Fetch user on mount
 onMounted(() => {
@@ -20,7 +22,7 @@ const neutrals = ['slate', 'gray', 'zinc', 'neutral', 'stone']
 
 const items = computed<DropdownMenuItem[][]>(() => {
   const userItems: DropdownMenuItem[] = []
-  
+
   // Only show user info if authenticated
   if (isAuthenticated.value && user.value) {
     userItems.push({
@@ -29,7 +31,7 @@ const items = computed<DropdownMenuItem[][]>(() => {
       avatar: user.value.avatar_url ? { src: user.value.avatar_url } : { alt: user.value.name }
     })
   }
-  
+
   return [[
     ...userItems
   ], [{
@@ -128,7 +130,7 @@ const buttonProps = computed(() => {
       avatar: user.value.avatar_url ? { src: user.value.avatar_url } : { alt: user.value.name }
     }
   }
-  
+
   return {
     label: props.collapsed ? undefined : 'Guest',
     icon: 'i-lucide-user'
@@ -137,31 +139,45 @@ const buttonProps = computed(() => {
 </script>
 
 <template>
-  <UDropdownMenu
-    :items="items"
-    :content="{ align: 'center', collisionPadding: 12 }"
-    :ui="{ content: props.collapsed ? 'w-48' : 'w-(--reka-dropdown-menu-trigger-width)' }"
-  >
-    <UButton
-      v-bind="buttonProps"
-      color="neutral"
-      variant="ghost"
-      block
-      :square="props.collapsed"
-      class="data-[state=open]:bg-elevated"
-      :ui="{
-        trailingIcon: 'text-dimmed'
-      }"
-    />
+  <div class="space-y-1.5">
+    <UTooltip v-if="isGodMode" :text="godModeStatusDescription" :content="{ side: 'right' }">
+      <UBadge
+        color="warning"
+        variant="soft"
+        class="flex w-full items-center justify-center gap-1.5"
+        :aria-label="`God mode active. ${godModeStatusDescription}`"
+      >
+        <UIcon name="i-lucide-crown" class="size-3.5 shrink-0" />
+        <span :class="props.collapsed ? 'sr-only' : ''">God mode active</span>
+      </UBadge>
+    </UTooltip>
 
-    <template #chip-leading="{ item }">
-      <span
-        :style="{
-          '--chip-light': `var(--color-${(item as any).chip}-500)`,
-          '--chip-dark': `var(--color-${(item as any).chip}-400)`
+    <UDropdownMenu
+      :items="items"
+      :content="{ align: 'center', collisionPadding: 12 }"
+      :ui="{ content: props.collapsed ? 'w-48' : 'w-(--reka-dropdown-menu-trigger-width)' }"
+    >
+      <UButton
+        v-bind="buttonProps"
+        color="neutral"
+        variant="ghost"
+        block
+        :square="props.collapsed"
+        class="data-[state=open]:bg-elevated"
+        :ui="{
+          trailingIcon: 'text-dimmed'
         }"
-        class="ms-0.5 size-2 rounded-full bg-(--chip-light) dark:bg-(--chip-dark)"
       />
-    </template>
-  </UDropdownMenu>
+
+      <template #chip-leading="{ item }">
+        <span
+          :style="{
+            '--chip-light': `var(--color-${(item as any).chip}-500)`,
+            '--chip-dark': `var(--color-${(item as any).chip}-400)`
+          }"
+          class="ms-0.5 size-2 rounded-full bg-(--chip-light) dark:bg-(--chip-dark)"
+        />
+      </template>
+    </UDropdownMenu>
+  </div>
 </template>

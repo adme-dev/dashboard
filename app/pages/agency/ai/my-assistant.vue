@@ -41,6 +41,9 @@ function confirmDeleteMemory(m: MemoryView) {
   memoryToDelete.value = m
   showDeleteMemory.value = true
 }
+function cancelDeleteMemory() {
+  showDeleteMemory.value = false
+}
 async function deleteMemory() {
   if (!memoryToDelete.value) return
   deletingMemory.value = true
@@ -69,6 +72,7 @@ const personaDescription = computed(() => AI_PERSONA_OPTIONS.find(o => o.key ===
 const authority = computed(() => config.value?.authority ?? null)
 const tools = computed(() => config.value?.tools ?? [])
 const restrictions = computed(() => config.value?.restrictions ?? [])
+const isGodMode = computed(() => authority.value?.coverageStatus === 'god_mode' && authority.value?.accessBasis === 'god_mode')
 
 const prettyTool = (t: string) => t.replace(/^(propose_|get_)/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 const prettyKey = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -79,12 +83,14 @@ const rolloutModeLabel = computed(() => {
 })
 const coverageLabel = computed(() => {
   const status = authority.value?.coverageStatus
+  if (status === 'god_mode') return 'Owner God mode'
   if (status === 'governed') return 'Governed catalog'
   if (status === 'authenticated_core') return 'Authenticated core tools'
   return 'Legacy role-based tools'
 })
 const coverageDescription = computed(() => {
   const status = authority.value?.coverageStatus
+  if (status === 'god_mode') return 'All registered application and MCP capabilities are available. Authentication, exact active-owner authority, tenant isolation and mandatory audit remain enforced.'
   if (status === 'governed') return 'Only tools in active or assigned-pilot evaluated releases are available.'
   if (status === 'authenticated_core') return 'No active evaluated pack covers this scope, so only the authenticated core may be available after role and personal restrictions.'
   return 'Your existing role-based tool access applies while this rollout mode is in effect.'
@@ -97,9 +103,11 @@ const accessReasonLabel = (reason: 'membership' | 'manager' | 'company_policy') 
   manager: 'Department manager',
   company_policy: 'Company-wide role'
 })[reason]
-const releaseAccessLabel = (basis: AssistantReleaseAccessBasis) => basis === 'company_owner'
-  ? 'Company owner access'
-  : 'Governed catalog access'
+const releaseAccessLabel = (basis: AssistantReleaseAccessBasis) => basis === 'god_mode'
+  ? 'God mode access'
+  : basis === 'company_owner'
+    ? 'Company owner access'
+    : 'Governed catalog access'
 const isEnabled = (name: string) => !disabled.value.has(name)
 function toggleTool(name: string, on: boolean) {
   const next = new Set(disabled.value)
@@ -137,14 +145,26 @@ async function save() {
         <h1 class="text-xl font-semibold text-highlighted">
           My Assistant
         </h1>
-        <p class="text-sm text-muted">
+        <p v-if="!isGodMode" class="text-sm text-muted">
           Tune how your co-pilot works for you. These settings only narrow what it can do — they never grant access your role doesn’t already have.
+        </p>
+        <p v-else class="text-sm text-muted">
+          Personal preferences remain available, but they do not remove registered capabilities while God mode is active.
         </p>
       </div>
       <UButton icon="i-lucide-check" :loading="saving" @click="save">
         Save changes
       </UButton>
     </header>
+
+    <UAlert
+      v-if="isGodMode"
+      color="warning"
+      variant="soft"
+      icon="i-lucide-crown"
+      title="God mode active"
+      description="All registered application and MCP capabilities are available. Authentication and session checks, exact active-owner authority, tenant, client and entity isolation, mandatory audit, emergency disable, provider bindings and secrets, and SSRF protections remain enforced."
+    />
 
     <UCard>
       <template #header>
@@ -399,8 +419,11 @@ async function save() {
           <span class="text-xs text-muted">{{ tools.filter(t => isEnabled(t.name)).length }}/{{ tools.length }} on</span>
         </div>
       </template>
-      <p class="mb-3 text-xs text-muted">
+      <p v-if="!isGodMode" class="mb-3 text-xs text-muted">
         Turn off any tool you don’t want your assistant to use. Everything here is already permitted by your role.
+      </p>
+      <p v-else class="mb-3 text-xs text-muted">
+        Tool preferences are retained, but God mode keeps every registered capability available while active.
       </p>
       <div v-if="!tools.length" class="py-6 text-center text-sm text-muted">
         No tools available for your role yet.
@@ -443,8 +466,11 @@ async function save() {
           Why something may be unavailable
         </h2>
       </template>
-      <p class="mb-3 text-xs text-muted">
+      <p v-if="!isGodMode" class="mb-3 text-xs text-muted">
         Access is the intersection of company policy, your current permissions and scope, active evaluated releases, your focus, and the controls above. Tools not listed are outside your current role or permission scope.
+      </p>
+      <p v-else class="mb-3 text-xs text-muted">
+        A capability may still be unavailable when a provider, binding or secret is missing, a target is outside the current tenant, client or entity scope, SSRF protection rejects a URL, or the global emergency disable is active. Every attempt remains subject to mandatory audit.
       </p>
       <div v-if="!restrictions.length" class="rounded-lg bg-elevated p-3 text-sm text-muted">
         No additional tool restrictions apply to your current focus.
@@ -477,7 +503,7 @@ async function save() {
               label="Cancel"
               variant="ghost"
               color="neutral"
-              @click="showDeleteMemory = false"
+              @click="cancelDeleteMemory"
             />
             <UButton
               label="Forget"

@@ -1424,6 +1424,34 @@ const features: Record<string, Feature> = {
   },
 
   // ─── AI & Intelligence ────────────────────────────────────────
+  'owner-god-mode': {
+    title: 'Owner God Mode',
+    slug: 'owner-god-mode',
+    icon: 'i-lucide-crown',
+    category: 'AI & Intelligence',
+    categoryIcon: 'i-lucide-brain',
+    categoryIconBg: 'bg-amber-50 dark:bg-amber-500/10',
+    categoryIconColor: 'text-amber-600 dark:text-amber-400',
+    description: 'Always-on access to every registered application and MCP capability for active owners, while authentication, tenant isolation, audit and infrastructure safety boundaries remain enforced.',
+    details: [
+      {
+        title: 'Always On for Active Owners',
+        content: 'God mode is derived from a freshly verified, active owner role in the database. There is no email allowlist, pilot membership or session toggle. A role downgrade, account deactivation or the infrastructure emergency control removes God mode on the next request.'
+      },
+      {
+        title: 'Every Registered Capability',
+        content: 'Active owners can discover and execute registered capabilities across Finance, Marketing, Banners, publishing, media generation, administration and MCP integrations without application rollout, permission, budget or confirmation gates. Missing providers, bindings, secrets or unimplemented tools remain real operational failures.'
+      },
+      {
+        title: 'Security Boundaries Stay Enforced',
+        content: 'God mode never bypasses authentication or session validation, exact active-owner authority, tenant, client and entity isolation, mandatory append-only audit, emergency disable, provider and secret requirements, database constraints or SSRF protection. It is broad application authority, not arbitrary security bypass.'
+      },
+      {
+        title: 'Employees Remain Governed',
+        content: 'Ordinary employees continue to receive role-scoped capabilities through evaluated department packs, pilot membership, release state, permissions, personal settings and confirmation controls. Owner God mode is reported separately so draft, failed, suspended and retired employee releases stay visible and truthful in governance reporting.'
+      }
+    ]
+  },
   'ai-chat': {
     title: 'AI Chat',
     slug: 'ai-chat',
@@ -1451,8 +1479,8 @@ const features: Record<string, Feature> = {
         content: 'Pick the assistant that fits the job — Finance, Marketing, Sales, Media Buyer, or Account Management — or stay with the general Agency Assistant. Each persona keeps the same engine but leads with the right focus and narrows to the tools that matter for that role, always within your permissions. Switching is one click in the chat bar, and your choice sticks to the conversation, including on voice.'
       },
       {
-        title: 'Company-Owner Access, Still Governed',
-        content: 'Active company owners inherit every evaluation-approved pilot and active employee-assistant release across organisational departments, while draft, failed, suspended and retired releases remain blocked. Owner access does not turn on a draft release or any runtime flag: the same release checks, permissions, tool limits, confirmation steps and audit trail still apply.'
+        title: 'Owner God Mode, Employee Governance',
+        content: 'Active owners receive always-on God mode across every registered application and MCP capability. Authentication, exact active-owner authority, tenant, client and entity isolation, mandatory audit, emergency disable and infrastructure requirements remain enforced. Ordinary employees continue to use evaluation-approved releases, permissions, tool limits and confirmation steps; draft, failed, suspended and retired employee releases stay blocked.'
       },
       {
         title: '@Entity Mentions',
