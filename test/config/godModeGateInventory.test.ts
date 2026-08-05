@@ -25,7 +25,7 @@ const TASK_3_OWNED_FILES = new Set([
   'server/plugins/godModeAudit.ts',
   'server/api/crm/ai/status.get.ts'
 ])
-const GATE_PATTERN = /process\.env\.|useRuntimeConfig\(|runtimeConfig\.|feature.?flag|suite.?enabled|roleHasPermission\(|hasRole\(|user\.role|user_role|permissionGroups|requirePermission\(|requireRole\(|requireWriteAccess\(|isReadOnlyRole\(/i
+const GATE_PATTERN = /process\.env\.|useRuntimeConfig\(|runtimeConfig\.|feature.?flag|suite.?enabled|roleHasPermission\(|hasRole\(|user\.role|user_role|permissionGroups|requirePermission\(|requireRole\(|requireWriteAccess\(|isReadOnlyRole\(|GOD_MODE_DISABLED|AI_GATEWAY_URL/i
 
 const CENTRAL_HELPER_BY_CLASS = {
   identity_tenant_hard_boundary: 'unchanged independent scope helper',
@@ -60,6 +60,10 @@ function listSourceFiles(root: string): string[] {
 }
 
 function classifyGate(file: string, line: string): GateClass {
+  if (/GOD_MODE_DISABLED|AI_GATEWAY_URL/i.test(line)
+    || (file === 'server/utils/godMode/authority.ts' && /process\.env/.test(line))) {
+    return 'provider_infrastructure_availability'
+  }
   if (/requirePermission\(|requireRole\(|requireWriteAccess\(|roleHasPermission\(|hasRole\(|isReadOnlyRole\(|feature.?flag|suite.?enabled|(?:^|[_A-Z])ENABLED(?:\b|_)/i.test(line)) {
     return 'application_governance_bypass'
   }
@@ -129,15 +133,33 @@ describe('God mode gate inventory', () => {
 
   it('freezes every pre-existing direct gate with an explicit classification', () => {
     const inventory = legacyInventory()
-    expect(inventory.rows).toHaveLength(1344)
+    expect(inventory.rows).toContain(
+      "server/utils/godMode/authority.ts\t&& Object.prototype.hasOwnProperty.call(cloudflareEnv, 'GOD_MODE_DISABLED')\tprovider_infrastructure_availability"
+    )
+    expect(inventory.rows).toContain(
+      'server/utils/godMode/authority.ts\t: runtimeEnv.GOD_MODE_DISABLED\tprovider_infrastructure_availability'
+    )
+    expect(inventory.rows).toContain(
+      'server/api/admin/ai/governance/rollout.get.ts\t: typeof process === \'undefined\' ? undefined : process.env.GOD_MODE_DISABLED\tprovider_infrastructure_availability'
+    )
+    expect(inventory.rows).toContain(
+      'server/api/admin/ai/governance/rollout.get.ts\t? requestEnv.GOD_MODE_DISABLED\tprovider_infrastructure_availability'
+    )
+    expect(inventory.rows).toContain(
+      'server/utils/aiVoice.ts\tconst configured = (event.context as any)?.cloudflare?.env?.AI_GATEWAY_URL\tprovider_infrastructure_availability'
+    )
+    expect(inventory.rows).toContain(
+      'server/utils/aiVoice.ts\t?? process.env.AI_GATEWAY_URL\tprovider_infrastructure_availability'
+    )
+    expect(inventory.rows).toHaveLength(1353)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 98,
-      provider_infrastructure_availability: 188,
+      provider_infrastructure_availability: 203,
       application_governance_bypass: 671,
       ordinary_user_behavior: 174,
-      unrelated_configuration: 213
+      unrelated_configuration: 207
     })
-    expect(inventory.digest).toBe('3f5e9d14f6554a0ffe5af78e7040822d1fd9d417486452a542b291300c1ec1cf')
+    expect(inventory.digest).toBe('9742b7a0266130d611aa00dae085d97573e5c58df74fbdd979766d914b0af2f3')
     expect(CENTRAL_HELPER_BY_CLASS).toEqual({
       identity_tenant_hard_boundary: 'unchanged independent scope helper',
       provider_infrastructure_availability: 'unchanged provider/configuration check',

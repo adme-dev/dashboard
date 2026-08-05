@@ -2,6 +2,12 @@ import type { H3Event } from 'h3'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 import { resolveAiModelAssignment } from '~~/server/utils/ai/modelAssignments'
 
+const SPEECH_TO_TEXT_FEATURE_KEY = 'workers_ai_speech_to_text'
+const TEXT_TO_SPEECH_FEATURE_KEY = 'workers_ai_text_to_speech'
+const SPEECH_TO_TEXT_MODEL_ID = '@cf/openai/whisper-large-v3-turbo'
+const TEXT_TO_SPEECH_MODEL_ID = '@cf/myshell-ai/melotts'
+const SAFE_FEATURE_KEY_PATTERN = /^[a-z][a-z0-9_:-]{1,119}$/
+
 /**
  * Voice AI utilities — STT (OpenAI Whisper) and TTS (MyShell MeloTTS)
  * via Cloudflare Workers AI binding.
@@ -35,6 +41,11 @@ export function resolveWorkersAiGatewayId(event: H3Event): string | null {
   }
 }
 
+function resolveVoiceFeatureKey(value: unknown, fallback: string): string {
+  const normalized = typeof value === 'string' ? value.trim() : ''
+  return SAFE_FEATURE_KEY_PATTERN.test(normalized) ? normalized : fallback
+}
+
 /**
  * Speech-to-text using OpenAI Whisper Large V3 Turbo via Workers AI.
  * Input audio is base64-encoded for the model.
@@ -51,6 +62,7 @@ export async function speechToText(
     metadata?: Record<string, unknown>
   } = {}
 ): Promise<{ text: string; durationMs: number } | null> {
+  const featureKey = resolveVoiceFeatureKey(options.featureKey, SPEECH_TO_TEXT_FEATURE_KEY)
   const ai = getAI(event)
   if (!ai) return null
   const gatewayId = resolveWorkersAiGatewayId(event)
@@ -60,35 +72,43 @@ export async function speechToText(
     return null
   }
 
+  const start = Date.now()
+  let modelId = SPEECH_TO_TEXT_MODEL_ID
+  let dispatched = false
   try {
-    const start = Date.now()
     const bytes = audioBuffer instanceof ArrayBuffer
       ? new Uint8Array(audioBuffer)
       : audioBuffer
     // Whisper Large V3 Turbo accepts base64-encoded audio
     const base64Audio = Buffer.from(bytes).toString('base64')
     const assignment = await resolveAiModelAssignment({
-      featureKey: options.featureKey ?? 'workers_ai_speech_to_text',
+      featureKey,
       defaultProvider: 'workers_ai',
-      defaultModelId: '@cf/openai/whisper-large-v3-turbo',
+      defaultModelId: SPEECH_TO_TEXT_MODEL_ID,
       supportedProviders: ['workers_ai'],
     })
-    const result = await ai.run(assignment.modelId, {
+    modelId = assignment.modelId
+    dispatched = true
+    const result = await ai.run(modelId, {
       audio: base64Audio,
     }, {
       gateway: {
         id: gatewayId,
-        metadata: { featureKey: options.featureKey ?? 'workers_ai_speech_to_text' },
+        metadata: { featureKey },
       },
     })
     const durationMs = Date.now() - start
 
-    const text = result?.text?.trim() || result?.vtt?.replace(/WEBVTT\n\n[\d:.]+ --> [\d:.]+\n/g, '').trim() || ''
-    if (!text) return null
+    const directText = typeof result?.text === 'string' ? result.text.trim() : ''
+    const vttText = typeof result?.vtt === 'string'
+      ? result.vtt.replace(/WEBVTT\n\n[\d:.]+ --> [\d:.]+\n/g, '').trim()
+      : ''
+    const text = directText || vttText
+    if (!text) throw new Error('empty_or_malformed_response')
     await recordAiInvocation({
-      featureKey: options.featureKey ?? 'workers_ai_speech_to_text',
+      featureKey,
       provider: 'workers_ai',
-      modelId: assignment.modelId,
+      modelId,
       gatewayUsed: true,
       fallbackUsed: false,
       userId: options.userId,
@@ -108,13 +128,17 @@ export async function speechToText(
   } catch (err) {
     console.error('[aiVoice] STT failed:', err)
     await recordAiInvocation({
-      featureKey: options.featureKey ?? 'workers_ai_speech_to_text',
+      featureKey,
       provider: 'workers_ai',
-      modelId: '@cf/openai/whisper-large-v3-turbo',
-      gatewayUsed: true,
+      modelId,
+      gatewayUsed: dispatched,
       fallbackUsed: false,
+      userId: options.userId,
+      clientId: options.clientId,
+      requestId: options.requestId,
       status: 'error',
       errorCode: err instanceof Error ? err.message.slice(0, 160) : 'unknown_error',
+      latencyMs: Date.now() - start,
       metadata: options.metadata ?? {},
     })
     return null
@@ -139,6 +163,7 @@ export async function textToSpeech(
     beforeDispatch?: () => Promise<void>
   } = {}
 ): Promise<{ audioBuffer: ArrayBuffer; format: string } | null> {
+  const featureKey = resolveVoiceFeatureKey(options.featureKey, TEXT_TO_SPEECH_FEATURE_KEY)
   const ai = getAI(event)
   if (!ai) return null
   const gatewayId = resolveWorkersAiGatewayId(event)
@@ -156,9 +181,9 @@ export async function textToSpeech(
 
     // MeloTTS uses `prompt` (not `text`) and `lang` parameters
     const assignment = await resolveAiModelAssignment({
-      featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
+      featureKey,
       defaultProvider: 'workers_ai',
-      defaultModelId: '@cf/myshell-ai/melotts',
+      defaultModelId: TEXT_TO_SPEECH_MODEL_ID,
       supportedProviders: ['workers_ai'],
     })
     await options.beforeDispatch?.()
@@ -168,7 +193,7 @@ export async function textToSpeech(
     }, {
       gateway: {
         id: gatewayId,
-        metadata: { featureKey: options.featureKey ?? 'workers_ai_text_to_speech' },
+        metadata: { featureKey },
       },
     })
 
@@ -183,7 +208,7 @@ export async function textToSpeech(
       const audioBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
       const format = detectAudioFormat(bytes)
       await recordAiInvocation({
-        featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
+        featureKey,
         provider: 'workers_ai',
         modelId: assignment.modelId,
         gatewayUsed: true,
@@ -224,7 +249,7 @@ export async function textToSpeech(
         if (!totalLength) return null
         const format = detectAudioFormat(merged)
         await recordAiInvocation({
-          featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
+          featureKey,
           provider: 'workers_ai',
           modelId: assignment.modelId,
           gatewayUsed: true,
@@ -250,7 +275,7 @@ export async function textToSpeech(
       const bytes = result instanceof Uint8Array ? result : new Uint8Array(result as ArrayBuffer)
       const format = detectAudioFormat(bytes)
       await recordAiInvocation({
-        featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
+        featureKey,
         provider: 'workers_ai',
         modelId: assignment.modelId,
         gatewayUsed: true,
@@ -272,9 +297,9 @@ export async function textToSpeech(
   } catch (err) {
     console.error('[aiVoice] TTS failed:', err)
     await recordAiInvocation({
-      featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
+      featureKey,
       provider: 'workers_ai',
-      modelId: '@cf/myshell-ai/melotts',
+      modelId: TEXT_TO_SPEECH_MODEL_ID,
       gatewayUsed: true,
       status: 'error',
       errorCode: err instanceof Error ? err.message.slice(0, 160) : 'unknown_error',
