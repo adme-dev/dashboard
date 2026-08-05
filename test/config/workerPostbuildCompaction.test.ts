@@ -293,6 +293,29 @@ ${repeatedRuntimeSteps}
     await expect(readFile(modulePath, 'utf8')).resolves.toBe(compacted)
   })
 
+  it('drops internal names only for default-only API route modules', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-api-route-minify-'))
+    temporaryDirectories.push(directory)
+    const apiDirectory = path.join(directory, 'chunks', 'routes', 'api', 'public')
+    await mkdir(apiDirectory, { recursive: true })
+    const modulePath = path.join(apiDirectory, 'probe.get.mjs')
+    const source = `const handler = async function deliberatelyVerboseCapabilityHandler(event) {
+  const deliberatelyVerboseIntermediateValue = event.value
+  return deliberatelyVerboseIntermediateValue + 1
+}
+export { handler as default }
+`
+    await writeFile(modulePath, source, 'utf8')
+
+    await compactDeployedWorkerModules(directory)
+    const compacted = await readFile(modulePath, 'utf8')
+    const imported = await import(`${pathToFileURL(modulePath).href}?v=api-route`)
+
+    expect(compacted).not.toContain('deliberatelyVerboseCapabilityHandler')
+    expect(imported.default.name).not.toBe('deliberatelyVerboseCapabilityHandler')
+    await expect(imported.default({ value: 4 })).resolves.toBe(5)
+  })
+
   it('converges keepNames compaction before writing a deployed module', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'worker-convergent-minify-'))
     temporaryDirectories.push(directory)

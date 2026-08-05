@@ -195,7 +195,7 @@ function compactDeployedModuleSource(source) {
   )
 }
 
-async function minifyDeployedModuleToFixedPoint(source, sourcefile) {
+async function minifyDeployedModuleToFixedPoint(source, sourcefile, keepNames) {
   let compacted = source
 
   for (let pass = 0; pass < 8; pass += 1) {
@@ -206,7 +206,7 @@ async function minifyDeployedModuleToFixedPoint(source, sourcefile) {
       platform: 'neutral',
       target: 'esnext',
       minify: true,
-      keepNames: true,
+      keepNames,
       legalComments: 'none'
     })
     if (Buffer.byteLength(transformed.code) >= Buffer.byteLength(compacted)) {
@@ -218,6 +218,13 @@ async function minifyDeployedModuleToFixedPoint(source, sourcefile) {
   throw new Error(
     `[worker-compaction] ${sourcefile} did not converge after 8 shrinking passes`
   )
+}
+
+function shouldKeepDeployedModuleNames(modulePath, source) {
+  const apiRouteSegment = `${path.sep}chunks${path.sep}routes${path.sep}api${path.sep}`
+  if (!modulePath.includes(apiRouteSegment)) return true
+  const exports = parse(source)[1]
+  return exports.some(entry => entry.n !== 'default')
 }
 
 export async function compactDeployedWorkerModules(directory) {
@@ -242,7 +249,11 @@ export async function compactDeployedWorkerModules(directory) {
     )
     const compacted = preservesCompactionMarker
       ? stripped
-      : await minifyDeployedModuleToFixedPoint(stripped, entry.name)
+      : await minifyDeployedModuleToFixedPoint(
+          stripped,
+          entry.name,
+          shouldKeepDeployedModuleNames(entryPath, stripped)
+        )
     if (compacted === source) continue
 
     await atomicWriteFile(entryPath, compacted)
