@@ -9,16 +9,20 @@ God mode makes every registered application and MCP capability available. It doe
 ## Emergency disable
 
 1. Set `GOD_MODE_DISABLED=true` in the Cloudflare Pages production environment and the standalone MCP Worker environment.
-2. Redeploy only through the repository's guarded deployment command so both runtimes receive the setting.
-3. Sign in as an owner and confirm the `God mode active` status is absent.
-4. Confirm the AI governance page reports `Emergency disabled` while retaining employee draft, failed, suspended and retired readiness data.
-5. Run an owner application and MCP request. Both must follow ordinary governance and must not accept a God-mode claim.
+2. Deploy Cloudflare Pages separately. From a clean repository worktree, run `pnpm deploy:check`, then the guarded `pnpm deploy:production` command. Do not invoke Wrangler directly for Pages.
+3. Deploy the standalone MCP Worker separately by following `workers/mcp-server/DEPLOYMENT.md` and the supporting operator guidance in `docs/mcp-server-guide.md`. The Pages command does not deploy this Worker; do not invent or use a single combined deployment command.
+4. Sign in as an owner and confirm the `God mode active` status is absent.
+5. Confirm the AI governance page reports `Emergency disabled` while retaining employee draft, failed, suspended and retired readiness data.
+6. Present an existing connector claim with `godMode: true` and confirm it is rejected while the emergency disable is active. Do not accept that rejection as the governed-fallback test.
+7. Reconnect the connector so it performs a fresh OAuth exchange and receives `godMode: false`. Only then run an owner MCP request and confirm it follows ordinary governance. Run an owner application request separately and confirm it also follows ordinary governance.
 
 Treat a malformed `GOD_MODE_DISABLED` value as disabled. Do not change owner roles to operate the emergency control.
 
 ## Audit verification
 
-For each representative application and MCP call, locate the bounded `god_mode_audit_events` records by correlation ID. Confirm an immutable `attempt` exists before execution and one terminal `succeeded`, `failed` or `ambiguous` outcome exists. Verify actor, channel, route/tool, tenant/client/entity scope, bypass-control classes and emergency state are present without prompts, message bodies, provider responses, tokens, credentials or signed claims.
+For each representative application and MCP call, locate the bounded `god_mode_audit_events` records by correlation ID. Confirm an immutable `attempt` exists before execution and one terminal `succeeded` or `failed` outcome exists. Verify actor, channel, route/tool, tenant/client/entity scope, bypass-control classes and emergency state are present without prompts, message bodies, provider responses, tokens, credentials or signed claims.
+
+An `ambiguous` event is non-terminal reconciliation evidence, never proof that execution completed. Require a later `succeeded` or `failed` terminal event before closing the verification. If no terminal event can yet be established, keep the case as an actively tracked unresolved reconciliation with an alert and named owner until reconciliation produces the terminal evidence.
 
 Attempt-audit failure must prevent execution. Terminal-audit failure must roll back transactional mutations or leave the execution ledger in its defined non-replayable reconciliation state. Never update or delete audit rows during investigation.
 

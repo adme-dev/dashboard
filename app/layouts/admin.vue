@@ -23,16 +23,24 @@
 
       <template #footer>
         <div class="p-4 border-t border-default">
-          <UTooltip
-            v-if="isGodMode"
-            text="All registered application and MCP capabilities are available. Authentication and session checks, exact active-owner authority, tenant, client and entity isolation, mandatory audit, emergency disable, provider bindings and secrets, and SSRF protections remain enforced."
-            :content="{ side: 'right' }"
-          >
-            <UBadge color="warning" variant="soft" class="mb-3 flex w-full items-center justify-center gap-1.5">
-              <UIcon name="i-lucide-crown" class="size-3.5" />
-              God mode active
-            </UBadge>
-          </UTooltip>
+          <div v-if="isGodMode" class="mb-3">
+            <span :id="godModeStatusDescriptionId" class="sr-only">{{ godModeStatusDescription }}</span>
+            <UTooltip :text="godModeStatusDescription" :content="{ side: 'right' }">
+              <UButton
+                type="button"
+                color="warning"
+                variant="soft"
+                size="xs"
+                block
+                :aria-describedby="godModeStatusDescriptionId"
+                :aria-label="`God mode active. ${godModeStatusDescription}`"
+                class="justify-center gap-1.5"
+              >
+                <UIcon name="i-lucide-crown" class="size-3.5" />
+                God mode active
+              </UButton>
+            </UTooltip>
+          </div>
           <div class="flex items-center gap-3">
             <UAvatar
               v-if="user?.name"
@@ -65,9 +73,12 @@
 </template>
 
 <script setup lang="ts">
+import { useId } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 
 const { user, logout, fetchUser, isGodMode } = useAuth()
+const godModeStatusDescription = 'All registered application and MCP capabilities are available. Authentication and session checks, exact active-owner authority, tenant, client and entity isolation, mandatory audit, emergency disable, provider bindings and secrets, and SSRF protections remain enforced.'
+const godModeStatusDescriptionId = useId()
 
 // Load the user for the sidebar footer. Access control lives in the
 // role-admin route middleware (which understands custom roles via

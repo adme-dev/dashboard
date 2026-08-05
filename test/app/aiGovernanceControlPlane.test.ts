@@ -6,7 +6,7 @@ import CatalogReleasePanel from '~~/app/components/ai/governance/CatalogReleaseP
 import PilotMembershipDialog from '~~/app/components/ai/governance/PilotMembershipDialog.vue'
 import DepartmentPackReadinessList from '~~/app/components/ai/DepartmentPackReadinessList.vue'
 import RolloutReadinessPanel from '~~/app/components/ai/governance/RolloutReadinessPanel.vue'
-import type { AiCatalogGovernanceItem, AiDepartmentReadinessItem, AiEvaluationRunView } from '~~/app/types/aiGovernance'
+import type { AiCatalogGovernanceItem, AiCompanyRolloutReadiness, AiDepartmentReadinessItem, AiEvaluationRunView } from '~~/app/types/aiGovernance'
 
 Object.assign(globalThis, { computed, definePageMeta: vi.fn(), reactive, ref, watch })
 
@@ -264,5 +264,33 @@ describe('AI governance command centre', () => {
     expect(privacy.host.textContent).not.toContain('taylor@example.test')
     expect(privacy.host.textContent).not.toContain('private activity')
     privacy.app.unmount(); privacy.host.remove()
+  })
+
+  it('reports emergency-disabled owners as governed without changing employee draft, failed-gate, or suspended readiness', () => {
+    const emergency = mount(RolloutReadinessPanel, {
+      data: {
+        readyForPilot: false,
+        readyForEnforcement: false,
+        activeEmployeeCount: 3,
+        coveredEmployeeCount: 0,
+        godMode: { activeOwnerCount: 2, emergencyDisabled: true },
+        uncoveredEmployees: [],
+        departmentCoverage: [
+          { departmentId: 'department-draft', name: 'Marketing', activeEmployeeCount: 2, ownerReady: true, releaseState: 'draft', latestGatePassed: false },
+          { departmentId: 'department-suspended', name: 'Finance', activeEmployeeCount: 1, ownerReady: true, releaseState: 'suspended', latestGatePassed: false }
+        ],
+        blockers: []
+      } as AiCompanyRolloutReadiness,
+      pending: false,
+      error: null
+    })
+
+    expect(emergency.host.textContent).toContain('Emergency disabled')
+    expect(emergency.host.textContent).toContain('2 active owners are eligible for God mode but follow governed access while the emergency disable is active')
+    expect(emergency.host.textContent).not.toContain('2 active owners receive all registered capabilities')
+    expect(emergency.host.textContent).toContain('draft · Gate blocked')
+    expect(emergency.host.textContent).toContain('suspended · Gate blocked')
+    emergency.app.unmount()
+    emergency.host.remove()
   })
 })

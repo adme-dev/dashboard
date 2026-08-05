@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
+import { useId } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 
 const props = defineProps<{
@@ -11,6 +12,7 @@ const appConfig = useAppConfig()
 const { user, logout, isAuthenticated, isGodMode } = useAuth()
 
 const godModeStatusDescription = 'All registered application and MCP capabilities are available. Authentication and session checks, exact active-owner authority, tenant, client and entity isolation, mandatory audit, emergency disable, provider bindings and secrets, and SSRF protections remain enforced.'
+const godModeStatusDescriptionId = useId()
 
 // Fetch user on mount
 onMounted(() => {
@@ -140,17 +142,25 @@ const buttonProps = computed(() => {
 
 <template>
   <div class="space-y-1.5">
-    <UTooltip v-if="isGodMode" :text="godModeStatusDescription" :content="{ side: 'right' }">
-      <UBadge
-        color="warning"
-        variant="soft"
-        class="flex w-full items-center justify-center gap-1.5"
-        :aria-label="`God mode active. ${godModeStatusDescription}`"
-      >
-        <UIcon name="i-lucide-crown" class="size-3.5 shrink-0" />
-        <span :class="props.collapsed ? 'sr-only' : ''">God mode active</span>
-      </UBadge>
-    </UTooltip>
+    <div v-if="isGodMode">
+      <span :id="godModeStatusDescriptionId" class="sr-only">{{ godModeStatusDescription }}</span>
+      <UTooltip :text="godModeStatusDescription" :content="{ side: 'right' }">
+        <UButton
+          type="button"
+          color="warning"
+          variant="soft"
+          size="xs"
+          block
+          :square="props.collapsed"
+          :aria-describedby="godModeStatusDescriptionId"
+          :aria-label="`God mode active. ${godModeStatusDescription}`"
+          class="justify-center gap-1.5"
+        >
+          <UIcon name="i-lucide-crown" class="size-3.5 shrink-0" />
+          <span :class="props.collapsed ? 'sr-only' : ''">God mode active</span>
+        </UButton>
+      </UTooltip>
+    </div>
 
     <UDropdownMenu
       :items="items"

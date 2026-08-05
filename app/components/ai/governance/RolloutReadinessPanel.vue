@@ -76,7 +76,13 @@ function activeOwnerLabel(count: number) {
               Owner God mode coverage
             </h3>
             <p class="mt-1 text-xs text-muted">
-              {{ activeOwnerLabel(data.godMode.activeOwnerCount) }} receive all registered capabilities. Identity, isolation, audit and infrastructure boundaries remain enforced.
+              <template v-if="data.godMode.emergencyDisabled">
+                {{ activeOwnerLabel(data.godMode.activeOwnerCount) }} are eligible for God mode but follow governed access while the emergency disable is active.
+              </template>
+              <template v-else>
+                {{ activeOwnerLabel(data.godMode.activeOwnerCount) }} receive all registered capabilities.
+              </template>
+              Identity, isolation, audit and infrastructure boundaries remain enforced.
             </p>
           </div>
           <UBadge :color="data.godMode.emergencyDisabled ? 'error' : 'success'" variant="soft">

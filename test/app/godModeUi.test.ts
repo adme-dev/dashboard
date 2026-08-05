@@ -31,7 +31,7 @@ const uiStubs = {
   UAvatar: { template: '<span><slot /></span>' },
   UAlert: { props: ['title', 'description'], template: '<aside><strong>{{ title }}</strong><span>{{ description }}</span><slot /></aside>' },
   UBadge: { template: '<span><slot /></span>' },
-  UButton: { props: ['label'], template: '<button>{{ label }}<slot /></button>' },
+  UButton: { props: ['label'], template: '<button v-bind="$attrs">{{ label }}<slot /></button>' },
   UCard: { template: '<article><slot name="header" /><slot /></article>' },
   UDashboardGroup: { template: '<main><slot /></main>' },
   UDashboardSidebar: { template: '<aside><slot name="header" /><slot /><slot name="footer" /></aside>' },
@@ -64,7 +64,13 @@ describe('persistent owner God mode status', () => {
     app.mount(host)
 
     expect(host.textContent).toContain('God mode active')
-    expect(host.querySelector('[aria-label*="registered application and MCP capabilities"]')).not.toBeNull()
+    const statusTrigger = host.querySelector('button[aria-describedby]')
+    expect(statusTrigger).not.toBeNull()
+    expect(statusTrigger?.getAttribute('type')).toBe('button')
+    expect(statusTrigger?.getAttribute('aria-label')).toContain('God mode active')
+    const descriptionId = statusTrigger?.getAttribute('aria-describedby')
+    expect(descriptionId).toBeTruthy()
+    expect(host.querySelector(`#${descriptionId}`)?.textContent).toContain('registered application and MCP capabilities')
 
     authState.user.value = { name: 'Member', godMode: { active: false, label: 'God mode active' } }
     await nextTick()
@@ -81,6 +87,13 @@ describe('persistent owner God mode status', () => {
     app.mount(host)
 
     expect(host.textContent).toContain('God mode active')
+    const statusTrigger = host.querySelector('button[aria-describedby]')
+    expect(statusTrigger).not.toBeNull()
+    expect(statusTrigger?.getAttribute('type')).toBe('button')
+    expect(statusTrigger?.getAttribute('aria-label')).toContain('God mode active')
+    const descriptionId = statusTrigger?.getAttribute('aria-describedby')
+    expect(descriptionId).toBeTruthy()
+    expect(host.querySelector(`#${descriptionId}`)?.textContent).toContain('registered application and MCP capabilities')
     authState.user.value = { name: 'Admin', email: 'admin@example.test', godMode: { active: false, label: 'God mode active' } }
     await nextTick()
     expect(host.textContent).not.toContain('God mode active')
@@ -96,6 +109,27 @@ describe('persistent owner God mode status', () => {
     expect(menu).toContain('v-if="isGodMode"')
     expect(admin).toContain('v-if="isGodMode"')
     expect([agency, menu, admin].join('\n')).not.toMatch(/God mode[^\n]*(USwitch|toggle)/i)
+  })
+
+  it('documents separate guarded Pages and standalone MCP Worker deployment procedures', () => {
+    const runbook = readFileSync('docs/runbooks/owner-god-mode.md', 'utf8')
+    const emergencySection = runbook.split('## Emergency disable')[1]?.split('## Audit verification')[0] ?? ''
+
+    expect(emergencySection).toContain('pnpm deploy:check')
+    expect(emergencySection).toContain('pnpm deploy:production')
+    expect(emergencySection).toContain('workers/mcp-server/DEPLOYMENT.md')
+    expect(emergencySection).toContain('docs/mcp-server-guide.md')
+    expect(emergencySection).toMatch(/godMode:\s*true[^.]*rejected/i)
+    expect(emergencySection).toMatch(/reconnect[^.]*godMode:\s*false/i)
+  })
+
+  it('documents ambiguous audit outcomes as non-terminal reconciliation evidence', () => {
+    const runbook = readFileSync('docs/runbooks/owner-god-mode.md', 'utf8')
+    const auditSection = runbook.split('## Audit verification')[1]?.split('## Role downgrade or deactivation')[0] ?? ''
+
+    expect(auditSection).toMatch(/ambiguous[^.]*non-terminal/i)
+    expect(auditSection).toMatch(/later[^.]*succeeded[^.]*failed/i)
+    expect(auditSection).toMatch(/unresolved reconciliation[^.]*alert/i)
   })
 
   it('renders the truthful My Assistant authority card only for God mode coverage', async () => {
