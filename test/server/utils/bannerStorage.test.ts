@@ -5,9 +5,11 @@ const { uploadFile, deleteFile } = vi.hoisted(() => ({
   deleteFile: vi.fn()
 }))
 
-vi.mock('crypto', () => ({
+vi.stubGlobal('crypto', {
   randomUUID: () => '12345678-1234-4234-8234-123456789abc'
-}))
+})
+
+vi.mock('crypto', () => ({ randomUUID: undefined }))
 
 vi.mock('~~/server/utils/storage', () => ({ uploadFile, deleteFile }))
 

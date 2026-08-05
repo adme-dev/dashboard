@@ -1,5 +1,6 @@
-import { randomUUID } from 'crypto'
 import { uploadFile, deleteFile } from '~~/server/utils/storage'
+
+const randomUUID = () => globalThis.crypto.randomUUID()
 
 export function createBannerAssetStorageKey(fileName: string, userId: string): string {
   return `banner-assets/${userId}/${randomUUID()}/${fileName}`
