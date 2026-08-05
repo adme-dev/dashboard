@@ -882,7 +882,7 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
               channel: 'mcp',
               idempotencyKey: request.idempotencyKey,
               state: 'failed',
-              executionPhase: 'failed'
+              executionPhase: 'claimed'
             }, db)
             return fail(message)
           }

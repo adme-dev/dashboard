@@ -6,7 +6,8 @@ const mocks = vi.hoisted(() => ({
   videoPersist: vi.fn(),
   bannerReadRun: vi.fn(),
   bannerResolveProject: vi.fn(),
-  bannerPersist: vi.fn()
+  bannerPersist: vi.fn(),
+  bannerCreate: vi.fn()
 }))
 
 vi.mock('~~/server/utils/ai/mcp/generationRunner', () => ({
@@ -43,7 +44,8 @@ vi.mock('~~/server/utils/ai/mcp/bannerRunner', async (importOriginal) => {
     buildBannerProposeDeps: () => ({
       resolveProject: mocks.bannerResolveProject,
       persist: mocks.bannerPersist
-    })
+    }),
+    createBannerProjectDraft: mocks.bannerCreate
   }
 })
 
@@ -81,6 +83,7 @@ describe('registered supplemental MCP execution handlers', () => {
     mocks.bannerReadRun.mockResolvedValue({ projects: [{ id: 'banner-1' }] })
     mocks.bannerResolveProject.mockResolvedValue({ id: 'banner-1', name: 'Banner', formats: ['300x250'] })
     mocks.bannerPersist.mockResolvedValue({ proposalId: '33333333-3333-4333-8333-333333333333' })
+    mocks.bannerCreate.mockResolvedValue({ ok: true, data: { projectId: 'banner-created', status: 'draft' } })
   })
 
   it('connects generation manifests to the real generation runner factory', async () => {
@@ -115,5 +118,28 @@ describe('registered supplemental MCP execution handlers', () => {
       data: { proposalId: '33333333-3333-4333-8333-333333333333' }
     })
     expect(mocks.bannerPersist).toHaveBeenCalledTimes(1)
+  })
+
+  it('connects banner creation to the local transactional God mode executor', async () => {
+    const create = resolveGodModeMcpExecution(context, 'create_banner_project')!
+    const db = { query: vi.fn() }
+
+    expect(create).toMatchObject({
+      name: 'create_banner_project',
+      canonicalName: 'create_banner_project',
+      kind: 'supplemental',
+      executionClass: 'local-transactional',
+      tool: { mutates: true },
+    })
+    await expect(create.executeMutation!(
+      { name: 'CP', headline: 'CP', format: 'mrec' },
+      toolContext,
+      db,
+    )).resolves.toEqual({ ok: true, data: { projectId: 'banner-created', status: 'draft' } })
+    expect(mocks.bannerCreate).toHaveBeenCalledWith(
+      { name: 'CP', headline: 'CP', format: 'mrec' },
+      toolContext,
+      db,
+    )
   })
 })

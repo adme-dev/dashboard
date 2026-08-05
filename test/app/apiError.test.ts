@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { apiErrorDescription, apiErrorReasons, apiErrorStatus } from '~~/app/utils/apiError'
+import { apiErrorDescription, apiErrorReasons, apiErrorStatus, isAmbiguousApiFailure } from '~~/app/utils/apiError'
 
 describe('apiError helpers', () => {
   it('reads common Nitro/ofetch error shapes', () => {
@@ -22,5 +22,11 @@ describe('apiError helpers', () => {
     expect(apiErrorDescription(null, 'Fallback')).toBe('Fallback')
     expect(apiErrorReasons(new Error('Nope'))).toBeNull()
     expect(apiErrorStatus({ response: { status: 404 } })).toBe(404)
+  })
+
+  it('distinguishes connection-level ambiguity from an authoritative HTTP failure', () => {
+    expect(isAmbiguousApiFailure(new TypeError('Failed to fetch'))).toBe(true)
+    expect(isAmbiguousApiFailure({ response: { status: 500 } })).toBe(false)
+    expect(isAmbiguousApiFailure({ statusCode: 409 })).toBe(false)
   })
 })

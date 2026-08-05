@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { FORMAT_SAFE_ZONE_MAP } from '~/utils/banner-safe-zones'
+import { isAmbiguousApiFailure } from '~/utils/apiError'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
@@ -7,6 +8,7 @@ const route = useRoute()
 const toast = useToast()
 const projectId = computed(() => route.params.id as string)
 const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
+let createProjectIdempotencyKey = crypto.randomUUID()
 
 const {
   state,
@@ -254,6 +256,7 @@ async function handleSave() {
     if (!state.project?.id) {
       const created = await $fetch('/api/agency/banner-studio/projects', {
         method: 'POST',
+        headers: { 'Idempotency-Key': createProjectIdempotencyKey },
         body: {
           name: state.project?.name || 'Untitled Banner',
           canvasData: state.sets,
@@ -268,7 +271,8 @@ async function handleSave() {
     }
     await saveProject()
     toast.add({ title: 'Saved', description: 'Project saved successfully', color: 'success' })
-  } catch {
+  } catch (error) {
+    if (!isAmbiguousApiFailure(error)) createProjectIdempotencyKey = crypto.randomUUID()
     toast.add({ title: 'Error', description: 'Failed to save project', color: 'error' })
   }
 }

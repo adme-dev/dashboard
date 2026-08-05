@@ -9,7 +9,12 @@ import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { FORMATS } from '~~/app/utils/banner-constants'
 import { uploadFile } from '~~/server/utils/storage'
 import { randomUUID } from 'uncrypto'
-import type { BannerReadRunner, BannerProposeDeps, BannerRenderPendingPayload } from './bannerTools'
+import type {
+  BannerCreateProjectInput,
+  BannerReadRunner,
+  BannerProposeDeps,
+  BannerRenderPendingPayload,
+} from './bannerTools'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
 
 /** Parse canvas_data — stored as JSONB (object) or occasionally a JSON string. */
@@ -33,6 +38,107 @@ export interface LoadProjectRow { id: string, name: string, canvas_data: unknown
 export interface BannerProjectLoaders {
   loadProjectsRows: () => Promise<LoadProjectsRow[]>
   loadProjectRow: (nameOrId: string) => Promise<LoadProjectRow | null>
+}
+
+type BannerMutationDb = {
+  query: (sql: string, params?: unknown[]) => Promise<any>
+}
+
+function buildMrecDraftCanvas(headline: string): Record<string, unknown> {
+  return {
+    mrec: {
+      bgColor: '#0a0a10',
+      layers: [
+        {
+          id: 1,
+          type: 'bg',
+          name: 'Background',
+          x: 0,
+          y: 0,
+          w: 300,
+          h: 250,
+          zIndex: 0,
+          opacity: 1,
+          locked: true,
+          bgColor: '#0a0a10',
+          animIn: 'none',
+          animInDur: 0,
+          startTime: 0,
+          endTime: 5,
+          ease: 'none',
+          animOut: 'none',
+          animOutEase: 'none',
+        },
+        {
+          id: 2,
+          type: 'text',
+          name: 'Headline',
+          text: headline,
+          x: 20,
+          y: 80,
+          w: 260,
+          h: 90,
+          zIndex: 10,
+          opacity: 1,
+          fontSize: 56,
+          fontWeight: 900,
+          fontFamily: 'Barlow Condensed',
+          color: '#ffffff',
+          textTransform: 'none',
+          letterSpacing: '0',
+          lineHeight: 1,
+          textAlign: 'center',
+          animIn: 'fadeIn',
+          animInDur: 0.6,
+          startTime: 0.2,
+          endTime: 4.2,
+          ease: 'power2.out',
+          animOut: 'fadeOut',
+          animOutEase: 'power1.in',
+        },
+      ],
+    },
+  }
+}
+
+/**
+ * Insert a single editable draft inside the Task-5 coordinator transaction. The coordinator owns
+ * the logical MCP idempotency claim and immutable audit in the same transaction as this write.
+ */
+export async function createBannerProjectDraft(
+  input: BannerCreateProjectInput,
+  ctx: ToolContext,
+  db: BannerMutationDb,
+): Promise<{ ok: true, data: {
+  projectId: string
+  name: string
+  status: 'draft'
+  format: 'mrec'
+  headline: string
+} }> {
+  const canvasData = buildMrecDraftCanvas(input.headline)
+  const result = await db.query(
+    `INSERT INTO banner_projects (name, canvas_data, status, created_by)
+     VALUES ($1, $2::jsonb, 'draft', $3)
+     RETURNING id, name, status`,
+    [input.name, JSON.stringify(canvasData), ctx.userId],
+  )
+  const row = result?.rows?.[0] as { id?: unknown, name?: unknown, status?: unknown } | undefined
+  if (!row || typeof row.id !== 'string' || typeof row.name !== 'string' || row.status !== 'draft') {
+    throw Object.assign(new Error('Banner project insert returned no draft'), {
+      boundedCode: 'banner_project_insert_failed',
+    })
+  }
+  return {
+    ok: true,
+    data: {
+      projectId: row.id,
+      name: row.name,
+      status: 'draft',
+      format: 'mrec',
+      headline: input.headline,
+    },
+  }
 }
 
 function defaultLoaders(): BannerProjectLoaders {

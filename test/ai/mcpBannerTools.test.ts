@@ -1,7 +1,7 @@
 // test/ai/mcpBannerTools.test.ts
 import { describe, it, expect, vi } from 'vitest'
 import {
-  bannerReadTools, bannerProposeTools, projectBannerTools, resolveBannerProposeAction,
+  bannerReadTools, bannerProposeTools, bannerDirectMutationTools, projectBannerTools, resolveBannerProposeAction,
   executeBannerTool, executeBannerPropose, type BannerReadRunner, type BannerProposeDeps,
 } from '~~/server/utils/ai/mcp/bannerTools'
 import { MCP_CONFIRM_TOOL } from '~~/server/utils/ai/mcp/writeTools'
@@ -16,6 +16,34 @@ describe('banner tool manifest', () => {
     expect(projectBannerTools('owner', false)).toEqual([])
     const names = projectBannerTools('owner', true).map(t => t.name).sort()
     expect(names).toEqual(['confirm_action', 'get_banner_render_status', 'list_banner_projects', 'propose_banner_render'])
+  })
+  it('adds create_banner_project only to the active-owner God mode projection', () => {
+    const governed = projectBannerTools('owner', true).map(t => t.name)
+    const untrustedOptIn = projectBannerTools('owner', true, {
+      includeDirectMutations: true,
+    }).map(t => t.name)
+    const godMode = projectBannerTools('owner', true, {
+      bypassPermissions: true,
+      includeDirectMutations: true,
+    }).map(t => t.name)
+
+    expect(governed).not.toContain('create_banner_project')
+    expect(untrustedOptIn).not.toContain('create_banner_project')
+    expect(godMode).toContain('create_banner_project')
+  })
+  it('validates and normalizes the bounded initial banner-create contract', () => {
+    const schema = bannerDirectMutationTools[0]!.parameters
+
+    expect(schema.parse({ name: '  CP  ', headline: '  CP launch  ' })).toEqual({
+      name: 'CP',
+      headline: 'CP launch',
+      format: 'mrec',
+    })
+    expect(schema.safeParse({ name: '', headline: 'CP' }).success).toBe(false)
+    expect(schema.safeParse({ name: 'x'.repeat(256), headline: 'CP' }).success).toBe(false)
+    expect(schema.safeParse({ name: 'CP', headline: 'x'.repeat(121) }).success).toBe(false)
+    expect(schema.safeParse({ name: 'CP', headline: 'CP', format: 'leader' }).success).toBe(false)
+    expect(schema.safeParse({ name: 'CP', headline: 'CP', publish: true }).success).toBe(false)
   })
   it('includes confirm_action when enabled', () => {
     const names = projectBannerTools('owner', true).map(t => t.name)

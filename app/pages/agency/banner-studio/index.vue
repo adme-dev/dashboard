@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { BannerProject } from '~/types/banner-studio'
+import { isAmbiguousApiFailure } from '~/utils/apiError'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
@@ -13,8 +14,9 @@ const deleteTarget = ref<BannerProject | null>(null)
 
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string; body?: unknown }
+  options?: { method?: string, body?: unknown, headers?: Record<string, string> }
 ) => Promise<T>
+const duplicateIdempotencyKeys = new Map<string, string>()
 const projectsData = ref<BannerProject[]>([])
 const fetchStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
 
@@ -71,9 +73,12 @@ function editProject(p: BannerProject) {
 }
 
 async function duplicateProject(p: BannerProject) {
+  const idempotencyKey = duplicateIdempotencyKeys.get(p.id) || crypto.randomUUID()
+  duplicateIdempotencyKeys.set(p.id, idempotencyKey)
   try {
     await apiFetch<{ project: BannerProject }>('/api/agency/banner-studio/projects', {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
       body: {
         name: `${p.name} (copy)`,
         clientId: p.clientId,
@@ -81,9 +86,11 @@ async function duplicateProject(p: BannerProject) {
         status: 'draft',
       },
     })
+    duplicateIdempotencyKeys.delete(p.id)
     toast.add({ title: 'Duplicated', description: `${p.name} copied`, color: 'success' })
     await refresh()
-  } catch {
+  } catch (error) {
+    if (!isAmbiguousApiFailure(error)) duplicateIdempotencyKeys.delete(p.id)
     toast.add({ title: 'Error', description: 'Failed to duplicate project', color: 'error' })
   }
 }

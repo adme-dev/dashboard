@@ -29,6 +29,12 @@ export interface BannerToolDescriptor {
   requiredPermission: PermissionGroup
 }
 
+export interface BannerCreateProjectInput {
+  name: string
+  headline: string
+  format: 'mrec'
+}
+
 // ── Read tools ─────────────────────────────────────────────────────────────────
 
 export const bannerReadTools: BannerToolDescriptor[] = [
@@ -75,6 +81,31 @@ export const bannerProposeTools: BannerToolDescriptor[] = [
   },
 ]
 
+// ── Immediate owner mutations ─────────────────────────────────────────────────
+
+const BannerCreateProjectParams = z.object({
+  name: z.string().trim().min(1).max(255),
+  headline: z.string().trim().min(1).max(120),
+  format: z.literal('mrec').default('mrec'),
+}).strict()
+
+/**
+ * Direct banner mutations are projected only for a runtime-verified God Mode owner. They execute
+ * through the Task-5 local transaction coordinator, which owns immutable audit and idempotency.
+ */
+export const bannerDirectMutationTools: BannerToolDescriptor[] = [
+  {
+    name: 'create_banner_project',
+    description:
+      'Create a new draft Banner Studio project with one renderable 300×250 MRec artboard. '
+      + 'Provide the project name and headline text; the project remains editable and unpublished. '
+      + 'This does not render, publish, distribute, or email the banner.',
+    parameters: BannerCreateProjectParams,
+    mutates: true,
+    requiredPermission: 'CREATIVE',
+  },
+]
+
 // ── Manifest projection ────────────────────────────────────────────────────────
 
 /**
@@ -85,11 +116,19 @@ export const bannerProposeTools: BannerToolDescriptor[] = [
 export function projectBannerTools(
   role: string,
   enabled: boolean,
-  options: { bypassPermissions?: boolean, confirmDescription?: string } = {}
+  options: {
+    bypassPermissions?: boolean
+    confirmDescription?: string
+    includeDirectMutations?: boolean
+  } = {}
 ): McpToolManifest[] {
   if (!enabled) return []
   if (!options.bypassPermissions && !roleHasPermission(role, 'CREATIVE')) return []
-  const all = [...bannerReadTools, ...bannerProposeTools]
+  const all = [
+    ...bannerReadTools,
+    ...bannerProposeTools,
+    ...(options.includeDirectMutations && options.bypassPermissions ? bannerDirectMutationTools : []),
+  ]
   const tools = all
     .filter(t => options.bypassPermissions || roleHasPermission(role, t.requiredPermission))
     .map(t => ({
@@ -110,6 +149,7 @@ export function projectBannerMcpSuite(context: McpProjectionContext): McpToolMan
     context.governanceBypass || context.suiteFlags.banners,
     {
       bypassPermissions: context.governanceBypass,
+      includeDirectMutations: context.governanceBypass,
       confirmDescription: resolveRegisteredConfirmDescription(context)
     }
   )
@@ -312,5 +352,27 @@ export function resolveBannerMcpExecutions(): McpExecutionDescriptor[] {
       }
     }
   }))
-  return [...reads, ...proposals]
+  const directMutations = bannerDirectMutationTools.map(descriptor => ({
+    name: descriptor.name,
+    canonicalName: descriptor.name,
+    kind: 'supplemental' as const,
+    executionClass: 'local-transactional' as const,
+    executeMutation: async (
+      args: BannerCreateProjectInput,
+      ctx: ToolContext,
+      db: { query: (sql: string, params?: unknown[]) => Promise<any> }
+    ): Promise<ToolResult> => {
+      const { createBannerProjectDraft } = await import('./bannerRunner')
+      return await createBannerProjectDraft(args, ctx, db)
+    },
+    tool: {
+      ...descriptor,
+      mutates: true,
+      handler: async (): Promise<ToolResult> => ({
+        ok: false,
+        error: 'Banner project creation requires the authenticated God Mode mutation coordinator.'
+      })
+    }
+  }))
+  return [...reads, ...proposals, ...directMutations]
 }

@@ -1440,7 +1440,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Every Registered Capability',
-        content: 'Active owners can discover and execute registered capabilities across Finance, Marketing, Banners, publishing, media generation, administration and MCP integrations without application rollout, permission, budget or confirmation gates. Missing providers, bindings, secrets or unimplemented tools remain real operational failures.'
+        content: 'Active owners can discover and execute registered capabilities across Finance, Marketing, Banners, publishing, media generation, administration and MCP integrations without application rollout, permission, budget or confirmation gates. Banner capabilities include creating an editable, unpublished 300×250 draft directly through MCP with transaction-bound idempotency and audit. Missing providers, bindings, secrets or unimplemented tools remain real operational failures.'
       },
       {
         title: 'Security Boundaries Stay Enforced',

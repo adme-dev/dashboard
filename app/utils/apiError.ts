@@ -31,3 +31,8 @@ export function apiErrorStatus(error: unknown): number | null {
   if (!isRecord(error)) return null
   return error.statusCode ?? error.response?.status ?? null
 }
+
+/** A request without an HTTP response may have committed, so its idempotency key must be retained. */
+export function isAmbiguousApiFailure(error: unknown): boolean {
+  return apiErrorStatus(error) === null
+}

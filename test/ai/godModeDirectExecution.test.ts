@@ -539,6 +539,10 @@ describe('God mode direct execution', () => {
       expect(h.calls.indexOf('attempt')).toBeLessThan(scenario === 'scope' ? h.calls.indexOf('scope') : h.calls.indexOf('failed'))
       expect(h.calls).toContain('failed')
       expect(h.ledger.get(idempotencyKey)?.state).toBe('failed')
+      expect(h.deps.setExecutionState).toHaveBeenCalledWith(expect.objectContaining({
+        state: 'failed',
+        executionPhase: 'claimed'
+      }), expect.anything())
       expect(mutation).not.toHaveBeenCalled()
     }
   })

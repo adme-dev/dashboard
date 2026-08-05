@@ -1,6 +1,12 @@
 // test/ai/mcpBannerRunner.test.ts
 import { describe, it, expect, vi } from 'vitest'
-import { dispatchBannerConfirm, buildBannerReadRunner, type BannerConfirmDeps, type BannerProjectLoaders } from '~~/server/utils/ai/mcp/bannerRunner'
+import {
+  createBannerProjectDraft,
+  dispatchBannerConfirm,
+  buildBannerReadRunner,
+  type BannerConfirmDeps,
+  type BannerProjectLoaders,
+} from '~~/server/utils/ai/mcp/bannerRunner'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
 const ctx: ToolContext = { userId: 'u1', userRole: 'creative', event: {} as any }
@@ -14,6 +20,73 @@ function deps(over: Partial<BannerConfirmDeps> = {}): BannerConfirmDeps {
     ...over,
   }
 }
+
+describe('createBannerProjectDraft', () => {
+  it('creates one renderable MRec draft inside the caller-owned transaction', async () => {
+    const db = {
+      query: vi.fn().mockResolvedValue({
+        rows: [{ id: 'project-cp', name: 'CP', status: 'draft' }],
+      }),
+    }
+
+    const result = await createBannerProjectDraft(
+      { name: 'CP', headline: 'CP launch', format: 'mrec' },
+      { ...ctx, userId: 'owner-1', userRole: 'owner', source: 'mcp' },
+      db,
+    )
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        projectId: 'project-cp',
+        name: 'CP',
+        status: 'draft',
+        format: 'mrec',
+        headline: 'CP launch',
+      },
+    })
+    expect(db.query).toHaveBeenCalledTimes(1)
+    const [sql, params] = db.query.mock.calls[0]!
+    expect(sql).toMatch(/INSERT INTO banner_projects/i)
+    expect(sql).toMatch(/'draft'/i)
+    expect(params[0]).toBe('CP')
+    expect(params[2]).toBe('owner-1')
+
+    const canvas = JSON.parse(params[1])
+    expect(Object.keys(canvas)).toEqual(['mrec'])
+    expect(canvas.mrec.bgColor).toBe('#0a0a10')
+    expect(canvas.mrec.layers).toHaveLength(2)
+    expect(canvas.mrec.layers[0]).toMatchObject({
+      id: 1,
+      type: 'bg',
+      x: 0,
+      y: 0,
+      w: 300,
+      h: 250,
+    })
+    expect(canvas.mrec.layers[1]).toMatchObject({
+      id: 2,
+      type: 'text',
+      text: 'CP launch',
+      w: 260,
+    })
+    expect(canvas.mrec.layers.every((layer: Record<string, unknown>) => (
+      typeof layer.startTime === 'number'
+      && typeof layer.animInDur === 'number'
+      && typeof layer.endTime === 'number'
+    ))).toBe(true)
+  })
+
+  it('fails closed when the insert returns no project', async () => {
+    const db = { query: vi.fn().mockResolvedValue({ rows: [] }) }
+
+    await expect(createBannerProjectDraft(
+      { name: 'CP', headline: 'CP', format: 'mrec' },
+      { ...ctx, userId: 'owner-1', userRole: 'owner', source: 'mcp' },
+      db,
+    )).rejects.toMatchObject({ boundedCode: 'banner_project_insert_failed' })
+  })
+})
 
 // ── C1: canvas_data flat-parse tests ──────────────────────────────────────────
 
