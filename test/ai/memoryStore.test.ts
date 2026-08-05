@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
-  upsertMemory, getMemoriesByIds, listRecentMemories, stampUsed, deleteUserMemory, markEmbedded,
+  upsertMemory, getMemoriesByIds, listRecentMemories, listUnembeddedMemories, stampUsed, deleteUserMemory, markEmbedded,
   listUserMemoriesBySource, listUserDepartments, deleteMemoryById,
   REINFORCE_STEP, type MemoryDb
 } from '~~/server/utils/ai/memory/store'
@@ -73,6 +73,26 @@ describe('listRecentMemories', () => {
     await listRecentMemories('u7', 5, db)
     expect((db.queryRows as any).mock.calls[0][1]).toEqual(['u7', 5])
     expect((db.queryRows as any).mock.calls[0][0]).toContain('user_id = $1')
+  })
+})
+
+describe('listUnembeddedMemories', () => {
+  it('uses a bounded parameterized user-scoped query for pending rows', async () => {
+    const db = fakeDb()
+    await listUnembeddedMemories('u7', 10, db)
+    const [sql, params] = (db.queryRows as any).mock.calls[0]
+    expect(sql).toContain('WHERE user_id = $1 AND embedding_id IS NULL')
+    expect(sql).toContain('ORDER BY updated_at DESC, created_at DESC')
+    expect(sql).toContain('LIMIT $2')
+    expect(params).toEqual(['u7', 10])
+    await expect(listUnembeddedMemories('u7', 0, db)).rejects.toThrow(/limit/i)
+    await expect(listUnembeddedMemories('u7', 51, db)).rejects.toThrow(/limit/i)
+  })
+
+  it('never performs an unscoped query', async () => {
+    const db = fakeDb()
+    await expect(listUnembeddedMemories('', 10, db)).resolves.toEqual([])
+    expect(db.queryRows).not.toHaveBeenCalled()
   })
 })
 

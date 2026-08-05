@@ -14,6 +14,7 @@ const deps = (over: Partial<MemoryDeps> = {}): MemoryDeps => ({
   search: vi.fn().mockResolvedValue([]),
   byIds: vi.fn().mockResolvedValue([]),
   recent: vi.fn().mockResolvedValue([]),
+  unembedded: vi.fn().mockResolvedValue([]),
   departments: vi.fn().mockResolvedValue([]),
   shared: vi.fn().mockResolvedValue([]),
   stamp: vi.fn().mockResolvedValue(undefined),
@@ -34,22 +35,46 @@ describe('buildUserMemoryBlock', () => {
     expect((d.search as any).mock.calls[0][3]).toEqual({ userId: 'u1' })
   })
 
-  it('merges pending personal memory with vector hits, deduplicates ids, and excludes foreign pending rows', async () => {
+  it('merges an older pending row with a vector hit despite ten newer embedded rows, deduplicating ids', async () => {
+    const newerEmbedded = Array.from({ length: 10 }, (_, index) =>
+      row(`recent-${index}`, 'u1', `new embedded ${index}`, { embedding_id: `recent-${index}` }))
     const d = deps({
       search: vi.fn().mockResolvedValue([{ id: 'm1', score: 0.9, metadata: {} }]),
       byIds: vi.fn().mockResolvedValue([row('m1', 'u1', 'indexed fact', { embedding_id: 'm1' })]),
-      recent: vi.fn().mockResolvedValue([
+      recent: vi.fn().mockResolvedValue(newerEmbedded),
+      unembedded: vi.fn().mockResolvedValue([
         row('m1', 'u1', 'duplicate indexed fact', { embedding_id: null }),
-        row('pending', 'u1', 'brand new pending fact', { embedding_id: null }),
-        row('foreign', 'u2', 'FOREIGN pending secret', { embedding_id: null }),
+        row('pending', 'u1', 'older pending fact', { embedding_id: null }),
       ]),
     })
     const out = await buildUserMemoryBlock({ userId: 'u1', query: 'facts' }, d)
     expect(out).toContain('- indexed fact')
-    expect(out).toContain('- brand new pending fact')
+    expect(out).toContain('- older pending fact')
     expect(out).not.toContain('duplicate indexed fact')
+    expect(d.unembedded).toHaveBeenCalledWith('u1', 10)
+  })
+
+  it('preserves embedded recent fallback memories when vector recall is empty or fails', async () => {
+    for (const search of [vi.fn().mockResolvedValue([]), vi.fn().mockRejectedValue(new Error('down'))]) {
+      const d = deps({
+        search,
+        recent: vi.fn().mockResolvedValue([row('recent', 'u1', 'embedded recent fallback', { embedding_id: 'recent' })]),
+      })
+      const out = await buildUserMemoryBlock({ userId: 'u1', query: 'facts' }, d)
+      expect(out).toContain('- embedded recent fallback')
+    }
+  })
+
+  it('never admits a foreign row from the pending-memory query', async () => {
+    const d = deps({
+      unembedded: vi.fn().mockResolvedValue([
+        row('mine', 'u1', 'my pending fact'),
+        row('foreign', 'u2', 'FOREIGN pending secret'),
+      ]),
+    })
+    const out = await buildUserMemoryBlock({ userId: 'u1', query: 'facts' }, d)
+    expect(out).toContain('- my pending fact')
     expect(out).not.toContain('FOREIGN pending secret')
-    expect(d.recent).toHaveBeenCalledWith('u1', 10)
   })
 
   it('ISOLATION: drops any row whose user_id != caller, even if returned by the index', async () => {

@@ -2,7 +2,7 @@ import type { H3Event } from 'h3'
 import { searchSimilar } from '~~/server/utils/aiVectorize'
 import { GROQ_MODELS } from '~~/server/utils/groqClient'
 import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
-import { getMemoriesByIds, listRecentMemories, listSharedMemories, listUserDepartments, stampUsed, upsertMemory, markEmbedded } from './store'
+import { getMemoriesByIds, listRecentMemories, listUnembeddedMemories, listSharedMemories, listUserDepartments, stampUsed, upsertMemory, markEmbedded } from './store'
 import { selectTopMemories, type RetrieveCandidate } from './retrieve'
 import { renderMemoryBlock } from './render'
 import { distill, type TurnForDistill } from './distill'
@@ -23,6 +23,7 @@ export interface MemoryDeps {
   search: (event: H3Event | undefined, query: string, topK: number, filter: Record<string, unknown>) => Promise<Array<{ id: string, score: number, metadata: Record<string, string> }>>
   byIds: (ids: string[], userId: string) => Promise<UserMemory[]>
   recent: (userId: string, limit: number) => Promise<UserMemory[]>
+  unembedded: (userId: string, limit: number) => Promise<UserMemory[]>
   /** The user's department ids (drives which department-scoped memories are visible). */
   departments: (userId: string) => Promise<string[]>
   /** Department + org shared memories visible to the user (NOT user-scoped — intentionally shared). */
@@ -35,6 +36,7 @@ const defaultDeps: MemoryDeps = {
   search: (event, query, topK, filter) => event ? searchSimilar(event, query, topK, filter) : searchSimilar(query, topK, filter),
   byIds: (ids, userId) => getMemoriesByIds(ids, userId),
   recent: (userId, limit) => listRecentMemories(userId, limit),
+  unembedded: (userId, limit) => listUnembeddedMemories(userId, limit),
   departments: userId => listUserDepartments(userId),
   shared: (departmentIds, limit) => listSharedMemories(departmentIds, limit),
   stamp: ids => stampUsed(ids),
@@ -62,18 +64,28 @@ export async function buildUserMemoryBlock(
     /* fall through to recency fallback */
   }
 
-  // 2. Always merge pending/unembedded personal memory. Vector indexing is asynchronous, so a
-  // vector hit must not hide a newly committed memory that has not reached the index yet.
+  // 2. Preserve the ordinary all-recent fallback when vector recall found no usable personal row.
+  if (candidates.length === 0) {
+    try {
+      const rows = (await deps.recent(userId, 10)).filter(row => row.user_id === userId)
+      candidates = rows.map(memory => ({ memory, vectorScore: 1 }))
+    } catch {
+      // pending and shared recall below can still contribute
+    }
+  }
+
+  // 3. Always merge the separately queried pending set. Vector indexing is asynchronous, and a
+  // page of newer embedded memories in the ordinary fallback must not hide an older pending row.
   try {
     const candidateIds = new Set(candidates.map(candidate => candidate.memory.id))
-    const rows = (await deps.recent(userId, 10))
-      .filter(row => row.user_id === userId && row.embedding_id === null && !candidateIds.has(row.id))
+    const rows = (await deps.unembedded(userId, 10))
+      .filter(row => row.user_id === userId && !candidateIds.has(row.id))
     candidates.push(...rows.map(memory => ({ memory, vectorScore: 1 })))
   } catch {
     // personal recall failed; shared scope below may still contribute, so don't bail yet
   }
 
-  // 3. Shared scopes (department + org) — observe-and-learn spec §4b. Intentionally NOT user-scoped:
+  // 4. Shared scopes (department + org) — observe-and-learn spec §4b. Intentionally NOT user-scoped:
   // a user sees their own personal memory PLUS their department's + org-wide curated memory. Personal
   // is never shared (that filter stays above); these tiers are. Best-effort — failure just omits them.
   try {

@@ -80,6 +80,24 @@ export async function listRecentMemories(userId: string, limit: number, db: Memo
 }
 
 /**
+ * Recent personal memories still waiting for vector indexing. This is deliberately a separate,
+ * DB-filtered query: a page of newer embedded rows must never hide an older pending row.
+ */
+export async function listUnembeddedMemories(userId: string, limit: number, db: MemoryDb = defaultDb): Promise<UserMemory[]> {
+  if (!userId) return []
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+    throw new RangeError('listUnembeddedMemories limit must be an integer from 1 to 50')
+  }
+  return db.queryRows<UserMemory>(
+    `SELECT * FROM ai_user_memory
+       WHERE user_id = $1 AND embedding_id IS NULL
+       ORDER BY updated_at DESC, created_at DESC
+       LIMIT $2`,
+    [userId, limit]
+  )
+}
+
+/**
  * Shared (department + org) memories visible to a user, given their department ids. NOT user_id-scoped
  * — these tiers are intentionally shared (the curated middle/top tiers). Personal memory is never read
  * here. Empty department list still returns org-scoped memory. Ordered by salience then recency.
