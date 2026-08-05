@@ -44,6 +44,8 @@ interface ParsedRange {
 }
 
 const PRIVATE_CACHE = 'private, max-age=300, must-revalidate'
+const BIGINT_ZERO = BigInt(0)
+const BIGINT_ONE = BigInt(1)
 
 function responseHeaders(object: NativeR2Object): Headers {
   const headers = new Headers()
@@ -71,7 +73,7 @@ function parseByteRange(value: string, size: number): ParsedRange | null {
   const total = BigInt(size)
   if (!match[1]) {
     const requested = BigInt(match[2])
-    if (requested <= 0n) return null
+    if (requested <= BIGINT_ZERO) return null
     const length = requested > total ? size : Number(requested)
     return {
       offset: size - length,
@@ -82,11 +84,11 @@ function parseByteRange(value: string, size: number): ParsedRange | null {
 
   const start = BigInt(match[1])
   if (start >= total) return null
-  const requestedEnd = match[2] ? BigInt(match[2]) : total - 1n
+  const requestedEnd = match[2] ? BigInt(match[2]) : total - BIGINT_ONE
   if (requestedEnd < start) return null
-  const end = requestedEnd >= total ? total - 1n : requestedEnd
+  const end = requestedEnd >= total ? total - BIGINT_ONE : requestedEnd
   const offset = Number(start)
-  const length = Number(end - start + 1n)
+  const length = Number(end - start + BIGINT_ONE)
   return { offset, length, native: { offset, length } }
 }
 

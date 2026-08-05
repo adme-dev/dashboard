@@ -251,6 +251,12 @@ export async function uploadFile(
  * Delete a file from R2, or from local filesystem if R2 is not configured
  */
 export async function deleteFile(key: string, requestBucket?: R2BucketBinding): Promise<void> {
+  const bucket = getNativeBucket(requestBucket)
+  if (bucket) {
+    await bucket.delete(key)
+    return
+  }
+
   if (!isStorageConfigured()) {
     const filePath = join(LOCAL_UPLOAD_DIR, key)
     try {
@@ -258,12 +264,6 @@ export async function deleteFile(key: string, requestBucket?: R2BucketBinding): 
     } catch {
       // File may not exist — ignore
     }
-    return
-  }
-
-  const bucket = getNativeBucket(requestBucket)
-  if (bucket) {
-    await bucket.delete(key)
     return
   }
 

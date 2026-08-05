@@ -114,4 +114,31 @@ describe('uploadFile native R2 binding', () => {
     })
     expect(head).toHaveBeenCalledWith('send/transfer/file')
   })
+
+  it('deletes through the request-owned binding when S3 credentials are absent', async () => {
+    const configured = Object.fromEntries(ENV_KEYS.map(key => [key, process.env[key]]))
+    for (const key of ENV_KEYS) Reflect.deleteProperty(process.env, key)
+    vi.resetModules()
+
+    try {
+      const { deleteFile } = await import('~~/server/utils/storage')
+      const deleteObject = vi.fn(async () => {})
+      const mediaBucket = {
+        put: vi.fn(),
+        head: vi.fn(),
+        delete: deleteObject
+      }
+
+      await deleteFile('banner-assets/owner/object/source.jpg', mediaBucket)
+
+      expect(deleteObject).toHaveBeenCalledWith('banner-assets/owner/object/source.jpg')
+    } finally {
+      for (const key of ENV_KEYS) {
+        const value = configured[key]
+        if (value === undefined) Reflect.deleteProperty(process.env, key)
+        else process.env[key] = value
+      }
+      vi.resetModules()
+    }
+  })
 })

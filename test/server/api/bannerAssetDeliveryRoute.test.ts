@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { transform } from 'esbuild'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { signBannerAssetToken } from '~~/server/utils/bannerStorage'
 
@@ -14,6 +18,7 @@ const SECRET = 'render-link-secret-with-at-least-thirty-two-bytes'
 const ASSET_ID = '22222222-2222-4222-8222-222222222222'
 const UPLOADER_ID = '11111111-1111-4111-8111-111111111111'
 const KEY = `banner-assets/${UPLOADER_ID}/33333333-3333-4333-8333-333333333333/launch-car.jpg`
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 
 function objectBody(body = 'image-bytes', range?: { offset: number, length: number }) {
   return {
@@ -68,6 +73,21 @@ describe('GET /api/public/banner-assets/:token', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     queryOne.mockResolvedValue({ id: ASSET_ID, r2Key: KEY, uploadedBy: UPLOADER_ID })
+  })
+
+  it('compiles the range implementation for the production ES2019 target without warnings', async () => {
+    const source = await readFile(
+      path.join(repositoryRoot, 'server/api/public/banner-assets/[token].get.ts'),
+      'utf8'
+    )
+    const result = await transform(source, {
+      loader: 'ts',
+      format: 'esm',
+      target: 'es2019',
+      logLevel: 'silent'
+    })
+
+    expect(result.warnings).toEqual([])
   })
 
   it('streams a token-authorized private R2 object with bounded browser caching', async () => {

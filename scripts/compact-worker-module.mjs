@@ -220,9 +220,81 @@ async function minifyDeployedModuleToFixedPoint(source, sourcefile, keepNames) {
   )
 }
 
+// Audited against the fresh 2026-08-06 production corpus. Each tuple pins one
+// generated default-only route and its measured keepNames byte delta. Function
+// names remain preserved everywhere else; additions require a new corpus audit.
+const NAME_DROPPING_MODULE_AUDIT = [
+  ['chunks/routes/api/xero/reports/pnl-detailed.get.mjs', 393],
+  ['chunks/routes/api/xero/overheads.get.mjs', 308],
+  ['chunks/routes/api/internal/ai-orchestrator/read-tool.post.mjs', 287],
+  ['chunks/routes/api/public/banner-assets/_token_.get.mjs', 260],
+  ['chunks/routes/api/xero/invoices.get.mjs', 255],
+  ['chunks/routes/api/agency/monday/preview.post.mjs', 211],
+  ['chunks/routes/api/kpis-advanced.get.mjs', 209],
+  ['chunks/routes/api/office/_officeId/assistant/jobs/_jobId_.patch.mjs', 207],
+  ['chunks/routes/api/portal/analytics/trends.get.mjs', 201],
+  ['chunks/routes/api/office/_officeId/zones/_zoneId/live-transcription.post.mjs', 198],
+  ['chunks/routes/api/agency/social/spend/_id/actions/plan.post.mjs', 189],
+  ['chunks/routes/api/xero/reports/cash-flow-insights.get.mjs', 189],
+  ['chunks/routes/api/office/_officeId/lobby-requests/_requestId_.patch.mjs', 184],
+  ['chunks/routes/api/xero/reports/executive-summary.get.mjs', 184],
+  ['chunks/routes/api/xero/get-out/profitability.get.mjs', 182],
+  ['chunks/routes/api/leads/webhook/generic/_token_.post.mjs', 179],
+  ['chunks/routes/api/xero/expenses.get.mjs', 178],
+  ['chunks/routes/api/xero/reports/balance-sheet.get.mjs', 173],
+  ['chunks/routes/api/admin/ai/model-ops/invocations.get.mjs', 172],
+  ['chunks/routes/api/ai/financial-advisor.get.mjs', 159],
+  ['chunks/routes/api/ai/insights.get.mjs', 158],
+  ['chunks/routes/api/chat/link-preview.get.mjs', 158],
+  ['chunks/routes/api/internal/platform-agents/think/recovery-exhausted.post.mjs', 158],
+  ['chunks/routes/api/admin/ai/model-ops/graphify.get.mjs', 155],
+  ['chunks/routes/api/xero/bank-monitoring.get.mjs', 154],
+  ['chunks/routes/api/xero/reports/client-pnl.get.mjs', 153],
+  ['chunks/routes/api/email/templates/test-send.post.mjs', 152],
+  ['chunks/routes/api/leads/webhook/google/_token_.post.mjs', 152],
+  ['chunks/routes/api/admin/ai/model-ops/model-map.get.mjs', 150],
+  ['chunks/routes/api/customers/_contactId/insights.get.mjs', 150],
+  ['chunks/routes/api/internal/mcp/call.post.mjs', 150],
+  ['chunks/routes/api/agency/social/spend/bank-charges.get.mjs', 147],
+  ['chunks/routes/api/xero/reports/aging.get.mjs', 144],
+  ['chunks/routes/api/admin/ai/model-ops/copilot.post.mjs', 142],
+  ['chunks/routes/api/customers/index.get.mjs', 141],
+  ['chunks/routes/api/index2.get.mjs', 141],
+  ['chunks/routes/api/internal/workflows/crm/followup-review.post.mjs', 139],
+  ['chunks/routes/api/xero/reports/pnl-consolidated.get.mjs', 138],
+  ['chunks/routes/api/cashflow.get.mjs', 135],
+  ['chunks/routes/api/public/office-lobby/_officeId/request/_requestId/token.post.mjs', 135],
+  ['chunks/routes/api/agency/client-portal/clients.get.mjs', 133],
+  ['chunks/routes/api/admin/dealer-feeds/_clientId/preview.post.mjs', 131],
+  ['chunks/routes/api/agency/agents/think/turn.post.mjs', 131],
+  ['chunks/routes/api/agency/social/spend/pacing-review.get.mjs', 130],
+  ['chunks/routes/api/agency/hr/reviews/preview.post.mjs', 128],
+  ['chunks/routes/api/agency/boards/index.get.mjs', 125],
+  ['chunks/routes/api/agency/search-authority/google/callback.get.mjs', 123],
+  ['chunks/routes/api/agency/social/publishing/accounts/callback/google-business.get.mjs', 123],
+  ['chunks/routes/api/xero/reports/cash-flow-scenarios.get.mjs', 123],
+  ['chunks/routes/api/xero/invoice-pipeline.get.mjs', 122],
+  ['chunks/routes/api/agency/banner-studio/assets/upload.post.mjs', 121],
+  ['chunks/routes/api/agency/monday/backfill-comments.post.mjs', 121],
+  ['chunks/routes/api/agency/templates/_id/use.post.mjs', 121],
+  ['chunks/routes/api/agency/video/assets/_id/extract.post.mjs', 121],
+  ['chunks/routes/api/cron/publish-social-posts.post.mjs', 121],
+  ['chunks/routes/api/office/_officeId/meetings/_meetingId/action-items/_actionItemId/task.post.mjs', 121],
+  ['chunks/routes/api/agency/social/spend/_id/actions/_actionId/execute.post.mjs', 120],
+  ['chunks/routes/api/customers/_contactId/pipeline.get.mjs', 120],
+  ['chunks/routes/api/agency/video/generation/jobs.post.mjs', 119],
+  ['chunks/routes/api/agency/site-intelligence/market-locations/_id_.put.mjs', 116],
+  ['chunks/routes/api/agency/banner-studio/ad-publish/meta.post.mjs', 113],
+  ['chunks/routes/api/agency/banner-studio/dissect/_jobId/import.post.mjs', 113],
+  ['chunks/routes/api/agency/banner-studio/publish.post.mjs', 113]
+]
+
 function shouldKeepDeployedModuleNames(modulePath, source) {
-  const apiRouteSegment = `${path.sep}chunks${path.sep}routes${path.sep}api${path.sep}`
-  if (!modulePath.includes(apiRouteSegment)) return true
+  const portableModulePath = modulePath.split(path.sep).join('/')
+  const isAuditedModule = NAME_DROPPING_MODULE_AUDIT.some(
+    ([moduleSuffix]) => portableModulePath.endsWith(`/${moduleSuffix}`)
+  )
+  if (!isAuditedModule) return true
   const exports = parse(source)[1]
   return exports.some(entry => entry.n !== 'default')
 }
