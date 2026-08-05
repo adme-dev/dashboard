@@ -18,8 +18,8 @@ export type ForecastDeps = {
 // Internal route fetch via ofetch with the caller's headers forwarded so Xero connection + tenant
 // resolve in the endpoint. Mirrors the prod-verified pattern in finance.ts.
 const defaultDeps: ForecastDeps = {
-  fetchForecast: ctx => aiInternalFetch('/api/xero/get-out/forecast', { headers: ctx.event.headers as any }),
-  fetchCoverage: ctx => aiInternalFetch('/api/xero/get-out/pipeline-coverage', { headers: ctx.event.headers as any }),
+  fetchForecast: ctx => aiInternalFetch('/api/xero/get-out/forecast', {}, ctx),
+  fetchCoverage: ctx => aiInternalFetch('/api/xero/get-out/pipeline-coverage', {}, ctx),
 }
 
 const num = (v: unknown): number => {

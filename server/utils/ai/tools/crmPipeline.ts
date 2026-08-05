@@ -16,8 +16,8 @@ export type CrmPipelineDeps = {
 
 const defaultDeps: CrmPipelineDeps = {
   resolveClient: defaultResolveClient,
-  pipeline: (clientId, ctx) => aiInternalFetch('/api/crm/pipeline', { query: { client_id: clientId }, headers: ctx.event.headers as any }),
-  stages: (clientId, ctx) => aiInternalFetch('/api/crm/stages', { query: { client_id: clientId }, headers: ctx.event.headers as any }),
+  pipeline: (clientId, ctx) => aiInternalFetch('/api/crm/pipeline', { query: { client_id: clientId } }, ctx),
+  stages: (clientId, ctx) => aiInternalFetch('/api/crm/stages', { query: { client_id: clientId } }, ctx),
 }
 
 export async function getCrmPipeline(args: Args, ctx: ToolContext, deps: CrmPipelineDeps = defaultDeps): Promise<ToolResult> {

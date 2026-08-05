@@ -39,7 +39,7 @@ const defaultDeps: CrmDeps = {
     queryRows<NamedRef>(`SELECT id, name FROM crm_opportunities WHERE client_id = $1 AND deleted_at IS NULL AND name ILIKE $2 ORDER BY (lower(name)=lower($3)) DESC, created_at DESC LIMIT 6`, [clientId, ilike(name), name]),
   propose: (ctx, toolName, payload) => proposeAction(ctx, ctx.conversationId ?? null, toolName, payload),
   draftFollowup: async (clientId, opportunityId, ctx) => {
-    const r: any = await aiInternalFetch('/api/crm/ai/draft-followup', { method: 'POST', body: { client_id: clientId, opportunity_id: opportunityId }, headers: ctx.event.headers as any })
+    const r: any = await aiInternalFetch('/api/crm/ai/draft-followup', { method: 'POST', body: { client_id: clientId, opportunity_id: opportunityId } }, ctx)
     return typeof r?.draft === 'string' ? r.draft : ''
   },
 }

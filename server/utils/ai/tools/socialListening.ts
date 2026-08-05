@@ -24,9 +24,9 @@ export type SocialListeningDeps = {
 
 const defaultDeps: SocialListeningDeps = {
   resolveClient: defaultResolveClient,
-  overview: (clientId, days, ctx) => aiInternalFetch('/api/agency/social/listening/overview', { query: { clientId, days }, headers: ctx.event.headers as any }),
+  overview: (clientId, days, ctx) => aiInternalFetch('/api/agency/social/listening/overview', { query: { clientId, days } }, ctx),
   // mentions endpoint returns a BARE ARRAY of rows.
-  recentNegative: (clientId, limit, ctx) => aiInternalFetch('/api/agency/social/listening/mentions', { query: { clientId, sentiment: 'negative', limit }, headers: ctx.event.headers as any }),
+  recentNegative: (clientId, limit, ctx) => aiInternalFetch('/api/agency/social/listening/mentions', { query: { clientId, sentiment: 'negative', limit } }, ctx),
 }
 
 export async function getSocialListening(args: Args, ctx: ToolContext, deps: SocialListeningDeps = defaultDeps): Promise<ToolResult> {

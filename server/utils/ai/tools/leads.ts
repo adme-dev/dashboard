@@ -27,7 +27,7 @@ export type LeadsDeps = {
 const defaultDeps: LeadsDeps = {
   resolveClient: defaultResolveClient,
   list: ({ clientId, status, source, fromISO, limit }, ctx) =>
-    aiInternalFetch('/api/leads/list', { query: { client_id: clientId, status, source, from: fromISO, page_size: limit }, headers: ctx.event.headers as any }),
+    aiInternalFetch('/api/leads/list', { query: { client_id: clientId, status, source, from: fromISO, page_size: limit } }, ctx),
   summary: (clientId, fromISO) =>
     queryRows<LeadCount>(
       `SELECT status, source, COUNT(*)::int AS count FROM leads

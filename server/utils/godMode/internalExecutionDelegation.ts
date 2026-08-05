@@ -12,13 +12,14 @@ import {
   resolveGodModeAuthority,
   type GodModeAuthority
 } from '~~/server/utils/godMode/authority'
+import { getMcpRequestGodModeAuthority } from '~~/server/utils/ai/mcp/requestClaim'
 
 export const GOD_MODE_INTERNAL_EXECUTION_AUDIENCE = 'agency-dashboard-god-mode-internal-execution' as const
 export const GOD_MODE_INTERNAL_EXECUTION_HEADER = 'x-god-mode-internal-execution' as const
 export const GOD_MODE_INTERNAL_EXECUTION_TTL_SEC = 30
 export const GOD_MODE_INTERNAL_EXECUTION_MAX_TTL_SEC = 60
 
-type DelegatedMethod = 'POST' | 'PUT' | 'PATCH'
+type DelegatedMethod = 'GET' | 'POST' | 'PUT' | 'PATCH'
 
 export interface GodModeInternalExecutionClaim {
   actorUserId: string
@@ -70,6 +71,10 @@ interface InternalExecutionRequest {
   body: unknown
 }
 
+export interface MintMcpGodModeInternalAiDelegationInput extends InternalExecutionRequest {
+  actorUserId: string
+}
+
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const digestPattern = /^[0-9a-f]{64}$/
 const idempotencyPattern = /^mcp:[0-9a-f]{64}$/
@@ -94,7 +99,165 @@ const allowedTargets: Array<{ method: DelegatedMethod, path: RegExp }> = [
   { method: 'PUT', path: new RegExp(`^/api/agency/proofs/${boundedId}/status$`) }
 ]
 
+type ReadTarget = {
+  path: RegExp
+  query?: Record<string, (value: string) => boolean>
+  required?: readonly string[]
+}
+
+const boundedQueryValue = (value: string) => value.length > 0 && value.length <= 256
+const uuidSegment = uuidPattern.source.replace(/^\^/, '').replace(/\$$/, '')
+const boundedReadId = (value: string) => uuidPattern.test(value)
+const boundedPositiveInteger = (maximum: number) => (value: string) => {
+  if (!/^[1-9][0-9]*$/.test(value)) return false
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) && parsed <= maximum
+}
+const oneOf = (...allowed: string[]) => (value: string) => allowed.includes(value)
+const isoDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value)
+const isoDateTime = (value: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)
+
+/** Registered read routes used by AI tools. Each entry owns its query surface; no prefix matching. */
+const allowedReadTargets: ReadTarget[] = [
+  { path: /^\/api\/email\/campaigns$/ },
+  { path: new RegExp(`^/api/email/campaigns/${uuidSegment}/events$`, 'i') },
+  { path: /^\/api\/agency\/social\/spend\/summary$/ },
+  {
+    path: /^\/api\/crm\/(?:pipeline|stages)$/,
+    query: { client_id: boundedReadId },
+    required: ['client_id']
+  },
+  { path: /^\/api\/agency\/capacity$/ },
+  {
+    path: /^\/api\/agency\/social\/inbox\/analytics\/overview$/,
+    query: { clientId: boundedReadId, days: oneOf('7', '30', '90') },
+    required: ['clientId', 'days']
+  },
+  {
+    path: /^\/api\/agency\/social\/inbox\/conversations$/,
+    query: { clientId: boundedReadId, status: oneOf('open'), limit: oneOf('25') },
+    required: ['clientId', 'status', 'limit']
+  },
+  { path: /^\/api\/xero\/get-out\/(?:cash-position|forecast|pipeline-coverage)$/ },
+  { path: /^\/api\/xero\/invoices$/ },
+  { path: /^\/api\/agency\/budget-alerts\/health$/ },
+  {
+    path: /^\/api\/agency\/social\/reporting\/overview$/,
+    query: { clientId: boundedReadId, from: isoDateTime, to: isoDateTime },
+    required: ['clientId', 'from', 'to']
+  },
+  { path: new RegExp(`^/api/agency/social/news/profiles/${uuidSegment}$`, 'i') },
+  { path: new RegExp(`^/api/agency/social/news/profiles/${uuidSegment}/context$`, 'i') },
+  {
+    path: /^\/api\/agency\/social\/news$/,
+    query: {
+      clientId: boundedReadId,
+      status: oneOf('unread'),
+      relevantOnly: oneOf('true'),
+      limit: boundedPositiveInteger(8)
+    },
+    required: ['clientId', 'status', 'relevantOnly', 'limit']
+  },
+  {
+    path: /^\/api\/agency\/social\/publishing\/accounts$/,
+    query: { clientId: boundedReadId },
+    required: ['clientId']
+  },
+  {
+    path: /^\/api\/leads\/list$/,
+    query: {
+      client_id: boundedReadId,
+      status: oneOf('new', 'contacted', 'qualified', 'won', 'lost', 'spam_suspected'),
+      source: oneOf('meta', 'google', 'manual', 'webhook', 'csv'),
+      from: isoDateTime,
+      page_size: boundedPositiveInteger(50)
+    },
+    required: ['client_id', 'from', 'page_size']
+  },
+  {
+    path: /^\/api\/agency\/analytics\/campaigns$/,
+    query: {
+      startDate: isoDate,
+      endDate: isoDate,
+      sortBy: oneOf('spend'),
+      limit: oneOf('200'),
+      platform: oneOf('meta', 'google_ads,google')
+    },
+    required: ['startDate', 'endDate', 'sortBy', 'limit']
+  },
+  {
+    path: /^\/api\/crm\/search$/,
+    query: { client_id: boundedReadId, q: boundedQueryValue, limit: boundedPositiveInteger(50) },
+    required: ['client_id', 'q', 'limit']
+  },
+  {
+    path: /^\/api\/agency\/social\/listening\/overview$/,
+    query: { clientId: boundedReadId, days: oneOf('7', '30', '90') },
+    required: ['clientId', 'days']
+  },
+  {
+    path: /^\/api\/agency\/social\/listening\/mentions$/,
+    query: { clientId: boundedReadId, sentiment: oneOf('negative'), limit: oneOf('5') },
+    required: ['clientId', 'sentiment', 'limit']
+  }
+]
+
+const exactDraftFollowupPath = '/api/crm/ai/draft-followup'
+
+function isExactDraftFollowupBody(body: unknown): boolean {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false
+  const record = body as Record<string, unknown>
+  const keys = Object.keys(record).sort()
+  return keys.length === 2
+    && keys[0] === 'client_id'
+    && keys[1] === 'opportunity_id'
+    && typeof record.client_id === 'string'
+    && uuidPattern.test(record.client_id)
+    && typeof record.opportunity_id === 'string'
+    && uuidPattern.test(record.opportunity_id)
+}
+
+export function isAllowedGodModeAiReadBridgeRequest(method: string, path: string, body: unknown): boolean {
+  if (method === 'GET') return (body === null || body === undefined) && isAllowedReadTarget(path)
+  return method === 'POST' && path === exactDraftFollowupPath && isExactDraftFollowupBody(body)
+}
+
+function isAllowedReadTarget(path: string): boolean {
+  if (
+    path.length < 1
+    || path.length > 512
+    || !path.startsWith('/')
+    || path.startsWith('//')
+    || path.includes('#')
+    || /(?:^|\/)(?:\.{1,2}|%2e(?:%2e)?)(?:\/|$)/i.test(path)
+    || /%(?:2f|5c)/i.test(path)
+  ) return false
+
+  let url: URL
+  try {
+    url = new URL(path, 'https://internal.invalid')
+  } catch {
+    return false
+  }
+  if (`${url.pathname}${url.search}` !== path) return false
+
+  return allowedReadTargets.some((target) => {
+    if (!target.path.test(url.pathname)) return false
+    const entries = [...url.searchParams.entries()]
+    if (!target.query) return entries.length === 0
+    const seen = new Set<string>()
+    for (const [key, value] of entries) {
+      const validator = target.query[key]
+      if (!validator || seen.has(key) || !validator(value)) return false
+      seen.add(key)
+    }
+    return (target.required ?? []).every(key => seen.has(key))
+  })
+}
+
 export function isAllowedGodModeInternalExecutionTarget(method: string, path: string): boolean {
+  if (method === 'GET') return isAllowedReadTarget(path)
+  if (method === 'POST' && path === exactDraftFollowupPath) return true
   return allowedTargets.some(target => target.method === method && target.path.test(path))
 }
 
@@ -118,7 +281,7 @@ function parseClaim(value: unknown): GodModeInternalExecutionClaim | null {
     || typeof claim.routeOrTool !== 'string'
     || claim.routeOrTool.length < 1
     || claim.routeOrTool.length > 160
-    || !['POST', 'PUT', 'PATCH'].includes(String(claim.method))
+    || !['GET', 'POST', 'PUT', 'PATCH'].includes(String(claim.method))
     || typeof claim.path !== 'string'
     || claim.path.length > 512
     || !isAllowedGodModeInternalExecutionTarget(String(claim.method), claim.path)
@@ -240,6 +403,52 @@ export async function mintInstalledGodModeInternalExecutionDelegation(
 }
 
 /**
+ * Mints a nested AI read delegation only from an already-consumed, privately branded MCP owner call.
+ * The original signed call body supplies the exact actor/tool/logical identity; caller headers cannot
+ * manufacture the WeakMap authority brand. GET reads and the one exact draft-only POST are allowlisted.
+ */
+export async function mintMcpGodModeInternalAiDelegation(
+  event: H3Event,
+  input: MintMcpGodModeInternalAiDelegationInput
+): Promise<string> {
+  if (!isAllowedGodModeAiReadBridgeRequest(input.method, input.path, input.body)) {
+    deny(403, 'AI internal read target is not registered')
+  }
+  const sourceUrl = getRequestURL(event)
+  if (getMethod(event) !== 'POST' || sourceUrl.pathname !== '/api/internal/mcp/call' || sourceUrl.search) {
+    deny(403, 'Invalid MCP read delegation source')
+  }
+  const authority = getMcpRequestGodModeAuthority(event, input.actorUserId)
+  if (!isActiveGodModeAuthority(authority, input.actorUserId)) {
+    deny(403, 'MCP owner read authority is unavailable')
+  }
+  const sourceBody = await readBody(event).catch(() => null)
+  if (!sourceBody || typeof sourceBody !== 'object' || Array.isArray(sourceBody)) {
+    deny(403, 'Invalid MCP read delegation source')
+  }
+  const source = sourceBody as Record<string, unknown>
+  if (
+    source.userId !== input.actorUserId
+    || typeof source.tool !== 'string'
+    || source.tool.length < 1
+    || source.tool.length > 160
+    || typeof source.idempotencyKey !== 'string'
+    || !idempotencyPattern.test(source.idempotencyKey)
+  ) deny(403, 'Invalid MCP read delegation source')
+
+  return await signGodModeInternalExecutionClaim({
+    actorUserId: input.actorUserId,
+    channel: 'mcp',
+    correlationId: randomUUID(),
+    idempotencyKey: source.idempotencyKey,
+    routeOrTool: source.tool,
+    method: input.method,
+    path: input.path,
+    bodyDigest: await digestMcpRequestBody(input.body)
+  }, configuredSecret(event))
+}
+
+/**
  * Returns the runtime-branded Task 5 coordination marker only while it still matches this exact H3
  * request. The marker is keyed by the H3Event object itself and WeakSet branded, so structural clones,
  * shared context, JSON, and caller headers cannot manufacture or forward it.
@@ -333,6 +542,8 @@ export async function consumeGodModeInternalExecutionDelegation(
     method !== claim.method
     || path !== claim.path
     || !isAllowedGodModeInternalExecutionTarget(method, path)
+    || (method === 'POST' && path === exactDraftFollowupPath
+      && !isAllowedGodModeAiReadBridgeRequest(method, path, body))
     || bodyDigest !== claim.bodyDigest
   ) deny(403, 'Internal execution delegation does not match this request')
 

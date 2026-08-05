@@ -24,8 +24,8 @@ export type EmailCampaignsDeps = {
 const defaultDeps: EmailCampaignsDeps = {
   resolveClient: defaultResolveClient,
   // list endpoint returns campaigns in the caller's scope; we filter by client_id in the handler.
-  campaigns: (ctx) => aiInternalFetch('/api/email/campaigns', { headers: ctx.event.headers as any }),
-  events: (campaignId, ctx) => aiInternalFetch(`/api/email/campaigns/${campaignId}/events`, { headers: ctx.event.headers as any }),
+  campaigns: (ctx) => aiInternalFetch('/api/email/campaigns', {}, ctx),
+  events: (campaignId, ctx) => aiInternalFetch(`/api/email/campaigns/${campaignId}/events`, {}, ctx),
 }
 
 /** Ratio guarded against a zero denominator. Pure. */

@@ -39,7 +39,7 @@ export type BudgetHealthDeps = {
 // resolves, mirroring adspend.ts.
 const defaultDeps: BudgetHealthDeps = {
   health: async (ctx) => {
-    const r: any = await aiInternalFetch('/api/agency/budget-alerts/health', { headers: ctx.event.headers as any })
+    const r: any = await aiInternalFetch('/api/agency/budget-alerts/health', {}, ctx)
     const clients: any[] = Array.isArray(r?.clients) ? r.clients : []
     return {
       period: String(r?.period ?? ''),

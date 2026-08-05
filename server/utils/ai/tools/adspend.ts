@@ -48,7 +48,7 @@ function classify(pacePct: number): PacingStatus {
 // pace against the expected-to-date budget burn.
 const defaultDeps: AdspendDeps = {
   pacing: async (ctx) => {
-    const r: any = await aiInternalFetch('/api/agency/social/spend/summary', { headers: ctx.event.headers as any })
+    const r: any = await aiInternalFetch('/api/agency/social/spend/summary', {}, ctx)
     const now = new Date()
     const items: any[] = Array.isArray(r?.items) ? r.items : []
     return items.map((it): PacingCampaign => {

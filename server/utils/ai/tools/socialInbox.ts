@@ -22,9 +22,9 @@ export type SocialInboxDeps = {
 
 const defaultDeps: SocialInboxDeps = {
   resolveClient: defaultResolveClient,
-  overview: (clientId, days, ctx) => aiInternalFetch('/api/agency/social/inbox/analytics/overview', { query: { clientId, days }, headers: ctx.event.headers as any }),
+  overview: (clientId, days, ctx) => aiInternalFetch('/api/agency/social/inbox/analytics/overview', { query: { clientId, days } }, ctx),
   // conversations endpoint returns a BARE ARRAY; it has no `breached` param — we sort/flag in the handler.
-  openConversations: (clientId, limit, ctx) => aiInternalFetch('/api/agency/social/inbox/conversations', { query: { clientId, status: 'open', limit }, headers: ctx.event.headers as any }),
+  openConversations: (clientId, limit, ctx) => aiInternalFetch('/api/agency/social/inbox/conversations', { query: { clientId, status: 'open', limit } }, ctx),
 }
 
 /** Breached first, then soonest SLA due. Pure. */

@@ -42,13 +42,13 @@ const defaultDeps: SocialNewsRecommendationDeps = {
     if (!client) throw new Error('No matching client')
 
     // These internal routes enforce the caller's client access. Do not replace with unscoped DB reads.
-    const profile = await aiInternalFetch<SocialNewsClientProfile>(`/api/agency/social/news/profiles/${client.id}`, { headers: ctx.event.headers as any })
+    const profile = await aiInternalFetch<SocialNewsClientProfile>(`/api/agency/social/news/profiles/${client.id}`, {}, ctx)
     const requestedPlatforms = new Set(args.platforms?.length ? args.platforms : profile.preferredPlatforms)
     const [news, rawAccounts, slots, governance] = await Promise.all([
-      aiInternalFetch<Array<any>>('/api/agency/social/news', { query: { clientId: client.id, status: 'unread', relevantOnly: true, limit: args.limit }, headers: ctx.event.headers as any }),
-      aiInternalFetch<Array<any>>('/api/agency/social/publishing/accounts', { query: { clientId: client.id }, headers: ctx.event.headers as any }),
+      aiInternalFetch<Array<any>>('/api/agency/social/news', { query: { clientId: client.id, status: 'unread', relevantOnly: true, limit: args.limit } }, ctx),
+      aiInternalFetch<Array<any>>('/api/agency/social/publishing/accounts', { query: { clientId: client.id } }, ctx),
       nextOptimalSlots(client.id, 1),
-      aiInternalFetch<RecommendationContext['governance']>(`/api/agency/social/news/profiles/${client.id}/context`, { headers: ctx.event.headers as any }),
+      aiInternalFetch<RecommendationContext['governance']>(`/api/agency/social/news/profiles/${client.id}/context`, {}, ctx),
     ])
     const accounts = rawAccounts
       .filter(account => account.is_active && (!requestedPlatforms.size || requestedPlatforms.has(account.platform)))

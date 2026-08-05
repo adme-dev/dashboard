@@ -13,7 +13,7 @@ export type CapacityDeps = {
 }
 
 const defaultDeps: CapacityDeps = {
-  fetch: (ctx) => aiInternalFetch('/api/agency/capacity', { headers: ctx.event.headers as any }),
+  fetch: (ctx) => aiInternalFetch('/api/agency/capacity', {}, ctx),
 }
 
 /**

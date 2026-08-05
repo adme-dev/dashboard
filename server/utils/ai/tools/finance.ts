@@ -31,7 +31,7 @@ export type FinanceSnapshotDeps = {
 // internal-$fetch precedent). Forward the caller's auth headers so Xero connection/tenant resolve.
 const defaultDeps: FinanceSnapshotDeps = {
   cashPosition: async (ctx) => {
-    const r: any = await aiInternalFetch('/api/xero/get-out/cash-position', { headers: ctx.event.headers as any })
+    const r: any = await aiInternalFetch('/api/xero/get-out/cash-position', {}, ctx)
     return {
       balance: Number(r?.cashOnHand ?? 0),
       creditCard: Number(r?.creditCardBalance ?? 0),
@@ -41,7 +41,7 @@ const defaultDeps: FinanceSnapshotDeps = {
     }
   },
   outstanding: async (ctx) => {
-    const r: any = await aiInternalFetch('/api/xero/invoices', { headers: ctx.event.headers as any })
+    const r: any = await aiInternalFetch('/api/xero/invoices', {}, ctx)
     const overdue: Overdue[] = (r?.overdue ?? []).map((inv: any) => ({
       number: inv?.number ?? inv?.invoiceNumber ?? '—',
       client: inv?.contact ?? 'Unknown',

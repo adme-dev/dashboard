@@ -65,8 +65,7 @@ const defaultDeps: SocialDeps = {
     if (!row?.id) throw new Error('no matching client')
     return await aiInternalFetch<SocialOverview>('/api/agency/social/reporting/overview', {
       query: { clientId: row.id, from, to },
-      headers: ctx.event.headers as any,
-    })
+    }, ctx)
   },
 }
 

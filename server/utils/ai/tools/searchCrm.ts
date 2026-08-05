@@ -20,7 +20,7 @@ export type CrmSearchDeps = {
 const defaultDeps: CrmSearchDeps = {
   resolveClient: defaultResolveClient,
   search: (clientId, q, limit, ctx) =>
-    aiInternalFetch('/api/crm/search', { query: { client_id: clientId, q, limit }, headers: ctx.event.headers as any }),
+    aiInternalFetch('/api/crm/search', { query: { client_id: clientId, q, limit } }, ctx),
 }
 
 export async function searchCrm(args: Args, ctx: ToolContext, deps: CrmSearchDeps = defaultDeps): Promise<ToolResult> {

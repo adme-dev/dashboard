@@ -6,6 +6,7 @@ import {
   GOD_MODE_INTERNAL_EXECUTION_AUDIENCE,
   consumeGodModeInternalExecutionDelegation,
   getTrustedTask5DelegatedExecution,
+  isAllowedGodModeAiReadBridgeRequest,
   isAllowedGodModeInternalExecutionTarget,
   signGodModeInternalExecutionClaim,
   verifyGodModeInternalExecutionClaim
@@ -17,6 +18,7 @@ const CORRELATION_ID = '22222222-2222-4222-8222-222222222222'
 const IDEMPOTENCY_KEY = `mcp:${'a'.repeat(64)}`
 const JTI = '33333333-3333-4333-8333-333333333333'
 const NOW_MS = 2_000_000_000_000
+const READ_ID = '44444444-4444-4444-8444-444444444444'
 const PATH = '/api/agency/tasks'
 const BODY = { title: 'Ship', clientId: '44444444-4444-4444-8444-444444444444' }
 
@@ -264,5 +266,64 @@ describe('God mode internal execution delegation', () => {
     ['propose_proof_status', 'PUT', '/api/agency/proofs/proof-1/status']
   ])('allows the registered internal HTTP target for %s', (_tool, method, path) => {
     expect(isAllowedGodModeInternalExecutionTarget(method, path)).toBe(true)
+  })
+
+  it.each([
+    ['/api/email/campaigns', []],
+    [`/api/email/campaigns/${READ_ID}/events`, []],
+    ['/api/agency/social/spend/summary', []],
+    ['/api/xero/get-out/cash-position', []],
+    ['/api/xero/get-out/forecast', []],
+    ['/api/xero/get-out/pipeline-coverage', []],
+    ['/api/xero/invoices', []],
+    ['/api/agency/capacity', []],
+    ['/api/agency/budget-alerts/health', []],
+    ['/api/crm/pipeline', [['client_id', READ_ID]]],
+    ['/api/crm/stages', [['client_id', READ_ID]]],
+    ['/api/agency/social/inbox/analytics/overview', [['clientId', READ_ID], ['days', '30']]],
+    ['/api/agency/social/inbox/conversations', [['clientId', READ_ID], ['status', 'open'], ['limit', '25']]],
+    ['/api/leads/list', [['client_id', READ_ID], ['status', 'new'], ['from', '2026-08-01T00:00:00.000Z'], ['page_size', '20']]],
+    ['/api/leads/list', [['client_id', READ_ID], ['from', '2026-08-01T00:00:00.000Z'], ['page_size', '20']]],
+    ['/api/agency/analytics/campaigns', [['startDate', '2026-08-01'], ['endDate', '2026-08-05'], ['sortBy', 'spend'], ['limit', '200'], ['platform', 'meta']]],
+    ['/api/agency/analytics/campaigns', [['startDate', '2026-08-01'], ['endDate', '2026-08-05'], ['sortBy', 'spend'], ['limit', '200']]],
+    ['/api/crm/search', [['client_id', READ_ID], ['q', 'Alice & Bob'], ['limit', '20']]],
+    ['/api/agency/social/reporting/overview', [['clientId', READ_ID], ['from', '2026-07-06T00:00:00.000Z'], ['to', '2026-08-05T00:00:00.000Z']]],
+    [`/api/agency/social/news/profiles/${READ_ID}`, []],
+    [`/api/agency/social/news/profiles/${READ_ID}/context`, []],
+    ['/api/agency/social/news', [['clientId', READ_ID], ['status', 'unread'], ['relevantOnly', 'true'], ['limit', '8']]],
+    ['/api/agency/social/publishing/accounts', [['clientId', READ_ID]]],
+    ['/api/agency/social/listening/overview', [['clientId', READ_ID], ['days', '7']]],
+    ['/api/agency/social/listening/mentions', [['clientId', READ_ID], ['sentiment', 'negative'], ['limit', '5']]]
+  ])('allows only the registered GET read target %s with its bounded query keys', (pathname, entries) => {
+    const query = new URLSearchParams(entries as string[][]).toString()
+    const path = query ? `${pathname}?${query}` : pathname
+    expect(isAllowedGodModeInternalExecutionTarget('GET', path)).toBe(true)
+  })
+
+  it.each([
+    ['GET', 'https://evil.example/api/xero/invoices'],
+    ['GET', '//evil.example/api/xero/invoices'],
+    ['GET', '/api/xero/../admin/users'],
+    ['GET', '/api/xero/%2e%2e/admin/users'],
+    ['GET', '/api/xero/invoices/extra'],
+    ['GET', '/api/xero/invoices?admin=true'],
+    ['GET', '/api/xero/invoices?bust=true'],
+    ['GET', `/api/crm/pipeline?client_id=${READ_ID}&client_id=${READ_ID}`],
+    ['GET', `/api/agency/social/inbox/conversations?clientId=${READ_ID}&status=closed&limit=25`],
+    ['GET', `/api/agency/social/inbox/conversations?clientId=${READ_ID}&status=open&limit=24`],
+    ['GET', `/api/agency/social/listening/mentions?clientId=${READ_ID}&sentiment=negative&limit=4`],
+    ['GET', '/api/email/campaigns/not-a-uuid/events'],
+    ['POST', '/api/xero/invoices'],
+    ['GET', '/api/crm/ai/draft-followup']
+  ])('rejects an unregistered or widened delegated read target: %s %s', (method, path) => {
+    expect(isAllowedGodModeInternalExecutionTarget(method, path)).toBe(false)
+  })
+
+  it('allows only the exact body-bound draft-only POST in the AI read bridge', () => {
+    const body = { client_id: READ_ID, opportunity_id: ACTOR_ID }
+    expect(isAllowedGodModeAiReadBridgeRequest('POST', '/api/crm/ai/draft-followup', body)).toBe(true)
+    expect(isAllowedGodModeAiReadBridgeRequest('POST', '/api/crm/ai/draft-followup', { ...body, extra: true })).toBe(false)
+    expect(isAllowedGodModeAiReadBridgeRequest('POST', '/api/crm/ai/draft-followup', { ...body, client_id: 'not-a-uuid' })).toBe(false)
+    expect(isAllowedGodModeAiReadBridgeRequest('POST', '/api/crm/opportunities', body)).toBe(false)
   })
 })

@@ -48,8 +48,7 @@ const defaultDeps: CampaignBreakdownDeps = {
     if (platform) query.platform = PLATFORM_QUERY[platform]
     const r: any = await aiInternalFetch('/api/agency/analytics/campaigns', {
       query,
-      headers: ctx.event.headers as any,
-    })
+    }, ctx)
     const items: any[] = Array.isArray(r?.campaigns) ? r.campaigns : []
     const campaigns = items.map((it): BreakdownCampaign => {
       const rawPlatform = String(it?.platform ?? '')
