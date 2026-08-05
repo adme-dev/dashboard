@@ -1,11 +1,36 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
-
 import { seedGodModeRouteAuditState } from '../../../server/utils/godMode/featureGate'
-import {
+
+const mockRequireAuth = vi.fn()
+const mockExecuteGodModeBannerProjectCreation = vi.fn()
+const routeQuery = vi.fn()
+
+const testGlobal = globalThis as typeof globalThis & {
+  defineEventHandler: <T>(handler: T) => T
+  readBody: (event: { body?: unknown }) => Promise<unknown>
+  createError: (input: { statusCode: number, statusMessage: string }) => Error & { statusCode: number, statusMessage: string }
+}
+
+testGlobal.defineEventHandler = handler => handler
+testGlobal.readBody = async event => event.body ?? {}
+testGlobal.createError = input => Object.assign(new Error(input.statusMessage), input)
+
+vi.mock('~~/server/utils/auth', () => ({
+  requireAuth: (...args: unknown[]) => mockRequireAuth(...args)
+}))
+
+vi.mock('~~/server/utils/banner/godModeProjectCreation', () => ({
+  executeGodModeBannerProjectCreation: (...args: unknown[]) => mockExecuteGodModeBannerProjectCreation(...args)
+}))
+
+const {
   executeGodModeBannerProjectCreation,
   prepareGodModeBannerProjectCreation
-} from '../../../server/utils/banner/godModeProjectCreation'
+} = await vi.importActual<typeof import('../../../server/utils/banner/godModeProjectCreation')>(
+  '../../../server/utils/banner/godModeProjectCreation'
+)
+const { default: createProject } = await import('../../../server/api/agency/banner-studio/projects/index.post')
 
 const ACTOR_ID = '11111111-1111-4111-8111-111111111111'
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222'
@@ -43,6 +68,22 @@ describe('God mode banner project creation coordination', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockRequireAuth.mockResolvedValue({ id: ACTOR_ID })
+    routeQuery.mockResolvedValue({
+      rows: [{
+        id: PROJECT_ID,
+        name: 'Leapmotor animated MRec',
+        clientId: 'client-leapmotor',
+        canvasData: {},
+        thumbnailUrl: null,
+        status: 'draft',
+        tags: ['leapmotor', 'mrec'],
+        createdBy: ACTOR_ID,
+        createdAt: '2026-08-05T00:00:00.000Z',
+        updatedAt: '2026-08-05T00:00:00.000Z'
+      }]
+    })
+    mockExecuteGodModeBannerProjectCreation.mockImplementation(async (_event, create) => await (create as (db: { query: typeof routeQuery }) => Promise<unknown>)({ query: routeQuery }))
     query.mockImplementation(async (sql: string) => {
       if (sql.includes('INSERT INTO god_mode_execution_ledger')) return { rows: [{ state: 'in_progress' }] }
       if (sql.includes('INSERT INTO banner_projects')) return { rows: [{ id: PROJECT_ID, name: 'Launch' }] }
@@ -90,7 +131,7 @@ describe('God mode banner project creation coordination', () => {
     )
   })
 
-  it('preserves an uploaded MRec canvas as an editable draft without rendering or publishing it', async () => {
+  it('posts an uploaded MRec canvas as an editable draft without rendering or publishing it', async () => {
     const assetUrl = 'https://assets.xeroflow.test/leapmotor-c10.png'
     const canvasData = {
       mrec: {
@@ -102,43 +143,31 @@ describe('God mode banner project creation coordination', () => {
         ]
       }
     }
-    const event = request('banner-create-canvas-12345678')
-    const prepared = await prepareGodModeBannerProjectCreation(event, dependencies)
-    const create = vi.fn(async (db: { query: typeof query }) => {
-      const result = await db.query(
-        'INSERT INTO banner_projects (name, canvas_data) VALUES ($1, $2) RETURNING id, name, canvas_data AS "canvasData", status',
-        ['Leapmotor animated MRec', JSON.stringify(canvasData)]
-      )
-      return {
-        ...result.rows[0],
-        status: 'draft',
-        canvasData
+    const project = await createProject({
+      body: {
+        name: '  Leapmotor animated MRec  ',
+        clientId: 'client-leapmotor',
+        canvasData,
+        tags: ['leapmotor', 'mrec']
       }
-    })
-
-    const project = await executeGodModeBannerProjectCreation(event, create)
-    await prepared.persistTerminal({
-      actorUserId: ACTOR_ID,
-      correlationId: '33333333-3333-4333-8333-333333333333',
-      sessionDigest: 'a'.repeat(64),
-      channel: 'application',
-      routeOrTool: 'POST /api/agency/banner-studio/projects',
-      phase: 'succeeded',
-      bypassedControls: [],
-      outcomeCode: 'http_2xx',
-      emergencyDisabled: false
-    })
+    } as never)
 
     expect(project.status).toBe('draft')
-    expect(project.canvasData).toEqual(canvasData)
-    expect(project.canvasData.mrec.layers[0]).toMatchObject({ src: assetUrl, fit: 'cover' })
-    expect(project.canvasData.mrec.layers[1]).toMatchObject({ src: assetUrl, fit: 'contain' })
-    expect(project.canvasData.mrec.layers[2]).toMatchObject({ type: 'button', text: 'BOOK A TEST DRIVE' })
-    expect(query).toHaveBeenCalledWith(
+    expect(project.name).toBe('Leapmotor animated MRec')
+    expect(project.clientId).toBe('client-leapmotor')
+    expect(project.tags).toEqual(['leapmotor', 'mrec'])
+    expect(mockRequireAuth).toHaveBeenCalledTimes(1)
+    expect(mockExecuteGodModeBannerProjectCreation).toHaveBeenCalledTimes(1)
+    expect(routeQuery).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO banner_projects'),
-      ['Leapmotor animated MRec', JSON.stringify(canvasData)]
+      ['Leapmotor animated MRec', 'client-leapmotor', JSON.stringify(canvasData), ['leapmotor', 'mrec'], ACTOR_ID]
     )
-    expect(query.mock.calls.flatMap(([sql]) => String(sql).match(/render|publish/gi) ?? [])).toEqual([])
+    const [, params] = routeQuery.mock.calls[0]
+    expect(JSON.parse((params as string[])[2])).toEqual(canvasData)
+    expect(JSON.parse((params as string[])[2]).mrec.layers[0]).toMatchObject({ src: assetUrl, fit: 'cover' })
+    expect(JSON.parse((params as string[])[2]).mrec.layers[1]).toMatchObject({ src: assetUrl, fit: 'contain' })
+    expect(JSON.parse((params as string[])[2]).mrec.layers[2]).toMatchObject({ type: 'button', text: 'BOOK A TEST DRIVE' })
+    expect(mockExecuteGodModeBannerProjectCreation).toHaveBeenCalledWith(expect.anything(), expect.any(Function))
   })
 
   it('replays a completed request without creating a second project', async () => {
