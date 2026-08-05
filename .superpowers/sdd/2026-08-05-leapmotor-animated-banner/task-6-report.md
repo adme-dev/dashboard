@@ -2,13 +2,14 @@
 
 ## Outcome
 
-Approved Option A is implemented and verified without deploying or mutating production.
+Approved Option A is implemented without deploying or mutating production.
 
-- Nitro's Cloudflare platform object is promoted from `_platform.cloudflare` to the supported `event.context.cloudflare` contract before application consumers run. The exact object is retained, including native binding identity.
-- Banner Studio uploads use the request-scoped native `MEDIA_BUCKET` directly in Workers. They no longer enter generic AWS SDK upload or presigned-URL generation.
-- Uploaded source assets remain in the private R2 bucket and receive a stable first-party capability URL backed by a live `banner_assets` row.
-- Local and non-Cloudflare storage still use the existing generic storage path, preserving local filesystem and S3-compatible behavior outside Workers.
-- The fresh production build and immutable Worker-size guard pass.
+- Nitro's exact request-owned Cloudflare platform object is promoted from `_platform.cloudflare` to `event.context.cloudflare` before application consumers run.
+- Banner Studio uploads use the request-scoped native `MEDIA_BUCKET`; failed database persistence compensates through that same request-owned bucket even when S3 environment credentials are absent.
+- Private source assets use a stable, revocable first-party capability URL backed by the live `banner_assets` row.
+- The public handler implements bounded private caching, `HEAD`, single byte ranges, and R2 conditional semantics without native BigInt literals that warn under the production ES2019 compilation target.
+- Function-name removal is restricted to 63 exact, default-only generated route modules audited from the 2026-08-06 production corpus. Unlisted API routes and named-export modules preserve names.
+- A fresh Node 24 production build, wrapper, and immutable Worker-size guard pass at 24,745,798 deployed bytes, leaving 4,202 bytes.
 
 ## Commits
 
@@ -16,27 +17,31 @@ Approved Option A is implemented and verified without deploying or mutating prod
 - `9534b747 fix(banner): serve private assets through capabilities`
 - `846acb66 build(cloudflare): compact default API route modules`
 - `8bff3e8c fix(banner): bound upload error logs`
+- `333b12d2 fix(banner): bind rollback to request storage`
+- `7d73bcba fix(banner): enforce private asset HTTP semantics`
+- `63865e28 fix(cloudflare): verify production binding boundary`
 
 ## Cloudflare Boundary Repair
 
-`server/utils/cfBindings.ts` now promotes the adapter's exact `_platform.cloudflare` object onto `event.context.cloudflare`. `server/middleware/cfEnv.ts` invokes that promotion and refreshes the existing process-local binding cache from the promoted environment.
+`server/utils/cfBindings.ts` promotes the adapter's exact `_platform.cloudflare` object onto `event.context.cloudflare`. `server/middleware/cfEnv.ts` invokes that promotion without relying on a module-global request binding for Banner Studio mutations.
 
-The regression uses the production `buildWorkerDispatcherModule()` output, bundles a contract-faithful Nitro adapter fixture, starts real local workerd, injects `SENTINEL=worker-runtime-sentinel`, and proves both:
+The production-boundary regression now starts from the real wrapped `dist/_worker.js/index.js`, bundles that generated graph for Miniflare/workerd while stubbing only unavailable optional packages, and exercises the real dispatcher, Nitro local fetch, H3 middleware, auth path, upload route, KV, and R2 binding. It covers:
 
-- `eventContext.cloudflare.env === env`
-- `eventContext.cloudflare.env.SENTINEL === 'worker-runtime-sentinel'`
+- a public capability request reaching the real route and rejecting a tampered token;
+- an authenticated multipart upload whose forced database failure must leave the request-owned R2 bucket empty; and
+- real local R2 range and failed-conditional behavior.
 
-This covers the generated dispatcher call `nitro.fetch(request, env, ctx)` and the adapter/platform-context handoff rather than only mocking a route event.
+Every harness stage is bounded to 15 seconds, with bounded setup, test, and disposal hooks. The final sandbox execution terminated as designed with loopback `EPERM`; the attempted loopback-enabled rerun was rejected by the approval boundary before process creation. Therefore the fresh post-fix artifact has deterministic build/unit/compiler coverage, but a green post-fix workerd run remains an environment verification item rather than a claimed result.
 
 ## Private Banner Asset Delivery
 
-### Upload
+### Upload and Compensation
 
-The upload route now preallocates the asset UUID, reads only the request's promoted Cloudflare environment, and fails with HTTP 503 when either `MEDIA_BUCKET` or a minimum-32-byte `RENDER_LINK_SECRET` is absent. In Workers it calls native `bucket.put` and `bucket.head` directly and persists the first-party URL. The generic `uploadFile` AWS path is not invoked.
+The upload route preallocates the asset UUID, reads the request's promoted Cloudflare environment, and fails with HTTP 503 when either `MEDIA_BUCKET` or a minimum-32-byte `RENDER_LINK_SECRET` is absent. In Workers it calls native `bucket.put` and `bucket.head` directly and persists a first-party capability URL.
 
-Outside Cloudflare, the existing generic Banner Studio storage path is unchanged.
+If persistence fails, rollback passes the original request bucket through `deleteBannerFile` to generic storage. `deleteFile` now checks that explicit native binding before deciding whether S3 is configured, so a request-owned R2 object is deleted even when process-level S3 credentials are absent. Local and non-Cloudflare fallback behavior remains unchanged.
 
-### Capability
+### Capability and Public Handler
 
 The stable URL format is:
 
@@ -44,84 +49,50 @@ The stable URL format is:
 /api/public/banner-assets/v1.<base64url-asset-uuid>.<hmac-sha256>
 ```
 
-Properties:
+The handler verifies the HMAC before database access, resolves the UUID through the live `banner_assets` row, validates the uploader-scoped canonical key, and only then accesses the request-owned R2 binding. Deleting the database row revokes future origin fetches. The auth bypass is limited to the exact token-shaped route; nested sibling routes remain session-protected.
 
-- Versioned `v1` format.
-- HMAC domain separation with `xeroflow:banner-asset:v1:`.
-- Web Crypto only; no Node crypto or AWS SDK requirement.
-- Minimum 32-byte secret and fail-closed verification.
-- Constant-time, length-safe signature comparison.
-- Strict UUID, token-part, token-length, URL-shape, uploader, object-key, filename, traversal, and control-character validation.
-- Token contains only the asset UUID, never the R2 key.
+Delivery supports:
 
-### Public Handler Security
-
-The public route requires the request-scoped `RENDER_LINK_SECRET` and `MEDIA_BUCKET`, verifies the HMAC before database access, resolves the UUID through the live `banner_assets` row, validates the uploader-scoped canonical key, and only then accesses R2. Deleting the database row therefore revokes future origin fetches.
-
-The auth bypass is path- and token-shape-bound to exactly:
-
-```text
-/api/public/banner-assets/v1.<part>.<part>
-```
-
-Nested sibling routes remain session-protected. A token-shaped but tampered capability reaches the inline verifier and is rejected before database or R2 access.
-
-The handler supports:
-
-- `GET` streaming with native R2 metadata.
-- `HEAD` metadata without reading a body.
-- Single byte ranges with HTTP 206 and correct `Content-Range`/`Content-Length`.
-- Malformed and multi-range rejection with HTTP 416 before object access.
-- Conditional R2 responses with HTTP 304/412.
-- Bounded private caching: `private, max-age=300, must-revalidate`.
-- ETag, `Accept-Ranges`, CORS for editor/render canvas use, cross-origin resource policy, `nosniff`, and no-referrer headers.
-
-Private keys and token internals are not logged. Native persistence failures use a bounded error that does not disclose the R2 key.
+- `GET` streaming and `HEAD` metadata-only responses;
+- one byte range with HTTP 206 and correct `Content-Range`/`Content-Length`;
+- malformed, multi-range, and unsatisfiable requests as HTTP 416;
+- conditional R2 responses as HTTP 304/412;
+- `private, max-age=300, must-revalidate`, ETag, `Accept-Ranges`, CORS, cross-origin resource policy, `nosniff`, and no-referrer headers.
 
 ## Worker Size Gate
 
-The first complete build generated 24,753,622 deployed bytes, 3,622 bytes over the immutable 24,750,000-byte budget. The limit was not changed.
+The release ceiling remains the immutable 24,750,000 bytes. Review found that the earlier compactor removed internal names from every default-only API route module (1,929 generated routes), which was broader than justified.
 
-Generated contributor analysis found internal function-name metadata retained across default-only API route modules. Postbuild compaction now drops internal names only when both conditions hold:
+The 2026-08-06 fresh corpus audit found 267 routes with a measurable `keepNames` delta. The compactor now permits name removal only for an explicit 63-route audited allowlist totaling 10,079 measured bytes. A regression proves an audited default-only handler loses its internal name while an otherwise-identical unlisted sibling preserves it and both remain callable.
 
-1. The module is under `chunks/routes/api/**`.
-2. `es-module-lexer` proves its only export is `default`.
-
-Named-export modules and non-API modules continue using `keepNames: true`. A runtime/idempotency regression proves the compacted default handler remains importable and callable.
-
-The fresh from-scratch build finished with:
+Fresh production evidence:
 
 ```text
-24,731,353 / 24,750,000 deployed bytes
-18,647 bytes remaining
 161 routes prerendered
+2,498 split modules compacted; 1,086,525 bytes saved
+24,745,798 / 24,750,000 deployed bytes
+4,202 bytes remaining
 ```
 
 ## TDD Evidence
 
-Representative RED failures captured before implementation or hardening:
+Representative RED failures observed before the final fixes:
 
-- Cloudflare middleware left `event.context.cloudflare` undefined when only `_platform.cloudflare` existed.
-- Capability helpers and the public route were absent.
-- Worker-native Banner Studio upload still forwarded into generic AWS-backed storage.
-- Missing Worker bindings could fall into the generic path instead of failing closed.
-- The capability URL initially remained behind session authentication.
-- A nested sibling path initially inherited the public bypass.
-- Native persistence errors initially disclosed the private object key.
-- The upload route initially logged an unbounded exception that could echo the private object key.
-- Malformed database identity fields initially caused an unbounded `TypeError`.
-- Default-only API route compaction initially retained verbose internal names.
+- the real production artifact upload path left an R2 object behind after database persistence failed;
+- `deleteFile` ignored an explicit request bucket when S3 environment credentials were absent;
+- native BigInt literals produced four ES2019 build warnings in the public delivery route;
+- an unlisted default-only API route lost its function name under the path-wide compaction rule;
+- the raw fresh artifact exceeded the immutable release budget before the postbuild wrapper ran.
 
-Each regression was then observed GREEN after its bounded implementation.
+The targeted regressions were then observed GREEN after implementation. The wrapped fresh artifact also passed the immutable size guard.
 
 ## Final Verification
 
-- Focused plus broader Banner/Cloudflare/config slice: **29 files, 210 tests passed**.
-- Real local workerd dispatcher/adapter sentinel regression: **1 file, 1 test passed**.
-- Postbuild compaction, dispatcher, and immutable size-guard tests are included in the 210-test slice.
-- Focused ESLint passed for every modified/new source and test; the dynamic public route also passed with `--no-ignore`.
-- `git diff --check` passed.
-- Fresh `pnpm run build` passed, including wrapping and the immutable Worker-size guard.
-- Full Nuxt typecheck still reports the repository's pre-existing baseline. A filtered rerun produced no diagnostics for any changed source or test file.
+- Current focused Banner/Cloudflare/config slice: **10 files, 105 tests passed**.
+- Focused ESLint passed for every modified source and test, including the normally ignored dynamic public route.
+- `git diff --check` passed before the implementation commit.
+- Fresh Node 24 Nuxt production build passed; the new ES2019 compiler regression reports no warnings for the delivery route.
+- Fresh wrapper and immutable size guard passed at **24,745,798 bytes**, **4,202 bytes remaining**.
+- Workerd harness termination is bounded and teardown-safe. Sandbox execution produced the expected loopback `EPERM`; a loopback-enabled post-fix run could not be authorized in this sub-session and is not reported as green.
 
 No migration was required. No deployment, production request, production storage write, database mutation, render, publish, email, or advertising-platform action was performed.
