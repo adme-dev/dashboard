@@ -93,4 +93,21 @@ describe('dispatchBannerConfirm', () => {
     expect(r.ok).toBe(false)
     expect(d.enqueue).not.toHaveBeenCalled()
   })
+  it('checkpoints at the banner queue send boundary after render preparation', async () => {
+    const order: string[] = []
+    const d = deps({
+      execution: { markDispatched: vi.fn(async () => { order.push('checkpoint') }), captureResult: vi.fn() },
+      enqueue: vi.fn(async (_input, enqueueDeps) => {
+        order.push('prepared')
+        await enqueueDeps.sendQueue({ jobId: 'job1' })
+        return { jobIds: ['job1'] }
+      })
+    })
+    const bannerCtx = {
+      ...ctx,
+      event: { context: { cloudflare: { env: { BANNER_RENDER_QUEUE: { send: vi.fn(async () => { order.push('send') }) } } } } } as any
+    }
+    await expect(dispatchBannerConfirm(payload, bannerCtx, d)).resolves.toMatchObject({ ok: true })
+    expect(order).toEqual(['prepared', 'checkpoint', 'send'])
+  })
 })

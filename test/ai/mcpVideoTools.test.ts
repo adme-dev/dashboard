@@ -314,6 +314,18 @@ describe('dispatchVideoConfirm', () => {
     expect(deps.enqueue).toHaveBeenCalledTimes(1)
   })
 
+  it('checkpoints after reservation preparation and immediately before video enqueue', async () => {
+    const order: string[] = []
+    const deps = {
+      ...okDeps(),
+      reserve: vi.fn(async () => { order.push('reserve'); return { ok: true, reused: false, job: { id: 'job-1' } } }),
+      enqueue: vi.fn(async () => { order.push('enqueue') }),
+      execution: { markDispatched: vi.fn(async () => { order.push('checkpoint') }), captureResult: vi.fn() }
+    }
+    await dispatchVideoConfirm({ tool_name: 'video_generation', resolved_payload: genPayload }, ctx('admin'), deps)
+    expect(order).toEqual(['reserve', 'checkpoint', 'enqueue'])
+  })
+
   it('cap_exceeded when reservation fails — no enqueue', async () => {
     const deps = { ...okDeps(), reserve: vi.fn(async () => ({ ok: false, reason: 'cap_exceeded', remainingCents: 100 })) }
     const r = await dispatchVideoConfirm({ tool_name: 'video_generation', resolved_payload: genPayload }, ctx('admin'), deps)

@@ -125,3 +125,62 @@ Round-two verification evidence:
   local-listener run did not return and was interrupted. Exact controller command:
   `pnpm exec vitest run test/workers/mcpRequestClaimRuntimeCompatibility.test.ts`.
 - No migration, external secret, deployment, or unrelated application change was performed.
+
+## Review fix round 3/5 — exact dispatch boundaries, retryable owner memory, and durable indexing
+
+Resolved all four round-three findings:
+
+- Supplemental mutation dispatch is now runner-owned. The coordinator supplies a trusted
+  `markDispatched` / `captureResult` service and rejects any non-local supplemental mutation that
+  succeeds without exactly one dispatch checkpoint. Registry construction also fails closed when a
+  mutating supplemental descriptor omits its trusted dispatch executor. Music checkpoints after
+  guard, binding, idempotency, and asset preparation immediately before `MUSIC_QUEUE.send`, then
+  captures the job reference after send. Voiceover checkpoints immediately before provider
+  generation and captures the created asset. Video checkpoints after budget/job reservation and
+  immediately before enqueue; banner checkpoints inside its queue-send adapter; video/banner
+  proposals checkpoint immediately before pending-row persistence; generic confirmations checkpoint
+  immediately before their real executor.
+- Result-capture failure no longer loses reconciliation evidence. The ambiguous fallback atomically
+  stores `execution_phase='result_captured'`, the bounded reference/digest, and supplemental metadata.
+  Music reconciliation performs the durable audio-asset lookup whenever a compatible reference is
+  present, including a `dispatched` row; it never falls through to generic reference success. Missing
+  jobs and provider lookup outages remain unknown/alertable.
+- Active-owner local `remember` now uses one transaction for the execution claim, valid attempt and
+  applicable scope-bypass audit, memory upsert, indexing outbox row, `ai_action_audit`, immutable
+  success audit, and terminal ledger state. The unique ledger claim serializes concurrent same-key
+  calls. Any audit or persistence error rolls the claim, memory, and outbox back, so retry can commit
+  once; a concurrent loser or later retry replays the committed reference. Ordinary MCP remember
+  retains its existing single-transaction claim/memory/action-audit/terminal contract and now gains
+  the same transaction-bound outbox insertion through the shared direct mutation.
+- Added additive migration `348_ai_memory_index_outbox.sql`: one pending job per memory, bounded
+  attempts/backoff metadata, stale-processing reclamation, and a `FOR UPDATE SKIP LOCKED` consumer.
+  The authenticated cron endpoint runs from the existing five-minute controller, deletes jobs only
+  after Vectorize success, and returns failed indexing to pending retry. Memory recall continues to
+  include unindexed committed rows through the existing user-scoped recency fallback.
+
+Round-three TDD evidence:
+
+- Initial RED: four failures across reconciliation, remember, migration, and missing-consumer tests
+  while 24 assertions remained green.
+- Dispatch-service RED: one focused coordinator failure while 45 assertions remained green.
+- Registry fail-closed RED: one failure while 26 assertions remained green.
+- Real-runner tests cover pre-send music preparation failure, a crash/throw after the dispatch
+  checkpoint during send, successful post-send reference capture, and voiceover provider/asset order.
+  Video and banner tests pin their reservation/preparation → checkpoint → send ordering.
+- Owner-memory tests prove attempt-before-mutation, audit-failure rollback with no poisoned claim,
+  successful retry and replay, and a serialized concurrent winner.
+
+Round-three verification evidence:
+
+- Final focused dispatch/reconciliation/memory/outbox/registry suite: 9 files passed, 154 tests
+  passed and 1 disposable-database test skipped.
+- Final broad MCP, God-mode, memory, config, inventory, and authority suite: 39 files passed, 401
+  passed and 11 environment-gated tests skipped.
+- Full memory/retrieval suite: 10 files passed, 72 tests passed, including recency fallback.
+- Full Node 24 `pnpm run typecheck`: passed with no diagnostics. `git diff --check` passed.
+- The migration has a static additive/idempotency contract and an optional disposable-schema test
+  (`MEMORY_INDEX_OUTBOX_TEST_DATABASE_URL`) that applies it twice and verifies the unique memory job.
+  A sandbox-local disposable Postgres bootstrap was attempted but PostgreSQL shared memory was denied
+  (`EPERM`) before initialization; `initdb` removed the temporary cluster. Per review instruction,
+  migration 348 was **not applied to production or any configured database**.
+- No provider call, deployment, external write, or production migration was performed.

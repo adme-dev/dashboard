@@ -3,6 +3,7 @@ import { roleHasPermission } from '~~/server/utils/permissions'
 import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
+import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
 import {
   MCP_BANNER_CONFIRM_DESCRIPTION,
   projectConfirmActionManifest,
@@ -270,6 +271,28 @@ export function resolveBannerMcpExecutions(): McpExecutionDescriptor[] {
     name: descriptor.name,
     canonicalName: descriptor.name,
     kind: 'supplemental' as const,
+    executionClass: 'internal-http' as const,
+    executeSupplemental: async (args: unknown, ctx: ToolContext, services: TrustedSupplementalExecutionServices): Promise<ToolResult> => {
+      const { buildBannerProposeDeps } = await import('./bannerRunner')
+      const baseDeps = buildBannerProposeDeps()
+      const outcome = await executeBannerPropose(
+        descriptor.name,
+        args,
+        ctx,
+        {
+          ...baseDeps,
+          persist: async (...persistArgs) => {
+            await services.markDispatched()
+            return await baseDeps.persist(...persistArgs)
+          }
+        },
+        true,
+        { bypassPermissions: true }
+      )
+      return outcome.ok
+        ? { ok: true, data: { proposalId: outcome.proposalId } }
+        : { ok: false, error: 'error' in outcome ? outcome.error : 'Banner proposal failed.' }
+    },
     tool: {
       ...descriptor,
       mutates: true,

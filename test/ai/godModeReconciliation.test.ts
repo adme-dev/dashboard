@@ -131,6 +131,32 @@ describe('God mode reconciliation', () => {
     } as any)).resolves.toEqual({ state: 'unknown' })
   })
 
+  it('looks up a dispatched music reference instead of treating the reference as generic success', async () => {
+    const lookup = reconciliationModule.lookupGodModeExecutionOutcome
+    const getAudioAsset = vi.fn(async () => ({ id: 'music-job-dispatched', status: 'queued' }))
+    await expect(lookup(candidate({
+      channel: 'mcp',
+      routeOrTool: 'start_music_generation',
+      state: 'ambiguous',
+      executionPhase: 'dispatched',
+      resultReference: 'music-job-dispatched'
+    }), { getAudioAsset } as any)).resolves.toEqual({
+      state: 'succeeded', resultReference: 'music-job-dispatched'
+    })
+    expect(getAudioAsset).toHaveBeenCalledWith('music-job-dispatched')
+  })
+
+  it('keeps a dispatched music reference unknown when provider lookup cannot find it', async () => {
+    const lookup = reconciliationModule.lookupGodModeExecutionOutcome
+    await expect(lookup(candidate({
+      channel: 'mcp',
+      routeOrTool: 'start_music_generation',
+      state: 'ambiguous',
+      executionPhase: 'dispatched',
+      resultReference: 'music-job-missing'
+    }), { getAudioAsset: vi.fn(async () => null) } as any)).resolves.toEqual({ state: 'unknown' })
+  })
+
   it('is idempotent when a terminal already exists', async () => {
     const h = harness()
     vi.mocked(h.deps.findTerminal).mockResolvedValue({ phase: 'succeeded', outcomeCode: 'executed' })

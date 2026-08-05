@@ -3,6 +3,7 @@ import { roleHasPermission } from '~~/server/utils/permissions'
 import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
+import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
 import {
   MCP_VIDEO_CONFIRM_DESCRIPTION,
   projectConfirmActionManifest,
@@ -435,6 +436,7 @@ export interface VideoConfirmDeps {
   reserve: (payload: VideoGenerationPendingPayload, ctx: ToolContext) => Promise<{ ok: boolean, reason?: string, remainingCents?: number, job?: { id: string }, reused?: boolean }>
   enqueue: (payload: VideoGenerationPendingPayload, jobId: string, ctx: ToolContext) => Promise<void>
   createProject: (payload: VideoProjectPendingPayload, ctx: ToolContext) => Promise<{ projectId: string }>
+  execution?: TrustedSupplementalExecutionServices
 }
 
 export async function dispatchVideoConfirm(
@@ -447,6 +449,7 @@ export async function dispatchVideoConfirm(
   if (!deps.genEnabled) return { ok: false, error: 'Video generation is not enabled over MCP.', code: 'forbidden' }
   try {
     if (row.tool_name === 'video_project_create') {
+      await deps.execution?.markDispatched()
       const { projectId } = await deps.createProject(row.resolved_payload as VideoProjectPendingPayload, ctx)
       return { ok: true, data: { projectId } }
     }
@@ -457,7 +460,12 @@ export async function dispatchVideoConfirm(
       return { ok: false, error: `Budget unavailable (${reservation.reason ?? 'cap'}).`, code: 'cap_exceeded' }
     }
     // Lost the race to a concurrent same-key request inside the lock → do not re-enqueue.
-    if (!reservation.reused) await deps.enqueue(payload, reservation.job.id, ctx)
+    if (!reservation.reused) {
+      await deps.execution?.markDispatched()
+      await deps.enqueue(payload, reservation.job.id, ctx)
+    } else {
+      await deps.execution?.markDispatched()
+    }
     return { ok: true, data: { jobId: reservation.job.id, status: 'queued' } }
   } catch {
     return { ok: false, error: 'Execution failed.', code: 'handler_error' }
@@ -533,6 +541,26 @@ export function resolveVideoMcpExecutions(): McpExecutionDescriptor[] {
     name: descriptor.name,
     canonicalName: descriptor.name,
     kind: 'supplemental' as const,
+    executionClass: 'internal-http' as const,
+    executeSupplemental: async (args: unknown, ctx: ToolContext, services: TrustedSupplementalExecutionServices): Promise<ToolResult> => {
+      const action = resolveVideoProposeAction(descriptor.name)
+      if (!action) return { ok: false, error: 'Video action is unavailable.' }
+      const { buildVideoProposeDeps } = await import('./videoRunner')
+      const baseDeps = buildVideoProposeDeps()
+      const outcome = await executeVideoPropose(action, args, ctx, {
+        suiteEnabled: true,
+        genEnabled: true,
+        bypassPermissions: true,
+        ...baseDeps,
+        persist: async (...persistArgs) => {
+          await services.markDispatched()
+          return await baseDeps.persist(...persistArgs)
+        }
+      })
+      return outcome.ok
+        ? { ok: true, data: outcome.data }
+        : { ok: false, error: 'error' in outcome ? outcome.error : 'Video proposal failed.' }
+    },
     tool: {
       ...descriptor,
       mutates: true,

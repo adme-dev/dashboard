@@ -137,7 +137,6 @@ export async function lookupGodModeExecutionOutcome(
   }
   if (
     candidate.routeOrTool === 'start_music_generation'
-    && candidate.executionPhase === 'result_captured'
     && candidate.resultReference
   ) {
     const asset = await dependencies.getAudioAsset(candidate.resultReference)

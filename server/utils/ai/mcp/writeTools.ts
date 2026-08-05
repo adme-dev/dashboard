@@ -4,6 +4,7 @@ import { filterToolsForUser, type AiTool } from '~~/server/utils/ai/toolRegistry
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type { ActionExecutor } from '~~/server/utils/ai/executors/types'
 import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
+import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
 
 // ---------------------------------------------------------------------------
 // Shared confirm plumbing (used by both 2c and D4 branches)
@@ -219,6 +220,11 @@ export function resolveWriteMcpExecutions(context: McpProjectionContext): McpExe
     name: MCP_CONFIRM_TOOL,
     canonicalName: MCP_CONFIRM_TOOL,
     kind: 'supplemental',
+    executionClass: 'internal-http',
+    executeSupplemental: async (args, ctx, services) => {
+      const { executeOwnerMcpConfirm } = await import('./ownerConfirm')
+      return await executeOwnerMcpConfirm(args, ctx, services)
+    },
     tool: {
       name: MCP_CONFIRM_TOOL,
       description: MCP_WRITE_CONFIRM_DESCRIPTION,
@@ -261,6 +267,7 @@ export interface ConfirmDeps {
   /** Optional: restore a just-claimed row to 'proposed' when a PRE-execution gate rejects (ack/permission),
    *  so the proposal isn't burned and the user can retry (e.g. with ack:true). Never called after execution. */
   revertClaim?: (proposalId: string, userId: string) => Promise<void>
+  execution?: TrustedSupplementalExecutionServices
 }
 
 /**
@@ -320,6 +327,7 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
       return rejectAndRevert({ ok: false, error: 'Not permitted.', code: 'forbidden' })
     }
     try {
+      await deps.execution?.markDispatched()
       const res = await ex.execute(row.resolved_payload, ctx)
       return { ok: true, data: { resultRef: res.resultRef, summary: res.summary } }
     } catch {
@@ -343,6 +351,7 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
   }
 
   try {
+    await deps.execution?.markDispatched()
     const res = await ex.execute(row.resolved_payload, ctx)
     return { ok: true, data: { resultRef: res.resultRef, summary: res.summary } }
   } catch {

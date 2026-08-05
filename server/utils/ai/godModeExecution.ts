@@ -157,6 +157,7 @@ interface ClaimExecutionInput {
   tenantId?: string
   clientId?: string
   sessionDigest: string
+  db?: TransactionDb
 }
 
 interface SetExecutionStateInput {
@@ -166,6 +167,8 @@ interface SetExecutionStateInput {
   state: Exclude<LedgerState, 'in_progress'>
   resultReference?: string | null
   resultDigest?: string | null
+  executionPhase?: string
+  executionMetadata?: Record<string, unknown>
 }
 
 export interface GodModeExecutionDependencies {
@@ -249,7 +252,7 @@ const defaultDependencies: GodModeExecutionDependencies = {
   resolveTool: toolName => registry.find(tool => tool.name === toolName) ?? null,
   resolveExecutor: getExecutor,
   claimExecution: async input => {
-    const inserted = await queryOneFresh<any>(
+    const inserted = await dbQueryOne<any>(input.db,
       `INSERT INTO god_mode_execution_ledger (
          actor_user_id, channel, idempotency_key, state, correlation_id, route_or_tool,
          executor_class, tenant_id, client_id, session_digest
@@ -262,7 +265,7 @@ const defaultDependencies: GodModeExecutionDependencies = {
       ]
     )
     if (inserted) return { claimed: true, row: mapLedger(inserted) }
-    const existing = await queryOneFresh<any>(
+    const existing = await dbQueryOne<any>(input.db,
       `SELECT * FROM god_mode_execution_ledger
         WHERE actor_user_id = $1 AND channel = $2 AND idempotency_key = $3`,
       [input.actorUserId, input.channel, input.idempotencyKey]
@@ -353,9 +356,16 @@ const defaultDependencies: GodModeExecutionDependencies = {
   },
   setExecutionState: async (input, db) => {
     const sql = `UPDATE god_mode_execution_ledger
-                    SET state = $4, result_reference = $5, result_digest = $6, updated_at = NOW()
+                    SET state = $4, result_reference = $5, result_digest = $6,
+                        execution_phase = COALESCE($7, execution_phase),
+                        execution_metadata = COALESCE($8::jsonb, execution_metadata), updated_at = NOW()
                   WHERE actor_user_id = $1 AND channel = $2 AND idempotency_key = $3`
-    const params = [input.actorUserId, input.channel, input.idempotencyKey, input.state, input.resultReference ?? null, input.resultDigest ?? null]
+    const params = [
+      input.actorUserId, input.channel, input.idempotencyKey, input.state,
+      input.resultReference ?? null, input.resultDigest ?? null,
+      input.executionPhase ?? null,
+      input.executionMetadata ? JSON.stringify(input.executionMetadata) : null
+    ]
     if (db) await db.query(sql, params)
     else await queryOneFresh(`${sql} RETURNING actor_user_id`, params)
   },
@@ -779,6 +789,18 @@ export interface TrustedMcpGodModeResolvedMutationRequest extends TrustedMcpGodM
     ctx: ToolContext,
     db: { query: (sql: string, params?: unknown[]) => Promise<any> }
   ) => Promise<ToolResult>
+  executeSupplemental?: (
+    args: unknown,
+    ctx: ToolContext,
+    services: TrustedSupplementalExecutionServices
+  ) => Promise<ToolResult>
+}
+
+export interface TrustedSupplementalExecutionServices {
+  /** Called exactly once by the trusted runner at the final line before irreversible dispatch. */
+  markDispatched: () => Promise<void>
+  /** Persists a bounded provider reference as soon as the runner owns one. */
+  captureResult: (result: ToolResult) => Promise<void>
 }
 
 function resolvedResultIdentity(result: ToolResult): { resultReference: string, resultDigest: string } {
@@ -810,6 +832,90 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
       || !request.tool.mutates
       || request.tool.name !== request.toolName
     ) operationalError(403, 'Invalid MCP owner execution authority')
+
+    // Immediate owner-local mutations use one serialization and durability boundary. A failed audit,
+    // memory write, outbox insert, or terminal update rolls the claim back too, so the same logical
+    // request can safely retry instead of being poisoned by an orphaned failed claim.
+    if (request.executionClass === 'local-transactional') {
+      if (!request.executeMutation) operationalError(503, 'God mode local executor unavailable')
+      const parsed = request.tool.parameters.safeParse(request.args)
+      if (!parsed.success) return fail('Invalid tool input.')
+      const ctx: ToolContext = {
+        userId: request.authenticatedUserId,
+        userRole: 'owner',
+        permissionGroups: [],
+        source: 'mcp',
+        godModeExecutionKey: request.idempotencyKey,
+        event: request.event
+      }
+      const scope = await deps.validateScope({
+        actorUserId: request.authenticatedUserId,
+        tenantId: request.tenantId,
+        clientId: request.clientId,
+        args: parsed.data,
+        ctx
+      })
+      if (scope.ok === false) return fail('Target is outside the authenticated scope.')
+      try {
+        return await deps.transaction(async db => {
+          const claim = await deps.claimExecution({
+            actorUserId: request.authenticatedUserId,
+            channel: 'mcp',
+            idempotencyKey: request.idempotencyKey,
+            correlationId: deps.correlationId(),
+            toolName: request.toolName,
+            executorClass: 'local-transactional',
+            tenantId: scope.tenantId ?? undefined,
+            clientId: scope.clientId ?? undefined,
+            sessionDigest: request.sessionDigest,
+            db
+          })
+          const row = Object.assign(claim.row, {
+            sessionDigest: request.sessionDigest,
+            bypassedControls: request.bypassedControls ?? ['confirmation']
+          })
+          if (!claim.claimed) {
+            if (row.routeOrTool !== request.toolName) return fail('Execution identity already used.')
+            if (row.state === 'succeeded') return ok({ resultRef: row.resultReference, replayed: true })
+            if (row.state === 'failed') return fail('Action previously failed.')
+            return fail('Action outcome is pending reconciliation.')
+          }
+
+          await deps.appendAudit(auditEvent(row, 'attempt', 'started'), db)
+          if (row.bypassedControls.includes('mcp_scope')) {
+            await deps.appendAudit(auditEvent(row, 'bypass', 'pre_execution'), db)
+          }
+          const result = await request.executeMutation!(parsed.data, ctx, db)
+          if (!result.ok) throw Object.assign(new Error('local mutation rejected'), { boundedCode: 'handler_rejected' })
+          const identity = resolvedResultIdentity(result)
+          if (request.toolName === 'remember') {
+            await db.query(
+              `INSERT INTO ai_action_audit
+                (pending_id, user_id, confirmed_by, tool_name, risk_tier, client_scope, payload, result_ref, outcome)
+               VALUES (NULL, $1, NULL, 'remember', 'auto', NULL, $2::jsonb, $3, 'executed')`,
+              [
+                request.authenticatedUserId,
+                JSON.stringify({ source: 'mcp_god_mode', argKeys: Object.keys(parsed.data as Record<string, unknown>), idempotencyKey: request.idempotencyKey }),
+                identity.resultReference
+              ]
+            )
+          }
+          await deps.appendAudit(auditEvent(row, 'succeeded', 'executed'), db)
+          await deps.setExecutionState({
+            actorUserId: request.authenticatedUserId,
+            channel: 'mcp',
+            idempotencyKey: request.idempotencyKey,
+            state: 'succeeded',
+            resultReference: identity.resultReference,
+            resultDigest: identity.resultDigest,
+            executionPhase: 'result_captured'
+          }, db)
+          return result
+        })
+      } catch {
+        return fail('I could not save that just now — please try again in a moment.')
+      }
+    }
 
     let claim: { claimed: boolean, row: GodModeExecutionLedgerRow }
     try {
@@ -917,40 +1023,6 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
       }
     }
 
-    if (request.executionClass === 'local-transactional') {
-      if (!request.executeMutation) {
-        await terminateBeforeDispatch('local_executor_unavailable', 'God mode action failed.')
-        operationalError(503, 'God mode local executor unavailable')
-      }
-      let localFailureMessage = 'God mode action failed.'
-      try {
-        const result = await deps.transaction(async db => {
-          const executed = await request.executeMutation!(parsed.data, ctx, db)
-          if (!executed.ok) {
-            localFailureMessage = executed.error
-            throw Object.assign(new Error('local mutation rejected'), { boundedCode: 'handler_rejected' })
-          }
-          const identity = resolvedResultIdentity(executed)
-          await deps.appendAudit(auditEvent(auditIdentity, 'succeeded', 'executed'), db)
-          await deps.setExecutionState({
-            actorUserId: request.authenticatedUserId,
-            channel: 'mcp',
-            idempotencyKey: request.idempotencyKey,
-            state: 'succeeded',
-            resultReference: identity.resultReference,
-            resultDigest: identity.resultDigest
-          }, db)
-          return executed
-        })
-        return result
-      } catch (error) {
-        const code = typeof (error as any)?.boundedCode === 'string'
-          ? String((error as any).boundedCode).slice(0, 64)
-          : 'local_transaction_failed'
-        return await terminateBeforeDispatch(code, localFailureMessage)
-      }
-    }
-
     const markDispatchAmbiguous = async (
       resultIdentity?: { resultReference: string, resultDigest: string }
     ): Promise<ToolResult> => {
@@ -963,7 +1035,13 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
             idempotencyKey: request.idempotencyKey,
             state: 'ambiguous',
             resultReference: resultIdentity?.resultReference ?? null,
-            resultDigest: resultIdentity?.resultDigest ?? null
+            resultDigest: resultIdentity?.resultDigest ?? null,
+            executionPhase: resultIdentity ? 'result_captured' : 'dispatched',
+            executionMetadata: {
+              supplemental: true,
+              executionClass: request.executionClass ?? 'internal-http',
+              ...(resultIdentity ? { resultDigest: resultIdentity.resultDigest } : {})
+            }
           }, db)
         })
       } catch {
@@ -973,53 +1051,82 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
           idempotencyKey: request.idempotencyKey,
           state: 'ambiguous',
           resultReference: resultIdentity?.resultReference ?? null,
-          resultDigest: resultIdentity?.resultDigest ?? null
+          resultDigest: resultIdentity?.resultDigest ?? null,
+          executionPhase: resultIdentity ? 'result_captured' : 'dispatched',
+          executionMetadata: {
+            supplemental: true,
+            executionClass: request.executionClass ?? 'internal-http',
+            ...(resultIdentity ? { resultDigest: resultIdentity.resultDigest } : {})
+          }
         }).catch(() => {})
         operationalError(503, 'God mode audit unavailable')
       }
       return fail('Action outcome is pending reconciliation.')
     }
 
-    try {
-      await deps.recordExecutionProgress({
-        actorUserId: request.authenticatedUserId,
-        channel: 'mcp',
-        idempotencyKey: request.idempotencyKey,
-        phase: 'dispatched',
-        metadata: {
-          supplemental: true,
-          executionClass: request.executionClass ?? 'internal-http'
-        }
-      })
-    } catch {
-      await terminateBeforeDispatch('dispatch_checkpoint_failed', 'God mode action failed.')
-      operationalError(503, 'God mode execution ledger unavailable')
+    if (!request.executeSupplemental) {
+      return await terminateBeforeDispatch('supplemental_executor_unavailable', 'God mode action failed.')
+    }
+
+    let dispatched = false
+    let dispatchCheckpointCalls = 0
+    let capturedIdentity: { resultReference: string, resultDigest: string } | undefined
+    let resultCaptured = false
+    const services: TrustedSupplementalExecutionServices = {
+      markDispatched: async () => {
+        dispatchCheckpointCalls++
+        if (dispatchCheckpointCalls !== 1) throw new Error('dispatch checkpoint called more than once')
+        await deps.recordExecutionProgress({
+          actorUserId: request.authenticatedUserId,
+          channel: 'mcp',
+          idempotencyKey: request.idempotencyKey,
+          phase: 'dispatched',
+          metadata: {
+            supplemental: true,
+            executionClass: request.executionClass ?? 'internal-http'
+          }
+        })
+        dispatched = true
+      },
+      captureResult: async result => {
+        if (!dispatched) throw new Error('result captured before dispatch checkpoint')
+        if (resultCaptured) throw new Error('result captured more than once')
+        capturedIdentity = resolvedResultIdentity(result)
+        await deps.recordExecutionProgress({
+          actorUserId: request.authenticatedUserId,
+          channel: 'mcp',
+          idempotencyKey: request.idempotencyKey,
+          phase: 'result_captured',
+          resultReference: capturedIdentity.resultReference,
+          metadata: {
+            supplemental: true,
+            executionClass: request.executionClass ?? 'internal-http',
+            resultDigest: capturedIdentity.resultDigest
+          }
+        })
+        resultCaptured = true
+      }
     }
 
     let result: ToolResult
     try {
-      result = await request.tool.handler(parsed.data, ctx)
+      result = await request.executeSupplemental(parsed.data, ctx, services)
     } catch {
-      return await markDispatchAmbiguous()
+      if (!dispatched) return await terminateBeforeDispatch('dispatch_not_started', 'God mode action failed.')
+      return await markDispatchAmbiguous(capturedIdentity)
     }
-    if (!result.ok) return await markDispatchAmbiguous()
+    if (!dispatched || dispatchCheckpointCalls !== 1) {
+      return await terminateBeforeDispatch('dispatch_checkpoint_missing', 'God mode action failed.')
+    }
+    if (!result.ok) return await markDispatchAmbiguous(capturedIdentity)
 
-    const identity = resolvedResultIdentity(result)
-    try {
-      await deps.recordExecutionProgress({
-        actorUserId: request.authenticatedUserId,
-        channel: 'mcp',
-        idempotencyKey: request.idempotencyKey,
-        phase: 'result_captured',
-        resultReference: identity.resultReference,
-        metadata: {
-          supplemental: true,
-          executionClass: request.executionClass ?? 'internal-http',
-          resultDigest: identity.resultDigest
-        }
-      })
-    } catch {
-      return await markDispatchAmbiguous(identity)
+    const identity = capturedIdentity ?? resolvedResultIdentity(result)
+    if (!resultCaptured) {
+      try {
+        await services.captureResult(result)
+      } catch {
+        return await markDispatchAmbiguous(identity)
+      }
     }
     const terminal = auditEvent(auditIdentity, 'succeeded', 'executed')
     try {

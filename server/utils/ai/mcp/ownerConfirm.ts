@@ -1,6 +1,7 @@
 import { execute, queryOne } from '~~/server/utils/db'
 import { getExecutor } from '~~/server/utils/ai/executors'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
+import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
 import {
   dispatchBannerConfirm,
   buildBannerConfirmDeps
@@ -23,12 +24,17 @@ import {
  * coordinator owns immutable attempt/outcome audit and logical idempotency; this dispatcher retains
  * the pending row's atomic single-use claim and every provider/budget hard boundary.
  */
-export async function executeOwnerMcpConfirm(args: unknown, ctx: ToolContext): Promise<ToolResult> {
+export async function executeOwnerMcpConfirm(
+  args: unknown,
+  ctx: ToolContext,
+  execution?: TrustedSupplementalExecutionServices
+): Promise<ToolResult> {
   const videoConfirmDeps = buildVideoConfirmDeps()
   const outcome = await executeWriteConfirm(args, ctx, {
     enabled: true,
     writeEnabled: true,
     financialEnabled: true,
+    execution,
     getExecutor,
     claim: async (proposalId, uid) => queryOne<ClaimedProposal>(
       `UPDATE ai_pending_actions SET status='executed', confirmed_by=$2, executed_at=now()
@@ -53,7 +59,7 @@ export async function executeOwnerMcpConfirm(args: unknown, ctx: ToolContext): P
       return await dispatchVideoConfirm(
         { tool_name: row.tool_name, resolved_payload: payload },
         videoCtx,
-        { genEnabled: true, ...videoConfirmDeps }
+        { genEnabled: true, ...videoConfirmDeps, execution }
       )
     },
     bannerDispatch: async (row, bannerCtx) => {
@@ -61,7 +67,7 @@ export async function executeOwnerMcpConfirm(args: unknown, ctx: ToolContext): P
       return await dispatchBannerConfirm(
         row.resolved_payload as BannerRenderPendingPayload,
         bannerCtx,
-        buildBannerConfirmDeps()
+        { ...buildBannerConfirmDeps(), execution }
       )
     }
   })

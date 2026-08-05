@@ -1,5 +1,6 @@
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import type { GenerationRunner } from './generationTools'
+import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
 import { generateVoiceover } from '~~/server/utils/audio/voiceGen'
 import {
   createVoiceAsset,
@@ -34,11 +35,12 @@ export function isMusicGenerationProviderAvailable(event: ToolContext['event']):
   return !!event && getMusicQueue(event) !== null
 }
 
-export function buildGenerationRunner(): GenerationRunner {
+export function buildGenerationRunner(execution?: TrustedSupplementalExecutionServices): GenerationRunner {
   return {
     // Synchronous: generate the VO and return the ready asset (with a playback URL).
     generate_voiceover: async (raw, ctx: ToolContext) => {
       const a = raw as VoiceoverArgs
+      await execution?.markDispatched()
       const generated = await generateVoiceover(ctx.event, { text: a.text, lang: a.lang })
       if (!generated) throw new Error('voice generation unavailable')
       const asset = await createVoiceAsset({
@@ -52,13 +54,15 @@ export function buildGenerationRunner(): GenerationRunner {
         audio: generated.audioBuffer,
         format: generated.format
       })
-      return {
+      const result = {
         assetId: asset.id,
         kind: 'voiceover',
         status: asset.status,
         streamUrl: asset.streamUrl ?? null,
         violations: generated.violations
       }
+      if (execution) await execution.captureResult({ ok: true, data: result })
+      return result
     },
 
     // Asynchronous: guard → enqueue → return jobId. Host polls get_generation_status.
@@ -113,7 +117,12 @@ export function buildGenerationRunner(): GenerationRunner {
         if (existing && existing.status === 'failed' && await requeueFailedMusicAsset(existing.id)) {
           asset = { ...existing, status: 'queued', error: null }
         } else {
-          return { status: 'duplicate', reason: 'That exact brief was just submitted — check the library.', jobId: existing?.id ?? null }
+          const duplicate = { status: 'duplicate', reason: 'That exact brief was just submitted — check the library.', jobId: existing?.id ?? null }
+          if (execution && existing?.id) {
+            await execution.markDispatched()
+            await execution.captureResult({ ok: true, data: duplicate })
+          }
+          return duplicate
         }
       }
 
@@ -125,8 +134,11 @@ export function buildGenerationRunner(): GenerationRunner {
         format: a.format,
         idempotencyKey
       }
+      await execution?.markDispatched()
       await queue.send(payload)
-      return { jobId: asset.id, status: asset.status }
+      const result = { jobId: asset.id, status: asset.status }
+      if (execution) await execution.captureResult({ ok: true, data: result })
+      return result
     },
 
     // Poll any generation job (music) by its asset/job id; mints a fresh playback URL when ready.

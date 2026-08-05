@@ -3,6 +3,7 @@ import { roleHasPermission } from '~~/server/utils/permissions'
 import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
+import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
 
 /**
  * MCP Server Phase 2a — owned media-generation tools (spec: ai-copilot-mcp-server-phase2 §4).
@@ -118,6 +119,25 @@ export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
           }
         }
       : {}),
+    ...(descriptor.name !== 'get_generation_status'
+      ? {
+          executeSupplemental: async (
+            args: unknown,
+            ctx: ToolContext,
+            services: TrustedSupplementalExecutionServices
+          ): Promise<ToolResult> => {
+            const { buildGenerationRunner } = await import('./generationRunner')
+            const outcome = await executeGenerationTool(descriptor.name, args, ctx, {
+              enabled: true,
+              bypassPermissions: true,
+              runner: buildGenerationRunner(services)
+            })
+            return outcome.ok
+              ? { ok: true, data: outcome.data }
+              : { ok: false, error: 'error' in outcome ? outcome.error : 'Generation failed.' }
+          }
+        }
+      : {}),
     tool: {
       ...descriptor,
       mutates: descriptor.name !== 'get_generation_status',
@@ -141,7 +161,11 @@ export type GenExecuteOutcome
     | { ok: false, error: string, code: 'disabled' | 'not_found' | 'forbidden' | 'bad_args' | 'handler_error' }
 
 /** Injected execution: name → runner. The real runner (internal endpoint) calls the audio engines via ctx.event bindings. */
-export type GenerationRunner = Record<string, (args: unknown, ctx: ToolContext) => Promise<unknown>>
+export type GenerationRunner = Record<string, (
+  args: unknown,
+  ctx: ToolContext,
+  services?: TrustedSupplementalExecutionServices
+) => Promise<unknown>>
 
 /**
  * Execute ONE generation tool. Defense-in-depth at the wire boundary, mirroring executeReadOnlyTool:

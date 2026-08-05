@@ -65,13 +65,27 @@ export const rememberTool: AiTool<Args> = {
   mutates: true,
   directMutation: {
     executionClass: 'local-transactional',
-    execute: async (args, ctx, db) => await remember(args, ctx, {
-      save: async input => await upsertMemory(input, {
+    execute: async (args, ctx, db) => {
+      const result = await remember(args, ctx, {
+        save: async input => await upsertMemory(input, {
         queryOne: async <T>(sql: string, params?: unknown[]) => ((await db.query(sql, params)).rows[0] as T | undefined) ?? null,
         queryRows: async <T>(sql: string, params?: unknown[]) => (await db.query(sql, params)).rows as T[],
         execute: async (sql: string, params?: unknown[]) => (await db.query(sql, params)).rowCount ?? 0
       })
-    })
+      })
+      if (result.ok && result.data && typeof result.data === 'object') {
+        const id = (result.data as { id?: unknown }).id
+        if (typeof id === 'string') {
+          await db.query(
+            `INSERT INTO ai_memory_index_outbox (memory_id)
+             VALUES ($1)
+             ON CONFLICT (memory_id) DO NOTHING`,
+            [id]
+          )
+        }
+      }
+      return result
+    }
   },
   handler: (a, c) => remember(a, c),
 }

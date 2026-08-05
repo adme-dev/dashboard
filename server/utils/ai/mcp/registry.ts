@@ -191,6 +191,14 @@ function resolveOwnerCatalog(
       ) {
         throw new Error(`Local-transactional MCP resolver requires a transaction-aware executor: ${descriptor.name}`)
       }
+      if (
+        descriptor.kind === 'supplemental'
+        && descriptor.tool.mutates
+        && descriptor.executionClass !== 'local-transactional'
+        && typeof descriptor.executeSupplemental !== 'function'
+      ) {
+        throw new Error(`Supplemental MCP mutation requires a trusted dispatch executor: ${descriptor.name}`)
+      }
       const rows = executionRows.get(descriptor.name) ?? []
       rows.push({ suiteKey: suite.key, descriptor })
       executionRows.set(descriptor.name, rows)

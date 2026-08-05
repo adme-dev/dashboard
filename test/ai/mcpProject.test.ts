@@ -249,6 +249,28 @@ describe('authoritative registered MCP suite projection', () => {
       .toThrow(/transaction-aware executor/i)
   })
 
+  it('fails closed when a non-local supplemental mutation has no trusted dispatch executor', () => {
+    const providerTool = tool({ name: 'future_provider_write', mutates: true })
+    const invalidSuite: RegisteredMcpSuite = {
+      key: 'invalid-provider-suite',
+      project: () => [{
+        name: providerTool.name,
+        description: providerTool.description,
+        inputSchema: z.toJSONSchema(providerTool.parameters) as Record<string, unknown>
+      }],
+      executions: () => [{
+        name: providerTool.name,
+        canonicalName: providerTool.name,
+        kind: 'supplemental',
+        executionClass: 'external-provider',
+        tool: providerTool
+      }]
+    }
+
+    expect(() => resolveGodModeMcpExecutions(context, [...registeredMcpSuites, invalidSuite]))
+      .toThrow(/trusted dispatch executor/i)
+  })
+
   it('keeps ordinary projection governed by suite flags, role permissions, and signed scopes', () => {
     const names = projectRegisteredMcpTools(context).map(tool => tool.name)
 

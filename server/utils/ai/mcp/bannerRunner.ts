@@ -10,6 +10,7 @@ import { FORMATS } from '~~/app/utils/banner-constants'
 import { uploadFile } from '~~/server/utils/storage'
 import { randomUUID } from 'uncrypto'
 import type { BannerReadRunner, BannerProposeDeps, BannerRenderPendingPayload } from './bannerTools'
+import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
 
 /** Parse canvas_data — stored as JSONB (object) or occasionally a JSON string. */
 function parseCanvasData(raw: unknown): Record<string, unknown> {
@@ -88,6 +89,7 @@ export interface BannerConfirmDeps {
   loadLayers: (projectId: string, format: string) => Promise<{ layers: any[], width: number, height: number }>
   buildHtml: (format: string, layers: any[], options: { baseUrl: string }) => string
   enqueue: (input: BannerRenderInput, deps: any) => Promise<{ jobIds: string[] }>
+  execution?: TrustedSupplementalExecutionServices
 }
 
 export async function dispatchBannerConfirm(payload: BannerRenderPendingPayload, ctx: ToolContext, deps: BannerConfirmDeps): Promise<{ ok: true, data: { jobIds: string[] } } | { ok: false, error: string, code: 'handler_error' }> {
@@ -107,6 +109,7 @@ export async function dispatchBannerConfirm(payload: BannerRenderPendingPayload,
       sendQueue: async (msg: { jobId: string }) => {
         const q = (ctx.event.context as any).cloudflare?.env?.BANNER_RENDER_QUEUE
         if (!q) throw new Error('BANNER_RENDER_QUEUE unavailable')
+        await deps.execution?.markDispatched()
         await q.send(msg)
       },
     }

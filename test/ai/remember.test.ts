@@ -55,7 +55,8 @@ describe('remember tool', () => {
       { query }
     )).resolves.toMatchObject({ ok: true, data: { id: 'memory-tx' } })
 
-    expect(query).toHaveBeenCalledTimes(1)
+    expect(query).toHaveBeenCalledTimes(2)
+    expect(query.mock.calls[1][0]).toContain('ai_memory_index_outbox')
     expect(memoryMocks.index).not.toHaveBeenCalled()
   })
 

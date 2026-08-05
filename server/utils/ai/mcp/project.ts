@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { roleHasPermission } from '~~/server/utils/permissions'
 import { filterToolsForUser, type AiTool } from '~~/server/utils/ai/toolRegistry'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
+import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
 
 /**
  * MCP Server Phase 1 — read-only projection + guarded execution (mcp-server-phase1 spec §4–5).
@@ -43,6 +44,12 @@ export interface McpExecutionDescriptor {
     args: unknown,
     ctx: ToolContext,
     db: { query: (sql: string, params?: unknown[]) => Promise<any> }
+  ) => Promise<ToolResult>
+  /** Trusted runner owns the exact dispatch/capture durability boundaries. */
+  executeSupplemental?: (
+    args: unknown,
+    ctx: ToolContext,
+    services: TrustedSupplementalExecutionServices
   ) => Promise<ToolResult>
 }
 
