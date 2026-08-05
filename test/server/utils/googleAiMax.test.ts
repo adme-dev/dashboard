@@ -85,6 +85,28 @@ describe('classifyAiMaxReadiness', () => {
     expect(result.status).toBe('needs_review')
     expect(result.risks).toContain('PARTIAL_SEARCH_MATCHING')
   })
+
+  it('requires review when Google reports AI Max bundling is required', () => {
+    const result = classifyAiMaxReadiness(observation({
+      aiMaxEnabled: true,
+      bundlingRequired: 'REQUIRED',
+    }))
+
+    expect(result.status).toBe('needs_review')
+    expect(result.risks).toContain('BUNDLING_REQUIRED')
+  })
+
+  it('requires review when every ad group disables search-term matching', () => {
+    const result = classifyAiMaxReadiness(observation({
+      aiMaxEnabled: true,
+      adGroupCount: 2,
+      searchTermMatchingDisabledAdGroupCount: 2,
+    }))
+
+    expect(result.effectiveSettings.searchTermMatching).toBe('disabled')
+    expect(result.status).toBe('needs_review')
+    expect(result.risks).toContain('ALL_AD_GROUPS_MATCHING_DISABLED')
+  })
 })
 
 describe('normalizeGoogleAiMaxObservation', () => {
