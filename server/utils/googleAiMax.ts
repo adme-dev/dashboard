@@ -53,6 +53,13 @@ export interface GoogleAiMaxClassification {
   }
 }
 
+export interface GoogleAiMaxCampaignState extends GoogleAiMaxObservation {
+  migrationReason: AiMaxMigrationReason
+  readinessStatus: AiMaxReadinessStatus
+  risks: AiMaxRisk[]
+  effectiveSettings: GoogleAiMaxClassification['effectiveSettings']
+}
+
 interface RawAssetAutomationSetting {
   assetAutomationType?: string
   assetAutomationStatus?: string
@@ -276,4 +283,53 @@ export function classifyAiMaxReadiness(
       finalUrlExpansion: automationStatus(observation.finalUrlExpansionStatus),
     },
   }
+}
+
+export function buildGoogleAiMaxState(
+  observation: GoogleAiMaxObservation,
+): GoogleAiMaxCampaignState {
+  const classification = classifyAiMaxReadiness(observation)
+  return {
+    ...observation,
+    migrationReason: classification.migrationReason,
+    readinessStatus: classification.status,
+    risks: classification.risks,
+    effectiveSettings: classification.effectiveSettings,
+  }
+}
+
+export function diffGoogleAiMaxMaterialState(
+  previous: GoogleAiMaxCampaignState,
+  current: GoogleAiMaxCampaignState,
+): string[] {
+  const changed: string[] = []
+  if (previous.campaignStatus !== current.campaignStatus) changed.push('campaignStatus')
+  if (previous.biddingStrategyType !== current.biddingStrategyType) changed.push('biddingStrategyType')
+  if (previous.keywordMatchType !== current.keywordMatchType) changed.push('keywordMatchType')
+  if (previous.aiMaxEnabled !== current.aiMaxEnabled) changed.push('aiMaxEnabled')
+  if (previous.bundlingRequired !== current.bundlingRequired) changed.push('bundlingRequired')
+  if (previous.textAssetAutomationStatus !== current.textAssetAutomationStatus) {
+    changed.push('textAssetAutomationStatus')
+  }
+  if (previous.finalUrlExpansionStatus !== current.finalUrlExpansionStatus) {
+    changed.push('finalUrlExpansionStatus')
+  }
+  if (previous.adGroupCount !== current.adGroupCount) changed.push('adGroupCount')
+  if (previous.searchTermMatchingDisabledAdGroupCount
+    !== current.searchTermMatchingDisabledAdGroupCount) {
+    changed.push('searchTermMatchingDisabledAdGroupCount')
+  }
+  if (previous.migrationReason !== current.migrationReason) changed.push('migrationReason')
+  if (previous.readinessStatus !== current.readinessStatus) changed.push('readinessStatus')
+  if (JSON.stringify(previous.risks) !== JSON.stringify(current.risks)) changed.push('risks')
+  if (previous.effectiveSettings.searchTermMatching !== current.effectiveSettings.searchTermMatching) {
+    changed.push('searchTermMatching')
+  }
+  if (previous.effectiveSettings.textCustomisation !== current.effectiveSettings.textCustomisation) {
+    changed.push('textCustomisation')
+  }
+  if (previous.effectiveSettings.finalUrlExpansion !== current.effectiveSettings.finalUrlExpansion) {
+    changed.push('finalUrlExpansion')
+  }
+  return changed
 }

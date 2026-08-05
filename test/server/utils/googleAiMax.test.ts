@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildGoogleAiMaxState,
   classifyAiMaxReadiness,
+  diffGoogleAiMaxMaterialState,
   normalizeGoogleAiMaxObservation,
   type GoogleAiMaxObservation,
 } from '~~/server/utils/googleAiMax'
@@ -188,5 +190,62 @@ describe('normalizeGoogleAiMaxObservation', () => {
       searchTermMatchingDisabledAdGroupCount: 1,
       observedAt: '2026-08-06T01:00:00.000Z',
     })
+  })
+})
+
+describe('diffGoogleAiMaxMaterialState', () => {
+  it('ignores observation freshness when provider configuration is unchanged', () => {
+    const previous = buildGoogleAiMaxState(observation({
+      observedAt: '2026-08-06T00:00:00.000Z',
+    }))
+    const current = buildGoogleAiMaxState(observation({
+      observedAt: '2026-08-07T00:00:00.000Z',
+    }))
+
+    expect(diffGoogleAiMaxMaterialState(previous, current)).toEqual([])
+  })
+
+  it('reports raw and derived fields changed by AI Max enablement', () => {
+    const previous = buildGoogleAiMaxState(observation({ aiMaxEnabled: false }))
+    const current = buildGoogleAiMaxState(observation({ aiMaxEnabled: true }))
+
+    expect(diffGoogleAiMaxMaterialState(previous, current)).toEqual([
+      'aiMaxEnabled',
+      'readinessStatus',
+      'searchTermMatching',
+    ])
+  })
+
+  it('reports every material provider and derived configuration change', () => {
+    const previous = buildGoogleAiMaxState(observation())
+    const current = buildGoogleAiMaxState(observation({
+      campaignStatus: 'PAUSED',
+      biddingStrategyType: 'TARGET_ROAS',
+      keywordMatchType: 'BROAD',
+      aiMaxEnabled: true,
+      bundlingRequired: 'REQUIRED',
+      textAssetAutomationStatus: 'OPTED_IN',
+      finalUrlExpansionStatus: 'OPTED_IN',
+      adGroupCount: 3,
+      searchTermMatchingDisabledAdGroupCount: 1,
+    }))
+
+    expect(diffGoogleAiMaxMaterialState(previous, current)).toEqual([
+      'campaignStatus',
+      'biddingStrategyType',
+      'keywordMatchType',
+      'aiMaxEnabled',
+      'bundlingRequired',
+      'textAssetAutomationStatus',
+      'finalUrlExpansionStatus',
+      'adGroupCount',
+      'searchTermMatchingDisabledAdGroupCount',
+      'migrationReason',
+      'readinessStatus',
+      'risks',
+      'searchTermMatching',
+      'textCustomisation',
+      'finalUrlExpansion',
+    ])
   })
 })
