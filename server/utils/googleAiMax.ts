@@ -53,9 +53,122 @@ export interface GoogleAiMaxClassification {
   }
 }
 
+interface RawAssetAutomationSetting {
+  assetAutomationType?: string
+  assetAutomationStatus?: string
+}
+
+interface RawGoogleCampaignRow {
+  campaign?: {
+    id?: string | number
+    name?: string
+    status?: string
+    advertisingChannelType?: string
+    biddingStrategyType?: string
+    keywordMatchType?: string
+    aiMaxSetting?: {
+      enableAiMax?: boolean
+      bundlingRequired?: string
+    }
+    assetAutomationSettings?: RawAssetAutomationSetting[]
+  }
+}
+
+interface RawGoogleAdGroupRow {
+  adGroup?: {
+    id?: string | number
+    campaign?: string
+    status?: string
+    aiMaxAdGroupSetting?: {
+      disableSearchTermMatching?: boolean
+    }
+  }
+}
+
+export interface NormalizeGoogleAiMaxObservationInput {
+  apiVersion: string
+  tenantId: string
+  connectionId: string
+  customerId: string
+  observedAt: string
+  campaignRow: RawGoogleCampaignRow
+  adGroupRows: RawGoogleAdGroupRow[]
+}
+
 const KNOWN_KEYWORD_MATCH_TYPES = new Set(['BROAD', 'UNSPECIFIED'])
 const KNOWN_AUTOMATION_STATUSES = new Set(['OPTED_IN', 'OPTED_OUT'])
 const KNOWN_BUNDLING_STATUSES = new Set(['REQUIRED', 'NOT_REQUIRED'])
+
+function assetAutomationStatus(
+  settings: RawAssetAutomationSetting[] | undefined,
+  type: string,
+): string | null {
+  if (!Array.isArray(settings)) return null
+  const setting = settings.find(item => item.assetAutomationType === type)
+  return typeof setting?.assetAutomationStatus === 'string'
+    ? setting.assetAutomationStatus
+    : null
+}
+
+function campaignIdFromResourceName(resourceName: string | undefined): string | null {
+  if (!resourceName) return null
+  return resourceName.match(/\/campaigns\/(\d+)$/)?.[1] ?? null
+}
+
+export function normalizeGoogleAiMaxObservation(
+  input: NormalizeGoogleAiMaxObservationInput,
+): GoogleAiMaxObservation {
+  const campaign = input.campaignRow.campaign ?? {}
+  const campaignId = campaign.id == null ? '' : String(campaign.id)
+  const matchingAdGroups = input.adGroupRows.filter((row) => {
+    const adGroup = row.adGroup
+    return adGroup?.status !== 'REMOVED'
+      && campaignIdFromResourceName(adGroup?.campaign) === campaignId
+  })
+  const hasCompleteAdGroupEvidence = matchingAdGroups.every(
+    row => typeof row.adGroup?.aiMaxAdGroupSetting?.disableSearchTermMatching === 'boolean',
+  )
+
+  return {
+    apiVersion: input.apiVersion,
+    tenantId: input.tenantId,
+    connectionId: input.connectionId,
+    customerId: input.customerId,
+    campaignId,
+    campaignName: typeof campaign.name === 'string' ? campaign.name : '',
+    campaignStatus: typeof campaign.status === 'string' ? campaign.status : '',
+    advertisingChannelType: typeof campaign.advertisingChannelType === 'string'
+      ? campaign.advertisingChannelType
+      : '',
+    biddingStrategyType: typeof campaign.biddingStrategyType === 'string'
+      ? campaign.biddingStrategyType
+      : null,
+    keywordMatchType: typeof campaign.keywordMatchType === 'string'
+      ? campaign.keywordMatchType
+      : null,
+    aiMaxEnabled: typeof campaign.aiMaxSetting?.enableAiMax === 'boolean'
+      ? campaign.aiMaxSetting.enableAiMax
+      : null,
+    bundlingRequired: typeof campaign.aiMaxSetting?.bundlingRequired === 'string'
+      ? campaign.aiMaxSetting.bundlingRequired
+      : null,
+    textAssetAutomationStatus: assetAutomationStatus(
+      campaign.assetAutomationSettings,
+      'TEXT_ASSET_AUTOMATION',
+    ),
+    finalUrlExpansionStatus: assetAutomationStatus(
+      campaign.assetAutomationSettings,
+      'FINAL_URL_EXPANSION_TEXT_ASSET_AUTOMATION',
+    ),
+    adGroupCount: hasCompleteAdGroupEvidence ? matchingAdGroups.length : null,
+    searchTermMatchingDisabledAdGroupCount: hasCompleteAdGroupEvidence
+      ? matchingAdGroups.filter(
+          row => row.adGroup?.aiMaxAdGroupSetting?.disableSearchTermMatching === true,
+        ).length
+      : null,
+    observedAt: input.observedAt,
+  }
+}
 
 function hasCompleteEvidence(observation: GoogleAiMaxObservation): boolean {
   return observation.advertisingChannelType === 'SEARCH'
