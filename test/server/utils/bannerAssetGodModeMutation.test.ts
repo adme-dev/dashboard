@@ -521,4 +521,19 @@ describe('God mode banner asset upload coordination', () => {
     expect(transaction).not.toHaveBeenCalled()
     expect(deleteBannerFile).not.toHaveBeenCalled()
   })
+
+  it('uses the request-owned delete callback when an ordinary upload cannot persist its database row', async () => {
+    const event = { context: { user: { id: ACTOR_ID } } } as unknown as H3Event
+    const deleteFile = vi.fn()
+
+    await expect(executeGodModeBannerAssetUpload(event, {
+      r2Key: R2_KEY,
+      uploadFile: vi.fn().mockResolvedValue({ key: R2_KEY, url: asset.url, size: asset.fileSize }),
+      deleteFile,
+      insertAsset: vi.fn().mockRejectedValue(new Error('database unavailable'))
+    })).rejects.toThrow('database unavailable')
+
+    expect(deleteFile).toHaveBeenCalledWith(R2_KEY)
+    expect(deleteBannerFile).not.toHaveBeenCalled()
+  })
 })

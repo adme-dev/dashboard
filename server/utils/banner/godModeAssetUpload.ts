@@ -325,8 +325,13 @@ export async function executeGodModeBannerAssetUpload(
 ): Promise<BannerAssetUploadResult> {
   const current = coordination(event)
   if (!current) {
-    const stored = await upload.uploadFile(upload.r2Key)
-    return await upload.insertAsset(null, stored)
+    try {
+      const stored = await upload.uploadFile(upload.r2Key)
+      return await upload.insertAsset(null, stored)
+    } catch (error) {
+      if (upload.deleteFile) await upload.deleteFile(upload.r2Key)
+      throw error
+    }
   }
 
   if (current.mode === 'replay') {

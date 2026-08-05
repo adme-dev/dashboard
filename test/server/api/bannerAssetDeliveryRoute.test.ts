@@ -71,7 +71,7 @@ describe('GET /api/public/banner-assets/:token', () => {
   })
 
   it('streams a token-authorized private R2 object with bounded browser caching', async () => {
-    const bucket = { get: vi.fn(async () => objectBody()), head: vi.fn() }
+    const bucket = { get: vi.fn(async () => objectBody()), head: vi.fn(async () => objectBody()) }
     const handler = await loadHandler()
 
     expect(handler).toBeTypeOf('function')
@@ -86,10 +86,7 @@ describe('GET /api/public/banner-assets/:token', () => {
     expect(response.headers.get('access-control-allow-origin')).toBe('*')
     expect(response.headers.get('x-content-type-options')).toBe('nosniff')
     expect(queryOne).toHaveBeenCalledWith(expect.stringContaining('FROM banner_assets'), [ASSET_ID])
-    expect(bucket.get).toHaveBeenCalledWith(KEY, {
-      onlyIf: expect.any(Headers),
-      range: expect.any(Headers)
-    })
+    expect(bucket.get).toHaveBeenCalledWith(KEY, undefined)
   })
 
   it('serves HEAD metadata without reading the object body', async () => {
@@ -110,7 +107,7 @@ describe('GET /api/public/banner-assets/:token', () => {
   it('returns a correct partial response for a bounded byte range', async () => {
     const bucket = {
       get: vi.fn(async () => objectBody('age', { offset: 2, length: 3 })),
-      head: vi.fn()
+      head: vi.fn(async () => objectBody())
     }
     const handler = await loadHandler()
 
@@ -122,33 +119,158 @@ describe('GET /api/public/banner-assets/:token', () => {
     expect(response.headers.get('content-range')).toBe('bytes 2-4/11')
     expect(response.headers.get('content-length')).toBe('3')
     expect(response.headers.get('accept-ranges')).toBe('bytes')
+    expect(bucket.get).toHaveBeenCalledWith(KEY, { range: { offset: 2, length: 3 } })
   })
 
-  it('rejects malformed or multi-range requests before private object access', async () => {
-    const bucket = { get: vi.fn(), head: vi.fn() }
+  it.each([
+    ['suffix', 'bytes=-3', { suffix: 3 }, 'bytes 8-10/11', 'age'],
+    ['open-ended', 'bytes=7-', { offset: 7, length: 4 }, 'bytes 7-10/11', 'ytes']
+  ])('serves a satisfiable %s range from the exact parsed R2 range', async (
+    _case,
+    rangeHeader,
+    expectedRange,
+    contentRange,
+    body
+  ) => {
+    const bucket = {
+      head: vi.fn(async () => objectBody()),
+      get: vi.fn(async () => objectBody(body))
+    }
     const handler = await loadHandler()
 
     expect(handler).toBeTypeOf('function')
     if (!handler) return
-    await expect(handler(await request({
-      bucket,
-      headers: { range: 'bytes=0-1,4-5' }
-    }))).rejects.toMatchObject({ statusCode: 416 })
-    expect(bucket.get).not.toHaveBeenCalled()
+    const response = await handler(await request({ bucket, headers: { range: rangeHeader } }))
+
+    expect(response.status).toBe(206)
+    expect(response.headers.get('content-range')).toBe(contentRange)
+    expect(bucket.get).toHaveBeenCalledWith(KEY, { range: expectedRange })
   })
 
-  it('returns 304 when R2 reports that the signed object is unchanged', async () => {
-    const metadataOnly = objectBody()
-    Reflect.deleteProperty(metadataOnly, 'body')
-    const bucket = { get: vi.fn(async () => metadataOnly), head: vi.fn() }
+  it.each(['bytes=5-2', 'bytes=99-100', 'bytes=-0']) (
+    'returns a bounded 416 with object size for unsatisfiable range %s',
+    async (range) => {
+      const bucket = {
+        head: vi.fn(async () => objectBody()),
+        get: vi.fn(async () => objectBody('image-bytes', { offset: 0, length: 11 }))
+      }
+      const handler = await loadHandler()
+
+      expect(handler).toBeTypeOf('function')
+      if (!handler) return
+      const response = await handler(await request({ bucket, headers: { range } }))
+
+      expect(response.status).toBe(416)
+      expect(response.headers.get('content-range')).toBe('bytes */11')
+      expect(bucket.get).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each([
+    ['GET', { 'if-none-match': 'W/"etag-1"' }],
+    ['HEAD', { 'if-none-match': '"other", "etag-1"' }],
+    ['GET', { 'if-modified-since': 'Fri, 07 Aug 2026 00:00:00 GMT' }],
+    ['HEAD', { 'if-modified-since': 'Fri, 07 Aug 2026 00:00:00 GMT' }]
+  ] as const)('returns 304 for a satisfied %s cache validator', async (method, headers) => {
+    const bucket = {
+      head: vi.fn(async () => objectBody()),
+      get: vi.fn(async () => objectBody())
+    }
     const handler = await loadHandler()
 
     expect(handler).toBeTypeOf('function')
     if (!handler) return
-    const response = await handler(await request({ bucket, headers: { 'if-none-match': '"etag-1"' } }))
+    const response = await handler(await request({ method, bucket, headers }))
 
     expect(response.status).toBe(304)
     expect(response.body).toBeNull()
+    expect(bucket.get).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['GET', { 'if-match': '"other"' }],
+    ['HEAD', { 'if-match': 'W/"etag-1"' }],
+    ['GET', { 'if-unmodified-since': 'Wed, 05 Aug 2026 00:00:00 GMT' }]
+  ] as const)('returns 412 for a failed %s write precondition', async (method, headers) => {
+    const bucket = {
+      head: vi.fn(async () => objectBody()),
+      get: vi.fn(async () => objectBody())
+    }
+    const handler = await loadHandler()
+
+    expect(handler).toBeTypeOf('function')
+    if (!handler) return
+    const response = await handler(await request({ method, bucket, headers }))
+
+    expect(response.status).toBe(412)
+    expect(response.body).toBeNull()
+    expect(bucket.get).not.toHaveBeenCalled()
+  })
+
+  it('keeps HEAD status and representation headers in parity with ranged GET', async () => {
+    const bucket = { head: vi.fn(async () => objectBody()), get: vi.fn() }
+    const handler = await loadHandler()
+
+    expect(handler).toBeTypeOf('function')
+    if (!handler) return
+    const response = await handler(await request({
+      method: 'HEAD',
+      bucket,
+      headers: { range: 'bytes=2-4' }
+    }))
+
+    expect(response.status).toBe(206)
+    expect(response.headers.get('content-range')).toBe('bytes 2-4/11')
+    expect(response.headers.get('content-length')).toBe('3')
+    expect(response.body).toBeNull()
+    expect(bucket.get).not.toHaveBeenCalled()
+  })
+
+  it('maps a native InvalidRange race to a bounded 416 response', async () => {
+    const bucket = {
+      head: vi.fn(async () => objectBody()),
+      get: vi.fn(async () => {
+        throw Object.assign(new Error('private-key-details'), { name: 'InvalidRange' })
+      })
+    }
+    const handler = await loadHandler()
+
+    expect(handler).toBeTypeOf('function')
+    if (!handler) return
+    const response = await handler(await request({ bucket, headers: { range: 'bytes=2-4' } }))
+
+    expect(response.status).toBe(416)
+    expect(response.headers.get('content-range')).toBe('bytes */11')
+    await expect(response.text()).resolves.toBe('')
+  })
+
+  it('rejects malformed or multi-range requests before private object access', async () => {
+    const bucket = { get: vi.fn(), head: vi.fn(async () => objectBody()) }
+    const handler = await loadHandler()
+
+    expect(handler).toBeTypeOf('function')
+    if (!handler) return
+    const response = await handler(await request({
+      bucket,
+      headers: { range: 'bytes=0-1,4-5' }
+    }))
+    expect(response.status).toBe(416)
+    expect(response.headers.get('content-range')).toBe('bytes */11')
+    expect(bucket.get).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when an unconditional R2 read unexpectedly has no body', async () => {
+    const metadataOnly = objectBody()
+    Reflect.deleteProperty(metadataOnly, 'body')
+    const bucket = { get: vi.fn(async () => metadataOnly), head: vi.fn(async () => objectBody()) }
+    const handler = await loadHandler()
+
+    expect(handler).toBeTypeOf('function')
+    if (!handler) return
+    await expect(handler(await request({ bucket }))).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: 'Banner asset storage is unavailable'
+    })
   })
 
   it('fails closed for missing runtime secrets or request-scoped buckets', async () => {
