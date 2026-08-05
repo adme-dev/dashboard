@@ -325,6 +325,62 @@ export async function getGoogleCampaigns(
   }))
 }
 
+export interface GoogleAiMaxRows {
+  campaignRows: any[]
+  adGroupRows: any[]
+}
+
+/**
+ * Fetch the current AI Max and legacy migration evidence for active/paused
+ * Search campaigns in one account. The caller owns auth and persistence; this
+ * helper remains a read-only, account-level GAQL boundary.
+ */
+export async function getGoogleAiMaxRows(
+  customerId: string,
+  token: string,
+  developerToken: string,
+  loginCustomerId?: string,
+): Promise<GoogleAiMaxRows> {
+  const campaignRows = await gaqlQuery(
+    customerId,
+    token,
+    developerToken,
+    `SELECT
+       campaign.id,
+       campaign.name,
+       campaign.status,
+       campaign.advertising_channel_type,
+       campaign.bidding_strategy_type,
+       campaign.keyword_match_type,
+       campaign.ai_max_setting.enable_ai_max,
+       campaign.ai_max_setting.bundling_required,
+       campaign.asset_automation_settings
+     FROM campaign
+     WHERE campaign.advertising_channel_type = 'SEARCH'
+       AND campaign.status IN ('ENABLED', 'PAUSED')
+     ORDER BY campaign.name`,
+    loginCustomerId,
+  )
+
+  const adGroupRows = await gaqlQuery(
+    customerId,
+    token,
+    developerToken,
+    `SELECT
+       ad_group.id,
+       ad_group.campaign,
+       ad_group.status,
+       ad_group.ai_max_ad_group_setting.disable_search_term_matching
+     FROM ad_group
+     WHERE campaign.advertising_channel_type = 'SEARCH'
+       AND campaign.status IN ('ENABLED', 'PAUSED')
+       AND ad_group.status IN ('ENABLED', 'PAUSED')`,
+    loginCustomerId,
+  )
+
+  return { campaignRows, adGroupRows }
+}
+
 /** Google uses 2037-12-30 as the "no end date" sentinel. Treat that (and any 2037+) as no end. */
 export function normalizeGoogleEndDate(value: string | null | undefined): string | null {
   if (!value) return null
