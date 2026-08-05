@@ -1,45 +1,89 @@
-import { readMultipartFormData } from 'h3'
+import { timingSafeEqual } from 'node:crypto'
+import { createError, getHeader, readMultipartFormData } from 'h3'
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { uploadBannerAsset } from '~~/server/utils/bannerStorage'
+import {
+  validateBannerAssetUpload,
+  type ValidatedBannerAssetUpload
+} from '~~/server/utils/banner/assetUploadValidation'
+import {
+  executeGodModeBannerAssetUpload,
+  type StoredBannerAssetUpload
+} from '~~/server/utils/banner/godModeAssetUpload'
+import { getGodModeRouteAuditState } from '~~/server/utils/godMode/featureGate'
+
+const ROUTE = 'POST /api/agency/banner-studio/assets/upload'
+
+function isHttpError(error: unknown): error is { statusCode: number } {
+  return typeof error === 'object'
+    && error !== null
+    && 'statusCode' in error
+    && typeof error.statusCode === 'number'
+}
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
 
   const formData = await readMultipartFormData(event)
-  if (!formData || formData.length === 0) {
-    throw createError({ statusCode: 400, statusMessage: 'No file uploaded' })
+  const files = formData?.filter(part => part.name === 'file') ?? []
+  if (files.length !== 1 || !files[0]?.data) {
+    throw createError({ statusCode: 400, statusMessage: 'Exactly one file field is required' })
   }
 
-  const file = formData.find(f => f.name === 'file')
-  if (!file || !file.data) {
-    throw createError({ statusCode: 400, statusMessage: 'Missing file field' })
+  let validated: ValidatedBannerAssetUpload
+  try {
+    validated = validateBannerAssetUpload(files[0])
+  } catch {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid banner asset upload' })
   }
 
-  const fileName = file.filename || 'unnamed'
-  const mimeType = file.type || 'application/octet-stream'
-  const buffer = Buffer.from(file.data)
+  const auditState = getGodModeRouteAuditState(event)
+  if (auditState?.routeOrTool === ROUTE) {
+    const claimedDigest = getHeader(event, 'x-banner-upload-digest')?.trim() || ''
+    const claimed = Buffer.from(claimedDigest, 'utf8')
+    const actual = Buffer.from(validated.requestDigest, 'utf8')
+    if (claimed.length !== actual.length || !timingSafeEqual(claimed, actual)) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'Banner upload digest does not match validated content'
+      })
+    }
+  }
 
   try {
-    const { key, url, size } = await uploadBannerAsset(buffer, fileName, mimeType, user.id)
-
-    const row = await queryOne(`
-      INSERT INTO banner_assets (name, mime_type, file_size, r2_key, url, uploaded_by)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING
-        id, name,
-        mime_type AS "mimeType",
-        file_size AS "fileSize",
-        r2_key AS "r2Key",
-        url,
-        thumbnail_url AS "thumbnailUrl",
-        tags,
-        uploaded_by AS "uploadedBy",
-        created_at AS "createdAt"
-    `, [fileName, mimeType, size, key, url, user.id])
-
-    return row
-  } catch (error: any) {
+    return await executeGodModeBannerAssetUpload(event, {
+      uploadFile: async () => await uploadBannerAsset(
+        validated.buffer,
+        validated.fileName,
+        validated.mimeType,
+        user.id
+      ),
+      insertAsset: async (db, stored: StoredBannerAssetUpload) => {
+        const sql = `
+          INSERT INTO banner_assets (name, mime_type, file_size, r2_key, url, uploaded_by)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING
+            id, name,
+            mime_type AS "mimeType",
+            file_size AS "fileSize",
+            r2_key AS "r2Key",
+            url,
+            thumbnail_url AS "thumbnailUrl",
+            tags,
+            uploaded_by AS "uploadedBy",
+            created_at AS "createdAt"
+        `
+        const params = [validated.fileName, validated.mimeType, stored.size, stored.key, stored.url, user.id]
+        const row = db
+          ? (await db.query(sql, params)).rows[0]
+          : await queryOne(sql, params)
+        if (!row) throw new Error('Banner asset insert did not return a row')
+        return row
+      }
+    })
+  } catch (error: unknown) {
+    if (isHttpError(error)) throw error
     console.error('Failed to upload banner asset:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to upload banner asset' })
   }
