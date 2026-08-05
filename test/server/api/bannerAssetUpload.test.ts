@@ -129,6 +129,26 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
     ])
   })
 
+  it('passes the request-scoped MEDIA_BUCKET binding to banner storage', async () => {
+    const mediaBucket = { put: vi.fn(), head: vi.fn(), delete: vi.fn() }
+    const request = event()
+    ;(request.context as Record<string, unknown>).cloudflare = {
+      env: { MEDIA_BUCKET: mediaBucket }
+    }
+    const handler = (await import('~~/server/api/agency/banner-studio/assets/upload.post')).default
+
+    await expect(handler(request)).resolves.toEqual(ASSET)
+
+    expect(mockUploadBannerAsset).toHaveBeenCalledWith(
+      JPEG,
+      'Launch-Car.jpg',
+      'image/jpeg',
+      USER.id,
+      ASSET.r2Key,
+      mediaBucket
+    )
+  })
+
   it('preserves ordinary uploads without owner coordination headers', async () => {
     const handler = (await import('~~/server/api/agency/banner-studio/assets/upload.post')).default
 

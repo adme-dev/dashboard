@@ -1,4 +1,5 @@
 import { uploadFile, deleteFile } from '~~/server/utils/storage'
+import type { R2BucketBinding } from '~~/server/utils/storage'
 
 const randomUUID = () => globalThis.crypto.randomUUID()
 
@@ -18,12 +19,15 @@ export async function uploadBannerAsset(
   fileName: string,
   mimeType: string,
   userId: string,
-  precomputedKey = createBannerAssetStorageKey(fileName, userId)
+  precomputedKey = createBannerAssetStorageKey(fileName, userId),
+  requestBucket?: R2BucketBinding
 ): Promise<{ key: string, url: string, size: number }> {
   if (!isExpectedBannerAssetStorageKey(precomputedKey, fileName, userId)) {
     throw new Error('Invalid precomputed banner asset storage key')
   }
-  return uploadFile(buffer, precomputedKey, mimeType)
+  return requestBucket
+    ? uploadFile(buffer, precomputedKey, mimeType, undefined, requestBucket)
+    : uploadFile(buffer, precomputedKey, mimeType)
 }
 
 export async function uploadBannerExport(

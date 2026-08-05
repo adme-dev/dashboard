@@ -11,6 +11,7 @@ import {
   type StoredBannerAssetUpload
 } from '~~/server/utils/banner/godModeAssetUpload'
 import { getGodModeRouteAuditState } from '~~/server/utils/godMode/featureGate'
+import type { R2BucketBinding } from '~~/server/utils/storage'
 
 const ROUTE = 'POST /api/agency/banner-studio/assets/upload'
 
@@ -59,15 +60,27 @@ export default defineEventHandler(async (event) => {
 
   try {
     const r2Key = createBannerAssetStorageKey(validated.fileName, user.id)
+    const requestBucket = (event.context as {
+      cloudflare?: { env?: { MEDIA_BUCKET?: R2BucketBinding } }
+    }).cloudflare?.env?.MEDIA_BUCKET
     return await executeGodModeBannerAssetUpload(event, {
       r2Key,
-      uploadFile: async key => await uploadBannerAsset(
-        validated.buffer,
-        validated.fileName,
-        validated.mimeType,
-        user.id,
-        key
-      ),
+      uploadFile: async key => requestBucket
+        ? await uploadBannerAsset(
+            validated.buffer,
+            validated.fileName,
+            validated.mimeType,
+            user.id,
+            key,
+            requestBucket
+          )
+        : await uploadBannerAsset(
+            validated.buffer,
+            validated.fileName,
+            validated.mimeType,
+            user.id,
+            key
+          ),
       insertAsset: async (db, stored: StoredBannerAssetUpload) => {
         const sql = `
           INSERT INTO banner_assets (name, mime_type, file_size, r2_key, url, uploaded_by)

@@ -52,7 +52,7 @@ export function getR2StorageControlPlane(): { client: S3Client, bucket: string }
 }
 
 // Minimal shape of the Cloudflare native R2 bucket binding (MEDIA_BUCKET).
-interface R2BucketBinding {
+export interface R2BucketBinding {
   put: (key: string, value: Uint8Array, options?: {
     httpMetadata?: { contentType?: string }
     customMetadata?: Record<string, string>
@@ -76,9 +76,9 @@ interface R2BucketBinding {
  * The binding is pinned to the agency-files bucket in wrangler.toml, so it is
  * only used when config targets that bucket.
  */
-function getNativeBucket(): R2BucketBinding | undefined {
+function getNativeBucket(requestBucket?: R2BucketBinding): R2BucketBinding | undefined {
   if (R2_BUCKET_NAME !== 'agency-files') return undefined
-  return getCachedObjectBinding<R2BucketBinding>('MEDIA_BUCKET')
+  return requestBucket ?? getCachedObjectBinding<R2BucketBinding>('MEDIA_BUCKET')
 }
 
 // File type categories for organization
@@ -179,7 +179,8 @@ export async function uploadFile(
   buffer: Buffer,
   key: string,
   contentType: string,
-  metadata?: Record<string, string>
+  metadata?: Record<string, string>,
+  requestBucket?: R2BucketBinding
 ): Promise<{ key: string, url: string, size: number }> {
   // Local filesystem fallback for dev without R2
   if (!isStorageConfigured()) {
@@ -194,7 +195,7 @@ export async function uploadFile(
   }
 
   const bytes = new Uint8Array(buffer)
-  const bucket = getNativeBucket()
+  const bucket = getNativeBucket(requestBucket)
 
   if (bucket) {
     // Native R2 binding — the only write path that persists in the Pages runtime.

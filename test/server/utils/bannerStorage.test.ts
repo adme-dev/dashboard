@@ -47,6 +47,28 @@ describe('banner asset storage keys', () => {
     )
   })
 
+  it('forwards an explicitly provided native R2 binding to uploadFile', async () => {
+    const key = createBannerAssetStorageKey('launch-car.jpg', 'owner-1')
+    const mediaBucket = { put: vi.fn(), head: vi.fn(), delete: vi.fn() }
+
+    await uploadBannerAsset(
+      Buffer.from([0xff, 0xd8, 0xff, 0x00]),
+      'launch-car.jpg',
+      'image/jpeg',
+      'owner-1',
+      key,
+      mediaBucket
+    )
+
+    expect(uploadFile).toHaveBeenCalledWith(
+      Buffer.from([0xff, 0xd8, 0xff, 0x00]),
+      key,
+      'image/jpeg',
+      undefined,
+      mediaBucket
+    )
+  })
+
   it('rejects a precomputed key outside the actor and filename scope', async () => {
     await expect(uploadBannerAsset(
       Buffer.from([0xff, 0xd8, 0xff, 0x00]),

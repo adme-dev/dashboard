@@ -26,6 +26,31 @@ afterAll(() => {
 })
 
 describe('uploadFile native R2 binding', () => {
+  it('prefers an explicitly provided request-scoped MEDIA_BUCKET binding', async () => {
+    const { setCfBindings } = await import('~~/server/utils/email')
+    const { uploadFile } = await import('~~/server/utils/storage')
+    const put = vi.fn(async () => {})
+    const head = vi.fn(async () => ({ size: 8 }))
+    const mediaBucket = { put, head, delete: vi.fn() }
+    setCfBindings({})
+
+    const result = await uploadFile(
+      Buffer.from('hello r2'),
+      'media-image/request-scoped.png',
+      'image/png',
+      undefined,
+      mediaBucket
+    )
+
+    expect(put).toHaveBeenCalledTimes(1)
+    expect(head).toHaveBeenCalledWith('media-image/request-scoped.png')
+    expect(result).toEqual({
+      key: 'media-image/request-scoped.png',
+      url: 'https://files.example.com/media-image/request-scoped.png',
+      size: 8
+    })
+  })
+
   it('writes via the cached MEDIA_BUCKET binding and verifies persistence', async () => {
     const { setCfBindings } = await import('~~/server/utils/email')
     const { uploadFile } = await import('~~/server/utils/storage')
