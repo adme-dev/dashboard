@@ -9,6 +9,8 @@ export async function withDisposablePostgresSchema(input: {
   schema: string
   bootstrapSql: string
   migrationSql: string
+  snapshotSharedState?: (client: DisposablePostgresClient) => Promise<unknown>
+  verifySharedState?: (client: DisposablePostgresClient, snapshot: unknown) => Promise<void>
   run: (client: DisposablePostgresClient) => Promise<void>
 }): Promise<void> {
   if (!/^[a-z][a-z0-9_]{0,62}$/.test(input.schema)) {
@@ -21,11 +23,13 @@ export async function withDisposablePostgresSchema(input: {
   let transactionOpen = false
   let primaryError: unknown
   let cleanupError: unknown
+  let sharedStateSnapshot: unknown
 
   try {
     connectAttempted = true
     await input.client.connect()
     connected = true
+    if (input.snapshotSharedState) sharedStateSnapshot = await input.snapshotSharedState(input.client)
     await input.client.query(`CREATE SCHEMA ${quotedSchema}`)
     schemaCreated = true
     transactionOpen = true
@@ -52,6 +56,13 @@ export async function withDisposablePostgresSchema(input: {
     if (connected && schemaCreated) {
       try {
         await input.client.query(`DROP SCHEMA IF EXISTS ${quotedSchema} CASCADE`)
+      } catch (error) {
+        cleanupError ??= error
+      }
+    }
+    if (connected && input.verifySharedState && input.snapshotSharedState) {
+      try {
+        await input.verifySharedState(input.client, sharedStateSnapshot)
       } catch (error) {
         cleanupError ??= error
       }

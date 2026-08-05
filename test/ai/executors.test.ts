@@ -128,13 +128,19 @@ describe('createTask executor', () => {
 })
 
 describe('executor ↔ tool gating parity (no silent gate downgrade)', () => {
-  it('every mutating tool has an executor whose riskTier + requiredPermission match the tool', async () => {
+  it('every mutating tool has exactly one complete execution path with no gate drift', async () => {
     const { registry } = await import('~~/server/utils/ai/tools')
     const writeTools = registry.filter((t: any) => t.mutates)
     expect(writeTools.length).toBeGreaterThanOrEqual(4)
     for (const t of writeTools) {
       const ex = getExecutor(t.name)
-      expect(ex, `no executor registered for write tool ${t.name}`).toBeTruthy()
+      const direct = t.directMutation
+      expect(Number(Boolean(ex)) + Number(Boolean(direct)), `${t.name} must have exactly one execution path`).toBe(1)
+      if (direct) {
+        expect(direct.executionClass, `${t.name} direct mutation must be locally transactional`).toBe('local-transactional')
+        expect(typeof direct.execute, `${t.name} direct mutation executor missing`).toBe('function')
+        continue
+      }
       // The confirm endpoint enforces the gate off the EXECUTOR's tiers — they must equal the tool's,
       // or a rich_confirm / permission gate could be silently bypassed at confirm time.
       expect(ex!.riskTier, `${t.name} riskTier drift`).toBe(effectiveRiskTier(t))

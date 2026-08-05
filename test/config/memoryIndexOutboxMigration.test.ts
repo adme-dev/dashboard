@@ -40,6 +40,25 @@ databaseDescribe('memory index outbox disposable-schema regression', () => {
     await withDisposablePostgresSchema({
       client,
       schema,
+      snapshotSharedState: connection => connection.query(
+        `SELECT relation.relname, relation.relkind
+           FROM pg_catalog.pg_class relation
+           JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+          WHERE namespace.nspname = 'public'
+            AND relation.relname IN ('ai_memory_index_outbox', 'idx_ai_memory_index_outbox_claim')
+          ORDER BY relation.relname, relation.relkind`
+      ),
+      verifySharedState: async (connection, before) => {
+        const after = await connection.query(
+          `SELECT relation.relname, relation.relkind
+             FROM pg_catalog.pg_class relation
+             JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+            WHERE namespace.nspname = 'public'
+              AND relation.relname IN ('ai_memory_index_outbox', 'idx_ai_memory_index_outbox_claim')
+            ORDER BY relation.relname, relation.relkind`
+        )
+        expect(after.rows).toEqual((before as { rows: unknown[] }).rows)
+      },
       bootstrapSql: `CREATE TABLE "${schema}".ai_user_memory (id UUID PRIMARY KEY)`,
       migrationSql: sql,
       run: async connection => {
@@ -53,11 +72,6 @@ databaseDescribe('memory index outbox disposable-schema regression', () => {
             WHERE relation.oid = to_regclass('ai_memory_index_outbox')`
         )
         expect(outboxSchema.rows).toEqual([{ schema }])
-        const publicOutbox = await connection.query(
-          `SELECT to_regclass('public.ai_memory_index_outbox')::text AS regclass`
-        )
-        expect(publicOutbox.rows).toEqual([{ regclass: null }])
-
         const memoryId = '11111111-1111-4111-8111-111111111111'
         await connection.query(`INSERT INTO "${schema}".ai_user_memory (id) VALUES ($1)`, [memoryId])
         await connection.query(

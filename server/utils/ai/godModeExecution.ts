@@ -207,7 +207,7 @@ export interface GodModeExecutionDependencies {
     channel: GodModeChannel
     tenantId: string | null
     clientId: string | null
-  }) => Promise<void>
+  }, db?: TransactionDb) => Promise<void>
   recordExecutionProgress: (input: {
     actorUserId: string
     idempotencyKey: string
@@ -369,15 +369,14 @@ const defaultDependencies: GodModeExecutionDependencies = {
     if (db) await db.query(sql, params)
     else await queryOneFresh(`${sql} RETURNING actor_user_id`, params)
   },
-  setExecutionScope: async input => {
-    await queryOneFresh(
-      `UPDATE god_mode_execution_ledger
+  setExecutionScope: async (input, db) => {
+    const sql = `UPDATE god_mode_execution_ledger
           SET tenant_id = $4, client_id = $5, updated_at = NOW()
         WHERE actor_user_id = $1 AND channel = $2 AND idempotency_key = $3
-          AND state = 'in_progress'
-        RETURNING actor_user_id`,
-      [input.actorUserId, input.channel, input.idempotencyKey, input.tenantId, input.clientId]
-    )
+          AND state = 'in_progress'`
+    const params = [input.actorUserId, input.channel, input.idempotencyKey, input.tenantId, input.clientId]
+    if (db) await db.query(sql, params)
+    else await queryOneFresh(`${sql} RETURNING actor_user_id`, params)
   },
   recordExecutionProgress: async input => {
     const updated = await queryOneFresh(
@@ -838,8 +837,6 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
     // request can safely retry instead of being poisoned by an orphaned failed claim.
     if (request.executionClass === 'local-transactional') {
       if (!request.executeMutation) operationalError(503, 'God mode local executor unavailable')
-      const parsed = request.tool.parameters.safeParse(request.args)
-      if (!parsed.success) return fail('Invalid tool input.')
       const ctx: ToolContext = {
         userId: request.authenticatedUserId,
         userRole: 'owner',
@@ -848,14 +845,6 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
         godModeExecutionKey: request.idempotencyKey,
         event: request.event
       }
-      const scope = await deps.validateScope({
-        actorUserId: request.authenticatedUserId,
-        tenantId: request.tenantId,
-        clientId: request.clientId,
-        args: parsed.data,
-        ctx
-      })
-      if (scope.ok === false) return fail('Target is outside the authenticated scope.')
       try {
         return await deps.transaction(async db => {
           const claim = await deps.claimExecution({
@@ -865,8 +854,8 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
             correlationId: deps.correlationId(),
             toolName: request.toolName,
             executorClass: 'local-transactional',
-            tenantId: scope.tenantId ?? undefined,
-            clientId: scope.clientId ?? undefined,
+            tenantId: request.tenantId,
+            clientId: request.clientId,
             sessionDigest: request.sessionDigest,
             db
           })
@@ -885,8 +874,60 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
           if (row.bypassedControls.includes('mcp_scope')) {
             await deps.appendAudit(auditEvent(row, 'bypass', 'pre_execution'), db)
           }
-          const result = await request.executeMutation!(parsed.data, ctx, db)
-          if (!result.ok) throw Object.assign(new Error('local mutation rejected'), { boundedCode: 'handler_rejected' })
+
+          const failDurably = async (code: string, message: string): Promise<ToolResult> => {
+            await deps.appendAudit(auditEvent(row, 'failed', code), db)
+            await deps.setExecutionState({
+              actorUserId: request.authenticatedUserId,
+              channel: 'mcp',
+              idempotencyKey: request.idempotencyKey,
+              state: 'failed',
+              executionPhase: 'failed'
+            }, db)
+            return fail(message)
+          }
+
+          const parsed = request.tool.parameters.safeParse(request.args)
+          if (!parsed.success) return await failDurably('schema_invalid', 'Invalid tool input.')
+
+          let scope: Awaited<ReturnType<GodModeExecutionDependencies['validateScope']>>
+          try {
+            scope = await deps.validateScope({
+              actorUserId: request.authenticatedUserId,
+              tenantId: request.tenantId,
+              clientId: request.clientId,
+              args: parsed.data,
+              ctx
+            })
+          } catch {
+            return await failDurably('scope_validation_failed', 'Target scope could not be validated.')
+          }
+          if (scope.ok === false) return await failDurably(scope.code, 'Target is outside the authenticated scope.')
+          if (deps.setExecutionScope) {
+            await deps.setExecutionScope({
+              actorUserId: request.authenticatedUserId,
+              channel: 'mcp',
+              idempotencyKey: request.idempotencyKey,
+              tenantId: scope.tenantId,
+              clientId: scope.clientId
+            }, db)
+          }
+          row.tenantId = scope.tenantId
+          row.clientId = scope.clientId
+
+          await db.query('SAVEPOINT god_mode_local_mutation')
+          let result: ToolResult
+          try {
+            result = await request.executeMutation!(parsed.data, ctx, db)
+            if (!result.ok) throw Object.assign(new Error('local mutation rejected'), { boundedCode: 'handler_rejected' })
+          } catch (error) {
+            await db.query('ROLLBACK TO SAVEPOINT god_mode_local_mutation')
+            await db.query('RELEASE SAVEPOINT god_mode_local_mutation')
+            const code = error && typeof error === 'object' && 'boundedCode' in error
+              ? String((error as { boundedCode: unknown }).boundedCode).slice(0, 64)
+              : 'local_transaction_failed'
+            return await failDurably(code, 'I could not save that just now — please try again in a moment.')
+          }
           const identity = resolvedResultIdentity(result)
           if (request.toolName === 'remember') {
             await db.query(
@@ -910,6 +951,7 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
             resultDigest: identity.resultDigest,
             executionPhase: 'result_captured'
           }, db)
+          await db.query('RELEASE SAVEPOINT god_mode_local_mutation')
           return result
         })
       } catch {

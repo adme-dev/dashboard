@@ -491,7 +491,10 @@ describe('God mode direct execution', () => {
     })
     let committedWrites = 0
     vi.mocked(h.deps.transaction).mockImplementation(async callback => await callback({
-      query: vi.fn(async () => { committedWrites++; return { rows: [] } })
+      query: vi.fn(async (sql: string) => {
+        if (!/^(SAVEPOINT|RELEASE SAVEPOINT)/.test(sql)) committedWrites++
+        return { rows: [] }
+      })
     } as any))
     const localMutation = vi.fn(async (_args, _ctx, db) => {
       h.calls.push('local-mutation')
@@ -517,6 +520,52 @@ describe('God mode direct execution', () => {
     // One memory write plus its transaction-bound ai_action_audit row.
     expect(committedWrites).toBe(2)
     expect(h.calls.indexOf('attempt')).toBeLessThan(h.calls.indexOf('local-mutation'))
+  })
+
+  it('durably audits local schema and cross-scope denials only after the immutable attempt', async () => {
+    for (const scenario of ['schema', 'scope'] as const) {
+      const idempotencyKey = `mcp:${(scenario === 'schema' ? '7' : '8').repeat(64)}`
+      const h = harness({ expectedIdempotencyKey: idempotencyKey, scopeValid: scenario !== 'scope' })
+      const authorityEvent = event()
+      const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, { queryOneFresh: async () => ({ id: OWNER_ID }) })
+      const mutation = vi.fn()
+      const result = await createTrustedMcpGodModeResolvedMutationExecutor(h.deps)({
+        event: authorityEvent, authenticatedUserId: OWNER_ID, authority, sessionDigest: 'b'.repeat(64),
+        toolName: 'remember', args: scenario === 'schema' ? {} : { content: 'secret' }, idempotencyKey,
+        tenantId: TENANT_ID, executionClass: 'local-transactional', executeMutation: mutation,
+        tool: { name: 'remember', description: '', parameters: z.object({ content: z.string() }), mutates: true, handler: vi.fn() }
+      } as any)
+      expect(result.ok).toBe(false)
+      expect(h.calls.indexOf('attempt')).toBeLessThan(scenario === 'scope' ? h.calls.indexOf('scope') : h.calls.indexOf('failed'))
+      expect(h.calls).toContain('failed')
+      expect(h.ledger.get(idempotencyKey)?.state).toBe('failed')
+      expect(mutation).not.toHaveBeenCalled()
+    }
+  })
+
+  it('rolls back only the local mutation savepoint, then commits a failed terminal outcome', async () => {
+    const idempotencyKey = `mcp:${'d'.repeat(64)}`
+    const h = harness({ expectedIdempotencyKey: idempotencyKey })
+    const sql: string[] = []
+    vi.mocked(h.deps.transaction).mockImplementation(async callback => callback({
+      query: vi.fn(async statement => { sql.push(statement); return { rows: [], rowCount: 1 } })
+    } as any))
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, { queryOneFresh: async () => ({ id: OWNER_ID }) })
+    const result = await createTrustedMcpGodModeResolvedMutationExecutor(h.deps)({
+      event: authorityEvent, authenticatedUserId: OWNER_ID, authority, sessionDigest: 'b'.repeat(64),
+      toolName: 'remember', args: { content: 'Reports are AUD' }, idempotencyKey,
+      executionClass: 'local-transactional', executeMutation: vi.fn(async () => { throw new Error('mutation unavailable') }),
+      tool: { name: 'remember', description: '', parameters: z.object({ content: z.string() }), mutates: true, handler: vi.fn() }
+    } as any)
+    expect(result.ok).toBe(false)
+    expect(sql).toEqual(expect.arrayContaining([
+      'SAVEPOINT god_mode_local_mutation',
+      'ROLLBACK TO SAVEPOINT god_mode_local_mutation',
+      'RELEASE SAVEPOINT god_mode_local_mutation'
+    ]))
+    expect(h.calls).toContain('failed')
+    expect(h.ledger.get(idempotencyKey)?.state).toBe('failed')
   })
 
   it('serializes concurrent owner remember calls so one wins and the other replays', async () => {

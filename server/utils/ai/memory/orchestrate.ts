@@ -62,14 +62,15 @@ export async function buildUserMemoryBlock(
     /* fall through to recency fallback */
   }
 
-  // 2. Fallback: most-recent personal memories (vectorScore 1 → ranks on recency × type × salience).
-  if (candidates.length === 0) {
-    try {
-      const rows = (await deps.recent(userId, 10)).filter(r => r.user_id === userId) // isolation
-      candidates = rows.map(r => ({ memory: r, vectorScore: 1 }))
-    } catch {
-      // personal recall failed; shared scope below may still contribute, so don't bail yet
-    }
+  // 2. Always merge pending/unembedded personal memory. Vector indexing is asynchronous, so a
+  // vector hit must not hide a newly committed memory that has not reached the index yet.
+  try {
+    const candidateIds = new Set(candidates.map(candidate => candidate.memory.id))
+    const rows = (await deps.recent(userId, 10))
+      .filter(row => row.user_id === userId && row.embedding_id === null && !candidateIds.has(row.id))
+    candidates.push(...rows.map(memory => ({ memory, vectorScore: 1 })))
+  } catch {
+    // personal recall failed; shared scope below may still contribute, so don't bail yet
   }
 
   // 3. Shared scopes (department + org) — observe-and-learn spec §4b. Intentionally NOT user-scoped:

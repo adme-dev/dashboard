@@ -13,8 +13,8 @@ vi.mock('~~/server/utils/db', () => ({
 }))
 
 // Build a fake H3Event whose Workers AI binding returns whatever `run` yields.
-function eventWithAI(run: (model: string, inputs: any) => Promise<any>) {
-  return { context: { cloudflare: { env: { AI: { run: vi.fn(run) } } } } } as any
+function eventWithAI(run: (model: string, inputs: any, options?: any) => Promise<any>, gatewayUrl = 'https://gateway.ai.cloudflare.com/v1/account/agency-gateway') {
+  return { context: { cloudflare: { env: { AI: { run: vi.fn(run) }, AI_GATEWAY_URL: gatewayUrl } } } } as any
 }
 
 const b64 = (bytes: number[]) => Buffer.from(Uint8Array.from(bytes)).toString('base64')
@@ -37,7 +37,13 @@ describe('textToSpeech (Workers AI melotts response handling)', () => {
       provider: 'workers_ai',
       modelId: '@cf/myshell-ai/melotts',
       status: 'success',
+      gatewayUsed: true,
     }))
+    expect((event as any).context.cloudflare.env.AI.run).toHaveBeenCalledWith(
+      '@cf/myshell-ai/melotts',
+      expect.objectContaining({ prompt: expect.any(String), lang: 'en' }),
+      { gateway: { id: 'agency-gateway', metadata: expect.objectContaining({ featureKey: 'workers_ai_text_to_speech' }) } }
+    )
   })
 
   it('labels mp3 output correctly', async () => {
@@ -50,6 +56,25 @@ describe('textToSpeech (Workers AI melotts response handling)', () => {
   it('returns null when the AI binding is absent (local dev)', async () => {
     const out = await textToSpeech({ context: {} } as any, 'hello world')
     expect(out).toBeNull()
+  })
+
+  it('fails closed before checkpoint and dispatch when the configured gateway is absent or invalid', async () => {
+    for (const gatewayUrl of ['', 'https://gateway.ai.cloudflare.com/not-a-gateway']) {
+      const event = eventWithAI(async () => ({ audio: b64(WAV) }), gatewayUrl)
+      const checkpoint = vi.fn()
+      await expect(textToSpeech(event, 'hello world', { beforeDispatch: checkpoint })).resolves.toBeNull()
+      expect(checkpoint).not.toHaveBeenCalled()
+      expect((event as any).context.cloudflare.env.AI.run).not.toHaveBeenCalled()
+    }
+  })
+
+  it('places the owner checkpoint on the exact provider-owned boundary and preserves ambiguous post-dispatch failure', async () => {
+    const order: string[] = []
+    const event = eventWithAI(async () => { order.push('ai.run'); throw new Error('response lost') })
+    const checkpoint = vi.fn(async () => { order.push('checkpoint') })
+    await expect(textToSpeech(event, 'hello world', { beforeDispatch: checkpoint })).resolves.toBeNull()
+    expect(order).toEqual(['checkpoint', 'ai.run'])
+    expect(checkpoint).toHaveBeenCalledTimes(1)
   })
 
   it('returns null on an empty audio field rather than throwing', async () => {

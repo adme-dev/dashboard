@@ -31,4 +31,10 @@ describe('generateVoiceover', () => {
     const result = await generateVoiceover({} as any, { text: 'hello', lang: 'en' })
     expect(result).toBeNull()
   })
+
+  it('threads the irreversible-dispatch checkpoint through prework to TTS', async () => {
+    const checkpoint = vi.fn()
+    await generateVoiceover({} as any, { text: 'hello', lang: 'en' }, { beforeDispatch: checkpoint })
+    expect(textToSpeech).toHaveBeenLastCalledWith(expect.anything(), 'hello', expect.objectContaining({ beforeDispatch: checkpoint }))
+  })
 })

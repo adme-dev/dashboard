@@ -40,8 +40,11 @@ export function buildGenerationRunner(execution?: TrustedSupplementalExecutionSe
     // Synchronous: generate the VO and return the ready asset (with a playback URL).
     generate_voiceover: async (raw, ctx: ToolContext) => {
       const a = raw as VoiceoverArgs
-      await execution?.markDispatched()
-      const generated = await generateVoiceover(ctx.event, { text: a.text, lang: a.lang })
+      const generated = await generateVoiceover(
+        ctx.event,
+        { text: a.text, lang: a.lang },
+        { beforeDispatch: execution?.markDispatched }
+      )
       if (!generated) throw new Error('voice generation unavailable')
       const asset = await createVoiceAsset({
         createdBy: ctx.userId,

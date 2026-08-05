@@ -18,7 +18,21 @@ function getAI(event: H3Event): any | null {
 
 /** Check if Workers AI binding is available */
 export function isVoiceAvailable(event: H3Event): boolean {
-  return getAI(event) !== null
+  return getAI(event) !== null && resolveWorkersAiGatewayId(event) !== null
+}
+
+export function resolveWorkersAiGatewayId(event: H3Event): string | null {
+  const configured = (event.context as any)?.cloudflare?.env?.AI_GATEWAY_URL
+    ?? process.env.AI_GATEWAY_URL
+  if (typeof configured !== 'string' || !configured.trim()) return null
+  try {
+    const url = new URL(configured)
+    const parts = url.pathname.split('/').filter(Boolean)
+    const id = parts[0] === 'v1' && parts.length >= 3 ? parts[2] : ''
+    return url.hostname === 'gateway.ai.cloudflare.com' && /^[a-zA-Z0-9_-]{1,64}$/.test(id) ? id : null
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -113,10 +127,13 @@ export async function textToSpeech(
     clientId?: string | null
     requestId?: string | null
     metadata?: Record<string, unknown>
+    beforeDispatch?: () => Promise<void>
   } = {}
 ): Promise<{ audioBuffer: ArrayBuffer; format: string } | null> {
   const ai = getAI(event)
   if (!ai) return null
+  const gatewayId = resolveWorkersAiGatewayId(event)
+  if (!gatewayId) return null
 
   try {
     // Strip markdown for cleaner speech
@@ -135,9 +152,15 @@ export async function textToSpeech(
       defaultModelId: '@cf/myshell-ai/melotts',
       supportedProviders: ['workers_ai'],
     })
+    await options.beforeDispatch?.()
     const result = await ai.run(assignment.modelId, {
       prompt: truncated,
       lang: options.lang || 'en',
+    }, {
+      gateway: {
+        id: gatewayId,
+        metadata: { featureKey: options.featureKey ?? 'workers_ai_text_to_speech' },
+      },
     })
 
     if (!result) return null
@@ -154,7 +177,7 @@ export async function textToSpeech(
         featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
         provider: 'workers_ai',
         modelId: assignment.modelId,
-        gatewayUsed: false,
+        gatewayUsed: true,
         fallbackUsed: false,
         userId: options.userId,
         clientId: options.clientId,
@@ -195,6 +218,8 @@ export async function textToSpeech(
           featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
           provider: 'workers_ai',
           modelId: assignment.modelId,
+          gatewayUsed: true,
+          fallbackUsed: false,
           status: 'success',
           metadata: {
             outputBytes: totalLength,
@@ -219,6 +244,8 @@ export async function textToSpeech(
         featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
         provider: 'workers_ai',
         modelId: assignment.modelId,
+        gatewayUsed: true,
+        fallbackUsed: false,
         status: 'success',
         metadata: {
           outputBytes: bytes.byteLength,
@@ -239,6 +266,7 @@ export async function textToSpeech(
       featureKey: options.featureKey ?? 'workers_ai_text_to_speech',
       provider: 'workers_ai',
       modelId: '@cf/myshell-ai/melotts',
+      gatewayUsed: true,
       status: 'error',
       errorCode: err instanceof Error ? err.message.slice(0, 160) : 'unknown_error',
       metadata: options.metadata ?? {},

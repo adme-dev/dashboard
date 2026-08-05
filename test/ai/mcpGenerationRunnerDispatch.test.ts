@@ -72,15 +72,27 @@ describe('real generation runner durability boundaries', () => {
     expect(execution.captureResult).toHaveBeenCalledWith({ ok: true, data: expect.objectContaining({ jobId: 'music-1' }) })
   })
 
-  it('checkpoints voiceover immediately before provider generation and captures the asset afterward', async () => {
+  it('delegates the voiceover checkpoint to the provider-owned boundary and captures the asset afterward', async () => {
     const order: string[] = []
-    mocks.generateVoiceover.mockImplementationOnce(async () => { order.push('provider'); return { sanitizedText: 'Hello', audioBuffer: new Uint8Array(), format: 'mp3', violations: [] } })
+    mocks.generateVoiceover.mockImplementationOnce(async (_event, _input, options) => {
+      order.push('prework')
+      await options.beforeDispatch()
+      order.push('provider')
+      return { sanitizedText: 'Hello', audioBuffer: new Uint8Array(), format: 'mp3', violations: [] }
+    })
     mocks.createVoiceAsset.mockImplementationOnce(async () => { order.push('asset'); return { id: 'voice-1', status: 'ready', streamUrl: null } })
     const execution = {
       markDispatched: vi.fn(async () => { order.push('checkpoint') }),
       captureResult: vi.fn(async () => { order.push('capture') })
     }
     await buildGenerationRunner(execution).generate_voiceover({ text: 'Hello', lang: 'en', channels: [] }, ctx)
-    expect(order).toEqual(['checkpoint', 'provider', 'asset', 'capture'])
+    expect(order).toEqual(['prework', 'checkpoint', 'provider', 'asset', 'capture'])
+  })
+
+  it('does not checkpoint when voiceover preflight fails before provider dispatch', async () => {
+    mocks.generateVoiceover.mockResolvedValueOnce(null)
+    const execution = { markDispatched: vi.fn(), captureResult: vi.fn() }
+    await expect(buildGenerationRunner(execution).generate_voiceover({ text: 'Hello', lang: 'en', channels: [] }, ctx)).rejects.toThrow('voice generation unavailable')
+    expect(execution.markDispatched).not.toHaveBeenCalled()
   })
 })

@@ -48,4 +48,28 @@ describe('disposable Postgres schema harness', () => {
     })).rejects.toThrow(/invalid disposable schema/i)
     expect(client.connect).not.toHaveBeenCalled()
   })
+
+  it('snapshots shared state before setup and verifies it after cleanup on the same connection', async () => {
+    const calls: string[] = []
+    const client = {
+      connect: vi.fn(async () => undefined),
+      query: vi.fn(async (sql: string) => {
+        calls.push(sql)
+        if (sql === 'SNAPSHOT PUBLIC') return { rows: [{ name: 'existing' }] }
+        if (sql.includes('current_schema()')) return { rows: [{ schema: 'memory_outbox_test_snapshot' }] }
+        return { rows: [] }
+      }),
+      end: vi.fn(async () => undefined)
+    }
+    await withDisposablePostgresSchema({
+      client, schema: 'memory_outbox_test_snapshot', bootstrapSql: 'BOOTSTRAP', migrationSql: 'MIGRATE',
+      snapshotSharedState: connection => connection.query('SNAPSHOT PUBLIC'),
+      verifySharedState: async (connection, before) => {
+        expect((await connection.query('SNAPSHOT PUBLIC')).rows).toEqual((before as any).rows)
+      },
+      run: async () => undefined
+    })
+    expect(calls.indexOf('SNAPSHOT PUBLIC')).toBeLessThan(calls.indexOf('CREATE SCHEMA "memory_outbox_test_snapshot"'))
+    expect(calls.lastIndexOf('SNAPSHOT PUBLIC')).toBeGreaterThan(calls.indexOf('DROP SCHEMA IF EXISTS "memory_outbox_test_snapshot" CASCADE'))
+  })
 })

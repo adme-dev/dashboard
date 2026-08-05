@@ -34,6 +34,24 @@ describe('buildUserMemoryBlock', () => {
     expect((d.search as any).mock.calls[0][3]).toEqual({ userId: 'u1' })
   })
 
+  it('merges pending personal memory with vector hits, deduplicates ids, and excludes foreign pending rows', async () => {
+    const d = deps({
+      search: vi.fn().mockResolvedValue([{ id: 'm1', score: 0.9, metadata: {} }]),
+      byIds: vi.fn().mockResolvedValue([row('m1', 'u1', 'indexed fact', { embedding_id: 'm1' })]),
+      recent: vi.fn().mockResolvedValue([
+        row('m1', 'u1', 'duplicate indexed fact', { embedding_id: null }),
+        row('pending', 'u1', 'brand new pending fact', { embedding_id: null }),
+        row('foreign', 'u2', 'FOREIGN pending secret', { embedding_id: null }),
+      ]),
+    })
+    const out = await buildUserMemoryBlock({ userId: 'u1', query: 'facts' }, d)
+    expect(out).toContain('- indexed fact')
+    expect(out).toContain('- brand new pending fact')
+    expect(out).not.toContain('duplicate indexed fact')
+    expect(out).not.toContain('FOREIGN pending secret')
+    expect(d.recent).toHaveBeenCalledWith('u1', 10)
+  })
+
   it('ISOLATION: drops any row whose user_id != caller, even if returned by the index', async () => {
     const d = deps({
       search: vi.fn().mockResolvedValue([{ id: 'm1', score: 0.9, metadata: {} }, { id: 'mX', score: 0.95, metadata: {} }]),

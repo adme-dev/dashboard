@@ -19,7 +19,8 @@ export interface VoiceoverResult {
 
 export async function generateVoiceover(
   event: H3Event,
-  input: GenerateVoiceoverInput
+  input: GenerateVoiceoverInput,
+  options: { beforeDispatch?: () => Promise<void> } = {}
 ): Promise<VoiceoverResult | null> {
   // Advisory guard: strip artist-mimicry phrasing from VO scripts. We do NOT
   // hard-block voiceover (it's spoken words, not a sound-alike track), but we
@@ -30,7 +31,7 @@ export async function generateVoiceover(
   const blocklist = await loadBlocklist(kv)
   const guard = guardAudioPrompt(input.text, blocklist)
 
-  const tts = await textToSpeech(event, guard.sanitized, { lang: input.lang })
+  const tts = await textToSpeech(event, guard.sanitized, { lang: input.lang, beforeDispatch: options.beforeDispatch })
   if (!tts) return null
 
   return {
