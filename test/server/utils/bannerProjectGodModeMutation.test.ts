@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
 import { seedGodModeRouteAuditState } from '../../../server/utils/godMode/featureGate'
@@ -31,6 +32,10 @@ const {
   '../../../server/utils/banner/godModeProjectCreation'
 )
 const { default: createProject } = await import('../../../server/api/agency/banner-studio/projects/index.post')
+const projectCreationRouteSource = readFileSync(
+  new URL('../../../server/api/agency/banner-studio/projects/index.post.ts', import.meta.url),
+  'utf8'
+)
 
 const ACTOR_ID = '11111111-1111-4111-8111-111111111111'
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222'
@@ -158,16 +163,23 @@ describe('God mode banner project creation coordination', () => {
     expect(project.tags).toEqual(['leapmotor', 'mrec'])
     expect(mockRequireAuth).toHaveBeenCalledTimes(1)
     expect(mockExecuteGodModeBannerProjectCreation).toHaveBeenCalledTimes(1)
+    expect(routeQuery).toHaveBeenCalledTimes(1)
     expect(routeQuery).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO banner_projects'),
       ['Leapmotor animated MRec', 'client-leapmotor', JSON.stringify(canvasData), ['leapmotor', 'mrec'], ACTOR_ID]
     )
-    const [, params] = routeQuery.mock.calls[0]
+    const [insertSql, params] = routeQuery.mock.calls[0]
+    expect(String(insertSql)).toMatch(/^\s*INSERT INTO banner_projects/)
     expect(JSON.parse((params as string[])[2])).toEqual(canvasData)
     expect(JSON.parse((params as string[])[2]).mrec.layers[0]).toMatchObject({ src: assetUrl, fit: 'cover' })
     expect(JSON.parse((params as string[])[2]).mrec.layers[1]).toMatchObject({ src: assetUrl, fit: 'contain' })
     expect(JSON.parse((params as string[])[2]).mrec.layers[2]).toMatchObject({ type: 'button', text: 'BOOK A TEST DRIVE' })
     expect(mockExecuteGodModeBannerProjectCreation).toHaveBeenCalledWith(expect.anything(), expect.any(Function))
+    expect([...projectCreationRouteSource.matchAll(/^import\s+[^'"\n]+from\s+['"]([^'"]+)['"]/gm)].map(([, source]) => source)).toEqual([
+      '~~/server/utils/auth',
+      '~~/server/utils/banner/godModeProjectCreation'
+    ])
+    expect(projectCreationRouteSource).not.toMatch(/\b(?:render(?:Job|Banner)?|publish(?:Banner|ToAdPlatform)?|enqueue|queue|export(?:Banner)?|upload(?:Asset)?)[A-Za-z0-9_]*\s*\(/i)
   })
 
   it('replays a completed request without creating a second project', async () => {
