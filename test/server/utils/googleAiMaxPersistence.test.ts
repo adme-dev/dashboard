@@ -7,12 +7,21 @@ import {
 
 const mockClientQuery = vi.fn()
 const mockTransaction = vi.fn(async (callback: any) => callback({ query: mockClientQuery }))
+const mockQueryOne = vi.fn()
+const mockExecute = vi.fn()
 
 vi.mock('~~/server/utils/db', () => ({
   transaction: (...args: any[]) => mockTransaction(...args),
+  queryOne: (...args: any[]) => mockQueryOne(...args),
+  execute: (...args: any[]) => mockExecute(...args),
 }))
 
-const { persistGoogleAiMaxCampaignStates } = await import(
+const {
+  claimGoogleAiMaxScanRun,
+  finishGoogleAiMaxScanRun,
+  markGoogleAiMaxScanRunRunning,
+  persistGoogleAiMaxCampaignStates,
+} = await import(
   '~~/server/utils/googleAiMaxRepository'
 )
 
@@ -45,6 +54,8 @@ describe('persistGoogleAiMaxCampaignStates', () => {
   beforeEach(() => {
     mockClientQuery.mockReset()
     mockTransaction.mockClear()
+    mockQueryOne.mockReset()
+    mockExecute.mockReset()
   })
 
   it('creates current state and one first_seen event for a first observation', async () => {
@@ -187,5 +198,75 @@ describe('persistGoogleAiMaxCampaignStates', () => {
       scanRunId: 'run-5',
       states: [campaignState()],
     })).rejects.toThrow('database unavailable')
+  })
+})
+
+describe('Google AI Max scan-run lifecycle', () => {
+  beforeEach(() => {
+    mockQueryOne.mockReset()
+    mockExecute.mockReset()
+  })
+
+  it('claims one active run per tenant and returns null for an overlap', async () => {
+    mockQueryOne
+      .mockResolvedValueOnce({ id: 'run-1', status: 'queued' })
+      .mockResolvedValueOnce(null)
+
+    const first = await claimGoogleAiMaxScanRun({
+      tenantId: 'tenant-a',
+      trigger: 'manual',
+      requestedBy: 'user-a',
+      totalConnections: 2,
+    })
+    const overlap = await claimGoogleAiMaxScanRun({
+      tenantId: 'tenant-a',
+      trigger: 'scheduled',
+      totalConnections: 2,
+    })
+
+    expect(first).toEqual({ id: 'run-1', status: 'queued' })
+    expect(overlap).toBeNull()
+    expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain(
+      "ON CONFLICT (tenant_id) WHERE status IN ('queued', 'running') DO NOTHING",
+    )
+  })
+
+  it('only starts a queued run inside its tenant scope', async () => {
+    mockExecute.mockResolvedValueOnce(1)
+
+    await expect(markGoogleAiMaxScanRunRunning({
+      runId: 'run-1',
+      tenantId: 'tenant-a',
+      startedAt: '2026-08-06T00:00:00.000Z',
+    })).resolves.toBe(true)
+
+    expect(String(mockExecute.mock.calls[0]?.[0])).toContain("status = 'queued'")
+    expect(mockExecute.mock.calls[0]?.[1]).toEqual([
+      'run-1',
+      'tenant-a',
+      '2026-08-06T00:00:00.000Z',
+    ])
+  })
+
+  it.each([
+    { processed: 2, failures: [], expected: 'completed' },
+    { processed: 1, failures: [{ connectionId: 'connection-b', error: 'denied' }], expected: 'partial' },
+    { processed: 0, failures: [{ connectionId: 'connection-a', error: 'denied' }], expected: 'failed' },
+  ])('finishes a run as $expected', async ({ processed, failures, expected }) => {
+    mockQueryOne.mockResolvedValueOnce({ id: 'run-1', status: expected })
+
+    const result = await finishGoogleAiMaxScanRun({
+      runId: 'run-1',
+      tenantId: 'tenant-a',
+      finishedAt: '2026-08-06T00:05:00.000Z',
+      processedConnections: processed,
+      totalCampaigns: 4,
+      affectedCampaigns: 2,
+      unknownCampaigns: 1,
+      failures,
+    })
+
+    expect(result?.status).toBe(expected)
+    expect(mockQueryOne.mock.calls[0]?.[1]).toContain(expected)
   })
 })

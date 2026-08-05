@@ -1,4 +1,4 @@
-import { transaction } from '~~/server/utils/db'
+import { execute, queryOne, transaction } from '~~/server/utils/db'
 import {
   diffGoogleAiMaxMaterialState,
   type GoogleAiMaxCampaignState,
@@ -10,6 +10,20 @@ export type GoogleAiMaxStateEventType =
   | 'setting_changed'
   | 'became_unknown'
   | 'recovered'
+
+export type GoogleAiMaxScanTrigger = 'manual' | 'scheduled' | 'post_sync'
+export type GoogleAiMaxScanStatus = 'queued' | 'running' | 'completed' | 'partial' | 'failed'
+
+export interface GoogleAiMaxScanRunRef {
+  id: string
+  status: GoogleAiMaxScanStatus
+}
+
+export interface GoogleAiMaxScanFailure {
+  connectionId: string
+  customerId?: string
+  error: string
+}
 
 export interface PersistGoogleAiMaxCampaignStatesInput {
   scanRunId: string
@@ -43,6 +57,86 @@ interface RepositoryDependencies {
 
 const defaultDependencies: RepositoryDependencies = {
   withTransaction: callback => transaction(callback as any),
+}
+
+export async function claimGoogleAiMaxScanRun(input: {
+  tenantId: string
+  trigger: GoogleAiMaxScanTrigger
+  requestedBy?: string
+  totalConnections: number
+  apiVersion?: string
+}): Promise<GoogleAiMaxScanRunRef | null> {
+  return queryOne<GoogleAiMaxScanRunRef>(`
+    INSERT INTO google_ai_max_scan_runs (
+      tenant_id, status, trigger, requested_by, total_connections, api_version
+    ) VALUES ($1, 'queued', $2, $3, $4, $5)
+    ON CONFLICT (tenant_id) WHERE status IN ('queued', 'running') DO NOTHING
+    RETURNING id, status
+  `, [
+    input.tenantId,
+    input.trigger,
+    input.requestedBy ?? null,
+    input.totalConnections,
+    input.apiVersion ?? 'v23',
+  ])
+}
+
+export async function markGoogleAiMaxScanRunRunning(input: {
+  runId: string
+  tenantId: string
+  startedAt: string
+}): Promise<boolean> {
+  const updated = await execute(`
+    UPDATE google_ai_max_scan_runs
+    SET status = 'running', started_at = $3, updated_at = NOW()
+    WHERE id = $1
+      AND tenant_id = $2
+      AND status = 'queued'
+  `, [input.runId, input.tenantId, input.startedAt])
+  return updated === 1
+}
+
+export async function finishGoogleAiMaxScanRun(input: {
+  runId: string
+  tenantId: string
+  finishedAt: string
+  processedConnections: number
+  totalCampaigns: number
+  affectedCampaigns: number
+  unknownCampaigns: number
+  failures: GoogleAiMaxScanFailure[]
+}): Promise<GoogleAiMaxScanRunRef | null> {
+  const status: GoogleAiMaxScanStatus = input.failures.length === 0
+    ? 'completed'
+    : input.processedConnections > 0
+      ? 'partial'
+      : 'failed'
+
+  return queryOne<GoogleAiMaxScanRunRef>(`
+    UPDATE google_ai_max_scan_runs
+    SET status = $3,
+        finished_at = $4,
+        processed_connections = $5,
+        total_campaigns = $6,
+        affected_campaigns = $7,
+        unknown_campaigns = $8,
+        failures = $9::jsonb,
+        updated_at = NOW()
+    WHERE id = $1
+      AND tenant_id = $2
+      AND status IN ('queued', 'running')
+    RETURNING id, status
+  `, [
+    input.runId,
+    input.tenantId,
+    status,
+    input.finishedAt,
+    input.processedConnections,
+    input.totalCampaigns,
+    input.affectedCampaigns,
+    input.unknownCampaigns,
+    JSON.stringify(input.failures),
+  ])
 }
 
 function parseEvidence(value: GoogleAiMaxCampaignState | string): GoogleAiMaxCampaignState {
