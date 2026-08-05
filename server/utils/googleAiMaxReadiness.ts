@@ -177,6 +177,7 @@ function mapListItem(row: any) {
     campaignId: row.campaign_id,
     campaignName: row.campaign_name,
     campaignStatus: row.campaign_status,
+    deepLink: row.deep_link ?? null,
     readinessStatus: row.effective_readiness_status ?? row.readiness_status,
     migrationReason: row.migration_reason,
     aiMaxEnabled: row.ai_max_enabled,
@@ -190,6 +191,43 @@ function mapListItem(row: any) {
     lastObservedAt: isoValue(row.last_observed_at),
     lastChangedAt: isoValue(row.last_changed_at),
   }
+}
+
+const GOOGLE_AI_MAX_EXPORT_LIMIT = 5000
+
+export class GoogleAiMaxExportLimitError extends Error {
+  constructor() {
+    super(`AI Max export exceeds ${GOOGLE_AI_MAX_EXPORT_LIMIT} rows`)
+    this.name = 'GoogleAiMaxExportLimitError'
+  }
+}
+
+export async function listGoogleAiMaxReadinessForExport(
+  input: { tenantId: string, filters: GoogleAiMaxReadinessFilters },
+  dependencies: ReadinessQueryDependencies = defaultQueryDependencies,
+) {
+  const dataset = readinessDataset(input.filters, input.tenantId)
+  const rows = await dependencies.queryRows(`
+    SELECT s.id, s.connection_id, s.customer_id,
+           sc.account_name, sc.client_id, ac.name AS client_name,
+           cf.account_manager_id AS owner_id, owner.name AS owner_name,
+           s.campaign_id, s.campaign_name, s.campaign_status, s.deep_link,
+           (${EFFECTIVE_READINESS_SQL}) AS effective_readiness_status,
+           (${FRESHNESS_SQL}) AS freshness_status,
+           s.migration_reason, s.ai_max_enabled,
+           s.effective_search_term_matching, s.effective_text_customisation,
+           s.effective_final_url_expansion, s.risk_flags,
+           s.last_observed_at, s.last_changed_at
+    ${dataset.from}
+    ${dataset.where}
+    ORDER BY s.last_changed_at DESC, s.id
+    LIMIT $${dataset.params.length + 1}
+  `, [...dataset.params, GOOGLE_AI_MAX_EXPORT_LIMIT + 1])
+
+  if (rows.length > GOOGLE_AI_MAX_EXPORT_LIMIT) {
+    throw new GoogleAiMaxExportLimitError()
+  }
+  return rows.map(mapListItem)
 }
 
 function mapLatestRun(row: any) {

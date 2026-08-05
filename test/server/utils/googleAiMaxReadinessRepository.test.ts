@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   getGoogleAiMaxReadinessDetail,
   listGoogleAiMaxReadiness,
+  listGoogleAiMaxReadinessForExport,
 } from '~~/server/utils/googleAiMaxReadiness'
 
 describe('listGoogleAiMaxReadiness', () => {
@@ -110,6 +111,33 @@ describe('listGoogleAiMaxReadiness', () => {
     }
     expect(queryRows.mock.calls[0]?.[1].slice(0, -2)).toEqual(queryOne.mock.calls[0]?.[1])
     expect(summarySql).toContain("THEN 'unknown'")
+  })
+})
+
+describe('listGoogleAiMaxReadinessForExport', () => {
+  it('reuses readiness filters and fails closed above the export cap', async () => {
+    const queryRows = vi.fn().mockResolvedValue(
+      Array.from({ length: 5001 }, (_, index) => ({ id: `state-${index}` })),
+    )
+
+    await expect(listGoogleAiMaxReadinessForExport({
+      tenantId: 'tenant-a',
+      filters: {
+        page: 1,
+        pageSize: 25,
+        status: 'needs_review',
+        search: 'Generic',
+      },
+    }, { queryOne: vi.fn(), queryRows })).rejects.toThrow(
+      'AI Max export exceeds 5000 rows',
+    )
+
+    const sql = String(queryRows.mock.calls[0]?.[0])
+    expect(sql).toContain('s.tenant_id = $1')
+    expect(sql).toContain('s.readiness_status')
+    expect(sql).toContain('ILIKE')
+    expect(sql).toContain('LIMIT')
+    expect(queryRows.mock.calls[0]?.[1].at(-1)).toBe(5001)
   })
 })
 
