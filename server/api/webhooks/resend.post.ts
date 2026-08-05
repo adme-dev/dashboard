@@ -3,7 +3,8 @@
 // signature-verified via Svix (Resend's webhook signer) using RESEND_WEBHOOK_SECRET.
 // RBAC/auth-exempt via the /api/webhooks/ prefix in server/middleware/auth.ts.
 // Idempotent on the Svix message id. Returns fast; processing is light.
-import { Webhook } from 'svix'
+// Keep the deep adapter import: the barrel bundles the full Svix SDK. Behavioral parity is guarded by tests.
+import { Webhook } from 'svix/dist/webhook.js'
 import { setCfBindings, getCachedBinding } from '~~/server/utils/email'
 import { handleResendEvent, type ResendWebhookPayload } from '~~/server/utils/email-marketing/resendEvents'
 
