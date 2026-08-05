@@ -10,6 +10,11 @@ const deployment = readFileSync(resolve(root, 'workers/mcp-server/DEPLOYMENT.md'
 const operatorGuide = readFileSync(resolve(root, 'docs/mcp-server-guide.md'), 'utf8')
 
 describe('MCP exact-request signing deployment contract', () => {
+  it('returns OAuth to the canonical authenticated production origin', () => {
+    expect(wrangler).toMatch(/^APP_BASE_URL = "https:\/\/app\.xeroflow\.io"$/m)
+    expect(wrangler).not.toContain('agency-dashboard-6cm.pages.dev')
+  })
+
   it('requires the shared request-signing secret on Worker and Pages without embedding a value', () => {
     expect(wrangler).toContain('MCP_REQUEST_SIGNING_SECRET')
     expect(wrangler).not.toMatch(/^\s*MCP_REQUEST_SIGNING_SECRET\s*=/m)

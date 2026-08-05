@@ -14,7 +14,7 @@ compatibility_flags = ["nodejs_compat"]
 # redirect breaks sub-worker `wrangler deploy`) — same gotcha as observe-cron.
 
 [vars]
-APP_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
+APP_BASE_URL = "https://app.xeroflow.io"
 
 # The McpAgent session state lives in a Durable Object (DO free tier covers it).
 [durable_objects]
