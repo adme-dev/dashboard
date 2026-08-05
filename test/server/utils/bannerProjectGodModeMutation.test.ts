@@ -90,6 +90,57 @@ describe('God mode banner project creation coordination', () => {
     )
   })
 
+  it('preserves an uploaded MRec canvas as an editable draft without rendering or publishing it', async () => {
+    const assetUrl = 'https://assets.xeroflow.test/leapmotor-c10.png'
+    const canvasData = {
+      mrec: {
+        bgColor: '#7fbfba',
+        layers: [
+          { id: 1, type: 'image', name: 'Ambient Fill', src: assetUrl, srcType: 'image', fit: 'cover', x: 0, y: 0, w: 300, h: 250, zIndex: 0, opacity: 0.5, animIn: 'kenBurns', animInDur: 0.4, startTime: 0, endTime: 5, ease: 'none', animOut: 'fadeOut', animOutEase: 'power1.in', outDur: 0.35 },
+          { id: 2, type: 'image', name: 'Leapmotor Artwork', src: assetUrl, srcType: 'image', fit: 'contain', x: 25, y: 0, w: 250, h: 250, zIndex: 2, opacity: 1, animIn: 'slideU', animInDur: 0.7, startTime: 0.15, endTime: 5, ease: 'power2.out', animOut: 'fadeOut', animOutEase: 'power1.in', outDur: 0.35 },
+          { id: 3, type: 'button', name: 'Test Drive CTA', text: 'BOOK A TEST DRIVE', x: 76, y: 216, w: 148, h: 24, zIndex: 4, opacity: 1, bgColor: '#34e52e', textColor: '#083e35', borderRadius: 12, fontSize: 12, fontWeight: 800, animIn: 'slideU', animInDur: 0.55, startTime: 1.6, endTime: 4.65, ease: 'back.out(1.7)', animOut: 'fadeOut', animOutEase: 'power1.in', outDur: 0.35 }
+        ]
+      }
+    }
+    const event = request('banner-create-canvas-12345678')
+    const prepared = await prepareGodModeBannerProjectCreation(event, dependencies)
+    const create = vi.fn(async (db: { query: typeof query }) => {
+      const result = await db.query(
+        'INSERT INTO banner_projects (name, canvas_data) VALUES ($1, $2) RETURNING id, name, canvas_data AS "canvasData", status',
+        ['Leapmotor animated MRec', JSON.stringify(canvasData)]
+      )
+      return {
+        ...result.rows[0],
+        status: 'draft',
+        canvasData
+      }
+    })
+
+    const project = await executeGodModeBannerProjectCreation(event, create)
+    await prepared.persistTerminal({
+      actorUserId: ACTOR_ID,
+      correlationId: '33333333-3333-4333-8333-333333333333',
+      sessionDigest: 'a'.repeat(64),
+      channel: 'application',
+      routeOrTool: 'POST /api/agency/banner-studio/projects',
+      phase: 'succeeded',
+      bypassedControls: [],
+      outcomeCode: 'http_2xx',
+      emergencyDisabled: false
+    })
+
+    expect(project.status).toBe('draft')
+    expect(project.canvasData).toEqual(canvasData)
+    expect(project.canvasData.mrec.layers[0]).toMatchObject({ src: assetUrl, fit: 'cover' })
+    expect(project.canvasData.mrec.layers[1]).toMatchObject({ src: assetUrl, fit: 'contain' })
+    expect(project.canvasData.mrec.layers[2]).toMatchObject({ type: 'button', text: 'BOOK A TEST DRIVE' })
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO banner_projects'),
+      ['Leapmotor animated MRec', JSON.stringify(canvasData)]
+    )
+    expect(query.mock.calls.flatMap(([sql]) => String(sql).match(/render|publish/gi) ?? [])).toEqual([])
+  })
+
   it('replays a completed request without creating a second project', async () => {
     query.mockImplementation(async (sql: string) => {
       if (sql.includes('INSERT INTO god_mode_execution_ledger')) return { rows: [] }

@@ -2197,7 +2197,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'A full WYSIWYG artboard editor with layers, properties panel, drag-to-position, and multi-format support — purpose-built for HTML5 banner production.',
+    description: 'Turn uploaded artwork into editable animated banner drafts in a full WYSIWYG artboard editor with layers, a properties panel, drag-to-position, and multi-format support — purpose-built for HTML5 banner production.',
     details: [
       {
         title: 'Layer-Based Design',
