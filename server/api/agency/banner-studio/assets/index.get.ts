@@ -46,7 +46,8 @@ export default defineEventHandler(async (event) => {
       paramIndex++
     }
 
-    return await queryRows(sql, params)
+    const assets = await queryRows(sql, params)
+    return { assets }
   } catch (error: any) {
     console.error('Failed to fetch banner assets:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to fetch banner assets' })

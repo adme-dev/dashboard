@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { BannerAsset } from '~/types/banner-studio'
 import type { AudioAsset } from '~/types'
+import { isAmbiguousApiFailure } from '~/utils/apiError'
+import { nextBannerUploadKey, prepareBannerUploadRequest } from '~/utils/bannerUpload'
 
 const { addLayer, nextId, activeLayers } = useBannerStudio()
 const { decomposingAssetId, decomposeFromUrl } = useDecompose()
@@ -10,11 +12,25 @@ const apiFetch = $fetch as <T = unknown>(request: string, options?: {
   method?: string
   body?: unknown
   query?: Record<string, unknown>
+  headers?: Record<string, string>
 }) => Promise<T>
 
 const searchQuery = ref('')
 const isDragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+let pendingUploadFile: File | null = null
+let pendingUploadKey = nextBannerUploadKey()
+
+function uploadKeyFor(file: File): string {
+  if (pendingUploadFile && pendingUploadFile !== file) pendingUploadKey = nextBannerUploadKey()
+  pendingUploadFile = file
+  return pendingUploadKey
+}
+
+function rotateUploadKey() {
+  pendingUploadFile = null
+  pendingUploadKey = nextBannerUploadKey()
+}
 
 // AI Image Suggestions
 const aiSuggestions = ref<{ keyword: string, description: string, style: string }[]>([])
@@ -143,16 +159,23 @@ function addAudioLayer(a: AudioAsset) {
 
 async function uploadFiles(files: FileList | File[]) {
   for (const file of files) {
-    const formData = new FormData()
-    formData.append('file', file)
+    let requestStarted = false
+    let requestCompleted = false
     try {
+      const request = await prepareBannerUploadRequest(file, uploadKeyFor(file))
+      requestStarted = true
       await apiFetch('/api/agency/banner-studio/assets/upload', {
         method: 'POST',
-        body: formData
+        ...request
       })
+      requestCompleted = true
+      rotateUploadKey()
       toast.add({ title: 'Uploaded', description: `${file.name} uploaded`, color: 'success' })
-    } catch {
+    } catch (error: unknown) {
+      const ambiguous = requestStarted && !requestCompleted && isAmbiguousApiFailure(error)
+      if (!ambiguous) rotateUploadKey()
       toast.add({ title: 'Upload failed', description: `Failed to upload ${file.name}`, color: 'error' })
+      if (ambiguous) break
     }
   }
   await refreshAssets()
