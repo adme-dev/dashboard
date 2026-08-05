@@ -21,6 +21,14 @@ vi.mock('h3', async (importOriginal) => {
   }
 })
 
+vi.mock('node:crypto', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:crypto')>()
+  return {
+    ...original,
+    timingSafeEqual: undefined
+  }
+})
+
 vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args)
 }))
@@ -147,6 +155,24 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
     await expect(handler(request)).rejects.toMatchObject({ statusCode: 409, statusMessage: 'Banner upload digest does not match validated content' })
     expect(mockExecuteUpload).not.toHaveBeenCalled()
     expect(mockUploadBannerAsset).not.toHaveBeenCalled()
+  })
+
+  it('accepts the validated digest when the edge runtime has no timingSafeEqual export', async () => {
+    const request = event({
+      'x-banner-upload-digest': '122fe4684bb6802ae6e8225410da6a48c48a7a05a5200ef83b097d8c653bc6fe'
+    })
+    const { seedGodModeRouteAuditState } = await import('~~/server/utils/godMode/featureGate')
+    seedGodModeRouteAuditState(request, {
+      actorUserId: USER.id,
+      correlationId: '33333333-3333-4333-8333-333333333333',
+      sessionDigest: 'a'.repeat(64),
+      routeOrTool: 'POST /api/agency/banner-studio/assets/upload',
+      emergencyDisabled: false
+    })
+    const handler = (await import('~~/server/api/agency/banner-studio/assets/upload.post')).default
+
+    await expect(handler(request)).resolves.toEqual(ASSET)
+    expect(mockExecuteUpload).toHaveBeenCalledTimes(1)
   })
 
   it('returns the bounded upload error while preserving coordinator HTTP failures', async () => {

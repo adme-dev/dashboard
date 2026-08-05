@@ -1,4 +1,3 @@
-import { timingSafeEqual } from 'node:crypto'
 import { createError, getHeader, readMultipartFormData } from 'h3'
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
@@ -22,6 +21,15 @@ function isHttpError(error: unknown): error is { statusCode: number } {
     && typeof error.statusCode === 'number'
 }
 
+function constantTimeDigestEqual(left: string, right: string): boolean {
+  const length = Math.max(left.length, right.length)
+  let difference = left.length ^ right.length
+  for (let index = 0; index < length; index += 1) {
+    difference |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0)
+  }
+  return difference === 0
+}
+
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
 
@@ -41,9 +49,7 @@ export default defineEventHandler(async (event) => {
   const auditState = getGodModeRouteAuditState(event)
   if (auditState?.routeOrTool === ROUTE) {
     const claimedDigest = getHeader(event, 'x-banner-upload-digest')?.trim() || ''
-    const claimed = Buffer.from(claimedDigest, 'utf8')
-    const actual = Buffer.from(validated.requestDigest, 'utf8')
-    if (claimed.length !== actual.length || !timingSafeEqual(claimed, actual)) {
+    if (!constantTimeDigestEqual(claimedDigest, validated.requestDigest)) {
       throw createError({
         statusCode: 409,
         statusMessage: 'Banner upload digest does not match validated content'
