@@ -9,9 +9,13 @@
  * them across requests in the same isolate is safe.
  */
 
-import { setCachedCfBindings } from '~~/server/utils/cfBindings'
+import {
+  promoteCloudflarePlatformContext,
+  setCachedCfBindings
+} from '~~/server/utils/cfBindings'
 
 export default defineEventHandler((event) => {
-  const env = (event.context as any).cloudflare?.env
+  const cloudflare = promoteCloudflarePlatformContext(event.context as Record<string, unknown>)
+  const env = cloudflare?.env
   if (env) setCachedCfBindings(env)
 })
