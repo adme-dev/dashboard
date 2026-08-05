@@ -17,6 +17,30 @@ describe('buildConsentHtml', () => {
     expect(html.toLowerCase()).toContain('read + write')
   })
 
+  it('discloses ordinary-user governance separately from active Owner God Mode', () => {
+    const html = buildConsentHtml({ userName: 'Owner', allowUrl: '/a', allowWriteUrl: '/aw', cancelUrl: '/c' })
+
+    expect(html).toContain('For ordinary users, confirmation and money-mover acknowledgement controls remain in force.')
+    expect(html).toContain('Freshly revalidated active owners using Owner God Mode may execute registered capabilities directly')
+    expect(html).not.toContain('Every change still needs an explicit confirmation')
+  })
+
+  it('states every non-bypassable Owner God Mode boundary', () => {
+    const html = buildConsentHtml({ userName: 'Owner', allowUrl: '/a', allowWriteUrl: '/aw', cancelUrl: '/c' })
+
+    for (const boundary of [
+      'authentication and session validity',
+      'exact active-owner status',
+      'tenant, client and entity isolation',
+      'immutable audit',
+      'emergency disable',
+      'provider, binding and secret availability',
+      'SSRF protections'
+    ]) {
+      expect(html).toContain(boundary)
+    }
+  })
+
   it('escapes HTML in the user name (XSS in markup)', () => {
     const html = buildConsentHtml({ userName: '<script>alert(1)</script>', allowUrl: '/a', allowWriteUrl: '/aw', cancelUrl: '/c' })
     expect(html).not.toContain('<script>alert(1)</script>')

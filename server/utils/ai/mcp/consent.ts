@@ -51,10 +51,11 @@ export function buildConsentHtml({ userName, allowUrl, allowWriteUrl, cancelUrl 
   <p>Signed in as <strong>${name}</strong>.</p>
   <p>Your external AI assistant can be granted access to XeroFlow:</p>
   <ul>
-    <li>Only data your role can already see — the same permissions apply.</li>
+    <li>Access is revalidated for the signed-in account on every request.</li>
     <li><strong>Read-only</strong>: it can read and analyse, but cannot create, edit, approve or sign anything.</li>
-    <li><strong>Read + write</strong>: it can also <em>prepare</em> changes (incl. financial actions) for you to confirm. Every change still needs an explicit confirmation, and money-movers need an explicit acknowledgement.</li>
-    <li>Every action is logged. You can disconnect any time from your AI host.</li>
+    <li><strong>Read + write</strong>: it can prepare changes, including financial actions. For ordinary users, confirmation and money-mover acknowledgement controls remain in force. Freshly revalidated active owners using Owner God Mode may execute registered capabilities directly.</li>
+    <li>Owner God Mode never bypasses authentication and session validity, exact active-owner status, tenant, client and entity isolation, immutable audit, emergency disable, provider, binding and secret availability, or SSRF protections.</li>
+    <li>You can disconnect any time from your AI host.</li>
   </ul>
   <p class="warn">Only grant write access to assistants you trust to act on your behalf.</p>
   <div class="row">
