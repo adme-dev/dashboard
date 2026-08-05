@@ -184,3 +184,36 @@ Round-three verification evidence:
   (`EPERM`) before initialization; `initdb` removed the temporary cluster. Per review instruction,
   migration 348 was **not applied to production or any configured database**.
 - No provider call, deployment, external write, or production migration was performed.
+
+## Review fix round 4/5 — pooler-safe disposable migration harness
+
+The controller's first live disposable migration-348 run reached both static assertions, then failed
+in setup because a session-level `SET search_path` did not survive pooled statements and the
+unqualified bootstrap attempted to create `public.ai_user_memory`. Migration 348 was not reached and
+remained unapplied.
+
+The disposable regression harness now:
+
+- validates and quotes the exact generated schema identifier before connecting;
+- creates that schema explicitly, then uses `BEGIN` plus `SET LOCAL search_path` and verifies
+  `current_schema()` before any bootstrap or migration statement;
+- schema-qualifies the bootstrap `ai_user_memory` relation and applies migration 348 twice inside the
+  same pinned transaction;
+- verifies the outbox relation's catalog namespace is the disposable schema and that
+  `public.ai_memory_index_outbox` remains absent;
+- contains the expected unique-violation assertion inside a savepoint and always rolls back to and
+  releases that savepoint before continuing;
+- avoids shared clients and concurrent queries, and sets explicit connection, query, statement, and
+  test timeouts; and
+- guarantees rollback, exact-schema drop, and client close from one `finally` path when setup,
+  migration, or assertions fail.
+
+Round-four TDD and local verification evidence:
+
+- RED: the new behavioral harness regression ran two tests and both failed against the explicit
+  not-implemented seam, proving transaction/cleanup and unsafe-schema validation expectations.
+- GREEN: `pnpm exec vitest run test/config/disposablePostgresSchema.test.ts
+  test/config/memoryIndexOutboxMigration.test.ts` passed 4 tests with the one environment-gated live
+  database test skipped.
+- No database command was run during this fix, migration 348 was not applied, and no production code
+  or migration SQL changed.
