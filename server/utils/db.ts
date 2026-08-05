@@ -263,6 +263,77 @@ export async function execute(sql: string, params?: any[]): Promise<number> {
 // --- Transaction helpers ---
 // Uses a DEDICATED pg Client (not the shared per-request one) for BEGIN/COMMIT/ROLLBACK
 // isolation. With Hyperdrive, uses TCP; without, falls back to Neon WebSocket Pool.
+export type TransactionFailureStage = 'definite_rollback' | 'ambiguous_commit'
+
+const transactionFailureStages = new WeakMap<object, TransactionFailureStage>()
+
+class PrimitiveTransactionFailure extends Error {
+  constructor(
+    readonly stage: TransactionFailureStage,
+    readonly thrownValue: unknown
+  ) {
+    super('Transaction failed with a non-Error value')
+    this.name = 'PrimitiveTransactionFailure'
+  }
+}
+
+function classifyTransactionFailure(error: unknown, stage: TransactionFailureStage): unknown {
+  if ((typeof error === 'object' && error !== null) || typeof error === 'function') {
+    transactionFailureStages.set(error, stage)
+    return error
+  }
+  return new PrimitiveTransactionFailure(stage, error)
+}
+
+export function getTransactionFailureStage(error: unknown): TransactionFailureStage | null {
+  if (error instanceof PrimitiveTransactionFailure) return error.stage
+  if ((typeof error === 'object' && error !== null) || typeof error === 'function') {
+    return transactionFailureStages.get(error) ?? null
+  }
+  return null
+}
+
+type TransactionClient = {
+  query: (sql: string) => Promise<unknown>
+}
+
+async function rollbackBestEffort(client: TransactionClient): Promise<void> {
+  try {
+    await client.query('ROLLBACK')
+  } catch {
+    // No COMMIT was dispatched for definite failures; after a COMMIT rejection the outcome
+    // remains ambiguous regardless of whether this best-effort rollback reaches the server.
+  }
+}
+
+async function runStartedTransaction<T>(
+  client: TransactionClient,
+  callback: (db: Pool) => Promise<T>
+): Promise<T> {
+  try {
+    await client.query('BEGIN')
+  } catch (error) {
+    await rollbackBestEffort(client)
+    throw classifyTransactionFailure(error, 'definite_rollback')
+  }
+
+  let result: T
+  try {
+    result = await callback(client as unknown as Pool)
+  } catch (error) {
+    await rollbackBestEffort(client)
+    throw classifyTransactionFailure(error, 'definite_rollback')
+  }
+
+  try {
+    await client.query('COMMIT')
+  } catch (error) {
+    await rollbackBestEffort(client)
+    throw classifyTransactionFailure(error, 'ambiguous_commit')
+  }
+  return result
+}
+
 async function runTransactionOnce<T>(callback: (db: Pool) => Promise<T>): Promise<T> {
   const hdCs = getHyperdriveCs('fresh')
 
@@ -270,18 +341,12 @@ async function runTransactionOnce<T>(callback: (db: Pool) => Promise<T>): Promis
     // Hyperdrive path: dedicated pg Client over TCP
     const client = new pg.Client({ connectionString: hdCs })
     try {
-      await client.connect()
-      await client.query('BEGIN')
-      const result = await callback(client as unknown as Pool)
-      await client.query('COMMIT')
-      return result
-    } catch (error) {
       try {
-        await client.query('ROLLBACK')
-      } catch {
-        // Best effort only: a connection loss can make transaction outcome ambiguous.
+        await client.connect()
+      } catch (error) {
+        throw classifyTransactionFailure(error, 'definite_rollback')
       }
-      throw error
+      return await runStartedTransaction(client, callback)
     } finally {
       client.end().catch(() => undefined)
     }
@@ -296,22 +361,26 @@ async function runTransactionOnce<T>(callback: (db: Pool) => Promise<T>): Promis
   // Catch pool-level errors to prevent unhandled rejections (Neon cold start / ECONNRESET)
   pool.on('error', () => undefined)
 
+  let transactionFailed = false
   try {
-    const client = await pool.connect()
+    let client: Awaited<ReturnType<Pool['connect']>>
     try {
-      await client.query('BEGIN')
-      const result = await callback(client as unknown as Pool)
-      await client.query('COMMIT')
-      return result
+      client = await pool.connect()
     } catch (error) {
-      await client.query('ROLLBACK')
-      throw error
+      throw classifyTransactionFailure(error, 'definite_rollback')
+    }
+    try {
+      return await runStartedTransaction(client, callback)
     } finally {
       client.release()
     }
+  } catch (error) {
+    transactionFailed = true
+    throw error
   } finally {
     // CRITICAL: always close the pool — don't hold WebSocket connections across requests
-    await pool.end()
+    if (transactionFailed) await pool.end().catch(() => undefined)
+    else await pool.end()
   }
 }
 

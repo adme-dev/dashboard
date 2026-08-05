@@ -78,9 +78,10 @@ describe('God mode banner asset upload coordination', () => {
   const appendAudit = vi.fn()
   const deleteBannerFile = vi.fn()
   const queryOneFresh = vi.fn()
+  const getTransactionFailureStage = vi.fn(() => 'definite_rollback' as const)
   const query = vi.fn()
   const transaction = vi.fn(async (callback: (db: { query: typeof query }) => Promise<unknown>) => callback({ query }))
-  const dependencies = { transaction, appendAudit, deleteBannerFile, queryOneFresh }
+  const dependencies = { transaction, appendAudit, deleteBannerFile, queryOneFresh, getTransactionFailureStage }
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -341,7 +342,8 @@ describe('God mode banner asset upload coordination', () => {
     const event = request()
     const prepared = await prepareGodModeBannerAssetUpload(event, {
       ...dependencies,
-      transaction: oneShotTransaction
+      transaction: oneShotTransaction,
+      getTransactionFailureStage: () => 'ambiguous_commit'
     })
 
     const created = await executeGodModeBannerAssetUpload(event, {
@@ -369,7 +371,33 @@ describe('God mode banner asset upload coordination', () => {
     const event = request()
     const prepared = await prepareGodModeBannerAssetUpload(event, {
       ...dependencies,
-      transaction: oneShotTransaction
+      transaction: oneShotTransaction,
+      getTransactionFailureStage: () => 'ambiguous_commit'
+    })
+    await executeGodModeBannerAssetUpload(event, {
+      r2Key: R2_KEY,
+      uploadFile: vi.fn().mockResolvedValue({ key: R2_KEY, url: asset.url, size: asset.fileSize }),
+      insertAsset: vi.fn().mockResolvedValue(asset)
+    })
+
+    await expect(prepared.persistTerminal(terminal())).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: 'Banner upload recovery required'
+    })
+    expect(deleteBannerFile).not.toHaveBeenCalled()
+  })
+
+  it('keeps R2 and requires recovery when a lost COMMIT response is not yet visible to a fresh read', async () => {
+    const oneShotTransaction = vi.fn(async (callback: (db: { query: typeof query }) => Promise<unknown>) => {
+      await callback({ query })
+      throw new Error('commit response lost')
+    })
+    queryOneFresh.mockResolvedValue(null)
+    const event = request()
+    const prepared = await prepareGodModeBannerAssetUpload(event, {
+      ...dependencies,
+      transaction: oneShotTransaction,
+      getTransactionFailureStage: () => 'ambiguous_commit'
     })
     await executeGodModeBannerAssetUpload(event, {
       r2Key: R2_KEY,
@@ -398,7 +426,8 @@ describe('God mode banner asset upload coordination', () => {
     const event = request()
     const prepared = await prepareGodModeBannerAssetUpload(event, {
       ...dependencies,
-      transaction: oneShotTransaction
+      transaction: oneShotTransaction,
+      getTransactionFailureStage: () => 'ambiguous_commit'
     })
     await executeGodModeBannerAssetUpload(event, {
       r2Key: R2_KEY,
@@ -427,7 +456,8 @@ describe('God mode banner asset upload coordination', () => {
     const event = request()
     const prepared = await prepareGodModeBannerAssetUpload(event, {
       ...dependencies,
-      transaction: oneShotTransaction
+      transaction: oneShotTransaction,
+      getTransactionFailureStage: () => 'ambiguous_commit'
     })
     await executeGodModeBannerAssetUpload(event, {
       r2Key: R2_KEY,

@@ -3,7 +3,11 @@ import type { Pool } from '@neondatabase/serverless'
 import type { H3Event } from 'h3'
 import { createError, getHeader } from 'h3'
 
-import { queryOneFresh, transactionWithoutRetry } from '~~/server/utils/db'
+import {
+  getTransactionFailureStage,
+  queryOneFresh,
+  transactionWithoutRetry
+} from '~~/server/utils/db'
 import { deleteBannerFile } from '~~/server/utils/bannerStorage'
 import { appendGodModeAuditEvent, type GodModeAuditEventInput } from '~~/server/utils/godMode/audit'
 import {
@@ -52,6 +56,7 @@ export interface GodModeBannerAssetUploadDependencies {
   appendAudit: typeof appendGodModeAuditEvent
   deleteBannerFile: typeof deleteBannerFile
   queryOneFresh: typeof queryOneFresh
+  getTransactionFailureStage: typeof getTransactionFailureStage
 }
 
 interface ExistingExecutionRow {
@@ -83,7 +88,8 @@ const defaultDependencies: GodModeBannerAssetUploadDependencies = {
   transaction: transactionWithoutRetry,
   appendAudit: appendGodModeAuditEvent,
   deleteBannerFile,
-  queryOneFresh
+  queryOneFresh,
+  getTransactionFailureStage
 }
 
 function deferred<T>() {
@@ -114,7 +120,7 @@ function recoveryRequired(): ReturnType<typeof createError> {
   })
 }
 
-async function reconcileTransactionOutcome(current: Coordination): Promise<'committed' | 'not_committed'> {
+async function reconcileTransactionOutcome(current: Coordination): Promise<'committed' | 'failed'> {
   let row: ReconciledExecutionRow | null
   try {
     row = await current.queryOneFresh<ReconciledExecutionRow>(
@@ -135,11 +141,11 @@ async function reconcileTransactionOutcome(current: Coordination): Promise<'comm
     throw recoveryRequired()
   }
 
-  if (!row) return 'not_committed'
+  if (!row) throw recoveryRequired()
   const exactClaim = row.route_or_tool === current.routeOrTool
     && row.request_digest === current.requestDigest
   if (!exactClaim) throw recoveryRequired()
-  if (row.state === 'failed' && !row.result_reference) return 'not_committed'
+  if (row.state === 'failed' && !row.result_reference) return 'failed'
   if (row.state !== 'succeeded'
     || !row.result_reference
     || !current.resultReference
@@ -290,6 +296,12 @@ export async function prepareGodModeBannerAssetUpload(
       await transactionPromise
     } catch (error) {
       if (!current.newR2Key) throw error
+      const failureStage = dependencies.getTransactionFailureStage(error)
+      if (failureStage === 'definite_rollback') {
+        await compensateNewObject(current)
+        throw error
+      }
+      if (failureStage !== 'ambiguous_commit') throw recoveryRequired()
       const outcome = await reconcileTransactionOutcome(current)
       if (outcome === 'committed') return
       await compensateNewObject(current)
