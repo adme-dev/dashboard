@@ -3,7 +3,7 @@ import type { Pool } from '@neondatabase/serverless'
 import type { H3Event } from 'h3'
 import { createError, getHeader } from 'h3'
 
-import { transaction } from '~~/server/utils/db'
+import { queryOneFresh, transactionWithoutRetry } from '~~/server/utils/db'
 import { deleteBannerFile } from '~~/server/utils/bannerStorage'
 import { appendGodModeAuditEvent, type GodModeAuditEventInput } from '~~/server/utils/godMode/audit'
 import {
@@ -39,7 +39,8 @@ export interface StoredBannerAssetUpload {
 }
 
 export interface BannerAssetUploadMutation {
-  uploadFile: () => Promise<StoredBannerAssetUpload>
+  r2Key: string
+  uploadFile: (r2Key: string) => Promise<StoredBannerAssetUpload>
   insertAsset: (
     db: TransactionDb | null,
     stored: StoredBannerAssetUpload
@@ -47,9 +48,10 @@ export interface BannerAssetUploadMutation {
 }
 
 export interface GodModeBannerAssetUploadDependencies {
-  transaction: typeof transaction
+  transaction: typeof transactionWithoutRetry
   appendAudit: typeof appendGodModeAuditEvent
   deleteBannerFile: typeof deleteBannerFile
+  queryOneFresh: typeof queryOneFresh
 }
 
 interface ExistingExecutionRow {
@@ -58,6 +60,8 @@ interface ExistingExecutionRow {
   route_or_tool: string
   request_digest: string | null
 }
+
+interface ReconciledExecutionRow extends ExistingExecutionRow, BannerAssetUploadResult {}
 
 interface Coordination {
   db: TransactionDb
@@ -69,13 +73,17 @@ interface Coordination {
   savepointOpen: boolean
   newR2Key: string | null
   deleteBannerFile: typeof deleteBannerFile
+  queryOneFresh: typeof queryOneFresh
+  routeOrTool: string
+  requestDigest: string
   finish: (terminal: GodModeAuditEventInput) => Promise<void>
 }
 
 const defaultDependencies: GodModeBannerAssetUploadDependencies = {
-  transaction,
+  transaction: transactionWithoutRetry,
   appendAudit: appendGodModeAuditEvent,
-  deleteBannerFile
+  deleteBannerFile,
+  queryOneFresh
 }
 
 function deferred<T>() {
@@ -97,6 +105,55 @@ async function compensateNewObject(current: Coordination): Promise<void> {
   if (!r2Key) return
   await current.deleteBannerFile(r2Key)
   current.newR2Key = null
+}
+
+function recoveryRequired(): ReturnType<typeof createError> {
+  return createError({
+    statusCode: 503,
+    statusMessage: 'Banner upload recovery required'
+  })
+}
+
+async function reconcileTransactionOutcome(current: Coordination): Promise<'committed' | 'not_committed'> {
+  let row: ReconciledExecutionRow | null
+  try {
+    row = await current.queryOneFresh<ReconciledExecutionRow>(
+      `SELECT ledger.state, ledger.result_reference, ledger.route_or_tool,
+              ledger.execution_metadata ->> 'requestDigest' AS request_digest,
+              asset.id, asset.name, asset.mime_type AS "mimeType",
+              asset.file_size AS "fileSize", asset.r2_key AS "r2Key", asset.url,
+              asset.thumbnail_url AS "thumbnailUrl", asset.tags,
+              asset.uploaded_by AS "uploadedBy", asset.created_at AS "createdAt"
+         FROM god_mode_execution_ledger ledger
+         LEFT JOIN banner_assets asset ON asset.id = ledger.result_reference
+        WHERE ledger.actor_user_id = $1
+          AND ledger.channel = 'application'
+          AND ledger.idempotency_key = $2`,
+      [current.actorUserId, current.idempotencyKey]
+    )
+  } catch {
+    throw recoveryRequired()
+  }
+
+  if (!row) return 'not_committed'
+  const exactClaim = row.route_or_tool === current.routeOrTool
+    && row.request_digest === current.requestDigest
+  if (!exactClaim) throw recoveryRequired()
+  if (row.state === 'failed' && !row.result_reference) return 'not_committed'
+  if (row.state !== 'succeeded'
+    || !row.result_reference
+    || !current.resultReference
+    || row.result_reference !== current.resultReference
+    || row.id !== row.result_reference
+    || row.r2Key !== current.newR2Key
+    || row.uploadedBy !== current.actorUserId) {
+    throw recoveryRequired()
+  }
+
+  current.resultReference = row.id
+  current.mutationSettled = true
+  current.newR2Key = null
+  return 'committed'
 }
 
 export async function prepareGodModeBannerAssetUpload(
@@ -171,6 +228,9 @@ export async function prepareGodModeBannerAssetUpload(
       savepointOpen: false,
       newR2Key: null,
       deleteBannerFile: dependencies.deleteBannerFile,
+      queryOneFresh: dependencies.queryOneFresh,
+      routeOrTool: state.routeOrTool,
+      requestDigest,
       finish: async () => {}
     }
     ;(event.context as Record<PropertyKey, unknown>)[coordinationKey] = current
@@ -229,6 +289,9 @@ export async function prepareGodModeBannerAssetUpload(
     try {
       await transactionPromise
     } catch (error) {
+      if (!current.newR2Key) throw error
+      const outcome = await reconcileTransactionOutcome(current)
+      if (outcome === 'committed') return
       await compensateNewObject(current)
       throw error
     }
@@ -249,7 +312,7 @@ export async function executeGodModeBannerAssetUpload(
 ): Promise<BannerAssetUploadResult> {
   const current = coordination(event)
   if (!current) {
-    const stored = await upload.uploadFile()
+    const stored = await upload.uploadFile(upload.r2Key)
     return await upload.insertAsset(null, stored)
   }
 
@@ -269,9 +332,10 @@ export async function executeGodModeBannerAssetUpload(
     return replay.rows[0] as BannerAssetUploadResult
   }
 
+  current.newR2Key = upload.r2Key
   try {
-    const stored = await upload.uploadFile()
-    current.newR2Key = stored.key
+    const stored = await upload.uploadFile(upload.r2Key)
+    if (stored.key !== upload.r2Key) throw new Error('Banner asset upload returned an unexpected storage key')
     await current.db.query(`SAVEPOINT ${SAVEPOINT}`)
     current.savepointOpen = true
     const result = await upload.insertAsset(current.db, stored)

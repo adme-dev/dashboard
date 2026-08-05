@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { createError, getHeader, readMultipartFormData } from 'h3'
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
-import { uploadBannerAsset } from '~~/server/utils/bannerStorage'
+import { createBannerAssetStorageKey, uploadBannerAsset } from '~~/server/utils/bannerStorage'
 import {
   validateBannerAssetUpload,
   type ValidatedBannerAssetUpload
@@ -52,12 +52,15 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
+    const r2Key = createBannerAssetStorageKey(validated.fileName, user.id)
     return await executeGodModeBannerAssetUpload(event, {
-      uploadFile: async () => await uploadBannerAsset(
+      r2Key,
+      uploadFile: async key => await uploadBannerAsset(
         validated.buffer,
         validated.fileName,
         validated.mimeType,
-        user.id
+        user.id,
+        key
       ),
       insertAsset: async (db, stored: StoredBannerAssetUpload) => {
         const sql = `

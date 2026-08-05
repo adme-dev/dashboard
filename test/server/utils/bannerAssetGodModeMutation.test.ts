@@ -77,12 +77,14 @@ function terminal(phase: 'succeeded' | 'failed' = 'succeeded') {
 describe('God mode banner asset upload coordination', () => {
   const appendAudit = vi.fn()
   const deleteBannerFile = vi.fn()
+  const queryOneFresh = vi.fn()
   const query = vi.fn()
   const transaction = vi.fn(async (callback: (db: { query: typeof query }) => Promise<unknown>) => callback({ query }))
-  const dependencies = { transaction, appendAudit, deleteBannerFile }
+  const dependencies = { transaction, appendAudit, deleteBannerFile, queryOneFresh }
 
   beforeEach(() => {
     vi.clearAllMocks()
+    queryOneFresh.mockResolvedValue(null)
     query.mockImplementation(async (sql: string) => {
       if (sql.includes('INSERT INTO god_mode_execution_ledger')) return { rows: [{ state: 'in_progress' }] }
       if (sql.includes('INSERT INTO banner_assets')) return { rows: [asset] }
@@ -160,12 +162,12 @@ describe('God mode banner asset upload coordination', () => {
 
     const firstEvent = request()
     const firstPrepared = await prepareGodModeBannerAssetUpload(firstEvent, dependencies)
-    const created = await executeGodModeBannerAssetUpload(firstEvent, { uploadFile, insertAsset })
+    const created = await executeGodModeBannerAssetUpload(firstEvent, { r2Key: R2_KEY, uploadFile, insertAsset })
     await firstPrepared.persistTerminal(terminal())
 
     const replayEvent = request()
     const replayPrepared = await prepareGodModeBannerAssetUpload(replayEvent, dependencies)
-    const replayed = await executeGodModeBannerAssetUpload(replayEvent, { uploadFile, insertAsset })
+    const replayed = await executeGodModeBannerAssetUpload(replayEvent, { r2Key: R2_KEY, uploadFile, insertAsset })
     await replayPrepared.persistTerminal(terminal())
 
     expect(uploadFile).toHaveBeenCalledTimes(1)
@@ -219,6 +221,7 @@ describe('God mode banner asset upload coordination', () => {
     const prepared = await prepareGodModeBannerAssetUpload(event, dependencies)
 
     await expect(executeGodModeBannerAssetUpload(event, {
+      r2Key: R2_KEY,
       uploadFile: vi.fn(),
       insertAsset: vi.fn()
     })).rejects.toMatchObject({ statusCode: 409 })
@@ -226,19 +229,39 @@ describe('God mode banner asset upload coordination', () => {
     expect(deleteBannerFile).not.toHaveBeenCalled()
   })
 
-  it('does not attempt compensation when R2 upload fails before returning a key', async () => {
+  it('deletes the precomputed key when R2 upload rejects before confirmation', async () => {
     const event = request()
     const prepared = await prepareGodModeBannerAssetUpload(event, dependencies)
     const uploadError = new Error('R2 unavailable')
 
     await expect(executeGodModeBannerAssetUpload(event, {
+      r2Key: R2_KEY,
       uploadFile: vi.fn().mockRejectedValue(uploadError),
       insertAsset: vi.fn()
     })).rejects.toThrow('R2 unavailable')
     await prepared.persistTerminal(terminal('failed'))
 
     expect(query).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO banner_assets'), expect.anything())
-    expect(deleteBannerFile).not.toHaveBeenCalled()
+    expect(deleteBannerFile).toHaveBeenCalledWith(R2_KEY)
+  })
+
+  it('deletes the precomputed R2 key when upload persists the object and then rejects', async () => {
+    const event = request()
+    const prepared = await prepareGodModeBannerAssetUpload(event, dependencies)
+    const persistedKeys: string[] = []
+
+    await expect(executeGodModeBannerAssetUpload(event, {
+      r2Key: R2_KEY,
+      uploadFile: vi.fn(async (key: string) => {
+        persistedKeys.push(key)
+        throw new Error('HEAD response lost')
+      }),
+      insertAsset: vi.fn()
+    })).rejects.toThrow('HEAD response lost')
+    await prepared.persistTerminal(terminal('failed'))
+
+    expect(persistedKeys).toEqual([R2_KEY])
+    expect(deleteBannerFile).toHaveBeenCalledWith(R2_KEY)
   })
 
   it('deletes the new R2 object when the database insert fails', async () => {
@@ -246,6 +269,7 @@ describe('God mode banner asset upload coordination', () => {
     const prepared = await prepareGodModeBannerAssetUpload(event, dependencies)
 
     await expect(executeGodModeBannerAssetUpload(event, {
+      r2Key: R2_KEY,
       uploadFile: vi.fn().mockResolvedValue({ key: R2_KEY, url: asset.url, size: asset.fileSize }),
       insertAsset: vi.fn().mockRejectedValue(new Error('database unavailable'))
     })).rejects.toThrow('database unavailable')
@@ -265,6 +289,7 @@ describe('God mode banner asset upload coordination', () => {
     const prepared = await prepareGodModeBannerAssetUpload(event, dependencies)
 
     await expect(executeGodModeBannerAssetUpload(event, {
+      r2Key: R2_KEY,
       uploadFile: vi.fn().mockResolvedValue({ key: R2_KEY, url: asset.url, size: asset.fileSize }),
       insertAsset: vi.fn().mockRejectedValue(new Error('database unavailable'))
     })).rejects.toThrow('rollback unavailable')
@@ -282,6 +307,7 @@ describe('God mode banner asset upload coordination', () => {
     const event = request()
     const prepared = await prepareGodModeBannerAssetUpload(event, dependencies)
     await executeGodModeBannerAssetUpload(event, {
+      r2Key: R2_KEY,
       uploadFile: vi.fn().mockResolvedValue({ key: R2_KEY, url: asset.url, size: asset.fileSize }),
       insertAsset: vi.fn().mockResolvedValue(asset)
     })
@@ -299,12 +325,129 @@ describe('God mode banner asset upload coordination', () => {
     expect(deleteBannerFile).toHaveBeenCalledWith(R2_KEY)
   })
 
+  it('reconciles an ambiguous commit to the committed asset without deleting R2', async () => {
+    const commitResponseLost = new Error('commit response lost')
+    const oneShotTransaction = vi.fn(async (callback: (db: { query: typeof query }) => Promise<unknown>) => {
+      await callback({ query })
+      throw commitResponseLost
+    })
+    queryOneFresh.mockResolvedValue({
+      state: 'succeeded',
+      result_reference: ASSET_ID,
+      route_or_tool: ROUTE,
+      request_digest: REQUEST_DIGEST,
+      ...asset
+    })
+    const event = request()
+    const prepared = await prepareGodModeBannerAssetUpload(event, {
+      ...dependencies,
+      transaction: oneShotTransaction
+    })
+
+    const created = await executeGodModeBannerAssetUpload(event, {
+      r2Key: R2_KEY,
+      uploadFile: vi.fn().mockResolvedValue({ key: R2_KEY, url: asset.url, size: asset.fileSize }),
+      insertAsset: vi.fn().mockResolvedValue(asset)
+    })
+
+    await expect(prepared.persistTerminal(terminal())).resolves.toBeUndefined()
+    expect(created).toEqual(asset)
+    expect(oneShotTransaction).toHaveBeenCalledTimes(1)
+    expect(queryOneFresh).toHaveBeenCalledWith(expect.stringContaining('god_mode_execution_ledger'), [
+      ACTOR_ID,
+      'banner-upload-12345678'
+    ])
+    expect(deleteBannerFile).not.toHaveBeenCalled()
+  })
+
+  it('fails closed without deleting R2 when ambiguous-commit reconciliation is unavailable', async () => {
+    const oneShotTransaction = vi.fn(async (callback: (db: { query: typeof query }) => Promise<unknown>) => {
+      await callback({ query })
+      throw new Error('commit response lost')
+    })
+    queryOneFresh.mockRejectedValue(new Error('fresh database unavailable'))
+    const event = request()
+    const prepared = await prepareGodModeBannerAssetUpload(event, {
+      ...dependencies,
+      transaction: oneShotTransaction
+    })
+    await executeGodModeBannerAssetUpload(event, {
+      r2Key: R2_KEY,
+      uploadFile: vi.fn().mockResolvedValue({ key: R2_KEY, url: asset.url, size: asset.fileSize }),
+      insertAsset: vi.fn().mockResolvedValue(asset)
+    })
+
+    await expect(prepared.persistTerminal(terminal())).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: 'Banner upload recovery required'
+    })
+    expect(deleteBannerFile).not.toHaveBeenCalled()
+  })
+
+  it('deletes R2 when reconciliation confirms the transaction failed', async () => {
+    const oneShotTransaction = vi.fn(async (callback: (db: { query: typeof query }) => Promise<unknown>) => {
+      await callback({ query })
+      throw new Error('commit response lost')
+    })
+    queryOneFresh.mockResolvedValue({
+      state: 'failed',
+      result_reference: null,
+      route_or_tool: ROUTE,
+      request_digest: REQUEST_DIGEST
+    })
+    const event = request()
+    const prepared = await prepareGodModeBannerAssetUpload(event, {
+      ...dependencies,
+      transaction: oneShotTransaction
+    })
+    await executeGodModeBannerAssetUpload(event, {
+      r2Key: R2_KEY,
+      uploadFile: vi.fn().mockResolvedValue({ key: R2_KEY, url: asset.url, size: asset.fileSize }),
+      insertAsset: vi.fn().mockResolvedValue(asset)
+    })
+
+    await expect(prepared.persistTerminal(terminal())).rejects.toThrow('commit response lost')
+    expect(deleteBannerFile).toHaveBeenCalledWith(R2_KEY)
+  })
+
+  it('fails closed when ambiguous-commit reconciliation finds a different result', async () => {
+    const differentAssetId = '44444444-4444-4444-8444-444444444444'
+    const oneShotTransaction = vi.fn(async (callback: (db: { query: typeof query }) => Promise<unknown>) => {
+      await callback({ query })
+      throw new Error('commit response lost')
+    })
+    queryOneFresh.mockResolvedValue({
+      ...asset,
+      id: differentAssetId,
+      state: 'succeeded',
+      result_reference: differentAssetId,
+      route_or_tool: ROUTE,
+      request_digest: REQUEST_DIGEST
+    })
+    const event = request()
+    const prepared = await prepareGodModeBannerAssetUpload(event, {
+      ...dependencies,
+      transaction: oneShotTransaction
+    })
+    await executeGodModeBannerAssetUpload(event, {
+      r2Key: R2_KEY,
+      uploadFile: vi.fn().mockResolvedValue({ key: R2_KEY, url: asset.url, size: asset.fileSize }),
+      insertAsset: vi.fn().mockResolvedValue(asset)
+    })
+
+    await expect(prepared.persistTerminal(terminal())).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: 'Banner upload recovery required'
+    })
+    expect(deleteBannerFile).not.toHaveBeenCalled()
+  })
+
   it('preserves ordinary non-God-Mode upload behavior without ledger coordination', async () => {
     const event = { context: { user: { id: ACTOR_ID } } } as unknown as H3Event
     const uploadFile = vi.fn().mockResolvedValue({ key: R2_KEY, url: asset.url, size: asset.fileSize })
     const insertAsset = vi.fn().mockResolvedValue(asset)
 
-    await expect(executeGodModeBannerAssetUpload(event, { uploadFile, insertAsset })).resolves.toEqual(asset)
+    await expect(executeGodModeBannerAssetUpload(event, { r2Key: R2_KEY, uploadFile, insertAsset })).resolves.toEqual(asset)
 
     expect(uploadFile).toHaveBeenCalledTimes(1)
     expect(insertAsset).toHaveBeenCalledWith(null, { key: R2_KEY, url: asset.url, size: asset.fileSize })

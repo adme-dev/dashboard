@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { H3Event } from 'h3'
 import {
   getGodModeRouteAuditState,
   registerGodModeMutationFamily
 } from '../../../server/utils/godMode/featureGate'
+import { registerGodModeBannerAssetUploadFamily } from '../../../server/utils/banner/godModeAssetUpload'
 
 const { resolveGodModeAuthority, appendGodModeAuditEvent } = vi.hoisted(() => ({
   resolveGodModeAuthority: vi.fn(),
@@ -22,7 +24,12 @@ const { handleGodModeRequest } = await import('../../../server/middleware/godMod
 const OWNER_ID = '11111111-1111-4111-8111-111111111111'
 const CORRELATION_ID = '22222222-2222-4222-8222-222222222222'
 
-function event(path = '/api/agency/clients', method = 'GET') {
+type TestEvent = H3Event & {
+  headers: Record<string, string>
+  context: H3Event['context'] & { godMode?: { active: boolean, actorUserId: string } }
+}
+
+function event(path = '/api/agency/clients', method = 'GET', requestHeaders: Record<string, string> = {}) {
   return {
     method,
     context: {
@@ -40,19 +47,18 @@ function event(path = '/api/agency/clients', method = 'GET') {
     node: {
       req: {
         originalUrl: path,
-        headers: { host: 'app.xeroflow.test' },
+        headers: { host: 'app.xeroflow.test', ...requestHeaders },
         connection: {}
       },
       res: { statusCode: 200, statusMessage: 'OK' }
     }
-  } as any
+  } as unknown as TestEvent
 }
 
 const dependencies = {
   resolveGodModeAuthority,
   appendGodModeAuditEvent,
-  getPath: (request: any) => request.path,
-  getSessionToken: (request: any) => request.headers.authorization.slice(7),
+  getSessionToken: (request: H3Event) => (request as TestEvent).headers.authorization!.slice(7),
   randomUUID: () => CORRELATION_ID
 }
 
@@ -99,7 +105,7 @@ describe('God mode request middleware', () => {
   })
 
   it('fails closed before an active-owner mutation handler when no exact coordinator family is registered', async () => {
-    await expect(handleGodModeRequest(event('/api/agency/clients', 'POST'), dependencies as any)).rejects.toMatchObject({
+    await expect(handleGodModeRequest(event('/api/agency/clients', 'POST'), dependencies)).rejects.toMatchObject({
       statusCode: 503,
       statusMessage: 'God mode mutation coordination required'
     })
@@ -133,13 +139,13 @@ describe('God mode request middleware', () => {
   })
 
   it('uses canonical pathname so query strings do not defeat an exact exclusion', async () => {
-    await handleGodModeRequest(event('/api/health?probe=1'), dependencies as any)
+    await handleGodModeRequest(event('/api/health?probe=1'), dependencies)
     expect(resolveGodModeAuthority).not.toHaveBeenCalled()
     expect(appendGodModeAuditEvent).not.toHaveBeenCalled()
   })
 
   it('does not exclude a prefix-collision route', async () => {
-    await handleGodModeRequest(event('/api/webhooks-admin'), dependencies as any)
+    await handleGodModeRequest(event('/api/webhooks-admin'), dependencies)
     expect(resolveGodModeAuthority).toHaveBeenCalledOnce()
     expect(appendGodModeAuditEvent).toHaveBeenCalledOnce()
   })
@@ -158,11 +164,89 @@ describe('God mode request middleware', () => {
     })
     const request = event('/api/agency/clients?retry=1', 'POST')
 
-    await handleGodModeRequest(request, dependencies as any)
+    await handleGodModeRequest(request, dependencies)
 
     expect(prepare).toHaveBeenCalledOnce()
     expect(getGodModeRouteAuditState(request)?.mutationCoordination?.route).toBe('/api/agency/clients')
     unregister()
+  })
+
+  it('preserves a trusted 428 from the real asset-upload coordinator', async () => {
+    const transaction = vi.fn()
+    const unregister = registerGodModeBannerAssetUploadFamily({
+      transaction,
+      appendAudit: vi.fn(),
+      deleteBannerFile: vi.fn(),
+      queryOneFresh: vi.fn()
+    } as never)
+    try {
+      await expect(handleGodModeRequest(
+        event('/api/agency/banner-studio/assets/upload', 'POST'),
+        dependencies as never
+      )).rejects.toMatchObject({
+        statusCode: 428,
+        statusMessage: 'A stable Idempotency-Key header is required for God mode banner asset uploads'
+      })
+      expect(transaction).not.toHaveBeenCalled()
+    } finally {
+      unregister()
+    }
+  })
+
+  it('preserves a trusted 409 conflict from the real asset-upload coordinator', async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes('INSERT INTO god_mode_execution_ledger')) return { rows: [] }
+      return {
+        rows: [{
+          state: 'succeeded',
+          result_reference: '33333333-3333-4333-8333-333333333333',
+          route_or_tool: 'POST /api/agency/banner-studio/assets/upload',
+          request_digest: 'c'.repeat(64)
+        }]
+      }
+    })
+    const transaction = vi.fn(async (callback: (db: { query: typeof query }) => Promise<unknown>) => callback({ query }))
+    const unregister = registerGodModeBannerAssetUploadFamily({
+      transaction,
+      appendAudit: vi.fn(),
+      deleteBannerFile: vi.fn(),
+      queryOneFresh: vi.fn()
+    } as never)
+    try {
+      await expect(handleGodModeRequest(event(
+        '/api/agency/banner-studio/assets/upload',
+        'POST',
+        {
+          'idempotency-key': 'banner-upload-12345678',
+          'x-banner-upload-digest': 'b'.repeat(64)
+        }
+      ), dependencies as never)).rejects.toMatchObject({
+        statusCode: 409,
+        statusMessage: 'Idempotency key request does not match'
+      })
+    } finally {
+      unregister()
+    }
+  })
+
+  it('does not expose an arbitrary status-shaped coordinator error', async () => {
+    const unregister = registerGodModeMutationFamily({
+      family: 'untrusted-status-shape',
+      method: 'POST',
+      matchesPath: path => path === '/api/agency/clients',
+      prepare: async () => {
+        throw { statusCode: 409, statusMessage: 'internal conflict detail' }
+      }
+    })
+    try {
+      await expect(handleGodModeRequest(event('/api/agency/clients', 'POST'), dependencies as never))
+        .rejects.toMatchObject({
+          statusCode: 503,
+          statusMessage: 'God mode mutation coordination unavailable'
+        })
+    } finally {
+      unregister()
+    }
   })
 
   it('resolves authority only from event.context.user.id', async () => {

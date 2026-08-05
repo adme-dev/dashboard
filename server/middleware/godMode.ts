@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { H3Event } from 'h3'
-import { createError, getCookie, getHeader, getRequestURL } from 'h3'
+import { createError, getCookie, getHeader, getRequestURL, isError } from 'h3'
 
 import { appendGodModeAuditEvent } from '~~/server/utils/godMode/audit'
 import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
@@ -80,7 +80,7 @@ export async function handleGodModeRequest(
   // the verified downstream event; raw headers and cloned/mismatched markers cannot reach this branch.
   if (await getTrustedTask5DelegatedExecution(event)) return
 
-  const actorUserId = (event.context as any).user?.id
+  const actorUserId = (event.context as { user?: { id?: unknown } }).user?.id
   if (typeof actorUserId !== 'string') return
 
   const authority = await dependencies.resolveGodModeAuthority(event, actorUserId)
@@ -127,6 +127,7 @@ export async function handleGodModeRequest(
     if (error instanceof GodModeMutationCoordinationError && error.reason === 'required') {
       throw createError({ statusCode: 503, statusMessage: 'God mode mutation coordination required' })
     }
+    if (isError(error) && error.statusCode >= 400 && error.statusCode < 500) throw error
     throw createError({ statusCode: 503, statusMessage: 'God mode mutation coordination unavailable' })
   }
 }

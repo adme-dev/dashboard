@@ -57,6 +57,7 @@ import {
   queryCount,
   execute,
   transaction,
+  transactionWithoutRetry,
   getDb,
   db
 } from '../../../server/utils/db'
@@ -186,6 +187,19 @@ describe('database utility', () => {
       // client released and pool closed even on failure
       expect(mockClientRelease).toHaveBeenCalledTimes(1)
       expect(mockPoolEnd).toHaveBeenCalledTimes(1)
+    })
+
+    it('offers a one-shot transaction that never retries an ambiguous commit', async () => {
+      mockClientQuery.mockImplementation(async (sql: string) => {
+        if (sql === 'COMMIT') throw new Error('fetch failed after commit dispatch')
+        return { rows: [], rowCount: 0 }
+      })
+      const callback = vi.fn().mockResolvedValue('ok')
+
+      await expect(transactionWithoutRetry(callback)).rejects.toThrow('fetch failed after commit dispatch')
+
+      expect(callback).toHaveBeenCalledTimes(1)
+      expect(mockPoolConnect).toHaveBeenCalledTimes(1)
     })
   })
 

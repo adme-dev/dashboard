@@ -4,6 +4,7 @@ import type { H3Event } from 'h3'
 const mockRequireAuth = vi.fn()
 const mockReadMultipartFormData = vi.fn()
 const mockUploadBannerAsset = vi.fn()
+const mockCreateBannerAssetStorageKey = vi.fn()
 const mockQueryOne = vi.fn()
 const mockExecuteUpload = vi.fn()
 
@@ -25,6 +26,7 @@ vi.mock('~~/server/utils/auth', () => ({
 }))
 
 vi.mock('~~/server/utils/bannerStorage', () => ({
+  createBannerAssetStorageKey: (...args: unknown[]) => mockCreateBannerAssetStorageKey(...args),
   uploadBannerAsset: (...args: unknown[]) => mockUploadBannerAsset(...args)
 }))
 
@@ -78,9 +80,10 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
       data: JPEG
     }])
     mockUploadBannerAsset.mockResolvedValue({ key: ASSET.r2Key, url: ASSET.url, size: JPEG.length })
+    mockCreateBannerAssetStorageKey.mockReturnValue(ASSET.r2Key)
     mockQueryOne.mockResolvedValue(ASSET)
     mockExecuteUpload.mockImplementation(async (_event, mutation) => {
-      const stored = await mutation.uploadFile()
+      const stored = await mutation.uploadFile(mutation.r2Key)
       return await mutation.insertAsset(null, stored)
     })
   })
@@ -106,7 +109,8 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
     await expect(handler(event())).resolves.toEqual(ASSET)
 
     expect(mockRequireAuth).toHaveBeenCalledTimes(1)
-    expect(mockUploadBannerAsset).toHaveBeenCalledWith(JPEG, 'Launch-Car.jpg', 'image/jpeg', USER.id)
+    expect(mockCreateBannerAssetStorageKey).toHaveBeenCalledWith('Launch-Car.jpg', USER.id)
+    expect(mockUploadBannerAsset).toHaveBeenCalledWith(JPEG, 'Launch-Car.jpg', 'image/jpeg', USER.id, ASSET.r2Key)
     expect(mockQueryOne).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO banner_assets'), [
       'Launch-Car.jpg',
       'image/jpeg',
@@ -122,6 +126,7 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
 
     await expect(handler(event())).resolves.toEqual(ASSET)
     expect(mockExecuteUpload).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      r2Key: ASSET.r2Key,
       uploadFile: expect.any(Function),
       insertAsset: expect.any(Function)
     }))

@@ -260,57 +260,71 @@ export async function execute(sql: string, params?: any[]): Promise<number> {
   })
 }
 
-// --- Transaction helper ---
+// --- Transaction helpers ---
 // Uses a DEDICATED pg Client (not the shared per-request one) for BEGIN/COMMIT/ROLLBACK
 // isolation. With Hyperdrive, uses TCP; without, falls back to Neon WebSocket Pool.
-export async function transaction<T>(callback: (db: Pool) => Promise<T>): Promise<T> {
-  return withRetry(async () => {
-    const hdCs = getHyperdriveCs('fresh')
+async function runTransactionOnce<T>(callback: (db: Pool) => Promise<T>): Promise<T> {
+  const hdCs = getHyperdriveCs('fresh')
 
-    if (hdCs) {
-      // Hyperdrive path: dedicated pg Client over TCP
-      const client = new pg.Client({ connectionString: hdCs })
-      try {
-        await client.connect()
-        await client.query('BEGIN')
-        const result = await callback(client as any)
-        await client.query('COMMIT')
-        return result
-      } catch (error) {
-        try { await client.query('ROLLBACK') } catch {}
-        throw error
-      } finally {
-        client.end().catch(() => {})
-      }
-    }
-
-    // Fallback: Neon Pool with WebSocket (local dev)
-    const pool = new Pool({
-      connectionString: getConnectionString(),
-      max: 1,
-    })
-
-    // Catch pool-level errors to prevent unhandled rejections (Neon cold start / ECONNRESET)
-    pool.on('error', () => {})
-
+  if (hdCs) {
+    // Hyperdrive path: dedicated pg Client over TCP
+    const client = new pg.Client({ connectionString: hdCs })
     try {
-      const client = await pool.connect()
+      await client.connect()
+      await client.query('BEGIN')
+      const result = await callback(client as unknown as Pool)
+      await client.query('COMMIT')
+      return result
+    } catch (error) {
       try {
-        await client.query('BEGIN')
-        const result = await callback(client as any)
-        await client.query('COMMIT')
-        return result
-      } catch (error) {
         await client.query('ROLLBACK')
-        throw error
-      } finally {
-        client.release()
+      } catch {
+        // Best effort only: a connection loss can make transaction outcome ambiguous.
       }
+      throw error
     } finally {
-      // CRITICAL: always close the pool — don't hold WebSocket connections across requests
-      await pool.end()
+      client.end().catch(() => undefined)
     }
+  }
+
+  // Fallback: Neon Pool with WebSocket (local dev)
+  const pool = new Pool({
+    connectionString: getConnectionString(),
+    max: 1
   })
+
+  // Catch pool-level errors to prevent unhandled rejections (Neon cold start / ECONNRESET)
+  pool.on('error', () => undefined)
+
+  try {
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+      const result = await callback(client as unknown as Pool)
+      await client.query('COMMIT')
+      return result
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+  } finally {
+    // CRITICAL: always close the pool — don't hold WebSocket connections across requests
+    await pool.end()
+  }
+}
+
+export async function transaction<T>(callback: (db: Pool) => Promise<T>): Promise<T> {
+  return withRetry(async () => await runTransactionOnce(callback))
+}
+
+/**
+ * Runs exactly one transaction attempt. Use for callbacks that coordinate non-database side effects
+ * or one-shot request state, where replay after an ambiguous COMMIT would be unsafe.
+ */
+export async function transactionWithoutRetry<T>(callback: (db: Pool) => Promise<T>): Promise<T> {
+  return await runTransactionOnce(callback)
 }
 
 // --- Legacy getDb() — returns a Pool-like object backed by the active driver ---
