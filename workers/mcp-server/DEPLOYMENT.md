@@ -14,9 +14,9 @@ origin `https://app.xeroflow.io`.
 
 - MCP Worker version: `fa7bb8d4-cdf8-4569-bcb8-40b2c63fe44e`.
 - Pages cron Worker version: `bf5e9bc2-d558-473a-97c1-fb0c71e719aa`.
-- Successful guarded Pages deployment: `cccdb9f1`.
-- The final read-bridge Pages fix is being released through the **latest guarded production deployment**;
-  do not record a deployment ID until Cloudflare returns and verifies it.
+- Earlier successful guarded Pages deployment: `cccdb9f1`.
+- Final read-bridge Pages deployment: `e553592e-8a74-4a60-9037-02ad3d1d530b`
+  (`production` / `main` / `success`).
 
 The Worker is the MCP-facing OAuth server (`/token` and `/register`); `/authorize` returns the browser to
 the canonical app login and explicit consent screen. Pages mints a short-lived HMAC-signed identity
@@ -33,9 +33,11 @@ Production configuration is present. Verify by name only; never read, print or c
   `MCP_HANDSHAKE_SECRET`, `MCP_WORKER_ORIGIN`, and `GOD_MODE_INTERNAL_EXECUTION_SECRET`.
 - `GOD_MODE_INTERNAL_EXECUTION_SECRET` remains Pages-only and must never be added to this Worker.
 
-The first safe Finance read successfully reached the live tool catalog but exposed a Pages read-bridge
-defect. Commit `0a5a4a89` fixes that defect. Final live Finance-read success remains pending until the
-latest guarded production deployment completes and the same bounded read is repeated.
+The first safe Finance read reached the live tool catalog but exposed a Pages read-bridge defect. Commit
+`0a5a4a89` fixed it. After the final Pages deployment, Paul's bounded Finance MCP read completed with
+`isError=false`. Immutable audit evidence recorded the attempt as `started`, followed by terminal
+`succeeded` with outcome `read_completed` at 2026-08-05 08:27 UTC. No payload or secret value is recorded
+here.
 
 ## Prerequisites
 
@@ -108,9 +110,9 @@ Verified on 2026-08-05:
    Clara, so her UI and connector smoke remain unverified.
 3. Live OAuth completed with `mcp:read mcp:write`; MCP protocol `2025-03-26` negotiated successfully.
 4. Tool discovery returned 62 registered tools spanning Finance, Marketing, Social, Banners and Video.
-5. The first safe Finance read exposed the read-bridge defect now fixed by `0a5a4a89`. Repeat that read
-   after the latest guarded production deployment; do not mark the execution path complete until it
-   succeeds and its bounded audit evidence is verified.
+5. The first safe Finance read exposed the read-bridge defect fixed by `0a5a4a89`. The repeat after Pages
+   deployment `e553592e-8a74-4a60-9037-02ad3d1d530b` returned `isError=false`; immutable audit progressed
+   from `started` to terminal `succeeded` / `read_completed` at 2026-08-05 08:27 UTC.
 
 For subsequent verification, an ordinary user must retain role, suite, scope and confirmation governance.
 A freshly revalidated active owner may execute registered capabilities directly, but authentication,

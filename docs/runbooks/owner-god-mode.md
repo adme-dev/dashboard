@@ -12,12 +12,12 @@ Owner God Mode and the standalone MCP transport are live in production against t
 
 - MCP Worker version: `fa7bb8d4-cdf8-4569-bcb8-40b2c63fe44e`.
 - Pages cron Worker version: `bf5e9bc2-d558-473a-97c1-fb0c71e719aa`.
-- Successful guarded Pages deployment: `cccdb9f1`.
-- The read-bridge correction is in the **latest guarded production deployment** currently in progress. Do not add a deployment ID until Cloudflare returns and verifies it.
+- Earlier successful guarded Pages deployment: `cccdb9f1`.
+- Final read-bridge Pages deployment: `e553592e-8a74-4a60-9037-02ad3d1d530b` (`production` / `main` / `success`).
 - OAuth granted `mcp:read mcp:write`, negotiated MCP protocol `2025-03-26`, and discovered 62 registered tools spanning Finance, Marketing, Social, Banners, Video and the wider platform.
 - Paul resolves to exactly one active owner, the live UI shows `God mode active`, and governance readiness returns HTTP 200.
 - Clara resolves to exactly one active owner in the production database. No Clara browser session was impersonated, so her live UI and connector smoke are still pending.
-- The first safe Finance read reached the live connector and exposed a read-bridge defect. Commit `0a5a4a89` corrects it; final live success and its bounded audit evidence remain pending until the latest guarded production deployment completes and the same safe read is repeated.
+- The first safe Finance read exposed a read-bridge defect fixed by `0a5a4a89`. Paul's repeated bounded Finance MCP read returned `isError=false`; immutable audit recorded `started`, then terminal `succeeded` with outcome `read_completed` at 2026-08-05 08:27 UTC. No payload or secret value is recorded here.
 
 Production configuration has been verified by name only. Never retrieve or record values. The standalone Worker uses `MCP_INTERNAL_SECRET`, `MCP_REQUEST_SIGNING_SECRET`, `OAUTH_KV`, `MCP_OBJECT` and canonical `APP_BASE_URL`. Pages uses `MCP_SERVER_ENABLED`, `MCP_INTERNAL_SECRET`, `MCP_REQUEST_SIGNING_SECRET`, `MCP_HANDSHAKE_SECRET`, `MCP_WORKER_ORIGIN` and Pages-only `GOD_MODE_INTERNAL_EXECUTION_SECRET`.
 
@@ -71,7 +71,7 @@ These emails are lookup targets for deployment verification only; they never gra
 - Paul was verified through his own live session: `God mode active` is visible and governance readiness returns HTTP 200.
 - Clara was verified at the database authority boundary only. A separate Clara login was not performed or impersonated; her agency shell, admin shell, My Assistant and MCP connector remain pending.
 - Paul OAuth granted `mcp:read mcp:write`, negotiated protocol `2025-03-26`, and discovered 62 tools including Finance, Marketing, Social, Banners and Video.
-- Repeat the safe Finance read after the latest guarded production deployment. The initial attempt found the read bridge defect fixed by `0a5a4a89`; do not record live execution success until the repeat passes and attempt plus terminal audit records are verified.
+- Paul's safe Finance MCP read succeeded after Pages deployment `e553592e-8a74-4a60-9037-02ad3d1d530b`, returning `isError=false`. Immutable audit progressed from `started` to terminal `succeeded` / `read_completed` at 2026-08-05 08:27 UTC.
 - Still execute one disposable/reversible write through both application and MCP paths before declaring the write smoke complete; never use an irreversible finance or publishing action.
 - Confirm cross-client and cross-tenant targets remain denied and audited.
 - Confirm an active non-owner control account never sees the status and retains governed releases, permissions and confirmations.
