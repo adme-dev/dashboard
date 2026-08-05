@@ -65,13 +65,18 @@ export async function scanGoogleAiMaxAccount(
 export interface GoogleAiMaxPortfolioAccount {
   connectionId: string
   customerId: string
-  accessToken: string
+  accessToken?: string
   loginCustomerId?: string
+  resolveAuth?: () => Promise<{
+    accessToken: string
+    loginCustomerId?: string
+  }>
 }
 
 export interface RunGoogleAiMaxPortfolioScanInput {
   tenantId: string
   trigger: GoogleAiMaxScanTrigger
+  claimedRun?: GoogleAiMaxScanRunRef
   requestedBy?: string
   developerToken: string
   observedAt: string
@@ -121,7 +126,7 @@ export async function runGoogleAiMaxPortfolioScan(
   input: RunGoogleAiMaxPortfolioScanInput,
   dependencies: RunGoogleAiMaxPortfolioScanDependencies = defaultPortfolioDependencies,
 ): Promise<RunGoogleAiMaxPortfolioScanResult> {
-  const run = await dependencies.claimRun({
+  const run = input.claimedRun ?? await dependencies.claimRun({
     tenantId: input.tenantId,
     trigger: input.trigger,
     requestedBy: input.requestedBy,
@@ -149,14 +154,23 @@ export async function runGoogleAiMaxPortfolioScan(
     })
   } else {
     for (const account of input.accounts) {
+      let accessToken = account.accessToken ?? ''
+      let loginCustomerId = account.loginCustomerId
       try {
+        if (account.resolveAuth) {
+          const resolved = await account.resolveAuth()
+          accessToken = resolved.accessToken
+          loginCustomerId = resolved.loginCustomerId
+        }
+        if (!accessToken) throw new Error('Google connection has no usable credential')
+
         const states = await dependencies.scanAccount({
           tenantId: input.tenantId,
           connectionId: account.connectionId,
           customerId: account.customerId,
-          accessToken: account.accessToken,
+          accessToken,
           developerToken: input.developerToken,
-          loginCustomerId: account.loginCustomerId,
+          loginCustomerId,
           observedAt: input.observedAt,
         })
         await dependencies.persistStates({ scanRunId: run.id, states })
@@ -173,7 +187,7 @@ export async function runGoogleAiMaxPortfolioScan(
         failures.push({
           connectionId: account.connectionId,
           customerId: account.customerId,
-          error: safeFailureMessage(error, [account.accessToken, input.developerToken]),
+          error: safeFailureMessage(error, [accessToken, input.developerToken]),
         })
       }
     }

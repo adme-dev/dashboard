@@ -122,17 +122,18 @@ describe('runGoogleAiMaxPortfolioScan', () => {
       observedAt: '2026-08-06T02:00:00.000Z',
       accounts: [
         { connectionId: 'connection-a', customerId: '123', accessToken: 'token-a' },
-        { connectionId: 'connection-b', customerId: '789', accessToken: 'token-b' },
+        {
+          connectionId: 'connection-b',
+          customerId: '789',
+          resolveAuth: async () => {
+            throw new Error('Google credential unavailable')
+          },
+        },
       ],
     }, {
       claimRun: async () => ({ id: 'run-1', status: 'queued' }),
       markRunning: async () => true,
-      scanAccount: async account => {
-        if (account.connectionId === 'connection-b') {
-          throw new Error('Google access denied for token-b')
-        }
-        return [state()]
-      },
+      scanAccount: async () => [state()],
       persistStates,
       finishRun,
     })
@@ -147,7 +148,7 @@ describe('runGoogleAiMaxPortfolioScan', () => {
       failures: [{
         connectionId: 'connection-b',
         customerId: '789',
-        error: 'Google access denied for [REDACTED]',
+        error: 'Google credential unavailable',
       }],
     })
     expect(persistStates).toHaveBeenCalledTimes(1)
@@ -178,5 +179,30 @@ describe('runGoogleAiMaxPortfolioScan', () => {
 
     expect(result).toEqual({ accepted: false, run: null })
     expect(scanAccount).not.toHaveBeenCalled()
+  })
+
+  it('executes a run already claimed by the manual endpoint without claiming twice', async () => {
+    const claimRun = vi.fn()
+
+    const result = await runGoogleAiMaxPortfolioScan({
+      tenantId: 'tenant-a',
+      trigger: 'manual',
+      claimedRun: { id: 'run-claimed', status: 'queued' },
+      developerToken: 'developer-token',
+      observedAt: '2026-08-06T02:00:00.000Z',
+      accounts: [],
+    }, {
+      claimRun,
+      markRunning: async () => true,
+      scanAccount: vi.fn(),
+      persistStates: vi.fn(),
+      finishRun: async input => ({ id: input.runId, status: 'completed' }),
+    })
+
+    expect(claimRun).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      accepted: true,
+      run: { id: 'run-claimed', status: 'completed' },
+    })
   })
 })

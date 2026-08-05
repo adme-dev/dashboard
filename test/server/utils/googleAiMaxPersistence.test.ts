@@ -20,6 +20,8 @@ const {
   claimGoogleAiMaxScanRun,
   finishGoogleAiMaxScanRun,
   markGoogleAiMaxScanRunRunning,
+  getActiveGoogleAiMaxScanRun,
+  getGoogleAiMaxScanRun,
   persistGoogleAiMaxCampaignStates,
 } = await import(
   '~~/server/utils/googleAiMaxRepository'
@@ -268,5 +270,37 @@ describe('Google AI Max scan-run lifecycle', () => {
 
     expect(result?.status).toBe(expected)
     expect(mockQueryOne.mock.calls[0]?.[1]).toContain(expected)
+  })
+
+  it('looks up active and historical runs inside the tenant boundary', async () => {
+    mockQueryOne
+      .mockResolvedValueOnce({ id: 'run-active', status: 'running' })
+      .mockResolvedValueOnce({
+        id: 'run-1',
+        status: 'partial',
+        trigger: 'manual',
+        total_connections: 2,
+        processed_connections: 1,
+        total_campaigns: 4,
+        affected_campaigns: 2,
+        unknown_campaigns: 1,
+        failures: [{ connectionId: 'connection-b', error: 'denied Bearer abc.def' }],
+        started_at: '2026-08-06T00:00:00.000Z',
+        finished_at: '2026-08-06T00:01:00.000Z',
+        created_at: '2026-08-06T00:00:00.000Z',
+      })
+
+    await expect(getActiveGoogleAiMaxScanRun('tenant-a')).resolves.toEqual({
+      id: 'run-active',
+      status: 'running',
+    })
+    await expect(getGoogleAiMaxScanRun('tenant-a', 'run-1')).resolves.toMatchObject({
+      id: 'run-1',
+      status: 'partial',
+      totalConnections: 2,
+      processedConnections: 1,
+      failures: [{ connectionId: 'connection-b', error: 'denied Bearer [REDACTED]' }],
+    })
+    expect(mockQueryOne.mock.calls[1]?.[1]).toEqual(['tenant-a', 'run-1'])
   })
 })

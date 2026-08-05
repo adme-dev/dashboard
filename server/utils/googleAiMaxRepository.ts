@@ -139,6 +139,97 @@ export async function finishGoogleAiMaxScanRun(input: {
   ])
 }
 
+export async function getActiveGoogleAiMaxScanRun(
+  tenantId: string,
+): Promise<GoogleAiMaxScanRunRef | null> {
+  return queryOne<GoogleAiMaxScanRunRef>(`
+    SELECT id, status
+    FROM google_ai_max_scan_runs
+    WHERE tenant_id = $1
+      AND status IN ('queued', 'running')
+    ORDER BY created_at DESC
+    LIMIT 1
+  `, [tenantId])
+}
+
+export interface GoogleAiMaxScanRunDetails extends GoogleAiMaxScanRunRef {
+  trigger: GoogleAiMaxScanTrigger
+  totalConnections: number
+  processedConnections: number
+  totalCampaigns: number
+  affectedCampaigns: number
+  unknownCampaigns: number
+  failures: GoogleAiMaxScanFailure[]
+  startedAt: string | null
+  finishedAt: string | null
+  createdAt: string
+}
+
+interface ScanRunDetailsRow {
+  id: string
+  status: GoogleAiMaxScanStatus
+  trigger: GoogleAiMaxScanTrigger
+  total_connections: number
+  processed_connections: number
+  total_campaigns: number
+  affected_campaigns: number
+  unknown_campaigns: number
+  failures: unknown
+  started_at: string | Date | null
+  finished_at: string | Date | null
+  created_at: string | Date
+}
+
+function isoDate(value: string | Date | null): string | null {
+  return value == null ? null : new Date(value).toISOString()
+}
+
+function safeStoredFailures(value: unknown): GoogleAiMaxScanFailure[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item): GoogleAiMaxScanFailure[] => {
+    if (!item || typeof item !== 'object') return []
+    const failure = item as Record<string, unknown>
+    if (typeof failure.connectionId !== 'string' || typeof failure.error !== 'string') return []
+    return [{
+      connectionId: failure.connectionId,
+      ...(typeof failure.customerId === 'string' ? { customerId: failure.customerId } : {}),
+      error: failure.error
+        .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, 'Bearer [REDACTED]')
+        .slice(0, 500),
+    }]
+  })
+}
+
+export async function getGoogleAiMaxScanRun(
+  tenantId: string,
+  runId: string,
+): Promise<GoogleAiMaxScanRunDetails | null> {
+  const row = await queryOne<ScanRunDetailsRow>(`
+    SELECT id, status, trigger, total_connections, processed_connections,
+           total_campaigns, affected_campaigns, unknown_campaigns, failures,
+           started_at, finished_at, created_at
+    FROM google_ai_max_scan_runs
+    WHERE tenant_id = $1
+      AND id = $2
+  `, [tenantId, runId])
+  if (!row) return null
+
+  return {
+    id: row.id,
+    status: row.status,
+    trigger: row.trigger,
+    totalConnections: row.total_connections,
+    processedConnections: row.processed_connections,
+    totalCampaigns: row.total_campaigns,
+    affectedCampaigns: row.affected_campaigns,
+    unknownCampaigns: row.unknown_campaigns,
+    failures: safeStoredFailures(row.failures),
+    startedAt: isoDate(row.started_at),
+    finishedAt: isoDate(row.finished_at),
+    createdAt: isoDate(row.created_at)!,
+  }
+}
+
 function parseEvidence(value: GoogleAiMaxCampaignState | string): GoogleAiMaxCampaignState {
   return typeof value === 'string' ? JSON.parse(value) : value
 }
