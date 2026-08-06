@@ -8,11 +8,10 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends ffmpeg chromium fonts-liberation ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-# Skip the npm puppeteer download — Chromium is already installed via apt above.
-ENV PUPPETEER_SKIP_DOWNLOAD=1
-
 WORKDIR /app
-RUN npm install @cloudflare/puppeteer
+# Puppeteer Core drives the Chromium binary installed above. The Cloudflare
+# Browser Rendering package expects a remote browser binding with fetch().
+RUN npm install puppeteer-core@25.5.0
 COPY server.mjs render.mjs timelineFiltergraph.mjs videoCompositeGraph.mjs frameRuntime.mjs overlayCapture.mjs bannerCapture.mjs ./
 
 EXPOSE 8080

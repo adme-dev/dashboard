@@ -10,7 +10,7 @@ import { resolveFrameRuntime, seekFrameRuntime } from './frameRuntime.mjs'
 /**
  * Capture transparent-PNG frames of a GSAP banner HTML page.
  *
- * @param {import('@cloudflare/puppeteer').Browser} browser
+ * @param {import('puppeteer-core').Browser} browser
  * @param {{ html: string, width: number, height: number, fps: number, durationSec: number, outDir: string }} opts
  * @returns {Promise<{ frames: number }>}
  */

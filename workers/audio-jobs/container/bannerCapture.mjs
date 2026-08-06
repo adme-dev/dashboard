@@ -1,7 +1,7 @@
 // workers/audio-jobs/container/bannerCapture.mjs
 // Chromium captures GSAP frames of a banner HTML page at WxH; ffmpeg encodes to MP4.
 // Ported from the former server/api/agency/banner-studio/export-video.post.ts loop.
-// Uses @cloudflare/puppeteer + /usr/bin/chromium — matches overlayCapture.mjs idioms.
+// Uses Puppeteer Core to drive the Chromium binary installed in the container.
 import { spawn } from 'node:child_process'
 import { mkdirSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,8 +14,7 @@ const MAX_FRAMES = 600
 export async function captureBannerMp4({ html, width, height, fps, crf, quality }) {
   const vpW = width * (quality || 1)
   const vpH = height * (quality || 1)
-  // Dynamically import @cloudflare/puppeteer — matches the render-composite route idiom.
-  const puppeteer = (await import('@cloudflare/puppeteer')).default
+  const puppeteer = (await import('puppeteer-core')).default
   const browser = await puppeteer.launch({
     executablePath: '/usr/bin/chromium',
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],

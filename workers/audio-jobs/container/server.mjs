@@ -81,8 +81,8 @@ const server = createServer(async (req, res) => {
       // V1.2b: capture overlay frames from banner HTML before ffmpeg composite.
       const overlays = Array.isArray(payload.overlays) ? payload.overlays : []
       if (overlays.length > 0) {
-        // Dynamically import puppeteer (installed in Dockerfile).
-        const puppeteer = (await import('@cloudflare/puppeteer')).default
+        // Drive the Chromium binary installed in this container image.
+        const puppeteer = (await import('puppeteer-core')).default
         browser = await puppeteer.launch({
           executablePath: '/usr/bin/chromium',
           args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
