@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 async function loadAuditModule() {
-  return import('~~/server/utils/googleAiMaxLiveAudit').catch(() => null)
+  return import('~~/scripts/utils/googleAiMaxLiveAudit').catch(() => null)
 }
 
 describe('Google AI Max live audit redaction boundary', () => {

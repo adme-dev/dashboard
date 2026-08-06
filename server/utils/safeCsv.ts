@@ -11,10 +11,10 @@ export function safeCsvCell(value: unknown): string {
 
 export function serializeSafeCsv(
   headers: string[],
-  rows: unknown[][],
+  rows: unknown[][]
 ): string {
   return [
     headers.map(safeCsvCell).join(','),
-    ...rows.map(row => row.map(safeCsvCell).join(',')),
+    ...rows.map(row => row.map(safeCsvCell).join(','))
   ].join('\r\n')
 }

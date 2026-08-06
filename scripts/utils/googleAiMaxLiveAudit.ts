@@ -1,3 +1,4 @@
+/** Operational audit helpers kept outside Nitro's production server bundle. */
 import type { GoogleAiMaxRows } from '~~/server/utils/googleAdsClient'
 import type { GoogleAiMaxPortfolioAccount } from '~~/server/utils/googleAiMaxScanner'
 

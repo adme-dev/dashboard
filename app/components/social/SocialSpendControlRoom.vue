@@ -116,7 +116,7 @@ const aiMaxCard = computed(() => ({
     ? 'neutral'
     : props.aiMaxSummary.needsReview > 0 || props.aiMaxSummary.unknown > 0
       ? 'warning'
-      : 'success',
+      : 'success'
 }))
 
 function issueColor(severity: string) {

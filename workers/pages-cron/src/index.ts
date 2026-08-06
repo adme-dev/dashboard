@@ -79,7 +79,7 @@ export const ROUTES: Record<string, string[]> = {
   // daily 6:30am UTC — read-only Google Search campaign AI Max readiness.
   // Offset from spend sync to avoid overlapping Google API bursts. Internal
   // notifications remain dormant unless the Pages enable flag is armed.
-  '30 6 * * *': ['/api/cron/google-ai-max-readiness'],
+  '30 6 * * *': ['/api/cron/google-ai-max-readiness']
 }
 
 export default {

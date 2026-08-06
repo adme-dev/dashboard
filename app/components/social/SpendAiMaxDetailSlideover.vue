@@ -17,6 +17,10 @@ defineProps<{
 
 const open = defineModel<boolean>('open', { default: false })
 
+function closeSlideover() {
+  open.value = false
+}
+
 function formatTime(value: string | null) {
   if (!value) return 'Not recorded'
   return new Intl.DateTimeFormat('en-AU', {
@@ -50,7 +54,7 @@ function eventLabel(value: string) {
             color="neutral"
             variant="ghost"
             aria-label="Close campaign evidence"
-            @click="open = false"
+            @click="closeSlideover"
           />
         </header>
 
@@ -179,7 +183,7 @@ function eventLabel(value: string) {
         </div>
 
         <footer v-if="detail" class="flex justify-end gap-2 border-t border-default px-5 py-3">
-          <UButton color="neutral" variant="ghost" @click="open = false">
+          <UButton color="neutral" variant="ghost" @click="closeSlideover">
             Close
           </UButton>
           <UButton

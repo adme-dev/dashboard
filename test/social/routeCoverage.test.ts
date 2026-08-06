@@ -22,7 +22,7 @@ function read(relativePath: string) {
 const agencySocialRouteNavs = new Map([
   ['app/pages/agency/social/[platform].vue', 'SocialSpendSectionNav'],
   ['app/pages/agency/social/index.vue', 'SocialSpendSectionNav'],
-  ['app/pages/agency/social/spend.vue', 'SocialSpendSectionNav'],
+  ['app/pages/agency/social/spend.vue', 'SocialSpendDashboard'],
   ['app/pages/agency/social/google/ai-max.vue', 'SocialSpendSectionNav'],
   ['app/pages/agency/social/inbox/analytics.vue', 'SocialSuiteSectionNav'],
   ['app/pages/agency/social/inbox/approvals.vue', 'SocialSuiteSectionNav'],
@@ -61,6 +61,11 @@ describe('social route navigation coverage', () => {
     for (const routeFile of routeFiles) {
       expect(read(routeFile)).toContain(agencySocialRouteNavs.get(routeFile))
     }
+  })
+
+  it('keeps the client-only spend dashboard covered by paid social navigation', () => {
+    expect(read('app/components/social/SpendDashboard.client.vue'))
+      .toContain('SocialSpendSectionNav')
   })
 
   it('keeps every portal social route covered by the expected section navigation', () => {

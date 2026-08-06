@@ -1177,41 +1177,41 @@ export interface GoogleAdsSpendRecord {
   date: string
 }
 
-export type GoogleAiMaxReadinessStatus =
-  | 'ready'
-  | 'scheduled_upgrade'
-  | 'needs_review'
-  | 'not_affected'
-  | 'unknown'
+export type GoogleAiMaxReadinessStatus
+  = | 'ready'
+    | 'scheduled_upgrade'
+    | 'needs_review'
+    | 'not_affected'
+    | 'unknown'
 
-export type GoogleAiMaxMigrationReason =
-  | 'aca'
-  | 'campaign_broad_match'
-  | 'aca_and_campaign_broad_match'
-  | 'none'
-  | 'unknown'
+export type GoogleAiMaxMigrationReason
+  = | 'aca'
+    | 'campaign_broad_match'
+    | 'aca_and_campaign_broad_match'
+    | 'none'
+    | 'unknown'
 
 export type GoogleAiMaxToggleStatus = 'enabled' | 'disabled' | 'unknown'
 export type GoogleAiMaxSearchMatchingStatus = GoogleAiMaxToggleStatus | 'partially_disabled'
 export type GoogleAiMaxFreshness = 'fresh' | 'warning' | 'critical'
-export type GoogleAiMaxRisk =
-  | 'AUTO_UPGRADE_PENDING'
-  | 'BUNDLING_REQUIRED'
-  | 'PARTIAL_SEARCH_MATCHING'
-  | 'UNKNOWN_CONFIGURATION'
-  | 'ALL_AD_GROUPS_MATCHING_DISABLED'
-  | 'STALE_SCAN'
-  | 'SMART_BIDDING_MISMATCH'
-  | 'FINAL_URL_EXPANSION_ENABLED'
-  | 'TEXT_CUSTOMISATION_ENABLED'
+export type GoogleAiMaxRisk
+  = | 'AUTO_UPGRADE_PENDING'
+    | 'BUNDLING_REQUIRED'
+    | 'PARTIAL_SEARCH_MATCHING'
+    | 'UNKNOWN_CONFIGURATION'
+    | 'ALL_AD_GROUPS_MATCHING_DISABLED'
+    | 'STALE_SCAN'
+    | 'SMART_BIDDING_MISMATCH'
+    | 'FINAL_URL_EXPANSION_ENABLED'
+    | 'TEXT_CUSTOMISATION_ENABLED'
 
 export interface GoogleAiMaxCampaignListItem {
   id: string
   connectionId: string
   customerId: string
   accountName: string | null
-  client: { id: string; name: string | null } | null
-  owner: { id: string; name: string | null } | null
+  client: { id: string, name: string | null } | null
+  owner: { id: string, name: string | null } | null
   campaignId: string
   campaignName: string
   campaignStatus: string
@@ -1239,7 +1239,7 @@ export interface GoogleAiMaxScanRun {
   totalCampaigns: number
   affectedCampaigns: number
   unknownCampaigns: number
-  failures?: Array<{ connectionId: string; customerId?: string; error: string }>
+  failures?: Array<{ connectionId: string, customerId?: string, error: string }>
   startedAt: string | null
   finishedAt: string | null
   createdAt: string
@@ -1257,10 +1257,10 @@ export interface GoogleAiMaxReadinessResponse {
     coveragePercent: number | null
   }
   items: GoogleAiMaxCampaignListItem[]
-  pagination: { page: number; pageSize: number; total: number }
+  pagination: { page: number, pageSize: number, total: number }
   facets: {
-    connections: Array<{ label: string; value: string }>
-    clients: Array<{ label: string; value: string }>
+    connections: Array<{ label: string, value: string }>
+    clients: Array<{ label: string, value: string }>
   }
   latestRun: GoogleAiMaxScanRun | null
 }
@@ -1272,7 +1272,7 @@ export interface GoogleAiMaxCampaignDetail extends GoogleAiMaxCampaignListItem {
   bundlingRequired: string | null
   textAssetAutomationStatus: string | null
   finalUrlExpansionStatus: string | null
-  adGroups: { total: number | null; searchTermMatchingDisabled: number | null }
+  adGroups: { total: number | null, searchTermMatchingDisabled: number | null }
   rawEvidence: Record<string, unknown>
   firstObservedAt: string | null
   timeline: Array<{

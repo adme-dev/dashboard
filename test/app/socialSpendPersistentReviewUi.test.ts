@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const table = readFileSync(new URL('../../app/components/social/SpendVarianceTable.vue', import.meta.url), 'utf8')
-const page = readFileSync(new URL('../../app/pages/agency/social/spend.vue', import.meta.url), 'utf8')
+const page = readFileSync(new URL('../../app/components/social/SpendDashboard.client.vue', import.meta.url), 'utf8')
 const aiAnalysisEndpoint = readFileSync(new URL('../../server/api/agency/social/spend/[id]/ai-analysis.post.ts', import.meta.url), 'utf8')
 const featureIndex = readFileSync(new URL('../../app/pages/features/index.vue', import.meta.url), 'utf8')
 const featureDetail = readFileSync(new URL('../../app/pages/features/[slug].vue', import.meta.url), 'utf8')

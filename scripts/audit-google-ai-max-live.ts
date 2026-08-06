@@ -24,7 +24,7 @@ const [
   import('~~/server/utils/db'),
   import('~~/server/utils/googleAdsClient'),
   import('~~/server/utils/googleAiMaxConnections'),
-  import('~~/server/utils/googleAiMaxLiveAudit')
+  import('~~/scripts/utils/googleAiMaxLiveAudit')
 ])
 
 try {
