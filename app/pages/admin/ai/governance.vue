@@ -194,13 +194,19 @@ async function refreshEvaluations() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
+  <main
+    class="mx-auto h-full min-h-0 max-w-6xl overflow-y-auto space-y-6 p-4 sm:p-6"
+    aria-labelledby="governance-page-title"
+    tabindex="0"
+  >
     <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <div class="mb-2 flex items-center gap-2 text-xs text-muted">
           <span>Admin</span><UIcon name="i-lucide-chevron-right" class="size-3" /><span>AI governance</span>
         </div>
-        <h1 class="text-xl font-semibold text-highlighted">Department pack readiness</h1>
+        <h1 id="governance-page-title" class="text-xl font-semibold text-highlighted">
+          Department pack readiness
+        </h1>
         <p class="mt-1 max-w-3xl text-sm text-muted">
           Review department matches, eligible owners, capability coverage, draft seeding, and governed release state.
         </p>
@@ -328,5 +334,5 @@ async function refreshEvaluations() {
       :item="selectedSeedItem"
       :on-seed="seedDraft"
     />
-  </div>
+  </main>
 </template>

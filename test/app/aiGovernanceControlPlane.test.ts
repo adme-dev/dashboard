@@ -232,6 +232,122 @@ describe('AI governance command centre', () => {
     app.unmount(); host.remove()
   })
 
+  it.each([
+    { viewport: 'desktop', width: 1440, height: 900 },
+    { viewport: 'narrow mobile', width: 390, height: 640 }
+  ])('provides one usable governance scroll owner at $viewport size', async ({ width, height }) => {
+    Object.assign(globalThis, { $fetch: vi.fn(async (url: string) => {
+      if (url.endsWith('/readiness')) return { summary: { total: 0, readyForOwnerConfirmation: 0, blocked: 0, missingDepartments: 0, draftSeeded: 0, released: 0 }, items: [], unmappedDepartments: [] }
+      if (url.endsWith('/catalog')) return { items: [], nextCursor: null }
+      if (url.endsWith('/evaluations')) return { items: [] }
+      if (url.endsWith('/rollout')) return { readyForPilot: false, readyForEnforcement: false, activeEmployeeCount: 0, coveredEmployeeCount: 0, uncoveredEmployees: [], departmentCoverage: [], blockers: [] }
+      if (url.endsWith('/pilot-metrics')) return { window: { from: '2026-07-01T00:00:00.000Z', to: '2026-08-01T00:00:00.000Z' }, departments: [] }
+      throw new Error(`Unexpected ${url}`)
+    }) })
+
+    vi.resetModules()
+    const GovernancePage = (await import('~~/app/pages/admin/ai/governance.vue')).default
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const app = createApp({ render: () => h(Suspense, null, { default: () => h(GovernancePage), fallback: () => h('div', 'Loading') }) })
+    Object.entries({
+      ...stubs,
+      AiDepartmentPackReadinessList: { template: '<section data-governance-tail style="height:1200px">Final governance controls</section>' },
+      AiDepartmentDraftSeedDialog: { template: '<div />' },
+      AiGovernanceRolloutReadinessPanel: { template: '<div />' },
+      AiGovernancePilotMetricsPanel: { template: '<div />' }
+    }).forEach(([name, component]) => app.component(name, component))
+
+    let browser: import('playwright').Browser | undefined
+    try {
+      app.mount(host)
+      await flush()
+      const { chromium } = await import('playwright')
+      try {
+        browser = await chromium.launch({ headless: true })
+      } catch (error) {
+        if (!String(error).includes('Executable doesn\'t exist')) throw error
+        browser = await chromium.launch({ channel: 'chrome', headless: true })
+      }
+      const page = await browser.newPage({ viewport: { width, height } })
+      await page.setContent(`
+        <style>
+          * { box-sizing: border-box; }
+          html, body { width: 100%; height: 100%; margin: 0; }
+          .agency-group { position: fixed; inset: 0; display: flex; overflow: hidden; }
+          .agency-sidebar { width: 18rem; flex: none; overflow-y: auto; }
+          .agency-content { min-width: 0; min-height: 0; flex: 1 1 0%; display: flex; flex-direction: column; overflow: hidden; }
+          .mx-auto { margin-inline: auto; }
+          .h-full { height: 100%; }
+          .min-h-0 { min-height: 0; }
+          .max-w-6xl { max-width: 72rem; }
+          .overflow-y-auto { overflow-y: auto; }
+          .p-4 { padding: 1rem; }
+          @media (min-width: 640px) { .sm\\:p-6 { padding: 1.5rem; } }
+          @media (max-width: 767px) { .agency-sidebar { display: none; } }
+        </style>
+        <div class="agency-group">
+          <aside class="agency-sidebar">Navigation</aside>
+          <div class="agency-content">${host.innerHTML}</div>
+        </div>
+      `)
+
+      const pageRegion = page.locator('main[aria-labelledby="governance-page-title"]')
+      expect(await pageRegion.count()).toBe(1)
+      const metrics = await pageRegion.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return {
+          clientHeight: element.clientHeight,
+          clientWidth: element.clientWidth,
+          scrollHeight: element.scrollHeight,
+          overflowY: style.overflowY
+        }
+      })
+      expect(metrics).toMatchObject({
+        clientHeight: height,
+        clientWidth: Math.min(1152, width >= 768 ? width - 288 : width),
+        overflowY: 'auto'
+      })
+      expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight)
+
+      const contentScrollOwners = await page.locator('.agency-content').evaluate(content => Array.from(content.querySelectorAll<HTMLElement>('*'))
+        .filter((element) => {
+          const style = getComputedStyle(element)
+          return element.scrollHeight > element.clientHeight && ['auto', 'scroll'].includes(style.overflowY)
+        }).map(element => element.tagName))
+      expect(contentScrollOwners).toEqual(['MAIN'])
+
+      await pageRegion.focus()
+      await page.keyboard.press('PageDown')
+      await page.waitForFunction(() => (document.querySelector('main')?.scrollTop ?? 0) > 0)
+      expect(await pageRegion.evaluate(element => element.scrollTop)).toBeGreaterThan(0)
+
+      await pageRegion.evaluate(element => element.scrollTo(0, 0))
+      await pageRegion.hover()
+      await page.mouse.wheel(0, height)
+      await page.waitForFunction(() => (document.querySelector('main')?.scrollTop ?? 0) > 0)
+      expect(await pageRegion.evaluate(element => element.scrollTop)).toBeGreaterThan(0)
+
+      await pageRegion.evaluate(element => element.scrollTo(0, element.scrollHeight))
+      const bottom = await pageRegion.evaluate(element => ({
+        max: element.scrollHeight - element.clientHeight,
+        scrollTop: element.scrollTop
+      }))
+      expect(bottom.scrollTop).toBe(bottom.max)
+      const [regionBox, tailBox] = await Promise.all([
+        pageRegion.boundingBox(),
+        page.locator('[data-governance-tail]').boundingBox()
+      ])
+      expect(regionBox).not.toBeNull()
+      expect(tailBox).not.toBeNull()
+      expect(tailBox!.y + tailBox!.height).toBeLessThanOrEqual(regionBox!.y + regionBox!.height)
+    } finally {
+      await browser?.close()
+      app.unmount()
+      host.remove()
+    }
+  }, 15_000)
+
   it('keeps readiness data visible and marks it stale when a retry fails', async () => {
     let readinessCalls = 0
     ;(globalThis as any).$fetch = vi.fn(async (url: string) => {
