@@ -152,6 +152,19 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function redactGoogleAdsDiagnostic(value: unknown): string {
+  let serialized: string
+  try {
+    serialized = JSON.stringify(value) ?? String(value)
+  } catch {
+    serialized = '[unserializable Google Ads diagnostic]'
+  }
+  return serialized
+    .replace(/customers\/\d+/gi, 'customers/[REDACTED]')
+    .replace(/\b\d{8,}\b/g, '[REDACTED]')
+    .slice(0, 500)
+}
+
 // ============================================
 // GAQL Query Helper
 // ============================================
@@ -207,9 +220,15 @@ export async function gaqlQuery(
       if ((status === 400 || status === 403) && err.data) {
         const details = err.data?.error?.details?.[0]?.errors?.[0]
         if (details) {
-          console.error(`[GoogleAds] GAQL ${status} detail (customer ${cleanCustomerId}):`, JSON.stringify(details))
+          console.error(
+            `[GoogleAds] GAQL ${status} detail (customer [REDACTED]):`,
+            redactGoogleAdsDiagnostic(details)
+          )
         } else {
-          console.error(`[GoogleAds] GAQL ${status} body (customer ${cleanCustomerId}):`, JSON.stringify(err.data).slice(0, 500))
+          console.error(
+            `[GoogleAds] GAQL ${status} body (customer [REDACTED]):`,
+            redactGoogleAdsDiagnostic(err.data)
+          )
         }
       }
       if ((status === 429 || status === 500 || status === 503) && attempt < retries) {

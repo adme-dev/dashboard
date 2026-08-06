@@ -28,6 +28,15 @@ interface GoogleAiMaxRuntimeConfig {
   googleAdsLoginCustomerId: string
 }
 
+export function resolveGoogleAiMaxLoginCustomerId(
+  metadata: Record<string, unknown> | null,
+  globalFallback: string
+): string {
+  return typeof metadata?.managerCustomerId === 'string' && metadata.managerCustomerId
+    ? metadata.managerCustomerId
+    : globalFallback
+}
+
 type ConnectionQuery = <T = unknown>(sql: string, params?: unknown[]) => Promise<T[]>
 
 export async function listGoogleAiMaxConnectionRows(
@@ -73,9 +82,10 @@ async function resolveAccountAuth(
   config: GoogleAiMaxRuntimeConfig
 ): Promise<{ accessToken: string, loginCustomerId?: string }> {
   const credential = await resolveGoogleCredential(row)
-  const metadataManager = typeof row.metadata?.managerCustomerId === 'string'
-    ? row.metadata.managerCustomerId
-    : ''
+  const loginCustomerId = resolveGoogleAiMaxLoginCustomerId(
+    row.metadata,
+    config.googleAdsLoginCustomerId
+  )
 
   return resolveGoogleWriteAuth({
     id: row.id,
@@ -87,7 +97,7 @@ async function resolveAccountAuth(
     googleClientId: config.googleClientId,
     googleClientSecret: config.googleClientSecret,
     googleDeveloperToken: config.googleDeveloperToken,
-    googleAdsLoginCustomerId: config.googleAdsLoginCustomerId || metadataManager
+    googleAdsLoginCustomerId: loginCustomerId
   }, {
     refreshGoogleToken,
     listAccessibleCustomers,

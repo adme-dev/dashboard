@@ -5,6 +5,18 @@ import {
 } from '~~/server/utils/googleAiMaxConnections'
 
 describe('Google AI Max connection loading', () => {
+  it('prefers the manager recorded on the connection over the global fallback', async () => {
+    const module = await import('~~/server/utils/googleAiMaxConnections')
+    expect(module.resolveGoogleAiMaxLoginCustomerId).toBeTypeOf('function')
+    if (!module.resolveGoogleAiMaxLoginCustomerId) return
+
+    expect(module.resolveGoogleAiMaxLoginCustomerId(
+      { managerCustomerId: 'connection-manager' },
+      'global-manager'
+    )).toBe('connection-manager')
+    expect(module.resolveGoogleAiMaxLoginCustomerId({}, 'global-manager')).toBe('global-manager')
+  })
+
   it('binds global ad connections to the canonical selected tenant and an optional connection id', async () => {
     const query = vi.fn(async () => [{
       id: 'connection-a',

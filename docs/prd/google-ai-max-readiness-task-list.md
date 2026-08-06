@@ -23,17 +23,23 @@ Migrations 288 and 289 were applied idempotently to the configured Neon database
 
 The following production gates intentionally remain open:
 
-- Task 1: compare sanitized direct-account and MCC-child observations with the live
-  Google Ads UI and record the results.
-- Task 18: complete authenticated light/dark browser checks, obtain media-owner signoff,
-  merge/deploy through the guarded workflow, run the first production scan and observe
-  the scheduled job. Notifications remain disabled unless explicitly enabled.
+- Task 1: a bounded five-account legacy-credential audit was attempted on 2026-08-06,
+  but all samples returned Google 403 (`USER_PERMISSION_DENIED` or
+  `CUSTOMER_NOT_ENABLED`). Encrypted credential profiles could not be tested locally
+  because `REPO_TOKEN_ENCRYPTION_KEY` is unavailable. Live direct/MCC observations and
+  Google Ads UI comparison therefore remain blocked; see the research record.
+- Task 18: unauthenticated browser checks passed for the public page in explicit light
+  and dark modes and for the protected-route sign-in redirect. Authenticated workspace
+  checks, media-owner signoff, merge/deploy, the first production scan and scheduled-job
+  observation remain open. Notifications remain disabled unless explicitly enabled.
 - Releases 2 and 3: performance measurement and any governed provider writes remain
   outside this release and require their stated gates.
 
 Fresh branch verification on 2026-08-06 passed 97 AI Max tests, 7 social-route coverage
 tests, feature-local ESLint, app/server type-check filtering, the production Nuxt build
-and `pnpm deploy:check`. The repository-wide suite and lint still contain unrelated
+and `pnpm deploy:check`. A later hardening pass added bounded live-audit, diagnostic
+redaction and manager/direct fallback tests; its final verification results are recorded
+with the branch handoff. The repository-wide suite and lint still contain unrelated
 pre-existing failures outside the AI Max feature diff.
 
 ## Delivery Strategy
@@ -98,6 +104,13 @@ fixtures for deterministic tests.
 - [ ] Record query text, API version, observations and limitations in
       `docs/research/2026-08-google-ai-max-api-validation.md`.
 - [ ] Search fixtures for customer identifiers and token-like strings before commit.
+
+**2026-08-06 operational attempt:** A bounded aggregate-only audit sampled five
+legacy-token connections. All five returned provider 403 responses, while the 87
+encrypted-profile connections were unavailable without the local encryption key. No
+live rows or UI-comparable states were obtained, so the acceptance criteria remain
+open. Details and required follow-up are in
+`docs/research/2026-08-google-ai-max-api-validation.md`.
 
 **Dependencies:** None  
 **Files likely touched:**
@@ -639,6 +652,12 @@ comparison.
 - [ ] `pnpm deploy:check`
 - [ ] Deploy only through `pnpm deploy:preview` / `pnpm deploy:production` when
       authorized; never call `wrangler pages deploy` directly.
+
+**2026-08-06 browser gate:** Public feature-detail checks passed at 1440px in explicit
+light and dark modes (HTTP 200, expected readiness/evidence/measurement copy, no console
+errors, no failed requests). The protected route redirected an unauthenticated context
+to `/auth/login` with no console errors. Authenticated workspace verification remains
+open and no deployment was performed.
 
 **Dependencies:** Tasks 1-17  
 **Files likely touched:** No planned source changes; fixes discovered during review must

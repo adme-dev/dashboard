@@ -29,6 +29,25 @@ function state(overrides: Partial<GoogleAiMaxObservation> = {}) {
 }
 
 describe('scanGoogleAiMaxAccount', () => {
+  it('retries a direct account without the manager header after a 403', async () => {
+    const permissionError = Object.assign(new Error('permission denied'), { status: 403 })
+    const fetchRows = vi.fn()
+      .mockRejectedValueOnce(permissionError)
+      .mockResolvedValueOnce({ campaignRows: [], adGroupRows: [] })
+
+    await expect(scanGoogleAiMaxAccount({
+      tenantId: 'tenant-a',
+      connectionId: 'connection-a',
+      customerId: '123',
+      accessToken: 'access-token',
+      developerToken: 'developer-token',
+      loginCustomerId: '999',
+      observedAt: '2026-08-06T02:00:00.000Z'
+    }, { fetchRows })).resolves.toEqual([])
+
+    expect(fetchRows.mock.calls.map(call => call[3])).toEqual(['999', undefined])
+  })
+
   it('returns classified state for each Search campaign from one account fetch', async () => {
     const result = await scanGoogleAiMaxAccount({
       tenantId: 'tenant-a',

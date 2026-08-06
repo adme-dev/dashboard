@@ -43,12 +43,28 @@ export async function scanGoogleAiMaxAccount(
   input: ScanGoogleAiMaxAccountInput,
   dependencies: ScanGoogleAiMaxAccountDependencies = defaultDependencies
 ): Promise<GoogleAiMaxCampaignState[]> {
-  const { campaignRows, adGroupRows } = await dependencies.fetchRows(
-    input.customerId,
-    input.accessToken,
-    input.developerToken,
-    input.loginCustomerId
-  )
+  let rows: GoogleAiMaxRows
+  try {
+    rows = await dependencies.fetchRows(
+      input.customerId,
+      input.accessToken,
+      input.developerToken,
+      input.loginCustomerId
+    )
+  } catch (error) {
+    const status = error && typeof error === 'object'
+      ? Number((error as Record<string, unknown>).status
+        ?? (error as Record<string, unknown>).statusCode)
+      : 0
+    if (status !== 403 || !input.loginCustomerId) throw error
+    rows = await dependencies.fetchRows(
+      input.customerId,
+      input.accessToken,
+      input.developerToken,
+      undefined
+    )
+  }
+  const { campaignRows, adGroupRows } = rows
 
   return campaignRows.map(campaignRow => buildGoogleAiMaxState(
     normalizeGoogleAiMaxObservation({
