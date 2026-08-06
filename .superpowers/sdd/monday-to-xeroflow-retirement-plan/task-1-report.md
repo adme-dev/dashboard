@@ -2,7 +2,7 @@
 
 ## Status
 
-APPROVED FOR COMMIT. M1 implements a read-only, checkpointable Monday inventory for ADME account `229224`. Independent specification and quality re-reviews passed after the pinned-API GraphQL correction. It does not create or update Monday content, XeroFlow records, users, notifications, billing, or cutover state.
+COMPLETE. M1 implements a read-only, checkpointable Monday inventory for ADME account `229224`. Independent specification and quality re-reviews passed after the pinned-API GraphQL correction. It does not create or update Monday content, XeroFlow records, users, notifications, billing, or cutover state.
 
 ## Files changed
 
@@ -113,7 +113,7 @@ node --env-file=.env node_modules/tsx/dist/cli.mjs scripts/inventory-monday.ts \
 
 ## Commit
 
-Pending. The correction round was explicitly left uncommitted for independent re-review.
+Implementation commit: `f5ca8e9f` (`feat: add Monday retirement inventory manifest`). This evidence report was then amended separately to record the resulting implementation hash.
 
 ## Concerns
 
