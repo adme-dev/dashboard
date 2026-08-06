@@ -5,7 +5,7 @@ import {
 } from '~~/server/utils/googleAiMaxConnections'
 
 describe('Google AI Max connection loading', () => {
-  it('requires selected-tenant existence and scopes an optional connection id', async () => {
+  it('binds global ad connections to the canonical selected tenant and an optional connection id', async () => {
     const query = vi.fn(async () => [{
       id: 'connection-a',
       account_id: '123',
@@ -22,7 +22,9 @@ describe('Google AI Max connection loading', () => {
     )
 
     expect(rows).toHaveLength(1)
-    expect(String(query.mock.calls[0]?.[0])).toContain('xo.tenant_id = $1')
+    expect(String(query.mock.calls[0]?.[0])).toContain('AND $1 = (')
+    expect(String(query.mock.calls[0]?.[0])).toContain("xo.tenant_id <> '__default__'")
+    expect(String(query.mock.calls[0]?.[0])).toContain('ORDER BY xo.updated_at DESC')
     expect(String(query.mock.calls[0]?.[0])).toContain('sc.id = $2')
     expect(query.mock.calls[0]?.[1]).toEqual(['tenant-a', 'connection-a'])
   })

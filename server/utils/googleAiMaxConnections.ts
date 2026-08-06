@@ -47,10 +47,12 @@ export async function listGoogleAiMaxConnectionRows(
     ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
     WHERE sc.platform = 'google'
       AND sc.status = 'active'
-      AND EXISTS (
-        SELECT 1
+      AND $1 = (
+        SELECT xo.tenant_id
         FROM xero_org_connection xo
-        WHERE xo.tenant_id = $1
+        WHERE xo.tenant_id <> '__default__'
+        ORDER BY xo.updated_at DESC
+        LIMIT 1
       )
       ${connectionFilter}
     ORDER BY sc.account_name NULLS LAST, sc.account_id
