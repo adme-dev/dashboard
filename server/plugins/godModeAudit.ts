@@ -29,15 +29,30 @@ function responseClass(status: number): string {
 }
 
 function boundedTerminalDiagnostic(error: unknown): { errorClass: string, sqlState: string | null } {
-  const candidate = typeof error === 'object' && error !== null
-    ? error as { name?: unknown, code?: unknown }
-    : null
-  const errorClass = typeof candidate?.name === 'string' && candidate.name.length > 0 && candidate.name.length <= 64
-    ? candidate.name
-    : typeof error
-  const sqlState = typeof candidate?.code === 'string' && /^[0-9A-Z]{5}$/.test(candidate.code)
-    ? candidate.code
-    : null
+  let errorClass = 'unknown'
+  try {
+    if (error instanceof TypeError) errorClass = 'TypeError'
+    else if (error instanceof RangeError) errorClass = 'RangeError'
+    else if (error instanceof ReferenceError) errorClass = 'ReferenceError'
+    else if (error instanceof SyntaxError) errorClass = 'SyntaxError'
+    else if (error instanceof URIError) errorClass = 'URIError'
+    else if (error instanceof EvalError) errorClass = 'EvalError'
+    else if (error instanceof AggregateError) errorClass = 'AggregateError'
+    else if (error instanceof Error) errorClass = 'Error'
+  } catch {
+    errorClass = 'unknown'
+  }
+  let sqlState: string | null = null
+  try {
+    const candidate = typeof error === 'object' && error !== null
+      ? error as { code?: unknown }
+      : null
+    if (typeof candidate?.code === 'string' && /^[0-9A-Z]{5}$/.test(candidate.code)) {
+      sqlState = candidate.code
+    }
+  } catch {
+    sqlState = null
+  }
   return { errorClass, sqlState }
 }
 

@@ -427,6 +427,122 @@ describe('God mode banner asset upload coordination', () => {
     expect(ledger.resultReference).toBe(ASSET_ID)
   })
 
+  it('never lets a superseded uploader delete the shared object after a stale dispatched takeover', async () => {
+    const successorCorrelation = '88888888-8888-4888-8888-888888888888'
+    const objects = new Set<string>()
+    let claimStale = false
+    let storedAsset: BannerAssetUploadResult | null = null
+    const ledger = {
+      state: 'missing',
+      resultReference: null as string | null,
+      correlationId: '',
+      executionPhase: '',
+      r2Key: null as string | null,
+      assetId: null as string | null
+    }
+    const durableQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
+      if (sql.includes('INSERT INTO god_mode_execution_ledger')) {
+        if (ledger.state !== 'missing') return { rows: [] }
+        ledger.state = 'in_progress'
+        ledger.correlationId = String(params[2])
+        ledger.executionPhase = 'claimed'
+        return { rows: [{ state: 'in_progress' }] }
+      }
+      if (sql.includes('FROM god_mode_execution_ledger')) return { rows: [{
+        state: ledger.state,
+        result_reference: ledger.resultReference,
+        route_or_tool: ROUTE,
+        correlation_id: ledger.correlationId,
+        execution_phase: ledger.executionPhase,
+        request_digest: REQUEST_DIGEST,
+        r2_key: ledger.r2Key,
+        asset_id: ledger.assetId,
+        claim_stale: claimStale
+      }] }
+      if (sql.includes('claim_lease_expired')) return { rows: [{ id: ledger.correlationId }] }
+      if (sql.includes('SET correlation_id = $3')) {
+        ledger.correlationId = String(params[2])
+        return { rows: [{ state: 'in_progress' }] }
+      }
+      if (sql.includes('execution_phase = \'dispatched\'')) {
+        ledger.executionPhase = 'dispatched'
+        ledger.r2Key = String(params[3])
+        ledger.assetId = String(params[4])
+        return { rows: [{ state: 'in_progress' }] }
+      }
+      if (sql.includes('state = \'succeeded\'')) {
+        ledger.state = 'succeeded'
+        ledger.resultReference = String(params[3])
+        ledger.executionPhase = 'result_captured'
+        return { rows: [{ state: 'succeeded' }] }
+      }
+      return { rows: [] }
+    })
+    const durableTransaction = vi.fn(async callback => await callback({ query: durableQuery }))
+    const deleteSharedObject = vi.fn(async (key: string) => {
+      objects.delete(key)
+    })
+    const concurrentDependencies = {
+      ...dependencies,
+      transaction: durableTransaction as typeof transaction,
+      deleteBannerFile: deleteSharedObject
+    }
+    let signalFirstUploadStarted!: () => void
+    const firstUploadStarted = new Promise<void>((resolve) => {
+      signalFirstUploadStarted = resolve
+    })
+    let rejectFirstUpload!: (error: Error) => void
+    const firstUploadCompletion = new Promise<never>((_resolve, reject) => {
+      rejectFirstUpload = reject
+    })
+    const firstEvent = request()
+    const firstPrepared = await prepareGodModeBannerAssetUpload(firstEvent, concurrentDependencies)
+    const firstExecution = executeGodModeBannerAssetUpload(firstEvent, {
+      assetId: ASSET_ID,
+      r2Key: R2_KEY,
+      result: resultFactory,
+      deleteFile: deleteSharedObject,
+      uploadFile: vi.fn(async (key: string) => {
+        objects.add(key)
+        signalFirstUploadStarted()
+        return await firstUploadCompletion
+      }),
+      insertAsset: vi.fn()
+    })
+    await firstUploadStarted
+
+    claimStale = true
+    const successorEvent = request({ correlationId: successorCorrelation })
+    const successorPrepared = await prepareGodModeBannerAssetUpload(successorEvent, concurrentDependencies)
+    const successorResult = await executeGodModeBannerAssetUpload(successorEvent, {
+      assetId: '99999999-9999-4999-8999-999999999999',
+      r2Key: 'banner-assets/owner/unused-candidate.jpg',
+      result: resultFactory,
+      deleteFile: deleteSharedObject,
+      uploadFile: vi.fn(async (key: string) => {
+        objects.add(key)
+        return { key, url: asset.url, size: asset.fileSize }
+      }),
+      insertAsset: vi.fn(async (_db, _stored, result) => {
+        storedAsset = result!
+        return result!
+      })
+    })
+    await successorPrepared.persistTerminal({ ...terminal(), correlationId: successorCorrelation })
+    expect(successorResult).toMatchObject({ id: ASSET_ID, r2Key: R2_KEY })
+    expect(storedAsset).toMatchObject({ id: ASSET_ID, r2Key: R2_KEY })
+
+    rejectFirstUpload(new Error('superseded HEAD response lost'))
+    await expect(firstExecution).rejects.toThrow('superseded HEAD response lost')
+    await expect(firstPrepared.persistTerminal(terminal('failed'))).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: 'Banner upload recovery required'
+    })
+
+    expect(deleteSharedObject).not.toHaveBeenCalled()
+    expect(objects).toEqual(new Set([R2_KEY]))
+  })
+
   it('recovers a lost stale-reclaim commit response with the same durable post-dispatch identity', async () => {
     const expiredCorrelation = '88888888-8888-4888-8888-888888888888'
     const candidateAssetId = '99999999-9999-4999-8999-999999999999'
@@ -946,7 +1062,49 @@ describe('God mode banner asset upload coordination', () => {
     expect(deleteBannerFile).not.toHaveBeenCalled()
   })
 
+  it('reconciles an ordinary insert response loss to the exact committed asset without deleting R2', async () => {
+    const event = { context: { user: { id: ACTOR_ID } } } as unknown as H3Event
+    const deleteFile = vi.fn()
+    const reconcileAsset = vi.fn().mockResolvedValue(asset)
+
+    await expect(executeGodModeBannerAssetUpload(event, {
+      assetId: ASSET_ID,
+      r2Key: R2_KEY,
+      result: resultFactory,
+      uploadFile: vi.fn().mockResolvedValue({ key: R2_KEY, url: asset.url, size: asset.fileSize }),
+      deleteFile,
+      reconcileAsset,
+      insertAsset: vi.fn().mockRejectedValue(new Error('COMMIT response lost'))
+    })).resolves.toEqual(asset)
+
+    expect(reconcileAsset).toHaveBeenCalledWith(ASSET_ID)
+    expect(deleteFile).not.toHaveBeenCalled()
+  })
+
   it('uses the request-owned delete callback when an ordinary upload cannot persist its database row', async () => {
+    const event = { context: { user: { id: ACTOR_ID } } } as unknown as H3Event
+    const deleteFile = vi.fn()
+    const reconcileAsset = vi.fn().mockResolvedValue(null)
+
+    await expect(executeGodModeBannerAssetUpload(event, {
+      assetId: ASSET_ID,
+      r2Key: R2_KEY,
+      result: resultFactory,
+      uploadFile: vi.fn().mockResolvedValue({ key: R2_KEY, url: asset.url, size: asset.fileSize }),
+      deleteFile,
+      reconcileAsset,
+      insertAsset: vi.fn().mockRejectedValue(new Error('database unavailable'))
+    })).rejects.toThrow('database unavailable')
+
+    expect(reconcileAsset).toHaveBeenCalledWith(ASSET_ID)
+    expect(deleteFile).toHaveBeenCalledWith(R2_KEY)
+    expect(deleteBannerFile).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['fresh reconciliation is unavailable', vi.fn().mockRejectedValue(new Error('fresh read unavailable'))],
+    ['the durable row has a different storage identity', vi.fn().mockResolvedValue({ ...asset, r2Key: 'banner-assets/owner/other.jpg' })]
+  ])('preserves an ordinary object and requires recovery when %s', async (_case, reconcileAsset) => {
     const event = { context: { user: { id: ACTOR_ID } } } as unknown as H3Event
     const deleteFile = vi.fn()
 
@@ -956,10 +1114,13 @@ describe('God mode banner asset upload coordination', () => {
       result: resultFactory,
       uploadFile: vi.fn().mockResolvedValue({ key: R2_KEY, url: asset.url, size: asset.fileSize }),
       deleteFile,
-      insertAsset: vi.fn().mockRejectedValue(new Error('database unavailable'))
-    })).rejects.toThrow('database unavailable')
+      reconcileAsset,
+      insertAsset: vi.fn().mockRejectedValue(new Error('COMMIT response lost'))
+    })).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: 'Banner upload recovery required'
+    })
 
-    expect(deleteFile).toHaveBeenCalledWith(R2_KEY)
-    expect(deleteBannerFile).not.toHaveBeenCalled()
+    expect(deleteFile).not.toHaveBeenCalled()
   })
 })

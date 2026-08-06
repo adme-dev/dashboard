@@ -59,6 +59,7 @@ export interface BannerAssetUploadMutation {
   result: (stored: StoredBannerAssetUpload, identity: BannerUploadStorageIdentity) => BannerAssetUploadResult
   uploadFile: (r2Key: string, assetId?: string) => Promise<StoredBannerAssetUpload>
   deleteFile?: (r2Key: string) => Promise<void>
+  reconcileAsset?: (assetId: string) => Promise<BannerAssetUploadResult | null>
   insertAsset: (
     db: TransactionDb | null,
     stored: StoredBannerAssetUpload,
@@ -168,6 +169,35 @@ function durableAssetIdentity(row: ExistingExecutionRow): BannerUploadStorageIde
     || !row.r2_key.startsWith('banner-assets/')
     || hasAsciiControlCharacter(row.r2_key)) return null
   return { assetId: row.asset_id, r2Key: row.r2_key }
+}
+
+function exactAssetResult(
+  candidate: BannerAssetUploadResult,
+  expected: BannerAssetUploadResult
+): boolean {
+  return candidate.id === expected.id
+    && candidate.r2Key === expected.r2Key
+    && candidate.uploadedBy === expected.uploadedBy
+    && candidate.name === expected.name
+    && candidate.mimeType === expected.mimeType
+    && candidate.fileSize === expected.fileSize
+    && candidate.url === expected.url
+}
+
+async function reconcileOrdinaryAsset(
+  upload: BannerAssetUploadMutation,
+  expected: BannerAssetUploadResult
+): Promise<BannerAssetUploadResult | null> {
+  let durable: BannerAssetUploadResult | null
+  try {
+    durable = upload.reconcileAsset
+      ? await upload.reconcileAsset(expected.id)
+      : await queryOneFresh<BannerAssetUploadResult>(ASSET_SQL, [expected.id])
+  } catch {
+    throw recoveryRequired()
+  }
+  if (durable && !exactAssetResult(durable, expected)) throw recoveryRequired()
+  return durable
 }
 
 function executionMode(
@@ -526,13 +556,30 @@ export async function executeGodModeBannerAssetUpload(
 ): Promise<BannerAssetUploadResult> {
   const current = coordination(event)
   if (!current) {
+    let stored: StoredBannerAssetUpload
     try {
-      const stored = await upload.uploadFile(upload.r2Key, upload.assetId)
-      return await upload.insertAsset(null, stored, upload.result(stored, {
+      stored = await upload.uploadFile(upload.r2Key, upload.assetId)
+    } catch (error) {
+      if (upload.deleteFile) await upload.deleteFile(upload.r2Key)
+      throw error
+    }
+    let expected: BannerAssetUploadResult
+    try {
+      expected = upload.result(stored, {
         assetId: upload.assetId,
         r2Key: upload.r2Key
-      }))
+      })
     } catch (error) {
+      if (upload.deleteFile) await upload.deleteFile(upload.r2Key)
+      throw error
+    }
+    try {
+      const inserted = await upload.insertAsset(null, stored, expected)
+      if (!exactAssetResult(inserted, expected)) throw recoveryRequired()
+      return inserted
+    } catch (error) {
+      const durable = await reconcileOrdinaryAsset(upload, expected)
+      if (durable) return durable
       if (upload.deleteFile) await upload.deleteFile(upload.r2Key)
       throw error
     }
@@ -574,12 +621,11 @@ export async function executeGodModeBannerAssetUpload(
     current.pending = { stored, result, insertAsset: upload.insertAsset }
     return result
   } catch (error) {
-    try {
-      await compensateNewObject(current)
-    } finally {
-      current.pending = null
-      current.resultReference = null
-    }
+    // The durable dispatched claim may have been reclaimed while native R2
+    // work was in flight. Cleanup is deferred to failed terminal persistence,
+    // which locks the ledger and proves this correlation still owns the claim.
+    current.pending = null
+    current.resultReference = null
     throw error
   }
 }

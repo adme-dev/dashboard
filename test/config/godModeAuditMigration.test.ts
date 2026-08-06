@@ -6,7 +6,7 @@ const migrationPath = new URL('../../server/database/migrations/345_god_mode_aud
 const preExecutionMigrationPath = new URL('../../server/database/migrations/346_god_mode_pre_execution_audit.sql', import.meta.url)
 const executionMigrationPath = new URL('../../server/database/migrations/347_god_mode_execution_reconciliation.sql', import.meta.url)
 const identityGuardMigrationPath = new URL('../../server/database/migrations/349_god_mode_audit_identity_guard_reconciliation.sql', import.meta.url)
-const migrationPaths = [migrationPath, preExecutionMigrationPath, executionMigrationPath, identityGuardMigrationPath]
+const migrationPaths = [migrationPath, preExecutionMigrationPath, executionMigrationPath]
 const auditDatabaseUrl = process.env.GOD_MODE_AUDIT_TEST_DATABASE_URL
 const schemaName = `god_mode_audit_test_${crypto.randomUUID().replaceAll('-', '')}`
 let client: Client | undefined
@@ -111,6 +111,29 @@ databaseDescribe('God mode audit migration database regression', () => {
         .replace(/\s*COMMIT;\s*$/, '')
       await client.query(migration)
     }
+    await client.query(`
+      CREATE OR REPLACE FUNCTION guard_god_mode_audit_event_insert()
+      RETURNS TRIGGER
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        -- Reproduces the permissive live drift: correlation existence only.
+        IF NEW.phase IN ('ambiguous', 'succeeded', 'failed') AND NOT EXISTS (
+          SELECT 1 FROM god_mode_audit_events attempt
+           WHERE attempt.correlation_id = NEW.correlation_id
+             AND attempt.phase = 'attempt'
+        ) THEN
+          RAISE EXCEPTION 'outcome event requires matching attempt';
+        END IF;
+        RETURN NEW;
+      END;
+      $$;
+    `)
+    const identityMigration = readFileSync(identityGuardMigrationPath, 'utf8')
+      .replace(/^\s*BEGIN;\s*/, '')
+      .replace(/\s*COMMIT;\s*$/, '')
+    await client.query(identityMigration)
+    await client.query(identityMigration)
     const tableSchema = await client.query<{ schema: string }>(
       `SELECT namespace.nspname AS schema
          FROM pg_catalog.pg_class relation
@@ -151,6 +174,29 @@ databaseDescribe('God mode audit migration database regression', () => {
     await client!.query('ROLLBACK TO SAVEPOINT immutable_test')
     await client!.query('SAVEPOINT delete_test')
     await expect(client!.query('DELETE FROM god_mode_audit_events WHERE correlation_id = $1', [correlation])).rejects.toThrow(/immutable/i)
+  })
+
+  it('replaces permissive live drift idempotently and rejects an entity mismatch', async () => {
+    const actor = '30111111-1111-4111-8111-111111111111'
+    const correlation = '30222222-2222-4222-8222-222222222222'
+    const entity = '30333333-3333-4333-8333-333333333333'
+    await client!.query(
+      `INSERT INTO god_mode_audit_events
+        (actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase,
+         entity_type, entity_id, bypassed_controls, outcome_code, emergency_disabled)
+       VALUES ($1, $2, $3, 'application', 'create_banner_asset', 'attempt',
+         'banner_asset', $4, '{}', 'started', FALSE)`,
+      [actor, correlation, '9'.repeat(64), entity]
+    )
+
+    await expect(client!.query(
+      `INSERT INTO god_mode_audit_events
+        (actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase,
+         entity_type, entity_id, bypassed_controls, outcome_code, emergency_disabled)
+       VALUES ($1, $2, $3, 'application', 'create_banner_asset', 'succeeded',
+         'banner_asset', $4, '{}', 'ok', FALSE)`,
+      [actor, correlation, '9'.repeat(64), '30444444-4444-4444-8444-444444444444']
+    )).rejects.toThrow(/matching attempt/i)
   })
 
   it('rejects duplicate nonces atomically', async () => {

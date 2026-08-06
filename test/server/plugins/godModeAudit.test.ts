@@ -271,6 +271,35 @@ describe('God mode terminal audit plugin', () => {
     diagnostic.mockRestore()
   })
 
+  it.each([
+    [
+      'a secret-like custom Error name',
+      Object.assign(new Error('safe message'), { name: 'sk_live_secret_fragment' }),
+      'Error',
+      'sk_live_secret_fragment'
+    ],
+    [
+      'a control-bearing object name',
+      { name: 'Injected\nControl', code: '08006' },
+      'unknown',
+      'Injected'
+    ]
+  ])('maps %s to a fixed diagnostic category', async (_case, persistenceError, errorClass, forbidden) => {
+    const request = event('POST')
+    const response = { body: { ok: true } }
+    const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    seed(request, appendGodModeAuditEvent)
+    appendGodModeAuditEvent.mockRejectedValue(persistenceError)
+
+    await persistGodModeTerminalAudit(request, response, { appendGodModeAuditEvent, setResponseStatus })
+
+    expect(diagnostic).toHaveBeenCalledWith('[God mode audit] terminal persistence failed', expect.objectContaining({
+      errorClass
+    }))
+    expect(JSON.stringify(diagnostic.mock.calls)).not.toContain(forbidden)
+    diagnostic.mockRestore()
+  })
+
   it('routes a prepared mutation terminal through its coordinator instead of direct DB persistence', async () => {
     const request = event('POST')
     const response = { body: { ok: true } }
