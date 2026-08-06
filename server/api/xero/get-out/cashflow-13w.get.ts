@@ -15,8 +15,10 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
-import { extractCurrentCash, fetchBankSummary } from '~~/server/utils/xeroDataFetcher'
+import { fetchBankBalances } from '~~/server/utils/xeroDataFetcher'
 import { loadGetOutConfig, summariseConfig } from '~~/server/utils/getOutConfig'
+import { xeroFetch } from '~~/server/utils/xeroClient'
+import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
 
 interface InvoiceWeekRow {
   week_start: string
@@ -56,7 +58,7 @@ export default defineEventHandler(async (event) => {
        SUM(amount_due_cents)::text AS amount_due_cents
      FROM xero_invoices_cache
      WHERE tenant_id = $1
-       AND status = 'AUTHORISED'
+       AND (status = 'AUTHORISED' OR (type = 'ACCPAY' AND status = 'DRAFT'))
        AND amount_due_cents > 0
        AND due_date BETWEEN $2::date AND $3::date
      GROUP BY DATE_TRUNC('week', due_date), type
@@ -64,11 +66,81 @@ export default defineEventHandler(async (event) => {
     [tenantId, startStr, endStr],
   )
 
+  // Draft ACCPAY bills are included above: most recurring supplier costs are
+  // generated as draft bills awaiting approval, and they are still committed
+  // cash. Draft ACCREC stays excluded — unissued sales invoices are not owed.
+
+  // Bills already in the horizon, keyed by contact+week, so repeating-bill
+  // template occurrences below never double-count a generated bill.
+  const billContactWeeks = await queryRows<{ week_start: string; contact_id: string }>(
+    `SELECT DISTINCT
+       TO_CHAR(DATE_TRUNC('week', due_date), 'YYYY-MM-DD') AS week_start,
+       contact_id
+     FROM xero_invoices_cache
+     WHERE tenant_id = $1
+       AND type = 'ACCPAY'
+       AND status IN ('AUTHORISED', 'DRAFT')
+       AND due_date BETWEEN $2::date AND $3::date`,
+    [tenantId, startStr, endStr],
+  )
+
+  // Repeating ACCPAY templates (Xero RepeatingInvoices): project each future
+  // occurrence in the horizon that has no matching generated bill yet.
+  // Precedence follows the forecasting model: real bill > draft bill >
+  // repeating-template occurrence. DRAFT templates are included — they still
+  // generate bills each cycle, just requiring approval.
+  const mondayOf = (d: Date): string => {
+    const m = new Date(d)
+    m.setUTCHours(0, 0, 0, 0)
+    m.setUTCDate(m.getUTCDate() - ((m.getUTCDay() + 6) % 7))
+    return m.toISOString().slice(0, 10)
+  }
+  const repeatingOutflowByWeek = new Map<string, number>()
+  let totalRepeatingBillOutflow = 0
+  try {
+    const riBody = await dedupedXeroCall(
+      `repeatingInvoices:${tenantId}`,
+      'repeating-invoices',
+      () => xeroFetch<any>({ accessToken: token.access_token!, tenantId, path: 'RepeatingInvoices' }),
+    )
+    const templates = (riBody?.repeatingInvoices ?? []).filter(
+      (ri: any) => ri.type === 'ACCPAY' && (ri.status === 'AUTHORISED' || ri.status === 'DRAFT'),
+    )
+    const seen = new Set(billContactWeeks.map(r => `${r.contact_id}|${String(r.week_start).slice(0, 10)}`))
+    for (const ri of templates) {
+      const total = Number(ri.total) || 0
+      const sched = ri.schedule
+      if (!total || !sched?.nextScheduledDate) continue
+      const period = sched.period && sched.period > 0 ? sched.period : 1
+      const unit = String(sched.unit ?? '').toUpperCase()
+      const end = sched.endDate ? new Date(sched.endDate) : null
+      let occ = new Date(sched.nextScheduledDate)
+      for (let guard = 0; guard < 60 && occ < horizonEnd; guard++) {
+        if (end && occ > end) break
+        if (occ >= weekStart) {
+          const wk = mondayOf(occ)
+          const key = `${ri.contact?.contactID ?? ri.contact?.name ?? 'unknown'}|${wk}`
+          if (!seen.has(key)) {
+            repeatingOutflowByWeek.set(wk, (repeatingOutflowByWeek.get(wk) ?? 0) + total)
+            totalRepeatingBillOutflow += total
+          }
+        }
+        const next = new Date(occ)
+        if (unit === 'WEEKLY') next.setUTCDate(next.getUTCDate() + 7 * period)
+        else if (unit === 'MONTHLY') next.setUTCMonth(next.getUTCMonth() + period)
+        else if (unit === 'YEARLY') next.setUTCFullYear(next.getUTCFullYear() + period)
+        else break
+        occ = next
+      }
+    }
+  } catch (err: any) {
+    console.warn('[cashflow-13w] repeating invoices fetch failed:', err?.message)
+  }
+
   // Opening cash (live Xero — balance is current as of today)
   let openingCash = 0
   try {
-    const bank = await fetchBankSummary(token.access_token!, tenantId)
-    openingCash = extractCurrentCash(bank)
+    openingCash = (await fetchBankBalances(token.access_token!, tenantId)).cash
   } catch (err: any) {
     console.warn('[cashflow-13w] bank summary failed:', err?.message)
   }
@@ -120,7 +192,7 @@ export default defineEventHandler(async (event) => {
     const matchInflow = rows.find(r => String(r.week_start).startsWith(wkStartStr.slice(0, 10)) && r.type === 'ACCREC')
     const matchOutflow = rows.find(r => String(r.week_start).startsWith(wkStartStr.slice(0, 10)) && r.type === 'ACCPAY')
     const inflow = n(matchInflow?.amount_due_cents) / 100
-    const outflow = n(matchOutflow?.amount_due_cents) / 100
+    const outflow = n(matchOutflow?.amount_due_cents) / 100 + (repeatingOutflowByWeek.get(wkStartStr) ?? 0)
     const net = inflow - outflow
     running += net
     buckets.push({
@@ -197,6 +269,10 @@ export default defineEventHandler(async (event) => {
     lowestBalanceProjectedWeek,
     buckets,
     projectionInputs: {
+      // Committed recurring supplier outflow already folded into weekly
+      // outflows above. If getOutConfig's monthly burn also covers these
+      // suppliers, trim the config to avoid double-counting.
+      totalRepeatingBillOutflow: Math.round(totalRepeatingBillOutflow * 100) / 100,
       monthlyProjectedInflow: Math.round(monthlyProjectedInflow * 100) / 100,
       monthlyBurn: Math.round(monthlyBurn * 100) / 100,
       weeklyBurn: Math.round(weeklyBurn * 100) / 100,

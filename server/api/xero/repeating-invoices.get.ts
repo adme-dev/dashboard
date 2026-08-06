@@ -113,7 +113,10 @@ export default eventHandler(async (event) => {
     const mrr = incomeSchedules.reduce((sum, s) => sum + s.monthlyEquivalent, 0)
 
     // Recurring costs (what we pay out regularly — Adobe, Google Cloud, etc.)
-    const costSchedules = all.filter(ri => ri.type === 'ACCPAY' && ri.status === 'AUTHORISED').map(buildSchedule)
+    // DRAFT templates included, same as income: most supplier templates run
+    // as drafts so variable amounts get reviewed before approval, but the
+    // commitment recurs regardless.
+    const costSchedules = all.filter(ri => ri.type === 'ACCPAY' && isActive(ri)).map(buildSchedule)
     const recurringMonthlyCosts = costSchedules.reduce((sum, s) => sum + s.monthlyEquivalent, 0)
 
     const byContact = new Map<string, { contact: string; contactId: string; monthly: number; schedules: number }>()
