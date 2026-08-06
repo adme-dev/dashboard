@@ -8,6 +8,7 @@ import {
   type GodModeClientPortalAccessDependencies
 } from '../../../server/utils/clientPortal/godModeAccess'
 import { executeClientPortalAccess } from '../../../server/utils/clientPortal/access'
+import { digestPortalSessionToken } from '../../../server/utils/portalSession'
 
 const ACTOR_ID = '11111111-1111-4111-8111-111111111111'
 const OTHER_ACTOR_ID = '22222222-2222-4222-8222-222222222222'
@@ -210,6 +211,19 @@ describe('God mode client portal access coordination', () => {
     expect(activityInsertCount).toBe(1)
     expect(loginIncrementCount).toBe(1)
     expect(appendAudit).toHaveBeenCalledTimes(2)
+    expect(String(query.mock.calls.find(call => String(call[0]).includes('UPDATE god_mode_execution_ledger'))?.[0])
+      .match(/\$3::VARCHAR/g)).toHaveLength(2)
+    expect(appendAudit.mock.calls[0]?.[0]).toEqual(terminal())
+    expect(first.sessionToken).not.toBe(await digestPortalSessionToken(
+      `${'a'.repeat(64)}\0${CLIENT_ID}\0${IDEMPOTENCY_KEY}`
+    ))
+    expect(query.mock.calls.find(call => String(call[0]).includes('FROM client_sessions s'))?.[1])
+      .toEqual([
+        SESSION_ID,
+        CLIENT_ID,
+        `agency-${ACTOR_ID}-${CLIENT_ID}@portal-access.local`,
+        expect.any(String)
+      ])
   })
 
   it('rejects same-key reuse for another client before creating a cross-client session', async () => {
@@ -268,8 +282,10 @@ describe('God mode client portal access coordination', () => {
 
   it('registers the exact coordinator through an isolated Nitro plugin', () => {
     const plugin = readFileSync('server/plugins/clientPortalGodModeExecution.ts', 'utf8')
+    const coordinator = readFileSync('server/utils/clientPortal/godModeAccess.ts', 'utf8')
 
     expect(plugin).toContain('registerGodModeClientPortalAccessFamily()')
     expect(plugin).not.toContain('server/plugins/godModeExecution')
+    expect(coordinator).toContain('transaction: transactionWithoutRetry')
   })
 })

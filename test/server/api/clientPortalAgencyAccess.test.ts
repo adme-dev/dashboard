@@ -82,6 +82,7 @@ describe('agency client portal access API', () => {
     })
 
     expect(mockRequireRole).toHaveBeenCalledOnce()
+    expect(mockRequireRole.mock.calls[0]?.[1]).toContain('super_admin')
     expect(mockDbQuery).toHaveBeenCalledWith(
       expect.stringContaining('FROM agency_clients c'),
       ['client-1', 'agency-user-1', true]

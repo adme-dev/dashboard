@@ -1,6 +1,6 @@
 import type { Pool } from '@neondatabase/serverless'
 import type { H3Event } from 'h3'
-import { createError, getHeader } from 'h3'
+import { createError, getCookie, getHeader } from 'h3'
 
 import { executeGodModeBannerProjectCreation } from '~~/server/utils/banner/godModeProjectCreation'
 import { transaction } from '~~/server/utils/db'
@@ -8,7 +8,7 @@ import { getGodModeRouteAuditState } from '~~/server/utils/godMode/featureGate'
 import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 
 type TransactionDb = Pick<Pool, 'query'>
-const AGENCY_WIDE_ROLES = ['owner', 'admin', 'lead', 'project_manager']
+const AGENCY_WIDE_ROLES = ['owner', 'admin', 'lead', 'project_manager', 'super_admin']
 
 export interface AgencyPortalAccessActor {
   id: string
@@ -34,6 +34,29 @@ interface AccessRow {
 
 function email(actorId: string, clientId: string) {
   return `agency-${actorId}-${clientId}@portal-access.local`.toLowerCase()
+}
+
+async function godModeSessionToken(
+  event: H3Event,
+  actorId: string,
+  clientId: string,
+  idempotencyKey: string
+) {
+  const authorization = getHeader(event, 'authorization')
+  const credential = getCookie(event, 'auth_token')
+    || getCookie(event, 'auth_token_client')
+    || (authorization?.startsWith('Bearer ') ? authorization.slice(7) : '')
+  if (!credential) throw createError({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw', encoder.encode(credential), { name: 'HMAC', hash: 'SHA-384' }, false, ['sign']
+  )
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    encoder.encode(`xeroflow:client-portal-access:v1\0${actorId}\0${clientId}\0${idempotencyKey}`)
+  )
+  return Buffer.from(signature).toString('base64url')
 }
 
 function result(
@@ -69,7 +92,8 @@ async function replay(
   const tokenHash = await digestPortalSessionToken(sessionToken)
   const row = (await db.query<AccessRow>(`SELECT s.expires_at "expiresAt",c.name "clientName",c.logo_url "logoUrl",u.id "userId"
     FROM client_sessions s JOIN client_users u ON u.id=s.client_user_id JOIN agency_clients c ON c.id=u.client_id
-    WHERE s.id=$1 AND u.client_id=$2 AND s.token_hash=$3 AND s.expires_at>NOW()`, [sessionId, clientId, tokenHash])).rows[0]
+    WHERE s.id=$1 AND u.client_id=$2 AND u.email=$3 AND s.token_hash=$4 AND s.expires_at>NOW()`,
+  [sessionId, clientId, email(actor.id, clientId), tokenHash])).rows[0]
   if (!row) throw createError({ statusCode: 409, statusMessage: 'Portal access replay is no longer available' })
   return result(row, actor, clientId, sessionId, sessionToken)
 }
@@ -152,8 +176,11 @@ export async function executeClientPortalAccess(
   if (state.actorUserId !== actor.id) {
     throw createError({ statusCode: 409, statusMessage: 'Client portal access scope does not match' })
   }
-  const sessionToken = await digestPortalSessionToken(
-    `${state.sessionDigest}\0${clientId}\0${getHeader(event, 'idempotency-key') || ''}`
+  const sessionToken = await godModeSessionToken(
+    event,
+    state.actorUserId,
+    clientId,
+    getHeader(event, 'idempotency-key') || ''
   )
   return await executeGodModeBannerProjectCreation(
     event,

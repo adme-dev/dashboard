@@ -127,10 +127,8 @@ describe('God mode banner project creation coordination', () => {
     expect(project).toEqual({ id: PROJECT_ID, name: 'Launch' })
     expect(create).toHaveBeenCalledTimes(1)
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({
-      phase: 'succeeded'
+      phase: 'succeeded', entityType: 'banner_project', entityId: PROJECT_ID
     }), expect.objectContaining({ query }))
-    expect(audit.mock.calls[0]?.[0]).not.toHaveProperty('entityType')
-    expect(audit.mock.calls[0]?.[0]).not.toHaveProperty('entityId')
     expect(query).toHaveBeenCalledWith(expect.stringContaining('UPDATE god_mode_execution_ledger'), expect.arrayContaining(['succeeded', PROJECT_ID]))
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('execution_metadata'),

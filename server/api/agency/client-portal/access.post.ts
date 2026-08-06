@@ -13,7 +13,7 @@ interface AccessClientPortalBody {
 
 export default defineEventHandler(async (event) => {
   const agencyUser = await requireRole(event, [
-    ...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING])
+    ...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING, 'super_admin'])
   ])
   const body = await readBody<AccessClientPortalBody>(event)
   const clientId = body.clientId

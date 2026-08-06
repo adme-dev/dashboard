@@ -168,7 +168,7 @@ describe('God mode banner asset upload coordination', () => {
       if (sql.includes('execution_phase = \'dispatched\'')) return { rows: [{ state: 'in_progress' }] }
       if (sql.includes('UPDATE god_mode_execution_ledger')) {
         const row = ledger.get(key)!
-        row.state = sql.includes('state = \'succeeded\'') ? 'succeeded' : 'failed'
+        row.state = String(params[5])
         row.resultReference = params[3] ? String(params[3]) : null
         return { rows: [] }
       }
@@ -233,7 +233,7 @@ describe('God mode banner asset upload coordination', () => {
         ledger!.executionPhase = 'dispatched'
         return { rows: [{ state: ledger!.state }] }
       }
-      if (sql.includes('state = \'succeeded\'')) {
+      if (sql.includes('state = $6::VARCHAR') && params[5] === 'succeeded') {
         ledger!.state = 'succeeded'
         ledger!.resultReference = String(params[3])
         ledger!.executionPhase = 'result_captured'
@@ -316,7 +316,7 @@ describe('God mode banner asset upload coordination', () => {
         ledger.executionPhase = 'dispatched'
         return { rows: [{ state: 'in_progress' }] }
       }
-      if (sql.includes('state = \'succeeded\'')) {
+      if (sql.includes('state = $6::VARCHAR') && params[5] === 'succeeded') {
         ledger.state = 'succeeded'
         ledger.resultReference = String(params[3])
         return { rows: [{ state: 'succeeded' }] }
@@ -384,7 +384,7 @@ describe('God mode banner asset upload coordination', () => {
         assets.set(inserted.id, inserted)
         return { rows: [inserted] }
       }
-      if (sql.includes('state = \'succeeded\'')) {
+      if (sql.includes('state = $6::VARCHAR') && params[5] === 'succeeded') {
         ledger.state = 'succeeded'
         ledger.resultReference = String(params[3])
         return { rows: [{ state: 'succeeded' }] }
@@ -470,7 +470,7 @@ describe('God mode banner asset upload coordination', () => {
         ledger.assetId = String(params[4])
         return { rows: [{ state: 'in_progress' }] }
       }
-      if (sql.includes('state = \'succeeded\'')) {
+      if (sql.includes('state = $6::VARCHAR') && params[5] === 'succeeded') {
         ledger.state = 'succeeded'
         ledger.resultReference = String(params[3])
         ledger.executionPhase = 'result_captured'
@@ -640,7 +640,7 @@ describe('God mode banner asset upload coordination', () => {
         return { rows: [{ state: 'in_progress' }] }
       }
       if (sql.includes('execution_phase = \'dispatched\'')) return { rows: [{ state: 'in_progress' }] }
-      if (sql.includes('state = \'succeeded\'')) {
+      if (sql.includes('state = $6::VARCHAR') && params[5] === 'succeeded') {
         ledger.state = 'succeeded'
         ledger.resultReference = String(params[3])
         return { rows: [{ state: 'succeeded' }] }
@@ -731,6 +731,9 @@ describe('God mode banner asset upload coordination', () => {
       expect.stringContaining('INSERT INTO banner_assets'),
       expect.stringContaining('UPDATE god_mode_execution_ledger')
     ]))
+    expect(connectionQueries[2]
+      .find(sql => sql.includes('UPDATE god_mode_execution_ledger'))
+      ?.match(/\$6::VARCHAR/g)).toHaveLength(2)
   })
 
   it.each([

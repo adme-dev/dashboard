@@ -404,6 +404,8 @@ async function persistTerminal(
         throw CLAIM_OWNERSHIP_LOST
       }
 
+      let resultReference: string | null = null
+      let resultDigest: string | null = null
       if (expectedPhase === 'succeeded') {
         if (!current.resultReference || !current.pending) {
           throw new Error('Banner asset upload did not produce a durable result')
@@ -414,17 +416,13 @@ async function persistTerminal(
           || inserted.uploadedBy !== current.actorUserId) {
           throw new Error('Banner asset insert returned an unexpected result')
         }
-        const resultDigest = createHash('sha256').update(current.resultReference).digest('hex')
-        await db.query(
-          `UPDATE god_mode_execution_ledger SET state = 'succeeded', result_reference = $4, result_digest = $5, execution_phase = 'result_captured', updated_at = NOW() WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2 AND correlation_id = $3 AND state = 'in_progress'`,
-          [current.actorUserId, current.idempotencyKey, current.correlationId, current.resultReference, resultDigest]
-        )
-      } else {
-        await db.query(
-          `UPDATE god_mode_execution_ledger SET state = 'failed', result_reference = NULL, result_digest = NULL, updated_at = NOW() WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2 AND correlation_id = $3 AND state = 'in_progress'`,
-          [current.actorUserId, current.idempotencyKey, current.correlationId]
-        )
+        resultReference = current.resultReference
+        resultDigest = createHash('sha256').update(current.resultReference).digest('hex')
       }
+      await db.query(
+        `UPDATE god_mode_execution_ledger SET state = $6::VARCHAR, result_reference = $4, result_digest = $5, execution_phase = CASE WHEN $6::VARCHAR = 'succeeded' THEN 'result_captured' ELSE execution_phase END, updated_at = NOW() WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2 AND correlation_id = $3 AND state = 'in_progress'`,
+        [current.actorUserId, current.idempotencyKey, current.correlationId, resultReference, resultDigest, expectedPhase]
+      )
       // Terminal identity must remain byte-for-byte aligned with the immutable attempt.
       // The created asset is linked only through ledger.result_reference.
       await dependencies.appendAudit(terminal, db)
