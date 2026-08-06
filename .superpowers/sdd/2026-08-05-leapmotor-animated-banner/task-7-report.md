@@ -79,3 +79,17 @@ The recorded deltas remain corpus-specific audit evidence rather than a content-
 ## Production safety
 
 No production deploy, live asset upload, ad-platform publish, Cloudflare configuration change, email, or production database mutation was performed. In particular, migration 349 remains unapplied outside the isolated test schema and must follow the deploy-first sequence above.
+
+## Fix round 1 — independent review closure
+
+Implementation commit `eb6811d5` closes every Critical/Important finding and the migration-test hardening item from `task-7-review.md`:
+
+- Coordinated execution no longer deletes from its local R2/result catch. Failed-terminal persistence first locks the ledger and proves the current correlation still owns the claim; only a committed failed terminal permits compensation. Ownership transfer clears the old request's cleanup key and preserves the shared deterministic object.
+- The adversarial regression pauses uploader A after its dispatched reservation, lets uploader B stale-reclaim, write, and finalize the same persisted `assetId`/`r2Key`, then rejects A. A's terminal detects the successor and never deletes B's object.
+- Diagnostic error classes now come only from fixed built-in categories (`Error`, built-in subclasses) or `unknown`. Hostile secret-like and control-bearing `name` properties never enter logs; SQLSTATE remains separately constrained to five uppercase alphanumeric characters.
+- Ordinary uploads keep the preallocated asset ID through insert and, on insert rejection, perform a fresh exact asset lookup. An exact durable row returns success and preserves R2; an authoritative null permits deletion; unavailable or mismatched reconciliation preserves R2 and returns bounded recovery.
+- The isolated migration setup now replaces the strict guard with a known correlation-only permissive live function, applies migration 349 twice, and proves an entity mismatch is rejected afterward.
+
+Test-first evidence for the round was seven intended failures followed by 46/46 passing across the ownership and diagnostic files. The complete non-database focused slice passed 68 tests with 11 opt-in database cases skipped. The isolated Neon run passed 15/15 in a generated schema and dropped that schema. Owned lint and diff checks passed.
+
+The final combined guard/build/Workerd rerun is deferred until the concurrently active client-portal worker lands, so that one fresh artifact includes both commits. No deployment or live migration is authorized by this interim closure.
