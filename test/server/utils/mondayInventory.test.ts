@@ -215,6 +215,37 @@ describe('Monday production inventory', () => {
     })
   })
 
+  it('ignores null workspace entries while preserving valid canonical data without subscriber PII', async () => {
+    const requester = vi.fn(async () => ({ workspaces: [null, {
+      id: '10', name: 'Creative', description: 'Studio', kind: 'open', state: 'active',
+      created_at: '2024-01-01', is_default_workspace: true,
+      owners_subscribers: [{ id: '1', name: 'Ada', email: 'private-owner@example.com' }],
+      users_subscribers: [{ id: '2', name: 'Grace', email: 'private-subscriber@example.com' }],
+      team_owners_subscribers: [{ id: 't1', name: 'Leadership' }],
+      teams_subscribers: [{ id: 't2', name: 'Studio' }],
+    }] }))
+    const source = new MondayGraphqlInventorySource('not-a-real-token', requester)
+
+    const page = await source.getWorkspacesPage({ page: 1, limit: 100 })
+
+    expect(page.entities).toEqual([{
+      id: '10',
+      name: 'Creative',
+      description: 'Studio',
+      kind: 'open',
+      state: 'active',
+      ownerIds: ['1'],
+      subscriberIds: ['2'],
+      teamOwnerIds: ['t1'],
+      teamSubscriberIds: ['t2'],
+      isDefaultWorkspace: true,
+      membershipTruncated: false,
+      createdAt: '2024-01-01',
+    }])
+    expect(JSON.stringify(page)).not.toContain('private-owner@example.com')
+    expect(JSON.stringify(page)).not.toContain('private-subscriber@example.com')
+  })
+
   it('preserves exact titles and states while flagging missing titles without guessing', async () => {
     const manifest = await buildMondayInventoryManifest(sourceFixture(), {
       expectedAccountId: '229224', observedAt, pageSize: 2,

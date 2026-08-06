@@ -54,7 +54,7 @@ export class MondayGraphqlInventorySource implements MondayInventorySource {
         }
       }
     `)
-    return { entities: (data.workspaces || []).map(workspace => {
+    return { entities: (data.workspaces || []).filter(workspace => workspace != null).map(workspace => {
       const ownerIds = users(workspace.owners_subscribers).map(user => user.id)
       const subscriberIds = users(workspace.users_subscribers).map(user => user.id)
       const teamOwnerIds = (workspace.team_owners_subscribers || []).map((team: any) => String(team.id))
