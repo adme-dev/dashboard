@@ -9,6 +9,7 @@ useSeoMeta({
 
 <template>
   <div class="p-4 sm:p-6 lg:p-8">
+    <SocialSpendSectionNav class="mb-5" />
     <SocialSpendAiMaxReadiness />
   </div>
 </template>

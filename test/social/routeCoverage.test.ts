@@ -23,6 +23,7 @@ const agencySocialRouteNavs = new Map([
   ['app/pages/agency/social/[platform].vue', 'SocialSpendSectionNav'],
   ['app/pages/agency/social/index.vue', 'SocialSpendSectionNav'],
   ['app/pages/agency/social/spend.vue', 'SocialSpendSectionNav'],
+  ['app/pages/agency/social/google/ai-max.vue', 'SocialSpendSectionNav'],
   ['app/pages/agency/social/inbox/analytics.vue', 'SocialSuiteSectionNav'],
   ['app/pages/agency/social/inbox/approvals.vue', 'SocialSuiteSectionNav'],
   ['app/pages/agency/social/inbox/automation.vue', 'SocialSuiteSectionNav'],
