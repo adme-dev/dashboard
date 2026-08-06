@@ -63,11 +63,7 @@ function coordination(event: H3Event): Coordination | null {
 
 export async function prepareGodModeBannerProjectCreation(
   event: H3Event,
-  dependencies: GodModeBannerProjectCreationDependencies = defaultDependencies,
-  terminalAuditEvent: (
-    terminal: GodModeAuditEventInput,
-    resultReference: string | null
-  ) => GodModeAuditEventInput = terminal => terminal
+  dependencies: GodModeBannerProjectCreationDependencies = defaultDependencies
 ): Promise<{ strategy: 'transaction-bound', prepared: true, persistTerminal: (terminal: GodModeAuditEventInput) => Promise<void> }> {
   const state = getGodModeRouteAuditState(event)
   const idempotencyKey = getHeader(event, 'idempotency-key')?.trim() || ''
@@ -86,13 +82,7 @@ export async function prepareGodModeBannerProjectCreation(
 
   const transactionPromise = dependencies.transaction(async (db) => {
     const claimed = await db.query(
-      `INSERT INTO god_mode_execution_ledger (
-         actor_user_id, channel, idempotency_key, state, correlation_id, route_or_tool,
-         executor_class, session_digest, execution_phase, execution_metadata
-       ) VALUES ($1, 'application', $2, 'in_progress', $3, $4, 'local-transactional', $5, 'claimed',
-                 jsonb_build_object('requestDigest', $6::TEXT))
-       ON CONFLICT (actor_user_id, channel, idempotency_key) DO NOTHING
-       RETURNING state`,
+      `INSERT INTO god_mode_execution_ledger (actor_user_id, channel, idempotency_key, state, correlation_id, route_or_tool, executor_class, session_digest, execution_phase, execution_metadata) VALUES ($1, 'application', $2, 'in_progress', $3, $4, 'local-transactional', $5, 'claimed', jsonb_build_object('requestDigest', $6::TEXT)) ON CONFLICT (actor_user_id, channel, idempotency_key) DO NOTHING RETURNING state`,
       [state.actorUserId, idempotencyKey, state.correlationId, state.routeOrTool, state.sessionDigest, requestDigest]
     )
 
@@ -100,11 +90,7 @@ export async function prepareGodModeBannerProjectCreation(
     let resultReference: string | null = null
     if (!claimed.rows[0]) {
       const existing = await db.query(
-        `SELECT state, result_reference, route_or_tool,
-                execution_metadata ->> 'requestDigest' AS request_digest
-           FROM god_mode_execution_ledger
-          WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2
-          FOR UPDATE`,
+        `SELECT state, result_reference, route_or_tool, execution_metadata ->> 'requestDigest' AS request_digest FROM god_mode_execution_ledger WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2 FOR UPDATE`,
         [state.actorUserId, idempotencyKey]
       )
       const row = existing.rows[0] as ExistingExecutionRow | undefined
@@ -157,11 +143,7 @@ export async function prepareGodModeBannerProjectCreation(
         ? createHash('sha256').update(current.resultReference).digest('hex')
         : null
       await db.query(
-        `UPDATE god_mode_execution_ledger
-            SET state = $3::VARCHAR, result_reference = $4, result_digest = $5,
-                execution_phase = CASE WHEN $3::VARCHAR = 'succeeded' THEN 'result_captured' ELSE execution_phase END,
-                updated_at = NOW()
-          WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2`,
+        `UPDATE god_mode_execution_ledger SET state = $3::VARCHAR, result_reference = $4, result_digest = $5, execution_phase = CASE WHEN $3::VARCHAR = 'succeeded' THEN 'result_captured' ELSE execution_phase END, updated_at = NOW() WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2`,
         [
           current.actorUserId,
           current.idempotencyKey,
@@ -173,7 +155,7 @@ export async function prepareGodModeBannerProjectCreation(
     }
     // Attempt identity is immutable under migration 349. The created project is
     // linked only through god_mode_execution_ledger.result_reference.
-    await dependencies.appendAudit(terminalAuditEvent(finalEvent, current.resultReference), db)
+    await dependencies.appendAudit(finalEvent, db)
   })
   transactionPromise.catch((error) => {
     if (!readySettled) ready.reject(error)

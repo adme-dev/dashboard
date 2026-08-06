@@ -24,7 +24,7 @@ export async function prepareGodModeClientPortalAccess(
   event: H3Event,
   dependencies: GodModeClientPortalAccessDependencies = defaultDependencies
 ) {
-  return await prepareGodModeBannerProjectCreation(event, dependencies, terminal => terminal)
+  return await prepareGodModeBannerProjectCreation(event, dependencies)
 }
 
 export function registerGodModeClientPortalAccessFamily(

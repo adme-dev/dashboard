@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import type { Pool } from '@neondatabase/serverless'
 import type { H3Event } from 'h3'
 import { createError, getCookie, getHeader } from 'h3'
@@ -36,7 +37,7 @@ function email(actorId: string, clientId: string) {
   return `agency-${actorId}-${clientId}@portal-access.local`.toLowerCase()
 }
 
-async function godModeSessionToken(
+function godModeSessionToken(
   event: H3Event,
   actorId: string,
   clientId: string,
@@ -47,16 +48,9 @@ async function godModeSessionToken(
     || getCookie(event, 'auth_token_client')
     || (authorization?.startsWith('Bearer ') ? authorization.slice(7) : '')
   if (!credential) throw createError({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
-  const encoder = new TextEncoder()
-  const key = await crypto.subtle.importKey(
-    'raw', encoder.encode(credential), { name: 'HMAC', hash: 'SHA-384' }, false, ['sign']
-  )
-  const signature = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    encoder.encode(`xeroflow:client-portal-access:v1\0${actorId}\0${clientId}\0${idempotencyKey}`)
-  )
-  return Buffer.from(signature).toString('base64url')
+  return createHmac('sha384', credential)
+    .update(`xeroflow:client-portal-access:v1\0${actorId}\0${clientId}\0${idempotencyKey}`)
+    .digest('base64url')
 }
 
 function result(
@@ -176,7 +170,7 @@ export async function executeClientPortalAccess(
   if (state.actorUserId !== actor.id) {
     throw createError({ statusCode: 409, statusMessage: 'Client portal access scope does not match' })
   }
-  const sessionToken = await godModeSessionToken(
+  const sessionToken = godModeSessionToken(
     event,
     state.actorUserId,
     clientId,

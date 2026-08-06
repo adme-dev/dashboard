@@ -18,6 +18,7 @@ const SESSION_ID = '55555555-5555-4555-8555-555555555555'
 const USER_ID = '66666666-6666-4666-8666-666666666666'
 const IDEMPOTENCY_KEY = 'portal-access:77777777-7777-4777-8777-777777777777'
 const ROUTE = 'POST /api/agency/client-portal/access'
+const SESSION_TOKEN_VECTOR = 'BL-zPZllBgy7Yih0nWysRgH1Hq4YmBMAj3VjeNCgxKnj2YptPXPd-v1MENcVFPZQ'
 
 interface LedgerRow {
   actorUserId: string
@@ -74,6 +75,24 @@ function terminal(actorUserId = ACTOR_ID, correlationId = '88888888-8888-4888-88
     outcomeCode: 'http_2xx',
     emergencyDisabled: false
   }
+}
+
+async function webCryptoSessionToken(
+  credential: string,
+  actorId: string,
+  clientId: string,
+  idempotencyKey: string
+) {
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw', encoder.encode(credential), { name: 'HMAC', hash: 'SHA-384' }, false, ['sign']
+  )
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    encoder.encode(`xeroflow:client-portal-access:v1\0${actorId}\0${clientId}\0${idempotencyKey}`)
+  )
+  return Buffer.from(signature).toString('base64url')
 }
 
 describe('God mode client portal access coordination', () => {
@@ -214,6 +233,13 @@ describe('God mode client portal access coordination', () => {
     expect(String(query.mock.calls.find(call => String(call[0]).includes('UPDATE god_mode_execution_ledger'))?.[0])
       .match(/\$3::VARCHAR/g)).toHaveLength(2)
     expect(appendAudit.mock.calls[0]?.[0]).toEqual(terminal())
+    expect(appendAudit.mock.calls[1]?.[0]).toEqual(
+      terminal(ACTOR_ID, '99999999-9999-4999-8999-999999999999')
+    )
+    expect(first.sessionToken).toBe(SESSION_TOKEN_VECTOR)
+    expect(first.sessionToken).toBe(await webCryptoSessionToken(
+      'agency-session-secret', ACTOR_ID, CLIENT_ID, IDEMPOTENCY_KEY
+    ))
     expect(first.sessionToken).not.toBe(await digestPortalSessionToken(
       `${'a'.repeat(64)}\0${CLIENT_ID}\0${IDEMPOTENCY_KEY}`
     ))
