@@ -5,6 +5,10 @@ import {
   listGoogleAiMaxReadiness,
   parseGoogleAiMaxReadinessQuery,
 } from '~~/server/utils/googleAiMaxReadiness'
+import {
+  googleAiMaxReadinessCacheKey,
+  readGoogleAiMaxReadinessForEvent,
+} from '~~/server/utils/googleAiMaxCache'
 
 export default eventHandler(async (event) => {
   await requireRole(event, PERMISSIONS.MEDIA_BUYING)
@@ -20,5 +24,10 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid AI Max readiness query' })
   }
 
-  return listGoogleAiMaxReadiness({ tenantId, filters })
+  const cacheKey = googleAiMaxReadinessCacheKey(tenantId, filters)
+  return readGoogleAiMaxReadinessForEvent(
+    event,
+    cacheKey,
+    () => listGoogleAiMaxReadiness({ tenantId, filters }),
+  )
 })

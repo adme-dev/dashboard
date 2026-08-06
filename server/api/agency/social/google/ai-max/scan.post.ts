@@ -9,6 +9,7 @@ import {
   getActiveGoogleAiMaxScanRun,
 } from '~~/server/utils/googleAiMaxRepository'
 import { runGoogleAiMaxPortfolioScan } from '~~/server/utils/googleAiMaxScanner'
+import { captureGoogleAiMaxCacheInvalidator } from '~~/server/utils/googleAiMaxCache'
 
 const BodySchema = z.object({
   connectionId: z.string().uuid().optional(),
@@ -58,6 +59,7 @@ export default eventHandler(async (event) => {
   }
 
   const observedAt = new Date().toISOString()
+  const invalidateCache = captureGoogleAiMaxCacheInvalidator(event)
   const work = runGoogleAiMaxPortfolioScan({
     tenantId,
     trigger: 'manual',
@@ -66,6 +68,9 @@ export default eventHandler(async (event) => {
     developerToken: context.developerToken,
     observedAt,
     accounts: context.accounts,
+  }).then(async (result) => {
+    if (result.accepted) await invalidateCache(tenantId)
+    return result
   })
   runAfterResponse(event, work, `google-ai-max-scan:${run.id}`)
 
