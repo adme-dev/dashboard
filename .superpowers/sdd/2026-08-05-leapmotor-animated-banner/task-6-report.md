@@ -31,7 +31,7 @@ The production-boundary regression now starts from the real wrapped `dist/_worke
 - an authenticated multipart upload whose forced database failure must leave the request-owned R2 bucket empty; and
 - real local R2 range and failed-conditional behavior.
 
-Every harness stage is bounded to 15 seconds, with bounded setup, test, and disposal hooks. The final sandbox execution terminated as designed with loopback `EPERM`; the attempted loopback-enabled rerun was rejected by the approval boundary before process creation. Therefore the fresh post-fix artifact has deterministic build/unit/compiler coverage, but a green post-fix workerd run remains an environment verification item rather than a claimed result.
+Every harness stage is bounded to 15 seconds, with bounded setup, test, and disposal hooks. The coordinator subsequently ran the fresh compacted production artifact with loopback access: **1 file and 3 tests passed in 5.11 seconds**. This proves the dispatcher/Nitro/H3 binding path, request-owned upload compensation, and native R2 runtime contract against the reviewed artifact.
 
 ## Private Banner Asset Delivery
 
@@ -86,6 +86,10 @@ Representative RED failures observed before the final fixes:
 
 The targeted regressions were then observed GREEN after implementation. The wrapped fresh artifact also passed the immutable size guard.
 
+## Deferred Minor
+
+The compactor's 63-entry audit records each measured `keepNames` byte delta, but postbuild currently gates on the audited path and export shape rather than mechanically comparing the current delta or a content hash. This does not block the reviewed artifact: all allowlisted modules exist, the size gate passes, and both changed Task 6 routes run through the green production-artifact workerd suite. A future hardening change should fail postbuild when an allowlisted module drifts from its recorded audit.
+
 ## Final Verification
 
 - Coordinator-focused fix slice: **4 files, 66 tests passed**.
@@ -94,6 +98,6 @@ The targeted regressions were then observed GREEN after implementation. The wrap
 - `git diff --check` passed before the implementation commit.
 - Fresh Node 24 Nuxt production build passed; the new ES2019 compiler regression reports no warnings for the delivery route.
 - Fresh wrapper and immutable size guard passed at **24,745,798 bytes**, **4,202 bytes remaining**.
-- Workerd harness termination is bounded and teardown-safe. Sandbox execution produced the expected loopback `EPERM`; a loopback-enabled post-fix run could not be authorized in this sub-session and is not reported as green.
+- Fresh compacted production-artifact workerd harness: **1 file, 3 tests passed in 5.11 seconds**.
 
 No migration was required. No deployment, production request, production storage write, database mutation, render, publish, email, or advertising-platform action was performed.
