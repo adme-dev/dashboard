@@ -223,9 +223,12 @@ describe('banner video God mode coordination', () => {
     const enqueue = vi.fn(async (_input, dependencies) => {
       order.push('prepared')
       const jobId = dependencies.genId()
+      await dependencies.putSourceHtml(`banner-render-jobs/${jobId}/source.html`, '<main>Banner</main>')
       await dependencies.sendQueue({ jobId })
       return { jobIds: [jobId] }
     })
+    const nativePut = vi.fn().mockResolvedValue(undefined)
+    const nativeHead = vi.fn().mockResolvedValue({ size: 19 })
     vi.doMock('h3', async importOriginal => ({
       ...await importOriginal<typeof import('h3')>(),
       readBody: vi.fn(async () => body)
@@ -253,7 +256,10 @@ describe('banner video God mode coordination', () => {
       emergencyDisabled: false
     })
     ;(request.context as Record<string, unknown>).cloudflare = {
-      env: { BANNER_RENDER_QUEUE: { send: vi.fn(async () => { order.push('send') }) } }
+      env: {
+        BANNER_RENDER_QUEUE: { send: vi.fn(async () => { order.push('send') }) },
+        MEDIA_BUCKET: { put: nativePut, head: nativeHead, delete: vi.fn() }
+      }
     }
     const state = harness(order)
     const coordination = await coordinator.prepareGodModeBannerRender(request, state.dependencies)
@@ -262,6 +268,11 @@ describe('banner video God mode coordination', () => {
     await coordination.persistTerminal(terminal(FIRST_CORRELATION, 'succeeded'))
 
     expect(order).toEqual(['prepared', 'checkpoint', 'send'])
+    expect(nativePut).toHaveBeenCalledWith(
+      `banner-render-jobs/${JOB_ID}/source.html`,
+      expect.any(Uint8Array),
+      { httpMetadata: { contentType: 'text/html' } }
+    )
     vi.doUnmock('h3')
     vi.doUnmock('~~/server/utils/auth')
     vi.doUnmock('~~/server/utils/storage')

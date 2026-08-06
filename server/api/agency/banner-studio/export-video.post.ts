@@ -4,6 +4,7 @@ import { uploadFile } from '~~/server/utils/storage'
 import { execute } from '~~/server/utils/db'
 import { enqueueBannerRender, BannerRenderError, type BannerFormat, type InsertJobRow } from '~~/server/utils/banner/renderJob'
 import { executeGodModeBannerRender } from '~~/server/utils/banner/godModeRender'
+import type { R2BucketBinding } from '~~/server/utils/storage'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -18,15 +19,36 @@ export default defineEventHandler(async (event) => {
 
   try {
     const { jobIds } = await executeGodModeBannerRender(event, formats?.length ?? 0, async (genId, markDispatched) => {
-      const queue = (event.context as {
-        cloudflare?: { env?: { BANNER_RENDER_QUEUE?: { send: (message: unknown) => Promise<void> } } }
-      }).cloudflare?.env?.BANNER_RENDER_QUEUE
+      const cloudflare = (event.context as {
+        cloudflare?: {
+          env?: {
+            BANNER_RENDER_QUEUE?: { send: (message: unknown) => Promise<void> }
+            MEDIA_BUCKET?: R2BucketBinding
+          }
+        }
+      }).cloudflare
+      const queue = cloudflare?.env?.BANNER_RENDER_QUEUE
+      const mediaBucket = cloudflare?.env?.MEDIA_BUCKET
       if (!queue) throw createError({ statusCode: 503, statusMessage: 'MP4 export is not enabled yet (render queue unavailable).' })
+      if (cloudflare && (!mediaBucket || typeof mediaBucket.put !== 'function' || typeof mediaBucket.head !== 'function')) {
+        throw createError({ statusCode: 503, statusMessage: 'MP4 export is not enabled yet (render storage unavailable).' })
+      }
       return await enqueueBannerRender(
         { projectId, formats, fps, quality: quality === 2 ? 2 : 1, crf, userId: user.id },
         {
           genId,
-          putSourceHtml: async (key, html) => { await uploadFile(Buffer.from(html, 'utf8'), key, 'text/html') },
+          putSourceHtml: async (key, html) => {
+            if (!mediaBucket) {
+              await uploadFile(Buffer.from(html, 'utf8'), key, 'text/html')
+              return
+            }
+            const bytes = new TextEncoder().encode(html)
+            await mediaBucket.put(key, bytes, { httpMetadata: { contentType: 'text/html' } })
+            const stored = await mediaBucket.head(key)
+            if (!stored || stored.size !== bytes.byteLength) {
+              throw new Error(`Banner render source write failed for ${key}`)
+            }
+          },
           insertJob: async (r: InsertJobRow) => {
             await execute(
               `INSERT INTO banner_render_jobs (id, project_id, format_key, width, height, fps, crf, quality, source_r2_key, created_by)
