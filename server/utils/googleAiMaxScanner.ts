@@ -14,6 +14,7 @@ import {
   type GoogleAiMaxScanTrigger,
   type PersistGoogleAiMaxCampaignStatesResult,
 } from '~~/server/utils/googleAiMaxRepository'
+import { notifyGoogleAiMaxRun } from '~~/server/utils/googleAiMaxNotifications'
 
 export interface ScanGoogleAiMaxAccountInput {
   tenantId: string
@@ -91,6 +92,7 @@ export interface RunGoogleAiMaxPortfolioScanDependencies {
     input: { scanRunId: string, states: GoogleAiMaxCampaignState[] },
   ) => Promise<PersistGoogleAiMaxCampaignStatesResult>
   finishRun: typeof finishGoogleAiMaxScanRun
+  notifyRun?: typeof notifyGoogleAiMaxRun
 }
 
 const defaultPortfolioDependencies: RunGoogleAiMaxPortfolioScanDependencies = {
@@ -99,6 +101,7 @@ const defaultPortfolioDependencies: RunGoogleAiMaxPortfolioScanDependencies = {
   scanAccount: scanGoogleAiMaxAccount,
   persistStates: persistGoogleAiMaxCampaignStates,
   finishRun: finishGoogleAiMaxScanRun,
+  notifyRun: notifyGoogleAiMaxRun,
 }
 
 export type RunGoogleAiMaxPortfolioScanResult =
@@ -204,6 +207,21 @@ export async function runGoogleAiMaxPortfolioScan(
     failures,
   })
   if (!finished) throw new Error(`Failed to finish AI Max scan ${run.id}`)
+
+  if (dependencies.notifyRun) {
+    try {
+      await dependencies.notifyRun({
+        tenantId: input.tenantId,
+        scanRunId: run.id,
+        trigger: input.trigger,
+        effectiveDate: input.observedAt.slice(0, 10),
+      })
+    } catch {
+      console.warn('[google-ai-max-notify] notification processing failed', {
+        runId: run.id,
+      })
+    }
+  }
 
   return {
     accepted: true,

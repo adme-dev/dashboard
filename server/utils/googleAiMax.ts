@@ -245,6 +245,7 @@ export function classifyAiMaxReadiness(
 
   const migrationReason = deriveMigrationReason(observation)
   const searchTermMatching = searchTermMatchingStatus(observation)
+  const adGroupCount = observation.adGroupCount as number
   const risks: AiMaxRisk[] = []
 
   if (migrationReason !== 'none' && observation.aiMaxEnabled === false) {
@@ -257,8 +258,8 @@ export function classifyAiMaxReadiness(
     risks.push('PARTIAL_SEARCH_MATCHING')
   }
   if (observation.aiMaxEnabled === true
-    && observation.adGroupCount > 0
-    && observation.searchTermMatchingDisabledAdGroupCount === observation.adGroupCount) {
+    && adGroupCount > 0
+    && observation.searchTermMatchingDisabledAdGroupCount === adGroupCount) {
     risks.push('ALL_AD_GROUPS_MATCHING_DISABLED')
   }
 

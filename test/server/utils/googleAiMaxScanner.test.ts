@@ -113,6 +113,7 @@ describe('runGoogleAiMaxPortfolioScan', () => {
       events: [],
     }))
     const finishRun = vi.fn(async input => ({ id: input.runId, status: 'partial' as const }))
+    const notifyRun = vi.fn(async () => ({ sent: 1, suppressed: 0, failed: 0 }))
 
     const result = await runGoogleAiMaxPortfolioScan({
       tenantId: 'tenant-a',
@@ -136,6 +137,7 @@ describe('runGoogleAiMaxPortfolioScan', () => {
       scanAccount: async () => [state()],
       persistStates,
       finishRun,
+      notifyRun,
     })
 
     expect(result).toMatchObject({
@@ -156,6 +158,12 @@ describe('runGoogleAiMaxPortfolioScan', () => {
       processedConnections: 1,
       failures: [expect.objectContaining({ connectionId: 'connection-b' })],
     }))
+    expect(notifyRun).toHaveBeenCalledWith({
+      tenantId: 'tenant-a',
+      scanRunId: 'run-1',
+      trigger: 'manual',
+      effectiveDate: '2026-08-06',
+    })
   })
 
   it('does no provider work when the tenant already has an active run', async () => {
