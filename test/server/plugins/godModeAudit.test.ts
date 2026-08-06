@@ -1,3 +1,4 @@
+import type { H3Event } from 'h3'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const testGlobal = globalThis as typeof globalThis & {
@@ -17,7 +18,7 @@ const { resolveGodModeAuthority } = await import('../../../server/utils/godMode/
 const OWNER_ID = '11111111-1111-4111-8111-111111111111'
 const CORRELATION_ID = '22222222-2222-4222-8222-222222222222'
 
-function event(method = 'GET', queue?: { send: ReturnType<typeof vi.fn> }) {
+function event(method = 'GET', queue?: { send: ReturnType<typeof vi.fn> }): H3Event {
   return {
     method,
     path: '/api/agency/clients',
@@ -36,10 +37,10 @@ function event(method = 'GET', queue?: { send: ReturnType<typeof vi.fn> }) {
         statusMessage: 'OK'
       }
     }
-  } as any
+  } as unknown as H3Event
 }
 
-function seed(request: any, appendGodModeAuditEvent = vi.fn().mockResolvedValue(undefined)) {
+function seed(request: H3Event, appendGodModeAuditEvent = vi.fn().mockResolvedValue(undefined)) {
   seedGodModeRouteAuditState(request, {
     actorUserId: OWNER_ID,
     correlationId: CORRELATION_ID,
@@ -53,7 +54,7 @@ function seed(request: any, appendGodModeAuditEvent = vi.fn().mockResolvedValue(
 
 describe('God mode terminal audit plugin', () => {
   const appendGodModeAuditEvent = vi.fn()
-  const setResponseStatus = vi.fn((request: any, status: number, statusText: string) => {
+  const setResponseStatus = vi.fn((request: H3Event, status: number, statusText: string) => {
     request.node.res.statusCode = status
     request.node.res.statusMessage = statusText
   })
@@ -241,6 +242,33 @@ describe('God mode terminal audit plugin', () => {
 
     expect(queue.send).not.toHaveBeenCalled()
     expect(response.body).toMatchObject({ statusCode: 503 })
+  })
+
+  it('logs only bounded terminal diagnostics for a failed mutation audit', async () => {
+    const request = event('POST')
+    const response = { body: { ok: true, secret: 'response-secret' } }
+    const persistenceError = Object.assign(new Error('query params contained a database secret'), {
+      code: '08006',
+      query: 'UPDATE secret_table SET token = $1'
+    })
+    const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    seed(request, appendGodModeAuditEvent)
+    appendGodModeAuditEvent.mockRejectedValue(persistenceError)
+
+    await persistGodModeTerminalAudit(request, response, { appendGodModeAuditEvent, setResponseStatus })
+
+    expect(diagnostic).toHaveBeenCalledWith('[God mode audit] terminal persistence failed', {
+      correlationId: CORRELATION_ID,
+      route: 'POST /api/agency/clients',
+      stage: 'terminal_persistence',
+      errorClass: 'Error',
+      sqlState: '08006'
+    })
+    const emitted = JSON.stringify(diagnostic.mock.calls)
+    expect(emitted).not.toContain('database secret')
+    expect(emitted).not.toContain('secret_table')
+    expect(emitted).not.toContain('response-secret')
+    diagnostic.mockRestore()
   })
 
   it('routes a prepared mutation terminal through its coordinator instead of direct DB persistence', async () => {

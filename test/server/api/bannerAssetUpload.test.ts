@@ -103,8 +103,11 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
     mockCreateBannerAssetStorageKey.mockReturnValue(ASSET.r2Key)
     mockQueryOne.mockResolvedValue(ASSET)
     mockExecuteUpload.mockImplementation(async (_event, mutation) => {
-      const stored = await mutation.uploadFile(mutation.r2Key)
-      return await mutation.insertAsset(null, stored)
+      const stored = await mutation.uploadFile(mutation.r2Key, mutation.assetId)
+      const result = typeof mutation.result === 'function'
+        ? mutation.result(stored, { assetId: mutation.assetId, r2Key: mutation.r2Key })
+        : mutation.result
+      return await mutation.insertAsset(null, stored, result)
     })
   })
 
@@ -138,7 +141,8 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
       JPEG.length,
       ASSET.r2Key,
       ASSET.url,
-      USER.id
+      USER.id,
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/)
     ])
   })
 
@@ -176,7 +180,8 @@ describe('POST /api/agency/banner-studio/assets/upload', () => {
       JPEG.length,
       ASSET.r2Key,
       ASSET.url,
-      USER.id
+      USER.id,
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/)
     ])
 
     const mutation = mockExecuteUpload.mock.calls[0]?.[1]

@@ -68,11 +68,12 @@ export default defineEventHandler(async (event) => {
   try {
     const assetId = createBannerAssetId()
     const r2Key = createBannerAssetStorageKey(validated.fileName, user.id)
+    const createdAt = new Date().toISOString()
     const cloudflare = (event.context as {
       cloudflare?: { env?: Record<string, unknown> }
     }).cloudflare
     const cloudflareEnv = cloudflare?.env
-    let nativeUpload: { bucket: R2BucketBinding, assetUrl: string } | undefined
+    let nativeUpload: { bucket: R2BucketBinding, signingSecret: string } | undefined
     if (cloudflare) {
       const requestBucket = cloudflareEnv?.MEDIA_BUCKET as R2BucketBinding | undefined
       const signingSecret = cloudflareEnv?.RENDER_LINK_SECRET
@@ -89,20 +90,40 @@ export default defineEventHandler(async (event) => {
       }
       nativeUpload = {
         bucket: requestBucket,
-        assetUrl: await bannerAssetDeliveryUrl(assetId, getAppUrl(event), signingSecret)
+        signingSecret
       }
     }
     return await executeGodModeBannerAssetUpload(event, {
+      assetId,
       r2Key,
+      result: (stored, identity) => ({
+        id: identity.assetId,
+        name: validated.fileName,
+        mimeType: validated.mimeType,
+        fileSize: stored.size,
+        r2Key: identity.r2Key,
+        url: stored.url,
+        thumbnailUrl: null,
+        tags: [],
+        uploadedBy: user.id,
+        createdAt
+      }),
       deleteFile: async key => await deleteBannerFile(key, nativeUpload?.bucket),
-      uploadFile: async key => nativeUpload
+      uploadFile: async (key, effectiveAssetId = assetId) => nativeUpload
         ? await uploadBannerAsset(
             validated.buffer,
             validated.fileName,
             validated.mimeType,
             user.id,
             key,
-            nativeUpload
+            {
+              bucket: nativeUpload.bucket,
+              assetUrl: await bannerAssetDeliveryUrl(
+                effectiveAssetId,
+                getAppUrl(event),
+                nativeUpload.signingSecret
+              )
+            }
           )
         : await uploadBannerAsset(
             validated.buffer,
@@ -111,22 +132,19 @@ export default defineEventHandler(async (event) => {
             user.id,
             key
           ),
-      insertAsset: async (db, stored: StoredBannerAssetUpload) => {
-        const sql = `
-          INSERT INTO banner_assets (id, name, mime_type, file_size, r2_key, url, uploaded_by)
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
-          RETURNING
-            id, name,
-            mime_type AS "mimeType",
-            file_size AS "fileSize",
-            r2_key AS "r2Key",
-            url,
-            thumbnail_url AS "thumbnailUrl",
-            tags,
-            uploaded_by AS "uploadedBy",
-            created_at AS "createdAt"
-        `
-        const params = [assetId, validated.fileName, validated.mimeType, stored.size, stored.key, stored.url, user.id]
+      insertAsset: async (db, stored: StoredBannerAssetUpload, result) => {
+        if (!result) throw new Error('Banner asset insert identity is unavailable')
+        const sql = `INSERT INTO banner_assets (id, name, mime_type, file_size, r2_key, url, uploaded_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, name, mime_type AS "mimeType", file_size AS "fileSize", r2_key AS "r2Key", url, thumbnail_url AS "thumbnailUrl", tags, uploaded_by AS "uploadedBy", created_at AS "createdAt"`
+        const params = [
+          result.id,
+          result.name,
+          result.mimeType,
+          stored.size,
+          stored.key,
+          stored.url,
+          result.uploadedBy,
+          result.createdAt
+        ]
         const row = db
           ? (await db.query(sql, params)).rows[0]
           : await queryOne(sql, params)

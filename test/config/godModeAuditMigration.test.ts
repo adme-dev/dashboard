@@ -1,11 +1,12 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { Client } from 'pg'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 const migrationPath = new URL('../../server/database/migrations/345_god_mode_audit_events.sql', import.meta.url)
 const preExecutionMigrationPath = new URL('../../server/database/migrations/346_god_mode_pre_execution_audit.sql', import.meta.url)
 const executionMigrationPath = new URL('../../server/database/migrations/347_god_mode_execution_reconciliation.sql', import.meta.url)
-const migrationPaths = [migrationPath, preExecutionMigrationPath, executionMigrationPath]
+const identityGuardMigrationPath = new URL('../../server/database/migrations/349_god_mode_audit_identity_guard_reconciliation.sql', import.meta.url)
+const migrationPaths = [migrationPath, preExecutionMigrationPath, executionMigrationPath, identityGuardMigrationPath]
 const auditDatabaseUrl = process.env.GOD_MODE_AUDIT_TEST_DATABASE_URL
 const schemaName = `god_mode_audit_test_${crypto.randomUUID().replaceAll('-', '')}`
 let client: Client | undefined
@@ -32,8 +33,8 @@ describe('God mode audit migration', () => {
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS god_mode_audit_events')
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS god_mode_mcp_request_nonces')
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS god_mode_execution_ledger')
-    expect(migration).toContain("WHERE phase = 'attempt'")
-    expect(migration).toContain("WHERE phase IN ('succeeded', 'failed')")
+    expect(migration).toContain('WHERE phase = \'attempt\'')
+    expect(migration).toContain('WHERE phase IN (\'succeeded\', \'failed\')')
     expect(migration).toMatch(/terminal event requires matching attempt/i)
     expect(migration).toContain('BEFORE UPDATE OR DELETE ON god_mode_audit_events')
     expect(migration).not.toMatch(/\b(prompt|raw_payload|access_token|provider_body|claims)\b/i)
@@ -66,6 +67,17 @@ describe('God mode audit migration', () => {
     expect(migration).toContain('execution_metadata')
     expect(migration).toContain('execution_mode')
     expect(migration).toMatch(/phase[\s\S]*'ambiguous'/i)
+  })
+
+  it('ships a deploy-ordered forward reconciliation for the drifted exact-identity trigger', () => {
+    expect(existsSync(identityGuardMigrationPath)).toBe(true)
+    if (!existsSync(identityGuardMigrationPath)) return
+    const migration = readFileSync(identityGuardMigrationPath, 'utf8')
+    expect(migration).toMatch(/deploy[\s\S]*application[\s\S]*before[\s\S]*migration/i)
+    expect(migration).toContain('CREATE OR REPLACE FUNCTION guard_god_mode_audit_event_insert()')
+    expect(migration).toContain('attempt.entity_type IS NOT DISTINCT FROM NEW.entity_type')
+    expect(migration).toContain('attempt.entity_id IS NOT DISTINCT FROM NEW.entity_id')
+    expect(migration).not.toMatch(/\b(prompt|raw_payload|access_token|provider_body|claims)\b/i)
   })
 })
 

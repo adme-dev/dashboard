@@ -28,6 +28,19 @@ function responseClass(status: number): string {
   return 'http_unknown'
 }
 
+function boundedTerminalDiagnostic(error: unknown): { errorClass: string, sqlState: string | null } {
+  const candidate = typeof error === 'object' && error !== null
+    ? error as { name?: unknown, code?: unknown }
+    : null
+  const errorClass = typeof candidate?.name === 'string' && candidate.name.length > 0 && candidate.name.length <= 64
+    ? candidate.name
+    : typeof error
+  const sqlState = typeof candidate?.code === 'string' && /^[0-9A-Z]{5}$/.test(candidate.code)
+    ? candidate.code
+    : null
+  return { errorClass, sqlState }
+}
+
 function replaceWithAuditFailure(
   event: H3Event,
   response: ResponseEnvelope,
@@ -79,7 +92,15 @@ export async function persistGodModeTerminalAudit(
         await dependencies.appendGodModeAuditEvent(terminal)
       }
       return
-    } catch {
+    } catch (error) {
+      const diagnostic = boundedTerminalDiagnostic(error)
+      console.error('[God mode audit] terminal persistence failed', {
+        correlationId: state.correlationId,
+        route: state.routeOrTool,
+        stage: 'terminal_persistence',
+        errorClass: diagnostic.errorClass,
+        sqlState: diagnostic.sqlState
+      })
       if (!isGodModeMutationRequest(event) && await persistReadFallback(event, terminal)) return
       replaceWithAuditFailure(event, response, dependencies)
     }

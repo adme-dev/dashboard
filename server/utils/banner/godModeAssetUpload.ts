@@ -19,7 +19,12 @@ const ROUTE = '/api/agency/banner-studio/assets/upload'
 const coordinationKey = Symbol('godModeBannerAssetUpload')
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/
 const REQUEST_DIGEST = /^[a-f0-9]{64}$/
-const SAVEPOINT = 'god_mode_banner_asset_upload'
+const UUID_TEXT = '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+const UUID = new RegExp(UUID_TEXT, 'i')
+const EXECUTION_SQL = `SELECT state, result_reference, route_or_tool, correlation_id, execution_phase, execution_metadata ->> 'requestDigest' AS request_digest, execution_metadata ->> 'r2Key' AS r2_key, execution_metadata ->> 'assetId' AS asset_id, updated_at < NOW() - INTERVAL '2 minutes' AS claim_stale FROM god_mode_execution_ledger WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2`
+const ASSET_SQL = `SELECT id, name, mime_type AS "mimeType", file_size AS "fileSize", r2_key AS "r2Key", url, thumbnail_url AS "thumbnailUrl", tags, uploaded_by AS "uploadedBy", created_at AS "createdAt" FROM banner_assets WHERE id = CASE WHEN $1 ~* '${UUID_TEXT}' THEN $1::uuid ELSE NULL END`
+const TERMINAL_SQL = `SELECT phase AS terminal_phase FROM god_mode_audit_events WHERE correlation_id = $1::uuid AND phase IN ('succeeded', 'failed')`
+const CLAIM_OWNERSHIP_LOST = new Error('Banner upload claim ownership changed')
 
 type TransactionDb = Pick<Pool, 'query'>
 
@@ -42,13 +47,22 @@ export interface StoredBannerAssetUpload {
   size: number
 }
 
-export interface BannerAssetUploadMutation {
+interface BannerUploadStorageIdentity {
+  assetId: string
   r2Key: string
-  uploadFile: (r2Key: string) => Promise<StoredBannerAssetUpload>
+}
+
+export interface BannerAssetUploadMutation {
+  assetId: string
+  r2Key: string
+  /** Deterministic response and insert identity, constructed before native storage work. */
+  result: (stored: StoredBannerAssetUpload, identity: BannerUploadStorageIdentity) => BannerAssetUploadResult
+  uploadFile: (r2Key: string, assetId?: string) => Promise<StoredBannerAssetUpload>
   deleteFile?: (r2Key: string) => Promise<void>
   insertAsset: (
     db: TransactionDb | null,
-    stored: StoredBannerAssetUpload
+    stored: StoredBannerAssetUpload,
+    result?: BannerAssetUploadResult
   ) => Promise<BannerAssetUploadResult>
 }
 
@@ -65,24 +79,37 @@ interface ExistingExecutionRow {
   result_reference: string | null
   route_or_tool: string
   request_digest: string | null
+  correlation_id?: string | null
+  execution_phase?: string | null
+  claim_stale?: boolean
+  r2_key?: string | null
+  asset_id?: string | null
 }
 
-interface ReconciledExecutionRow extends ExistingExecutionRow, BannerAssetUploadResult {}
+interface ReconciledExecutionRow extends ExistingExecutionRow, Partial<BannerAssetUploadResult> {
+  terminal_phase?: 'succeeded' | 'failed' | null
+}
+
+interface PendingUpload {
+  stored: StoredBannerAssetUpload
+  result: BannerAssetUploadResult
+  insertAsset: BannerAssetUploadMutation['insertAsset']
+}
 
 interface Coordination {
-  db: TransactionDb
   actorUserId: string
+  correlationId: string
   idempotencyKey: string
-  mode: 'execute' | 'replay'
+  mode: 'execute' | 'replay' | 'wait'
   resultReference: string | null
-  mutationSettled: boolean
-  savepointOpen: boolean
   newR2Key: string | null
+  pending: PendingUpload | null
+  reserved: BannerUploadStorageIdentity | null
   deleteBannerFile: typeof deleteBannerFile
   queryOneFresh: typeof queryOneFresh
+  transaction: typeof transactionWithoutRetry
   routeOrTool: string
   requestDigest: string
-  finish: (terminal: GodModeAuditEventInput) => Promise<void>
 }
 
 const defaultDependencies: GodModeBannerAssetUploadDependencies = {
@@ -93,25 +120,17 @@ const defaultDependencies: GodModeBannerAssetUploadDependencies = {
   getTransactionFailureStage
 }
 
-function deferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-  return { promise, resolve, reject }
+function transactionFailureStage(
+  dependencies: GodModeBannerAssetUploadDependencies,
+  error: unknown
+) {
+  return typeof dependencies.getTransactionFailureStage === 'function'
+    ? dependencies.getTransactionFailureStage(error)
+    : getTransactionFailureStage(error)
 }
 
 function coordination(event: H3Event): Coordination | null {
   return ((event.context as Record<PropertyKey, unknown>)[coordinationKey] as Coordination | undefined) ?? null
-}
-
-async function compensateNewObject(current: Coordination): Promise<void> {
-  const r2Key = current.newR2Key
-  if (!r2Key) return
-  await current.deleteBannerFile(r2Key)
-  current.newR2Key = null
 }
 
 function recoveryRequired(): ReturnType<typeof createError> {
@@ -121,46 +140,280 @@ function recoveryRequired(): ReturnType<typeof createError> {
   })
 }
 
-async function reconcileTransactionOutcome(current: Coordination): Promise<'committed' | 'failed'> {
-  let row: ReconciledExecutionRow | null
-  try {
-    row = await current.queryOneFresh<ReconciledExecutionRow>(
-      `SELECT ledger.state, ledger.result_reference, ledger.route_or_tool,
-              ledger.execution_metadata ->> 'requestDigest' AS request_digest,
-              asset.id, asset.name, asset.mime_type AS "mimeType",
-              asset.file_size AS "fileSize", asset.r2_key AS "r2Key", asset.url,
-              asset.thumbnail_url AS "thumbnailUrl", asset.tags,
-              asset.uploaded_by AS "uploadedBy", asset.created_at AS "createdAt"
-         FROM god_mode_execution_ledger ledger
-         LEFT JOIN banner_assets asset ON asset.id = ledger.result_reference
-        WHERE ledger.actor_user_id = $1
-          AND ledger.channel = 'application'
-          AND ledger.idempotency_key = $2`,
-      [current.actorUserId, current.idempotencyKey]
+function conflict(message: string): ReturnType<typeof createError> {
+  return createError({ statusCode: 409, statusMessage: message })
+}
+
+function exactExecution(row: ExistingExecutionRow, routeOrTool: string, requestDigest: string): void {
+  if (row.route_or_tool !== routeOrTool) {
+    throw conflict('Idempotency key belongs to another operation')
+  }
+  if (row.request_digest !== requestDigest) {
+    throw conflict('Idempotency key request does not match')
+  }
+}
+
+function hasAsciiControlCharacter(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0
+    return codePoint <= 31 || codePoint === 127
+  })
+}
+
+function durableAssetIdentity(row: ExistingExecutionRow): BannerUploadStorageIdentity | null {
+  if (typeof row.asset_id !== 'string' || !UUID.test(row.asset_id)) return null
+  if (typeof row.r2_key !== 'string'
+    || row.r2_key.length < 1
+    || row.r2_key.length > 1024
+    || !row.r2_key.startsWith('banner-assets/')
+    || hasAsciiControlCharacter(row.r2_key)) return null
+  return { assetId: row.asset_id, r2Key: row.r2_key }
+}
+
+function executionMode(
+  row: ExistingExecutionRow,
+  correlationId: string,
+  routeOrTool: string,
+  requestDigest: string
+): { mode: Coordination['mode'], resultReference: string | null } {
+  exactExecution(row, routeOrTool, requestDigest)
+  if (row.state === 'succeeded' && row.result_reference) {
+    return { mode: 'replay', resultReference: row.result_reference }
+  }
+  if (row.state === 'in_progress' && row.correlation_id === correlationId) {
+    return { mode: 'execute', resultReference: null }
+  }
+  if (row.state === 'in_progress') return { mode: 'wait', resultReference: null }
+  throw conflict('God mode banner asset upload is not safely replayable')
+}
+
+async function waitForReplay(current: Coordination): Promise<BannerAssetUploadResult> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const row = await current.queryOneFresh<ExistingExecutionRow>(EXECUTION_SQL, [current.actorUserId, current.idempotencyKey])
+    if (!row) throw recoveryRequired()
+    exactExecution(row, current.routeOrTool, current.requestDigest)
+    if (row.state === 'failed') {
+      throw conflict('God mode banner asset upload is not safely replayable')
+    }
+    if (row.state === 'succeeded' && row.result_reference) {
+      const asset = await current.queryOneFresh<BannerAssetUploadResult>(ASSET_SQL, [row.result_reference])
+      if (!asset || asset.id !== row.result_reference) throw recoveryRequired()
+      current.mode = 'replay'
+      current.resultReference = row.result_reference
+      return asset
+    }
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  throw conflict('God mode banner asset upload is still in progress')
+}
+
+async function reserveStorage(
+  current: Coordination,
+  identity: BannerUploadStorageIdentity
+): Promise<'execute' | 'replay'> {
+  const outcome = await current.transaction(async (db) => {
+    const locked = await db.query(`${EXECUTION_SQL} FOR UPDATE`, [current.actorUserId, current.idempotencyKey])
+    const row = locked.rows[0] as ExistingExecutionRow | undefined
+    if (!row) throw recoveryRequired()
+    exactExecution(row, current.routeOrTool, current.requestDigest)
+    if (row.state === 'succeeded' && row.result_reference) {
+      current.resultReference = row.result_reference
+      return 'replay' as const
+    }
+    if (row.state !== 'in_progress' || row.correlation_id !== current.correlationId) {
+      return 'replay' as const
+    }
+    const persistedIdentity = durableAssetIdentity(row)
+    if (row.execution_phase === 'dispatched') {
+      if (!persistedIdentity || !current.reserved
+        || persistedIdentity.assetId !== current.reserved.assetId
+        || persistedIdentity.r2Key !== current.reserved.r2Key) throw recoveryRequired()
+      return 'execute' as const
+    }
+    // execution_phase is NOT NULL in migrated schemas; accepting an omitted
+    // value keeps injected/test adapters compatible with the legacy row shape.
+    if (row.execution_phase && row.execution_phase !== 'claimed') throw recoveryRequired()
+    const reserved = await db.query(
+      `UPDATE god_mode_execution_ledger SET execution_phase = 'dispatched', execution_metadata = execution_metadata || jsonb_build_object('r2Key', $4::TEXT, 'assetId', $5::TEXT), updated_at = NOW() WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2 AND correlation_id = $3 AND state = 'in_progress' AND execution_phase = 'claimed' RETURNING state`,
+      [current.actorUserId, current.idempotencyKey, current.correlationId, identity.r2Key, identity.assetId]
     )
+    if (!reserved.rows[0]) throw recoveryRequired()
+    current.reserved = identity
+    return 'execute' as const
+  })
+  if (outcome === 'replay') current.mode = 'wait'
+  return outcome
+}
+
+async function compensateNewObject(current: Coordination): Promise<void> {
+  const r2Key = current.newR2Key
+  if (!r2Key) return
+  await current.deleteBannerFile(r2Key)
+  current.newR2Key = null
+}
+
+async function reconcileClaim(
+  current: Pick<Coordination, 'actorUserId' | 'correlationId' | 'idempotencyKey' | 'routeOrTool' | 'requestDigest'>,
+  dependencies: GodModeBannerAssetUploadDependencies
+): Promise<{
+  mode: Coordination['mode']
+  resultReference: string | null
+  reserved?: BannerUploadStorageIdentity | null
+}> {
+  let row: ExistingExecutionRow | null
+  try {
+    row = await dependencies.queryOneFresh<ExistingExecutionRow>(EXECUTION_SQL, [current.actorUserId, current.idempotencyKey])
+  } catch {
+    throw recoveryRequired()
+  }
+  if (!row) throw recoveryRequired()
+  const admitted = executionMode(row, current.correlationId, current.routeOrTool, current.requestDigest)
+  if (admitted.mode !== 'execute') return admitted
+  if (row.execution_phase === 'claimed') return admitted
+  const reservedIdentity = durableAssetIdentity(row)
+  if (row.execution_phase !== 'dispatched' || !reservedIdentity) throw recoveryRequired()
+  return {
+    ...admitted,
+    reserved: reservedIdentity
+  }
+}
+
+async function reconcileTransactionOutcome(
+  current: Coordination,
+  expectedPhase: 'succeeded' | 'failed',
+  dependencies: GodModeBannerAssetUploadDependencies
+): Promise<'committed' | 'failed'> {
+  let row: ExistingExecutionRow | null
+  let terminal: Pick<ReconciledExecutionRow, 'terminal_phase'> | null
+  let asset: ReconciledExecutionRow | null = null
+  try {
+    row = await dependencies.queryOneFresh<ExistingExecutionRow>(EXECUTION_SQL, [current.actorUserId, current.idempotencyKey])
+    terminal = await dependencies.queryOneFresh(TERMINAL_SQL, [current.correlationId])
+    if (row?.result_reference) asset = await dependencies.queryOneFresh<ReconciledExecutionRow>(ASSET_SQL, [row.result_reference])
   } catch {
     throw recoveryRequired()
   }
 
   if (!row) throw recoveryRequired()
-  const exactClaim = row.route_or_tool === current.routeOrTool
-    && row.request_digest === current.requestDigest
-  if (!exactClaim) throw recoveryRequired()
-  if (row.state === 'failed' && !row.result_reference) return 'failed'
-  if (row.state !== 'succeeded'
+  exactExecution(row, current.routeOrTool, current.requestDigest)
+  if (row.state === 'failed' && !row.result_reference && terminal?.terminal_phase === 'failed') return 'failed'
+  if (expectedPhase !== 'succeeded'
+    || row.state !== 'succeeded'
+    || terminal?.terminal_phase !== 'succeeded'
     || !row.result_reference
     || !current.resultReference
     || row.result_reference !== current.resultReference
-    || row.id !== row.result_reference
-    || row.r2Key !== current.newR2Key
-    || row.uploadedBy !== current.actorUserId) {
+    || !asset
+    || asset.id !== row.result_reference
+    || asset.r2Key !== current.newR2Key
+    || asset.uploadedBy !== current.actorUserId) {
     throw recoveryRequired()
   }
 
-  current.resultReference = row.id
-  current.mutationSettled = true
   current.newR2Key = null
   return 'committed'
+}
+
+async function appendFailureAfterRollback(
+  current: Coordination,
+  terminal: GodModeAuditEventInput,
+  dependencies: GodModeBannerAssetUploadDependencies
+): Promise<void> {
+  const failureTerminal: GodModeAuditEventInput = {
+    ...terminal,
+    phase: 'failed',
+    outcomeCode: 'terminal_finalization_failed'
+  }
+  await dependencies.transaction(async (db) => {
+    await db.query(
+      `UPDATE god_mode_execution_ledger SET state = 'failed', result_reference = NULL, result_digest = NULL, updated_at = NOW() WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2 AND correlation_id = $3 AND state = 'in_progress'`,
+      [current.actorUserId, current.idempotencyKey, current.correlationId]
+    )
+    await dependencies.appendAudit(failureTerminal, db)
+  })
+}
+
+async function persistTerminal(
+  current: Coordination,
+  terminal: GodModeAuditEventInput,
+  dependencies: GodModeBannerAssetUploadDependencies
+): Promise<void> {
+  const expectedPhase = terminal.phase === 'succeeded' ? 'succeeded' : 'failed'
+  try {
+    await dependencies.transaction(async (db) => {
+      const locked = await db.query(`${EXECUTION_SQL} FOR UPDATE`, [current.actorUserId, current.idempotencyKey])
+      const row = locked.rows[0] as ExistingExecutionRow | undefined
+      if (!row) throw recoveryRequired()
+      exactExecution(row, current.routeOrTool, current.requestDigest)
+
+      if (current.mode === 'wait') {
+        await dependencies.appendAudit(terminal, db)
+        return
+      }
+      if (current.mode === 'replay') {
+        if (row.state !== 'succeeded' || row.result_reference !== current.resultReference) {
+          throw conflict('God mode banner asset upload is not safely replayable')
+        }
+        await dependencies.appendAudit(terminal, db)
+        return
+      }
+
+      if (row.state !== 'in_progress' || row.correlation_id !== current.correlationId) {
+        throw CLAIM_OWNERSHIP_LOST
+      }
+
+      if (expectedPhase === 'succeeded') {
+        if (!current.resultReference || !current.pending) {
+          throw new Error('Banner asset upload did not produce a durable result')
+        }
+        const inserted = await current.pending.insertAsset(db, current.pending.stored, current.pending.result)
+        if (inserted.id !== current.pending.result.id
+          || inserted.r2Key !== current.pending.stored.key
+          || inserted.uploadedBy !== current.actorUserId) {
+          throw new Error('Banner asset insert returned an unexpected result')
+        }
+        const resultDigest = createHash('sha256').update(current.resultReference).digest('hex')
+        await db.query(
+          `UPDATE god_mode_execution_ledger SET state = 'succeeded', result_reference = $4, result_digest = $5, execution_phase = 'result_captured', updated_at = NOW() WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2 AND correlation_id = $3 AND state = 'in_progress'`,
+          [current.actorUserId, current.idempotencyKey, current.correlationId, current.resultReference, resultDigest]
+        )
+      } else {
+        await db.query(
+          `UPDATE god_mode_execution_ledger SET state = 'failed', result_reference = NULL, result_digest = NULL, updated_at = NOW() WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2 AND correlation_id = $3 AND state = 'in_progress'`,
+          [current.actorUserId, current.idempotencyKey, current.correlationId]
+        )
+      }
+      // Terminal identity must remain byte-for-byte aligned with the immutable attempt.
+      // The created asset is linked only through ledger.result_reference.
+      await dependencies.appendAudit(terminal, db)
+    })
+  } catch (error) {
+    if (error === CLAIM_OWNERSHIP_LOST) {
+      // A stale-lease takeover now owns this exact durable R2 identity. The
+      // superseded request must not delete the shared object during cleanup.
+      current.newR2Key = null
+      throw recoveryRequired()
+    }
+    const failureStage = transactionFailureStage(dependencies, error)
+    if (failureStage === 'ambiguous_commit') {
+      const outcome = await reconcileTransactionOutcome(current, expectedPhase, dependencies)
+      if (outcome === 'committed') return
+      await compensateNewObject(current)
+      if (expectedPhase === 'failed') return
+      throw error
+    }
+    if (failureStage !== 'definite_rollback') throw error
+
+    if (expectedPhase === 'succeeded') await compensateNewObject(current)
+    await appendFailureAfterRollback(current, terminal, dependencies)
+    throw error
+  }
+
+  if (expectedPhase === 'succeeded') {
+    current.newR2Key = null
+  } else {
+    await compensateNewObject(current)
+  }
 }
 
 export async function prepareGodModeBannerAssetUpload(
@@ -184,138 +437,86 @@ export async function prepareGodModeBannerAssetUpload(
     })
   }
 
-  const ready = deferred<Coordination>()
-  const terminal = deferred<GodModeAuditEventInput>()
-  let readySettled = false
-
-  const transactionPromise = dependencies.transaction(async (db) => {
-    const claimed = await db.query(
-      `INSERT INTO god_mode_execution_ledger (
-         actor_user_id, channel, idempotency_key, state, correlation_id, route_or_tool,
-         executor_class, session_digest, execution_phase, execution_metadata
-       ) VALUES ($1, 'application', $2, 'in_progress', $3, $4, 'local-transactional', $5, 'claimed',
-                 jsonb_build_object('requestDigest', $6::TEXT))
-       ON CONFLICT (actor_user_id, channel, idempotency_key) DO NOTHING
-       RETURNING state`,
-      [state.actorUserId, idempotencyKey, state.correlationId, state.routeOrTool, state.sessionDigest, requestDigest]
-    )
-
-    let mode: Coordination['mode'] = 'execute'
-    let resultReference: string | null = null
-    if (!claimed.rows[0]) {
-      const existing = await db.query(
-        `SELECT state, result_reference, route_or_tool,
-                execution_metadata ->> 'requestDigest' AS request_digest
-           FROM god_mode_execution_ledger
-          WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2
-          FOR UPDATE`,
-        [state.actorUserId, idempotencyKey]
-      )
-      const row = existing.rows[0] as ExistingExecutionRow | undefined
-      if (!row || row.route_or_tool !== state.routeOrTool) {
-        throw createError({ statusCode: 409, statusMessage: 'Idempotency key belongs to another operation' })
-      }
-      if (row.request_digest !== requestDigest) {
-        throw createError({ statusCode: 409, statusMessage: 'Idempotency key request does not match' })
-      }
-      if (row.state !== 'succeeded' || !row.result_reference) {
-        throw createError({ statusCode: 409, statusMessage: 'God mode banner asset upload is not safely replayable' })
-      }
-      mode = 'replay'
-      resultReference = row.result_reference
-    }
-
-    const current: Coordination = {
-      db,
-      actorUserId: state.actorUserId,
-      idempotencyKey,
-      mode,
-      resultReference,
-      mutationSettled: false,
-      savepointOpen: false,
-      newR2Key: null,
-      deleteBannerFile: dependencies.deleteBannerFile,
-      queryOneFresh: dependencies.queryOneFresh,
-      routeOrTool: state.routeOrTool,
-      requestDigest,
-      finish: async () => {}
-    }
-    ;(event.context as Record<PropertyKey, unknown>)[coordinationKey] = current
-    readySettled = true
-    ready.resolve(current)
-
-    const finalEvent = await terminal.promise
-    if (finalEvent.phase === 'succeeded' && (!current.mutationSettled || !current.resultReference)) {
-      throw new Error('Banner asset upload did not produce a durable result')
-    }
-
-    if (current.mode === 'execute' && current.savepointOpen) {
-      if (finalEvent.phase === 'succeeded') {
-        await db.query(`RELEASE SAVEPOINT ${SAVEPOINT}`)
-      } else {
-        await db.query(`ROLLBACK TO SAVEPOINT ${SAVEPOINT}`)
-        await db.query(`RELEASE SAVEPOINT ${SAVEPOINT}`)
-        current.resultReference = null
-        current.mutationSettled = false
-      }
-      current.savepointOpen = false
-    }
-
-    if (current.mode === 'execute') {
-      const resultDigest = current.resultReference
-        ? createHash('sha256').update(current.resultReference).digest('hex')
-        : null
-      await db.query(
-        `UPDATE god_mode_execution_ledger
-            SET state = $3, result_reference = $4, result_digest = $5,
-                execution_phase = CASE WHEN $3 = 'succeeded' THEN 'result_captured' ELSE execution_phase END,
-                updated_at = NOW()
-          WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2`,
-        [
-          current.actorUserId,
-          current.idempotencyKey,
-          finalEvent.phase === 'succeeded' ? 'succeeded' : 'failed',
-          finalEvent.phase === 'succeeded' ? current.resultReference : null,
-          finalEvent.phase === 'succeeded' ? resultDigest : null
-        ]
-      )
-    }
-
-    const terminalWithEntity = current.resultReference
-      ? { ...finalEvent, entityType: 'banner_asset', entityId: current.resultReference }
-      : finalEvent
-    await dependencies.appendAudit(terminalWithEntity, db)
-  })
-  transactionPromise.catch((error) => {
-    if (!readySettled) ready.reject(error)
-  })
-
-  const current = await ready.promise
-  current.finish = async (finalEvent) => {
-    terminal.resolve(finalEvent)
-    try {
-      await transactionPromise
-    } catch (error) {
-      if (!current.newR2Key) throw error
-      const failureStage = dependencies.getTransactionFailureStage(error)
-      if (failureStage === 'definite_rollback') {
-        await compensateNewObject(current)
-        throw error
-      }
-      if (failureStage !== 'ambiguous_commit') throw recoveryRequired()
-      const outcome = await reconcileTransactionOutcome(current)
-      if (outcome === 'committed') return
-      await compensateNewObject(current)
-      throw error
-    }
-    if (finalEvent.phase !== 'succeeded') await compensateNewObject(current)
-    else current.newR2Key = null
+  const identity = {
+    actorUserId: state.actorUserId,
+    correlationId: state.correlationId,
+    idempotencyKey,
+    routeOrTool: state.routeOrTool,
+    requestDigest
   }
+  let admission: {
+    mode: Coordination['mode']
+    resultReference: string | null
+    reserved?: BannerUploadStorageIdentity | null
+  }
+  try {
+    admission = await dependencies.transaction(async (db) => {
+      const claimed = await db.query(
+        `INSERT INTO god_mode_execution_ledger (actor_user_id, channel, idempotency_key, state, correlation_id, route_or_tool, executor_class, session_digest, execution_phase, execution_metadata) VALUES ($1, 'application', $2, 'in_progress', $3, $4, 'local-transactional', $5, 'claimed', jsonb_build_object('requestDigest', $6::TEXT)) ON CONFLICT (actor_user_id, channel, idempotency_key) DO NOTHING RETURNING state`,
+        [state.actorUserId, idempotencyKey, state.correlationId, state.routeOrTool, state.sessionDigest, requestDigest]
+      )
+      if (claimed.rows[0]) return { mode: 'execute' as const, resultReference: null }
+
+      const existing = await db.query(`${EXECUTION_SQL} FOR UPDATE`, [state.actorUserId, idempotencyKey])
+      const row = existing.rows[0] as ExistingExecutionRow | undefined
+      if (!row) throw recoveryRequired()
+      exactExecution(row, state.routeOrTool, requestDigest)
+      const reservedIdentity = durableAssetIdentity(row)
+      const reclaimablePhase = row.execution_phase === 'claimed'
+        || (row.execution_phase === 'dispatched' && reservedIdentity !== null)
+      if (row.state === 'in_progress'
+        && row.correlation_id !== state.correlationId
+        && reclaimablePhase
+        && row.claim_stale === true) {
+        const previousCorrelationId = row.correlation_id
+        const closedAttempt = await db.query(
+          `INSERT INTO god_mode_audit_events (actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase, tenant_id, client_id, entity_type, entity_id, bypassed_controls, outcome_code, emergency_disabled) SELECT attempt.actor_user_id, attempt.correlation_id, attempt.session_digest, attempt.channel, attempt.route_or_tool, 'failed', attempt.tenant_id, attempt.client_id, attempt.entity_type, attempt.entity_id, god_mode_normalize_bypassed_controls(attempt.bypassed_controls || COALESCE((SELECT array_agg(control.value) FROM god_mode_audit_events bypass CROSS JOIN LATERAL unnest(bypass.bypassed_controls) AS control(value) WHERE bypass.correlation_id = attempt.correlation_id AND bypass.phase = 'bypass'), ARRAY[]::VARCHAR[])), 'claim_lease_expired', attempt.emergency_disabled FROM god_mode_audit_events attempt WHERE attempt.correlation_id = $1::uuid AND attempt.phase = 'attempt' ON CONFLICT DO NOTHING RETURNING id`,
+          [previousCorrelationId]
+        )
+        if (!closedAttempt.rows[0]) throw recoveryRequired()
+        const reclaimed = await db.query(
+          `UPDATE god_mode_execution_ledger SET correlation_id = $3, session_digest = $4, execution_phase = $7, execution_metadata = CASE WHEN $7 = 'claimed' THEN jsonb_build_object('requestDigest', $5::TEXT) ELSE execution_metadata END, updated_at = NOW() WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2 AND correlation_id = $6 AND state = 'in_progress' AND execution_phase = $7 AND updated_at < NOW() - INTERVAL '2 minutes' RETURNING state`,
+          [
+            state.actorUserId,
+            idempotencyKey,
+            state.correlationId,
+            state.sessionDigest,
+            requestDigest,
+            previousCorrelationId,
+            row.execution_phase
+          ]
+        )
+        if (!reclaimed.rows[0]) throw recoveryRequired()
+        return {
+          mode: 'execute' as const,
+          resultReference: null,
+          reserved: reservedIdentity
+        }
+      }
+      return executionMode(row, state.correlationId, state.routeOrTool, requestDigest)
+    })
+  } catch (error) {
+    if (transactionFailureStage(dependencies, error) !== 'ambiguous_commit') throw error
+    admission = await reconcileClaim(identity, dependencies)
+  }
+
+  const current: Coordination = {
+    ...identity,
+    mode: admission.mode,
+    resultReference: admission.resultReference,
+    newR2Key: null,
+    pending: null,
+    reserved: admission.reserved ?? null,
+    deleteBannerFile: dependencies.deleteBannerFile,
+    queryOneFresh: dependencies.queryOneFresh,
+    transaction: dependencies.transaction
+  }
+  ;(event.context as Record<PropertyKey, unknown>)[coordinationKey] = current
 
   return {
     strategy: 'transaction-bound',
     prepared: true,
-    persistTerminal: current.finish
+    persistTerminal: async terminal => await persistTerminal(current, terminal, dependencies)
   }
 }
 
@@ -326,8 +527,11 @@ export async function executeGodModeBannerAssetUpload(
   const current = coordination(event)
   if (!current) {
     try {
-      const stored = await upload.uploadFile(upload.r2Key)
-      return await upload.insertAsset(null, stored)
+      const stored = await upload.uploadFile(upload.r2Key, upload.assetId)
+      return await upload.insertAsset(null, stored, upload.result(stored, {
+        assetId: upload.assetId,
+        r2Key: upload.r2Key
+      }))
     } catch (error) {
       if (upload.deleteFile) await upload.deleteFile(upload.r2Key)
       throw error
@@ -335,41 +539,46 @@ export async function executeGodModeBannerAssetUpload(
   }
 
   if (current.mode === 'replay') {
-    const replay = await current.db.query(
-      `SELECT id, name, mime_type AS "mimeType", file_size AS "fileSize",
-              r2_key AS "r2Key", url, thumbnail_url AS "thumbnailUrl", tags,
-              uploaded_by AS "uploadedBy", created_at AS "createdAt"
-         FROM banner_assets
-        WHERE id = $1`,
-      [current.resultReference]
-    )
-    if (!replay.rows[0]) {
-      throw createError({ statusCode: 409, statusMessage: 'Replayed banner asset no longer exists' })
+    const replay = await current.queryOneFresh<BannerAssetUploadResult>(ASSET_SQL, [current.resultReference])
+    if (!replay) {
+      throw conflict('Replayed banner asset no longer exists')
     }
-    current.mutationSettled = true
-    return replay.rows[0] as BannerAssetUploadResult
+    return replay
   }
 
+  if (current.mode === 'wait') return await waitForReplay(current)
+
+  const candidateAssetId = upload.assetId
+  if (!candidateAssetId || !UUID.test(candidateAssetId)) {
+    throw new Error('God mode banner asset upload requires a valid deterministic asset id')
+  }
+  const identity: BannerUploadStorageIdentity = current.reserved ?? { assetId: candidateAssetId, r2Key: upload.r2Key }
+  if (await reserveStorage(current, identity) === 'replay') return await waitForReplay(current)
   if (upload.deleteFile) current.deleteBannerFile = upload.deleteFile
-  current.newR2Key = upload.r2Key
+  current.newR2Key = identity.r2Key
   try {
-    const stored = await upload.uploadFile(upload.r2Key)
-    if (stored.key !== upload.r2Key) throw new Error('Banner asset upload returned an unexpected storage key')
-    await current.db.query(`SAVEPOINT ${SAVEPOINT}`)
-    current.savepointOpen = true
-    const result = await upload.insertAsset(current.db, stored)
+    const stored = await upload.uploadFile(identity.r2Key, identity.assetId)
+    const result = upload.result(stored, identity)
+    if (result.id !== identity.assetId
+      || result.r2Key !== identity.r2Key
+      || result.uploadedBy !== current.actorUserId) {
+      throw new Error('God mode banner asset upload identity does not match its claim')
+    }
+    if (stored.key !== identity.r2Key
+      || stored.key !== result.r2Key
+      || stored.url !== result.url
+      || stored.size !== result.fileSize) {
+      throw new Error('Banner asset upload returned an unexpected storage result')
+    }
     current.resultReference = result.id
-    current.mutationSettled = true
+    current.pending = { stored, result, insertAsset: upload.insertAsset }
     return result
   } catch (error) {
     try {
-      if (current.savepointOpen) {
-        await current.db.query(`ROLLBACK TO SAVEPOINT ${SAVEPOINT}`)
-        await current.db.query(`RELEASE SAVEPOINT ${SAVEPOINT}`)
-      }
-    } finally {
-      current.savepointOpen = false
       await compensateNewObject(current)
+    } finally {
+      current.pending = null
+      current.resultReference = null
     }
     throw error
   }
