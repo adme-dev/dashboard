@@ -93,7 +93,16 @@ Canonical arrays are ordered by provider ID. Resume reuses the original observat
 
 ## Production dry-run status
 
-Not executed. No live Monday request was made and no production/local manifest was written during the correction round. A CLI help check was attempted, but sandboxed `tsx` could not create its IPC socket and the elevation request was cancelled. The runtime module was safely imported by the exclusive-output test without executing the CLI entry point.
+Executed read-only against ADME account `229224` with the existing server-side credential. No Monday mutation, comment, notification, email, XeroFlow record, or user-access change was made.
+
+The first inventory exposed null workspace/provider identity entries. Fix commits `2c821e27` and `b37f56f3` added tested filtering for null workspaces and nested owner/subscriber/team identities. The immutable failed manifests were retained; the successful collection was resumed into a new output rather than overwriting evidence.
+
+Final private manifest: `/private/tmp/adme-monday-inventory-20260807-resumed2.json`
+
+- SHA-256: `ebf3862f912894e130e896f34eaca8d06e76a724cfbcb0263025992cab476862`
+- Collection checkpoints: 4/4 complete; zero collection errors.
+- 34 workspaces, 318 active board objects, 201 archived board objects, 174 account users, and 45 structural edges.
+- Overall verdict: `incomplete`, correctly blocked by current-user-visible workspace scope plus 166 missing and one blank exact job title. Unsupported automations, dashboards, standalone documents, and integrations remain four typed warnings.
 
 The documented production-safe command remains:
 
@@ -113,10 +122,10 @@ node --env-file=.env node_modules/tsx/dist/cli.mjs scripts/inventory-monday.ts \
 
 ## Commit
 
-Implementation commit: `f5ca8e9f` (`feat: add Monday retirement inventory manifest`). This evidence report was then amended separately to record the resulting implementation hash.
+Implementation commit: `f5ca8e9f` (`feat: add Monday retirement inventory manifest`). Production-discovered null-shape fixes: `2c821e27` and `b37f56f3`. This evidence report was amended separately to record the resulting hashes and live read-only outcome.
 
 ## Concerns
 
 - Monday API `2025-04` does not support the later `membership_kind` workspace argument, so the adapter deliberately omits it and marks the resulting current-user-visible scope incomplete. It also does not expose the later object-type unique identifier or several structural surfaces. Structural gaps are explicit findings; the unavailable identifier remains `null`. All remain pre-cutover review inputs.
 - Monday documents that nested workspace owner/subscriber/team collections default to 25 and that some accounts cannot query Main workspace details. Reaching a nested cap, missing Main workspace identity, or unresolved team membership now makes the manifest incomplete rather than certifying partial data.
-- A production dry-run remains outstanding and should use the existing server-side credential with a private/local, previously nonexistent output path.
+- Before personalised onboarding can send, 167 missing/blank exact titles need a reviewed backfill or neutral-template decision. The manifest deliberately does not infer those titles.
