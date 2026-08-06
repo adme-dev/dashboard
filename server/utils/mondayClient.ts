@@ -226,11 +226,22 @@ export class MondayClient {
     const limit = options?.limit || 100
     const page = options?.page || 1
     const state = options?.state || 'active'
+    const validStates = new Set(['active', 'all', 'archived', 'deleted'])
+    if (!validStates.has(state)) throw new Error(`Invalid Monday board state: ${String(state)}`)
 
     // Lightweight query - fetch details per-board only when needed
+    const args = [
+      `limit: ${limit}`,
+      `page: ${page}`,
+      `state: ${state}`,
+      options?.workspaceIds?.length ? `workspace_ids: [${options.workspaceIds.map(id => JSON.stringify(id)).join(', ')}]` : null,
+      options?.boardIds?.length ? `ids: [${options.boardIds.map(id => JSON.stringify(id)).join(', ')}]` : null,
+      options?.boardKind ? `board_kind: ${options.boardKind}` : null,
+    ].filter(Boolean).join(', ')
+
     const query = `
       query {
-        boards(limit: ${limit}, page: ${page}) {
+        boards(${args}) {
           id
           name
           type
@@ -243,8 +254,11 @@ export class MondayClient {
 
     const data = await this.request<{ boards: MondayBoard[] }>(query)
     
-    // Filter by state if specified (client-side filtering)
-    if (state && state !== 'all') {
+    // Keep this defensive filter, but always send state to Monday so archived
+    // discovery is not limited to the first page of active boards.
+    if (state === 'all') {
+      data.boards = data.boards.filter(board => board.state === 'active' || board.state === 'archived')
+    } else {
       data.boards = data.boards.filter(board => board.state === state)
     }
     return data.boards
