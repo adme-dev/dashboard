@@ -219,10 +219,10 @@ describe('Monday production inventory', () => {
     const requester = vi.fn(async () => ({ workspaces: [null, {
       id: '10', name: 'Creative', description: 'Studio', kind: 'open', state: 'active',
       created_at: '2024-01-01', is_default_workspace: true,
-      owners_subscribers: [{ id: '1', name: 'Ada', email: 'private-owner@example.com' }],
-      users_subscribers: [{ id: '2', name: 'Grace', email: 'private-subscriber@example.com' }],
-      team_owners_subscribers: [{ id: 't1', name: 'Leadership' }],
-      teams_subscribers: [{ id: 't2', name: 'Studio' }],
+      owners_subscribers: [null, { id: '1', name: 'Ada', email: 'private-owner@example.com' }],
+      users_subscribers: [{ id: '2', name: 'Grace', email: 'private-subscriber@example.com' }, null],
+      team_owners_subscribers: [null, { id: 't1', name: 'Leadership' }],
+      teams_subscribers: [{ id: 't2', name: 'Studio' }, null],
     }] }))
     const source = new MondayGraphqlInventorySource('not-a-real-token', requester)
 

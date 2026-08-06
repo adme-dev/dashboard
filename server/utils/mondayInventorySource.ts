@@ -13,7 +13,9 @@ const MONDAY_NESTED_WORKSPACE_MEMBER_LIMIT = 25
 type Requester = <T>(query: string) => Promise<T>
 
 function users(raw: Array<any> | undefined): Array<{ id: string; name: string; email?: string | null }> {
-  return (raw || []).map(user => ({ id: String(user.id), name: user.name, email: user.email ?? null }))
+  return (raw || [])
+    .filter(user => user != null)
+    .map(user => ({ id: String(user.id), name: user.name, email: user.email ?? null }))
 }
 
 export class MondayGraphqlInventorySource implements MondayInventorySource {
@@ -57,8 +59,12 @@ export class MondayGraphqlInventorySource implements MondayInventorySource {
     return { entities: (data.workspaces || []).filter(workspace => workspace != null).map(workspace => {
       const ownerIds = users(workspace.owners_subscribers).map(user => user.id)
       const subscriberIds = users(workspace.users_subscribers).map(user => user.id)
-      const teamOwnerIds = (workspace.team_owners_subscribers || []).map((team: any) => String(team.id))
-      const teamSubscriberIds = (workspace.teams_subscribers || []).map((team: any) => String(team.id))
+      const teamOwnerIds = (workspace.team_owners_subscribers || [])
+        .filter((team: any) => team != null)
+        .map((team: any) => String(team.id))
+      const teamSubscriberIds = (workspace.teams_subscribers || [])
+        .filter((team: any) => team != null)
+        .map((team: any) => String(team.id))
       return {
         id: String(workspace.id),
         name: workspace.name,
