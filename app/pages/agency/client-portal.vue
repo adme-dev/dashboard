@@ -2,7 +2,6 @@
 import { format } from 'date-fns'
 import { navigateToPortalDocument } from '~/utils/portalAgencyAccessNavigation'
 import { createClientPortalInviteForm } from '~/utils/clientPortalInviteForm'
-import { createClientPortalAccessRequest } from '~/utils/clientPortalAccessRequest'
 import { useAuthenticatedFetch } from '~/composables/useAuthenticatedFetch'
 
 definePageMeta({
@@ -863,14 +862,6 @@ watch(clients, (items) => {
 
 const openingPortal = ref(false)
 
-const withPortalClientContext = (path: string, clientId: string) => {
-  const [pathname, queryString] = path.split('?')
-  const query = new URLSearchParams(queryString || '')
-  query.set('portalClientId', clientId)
-  const nextQuery = query.toString()
-  return `${pathname}${nextQuery ? `?${nextQuery}` : ''}`
-}
-
 const openClientPortal = async (clientId?: string | null, path = '/portal') => {
   const targetClientId = clientId || selectedAccessClientId.value
   if (!targetClientId) {
@@ -880,7 +871,11 @@ const openClientPortal = async (clientId?: string | null, path = '/portal') => {
 
   openingPortal.value = true
   try {
-    await apiFetch('/api/agency/client-portal/access', createClientPortalAccessRequest(targetClientId))
+    await apiFetch('/api/agency/client-portal/access', {
+      method: 'POST',
+      body: { clientId: targetClientId },
+      headers: { 'Idempotency-Key': `portal-access:${crypto.randomUUID()}` }
+    })
     refreshActivity()
     navigateToPortalDocument(path)
   } catch (err: unknown) {
@@ -1014,7 +1009,7 @@ onMounted(() => {
     refreshActivity(),
     refreshRequests(),
     refreshClients(),
-    refreshTeamMembers(),
+    refreshTeamMembers()
   ])
 })
 

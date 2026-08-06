@@ -176,7 +176,8 @@ export async function prepareGodModeBannerProjectCreation(
 
 export async function executeGodModeBannerProjectCreation<T extends { id: string }>(
   event: H3Event,
-  create: (db: TransactionDb) => Promise<T>
+  create: (db: TransactionDb) => Promise<T>,
+  replay?: (db: TransactionDb, resultReference: string) => Promise<T>
 ): Promise<T> {
   const current = coordination(event)
   if (!current) return await transaction(db => create(db))
@@ -186,12 +187,16 @@ export async function executeGodModeBannerProjectCreation<T extends { id: string
   try {
     let project: T
     if (current.mode === 'replay') {
-      const replay = await current.db.query(
-        `SELECT id, name, client_id AS "clientId", canvas_data AS "canvasData", thumbnail_url AS "thumbnailUrl", status, tags, created_by AS "createdBy", created_at AS "createdAt", updated_at AS "updatedAt" FROM banner_projects WHERE id = $1`,
-        [current.resultReference]
-      )
-      if (!replay.rows[0]) throw new Error('Replayed banner project no longer exists')
-      project = replay.rows[0] as T
+      if (replay) {
+        project = await replay(current.db, current.resultReference!)
+      } else {
+        const result = await current.db.query(
+          `SELECT id, name, client_id AS "clientId", canvas_data AS "canvasData", thumbnail_url AS "thumbnailUrl", status, tags, created_by AS "createdBy", created_at AS "createdAt", updated_at AS "updatedAt" FROM banner_projects WHERE id = $1`,
+          [current.resultReference]
+        )
+        if (!result.rows[0]) throw new Error('Replayed banner project no longer exists')
+        project = result.rows[0] as T
+      }
     } else {
       project = await create(current.db)
       current.resultReference = project.id

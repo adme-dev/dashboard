@@ -53,19 +53,14 @@ describe('agency client portal access API', () => {
     mockTransaction.mockImplementation(async (callback) => {
       const db = {
         query: mockDbQuery.mockImplementation(async (sql: string) => {
-          if (sql.includes('FROM agency_clients client')) {
+          if (sql.includes('FROM agency_clients c')) {
             return clientAccessible
               ? { rows: [{ id: 'client-1', name: 'Client One', logoUrl: 'https://example.com/logo.png' }] }
               : { rows: [] }
           }
-          if (sql.includes('RETURNING id, email, name, status')) {
+          if (sql.includes('INSERT INTO client_users')) {
             return {
-              rows: [{
-                id: 'client-user-1',
-                email: 'agency-agency-user-1-client-1@portal-access.local',
-                name: 'Owner User (Agency)',
-                status: 'active'
-              }]
+              rows: [{ id: 'client-user-1' }]
             }
           }
           if (sql.includes('INSERT INTO client_sessions')) {
@@ -88,7 +83,7 @@ describe('agency client portal access API', () => {
 
     expect(mockRequireRole).toHaveBeenCalledOnce()
     expect(mockDbQuery).toHaveBeenCalledWith(
-      expect.stringContaining('FROM agency_clients client'),
+      expect.stringContaining('FROM agency_clients c'),
       ['client-1', 'agency-user-1', true]
     )
     const cookieToken = String(vi.mocked(testGlobal.setCookie).mock.calls[0]?.[2])

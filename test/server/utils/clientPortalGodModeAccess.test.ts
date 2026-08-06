@@ -4,10 +4,10 @@ import type { H3Event } from 'h3'
 
 import { seedGodModeRouteAuditState } from '../../../server/utils/godMode/featureGate'
 import {
-  executeClientPortalAccess,
   prepareGodModeClientPortalAccess,
   type GodModeClientPortalAccessDependencies
 } from '../../../server/utils/clientPortal/godModeAccess'
+import { executeClientPortalAccess } from '../../../server/utils/clientPortal/access'
 
 const ACTOR_ID = '11111111-1111-4111-8111-111111111111'
 const OTHER_ACTOR_ID = '22222222-2222-4222-8222-222222222222'
@@ -93,16 +93,11 @@ describe('God mode client portal access coordination', () => {
 
   const dependencies = (): GodModeClientPortalAccessDependencies => ({
     transaction,
-    ordinaryTransaction: transaction as never,
     appendAudit,
-    readRequestBody: async request => (request as H3Event & { body: { clientId: string } }).body,
     digestRequest: async (request) => {
       const clientId = (request as H3Event & { body: { clientId: string } }).body.clientId
       return clientId === CLIENT_ID ? 'b'.repeat(64) : 'c'.repeat(64)
-    },
-    deriveSessionToken: async (_request, actorUserId, clientId, key) =>
-      `token:${actorUserId}:${clientId}:${key}`,
-    randomSessionToken: () => 'ordinary-random-session-token'
+    }
   })
 
   beforeEach(() => {
@@ -115,7 +110,8 @@ describe('God mode client portal access coordination', () => {
     query.mockImplementation(async (sqlValue: string, params: unknown[] = []) => {
       const sql = String(sqlValue)
       if (sql.includes('INSERT INTO god_mode_execution_ledger')) {
-        const [actorUserId, idempotencyKey, , route, , clientId, requestDigest] = params as string[]
+        const [actorUserId, idempotencyKey, , route, , requestDigest] = params as string[]
+        const clientId = requestDigest === 'b'.repeat(64) ? CLIENT_ID : OTHER_CLIENT_ID
         const existing = ledger.find(row => row.actorUserId === actorUserId && row.idempotencyKey === idempotencyKey)
         if (existing) return { rows: [] }
         ledger.push({
@@ -153,32 +149,22 @@ describe('God mode client portal access coordination', () => {
         }
         return { rows: [] }
       }
-      if (sql.includes('FROM agency_clients client')) {
+      if (sql.includes('FROM agency_clients c')) {
         return { rows: [{ id: CLIENT_ID, name: 'Client One', logoUrl: null }] }
       }
-      if (sql.includes('RETURNING id, email, name, status')) {
-        return {
-          rows: [{
-            id: USER_ID,
-            email: `agency-${ACTOR_ID}-${CLIENT_ID}@portal-access.local`,
-            name: 'Paul (Agency)',
-            status: 'active'
-          }]
-        }
+      if (sql.includes('INSERT INTO client_users')) {
+        loginIncrementCount++
+        return { rows: [{ id: USER_ID }] }
       }
       if (sql.includes('INSERT INTO client_sessions')) {
         sessionInsertCount++
         return { rows: [{ id: SESSION_ID }] }
       }
-      if (sql.includes('SET last_login_at')) {
-        loginIncrementCount++
-        return { rows: [] }
-      }
       if (sql.includes('INSERT INTO client_activity_log')) {
         activityInsertCount++
         return { rows: [] }
       }
-      if (sql.includes('FROM client_sessions session')) {
+      if (sql.includes('FROM client_sessions s')) {
         return {
           rows: [{
             sessionId: SESSION_ID,

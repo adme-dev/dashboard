@@ -5,7 +5,7 @@
 
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { requireRole } from '~~/server/utils/auth'
-import { executeClientPortalAccess } from '~~/server/utils/clientPortal/godModeAccess'
+import { executeClientPortalAccess } from '~~/server/utils/clientPortal/access'
 
 interface AccessClientPortalBody {
   clientId?: string
