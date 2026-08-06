@@ -76,7 +76,7 @@ Implementation commit: `eb6811d5 fix: preserve reclaimed banner upload objects`
 
 - **Critical 1 — CLOSED.** Coordinated upload/result errors retain the cleanup key until failed-terminal persistence atomically locks the ledger and proves the same correlation still owns the dispatched claim. The exact A-pauses/B-reclaims-and-finalizes/A-throws regression proves the superseded request never deletes the shared object.
 - **Important 2 — CLOSED.** `errorClass` is mapped by built-in error type to a fixed category or `unknown`; arbitrary `error.name` is never read into diagnostics. Secret-like and control-bearing adversarial names are covered.
-- **Important 3 — CLOSED.** Ordinary inserts use the preallocated asset ID and fresh exact reconciliation after rejection. Exact commit evidence returns success; durable null deletes; unavailable/mismatch preserves and fails with bounded recovery.
+- **Important 3 — CLOSED.** Ordinary inserts use the preallocated asset ID and fresh exact reconciliation after rejection. Exact commit evidence returns success; null/unavailable/mismatch cannot fence absence, so all preserve and fail with bounded recovery.
 - **Minor 4 — CLOSED.** The database harness installs a known permissive correlation-only live guard immediately before migration 349, applies 349 twice, and proves an entity mismatch is rejected.
 
 Verification at this checkpoint:
@@ -88,3 +88,12 @@ Verification at this checkpoint:
 - Final combined guard/build/size/Workerd verification remains pending the concurrently active client-portal commit so the measured artifact includes both workstreams.
 
 Deployment remains blocked until that final combined verification is recorded. No deploy or live migration occurred in this fix round.
+
+## Follow-up re-review resolution ledger
+
+Implementation commit: `d553698b fix: fence banner upload compensation`
+
+- **Pre-lock definite rollback ownership gap — CLOSED.** The fallback failed-terminal transaction now locks the ledger row and proves the same in-progress correlation before committing failure and authorizing cleanup. A successor-owned or successor-finalized row returns no ownership proof, clears the superseded request's cleanup key, preserves R2, and surfaces bounded recovery.
+- **Unfenced ordinary null — CLOSED.** One immediate fresh null after an autocommit response loss is never treated as conclusive absence. Null, mismatch, and unavailable reconciliation preserve the object; an exact durable row alone returns success.
+
+TDD evidence: both new adversarial cases failed against `eb6811d5` and passed against `d553698b`; the focused suite then passed 69 tests with 11 opt-in DB cases skipped. Owned Node 24 lint and diff checks passed. Final combined guard/build/size/Workerd verification remains the deployment gate. No deploy or live migration occurred.

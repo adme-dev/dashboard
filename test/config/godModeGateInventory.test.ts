@@ -151,15 +151,15 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/utils/aiVoice.ts\t?? process.env.AI_GATEWAY_URL\tprovider_infrastructure_availability'
     )
-    expect(inventory.rows).toHaveLength(1353)
+    expect(inventory.rows).toHaveLength(1352)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 98,
       provider_infrastructure_availability: 203,
       application_governance_bypass: 671,
-      ordinary_user_behavior: 174,
+      ordinary_user_behavior: 173,
       unrelated_configuration: 207
     })
-    expect(inventory.digest).toBe('9742b7a0266130d611aa00dae085d97573e5c58df74fbdd979766d914b0af2f3')
+    expect(inventory.digest).toBe('95bc9b3f60f86ffbbc85aa9c44e1d31f70fe1ecac20ef9663aa215bab84442da')
     expect(CENTRAL_HELPER_BY_CLASS).toEqual({
       identity_tenant_hard_boundary: 'unchanged independent scope helper',
       provider_infrastructure_availability: 'unchanged provider/configuration check',
