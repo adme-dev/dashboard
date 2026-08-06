@@ -165,6 +165,7 @@ describe('agency client portal clients API', () => {
 
     const sql = String(mockQueryRows.mock.calls[0]?.[0])
     const params = mockQueryRows.mock.calls[0]?.[1]
+    expect(sql).toBe(sql.replace(/\s+/g, ' ').trim())
     expect(sql).toContain('FROM agency_clients c')
     expect(sql).toContain('d.destination_type = \'portal\'')
     expect(sql).toContain('COUNT(*) FILTER (')
