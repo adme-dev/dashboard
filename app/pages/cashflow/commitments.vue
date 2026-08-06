@@ -195,6 +195,59 @@ async function save() {
   }
 }
 
+// ---- Matching against Xero bills ----
+interface MatchCandidate {
+  commitmentId: string
+  supplier: string
+  amountCents: number
+  expectedDate: string
+  invoiceId: string
+  invoiceNumber: string | null
+  contactName: string
+  invoiceAmountCents: number
+  invoiceDueDate: string
+  confidence: 'auto' | 'suggested'
+}
+const matching = ref(false)
+const suggestions = ref<MatchCandidate[]>([])
+async function runMatching() {
+  matching.value = true
+  try {
+    const res = await $fetch<{ applied: number; matches: MatchCandidate[] }>(
+      '/api/cashflow/commitments/match',
+      { method: 'POST', body: { apply: true } },
+    )
+    suggestions.value = res.matches.filter(m => m.confidence === 'suggested')
+    toast.add({
+      title: res.applied
+        ? `${res.applied} commitment${res.applied === 1 ? '' : 's'} matched to Xero bills`
+        : 'No exact matches found',
+      description: suggestions.value.length
+        ? `${suggestions.value.length} possible match${suggestions.value.length === 1 ? '' : 'es'} need your confirmation below`
+        : undefined,
+      color: res.applied ? 'success' : 'neutral',
+    })
+    await refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Matching failed', description: err?.statusMessage ?? err?.message, color: 'error' })
+  } finally {
+    matching.value = false
+  }
+}
+async function confirmMatch(m: MatchCandidate) {
+  try {
+    await $fetch('/api/cashflow/commitments/match', {
+      method: 'POST',
+      body: { confirm: { commitmentId: m.commitmentId, invoiceId: m.invoiceId } },
+    })
+    suggestions.value = suggestions.value.filter(s => s.commitmentId !== m.commitmentId)
+    toast.add({ title: `${m.supplier} matched to ${m.invoiceNumber ?? 'Xero bill'}`, color: 'success' })
+    await refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Match failed', description: err?.statusMessage ?? err?.message, color: 'error' })
+  }
+}
+
 // ---- Delete ----
 const deleting = ref<Commitment | null>(null)
 const deleteBusy = ref(false)
@@ -227,9 +280,40 @@ async function confirmDelete() {
       </div>
       <div class="flex items-center gap-3">
         <USelectMenu v-model="statusFilter" :items="statusFilterItems" value-key="value" class="w-36" />
+        <UButton
+          icon="i-lucide-git-merge" variant="outline" color="neutral"
+          :loading="matching" @click="runMatching"
+        >
+          Match against Xero
+        </UButton>
         <UButton icon="i-lucide-plus" @click="openCreate">Add commitment</UButton>
       </div>
     </div>
+
+    <UAlert
+      v-if="suggestions.length"
+      icon="i-lucide-help-circle"
+      color="warning"
+      variant="subtle"
+      title="Possible matches — confirm each one"
+    >
+      <template #description>
+        <div class="space-y-2 mt-1">
+          <div
+            v-for="m in suggestions" :key="m.commitmentId"
+            class="flex flex-wrap items-center justify-between gap-2 text-sm"
+          >
+            <span>
+              <span class="font-medium">{{ m.supplier }}</span>
+              {{ currency.format(m.amountCents / 100) }} expected {{ fmtDate(m.expectedDate) }}
+              → {{ m.contactName }} {{ m.invoiceNumber ? `(${m.invoiceNumber})` : '' }}
+              {{ currency.format(m.invoiceAmountCents / 100) }} due {{ fmtDate(m.invoiceDueDate) }}
+            </span>
+            <UButton size="xs" variant="soft" @click="confirmMatch(m)">Confirm match</UButton>
+          </div>
+        </div>
+      </template>
+    </UAlert>
 
     <UCard>
       <div class="flex items-center justify-between text-sm mb-4">
