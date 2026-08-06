@@ -14,10 +14,13 @@ import {
 import { digestMcpRequestBody } from '~~/shared/utils/mcpRequestClaim'
 
 const ROUTE = '/api/agency/client-portal/access'
+export const CLIENT_PORTAL_ACCESS_UNREPLAYABLE_CODE = 'client_portal_access_unreplayable'
 const CLIENT_PORTAL_ACCESS = defineGodModeTransactionOperation({
   routeOrTool: `POST ${ROUTE}`,
   mutationName: 'client portal access',
-  missingResultMessage: 'Client portal access mutation did not produce a durable result'
+  missingResultMessage: 'Client portal access mutation did not produce a durable result',
+  unreplayableErrorCode: CLIENT_PORTAL_ACCESS_UNREPLAYABLE_CODE,
+  retryableInProgress: true
 })
 
 export type GodModeClientPortalAccessDependencies = GodModeTransactionCoordinatorDependencies

@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { format } from 'date-fns'
 import { navigateToPortalDocument } from '~/utils/portalAgencyAccessNavigation'
-import { createClientPortalAccessRequestSession } from '~/utils/clientPortalAccessRequest'
+import {
+  createClientPortalAccessRequestSession,
+  createClientPortalOpenController
+} from '~/utils/clientPortalAccessRequest'
 import { createClientPortalInviteForm } from '~/utils/clientPortalInviteForm'
 import { useAuthenticatedFetch } from '~/composables/useAuthenticatedFetch'
 
@@ -863,6 +866,19 @@ watch(clients, (items) => {
 }, { immediate: true })
 
 const openingPortal = ref(false)
+const portalOpenController = createClientPortalOpenController({
+  accessRequests: portalAccessRequests,
+  refreshActivity: () => refreshActivity(),
+  navigate: path => navigateToPortalDocument(path),
+  notifyError: (err) => {
+    toast.add({
+      title: 'Failed to open portal',
+      description: errorMessage(err),
+      color: 'error'
+    })
+  },
+  setOpening: (value) => { openingPortal.value = value }
+})
 
 const openClientPortal = async (clientId?: string | null, path = '/portal') => {
   const targetClientId = clientId || selectedAccessClientId.value
@@ -871,20 +887,7 @@ const openClientPortal = async (clientId?: string | null, path = '/portal') => {
     return
   }
 
-  openingPortal.value = true
-  try {
-    await portalAccessRequests.request(targetClientId)
-    refreshActivity()
-    navigateToPortalDocument(path)
-  } catch (err: unknown) {
-    toast.add({
-      title: 'Failed to open portal',
-      description: errorMessage(err),
-      color: 'error'
-    })
-  } finally {
-    openingPortal.value = false
-  }
+  await portalOpenController.open(targetClientId, path)
 }
 
 const getClientPortalActions = (clientId?: string | null) => [

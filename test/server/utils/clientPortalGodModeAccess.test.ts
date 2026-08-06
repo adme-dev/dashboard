@@ -137,6 +137,7 @@ describe('God mode client portal access coordination', () => {
   let sessionInsertCount: number
   let activityInsertCount: number
   let loginIncrementCount: number
+  let replayAvailable: boolean
   const appendAudit = vi.fn()
   const query = vi.fn()
   const transaction = vi.fn()
@@ -163,6 +164,7 @@ describe('God mode client portal access coordination', () => {
     sessionInsertCount = 0
     activityInsertCount = 0
     loginIncrementCount = 0
+    replayAvailable = true
 
     query.mockImplementation(async (sqlValue: string, params: unknown[] = []) => {
       const sql = String(sqlValue)
@@ -222,6 +224,7 @@ describe('God mode client portal access coordination', () => {
         return { rows: [] }
       }
       if (sql.includes('FROM client_sessions s')) {
+        if (!replayAvailable) return { rows: [] }
         return {
           rows: [{
             sessionId: SESSION_ID,
@@ -369,7 +372,25 @@ describe('God mode client portal access coordination', () => {
     expect(activityInsertCount).toBe(0)
   })
 
-  it('uses portal-specific wording when an existing access attempt cannot replay', async () => {
+  it('classifies a durably failed portal attempt as terminal and unreplayable', async () => {
+    ledger.push({
+      actorUserId: ACTOR_ID,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      state: 'failed',
+      resultReference: null,
+      route: ROUTE,
+      requestDigest: 'b'.repeat(64),
+      clientId: CLIENT_ID
+    })
+
+    await expect(prepareGodModeClientPortalAccess(event(), dependencies())).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: 'God mode client portal access is not safely replayable',
+      data: { code: 'client_portal_access_unreplayable' }
+    })
+  })
+
+  it('keeps an in-progress portal conflict retryable without terminal classification', async () => {
     ledger.push({
       actorUserId: ACTOR_ID,
       idempotencyKey: IDEMPOTENCY_KEY,
@@ -380,9 +401,35 @@ describe('God mode client portal access coordination', () => {
       clientId: CLIENT_ID
     })
 
-    await expect(prepareGodModeClientPortalAccess(event(), dependencies())).rejects.toMatchObject({
+    const error = await prepareGodModeClientPortalAccess(event(), dependencies()).catch(value => value)
+
+    expect(error).toMatchObject({
       statusCode: 409,
-      statusMessage: 'God mode client portal access is not safely replayable'
+      statusMessage: 'God mode client portal access is still in progress'
+    })
+    expect(error.data).toBeUndefined()
+  })
+
+  it('classifies a missing or expired committed session through the actual replay callback', async () => {
+    const firstEvent = event()
+    const firstPrepared = await prepareGodModeClientPortalAccess(firstEvent, dependencies())
+    await executeClientPortalAccess(firstEvent, actor, CLIENT_ID, null, null)
+    await firstPrepared.persistTerminal(terminal())
+
+    replayAvailable = false
+    const replayEvent = event(CLIENT_ID, ACTOR_ID, IDEMPOTENCY_KEY, '99999999-9999-4999-8999-999999999999')
+    const replayPrepared = await prepareGodModeClientPortalAccess(replayEvent, dependencies())
+    const error = await executeClientPortalAccess(replayEvent, actor, CLIENT_ID, null, null).catch(value => value)
+    await replayPrepared.persistTerminal({
+      ...terminal(ACTOR_ID, '99999999-9999-4999-8999-999999999999'),
+      phase: 'failed',
+      outcomeCode: 'http_409'
+    })
+
+    expect(error).toMatchObject({
+      statusCode: 409,
+      statusMessage: 'God mode client portal access replay is no longer available',
+      data: { code: 'client_portal_access_unreplayable' }
     })
   })
 

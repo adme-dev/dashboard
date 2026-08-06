@@ -23,6 +23,8 @@ export interface GodModeTransactionOperation {
   readonly routeOrTool: string
   readonly mutationName: string
   readonly missingResultMessage: string
+  readonly unreplayableErrorCode?: string
+  readonly retryableInProgress?: boolean
 }
 
 interface Coordination {
@@ -62,6 +64,16 @@ function deferred<T>() {
 
 function coordination(event: H3Event): Coordination | null {
   return ((event.context as Record<PropertyKey, unknown>)[coordinationKey] as Coordination | undefined) ?? null
+}
+
+function unreplayableError(operation: GodModeTransactionOperation) {
+  const error = {
+    statusCode: 409,
+    statusMessage: `God mode ${operation.mutationName} is not safely replayable`
+  }
+  return createError(operation.unreplayableErrorCode
+    ? { ...error, data: { code: operation.unreplayableErrorCode } }
+    : error)
 }
 
 export async function prepareGodModeTransactionMutation(
@@ -111,12 +123,13 @@ export async function prepareGodModeTransactionMutation(
       if (row.request_digest !== requestDigest) {
         throw createError({ statusCode: 409, statusMessage: 'Idempotency key request does not match' })
       }
-      if (row.state !== 'succeeded' || !row.result_reference) {
+      if (operation.retryableInProgress && (row.state === 'in_progress' || row.state === 'ambiguous')) {
         throw createError({
           statusCode: 409,
-          statusMessage: `God mode ${operation.mutationName} is not safely replayable`
+          statusMessage: `God mode ${operation.mutationName} is still in progress`
         })
       }
+      if (row.state !== 'succeeded' || !row.result_reference) throw unreplayableError(operation)
       mode = 'replay'
       resultReference = row.result_reference
     }
@@ -216,10 +229,7 @@ export async function executeGodModeTransactionMutation<T extends { id: string }
     let result: T
     if (current.mode === 'replay') {
       if (!replay) {
-        throw createError({
-          statusCode: 409,
-          statusMessage: `God mode ${operation.mutationName} is not safely replayable`
-        })
+        throw unreplayableError(operation)
       }
       result = await replay(current.db, current.resultReference!)
     } else {

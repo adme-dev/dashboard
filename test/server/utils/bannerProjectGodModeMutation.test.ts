@@ -226,6 +226,21 @@ describe('God mode banner project creation coordination', () => {
       .rejects.toMatchObject({ statusCode: 409, statusMessage: 'Idempotency key request does not match' })
   })
 
+  it('preserves the banner unreplayable response for an existing in-progress attempt', async () => {
+    query.mockImplementation(async (sql: string) => {
+      if (sql.includes('INSERT INTO god_mode_execution_ledger')) return { rows: [] }
+      if (sql.includes('FROM god_mode_execution_ledger')) {
+        return { rows: [{ state: 'in_progress', result_reference: null, route_or_tool: 'POST /api/agency/banner-studio/projects', request_digest: 'b'.repeat(64) }] }
+      }
+      return { rows: [] }
+    })
+
+    await expect(prepareGodModeBannerProjectCreation(request(), dependencies)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: 'God mode project creation is not safely replayable'
+    })
+  })
+
   it('rolls back a failed insert savepoint and durably records a failed terminal', async () => {
     const event = request()
     const prepared = await prepareGodModeBannerProjectCreation(event, dependencies)

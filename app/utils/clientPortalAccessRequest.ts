@@ -16,6 +16,17 @@ type ClientPortalAccessFetch = <T>(
 ) => Promise<T>
 
 const DECISIVE_FAILURES = new Set([400, 404, 422, 428])
+const TERMINAL_UNREPLAYABLE_CODE = 'client_portal_access_unreplayable'
+
+function errorCode(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null
+  const candidate = error as {
+    code?: unknown
+    data?: { code?: unknown, data?: { code?: unknown } }
+  }
+  const code = candidate.data?.data?.code ?? candidate.data?.code ?? candidate.code
+  return typeof code === 'string' ? code : null
+}
 
 export function createClientPortalAccessRequestSession(
   send: ClientPortalAccessFetch,
@@ -45,8 +56,40 @@ export function createClientPortalAccessRequestSession(
         return response
       } catch (error: unknown) {
         const status = apiErrorStatus(error)
-        if (status !== null && DECISIVE_FAILURES.has(status)) keysByClient.delete(clientId)
+        if (
+          (status !== null && DECISIVE_FAILURES.has(status))
+          || (status === 409 && errorCode(error) === TERMINAL_UNREPLAYABLE_CODE)
+        ) {
+          keysByClient.delete(clientId)
+        }
         throw error
+      }
+    }
+  }
+}
+
+interface ClientPortalOpenControllerDependencies {
+  accessRequests: ReturnType<typeof createClientPortalAccessRequestSession>
+  refreshActivity: () => unknown
+  navigate: (path: string) => unknown
+  notifyError: (error: unknown) => void
+  setOpening: (opening: boolean) => void
+}
+
+export function createClientPortalOpenController(dependencies: ClientPortalOpenControllerDependencies) {
+  return {
+    async open(clientId: string, path = '/portal'): Promise<boolean> {
+      dependencies.setOpening(true)
+      try {
+        await dependencies.accessRequests.request(clientId)
+        dependencies.refreshActivity()
+        dependencies.navigate(path)
+        return true
+      } catch (error: unknown) {
+        dependencies.notifyError(error)
+        return false
+      } finally {
+        dependencies.setOpening(false)
       }
     }
   }

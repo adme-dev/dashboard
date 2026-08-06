@@ -3,7 +3,10 @@ import type { Pool } from '@neondatabase/serverless'
 import type { H3Event } from 'h3'
 import { createError, getCookie, getHeader } from 'h3'
 
-import { executeGodModeClientPortalAccess } from '~~/server/utils/clientPortal/godModeAccess'
+import {
+  CLIENT_PORTAL_ACCESS_UNREPLAYABLE_CODE,
+  executeGodModeClientPortalAccess
+} from '~~/server/utils/clientPortal/godModeAccess'
 import { transaction } from '~~/server/utils/db'
 import { getGodModeRouteAuditState } from '~~/server/utils/godMode/featureGate'
 import { digestPortalSessionToken } from '~~/server/utils/portalSession'
@@ -88,7 +91,13 @@ async function replay(
     FROM client_sessions s JOIN client_users u ON u.id=s.client_user_id JOIN agency_clients c ON c.id=u.client_id
     WHERE s.id=$1 AND u.client_id=$2 AND u.email=$3 AND s.token_hash=$4 AND s.expires_at>NOW()`,
   [sessionId, clientId, email(actor.id, clientId), tokenHash])).rows[0]
-  if (!row) throw createError({ statusCode: 409, statusMessage: 'Portal access replay is no longer available' })
+  if (!row) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'God mode client portal access replay is no longer available',
+      data: { code: CLIENT_PORTAL_ACCESS_UNREPLAYABLE_CODE }
+    })
+  }
   return result(row, actor, clientId, sessionId, sessionToken)
 }
 
