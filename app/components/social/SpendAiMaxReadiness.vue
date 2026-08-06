@@ -2,13 +2,13 @@
 import type {
   GoogleAiMaxCampaignDetail,
   GoogleAiMaxCampaignListItem,
-  GoogleAiMaxReadinessResponse,
+  GoogleAiMaxReadinessResponse
 } from '~/types'
 import {
   buildAiMaxApiFilters,
   buildAiMaxRouteQuery,
   normalizeAiMaxRouteFilters,
-  type GoogleAiMaxPageFilters,
+  type GoogleAiMaxPageFilters
 } from '~/utils/googleAiMaxPageState'
 
 const route = useRoute()
@@ -27,7 +27,7 @@ const detailLoading = ref(false)
 const detailError = ref<string | null>(null)
 const detailOpen = computed({
   get: () => Boolean(selectedId.value),
-  set: (value: boolean) => { if (!value) selectedId.value = null },
+  set: (value: boolean) => { if (!value) selectedId.value = null }
 })
 let requestSequence = 0
 let refreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -42,7 +42,7 @@ function uniqueOptions(
   id: (row: GoogleAiMaxCampaignListItem) => string | null,
   label: (row: GoogleAiMaxCampaignListItem) => string | null,
   allLabel: string,
-  selected: string,
+  selected: string
 ) {
   const options = new Map<string, string>()
   for (const row of rows) {
@@ -53,7 +53,7 @@ function uniqueOptions(
   return [
     { label: allLabel, value: 'all' },
     ...Array.from(options, ([value, optionLabel]) => ({ label: optionLabel, value }))
-      .sort((a, b) => a.label.localeCompare(b.label)),
+      .sort((a, b) => a.label.localeCompare(b.label))
   ]
 }
 
@@ -62,14 +62,14 @@ const connectionOptions = computed(() => uniqueOptions(
   row => row.connectionId,
   row => row.accountName || row.customerId,
   'All accounts',
-  filters.connectionId,
+  filters.connectionId
 ))
 const clientOptions = computed(() => uniqueOptions(
   items.value,
   row => row.client?.id ?? null,
   row => row.client?.name ?? null,
   'All clients',
-  filters.clientId,
+  filters.clientId
 ))
 
 function messageOf(cause: unknown, fallback: string) {
@@ -135,7 +135,7 @@ async function pollScan(runId: string, attempt = 0): Promise<void> {
       toast.add({
         title: run.status === 'completed' ? 'AI Max scan complete' : run.status === 'partial' ? 'AI Max scan partially complete' : 'AI Max scan failed',
         description: `${run.processedConnections}/${run.totalConnections} Google accounts processed.`,
-        color: run.status === 'completed' ? 'success' : run.status === 'partial' ? 'warning' : 'error',
+        color: run.status === 'completed' ? 'success' : run.status === 'partial' ? 'warning' : 'error'
       })
       return
     }
@@ -179,17 +179,33 @@ onBeforeUnmount(() => {
           <UIcon name="i-lucide-chevron-right" class="size-3" />
           <span>Google readiness</span>
         </div>
-        <h1 class="mt-2 text-2xl font-bold tracking-tight">Google Ads AI Max readiness</h1>
+        <h1 class="mt-2 text-2xl font-bold tracking-tight">
+          Google Ads AI Max readiness
+        </h1>
         <p class="mt-1 max-w-3xl text-sm text-muted">
           Inspect Search campaign migration exposure, effective controls, and material changes before Google consolidates legacy settings.
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
-        <UBadge color="neutral" variant="subtle" icon="i-lucide-eye">Observational only</UBadge>
-        <UButton :to="exportHref" external variant="ghost" color="neutral" icon="i-lucide-download" :disabled="loading">
+        <UBadge color="neutral" variant="subtle" icon="i-lucide-eye">
+          Observational only
+        </UBadge>
+        <UButton
+          :to="exportHref"
+          external
+          variant="ghost"
+          color="neutral"
+          icon="i-lucide-download"
+          :disabled="loading"
+        >
           Export CSV
         </UButton>
-        <UButton icon="i-lucide-scan-search" :loading="scanning" :disabled="scanning" @click="runScan">
+        <UButton
+          icon="i-lucide-scan-search"
+          :loading="scanning"
+          :disabled="scanning"
+          @click="runScan"
+        >
           Scan now
         </UButton>
       </div>

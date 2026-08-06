@@ -99,7 +99,7 @@ async function loadDigest(tenantId: string): Promise<DigestCounts> {
   return {
     affected: Number(row?.affected ?? 0),
     unknown: Number(row?.unknown ?? 0),
-    needsReview: Number(row?.needs_review ?? 0),
+    needsReview: Number(row?.needs_review ?? 0)
   }
 }
 
@@ -107,7 +107,7 @@ async function claimDelivery(
   tenantId: string,
   userId: string,
   dedupeKey: string,
-  scanRunId: string,
+  scanRunId: string
 ) {
   const row = await queryOne(`
     INSERT INTO google_ai_max_notification_deliveries
@@ -131,7 +131,7 @@ async function markDelivered(
   tenantId: string,
   userId: string,
   dedupeKey: string,
-  notificationId?: string,
+  notificationId?: string
 ) {
   await execute(`
     UPDATE google_ai_max_notification_deliveries
@@ -148,7 +148,7 @@ const defaultDependencies: NotificationDependencies = {
   claimDelivery,
   markDelivered,
   releaseDelivery,
-  createNotification,
+  createNotification
 }
 
 function eventNotification(candidate: EventCandidate) {
@@ -156,13 +156,13 @@ function eventNotification(candidate: EventCandidate) {
     return {
       title: 'Google AI Max evidence needs review',
       message: `Google-observed evidence for “${candidate.campaignName}” became incomplete. XeroFlow derived an Unknown status; review the campaign in Google Ads.`,
-      link: '/agency/social/google/ai-max?status=unknown',
+      link: '/agency/social/google/ai-max?status=unknown'
     }
   }
   return {
     title: 'Google AI Max migration detected',
     message: `Google-observed legacy settings make “${candidate.campaignName}” migration-affected. XeroFlow derived ${candidate.readinessStatus.replaceAll('_', ' ')}; review effective controls before 1 September.`,
-    link: `/agency/social/google/ai-max?status=${candidate.readinessStatus}`,
+    link: `/agency/social/google/ai-max?status=${candidate.readinessStatus}`
   }
 }
 
@@ -173,7 +173,7 @@ export async function notifyGoogleAiMaxRun(
     trigger: GoogleAiMaxScanTrigger
     effectiveDate?: string
   },
-  overrides: Partial<NotificationDependencies> = {},
+  overrides: Partial<NotificationDependencies> = {}
 ) {
   const dependencies = { ...defaultDependencies, ...overrides }
   const totals = { sent: 0, suppressed: 0, failed: 0 }
@@ -182,7 +182,7 @@ export async function notifyGoogleAiMaxRun(
   const effectiveDate = input.effectiveDate ?? new Date().toISOString().slice(0, 10)
   const [recipients, candidates] = await Promise.all([
     dependencies.listRecipients(),
-    dependencies.listEventCandidates(input.tenantId, input.scanRunId),
+    dependencies.listEventCandidates(input.tenantId, input.scanRunId)
   ])
 
   const deliveries: Array<{
@@ -204,8 +204,8 @@ export async function notifyGoogleAiMaxRun(
           tenantId: input.tenantId,
           stateId: candidate.stateId,
           eventType: candidate.eventType,
-          source: 'google_observed_xeroflow_derived',
-        },
+          source: 'google_observed_xeroflow_derived'
+        }
       })
     }
   }
@@ -223,8 +223,8 @@ export async function notifyGoogleAiMaxRun(
           metadata: {
             tenantId: input.tenantId,
             eventType: 'daily_digest',
-            source: 'google_observed_xeroflow_derived',
-          },
+            source: 'google_observed_xeroflow_derived'
+          }
         })
       }
     }
@@ -235,7 +235,7 @@ export async function notifyGoogleAiMaxRun(
       input.tenantId,
       delivery.userId,
       delivery.dedupeKey,
-      input.scanRunId,
+      input.scanRunId
     )
     if (!claimed) {
       totals.suppressed += 1
@@ -251,7 +251,7 @@ export async function notifyGoogleAiMaxRun(
         link: delivery.link,
         metadata: { ...delivery.metadata, dedupeKey: delivery.dedupeKey },
         reason: 'direct',
-        sendEmail: false,
+        sendEmail: false
       })
     } catch {
       totals.failed += 1
@@ -263,7 +263,7 @@ export async function notifyGoogleAiMaxRun(
         input.tenantId,
         delivery.userId,
         delivery.dedupeKey,
-        typeof created?.id === 'string' ? created.id : undefined,
+        typeof created?.id === 'string' ? created.id : undefined
       )
     } catch {
       // Keep the unique claim even if bookkeeping fails. The notification was

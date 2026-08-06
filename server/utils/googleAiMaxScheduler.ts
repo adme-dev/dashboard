@@ -20,7 +20,7 @@ const defaultDependencies: GoogleAiMaxSchedulerDependencies = {
     ORDER BY updated_at DESC, tenant_id
   `),
   loadContext: loadGoogleAiMaxScanContext,
-  runScan: runGoogleAiMaxPortfolioScan,
+  runScan: runGoogleAiMaxPortfolioScan
 }
 
 export interface GoogleAiMaxScheduledScanResult {
@@ -45,7 +45,7 @@ function safeError(error: unknown) {
 
 export async function runGoogleAiMaxScheduledScans(
   input: { observedAt?: string },
-  dependencies: GoogleAiMaxSchedulerDependencies = defaultDependencies,
+  dependencies: GoogleAiMaxSchedulerDependencies = defaultDependencies
 ): Promise<GoogleAiMaxScheduledScanResult> {
   const tenants = await dependencies.listTenants()
   const result: GoogleAiMaxScheduledScanResult = {
@@ -53,7 +53,7 @@ export async function runGoogleAiMaxScheduledScans(
     started: 0,
     skipped: 0,
     failed: 0,
-    results: [],
+    results: []
   }
 
   for (const tenant of tenants) {
@@ -70,7 +70,7 @@ export async function runGoogleAiMaxScheduledScans(
         trigger: 'scheduled',
         developerToken: context.developerToken,
         observedAt: input.observedAt ?? new Date().toISOString(),
-        accounts: context.accounts,
+        accounts: context.accounts
       })
       if (!scan.accepted) {
         result.skipped += 1
@@ -90,7 +90,7 @@ export async function runGoogleAiMaxScheduledScans(
       result.results.push({
         tenantId: tenant.tenant_id,
         status: 'failed',
-        error: safeError(error),
+        error: safeError(error)
       })
     }
   }
@@ -99,7 +99,7 @@ export async function runGoogleAiMaxScheduledScans(
     tenantCount: result.tenantCount,
     started: result.started,
     skipped: result.skipped,
-    failed: result.failed,
+    failed: result.failed
   })
   return result
 }

@@ -97,7 +97,7 @@ describe('SpendAiMaxTable', () => {
       clientOptions: [{ label: 'All clients', value: 'all' }],
     })
 
-    for (const label of ['Search', 'Readiness', 'Migration trigger', 'Freshness', 'Google account', 'Client']) {
+    for (const label of ['Search', 'Readiness', 'Migration trigger', 'Freshness', 'Campaign state', 'Google account', 'Client']) {
       expect(html).toContain(`data-field="${label}"`)
     }
     expect(html).toContain('data-table')

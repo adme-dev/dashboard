@@ -3,7 +3,7 @@ import type {
   GoogleAiMaxReadinessStatus,
   GoogleAiMaxRisk,
   GoogleAiMaxSearchMatchingStatus,
-  GoogleAiMaxToggleStatus,
+  GoogleAiMaxToggleStatus
 } from '~/types'
 
 export function aiMaxReadinessLabel(status: GoogleAiMaxReadinessStatus): string {
@@ -12,7 +12,7 @@ export function aiMaxReadinessLabel(status: GoogleAiMaxReadinessStatus): string 
     scheduled_upgrade: 'Upgrade scheduled',
     needs_review: 'Needs review',
     not_affected: 'Not affected',
-    unknown: 'Unknown',
+    unknown: 'Unknown'
   }[status]
 }
 
@@ -22,7 +22,7 @@ export function aiMaxReadinessTone(status: GoogleAiMaxReadinessStatus) {
     scheduled_upgrade: 'warning',
     needs_review: 'error',
     not_affected: 'neutral',
-    unknown: 'error',
+    unknown: 'error'
   }[status] as 'success' | 'warning' | 'error' | 'neutral'
 }
 
@@ -32,7 +32,7 @@ export function aiMaxMigrationReasonLabel(reason: GoogleAiMaxMigrationReason): s
     campaign_broad_match: 'Campaign broad match',
     aca_and_campaign_broad_match: 'Automatically created assets + campaign broad match',
     none: 'No legacy trigger',
-    unknown: 'Unknown evidence',
+    unknown: 'Unknown evidence'
   }[reason]
 }
 
@@ -45,7 +45,7 @@ const RISK_LABELS: Record<GoogleAiMaxRisk, string> = {
   STALE_SCAN: 'Scan evidence is stale',
   SMART_BIDDING_MISMATCH: 'Bidding strategy needs review',
   FINAL_URL_EXPANSION_ENABLED: 'Final URL expansion is enabled',
-  TEXT_CUSTOMISATION_ENABLED: 'Text customisation is enabled',
+  TEXT_CUSTOMISATION_ENABLED: 'Text customisation is enabled'
 }
 
 export function aiMaxRiskLabel(risk: GoogleAiMaxRisk): string {
@@ -61,6 +61,6 @@ export function aiMaxSearchMatchingLabel(status: GoogleAiMaxSearchMatchingStatus
     enabled: 'Enabled',
     partially_disabled: 'Partially disabled',
     disabled: 'Disabled',
-    unknown: 'Unknown',
+    unknown: 'Unknown'
   }[status]
 }

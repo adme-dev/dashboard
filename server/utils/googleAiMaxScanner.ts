@@ -2,7 +2,7 @@ import { getGoogleAiMaxRows, type GoogleAiMaxRows } from '~~/server/utils/google
 import {
   buildGoogleAiMaxState,
   normalizeGoogleAiMaxObservation,
-  type GoogleAiMaxCampaignState,
+  type GoogleAiMaxCampaignState
 } from '~~/server/utils/googleAiMax'
 import {
   claimGoogleAiMaxScanRun,
@@ -12,7 +12,7 @@ import {
   type GoogleAiMaxScanFailure,
   type GoogleAiMaxScanRunRef,
   type GoogleAiMaxScanTrigger,
-  type PersistGoogleAiMaxCampaignStatesResult,
+  type PersistGoogleAiMaxCampaignStatesResult
 } from '~~/server/utils/googleAiMaxRepository'
 import { notifyGoogleAiMaxRun } from '~~/server/utils/googleAiMaxNotifications'
 
@@ -31,23 +31,23 @@ export interface ScanGoogleAiMaxAccountDependencies {
     customerId: string,
     accessToken: string,
     developerToken: string,
-    loginCustomerId?: string,
+    loginCustomerId?: string
   ) => Promise<GoogleAiMaxRows>
 }
 
 const defaultDependencies: ScanGoogleAiMaxAccountDependencies = {
-  fetchRows: getGoogleAiMaxRows,
+  fetchRows: getGoogleAiMaxRows
 }
 
 export async function scanGoogleAiMaxAccount(
   input: ScanGoogleAiMaxAccountInput,
-  dependencies: ScanGoogleAiMaxAccountDependencies = defaultDependencies,
+  dependencies: ScanGoogleAiMaxAccountDependencies = defaultDependencies
 ): Promise<GoogleAiMaxCampaignState[]> {
   const { campaignRows, adGroupRows } = await dependencies.fetchRows(
     input.customerId,
     input.accessToken,
     input.developerToken,
-    input.loginCustomerId,
+    input.loginCustomerId
   )
 
   return campaignRows.map(campaignRow => buildGoogleAiMaxState(
@@ -58,8 +58,8 @@ export async function scanGoogleAiMaxAccount(
       customerId: input.customerId,
       observedAt: input.observedAt,
       campaignRow,
-      adGroupRows,
-    }),
+      adGroupRows
+    })
   ))
 }
 
@@ -89,7 +89,7 @@ export interface RunGoogleAiMaxPortfolioScanDependencies {
   markRunning: typeof markGoogleAiMaxScanRunRunning
   scanAccount: typeof scanGoogleAiMaxAccount
   persistStates: (
-    input: { scanRunId: string, states: GoogleAiMaxCampaignState[] },
+    input: { scanRunId: string, states: GoogleAiMaxCampaignState[] }
   ) => Promise<PersistGoogleAiMaxCampaignStatesResult>
   finishRun: typeof finishGoogleAiMaxScanRun
   notifyRun?: typeof notifyGoogleAiMaxRun
@@ -101,12 +101,12 @@ const defaultPortfolioDependencies: RunGoogleAiMaxPortfolioScanDependencies = {
   scanAccount: scanGoogleAiMaxAccount,
   persistStates: persistGoogleAiMaxCampaignStates,
   finishRun: finishGoogleAiMaxScanRun,
-  notifyRun: notifyGoogleAiMaxRun,
+  notifyRun: notifyGoogleAiMaxRun
 }
 
-export type RunGoogleAiMaxPortfolioScanResult =
-  | { accepted: false, run: null }
-  | {
+export type RunGoogleAiMaxPortfolioScanResult
+  = | { accepted: false, run: null }
+    | {
       accepted: true
       run: GoogleAiMaxScanRunRef
       processedConnections: number
@@ -127,21 +127,21 @@ function safeFailureMessage(error: unknown, secrets: string[]): string {
 
 export async function runGoogleAiMaxPortfolioScan(
   input: RunGoogleAiMaxPortfolioScanInput,
-  dependencies: RunGoogleAiMaxPortfolioScanDependencies = defaultPortfolioDependencies,
+  dependencies: RunGoogleAiMaxPortfolioScanDependencies = defaultPortfolioDependencies
 ): Promise<RunGoogleAiMaxPortfolioScanResult> {
   const run = input.claimedRun ?? await dependencies.claimRun({
     tenantId: input.tenantId,
     trigger: input.trigger,
     requestedBy: input.requestedBy,
     totalConnections: input.accounts.length,
-    apiVersion: 'v23',
+    apiVersion: 'v23'
   })
   if (!run) return { accepted: false, run: null }
 
   const started = await dependencies.markRunning({
     runId: run.id,
     tenantId: input.tenantId,
-    startedAt: input.observedAt,
+    startedAt: input.observedAt
   })
 
   let processedConnections = 0
@@ -153,7 +153,7 @@ export async function runGoogleAiMaxPortfolioScan(
   if (!started) {
     failures.push({
       connectionId: '__run__',
-      error: 'Claimed AI Max scan could not transition from queued to running',
+      error: 'Claimed AI Max scan could not transition from queued to running'
     })
   } else {
     for (const account of input.accounts) {
@@ -174,23 +174,23 @@ export async function runGoogleAiMaxPortfolioScan(
           accessToken,
           developerToken: input.developerToken,
           loginCustomerId,
-          observedAt: input.observedAt,
+          observedAt: input.observedAt
         })
         await dependencies.persistStates({ scanRunId: run.id, states })
         processedConnections += 1
         totalCampaigns += states.length
         unknownCampaigns += states.filter(
-          state => state.readinessStatus === 'unknown',
+          state => state.readinessStatus === 'unknown'
         ).length
         affectedCampaigns += states.filter(
           state => state.readinessStatus !== 'unknown'
-            && (state.aiMaxEnabled === true || state.migrationReason !== 'none'),
+            && (state.aiMaxEnabled === true || state.migrationReason !== 'none')
         ).length
       } catch (error) {
         failures.push({
           connectionId: account.connectionId,
           customerId: account.customerId,
-          error: safeFailureMessage(error, [accessToken, input.developerToken]),
+          error: safeFailureMessage(error, [accessToken, input.developerToken])
         })
       }
     }
@@ -204,7 +204,7 @@ export async function runGoogleAiMaxPortfolioScan(
     totalCampaigns,
     affectedCampaigns,
     unknownCampaigns,
-    failures,
+    failures
   })
   if (!finished) throw new Error(`Failed to finish AI Max scan ${run.id}`)
 
@@ -214,11 +214,11 @@ export async function runGoogleAiMaxPortfolioScan(
         tenantId: input.tenantId,
         scanRunId: run.id,
         trigger: input.trigger,
-        effectiveDate: input.observedAt.slice(0, 10),
+        effectiveDate: input.observedAt.slice(0, 10)
       })
     } catch {
       console.warn('[google-ai-max-notify] notification processing failed', {
-        runId: run.id,
+        runId: run.id
       })
     }
   }
@@ -230,6 +230,6 @@ export async function runGoogleAiMaxPortfolioScan(
     totalCampaigns,
     affectedCampaigns,
     unknownCampaigns,
-    failures,
+    failures
   }
 }

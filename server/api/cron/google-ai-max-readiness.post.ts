@@ -20,6 +20,6 @@ export default eventHandler(async (event) => {
   return {
     ok: true,
     scheduled: true,
-    startedAt: new Date().toISOString(),
+    startedAt: new Date().toISOString()
   }
 })

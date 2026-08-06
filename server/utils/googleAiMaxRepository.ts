@@ -1,16 +1,16 @@
 import { execute, queryOne, transaction } from '~~/server/utils/db'
 import {
   diffGoogleAiMaxMaterialState,
-  type GoogleAiMaxCampaignState,
+  type GoogleAiMaxCampaignState
 } from '~~/server/utils/googleAiMax'
 import { buildCampaignDeepLink } from '~~/server/utils/platformDeepLinks'
 
-export type GoogleAiMaxStateEventType =
-  | 'first_seen'
-  | 'classification_changed'
-  | 'setting_changed'
-  | 'became_unknown'
-  | 'recovered'
+export type GoogleAiMaxStateEventType
+  = | 'first_seen'
+    | 'classification_changed'
+    | 'setting_changed'
+    | 'became_unknown'
+    | 'recovered'
 
 export type GoogleAiMaxScanTrigger = 'manual' | 'scheduled' | 'post_sync'
 export type GoogleAiMaxScanStatus = 'queued' | 'running' | 'completed' | 'partial' | 'failed'
@@ -43,7 +43,7 @@ export interface PersistGoogleAiMaxCampaignStatesResult {
 }
 
 interface DbClient {
-  query<T = any>(sql: string, params?: any[]): Promise<{ rows: T[] }>
+  query<T = unknown>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>
 }
 
 interface CurrentStateRow {
@@ -57,7 +57,12 @@ interface RepositoryDependencies {
 }
 
 const defaultDependencies: RepositoryDependencies = {
-  withTransaction: callback => transaction(callback as any),
+  withTransaction: callback => transaction(async client => callback({
+    query: async <T = unknown>(sql: string, params?: unknown[]) => {
+      const result = await client.query(sql, params)
+      return { rows: result.rows as T[] }
+    }
+  }))
 }
 
 export async function claimGoogleAiMaxScanRun(input: {
@@ -78,7 +83,7 @@ export async function claimGoogleAiMaxScanRun(input: {
     input.trigger,
     input.requestedBy ?? null,
     input.totalConnections,
-    input.apiVersion ?? 'v23',
+    input.apiVersion ?? 'v23'
   ])
 }
 
@@ -136,12 +141,12 @@ export async function finishGoogleAiMaxScanRun(input: {
     input.totalCampaigns,
     input.affectedCampaigns,
     input.unknownCampaigns,
-    JSON.stringify(input.failures),
+    JSON.stringify(input.failures)
   ])
 }
 
 export async function getActiveGoogleAiMaxScanRun(
-  tenantId: string,
+  tenantId: string
 ): Promise<GoogleAiMaxScanRunRef | null> {
   return queryOne<GoogleAiMaxScanRunRef>(`
     SELECT id, status
@@ -196,14 +201,14 @@ function safeStoredFailures(value: unknown): GoogleAiMaxScanFailure[] {
       ...(typeof failure.customerId === 'string' ? { customerId: failure.customerId } : {}),
       error: failure.error
         .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, 'Bearer [REDACTED]')
-        .slice(0, 500),
+        .slice(0, 500)
     }]
   })
 }
 
 export async function getGoogleAiMaxScanRun(
   tenantId: string,
-  runId: string,
+  runId: string
 ): Promise<GoogleAiMaxScanRunDetails | null> {
   const row = await queryOne<ScanRunDetailsRow>(`
     SELECT id, status, trigger, total_connections, processed_connections,
@@ -227,7 +232,7 @@ export async function getGoogleAiMaxScanRun(
     failures: safeStoredFailures(row.failures),
     startedAt: isoDate(row.started_at),
     finishedAt: isoDate(row.finished_at),
-    createdAt: isoDate(row.created_at)!,
+    createdAt: isoDate(row.created_at)!
   }
 }
 
@@ -238,7 +243,7 @@ function parseEvidence(value: GoogleAiMaxCampaignState | string): GoogleAiMaxCam
 function eventTypeForChange(
   previous: GoogleAiMaxCampaignState,
   current: GoogleAiMaxCampaignState,
-  changedFields: string[],
+  changedFields: string[]
 ): GoogleAiMaxStateEventType {
   if (previous.readinessStatus !== 'unknown' && current.readinessStatus === 'unknown') {
     return 'became_unknown'
@@ -249,7 +254,7 @@ function eventTypeForChange(
   if (changedFields.some(field => [
     'migrationReason',
     'readinessStatus',
-    'risks',
+    'risks'
   ].includes(field))) {
     return 'classification_changed'
   }
@@ -258,8 +263,8 @@ function eventTypeForChange(
 
 function stateParams(
   state: GoogleAiMaxCampaignState,
-  scanRunId: string,
-): any[] {
+  scanRunId: string
+): unknown[] {
   return [
     state.tenantId,
     state.connectionId,
@@ -287,15 +292,15 @@ function stateParams(
     JSON.stringify(state),
     buildCampaignDeepLink('google_ads', state.campaignId, {
       accountId: state.customerId,
-      metadata: null,
-    }),
+      metadata: null
+    })
   ]
 }
 
 async function insertState(
   client: DbClient,
   state: GoogleAiMaxCampaignState,
-  scanRunId: string,
+  scanRunId: string
 ): Promise<string> {
   const result = await client.query<{ id: string }>(`
     INSERT INTO google_ai_max_campaign_state (
@@ -326,7 +331,7 @@ async function updateState(
   stateId: string,
   state: GoogleAiMaxCampaignState,
   scanRunId: string,
-  lastChangedAt: string,
+  lastChangedAt: string
 ): Promise<void> {
   await client.query(`
     UPDATE google_ai_max_campaign_state
@@ -369,7 +374,7 @@ async function insertEvent(
     previous: GoogleAiMaxCampaignState | null
     eventType: GoogleAiMaxStateEventType
     changedFields: string[]
-  },
+  }
 ): Promise<void> {
   await client.query(`
     INSERT INTO google_ai_max_state_events (
@@ -383,13 +388,13 @@ async function insertEvent(
     input.eventType,
     input.previous ? JSON.stringify(input.previous) : null,
     JSON.stringify({ ...input.state, changedFields: input.changedFields }),
-    input.state.observedAt,
+    input.state.observedAt
   ])
 }
 
 export async function persistGoogleAiMaxCampaignStates(
   input: PersistGoogleAiMaxCampaignStatesInput,
-  dependencies: RepositoryDependencies = defaultDependencies,
+  dependencies: RepositoryDependencies = defaultDependencies
 ): Promise<PersistGoogleAiMaxCampaignStatesResult> {
   if (input.states.length === 0) {
     return { inserted: 0, refreshed: 0, changed: 0, events: [] }
@@ -397,7 +402,7 @@ export async function persistGoogleAiMaxCampaignStates(
 
   const scope = input.states[0]!
   if (input.states.some(
-    state => state.tenantId !== scope.tenantId || state.connectionId !== scope.connectionId,
+    state => state.tenantId !== scope.tenantId || state.connectionId !== scope.connectionId
   )) {
     throw new Error('AI Max campaign states must belong to the same tenant and connection')
   }
@@ -407,7 +412,7 @@ export async function persistGoogleAiMaxCampaignStates(
       inserted: 0,
       refreshed: 0,
       changed: 0,
-      events: [],
+      events: []
     }
 
     for (const state of input.states) {
@@ -429,13 +434,13 @@ export async function persistGoogleAiMaxCampaignStates(
           state,
           previous: null,
           eventType: 'first_seen',
-          changedFields: [],
+          changedFields: []
         })
         result.inserted += 1
         result.events.push({
           campaignId: state.campaignId,
           eventType: 'first_seen',
-          changedFields: [],
+          changedFields: []
         })
         continue
       }
@@ -459,7 +464,7 @@ export async function persistGoogleAiMaxCampaignStates(
         state,
         previous,
         eventType,
-        changedFields,
+        changedFields
       })
       result.changed += 1
       result.events.push({ campaignId: state.campaignId, eventType, changedFields })

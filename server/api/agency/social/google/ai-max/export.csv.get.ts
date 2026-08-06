@@ -4,7 +4,7 @@ import { getSelectedTenant } from '~~/server/utils/session'
 import {
   GoogleAiMaxExportLimitError,
   listGoogleAiMaxReadinessForExport,
-  parseGoogleAiMaxReadinessQuery,
+  parseGoogleAiMaxReadinessQuery
 } from '~~/server/utils/googleAiMaxReadiness'
 import { serializeSafeCsv } from '~~/server/utils/safeCsv'
 
@@ -23,7 +23,7 @@ const HEADERS = [
   'Freshness',
   'Last scanned',
   'Owner',
-  'Google Ads link',
+  'Google Ads link'
 ]
 
 export default eventHandler(async (event) => {
@@ -47,7 +47,7 @@ export default eventHandler(async (event) => {
     if (error instanceof GoogleAiMaxExportLimitError) {
       throw createError({
         statusCode: 413,
-        statusMessage: 'AI Max export is too large; narrow the filters',
+        statusMessage: 'AI Max export is too large; narrow the filters'
       })
     }
     throw error
@@ -68,7 +68,7 @@ export default eventHandler(async (event) => {
     item.freshness,
     item.lastObservedAt ?? '',
     item.owner?.name ?? '',
-    item.deepLink ?? '',
+    item.deepLink ?? ''
   ])
   const csv = serializeSafeCsv(HEADERS, rows)
   const date = new Date().toISOString().slice(0, 10)
@@ -77,7 +77,7 @@ export default eventHandler(async (event) => {
   setHeader(
     event,
     'Content-Disposition',
-    `attachment; filename="google-ai-max-readiness-${date}.csv"`,
+    `attachment; filename="google-ai-max-readiness-${date}.csv"`
   )
   return csv
 })

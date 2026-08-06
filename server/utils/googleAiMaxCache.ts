@@ -15,7 +15,7 @@ interface ReadinessCacheAdapter {
 function stableFilterEntries(filters: GoogleAiMaxReadinessFilters) {
   const keys: Array<keyof GoogleAiMaxReadinessFilters> = [
     'page', 'pageSize', 'status', 'connectionId', 'clientId', 'campaignStatus',
-    'migrationReason', 'stale', 'changedSince', 'search',
+    'migrationReason', 'stale', 'changedSince', 'search'
   ]
   return keys
     .filter(key => filters[key] !== undefined)
@@ -25,7 +25,7 @@ function stableFilterEntries(filters: GoogleAiMaxReadinessFilters) {
 
 export function googleAiMaxReadinessCacheKey(
   tenantId: string,
-  filters: GoogleAiMaxReadinessFilters,
+  filters: GoogleAiMaxReadinessFilters
 ) {
   return `google-ai-max:${tenantId}:readiness:${stableFilterEntries(filters)}`
 }
@@ -36,11 +36,22 @@ function isEntry<T>(value: unknown): value is ReadinessCacheEntry<T> {
     && 'value' in value)
 }
 
-function isFailedZero(value: any) {
-  return value?.latestRun?.status === 'failed'
-    && Array.isArray(value?.items)
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object'
+}
+
+function isFailedZero(value: unknown) {
+  if (!isRecord(value)) return false
+
+  const latestRun = value.latestRun
+  const summary = value.summary
+
+  return isRecord(latestRun)
+    && latestRun.status === 'failed'
+    && Array.isArray(value.items)
     && value.items.length === 0
-    && Number(value?.summary?.eligible ?? 0) === 0
+    && isRecord(summary)
+    && Number(summary.eligible ?? 0) === 0
 }
 
 export async function readGoogleAiMaxReadinessCached<T>(input: {
@@ -63,15 +74,15 @@ export async function readGoogleAiMaxReadinessCached<T>(input: {
 export function readGoogleAiMaxReadinessForEvent<T>(
   event: H3Event,
   key: string,
-  loader: () => Promise<T>,
+  loader: () => Promise<T>
 ) {
   return readGoogleAiMaxReadinessCached({
     key,
     loader,
     cache: {
       get: cacheKey => kvGet(event, cacheKey),
-      put: (cacheKey, value, ttlSeconds) => kvPut(event, cacheKey, value, ttlSeconds),
-    },
+      put: (cacheKey, value, ttlSeconds) => kvPut(event, cacheKey, value, ttlSeconds)
+    }
   })
 }
 

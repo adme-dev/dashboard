@@ -3,11 +3,11 @@ import { PERMISSIONS } from '~~/server/utils/permissions'
 import { getSelectedTenant } from '~~/server/utils/session'
 import {
   listGoogleAiMaxReadiness,
-  parseGoogleAiMaxReadinessQuery,
+  parseGoogleAiMaxReadinessQuery
 } from '~~/server/utils/googleAiMaxReadiness'
 import {
   googleAiMaxReadinessCacheKey,
-  readGoogleAiMaxReadinessForEvent,
+  readGoogleAiMaxReadinessForEvent
 } from '~~/server/utils/googleAiMaxCache'
 
 export default eventHandler(async (event) => {
@@ -28,6 +28,6 @@ export default eventHandler(async (event) => {
   return readGoogleAiMaxReadinessForEvent(
     event,
     cacheKey,
-    () => listGoogleAiMaxReadiness({ tenantId, filters }),
+    () => listGoogleAiMaxReadiness({ tenantId, filters })
   )
 })

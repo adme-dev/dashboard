@@ -1,23 +1,23 @@
-export type AiMaxMigrationReason =
-  | 'aca'
-  | 'campaign_broad_match'
-  | 'aca_and_campaign_broad_match'
-  | 'none'
-  | 'unknown'
+export type AiMaxMigrationReason
+  = | 'aca'
+    | 'campaign_broad_match'
+    | 'aca_and_campaign_broad_match'
+    | 'none'
+    | 'unknown'
 
-export type AiMaxReadinessStatus =
-  | 'ready'
-  | 'scheduled_upgrade'
-  | 'needs_review'
-  | 'not_affected'
-  | 'unknown'
+export type AiMaxReadinessStatus
+  = | 'ready'
+    | 'scheduled_upgrade'
+    | 'needs_review'
+    | 'not_affected'
+    | 'unknown'
 
-export type AiMaxRisk =
-  | 'AUTO_UPGRADE_PENDING'
-  | 'BUNDLING_REQUIRED'
-  | 'PARTIAL_SEARCH_MATCHING'
-  | 'UNKNOWN_CONFIGURATION'
-  | 'ALL_AD_GROUPS_MATCHING_DISABLED'
+export type AiMaxRisk
+  = | 'AUTO_UPGRADE_PENDING'
+    | 'BUNDLING_REQUIRED'
+    | 'PARTIAL_SEARCH_MATCHING'
+    | 'UNKNOWN_CONFIGURATION'
+    | 'ALL_AD_GROUPS_MATCHING_DISABLED'
 
 export type EffectiveToggleStatus = 'enabled' | 'disabled' | 'unknown'
 export type EffectiveSearchTermMatchingStatus = EffectiveToggleStatus | 'partially_disabled'
@@ -108,7 +108,7 @@ const KNOWN_BUNDLING_STATUSES = new Set(['REQUIRED', 'NOT_REQUIRED'])
 
 function assetAutomationStatus(
   settings: RawAssetAutomationSetting[] | undefined,
-  type: string,
+  type: string
 ): string | null {
   if (!Array.isArray(settings)) return null
   const setting = settings.find(item => item.assetAutomationType === type)
@@ -123,7 +123,7 @@ function campaignIdFromResourceName(resourceName: string | undefined): string | 
 }
 
 export function normalizeGoogleAiMaxObservation(
-  input: NormalizeGoogleAiMaxObservationInput,
+  input: NormalizeGoogleAiMaxObservationInput
 ): GoogleAiMaxObservation {
   const campaign = input.campaignRow.campaign ?? {}
   const campaignId = campaign.id == null ? '' : String(campaign.id)
@@ -133,7 +133,7 @@ export function normalizeGoogleAiMaxObservation(
       && campaignIdFromResourceName(adGroup?.campaign) === campaignId
   })
   const hasCompleteAdGroupEvidence = matchingAdGroups.every(
-    row => typeof row.adGroup?.aiMaxAdGroupSetting?.disableSearchTermMatching === 'boolean',
+    row => typeof row.adGroup?.aiMaxAdGroupSetting?.disableSearchTermMatching === 'boolean'
   )
 
   return {
@@ -161,19 +161,19 @@ export function normalizeGoogleAiMaxObservation(
       : null,
     textAssetAutomationStatus: assetAutomationStatus(
       campaign.assetAutomationSettings,
-      'TEXT_ASSET_AUTOMATION',
+      'TEXT_ASSET_AUTOMATION'
     ),
     finalUrlExpansionStatus: assetAutomationStatus(
       campaign.assetAutomationSettings,
-      'FINAL_URL_EXPANSION_TEXT_ASSET_AUTOMATION',
+      'FINAL_URL_EXPANSION_TEXT_ASSET_AUTOMATION'
     ),
     adGroupCount: hasCompleteAdGroupEvidence ? matchingAdGroups.length : null,
     searchTermMatchingDisabledAdGroupCount: hasCompleteAdGroupEvidence
       ? matchingAdGroups.filter(
-          row => row.adGroup?.aiMaxAdGroupSetting?.disableSearchTermMatching === true,
-        ).length
+        row => row.adGroup?.aiMaxAdGroupSetting?.disableSearchTermMatching === true
+      ).length
       : null,
-    observedAt: input.observedAt,
+    observedAt: input.observedAt
   }
 }
 
@@ -212,7 +212,7 @@ function automationStatus(value: string | null): EffectiveToggleStatus {
 }
 
 function searchTermMatchingStatus(
-  observation: GoogleAiMaxObservation,
+  observation: GoogleAiMaxObservation
 ): EffectiveSearchTermMatchingStatus {
   if (observation.aiMaxEnabled === false) return 'disabled'
   if (observation.aiMaxEnabled !== true
@@ -228,7 +228,7 @@ function searchTermMatchingStatus(
 }
 
 export function classifyAiMaxReadiness(
-  observation: GoogleAiMaxObservation,
+  observation: GoogleAiMaxObservation
 ): GoogleAiMaxClassification {
   if (!hasCompleteEvidence(observation)) {
     return {
@@ -238,8 +238,8 @@ export function classifyAiMaxReadiness(
       effectiveSettings: {
         searchTermMatching: 'unknown',
         textCustomisation: automationStatus(observation.textAssetAutomationStatus),
-        finalUrlExpansion: automationStatus(observation.finalUrlExpansionStatus),
-      },
+        finalUrlExpansion: automationStatus(observation.finalUrlExpansionStatus)
+      }
     }
   }
 
@@ -281,13 +281,13 @@ export function classifyAiMaxReadiness(
     effectiveSettings: {
       searchTermMatching,
       textCustomisation: automationStatus(observation.textAssetAutomationStatus),
-      finalUrlExpansion: automationStatus(observation.finalUrlExpansionStatus),
-    },
+      finalUrlExpansion: automationStatus(observation.finalUrlExpansionStatus)
+    }
   }
 }
 
 export function buildGoogleAiMaxState(
-  observation: GoogleAiMaxObservation,
+  observation: GoogleAiMaxObservation
 ): GoogleAiMaxCampaignState {
   const classification = classifyAiMaxReadiness(observation)
   return {
@@ -295,13 +295,13 @@ export function buildGoogleAiMaxState(
     migrationReason: classification.migrationReason,
     readinessStatus: classification.status,
     risks: classification.risks,
-    effectiveSettings: classification.effectiveSettings,
+    effectiveSettings: classification.effectiveSettings
   }
 }
 
 export function diffGoogleAiMaxMaterialState(
   previous: GoogleAiMaxCampaignState,
-  current: GoogleAiMaxCampaignState,
+  current: GoogleAiMaxCampaignState
 ): string[] {
   const changed: string[] = []
   if (previous.campaignStatus !== current.campaignStatus) changed.push('campaignStatus')

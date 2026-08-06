@@ -4,11 +4,11 @@ import {
   GOOGLE_CREDENTIAL_PROFILE_SELECT,
   persistGoogleCredentialRefresh,
   resolveGoogleCredential,
-  type GoogleCredentialRow,
+  type GoogleCredentialRow
 } from '~~/server/utils/googleCredentialProfiles'
 import {
   listAccessibleCustomers,
-  refreshGoogleToken,
+  refreshGoogleToken
 } from '~~/server/utils/googleAdsClient'
 import { resolveGoogleWriteAuth } from '~~/server/utils/googleWriteAuth'
 import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
@@ -28,11 +28,11 @@ interface GoogleAiMaxRuntimeConfig {
   googleAdsLoginCustomerId: string
 }
 
-type ConnectionQuery = <T = any>(sql: string, params?: any[]) => Promise<T[]>
+type ConnectionQuery = <T = unknown>(sql: string, params?: unknown[]) => Promise<T[]>
 
 export async function listGoogleAiMaxConnectionRows(
   input: { tenantId: string, connectionId?: string },
-  query: ConnectionQuery = queryRows,
+  query: ConnectionQuery = queryRows
 ): Promise<GoogleAiMaxConnectionRow[]> {
   const params: string[] = [input.tenantId]
   const connectionFilter = input.connectionId
@@ -64,13 +64,13 @@ interface LoadGoogleAiMaxScanContextDependencies {
   getConfig: () => GoogleAiMaxRuntimeConfig
   resolveAccountAuth: (
     row: GoogleAiMaxConnectionRow,
-    config: GoogleAiMaxRuntimeConfig,
+    config: GoogleAiMaxRuntimeConfig
   ) => Promise<{ accessToken: string, loginCustomerId?: string }>
 }
 
 async function resolveAccountAuth(
   row: GoogleAiMaxConnectionRow,
-  config: GoogleAiMaxRuntimeConfig,
+  config: GoogleAiMaxRuntimeConfig
 ): Promise<{ accessToken: string, loginCustomerId?: string }> {
   const credential = await resolveGoogleCredential(row)
   const metadataManager = typeof row.metadata?.managerCustomerId === 'string'
@@ -82,12 +82,12 @@ async function resolveAccountAuth(
     account_id: row.account_id,
     access_token: credential.accessToken,
     refresh_token: credential.refreshToken,
-    token_expires_at: credential.tokenExpiresAt,
+    token_expires_at: credential.tokenExpiresAt
   }, {
     googleClientId: config.googleClientId,
     googleClientSecret: config.googleClientSecret,
     googleDeveloperToken: config.googleDeveloperToken,
-    googleAdsLoginCustomerId: config.googleAdsLoginCustomerId || metadataManager,
+    googleAdsLoginCustomerId: config.googleAdsLoginCustomerId || metadataManager
   }, {
     refreshGoogleToken,
     listAccessibleCustomers,
@@ -96,21 +96,21 @@ async function resolveAccountAuth(
         connectionId,
         profileId: credential.profileId,
         accessToken,
-        expiresAt,
+        expiresAt
       })
-    },
+    }
   })
 }
 
 const defaultDependencies: LoadGoogleAiMaxScanContextDependencies = {
   listRows: listGoogleAiMaxConnectionRows,
   getConfig: resolveGoogleAdsRuntimeConfig,
-  resolveAccountAuth,
+  resolveAccountAuth
 }
 
 export async function loadGoogleAiMaxScanContext(
   input: { tenantId: string, connectionId?: string },
-  dependencies: LoadGoogleAiMaxScanContextDependencies = defaultDependencies,
+  dependencies: LoadGoogleAiMaxScanContextDependencies = defaultDependencies
 ): Promise<{ developerToken: string, accounts: GoogleAiMaxPortfolioAccount[] }> {
   const config = dependencies.getConfig()
   if (!config.googleDeveloperToken) {
@@ -123,7 +123,7 @@ export async function loadGoogleAiMaxScanContext(
     accounts: rows.map(row => ({
       connectionId: row.id,
       customerId: row.account_id,
-      resolveAuth: () => dependencies.resolveAccountAuth(row, config),
-    })),
+      resolveAuth: () => dependencies.resolveAccountAuth(row, config)
+    }))
   }
 }

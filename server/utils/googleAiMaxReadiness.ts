@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { queryOne as dbQueryOne, queryRows as dbQueryRows } from '~~/server/utils/db'
 import type {
   AiMaxMigrationReason,
-  AiMaxReadinessStatus,
+  AiMaxReadinessStatus
 } from '~~/server/utils/googleAiMax'
 
 export type GoogleAiMaxStaleFilter = 'fresh' | 'warning' | 'critical'
@@ -22,7 +22,7 @@ export interface GoogleAiMaxReadinessFilters {
 
 const boundedInteger = (minimum: number, maximum: number, fallback: number) => z.preprocess(
   value => Array.isArray(value) ? Number.NaN : value,
-  z.coerce.number().int().min(minimum).max(maximum).default(fallback),
+  z.coerce.number().int().min(minimum).max(maximum).default(fallback)
 )
 
 const QuerySchema = z.object({
@@ -33,7 +33,7 @@ const QuerySchema = z.object({
     'scheduled_upgrade',
     'needs_review',
     'not_affected',
-    'unknown',
+    'unknown'
   ]).optional(),
   connectionId: z.string().uuid().optional(),
   clientId: z.string().uuid().optional(),
@@ -43,33 +43,35 @@ const QuerySchema = z.object({
     'campaign_broad_match',
     'aca_and_campaign_broad_match',
     'none',
-    'unknown',
+    'unknown'
   ]).optional(),
   stale: z.enum(['fresh', 'warning', 'critical']).optional(),
   changedSince: z.string().datetime({ offset: true }).optional(),
-  search: z.string().trim().min(1).max(100).optional(),
+  search: z.string().trim().min(1).max(100).optional()
 }).strict()
 
 export function parseGoogleAiMaxReadinessQuery(
-  query: Record<string, unknown>,
+  query: Record<string, unknown>
 ): GoogleAiMaxReadinessFilters {
   const parsed = QuerySchema.safeParse(query)
   if (!parsed.success) throw new Error('Invalid AI Max readiness query')
   return {
     ...parsed.data,
     page: parsed.data.page ?? 1,
-    pageSize: parsed.data.pageSize ?? 25,
+    pageSize: parsed.data.pageSize ?? 25
   }
 }
 
+type DatabaseRow = Record<string, unknown>
+
 interface ReadinessQueryDependencies {
-  queryOne(sql: string, params?: any[]): Promise<any | null>
-  queryRows(sql: string, params?: any[]): Promise<any[]>
+  queryOne<T extends DatabaseRow = DatabaseRow>(sql: string, params?: unknown[]): Promise<T | null>
+  queryRows<T extends DatabaseRow = DatabaseRow>(sql: string, params?: unknown[]): Promise<T[]>
 }
 
 const defaultQueryDependencies: ReadinessQueryDependencies = {
   queryOne: dbQueryOne,
-  queryRows: dbQueryRows,
+  queryRows: dbQueryRows
 }
 
 const EFFECTIVE_READINESS_SQL = `CASE
@@ -85,16 +87,16 @@ END`
 
 function addFilter(
   clauses: string[],
-  params: any[],
+  params: unknown[],
   sql: (placeholder: string) => string,
-  value: unknown,
+  value: unknown
 ): void {
   params.push(value)
   clauses.push(sql(`$${params.length}`))
 }
 
 function readinessDataset(filters: GoogleAiMaxReadinessFilters, tenantId: string) {
-  const params: any[] = [tenantId]
+  const params: unknown[] = [tenantId]
   const clauses = ['s.tenant_id = $1']
 
   if (filters.status) {
@@ -113,12 +115,12 @@ function readinessDataset(filters: GoogleAiMaxReadinessFilters, tenantId: string
     addFilter(clauses, params, p => `s.migration_reason = ${p}`, filters.migrationReason)
   }
   if (filters.stale === 'fresh') {
-    clauses.push("s.last_observed_at >= NOW() - INTERVAL '26 hours'")
+    clauses.push('s.last_observed_at >= NOW() - INTERVAL \'26 hours\'')
   } else if (filters.stale === 'warning') {
-    clauses.push("s.last_observed_at < NOW() - INTERVAL '26 hours'")
-    clauses.push("s.last_observed_at >= NOW() - INTERVAL '72 hours'")
+    clauses.push('s.last_observed_at < NOW() - INTERVAL \'26 hours\'')
+    clauses.push('s.last_observed_at >= NOW() - INTERVAL \'72 hours\'')
   } else if (filters.stale === 'critical') {
-    clauses.push("s.last_observed_at < NOW() - INTERVAL '72 hours'")
+    clauses.push('s.last_observed_at < NOW() - INTERVAL \'72 hours\'')
   }
   if (filters.changedSince) {
     addFilter(clauses, params, p => `s.last_changed_at >= ${p}`, filters.changedSince)
@@ -143,7 +145,7 @@ function readinessDataset(filters: GoogleAiMaxReadinessFilters, tenantId: string
       LEFT JOIN team_members owner ON owner.id = cf.account_manager_id
     `,
     where: `WHERE ${clauses.join('\n AND ')}`,
-    params,
+    params
   }
 }
 
@@ -166,7 +168,67 @@ function nullableEntity(id: unknown, name: unknown): { id: string, name: string 
     : null
 }
 
-function mapListItem(row: any) {
+interface ReadinessRow extends DatabaseRow {
+  id: string
+  connection_id: string
+  customer_id: string
+  account_name?: string | null
+  client_id?: string | null
+  client_name?: string | null
+  owner_id?: string | null
+  owner_name?: string | null
+  campaign_id: string
+  campaign_name: string
+  campaign_status: string
+  deep_link?: string | null
+  effective_readiness_status?: string | null
+  readiness_status: string
+  migration_reason: string
+  ai_max_enabled: boolean | null
+  effective_search_term_matching: string
+  effective_text_customisation: string
+  effective_final_url_expansion: string
+  risk_flags?: unknown
+  freshness_status?: string | null
+  last_observed_at?: string | Date | null
+  last_changed_at?: string | Date | null
+  advertising_channel_type?: string | null
+  bidding_strategy_type?: string | null
+  keyword_match_type?: string | null
+  bundling_required?: string | null
+  text_asset_automation_status?: string | null
+  final_url_expansion_status?: string | null
+  ad_group_count?: number
+  search_term_matching_disabled_ad_group_count?: number
+  raw_evidence?: unknown
+  first_observed_at?: string | Date | null
+}
+
+interface LatestRunRow extends DatabaseRow {
+  id: string
+  status: string
+  trigger: string
+  total_connections?: unknown
+  processed_connections?: unknown
+  total_campaigns?: unknown
+  affected_campaigns?: unknown
+  unknown_campaigns?: unknown
+  started_at?: string | Date | null
+  finished_at?: string | Date | null
+  created_at?: string | Date | null
+  last_completed_scan_at?: string | Date | null
+  coverage_percent?: unknown
+}
+
+interface TimelineRow extends DatabaseRow {
+  id: string
+  event_type: string
+  previous_value?: unknown
+  current_value: unknown
+  observed_at?: string | Date | null
+}
+
+function mapListItem(row: ReadinessRow) {
   const freshness = row.freshness_status ?? 'fresh'
   const risks = Array.isArray(row.risk_flags) ? [...row.risk_flags] : []
   if (freshness !== 'fresh' && !risks.includes('STALE_SCAN')) risks.push('STALE_SCAN')
@@ -188,12 +250,12 @@ function mapListItem(row: any) {
     effectiveSettings: {
       searchTermMatching: row.effective_search_term_matching,
       textCustomisation: row.effective_text_customisation,
-      finalUrlExpansion: row.effective_final_url_expansion,
+      finalUrlExpansion: row.effective_final_url_expansion
     },
     risks,
     freshness,
     lastObservedAt: isoValue(row.last_observed_at),
-    lastChangedAt: isoValue(row.last_changed_at),
+    lastChangedAt: isoValue(row.last_changed_at)
   }
 }
 
@@ -208,10 +270,10 @@ export class GoogleAiMaxExportLimitError extends Error {
 
 export async function listGoogleAiMaxReadinessForExport(
   input: { tenantId: string, filters: GoogleAiMaxReadinessFilters },
-  dependencies: ReadinessQueryDependencies = defaultQueryDependencies,
+  dependencies: ReadinessQueryDependencies = defaultQueryDependencies
 ) {
   const dataset = readinessDataset(input.filters, input.tenantId)
-  const rows = await dependencies.queryRows(`
+  const rows = await dependencies.queryRows<ReadinessRow>(`
     SELECT s.id, s.connection_id, s.customer_id,
            sc.account_name, sc.client_id, ac.name AS client_name,
            cf.account_manager_id AS owner_id, owner.name AS owner_name,
@@ -234,7 +296,7 @@ export async function listGoogleAiMaxReadinessForExport(
   return rows.map(mapListItem)
 }
 
-function mapLatestRun(row: any) {
+function mapLatestRun(row: LatestRunRow | null) {
   if (!row) return null
   return {
     id: row.id,
@@ -247,13 +309,13 @@ function mapLatestRun(row: any) {
     unknownCampaigns: numberValue(row.unknown_campaigns),
     startedAt: isoValue(row.started_at),
     finishedAt: isoValue(row.finished_at),
-    createdAt: isoValue(row.created_at),
+    createdAt: isoValue(row.created_at)
   }
 }
 
 export async function listGoogleAiMaxReadiness(
   input: { tenantId: string, filters: GoogleAiMaxReadinessFilters },
-  dependencies: ReadinessQueryDependencies = defaultQueryDependencies,
+  dependencies: ReadinessQueryDependencies = defaultQueryDependencies
 ) {
   const dataset = readinessDataset(input.filters, input.tenantId)
   const summaryRow = await dependencies.queryOne(`
@@ -274,9 +336,9 @@ export async function listGoogleAiMaxReadiness(
   const itemParams = [
     ...dataset.params,
     input.filters.pageSize,
-    (input.filters.page - 1) * input.filters.pageSize,
+    (input.filters.page - 1) * input.filters.pageSize
   ]
-  const items = await dependencies.queryRows(`
+  const items = await dependencies.queryRows<ReadinessRow>(`
     SELECT s.id, s.connection_id, s.customer_id,
            sc.account_name, sc.client_id, ac.name AS client_name,
            cf.account_manager_id AS owner_id, owner.name AS owner_name,
@@ -303,7 +365,7 @@ export async function listGoogleAiMaxReadiness(
     OFFSET $${dataset.params.length + 2}
   `, itemParams)
 
-  const latestRunRow = await dependencies.queryOne(`
+  const latestRunRow = await dependencies.queryOne<LatestRunRow>(`
     WITH latest_any AS (
       SELECT *
       FROM google_ai_max_scan_runs
@@ -345,19 +407,19 @@ export async function listGoogleAiMaxReadiness(
       lastCompletedScanAt: isoValue(latestRunRow?.last_completed_scan_at),
       coveragePercent: latestRunRow?.coverage_percent == null
         ? null
-        : numberValue(latestRunRow.coverage_percent),
+        : numberValue(latestRunRow.coverage_percent)
     },
     items: items.map(mapListItem),
     pagination: {
       page: input.filters.page,
       pageSize: input.filters.pageSize,
-      total: eligible,
+      total: eligible
     },
-    latestRun: mapLatestRun(latestRunRow),
+    latestRun: mapLatestRun(latestRunRow)
   }
 }
 
-function mapDetail(row: any, timeline: any[]) {
+function mapDetail(row: ReadinessRow, timeline: TimelineRow[]) {
   return {
     ...mapListItem(row),
     advertisingChannelType: row.advertising_channel_type,
@@ -368,7 +430,7 @@ function mapDetail(row: any, timeline: any[]) {
     finalUrlExpansionStatus: row.final_url_expansion_status,
     adGroups: {
       total: row.ad_group_count,
-      searchTermMatchingDisabled: row.search_term_matching_disabled_ad_group_count,
+      searchTermMatchingDisabled: row.search_term_matching_disabled_ad_group_count
     },
     deepLink: row.deep_link ?? null,
     rawEvidence: jsonValue(row.raw_evidence),
@@ -378,17 +440,17 @@ function mapDetail(row: any, timeline: any[]) {
       eventType: event.event_type,
       previousValue: event.previous_value == null ? null : jsonValue(event.previous_value),
       currentValue: jsonValue(event.current_value),
-      observedAt: isoValue(event.observed_at),
-    })),
+      observedAt: isoValue(event.observed_at)
+    }))
   }
 }
 
 export async function getGoogleAiMaxReadinessDetail(
   tenantId: string,
   stateId: string,
-  dependencies: ReadinessQueryDependencies = defaultQueryDependencies,
+  dependencies: ReadinessQueryDependencies = defaultQueryDependencies
 ) {
-  const row = await dependencies.queryOne(`
+  const row = await dependencies.queryOne<ReadinessRow>(`
     SELECT s.*,
            (${EFFECTIVE_READINESS_SQL}) AS effective_readiness_status,
            (${FRESHNESS_SQL}) AS freshness_status,
@@ -406,7 +468,7 @@ export async function getGoogleAiMaxReadinessDetail(
   `, [tenantId, stateId])
   if (!row) return null
 
-  const timeline = await dependencies.queryRows(`
+  const timeline = await dependencies.queryRows<TimelineRow>(`
     SELECT id, event_type, previous_value, current_value, observed_at
     FROM google_ai_max_state_events
     WHERE tenant_id = $1

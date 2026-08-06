@@ -60,5 +60,5 @@ process.stdout.write(`${JSON.stringify({
   notificationsEnabled: process.env.GOOGLE_AI_MAX_NOTIFICATIONS_ENABLED === 'true',
   latestRun: latestRun ?? null,
   counts: counts ?? null,
-  activeRuns: Number(activeRuns?.count ?? 0),
+  activeRuns: Number(activeRuns?.count ?? 0)
 }, null, 2)}\n`)

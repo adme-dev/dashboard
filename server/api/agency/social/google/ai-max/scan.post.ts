@@ -6,13 +6,13 @@ import { runAfterResponse } from '~~/server/utils/asyncBackground'
 import { loadGoogleAiMaxScanContext } from '~~/server/utils/googleAiMaxConnections'
 import {
   claimGoogleAiMaxScanRun,
-  getActiveGoogleAiMaxScanRun,
+  getActiveGoogleAiMaxScanRun
 } from '~~/server/utils/googleAiMaxRepository'
 import { runGoogleAiMaxPortfolioScan } from '~~/server/utils/googleAiMaxScanner'
 import { captureGoogleAiMaxCacheInvalidator } from '~~/server/utils/googleAiMaxCache'
 
 const BodySchema = z.object({
-  connectionId: z.string().uuid().optional(),
+  connectionId: z.string().uuid().optional()
 }).strict()
 
 export default eventHandler(async (event) => {
@@ -29,7 +29,7 @@ export default eventHandler(async (event) => {
 
   const context = await loadGoogleAiMaxScanContext({
     tenantId,
-    connectionId: parsed.data.connectionId,
+    connectionId: parsed.data.connectionId
   })
   if (parsed.data.connectionId && context.accounts.length === 0) {
     throw createError({ statusCode: 404, statusMessage: 'Google connection not found' })
@@ -41,7 +41,7 @@ export default eventHandler(async (event) => {
     trigger: 'manual' as const,
     requestedBy,
     totalConnections: context.accounts.length,
-    apiVersion: 'v23',
+    apiVersion: 'v23'
   }
   let run = await claimGoogleAiMaxScanRun(claimInput)
   if (!run) {
@@ -67,7 +67,7 @@ export default eventHandler(async (event) => {
     claimedRun: run,
     developerToken: context.developerToken,
     observedAt,
-    accounts: context.accounts,
+    accounts: context.accounts
   }).then(async (result) => {
     if (result.accepted) await invalidateCache(tenantId)
     return result

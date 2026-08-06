@@ -47,7 +47,7 @@ export function normalizeAiMaxRouteFilters(query: Record<string, unknown>): Goog
     campaignStatus: enumOrAll(query.campaignStatus, campaignStatusValues),
     connectionId: uuidOrAll(query.connectionId),
     clientId: uuidOrAll(query.clientId),
-    search: single(query.search).trim().slice(0, 100),
+    search: single(query.search).trim().slice(0, 100)
   }
 }
 
@@ -56,7 +56,7 @@ export function buildAiMaxApiFilters(filters: GoogleAiMaxPageFilters): GoogleAiM
     Object.entries(filters).filter(([key, value]) => {
       if (['page', 'pageSize'].includes(key)) return true
       return value !== 'all' && value !== ''
-    }),
+    })
   ) as unknown as GoogleAiMaxReadinessFilters
 }
 

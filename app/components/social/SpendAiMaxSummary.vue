@@ -8,7 +8,7 @@ const props = defineProps<{
 
 const cutoff = new Date('2026-09-01T00:00:00+10:00')
 const daysToCutoff = computed(() => Math.max(0, Math.ceil(
-  (cutoff.getTime() - Date.now()) / (24 * 60 * 60 * 1000),
+  (cutoff.getTime() - Date.now()) / (24 * 60 * 60 * 1000)
 )))
 const migrationActive = computed(() => Date.now() >= cutoff.getTime())
 const coverageLabel = computed(() => props.summary?.coveragePercent == null
@@ -21,13 +21,13 @@ const metrics = computed(() => [
   { label: 'AI Max enabled', value: props.summary?.enabled ?? '—', tone: 'text-success' },
   { label: 'Needs review', value: props.summary?.needsReview ?? '—', tone: 'text-error' },
   { label: 'Unknown', value: props.summary?.unknown ?? '—', tone: 'text-error' },
-  { label: 'Material changes', value: props.summary?.changed ?? '—', tone: 'text-default' },
+  { label: 'Material changes', value: props.summary?.changed ?? '—', tone: 'text-default' }
 ])
 
 function formatTime(value: string | null | undefined) {
   if (!value) return 'Not scanned'
   return new Intl.DateTimeFormat('en-AU', {
-    day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
+    day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit'
   }).format(new Date(value))
 }
 </script>

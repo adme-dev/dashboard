@@ -2,7 +2,7 @@ import type {
   GoogleAiMaxCampaignDetail,
   GoogleAiMaxReadinessFilters,
   GoogleAiMaxReadinessResponse,
-  GoogleAiMaxScanRun,
+  GoogleAiMaxScanRun
 } from '~/types'
 
 function compactQuery(filters: GoogleAiMaxReadinessFilters, includePagination = true) {
@@ -10,39 +10,39 @@ function compactQuery(filters: GoogleAiMaxReadinessFilters, includePagination = 
     Object.entries(filters).filter(([key, value]) => {
       if (!includePagination && (key === 'page' || key === 'pageSize')) return false
       return value !== undefined && value !== null && value !== ''
-    }),
+    })
   )
 }
 
 export function useGoogleAiMax() {
   const apiFetch = $fetch as <T>(
     request: string,
-    options?: { method?: string; body?: unknown; query?: Record<string, unknown> },
+    options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
   ) => Promise<T>
 
   function fetchReadiness(filters: GoogleAiMaxReadinessFilters) {
     return apiFetch<GoogleAiMaxReadinessResponse>(
       '/api/agency/social/google/ai-max/readiness',
-      { query: compactQuery(filters) },
+      { query: compactQuery(filters) }
     )
   }
 
   function fetchDetail(id: string) {
     return apiFetch<GoogleAiMaxCampaignDetail>(
-      `/api/agency/social/google/ai-max/readiness/${encodeURIComponent(id)}`,
+      `/api/agency/social/google/ai-max/readiness/${encodeURIComponent(id)}`
     )
   }
 
   function startScan(connectionId?: string) {
-    return apiFetch<{ runId: string; status: 'queued' | 'running'; deduplicated: boolean }>(
+    return apiFetch<{ runId: string, status: 'queued' | 'running', deduplicated: boolean }>(
       '/api/agency/social/google/ai-max/scan',
-      { method: 'POST', body: connectionId ? { connectionId } : {} },
+      { method: 'POST', body: connectionId ? { connectionId } : {} }
     )
   }
 
   function fetchScan(runId: string) {
     return apiFetch<GoogleAiMaxScanRun>(
-      `/api/agency/social/google/ai-max/scans/${encodeURIComponent(runId)}`,
+      `/api/agency/social/google/ai-max/scans/${encodeURIComponent(runId)}`
     )
   }
 
