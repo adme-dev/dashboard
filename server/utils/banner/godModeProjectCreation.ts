@@ -67,9 +67,7 @@ export async function prepareGodModeBannerProjectCreation(
   terminalAuditEvent: (
     terminal: GodModeAuditEventInput,
     resultReference: string | null
-  ) => GodModeAuditEventInput = (terminal, resultReference) => resultReference
-    ? { ...terminal, entityType: 'banner_project', entityId: resultReference }
-    : terminal
+  ) => GodModeAuditEventInput = terminal => terminal
 ): Promise<{ strategy: 'transaction-bound', prepared: true, persistTerminal: (terminal: GodModeAuditEventInput) => Promise<void> }> {
   const state = getGodModeRouteAuditState(event)
   const idempotencyKey = getHeader(event, 'idempotency-key')?.trim() || ''
@@ -173,6 +171,8 @@ export async function prepareGodModeBannerProjectCreation(
         ]
       )
     }
+    // Attempt identity is immutable under migration 349. The created project is
+    // linked only through god_mode_execution_ledger.result_reference.
     await dependencies.appendAudit(terminalAuditEvent(finalEvent, current.resultReference), db)
   })
   transactionPromise.catch((error) => {

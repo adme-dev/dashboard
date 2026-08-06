@@ -110,25 +110,25 @@ describe('God mode banner project creation coordination', () => {
     const event = request()
     const prepared = await prepareGodModeBannerProjectCreation(event, dependencies)
     const create = vi.fn(async (db: { query: typeof query }) => (await db.query('INSERT INTO banner_projects RETURNING id')).rows[0])
-
-    const project = await executeGodModeBannerProjectCreation(event, create)
-    await prepared.persistTerminal({
+    const successTerminal = {
       actorUserId: ACTOR_ID,
       correlationId: '33333333-3333-4333-8333-333333333333',
       sessionDigest: 'a'.repeat(64),
-      channel: 'application',
+      channel: 'application' as const,
       routeOrTool: 'POST /api/agency/banner-studio/projects',
-      phase: 'succeeded',
+      phase: 'succeeded' as const,
       bypassedControls: [],
       outcomeCode: 'http_2xx',
       emergencyDisabled: false
-    })
+    }
+
+    const project = await executeGodModeBannerProjectCreation(event, create)
+    await prepared.persistTerminal(successTerminal)
 
     expect(project).toEqual({ id: PROJECT_ID, name: 'Launch' })
     expect(create).toHaveBeenCalledTimes(1)
-    expect(audit).toHaveBeenCalledWith(expect.objectContaining({
-      phase: 'succeeded', entityType: 'banner_project', entityId: PROJECT_ID
-    }), expect.objectContaining({ query }))
+    expect(audit.mock.calls[0]?.[0]).toEqual(successTerminal)
+    expect(audit.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ query }))
     expect(query).toHaveBeenCalledWith(expect.stringContaining('UPDATE god_mode_execution_ledger'), expect.arrayContaining(['succeeded', PROJECT_ID]))
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('execution_metadata'),
