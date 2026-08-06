@@ -123,7 +123,7 @@ describe('built Nitro Cloudflare binding boundary', () => {
     await expect(response.text()).resolves.toContain('Invalid banner asset link')
   }, 30_000)
 
-  it('uses the request-owned R2 binding for upload and compensation when persistence fails', async () => {
+  it('uses the request-owned R2 binding and preserves uncertain uploads when persistence fails', async () => {
     const cache = await stage('CACHE binding lookup', worker.getKVNamespace('CACHE'))
     await stage('CACHE session seed', cache.put(AUTH_CACHE_KEY, JSON.stringify({
       id: '11111111-1111-4111-8111-111111111111',
@@ -148,12 +148,16 @@ describe('built Nitro Cloudflare binding boundary', () => {
 
     const responseBody = await response.text()
     expect({ status: response.status, responseBody }).toMatchObject({
-      status: 500,
-      responseBody: expect.stringContaining('Failed to upload banner asset')
+      status: 503,
+      responseBody: expect.stringContaining('Banner upload recovery required')
     })
 
     const bucket = await stage('MEDIA_BUCKET lookup', worker.getR2Bucket('MEDIA_BUCKET'))
-    await expect(stage('post-compensation R2 list', bucket.list())).resolves.toMatchObject({ objects: [] })
+    const retained = await stage('post-recovery R2 list', bucket.list())
+    expect(retained.objects).toHaveLength(1)
+    expect(retained.objects[0]?.key).toMatch(
+      /^banner-assets\/11111111-1111-4111-8111-111111111111\/[0-9a-f-]+\/production-probe\.jpg$/i
+    )
   }, 30_000)
 
   it('probes the local R2 runtime contract for ranges and failed conditionals', async () => {
