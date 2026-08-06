@@ -137,6 +137,61 @@ export default defineEventHandler(async (event) => {
     console.warn('[cashflow-13w] repeating invoices fetch failed:', err?.message)
   }
 
+  // Commitment register: forecast-only obligations with no Xero document
+  // yet (bills expected but not received, held payments, recurring costs
+  // awaiting invoices). Only open estimates contribute — matched, disputed
+  // and closed entries don't. A commitment linked to a Xero contact is
+  // suppressed in any week where a real bill for that contact exists.
+  const commitmentOutflowByWeek = new Map<string, number>()
+  let totalCommitmentOutflow = 0
+  {
+    const seen = new Set(billContactWeeks.map(r => `${r.contact_id}|${String(r.week_start).slice(0, 10)}`))
+    const commitments = await queryRows<{
+      amount_cents: string
+      expected_date: string
+      recurrence: string
+      recurrence_end: string | null
+      contact_id: string | null
+    }>(
+      `SELECT amount_cents::text AS amount_cents,
+              TO_CHAR(expected_date, 'YYYY-MM-DD') AS expected_date,
+              recurrence,
+              TO_CHAR(recurrence_end, 'YYYY-MM-DD') AS recurrence_end,
+              contact_id
+       FROM cashflow_commitments
+       WHERE tenant_id = $1
+         AND status IN ('expected', 'hold')
+         AND expected_date <= $2::date
+         AND (recurrence <> 'none' OR expected_date >= $3::date)`,
+      [tenantId, endStr, startStr],
+    )
+    const stepDays: Record<string, number> = { weekly: 7, fortnightly: 14 }
+    for (const c of commitments) {
+      const amount = n(c.amount_cents) / 100
+      if (!amount) continue
+      const end = c.recurrence_end ? new Date(c.recurrence_end + 'T00:00:00Z') : null
+      let occ = new Date(c.expected_date + 'T00:00:00Z')
+      for (let guard = 0; guard < 60 && occ < horizonEnd; guard++) {
+        if (end && occ > end) break
+        if (occ >= weekStart) {
+          const wk = mondayOf(occ)
+          if (!c.contact_id || !seen.has(`${c.contact_id}|${wk}`)) {
+            commitmentOutflowByWeek.set(wk, (commitmentOutflowByWeek.get(wk) ?? 0) + amount)
+            totalCommitmentOutflow += amount
+          }
+        }
+        if (c.recurrence === 'none') break
+        const next = new Date(occ)
+        if (stepDays[c.recurrence]) next.setUTCDate(next.getUTCDate() + stepDays[c.recurrence])
+        else if (c.recurrence === 'monthly') next.setUTCMonth(next.getUTCMonth() + 1)
+        else if (c.recurrence === 'quarterly') next.setUTCMonth(next.getUTCMonth() + 3)
+        else if (c.recurrence === 'yearly') next.setUTCFullYear(next.getUTCFullYear() + 1)
+        else break
+        occ = next
+      }
+    }
+  }
+
   // Opening cash (live Xero — balance is current as of today)
   let openingCash = 0
   try {
@@ -192,7 +247,9 @@ export default defineEventHandler(async (event) => {
     const matchInflow = rows.find(r => String(r.week_start).startsWith(wkStartStr.slice(0, 10)) && r.type === 'ACCREC')
     const matchOutflow = rows.find(r => String(r.week_start).startsWith(wkStartStr.slice(0, 10)) && r.type === 'ACCPAY')
     const inflow = n(matchInflow?.amount_due_cents) / 100
-    const outflow = n(matchOutflow?.amount_due_cents) / 100 + (repeatingOutflowByWeek.get(wkStartStr) ?? 0)
+    const outflow = n(matchOutflow?.amount_due_cents) / 100
+      + (repeatingOutflowByWeek.get(wkStartStr) ?? 0)
+      + (commitmentOutflowByWeek.get(wkStartStr) ?? 0)
     const net = inflow - outflow
     running += net
     buckets.push({
@@ -273,6 +330,7 @@ export default defineEventHandler(async (event) => {
       // outflows above. If getOutConfig's monthly burn also covers these
       // suppliers, trim the config to avoid double-counting.
       totalRepeatingBillOutflow: Math.round(totalRepeatingBillOutflow * 100) / 100,
+      totalCommitmentOutflow: Math.round(totalCommitmentOutflow * 100) / 100,
       monthlyProjectedInflow: Math.round(monthlyProjectedInflow * 100) / 100,
       monthlyBurn: Math.round(monthlyBurn * 100) / 100,
       weeklyBurn: Math.round(weeklyBurn * 100) / 100,
