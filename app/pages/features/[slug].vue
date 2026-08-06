@@ -1108,6 +1108,34 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'google-ai-max-readiness': {
+    title: 'Google AI Max Readiness',
+    slug: 'google-ai-max-readiness',
+    icon: 'i-lucide-scan-search',
+    category: 'Financial Operations',
+    categoryIcon: 'i-lucide-calculator',
+    categoryIconBg: 'bg-emerald-50 dark:bg-emerald-500/10',
+    categoryIconColor: 'text-emerald-600 dark:text-emerald-400',
+    description: 'Review every Google Search campaign affected by the AI Max migration from one read-only evidence ledger — before legacy settings are consolidated.',
+    details: [
+      {
+        title: 'Portfolio Migration Audit',
+        content: 'See eligible, affected, enabled, unknown, and needs-review Search campaigns across connected Google Ads accounts in one operational ledger. Filters for client, account, migration trigger, readiness, and freshness turn a platform-wide change into a bounded review queue, while spreadsheet-safe CSV export supports ownership and follow-up outside the dashboard.'
+      },
+      {
+        title: 'Evidence, Not Guesswork',
+        content: 'XeroFlow reads Google Ads API evidence for AI Max, automatically created text assets, campaign broad match, final URL expansion, and ad-group search-term matching exceptions. Every status distinguishes Google-observed facts from XeroFlow’s deterministic derivation, exposes the raw evidence, and records material changes over time.'
+      },
+      {
+        title: 'Read-Only by Design',
+        content: 'The readiness workspace cannot enable AI Max or change a campaign. Media buyers review effective controls, risks, and freshness in XeroFlow, then follow a direct link to Google Ads when human action is warranted. Daily scans, tenant-scoped caching, and deduplicated internal alerts add operational discipline without silently changing provider settings.'
+      },
+      {
+        title: 'Measurement Comes Next',
+        content: 'Readiness is the first step, not a performance claim. A later measurement release will compare pre- and post-change windows, separate AI Max match sources, and review generated assets and landing pages while accounting for budget, bidding, status, and asset changes as confounders. Those comparisons remain observational and clearly labelled for confidence.'
+      }
+    ]
+  },
   'profit-loss': {
     title: 'Profit & Loss',
     slug: 'profit-loss',

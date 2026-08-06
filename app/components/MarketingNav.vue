@@ -627,6 +627,7 @@ const featuresCol2 = [
   { title: 'Ad Spend', subtitle: 'Meta & multi-account Google Ads tracking', icon: 'i-lucide-bar-chart-3', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/ad-spend' },
   { title: 'Search Authority', subtitle: 'Evidence, governed guides & trust', icon: 'i-lucide-search-check', iconBg: 'bg-cyan-500/15', iconColor: 'text-cyan-400', to: '/features/search-authority-ai-trust' },
   { title: 'Website Audience Intelligence', subtitle: 'Nearby dealerships, human-reviewed', icon: 'i-lucide-radio-tower', iconBg: 'bg-cyan-500/15', iconColor: 'text-cyan-400', to: '/features/website-audience-intelligence' },
+  { title: 'AI Max Readiness', subtitle: 'Read-only Google migration evidence', icon: 'i-lucide-scan-search', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/features/google-ai-max-readiness' },
   { title: 'EOM Engine', subtitle: 'Automated invoice generation', icon: 'i-lucide-receipt', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/financials' },
   { title: 'Lead Capture & Routing', subtitle: 'Webhooks, inbound email, CSV, and manual leads', icon: 'i-lucide-inbox', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/features/lead-capture-routing' }
 ]
