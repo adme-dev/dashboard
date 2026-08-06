@@ -6,6 +6,7 @@ import type { Layer, ImageExportResult } from '~/types/banner-studio'
 import { summarizeExportJobs } from '~/utils/bannerExportPoll'
 import type { ExportJob } from '~/utils/bannerExportPoll'
 import { describeBannerVideoExportError } from '~/utils/bannerExportError'
+import { createBannerVideoExportSession } from '~/utils/bannerVideoExport'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
@@ -14,8 +15,10 @@ const { state, activeLayers } = useBannerStudio()
 const { estimateSize } = useBannerFileSize()
 const { getExportCustomFonts } = useBannerFonts()
 const toast = useToast()
+const videoExportSession = createBannerVideoExportSession()
 const apiFetch = $fetch as <T = unknown>(request: string, options?: {
   method?: string
+  headers?: Record<string, string>
   body?: unknown
 }) => Promise<T>
 
@@ -353,16 +356,19 @@ async function exportVideos() {
     exportProgress.value = 5
 
     // Enqueue render jobs
-    const { jobIds } = await apiFetch<{ jobIds: string[] }>('/api/agency/banner-studio/export-video', {
-      method: 'POST',
-      body: {
-        projectId: state.project.id,
-        formats,
-        fps: videoFps.value,
-        quality: videoQuality.value,
-        crf: videoCrf.value,
-      },
-    })
+    const { jobIds } = await videoExportSession.attempt(async headers =>
+      await apiFetch<{ jobIds: string[] }>('/api/agency/banner-studio/export-video', {
+        method: 'POST',
+        headers,
+        body: {
+          projectId: state.project.id,
+          formats,
+          fps: videoFps.value,
+          quality: videoQuality.value,
+          crf: videoCrf.value
+        }
+      })
+    )
 
     exportProgress.value = 10
 

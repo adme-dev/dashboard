@@ -57,6 +57,26 @@ describe('enqueueBannerRender', () => {
     })
     expect(d.putSourceHtml).not.toHaveBeenCalled()
   })
+
+  it('preflights every format before creating any partial render side effects', async () => {
+    const d = deps()
+    await expect(enqueueBannerRender({
+      projectId: 'p1',
+      formats: [fmt('valid-first'), { key: 'invalid-second', html: '<div>bad</div>', width: 300, height: 250 }],
+      fps: 30,
+      quality: 1,
+      crf: 23,
+      userId: 'u1'
+    }, d)).rejects.toMatchObject({
+      code: 'bad_request',
+      findings: [expect.objectContaining({ code: 'missing_runtime_contract' })]
+    })
+
+    expect(d.genId).not.toHaveBeenCalled()
+    expect(d.putSourceHtml).not.toHaveBeenCalled()
+    expect(d.insertJob).not.toHaveBeenCalled()
+    expect(d.sendQueue).not.toHaveBeenCalled()
+  })
 })
 
 describe('projectJobStatus', () => {

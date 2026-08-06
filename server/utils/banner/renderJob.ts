@@ -44,13 +44,16 @@ export async function enqueueBannerRender(input: BannerRenderInput, deps: Enqueu
   if (input.formats.length > CAPS.MAX_FORMATS) throw new BannerRenderError(`Max ${CAPS.MAX_FORMATS} formats per export`)
   const { fps, crf, quality } = clampRenderParams(input.fps, input.crf, input.quality)
 
-  const jobIds: string[] = []
   for (const f of input.formats) {
     const findings = lintBannerRenderFormat(f, { fps, crf, quality, maxDimension: CAPS.MAX_DIMENSION })
     if (hasRenderLintErrors(findings)) {
       const firstError = findings.find(finding => finding.severity === 'error')
       throw new BannerRenderError(firstError?.message ?? 'Invalid banner render input', findings)
     }
+  }
+
+  const jobIds: string[] = []
+  for (const f of input.formats) {
     const id = deps.genId()
     const source_r2_key = `banner-render-jobs/${id}/source.html`
     await deps.putSourceHtml(source_r2_key, f.html)

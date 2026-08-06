@@ -293,7 +293,7 @@ ${repeatedRuntimeSteps}
     await expect(readFile(modulePath, 'utf8')).resolves.toBe(compacted)
   })
 
-  it('drops internal names only for explicitly audited default-only API route modules', async () => {
+  it('drops internal names only for explicitly audited default-only modules', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'worker-api-route-minify-'))
     temporaryDirectories.push(directory)
     const auditedDirectory = path.join(
@@ -305,8 +305,11 @@ ${repeatedRuntimeSteps}
       'banner-assets'
     )
     const unauditedDirectory = path.join(directory, 'chunks', 'routes', 'api', 'public')
+    const auditedPageDirectory = path.join(directory, 'chunks', 'build')
     await mkdir(auditedDirectory, { recursive: true })
+    await mkdir(auditedPageDirectory, { recursive: true })
     const modulePath = path.join(auditedDirectory, '_token_.get.mjs')
+    const auditedPageModulePath = path.join(auditedPageDirectory, 'governance-BRhMTB2H.mjs')
     const unauditedModulePath = path.join(unauditedDirectory, 'probe.get.mjs')
     const source = `const handler = async function deliberatelyVerboseCapabilityHandler(event) {
   const deliberatelyVerboseIntermediateValue = event.value
@@ -315,12 +318,17 @@ ${repeatedRuntimeSteps}
 export { handler as default }
 `
     await writeFile(modulePath, source, 'utf8')
+    await writeFile(auditedPageModulePath, source, 'utf8')
     await writeFile(unauditedModulePath, source, 'utf8')
 
     await compactDeployedWorkerModules(directory)
     const compacted = await readFile(modulePath, 'utf8')
+    const auditedPageCompacted = await readFile(auditedPageModulePath, 'utf8')
     const unauditedCompacted = await readFile(unauditedModulePath, 'utf8')
     const imported = await import(`${pathToFileURL(modulePath).href}?v=api-route`)
+    const auditedPageImported = await import(
+      `${pathToFileURL(auditedPageModulePath).href}?v=audited-page`
+    )
     const unauditedImported = await import(
       `${pathToFileURL(unauditedModulePath).href}?v=unaudited-api-route`
     )
@@ -328,6 +336,9 @@ export { handler as default }
     expect(compacted).not.toContain('deliberatelyVerboseCapabilityHandler')
     expect(imported.default.name).not.toBe('deliberatelyVerboseCapabilityHandler')
     await expect(imported.default({ value: 4 })).resolves.toBe(5)
+    expect(auditedPageCompacted).not.toContain('deliberatelyVerboseCapabilityHandler')
+    expect(auditedPageImported.default.name).not.toBe('deliberatelyVerboseCapabilityHandler')
+    await expect(auditedPageImported.default({ value: 4 })).resolves.toBe(5)
     expect(unauditedCompacted).toContain('deliberatelyVerboseCapabilityHandler')
     expect(unauditedImported.default.name).toBe('deliberatelyVerboseCapabilityHandler')
     await expect(unauditedImported.default({ value: 4 })).resolves.toBe(5)

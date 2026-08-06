@@ -9,8 +9,6 @@ import {
 export const MAX_BANNER_IMAGE_BYTES = 20 * 1024 * 1024
 export const MAX_BANNER_VIDEO_BYTES = 100 * 1024 * 1024
 
-export type { SupportedBannerAssetMime } from '~~/shared/utils/bannerAssetIdentity'
-
 export interface ValidatedBannerAssetUpload {
   buffer: Buffer
   fileName: string
