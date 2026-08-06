@@ -9,7 +9,15 @@ export default defineEventHandler(async (event) => {
   const rows = await queryRows<BannerJobRow>(
     `SELECT id, project_id, format_key, width, height, fps, crf, quality, source_r2_key, status, url, file_size, error
        FROM banner_render_jobs WHERE id = ANY($1)`,
-    [ids],
+    [ids]
   )
-  return { jobs: projectJobStatus(rows) }
+  const jobs = projectJobStatus(rows).map(job => ({
+    ...job,
+    // Export rows created before private delivery can contain a stale public
+    // R2 URL. Delivery always flows through the authenticated job endpoint.
+    url: job.status === 'done'
+      ? `/api/agency/banner-studio/export-video/jobs/${encodeURIComponent(job.jobId)}/download`
+      : null
+  }))
+  return { jobs }
 })
