@@ -37,6 +37,8 @@ vi.mock('~~/server/utils/db', () => ({
 const { default: jobsHandler } = await import('~~/server/api/agency/banner-studio/export-video/jobs.get')
 const downloadModule = await import('~~/server/api/agency/banner-studio/export-video/jobs/[id]/download.get').catch(() => ({ default: undefined }))
 const downloadHandler = downloadModule.default as undefined | ((event: TestEvent) => Promise<Response>)
+const downloadHeadModule = await import('~~/server/api/agency/banner-studio/export-video/jobs/[id]/download.head').catch(() => ({ default: undefined }))
+const downloadHeadHandler = downloadHeadModule.default as undefined | ((event: TestEvent) => Promise<Response>)
 
 const JOB_ID = '11111111-1111-4111-8111-111111111111'
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222'
@@ -129,9 +131,9 @@ describe('GET /agency/banner-studio/export-video/jobs/:id/download', () => {
   it('returns ranged HEAD metadata without reading the private object body', async () => {
     const bucket = { head: vi.fn(async () => objectBody()), get: vi.fn() }
 
-    expect(downloadHandler).toBeTypeOf('function')
-    if (!downloadHandler) return
-    const response = await downloadHandler(event({ method: 'HEAD', bucket, headers: { range: 'bytes=2-5' } }))
+    expect(downloadHeadHandler).toBeTypeOf('function')
+    if (!downloadHeadHandler) return
+    const response = await downloadHeadHandler(event({ method: 'HEAD', bucket, headers: { range: 'bytes=2-5' } }))
 
     expect(response.status).toBe(206)
     expect(response.body).toBeNull()
