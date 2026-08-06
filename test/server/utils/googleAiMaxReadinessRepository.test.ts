@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   getGoogleAiMaxReadinessDetail,
   listGoogleAiMaxReadiness,
-  listGoogleAiMaxReadinessForExport,
+  listGoogleAiMaxReadinessForExport
 } from '~~/server/utils/googleAiMaxReadiness'
 
 describe('listGoogleAiMaxReadiness', () => {
@@ -14,7 +14,7 @@ describe('listGoogleAiMaxReadiness', () => {
         enabled: '1',
         needs_review: '1',
         unknown: '1',
-        changed: '2',
+        changed: '2'
       })
       .mockResolvedValueOnce({
         id: 'run-1',
@@ -30,7 +30,7 @@ describe('listGoogleAiMaxReadiness', () => {
         finished_at: '2026-08-06T00:01:00.000Z',
         created_at: '2026-08-06T00:00:00.000Z',
         last_completed_scan_at: '2026-08-06T00:01:00.000Z',
-        coverage_percent: '50.00',
+        coverage_percent: '50.00'
       })
     const queryRows = vi.fn().mockResolvedValueOnce([{
       id: 'state-1',
@@ -53,8 +53,11 @@ describe('listGoogleAiMaxReadiness', () => {
       risk_flags: ['PARTIAL_SEARCH_MATCHING'],
       freshness_status: 'warning',
       last_observed_at: '2026-08-06T00:00:00.000Z',
-      last_changed_at: '2026-08-06T00:00:00.000Z',
-    }])
+      last_changed_at: '2026-08-06T00:00:00.000Z'
+    }]).mockResolvedValueOnce([
+      { kind: 'connection', value: 'connection-a', label: 'Account A' },
+      { kind: 'client', value: 'client-a', label: 'Client A' }
+    ])
 
     const result = await listGoogleAiMaxReadiness({
       tenantId: 'tenant-a',
@@ -68,8 +71,8 @@ describe('listGoogleAiMaxReadiness', () => {
         migrationReason: 'aca',
         stale: 'warning',
         changedSince: '2026-08-01T00:00:00.000Z',
-        search: 'Generic',
-      },
+        search: 'Generic'
+      }
     }, { queryOne, queryRows })
 
     expect(result.summary).toEqual({
@@ -80,9 +83,13 @@ describe('listGoogleAiMaxReadiness', () => {
       unknown: 1,
       changed: 2,
       lastCompletedScanAt: '2026-08-06T00:01:00.000Z',
-      coveragePercent: 50,
+      coveragePercent: 50
     })
     expect(result.pagination).toEqual({ page: 2, pageSize: 25, total: 3 })
+    expect(result.facets).toEqual({
+      connections: [{ label: 'Account A', value: 'connection-a' }],
+      clients: [{ label: 'Client A', value: 'client-a' }]
+    })
     expect(result.items[0]).toMatchObject({
       id: 'state-1',
       campaignName: 'Generic Search',
@@ -90,11 +97,12 @@ describe('listGoogleAiMaxReadiness', () => {
       owner: { id: 'owner-a', name: 'Alex' },
       readinessStatus: 'needs_review',
       freshness: 'warning',
-      risks: ['PARTIAL_SEARCH_MATCHING', 'STALE_SCAN'],
+      risks: ['PARTIAL_SEARCH_MATCHING', 'STALE_SCAN']
     })
 
     const summarySql = String(queryOne.mock.calls[0]?.[0])
     const itemSql = String(queryRows.mock.calls[0]?.[0])
+    const facetsSql = String(queryRows.mock.calls[1]?.[0])
     for (const fragment of [
       's.tenant_id = $1',
       's.readiness_status',
@@ -102,22 +110,23 @@ describe('listGoogleAiMaxReadiness', () => {
       'sc.client_id',
       's.campaign_status',
       's.migration_reason',
-      "INTERVAL '26 hours'",
+      'INTERVAL \'26 hours\'',
       's.last_changed_at',
-      'ILIKE',
+      'ILIKE'
     ]) {
       expect(summarySql).toContain(fragment)
       expect(itemSql).toContain(fragment)
     }
     expect(queryRows.mock.calls[0]?.[1].slice(0, -2)).toEqual(queryOne.mock.calls[0]?.[1])
-    expect(summarySql).toContain("THEN 'unknown'")
+    expect(summarySql).toContain('THEN \'unknown\'')
+    expect(facetsSql).toContain('WHERE s.tenant_id = $1')
   })
 })
 
 describe('listGoogleAiMaxReadinessForExport', () => {
   it('reuses readiness filters and fails closed above the export cap', async () => {
     const queryRows = vi.fn().mockResolvedValue(
-      Array.from({ length: 5001 }, (_, index) => ({ id: `state-${index}` })),
+      Array.from({ length: 5001 }, (_, index) => ({ id: `state-${index}` }))
     )
 
     await expect(listGoogleAiMaxReadinessForExport({
@@ -126,10 +135,10 @@ describe('listGoogleAiMaxReadinessForExport', () => {
         page: 1,
         pageSize: 25,
         status: 'needs_review',
-        search: 'Generic',
-      },
+        search: 'Generic'
+      }
     }, { queryOne: vi.fn(), queryRows })).rejects.toThrow(
-      'AI Max export exceeds 5000 rows',
+      'AI Max export exceeds 5000 rows'
     )
 
     const sql = String(queryRows.mock.calls[0]?.[0])
@@ -149,12 +158,12 @@ describe('getGoogleAiMaxReadinessDetail', () => {
     await expect(getGoogleAiMaxReadinessDetail(
       'tenant-a',
       '00000000-0000-4000-8000-000000000001',
-      { queryOne, queryRows },
+      { queryOne, queryRows }
     )).resolves.toBeNull()
     expect(queryRows).not.toHaveBeenCalled()
     expect(queryOne.mock.calls[0]?.[1]).toEqual([
       'tenant-a',
-      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000001'
     ])
   })
 
@@ -192,20 +201,20 @@ describe('getGoogleAiMaxReadinessDetail', () => {
       raw_evidence: { keywordMatchType: 'BROAD' },
       first_observed_at: '2026-08-05T00:00:00.000Z',
       last_observed_at: '2026-08-06T00:00:00.000Z',
-      last_changed_at: '2026-08-06T00:00:00.000Z',
+      last_changed_at: '2026-08-06T00:00:00.000Z'
     })
     const queryRows = vi.fn().mockResolvedValue([{
       id: 'event-1',
       event_type: 'setting_changed',
       previous_value: { aiMaxEnabled: false },
       current_value: { aiMaxEnabled: true },
-      observed_at: '2026-08-06T00:00:00.000Z',
+      observed_at: '2026-08-06T00:00:00.000Z'
     }])
 
     const result = await getGoogleAiMaxReadinessDetail(
       'tenant-a',
       '00000000-0000-4000-8000-000000000001',
-      { queryOne, queryRows },
+      { queryOne, queryRows }
     )
 
     expect(result).toMatchObject({
@@ -215,7 +224,7 @@ describe('getGoogleAiMaxReadinessDetail', () => {
       risks: ['PARTIAL_SEARCH_MATCHING', 'STALE_SCAN'],
       rawEvidence: { keywordMatchType: 'BROAD' },
       adGroups: { total: 3, searchTermMatchingDisabled: 1 },
-      timeline: [{ id: 'event-1', eventType: 'setting_changed' }],
+      timeline: [{ id: 'event-1', eventType: 'setting_changed' }]
     })
   })
 })

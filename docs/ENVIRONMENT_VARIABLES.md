@@ -62,7 +62,7 @@ GOOGLE_AI_MAX_NOTIFICATIONS_ENABLED=false
 ```
 
 `GOOGLE_AI_MAX_NOTIFICATIONS_ENABLED` controls internal AI Max migration alerts and
-the daily unresolved digest. It Defaults to disabled: only the exact string `true`
+the daily unresolved digest. It defaults to disabled: only the exact string `true`
 enables delivery. Keep it absent or `false` through migration and first-scan comparison,
 then enable it only after the media-team sign-off in
 `docs/runbooks/google-ai-max-readiness.md`. The scanner and readiness page remain

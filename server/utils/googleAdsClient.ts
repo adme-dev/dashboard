@@ -1,10 +1,14 @@
 /**
  * Google Ads API Client
  * Lightweight client using ofetch (matches metaClient.ts pattern)
- * API v19 — https://developers.google.com/google-ads/api/rest/reference/rest/v19
+ * API v23 — https://developers.google.com/google-ads/api/rest/reference/rest/v23
  */
 
 import { ofetch } from 'ofetch'
+import type {
+  RawGoogleAdGroupRow,
+  RawGoogleCampaignRow
+} from '~~/server/utils/googleAiMax'
 
 const GOOGLE_ADS_BASE = 'https://googleads.googleapis.com/v23'
 const GOOGLE_OAUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth'
@@ -326,8 +330,8 @@ export async function getGoogleCampaigns(
 }
 
 export interface GoogleAiMaxRows {
-  campaignRows: any[]
-  adGroupRows: any[]
+  campaignRows: RawGoogleCampaignRow[]
+  adGroupRows: RawGoogleAdGroupRow[]
 }
 
 /**
@@ -339,7 +343,7 @@ export async function getGoogleAiMaxRows(
   customerId: string,
   token: string,
   developerToken: string,
-  loginCustomerId?: string,
+  loginCustomerId?: string
 ): Promise<GoogleAiMaxRows> {
   const campaignRows = await gaqlQuery(
     customerId,
@@ -359,7 +363,7 @@ export async function getGoogleAiMaxRows(
      WHERE campaign.advertising_channel_type = 'SEARCH'
        AND campaign.status IN ('ENABLED', 'PAUSED')
      ORDER BY campaign.name`,
-    loginCustomerId,
+    loginCustomerId
   )
 
   const adGroupRows = await gaqlQuery(
@@ -375,7 +379,7 @@ export async function getGoogleAiMaxRows(
      WHERE campaign.advertising_channel_type = 'SEARCH'
        AND campaign.status IN ('ENABLED', 'PAUSED')
        AND ad_group.status IN ('ENABLED', 'PAUSED')`,
-    loginCustomerId,
+    loginCustomerId
   )
 
   return { campaignRows, adGroupRows }

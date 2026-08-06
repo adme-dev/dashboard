@@ -1258,6 +1258,10 @@ export interface GoogleAiMaxReadinessResponse {
   }
   items: GoogleAiMaxCampaignListItem[]
   pagination: { page: number; pageSize: number; total: number }
+  facets: {
+    connections: Array<{ label: string; value: string }>
+    clients: Array<{ label: string; value: string }>
+  }
   latestRun: GoogleAiMaxScanRun | null
 }
 

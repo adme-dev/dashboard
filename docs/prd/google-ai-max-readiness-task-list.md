@@ -1,7 +1,7 @@
 # Implementation Plan and Task List: Google Ads AI Max Readiness
 
 **Date:** 2026-08-06  
-**Status:** Proposed - execute only after PRD approval  
+**Status:** Release 1 implemented on `feat/google-ai-max-readiness`; production validation pending
 **PRD:** `docs/prd/google-ai-max-readiness-prd.md`  
 **Target:** Release 1 before 2026-09-01; Releases 2-3 separately gated
 
@@ -12,6 +12,29 @@ Google Search campaigns affected by the AI Max migration, explains effective set
 tracks material changes, exports an action list and alerts the media team without
 notification spam. Follow with AI Max match-source and generated-asset performance
 reporting after the readiness release is stable.
+
+## Implementation Status
+
+Release 1 Tasks 2-17 are implemented on the isolated feature branch. The implementation
+includes the read-only v23 scanner, tenant-scoped persistence, manual and scheduled scan
+lifecycles, readiness/detail/export APIs, cache invalidation, opt-in notifications, the
+portfolio workspace, spend summary, public feature pages and the operations runbook.
+Migrations 288 and 289 were applied idempotently to the configured Neon database.
+
+The following production gates intentionally remain open:
+
+- Task 1: compare sanitized direct-account and MCC-child observations with the live
+  Google Ads UI and record the results.
+- Task 18: complete authenticated light/dark browser checks, obtain media-owner signoff,
+  merge/deploy through the guarded workflow, run the first production scan and observe
+  the scheduled job. Notifications remain disabled unless explicitly enabled.
+- Releases 2 and 3: performance measurement and any governed provider writes remain
+  outside this release and require their stated gates.
+
+Fresh branch verification on 2026-08-06 passed 97 AI Max tests, 7 social-route coverage
+tests, feature-local ESLint, app/server type-check filtering, the production Nuxt build
+and `pnpm deploy:check`. The repository-wide suite and lint still contain unrelated
+pre-existing failures outside the AI Max feature diff.
 
 ## Delivery Strategy
 
@@ -870,4 +893,3 @@ Must remain sequential:
 - [ ] Release 1 deadline and operational owner are confirmed.
 - [ ] Open questions in the PRD are resolved or explicitly deferred.
 - [ ] PRD and this task list are updated before code begins.
-

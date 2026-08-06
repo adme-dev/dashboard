@@ -65,7 +65,7 @@ interface RawAssetAutomationSetting {
   assetAutomationStatus?: string
 }
 
-interface RawGoogleCampaignRow {
+export interface RawGoogleCampaignRow {
   campaign?: {
     id?: string | number
     name?: string
@@ -81,7 +81,7 @@ interface RawGoogleCampaignRow {
   }
 }
 
-interface RawGoogleAdGroupRow {
+export interface RawGoogleAdGroupRow {
   adGroup?: {
     id?: string | number
     campaign?: string

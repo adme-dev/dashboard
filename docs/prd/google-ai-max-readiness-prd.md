@@ -1,7 +1,7 @@
 # PRD: Google Ads AI Max Readiness and Performance Governance
 
 **Date:** 2026-08-06  
-**Status:** Proposed - human review required before implementation  
+**Status:** Release 1 implemented on `feat/google-ai-max-readiness`; production validation pending
 **Product:** XeroFlow Agency Dashboard  
 **Owner:** Media operations / platform engineering  
 **Deadline driver:** Google automatic upgrades begin 2026-09-01  
@@ -901,4 +901,3 @@ Release 1 is done only when:
 - Marketing pages describe the feature accurately as read-only readiness governance.
 - The modified-file deep-dive review, targeted tests, typecheck and production build
   have been completed and recorded in the implementation handoff.
-

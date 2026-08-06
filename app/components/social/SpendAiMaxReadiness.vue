@@ -1,9 +1,5 @@
 <script setup lang="ts">
-import type {
-  GoogleAiMaxCampaignDetail,
-  GoogleAiMaxCampaignListItem,
-  GoogleAiMaxReadinessResponse
-} from '~/types'
+import type { GoogleAiMaxCampaignDetail, GoogleAiMaxReadinessResponse } from '~/types'
 import {
   buildAiMaxApiFilters,
   buildAiMaxRouteQuery,
@@ -38,36 +34,26 @@ const latestRun = computed(() => response.value?.latestRun ?? null)
 const exportHref = computed(() => exportUrl(buildAiMaxApiFilters(filters)))
 
 function uniqueOptions(
-  rows: GoogleAiMaxCampaignListItem[],
-  id: (row: GoogleAiMaxCampaignListItem) => string | null,
-  label: (row: GoogleAiMaxCampaignListItem) => string | null,
+  options: Array<{ label: string, value: string }>,
   allLabel: string,
   selected: string
 ) {
-  const options = new Map<string, string>()
-  for (const row of rows) {
-    const value = id(row)
-    if (value) options.set(value, label(row) || value)
-  }
-  if (selected !== 'all' && !options.has(selected)) options.set(selected, `Selected · ${selected}`)
+  const values = new Map(options.map(option => [option.value, option.label]))
+  if (selected !== 'all' && !values.has(selected)) values.set(selected, `Selected · ${selected}`)
   return [
     { label: allLabel, value: 'all' },
-    ...Array.from(options, ([value, optionLabel]) => ({ label: optionLabel, value }))
+    ...Array.from(values, ([value, label]) => ({ label, value }))
       .sort((a, b) => a.label.localeCompare(b.label))
   ]
 }
 
 const connectionOptions = computed(() => uniqueOptions(
-  items.value,
-  row => row.connectionId,
-  row => row.accountName || row.customerId,
+  response.value?.facets?.connections ?? [],
   'All accounts',
   filters.connectionId
 ))
 const clientOptions = computed(() => uniqueOptions(
-  items.value,
-  row => row.client?.id ?? null,
-  row => row.client?.name ?? null,
+  response.value?.facets?.clients ?? [],
   'All clients',
   filters.clientId
 ))

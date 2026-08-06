@@ -228,6 +228,12 @@ interface TimelineRow extends DatabaseRow {
   observed_at?: string | Date | null
 }
 
+interface FacetRow extends DatabaseRow {
+  kind: 'connection' | 'client'
+  value: string
+  label: string
+}
+
 function mapListItem(row: ReadinessRow) {
   const freshness = row.freshness_status ?? 'fresh'
   const risks = Array.isArray(row.risk_flags) ? [...row.risk_flags] : []
@@ -365,6 +371,26 @@ export async function listGoogleAiMaxReadiness(
     OFFSET $${dataset.params.length + 2}
   `, itemParams)
 
+  const facetRows = await dependencies.queryRows<FacetRow>(`
+    SELECT DISTINCT
+           'connection'::text AS kind,
+           sc.id::text AS value,
+           COALESCE(sc.account_name, sc.account_id) AS label
+    FROM google_ai_max_campaign_state s
+    JOIN social_connections sc ON sc.id = s.connection_id
+    WHERE s.tenant_id = $1
+    UNION ALL
+    SELECT DISTINCT
+           'client'::text AS kind,
+           ac.id::text AS value,
+           ac.name AS label
+    FROM google_ai_max_campaign_state s
+    JOIN social_connections sc ON sc.id = s.connection_id
+    JOIN agency_clients ac ON ac.id = sc.client_id
+    WHERE s.tenant_id = $1
+    ORDER BY kind, label, value
+  `, [input.tenantId]) ?? []
+
   const latestRunRow = await dependencies.queryOne<LatestRunRow>(`
     WITH latest_any AS (
       SELECT *
@@ -414,6 +440,14 @@ export async function listGoogleAiMaxReadiness(
       page: input.filters.page,
       pageSize: input.filters.pageSize,
       total: eligible
+    },
+    facets: {
+      connections: facetRows
+        .filter(row => row.kind === 'connection')
+        .map(row => ({ label: row.label, value: row.value })),
+      clients: facetRows
+        .filter(row => row.kind === 'client')
+        .map(row => ({ label: row.label, value: row.value }))
     },
     latestRun: mapLatestRun(latestRunRow)
   }
