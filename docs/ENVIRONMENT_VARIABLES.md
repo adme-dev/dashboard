@@ -55,6 +55,19 @@ SESSION_SECRET=$(openssl rand -base64 32)
 CRON_SECRET=$(openssl rand -base64 32)
 ```
 
+### Google Ads AI Max readiness
+
+```bash
+GOOGLE_AI_MAX_NOTIFICATIONS_ENABLED=false
+```
+
+`GOOGLE_AI_MAX_NOTIFICATIONS_ENABLED` controls internal AI Max migration alerts and
+the daily unresolved digest. It Defaults to disabled: only the exact string `true`
+enables delivery. Keep it absent or `false` through migration and first-scan comparison,
+then enable it only after the media-team sign-off in
+`docs/runbooks/google-ai-max-readiness.md`. The scanner and readiness page remain
+read-only regardless of this flag.
+
 ### Email (Required for Magic Links)
 ```bash
 RESEND_API_KEY=re_your_api_key_here

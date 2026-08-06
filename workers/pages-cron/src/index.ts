@@ -75,7 +75,11 @@ export const ROUTES: Record<string, string[]> = {
   // platforms run as background syncs. The endpoint returns immediately so this
   // never hits the function time limit. Replaces the ai-agent-worker path,
   // which ran every platform synchronously and never completed.
-  '0 6 * * *': ['/api/cron/sync-spend']
+  '0 6 * * *': ['/api/cron/sync-spend'],
+  // daily 6:30am UTC — read-only Google Search campaign AI Max readiness.
+  // Offset from spend sync to avoid overlapping Google API bursts. Internal
+  // notifications remain dormant unless the Pages enable flag is armed.
+  '30 6 * * *': ['/api/cron/google-ai-max-readiness'],
 }
 
 export default {
