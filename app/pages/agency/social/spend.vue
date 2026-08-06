@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { GoogleAiMaxReadinessResponse } from '~/types'
+
 definePageMeta({ layout: 'agency', middleware: ['role-media'] })
 
 const toast = useToast()
@@ -16,6 +18,7 @@ const {
   updateBudgetControlSettings,
   syncSpend,
 } = useSocialConnections()
+const { fetchReadiness: fetchAiMaxReadiness } = useGoogleAiMax()
 
 const now = new Date()
 const selectedMonth = ref(parseInt(String(route.query.month || now.getMonth() + 1), 10))
@@ -28,6 +31,7 @@ const searchQuery = ref('')
 
 const spendData = ref<any>(null)
 const spendDiagnostics = ref<any>(null)
+const aiMaxReadiness = ref<GoogleAiMaxReadinessResponse | null>(null)
 const bankCharges = ref<any>(null)
 const pacingReview = ref<any>(null)
 const pacingReviewLoading = ref(false)
@@ -40,6 +44,7 @@ const budgetControlSettings = ref({
 const budgetControlLoading = ref(false)
 const budgetControlSaving = ref(false)
 const bankLoading = ref(false)
+let aiMaxRequestSequence = 0
 
 const platformOptions = [
   { label: 'All', value: 'all' },
@@ -96,6 +101,20 @@ async function loadSpendDiagnostics() {
     toast.add({ title: 'Error loading spend diagnostics', description: e.data?.statusMessage || e.message, color: 'error' })
   } finally {
     diagnosticsLoading.value = false
+  }
+}
+
+async function loadAiMaxReadiness() {
+  const sequence = ++aiMaxRequestSequence
+  if (!['all', 'google'].includes(selectedPlatform.value)) {
+    aiMaxReadiness.value = null
+    return
+  }
+  try {
+    const result = await fetchAiMaxReadiness({ page: 1, pageSize: 1 })
+    if (sequence === aiMaxRequestSequence) aiMaxReadiness.value = result
+  } catch {
+    if (sequence === aiMaxRequestSequence) aiMaxReadiness.value = null
   }
 }
 
@@ -350,6 +369,7 @@ watch([selectedMonth, selectedYear, selectedPlatform], () => {
   loadSpend()
   loadPacingReview()
   loadSpendDiagnostics()
+  loadAiMaxReadiness()
   loadBankCharges()
 
   // Sync URL query string so the current view is linkable
@@ -364,6 +384,7 @@ watch([selectedMonth, selectedYear, selectedPlatform], () => {
 onMounted(() => {
   loadSpend()
   loadSpendDiagnostics()
+  loadAiMaxReadiness()
   loadPacingReview()
   loadBudgetControlSettings()
   loadBankCharges()
@@ -501,6 +522,7 @@ const bankDiscrepancy = computed(() => {
         :bank-discrepancy="bankDiscrepancy"
         :has-bank-data="hasBankData"
         :live-budget-changes-enabled="liveBudgetChangesEnabled"
+        :ai-max-summary="aiMaxReadiness?.summary ?? null"
       />
 
       <SocialSpendControllerPanel

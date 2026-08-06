@@ -40,6 +40,12 @@ const props = defineProps<{
   bankDiscrepancy?: { diff: number, pct: number } | null
   hasBankData?: boolean
   liveBudgetChangesEnabled?: boolean
+  aiMaxSummary?: {
+    affected: number
+    needsReview: number
+    unknown: number
+    coveragePercent: number | null
+  } | null
 }>()
 
 const topIssues = computed(() => props.diagnostics?.issues?.slice(0, 4) ?? [])
@@ -100,6 +106,19 @@ const cards = computed(() => [
   }
 ])
 
+const aiMaxCard = computed(() => ({
+  label: 'AI Max readiness',
+  value: props.aiMaxSummary ? `${props.aiMaxSummary.needsReview} Needs review` : 'Not checked',
+  detail: props.aiMaxSummary
+    ? `${props.aiMaxSummary.affected} affected / ${props.aiMaxSummary.unknown} unknown · ${Math.round(props.aiMaxSummary.coveragePercent ?? 0)}% coverage`
+    : 'Scan Google Search campaign controls',
+  color: !props.aiMaxSummary
+    ? 'neutral'
+    : props.aiMaxSummary.needsReview > 0 || props.aiMaxSummary.unknown > 0
+      ? 'warning'
+      : 'success',
+}))
+
 function issueColor(severity: string) {
   return severity === 'critical' ? 'error' : 'warning'
 }
@@ -159,7 +178,10 @@ function formatCurrency(val: number) {
       </div>
     </div>
 
-    <div class="grid md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-default">
+    <div
+      class="grid divide-y divide-default md:divide-x md:divide-y-0"
+      :class="aiMaxSummary ? 'md:grid-cols-5' : 'md:grid-cols-4'"
+    >
       <div v-for="card in cards" :key="card.label" class="p-4">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
@@ -185,6 +207,24 @@ function formatCurrency(val: number) {
           />
         </div>
       </div>
+      <NuxtLink
+        v-if="aiMaxSummary"
+        to="/agency/social/google/ai-max"
+        class="group p-4 transition-colors hover:bg-elevated/40"
+      >
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-[11px] font-medium uppercase tracking-wide text-muted">{{ aiMaxCard.label }}</p>
+            <p class="mt-1 truncate text-lg font-semibold">{{ aiMaxCard.value }}</p>
+            <p class="mt-1 text-xs text-muted">{{ aiMaxCard.detail }}</p>
+          </div>
+          <UIcon
+            name="i-lucide-scan-search"
+            class="size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
+            :class="aiMaxCard.color === 'warning' ? 'text-warning' : aiMaxCard.color === 'success' ? 'text-success' : 'text-muted'"
+          />
+        </div>
+      </NuxtLink>
     </div>
 
     <div v-if="topIssues.length" class="border-t border-default px-4 py-3 bg-default/30">
