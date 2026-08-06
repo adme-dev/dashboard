@@ -55,7 +55,11 @@ export function parseGoogleAiMaxReadinessQuery(
 ): GoogleAiMaxReadinessFilters {
   const parsed = QuerySchema.safeParse(query)
   if (!parsed.success) throw new Error('Invalid AI Max readiness query')
-  return parsed.data
+  return {
+    ...parsed.data,
+    page: parsed.data.page ?? 1,
+    pageSize: parsed.data.pageSize ?? 25,
+  }
 }
 
 interface ReadinessQueryDependencies {
