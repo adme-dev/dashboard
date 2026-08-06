@@ -2,11 +2,20 @@ import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
 
-import { seedGodModeRouteAuditState } from '../../../server/utils/godMode/featureGate'
 import {
+  prepareRegisteredGodModeMutation,
+  seedGodModeRouteAuditState
+} from '../../../server/utils/godMode/featureGate'
+import {
+  executeGodModeClientPortalAccess,
   prepareGodModeClientPortalAccess,
+  registerGodModeClientPortalAccessFamily,
   type GodModeClientPortalAccessDependencies
 } from '../../../server/utils/clientPortal/godModeAccess'
+import {
+  executeGodModeBannerProjectCreation,
+  prepareGodModeBannerProjectCreation
+} from '../../../server/utils/banner/godModeProjectCreation'
 import { executeClientPortalAccess } from '../../../server/utils/clientPortal/access'
 import { digestPortalSessionToken } from '../../../server/utils/portalSession'
 
@@ -75,6 +84,34 @@ function terminal(actorUserId = ACTOR_ID, correlationId = '88888888-8888-4888-88
     outcomeCode: 'http_2xx',
     emergencyDisabled: false
   }
+}
+
+function bannerEvent() {
+  const request = {
+    method: 'POST',
+    body: { name: 'Launch' },
+    context: { user: { id: ACTOR_ID } },
+    node: {
+      req: {
+        originalUrl: '/api/agency/banner-studio/projects',
+        headers: {
+          'host': 'app.xeroflow.test',
+          'authorization': 'Bearer agency-session-secret',
+          'idempotency-key': 'banner-create:77777777-7777-4777-8777-777777777777'
+        },
+        connection: {}
+      },
+      res: { statusCode: 200, statusMessage: 'OK' }
+    }
+  } as unknown as H3Event
+  seedGodModeRouteAuditState(request, {
+    actorUserId: ACTOR_ID,
+    correlationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    sessionDigest: 'a'.repeat(64),
+    routeOrTool: 'POST /api/agency/banner-studio/projects',
+    emergencyDisabled: false
+  })
+  return request
 }
 
 async function webCryptoSessionToken(
@@ -205,11 +242,14 @@ describe('God mode client portal access coordination', () => {
     appendAudit.mockResolvedValue(undefined)
   })
 
-  it.each(['', 'short key'])('rejects an invalid idempotency key before a portal mutation (%s)', async (key) => {
+  it.each(['', 'short key'])('rejects an invalid idempotency key with portal-specific wording (%s)', async (key) => {
     const request = event(CLIENT_ID, ACTOR_ID, key)
 
     await expect(prepareGodModeClientPortalAccess(request, dependencies()))
-      .rejects.toMatchObject({ statusCode: 428 })
+      .rejects.toMatchObject({
+        statusCode: 428,
+        statusMessage: 'A stable Idempotency-Key header is required for God mode client portal access'
+      })
     expect(transaction).not.toHaveBeenCalled()
   })
 
@@ -243,6 +283,8 @@ describe('God mode client portal access coordination', () => {
     expect(first.sessionToken).not.toBe(await digestPortalSessionToken(
       `${'a'.repeat(64)}\0${CLIENT_ID}\0${IDEMPOTENCY_KEY}`
     ))
+    expect(JSON.stringify(appendAudit.mock.calls)).not.toContain('agency-session-secret')
+    expect(JSON.stringify(appendAudit.mock.calls)).not.toContain(first.sessionToken)
     expect(query.mock.calls.find(call => String(call[0]).includes('FROM client_sessions s'))?.[1])
       .toEqual([
         SESSION_ID,
@@ -250,6 +292,98 @@ describe('God mode client portal access coordination', () => {
         `agency-${ACTOR_ID}-${CLIENT_ID}@portal-access.local`,
         expect.any(String)
       ])
+    expect(query.mock.calls.some(call => String(call[0]).includes('FROM banner_projects'))).toBe(false)
+  })
+
+  it('does not let the banner wrapper execute portal-prepared coordination', async () => {
+    const request = event()
+    const prepared = await prepareGodModeClientPortalAccess(request, dependencies())
+    const createBanner = vi.fn(async () => ({ id: 'banner-project-id' }))
+
+    await expect(executeGodModeBannerProjectCreation(request, createBanner)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: 'God mode coordinator belongs to another operation'
+    })
+    await prepared.persistTerminal({ ...terminal(), phase: 'failed', outcomeCode: 'http_409' })
+
+    expect(createBanner).not.toHaveBeenCalled()
+  })
+
+  it('does not let the portal wrapper execute banner-prepared coordination', async () => {
+    const request = bannerEvent()
+    const prepared = await prepareGodModeBannerProjectCreation(request, {
+      transaction,
+      appendAudit,
+      digestRequest: async () => 'd'.repeat(64)
+    })
+    const createAccess = vi.fn(async () => ({ id: SESSION_ID }))
+
+    await expect(executeGodModeClientPortalAccess(
+      request,
+      createAccess,
+      async () => ({ id: SESSION_ID })
+    )).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: 'God mode coordinator belongs to another operation'
+    })
+    await prepared.persistTerminal({
+      ...terminal(),
+      correlationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      routeOrTool: 'POST /api/agency/banner-studio/projects',
+      phase: 'failed',
+      outcomeCode: 'http_409'
+    })
+
+    expect(createAccess).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when a God Mode route has no prepared portal coordinator', async () => {
+    const createAccess = vi.fn(async () => ({ id: SESSION_ID }))
+
+    await expect(executeGodModeClientPortalAccess(event(), createAccess)).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: 'God mode mutation coordination unavailable'
+    })
+    expect(createAccess).not.toHaveBeenCalled()
+    expect(transaction).not.toHaveBeenCalled()
+  })
+
+  it('rejects an actor mismatch before entering the prepared portal mutation', async () => {
+    const request = event()
+    const prepared = await prepareGodModeClientPortalAccess(request, dependencies())
+    const mismatchedActor = { ...actor, id: OTHER_ACTOR_ID }
+
+    await expect(executeClientPortalAccess(
+      request,
+      mismatchedActor,
+      CLIENT_ID,
+      null,
+      null
+    )).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: 'Client portal access scope does not match'
+    })
+    await prepared.persistTerminal({ ...terminal(), phase: 'failed', outcomeCode: 'http_409' })
+
+    expect(sessionInsertCount).toBe(0)
+    expect(activityInsertCount).toBe(0)
+  })
+
+  it('uses portal-specific wording when an existing access attempt cannot replay', async () => {
+    ledger.push({
+      actorUserId: ACTOR_ID,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      state: 'in_progress',
+      resultReference: null,
+      route: ROUTE,
+      requestDigest: 'b'.repeat(64),
+      clientId: CLIENT_ID
+    })
+
+    await expect(prepareGodModeClientPortalAccess(event(), dependencies())).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: 'God mode client portal access is not safely replayable'
+    })
   })
 
   it('rejects same-key reuse for another client before creating a cross-client session', async () => {
@@ -306,12 +440,19 @@ describe('God mode client portal access coordination', () => {
     })
   })
 
-  it('registers the exact coordinator through an isolated Nitro plugin', () => {
+  it('registers the exact portal family admitted by the isolated Nitro plugin', async () => {
     const plugin = readFileSync('server/plugins/clientPortalGodModeExecution.ts', 'utf8')
-    const coordinator = readFileSync('server/utils/clientPortal/godModeAccess.ts', 'utf8')
-
-    expect(plugin).toContain('registerGodModeClientPortalAccessFamily()')
-    expect(plugin).not.toContain('server/plugins/godModeExecution')
-    expect(coordinator).toContain('transaction: transactionWithoutRetry')
+    const unregister = registerGodModeClientPortalAccessFamily(dependencies())
+    try {
+      await expect(prepareRegisteredGodModeMutation(event(CLIENT_ID, ACTOR_ID, 'short key')))
+        .rejects.toMatchObject({
+          statusCode: 428,
+          statusMessage: 'A stable Idempotency-Key header is required for God mode client portal access'
+        })
+      expect(plugin).toContain('registerGodModeClientPortalAccessFamily()')
+      expect(plugin).not.toContain('server/plugins/godModeExecution')
+    } finally {
+      unregister()
+    }
   })
 })

@@ -245,7 +245,7 @@ describe('God mode banner project creation coordination', () => {
       emergencyDisabled: false
     })
 
-    expect(query).toHaveBeenCalledWith('ROLLBACK TO SAVEPOINT god_mode_banner_project_create')
+    expect(query).toHaveBeenCalledWith('ROLLBACK TO SAVEPOINT god_mode_coordinated_mutation')
     expect(query).toHaveBeenCalledWith(expect.stringContaining('UPDATE god_mode_execution_ledger'), expect.arrayContaining(['failed']))
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ phase: 'failed' }), expect.objectContaining({ query }))
   })
@@ -269,7 +269,7 @@ describe('God mode banner project creation coordination', () => {
       emergencyDisabled: false
     })
 
-    expect(query).toHaveBeenCalledWith('ROLLBACK TO SAVEPOINT god_mode_banner_project_create')
+    expect(query).toHaveBeenCalledWith('ROLLBACK TO SAVEPOINT god_mode_coordinated_mutation')
     expect(query).toHaveBeenCalledWith(expect.stringContaining('UPDATE god_mode_execution_ledger'), expect.arrayContaining(['failed', null]))
     const failedAudit = audit.mock.calls[0]?.[0]
     expect(failedAudit).toEqual(expect.objectContaining({ phase: 'failed' }))

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { format } from 'date-fns'
 import { navigateToPortalDocument } from '~/utils/portalAgencyAccessNavigation'
+import { createClientPortalAccessRequestSession } from '~/utils/clientPortalAccessRequest'
 import { createClientPortalInviteForm } from '~/utils/clientPortalInviteForm'
 import { useAuthenticatedFetch } from '~/composables/useAuthenticatedFetch'
 
@@ -14,6 +15,7 @@ const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 const { fetch: apiFetch } = useAuthenticatedFetch()
+const portalAccessRequests = createClientPortalAccessRequestSession(apiFetch)
 
 interface PortalClient {
   id: string
@@ -871,11 +873,7 @@ const openClientPortal = async (clientId?: string | null, path = '/portal') => {
 
   openingPortal.value = true
   try {
-    await apiFetch('/api/agency/client-portal/access', {
-      method: 'POST',
-      body: { clientId: targetClientId },
-      headers: { 'Idempotency-Key': `portal-access:${crypto.randomUUID()}` }
-    })
+    await portalAccessRequests.request(targetClientId)
     refreshActivity()
     navigateToPortalDocument(path)
   } catch (err: unknown) {

@@ -3,7 +3,7 @@ import type { Pool } from '@neondatabase/serverless'
 import type { H3Event } from 'h3'
 import { createError, getCookie, getHeader } from 'h3'
 
-import { executeGodModeBannerProjectCreation } from '~~/server/utils/banner/godModeProjectCreation'
+import { executeGodModeClientPortalAccess } from '~~/server/utils/clientPortal/godModeAccess'
 import { transaction } from '~~/server/utils/db'
 import { getGodModeRouteAuditState } from '~~/server/utils/godMode/featureGate'
 import { digestPortalSessionToken } from '~~/server/utils/portalSession'
@@ -176,7 +176,7 @@ export async function executeClientPortalAccess(
     clientId,
     getHeader(event, 'idempotency-key') || ''
   )
-  return await executeGodModeBannerProjectCreation(
+  return await executeGodModeClientPortalAccess(
     event,
     db => create(db, actor, clientId, sessionToken, ipAddress, userAgent),
     (db, sessionId) => replay(db, sessionId, actor, clientId, sessionToken)
