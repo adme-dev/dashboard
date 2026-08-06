@@ -11,13 +11,5 @@ export default defineEventHandler(async (event) => {
        FROM banner_render_jobs WHERE id = ANY($1)`,
     [ids]
   )
-  const jobs = projectJobStatus(rows).map(job => ({
-    ...job,
-    // Export rows created before private delivery can contain a stale public
-    // R2 URL. Delivery always flows through the authenticated job endpoint.
-    url: job.status === 'done'
-      ? `/api/agency/banner-studio/export-video/jobs/${encodeURIComponent(job.jobId)}/download`
-      : null
-  }))
-  return { jobs }
+  return { jobs: projectJobStatus(rows) }
 })

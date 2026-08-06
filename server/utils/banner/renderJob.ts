@@ -65,6 +65,17 @@ export async function enqueueBannerRender(input: BannerRenderInput, deps: Enqueu
   return { jobIds }
 }
 
+export function bannerRenderDownloadUrl(jobId: string): string {
+  return `/api/agency/banner-studio/export-video/jobs/${encodeURIComponent(jobId)}/download`
+}
+
 export function projectJobStatus(rows: BannerJobRow[]): { jobId: string, formatKey: string, status: string, url: string | null, fileSize: number | null, error: string | null }[] {
-  return rows.map(r => ({ jobId: r.id, formatKey: r.format_key, status: r.status, url: r.url ?? null, fileSize: r.file_size ?? null, error: r.error ?? null }))
+  return rows.map(r => ({
+    jobId: r.id,
+    formatKey: r.format_key,
+    status: r.status,
+    url: r.status === 'done' ? bannerRenderDownloadUrl(r.id) : null,
+    fileSize: r.file_size ?? null,
+    error: r.error ?? null
+  }))
 }

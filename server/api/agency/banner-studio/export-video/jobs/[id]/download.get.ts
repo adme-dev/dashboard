@@ -12,7 +12,7 @@ interface BannerRenderJob {
 
 interface R2Object {
   size: number
-  httpEtag?: string
+  httpEtag: string
   body?: ReadableStream
 }
 
@@ -39,7 +39,7 @@ function deliveryHeaders(object: R2Object, filename: string): Headers {
     'content-disposition': `attachment; filename="${filename}"`,
     'x-content-type-options': 'nosniff'
   })
-  if (typeof object.httpEtag === 'string' && object.httpEtag) headers.set('etag', object.httpEtag)
+  headers.set('etag', object.httpEtag)
   return headers
 }
 
@@ -120,7 +120,8 @@ export default defineEventHandler(async (event) => {
     storageUnavailable()
   }
   if (!metadata) notFound()
-  if (!Number.isSafeInteger(metadata.size) || metadata.size < 0) storageUnavailable()
+  if (!Number.isSafeInteger(metadata.size) || metadata.size < 0
+    || typeof metadata.httpEtag !== 'string' || !metadata.httpEtag.trim()) storageUnavailable()
 
   const filename = job.r2_key.slice(job.r2_key.lastIndexOf('/') + 1)
   const headers = deliveryHeaders(metadata, filename)

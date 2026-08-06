@@ -28,11 +28,11 @@ export async function getSourceHtml(env: { AUDIO_BUCKET: R2Bucket }, key: string
 export async function uploadBannerMp4(
   env: { AUDIO_BUCKET: R2Bucket },
   projectId: string,
-  formatKey: string,
+  _formatKey: string,
   bytes: Uint8Array,
   jobId: string,
 ): Promise<{ r2Key: string; url: string; size: number }> {
-  const r2Key = `banner-videos/${projectId}/${formatKey}_${jobId}.mp4`
+  const r2Key = `banner-videos/${projectId}/${jobId}.mp4`
   await env.AUDIO_BUCKET.put(r2Key, bytes, { httpMetadata: { contentType: 'video/mp4' } })
   return {
     r2Key,

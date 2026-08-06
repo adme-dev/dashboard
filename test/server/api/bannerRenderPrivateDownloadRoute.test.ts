@@ -171,4 +171,14 @@ describe('GET /agency/banner-studio/export-video/jobs/:id/download', () => {
     if (!downloadHandler) return
     await expect(downloadHandler(event())).rejects.toMatchObject({ statusCode: 503 })
   })
+
+  it.each([undefined, ''])('fails closed when R2 metadata has an invalid ETag (%s)', async (httpEtag) => {
+    const metadata = { ...objectBody(), httpEtag }
+    const bucket = { head: vi.fn(async () => metadata), get: vi.fn() }
+
+    expect(downloadHandler).toBeTypeOf('function')
+    if (!downloadHandler) return
+    await expect(downloadHandler(event({ bucket }))).rejects.toMatchObject({ statusCode: 503 })
+    expect(bucket.get).not.toHaveBeenCalled()
+  })
 })

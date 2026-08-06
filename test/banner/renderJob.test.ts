@@ -80,8 +80,14 @@ describe('enqueueBannerRender', () => {
 })
 
 describe('projectJobStatus', () => {
-  it('maps rows to a compact status list', () => {
-    const rows = [{ id: 'j1', project_id: 'p', format_key: 'a', width: 300, height: 250, fps: 30, crf: 23, quality: 1, source_r2_key: 'k', status: 'done', url: 'https://x/a.mp4', file_size: 1234, error: null }]
-    expect(projectJobStatus(rows as any)).toEqual([{ jobId: 'j1', formatKey: 'a', status: 'done', url: 'https://x/a.mp4', fileSize: 1234, error: null }])
+  it('replaces persisted URLs with the private download route only for completed jobs', () => {
+    const rows = [
+      { id: 'j1', project_id: 'p', format_key: 'a', width: 300, height: 250, fps: 30, crf: 23, quality: 1, source_r2_key: 'k', status: 'done', url: 'https://pub-old.r2.dev/a.mp4', file_size: 1234, error: null },
+      { id: 'j2', project_id: 'p', format_key: 'b', width: 300, height: 250, fps: 30, crf: 23, quality: 1, source_r2_key: 'k', status: 'rendering', url: 'https://pub-old.r2.dev/b.mp4', file_size: null, error: null }
+    ]
+    expect(projectJobStatus(rows as any)).toEqual([
+      { jobId: 'j1', formatKey: 'a', status: 'done', url: '/api/agency/banner-studio/export-video/jobs/j1/download', fileSize: 1234, error: null },
+      { jobId: 'j2', formatKey: 'b', status: 'rendering', url: null, fileSize: null, error: null }
+    ])
   })
 })

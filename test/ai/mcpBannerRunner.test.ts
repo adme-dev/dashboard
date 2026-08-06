@@ -9,6 +9,14 @@ import {
 } from '~~/server/utils/ai/mcp/bannerRunner'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
+const queryRows = vi.hoisted(() => vi.fn())
+
+vi.mock('~~/server/utils/db', () => ({
+  queryRows: (...args: unknown[]) => queryRows(...args),
+  queryOne: vi.fn(),
+  execute: vi.fn()
+}))
+
 const ctx: ToolContext = { userId: 'u1', userRole: 'creative', event: {} as any }
 const payload = { projectId: 'p1', format: 'mrec', fps: 30, quality: 1 as const }
 
@@ -144,6 +152,41 @@ describe('buildBannerReadRunner — canvas_data flat-parse (C1)', () => {
     ]) })
     const result = await runner.list_banner_projects({}, ctx) as any
     expect(result.projects[0].formats).toEqual(['mrec'])
+  })
+})
+
+describe('buildBannerReadRunner — render status', () => {
+  it('never returns a persisted public R2 URL for completed jobs', async () => {
+    queryRows.mockResolvedValueOnce([{
+      id: '11111111-1111-4111-8111-111111111111',
+      project_id: '22222222-2222-4222-8222-222222222222',
+      format_key: 'mrec',
+      width: 300,
+      height: 250,
+      fps: 30,
+      crf: 23,
+      quality: 1,
+      source_r2_key: 'banner-render-jobs/source.html',
+      status: 'done',
+      url: 'https://pub-old.r2.dev/leaked.mp4',
+      file_size: 71546,
+      error: null
+    }])
+
+    const result = await buildBannerReadRunner().get_banner_render_status({
+      jobIds: ['11111111-1111-4111-8111-111111111111']
+    }, ctx)
+
+    expect(result).toEqual({
+      jobs: [{
+        jobId: '11111111-1111-4111-8111-111111111111',
+        formatKey: 'mrec',
+        status: 'done',
+        url: '/api/agency/banner-studio/export-video/jobs/11111111-1111-4111-8111-111111111111/download',
+        fileSize: 71546,
+        error: null
+      }]
+    })
   })
 })
 
