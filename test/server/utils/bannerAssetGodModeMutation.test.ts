@@ -543,6 +543,72 @@ describe('God mode banner asset upload coordination', () => {
     expect(objects).toEqual(new Set([R2_KEY]))
   })
 
+  it('preserves a successor object when the superseded finalizer loses its transaction before the ownership lock', async () => {
+    const successorCorrelation = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const objects = new Set<string>()
+    let successorFinalized = false
+    let executionPhase = 'claimed'
+    let transactionAttempt = 0
+    const finalizationConnectionError = new Error('BEGIN connection lost')
+    const ownershipQuery = vi.fn(async (sql: string) => {
+      if (sql.includes('INSERT INTO god_mode_execution_ledger')) return { rows: [{ state: 'in_progress' }] }
+      if (sql.includes('FROM god_mode_execution_ledger')) return { rows: [{
+        state: successorFinalized ? 'succeeded' : 'in_progress',
+        result_reference: successorFinalized ? ASSET_ID : null,
+        route_or_tool: ROUTE,
+        correlation_id: successorFinalized ? successorCorrelation : CORRELATION_ID,
+        execution_phase: successorFinalized ? 'result_captured' : executionPhase,
+        request_digest: REQUEST_DIGEST,
+        r2_key: R2_KEY,
+        asset_id: ASSET_ID,
+        claim_stale: successorFinalized
+      }] }
+      if (sql.includes('execution_phase = \'dispatched\'')) {
+        executionPhase = 'dispatched'
+        return { rows: [{ state: 'in_progress' }] }
+      }
+      if (sql.includes('state = \'failed\'')) return { rows: [] }
+      return { rows: [] }
+    })
+    const ownershipTransaction = vi.fn(async (callback) => {
+      transactionAttempt += 1
+      if (transactionAttempt === 3) throw finalizationConnectionError
+      return await callback({ query: ownershipQuery })
+    })
+    const deleteSharedObject = vi.fn(async (key: string) => {
+      objects.delete(key)
+    })
+    const event = request()
+    const prepared = await prepareGodModeBannerAssetUpload(event, {
+      ...dependencies,
+      transaction: ownershipTransaction as typeof transaction,
+      deleteBannerFile: deleteSharedObject,
+      getTransactionFailureStage: () => 'definite_rollback'
+    })
+    await executeGodModeBannerAssetUpload(event, {
+      assetId: ASSET_ID,
+      r2Key: R2_KEY,
+      result: resultFactory,
+      deleteFile: deleteSharedObject,
+      uploadFile: vi.fn(async (key: string) => {
+        objects.add(key)
+        return { key, url: asset.url, size: asset.fileSize }
+      }),
+      insertAsset: vi.fn()
+    })
+
+    // A stale successor has durably reclaimed and finalized the same persisted
+    // identity before A can even acquire the finalization transaction lock.
+    successorFinalized = true
+    await expect(prepared.persistTerminal(terminal())).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: 'Banner upload recovery required'
+    })
+
+    expect(deleteSharedObject).not.toHaveBeenCalled()
+    expect(objects).toEqual(new Set([R2_KEY]))
+  })
+
   it('recovers a lost stale-reclaim commit response with the same durable post-dispatch identity', async () => {
     const expiredCorrelation = '88888888-8888-4888-8888-888888888888'
     const candidateAssetId = '99999999-9999-4999-8999-999999999999'
@@ -1081,7 +1147,7 @@ describe('God mode banner asset upload coordination', () => {
     expect(deleteFile).not.toHaveBeenCalled()
   })
 
-  it('uses the request-owned delete callback when an ordinary upload cannot persist its database row', async () => {
+  it('preserves the request-owned object when one fresh null cannot fence an ambiguous ordinary insert', async () => {
     const event = { context: { user: { id: ACTOR_ID } } } as unknown as H3Event
     const deleteFile = vi.fn()
     const reconcileAsset = vi.fn().mockResolvedValue(null)
@@ -1094,10 +1160,13 @@ describe('God mode banner asset upload coordination', () => {
       deleteFile,
       reconcileAsset,
       insertAsset: vi.fn().mockRejectedValue(new Error('database unavailable'))
-    })).rejects.toThrow('database unavailable')
+    })).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: 'Banner upload recovery required'
+    })
 
     expect(reconcileAsset).toHaveBeenCalledWith(ASSET_ID)
-    expect(deleteFile).toHaveBeenCalledWith(R2_KEY)
+    expect(deleteFile).not.toHaveBeenCalled()
     expect(deleteBannerFile).not.toHaveBeenCalled()
   })
 

@@ -187,7 +187,7 @@ function exactAssetResult(
 async function reconcileOrdinaryAsset(
   upload: BannerAssetUploadMutation,
   expected: BannerAssetUploadResult
-): Promise<BannerAssetUploadResult | null> {
+): Promise<BannerAssetUploadResult> {
   let durable: BannerAssetUploadResult | null
   try {
     durable = upload.reconcileAsset
@@ -196,7 +196,11 @@ async function reconcileOrdinaryAsset(
   } catch {
     throw recoveryRequired()
   }
-  if (durable && !exactAssetResult(durable, expected)) throw recoveryRequired()
+  // A single post-error read through Hyperdrive cannot fence an autocommit
+  // response loss. Only an exact durable row is authoritative; absence remains
+  // ambiguous, so the object must be preserved for recovery.
+  if (!durable) throw recoveryRequired()
+  if (!exactAssetResult(durable, expected)) throw recoveryRequired()
   return durable
 }
 
@@ -348,18 +352,26 @@ async function appendFailureAfterRollback(
   current: Coordination,
   terminal: GodModeAuditEventInput,
   dependencies: GodModeBannerAssetUploadDependencies
-): Promise<void> {
+): Promise<boolean> {
   const failureTerminal: GodModeAuditEventInput = {
     ...terminal,
     phase: 'failed',
     outcomeCode: 'terminal_finalization_failed'
   }
-  await dependencies.transaction(async (db) => {
+  return await dependencies.transaction(async (db) => {
+    const locked = await db.query(`${EXECUTION_SQL} FOR UPDATE`, [current.actorUserId, current.idempotencyKey])
+    const row = locked.rows[0] as ExistingExecutionRow | undefined
+    if (!row) return false
+    exactExecution(row, current.routeOrTool, current.requestDigest)
+    if (row.state !== 'in_progress' || row.correlation_id !== current.correlationId) {
+      return false
+    }
     await db.query(
       `UPDATE god_mode_execution_ledger SET state = 'failed', result_reference = NULL, result_digest = NULL, updated_at = NOW() WHERE actor_user_id = $1 AND channel = 'application' AND idempotency_key = $2 AND correlation_id = $3 AND state = 'in_progress'`,
       [current.actorUserId, current.idempotencyKey, current.correlationId]
     )
     await dependencies.appendAudit(failureTerminal, db)
+    return true
   })
 }
 
@@ -434,8 +446,13 @@ async function persistTerminal(
     }
     if (failureStage !== 'definite_rollback') throw error
 
-    if (expectedPhase === 'succeeded') await compensateNewObject(current)
-    await appendFailureAfterRollback(current, terminal, dependencies)
+    const ownsFailedClaim = await appendFailureAfterRollback(current, terminal, dependencies)
+    if (!ownsFailedClaim) {
+      current.newR2Key = null
+      throw recoveryRequired()
+    }
+    await compensateNewObject(current)
+    if (expectedPhase === 'failed') return
     throw error
   }
 
@@ -577,11 +594,8 @@ export async function executeGodModeBannerAssetUpload(
       const inserted = await upload.insertAsset(null, stored, expected)
       if (!exactAssetResult(inserted, expected)) throw recoveryRequired()
       return inserted
-    } catch (error) {
-      const durable = await reconcileOrdinaryAsset(upload, expected)
-      if (durable) return durable
-      if (upload.deleteFile) await upload.deleteFile(upload.r2Key)
-      throw error
+    } catch {
+      return await reconcileOrdinaryAsset(upload, expected)
     }
   }
 
