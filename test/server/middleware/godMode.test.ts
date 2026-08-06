@@ -112,6 +112,29 @@ describe('God mode request middleware', () => {
     expect(appendGodModeAuditEvent).toHaveBeenCalledOnce()
   })
 
+  it('admits the registered client portal access mutation for an active owner', async () => {
+    const unregister = registerGodModeMutationFamily({
+      family: 'client-portal-access-test',
+      method: 'POST',
+      matchesPath: path => path === '/api/agency/client-portal/access',
+      prepare: async () => ({
+        strategy: 'transaction-bound',
+        prepared: true,
+        persistTerminal: vi.fn()
+      })
+    })
+    try {
+      await expect(handleGodModeRequest(
+        event('/api/agency/client-portal/access', 'POST', {
+          'idempotency-key': 'portal-access-11111111-1111-4111-8111-111111111111'
+        }),
+        dependencies
+      )).resolves.toBeUndefined()
+    } finally {
+      unregister()
+    }
+  })
+
   it('does nothing for authenticated users without active owner authority', async () => {
     resolveGodModeAuthority.mockResolvedValue({
       active: false,

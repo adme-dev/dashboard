@@ -2,6 +2,7 @@
 import { format } from 'date-fns'
 import { navigateToPortalDocument } from '~/utils/portalAgencyAccessNavigation'
 import { createClientPortalInviteForm } from '~/utils/clientPortalInviteForm'
+import { createClientPortalAccessRequest } from '~/utils/clientPortalAccessRequest'
 import { useAuthenticatedFetch } from '~/composables/useAuthenticatedFetch'
 
 definePageMeta({
@@ -879,10 +880,7 @@ const openClientPortal = async (clientId?: string | null, path = '/portal') => {
 
   openingPortal.value = true
   try {
-    await apiFetch('/api/agency/client-portal/access', {
-      method: 'POST',
-      body: { clientId: targetClientId }
-    })
+    await apiFetch('/api/agency/client-portal/access', createClientPortalAccessRequest(targetClientId))
     refreshActivity()
     navigateToPortalDocument(path)
   } catch (err: unknown) {

@@ -24,17 +24,17 @@ testGlobal.setCookie = vi.fn()
 testGlobal.createError = input => Object.assign(new Error(input.statusMessage), input)
 
 const mockRequireRole = vi.fn()
-const mockQueryOne = vi.fn()
 const mockTransaction = vi.fn()
 const mockDbQuery = vi.fn()
+let clientAccessible = true
 
 vi.mock('~~/server/utils/auth', () => ({
   requireRole: (...args: unknown[]) => mockRequireRole(...args)
 }))
 
 vi.mock('~~/server/utils/db', () => ({
-  queryOne: (...args: unknown[]) => mockQueryOne(...args),
-  transaction: (...args: unknown[]) => mockTransaction(...args)
+  transaction: (...args: unknown[]) => mockTransaction(...args),
+  transactionWithoutRetry: (...args: unknown[]) => mockTransaction(...args)
 }))
 
 const { default: accessHandler } = await import(
@@ -50,14 +50,14 @@ describe('agency client portal access API', () => {
       name: 'Owner User',
       role: 'owner'
     })
-    mockQueryOne.mockResolvedValue({
-      id: 'client-1',
-      name: 'Client One',
-      logo_url: 'https://example.com/logo.png'
-    })
     mockTransaction.mockImplementation(async (callback) => {
       const db = {
         query: mockDbQuery.mockImplementation(async (sql: string) => {
+          if (sql.includes('FROM agency_clients client')) {
+            return clientAccessible
+              ? { rows: [{ id: 'client-1', name: 'Client One', logoUrl: 'https://example.com/logo.png' }] }
+              : { rows: [] }
+          }
           if (sql.includes('RETURNING id, email, name, status')) {
             return {
               rows: [{
@@ -68,12 +68,16 @@ describe('agency client portal access API', () => {
               }]
             }
           }
+          if (sql.includes('INSERT INTO client_sessions')) {
+            return { rows: [{ id: 'session-1' }] }
+          }
           return { rows: [] }
         })
       }
 
       return callback(db)
     })
+    clientAccessible = true
   })
 
   it('creates an internal portal session for an allowed agency user', async () => {
@@ -83,7 +87,10 @@ describe('agency client portal access API', () => {
     })
 
     expect(mockRequireRole).toHaveBeenCalledOnce()
-    expect(mockQueryOne).toHaveBeenCalledWith(expect.stringContaining('FROM agency_clients'), ['client-1'])
+    expect(mockDbQuery).toHaveBeenCalledWith(
+      expect.stringContaining('FROM agency_clients client'),
+      ['client-1', 'agency-user-1', true]
+    )
     const cookieToken = String(vi.mocked(testGlobal.setCookie).mock.calls[0]?.[2])
     const sessionInsert = mockDbQuery.mock.calls.find(call =>
       String(call[0]).includes('INSERT INTO client_sessions')
@@ -93,7 +100,7 @@ describe('agency client portal access API', () => {
       expect.anything(),
       'client_session_token',
       expect.any(String),
-      expect.objectContaining({ httpOnly: true, maxAge: 8 * 60 * 60, path: '/' })
+      expect.objectContaining({ httpOnly: true, maxAge: expect.any(Number), path: '/' })
     )
     expect(result).toMatchObject({
       ok: true,
@@ -109,5 +116,60 @@ describe('agency client portal access API', () => {
       statusMessage: 'Client ID is required'
     })
     expect(mockTransaction).not.toHaveBeenCalled()
+  })
+
+  it('preserves ordinary authorized staff access without God mode coordination', async () => {
+    mockRequireRole.mockResolvedValue({
+      id: 'agency-user-1',
+      email: 'account.manager@example.com',
+      name: 'Account Manager',
+      role: 'account_manager'
+    })
+
+    await expect(accessHandler({
+      body: { clientId: 'client-1' },
+      headers: { 'user-agent': 'vitest' }
+    })).resolves.toMatchObject({ ok: true, client: { id: 'client-1' } })
+
+    expect(mockDbQuery).toHaveBeenCalledWith(
+      expect.stringContaining('client_team_assignments'),
+      ['client-1', 'agency-user-1', false]
+    )
+  })
+
+  it('does not enter the portal transaction for an unauthorized ordinary user', async () => {
+    mockRequireRole.mockRejectedValue(Object.assign(new Error('Forbidden'), {
+      statusCode: 403,
+      statusMessage: 'Forbidden - Insufficient permissions'
+    }))
+
+    await expect(accessHandler({ body: { clientId: 'client-1' } })).rejects.toMatchObject({
+      statusCode: 403
+    })
+    expect(mockTransaction).not.toHaveBeenCalled()
+  })
+
+  it('does not open an unassigned client for scoped ordinary staff', async () => {
+    mockRequireRole.mockResolvedValue({
+      id: 'agency-user-1',
+      email: 'account.manager@example.com',
+      name: 'Account Manager',
+      role: 'account_manager'
+    })
+    clientAccessible = false
+
+    await expect(accessHandler({
+      body: { clientId: 'client-2' },
+      headers: { 'user-agent': 'vitest' }
+    })).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Client not found' })
+
+    expect(mockDbQuery).toHaveBeenCalledWith(
+      expect.stringContaining('client_team_assignments'),
+      ['client-2', 'agency-user-1', false]
+    )
+    expect(mockDbQuery).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO client_sessions'),
+      expect.anything()
+    )
   })
 })

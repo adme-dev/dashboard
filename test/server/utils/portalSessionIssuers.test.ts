@@ -22,7 +22,7 @@ describe('portal session storage contract', () => {
 
   it.each([
     'server/api/portal/auth/login.post.ts',
-    'server/api/agency/client-portal/access.post.ts',
+    'server/utils/clientPortal/godModeAccess.ts',
     'server/api/agency/client-portal/auth/login.post.ts'
   ])('%s stores an indexed digest for issued sessions', (relativePath) => {
     const source = readFileSync(resolve(process.cwd(), relativePath), 'utf8')
