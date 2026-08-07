@@ -228,6 +228,19 @@ function internalFeedChecks(
 ): GooglePmaxPreflightCheck[] {
   const feed = evidence.internalFeed
   if (
+    feed.linkId.toLowerCase() !== config.inventorySource.linkId.toLowerCase()
+    || feed.feedId !== config.inventorySource.feedId
+    || feed.platform !== config.inventorySource.platform
+  ) {
+    return [check(
+      'PMAX_INTERNAL_FEED_IDENTITY_MISMATCH',
+      'inventory',
+      'fail',
+      'Feed evidence does not match the exact client-owned source bound into this launch plan.',
+      'Reselect the intended active Google feed and regenerate the launch plan.'
+    )]
+  }
+  if (
     feed.platform !== 'google'
     || feed.status !== 'ready'
     || feed.matchedItemCount <= 0
@@ -321,7 +334,20 @@ function targetingChecks(config: GooglePmaxInventoryLaunchConfig): GooglePmaxPre
   return [check('PMAX_TARGETING_READY', 'targeting', 'pass', 'Location criteria and languages are resolved.')]
 }
 
-function assetChecks(evidence: GooglePmaxPreflightEvidence): GooglePmaxPreflightCheck[] {
+function assetChecks(
+  config: GooglePmaxInventoryLaunchConfig,
+  evidence: GooglePmaxPreflightEvidence
+): GooglePmaxPreflightCheck[] {
+  const expectedMode = config.assetGroup.mode === 'MERCHANT_ONLY' ? 'merchant_only' : 'provided'
+  if (evidence.assets.mode !== expectedMode) {
+    return [check(
+      'PMAX_ASSET_MODE_MISMATCH',
+      'assets',
+      'fail',
+      'Provider asset evidence does not match the asset mode bound into this launch plan.',
+      'Regenerate the plan from current provider assets before approval.'
+    )]
+  }
   if (evidence.assets.mode === 'merchant_only') {
     return [check(
       'PMAX_ASSETS_MERCHANT_ONLY',
@@ -369,7 +395,7 @@ export function createGooglePmaxPreflight(dependencies: GooglePmaxPreflightDepen
           ...merchantChecks(config, evidence),
           ...conversionChecks(config, evidence),
           ...targetingChecks(config),
-          ...assetChecks(evidence),
+          ...assetChecks(config, evidence),
           ...destinationChecks(evidence)
         ]
         return result(checks, safeProviderRequestId(evidence.providerRequestId), now)

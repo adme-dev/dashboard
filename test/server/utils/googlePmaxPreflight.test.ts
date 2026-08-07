@@ -6,7 +6,7 @@ import {
 import type { GooglePmaxInventoryLaunchConfig } from '~~/server/utils/googlePmaxLaunchConfig'
 
 const config: GooglePmaxInventoryLaunchConfig = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   briefId: '23799282-283b-4508-b065-3fd36e8c05fd',
   briefVersion: 1,
   tenantId: 'c41c58be-a3a8-4479-b5d1-9251bb80717d',
@@ -31,13 +31,20 @@ const config: GooglePmaxInventoryLaunchConfig = {
   languages: ['en'],
   finalUrls: ['https://www.cpford.com.au/new-vehicles/'],
   merchantCenterId: '123456789',
+  inventorySource: {
+    providerId: 'social-dashboard',
+    linkId: '7e8396fd-1515-4e5e-a364-3d7c3a3dc1ac',
+    feedId: 'google-vehicles-au',
+    platform: 'google'
+  },
   inventoryFilter: { listingSource: 'SHOPPING', conditions: ['NEW'] },
   assetGroup: {
+    mode: 'MERCHANT_ONLY',
     name: 'CP Ford new vehicles',
-    businessName: 'CP Ford',
-    headlines: ['Explore New Ford Vehicles', 'Book a Test Drive', 'Find Your Next Ford'],
-    longHeadlines: ['Explore the latest new Ford vehicles available from CP Ford'],
-    descriptions: ['Browse new Ford vehicles and enquire today.', 'Book a test drive with the CP Ford team.'],
+    businessName: '',
+    headlines: [],
+    longHeadlines: [],
+    descriptions: [],
     imageAssetResourceNames: [],
     logoAssetResourceNames: [],
     youtubeVideoAssetResourceNames: []
@@ -137,7 +144,7 @@ describe('Google PMax read-only preflight', () => {
       expect.objectContaining({ code: 'PMAX_MERCHANT_LINK_MISSING', status: 'fail' }),
       expect.objectContaining({ code: 'PMAX_INTERNAL_FEED_NOT_READY', status: 'fail' }),
       expect.objectContaining({ code: 'PMAX_CONVERSIONS_NOT_READY', status: 'fail' }),
-      expect.objectContaining({ code: 'PMAX_ASSET_COVERAGE_INCOMPLETE', status: 'fail' })
+      expect.objectContaining({ code: 'PMAX_ASSET_MODE_MISMATCH', status: 'fail' })
     ]))
   })
 
@@ -167,6 +174,36 @@ describe('Google PMax read-only preflight', () => {
     expect(result.ready).toBe(false)
     expect(result.checks).toContainEqual(expect.objectContaining({
       code: 'PMAX_INTERNAL_FEED_CONDITION_MISMATCH',
+      status: 'fail'
+    }))
+  })
+
+  it('blocks feed evidence that does not match the exact source bound into the plan', async () => {
+    const readEvidence = vi.fn().mockResolvedValue({
+      ...evidence,
+      internalFeed: { ...evidence.internalFeed, feedId: 'another-google-feed' }
+    })
+
+    const result = await createGooglePmaxPreflight({ readEvidence }).run(config)
+
+    expect(result.ready).toBe(false)
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      code: 'PMAX_INTERNAL_FEED_IDENTITY_MISMATCH',
+      status: 'fail'
+    }))
+  })
+
+  it('blocks provider asset evidence that disagrees with the plan asset mode', async () => {
+    const readEvidence = vi.fn().mockResolvedValue({
+      ...evidence,
+      assets: { ...evidence.assets, mode: 'provided', textCoverageComplete: true, mediaCoverageComplete: true }
+    })
+
+    const result = await createGooglePmaxPreflight({ readEvidence }).run(config)
+
+    expect(result.ready).toBe(false)
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      code: 'PMAX_ASSET_MODE_MISMATCH',
       status: 'fail'
     }))
   })

@@ -27,9 +27,11 @@ function input(overrides: Record<string, unknown> = {}) {
       start_date: '2026-07-17',
       end_date: '2026-07-31',
       google_connection_id: ids.connection,
+      google_feed_id: 'google-vehicles-au',
       merchant_centre_id: '123456789',
       inventory_condition: 'new',
       bidding: 'max_conversions',
+      asset_mode: 'provided',
       asset_group_name: 'CP Ford new vehicles',
       final_url: 'https://www.cpford.com.au/new-vehicles/',
       business_name: 'CP Ford',
@@ -48,11 +50,20 @@ function input(overrides: Record<string, unknown> = {}) {
       customerId: '123-456-7890',
       accountCurrency: 'AUD',
       accountTimezone: 'Australia/Melbourne',
+      inventorySource: {
+        linkId: '7e8396fd-1515-4e5e-a364-3d7c3a3dc1ac',
+        providerId: 'social-dashboard',
+        selectedFeedId: 'google-vehicles-au',
+        feedId: 'google-vehicles-au',
+        platform: 'google',
+        active: true
+      },
       locations: [
         { criterionId: '1000567', displayName: 'Melbourne VIC', sourceText: 'Melbourne VIC' },
         { criterionId: '1015068', displayName: 'Geelong VIC', sourceText: 'Geelong VIC' }
       ],
       assetGroup: {
+        requiredAssetCoverageComplete: true,
         imageAssetResourceNames: ['customers/1234567890/assets/20', 'customers/1234567890/assets/10'],
         logoAssetResourceNames: ['customers/1234567890/assets/30'],
         youtubeVideoAssetResourceNames: []
@@ -75,7 +86,7 @@ describe('Google PMax Inventory launch configuration normalization', () => {
       value: {
         configHash: expect.stringMatching(/^[a-f0-9]{64}$/),
         config: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           briefId: ids.brief,
           briefVersion: 1,
           customerId: '1234567890',
@@ -87,6 +98,13 @@ describe('Google PMax Inventory launch configuration normalization', () => {
             provider: { totalAmountMicros: '1000000000', amountMicros: null }
           },
           inventoryFilter: { listingSource: 'SHOPPING', conditions: ['NEW'] },
+          inventorySource: {
+            providerId: 'social-dashboard',
+            linkId: '7e8396fd-1515-4e5e-a364-3d7c3a3dc1ac',
+            feedId: 'google-vehicles-au',
+            platform: 'google'
+          },
+          assetGroup: expect.objectContaining({ mode: 'PROVIDED' }),
           bidding: { strategy: 'MAXIMIZE_CONVERSIONS' },
           approval: { required: true, complianceAcknowledged: true }
         }
@@ -142,6 +160,66 @@ describe('Google PMax Inventory launch configuration normalization', () => {
     }))).toMatchObject({
       ok: false,
       issues: expect.arrayContaining([expect.objectContaining({ code: 'PMAX_TARGET_ROAS_AMBIGUOUS' })])
+    })
+  })
+
+  it('supports a true Merchant-only asset group without partial manual assets', () => {
+    const merchantOnly = input()
+    merchantOnly.fieldValues = {
+      ...merchantOnly.fieldValues,
+      asset_mode: 'merchant_only',
+      business_name: '',
+      headlines: '',
+      long_headlines: '',
+      descriptions: ''
+    }
+    merchantOnly.provider.assetGroup = {
+      requiredAssetCoverageComplete: false,
+      imageAssetResourceNames: [],
+      logoAssetResourceNames: [],
+      youtubeVideoAssetResourceNames: []
+    }
+
+    expect(normalizeGooglePmaxInventoryLaunchConfig(merchantOnly)).toMatchObject({
+      ok: true,
+      value: {
+        config: {
+          assetGroup: {
+            mode: 'MERCHANT_ONLY',
+            businessName: '',
+            headlines: [],
+            longHeadlines: [],
+            descriptions: [],
+            imageAssetResourceNames: [],
+            logoAssetResourceNames: [],
+            youtubeVideoAssetResourceNames: []
+          }
+        }
+      }
+    })
+  })
+
+  it('rejects partial manual assets instead of silently falling back to Merchant-only', () => {
+    const partial = input()
+    partial.provider.assetGroup.requiredAssetCoverageComplete = false
+
+    expect(normalizeGooglePmaxInventoryLaunchConfig(partial)).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([expect.objectContaining({ code: 'PMAX_ASSET_COVERAGE_INCOMPLETE' })])
+    })
+  })
+
+  it.each([
+    ['PMAX_FEED_SELECTION_MISMATCH', { feedId: 'another-google-feed', platform: 'google', active: true }],
+    ['PMAX_FEED_PLATFORM_INVALID', { feedId: 'google-vehicles-au', platform: 'facebook', active: true }],
+    ['PMAX_FEED_INACTIVE', { feedId: 'google-vehicles-au', platform: 'google', active: false }]
+  ])('rejects unsafe provider feed evidence with stable code %s', (code, inventoryOverride) => {
+    const base = input()
+    base.provider.inventorySource = { ...base.provider.inventorySource, ...inventoryOverride }
+
+    expect(normalizeGooglePmaxInventoryLaunchConfig(base)).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([expect.objectContaining({ code })])
     })
   })
 

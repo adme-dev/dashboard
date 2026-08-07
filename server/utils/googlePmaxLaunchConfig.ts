@@ -5,7 +5,7 @@ import {
 import { hashCanonicalLaunchJson } from '~~/server/utils/googlePmaxLaunchHash'
 
 export interface GooglePmaxInventoryLaunchConfig {
-  schemaVersion: 1
+  schemaVersion: 2
   briefId: string
   briefVersion: number
   tenantId: string
@@ -24,11 +24,18 @@ export interface GooglePmaxInventoryLaunchConfig {
   languages: string[]
   finalUrls: string[]
   merchantCenterId: string
+  inventorySource: {
+    providerId: 'social-dashboard'
+    linkId: string
+    feedId: string
+    platform: 'google'
+  }
   inventoryFilter: {
     listingSource: 'SHOPPING'
     conditions: Array<'NEW' | 'USED'>
   }
   assetGroup: {
+    mode: 'MERCHANT_ONLY' | 'PROVIDED'
     name: string
     businessName: string
     headlines: string[]
@@ -73,8 +80,17 @@ export interface GooglePmaxLaunchNormalizationInput {
     customerId: string
     accountCurrency: string
     accountTimezone: string
+    inventorySource: {
+      linkId: string
+      providerId: string
+      selectedFeedId: string
+      feedId: string
+      platform: string
+      active: boolean
+    }
     locations: Array<{ criterionId: string, displayName: string, sourceText: string }>
     assetGroup: {
+      requiredAssetCoverageComplete: boolean
       imageAssetResourceNames: string[]
       logoAssetResourceNames: string[]
       youtubeVideoAssetResourceNames: string[]
@@ -320,6 +336,27 @@ export function normalizeGooglePmaxInventoryLaunchConfig(
     issues.push(issue('PMAX_MERCHANT_CENTER_INVALID', 'merchant_centre_id', 'Merchant Center ID must contain digits only.'))
   }
 
+  const selectedFeedId = requiredString(fields.get('google_feed_id'), 'PMAX_FEED_SELECTION_MISSING', 'google_feed_id', issues)
+  const inventorySource = input.provider.inventorySource
+  const linkId = String(inventorySource.linkId || '').trim().toLowerCase()
+  const resolvedFeedId = String(inventorySource.feedId || '').trim()
+  const providerSelectedFeedId = String(inventorySource.selectedFeedId || '').trim()
+  if (!UUID_PATTERN.test(linkId)) {
+    issues.push(issue('PMAX_FEED_LINK_INVALID', 'provider.inventorySource.linkId', 'The client feed link must be a provider-resolved UUID.'))
+  }
+  if (inventorySource.providerId !== 'social-dashboard') {
+    issues.push(issue('PMAX_FEED_PROVIDER_INVALID', 'provider.inventorySource.providerId', 'The first launch workflow requires the XeroFlow vehicle feed provider.'))
+  }
+  if (inventorySource.platform !== 'google') {
+    issues.push(issue('PMAX_FEED_PLATFORM_INVALID', 'provider.inventorySource.platform', 'The selected source feed must be configured for Google.'))
+  }
+  if (!inventorySource.active) {
+    issues.push(issue('PMAX_FEED_INACTIVE', 'provider.inventorySource.active', 'The selected source feed must be active.'))
+  }
+  if (!resolvedFeedId || selectedFeedId !== providerSelectedFeedId || selectedFeedId !== resolvedFeedId) {
+    issues.push(issue('PMAX_FEED_SELECTION_MISMATCH', 'provider.inventorySource.feedId', 'Selected feed does not match resolved provider evidence.'))
+  }
+
   const budget = normalizeFixedFlightBudget({
     currency: typeof fields.get('budget_currency') === 'string' ? fields.get('budget_currency') as string : '',
     accountCurrency: input.provider.accountCurrency,
@@ -395,23 +432,67 @@ export function normalizeGooglePmaxInventoryLaunchConfig(
   }
 
   const assetGroupName = requiredString(fields.get('asset_group_name'), 'PMAX_ASSET_GROUP_NAME_MISSING', 'asset_group_name', issues)
-  const businessName = requiredString(fields.get('business_name'), 'PMAX_BUSINESS_NAME_MISSING', 'business_name', issues)
   const finalUrlValue = requiredString(fields.get('final_url'), 'PMAX_FINAL_URL_MISSING', 'final_url', issues)
   const finalUrl = finalUrlValue ? normalizeUrl(finalUrlValue, issues) : ''
+  const assetModeValue = typeof fields.get('asset_mode') === 'string'
+    ? (fields.get('asset_mode') as string).trim().toLowerCase()
+    : ''
+  const assetMode: GooglePmaxInventoryLaunchConfig['assetGroup']['mode'] = assetModeValue === 'merchant_only'
+    ? 'MERCHANT_ONLY'
+    : 'PROVIDED'
+  if (!['merchant_only', 'provided'].includes(assetModeValue)) {
+    issues.push(issue('PMAX_ASSET_MODE_INVALID', 'asset_mode', 'Asset mode must be merchant_only or provided.'))
+  }
+
+  const businessNameValue = typeof fields.get('business_name') === 'string'
+    ? (fields.get('business_name') as string).trim()
+    : ''
   const headlines = normalizedStrings(fields.get('headlines'))
   const longHeadlines = normalizedStrings(fields.get('long_headlines'))
   const descriptions = normalizedStrings(fields.get('descriptions'))
-  if (!headlines.length) issues.push(issue('PMAX_HEADLINES_MISSING', 'headlines', 'At least one headline is required.'))
-  if (!descriptions.length) issues.push(issue('PMAX_DESCRIPTIONS_MISSING', 'descriptions', 'At least one description is required.'))
 
   const imageAssetResourceNames = normalizedAssetResources(input.provider.assetGroup.imageAssetResourceNames, customerId, issues)
   const logoAssetResourceNames = normalizedAssetResources(input.provider.assetGroup.logoAssetResourceNames, customerId, issues)
   const youtubeVideoAssetResourceNames = normalizedAssetResources(input.provider.assetGroup.youtubeVideoAssetResourceNames, customerId, issues)
+  const hasAnyManualAsset = Boolean(
+    businessNameValue
+    || headlines.length
+    || longHeadlines.length
+    || descriptions.length
+    || imageAssetResourceNames.length
+    || logoAssetResourceNames.length
+    || youtubeVideoAssetResourceNames.length
+  )
+
+  if (assetMode === 'MERCHANT_ONLY' && hasAnyManualAsset) {
+    issues.push(issue(
+      'PMAX_ASSET_MODE_CONFLICT',
+      'asset_mode',
+      'Merchant-only launches must contain no linked text, image, logo, or video assets.'
+    ))
+  }
+  if (assetMode === 'PROVIDED') {
+    if (!businessNameValue) issues.push(issue('PMAX_BUSINESS_NAME_MISSING', 'business_name', 'Business name is required when manual assets are provided.'))
+    if (headlines.length < 3) issues.push(issue('PMAX_HEADLINES_INCOMPLETE', 'headlines', 'At least three headlines are required when manual assets are provided.'))
+    if (longHeadlines.length < 1) issues.push(issue('PMAX_LONG_HEADLINES_INCOMPLETE', 'long_headlines', 'At least one long headline is required when manual assets are provided.'))
+    if (descriptions.length < 2) issues.push(issue('PMAX_DESCRIPTIONS_INCOMPLETE', 'descriptions', 'At least two descriptions are required when manual assets are provided.'))
+    if (
+      !input.provider.assetGroup.requiredAssetCoverageComplete
+      || imageAssetResourceNames.length === 0
+      || logoAssetResourceNames.length === 0
+    ) {
+      issues.push(issue(
+        'PMAX_ASSET_COVERAGE_INCOMPLETE',
+        'provider.assetGroup',
+        'Manual assets must satisfy the complete provider-verified PMax asset requirements.'
+      ))
+    }
+  }
 
   if (issues.length || !budget.ok) return { ok: false, issues }
 
   const config: GooglePmaxInventoryLaunchConfig = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     briefId,
     briefVersion: input.brief.version,
     tenantId,
@@ -426,10 +507,17 @@ export function normalizeGooglePmaxInventoryLaunchConfig(
     languages,
     finalUrls: [finalUrl],
     merchantCenterId,
+    inventorySource: {
+      providerId: 'social-dashboard',
+      linkId,
+      feedId: resolvedFeedId,
+      platform: 'google'
+    },
     inventoryFilter: { listingSource: 'SHOPPING', conditions },
     assetGroup: {
+      mode: assetMode,
       name: assetGroupName,
-      businessName,
+      businessName: businessNameValue,
       headlines,
       longHeadlines,
       descriptions,
