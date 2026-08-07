@@ -12,6 +12,8 @@ const mockGetLaunch = vi.fn()
 const mockCreateLaunch = vi.fn()
 const mockApproveLaunch = vi.fn()
 const mockQueryOne = vi.fn()
+const mockGetOnboardingAttestation = vi.fn()
+const mockCreateOnboardingAttestation = vi.fn()
 
 let query: Record<string, unknown> = {}
 let body: Record<string, unknown> = {}
@@ -51,6 +53,15 @@ vi.mock('~~/server/utils/googlePmaxLaunchStore', async (importOriginal) => {
     getGooglePmaxLaunch: (...args: unknown[]) => mockGetLaunch(...args),
     createGooglePmaxLaunch: (...args: unknown[]) => mockCreateLaunch(...args),
     approveGooglePmaxLaunch: (...args: unknown[]) => mockApproveLaunch(...args)
+  }
+})
+
+vi.mock('~~/server/utils/googlePmaxOnboardingAttestation', async (importOriginal) => {
+  const original = await importOriginal<typeof import('~~/server/utils/googlePmaxOnboardingAttestation')>()
+  return {
+    ...original,
+    getLatestGooglePmaxOnboardingAttestation: (...args: unknown[]) => mockGetOnboardingAttestation(...args),
+    createGooglePmaxOnboardingAttestation: (...args: unknown[]) => mockCreateOnboardingAttestation(...args)
   }
 })
 
@@ -127,6 +138,7 @@ function storedLaunch(overrides: Record<string, unknown> = {}) {
     configVersion: 3,
     configHash: 'a'.repeat(64),
     state: 'READY_FOR_APPROVAL',
+    normalizedConfig: normalizedConfig(),
     ...overrides
   }
 }
@@ -145,6 +157,11 @@ describe('Google PMax launch API boundaries', () => {
     mockGetLaunch.mockResolvedValue(storedLaunch())
     mockCreateLaunch.mockResolvedValue({ launch: storedLaunch({ state: 'DRAFT' }), isReplay: false })
     mockApproveLaunch.mockResolvedValue(storedLaunch({ state: 'APPROVED' }))
+    mockGetOnboardingAttestation.mockResolvedValue(null)
+    mockCreateOnboardingAttestation.mockResolvedValue({
+      attestation: { id: '9f6aca34-2ed4-4547-8e60-a3631e6d316e', active: true },
+      isReplay: false
+    })
     mockQueryOne.mockResolvedValue({
       id: ids.brief,
       client_id: ids.client,
@@ -288,5 +305,45 @@ describe('Google PMax launch API boundaries', () => {
       statusCode: 409,
       statusMessage: 'Approval is stale or invalid for the current launch state.'
     })
+  })
+
+  it('returns the latest expired onboarding attestation when no active evidence remains', async () => {
+    const expired = { id: '9f6aca34-2ed4-4547-8e60-a3631e6d316e', active: false }
+    mockGetOnboardingAttestation.mockResolvedValueOnce(null).mockResolvedValueOnce(expired)
+    const handler = (await import('~~/server/api/agency/social/google/pmax-launches/[id]/onboarding.get')).default
+
+    const result = await handler({ context: {} } as never)
+
+    expect(mockRequirePermission).toHaveBeenCalledWith(expect.anything(), 'MEDIA_BUYING')
+    expect(mockGetOnboardingAttestation).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      launchId,
+      tenantId: ids.tenant
+    }))
+    expect(mockGetOnboardingAttestation).toHaveBeenNthCalledWith(2, expect.objectContaining({ activeOnly: false }))
+    expect(result).toEqual({ attestation: expired, active: false })
+  })
+
+  it('allows only an admin to attest onboarding facts against the stored config', async () => {
+    const onboardingEvidence = { countryCode: 'AU' }
+    body = {
+      evidence: onboardingEvidence,
+      reason: 'Verified against Google admin surfaces and client evidence.'
+    }
+    const handler = (await import('~~/server/api/agency/social/google/pmax-launches/[id]/onboarding.post')).default
+
+    const result = await handler({ context: {} } as never)
+
+    expect(mockRequirePermission).toHaveBeenCalledWith(expect.anything(), 'ADMIN')
+    expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(expect.anything(), ids.client)
+    expect(mockCreateOnboardingAttestation).toHaveBeenCalledWith(expect.objectContaining({
+      launchId,
+      tenantId: ids.tenant,
+      actorId: ids.actor,
+      configVersion: 3,
+      configHash: 'a'.repeat(64),
+      evidence: onboardingEvidence,
+      reason: body.reason
+    }))
+    expect(result.isReplay).toBe(false)
   })
 })
