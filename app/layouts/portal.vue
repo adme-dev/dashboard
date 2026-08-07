@@ -169,7 +169,7 @@ async function handleLogout() {
 </script>
 
 <template>
-  <UDashboardGroup unit="rem">
+  <UDashboardGroup unit="rem" class="portal-print-shell">
     <UDashboardSidebar
       id="portal"
       v-model:open="open"
@@ -236,10 +236,34 @@ async function handleLogout() {
       </template>
     </UDashboardSidebar>
 
-    <div class="flex-1 w-full min-w-0 min-h-0 flex flex-col overflow-x-hidden overflow-y-auto print:overflow-visible">
+    <div class="flex-1 w-full min-w-0 min-h-0 flex flex-col overflow-x-hidden overflow-y-auto print:overflow-visible portal-print-content">
       <slot />
     </div>
     <!-- Docked customer co-pilot (flag-gated launcher; server endpoints are the real boundary). -->
     <PortalCopilot class="print:hidden" />
   </UDashboardGroup>
 </template>
+
+<style>
+@media print {
+  html,
+  body,
+  #__nuxt {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .portal-print-shell {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  .portal-print-content {
+    display: block !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+}
+</style>
