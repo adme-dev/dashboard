@@ -68,6 +68,17 @@ const evidence: GooglePmaxPreflightEvidence = {
     vehicleItemCount: 42,
     disapprovedItemCount: 0
   },
+  internalFeed: {
+    linkId: '7e8396fd-1515-4e5e-a364-3d7c3a3dc1ac',
+    feedId: 'google-vehicles-au',
+    platform: 'google',
+    status: 'ready',
+    matchedItemCount: 42,
+    validatedItemCount: 42,
+    invalidItemCount: 0,
+    conditions: ['NEW'],
+    fetchedAt: '2026-07-22T07:55:00.000Z'
+  },
   conversions: [{
     conversionActionId: '111',
     resourceName: 'customers/1234567890/conversionActions/111',
@@ -98,6 +109,7 @@ describe('Google PMax read-only preflight', () => {
       expect.objectContaining({ code: 'PMAX_ACCOUNT_READY', status: 'pass' }),
       expect.objectContaining({ code: 'PMAX_BUDGET_READY', status: 'pass' }),
       expect.objectContaining({ code: 'PMAX_MERCHANT_READY', status: 'pass' }),
+      expect.objectContaining({ code: 'PMAX_INTERNAL_FEED_READY', status: 'pass' }),
       expect.objectContaining({ code: 'PMAX_CONVERSIONS_READY', status: 'pass' }),
       expect.objectContaining({ code: 'PMAX_ASSETS_MERCHANT_ONLY', status: 'warning' })
     ]))
@@ -110,6 +122,7 @@ describe('Google PMax read-only preflight', () => {
       ...evidence,
       connection: { ...evidence.connection, clientId: '00000000-0000-4000-8000-000000000000', currency: 'USD' },
       merchant: { ...evidence.merchant, linkedMerchantCenterIds: [], eligibleItemCount: 0, vehicleItemCount: 0 },
+      internalFeed: { ...evidence.internalFeed, status: 'blocked', validatedItemCount: 0, invalidItemCount: 42 },
       conversions: [{ ...evidence.conversions[0]!, status: 'REMOVED', recentConversions: false }],
       assets: { ...evidence.assets, mode: 'provided', textCoverageComplete: true, mediaCoverageComplete: false }
     })
@@ -122,9 +135,40 @@ describe('Google PMax read-only preflight', () => {
       expect.objectContaining({ code: 'PMAX_ACCOUNT_OWNERSHIP_MISMATCH', status: 'fail' }),
       expect.objectContaining({ code: 'PMAX_ACCOUNT_CURRENCY_MISMATCH', status: 'fail' }),
       expect.objectContaining({ code: 'PMAX_MERCHANT_LINK_MISSING', status: 'fail' }),
+      expect.objectContaining({ code: 'PMAX_INTERNAL_FEED_NOT_READY', status: 'fail' }),
       expect.objectContaining({ code: 'PMAX_CONVERSIONS_NOT_READY', status: 'fail' }),
       expect.objectContaining({ code: 'PMAX_ASSET_COVERAGE_INCOMPLETE', status: 'fail' })
     ]))
+  })
+
+  it('keeps a ready source feed launch reviewable when Merchant inventory counts lag', async () => {
+    const readEvidence = vi.fn().mockResolvedValue({
+      ...evidence,
+      merchant: { ...evidence.merchant, eligibleItemCount: 40, vehicleItemCount: 40 }
+    })
+
+    const result = await createGooglePmaxPreflight({ readEvidence }).run(config)
+
+    expect(result.ready).toBe(true)
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      code: 'PMAX_FEED_COUNT_DRIFT',
+      status: 'warning'
+    }))
+  })
+
+  it('blocks inventory conditions that are absent from the client-owned source feed', async () => {
+    const readEvidence = vi.fn().mockResolvedValue({
+      ...evidence,
+      internalFeed: { ...evidence.internalFeed, conditions: ['USED'] }
+    })
+
+    const result = await createGooglePmaxPreflight({ readEvidence }).run(config)
+
+    expect(result.ready).toBe(false)
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      code: 'PMAX_INTERNAL_FEED_CONDITION_MISMATCH',
+      status: 'fail'
+    }))
   })
 
   it('normalizes provider failures without leaking provider messages or credentials', async () => {

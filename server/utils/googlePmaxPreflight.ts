@@ -5,7 +5,7 @@ export type GooglePmaxPreflightStatus = 'pass' | 'warning' | 'fail'
 
 export interface GooglePmaxPreflightCheck {
   code: string
-  category: 'account' | 'budget' | 'merchant' | 'conversion' | 'targeting' | 'assets' | 'destination' | 'provider'
+  category: 'account' | 'budget' | 'inventory' | 'merchant' | 'conversion' | 'targeting' | 'assets' | 'destination' | 'provider'
   status: GooglePmaxPreflightStatus
   message: string
   remediation: string | null
@@ -27,6 +27,17 @@ export interface GooglePmaxPreflightEvidence {
     eligibleItemCount: number
     vehicleItemCount: number
     disapprovedItemCount: number
+  }
+  internalFeed: {
+    linkId: string
+    feedId: string
+    platform: 'google' | 'facebook'
+    status: 'ready' | 'partial' | 'blocked' | 'empty' | 'unknown'
+    matchedItemCount: number
+    validatedItemCount: number
+    invalidItemCount: number
+    conditions: Array<'NEW' | 'USED'>
+    fetchedAt: string
   }
   conversions: Array<{
     conversionActionId: string
@@ -211,6 +222,57 @@ function merchantChecks(
   return [check('PMAX_MERCHANT_READY', 'merchant', 'pass', 'Merchant Center linkage and eligible vehicle inventory are ready.')]
 }
 
+function internalFeedChecks(
+  config: GooglePmaxInventoryLaunchConfig,
+  evidence: GooglePmaxPreflightEvidence
+): GooglePmaxPreflightCheck[] {
+  const feed = evidence.internalFeed
+  if (
+    feed.platform !== 'google'
+    || feed.status !== 'ready'
+    || feed.matchedItemCount <= 0
+    || feed.validatedItemCount <= 0
+    || feed.invalidItemCount !== 0
+    || feed.validatedItemCount !== feed.matchedItemCount
+  ) {
+    return [check(
+      'PMAX_INTERNAL_FEED_NOT_READY',
+      'inventory',
+      'fail',
+      'The client-owned Google vehicle feed is empty, incomplete, or blocked.',
+      'Resolve source feed validation and regenerate the Google feed before launch approval.'
+    )]
+  }
+
+  const conditions = new Set(feed.conditions)
+  if (config.inventoryFilter.conditions.some(condition => !conditions.has(condition))) {
+    return [check(
+      'PMAX_INTERNAL_FEED_CONDITION_MISMATCH',
+      'inventory',
+      'fail',
+      'The approved inventory conditions are not present in the client-owned source feed.',
+      'Correct the brief condition or publish a reconciled feed containing the approved stock type.'
+    )]
+  }
+
+  const checks = [check(
+    'PMAX_INTERNAL_FEED_READY',
+    'inventory',
+    'pass',
+    'The active client-owned Google feed contains validated inventory for the approved conditions.'
+  )]
+  if (feed.validatedItemCount !== evidence.merchant.vehicleItemCount) {
+    checks.push(check(
+      'PMAX_FEED_COUNT_DRIFT',
+      'inventory',
+      'warning',
+      'Validated XeroFlow inventory and Merchant Center vehicle counts do not currently match.',
+      'Confirm Merchant Center has completed its latest import and review rejected or delayed items.'
+    ))
+  }
+  return checks
+}
+
 function conversionChecks(
   config: GooglePmaxInventoryLaunchConfig,
   evidence: GooglePmaxPreflightEvidence
@@ -303,6 +365,7 @@ export function createGooglePmaxPreflight(dependencies: GooglePmaxPreflightDepen
         const checks = [
           ...accountChecks(config, evidence),
           ...budgetChecks(config),
+          ...internalFeedChecks(config, evidence),
           ...merchantChecks(config, evidence),
           ...conversionChecks(config, evidence),
           ...targetingChecks(config),
