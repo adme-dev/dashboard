@@ -1,10 +1,33 @@
 <script setup lang="ts">
-import { CalendarDate, parseDate, type DateValue } from '@internationalized/date'
+import { parseDate, type CalendarDate, type DateValue } from '@internationalized/date'
+
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 const { fmtCurrency, fmtCompact, fmtPercent, getPlatformIcon } = useAnalytics()
 const route = useRoute()
 const router = useRouter()
+const { user } = usePortalAuth()
+const colorMode = useColorMode()
+
+// Print-to-PDF: flip to light theme for ink-friendly output, let charts
+// re-render, print, then restore whatever the user had.
+const printing = ref(false)
+async function exportPdf() {
+  printing.value = true
+  const prev = colorMode.preference
+  const restore = () => {
+    colorMode.preference = prev
+    printing.value = false
+    window.removeEventListener('afterprint', restore)
+  }
+  window.addEventListener('afterprint', restore)
+  colorMode.preference = 'light'
+  await nextTick()
+  await new Promise(resolve => setTimeout(resolve, 400))
+  window.print()
+  // Safari fires afterprint unreliably — belt-and-braces restore.
+  setTimeout(restore, 2000)
+}
 
 interface AnalyticsOverview {
   totals: AnalyticsTotals
@@ -189,7 +212,7 @@ async function refreshTrend() {
 }
 
 const trendPoints = computed(() => trendData.value?.dataPoints || [])
-const trendResolution = computed(() => trendData.value?.resolution || (trendPoints.value.length > 0 && trendPoints.value.every((p) => p.date.length === 7) ? 'month' : undefined))
+const trendResolution = computed(() => trendData.value?.resolution || (trendPoints.value.length > 0 && trendPoints.value.every(p => p.date.length === 7) ? 'month' : undefined))
 
 function pctChange(current: number | null, prev: number | null): number | null {
   if (current == null || prev == null || prev === 0) return null
@@ -327,8 +350,21 @@ await Promise.all([refreshOverview(), refreshTrend()])
 
 <template>
   <div class="p-6 space-y-6 w-full">
+    <!-- Print-only report header -->
+    <div class="hidden print:block mb-4 pb-3 border-b border-default">
+      <div class="flex items-baseline justify-between">
+        <h1 class="text-xl font-bold">
+          {{ user?.clientName || 'Client' }} — Ad Performance
+        </h1>
+        <span class="text-sm">{{ formatDate(startDate) }} – {{ formatDate(endDate) }}</span>
+      </div>
+      <p class="text-xs mt-1">
+        Generated {{ new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) }} · XeroFlow Client Portal
+      </p>
+    </div>
+
     <!-- Header -->
-    <div>
+    <div class="print:hidden">
       <h1 class="text-2xl font-bold text-default">
         Ad Performance
       </h1>
@@ -338,7 +374,7 @@ await Promise.all([refreshOverview(), refreshTrend()])
     </div>
 
     <!-- Filters -->
-    <div class="flex flex-wrap items-center gap-3 p-4 bg-elevated/50 rounded-lg border border-default">
+    <div class="flex flex-wrap items-center gap-3 p-4 bg-elevated/50 rounded-lg border border-default print:hidden">
       <UPopover>
         <UButton
           color="neutral"
@@ -388,6 +424,15 @@ await Promise.all([refreshOverview(), refreshTrend()])
         variant="outline"
         color="neutral"
         class="ml-auto"
+      />
+      <UButton
+        icon="i-lucide-printer"
+        label="Export PDF"
+        size="sm"
+        variant="outline"
+        color="neutral"
+        :loading="printing"
+        @click="exportPdf"
       />
       <UCheckbox
         v-model="runningOnly"
@@ -453,12 +498,12 @@ await Promise.all([refreshOverview(), refreshTrend()])
               class="w-32"
             />
           </div>
-            <AnalyticsTrendChart
-              :data="trendPoints"
-              :metric="trendMetric"
-              :resolution="trendResolution"
-              :loading="trendStatus === 'pending'"
-            />
+          <AnalyticsTrendChart
+            :data="trendPoints"
+            :metric="trendMetric"
+            :resolution="trendResolution"
+            :loading="trendStatus === 'pending'"
+          />
         </div>
 
         <AnalyticsCampaignDataFreshness
@@ -737,3 +782,10 @@ await Promise.all([refreshOverview(), refreshTrend()])
     />
   </div>
 </template>
+
+<style>
+@media print {
+  @page { size: A4 landscape; margin: 12mm; }
+  .grid > * , section, [class*="rounded-lg"] { break-inside: avoid; }
+}
+</style>

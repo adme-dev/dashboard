@@ -5,6 +5,28 @@ const { fmtCurrency, fmtCompact, fmtPercent, getPlatformLabel, getPlatformIcon }
 
 const route = useRoute()
 const router = useRouter()
+const { user } = usePortalAuth()
+const colorMode = useColorMode()
+
+// Print-to-PDF: flip to light theme for ink-friendly output, let charts
+// re-render, print, then restore whatever the user had.
+const printing = ref(false)
+async function exportPdf() {
+  printing.value = true
+  const prev = colorMode.preference
+  const restore = () => {
+    colorMode.preference = prev
+    printing.value = false
+    window.removeEventListener('afterprint', restore)
+  }
+  window.addEventListener('afterprint', restore)
+  colorMode.preference = 'light'
+  await nextTick()
+  await new Promise(resolve => setTimeout(resolve, 400))
+  window.print()
+  // Safari fires afterprint unreliably — belt-and-braces restore.
+  setTimeout(restore, 2000)
+}
 function canonicalizePlatform(raw: string | null | undefined): string {
   const value = String(raw ?? '').trim().toLowerCase()
   if (value === 'google' || value === 'google_ads') {
@@ -137,7 +159,7 @@ async function refreshTrend() {
 }
 
 const trendPoints = computed(() => trendData.value?.dataPoints || [])
-const trendResolution = computed(() => trendData.value?.resolution || (trendPoints.value.length > 0 && trendPoints.value.every((p) => p.date.length === 7) ? 'month' : undefined))
+const trendResolution = computed(() => trendData.value?.resolution || (trendPoints.value.length > 0 && trendPoints.value.every(p => p.date.length === 7) ? 'month' : undefined))
 
 watch(apiQuery, () => {
   refreshOverview()
@@ -203,8 +225,21 @@ await Promise.all([refreshOverview(), refreshTrend()])
 
 <template>
   <div class="p-6 space-y-6 w-full">
+    <!-- Print-only report header -->
+    <div class="hidden print:block mb-4 pb-3 border-b border-default">
+      <div class="flex items-baseline justify-between">
+        <h1 class="text-xl font-bold">
+          {{ user?.clientName || 'Client' }} — {{ getPlatformLabel(platform) }} Performance
+        </h1>
+        <span class="text-sm">{{ startDate }} – {{ endDate }}</span>
+      </div>
+      <p class="text-xs mt-1">
+        Generated {{ new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) }} · XeroFlow Client Portal
+      </p>
+    </div>
+
     <!-- Header -->
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-3 print:hidden">
       <UButton
         to="/portal/analytics"
         variant="ghost"
@@ -224,7 +259,7 @@ await Promise.all([refreshOverview(), refreshTrend()])
     </div>
 
     <!-- Date Range -->
-    <div class="flex flex-wrap items-center gap-3">
+    <div class="flex flex-wrap items-center gap-3 print:hidden">
       <UInput
         v-model="startDate"
         type="date"
@@ -247,6 +282,15 @@ await Promise.all([refreshOverview(), refreshTrend()])
         variant="outline"
         color="neutral"
         class="ml-auto"
+      />
+      <UButton
+        icon="i-lucide-printer"
+        label="Export PDF"
+        size="sm"
+        variant="outline"
+        color="neutral"
+        :loading="printing"
+        @click="exportPdf"
       />
     </div>
 
@@ -318,3 +362,10 @@ await Promise.all([refreshOverview(), refreshTrend()])
     />
   </div>
 </template>
+
+<style>
+@media print {
+  @page { size: A4 landscape; margin: 12mm; }
+  .grid > *, section, [class*="rounded-lg"] { break-inside: avoid; }
+}
+</style>
