@@ -208,6 +208,53 @@ describe('Google PMax launch store', () => {
     expect(updateSql).toMatch(/state = \$3[\s\S]*state = \$4[\s\S]*config_version = \$5[\s\S]*config_hash = \$6/)
   })
 
+  it('persists a bounded preflight result only with the matching readiness transition', async () => {
+    const preflightResult = { ready: true, blockerCount: 0, evidenceHash: 'd'.repeat(64) }
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT brief_id')) return { rows: [{ brief_id: ids.brief }] }
+      if (sql.includes('pg_advisory_xact_lock')) return { rows: [] }
+      if (sql.includes('SELECT') && sql.includes('FOR UPDATE')) return { rows: [launchRow()] }
+      if (sql.includes('config_version >')) return { rows: [] }
+      if (sql.includes('UPDATE campaign_launches')) {
+        return { rows: [launchRow({ state: 'READY_FOR_APPROVAL', preflight_result: preflightResult })] }
+      }
+      if (sql.includes('INSERT INTO campaign_launch_events')) return { rows: [] }
+      throw new Error(`Unexpected SQL: ${sql}`)
+    })
+
+    const launch = await transitionGooglePmaxLaunch({
+      launchId: ids.launch,
+      tenantId: ids.tenant,
+      expectedState: 'DRAFT',
+      toState: 'READY_FOR_APPROVAL',
+      expectedConfigVersion: 1,
+      expectedConfigHash: configHash,
+      actorId: ids.actor,
+      eventType: 'PREFLIGHT_PASSED',
+      results: { preflight: preflightResult }
+    })
+
+    expect(launch.preflightResult).toEqual(preflightResult)
+    const update = mockQuery.mock.calls.find(call => String(call[0]).includes('UPDATE campaign_launches'))
+    expect(update?.[0]).toContain('preflight_result = COALESCE($8::jsonb, preflight_result)')
+    expect(JSON.parse(String(update?.[1]?.[7]))).toEqual(preflightResult)
+  })
+
+  it('rejects result fields on unrelated state transitions before opening a transaction', async () => {
+    await expect(transitionGooglePmaxLaunch({
+      launchId: ids.launch,
+      tenantId: ids.tenant,
+      expectedState: 'APPROVED',
+      toState: 'EXECUTING',
+      expectedConfigVersion: 1,
+      expectedConfigHash: configHash,
+      actorId: ids.actor,
+      eventType: 'CREATE_CLAIMED',
+      results: { preflight: { ready: true } }
+    })).rejects.toMatchObject({ code: 'LAUNCH_RESULT_UPDATE_REJECTED' })
+    expect(mockTransaction).not.toHaveBeenCalled()
+  })
+
   it('rejects a stale or concurrent state before writing an event', async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [{ brief_id: ids.brief }] })

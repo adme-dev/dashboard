@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { transaction } from '~~/server/utils/db'
+import { queryRows, transaction } from '~~/server/utils/db'
 import {
   GooglePmaxLaunchJsonError,
   hashSerializedCanonicalLaunchJson,
@@ -74,6 +74,7 @@ type LaunchConflictCode
     | 'LAUNCH_APPROVAL_CONFLICT'
     | 'LAUNCH_CONFIG_HASH_MISMATCH'
     | 'LAUNCH_EVENT_PAYLOAD_REJECTED'
+    | 'LAUNCH_RESULT_UPDATE_REJECTED'
 
 export class GooglePmaxLaunchConflictError extends Error {
   constructor(public readonly code: LaunchConflictCode, message: string) {
@@ -372,9 +373,35 @@ export async function transitionGooglePmaxLaunch(input: {
   eventType: string
   payload?: Record<string, unknown>
   providerRequestId?: string | null
+  results?: {
+    preflight?: Record<string, unknown>
+    providerResources?: Record<string, unknown>
+    verification?: Record<string, unknown>
+  }
 }): Promise<GooglePmaxLaunch> {
   const payload = input.payload === undefined ? {} : input.payload
   const payloadJson = serializeSafePayload(payload)
+  const results = input.results || {}
+  const allowedPreflight = ['PREFLIGHT_FAILED', 'READY_FOR_APPROVAL'].includes(input.toState)
+  const allowedProviderResources = input.toState === 'CREATED_PAUSED'
+  const allowedVerification = ['VERIFICATION_FAILED', 'VERIFIED_PAUSED', 'ENABLED_VERIFIED'].includes(input.toState)
+  if (
+    (results.preflight !== undefined && !allowedPreflight)
+    || (results.providerResources !== undefined && !allowedProviderResources)
+    || (results.verification !== undefined && !allowedVerification)
+  ) {
+    throw new GooglePmaxLaunchConflictError(
+      'LAUNCH_RESULT_UPDATE_REJECTED',
+      'Launch result fields can only be written by their matching lifecycle transition.'
+    )
+  }
+  const preflightJson = results.preflight === undefined ? null : serializeSafePayload(results.preflight)
+  const providerResourcesJson = results.providerResources === undefined
+    ? null
+    : serializeSafePayload(results.providerResources)
+  const verificationJson = results.verification === undefined
+    ? null
+    : serializeSafePayload(results.verification)
 
   return transaction(async (db) => {
     const current = await getLockedLaunch(db, input.launchId, input.tenantId)
@@ -404,7 +431,10 @@ export async function transitionGooglePmaxLaunch(input: {
     const updated = await db.query(
       `UPDATE campaign_launches
           SET state = $3,
-              retry_from_state = $7
+              retry_from_state = $7,
+              preflight_result = COALESCE($8::jsonb, preflight_result),
+              provider_resources = COALESCE($9::jsonb, provider_resources),
+              verification_result = COALESCE($10::jsonb, verification_result)
         WHERE id = $1::uuid
           AND tenant_id = $2::uuid
           AND state = $4
@@ -418,7 +448,10 @@ export async function transitionGooglePmaxLaunch(input: {
         input.expectedState,
         input.expectedConfigVersion,
         input.expectedConfigHash,
-        retryFromState
+        retryFromState,
+        preflightJson,
+        providerResourcesJson,
+        verificationJson
       ]
     )
     if (!updated.rows[0]) {
@@ -436,6 +469,44 @@ export async function transitionGooglePmaxLaunch(input: {
     })
     return launch
   })
+}
+
+export async function getGooglePmaxLaunch(input: {
+  launchId: string
+  tenantId: string
+}): Promise<GooglePmaxLaunch | null> {
+  const rows = await queryRows(
+    `SELECT ${LAUNCH_COLUMNS}
+       FROM campaign_launches
+      WHERE id = $1::uuid
+        AND tenant_id = $2::uuid
+      LIMIT 1`,
+    [input.launchId, input.tenantId]
+  )
+  return rows[0] ? toLaunch(rows[0]) : null
+}
+
+export async function listGooglePmaxLaunches(input: {
+  tenantId: string
+  clientId?: string
+  limit?: number
+}): Promise<GooglePmaxLaunch[]> {
+  const limit = Math.min(Math.max(Math.trunc(input.limit || 50), 1), 100)
+  const params: unknown[] = [input.tenantId]
+  const clientFilter = input.clientId
+    ? `AND client_id = $${params.push(input.clientId)}::uuid`
+    : ''
+  params.push(limit)
+  const rows = await queryRows(
+    `SELECT ${LAUNCH_COLUMNS}
+       FROM campaign_launches
+      WHERE tenant_id = $1::uuid
+        ${clientFilter}
+      ORDER BY updated_at DESC, id DESC
+      LIMIT $${params.length}`,
+    params
+  )
+  return rows.map(toLaunch)
 }
 
 export async function approveGooglePmaxLaunch(input: {
