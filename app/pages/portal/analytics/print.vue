@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import PortalAnalyticsPrintReport from '~/components/analytics/PortalAnalyticsPrintReport.vue'
 import { buildPortalAnalyticsPrintUrl, normalizePortalAnalyticsPrintFilters } from '~/utils/portalAnalyticsPrint'
 
 definePageMeta({ layout: false, middleware: 'portal-auth' })
@@ -126,7 +125,7 @@ onMounted(() => {
       </div>
     </main>
 
-    <PortalAnalyticsPrintReport
+    <AnalyticsPortalAnalyticsPrintReport
       v-else-if="report"
       :report="report"
       :client-name="clientName"

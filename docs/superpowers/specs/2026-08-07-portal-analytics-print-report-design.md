@@ -1,7 +1,7 @@
 # Portal Analytics Print Report Design
 
 **Date:** 7 August 2026  
-**Status:** Draft for user review  
+**Status:** Implemented
 **Scope:** Client portal analytics export at `/portal/analytics`
 
 ## Problem
@@ -65,7 +65,7 @@ The existing **Export PDF** button opens this route in a new tab with the curren
 - Coordinates font/chart readiness before enabling print.
 - Contains only the screen toolbar and the print-report component.
 
-### `app/components/analytics/PortalAnalyticsPrintReport.vue`
+### `app/components/analytics/PortalAnalyticsPrintReport.client.vue`
 
 - Pure report presentation component.
 - Accepts a complete typed report model plus client identity and date range.

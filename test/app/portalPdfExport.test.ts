@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 const layoutSource = readFileSync('app/layouts/portal.vue', 'utf8')
 const analyticsSource = readFileSync('app/pages/portal/analytics/index.vue', 'utf8')
-const printReportPath = 'app/components/analytics/PortalAnalyticsPrintReport.vue'
+const printReportPath = 'app/components/analytics/PortalAnalyticsPrintReport.client.vue'
 const printReportSource = existsSync(printReportPath) ? readFileSync(printReportPath, 'utf8') : ''
 const printPagePath = 'app/pages/portal/analytics/print.vue'
 const printPageSource = existsSync(printPagePath) ? readFileSync(printPagePath, 'utf8') : ''

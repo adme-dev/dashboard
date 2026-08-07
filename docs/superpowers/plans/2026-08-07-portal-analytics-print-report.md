@@ -40,7 +40,7 @@
 ## Task 3: Build the physical-page report
 
 **Files:**
-- Create: `app/components/analytics/PortalAnalyticsPrintReport.vue`
+- Create: `app/components/analytics/PortalAnalyticsPrintReport.client.vue`
 - Modify: `test/app/portalPdfExport.test.ts`
 
 1. Extend the browser/PDF regression with a representative report fixture and assertions for A4 portrait, multi-page output, first and final section text, no horizontal overflow, four computed KPI columns, two computed section columns, repeated table headers, and absence of interactive controls.
