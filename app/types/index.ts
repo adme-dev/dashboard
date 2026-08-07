@@ -2679,3 +2679,194 @@ export interface PortalAnalyticsPrintFilters {
   runningOnly: boolean
   metric: PortalAnalyticsPrintMetric
 }
+
+export interface PortalAnalyticsTotals {
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+  revenue: number
+  cpc: number | null
+  cpm: number | null
+  ctr: number | null
+  roas: number | null
+  leads?: number
+  costPerLead?: number | null
+  costPerConversion?: number | null
+  conversionRate?: number | null
+  leadUncontacted?: number
+  leadNew?: number
+  leadContacted?: number
+  leadContactedAt?: number
+  leadQualified?: number
+  leadWon?: number
+  leadLost?: number
+  avgResponseMinutes?: number | null
+}
+
+export interface PortalAnalyticsPlatformRow extends PortalAnalyticsTotals {
+  platform: string
+  displayName: string
+  color: string
+  campaignCount?: number
+  pctOfTotal: number
+}
+
+export interface PortalAnalyticsOverview {
+  totals: PortalAnalyticsTotals
+  previousPeriod: PortalAnalyticsTotals
+  byPlatform: PortalAnalyticsPlatformRow[]
+}
+
+export interface PortalAnalyticsTrendResponse {
+  dataPoints: Array<{ date: string, value: number, byPlatform: Record<string, number> }>
+  resolution?: 'day' | 'week' | 'month'
+}
+
+export interface PortalAnalyticsCampaign {
+  campaignId: string | null
+  mediaSpendId: string
+  campaignName: string
+  platform: string
+  campaignStatus?: string | null
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+  cpc: number | null
+  ctr: number | null
+  leadCount?: number
+  costPerLead?: number | null
+}
+
+export interface PortalAnalyticsCampaignsResponse {
+  campaigns: PortalAnalyticsCampaign[]
+  total: number
+}
+
+export interface PortalAnalyticsFreshnessResponse {
+  generatedAt: string
+  sources: Array<{
+    platform: string
+    campaignCount: number
+    lastSourceSyncAt: string | null
+    lastDetailSuccessAt: string | null
+    refreshingCount: number
+    failedCount: number
+  }>
+}
+
+export interface PortalAnalyticsFunnelRow {
+  channel: string
+  spend: number
+  sessions: number
+  engagedSessions: number
+  keyEvents: number
+  leads: number
+  totalUsers: number
+  newUsers: number
+  engagementRate: number | null
+  avgSessionDuration: number | null
+  costPerSession: number | null
+  costPerKeyEvent: number | null
+  costPerLead: number | null
+  sessionToLeadRate: number | null
+}
+
+export interface PortalAnalyticsWebsiteFunnelResponse {
+  channels: PortalAnalyticsFunnelRow[]
+  totals: PortalAnalyticsFunnelRow
+  hasGa4: boolean
+}
+
+export interface PortalAnalyticsTrackingSummary {
+  visitors: number
+  sessions: number
+  pageViews: number
+  events: number
+  avgEngagementSeconds: number
+  sessionsScrolled75: number
+  callClicks: number
+  formSubmits: number
+  generateLeads: number
+  testDriveBookings: number
+  interactionLeads: number
+  vehicleViews: number
+}
+
+export interface PortalAnalyticsLeadHealth {
+  status: 'inactive' | 'attention' | 'healthy'
+  formSubmits: number
+  confirmedLeads: number
+  crmLinkedLeads: number
+  campaignAttributedLeads: number
+  browserLinkedLeads: number
+  providerNativeLeads: number
+  unmatchedSubmissions: number
+  contactedLeads: number
+  qualifiedLeads: number
+  wonLeads: number
+  lostLeads: number
+  avgResponseMinutes: number | null
+  attributionCoverage: number
+  issues: string[]
+}
+
+export interface PortalAnalyticsTrackingTimeseries {
+  points: Array<{ day: string, visitors: number, events: number }>
+}
+
+export interface PortalAnalyticsTrackingFunnel {
+  steps: Array<{ step: string, sessions: number, rate: number }>
+}
+
+export interface PortalAnalyticsTrackingBreakdown {
+  rows: Array<{ key: string, count: number }>
+}
+
+export interface PortalAnalyticsPersonaResponse {
+  enabled: boolean
+  generatedAt: string
+  metrics: null | {
+    totalPersonas: number
+    returningPersonas: number
+    confirmedLeads: number
+    websiteMatchedLeads: number
+    crmLinkedPersonas: number
+    productIntentPersonas: number
+    attributedLeads: number
+    conflictPersonas: number
+    returningRate: number
+    websiteMatchRate: number
+    crmMatchRate: number
+    attributionCoverage: number
+  }
+  sourceMix: Array<{ source: string, count: number }>
+  lifecycleMix: Array<{ stage: string, count: number }>
+}
+
+export type PortalAnalyticsOptionalSection<T> =
+  | { status: 'available', data: T }
+  | { status: 'unavailable', data: null }
+
+export interface PortalAnalyticsPrintSections {
+  freshness: PortalAnalyticsOptionalSection<PortalAnalyticsFreshnessResponse>
+  websiteFunnel: PortalAnalyticsOptionalSection<PortalAnalyticsWebsiteFunnelResponse>
+  trackingSummary: PortalAnalyticsOptionalSection<PortalAnalyticsTrackingSummary>
+  trackingHealth: PortalAnalyticsOptionalSection<PortalAnalyticsLeadHealth>
+  trackingTimeseries: PortalAnalyticsOptionalSection<PortalAnalyticsTrackingTimeseries>
+  trackingFunnel: PortalAnalyticsOptionalSection<PortalAnalyticsTrackingFunnel>
+  trackingPages: PortalAnalyticsOptionalSection<PortalAnalyticsTrackingBreakdown>
+  trackingSources: PortalAnalyticsOptionalSection<PortalAnalyticsTrackingBreakdown>
+  trackingDevices: PortalAnalyticsOptionalSection<PortalAnalyticsTrackingBreakdown>
+  personas: PortalAnalyticsOptionalSection<PortalAnalyticsPersonaResponse>
+}
+
+export interface PortalAnalyticsPrintReport {
+  filters: PortalAnalyticsPrintFilters
+  generatedAt: string
+  overview: PortalAnalyticsOverview
+  trend: PortalAnalyticsTrendResponse
+  campaigns: PortalAnalyticsCampaignsResponse
+  sections: PortalAnalyticsPrintSections
+}
