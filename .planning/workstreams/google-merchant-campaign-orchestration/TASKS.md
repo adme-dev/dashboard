@@ -64,12 +64,17 @@ domain ownership reviewed; result is confirmed or rejected.
 
 ### [ ] CTL-004: Inventory enabled APIs and authorization prerequisites
 
-**Status:** pending
+**Status:** in_progress
 **Description:** Verify Merchant, Ads and existing Data Manager enablement and classify
 YouTube/legacy services.
 **Acceptance:** Required services enabled; conditional services have decisions; OAuth
 scopes/consent status and Ads developer-token access level are known.
-**Verification:** Bounded service list and read-only Ads API call.
+**Verification:** Production aggregate confirms the shared credential profile has
+`adwords`, `content` and `datamanager` grants across 87 MCC-linked connections. A
+bounded aggregate-only Ads API call reached v23 but the sampled legacy direct account
+failed with `USER_PERMISSION_DENIED`; MCC-profile proof remains blocked on the local
+absence of `REPO_TOKEN_ENCRYPTION_KEY`. Enabled-service inventory and developer-token
+access level remain outstanding. See Phase 0 evidence.
 **Dependencies:** CTL-003
 **Files:** `API-REGISTRY.md`
 **Size:** S

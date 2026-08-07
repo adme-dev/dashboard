@@ -18,7 +18,8 @@ current_phase: 0
 **Worktree:** `.worktrees/google-merchant-orchestration`
 **Tracking PR:** `#379` — draft; do not merge before Phase 0 reconciliation
 **Last Activity:** 2026-08-07
-**Last Activity Description:** Planning baseline pushed and draft PR #379 opened; Phase 0 active
+**Last Activity Description:** Production Google credential topology and a bounded Ads
+authorization check recorded; Phase 0 remains gated
 
 ## Completed this session
 
@@ -33,6 +34,15 @@ current_phase: 0
 - Declared the other session's unmerged PMax schema/state work as an explicit dependency.
 - Committed the reviewed planning baseline as `9cd0efdd`.
 - Opened draft tracking PR `#379` against `main` with an explicit PMax dependency gate.
+- Verified via aggregate-only production queries that the active shared Google profile
+  covers 87 MCC-linked accounts with Ads, Merchant-content and Data Manager scopes.
+- Confirmed 21 legacy Google connections remain outside the encrypted profile and no
+  Merchant Center identifiers are persisted in current connection metadata.
+- Re-ran a one-account aggregate-only Ads v23 audit; the legacy direct sample returned
+  `USER_PERMISSION_DENIED`, so live authorization remains unproven.
+- Confirmed by secret-name-only Cloudflare inspection that production has the Google
+  OAuth/developer-token entries and `REPO_TOKEN_ENCRYPTION_KEY`; no values were read and
+  no configuration changed.
 
 ## Active blockers
 
@@ -47,16 +57,22 @@ current_phase: 0
 4. **Final executable baseline:** the clean `main` baseline now passes under Node 24,
    but CTL-009 remains in progress until it is refreshed after the concurrent PMax
    merge/rebase.
+5. **Usable live Ads proof:** production has `REPO_TOKEN_ENCRYPTION_KEY`, but local
+   execution does not, so the shared MCC profile cannot be exercised from this
+   worktree; the sampled legacy direct grant is stale or unauthorized and returned
+   `USER_PERMISSION_DENIED`.
 
 ## Immediate next actions
 
 1. Verify Cloud project ID/number and OAuth client mapping without exposing secrets.
-2. Inventory enabled Merchant, Ads and Data Manager services and Ads developer-token
-   access level.
+2. Finish the enabled-service inventory and record the Ads developer-token access
+   level; the OAuth-scope/database portion is now verified.
 3. Confirm agency Merchant advanced-account/subaccount topology and registration owner.
-4. Wait for the concurrent PMax session to finish, then rebase and reconcile contracts.
-5. Refresh the passing Node 24 baseline after the PMax rebase.
-6. Begin MER-101 only after the Phase 0 gate passes.
+4. Run a bounded MCC-child Ads read through an authorized production/preview path with
+   the encryption key, and reconnect or formally retire a direct legacy connection.
+5. Wait for the concurrent PMax session to finish, then rebase and reconcile contracts.
+6. Refresh the passing Node 24 baseline after the PMax rebase.
+7. Begin MER-101 only after the Phase 0 gate passes.
 
 ## Operating rules
 
