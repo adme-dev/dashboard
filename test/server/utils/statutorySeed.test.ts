@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { STATUTORY_SEEDS, nextWeekday, nextMonthlyDay, seedNoteFor } from '../../../server/utils/statutorySeed'
+import { STATUTORY_SEEDS, nextWeekday, nextMonthlyDay, seedNoteFor, melbourneToday } from '../../../server/utils/statutorySeed'
 
 describe('statutory seed config', () => {
   it('contains exactly the four agreed obligations', () => {
@@ -36,6 +36,24 @@ describe('anchor date helpers', () => {
   it('nextMonthlyDay rolls into next month when the day has passed', () => {
     expect(nextMonthlyDay(new Date('2026-08-07T00:00:00Z'), 7)).toBe('2026-09-07')
     expect(nextMonthlyDay(new Date('2026-08-07T00:00:00Z'), 13)).toBe('2026-08-13')
+  })
+
+  it('nextMonthlyDay clamps month-end days instead of overflowing', () => {
+    // 31st in a 30-day month → the 30th, not 1st of the following month
+    expect(nextMonthlyDay(new Date('2026-09-01T00:00:00Z'), 31)).toBe('2026-09-30')
+    // 31st requested in February → 28 Feb
+    expect(nextMonthlyDay(new Date('2027-02-01T00:00:00Z'), 31)).toBe('2027-02-28')
+  })
+
+  it('nextMonthlyDay handles the December → January year boundary', () => {
+    expect(nextMonthlyDay(new Date('2026-12-20T00:00:00Z'), 13)).toBe('2027-01-13')
+  })
+
+  it('melbourneToday returns the Melbourne calendar date at UTC midnight', () => {
+    // 2026-08-06 23:00 UTC = 2026-08-07 09:00 AEST → Melbourne date is the 7th
+    expect(melbourneToday(new Date('2026-08-06T23:00:00Z')).toISOString().slice(0, 10)).toBe('2026-08-07')
+    // 2026-08-07 20:00 UTC = 2026-08-08 06:00 AEST → the 8th
+    expect(melbourneToday(new Date('2026-08-07T20:00:00Z')).toISOString().slice(0, 10)).toBe('2026-08-08')
   })
 
   it('seedNoteFor leads with the seedKey marker', () => {

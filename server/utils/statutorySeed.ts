@@ -15,6 +15,8 @@ export interface StatutorySeedDef {
   recurrence: 'weekly' | 'monthly'
   paymentAccount: 'NAB_BUSINESS' | 'NAB_TAX'
   confidence: 'committed' | 'provisional'
+  /** ILIKE pattern to resolve a Xero contact at seed time (bill-suppression guard). */
+  contactNamePattern?: string
   anchor: (today: Date) => string
 }
 
@@ -31,12 +33,27 @@ export function nextWeekday(today: Date, isoWeekday: number): string {
   return iso(d)
 }
 
+function clampedUtcDate(y: number, m: number, day: number): Date {
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate()
+  return new Date(Date.UTC(y, m, Math.min(day, lastDay)))
+}
+
 export function nextMonthlyDay(today: Date, dayOfMonth: number): string {
   const y = today.getUTCFullYear()
   const m = today.getUTCMonth()
-  const candidate = new Date(Date.UTC(y, m, dayOfMonth))
+  const candidate = clampedUtcDate(y, m, dayOfMonth)
   if (candidate > today) return iso(candidate)
-  return iso(new Date(Date.UTC(y, m + 1, dayOfMonth)))
+  return iso(clampedUtcDate(y, m + 1, dayOfMonth))
+}
+
+/**
+ * "Today" as a UTC-midnight Date for the current calendar date in Melbourne.
+ * Anchor maths runs in UTC; without this, runs between 00:00 and ~10:00 AEST
+ * would compute anchors off yesterday's date.
+ */
+export function melbourneToday(now: Date = new Date()): Date {
+  const isoDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Melbourne' }).format(now)
+  return new Date(isoDay + 'T00:00:00Z')
 }
 
 export function seedNoteFor(def: StatutorySeedDef): string {
@@ -77,6 +94,7 @@ export const STATUTORY_SEEDS: StatutorySeedDef[] = [
   {
     seedKey: 'ato-debt-instalment',
     supplier: 'ATO — debt instalment',
+    contactNamePattern: 'ATO%Australian Taxation Office%',
     description: 'ATO payment-arrangement instalment, direct debit ~13th monthly',
     amountCents: 600_000,
     recurrence: 'monthly',
