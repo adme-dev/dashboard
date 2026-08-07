@@ -28,7 +28,8 @@ and concurrent PMax session.
 **Acceptance:** Dedicated branch/worktree exists; GSD workstream is active; no other
 worktree files changed.
 **Verification:** `git worktree list`; `gsd-sdk query workstream.status
-google-merchant-campaign-orchestration --raw --cwd <worktree>`
+google-merchant-campaign-orchestration --raw --cwd <worktree>`; evidence in
+`phases/00-control-plane-verification/EVIDENCE.md`; commit `9cd0efdd`
 **Dependencies:** None
 **Files:** `.planning/active-workstream`, workstream directory
 **Size:** S
@@ -40,8 +41,10 @@ google-merchant-campaign-orchestration --raw --cwd <worktree>`
 hard gates and completion policy.
 **Acceptance:** PRD, requirement matrix, roadmap, decisions and API registry cross-link
 and contain no credentials.
-**Verification:** Documentation link/heading checker; secret-pattern scan; human review
-at Phase 0 checkpoint.
+**Verification:** `git diff --check`; 54-task count; secret-pattern scan; GSD phase
+inventory; full-file review; evidence in
+`phases/00-control-plane-verification/EVIDENCE.md`; commit `9cd0efdd`. Human acceptance
+of the rollout remains a separate Phase 0 checkpoint.
 **Dependencies:** CTL-001
 **Files:** workstream planning documents
 **Size:** M

@@ -17,7 +17,7 @@ current_phase: 0
 **Active branch:** `docs/google-merchant-orchestration`
 **Worktree:** `.worktrees/google-merchant-orchestration`
 **Last Activity:** 2026-08-07
-**Last Activity Description:** Planning baseline, active Phase 0 plan and six pending phase scaffolds created
+**Last Activity Description:** Planning baseline committed as 9cd0efdd; Phase 0 active
 
 ## Completed this session
 
@@ -30,6 +30,7 @@ current_phase: 0
 - Added Data Manager as conditional/existing and YouTube Data API as optional.
 - Added the one-project/one-Merchant-registration topology as a hard gate.
 - Declared the other session's unmerged PMax schema/state work as an explicit dependency.
+- Committed the reviewed planning baseline as `9cd0efdd`.
 
 ## Active blockers
 

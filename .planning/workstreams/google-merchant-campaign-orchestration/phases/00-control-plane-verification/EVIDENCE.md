@@ -11,6 +11,7 @@
 - Active GSD workstream: `google-merchant-campaign-orchestration`.
 - GSD inventory: seven phases, Phase 0 in progress, Phases 1-6 pending.
 - Executable register: 54 stable tasks.
+- Canonical planning commit: `9cd0efdd`.
 
 ## Documentation verification
 
