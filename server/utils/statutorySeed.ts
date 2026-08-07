@@ -52,7 +52,7 @@ export const STATUTORY_SEEDS: StatutorySeedDef[] = [
     recurrence: 'weekly',
     paymentAccount: 'NAB_BUSINESS',
     confidence: 'committed',
-    anchor: t => nextWeekday(t, 5),
+    anchor: t => nextWeekday(t, 5)
   },
   {
     seedKey: 'super-weekly',
@@ -62,7 +62,7 @@ export const STATUTORY_SEEDS: StatutorySeedDef[] = [
     recurrence: 'weekly',
     paymentAccount: 'NAB_BUSINESS',
     confidence: 'committed',
-    anchor: t => nextWeekday(t, 5),
+    anchor: t => nextWeekday(t, 5)
   },
   {
     seedKey: 'sro-payroll-tax',
@@ -72,7 +72,7 @@ export const STATUTORY_SEEDS: StatutorySeedDef[] = [
     recurrence: 'monthly',
     paymentAccount: 'NAB_TAX',
     confidence: 'provisional',
-    anchor: t => nextMonthlyDay(t, 7),
+    anchor: t => nextMonthlyDay(t, 7)
   },
   {
     seedKey: 'ato-debt-instalment',
@@ -82,6 +82,6 @@ export const STATUTORY_SEEDS: StatutorySeedDef[] = [
     recurrence: 'monthly',
     paymentAccount: 'NAB_BUSINESS',
     confidence: 'committed',
-    anchor: t => nextMonthlyDay(t, 13),
-  },
+    anchor: t => nextMonthlyDay(t, 13)
+  }
 ]

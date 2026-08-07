@@ -4,7 +4,7 @@ import { STATUTORY_SEEDS, nextWeekday, nextMonthlyDay, seedNoteFor } from '../..
 describe('statutory seed config', () => {
   it('contains exactly the four agreed obligations', () => {
     expect(STATUTORY_SEEDS.map(s => s.seedKey).sort()).toEqual([
-      'ato-debt-instalment', 'sro-payroll-tax', 'super-weekly', 'wages-weekly',
+      'ato-debt-instalment', 'sro-payroll-tax', 'super-weekly', 'wages-weekly'
     ])
   })
 

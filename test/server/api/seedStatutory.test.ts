@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+import { runStatutorySeed } from '../../../server/api/cashflow/commitments/seed-statutory.post'
+
 // In-memory stand-in for cashflow_commitments filtered by the seeder's lookup.
 const existingRows: Array<{ notes: string }> = []
-const inserts: any[] = []
+const inserts: unknown[][] = []
 
 vi.mock('~~/server/utils/db', () => ({
-  transaction: async (fn: (client: any) => Promise<any>) => {
+  transaction: async (fn: (client: { query: (sql: string, params: unknown[]) => Promise<{ rows: unknown[] }> }) => Promise<unknown>) => {
     const client = {
-      query: vi.fn(async (sql: string, params: any[]) => {
+      query: vi.fn(async (sql: string, params: unknown[]) => {
         if (/SELECT/i.test(sql)) {
           const like = String(params[1] ?? '')
           const prefix = like.replace(/%$/, '')
@@ -15,17 +17,18 @@ vi.mock('~~/server/utils/db', () => ({
         }
         inserts.push(params)
         return { rows: [{ id: 'new-id' }] }
-      }),
+      })
     }
     return fn(client)
-  },
+  }
 }))
 vi.mock('~~/server/utils/session', () => ({ getSelectedTenant: async () => 'tenant-1' }))
 
-import { runStatutorySeed } from '../../../server/api/cashflow/commitments/seed-statutory.post'
-
 describe('statutory seeder', () => {
-  beforeEach(() => { existingRows.length = 0; inserts.length = 0 })
+  beforeEach(() => {
+    existingRows.length = 0
+    inserts.length = 0
+  })
 
   it('creates all four on first run', async () => {
     const res = await runStatutorySeed('tenant-1', 'user-1', new Date('2026-08-07T00:00:00Z'))

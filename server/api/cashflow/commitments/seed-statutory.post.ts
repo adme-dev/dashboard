@@ -22,7 +22,7 @@ export async function runStatutorySeed(tenantId: string, userId: string, today: 
         `SELECT id FROM cashflow_commitments
          WHERE tenant_id = $1 AND source = 'statutory-seed' AND notes LIKE $2
          LIMIT 1`,
-        [tenantId, marker],
+        [tenantId, marker]
       )
       if (existing.rows.length) {
         skipped.push(def.seedKey)
@@ -36,8 +36,8 @@ export async function runStatutorySeed(tenantId: string, userId: string, today: 
          VALUES ($1,$2,NULL,$3,$4,$5,$6,NULL,$7,'expected',$8,NULL,$9,'statutory-seed',$10)`,
         [
           tenantId, def.supplier, def.description, def.amountCents, def.anchor(today),
-          def.recurrence, def.paymentAccount, def.confidence, seedNoteFor(def), userId,
-        ],
+          def.recurrence, def.paymentAccount, def.confidence, seedNoteFor(def), userId
+        ]
       )
       created.push(def.seedKey)
     }

@@ -8,7 +8,7 @@ const base = {
   recurrence: 'weekly',
   paymentAccount: 'NAB_BUSINESS',
   status: 'expected',
-  confidence: 'committed',
+  confidence: 'committed'
 }
 
 describe('validateCommitmentBody source enum', () => {
