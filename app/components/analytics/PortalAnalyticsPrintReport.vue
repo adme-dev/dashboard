@@ -97,9 +97,16 @@ const platformMaxSpend = computed(() => Math.max(...props.report.overview.byPlat
   <article class="portal-analytics-print-report">
     <header class="print-report-header">
       <div class="print-brand">
-        <img v-if="clientLogo" :src="clientLogo" alt="" class="print-logo">
+        <img
+          v-if="clientLogo"
+          :src="clientLogo"
+          alt=""
+          class="print-logo"
+        >
         <div>
-          <p class="print-eyebrow">XeroFlow client portal</p>
+          <p class="print-eyebrow">
+            XeroFlow client portal
+          </p>
           <h1>{{ clientName }} — Ad performance</h1>
         </div>
       </div>
@@ -112,8 +119,12 @@ const platformMaxSpend = computed(() => Math.max(...props.report.overview.byPlat
     <section aria-labelledby="executive-summary">
       <div class="print-section-heading">
         <div>
-          <p class="print-eyebrow">Advertising performance</p>
-          <h2 id="executive-summary">Executive summary</h2>
+          <p class="print-eyebrow">
+            Advertising performance
+          </p>
+          <h2 id="executive-summary">
+            Executive summary
+          </h2>
         </div>
         <p>{{ report.filters.platforms.length ? report.filters.platforms.map(titleCase).join(', ') : 'All connected platforms' }}<span v-if="report.filters.runningOnly"> · Running campaigns only</span></p>
       </div>
@@ -137,7 +148,13 @@ const platformMaxSpend = computed(() => Math.max(...props.report.overview.byPlat
           </div>
           <div v-if="report.trend.dataPoints.length" class="print-chart">
             <svg viewBox="0 0 760 175" role="img" aria-label="Selected metric trend">
-              <line x1="0" y1="165" x2="760" y2="165" class="print-chart-axis" />
+              <line
+                x1="0"
+                y1="165"
+                x2="760"
+                y2="165"
+                class="print-chart-axis"
+              />
               <path :d="trendPath" class="print-chart-line" />
             </svg>
             <div class="print-chart-range">
@@ -145,26 +162,40 @@ const platformMaxSpend = computed(() => Math.max(...props.report.overview.byPlat
               <span>{{ report.trend.dataPoints.at(-1)?.date }}</span>
             </div>
           </div>
-          <p v-else class="print-empty">No trend data for this period.</p>
+          <p v-else class="print-empty">
+            No trend data for this period.
+          </p>
         </div>
 
         <div class="print-card">
-          <div class="print-card-heading"><h3>By platform</h3><span>Spend share</span></div>
+          <div class="print-card-heading">
+            <h3>By platform</h3><span>Spend share</span>
+          </div>
           <div v-if="report.overview.byPlatform.length" class="print-stack">
             <div v-for="platform in report.overview.byPlatform" :key="platform.platform" class="print-bar-row">
               <div><strong>{{ platform.displayName }}</strong><span>{{ fmtCurrency(platform.spend) }}</span></div>
-              <div class="print-bar"><i :style="{ width: `${Math.max(2, (platform.spend / platformMaxSpend) * 100)}%`, backgroundColor: platform.color }" /></div>
+              <div class="print-bar">
+                <i :style="{ width: `${Math.max(2, (platform.spend / platformMaxSpend) * 100)}%`, backgroundColor: platform.color }" />
+              </div>
               <small>{{ fmtCompact(platform.impressions) }} impr. · {{ fmtCompact(platform.leads) }} leads · {{ fmtPercent(platform.ctr) }} CTR</small>
             </div>
           </div>
-          <p v-else class="print-empty">No platform activity for this period.</p>
+          <p v-else class="print-empty">
+            No platform activity for this period.
+          </p>
         </div>
       </div>
     </section>
 
     <section class="print-section print-page-start" aria-labelledby="campaign-performance">
       <div class="print-section-heading">
-        <div><p class="print-eyebrow">Advertising detail</p><h2 id="campaign-performance">Campaign performance</h2></div>
+        <div>
+          <p class="print-eyebrow">
+            Advertising detail
+          </p><h2 id="campaign-performance">
+            Campaign performance
+          </h2>
+        </div>
         <p>{{ report.campaigns.total }} campaign{{ report.campaigns.total === 1 ? '' : 's' }}</p>
       </div>
 
@@ -175,9 +206,13 @@ const platformMaxSpend = computed(() => Math.max(...props.report.overview.byPlat
           <small>Source synced {{ fmtDateTime(source.lastSourceSyncAt) }}</small>
           <small v-if="source.failedCount" class="print-negative">{{ source.failedCount }} refresh failures</small>
         </div>
-        <p v-if="!report.sections.freshness.data.sources.length" class="print-empty">No source freshness records for this period.</p>
+        <p v-if="!report.sections.freshness.data.sources.length" class="print-empty">
+          No source freshness records for this period.
+        </p>
       </div>
-      <p v-else class="print-unavailable">Data freshness is unavailable for this report.</p>
+      <p v-else class="print-unavailable">
+        Data freshness is unavailable for this report.
+      </p>
 
       <table v-if="report.campaigns.campaigns.length" class="print-table print-campaign-table">
         <thead>
@@ -196,34 +231,56 @@ const platformMaxSpend = computed(() => Math.max(...props.report.overview.byPlat
           </tr>
         </tbody>
       </table>
-      <p v-else class="print-empty print-card">No campaigns matched the selected report filters.</p>
+      <p v-else class="print-empty print-card">
+        No campaigns matched the selected report filters.
+      </p>
     </section>
 
     <section class="print-section print-page-start" aria-labelledby="lead-outcomes">
       <div class="print-section-heading">
-        <div><p class="print-eyebrow">From click to customer</p><h2 id="lead-outcomes">Lead &amp; outcome performance</h2></div>
+        <div>
+          <p class="print-eyebrow">
+            From click to customer
+          </p><h2 id="lead-outcomes">
+            Lead &amp; outcome performance
+          </h2>
+        </div>
       </div>
 
       <div class="print-kpi-grid">
-        <div class="print-card print-kpi"><span>Contacted rate</span><strong>{{ contactedRate }}%</strong><small>Leads with follow-up</small></div>
-        <div class="print-card print-kpi"><span>Win rate</span><strong>{{ winRate }}%</strong><small>Won from portal-visible leads</small></div>
-        <div class="print-card print-kpi"><span>Avg response</span><strong>{{ totals.avgResponseMinutes == null ? '—' : `${Math.round(totals.avgResponseMinutes)}m` }}</strong><small>Time to first contact</small></div>
-        <div class="print-card print-kpi"><span>Uncontacted</span><strong>{{ fmtCompact(totals.leadUncontacted) }}</strong><small>Needs follow-up</small></div>
+        <div class="print-card print-kpi">
+          <span>Contacted rate</span><strong>{{ contactedRate }}%</strong><small>Leads with follow-up</small>
+        </div>
+        <div class="print-card print-kpi">
+          <span>Win rate</span><strong>{{ winRate }}%</strong><small>Won from portal-visible leads</small>
+        </div>
+        <div class="print-card print-kpi">
+          <span>Avg response</span><strong>{{ totals.avgResponseMinutes == null ? '—' : `${Math.round(totals.avgResponseMinutes)}m` }}</strong><small>Time to first contact</small>
+        </div>
+        <div class="print-card print-kpi">
+          <span>Uncontacted</span><strong>{{ fmtCompact(totals.leadUncontacted) }}</strong><small>Needs follow-up</small>
+        </div>
       </div>
 
       <div class="print-two-column">
         <div class="print-card">
-          <div class="print-card-heading"><h3>Lead progression</h3><span>{{ fmtCompact(totals.leads) }} total</span></div>
+          <div class="print-card-heading">
+            <h3>Lead progression</h3><span>{{ fmtCompact(totals.leads) }} total</span>
+          </div>
           <div class="print-stack">
             <div v-for="stage in leadStages" :key="stage.label" class="print-bar-row">
               <div><strong>{{ stage.label }}</strong><span>{{ stage.value }}</span></div>
-              <div class="print-bar"><i :style="{ width: `${Math.max(stage.value ? 4 : 0, (stage.value / maxLeadStage) * 100)}%` }" /></div>
+              <div class="print-bar">
+                <i :style="{ width: `${Math.max(stage.value ? 4 : 0, (stage.value / maxLeadStage) * 100)}%` }" />
+              </div>
             </div>
           </div>
         </div>
 
         <div class="print-card">
-          <div class="print-card-heading"><h3>Performance insights</h3></div>
+          <div class="print-card-heading">
+            <h3>Performance insights</h3>
+          </div>
           <dl class="print-definition-grid">
             <div><dt>CPM</dt><dd>{{ fmtCurrency(totals.cpm) }}</dd></div>
             <div><dt>Cost / conversion</dt><dd>{{ fmtCurrency(totals.costPerConversion) }}</dd></div>
@@ -236,89 +293,211 @@ const platformMaxSpend = computed(() => Math.max(...props.report.overview.byPlat
 
     <section class="print-section print-page-start" aria-labelledby="website-funnel">
       <div class="print-section-heading">
-        <div><p class="print-eyebrow">Owned experience</p><h2 id="website-funnel">Website &amp; funnel performance</h2></div>
+        <div>
+          <p class="print-eyebrow">
+            Owned experience
+          </p><h2 id="website-funnel">
+            Website &amp; funnel performance
+          </h2>
+        </div>
       </div>
 
       <template v-if="report.sections.websiteFunnel.status === 'available' && report.sections.websiteFunnel.data.hasGa4">
         <div class="print-kpi-grid">
-          <div class="print-card print-kpi"><span>Sessions</span><strong>{{ fmtCompact(report.sections.websiteFunnel.data.totals.sessions) }}</strong><small>GA4 sessions</small></div>
-          <div class="print-card print-kpi"><span>Users</span><strong>{{ fmtCompact(report.sections.websiteFunnel.data.totals.totalUsers) }}</strong><small>Total users</small></div>
-          <div class="print-card print-kpi"><span>Engagement</span><strong>{{ fmtPercent(report.sections.websiteFunnel.data.totals.engagementRate, true) }}</strong><small>Engaged sessions</small></div>
-          <div class="print-card print-kpi"><span>Key events</span><strong>{{ fmtCompact(report.sections.websiteFunnel.data.totals.keyEvents) }}</strong><small>GA4 conversions</small></div>
+          <div class="print-card print-kpi">
+            <span>Sessions</span><strong>{{ fmtCompact(report.sections.websiteFunnel.data.totals.sessions) }}</strong><small>GA4 sessions</small>
+          </div>
+          <div class="print-card print-kpi">
+            <span>Users</span><strong>{{ fmtCompact(report.sections.websiteFunnel.data.totals.totalUsers) }}</strong><small>Total users</small>
+          </div>
+          <div class="print-card print-kpi">
+            <span>Engagement</span><strong>{{ fmtPercent(report.sections.websiteFunnel.data.totals.engagementRate, true) }}</strong><small>Engaged sessions</small>
+          </div>
+          <div class="print-card print-kpi">
+            <span>Key events</span><strong>{{ fmtCompact(report.sections.websiteFunnel.data.totals.keyEvents) }}</strong><small>GA4 conversions</small>
+          </div>
         </div>
         <table class="print-table">
           <thead><tr><th>Channel</th><th>Spend</th><th>Sessions</th><th>Users</th><th>Engagement</th><th>Key events</th><th>Leads</th><th>Cost / lead</th></tr></thead>
-          <tbody><tr v-for="channel in report.sections.websiteFunnel.data.channels" :key="channel.channel"><td>{{ channel.channel }}</td><td>{{ fmtCurrency(channel.spend) }}</td><td>{{ fmtCompact(channel.sessions) }}</td><td>{{ fmtCompact(channel.totalUsers) }}</td><td>{{ fmtPercent(channel.engagementRate, true) }}</td><td>{{ fmtCompact(channel.keyEvents) }}</td><td>{{ fmtCompact(channel.leads) }}</td><td>{{ fmtCurrency(channel.costPerLead) }}</td></tr></tbody>
+          <tbody>
+            <tr v-for="channel in report.sections.websiteFunnel.data.channels" :key="channel.channel">
+              <td>{{ channel.channel }}</td><td>{{ fmtCurrency(channel.spend) }}</td><td>{{ fmtCompact(channel.sessions) }}</td><td>{{ fmtCompact(channel.totalUsers) }}</td><td>{{ fmtPercent(channel.engagementRate, true) }}</td><td>{{ fmtCompact(channel.keyEvents) }}</td><td>{{ fmtCompact(channel.leads) }}</td><td>{{ fmtCurrency(channel.costPerLead) }}</td>
+            </tr>
+          </tbody>
         </table>
       </template>
-      <p v-else-if="report.sections.websiteFunnel.status === 'unavailable'" class="print-unavailable">Website funnel data is unavailable for this report.</p>
-      <p v-else class="print-empty print-card">No GA4 property is connected for this reporting period.</p>
+      <p v-else-if="report.sections.websiteFunnel.status === 'unavailable'" class="print-unavailable">
+        Website funnel data is unavailable for this report.
+      </p>
+      <p v-else class="print-empty print-card">
+        No GA4 property is connected for this reporting period.
+      </p>
 
       <div v-if="report.sections.trackingSummary.status === 'available'" class="print-kpi-grid print-subsection">
-        <div class="print-card print-kpi"><span>Visitors</span><strong>{{ fmtCompact(report.sections.trackingSummary.data.visitors) }}</strong><small>Known browser visitors</small></div>
-        <div class="print-card print-kpi"><span>Page views</span><strong>{{ fmtCompact(report.sections.trackingSummary.data.pageViews) }}</strong><small>Tracked views</small></div>
-        <div class="print-card print-kpi"><span>Form submits</span><strong>{{ fmtCompact(report.sections.trackingSummary.data.formSubmits) }}</strong><small>Lead intents</small></div>
-        <div class="print-card print-kpi"><span>Vehicle views</span><strong>{{ fmtCompact(report.sections.trackingSummary.data.vehicleViews) }}</strong><small>Product intent</small></div>
+        <div class="print-card print-kpi">
+          <span>Visitors</span><strong>{{ fmtCompact(report.sections.trackingSummary.data.visitors) }}</strong><small>Known browser visitors</small>
+        </div>
+        <div class="print-card print-kpi">
+          <span>Page views</span><strong>{{ fmtCompact(report.sections.trackingSummary.data.pageViews) }}</strong><small>Tracked views</small>
+        </div>
+        <div class="print-card print-kpi">
+          <span>Form submits</span><strong>{{ fmtCompact(report.sections.trackingSummary.data.formSubmits) }}</strong><small>Lead intents</small>
+        </div>
+        <div class="print-card print-kpi">
+          <span>Vehicle views</span><strong>{{ fmtCompact(report.sections.trackingSummary.data.vehicleViews) }}</strong><small>Product intent</small>
+        </div>
       </div>
 
       <div class="print-two-column print-subsection">
         <div class="print-card">
-          <div class="print-card-heading"><h3>Visitor trend</h3><span>Daily visitors</span></div>
-          <div v-if="visitorPath" class="print-chart print-chart-compact"><svg viewBox="0 0 760 140" role="img" aria-label="Visitor trend"><line x1="0" y1="130" x2="760" y2="130" class="print-chart-axis" /><path :d="visitorPath" class="print-chart-line" /></svg></div>
-          <p v-else class="print-empty">No tracked visitor activity for this period.</p>
+          <div class="print-card-heading">
+            <h3>Visitor trend</h3><span>Daily visitors</span>
+          </div>
+          <div v-if="visitorPath" class="print-chart print-chart-compact">
+            <svg viewBox="0 0 760 140" role="img" aria-label="Visitor trend"><line
+              x1="0"
+              y1="130"
+              x2="760"
+              y2="130"
+              class="print-chart-axis"
+            /><path :d="visitorPath" class="print-chart-line" /></svg>
+          </div>
+          <p v-else class="print-empty">
+            No tracked visitor activity for this period.
+          </p>
         </div>
         <div class="print-card">
-          <div class="print-card-heading"><h3>Acquisition sources</h3></div>
+          <div class="print-card-heading">
+            <h3>Acquisition sources</h3>
+          </div>
           <ol v-if="report.sections.trackingSources.status === 'available' && report.sections.trackingSources.data.rows.length" class="print-ranked-list">
-            <li v-for="row in report.sections.trackingSources.data.rows" :key="row.key"><span class="print-wrap">{{ row.key }}</span><strong>{{ fmtCompact(row.count) }}</strong></li>
+            <li v-for="row in report.sections.trackingSources.data.rows" :key="row.key">
+              <span class="print-wrap">{{ row.key }}</span><strong>{{ fmtCompact(row.count) }}</strong>
+            </li>
           </ol>
-          <p v-else class="print-empty">No source data for this period.</p>
+          <p v-else class="print-empty">
+            No source data for this period.
+          </p>
         </div>
       </div>
 
       <div class="print-two-column print-subsection">
         <div class="print-card">
-          <div class="print-card-heading"><h3>Lead capture health</h3></div>
+          <div class="print-card-heading">
+            <h3>Lead capture health</h3>
+          </div>
           <template v-if="report.sections.trackingHealth.status === 'available'">
-            <dl class="print-definition-grid"><div><dt>Confirmed leads</dt><dd>{{ report.sections.trackingHealth.data.confirmedLeads }}</dd></div><div><dt>CRM linked</dt><dd>{{ report.sections.trackingHealth.data.crmLinkedLeads }}</dd></div><div><dt>Attributed</dt><dd>{{ report.sections.trackingHealth.data.attributionCoverage }}%</dd></div><div><dt>Unmatched</dt><dd>{{ report.sections.trackingHealth.data.unmatchedSubmissions }}</dd></div></dl>
-            <ul v-if="report.sections.trackingHealth.data.issues.length" class="print-issues"><li v-for="issue in report.sections.trackingHealth.data.issues" :key="issue">{{ issue }}</li></ul>
+            <dl class="print-definition-grid">
+              <div><dt>Confirmed leads</dt><dd>{{ report.sections.trackingHealth.data.confirmedLeads }}</dd></div><div><dt>CRM linked</dt><dd>{{ report.sections.trackingHealth.data.crmLinkedLeads }}</dd></div><div><dt>Attributed</dt><dd>{{ report.sections.trackingHealth.data.attributionCoverage }}%</dd></div><div><dt>Unmatched</dt><dd>{{ report.sections.trackingHealth.data.unmatchedSubmissions }}</dd></div>
+            </dl>
+            <ul v-if="report.sections.trackingHealth.data.issues.length" class="print-issues">
+              <li v-for="issue in report.sections.trackingHealth.data.issues" :key="issue">
+                {{ issue }}
+              </li>
+            </ul>
           </template>
-          <p v-else class="print-unavailable">Lead health is unavailable for this report.</p>
+          <p v-else class="print-unavailable">
+            Lead health is unavailable for this report.
+          </p>
         </div>
         <div class="print-card">
-          <div class="print-card-heading"><h3>Website conversion funnel</h3></div>
-          <ol v-if="report.sections.trackingFunnel.status === 'available'" class="print-ranked-list"><li v-for="step in report.sections.trackingFunnel.data.steps" :key="step.step"><span>{{ step.step }}</span><strong>{{ step.sessions }} · {{ step.rate }}%</strong></li></ol>
-          <p v-else class="print-unavailable">Website conversion funnel is unavailable.</p>
+          <div class="print-card-heading">
+            <h3>Website conversion funnel</h3>
+          </div>
+          <ol v-if="report.sections.trackingFunnel.status === 'available'" class="print-ranked-list">
+            <li v-for="step in report.sections.trackingFunnel.data.steps" :key="step.step">
+              <span>{{ step.step }}</span><strong>{{ step.sessions }} · {{ step.rate }}%</strong>
+            </li>
+          </ol>
+          <p v-else class="print-unavailable">
+            Website conversion funnel is unavailable.
+          </p>
         </div>
       </div>
 
       <div class="print-two-column print-subsection">
-        <div class="print-card"><div class="print-card-heading"><h3>Top pages</h3></div><ol v-if="report.sections.trackingPages.status === 'available'" class="print-ranked-list"><li v-for="row in report.sections.trackingPages.data.rows" :key="row.key"><span class="print-wrap">{{ row.key }}</span><strong>{{ fmtCompact(row.count) }}</strong></li></ol><p v-else class="print-unavailable">Page data is unavailable.</p></div>
-        <div class="print-card"><div class="print-card-heading"><h3>Devices</h3></div><ol v-if="report.sections.trackingDevices.status === 'available'" class="print-ranked-list"><li v-for="row in report.sections.trackingDevices.data.rows" :key="row.key"><span>{{ titleCase(row.key) }}</span><strong>{{ fmtCompact(row.count) }}</strong></li></ol><p v-else class="print-unavailable">Device data is unavailable.</p></div>
+        <div class="print-card">
+          <div class="print-card-heading">
+            <h3>Top pages</h3>
+          </div><ol v-if="report.sections.trackingPages.status === 'available'" class="print-ranked-list">
+            <li v-for="row in report.sections.trackingPages.data.rows" :key="row.key">
+              <span class="print-wrap">{{ row.key }}</span><strong>{{ fmtCompact(row.count) }}</strong>
+            </li>
+          </ol><p v-else class="print-unavailable">
+            Page data is unavailable.
+          </p>
+        </div>
+        <div class="print-card">
+          <div class="print-card-heading">
+            <h3>Devices</h3>
+          </div><ol v-if="report.sections.trackingDevices.status === 'available'" class="print-ranked-list">
+            <li v-for="row in report.sections.trackingDevices.data.rows" :key="row.key">
+              <span>{{ titleCase(row.key) }}</span><strong>{{ fmtCompact(row.count) }}</strong>
+            </li>
+          </ol><p v-else class="print-unavailable">
+            Device data is unavailable.
+          </p>
+        </div>
       </div>
     </section>
 
     <section class="print-section print-page-start" aria-labelledby="audience-insights">
       <div class="print-section-heading">
-        <div><p class="print-eyebrow">Privacy-safe signals</p><h2 id="audience-insights">Audience &amp; identity insights</h2></div>
+        <div>
+          <p class="print-eyebrow">
+            Privacy-safe signals
+          </p><h2 id="audience-insights">
+            Audience &amp; identity insights
+          </h2>
+        </div>
       </div>
 
       <template v-if="report.sections.personas.status === 'available' && report.sections.personas.data.enabled && report.sections.personas.data.metrics">
         <div class="print-kpi-grid">
-          <div class="print-card print-kpi"><span>Known personas</span><strong>{{ fmtCompact(report.sections.personas.data.metrics.totalPersonas) }}</strong><small>Deterministically resolved</small></div>
-          <div class="print-card print-kpi"><span>Returning personas</span><strong>{{ fmtCompact(report.sections.personas.data.metrics.returningPersonas) }}</strong><small>{{ report.sections.personas.data.metrics.returningRate }}% returning</small></div>
-          <div class="print-card print-kpi"><span>Confirmed leads</span><strong>{{ fmtCompact(report.sections.personas.data.metrics.confirmedLeads) }}</strong><small>{{ report.sections.personas.data.metrics.websiteMatchRate }}% website matched</small></div>
-          <div class="print-card print-kpi"><span>Attribution coverage</span><strong>{{ report.sections.personas.data.metrics.attributionCoverage }}%</strong><small>{{ report.sections.personas.data.metrics.attributedLeads }} attributed</small></div>
+          <div class="print-card print-kpi">
+            <span>Known personas</span><strong>{{ fmtCompact(report.sections.personas.data.metrics.totalPersonas) }}</strong><small>Deterministically resolved</small>
+          </div>
+          <div class="print-card print-kpi">
+            <span>Returning personas</span><strong>{{ fmtCompact(report.sections.personas.data.metrics.returningPersonas) }}</strong><small>{{ report.sections.personas.data.metrics.returningRate }}% returning</small>
+          </div>
+          <div class="print-card print-kpi">
+            <span>Confirmed leads</span><strong>{{ fmtCompact(report.sections.personas.data.metrics.confirmedLeads) }}</strong><small>{{ report.sections.personas.data.metrics.websiteMatchRate }}% website matched</small>
+          </div>
+          <div class="print-card print-kpi">
+            <span>Attribution coverage</span><strong>{{ report.sections.personas.data.metrics.attributionCoverage }}%</strong><small>{{ report.sections.personas.data.metrics.attributedLeads }} attributed</small>
+          </div>
         </div>
         <div class="print-two-column">
-          <div class="print-card"><div class="print-card-heading"><h3>Lead source mix</h3></div><ol class="print-ranked-list"><li v-for="source in report.sections.personas.data.sourceMix" :key="source.source"><span>{{ titleCase(source.source) }}</span><strong>{{ source.count }}</strong></li></ol><p v-if="!report.sections.personas.data.sourceMix.length" class="print-empty">Source signals will appear as attributed leads resolve.</p></div>
-          <div class="print-card"><div class="print-card-heading"><h3>Identity summary</h3></div><dl class="print-definition-grid"><div><dt>CRM match</dt><dd>{{ report.sections.personas.data.metrics.crmMatchRate }}%</dd></div><div><dt>Product intent</dt><dd>{{ report.sections.personas.data.metrics.productIntentPersonas }}</dd></div><div><dt>Website matches</dt><dd>{{ report.sections.personas.data.metrics.websiteMatchedLeads }}</dd></div><div><dt>Identity conflicts</dt><dd>{{ report.sections.personas.data.metrics.conflictPersonas }}</dd></div></dl></div>
+          <div class="print-card">
+            <div class="print-card-heading">
+              <h3>Lead source mix</h3>
+            </div><ol class="print-ranked-list">
+              <li v-for="source in report.sections.personas.data.sourceMix" :key="source.source">
+                <span>{{ titleCase(source.source) }}</span><strong>{{ source.count }}</strong>
+              </li>
+            </ol><p v-if="!report.sections.personas.data.sourceMix.length" class="print-empty">
+              Source signals will appear as attributed leads resolve.
+            </p>
+          </div>
+          <div class="print-card">
+            <div class="print-card-heading">
+              <h3>Identity summary</h3>
+            </div><dl class="print-definition-grid">
+              <div><dt>CRM match</dt><dd>{{ report.sections.personas.data.metrics.crmMatchRate }}%</dd></div><div><dt>Product intent</dt><dd>{{ report.sections.personas.data.metrics.productIntentPersonas }}</dd></div><div><dt>Website matches</dt><dd>{{ report.sections.personas.data.metrics.websiteMatchedLeads }}</dd></div><div><dt>Identity conflicts</dt><dd>{{ report.sections.personas.data.metrics.conflictPersonas }}</dd></div>
+            </dl>
+          </div>
         </div>
       </template>
-      <p v-else-if="report.sections.personas.status === 'unavailable'" class="print-unavailable">Audience and identity data is unavailable for this report.</p>
-      <p v-else class="print-empty print-card">Persona audience signals are not enabled for this client.</p>
+      <p v-else-if="report.sections.personas.status === 'unavailable'" class="print-unavailable">
+        Audience and identity data is unavailable for this report.
+      </p>
+      <p v-else class="print-empty print-card">
+        Persona audience signals are not enabled for this client.
+      </p>
 
-      <footer class="print-report-footer">Generated by XeroFlow · {{ clientName }} · {{ fmtDate(report.filters.startDate) }} – {{ fmtDate(report.filters.endDate) }}</footer>
+      <footer class="print-report-footer">
+        Generated by XeroFlow · {{ clientName }} · {{ fmtDate(report.filters.startDate) }} – {{ fmtDate(report.filters.endDate) }}
+      </footer>
     </section>
   </article>
 </template>

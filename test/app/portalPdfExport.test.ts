@@ -7,6 +7,8 @@ const layoutSource = readFileSync('app/layouts/portal.vue', 'utf8')
 const analyticsSource = readFileSync('app/pages/portal/analytics/index.vue', 'utf8')
 const printReportPath = 'app/components/analytics/PortalAnalyticsPrintReport.vue'
 const printReportSource = existsSync(printReportPath) ? readFileSync(printReportPath, 'utf8') : ''
+const printPagePath = 'app/pages/portal/analytics/print.vue'
+const printPageSource = existsSync(printPagePath) ? readFileSync(printPagePath, 'utf8') : ''
 
 function classesForTag(source: string, tagPattern: RegExp): string {
   const tag = source.match(tagPattern)?.[0] || ''
@@ -31,6 +33,15 @@ afterEach(async () => {
 })
 
 describe('portal analytics PDF export', () => {
+  it('hands export to an authenticated print route and prints only after user action', () => {
+    expect(analyticsSource).toContain('buildPortalAnalyticsPrintUrl')
+    expect(analyticsSource).toContain(':to="exportPdfUrl"')
+    expect(printPageSource).toMatch(/definePageMeta\(\{\s*layout: false,\s*middleware: 'portal-auth'/)
+    expect(printPageSource).toContain('Print / Save PDF')
+    expect(printPageSource).toContain('window.print()')
+    expect(printPageSource).toContain('document.fonts.ready')
+  })
+
   it('defines a dedicated report with no interactive dashboard controls', () => {
     expect(printReportSource).toContain('Executive summary')
     expect(printReportSource).toContain('Campaign performance')

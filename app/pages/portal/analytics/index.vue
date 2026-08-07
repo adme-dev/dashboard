@@ -1,33 +1,13 @@
 <script setup lang="ts">
 import { parseDate, type CalendarDate, type DateValue } from '@internationalized/date'
+import type { PortalAnalyticsPrintMetric } from '~/types'
+import { buildPortalAnalyticsPrintUrl } from '~/utils/portalAnalyticsPrint'
 
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 const { fmtCurrency, fmtCompact, fmtPercent, getPlatformIcon } = useAnalytics()
 const route = useRoute()
 const router = useRouter()
-const { user } = usePortalAuth()
-const colorMode = useColorMode()
-
-// Print-to-PDF: flip to light theme for ink-friendly output, let charts
-// re-render, print, then restore whatever the user had.
-const printing = ref(false)
-async function exportPdf() {
-  printing.value = true
-  const prev = colorMode.preference
-  const restore = () => {
-    colorMode.preference = prev
-    printing.value = false
-    window.removeEventListener('afterprint', restore)
-  }
-  window.addEventListener('afterprint', restore)
-  colorMode.preference = 'light'
-  await nextTick()
-  await new Promise(resolve => setTimeout(resolve, 400))
-  window.print()
-  // Safari fires afterprint unreliably — belt-and-braces restore.
-  setTimeout(restore, 2000)
-}
 
 interface AnalyticsOverview {
   totals: AnalyticsTotals
@@ -185,6 +165,13 @@ const byPlatform = computed(() => overview.value?.byPlatform || [])
 const allowedTrendMetrics = new Set(['spend', 'impressions', 'clicks', 'leads', 'cpc', 'ctr', 'costPerLead'])
 const initialMetric = queryString(route.query.metric)
 const trendMetric = ref(typeof initialMetric === 'string' && allowedTrendMetrics.has(initialMetric) ? initialMetric : 'spend')
+const exportPdfUrl = computed(() => buildPortalAnalyticsPrintUrl({
+  startDate: startDate.value,
+  endDate: endDate.value,
+  platforms: selectedPlatforms.value,
+  runningOnly: runningOnly.value,
+  metric: trendMetric.value as PortalAnalyticsPrintMetric
+}))
 const trendQuery = computed(() => ({
   ...apiQuery.value,
   metric: trendMetric.value,
@@ -350,19 +337,6 @@ await Promise.all([refreshOverview(), refreshTrend()])
 
 <template>
   <div class="p-6 space-y-6 w-full">
-    <!-- Print-only report header -->
-    <div class="hidden print:block mb-4 pb-3 border-b border-default">
-      <div class="flex items-baseline justify-between">
-        <h1 class="text-xl font-bold">
-          {{ user?.clientName || 'Client' }} — Ad Performance
-        </h1>
-        <span class="text-sm">{{ formatDate(startDate) }} – {{ formatDate(endDate) }}</span>
-      </div>
-      <p class="text-xs mt-1">
-        Generated {{ new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) }} · XeroFlow Client Portal
-      </p>
-    </div>
-
     <!-- Header -->
     <div class="print:hidden">
       <h1 class="text-2xl font-bold text-default">
@@ -426,13 +400,13 @@ await Promise.all([refreshOverview(), refreshTrend()])
         class="ml-auto"
       />
       <UButton
+        :to="exportPdfUrl"
+        target="_blank"
         icon="i-lucide-printer"
         label="Export PDF"
         size="sm"
         variant="outline"
         color="neutral"
-        :loading="printing"
-        @click="exportPdf"
       />
       <UCheckbox
         v-model="runningOnly"
