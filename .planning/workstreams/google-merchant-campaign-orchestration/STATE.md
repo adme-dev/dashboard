@@ -12,14 +12,14 @@ current_phase: 0
 
 **Status:** Planning baseline created; Phase 0 in progress
 **Current phase:** Phase 0 — control-plane verification and dependency reconciliation
-**Current task:** CTL-003 — verify Cloud project and OAuth-client ownership
-**Progress:** 2 of 54 tasks complete (4%)
+**Current task:** CTL-005 — approve or reject the Merchant registration topology
+**Progress:** 4 of 56 tasks complete (7%)
 **Active branch:** `docs/google-merchant-orchestration`
 **Worktree:** `.worktrees/google-merchant-orchestration`
 **Tracking PR:** `#379` — draft; do not merge before Phase 0 reconciliation
 **Last Activity:** 2026-08-07
-**Last Activity Description:** Production Google credential topology and a bounded Ads
-authorization check recorded; Phase 0 remains gated
+**Last Activity Description:** Google control-plane topology and Cloudflare AI Gateway
+model/cost policy recorded; Phase 0 remains gated
 
 ## Completed this session
 
@@ -43,17 +43,28 @@ authorization check recorded; Phase 0 remains gated
 - Confirmed by secret-name-only Cloudflare inspection that production has the Google
   OAuth/developer-token entries and `REPO_TOKEN_ENCRYPTION_KEY`; no values were read and
   no configuration changed.
+- Confirmed the candidate project number matches the production OAuth client prefix and
+  its Agency Dashboard web client has XeroFlow/Cloudflare production callbacks.
+- Confirmed Google Ads and Data Manager APIs are enabled, Merchant API and legacy
+  Content API are not enabled, and the Ads developer token has Basic Access.
+- Located the agency advanced Merchant topology with 50 subaccounts; registration is
+  blocked because its claimed website is not agency-owned and the exact admin/developer
+  role is not proven.
+- Constitutionalized Cloudflare AI Gateway as the only campaign-job inference path,
+  with GPT-OSS 20B standard, 120B measured escalation, metadata-only logs and dedicated
+  quality/cost tasks. No gateway/provider configuration was changed.
 
 ## Active blockers
 
 1. **Concurrent PMax session:** root contains unmerged migrations 273-282 and launch
    utilities. This workstream will not change overlapping launch code until that session
    merges and CTL-008 is complete.
-2. **Cloud project identity:** the supplied Console URL names
-   `gen-lang-client-0818792107`, but its relationship to production `GOOGLE_CLIENT_ID`
-   is not yet proven.
-3. **Merchant topology:** the controlling agency/advanced Merchant account and
-   subaccount model are not yet approved. Developer registration must not run yet.
+2. **Cloud project hygiene:** ownership is proven, but the shared project contains
+   unrelated workloads and an unrestricted API-key warning. Reuse needs security-owner
+   acceptance/remediation before Merchant registration.
+3. **Merchant topology:** an advanced agency account with 50 subaccounts exists, but
+   its claimed website is client-owned rather than agency-owned and the registration
+   admin/developer actor is not proven. Developer registration must not run yet.
 4. **Final executable baseline:** the clean `main` baseline now passes under Node 24,
    but CTL-009 remains in progress until it is refreshed after the concurrent PMax
    merge/rebase.
@@ -64,10 +75,12 @@ authorization check recorded; Phase 0 remains gated
 
 ## Immediate next actions
 
-1. Verify Cloud project ID/number and OAuth client mapping without exposing secrets.
-2. Finish the enabled-service inventory and record the Ads developer-token access
-   level; the OAuth-scope/database portion is now verified.
-3. Confirm agency Merchant advanced-account/subaccount topology and registration owner.
+1. Obtain security-owner disposition for the shared project's unrestricted API key and
+   unrelated workloads; do not inspect or copy secret values.
+2. Decide whether an agency-owned domain can be claimed on the approved advanced
+   Merchant topology and confirm the admin/developer actor.
+3. Enable Merchant API only after CTL-005 approval, then prove registration state and a
+   bounded read.
 4. Run a bounded MCC-child Ads read through an authorized production/preview path with
    the encryption key, and reconnect or formally retire a direct legacy connection.
 5. Wait for the concurrent PMax session to finish, then rebase and reconcile contracts.
@@ -82,6 +95,8 @@ authorization check recorded; Phase 0 remains gated
 - Do not register the Cloud project or enable provider writes without the named gate.
 - Do not modify the other session's files or duplicate its PMax contracts.
 - Use guarded Cloudflare deployment commands only.
+- Route all campaign-job inference through authenticated Cloudflare AI Gateway; never
+  add a direct-provider fallback.
 
 ## Resume command
 

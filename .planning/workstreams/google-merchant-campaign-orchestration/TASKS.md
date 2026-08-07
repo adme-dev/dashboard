@@ -9,14 +9,14 @@ commit/PR. Provider tasks also require a sanitized live read-back or an explicit
 
 | Phase | Complete | Total | Status |
 |---|---:|---:|---|
-| 0 — Governance and reconciliation | 2 | 9 | In progress |
+| 0 — Governance and reconciliation | 4 | 9 | In progress |
 | 1 — Merchant read foundation | 0 | 10 | Pending |
 | 2 — Commerce readiness | 0 | 8 | Pending |
-| 3 — AI-assisted jobs | 0 | 7 | Pending |
+| 3 — AI-assisted jobs | 0 | 9 | Pending |
 | 4 — Paused Ads launch | 0 | 8 | Pending |
 | 5 — Controlled Merchant writes | 0 | 5 | Pending |
 | 6 — Production rollout and closure | 0 | 7 | Pending |
-| **Total** | **2** | **54** | **4%** |
+| **Total** | **4** | **56** | **7%** |
 
 ## Phase 0 — governance and dependency reconciliation
 
@@ -42,39 +42,47 @@ and draft PR `#379`
 hard gates and completion policy.
 **Acceptance:** PRD, requirement matrix, roadmap, decisions and API registry cross-link
 and contain no credentials.
-**Verification:** `git diff --check`; 54-task count; secret-pattern scan; GSD phase
-inventory; full-file review; evidence in
+**Verification:** `git diff --check`; 54-task baseline count (now 56 after approved AI
+Gateway gates); secret-pattern scan; GSD phase inventory; full-file review; evidence in
 `phases/00-control-plane-verification/EVIDENCE.md`; commit `9cd0efdd`. Human acceptance
 of the rollout remains a separate Phase 0 checkpoint. Tracking PR: `#379`.
 **Dependencies:** CTL-001
 **Files:** workstream planning documents
 **Size:** M
 
-### [ ] CTL-003: Verify Cloud project and OAuth-client ownership
+### [x] CTL-003: Verify Cloud project and OAuth-client ownership
 
-**Status:** pending
+**Status:** complete
 **Description:** Determine whether `gen-lang-client-0818792107` owns XeroFlow's
 production OAuth client and is appropriate as the long-lived integration project.
 **Acceptance:** Project ID/number and client suffix mapping recorded; redirect/verified
 domain ownership reviewed; result is confirmed or rejected.
-**Verification:** Sanitized Cloud Console/gcloud evidence with no secret values.
+**Verification:** Read-only Cloud Console evidence confirms project number
+`14351276985`, matching the production OAuth client prefix. The sole visible web OAuth
+client is XeroFlow's Agency Dashboard client and includes the production XeroFlow and
+Cloudflare Pages origins/callbacks. No secret values were opened. Reuse is provisional
+because the shared project contains unrelated workloads and an unrestricted-key
+warning; see D-007, Phase 0 evidence and tracking PR `#379`.
 **Dependencies:** CTL-002
 **Files:** `API-REGISTRY.md`, restricted operator evidence outside Git if necessary
 **Size:** S
 
-### [ ] CTL-004: Inventory enabled APIs and authorization prerequisites
+### [x] CTL-004: Inventory enabled APIs and authorization prerequisites
 
-**Status:** in_progress
+**Status:** complete
 **Description:** Verify Merchant, Ads and existing Data Manager enablement and classify
 YouTube/legacy services.
-**Acceptance:** Required services enabled; conditional services have decisions; OAuth
+**Acceptance:** Required services are inventoried and any missing enablement is an
+explicit pre-registration action; conditional services have decisions; OAuth
 scopes/consent status and Ads developer-token access level are known.
 **Verification:** Production aggregate confirms the shared credential profile has
 `adwords`, `content` and `datamanager` grants across 87 MCC-linked connections. A
 bounded aggregate-only Ads API call reached v23 but the sampled legacy direct account
 failed with `USER_PERMISSION_DENIED`; MCC-profile proof remains blocked on the local
-absence of `REPO_TOKEN_ENCRYPTION_KEY`. Enabled-service inventory and developer-token
-access level remain outstanding. See Phase 0 evidence.
+absence of `REPO_TOKEN_ENCRYPTION_KEY`. Console evidence confirms Ads and Data Manager
+are enabled, Merchant and legacy Content API are not enabled, and the Ads developer
+token has Basic Access. Merchant remains deliberately disabled pending topology
+approval. See Phase 0 evidence and tracking PR `#379`.
 **Dependencies:** CTL-003
 **Files:** `API-REGISTRY.md`
 **Size:** S
@@ -410,6 +418,40 @@ are deterministic; failures degrade safely.
 **Likely files:** Context builder, tests
 **Size:** M
 
+### [ ] AIG-301: Implement governed Cloudflare AI Gateway routes
+
+**Status:** pending
+**Description:** Make authenticated Cloudflare AI Gateway the only inference egress for
+campaign jobs and add versioned standard/complex dynamic routes with privacy, rate,
+budget, timeout and retry controls.
+**Acceptance:** Dedicated route names/versions are configuration, not hard-coded
+provider endpoints; provider-native direct fallback is removed for this workflow;
+`cf-aig-collect-log-payload: false` and cache bypass are enforced for client context;
+no more than five flat non-PII metadata fields are sent; rate/budget exhaustion degrades
+to deterministic incomplete proposal or human review.
+**Verification:** Unit/contract tests for auth, route version, headers, metadata limit,
+no-cache, 401/429/timeout/provider failure and proof that no direct provider request is
+made; sanitized Gateway route/config evidence.
+**Dependencies:** JOB-301, JOB-302
+**Likely files:** AI Gateway transport/policy, runtime config, route fixtures, tests
+**Size:** M
+
+### [ ] AIG-302: Run quality/cost model bake-off and lock route versions
+
+**Status:** pending
+**Description:** Compare no-model/rule output, a JSON-capable Workers AI candidate,
+Groq GPT-OSS 20B and GPT-OSS 120B on one fixed sanitized campaign-proposal reference
+set before enabling the routes.
+**Acceptance:** Report schema validity, factuality, missing-input recall, task quality,
+latency, tokens and estimated cost; 20B remains standard unless it misses an approved
+quality threshold; 120B escalation criteria and per-proposal/monthly limits are owner-
+approved; exact model and route versions are recorded.
+**Verification:** Reproducible evaluation command/dataset, scored report, cost worksheet
+and owner sign-off; provider pricing refreshed from official sources at execution time.
+**Dependencies:** AIG-301
+**Likely files:** Evaluation fixtures/script, AI governance evaluation records, evidence
+**Size:** M
+
 ### [ ] JOB-303: Add the proposal-only AI tool
 
 **Status:** pending
@@ -418,7 +460,7 @@ do not create jobs or call providers.
 **Acceptance:** Tool schema validated; unsupported assumptions rejected; direct
 provider mutations absent; output maps to JOB-301.
 **Verification:** AI tool tests including prompt injection and missing evidence.
-**Dependencies:** JOB-301, JOB-302
+**Dependencies:** JOB-301, JOB-302, AIG-301, AIG-302
 **Likely files:** AI tool, registry entry, tests
 **Size:** M
 
@@ -466,7 +508,7 @@ and media buyer, without provider writes.
 **Acceptance:** Missing inputs resolved; generated tasks accepted or edited; audit
 history complete; usability findings addressed.
 **Verification:** Sanitized pilot evidence and stakeholder sign-off.
-**Dependencies:** JOB-301 to JOB-306
+**Dependencies:** JOB-301 to JOB-306, AIG-301, AIG-302
 **Likely files:** Evidence/docs and resulting fixes
 **Size:** M
 
@@ -475,6 +517,9 @@ history complete; usability findings addressed.
 - [ ] Internal job assistance is useful and auditable.
 - [ ] No AI-accessible provider mutation exists.
 - [ ] Human confirmation and idempotency are proven.
+- [ ] Every inference traverses an authenticated, versioned AI Gateway route.
+- [ ] Model quality/cost thresholds and budget ceilings are approved and observable.
+- [ ] Client prompt/response payloads are absent from Gateway logs.
 
 ## Phase 4 — paused PMax launch and activation
 

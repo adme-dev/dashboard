@@ -7,9 +7,9 @@ linked from `STATE.md` or the relevant phase verification file.
 
 ## Project and authorization
 
-- [ ] **GOV-01:** The production OAuth client ID must be mapped to its Google Cloud
+- [x] **GOV-01:** The production OAuth client ID must be mapped to its Google Cloud
   project ID and project number without storing client secrets in planning artifacts.
-- [ ] **GOV-02:** The enabled-service inventory must confirm Merchant API and Google Ads
+- [x] **GOV-02:** The enabled-service inventory must confirm Merchant API and Google Ads
   API; Data Manager and YouTube must be classified as existing, required, optional or
   absent with an owner-approved reason.
 - [ ] **GOV-03:** The Google Ads developer token owner, access level and manager account
@@ -97,6 +97,24 @@ linked from `STATE.md` or the relevant phase verification file.
   storing hidden chain-of-thought or credentials.
 - [ ] **JOB-10:** Accepted proposals must bind to the normalized launch-plan version
   used for approval.
+- [ ] **JOB-11:** Every campaign-job inference must traverse an authenticated,
+  versioned Cloudflare AI Gateway dynamic route; direct provider fallback is prohibited.
+- [ ] **JOB-12:** Deterministic validation and missing-field detection must run before
+  inference, and a no-model path must be used whenever rules can produce the result.
+- [ ] **JOB-13:** GPT-OSS 20B is the initial standard proposal candidate; GPT-OSS 120B
+  may be used only by a measured complexity/quality escalation rule approved through
+  the model bake-off.
+- [ ] **JOB-14:** Route selection must enforce per-tenant/task rate and cost limits,
+  bounded timeout/retry behavior and a deterministic or human-review terminal fallback.
+- [ ] **JOB-15:** AI Gateway logs for campaign context must retain usage/cost/latency
+  metadata but suppress raw request and response payloads; metadata must contain no PII
+  and must not exceed Cloudflare's five-entry limit.
+- [ ] **JOB-16:** Tenant/client-specific proposals must bypass cache. Any cacheable
+  prompt must be explicitly non-sensitive, deterministic and keyed by prompt/rule/model
+  version.
+- [ ] **JOB-17:** The bake-off must use a fixed, sanitized reference set and publish
+  schema-validity, factuality, missing-input recall, latency, token cost and escalation
+  results before route versions are locked.
 
 ## Google Ads launch integration
 

@@ -16,7 +16,7 @@ Live direct/subaccount credentials ----+              v
                                  +--------------------+------------------+
                                  |                                       |
                                  v                                       v
-                       Phase 3 AI jobs                         PMax contract adoption
+               Phase 3 AI jobs + Gateway policy              PMax contract adoption
                                  |                                       |
                                  +--------------------+------------------+
                                                       v
@@ -38,7 +38,7 @@ Live direct/subaccount credentials ----+              v
 | 0 | Verified ownership, API registry, Merchant topology and merged PMax contracts | In progress | Other PMax session, Google administrators | No unresolved account/project ambiguity |
 | 1 | Read-only Merchant API client and persisted observations | Pending | Phase 0 | Direct and subaccount reads match Merchant UI |
 | 2 | Unified commerce-readiness API and UI | Pending | Phase 1 | Pilot accounts have evidence-backed status |
-| 3 | AI-assisted campaign job/template workflow | Pending | Phase 2 | Proposal creates confirmed internal jobs only |
+| 3 | AI-assisted campaign job/template workflow through governed Cloudflare AI Gateway routes | Pending | Phase 2 | Proposal creates confirmed internal jobs only; model quality/cost gate passes |
 | 4 | Idempotent paused PMax creation and verified activation | Pending | Phases 0, 2 and 3 | Pilot campaign read-back matches approved plan |
 | 5 | Narrow, approved Merchant writes | Conditional | Stable Phases 1-4, production read evidence and write-risk approval | Each operation previews and reconciles, or phase is explicitly transferred |
 | 6 | Allowlisted production rollout, monitoring and closure | Pending | Required Phases 0-4; Phase 5 may be completed or transferred | Production evidence and handoff complete |
@@ -127,15 +127,21 @@ confirmed task set, with provider facts and inferred recommendations clearly sep
 1. Versioned template/normalized proposal contract.
 2. Deterministic missing-input and conflict detection.
 3. Retrieval-backed recommendation context.
-4. Propose-confirm-execute task creation.
-5. Proposal review UI and audit history.
-6. Feedback and outcome hooks without self-modifying policies.
+4. Authenticated Cloudflare AI Gateway dynamic routes and cost/privacy controls.
+5. Reproducible Workers AI/GPT-OSS 20B/120B quality-cost bake-off.
+6. Propose-confirm-execute task creation.
+7. Proposal review UI and audit history.
+8. Feedback and outcome hooks without self-modifying policies.
 
 ### Exit gate
 
 - The assistant never invents blocking campaign values.
 - Provider mutation tools are absent from the AI registry.
 - Created tasks match the confirmed proposal and are fully auditable.
+- Every inference is attributable to an authenticated, versioned Gateway route and no
+  direct-provider bypass exists.
+- GPT-OSS 20B is standard unless the bake-off proves a bounded 120B escalation case;
+  cost and quality thresholds are owner-approved.
 - Media buyer and account manager complete one end-to-end pilot job.
 
 ## Phase 4 — paused Google Ads launch

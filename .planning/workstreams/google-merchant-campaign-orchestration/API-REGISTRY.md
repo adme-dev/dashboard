@@ -1,7 +1,7 @@
 # Google API Registry and Enablement Gate
 
 **Status:** Partially verified; control-plane and live authorization gates remain open
-**Candidate Cloud project:** `gen-lang-client-0818792107`
+**Confirmed OAuth project; Merchant reuse provisional:** `gen-lang-client-0818792107`
 **Rule:** Do not record client secrets, tokens, developer tokens or service-account keys
 in this file.
 
@@ -10,8 +10,16 @@ in this file.
 - The repository's local production environment contains a Google OAuth client ID in
   the expected `apps.googleusercontent.com` format.
 - Its embedded numeric project prefix is `14351276985`.
-- The numeric project number for `gen-lang-client-0818792107` has not yet been obtained,
-  so the project/client mapping remains unverified.
+- Read-only Console evidence confirms `gen-lang-client-0818792107` has project number
+  `14351276985`; the production OAuth project mapping is confirmed.
+- The only visible web OAuth client is the Agency Dashboard client. Its authorized
+  origins/redirects cover XeroFlow production, Cloudflare Pages and local development.
+- The OAuth app is Internal and currently does not require verification. App home,
+  privacy and terms fields appear unset; this must be remediated before any external-
+  audience change.
+- The project is shared with unrelated Gemini/API-key workloads. At least one API key
+  row is flagged unrestricted; no key value was opened. Reuse remains provisional
+  pending security-owner disposition.
 - No OAuth client secret or token was printed or recorded during this check.
 - Production aggregate evidence shows one active encrypted Google credential profile
   linked to 87 manager-child connections. Its grants include `adwords`, `content` and
@@ -21,20 +29,20 @@ in this file.
   legacy inventory audit discovers them from Google Ads product links at runtime.
 - A secret-name-only Cloudflare Pages check confirms production has encrypted entries
   for the Google OAuth client, developer token, redirect URI and
-  `REPO_TOKEN_ENCRYPTION_KEY`. Presence does not prove the values or project mapping.
+  `REPO_TOKEN_ENCRYPTION_KEY`. Presence does not prove the values or current validity.
 
 ## Required services
 
 | API | Service name | Need | Current evidence | Action |
 |---|---|---|---|---|
-| Merchant API | `merchantapi.googleapis.com` | Required for Merchant account, data-source, product and issue operations | `content` OAuth grant is present on the shared profile; Merchant API enablement and developer registration are not proven | Verify project ownership, enable, then register approved agency Merchant topology |
-| Google Ads API | `googleads.googleapis.com` | Required for campaign/PMax reads and writes | Application reached Ads REST v23, but the bounded legacy direct sample failed with `USER_PERMISSION_DENIED`; shared MCC profile could not be decrypted locally | Prove MCC-child and direct reads, verify same OAuth project, and record token access level/owner securely |
+| Merchant API | `merchantapi.googleapis.com` | Required for Merchant account, data-source, product and issue operations | Console shows **not enabled**; `content` OAuth grant is already present; developer registration state remains unknown | Keep disabled until CTL-005 approves the topology, then enable and register once |
+| Google Ads API | `googleads.googleapis.com` | Required for campaign/PMax reads and writes | Console shows enabled with recent traffic; Ads API Center shows agency-owned developer token with Basic Access. Bounded legacy direct sample still failed with `USER_PERMISSION_DENIED` | Prove MCC-child and current direct reads; retain restricted owner/account record outside Git |
 
 ## Conditional services
 
 | API | Service name | When needed | Decision |
 |---|---|---|---|
-| Data Manager API | `datamanager.googleapis.com` | First-party conversion or audience ingestion included in campaign readiness/monitoring | Existing XeroFlow capability and `datamanager` grant confirmed on the shared profile; verify current project and live access, and do not duplicate |
+| Data Manager API | `datamanager.googleapis.com` | First-party conversion or audience ingestion included in campaign readiness/monitoring | Enabled in the confirmed OAuth project; existing XeroFlow capability and `datamanager` grant confirmed; verify live access and do not duplicate |
 | YouTube Data API v3 | `youtube.googleapis.com` | XeroFlow uploads generated PMax video to an authorized channel | Optional; disabled until product/media owner selects upload workflow and accepts quota/audit obligations |
 | Cloud KMS API | `cloudkms.googleapis.com` | Only if Data Manager confidential matching/encryption architecture explicitly adopts Google Cloud KMS | Not required for baseline rollout |
 
@@ -42,7 +50,7 @@ in this file.
 
 | API | Status | Exit condition |
 |---|---|---|
-| Content API for Shopping | Existing legacy audit dependency | Keep only until Merchant API data-source/product audit parity and live validation are signed off; build no new features on it |
+| Content API for Shopping | Existing legacy audit dependency; Console service is not enabled in the confirmed project | Determine which historic project/path serves the legacy audit; keep compatibility only until Merchant API parity and live validation are signed off |
 
 ## Explicitly unnecessary for this rollout
 
@@ -66,24 +74,30 @@ features may use other Google APIs, but they are not dependencies of this workst
 
 ## OAuth and non-API prerequisites
 
-- [ ] Candidate project ID and numeric project number recorded.
-- [ ] Production `GOOGLE_CLIENT_ID` project-number prefix `14351276985` matched to the
+- [x] Candidate project ID and numeric project number recorded.
+- [x] Production `GOOGLE_CLIENT_ID` project-number prefix `14351276985` matched to the
       candidate project's numeric project number.
 - [ ] Preview/staging OAuth client mapping recorded.
-- [ ] Authorized JavaScript origins and redirect URIs match deployed XeroFlow domains.
-- [ ] Google Auth Platform branding, verified domains and privacy/support links reviewed.
+- [x] Authorized JavaScript origins and redirect URIs match deployed XeroFlow domains.
+- [x] Google Auth Platform branding and audience reviewed; Internal audience needs no
+      current verification, but public app-policy links are incomplete.
 - [x] `adwords`, `content` and `datamanager` scopes present on the active shared
       credential profile and its 87 linked connections.
-- [ ] Sensitive-scope verification status and test-user restrictions understood.
+- [x] Current Internal audience/verification status understood; external-audience
+      conversion is a separate future gate.
 - [ ] OAuth client secrets remain only in approved secret stores.
-- [ ] Google Ads developer token owner/access level recorded outside the repository.
+- [x] Google Ads developer token agency ownership and Basic Access verified; manager ID
+      and token value remain outside the repository.
 - [ ] Merchant developer email is monitored and agency-controlled.
 
 ## Merchant registration gate
 
-- [ ] Identify the agency's controlling/advanced Merchant account.
-- [ ] Map client Merchant subaccounts and standalone accounts.
+- [x] Identify the agency's controlling/advanced Merchant account candidate.
+- [x] Confirm it exposes an advanced-account hierarchy with 50 subaccounts.
+- [ ] Map client Merchant subaccounts and standalone accounts to tenants without
+      committing identifiers.
 - [ ] Confirm the controlling Merchant account has a verified agency-owned website.
+      Current evidence fails this gate: the claimed website is client-owned.
 - [ ] Confirm registration actor has required admin access.
 - [ ] Confirm the project is not already registered to another Merchant account.
 - [ ] Confirm the developer email can accept/retain the API Developer role.
@@ -94,13 +108,15 @@ features may use other Google APIs, but they are not dependencies of this workst
 ## Google Ads access gate
 
 - [ ] Confirm the Ads manager account that owns the developer token.
-- [ ] Confirm token status and access level are sufficient for pilot production accounts.
+- [x] Confirm token status/access level: Basic Access. Pilot-account authorization still
+      requires bounded reads.
 - [ ] Confirm direct-account OAuth behavior.
 - [ ] Confirm manager-child `login-customer-id` behavior.
 - [ ] Confirm Ads-Merchant product links for pilot accounts.
 - [ ] Confirm a read-only GAQL request succeeds before any launch work.
 
-Current observation: a bounded v23 call against one legacy direct connection returned
+Current observation: Ads API Center confirms an agency-owned Basic Access token. A
+bounded v23 call against one legacy direct connection returned
 `USER_PERMISSION_DENIED`. Production has the encryption-key secret, but local execution
 cannot decrypt the shared profile because the key is absent locally. Keep all success
 boxes open until a current direct grant and an MCC-child read both pass.
@@ -144,6 +160,27 @@ Secrets exposed: NO
 Follow-up:
 ```
 
+## Cloudflare AI Gateway gate for campaign-job inference
+
+The repository already configures the shared Cloudflare AI Gateway `default` endpoint
+for Groq SDK calls and includes a Workers AI binding. This is evidence of a starting
+integration, not completion: the shared helper retries directly against Groq when the
+Gateway fails, and production secret-name evidence has not positively established a
+dedicated AI Gateway run token.
+
+- [ ] Create and authenticate dedicated versioned dynamic routes for standard and
+      complex campaign-job proposals.
+- [ ] Store provider credentials with approved BYOK/Cloudflare secret handling; no
+      credential may enter request metadata or logs.
+- [ ] Remove/prohibit direct-provider fallback for this workflow.
+- [ ] Enforce metadata-only logs with `cf-aig-collect-log-payload: false` and skip cache
+      for client-specific requests.
+- [ ] Enforce at most five flat, non-PII metadata values.
+- [ ] Configure per-tenant/task rate and budget limits plus bounded retries/timeouts.
+- [ ] Complete AIG-302 evaluation before locking model and route versions.
+- [ ] Confirm dashboard cost/tokens/latency reconcile with the XeroFlow invocation
+      ledger and that budget/rate exhaustion fails safely.
+
 ## Official references
 
 - <https://developers.google.com/merchant/api/overview>
@@ -152,3 +189,8 @@ Follow-up:
 - <https://developers.google.com/google-ads/api/docs/api-policy/developer-token>
 - <https://developers.google.com/data-manager/api/devguides/quickstart/set-up-access>
 - <https://developers.google.com/youtube/v3/getting-started>
+- <https://developers.cloudflare.com/ai-gateway/features/dynamic-routing/>
+- <https://developers.cloudflare.com/ai-gateway/configuration/authentication/>
+- <https://developers.cloudflare.com/ai-gateway/observability/logging/>
+- <https://developers.cloudflare.com/workers-ai/platform/pricing/>
+- <https://groq.com/pricing>

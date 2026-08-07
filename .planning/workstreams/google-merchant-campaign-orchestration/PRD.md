@@ -186,7 +186,8 @@ each subaccount.
 
 Therefore:
 
-- `gen-lang-client-0818792107` is a candidate, not an approved production project.
+- `gen-lang-client-0818792107` is the confirmed production OAuth project, but its reuse
+  for Merchant registration remains provisional pending security and domain approval.
 - Its project ID/number, OAuth client IDs, Ads developer token and current enabled
   services must be inventoried without exposing secrets.
 - The agency's controlling Merchant account and subaccount structure must be confirmed.
@@ -200,6 +201,9 @@ Campaign template / approved brief
               |
               v
 XeroFlow deterministic normalizer + AI completion assistant
+              |
+              v
+Authenticated Cloudflare AI Gateway dynamic route
               |
               +--> XeroFlow job/tasks and missing-input workflow
               |
@@ -233,8 +237,44 @@ Separate activation approval -> enable -> monitoring
 - **Neon:** tenant-scoped observations, jobs, approvals, provider resource mappings,
   events and idempotency claims.
 - **R2:** generated asset bundles and evidence exports where required.
-- **Workers AI/Groq:** advisory classification or narrative only after deterministic
-  evidence is assembled; never the authority for provider writes.
+- **Cloudflare AI Gateway:** mandatory, authenticated inference entry point with
+  versioned dynamic routes, cost/rate limits, metadata-only logs and no direct-provider
+  bypass.
+- **Workers AI/Groq:** model execution only after deterministic evidence is assembled;
+  never the authority for provider writes.
+
+### AI Gateway and model policy
+
+AI is a bounded proposal service, not a control plane. Validation, readiness,
+authorization, idempotency and provider mutations remain deterministic. All campaign-
+job inference must traverse an authenticated Cloudflare AI Gateway route; an outage or
+budget limit degrades to deterministic templates or a retryable operator state rather
+than calling Groq or another provider directly.
+
+| Work class | Default | Escalation | Rationale |
+|---|---|---|---|
+| Validation, readiness and missing required fields | No model | None | Rules are cheaper, reproducible and authoritative |
+| Bounded extraction/classification or short explanation | Workers AI candidate selected by evaluation; start with `@cf/meta/llama-3.1-8b-instruct-fast` where JSON mode is required | Groq GPT-OSS 20B | Keep routine work on Cloudflare; schema validation is mandatory |
+| Campaign-job proposal and template completion | Groq `openai/gpt-oss-20b` | GPT-OSS 120B only after an explicit complexity/evaluation gate | 20B supports reasoning, tools and structured JSON at half the 120B token price |
+| Complex multi-evidence proposal that fails the 20B quality gate | Groq `openai/gpt-oss-120b` | Human review / deterministic incomplete proposal | Pay for the larger model only when measured quality requires it |
+
+The August 2026 public rates used for planning are $0.075/M input and $0.30/M output
+tokens for GPT-OSS 20B, versus $0.15/M input and $0.60/M output for GPT-OSS 120B.
+Model IDs and prices must be refreshed during the bake-off and before production
+rollout; they are not permanent configuration constants.
+
+Use two versioned dynamic routes: a standard proposal route and a complex escalation
+route. Routes enforce per-tenant/task rate and budget limits, bounded timeouts/retries,
+and explicit model versions. Send at most five flat, non-PII metadata fields (feature,
+tenant pseudonym, environment, proposal type and request correlation). Preserve token,
+cost, latency, provider/model, route version and cache status, but set
+`cf-aig-collect-log-payload: false` for client campaign context. Skip caching for
+tenant/client-specific proposals; enable it only for explicitly classified,
+non-sensitive deterministic prompts with a versioned cache key.
+
+The existing shared `default` gateway and Groq helper are a starting point, not the
+finished contract: authentication must be positively verified, campaign routes must be
+dedicated and the current direct-Groq retry path must be removed for this workflow.
 
 ## Functional workflow
 
@@ -301,7 +341,7 @@ a second launch model.
 | Launch configuration and approval | XeroFlow | Immutable version/hash |
 | Campaign/resource IDs and serving state | Google Ads | Mapping and observations in XeroFlow |
 | Spend and conversion delivery | Provider plus XeroFlow sync | Existing facts and reconciliation |
-| AI recommendation | XeroFlow | Evidence, confidence, model/prompt version and human decision |
+| AI recommendation | XeroFlow | Evidence, confidence, gateway route/model/prompt version, token/cost/latency metadata and human decision; no stored hidden reasoning |
 
 ## Security and safety requirements
 
@@ -320,6 +360,9 @@ a second launch model.
 - Apply bounded retries only to retryable failures; policy and validation failures
   require operator action.
 - Never render an absent or unsupported provider value as healthy.
+- Fail closed when AI Gateway authentication, route, spend limit or provider execution
+  fails; never bypass the gateway.
+- Store no raw campaign prompt/completion in AI Gateway logs; log metadata only.
 
 ## Reliability and observability
 
@@ -329,6 +372,8 @@ Track at minimum:
 - data-source/product freshness and issue totals;
 - API quota/rate-limit events and retry exhaustion;
 - job proposal, approval and rejection counts;
+- AI Gateway route/model/version, token usage, estimated cost, duration, fallback and
+  budget/rate-limit outcomes;
 - launch state transitions and time in state;
 - idempotency deduplication and resumed runs;
 - provider read-back mismatches;
@@ -354,6 +399,10 @@ errors.
 - A media buyer can generate a complete, reviewable job from an approved template.
 - Required missing inputs are surfaced before approval.
 - Every created task is traceable to the proposal and actor confirmation.
+- 20B meets the approved structured-proposal quality threshold; 120B escalation rate
+  and cost remain inside the owner-approved envelope.
+- 100% of campaign-job inference is attributable to an authenticated AI Gateway route;
+  direct-provider bypass attempts are zero.
 
 ### Release 3
 
@@ -393,13 +442,14 @@ errors.
 
 | ID | Decision | Default until resolved | Owner |
 |---|---|---|---|
-| D-01 | Is `gen-lang-client-0818792107` the production XeroFlow OAuth project? | Treat as unverified | Platform owner |
+| D-01 | Is the confirmed shared OAuth project acceptable for Merchant registration after key/domain remediation? | Do not register | Platform/security owner |
 | D-02 | Which agency/advanced Merchant account owns developer registration? | Do not register | Media/platform owner |
 | D-03 | Does the Ads developer token have sufficient production access? | Read-only validation only | Ads administrator |
 | D-04 | Are Data Manager API credentials in the same project or intentionally separate? | Preserve existing integration | Measurement owner |
 | D-05 | Will Release 3 include YouTube upload or only existing video IDs? | Do not enable YouTube API | Product/media owner |
 | D-06 | Which PMax launch contracts survive the concurrent session merge? | Rebase and adopt merged contracts | Platform engineering |
 | D-07 | Which pilot tenant/account is authorized for provider writes? | No writes | Product owner |
+| D-08 | What quality and monthly/per-proposal cost thresholds approve model routes? | 20B standard, 120B unavailable until bake-off and owner sign-off | Product/platform owner |
 
 ## References
 
@@ -420,3 +470,10 @@ errors.
   <https://developers.google.com/data-manager/api/devguides/quickstart/set-up-access>
 - YouTube Data API overview:
   <https://developers.google.com/youtube/v3/getting-started>
+- Cloudflare AI Gateway dynamic routing:
+  <https://developers.cloudflare.com/ai-gateway/features/dynamic-routing/>
+- Cloudflare AI Gateway logging:
+  <https://developers.cloudflare.com/ai-gateway/observability/logging/>
+- Cloudflare Workers AI pricing:
+  <https://developers.cloudflare.com/workers-ai/platform/pricing/>
+- Groq pricing: <https://groq.com/pricing>

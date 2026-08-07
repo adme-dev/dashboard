@@ -10,14 +10,14 @@
 - Root dirty worktree was not modified.
 - Active GSD workstream: `google-merchant-campaign-orchestration`.
 - GSD inventory: seven phases, Phase 0 in progress, Phases 1-6 pending.
-- Executable register: 54 stable tasks.
+- Executable register: 56 stable tasks after adding two explicit AI Gateway/model gates.
 - Canonical planning commit: `9cd0efdd`.
 - Draft tracking PR: `#379`.
 
 ## Documentation verification
 
 - `git diff --check`: passed.
-- Task heading count: 54.
+- Task heading count: 56 (54-task baseline plus AIG-301 and AIG-302).
 - Secret-pattern scan across workstream Markdown: no credential values detected.
 - API boundaries and Cloudflare deployment assumptions reviewed against `AGENTS.md`.
 - Concurrent PMax migrations/utilities are declared as a blocked dependency and were
@@ -29,12 +29,70 @@
 - Sanitized numeric project prefix: `14351276985`.
 - Candidate project ID from the supplied Console URL:
   `gen-lang-client-0818792107`.
-- Candidate numeric project number: not yet obtained.
-- Mapping verdict: **not proven**.
-- A read-only interactive Console inspection was attempted, but the local desktop
-  automation runtime became unavailable before page state could be read. No Console
-  action or configuration change occurred.
+- Candidate numeric project number: `14351276985`.
+- Mapping verdict: **confirmed**; it matches the production OAuth client prefix.
+- Read-only Console inspection found one web OAuth client named Agency Dashboard with
+  XeroFlow production, Cloudflare Pages and local origins/callbacks.
+- Google Auth audience is Internal and Console reports verification is not required.
+  Public app home/privacy/terms fields appear incomplete and must be addressed before
+  any future external-audience change.
+- The project contains unrelated Gemini/API-key workloads and at least one API key row
+  is flagged unrestricted. No key value was opened. Security-owner remediation or
+  explicit acceptance is required before Merchant registration.
 - Secret exposure: none.
+
+## Enabled Google services and Ads token
+
+**Checked:** 2026-08-07
+**Method:** Read-only Cloud Console and Google Ads API Center inspection; identifiers
+other than the approved project ID/number were not retained.
+
+- Google Ads API: enabled, with recent traffic.
+- Data Manager API: enabled.
+- Merchant API: not enabled; Console showed the Enable action and it was not used.
+- Content API for Shopping: not present in the enabled-service inventory.
+- Ads developer token: agency-owned, masked, Basic Access.
+- No API, scope, credential or token setting was changed.
+
+## Merchant topology observation
+
+**Checked:** 2026-08-07
+**Method:** Read-only Merchant Center inspection with standalone and agency logins.
+
+- A standalone dealer account is incomplete, has an unverified website and no Ads
+  service link; it is not a registration target.
+- The agency login exposes an advanced-account hierarchy and subaccount export with 50
+  subaccounts.
+- The advanced account's claimed website is client-owned rather than agency-owned.
+  This fails the current agency-domain registration gate.
+- The people/access UI suggests account-administration capability, but the exact actor
+  role and monitored API Developer email are not proven.
+- Registration state remains unknown because Merchant API is deliberately disabled.
+- No Merchant registration, link, website claim or account setting was changed.
+
+## Cloudflare AI Gateway policy evidence
+
+**Checked:** 2026-08-07
+**Method:** Repository inspection plus current official Cloudflare and Groq docs; no
+Cloudflare/Groq configuration mutation or inference request.
+
+- `wrangler.toml` configures the shared Cloudflare AI Gateway `default` endpoint and the
+  app has a Workers AI binding.
+- `server/utils/groqClient.ts` supports Gateway authentication but currently retries
+  directly against Groq after a Gateway failure. Campaign-job work must not reuse that
+  bypass behavior.
+- Cloudflare dynamic routes support versioned model selection and per-key rate/cost
+  limits. Authenticated Gateway is required for the rollout.
+- Gateway payload logging is enabled by default; the rollout must set
+  `cf-aig-collect-log-payload: false` while retaining metadata-only cost/token/latency
+  evidence. Custom metadata is limited to five flat values.
+- Current Groq list rates are $0.075/M input and $0.30/M output for GPT-OSS 20B and
+  $0.15/M input and $0.60/M output for GPT-OSS 120B. These are planning inputs and must
+  be refreshed during AIG-302.
+- Selected baseline: deterministic/no-model first; GPT-OSS 20B for ordinary structured
+  proposals; GPT-OSS 120B only after measured escalation; evaluate a JSON-capable
+  Workers AI model for bounded low-risk work.
+- No secret values were read or recorded.
 
 ## Dependency and test baseline
 
@@ -98,8 +156,8 @@ one account; provider operation was read-only and emitted no identifiers.
 
 ## Outstanding Phase 0 evidence
 
-- Candidate Cloud project's numeric project number and enabled-service inventory.
-- Google Ads developer-token owner/access level.
+- Security-owner disposition for shared-project/unrestricted-key findings.
+- Owner decision on the Merchant agency-domain failure and registration target.
 - A current direct-account grant or an approved retirement decision for the 21 legacy
   connections.
 - A live MCC-child read through an authorized production/preview execution path that
