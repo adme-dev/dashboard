@@ -137,7 +137,9 @@ function createPostgresStore(db: Queryable): GooglePmaxRemediationTaskStore {
           context.briefId
         ]
       )
-      const taskId = String(result.rows[0].id)
+      const createdTask = result.rows[0]
+      if (!createdTask?.id) throw new Error('PMAX_REMEDIATION_TASK_CREATE_FAILED')
+      const taskId = String(createdTask.id)
       await db.query(
         `INSERT INTO task_activities (task_id, user_id, activity_type, content)
          VALUES ($1::uuid, $2::uuid, 'created', $3)`,

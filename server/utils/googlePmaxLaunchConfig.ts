@@ -368,7 +368,7 @@ export function normalizeGooglePmaxInventoryLaunchConfig(
   if (fields.get('budget_period') !== 'fixed_flight') {
     issues.push(issue('BUDGET_PERIOD_INVALID', 'budget_period', 'Budget period must be fixed_flight.'))
   }
-  if (!budget.ok) issues.push(issue(budget.code, 'budget', budget.message))
+  if (budget.ok === false) issues.push(issue(budget.code, 'budget', budget.message))
 
   const biddingValue = fields.get('bidding')
   const bidding: GooglePmaxInventoryLaunchConfig['bidding'] = biddingValue === 'max_value'

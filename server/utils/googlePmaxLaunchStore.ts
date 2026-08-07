@@ -390,7 +390,7 @@ export async function transitionGooglePmaxLaunch(input: {
       expectedConfigHash: input.expectedConfigHash,
       retryFromState: current.retryFromState
     })
-    if (!decision.ok) {
+    if (decision.ok === false) {
       if (decision.code === 'LAUNCH_APPROVAL_EVIDENCE_REQUIRED') {
         throw new GooglePmaxLaunchConflictError('LAUNCH_APPROVAL_CONFLICT', decision.message)
       }
