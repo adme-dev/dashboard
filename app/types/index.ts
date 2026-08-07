@@ -2670,3 +2670,12 @@ export interface MediaRenderJob {
   createdAt: string
   updatedAt: string
 }
+export type PortalAnalyticsPrintMetric = 'spend' | 'impressions' | 'clicks' | 'leads' | 'cpc' | 'ctr' | 'costPerLead'
+
+export interface PortalAnalyticsPrintFilters {
+  startDate: string
+  endDate: string
+  platforms: string[]
+  runningOnly: boolean
+  metric: PortalAnalyticsPrintMetric
+}
