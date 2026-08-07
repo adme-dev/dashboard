@@ -12,7 +12,7 @@ const RECURRENCES = new Set(['none', 'weekly', 'fortnightly', 'monthly', 'quarte
 const ACCOUNTS = new Set(['NAB_BUSINESS', 'NAB_TAX', 'AMEX'])
 const STATUSES = new Set(['expected', 'hold', 'disputed', 'matched', 'closed'])
 const CONFIDENCES = new Set(['committed', 'probable', 'provisional'])
-const SOURCES = new Set(['manual', 'spreadsheet-import'])
+const SOURCES = new Set(['manual', 'spreadsheet-import', 'statutory-seed'])
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
