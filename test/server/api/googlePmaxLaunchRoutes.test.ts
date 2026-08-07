@@ -14,6 +14,7 @@ const mockApproveLaunch = vi.fn()
 const mockQueryOne = vi.fn()
 const mockGetOnboardingAttestation = vi.fn()
 const mockCreateOnboardingAttestation = vi.fn()
+const mockRunPreflight = vi.fn()
 
 let query: Record<string, unknown> = {}
 let body: Record<string, unknown> = {}
@@ -64,6 +65,10 @@ vi.mock('~~/server/utils/googlePmaxOnboardingAttestation', async (importOriginal
     createGooglePmaxOnboardingAttestation: (...args: unknown[]) => mockCreateOnboardingAttestation(...args)
   }
 })
+
+vi.mock('~~/server/utils/googlePmaxLaunchPreflightService', () => ({
+  runGooglePmaxLaunchPreflight: (...args: unknown[]) => mockRunPreflight(...args)
+}))
 
 const ids = {
   tenant: 'c41c58be-a3a8-4479-b5d1-9251bb80717d',
@@ -150,7 +155,7 @@ describe('Google PMax launch API boundaries', () => {
     query = {}
     body = {}
     launchId = '5c4ca47b-df3a-43cd-b82f-a23a3f03a781'
-    mockRequirePermission.mockResolvedValue({ id: ids.actor, role: 'owner' })
+    mockRequirePermission.mockResolvedValue({ id: ids.actor, role: 'owner', email: 'owner@example.com' })
     mockGetSelectedTenant.mockResolvedValue(ids.tenant)
     mockHasRole.mockReturnValue(true)
     mockListLaunches.mockResolvedValue([storedLaunch()])
@@ -162,6 +167,7 @@ describe('Google PMax launch API boundaries', () => {
       attestation: { id: '9f6aca34-2ed4-4547-8e60-a3631e6d316e', active: true },
       isReplay: false
     })
+    mockRunPreflight.mockResolvedValue({ launch: storedLaunch(), evidence: { blockerCount: 0 } })
     mockQueryOne.mockResolvedValue({
       id: ids.brief,
       client_id: ids.client,
@@ -345,5 +351,24 @@ describe('Google PMax launch API boundaries', () => {
       reason: body.reason
     }))
     expect(result.isReplay).toBe(false)
+  })
+
+  it('runs preflight only after media-buying and client scope checks', async () => {
+    const event = { context: {} } as never
+    const handler = (await import('~~/server/api/agency/social/google/pmax-launches/[id]/preflight.post')).default
+
+    const result = await handler(event)
+
+    expect(mockRequirePermission).toHaveBeenCalledWith(event, 'MEDIA_BUYING')
+    expect(mockGetLaunch).toHaveBeenCalledWith({ launchId, tenantId: ids.tenant })
+    expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(event, ids.client)
+    expect(mockRunPreflight).toHaveBeenCalledWith({
+      event,
+      launchId,
+      tenantId: ids.tenant,
+      actorId: ids.actor,
+      actorEmail: 'owner@example.com'
+    })
+    expect(result.launch.state).toBe('READY_FOR_APPROVAL')
   })
 })

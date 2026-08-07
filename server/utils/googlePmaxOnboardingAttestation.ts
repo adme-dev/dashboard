@@ -176,7 +176,7 @@ function validateEvidence(
   ) {
     throw new GooglePmaxOnboardingAttestationError('PMAX_ONBOARDING_ATTESTATION_IDENTITY_MISMATCH')
   }
-  return parsed.data
+  return parsed.data as GooglePmaxOnboardingEvidence
 }
 
 function snapshot(input: {
@@ -222,7 +222,7 @@ function toAttestation(value: unknown, now: Date): GooglePmaxOnboardingAttestati
     configVersion: row.config_version,
     configHash: row.config_hash,
     snapshotHash: row.snapshot_hash,
-    evidence: row.snapshot.evidence,
+    evidence: row.snapshot.evidence as GooglePmaxOnboardingEvidence,
     reason: row.reason,
     attestedBy: row.attested_by,
     attestedAt: row.attested_at,
