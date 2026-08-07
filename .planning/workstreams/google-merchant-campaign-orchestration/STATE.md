@@ -13,13 +13,14 @@ current_phase: 0
 **Status:** Planning baseline created; Phase 0 in progress
 **Current phase:** Phase 0 — control-plane verification and dependency reconciliation
 **Current task:** CTL-005 — approve or reject the Merchant registration topology
-**Progress:** 4 of 56 tasks complete (7%)
+**Progress:** 4 of 57 tasks complete (7%)
 **Active branch:** `docs/google-merchant-orchestration`
 **Worktree:** `.worktrees/google-merchant-orchestration`
 **Tracking PR:** `#379` — draft; do not merge before Phase 0 reconciliation
 **Last Activity:** 2026-08-07
-**Last Activity Description:** Google control-plane topology and Cloudflare AI Gateway
-model/cost policy recorded; Phase 0 remains gated
+**Last Activity Description:** Cloudflare AI Gateway production promotion gate refined
+with binding-first security, data-retention, cost and Graphify confirmation controls;
+Phase 0 remains gated
 
 ## Completed this session
 
@@ -53,6 +54,16 @@ model/cost policy recorded; Phase 0 remains gated
 - Constitutionalized Cloudflare AI Gateway as the only campaign-job inference path,
   with GPT-OSS 20B standard, 120B measured escalation, metadata-only logs and dedicated
   quality/cost tasks. No gateway/provider configuration was changed.
+- Added the production Gateway runbook: separate preview/production gateways, binding-
+  only dynamic routes, BYOK/Secrets Store, upstream-retention approval, DLP preview,
+  no model tools, one repair maximum and initial token/cost/rate/spend limits.
+- Queried the existing Graphify graph/wiki to confirm the direct-Groq fallback,
+  invocation ledger and model-assignment surfaces. The graph reports an older node-ID
+  scheme/package mismatch, so current direct source remains the final authority.
+- Reconciled Graphify with the live deploy path and current Cloudflare Pages docs:
+  `CF_PAGES_BRANCH` is build-scoped, while Nitro deploy config makes Wrangler the Pages
+  configuration source of truth. Campaign Preview/Production selection therefore uses
+  same-named encrypted environment bindings and fails closed at runtime.
 
 ## Active blockers
 
@@ -86,6 +97,8 @@ model/cost policy recorded; Phase 0 remains gated
 5. Wait for the concurrent PMax session to finish, then rebase and reconcile contracts.
 6. Refresh the passing Node 24 baseline after the PMax rebase.
 7. Begin MER-101 only after the Phase 0 gate passes.
+8. Keep AIG-303 external security/data-handling approval open; do not create or promote
+   production Gateway routes before it and AIG-302 pass.
 
 ## Operating rules
 
@@ -97,6 +110,8 @@ model/cost policy recorded; Phase 0 remains gated
 - Use guarded Cloudflare deployment commands only.
 - Route all campaign-job inference through authenticated Cloudflare AI Gateway; never
   add a direct-provider fallback.
+- Use Graphify Wiki/graph for codebase confirmation on every rollout decision, then
+  verify the cited current source and record any graph staleness/disagreement.
 
 ## Resume command
 

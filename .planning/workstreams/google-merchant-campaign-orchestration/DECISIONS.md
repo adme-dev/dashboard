@@ -131,3 +131,72 @@ correlation metadata while disabling request/response payload collection and cac
 for client-specific campaign proposals.
 **Reason:** Campaign briefs may contain client strategy, budgets and contacts. Usage
 telemetry is useful; persisting raw payloads in gateway logs is unnecessary exposure.
+
+## D-016 — Binding-first Gateway transport
+
+**Status:** Accepted
+**Decision:** Campaign jobs call dynamic routes through the existing Cloudflare `AI`
+binding. They do not use an AI Gateway API token, provider-native SDK transport or the
+shared Groq/Claude fallback chain.
+**Reason:** Binding requests are pre-authenticated. Cloudflare AI Gateway Run tokens are
+account-scoped and can execute against every gateway in the account, so placing one in
+the Pages runtime creates unnecessary blast radius. The project already binds `AI` in
+`wrangler.toml`.
+
+## D-017 — Dedicated gateways and BYOK retention gate
+
+**Status:** Accepted for architecture; security approval pending
+**Decision:** Use separate preview and production campaign gateways with provider keys
+stored through Cloudflare BYOK/Secrets Store. Do not use the shared `default` gateway.
+Treat upstream provider retention as a separate gate from metadata-only Gateway logs.
+**Reason:** Separate gateways isolate analytics, budgets and route promotion. Cloudflare
+ZDR does not apply to BYOK traffic, and Groq is not currently listed as a supported ZDR
+provider; log-payload suppression alone cannot satisfy an upstream-retention policy.
+
+## D-018 — Bounded single-completion proposal path
+
+**Status:** Accepted as pilot default; AIG-302 may tighten limits
+**Decision:** Campaign proposals use no model tools, one structured completion and at
+most one same-model schema repair. Initial bounds are 16K input, 2K output, two calls
+and $0.01 estimated cost per proposal. A budget or provider failure returns an
+incomplete/manual-review state and never triggers an unapproved expensive model.
+**Reason:** Tool loops, repeated repair and automatic escalation are the material cost
+and safety risks; the raw per-token difference between 20B and 120B is small at the
+bounded proposal size. Gateway spend limits are eventually consistent, so application
+bounds remain necessary.
+
+## D-019 — Graphify Wiki is a confirmation gate
+
+**Status:** Accepted
+**Decision:** Use the Graphify Wiki/graph to corroborate codebase architecture and
+dependency claims before implementation and promotion, then verify the cited source
+directly. Record graph version/staleness warnings and resolve disagreements in favor of
+current reviewed source.
+**Reason:** The graph makes cross-module relationships visible, while direct source is
+needed when the graph lags the active branch. The current graph confirms the existing
+direct-Groq fallback, invocation ledger and model-assignment surfaces but reports an
+older node-ID scheme and must not be treated as infallibly current.
+
+## D-020 — AI Gateway route is the single model-routing authority
+
+**Status:** Accepted
+**Decision:** Campaign-job runtime selects an approved dynamic route, not a raw model.
+The generic XeroFlow model-assignment system may catalogue/display the actual executed
+provider/model but cannot override the route. Store the reviewed route-manifest release
+and capture actual provider/model response metadata in the invocation ledger.
+**Reason:** Allowing both the Gateway route and database model assignment to select a
+model creates two control planes, invalidates evaluated route versions and can make
+auditing record a configured model rather than the model that actually ran.
+
+## D-021 — Pages environment selection uses encrypted bindings, not branch inference
+
+**Status:** Accepted
+**Decision:** Configure `CAMPAIGN_AI_DEPLOY_ENV`, gateway ID, route release, workflow
+flag and HMAC key as same-named encrypted bindings separately for Pages Preview and
+Production. Reject missing or invalid environment values. Do not add these selectors
+to common Wrangler `[vars]` or infer `CF_PAGES_BRANCH` in request-time code.
+**Reason:** Nitro deploy config makes Wrangler the Pages configuration source of truth,
+and this repository's common plaintext `[vars]` replace dashboard plaintext values.
+Cloudflare documents `CF_PAGES_BRANCH` for build-time customization. Encrypted
+environment bindings survive the existing deploy path while keeping preview and
+production routing, flags and pseudonyms isolated.

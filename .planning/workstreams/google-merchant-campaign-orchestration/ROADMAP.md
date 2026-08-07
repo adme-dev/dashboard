@@ -127,11 +127,12 @@ confirmed task set, with provider facts and inferred recommendations clearly sep
 1. Versioned template/normalized proposal contract.
 2. Deterministic missing-input and conflict detection.
 3. Retrieval-backed recommendation context.
-4. Authenticated Cloudflare AI Gateway dynamic routes and cost/privacy controls.
-5. Reproducible Workers AI/GPT-OSS 20B/120B quality-cost bake-off.
-6. Propose-confirm-execute task creation.
-7. Proposal review UI and audit history.
-8. Feedback and outcome hooks without self-modifying policies.
+4. Security-approved binding-first/BYOK data-handling and promotion policy.
+5. Separate preview/production Cloudflare AI Gateways and dynamic routes.
+6. Reproducible Llama 8B/Qwen3 30B/GPT-OSS 20B/120B quality-cost bake-off.
+7. Propose-confirm-execute task creation.
+8. Proposal review UI and audit history.
+9. Feedback and outcome hooks without self-modifying policies.
 
 ### Exit gate
 
@@ -142,6 +143,11 @@ confirmed task set, with provider facts and inferred recommendations clearly sep
   direct-provider bypass exists.
 - GPT-OSS 20B is standard unless the bake-off proves a bounded 120B escalation case;
   cost and quality thresholds are owner-approved.
+- The runtime uses the pre-authenticated `AI` binding, no broad Gateway token, dedicated
+  environment gateways and a workflow-specific feature flag defaulting false.
+- Provider retention/DPA and DLP behavior are accepted independently of Gateway log
+  payload suppression.
+- Graphify Wiki and direct-source confirmation cover the promoted runtime path.
 - Media buyer and account manager complete one end-to-end pilot job.
 
 ## Phase 4 — paused Google Ads launch

@@ -12,11 +12,11 @@ commit/PR. Provider tasks also require a sanitized live read-back or an explicit
 | 0 — Governance and reconciliation | 4 | 9 | In progress |
 | 1 — Merchant read foundation | 0 | 10 | Pending |
 | 2 — Commerce readiness | 0 | 8 | Pending |
-| 3 — AI-assisted jobs | 0 | 9 | Pending |
+| 3 — AI-assisted jobs | 0 | 10 | Pending |
 | 4 — Paused Ads launch | 0 | 8 | Pending |
 | 5 — Controlled Merchant writes | 0 | 5 | Pending |
 | 6 — Production rollout and closure | 0 | 7 | Pending |
-| **Total** | **4** | **56** | **7%** |
+| **Total** | **4** | **57** | **7%** |
 
 ## Phase 0 — governance and dependency reconciliation
 
@@ -42,8 +42,9 @@ and draft PR `#379`
 hard gates and completion policy.
 **Acceptance:** PRD, requirement matrix, roadmap, decisions and API registry cross-link
 and contain no credentials.
-**Verification:** `git diff --check`; 54-task baseline count (now 56 after approved AI
-Gateway gates); secret-pattern scan; GSD phase inventory; full-file review; evidence in
+**Verification:** `git diff --check`; 54-task baseline count (now 57 after approved AI
+Gateway/model/data-handling gates); secret-pattern scan; GSD phase inventory; full-file
+review; evidence in
 `phases/00-control-plane-verification/EVIDENCE.md`; commit `9cd0efdd`. Human acceptance
 of the rollout remains a separate Phase 0 checkpoint. Tracking PR: `#379`.
 **Dependencies:** CTL-001
@@ -418,34 +419,62 @@ are deterministic; failures degrade safely.
 **Likely files:** Context builder, tests
 **Size:** M
 
+### [ ] AIG-303: Approve Gateway data handling and production promotion policy
+
+**Status:** pending
+**Description:** Approve the binding-first, dedicated-gateway and BYOK architecture,
+including upstream provider retention/DPA terms, DLP behavior, cost envelope, external
+route-version evidence and rollback ownership.
+**Acceptance:** Security/privacy owner accepts the chosen provider terms or selects an
+alternative; no claim equates metadata-only Gateway logs with provider ZDR; BYOK key
+stays in Cloudflare Secrets Store; preview DLP false positives are evaluated; initial
+tenant/global spend/rate limits and feature-flag owner are signed off; production gate
+in `AI-GATEWAY-RUNBOOK.md` has named evidence owners.
+**Verification:** Approved security/data-handling record, sanitized Gateway settings,
+Graphify Wiki/direct-source confirmation and completed pre-promotion checklist.
+**Dependencies:** None
+**Likely files:** `AI-GATEWAY-RUNBOOK.md`, decisions/evidence, restricted approval record
+**Size:** S
+
 ### [ ] AIG-301: Implement governed Cloudflare AI Gateway routes
 
 **Status:** pending
 **Description:** Make authenticated Cloudflare AI Gateway the only inference egress for
 campaign jobs and add versioned standard/complex dynamic routes with privacy, rate,
 budget, timeout and retry controls.
-**Acceptance:** Dedicated route names/versions are configuration, not hard-coded
-provider endpoints; provider-native direct fallback is removed for this workflow;
+**Acceptance:** Preview/production use separate gateway IDs and independently promoted
+route versions; Pages/Workers call routes only through
+`env.AI.gateway(gatewayId).run(...)`; missing binding fails closed; campaign runtime has
+no Gateway/provider API token; shared `default` gateway and provider-native fallback are
+prohibited; `GOOGLE_CAMPAIGN_JOB_AI_ENABLED` defaults false;
 `cf-aig-collect-log-payload: false` and cache bypass are enforced for client context;
-no more than five flat non-PII metadata fields are sent; rate/budget exhaustion degrades
-to deterministic incomplete proposal or human review.
-**Verification:** Unit/contract tests for auth, route version, headers, metadata limit,
-no-cache, 401/429/timeout/provider failure and proof that no direct provider request is
-made; sanitized Gateway route/config evidence.
-**Dependencies:** JOB-301, JOB-302
+no more than five flat non-PII metadata fields are sent; tenant metadata uses a dedicated
+environment-specific HMAC secret; reviewed route release and actual response
+provider/model are recorded; generic raw-model assignments cannot bypass the route;
+the five campaign bindings are stored separately as encrypted Preview/Production
+values, `CAMPAIGN_AI_DEPLOY_ENV` is validated fail closed, and common `[vars]` or
+runtime `CF_PAGES_BRANCH` inference cannot select an environment;
+rate/budget exhaustion degrades to deterministic incomplete proposal or human review.
+**Verification:** Unit/contract tests for binding-only transport, auth, route version,
+headers, metadata limit, no-cache, missing binding, 401/429/timeout/provider failure and
+proof that no token or direct provider request is used; sanitized per-environment
+Gateway route/config evidence; Graphify Wiki plus direct-source confirmation.
+**Dependencies:** JOB-301, JOB-302, AIG-303
 **Likely files:** AI Gateway transport/policy, runtime config, route fixtures, tests
 **Size:** M
 
 ### [ ] AIG-302: Run quality/cost model bake-off and lock route versions
 
 **Status:** pending
-**Description:** Compare no-model/rule output, a JSON-capable Workers AI candidate,
-Groq GPT-OSS 20B and GPT-OSS 120B on one fixed sanitized campaign-proposal reference
-set before enabling the routes.
+**Description:** Compare no-model/rule output, Workers AI Llama 3.1 8B Fast, Workers AI
+Qwen3 30B A3B, Groq GPT-OSS 20B and Groq GPT-OSS 120B on one fixed sanitized campaign-
+proposal reference set before enabling the routes.
 **Acceptance:** Report schema validity, factuality, missing-input recall, task quality,
 latency, tokens and estimated cost; 20B remains standard unless it misses an approved
 quality threshold; 120B escalation criteria and per-proposal/monthly limits are owner-
-approved; exact model and route versions are recorded.
+approved; 16K input/2K output/two-call/$0.01 pilot caps are validated or tightened;
+exact model and route versions are recorded; the invocation-ledger/model-catalog price
+entries are refreshed and cost-estimation tests match the approved price evidence.
 **Verification:** Reproducible evaluation command/dataset, scored report, cost worksheet
 and owner sign-off; provider pricing refreshed from official sources at execution time.
 **Dependencies:** AIG-301
@@ -460,7 +489,7 @@ do not create jobs or call providers.
 **Acceptance:** Tool schema validated; unsupported assumptions rejected; direct
 provider mutations absent; output maps to JOB-301.
 **Verification:** AI tool tests including prompt injection and missing evidence.
-**Dependencies:** JOB-301, JOB-302, AIG-301, AIG-302
+**Dependencies:** JOB-301, JOB-302, AIG-301, AIG-302, AIG-303
 **Likely files:** AI tool, registry entry, tests
 **Size:** M
 
@@ -508,7 +537,7 @@ and media buyer, without provider writes.
 **Acceptance:** Missing inputs resolved; generated tasks accepted or edited; audit
 history complete; usability findings addressed.
 **Verification:** Sanitized pilot evidence and stakeholder sign-off.
-**Dependencies:** JOB-301 to JOB-306, AIG-301, AIG-302
+**Dependencies:** JOB-301 to JOB-306, AIG-301, AIG-302, AIG-303
 **Likely files:** Evidence/docs and resulting fixes
 **Size:** M
 
@@ -520,6 +549,11 @@ history complete; usability findings addressed.
 - [ ] Every inference traverses an authenticated, versioned AI Gateway route.
 - [ ] Model quality/cost thresholds and budget ceilings are approved and observable.
 - [ ] Client prompt/response payloads are absent from Gateway logs.
+- [ ] Upstream provider retention/DPA terms and preview DLP behavior are approved.
+- [ ] Binding-only execution, dedicated environment gateways and workflow-specific
+      feature flag are proven.
+- [ ] Graphify Wiki and direct source agree on the promoted runtime path, or the
+      documented discrepancy is resolved.
 
 ## Phase 4 — paused PMax launch and activation
 
@@ -695,7 +729,8 @@ rollback/recovery evidence accepted.
 **Description:** Deep-read all changed files and review tenancy, secrets, permissions,
 idempotency, SSRF/URL handling, logs, forms and Cloudflare configuration.
 **Acceptance:** All blocking findings fixed; project pre-commit checklist complete;
-focused suites/typecheck/build/deploy check pass.
+focused suites/typecheck/build/deploy check pass; Graphify Wiki/graph is queried and
+current direct-source relationships are confirmed, with staleness warnings recorded.
 **Verification:** Review report and command log.
 **Dependencies:** Required implementation phases
 **Likely files:** Review/evidence and fixes

@@ -10,14 +10,15 @@
 - Root dirty worktree was not modified.
 - Active GSD workstream: `google-merchant-campaign-orchestration`.
 - GSD inventory: seven phases, Phase 0 in progress, Phases 1-6 pending.
-- Executable register: 56 stable tasks after adding two explicit AI Gateway/model gates.
+- Executable register: 57 stable tasks after adding three explicit AI Gateway/model/
+  data-handling gates.
 - Canonical planning commit: `9cd0efdd`.
 - Draft tracking PR: `#379`.
 
 ## Documentation verification
 
 - `git diff --check`: passed.
-- Task heading count: 56 (54-task baseline plus AIG-301 and AIG-302).
+- Task heading count: 57 (54-task baseline plus AIG-301, AIG-302 and AIG-303).
 - Secret-pattern scan across workstream Markdown: no credential values detected.
 - API boundaries and Cloudflare deployment assumptions reviewed against `AGENTS.md`.
 - Concurrent PMax migrations/utilities are declared as a blocked dependency and were
@@ -93,6 +94,55 @@ Cloudflare/Groq configuration mutation or inference request.
   proposals; GPT-OSS 120B only after measured escalation; evaluate a JSON-capable
   Workers AI model for bounded low-risk work.
 - No secret values were read or recorded.
+
+### Production-gate nuance review
+
+- The Pages configuration already provides an `AI` binding. Current Cloudflare docs
+  support calling dynamic routes with `env.AI.gateway(gatewayId).run(...)`; binding
+  requests are pre-authenticated.
+- Cloudflare AI Gateway Run tokens are account-scoped rather than gateway-scoped.
+  Campaign jobs will not put such a token, `CF_API_TOKEN` or `CLOUDFLARE_API_TOKEN` in
+  their runtime path.
+- Preview and production require separate dedicated gateway IDs. The shared `default`
+  gateway is prohibited for campaign jobs.
+- Dynamic routes use BYOK provider credentials stored by Cloudflare Secrets Store.
+  Cloudflare ZDR does not apply to BYOK requests, and Groq is not currently listed as a
+  ZDR-supported provider. Provider retention/DPA approval remains a production blocker.
+- Cloudflare spend-limit enforcement is eventually consistent. Application-side token,
+  call and estimated-cost bounds remain mandatory.
+- Direct source shows `server/utils/ai/invocationLedger.ts` still estimates GPT-OSS 20B
+  at the older $0.10/M input and $0.40/M output rates. The current planning source is
+  $0.075/M and $0.30/M; AIG-302 now requires a dated refresh plus cost-estimation tests
+  before ledger/dashboard cost evidence is accepted.
+- `@cf/qwen/qwen3-30b-a3b-fp8` was added as a required Cloudflare-native evaluation
+  challenger to Llama 8B and Groq GPT-OSS 20B/120B.
+- No Cloudflare gateway, route, BYOK secret, spend rule, DLP policy or feature flag was
+  created or changed during this review.
+
+### Graphify Wiki confirmation
+
+**Method:** Read-only queries against the existing project `graphify-out/graph.json`
+and wiki in the root worktree; the graph itself was not rebuilt or modified because
+another session owns the dirty root.
+
+- Graphify confirmed `getDirectGroqClient()` in `server/utils/groqClient.ts` is called
+  by `generateGroqInsight()`, corroborating the direct-provider bypass risk.
+- Graphify confirmed `recordAiInvocation()` connects to token/cost estimation and that
+  `resolveAiModelAssignment()` connects to runtime provider/model policy.
+- Graphify confirmed `estimateAiInvocationCostUsd()` is called by
+  `recordAiInvocation()`, corroborating that a stale model-price entry flows into
+  persisted invocation cost.
+- Graphify confirmed `gatewayBase()` is shared by Groq and Anthropic provider helpers.
+- The query reported graphify skill/package versions `0.9.32`/`0.9.34` and an older
+  pre-#1504 node-ID scheme. These warnings are recorded; direct source reviewed in this
+  branch remains authoritative when the graph is stale.
+- Graphify could locate Nitro's `deployConfig` surface but did not reliably connect the
+  deployment script or Pages environment semantics in the stale graph. Direct source
+  confirms `scripts/deploy-pages.mjs` deploys only `main` or `preview`, and current
+  Cloudflare documentation defines `CF_PAGES_BRANCH` as a build variable. The governed
+  runtime contract now requires same-named encrypted Preview/Production bindings plus
+  an explicit fail-closed `CAMPAIGN_AI_DEPLOY_ENV`; no environment inference is based
+  on that build variable.
 
 ## Dependency and test baseline
 

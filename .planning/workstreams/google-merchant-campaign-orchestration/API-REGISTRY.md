@@ -163,23 +163,41 @@ Follow-up:
 ## Cloudflare AI Gateway gate for campaign-job inference
 
 The repository already configures the shared Cloudflare AI Gateway `default` endpoint
-for Groq SDK calls and includes a Workers AI binding. This is evidence of a starting
+for provider SDK calls and includes a Workers AI binding. This is evidence of a starting
 integration, not completion: the shared helper retries directly against Groq when the
-Gateway fails, and production secret-name evidence has not positively established a
-dedicated AI Gateway run token.
+Gateway fails and may reuse broad Cloudflare tokens. Campaign jobs must instead use the
+pre-authenticated binding, which avoids storing an account-scoped AI Gateway Run token
+in Pages.
 
-- [ ] Create and authenticate dedicated versioned dynamic routes for standard and
-      complex campaign-job proposals.
-- [ ] Store provider credentials with approved BYOK/Cloudflare secret handling; no
+- [ ] Create separate preview and production gateways with versioned extraction,
+      standard and complex campaign-job routes; never use shared `default`.
+- [ ] Use `env.AI.gateway(gatewayId).run(...)` exclusively; missing binding fails closed.
+- [ ] Store `CAMPAIGN_AI_DEPLOY_ENV`, gateway ID, route release, workflow flag and HMAC
+      key as same-named encrypted values scoped separately to Pages Preview and
+      Production. Never put them in common `[vars]` or infer `CF_PAGES_BRANCH` at
+      runtime; verify binding names after each deployment without reading values.
+- [ ] Store provider credentials with approved BYOK/Cloudflare Secrets Store handling;
+      no provider key remains necessary in the campaign-job runtime and no
       credential may enter request metadata or logs.
 - [ ] Remove/prohibit direct-provider fallback for this workflow.
 - [ ] Enforce metadata-only logs with `cf-aig-collect-log-payload: false` and skip cache
       for client-specific requests.
 - [ ] Enforce at most five flat, non-PII metadata values.
+- [ ] Generate tenant metadata with a dedicated, environment-specific HMAC secret; do
+      not reuse auth/OAuth/token-encryption keys.
 - [ ] Configure per-tenant/task rate and budget limits plus bounded retries/timeouts.
+- [ ] Enforce app-side 16K input, 2K output, two-call and $0.01 initial proposal caps;
+      Gateway spend limits are eventually consistent and cannot be the only control.
+- [ ] Approve provider retention/DPA terms; do not treat payload logging off as upstream
+      ZDR. Evaluate DLP in preview flag-only mode before blocking.
 - [ ] Complete AIG-302 evaluation before locking model and route versions.
 - [ ] Confirm dashboard cost/tokens/latency reconcile with the XeroFlow invocation
-      ledger and that budget/rate exhaustion fails safely.
+      ledger, refresh the ledger's stale GPT-OSS 20B price entry, and prove that
+      budget/rate exhaustion fails safely.
+- [ ] Store reviewed route release and actual response provider/model; disable raw-model
+      assignment overrides for this feature.
+- [ ] Confirm the implementation and promotion path against Graphify Wiki/graph and
+      current direct source; record graph version/staleness warnings.
 
 ## Official references
 

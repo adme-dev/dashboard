@@ -247,34 +247,67 @@ Separate activation approval -> enable -> monitoring
 
 AI is a bounded proposal service, not a control plane. Validation, readiness,
 authorization, idempotency and provider mutations remain deterministic. All campaign-
-job inference must traverse an authenticated Cloudflare AI Gateway route; an outage or
-budget limit degrades to deterministic templates or a retryable operator state rather
+job inference must traverse an authenticated Cloudflare AI Gateway route through the
+existing `env.AI` binding; an outage or budget limit degrades to deterministic
+templates or a retryable operator state rather
 than calling Groq or another provider directly.
 
 | Work class | Default | Escalation | Rationale |
 |---|---|---|---|
 | Validation, readiness and missing required fields | No model | None | Rules are cheaper, reproducible and authoritative |
-| Bounded extraction/classification or short explanation | Workers AI candidate selected by evaluation; start with `@cf/meta/llama-3.1-8b-instruct-fast` where JSON mode is required | Groq GPT-OSS 20B | Keep routine work on Cloudflare; schema validation is mandatory |
-| Campaign-job proposal and template completion | Groq `openai/gpt-oss-20b` | GPT-OSS 120B only after an explicit complexity/evaluation gate | 20B supports reasoning, tools and structured JSON at half the 120B token price |
+| Bounded extraction/classification or short explanation | Workers AI candidate selected by evaluation; start with `@cf/meta/llama-3.1-8b-instruct-fast` where JSON mode is required | Deterministic unknown/manual input | Keep routine work on Cloudflare; schema validation is mandatory |
+| Campaign-job proposal and template completion | Groq `openai/gpt-oss-20b` | GPT-OSS 120B only after an explicit complexity/evaluation gate | 20B supports reasoning and structured JSON at half the 120B token price |
 | Complex multi-evidence proposal that fails the 20B quality gate | Groq `openai/gpt-oss-120b` | Human review / deterministic incomplete proposal | Pay for the larger model only when measured quality requires it |
+
+Workers AI `@cf/qwen/qwen3-30b-a3b-fp8` is a mandatory Cloudflare-native challenger
+for ordinary proposals because its current token pricing is comparable with GPT-OSS
+20B and it supports reasoning and function calling. It is not selected by default until
+the project evaluation proves structured-output quality.
 
 The August 2026 public rates used for planning are $0.075/M input and $0.30/M output
 tokens for GPT-OSS 20B, versus $0.15/M input and $0.60/M output for GPT-OSS 120B.
 Model IDs and prices must be refreshed during the bake-off and before production
-rollout; they are not permanent configuration constants.
+rollout; they are not permanent configuration constants. The current invocation ledger
+still contains an older GPT-OSS 20B estimate, so AIG-302 must update and test the ledger
+pricing table before cost dashboards or application ceilings are treated as accurate.
 
-Use two versioned dynamic routes: a standard proposal route and a complex escalation
-route. Routes enforce per-tenant/task rate and budget limits, bounded timeouts/retries,
-and explicit model versions. Send at most five flat, non-PII metadata fields (feature,
-tenant pseudonym, environment, proposal type and request correlation). Preserve token,
+Use separate preview and production gateways, each with versioned extraction, standard
+proposal and complex proposal routes. Pages/Workers invoke the routes with
+`env.AI.gateway(gatewayId).run(...)`; campaign code must not hold an account-scoped AI
+Gateway token. Routes enforce per-tenant/task rate and budget limits, bounded
+timeouts/retries, and explicit model versions. Send at most five flat, non-PII metadata
+fields (feature, tenant pseudonym, environment, proposal type and request correlation).
+Preserve token,
 cost, latency, provider/model, route version and cache status, but set
 `cf-aig-collect-log-payload: false` for client campaign context. Skip caching for
 tenant/client-specific proposals; enable it only for explicitly classified,
 non-sensitive deterministic prompts with a versioned cache key.
 
+Because Nitro deploys Wrangler configuration as the Pages source of truth, campaign
+environment selection and its gateway ID, route release, feature flag and HMAC key use
+same-named encrypted bindings configured separately for Preview and Production. Runtime
+requires `CAMPAIGN_AI_DEPLOY_ENV` to be exactly `preview` or `production` and fails
+closed otherwise. These values must not be added to common Wrangler `[vars]`, and
+`CF_PAGES_BRANCH` must not be treated as a runtime selector because Cloudflare defines
+it for the Pages build environment.
+
 The existing shared `default` gateway and Groq helper are a starting point, not the
-finished contract: authentication must be positively verified, campaign routes must be
-dedicated and the current direct-Groq retry path must be removed for this workflow.
+finished contract: production campaign jobs must use a dedicated gateway, a binding-
+only transport and no provider SDK fallback. The existing helper's fallback to broad
+Cloudflare API tokens and direct Groq must not be reused.
+
+The proposal path is a single structured completion with no model tools. One same-model
+schema-repair call is permitted; invalid output must not auto-upgrade to 120B. Initial
+pilot caps are 16K input tokens, 2K output tokens, two calls and an estimated $0.01 per
+proposal. Gateway spend controls are defense in depth because Cloudflare documents
+their enforcement as eventually consistent; application call/token limits remain
+mandatory. Exact tenant/global pilot limits and rollback steps are in
+`AI-GATEWAY-RUNBOOK.md`.
+
+Metadata-only Gateway logging does not govern upstream provider retention. Dynamic
+routes use provider credentials stored through Cloudflare BYOK/Secrets Store; the
+security owner must approve current provider retention/DPA terms before production.
+Cloudflare ZDR must not be claimed for Groq BYOK traffic.
 
 ## Functional workflow
 
@@ -363,6 +396,12 @@ a second launch model.
 - Fail closed when AI Gateway authentication, route, spend limit or provider execution
   fails; never bypass the gateway.
 - Store no raw campaign prompt/completion in AI Gateway logs; log metadata only.
+- Use the pre-authenticated Workers AI binding for Gateway access; do not give the
+  campaign runtime an account-scoped AI Gateway token or reuse a broad Cloudflare token.
+- Treat upstream-provider retention separately from Cloudflare Gateway logging and
+  require an explicit privacy/security decision.
+- Keep the environment-scoped campaign AI feature flags off until the production gate
+  in `AI-GATEWAY-RUNBOOK.md` passes.
 
 ## Reliability and observability
 
@@ -450,6 +489,7 @@ errors.
 | D-06 | Which PMax launch contracts survive the concurrent session merge? | Rebase and adopt merged contracts | Platform engineering |
 | D-07 | Which pilot tenant/account is authorized for provider writes? | No writes | Product owner |
 | D-08 | What quality and monthly/per-proposal cost thresholds approve model routes? | 20B standard, 120B unavailable until bake-off and owner sign-off | Product/platform owner |
+| D-09 | Are Groq BYOK retention/DPA terms approved for campaign context? | No production inference | Security/privacy owner |
 
 ## References
 
@@ -477,3 +517,4 @@ errors.
 - Cloudflare Workers AI pricing:
   <https://developers.cloudflare.com/workers-ai/platform/pricing/>
 - Groq pricing: <https://groq.com/pricing>
+- Campaign AI Gateway production gate: `AI-GATEWAY-RUNBOOK.md`

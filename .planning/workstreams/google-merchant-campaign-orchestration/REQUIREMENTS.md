@@ -115,6 +115,32 @@ linked from `STATE.md` or the relevant phase verification file.
 - [ ] **JOB-17:** The bake-off must use a fixed, sanitized reference set and publish
   schema-validity, factuality, missing-input recall, latency, token cost and escalation
   results before route versions are locked.
+- [ ] **JOB-18:** Production/preview campaign inference must use
+  `event.context.cloudflare.env.AI.gateway(...).run(...)`; the application must not use
+  an account-scoped Gateway token, broad Cloudflare token or provider-native fallback.
+- [ ] **JOB-19:** Preview and production must use separate dedicated gateway IDs and
+  independently promoted route versions; the shared `default` gateway is prohibited.
+  Same-named campaign bindings must be environment-scoped, and runtime selection must
+  fail closed on an absent or invalid `CAMPAIGN_AI_DEPLOY_ENV` rather than infer
+  `CF_PAGES_BRANCH` at runtime.
+- [ ] **JOB-20:** Provider credentials must be stored with Cloudflare BYOK/Secrets Store,
+  and security/privacy ownership must approve upstream retention/DPA terms separately
+  from Gateway logging before production.
+- [ ] **JOB-21:** Proposal inference must expose no tools, allow at most one same-model
+  schema repair and enforce application-side input/output/call/cost caps even when
+  Gateway spend limits are configured. The invocation ledger's model prices must be
+  refreshed from the approved pricing source and covered by cost-estimation tests
+  before those caps or dashboards are considered authoritative.
+- [ ] **JOB-22:** A workflow-specific, Pages-environment-scoped
+  `GOOGLE_CAMPAIGN_JOB_AI_ENABLED` flag must default false in both environments and
+  remain independent of generic AI, Merchant-read and Ads-write flags. Production and
+  preview values must not be placed in common Wrangler `[vars]`.
+- [ ] **JOB-23:** Codebase architecture claims and final promotion evidence must be
+  confirmed against the Graphify Wiki/graph and direct source; graph staleness or
+  disagreement must be recorded rather than silently ignored.
+- [ ] **JOB-24:** The dynamic route must be the only model-routing authority for this
+  feature. Persist the reviewed route release and actual executed provider/model; raw
+  model-assignment overrides must not bypass the evaluated route.
 
 ## Google Ads launch integration
 
