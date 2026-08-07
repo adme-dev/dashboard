@@ -152,6 +152,15 @@ export default defineNuxtConfig({
     sendWorkspaceUploadIntentTtlSeconds: Number(process.env.SEND_WORKSPACE_UPLOAD_INTENT_TTL_SECONDS || 900),
     sendWorkspaceMultipartThresholdBytes: Number(process.env.SEND_WORKSPACE_MULTIPART_THRESHOLD_BYTES || 100 * 1024 * 1024),
     sendWorkspaceMultipartPartSizeBytes: Number(process.env.SEND_WORKSPACE_MULTIPART_PART_SIZE_BYTES || 16 * 1024 * 1024),
+    // Verified-public Send beta. Independent server/UI flags stay false until
+    // scanner, email, rate-limit and rollback gates pass in production.
+    sendPublicEnabled: process.env.SEND_PUBLIC_ENABLED === 'true',
+    sendPublicMaxTransferBytes: Number(process.env.SEND_PUBLIC_MAX_TRANSFER_BYTES || 250 * 1024 * 1024),
+    sendPublicMaxFileBytes: Number(process.env.SEND_PUBLIC_MAX_FILE_BYTES || 100 * 1024 * 1024),
+    sendPublicMaxFiles: Number(process.env.SEND_PUBLIC_MAX_FILES || 10),
+    sendPublicDefaultRetentionDays: Number(process.env.SEND_PUBLIC_DEFAULT_RETENTION_DAYS || 3),
+    sendPublicMaxRetentionDays: Number(process.env.SEND_PUBLIC_MAX_RETENTION_DAYS || 3),
+    sendPublicMaxDownloads: Number(process.env.SEND_PUBLIC_MAX_DOWNLOADS || 20),
     // Sonnet 4.6 = dormant prod escape hatch via 'anthropic/claude-sonnet-4-6' (needs ANTHROPIC_API_KEY + gateway)
     aiGateBudgetUsd: Number(process.env.AI_LOOP_BUDGET_USD || '0.25'), // per-turn cost cap
 
@@ -240,6 +249,7 @@ export default defineNuxtConfig({
       appUrl: process.env.APP_URL || 'http://localhost:3000',
       zeroServerUrl: process.env.NUXT_PUBLIC_ZERO_SERVER_URL || 'http://localhost:4848',
       sendEnabled: process.env.NUXT_PUBLIC_SEND_ENABLED === 'true',
+      sendPublicEnabled: process.env.NUXT_PUBLIC_SEND_PUBLIC_ENABLED === 'true',
       // Cloudflare Turnstile site key for the public email subscribe form. Empty
       // until the operator creates a widget — the widget + server check stay
       // inert (form works without it) while unset.

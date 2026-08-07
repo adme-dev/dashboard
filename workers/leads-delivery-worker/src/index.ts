@@ -21,8 +21,8 @@ interface Env {
 }
 
 type QueueMessageBody = {
-  type: 'rules.evaluate' | 'delivery.dispatch'
-  payload: { lead_id?: string; delivery_id?: string }
+  type: 'rules.evaluate' | 'delivery.dispatch' | 'crm.promote'
+  payload: { lead_id?: string; delivery_id?: string },
   attempt?: number
 }
 

@@ -21,10 +21,10 @@
 
         <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
           <NuxtLink
-            to="/auth/login"
+            to="/contact"
             class="inline-flex items-center gap-2.5 px-6 py-3 bg-white text-[#121317] text-[17.5px] font-medium rounded-full hover:bg-white/90 transition-colors"
           >
-            Get Started
+            Talk to us
           </NuxtLink>
           <button
             class="inline-flex items-center gap-2 px-6 py-3 bg-white/10 text-white text-[17.5px] font-medium rounded-full hover:bg-white/20 transition-colors"
@@ -244,10 +244,10 @@
               Take control of your<br class="hidden sm:block">agency finances
             </h2>
             <NuxtLink
-              to="/auth/login"
+              to="/contact"
               class="inline-flex items-center gap-2 px-7 py-3.5 bg-white text-[#121317] text-[17.5px] font-medium rounded-full hover:bg-white/90 transition-colors"
             >
-              Get Started
+              Talk to us
             </NuxtLink>
           </div>
         </div>

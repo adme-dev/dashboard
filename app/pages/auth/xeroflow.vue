@@ -159,7 +159,7 @@
         <!-- Help -->
         <div class="mt-10 text-center">
           <p class="text-[13px] text-[#45474D]/60 dark:text-white/40">
-            Need help? <a href="#" class="text-[#121317] dark:text-white hover:underline font-medium">Contact support</a>
+            Need help? <a href="mailto:support@xeroflow.io" class="text-[#121317] dark:text-white hover:underline font-medium">Contact support</a>
           </p>
         </div>
       </div>

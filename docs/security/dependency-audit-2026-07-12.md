@@ -25,7 +25,15 @@ The advisory still applies if the repository's `zero:dev`/Zero cache process is 
 
 Re-review by 2026-08-12 or before deploying Zero cache as a public service, whichever occurs first. Upgrade `@rocicorp/zero` through its supported migration path instead of forcing the OpenTelemetry dependency independently.
 
-## Verification
+## Follow-up completed — 2026-07-24
+
+- Upgraded `@rocicorp/zero` from `0.18.2025042300` to `1.8.0`, which moves the server telemetry path to `@opentelemetry/sdk-node@0.218.0`.
+- Migrated the browser client to Zero's current `cacheURL` and logged-out `userID` configuration.
+- Normalized the existing schema for Zero 1.x while retaining the legacy query and mutation APIs during the application migration.
+- Added narrowly scoped resolutions for the remaining vulnerable transitive versions of Jaeger propagation, SVGO, `fast-uri`, `fast-xml-parser`, and `find-my-way`.
+- `pnpm audit --prod --audit-level high` now passes with 0 critical and 0 high findings. Six lower-severity findings remain: 1 low and 5 moderate.
+
+## Original 2026-07-12 verification
 
 - `pnpm audit --audit-level high`: 0 critical, 1 high, 4 moderate, 1 low.
 - HR suite: 70 files, 184 tests passed.

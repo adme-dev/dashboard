@@ -437,7 +437,7 @@ export const RecordDestinationValidationEvidenceSchema = z.strictObject({
   expectedConfigVersion: z.number().int().positive(),
   observedAt: z.string().datetime({ offset: true }),
   actor: z.strictObject({
-    type: z.literal('system'),
+    type: z.enum(['system', 'user']),
     id: z.string().trim().min(1).max(255)
   }),
   reason: z.string().trim().min(1).max(1000),

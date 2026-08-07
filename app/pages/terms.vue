@@ -78,7 +78,7 @@
             <h2 class="text-[20px] font-[450] text-[#121317] dark:text-white mb-4">9. Contact</h2>
             <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed">
               Questions about these terms can be directed to
-              <a href="mailto:legal@xeroflow.agency" class="text-[#121317] dark:text-white underline underline-offset-2">legal@xeroflow.agency</a>.
+              <a href="mailto:legal@xeroflow.io" class="text-[#121317] dark:text-white underline underline-offset-2">legal@xeroflow.io</a>.
             </p>
           </section>
         </div>

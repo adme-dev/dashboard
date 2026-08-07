@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 ;(globalThis as any).defineEventHandler = (fn: unknown) => fn
 ;(globalThis as any).createError = (opts: Record<string, unknown>) => Object.assign(new Error(String(opts.statusMessage)), opts)
@@ -18,13 +18,18 @@ vi.mock('~~/server/utils/db', () => ({
   }))
 }))
 
-vi.mock('~~/server/utils/leads/db', () => ({
-  upsertFormMetadata: vi.fn(),
+const { logIngestionError, upsertFormMetadata } = vi.hoisted(() => ({
   logIngestionError: vi.fn(),
+  upsertFormMetadata: vi.fn()
+}))
+vi.mock('~~/server/utils/leads/db', () => ({
+  upsertFormMetadata,
+  logIngestionError,
   loadLead: vi.fn(async () => null)
 }))
 
-const { ingest, publishEvent } = vi.hoisted(() => ({
+const { enqueueLeadJob, ingest, publishEvent } = vi.hoisted(() => ({
+  enqueueLeadJob: vi.fn(),
   ingest: vi.fn(),
   publishEvent: vi.fn()
 }))
@@ -39,7 +44,7 @@ vi.mock('~~/server/utils/leads/rateLimit', () => ({
   allowRequest: vi.fn(() => ({ allowed: true }))
 }))
 vi.mock('~~/server/utils/leads/queue', () => ({
-  enqueueLeadJob: vi.fn()
+  enqueueLeadJob
 }))
 vi.mock('~~/server/utils/leads/notifyOnNew', () => ({
   notifyOnNewLead: vi.fn()
@@ -66,6 +71,10 @@ describe('generic lead webhook measurement handoff', () => {
         deliveryCount: 1
       }
     })
+  })
+
+  afterEach(() => {
+    delete process.env.CRM_LEAD_PROMOTION_ENABLED
   })
 
   it('passes shared browser identity and explicit consent into atomic intake, then publishes pending work', async () => {
@@ -115,5 +124,129 @@ describe('generic lead webhook measurement handoff', () => {
     expect(ingest).toHaveBeenCalledWith(expect.objectContaining({
       lead: expect.objectContaining({ source: 'webhook' })
     }))
+  })
+
+  it('normalizes canonical customer and vehicle data without putting credentials into lead fields', async () => {
+    await handler({
+      context: { params: { token: 'token-1' } },
+      body: {
+        key: 'secret',
+        schema_version: 1,
+        provider: 'dealer_studio',
+        lead_id: 'dealer-studio:lead-123',
+        form_id: 'vehicle-enquiry',
+        customer: {
+          full_name: 'Jane Citizen',
+          email: 'jane@example.com',
+          mobile: '0400 123 456'
+        },
+        vehicle: {
+          stock_number: 'S20619',
+          year: 2023,
+          make: 'Toyota',
+          model: 'RAV4'
+        }
+      }
+    } as any)
+
+    const receivedLead = ingest.mock.calls[0][0].lead
+    expect(receivedLead.field_data).toMatchObject({
+      first_name: 'Jane',
+      last_name: 'Citizen',
+      full_name: 'Jane Citizen',
+      email: 'jane@example.com',
+      phone_number: '0400 123 456',
+      lead_provider: 'dealer_studio',
+      vehicle_stock_number: 'S20619',
+      vehicle_year: '2023',
+      vehicle_make: 'Toyota',
+      vehicle_model: 'RAV4'
+    })
+    expect(receivedLead.field_data).not.toHaveProperty('key')
+    expect(upsertFormMetadata).toHaveBeenCalledWith(
+      'webhook',
+      'vehicle-enquiry',
+      null,
+      expect.objectContaining({
+        full_name: '[redacted]',
+        email: '[redacted]',
+        phone_number: '[redacted]',
+        vehicle_stock_number: 'S20619'
+      })
+    )
+  })
+
+  it('queues CRM promotion only when the server rollout flag and request both allow it', async () => {
+    process.env.CRM_LEAD_PROMOTION_ENABLED = 'true'
+
+    await handler({
+      context: { params: { token: 'token-1' } },
+      body: {
+        key: 'secret',
+        provider: 'dealer_studio',
+        customer: { full_name: 'Jane Citizen', email: 'jane@example.com' }
+      }
+    } as any)
+
+    expect(enqueueLeadJob).toHaveBeenNthCalledWith(1, {
+      type: 'rules.evaluate',
+      payload: { lead_id: '22222222-2222-4222-8222-222222222222' }
+    })
+    expect(enqueueLeadJob).toHaveBeenNthCalledWith(2, {
+      type: 'crm.promote',
+      payload: { lead_id: '22222222-2222-4222-8222-222222222222' }
+    })
+
+    enqueueLeadJob.mockClear()
+    await handler({
+      context: { params: { token: 'token-1' } },
+      body: {
+        key: 'secret',
+        customer: { full_name: 'Jane Citizen', email: 'jane@example.com' },
+        promote_to_crm: false
+      }
+    } as any)
+
+    expect(enqueueLeadJob).toHaveBeenCalledTimes(1)
+    expect(enqueueLeadJob).toHaveBeenCalledWith(expect.objectContaining({ type: 'rules.evaluate' }))
+  })
+
+  it('redacts credentials and customer identity from rejected-payload diagnostics', async () => {
+    await handler({
+      context: { params: { token: 'token-1' } },
+      body: {
+        key: 'super-secret-key',
+        schema_version: 2,
+        provider: 'dealer_studio',
+        customer: {
+          full_name: 'Private Person',
+          email: 'private@example.com',
+          mobile: '0400 999 999'
+        }
+      }
+    } as any)
+
+    expect(logIngestionError).toHaveBeenCalledOnce()
+    const diagnostic = JSON.stringify(logIngestionError.mock.calls[0])
+    expect(diagnostic).not.toContain('super-secret-key')
+    expect(diagnostic).not.toContain('Private Person')
+    expect(diagnostic).not.toContain('private@example.com')
+    expect(diagnostic).not.toContain('0400 999 999')
+    expect(diagnostic).toContain('dealer_studio')
+  })
+
+  it('rejects a valid envelope that contains provider metadata but no lead data', async () => {
+    await handler({
+      context: { params: { token: 'token-1' } },
+      body: { key: 'secret', provider: 'dealer_studio' }
+    } as any)
+
+    expect(ingest).not.toHaveBeenCalled()
+    expect(logIngestionError).toHaveBeenCalledWith(
+      'webhook',
+      expect.objectContaining({ provider: 'dealer_studio' }),
+      expect.anything(),
+      'empty_fields'
+    )
   })
 })

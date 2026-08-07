@@ -17,6 +17,7 @@
             <NuxtLink to="/features" :class="linkClass">Features</NuxtLink>
             <NuxtLink to="/pricing" :class="linkClass">Pricing</NuxtLink>
             <NuxtLink to="/resources" :class="linkClass">Resources</NuxtLink>
+            <NuxtLink to="/contact" :class="linkClass">Contact</NuxtLink>
           </div>
           <div class="flex flex-col gap-3.5 text-[15px]">
             <NuxtLink to="/auth/login" :class="linkClass">Sign In</NuxtLink>

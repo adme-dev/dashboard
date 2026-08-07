@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   FileDeclarationSchema,
+  PublicSendCreateRequestSchema,
+  PublicSendVerifyRequestSchema,
   PublicTransferDraftSchema,
   WorkspaceTransferExpiryExtensionSchema,
   WorkspaceTransferDraftSchema,
@@ -82,6 +84,49 @@ describe('Send external contracts', () => {
     expect(PublicTransferDraftSchema.safeParse({ ...draft, password: 'a'.repeat(72) }).success).toBe(true)
     expect(PublicTransferDraftSchema.safeParse({ ...draft, password: 'é'.repeat(37) }).success).toBe(false)
     expect(WorkspaceTransferDraftSchema.safeParse({ ...draft, recipients: undefined }).success).toBe(false)
+  })
+
+  it('accepts only the cost-capped public creation boundary', () => {
+    const request = {
+      email: ' Sender@Example.com ',
+      title: 'Public assets',
+      message: 'Ready to share',
+      expiresAt: future,
+      maxDownloads: 10,
+      idempotencyKey: 'public-draft-000001',
+      turnstileToken: 'turnstile-response'
+    }
+
+    expect(PublicSendCreateRequestSchema.parse(request)).toMatchObject({
+      email: 'sender@example.com',
+      title: 'Public assets'
+    })
+    expect(PublicSendCreateRequestSchema.safeParse({
+      ...request,
+      recipients: ['recipient@example.com']
+    }).success).toBe(false)
+    expect(PublicSendCreateRequestSchema.safeParse({
+      ...request,
+      password: 'not-in-beta'
+    }).success).toBe(false)
+    expect(PublicSendCreateRequestSchema.safeParse({
+      ...request,
+      turnstileToken: ''
+    }).success).toBe(false)
+  })
+
+  it('requires three independently scoped capabilities for verification', () => {
+    const request = {
+      transferId: '44444444-4444-4444-8444-444444444444',
+      verificationToken: 'v'.repeat(43),
+      managementToken: 'm'.repeat(43),
+      turnstileToken: 'turnstile-response'
+    }
+    expect(PublicSendVerifyRequestSchema.parse(request)).toEqual(request)
+    expect(PublicSendVerifyRequestSchema.safeParse({
+      ...request,
+      managementToken: 'short'
+    }).success).toBe(false)
   })
 
   it('validates file declarations without accepting an object key', () => {

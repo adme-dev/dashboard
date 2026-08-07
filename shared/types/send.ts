@@ -112,6 +112,23 @@ export const WorkspaceUploadIntentRequestSchema = FileDeclarationSchema.extend({
 
 const UploadCapabilitySchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/)
 
+export const PublicSendCreateRequestSchema = z.object({
+  email: RecipientEmailSchema,
+  title: InternalTransferDraftShape.title,
+  message: InternalTransferDraftShape.message,
+  expiresAt: InternalTransferDraftShape.expiresAt,
+  maxDownloads: InternalTransferDraftShape.maxDownloads,
+  idempotencyKey: InternalTransferDraftShape.idempotencyKey,
+  turnstileToken: z.string().trim().min(1).max(2048)
+}).strict()
+
+export const PublicSendVerifyRequestSchema = z.object({
+  transferId: z.string().uuid(),
+  verificationToken: UploadCapabilitySchema,
+  managementToken: UploadCapabilitySchema,
+  turnstileToken: z.string().trim().min(1).max(2048)
+}).strict()
+
 export const WorkspaceUploadCompleteSchema = z.object({
   capability: UploadCapabilitySchema
 }).strict()
@@ -149,6 +166,8 @@ export type FileDeclaration = z.infer<typeof FileDeclarationSchema>
 export type WorkspaceUploadIntentRequest = z.infer<typeof WorkspaceUploadIntentRequestSchema>
 export type WorkspaceUploadComplete = z.infer<typeof WorkspaceUploadCompleteSchema>
 export type WorkspaceTransferExpiryExtension = z.infer<typeof WorkspaceTransferExpiryExtensionSchema>
+export type PublicSendCreateRequest = z.infer<typeof PublicSendCreateRequestSchema>
+export type PublicSendVerifyRequest = z.infer<typeof PublicSendVerifyRequestSchema>
 
 export interface WorkspaceSingleUploadIntentResponse {
   uploadMethod: 'single'

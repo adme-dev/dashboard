@@ -310,10 +310,10 @@
             Bring communication and project management together in one place. Start chatting in minutes.
           </p>
           <NuxtLink
-            to="/auth/login"
+            to="/contact"
             class="inline-flex items-center gap-2 px-7 py-3 text-[15px] font-medium text-[#121317] bg-white hover:bg-white/90 rounded-full transition-colors"
           >
-            Get Started
+            Talk to us
             <UIcon name="i-lucide-arrow-right" class="w-4 h-4" />
           </NuxtLink>
         </div>

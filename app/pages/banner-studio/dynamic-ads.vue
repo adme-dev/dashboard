@@ -334,10 +334,10 @@
             </p>
             <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
               <NuxtLink
-                to="/auth/login"
+                to="/contact"
                 class="inline-flex items-center gap-2 px-7 py-3.5 bg-white text-[#121317] text-[17.5px] font-medium rounded-full hover:bg-white/90 transition-colors"
               >
-                Get Started Free
+                Talk to us
                 <UIcon name="i-lucide-arrow-right" class="w-4 h-4" />
               </NuxtLink>
               <NuxtLink

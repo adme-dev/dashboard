@@ -105,7 +105,7 @@
             </p>
           </div>
           <div class="flex gap-3">
-            <a href="mailto:support@xeroflow.agency" class="inline-flex items-center gap-2 px-5 py-2.5 bg-[#121317] dark:bg-white text-white dark:text-[#121317] text-[14px] font-medium rounded-full hover:bg-[#2a2b30] dark:hover:bg-white/90 transition-colors">
+            <a href="mailto:support@xeroflow.io" class="inline-flex items-center gap-2 px-5 py-2.5 bg-[#121317] dark:bg-white text-white dark:text-[#121317] text-[14px] font-medium rounded-full hover:bg-[#2a2b30] dark:hover:bg-white/90 transition-colors">
               <UIcon name="i-lucide-mail" class="w-4 h-4" />
               Email Support
             </a>

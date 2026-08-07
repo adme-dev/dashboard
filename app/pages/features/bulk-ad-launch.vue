@@ -35,10 +35,10 @@
             </p>
             <div class="flex flex-wrap gap-3">
               <NuxtLink
-                to="/auth/login"
+                to="/contact"
                 class="inline-flex items-center gap-2 px-6 py-3 bg-white text-[#121317] text-[15px] font-medium rounded-full hover:bg-white/90 transition-colors"
               >
-                Get Started
+                Talk to us
                 <UIcon name="i-lucide-arrow-right" class="w-4 h-4" />
               </NuxtLink>
               <NuxtLink
@@ -408,10 +408,10 @@
             </p>
             <div class="flex justify-center gap-3">
               <NuxtLink
-                to="/auth/login"
+                to="/contact"
                 class="inline-flex items-center gap-2 px-7 py-3.5 bg-white text-[#121317] text-[17.5px] font-medium rounded-full hover:bg-white/90 transition-colors"
               >
-                Get Started
+                Talk to us
               </NuxtLink>
               <NuxtLink
                 to="/resources/bulk-ad-launch"

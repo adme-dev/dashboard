@@ -19,10 +19,10 @@
           </p>
           <div class="hero-entrance hero-delay-3">
             <NuxtLink
-              to="/auth/login"
+              to="/contact"
               class="inline-flex items-center gap-3 px-8 py-4 bg-white text-[#0a0a0a] text-lg font-medium rounded-full hover:bg-white/90 transition-colors"
             >
-              Get Started
+              Talk to us
               <UIcon name="i-lucide-arrow-right" class="w-5 h-5" />
             </NuxtLink>
           </div>
@@ -150,10 +150,10 @@
             Start training your AI on day one. The more you use XeroFlow, the smarter it gets — for you alone.
           </p>
           <NuxtLink
-            to="/auth/login"
+            to="/contact"
             class="inline-flex items-center gap-2.5 px-8 py-4 bg-white text-[#0a0a0a] text-[17px] font-medium rounded-full hover:bg-white/90 transition-colors"
           >
-            Get Started
+            Talk to us
           </NuxtLink>
         </div>
       </section>
