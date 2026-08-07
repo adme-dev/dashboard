@@ -12,6 +12,7 @@
 - GSD inventory: seven phases, Phase 0 in progress, Phases 1-6 pending.
 - Executable register: 54 stable tasks.
 - Canonical planning commit: `9cd0efdd`.
+- Draft tracking PR: `#379`.
 
 ## Documentation verification
 

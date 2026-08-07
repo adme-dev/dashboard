@@ -16,8 +16,9 @@ current_phase: 0
 **Progress:** 2 of 54 tasks complete (4%)
 **Active branch:** `docs/google-merchant-orchestration`
 **Worktree:** `.worktrees/google-merchant-orchestration`
+**Tracking PR:** `#379` — draft; do not merge before Phase 0 reconciliation
 **Last Activity:** 2026-08-07
-**Last Activity Description:** Planning baseline committed as 9cd0efdd; Phase 0 active
+**Last Activity Description:** Planning baseline pushed and draft PR #379 opened; Phase 0 active
 
 ## Completed this session
 
@@ -31,6 +32,7 @@ current_phase: 0
 - Added the one-project/one-Merchant-registration topology as a hard gate.
 - Declared the other session's unmerged PMax schema/state work as an explicit dependency.
 - Committed the reviewed planning baseline as `9cd0efdd`.
+- Opened draft tracking PR `#379` against `main` with an explicit PMax dependency gate.
 
 ## Active blockers
 

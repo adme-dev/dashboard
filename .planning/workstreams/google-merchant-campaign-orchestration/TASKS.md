@@ -30,6 +30,7 @@ worktree files changed.
 **Verification:** `git worktree list`; `gsd-sdk query workstream.status
 google-merchant-campaign-orchestration --raw --cwd <worktree>`; evidence in
 `phases/00-control-plane-verification/EVIDENCE.md`; commit `9cd0efdd`
+and draft PR `#379`
 **Dependencies:** None
 **Files:** `.planning/active-workstream`, workstream directory
 **Size:** S
@@ -44,7 +45,7 @@ and contain no credentials.
 **Verification:** `git diff --check`; 54-task count; secret-pattern scan; GSD phase
 inventory; full-file review; evidence in
 `phases/00-control-plane-verification/EVIDENCE.md`; commit `9cd0efdd`. Human acceptance
-of the rollout remains a separate Phase 0 checkpoint.
+of the rollout remains a separate Phase 0 checkpoint. Tracking PR: `#379`.
 **Dependencies:** CTL-001
 **Files:** workstream planning documents
 **Size:** M
