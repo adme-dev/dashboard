@@ -481,7 +481,7 @@ await Promise.all([refreshOverview(), refreshTrend()])
     </div>
 
     <!-- Main content + Sidebar -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 analytics-report-grid">
       <!-- Left: charts + campaigns (2/3) -->
       <div class="lg:col-span-2 space-y-6">
         <!-- Trend Chart -->
@@ -786,6 +786,17 @@ await Promise.all([refreshOverview(), refreshTrend()])
 <style>
 @media print {
   @page { size: A4 landscape; margin: 12mm; }
-  .grid > * , section, [class*="rounded-lg"] { break-inside: avoid; }
+
+  .analytics-report-grid {
+    display: block !important;
+  }
+
+  .analytics-report-grid > * {
+    break-inside: auto !important;
+  }
+
+  .analytics-report-grid > * + * {
+    margin-top: 1.5rem;
+  }
 }
 </style>

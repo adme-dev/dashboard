@@ -17,6 +17,7 @@ function componentStyles(source: string): string {
 
 const shellClasses = classesForTag(layoutSource, /<UDashboardGroup\b[^>]*>/s)
 const contentClasses = classesForTag(layoutSource, /<div\s+class="flex-1 w-full[^>]*>/s)
+const reportGridClasses = classesForTag(analyticsSource, /<!-- Main content \+ Sidebar -->\s*<div\b[^>]*>/s)
 const printStyles = [componentStyles(layoutSource), componentStyles(analyticsSource)].join('\n')
 
 let browser: Browser | undefined
@@ -85,15 +86,59 @@ describe('portal analytics PDF export', () => {
     })
 
     const pdf = await page.pdf({ format: 'A4', landscape: true, printBackground: true })
-    const document = await getDocument({ data: new Uint8Array(pdf) }).promise
+    const pdfDocument = await getDocument({ data: new Uint8Array(pdf) }).promise
     const textByPage: string[] = []
-    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
-      const pdfPage = await document.getPage(pageNumber)
+    for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
+      const pdfPage = await pdfDocument.getPage(pageNumber)
       const text = await pdfPage.getTextContent()
       textByPage.push(text.items.map(item => 'str' in item ? item.str : '').join(' '))
     }
 
-    expect(document.numPages).toBeGreaterThan(1)
+    expect(pdfDocument.numPages).toBeGreaterThan(1)
     expect(textByPage.join(' ')).toContain('FINAL REPORT SECTION')
+  }, 30_000)
+
+  it('makes the multi-page analytics columns fragmentable in print', async () => {
+    try {
+      browser = await chromium.launch({ headless: true })
+    } catch (error) {
+      if (!String(error).includes('Executable doesn\'t exist')) throw error
+      browser = await chromium.launch({ channel: 'chrome', headless: true })
+    }
+
+    const page = await browser.newPage({ viewport: { width: 1600, height: 900 } })
+    const reportCards = Array.from({ length: 6 }, (_, index) => `
+      <section class="rounded-lg report-card">Report card ${index + 1}</section>
+    `).join('')
+
+    await page.setContent(`
+      <!doctype html>
+      <style>
+        * { box-sizing: border-box; }
+        html, body { margin: 0; font-family: sans-serif; }
+        .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+        .report-card { min-height: 160px; margin-bottom: 24px; padding: 20px; border: 1px solid #999; }
+        ${printStyles}
+      </style>
+      <main data-report-grid class="${reportGridClasses}">
+        <div data-report-column>${reportCards}</div>
+        <div data-report-column>${reportCards}</div>
+      </main>
+    `)
+    await page.emulateMedia({ media: 'print' })
+
+    const printLayout = await page.evaluate(() => {
+      const reportGrid = document.querySelector<HTMLElement>('[data-report-grid]')!
+      const reportColumn = document.querySelector<HTMLElement>('[data-report-column]')!
+      return {
+        display: getComputedStyle(reportGrid).display,
+        columnBreakInside: getComputedStyle(reportColumn).breakInside
+      }
+    })
+
+    expect(printLayout).toEqual({
+      display: 'block',
+      columnBreakInside: 'auto'
+    })
   }, 30_000)
 })
