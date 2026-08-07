@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { parseDate, type CalendarDate, type DateValue } from '@internationalized/date'
 import type { BriefTemplateField, BriefFieldOption } from '~/types'
 
 const props = defineProps<{
@@ -21,6 +22,32 @@ const emit = defineEmits<{
 const value = computed({
   get: () => props.modelValue,
   set: (val) => emit('update:modelValue', val)
+})
+
+function toCalendarDate(iso: unknown): DateValue | null {
+  if (typeof iso !== 'string' || !iso) return null
+  try {
+    return parseDate(iso.length > 10 ? iso.slice(0, 10) : iso)
+  } catch {
+    return null
+  }
+}
+
+const dateModel = computed<DateValue | null>({
+  get: () => toCalendarDate(props.modelValue),
+  set: val => emit('update:modelValue', val ? val.toString() : '')
+})
+
+const dateFormatter = new Intl.DateTimeFormat('en-AU', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric'
+})
+
+const formattedDate = computed(() => {
+  const date = dateModel.value as CalendarDate | null
+  if (!date) return ''
+  return dateFormatter.format(new Date(date.year, date.month - 1, date.day))
 })
 
 // For rating field
@@ -347,12 +374,33 @@ const acceptedFileTypes = computed(() => {
     <!-- Date Input -->
     <template v-else-if="field.fieldType === 'date'">
       <UFormField :name="field.fieldKey" :label="field.fieldLabel" :required="field.isRequired">
-        <UInput
-          v-model="value"
-          type="date"
-          :disabled="disabled"
-          class="w-full"
-        />
+        <UPopover>
+          <UButton
+            type="button"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-calendar"
+            class="w-full justify-start font-normal"
+            :class="!dateModel && 'text-muted'"
+            :disabled="disabled"
+          >
+            {{ formattedDate || field.placeholder || 'Pick a date' }}
+          </UButton>
+          <template #content>
+            <UCalendar v-model="dateModel" class="p-2" />
+            <div v-if="dateModel" class="flex justify-end border-t border-default p-2">
+              <UButton
+                type="button"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                @click="dateModel = null"
+              >
+                Clear
+              </UButton>
+            </div>
+          </template>
+        </UPopover>
         <template v-if="field.helpText" #hint>
           {{ field.helpText }}
         </template>
