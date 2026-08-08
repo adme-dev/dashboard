@@ -32,26 +32,49 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
-function successfulFetch(restartResponse = jsonResponse({ operations: [] })) {
+type RequestStage = 'project' | 'endpoint' | 'preloads' | 'patch' | 'restart'
+
+interface FakeFetchOptions {
+  restartResponse?: Response
+  failAt?: {
+    stage: RequestStage
+    reply: () => Response
+  }
+}
+
+function successfulFetch({ restartResponse = jsonResponse({ operations: [] }), failAt }: FakeFetchOptions = {}) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     const method = init?.method || 'GET'
+    const stage: RequestStage | null = method === 'GET' && url.endsWith(`/projects/${target.projectId}`)
+      ? 'project'
+      : method === 'GET' && url.endsWith(`/endpoints/${target.endpointId}`)
+        ? 'endpoint'
+        : method === 'GET' && url.endsWith('/available_preload_libraries')
+          ? 'preloads'
+          : method === 'PATCH'
+            ? 'patch'
+            : method === 'POST' && url.endsWith('/restart')
+              ? 'restart'
+              : null
 
-    if (method === 'GET' && url.endsWith(`/projects/${target.projectId}`)) {
+    if (stage === failAt?.stage) return failAt.reply()
+
+    if (stage === 'project') {
       return jsonResponse({ project: { id: target.projectId, settings: { preload_libraries: ['custom_existing'] } } })
     }
-    if (method === 'GET' && url.endsWith(`/endpoints/${target.endpointId}`)) {
+    if (stage === 'endpoint') {
       return jsonResponse({ endpoint: { id: target.endpointId, project_id: target.projectId, host: `${target.endpointId}-pooler.ap-southeast-2.aws.neon.tech` } })
     }
-    if (method === 'GET' && url.endsWith('/available_preload_libraries')) {
+    if (stage === 'preloads') {
       return jsonResponse({ libraries: [
         { library_name: 'pg_stat_statements', is_default: true },
         { library_name: 'lakebase_text', is_default: false },
         { library_name: 'lakebase_vector', is_default: false }
       ] })
     }
-    if (method === 'PATCH') return jsonResponse({ project: { id: target.projectId } })
-    if (method === 'POST' && url.endsWith('/restart')) return restartResponse
+    if (stage === 'patch') return jsonResponse({ project: { id: target.projectId } })
+    if (stage === 'restart') return restartResponse
     throw new Error(`Unexpected fake request: ${method} ${url}`)
   })
 }
@@ -123,24 +146,86 @@ describe('Neon Lakebase preload control plane', () => {
   it('defers only the documented inactive endpoint restart response', async () => {
     const result = await enableLakebasePreloads(
       { target, apiKey: safeEnv.NEON_API_KEY },
-      { fetch: successfulFetch(jsonResponse({ message: 'endpoint is not active, could not restart' }, 409)) }
+      { fetch: successfulFetch({ restartResponse: jsonResponse({ message: 'endpoint is not active, could not restart' }, 409) }) }
     )
 
     expect(result.restartDeferred).toBe(true)
   })
 
+  it('returns a coded failure for an undocumented restart response', async () => {
+    const fetch = successfulFetch({ restartResponse: jsonResponse({ message: 'restart is locked' }, 409) })
+
+    await expect(enableLakebasePreloads({ target, apiKey: safeEnv.NEON_API_KEY }, { fetch }))
+      .rejects.toMatchObject({ code: 'neon_endpoint_restart_failed' } satisfies Partial<LakebaseControlPlaneError>)
+    expect(fetch).toHaveBeenCalledTimes(5)
+  })
+
   it('returns a coded failure when the restart request cannot be completed', async () => {
-    const fetch = successfulFetch()
-    fetch.mockImplementationOnce(async (input, init) => successfulFetch()(input, init))
-    fetch.mockImplementationOnce(async (input, init) => successfulFetch()(input, init))
-    fetch.mockImplementationOnce(async (input, init) => successfulFetch()(input, init))
-    fetch.mockImplementationOnce(async (input, init) => successfulFetch()(input, init))
-    fetch.mockImplementationOnce(async () => {
-      throw new Error('connection reset by peer')
+    const fetch = successfulFetch({
+      failAt: {
+        stage: 'restart',
+        reply: () => {
+          throw new Error('connection reset by peer')
+        }
+      }
     })
 
     await expect(enableLakebasePreloads({ target, apiKey: safeEnv.NEON_API_KEY }, { fetch }))
       .rejects.toMatchObject({ code: 'neon_endpoint_restart_failed' } satisfies Partial<LakebaseControlPlaneError>)
+  })
+
+  it.each([
+    { stage: 'project', code: 'neon_project_fetch_failed', calls: 1 },
+    { stage: 'endpoint', code: 'neon_endpoint_fetch_failed', calls: 2 },
+    { stage: 'preloads', code: 'neon_preload_libraries_fetch_failed', calls: 3 },
+    { stage: 'patch', code: 'neon_project_update_failed', calls: 4 }
+  ] as const)('returns $code when $stage responds with a non-2xx status', async ({ stage, code, calls }) => {
+    const fetch = successfulFetch({
+      failAt: { stage, reply: () => jsonResponse({ message: 'controlled failure' }, 503) }
+    })
+
+    await expect(enableLakebasePreloads({ target, apiKey: safeEnv.NEON_API_KEY }, { fetch }))
+      .rejects.toMatchObject({ code } satisfies Partial<LakebaseControlPlaneError>)
+    expect(fetch).toHaveBeenCalledTimes(calls)
+  })
+
+  it.each([
+    { stage: 'project', code: 'neon_project_fetch_failed', calls: 1 },
+    { stage: 'endpoint', code: 'neon_endpoint_fetch_failed', calls: 2 },
+    { stage: 'preloads', code: 'neon_preload_libraries_fetch_failed', calls: 3 },
+    { stage: 'patch', code: 'neon_project_update_failed', calls: 4 }
+  ] as const)('returns $code when $stage has a transport failure', async ({ stage, code, calls }) => {
+    const fetch = successfulFetch({
+      failAt: {
+        stage,
+        reply: () => {
+          throw new Error('controlled transport failure')
+        }
+      }
+    })
+
+    await expect(enableLakebasePreloads({ target, apiKey: safeEnv.NEON_API_KEY }, { fetch }))
+      .rejects.toMatchObject({ code } satisfies Partial<LakebaseControlPlaneError>)
+    expect(fetch).toHaveBeenCalledTimes(calls)
+  })
+
+  it('fails closed before PATCH when the retrieved project ID does not match the pilot target', async () => {
+    const fetch = successfulFetch()
+    fetch.mockImplementationOnce(async () => jsonResponse({ project: { id: 'pilot-wrong-project-1234', settings: { preload_libraries: [] } } }))
+
+    await expect(enableLakebasePreloads({ target, apiKey: safeEnv.NEON_API_KEY }, { fetch }))
+      .rejects.toMatchObject({ code: 'neon_project_target_mismatch' } satisfies Partial<LakebaseControlPlaneError>)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('fails closed before PATCH when the retrieved endpoint ID does not match the pilot target', async () => {
+    const fetch = successfulFetch()
+    fetch.mockImplementationOnce(async () => jsonResponse({ project: { id: target.projectId, settings: { preload_libraries: [] } } }))
+    fetch.mockImplementationOnce(async () => jsonResponse({ endpoint: { id: 'ep-wrong-endpoint-a1b2c3d4', project_id: target.projectId, host: target.databaseHost } }))
+
+    await expect(enableLakebasePreloads({ target, apiKey: safeEnv.NEON_API_KEY }, { fetch }))
+      .rejects.toMatchObject({ code: 'neon_endpoint_target_mismatch' } satisfies Partial<LakebaseControlPlaneError>)
+    expect(fetch).toHaveBeenCalledTimes(2)
   })
 
   it('fails closed before PATCH when endpoint ownership does not match the target', async () => {
@@ -150,6 +235,16 @@ describe('Neon Lakebase preload control plane', () => {
 
     await expect(enableLakebasePreloads({ target, apiKey: safeEnv.NEON_API_KEY }, { fetch }))
       .rejects.toMatchObject({ code: 'neon_endpoint_target_mismatch' } satisfies Partial<LakebaseControlPlaneError>)
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('fails closed before PATCH when the normalized endpoint host does not match the pilot target', async () => {
+    const fetch = successfulFetch()
+    fetch.mockImplementationOnce(async () => jsonResponse({ project: { id: target.projectId, settings: { preload_libraries: [] } } }))
+    fetch.mockImplementationOnce(async () => jsonResponse({ endpoint: { id: target.endpointId, project_id: target.projectId, host: 'ep-wrong-host-a1b2c3d4-pooler.ap-southeast-2.aws.neon.tech' } }))
+
+    await expect(enableLakebasePreloads({ target, apiKey: safeEnv.NEON_API_KEY }, { fetch }))
+      .rejects.toMatchObject({ code: 'neon_endpoint_host_mismatch' } satisfies Partial<LakebaseControlPlaneError>)
     expect(fetch).toHaveBeenCalledTimes(2)
   })
 
