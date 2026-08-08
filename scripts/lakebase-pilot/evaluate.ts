@@ -8,6 +8,7 @@ import {
   rename as fsRename,
   rm as fsRm,
   symlink as fsSymlink,
+  unlink as fsUnlink,
   writeFile as fsWriteFile
 } from 'node:fs/promises'
 import { hostname as systemHostname } from 'node:os'
@@ -96,9 +97,14 @@ export interface EvaluationPublisherFileSystem {
   createSymlink: (target: string, path: string) => Promise<void>
   readLink: (path: string) => Promise<string>
   readText: (path: string) => Promise<string>
-  readMetadata: (path: string) => Promise<{ modifiedAtEpochMs: number }>
+  readMetadata: (path: string) => Promise<{
+    modifiedAtEpochMs: number
+    device: number
+    inode: number
+  }>
   listDirectory: (path: string) => Promise<string[]>
   rename: (from: string, to: string) => Promise<void>
+  unlink: (path: string) => Promise<void>
   remove: (path: string) => Promise<void>
 }
 
@@ -468,11 +474,18 @@ const defaultPublisherFileSystem: EvaluationPublisherFileSystem = {
   readText: path => readFile(path, 'utf8'),
   async readMetadata(path) {
     const metadata = await fsLstat(path)
-    return { modifiedAtEpochMs: metadata.mtimeMs }
+    return {
+      modifiedAtEpochMs: metadata.mtimeMs,
+      device: metadata.dev,
+      inode: metadata.ino
+    }
   },
   listDirectory: path => fsReaddir(path),
   async rename(from, to) {
     await fsRename(from, to)
+  },
+  async unlink(path) {
+    await fsUnlink(path)
   },
   async remove(path) {
     await fsRm(path, { recursive: true, force: true })
@@ -524,7 +537,9 @@ async function readOptionalText(
   try {
     return await fileSystem.readText(path)
   } catch (error) {
-    if (hasErrorCode(error, 'ENOENT') || hasErrorCode(error, 'EISDIR')) return null
+    if (hasErrorCode(error, 'ENOENT')
+      || hasErrorCode(error, 'EISDIR')
+      || hasErrorCode(error, 'ENOTDIR')) return null
     throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
   }
 }
@@ -532,7 +547,11 @@ async function readOptionalText(
 async function readOptionalMetadata(
   fileSystem: EvaluationPublisherFileSystem,
   path: string
-): Promise<{ modifiedAtEpochMs: number } | null> {
+): Promise<{
+  modifiedAtEpochMs: number
+  device: number
+  inode: number
+} | null> {
   try {
     return await fileSystem.readMetadata(path)
   } catch (error) {
@@ -560,6 +579,8 @@ interface LockSnapshot {
   heartbeatRaw: string | null
   linkTarget: string | null
   modifiedAtEpochMs: number
+  device: number
+  inode: number
 }
 
 async function readLockSnapshot(
@@ -577,7 +598,9 @@ async function readLockSnapshot(
     heartbeat: heartbeatRaw === null ? null : parseLockHeartbeat(heartbeatRaw),
     heartbeatRaw,
     linkTarget,
-    modifiedAtEpochMs: metadata.modifiedAtEpochMs
+    modifiedAtEpochMs: metadata.modifiedAtEpochMs,
+    device: metadata.device,
+    inode: metadata.inode
   }
 }
 
@@ -765,13 +788,18 @@ async function recoverDeadRecoverySentinel(
     `${LOCK_RECOVERY_RELEASE_PREFIX}${ownerFingerprint(snapshot.lease.ownerToken)}`
   )
   try {
-    await fileSystem.rename(sentinelPath, detachedPath)
-    const detached = await readLockSnapshot(fileSystem, detachedPath)
-    if (!detached || !sameLockSnapshot(detached, snapshot)) {
+    const detached = await detachControlledSymlinkNoReplace(
+      fileSystem,
+      sentinelPath,
+      detachedPath,
+      current => sameLockSnapshot(current, snapshot),
+      'lakebase_evaluation_publish_failed'
+    )
+    if (!detached) return false
+    if (!(await unlinkExactLockSnapshot(fileSystem, detachedPath, detached))) {
       await restoreDetachedLinkIfVacant(fileSystem, sentinelPath, detachedPath, detached)
       return false
     }
-    await fileSystem.remove(detachedPath)
     await fileSystem.remove(ownerDirectoryPath)
     return true
   } catch (error) {
@@ -849,13 +877,35 @@ async function detachOwnedCanonical(
     | 'lakebase_evaluation_publish_lock_release_failed'
 ): Promise<void> {
   try {
-    await fileSystem.rename(canonicalPath, detachedPath)
-    const detached = await readLockSnapshot(fileSystem, detachedPath)
-    if (!snapshotOwnedBy(detached, ownerToken, ownerDirectoryName, ownerPrefix)) {
-      await restoreDetachedLinkIfVacant(fileSystem, canonicalPath, detachedPath, detached)
+    const detached = await detachControlledSymlinkNoReplace(
+      fileSystem,
+      canonicalPath,
+      detachedPath,
+      snapshot => snapshotOwnedBy(snapshot, ownerToken, ownerDirectoryName, ownerPrefix),
+      failureCode
+    )
+    if (!detached) throw new LakebaseEvaluationPublishError(failureCode)
+    const current = await readLockSnapshot(fileSystem, detachedPath)
+    if (!current
+      || !sameLockSnapshot(current, detached)
+      || !snapshotOwnedBy(current, ownerToken, ownerDirectoryName, ownerPrefix)) {
+      await restoreDetachedLinkIfVacant(
+        fileSystem,
+        canonicalPath,
+        detachedPath,
+        detached
+      )
       throw new LakebaseEvaluationPublishError(failureCode)
     }
-    await fileSystem.remove(detachedPath)
+    if (!(await unlinkExactLockSnapshot(fileSystem, detachedPath, detached))) {
+      await restoreDetachedLinkIfVacant(
+        fileSystem,
+        canonicalPath,
+        detachedPath,
+        detached
+      )
+      throw new LakebaseEvaluationPublishError(failureCode)
+    }
   } catch (error) {
     if (error instanceof LakebaseEvaluationPublishError) throw error
     throw new LakebaseEvaluationPublishError(failureCode)
@@ -879,26 +929,163 @@ async function clearRecoverySentinel(
 }
 
 function sameLockSnapshot(left: LockSnapshot, right: LockSnapshot): boolean {
+  return sameLockArtifact(left, right)
+    && sameLockLinkIdentity(left, right)
+}
+
+function sameLockLinkIdentity(left: LockSnapshot, right: LockSnapshot): boolean {
+  return left.linkTarget === right.linkTarget
+    && left.modifiedAtEpochMs === right.modifiedAtEpochMs
+    && left.device === right.device
+    && left.inode === right.inode
+}
+
+function sameLockArtifact(left: LockSnapshot, right: LockSnapshot): boolean {
   return left.leaseRaw === right.leaseRaw
     && left.heartbeatRaw === right.heartbeatRaw
     && left.linkTarget === right.linkTarget
-    && left.modifiedAtEpochMs === right.modifiedAtEpochMs
+}
+
+type LockDetachmentFailureCode
+  = | 'lakebase_evaluation_publish_failed'
+    | 'lakebase_evaluation_publish_lock_unavailable'
+    | 'lakebase_evaluation_publish_lock_lost'
+    | 'lakebase_evaluation_publish_lock_release_failed'
+
+async function unlinkExactLockSnapshot(
+  fileSystem: EvaluationPublisherFileSystem,
+  path: string,
+  expected: LockSnapshot
+): Promise<boolean> {
+  const current = await readLockSnapshot(fileSystem, path)
+  if (!current || !sameLockLinkIdentity(current, expected)) return false
+  try {
+    await fileSystem.unlink(path)
+    return true
+  } catch (error) {
+    if (hasErrorCode(error, 'ENOENT')) return true
+    const afterFailure = await readLockSnapshot(fileSystem, path)
+    if (!afterFailure) return true
+    throw error
+  }
+}
+
+async function rollbackCreatedDetachment(
+  fileSystem: EvaluationPublisherFileSystem,
+  sourcePath: string,
+  detachedPath: string,
+  source: LockSnapshot,
+  detached: LockSnapshot
+): Promise<boolean> {
+  if (!source.linkTarget) return false
+  let currentSource = await readLockSnapshot(fileSystem, sourcePath)
+  if (!currentSource) {
+    try {
+      await fileSystem.createSymlink(source.linkTarget, sourcePath)
+    } catch (error) {
+      if (!hasErrorCode(error, 'EEXIST')) return false
+    }
+    currentSource = await readLockSnapshot(fileSystem, sourcePath)
+  }
+  if (!currentSource || currentSource.linkTarget !== source.linkTarget) return false
+  return unlinkExactLockSnapshot(fileSystem, detachedPath, detached)
+}
+
+async function detachControlledSymlinkNoReplace(
+  fileSystem: EvaluationPublisherFileSystem,
+  sourcePath: string,
+  detachedPath: string,
+  sourceMatches: (snapshot: LockSnapshot) => boolean,
+  failureCode: LockDetachmentFailureCode
+): Promise<LockSnapshot | null> {
+  let source: LockSnapshot | null
+  try {
+    source = await readLockSnapshot(fileSystem, sourcePath)
+  } catch {
+    throw new LakebaseEvaluationPublishError(failureCode)
+  }
+  if (!source?.linkTarget || !sourceMatches(source)) {
+    throw new LakebaseEvaluationPublishError(failureCode)
+  }
+
+  try {
+    await fileSystem.createSymlink(source.linkTarget, detachedPath)
+  } catch (error) {
+    if (hasErrorCode(error, 'EEXIST')) return null
+    throw new LakebaseEvaluationPublishError(failureCode)
+  }
+
+  let detached: LockSnapshot | null
+  try {
+    detached = await readLockSnapshot(fileSystem, detachedPath)
+  } catch {
+    throw new LakebaseEvaluationPublishError(failureCode)
+  }
+  if (!detached || !sameLockArtifact(detached, source)) {
+    if (detached) {
+      await Promise.allSettled([
+        rollbackCreatedDetachment(fileSystem, sourcePath, detachedPath, source, detached)
+      ])
+    }
+    throw new LakebaseEvaluationPublishError(failureCode)
+  }
+
+  let revalidatedSource: LockSnapshot | null
+  try {
+    revalidatedSource = await readLockSnapshot(fileSystem, sourcePath)
+  } catch {
+    await Promise.allSettled([
+      rollbackCreatedDetachment(fileSystem, sourcePath, detachedPath, source, detached)
+    ])
+    throw new LakebaseEvaluationPublishError(failureCode)
+  }
+  if (!revalidatedSource || !sameLockSnapshot(revalidatedSource, source)) {
+    await Promise.allSettled([
+      rollbackCreatedDetachment(fileSystem, sourcePath, detachedPath, source, detached)
+    ])
+    throw new LakebaseEvaluationPublishError(failureCode)
+  }
+
+  try {
+    await fileSystem.unlink(sourcePath)
+  } catch {
+    const sourceAfterFailure = await readLockSnapshot(fileSystem, sourcePath)
+    if (sourceAfterFailure) {
+      await Promise.allSettled([
+        rollbackCreatedDetachment(fileSystem, sourcePath, detachedPath, source, detached)
+      ])
+      throw new LakebaseEvaluationPublishError(failureCode)
+    }
+  }
+
+  const detachedAfterUnlink = await readLockSnapshot(fileSystem, detachedPath)
+  if (!detachedAfterUnlink || !sameLockSnapshot(detachedAfterUnlink, detached)) {
+    await Promise.allSettled([
+      rollbackCreatedDetachment(fileSystem, sourcePath, detachedPath, source, detached)
+    ])
+    throw new LakebaseEvaluationPublishError(failureCode)
+  }
+  return detached
 }
 
 async function restoreDetachedLinkIfVacant(
   fileSystem: EvaluationPublisherFileSystem,
   canonicalPath: string,
   detachedPath: string,
-  detached: LockSnapshot | null
-): Promise<void> {
-  if (!detached?.linkTarget) return
+  detached: LockSnapshot
+): Promise<boolean> {
+  if (!detached.linkTarget) return false
+  const currentDetached = await readLockSnapshot(fileSystem, detachedPath)
+  if (!currentDetached || !sameLockLinkIdentity(currentDetached, detached)) return false
   try {
     await fileSystem.createSymlink(detached.linkTarget, canonicalPath)
   } catch (error) {
-    if (hasErrorCode(error, 'EEXIST')) return
+    if (hasErrorCode(error, 'EEXIST')) return false
     throw error
   }
-  await fileSystem.remove(detachedPath)
+  const restored = await readLockSnapshot(fileSystem, canonicalPath)
+  if (!restored || restored.linkTarget !== detached.linkTarget) return false
+  return unlinkExactLockSnapshot(fileSystem, detachedPath, detached)
 }
 
 async function releaseCandidateCanonicalOnly(
@@ -935,7 +1122,8 @@ async function rollbackFailedStaleRecovery(
   outputDir: string,
   ownership: PublicationLockOwnership,
   recovery: LockRecoveryOwnership,
-  staleSnapshot: LockSnapshot
+  staleSnapshot: LockSnapshot,
+  quarantinedSnapshot: LockSnapshot | null
 ): Promise<void> {
   const canonical = await readLockSnapshot(fileSystem, ownership.lockPath)
   if (snapshotOwnedBy(
@@ -947,11 +1135,14 @@ async function rollbackFailedStaleRecovery(
     await releaseCandidateCanonicalOnly(fileSystem, ownership)
   }
 
-  const quarantined = await readLockSnapshot(fileSystem, recovery.staleLockPath)
-  if (quarantined) {
+  const quarantined = quarantinedSnapshot
+    ? await readLockSnapshot(fileSystem, recovery.staleLockPath)
+    : null
+  if (quarantined
+    && quarantinedSnapshot
+    && sameLockSnapshot(quarantined, quarantinedSnapshot)) {
     const occupyingCanonical = await readLockSnapshot(fileSystem, ownership.lockPath)
     if (occupyingCanonical) {
-      if (!sameLockSnapshot(quarantined, staleSnapshot)) return
       const staleOwnerDirectoryName = safeOwnerArtifactName(
         staleSnapshot,
         LOCK_OWNER_DIRECTORY_PREFIX
@@ -960,14 +1151,24 @@ async function rollbackFailedStaleRecovery(
         occupyingCanonical,
         LOCK_OWNER_DIRECTORY_PREFIX
       )
-      if (!occupyingOwnerDirectoryName
-        || occupyingOwnerDirectoryName === staleOwnerDirectoryName) return
-      await fileSystem.remove(recovery.staleLockPath)
-      if (staleOwnerDirectoryName) {
+      if (sameLockArtifact(quarantined, staleSnapshot)
+        && occupyingOwnerDirectoryName
+        && occupyingOwnerDirectoryName !== staleOwnerDirectoryName
+        && staleOwnerDirectoryName
+        && await unlinkExactLockSnapshot(
+          fileSystem,
+          recovery.staleLockPath,
+          quarantinedSnapshot
+        )) {
         await fileSystem.remove(join(outputDir, staleOwnerDirectoryName))
       }
     } else {
-      await fileSystem.rename(recovery.staleLockPath, ownership.lockPath)
+      await restoreDetachedLinkIfVacant(
+        fileSystem,
+        ownership.lockPath,
+        recovery.staleLockPath,
+        quarantinedSnapshot
+      )
     }
   }
   if (await recoverySentinelExists(fileSystem, recovery.sentinelPath)) {
@@ -988,6 +1189,7 @@ async function recoverStaleLock(
 ): Promise<PublicationLockOwnership | null> {
   const recovery = await prepareRecoverySentinel(fileSystem, outputDir, options)
   if (!recovery) return null
+  let quarantinedSnapshot: LockSnapshot | null = null
 
   try {
     await assertRecoveryOwnership(fileSystem, recovery)
@@ -998,13 +1200,34 @@ async function recoverStaleLock(
     }
 
     await assertRecoveryOwnership(fileSystem, recovery)
-    await fileSystem.rename(ownership.lockPath, recovery.staleLockPath)
+    quarantinedSnapshot = await detachControlledSymlinkNoReplace(
+      fileSystem,
+      ownership.lockPath,
+      recovery.staleLockPath,
+      inspected => sameLockSnapshot(inspected, snapshot),
+      'lakebase_evaluation_publish_lock_unavailable'
+    )
+    if (!quarantinedSnapshot) {
+      await clearRecoverySentinel(fileSystem, recovery)
+      return null
+    }
     const quarantined = await readLockSnapshot(fileSystem, recovery.staleLockPath)
-    if (!quarantined || !sameLockSnapshot(quarantined, snapshot)) {
+    if (!quarantined
+      || !sameLockSnapshot(quarantined, quarantinedSnapshot)
+      || !sameLockArtifact(quarantined, snapshot)) {
       await assertRecoveryOwnership(fileSystem, recovery)
       await waitForCanonicalAbsence(fileSystem, ownership.lockPath, sleep)
       await assertRecoveryOwnership(fileSystem, recovery)
-      await fileSystem.rename(recovery.staleLockPath, ownership.lockPath)
+      if (!(await restoreDetachedLinkIfVacant(
+        fileSystem,
+        ownership.lockPath,
+        recovery.staleLockPath,
+        quarantinedSnapshot
+      ))) {
+        throw new LakebaseEvaluationPublishError(
+          'lakebase_evaluation_publish_lock_unavailable'
+        )
+      }
       await clearRecoverySentinel(fileSystem, recovery)
       return null
     }
@@ -1026,20 +1249,34 @@ async function recoverStaleLock(
     }
 
     await assertRecoveryOwnership(fileSystem, recovery)
-    await fileSystem.remove(recovery.staleLockPath)
+    await clearRecoverySentinel(fileSystem, recovery)
+    await assertLockOwnership(fileSystem, ownership)
+    if (!(await unlinkExactLockSnapshot(
+      fileSystem,
+      recovery.staleLockPath,
+      quarantinedSnapshot
+    ))) {
+      throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_lock_lost')
+    }
     const staleOwnerDirectoryName = safeOwnerArtifactName(
       snapshot,
       LOCK_OWNER_DIRECTORY_PREFIX
     )
     if (staleOwnerDirectoryName) {
-      await assertRecoveryOwnership(fileSystem, recovery)
+      await assertLockOwnership(fileSystem, ownership)
       await fileSystem.remove(join(outputDir, staleOwnerDirectoryName))
     }
-    await clearRecoverySentinel(fileSystem, recovery)
     return ownership
   } catch (error) {
     await Promise.allSettled([
-      rollbackFailedStaleRecovery(fileSystem, outputDir, ownership, recovery, snapshot)
+      rollbackFailedStaleRecovery(
+        fileSystem,
+        outputDir,
+        ownership,
+        recovery,
+        snapshot,
+        quarantinedSnapshot
+      )
     ])
     throw error
   }
@@ -1117,7 +1354,20 @@ async function acquirePublicationLock(
     }
   } catch (error) {
     if (!installed) {
-      await Promise.allSettled([fileSystem.remove(candidate.ownerDirectoryPath)])
+      let candidateStillCanonical = true
+      try {
+        candidateStillCanonical = snapshotOwnedBy(
+          await readLockSnapshot(fileSystem, candidate.lockPath),
+          candidate.ownerToken,
+          candidate.ownerDirectoryName,
+          LOCK_OWNER_DIRECTORY_PREFIX
+        )
+      } catch {
+        // Ambiguous canonical identity must retain the candidate evidence fail closed.
+      }
+      if (!candidateStillCanonical) {
+        await Promise.allSettled([fileSystem.remove(candidate.ownerDirectoryPath)])
+      }
     }
     throw error
   }

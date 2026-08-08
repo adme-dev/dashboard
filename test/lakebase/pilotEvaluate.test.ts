@@ -9,6 +9,7 @@ import {
   rename,
   rm,
   symlink,
+  unlink,
   writeFile
 } from 'node:fs/promises'
 import { hostname, tmpdir } from 'node:os'
@@ -47,6 +48,7 @@ const LOCK_OWNER_PREFIX = '.evaluation.lock.owner.'
 const LOCK_RECOVERY_SENTINEL = '.evaluation.lock.recovery'
 const LOCK_RECOVERY_OWNER_PREFIX = '.evaluation.lock.recovery-owner.'
 const LOCK_RELEASE_PREFIX = '.evaluation.lock.release.'
+const LOCK_RECOVERY_RELEASE_PREFIX = '.evaluation.lock.recovery-release.'
 const LOCK_STALE_PREFIX = '.evaluation.lock.stale.'
 const RECOVERY_MARKER = '.evaluation.recovery.json'
 const PUBLICATION_RECOVERY_PREFIX = '.evaluation.publish-recovery.'
@@ -122,10 +124,15 @@ function realPublisherFileSystem(): EvaluationPublisherFileSystem {
     readText: (path: string) => readFile(path, 'utf8'),
     async readMetadata(path) {
       const metadata = await lstat(path)
-      return { modifiedAtEpochMs: metadata.mtimeMs }
+      return {
+        modifiedAtEpochMs: metadata.mtimeMs,
+        device: metadata.dev,
+        inode: metadata.ino
+      }
     },
     listDirectory: readdir,
     rename,
+    unlink,
     async remove(path) {
       await rm(path, { recursive: true, force: true })
     }
@@ -141,9 +148,10 @@ function nestedRecoveryCompatibleFileSystem(
     ...fileSystem,
     async readMetadata(path) {
       const modifiedAtEpochMs = originalModifiedAt.get(path)
+      const metadata = await fileSystem.readMetadata(path)
       return modifiedAtEpochMs === undefined
-        ? fileSystem.readMetadata(path)
-        : { modifiedAtEpochMs }
+        ? metadata
+        : { ...metadata, modifiedAtEpochMs }
     },
     async rename(from, to) {
       if (basename(from) === LOCK_DIRECTORY && basename(to) === 'stale-lock') {
@@ -247,6 +255,18 @@ async function seedLease(
     hostname: lease.hostname ?? 'inactive-test-host'
   })}\n`)
   return lockPath
+}
+
+async function seedForeignOwnerArtifact(
+  outputDir: string,
+  ownerToken: string
+): Promise<{ directoryName: string, directoryPath: string, markerPath: string }> {
+  const directoryName = `${LOCK_OWNER_PREFIX}${fingerprint(ownerToken)}`
+  const directoryPath = join(outputDir, directoryName)
+  const markerPath = join(directoryPath, 'foreign-owner-artifact')
+  await mkdir(directoryPath)
+  await writeFile(markerPath, 'foreign-owner-must-remain\n')
+  return { directoryName, directoryPath, markerPath }
 }
 
 async function publicationRecoveryEvidence(outputDir: string): Promise<{
@@ -472,6 +492,247 @@ describe('Lakebase evaluation report publication', () => {
     expect((await readdir(outputDir)).sort()).toEqual(['evaluation.json', 'evaluation.md'])
   })
 
+  it('fails closed without replacing an unknown stale-lock quarantine destination', async () => {
+    const outputDir = await temporaryOutputDirectory()
+    const stale = await seedModernLock(outputDir, {
+      ownerToken: 'stale-owner-before-quarantine-collision',
+      acquiredAtEpochMs: 1_000
+    })
+    const contenderToken = 'stale-quarantine-collision-contender'
+    const collisionPath = join(
+      outputDir,
+      `${LOCK_STALE_PREFIX}${fingerprint(contenderToken)}`
+    )
+    const collisionBytes = 'unknown-stale-quarantine-artifact\n'
+    await writeFile(collisionPath, collisionBytes)
+    const collisionIdentity = await lstat(collisionPath)
+    const canonicalIdentity = await lstat(stale.lockPath)
+    const foreignOwner = await seedForeignOwnerArtifact(
+      outputDir,
+      'foreign-owner-near-stale-collision'
+    )
+    let caught: unknown
+
+    try {
+      await publishEvaluationReports(
+        outputDir,
+        { json: '{"writer":"must-not-publish"}\n', markdown: 'must-not-publish\n' },
+        {
+          now: () => 10_000,
+          leaseDurationMs: 100,
+          ownerToken: () => contenderToken,
+          sleep: async () => {}
+        }
+      )
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toMatchObject({
+      code: 'lakebase_evaluation_publish_lock_unavailable',
+      message: 'lakebase_evaluation_publish_lock_unavailable'
+    })
+    const collisionAfter = await lstat(collisionPath)
+    expect({ dev: collisionAfter.dev, ino: collisionAfter.ino })
+      .toEqual({ dev: collisionIdentity.dev, ino: collisionIdentity.ino })
+    expect(await readFile(collisionPath, 'utf8')).toBe(collisionBytes)
+    const canonicalAfter = await lstat(stale.lockPath)
+    expect({ dev: canonicalAfter.dev, ino: canonicalAfter.ino })
+      .toEqual({ dev: canonicalIdentity.dev, ino: canonicalIdentity.ino })
+    expect(await readlink(stale.lockPath)).toBe(stale.ownerDirectoryName)
+    expect(await readFile(join(stale.ownerDirectoryPath, LEASE_FILE), 'utf8'))
+      .toContain('stale-owner-before-quarantine-collision')
+    expect(await readFile(foreignOwner.markerPath, 'utf8'))
+      .toBe('foreign-owner-must-remain\n')
+    expect(await readdir(outputDir)).not.toContain(LOCK_RECOVERY_SENTINEL)
+    expect(JSON.stringify(caught)).not.toContain(contenderToken)
+    expect(JSON.stringify(caught)).not.toContain(collisionBytes.trim())
+    expect(JSON.stringify(caught)).not.toContain(outputDir)
+  })
+
+  it('does not overwrite a canonical occupant while rolling a failed quarantine back', async () => {
+    const outputDir = await temporaryOutputDirectory()
+    const stale = await seedModernLock(outputDir, {
+      ownerToken: 'stale-owner-before-rollback-restore-collision',
+      acquiredAtEpochMs: 1_000
+    })
+    const contenderToken = 'rollback-restore-collision-contender'
+    const contenderDirectoryName = `${LOCK_OWNER_PREFIX}${fingerprint(contenderToken)}`
+    const quarantineName = `${LOCK_STALE_PREFIX}${fingerprint(contenderToken)}`
+    const collisionBytes = 'unknown-canonical-rollback-occupant\n'
+    const foreignOwner = await seedForeignOwnerArtifact(
+      outputDir,
+      'foreign-owner-near-rollback-restore-collision'
+    )
+    const fileSystem = realPublisherFileSystem()
+    let candidateInstallFailed = false
+    let collisionIdentity: Awaited<ReturnType<typeof lstat>> | undefined
+
+    const seedCanonicalCollision = async (path: string) => {
+      if (collisionIdentity) return
+      await writeFile(path, collisionBytes)
+      collisionIdentity = await lstat(path)
+    }
+
+    let caught: unknown
+    try {
+      await publishEvaluationReports(
+        outputDir,
+        { json: '{"writer":"must-not-publish"}\n', markdown: 'must-not-publish\n' },
+        {
+          now: () => 10_000,
+          leaseDurationMs: 100,
+          ownerToken: () => contenderToken,
+          sleep: async () => {},
+          fileSystem: {
+            ...fileSystem,
+            async createSymlink(target, path) {
+              if (!candidateInstallFailed
+                && basename(path) === LOCK_DIRECTORY
+                && target === contenderDirectoryName
+                && (await readdir(outputDir)).includes(quarantineName)) {
+                candidateInstallFailed = true
+                throw new Error(EXCEPTION_TEXT)
+              }
+              if (basename(path) === LOCK_DIRECTORY
+                && target === stale.ownerDirectoryName) {
+                await seedCanonicalCollision(path)
+              }
+              await fileSystem.createSymlink(target, path)
+            },
+            async rename(from, to) {
+              if (basename(from) === quarantineName && basename(to) === LOCK_DIRECTORY) {
+                await seedCanonicalCollision(to)
+              }
+              await fileSystem.rename(from, to)
+            }
+          }
+        }
+      )
+    } catch (error) {
+      caught = error
+    }
+
+    expect(candidateInstallFailed).toBe(true)
+    expect(collisionIdentity).toBeDefined()
+    expect(caught).toMatchObject({
+      code: 'lakebase_evaluation_publish_failed',
+      message: 'lakebase_evaluation_publish_failed'
+    })
+    const canonicalPath = join(outputDir, LOCK_DIRECTORY)
+    const collisionAfter = await lstat(canonicalPath)
+    expect({ dev: collisionAfter.dev, ino: collisionAfter.ino })
+      .toEqual({ dev: collisionIdentity!.dev, ino: collisionIdentity!.ino })
+    expect(await readFile(canonicalPath, 'utf8')).toBe(collisionBytes)
+    expect(await readlink(join(outputDir, quarantineName))).toBe(stale.ownerDirectoryName)
+    expect(await readFile(join(stale.ownerDirectoryPath, LEASE_FILE), 'utf8'))
+      .toContain('stale-owner-before-rollback-restore-collision')
+    expect(await readFile(foreignOwner.markerPath, 'utf8'))
+      .toBe('foreign-owner-must-remain\n')
+    expect(await readdir(outputDir)).not.toContain(LOCK_RECOVERY_SENTINEL)
+    expect(JSON.stringify(caught)).not.toContain(collisionBytes.trim())
+    expect(JSON.stringify(caught)).not.toContain(outputDir)
+  })
+
+  it('does not overwrite a canonical occupant while restoring a changed quarantine', async () => {
+    const outputDir = await temporaryOutputDirectory()
+    const stale = await seedModernLock(outputDir, {
+      ownerToken: 'stale-owner-before-changed-restore-collision',
+      acquiredAtEpochMs: 1_000
+    })
+    const contenderToken = 'changed-restore-collision-contender'
+    const quarantineName = `${LOCK_STALE_PREFIX}${fingerprint(contenderToken)}`
+    const replacementLease = `${JSON.stringify({
+      schemaVersion: 1,
+      ownerToken: 'live-owner-after-quarantine',
+      acquiredAtEpochMs: 10_000,
+      processId: process.pid,
+      hostname: hostname(),
+      ownerDirectoryName: stale.ownerDirectoryName
+    })}\n`
+    const collisionBytes = 'unknown-canonical-changed-restore-occupant\n'
+    const foreignOwner = await seedForeignOwnerArtifact(
+      outputDir,
+      'foreign-owner-near-changed-restore-collision'
+    )
+    const fileSystem = realPublisherFileSystem()
+    let quarantineChanged = false
+    let collisionIdentity: Awaited<ReturnType<typeof lstat>> | undefined
+
+    const changeQuarantine = async () => {
+      if (quarantineChanged) return
+      quarantineChanged = true
+      await writeFile(join(stale.ownerDirectoryPath, LEASE_FILE), replacementLease)
+    }
+    const seedCanonicalCollision = async (path: string) => {
+      if (collisionIdentity) return
+      await writeFile(path, collisionBytes)
+      collisionIdentity = await lstat(path)
+    }
+
+    let caught: unknown
+    try {
+      await publishEvaluationReports(
+        outputDir,
+        { json: '{"writer":"must-not-publish"}\n', markdown: 'must-not-publish\n' },
+        {
+          now: () => 10_000,
+          leaseDurationMs: 100,
+          ownerToken: () => contenderToken,
+          sleep: async () => {},
+          fileSystem: {
+            ...fileSystem,
+            async createSymlink(target, path) {
+              if (basename(path) === LOCK_DIRECTORY
+                && target === stale.ownerDirectoryName
+                && quarantineChanged) {
+                await seedCanonicalCollision(path)
+              }
+              await fileSystem.createSymlink(target, path)
+            },
+            async rename(from, to) {
+              if (basename(from) === quarantineName && basename(to) === LOCK_DIRECTORY) {
+                await seedCanonicalCollision(to)
+                await fileSystem.rename(from, to)
+              } else {
+                await fileSystem.rename(from, to)
+              }
+              if (basename(from) === LOCK_DIRECTORY && basename(to) === quarantineName) {
+                await changeQuarantine()
+              }
+            },
+            async unlink(path) {
+              await fileSystem.unlink(path)
+              if (basename(path) === LOCK_DIRECTORY) await changeQuarantine()
+            }
+          }
+        }
+      )
+    } catch (error) {
+      caught = error
+    }
+
+    expect(quarantineChanged).toBe(true)
+    expect(collisionIdentity).toBeDefined()
+    expect(caught).toMatchObject({
+      code: 'lakebase_evaluation_publish_lock_unavailable',
+      message: 'lakebase_evaluation_publish_lock_unavailable'
+    })
+    const canonicalPath = join(outputDir, LOCK_DIRECTORY)
+    const collisionAfter = await lstat(canonicalPath)
+    expect({ dev: collisionAfter.dev, ino: collisionAfter.ino })
+      .toEqual({ dev: collisionIdentity!.dev, ino: collisionIdentity!.ino })
+    expect(await readFile(canonicalPath, 'utf8')).toBe(collisionBytes)
+    expect(await readlink(join(outputDir, quarantineName))).toBe(stale.ownerDirectoryName)
+    expect(await readFile(join(stale.ownerDirectoryPath, LEASE_FILE), 'utf8'))
+      .toBe(replacementLease)
+    expect(await readFile(foreignOwner.markerPath, 'utf8'))
+      .toBe('foreign-owner-must-remain\n')
+    expect(await readdir(outputDir)).not.toContain(LOCK_RECOVERY_SENTINEL)
+    expect(JSON.stringify(caught)).not.toContain(collisionBytes.trim())
+    expect(JSON.stringify(caught)).not.toContain(outputDir)
+  })
+
   it('takes over an expired recovery sentinel left by a crashed local recoverer', async () => {
     const outputDir = await temporaryOutputDirectory()
     const crashed = await seedRecoverySentinel(outputDir, {
@@ -495,6 +756,191 @@ describe('Lakebase evaluation report publication', () => {
     await expect(lstat(crashed.ownerDirectoryPath)).rejects.toThrow()
   })
 
+  it('fails closed without replacing an unknown recovery-sentinel release destination', async () => {
+    const outputDir = await temporaryOutputDirectory()
+    const crashedToken = 'crashed-recovery-owner-with-release-collision'
+    const crashed = await seedRecoverySentinel(outputDir, {
+      ownerToken: crashedToken,
+      acquiredAtEpochMs: 1_000
+    })
+    const foreignOwner = await seedForeignOwnerArtifact(
+      outputDir,
+      'foreign-owner-at-recovery-release-destination'
+    )
+    const collisionPath = join(
+      outputDir,
+      `${LOCK_RECOVERY_RELEASE_PREFIX}${fingerprint(crashedToken)}`
+    )
+    await symlink(foreignOwner.directoryName, collisionPath, 'dir')
+    const collisionIdentity = await lstat(collisionPath)
+    const sentinelIdentity = await lstat(crashed.sentinelPath)
+    let caught: unknown
+
+    try {
+      await publishEvaluationReports(
+        outputDir,
+        { json: '{"writer":"must-not-publish"}\n', markdown: 'must-not-publish\n' },
+        {
+          now: () => 10_000,
+          leaseDurationMs: 100,
+          ownerToken: () => 'contender-blocked-by-recovery-release-collision',
+          sleep: async () => {}
+        }
+      )
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toMatchObject({
+      code: 'lakebase_evaluation_publish_lock_unavailable',
+      message: 'lakebase_evaluation_publish_lock_unavailable'
+    })
+    const collisionAfter = await lstat(collisionPath)
+    expect({ dev: collisionAfter.dev, ino: collisionAfter.ino })
+      .toEqual({ dev: collisionIdentity.dev, ino: collisionIdentity.ino })
+    expect(await readlink(collisionPath)).toBe(foreignOwner.directoryName)
+    const sentinelAfter = await lstat(crashed.sentinelPath)
+    expect({ dev: sentinelAfter.dev, ino: sentinelAfter.ino })
+      .toEqual({ dev: sentinelIdentity.dev, ino: sentinelIdentity.ino })
+    expect(await readlink(crashed.sentinelPath))
+      .toBe(`${LOCK_RECOVERY_OWNER_PREFIX}${fingerprint(crashedToken)}`)
+    expect(await readFile(join(crashed.ownerDirectoryPath, LEASE_FILE), 'utf8'))
+      .toContain(crashedToken)
+    expect(await readFile(foreignOwner.markerPath, 'utf8'))
+      .toBe('foreign-owner-must-remain\n')
+    expect(JSON.stringify(caught)).not.toContain(crashedToken)
+    expect(JSON.stringify(caught)).not.toContain(outputDir)
+  })
+
+  it('fails closed when a live recovery sentinel release destination is occupied', async () => {
+    const outputDir = await temporaryOutputDirectory()
+    const stale = await seedModernLock(outputDir, {
+      ownerToken: 'stale-owner-before-live-sentinel-release-collision',
+      acquiredAtEpochMs: 1_000
+    })
+    const contenderToken = 'live-recovery-sentinel-release-collision'
+    const collisionPath = join(
+      outputDir,
+      `${LOCK_RECOVERY_RELEASE_PREFIX}${fingerprint(contenderToken)}`
+    )
+    const collisionBytes = 'unknown-live-recovery-release-artifact\n'
+    await writeFile(collisionPath, collisionBytes)
+    const collisionIdentity = await lstat(collisionPath)
+    const foreignOwner = await seedForeignOwnerArtifact(
+      outputDir,
+      'foreign-owner-near-live-recovery-release-collision'
+    )
+    let caught: unknown
+
+    try {
+      await publishEvaluationReports(
+        outputDir,
+        { json: '{"writer":"must-not-publish"}\n', markdown: 'must-not-publish\n' },
+        {
+          now: () => 10_000,
+          leaseDurationMs: 100,
+          ownerToken: () => contenderToken,
+          sleep: async () => {}
+        }
+      )
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toMatchObject({
+      code: 'lakebase_evaluation_publish_lock_lost',
+      message: 'lakebase_evaluation_publish_lock_lost'
+    })
+    const collisionAfter = await lstat(collisionPath)
+    expect({ dev: collisionAfter.dev, ino: collisionAfter.ino })
+      .toEqual({ dev: collisionIdentity.dev, ino: collisionIdentity.ino })
+    expect(await readFile(collisionPath, 'utf8')).toBe(collisionBytes)
+    expect(await readlink(stale.lockPath)).toBe(stale.ownerDirectoryName)
+    expect(await readFile(join(stale.ownerDirectoryPath, LEASE_FILE), 'utf8'))
+      .toContain('stale-owner-before-live-sentinel-release-collision')
+    expect(await readFile(foreignOwner.markerPath, 'utf8'))
+      .toBe('foreign-owner-must-remain\n')
+    expect(await readdir(outputDir)).toContain(LOCK_RECOVERY_SENTINEL)
+    expect(JSON.stringify(caught)).not.toContain(contenderToken)
+    expect(JSON.stringify(caught)).not.toContain(collisionBytes.trim())
+    expect(JSON.stringify(caught)).not.toContain(outputDir)
+  })
+
+  it('retains a candidate owner when failed-recovery rollback release collides', async () => {
+    const outputDir = await temporaryOutputDirectory()
+    const stale = await seedModernLock(outputDir, {
+      ownerToken: 'stale-owner-before-rollback-release-collision',
+      acquiredAtEpochMs: 1_000
+    })
+    const contenderToken = 'candidate-with-rollback-release-collision'
+    const contenderDirectoryName = `${LOCK_OWNER_PREFIX}${fingerprint(contenderToken)}`
+    const contenderDirectoryPath = join(outputDir, contenderDirectoryName)
+    const releaseCollisionPath = join(
+      outputDir,
+      `${LOCK_RELEASE_PREFIX}${fingerprint(contenderToken)}`
+    )
+    const collisionBytes = 'unknown-rollback-release-artifact\n'
+    await writeFile(releaseCollisionPath, collisionBytes)
+    const collisionIdentity = await lstat(releaseCollisionPath)
+    const foreignOwner = await seedForeignOwnerArtifact(
+      outputDir,
+      'foreign-owner-near-rollback-release-collision'
+    )
+    const fileSystem = realPublisherFileSystem()
+    let quarantineCleanupFailed = false
+    let caught: unknown
+
+    try {
+      await publishEvaluationReports(
+        outputDir,
+        { json: '{"writer":"must-not-publish"}\n', markdown: 'must-not-publish\n' },
+        {
+          now: () => 10_000,
+          leaseDurationMs: 100,
+          ownerToken: () => contenderToken,
+          sleep: async () => {},
+          fileSystem: {
+            ...fileSystem,
+            async unlink(path) {
+              if (!quarantineCleanupFailed
+                && basename(path).startsWith(LOCK_STALE_PREFIX)) {
+                quarantineCleanupFailed = true
+                throw new Error(EXCEPTION_TEXT)
+              }
+              await fileSystem.unlink(path)
+            }
+          }
+        }
+      )
+    } catch (error) {
+      caught = error
+    }
+
+    expect(quarantineCleanupFailed).toBe(true)
+    expect(caught).toMatchObject({
+      code: 'lakebase_evaluation_publish_failed',
+      message: 'lakebase_evaluation_publish_failed'
+    })
+    const collisionAfter = await lstat(releaseCollisionPath)
+    expect({ dev: collisionAfter.dev, ino: collisionAfter.ino })
+      .toEqual({ dev: collisionIdentity.dev, ino: collisionIdentity.ino })
+    expect(await readFile(releaseCollisionPath, 'utf8')).toBe(collisionBytes)
+    expect(await readlink(join(outputDir, LOCK_DIRECTORY))).toBe(contenderDirectoryName)
+    expect(await readFile(join(contenderDirectoryPath, LEASE_FILE), 'utf8'))
+      .toContain(contenderToken)
+    expect(await readlink(join(
+      outputDir,
+      `${LOCK_STALE_PREFIX}${fingerprint(contenderToken)}`
+    ))).toBe(stale.ownerDirectoryName)
+    expect(await readFile(join(stale.ownerDirectoryPath, LEASE_FILE), 'utf8'))
+      .toContain('stale-owner-before-rollback-release-collision')
+    expect(await readFile(foreignOwner.markerPath, 'utf8'))
+      .toBe('foreign-owner-must-remain\n')
+    expect(JSON.stringify(caught)).not.toContain(contenderToken)
+    expect(JSON.stringify(caught)).not.toContain(collisionBytes.trim())
+    expect(JSON.stringify(caught)).not.toContain(outputDir)
+  })
+
   it('clears its live recovery sentinel when stale quarantine fails', async () => {
     const outputDir = await temporaryOutputDirectory()
     await seedModernLock(outputDir, {
@@ -513,19 +959,17 @@ describe('Lakebase evaluation report publication', () => {
         sleep: async () => {},
         fileSystem: {
           ...fileSystem,
-          async rename(from, to) {
+          async createSymlink(target, path) {
             if (!quarantineFailed
-              && basename(from) === LOCK_DIRECTORY
-              && basename(to).startsWith(LOCK_STALE_PREFIX)) {
+              && basename(path).startsWith(LOCK_STALE_PREFIX)) {
               quarantineFailed = true
-              await fileSystem.rename(from, to)
               throw new Error(EXCEPTION_TEXT)
             }
-            await fileSystem.rename(from, to)
+            await fileSystem.createSymlink(target, path)
           }
         }
       }
-    )).rejects.toMatchObject({ code: 'lakebase_evaluation_publish_failed' })
+    )).rejects.toMatchObject({ code: 'lakebase_evaluation_publish_lock_unavailable' })
 
     expect(await readdir(outputDir)).not.toContain(LOCK_RECOVERY_SENTINEL)
 
@@ -565,11 +1009,11 @@ describe('Lakebase evaluation report publication', () => {
         sleep: async () => {},
         fileSystem: {
           ...fileSystem,
-          async rename(from, to) {
-            await fileSystem.rename(from, to)
+          async unlink(path) {
+            await fileSystem.unlink(path)
             if (!contenderInstalled
-              && basename(from) === LOCK_DIRECTORY
-              && basename(to).startsWith(LOCK_STALE_PREFIX)) {
+              && basename(path) === LOCK_DIRECTORY
+              && (await readdir(outputDir)).some(name => name.startsWith(LOCK_STALE_PREFIX))) {
               contenderInstalled = true
               await mkdir(contenderDirectoryPath)
               await writeFile(join(contenderDirectoryPath, LEASE_FILE), `${JSON.stringify({
@@ -585,7 +1029,7 @@ describe('Lakebase evaluation report publication', () => {
                 ownerToken: contenderToken,
                 renewedAtEpochMs: 10_000
               })}\n`)
-              await symlink(contenderDirectoryName, from, 'dir')
+              await symlink(contenderDirectoryName, path, 'dir')
             }
           }
         }
@@ -831,9 +1275,8 @@ describe('Lakebase evaluation report publication', () => {
     const originalTarget = `${LOCK_OWNER_PREFIX}${fingerprint('release-window-original')}`
     const controlledFileSystem: EvaluationPublisherFileSystem = {
       ...fileSystem,
-      async rename(from, to) {
-        if (basename(from) === LOCK_DIRECTORY
-          && basename(to).startsWith(LOCK_RELEASE_PREFIX)
+      async createSymlink(target, path) {
+        if (basename(path).startsWith(LOCK_RELEASE_PREFIX)
           && !takeoverInjected) {
           takeoverInjected = true
           try {
@@ -851,9 +1294,9 @@ describe('Lakebase evaluation report publication', () => {
           } catch (error) {
             contenderFailure = error
           }
-          expect(await readlink(from)).toBe(originalTarget)
+          expect(await readlink(join(outputDir, LOCK_DIRECTORY))).toBe(originalTarget)
         }
-        await fileSystem.rename(from, to)
+        await fileSystem.createSymlink(target, path)
       }
     }
 
@@ -1061,15 +1504,15 @@ describe('Lakebase evaluation report publication', () => {
         sleep: async () => {},
         fileSystem: {
           ...fileSystem,
-          async rename(from, to) {
+          async createSymlink(target, path) {
             if (!replaced
-              && basename(from) === LOCK_DIRECTORY
-              && (basename(to).startsWith(`${LOCK_DIRECTORY}.stale.`)
-                || basename(to) === 'stale-lock')) {
+              && basename(path).startsWith(`${LOCK_DIRECTORY}.stale.`)) {
               replaced = true
-              await writeFile(join(from, LEASE_FILE), replacementLease)
+              await fileSystem.createSymlink(target, path)
+              await writeFile(join(lockPath, LEASE_FILE), replacementLease)
+              return
             }
-            await fileSystem.rename(from, to)
+            await fileSystem.createSymlink(target, path)
           }
         }
       }
@@ -1119,17 +1562,17 @@ describe('Lakebase evaluation report publication', () => {
         sleep: async () => {},
         fileSystem: {
           ...fileSystem,
-          async rename(from, to) {
-            if (!replacementInstalled && basename(from) === LOCK_DIRECTORY) {
+          async createSymlink(target, path) {
+            if (!replacementInstalled && basename(path).startsWith(LOCK_STALE_PREFIX)) {
               replacementInstalled = true
-              await writeFile(join(from, LEASE_FILE), replacementLease)
-              await writeFile(join(from, HEARTBEAT_FILE), replacementHeartbeat)
-              await fileSystem.rename(from, to)
+              await fileSystem.createSymlink(target, path)
+              await writeFile(join(outputDir, LOCK_DIRECTORY, LEASE_FILE), replacementLease)
+              await writeFile(join(outputDir, LOCK_DIRECTORY, HEARTBEAT_FILE), replacementHeartbeat)
               quarantined.resolve()
               await continueRecovery.promise
               return
             }
-            await fileSystem.rename(from, to)
+            await fileSystem.createSymlink(target, path)
           }
         }
       }
@@ -1183,12 +1626,11 @@ describe('Lakebase evaluation report publication', () => {
         ownerToken: () => LOCK_OWNER_TOKEN,
         fileSystem: {
           ...fileSystem,
-          async rename(from, to) {
-            if (basename(from) === LOCK_DIRECTORY
-              && basename(to).startsWith(LOCK_RELEASE_PREFIX)) {
-              throw new Error(`${EXCEPTION_TEXT}:${from}`)
+          async createSymlink(target, path) {
+            if (basename(path).startsWith(LOCK_RELEASE_PREFIX)) {
+              throw new Error(`${EXCEPTION_TEXT}:${path}`)
             }
-            await fileSystem.rename(from, to)
+            await fileSystem.createSymlink(target, path)
           }
         }
       }
@@ -1200,6 +1642,53 @@ describe('Lakebase evaluation report publication', () => {
     expect(await readFile(join(outputDir, 'evaluation.json'), 'utf8')).toContain('"new"')
     expect(await readFile(join(outputDir, 'evaluation.md'), 'utf8')).toContain('new')
     expect(await readdir(outputDir)).toContain(LOCK_DIRECTORY)
+  })
+
+  it('fails release without replacing an unknown canonical-lock release destination', async () => {
+    const outputDir = await temporaryOutputDirectory()
+    const ownerToken = 'canonical-owner-with-release-collision'
+    const foreignOwner = await seedForeignOwnerArtifact(
+      outputDir,
+      'foreign-owner-at-canonical-release-destination'
+    )
+    const collisionPath = join(
+      outputDir,
+      `${LOCK_RELEASE_PREFIX}${fingerprint(ownerToken)}`
+    )
+    await symlink(foreignOwner.directoryName, collisionPath, 'dir')
+    const collisionIdentity = await lstat(collisionPath)
+    let caught: unknown
+
+    try {
+      await publishEvaluationReports(
+        outputDir,
+        { json: '{"writer":"published-before-release"}\n', markdown: 'published-before-release\n' },
+        { ownerToken: () => ownerToken }
+      )
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toMatchObject({
+      code: 'lakebase_evaluation_publish_lock_release_failed',
+      message: 'lakebase_evaluation_publish_lock_release_failed'
+    })
+    const collisionAfter = await lstat(collisionPath)
+    expect({ dev: collisionAfter.dev, ino: collisionAfter.ino })
+      .toEqual({ dev: collisionIdentity.dev, ino: collisionIdentity.ino })
+    expect(await readlink(collisionPath)).toBe(foreignOwner.directoryName)
+    expect(await readFile(foreignOwner.markerPath, 'utf8'))
+      .toBe('foreign-owner-must-remain\n')
+    const canonicalPath = join(outputDir, LOCK_DIRECTORY)
+    expect(await readlink(canonicalPath))
+      .toBe(`${LOCK_OWNER_PREFIX}${fingerprint(ownerToken)}`)
+    expect(await readFile(join(canonicalPath, LEASE_FILE), 'utf8')).toContain(ownerToken)
+    expect(await readFile(join(outputDir, 'evaluation.json'), 'utf8'))
+      .toBe('{"writer":"published-before-release"}\n')
+    expect(await readFile(join(outputDir, 'evaluation.md'), 'utf8'))
+      .toBe('published-before-release\n')
+    expect(JSON.stringify(caught)).not.toContain(ownerToken)
+    expect(JSON.stringify(caught)).not.toContain(outputDir)
   })
 
   it('refuses to release a lock whose lease owner changed', async () => {
@@ -1256,12 +1745,11 @@ describe('Lakebase evaluation report publication', () => {
               if (basename(path).startsWith('.evaluation.md.')) throw new Error(EXCEPTION_TEXT)
               await fileSystem.writeExclusive(path, content)
             },
-            async rename(from, to) {
-              if (basename(from) === LOCK_DIRECTORY
-                && basename(to).startsWith(LOCK_RELEASE_PREFIX)) {
-                throw new Error(`${EXCEPTION_TEXT}:${from}`)
+            async createSymlink(target, path) {
+              if (basename(path).startsWith(LOCK_RELEASE_PREFIX)) {
+                throw new Error(`${EXCEPTION_TEXT}:${path}`)
               }
-              await fileSystem.rename(from, to)
+              await fileSystem.createSymlink(target, path)
             }
           }
         }
