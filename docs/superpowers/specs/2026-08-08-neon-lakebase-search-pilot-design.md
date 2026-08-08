@@ -2,7 +2,9 @@
 
 **Date:** 2026-08-08
 
-**Status:** Proposed for implementation planning
+**Status:** Approved for implementation planning on 2026-08-08
+
+**Implementation plan:** [2026-08-08-neon-lakebase-search-pilot.md](../plans/2026-08-08-neon-lakebase-search-pilot.md)
 
 **Primary pilot surface:** CRM search (`/api/crm/search` and the CRM global search component)
 
