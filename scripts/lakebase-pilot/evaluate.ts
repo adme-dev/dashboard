@@ -6,6 +6,7 @@ import {
   rm as fsRm,
   writeFile as fsWriteFile
 } from 'node:fs/promises'
+import { hostname as systemHostname } from 'node:os'
 import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { pathToFileURL } from 'node:url'
@@ -88,13 +89,27 @@ export interface EvaluationReportPaths {
 export interface EvaluationPublisherFileSystem {
   makeDirectory: (path: string, recursive: boolean) => Promise<void>
   writeExclusive: (path: string, content: string) => Promise<void>
+  readText: (path: string) => Promise<string>
   rename: (from: string, to: string) => Promise<void>
   remove: (path: string) => Promise<void>
+}
+
+export interface EvaluationLockLease {
+  schemaVersion: 1
+  ownerToken: string
+  acquiredAtEpochMs: number
+  processId: number
+  hostname: string
 }
 
 export interface EvaluationPublisherDependencies {
   fileSystem?: EvaluationPublisherFileSystem
   sleep?: (milliseconds: number) => Promise<void>
+  now?: () => number
+  ownerToken?: () => string
+  leaseDurationMs?: number
+  isOwnerActive?: (lease: EvaluationLockLease) => Promise<boolean>
+  recoverInvalidLease?: (rawLease: string | null) => Promise<boolean>
 }
 
 export type EvaluationReportPublisher = (
@@ -103,10 +118,16 @@ export type EvaluationReportPublisher = (
 ) => Promise<EvaluationReportPaths>
 
 export class LakebaseEvaluationPublishError extends Error {
+  readonly lockReleaseFailure?: LakebaseEvaluationPublishError
+  readonly cleanupFailure?: LakebaseEvaluationPublishError
+
   constructor(readonly code:
     | 'lakebase_evaluation_publish_failed'
     | 'lakebase_evaluation_publish_lock_unavailable'
+    | 'lakebase_evaluation_publish_lock_release_failed'
     | 'lakebase_evaluation_publish_rollback_failed'
+    | 'lakebase_evaluation_publish_cleanup_failed'
+    | 'lakebase_evaluation_recovery_required'
   ) {
     super(code)
     this.name = 'LakebaseEvaluationPublishError'
@@ -401,6 +422,10 @@ function markdownReport(report: LakebaseEvaluationReport): string {
 
 const LOCK_RETRY_MILLISECONDS = 10
 const MAX_LOCK_ATTEMPTS = 500
+const DEFAULT_LEASE_DURATION_MILLISECONDS = 30_000
+const LOCK_DIRECTORY_NAME = '.evaluation.lock'
+const LEASE_FILE_NAME = 'lease.json'
+const RECOVERY_MARKER_NAME = '.evaluation.recovery.json'
 
 const defaultPublisherFileSystem: EvaluationPublisherFileSystem = {
   async makeDirectory(path, recursive) {
@@ -409,6 +434,7 @@ const defaultPublisherFileSystem: EvaluationPublisherFileSystem = {
   async writeExclusive(path, content) {
     await fsWriteFile(path, content, { flag: 'wx' })
   },
+  readText: path => readFile(path, 'utf8'),
   async rename(from, to) {
     await fsRename(from, to)
   },
@@ -425,18 +451,181 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, milliseconds))
 }
 
+function parseLockLease(raw: string): EvaluationLockLease | null {
+  try {
+    const value = JSON.parse(raw) as Partial<EvaluationLockLease>
+    if (value.schemaVersion !== 1
+      || typeof value.ownerToken !== 'string'
+      || !value.ownerToken
+      || !Number.isFinite(value.acquiredAtEpochMs)
+      || !Number.isInteger(value.processId)
+      || value.processId! < 1
+      || typeof value.hostname !== 'string'
+      || !value.hostname) return null
+    return value as EvaluationLockLease
+  } catch {
+    return null
+  }
+}
+
+async function readLockLease(
+  fileSystem: EvaluationPublisherFileSystem,
+  lockPath: string
+): Promise<{ lease: EvaluationLockLease | null, raw: string | null }> {
+  try {
+    const raw = await fileSystem.readText(join(lockPath, LEASE_FILE_NAME))
+    return { lease: parseLockLease(raw), raw }
+  } catch (error) {
+    if (hasErrorCode(error, 'ENOENT')) return { lease: null, raw: null }
+    throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
+  }
+}
+
+async function defaultIsOwnerActive(lease: EvaluationLockLease): Promise<boolean> {
+  if (lease.hostname !== systemHostname()) return true
+  try {
+    process.kill(lease.processId, 0)
+    return true
+  } catch (error) {
+    return !hasErrorCode(error, 'ESRCH')
+  }
+}
+
+interface PublicationLockOptions {
+  now: () => number
+  ownerToken: string
+  leaseDurationMs: number
+  isOwnerActive: (lease: EvaluationLockLease) => Promise<boolean>
+  recoverInvalidLease?: (rawLease: string | null) => Promise<boolean>
+}
+
+interface PublicationLockOwnership {
+  lockPath: string
+  ownerToken: string
+  quarantinePath?: string
+}
+
+interface RecoverableLockSnapshot {
+  rawLease: string | null
+}
+
+function staleLockQuarantinePath(
+  lockPath: string,
+  snapshot: RecoverableLockSnapshot
+): string {
+  const fingerprint = createHash('sha256')
+    .update(snapshot.rawLease ?? '<missing-lease>')
+    .digest('hex')
+    .slice(0, 16)
+  return `${lockPath}.stale.${fingerprint}`
+}
+
+function leaseForOwner(options: PublicationLockOptions): EvaluationLockLease {
+  return {
+    schemaVersion: 1,
+    ownerToken: options.ownerToken,
+    acquiredAtEpochMs: options.now(),
+    processId: process.pid,
+    hostname: systemHostname()
+  }
+}
+
+async function createOwnedLock(
+  fileSystem: EvaluationPublisherFileSystem,
+  lockPath: string,
+  options: PublicationLockOptions
+): Promise<PublicationLockOwnership> {
+  await fileSystem.makeDirectory(lockPath, false)
+  try {
+    await fileSystem.writeExclusive(
+      join(lockPath, LEASE_FILE_NAME),
+      `${JSON.stringify(leaseForOwner(options))}\n`
+    )
+    return { lockPath, ownerToken: options.ownerToken }
+  } catch {
+    await Promise.allSettled([fileSystem.remove(lockPath)])
+    throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
+  }
+}
+
+async function mayRecoverLock(
+  fileSystem: EvaluationPublisherFileSystem,
+  lockPath: string,
+  options: PublicationLockOptions
+): Promise<RecoverableLockSnapshot | null> {
+  const inspected = await readLockLease(fileSystem, lockPath)
+  if (!inspected.lease) {
+    return (await options.recoverInvalidLease?.(inspected.raw))
+      ? { rawLease: inspected.raw }
+      : null
+  }
+  const age = options.now() - inspected.lease.acquiredAtEpochMs
+  if (!Number.isFinite(age) || age < options.leaseDurationMs) return null
+  return (await options.isOwnerActive(inspected.lease))
+    ? null
+    : { rawLease: inspected.raw }
+}
+
+async function quarantineAndReplaceStaleLock(
+  fileSystem: EvaluationPublisherFileSystem,
+  lockPath: string,
+  options: PublicationLockOptions,
+  snapshot: RecoverableLockSnapshot
+): Promise<PublicationLockOwnership | null> {
+  const quarantinePath = staleLockQuarantinePath(lockPath, snapshot)
+  try {
+    await fileSystem.rename(lockPath, quarantinePath)
+  } catch (error) {
+    if (hasErrorCode(error, 'ENOENT')
+      || hasErrorCode(error, 'EEXIST')
+      || hasErrorCode(error, 'ENOTEMPTY')) return null
+    throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
+  }
+
+  const quarantined = await readLockLease(fileSystem, quarantinePath)
+  if (quarantined.raw !== snapshot.rawLease) {
+    try {
+      await fileSystem.rename(quarantinePath, lockPath)
+    } catch {
+      throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
+    }
+    return null
+  }
+
+  try {
+    return {
+      ...await createOwnedLock(fileSystem, lockPath, options),
+      quarantinePath
+    }
+  } catch (error) {
+    if (hasErrorCode(error, 'EEXIST')) return null
+    throw error
+  }
+}
+
 async function acquirePublicationLock(
   fileSystem: EvaluationPublisherFileSystem,
   lockPath: string,
-  sleep: (milliseconds: number) => Promise<void>
-): Promise<void> {
+  sleep: (milliseconds: number) => Promise<void>,
+  options: PublicationLockOptions
+): Promise<PublicationLockOwnership> {
   for (let attempt = 1; attempt <= MAX_LOCK_ATTEMPTS; attempt += 1) {
     try {
-      await fileSystem.makeDirectory(lockPath, false)
-      return
+      return await createOwnedLock(fileSystem, lockPath, options)
     } catch (error) {
       if (!hasErrorCode(error, 'EEXIST')) {
+        if (error instanceof LakebaseEvaluationPublishError) throw error
         throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
+      }
+      const recoverable = await mayRecoverLock(fileSystem, lockPath, options)
+      if (recoverable) {
+        const ownership = await quarantineAndReplaceStaleLock(
+          fileSystem,
+          lockPath,
+          options,
+          recoverable
+        )
+        if (ownership) return ownership
       }
       if (attempt === MAX_LOCK_ATTEMPTS) {
         throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_lock_unavailable')
@@ -444,6 +633,7 @@ async function acquirePublicationLock(
       await sleep(LOCK_RETRY_MILLISECONDS)
     }
   }
+  throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_lock_unavailable')
 }
 
 async function moveIfPresent(
@@ -463,8 +653,70 @@ async function moveIfPresent(
 async function cleanupPublicationPaths(
   fileSystem: EvaluationPublisherFileSystem,
   paths: readonly string[]
+): Promise<boolean> {
+  const results = await Promise.allSettled(paths.map(path => fileSystem.remove(path)))
+  return results.every(result => result.status === 'fulfilled')
+}
+
+async function recoveryMarkerExists(
+  fileSystem: EvaluationPublisherFileSystem,
+  markerPath: string
+): Promise<boolean> {
+  try {
+    await fileSystem.readText(markerPath)
+    return true
+  } catch (error) {
+    if (hasErrorCode(error, 'ENOENT')) return false
+    throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
+  }
+}
+
+async function preserveRecoveryMarker(
+  fileSystem: EvaluationPublisherFileSystem,
+  markerPath: string
+): Promise<boolean> {
+  try {
+    await fileSystem.writeExclusive(
+      markerPath,
+      `${JSON.stringify({ schemaVersion: 1, status: 'recovery_required' })}\n`
+    )
+    return true
+  } catch (error) {
+    return hasErrorCode(error, 'EEXIST')
+  }
+}
+
+function stablePublishError(error: unknown): LakebaseEvaluationPublishError {
+  return error instanceof LakebaseEvaluationPublishError
+    ? error
+    : new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
+}
+
+function attachPublishFailure(
+  primary: LakebaseEvaluationPublishError,
+  property: 'lockReleaseFailure' | 'cleanupFailure',
+  failure: LakebaseEvaluationPublishError
+): void {
+  Object.defineProperty(primary, property, {
+    value: failure,
+    configurable: true
+  })
+}
+
+async function releasePublicationLock(
+  fileSystem: EvaluationPublisherFileSystem,
+  ownership: PublicationLockOwnership
 ): Promise<void> {
-  await Promise.allSettled(paths.map(path => fileSystem.remove(path)))
+  try {
+    const inspected = await readLockLease(fileSystem, ownership.lockPath)
+    if (!inspected.lease || inspected.lease.ownerToken !== ownership.ownerToken) {
+      throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_lock_release_failed')
+    }
+    await fileSystem.remove(ownership.lockPath)
+    if (ownership.quarantinePath) await fileSystem.remove(ownership.quarantinePath)
+  } catch {
+    throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_lock_release_failed')
+  }
 }
 
 async function restorePriorPublication(
@@ -491,6 +743,13 @@ export async function publishEvaluationReports(
 ): Promise<EvaluationReportPaths> {
   const fileSystem = deps.fileSystem || defaultPublisherFileSystem
   const sleep = deps.sleep || delay
+  const lockOptions: PublicationLockOptions = {
+    now: deps.now || (() => Date.now()),
+    ownerToken: (deps.ownerToken || (() => randomUUID()))(),
+    leaseDurationMs: Math.max(1, deps.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MILLISECONDS),
+    isOwnerActive: deps.isOwnerActive || defaultIsOwnerActive,
+    recoverInvalidLease: deps.recoverInvalidLease
+  }
   try {
     await fileSystem.makeDirectory(outputDir, true)
   } catch {
@@ -501,7 +760,8 @@ export async function publishEvaluationReports(
     json: join(outputDir, 'evaluation.json'),
     markdown: join(outputDir, 'evaluation.md')
   }
-  const lockPath = join(outputDir, '.evaluation.lock')
+  const lockPath = join(outputDir, LOCK_DIRECTORY_NAME)
+  const recoveryMarkerPath = join(outputDir, RECOVERY_MARKER_NAME)
   const nonce = `${process.pid}-${randomUUID()}`
   const temporaryPaths = {
     json: join(outputDir, `.evaluation.json.${nonce}.tmp`),
@@ -512,12 +772,17 @@ export async function publishEvaluationReports(
     markdown: join(outputDir, `.evaluation.md.${nonce}.backup`)
   }
   const prior = { json: false, markdown: false }
-  let lockAcquired = false
+  let ownership: PublicationLockOwnership | undefined
   let publicationStarted = false
+  let preserveBackups = false
+  let primaryError: LakebaseEvaluationPublishError | undefined
+  let publishedPaths: EvaluationReportPaths | undefined
 
   try {
-    await acquirePublicationLock(fileSystem, lockPath, sleep)
-    lockAcquired = true
+    ownership = await acquirePublicationLock(fileSystem, lockPath, sleep, lockOptions)
+    if (await recoveryMarkerExists(fileSystem, recoveryMarkerPath)) {
+      throw new LakebaseEvaluationPublishError('lakebase_evaluation_recovery_required')
+    }
 
     const writes = await Promise.allSettled([
       fileSystem.writeExclusive(temporaryPaths.json, payload.json),
@@ -543,25 +808,59 @@ export async function publishEvaluationReports(
     publicationStarted = true
     await fileSystem.rename(temporaryPaths.json, paths.json)
     await fileSystem.rename(temporaryPaths.markdown, paths.markdown)
-    return paths
+    publishedPaths = paths
   } catch (error) {
+    primaryError = stablePublishError(error)
+    if (primaryError.code === 'lakebase_evaluation_publish_rollback_failed') {
+      preserveBackups = true
+    }
     if (publicationStarted) {
       const restored = await restorePriorPublication(fileSystem, paths, backupPaths, prior)
       if (!restored) {
-        throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_rollback_failed')
+        preserveBackups = true
+        primaryError = new LakebaseEvaluationPublishError('lakebase_evaluation_publish_rollback_failed')
       }
     }
-    if (error instanceof LakebaseEvaluationPublishError) throw error
-    throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
-  } finally {
-    await cleanupPublicationPaths(fileSystem, [
-      temporaryPaths.json,
-      temporaryPaths.markdown,
-      backupPaths.json,
-      backupPaths.markdown
-    ])
-    if (lockAcquired) await cleanupPublicationPaths(fileSystem, [lockPath])
   }
+
+  if (ownership) {
+    const cleanupPaths = [temporaryPaths.json, temporaryPaths.markdown]
+    if (!preserveBackups) cleanupPaths.push(backupPaths.json, backupPaths.markdown)
+    const cleaned = await cleanupPublicationPaths(fileSystem, cleanupPaths)
+    if (!cleaned) {
+      preserveBackups = true
+      const cleanupFailure = new LakebaseEvaluationPublishError(
+        'lakebase_evaluation_publish_cleanup_failed'
+      )
+      if (primaryError) attachPublishFailure(primaryError, 'cleanupFailure', cleanupFailure)
+      else primaryError = cleanupFailure
+    }
+
+    if (preserveBackups) {
+      const markerPreserved = await preserveRecoveryMarker(fileSystem, recoveryMarkerPath)
+      if (!markerPreserved) {
+        const cleanupFailure = new LakebaseEvaluationPublishError(
+          'lakebase_evaluation_publish_cleanup_failed'
+        )
+        if (primaryError) attachPublishFailure(primaryError, 'cleanupFailure', cleanupFailure)
+        else primaryError = cleanupFailure
+      }
+    }
+
+    try {
+      await releasePublicationLock(fileSystem, ownership)
+    } catch {
+      const releaseFailure = new LakebaseEvaluationPublishError(
+        'lakebase_evaluation_publish_lock_release_failed'
+      )
+      if (primaryError) attachPublishFailure(primaryError, 'lockReleaseFailure', releaseFailure)
+      else primaryError = releaseFailure
+    }
+  }
+
+  if (primaryError) throw primaryError
+  if (!publishedPaths) throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
+  return publishedPaths
 }
 
 export async function runLakebaseEvaluation(
