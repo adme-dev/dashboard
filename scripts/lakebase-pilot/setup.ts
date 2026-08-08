@@ -7,6 +7,7 @@ import {
 } from './capability'
 import { redactPilotTarget, resolvePilotTarget } from './contracts'
 import {
+  closePilotDatabasePreservingError,
   createPilotDatabase,
   type PilotDatabase
 } from './database'
@@ -98,6 +99,8 @@ async function readSql(name: 'schema.sql' | 'indexes.sql'): Promise<string> {
 export async function runPilotSetup(deps: PilotSetupDependencies) {
   const target = resolvePilotTarget(deps.env, 'mutate')
   const database = await (deps.createDatabase || createPilotDatabase)(target)
+  let operationCompleted = false
+  let primaryError: unknown
 
   try {
     const capability = await inspectLakebaseCapability(database.query)
@@ -128,14 +131,19 @@ VALUES ($1, $2, $3, $4, $5, $6, $7)
 
     await database.query('VACUUM ANALYZE lakebase_pilot.crm_search_documents')
 
-    return {
+    const result = {
       target: redactPilotTarget(target),
       fixtureCount: fixture.documents.length,
       insertedCount: rows.length,
       skippedDeletedCount: fixture.documents.length - rows.length,
       indexes: [...INDEX_NAMES]
     }
+    operationCompleted = true
+    return result
+  } catch (error) {
+    primaryError = error
+    throw error
   } finally {
-    await database.close()
+    await closePilotDatabasePreservingError(database, { operationCompleted, primaryError })
   }
 }

@@ -310,4 +310,75 @@ describe('Lakebase pilot setup and teardown guards', () => {
       droppedSchema: 'lakebase_pilot'
     })
   })
+
+  it.each([
+    {
+      entryPath: 'setup',
+      run: (database: { query: ReturnType<typeof vi.fn>, transaction: ReturnType<typeof vi.fn>, close: ReturnType<typeof vi.fn> }) => runPilotSetup({
+        env: safeEnv,
+        createDatabase: vi.fn().mockResolvedValue(database)
+      })
+    },
+    {
+      entryPath: 'teardown',
+      run: (database: { query: ReturnType<typeof vi.fn>, transaction: ReturnType<typeof vi.fn>, close: ReturnType<typeof vi.fn> }) => runPilotTeardown({
+        env: safeEnv,
+        createDatabase: vi.fn().mockResolvedValue(database)
+      })
+    }
+  ])('preserves the primary $entryPath error and attaches a separate coded close failure', async ({ run }) => {
+    const operationError = new Error('operation_failed') as Error & {
+      cleanupFailure?: { code: string, operationCompleted: boolean, cause: unknown }
+    }
+    const closeError = new Error('close_failed')
+    const database = {
+      query: vi.fn().mockRejectedValue(operationError),
+      transaction: vi.fn(),
+      close: vi.fn().mockRejectedValue(closeError)
+    }
+
+    await expect(run(database)).rejects.toBe(operationError)
+    expect(operationError.cleanupFailure).toMatchObject({
+      code: 'lakebase_database_close_failed',
+      operationCompleted: false,
+      cause: closeError
+    })
+  })
+
+  it.each([
+    {
+      entryPath: 'setup',
+      run: () => {
+        const database = {
+          query: vi.fn(async (sql: string) => readyRows(sql)),
+          transaction: vi.fn().mockResolvedValue(undefined),
+          close: vi.fn().mockRejectedValue(new Error('close_failed'))
+        }
+        return runPilotSetup({
+          env: safeEnv,
+          createDatabase: vi.fn().mockResolvedValue(database)
+        })
+      }
+    },
+    {
+      entryPath: 'teardown',
+      run: () => {
+        const database = {
+          query: vi.fn().mockResolvedValue([]),
+          transaction: vi.fn(),
+          close: vi.fn().mockRejectedValue(new Error('close_failed'))
+        }
+        return runPilotTeardown({
+          env: safeEnv,
+          createDatabase: vi.fn().mockResolvedValue(database)
+        })
+      }
+    }
+  ])('reports a coded $entryPath cleanup failure after the mutation completed', async ({ run }) => {
+    await expect(run()).rejects.toMatchObject({
+      code: 'lakebase_database_close_failed',
+      operationCompleted: true,
+      cause: expect.any(Error)
+    })
+  })
 })

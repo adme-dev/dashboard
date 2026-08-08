@@ -12,6 +12,37 @@ export interface PilotDatabase {
   close: () => Promise<void>
 }
 
+export class LakebasePilotCleanupError extends Error {
+  readonly code = 'lakebase_database_close_failed'
+
+  constructor(
+    readonly cause: unknown,
+    readonly operationCompleted: boolean
+  ) {
+    super('lakebase_database_close_failed')
+    this.name = 'LakebasePilotCleanupError'
+  }
+}
+
+export async function closePilotDatabasePreservingError(
+  database: PilotDatabase,
+  outcome: { operationCompleted: boolean, primaryError?: unknown }
+): Promise<void> {
+  try {
+    await database.close()
+  } catch (cause) {
+    const cleanupFailure = new LakebasePilotCleanupError(cause, outcome.operationCompleted)
+    if (outcome.operationCompleted) throw cleanupFailure
+
+    if (outcome.primaryError instanceof Error) {
+      Object.defineProperty(outcome.primaryError, 'cleanupFailure', {
+        value: cleanupFailure,
+        configurable: true
+      })
+    }
+  }
+}
+
 export async function createPilotDatabase(target: LakebasePilotTarget): Promise<PilotDatabase> {
   const client = new Client({ connectionString: target.databaseUrl })
   await client.connect()
