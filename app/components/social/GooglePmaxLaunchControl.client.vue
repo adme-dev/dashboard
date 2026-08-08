@@ -84,7 +84,7 @@ const stateMeta: Record<string, { label: string, color: 'neutral' | 'info' | 'wa
   ACTIVATION_APPROVED: { label: 'Activation approved', color: 'warning', icon: 'i-lucide-shield-alert' },
   ENABLING: { label: 'Activating', color: 'warning', icon: 'i-lucide-loader-2' },
   ENABLED_VERIFIED: { label: 'Enabled and verified', color: 'success', icon: 'i-lucide-circle-check-big' },
-  VERIFICATION_FAILED: { label: 'Readback failed', color: 'error', icon: 'i-lucide-scan-x' },
+  VERIFICATION_FAILED: { label: 'Readback failed', color: 'error', icon: 'i-lucide-circle-x' },
   FAILED_RETRYABLE: { label: 'Retry required', color: 'error', icon: 'i-lucide-refresh-cw' },
   RECOVERY_REQUIRED: { label: 'Recovery required', color: 'error', icon: 'i-lucide-siren' },
   CANCELLED: { label: 'Cancelled', color: 'neutral', icon: 'i-lucide-circle-slash-2' }

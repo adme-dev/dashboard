@@ -16,7 +16,7 @@ concurrency:
 jobs:
   ci:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     strategy:
       matrix:
@@ -39,7 +39,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Runs first: broadest signal, and `deploy` gates on this job. Until this
+      # The full suite exercises the real Nitro Cloudflare Worker output. A
+      # clean CI checkout has no dist artifact, so build the exact boundary
+      # under test before running source and Workerd integration coverage.
+      - name: Build production Worker artifact
+        run: pnpm run build
+        timeout-minutes: 20
+        env:
+          SEARCH_AUTHORITY_ENABLED: 'true'
+
+      # Broadest signal, and `deploy` gates on this job. Until this
       # step existed CI ran ~750 of ~8200 tests, so a regression anywhere else
       # reached production behind a green check — main deploys on merge.
       - name: Full test suite

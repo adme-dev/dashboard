@@ -27,6 +27,9 @@ const payload = {
   changeId: '44444444-4444-4444-8444-444444444444',
   contentHash: 'a'.repeat(64)
 }
+const requestEvent = {
+  context: { cloudflare: { env: { AI: {}, SITE_INTELLIGENCE_BUCKET: {} } } }
+} as NonNullable<Parameters<typeof enrichSiteIntelligencePage>[1]>
 
 const context = {
   page_id: payload.pageId,
@@ -76,7 +79,7 @@ describe('enrichSiteIntelligencePage', () => {
       mockReadSnapshot.mockClear()
       mockComplete.mockClear()
 
-      const result = await enrichSiteIntelligencePage(payload)
+      const result = await enrichSiteIntelligencePage(payload, requestEvent)
 
       expect(result.status, testCase.name).toBe('skipped')
       expect(mockReadSnapshot, testCase.name).not.toHaveBeenCalled()
@@ -85,7 +88,7 @@ describe('enrichSiteIntelligencePage', () => {
   })
 
   it('sends only allowlisted, redacted page context and persists strict validated output', async () => {
-    const result = await enrichSiteIntelligencePage(payload)
+    const result = await enrichSiteIntelligencePage(payload, requestEvent)
 
     expect(result).toEqual({ status: 'enriched' })
     const prompt = String(mockComplete.mock.calls[0]?.[0])
@@ -101,17 +104,21 @@ describe('enrichSiteIntelligencePage', () => {
       featureKey: 'site_intelligence_enrichment'
     })
     expect(JSON.stringify(persisted)).not.toContain('Public offer copy')
-    expect(mockUpsertVector).toHaveBeenCalledWith(expect.objectContaining({
-      clientId: payload.clientId,
-      pageId: payload.pageId,
-      contentHash: payload.contentHash
-    }))
+    expect(mockReadSnapshot).toHaveBeenCalledWith(context.r2_object_key, requestEvent)
+    expect(mockUpsertVector).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientId: payload.clientId,
+        pageId: payload.pageId,
+        contentHash: payload.contentHash
+      }),
+      requestEvent
+    )
   })
 
   it('records terminal schema failures without retrying or replacing deterministic facts', async () => {
     mockComplete.mockResolvedValue('{"summary":"missing required fields"}')
 
-    const result = await enrichSiteIntelligencePage(payload)
+    const result = await enrichSiteIntelligencePage(payload, requestEvent)
 
     expect(result).toEqual({ status: 'failed_validation' })
     const persisted = JSON.parse(mockQueryOne.mock.calls[1]?.[1]?.[3] as string)
@@ -124,7 +131,7 @@ describe('enrichSiteIntelligencePage', () => {
 
   it('throws transient provider failures so Cloudflare Queue can retry', async () => {
     mockComplete.mockRejectedValue(new Error('provider unavailable'))
-    await expect(enrichSiteIntelligencePage(payload)).rejects.toThrow('provider unavailable')
+    await expect(enrichSiteIntelligencePage(payload, requestEvent)).rejects.toThrow('provider unavailable')
     expect(mockQueryOne).toHaveBeenCalledTimes(1)
   })
 
@@ -144,7 +151,7 @@ describe('enrichSiteIntelligencePage', () => {
       }
     })
 
-    await expect(enrichSiteIntelligencePage(payload)).resolves.toEqual({ status: 'skipped' })
+    await expect(enrichSiteIntelligencePage(payload, requestEvent)).resolves.toEqual({ status: 'skipped' })
     expect(mockReadSnapshot).not.toHaveBeenCalled()
     expect(mockComplete).not.toHaveBeenCalled()
     expect(mockUpsertVector).not.toHaveBeenCalled()

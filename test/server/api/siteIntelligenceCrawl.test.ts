@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { setCfBindings } from '~~/server/utils/email'
 
 const testGlobal = globalThis as typeof globalThis & {
   defineEventHandler: <T>(handler: T) => T
@@ -79,7 +78,19 @@ const CLIENT_ID = '33333333-3333-4333-8333-333333333333'
 const USER_ID = '44444444-4444-4444-8444-444444444444'
 
 function event(input: Record<string, unknown> = {}) {
-  return input as Parameters<typeof crawlHandler>[0]
+  return {
+    context: {
+      cloudflare: {
+        env: {
+          SITE_INTELLIGENCE_BUCKET: {
+            put: vi.fn(async (key: string) => ({ key })),
+            delete: vi.fn(async () => undefined)
+          }
+        }
+      }
+    },
+    ...input
+  } as Parameters<typeof crawlHandler>[0]
 }
 
 const settings = {
@@ -124,12 +135,6 @@ beforeEach(() => {
     ok: true,
     enabled: true,
     instanceId: `site-intel-${RUN_ID}`
-  })
-  setCfBindings({
-    SITE_INTELLIGENCE_BUCKET: {
-      put: vi.fn(async (key: string) => ({ key })),
-      delete: vi.fn(async () => undefined)
-    }
   })
 })
 

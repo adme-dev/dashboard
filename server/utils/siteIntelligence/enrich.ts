@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { H3Event } from 'h3'
 import type { AutomotivePageFacts, SiteIntelligenceLane } from '~~/app/types/site-intelligence'
 import { siteIntelligenceEnrichmentSchema } from '~~/server/utils/siteIntelligence/contracts'
 import { queryOne } from '~~/server/utils/db'
@@ -37,7 +38,8 @@ interface EnrichmentContextRow {
 }
 
 export async function enrichSiteIntelligencePage(
-  input: SiteIntelligenceEnrichmentPayload
+  input: SiteIntelligenceEnrichmentPayload,
+  event: H3Event
 ): Promise<SiteIntelligenceEnrichmentResult> {
   const parsed = payloadSchema.safeParse(input)
   if (!parsed.success || process.env.SITE_INTELLIGENCE_AI_ENABLED !== 'true') return { status: 'skipped' }
@@ -47,12 +49,12 @@ export async function enrichSiteIntelligencePage(
   const existing = storedEnrichment(context.ai_enrichment, payload.contentHash)
   if (existing && context.vector_id === payload.pageId) return { status: 'skipped' }
   if (existing) {
-    await indexEnrichment(payload, context, existing)
+    await indexEnrichment(payload, context, existing, event)
     return { status: 'enriched' }
   }
   if (!context.r2_object_key) return { status: 'skipped' }
 
-  const snapshot = await readSiteIntelligenceSnapshot(context.r2_object_key)
+  const snapshot = await readSiteIntelligenceSnapshot(context.r2_object_key, event)
   const prompt = buildPrompt(context.facts, redactPublicCopy(snapshot))
   const startedAt = Date.now()
   const raw = await generateModelRoutedGroqInsight(prompt, {
@@ -86,7 +88,7 @@ export async function enrichSiteIntelligencePage(
   }
   const current = await persistEnrichment(payload, persisted)
   if (!current) return { status: 'skipped' }
-  await indexEnrichment(payload, context, enrichment)
+  await indexEnrichment(payload, context, enrichment, event)
   return { status: 'enriched' }
 }
 
@@ -203,7 +205,8 @@ function storedEnrichment(
 async function indexEnrichment(
   payload: SiteIntelligenceEnrichmentPayload,
   context: EnrichmentContextRow,
-  enrichment: z.infer<typeof strictEnrichmentSchema>
+  enrichment: z.infer<typeof strictEnrichmentSchema>,
+  event: H3Event
 ): Promise<void> {
   await upsertSiteIntelligencePageVector({
     clientId: payload.clientId,
@@ -213,7 +216,7 @@ async function indexEnrichment(
     pageType: enrichment.pageType,
     contentHash: payload.contentHash,
     text: [enrichment.summary, enrichment.offerSummary, factsForVector(context.facts)].filter(Boolean).join('\n')
-  })
+  }, event)
 }
 
 async function persistEnrichment(

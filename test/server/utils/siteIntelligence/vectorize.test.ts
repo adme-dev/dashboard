@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { setCfBindings } from '~~/server/utils/email'
 
 const mockQueryRows = vi.fn()
 const mockExecute = vi.fn()
@@ -22,14 +21,18 @@ const PAGE_ID = '33333333-3333-4333-8333-333333333333'
 beforeEach(() => {
   mockQueryRows.mockReset()
   mockExecute.mockReset().mockResolvedValue(1)
-  setCfBindings({})
 })
+
+function eventWith(bindings: Record<string, unknown>) {
+  return { context: { cloudflare: { env: bindings } } } as NonNullable<
+    Parameters<typeof upsertSiteIntelligencePageVector>[1]
+  >
+}
 
 describe('site intelligence Vectorize boundary', () => {
   it('upserts a 768-dimension embedding with complete tenant metadata', async () => {
     const run = vi.fn(async () => ({ data: [Array.from({ length: 768 }, () => 0.1)] }))
     const upsert = vi.fn(async () => ({ mutationId: 'mutation-1' }))
-    setCfBindings({ AI: { run }, SITE_INTELLIGENCE_VECTORIZE: { upsert } })
 
     await upsertSiteIntelligencePageVector({
       clientId: CLIENT_ID,
@@ -39,7 +42,7 @@ describe('site intelligence Vectorize boundary', () => {
       pageType: 'offer',
       contentHash: 'a'.repeat(64),
       text: 'Haval H6 $42,990 drive away. Book a test drive.'
-    })
+    }, eventWith({ AI: { run }, SITE_INTELLIGENCE_VECTORIZE: { upsert } }))
 
     expect(run).toHaveBeenCalledWith('@cf/baai/bge-base-en-v1.5', {
       text: ['Haval H6 $42,990 drive away. Book a test drive.']
@@ -56,7 +59,7 @@ describe('site intelligence Vectorize boundary', () => {
   })
 
   it('rejects an empty client scope before embedding or querying', async () => {
-    await expect(searchSiteIntelligence({ clientId: '', query: 'offers', limit: 5 }))
+    await expect(searchSiteIntelligence({ clientId: '', query: 'offers', limit: 5 }, eventWith({})))
       .rejects.toThrow('clientId is required')
   })
 
@@ -66,7 +69,6 @@ describe('site intelligence Vectorize boundary', () => {
       { id: PAGE_ID, score: 0.91, metadata: { clientId: CLIENT_ID } },
       { id: '44444444-4444-4444-8444-444444444444', score: 0.89, metadata: { clientId: 'foreign' } }
     ] }))
-    setCfBindings({ AI: { run }, SITE_INTELLIGENCE_VECTORIZE: { query } })
     mockQueryRows.mockResolvedValue([{
       id: PAGE_ID,
       source_url: 'https://dealer.example.com/offers/h6',
@@ -74,7 +76,10 @@ describe('site intelligence Vectorize boundary', () => {
       ai_enrichment: { summary: 'Current H6 offer.' }
     }])
 
-    const result = await searchSiteIntelligence({ clientId: CLIENT_ID, query: 'H6 offers', limit: 5 })
+    const result = await searchSiteIntelligence(
+      { clientId: CLIENT_ID, query: 'H6 offers', limit: 5 },
+      eventWith({ AI: { run }, SITE_INTELLIGENCE_VECTORIZE: { query } })
+    )
 
     expect(query).toHaveBeenCalledWith(expect.any(Array), {
       topK: 5,
@@ -104,9 +109,10 @@ describe('site intelligence Vectorize boundary', () => {
       order.push('neon')
       return 1
     })
-    setCfBindings({ SITE_INTELLIGENCE_VECTORIZE: { deleteByIds } })
-
-    await deleteSiteIntelligencePageVector({ clientId: CLIENT_ID, pageId: PAGE_ID })
+    await deleteSiteIntelligencePageVector(
+      { clientId: CLIENT_ID, pageId: PAGE_ID },
+      eventWith({ SITE_INTELLIGENCE_VECTORIZE: { deleteByIds } })
+    )
 
     expect(order).toEqual(['vector', 'neon'])
   })

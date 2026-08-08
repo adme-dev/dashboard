@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { setCfBindings } from '~~/server/utils/email'
 import { prepareSiteIntelligenceSnapshot } from '~~/server/utils/siteIntelligence/storage'
 
 const mockTransaction = vi.fn()
@@ -20,15 +19,20 @@ const RAW_MARKDOWN = '# Haval H6 offer\n$42,990 drive away. Book a test drive.'
 
 beforeEach(() => {
   mockTransaction.mockReset()
-  setCfBindings({})
 })
 
 describe('site intelligence snapshot preparation', () => {
   it('writes a content-hashed snapshot under an exact tenant/run prefix', async () => {
     const put = vi.fn(async (key: string) => ({ key }))
-    setCfBindings({ SITE_INTELLIGENCE_BUCKET: { put, delete: vi.fn() } })
+    const event = {
+      context: {
+        cloudflare: {
+          env: { SITE_INTELLIGENCE_BUCKET: { put, delete: vi.fn() } }
+        }
+      }
+    } as NonNullable<Parameters<typeof prepareSiteIntelligenceSnapshot>[0]>
 
-    const prepared = await prepareSiteIntelligenceSnapshot(undefined, {
+    const prepared = await prepareSiteIntelligenceSnapshot(event, {
       clientId: CLIENT_ID,
       domainId: DOMAIN_ID,
       runId: RUN_ID,
