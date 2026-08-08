@@ -108,4 +108,39 @@ describe('Lakebase pilot CRM search adapters', () => {
       rank: 8
     }])
   })
+
+  describe.each([
+    ['GIN', (rawScore: number | string) => {
+      const query = vi.fn().mockResolvedValue([{
+        type: 'opportunity',
+        id: '20000000-0000-4000-8000-000000000002',
+        title: 'Electric fleet proposal',
+        subtitle: 'open',
+        raw_score: rawScore
+      }])
+      return searchLegacyPilot({ query }, CLIENT, 'electric', 20)
+    }],
+    ['BM25', (rawScore: number | string) => {
+      const query = vi.fn().mockResolvedValue([{
+        type: 'company',
+        id: '30000000-0000-4000-8000-000000000002',
+        title: 'Harbour Electric',
+        subtitle: null,
+        raw_score: rawScore
+      }])
+      const transaction = vi.fn(async callback => callback(query))
+      return searchBm25Pilot({ transaction }, CLIENT, 'electric', 20)
+    }]
+  ])('%s raw-score validation', (_engine, search) => {
+    it.each([
+      ['a malformed', 'not-a-score'],
+      ['a NaN', Number.NaN],
+      ['a positive infinite', Number.POSITIVE_INFINITY],
+      ['a negative infinite', '-Infinity']
+    ])('fails closed for %s raw score', async (_kind, rawScore) => {
+      await expect(search(rawScore)).rejects.toMatchObject({
+        code: 'lakebase_search_invalid_raw_score'
+      })
+    })
+  })
 })

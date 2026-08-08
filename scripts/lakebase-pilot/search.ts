@@ -6,6 +6,13 @@ const MAX_LIMIT = 50
 
 export type PilotSearchHit = CrmSearchHit
 
+export class LakebasePilotSearchError extends Error {
+  constructor(readonly code: 'lakebase_search_invalid_raw_score') {
+    super(code)
+    this.name = 'LakebasePilotSearchError'
+  }
+}
+
 export interface PilotLegacySearchDatabase {
   query: PilotDatabaseQuery
 }
@@ -83,12 +90,15 @@ LIMIT $3`)
 function toSearchHits(rows: Record<string, unknown>[], rank: (rawScore: number) => number): PilotSearchHit[] {
   return rows.map((row) => {
     const searchRow = row as unknown as PilotSearchRow
+    const rawScore = Number(searchRow.raw_score)
+    if (!Number.isFinite(rawScore)) throw new LakebasePilotSearchError('lakebase_search_invalid_raw_score')
+
     return {
       type: searchRow.type,
       id: searchRow.id,
       title: searchRow.title,
       subtitle: searchRow.subtitle,
-      rank: rank(Number(searchRow.raw_score))
+      rank: rank(rawScore)
     }
   })
 }
