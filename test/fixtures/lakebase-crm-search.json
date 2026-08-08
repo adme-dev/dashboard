@@ -1,0 +1,24 @@
+{
+  "clients": [
+    { "id": "10000000-0000-4000-8000-000000000001", "name": "Harbour Auto" },
+    { "id": "20000000-0000-4000-8000-000000000002", "name": "Summit Studio" }
+  ],
+  "documents": [
+    { "clientId": "10000000-0000-4000-8000-000000000001", "type": "person", "id": "11000000-0000-4000-8000-000000000001", "title": "Jordan Lee", "subtitle": "jordan@harbour.example", "body": "Fleet manager interested in electric demonstrator vehicles", "deleted": false },
+    { "clientId": "10000000-0000-4000-8000-000000000001", "type": "company", "id": "12000000-0000-4000-8000-000000000002", "title": "North Star Logistics", "subtitle": "northstar-logistics.example", "body": "Commercial fleet replacement and servicing", "deleted": false },
+    { "clientId": "10000000-0000-4000-8000-000000000001", "type": "opportunity", "id": "13000000-0000-4000-8000-000000000003", "title": "Electric fleet renewal", "subtitle": "qualified", "body": "Twenty vehicle replacement program with charging consultation", "deleted": false },
+    { "clientId": "10000000-0000-4000-8000-000000000001", "type": "activity", "id": "14000000-0000-4000-8000-000000000004", "title": "Test drive follow-up", "subtitle": "call", "body": "Jordan requested a Thursday electric demonstrator test drive", "deleted": false },
+    { "clientId": "10000000-0000-4000-8000-000000000001", "type": "task", "id": "15000000-0000-4000-8000-000000000005", "title": "Prepare fleet proposal", "subtitle": "open", "body": "Include trade-in and charging options", "deleted": false },
+    { "clientId": "10000000-0000-4000-8000-000000000001", "type": "person", "id": "16000000-0000-4000-8000-000000000006", "title": "Deleted Electric Record", "subtitle": null, "body": "Must never appear", "deleted": true },
+    { "clientId": "20000000-0000-4000-8000-000000000002", "type": "person", "id": "21000000-0000-4000-8000-000000000001", "title": "Jordan Lee", "subtitle": "jordan@summit.example", "body": "Creative director for an electric vehicle launch", "deleted": false },
+    { "clientId": "20000000-0000-4000-8000-000000000002", "type": "task", "id": "25000000-0000-4000-8000-000000000005", "title": "Prepare launch proposal", "subtitle": "open", "body": "Brand campaign and studio production estimate", "deleted": false }
+  ],
+  "queries": [
+    { "id": "q-electric-fleet", "clientId": "10000000-0000-4000-8000-000000000001", "query": "electric fleet", "relevantIds": ["13000000-0000-4000-8000-000000000003", "11000000-0000-4000-8000-000000000001"] },
+    { "id": "q-jordan", "clientId": "10000000-0000-4000-8000-000000000001", "query": "Jordan Lee", "relevantIds": ["11000000-0000-4000-8000-000000000001"] },
+    { "id": "q-domain", "clientId": "10000000-0000-4000-8000-000000000001", "query": "northstar logistics", "relevantIds": ["12000000-0000-4000-8000-000000000002"] },
+    { "id": "q-test-drive", "clientId": "10000000-0000-4000-8000-000000000001", "query": "test drive Thursday", "relevantIds": ["14000000-0000-4000-8000-000000000004"] },
+    { "id": "q-proposal", "clientId": "10000000-0000-4000-8000-000000000001", "query": "proposal charging", "relevantIds": ["15000000-0000-4000-8000-000000000005"] },
+    { "id": "q-none", "clientId": "10000000-0000-4000-8000-000000000001", "query": "marine insurance", "relevantIds": [] }
+  ]
+}
