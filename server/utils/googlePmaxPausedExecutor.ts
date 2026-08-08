@@ -22,7 +22,7 @@ export interface GooglePmaxProviderVerification {
   details: Record<string, unknown>
 }
 
-interface GooglePmaxPausedProvider {
+export interface GooglePmaxPausedProvider {
   validateCreate: (config: GooglePmaxInventoryLaunchConfig) => Promise<{ requestId: string | null }>
   createPaused: (config: GooglePmaxInventoryLaunchConfig) => Promise<GooglePmaxProviderResources>
   verify: (
@@ -30,11 +30,17 @@ interface GooglePmaxPausedProvider {
     resources: GooglePmaxProviderResources,
     expectedStatus: 'PAUSED' | 'ENABLED'
   ) => Promise<GooglePmaxProviderVerification>
-  emergencyPause: (resources: GooglePmaxProviderResources) => Promise<{
+  emergencyPause: (
+    resources: GooglePmaxProviderResources,
+    config: GooglePmaxInventoryLaunchConfig
+  ) => Promise<{
     status: 'PAUSED' | 'ENABLED' | 'UNKNOWN'
     requestId: string | null
   }>
-  enable: (resources: GooglePmaxProviderResources) => Promise<{
+  enable: (
+    resources: GooglePmaxProviderResources,
+    config: GooglePmaxInventoryLaunchConfig
+  ) => Promise<{
     status: 'PAUSED' | 'ENABLED' | 'UNKNOWN'
     requestId: string | null
   }>
@@ -43,7 +49,7 @@ interface GooglePmaxPausedProvider {
 interface ExecutorDependencies {
   getLaunch?: typeof getGooglePmaxLaunch
   transition?: typeof transitionGooglePmaxLaunch
-  parseConfig: (value: Record<string, unknown>) => GooglePmaxInventoryLaunchConfig
+  parseConfig: (value: Record<string, unknown>) => GooglePmaxInventoryLaunchConfig | Promise<GooglePmaxInventoryLaunchConfig>
   provider: GooglePmaxPausedProvider
 }
 
@@ -55,6 +61,7 @@ export class GooglePmaxPausedExecutorError extends Error {
     | 'PMAX_CREATE_VALIDATION_FAILED'
     | 'PMAX_CREATE_FAILED'
     | 'PMAX_CREATE_RETURNED_UNSAFE_STATUS'
+    | 'PMAX_CREATE_READBACK_UNSAFE'
     | 'PMAX_ACTIVATION_FAILED') {
     super('The governed Google PMax provider operation could not be completed.')
     this.name = 'GooglePmaxPausedExecutorError'
@@ -109,20 +116,22 @@ export function createGooglePmaxPausedExecutor(dependencies: ExecutorDependencie
     async createAndVerify(input: { launchId: string, tenantId: string, actorId: string }) {
       let launch = await getLaunch({ launchId: input.launchId, tenantId: input.tenantId })
       if (!launch) throw new GooglePmaxPausedExecutorError('PMAX_LAUNCH_NOT_FOUND')
-      if (launch.state !== 'APPROVED') {
+      const retryingCreate = launch.state === 'FAILED_RETRYABLE' && launch.retryFromState === 'EXECUTING'
+      if (launch.state !== 'APPROVED' && !retryingCreate) {
         throw new GooglePmaxPausedExecutorError('PMAX_EXECUTION_STATE_INVALID')
       }
-      const config = dependencies.parseConfig(launch.normalizedConfig)
+      const config = await dependencies.parseConfig(launch.normalizedConfig)
+      const createClaimState = launch.state
       launch = await transition({
         launchId: launch.id,
         tenantId: launch.tenantId,
-        expectedState: 'APPROVED',
+        expectedState: createClaimState,
         toState: 'EXECUTING',
         expectedConfigVersion: launch.configVersion,
         expectedConfigHash: launch.configHash,
         actorId: input.actorId,
         eventType: 'CREATE_CLAIMED',
-        payload: { pausedOnly: true }
+        payload: { pausedOnly: true, retry: retryingCreate }
       })
 
       let validation
@@ -155,14 +164,15 @@ export function createGooglePmaxPausedExecutor(dependencies: ExecutorDependencie
       }
 
       if (resources.status !== 'PAUSED') {
-        let emergencyStatus: string
+        let emergencyStatus: 'PAUSED' | 'ENABLED' | 'UNKNOWN' = 'UNKNOWN'
         let emergencyRequestId: string | null = null
         try {
-          const emergency = await dependencies.provider.emergencyPause(resources)
+          const emergency = await dependencies.provider.emergencyPause(resources, config)
           emergencyStatus = emergency.status
           emergencyRequestId = safeRequestId(emergency.requestId)
         } catch {
-          emergencyStatus = 'UNKNOWN'
+          // Creation returned an unsafe status and the compensating pause could
+          // not be confirmed, so the provider state remains UNKNOWN.
         }
         await transition({
           launchId: launch.id, tenantId: launch.tenantId,
@@ -198,6 +208,32 @@ export function createGooglePmaxPausedExecutor(dependencies: ExecutorDependencie
           details: { readbackFailed: true }
         }
       }
+      if (verification.status !== 'PAUSED') {
+        let emergencyStatus: 'PAUSED' | 'ENABLED' | 'UNKNOWN' = 'UNKNOWN'
+        let emergencyRequestId: string | null = null
+        try {
+          const emergency = await dependencies.provider.emergencyPause(resources, config)
+          emergencyStatus = emergency.status
+          emergencyRequestId = safeRequestId(emergency.requestId)
+        } catch {
+          // The paused readback was unsafe and the compensating pause could not
+          // be confirmed, so the provider state remains UNKNOWN.
+        }
+        await transition({
+          launchId: launch.id, tenantId: launch.tenantId,
+          expectedState: 'CREATED_PAUSED', toState: 'RECOVERY_REQUIRED',
+          expectedConfigVersion: launch.configVersion, expectedConfigHash: launch.configHash,
+          actorId: input.actorId, eventType: 'PAUSED_READBACK_UNSAFE',
+          providerRequestId: emergencyRequestId || safeRequestId(verification.requestId),
+          payload: {
+            readbackStatus: verification.status,
+            matchesConfig: verification.matchesConfig,
+            emergencyPauseStatus: emergencyStatus
+          },
+          results: { verification: verification as unknown as Record<string, unknown> }
+        })
+        throw new GooglePmaxPausedExecutorError('PMAX_CREATE_READBACK_UNSAFE')
+      }
       const verified = verification.status === 'PAUSED' && verification.matchesConfig
       launch = await transition({
         launchId: launch.id, tenantId: launch.tenantId,
@@ -216,29 +252,42 @@ export function createGooglePmaxPausedExecutor(dependencies: ExecutorDependencie
     async activateAndVerify(input: { launchId: string, tenantId: string, actorId: string }) {
       let launch = await getLaunch({ launchId: input.launchId, tenantId: input.tenantId })
       if (!launch) throw new GooglePmaxPausedExecutorError('PMAX_LAUNCH_NOT_FOUND')
-      if (launch.state !== 'ACTIVATION_APPROVED') {
+      const retryingActivation = launch.state === 'FAILED_RETRYABLE' && launch.retryFromState === 'ENABLING'
+      if (launch.state !== 'ACTIVATION_APPROVED' && !retryingActivation) {
         throw new GooglePmaxPausedExecutorError('PMAX_ACTIVATION_STATE_INVALID')
       }
-      const config = dependencies.parseConfig(launch.normalizedConfig)
+      const config = await dependencies.parseConfig(launch.normalizedConfig)
       const resources = resourcesFromLaunch(launch)
+      const activationClaimState = launch.state
       launch = await transition({
         launchId: launch.id, tenantId: launch.tenantId,
-        expectedState: 'ACTIVATION_APPROVED', toState: 'ENABLING',
+        expectedState: activationClaimState, toState: 'ENABLING',
         expectedConfigVersion: launch.configVersion, expectedConfigHash: launch.configHash,
         actorId: input.actorId, eventType: 'ACTIVATION_CLAIMED',
-        payload: { separateActivationApprovalVerified: true }
+        payload: { separateActivationApprovalVerified: true, retry: retryingActivation }
       })
 
       let enabled
       try {
-        enabled = await dependencies.provider.enable(resources)
+        enabled = await dependencies.provider.enable(resources, config)
       } catch {
+        let emergencyStatus: 'PAUSED' | 'ENABLED' | 'UNKNOWN' = 'UNKNOWN'
+        let emergencyRequestId: string | null = null
+        try {
+          const emergency = await dependencies.provider.emergencyPause(resources, config)
+          emergencyStatus = emergency.status
+          emergencyRequestId = safeRequestId(emergency.requestId)
+        } catch {
+          // The enable request was ambiguous and the compensating pause could
+          // not be confirmed, so the provider state remains UNKNOWN.
+        }
         await transition({
           launchId: launch.id, tenantId: launch.tenantId,
-          expectedState: 'ENABLING', toState: 'FAILED_RETRYABLE',
+          expectedState: 'ENABLING', toState: 'RECOVERY_REQUIRED',
           expectedConfigVersion: launch.configVersion, expectedConfigHash: launch.configHash,
           actorId: input.actorId, eventType: 'ACTIVATION_PROVIDER_FAILED',
-          payload: { retryable: true }
+          providerRequestId: emergencyRequestId,
+          payload: { ambiguousEnable: true, emergencyPauseStatus: emergencyStatus }
         })
         throw new GooglePmaxPausedExecutorError('PMAX_ACTIVATION_FAILED')
       }
@@ -250,13 +299,28 @@ export function createGooglePmaxPausedExecutor(dependencies: ExecutorDependencie
         verification = { status: 'UNKNOWN', matchesConfig: false, requestId: null, details: { readbackFailed: true } }
       }
       if (enabled.status !== 'ENABLED' || verification.status !== 'ENABLED' || !verification.matchesConfig) {
+        let emergencyStatus: 'PAUSED' | 'ENABLED' | 'UNKNOWN' = 'UNKNOWN'
+        let emergencyRequestId: string | null = null
+        try {
+          const emergency = await dependencies.provider.emergencyPause(resources, config)
+          emergencyStatus = emergency.status
+          emergencyRequestId = safeRequestId(emergency.requestId)
+        } catch {
+          // Readback was unsafe and the compensating pause could not be
+          // confirmed, so the provider state remains UNKNOWN.
+        }
         await transition({
           launchId: launch.id, tenantId: launch.tenantId,
-          expectedState: 'ENABLING', toState: 'FAILED_RETRYABLE',
+          expectedState: 'ENABLING', toState: 'RECOVERY_REQUIRED',
           expectedConfigVersion: launch.configVersion, expectedConfigHash: launch.configHash,
           actorId: input.actorId, eventType: 'ACTIVATION_READBACK_FAILED',
-          providerRequestId: safeRequestId(verification.requestId) || safeRequestId(enabled.requestId),
-          payload: { returnedStatus: enabled.status, readbackStatus: verification.status, matchesConfig: verification.matchesConfig }
+          providerRequestId: emergencyRequestId || safeRequestId(verification.requestId) || safeRequestId(enabled.requestId),
+          payload: {
+            returnedStatus: enabled.status,
+            readbackStatus: verification.status,
+            matchesConfig: verification.matchesConfig,
+            emergencyPauseStatus: emergencyStatus
+          }
         })
         throw new GooglePmaxPausedExecutorError('PMAX_ACTIVATION_FAILED')
       }

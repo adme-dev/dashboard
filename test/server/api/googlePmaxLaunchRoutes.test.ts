@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { hashCanonicalLaunchJson } from '~~/server/utils/googlePmaxLaunchHash'
 import { GooglePmaxLaunchConflictError } from '~~/server/utils/googlePmaxLaunchStore'
 
 const mockRequirePermission = vi.fn()
@@ -10,11 +9,16 @@ const mockRequireAllSocialClientAccess = vi.fn()
 const mockListLaunches = vi.fn()
 const mockGetLaunch = vi.fn()
 const mockCreateLaunch = vi.fn()
+const mockListPreparableBriefs = vi.fn()
+const mockIdentifyPreparableBrief = vi.fn()
+const mockPrepareLaunch = vi.fn()
 const mockApproveLaunch = vi.fn()
 const mockQueryOne = vi.fn()
 const mockGetOnboardingAttestation = vi.fn()
 const mockCreateOnboardingAttestation = vi.fn()
 const mockRunPreflight = vi.fn()
+const mockExecutePausedCreate = vi.fn()
+const mockExecuteActivation = vi.fn()
 
 let query: Record<string, unknown> = {}
 let body: Record<string, unknown> = {}
@@ -57,6 +61,22 @@ vi.mock('~~/server/utils/googlePmaxLaunchStore', async (importOriginal) => {
   }
 })
 
+vi.mock('~~/server/utils/googlePmaxLaunchPreparation', () => {
+  class GooglePmaxLaunchPreparationError extends Error {
+    constructor(public readonly code: string, public readonly issues: unknown[] = []) {
+      super(code)
+    }
+  }
+  return {
+    GooglePmaxLaunchPreparationError,
+    googlePmaxLaunchPreparation: {
+      list: (...args: unknown[]) => mockListPreparableBriefs(...args),
+      identify: (...args: unknown[]) => mockIdentifyPreparableBrief(...args),
+      prepare: (...args: unknown[]) => mockPrepareLaunch(...args)
+    }
+  }
+})
+
 vi.mock('~~/server/utils/googlePmaxOnboardingAttestation', async (importOriginal) => {
   const original = await importOriginal<typeof import('~~/server/utils/googlePmaxOnboardingAttestation')>()
   return {
@@ -69,6 +89,21 @@ vi.mock('~~/server/utils/googlePmaxOnboardingAttestation', async (importOriginal
 vi.mock('~~/server/utils/googlePmaxLaunchPreflightService', () => ({
   runGooglePmaxLaunchPreflight: (...args: unknown[]) => mockRunPreflight(...args)
 }))
+
+vi.mock('~~/server/utils/googlePmaxRemoteDecisionEngine', () => ({
+  createGooglePmaxRemoteDecisionEngine: () => ({
+    parseConfig: async (value: Record<string, unknown>) => value
+  })
+}))
+
+vi.mock('~~/server/utils/googlePmaxExecutionService', async (importOriginal) => {
+  const original = await importOriginal<typeof import('~~/server/utils/googlePmaxExecutionService')>()
+  return {
+    ...original,
+    executeGooglePmaxPausedCreate: (...args: unknown[]) => mockExecutePausedCreate(...args),
+    executeGooglePmaxActivation: (...args: unknown[]) => mockExecuteActivation(...args)
+  }
+})
 
 const ids = {
   tenant: 'c41c58be-a3a8-4479-b5d1-9251bb80717d',
@@ -159,6 +194,15 @@ describe('Google PMax launch API boundaries', () => {
     mockGetSelectedTenant.mockResolvedValue(ids.tenant)
     mockHasRole.mockReturnValue(true)
     mockListLaunches.mockResolvedValue([storedLaunch()])
+    mockListPreparableBriefs.mockResolvedValue([{
+      id: ids.brief,
+      clientId: ids.client,
+      clientName: 'Northern GAC',
+      title: 'Northern GAC Vehicles',
+      configVersion: 3
+    }])
+    mockIdentifyPreparableBrief.mockResolvedValue({ clientId: ids.client })
+    mockPrepareLaunch.mockResolvedValue({ launch: storedLaunch({ state: 'DRAFT' }), isReplay: false })
     mockGetLaunch.mockResolvedValue(storedLaunch())
     mockCreateLaunch.mockResolvedValue({ launch: storedLaunch({ state: 'DRAFT' }), isReplay: false })
     mockApproveLaunch.mockResolvedValue(storedLaunch({ state: 'APPROVED' }))
@@ -168,6 +212,8 @@ describe('Google PMax launch API boundaries', () => {
       isReplay: false
     })
     mockRunPreflight.mockResolvedValue({ launch: storedLaunch(), evidence: { blockerCount: 0 } })
+    mockExecutePausedCreate.mockResolvedValue({ launch: storedLaunch({ state: 'VERIFIED_PAUSED' }) })
+    mockExecuteActivation.mockResolvedValue({ launch: storedLaunch({ state: 'ENABLED_VERIFIED' }) })
     mockQueryOne.mockResolvedValue({
       id: ids.brief,
       client_id: ids.client,
@@ -187,6 +233,8 @@ describe('Google PMax launch API boundaries', () => {
     expect(mockRequireAllSocialClientAccess).toHaveBeenCalledOnce()
     expect(mockRequireSocialClientAccess).not.toHaveBeenCalled()
     expect(mockListLaunches).toHaveBeenCalledWith({ tenantId: ids.tenant, clientId: undefined, limit: 50 })
+    expect(mockListPreparableBriefs).toHaveBeenCalledWith({ tenantId: ids.tenant, clientId: undefined, limit: 50 })
+    expect(result.preparableBriefs).toHaveLength(1)
     expect(result.permissions).toEqual({ canApprove: true })
   })
 
@@ -199,66 +247,49 @@ describe('Google PMax launch API boundaries', () => {
     expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(expect.anything(), ids.client)
     expect(mockRequireAllSocialClientAccess).not.toHaveBeenCalled()
     expect(mockListLaunches).toHaveBeenCalledWith({ tenantId: ids.tenant, clientId: ids.client, limit: 10 })
+    expect(mockListPreparableBriefs).toHaveBeenCalledWith({ tenantId: ids.tenant, clientId: ids.client, limit: 10 })
   })
 
-  it('creates only from the current approved Google PMax brief version', async () => {
-    const config = normalizedConfig()
-    body = { normalizedConfig: config }
+  it('prepares a launch only from a server-resolved approved brief', async () => {
+    body = { briefId: ids.brief }
     const handler = (await import('~~/server/api/agency/social/google/pmax-launches/index.post')).default
 
     const result = await handler({ context: {} } as never)
 
-    const configHash = hashCanonicalLaunchJson(config)
-    const idempotencyKey = hashCanonicalLaunchJson({
+    expect(mockIdentifyPreparableBrief).toHaveBeenCalledWith({
       tenantId: ids.tenant,
-      briefId: ids.brief,
-      configVersion: 3,
-      configHash
+      briefId: ids.brief
     })
     expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(expect.anything(), ids.client)
-    expect(mockQueryOne).toHaveBeenCalledWith(expect.stringContaining(`sc.platform = 'google'`), [
-      ids.brief,
-      ids.client,
-      ids.connection,
-      '1234567890',
-      ids.tenant
-    ])
-    expect(mockCreateLaunch).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockPrepareLaunch).toHaveBeenCalledWith({
       tenantId: ids.tenant,
       briefId: ids.brief,
-      configVersion: 3,
-      configHash,
-      idempotencyKey,
+      expectedClientId: ids.client,
       actorId: ids.actor
-    }))
+    })
     expect(result.isReplay).toBe(false)
   })
 
-  it('rejects stale brief evidence before opening a launch plan', async () => {
-    body = { normalizedConfig: normalizedConfig() }
-    mockQueryOne.mockResolvedValue({
-      id: ids.brief,
-      client_id: ids.client,
-      status: 'approved',
-      launch_config_version: 4,
-      template_slug: 'google-pmax',
-      connection_id: ids.connection
-    })
-    const handler = (await import('~~/server/api/agency/social/google/pmax-launches/index.post')).default
-
-    await expect(handler({ context: {} } as never)).rejects.toMatchObject({ statusCode: 409 })
-    expect(mockCreateLaunch).not.toHaveBeenCalled()
-  })
-
-  it('rejects caller-selected idempotency evidence', async () => {
-    body = { normalizedConfig: normalizedConfig(), idempotencyKey: 'f'.repeat(64) }
+  it('rejects browser-supplied normalized provider evidence', async () => {
+    body = { briefId: ids.brief, normalizedConfig: normalizedConfig() }
     const handler = (await import('~~/server/api/agency/social/google/pmax-launches/index.post')).default
 
     await expect(handler({ context: {} } as never)).rejects.toMatchObject({
-      statusCode: 409,
-      statusMessage: 'Idempotency key does not match this launch plan'
+      statusCode: 400,
+      statusMessage: 'Invalid launch preparation request'
     })
-    expect(mockCreateLaunch).not.toHaveBeenCalled()
+    expect(mockPrepareLaunch).not.toHaveBeenCalled()
+  })
+
+  it('rejects caller-selected idempotency evidence', async () => {
+    body = { briefId: ids.brief, idempotencyKey: 'f'.repeat(64) }
+    const handler = (await import('~~/server/api/agency/social/google/pmax-launches/index.post')).default
+
+    await expect(handler({ context: {} } as never)).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'Invalid launch preparation request'
+    })
+    expect(mockPrepareLaunch).not.toHaveBeenCalled()
   })
 
   it('loads a tenant-scoped launch before enforcing client access', async () => {
@@ -370,5 +401,33 @@ describe('Google PMax launch API boundaries', () => {
       actorEmail: 'owner@example.com'
     })
     expect(result.launch.state).toBe('READY_FOR_APPROVAL')
+  })
+
+  it('allows only a client-scoped admin to execute paused creation', async () => {
+    const event = { context: {} } as never
+    const handler = (await import('~~/server/api/agency/social/google/pmax-launches/[id]/execute.post')).default
+
+    const result = await handler(event)
+
+    expect(mockRequirePermission).toHaveBeenCalledWith(event, 'ADMIN')
+    expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(event, ids.client)
+    expect(mockExecutePausedCreate).toHaveBeenCalledWith({
+      event, launchId, tenantId: ids.tenant, actorId: ids.actor
+    })
+    expect(result.launch.state).toBe('VERIFIED_PAUSED')
+  })
+
+  it('keeps activation on its own client-scoped admin endpoint', async () => {
+    const event = { context: {} } as never
+    const handler = (await import('~~/server/api/agency/social/google/pmax-launches/[id]/activate.post')).default
+
+    const result = await handler(event)
+
+    expect(mockRequirePermission).toHaveBeenCalledWith(event, 'ADMIN')
+    expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(event, ids.client)
+    expect(mockExecuteActivation).toHaveBeenCalledWith({
+      event, launchId, tenantId: ids.tenant, actorId: ids.actor
+    })
+    expect(result.launch.state).toBe('ENABLED_VERIFIED')
   })
 })

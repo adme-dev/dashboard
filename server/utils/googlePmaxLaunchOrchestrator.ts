@@ -1,6 +1,5 @@
 import type { GooglePmaxAiAdvisoryResult } from '~~/server/utils/googlePmaxAiAdvisor'
 import type { GooglePmaxDecisionEvidence } from '~~/server/utils/googlePmaxDecisionEvidence'
-import { persistGooglePmaxDecisionEvidence } from '~~/server/utils/googlePmaxDecisionEvidenceStore'
 import type { GooglePmaxInventoryLaunchConfig } from '~~/server/utils/googlePmaxLaunchConfig'
 import {
   getGooglePmaxLaunch,
@@ -9,19 +8,20 @@ import {
 } from '~~/server/utils/googlePmaxLaunchStore'
 import type { GooglePmaxOnboardingResult } from '~~/server/utils/googlePmaxOnboarding'
 import type { GooglePmaxPreflightResult } from '~~/server/utils/googlePmaxPreflight'
-import { syncGooglePmaxRemediationTasks } from '~~/server/utils/googlePmaxRemediationTaskSync'
-import {
-  buildGooglePmaxRemediationTaskDrafts
-} from '~~/server/utils/googlePmaxRemediationTasks'
 
 interface GooglePmaxLaunchOrchestratorDependencies {
   getLaunch?: typeof getGooglePmaxLaunch
-  parseConfig: (value: Record<string, unknown>) => GooglePmaxInventoryLaunchConfig
+  parseConfig: (value: Record<string, unknown>) => GooglePmaxInventoryLaunchConfig | Promise<GooglePmaxInventoryLaunchConfig>
   collectEvidence: (
     config: GooglePmaxInventoryLaunchConfig,
     launch: GooglePmaxLaunch
   ) => Promise<GooglePmaxDecisionEvidence>
-  persistEvidence?: typeof persistGooglePmaxDecisionEvidence
+  persistEvidence: (input: {
+    launchId: string
+    tenantId: string
+    actorId: string
+    evidence: GooglePmaxDecisionEvidence
+  }) => Promise<{ id: string, evidenceHash: string, collectedAt: string, isReplay: boolean }>
   runPreflight: (config: GooglePmaxInventoryLaunchConfig) => Promise<GooglePmaxPreflightResult>
   readOnboarding: (
     config: GooglePmaxInventoryLaunchConfig,
@@ -31,7 +31,19 @@ interface GooglePmaxLaunchOrchestratorDependencies {
     evidence: GooglePmaxDecisionEvidence
     preflight: GooglePmaxPreflightResult
   }) => Promise<GooglePmaxAiAdvisoryResult>
-  syncTasks?: typeof syncGooglePmaxRemediationTasks
+  syncTasks: (input: {
+    launchId: string
+    tenantId: string
+    actorId: string
+    preflightChecks: GooglePmaxPreflightResult['checks']
+    onboardingTasks: GooglePmaxOnboardingResult['tasks']
+  }) => Promise<{
+    status: 'synced' | 'project_required'
+    created: number
+    reopened: number
+    cleared: number
+    taskCount: number
+  }>
   transition?: typeof transitionGooglePmaxLaunch
 }
 
@@ -49,8 +61,6 @@ export function createGooglePmaxLaunchOrchestrator(
   dependencies: GooglePmaxLaunchOrchestratorDependencies
 ) {
   const getLaunch = dependencies.getLaunch || getGooglePmaxLaunch
-  const persistEvidence = dependencies.persistEvidence || persistGooglePmaxDecisionEvidence
-  const syncTasks = dependencies.syncTasks || syncGooglePmaxRemediationTasks
   const transition = dependencies.transition || transitionGooglePmaxLaunch
 
   return {
@@ -79,7 +89,7 @@ export function createGooglePmaxLaunchOrchestrator(
         })
       }
 
-      const config = dependencies.parseConfig(launch.normalizedConfig)
+      const config = await dependencies.parseConfig(launch.normalizedConfig)
       const [evidence, preflight, onboarding] = await Promise.all([
         dependencies.collectEvidence(config, launch),
         dependencies.runPreflight(config),
@@ -94,22 +104,19 @@ export function createGooglePmaxLaunchOrchestrator(
         throw new GooglePmaxLaunchOrchestratorError('PMAX_PREFLIGHT_EVIDENCE_IDENTITY_MISMATCH')
       }
 
-      const snapshot = await persistEvidence({
+      const snapshot = await dependencies.persistEvidence({
         launchId: launch.id,
         tenantId: launch.tenantId,
         actorId: input.actorId,
         evidence
       })
       const advisory = await dependencies.advise({ evidence, preflight })
-      const drafts = buildGooglePmaxRemediationTaskDrafts({
-        preflightChecks: preflight.checks,
-        onboardingTasks: onboarding.tasks
-      })
-      const taskSync = await syncTasks({
+      const taskSync = await dependencies.syncTasks({
         launchId: launch.id,
         tenantId: launch.tenantId,
         actorId: input.actorId,
-        drafts
+        preflightChecks: preflight.checks,
+        onboardingTasks: onboarding.tasks
       })
 
       const ready = evidence.readyForDeterministicPreflight
@@ -144,7 +151,7 @@ export function createGooglePmaxLaunchOrchestrator(
           evidenceHash: snapshot.evidenceHash,
           blockerCount: preflight.blockerCount + evidence.blockerCount,
           onboardingReady: onboarding.ready,
-          taskCount: drafts.length,
+          taskCount: taskSync.taskCount,
           advisoryStatus: advisory.status
         },
         results: { preflight: preflightResult }

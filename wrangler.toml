@@ -152,6 +152,12 @@ id = "90228af3e2cc461bbc09accc3b47bd9f"
 binding = "AGENCY_WORKFLOWS"
 service = "agency-workflows"
 
+# Private provider control plane for governed Google PMax mutations/readback.
+# workers_dev is disabled on the target; Pages reaches it only through this binding.
+[[services]]
+binding = "GOOGLE_PMAX_PROVIDER"
+service = "google-pmax-provider"
+
 # ============================================
 # Environment Variables (non-secret)
 # ============================================

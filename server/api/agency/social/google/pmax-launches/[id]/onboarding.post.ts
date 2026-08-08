@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import { createError, defineEventHandler, getRouterParam, readBody } from 'h3'
 import { requirePermission } from '~~/server/utils/auth'
-import { parseGooglePmaxInventoryLaunchConfig } from '~~/server/utils/googlePmaxLaunchConfigRuntime'
 import { getGooglePmaxLaunch } from '~~/server/utils/googlePmaxLaunchStore'
 import {
   createGooglePmaxOnboardingAttestation,
@@ -9,6 +8,7 @@ import {
 } from '~~/server/utils/googlePmaxOnboardingAttestation'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { createGooglePmaxRemoteDecisionEngine } from '~~/server/utils/googlePmaxRemoteDecisionEngine'
 
 const BodySchema = z.strictObject({
   evidence: z.record(z.string(), z.unknown()),
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
 
   let config
   try {
-    config = parseGooglePmaxInventoryLaunchConfig(launch.normalizedConfig)
+    config = await createGooglePmaxRemoteDecisionEngine(event).parseConfig(launch.normalizedConfig)
   } catch {
     throw createError({ statusCode: 409, statusMessage: 'Stored launch configuration is invalid' })
   }

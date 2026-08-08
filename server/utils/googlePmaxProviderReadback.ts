@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { gaqlQuery } from '~~/server/utils/googleAdsClient'
 import type { GooglePmaxInventoryLaunchConfig } from '~~/server/utils/googlePmaxLaunchConfig'
 import type { GooglePmaxPreflightEvidence } from '~~/server/utils/googlePmaxPreflight'
 
@@ -87,7 +86,7 @@ type InternalFeedEvidence = GooglePmaxPreflightEvidence['internalFeed']
 interface ProviderReadbackDependencies {
   readConnection: (config: GooglePmaxInventoryLaunchConfig) => Promise<GooglePmaxProviderConnection>
   readInternalFeed: (config: GooglePmaxInventoryLaunchConfig) => Promise<InternalFeedEvidence>
-  queryAds?: (connection: GooglePmaxProviderConnection, query: string) => Promise<unknown[]>
+  queryAds: (connection: GooglePmaxProviderConnection, query: string) => Promise<unknown[]>
   readMerchant?: (input: {
     merchantCenterId: string
     accessToken: string
@@ -212,19 +211,6 @@ export async function readGoogleMerchantVehicleEvidence(input: {
   }
 }
 
-async function defaultQueryAds(
-  connection: GooglePmaxProviderConnection,
-  query: string
-): Promise<unknown[]> {
-  return gaqlQuery(
-    connection.customerId,
-    connection.accessToken,
-    connection.developerToken,
-    query,
-    connection.loginCustomerId
-  )
-}
-
 function quotedResourceNames(values: string[]): string {
   return values.map(value => `'${value}'`).join(', ')
 }
@@ -269,7 +255,7 @@ function assetsEvidence(
 }
 
 export function createGooglePmaxProviderEvidenceReader(dependencies: ProviderReadbackDependencies) {
-  const queryAds = dependencies.queryAds || defaultQueryAds
+  const queryAds = dependencies.queryAds
   const readMerchant = dependencies.readMerchant || (input => readGoogleMerchantVehicleEvidence(input))
   return {
     async read(config: GooglePmaxInventoryLaunchConfig): Promise<GooglePmaxPreflightEvidence> {

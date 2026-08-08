@@ -25,6 +25,8 @@
     "deploy:worker:staging:check": "node scripts/deploy-worker-staging.mjs --check-only",
     "deploy:workflows": "pnpm --dir workers/agency-workflows run deploy",
     "deploy:workflows:dry-run": "pnpm --dir workers/agency-workflows run deploy:dry-run",
+    "deploy:google-pmax-provider": "pnpm --dir workers/google-pmax-provider run deploy",
+    "deploy:google-pmax-provider:dry-run": "pnpm --dir workers/google-pmax-provider run deploy:dry-run",
     "deploy:workers": "node scripts/deploy-workers.mjs",
     "deploy:search-authority-publisher": "node scripts/deploy-search-authority-publisher.mjs",
     "deploy:search-authority-publisher:dry-run": "node scripts/deploy-search-authority-publisher.mjs --dry-run",

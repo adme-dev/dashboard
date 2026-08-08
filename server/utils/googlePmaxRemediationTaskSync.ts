@@ -1,4 +1,3 @@
-import { transaction } from '~~/server/utils/db'
 import type { GooglePmaxRemediationTaskDraft } from '~~/server/utils/googlePmaxRemediationTasks'
 
 export interface GooglePmaxRemediationTaskContext {
@@ -42,7 +41,7 @@ interface Queryable {
   query: (sql: string, params?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>>, rowCount?: number | null }>
 }
 
-function createPostgresStore(db: Queryable): GooglePmaxRemediationTaskStore {
+export function createGooglePmaxRemediationPostgresStore(db: Queryable): GooglePmaxRemediationTaskStore {
   return {
     async loadContext(launchId, tenantId, actorId) {
       const result = await db.query(
@@ -257,7 +256,6 @@ export async function syncGooglePmaxRemediationTasks(input: {
   tenantId: string
   actorId: string
   drafts: GooglePmaxRemediationTaskDraft[]
-}, dependencies: { store?: GooglePmaxRemediationTaskStore } = {}): Promise<GooglePmaxRemediationTaskSyncResult> {
-  if (dependencies.store) return syncWithStore(input, dependencies.store)
-  return transaction(async db => syncWithStore(input, createPostgresStore(db)))
+}, dependencies: { store: GooglePmaxRemediationTaskStore }): Promise<GooglePmaxRemediationTaskSyncResult> {
+  return syncWithStore(input, dependencies.store)
 }

@@ -8,7 +8,7 @@ import type {
 } from '~~/server/utils/feeds/types'
 import type { GooglePmaxPreflightEvidence } from '~~/server/utils/googlePmaxPreflight'
 
-interface BoundInventoryConfig {
+export interface GooglePmaxBoundInventoryConfig {
   clientId: string
   inventorySource: {
     providerId: 'social-dashboard'
@@ -18,7 +18,7 @@ interface BoundInventoryConfig {
   }
 }
 
-interface EvidenceDealerLink {
+export interface GooglePmaxEvidenceDealerLink {
   id: string
   clientId: string
   providerId: string
@@ -28,11 +28,11 @@ interface EvidenceDealerLink {
 }
 
 interface GooglePmaxInternalFeedEvidenceDependencies {
-  getActiveLink: (clientId: string, providerId: string) => Promise<EvidenceDealerLink | null>
-  listFeeds: (link: EvidenceDealerLink) => Promise<FeedSummary[]>
+  getActiveLink: (clientId: string, providerId: string) => Promise<GooglePmaxEvidenceDealerLink | null>
+  listFeeds: (link: GooglePmaxEvidenceDealerLink) => Promise<FeedSummary[]>
   getFeed: (ref: FeedRef) => Promise<FeedDetail>
   previewFeed: (
-    link: EvidenceDealerLink,
+    link: GooglePmaxEvidenceDealerLink,
     ref: FeedRef,
     options: { limit: number, offset: number }
   ) => Promise<FeedPreviewResult>
@@ -149,54 +149,66 @@ export function createGooglePmaxInternalFeedEvidenceReader(
 ) {
   const now = dependencies.now || (() => new Date())
   return {
-    async read(config: BoundInventoryConfig): Promise<InternalFeedEvidence> {
+    async read(config: GooglePmaxBoundInventoryConfig): Promise<InternalFeedEvidence> {
       const link = await dependencies.getActiveLink(config.clientId, config.inventorySource.providerId)
-      if (!link) throw new GooglePmaxInternalFeedEvidenceError('PMAX_FEED_LINK_NOT_FOUND')
-      if (
-        link.id.toLowerCase() !== config.inventorySource.linkId.toLowerCase()
-        || link.clientId.toLowerCase() !== config.clientId.toLowerCase()
-        || link.providerId !== config.inventorySource.providerId
-      ) {
-        throw new GooglePmaxInternalFeedEvidenceError('PMAX_FEED_LINK_IDENTITY_MISMATCH')
-      }
-
-      const feed = (await dependencies.listFeeds(link))
-        .find(item => item.id === config.inventorySource.feedId)
-      if (!feed) throw new GooglePmaxInternalFeedEvidenceError('PMAX_FEED_NOT_FOUND')
-
+      const feeds = link ? await dependencies.listFeeds(link) : []
+      const feed = feeds.find(item => item.id === config.inventorySource.feedId)
       const fetchedAt = now().toISOString()
-      if (!feed.isActive || feed.platform !== 'google') {
-        return unavailableFeed(link.id, feed.id, feed.platform, fetchedAt)
+      let detail: FeedDetail | null = null
+      let preview: FeedPreviewResult | null = null
+      let conditions: Array<'NEW' | 'USED'> | undefined
+      if (link && feed?.isActive && feed.platform === 'google') {
+        const ref: FeedRef = { providerId: config.inventorySource.providerId, feedId: feed.id, platform: feed.platform }
+        detail = await dependencies.getFeed(ref)
+        if (detail.id === feed.id && detail.platform === feed.platform && detail.isActive) {
+          preview = await dependencies.previewFeed(link, ref, { limit: 100, offset: 0 })
+          conditions = dependencies.resolveConditions(detail, preview)
+        }
       }
-
-      const ref: FeedRef = {
-        providerId: config.inventorySource.providerId,
-        feedId: feed.id,
-        platform: feed.platform
-      }
-      const detail = await dependencies.getFeed(ref)
-      if (detail.id !== feed.id || detail.platform !== feed.platform) {
-        throw new GooglePmaxInternalFeedEvidenceError('PMAX_FEED_IDENTITY_MISMATCH')
-      }
-      if (!detail.isActive) return unavailableFeed(link.id, feed.id, feed.platform, fetchedAt)
-      const preview = await dependencies.previewFeed(link, ref, { limit: 100, offset: 0 })
-      const readiness = summarizeFeedReadiness(preview.validation)
-      const conditions = uniqueConditions(dependencies.resolveConditions(detail, preview))
-      const status = readiness.status === 'ready' && conditions.length === 0
-        ? 'unknown'
-        : readiness.status
-
-      return {
-        linkId: link.id,
-        feedId: feed.id,
-        platform: feed.platform,
-        status,
-        matchedItemCount: readiness.matchedTotal,
-        validatedItemCount: readiness.validatedTotal,
-        invalidItemCount: readiness.invalidTotal,
-        conditions,
-        fetchedAt
-      }
+      return evaluateGooglePmaxInternalFeedEvidence({
+        config, link, feeds, detail, preview, fetchedAt, conditions
+      })
     }
+  }
+}
+
+export function evaluateGooglePmaxInternalFeedEvidence(input: {
+  config: GooglePmaxBoundInventoryConfig
+  link: GooglePmaxEvidenceDealerLink | null
+  feeds: FeedSummary[]
+  detail: FeedDetail | null
+  preview: FeedPreviewResult | null
+  fetchedAt: string
+  conditions?: Array<'NEW' | 'USED'>
+}): InternalFeedEvidence {
+  const { config, link } = input
+  if (!link) throw new GooglePmaxInternalFeedEvidenceError('PMAX_FEED_LINK_NOT_FOUND')
+  if (
+    link.id.toLowerCase() !== config.inventorySource.linkId.toLowerCase()
+    || link.clientId.toLowerCase() !== config.clientId.toLowerCase()
+    || link.providerId !== config.inventorySource.providerId
+  ) throw new GooglePmaxInternalFeedEvidenceError('PMAX_FEED_LINK_IDENTITY_MISMATCH')
+  const feed = input.feeds.find(item => item.id === config.inventorySource.feedId)
+  if (!feed) throw new GooglePmaxInternalFeedEvidenceError('PMAX_FEED_NOT_FOUND')
+  if (!feed.isActive || feed.platform !== 'google') return unavailableFeed(link.id, feed.id, feed.platform, input.fetchedAt)
+  if (!input.detail || input.detail.id !== feed.id || input.detail.platform !== feed.platform) {
+    throw new GooglePmaxInternalFeedEvidenceError('PMAX_FEED_IDENTITY_MISMATCH')
+  }
+  if (!input.detail.isActive) return unavailableFeed(link.id, feed.id, feed.platform, input.fetchedAt)
+  if (!input.preview) throw new GooglePmaxInternalFeedEvidenceError('PMAX_FEED_IDENTITY_MISMATCH')
+  const readiness = summarizeFeedReadiness(input.preview.validation)
+  const conditions = uniqueConditions(
+    input.conditions || resolveGoogleFeedConditionsFromProviderEvidence(input.detail, input.preview)
+  )
+  return {
+    linkId: link.id,
+    feedId: feed.id,
+    platform: feed.platform,
+    status: readiness.status === 'ready' && conditions.length === 0 ? 'unknown' : readiness.status,
+    matchedItemCount: readiness.matchedTotal,
+    validatedItemCount: readiness.validatedTotal,
+    invalidItemCount: readiness.invalidTotal,
+    conditions,
+    fetchedAt: input.fetchedAt
   }
 }

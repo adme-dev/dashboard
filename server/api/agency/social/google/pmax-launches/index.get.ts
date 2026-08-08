@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { createError, defineEventHandler, getQuery } from 'h3'
 import { hasRole, requirePermission } from '~~/server/utils/auth'
+import { googlePmaxLaunchPreparation } from '~~/server/utils/googlePmaxLaunchPreparation'
 import { listGooglePmaxLaunches } from '~~/server/utils/googlePmaxLaunchStore'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { getSelectedTenant } from '~~/server/utils/session'
@@ -19,13 +20,21 @@ export default defineEventHandler(async (event) => {
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid launch query' })
   if (parsed.data.clientId) await requireSocialClientAccess(event, parsed.data.clientId)
   else await requireAllSocialClientAccess(event)
-  const launches = await listGooglePmaxLaunches({
-    tenantId,
-    clientId: parsed.data.clientId,
-    limit: parsed.data.limit
-  })
+  const [launches, preparableBriefs] = await Promise.all([
+    listGooglePmaxLaunches({
+      tenantId,
+      clientId: parsed.data.clientId,
+      limit: parsed.data.limit
+    }),
+    googlePmaxLaunchPreparation.list({
+      tenantId,
+      clientId: parsed.data.clientId,
+      limit: parsed.data.limit
+    })
+  ])
   return {
     launches,
+    preparableBriefs,
     permissions: {
       canApprove: hasRole(user, PERMISSIONS.ADMIN)
     }

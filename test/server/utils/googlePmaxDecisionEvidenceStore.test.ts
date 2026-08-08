@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildGooglePmaxDecisionEvidence } from '~~/server/utils/googlePmaxDecisionEvidence'
+import { buildGooglePmaxDecisionEvidence } from '../../../workers/google-pmax-provider/src/decisionEvidencePolicy'
 import {
   GooglePmaxDecisionEvidenceStoreError,
   persistGooglePmaxDecisionEvidence
@@ -46,6 +46,11 @@ function evidence() {
   })
 }
 
+const dependencies = {
+  build: async (input: Parameters<typeof buildGooglePmaxDecisionEvidence>[0]) => buildGooglePmaxDecisionEvidence(input),
+  transaction: async <T>(callback: (db: { query: typeof mockQuery }) => Promise<T>) => mockTransaction(callback)
+}
+
 describe('Google PMax decision evidence snapshot store', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -67,7 +72,7 @@ describe('Google PMax decision evidence snapshot store', () => {
       tenantId: ids.tenant,
       actorId: ids.actor,
       evidence: snapshot
-    })).resolves.toEqual({
+    }, dependencies)).resolves.toEqual({
       id: '66666666-6666-4666-8666-666666666666',
       evidenceHash: snapshot.evidenceHash,
       collectedAt: snapshot.collectedAt,
@@ -95,7 +100,7 @@ describe('Google PMax decision evidence snapshot store', () => {
       tenantId: ids.tenant,
       actorId: ids.actor,
       evidence: snapshot
-    })).resolves.toMatchObject({ isReplay: true, evidenceHash: snapshot.evidenceHash })
+    }, dependencies)).resolves.toMatchObject({ isReplay: true, evidenceHash: snapshot.evidenceHash })
   })
 
   it('fails before DB access when the evidence hash does not identify the snapshot', async () => {
@@ -106,7 +111,7 @@ describe('Google PMax decision evidence snapshot store', () => {
       tenantId: ids.tenant,
       actorId: ids.actor,
       evidence: snapshot
-    })).rejects.toBeInstanceOf(GooglePmaxDecisionEvidenceStoreError)
+    }, dependencies)).rejects.toBeInstanceOf(GooglePmaxDecisionEvidenceStoreError)
 
     expect(mockTransaction).not.toHaveBeenCalled()
   })
@@ -119,6 +124,6 @@ describe('Google PMax decision evidence snapshot store', () => {
       tenantId: ids.tenant,
       actorId: ids.actor,
       evidence: evidence()
-    })).rejects.toMatchObject({ code: 'PMAX_EVIDENCE_LAUNCH_IDENTITY_MISMATCH' })
+    }, dependencies)).rejects.toMatchObject({ code: 'PMAX_EVIDENCE_LAUNCH_IDENTITY_MISMATCH' })
   })
 })

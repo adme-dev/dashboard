@@ -49,14 +49,17 @@ function dependencies(state: GooglePmaxLaunch['state'] = 'DRAFT') {
     getLaunch: vi.fn().mockResolvedValue(launch(state)),
     parseConfig: vi.fn().mockReturnValue(config),
     collectEvidence: vi.fn().mockResolvedValue(evidence),
-    persistEvidence: vi.fn().mockResolvedValue({ id: 'snapshot-1', evidenceHash: 'c'.repeat(64) }),
+    persistEvidence: vi.fn().mockResolvedValue({
+      id: 'snapshot-1', evidenceHash: 'c'.repeat(64),
+      collectedAt: '2026-08-07T10:00:00.000Z', isReplay: false
+    }),
     runPreflight: vi.fn().mockResolvedValue({
       ready: true, blockerCount: 0, warningCount: 0, providerRequestId: 'google-request-1',
       checkedAt: '2026-08-07T10:00:00.000Z', checks: []
     }),
     readOnboarding: vi.fn().mockResolvedValue(onboarding),
     advise: vi.fn().mockResolvedValue({ status: 'unavailable', reason: 'GATEWAY_UNAVAILABLE' }),
-    syncTasks: vi.fn().mockResolvedValue({ status: 'synced', created: 0, reopened: 0, cleared: 0 }),
+    syncTasks: vi.fn().mockResolvedValue({ status: 'synced', created: 0, reopened: 0, cleared: 0, taskCount: 0 }),
     transition: vi.fn().mockImplementation(async (input: { toState: GooglePmaxLaunch['state'] }) => launch(input.toState))
   }
 }
@@ -72,7 +75,9 @@ describe('Google PMax preflight orchestration', () => {
     expect(deps.persistEvidence).toHaveBeenCalledWith(expect.objectContaining({
       launchId: ids.launch, tenantId: ids.tenant, actorId: ids.actor, evidence
     }))
-    expect(deps.syncTasks).toHaveBeenCalledWith(expect.objectContaining({ drafts: [] }))
+    expect(deps.syncTasks).toHaveBeenCalledWith(expect.objectContaining({
+      preflightChecks: [], onboardingTasks: []
+    }))
     expect(deps.transition).toHaveBeenCalledWith(expect.objectContaining({
       expectedState: 'DRAFT',
       toState: 'READY_FOR_APPROVAL',
@@ -99,9 +104,11 @@ describe('Google PMax preflight orchestration', () => {
     })
 
     expect(result.launch.state).toBe('PREFLIGHT_FAILED')
-    expect(deps.syncTasks.mock.calls[0][0].drafts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ taskKey: 'onboarding:verify-location', severity: 'blocker' })
-    ]))
+    expect(deps.syncTasks).toHaveBeenCalledWith(expect.objectContaining({
+      onboardingTasks: expect.arrayContaining([
+        expect.objectContaining({ key: 'verify-location', owner: 'client' })
+      ])
+    }))
   })
 
   it('claims a failed launch back to DRAFT before retrying its provider reads', async () => {

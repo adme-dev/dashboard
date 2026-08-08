@@ -577,15 +577,37 @@ async function confirmDisconnect() {
         <UIcon name="i-lucide-chevron-right" class="w-3.5 h-3.5" />
         <span class="text-default font-medium">{{ platformConfig.displayName }}</span>
       </div>
-      <div class="flex items-center gap-3 mb-4">
-        <div class="w-10 h-10 rounded-lg flex items-center justify-center" :class="platformConfig.bgColor">
-          <UIcon :name="platformConfig.icon" class="w-5 h-5" :class="platformConfig.iconColor" />
+      <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" :class="platformConfig.bgColor">
+            <UIcon :name="platformConfig.icon" class="w-5 h-5" :class="platformConfig.iconColor" />
+          </div>
+          <div>
+            <h1 class="text-xl font-semibold">
+              {{ platformConfig.displayName }}
+            </h1>
+            <p class="text-sm text-muted mt-0.5">
+              {{ accountSpend.length }} ad account{{ accountSpend.length !== 1 ? 's' : '' }} connected
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 class="text-xl font-semibold">{{ platformConfig.displayName }}</h1>
-          <p class="text-sm text-muted mt-0.5">
-            {{ accountSpend.length }} ad account{{ accountSpend.length !== 1 ? 's' : '' }} connected
-          </p>
+        <div v-if="platform === 'google'" class="flex flex-wrap gap-2">
+          <UButton
+            to="/agency/social/google/ai-max"
+            color="neutral"
+            variant="soft"
+            icon="i-lucide-scan-search"
+            size="sm"
+          >
+            AI Max readiness
+          </UButton>
+          <UButton
+            to="/agency/social/google/pmax-launches"
+            icon="i-lucide-rocket"
+            size="sm"
+          >
+            PMax launches
+          </UButton>
         </div>
       </div>
 

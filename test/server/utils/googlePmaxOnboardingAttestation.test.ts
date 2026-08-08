@@ -4,6 +4,12 @@ import {
   getLatestGooglePmaxOnboardingAttestation
 } from '~~/server/utils/googlePmaxOnboardingAttestation'
 import { hashCanonicalLaunchJson } from '~~/server/utils/googlePmaxLaunchHash'
+import { GooglePmaxRemoteDecisionError } from '~~/server/utils/googlePmaxRemoteDecisionEngine'
+import {
+  AttestationPolicyError,
+  parseAttestationRow,
+  prepareAttestation
+} from '../../../workers/google-pmax-provider/src/attestationPolicy'
 
 const mockTransaction = vi.fn()
 const mockQueryRows = vi.fn()
@@ -77,6 +83,20 @@ const config = {
   approval: { required: true, complianceAcknowledged: true }
 } as const
 const configHash = hashCanonicalLaunchJson(config)
+
+const policy = {
+  async prepareAttestation(input: Parameters<typeof prepareAttestation>[0]) {
+    try {
+      return prepareAttestation(input)
+    } catch (error) {
+      if (error instanceof AttestationPolicyError) throw new GooglePmaxRemoteDecisionError(error.code)
+      throw error
+    }
+  },
+  async parseAttestation(row: Record<string, unknown>, current: string) {
+    return parseAttestationRow(row, current)
+  }
+}
 
 function evidence() {
   return {
@@ -190,7 +210,7 @@ describe('Google PMax onboarding attestation store', () => {
       return { rows: [rowFromParams(params)] }
     })
 
-    const result = await createGooglePmaxOnboardingAttestation(input())
+    const result = await createGooglePmaxOnboardingAttestation(input(), policy)
 
     expect(result.isReplay).toBe(false)
     expect(result.attestation).toMatchObject({
@@ -205,21 +225,21 @@ describe('Google PMax onboarding attestation store', () => {
   it('rejects evidence for another Google Ads or Merchant identity before persistence', async () => {
     await expect(createGooglePmaxOnboardingAttestation(input({
       evidence: { ...evidence(), googleAds: { ...evidence().googleAds, customerId: '9999999999' } }
-    }))).rejects.toMatchObject({ code: 'PMAX_ONBOARDING_ATTESTATION_IDENTITY_MISMATCH' })
+    }), policy)).rejects.toMatchObject({ code: 'PMAX_ONBOARDING_ATTESTATION_IDENTITY_MISMATCH' })
     expect(mockTransaction).not.toHaveBeenCalled()
   })
 
   it('rejects a config object that does not produce the launch config hash', async () => {
     await expect(createGooglePmaxOnboardingAttestation(input({
       config: { ...config, campaignName: 'Substituted campaign' }
-    }))).rejects.toMatchObject({ code: 'PMAX_ONBOARDING_ATTESTATION_IDENTITY_MISMATCH' })
+    }), policy)).rejects.toMatchObject({ code: 'PMAX_ONBOARDING_ATTESTATION_IDENTITY_MISMATCH' })
     expect(mockTransaction).not.toHaveBeenCalled()
   })
 
   it('rejects unknown fields so credentials cannot be smuggled into the ledger', async () => {
     await expect(createGooglePmaxOnboardingAttestation(input({
       evidence: { ...evidence(), accessToken: 'prohibited' }
-    }))).rejects.toMatchObject({ code: 'PMAX_ONBOARDING_ATTESTATION_INVALID' })
+    }), policy)).rejects.toMatchObject({ code: 'PMAX_ONBOARDING_ATTESTATION_INVALID' })
     expect(mockTransaction).not.toHaveBeenCalled()
   })
 
@@ -232,7 +252,7 @@ describe('Google PMax onboarding attestation store', () => {
       })
       .mockImplementationOnce(async () => ({ rows: [rowFromParams(insertedParams)] }))
 
-    await expect(createGooglePmaxOnboardingAttestation(input())).resolves.toMatchObject({ isReplay: true })
+    await expect(createGooglePmaxOnboardingAttestation(input(), policy)).resolves.toMatchObject({ isReplay: true })
   })
 
   it('reads only a non-expired attestation by default', async () => {
@@ -241,7 +261,7 @@ describe('Google PMax onboarding attestation store', () => {
       paramsForRow = params
       return { rows: [rowFromParams(params)] }
     })
-    const created = await createGooglePmaxOnboardingAttestation(input())
+    const created = await createGooglePmaxOnboardingAttestation(input(), policy)
     mockQueryRows.mockResolvedValueOnce([{
       id: created.attestation.id,
       launch_id: created.attestation.launchId,
@@ -262,7 +282,7 @@ describe('Google PMax onboarding attestation store', () => {
       configVersion: 3,
       configHash,
       now: () => now
-    })
+    }, policy)
 
     expect(mockQueryRows.mock.calls[0]?.[0]).toContain('attestation.expires_at > $5::timestamptz')
     expect(result?.active).toBe(true)

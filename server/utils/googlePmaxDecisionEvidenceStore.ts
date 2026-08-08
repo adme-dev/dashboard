@@ -1,9 +1,5 @@
 import { z } from 'zod'
-import { transaction } from '~~/server/utils/db'
-import {
-  buildGooglePmaxDecisionEvidence,
-  type GooglePmaxDecisionEvidence
-} from '~~/server/utils/googlePmaxDecisionEvidence'
+import type { GooglePmaxDecisionEvidence } from '~~/server/utils/googlePmaxDecisionEvidence'
 import { serializeCanonicalLaunchJson } from '~~/server/utils/googlePmaxLaunchHash'
 
 export class GooglePmaxDecisionEvidenceStoreError extends Error {
@@ -29,12 +25,15 @@ interface Queryable {
   query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>
 }
 
-function validateEvidence(input: GooglePmaxDecisionEvidence): {
+async function validateEvidence(
+  input: GooglePmaxDecisionEvidence,
+  build: (input: Pick<GooglePmaxDecisionEvidence, 'identity' | 'collectedAt' | 'sections'>) => Promise<GooglePmaxDecisionEvidence>
+): Promise<{
   evidence: GooglePmaxDecisionEvidence
   serialized: string
-} {
+}> {
   try {
-    const rebuilt = buildGooglePmaxDecisionEvidence({
+    const rebuilt = await build({
       identity: input.identity,
       collectedAt: input.collectedAt,
       sections: input.sections
@@ -67,7 +66,7 @@ async function persistWithDb(input: {
   tenantId: string
   actorId: string
   evidence: GooglePmaxDecisionEvidence
-}, db: Queryable, validated: ReturnType<typeof validateEvidence>) {
+}, db: Queryable, validated: Awaited<ReturnType<typeof validateEvidence>>) {
   const identity = validated.evidence.identity
   const inserted = await db.query(
     `INSERT INTO campaign_launch_evidence_snapshots (
@@ -131,7 +130,10 @@ export async function persistGooglePmaxDecisionEvidence(input: {
   tenantId: string
   actorId: string
   evidence: GooglePmaxDecisionEvidence
+}, dependencies: {
+  build: (input: Pick<GooglePmaxDecisionEvidence, 'identity' | 'collectedAt' | 'sections'>) => Promise<GooglePmaxDecisionEvidence>
+  transaction: <T>(callback: (db: Queryable) => Promise<T>) => Promise<T>
 }) {
-  const validated = validateEvidence(input.evidence)
-  return transaction(db => persistWithDb(input, db as unknown as Queryable, validated))
+  const validated = await validateEvidence(input.evidence, dependencies.build)
+  return dependencies.transaction(db => persistWithDb(input, db, validated))
 }

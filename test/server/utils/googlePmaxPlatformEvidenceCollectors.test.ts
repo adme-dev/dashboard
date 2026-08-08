@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { buildGooglePmaxDecisionEvidence } from '~~/server/utils/googlePmaxDecisionEvidence'
+import { buildGooglePmaxDecisionEvidence } from '../../../workers/google-pmax-provider/src/decisionEvidencePolicy'
 import { createGooglePmaxPlatformEvidenceCollectors } from '~~/server/utils/googlePmaxPlatformEvidenceCollectors'
 
 const identity = {

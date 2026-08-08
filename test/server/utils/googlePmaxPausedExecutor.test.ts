@@ -8,7 +8,10 @@ const ids = {
   actor: '10ea5019-e05f-476f-971e-a73a3bc6930c'
 }
 
-function launch(state: GooglePmaxLaunch['state']): GooglePmaxLaunch {
+function launch(
+  state: GooglePmaxLaunch['state'],
+  retryFromState: GooglePmaxLaunch['retryFromState'] = null
+): GooglePmaxLaunch {
   return {
     id: ids.launch, tenantId: ids.tenant,
     briefId: '23799282-283b-4508-b065-3fd36e8c05fd',
@@ -17,8 +20,8 @@ function launch(state: GooglePmaxLaunch['state']): GooglePmaxLaunch {
     platform: 'google_ads', campaignType: 'G_PMaxInventory', configVersion: 3,
     configHash: 'a'.repeat(64), idempotencyKey: 'b'.repeat(64), normalizedConfig: { schemaVersion: 2 }, state,
     preflightResult: {},
-    providerResources: state === 'ACTIVATION_APPROVED' ? resources : {},
-    verificationResult: {}, retryFromState: null,
+    providerResources: state === 'ACTIVATION_APPROVED' || retryFromState === 'ENABLING' ? resources : {},
+    verificationResult: {}, retryFromState,
     mediaSpendId: null, lastErrorCode: null, lastErrorMessage: null, createdBy: ids.actor,
     createdAt: '2026-08-07T09:00:00.000Z', updatedAt: '2026-08-07T09:00:00.000Z'
   }
@@ -34,8 +37,11 @@ const resources = {
   requestId: 'create-request-1'
 }
 
-function dependencies(state: GooglePmaxLaunch['state'] = 'APPROVED') {
-  let current = launch(state)
+function dependencies(
+  state: GooglePmaxLaunch['state'] = 'APPROVED',
+  retryFromState: GooglePmaxLaunch['retryFromState'] = null
+) {
+  let current = launch(state, retryFromState)
   return {
     getLaunch: vi.fn().mockImplementation(async () => current),
     parseConfig: vi.fn().mockReturnValue({ schemaVersion: 2, campaignName: 'Northern GAC' }),
@@ -108,6 +114,26 @@ describe('Google PMax paused-only executor', () => {
     expect(deps.transition).toHaveBeenLastCalledWith(expect.objectContaining({
       toState: 'VERIFICATION_FAILED'
     }))
+    expect(deps.provider.emergencyPause).not.toHaveBeenCalled()
+  })
+
+  it('emergency-pauses and requires recovery when paused creation readback is uncertain', async () => {
+    const deps = dependencies()
+    deps.provider.verify.mockRejectedValue(new Error('readback timeout'))
+
+    await expect(createGooglePmaxPausedExecutor(deps).createAndVerify({
+      launchId: ids.launch, tenantId: ids.tenant, actorId: ids.actor
+    })).rejects.toMatchObject({ code: 'PMAX_CREATE_READBACK_UNSAFE' })
+
+    expect(deps.provider.emergencyPause).toHaveBeenCalledOnce()
+    expect(deps.transition).toHaveBeenLastCalledWith(expect.objectContaining({
+      expectedState: 'CREATED_PAUSED',
+      toState: 'RECOVERY_REQUIRED',
+      payload: expect.objectContaining({
+        readbackStatus: 'UNKNOWN',
+        emergencyPauseStatus: 'PAUSED'
+      })
+    }))
   })
 
   it('enables only after separate activation approval and verifies the enabled readback', async () => {
@@ -126,6 +152,72 @@ describe('Google PMax paused-only executor', () => {
     }))
     expect(deps.transition).toHaveBeenNthCalledWith(2, expect.objectContaining({
       expectedState: 'ENABLING', toState: 'ENABLED_VERIFIED'
+    }))
+    expect(deps.provider.emergencyPause).not.toHaveBeenCalled()
+  })
+
+  it('resumes a retryable paused-creation failure in the persisted execution phase', async () => {
+    const deps = dependencies('FAILED_RETRYABLE', 'EXECUTING')
+    const result = await createGooglePmaxPausedExecutor(deps).createAndVerify({
+      launchId: ids.launch, tenantId: ids.tenant, actorId: ids.actor
+    })
+
+    expect(result.launch.state).toBe('VERIFIED_PAUSED')
+    expect(deps.transition).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      expectedState: 'FAILED_RETRYABLE',
+      toState: 'EXECUTING',
+      payload: { pausedOnly: true, retry: true }
+    }))
+  })
+
+  it('resumes a retryable activation failure without requiring a new approval', async () => {
+    const deps = dependencies('FAILED_RETRYABLE', 'ENABLING')
+    deps.provider.verify.mockResolvedValue({
+      status: 'ENABLED', matchesConfig: true, requestId: 'verify-enabled-retry', details: { enabled: true }
+    })
+    const result = await createGooglePmaxPausedExecutor(deps).activateAndVerify({
+      launchId: ids.launch, tenantId: ids.tenant, actorId: ids.actor
+    })
+
+    expect(result.launch.state).toBe('ENABLED_VERIFIED')
+    expect(deps.transition).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      expectedState: 'FAILED_RETRYABLE',
+      toState: 'ENABLING',
+      payload: { separateActivationApprovalVerified: true, retry: true }
+    }))
+  })
+
+  it('emergency-pauses and requires recovery when activation readback is uncertain', async () => {
+    const deps = dependencies('ACTIVATION_APPROVED')
+    deps.provider.verify.mockResolvedValue({
+      status: 'UNKNOWN', matchesConfig: false, requestId: null, details: { readbackFailed: true }
+    })
+
+    await expect(createGooglePmaxPausedExecutor(deps).activateAndVerify({
+      launchId: ids.launch, tenantId: ids.tenant, actorId: ids.actor
+    })).rejects.toMatchObject({ code: 'PMAX_ACTIVATION_FAILED' })
+
+    expect(deps.provider.emergencyPause).toHaveBeenCalledOnce()
+    expect(deps.transition).toHaveBeenLastCalledWith(expect.objectContaining({
+      expectedState: 'ENABLING',
+      toState: 'RECOVERY_REQUIRED',
+      payload: expect.objectContaining({ emergencyPauseStatus: 'PAUSED' })
+    }))
+  })
+
+  it('emergency-pauses after an ambiguous activation request failure', async () => {
+    const deps = dependencies('ACTIVATION_APPROVED')
+    deps.provider.enable.mockRejectedValue(new Error('network timeout'))
+
+    await expect(createGooglePmaxPausedExecutor(deps).activateAndVerify({
+      launchId: ids.launch, tenantId: ids.tenant, actorId: ids.actor
+    })).rejects.toMatchObject({ code: 'PMAX_ACTIVATION_FAILED' })
+
+    expect(deps.provider.emergencyPause).toHaveBeenCalledOnce()
+    expect(deps.transition).toHaveBeenLastCalledWith(expect.objectContaining({
+      expectedState: 'ENABLING',
+      toState: 'RECOVERY_REQUIRED',
+      payload: expect.objectContaining({ ambiguousEnable: true, emergencyPauseStatus: 'PAUSED' })
     }))
   })
 

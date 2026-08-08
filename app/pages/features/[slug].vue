@@ -1136,6 +1136,34 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'governed-google-pmax-launches': {
+    title: 'Governed Google PMax Launches',
+    slug: 'governed-google-pmax-launches',
+    icon: 'i-lucide-shield-check',
+    category: 'Financial Operations',
+    categoryIcon: 'i-lucide-calculator',
+    categoryIconBg: 'bg-emerald-50 dark:bg-emerald-500/10',
+    categoryIconColor: 'text-emerald-600 dark:text-emerald-400',
+    description: 'Move an approved vehicle campaign brief through evidence-backed preflight, exact paused creation, and a separately authorised activation — without silent Google spend changes.',
+    details: [
+      {
+        title: 'Approved brief to accountable rollout',
+        content: 'A reusable Google PMax template creates the project and task rollout, while the immutable launch plan binds the exact client, Google Ads customer, Merchant Center account, internal vehicle feed, fixed-flight budget, targeting, conversion actions, creative mode, and compliance acknowledgement. Decisions discussed on boards or imported from Monday inform the evidence set, but only approved and version-bound facts can control execution.'
+      },
+      {
+        title: 'Whole-platform preflight',
+        content: 'Before approval, XeroFlow reconciles Google Ads and Merchant API readback with the client-owned feed, onboarding attestations, boards and tasks, audience and persona signals, knowledge guidance, spend history, and anomalies. Deterministic checks remain authoritative; a cost-capped Cloudflare AI Gateway advisory can summarise nuance but can never overrule a blocker or execute a provider write.'
+      },
+      {
+        title: 'Paused-only provider safety',
+        content: 'The Google Ads mutation creates a retail Performance Max campaign for Vehicle Ads with a campaign total budget, explicit flight dates, exact Merchant Center identity, resolved geo and language criteria, condition-specific listing groups, and an exact custom conversion goal. Campaign and asset group are created paused, read back, and compared with the approved configuration before activation can even be considered.'
+      },
+      {
+        title: 'Activation is a different decision',
+        content: 'Creating the campaign and enabling spend require separate administrator approvals and separate Cloudflare environment kill switches. Activation enables the campaign and asset group together, then verifies their live state. Every transition, provider request identifier, approval reason, preflight snapshot, remediation task, and readback result stays in the audit ledger for post-launch accountability.'
+      }
+    ]
+  },
   'profit-loss': {
     title: 'Profit & Loss',
     slug: 'profit-loss',

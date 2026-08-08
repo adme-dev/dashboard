@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildGooglePmaxDecisionEvidence,
   collectGooglePmaxDecisionEvidence,
   GOOGLE_PMAX_EVIDENCE_SOURCES
 } from '~~/server/utils/googlePmaxDecisionEvidence'
+import { buildGooglePmaxDecisionEvidence } from '../../../workers/google-pmax-provider/src/decisionEvidencePolicy'
 
 const identity = {
   tenantId: 'c41c58be-a3a8-4479-b5d1-9251bb80717d',
@@ -166,6 +166,7 @@ describe('Google PMax whole-platform decision evidence', () => {
     const result = await collectGooglePmaxDecisionEvidence({
       identity,
       collectors,
+      build: async input => buildGooglePmaxDecisionEvidence(input),
       now: () => new Date('2026-08-07T10:05:00.000Z')
     })
 

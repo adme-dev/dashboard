@@ -1,4 +1,3 @@
-import { queryRows as defaultQueryRows } from '~~/server/utils/db'
 import {
   MONDAY_EVIDENCE_CANDIDATES_CTE
 } from '~~/server/utils/socialNewsMondayEvidence'
@@ -8,13 +7,13 @@ import type {
   GooglePmaxEvidenceReference
 } from '~~/server/utils/googlePmaxDecisionEvidence'
 
-type QueryRows = (sql: string, params?: unknown[]) => Promise<unknown[]>
+export type GooglePmaxPlatformEvidenceQueryRows = (sql: string, params?: unknown[]) => Promise<unknown[]>
 
 interface CollectorDependencies {
-  queryRows?: QueryRows
+  queryRows: GooglePmaxPlatformEvidenceQueryRows
 }
 
-type InternalCollectorSource
+export type GooglePmaxPlatformEvidenceSource
   = | 'brief'
     | 'audiences'
     | 'personas'
@@ -110,7 +109,7 @@ function result(input: {
   }
 }
 
-function createBriefCollector(queryRows: QueryRows): GooglePmaxEvidenceCollector {
+function createBriefCollector(queryRows: GooglePmaxPlatformEvidenceQueryRows): GooglePmaxEvidenceCollector {
   return async ({ identity, collectedAt }) => {
     const rows = await queryRows(
       `SELECT b.id, b.reference_number, b.title, b.status, b.budget_currency,
@@ -148,7 +147,7 @@ function createBriefCollector(queryRows: QueryRows): GooglePmaxEvidenceCollector
   }
 }
 
-function createAudienceCollector(queryRows: QueryRows): GooglePmaxEvidenceCollector {
+function createAudienceCollector(queryRows: GooglePmaxPlatformEvidenceQueryRows): GooglePmaxEvidenceCollector {
   return async ({ identity, collectedAt }) => {
     const rows = await queryRows(
       `WITH signal_summary AS (
@@ -188,7 +187,7 @@ function createAudienceCollector(queryRows: QueryRows): GooglePmaxEvidenceCollec
   }
 }
 
-function createPersonaCollector(queryRows: QueryRows): GooglePmaxEvidenceCollector {
+function createPersonaCollector(queryRows: GooglePmaxPlatformEvidenceQueryRows): GooglePmaxEvidenceCollector {
   return async ({ identity, collectedAt }) => {
     const rows = await queryRows(
       `SELECT DISTINCT ON (persona_key)
@@ -226,7 +225,7 @@ function createPersonaCollector(queryRows: QueryRows): GooglePmaxEvidenceCollect
   }
 }
 
-function createKnowledgeCollector(queryRows: QueryRows): GooglePmaxEvidenceCollector {
+function createKnowledgeCollector(queryRows: GooglePmaxPlatformEvidenceQueryRows): GooglePmaxEvidenceCollector {
   return async ({ identity, collectedAt }) => {
     const rows = await queryRows(
       `SELECT id, title, category, updated_at
@@ -267,7 +266,7 @@ function createKnowledgeCollector(queryRows: QueryRows): GooglePmaxEvidenceColle
   }
 }
 
-function createBoardCollector(queryRows: QueryRows): GooglePmaxEvidenceCollector {
+function createBoardCollector(queryRows: GooglePmaxPlatformEvidenceQueryRows): GooglePmaxEvidenceCollector {
   return async ({ identity, collectedAt }) => {
     const rows = await queryRows(
       `SELECT d.id AS department_id, d.name AS department_name,
@@ -307,7 +306,7 @@ function createBoardCollector(queryRows: QueryRows): GooglePmaxEvidenceCollector
   }
 }
 
-function createMondayCollector(queryRows: QueryRows): GooglePmaxEvidenceCollector {
+function createMondayCollector(queryRows: GooglePmaxPlatformEvidenceQueryRows): GooglePmaxEvidenceCollector {
   return async ({ identity, collectedAt }) => {
     const rows = await queryRows(
       `${MONDAY_EVIDENCE_CANDIDATES_CTE}
@@ -336,7 +335,7 @@ function createMondayCollector(queryRows: QueryRows): GooglePmaxEvidenceCollecto
   }
 }
 
-function createPerformanceCollector(queryRows: QueryRows): GooglePmaxEvidenceCollector {
+function createPerformanceCollector(queryRows: GooglePmaxPlatformEvidenceQueryRows): GooglePmaxEvidenceCollector {
   return async ({ identity, collectedAt }) => {
     const rows = await queryRows(
       `SELECT COUNT(DISTINCT campaign_id)::int AS campaign_count,
@@ -374,7 +373,7 @@ function createPerformanceCollector(queryRows: QueryRows): GooglePmaxEvidenceCol
   }
 }
 
-function createAnomalyCollector(queryRows: QueryRows): GooglePmaxEvidenceCollector {
+function createAnomalyCollector(queryRows: GooglePmaxPlatformEvidenceQueryRows): GooglePmaxEvidenceCollector {
   return async ({ identity, collectedAt }) => {
     const rows = await queryRows(
       `SELECT id, type, severity, status, title, last_detected_at
@@ -410,7 +409,7 @@ function createAnomalyCollector(queryRows: QueryRows): GooglePmaxEvidenceCollect
   }
 }
 
-function createTaskCollector(queryRows: QueryRows): GooglePmaxEvidenceCollector {
+function createTaskCollector(queryRows: GooglePmaxPlatformEvidenceQueryRows): GooglePmaxEvidenceCollector {
   return async ({ identity, collectedAt }) => {
     const rows = await queryRows(
       `SELECT t.id AS task_id, t.title, t.priority, t.is_blocked,
@@ -452,9 +451,9 @@ function createTaskCollector(queryRows: QueryRows): GooglePmaxEvidenceCollector 
 }
 
 export function createGooglePmaxPlatformEvidenceCollectors(
-  dependencies: CollectorDependencies = {}
-): Record<InternalCollectorSource, GooglePmaxEvidenceCollector> {
-  const queryRows = dependencies.queryRows || defaultQueryRows
+  dependencies: CollectorDependencies
+): Record<GooglePmaxPlatformEvidenceSource, GooglePmaxEvidenceCollector> {
+  const queryRows = dependencies.queryRows
   return {
     brief: createBriefCollector(queryRows),
     audiences: createAudienceCollector(queryRows),
