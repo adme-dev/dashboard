@@ -3,6 +3,7 @@ import {
   lstat as fsLstat,
   mkdir as fsMkdir,
   readFile,
+  readlink as fsReadlink,
   readdir as fsReaddir,
   rename as fsRename,
   rm as fsRm,
@@ -10,7 +11,7 @@ import {
   writeFile as fsWriteFile
 } from 'node:fs/promises'
 import { hostname as systemHostname } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { pathToFileURL } from 'node:url'
 import {
@@ -93,6 +94,7 @@ export interface EvaluationPublisherFileSystem {
   makeDirectory: (path: string, recursive: boolean) => Promise<void>
   writeExclusive: (path: string, content: string) => Promise<void>
   createSymlink: (target: string, path: string) => Promise<void>
+  readLink: (path: string) => Promise<string>
   readText: (path: string) => Promise<string>
   readMetadata: (path: string) => Promise<{ modifiedAtEpochMs: number }>
   listDirectory: (path: string) => Promise<string[]>
@@ -122,6 +124,8 @@ export interface EvaluationPublisherDependencies {
   ownerToken?: () => string
   leaseDurationMs?: number
   heartbeatIntervalMs?: number
+  /** Trusted fencing proof. Returning true authorizes destructive stale-owner recovery. */
+  ownerDefinitelyGone?: (lease: EvaluationLockLease) => boolean
 }
 
 export type EvaluationReportPublisher = (
@@ -442,8 +446,9 @@ const HEARTBEAT_FILE_NAME = 'heartbeat.json'
 const LOCK_OWNER_DIRECTORY_PREFIX = '.evaluation.lock.owner.'
 const LOCK_RECOVERY_SENTINEL_NAME = '.evaluation.lock.recovery'
 const LOCK_RECOVERY_OWNER_PREFIX = '.evaluation.lock.recovery-owner.'
-const LOCK_RECOVERY_OWNER_FILE_NAME = 'owner.json'
-const LOCK_RECOVERY_STALE_NAME = 'stale-lock'
+const LOCK_STALE_PREFIX = '.evaluation.lock.stale.'
+const LOCK_RELEASE_PREFIX = '.evaluation.lock.release.'
+const LOCK_RECOVERY_RELEASE_PREFIX = '.evaluation.lock.recovery-release.'
 const RECOVERY_MARKER_NAME = '.evaluation.recovery.json'
 const PUBLICATION_RECOVERY_DIRECTORY_PREFIX = '.evaluation.publish-recovery.'
 const PUBLICATION_RECOVERY_STATE_NAME = 'state.json'
@@ -459,6 +464,7 @@ const defaultPublisherFileSystem: EvaluationPublisherFileSystem = {
   async createSymlink(target, path) {
     await fsSymlink(target, path, 'dir')
   },
+  readLink: fsReadlink,
   readText: path => readFile(path, 'utf8'),
   async readMetadata(path) {
     const metadata = await fsLstat(path)
@@ -535,11 +541,24 @@ async function readOptionalMetadata(
   }
 }
 
+async function readOptionalLink(
+  fileSystem: EvaluationPublisherFileSystem,
+  path: string
+): Promise<string | null> {
+  try {
+    return await fileSystem.readLink(path)
+  } catch (error) {
+    if (hasErrorCode(error, 'ENOENT') || hasErrorCode(error, 'EINVAL')) return null
+    throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
+  }
+}
+
 interface LockSnapshot {
   lease: EvaluationLockLease | null
   leaseRaw: string | null
   heartbeat: EvaluationLockHeartbeat | null
   heartbeatRaw: string | null
+  linkTarget: string | null
   modifiedAtEpochMs: number
 }
 
@@ -549,6 +568,7 @@ async function readLockSnapshot(
 ): Promise<LockSnapshot | null> {
   const metadata = await readOptionalMetadata(fileSystem, lockPath)
   if (!metadata) return null
+  const linkTarget = await readOptionalLink(fileSystem, lockPath)
   const leaseRaw = await readOptionalText(fileSystem, join(lockPath, LEASE_FILE_NAME))
   const heartbeatRaw = await readOptionalText(fileSystem, join(lockPath, HEARTBEAT_FILE_NAME))
   return {
@@ -556,6 +576,7 @@ async function readLockSnapshot(
     leaseRaw,
     heartbeat: heartbeatRaw === null ? null : parseLockHeartbeat(heartbeatRaw),
     heartbeatRaw,
+    linkTarget,
     modifiedAtEpochMs: metadata.modifiedAtEpochMs
   }
 }
@@ -565,6 +586,7 @@ interface PublicationLockOptions {
   ownerToken: string
   leaseDurationMs: number
   heartbeatIntervalMs: number
+  ownerDefinitelyGone: (lease: EvaluationLockLease) => boolean
 }
 
 interface PublicationLockOwnership {
@@ -572,6 +594,7 @@ interface PublicationLockOwnership {
   ownerToken: string
   ownerDirectoryPath: string
   ownerDirectoryName: string
+  releasePath: string
 }
 
 interface LockRecoveryOwnership {
@@ -580,10 +603,43 @@ interface LockRecoveryOwnership {
   ownerDirectoryPath: string
   ownerDirectoryName: string
   staleLockPath: string
+  releaseSentinelPath: string
 }
 
 function ownerFingerprint(ownerToken: string): string {
   return createHash('sha256').update(ownerToken).digest('hex').slice(0, 24)
+}
+
+function ownerProcessDefinitelyGone(lease: EvaluationLockLease): boolean {
+  if (lease.hostname !== systemHostname()) return false
+  try {
+    process.kill(lease.processId, 0)
+    return false
+  } catch (error) {
+    return hasErrorCode(error, 'ESRCH')
+  }
+}
+
+function safeOwnerArtifactName(
+  snapshot: LockSnapshot,
+  prefix: string
+): string | null {
+  if (!snapshot.lease || !snapshot.linkTarget) return null
+  const expected = `${prefix}${ownerFingerprint(snapshot.lease.ownerToken)}`
+  if (snapshot.linkTarget !== expected
+    || snapshot.lease.ownerDirectoryName !== expected
+    || snapshot.linkTarget !== basename(snapshot.linkTarget)) return null
+  return expected
+}
+
+function snapshotOwnedBy(
+  snapshot: LockSnapshot | null,
+  ownerToken: string,
+  ownerDirectoryName: string,
+  prefix: string
+): boolean {
+  return snapshot?.lease?.ownerToken === ownerToken
+    && safeOwnerArtifactName(snapshot, prefix) === ownerDirectoryName
 }
 
 function leaseForOwner(
@@ -632,7 +688,11 @@ async function prepareLockCandidate(
       lockPath,
       ownerToken: options.ownerToken,
       ownerDirectoryPath,
-      ownerDirectoryName
+      ownerDirectoryName,
+      releasePath: join(
+        outputDir,
+        `${LOCK_RELEASE_PREFIX}${ownerFingerprint(options.ownerToken)}`
+      )
     }
   } catch {
     if (directoryCreated) {
@@ -658,6 +718,23 @@ function lockSnapshotExpired(
   return Number.isFinite(age) && age >= options.leaseDurationMs
 }
 
+function ownerCanBeRecovered(
+  snapshot: LockSnapshot,
+  options: PublicationLockOptions,
+  ownerPrefix: string
+): snapshot is LockSnapshot & { lease: EvaluationLockLease } {
+  // Expiry is diagnostic only: shared finals remain safe because recovery also requires
+  // authoritative proof that the former process cannot resume after an ownership check.
+  if (!snapshot.lease
+    || !safeOwnerArtifactName(snapshot, ownerPrefix)
+    || !lockSnapshotExpired(snapshot, options)) return false
+  try {
+    return options.ownerDefinitelyGone(snapshot.lease)
+  } catch {
+    return false
+  }
+}
+
 async function installPreparedCandidate(
   fileSystem: EvaluationPublisherFileSystem,
   ownership: PublicationLockOwnership
@@ -672,12 +749,44 @@ async function recoverySentinelExists(
   return (await readOptionalMetadata(fileSystem, sentinelPath)) !== null
 }
 
+async function recoverDeadRecoverySentinel(
+  fileSystem: EvaluationPublisherFileSystem,
+  outputDir: string,
+  sentinelPath: string,
+  options: PublicationLockOptions
+): Promise<boolean> {
+  const snapshot = await readLockSnapshot(fileSystem, sentinelPath)
+  if (!snapshot) return true
+  if (!ownerCanBeRecovered(snapshot, options, LOCK_RECOVERY_OWNER_PREFIX)) return false
+  const ownerDirectoryName = safeOwnerArtifactName(snapshot, LOCK_RECOVERY_OWNER_PREFIX)!
+  const ownerDirectoryPath = join(outputDir, ownerDirectoryName)
+  const detachedPath = join(
+    outputDir,
+    `${LOCK_RECOVERY_RELEASE_PREFIX}${ownerFingerprint(snapshot.lease.ownerToken)}`
+  )
+  try {
+    await fileSystem.rename(sentinelPath, detachedPath)
+    const detached = await readLockSnapshot(fileSystem, detachedPath)
+    if (!detached || !sameLockSnapshot(detached, snapshot)) {
+      await restoreDetachedLinkIfVacant(fileSystem, sentinelPath, detachedPath, detached)
+      return false
+    }
+    await fileSystem.remove(detachedPath)
+    await fileSystem.remove(ownerDirectoryPath)
+    return true
+  } catch (error) {
+    if (hasErrorCode(error, 'ENOENT') || hasErrorCode(error, 'EEXIST')) return false
+    if (error instanceof LakebaseEvaluationPublishError) throw error
+    throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
+  }
+}
+
 async function prepareRecoverySentinel(
   fileSystem: EvaluationPublisherFileSystem,
   outputDir: string,
-  ownerToken: string
+  options: PublicationLockOptions
 ): Promise<LockRecoveryOwnership | null> {
-  const ownerDirectoryName = `${LOCK_RECOVERY_OWNER_PREFIX}${ownerFingerprint(ownerToken)}`
+  const ownerDirectoryName = `${LOCK_RECOVERY_OWNER_PREFIX}${ownerFingerprint(options.ownerToken)}`
   const ownerDirectoryPath = join(outputDir, ownerDirectoryName)
   const sentinelPath = join(outputDir, LOCK_RECOVERY_SENTINEL_NAME)
   let directoryCreated = false
@@ -685,8 +794,12 @@ async function prepareRecoverySentinel(
     await fileSystem.makeDirectory(ownerDirectoryPath, false)
     directoryCreated = true
     await fileSystem.writeExclusive(
-      join(ownerDirectoryPath, LOCK_RECOVERY_OWNER_FILE_NAME),
-      `${JSON.stringify({ schemaVersion: 1, ownerToken })}\n`
+      join(ownerDirectoryPath, LEASE_FILE_NAME),
+      `${JSON.stringify(leaseForOwner(options, ownerDirectoryName))}\n`
+    )
+    await fileSystem.writeExclusive(
+      join(ownerDirectoryPath, HEARTBEAT_FILE_NAME),
+      `${JSON.stringify(heartbeatForOwner(options))}\n`
     )
     await fileSystem.createSymlink(ownerDirectoryName, sentinelPath)
   } catch (error) {
@@ -698,10 +811,17 @@ async function prepareRecoverySentinel(
   }
   return {
     sentinelPath,
-    ownerToken,
+    ownerToken: options.ownerToken,
     ownerDirectoryPath,
     ownerDirectoryName,
-    staleLockPath: join(ownerDirectoryPath, LOCK_RECOVERY_STALE_NAME)
+    staleLockPath: join(
+      outputDir,
+      `${LOCK_STALE_PREFIX}${ownerFingerprint(options.ownerToken)}`
+    ),
+    releaseSentinelPath: join(
+      outputDir,
+      `${LOCK_RECOVERY_RELEASE_PREFIX}${ownerFingerprint(options.ownerToken)}`
+    )
   }
 }
 
@@ -709,40 +829,91 @@ async function assertRecoveryOwnership(
   fileSystem: EvaluationPublisherFileSystem,
   recovery: LockRecoveryOwnership
 ): Promise<void> {
-  const raw = await readOptionalText(
-    fileSystem,
-    join(recovery.sentinelPath, LOCK_RECOVERY_OWNER_FILE_NAME)
-  )
+  const snapshot = await readLockSnapshot(fileSystem, recovery.sentinelPath)
+  if (!snapshotOwnedBy(
+    snapshot,
+    recovery.ownerToken,
+    recovery.ownerDirectoryName,
+    LOCK_RECOVERY_OWNER_PREFIX
+  )) throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_lock_lost')
+}
+
+async function detachOwnedCanonical(
+  fileSystem: EvaluationPublisherFileSystem,
+  canonicalPath: string,
+  detachedPath: string,
+  ownerToken: string,
+  ownerDirectoryName: string,
+  ownerPrefix: string,
+  failureCode: 'lakebase_evaluation_publish_lock_lost'
+    | 'lakebase_evaluation_publish_lock_release_failed'
+): Promise<void> {
   try {
-    const value = raw === null ? null : JSON.parse(raw) as { ownerToken?: unknown }
-    if (value?.ownerToken === recovery.ownerToken) return
-  } catch {
-    // Fall through to the stable ownership failure.
+    await fileSystem.rename(canonicalPath, detachedPath)
+    const detached = await readLockSnapshot(fileSystem, detachedPath)
+    if (!snapshotOwnedBy(detached, ownerToken, ownerDirectoryName, ownerPrefix)) {
+      await restoreDetachedLinkIfVacant(fileSystem, canonicalPath, detachedPath, detached)
+      throw new LakebaseEvaluationPublishError(failureCode)
+    }
+    await fileSystem.remove(detachedPath)
+  } catch (error) {
+    if (error instanceof LakebaseEvaluationPublishError) throw error
+    throw new LakebaseEvaluationPublishError(failureCode)
   }
-  throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_lock_lost')
 }
 
 async function clearRecoverySentinel(
   fileSystem: EvaluationPublisherFileSystem,
   recovery: LockRecoveryOwnership
 ): Promise<void> {
-  await assertRecoveryOwnership(fileSystem, recovery)
-  await fileSystem.remove(recovery.sentinelPath)
+  await detachOwnedCanonical(
+    fileSystem,
+    recovery.sentinelPath,
+    recovery.releaseSentinelPath,
+    recovery.ownerToken,
+    recovery.ownerDirectoryName,
+    LOCK_RECOVERY_OWNER_PREFIX,
+    'lakebase_evaluation_publish_lock_lost'
+  )
   await fileSystem.remove(recovery.ownerDirectoryPath)
 }
 
 function sameLockSnapshot(left: LockSnapshot, right: LockSnapshot): boolean {
   return left.leaseRaw === right.leaseRaw
     && left.heartbeatRaw === right.heartbeatRaw
+    && left.linkTarget === right.linkTarget
     && left.modifiedAtEpochMs === right.modifiedAtEpochMs
+}
+
+async function restoreDetachedLinkIfVacant(
+  fileSystem: EvaluationPublisherFileSystem,
+  canonicalPath: string,
+  detachedPath: string,
+  detached: LockSnapshot | null
+): Promise<void> {
+  if (!detached?.linkTarget) return
+  try {
+    await fileSystem.createSymlink(detached.linkTarget, canonicalPath)
+  } catch (error) {
+    if (hasErrorCode(error, 'EEXIST')) return
+    throw error
+  }
+  await fileSystem.remove(detachedPath)
 }
 
 async function releaseCandidateCanonicalOnly(
   fileSystem: EvaluationPublisherFileSystem,
   ownership: PublicationLockOwnership
 ): Promise<void> {
-  await assertLockOwnership(fileSystem, ownership)
-  await fileSystem.remove(ownership.lockPath)
+  await detachOwnedCanonical(
+    fileSystem,
+    ownership.lockPath,
+    ownership.releasePath,
+    ownership.ownerToken,
+    ownership.ownerDirectoryName,
+    LOCK_OWNER_DIRECTORY_PREFIX,
+    'lakebase_evaluation_publish_lock_lost'
+  )
 }
 
 async function waitForCanonicalAbsence(
@@ -759,62 +930,119 @@ async function waitForCanonicalAbsence(
   }
 }
 
+async function rollbackFailedStaleRecovery(
+  fileSystem: EvaluationPublisherFileSystem,
+  outputDir: string,
+  ownership: PublicationLockOwnership,
+  recovery: LockRecoveryOwnership,
+  staleSnapshot: LockSnapshot
+): Promise<void> {
+  const canonical = await readLockSnapshot(fileSystem, ownership.lockPath)
+  if (snapshotOwnedBy(
+    canonical,
+    ownership.ownerToken,
+    ownership.ownerDirectoryName,
+    LOCK_OWNER_DIRECTORY_PREFIX
+  )) {
+    await releaseCandidateCanonicalOnly(fileSystem, ownership)
+  }
+
+  const quarantined = await readLockSnapshot(fileSystem, recovery.staleLockPath)
+  if (quarantined) {
+    const occupyingCanonical = await readLockSnapshot(fileSystem, ownership.lockPath)
+    if (occupyingCanonical) {
+      if (!sameLockSnapshot(quarantined, staleSnapshot)) return
+      const staleOwnerDirectoryName = safeOwnerArtifactName(
+        staleSnapshot,
+        LOCK_OWNER_DIRECTORY_PREFIX
+      )
+      const occupyingOwnerDirectoryName = safeOwnerArtifactName(
+        occupyingCanonical,
+        LOCK_OWNER_DIRECTORY_PREFIX
+      )
+      if (!occupyingOwnerDirectoryName
+        || occupyingOwnerDirectoryName === staleOwnerDirectoryName) return
+      await fileSystem.remove(recovery.staleLockPath)
+      if (staleOwnerDirectoryName) {
+        await fileSystem.remove(join(outputDir, staleOwnerDirectoryName))
+      }
+    } else {
+      await fileSystem.rename(recovery.staleLockPath, ownership.lockPath)
+    }
+  }
+  if (await recoverySentinelExists(fileSystem, recovery.sentinelPath)) {
+    await assertRecoveryOwnership(fileSystem, recovery)
+    await clearRecoverySentinel(fileSystem, recovery)
+  } else {
+    await fileSystem.remove(recovery.ownerDirectoryPath)
+  }
+}
+
 async function recoverStaleLock(
   fileSystem: EvaluationPublisherFileSystem,
   outputDir: string,
   ownership: PublicationLockOwnership,
   snapshot: LockSnapshot,
-  sleep: (milliseconds: number) => Promise<void>
+  sleep: (milliseconds: number) => Promise<void>,
+  options: PublicationLockOptions
 ): Promise<PublicationLockOwnership | null> {
-  const recovery = await prepareRecoverySentinel(fileSystem, outputDir, ownership.ownerToken)
+  const recovery = await prepareRecoverySentinel(fileSystem, outputDir, options)
   if (!recovery) return null
 
-  await assertRecoveryOwnership(fileSystem, recovery)
-  const current = await readLockSnapshot(fileSystem, ownership.lockPath)
-  if (!current || !sameLockSnapshot(current, snapshot)) {
-    await clearRecoverySentinel(fileSystem, recovery)
-    return null
-  }
-
-  await assertRecoveryOwnership(fileSystem, recovery)
-  await fileSystem.rename(ownership.lockPath, recovery.staleLockPath)
-  const quarantined = await readLockSnapshot(fileSystem, recovery.staleLockPath)
-  if (!quarantined || !sameLockSnapshot(quarantined, snapshot)) {
+  try {
     await assertRecoveryOwnership(fileSystem, recovery)
-    await waitForCanonicalAbsence(fileSystem, ownership.lockPath, sleep)
-    await assertRecoveryOwnership(fileSystem, recovery)
-    await fileSystem.rename(recovery.staleLockPath, ownership.lockPath)
-    await clearRecoverySentinel(fileSystem, recovery)
-    return null
-  }
-
-  for (let attempt = 1; attempt <= MAX_LOCK_ATTEMPTS; attempt += 1) {
-    await assertRecoveryOwnership(fileSystem, recovery)
-    try {
-      await installPreparedCandidate(fileSystem, ownership)
-      break
-    } catch (error) {
-      if (!hasErrorCode(error, 'EEXIST')) {
-        throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
-      }
-      if (attempt === MAX_LOCK_ATTEMPTS) {
-        throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_lock_unavailable')
-      }
-      await sleep(LOCK_RETRY_MILLISECONDS)
+    const current = await readLockSnapshot(fileSystem, ownership.lockPath)
+    if (!current || !sameLockSnapshot(current, snapshot)) {
+      await clearRecoverySentinel(fileSystem, recovery)
+      return null
     }
-  }
 
-  await assertRecoveryOwnership(fileSystem, recovery)
-  await fileSystem.remove(recovery.staleLockPath)
-  const staleOwnerDirectoryName = snapshot.lease?.ownerDirectoryName
-  if (staleOwnerDirectoryName
-    && staleOwnerDirectoryName.startsWith(LOCK_OWNER_DIRECTORY_PREFIX)
-    && staleOwnerDirectoryName === staleOwnerDirectoryName.split('/').at(-1)) {
     await assertRecoveryOwnership(fileSystem, recovery)
-    await fileSystem.remove(join(outputDir, staleOwnerDirectoryName))
+    await fileSystem.rename(ownership.lockPath, recovery.staleLockPath)
+    const quarantined = await readLockSnapshot(fileSystem, recovery.staleLockPath)
+    if (!quarantined || !sameLockSnapshot(quarantined, snapshot)) {
+      await assertRecoveryOwnership(fileSystem, recovery)
+      await waitForCanonicalAbsence(fileSystem, ownership.lockPath, sleep)
+      await assertRecoveryOwnership(fileSystem, recovery)
+      await fileSystem.rename(recovery.staleLockPath, ownership.lockPath)
+      await clearRecoverySentinel(fileSystem, recovery)
+      return null
+    }
+
+    for (let attempt = 1; attempt <= MAX_LOCK_ATTEMPTS; attempt += 1) {
+      await assertRecoveryOwnership(fileSystem, recovery)
+      try {
+        await installPreparedCandidate(fileSystem, ownership)
+        break
+      } catch (error) {
+        if (!hasErrorCode(error, 'EEXIST')) {
+          throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
+        }
+        if (attempt === MAX_LOCK_ATTEMPTS) {
+          throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_lock_unavailable')
+        }
+        await sleep(LOCK_RETRY_MILLISECONDS)
+      }
+    }
+
+    await assertRecoveryOwnership(fileSystem, recovery)
+    await fileSystem.remove(recovery.staleLockPath)
+    const staleOwnerDirectoryName = safeOwnerArtifactName(
+      snapshot,
+      LOCK_OWNER_DIRECTORY_PREFIX
+    )
+    if (staleOwnerDirectoryName) {
+      await assertRecoveryOwnership(fileSystem, recovery)
+      await fileSystem.remove(join(outputDir, staleOwnerDirectoryName))
+    }
+    await clearRecoverySentinel(fileSystem, recovery)
+    return ownership
+  } catch (error) {
+    await Promise.allSettled([
+      rollbackFailedStaleRecovery(fileSystem, outputDir, ownership, recovery, snapshot)
+    ])
+    throw error
   }
-  await clearRecoverySentinel(fileSystem, recovery)
-  return ownership
 }
 
 async function acquirePublicationLock(
@@ -830,6 +1058,12 @@ async function acquirePublicationLock(
   try {
     for (let attempt = 1; attempt <= MAX_LOCK_ATTEMPTS; attempt += 1) {
       if (await recoverySentinelExists(fileSystem, recoverySentinelPath)) {
+        if (await recoverDeadRecoverySentinel(
+          fileSystem,
+          outputDir,
+          recoverySentinelPath,
+          options
+        )) continue
         if (attempt === MAX_LOCK_ATTEMPTS) {
           throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_lock_unavailable')
         }
@@ -857,13 +1091,18 @@ async function acquirePublicationLock(
           throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
         }
         const snapshot = await readLockSnapshot(fileSystem, lockPath)
-        if (snapshot && lockSnapshotExpired(snapshot, options)) {
+        if (snapshot && ownerCanBeRecovered(
+          snapshot,
+          options,
+          LOCK_OWNER_DIRECTORY_PREFIX
+        )) {
           const ownership = await recoverStaleLock(
             fileSystem,
             outputDir,
             candidate,
             snapshot,
-            sleep
+            sleep,
+            options
           )
           if (ownership) {
             installed = true
@@ -890,7 +1129,12 @@ async function assertLockOwnership(
   ownership: PublicationLockOwnership
 ): Promise<void> {
   const snapshot = await readLockSnapshot(fileSystem, ownership.lockPath)
-  if (!snapshot?.lease || snapshot.lease.ownerToken !== ownership.ownerToken) {
+  if (!snapshotOwnedBy(
+    snapshot,
+    ownership.ownerToken,
+    ownership.ownerDirectoryName,
+    LOCK_OWNER_DIRECTORY_PREFIX
+  )) {
     throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_lock_lost')
   }
 }
@@ -1066,11 +1310,15 @@ async function releasePublicationLock(
   ownership: PublicationLockOwnership
 ): Promise<void> {
   try {
-    const inspected = await readLockSnapshot(fileSystem, ownership.lockPath)
-    if (!inspected?.lease || inspected.lease.ownerToken !== ownership.ownerToken) {
-      throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_lock_release_failed')
-    }
-    await fileSystem.remove(ownership.lockPath)
+    await detachOwnedCanonical(
+      fileSystem,
+      ownership.lockPath,
+      ownership.releasePath,
+      ownership.ownerToken,
+      ownership.ownerDirectoryName,
+      LOCK_OWNER_DIRECTORY_PREFIX,
+      'lakebase_evaluation_publish_lock_release_failed'
+    )
     await fileSystem.remove(ownership.ownerDirectoryPath)
   } catch {
     throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_lock_release_failed')
@@ -1118,6 +1366,7 @@ export async function publishEvaluationReports(
     now: deps.now || (() => Date.now()),
     ownerToken: (deps.ownerToken || (() => randomUUID()))(),
     leaseDurationMs,
+    ownerDefinitelyGone: deps.ownerDefinitelyGone || ownerProcessDefinitelyGone,
     heartbeatIntervalMs: Math.min(
       Math.max(1, deps.heartbeatIntervalMs ?? maximumHeartbeatIntervalMs),
       maximumHeartbeatIntervalMs
