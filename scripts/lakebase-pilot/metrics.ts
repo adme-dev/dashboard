@@ -50,7 +50,6 @@ export interface Bm25GateDecision {
 
 const REQUIRED_MRR_IMPROVEMENT = 0.10
 const REQUIRED_P95_IMPROVEMENT = 0.30
-const FLOATING_POINT_TOLERANCE = 1e-12
 
 function requirePositiveInteger(value: number, name: string): void {
   if (!Number.isInteger(value) || value < 1) {
@@ -73,6 +72,18 @@ function noResultScore(resultIds: readonly string[], relevantIds: ReadonlySet<st
   return resultIds.length === 0 ? 1 : 0
 }
 
+function firstUniqueIds(resultIds: readonly string[], k: number): string[] {
+  const uniqueIds: string[] = []
+  const seen = new Set<string>()
+  for (const id of resultIds) {
+    if (seen.has(id)) continue
+    seen.add(id)
+    uniqueIds.push(id)
+    if (uniqueIds.length === k) break
+  }
+  return uniqueIds
+}
+
 export function precisionAtK(
   resultIds: readonly string[],
   relevantIds: ReadonlySet<string>,
@@ -82,9 +93,8 @@ export function precisionAtK(
   const emptyRelevantScore = noResultScore(resultIds, relevantIds)
   if (emptyRelevantScore !== null) return emptyRelevantScore
 
-  const inspected = resultIds.slice(0, k)
-  if (inspected.length === 0) return 0
-  return inspected.filter(id => relevantIds.has(id)).length / inspected.length
+  const inspected = firstUniqueIds(resultIds, k)
+  return inspected.filter(id => relevantIds.has(id)).length / k
 }
 
 export function recallAtK(
@@ -208,11 +218,10 @@ export function decideBm25Gate(input: Bm25GateInput): Bm25GateDecision {
     || input.bm25.mrr < input.legacy.mrr
   if (relevanceRegression) blockers.push('precision_regression')
 
-  const mrrImprovement = input.bm25.mrr - input.legacy.mrr
-  const p95Improvement = (input.legacy.p95 - input.bm25.p95) / input.legacy.p95
-  const improvesMrr = mrrImprovement + FLOATING_POINT_TOLERANCE >= REQUIRED_MRR_IMPROVEMENT
+  const improvesMrr = input.bm25.mrr >= input.legacy.mrr + REQUIRED_MRR_IMPROVEMENT
     && input.bm25.precisionAt5 >= input.legacy.precisionAt5
-  const improvesP95 = p95Improvement + FLOATING_POINT_TOLERANCE >= REQUIRED_P95_IMPROVEMENT && !relevanceRegression
+  const improvesP95 = input.bm25.p95 <= input.legacy.p95 * (1 - REQUIRED_P95_IMPROVEMENT)
+    && !relevanceRegression
   if (!improvesMrr && !improvesP95) blockers.push('insufficient_improvement')
 
   return blockers.length === 0

@@ -38,6 +38,11 @@ describe('Lakebase pilot retrieval metrics', () => {
     expect(reciprocalRank(['unexpected'], new Set())).toBe(0)
   })
 
+  it('evaluates exactly K unique ranks, treating missing ranks as non-relevant', () => {
+    expect(precisionAtK(['a', 'b'], new Set(['a', 'b']), 5)).toBe(2 / 5)
+    expect(precisionAtK(['a', 'a', 'b', 'x'], new Set(['a', 'b']), 3)).toBe(2 / 3)
+  })
+
   it('rejects invalid numeric inputs instead of producing misleading metrics', () => {
     expect(() => precisionAtK(['a'], new Set(['a']), 0)).toThrow(RangeError)
     expect(() => percentile([], 0.95)).toThrow(RangeError)
@@ -61,7 +66,7 @@ describe('Lakebase pilot retrieval metrics', () => {
       crossClientLeakage: 3,
       softDeleteLeakage: 4
     })
-    expect(summary.precisionAt5).toBeCloseTo(5 / 6)
+    expect(summary.precisionAt5).toBeCloseTo(0.7)
     expect(summary).toMatchObject({
       recallAt10: 1, mrr: 1, p50: 20, p95: 40, max: 40,
       failures: 1, fallbacks: 2, crossClientLeakage: 3, softDeleteLeakage: 4
@@ -92,6 +97,17 @@ describe('Lakebase pilot BM25 acceptance gate', () => {
     })
   })
 
+  it('blocks an MRR regression even when Precision@5 and latency improve', () => {
+    expect(decideBm25Gate({
+      legacy,
+      bm25: { ...legacy, mrr: 0.49, p95: 50 }
+    })).toEqual({
+      status: 'hold',
+      passed: false,
+      blockers: ['precision_regression', 'insufficient_improvement']
+    })
+  })
+
   it('is eligible for review with the required MRR improvement and no precision regression', () => {
     expect(decideBm25Gate({
       legacy,
@@ -104,6 +120,17 @@ describe('Lakebase pilot BM25 acceptance gate', () => {
       legacy,
       bm25: { ...legacy, p95: 70 }
     })).toEqual({ status: 'eligible_for_hybrid_review', passed: true, blockers: [] })
+  })
+
+  it('holds just-below MRR and p95 improvements', () => {
+    expect(decideBm25Gate({
+      legacy,
+      bm25: { ...legacy, mrr: 0.599999999999 }
+    })).toEqual({ status: 'hold', passed: false, blockers: ['insufficient_improvement'] })
+    expect(decideBm25Gate({
+      legacy,
+      bm25: { ...legacy, p95: 70.0000000001 }
+    })).toEqual({ status: 'hold', passed: false, blockers: ['insufficient_improvement'] })
   })
 
   it('rejects invalid gate counts and denominators', () => {
