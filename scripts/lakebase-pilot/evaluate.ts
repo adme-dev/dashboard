@@ -1,5 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import {
+  mkdir as fsMkdir,
+  readFile,
+  rename as fsRename,
+  rm as fsRm,
+  writeFile as fsWriteFile
+} from 'node:fs/promises'
 import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { pathToFileURL } from 'node:url'
@@ -65,6 +71,46 @@ export interface LakebaseEvaluationDependencies {
   searchBm25?: EvaluationSearch
   now?: () => Date
   nowMs?: () => number
+  publishReports?: EvaluationReportPublisher
+  publisherDependencies?: EvaluationPublisherDependencies
+}
+
+export interface EvaluationReportPayload {
+  json: string
+  markdown: string
+}
+
+export interface EvaluationReportPaths {
+  json: string
+  markdown: string
+}
+
+export interface EvaluationPublisherFileSystem {
+  makeDirectory: (path: string, recursive: boolean) => Promise<void>
+  writeExclusive: (path: string, content: string) => Promise<void>
+  rename: (from: string, to: string) => Promise<void>
+  remove: (path: string) => Promise<void>
+}
+
+export interface EvaluationPublisherDependencies {
+  fileSystem?: EvaluationPublisherFileSystem
+  sleep?: (milliseconds: number) => Promise<void>
+}
+
+export type EvaluationReportPublisher = (
+  outputDir: string,
+  payload: EvaluationReportPayload
+) => Promise<EvaluationReportPaths>
+
+export class LakebaseEvaluationPublishError extends Error {
+  constructor(readonly code:
+    | 'lakebase_evaluation_publish_failed'
+    | 'lakebase_evaluation_publish_lock_unavailable'
+    | 'lakebase_evaluation_publish_rollback_failed'
+  ) {
+    super(code)
+    this.name = 'LakebaseEvaluationPublishError'
+  }
 }
 
 export interface ReportedEngineMetrics extends EngineMetricSummary {
@@ -113,10 +159,7 @@ export interface LakebaseEvaluationReport {
 export interface LakebaseEvaluationResult {
   exitCode: 0 | 1
   report: LakebaseEvaluationReport
-  paths: {
-    json: string
-    markdown: string
-  }
+  paths: EvaluationReportPaths
 }
 
 interface EngineEvaluation {
@@ -356,35 +399,168 @@ function markdownReport(report: LakebaseEvaluationReport): string {
   ].join('\n')
 }
 
-async function writeReportsAtomically(
+const LOCK_RETRY_MILLISECONDS = 10
+const MAX_LOCK_ATTEMPTS = 500
+
+const defaultPublisherFileSystem: EvaluationPublisherFileSystem = {
+  async makeDirectory(path, recursive) {
+    await fsMkdir(path, { recursive })
+  },
+  async writeExclusive(path, content) {
+    await fsWriteFile(path, content, { flag: 'wx' })
+  },
+  async rename(from, to) {
+    await fsRename(from, to)
+  },
+  async remove(path) {
+    await fsRm(path, { recursive: true, force: true })
+  }
+}
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === code
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, milliseconds))
+}
+
+async function acquirePublicationLock(
+  fileSystem: EvaluationPublisherFileSystem,
+  lockPath: string,
+  sleep: (milliseconds: number) => Promise<void>
+): Promise<void> {
+  for (let attempt = 1; attempt <= MAX_LOCK_ATTEMPTS; attempt += 1) {
+    try {
+      await fileSystem.makeDirectory(lockPath, false)
+      return
+    } catch (error) {
+      if (!hasErrorCode(error, 'EEXIST')) {
+        throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
+      }
+      if (attempt === MAX_LOCK_ATTEMPTS) {
+        throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_lock_unavailable')
+      }
+      await sleep(LOCK_RETRY_MILLISECONDS)
+    }
+  }
+}
+
+async function moveIfPresent(
+  fileSystem: EvaluationPublisherFileSystem,
+  from: string,
+  to: string
+): Promise<boolean> {
+  try {
+    await fileSystem.rename(from, to)
+    return true
+  } catch (error) {
+    if (hasErrorCode(error, 'ENOENT')) return false
+    throw error
+  }
+}
+
+async function cleanupPublicationPaths(
+  fileSystem: EvaluationPublisherFileSystem,
+  paths: readonly string[]
+): Promise<void> {
+  await Promise.allSettled(paths.map(path => fileSystem.remove(path)))
+}
+
+async function restorePriorPublication(
+  fileSystem: EvaluationPublisherFileSystem,
+  paths: EvaluationReportPaths,
+  backups: EvaluationReportPaths,
+  prior: { json: boolean, markdown: boolean }
+): Promise<boolean> {
+  const removals = await Promise.allSettled([
+    fileSystem.remove(paths.json),
+    fileSystem.remove(paths.markdown)
+  ])
+  const restores = await Promise.allSettled([
+    prior.json ? fileSystem.rename(backups.json, paths.json) : Promise.resolve(),
+    prior.markdown ? fileSystem.rename(backups.markdown, paths.markdown) : Promise.resolve()
+  ])
+  return [...removals, ...restores].every(result => result.status === 'fulfilled')
+}
+
+export async function publishEvaluationReports(
   outputDir: string,
-  report: LakebaseEvaluationReport
-): Promise<LakebaseEvaluationResult['paths']> {
-  await mkdir(outputDir, { recursive: true })
+  payload: EvaluationReportPayload,
+  deps: EvaluationPublisherDependencies = {}
+): Promise<EvaluationReportPaths> {
+  const fileSystem = deps.fileSystem || defaultPublisherFileSystem
+  const sleep = deps.sleep || delay
+  try {
+    await fileSystem.makeDirectory(outputDir, true)
+  } catch {
+    throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
+  }
+
   const paths = {
     json: join(outputDir, 'evaluation.json'),
     markdown: join(outputDir, 'evaluation.md')
   }
+  const lockPath = join(outputDir, '.evaluation.lock')
   const nonce = `${process.pid}-${randomUUID()}`
   const temporaryPaths = {
     json: join(outputDir, `.evaluation.json.${nonce}.tmp`),
     markdown: join(outputDir, `.evaluation.md.${nonce}.tmp`)
   }
+  const backupPaths = {
+    json: join(outputDir, `.evaluation.json.${nonce}.backup`),
+    markdown: join(outputDir, `.evaluation.md.${nonce}.backup`)
+  }
+  const prior = { json: false, markdown: false }
+  let lockAcquired = false
+  let publicationStarted = false
 
   try {
-    await Promise.all([
-      writeFile(temporaryPaths.json, `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' }),
-      writeFile(temporaryPaths.markdown, markdownReport(report), { flag: 'wx' })
+    await acquirePublicationLock(fileSystem, lockPath, sleep)
+    lockAcquired = true
+
+    const writes = await Promise.allSettled([
+      fileSystem.writeExclusive(temporaryPaths.json, payload.json),
+      fileSystem.writeExclusive(temporaryPaths.markdown, payload.markdown)
     ])
-    await rename(temporaryPaths.json, paths.json)
-    await rename(temporaryPaths.markdown, paths.markdown)
+    if (writes.some(result => result.status === 'rejected')) {
+      throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
+    }
+
+    prior.json = await moveIfPresent(fileSystem, paths.json, backupPaths.json)
+    try {
+      prior.markdown = await moveIfPresent(fileSystem, paths.markdown, backupPaths.markdown)
+    } catch (error) {
+      if (prior.json) {
+        try {
+          await fileSystem.rename(backupPaths.json, paths.json)
+        } catch {
+          throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_rollback_failed')
+        }
+      }
+      throw error
+    }
+    publicationStarted = true
+    await fileSystem.rename(temporaryPaths.json, paths.json)
+    await fileSystem.rename(temporaryPaths.markdown, paths.markdown)
     return paths
   } catch (error) {
-    await Promise.all([
-      rm(temporaryPaths.json, { force: true }),
-      rm(temporaryPaths.markdown, { force: true })
+    if (publicationStarted) {
+      const restored = await restorePriorPublication(fileSystem, paths, backupPaths, prior)
+      if (!restored) {
+        throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_rollback_failed')
+      }
+    }
+    if (error instanceof LakebaseEvaluationPublishError) throw error
+    throw new LakebaseEvaluationPublishError('lakebase_evaluation_publish_failed')
+  } finally {
+    await cleanupPublicationPaths(fileSystem, [
+      temporaryPaths.json,
+      temporaryPaths.markdown,
+      backupPaths.json,
+      backupPaths.markdown
     ])
-    throw error
+    if (lockAcquired) await cleanupPublicationPaths(fileSystem, [lockPath])
   }
 }
 
@@ -468,7 +644,13 @@ export async function runLakebaseEvaluation(
     queries,
     gate
   }
-  const paths = await writeReportsAtomically(options.outputDir, report)
+  const publishReports = deps.publishReports || ((outputDir, payload) => (
+    publishEvaluationReports(outputDir, payload, deps.publisherDependencies)
+  ))
+  const paths = await publishReports(options.outputDir, {
+    json: `${JSON.stringify(report, null, 2)}\n`,
+    markdown: markdownReport(report)
+  })
   return { exitCode: gate.passed ? 0 : 1, report, paths }
 }
 
