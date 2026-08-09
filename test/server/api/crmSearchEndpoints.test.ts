@@ -385,6 +385,28 @@ describe('retired CRM search transport', () => {
 
   it.each([
     [
+      'after an approved direct transport call',
+      `const endpoint = '/api/crm/search'
+       globalThis.fetch(endpoint, { method: 'POST', body: { query } })
+       export const leakedEndpoint = endpoint`
+    ],
+    [
+      'after an approved direct transport call and logger use',
+      `const endpoint = '/api/crm/search'
+       globalThis.fetch(endpoint, { method: 'POST', body: { query } })
+       console.info(endpoint)
+       export const leakedEndpoint = endpoint`
+    ]
+  ])('rejects an exported target alias %s', (_label, source) => {
+    expect(inspectCrmSearchCallerSource(source, 'app/exported-endpoint.ts'))
+      .toContainEqual({
+        filePath: 'app/exported-endpoint.ts',
+        reason: 'CRM search target evidence was not consumed by an approved direct POST body call'
+      })
+  })
+
+  it.each([
+    [
       'nested object and array endpoint alias',
       `const routes = { crm: { endpoints: ['/api/crm/search'] } }
        const endpoint = routes.crm.endpoints[0]

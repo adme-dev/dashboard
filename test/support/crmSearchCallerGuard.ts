@@ -516,10 +516,40 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
       : false
   }
 
+  const resolveWithoutRecordingEvidence = (
+    input: ts.Expression,
+    location: ts.Node = input
+  ): StringResolution => {
+    const previouslyTracked = new Set(targetEvidence)
+    const resolved = resolveStrings(input, location)
+    for (const evidence of targetEvidence) {
+      if (!previouslyTracked.has(evidence)) targetEvidence.delete(evidence)
+    }
+    return resolved
+  }
+
   const collectNodeTargetEvidence = (node: ts.Node) => {
     const isComposedExpression = ts.isTemplateExpression(node)
       || (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken)
-    if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
+    const isDirectAliasDeclaration = ts.isVariableDeclaration(node)
+      && ts.isIdentifier(node.name)
+      && !!node.initializer
+      && (() => {
+        const initializer = unwrapExpression(node.initializer)
+        return ts.isIdentifier(initializer)
+          || ts.isPropertyAccessExpression(initializer)
+          || ts.isElementAccessExpression(initializer)
+      })()
+    if (isDirectAliasDeclaration
+      || (ts.isBindingElement(node) && ts.isIdentifier(node.name))) {
+      const declared = ts.isVariableDeclaration(node)
+        ? { expression: node.initializer }
+        : resolveDeclaredValue(node, new Set([node.pos]))
+      if (declared.expression) {
+        const resolved = resolveWithoutRecordingEvidence(declared.expression, declared.expression)
+        if (resolved.values.some(value => hasSearchTargetEvidence(value))) evidenceFor(node)
+      }
+    } else if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
       && hasSearchTargetEvidence(node.text)) {
       evidenceFor(node)
     } else if (isComposedExpression && expressionHasTargetEvidence(node, parsed)) {
@@ -537,7 +567,10 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
     collectNodeTargetEvidence(node)
     if (ts.isCallExpression(node)) {
       const isTransportCall = isTransportExpression(node.expression, node.expression)
-      const argumentResolutions = node.arguments.map(argument => resolveStrings(argument, argument))
+      const argumentResolutions = node.arguments.map((argument) => {
+        const resolved = resolveStrings(argument, argument)
+        return resolved.targetEvidence ? withEvidence(resolved, argument) : resolved
+      })
       const targetArgumentResolutions = argumentResolutions.filter(resolution => resolution.targetEvidence)
       const hasArgumentTargetEvidence = targetArgumentResolutions.length > 0
       if (hasArgumentTargetEvidence && !isTransportCall && !isKnownNonTransportCall(node.expression)) {
@@ -558,7 +591,7 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
         return
       }
 
-      const endpoint = resolveStrings(node.arguments[0], node.arguments[0])
+      const endpoint = argumentResolutions[0]!
       const targetValues = endpoint.values.filter(value => hasSearchTargetEvidence(value))
       const hasTarget = targetValues.length > 0 || endpoint.targetEvidence
       if (hasTarget) {

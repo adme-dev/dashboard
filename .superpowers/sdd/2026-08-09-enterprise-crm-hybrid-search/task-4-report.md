@@ -328,3 +328,45 @@ This gate covers owner-scope batch/child/aggregate/indirect surfaces, CRM bulk/d
 ## Remaining Concern
 
 - The repository-wide typecheck remains an unreliable local gate because of its heap demand and unrelated baseline diagnostics. The bounded touched-path filter, focused behavioral gate, and canonical security gate are clean.
+
+---
+
+# Review Round 7 — Per-Occurrence Search Target Accounting
+
+## Result
+
+- Review base: `0bbfd0ddcbc2a98153fd56d2edc224ec4d07e80c`.
+- Intended commit: `fix(crm): track each search target occurrence`.
+- Scope: the final caller-guard occurrence-accounting MEDIUM finding only; no runtime transport, privacy classifier, UI, route, API, authorization, provider, database, migration, deployment, or marketing behavior changed.
+
+## Repair
+
+- Every target-bearing call argument now receives its own AST evidence node in addition to resolved provenance. An approved direct transport accounts for that argument and its statically proven alias chain; a console/logger call exempts only its own argument chain; neither status can erase a later occurrence.
+- Direct identifier/member alias declarations and leaf destructured bindings that resolve to target string values are registered as distinct ledger occurrences. A later `export const leakedEndpoint = endpoint` therefore remains pending even after the origin was consumed by an approved fetch or exempted by a logger, while an alias actually used by an approved direct call is resolved and consumed normally.
+- Declaration probing restores the evidence ledger after static resolution, and only string-valued alias leaves are registered. This prevents probes from polluting the ledger with object/array carrier nodes and preserves safe nested member/destructuring controls plus the benign composed client-CRM access-policy path constant.
+
+## Behavioral TDD Evidence
+
+- RED command under Node 24.18.0: `node node_modules/vitest/vitest.mjs run test/server/api/crmSearchEndpoints.test.ts` before guard edits.
+- RED result: 1 file failed, with exactly 2 new failures and 52 passes. Both the approved-fetch-then-export case and the approved-fetch/logger-then-export case returned `[]` instead of the final unconsumed-evidence violation.
+- The first implementation made both new cases pass but the production-root control exposed one false positive for the composed `CRM_SEARCH_POST_PATH` access-policy constant. Restricting declaration occurrences to direct string aliases and leaf bindings removed that false positive without weakening the two RED cases.
+- Final focused GREEN result: 1 file/54 tests passed in 2.72 seconds. No guard implementation preceded RED.
+
+## Verification
+
+- Exact Task 4 gate under Node 24.18.0: 10 files/203 tests passed.
+- Canonical Task 1–3/security regression gate under Node 24.18.0: 32 files/283 tests passed.
+- ESLint over `test/support/crmSearchCallerGuard.ts` and `test/server/api/crmSearchEndpoints.test.ts`: clean.
+- A temporary TypeScript project covering the two touched files produced zero diagnostics for either touched path. Its 32 diagnostics were confined to imported baseline server dependencies lacking the full generated Nitro context; the temporary config was removed.
+- `git diff --check`: clean.
+
+## Deep Review
+
+- Re-read both changed TypeScript files end-to-end (689 guard lines and 477 endpoint-test lines), reviewed the complete diff, and reviewed this appended report before staging.
+- Confirmed the two exported-alias occurrences remain pending independently of earlier consumed/exempt provenance, while direct literal, simple alias, nested member, nested destructured, logger-only, array-spread, later-assignment, and chained-assignment controls retain their required outcomes.
+- Confirmed the declaration probe mutates no persistent evidence state unless it identifies a concrete target string alias, call-site occurrence evidence is reused for endpoint policy evaluation, lexical resolution is unchanged, and no arbitrary wrapper execution was added.
+- Confirmed no production/runtime, privacy, UI, API, authorization, dependency, migration, or external-state file changed.
+
+## Remaining Concern
+
+- The repository-wide typecheck remains resource-heavy and noisy outside Task 4; the bounded touched-path diagnostics and all requested behavioral/security gates are clean.
