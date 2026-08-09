@@ -50,7 +50,6 @@ describe('AI internal fetch inventory', () => {
       'GET /api/agency/social/reporting/overview',
       'GET /api/agency/social/spend/summary',
       'GET /api/crm/pipeline',
-      'GET /api/crm/search',
       'GET /api/crm/stages',
       'GET /api/email/campaigns',
       'GET /api/email/campaigns/${}/events',

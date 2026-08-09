@@ -144,6 +144,13 @@ describe('client CRM access', () => {
     expect(resolveClientCrmAccessLevel('/api/client-portal/crm/tasks/123', 'PATCH')).toBe('edit')
   })
 
+  it('treats only the exact privacy-preserving search POST as a view', () => {
+    expect(resolveClientCrmAccessLevel('/api/client-portal/crm/search', 'POST')).toBe('view')
+    expect(resolveClientCrmAccessLevel('/api/client-portal/crm/search/', 'POST')).toBe('edit')
+    expect(resolveClientCrmAccessLevel('/api/client-portal/crm/search/export', 'POST')).toBe('edit')
+    expect(resolveClientCrmAccessLevel('/api/client-portal/crm/searching', 'POST')).toBe('edit')
+  })
+
   it('caches an exact successful access level for middleware and an explicit mutation handler', async () => {
     const middleware = (await import('../../../../server/middleware/04-client-crm-access')).default
     const handler = (await import('../../../../server/api/client-portal/crm/email-routes/[id].delete')).default

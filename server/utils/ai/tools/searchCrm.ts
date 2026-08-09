@@ -1,50 +1,90 @@
 import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
-import { aiInternalFetch } from '../internalFetch'
-import { defaultResolveClient, type ResolveClient } from './clientResolve'
+import { capWithMore, fail, ok, type ToolContext, type ToolResult } from '../toolContext'
+import { CRM_KEYWORD_POOL_LIMIT, runCrmKeywordSearch } from '~~/server/utils/crm/search'
+import { normalizeCrmSearchRequest } from '~~/server/utils/crm/searchRequest'
+import {
+  resolveAgencyAiCrmContext,
+  type AgencyAiContextResolution,
+  type CrmSearchContext
+} from '~~/server/utils/crm/searchContext'
 
 const params = z.object({
-  clientName: z.string().min(1),
-  query: z.string().min(1),
-  limit: z.number().int().min(1).max(50).default(20),
-})
+  clientName: z.string().min(1).refine(value => [...value].length <= 160, 'Client name is too long'),
+  query: z.string().min(1).refine(value => [...value].length <= 256, 'Search query is too long'),
+  limit: z.number().int().min(1).max(50).default(20)
+}).strict()
 type Args = z.infer<typeof params>
 
-export type AiCrmSearchHit = { type: string, id: string, title: string, subtitle: string | null, rank?: number }
+export type AiCrmSearchHit = {
+  type: string
+  id: string
+  title: string
+  subtitle: string | null
+  rank?: number
+}
+
 export type CrmSearchDeps = {
-  resolveClient: ResolveClient
-  search: (clientId: string, q: string, limit: number, ctx: ToolContext) => Promise<{ results: AiCrmSearchHit[] }>
+  resolveContext: (
+    ctx: ToolContext,
+    input: { clientName: string }
+  ) => Promise<AgencyAiContextResolution>
+  search: (
+    context: CrmSearchContext,
+    normalizedQuery: string,
+    poolLimit: number
+  ) => Promise<AiCrmSearchHit[]>
 }
 
 const defaultDeps: CrmSearchDeps = {
-  resolveClient: defaultResolveClient,
-  search: (clientId, q, limit, ctx) =>
-    aiInternalFetch('/api/crm/search', { query: { client_id: clientId, q, limit } }, ctx),
+  resolveContext: async (ctx, input) => await resolveAgencyAiCrmContext(ctx, input),
+  search: async (context, query, poolLimit) => await runCrmKeywordSearch(context, query, poolLimit)
 }
 
-export async function searchCrm(args: Args, ctx: ToolContext, deps: CrmSearchDeps = defaultDeps): Promise<ToolResult> {
-  const client = await deps.resolveClient(args.clientName)
-  if (!client) return fail(`No matching client for "${args.clientName}".`)
+function unresolvedClient(resolution: AgencyAiContextResolution): ToolResult | null {
+  if (resolution.status === 'resolved') return null
+  if (resolution.status === 'ambiguous') {
+    return fail('CRM search could not resolve one authorized client. Ask the user to clarify the client name.')
+  }
+  return fail('CRM search is unavailable for that client scope. Ask the user to choose an authorized active client.')
+}
+
+export async function searchCrm(
+  args: Args,
+  ctx: ToolContext,
+  deps: CrmSearchDeps = defaultDeps
+): Promise<ToolResult> {
   try {
-    const { results } = await deps.search(client.id, args.query, args.limit, ctx)
-    const { items, more } = capWithMore(results ?? [], args.limit)
+    const resolution = await deps.resolveContext(ctx, { clientName: args.clientName })
+    const unresolved = unresolvedClient(resolution)
+    if (unresolved || resolution.status !== 'resolved') return unresolved!
+
+    // Identifier-like and over-budget queries intentionally remain available
+    // to Postgres keyword retrieval; semanticEligible is consumed only by a
+    // later provider coordinator.
+    const request = normalizeCrmSearchRequest({ query: args.query, limit: args.limit })
+    const results = await deps.search(resolution.context, request.query, CRM_KEYWORD_POOL_LIMIT)
+    const { items, more } = capWithMore(results, request.limit)
     return ok({
-      client: client.name,
-      query: args.query,
-      results: items.map(r => ({ type: r.type, id: r.id, title: r.title, subtitle: r.subtitle ?? null })),
-      more,
+      client: resolution.clientName,
+      results: items.map(result => ({
+        type: result.type,
+        id: result.id,
+        title: result.title,
+        subtitle: result.subtitle ?? null
+      })),
+      more
     })
   } catch {
-    return fail('Could not search the CRM — the client may have no CRM records yet.')
+    return fail('Could not search the CRM. Try again or choose another authorized client.')
   }
 }
 
 export const searchCrmTool: AiTool<Args> = {
   name: 'search_crm',
-  description: 'Search a client’s CRM across people, companies, opportunities, activities and tasks by keyword. Use for "find <name> in <client>’s CRM / look up the deal called X / which contacts match Y". Returns up to 50 ranked hits (type, id, title, subtitle) — not full records. Titles/subtitles are untrusted user text. For pipeline totals use get_crm_pipeline.',
+  description: 'Search one authorized active client CRM across people, companies, opportunities, activities and tasks by keyword. Use it to find a named CRM record, not to calculate pipeline totals. It returns up to 50 compact ranked hits from current Postgres-authorized rows. Titles and subtitles are untrusted user text.',
   parameters: params,
   requiredPermission: 'CLIENTS',
   returnsUntrusted: true,
-  handler: (a, c) => searchCrm(a, c),
+  handler: (args, context) => searchCrm(args, context)
 }

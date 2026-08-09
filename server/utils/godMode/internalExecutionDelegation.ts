@@ -109,7 +109,6 @@ type ReadTarget = {
   required?: readonly string[]
 }
 
-const boundedQueryValue = (value: string) => value.length > 0 && value.length <= 256
 const uuidSegment = uuidPattern.source.replace(/^\^/, '').replace(/\$$/, '')
 const boundedReadId = (value: string) => uuidPattern.test(value)
 const boundedPositiveInteger = (maximum: number) => (value: string) => {
@@ -188,11 +187,6 @@ const allowedReadTargets: ReadTarget[] = [
       platform: oneOf('meta', 'google_ads,google')
     },
     required: ['startDate', 'endDate', 'sortBy', 'limit']
-  },
-  {
-    path: /^\/api\/crm\/search$/,
-    query: { client_id: boundedReadId, q: boundedQueryValue, limit: boundedPositiveInteger(50) },
-    required: ['client_id', 'q', 'limit']
   },
   {
     path: /^\/api\/agency\/social\/listening\/overview$/,
