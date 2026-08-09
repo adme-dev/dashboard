@@ -4,6 +4,7 @@
 import { z } from 'zod'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { runBulk } from '~~/server/utils/crm/bulk'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -19,5 +20,6 @@ export default defineEventHandler(async (event) => {
   const parsed = Body.safeParse(await readBody(event))
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.message })
   const b = parsed.data
-  return await runBulk(b.client_id, { entity: b.entity, action: b.action, ids: b.ids, payload: b.payload })
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: b.client_id, surface: 'agency_global' })
+  return await runBulk(context, { entity: b.entity, action: b.action, ids: b.ids, payload: b.payload })
 })

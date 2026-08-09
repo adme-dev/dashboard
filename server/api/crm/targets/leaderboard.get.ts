@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
 import { getLeaderboard } from '~~/server/utils/crm/targetsDb'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
 
 const Query = z.object({
   client_id: z.string().uuid(),
@@ -12,5 +13,6 @@ const Query = z.object({
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const q = Query.parse(getQuery(event))
-  return { rows: await getLeaderboard(q.client_id, q.period_start, q.period_end) }
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: q.client_id, surface: 'agency_global' })
+  return { rows: await getLeaderboard(context, q.period_start, q.period_end) }
 })

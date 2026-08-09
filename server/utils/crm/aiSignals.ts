@@ -5,6 +5,8 @@
 import { queryOne } from '~~/server/utils/db'
 import type { OppSignals } from './nextBestAction'
 import type { DraftContext } from './aiDraft'
+import type { CrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { requireAllCrmRecordsAccess, requireCrmRecordAccess } from '~~/server/utils/crm/recordAccess'
 
 export interface OppContext {
   signals: OppSignals
@@ -14,7 +16,9 @@ export interface OppContext {
 const dayDiff = (iso: string | null, now: Date): number | null =>
   iso === null ? null : Math.floor((now.getTime() - new Date(iso).getTime()) / 86400000)
 
-export async function gatherOppContext(clientId: string, oppId: string, now: Date = new Date()): Promise<OppContext | null> {
+export async function gatherOppContext(scope: string | CrmSearchContext, oppId: string, now: Date = new Date()): Promise<OppContext | null> {
+  const clientId = typeof scope === 'string' ? scope : scope.clientId
+  if (typeof scope !== 'string') await requireCrmRecordAccess(scope, { type: 'opportunity', id: oppId })
   const opp = await queryOne<{
     name: string, status: 'open' | 'won' | 'lost', amount: string,
     person_id: string | null, company_id: string | null, created_at: string,
@@ -29,6 +33,14 @@ export async function gatherOppContext(clientId: string, oppId: string, now: Dat
     [oppId, clientId],
   )
   if (!opp) return null
+
+  if (typeof scope !== 'string') {
+    const linkedRecords = [
+      ...(opp.person_id ? [{ type: 'person' as const, id: opp.person_id }] : []),
+      ...(opp.company_id ? [{ type: 'company' as const, id: opp.company_id }] : [])
+    ]
+    await requireAllCrmRecordsAccess(scope, linkedRecords)
+  }
 
   const tasks = await queryOne<{ open_cnt: string, overdue_cnt: string }>(
     `SELECT COUNT(*)::text AS open_cnt,

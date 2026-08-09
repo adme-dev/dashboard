@@ -1,8 +1,13 @@
 // server/utils/crm/scoreSignals.ts
 // Gathers scoring inputs for a person/company from the DB and persists a recomputed
 // score (+ history row). Pure math lives in scoring.ts; this is the I/O layer.
-import { queryOne, execute } from '~~/server/utils/db'
+import { queryOne, transaction } from '~~/server/utils/db'
 import { scoreTarget, type ScoreSignals, type ScoreResult } from './scoring'
+import { requireCrmRecordAccess, type TransactionClient } from '~~/server/utils/crm/recordAccess'
+import {
+  resolveTrustedCrmSystemContext,
+  type CrmRecordAccessContext
+} from '~~/server/utils/crm/searchContext'
 
 export type ScoreTargetType = 'person' | 'company'
 
@@ -73,10 +78,11 @@ export async function recomputeIfScorable(
   targetType: string,
   targetId: string | null | undefined,
   reason: string,
+  context?: CrmRecordAccessContext
 ): Promise<void> {
   if ((targetType !== 'person' && targetType !== 'company') || !targetId) return
   try {
-    await recomputeScore({ clientId, targetType, targetId, reason })
+    await recomputeScore({ clientId, targetType, targetId, reason, context })
   } catch (e) {
     console.error('[crm] score recompute failed', e)
   }
@@ -90,14 +96,22 @@ export async function recomputeScore(opts: {
   targetId: string
   reason: string
   now?: Date
+  context?: CrmRecordAccessContext
 }): Promise<ScoreResult | null> {
+  const context = opts.context ?? await resolveTrustedCrmSystemContext({
+    clientId: opts.clientId,
+    purpose: 'crm_score_compute'
+  })
+  await requireCrmRecordAccess(context, { type: opts.targetType, id: opts.targetId })
   const now = opts.now ?? new Date()
   const signals = await gatherSignals(opts.clientId, opts.targetType, opts.targetId)
   if (!signals) return null
   const r = scoreTarget(signals, now)
 
-  await execute(
-    `INSERT INTO crm_scores
+  await transaction(async (database: TransactionClient) => {
+    await requireCrmRecordAccess(context, { type: opts.targetType, id: opts.targetId }, database)
+    await database.query(
+      `INSERT INTO crm_scores
        (client_id, target_type, target_id, score_type, total_score, grade,
         engagement_score, intent_score, fit_score, recency_score, computed_at, updated_at)
      VALUES ($1,$2,$3,'lead',$4,$5,$6,$7,$8,$9,NOW(),NOW())
@@ -106,12 +120,13 @@ export async function recomputeScore(opts: {
        engagement_score = EXCLUDED.engagement_score, intent_score = EXCLUDED.intent_score,
        fit_score = EXCLUDED.fit_score, recency_score = EXCLUDED.recency_score,
        computed_at = NOW(), updated_at = NOW()`,
-    [opts.clientId, opts.targetType, opts.targetId, r.total, r.grade, r.engagement, r.intent, r.fit, r.recency],
-  )
-  await execute(
-    `INSERT INTO crm_score_history (client_id, target_type, target_id, score_type, total_score, grade, reason)
-     VALUES ($1,$2,$3,'lead',$4,$5,$6)`,
-    [opts.clientId, opts.targetType, opts.targetId, r.total, r.grade, opts.reason],
-  )
+      [context.clientId, opts.targetType, opts.targetId, r.total, r.grade, r.engagement, r.intent, r.fit, r.recency]
+    )
+    await database.query(
+      `INSERT INTO crm_score_history (client_id, target_type, target_id, score_type, total_score, grade, reason)
+       VALUES ($1,$2,$3,'lead',$4,$5,$6)`,
+      [context.clientId, opts.targetType, opts.targetId, r.total, r.grade, opts.reason]
+    )
+  })
   return r
 }

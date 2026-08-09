@@ -72,6 +72,7 @@ export default defineEventHandler(async (event) => {
       toStageId: b.stage_id,
       ownerId: result.item.owner_id,
       changedBy: context.actorId,
+      accessContext: context,
       isWon: result.item.status === 'won',
       now: new Date(occurredAt)
     })

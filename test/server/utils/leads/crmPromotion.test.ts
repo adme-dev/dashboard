@@ -11,6 +11,29 @@ const OPPORTUNITY_ID = '44444444-4444-4444-8444-444444444444'
 const STAGE_ID = '55555555-5555-4555-8555-555555555555'
 const LINK_ID = '66666666-6666-4666-8666-666666666666'
 
+function trustedDeps(transaction: unknown, overrides: Record<string, unknown> = {}) {
+  return {
+    transaction,
+    resolveContext: vi.fn(async () => ({
+      organisationScopeId: '77777777-7777-4777-8777-777777777777',
+      clientId: CLIENT_ID,
+      correlationId: '88888888-8888-4888-8888-888888888888',
+      actorType: 'system',
+      actorId: 'trusted-system:lead_crm_promotion',
+      surface: 'trusted_system',
+      permissionSet: [],
+      visibility: { ownerScoped: false },
+      trustedSystem: { purpose: 'lead_crm_promotion' }
+    })),
+    authorizeAll: vi.fn(async (_context, refs) => refs.map((ref: { type: string, id: string }) => ({
+      ...ref,
+      clientId: CLIENT_ID,
+      row: { id: ref.id }
+    }))),
+    ...overrides
+  } as never
+}
+
 function lead(overrides: Record<string, unknown> = {}) {
   return {
     id: LEAD_ID,
@@ -69,6 +92,32 @@ function createDb(options: {
 }
 
 describe('CRM lead promotion', () => {
+  it('reloads the trusted active-client scope before identity matching or CRM writes', async () => {
+    const { db, statements } = createDb()
+    const resolveContext = vi.fn(async () => {
+      throw Object.assign(new Error('Client not found'), {
+        statusCode: 404,
+        statusMessage: 'Client not found'
+      })
+    })
+    const service = createCrmLeadPromotionService(trustedDeps(
+      (async callback => callback(db)) as never,
+      { resolveContext }
+    ))
+
+    await expect(service.promote(LEAD_ID)).rejects.toMatchObject({
+      statusCode: 404,
+      statusMessage: 'Client not found'
+    })
+    expect(resolveContext).toHaveBeenCalledWith({
+      clientId: CLIENT_ID,
+      purpose: 'lead_crm_promotion'
+    })
+    expect(statements.some(statement =>
+      /FROM crm_stages|FROM crm_people|INSERT INTO crm_/.test(statement.sql)
+    )).toBe(false)
+  })
+
   it.each([
     ['google', 'ignored', 'Google lead received', 'Google enquiry'],
     ['meta', 'ignored', 'Meta lead received', 'Meta enquiry'],
@@ -91,7 +140,7 @@ describe('CRM lead promotion', () => {
   it('atomically creates a CRM person, vehicle opportunity and durable lead link', async () => {
     const { db, statements } = createDb()
     const transaction = vi.fn(async callback => callback(db))
-    const service = createCrmLeadPromotionService({ transaction: transaction as never })
+    const service = createCrmLeadPromotionService(trustedDeps(transaction as never))
 
     const result = await service.promote(LEAD_ID)
 
@@ -159,9 +208,9 @@ describe('CRM lead promotion', () => {
       if (/INSERT INTO lead_crm_links/.test(sql)) return { rows: [{ id: LINK_ID }] }
       return { rows: [] }
     })
-    const service = createCrmLeadPromotionService({
-      transaction: (async callback => callback(db)) as never
-    })
+    const service = createCrmLeadPromotionService(trustedDeps(
+      (async callback => callback(db)) as never
+    ))
 
     await service.promote(LEAD_ID)
 
@@ -189,9 +238,9 @@ describe('CRM lead promotion', () => {
         mobile: null
       }]
     })
-    const service = createCrmLeadPromotionService({
-      transaction: (async callback => callback(db)) as never
-    })
+    const service = createCrmLeadPromotionService(trustedDeps(
+      (async callback => callback(db)) as never
+    ))
 
     const result = await service.promote(LEAD_ID)
 
@@ -213,9 +262,9 @@ describe('CRM lead promotion', () => {
 
   it('does not create duplicate CRM records when the lead is already linked', async () => {
     const { db, statements } = createDb({ existingLink: true })
-    const service = createCrmLeadPromotionService({
-      transaction: (async callback => callback(db)) as never
-    })
+    const service = createCrmLeadPromotionService(trustedDeps(
+      (async callback => callback(db)) as never
+    ))
 
     await expect(service.promote(LEAD_ID)).resolves.toEqual({
       status: 'already_promoted',
@@ -228,9 +277,9 @@ describe('CRM lead promotion', () => {
 
   it('does not create a partial CRM person when the client has no usable new stage', async () => {
     const { db, statements } = createDb({ stage: false })
-    const service = createCrmLeadPromotionService({
-      transaction: (async callback => callback(db)) as never
-    })
+    const service = createCrmLeadPromotionService(trustedDeps(
+      (async callback => callback(db)) as never
+    ))
 
     await expect(service.promote(LEAD_ID)).resolves.toEqual({ status: 'stage_not_found' })
     expect(statements.some(s => /INSERT INTO crm_people|INSERT INTO crm_opportunities/.test(s.sql))).toBe(false)
@@ -243,9 +292,9 @@ describe('CRM lead promotion', () => {
         { id: '77777777-7777-4777-8777-777777777777', email: null, mobile: '+61400123456', phone: null }
       ]
     })
-    const service = createCrmLeadPromotionService({
-      transaction: (async callback => callback(db)) as never
-    })
+    const service = createCrmLeadPromotionService(trustedDeps(
+      (async callback => callback(db)) as never
+    ))
 
     await expect(service.promote(LEAD_ID)).resolves.toEqual({
       status: 'identity_conflict',
@@ -258,9 +307,9 @@ describe('CRM lead promotion', () => {
     const testDb = {
       query: vi.fn(async (sql: string) => ({ rows: /FROM leads/.test(sql) ? [lead({ is_test: true })] : [] }))
     }
-    const testService = createCrmLeadPromotionService({
-      transaction: (async callback => callback(testDb)) as never
-    })
+    const testService = createCrmLeadPromotionService(trustedDeps(
+      (async callback => callback(testDb)) as never
+    ))
     await expect(testService.promote(LEAD_ID)).resolves.toEqual({ status: 'skipped_test' })
 
     const incompleteDb = {
@@ -270,9 +319,9 @@ describe('CRM lead promotion', () => {
           : []
       }))
     }
-    const incompleteService = createCrmLeadPromotionService({
-      transaction: (async callback => callback(incompleteDb)) as never
-    })
+    const incompleteService = createCrmLeadPromotionService(trustedDeps(
+      (async callback => callback(incompleteDb)) as never
+    ))
     await expect(incompleteService.promote(LEAD_ID)).resolves.toEqual({
       status: 'insufficient_identity',
       missing: ['email_or_phone']
@@ -310,9 +359,9 @@ describe('CRM lead promotion', () => {
         }
       }
     })
-    const service = createCrmLeadPromotionService({
-      transaction: (async callback => callback(db)) as never
-    })
+    const service = createCrmLeadPromotionService(trustedDeps(
+      (async callback => callback(db)) as never
+    ))
 
     await expect(service.promote(LEAD_ID)).resolves.toMatchObject({ status: 'promoted' })
 
@@ -337,9 +386,9 @@ describe('CRM lead promotion', () => {
         }
       }
     })
-    const service = createCrmLeadPromotionService({
-      transaction: (async callback => callback(db)) as never
-    })
+    const service = createCrmLeadPromotionService(trustedDeps(
+      (async callback => callback(db)) as never
+    ))
 
     await service.promote(LEAD_ID)
 

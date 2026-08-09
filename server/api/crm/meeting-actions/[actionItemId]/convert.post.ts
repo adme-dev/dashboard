@@ -7,7 +7,9 @@ import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import {
   findMeetingCrmCandidates, rankTargets, isTargetInCandidates, convertActionItemToCrmTask, AlreadyConvertedError,
+  authorizeMeetingCandidatesForEvent,
 } from '~~/server/utils/crm/meetingBridge'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -47,10 +49,12 @@ export default defineEventHandler(async (event) => {
   if (!actionItem) throw createError({ statusCode: 404, statusMessage: 'Action item not found' })
 
   // Guard: the chosen target must be one the resolver proposed for this meeting.
-  const proposals = rankTargets(await findMeetingCrmCandidates(actionItem.meeting_session_id))
+  const candidates = await authorizeMeetingCandidatesForEvent(event, await findMeetingCrmCandidates(actionItem.meeting_session_id))
+  const proposals = rankTargets(candidates)
   if (!isTargetInCandidates(proposals, body)) {
     throw createError({ statusCode: 400, statusMessage: 'Chosen target is not a valid candidate for this meeting' })
   }
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: body.client_id, surface: 'agency_global' })
 
   try {
     return await convertActionItemToCrmTask(
@@ -60,7 +64,7 @@ export default defineEventHandler(async (event) => {
         content: actionItem.content, due_at: actionItem.due_at, crm_task_id: actionItem.crm_task_id,
       },
       { client_id: body.client_id, target_type: body.target_type, target_id: body.target_id },
-      { actor: user.id, mode: 'manual_crm', priority: body.priority },
+      { actor: context.actorId, mode: 'manual_crm', priority: body.priority, accessContext: context },
     )
   } catch (e) {
     if (e instanceof AlreadyConvertedError) {

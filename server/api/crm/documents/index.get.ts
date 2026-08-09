@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
 import { listDocuments } from '~~/server/utils/crm/documentsDb'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
 
 const Query = z.object({
   client_id: z.string().uuid(),
@@ -12,5 +13,6 @@ const Query = z.object({
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const q = Query.parse(getQuery(event))
-  return { items: await listDocuments(q.client_id, q.target_type, q.target_id) }
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: q.client_id, surface: 'agency_global' })
+  return { items: await listDocuments(context, q.target_type, q.target_id) }
 })

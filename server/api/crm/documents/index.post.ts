@@ -1,16 +1,15 @@
 // server/api/crm/documents/index.post.ts — multipart upload of a document onto a record.
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
-import { queryOne } from '~~/server/utils/db'
 import { createDocument } from '~~/server/utils/crm/documentsDb'
 import type { DocTarget } from '~~/server/utils/crm/documents'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { requireCrmRecordAccess } from '~~/server/utils/crm/recordAccess'
 import {
-  isStorageConfigured, uploadFile, generateStorageKey,
+  isStorageConfigured, uploadFile, deleteFile, generateStorageKey,
   validateFileType, validateFileSize, getMaxFileSize, getAllowedTypes,
 } from '~~/server/utils/storage'
 
-const TARGET_TABLE: Record<DocTarget, string> = {
-  person: 'crm_people', company: 'crm_companies', opportunity: 'crm_opportunities',
-}
+const TARGET_TYPES = new Set<DocTarget>(['person', 'company', 'opportunity'])
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -29,14 +28,10 @@ export default defineEventHandler(async (event) => {
 
   if (!file) throw createError({ statusCode: 400, statusMessage: 'File is required' })
   if (!/^[0-9a-f-]{36}$/i.test(clientId) || !/^[0-9a-f-]{36}$/i.test(targetId)) throw createError({ statusCode: 400, statusMessage: 'Invalid client_id/target_id' })
-  if (!TARGET_TABLE[targetType]) throw createError({ statusCode: 400, statusMessage: 'Invalid target_type' })
-
-  // The target record must belong to this client (prevents cross-tenant attach).
-  const target = await queryOne(
-    `SELECT id FROM ${TARGET_TABLE[targetType]} WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL`,
-    [targetId, clientId],
-  )
-  if (!target) throw createError({ statusCode: 404, statusMessage: 'Target record not found' })
+  if (!TARGET_TYPES.has(targetType)) throw createError({ statusCode: 400, statusMessage: 'Invalid target_type' })
+  const context = await resolveAgencyCrmSearchContext(event, { clientId, surface: 'agency_global' })
+  // Deny before R2 upload, then reauthorize transactionally when metadata is written.
+  await requireCrmRecordAccess(context, { type: targetType, id: targetId })
 
   const fileName = file.filename || 'document'
   const fileType = file.type || 'application/octet-stream'
@@ -51,9 +46,15 @@ export default defineEventHandler(async (event) => {
   const key = generateStorageKey('attachments', fileName, `crm-${targetId}`)
   await uploadFile(file.data, key, fileType, { clientId, targetType, targetId, originalName: fileName })
 
-  const row = await createDocument({
-    clientId, targetType, targetId, fileKey: key, fileName, contentType: fileType,
-    sizeBytes: fileSize, documentType, expiresAt, uploadedBy: user.id,
-  })
+  let row
+  try {
+    row = await createDocument({
+      context, clientId: context.clientId, targetType, targetId, fileKey: key, fileName, contentType: fileType,
+      sizeBytes: fileSize, documentType, expiresAt, uploadedBy: context.actorId,
+    })
+  } catch (error) {
+    try { await deleteFile(key) } catch {}
+    throw error
+  }
   return { item: row }
 })

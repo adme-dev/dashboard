@@ -89,6 +89,7 @@ function createHarness(options: {
   promotionError?: Error
   messageStatus?: 'created' | 'existing'
   onStage?: (stage: string) => void
+  inactiveClient?: boolean
 } = {}) {
   const statements: Array<{ sql: string, params: unknown[] }> = []
   const db = {
@@ -153,11 +154,27 @@ function createHarness(options: {
           personCreated: true
         }
       )
+  const resolveContext = vi.fn(async () => {
+    if (options.inactiveClient) {
+      throw Object.assign(new Error('Client not found'), {
+        statusCode: 404,
+        statusMessage: 'Client not found'
+      })
+    }
+    return {
+      clientId: CLIENT_ID,
+      actorType: 'system',
+      actorId: 'trusted-system:crm_email_inbound',
+      visibility: { ownerScoped: false }
+    }
+  })
   const processor = createCrmInboundEmailProcessor({
     transaction: async callback => callback(db),
     repositoryFor: () => repository as never,
     ingestLead: ingestLead as never,
     promoteLead: promoteLead as never,
+    resolveContext: resolveContext as never,
+    authorizeAll: vi.fn(async (_context, refs) => refs) as never,
     onStage: options.onStage
   })
 
@@ -166,11 +183,26 @@ function createHarness(options: {
     repository,
     ingestLead,
     promoteLead,
+    resolveContext,
     statements
   }
 }
 
 describe('CRM inbound email processor', () => {
+  it('reloads the trusted active-client scope before any provider or CRM lookup', async () => {
+    const harness = createHarness({ inactiveClient: true })
+
+    await expect(harness.processor.process(input())).rejects.toMatchObject({
+      statusCode: 404,
+      statusMessage: 'Client not found'
+    })
+    expect(harness.resolveContext).toHaveBeenCalledWith({
+      clientId: CLIENT_ID,
+      purpose: 'crm_email_inbound'
+    })
+    expect(harness.statements).toEqual([])
+  })
+
   it('reports the safe processor stage before a promotion failure', async () => {
     const stages: string[] = []
     const harness = createHarness({

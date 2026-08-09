@@ -17,6 +17,37 @@ export interface CrmSearchContext {
   assistantScope?: { clientIds: readonly string[]; sourceRevision: string }
 }
 
+export type TrustedCrmSystemPurpose
+  = | 'crm_task_reminders'
+    | 'crm_followup_review'
+    | 'crm_meeting_action'
+    | 'crm_health_compute'
+    | 'crm_score_compute'
+    | 'crm_lifecycle'
+    | 'crm_activation'
+    | 'crm_email_projection'
+    | 'lead_crm_promotion'
+    | 'crm_email_inbound'
+
+/**
+ * Narrow authority for a non-user CRM job. Construct this only through
+ * resolveTrustedCrmSystemContext so each unit of work reloads its active
+ * client boundary before any record lookup or side effect.
+ */
+export interface TrustedCrmSystemContext {
+  organisationScopeId: string
+  clientId: string
+  correlationId: string
+  actorType: 'system'
+  actorId: string
+  surface: 'trusted_system'
+  permissionSet: readonly []
+  visibility: { ownerScoped: false }
+  trustedSystem: { purpose: TrustedCrmSystemPurpose }
+}
+
+export type CrmRecordAccessContext = CrmSearchContext | TrustedCrmSystemContext
+
 export type AgencyAiContextResolution =
   | { status: 'resolved'; context: CrmSearchContext; clientName: string }
   | { status: 'not_found' | 'ambiguous' | 'scope_unavailable' }
@@ -285,6 +316,27 @@ export async function resolvePortalCrmSearchContext(
     surface: input.surface,
     permissionSet: ['CRM_VIEW'],
     visibility: { ownerScoped: false }
+  }
+}
+
+export async function resolveTrustedCrmSystemContext(
+  input: { clientId: string; purpose: TrustedCrmSystemPurpose },
+  deps: Pick<CrmSearchContextDependencies, 'loadClient' | 'loadOrganisationScope' | 'createCorrelationId'> = defaultDependencies
+): Promise<TrustedCrmSystemContext> {
+  const client = await deps.loadClient(input.clientId)
+  if (!client) notFound()
+  const organisationScopeId = await deps.loadOrganisationScope()
+  if (!organisationScopeId) scopeUnavailable()
+  return {
+    organisationScopeId,
+    clientId: client.id,
+    correlationId: deps.createCorrelationId(),
+    actorType: 'system',
+    actorId: `trusted-system:${input.purpose}`,
+    surface: 'trusted_system',
+    permissionSet: [],
+    visibility: { ownerScoped: false },
+    trustedSystem: { purpose: input.purpose }
   }
 }
 

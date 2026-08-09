@@ -16,8 +16,9 @@ import { defineEventHandler, getHeader, createError } from 'h3'
 import { queryRows } from '~~/server/utils/db'
 import {
   findMeetingCrmCandidates, rankTargets, convertActionItemToCrmTask, recordSkipReason,
-  AlreadyConvertedError,
+  authorizeMeetingCandidatesForTrustedSystem, AlreadyConvertedError,
 } from '~~/server/utils/crm/meetingBridge'
+import { resolveTrustedCrmSystemContext } from '~~/server/utils/crm/searchContext'
 
 interface CandidateItem {
   id: string
@@ -74,7 +75,9 @@ export default defineEventHandler(async (event) => {
   for (const item of items) {
     let proposals = candidateCache.get(item.meeting_session_id)
     if (!proposals) {
-      proposals = rankTargets(await findMeetingCrmCandidates(item.meeting_session_id))
+      proposals = rankTargets(await authorizeMeetingCandidatesForTrustedSystem(
+        await findMeetingCrmCandidates(item.meeting_session_id)
+      ))
       candidateCache.set(item.meeting_session_id, proposals)
     }
     if (proposals.length === 0) { await recordSkipReason(item.id, 'no_crm_match'); skipped++; continue }
@@ -97,23 +100,31 @@ export default defineEventHandler(async (event) => {
     if (Number(item.created_ms) < cutoffMs) { skipped++; continue }
 
     try {
+      const accessContext = await resolveTrustedCrmSystemContext({
+        clientId: p.client_id,
+        purpose: 'crm_meeting_action'
+      })
       await convertActionItemToCrmTask(
         {
           id: item.id, meeting_session_id: item.meeting_session_id, meeting_title: item.meeting_title,
           source_artifact_id: item.source_artifact_id, content: item.content, due_at: item.due_at, crm_task_id: null,
         },
         { client_id: p.client_id, target_type: p.target_type, target_id: p.target_id },
-        { actor: null, mode: 'auto' },
+        { actor: null, mode: 'auto', accessContext },
       )
       converted++
     } catch (e) {
       // A lost race (another path converted it first) is a clean skip; anything
       // else is logged and counted but never aborts the sweep.
       if (e instanceof AlreadyConvertedError) { skipped++ }
-      else { console.warn('[crm-meeting-actions] convert failed:', item.id, e); failed++ }
+      else { console.warn('[crm-meeting-actions] convert failed', safeError(e)); failed++ }
     }
   }
   const result = { converted, skipped, failed, scanned: items.length }
   console.log('[crm-cron] meeting-actions', result)
   return result
 })
+
+function safeError(error: unknown) {
+  return error instanceof Error ? error.message : 'unknown_error'
+}

@@ -37,4 +37,15 @@ describe('validateRecord', () => {
     const out = validateRecord(defs, { name: 'W', customer: '11111111-1111-1111-1111-111111111111' })
     expect(out.customer).toBe('11111111-1111-1111-1111-111111111111')
   })
+
+  it('rejects a relation definition without a protected target type', () => {
+    const unsafeDefs: ValidatorFieldDef[] = [
+      { key: 'name', field_type: 'text', options: [], relation_target: null, is_required: true },
+      { key: 'customer', field_type: 'relation', options: [], relation_target: null, is_required: false }
+    ]
+    expect(() => validateRecord(unsafeDefs, {
+      name: 'Widget',
+      customer: '11111111-1111-1111-1111-111111111111'
+    })).toThrow(/protected target/)
+  })
 })

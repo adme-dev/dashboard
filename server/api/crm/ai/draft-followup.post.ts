@@ -6,6 +6,7 @@ import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { isCrmAiEnabled } from '~~/server/utils/crm/aiConfig'
 import { gatherOppContext } from '~~/server/utils/crm/aiSignals'
 import { draftFollowUp } from '~~/server/utils/crm/aiDraft'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
 
 const Body = z.object({ client_id: z.string().uuid(), opportunity_id: z.string().uuid() })
 
@@ -15,7 +16,8 @@ export default defineEventHandler(async (event) => {
   if (!isCrmAiEnabled()) throw createError({ statusCode: 403, statusMessage: 'CRM AI is disabled' })
   const parsed = Body.safeParse(await readBody(event))
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.message })
-  const ctx = await gatherOppContext(parsed.data.client_id, parsed.data.opportunity_id)
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: parsed.data.client_id, surface: 'agency_global' })
+  const ctx = await gatherOppContext(context, parsed.data.opportunity_id)
   if (!ctx) throw createError({ statusCode: 404, statusMessage: 'Opportunity not found' })
   ctx.draft.senderName = (user as { name?: string }).name ?? null
   const draft = await draftFollowUp(ctx.draft)

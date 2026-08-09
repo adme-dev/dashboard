@@ -3,8 +3,16 @@
 // score (+ history row). Pure math lives in healthScoring.ts; this is the I/O
 // layer (mirrors scoreSignals.ts for the 'lead' score). No migration — reuses
 // crm_scores with score_type='health'.
-import { queryOne, queryRows, execute } from '~~/server/utils/db'
+import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { scoreHealth, type HealthSignals, type HealthResult } from './healthScoring'
+import {
+  requireCrmRecordAccess,
+  type TransactionClient
+} from '~~/server/utils/crm/recordAccess'
+import {
+  resolveTrustedCrmSystemContext,
+  type CrmRecordAccessContext
+} from '~~/server/utils/crm/searchContext'
 
 export type HealthTargetType = 'person' | 'company'
 
@@ -68,13 +76,21 @@ export async function recomputeHealth(opts: {
   targetId: string
   reason: string
   now?: Date
+  context?: CrmRecordAccessContext
 }): Promise<HealthResult> {
+  const context = opts.context ?? await resolveTrustedCrmSystemContext({
+    clientId: opts.clientId,
+    purpose: 'crm_health_compute'
+  })
+  await requireCrmRecordAccess(context, { type: opts.targetType, id: opts.targetId })
   const now = opts.now ?? new Date()
   const signals = await gatherHealthSignals(opts.clientId, opts.targetType, opts.targetId, now)
   const r = scoreHealth(signals, now)
 
-  await execute(
-    `INSERT INTO crm_scores
+  await transaction(async (database: TransactionClient) => {
+    await requireCrmRecordAccess(context, { type: opts.targetType, id: opts.targetId }, database)
+    await database.query(
+      `INSERT INTO crm_scores
        (client_id, target_type, target_id, score_type, total_score, grade,
         engagement_score, intent_score, fit_score, recency_score, computed_at, updated_at)
      VALUES ($1,$2,$3,'health',$4,$5,$6,$7,$8,$9,NOW(),NOW())
@@ -83,13 +99,14 @@ export async function recomputeHealth(opts: {
        engagement_score = EXCLUDED.engagement_score, intent_score = EXCLUDED.intent_score,
        fit_score = EXCLUDED.fit_score, recency_score = EXCLUDED.recency_score,
        computed_at = NOW(), updated_at = NOW()`,
-    [opts.clientId, opts.targetType, opts.targetId, r.total, r.grade, r.engagement, r.support, r.relationship, r.contract],
-  )
-  await execute(
-    `INSERT INTO crm_score_history (client_id, target_type, target_id, score_type, total_score, grade, reason)
-     VALUES ($1,$2,$3,'health',$4,$5,$6)`,
-    [opts.clientId, opts.targetType, opts.targetId, r.total, r.grade, opts.reason],
-  )
+      [context.clientId, opts.targetType, opts.targetId, r.total, r.grade, r.engagement, r.support, r.relationship, r.contract]
+    )
+    await database.query(
+      `INSERT INTO crm_score_history (client_id, target_type, target_id, score_type, total_score, grade, reason)
+       VALUES ($1,$2,$3,'health',$4,$5,$6)`,
+      [context.clientId, opts.targetType, opts.targetId, r.total, r.grade, opts.reason]
+    )
+  })
   return r
 }
 
@@ -100,6 +117,7 @@ export async function recomputeHealthIfCustomer(
   targetType: string,
   targetId: string | null | undefined,
   reason: string,
+  context?: CrmRecordAccessContext
 ): Promise<void> {
   if ((targetType !== 'person' && targetType !== 'company') || !targetId) return
   try {
@@ -109,7 +127,7 @@ export async function recomputeHealthIfCustomer(
       [targetId, clientId],
     )
     if (row?.lifecycle_stage !== 'customer') return
-    await recomputeHealth({ clientId, targetType: targetType as HealthTargetType, targetId, reason })
+    await recomputeHealth({ clientId, targetType: targetType as HealthTargetType, targetId, reason, context })
   } catch (e) {
     console.error('[crm] health recompute failed', e)
   }

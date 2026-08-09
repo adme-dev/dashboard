@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
       const r = await recomputeScore({ clientId: s.client_id, targetType: s.target_type, targetId: s.target_id, reason: 'decay' })
       if (r) recomputed++
     } catch (e) {
-      console.error('[crm-cron] decay recompute failed', s.target_id, e)
+      console.error('[crm-cron] decay recompute failed', safeError(e))
     }
   }
 
@@ -42,3 +42,7 @@ export default defineEventHandler(async (event) => {
   console.log('[crm-cron] score-decay', result)
   return result
 })
+
+function safeError(error: unknown) {
+  return error instanceof Error ? error.message : 'unknown_error'
+}

@@ -36,6 +36,13 @@ import { socialInboxTool } from './socialInbox'
 import { emailCampaignsTool } from './emailCampaigns'
 import { socialNewsRecommendationsTool } from './socialNewsRecommendations'
 
+// CRM tools share the same fresh CLIENTS-gated context boundary. Keep them as
+// one registry slice so a newly registered CRM action cannot silently omit it.
+const crmTools = [opportunityTool, logActivityTool, quoteTool, draftFollowupTool]
+if (crmTools.some(tool => tool.requiredPermission !== 'CLIENTS')) {
+  throw new Error('Registered CRM AI tools must require CLIENTS')
+}
+
 /** The assembled tool registry — read tools + create_task + remember (personal memory capture). */
 export const registry: AiTool<any>[] = [
   financeTool,
@@ -65,10 +72,7 @@ export const registry: AiTool<any>[] = [
   briefConvertTool,
   capacityTool,
   // Sales / CRM writes + draft.
-  opportunityTool,
-  logActivityTool,
-  quoteTool,
-  draftFollowupTool,
+  ...crmTools,
   // Finance / Bookkeeper writes.
   expenseApprovalTool,
   eomGenerateTool,

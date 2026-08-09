@@ -1,11 +1,14 @@
 // server/utils/crm/commsDb.ts
 // F10 — communication-log persistence + the unified (activities + comms) timeline.
-import { queryRows, queryOne, execute } from '~~/server/utils/db'
+import { queryRows, queryOne, execute, transaction } from '~~/server/utils/db'
 import { contactPrefBlocks, type CommChannel, type CommDirection, type TimelineEntry } from '~~/server/utils/crm/comms'
+import type { CrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { requireAllCrmRecordsAccess, requireCrmRecordAccess, type TransactionClient } from '~~/server/utils/crm/recordAccess'
 
 export type CommTarget = 'person' | 'company'
 
 export interface CreateCommInput {
+  context?: CrmSearchContext
   clientId: string
   personId?: string | null
   companyId?: string | null
@@ -22,6 +25,24 @@ export interface CreateCommInput {
 /** Insert a communication. With an externalId, dedupes via the partial unique index
  *  (returns null if the bridge already logged this one). */
 export async function createComm(input: CreateCommInput) {
+  if (input.context) {
+    return await transaction(async (db) => {
+      await requireAllCrmRecordsAccess(input.context!, [
+        ...(input.personId ? [{ type: 'person' as const, id: input.personId }] : []),
+        ...(input.companyId ? [{ type: 'company' as const, id: input.companyId }] : [])
+      ], db)
+      const result = await db.query(
+        `INSERT INTO crm_communications
+           (client_id, person_id, company_id, channel, direction, subject, body, occurred_at, source, external_id, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8, now()),$9,$10,$11)
+         ON CONFLICT (client_id, source, external_id) WHERE external_id IS NOT NULL DO NOTHING RETURNING *`,
+        [input.context!.clientId, input.personId ?? null, input.companyId ?? null, input.channel,
+          input.direction ?? null, input.subject ?? null, input.body ?? null, input.occurredAt ?? null,
+          input.source ?? 'manual', input.externalId ?? null, input.createdBy ?? null]
+      )
+      return result.rows[0] ?? null
+    })
+  }
   return await queryOne(
     `INSERT INTO crm_communications
        (client_id, person_id, company_id, channel, direction, subject, body, occurred_at, source, external_id, created_by)
@@ -77,7 +98,28 @@ export async function bridgeCommunication(input: BridgeCommunicationInput): Prom
   return { logged: !!row }
 }
 
-export async function deleteComm(id: string, clientId: string): Promise<boolean> {
+export async function deleteComm(id: string, scope: string | CrmSearchContext): Promise<boolean> {
+  const clientId = typeof scope === 'string' ? scope : scope.clientId
+  if (typeof scope !== 'string') {
+    return await transaction(async (db: TransactionClient) => {
+      const loaded = await db.query(
+        `SELECT * FROM crm_communications WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL FOR UPDATE`,
+        [id, clientId]
+      )
+      const row = loaded.rows?.[0] as { person_id?: string | null, company_id?: string | null } | undefined
+      if (!row) throw createError({ statusCode: 404, statusMessage: 'Record not found' })
+      await requireAllCrmRecordsAccess(scope, [
+        ...(row.person_id ? [{ type: 'person' as const, id: row.person_id }] : []),
+        ...(row.company_id ? [{ type: 'company' as const, id: row.company_id }] : [])
+      ], db)
+      const result = await db.query(
+        `UPDATE crm_communications SET deleted_at = now()
+          WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL RETURNING id`,
+        [id, clientId]
+      )
+      return (result.rows?.length ?? 0) > 0
+    })
+  }
   const n = await execute(
     `UPDATE crm_communications SET deleted_at = now() WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL`,
     [id, clientId],
@@ -87,9 +129,11 @@ export async function deleteComm(id: string, clientId: string): Promise<boolean>
 
 /** Unified, newest-first timeline for a target. A channel filter narrows to comms only. */
 export async function listTimeline(
-  clientId: string, target: CommTarget, targetId: string,
+  scope: string | CrmSearchContext, target: CommTarget, targetId: string,
   opts: { channel?: CommChannel, limit?: number } = {},
 ): Promise<TimelineEntry[]> {
+  const clientId = typeof scope === 'string' ? scope : scope.clientId
+  if (typeof scope !== 'string') await requireCrmRecordAccess(scope, { type: target, id: targetId })
   const limit = Math.min(200, Math.max(1, opts.limit ?? 100))
   const targetCol = target === 'person' ? 'person_id' : 'company_id'
 

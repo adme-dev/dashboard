@@ -1,4 +1,14 @@
 import { transaction as defaultTransaction } from '~~/server/utils/db'
+import {
+  requireAllCrmRecordsAccess,
+  type AuthoritativeCrmRecord,
+  type CrmRecordRef,
+  type TransactionClient as CrmTransactionClient
+} from '~~/server/utils/crm/recordAccess'
+import {
+  resolveTrustedCrmSystemContext,
+  type CrmRecordAccessContext
+} from '~~/server/utils/crm/searchContext'
 
 interface TransactionClient {
   query(sql: string, params?: unknown[]): Promise<{ rows?: unknown[] }>
@@ -48,6 +58,12 @@ export type CrmLeadPromotionResult
 
 export interface CrmLeadPromotionServiceDeps {
   transaction: Transaction
+  resolveContext: (input: { clientId: string; purpose: 'lead_crm_promotion' }) => Promise<CrmRecordAccessContext>
+  authorizeAll: (
+    context: CrmRecordAccessContext,
+    refs: readonly CrmRecordRef[],
+    client?: CrmTransactionClient
+  ) => Promise<readonly AuthoritativeCrmRecord[]>
 }
 
 interface CustomerIdentity {
@@ -246,8 +262,14 @@ function opportunityFields(lead: PromotionLeadRow, provider: string): Record<str
 }
 
 export function createCrmLeadPromotionService(
-  deps: CrmLeadPromotionServiceDeps = { transaction: defaultTransaction as unknown as Transaction }
+  overrides: Partial<CrmLeadPromotionServiceDeps> = {}
 ) {
+  const deps: CrmLeadPromotionServiceDeps = {
+    transaction: defaultTransaction as unknown as Transaction,
+    resolveContext: resolveTrustedCrmSystemContext,
+    authorizeAll: requireAllCrmRecordsAccess,
+    ...overrides
+  }
   return {
     async promote(leadId: string): Promise<CrmLeadPromotionResult> {
       return deps.transaction(async (db) => {
@@ -263,6 +285,10 @@ export function createCrmLeadPromotionService(
         if (!lead) return { status: 'lead_not_found' }
         if (!lead.client_id) return { status: 'client_not_mapped' }
         if (lead.is_test) return { status: 'skipped_test' }
+        const context = await deps.resolveContext({
+          clientId: lead.client_id,
+          purpose: 'lead_crm_promotion'
+        })
 
         const linkResult = await db.query(
           `SELECT id, person_id, opportunity_id
@@ -273,6 +299,13 @@ export function createCrmLeadPromotionService(
         )
         const existingLink = linkResult.rows?.[0] as ExistingLinkRow | undefined
         if (existingLink) {
+          const refs: CrmRecordRef[] = []
+          if (existingLink.person_id) refs.push({ type: 'person', id: existingLink.person_id })
+          if (existingLink.opportunity_id) refs.push({ type: 'opportunity', id: existingLink.opportunity_id })
+          const authorized = await deps.authorizeAll(context, refs, db)
+          if (authorized.length !== refs.length) {
+            throw new Error('CRM lead link authorization was incomplete')
+          }
           return {
             status: 'already_promoted',
             personId: existingLink.person_id,
@@ -317,6 +350,14 @@ export function createCrmLeadPromotionService(
         )
         const people = (personResult.rows ?? []) as PersonRow[]
         const uniquePeople = [...new Map(people.map(person => [person.id, person])).values()]
+        const authorizedPeople = await deps.authorizeAll(
+          context,
+          uniquePeople.map(person => ({ type: 'person' as const, id: person.id })),
+          db
+        )
+        if (authorizedPeople.length !== uniquePeople.length) {
+          throw new Error('CRM identity authorization was incomplete')
+        }
         if (uniquePeople.length > 1) {
           return { status: 'identity_conflict', candidateCount: uniquePeople.length }
         }

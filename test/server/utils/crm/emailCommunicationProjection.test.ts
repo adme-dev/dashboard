@@ -25,16 +25,52 @@ const communicationRow = {
   created_at: '2026-07-30T00:00:01.000Z'
 }
 
+function trustedDeps() {
+  return {
+    resolveContext: vi.fn(async () => ({
+      clientId: CLIENT_ID,
+      actorType: 'system',
+      actorId: 'trusted-system:crm_email_projection',
+      visibility: { ownerScoped: false }
+    })),
+    authorizeAll: vi.fn(async (_context, refs) => refs)
+  } as never
+}
+
 describe('CRM email communication projection', () => {
-  it('projects a linked canonical message with tenant-safe timeline fields', async () => {
-    const query = vi.fn().mockResolvedValue({
-      rows: [communicationRow],
-      rowCount: 1
+  it('reloads the trusted client before reading a message or projecting its target', async () => {
+    const query = vi.fn()
+    const resolveContext = vi.fn(async () => {
+      throw Object.assign(new Error('Client not found'), {
+        statusCode: 404,
+        statusMessage: 'Client not found'
+      })
     })
 
     await expect(projectCrmEmailMessageToCommunication(
       { query },
-      { clientId: CLIENT_ID, messageId: MESSAGE_ID }
+      { clientId: CLIENT_ID, messageId: MESSAGE_ID },
+      { resolveContext, authorizeAll: vi.fn() } as never
+    )).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Client not found' })
+    expect(resolveContext).toHaveBeenCalledWith({
+      clientId: CLIENT_ID,
+      purpose: 'crm_email_projection'
+    })
+    expect(query).not.toHaveBeenCalled()
+  })
+
+  it('projects a linked canonical message with tenant-safe timeline fields', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{ person_id: communicationRow.person_id, company_id: null }],
+        rowCount: 1
+      })
+      .mockResolvedValueOnce({ rows: [communicationRow], rowCount: 1 })
+
+    await expect(projectCrmEmailMessageToCommunication(
+      { query },
+      { clientId: CLIENT_ID, messageId: MESSAGE_ID },
+      trustedDeps()
     )).resolves.toMatchObject({
       status: 'projected',
       communication: {
@@ -46,7 +82,7 @@ describe('CRM email communication projection', () => {
       }
     })
 
-    const [sql, params] = query.mock.calls[0]!
+    const [sql, params] = query.mock.calls[1]!
     expect(sql).toContain('INSERT INTO crm_communications')
     expect(sql).toContain('JOIN crm_conversations')
     expect(sql).toContain('message.client_id = $1')
@@ -67,7 +103,8 @@ describe('CRM email communication projection', () => {
 
     await expect(projectCrmEmailMessageToCommunication(
       { query },
-      { clientId: CLIENT_ID, messageId: MESSAGE_ID }
+      { clientId: CLIENT_ID, messageId: MESSAGE_ID },
+      trustedDeps()
     )).resolves.toEqual({ status: 'unchanged' })
     expect(query).toHaveBeenCalledTimes(1)
   })

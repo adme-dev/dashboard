@@ -4,6 +4,11 @@
 import { queryRows, queryOne, execute, transaction } from '~~/server/utils/db'
 import { recordFieldChanges } from './audit'
 import type { TASK_PRIORITIES } from './tasks'
+import type { CrmRecordAccessContext, CrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { requireCrmRecordAccess } from '~~/server/utils/crm/recordAccess'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { resolveTrustedCrmSystemContext } from '~~/server/utils/crm/searchContext'
+import type { H3Event } from 'h3'
 
 export interface CandidatePerson {
   person_id: string
@@ -35,6 +40,97 @@ export interface TargetProposal extends TargetRef {
   person_id: string
   confidence: 'high' | 'ambiguous'
   alternatives: TargetRef[]
+}
+
+export type MeetingCandidateSet = {
+  candidatePeople: CandidatePerson[]
+  candidateOpps: CandidateOpp[]
+}
+
+/** Remove unauthorized anchors and alternatives before labels enter proposals. */
+export async function filterAuthorizedMeetingCandidates(
+  input: MeetingCandidateSet,
+  authorize: (ref: { clientId: string, type: 'person' | 'company' | 'opportunity', id: string }) => Promise<boolean>
+): Promise<MeetingCandidateSet> {
+  const candidatePeople: CandidatePerson[] = []
+  for (const person of input.candidatePeople) {
+    if (!await authorize({ clientId: person.client_id, type: 'person', id: person.person_id })) continue
+    if (person.company_id && !await authorize({ clientId: person.client_id, type: 'company', id: person.company_id })) {
+      candidatePeople.push({ ...person, company_id: null, company_name: null })
+    } else {
+      candidatePeople.push(person)
+    }
+  }
+  const visiblePersonIds = new Set(candidatePeople.map(person => person.person_id))
+  const visibleCompanyIds = new Set(candidatePeople.map(person => person.company_id).filter(Boolean))
+  const candidateOpps: CandidateOpp[] = []
+  for (const opportunity of input.candidateOpps) {
+    const anchored = opportunity.person_id
+      ? visiblePersonIds.has(opportunity.person_id)
+      : !!opportunity.company_id && visibleCompanyIds.has(opportunity.company_id)
+    if (!anchored) continue
+    if (await authorize({ clientId: opportunity.client_id, type: 'opportunity', id: opportunity.opportunity_id })) {
+      candidateOpps.push(opportunity)
+    }
+  }
+  return { candidatePeople, candidateOpps }
+}
+
+export async function authorizeMeetingCandidatesForEvent(
+  event: H3Event,
+  input: MeetingCandidateSet
+): Promise<MeetingCandidateSet> {
+  const contexts = new Map<string, CrmSearchContext | null>()
+  return await filterAuthorizedMeetingCandidates(input, async ref => {
+    if (!contexts.has(ref.clientId)) {
+      try {
+        contexts.set(ref.clientId, await resolveAgencyCrmSearchContext(event, {
+          clientId: ref.clientId,
+          surface: 'agency_global'
+        }))
+      } catch (error: any) {
+        if (error?.statusCode === 404) contexts.set(ref.clientId, null)
+        else throw error
+      }
+    }
+    const context = contexts.get(ref.clientId)
+    if (!context) return false
+    try {
+      await requireCrmRecordAccess(context, { type: ref.type, id: ref.id })
+      return true
+    } catch (error: any) {
+      if (error?.statusCode === 404) return false
+      throw error
+    }
+  })
+}
+
+export async function authorizeMeetingCandidatesForTrustedSystem(
+  input: MeetingCandidateSet
+): Promise<MeetingCandidateSet> {
+  const contexts = new Map<string, CrmRecordAccessContext | null>()
+  return await filterAuthorizedMeetingCandidates(input, async ref => {
+    if (!contexts.has(ref.clientId)) {
+      try {
+        contexts.set(ref.clientId, await resolveTrustedCrmSystemContext({
+          clientId: ref.clientId,
+          purpose: 'crm_meeting_action'
+        }))
+      } catch (error: any) {
+        if (error?.statusCode === 404) contexts.set(ref.clientId, null)
+        else throw error
+      }
+    }
+    const context = contexts.get(ref.clientId)
+    if (!context) return false
+    try {
+      await requireCrmRecordAccess(context, { type: ref.type, id: ref.id })
+      return true
+    } catch (error: any) {
+      if (error?.statusCode === 404) return false
+      throw error
+    }
+  })
 }
 
 export function normalizeGuestEmail(s: string): string {
@@ -237,8 +333,19 @@ export class AlreadyConvertedError extends Error {
 export async function convertActionItemToCrmTask(
   actionItem: ActionItemForBridge & { crm_task_id: string | null },
   target: { client_id: string, target_type: 'opportunity' | 'person' | 'company', target_id: string },
-  opts: { actor: string | null, mode: BridgeMode, priority?: (typeof TASK_PRIORITIES)[number] },
+  opts: {
+    actor: string | null
+    mode: BridgeMode
+    priority?: (typeof TASK_PRIORITIES)[number]
+    accessContext?: CrmRecordAccessContext
+  },
 ): Promise<ConvertResult> {
+  if (opts.accessContext) {
+    if (opts.accessContext.clientId !== target.client_id) {
+      throw createError({ statusCode: 404, statusMessage: 'Record not found' })
+    }
+    await requireCrmRecordAccess(opts.accessContext, { type: target.target_type, id: target.target_id })
+  }
   if (actionItem.crm_task_id) {
     // Re-read both rows so the idempotent return reflects current DB state, not
     // the caller's (possibly pre-stamp) in-memory snapshot. Only a LIVE task
@@ -261,6 +368,9 @@ export async function convertActionItemToCrmTask(
   const payload = buildCrmTaskPayload(actionItem, target, { priority: opts.priority })
 
   const result = await transaction(async (client) => {
+    if (opts.accessContext) {
+      await requireCrmRecordAccess(opts.accessContext, { type: target.target_type, id: target.target_id }, client)
+    }
     const taskRes = await client.query(
       `INSERT INTO crm_tasks
          (client_id, target_type, target_id, title, description, task_type, priority, due_at, created_by)
@@ -334,9 +444,11 @@ export interface MeetingActionForContact {
 export async function listMeetingActionsForCrmTarget(
   targetType: 'person' | 'company',
   targetId: string,
-  clientId: string,
+  scope: string | CrmSearchContext,
   userId: string,
 ): Promise<MeetingActionForContact[]> {
+  const clientId = typeof scope === 'string' ? scope : scope.clientId
+  if (typeof scope !== 'string') await requireCrmRecordAccess(scope, { type: targetType, id: targetId })
   const emailColumnFilter = targetType === 'person' ? 'p.id = $1' : 'p.company_id = $1'
   const emails = await queryRows<{ email: string }>(
     `SELECT lower(trim(p.email)) AS email FROM crm_people p

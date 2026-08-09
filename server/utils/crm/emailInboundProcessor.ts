@@ -25,6 +25,16 @@ import type {
 import type {
   CrmLeadPromotionResult
 } from '~~/server/utils/leads/crmPromotion'
+import {
+  requireAllCrmRecordsAccess,
+  type AuthoritativeCrmRecord,
+  type CrmRecordRef,
+  type TransactionClient as CrmAccessTransactionClient
+} from '~~/server/utils/crm/recordAccess'
+import {
+  resolveTrustedCrmSystemContext,
+  type CrmRecordAccessContext
+} from '~~/server/utils/crm/searchContext'
 
 interface QueryResult {
   rows: unknown[]
@@ -66,6 +76,12 @@ interface CrmInboundEmailProcessorDeps {
     database: TransactionClient,
     leadId: string
   ): Promise<CrmLeadPromotionResult>
+  resolveContext(input: { clientId: string; purpose: 'crm_email_inbound' }): Promise<CrmRecordAccessContext>
+  authorizeAll(
+    context: CrmRecordAccessContext,
+    refs: readonly CrmRecordRef[],
+    client?: CrmAccessTransactionClient
+  ): Promise<readonly AuthoritativeCrmRecord[]>
   onStage?(stage: CrmInboundEmailProcessorStage): void
 }
 
@@ -78,6 +94,9 @@ interface ExistingMessageRow {
 
 interface RouteRow {
   id: string
+  person_id: string | null
+  company_id: string | null
+  opportunity_id: string | null
 }
 
 interface LeadRow {
@@ -125,7 +144,9 @@ const defaultDependencies: CrmInboundEmailProcessorDeps = {
   transaction: defaultTransaction as unknown as Transaction,
   repositoryFor: defaultRepositoryFor,
   ingestLead: defaultIngestLead,
-  promoteLead: defaultPromoteLead
+  promoteLead: defaultPromoteLead,
+  resolveContext: resolveTrustedCrmSystemContext,
+  authorizeAll: requireAllCrmRecordsAccess
 }
 
 const INBOUND_EMAIL_ACTOR = {
@@ -178,6 +199,10 @@ export function createCrmInboundEmailProcessor(
     ): Promise<ProcessCrmInboundEmailResult> {
       return deps.transaction(async (database) => {
         const { job, email } = input
+        const context = await deps.resolveContext({
+          clientId: job.clientId,
+          purpose: 'crm_email_inbound'
+        })
         deps.onStage?.('acquire_locks')
         for (const lockKey of [
           job.idempotencyKey,
@@ -214,7 +239,8 @@ export function createCrmInboundEmailProcessor(
 
         deps.onStage?.('validate_route')
         const routeResult = await database.query(`
-          SELECT route.id
+          SELECT route.id, conversation.person_id, conversation.company_id,
+                 conversation.opportunity_id
           FROM crm_email_routes AS route
           LEFT JOIN crm_conversations AS conversation
             ON conversation.client_id = route.client_id
@@ -241,6 +267,14 @@ export function createCrmInboundEmailProcessor(
         ])
         const route = routeResult.rows?.[0] as RouteRow | undefined
         if (!route) return { status: 'route_unavailable' }
+        const protectedRefs: CrmRecordRef[] = []
+        if (route.person_id) protectedRefs.push({ type: 'person', id: route.person_id })
+        if (route.company_id) protectedRefs.push({ type: 'company', id: route.company_id })
+        if (route.opportunity_id) protectedRefs.push({ type: 'opportunity', id: route.opportunity_id })
+        const authorized = await deps.authorizeAll(context, protectedRefs, database)
+        if (authorized.length !== protectedRefs.length) {
+          throw new Error('CRM email route authorization was incomplete')
+        }
 
         const repository = deps.repositoryFor(database)
         let conversationId = job.conversationId

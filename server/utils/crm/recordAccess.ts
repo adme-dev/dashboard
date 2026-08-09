@@ -1,6 +1,6 @@
 import { createError } from 'h3'
 import { queryRows } from '~~/server/utils/db'
-import type { CrmSearchContext } from '~~/server/utils/crm/searchContext'
+import type { CrmRecordAccessContext } from '~~/server/utils/crm/searchContext'
 
 export type CrmRecordType = 'person' | 'company' | 'opportunity' | 'activity' | 'task'
 
@@ -52,11 +52,11 @@ function safeAlias(alias: string) {
   return alias
 }
 
-function ownerVisibilityApplies(context: CrmSearchContext) {
+function ownerVisibilityApplies(context: CrmRecordAccessContext) {
   return context.actorType === 'staff' && context.visibility.ownerScoped
 }
 
-function targetVisibility(context: CrmSearchContext, sourceAlias: string): CrmVisibilityCondition {
+function targetVisibility(context: CrmRecordAccessContext, sourceAlias: string): CrmVisibilityCondition {
   const alias = safeAlias(sourceAlias)
   const branch = (type: TargetType, table: string) => `(
       ${alias}.target_type = '${type}'
@@ -88,7 +88,7 @@ function targetVisibility(context: CrmSearchContext, sourceAlias: string): CrmVi
  * contexts intentionally add no staff-owner predicate.
  */
 export function crmVisibilityCond(
-  context: CrmSearchContext,
+  context: CrmRecordAccessContext,
   type: CrmRecordType,
   sourceAlias = defaultAliases[type]
 ): CrmVisibilityCondition | null {
@@ -139,7 +139,7 @@ function targetRef(row: Record<string, unknown>): CrmRecordRef {
 }
 
 async function loadBaseRecord(
-  context: CrmSearchContext,
+  context: CrmRecordAccessContext,
   ref: CrmRecordRef,
   client?: TransactionClient,
   includeVisibility = true
@@ -168,7 +168,7 @@ async function loadBaseRecord(
  * state participates in the decision before a caller mutates anything.
  */
 export async function requireCrmRecordAccess(
-  context: CrmSearchContext,
+  context: CrmRecordAccessContext,
   ref: CrmRecordRef,
   client?: TransactionClient
 ): Promise<AuthoritativeCrmRecord> {
@@ -201,7 +201,7 @@ export async function requireCrmRecordAccess(
  * the same non-disclosing record response as every other lookup.
  */
 export async function requireAllCrmRecordsAccess(
-  context: CrmSearchContext,
+  context: CrmRecordAccessContext,
   refs: readonly CrmRecordRef[],
   client?: TransactionClient
 ): Promise<readonly AuthoritativeCrmRecord[]> {

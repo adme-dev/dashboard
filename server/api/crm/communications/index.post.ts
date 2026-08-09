@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { createComm } from '~~/server/utils/crm/commsDb'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -21,10 +22,11 @@ export default defineEventHandler(async (event) => {
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.message })
   const b = parsed.data
   if (!b.person_id && !b.company_id) throw createError({ statusCode: 400, statusMessage: 'A person or company is required' })
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: b.client_id, surface: 'agency_global' })
   const row = await createComm({
-    clientId: b.client_id, personId: b.person_id, companyId: b.company_id,
+    context, clientId: context.clientId, personId: b.person_id, companyId: b.company_id,
     channel: b.channel, direction: b.direction, subject: b.subject, body: b.body,
-    occurredAt: b.occurred_at, source: 'manual', createdBy: user.id,
+    occurredAt: b.occurred_at, source: 'manual', createdBy: context.actorId,
   })
   return { item: row }
 })

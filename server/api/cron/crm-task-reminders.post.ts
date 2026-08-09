@@ -6,9 +6,14 @@
 //
 // Auth: x-cron-secret matched against CRON_SECRET (skipped in dev).
 import { defineEventHandler, getHeader, createError } from 'h3'
-import { queryRows, execute } from '~~/server/utils/db'
+import { queryRows } from '~~/server/utils/db'
 import { createNotification } from '~~/server/utils/notifications'
-import { partitionReminders, type ReminderTask } from '~~/server/utils/crm/activation'
+import {
+  authorizeTrustedReminderTasks,
+  claimTrustedReminderTasks,
+  partitionReminders,
+  type ReminderTask
+} from '~~/server/utils/crm/activation'
 import { startCrmFollowupReviewWorkflow } from '~~/server/utils/agencyWorkflows/client'
 
 export default defineEventHandler(async (event) => {
@@ -54,7 +59,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const now = new Date()
-  const tasks = await queryRows<ReminderTask>(
+  const candidates = await queryRows<ReminderTask>(
     `SELECT id, client_id, title, assigned_to,
             reminder_at::text AS reminder_at, due_at::text AS due_at
        FROM crm_tasks
@@ -66,11 +71,19 @@ export default defineEventHandler(async (event) => {
       ORDER BY reminder_at ASC
       LIMIT 500`
   )
+  const tasks = await authorizeTrustedReminderTasks(candidates, 'crm_task_reminders')
 
   const { toNotify, toDrain } = partitionReminders(tasks, now)
+  const claimed = await claimTrustedReminderTasks({
+    tasks: [...toNotify, ...toDrain],
+    remindedAt: now,
+    purpose: 'crm_task_reminders'
+  })
+  const claimedIds = new Set(claimed.map(task => task.id))
+  const notifyTasks = toNotify.filter(task => claimedIds.has(task.id))
 
   let notified = 0
-  for (const t of toNotify) {
+  for (const t of notifyTasks) {
     const overdue = t.due_at ? new Date(t.due_at).getTime() < now.getTime() : false
     try {
       await createNotification({
@@ -88,14 +101,12 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // Mark everything we processed (notified + drained) as reminded so it never
-  // re-fires. The drain count is reported, never silently dropped.
-  const ids = [...toNotify, ...toDrain].map(t => t.id)
-  if (ids.length) {
-    await execute(`UPDATE crm_tasks SET reminded_at = NOW() WHERE id = ANY($1::uuid[])`, [ids])
+  const result = {
+    ok: true,
+    considered: tasks.length,
+    notified,
+    drained: toDrain.filter(task => claimedIds.has(task.id)).length
   }
-
-  const result = { ok: true, considered: tasks.length, notified, drained: toDrain.length }
   console.log('[crm-cron] task-reminders', result)
   return result
 })

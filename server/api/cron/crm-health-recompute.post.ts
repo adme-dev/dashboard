@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
       await recomputeHealth({ clientId: t.client_id, targetType: t.target_type, targetId: t.target_id, reason: 'health_sweep' })
       recomputed++
     } catch (e) {
-      console.error('[crm-cron] health recompute failed', t.target_id, e)
+      console.error('[crm-cron] health recompute failed', safeError(e))
     }
   }
 
@@ -30,3 +30,7 @@ export default defineEventHandler(async (event) => {
   console.log('[crm-cron] health-recompute', result)
   return result
 })
+
+function safeError(error: unknown) {
+  return error instanceof Error ? error.message : 'unknown_error'
+}

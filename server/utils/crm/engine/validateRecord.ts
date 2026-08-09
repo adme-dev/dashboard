@@ -66,6 +66,9 @@ export function validateRecord(
         break
       }
       case 'relation': {
+        if (def.relation_target !== 'person' && def.relation_target !== 'company') {
+          throw new Error(`Relation field "${k}" has no protected target`)
+        }
         if (!UUID_RE.test(String(v))) throw new Error(`Invalid relation reference for field "${k}"`)
         out[k] = String(v)
         break

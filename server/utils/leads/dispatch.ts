@@ -29,10 +29,7 @@ export async function handleQueueMessage(msg: QueueMessage): Promise<void> {
       await markCrmPromotionResult(msg.payload.lead_id, result.status)
       console.info({
         event: 'crm_lead_promotion_completed',
-        leadId: msg.payload.lead_id,
-        status: result.status,
-        ...('personId' in result ? { personId: result.personId } : {}),
-        ...('opportunityId' in result ? { opportunityId: result.opportunityId } : {})
+        status: result.status
       })
     } catch (error) {
       await markCrmPromotionFailure(msg.payload.lead_id, error)

@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { upsertTarget } from '~~/server/utils/crm/targetsDb'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -18,9 +19,13 @@ export default defineEventHandler(async (event) => {
   const parsed = Body.safeParse(await readBody(event))
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.message })
   const b = parsed.data
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: b.client_id, surface: 'agency_global' })
+  if (context.visibility.ownerScoped && context.actorType === 'staff' && b.user_id !== context.actorId) {
+    throw createError({ statusCode: 404, statusMessage: 'Record not found' })
+  }
   const item = await upsertTarget({
-    clientId: b.client_id, userId: b.user_id, periodStart: b.period_start, periodEnd: b.period_end,
-    targetType: b.target_type, targetValue: b.target_value, createdBy: user.id,
+    clientId: context.clientId, userId: b.user_id, periodStart: b.period_start, periodEnd: b.period_end,
+    targetType: b.target_type, targetValue: b.target_value, createdBy: context.actorId,
   })
   return { item }
 })
