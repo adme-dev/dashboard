@@ -1,4 +1,6 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, relative } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   collectCrmSearchCallerViolations,
@@ -138,5 +140,77 @@ describe('retired CRM search transport', () => {
       apiFetch('/api/client-portal/crm/search', { method: 'POST', body: { query } })
     `
     expect(inspectCrmSearchCallerSource(source, 'workers/valid.ts')).toEqual([])
+  })
+
+  it.each([
+    [
+      'proxy endpoint containing the target',
+      `$fetch('/proxy?next=/api/crm/search', { method: 'POST', body: { query } })`
+    ],
+    [
+      'params transport',
+      `$fetch('/api/crm/search', { method: 'POST', body: { query }, params: new URLSearchParams({ q: query }) })`
+    ],
+    [
+      'unsafe known object spread',
+      `const defaults = { method: 'GET', query: { q: query } }; $fetch('/api/crm/search', { ...defaults, body: { query } })`
+    ],
+    [
+      'block-shadowed implicit GET',
+      `const endpoint = '/api/crm/search'; { const endpoint = '/api/health'; console.log(endpoint) } $fetch(endpoint)`
+    ],
+    [
+      'undefined shorthand body',
+      `const body = undefined; $fetch('/api/crm/search', { method: 'POST', body })`
+    ],
+    [
+      'object-property endpoint implicit GET',
+      `const routes = { crmSearch: '/api/crm/search' }; $fetch(routes.crmSearch)`
+    ],
+    [
+      'unresolved target-bearing endpoint',
+      `const endpoint = choose('/api/crm/search'); $fetch(endpoint, { method: 'POST', body: { query } })`
+    ]
+  ])('rejects synthetic %s', (_label, source) => {
+    expect(inspectCrmSearchCallerSource(source, 'scripts/synthetic.mjs')).not.toEqual([])
+  })
+
+  it('accepts a known safe options object spread', () => {
+    const source = `
+      const request = { method: 'POST', body: { query } }
+      $fetch('/api/crm/search', { ...request })
+    `
+    expect(inspectCrmSearchCallerSource(source, 'app/safe.ts')).toEqual([])
+  })
+
+  it('does not treat a non-transport console string as a caller', () => {
+    expect(inspectCrmSearchCallerSource(
+      `console.log('/api/crm/search')`,
+      'scripts/log-route.mjs'
+    )).toEqual([])
+  })
+
+  it('scans production directories named test instead of excluding them as fixtures', () => {
+    const root = mkdtempSync(join(tmpdir(), 'crm-search-caller-guard-'))
+    const appFile = join(root, 'app/pages/test/search.ts')
+    const serverFile = join(root, 'server/api/test/search.cjs')
+    try {
+      mkdirSync(join(root, 'app/pages/test'), { recursive: true })
+      mkdirSync(join(root, 'server/api/test'), { recursive: true })
+      writeFileSync(appFile, `$fetch('/api/crm/search')`)
+      writeFileSync(serverFile, `useFetch('/api/client-portal/crm/search')`)
+
+      expect(collectCrmSearchCallerViolations([
+        join(root, 'app'),
+        join(root, 'server')
+      ]).map(violation => relative(root, join(process.cwd(), violation.filePath))).sort()).toEqual([
+        'app/pages/test/search.ts',
+        'app/pages/test/search.ts',
+        'server/api/test/search.cjs',
+        'server/api/test/search.cjs'
+      ])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

@@ -241,4 +241,103 @@ describe('CRM global search', () => {
       app.unmount()
     }
   })
+
+  it('keeps combined raw-term and client generations isolated', async () => {
+    const initialRequest = deferred<{ results: Array<Record<string, unknown>> }>()
+    const oldDebouncedClientRequest = deferred<{ results: Array<Record<string, unknown>> }>()
+    const currentRequest = deferred<{ results: Array<Record<string, unknown>> }>()
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(initialRequest.promise)
+      .mockReturnValueOnce(oldDebouncedClientRequest.promise)
+      .mockReturnValueOnce(currentRequest.promise)
+    const { app, clientId, host } = await mountSearch(fetchMock)
+    try {
+      typeSearch(host, 'Acme')
+      await vi.advanceTimersByTimeAsync(250)
+      await flushUi()
+
+      typeSearch(host, 'Beta')
+      clientId.value = '22222222-2222-4222-8222-222222222222'
+      await flushUi()
+      await vi.advanceTimersByTimeAsync(250)
+      await flushUi()
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+
+      oldDebouncedClientRequest.resolve({
+        results: [{ type: 'company', id: 'stale', title: 'Wrong combined generation', subtitle: null, rank: 1 }]
+      })
+      await flushUi()
+      expect(host.textContent).not.toContain('Wrong combined generation')
+
+      currentRequest.resolve({
+        results: [{ type: 'company', id: 'current', title: 'Current combined result', subtitle: null, rank: 1 }]
+      })
+      await flushUi()
+      expect(host.textContent).toContain('Current combined result')
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('keeps a combined clear and client change ahead of old debounced settlement', async () => {
+    const initialRequest = deferred<{ results: Array<Record<string, unknown>> }>()
+    const oldDebouncedClientRequest = deferred<{ results: Array<Record<string, unknown>> }>()
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(initialRequest.promise)
+      .mockReturnValueOnce(oldDebouncedClientRequest.promise)
+    const { app, clientId, host } = await mountSearch(fetchMock)
+    try {
+      typeSearch(host, 'Acme')
+      await vi.advanceTimersByTimeAsync(250)
+      await flushUi()
+
+      typeSearch(host, '')
+      clientId.value = '22222222-2222-4222-8222-222222222222'
+      await flushUi()
+      await vi.advanceTimersByTimeAsync(250)
+      await flushUi()
+
+      oldDebouncedClientRequest.resolve({
+        results: [{ type: 'company', id: 'stale', title: 'Result after combined clear', subtitle: null, rank: 1 }]
+      })
+      await flushUi()
+      expect(host.textContent).not.toContain('Result after combined clear')
+      expect(host.textContent).toContain('Type to search this client’s CRM.')
+      expect(host.querySelector('[aria-busy="true"]')).toBeNull()
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('does not let an old request settlement stop a newer request loading state', async () => {
+    const initialRequest = deferred<{ results: Array<Record<string, unknown>> }>()
+    const oldDebouncedClientRequest = deferred<{ results: Array<Record<string, unknown>> }>()
+    const currentRequest = deferred<{ results: Array<Record<string, unknown>> }>()
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(initialRequest.promise)
+      .mockReturnValueOnce(oldDebouncedClientRequest.promise)
+      .mockReturnValueOnce(currentRequest.promise)
+    const { app, clientId, host } = await mountSearch(fetchMock)
+    try {
+      typeSearch(host, 'Acme')
+      await vi.advanceTimersByTimeAsync(250)
+      await flushUi()
+
+      typeSearch(host, 'Beta')
+      clientId.value = '22222222-2222-4222-8222-222222222222'
+      await flushUi()
+      await vi.advanceTimersByTimeAsync(250)
+      await flushUi()
+
+      oldDebouncedClientRequest.resolve({ results: [] })
+      await flushUi()
+      expect(host.querySelector('[aria-busy="true"]')).not.toBeNull()
+
+      currentRequest.resolve({ results: [] })
+      await flushUi()
+      expect(host.querySelector('[aria-busy="true"]')).toBeNull()
+    } finally {
+      app.unmount()
+    }
+  })
 })

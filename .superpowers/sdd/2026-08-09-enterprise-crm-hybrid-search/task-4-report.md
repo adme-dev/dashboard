@@ -124,3 +124,40 @@ This gate covers owner-scope batch/child/aggregate/indirect surfaces, CRM bulk/d
 - Confirmed raw term/clear/client changes invalidate in-flight work synchronously, the new client ID is captured in the agency body, and portal bodies still omit client scope.
 - Confirmed the caller guard scans every requested production root/extension, handles the reviewed composition forms, and accepts only the two explicit POST-body call sites without URL query text.
 - The existing Nuxt UI v4 command palette, keyboard behavior, accessible loading/error/empty states, semantic styling, and layout remain unchanged.
+
+---
+
+# Review Round 2 — Fail-Closed Search Guards
+
+## Result
+
+- Review base: `f2054cd02079f90d1651ac4ce113c45dd7a7847f`.
+- Intended commit: `fix(crm): make search guards fail closed`.
+- Scope: the three MEDIUM review areas only; no unrelated fix, network, AI provider, database, migration, deployment, or production action was run.
+
+## Repairs
+
+- Privacy classifier v3 evaluates contiguous secret-like alphanumeric/base-encoded runs by length and Shannon entropy, with an explicit conservative hex rule. It keeps the repeated lowercase secret, uppercase/lowercase/base32/base64/hex-like tokens, and the 20-character boundary keyword-only. Ordinary spaced names, the 19-character boundary, a normal long word, and `enterprise-account-manager` remain semantically eligible because punctuation is not treated as a token category.
+- Every command-palette request invocation now captures a fresh generation plus its raw term, debounced term, and client ID. Raw edits, clear, and client changes invalidate synchronously and reset UI state; settlement can update results, errors, or loading only when the captured generation and all three identities still match. Combined term/client and clear/client transitions therefore cannot resurrect stale results or stop a newer request's loading state.
+- The caller guard now analyzes only inventoried transport calls through a scope-aware TypeScript AST evaluator. It resolves block-scoped identifiers, object/property endpoints, templates, concatenations, conditionals, known option spreads, and shorthand values; unresolved target-bearing endpoints/options fail closed. Exact endpoints require explicit POST, a definitely defined body, and no `query`, `params`, or `searchParams`; target-bearing proxy/query/suffix routes are rejected. Production directories named `test` remain scanned, while console/log strings are ignored because they are not transport calls.
+
+## Behavioral TDD Evidence
+
+- Consolidated pre-production RED: 3 files/54 tests, with 14 failures and 40 passes. Failures reproduced the repeated-secret admission, ordinary hyphenated-role false positive, stale classifier version, three combined-generation UI races, caller-guard proxy/params/spread/scope/shorthand/property misses, the safe-spread and console false positives, and skipped production directories named `test`.
+- No production repair preceded its corresponding behavioral failure.
+
+## Verification
+
+- Exact Task 4 gate: 10 files/151 tests passed.
+- Task 1–3/security regression gate: 32 files/283 tests passed.
+- ESLint over all six changed source/test paths: clean.
+- Full Node 24 typecheck output filtered to every changed source/test path: zero diagnostics; unrelated repository baseline diagnostics remain outside this scope.
+- `git diff --check`: clean.
+
+## Deep Review
+
+- Re-read all six changed source/test files end-to-end, then reviewed the complete diff and this appended report.
+- Confirmed v3 evaluates only contiguous secret-like runs, uses no punctuation-as-category shortcut, and leaves keyword retrieval enabled whenever semantic retrieval is denied.
+- Confirmed each actual UI invocation owns a unique generation and settlement compares generation, raw term, debounced term, and client scope before mutating any visible state.
+- Confirmed agency POST bodies still carry the captured client selector, portal POST bodies still omit it, query text never enters the URL, and accessible loading/error/empty behavior plus the existing Nuxt UI v4 design remain intact.
+- Confirmed the repository guard scans `app`, `server`, `shared`, `scripts`, and `workers`, includes production paths named `test`, limits findings to real inventoried transport calls, and fails closed for unresolved target-bearing transport inputs.

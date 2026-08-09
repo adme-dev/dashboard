@@ -24,7 +24,7 @@ const debounced = refDebounced(term, 200)
 const results = ref<CrmSearchResult[]>([])
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
-let requestSequence = 0
+let searchGeneration = 0
 
 const TYPE_META: Record<CrmSearchTargetType, { label: string, icon: string }> = {
   person: { label: 'People', icon: 'i-lucide-user' },
@@ -35,16 +35,36 @@ const TYPE_META: Record<CrmSearchTargetType, { label: string, icon: string }> = 
 }
 const TYPE_ORDER: CrmSearchTargetType[] = ['person', 'company', 'opportunity', 'activity', 'task']
 
-watch([term, () => props.clientId], () => {
-  requestSequence += 1
+function invalidateSearchUi() {
+  searchGeneration += 1
   results.value = []
   loading.value = false
   errorMessage.value = null
-}, { flush: 'sync' })
+}
 
-watch([debounced, () => props.clientId], async ([q, clientId]) => {
-  const trimmed = q.trim()
-  const sequence = requestSequence
+interface SearchInvocation {
+  generation: number
+  rawTerm: string
+  debouncedTerm: string
+  clientId: string
+}
+
+function isCurrentSearch(invocation: SearchInvocation) {
+  return invocation.generation === searchGeneration
+    && invocation.rawTerm === term.value
+    && invocation.debouncedTerm === debounced.value
+    && invocation.clientId === props.clientId
+    && invocation.rawTerm.trim() === invocation.debouncedTerm.trim()
+}
+
+async function invokeSearch(debouncedTerm: string, clientId: string) {
+  const invocation: SearchInvocation = {
+    generation: ++searchGeneration,
+    rawTerm: term.value,
+    debouncedTerm,
+    clientId
+  }
+  const trimmed = debouncedTerm.trim()
   errorMessage.value = null
   if (!trimmed || !clientId) {
     results.value = []
@@ -60,15 +80,21 @@ watch([debounced, () => props.clientId], async ([q, clientId]) => {
       method: 'POST',
       body
     })
-    if (sequence === requestSequence) results.value = response.results
+    if (isCurrentSearch(invocation)) results.value = response.results
   } catch {
-    if (sequence === requestSequence) {
+    if (isCurrentSearch(invocation)) {
       results.value = []
       errorMessage.value = 'CRM search is unavailable. Try again.'
     }
   } finally {
-    if (sequence === requestSequence) loading.value = false
+    if (isCurrentSearch(invocation)) loading.value = false
   }
+}
+
+watch([term, () => props.clientId], invalidateSearchUi, { flush: 'sync' })
+
+watch([debounced, () => props.clientId], async ([q, clientId]) => {
+  await invokeSearch(q, clientId)
 })
 
 // One UCommandPalette group per entity type that has hits. ignoreFilter keeps the

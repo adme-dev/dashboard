@@ -54,7 +54,10 @@ describe('normalizeCrmSearchRequest', () => {
     ['20-character uppercase boundary', 'ABCDEFGHIJKLMNOPQRST'],
     ['unique uppercase secret', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'],
     ['unique lowercase secret', 'abcdefghijklmnopqrstuvwxyz'],
-    ['lowercase base32 token', 'mzxw6ytboi7f65uxm5za']
+    ['repeated lowercase secret', 'nwxqplmzvktjshgfdrcybnwxqplmzvktjshgfdrcyb'],
+    ['lowercase base32 token', 'mzxw6ytboi7f65uxm5za'],
+    ['base64 token', 'QWxhZGRpbjpvcGVuIHNlc2FtZQ=='],
+    ['hex-like run', 'deadbeefdeadbeefdeadbeef']
   ])('keeps uncertain %s keyword-only', (_label, query) => {
     expect(normalizeCrmSearchRequest({ query }).semanticEligible).toBe(false)
   })
@@ -62,7 +65,8 @@ describe('normalizeCrmSearchRequest', () => {
   it.each([
     ['19-character boundary', 'ABCDEFGHIJKLMNOPQRS'],
     ['ordinary spaced client name', 'International Business Machines Australia'],
-    ['ordinary long word', 'internationalisation']
+    ['ordinary long word', 'internationalisation'],
+    ['ordinary hyphenated role', 'enterprise-account-manager']
   ])('does not classify %s as a high-entropy identifier', (_label, query) => {
     expect(normalizeCrmSearchRequest({ query }).semanticEligible).toBe(true)
   })
@@ -83,10 +87,10 @@ describe('normalizeCrmSearchRequest', () => {
   })
 
   it('exposes a versioned classifier and tokenizer decision contract', () => {
-    expect(CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION).toBe('crm-search-privacy-v2')
+    expect(CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION).toBe('crm-search-privacy-v3')
     expect(CRM_SEARCH_TOKEN_ADMISSION_VERSION).toBe('bge-base-en-v1.5-conservative-utf8-v1')
     expect(classifyCrmSearchPrivacy('Acme account')).toEqual({
-      version: 'crm-search-privacy-v2',
+      version: 'crm-search-privacy-v3',
       semanticEligible: true,
       reason: 'eligible'
     })

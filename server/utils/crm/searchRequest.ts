@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION = 'crm-search-privacy-v2' as const
+export const CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION = 'crm-search-privacy-v3' as const
 export const CRM_SEARCH_TOKEN_ADMISSION_VERSION = 'bge-base-en-v1.5-conservative-utf8-v1' as const
 export const CRM_SEARCH_CLIENT_SELECTOR_NORMALIZER_VERSION = 'crm-search-client-selector-v1' as const
 export const CRM_SEARCH_MAX_CODE_POINTS = 256
@@ -116,19 +116,12 @@ function shannonEntropy(value: string): number {
 }
 
 function looksHighEntropy(value: string): boolean {
-  const tokens = value.match(/[\p{Letter}\p{Number}+/_=-]{20,}/gu) ?? []
-  return tokens.some((token) => {
-    if (/^[0-9a-f]{24,}$/iu.test(token)) return true
-    const characters = [...token]
-    const categories = [
-      /\p{Lowercase_Letter}/u.test(token),
-      /\p{Uppercase_Letter}/u.test(token),
-      /\p{Number}/u.test(token),
-      /[+/_=-]/u.test(token)
-    ].filter(Boolean).length
-    const uniqueness = new Set(characters).size / characters.length
-    const entropy = shannonEntropy(token)
-    return entropy >= 3.5 && (categories >= 2 || uniqueness >= 0.7)
+  const alphanumericRuns = value.match(/[a-z0-9]{20,}/giu) ?? []
+  const base64Runs = value.match(/[a-z0-9+/]{20,}={0,2}/giu) ?? []
+  return [...new Set([...alphanumericRuns, ...base64Runs])].some((candidate) => {
+    const run = candidate.replace(/=+$/u, '')
+    if (/^[0-9a-f]{24,}$/iu.test(run)) return true
+    return [...run].length >= 20 && shannonEntropy(run) >= 3.5
   })
 }
 
