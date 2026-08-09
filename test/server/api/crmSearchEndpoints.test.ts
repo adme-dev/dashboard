@@ -306,6 +306,83 @@ describe('retired CRM search transport', () => {
       })
   })
 
+  it('rejects a target-bearing array spread into a non-transport wrapper', () => {
+    const source = `
+      function request(endpoint, options) { return $fetch(endpoint, options) }
+      const args = ['/api/crm/search', { method: 'POST', body: { query } }]
+      request(...args)
+    `
+
+    expect(inspectCrmSearchCallerSource(source, 'scripts/spread-wrapper.mjs'))
+      .toContainEqual({
+        filePath: 'scripts/spread-wrapper.mjs',
+        reason: 'CRM search target must be passed directly to an approved transport call'
+      })
+  })
+
+  it.each([
+    [
+      'later endpoint assignment',
+      `let endpoint
+       endpoint = '/api/crm/search'
+       $fetch(endpoint)`
+    ],
+    [
+      'chained endpoint assignment',
+      `let endpoint
+       let alias
+       endpoint = alias = '/api/crm/search'
+       $fetch(endpoint, { method: 'POST', body: { query } })`
+    ]
+  ])('fails closed for a target-bearing %s', (_label, source) => {
+    expect(inspectCrmSearchCallerSource(source, 'scripts/assigned-endpoint.mjs'))
+      .toContainEqual({
+        filePath: 'scripts/assigned-endpoint.mjs',
+        reason: 'CRM search target evidence was not consumed by an approved direct POST body call'
+      })
+  })
+
+  it.each([
+    [
+      'approved transport argument spread',
+      `const args = ['/api/crm/search', { method: 'POST', body: { query } }]
+       $fetch(...args)`
+    ],
+    [
+      'destructured rest array wrapper',
+      `function request(endpoint, options) { return $fetch(endpoint, options) }
+       const args = ['/api/health', '/api/crm/search', { method: 'POST', body: { query } }]
+       const [health, ...searchArgs] = args
+       request(...searchArgs)`
+    ]
+  ])('rejects a target-bearing %s', (_label, source) => {
+    expect(inspectCrmSearchCallerSource(source, 'scripts/spread-target.mjs')).not.toEqual([])
+  })
+
+  it('accepts safe direct and simple endpoint-alias POST body calls', () => {
+    const source = `
+      $fetch('/api/crm/search', { method: 'POST', body: { clientId, query } })
+      const endpoint = '/api/client-portal/crm/search'
+      const options = { method: 'POST', body: { query } }
+      apiFetch(endpoint, options)
+    `
+
+    expect(inspectCrmSearchCallerSource(source, 'app/direct-controls.ts')).toEqual([])
+  })
+
+  it('exempts target aliases used only by explicit console and logger calls', () => {
+    const agencyEndpoint = '/api/crm/search'
+    const portalEndpoint = '/api/client-portal/crm/search'
+    const source = `
+      const agencyEndpoint = '${agencyEndpoint}'
+      const portalEndpoint = '${portalEndpoint}'
+      console.info(agencyEndpoint)
+      logger.debug(portalEndpoint)
+    `
+
+    expect(inspectCrmSearchCallerSource(source, 'scripts/log-controls.mjs')).toEqual([])
+  })
+
   it.each([
     [
       'nested object and array endpoint alias',

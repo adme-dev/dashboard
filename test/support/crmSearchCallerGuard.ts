@@ -11,6 +11,7 @@ interface StringResolution {
   values: string[]
   unknown: boolean
   targetEvidence: boolean
+  evidence: Set<ts.Node>
 }
 
 interface StaticProperty {
@@ -29,6 +30,7 @@ const DYNAMIC = '\u0000'
 const SOURCE_EXTENSION = /\.(?:ts|tsx|js|jsx|vue|mjs|cjs|mts|cts)$/u
 const SEARCH_ENDPOINTS = new Set(['/api/crm/search', '/api/client-portal/crm/search'])
 const SEARCH_TARGET = /\/api\/(?:client-portal\/)?crm\/search/u
+const SEARCH_ROUTE_INVENTORY_VALUE = /^route:server\/api\/(?:client-portal\/)?crm\/search\.post\.ts$/u
 const TRANSPORT_CALLS = new Set(['$fetch', 'fetch', 'useFetch', 'apiFetch', 'aiInternalFetch'])
 const APPROVED_FETCH_RECEIVERS = new Set(['globalThis', 'window', 'self'])
 const EXCLUDED_DIRECTORIES = new Set([
@@ -123,6 +125,10 @@ function findScopedDeclaration(
   return null
 }
 
+function hasSearchTargetEvidence(value: string): boolean {
+  return SEARCH_TARGET.test(value) && !SEARCH_ROUTE_INVENTORY_VALUE.test(value)
+}
+
 function expressionHasTargetEvidence(expression: ts.Expression, sourceFile: ts.SourceFile): boolean {
   const fragments: string[] = []
   const visit = (node: ts.Node) => {
@@ -130,15 +136,17 @@ function expressionHasTargetEvidence(expression: ts.Expression, sourceFile: ts.S
     ts.forEachChild(node, visit)
   }
   visit(expression)
-  return fragments.some(fragment => SEARCH_TARGET.test(fragment))
-    || SEARCH_TARGET.test(fragments.join(''))
-    || SEARCH_TARGET.test(expression.getText(sourceFile))
+  return fragments.some(fragment => hasSearchTargetEvidence(fragment))
+    || hasSearchTargetEvidence(fragments.join(''))
+    || hasSearchTargetEvidence(expression.getText(sourceFile))
 }
 
 function accessKey(expression: ts.PropertyAccessExpression | ts.ElementAccessExpression): string | null {
   if (ts.isPropertyAccessExpression(expression)) return expression.name.text
   const argument = expression.argumentExpression
-  return argument && (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument))
+  return argument && (ts.isStringLiteral(argument)
+    || ts.isNoSubstitutionTemplateLiteral(argument)
+    || ts.isNumericLiteral(argument))
     ? argument.text
     : null
 }
@@ -179,13 +187,37 @@ function bindingOwnerAndPath(binding: ts.BindingElement): {
 }
 
 function sourceViolations(source: string, filePath: string): CrmSearchCallerViolation[] {
+  const sourceScript = scriptSource(source, filePath)
+  const mayContainTarget = (sourceScript.includes('api') && sourceScript.includes('crm'))
+    || sourceScript.includes('\\')
+  if (!mayContainTarget) return []
+
   const parsed = ts.createSourceFile(
     filePath,
-    scriptSource(source, filePath),
+    sourceScript,
     ts.ScriptTarget.Latest,
     true,
     scriptKind(filePath)
   )
+
+  const targetEvidence = new Set<ts.Node>()
+  const consumedTargetEvidence = new Set<ts.Node>()
+  const reportedTargetEvidence = new Set<ts.Node>()
+  const exemptTargetEvidence = new Set<ts.Node>()
+  const evidenceFor = (node: ts.Node): Set<ts.Node> => {
+    targetEvidence.add(node)
+    return new Set([node])
+  }
+  const mergeEvidence = (...groups: Iterable<ts.Node>[]): Set<ts.Node> => new Set(
+    groups.flatMap(group => [...group])
+  )
+  const withEvidence = (resolution: StringResolution, node: ts.Node): StringResolution => ({
+    ...resolution,
+    evidence: mergeEvidence(resolution.evidence, evidenceFor(node))
+  })
+  const markEvidence = (destination: Set<ts.Node>, evidence: Iterable<ts.Node>) => {
+    for (const node of evidence) destination.add(node)
+  }
 
   const resolveDeclaredValue = (
     declaration: ScopedDeclaration,
@@ -216,27 +248,36 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
   ): StringResolution => {
     const expression = unwrapExpression(input)
     if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
+      const hasTargetEvidence = hasSearchTargetEvidence(expression.text)
       return {
         values: [expression.text],
         unknown: false,
-        targetEvidence: SEARCH_TARGET.test(expression.text)
+        targetEvidence: hasTargetEvidence,
+        evidence: hasTargetEvidence ? evidenceFor(expression) : new Set()
       }
+    }
+    if (ts.isSpreadElement(expression)) {
+      const resolved = resolveStrings(expression.expression, expression.expression, new Set(seen))
+      return resolved.targetEvidence ? withEvidence(resolved, expression) : resolved
     }
     if (ts.isIdentifier(expression)) {
       const declaration = findScopedDeclaration(expression.text, location)
       if (!declaration || seen.has(declaration.pos)) {
+        const hasTargetEvidence = expressionHasTargetEvidence(expression, parsed)
         return {
           values: [],
           unknown: true,
-          targetEvidence: expressionHasTargetEvidence(expression, parsed)
+          targetEvidence: hasTargetEvidence,
+          evidence: hasTargetEvidence ? evidenceFor(expression) : new Set()
         }
       }
       const declared = resolveDeclaredValue(declaration, new Set([...seen, declaration.pos]))
       if (!declared.expression) {
-        return { values: [], unknown: true, targetEvidence: false }
+        return { values: [], unknown: true, targetEvidence: false, evidence: new Set() }
       }
       const resolved = resolveStrings(declared.expression, declared.expression, new Set([...seen, declaration.pos]))
-      return { ...resolved, unknown: resolved.unknown || declared.unknown }
+      const result = { ...resolved, unknown: resolved.unknown || declared.unknown }
+      return result.targetEvidence ? withEvidence(result, declaration) : result
     }
     if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
       const object = resolveObject(expression.expression, location, new Set(seen))
@@ -246,20 +287,24 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
         const resolved = resolveStrings(property.expression, property.expression, new Set(seen))
         return { ...resolved, unknown: resolved.unknown || object.unknown }
       }
+      const hasTargetEvidence = expressionHasTargetEvidence(expression, parsed)
       return {
         values: [],
         unknown: true,
-        targetEvidence: expressionHasTargetEvidence(expression, parsed)
+        targetEvidence: hasTargetEvidence,
+        evidence: hasTargetEvidence ? evidenceFor(expression) : new Set()
       }
     }
     if (ts.isConditionalExpression(expression)) {
       const whenTrue = resolveStrings(expression.whenTrue, expression.whenTrue, new Set(seen))
       const whenFalse = resolveStrings(expression.whenFalse, expression.whenFalse, new Set(seen))
-      return {
+      const result: StringResolution = {
         values: [...whenTrue.values, ...whenFalse.values],
         unknown: whenTrue.unknown || whenFalse.unknown,
-        targetEvidence: whenTrue.targetEvidence || whenFalse.targetEvidence
+        targetEvidence: whenTrue.targetEvidence || whenFalse.targetEvidence,
+        evidence: mergeEvidence(whenTrue.evidence, whenFalse.evidence)
       }
+      return result.targetEvidence ? withEvidence(result, expression) : result
     }
     if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.PlusToken) {
       const left = resolveStrings(expression.left, expression.left, new Set(seen))
@@ -267,30 +312,36 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
       const leftValues = left.values.length > 0 ? left.values : [DYNAMIC]
       const rightValues = right.values.length > 0 ? right.values : [DYNAMIC]
       const values = leftValues.flatMap(leftValue => rightValues.map(rightValue => `${leftValue}${rightValue}`))
-      return {
+      const result: StringResolution = {
         values,
         unknown: left.unknown || right.unknown,
-        targetEvidence: values.some(value => SEARCH_TARGET.test(value))
+        targetEvidence: values.some(value => hasSearchTargetEvidence(value))
           || left.targetEvidence
-          || right.targetEvidence
+          || right.targetEvidence,
+        evidence: mergeEvidence(left.evidence, right.evidence)
       }
+      return result.targetEvidence ? withEvidence(result, expression) : result
     }
     if (ts.isTemplateExpression(expression)) {
       let values = [expression.head.text]
       let unknown = false
-      let targetEvidence = SEARCH_TARGET.test(expression.head.text)
+      let targetEvidence = hasSearchTargetEvidence(expression.head.text)
+      let evidence = new Set<ts.Node>()
       for (const span of expression.templateSpans) {
         const replacement = resolveStrings(span.expression, span.expression, new Set(seen))
         const replacements = replacement.values.length > 0 ? replacement.values : [DYNAMIC]
         values = values.flatMap(value => replacements.map(item => `${value}${item}${span.literal.text}`))
         unknown ||= replacement.unknown
-        targetEvidence ||= replacement.targetEvidence || SEARCH_TARGET.test(span.literal.text)
+        targetEvidence ||= replacement.targetEvidence || hasSearchTargetEvidence(span.literal.text)
+        evidence = mergeEvidence(evidence, replacement.evidence)
       }
-      return {
+      const result: StringResolution = {
         values,
         unknown,
-        targetEvidence: targetEvidence || values.some(value => SEARCH_TARGET.test(value))
+        targetEvidence: targetEvidence || values.some(value => hasSearchTargetEvidence(value)),
+        evidence
       }
+      return result.targetEvidence ? withEvidence(result, expression) : result
     }
     const nestedExpressions: ts.Expression[] = []
     if (ts.isCallExpression(expression) || ts.isNewExpression(expression)) {
@@ -308,14 +359,16 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
         }
       }
     }
-    const nestedTargetEvidence = nestedExpressions.some(nested => (
-      resolveStrings(nested, nested, new Set(seen)).targetEvidence
-    ))
-    return {
+    const nestedResolutions = nestedExpressions.map(nested => resolveStrings(nested, nested, new Set(seen)))
+    const nestedTargetEvidence = nestedResolutions.some(resolution => resolution.targetEvidence)
+    const hasTargetEvidence = nestedTargetEvidence || expressionHasTargetEvidence(expression, parsed)
+    const result: StringResolution = {
       values: [],
       unknown: true,
-      targetEvidence: nestedTargetEvidence || expressionHasTargetEvidence(expression, parsed)
+      targetEvidence: hasTargetEvidence,
+      evidence: mergeEvidence(...nestedResolutions.map(resolution => resolution.evidence))
     }
+    return result.targetEvidence ? withEvidence(result, expression) : result
   }
 
   const resolveObject = (
@@ -463,16 +516,41 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
       : false
   }
 
+  const collectNodeTargetEvidence = (node: ts.Node) => {
+    const isComposedExpression = ts.isTemplateExpression(node)
+      || (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken)
+    if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
+      && hasSearchTargetEvidence(node.text)) {
+      evidenceFor(node)
+    } else if (isComposedExpression && expressionHasTargetEvidence(node, parsed)) {
+      resolveStrings(node, node)
+    } else if (ts.isBinaryExpression(node)
+      && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const assigned = resolveStrings(node.right, node.right)
+      if (assigned.targetEvidence) evidenceFor(node)
+    }
+  }
+
   const violations: CrmSearchCallerViolation[] = []
   const add = (reason: string) => violations.push({ filePath, reason })
   const visit = (node: ts.Node) => {
+    collectNodeTargetEvidence(node)
     if (ts.isCallExpression(node)) {
       const isTransportCall = isTransportExpression(node.expression, node.expression)
-      const hasArgumentTargetEvidence = node.arguments.some(argument => (
-        resolveStrings(argument, argument).targetEvidence
-      ))
+      const argumentResolutions = node.arguments.map(argument => resolveStrings(argument, argument))
+      const targetArgumentResolutions = argumentResolutions.filter(resolution => resolution.targetEvidence)
+      const hasArgumentTargetEvidence = targetArgumentResolutions.length > 0
       if (hasArgumentTargetEvidence && !isTransportCall && !isKnownNonTransportCall(node.expression)) {
         add('CRM search target must be passed directly to an approved transport call')
+        markEvidence(
+          reportedTargetEvidence,
+          mergeEvidence(...targetArgumentResolutions.map(resolution => resolution.evidence))
+        )
+      } else if (hasArgumentTargetEvidence && !isTransportCall) {
+        markEvidence(
+          exemptTargetEvidence,
+          mergeEvidence(...targetArgumentResolutions.map(resolution => resolution.evidence))
+        )
       }
 
       if (!node.arguments[0] || !isTransportCall) {
@@ -481,13 +559,17 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
       }
 
       const endpoint = resolveStrings(node.arguments[0], node.arguments[0])
-      const targetValues = endpoint.values.filter(value => SEARCH_TARGET.test(value))
+      const targetValues = endpoint.values.filter(value => hasSearchTargetEvidence(value))
       const hasTarget = targetValues.length > 0 || endpoint.targetEvidence
       if (hasTarget) {
+        let approvedDirectCall = !endpoint.unknown
+          && endpoint.values.length > 0
+          && endpoint.values.every(value => SEARCH_ENDPOINTS.has(value))
         if (endpoint.unknown && endpoint.targetEvidence) {
           add('CRM search transport endpoint containing the target could not be resolved safely')
         }
-        if (targetValues.some(value => !SEARCH_ENDPOINTS.has(value))) {
+        if (endpoint.values.some(value => hasSearchTargetEvidence(value) && !SEARCH_ENDPOINTS.has(value))
+          || (endpoint.values.length > 0 && !endpoint.values.every(value => SEARCH_ENDPOINTS.has(value)))) {
           add('CRM search callers must use one exact endpoint without proxy, query, or suffix transport')
         }
 
@@ -496,34 +578,53 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
           const options = node.arguments[1]
             ? resolveObject(node.arguments[1], node.arguments[1])
             : { properties: new Map<string, StaticProperty>(), unknown: false }
-          if (options.unknown) add('CRM search transport options could not be resolved safely')
+          if (options.unknown) {
+            approvedDirectCall = false
+            add('CRM search transport options could not be resolved safely')
+          }
 
           const method = options.properties.get('method')
           const methodResolution = method
             ? resolveStrings(method.expression, method.expression)
-            : { values: [], unknown: false, targetEvidence: false }
+            : { values: [], unknown: false, targetEvidence: false, evidence: new Set<ts.Node>() }
           if (!method || methodResolution.unknown
             || methodResolution.values.length === 0
             || methodResolution.values.some(value => value.toUpperCase() !== 'POST')) {
+            approvedDirectCall = false
             add('CRM search callers must use explicit POST')
           }
 
           const body = options.properties.get('body')
           if (!body || definedStatus(body.expression, body.expression) !== 'defined') {
+            approvedDirectCall = false
             add('CRM search callers must send a definitely defined body')
           }
 
           for (const forbidden of ['query', 'params', 'searchParams']) {
             if (options.properties.has(forbidden)) {
+              approvedDirectCall = false
               add(`CRM search callers must not use options.${forbidden}`)
             }
           }
+        } else {
+          approvedDirectCall = false
         }
+        markEvidence(
+          approvedDirectCall ? consumedTargetEvidence : reportedTargetEvidence,
+          endpoint.evidence
+        )
       }
     }
     ts.forEachChild(node, visit)
   }
   visit(parsed)
+  for (const _node of targetEvidence) {
+    if (!consumedTargetEvidence.has(_node)
+      && !reportedTargetEvidence.has(_node)
+      && !exemptTargetEvidence.has(_node)) {
+      add('CRM search target evidence was not consumed by an approved direct POST body call')
+    }
+  }
   return violations
 }
 

@@ -285,3 +285,46 @@ This gate covers owner-scope batch/child/aggregate/indirect surfaces, CRM bulk/d
 ## Remaining Concern
 
 - None within the reviewed Task 4 scope.
+
+---
+
+# Review Round 6 — Complete Search Target Evidence Accounting
+
+## Result
+
+- Review base: `c1ede1653de7954b4c9f1119bd15d1673b5072bd`.
+- Intended commit: `fix(crm): account for all search target evidence`.
+- Scope: the two remaining caller-guard MEDIUM findings only; no privacy classifier, UI, route, API, provider, database, migration, deployment, or marketing behavior changed.
+
+## Repairs
+
+- The caller guard now maintains a source-wide evidence ledger for CRM-search literals, composed expressions, resolved declarations, assignments, and spread carriers. Evidence is marked consumed only when a recognized direct transport statically resolves to an exact CRM-search endpoint, explicit POST, a definitely defined body, known options, and no `query`, `params`, or `searchParams`. Unsafe uses are reported without being mislabeled as consumed; only explicit console/logger uses are exempted.
+- Target evidence now survives array spreads into wrappers, direct transport spreads, destructured-rest carriers, post-declaration endpoint assignments, and chained assignments. Unresolved assigned evidence reaches the final fail-closed audit instead of disappearing when identifier resolution finds an initializer-free declaration.
+- Numeric element access is resolved for the existing nested array endpoint-alias control, so its originating literal/declaration evidence is genuinely consumed by the safe direct call. Exact canonical route-inventory values remain non-endpoint metadata, while direct, composed, and escaped endpoint sources still enter AST analysis. The cheap pre-parse candidate filter keeps the repository scan within the existing five-second test timeout without excluding escaped literals.
+
+## Behavioral TDD Evidence
+
+- RED command: `pnpm exec vitest run test/server/api/crmSearchEndpoints.test.ts` before guard edits.
+- RED result under the local Node 20 default: 1 file failed, with 6 failures and 46 passes. Five intended failures returned no violation for the array-spread wrapper, later assignment, chained assignment, direct transport spread, and destructured-rest spread. The sixth failure was the known Node 20 repository-walk timeout; the new safe direct/alias and console/logger controls already passed.
+- GREEN command under the repository's Node 24.18.0 runtime: `node node_modules/vitest/vitest.mjs run test/server/api/crmSearchEndpoints.test.ts`.
+- GREEN result: 1 file/52 tests passed in 2.41 seconds after evidence accounting and the bounded scan filter.
+- No guard implementation preceded the five behavioral regression failures.
+
+## Verification
+
+- Exact Task 4 gate under Node 24.18.0: 10 files/201 tests passed.
+- Canonical Task 1–3/security regression gate under Node 24.18.0: 32 files/283 tests passed.
+- ESLint over `test/support/crmSearchCallerGuard.ts` and `test/server/api/crmSearchEndpoints.test.ts`: clean.
+- `git diff --check`: clean.
+- The full Nuxt typecheck was not treated as a completion gate: Nuxt's spawned checker twice retained the default 4 GB heap and OOMed, while the direct 16 GB full-project attempt remained resource-intensive amid the known unrelated diagnostic flood and was interrupted from the workflow. A dedicated temporary-project diagnostic filter for the two touched TypeScript files completed with zero matching diagnostics; the temporary config was removed.
+
+## Deep Review
+
+- Re-read both changed TypeScript files end-to-end (656 guard lines and 455 endpoint-test lines), reviewed the complete diff, and reviewed this appended report before staging.
+- Confirmed every new target origin in the requested reproductions is either consumed by a statically approved direct call, reported through a specific unsafe-call path, exempted only through the explicit console/logger control, or caught by the final unconsumed-evidence violation.
+- Confirmed safe literal, simple alias, nested object/array member, and nested destructured aliases preserve lexical resolution and produce no violation only after their originating evidence is consumed.
+- Confirmed the repository walk still covers all required roots/extensions and production directories named `test`; no transport, authorization, privacy, UI, API, server, migration, dependency, or external-state behavior changed.
+
+## Remaining Concern
+
+- The repository-wide typecheck remains an unreliable local gate because of its heap demand and unrelated baseline diagnostics. The bounded touched-path filter, focused behavioral gate, and canonical security gate are clean.
