@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION = 'crm-search-privacy-v5' as const
+export const CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION = 'crm-search-privacy-v6' as const
 export const CRM_SEARCH_TOKEN_ADMISSION_VERSION = 'bge-base-en-v1.5-conservative-utf8-v1' as const
 export const CRM_SEARCH_CLIENT_SELECTOR_NORMALIZER_VERSION = 'crm-search-client-selector-v1' as const
 export const CRM_SEARCH_MAX_CODE_POINTS = 256
@@ -123,26 +123,26 @@ function uniqueCharacterRatio(value: string): number {
 function looksHighEntropy(value: string): boolean {
   const alphanumericRuns = value.match(/[a-z0-9]{20,}/giu) ?? []
   const base64Runs = value.match(/[a-z0-9+/]{20,}={0,2}/giu) ?? []
-  const base64UrlRuns = (value.match(/[a-z0-9_-]{20,}/giu) ?? [])
+  const hasHighEntropyBase64UrlRun = (value.match(/[a-z0-9_-]{20,}/giu) ?? [])
     .filter(candidate => /[-_]/u.test(candidate))
-    .filter((candidate) => {
+    .some((candidate) => {
       const compact = candidate.replace(/[-_]/gu, '')
       const entropy = shannonEntropy(compact)
-      if (entropy < 3.5) return false
+      if ([...candidate].length < 20 || entropy < 3.5) return false
 
       // Underscores and digits are conservative encoding signals. Alphabetic
       // hyphen-only runs need stronger compact-run evidence so ordinary human
       // word compounds stay eligible without exempting encoded vowel patterns.
       if (candidate.includes('_') || /\d/u.test(candidate)) return true
-      return [...compact].length >= 19
-        && entropy >= 3.8
+      return entropy >= 3.8
         && uniqueCharacterRatio(compact) >= 0.7
     })
-  return [...new Set([...alphanumericRuns, ...base64Runs, ...base64UrlRuns])].some((candidate) => {
+  const hasHighEntropyUnseparatedRun = [...new Set([...alphanumericRuns, ...base64Runs])].some((candidate) => {
     const run = candidate.replace(/=+$/u, '')
     if (/^[0-9a-f]{24,}$/iu.test(run)) return true
     return [...run].length >= 20 && shannonEntropy(run) >= 3.5
   })
+  return hasHighEntropyUnseparatedRun || hasHighEntropyBase64UrlRun
 }
 
 /** Classifies the same normalized form that is eligible for provider use. */

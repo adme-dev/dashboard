@@ -240,3 +240,48 @@ This gate covers owner-scope batch/child/aggregate/indirect surfaces, CRM bulk/d
 ## Remaining Concern
 
 - None within the reviewed Task 4 scope.
+
+---
+
+# Review Round 5 — Direct Search Transport Policy
+
+## Result
+
+- Review base: `194cce00fd85bc6496368325e6660ff683a8e805`.
+- Intended commit: `fix(crm): enforce direct search transport policy`.
+- Scope: the two MEDIUM round-5 findings only; no unrelated fix, network, AI provider, database, migration, deployment, or production action was run.
+
+## Repairs
+
+- Privacy classifier v6 treats the complete Base64URL candidate, including every `-` or `_`, as the 20-code-point admission boundary. It removes separators only for entropy and unique-character scoring. The requested two-separator mixed-case and uppercase 20-character candidates remain keyword-only, their 19-character counterparts remain semantic-eligible, and `enterprise-account-manager` plus all prior fixtures retain their decisions without a vowel exemption.
+- The caller guard now applies an explicit fail-closed policy whenever CRM-search target evidence reaches a non-transport call. Function and IIFE wrappers, destructured parameters, wrappers receiving transport/endpoint/options, assignment aliases, `bind`/`call`/`apply`, and nested object/array carriers emit a violation rather than relying on arbitrary higher-order JavaScript dataflow. Statically resolved direct transports still undergo the existing exact-endpoint, explicit-POST, defined-body, and no-query checks; proven property/array/destructured endpoint aliases, safe spreads, lexical shadowing, production `test` directories, and console/logger controls remain sound.
+
+## Behavioral TDD Evidence
+
+- Classifier RED command: `pnpm exec vitest run test/crm/searchRequest.test.ts` under Node 24.18.0.
+- Classifier RED result: 1 file failed, with 5 expected failures and 38 passes. Four exact 20-character two-separator candidates were incorrectly semantic-eligible and the v5 classifier contract had not advanced; all 19-character and human-role controls passed.
+- Classifier GREEN result: 1 file/43 tests passed after the v6 implementation.
+- Caller-guard RED command: `pnpm exec vitest run test/server/api/crmSearchEndpoints.test.ts` under Node 24.18.0.
+- Caller-guard RED result: 1 file failed, with 10 expected failures and 35 passes. Every higher-order wrapper/alias/bind/call/apply/nested-carrier fixture returned no violation, while all controls and prior fixtures passed.
+- Caller-guard GREEN result: 1 file/45 tests passed after the fail-closed direct-call policy.
+- No production or guard implementation preceded its corresponding RED run.
+
+## Verification
+
+- Exact Task 4 gate under Node 24.18.0: 10 files/194 tests passed.
+- Task 1–3/security regression gate under Node 24.18.0: 32 files/283 tests passed.
+- ESLint over all four changed source/test files: clean.
+- Full Node 24 typecheck retained 864 unrelated repository diagnostics; filtering the output to all four changed source/test paths returned zero diagnostics.
+- `git diff --check`: clean.
+
+## Deep Review
+
+- Re-read all four changed source/test files end-to-end, reviewed the complete diff, and appended this report.
+- Confirmed Base64URL length admission uses the total candidate while entropy and uniqueness use only the separator-free compact run; classification still controls semantic eligibility only and authorized keyword retrieval remains available.
+- Confirmed the guard does not interpret arbitrary wrapper execution: reachable target evidence on a non-transport call fails closed, while direct recognized transport calls are statically normalized through the existing POST/body/query policy.
+- Confirmed existing exact route matching, safe option spreads, nested endpoint/member/destructuring resolution, lexical scope, logger/console exclusions, and production source-root scanning remain intact.
+- Confirmed no route transport handler, UI, server authorization, provider, database, migration, deployment, or marketing behavior changed.
+
+## Remaining Concern
+
+- None within the reviewed Task 4 scope.

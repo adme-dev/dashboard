@@ -234,6 +234,99 @@ describe('retired CRM search transport', () => {
       .toContainEqual({ filePath: 'scripts/alias-synthetic.mjs', reason })
   })
 
+  it.each([
+    [
+      'function wrapper receiving endpoint and options',
+      `function request(endpoint, options) { return $fetch(endpoint, options) }
+       request('/api/crm/search', { method: 'POST', body: { query } })`
+    ],
+    [
+      'IIFE wrapper receiving endpoint and options',
+      `((endpoint, options) => $fetch(endpoint, options))(
+        '/api/crm/search',
+        { method: 'POST', body: { query } }
+      )`
+    ],
+    [
+      'destructured parameter wrapper',
+      `function request({ endpoint, options }) { return $fetch(endpoint, options) }
+       request({
+         endpoint: '/api/crm/search',
+         options: { method: 'POST', body: { query } }
+       })`
+    ],
+    [
+      'wrapper receiving transport, endpoint, and options',
+      `function invoke(transport, endpoint, options) { return transport(endpoint, options) }
+       invoke($fetch, '/api/crm/search', { method: 'POST', body: { query } })`
+    ],
+    [
+      'transport alias assigned after declaration',
+      `let transport
+       transport = $fetch
+       transport('/api/crm/search', { method: 'POST', body: { query } })`
+    ],
+    [
+      'bound transport alias',
+      `const transport = $fetch.bind(null)
+       transport('/api/crm/search', { method: 'POST', body: { query } })`
+    ],
+    [
+      '$fetch.call indirection',
+      `$fetch.call(null, '/api/crm/search', { method: 'POST', body: { query } })`
+    ],
+    [
+      '$fetch.apply indirection',
+      `$fetch.apply(null, [
+        '/api/crm/search',
+        { method: 'POST', body: { query } }
+      ])`
+    ],
+    [
+      'nested object target wrapper',
+      `invoke({
+        request: {
+          endpoint: '/api/crm/search',
+          options: { method: 'POST', body: { query } }
+        }
+      })`
+    ],
+    [
+      'nested array target wrapper',
+      `invoke([
+        { transport: $fetch },
+        ['/api/crm/search', { method: 'POST', body: { query } }]
+      ])`
+    ]
+  ])('rejects higher-order %s', (_label, source) => {
+    expect(inspectCrmSearchCallerSource(source, 'scripts/higher-order-synthetic.mjs'))
+      .toContainEqual({
+        filePath: 'scripts/higher-order-synthetic.mjs',
+        reason: 'CRM search target must be passed directly to an approved transport call'
+      })
+  })
+
+  it.each([
+    [
+      'nested object and array endpoint alias',
+      `const routes = { crm: { endpoints: ['/api/crm/search'] } }
+       const endpoint = routes.crm.endpoints[0]
+       $fetch(endpoint, { method: 'POST', body: { query } })`
+    ],
+    [
+      'nested destructured object and array endpoint alias',
+      `const routes = { crm: [{ search: '/api/crm/search' }] }
+       const { crm: [{ search: endpoint }] } = routes
+       $fetch(endpoint, { method: 'POST', body: { query } })`
+    ],
+    [
+      'non-target wrapper arguments',
+      `invoke({ endpoint: '/api/health', options: { method: 'GET' } })`
+    ]
+  ])('accepts the %s control', (_label, source) => {
+    expect(inspectCrmSearchCallerSource(source, 'scripts/higher-order-control.mjs')).toEqual([])
+  })
+
   it('ignores unrelated member fetch methods even when their argument mentions CRM search', () => {
     expect(inspectCrmSearchCallerSource(
       `logger.fetch('/api/crm/search')`,

@@ -62,6 +62,10 @@ describe('normalizeCrmSearchRequest', () => {
     ['uppercase Base64URL token', 'NWXQPLMZVK_TJSHGFDRC-YBNWXQPLM'],
     ['mixed-case alphabetic Base64URL boundary', 'AbCdEfGhi-JkLmNoPqRs'],
     ['uppercase alphabetic Base64URL boundary', 'ABCDEFGHI-JKLMNOPQRS'],
+    ['two-separator mixed-case Base64URL boundary', 'AbCdEfGh-IjKlMn-OpQr'],
+    ['two-separator regrouped mixed-case Base64URL boundary', 'AbCdEfG-HijKl-MnOpQr'],
+    ['two-separator uppercase Base64URL boundary', 'ABCDEFGH-IJKLMN-OPQR'],
+    ['two-separator regrouped uppercase Base64URL boundary', 'ABCDEFG-HIJKL-MNOPQR'],
     ['long mixed-case alphabetic Base64URL token', 'AbCdEfGhIjKlMn-OpQrStUvWxYz'],
     ['20-character Base64URL boundary', 'AbCdEfGhi_IjKlMnOpQ1'],
     ['one-character role mutation', 'enterprise-account-manager2'],
@@ -74,6 +78,10 @@ describe('normalizeCrmSearchRequest', () => {
     ['19-character boundary', 'ABCDEFGHIJKLMNOPQRS'],
     ['19-character Base64URL boundary', 'AbCdEfGh_IjKlMnOpQ1'],
     ['19-character alphabetic Base64URL boundary', 'AbCdEfGh-JkLmNoPqRs'],
+    ['19-character two-separator mixed-case Base64URL boundary', 'AbCdEfGh-IjKlMn-OpQ'],
+    ['19-character two-separator regrouped mixed-case Base64URL boundary', 'AbCdEfG-HijKl-MnOpQ'],
+    ['19-character two-separator uppercase Base64URL boundary', 'ABCDEFGH-IJKLMN-OPQ'],
+    ['19-character two-separator regrouped uppercase Base64URL boundary', 'ABCDEFG-HIJKL-MNOPQ'],
     ['ordinary spaced client name', 'International Business Machines Australia'],
     ['ordinary long word', 'internationalisation'],
     ['ordinary hyphenated role', 'enterprise-account-manager'],
@@ -98,10 +106,10 @@ describe('normalizeCrmSearchRequest', () => {
   })
 
   it('exposes a versioned classifier and tokenizer decision contract', () => {
-    expect(CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION).toBe('crm-search-privacy-v5')
+    expect(CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION).toBe('crm-search-privacy-v6')
     expect(CRM_SEARCH_TOKEN_ADMISSION_VERSION).toBe('bge-base-en-v1.5-conservative-utf8-v1')
     expect(classifyCrmSearchPrivacy('Acme account')).toEqual({
-      version: 'crm-search-privacy-v5',
+      version: 'crm-search-privacy-v6',
       semanticEligible: true,
       reason: 'eligible'
     })

@@ -438,10 +438,48 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
     return false
   }
 
+  const isKnownNonTransportCall = (
+    input: ts.Expression,
+    location: ts.Node = input,
+    seen = new Set<number>()
+  ): boolean => {
+    const expression = unwrapExpression(input)
+    if (ts.isIdentifier(expression)) {
+      const declaration = findScopedDeclaration(expression.text, location)
+      if (!declaration || seen.has(declaration.pos)) return false
+      const declared = resolveDeclaredValue(declaration, new Set([...seen, declaration.pos]))
+      if (!declared.expression) return false
+      return isKnownNonTransportCall(declared.expression, declared.expression, new Set([...seen, declaration.pos]))
+    }
+    if (!ts.isPropertyAccessExpression(expression) && !ts.isElementAccessExpression(expression)) return false
+    const receiver = unwrapExpression(expression.expression)
+    if (ts.isIdentifier(receiver) && (receiver.text === 'console' || receiver.text === 'logger')) return true
+
+    const sourceObject = resolveObject(expression.expression, location, new Set(seen))
+    const key = accessKey(expression)
+    const property = key ? sourceObject.properties.get(key) : null
+    return property
+      ? isKnownNonTransportCall(property.expression, property.expression, new Set(seen))
+      : false
+  }
+
   const violations: CrmSearchCallerViolation[] = []
   const add = (reason: string) => violations.push({ filePath, reason })
   const visit = (node: ts.Node) => {
-    if (ts.isCallExpression(node) && node.arguments[0] && isTransportExpression(node.expression, node.expression)) {
+    if (ts.isCallExpression(node)) {
+      const isTransportCall = isTransportExpression(node.expression, node.expression)
+      const hasArgumentTargetEvidence = node.arguments.some(argument => (
+        resolveStrings(argument, argument).targetEvidence
+      ))
+      if (hasArgumentTargetEvidence && !isTransportCall && !isKnownNonTransportCall(node.expression)) {
+        add('CRM search target must be passed directly to an approved transport call')
+      }
+
+      if (!node.arguments[0] || !isTransportCall) {
+        ts.forEachChild(node, visit)
+        return
+      }
+
       const endpoint = resolveStrings(node.arguments[0], node.arguments[0])
       const targetValues = endpoint.values.filter(value => SEARCH_TARGET.test(value))
       const hasTarget = targetValues.length > 0 || endpoint.targetEvidence
