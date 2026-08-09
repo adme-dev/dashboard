@@ -1,5 +1,6 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { registry } from '~~/server/utils/ai/tools'
 
 /**
  * The CRM has readers and writers outside the obvious REST namespaces. Keep this
@@ -184,28 +185,80 @@ const CRM_ROUTE_SURFACES = [
 ] as const
 
 const CRM_SERVICE_SURFACES = [
-  'tool:search_crm',
-  'tool:get_crm_pipeline',
-  'tool:propose_opportunity',
-  'tool:log_crm_activity',
-  'tool:propose_quote',
-  'tool:draft_followup',
-  'service:workers/crm-cron/src/index.ts',
-  'service:workers/email-worker/src/crmAdapter.ts',
-  'service:server/utils/crm/emailInboundProcessor.ts',
-  'service:server/utils/crm/emailRouteManagement.ts',
-  'service:server/utils/leads/crmBridge.ts',
-  'service:server/utils/leads/crmPromotion.ts',
-  'service:server/utils/leads/dispatch.ts',
-  'service:server/api/cron/crm-dormancy.post.ts',
-  'service:server/api/cron/crm-health-recompute.post.ts',
-  'service:server/api/cron/crm-meeting-actions.post.ts',
-  'service:server/api/cron/crm-score-decay.post.ts',
-  'service:server/api/cron/crm-task-reminders.post.ts'
+  "service:server/api/cron/crm-dormancy.post.ts",
+  "service:server/api/cron/crm-health-recompute.post.ts",
+  "service:server/api/cron/crm-meeting-actions.post.ts",
+  "service:server/api/cron/crm-score-decay.post.ts",
+  "service:server/api/cron/crm-task-reminders.post.ts",
+  "service:server/utils/ai/executors/crmActions.ts",
+  "service:server/utils/crm/activation.ts",
+  "service:server/utils/crm/adoption.ts",
+  "service:server/utils/crm/aiConfig.ts",
+  "service:server/utils/crm/aiDraft.ts",
+  "service:server/utils/crm/aiSignals.ts",
+  "service:server/utils/crm/analytics.ts",
+  "service:server/utils/crm/assignment.ts",
+  "service:server/utils/crm/audit.ts",
+  "service:server/utils/crm/bulk.ts",
+  "service:server/utils/crm/catalogFeed.ts",
+  "service:server/utils/crm/catalogSourceService.ts",
+  "service:server/utils/crm/clientCatalogAccess.ts",
+  "service:server/utils/crm/clientCrmAccess.ts",
+  "service:server/utils/crm/comms.ts",
+  "service:server/utils/crm/commsDb.ts",
+  "service:server/utils/crm/csv.ts",
+  "service:server/utils/crm/customFields.ts",
+  "service:server/utils/crm/dedupe.ts",
+  "service:server/utils/crm/documents.ts",
+  "service:server/utils/crm/documentsDb.ts",
+  "service:server/utils/crm/emailCommunicationProjection.ts",
+  "service:server/utils/crm/emailContracts.ts",
+  "service:server/utils/crm/emailInboundConfig.ts",
+  "service:server/utils/crm/emailInboundProcessingContracts.ts",
+  "service:server/utils/crm/emailInboundProcessor.ts",
+  "service:server/utils/crm/emailInboundQueue.ts",
+  "service:server/utils/crm/emailOutboundPolicy.ts",
+  "service:server/utils/crm/emailReplyToken.ts",
+  "service:server/utils/crm/emailRepository.ts",
+  "service:server/utils/crm/emailRouteManagement.ts",
+  "service:server/utils/crm/emailRouteRepository.ts",
+  "service:server/utils/crm/exportRecords.ts",
+  "service:server/utils/crm/filters.ts",
+  "service:server/utils/crm/healthScoring.ts",
+  "service:server/utils/crm/healthSignals.ts",
+  "service:server/utils/crm/lifecycle.ts",
+  "service:server/utils/crm/lineItems.ts",
+  "service:server/utils/crm/lineItemsDb.ts",
+  "service:server/utils/crm/meetingBridge.ts",
+  "service:server/utils/crm/nextBestAction.ts",
+  "service:server/utils/crm/oppQuote.ts",
+  "service:server/utils/crm/opportunityStageTransition.ts",
+  "service:server/utils/crm/platformRolloutReadiness.ts",
+  "service:server/utils/crm/queryScope.ts",
+  "service:server/utils/crm/relationships.ts",
+  "service:server/utils/crm/relationshipsDb.ts",
+  "service:server/utils/crm/scoreSignals.ts",
+  "service:server/utils/crm/scoring.ts",
+  "service:server/utils/crm/search.ts",
+  "service:server/utils/crm/stageAutomation.ts",
+  "service:server/utils/crm/stages.ts",
+  "service:server/utils/crm/targetsDb.ts",
+  "service:server/utils/crm/tasks.ts",
+  "service:server/utils/crm/transactionalEmail.ts",
+  "service:server/utils/crm/types.ts",
+  "service:server/utils/crm/viewsDb.ts",
+  "service:server/utils/leads/crmAccessPolicy.ts",
+  "service:server/utils/leads/crmBridge.ts",
+  "service:server/utils/leads/crmPromotion.ts",
+  "service:server/utils/leads/crmPromotionState.ts",
+  "service:server/utils/leads/dispatch.ts",
+  "service:workers/crm-cron/src/index.ts",
+  "service:workers/email-worker/src/crmAdapter.ts",
 ] as const
 
 export const CRM_RECORD_ACCESS_SURFACE_INVENTORY = Object.freeze([
   ...CRM_ROUTE_SURFACES,
+  ...discoverRegisteredCrmToolSurfaces(),
   ...CRM_SERVICE_SURFACES
 ].sort())
 
@@ -229,15 +282,66 @@ export function scanCrmRecordSurfaces(root = process.cwd()): string[] {
   const found: string[] = []
   walkTypes(root, join(root, 'server/api/crm'), found)
   walkTypes(root, join(root, 'server/api/client-portal/crm'), found)
-
-  for (const surface of CRM_SERVICE_SURFACES) {
-    if (!surface.startsWith('service:')) {
-      found.push(surface)
-      continue
-    }
-    const path = surface.slice('service:'.length)
-    if (existsSync(join(root, path))) found.push(surface)
-  }
-
+  found.push(...discoverRegisteredCrmToolSurfaces())
+  found.push(...discoverCrmIndirectServiceSurfaces(root))
   return found.sort()
+}
+
+type RegisteredTool = { name: string; description: string }
+
+/**
+ * CRM is an explicit runtime concern in tool metadata. Reading the assembled
+ * registry catches a newly registered CRM tool even when no inventory line was
+ * manually added for it.
+ */
+export function discoverRegisteredCrmToolSurfaces(
+  tools: readonly RegisteredTool[] = registry
+): string[] {
+  return tools
+    .filter(tool => /crm/i.test(`${tool.name} ${tool.description}`))
+    .map(tool => `tool:${tool.name}`)
+    .sort()
+}
+
+function walkServiceTypes(root: string, directory: string, matches: (relativePath: string) => boolean, found: string[]) {
+  if (!existsSync(directory)) return
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.ts')) continue
+    const relativePath = relative(root, join(directory, entry.name))
+    if (matches(relativePath)) found.push(`service:${relativePath}`)
+  }
+}
+
+/**
+ * The maintained indirect-service manifest is intentionally narrow and
+ * filesystem-backed. New CRM modules in these record-bearing roots are returned
+ * as unclassified drift until their authority inventory entry is reviewed.
+ */
+export function discoverCrmIndirectServiceSurfaces(root = process.cwd()): string[] {
+  const found: string[] = []
+  walkServiceTypes(root, join(root, 'server/utils/crm'), path =>
+    !path.endsWith('/recordAccessInventory.ts') && !path.endsWith('/searchContext.ts'), found)
+  walkServiceTypes(root, join(root, 'server/utils/leads'), path =>
+    /\/crm[^/]*\.ts$/i.test(path) || path.endsWith('/dispatch.ts'), found)
+  walkServiceTypes(root, join(root, 'server/utils/ai/executors'), path =>
+    path.endsWith('/crmActions.ts'), found)
+  walkServiceTypes(root, join(root, 'server/api/cron'), path =>
+    /\/crm-[^/]*\.ts$/i.test(path), found)
+  walkServiceTypes(root, join(root, 'workers/crm-cron/src'), path =>
+    path === 'workers/crm-cron/src/index.ts', found)
+  walkServiceTypes(root, join(root, 'workers/email-worker/src'), path =>
+    path === 'workers/email-worker/src/crmAdapter.ts', found)
+  return found.sort()
+}
+
+export function discoverCrmInventoryDrift(
+  discovered: readonly string[],
+  inventory: readonly string[] = CRM_RECORD_ACCESS_SURFACE_INVENTORY
+): { unclassified: string[]; missing: string[] } {
+  const discoveredSet = new Set(discovered)
+  const inventorySet = new Set(inventory)
+  return {
+    unclassified: [...discoveredSet].filter(surface => !inventorySet.has(surface)).sort(),
+    missing: [...inventorySet].filter(surface => !discoveredSet.has(surface)).sort()
+  }
 }
