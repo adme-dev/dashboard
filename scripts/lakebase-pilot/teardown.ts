@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
-import { redactPilotTarget, resolvePilotTarget } from './contracts'
+import { pathToFileURL } from 'node:url'
+import { LakebasePilotSafetyError, redactPilotTarget, resolvePilotTarget } from './contracts'
 import {
   closePilotDatabasePreservingError,
   createPilotDatabase,
@@ -9,6 +10,20 @@ import {
 export interface PilotTeardownDependencies {
   env: Record<string, string | undefined>
   createDatabase?: (target: ReturnType<typeof resolvePilotTarget>) => Promise<PilotDatabase>
+}
+
+export type LakebasePilotTeardownCliOutput
+  = | { status: 'completed', result: Awaited<ReturnType<typeof runPilotTeardown>> }
+    | { status: 'blocked', code: string }
+
+export interface RunPilotTeardownCliDependencies {
+  runTeardown?: typeof runPilotTeardown
+  write?: (output: LakebasePilotTeardownCliOutput) => void
+}
+
+export interface RunPilotTeardownCliResult {
+  exitCode: 0 | 1
+  output: LakebasePilotTeardownCliOutput
 }
 
 export async function runPilotTeardown(deps: PilotTeardownDependencies) {
@@ -32,4 +47,32 @@ export async function runPilotTeardown(deps: PilotTeardownDependencies) {
   } finally {
     await closePilotDatabasePreservingError(database, { operationCompleted, primaryError })
   }
+}
+
+function teardownFailureCode(error: unknown): string {
+  if (error instanceof LakebasePilotSafetyError) return error.code
+  return 'pilot_teardown_failed'
+}
+
+export async function runPilotTeardownCli(
+  args: { env?: Record<string, string | undefined> } = {},
+  deps: RunPilotTeardownCliDependencies = {}
+): Promise<RunPilotTeardownCliResult> {
+  const write = deps.write || (output => console.log(JSON.stringify(output)))
+  try {
+    const result = await (deps.runTeardown || runPilotTeardown)({ env: args.env || process.env })
+    const output: LakebasePilotTeardownCliOutput = { status: 'completed', result }
+    write(output)
+    return { exitCode: 0, output }
+  } catch (error) {
+    const output: LakebasePilotTeardownCliOutput = { status: 'blocked', code: teardownFailureCode(error) }
+    write(output)
+    return { exitCode: 1, output }
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runPilotTeardownCli().then((result) => {
+    process.exitCode = result.exitCode
+  })
 }

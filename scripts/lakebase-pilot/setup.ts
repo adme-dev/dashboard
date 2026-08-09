@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import { pathToFileURL } from 'node:url'
 import {
   classifyLakebaseReadiness,
   inspectLakebaseCapability,
   type LakebaseReadinessBlocker
 } from './capability'
-import { redactPilotTarget, resolvePilotTarget } from './contracts'
+import { LakebasePilotSafetyError, redactPilotTarget, resolvePilotTarget } from './contracts'
 import {
   closePilotDatabasePreservingError,
   createPilotDatabase,
@@ -42,6 +43,20 @@ export interface LakebasePilotFixtureRow extends Omit<LakebasePilotFixtureDocume
 export interface PilotSetupDependencies {
   env: Record<string, string | undefined>
   createDatabase?: (target: ReturnType<typeof resolvePilotTarget>) => Promise<PilotDatabase>
+}
+
+export type LakebasePilotSetupCliOutput
+  = | { status: 'completed', result: Awaited<ReturnType<typeof runPilotSetup>> }
+    | { status: 'blocked', code: string }
+
+export interface RunPilotSetupCliDependencies {
+  runSetup?: typeof runPilotSetup
+  write?: (output: LakebasePilotSetupCliOutput) => void
+}
+
+export interface RunPilotSetupCliResult {
+  exitCode: 0 | 1
+  output: LakebasePilotSetupCliOutput
 }
 
 export class LakebasePilotSetupError extends Error {
@@ -146,4 +161,32 @@ VALUES ($1, $2, $3, $4, $5, $6, $7)
   } finally {
     await closePilotDatabasePreservingError(database, { operationCompleted, primaryError })
   }
+}
+
+function setupFailureCode(error: unknown): string {
+  if (error instanceof LakebasePilotSafetyError || error instanceof LakebasePilotSetupError) return error.code
+  return 'pilot_setup_failed'
+}
+
+export async function runPilotSetupCli(
+  args: { env?: Record<string, string | undefined> } = {},
+  deps: RunPilotSetupCliDependencies = {}
+): Promise<RunPilotSetupCliResult> {
+  const write = deps.write || (output => console.log(JSON.stringify(output)))
+  try {
+    const result = await (deps.runSetup || runPilotSetup)({ env: args.env || process.env })
+    const output: LakebasePilotSetupCliOutput = { status: 'completed', result }
+    write(output)
+    return { exitCode: 0, output }
+  } catch (error) {
+    const output: LakebasePilotSetupCliOutput = { status: 'blocked', code: setupFailureCode(error) }
+    write(output)
+    return { exitCode: 1, output }
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runPilotSetupCli().then((result) => {
+    process.exitCode = result.exitCode
+  })
 }

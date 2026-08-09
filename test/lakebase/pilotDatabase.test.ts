@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { Client } from 'pg'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPilotDatabase } from '../../scripts/lakebase-pilot/database'
-import { loadFixtureRows, runPilotSetup } from '../../scripts/lakebase-pilot/setup'
-import { runPilotTeardown } from '../../scripts/lakebase-pilot/teardown'
+import { loadFixtureRows, runPilotSetup, runPilotSetupCli } from '../../scripts/lakebase-pilot/setup'
+import { runPilotTeardown, runPilotTeardownCli } from '../../scripts/lakebase-pilot/teardown'
 
 const pg = vi.hoisted(() => ({
   connect: vi.fn(),
@@ -220,6 +220,31 @@ describe('Lakebase pilot setup and teardown guards', () => {
       createDatabase
     })).rejects.toThrow('mutation_not_confirmed')
     expect(createDatabase).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { command: 'setup', run: runPilotSetupCli },
+    { command: 'teardown', run: runPilotTeardownCli }
+  ])('returns a redacted non-zero $command CLI failure before any database connection', async ({ run }) => {
+    vi.clearAllMocks()
+    const output: unknown[] = []
+    const secret = 'must-not-leak-from-cli'
+    const result = await run({
+      env: {
+        NEON_API_KEY: secret,
+        DATABASE_URL: `postgresql://production:${secret}@private.invalid/app`
+      }
+    }, {
+      write: value => output.push(value)
+    })
+
+    expect(result).toEqual({
+      exitCode: 1,
+      output: { status: 'blocked', code: 'missing_lakebase_pilot_project_id' }
+    })
+    expect(output).toEqual([result.output])
+    expect(JSON.stringify(output)).not.toContain(secret)
+    expect(pg.connect).not.toHaveBeenCalled()
   })
 
   it('blocks schema creation until the capability is ready and closes the connection', async () => {
