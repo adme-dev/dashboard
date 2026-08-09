@@ -1,6 +1,9 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { existsSync, readdirSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  collectCrmSearchCallerViolations,
+  inspectCrmSearchCallerSource
+} from '../../support/crmSearchCallerGuard'
 
 const {
   requireClientCrmAccess,
@@ -94,15 +97,6 @@ describe('CRM POST search endpoints', () => {
   })
 })
 
-function sourceFiles(root: string): string[] {
-  if (!existsSync(root)) return []
-  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(root, entry.name)
-    if (entry.isDirectory()) return sourceFiles(path)
-    return /\.(?:ts|vue|mjs)$/.test(entry.name) ? [path] : []
-  })
-}
-
 describe('retired CRM search transport', () => {
   it('has POST handlers only and no compatibility alias for the unsafe semantic route', () => {
     expect(existsSync('server/api/crm/search.post.ts')).toBe(true)
@@ -113,13 +107,36 @@ describe('retired CRM search transport', () => {
     expect(readdirSync('server/api/agency/search').filter(name => name.startsWith('semantic.'))).toEqual([])
   })
 
-  it('leaves no production caller that can send CRM search text through a URL', () => {
-    const offenders = ['app', 'server', 'shared']
-      .flatMap(sourceFiles)
-      .filter(path => /['"`]\/api\/(?:client-portal\/)?crm\/search(?:['"`?])/u.test(readFileSync(path, 'utf8')))
-      .map(path => relative(process.cwd(), path))
-      .sort()
+  it('accepts only POST body callers across every production source root', () => {
+    expect(collectCrmSearchCallerViolations(['app', 'server', 'shared', 'scripts', 'workers'])).toEqual([])
+  })
 
-    expect(offenders).toEqual([])
+  it.each([
+    [
+      'template query transport',
+      'const query = \'Acme\'; $fetch(`/api/crm/search?q=${query}`)'
+    ],
+    [
+      'composed implicit GET',
+      'const endpoint = \'/api/\' + \'crm/search\'; $fetch(endpoint)'
+    ],
+    [
+      'portal options query',
+      'const endpoint = `/api/client-portal/crm/${\'search\'}`; apiFetch(endpoint, { method: \'POST\', query: { q: term } })'
+    ],
+    [
+      'dynamic template suffix',
+      'const suffix = makeQuery(term); $fetch(`/api/crm/search${suffix}`, { method: \'POST\', body: { query: term } })'
+    ]
+  ])('detects synthetic %s', (_label, source) => {
+    expect(inspectCrmSearchCallerSource(source, 'scripts/synthetic.mjs')).not.toEqual([])
+  })
+
+  it('accepts synthetic explicit POST bodies for both routes', () => {
+    const source = `
+      $fetch('/api/crm/search', { method: 'POST', body: { clientId, query } })
+      apiFetch('/api/client-portal/crm/search', { method: 'POST', body: { query } })
+    `
+    expect(inspectCrmSearchCallerSource(source, 'workers/valid.ts')).toEqual([])
   })
 })

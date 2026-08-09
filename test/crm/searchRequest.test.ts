@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CRM_SEARCH_CLIENT_SELECTOR_NORMALIZER_VERSION,
   CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION,
   CRM_SEARCH_TOKEN_ADMISSION_VERSION,
   classifyCrmSearchPrivacy,
+  normalizeCrmSearchClientSelector,
   normalizeCrmSearchRequest
 } from '~~/server/utils/crm/searchRequest'
 
@@ -48,6 +50,23 @@ describe('normalizeCrmSearchRequest', () => {
     expect(result.semanticEligible).toBe(false)
   })
 
+  it.each([
+    ['20-character uppercase boundary', 'ABCDEFGHIJKLMNOPQRST'],
+    ['unique uppercase secret', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'],
+    ['unique lowercase secret', 'abcdefghijklmnopqrstuvwxyz'],
+    ['lowercase base32 token', 'mzxw6ytboi7f65uxm5za']
+  ])('keeps uncertain %s keyword-only', (_label, query) => {
+    expect(normalizeCrmSearchRequest({ query }).semanticEligible).toBe(false)
+  })
+
+  it.each([
+    ['19-character boundary', 'ABCDEFGHIJKLMNOPQRS'],
+    ['ordinary spaced client name', 'International Business Machines Australia'],
+    ['ordinary long word', 'internationalisation']
+  ])('does not classify %s as a high-entropy identifier', (_label, query) => {
+    expect(normalizeCrmSearchRequest({ query }).semanticEligible).toBe(true)
+  })
+
   it('keeps a query above the conservative 512-token admission bound keyword-only', () => {
     expect(normalizeCrmSearchRequest({ query: '🧬'.repeat(127) }).semanticEligible).toBe(true)
     const result = normalizeCrmSearchRequest({ query: '🧬'.repeat(128) })
@@ -64,12 +83,26 @@ describe('normalizeCrmSearchRequest', () => {
   })
 
   it('exposes a versioned classifier and tokenizer decision contract', () => {
-    expect(CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION).toBe('crm-search-privacy-v1')
+    expect(CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION).toBe('crm-search-privacy-v2')
     expect(CRM_SEARCH_TOKEN_ADMISSION_VERSION).toBe('bge-base-en-v1.5-conservative-utf8-v1')
     expect(classifyCrmSearchPrivacy('Acme account')).toEqual({
-      version: 'crm-search-privacy-v1',
+      version: 'crm-search-privacy-v2',
       semanticEligible: true,
       reason: 'eligible'
     })
+  })
+
+  it('normalizes and versions AI client selectors before applying the code-point bound', () => {
+    expect(normalizeCrmSearchClientSelector('  Ａcme\u202e\tﬃ  Group  ')).toEqual({
+      version: 'crm-search-client-selector-v1',
+      value: 'Acme ffi Group'
+    })
+    expect(CRM_SEARCH_CLIENT_SELECTOR_NORMALIZER_VERSION).toBe('crm-search-client-selector-v1')
+  })
+
+  it('rejects blank and post-NFKC client selectors above 160 code points', () => {
+    expect(() => normalizeCrmSearchClientSelector('\u202e\u0000  ')).toThrow()
+    expect(() => normalizeCrmSearchClientSelector('ﬃ'.repeat(54))).toThrow()
+    expect(normalizeCrmSearchClientSelector(`Acme${'\u202e'.repeat(200)}`).value).toBe('Acme')
   })
 })

@@ -52,6 +52,27 @@ describe('search_crm', () => {
     expect(deps.search).toHaveBeenCalledWith(context, 'jo', 50)
   })
 
+  it('resolves only the normalized NFKC client selector', async () => {
+    const deps = resolvedDeps()
+    await searchCrm({ clientName: '  Ａcme\u202e\tﬃ  Group ', query: 'jo', limit: 5 }, ctx, deps)
+
+    expect(deps.resolveContext).toHaveBeenCalledWith(ctx, { clientName: 'Acme ffi Group' })
+  })
+
+  it('returns a generic failure without resolving or retrieving for an invalid normalized selector', async () => {
+    const resolveContext = vi.fn()
+    const search = vi.fn()
+    const result = await searchCrm({ clientName: 'ﬃ'.repeat(54), query: 'private', limit: 5 }, ctx, {
+      resolveContext,
+      search
+    })
+
+    expect(result.ok).toBe(false)
+    expect((result as { error: string }).error).not.toContain('ﬃ')
+    expect(resolveContext).not.toHaveBeenCalled()
+    expect(search).not.toHaveBeenCalled()
+  })
+
   it.each(['not_found', 'ambiguous', 'scope_unavailable'] as const)(
     'returns a non-disclosing failure for %s client resolution',
     async (status) => {
@@ -82,8 +103,7 @@ describe('search_crm', () => {
     expect((result as { error: string }).error).not.toMatch(/private query|crm_people|tenant/i)
   })
 
-  it('bounds selectors and remains read-only, untrusted, and CLIENTS-authorized', () => {
-    expect(searchCrmTool.parameters.safeParse({ clientName: 'x'.repeat(161), query: 'Acme', limit: 20 }).success).toBe(false)
+  it('bounds queries and remains read-only, untrusted, and CLIENTS-authorized', () => {
     expect(searchCrmTool.parameters.safeParse({ clientName: 'Acme', query: 'x'.repeat(257), limit: 20 }).success).toBe(false)
     expect(searchCrmTool.mutates).toBeUndefined()
     expect(searchCrmTool.returnsUntrusted).toBe(true)

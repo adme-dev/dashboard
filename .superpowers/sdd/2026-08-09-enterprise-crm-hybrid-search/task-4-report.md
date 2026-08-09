@@ -83,3 +83,44 @@ This gate covers owner-scope batch/child/aggregate/indirect surfaces, CRM bulk/d
 ## Remaining Concern
 
 - Before any future provider call, Task 7 must repeat exact-tokenizer admission when schema tokenizer assets become available, or retain the current conservative fail-closed admission. This seam is already versioned so that replacement will not require contract drift.
+
+---
+
+# Review Round 1 — POST Search Boundary Closure
+
+## Result
+
+- Review base: `54e496922defc8e0039897be5396c90f2e8b8b28`.
+- Intended commit: `fix(crm): close POST search review gaps`.
+- Scope: the four MEDIUM review findings only; no unrelated fix, network, AI provider, database, migration, deployment, or production action was run.
+
+## Repairs
+
+- Privacy classifier v2 now fails closed for long secret-like single tokens even when they use only uppercase or only lowercase letters. A 20-code-point boundary plus entropy/uniqueness and base-encoding character coverage catches uncertain identifiers; ordinary spaced names, the 19-code-point boundary, and low-entropy long words remain semantically eligible.
+- Added the versioned `crm-search-client-selector-v1` normalizer. It applies the shared NFKC, control/bidi removal, and whitespace normalization before enforcing the 160-code-point selector bound. The AI resolver receives only that normalized selector; blank or post-expansion overflow returns the existing generic failed `ToolResult` without resolution or retrieval.
+- The command palette synchronously invalidates request identity, results, loading, and errors on every raw term or client change. The debounced request captures the current client and cannot let an old-query, cleared-query, or old-client promise update current state. Client changes re-run the current debounced term with the new server selector.
+- Replaced the literal-only caller check with a TypeScript-AST guard over `app`, `server`, `shared`, `scripts`, and `workers`, covering TS/TSX/JS/JSX/Vue/MJS/CJS/MTS/CTS. It resolves local literals, templates, concatenation, conditionals, and options objects; CRM search callers must use the exact endpoint, literal POST, an explicit body, and no query option or URL suffix. Test/spec/fixture directories are narrowly excluded from the production walk, while synthetic template, composition, implicit-GET, options-query, and dynamic-suffix fixtures exercise the guard directly.
+
+## Behavioral TDD Evidence
+
+- Consolidated pre-production RED: 4 files/45 tests, with 13 failures and 32 passes. Failures reproduced three high-entropy admissions, the absent selector normalizer contract, two AI selector leaks into resolution, three stale UI races, and three template/composed caller-guard misses.
+- Classifier-version RED: 1 failure with 19 passes proved the changed privacy semantics still exposed the old v1 contract before the version was advanced to v2.
+- Dynamic-template adversarial RED: 1 failure with 10 passes proved an unknown URL suffix could evade the initial AST guard before exact-endpoint enforcement.
+- No production repair preceded its corresponding behavioral failure.
+
+## Verification
+
+- Exact Task 4 gate: 10 files/134 tests passed.
+- Task 1–3/security regression gate: 32 files/283 tests passed.
+- ESLint over all review source/test paths: clean.
+- Full typecheck output filtered to every review path: zero diagnostics; unrelated repository baseline diagnostics remain outside this scope.
+- `git diff --check`: clean.
+
+## Deep Review
+
+- Re-read all eight modified/new source and test files end-to-end, then reviewed the complete staged diff and appended report.
+- Confirmed the privacy threshold is conservative only for uninterrupted 20+ code-point tokens and leaves keyword retrieval enabled on uncertainty.
+- Confirmed selector normalization and bounds happen before any resolver call and invalid failures disclose neither selector nor storage/scope detail.
+- Confirmed raw term/clear/client changes invalidate in-flight work synchronously, the new client ID is captured in the agency body, and portal bodies still omit client scope.
+- Confirmed the caller guard scans every requested production root/extension, handles the reviewed composition forms, and accepts only the two explicit POST-body call sites without URL query text.
+- The existing Nuxt UI v4 command palette, keyboard behavior, accessible loading/error/empty states, semantic styling, and layout remain unchanged.

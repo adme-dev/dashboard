@@ -2,7 +2,10 @@ import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import { capWithMore, fail, ok, type ToolContext, type ToolResult } from '../toolContext'
 import { CRM_KEYWORD_POOL_LIMIT, runCrmKeywordSearch } from '~~/server/utils/crm/search'
-import { normalizeCrmSearchRequest } from '~~/server/utils/crm/searchRequest'
+import {
+  normalizeCrmSearchClientSelector,
+  normalizeCrmSearchRequest
+} from '~~/server/utils/crm/searchRequest'
 import {
   resolveAgencyAiCrmContext,
   type AgencyAiContextResolution,
@@ -10,7 +13,7 @@ import {
 } from '~~/server/utils/crm/searchContext'
 
 const params = z.object({
-  clientName: z.string().min(1).refine(value => [...value].length <= 160, 'Client name is too long'),
+  clientName: z.string().min(1),
   query: z.string().min(1).refine(value => [...value].length <= 256, 'Search query is too long'),
   limit: z.number().int().min(1).max(50).default(20)
 }).strict()
@@ -55,7 +58,8 @@ export async function searchCrm(
   deps: CrmSearchDeps = defaultDeps
 ): Promise<ToolResult> {
   try {
-    const resolution = await deps.resolveContext(ctx, { clientName: args.clientName })
+    const clientSelector = normalizeCrmSearchClientSelector(args.clientName)
+    const resolution = await deps.resolveContext(ctx, { clientName: clientSelector.value })
     const unresolved = unresolvedClient(resolution)
     if (unresolved || resolution.status !== 'resolved') return unresolved!
 

@@ -12,6 +12,7 @@ const emit = defineEmits<{ select: [CrmSearchResult] }>()
 
 const base = inject<string>('crmApiBase', '/api/crm')
 const isAgency = base === '/api/crm'
+const searchEndpoint = isAgency ? '/api/crm/search' : '/api/client-portal/crm/search'
 const apiFetch = $fetch as <T = unknown>(request: string, options: {
   method: 'POST'
   body: { clientId?: string, query: string }
@@ -34,11 +35,18 @@ const TYPE_META: Record<CrmSearchTargetType, { label: string, icon: string }> = 
 }
 const TYPE_ORDER: CrmSearchTargetType[] = ['person', 'company', 'opportunity', 'activity', 'task']
 
-watch(debounced, async (q) => {
-  const trimmed = q.trim()
-  const sequence = ++requestSequence
+watch([term, () => props.clientId], () => {
+  requestSequence += 1
+  results.value = []
+  loading.value = false
   errorMessage.value = null
-  if (!trimmed || !props.clientId) {
+}, { flush: 'sync' })
+
+watch([debounced, () => props.clientId], async ([q, clientId]) => {
+  const trimmed = q.trim()
+  const sequence = requestSequence
+  errorMessage.value = null
+  if (!trimmed || !clientId) {
     results.value = []
     loading.value = false
     return
@@ -46,9 +54,9 @@ watch(debounced, async (q) => {
   loading.value = true
   try {
     const body = isAgency
-      ? { clientId: props.clientId, query: trimmed }
+      ? { clientId, query: trimmed }
       : { query: trimmed }
-    const response = await apiFetch<{ results: CrmSearchResult[] }>(`${base}/search`, {
+    const response = await apiFetch<{ results: CrmSearchResult[] }>(searchEndpoint, {
       method: 'POST',
       body
     })

@@ -1,8 +1,10 @@
 import { z } from 'zod'
 
-export const CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION = 'crm-search-privacy-v1' as const
+export const CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION = 'crm-search-privacy-v2' as const
 export const CRM_SEARCH_TOKEN_ADMISSION_VERSION = 'bge-base-en-v1.5-conservative-utf8-v1' as const
+export const CRM_SEARCH_CLIENT_SELECTOR_NORMALIZER_VERSION = 'crm-search-client-selector-v1' as const
 export const CRM_SEARCH_MAX_CODE_POINTS = 256
+export const CRM_SEARCH_MAX_CLIENT_SELECTOR_CODE_POINTS = 160
 export const CRM_SEARCH_MAX_SEMANTIC_TOKENS = 512
 export const CRM_SEARCH_DEFAULT_LIMIT = 20
 export const CRM_SEARCH_MAX_LIMIT = 50
@@ -16,6 +18,13 @@ const SearchRequestSchema = z.object({
 const NormalizedSearchQuerySchema = z.string()
   .refine(value => value.length > 0, 'Search query is required')
   .refine(value => [...value].length <= CRM_SEARCH_MAX_CODE_POINTS, `Search query must be at most ${CRM_SEARCH_MAX_CODE_POINTS} code points`)
+
+const NormalizedClientSelectorSchema = z.string()
+  .refine(value => value.length > 0, 'Client selector is required')
+  .refine(
+    value => [...value].length <= CRM_SEARCH_MAX_CLIENT_SELECTOR_CODE_POINTS,
+    `Client selector must be at most ${CRM_SEARCH_MAX_CLIENT_SELECTOR_CODE_POINTS} code points`
+  )
 
 export interface CrmSearchTokenAdmission {
   /** Identifies the exact counting contract used for this admission decision. */
@@ -47,6 +56,11 @@ export interface NormalizedCrmSearchRequest {
   semanticEligible: boolean
 }
 
+export interface NormalizedCrmSearchClientSelector {
+  version: typeof CRM_SEARCH_CLIENT_SELECTOR_NORMALIZER_VERSION
+  value: string
+}
+
 /**
  * No exact BGE tokenizer assets are shipped in this slice. This admission is a
  * deliberately conservative upper bound: one token per UTF-8 byte plus the two
@@ -72,6 +86,16 @@ export function normalizeCrmSearchText(value: string): string {
     .trim()
 }
 
+export function normalizeCrmSearchClientSelector(
+  input: unknown
+): NormalizedCrmSearchClientSelector {
+  const normalized = normalizeCrmSearchText(z.string().parse(input))
+  return {
+    version: CRM_SEARCH_CLIENT_SELECTOR_NORMALIZER_VERSION,
+    value: NormalizedClientSelectorSchema.parse(normalized)
+  }
+}
+
 function digitCount(value: string): number {
   return [...value].filter(character => /\p{Decimal_Number}/u.test(character)).length
 }
@@ -92,16 +116,19 @@ function shannonEntropy(value: string): number {
 }
 
 function looksHighEntropy(value: string): boolean {
-  const tokens = value.match(/[\p{Letter}\p{Number}_-]{20,}/gu) ?? []
+  const tokens = value.match(/[\p{Letter}\p{Number}+/_=-]{20,}/gu) ?? []
   return tokens.some((token) => {
     if (/^[0-9a-f]{24,}$/iu.test(token)) return true
+    const characters = [...token]
     const categories = [
       /\p{Lowercase_Letter}/u.test(token),
       /\p{Uppercase_Letter}/u.test(token),
       /\p{Number}/u.test(token),
-      /[_-]/u.test(token)
+      /[+/_=-]/u.test(token)
     ].filter(Boolean).length
-    return categories >= 2 && shannonEntropy(token) >= 3.5
+    const uniqueness = new Set(characters).size / characters.length
+    const entropy = shannonEntropy(token)
+    return entropy >= 3.5 && (categories >= 2 || uniqueness >= 0.7)
   })
 }
 
