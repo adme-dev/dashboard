@@ -8,6 +8,7 @@ const ACTION_ITEM_ID = '44444444-4444-4444-8444-444444444444'
 const TARGET_ID = '55555555-5555-4555-8555-555555555555'
 const TASK_ID = '66666666-6666-4666-8666-666666666666'
 const HIDDEN_TARGET_ID = '77777777-7777-4777-8777-777777777777'
+const CROSS_CLIENT_TARGET_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 
 const ownerContext: CrmSearchContext = {
   organisationScopeId: '88888888-8888-4888-8888-888888888888',
@@ -132,5 +133,106 @@ describe('meeting action idempotent conversion authority', () => {
       mode: 'manual_office',
       accessContext: ownerContext
     })).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Record not found' })
+  })
+
+  it.each([
+    ['assigned actor', { assigned_to: ACTOR_ID, created_by: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }],
+    ['creating actor', { assigned_to: null, created_by: ACTOR_ID }]
+  ])('does not let the %s shortcut disclose an idempotent task with a hidden live target', async (_label, actorFields) => {
+    mocks.txQuery.mockImplementation(async (sql: string, params: unknown[] = []) => {
+      if (/office_meeting_action_items/.test(sql)) return { rows: [{ ...actionItem }] }
+      if (/FROM crm_tasks task/.test(sql) && params[0] === TASK_ID) {
+        return { rows: [record(TASK_ID, {
+          ...actorFields,
+          target_type: 'person',
+          target_id: HIDDEN_TARGET_ID
+        })] }
+      }
+      if (/FROM crm_people person/.test(sql) && params[0] === HIDDEN_TARGET_ID) return { rows: [] }
+      return { rows: [] }
+    })
+
+    await expect(convertActionItemToCrmTask(actionItem, target, {
+      actor: ACTOR_ID,
+      mode: 'manual_office',
+      accessContext: ownerContext
+    })).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Record not found' })
+  })
+
+  it.each([
+    ['an absent target ID', { target_type: 'person', target_id: null }],
+    ['a malformed protected target type', { target_type: 'lead', target_id: TARGET_ID }],
+    ['a malformed target ID', { target_type: 'person', target_id: 'not-a-uuid' }]
+  ])('fails closed when an idempotent task has %s', async (_label, targetFields) => {
+    mocks.txQuery.mockImplementation(async (sql: string, params: unknown[] = []) => {
+      if (/office_meeting_action_items/.test(sql)) return { rows: [{ ...actionItem }] }
+      if (/FROM crm_tasks task/.test(sql) && params[0] === TASK_ID) {
+        return { rows: [record(TASK_ID, {
+          assigned_to: ACTOR_ID,
+          created_by: null,
+          ...targetFields
+        })] }
+      }
+      if (/FROM crm_people person/.test(sql) && params[0] === 'not-a-uuid') {
+        throw Object.assign(new Error('invalid input syntax for type uuid'), { code: '22P02' })
+      }
+      return { rows: [] }
+    })
+
+    await expect(convertActionItemToCrmTask(actionItem, target, {
+      actor: ACTOR_ID,
+      mode: 'manual_office',
+      accessContext: ownerContext
+    })).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Record not found' })
+  })
+
+  it('does not disclose an actor-assigned idempotent task whose live target belongs to another client', async () => {
+    mocks.txQuery.mockImplementation(async (sql: string, params: unknown[] = []) => {
+      if (/office_meeting_action_items/.test(sql)) return { rows: [{ ...actionItem }] }
+      if (/FROM crm_tasks task/.test(sql) && params[0] === TASK_ID) {
+        return { rows: [record(TASK_ID, {
+          assigned_to: ACTOR_ID,
+          created_by: null,
+          target_type: 'person',
+          target_id: CROSS_CLIENT_TARGET_ID
+        })] }
+      }
+      if (/FROM crm_people person/.test(sql) && params[0] === CROSS_CLIENT_TARGET_ID) return { rows: [] }
+      return { rows: [] }
+    })
+
+    await expect(convertActionItemToCrmTask(actionItem, target, {
+      actor: ACTOR_ID,
+      mode: 'manual_office',
+      accessContext: ownerContext
+    })).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Record not found' })
+  })
+
+  it('returns an actor-created idempotent task only after authorizing its visible live target', async () => {
+    mocks.txQuery.mockImplementation(async (sql: string, params: unknown[] = []) => {
+      if (/office_meeting_action_items/.test(sql)) return { rows: [{ ...actionItem }] }
+      if (/FROM crm_tasks task/.test(sql) && params[0] === TASK_ID) {
+        return { rows: [record(TASK_ID, {
+          assigned_to: null,
+          created_by: ACTOR_ID,
+          target_type: 'person',
+          target_id: TARGET_ID
+        })] }
+      }
+      if (/FROM crm_people person/.test(sql) && params[0] === TARGET_ID) {
+        return { rows: [record(TARGET_ID)] }
+      }
+      return { rows: [] }
+    })
+
+    await expect(convertActionItemToCrmTask(actionItem, target, {
+      actor: ACTOR_ID,
+      mode: 'manual_office',
+      accessContext: ownerContext
+    })).resolves.toMatchObject({
+      created: false,
+      task: { id: TASK_ID, target_id: TARGET_ID },
+      actionItem: { id: ACTION_ITEM_ID, crm_task_id: TASK_ID }
+    })
   })
 })

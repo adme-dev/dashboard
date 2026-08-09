@@ -370,6 +370,20 @@ export async function convertActionItemToCrmTask(
         || currentAi.crm_task_id !== linkedTaskId) {
         throw createError({ statusCode: 404, statusMessage: 'Record not found' })
       }
+      const liveTargetType = authorizedTask.row.target_type
+      const liveTargetId = authorizedTask.row.target_id
+      if ((liveTargetType !== 'person'
+        && liveTargetType !== 'company'
+        && liveTargetType !== 'opportunity')
+        || typeof liveTargetId !== 'string'
+        || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(liveTargetId)) {
+        throw createError({ statusCode: 404, statusMessage: 'Record not found' })
+      }
+      await requireCrmRecordAccess(
+        opts.accessContext,
+        { type: liveTargetType, id: liveTargetId },
+        client
+      )
       return {
         task: authorizedTask.row,
         actionItem: currentAi,

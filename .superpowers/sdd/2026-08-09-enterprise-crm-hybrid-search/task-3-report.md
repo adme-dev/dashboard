@@ -226,3 +226,33 @@ The broad gate includes canonical record access, CRM CRUD/query/move/task behavi
 ## Intended Commit
 
 `fix(crm): close indirect authorization review gaps`
+
+---
+
+# Review Round 2 — Idempotent Meeting Target Authority
+
+## Result
+
+- Review base: `5705c62f64ea317edd5e7539e0b2cea78e2ced76`.
+- Scope: the remaining meeting-conversion finding only; shared Task 2 task visibility semantics were not changed.
+- The idempotent conversion branch now validates the locked task's live protected target reference and authorizes that current target unconditionally in the same transaction before returning the task or action item.
+- Missing, malformed, hidden, or cross-client live targets fail with the canonical `404 Record not found` response.
+
+## Behavioral TDD Evidence
+
+- Initial RED before the source edit: 1 file/8 tests, with 5 failures and 3 passes. Both `assigned_to = actor` and `created_by = actor` tasks with hidden live targets were disclosed; absent IDs, malformed target types, and cross-client target references also returned the task instead of the canonical 404. The visible-target control passed.
+- Deep review identified PostgreSQL's invalid-UUID error as another malformed-reference disclosure path. A second RED mutation simulation produced 1 failure with 8 passes: the raw `22P02` error escaped instead of returning the canonical 404.
+- Final meeting-focused GREEN: 2 files/24 tests.
+- Exact Task 3 GREEN: 11 files/107 tests.
+- Broad Task 1/2/security/trusted/custom GREEN: 21 files/175 tests.
+
+## Static and Deep Review
+
+- Full Node 24 typecheck retains 865 unrelated repository diagnostics; filtering against the two round-two source/test paths produced zero diagnostics.
+- `git diff --check`: clean.
+- Re-read `server/utils/crm/meetingBridge.ts` and `test/server/utils/crm/meetingBridgeAuthorization.test.ts` end-to-end after the final edit.
+- Confirmed the action item, linked task, and live target are all locked/authorized within the same transaction; denial returns no task/action-item payload; no global task policy, route, database, migration, external service, or deployment behavior changed.
+
+## Intended Commit
+
+`fix(crm): reauthorize idempotent meeting targets`
