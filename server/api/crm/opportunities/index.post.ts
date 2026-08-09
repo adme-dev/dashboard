@@ -54,8 +54,8 @@ export default defineEventHandler(async (event) => {
   // created straight into a won stage). Best-effort — never fail the create.
   try {
     const ev = status === 'won' ? 'opportunity_won' : 'opportunity_created'
-    await applyLifecycleEvent({ clientId: context.clientId, entityType: 'person', entityId: b.person_id ?? null, event: ev })
-    await applyLifecycleEvent({ clientId: context.clientId, entityType: 'company', entityId: b.company_id ?? null, event: ev })
+    await applyLifecycleEvent({ clientId: context.clientId, entityType: 'person', entityId: b.person_id ?? null, event: ev, context })
+    await applyLifecycleEvent({ clientId: context.clientId, entityType: 'company', entityId: b.company_id ?? null, event: ev, context })
   } catch (e) {
     console.error('[crm] lifecycle create hook failed', e)
   }

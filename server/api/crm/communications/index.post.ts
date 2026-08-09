@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
   const parsed = Body.safeParse(await readBody(event))
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.message })
   const b = parsed.data
-  if (!b.person_id && !b.company_id) throw createError({ statusCode: 400, statusMessage: 'A person or company is required' })
+  if (!b.person_id && !b.company_id) throw createError({ statusCode: 404, statusMessage: 'Record not found' })
   const context = await resolveAgencyCrmSearchContext(event, { clientId: b.client_id, surface: 'agency_global' })
   const row = await createComm({
     context, clientId: context.clientId, personId: b.person_id, companyId: b.company_id,

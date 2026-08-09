@@ -94,6 +94,13 @@ interface ExistingMessageRow {
 
 interface RouteRow {
   id: string
+  client_id: string
+  route_kind: 'lead_inbox' | 'conversation_reply'
+  conversation_id: string | null
+}
+
+interface ConversationRouteRow {
+  id: string
   person_id: string | null
   company_id: string | null
   opportunity_id: string | null
@@ -199,14 +206,29 @@ export function createCrmInboundEmailProcessor(
     ): Promise<ProcessCrmInboundEmailResult> {
       return deps.transaction(async (database) => {
         const { job, email } = input
+        deps.onStage?.('validate_route')
+        const routeResult = await database.query(`
+          SELECT route.id, route.client_id::text AS client_id,
+                 route.route_kind, route.conversation_id::text AS conversation_id
+          FROM crm_email_routes AS route
+          WHERE route.id = $1
+            AND route.is_active = TRUE
+            AND route.revoked_at IS NULL
+            AND (route.expires_at IS NULL OR route.expires_at > NOW())
+          LIMIT 1
+          FOR UPDATE OF route
+        `, [job.routeId])
+        const route = routeResult.rows?.[0] as RouteRow | undefined
+        if (!route) return { status: 'route_unavailable' }
+        const clientId = route.client_id
         const context = await deps.resolveContext({
-          clientId: job.clientId,
+          clientId,
           purpose: 'crm_email_inbound'
         })
         deps.onStage?.('acquire_locks')
         for (const lockKey of [
           job.idempotencyKey,
-          `${job.clientId}\n${job.provider}\n${job.providerMessageId}`
+          `${clientId}\n${job.provider}\n${job.providerMessageId}`
         ]) {
           await database.query(
             'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
@@ -227,7 +249,7 @@ export function createCrmInboundEmailProcessor(
             )
           LIMIT 1
         `, [
-          job.clientId,
+          clientId,
           job.idempotencyKey,
           job.provider,
           job.providerMessageId,
@@ -237,49 +259,34 @@ export function createCrmInboundEmailProcessor(
           = existingResult.rows?.[0] as ExistingMessageRow | undefined
         if (existing) return { status: 'duplicate' }
 
-        deps.onStage?.('validate_route')
-        const routeResult = await database.query(`
-          SELECT route.id, conversation.person_id, conversation.company_id,
-                 conversation.opportunity_id
-          FROM crm_email_routes AS route
-          LEFT JOIN crm_conversations AS conversation
-            ON conversation.client_id = route.client_id
-           AND conversation.id = route.conversation_id
-           AND conversation.deleted_at IS NULL
-          WHERE route.id = $1
-            AND route.client_id = $2
-            AND route.route_kind = $3
-            AND route.conversation_id IS NOT DISTINCT FROM $4
-            AND route.is_active = TRUE
-            AND route.revoked_at IS NULL
-            AND (route.expires_at IS NULL OR route.expires_at > NOW())
-            AND (
-              route.route_kind = 'lead_inbox'
-              OR conversation.id IS NOT NULL
-            )
-          LIMIT 1
-          FOR UPDATE OF route
-        `, [
-          job.routeId,
-          job.clientId,
-          job.routeKind,
-          job.conversationId
-        ])
-        const route = routeResult.rows?.[0] as RouteRow | undefined
-        if (!route) return { status: 'route_unavailable' }
+        let conversationId = route.conversation_id
+        let linkedConversation: ConversationRouteRow | undefined
+        if (route.route_kind === 'conversation_reply') {
+          if (!conversationId) return { status: 'route_unavailable' }
+          const conversationResult = await database.query(`
+            SELECT conversation.id, conversation.person_id,
+                   conversation.company_id, conversation.opportunity_id
+              FROM crm_conversations AS conversation
+             WHERE conversation.client_id = $1
+               AND conversation.id = $2
+               AND conversation.deleted_at IS NULL
+             FOR UPDATE OF conversation
+          `, [clientId, conversationId])
+          linkedConversation = conversationResult.rows?.[0] as ConversationRouteRow | undefined
+          if (!linkedConversation) return { status: 'route_unavailable' }
+        }
         const protectedRefs: CrmRecordRef[] = []
-        if (route.person_id) protectedRefs.push({ type: 'person', id: route.person_id })
-        if (route.company_id) protectedRefs.push({ type: 'company', id: route.company_id })
-        if (route.opportunity_id) protectedRefs.push({ type: 'opportunity', id: route.opportunity_id })
+        if (linkedConversation?.person_id) protectedRefs.push({ type: 'person', id: linkedConversation.person_id })
+        if (linkedConversation?.company_id) protectedRefs.push({ type: 'company', id: linkedConversation.company_id })
+        if (linkedConversation?.opportunity_id) protectedRefs.push({ type: 'opportunity', id: linkedConversation.opportunity_id })
         const authorized = await deps.authorizeAll(context, protectedRefs, database)
         if (authorized.length !== protectedRefs.length) {
           throw new Error('CRM email route authorization was incomplete')
         }
 
         const repository = deps.repositoryFor(database)
-        let conversationId = job.conversationId
 
-        if (job.routeKind === 'lead_inbox') {
+        if (route.route_kind === 'lead_inbox') {
           deps.onStage?.('resolve_assignment')
           const assignmentResult = await database.query(`
             SELECT team_member_id
@@ -288,7 +295,7 @@ export function createCrmInboundEmailProcessor(
               AND role = 'primary_am'
             ORDER BY assigned_at DESC
             LIMIT 1
-          `, [job.clientId])
+          `, [clientId])
           const assignedTo = (
             assignmentResult.rows?.[0] as AssignmentRow | undefined
           )?.team_member_id ?? null
@@ -296,7 +303,7 @@ export function createCrmInboundEmailProcessor(
           deps.onStage?.('ingest_lead')
           const leadInput: IngestLeadInput = {
             lead: {
-              client_id: job.clientId,
+              client_id: clientId,
               source: 'email',
               source_lead_id: job.idempotencyKey,
               form_id: job.routeId,
@@ -337,7 +344,7 @@ export function createCrmInboundEmailProcessor(
                 AND deleted_at IS NULL
               LIMIT 1
               FOR UPDATE
-            `, [job.clientId, job.idempotencyKey])
+            `, [clientId, job.idempotencyKey])
             const recoveredLeadId
               = (leadResult.rows?.[0] as LeadRow | undefined)?.id
             if (!recoveredLeadId) {
@@ -351,7 +358,7 @@ export function createCrmInboundEmailProcessor(
           const links = promotionLinks(promotion)
           deps.onStage?.('create_conversation')
           const conversation = await repository.createConversation({
-            clientId: job.clientId,
+            clientId,
             subject: email.subject,
             personId: links.personId,
             companyId: null,
@@ -369,7 +376,7 @@ export function createCrmInboundEmailProcessor(
 
         deps.onStage?.('create_message')
         const messageResult = await repository.createMessage({
-          clientId: job.clientId,
+          clientId,
           conversationId,
           provider: job.provider,
           providerMessageId: job.providerMessageId,
@@ -401,7 +408,7 @@ export function createCrmInboundEmailProcessor(
 
         deps.onStage?.('append_received_event')
         const eventResult = await repository.appendMessageEvent({
-          clientId: job.clientId,
+          clientId,
           messageId: messageResult.message.id,
           provider: job.provider,
           providerEventId: `${job.idempotencyKey}:received`,
@@ -427,7 +434,7 @@ export function createCrmInboundEmailProcessor(
             AND client_id = $2
             AND is_active = TRUE
             AND revoked_at IS NULL
-        `, [job.routeId, job.clientId, job.receivedAt])
+        `, [route.id, clientId, job.receivedAt])
         if (routeUpdate.rowCount !== 1) {
           throw new Error('CRM email route usage was not recorded')
         }

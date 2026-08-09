@@ -6,6 +6,7 @@
 // Auth: x-cron-secret matched against CRON_SECRET (skipped in dev).
 import { defineEventHandler, getHeader, createError } from 'h3'
 import { recomputeHealth, listCustomerTargets } from '~~/server/utils/crm/healthSignals'
+import { authorizeTrustedCrmCandidates } from '~~/server/utils/crm/trustedCandidateAccess'
 
 const BATCH = 2000
 
@@ -15,18 +16,27 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
-  const targets = await listCustomerTargets(BATCH)
+  const candidates = await listCustomerTargets()
+  const authorized = await authorizeTrustedCrmCandidates(candidates, 'crm_health_compute')
+  const capped = authorized.length > BATCH
+  const targets = authorized.slice(0, BATCH)
   let recomputed = 0
-  for (const t of targets) {
+  for (const { candidate: t, context } of targets) {
     try {
-      await recomputeHealth({ clientId: t.client_id, targetType: t.target_type, targetId: t.target_id, reason: 'health_sweep' })
+      await recomputeHealth({
+        clientId: t.client_id,
+        targetType: t.target_type,
+        targetId: t.target_id,
+        reason: 'health_sweep',
+        context
+      })
       recomputed++
     } catch (e) {
       console.error('[crm-cron] health recompute failed', safeError(e))
     }
   }
 
-  const result = { ok: true, customers: targets.length, recomputed, capped: targets.length === BATCH }
+  const result = { ok: true, customers: targets.length, recomputed, capped }
   console.log('[crm-cron] health-recompute', result)
   return result
 })

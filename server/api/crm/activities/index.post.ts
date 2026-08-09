@@ -34,13 +34,19 @@ export default defineEventHandler(async (event) => {
     return result.rows[0]
   })
   // Logging activity bumps the contact's engagement + recency score.
-  await recomputeIfScorable(context.clientId, b.target_type, b.target_id, 'activity')
+  await recomputeIfScorable(context.clientId, b.target_type, b.target_id, 'activity', context)
   // For customers, the same touch refreshes the health/churn score in-band.
-  await recomputeHealthIfCustomer(context.clientId, b.target_type, b.target_id, 'activity')
+  await recomputeHealthIfCustomer(context.clientId, b.target_type, b.target_id, 'activity', context)
   // First touch sets a contact to `lead` (and revives dormant). Best-effort.
   if (b.target_type === 'person' || b.target_type === 'company') {
     try {
-      await applyLifecycleEvent({ clientId: context.clientId, entityType: b.target_type, entityId: b.target_id, event: 'activity_logged' })
+      await applyLifecycleEvent({
+        clientId: context.clientId,
+        entityType: b.target_type,
+        entityId: b.target_id,
+        event: 'activity_logged',
+        context
+      })
     } catch (e) {
       console.error('[crm] lifecycle activity hook failed', e)
     }

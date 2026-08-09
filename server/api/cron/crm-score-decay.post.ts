@@ -8,6 +8,7 @@
 import { defineEventHandler, getHeader, createError } from 'h3'
 import { queryRows } from '~~/server/utils/db'
 import { recomputeScore, type ScoreTargetType } from '~~/server/utils/crm/scoreSignals'
+import { authorizeTrustedCrmCandidates } from '~~/server/utils/crm/trustedCandidateAccess'
 
 const BATCH = 1000
 
@@ -24,21 +25,29 @@ export default defineEventHandler(async (event) => {
        FROM crm_scores
       WHERE score_type = 'lead'
         AND computed_at < NOW() - INTERVAL '20 hours'
-      ORDER BY computed_at ASC
-      LIMIT ${BATCH}`,
+      ORDER BY computed_at ASC`,
   )
 
+  const authorized = await authorizeTrustedCrmCandidates(stale, 'crm_score_compute')
+  const capped = authorized.length > BATCH
+  const targets = authorized.slice(0, BATCH)
   let recomputed = 0
-  for (const s of stale) {
+  for (const { candidate: s, context } of targets) {
     try {
-      const r = await recomputeScore({ clientId: s.client_id, targetType: s.target_type, targetId: s.target_id, reason: 'decay' })
+      const r = await recomputeScore({
+        clientId: s.client_id,
+        targetType: s.target_type,
+        targetId: s.target_id,
+        reason: 'decay',
+        context
+      })
       if (r) recomputed++
     } catch (e) {
       console.error('[crm-cron] decay recompute failed', safeError(e))
     }
   }
 
-  const result = { ok: true, stale: stale.length, recomputed, capped: stale.length === BATCH }
+  const result = { ok: true, stale: targets.length, recomputed, capped }
   console.log('[crm-cron] score-decay', result)
   return result
 })

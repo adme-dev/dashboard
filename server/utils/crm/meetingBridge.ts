@@ -1,7 +1,7 @@
 // server/utils/crm/meetingBridge.ts
 // Deterministic resolution of office-meeting guests → CRM targets, plus the
 // pure CRM-task payload builder. DB-touching helpers live below the pure block.
-import { queryRows, queryOne, execute, transaction } from '~~/server/utils/db'
+import { queryRows, execute, transaction } from '~~/server/utils/db'
 import { recordFieldChanges } from './audit'
 import type { TASK_PRIORITIES } from './tasks'
 import type { CrmRecordAccessContext, CrmSearchContext } from '~~/server/utils/crm/searchContext'
@@ -347,22 +347,36 @@ export async function convertActionItemToCrmTask(
     await requireCrmRecordAccess(opts.accessContext, { type: target.target_type, id: target.target_id })
   }
   if (actionItem.crm_task_id) {
-    // Re-read both rows so the idempotent return reflects current DB state, not
-    // the caller's (possibly pre-stamp) in-memory snapshot. Only a LIVE task
-    // counts as "already converted" — if the linked task was soft-deleted, fall
-    // through and create a fresh one (the in-txn guard below re-links over the
-    // stale reference).
-    const [existing, currentAi] = await Promise.all([
-      queryOne(`SELECT * FROM crm_tasks WHERE id = $1 AND deleted_at IS NULL`, [actionItem.crm_task_id]),
-      queryOne(`SELECT * FROM office_meeting_action_items WHERE id = $1`, [actionItem.id]),
-    ])
-    if (existing) {
-      return {
-        task: existing as Record<string, unknown>,
-        actionItem: currentAi as Record<string, unknown>,
-        created: false,
+    const existing = await transaction(async (client) => {
+      const currentResult = await client.query(
+        `SELECT * FROM office_meeting_action_items WHERE id = $1 FOR UPDATE`,
+        [actionItem.id]
+      )
+      const currentAi = currentResult.rows[0] as Record<string, unknown> | undefined
+      if (!currentAi) throw createError({ statusCode: 404, statusMessage: 'Record not found' })
+      const linkedTaskId = currentAi.crm_task_id
+      if (typeof linkedTaskId !== 'string') return null
+
+      if (!opts.accessContext) {
+        throw createError({ statusCode: 404, statusMessage: 'Record not found' })
       }
-    }
+      const authorizedTask = await requireCrmRecordAccess(
+        opts.accessContext,
+        { type: 'task', id: linkedTaskId },
+        client
+      )
+      if (authorizedTask.clientId !== target.client_id
+        || authorizedTask.row.id !== linkedTaskId
+        || currentAi.crm_task_id !== linkedTaskId) {
+        throw createError({ statusCode: 404, statusMessage: 'Record not found' })
+      }
+      return {
+        task: authorizedTask.row,
+        actionItem: currentAi,
+        created: false as const
+      }
+    })
+    if (existing) return existing
   }
 
   const payload = buildCrmTaskPayload(actionItem, target, { priority: opts.priority })

@@ -30,7 +30,7 @@ export async function requireAssignmentPoolMembers(
         AND assignment.client_id = $1
       WHERE member.id = ANY($2::uuid[])
         AND member.is_active = TRUE
-      FOR SHARE OF member`,
+      FOR SHARE OF member, assignment`,
     [clientId, uniqueIds]
   )
   const rows = (result.rows ?? []) as Array<{ id: string }>

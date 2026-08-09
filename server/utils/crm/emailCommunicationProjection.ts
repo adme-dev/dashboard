@@ -109,24 +109,31 @@ export async function projectCrmEmailMessageToCommunication(
   input: ProjectCrmEmailMessageInput,
   deps: ProjectionDependencies = defaultProjectionDependencies
 ): Promise<ProjectCrmEmailMessageResult> {
+  const messageResult = await database.query(`
+    SELECT message.client_id::text AS client_id,
+           message.conversation_id::text AS conversation_id
+      FROM crm_messages AS message
+     WHERE message.id = $1
+       AND message.deleted_at IS NULL
+     FOR UPDATE OF message
+  `, [input.messageId])
+  const message = messageResult.rows[0] as { client_id: string, conversation_id: string } | undefined
+  if (!message) return { status: 'unchanged' }
+
   const context = await deps.resolveContext({
-    clientId: input.clientId,
+    clientId: message.client_id,
     purpose: 'crm_email_projection'
   })
   const linkedResult = await database.query(`
     SELECT conversation.person_id::text AS person_id,
            conversation.company_id::text AS company_id
-      FROM crm_messages AS message
-      JOIN crm_conversations AS conversation
-        ON conversation.client_id = message.client_id
-       AND conversation.id = message.conversation_id
+      FROM crm_conversations AS conversation
+     WHERE conversation.client_id = $1
+       AND conversation.id = $2
        AND conversation.deleted_at IS NULL
-     WHERE message.client_id = $1
-       AND message.id = $2
-       AND message.deleted_at IS NULL
        AND (conversation.person_id IS NOT NULL OR conversation.company_id IS NOT NULL)
-     FOR UPDATE OF message, conversation
-  `, [input.clientId, input.messageId])
+     FOR UPDATE OF conversation
+  `, [message.client_id, message.conversation_id])
   const linked = linkedResult.rows[0] as { person_id: string | null, company_id: string | null } | undefined
   if (!linked) return { status: 'unchanged' }
   const refs: CrmRecordRef[] = []
@@ -184,7 +191,7 @@ export async function projectCrmEmailMessageToCommunication(
     RETURNING
       id, client_id, person_id, company_id, channel, direction, subject, body,
       occurred_at, external_id, source, metadata, created_at
-  `, [input.clientId, input.messageId])
+  `, [message.client_id, input.messageId])
   const row = result.rows[0] as CommunicationRow | undefined
 
   if (!row) {

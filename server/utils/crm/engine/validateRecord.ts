@@ -27,6 +27,14 @@ export function validateRecord(
   const byKey = new Map(defs.map(d => [d.key, d]))
   const out: Record<string, unknown> = {}
 
+  for (const def of defs) {
+    if (def.field_type === 'relation'
+      && def.relation_target !== 'person'
+      && def.relation_target !== 'company') {
+      throw new Error(`Relation field "${def.key}" has no protected target`)
+    }
+  }
+
   // First pass: required-field enforcement.
   for (const def of defs) {
     if (def.is_required && isEmpty(values?.[def.key])) {
@@ -66,11 +74,10 @@ export function validateRecord(
         break
       }
       case 'relation': {
-        if (def.relation_target !== 'person' && def.relation_target !== 'company') {
-          throw new Error(`Relation field "${k}" has no protected target`)
+        if (typeof v !== 'string' || !UUID_RE.test(v)) {
+          throw new Error(`Invalid relation reference for field "${k}"`)
         }
-        if (!UUID_RE.test(String(v))) throw new Error(`Invalid relation reference for field "${k}"`)
-        out[k] = String(v)
+        out[k] = v
         break
       }
       case 'tags': {

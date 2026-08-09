@@ -242,6 +242,37 @@ describe('requireCrmRecordAccess', () => {
       { type: 'company', id: HIDDEN_ID }
     ], client)).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Record not found' })
   })
+
+  it('locks reversed multi-record requests in one canonical type-and-UUID order while preserving caller order', async () => {
+    const refs: CrmRecordRef[] = [
+      { type: 'person', id: VISIBLE_ID },
+      { type: 'company', id: HIDDEN_ID }
+    ]
+    const run = async (requested: CrmRecordRef[]) => {
+      const lockOrder: string[] = []
+      const client: TransactionClient = {
+        async query(sql, params = []) {
+          const type = tableType(sql)
+          if (!type) return { rows: [] }
+          lockOrder.push(`${type}:${String(params[0])}`)
+          return { rows: [record(type, { id: String(params[0]) })] }
+        }
+      }
+      const records = await requireAllCrmRecordsAccess(teamContext, requested, client)
+      return { lockOrder, returnedOrder: records.map(item => `${item.type}:${item.id}`) }
+    }
+
+    const forward = await run(refs)
+    const reverse = await run([...refs].reverse())
+
+    expect(forward.lockOrder).toEqual(reverse.lockOrder)
+    expect(forward.lockOrder).toEqual([
+      `company:${HIDDEN_ID}`,
+      `person:${VISIBLE_ID}`
+    ])
+    expect(forward.returnedOrder).toEqual(refs.map(ref => `${ref.type}:${ref.id}`))
+    expect(reverse.returnedOrder).toEqual([...refs].reverse().map(ref => `${ref.type}:${ref.id}`))
+  })
 })
 
 describe('opportunity stage authorization', () => {

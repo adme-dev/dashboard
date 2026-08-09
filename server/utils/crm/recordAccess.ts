@@ -205,7 +205,14 @@ export async function requireAllCrmRecordsAccess(
   refs: readonly CrmRecordRef[],
   client?: TransactionClient
 ): Promise<readonly AuthoritativeCrmRecord[]> {
-  const records: AuthoritativeCrmRecord[] = []
-  for (const ref of refs) records.push(await requireCrmRecordAccess(context, ref, client))
+  const records = new Array<AuthoritativeCrmRecord>(refs.length)
+  const lockOrder = refs
+    .map((ref, index) => ({ ref, index }))
+    .sort((a, b) => a.ref.type.localeCompare(b.ref.type)
+      || a.ref.id.localeCompare(b.ref.id)
+      || a.index - b.index)
+  for (const item of lockOrder) {
+    records[item.index] = await requireCrmRecordAccess(context, item.ref, client)
+  }
   return records
 }

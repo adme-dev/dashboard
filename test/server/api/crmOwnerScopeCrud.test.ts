@@ -140,6 +140,8 @@ const handlers = {
   activitiesCreate: (await import('~~/server/api/crm/activities/index.post')).default,
   activityPatch: (await import('~~/server/api/crm/activities/[id].patch')).default,
   activityDelete: (await import('~~/server/api/crm/activities/[id].delete')).default,
+  communicationsCreate: (await import('~~/server/api/crm/communications/index.post')).default,
+  communicationDelete: (await import('~~/server/api/crm/communications/[id].delete')).default,
   tasksList: (await import('~~/server/api/crm/tasks/index.get')).default,
   tasksCreate: (await import('~~/server/api/crm/tasks/index.post')).default,
   taskPatch: (await import('~~/server/api/crm/tasks/[id].patch')).default,
@@ -333,6 +335,70 @@ describe('owner-scoped CRM create routes', () => {
     expect(result.item).toMatchObject({ client_id: CLIENT_ID, created_by: ACTOR_ID })
     expect(mocks.transaction).toHaveBeenCalledOnce()
   })
+
+  it('keeps agency activity score, health, and lifecycle follow-ons under the fresh actor scope', async () => {
+    const unsafeFollowOnWrites: string[] = []
+    mocks.recomputeIfScorable.mockImplementation(async (...args: unknown[]) => {
+      if (args[4] !== ownerContext) unsafeFollowOnWrites.push('score')
+    })
+    mocks.recomputeHealthIfCustomer.mockImplementation(async (...args: unknown[]) => {
+      if (args[4] !== ownerContext) unsafeFollowOnWrites.push('health')
+    })
+    mocks.applyLifecycleEvent.mockImplementation(async (input: { context?: CrmSearchContext }) => {
+      if (input.context !== ownerContext) unsafeFollowOnWrites.push('lifecycle')
+    })
+    mocks.txQuery.mockImplementation(async (sql: string, params: unknown[] = []) => {
+      if (/SELECT person\.\*/.test(sql)) return { rows: [visibleRow('person')] }
+      if (/INSERT INTO crm_activities/.test(sql)) {
+        return { rows: [{ id: RECORD_ID, client_id: params[0] }] }
+      }
+      return { rows: [] }
+    })
+
+    await handlers.activitiesCreate(event({ body: {
+      client_id: CLIENT_ID,
+      target_type: 'person',
+      target_id: RELATED_ID,
+      title: 'Actor-scoped follow-on'
+    } }) as never)
+
+    expect(unsafeFollowOnWrites).toEqual([])
+  })
+
+  it('keeps opportunity lifecycle follow-ons under the fresh actor scope after an ownership flip', async () => {
+    const unsafeFollowOnWrites: string[] = []
+    mocks.applyLifecycleEvent.mockImplementation(async (input: { entityId?: string | null, context?: CrmSearchContext }) => {
+      if (input.entityId && input.context !== ownerContext) unsafeFollowOnWrites.push('lifecycle')
+    })
+    mocks.txQuery.mockImplementation(async (sql: string, params: unknown[] = []) => {
+      if (/SELECT person\.\*/.test(sql)) return { rows: [visibleRow('person')] }
+      if (/FROM crm_stages/.test(sql)) {
+        return { rows: [{ id: STAGE_ID, probability: 25, is_won: false, is_lost: false }] }
+      }
+      if (/INSERT INTO crm_opportunities/.test(sql)) {
+        return { rows: [{ id: RECORD_ID, client_id: params[0], owner_id: STALE_AUTH_ID }] }
+      }
+      return { rows: [] }
+    })
+
+    await handlers.opportunitiesCreate(event({ body: {
+      client_id: CLIENT_ID,
+      name: 'Actor-scoped opportunity',
+      stage_id: STAGE_ID,
+      person_id: RELATED_ID
+    } }) as never)
+
+    expect(unsafeFollowOnWrites).toEqual([])
+  })
+
+  it('returns the canonical non-disclosing 404 for an orphan communication create', async () => {
+    await expect(handlers.communicationsCreate(event({ body: {
+      client_id: CLIENT_ID,
+      channel: 'note'
+    } }) as never)).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Record not found' })
+
+    expect(mocks.txQuery.mock.calls.some(([sql]) => /INSERT INTO crm_communications/.test(String(sql)))).toBe(false)
+  })
 })
 
 describe('owner-scoped CRM mutation routes', () => {
@@ -374,5 +440,24 @@ describe('owner-scoped CRM mutation routes', () => {
       opportunityId: RECORD_ID,
       actor: { type: 'team_member', id: ACTOR_ID }
     }), ownerContext)
+  })
+
+  it('returns the canonical non-disclosing 404 before deleting an orphan communication', async () => {
+    mocks.txQuery.mockImplementation(async (sql: string) => {
+      if (/SELECT \* FROM crm_communications/.test(sql)) {
+        return { rows: [{ id: RECORD_ID, client_id: CLIENT_ID, person_id: null, company_id: null }] }
+      }
+      if (/UPDATE crm_communications/.test(sql)) {
+        throw new Error('orphan communication was mutated')
+      }
+      return { rows: [] }
+    })
+
+    await expect(handlers.communicationDelete(event({
+      params: { id: RECORD_ID },
+      query: { client_id: CLIENT_ID }
+    }) as never)).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Record not found' })
+
+    expect(mocks.txQuery.mock.calls.some(([sql]) => /UPDATE crm_communications/.test(String(sql)))).toBe(false)
   })
 })

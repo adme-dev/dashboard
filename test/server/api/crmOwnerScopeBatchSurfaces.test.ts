@@ -103,6 +103,55 @@ describe('owner-scoped CRM batch surfaces', () => {
     expect(tx.query.mock.calls.some(([sql]) => /^\s*(?:UPDATE|DELETE|INSERT)/i.test(String(sql)))).toBe(false)
   })
 
+  it('uses the same canonical lock order for reversed bulk requests', async () => {
+    const run = async (ids: string[]) => {
+      const locks: string[] = []
+      const tx = {
+        query: vi.fn(async (sql: string, params: unknown[] = []) => {
+          if (/^\s*SELECT person\.\*/i.test(sql)) {
+            locks.push(String(params[0]))
+            return { rows: [{ id: params[0], client_id: CLIENT_ID, owner_id: ACTOR_ID, assigned_to: null }] }
+          }
+          if (/^\s*UPDATE/i.test(sql)) return { rows: [], rowCount: ids.length }
+          return { rows: [] }
+        })
+      }
+      await runBulk(ownerContext, {
+        entity: 'people', action: 'status', ids, payload: { value: 'customer' }
+      }, { transaction: async callback => await callback(tx) })
+      return locks
+    }
+
+    expect(await run([HIDDEN_ID, VISIBLE_ID])).toEqual(await run([VISIBLE_ID, HIDDEN_ID]))
+    expect(await run([HIDDEN_ID, VISIBLE_ID])).toEqual([VISIBLE_ID, HIDDEN_ID])
+  })
+
+  it('uses the same canonical lock order for reversed dedupe winner and loser semantics', async () => {
+    const run = async (winnerId: string, loserId: string) => {
+      const locks: string[] = []
+      const tx = {
+        query: vi.fn(async (sql: string, params: unknown[] = []) => {
+          if (/^\s*SELECT person\.\*/i.test(sql)) {
+            locks.push(String(params[0]))
+            return { rows: [{ id: params[0], client_id: CLIENT_ID, owner_id: ACTOR_ID, assigned_to: null }] }
+          }
+          if (/^\s*(?:UPDATE|DELETE|INSERT)/i.test(sql)) throw new Error('stop_after_authorization')
+          return { rows: [] }
+        })
+      }
+      await mergeContacts({
+        context: ownerContext, clientId: CLIENT_ID, entityType: 'person',
+        winnerId, loserId, actor: ACTOR_ID
+      }, { transaction: async callback => await callback(tx) }).catch((error) => {
+        if (error.message !== 'stop_after_authorization') throw error
+      })
+      return locks
+    }
+
+    expect(await run(HIDDEN_ID, VISIBLE_ID)).toEqual(await run(VISIBLE_ID, HIDDEN_ID))
+    expect(await run(HIDDEN_ID, VISIBLE_ID)).toEqual([VISIBLE_ID, HIDDEN_ID])
+  })
+
   it('filters owner-scoped records before export projection', async () => {
     const queryRows = vi.fn(async (sql: string) => {
       const visible = { first_name: 'Visible', email: 'visible@example.com' }

@@ -26,6 +26,9 @@ export interface CreateCommInput {
  *  (returns null if the bridge already logged this one). */
 export async function createComm(input: CreateCommInput) {
   if (input.context) {
+    if (!input.personId && !input.companyId) {
+      throw createError({ statusCode: 404, statusMessage: 'Record not found' })
+    }
     return await transaction(async (db) => {
       await requireAllCrmRecordsAccess(input.context!, [
         ...(input.personId ? [{ type: 'person' as const, id: input.personId }] : []),
@@ -108,6 +111,9 @@ export async function deleteComm(id: string, scope: string | CrmSearchContext): 
       )
       const row = loaded.rows?.[0] as { person_id?: string | null, company_id?: string | null } | undefined
       if (!row) throw createError({ statusCode: 404, statusMessage: 'Record not found' })
+      if (!row.person_id && !row.company_id) {
+        throw createError({ statusCode: 404, statusMessage: 'Record not found' })
+      }
       await requireAllCrmRecordsAccess(scope, [
         ...(row.person_id ? [{ type: 'person' as const, id: row.person_id }] : []),
         ...(row.company_id ? [{ type: 'company' as const, id: row.company_id }] : [])

@@ -2,7 +2,7 @@
 // On opportunity stage entry: record a queryable history row and create follow-up
 // tasks from per-client automation rules. buildAutomationTasks is pure (TDD);
 // recordStageChange does the DB I/O and idempotency.
-import { queryRows, queryOne, execute } from '~~/server/utils/db'
+import { queryRows, queryOne, execute, transaction } from '~~/server/utils/db'
 import { recomputeIfScorable } from './scoreSignals'
 import { applyLifecycleEvent } from './lifecycle'
 import {
@@ -10,6 +10,7 @@ import {
   type CrmRecordAccessContext
 } from '~~/server/utils/crm/searchContext'
 import { requireAllCrmRecordsAccess, requireCrmRecordAccess, type CrmRecordRef } from '~~/server/utils/crm/recordAccess'
+import { requireAssignmentPoolMembers } from '~~/server/utils/crm/assignment'
 
 export interface StageAutomationTemplate {
   title?: string
@@ -137,6 +138,9 @@ export async function runStageEntryAutomations(opts: {
   for (const p of planned) {
     await transaction(async (database) => {
       await requireCrmRecordAccess(accessContext, { type: 'opportunity', id: opts.opportunityId }, database)
+      if (p.assigned_to) {
+        await requireAssignmentPoolMembers(accessContext.clientId, [p.assigned_to], database)
+      }
       const existingResult = await database.query(
         `SELECT id FROM crm_tasks
           WHERE client_id = $1 AND target_type = 'opportunity' AND target_id = $2

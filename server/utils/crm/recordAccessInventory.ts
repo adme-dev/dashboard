@@ -256,6 +256,7 @@ const CRM_SERVICE_SURFACES = [
   "service:server/utils/crm/targetsDb.ts",
   "service:server/utils/crm/tasks.ts",
   "service:server/utils/crm/transactionalEmail.ts",
+  "service:server/utils/crm/trustedCandidateAccess.ts",
   "service:server/utils/crm/types.ts",
   "service:server/utils/crm/viewsDb.ts",
   "service:server/utils/leads/crmAccessPolicy.ts",

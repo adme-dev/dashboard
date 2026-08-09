@@ -4,6 +4,7 @@
 // layer (mirrors scoreSignals.ts for the 'lead' score). No migration — reuses
 // crm_scores with score_type='health'.
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { createError } from 'h3'
 import { scoreHealth, type HealthSignals, type HealthResult } from './healthScoring'
 import {
   requireCrmRecordAccess,
@@ -121,26 +122,43 @@ export async function recomputeHealthIfCustomer(
 ): Promise<void> {
   if ((targetType !== 'person' && targetType !== 'company') || !targetId) return
   try {
+    const accessContext = context ?? await resolveTrustedCrmSystemContext({
+      clientId,
+      purpose: 'crm_health_compute'
+    })
+    if (accessContext.clientId !== clientId) {
+      throw createError({ statusCode: 404, statusMessage: 'Record not found' })
+    }
+    await requireCrmRecordAccess(accessContext, { type: targetType, id: targetId })
     const table = targetType === 'person' ? 'crm_people' : 'crm_companies'
     const row = await queryOne<{ lifecycle_stage: string | null }>(
       `SELECT lifecycle_stage FROM ${table} WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL`,
-      [targetId, clientId],
+      [targetId, accessContext.clientId],
     )
     if (row?.lifecycle_stage !== 'customer') return
-    await recomputeHealth({ clientId, targetType: targetType as HealthTargetType, targetId, reason, context })
+    await recomputeHealth({
+      clientId: accessContext.clientId,
+      targetType: targetType as HealthTargetType,
+      targetId,
+      reason,
+      context: accessContext
+    })
   } catch (e) {
     console.error('[crm] health recompute failed', e)
   }
 }
 
 // All 'customer'-lifecycle contacts for the health sweep cron.
-export async function listCustomerTargets(limit: number): Promise<{ client_id: string, target_type: HealthTargetType, target_id: string }[]> {
+export async function listCustomerTargets(): Promise<{ client_id: string, target_type: HealthTargetType, target_id: string }[]> {
   return queryRows<{ client_id: string, target_type: HealthTargetType, target_id: string }>(
-    `SELECT client_id, 'person'::text AS target_type, id AS target_id
-       FROM crm_people WHERE deleted_at IS NULL AND lifecycle_stage = 'customer'
-     UNION ALL
-     SELECT client_id, 'company'::text AS target_type, id AS target_id
-       FROM crm_companies WHERE deleted_at IS NULL AND lifecycle_stage = 'customer'
-     LIMIT ${limit}`,
+    `SELECT candidate.client_id, candidate.target_type, candidate.target_id
+       FROM (
+         SELECT client_id, 'person'::text AS target_type, id AS target_id
+           FROM crm_people WHERE deleted_at IS NULL AND lifecycle_stage = 'customer'
+         UNION ALL
+         SELECT client_id, 'company'::text AS target_type, id AS target_id
+           FROM crm_companies WHERE deleted_at IS NULL AND lifecycle_stage = 'customer'
+       ) candidate
+      ORDER BY candidate.client_id, candidate.target_type, candidate.target_id`,
   )
 }

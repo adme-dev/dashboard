@@ -164,8 +164,10 @@ describe('owner-scoped indirect CRM paths', () => {
   })
 
   it('locks valid assignment-pool members with PostgreSQL-compatible SQL', async () => {
+    let lockSql = ''
     const tx = {
       query: vi.fn(async (sql: string) => {
+        lockSql = sql
         if (/SELECT\s+DISTINCT[\s\S]*FOR SHARE/i.test(sql)) {
           throw new Error('FOR SHARE is not allowed with DISTINCT clause')
         }
@@ -178,6 +180,46 @@ describe('owner-scoped indirect CRM paths', () => {
       [ACTOR_ID],
       tx
     )).resolves.toEqual([{ id: ACTOR_ID }, { id: ACTOR_ID }])
+    expect(lockSql).toMatch(/FOR SHARE OF member, assignment/)
+  })
+
+  it.each([
+    { actorType: 'staff' as const, surface: 'agency_global' as const, visibility: { ownerScoped: false } },
+    { actorType: 'portal' as const, surface: 'portal_global' as const, visibility: { ownerScoped: false } }
+  ])('validates and client-qualifies stored relation values for $actorType scope without owner predicates', partial => {
+    const context = { ...ownerContext, ...partial }
+    const filter = buildRecordFilter(CLIENT_ID, 'object-1', {
+      context,
+      relationFields: [{ key: 'customer', target: 'person' }]
+    })
+
+    expect(filter.where).toMatch(/data->>'customer'[\s\S]*\^\[0-9a-f\]/)
+    expect(filter.where).toMatch(/EXISTS[\s\S]*FROM crm_people[\s\S]*::uuid/)
+    expect(filter.where).not.toMatch(/relation_target\.owner_id/)
+  })
+
+  it('rejects malformed relation definitions even when the current context is not owner-scoped', () => {
+    expect(() => buildRecordFilter(CLIENT_ID, 'object-1', {
+      context: { ...ownerContext, visibility: { ownerScoped: false } },
+      relationFields: [{ key: 'customer', target: null } as never]
+    })).toThrow('no protected target')
+  })
+
+  it('fails closed on an array-shaped stored relation before authorizing or projecting it', async () => {
+    const authorizeAll = vi.fn(async () => [])
+    const defs = [{
+      key: 'customer', field_type: 'relation', relation_target: 'person',
+      options: [], is_required: false
+    }]
+
+    await expect(authorizeRecordRelations(
+      ownerContext,
+      defs as never,
+      { customer: [VISIBLE_ID] },
+      undefined,
+      { authorizeAll }
+    )).rejects.toThrow('Invalid relation reference')
+    expect(authorizeAll).not.toHaveBeenCalled()
   })
 
   it('authorizes every meeting match and disambiguation option before returning proposals', async () => {

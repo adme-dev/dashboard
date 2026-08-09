@@ -13,6 +13,7 @@ import {
 import type { CrmRecordAccessContext } from '~~/server/utils/crm/searchContext'
 
 type RecordWriteDatabase = TransactionClient
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 async function databaseRows<T>(database: RecordWriteDatabase | undefined, sql: string, params: unknown[]) {
   if (!database) return await queryRows<T>(sql, params)
@@ -66,7 +67,11 @@ function relationRefs(defs: EngineFieldDef[], data: Record<string, unknown>): Cr
       throw new Error(`Relation field "${def.key}" has no protected target`)
     }
     const value = data[def.key]
-    if (typeof value === 'string' && value) refs.push({ type: def.relation_target, id: value })
+    if (value === null || value === undefined || value === '') continue
+    if (typeof value !== 'string' || !UUID_RE.test(value)) {
+      throw new Error(`Invalid relation reference for field "${def.key}"`)
+    }
+    refs.push({ type: def.relation_target, id: value })
   }
   return refs
 }
