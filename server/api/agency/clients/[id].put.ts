@@ -3,7 +3,7 @@
  * Updates client details
  */
 
-import { queryOne } from '~~/server/utils/db'
+import { transaction } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 
@@ -100,7 +100,24 @@ export default defineEventHandler(async (event) => {
       RETURNING *
     `
 
-    const client = await queryOne(sql, values)
+    const client = await transaction(async (db) => {
+      const updated = await db.query(sql, values)
+      const row = (updated as { rows?: any[] }).rows?.[0] ?? null
+
+      // Deactivation invalidates every portal session atomically with the
+      // client status change, so an already-issued cookie cannot survive a
+      // successful deactivation commit.
+      if (row && body.isActive === false) {
+        await db.query(`
+          DELETE FROM client_sessions
+          WHERE client_user_id IN (
+            SELECT id FROM client_users WHERE client_id = $1
+          )
+        `, [id])
+      }
+
+      return row
+    })
 
     if (!client) {
       throw createError({
