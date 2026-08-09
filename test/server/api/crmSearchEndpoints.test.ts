@@ -183,6 +183,55 @@ describe('retired CRM search transport', () => {
     expect(inspectCrmSearchCallerSource(source, 'app/safe.ts')).toEqual([])
   })
 
+  it.each([
+    [
+      'direct transport alias with query transport',
+      `const transport = $fetch; transport('/api/crm/search', { method: 'POST', body: { query }, query: { q: query } })`,
+      'CRM search callers must not use options.query'
+    ],
+    [
+      'approved transport property alias with implicit GET',
+      `const transports = { request: $fetch }; transports.request('/api/crm/search')`,
+      'CRM search callers must use explicit POST'
+    ],
+    [
+      'nested endpoint member with implicit GET',
+      `const routes = { crm: { search: '/api/crm/search' } }; $fetch(routes.crm.search)`,
+      'CRM search callers must use explicit POST'
+    ],
+    [
+      'destructured endpoint alias with implicit GET',
+      `const routes = { search: '/api/crm/search' }; const { search: endpoint } = routes; $fetch(endpoint)`,
+      'CRM search callers must use explicit POST'
+    ],
+    [
+      'unresolved wrapper around a known target alias',
+      `const target = '/api/crm/search'; const endpoint = choose(target); $fetch(endpoint, { method: 'POST', body: { query } })`,
+      'CRM search transport endpoint containing the target could not be resolved safely'
+    ]
+  ])('rejects synthetic %s', (_label, source, reason) => {
+    expect(inspectCrmSearchCallerSource(source, 'scripts/alias-synthetic.mjs'))
+      .toContainEqual({ filePath: 'scripts/alias-synthetic.mjs', reason })
+  })
+
+  it('ignores unrelated member fetch methods even when their argument mentions CRM search', () => {
+    expect(inspectCrmSearchCallerSource(
+      `logger.fetch('/api/crm/search')`,
+      'scripts/logger.mjs'
+    )).toEqual([])
+  })
+
+  it('honors lexical shadowing of a recognized transport alias', () => {
+    const source = `
+      const transport = $fetch
+      {
+        const transport = logger.fetch
+        transport('/api/crm/search')
+      }
+    `
+    expect(inspectCrmSearchCallerSource(source, 'app/shadowed.ts')).toEqual([])
+  })
+
   it('does not treat a non-transport console string as a caller', () => {
     expect(inspectCrmSearchCallerSource(
       `console.log('/api/crm/search')`,

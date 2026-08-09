@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION = 'crm-search-privacy-v3' as const
+export const CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION = 'crm-search-privacy-v4' as const
 export const CRM_SEARCH_TOKEN_ADMISSION_VERSION = 'bge-base-en-v1.5-conservative-utf8-v1' as const
 export const CRM_SEARCH_CLIENT_SELECTOR_NORMALIZER_VERSION = 'crm-search-client-selector-v1' as const
 export const CRM_SEARCH_MAX_CODE_POINTS = 256
@@ -118,7 +118,19 @@ function shannonEntropy(value: string): number {
 function looksHighEntropy(value: string): boolean {
   const alphanumericRuns = value.match(/[a-z0-9]{20,}/giu) ?? []
   const base64Runs = value.match(/[a-z0-9+/]{20,}={0,2}/giu) ?? []
-  return [...new Set([...alphanumericRuns, ...base64Runs])].some((candidate) => {
+  const base64UrlRuns = (value.match(/[a-z0-9_-]{20,}/giu) ?? [])
+    .filter(candidate => /[-_]/u.test(candidate))
+    .filter((candidate) => {
+      const compact = candidate.replace(/[-_]/gu, '')
+      if (shannonEntropy(compact) < 3.5) return false
+      const segments = candidate.split(/[-_]+/u).filter(Boolean)
+      const looksLikeHumanHyphenatedWords = !candidate.includes('_')
+        && !/\d/u.test(candidate)
+        && segments.length > 1
+        && segments.every(segment => /^[a-z]+$/iu.test(segment) && /[aeiou]/iu.test(segment))
+      return !looksLikeHumanHyphenatedWords
+    })
+  return [...new Set([...alphanumericRuns, ...base64Runs, ...base64UrlRuns])].some((candidate) => {
     const run = candidate.replace(/=+$/u, '')
     if (/^[0-9a-f]{24,}$/iu.test(run)) return true
     return [...run].length >= 20 && shannonEntropy(run) >= 3.5

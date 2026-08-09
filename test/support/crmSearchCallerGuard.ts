@@ -22,11 +22,14 @@ interface ObjectResolution {
   unknown: boolean
 }
 
+type ScopedDeclaration = ts.VariableDeclaration | ts.ParameterDeclaration | ts.BindingElement
+
 const DYNAMIC = '\u0000'
 const SOURCE_EXTENSION = /\.(?:ts|tsx|js|jsx|vue|mjs|cjs|mts|cts)$/u
 const SEARCH_ENDPOINTS = new Set(['/api/crm/search', '/api/client-portal/crm/search'])
 const SEARCH_TARGET = /\/api\/(?:client-portal\/)?crm\/search/u
 const TRANSPORT_CALLS = new Set(['$fetch', 'fetch', 'useFetch', 'apiFetch', 'aiInternalFetch'])
+const APPROVED_FETCH_RECEIVERS = new Set(['globalThis', 'window', 'self'])
 const EXCLUDED_DIRECTORIES = new Set([
   'node_modules',
   '.git',
@@ -67,35 +70,53 @@ function unwrapExpression(expression: ts.Expression): ts.Expression {
   return expression
 }
 
+function findBindingElement(bindingName: ts.BindingName, name: string): ts.BindingElement | null {
+  if (ts.isIdentifier(bindingName)) return null
+  for (const element of bindingName.elements) {
+    if (ts.isOmittedExpression(element)) continue
+    if (ts.isIdentifier(element.name) && element.name.text === name) return element
+    const nested = findBindingElement(element.name, name)
+    if (nested) return nested
+  }
+  return null
+}
+
 function variableInStatements(
   statements: ts.NodeArray<ts.Statement>,
   name: string,
   beforePosition: number
-): ts.VariableDeclaration | null {
-  let found: ts.VariableDeclaration | null = null
+): ScopedDeclaration | null {
+  let found: ScopedDeclaration | null = null
   for (const statement of statements) {
     if (statement.getStart() >= beforePosition) break
     if (!ts.isVariableStatement(statement)) continue
     for (const declaration of statement.declarationList.declarations) {
       if (declaration.getStart() >= beforePosition) break
       if (ts.isIdentifier(declaration.name) && declaration.name.text === name) found = declaration
+      else {
+        const binding = findBindingElement(declaration.name, name)
+        if (binding) found = binding
+      }
     }
   }
   return found
 }
 
-function findVariableDeclaration(
+function findScopedDeclaration(
   name: string,
   location: ts.Node
-): ts.VariableDeclaration | ts.ParameterDeclaration | null {
+): ScopedDeclaration | null {
   for (let scope: ts.Node | undefined = location; scope; scope = scope.parent) {
     if (ts.isBlock(scope) || ts.isSourceFile(scope) || ts.isModuleBlock(scope)) {
       const declaration = variableInStatements(scope.statements, name, location.getStart())
       if (declaration) return declaration
     }
     if (ts.isFunctionLike(scope)) {
-      const parameter = scope.parameters.find(item => ts.isIdentifier(item.name) && item.name.text === name)
-      if (parameter) return parameter
+      for (const parameter of scope.parameters) {
+        if (ts.isIdentifier(parameter.name) && parameter.name.text === name) return parameter
+        const binding = findBindingElement(parameter.name, name)
+        if (binding) return binding
+      }
     }
   }
   return null
@@ -113,13 +134,12 @@ function expressionHasTargetEvidence(expression: ts.Expression, sourceFile: ts.S
     || SEARCH_TARGET.test(expression.getText(sourceFile))
 }
 
-function transportName(expression: ts.Expression): string | null {
-  const target = unwrapExpression(expression)
-  if (ts.isIdentifier(target)) return TRANSPORT_CALLS.has(target.text) ? target.text : null
-  if (ts.isPropertyAccessExpression(target)) {
-    return TRANSPORT_CALLS.has(target.name.text) ? target.name.text : null
-  }
-  return null
+function accessKey(expression: ts.PropertyAccessExpression | ts.ElementAccessExpression): string | null {
+  if (ts.isPropertyAccessExpression(expression)) return expression.name.text
+  const argument = expression.argumentExpression
+  return argument && (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument))
+    ? argument.text
+    : null
 }
 
 function sourceViolations(source: string, filePath: string): CrmSearchCallerViolation[] {
@@ -130,6 +150,25 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
     true,
     scriptKind(filePath)
   )
+
+  const resolveDeclaredValue = (
+    declaration: ScopedDeclaration,
+    seen: Set<number>
+  ): { expression?: ts.Expression, unknown: boolean } => {
+    if (!ts.isBindingElement(declaration)) {
+      return { expression: declaration.initializer, unknown: !declaration.initializer }
+    }
+    const owner = declaration.parent.parent
+    if (!ts.isVariableDeclaration(owner) || !owner.initializer) return { unknown: true }
+    const keyNode = declaration.propertyName ?? declaration.name
+    const key = ts.isIdentifier(keyNode) || ts.isStringLiteral(keyNode) ? keyNode.text : null
+    if (!key) return { unknown: true }
+    const sourceObject = resolveObject(owner.initializer, owner.initializer, new Set(seen))
+    return {
+      expression: sourceObject.properties.get(key)?.expression,
+      unknown: sourceObject.unknown || !sourceObject.properties.has(key)
+    }
+  }
 
   const resolveStrings = (
     input: ts.Expression,
@@ -145,24 +184,24 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
       }
     }
     if (ts.isIdentifier(expression)) {
-      const declaration = findVariableDeclaration(expression.text, location)
-      if (!declaration?.initializer || seen.has(declaration.pos)) {
+      const declaration = findScopedDeclaration(expression.text, location)
+      if (!declaration || seen.has(declaration.pos)) {
         return {
           values: [],
           unknown: true,
           targetEvidence: expressionHasTargetEvidence(expression, parsed)
         }
       }
-      return resolveStrings(declaration.initializer, declaration.initializer, new Set([...seen, declaration.pos]))
+      const declared = resolveDeclaredValue(declaration, new Set([...seen, declaration.pos]))
+      if (!declared.expression) {
+        return { values: [], unknown: true, targetEvidence: false }
+      }
+      const resolved = resolveStrings(declared.expression, declared.expression, new Set([...seen, declaration.pos]))
+      return { ...resolved, unknown: resolved.unknown || declared.unknown }
     }
     if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
       const object = resolveObject(expression.expression, location, new Set(seen))
-      const key = ts.isPropertyAccessExpression(expression)
-        ? expression.name.text
-        : expression.argumentExpression && (ts.isStringLiteral(expression.argumentExpression)
-          || ts.isNoSubstitutionTemplateLiteral(expression.argumentExpression))
-          ? expression.argumentExpression.text
-          : null
+      const key = accessKey(expression)
       const property = key ? object.properties.get(key) : null
       if (property) {
         const resolved = resolveStrings(property.expression, property.expression, new Set(seen))
@@ -214,10 +253,12 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
         targetEvidence: targetEvidence || values.some(value => SEARCH_TARGET.test(value))
       }
     }
+    const nestedTargetEvidence = (ts.isCallExpression(expression) || ts.isNewExpression(expression))
+      && expression.arguments?.some(argument => resolveStrings(argument, argument, new Set(seen)).targetEvidence)
     return {
       values: [],
       unknown: true,
-      targetEvidence: expressionHasTargetEvidence(expression, parsed)
+      targetEvidence: Boolean(nestedTargetEvidence) || expressionHasTargetEvidence(expression, parsed)
     }
   }
 
@@ -228,11 +269,22 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
   ): ObjectResolution => {
     const expression = unwrapExpression(input)
     if (ts.isIdentifier(expression)) {
-      const declaration = findVariableDeclaration(expression.text, location)
-      if (!declaration?.initializer || seen.has(declaration.pos)) {
+      const declaration = findScopedDeclaration(expression.text, location)
+      if (!declaration || seen.has(declaration.pos)) {
         return { properties: new Map(), unknown: true }
       }
-      return resolveObject(declaration.initializer, declaration.initializer, new Set([...seen, declaration.pos]))
+      const declared = resolveDeclaredValue(declaration, new Set([...seen, declaration.pos]))
+      if (!declared.expression) return { properties: new Map(), unknown: true }
+      const resolved = resolveObject(declared.expression, declared.expression, new Set([...seen, declaration.pos]))
+      return { ...resolved, unknown: resolved.unknown || declared.unknown }
+    }
+    if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
+      const sourceObject = resolveObject(expression.expression, location, new Set(seen))
+      const key = accessKey(expression)
+      const property = key ? sourceObject.properties.get(key) : null
+      if (!property) return { properties: new Map(), unknown: true }
+      const resolved = resolveObject(property.expression, property.expression, new Set(seen))
+      return { ...resolved, unknown: resolved.unknown || sourceObject.unknown }
     }
     if (!ts.isObjectLiteralExpression(expression)) return { properties: new Map(), unknown: true }
 
@@ -269,9 +321,11 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
     const expression = unwrapExpression(input)
     if (ts.isIdentifier(expression)) {
       if (expression.text === 'undefined') return 'undefined'
-      const declaration = findVariableDeclaration(expression.text, location)
-      if (!declaration?.initializer || seen.has(declaration.pos)) return 'unknown'
-      return definedStatus(declaration.initializer, declaration.initializer, new Set([...seen, declaration.pos]))
+      const declaration = findScopedDeclaration(expression.text, location)
+      if (!declaration || seen.has(declaration.pos)) return 'unknown'
+      const declared = resolveDeclaredValue(declaration, new Set([...seen, declaration.pos]))
+      if (!declared.expression || declared.unknown) return 'unknown'
+      return definedStatus(declared.expression, declared.expression, new Set([...seen, declaration.pos]))
     }
     if (ts.isVoidExpression(expression)) return 'undefined'
     if (ts.isConditionalExpression(expression)) {
@@ -289,10 +343,37 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
     return 'defined'
   }
 
+  const isTransportExpression = (
+    input: ts.Expression,
+    location: ts.Node = input,
+    seen = new Set<number>()
+  ): boolean => {
+    const expression = unwrapExpression(input)
+    if (ts.isIdentifier(expression)) {
+      const declaration = findScopedDeclaration(expression.text, location)
+      if (!declaration) return TRANSPORT_CALLS.has(expression.text)
+      if (seen.has(declaration.pos)) return false
+      const declared = resolveDeclaredValue(declaration, new Set([...seen, declaration.pos]))
+      if (!declared.expression) return false
+      return isTransportExpression(declared.expression, declared.expression, new Set([...seen, declaration.pos]))
+    }
+    if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
+      const key = accessKey(expression)
+      const sourceObject = resolveObject(expression.expression, location, new Set(seen))
+      const property = key ? sourceObject.properties.get(key) : null
+      if (property) return isTransportExpression(property.expression, property.expression, new Set(seen))
+      return key === 'fetch'
+        && ts.isIdentifier(expression.expression)
+        && APPROVED_FETCH_RECEIVERS.has(expression.expression.text)
+        && !findScopedDeclaration(expression.expression.text, location)
+    }
+    return false
+  }
+
   const violations: CrmSearchCallerViolation[] = []
   const add = (reason: string) => violations.push({ filePath, reason })
   const visit = (node: ts.Node) => {
-    if (ts.isCallExpression(node) && node.arguments[0] && transportName(node.expression)) {
+    if (ts.isCallExpression(node) && node.arguments[0] && isTransportExpression(node.expression, node.expression)) {
       const endpoint = resolveStrings(node.arguments[0], node.arguments[0])
       const targetValues = endpoint.values.filter(value => SEARCH_TARGET.test(value))
       const hasTarget = targetValues.length > 0 || endpoint.targetEvidence

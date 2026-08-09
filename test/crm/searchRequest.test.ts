@@ -57,6 +57,11 @@ describe('normalizeCrmSearchRequest', () => {
     ['repeated lowercase secret', 'nwxqplmzvktjshgfdrcybnwxqplmzvktjshgfdrcyb'],
     ['lowercase base32 token', 'mzxw6ytboi7f65uxm5za'],
     ['base64 token', 'QWxhZGRpbjpvcGVuIHNlc2FtZQ=='],
+    ['mixed Base64URL token', 'AbCdEfGhIj_KlMnOpQr-StUvWxYz0123'],
+    ['lowercase Base64URL token', 'nwxqplmzvk_tjshgfdrc-ybnwxqplm'],
+    ['uppercase Base64URL token', 'NWXQPLMZVK_TJSHGFDRC-YBNWXQPLM'],
+    ['20-character Base64URL boundary', 'AbCdEfGhi_IjKlMnOpQ1'],
+    ['one-character role mutation', 'enterprise-account-manager2'],
     ['hex-like run', 'deadbeefdeadbeefdeadbeef']
   ])('keeps uncertain %s keyword-only', (_label, query) => {
     expect(normalizeCrmSearchRequest({ query }).semanticEligible).toBe(false)
@@ -64,6 +69,7 @@ describe('normalizeCrmSearchRequest', () => {
 
   it.each([
     ['19-character boundary', 'ABCDEFGHIJKLMNOPQRS'],
+    ['19-character Base64URL boundary', 'AbCdEfGh_IjKlMnOpQ1'],
     ['ordinary spaced client name', 'International Business Machines Australia'],
     ['ordinary long word', 'internationalisation'],
     ['ordinary hyphenated role', 'enterprise-account-manager']
@@ -87,10 +93,10 @@ describe('normalizeCrmSearchRequest', () => {
   })
 
   it('exposes a versioned classifier and tokenizer decision contract', () => {
-    expect(CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION).toBe('crm-search-privacy-v3')
+    expect(CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION).toBe('crm-search-privacy-v4')
     expect(CRM_SEARCH_TOKEN_ADMISSION_VERSION).toBe('bge-base-en-v1.5-conservative-utf8-v1')
     expect(classifyCrmSearchPrivacy('Acme account')).toEqual({
-      version: 'crm-search-privacy-v3',
+      version: 'crm-search-privacy-v4',
       semanticEligible: true,
       reason: 'eligible'
     })

@@ -161,3 +161,39 @@ This gate covers owner-scope batch/child/aggregate/indirect surfaces, CRM bulk/d
 - Confirmed each actual UI invocation owns a unique generation and settlement compares generation, raw term, debounced term, and client scope before mutating any visible state.
 - Confirmed agency POST bodies still carry the captured client selector, portal POST bodies still omit it, query text never enters the URL, and accessible loading/error/empty behavior plus the existing Nuxt UI v4 design remain intact.
 - Confirmed the repository guard scans `app`, `server`, `shared`, `scripts`, and `workers`, includes production paths named `test`, limits findings to real inventoried transport calls, and fails closed for unresolved target-bearing transport inputs.
+
+---
+
+# Review Round 3 — Encoded Search Guard Closure
+
+## Result
+
+- Review base: `1ac3e4733bf1fc94621717d69191740e15778e27`.
+- Intended commit: `fix(crm): close encoded search guard gaps`.
+- Scope: the two MEDIUM review findings only; no unrelated fix, network, AI provider, database, migration, deployment, or production action was run.
+
+## Repairs
+
+- Privacy classifier v4 adds punctuation-aware Base64URL admission for high-entropy candidates of at least 20 code points. It strips URL-safe separators for entropy evaluation, treats underscore/digit structure conservatively, and exempts vowel-bearing alphabetic hyphen segments that look like human words. The requested mixed, lowercase, and uppercase URL-safe examples, an exact 20-character boundary, and a one-character digit mutation remain keyword-only, while the 19-character boundary and `enterprise-account-manager` remain semantically eligible.
+- The caller guard now resolves local transport aliases, statically proven object-property transport aliases, nested endpoint members, and object-destructured endpoint aliases through lexical scope. Unresolved wrapper expressions recursively retain evidence from known target aliases and fail closed. Generic member `.fetch` calls are ignored unless their receiver is a statically proven transport object or an approved global fetch receiver, preventing `logger.fetch(...)` false positives while keeping genuine aliases guarded.
+
+## Behavioral TDD Evidence
+
+- Consolidated pre-production RED: 2 files/58 tests, with 12 failures and 46 passes. Failures reproduced all requested Base64URL admissions, the 20/19 boundary and mutation behavior, the stale classifier version, direct/property transport alias misses, nested/destructured endpoint misses, an unresolved target-alias wrapper miss, and the unrelated `logger.fetch` false positive.
+- No production repair preceded its corresponding behavioral failure.
+
+## Verification
+
+- Exact Task 4 gate: 10 files/164 tests passed.
+- Task 1–3/security regression gate: 32 files/283 tests passed.
+- ESLint over all four changed source/test paths: clean.
+- Full Node 24 typecheck output filtered to every changed source/test path: zero diagnostics; unrelated repository baseline diagnostics remain outside this scope.
+- `git diff --check`: clean.
+
+## Deep Review
+
+- Re-read all four changed source/test files end-to-end, reviewed the complete diff, and appended this report.
+- Confirmed privacy v4 never decodes, persists, or logs query content; classification only controls semantic eligibility and authorized keyword search remains available.
+- Confirmed URL-safe candidate length is checked before entropy, human-looking hyphenated word segments are exempted, and explicit boundary/mutation fixtures cover realistic threshold regressions.
+- Confirmed transport identity and endpoint aliases resolve through the nearest lexical declaration, local shadowing prevents a false transport classification, and known target evidence survives unresolved wrapper calls so the guard fails closed.
+- Confirmed generic member `.fetch` is accepted only for statically proven transport properties or the approved `globalThis`, `window`, and `self` receivers; unrelated logger methods and console strings remain ignored.
