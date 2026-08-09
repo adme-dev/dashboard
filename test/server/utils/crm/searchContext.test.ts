@@ -47,6 +47,7 @@ function fakeAgencyContextDeps(overrides: Partial<CrmSearchContextDependencies> 
     loadClient: vi.fn().mockResolvedValue({ id: clientId, name: 'Acme', recordVisibility: 'team' }),
     loadAgencyAssignment: vi.fn().mockResolvedValue(true),
     loadAssistantAssignments: vi.fn().mockResolvedValue({ clientIds: [clientId], sourceRevision: 'assignment-revision' }),
+    loadAuthorizedActiveClients: vi.fn().mockResolvedValue([{ id: clientId, name: 'Acme' }]),
     loadOrganisationScope: vi.fn().mockResolvedValue(organisationScopeId),
     loadPortalSession: vi.fn(),
     loadPortalEntitlement: vi.fn().mockResolvedValue(true),
@@ -204,7 +205,7 @@ describe('CRM search context', () => {
     const ai = fakeAgencyContextDeps({
       loadClient,
       loadAgencyAssignment: vi.fn().mockResolvedValue(false),
-      findActiveClientsByName: vi.fn().mockResolvedValue([{ id: secondClientId, name: 'Beta' }]),
+      loadAuthorizedActiveClients: vi.fn().mockResolvedValue([{ id: secondClientId, name: 'Beta' }]),
       loadAssistantAssignments: vi.fn().mockResolvedValue({ clientIds: [secondClientId], sourceRevision: 'assignment-revision' })
     })
     await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'Beta' }, ai))
@@ -270,9 +271,13 @@ describe('CRM search context', () => {
 
   it('returns an explicit ambiguity result for an AI client-name match and never executes retrieval', async () => {
     const deps = fakeAgencyContextDeps({
-      findActiveClientsByName: vi.fn().mockResolvedValue([
+      loadAssistantAssignments: vi.fn().mockResolvedValue({
+        clientIds: [clientId, secondClientId],
+        sourceRevision: 'assignment-revision'
+      }),
+      loadAuthorizedActiveClients: vi.fn().mockResolvedValue([
         { id: clientId, name: 'Acme' },
-        { id: '44444444-4444-4444-8444-444444444444', name: 'Acme' }
+        { id: secondClientId, name: 'Acme' }
       ])
     })
 
@@ -282,6 +287,117 @@ describe('CRM search context', () => {
     }, deps)).resolves.toEqual({ status: 'ambiguous' })
     expect(deps.runKeyword).not.toHaveBeenCalled()
     expect(deps.createCorrelationId).toHaveBeenCalledOnce()
+  })
+
+  it('loads fresh assistant scope first and prefers a normalized authorized exact match over partial matches', async () => {
+    const loadAssistantAssignments = vi.fn().mockResolvedValue({
+      clientIds: [clientId, secondClientId],
+      sourceRevision: 'fresh-assignment-revision'
+    })
+    const loadAuthorizedActiveClients = vi.fn().mockResolvedValue([
+      { id: secondClientId, name: 'Acme Automotive' },
+      { id: clientId, name: '  ACME  ' }
+    ])
+    const deps = fakeAgencyContextDeps({
+      loadAssistantAssignments,
+      loadAuthorizedActiveClients
+    })
+
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'Ａｃｍｅ' }, deps))
+      .resolves.toMatchObject({ status: 'resolved', context: { clientId }, clientName: '  ACME  ' })
+    expect(loadAssistantAssignments.mock.invocationCallOrder[0])
+      .toBeLessThan(loadAuthorizedActiveClients.mock.invocationCallOrder[0]!)
+    expect(loadAuthorizedActiveClients).toHaveBeenCalledWith([clientId, secondClientId])
+  })
+
+  it('accepts a partial client name only when exactly one authorized active client matches', async () => {
+    const deps = fakeAgencyContextDeps({
+      loadAssistantAssignments: vi.fn().mockResolvedValue({
+        clientIds: [clientId, secondClientId],
+        sourceRevision: 'fresh-assignment-revision'
+      }),
+      loadAuthorizedActiveClients: vi.fn().mockResolvedValue([
+        { id: clientId, name: 'Acme Automotive' },
+        { id: secondClientId, name: 'Beta Retail' }
+      ]),
+      loadClient: vi.fn().mockResolvedValue({ id: clientId, name: 'Acme Automotive', recordVisibility: 'team' })
+    })
+
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'automotive' }, deps))
+      .resolves.toMatchObject({ status: 'resolved', context: { clientId }, clientName: 'Acme Automotive' })
+  })
+
+  it('returns ambiguity for multiple authorized partial matches without downstream client work', async () => {
+    const deps = fakeAgencyContextDeps({
+      loadAssistantAssignments: vi.fn().mockResolvedValue({
+        clientIds: [clientId, secondClientId],
+        sourceRevision: 'fresh-assignment-revision'
+      }),
+      loadAuthorizedActiveClients: vi.fn().mockResolvedValue([
+        { id: clientId, name: 'Acme North' },
+        { id: secondClientId, name: 'Acme South' }
+      ])
+    })
+
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'acme' }, deps))
+      .resolves.toEqual({ status: 'ambiguous' })
+    expect(deps.loadClient).not.toHaveBeenCalled()
+    expect(deps.loadAgencyAssignment).not.toHaveBeenCalled()
+    expect(deps.loadOrganisationScope).not.toHaveBeenCalled()
+    expect(deps.runKeyword).not.toHaveBeenCalled()
+  })
+
+  it('returns not found for zero authorized matches without downstream client or retrieval work', async () => {
+    const deps = fakeAgencyContextDeps({
+      loadAuthorizedActiveClients: vi.fn().mockResolvedValue([{ id: clientId, name: 'Beta Retail' }])
+    })
+
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'acme' }, deps))
+      .resolves.toEqual({ status: 'not_found' })
+    expect(deps.loadClient).not.toHaveBeenCalled()
+    expect(deps.loadAgencyAssignment).not.toHaveBeenCalled()
+    expect(deps.loadOrganisationScope).not.toHaveBeenCalled()
+    expect(deps.runKeyword).not.toHaveBeenCalled()
+  })
+
+  it('does not let an unauthorized duplicate make an authorized exact match ambiguous', async () => {
+    const unauthorizedClientId = '66666666-6666-4666-8666-666666666666'
+    const deps = fakeAgencyContextDeps({
+      loadAssistantAssignments: vi.fn().mockResolvedValue({
+        clientIds: [clientId],
+        sourceRevision: 'fresh-assignment-revision'
+      }),
+      loadAuthorizedActiveClients: vi.fn().mockResolvedValue([
+        { id: unauthorizedClientId, name: 'Acme' },
+        { id: clientId, name: 'Acme' }
+      ])
+    })
+
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'acme' }, deps))
+      .resolves.toMatchObject({ status: 'resolved', context: { clientId } })
+    expect(deps.loadAgencyAssignment).toHaveBeenCalledWith(actorId, clientId)
+  })
+
+  it('returns the same public agency-global denial for missing and inaccessible clients before downstream work', async () => {
+    const missing = fakeAgencyContextDeps({ loadClient: vi.fn().mockResolvedValue(null) })
+    const inaccessible = fakeAgencyContextDeps({ loadPermissionSet: vi.fn().mockResolvedValue([]) })
+    const denials: Array<{ statusCode?: number; statusMessage?: string }> = []
+
+    for (const deps of [missing, inaccessible]) {
+      try {
+        await resolveAgencyCrmSearchContext(fakeEvent(), { clientId, surface: 'agency_global' }, deps)
+      } catch (error) {
+        denials.push(error as { statusCode?: number; statusMessage?: string })
+      }
+      expect(deps.loadAgencyAssignment).not.toHaveBeenCalled()
+      expect(deps.loadOrganisationScope).not.toHaveBeenCalled()
+      expect(deps.runKeyword).not.toHaveBeenCalled()
+    }
+
+    expect(denials.map(({ statusCode, statusMessage }) => ({ statusCode, statusMessage }))).toEqual([
+      { statusCode: 404, statusMessage: 'Client not found' },
+      { statusCode: 404, statusMessage: 'Client not found' }
+    ])
   })
 
   it('uses fresh default authority for agency AI client-name resolution and intersects active assignments', async () => {
@@ -318,8 +434,8 @@ describe('CRM search context', () => {
           ? [{ id: organisationScopeId }]
           : []
       }
-      if (sql.includes('lower(name) = lower($1)')) {
-        return sql.includes('is_active = TRUE') && params[0] === 'Acme'
+      if (sql.includes('FROM agency_clients') && sql.includes('id = ANY($1::uuid[])')) {
+        return sql.includes('is_active = TRUE') && params[0]?.[0] === clientId
           ? [{ id: clientId, name: 'Acme' }]
           : []
       }
@@ -334,6 +450,10 @@ describe('CRM search context', () => {
 
     await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'Acme' }))
       .resolves.toMatchObject({ status: 'resolved', context: { actorId, clientId, surface: 'agency_ai', permissionSet: ['CLIENTS'] } })
+    const assignmentCall = queryRowsFresh.mock.calls.findIndex(([sql]) => sql.includes('FROM client_team_assignments assignment'))
+    const candidateCall = queryRowsFresh.mock.calls.findIndex(([sql]) => sql.includes('id = ANY($1::uuid[])'))
+    expect(assignmentCall).toBeGreaterThanOrEqual(0)
+    expect(candidateCall).toBeGreaterThan(assignmentCall)
     expect(queryOne).not.toHaveBeenCalled()
     expect(queryRows).not.toHaveBeenCalled()
   })

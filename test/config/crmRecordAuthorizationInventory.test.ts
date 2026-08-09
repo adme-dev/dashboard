@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   CRM_RECORD_ACCESS_SURFACE_INVENTORY,
+  discoverCrmExternalRouteSurfaces,
   discoverCrmInventoryDrift,
   discoverCrmIndirectServiceSurfaces,
   discoverRegisteredCrmToolSurfaces,
@@ -17,12 +18,49 @@ describe('CRM record authorization inventory', () => {
 
   it('includes the indirect CRM writers and readers that bypass the public route namespace', () => {
     expect(CRM_RECORD_ACCESS_SURFACE_INVENTORY).toEqual(expect.arrayContaining([
+      'route:server/api/internal/workflows/crm/followup-review.post.ts',
+      'route:server/api/office/[officeId]/meetings/[meetingId]/action-items/[actionItemId]/crm-candidates.get.ts',
+      'route:server/api/office/[officeId]/meetings/[meetingId]/action-items/[actionItemId]/crm-task.post.ts',
       'tool:search_crm',
       'tool:get_crm_pipeline',
       'service:workers/crm-cron/src/index.ts',
       'service:workers/email-worker/src/crmAdapter.ts',
       'service:server/utils/leads/crmPromotion.ts'
     ]))
+  })
+
+  it('recursively discovers only CRM-bearing routes in the reviewed external route roots', () => {
+    const root = mkdtempSync(join(tmpdir(), 'crm-external-routes-'))
+    const actionItemDirectory = join(root, 'server/api/office/[officeId]/meetings/[meetingId]/action-items/[actionItemId]')
+    const workflowDirectory = join(root, 'server/api/internal/workflows/crm/nested')
+    mkdirSync(actionItemDirectory, { recursive: true })
+    mkdirSync(workflowDirectory, { recursive: true })
+    writeFileSync(join(actionItemDirectory, 'crm-new-writer.post.ts'), 'export {}')
+    writeFileSync(join(actionItemDirectory, 'task.post.ts'), 'export {}')
+    writeFileSync(join(workflowDirectory, 'new-review.post.ts'), 'export {}')
+
+    expect(discoverCrmExternalRouteSurfaces(root)).toEqual([
+      'route:server/api/internal/workflows/crm/nested/new-review.post.ts',
+      'route:server/api/office/[officeId]/meetings/[meetingId]/action-items/[actionItemId]/crm-new-writer.post.ts'
+    ])
+  })
+
+  it('reports external CRM route additions and reviewed-route omissions as drift', () => {
+    const root = mkdtempSync(join(tmpdir(), 'crm-external-route-drift-'))
+    const actionItemDirectory = join(root, 'server/api/office/o/meetings/m/action-items/a')
+    mkdirSync(actionItemDirectory, { recursive: true })
+    writeFileSync(join(actionItemDirectory, 'crm-new-reader.get.ts'), 'export {}')
+
+    const discovered = discoverCrmExternalRouteSurfaces(root)
+    const reviewed = ['route:server/api/office/o/meetings/m/action-items/a/crm-reviewed.get.ts']
+    const drift = discoverCrmInventoryDrift(discovered, reviewed)
+
+    expect(drift.unclassified).toEqual([
+      'route:server/api/office/o/meetings/m/action-items/a/crm-new-reader.get.ts'
+    ])
+    expect(drift.missing).toEqual([
+      'route:server/api/office/o/meetings/m/action-items/a/crm-reviewed.get.ts'
+    ])
   })
 
   it('discovers newly registered CRM tools rather than accepting a static tool entry', () => {

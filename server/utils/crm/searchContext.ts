@@ -45,7 +45,7 @@ export interface CrmSearchContextDependencies {
   loadOrganisationScope: () => Promise<string | null>
   loadPortalSession: (event: H3Event) => Promise<FreshPortalSession | null>
   loadPortalEntitlement: (clientId: string) => Promise<boolean>
-  findActiveClientsByName?: (clientName: string) => Promise<Array<Pick<FreshClient, 'id' | 'name'>>>
+  loadAuthorizedActiveClients: (clientIds: readonly string[]) => Promise<Array<Pick<FreshClient, 'id' | 'name'>>>
   createCorrelationId: () => string
   /** Reserved for downstream retrieval. Context resolution must never invoke it. */
   runKeyword?: () => unknown
@@ -208,12 +208,13 @@ const defaultDependencies: CrmSearchContextDependencies = {
     )
     return !!row && enabledEntitlementStatuses.has(row.status)
   },
-  async findActiveClientsByName(clientName) {
+  async loadAuthorizedActiveClients(clientIds) {
+    if (clientIds.length === 0) return []
     return await queryRowsFresh<{ id: string; name: string }>(
       `SELECT id::text AS id, name FROM agency_clients
-        WHERE is_active = TRUE AND lower(name) = lower($1)
-        ORDER BY id LIMIT 2`,
-      [clientName.trim()]
+        WHERE id = ANY($1::uuid[]) AND is_active = TRUE
+        ORDER BY id`,
+      [clientIds]
     )
   },
   createCorrelationId: correlationId
@@ -297,22 +298,37 @@ export async function resolveAgencyAiCrmContext(
   if (!actor) return { status: 'scope_unavailable' }
   const permissionSet = await deps.loadPermissionSet(actor)
   if (!permissionSet.includes('CLIENTS')) return { status: 'scope_unavailable' }
-  const clients = await deps.findActiveClientsByName!(input.clientName)
-  if (clients.length === 0) return { status: 'not_found' }
-  if (clients.length !== 1) return { status: 'ambiguous' }
   const assistantScope = await deps.loadAssistantAssignments(actor.id, permissionSet)
-  if (!assistantScope.clientIds.includes(clients[0]!.id)) return { status: 'scope_unavailable' }
+  if (assistantScope.clientIds.length === 0) return { status: 'scope_unavailable' }
+
+  const authorizedIds = new Set(assistantScope.clientIds)
+  const clients = (await deps.loadAuthorizedActiveClients(assistantScope.clientIds))
+    .filter(client => authorizedIds.has(client.id))
+  const selector = normalizeClientName(input.clientName)
+  if (!selector) return { status: 'not_found' }
+  const exactMatches = clients.filter(client => normalizeClientName(client.name) === selector)
+  if (exactMatches.length > 1) return { status: 'ambiguous' }
+  const partialMatches = exactMatches.length === 0
+    ? clients.filter(client => normalizeClientName(client.name).includes(selector))
+    : exactMatches
+  if (partialMatches.length === 0) return { status: 'not_found' }
+  if (partialMatches.length > 1) return { status: 'ambiguous' }
+  const selectedClient = partialMatches[0]!
   try {
     const context = await resolveAgencyForActor(
       actor.id,
-      { clientId: clients[0]!.id, surface: 'agency_ai' },
+      { clientId: selectedClient.id, surface: 'agency_ai' },
       deps,
       requestCorrelationId,
       assistantScope
     )
-    return { status: 'resolved', context, clientName: clients[0]!.name }
+    return { status: 'resolved', context, clientName: selectedClient.name }
   } catch (error: any) {
     if (error?.statusCode === 404) return { status: 'scope_unavailable' }
     throw error
   }
+}
+
+function normalizeClientName(value: string) {
+  return value.normalize('NFKC').replace(/\s+/gu, ' ').trim().toLocaleLowerCase('en-AU')
 }

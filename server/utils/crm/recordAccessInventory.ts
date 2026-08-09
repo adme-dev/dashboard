@@ -74,6 +74,9 @@ const CRM_ROUTE_SURFACES = [
   "route:server/api/client-portal/crm/views/[id].patch.ts",
   "route:server/api/client-portal/crm/views/index.get.ts",
   "route:server/api/client-portal/crm/views/index.post.ts",
+  "route:server/api/internal/workflows/crm/followup-review.post.ts",
+  "route:server/api/office/[officeId]/meetings/[meetingId]/action-items/[actionItemId]/crm-candidates.get.ts",
+  "route:server/api/office/[officeId]/meetings/[meetingId]/action-items/[actionItemId]/crm-task.post.ts",
   "route:server/api/crm/activities/[id].delete.ts",
   "route:server/api/crm/activities/[id].patch.ts",
   "route:server/api/crm/activities/index.get.ts",
@@ -304,9 +307,24 @@ export function scanCrmRecordSurfaces(
   const found: string[] = []
   walkTypes(root, join(root, 'server/api/crm'), found)
   walkTypes(root, join(root, 'server/api/client-portal/crm'), found)
+  found.push(...discoverCrmExternalRouteSurfaces(root))
   found.push(...discoverRegisteredCrmToolSurfaces(tools))
   found.push(...discoverCrmIndirectServiceSurfaces(root))
   return found.sort()
+}
+
+/**
+ * CRM record access also occurs in two route families outside the public CRM
+ * namespaces. Every internal CRM workflow is record-bearing; office action-item
+ * routes are included only when their endpoint name starts with `crm-`, so
+ * unrelated meeting and action-item routes do not enter this inventory.
+ */
+export function discoverCrmExternalRouteSurfaces(root = process.cwd()): string[] {
+  const found: string[] = []
+  walkServiceTypes(root, join(root, 'server/api/internal/workflows/crm'), () => true, found)
+  walkServiceTypes(root, join(root, 'server/api/office'), path =>
+    /^server\/api\/office\/[^/]+\/meetings\/[^/]+\/action-items\/[^/]+\/crm-[^/]+\.(?:get|post|put|patch|delete)\.ts$/i.test(path), found)
+  return found.map(surface => surface.replace(/^service:/, 'route:')).sort()
 }
 
 export type RegisteredTool = { name: string; description: string }
