@@ -170,6 +170,7 @@ describe('CRM search context', () => {
         correlationId: 'caller-controlled'
       }, deps)).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Client not found' })
       expect(deps.runKeyword).not.toHaveBeenCalled()
+      expect(deps.createCorrelationId).toHaveBeenCalledOnce()
     }
   })
 
@@ -224,6 +225,7 @@ describe('CRM search context', () => {
       await expect(resolvePortalCrmSearchContext(fakeEvent(), { surface: 'portal_global' }, deps))
         .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Client not found' })
       expect(deps.runKeyword).not.toHaveBeenCalled()
+      expect(deps.createCorrelationId).toHaveBeenCalledOnce()
     }
   })
 
@@ -240,5 +242,76 @@ describe('CRM search context', () => {
       correlationId: 'caller-controlled'
     }, deps)).resolves.toEqual({ status: 'ambiguous' })
     expect(deps.runKeyword).not.toHaveBeenCalled()
+    expect(deps.createCorrelationId).toHaveBeenCalledOnce()
+  })
+
+  it('uses fresh default authority for agency AI client-name resolution and intersects active assignments', async () => {
+    vi.clearAllMocks()
+    queryOne.mockRejectedValue(new Error('cached authority must not run'))
+    queryRows.mockRejectedValue(new Error('cached authority must not run'))
+    queryOneFresh.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (sql.includes('FROM team_members')) {
+        return sql.includes('is_active = TRUE') && params[0] === actorId
+          ? { id: actorId, role: 'custom', custom_role_id: 'custom-role-1' }
+          : null
+      }
+      if (sql.includes('FROM agency_clients client')) {
+        return sql.includes('client.is_active = TRUE') && params[0] === clientId
+          ? { id: clientId, name: 'Acme', record_visibility: 'team' }
+          : null
+      }
+      if (sql.includes('FROM client_team_assignments')) {
+        return sql.includes('assignment.team_member_id = $1') && sql.includes('assignment.client_id = $2')
+          && sql.includes('client.is_active = TRUE') && params[0] === actorId && params[1] === clientId
+          ? { '?column?': 1 }
+          : null
+      }
+      return null
+    })
+    queryRowsFresh.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (sql.includes('role_permission_groups')) {
+        return sql.includes('role.id = $1') && params[0] === 'custom-role-1'
+          ? [{ permission_group: 'CLIENTS' }]
+          : []
+      }
+      if (sql.includes('lower(name) = lower($1)')) {
+        return sql.includes('is_active = TRUE') && params[0] === 'Acme'
+          ? [{ id: clientId, name: 'Acme' }]
+          : []
+      }
+      if (sql.includes('FROM client_team_assignments assignment')) {
+        return sql.includes('assignment.team_member_id = $1') && sql.includes('client.is_active = TRUE')
+          && params[0] === actorId
+          ? [{ id: clientId, source_revision: 'assignment-revision' }]
+          : []
+      }
+      return []
+    })
+
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'Acme' }))
+      .resolves.toMatchObject({ status: 'resolved', context: { actorId, clientId, surface: 'agency_ai', permissionSet: ['CLIENTS'] } })
+    expect(queryOne).not.toHaveBeenCalled()
+    expect(queryRows).not.toHaveBeenCalled()
+  })
+
+  it('keeps unresolved default agency-AI authority from reaching client or assignment work', async () => {
+    vi.clearAllMocks()
+    queryOne.mockRejectedValue(new Error('cached authority must not run'))
+    queryRows.mockRejectedValue(new Error('cached authority must not run'))
+    queryOneFresh.mockImplementation(async (sql: string, params: unknown[]) => sql.includes('FROM team_members')
+      && sql.includes('is_active = TRUE') && params[0] === actorId
+      ? { id: actorId, role: 'custom', custom_role_id: 'custom-role-without-clients' }
+      : null)
+    queryRowsFresh.mockImplementation(async (sql: string, params: unknown[]) => sql.includes('role_permission_groups')
+      && sql.includes('role.id = $1') && params[0] === 'custom-role-without-clients'
+      ? []
+      : [])
+
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'Acme' }))
+      .resolves.toEqual({ status: 'scope_unavailable' })
+    expect(queryOneFresh).toHaveBeenCalledOnce()
+    expect(queryRowsFresh).toHaveBeenCalledOnce()
+    expect(queryOne).not.toHaveBeenCalled()
+    expect(queryRows).not.toHaveBeenCalled()
   })
 })

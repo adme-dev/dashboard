@@ -69,6 +69,16 @@ function correlationId() {
   return globalThis.crypto.randomUUID()
 }
 
+/**
+ * Preserve a server-generated request identity for internal denial logging
+ * without placing it on the uniform public 404 response.
+ */
+function createRequestCorrelationId(event: H3Event, deps: CrmSearchContextDependencies) {
+  const requestCorrelationId = deps.createCorrelationId()
+  ;(event.context as Record<string, unknown>).crmSearchCorrelationId = requestCorrelationId
+  return requestCorrelationId
+}
+
 const defaultDependencies: CrmSearchContextDependencies = {
   async resolveAgencyActorId(event) {
     // requireAuth establishes an authenticated identity; its role/groups are
@@ -198,6 +208,7 @@ async function resolveAgencyForActor(
   actorId: string,
   input: { clientId: string; surface: 'agency_global' | 'agency_ai' },
   deps: CrmSearchContextDependencies,
+  requestCorrelationId: string,
   assistantScope?: { clientIds: readonly string[]; sourceRevision: string }
 ): Promise<CrmSearchContext> {
   const actor = await deps.loadAgencyActor(actorId)
@@ -212,7 +223,7 @@ async function resolveAgencyForActor(
   return {
     organisationScopeId: client.id,
     clientId: client.id,
-    correlationId: deps.createCorrelationId(),
+    correlationId: requestCorrelationId,
     actorType: 'staff',
     actorId: actor.id,
     surface: input.surface,
@@ -227,7 +238,8 @@ export async function resolveAgencyCrmSearchContext(
   input: { clientId: string; surface: 'agency_global'; correlationId?: unknown; actorId?: unknown },
   deps: CrmSearchContextDependencies = defaultDependencies
 ): Promise<CrmSearchContext> {
-  return await resolveAgencyForActor(await deps.resolveAgencyActorId(event), input, deps)
+  const requestCorrelationId = createRequestCorrelationId(event, deps)
+  return await resolveAgencyForActor(await deps.resolveAgencyActorId(event), input, deps, requestCorrelationId)
 }
 
 export async function resolvePortalCrmSearchContext(
@@ -235,6 +247,7 @@ export async function resolvePortalCrmSearchContext(
   input: { surface: 'portal_global'; correlationId?: unknown },
   deps: CrmSearchContextDependencies = defaultDependencies
 ): Promise<CrmSearchContext> {
+  const requestCorrelationId = createRequestCorrelationId(event, deps)
   const session = await deps.loadPortalSession(event)
   if (!session || !internalCrmModes.has(session.leadCaptureMode)) notFound()
   const canView = session.isPrimaryContact || session.canViewCrm || session.canEditCrm || session.canAdminCrm
@@ -242,7 +255,7 @@ export async function resolvePortalCrmSearchContext(
   return {
     organisationScopeId: session.clientId,
     clientId: session.clientId,
-    correlationId: deps.createCorrelationId(),
+    correlationId: requestCorrelationId,
     actorType: 'portal',
     actorId: session.id,
     surface: input.surface,
@@ -256,6 +269,7 @@ export async function resolveAgencyAiCrmContext(
   input: { clientName: string; correlationId?: unknown },
   deps: CrmSearchContextDependencies = defaultDependencies
 ): Promise<AgencyAiContextResolution> {
+  const requestCorrelationId = createRequestCorrelationId(tool.event, deps)
   const actor = await deps.loadAgencyActor(tool.userId)
   if (!actor) return { status: 'scope_unavailable' }
   const permissionSet = await deps.loadPermissionSet(actor)
@@ -270,6 +284,7 @@ export async function resolveAgencyAiCrmContext(
       actor.id,
       { clientId: clients[0]!.id, surface: 'agency_ai' },
       deps,
+      requestCorrelationId,
       assistantScope
     )
     return { status: 'resolved', context, clientName: clients[0]!.name }

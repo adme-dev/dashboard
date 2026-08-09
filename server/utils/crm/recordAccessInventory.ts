@@ -222,6 +222,13 @@ const CRM_SERVICE_SURFACES = [
   "service:server/utils/crm/emailRepository.ts",
   "service:server/utils/crm/emailRouteManagement.ts",
   "service:server/utils/crm/emailRouteRepository.ts",
+  "service:server/utils/crm/engine/recordFilter.ts",
+  "service:server/utils/crm/engine/recordWrite.ts",
+  "service:server/utils/crm/engine/resolveObjects.ts",
+  "service:server/utils/crm/engine/schemas.ts",
+  "service:server/utils/crm/engine/seedVertical.ts",
+  "service:server/utils/crm/engine/types.ts",
+  "service:server/utils/crm/engine/validateRecord.ts",
   "service:server/utils/crm/exportRecords.ts",
   "service:server/utils/crm/filters.ts",
   "service:server/utils/crm/healthScoring.ts",
@@ -256,9 +263,21 @@ const CRM_SERVICE_SURFACES = [
   "service:workers/email-worker/src/crmAdapter.ts",
 ] as const
 
+// This is the reviewed snapshot. Runtime registry discovery is deliberately
+// separate so a newly registered tool cannot redefine the baseline it must be
+// compared against.
+const CRM_TOOL_SURFACES = [
+  "tool:draft_followup",
+  "tool:get_crm_pipeline",
+  "tool:log_crm_activity",
+  "tool:propose_opportunity",
+  "tool:propose_quote",
+  "tool:search_crm",
+] as const
+
 export const CRM_RECORD_ACCESS_SURFACE_INVENTORY = Object.freeze([
   ...CRM_ROUTE_SURFACES,
-  ...discoverRegisteredCrmToolSurfaces(),
+  ...CRM_TOOL_SURFACES,
   ...CRM_SERVICE_SURFACES
 ].sort())
 
@@ -278,16 +297,19 @@ function walkTypes(root: string, dir: string, found: string[]) {
  * Performs a filesystem classification rather than a source-text assertion, so
  * route additions/removals surface as a real inventory drift failure in CI.
  */
-export function scanCrmRecordSurfaces(root = process.cwd()): string[] {
+export function scanCrmRecordSurfaces(
+  root = process.cwd(),
+  tools: readonly RegisteredTool[] = registry
+): string[] {
   const found: string[] = []
   walkTypes(root, join(root, 'server/api/crm'), found)
   walkTypes(root, join(root, 'server/api/client-portal/crm'), found)
-  found.push(...discoverRegisteredCrmToolSurfaces())
+  found.push(...discoverRegisteredCrmToolSurfaces(tools))
   found.push(...discoverCrmIndirectServiceSurfaces(root))
   return found.sort()
 }
 
-type RegisteredTool = { name: string; description: string }
+export type RegisteredTool = { name: string; description: string }
 
 /**
  * CRM is an explicit runtime concern in tool metadata. Reading the assembled
@@ -306,9 +328,13 @@ export function discoverRegisteredCrmToolSurfaces(
 function walkServiceTypes(root: string, directory: string, matches: (relativePath: string) => boolean, found: string[]) {
   if (!existsSync(directory)) return
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith('.ts')) continue
-    const relativePath = relative(root, join(directory, entry.name))
-    if (matches(relativePath)) found.push(`service:${relativePath}`)
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) {
+      walkServiceTypes(root, path, matches, found)
+    } else if (entry.isFile() && entry.name.endsWith('.ts')) {
+      const relativePath = relative(root, path)
+      if (matches(relativePath)) found.push(`service:${relativePath}`)
+    }
   }
 }
 

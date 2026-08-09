@@ -36,6 +36,33 @@ describe('CRM record authorization inventory', () => {
       .toContain('tool:new_crm_reader')
   })
 
+  it('treats runtime CRM tool additions and reviewed-tool omissions as inventory drift', () => {
+    const runtimeTools = [
+      { name: 'search_crm', description: 'Search CRM records' },
+      { name: 'get_crm_pipeline', description: 'Read CRM pipeline totals' },
+      { name: 'propose_opportunity', description: 'Prepare a CRM opportunity' },
+      { name: 'log_crm_activity', description: 'Prepare a CRM activity' },
+      { name: 'propose_quote', description: 'Prepare a CRM quote' },
+      { name: 'draft_followup', description: 'Draft a CRM follow-up' },
+      { name: 'new_crm_reader', description: 'Read CRM records introduced after review' }
+    ]
+
+    const additionDrift = discoverCrmInventoryDrift(
+      scanCrmRecordSurfaces(process.cwd(), runtimeTools),
+      CRM_RECORD_ACCESS_SURFACE_INVENTORY
+    )
+    expect(additionDrift.unclassified).toContain('tool:new_crm_reader')
+
+    const omissionDrift = discoverCrmInventoryDrift(
+      scanCrmRecordSurfaces(process.cwd(), []),
+      CRM_RECORD_ACCESS_SURFACE_INVENTORY
+    )
+    expect(omissionDrift.missing).toEqual(expect.arrayContaining([
+      'tool:search_crm',
+      'tool:get_crm_pipeline'
+    ]))
+  })
+
   it('discovers a new indirect CRM service and reports both additions and manifest omissions', () => {
     const root = mkdtempSync(join(tmpdir(), 'crm-inventory-'))
     const serviceDirectory = join(root, 'server/utils/leads')
@@ -51,5 +78,26 @@ describe('CRM record authorization inventory', () => {
     ], CRM_RECORD_ACCESS_SURFACE_INVENTORY)
     expect(drift.unclassified).toContain('service:server/utils/leads/crm-new-writer.ts')
     expect(drift.missing).toHaveLength(1)
+  })
+
+  it('recursively discovers nested CRM engines and reports nested additions and omissions', () => {
+    const root = mkdtempSync(join(tmpdir(), 'crm-inventory-nested-'))
+    const engineDirectory = join(root, 'server/utils/crm/engine')
+    mkdirSync(engineDirectory, { recursive: true })
+    writeFileSync(join(engineDirectory, 'recordFilter.ts'), 'export {}')
+    writeFileSync(join(engineDirectory, 'new-record-writer.ts'), 'export {}')
+
+    const discovered = discoverCrmIndirectServiceSurfaces(root)
+    const reviewed = ['service:server/utils/crm/engine/recordFilter.ts']
+    const drift = discoverCrmInventoryDrift(discovered, reviewed)
+
+    expect(discovered).toEqual(expect.arrayContaining([
+      'service:server/utils/crm/engine/recordFilter.ts',
+      'service:server/utils/crm/engine/new-record-writer.ts'
+    ]))
+    expect(drift.unclassified).toContain('service:server/utils/crm/engine/new-record-writer.ts')
+
+    const omission = discoverCrmInventoryDrift([], reviewed)
+    expect(omission.missing).toContain('service:server/utils/crm/engine/recordFilter.ts')
   })
 })
