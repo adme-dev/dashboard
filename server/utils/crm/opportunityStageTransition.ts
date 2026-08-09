@@ -6,6 +6,8 @@ import {
 import type {
   AppendCanonicalConversionEventResult
 } from '~~/server/utils/measurement/outbox'
+import type { CrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { requireCrmRecordAccess } from '~~/server/utils/crm/recordAccess'
 
 const OpportunityStageTransitionSchema = z.strictObject({
   clientId: z.string().uuid(),
@@ -128,10 +130,31 @@ export function createOpportunityStageTransitionService(
   deps: OpportunityStageTransitionServiceDeps = defaultDeps
 ) {
   return {
-    async move(rawCommand: OpportunityStageTransition): Promise<OpportunityStageTransitionResult> {
+    async move(
+      rawCommand: OpportunityStageTransition,
+      accessContext?: CrmSearchContext
+    ): Promise<OpportunityStageTransitionResult> {
       const command = OpportunityStageTransitionSchema.parse(rawCommand)
 
       return deps.transaction(async (db) => {
+        if (accessContext) {
+          const actorType = accessContext.actorType === 'staff' ? 'team_member' : 'client_user'
+          if (accessContext.clientId !== command.clientId
+            || accessContext.actorId !== command.actor.id
+            || actorType !== command.actor.type) {
+            return { status: 'opportunity_not_found' as const }
+          }
+          try {
+            await requireCrmRecordAccess(
+              accessContext,
+              { type: 'opportunity', id: command.opportunityId },
+              db
+            )
+          } catch (error: any) {
+            if (error?.statusCode === 404) return { status: 'opportunity_not_found' as const }
+            throw error
+          }
+        }
         const stageResult = await db.query(
           `SELECT id, code, probability, is_won, is_lost
              FROM crm_stages

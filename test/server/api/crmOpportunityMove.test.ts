@@ -24,6 +24,7 @@ testGlobal.createError = input => Object.assign(new Error(input.statusMessage), 
 const mockRequireAuth = vi.fn()
 const mockRequireWriteAccess = vi.fn()
 const mockRequireClientAuth = vi.fn()
+const mockResolveAgencyCrmSearchContext = vi.fn()
 const mockMove = vi.fn()
 const mockPublishEvent = vi.fn()
 const mockRunStageEntryAutomations = vi.fn()
@@ -36,6 +37,10 @@ vi.mock('~~/server/utils/auth', () => ({
 
 vi.mock('~~/server/utils/clientAuth', () => ({
   requireClientAuth: (...args: unknown[]) => mockRequireClientAuth(...args)
+}))
+
+vi.mock('~~/server/utils/crm/searchContext', () => ({
+  resolveAgencyCrmSearchContext: (...args: unknown[]) => mockResolveAgencyCrmSearchContext(...args)
 }))
 
 vi.mock('~~/server/utils/db', () => ({
@@ -100,6 +105,16 @@ describe('CRM opportunity move endpoints', () => {
       clientId: CLIENT_ID,
       canManageLeadOutcomes: true
     })
+    mockResolveAgencyCrmSearchContext.mockResolvedValue({
+      organisationScopeId: '99999999-9999-4999-8999-999999999999',
+      clientId: CLIENT_ID,
+      correlationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      actorType: 'staff',
+      actorId: ACTOR_ID,
+      surface: 'agency_global',
+      permissionSet: ['CLIENTS'],
+      visibility: { ownerScoped: true }
+    })
     mockMove.mockResolvedValue(movedResult())
     mockPublishEvent.mockResolvedValue({ status: 'published' })
     mockRunStageEntryAutomations.mockResolvedValue(undefined)
@@ -124,7 +139,7 @@ describe('CRM opportunity move endpoints', () => {
       expectedStageId: FROM_STAGE_ID,
       actor: { type: 'team_member', id: ACTOR_ID },
       reason: 'Qualified after sales review'
-    }))
+    }), expect.objectContaining({ clientId: CLIENT_ID, actorId: ACTOR_ID }))
     expect(mockRunStageEntryAutomations).toHaveBeenCalledWith(expect.objectContaining({
       clientId: CLIENT_ID,
       opportunityId: OPPORTUNITY_ID,

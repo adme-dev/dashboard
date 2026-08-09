@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   queryOne: vi.fn(),
   queryOneFresh: vi.fn(),
   queryRows: vi.fn(),
+  queryRowsFresh: vi.fn(),
   execute: vi.fn(),
   transaction: vi.fn(),
   resolvePermissions: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock('~~/server/utils/db', () => ({
   queryOne: mocks.queryOne,
   queryOneFresh: mocks.queryOneFresh,
   queryRows: mocks.queryRows,
+  queryRowsFresh: mocks.queryRowsFresh,
   execute: mocks.execute,
   transaction: mocks.transaction
 }))
@@ -146,6 +148,12 @@ describe('Task 5 delegated execution through the real middleware and route chain
     mocks.ownerActive = true
     mocks.resolvePermissions.mockResolvedValue({ groups: [], isReadOnly: false })
     mocks.queryRows.mockResolvedValue([])
+    mocks.queryRowsFresh.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM crm_search_organisation_scopes')) {
+        return [{ id: '99999999-9999-4999-8999-999999999999' }]
+      }
+      return []
+    })
     mocks.queryOneFresh.mockImplementation(async (sql: string, params: unknown[]) => {
       if (sql.includes('god_mode_mcp_request_nonces')) {
         const jti = String(params[0])
@@ -160,6 +168,16 @@ describe('Task 5 delegated execution through the real middleware and route chain
       }
       if (sql.includes("user_role = 'owner'")) {
         return mocks.ownerActive && params[0] === OWNER_ID ? { id: OWNER_ID } : null
+      }
+      if (sql.includes('user_role::text AS role') && sql.includes('FROM team_members')) {
+        return mocks.ownerActive
+          ? { id: OWNER_ID, role: 'owner', custom_role_id: null }
+          : null
+      }
+      if (sql.includes('FROM agency_clients client') && sql.includes('record_visibility')) {
+        return params[0] === CLIENT_ID
+          ? { id: CLIENT_ID, name: 'Acme', record_visibility: 'team' }
+          : null
       }
       return null
     })
@@ -188,6 +206,13 @@ describe('Task 5 delegated execution through the real middleware and route chain
         if (sql.includes('INSERT INTO tasks')) {
           mocks.mutationCount++
           return { rows: [{ id: 'task-1', title: 'Ship' }] }
+        }
+        if (sql.includes('FROM crm_stages')) {
+          return { rows: [{ id: STAGE_ID, probability: 20, is_won: false, is_lost: false }] }
+        }
+        if (sql.includes('INSERT INTO crm_opportunities')) {
+          mocks.mutationCount++
+          return { rows: [{ id: 'opportunity-1', owner_id: null }] }
         }
         return { rows: [], rowCount: 1 }
       })

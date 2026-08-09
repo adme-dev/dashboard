@@ -23,6 +23,7 @@ describe('CRM record authorization inventory', () => {
       'route:server/api/office/[officeId]/meetings/[meetingId]/action-items/[actionItemId]/crm-task.post.ts',
       'tool:search_crm',
       'tool:get_crm_pipeline',
+      'service:server/utils/crm/recordAccess.ts',
       'service:workers/crm-cron/src/index.ts',
       'service:workers/email-worker/src/crmAdapter.ts',
       'service:server/utils/leads/crmPromotion.ts'

@@ -245,6 +245,7 @@ const CRM_SERVICE_SURFACES = [
   "service:server/utils/crm/opportunityStageTransition.ts",
   "service:server/utils/crm/platformRolloutReadiness.ts",
   "service:server/utils/crm/queryScope.ts",
+  "service:server/utils/crm/recordAccess.ts",
   "service:server/utils/crm/relationships.ts",
   "service:server/utils/crm/relationshipsDb.ts",
   "service:server/utils/crm/scoreSignals.ts",
