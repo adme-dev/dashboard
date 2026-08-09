@@ -23,6 +23,7 @@ interface ObjectResolution {
 }
 
 type ScopedDeclaration = ts.VariableDeclaration | ts.ParameterDeclaration | ts.BindingElement
+type BindingOwner = ts.VariableDeclaration | ts.ParameterDeclaration
 
 const DYNAMIC = '\u0000'
 const SOURCE_EXTENSION = /\.(?:ts|tsx|js|jsx|vue|mjs|cjs|mts|cts)$/u
@@ -142,6 +143,41 @@ function accessKey(expression: ts.PropertyAccessExpression | ts.ElementAccessExp
     : null
 }
 
+function bindingElementKey(binding: ts.BindingElement): string | null {
+  const pattern = binding.parent
+  if (ts.isArrayBindingPattern(pattern)) {
+    const index = pattern.elements.indexOf(binding)
+    return index >= 0 ? String(index) : null
+  }
+  const keyNode = binding.propertyName ?? binding.name
+  return ts.isIdentifier(keyNode)
+    || ts.isStringLiteral(keyNode)
+    || ts.isNumericLiteral(keyNode)
+    ? keyNode.text
+    : null
+}
+
+function bindingOwnerAndPath(binding: ts.BindingElement): {
+  owner: BindingOwner
+  path: string[]
+} | null {
+  const path: string[] = []
+  let current = binding
+  while (true) {
+    const key = bindingElementKey(current)
+    if (key === null) return null
+    path.unshift(key)
+
+    const pattern = current.parent
+    const parent = pattern.parent
+    if (ts.isVariableDeclaration(parent) || ts.isParameter(parent)) {
+      return { owner: parent, path }
+    }
+    if (!ts.isBindingElement(parent)) return null
+    current = parent
+  }
+}
+
 function sourceViolations(source: string, filePath: string): CrmSearchCallerViolation[] {
   const parsed = ts.createSourceFile(
     filePath,
@@ -158,16 +194,19 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
     if (!ts.isBindingElement(declaration)) {
       return { expression: declaration.initializer, unknown: !declaration.initializer }
     }
-    const owner = declaration.parent.parent
-    if (!ts.isVariableDeclaration(owner) || !owner.initializer) return { unknown: true }
-    const keyNode = declaration.propertyName ?? declaration.name
-    const key = ts.isIdentifier(keyNode) || ts.isStringLiteral(keyNode) ? keyNode.text : null
-    if (!key) return { unknown: true }
-    const sourceObject = resolveObject(owner.initializer, owner.initializer, new Set(seen))
-    return {
-      expression: sourceObject.properties.get(key)?.expression,
-      unknown: sourceObject.unknown || !sourceObject.properties.has(key)
+    const source = bindingOwnerAndPath(declaration)
+    if (!source?.owner.initializer) return { unknown: true }
+
+    let expression: ts.Expression = source.owner.initializer
+    let unknown = false
+    for (const key of source.path) {
+      const sourceObject = resolveObject(expression, expression, new Set(seen))
+      const property = sourceObject.properties.get(key)
+      unknown ||= sourceObject.unknown || !property
+      if (!property) return { unknown: true }
+      expression = property.expression
     }
+    return { expression, unknown }
   }
 
   const resolveStrings = (
@@ -253,12 +292,29 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
         targetEvidence: targetEvidence || values.some(value => SEARCH_TARGET.test(value))
       }
     }
-    const nestedTargetEvidence = (ts.isCallExpression(expression) || ts.isNewExpression(expression))
-      && expression.arguments?.some(argument => resolveStrings(argument, argument, new Set(seen)).targetEvidence)
+    const nestedExpressions: ts.Expression[] = []
+    if (ts.isCallExpression(expression) || ts.isNewExpression(expression)) {
+      nestedExpressions.push(...(expression.arguments ?? []))
+    } else if (ts.isArrayLiteralExpression(expression)) {
+      nestedExpressions.push(...expression.elements.filter(ts.isExpression))
+    } else if (ts.isObjectLiteralExpression(expression)) {
+      for (const property of expression.properties) {
+        if (ts.isPropertyAssignment(property)) {
+          nestedExpressions.push(property.initializer)
+        } else if (ts.isSpreadAssignment(property)) {
+          nestedExpressions.push(property.expression)
+        } else if (ts.isShorthandPropertyAssignment(property)) {
+          nestedExpressions.push(property.name)
+        }
+      }
+    }
+    const nestedTargetEvidence = nestedExpressions.some(nested => (
+      resolveStrings(nested, nested, new Set(seen)).targetEvidence
+    ))
     return {
       values: [],
       unknown: true,
-      targetEvidence: Boolean(nestedTargetEvidence) || expressionHasTargetEvidence(expression, parsed)
+      targetEvidence: nestedTargetEvidence || expressionHasTargetEvidence(expression, parsed)
     }
   }
 
@@ -285,6 +341,18 @@ function sourceViolations(source: string, filePath: string): CrmSearchCallerViol
       if (!property) return { properties: new Map(), unknown: true }
       const resolved = resolveObject(property.expression, property.expression, new Set(seen))
       return { ...resolved, unknown: resolved.unknown || sourceObject.unknown }
+    }
+    if (ts.isArrayLiteralExpression(expression)) {
+      const properties = new Map<string, StaticProperty>()
+      let unknown = false
+      expression.elements.forEach((element, index) => {
+        if (ts.isOmittedExpression(element) || ts.isSpreadElement(element)) {
+          unknown = true
+          return
+        }
+        properties.set(String(index), { expression: element })
+      })
+      return { properties, unknown }
     }
     if (!ts.isObjectLiteralExpression(expression)) return { properties: new Map(), unknown: true }
 

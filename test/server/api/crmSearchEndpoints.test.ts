@@ -205,8 +205,28 @@ describe('retired CRM search transport', () => {
       'CRM search callers must use explicit POST'
     ],
     [
+      'nested destructured endpoint alias with implicit GET',
+      `const routes = { crm: { search: '/api/crm/search' } }; const { crm: { search: endpoint } } = routes; $fetch(endpoint)`,
+      'CRM search callers must use explicit POST'
+    ],
+    [
+      'nested destructured transport alias with implicit GET',
+      `const transports = { http: { request: $fetch } }; const { http: { request: transport } } = transports; transport('/api/crm/search')`,
+      'CRM search callers must use explicit POST'
+    ],
+    [
       'unresolved wrapper around a known target alias',
       `const target = '/api/crm/search'; const endpoint = choose(target); $fetch(endpoint, { method: 'POST', body: { query } })`,
+      'CRM search transport endpoint containing the target could not be resolved safely'
+    ],
+    [
+      'unresolved object wrapper around a known target alias',
+      `const target = '/api/crm/search'; const endpoint = choose({ route: target }); $fetch(endpoint, { method: 'POST', body: { query } })`,
+      'CRM search transport endpoint containing the target could not be resolved safely'
+    ],
+    [
+      'unresolved array wrapper around a known target alias',
+      `const target = '/api/crm/search'; const endpoint = choose([target]); $fetch(endpoint, { method: 'POST', body: { query } })`,
       'CRM search transport endpoint containing the target could not be resolved safely'
     ]
   ])('rejects synthetic %s', (_label, source, reason) => {

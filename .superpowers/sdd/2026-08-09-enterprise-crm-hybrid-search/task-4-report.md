@@ -197,3 +197,46 @@ This gate covers owner-scope batch/child/aggregate/indirect surfaces, CRM bulk/d
 - Confirmed URL-safe candidate length is checked before entropy, human-looking hyphenated word segments are exempted, and explicit boundary/mutation fixtures cover realistic threshold regressions.
 - Confirmed transport identity and endpoint aliases resolve through the nearest lexical declaration, local shadowing prevents a false transport classification, and known target evidence survives unresolved wrapper calls so the guard fails closed.
 - Confirmed generic member `.fetch` is accepted only for statically proven transport properties or the approved `globalThis`, `window`, and `self` receivers; unrelated logger methods and console strings remain ignored.
+
+---
+
+# Review Round 4 — Compact Token and Nested Caller Closure
+
+## Result
+
+- Review base: `d7b99f26a13208f01d802bcfb9b5a4a92bfa9d7a`.
+- Intended commit: `fix(crm): harden compact token and caller analysis`.
+- Scope: the two MEDIUM round-4 findings only; no unrelated fix, network, AI provider, database, migration, deployment, or production action was run.
+
+## Repairs
+
+- Privacy classifier v5 removes the blanket vowel-bearing hyphen exemption. Alphabetic hyphen-only candidates are now judged from the separator-free run's length, Shannon entropy, and unique-character ratio, while underscore/digit structure remains conservatively identifier-like. The three requested alphabetic Base64URL fixtures and the exact 20-character boundary stay keyword-only; the alphabetic 19-character boundary, `enterprise-account-manager`, and repeated human word segments remain semantic-eligible.
+- The caller guard now recovers the complete property/index path for nested object or array `BindingElement` declarations from their owning variable or parameter initializer. Endpoint and transport resolution follows that path through scope-aware object/member chains. Unresolved known-transport endpoints recursively retain target evidence through nested call arguments, object properties/shorthands/spreads, and arrays, while one-level aliases, lexical shadowing, `logger.fetch`, and non-transport strings retain their existing behavior.
+
+## Behavioral TDD Evidence
+
+- RED command: `pnpm exec vitest run test/crm/searchRequest.test.ts test/server/api/crmSearchEndpoints.test.ts`.
+- RED result: 2 files failed, with 8 expected failures and 59 passes. The failures reproduced all three alphabetic-hyphen admissions, the stale v4 classifier contract, nested endpoint and transport destructuring misses, and nested object/array target-evidence misses.
+- No production repair preceded this RED run.
+- GREEN command: `pnpm exec vitest run test/crm/searchRequest.test.ts test/server/api/crmSearchEndpoints.test.ts`.
+- GREEN result: 2 files/67 tests passed.
+
+## Verification
+
+- Exact Task 4 gate under Node 24.18.0: 10 files/173 tests passed.
+- Task 1–3/security regression gate under Node 24.18.0: 32 files/283 tests passed.
+- ESLint over all four changed source/test files: clean.
+- Full Node 24 typecheck retained 864 unrelated repository diagnostics; filtering the output to all four changed source/test paths returned zero diagnostics.
+- `git diff --check`: clean.
+
+## Deep Review
+
+- Re-read all four changed source/test files end-to-end, reviewed the complete diff, and appended this report.
+- Confirmed v5 classification controls semantic admission only, never decodes or records the candidate, and leaves authorized keyword retrieval available.
+- Confirmed alphabetic compact-run scoring is guarded by the total 20-character candidate boundary and explicit 19-character/mutation/human-word controls.
+- Confirmed nested binding resolution starts at the owning initializer, preserves lexical scope, supports object properties and array indexes, and fails closed only for known transports with reachable CRM-search target evidence.
+- Confirmed existing one-level aliases, safe explicit POST bodies, logger methods, console strings, and production directories named `test` retain their prior behavior.
+
+## Remaining Concern
+
+- None within the reviewed Task 4 scope.

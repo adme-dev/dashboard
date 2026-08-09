@@ -60,6 +60,9 @@ describe('normalizeCrmSearchRequest', () => {
     ['mixed Base64URL token', 'AbCdEfGhIj_KlMnOpQr-StUvWxYz0123'],
     ['lowercase Base64URL token', 'nwxqplmzvk_tjshgfdrc-ybnwxqplm'],
     ['uppercase Base64URL token', 'NWXQPLMZVK_TJSHGFDRC-YBNWXQPLM'],
+    ['mixed-case alphabetic Base64URL boundary', 'AbCdEfGhi-JkLmNoPqRs'],
+    ['uppercase alphabetic Base64URL boundary', 'ABCDEFGHI-JKLMNOPQRS'],
+    ['long mixed-case alphabetic Base64URL token', 'AbCdEfGhIjKlMn-OpQrStUvWxYz'],
     ['20-character Base64URL boundary', 'AbCdEfGhi_IjKlMnOpQ1'],
     ['one-character role mutation', 'enterprise-account-manager2'],
     ['hex-like run', 'deadbeefdeadbeefdeadbeef']
@@ -70,9 +73,11 @@ describe('normalizeCrmSearchRequest', () => {
   it.each([
     ['19-character boundary', 'ABCDEFGHIJKLMNOPQRS'],
     ['19-character Base64URL boundary', 'AbCdEfGh_IjKlMnOpQ1'],
+    ['19-character alphabetic Base64URL boundary', 'AbCdEfGh-JkLmNoPqRs'],
     ['ordinary spaced client name', 'International Business Machines Australia'],
     ['ordinary long word', 'internationalisation'],
-    ['ordinary hyphenated role', 'enterprise-account-manager']
+    ['ordinary hyphenated role', 'enterprise-account-manager'],
+    ['ordinary repeated human word segments', 'customer-customer-manager']
   ])('does not classify %s as a high-entropy identifier', (_label, query) => {
     expect(normalizeCrmSearchRequest({ query }).semanticEligible).toBe(true)
   })
@@ -93,10 +98,10 @@ describe('normalizeCrmSearchRequest', () => {
   })
 
   it('exposes a versioned classifier and tokenizer decision contract', () => {
-    expect(CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION).toBe('crm-search-privacy-v4')
+    expect(CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION).toBe('crm-search-privacy-v5')
     expect(CRM_SEARCH_TOKEN_ADMISSION_VERSION).toBe('bge-base-en-v1.5-conservative-utf8-v1')
     expect(classifyCrmSearchPrivacy('Acme account')).toEqual({
-      version: 'crm-search-privacy-v4',
+      version: 'crm-search-privacy-v5',
       semanticEligible: true,
       reason: 'eligible'
     })
