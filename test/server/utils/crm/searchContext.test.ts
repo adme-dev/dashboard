@@ -32,8 +32,10 @@ import {
 } from '~~/server/utils/crm/searchContext'
 
 const clientId = '11111111-1111-4111-8111-111111111111'
+const secondClientId = '44444444-4444-4444-8444-444444444444'
 const actorId = '22222222-2222-4222-8222-222222222222'
 const portalUserId = '33333333-3333-4333-8333-333333333333'
+const organisationScopeId = '55555555-5555-4555-8555-555555555555'
 
 const fakeEvent = () => ({ context: {} }) as never
 
@@ -45,6 +47,7 @@ function fakeAgencyContextDeps(overrides: Partial<CrmSearchContextDependencies> 
     loadClient: vi.fn().mockResolvedValue({ id: clientId, name: 'Acme', recordVisibility: 'team' }),
     loadAgencyAssignment: vi.fn().mockResolvedValue(true),
     loadAssistantAssignments: vi.fn().mockResolvedValue({ clientIds: [clientId], sourceRevision: 'assignment-revision' }),
+    loadOrganisationScope: vi.fn().mockResolvedValue(organisationScopeId),
     loadPortalSession: vi.fn(),
     loadPortalEntitlement: vi.fn().mockResolvedValue(true),
     createCorrelationId: vi.fn().mockReturnValue('server-generated-correlation-id'),
@@ -54,13 +57,18 @@ function fakeAgencyContextDeps(overrides: Partial<CrmSearchContextDependencies> 
 }
 
 describe('CRM search context', () => {
-  it('uses only fresh DB helpers for the default agency resolver and enforces active actor, client, membership, and custom-role predicates', async () => {
+  it('uses only fresh DB helpers for the default agency resolver and enforces active actor, client, custom-role, and installation-scope predicates', async () => {
     vi.clearAllMocks()
     requireAuth.mockResolvedValue({ id: actorId })
     queryRowsFresh.mockImplementation(async (sql: string, params: unknown[]) => {
       if (sql.includes('role_permission_groups')) {
         return sql.includes('role.id = $1') && params[0] === 'custom-role-1'
           ? [{ permission_group: 'CLIENTS' }]
+          : []
+      }
+      if (sql.includes('crm_search_organisation_scopes')) {
+        return sql.includes('is_primary = TRUE') && sql.includes('is_active = TRUE')
+          ? [{ id: organisationScopeId }]
           : []
       }
       return []
@@ -76,17 +84,18 @@ describe('CRM search context', () => {
           ? { id: clientId, name: 'Acme', record_visibility: 'owner' }
           : null
       }
-      if (sql.includes('FROM client_team_assignments')) {
-        return sql.includes('client.is_active = TRUE') && params[0] === actorId && params[1] === clientId
-          ? { '?column?': 1 }
-          : null
-      }
       return null
     })
 
     const context = await resolveAgencyCrmSearchContext(fakeEvent(), { clientId, surface: 'agency_global' })
 
-    expect(context).toMatchObject({ actorId, permissionSet: ['CLIENTS'], visibility: { ownerScoped: true } })
+    expect(context).toMatchObject({
+      actorId,
+      permissionSet: ['CLIENTS'],
+      organisationScopeId,
+      clientId,
+      visibility: { ownerScoped: true }
+    })
     expect(queryOneFresh).toHaveBeenCalled()
     expect(queryRowsFresh).toHaveBeenCalled()
     expect(queryOne).not.toHaveBeenCalled()
@@ -97,7 +106,10 @@ describe('CRM search context', () => {
     vi.clearAllMocks()
     ;(globalThis as typeof globalThis & { getCookie: ReturnType<typeof vi.fn> }).getCookie = vi.fn(() => 'portal-token')
     digestPortalSessionToken.mockResolvedValue('session-digest')
-    queryRowsFresh.mockResolvedValue([])
+    queryRowsFresh.mockImplementation(async (sql: string) => sql.includes('crm_search_organisation_scopes')
+      && sql.includes('is_primary = TRUE') && sql.includes('is_active = TRUE')
+      ? [{ id: organisationScopeId }]
+      : [])
     queryOneFresh.mockImplementation(async (sql: string, params: unknown[]) => {
       if (sql.includes('FROM client_sessions session')) {
         const requiresFreshPortalAuthority = [
@@ -131,7 +143,7 @@ describe('CRM search context', () => {
     await expect(resolvePortalCrmSearchContext(fakeEvent(), { surface: 'portal_global' }))
       .resolves.toMatchObject({ actorId: portalUserId, actorType: 'portal', clientId })
     expect(queryOneFresh).toHaveBeenCalledTimes(2)
-    expect(queryRowsFresh).not.toHaveBeenCalled()
+    expect(queryRowsFresh).toHaveBeenCalledOnce()
     expect(queryOne).not.toHaveBeenCalled()
     expect(queryRows).not.toHaveBeenCalled()
 
@@ -159,19 +171,46 @@ describe('CRM search context', () => {
     expect(queryRows).not.toHaveBeenCalled()
   })
 
-  it('returns the same denial for a missing and inaccessible client before retrieval', async () => {
+  it('returns the uniform denial for a missing active client before retrieval', async () => {
     const missing = fakeAgencyContextDeps({ loadClient: vi.fn().mockResolvedValue(null) })
-    const inaccessible = fakeAgencyContextDeps({ loadAgencyAssignment: vi.fn().mockResolvedValue(false) })
 
-    for (const deps of [missing, inaccessible]) {
-      await expect(resolveAgencyCrmSearchContext(fakeEvent(), {
-        clientId,
-        surface: 'agency_global',
-        correlationId: 'caller-controlled'
-      }, deps)).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Client not found' })
-      expect(deps.runKeyword).not.toHaveBeenCalled()
-      expect(deps.createCorrelationId).toHaveBeenCalledOnce()
-    }
+    await expect(resolveAgencyCrmSearchContext(fakeEvent(), {
+      clientId,
+      surface: 'agency_global',
+      correlationId: 'caller-controlled'
+    }, missing)).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Client not found' })
+    expect(missing.runKeyword).not.toHaveBeenCalled()
+    expect(missing.createCorrelationId).toHaveBeenCalledOnce()
+  })
+
+  it('lets CLIENTS-authorized agency search select multiple active clients without assignment while AI retains the direct-assignment intersection', async () => {
+    const loadClient = vi.fn(async (id: string) => id === clientId
+      ? { id: clientId, name: 'Acme', recordVisibility: 'team' as const }
+      : id === secondClientId
+        ? { id: secondClientId, name: 'Beta', recordVisibility: 'team' as const }
+        : null)
+    const global = fakeAgencyContextDeps({
+      loadClient,
+      loadAgencyAssignment: vi.fn().mockResolvedValue(false)
+    })
+
+    const first = await resolveAgencyCrmSearchContext(fakeEvent(), { clientId, surface: 'agency_global' }, global)
+    const second = await resolveAgencyCrmSearchContext(fakeEvent(), { clientId: secondClientId, surface: 'agency_global' }, global)
+
+    expect(first).toMatchObject({ clientId, organisationScopeId })
+    expect(second).toMatchObject({ clientId: secondClientId, organisationScopeId })
+    expect(global.loadAgencyAssignment).not.toHaveBeenCalled()
+
+    const ai = fakeAgencyContextDeps({
+      loadClient,
+      loadAgencyAssignment: vi.fn().mockResolvedValue(false),
+      findActiveClientsByName: vi.fn().mockResolvedValue([{ id: secondClientId, name: 'Beta' }]),
+      loadAssistantAssignments: vi.fn().mockResolvedValue({ clientIds: [secondClientId], sourceRevision: 'assignment-revision' })
+    })
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'Beta' }, ai))
+      .resolves.toEqual({ status: 'scope_unavailable' })
+    expect(ai.loadAgencyAssignment).toHaveBeenCalledWith(actorId, secondClientId)
+    expect(ai.runKeyword).not.toHaveBeenCalled()
   })
 
   it('uses fresh server-owned permissions and ignores caller-supplied identity and correlation claims', async () => {
@@ -184,7 +223,7 @@ describe('CRM search context', () => {
     }, deps)
 
     expect(context).toMatchObject({
-      organisationScopeId: clientId,
+      organisationScopeId,
       clientId,
       actorType: 'staff',
       actorId,
@@ -272,6 +311,11 @@ describe('CRM search context', () => {
       if (sql.includes('role_permission_groups')) {
         return sql.includes('role.id = $1') && params[0] === 'custom-role-1'
           ? [{ permission_group: 'CLIENTS' }]
+          : []
+      }
+      if (sql.includes('crm_search_organisation_scopes')) {
+        return sql.includes('is_primary = TRUE') && sql.includes('is_active = TRUE')
+          ? [{ id: organisationScopeId }]
           : []
       }
       if (sql.includes('lower(name) = lower($1)')) {

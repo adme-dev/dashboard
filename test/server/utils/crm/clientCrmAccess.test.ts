@@ -180,8 +180,23 @@ describe('client CRM access', () => {
     expect(requireClientEntitlement).toHaveBeenCalledTimes(2)
   })
 
-  it('revokes portal sessions in the same transaction when an agency update deactivates a client', async () => {
+  it('rejects non-boolean client deactivation values before opening a transaction', async () => {
     const handler = (await import('../../../../server/api/agency/clients/[id].put')).default
+
+    for (const isActive of ['false', null]) {
+      await expect(handler({
+        context: {},
+        params: { id: '11111111-1111-4111-8111-111111111111' },
+        body: { isActive }
+      } as never)).rejects.toMatchObject({ statusCode: 400, statusMessage: 'isActive must be a boolean' })
+    }
+
+    expect(transaction).not.toHaveBeenCalled()
+  })
+
+  it('revokes portal sessions in the same transaction when an accepted update results in deactivation', async () => {
+    const handler = (await import('../../../../server/api/agency/clients/[id].put')).default
+    transactionQuery.mockResolvedValueOnce({ rows: [{ id: '11111111-1111-4111-8111-111111111111', is_active: false }] })
 
     await handler({
       context: {},
@@ -191,6 +206,7 @@ describe('client CRM access', () => {
 
     expect(transaction).toHaveBeenCalledOnce()
     expect(transactionQuery).toHaveBeenCalledTimes(2)
+    expect(transactionQuery.mock.calls[0]?.[1]).toEqual([false, '11111111-1111-4111-8111-111111111111'])
     expect(String(transactionQuery.mock.calls[1]?.[0])).toContain('DELETE FROM client_sessions')
   })
 

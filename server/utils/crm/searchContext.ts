@@ -42,6 +42,7 @@ export interface CrmSearchContextDependencies {
   loadClient: (clientId: string) => Promise<FreshClient | null>
   loadAgencyAssignment: (actorId: string, clientId: string) => Promise<boolean>
   loadAssistantAssignments: (actorId: string, permissionSet: readonly string[]) => Promise<{ clientIds: string[]; sourceRevision: string }>
+  loadOrganisationScope: () => Promise<string | null>
   loadPortalSession: (event: H3Event) => Promise<FreshPortalSession | null>
   loadPortalEntitlement: (clientId: string) => Promise<boolean>
   findActiveClientsByName?: (clientName: string) => Promise<Array<Pick<FreshClient, 'id' | 'name'>>>
@@ -56,6 +57,10 @@ const internalCrmModes = new Set(['lightweight_crm', 'full_crm'])
 
 function notFound(): never {
   throw createError({ statusCode: 404, statusMessage: 'Client not found' })
+}
+
+function scopeUnavailable(): never {
+  throw createError({ statusCode: 503, statusMessage: 'CRM search scope is unavailable' })
 }
 
 function isManagement(permissionSet: readonly string[]) {
@@ -144,6 +149,16 @@ const defaultDependencies: CrmSearchContextDependencies = {
       sourceRevision: rows.map(row => row.source_revision).join('|') || 'empty'
     }
   },
+  async loadOrganisationScope() {
+    const rows = await queryRowsFresh<{ id: string }>(
+      `SELECT id::text AS id
+         FROM crm_search_organisation_scopes
+        WHERE is_primary = TRUE AND is_active = TRUE
+        ORDER BY id
+        LIMIT 2`
+    )
+    return rows.length === 1 ? rows[0]!.id : null
+  },
   async loadPortalSession(event) {
     const token = getCookie(event, 'client_session_token')
     if (!token) return null
@@ -217,11 +232,17 @@ async function resolveAgencyForActor(
   const client = await deps.loadClient(input.clientId)
   if (!client || !permissionSet.includes('CLIENTS')) notFound()
 
-  const allowed = isManagement(permissionSet) || await deps.loadAgencyAssignment(actor.id, client.id)
-  if (!allowed || (assistantScope && !assistantScope.clientIds.includes(client.id))) notFound()
+  // Global agency search follows the product's canonical CLIENTS + active
+  // client policy. Assignment membership is intentionally an AI-only scope.
+  if (assistantScope) {
+    const assigned = await deps.loadAgencyAssignment(actor.id, client.id)
+    if (!assigned || !assistantScope.clientIds.includes(client.id)) notFound()
+  }
+  const organisationScopeId = await deps.loadOrganisationScope()
+  if (!organisationScopeId) scopeUnavailable()
 
   return {
-    organisationScopeId: client.id,
+    organisationScopeId,
     clientId: client.id,
     correlationId: requestCorrelationId,
     actorType: 'staff',
@@ -252,8 +273,10 @@ export async function resolvePortalCrmSearchContext(
   if (!session || !internalCrmModes.has(session.leadCaptureMode)) notFound()
   const canView = session.isPrimaryContact || session.canViewCrm || session.canEditCrm || session.canAdminCrm
   if (!canView || !(await deps.loadPortalEntitlement(session.clientId))) notFound()
+  const organisationScopeId = await deps.loadOrganisationScope()
+  if (!organisationScopeId) scopeUnavailable()
   return {
-    organisationScopeId: session.clientId,
+    organisationScopeId,
     clientId: session.clientId,
     correlationId: requestCorrelationId,
     actorType: 'portal',

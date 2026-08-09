@@ -15,6 +15,20 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   const body = await readBody(event)
 
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid client update'
+    })
+  }
+
+  if (body.isActive !== undefined && typeof body.isActive !== 'boolean') {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'isActive must be a boolean'
+    })
+  }
+
   if (!id) {
     throw createError({
       statusCode: 400,
@@ -107,7 +121,7 @@ export default defineEventHandler(async (event) => {
       // Deactivation invalidates every portal session atomically with the
       // client status change, so an already-issued cookie cannot survive a
       // successful deactivation commit.
-      if (row && body.isActive === false) {
+      if (row?.is_active === false) {
         await db.query(`
           DELETE FROM client_sessions
           WHERE client_user_id IN (
