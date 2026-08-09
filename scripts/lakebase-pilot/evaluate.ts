@@ -1209,7 +1209,9 @@ async function recoverStaleLock(
     )
     if (!quarantinedSnapshot) {
       await clearRecoverySentinel(fileSystem, recovery)
-      return null
+      throw new LakebaseEvaluationPublishError(
+        'lakebase_evaluation_publish_lock_unavailable'
+      )
     }
     const quarantined = await readLockSnapshot(fileSystem, recovery.staleLockPath)
     if (!quarantined

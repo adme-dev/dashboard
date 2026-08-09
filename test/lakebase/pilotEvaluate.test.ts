@@ -511,6 +511,7 @@ describe('Lakebase evaluation report publication', () => {
       outputDir,
       'foreign-owner-near-stale-collision'
     )
+    let sleepCalls = 0
     let caught: unknown
 
     try {
@@ -521,7 +522,9 @@ describe('Lakebase evaluation report publication', () => {
           now: () => 10_000,
           leaseDurationMs: 100,
           ownerToken: () => contenderToken,
-          sleep: async () => {}
+          sleep: async () => {
+            sleepCalls += 1
+          }
         }
       )
     } catch (error) {
@@ -532,6 +535,7 @@ describe('Lakebase evaluation report publication', () => {
       code: 'lakebase_evaluation_publish_lock_unavailable',
       message: 'lakebase_evaluation_publish_lock_unavailable'
     })
+    expect(sleepCalls).toBe(0)
     const collisionAfter = await lstat(collisionPath)
     expect({ dev: collisionAfter.dev, ino: collisionAfter.ino })
       .toEqual({ dev: collisionIdentity.dev, ino: collisionIdentity.ino })
