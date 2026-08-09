@@ -7,12 +7,13 @@
 
 import type { QueueConsumerJob } from './queue'
 import type { GodModeAuditEventInput } from './godMode/audit'
+import type { H3Event } from 'h3'
 
 /**
  * Process a single queue job. Called by the queue consumer handler.
  * Throws on failure so the queue runtime can retry.
  */
-export async function processJob(job: QueueConsumerJob): Promise<void> {
+export async function processJob(job: QueueConsumerJob, event?: H3Event): Promise<void> {
   const startTime = Date.now()
 
   try {
@@ -102,7 +103,7 @@ export async function processJob(job: QueueConsumerJob): Promise<void> {
         break
 
       case 'site-intelligence.enrich':
-        await processSiteIntelligenceEnrichment(job.payload)
+        await processSiteIntelligenceEnrichment(job.payload, event)
         break
 
       case 'god-mode.audit-terminal':
@@ -246,9 +247,10 @@ async function processFinancialEmbed(payload: Record<string, any>, type: string)
   }
 }
 
-async function processSiteIntelligenceEnrichment(payload: Record<string, unknown>): Promise<void> {
+async function processSiteIntelligenceEnrichment(payload: Record<string, unknown>, event?: H3Event): Promise<void> {
+  if (!event) throw new Error('Site intelligence enrichment requires a request-owned Cloudflare context')
   const { enrichSiteIntelligencePage } = await import('~~/server/utils/siteIntelligence/enrich')
-  await enrichSiteIntelligencePage(payload as Parameters<typeof enrichSiteIntelligencePage>[0])
+  await enrichSiteIntelligencePage(payload as Parameters<typeof enrichSiteIntelligencePage>[0], event)
 }
 
 async function processGodModeAuditTerminal(payload: GodModeAuditEventInput): Promise<void> {

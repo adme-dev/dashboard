@@ -1,6 +1,6 @@
+import type { H3Event } from 'h3'
 import type { SiteIntelligenceLane, SiteIntelligencePageType } from '~~/app/types/site-intelligence'
 import { execute, queryRows } from '~~/server/utils/db'
-import { getCachedObjectBinding } from '~~/server/utils/email'
 
 const EMBEDDING_MODEL = '@cf/baai/bge-base-en-v1.5'
 const EMBEDDING_DIMENSIONS = 768
@@ -36,12 +36,15 @@ export interface SiteIntelligenceSearchResult {
   excerpt: string
 }
 
-export async function upsertSiteIntelligencePageVector(input: SiteIntelligenceVectorInput): Promise<void> {
+export async function upsertSiteIntelligencePageVector(
+  input: SiteIntelligenceVectorInput,
+  event: H3Event
+): Promise<void> {
   requireIdentifier(input.clientId, 'clientId')
   requireIdentifier(input.domainId, 'domainId')
   requireIdentifier(input.pageId, 'pageId')
-  const ai = requireBinding<WorkersAiBinding>('AI')
-  const index = requireBinding<VectorizeBinding>('SITE_INTELLIGENCE_VECTORIZE')
+  const ai = requireBinding<WorkersAiBinding>(event, 'AI')
+  const index = requireBinding<VectorizeBinding>(event, 'SITE_INTELLIGENCE_VECTORIZE')
   const values = await embed(ai, input.text)
   await index.upsert([{
     id: input.pageId,
@@ -64,13 +67,13 @@ export async function searchSiteIntelligence(input: {
   clientId: string
   query: string
   limit?: number
-}): Promise<SiteIntelligenceSearchResult[]> {
+}, event: H3Event): Promise<SiteIntelligenceSearchResult[]> {
   requireIdentifier(input.clientId, 'clientId')
   const queryText = input.query.trim()
   if (!queryText) throw new Error('query is required')
   const limit = Math.max(1, Math.min(20, Math.trunc(input.limit ?? 5)))
-  const ai = requireBinding<WorkersAiBinding>('AI')
-  const index = requireBinding<VectorizeBinding>('SITE_INTELLIGENCE_VECTORIZE')
+  const ai = requireBinding<WorkersAiBinding>(event, 'AI')
+  const index = requireBinding<VectorizeBinding>(event, 'SITE_INTELLIGENCE_VECTORIZE')
   const values = await embed(ai, queryText)
   const matches = (await index.query(values, {
     topK: limit,
@@ -106,10 +109,10 @@ export async function searchSiteIntelligence(input: {
 export async function deleteSiteIntelligencePageVector(input: {
   clientId: string
   pageId: string
-}): Promise<void> {
+}, event: H3Event): Promise<void> {
   requireIdentifier(input.clientId, 'clientId')
   requireIdentifier(input.pageId, 'pageId')
-  const index = requireBinding<VectorizeBinding>('SITE_INTELLIGENCE_VECTORIZE')
+  const index = requireBinding<VectorizeBinding>(event, 'SITE_INTELLIGENCE_VECTORIZE')
   await index.deleteByIds([input.pageId])
   await execute(`UPDATE site_intelligence_pages
     SET vector_id = NULL
@@ -127,10 +130,12 @@ async function embed(ai: WorkersAiBinding, text: string): Promise<number[]> {
   return values
 }
 
-function requireBinding<T>(name: string): T {
-  const binding = getCachedObjectBinding<T>(name)
+function requireBinding<T>(event: H3Event, name: string): T {
+  const binding = (event?.context as {
+    cloudflare?: { env?: Record<string, unknown> }
+  } | undefined)?.cloudflare?.env?.[name]
   if (!binding) throw new Error(`${name} binding is not configured`)
-  return binding
+  return binding as T
 }
 
 function requireIdentifier(value: string, name: string): void {

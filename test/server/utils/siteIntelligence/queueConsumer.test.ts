@@ -14,6 +14,9 @@ const payload = {
   changeId: '44444444-4444-4444-8444-444444444444',
   contentHash: 'a'.repeat(64)
 }
+const requestEvent = {
+  context: { cloudflare: { env: { AI: {}, SITE_INTELLIGENCE_BUCKET: {} } } }
+} as NonNullable<Parameters<typeof processJob>[1]>
 
 beforeEach(() => {
   mockEnrich.mockReset().mockResolvedValue({ status: 'enriched' })
@@ -25,8 +28,8 @@ describe('site intelligence queue dispatch', () => {
       type: 'site-intelligence.enrich',
       payload,
       enqueuedAt: '2026-08-01T00:00:00.000Z'
-    })).resolves.toBeUndefined()
-    expect(mockEnrich).toHaveBeenCalledWith(payload)
+    }, requestEvent)).resolves.toBeUndefined()
+    expect(mockEnrich).toHaveBeenCalledWith(payload, requestEvent)
   })
 
   it('propagates transient enrichment failures for queue retry', async () => {
@@ -35,6 +38,15 @@ describe('site intelligence queue dispatch', () => {
       type: 'site-intelligence.enrich',
       payload,
       enqueuedAt: '2026-08-01T00:00:00.000Z'
-    })).rejects.toThrow('R2 unavailable')
+    }, requestEvent)).rejects.toThrow('R2 unavailable')
+  })
+
+  it('rejects enrichment outside a request-owned Cloudflare context', async () => {
+    await expect(processJob({
+      type: 'site-intelligence.enrich',
+      payload,
+      enqueuedAt: '2026-08-01T00:00:00.000Z'
+    })).rejects.toThrow('Site intelligence enrichment requires a request-owned Cloudflare context')
+    expect(mockEnrich).not.toHaveBeenCalled()
   })
 })

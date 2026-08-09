@@ -2,7 +2,6 @@ import type { H3Event } from 'h3'
 import { createHash } from 'node:crypto'
 import type { AutomotivePageFacts, SiteIntelligencePageStatus } from '~~/app/types/site-intelligence'
 import type { SiteIntelligenceCrawlRecord } from '~~/server/utils/siteIntelligence/contracts'
-import { getCachedObjectBinding } from '~~/server/utils/email'
 import {
   evaluateSearchAuthorityTrust,
   type SearchAuthorityTrustFindingCandidate
@@ -136,8 +135,8 @@ export async function deleteSiteIntelligenceSnapshots(
   await bucket.delete(keys)
 }
 
-export async function readSiteIntelligenceSnapshot(key: string): Promise<string> {
-  const bucket = resolveBucket(undefined)
+export async function readSiteIntelligenceSnapshot(key: string, event: H3Event): Promise<string> {
+  const bucket = resolveBucket(event)
   if (!bucket) throw new Error('Private site intelligence storage is not configured')
   const object = await bucket.get(key)
   if (!object) throw new Error('Private site intelligence snapshot was not found')
@@ -157,7 +156,7 @@ function resolveBucket(event: H3Event | undefined): PrivateSiteIntelligenceBucke
   const direct = (event?.context as { cloudflare?: { env?: Record<string, unknown> } } | undefined)
     ?.cloudflare?.env?.SITE_INTELLIGENCE_BUCKET
   if (direct && typeof direct === 'object') return direct as PrivateSiteIntelligenceBucket
-  return getCachedObjectBinding<PrivateSiteIntelligenceBucket>('SITE_INTELLIGENCE_BUCKET')
+  return undefined
 }
 
 function snapshotKey(clientId: string, domainId: string, runId: string, contentHash: string): string {
