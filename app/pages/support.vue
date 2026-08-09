@@ -33,22 +33,48 @@
               <UIcon :name="option.icon" class="w-5 h-5" :class="option.color" />
             </div>
             <div>
-              <h3 class="text-[16px] font-medium text-[#121317] dark:text-white mb-1.5">{{ option.title }}</h3>
-              <p class="text-[14px] text-[#45474D] dark:text-white/60 leading-relaxed">{{ option.description }}</p>
+              <h3 class="text-[16px] font-medium text-[#121317] dark:text-white mb-1.5">
+                {{ option.title }}
+              </h3>
+              <p class="text-[14px] text-[#45474D] dark:text-white/60 leading-relaxed">
+                {{ option.description }}
+              </p>
             </div>
             <div class="mt-auto pt-2">
-              <span class="text-[14px] text-[#121317] dark:text-white font-medium group-hover:underline underline-offset-2">{{ option.action }}</span>
+              <NuxtLink
+                v-if="option.to"
+                :to="option.to"
+                class="text-[14px] text-[#121317] dark:text-white font-medium group-hover:underline underline-offset-2"
+              >
+                {{ option.action }}
+              </NuxtLink>
+              <a
+                v-else
+                :href="option.href"
+                class="text-[14px] text-[#121317] dark:text-white font-medium group-hover:underline underline-offset-2"
+              >
+                {{ option.action }}
+              </a>
             </div>
           </div>
         </div>
 
         <!-- FAQ -->
         <div>
-          <h2 class="text-[clamp(24px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-8">Frequently Asked Questions</h2>
+          <h2 class="text-[clamp(24px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-8">
+            Frequently Asked Questions
+          </h2>
           <div class="flex flex-col divide-y divide-[#121317]/[0.06] dark:divide-white/[0.06]">
             <div v-for="faq in faqs" :key="faq.q" class="py-6">
-              <h3 class="text-[16px] font-medium text-[#121317] dark:text-white mb-2">{{ faq.q }}</h3>
-              <p class="text-[14.5px] text-[#45474D] dark:text-white/60 leading-relaxed">{{ faq.a }}</p>
+              <h3 class="text-[16px] font-medium text-[#121317] dark:text-white mb-2">
+                {{ faq.q }}
+              </h3>
+              <p class="text-[14.5px] text-[#45474D] dark:text-white/60 leading-relaxed">
+                {{ faq.a }}
+                <template v-if="faq.policyLink">
+                  <NuxtLink to="/privacy" class="underline underline-offset-2 text-[#121317] dark:text-white/80">Privacy Policy</NuxtLink>.
+                </template>
+              </p>
             </div>
           </div>
         </div>
@@ -67,7 +93,7 @@ useSeoMeta({
   title: 'Support — XeroFlow',
   description: 'Get help with XeroFlow. Contact our support team via email or browse documentation and resources.',
   ogTitle: 'Support — XeroFlow',
-  ogDescription: 'Get help with XeroFlow. Contact our support team via email or browse documentation and resources.',
+  ogDescription: 'Get help with XeroFlow. Contact our support team via email or browse documentation and resources.'
 })
 
 const contactOptions = [
@@ -75,6 +101,7 @@ const contactOptions = [
     title: 'Email Support',
     description: 'Send us a message and we\'ll get back to you within 24 hours on business days.',
     action: 'support@xeroflow.io',
+    href: 'mailto:support@xeroflow.io',
     icon: 'i-lucide-mail',
     bg: 'bg-blue-50 dark:bg-blue-500/10',
     color: 'text-blue-600 dark:text-blue-400'
@@ -83,6 +110,7 @@ const contactOptions = [
     title: 'In-App Chat',
     description: 'Logged-in users can reach our team directly through the Activity Hub chat widget.',
     action: 'Open XeroFlow',
+    to: '/auth/login',
     icon: 'i-lucide-message-circle',
     bg: 'bg-violet-50 dark:bg-violet-500/10',
     color: 'text-violet-600 dark:text-violet-400'
@@ -91,6 +119,7 @@ const contactOptions = [
     title: 'Documentation',
     description: 'Browse our resource library for guides, walkthroughs, and best practices.',
     action: 'View Resources',
+    to: '/resources',
     icon: 'i-lucide-book-open',
     bg: 'bg-emerald-50 dark:bg-emerald-500/10',
     color: 'text-emerald-600 dark:text-emerald-400'
@@ -112,7 +141,8 @@ const faqs = [
   },
   {
     q: 'Is my data secure?',
-    a: 'XeroFlow runs on Cloudflare\'s global network with encrypted data at rest and in transit. Authentication uses secure tokens, and all API endpoints require authorisation. See our Privacy Policy for full details.'
+    a: 'XeroFlow runs on Cloudflare\'s global network with encrypted data at rest and in transit. Authentication uses secure tokens, and all API endpoints require authorisation. See our',
+    policyLink: true
   },
   {
     q: 'How do I export my data?',
