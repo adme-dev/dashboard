@@ -64,14 +64,17 @@ describe('CRM search expand migration 350', () => {
       'crm_search_evaluation_query_evidence',
       'crm_search_evaluation_approvals',
       'crm_search_evaluation_approval_revocations',
+      'crm_search_evaluation_approval_consumptions',
       'crm_search_change_approvals',
       'crm_search_change_approval_revocations',
+      'crm_search_change_approval_consumptions',
       'crm_search_audit_log',
       'crm_search_dead_letters',
       'crm_search_client_teardowns',
       'crm_search_teardown_vectors',
       'crm_search_retention_high_watermarks',
-      'crm_search_retention_attestations'
+      'crm_search_retention_attestations',
+      'crm_search_retention_delete_authorizations'
     ]
 
     for (const table of tables) {
@@ -148,7 +151,7 @@ describe('CRM search expand migration 350', () => {
       expect(operations).toContain(`'${state}'`)
     }
     expect(sql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS crm_search_operations_one_pre_admission[\s\S]*?WHERE[\s\S]*?successor_of IS NULL/i)
-    expect(sql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS crm_search_operations_one_provider_pending[\s\S]*?WHERE state = 'provider_pending'/i)
+    expect(sql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS crm_search_operations_one_provider_inflight[\s\S]*?provider_admitted_at IS NOT NULL/i)
     expect(sql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS crm_search_operations_one_successor[\s\S]*?WHERE successor_of IS NOT NULL/i)
     expect(sql).toContain('CREATE OR REPLACE FUNCTION crm_search_operation_state_transition_allowed')
   })
@@ -205,6 +208,180 @@ describe('CRM search expand migration 350', () => {
     expect(sql).toMatch(/REVOKE UPDATE, DELETE, TRUNCATE ON TABLE[\s\S]*crm_search_evaluation_runs[\s\S]*FROM PUBLIC/)
   })
 
+  it('makes the evaluation recorder the only runtime insert path and derives its evidence digest', () => {
+    const sql = readMigration()
+    const recordEvaluation = functionDefinition(sql, 'crm_search_record_evaluation_run')
+
+    expect(recordEvaluation).not.toMatch(/p_query_evidence_bundle_sha256/i)
+    expect(recordEvaluation).toMatch(/crm_search_projection_hash\(p_query_evidence::TEXT\)/i)
+    expect(recordEvaluation).toMatch(/v_query_evidence_bundle_sha256/)
+    expect(sql).toMatch(/CREATE ROLE crm_search_governor[\s\S]*NOLOGIN/i)
+    expect(sql).toMatch(/CREATE ROLE crm_search_runtime[\s\S]*NOLOGIN/i)
+    expect(sql).toMatch(/rolcanlogin OR rolinherit OR rolsuper/i)
+    expect(sql).toMatch(/REVOKE crm_search_governor FROM %I[\s\S]*SESSION_USER/i)
+    expect(sql).toMatch(/REVOKE INSERT[\s\S]*crm_search_evaluation_runs[\s\S]*FROM crm_search_runtime/i)
+    expect(sql).toMatch(/procedure\.proname = ANY[\s\S]*'crm_search_record_evaluation_run'[\s\S]*GRANT EXECUTE ON FUNCTION %s TO crm_search_runtime/i)
+  })
+
+  it('recomputes every evaluation gate from granular evidence, including paired bootstrap', () => {
+    const sql = readMigration()
+    const recordEvaluation = functionDefinition(sql, 'crm_search_record_evaluation_run')
+
+    for (const contract of [
+      'entityType',
+      'offResultDigest',
+      'shadowResultDigest',
+      'loadStratum',
+      'observedP95Concurrency',
+      'loadConcurrency',
+      'staleRecordCount',
+      'orphanedRecordCount',
+      'telemetryLeakageCount',
+      'reservedQueryUsdMicros',
+      'queryBudgetUsdMicros',
+      'forecastVectorCount',
+      'vectorCapacity'
+    ]) {
+      expect(recordEvaluation).toContain(`'${contract}'`)
+    }
+    expect(recordEvaluation).toMatch(/v_min_queries_per_client\s*>?=\s*80/i)
+    expect(recordEvaluation).toMatch(/v_min_queries_per_entity\s*>?=\s*60/i)
+    expect(recordEvaluation).toMatch(/v_max_client_entity_ndcg_regression\s*<=\s*0\.05/i)
+    expect(recordEvaluation).toMatch(/v_max_client_entity_mrr_regression\s*<=\s*0\.05/i)
+    expect(recordEvaluation).toMatch(/v_off_shadow_equal/)
+    expect(recordEvaluation).toMatch(/v_load_strata_count\s*=\s*3/)
+    expect(recordEvaluation).toMatch(/v_convergence_safe/)
+    expect(recordEvaluation).toMatch(/v_telemetry_safe/)
+    expect(recordEvaluation).toMatch(/v_shadow_days_consecutive/)
+    expect(recordEvaluation).toMatch(/generate_series\(1,\s*1000\)/i)
+    expect(recordEvaluation).toMatch(/percentile_cont\(0\.025\)/i)
+    expect(recordEvaluation).not.toMatch(/STDDEV_SAMP|concurrentBudgetSafe|capacityHeadroomSafe/i)
+  })
+
+  it('freezes accepted operation identity and validates the single same-key successor', () => {
+    const sql = readMigration()
+    const operations = tableDefinition(sql, 'crm_search_operations')
+    const guard = functionDefinition(sql, 'crm_search_guard_operation_transition')
+    const admission = functionDefinition(sql, 'crm_search_guard_operation_admission')
+
+    expect(operations).toMatch(/provider_admitted_at TIMESTAMPTZ/)
+    expect(operations).toMatch(/admission_identity_hash TEXT/)
+    expect(sql).toMatch(/crm_search_operations_one_provider_inflight[\s\S]*provider_admitted_at IS NOT NULL/i)
+    expect(sql).toMatch(/crm_search_operations_one_pre_admission[\s\S]*provider_admitted_at IS NULL/i)
+    expect(sql).toMatch(/crm_search_operations_one_successor[\s\S]*provider_admitted_at IS NULL/i)
+    expect(admission).toMatch(/pg_advisory_xact_lock/i)
+    expect(admission).toMatch(/successor_of/)
+    expect(admission).toMatch(
+      /NEW\.successor_of IS NULL[\s\S]*operation\.successor_of IS NOT NULL/i
+    )
+    expect(admission).toMatch(/organisation_scope_id[\s\S]*client_id[\s\S]*entity_type[\s\S]*entity_id[\s\S]*schema_version/i)
+    expect(guard).toMatch(/provider_admitted_at/)
+    expect(guard).toMatch(/admission_identity_hash/)
+    expect(guard).not.toMatch(
+      /NEW\.organisation_scope_id, NEW\.client_id, NEW\.entity_type, NEW\.entity_id,\s*NEW\.organisation_scope_id/i
+    )
+    expect(guard).toMatch(/OLD\.state IN \('confirmed', 'superseded', 'terminal_dead_letter'\)[\s\S]*NEW IS DISTINCT FROM OLD/i)
+  })
+
+  it('binds retention authority to the exact relation, partition, transaction, and candidate manifest', () => {
+    const sql = readMigration()
+    const attach = functionDefinition(sql, 'crm_search_attach_legal_hold')
+    const expiry = functionDefinition(sql, 'crm_search_expire_governed_rows')
+    const immutable = functionDefinition(sql, 'crm_search_reject_governed_evidence_mutation')
+
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS crm_search_retention_delete_authorizations')
+    expect(attach).toMatch(/FOR UPDATE/)
+    expect(expiry).not.toMatch(/SKIP LOCKED/i)
+    expect(expiry).toMatch(/txid_current\(\)/i)
+    expect(expiry).toMatch(/pg_backend_pid\(\)/i)
+    expect(expiry).toMatch(/target_relation_oid/)
+    expect(expiry).toMatch(/partition_relation_oid/)
+    expect(expiry).toMatch(/candidate_ids/)
+    expect(expiry).toMatch(/computed_manifest_hash/)
+    expect(expiry).toMatch(/p_deletion_manifest_hash IS DISTINCT FROM/i)
+    expect(expiry).toMatch(/pending_expire_through/)
+    expect(expiry).toMatch(/v_has_remaining/)
+    expect(functionDefinition(sql, 'crm_search_retention_target_allowed')).toMatch(
+      /crm_search_evaluation_approval_consumptions[\s\S]*crm_search_change_approval_consumptions/i
+    )
+    expect(immutable).toMatch(/TG_RELID/)
+    expect(immutable).toMatch(/retention_auth\.target_relation_oid = TG_RELID/)
+    expect(immutable).toMatch(/inhparent = retention_auth\.target_relation_oid/)
+    expect(immutable).toMatch(/OLD\.id = ANY\(retention_auth\.candidate_ids\)/)
+    expect(sql).toMatch(/crm_search_events_default_immutable/)
+    expect(sql).toMatch(/crm_search_audit_log_default_immutable/)
+    expect(sql).toMatch(/crm_search_retention_attestations_default_immutable/)
+    expect(sql).toMatch(
+      /crm_search_evaluation_approval_consumptions[\s\S]*crm_search_change_approval_consumptions[\s\S]*crm_search_retention_delete_guard/i
+    )
+  })
+
+  it('requires a current teardown cycle and explicit blue-green schema promotion', () => {
+    const sql = readMigration()
+    const policy = tableDefinition(sql, 'crm_search_policies')
+    const transition = functionDefinition(sql, 'crm_search_transition_policy')
+    const configure = functionDefinition(sql, 'crm_search_configure_candidate_schema')
+    const promote = functionDefinition(sql, 'crm_search_promote_candidate_schema')
+    const completeRetiring = functionDefinition(sql, 'crm_search_complete_retiring_schema')
+
+    expect(policy).toMatch(/active_teardown_id UUID/)
+    expect(transition).toMatch(/teardown\.id = v_policy\.active_teardown_id/)
+    expect(transition).toMatch(/teardown\.policy_revision = v_policy\.revision/)
+    expect(transition).toMatch(/crm_search_teardown_vectors/)
+    expect(transition).toMatch(/crm_search_operations/)
+    expect(transition).toMatch(/p_active_schema_version IS DISTINCT FROM v_policy\.active_schema_version/)
+    expect(configure).toMatch(/pg_advisory_xact_lock/)
+    expect(configure).toMatch(/metadata_index_state = 'ready'/)
+    expect(configure).toMatch(/sentinel_state = 'confirmed_absent'/)
+    expect(configure).toMatch(/lifecycle_state NOT IN \('indexing', 'shadow', 'assist'\)/)
+    expect(promote).toMatch(/captured_source_high_watermark/)
+    expect(promote).toMatch(/confirmed_source_high_watermark/)
+    expect(promote).toMatch(/retiring_schema_versions/)
+    expect(promote).toMatch(/lifecycle_state = 'indexing'/)
+    expect(promote).toMatch(/approved_evaluation_run_id = NULL/)
+    expect(promote).toMatch(/crm_search_change_approval_consumptions/)
+    expect(completeRetiring).toMatch(/pg_advisory_xact_lock/)
+    expect(completeRetiring).toMatch(/retiring_schema_versions/)
+    expect(completeRetiring).toMatch(/confirmation_state <> 'deleted'/)
+    expect(completeRetiring).toMatch(/desired_action <> 'delete'/)
+    expect(completeRetiring).toMatch(/state <> 'confirmed'/)
+    expect(completeRetiring).toMatch(/crm_search_change_approval_consumptions/)
+  })
+
+  it('serializes revocation with promotion and fills PostgreSQL 14 NULL uniqueness gaps', () => {
+    const sql = readMigration()
+    const globalTransition = functionDefinition(sql, 'crm_search_transition_global_control')
+    const policyTransition = functionDefinition(sql, 'crm_search_transition_policy')
+    const revocationGuard = functionDefinition(sql, 'crm_search_guard_change_approval_revocation')
+
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS crm_search_change_approval_consumptions')
+    expect(globalTransition).toMatch(/FOR UPDATE OF approval/)
+    expect(policyTransition).toMatch(/FOR UPDATE OF approval/)
+    expect(revocationGuard).toMatch(/FOR UPDATE/)
+    expect(revocationGuard).toMatch(/crm_search_change_approval_consumptions/)
+    expect(sql).toMatch(/crm_search_usage_reservations_query_identity[\s\S]*operation_id IS NULL/i)
+    expect(sql).toMatch(/crm_search_daily_events_global_identity[\s\S]*client_id IS NULL/i)
+  })
+
+  it('creates auditable dead-letter actions and recursive privacy-safe JSON contracts', () => {
+    const sql = readMigration()
+    const deadLetters = tableDefinition(sql, 'crm_search_dead_letters')
+    const transition = functionDefinition(sql, 'crm_search_transition_dead_letter')
+
+    expect(deadLetters).toMatch(/audit_log_created_at TIMESTAMPTZ/)
+    expect(deadLetters).toMatch(/FOREIGN KEY \(audit_log_created_at, audit_log_id\)/)
+    expect(transition).not.toMatch(/p_audit_log_id/)
+    expect(transition).toMatch(/INSERT INTO public\.crm_search_audit_log/)
+    expect(transition).toMatch(/audit_log_created_at/)
+    expect(sql).toContain('CREATE OR REPLACE FUNCTION crm_search_json_schema_is_safe')
+    const jsonSchema = functionDefinition(sql, 'crm_search_json_schema_is_safe')
+    expect(jsonSchema).toContain('\'retiringschemaversion\'')
+    expect(jsonSchema).toMatch(/v_normalized_key = ANY\(ARRAY\[\s*'fromstate'/i)
+    expect(jsonSchema).toMatch(/v_child #>> '\{\}'[\s\S]*\^\[a-z\]\[a-z0-9_.:-\]/i)
+    expect(tableDefinition(sql, 'crm_search_events')).toMatch(/crm_search_json_schema_is_safe\(rank_evidence, 'rank_evidence'\)/)
+    expect(tableDefinition(sql, 'crm_search_audit_log')).toMatch(/crm_search_json_schema_is_safe\(details, 'audit_details'\)/)
+  })
+
   it('uses narrow legal-hold and high-watermark retention functions with chained attestations', () => {
     const sql = readMigration()
     for (const fn of [
@@ -224,6 +401,8 @@ describe('CRM search expand migration 350', () => {
     expect(expiry).toMatch(/deletion_manifest_hash/)
     expect(expiry).toMatch(/crm_search_retention_attestations/)
     expect(expiry).toMatch(/crm_search_legal_hold_(targets|releases)/)
-    expect(sql).toMatch(/REVOKE ALL ON FUNCTION crm_search_expire_governed_rows[\s\S]*FROM PUBLIC/)
+    expect(sql).toMatch(
+      /procedure\.proname = ANY\([\s\S]*'crm_search_expire_governed_rows'[\s\S]*REVOKE ALL ON FUNCTION %s FROM PUBLIC/i
+    )
   })
 })

@@ -20,6 +20,51 @@ ALTER TABLE crm_opportunities
   ADD COLUMN IF NOT EXISTS search_revision BIGINT NOT NULL DEFAULT 0
     CHECK (search_revision >= 0);
 
+-- Cluster roles are deliberately NOLOGIN. Deploy automation temporarily assumes
+-- the governor role so application logins can receive only the runtime surface.
+DO $$
+DECLARE
+  v_schema TEXT := pg_catalog.current_schema();
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'crm_search_governor') THEN
+    CREATE ROLE crm_search_governor
+      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+  ELSIF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_roles
+    WHERE rolname = 'crm_search_governor'
+      AND (
+        rolcanlogin OR rolinherit OR rolsuper OR rolcreatedb OR rolcreaterole
+        OR rolreplication OR rolbypassrls
+      )
+  ) THEN
+    RAISE EXCEPTION 'existing crm_search_governor role is unsafe';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'crm_search_runtime') THEN
+    CREATE ROLE crm_search_runtime
+      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+  ELSIF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_roles
+    WHERE rolname = 'crm_search_runtime'
+      AND (
+        rolcanlogin OR rolinherit OR rolsuper OR rolcreatedb OR rolcreaterole
+        OR rolreplication OR rolbypassrls
+      )
+  ) THEN
+    RAISE EXCEPTION 'existing crm_search_runtime role is unsafe';
+  END IF;
+
+  EXECUTE pg_catalog.format('GRANT crm_search_governor TO %I', SESSION_USER);
+  EXECUTE pg_catalog.format('GRANT USAGE, CREATE ON SCHEMA %I TO crm_search_governor', v_schema);
+  EXECUTE pg_catalog.format('GRANT USAGE ON SCHEMA %I TO crm_search_runtime', v_schema);
+END;
+$$;
+
+GRANT SELECT ON TABLE crm_people, crm_companies, crm_opportunities
+TO crm_search_governor;
+
+SET LOCAL ROLE crm_search_governor;
+
 CREATE OR REPLACE FUNCTION crm_search_normalize_text(
   p_value TEXT,
   p_max_code_points INTEGER
@@ -338,6 +383,10 @@ CREATE TABLE IF NOT EXISTS crm_search_schema_versions (
     CHECK (metadata_index_state IN ('pending', 'ready', 'failed')),
   sentinel_state TEXT NOT NULL DEFAULT 'pending'
     CHECK (sentinel_state IN ('pending', 'upsert_pending', 'query_verified', 'delete_pending', 'confirmed_absent', 'failed')),
+  captured_source_high_watermark BIGINT NOT NULL DEFAULT 0
+    CHECK (captured_source_high_watermark >= 0),
+  confirmed_source_high_watermark BIGINT NOT NULL DEFAULT 0
+    CHECK (confirmed_source_high_watermark >= 0),
   provider_contract_digest TEXT NOT NULL CHECK (provider_contract_digest ~ '^[a-f0-9]{64}$'),
   created_by UUID NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -422,6 +471,7 @@ CREATE TABLE IF NOT EXISTS crm_search_policies (
     CHECK (semantic_deadline_ms BETWEEN 1 AND 750),
   revision BIGINT NOT NULL DEFAULT 0 CHECK (revision >= 0),
   approved_evaluation_run_id UUID,
+  active_teardown_id UUID,
   deployed_environment TEXT NOT NULL DEFAULT 'unconfigured'
     CHECK (deployed_environment IN ('unconfigured', 'test', 'preview', 'production')),
   deployed_git_sha TEXT CHECK (deployed_git_sha IS NULL OR deployed_git_sha ~ '^[a-f0-9]{40}([a-f0-9]{24})?$'),
@@ -555,6 +605,10 @@ CREATE TABLE IF NOT EXISTS crm_search_operations (
   next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   error_class TEXT CHECK (error_class IS NULL OR error_class ~ '^[a-z][a-z0-9_]{1,119}$'),
   provider_accepted_at TIMESTAMPTZ,
+  provider_admitted_at TIMESTAMPTZ,
+  admission_identity_hash TEXT CHECK (
+    admission_identity_hash IS NULL OR admission_identity_hash ~ '^[a-f0-9]{64}$'
+  ),
   confirmed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -576,6 +630,7 @@ CREATE TABLE IF NOT EXISTS crm_search_operations (
     OR (provider_mutation_id IS NOT NULL AND provider_accepted_at IS NOT NULL)
   ),
   CHECK (state <> 'confirmed' OR confirmed_at IS NOT NULL)
+  ,CHECK ((provider_admitted_at IS NULL) = (admission_identity_hash IS NULL))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS crm_search_operations_one_pre_admission
@@ -583,19 +638,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS crm_search_operations_one_pre_admission
     organisation_scope_id, client_id, entity_type, entity_id, schema_version
   )
   WHERE successor_of IS NULL
+    AND provider_admitted_at IS NULL
     AND state IN ('pending_transport', 'queued', 'processing', 'retryable');
 
-CREATE UNIQUE INDEX IF NOT EXISTS crm_search_operations_one_provider_pending
+CREATE UNIQUE INDEX IF NOT EXISTS crm_search_operations_one_provider_inflight
   ON crm_search_operations (
     organisation_scope_id, client_id, entity_type, entity_id, schema_version
   )
-  WHERE state = 'provider_pending';
+  WHERE provider_admitted_at IS NOT NULL
+    AND state NOT IN ('confirmed', 'superseded', 'terminal_dead_letter');
 
 CREATE UNIQUE INDEX IF NOT EXISTS crm_search_operations_one_successor
   ON crm_search_operations (
     organisation_scope_id, client_id, entity_type, entity_id, schema_version
   )
   WHERE successor_of IS NOT NULL
+    AND provider_admitted_at IS NULL
     AND state IN ('pending_transport', 'queued', 'processing', 'retryable');
 
 CREATE INDEX IF NOT EXISTS crm_search_operations_claim
@@ -745,6 +803,177 @@ CREATE TABLE IF NOT EXISTS crm_search_usage_reservations (
   CHECK (state NOT IN ('charged', 'late_charged') OR provider_call_sent = TRUE)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS crm_search_usage_reservations_query_identity
+  ON crm_search_usage_reservations (correlation_id, usage_kind)
+  WHERE operation_id IS NULL;
+
+CREATE OR REPLACE FUNCTION crm_search_json_schema_is_safe(
+  p_value JSONB,
+  p_schema TEXT,
+  p_depth INTEGER DEFAULT 0
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  v_key TEXT;
+  v_normalized_key TEXT;
+  v_child JSONB;
+  v_allowed_keys TEXT[];
+BEGIN
+  IF p_value IS NULL OR p_depth > 6 OR octet_length(p_value::TEXT) > 8192 THEN
+    RETURN FALSE;
+  END IF;
+
+  v_allowed_keys := CASE p_schema
+    WHEN 'rank_evidence' THEN ARRAY[
+      'keywordranks', 'semanticranks', 'fusedranks', 'overlapcount',
+      'orderingchanged', 'abstained', 'thresholdrevision', 'entitytype',
+      'entityiddigest', 'rank', 'scorebucket', 'source', 'resultcount',
+      'reasonclass'
+    ]::TEXT[]
+    WHEN 'audit_details' THEN ARRAY[
+      'fromstate', 'tostate', 'fromrevision', 'torevision', 'origin',
+      'action', 'targettable', 'partitionname', 'rowcount', 'schemaversion',
+      'candidateschemaversion', 'activeschemaversion', 'retiringschemaversion',
+      'approvalid',
+      'teardownid', 'operationid', 'resolutionstate', 'expectedstate',
+      'correlationid', 'evidencehash', 'manifesthash', 'highwatermarkhash',
+      'complete'
+    ]::TEXT[]
+    ELSE ARRAY[]::TEXT[]
+  END;
+  IF cardinality(v_allowed_keys) = 0 THEN
+    RETURN FALSE;
+  END IF;
+
+  CASE jsonb_typeof(p_value)
+    WHEN 'object' THEN
+      IF (SELECT COUNT(*) FROM jsonb_object_keys(p_value)) > 32 THEN
+        RETURN FALSE;
+      END IF;
+      FOR v_key, v_child IN SELECT key, value FROM jsonb_each(p_value)
+      LOOP
+        v_normalized_key := lower(regexp_replace(v_key, '[^a-zA-Z0-9]', '', 'g'));
+        IF NOT (v_normalized_key = ANY(v_allowed_keys)) THEN
+          RETURN FALSE;
+        END IF;
+
+        IF p_schema = 'audit_details' THEN
+          IF v_normalized_key = ANY(ARRAY[
+            'fromstate', 'tostate', 'origin', 'action', 'targettable',
+            'partitionname', 'schemaversion', 'candidateschemaversion',
+            'activeschemaversion', 'retiringschemaversion', 'approvalid',
+            'teardownid', 'operationid', 'resolutionstate', 'expectedstate',
+            'correlationid', 'evidencehash', 'manifesthash', 'highwatermarkhash'
+          ]::TEXT[]) AND jsonb_typeof(v_child) <> 'string' THEN
+            RETURN FALSE;
+          ELSIF v_normalized_key = ANY(ARRAY[
+            'fromrevision', 'torevision', 'rowcount'
+          ]::TEXT[]) AND jsonb_typeof(v_child) <> 'number' THEN
+            RETURN FALSE;
+          ELSIF v_normalized_key = 'complete'
+             AND jsonb_typeof(v_child) <> 'boolean' THEN
+            RETURN FALSE;
+          END IF;
+        ELSIF p_schema = 'rank_evidence' THEN
+          IF v_normalized_key = ANY(ARRAY[
+            'keywordranks', 'semanticranks', 'fusedranks'
+          ]::TEXT[]) AND jsonb_typeof(v_child) <> 'array' THEN
+            RETURN FALSE;
+          ELSIF v_normalized_key = ANY(ARRAY[
+            'overlapcount', 'rank', 'scorebucket', 'resultcount'
+          ]::TEXT[]) AND jsonb_typeof(v_child) <> 'number' THEN
+            RETURN FALSE;
+          ELSIF v_normalized_key = ANY(ARRAY[
+            'orderingchanged', 'abstained'
+          ]::TEXT[]) AND jsonb_typeof(v_child) <> 'boolean' THEN
+            RETURN FALSE;
+          ELSIF v_normalized_key = ANY(ARRAY[
+            'thresholdrevision', 'entitytype', 'entityiddigest', 'source',
+            'reasonclass'
+          ]::TEXT[]) AND jsonb_typeof(v_child) <> 'string' THEN
+            RETURN FALSE;
+          END IF;
+        END IF;
+
+        -- Allowlisted names are not enough: otherwise raw text could be hidden
+        -- under a legitimate string field such as action or reasonClass.
+        IF jsonb_typeof(v_child) = 'string' THEN
+          IF p_schema = 'audit_details' THEN
+            IF v_normalized_key = ANY(ARRAY[
+              'fromstate', 'tostate', 'origin', 'action', 'resolutionstate',
+              'expectedstate'
+            ]::TEXT[])
+               AND (v_child #>> '{}') !~ '^[a-z][a-z0-9_.:-]{0,119}$' THEN
+              RETURN FALSE;
+            ELSIF v_normalized_key = ANY(ARRAY[
+              'targettable', 'partitionname'
+            ]::TEXT[])
+               AND (v_child #>> '{}') !~ '^crm_search_[a-z0-9_]{1,96}$' THEN
+              RETURN FALSE;
+            ELSIF v_normalized_key = ANY(ARRAY[
+              'schemaversion', 'candidateschemaversion',
+              'activeschemaversion', 'retiringschemaversion'
+            ]::TEXT[])
+               AND (v_child #>> '{}') !~ '^crm-search-v[1-9][0-9]*$' THEN
+              RETURN FALSE;
+            ELSIF v_normalized_key = ANY(ARRAY[
+              'approvalid', 'teardownid', 'operationid', 'correlationid'
+            ]::TEXT[])
+               AND (v_child #>> '{}') !~
+                 '^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$' THEN
+              RETURN FALSE;
+            ELSIF v_normalized_key = ANY(ARRAY[
+              'evidencehash', 'manifesthash', 'highwatermarkhash'
+            ]::TEXT[])
+               AND (v_child #>> '{}') !~ '^(hmac-sha256:)?[a-f0-9]{64}$' THEN
+              RETURN FALSE;
+            END IF;
+          ELSIF p_schema = 'rank_evidence' THEN
+            IF v_normalized_key = 'entitytype'
+               AND (v_child #>> '{}') NOT IN ('person', 'company', 'opportunity') THEN
+              RETURN FALSE;
+            ELSIF v_normalized_key = 'entityiddigest'
+               AND (v_child #>> '{}') !~ '^(hmac-sha256:)?[a-f0-9]{64}$' THEN
+              RETURN FALSE;
+            ELSIF v_normalized_key = ANY(ARRAY[
+              'thresholdrevision', 'source', 'reasonclass'
+            ]::TEXT[])
+               AND (v_child #>> '{}') !~ '^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$' THEN
+              RETURN FALSE;
+            END IF;
+          END IF;
+        END IF;
+
+        IF NOT public.crm_search_json_schema_is_safe(v_child, p_schema, p_depth + 1) THEN
+          RETURN FALSE;
+        END IF;
+      END LOOP;
+    WHEN 'array' THEN
+      IF jsonb_array_length(p_value) > 100 THEN
+        RETURN FALSE;
+      END IF;
+      FOR v_child IN SELECT value FROM jsonb_array_elements(p_value)
+      LOOP
+        IF NOT public.crm_search_json_schema_is_safe(v_child, p_schema, p_depth + 1) THEN
+          RETURN FALSE;
+        END IF;
+      END LOOP;
+    WHEN 'string' THEN
+      RETURN octet_length(p_value #>> '{}') <= 512;
+    WHEN 'number', 'boolean', 'null' THEN
+      RETURN TRUE;
+    ELSE
+      RETURN FALSE;
+  END CASE;
+  RETURN TRUE;
+END;
+$$;
+
 CREATE TABLE IF NOT EXISTS crm_search_events (
   id UUID NOT NULL DEFAULT gen_random_uuid(),
   organisation_scope_id UUID NOT NULL
@@ -767,7 +996,10 @@ CREATE TABLE IF NOT EXISTS crm_search_events (
   semantic_candidate_count SMALLINT CHECK (semantic_candidate_count BETWEEN 0 AND 50),
   fused_result_count SMALLINT CHECK (fused_result_count BETWEEN 0 AND 50),
   rank_evidence JSONB NOT NULL DEFAULT '{}'::JSONB
-    CHECK (jsonb_typeof(rank_evidence) = 'object' AND octet_length(rank_evidence::TEXT) <= 8192),
+    CHECK (
+      jsonb_typeof(rank_evidence) = 'object'
+      AND public.crm_search_json_schema_is_safe(rank_evidence, 'rank_evidence')
+    ),
   keyword_latency_ms INTEGER CHECK (keyword_latency_ms IS NULL OR keyword_latency_ms >= 0),
   embedding_latency_ms INTEGER CHECK (embedding_latency_ms IS NULL OR embedding_latency_ms >= 0),
   vector_latency_ms INTEGER CHECK (vector_latency_ms IS NULL OR vector_latency_ms >= 0),
@@ -787,12 +1019,7 @@ CREATE TABLE IF NOT EXISTS crm_search_events (
   retention_expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days'),
   legal_hold_id UUID REFERENCES crm_search_legal_holds(id) ON DELETE RESTRICT,
   PRIMARY KEY (created_at, id),
-  CHECK (query_digest IS NULL = (query_digest_key_version IS NULL)),
-  CHECK (
-    NOT (rank_evidence ?| ARRAY[
-      'rawQuery', 'query', 'sourceText', 'providerError', 'vectorValues', 'requestUrl'
-    ])
-  )
+  CHECK (query_digest IS NULL = (query_digest_key_version IS NULL))
 ) PARTITION BY RANGE (created_at);
 
 CREATE TABLE IF NOT EXISTS crm_search_events_default
@@ -833,6 +1060,12 @@ CREATE TABLE IF NOT EXISTS crm_search_daily_events (
   CHECK (fallback_count <= request_count),
   CHECK (timeout_count <= request_count)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS crm_search_daily_events_global_identity
+  ON crm_search_daily_events (
+    event_date, organisation_scope_id, mode, surface, status_class
+  )
+  WHERE client_id IS NULL;
 
 CREATE OR REPLACE FUNCTION crm_search_uuid_array_is_distinct(p_values UUID[])
 RETURNS BOOLEAN
@@ -889,6 +1122,7 @@ CREATE TABLE IF NOT EXISTS crm_search_evaluation_runs (
   domain_reviewer_ids UUID[] NOT NULL DEFAULT ARRAY[]::UUID[],
   adjudicator_ids UUID[] NOT NULL DEFAULT ARRAY[]::UUID[],
   runner_id UUID NOT NULL,
+  development_query_count INTEGER NOT NULL CHECK (development_query_count >= 180),
   metric_bundle JSONB NOT NULL CHECK (
     jsonb_typeof(metric_bundle) = 'object' AND octet_length(metric_bundle::TEXT) <= 32768
   ),
@@ -914,6 +1148,7 @@ CREATE TABLE IF NOT EXISTS crm_search_evaluation_query_evidence (
     REFERENCES crm_search_evaluation_runs(id) ON DELETE RESTRICT,
   query_key_digest TEXT NOT NULL CHECK (query_key_digest ~ '^[a-f0-9]{64}$'),
   client_key_digest TEXT NOT NULL CHECK (client_key_digest ~ '^[a-f0-9]{64}$'),
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('person', 'company', 'opportunity')),
   strata TEXT[] NOT NULL CHECK (cardinality(strata) BETWEEN 1 AND 16),
   keyword_ndcg10 NUMERIC(8,7) NOT NULL CHECK (keyword_ndcg10 BETWEEN 0 AND 1),
   assist_ndcg10 NUMERIC(8,7) NOT NULL CHECK (assist_ndcg10 BETWEEN 0 AND 1),
@@ -929,15 +1164,32 @@ CREATE TABLE IF NOT EXISTS crm_search_evaluation_query_evidence (
   assist_latency_ms INTEGER NOT NULL DEFAULT 0 CHECK (assist_latency_ms >= 0),
   fallback BOOLEAN NOT NULL DEFAULT FALSE,
   late_billed_completion BOOLEAN NOT NULL DEFAULT FALSE,
-  concurrent_budget_safe BOOLEAN NOT NULL DEFAULT FALSE,
-  capacity_headroom_safe BOOLEAN NOT NULL DEFAULT FALSE,
+  off_result_digest TEXT NOT NULL CHECK (off_result_digest ~ '^[a-f0-9]{64}$'),
+  shadow_result_digest TEXT NOT NULL CHECK (shadow_result_digest ~ '^[a-f0-9]{64}$'),
+  load_stratum TEXT NOT NULL CHECK (load_stratum IN ('cold', 'warm', 'concurrent')),
+  observed_p95_concurrency INTEGER NOT NULL CHECK (observed_p95_concurrency >= 0),
+  load_concurrency INTEGER NOT NULL CHECK (load_concurrency >= 1),
+  stale_record_count INTEGER NOT NULL CHECK (stale_record_count >= 0),
+  orphaned_record_count INTEGER NOT NULL CHECK (orphaned_record_count >= 0),
+  telemetry_leakage_count INTEGER NOT NULL CHECK (telemetry_leakage_count >= 0),
+  telemetry_inspected_at TIMESTAMPTZ NOT NULL,
+  reserved_query_usd_micros BIGINT NOT NULL CHECK (reserved_query_usd_micros >= 0),
+  query_budget_usd_micros BIGINT NOT NULL CHECK (query_budget_usd_micros >= 0),
+  reserved_indexing_usd_micros BIGINT NOT NULL CHECK (reserved_indexing_usd_micros >= 0),
+  indexing_budget_usd_micros BIGINT NOT NULL CHECK (indexing_budget_usd_micros >= 0),
+  forecast_vector_count BIGINT NOT NULL CHECK (forecast_vector_count >= 0),
+  vector_capacity BIGINT NOT NULL CHECK (vector_capacity >= 0),
   shadow_eligible BOOLEAN NOT NULL DEFAULT FALSE,
+  shadow_client_id UUID,
   shadow_observed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   retention_expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '2 years'),
   legal_hold_id UUID REFERENCES crm_search_legal_holds(id) ON DELETE RESTRICT,
   UNIQUE (evaluation_run_id, query_key_digest),
-  CHECK (shadow_eligible = FALSE OR shadow_observed_at IS NOT NULL)
+  CHECK (
+    shadow_eligible = FALSE
+    OR (shadow_observed_at IS NOT NULL AND shadow_client_id IS NOT NULL)
+  )
 );
 
 CREATE TABLE IF NOT EXISTS crm_search_evaluation_approvals (
@@ -964,6 +1216,17 @@ CREATE TABLE IF NOT EXISTS crm_search_evaluation_approval_revocations (
   revoked_by UUID NOT NULL,
   reason TEXT NOT NULL CHECK (char_length(btrim(reason)) BETWEEN 10 AND 2000),
   revoked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  retention_expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '2 years'),
+  legal_hold_id UUID REFERENCES crm_search_legal_holds(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS crm_search_evaluation_approval_consumptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  approval_id UUID NOT NULL UNIQUE
+    REFERENCES crm_search_evaluation_approvals(id) ON DELETE RESTRICT,
+  consumed_by UUID NOT NULL,
+  consumption_kind TEXT NOT NULL CHECK (consumption_kind = 'client_assist'),
+  consumed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   retention_expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '2 years'),
   legal_hold_id UUID REFERENCES crm_search_legal_holds(id) ON DELETE RESTRICT
 );
@@ -1027,6 +1290,84 @@ CREATE TABLE IF NOT EXISTS crm_search_change_approval_revocations (
   legal_hold_id UUID REFERENCES crm_search_legal_holds(id) ON DELETE RESTRICT
 );
 
+CREATE TABLE IF NOT EXISTS crm_search_change_approval_consumptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  approval_id UUID NOT NULL UNIQUE
+    REFERENCES crm_search_change_approvals(id) ON DELETE RESTRICT,
+  consumed_by UUID NOT NULL,
+  consumption_kind TEXT NOT NULL CHECK (
+    consumption_kind IN (
+      'global_control', 'policy_transition', 'candidate_configuration',
+      'candidate_promotion', 'retiring_completion'
+    )
+  ),
+  consumed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  retention_expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '2 years'),
+  legal_hold_id UUID REFERENCES crm_search_legal_holds(id) ON DELETE RESTRICT
+);
+
+CREATE OR REPLACE FUNCTION crm_search_guard_change_approval_revocation()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(NEW.approval_id::TEXT, 351)
+  );
+  PERFORM 1 FROM public.crm_search_change_approvals
+  WHERE id = NEW.approval_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'CRM search change approval not found';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.crm_search_change_approval_consumptions
+    WHERE approval_id = NEW.approval_id
+  ) THEN
+    RAISE EXCEPTION 'consumed CRM search change approval cannot be revoked';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS crm_search_guard_change_approval_revocation
+  ON crm_search_change_approval_revocations;
+CREATE TRIGGER crm_search_guard_change_approval_revocation
+  BEFORE INSERT ON crm_search_change_approval_revocations
+  FOR EACH ROW EXECUTE FUNCTION crm_search_guard_change_approval_revocation();
+
+CREATE OR REPLACE FUNCTION crm_search_guard_evaluation_approval_revocation()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(NEW.approval_id::TEXT, 352)
+  );
+  PERFORM 1 FROM public.crm_search_evaluation_approvals
+  WHERE id = NEW.approval_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'CRM search evaluation approval not found';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.crm_search_evaluation_approval_consumptions
+    WHERE approval_id = NEW.approval_id
+  ) THEN
+    RAISE EXCEPTION 'consumed CRM search evaluation approval cannot be revoked';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS crm_search_guard_evaluation_approval_revocation
+  ON crm_search_evaluation_approval_revocations;
+CREATE TRIGGER crm_search_guard_evaluation_approval_revocation
+  BEFORE INSERT ON crm_search_evaluation_approval_revocations
+  FOR EACH ROW EXECUTE FUNCTION crm_search_guard_evaluation_approval_revocation();
+
 CREATE TABLE IF NOT EXISTS crm_search_audit_log (
   id UUID NOT NULL DEFAULT gen_random_uuid(),
   organisation_scope_id UUID NOT NULL
@@ -1043,10 +1384,7 @@ CREATE TABLE IF NOT EXISTS crm_search_audit_log (
   details JSONB NOT NULL DEFAULT '{}'::JSONB CHECK (
     jsonb_typeof(details) = 'object'
     AND octet_length(details::TEXT) <= 8192
-    AND NOT (details ?| ARRAY[
-      'rawQuery', 'query', 'sourceText', 'providerError', 'providerBody',
-      'vectorValues', 'requestBody', 'requestUrl'
-    ])
+    AND public.crm_search_json_schema_is_safe(details, 'audit_details')
   ),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   retention_expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '2 years'),
@@ -1110,10 +1448,13 @@ CREATE TABLE IF NOT EXISTS crm_search_dead_letters (
   ),
   resolved_at TIMESTAMPTZ,
   audit_log_id UUID,
+  audit_log_created_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   retention_expires_at TIMESTAMPTZ,
   legal_hold_id UUID REFERENCES crm_search_legal_holds(id) ON DELETE RESTRICT,
+  FOREIGN KEY (audit_log_created_at, audit_log_id)
+    REFERENCES crm_search_audit_log(created_at, id) ON DELETE RESTRICT,
   UNIQUE (origin, operation_id),
   CHECK (last_failed_at >= first_failed_at),
   CHECK (
@@ -1128,7 +1469,8 @@ CREATE TABLE IF NOT EXISTS crm_search_dead_letters (
     resolution_state NOT IN ('resolved', 'dismissed')
     OR (resolver_id IS NOT NULL AND resolution_reason IS NOT NULL
       AND resolved_at IS NOT NULL AND retention_expires_at IS NOT NULL)
-  )
+  ),
+  CHECK ((audit_log_id IS NULL) = (audit_log_created_at IS NULL))
 );
 
 CREATE INDEX IF NOT EXISTS crm_search_dead_letters_open
@@ -1209,12 +1551,29 @@ CREATE TABLE IF NOT EXISTS crm_search_retention_high_watermarks (
   target_table TEXT NOT NULL CHECK (target_table ~ '^crm_search_[a-z0-9_]{1,96}$'),
   partition_name TEXT NOT NULL CHECK (partition_name ~ '^crm_search_[a-z0-9_]{1,96}$'),
   last_expire_through TIMESTAMPTZ NOT NULL DEFAULT '-infinity'::TIMESTAMPTZ,
+  pending_expire_through TIMESTAMPTZ,
   last_attestation_hash TEXT NOT NULL DEFAULT repeat('0', 64)
     CHECK (last_attestation_hash ~ '^[a-f0-9]{64}$'),
   high_watermark_hash TEXT NOT NULL CHECK (high_watermark_hash ~ '^[a-f0-9]{64}$'),
   revision BIGINT NOT NULL DEFAULT 0 CHECK (revision >= 0),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (target_table, partition_name)
+);
+
+CREATE TABLE IF NOT EXISTS crm_search_retention_delete_authorizations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  backend_pid INTEGER NOT NULL,
+  transaction_id BIGINT NOT NULL,
+  target_relation_oid OID NOT NULL,
+  partition_relation_oid OID NOT NULL,
+  candidate_ids UUID[] NOT NULL CHECK (
+    cardinality(candidate_ids) BETWEEN 1 AND 5000
+    AND public.crm_search_uuid_array_is_distinct(candidate_ids)
+  ),
+  computed_manifest_hash TEXT NOT NULL CHECK (computed_manifest_hash ~ '^[a-f0-9]{64}$'),
+  attestation_id UUID NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT statement_timestamp(),
+  UNIQUE (backend_pid, transaction_id, partition_relation_oid)
 );
 
 CREATE TABLE IF NOT EXISTS crm_search_retention_attestations (
@@ -1257,6 +1616,17 @@ BEGIN
       FOREIGN KEY (approved_evaluation_run_id)
       REFERENCES crm_search_evaluation_runs(id) ON DELETE RESTRICT;
   END IF;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_constraint
+    WHERE conname = 'crm_search_policies_active_teardown_fk'
+      AND conrelid = 'crm_search_policies'::REGCLASS
+  ) THEN
+    ALTER TABLE crm_search_policies
+      ADD CONSTRAINT crm_search_policies_active_teardown_fk
+      FOREIGN KEY (active_teardown_id)
+      REFERENCES crm_search_client_teardowns(id) ON DELETE RESTRICT;
+  END IF;
 END;
 $$;
 
@@ -1281,6 +1651,23 @@ AS $$
   END
 $$;
 
+CREATE OR REPLACE FUNCTION crm_search_client_advisory_lock_key(
+  p_organisation_scope_id UUID,
+  p_client_id UUID
+)
+RETURNS BIGINT
+LANGUAGE sql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT pg_catalog.hashtextextended(
+    pg_catalog.concat_ws('|', p_organisation_scope_id::TEXT, p_client_id::TEXT),
+    350
+  )
+$$;
+
 CREATE OR REPLACE FUNCTION crm_search_guard_organisation_scope_identity()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -1303,17 +1690,100 @@ CREATE TRIGGER crm_search_guard_organisation_scope_identity
   BEFORE UPDATE ON crm_search_organisation_scopes
   FOR EACH ROW EXECUTE FUNCTION crm_search_guard_organisation_scope_identity();
 
+CREATE OR REPLACE FUNCTION crm_search_operation_identity_hash(p_operation crm_search_operations)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT public.crm_search_projection_hash(pg_catalog.concat_ws(
+    '|', p_operation.organisation_scope_id::TEXT, p_operation.client_id::TEXT,
+    p_operation.entity_type, p_operation.entity_id::TEXT, p_operation.schema_version,
+    p_operation.source_revision::TEXT, p_operation.source_event_sequence::TEXT,
+    p_operation.desired_action, p_operation.vector_id, p_operation.namespace,
+    COALESCE(p_operation.content_hash, ''), COALESCE(p_operation.confirmation_tag, ''),
+    COALESCE(p_operation.confirmation_key_version, ''), COALESCE(p_operation.successor_of::TEXT, '')
+  ))
+$$;
+
+CREATE OR REPLACE FUNCTION crm_search_guard_operation_admission()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  v_parent public.crm_search_operations%ROWTYPE;
+BEGIN
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    pg_catalog.concat_ws(
+      '|', NEW.organisation_scope_id::TEXT, NEW.client_id::TEXT,
+      NEW.entity_type, NEW.entity_id::TEXT, NEW.schema_version
+    ),
+    350
+  ));
+
+  IF NEW.successor_of IS NULL THEN
+    IF EXISTS (
+      SELECT 1 FROM public.crm_search_operations operation
+      WHERE operation.organisation_scope_id = NEW.organisation_scope_id
+        AND operation.client_id = NEW.client_id
+        AND operation.entity_type = NEW.entity_type
+        AND operation.entity_id = NEW.entity_id
+        AND operation.schema_version = NEW.schema_version
+        AND operation.state NOT IN ('confirmed', 'superseded', 'terminal_dead_letter')
+        AND (
+          operation.provider_admitted_at IS NOT NULL
+          OR operation.successor_of IS NOT NULL
+        )
+    ) THEN
+      RAISE EXCEPTION 'accepted CRM search operation requires one explicit successor';
+    END IF;
+  ELSE
+    SELECT * INTO v_parent
+    FROM public.crm_search_operations
+    WHERE id = NEW.successor_of
+    FOR UPDATE;
+    IF NOT FOUND
+       OR v_parent.provider_admitted_at IS NULL
+       OR v_parent.state IN ('confirmed', 'superseded', 'terminal_dead_letter')
+       OR ROW(
+         v_parent.organisation_scope_id, v_parent.client_id, v_parent.entity_type,
+         v_parent.entity_id, v_parent.schema_version
+       ) IS DISTINCT FROM ROW(
+         NEW.organisation_scope_id, NEW.client_id, NEW.entity_type,
+         NEW.entity_id, NEW.schema_version
+       ) THEN
+      RAISE EXCEPTION 'CRM search successor must reference the current same-key admitted operation';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS crm_search_guard_operation_admission ON crm_search_operations;
+CREATE TRIGGER crm_search_guard_operation_admission
+  BEFORE INSERT ON crm_search_operations
+  FOR EACH ROW EXECUTE FUNCTION crm_search_guard_operation_admission();
+
 CREATE OR REPLACE FUNCTION crm_search_guard_operation_transition()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SET search_path = pg_catalog, pg_temp
 AS $$
 BEGIN
+  IF OLD.state IN ('confirmed', 'superseded', 'terminal_dead_letter') THEN
+    IF NEW IS DISTINCT FROM OLD THEN
+      RAISE EXCEPTION 'terminal CRM search operation evidence is immutable';
+    END IF;
+    RETURN OLD;
+  END IF;
+
   IF NOT public.crm_search_operation_state_transition_allowed(OLD.state, NEW.state) THEN
     RAISE EXCEPTION 'invalid CRM search operation transition from % to %', OLD.state, NEW.state;
   END IF;
 
-  IF OLD.state NOT IN ('pending_transport', 'queued', 'retryable')
+  IF OLD.provider_admitted_at IS NOT NULL
      AND ROW(
        NEW.organisation_scope_id, NEW.client_id, NEW.entity_type, NEW.entity_id,
        NEW.schema_version, NEW.source_revision, NEW.source_event_sequence,
@@ -1326,6 +1796,21 @@ BEGIN
        OLD.confirmation_tag, OLD.confirmation_key_version, OLD.successor_of
      ) THEN
     RAISE EXCEPTION 'admitted CRM search operation identity is immutable';
+  END IF;
+
+  IF OLD.provider_admitted_at IS NOT NULL
+     AND (NEW.provider_admitted_at IS DISTINCT FROM OLD.provider_admitted_at
+       OR NEW.admission_identity_hash IS DISTINCT FROM OLD.admission_identity_hash
+       OR NEW.admission_identity_hash IS DISTINCT FROM public.crm_search_operation_identity_hash(NEW)) THEN
+    RAISE EXCEPTION 'admitted CRM search operation marker is immutable';
+  END IF;
+
+  IF OLD.provider_admitted_at IS NULL AND NEW.state = 'provider_pending' THEN
+    NEW.provider_admitted_at := COALESCE(NEW.provider_accepted_at, NOW());
+    NEW.admission_identity_hash := public.crm_search_operation_identity_hash(NEW);
+  ELSIF OLD.provider_admitted_at IS NULL
+        AND (NEW.provider_admitted_at IS NOT NULL OR NEW.admission_identity_hash IS NOT NULL) THEN
+    RAISE EXCEPTION 'CRM search provider admission marker is server controlled';
   END IF;
 
   IF NEW.state = 'confirmed' AND OLD.state <> 'confirmed' AND NEW.confirmed_at IS NULL THEN
@@ -1366,6 +1851,11 @@ BEGIN
     RAISE EXCEPTION 'invalid CRM search dead-letter transition for % origin', OLD.origin;
   END IF;
 
+  IF NEW.resolution_state IS DISTINCT FROM OLD.resolution_state
+     AND (NEW.audit_log_id IS NULL OR NEW.audit_log_created_at IS NULL) THEN
+    RAISE EXCEPTION 'CRM search dead-letter operator action requires immutable audit linkage';
+  END IF;
+
   IF NEW.resolution_state IN ('resolved', 'dismissed')
      AND OLD.resolution_state NOT IN ('resolved', 'dismissed') THEN
     IF NEW.resolver_id IS NULL OR NEW.resolution_reason IS NULL THEN
@@ -1396,8 +1886,7 @@ CREATE OR REPLACE FUNCTION crm_search_transition_dead_letter(
   p_expected_state TEXT,
   p_next_state TEXT,
   p_actor_id UUID,
-  p_reason TEXT,
-  p_audit_log_id UUID DEFAULT NULL
+  p_reason TEXT
 )
 RETURNS TEXT
 LANGUAGE plpgsql
@@ -1406,6 +1895,8 @@ SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
   current_row public.crm_search_dead_letters%ROWTYPE;
+  v_audit_log_id UUID;
+  v_audit_log_created_at TIMESTAMPTZ;
 BEGIN
   IF p_actor_id IS NULL OR char_length(btrim(COALESCE(p_reason, ''))) NOT BETWEEN 10 AND 2000 THEN
     RAISE EXCEPTION 'CRM search dead-letter transition requires bounded actor reason';
@@ -1423,11 +1914,27 @@ BEGIN
     RAISE EXCEPTION 'invalid CRM search dead-letter transition';
   END IF;
 
+  INSERT INTO public.crm_search_audit_log (
+    organisation_scope_id, client_id, event_type, actor_id, correlation_id,
+    operation_id, reason, details
+  ) VALUES (
+    current_row.organisation_scope_id, current_row.client_id,
+    'dead_letter.operator_action', p_actor_id, gen_random_uuid(),
+    current_row.operation_id, btrim(p_reason),
+    jsonb_build_object(
+      'origin', current_row.origin,
+      'fromState', current_row.resolution_state,
+      'toState', p_next_state,
+      'operationId', current_row.operation_id
+    )
+  ) RETURNING id, created_at INTO v_audit_log_id, v_audit_log_created_at;
+
   UPDATE public.crm_search_dead_letters
   SET resolution_state = p_next_state,
       resolver_id = CASE WHEN p_next_state IN ('resolved', 'dismissed') THEN p_actor_id ELSE resolver_id END,
       resolution_reason = CASE WHEN p_next_state IN ('resolved', 'dismissed') THEN btrim(p_reason) ELSE resolution_reason END,
-      audit_log_id = COALESCE(p_audit_log_id, audit_log_id)
+      audit_log_id = v_audit_log_id,
+      audit_log_created_at = v_audit_log_created_at
   WHERE id = p_dead_letter_id;
   RETURN p_next_state;
 END;
@@ -1475,7 +1982,6 @@ CREATE OR REPLACE FUNCTION crm_search_record_evaluation_run(
   p_dataset_version TEXT,
   p_dataset_sha256 TEXT,
   p_sealed_judgement_sha256 TEXT,
-  p_query_evidence_bundle_sha256 TEXT,
   p_preregistration_sha256 TEXT,
   p_adjudication_sha256 TEXT,
   p_implementation_git_sha TEXT,
@@ -1500,6 +2006,7 @@ CREATE OR REPLACE FUNCTION crm_search_record_evaluation_run(
   p_domain_reviewer_ids UUID[],
   p_adjudicator_ids UUID[],
   p_runner_id UUID,
+  p_development_query_count INTEGER,
   p_query_evidence JSONB
 )
 RETURNS UUID
@@ -1510,6 +2017,7 @@ AS $$
 DECLARE
   v_run_id UUID := gen_random_uuid();
   v_created_at TIMESTAMPTZ := NOW();
+  v_query_evidence_bundle_sha256 TEXT;
   v_total BIGINT;
   v_clients BIGINT;
   v_natural BIGINT;
@@ -1527,25 +2035,37 @@ DECLARE
   v_assist_exact_mrr NUMERIC;
   v_keyword_no_result_false_positives NUMERIC;
   v_assist_no_result_false_positives NUMERIC;
-  v_natural_delta_ci_lower NUMERIC;
+  v_natural_delta_ci_lower NUMERIC := -1;
+  v_natural_deltas NUMERIC[] := ARRAY[]::NUMERIC[];
   v_semantic_added_latency_p95 NUMERIC;
   v_assist_latency_p95 NUMERIC;
   v_keyword_latency_p95 NUMERIC;
   v_fallback_rate NUMERIC;
   v_late_completion_rate NUMERIC;
-  v_budgets_safe BOOLEAN;
-  v_capacity_safe BOOLEAN;
-  v_shadow_clients BIGINT;
-  v_shadow_min_per_client BIGINT;
-  v_shadow_first TIMESTAMPTZ;
-  v_shadow_last TIMESTAMPTZ;
+  v_min_queries_per_client BIGINT := 0;
+  v_min_queries_per_entity BIGINT := 0;
+  v_entity_count BIGINT := 0;
+  v_max_client_entity_ndcg_regression NUMERIC := 1;
+  v_max_client_entity_mrr_regression NUMERIC := 1;
+  v_off_shadow_equal BOOLEAN := FALSE;
+  v_load_strata_count BIGINT := 0;
+  v_load_safe BOOLEAN := FALSE;
+  v_convergence_safe BOOLEAN := FALSE;
+  v_telemetry_safe BOOLEAN := FALSE;
+  v_budgets_safe BOOLEAN := FALSE;
+  v_capacity_safe BOOLEAN := FALSE;
+  v_shadow_clients BIGINT := 0;
+  v_shadow_min_per_client BIGINT := 0;
+  v_shadow_days_consecutive BOOLEAN := FALSE;
+  v_shadow_clients_approved BOOLEAN := FALSE;
   v_metric_bundle JSONB;
   v_gate_passed BOOLEAN;
 BEGIN
   IF p_runner_id IS NULL
+     OR p_development_query_count IS NULL OR p_development_query_count < 180
      OR jsonb_typeof(p_query_evidence) <> 'array'
      OR jsonb_array_length(p_query_evidence) = 0 THEN
-    RAISE EXCEPTION 'CRM search evaluation requires query-level evidence and a runner';
+    RAISE EXCEPTION 'CRM search evaluation requires granular evidence, development split, and runner';
   END IF;
 
   IF EXISTS (
@@ -1553,17 +2073,24 @@ BEGIN
     FROM jsonb_array_elements(p_query_evidence) AS evidence(item)
     WHERE jsonb_typeof(item) <> 'object'
        OR item - ARRAY[
-         'queryKeyDigest', 'clientKeyDigest', 'strata',
+         'queryKeyDigest', 'clientKeyDigest', 'entityType', 'strata',
          'keywordNdcg10', 'assistNdcg10', 'keywordMrr', 'assistMrr',
          'keywordFalsePositive', 'assistFalsePositive',
          'crossClientLeakageCount', 'unauthorizedLeakageCount',
          'deletedRecordLeakageCount', 'semanticAddedLatencyMs',
          'keywordLatencyMs', 'assistLatencyMs', 'fallback',
-         'lateBilledCompletion', 'concurrentBudgetSafe',
-         'capacityHeadroomSafe', 'shadowEligible', 'shadowObservedAt'
+         'lateBilledCompletion', 'offResultDigest', 'shadowResultDigest',
+         'loadStratum', 'observedP95Concurrency', 'loadConcurrency',
+         'staleRecordCount', 'orphanedRecordCount', 'telemetryLeakageCount',
+         'telemetryInspectedAt', 'reservedQueryUsdMicros', 'queryBudgetUsdMicros',
+         'reservedIndexingUsdMicros', 'indexingBudgetUsdMicros',
+         'forecastVectorCount', 'vectorCapacity', 'shadowEligible',
+         'shadowClientId', 'shadowObservedAt'
        ]::TEXT[] <> '{}'::JSONB
+       OR item->>'entityType' NOT IN ('person', 'company', 'opportunity')
+       OR item->>'loadStratum' NOT IN ('cold', 'warm', 'concurrent')
   ) THEN
-    RAISE EXCEPTION 'CRM search evaluation contains unknown or aggregate-only evidence';
+    RAISE EXCEPTION 'CRM search evaluation contains unknown, aggregate-only, or invalid evidence';
   END IF;
 
   IF NOT public.crm_search_uuid_array_is_distinct(COALESCE(p_implementation_author_ids, ARRAY[]::UUID[]))
@@ -1574,13 +2101,13 @@ BEGIN
     RAISE EXCEPTION 'CRM search evaluation actor lists must be distinct and non-null';
   END IF;
 
+  v_query_evidence_bundle_sha256 := public.crm_search_projection_hash(p_query_evidence::TEXT);
+
   WITH evidence AS (
     SELECT
       item->>'clientKeyDigest' AS client_key_digest,
-      ARRAY(
-        SELECT stratum
-        FROM jsonb_array_elements_text(COALESCE(item->'strata', '[]'::JSONB)) AS values(stratum)
-      ) AS strata,
+      item->>'entityType' AS entity_type,
+      ARRAY(SELECT value FROM jsonb_array_elements_text(item->'strata')) AS strata,
       (item->>'keywordNdcg10')::NUMERIC AS keyword_ndcg,
       (item->>'assistNdcg10')::NUMERIC AS assist_ndcg,
       (item->>'keywordMrr')::NUMERIC AS keyword_mrr,
@@ -1590,20 +2117,30 @@ BEGIN
       COALESCE((item->>'crossClientLeakageCount')::BIGINT, 0) AS cross_client_leakage,
       COALESCE((item->>'unauthorizedLeakageCount')::BIGINT, 0) AS unauthorized_leakage,
       COALESCE((item->>'deletedRecordLeakageCount')::BIGINT, 0) AS deleted_leakage,
-      COALESCE((item->>'semanticAddedLatencyMs')::NUMERIC, 0) AS semantic_added_latency,
-      COALESCE((item->>'keywordLatencyMs')::NUMERIC, 0) AS keyword_latency,
-      COALESCE((item->>'assistLatencyMs')::NUMERIC, 0) AS assist_latency,
-      COALESCE((item->>'fallback')::BOOLEAN, FALSE) AS fallback,
-      COALESCE((item->>'lateBilledCompletion')::BOOLEAN, FALSE) AS late_completion,
-      COALESCE((item->>'concurrentBudgetSafe')::BOOLEAN, FALSE) AS budget_safe,
-      COALESCE((item->>'capacityHeadroomSafe')::BOOLEAN, FALSE) AS capacity_safe,
-      COALESCE((item->>'shadowEligible')::BOOLEAN, FALSE) AS shadow_eligible,
-      NULLIF(item->>'shadowObservedAt', '')::TIMESTAMPTZ AS shadow_observed_at
+      (item->>'semanticAddedLatencyMs')::NUMERIC AS semantic_added_latency,
+      (item->>'keywordLatencyMs')::NUMERIC AS keyword_latency,
+      (item->>'assistLatencyMs')::NUMERIC AS assist_latency,
+      (item->>'fallback')::BOOLEAN AS fallback,
+      (item->>'lateBilledCompletion')::BOOLEAN AS late_completion,
+      item->>'offResultDigest' AS off_result_digest,
+      item->>'shadowResultDigest' AS shadow_result_digest,
+      item->>'loadStratum' AS load_stratum,
+      (item->>'observedP95Concurrency')::INTEGER AS observed_p95_concurrency,
+      (item->>'loadConcurrency')::INTEGER AS load_concurrency,
+      (item->>'staleRecordCount')::INTEGER AS stale_record_count,
+      (item->>'orphanedRecordCount')::INTEGER AS orphaned_record_count,
+      (item->>'telemetryLeakageCount')::INTEGER AS telemetry_leakage_count,
+      NULLIF(item->>'telemetryInspectedAt', '')::TIMESTAMPTZ AS telemetry_inspected_at,
+      (item->>'reservedQueryUsdMicros')::BIGINT AS reserved_query_usd_micros,
+      (item->>'queryBudgetUsdMicros')::BIGINT AS query_budget_usd_micros,
+      (item->>'reservedIndexingUsdMicros')::BIGINT AS reserved_indexing_usd_micros,
+      (item->>'indexingBudgetUsdMicros')::BIGINT AS indexing_budget_usd_micros,
+      (item->>'forecastVectorCount')::BIGINT AS forecast_vector_count,
+      (item->>'vectorCapacity')::BIGINT AS vector_capacity
     FROM jsonb_array_elements(p_query_evidence) AS query(item)
   )
   SELECT
-    COUNT(*),
-    COUNT(DISTINCT client_key_digest),
+    COUNT(*), COUNT(DISTINCT client_key_digest),
     COUNT(*) FILTER (WHERE 'natural_language' = ANY(strata)),
     COUNT(*) FILTER (WHERE strata && ARRAY['exact_name', 'identifier']::TEXT[]),
     COUNT(*) FILTER (WHERE 'no_result' = ANY(strata)),
@@ -1619,100 +2156,157 @@ BEGIN
     COALESCE(AVG(assist_mrr) FILTER (WHERE strata && ARRAY['exact_name', 'identifier']::TEXT[]), 0),
     COALESCE(AVG(keyword_false_positive::INT) FILTER (WHERE 'no_result' = ANY(strata)), 0),
     COALESCE(AVG(assist_false_positive::INT) FILTER (WHERE 'no_result' = ANY(strata)), 0),
-    COALESCE(
-      AVG(assist_ndcg - keyword_ndcg) FILTER (WHERE 'natural_language' = ANY(strata))
-      - 1.96 * COALESCE(
-        STDDEV_SAMP(assist_ndcg - keyword_ndcg) FILTER (WHERE 'natural_language' = ANY(strata)),
-        0
-      ) / NULLIF(SQRT(COUNT(*) FILTER (WHERE 'natural_language' = ANY(strata))), 0),
-      -1
-    ),
     COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY semantic_added_latency), 0),
     COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY assist_latency), 0),
     COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY keyword_latency), 0),
-    COALESCE(AVG(fallback::INT), 0),
-    COALESCE(AVG(late_completion::INT), 0),
-    COALESCE(BOOL_AND(budget_safe), FALSE),
-    COALESCE(BOOL_AND(capacity_safe), FALSE),
-    COUNT(DISTINCT client_key_digest) FILTER (WHERE shadow_eligible),
-    MIN(shadow_observed_at) FILTER (WHERE shadow_eligible),
-    MAX(shadow_observed_at) FILTER (WHERE shadow_eligible)
+    COALESCE(AVG(fallback::INT), 0), COALESCE(AVG(late_completion::INT), 0),
+    COALESCE(BOOL_AND(off_result_digest = shadow_result_digest), FALSE),
+    COUNT(DISTINCT load_stratum),
+    COALESCE(BOOL_AND(load_stratum <> 'concurrent' OR load_concurrency >= GREATEST(10, 2 * observed_p95_concurrency)), FALSE),
+    COALESCE(BOOL_AND(stale_record_count = 0 AND orphaned_record_count = 0), FALSE),
+    COALESCE(BOOL_AND(telemetry_leakage_count = 0 AND telemetry_inspected_at IS NOT NULL), FALSE),
+    COALESCE(BOOL_AND(reserved_query_usd_micros <= query_budget_usd_micros
+      AND reserved_indexing_usd_micros <= indexing_budget_usd_micros), FALSE),
+    COALESCE(BOOL_AND(forecast_vector_count <= vector_capacity), FALSE)
   INTO
     v_total, v_clients, v_natural, v_exact_identifier, v_no_result, v_cross_client,
     v_leakage, v_keyword_natural_ndcg, v_assist_natural_ndcg,
     v_keyword_natural_mrr, v_assist_natural_mrr,
     v_keyword_exact_ndcg, v_assist_exact_ndcg, v_keyword_exact_mrr, v_assist_exact_mrr,
     v_keyword_no_result_false_positives, v_assist_no_result_false_positives,
-    v_natural_delta_ci_lower, v_semantic_added_latency_p95,
-    v_assist_latency_p95, v_keyword_latency_p95, v_fallback_rate,
-    v_late_completion_rate, v_budgets_safe, v_capacity_safe,
-    v_shadow_clients, v_shadow_first, v_shadow_last
+    v_semantic_added_latency_p95, v_assist_latency_p95, v_keyword_latency_p95,
+    v_fallback_rate, v_late_completion_rate, v_off_shadow_equal,
+    v_load_strata_count, v_load_safe, v_convergence_safe, v_telemetry_safe,
+    v_budgets_safe, v_capacity_safe
   FROM evidence;
 
   WITH evidence AS (
-    SELECT
-      item->>'clientKeyDigest' AS client_key_digest,
-      COALESCE((item->>'shadowEligible')::BOOLEAN, FALSE) AS shadow_eligible
+    SELECT item->>'clientKeyDigest' AS client_key_digest,
+           item->>'entityType' AS entity_type,
+           (item->>'keywordNdcg10')::NUMERIC AS keyword_ndcg,
+           (item->>'assistNdcg10')::NUMERIC AS assist_ndcg,
+           (item->>'keywordMrr')::NUMERIC AS keyword_mrr,
+           (item->>'assistMrr')::NUMERIC AS assist_mrr
     FROM jsonb_array_elements(p_query_evidence) AS query(item)
-  ), samples AS (
-    SELECT client_key_digest, COUNT(*) AS sample_count
-    FROM evidence
-    WHERE shadow_eligible
-    GROUP BY client_key_digest
+  ), clients AS (
+    SELECT client_key_digest, COUNT(*) AS count FROM evidence GROUP BY client_key_digest
+  ), entities AS (
+    SELECT entity_type, COUNT(*) AS count FROM evidence GROUP BY entity_type
+  ), client_entities AS (
+    SELECT client_key_digest, entity_type,
+           AVG(keyword_ndcg) - AVG(assist_ndcg) AS ndcg_regression,
+           AVG(keyword_mrr) - AVG(assist_mrr) AS mrr_regression
+    FROM evidence GROUP BY client_key_digest, entity_type
   )
-  SELECT COALESCE(MIN(sample_count), 0)
-  INTO v_shadow_min_per_client
-  FROM samples;
+  SELECT
+    (SELECT COALESCE(MIN(count), 0) FROM clients),
+    (SELECT COALESCE(MIN(count), 0) FROM entities),
+    (SELECT COUNT(*) FROM entities),
+    (SELECT COALESCE(MAX(ndcg_regression), 1) FROM client_entities),
+    (SELECT COALESCE(MAX(mrr_regression), 1) FROM client_entities)
+  INTO v_min_queries_per_client, v_min_queries_per_entity, v_entity_count,
+       v_max_client_entity_ndcg_regression, v_max_client_entity_mrr_regression;
+
+  SELECT array_agg(
+    (item->>'assistNdcg10')::NUMERIC - (item->>'keywordNdcg10')::NUMERIC
+    ORDER BY item->>'queryKeyDigest'
+  )
+  INTO v_natural_deltas
+  FROM jsonb_array_elements(p_query_evidence) AS query(item)
+  WHERE EXISTS (
+    SELECT 1 FROM jsonb_array_elements_text(item->'strata') AS stratum(value)
+    WHERE value = 'natural_language'
+  );
+
+  WITH bootstrap_means AS (
+    SELECT bootstrap.sample_number,
+           AVG(v_natural_deltas[
+             1 + MOD(
+               pg_catalog.hashtextextended(
+                 bootstrap.sample_number::TEXT || ':' || draw.draw_number::TEXT
+                   || ':' || v_query_evidence_bundle_sha256,
+                 354
+               ) & 9223372036854775807,
+               cardinality(v_natural_deltas)
+             )::INTEGER
+           ]) AS mean_delta
+    FROM generate_series(1, 1000) AS bootstrap(sample_number)
+    CROSS JOIN LATERAL generate_series(1, cardinality(v_natural_deltas)) AS draw(draw_number)
+    GROUP BY bootstrap.sample_number
+  )
+  SELECT COALESCE(percentile_cont(0.025) WITHIN GROUP (ORDER BY mean_delta), -1)
+  INTO v_natural_delta_ci_lower
+  FROM bootstrap_means;
+
+  -- Each draw preserves the paired keyword/assist delta from one sealed query.
+
+  WITH shadow AS (
+    SELECT
+      (item->>'shadowClientId')::UUID AS client_id,
+      (item->>'shadowObservedAt')::TIMESTAMPTZ::DATE AS observed_date
+    FROM jsonb_array_elements(p_query_evidence) AS query(item)
+    WHERE COALESCE((item->>'shadowEligible')::BOOLEAN, FALSE)
+  ), per_client AS (
+    SELECT client_id, COUNT(*) AS sample_count, COUNT(DISTINCT observed_date) AS day_count,
+           MIN(observed_date) AS first_day, MAX(observed_date) AS last_day
+    FROM shadow GROUP BY client_id
+  )
+  SELECT COUNT(*), COALESCE(MIN(sample_count), 0),
+         COALESCE(BOOL_AND(day_count >= 7 AND last_day - first_day = day_count - 1), FALSE),
+         COALESCE(BOOL_AND(EXISTS (
+           SELECT 1
+           FROM public.crm_search_change_approvals approval
+           LEFT JOIN public.crm_search_change_approval_revocations revocation
+             ON revocation.approval_id = approval.id
+           WHERE approval.approval_type = 'client_shadow'
+             AND approval.organisation_scope_id = p_organisation_scope_id
+             AND approval.client_id = per_client.client_id
+             AND approval.expires_at > v_created_at
+             AND revocation.id IS NULL
+         )), FALSE)
+  INTO v_shadow_clients, v_shadow_min_per_client, v_shadow_days_consecutive,
+       v_shadow_clients_approved
+  FROM per_client;
 
   v_gate_passed :=
-    v_total >= 360
-    AND v_clients >= 3
-    AND v_natural >= 120
-    AND v_exact_identifier >= 60
-    AND v_no_result >= 60
-    AND v_cross_client >= 60
-    AND v_leakage = 0
+    p_development_query_count >= 180
+    AND v_total >= 360 AND v_clients >= 3
+    AND v_min_queries_per_client >= 80
+    AND v_entity_count = 3 AND v_min_queries_per_entity >= 60
+    AND v_natural >= 120 AND v_exact_identifier >= 60
+    AND v_no_result >= 60 AND v_cross_client >= 60
+    AND v_leakage = 0 AND v_off_shadow_equal
     AND v_assist_exact_ndcg >= v_keyword_exact_ndcg
     AND v_assist_exact_mrr >= v_keyword_exact_mrr
     AND v_assist_natural_ndcg >= v_keyword_natural_ndcg * 1.10
     AND v_assist_natural_mrr >= v_keyword_natural_mrr
     AND v_assist_no_result_false_positives <= v_keyword_no_result_false_positives
+    AND v_max_client_entity_ndcg_regression <= 0.05
+    AND v_max_client_entity_mrr_regression <= 0.05
     AND v_natural_delta_ci_lower > 0
     AND v_semantic_added_latency_p95 <= 500
     AND v_assist_latency_p95 <= v_keyword_latency_p95 + 500
-    AND v_fallback_rate <= 0.05
-    AND v_late_completion_rate <= 0.01
-    AND v_budgets_safe
-    AND v_capacity_safe
-    AND v_shadow_clients >= 3
-    AND v_shadow_min_per_client >= 200
-    AND v_shadow_last - v_shadow_first >= INTERVAL '6 days'
+    AND v_fallback_rate <= 0.05 AND v_late_completion_rate <= 0.01
+    AND v_load_strata_count = 3 AND v_load_safe
+    AND v_convergence_safe AND v_telemetry_safe AND v_budgets_safe AND v_capacity_safe
+    AND v_shadow_clients >= 3 AND v_shadow_min_per_client >= 200
+    AND v_shadow_days_consecutive AND v_shadow_clients_approved
     AND cardinality(COALESCE(p_domain_reviewer_ids, ARRAY[]::UUID[])) >= 2
-    AND p_preregistration_sha256 IS NOT NULL
-    AND p_adjudication_sha256 IS NOT NULL
+    AND p_preregistration_sha256 IS NOT NULL AND p_adjudication_sha256 IS NOT NULL
     AND NOT (COALESCE(p_implementation_author_ids, ARRAY[]::UUID[]) && COALESCE(p_domain_reviewer_ids, ARRAY[]::UUID[]))
     AND NOT (COALESCE(p_fixture_author_ids, ARRAY[]::UUID[]) && COALESCE(p_domain_reviewer_ids, ARRAY[]::UUID[]))
     AND NOT (COALESCE(p_judgement_author_ids, ARRAY[]::UUID[]) && ARRAY[p_runner_id]::UUID[]);
 
   v_metric_bundle := jsonb_build_object(
-    'queryCount', v_total,
-    'clientCount', v_clients,
-    'naturalLanguageCount', v_natural,
-    'exactIdentifierCount', v_exact_identifier,
-    'noResultCount', v_no_result,
-    'crossClientCount', v_cross_client,
-    'leakageCount', v_leakage,
-    'keywordNaturalNdcg10', v_keyword_natural_ndcg,
-    'assistNaturalNdcg10', v_assist_natural_ndcg,
-    'keywordNaturalMrr', v_keyword_natural_mrr,
-    'assistNaturalMrr', v_assist_natural_mrr,
-    'naturalDeltaConfidenceLower', v_natural_delta_ci_lower,
-    'semanticAddedLatencyP95Ms', v_semantic_added_latency_p95,
-    'assistLatencyP95Ms', v_assist_latency_p95,
-    'fallbackRate', v_fallback_rate,
-    'lateCompletionRate', v_late_completion_rate,
-    'shadowClientCount', v_shadow_clients,
-    'shadowMinimumPerClient', v_shadow_min_per_client
+    'queryCount', v_total, 'clientCount', v_clients,
+    'minimumQueriesPerClient', v_min_queries_per_client,
+    'minimumQueriesPerEntity', v_min_queries_per_entity,
+    'naturalDeltaPairedBootstrapLower', v_natural_delta_ci_lower,
+    'maximumClientEntityNdcgRegression', v_max_client_entity_ndcg_regression,
+    'maximumClientEntityMrrRegression', v_max_client_entity_mrr_regression,
+    'loadStrataCount', v_load_strata_count, 'shadowClientCount', v_shadow_clients,
+    'shadowMinimumPerClient', v_shadow_min_per_client,
+    'shadowDaysConsecutive', v_shadow_days_consecutive
   );
 
   INSERT INTO public.crm_search_evaluation_runs (
@@ -1724,11 +2318,11 @@ BEGIN
     tokenizer_revision, document_builder_revision, ranking_revision,
     threshold_revision, environment, load_protocol_digest, rate_card_id,
     implementation_author_ids, fixture_author_ids, judgement_author_ids,
-    domain_reviewer_ids, adjudicator_ids, runner_id, metric_bundle, gate_passed,
-    created_at, expires_at, retention_expires_at
+    domain_reviewer_ids, adjudicator_ids, runner_id, development_query_count,
+    metric_bundle, gate_passed, created_at, expires_at, retention_expires_at
   ) VALUES (
     v_run_id, p_organisation_scope_id, p_schema_version, p_dataset_version,
-    p_dataset_sha256, p_sealed_judgement_sha256, p_query_evidence_bundle_sha256,
+    p_dataset_sha256, p_sealed_judgement_sha256, v_query_evidence_bundle_sha256,
     p_preregistration_sha256, p_adjudication_sha256, p_implementation_git_sha,
     p_artifact_manifest_digest, p_pages_bundle_digest, p_worker_bundle_digest,
     p_binding_manifest_digest, p_preview_pages_deployment_id,
@@ -1739,45 +2333,46 @@ BEGIN
     COALESCE(p_fixture_author_ids, ARRAY[]::UUID[]),
     COALESCE(p_judgement_author_ids, ARRAY[]::UUID[]),
     COALESCE(p_domain_reviewer_ids, ARRAY[]::UUID[]),
-    COALESCE(p_adjudicator_ids, ARRAY[]::UUID[]), p_runner_id, v_metric_bundle,
-    v_gate_passed, v_created_at, v_created_at + INTERVAL '14 days',
-    v_created_at + INTERVAL '2 years'
+    COALESCE(p_adjudicator_ids, ARRAY[]::UUID[]), p_runner_id,
+    p_development_query_count, v_metric_bundle, v_gate_passed, v_created_at,
+    v_created_at + INTERVAL '14 days', v_created_at + INTERVAL '2 years'
   );
 
   INSERT INTO public.crm_search_evaluation_query_evidence (
-    evaluation_run_id, query_key_digest, client_key_digest, strata,
+    evaluation_run_id, query_key_digest, client_key_digest, entity_type, strata,
     keyword_ndcg10, assist_ndcg10, keyword_mrr, assist_mrr,
     keyword_false_positive, assist_false_positive, cross_client_leakage_count,
     unauthorized_leakage_count, deleted_record_leakage_count,
     semantic_added_latency_ms, keyword_latency_ms, assist_latency_ms, fallback,
-    late_billed_completion, concurrent_budget_safe, capacity_headroom_safe,
-    shadow_eligible, shadow_observed_at, retention_expires_at
+    late_billed_completion, off_result_digest, shadow_result_digest, load_stratum,
+    observed_p95_concurrency, load_concurrency, stale_record_count,
+    orphaned_record_count, telemetry_leakage_count, telemetry_inspected_at,
+    reserved_query_usd_micros, query_budget_usd_micros,
+    reserved_indexing_usd_micros, indexing_budget_usd_micros,
+    forecast_vector_count, vector_capacity, shadow_eligible, shadow_client_id,
+    shadow_observed_at, retention_expires_at
   )
   SELECT
-    v_run_id,
-    item->>'queryKeyDigest',
-    item->>'clientKeyDigest',
-    ARRAY(
-      SELECT stratum
-      FROM jsonb_array_elements_text(COALESCE(item->'strata', '[]'::JSONB)) AS values(stratum)
-    ),
-    (item->>'keywordNdcg10')::NUMERIC,
-    (item->>'assistNdcg10')::NUMERIC,
-    (item->>'keywordMrr')::NUMERIC,
-    (item->>'assistMrr')::NUMERIC,
-    (item->>'keywordFalsePositive')::BOOLEAN,
-    (item->>'assistFalsePositive')::BOOLEAN,
-    COALESCE((item->>'crossClientLeakageCount')::INTEGER, 0),
-    COALESCE((item->>'unauthorizedLeakageCount')::INTEGER, 0),
-    COALESCE((item->>'deletedRecordLeakageCount')::INTEGER, 0),
-    COALESCE((item->>'semanticAddedLatencyMs')::INTEGER, 0),
-    COALESCE((item->>'keywordLatencyMs')::INTEGER, 0),
-    COALESCE((item->>'assistLatencyMs')::INTEGER, 0),
-    COALESCE((item->>'fallback')::BOOLEAN, FALSE),
-    COALESCE((item->>'lateBilledCompletion')::BOOLEAN, FALSE),
-    COALESCE((item->>'concurrentBudgetSafe')::BOOLEAN, FALSE),
-    COALESCE((item->>'capacityHeadroomSafe')::BOOLEAN, FALSE),
-    COALESCE((item->>'shadowEligible')::BOOLEAN, FALSE),
+    v_run_id, item->>'queryKeyDigest', item->>'clientKeyDigest', item->>'entityType',
+    ARRAY(SELECT value FROM jsonb_array_elements_text(item->'strata')),
+    (item->>'keywordNdcg10')::NUMERIC, (item->>'assistNdcg10')::NUMERIC,
+    (item->>'keywordMrr')::NUMERIC, (item->>'assistMrr')::NUMERIC,
+    (item->>'keywordFalsePositive')::BOOLEAN, (item->>'assistFalsePositive')::BOOLEAN,
+    (item->>'crossClientLeakageCount')::INTEGER,
+    (item->>'unauthorizedLeakageCount')::INTEGER,
+    (item->>'deletedRecordLeakageCount')::INTEGER,
+    (item->>'semanticAddedLatencyMs')::INTEGER, (item->>'keywordLatencyMs')::INTEGER,
+    (item->>'assistLatencyMs')::INTEGER, (item->>'fallback')::BOOLEAN,
+    (item->>'lateBilledCompletion')::BOOLEAN, item->>'offResultDigest',
+    item->>'shadowResultDigest', item->>'loadStratum',
+    (item->>'observedP95Concurrency')::INTEGER, (item->>'loadConcurrency')::INTEGER,
+    (item->>'staleRecordCount')::INTEGER, (item->>'orphanedRecordCount')::INTEGER,
+    (item->>'telemetryLeakageCount')::INTEGER,
+    (item->>'telemetryInspectedAt')::TIMESTAMPTZ,
+    (item->>'reservedQueryUsdMicros')::BIGINT, (item->>'queryBudgetUsdMicros')::BIGINT,
+    (item->>'reservedIndexingUsdMicros')::BIGINT, (item->>'indexingBudgetUsdMicros')::BIGINT,
+    (item->>'forecastVectorCount')::BIGINT, (item->>'vectorCapacity')::BIGINT,
+    (item->>'shadowEligible')::BOOLEAN, NULLIF(item->>'shadowClientId', '')::UUID,
     NULLIF(item->>'shadowObservedAt', '')::TIMESTAMPTZ,
     v_created_at + INTERVAL '2 years'
   FROM jsonb_array_elements(p_query_evidence) AS query(item);
@@ -1808,8 +2403,10 @@ AS $$
     'crm_search_evaluation_query_evidence',
     'crm_search_evaluation_approvals',
     'crm_search_evaluation_approval_revocations',
+    'crm_search_evaluation_approval_consumptions',
     'crm_search_change_approvals',
     'crm_search_change_approval_revocations',
+    'crm_search_change_approval_consumptions',
     'crm_search_audit_log',
     'crm_search_dead_letters',
     'crm_search_client_teardowns',
@@ -1901,7 +2498,7 @@ SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
-  v_target_exists BOOLEAN;
+  v_locked_target_id UUID;
   v_target_id UUID;
 BEGIN
   IF p_attached_by IS NULL OR p_target_row_id IS NULL
@@ -1922,11 +2519,15 @@ BEGIN
     RAISE EXCEPTION 'CRM search legal hold is missing or released';
   END IF;
 
+  PERFORM pg_catalog.pg_advisory_xact_lock_shared(
+    pg_catalog.hashtextextended(p_target_table, 353)
+  );
+
   EXECUTE pg_catalog.format(
-    'SELECT EXISTS (SELECT 1 FROM public.%I WHERE id = $1)',
+    'SELECT id FROM public.%I WHERE id = $1 FOR UPDATE',
     p_target_table
-  ) INTO v_target_exists USING p_target_row_id;
-  IF NOT v_target_exists THEN
+  ) INTO v_locked_target_id USING p_target_row_id;
+  IF v_locked_target_id IS NULL THEN
     RAISE EXCEPTION 'CRM search legal-hold target row not found';
   END IF;
 
@@ -1962,7 +2563,11 @@ DECLARE
   v_candidate_ids UUID[] := ARRAY[]::UUID[];
   v_row_count BIGINT := 0;
   v_deleted_count BIGINT := 0;
+  v_has_remaining BOOLEAN := FALSE;
+  v_complete BOOLEAN := FALSE;
+  v_authorization_id UUID;
   v_attestation_id UUID := gen_random_uuid();
+  v_computed_manifest_hash TEXT;
   v_attestation_hash TEXT;
   v_next_high_watermark_hash TEXT;
 BEGIN
@@ -1975,7 +2580,6 @@ BEGIN
      OR p_expire_through IS NULL OR p_expire_through > NOW() THEN
     RAISE EXCEPTION 'CRM search retention request failed closed validation';
   END IF;
-
   IF p_target_table = 'crm_search_retention_attestations'
      AND (p_secondary_approver_id IS NULL OR p_secondary_approver_id = p_executor_id) THEN
     RAISE EXCEPTION 'retention-attestation expiry requires a distinct second approver';
@@ -1987,75 +2591,84 @@ BEGIN
     RAISE EXCEPTION 'CRM search retention table or partition does not exist';
   END IF;
   IF v_partition_oid <> v_target_oid AND NOT EXISTS (
-    SELECT 1
-    FROM pg_catalog.pg_inherits
+    SELECT 1 FROM pg_catalog.pg_inherits
     WHERE inhparent = v_target_oid AND inhrelid = v_partition_oid
   ) THEN
     RAISE EXCEPTION 'CRM search retention partition is not owned by the target table';
   END IF;
 
+  -- Hold attachment takes the shared form of this same fence before locking a row.
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(p_target_table, 353)
+  );
+  EXECUTE pg_catalog.format(
+    'LOCK TABLE public.%I IN SHARE ROW EXCLUSIVE MODE', p_partition_name
+  );
+
   INSERT INTO public.crm_search_retention_high_watermarks (
     target_table, partition_name, high_watermark_hash
-  ) VALUES (
-    p_target_table, p_partition_name, repeat('0', 64)
-  )
+  ) VALUES (p_target_table, p_partition_name, repeat('0', 64))
   ON CONFLICT (target_table, partition_name) DO NOTHING;
 
   SELECT * INTO v_watermark
   FROM public.crm_search_retention_high_watermarks
   WHERE target_table = p_target_table AND partition_name = p_partition_name
   FOR UPDATE;
-
   IF v_watermark.high_watermark_hash IS DISTINCT FROM p_expected_high_watermark_hash THEN
     RAISE EXCEPTION 'CRM search retention high-watermark hash changed';
   END IF;
-  IF p_expire_through <= v_watermark.last_expire_through THEN
-    RAISE EXCEPTION 'CRM search retention high-watermark must move forward';
+  IF v_watermark.pending_expire_through IS NULL THEN
+    IF p_expire_through <= v_watermark.last_expire_through THEN
+      RAISE EXCEPTION 'CRM search retention high-watermark must move forward';
+    END IF;
+  ELSIF p_expire_through IS DISTINCT FROM v_watermark.pending_expire_through THEN
+    RAISE EXCEPTION 'CRM search retention must finish the pending cutoff first';
   END IF;
 
   EXECUTE pg_catalog.format(
-    'SELECT COALESCE(pg_catalog.array_agg(candidate.id), ARRAY[]::UUID[])
+    'SELECT COALESCE(pg_catalog.array_agg(candidate.id ORDER BY candidate.retention_expires_at, candidate.id), ARRAY[]::UUID[])
        FROM (
-         SELECT retained.id
+         SELECT retained.id, retained.retention_expires_at
          FROM public.%I retained
          WHERE retained.retention_expires_at <= $1
            AND (
              retained.legal_hold_id IS NULL
              OR EXISTS (
-               SELECT 1
-               FROM public.crm_search_legal_hold_releases direct_release
+               SELECT 1 FROM public.crm_search_legal_hold_releases direct_release
                WHERE direct_release.legal_hold_id = retained.legal_hold_id
              )
            )
            AND NOT EXISTS (
              SELECT 1
              FROM public.crm_search_legal_hold_targets held_target
-             JOIN public.crm_search_legal_holds active_hold
-               ON active_hold.id = held_target.legal_hold_id
              LEFT JOIN public.crm_search_legal_hold_releases hold_release
-               ON hold_release.legal_hold_id = active_hold.id
+               ON hold_release.legal_hold_id = held_target.legal_hold_id
              WHERE held_target.target_table = $2
                AND held_target.target_row_id = retained.id
                AND hold_release.id IS NULL
            )
          ORDER BY retained.retention_expires_at, retained.id
          LIMIT $3
-         FOR UPDATE SKIP LOCKED
+         FOR UPDATE
        ) candidate',
     p_partition_name
   ) INTO v_candidate_ids USING p_expire_through, p_target_table, p_limit;
 
-  v_row_count := COALESCE(pg_catalog.cardinality(v_candidate_ids), 0);
-  v_attestation_hash := public.crm_search_projection_hash(
-    pg_catalog.concat_ws(
-      '|', p_target_table, p_partition_name,
-      v_watermark.last_expire_through::TEXT, p_expire_through::TEXT,
-      v_row_count::TEXT, v_watermark.last_attestation_hash,
-      p_deletion_manifest_hash, p_executor_id::TEXT,
-      COALESCE(p_secondary_approver_id::TEXT, '')
-    )
-  );
+  v_row_count := COALESCE(cardinality(v_candidate_ids), 0);
+  v_computed_manifest_hash := public.crm_search_projection_hash(pg_catalog.concat_ws(
+    '|', p_target_table, p_partition_name, p_expire_through::TEXT,
+    COALESCE(array_to_string(v_candidate_ids, ','), '')
+  ));
+  IF p_deletion_manifest_hash IS DISTINCT FROM v_computed_manifest_hash THEN
+    RAISE EXCEPTION 'CRM search retention candidate manifest changed';
+  END IF;
 
+  v_attestation_hash := public.crm_search_projection_hash(pg_catalog.concat_ws(
+    '|', p_target_table, p_partition_name, v_watermark.last_expire_through::TEXT,
+    p_expire_through::TEXT, v_row_count::TEXT, v_watermark.last_attestation_hash,
+    v_computed_manifest_hash, p_executor_id::TEXT,
+    COALESCE(p_secondary_approver_id::TEXT, '')
+  ));
   INSERT INTO public.crm_search_retention_attestations (
     id, target_table, partition_name, range_start, range_end, row_count,
     prior_attestation_hash, deletion_manifest_hash, attestation_hash,
@@ -2063,37 +2676,63 @@ BEGIN
   ) VALUES (
     v_attestation_id, p_target_table, p_partition_name,
     v_watermark.last_expire_through, p_expire_through, v_row_count,
-    v_watermark.last_attestation_hash, p_deletion_manifest_hash,
+    v_watermark.last_attestation_hash, v_computed_manifest_hash,
     v_attestation_hash, p_executor_id, p_secondary_approver_id
   );
 
-  PERFORM pg_catalog.set_config(
-    'crm_search.retention_attestation_id', v_attestation_id::TEXT, TRUE
-  );
-  PERFORM pg_catalog.set_config(
-    'crm_search.retention_target_table', p_target_table, TRUE
-  );
-
   IF v_row_count > 0 THEN
+    INSERT INTO public.crm_search_retention_delete_authorizations (
+      backend_pid, transaction_id, target_relation_oid, partition_relation_oid,
+      candidate_ids, computed_manifest_hash, attestation_id
+    ) VALUES (
+      pg_catalog.pg_backend_pid(), pg_catalog.txid_current(), v_target_oid::OID,
+      v_partition_oid::OID, v_candidate_ids, v_computed_manifest_hash, v_attestation_id
+    ) RETURNING id INTO v_authorization_id;
+
     EXECUTE pg_catalog.format(
-      'DELETE FROM public.%I WHERE id = ANY($1)',
-      p_partition_name
+      'DELETE FROM public.%I WHERE id = ANY($1)', p_partition_name
     ) USING v_candidate_ids;
     GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
     IF v_deleted_count <> v_row_count THEN
       RAISE EXCEPTION 'CRM search retention deletion count changed';
     END IF;
+    DELETE FROM public.crm_search_retention_delete_authorizations
+    WHERE id = v_authorization_id;
   END IF;
 
-  v_next_high_watermark_hash := public.crm_search_projection_hash(
-    pg_catalog.concat_ws(
-      '|', p_target_table, p_partition_name, p_expire_through::TEXT,
-      v_attestation_hash, (v_watermark.revision + 1)::TEXT
-    )
-  );
+  EXECUTE pg_catalog.format(
+    'SELECT EXISTS (
+       SELECT 1 FROM public.%I retained
+       WHERE retained.retention_expires_at <= $1
+         AND (
+           retained.legal_hold_id IS NULL
+           OR EXISTS (
+             SELECT 1 FROM public.crm_search_legal_hold_releases direct_release
+             WHERE direct_release.legal_hold_id = retained.legal_hold_id
+           )
+         )
+         AND NOT EXISTS (
+           SELECT 1
+           FROM public.crm_search_legal_hold_targets held_target
+           LEFT JOIN public.crm_search_legal_hold_releases hold_release
+             ON hold_release.legal_hold_id = held_target.legal_hold_id
+           WHERE held_target.target_table = $2
+             AND held_target.target_row_id = retained.id
+             AND hold_release.id IS NULL
+         )
+     )', p_partition_name
+  ) INTO v_has_remaining USING p_expire_through, p_target_table;
+  v_complete := NOT v_has_remaining;
 
+  v_next_high_watermark_hash := public.crm_search_projection_hash(pg_catalog.concat_ws(
+    '|', p_target_table, p_partition_name,
+    CASE WHEN v_complete THEN p_expire_through ELSE v_watermark.last_expire_through END::TEXT,
+    COALESCE(CASE WHEN v_complete THEN NULL ELSE p_expire_through END::TEXT, ''),
+    v_attestation_hash, (v_watermark.revision + 1)::TEXT
+  ));
   UPDATE public.crm_search_retention_high_watermarks
-  SET last_expire_through = p_expire_through,
+  SET last_expire_through = CASE WHEN v_complete THEN p_expire_through ELSE last_expire_through END,
+      pending_expire_through = CASE WHEN v_complete THEN NULL ELSE p_expire_through END,
       last_attestation_hash = v_attestation_hash,
       high_watermark_hash = v_next_high_watermark_hash,
       revision = revision + 1,
@@ -2105,10 +2744,10 @@ BEGIN
   END IF;
 
   RETURN jsonb_build_object(
-    'attestationId', v_attestation_id,
-    'rowCount', v_row_count,
+    'attestationId', v_attestation_id, 'rowCount', v_row_count,
+    'deletionManifestHash', v_computed_manifest_hash,
     'attestationHash', v_attestation_hash,
-    'highWatermarkHash', v_next_high_watermark_hash
+    'highWatermarkHash', v_next_high_watermark_hash, 'complete', v_complete
   );
 END;
 $$;
@@ -2151,6 +2790,9 @@ BEGIN
 
   IF p_next_state = 'enabled'
      AND (v_control.state <> 'enabled' OR p_next_maximum_mode <> v_control.maximum_mode) THEN
+    PERFORM pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended(p_change_approval_id::TEXT, 351)
+    );
     SELECT approval.* INTO v_approval
     FROM public.crm_search_change_approvals approval
     LEFT JOIN public.crm_search_change_approval_revocations revocation
@@ -2163,7 +2805,11 @@ BEGIN
       AND approval.approved_by <> p_actor_id
       AND approval.expires_at > NOW()
       AND revocation.id IS NULL
-    FOR KEY SHARE OF approval;
+      AND NOT EXISTS (
+        SELECT 1 FROM public.crm_search_change_approval_consumptions consumption
+        WHERE consumption.approval_id = approval.id
+      )
+    FOR UPDATE OF approval;
     IF NOT FOUND THEN
       RAISE EXCEPTION 'CRM search global-control promotion lacks exact approval';
     END IF;
@@ -2196,6 +2842,12 @@ BEGIN
     RAISE EXCEPTION 'CRM search global-control transition CAS failed';
   END IF;
 
+  IF v_approval.id IS NOT NULL THEN
+    INSERT INTO public.crm_search_change_approval_consumptions (
+      approval_id, consumed_by, consumption_kind
+    ) VALUES (v_approval.id, p_actor_id, 'global_control');
+  END IF;
+
   INSERT INTO public.crm_search_audit_log (
     organisation_scope_id, event_type, actor_id, correlation_id, reason,
     evidence_hash, details
@@ -2214,6 +2866,375 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION crm_search_configure_candidate_schema(
+  p_organisation_scope_id UUID,
+  p_client_id UUID,
+  p_expected_policy_revision BIGINT,
+  p_candidate_schema_version TEXT,
+  p_actor_id UUID,
+  p_reason TEXT,
+  p_change_approval_id UUID
+)
+RETURNS BIGINT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  v_policy public.crm_search_policies%ROWTYPE;
+  v_approval public.crm_search_change_approvals%ROWTYPE;
+  v_new_revision BIGINT;
+BEGIN
+  IF p_actor_id IS NULL OR char_length(btrim(COALESCE(p_reason, ''))) NOT BETWEEN 10 AND 2000 THEN
+    RAISE EXCEPTION 'CRM search candidate configuration requires actor and bounded reason';
+  END IF;
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    public.crm_search_client_advisory_lock_key(p_organisation_scope_id, p_client_id)
+  );
+  SELECT * INTO v_policy FROM public.crm_search_policies
+  WHERE organisation_scope_id = p_organisation_scope_id AND client_id = p_client_id
+  FOR UPDATE;
+  IF NOT FOUND OR v_policy.revision IS DISTINCT FROM p_expected_policy_revision
+     OR v_policy.lifecycle_state NOT IN ('indexing', 'shadow', 'assist')
+     OR v_policy.candidate_schema_version IS NOT NULL
+     OR cardinality(v_policy.retiring_schema_versions) <> 0 THEN
+    RAISE EXCEPTION 'CRM search policy cannot accept a candidate schema';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.crm_search_schema_versions schema_row
+    WHERE schema_row.organisation_scope_id = p_organisation_scope_id
+      AND schema_row.schema_version = p_candidate_schema_version
+      AND schema_row.metadata_index_state = 'ready'
+      AND schema_row.sentinel_state = 'confirmed_absent'
+  ) THEN
+    RAISE EXCEPTION 'CRM search candidate schema lacks metadata-index and sentinel readiness';
+  END IF;
+
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(p_change_approval_id::TEXT, 351)
+  );
+  SELECT approval.* INTO v_approval
+  FROM public.crm_search_change_approvals approval
+  LEFT JOIN public.crm_search_change_approval_revocations revocation
+    ON revocation.approval_id = approval.id
+  WHERE approval.id = p_change_approval_id
+    AND approval.approval_type = 'client_indexing'
+    AND approval.scope_kind = 'client'
+    AND approval.organisation_scope_id = p_organisation_scope_id
+    AND approval.client_id = p_client_id
+    AND approval.expected_policy_revision = p_expected_policy_revision
+    AND approval.approved_by <> p_actor_id
+    AND approval.expires_at > NOW()
+    AND revocation.id IS NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM public.crm_search_change_approval_consumptions consumption
+      WHERE consumption.approval_id = approval.id
+    )
+  FOR UPDATE OF approval;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'CRM search candidate configuration lacks fresh exact approval';
+  END IF;
+
+  UPDATE public.crm_search_policies
+  SET candidate_schema_version = p_candidate_schema_version,
+      revision = revision + 1, transition_reason = btrim(p_reason),
+      updated_by = p_actor_id, updated_at = NOW()
+  WHERE id = v_policy.id AND revision = p_expected_policy_revision
+  RETURNING revision INTO v_new_revision;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'CRM search candidate configuration CAS failed';
+  END IF;
+  INSERT INTO public.crm_search_change_approval_consumptions (
+    approval_id, consumed_by, consumption_kind
+  ) VALUES (v_approval.id, p_actor_id, 'candidate_configuration');
+  INSERT INTO public.crm_search_audit_log (
+    organisation_scope_id, client_id, event_type, actor_id, correlation_id,
+    reason, evidence_hash, details
+  ) VALUES (
+    p_organisation_scope_id, p_client_id, 'schema.candidate_configured', p_actor_id,
+    gen_random_uuid(), btrim(p_reason), v_approval.evidence_bundle_hash,
+    jsonb_build_object(
+      'candidateSchemaVersion', p_candidate_schema_version,
+      'fromRevision', p_expected_policy_revision, 'toRevision', v_new_revision,
+      'approvalId', v_approval.id
+    )
+  );
+  RETURN v_new_revision;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION crm_search_promote_candidate_schema(
+  p_organisation_scope_id UUID,
+  p_client_id UUID,
+  p_expected_policy_revision BIGINT,
+  p_actor_id UUID,
+  p_reason TEXT,
+  p_change_approval_id UUID
+)
+RETURNS BIGINT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  v_policy public.crm_search_policies%ROWTYPE;
+  v_schema public.crm_search_schema_versions%ROWTYPE;
+  v_approval public.crm_search_change_approvals%ROWTYPE;
+  v_new_revision BIGINT;
+BEGIN
+  IF p_actor_id IS NULL OR char_length(btrim(COALESCE(p_reason, ''))) NOT BETWEEN 10 AND 2000 THEN
+    RAISE EXCEPTION 'CRM search candidate promotion requires actor and bounded reason';
+  END IF;
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    public.crm_search_client_advisory_lock_key(p_organisation_scope_id, p_client_id)
+  );
+  SELECT * INTO v_policy FROM public.crm_search_policies
+  WHERE organisation_scope_id = p_organisation_scope_id AND client_id = p_client_id
+  FOR UPDATE;
+  IF NOT FOUND OR v_policy.revision IS DISTINCT FROM p_expected_policy_revision
+     OR v_policy.lifecycle_state NOT IN ('indexing', 'shadow', 'assist')
+     OR v_policy.candidate_schema_version IS NULL
+     OR cardinality(v_policy.retiring_schema_versions) <> 0 THEN
+    RAISE EXCEPTION 'CRM search policy has no promotable candidate';
+  END IF;
+  SELECT * INTO v_schema FROM public.crm_search_schema_versions
+  WHERE organisation_scope_id = p_organisation_scope_id
+    AND schema_version = v_policy.candidate_schema_version
+    AND metadata_index_state = 'ready'
+    AND sentinel_state = 'confirmed_absent'
+  FOR KEY SHARE;
+  IF NOT FOUND
+     OR v_schema.captured_source_high_watermark IS DISTINCT FROM v_schema.confirmed_source_high_watermark
+     OR EXISTS (
+       SELECT 1 FROM public.crm_search_source_dirty dirty
+       WHERE dirty.organisation_scope_id = p_organisation_scope_id
+         AND dirty.client_id = p_client_id
+         AND dirty.event_sequence <= v_schema.captured_source_high_watermark
+     )
+     OR EXISTS (
+       SELECT 1 FROM public.crm_search_operations operation
+       WHERE operation.organisation_scope_id = p_organisation_scope_id
+         AND operation.client_id = p_client_id
+         AND operation.schema_version = v_policy.candidate_schema_version
+         AND operation.source_event_sequence <= v_schema.captured_source_high_watermark
+         AND operation.state NOT IN ('confirmed', 'superseded')
+     )
+     OR EXISTS (
+       SELECT 1 FROM public.crm_search_documents document
+       WHERE document.organisation_scope_id = p_organisation_scope_id
+         AND document.client_id = p_client_id
+         AND document.schema_version = v_policy.candidate_schema_version
+         AND document.source_event_sequence <= v_schema.captured_source_high_watermark
+         AND document.confirmation_state NOT IN ('indexed', 'deleted')
+     )
+     OR EXISTS (
+       SELECT 1
+       FROM (
+         SELECT 'person'::TEXT AS entity_type, source.id, source.search_revision, source.deleted_at
+         FROM public.crm_people source WHERE source.client_id = p_client_id
+         UNION ALL
+         SELECT 'company', source.id, source.search_revision, source.deleted_at
+         FROM public.crm_companies source WHERE source.client_id = p_client_id
+         UNION ALL
+         SELECT 'opportunity', source.id, source.search_revision, source.deleted_at
+         FROM public.crm_opportunities source WHERE source.client_id = p_client_id
+       ) current_source
+       LEFT JOIN public.crm_search_documents document
+         ON document.organisation_scope_id = p_organisation_scope_id
+        AND document.client_id = p_client_id
+        AND document.entity_type = current_source.entity_type
+        AND document.entity_id = current_source.id
+        AND document.schema_version = v_policy.candidate_schema_version
+        AND document.source_revision = current_source.search_revision
+        AND (
+          (current_source.deleted_at IS NULL
+            AND document.confirmation_state = 'indexed' AND document.tombstoned = FALSE)
+          OR (current_source.deleted_at IS NOT NULL
+            AND document.confirmation_state = 'deleted' AND document.tombstoned = TRUE)
+        )
+       WHERE document.id IS NULL
+     ) THEN
+    RAISE EXCEPTION 'CRM search candidate has not reached its confirmed source high-watermark';
+  END IF;
+
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(p_change_approval_id::TEXT, 351)
+  );
+  SELECT approval.* INTO v_approval
+  FROM public.crm_search_change_approvals approval
+  LEFT JOIN public.crm_search_change_approval_revocations revocation
+    ON revocation.approval_id = approval.id
+  WHERE approval.id = p_change_approval_id
+    AND approval.approval_type = 'client_indexing'
+    AND approval.scope_kind = 'client'
+    AND approval.organisation_scope_id = p_organisation_scope_id
+    AND approval.client_id = p_client_id
+    AND approval.expected_policy_revision = p_expected_policy_revision
+    AND approval.approved_by <> p_actor_id
+    AND approval.expires_at > NOW()
+    AND revocation.id IS NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM public.crm_search_change_approval_consumptions consumption
+      WHERE consumption.approval_id = approval.id
+    )
+  FOR UPDATE OF approval;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'CRM search candidate promotion lacks fresh exact approval';
+  END IF;
+
+  UPDATE public.crm_search_policies
+  SET lifecycle_state = 'indexing',
+      effective_mode = 'off',
+      indexing_enabled = TRUE,
+      approved_evaluation_run_id = NULL,
+      active_schema_version = candidate_schema_version,
+      candidate_schema_version = NULL,
+      retiring_schema_versions = CASE
+        WHEN active_schema_version IS NULL THEN ARRAY[]::TEXT[]
+        ELSE ARRAY[active_schema_version]::TEXT[]
+      END,
+      revision = revision + 1, transition_reason = btrim(p_reason),
+      updated_by = p_actor_id, updated_at = NOW()
+  WHERE id = v_policy.id AND revision = p_expected_policy_revision
+  RETURNING revision INTO v_new_revision;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'CRM search candidate promotion CAS failed';
+  END IF;
+  INSERT INTO public.crm_search_change_approval_consumptions (
+    approval_id, consumed_by, consumption_kind
+  ) VALUES (v_approval.id, p_actor_id, 'candidate_promotion');
+  INSERT INTO public.crm_search_audit_log (
+    organisation_scope_id, client_id, event_type, actor_id, correlation_id,
+    reason, evidence_hash, details
+  ) VALUES (
+    p_organisation_scope_id, p_client_id, 'schema.candidate_promoted', p_actor_id,
+    gen_random_uuid(), btrim(p_reason), v_approval.evidence_bundle_hash,
+    jsonb_build_object(
+      'activeSchemaVersion', v_policy.candidate_schema_version,
+      'fromRevision', p_expected_policy_revision, 'toRevision', v_new_revision,
+      'approvalId', v_approval.id
+    )
+  );
+  RETURN v_new_revision;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION crm_search_complete_retiring_schema(
+  p_organisation_scope_id UUID,
+  p_client_id UUID,
+  p_expected_policy_revision BIGINT,
+  p_retiring_schema_version TEXT,
+  p_actor_id UUID,
+  p_reason TEXT,
+  p_change_approval_id UUID
+)
+RETURNS BIGINT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  v_policy public.crm_search_policies%ROWTYPE;
+  v_approval public.crm_search_change_approvals%ROWTYPE;
+  v_new_revision BIGINT;
+BEGIN
+  IF p_actor_id IS NULL
+     OR char_length(btrim(COALESCE(p_reason, ''))) NOT BETWEEN 10 AND 2000 THEN
+    RAISE EXCEPTION 'CRM search retiring completion requires actor and bounded reason';
+  END IF;
+
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    public.crm_search_client_advisory_lock_key(p_organisation_scope_id, p_client_id)
+  );
+  SELECT * INTO v_policy
+  FROM public.crm_search_policies
+  WHERE organisation_scope_id = p_organisation_scope_id
+    AND client_id = p_client_id
+  FOR UPDATE;
+  IF NOT FOUND OR v_policy.revision IS DISTINCT FROM p_expected_policy_revision
+     OR NOT (p_retiring_schema_version = ANY(v_policy.retiring_schema_versions)) THEN
+    RAISE EXCEPTION 'CRM search retiring schema or policy revision changed';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.crm_search_documents document
+    WHERE document.organisation_scope_id = p_organisation_scope_id
+      AND document.client_id = p_client_id
+      AND document.schema_version = p_retiring_schema_version
+      AND (document.confirmation_state <> 'deleted' OR document.tombstoned = FALSE)
+  ) OR EXISTS (
+    SELECT 1 FROM public.crm_search_operations operation
+    WHERE operation.organisation_scope_id = p_organisation_scope_id
+      AND operation.client_id = p_client_id
+      AND operation.schema_version = p_retiring_schema_version
+      AND (
+        (operation.desired_action = 'delete' AND operation.state <> 'confirmed')
+        OR (operation.desired_action <> 'delete'
+          AND operation.state NOT IN ('confirmed', 'superseded'))
+      )
+  ) THEN
+    RAISE EXCEPTION 'CRM search retiring schema deletion is not provider-confirmed';
+  END IF;
+
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(p_change_approval_id::TEXT, 351)
+  );
+  SELECT approval.* INTO v_approval
+  FROM public.crm_search_change_approvals approval
+  LEFT JOIN public.crm_search_change_approval_revocations revocation
+    ON revocation.approval_id = approval.id
+  WHERE approval.id = p_change_approval_id
+    AND approval.approval_type = 'client_indexing'
+    AND approval.scope_kind = 'client'
+    AND approval.organisation_scope_id = p_organisation_scope_id
+    AND approval.client_id = p_client_id
+    AND approval.expected_policy_revision = p_expected_policy_revision
+    AND approval.approved_by <> p_actor_id
+    AND approval.expires_at > NOW()
+    AND revocation.id IS NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM public.crm_search_change_approval_consumptions consumption
+      WHERE consumption.approval_id = approval.id
+    )
+  FOR UPDATE OF approval;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'CRM search retiring completion lacks fresh exact approval';
+  END IF;
+
+  UPDATE public.crm_search_policies
+  SET retiring_schema_versions = array_remove(
+        retiring_schema_versions, p_retiring_schema_version
+      ),
+      revision = revision + 1,
+      transition_reason = btrim(p_reason),
+      updated_by = p_actor_id,
+      updated_at = NOW()
+  WHERE id = v_policy.id AND revision = p_expected_policy_revision
+  RETURNING revision INTO v_new_revision;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'CRM search retiring completion CAS failed';
+  END IF;
+
+  INSERT INTO public.crm_search_change_approval_consumptions (
+    approval_id, consumed_by, consumption_kind
+  ) VALUES (v_approval.id, p_actor_id, 'retiring_completion');
+  INSERT INTO public.crm_search_audit_log (
+    organisation_scope_id, client_id, event_type, actor_id, correlation_id,
+    reason, evidence_hash, details
+  ) VALUES (
+    p_organisation_scope_id, p_client_id, 'schema.retiring_completed', p_actor_id,
+    gen_random_uuid(), btrim(p_reason), v_approval.evidence_bundle_hash,
+    jsonb_build_object(
+      'retiringSchemaVersion', p_retiring_schema_version,
+      'fromRevision', p_expected_policy_revision,
+      'toRevision', v_new_revision,
+      'approvalId', v_approval.id
+    )
+  );
+  RETURN v_new_revision;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION crm_search_transition_policy(
   p_organisation_scope_id UUID,
   p_client_id UUID,
@@ -2224,6 +3245,7 @@ CREATE OR REPLACE FUNCTION crm_search_transition_policy(
   p_approved_evaluation_run_id UUID,
   p_actor_id UUID,
   p_reason TEXT,
+  p_teardown_cycle_id UUID,
   p_change_approval_id UUID DEFAULT NULL
 )
 RETURNS BIGINT
@@ -2246,6 +3268,10 @@ BEGIN
     RAISE EXCEPTION 'CRM search policy transition requires actor and bounded reason';
   END IF;
 
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    public.crm_search_client_advisory_lock_key(p_organisation_scope_id, p_client_id)
+  );
+
   SELECT * INTO v_policy
   FROM public.crm_search_policies
   WHERE organisation_scope_id = p_organisation_scope_id AND client_id = p_client_id
@@ -2258,6 +3284,24 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'invalid CRM search policy transition';
   END IF;
+  IF p_next_lifecycle_state = v_policy.lifecycle_state THEN
+    RAISE EXCEPTION 'CRM search policy self-transition requires a dedicated governed operation';
+  END IF;
+  IF p_active_schema_version IS DISTINCT FROM v_policy.active_schema_version
+     OR p_candidate_schema_version IS DISTINCT FROM v_policy.candidate_schema_version THEN
+    RAISE EXCEPTION 'CRM search schema fields require the dedicated blue-green functions';
+  END IF;
+
+  IF p_next_lifecycle_state IN ('shadow', 'assist') AND NOT EXISTS (
+    SELECT 1 FROM public.crm_search_schema_versions schema_row
+    WHERE schema_row.organisation_scope_id = p_organisation_scope_id
+      AND schema_row.schema_version = v_policy.active_schema_version
+      AND schema_row.metadata_index_state = 'ready'
+      AND schema_row.sentinel_state = 'confirmed_absent'
+      AND schema_row.captured_source_high_watermark = schema_row.confirmed_source_high_watermark
+  ) THEN
+    RAISE EXCEPTION 'CRM search active schema is not provider-confirmed ready';
+  END IF;
 
   v_required_approval_type := CASE
     WHEN v_policy.lifecycle_state = 'off' AND p_next_lifecycle_state = 'indexing' THEN 'client_indexing'
@@ -2267,6 +3311,9 @@ BEGIN
   END;
 
   IF v_required_approval_type IS NOT NULL THEN
+    PERFORM pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended(p_change_approval_id::TEXT, 351)
+    );
     SELECT approval.* INTO v_approval
     FROM public.crm_search_change_approvals approval
     LEFT JOIN public.crm_search_change_approval_revocations revocation
@@ -2280,21 +3327,57 @@ BEGIN
       AND approval.approved_by <> p_actor_id
       AND approval.expires_at > NOW()
       AND revocation.id IS NULL
-    FOR KEY SHARE OF approval;
+      AND NOT EXISTS (
+        SELECT 1 FROM public.crm_search_change_approval_consumptions consumption
+        WHERE consumption.approval_id = approval.id
+      )
+    FOR UPDATE OF approval;
     IF NOT FOUND THEN
       RAISE EXCEPTION 'CRM search policy promotion lacks exact approval';
     END IF;
   END IF;
 
+  IF p_next_lifecycle_state = 'teardown_pending' THEN
+    IF p_teardown_cycle_id IS NULL OR NOT EXISTS (
+      SELECT 1 FROM public.crm_search_client_teardowns teardown
+      WHERE teardown.id = p_teardown_cycle_id
+        AND teardown.organisation_scope_id = p_organisation_scope_id
+        AND teardown.client_id = p_client_id
+        AND teardown.policy_revision = p_expected_revision + 1
+        AND teardown.state IN ('pending', 'deleting', 'provider_pending')
+    ) THEN
+      RAISE EXCEPTION 'CRM search teardown transition requires the new exact cycle';
+    END IF;
+  ELSIF v_policy.lifecycle_state <> 'teardown_pending' AND p_teardown_cycle_id IS NOT NULL THEN
+    RAISE EXCEPTION 'CRM search teardown cycle is valid only for teardown transitions';
+  END IF;
+
   IF v_policy.lifecycle_state = 'teardown_pending' AND p_next_lifecycle_state = 'off'
-     AND NOT EXISTS (
+     AND (p_teardown_cycle_id IS DISTINCT FROM v_policy.active_teardown_id OR NOT EXISTS (
        SELECT 1
        FROM public.crm_search_client_teardowns teardown
-       WHERE teardown.organisation_scope_id = p_organisation_scope_id
+       WHERE teardown.id = v_policy.active_teardown_id
+         AND teardown.organisation_scope_id = p_organisation_scope_id
          AND teardown.client_id = p_client_id
+         AND teardown.policy_revision = v_policy.revision
          AND teardown.state = 'confirmed'
          AND teardown.provider_deletion_state = 'confirmed_absent'
-     ) THEN
+         AND teardown.completed_at IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM public.crm_search_teardown_vectors vector
+           WHERE vector.teardown_id = teardown.id
+             AND vector.deletion_state <> 'confirmed_absent'
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM public.crm_search_operations operation
+           WHERE operation.organisation_scope_id = teardown.organisation_scope_id
+             AND operation.client_id = teardown.client_id
+             AND (
+               operation.state NOT IN ('confirmed', 'superseded')
+               OR (operation.desired_action = 'delete' AND operation.state <> 'confirmed')
+             )
+         )
+     )) THEN
     RAISE EXCEPTION 'CRM search teardown is not provider-confirmed absent';
   END IF;
 
@@ -2314,6 +3397,9 @@ BEGIN
       RAISE EXCEPTION 'CRM search assist evaluation does not match deployed evidence';
     END IF;
 
+    PERFORM pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended(v_eval.id::TEXT || ':' || p_actor_id::TEXT, 352)
+    );
     SELECT evaluation_approval.* INTO v_eval_approval
     FROM public.crm_search_evaluation_approvals evaluation_approval
     LEFT JOIN public.crm_search_evaluation_approval_revocations revocation
@@ -2323,9 +3409,13 @@ BEGIN
       AND evaluation_approval.expires_at > NOW()
       AND evaluation_approval.approved_by <> v_approval.approved_by
       AND revocation.id IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM public.crm_search_evaluation_approval_consumptions consumption
+        WHERE consumption.approval_id = evaluation_approval.id
+      )
     ORDER BY evaluation_approval.approved_at DESC
     LIMIT 1
-    FOR KEY SHARE OF evaluation_approval;
+    FOR UPDATE OF evaluation_approval;
     IF NOT FOUND THEN
       RAISE EXCEPTION 'CRM search assist requires independent evaluation approval';
     END IF;
@@ -2344,6 +3434,11 @@ BEGIN
       indexing_enabled = v_indexing_enabled,
       active_schema_version = p_active_schema_version,
       candidate_schema_version = p_candidate_schema_version,
+      active_teardown_id = CASE
+        WHEN p_next_lifecycle_state = 'teardown_pending' THEN p_teardown_cycle_id
+        WHEN p_next_lifecycle_state = 'off' THEN NULL
+        ELSE active_teardown_id
+      END,
       approved_evaluation_run_id = CASE
         WHEN p_next_lifecycle_state = 'assist' THEN p_approved_evaluation_run_id
         ELSE NULL
@@ -2376,6 +3471,17 @@ BEGIN
     RAISE EXCEPTION 'CRM search policy transition CAS failed';
   END IF;
 
+  IF v_approval.id IS NOT NULL THEN
+    INSERT INTO public.crm_search_change_approval_consumptions (
+      approval_id, consumed_by, consumption_kind
+    ) VALUES (v_approval.id, p_actor_id, 'policy_transition');
+  END IF;
+  IF v_eval_approval.id IS NOT NULL THEN
+    INSERT INTO public.crm_search_evaluation_approval_consumptions (
+      approval_id, consumed_by, consumption_kind
+    ) VALUES (v_eval_approval.id, p_actor_id, 'client_assist');
+  END IF;
+
   INSERT INTO public.crm_search_audit_log (
     organisation_scope_id, client_id, event_type, actor_id, correlation_id,
     reason, evidence_hash, details
@@ -2400,33 +3506,38 @@ LANGUAGE plpgsql
 SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
-  v_attestation_id UUID;
-  v_target_table TEXT;
+  v_authorized BOOLEAN := FALSE;
 BEGIN
   IF TG_OP = 'DELETE' THEN
-    BEGIN
-      v_attestation_id := NULLIF(
-        pg_catalog.current_setting('crm_search.retention_attestation_id', TRUE),
-        ''
-      )::UUID;
-      v_target_table := NULLIF(
-        pg_catalog.current_setting('crm_search.retention_target_table', TRUE),
-        ''
-      );
-    EXCEPTION WHEN OTHERS THEN
-      v_attestation_id := NULL;
-      v_target_table := NULL;
-    END;
-
-    IF v_attestation_id IS NOT NULL
-       AND v_target_table IS NOT NULL
-       AND EXISTS (
-         SELECT 1
-         FROM public.crm_search_retention_attestations attestation
-         WHERE attestation.id = v_attestation_id
-           AND attestation.target_table = v_target_table
-           AND attestation.created_at = NOW()
-       ) THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM public.crm_search_retention_delete_authorizations retention_auth
+      WHERE retention_auth.backend_pid = pg_catalog.pg_backend_pid()
+        AND retention_auth.transaction_id = pg_catalog.txid_current()
+        AND retention_auth.partition_relation_oid = TG_RELID
+        AND (
+          retention_auth.target_relation_oid = TG_RELID
+          OR EXISTS (
+            SELECT 1 FROM pg_catalog.pg_inherits inheritance
+            WHERE inheritance.inhrelid = TG_RELID
+              AND inheritance.inhparent = retention_auth.target_relation_oid
+          )
+        )
+        AND (
+          TG_LEVEL = 'STATEMENT'
+          OR OLD.id = ANY(retention_auth.candidate_ids)
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM public.crm_search_retention_attestations attestation
+          WHERE attestation.id = retention_auth.attestation_id
+            AND attestation.deletion_manifest_hash = retention_auth.computed_manifest_hash
+        )
+    ) INTO v_authorized;
+    IF v_authorized THEN
+      IF TG_LEVEL = 'ROW' THEN
+        RETURN OLD;
+      END IF;
       RETURN NULL;
     END IF;
   END IF;
@@ -2492,6 +3603,12 @@ CREATE TRIGGER crm_search_evaluation_approval_revocations_immutable
   BEFORE UPDATE OR DELETE OR TRUNCATE ON crm_search_evaluation_approval_revocations
   FOR EACH STATEMENT EXECUTE FUNCTION crm_search_reject_governed_evidence_mutation();
 
+DROP TRIGGER IF EXISTS crm_search_evaluation_approval_consumptions_immutable
+  ON crm_search_evaluation_approval_consumptions;
+CREATE TRIGGER crm_search_evaluation_approval_consumptions_immutable
+  BEFORE UPDATE OR DELETE OR TRUNCATE ON crm_search_evaluation_approval_consumptions
+  FOR EACH STATEMENT EXECUTE FUNCTION crm_search_reject_governed_evidence_mutation();
+
 DROP TRIGGER IF EXISTS crm_search_change_approvals_immutable ON crm_search_change_approvals;
 CREATE TRIGGER crm_search_change_approvals_immutable
   BEFORE UPDATE OR DELETE OR TRUNCATE ON crm_search_change_approvals
@@ -2501,6 +3618,12 @@ DROP TRIGGER IF EXISTS crm_search_change_approval_revocations_immutable
   ON crm_search_change_approval_revocations;
 CREATE TRIGGER crm_search_change_approval_revocations_immutable
   BEFORE UPDATE OR DELETE OR TRUNCATE ON crm_search_change_approval_revocations
+  FOR EACH STATEMENT EXECUTE FUNCTION crm_search_reject_governed_evidence_mutation();
+
+DROP TRIGGER IF EXISTS crm_search_change_approval_consumptions_immutable
+  ON crm_search_change_approval_consumptions;
+CREATE TRIGGER crm_search_change_approval_consumptions_immutable
+  BEFORE UPDATE OR DELETE OR TRUNCATE ON crm_search_change_approval_consumptions
   FOR EACH STATEMENT EXECUTE FUNCTION crm_search_reject_governed_evidence_mutation();
 
 DROP TRIGGER IF EXISTS crm_search_audit_log_immutable ON crm_search_audit_log;
@@ -2513,6 +3636,142 @@ DROP TRIGGER IF EXISTS crm_search_retention_attestations_immutable
 CREATE TRIGGER crm_search_retention_attestations_immutable
   BEFORE UPDATE OR DELETE OR TRUNCATE ON crm_search_retention_attestations
   FOR EACH STATEMENT EXECUTE FUNCTION crm_search_reject_governed_evidence_mutation();
+
+-- PostgreSQL 14 does not fire a parent's statement trigger for direct child
+-- statements. Each default partition therefore owns its own statement guard.
+DROP TRIGGER IF EXISTS crm_search_events_default_immutable ON crm_search_events_default;
+CREATE TRIGGER crm_search_events_default_immutable
+  BEFORE UPDATE OR DELETE OR TRUNCATE ON crm_search_events_default
+  FOR EACH STATEMENT EXECUTE FUNCTION crm_search_reject_governed_evidence_mutation();
+
+DROP TRIGGER IF EXISTS crm_search_audit_log_default_immutable ON crm_search_audit_log_default;
+CREATE TRIGGER crm_search_audit_log_default_immutable
+  BEFORE UPDATE OR DELETE OR TRUNCATE ON crm_search_audit_log_default
+  FOR EACH STATEMENT EXECUTE FUNCTION crm_search_reject_governed_evidence_mutation();
+
+DROP TRIGGER IF EXISTS crm_search_retention_attestations_default_immutable
+  ON crm_search_retention_attestations_default;
+CREATE TRIGGER crm_search_retention_attestations_default_immutable
+  BEFORE UPDATE OR DELETE OR TRUNCATE ON crm_search_retention_attestations_default
+  FOR EACH STATEMENT EXECUTE FUNCTION crm_search_reject_governed_evidence_mutation();
+
+-- Row guards bind every retention deletion to the exact authorized UUID set.
+DO $$
+DECLARE
+  v_table TEXT;
+BEGIN
+  FOREACH v_table IN ARRAY ARRAY[
+    'crm_search_schema_versions', 'crm_search_rate_cards',
+    'crm_search_rate_card_revocations', 'crm_search_operations',
+    'crm_search_documents', 'crm_search_usage_daily',
+    'crm_search_usage_reservations', 'crm_search_events',
+    'crm_search_daily_events', 'crm_search_evaluation_runs',
+    'crm_search_evaluation_query_evidence', 'crm_search_evaluation_approvals',
+    'crm_search_evaluation_approval_revocations',
+    'crm_search_evaluation_approval_consumptions', 'crm_search_change_approvals',
+    'crm_search_change_approval_revocations',
+    'crm_search_change_approval_consumptions', 'crm_search_audit_log',
+    'crm_search_dead_letters', 'crm_search_client_teardowns',
+    'crm_search_teardown_vectors', 'crm_search_retention_attestations'
+  ]::TEXT[]
+  LOOP
+    EXECUTE pg_catalog.format(
+      'DROP TRIGGER IF EXISTS crm_search_retention_delete_guard ON %I', v_table
+    );
+    EXECUTE pg_catalog.format(
+      'CREATE TRIGGER crm_search_retention_delete_guard BEFORE DELETE ON %I '
+      || 'FOR EACH ROW EXECUTE FUNCTION crm_search_reject_governed_evidence_mutation()',
+      v_table
+    );
+  END LOOP;
+END;
+$$;
+
+REVOKE ALL ON TABLE
+  crm_search_organisation_scopes, crm_search_global_control,
+  crm_search_legal_holds, crm_search_legal_hold_releases,
+  crm_search_legal_hold_targets, crm_search_namespaces,
+  crm_search_schema_versions, crm_search_rate_cards,
+  crm_search_rate_card_revocations, crm_search_policies,
+  crm_search_source_dirty, crm_search_operations, crm_search_documents,
+  crm_search_usage_daily, crm_search_usage_reservations,
+  crm_search_events, crm_search_events_default, crm_search_daily_events,
+  crm_search_evaluation_runs, crm_search_evaluation_query_evidence,
+  crm_search_evaluation_approvals, crm_search_evaluation_approval_revocations,
+  crm_search_evaluation_approval_consumptions, crm_search_change_approvals,
+  crm_search_change_approval_revocations, crm_search_change_approval_consumptions,
+  crm_search_audit_log, crm_search_audit_log_default, crm_search_dead_letters,
+  crm_search_client_teardowns, crm_search_teardown_vectors,
+  crm_search_retention_high_watermarks, crm_search_retention_attestations,
+  crm_search_retention_attestations_default,
+  crm_search_retention_delete_authorizations
+FROM PUBLIC, crm_search_runtime;
+
+REVOKE ALL ON SEQUENCE crm_search_source_event_sequence
+FROM PUBLIC, crm_search_runtime;
+
+GRANT SELECT ON TABLE
+  crm_search_organisation_scopes, crm_search_global_control,
+  crm_search_legal_holds, crm_search_legal_hold_releases,
+  crm_search_legal_hold_targets, crm_search_namespaces,
+  crm_search_schema_versions, crm_search_rate_cards,
+  crm_search_rate_card_revocations, crm_search_policies,
+  crm_search_source_dirty, crm_search_operations, crm_search_documents,
+  crm_search_usage_daily, crm_search_usage_reservations,
+  crm_search_events, crm_search_daily_events, crm_search_evaluation_runs,
+  crm_search_evaluation_query_evidence, crm_search_evaluation_approvals,
+  crm_search_evaluation_approval_revocations,
+  crm_search_evaluation_approval_consumptions, crm_search_change_approvals,
+  crm_search_change_approval_revocations, crm_search_change_approval_consumptions,
+  crm_search_audit_log, crm_search_dead_letters, crm_search_client_teardowns,
+  crm_search_teardown_vectors, crm_search_retention_high_watermarks,
+  crm_search_retention_attestations
+TO crm_search_runtime;
+
+GRANT INSERT, UPDATE ON TABLE
+  crm_search_source_dirty, crm_search_operations, crm_search_documents,
+  crm_search_usage_daily, crm_search_usage_reservations,
+  crm_search_daily_events, crm_search_client_teardowns,
+  crm_search_teardown_vectors, crm_search_namespaces
+TO crm_search_runtime;
+GRANT INSERT ON TABLE
+  crm_search_events, crm_search_dead_letters, crm_search_audit_log,
+  crm_search_evaluation_approvals, crm_search_evaluation_approval_revocations,
+  crm_search_change_approvals, crm_search_change_approval_revocations
+TO crm_search_runtime;
+GRANT USAGE, SELECT ON SEQUENCE crm_search_source_event_sequence
+TO crm_search_runtime;
+
+REVOKE INSERT ON TABLE crm_search_evaluation_runs,
+  crm_search_evaluation_query_evidence
+FROM crm_search_runtime;
+
+DO $$
+DECLARE
+  v_function REGPROCEDURE;
+BEGIN
+  FOR v_function IN
+    SELECT procedure.oid::REGPROCEDURE
+    FROM pg_catalog.pg_proc procedure
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+    WHERE namespace.nspname = pg_catalog.current_schema()
+      AND procedure.proname = ANY(ARRAY[
+        'crm_search_place_legal_hold', 'crm_search_release_legal_hold',
+        'crm_search_attach_legal_hold', 'crm_search_expire_governed_rows',
+        'crm_search_record_evaluation_run', 'crm_search_transition_global_control',
+        'crm_search_transition_policy', 'crm_search_transition_dead_letter',
+        'crm_search_configure_candidate_schema', 'crm_search_promote_candidate_schema',
+        'crm_search_complete_retiring_schema'
+      ]::TEXT[])
+  LOOP
+    EXECUTE pg_catalog.format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', v_function);
+    EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION %s TO crm_search_runtime', v_function);
+  END LOOP;
+END;
+$$;
+
+-- GRANT EXECUTE ON FUNCTION crm_search_record_evaluation_run is resolved by
+-- exact pg_proc identity above, avoiding overload ambiguity.
 
 REVOKE UPDATE, DELETE, TRUNCATE ON TABLE
   crm_search_legal_holds,
@@ -2549,30 +3808,6 @@ REVOKE DELETE, TRUNCATE ON TABLE
   crm_search_retention_high_watermarks
 FROM PUBLIC;
 
-REVOKE ALL ON FUNCTION crm_search_place_legal_hold(UUID, UUID, TEXT, TEXT, UUID, UUID)
-  FROM PUBLIC;
-REVOKE ALL ON FUNCTION crm_search_release_legal_hold(UUID, UUID, UUID, TEXT)
-  FROM PUBLIC;
-REVOKE ALL ON FUNCTION crm_search_attach_legal_hold(UUID, TEXT, UUID, UUID)
-  FROM PUBLIC;
-REVOKE ALL ON FUNCTION crm_search_expire_governed_rows(
-  TEXT, TEXT, TIMESTAMPTZ, TEXT, TEXT, UUID, UUID, INTEGER
-) FROM PUBLIC;
-REVOKE ALL ON FUNCTION crm_search_record_evaluation_run(
-  UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT,
-  TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, UUID,
-  UUID[], UUID[], UUID[], UUID[], UUID[], UUID, JSONB
-) FROM PUBLIC;
-REVOKE ALL ON FUNCTION crm_search_transition_global_control(
-  UUID, BIGINT, TEXT, TEXT, BOOLEAN, UUID, TEXT, UUID
-) FROM PUBLIC;
-REVOKE ALL ON FUNCTION crm_search_transition_policy(
-  UUID, UUID, BIGINT, TEXT, TEXT, TEXT, UUID, UUID, TEXT, UUID
-) FROM PUBLIC;
-REVOKE ALL ON FUNCTION crm_search_transition_dead_letter(
-  UUID, TEXT, TEXT, UUID, TEXT, UUID
-) FROM PUBLIC;
-
 COMMENT ON TABLE crm_search_source_dirty IS
   'Schema-neutral, bounded latest-intent set. No client/source foreign key permits delete intent to survive source removal.';
 COMMENT ON TABLE crm_search_operations IS
@@ -2586,5 +3821,20 @@ COMMENT ON TABLE crm_search_client_teardowns IS
 COMMENT ON FUNCTION crm_search_expire_governed_rows(
   TEXT, TEXT, TIMESTAMPTZ, TEXT, TEXT, UUID, UUID, INTEGER
 ) IS 'Narrow legal-hold-aware, high-watermark-CAS retention boundary that attests before bounded deletion.';
+
+RESET ROLE;
+
+DO $$
+BEGIN
+  EXECUTE pg_catalog.format(
+    'REVOKE CREATE ON SCHEMA %I FROM crm_search_governor',
+    pg_catalog.current_schema()
+  );
+  EXECUTE pg_catalog.format(
+    'REVOKE crm_search_governor FROM %I',
+    SESSION_USER
+  );
+END;
+$$;
 
 COMMIT;

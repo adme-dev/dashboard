@@ -4,14 +4,31 @@ import { describe, expect, it } from 'vitest'
 import { withDisposablePostgresSchema } from '../utils/disposablePostgresSchema'
 
 const rawDatabaseUrl = process.env.CRM_SEARCH_TEST_DATABASE_URL?.trim()
+const expectedProjectId = process.env.CRM_SEARCH_TEST_EXPECTED_PROJECT_ID?.trim()
+const expectedBranchId = process.env.CRM_SEARCH_TEST_EXPECTED_BRANCH_ID?.trim()
+const expectedEndpointId = process.env.CRM_SEARCH_TEST_EXPECTED_ENDPOINT_ID?.trim()
+const forbiddenDatabaseUrls = process.env.CRM_SEARCH_TEST_FORBIDDEN_DATABASE_URLS
+  ?.split(',')
+  .map(value => value.trim())
+  .filter(Boolean) || []
 const schema = `crm_search_expand_test_${crypto.randomUUID().replaceAll('-', '')}`
 const requiredApplicationName = 'crm-search-governance-test'
+
+interface ExpectedCrmSearchTestIdentity {
+  projectId: string
+  branchId: string
+  endpointId: string
+  forbiddenDatabaseUrls: string[]
+}
 
 function endpointFromHost(hostname: string): string {
   return hostname.split('.')[0]?.replace(/-pooler$/, '') || ''
 }
 
-function assertGuardedCrmSearchTestDatabaseUrl(raw: string): string {
+function assertGuardedCrmSearchTestDatabaseUrl(
+  raw: string,
+  expected: ExpectedCrmSearchTestIdentity
+): string {
   let url: URL
   try {
     url = new URL(raw)
@@ -31,6 +48,33 @@ function assertGuardedCrmSearchTestDatabaseUrl(raw: string): string {
   if (url.hostname.split('.')[0]?.endsWith('-pooler')) {
     throw new Error('CRM search governance tests require a direct, non-pooled Neon endpoint')
   }
+
+  for (const [label, value] of [
+    ['project', expected.projectId],
+    ['branch', expected.branchId],
+    ['endpoint', expected.endpointId]
+  ]) {
+    if (!value || !/^[a-z0-9][a-z0-9_-]{2,119}$/i.test(value)) {
+      throw new Error(`CRM search test ${label} identity is missing or invalid`)
+    }
+    if (/(^|[-_])(prod|production|main|primary|shared|default)([-_]|$)/i.test(value)) {
+      throw new Error(`CRM search test ${label} identity is production-like`)
+    }
+  }
+  if (endpointFromHost(url.hostname) !== expected.endpointId) {
+    throw new Error('CRM search test URL does not match the explicitly expected endpoint')
+  }
+
+  if (expected.forbiddenDatabaseUrls.length === 0) {
+    throw new Error('CRM search test database requires explicit forbidden shared URLs')
+  }
+
+  for (const forbiddenRaw of expected.forbiddenDatabaseUrls) {
+    const forbidden = new URL(forbiddenRaw)
+    if (endpointFromHost(forbidden.hostname) === endpointFromHost(url.hostname)) {
+      throw new Error('CRM search tests reject an endpoint equivalent to a forbidden shared URL')
+    }
+  }
   if (url.searchParams.getAll('application_name').length !== 1
     || url.searchParams.get('application_name') !== requiredApplicationName) {
     throw new Error(`CRM search test database requires application_name=${requiredApplicationName}`)
@@ -46,6 +90,52 @@ function assertGuardedCrmSearchTestDatabaseUrl(raw: string): string {
     throw new Error('CRM search governance tests reject shared or production-like database identities')
   }
   return raw
+}
+
+function requiredIdentityFromDedicatedEnvironment(): ExpectedCrmSearchTestIdentity {
+  return {
+    projectId: expectedProjectId || '',
+    branchId: expectedBranchId || '',
+    endpointId: expectedEndpointId || '',
+    forbiddenDatabaseUrls
+  }
+}
+
+async function assertEmptyIsolatedTargetPreflight(
+  client: Client,
+  disposableSchema: string
+): Promise<void> {
+  const result = await client.query(
+    `SELECT
+       EXISTS (
+         SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = $1
+       ) AS disposable_schema_exists,
+       EXISTS (
+         SELECT 1
+         FROM pg_catalog.pg_class relation
+         JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+         WHERE namespace.nspname = 'public'
+           AND relation.relname LIKE 'crm_search_%'
+       ) AS public_search_domain_exists`,
+    [disposableSchema]
+  )
+  const row = result.rows[0] as Record<string, boolean>
+  if (row.disposable_schema_exists || row.public_search_domain_exists) {
+    throw new Error('CRM search test target is not an empty isolated schema-only database')
+  }
+
+  for (const sourceTable of ['crm_people', 'crm_companies', 'crm_opportunities']) {
+    const relation = await client.query(
+      'SELECT pg_catalog.to_regclass($1) AS relation',
+      [`public.${sourceTable}`]
+    )
+    if (relation.rows[0]?.relation) {
+      const count = await client.query(`SELECT COUNT(*)::BIGINT AS count FROM public.${sourceTable}`)
+      if (BigInt(count.rows[0].count as string) !== 0n) {
+        throw new Error(`CRM search test target source ${sourceTable} is not empty`)
+      }
+    }
+  }
 }
 
 function stripTransactionWrapper(sql: string): string {
@@ -80,7 +170,14 @@ async function expectRejectedAtSavepoint(
 describe('CRM search governance database target guard', () => {
   it('accepts only an explicitly marked direct isolated Neon URL', () => {
     const safe = `postgresql://crm_search_test:secret@ep-crm-search-e2e-a1b2c3d4.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&application_name=${requiredApplicationName}`
-    expect(assertGuardedCrmSearchTestDatabaseUrl(safe)).toBe(safe)
+    expect(assertGuardedCrmSearchTestDatabaseUrl(safe, {
+      projectId: 'prj-crm-search-e2e',
+      branchId: 'br-crm-search-e2e',
+      endpointId: 'ep-crm-search-e2e-a1b2c3d4',
+      forbiddenDatabaseUrls: [
+        'postgresql://shared:secret@ep-shared-other-a1b2c3d4.ap-southeast-2.aws.neon.tech/prod?sslmode=require'
+      ]
+    })).toBe(safe)
   })
 
   it.each([
@@ -93,7 +190,39 @@ describe('CRM search governance database target guard', () => {
     'postgresql://test:secret@not-an-endpoint.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&application_name=crm-search-governance-test',
     'postgresql://test:secret@ep-crm-search-e2e-a1b2c3d4.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&application_name=crm-search-governance-test&application_name=other'
   ])('rejects an unguarded or production-like target before a connection can be made', (unsafe) => {
-    expect(() => assertGuardedCrmSearchTestDatabaseUrl(unsafe)).toThrow()
+    expect(() => assertGuardedCrmSearchTestDatabaseUrl(unsafe, {
+      projectId: 'prj-crm-search-e2e',
+      branchId: 'br-crm-search-e2e',
+      endpointId: endpointFromHost(new URL(unsafe).hostname),
+      forbiddenDatabaseUrls: [
+        'postgresql://shared:secret@ep-shared-other-a1b2c3d4.ap-southeast-2.aws.neon.tech/prod?sslmode=require'
+      ]
+    })).toThrow()
+  })
+
+  it('rejects missing identities, endpoint mismatches, and equivalent shared endpoints', () => {
+    const safe = `postgresql://crm_search_test:secret@ep-crm-search-e2e-a1b2c3d4.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&application_name=${requiredApplicationName}`
+    const identity = {
+      projectId: 'prj-crm-search-e2e',
+      branchId: 'br-crm-search-e2e',
+      endpointId: 'ep-crm-search-e2e-a1b2c3d4',
+      forbiddenDatabaseUrls: [
+        'postgresql://shared:secret@ep-shared-other-a1b2c3d4.ap-southeast-2.aws.neon.tech/prod?sslmode=require'
+      ]
+    }
+    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, { ...identity, projectId: '' })).toThrow(/project identity/)
+    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, { ...identity, branchId: 'main' })).toThrow(/production-like/)
+    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, { ...identity, endpointId: 'ep-different-test' })).toThrow(/expected endpoint/)
+    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, {
+      ...identity,
+      forbiddenDatabaseUrls: []
+    })).toThrow(/forbidden shared URLs/)
+    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, {
+      ...identity,
+      forbiddenDatabaseUrls: [
+        `postgresql://shared:secret@ep-crm-search-e2e-a1b2c3d4-pooler.ap-southeast-2.aws.neon.tech/prod?sslmode=require`
+      ]
+    })).toThrow(/equivalent/)
   })
 })
 
@@ -101,13 +230,17 @@ const databaseDescribe = rawDatabaseUrl ? describe.sequential : describe.skip
 
 databaseDescribe('CRM search expand migration disposable Postgres governance', () => {
   it('applies twice, stays schema-confined, and enforces state, projection, evidence, and retention contracts', async () => {
-    const guardedDatabaseUrl = assertGuardedCrmSearchTestDatabaseUrl(rawDatabaseUrl!)
-    const client = new Client({
+    const guardedDatabaseUrl = assertGuardedCrmSearchTestDatabaseUrl(
+      rawDatabaseUrl!,
+      requiredIdentityFromDedicatedEnvironment()
+    )
+    const clientOptions = {
       connectionString: guardedDatabaseUrl,
       connectionTimeoutMillis: 10_000,
       query_timeout: 30_000,
       statement_timeout: 30_000
-    })
+    }
+    const preflightClient = new Client(clientOptions)
     const migrationSql = migrationForSchema(schema)
     const fixture = JSON.parse(readFileSync(
       new URL('../fixtures/crm-search-documents.json', import.meta.url),
@@ -121,6 +254,14 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
       }>
     }
 
+    await preflightClient.connect()
+    try {
+      await assertEmptyIsolatedTargetPreflight(preflightClient, schema)
+    } finally {
+      await preflightClient.end()
+    }
+
+    const client = new Client(clientOptions)
     await withDisposablePostgresSchema({
       client,
       schema,
@@ -260,12 +401,13 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
           'v_abc123',
           'n_abc123'
         ]
-        await connection.query(
+        const operation = await connection.query(
           `INSERT INTO "${schema}".crm_search_operations
              (organisation_scope_id, client_id, entity_type, entity_id, schema_version,
               source_revision, source_event_sequence, desired_action, vector_id, namespace,
               content_hash, confirmation_tag, confirmation_key_version)
-           VALUES ($1, $2, 'person', $3, $4, 1, 1, 'upsert', $5, $6, $7, $8, 'k1')`,
+           VALUES ($1, $2, 'person', $3, $4, 1, 1, 'upsert', $5, $6, $7, $8, 'k1')
+           RETURNING id`,
           [...operationKey, 'a'.repeat(64), `hmac-sha256:${'b'.repeat(64)}`]
         )
         await expectRejectedAtSavepoint(
@@ -281,6 +423,37 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
           ),
           /duplicate key/i
         )
+
+        const operationId = operation.rows[0]?.id as string | undefined
+        expect(operationId).toBeTruthy()
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations SET state = 'queued' WHERE id = $1`,
+          [operationId]
+        )
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations SET state = 'processing' WHERE id = $1`,
+          [operationId]
+        )
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations
+              SET state = 'provider_pending', provider_mutation_id = 'mutation-1',
+                  provider_accepted_at = NOW()
+            WHERE id = $1`,
+          [operationId]
+        )
+        const retryable = await connection.query(
+          `UPDATE "${schema}".crm_search_operations
+              SET state = 'retryable', error_class = 'provider_timeout'
+            WHERE id = $1
+            RETURNING state, provider_admitted_at IS NOT NULL AS admitted,
+                      admission_identity_hash IS NOT NULL AS identity_frozen`,
+          [operationId]
+        )
+        expect(retryable.rows).toEqual([{
+          state: 'retryable',
+          admitted: true,
+          identity_frozen: true
+        }])
 
         await connection.query(
           `INSERT INTO "${schema}".crm_search_dead_letters
@@ -307,10 +480,11 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
               artifact_manifest_digest, pages_bundle_digest, worker_bundle_digest,
               model_id, pooling, tokenizer_revision, document_builder_revision,
               ranking_revision, threshold_revision, environment, load_protocol_digest,
-              metric_bundle, gate_passed, runner_id, expires_at, retention_expires_at)
+              metric_bundle, gate_passed, runner_id, development_query_count,
+              expires_at, retention_expires_at)
            VALUES ($1, 'crm-search-v1', 'fixture-v1', $2, $3, $4, $5, $6, $7, $8,
               '@cf/baai/bge-base-en-v1.5', 'cls', 'tokenizer-v1', 'builder-v1',
-              'rrf-v1', 'threshold-v1', 'preview', $9, '{}'::jsonb, FALSE, $10,
+              'rrf-v1', 'threshold-v1', 'preview', $9, '{}'::jsonb, FALSE, $10, 180,
               NOW() + INTERVAL '14 days', NOW() + INTERVAL '2 years')
            RETURNING id`,
           [
@@ -367,13 +541,39 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
         )
 
         const heldExpiry = await connection.query(
-          `SELECT "${schema}".crm_search_expire_governed_rows(
-             'crm_search_rate_cards', 'crm_search_rate_cards',
-             NOW() - INTERVAL '2 seconds', $1, $2, $3, NULL, 100
-           ) AS result`,
+          `WITH request AS (
+             SELECT NOW() - INTERVAL '2 seconds' AS cutoff
+           ), candidates AS (
+             SELECT COALESCE(
+               array_agg(retained.id ORDER BY retained.retention_expires_at, retained.id),
+               ARRAY[]::UUID[]
+             ) AS ids
+             FROM "${schema}".crm_search_rate_cards retained, request
+             WHERE retained.retention_expires_at <= request.cutoff
+               AND (retained.legal_hold_id IS NULL OR EXISTS (
+                 SELECT 1 FROM "${schema}".crm_search_legal_hold_releases direct_release
+                 WHERE direct_release.legal_hold_id = retained.legal_hold_id
+               ))
+               AND NOT EXISTS (
+                 SELECT 1
+                 FROM "${schema}".crm_search_legal_hold_targets held_target
+                 LEFT JOIN "${schema}".crm_search_legal_hold_releases hold_release
+                   ON hold_release.legal_hold_id = held_target.legal_hold_id
+                 WHERE held_target.target_table = 'crm_search_rate_cards'
+                   AND held_target.target_row_id = retained.id
+                   AND hold_release.id IS NULL
+               )
+           )
+           SELECT "${schema}".crm_search_expire_governed_rows(
+             'crm_search_rate_cards', 'crm_search_rate_cards', request.cutoff, $1,
+             "${schema}".crm_search_projection_hash(concat_ws(
+               '|', 'crm_search_rate_cards', 'crm_search_rate_cards', request.cutoff::TEXT,
+               COALESCE(array_to_string(candidates.ids, ','), '')
+             )), $2, NULL, 100
+           ) AS result
+           FROM request, candidates`,
           [
             '0'.repeat(64),
-            'a'.repeat(64),
             '99999999-9999-4999-8999-999999999999'
           ]
         )
@@ -389,13 +589,39 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
           ]
         )
         const releasedExpiry = await connection.query(
-          `SELECT "${schema}".crm_search_expire_governed_rows(
-             'crm_search_rate_cards', 'crm_search_rate_cards',
-             NOW() - INTERVAL '1 second', $1, $2, $3, NULL, 100
-           ) AS result`,
+          `WITH request AS (
+             SELECT NOW() - INTERVAL '1 second' AS cutoff
+           ), candidates AS (
+             SELECT COALESCE(
+               array_agg(retained.id ORDER BY retained.retention_expires_at, retained.id),
+               ARRAY[]::UUID[]
+             ) AS ids
+             FROM "${schema}".crm_search_rate_cards retained, request
+             WHERE retained.retention_expires_at <= request.cutoff
+               AND (retained.legal_hold_id IS NULL OR EXISTS (
+                 SELECT 1 FROM "${schema}".crm_search_legal_hold_releases direct_release
+                 WHERE direct_release.legal_hold_id = retained.legal_hold_id
+               ))
+               AND NOT EXISTS (
+                 SELECT 1
+                 FROM "${schema}".crm_search_legal_hold_targets held_target
+                 LEFT JOIN "${schema}".crm_search_legal_hold_releases hold_release
+                   ON hold_release.legal_hold_id = held_target.legal_hold_id
+                 WHERE held_target.target_table = 'crm_search_rate_cards'
+                   AND held_target.target_row_id = retained.id
+                   AND hold_release.id IS NULL
+               )
+           )
+           SELECT "${schema}".crm_search_expire_governed_rows(
+             'crm_search_rate_cards', 'crm_search_rate_cards', request.cutoff, $1,
+             "${schema}".crm_search_projection_hash(concat_ws(
+               '|', 'crm_search_rate_cards', 'crm_search_rate_cards', request.cutoff::TEXT,
+               COALESCE(array_to_string(candidates.ids, ','), '')
+             )), $2, NULL, 100
+           ) AS result
+           FROM request, candidates`,
           [
             heldExpiry.rows[0].result.highWatermarkHash,
-            'b'.repeat(64),
             '99999999-9999-4999-8999-999999999999'
           ]
         )
@@ -443,6 +669,68 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
         )
         expect(functionSecurity.rows).toHaveLength(5)
         expect(functionSecurity.rows.every(row => row.security_type === 'DEFINER')).toBe(true)
+
+        const roleSafety = await connection.query(
+          `SELECT rolname, rolcanlogin, rolinherit, rolsuper, rolcreatedb, rolcreaterole,
+                  rolreplication, rolbypassrls
+             FROM pg_catalog.pg_roles
+            WHERE rolname IN ('crm_search_governor', 'crm_search_runtime')
+            ORDER BY rolname`
+        )
+        expect(roleSafety.rows).toEqual([
+          {
+            rolname: 'crm_search_governor',
+            rolcanlogin: false,
+            rolinherit: false,
+            rolsuper: false,
+            rolcreatedb: false,
+            rolcreaterole: false,
+            rolreplication: false,
+            rolbypassrls: false
+          },
+          {
+            rolname: 'crm_search_runtime',
+            rolcanlogin: false,
+            rolinherit: false,
+            rolsuper: false,
+            rolcreatedb: false,
+            rolcreaterole: false,
+            rolreplication: false,
+            rolbypassrls: false
+          }
+        ])
+
+        const searchOwners = await connection.query(
+          `SELECT DISTINCT pg_catalog.pg_get_userbyid(relation.relowner) AS owner
+             FROM pg_catalog.pg_class relation
+             JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+            WHERE namespace.nspname = $1
+              AND relation.relname LIKE 'crm_search_%'
+              AND relation.relkind IN ('r', 'p', 'S')`,
+          [schema]
+        )
+        expect(searchOwners.rows).toEqual([{ owner: 'crm_search_governor' }])
+
+        const runtimeEvaluationAccess = await connection.query(
+          `SELECT
+             has_table_privilege(
+               'crm_search_runtime', format('%I.crm_search_evaluation_runs', $1), 'INSERT'
+             ) AS can_insert_runs,
+             has_table_privilege(
+               'crm_search_runtime', format('%I.crm_search_evaluation_query_evidence', $1), 'INSERT'
+             ) AS can_insert_evidence,
+             has_function_privilege('crm_search_runtime', procedure.oid, 'EXECUTE') AS can_record
+           FROM pg_catalog.pg_proc procedure
+           JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+           WHERE namespace.nspname = $1
+             AND procedure.proname = 'crm_search_record_evaluation_run'`,
+          [schema]
+        )
+        expect(runtimeEvaluationAccess.rows).toEqual([{
+          can_insert_runs: false,
+          can_insert_evidence: false,
+          can_record: true
+        }])
 
         const publicFunctionGrants = await connection.query(
           `SELECT routine_name, privilege_type
