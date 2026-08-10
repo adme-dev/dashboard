@@ -1,0 +1,18 @@
+{
+  "name": "@xeroflow/crm-search-consumer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "types": "node -e \"require('node:fs').mkdirSync('.wrangler/types',{recursive:true})\" && wrangler types --config wrangler.toml --env-interface CrmSearchConsumerEnv .wrangler/types/worker-configuration.d.ts",
+    "typecheck": "pnpm types && tsc --noEmit",
+    "deploy:dry-run": "node scripts/deploy.mjs --dry-run"
+  },
+  "dependencies": {
+    "zod": "*"
+  },
+  "devDependencies": {
+    "smol-toml": "*",
+    "typescript": "*",
+    "wrangler": "^4.110.0"
+  }
+}
