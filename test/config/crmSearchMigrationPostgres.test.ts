@@ -80,6 +80,21 @@ async function openPeer(config: ClientConfig, schema: string): Promise<Client> {
   return peer
 }
 
+async function waitForBackendLock(observer: Client, processId: number): Promise<void> {
+  const deadline = Date.now() + 5_000
+  while (Date.now() < deadline) {
+    const activity = await observer.query(
+      `SELECT wait_event_type
+         FROM pg_catalog.pg_stat_activity
+        WHERE pid = $1`,
+      [processId]
+    )
+    if (activity.rows[0]?.wait_event_type === 'Lock') return
+    await delay(10)
+  }
+  throw new Error(`PostgreSQL backend ${processId} did not wait for a lock`)
+}
+
 describe('CRM search Task 6 database target guard', () => {
   it('accepts only a credential-free isolated local Unix-socket database', () => {
     const safe = 'postgresql://postgres@localhost/crm_search_task6_a1b2?host=%2Fprivate%2Ftmp%2Fcrm-search-task6-pg-a1b2&application_name=crm-search-task6-test'
@@ -127,6 +142,7 @@ databaseDescribe('CRM search migrations 350-352 on isolated local PostgreSQL 14'
     const clientA = '11111111-1111-4111-8111-111111111111'
     const clientB = '22222222-2222-4222-8222-222222222222'
     const teardownClient = '33333333-3333-4333-8333-333333333333'
+    const hardDeleteClient = '44444444-4444-4444-8444-444444444444'
     const migratorRole = `crm_search_task6_owner_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`
     const administrator = new Client(config)
     const sourceConfig = { ...config, user: migratorRole }
@@ -187,8 +203,9 @@ databaseDescribe('CRM search migrations 350-352 on isolated local PostgreSQL 14'
       `)
       await connection.query(
         `INSERT INTO agency_clients (id, name) VALUES
-           ($1, 'Client A'), ($2, 'Client B'), ($3, 'Teardown Client')`,
-        [clientA, clientB, teardownClient]
+           ($1, 'Client A'), ($2, 'Client B'), ($3, 'Teardown Client'),
+           ($4, 'Concurrent Hard Delete Client')`,
+        [clientA, clientB, teardownClient, hardDeleteClient]
       )
       const initialPerson = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
       const initialCompany = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
@@ -528,6 +545,80 @@ databaseDescribe('CRM search migrations 350-352 on isolated local PostgreSQL 14'
         { id: oppositeOne, client_id: clientB },
         { id: oppositeTwo, client_id: clientA }
       ])
+
+      const hardDeletePerson = '04040404-0404-4404-8404-040404040404'
+      await connection.query(
+        `INSERT INTO crm_people (id, client_id, first_name) VALUES ($1, $2, 'Concurrent Delete')`,
+        [hardDeletePerson, hardDeleteClient]
+      )
+      await administrator.query(
+        `INSERT INTO crm_search_namespaces
+           (organisation_scope_id, client_id, namespace, source_tuple_digest)
+         VALUES ($1, $2, 'n_hard_delete_client', $3)`,
+        [fixedScopeId, hardDeleteClient, 'e'.repeat(64)]
+      )
+      await administrator.query(
+        `INSERT INTO crm_search_documents
+           (organisation_scope_id, client_id, entity_type, entity_id, schema_version,
+            vector_id, namespace, source_revision, source_event_sequence, content_hash,
+            confirmation_state, tombstoned)
+         VALUES ($1, $2, 'person', $3, 'crm-search-v1', 'v_hard_delete_document',
+           'n_hard_delete_client', 1, 900, $4, 'indexed', FALSE)`,
+        [fixedScopeId, hardDeleteClient, hardDeletePerson, 'f'.repeat(64)]
+      )
+      const hardDeleteSource = await openPeer(sourceConfig, schema)
+      const hardDeletePeer = await openPeer(sourceConfig, schema)
+      try {
+        const hardDeletePid = Number((await hardDeletePeer.query(
+          `SELECT pg_catalog.pg_backend_pid() AS pid`
+        )).rows[0].pid)
+        await hardDeleteSource.query('BEGIN')
+        await hardDeleteSource.query(
+          `SELECT id FROM crm_people WHERE id = $1 FOR UPDATE`,
+          [hardDeletePerson]
+        )
+        await hardDeletePeer.query('BEGIN')
+        const hardDelete = hardDeletePeer.query(
+          `DELETE FROM agency_clients WHERE id = $1`,
+          [hardDeleteClient]
+        ).then(() => null as Error | null).catch(error => error as Error)
+        await waitForBackendLock(administrator, hardDeletePid)
+
+        const relevantUpdateError = await hardDeleteSource.query(
+          `UPDATE crm_people SET first_name = 'Concurrent Updated' WHERE id = $1`,
+          [hardDeletePerson]
+        ).then(() => null as Error | null).catch(error => error as Error)
+        expect(relevantUpdateError).toBeNull()
+        await hardDeleteSource.query('COMMIT')
+
+        const hardDeleteError = await hardDelete
+        expect(hardDeleteError).toBeNull()
+        await hardDeletePeer.query('COMMIT')
+      } finally {
+        await hardDeleteSource.query('ROLLBACK').catch(() => undefined)
+        await hardDeletePeer.query('ROLLBACK').catch(() => undefined)
+        await hardDeleteSource.end()
+        await hardDeletePeer.end()
+      }
+      expect((await administrator.query(
+        `SELECT teardown.client_deleted_at IS NOT NULL AS deleted,
+                pg_catalog.array_agg(vector.vector_id ORDER BY vector.vector_id) AS vectors
+           FROM crm_search_client_teardowns teardown
+           LEFT JOIN crm_search_teardown_vectors vector ON vector.teardown_id = teardown.id
+          WHERE teardown.organisation_scope_id = $1 AND teardown.client_id = $2
+          GROUP BY teardown.id`,
+        [fixedScopeId, hardDeleteClient]
+      )).rows).toEqual([{
+        deleted: true,
+        vectors: ['v_hard_delete_document']
+      }])
+      expect((await administrator.query(
+        `SELECT source_revision, desired_action
+           FROM crm_search_source_dirty
+          WHERE organisation_scope_id = $1 AND client_id = $2
+            AND entity_type = 'person' AND entity_id = $3`,
+        [fixedScopeId, hardDeleteClient, hardDeletePerson]
+      )).rows).toEqual([{ source_revision: '3', desired_action: 'delete' }])
 
       const teardownPerson = '03030303-0303-4303-8303-030303030303'
       await connection.query(

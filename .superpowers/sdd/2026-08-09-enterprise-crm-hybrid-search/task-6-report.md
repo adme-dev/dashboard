@@ -60,3 +60,23 @@ The review also bound the installation snapshot to advisory-lock-before-policy-l
 ## Remaining Concerns
 
 - None within Task 6. Provider execution and any rollout/activation remain deliberately outside these migrations and stay disabled by the seeded defaults.
+
+## Review 1 — Hard-delete capture lock order
+
+Focused review identified a hard-delete cycle that the original opposite-client-move test did not exercise: a relevant source update could own its source tuple and wait for the shared client advisory fence while the agency-client DELETE owned the exclusive fence and waited for the same tuple during its foreign-key cascade.
+
+Strict TDD reproduced the exact cycle before the SQL change on PostgreSQL 14.19. The guarded runtime gate failed 8-pass/1-fail with SQLSTATE `40P01`; PostgreSQL reported the DELETE waiting on the `crm_people` tuple and the UPDATE waiting on the advisory lock.
+
+Migration 352 now makes hard deletion follow the source-write order. Before taking the exclusive client fence, the BEFORE DELETE trigger locks all affected source tuples in fixed `crm_companies`, `crm_opportunities`, `crm_people` table order and UUID order. The governor retains only the narrow source-table `SELECT` plus `UPDATE(id)` privilege PostgreSQL requires for `SELECT ... FOR UPDATE`. Deactivation does not take these tuple locks. Teardown creation, vector snapshotting, manifest calculation, policy shutdown, and deletion timestamping remain inside the BEFORE trigger and therefore complete before the foreign-key cascades begin.
+
+The two-connection regression holds the source tuple, starts hard deletion, observes the delete backend waiting, and then performs a relevant update without retrying either transaction. Both transactions must commit, the vector snapshot must survive client/source cascades, and the final durable source intent must be the revision-3 physical delete. The unchanged SQL reproduced the deadlock; the fixed SQL passed all 9 local PostgreSQL tests.
+
+Review-1 verification after the fix:
+
+- focused isolated PostgreSQL 14.19 runtime: 9/9 passed;
+- Task 6 static/guard gate: 26 passed, one dedicated local-database block skipped without its DSN;
+- migration 350 plus Task 6 compatibility gate: 51 passed, one guarded block skipped;
+- exact pre-Task8/9 Task 7 fixture and projection parity set: 92/92 passed;
+- Node 24 ESLint for the modified PostgreSQL test: clean.
+
+The isolated runtime used a fresh credential-free private Unix socket with TCP disabled. No shared/production database, generic `DATABASE_URL`, network/provider/resource action, activation, or deployment was used.

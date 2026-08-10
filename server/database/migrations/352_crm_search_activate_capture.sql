@@ -37,6 +37,13 @@ $$;
 
 GRANT SELECT ON TABLE agency_clients TO crm_search_governor;
 
+-- The teardown definer must lock source tuples before taking the exclusive
+-- client fence. UPDATE(id) is the narrow PostgreSQL privilege required by
+-- SELECT ... FOR UPDATE; the NOLOGIN governor cannot mutate other columns.
+GRANT SELECT, UPDATE (id)
+ON TABLE crm_companies, crm_opportunities, crm_people
+TO crm_search_governor;
+
 SET LOCAL ROLE crm_search_governor;
 
 -- Acquire every current client fence before governed control/policy locks. This
@@ -601,6 +608,31 @@ BEGIN
     v_client_id := OLD.id;
   ELSE
     v_client_id := NEW.id;
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    -- A source UPDATE owns its tuple before its capture trigger takes the
+    -- shared client fence. Match that order for hard deletion: lock every
+    -- cascading source tuple first, in one fixed table/UUID order, and only
+    -- then take the exclusive fence. The teardown snapshot still runs below
+    -- before this BEFORE trigger returns and the FK cascades can begin.
+    PERFORM company.id
+    FROM public.crm_companies company
+    WHERE company.client_id = v_client_id
+    ORDER BY company.id
+    FOR UPDATE;
+
+    PERFORM opportunity.id
+    FROM public.crm_opportunities opportunity
+    WHERE opportunity.client_id = v_client_id
+    ORDER BY opportunity.id
+    FOR UPDATE;
+
+    PERFORM person.id
+    FROM public.crm_people person
+    WHERE person.client_id = v_client_id
+    ORDER BY person.id
+    FOR UPDATE;
   END IF;
 
   PERFORM pg_catalog.pg_advisory_xact_lock(
