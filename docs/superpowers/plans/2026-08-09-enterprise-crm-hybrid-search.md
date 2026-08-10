@@ -1427,7 +1427,7 @@ Expected: PASS against the committed SHA with clean-tree, exact-target, generate
 - Consumes: the complete committed implementation, guarded schema-only Neon branch, isolated preview Queue/DLQ/Vectorize/Pages resources, deterministic fixtures, and frozen base diagnostics.
 - Produces: verified migrations, provider lifecycle evidence, authorization evidence, test/build/type comparisons, adversarial review disposition, and a production-readiness report with production still halted.
 
-- [ ] **Step 1: Write the end-to-end tests before provisioning isolated resources**
+- [x] **Step 1: Write the end-to-end tests before provisioning isolated resources**
 
 ```ts
 it('indexes, confirms, retrieves, reauthorizes, deletes, and confirms absence', async () => {
@@ -1443,7 +1443,7 @@ it('indexes, confirms, retrieves, reauthorizes, deletes, and confirms absence', 
 
 Cover staff owner visibility, portal active session/client, cross-tenant indistinguishability, off/shadow/assist, threshold abstention, timeout fallback settlement, control flips, backfill/promotion isolation, client move, teardown, replay, DLQ, and privacy-safe evidence. Through the real endpoints, prove portal search stays keyword-only with zero Workers AI/Vectorize calls, agency-global shadow may call providers but preserves visible keyword order, and only agency-AI assist returns authorized fused results.
 
-- [ ] **Step 2: Deep-review and commit the E2E harness before building artifacts**
+- [x] **Step 2: Deep-review and commit the E2E harness before building artifacts**
 
 Run: `pnpm exec vitest run test/e2e/crmSearchPostgresProvider.test.ts test/e2e/crmSearchAuthorization.test.ts`
 
@@ -1454,7 +1454,7 @@ git add test/e2e/crmSearchPostgresProvider.test.ts test/e2e/crmSearchAuthorizati
 git commit -m "test(crm-search): add isolated end-to-end harness"
 ```
 
-- [ ] **Step 3: Run focused, full, type, build, and repository gates on the candidate implementation SHA**
+- [x] **Step 3: Run focused, full, type, build, and repository gates on the candidate implementation SHA**
 
 Run: `pnpm exec vitest run test/crm test/server/api/crmSearch*.test.ts test/workers/crmSearchConsumer.test.ts test/config/crmSearch*.test.ts test/public/crmSearch*.test.ts test/e2e/crmSearch*.test.ts`
 
@@ -1468,11 +1468,11 @@ Run: `pnpm deploy:check && pnpm --dir workers/crm-search-consumer run typecheck 
 
 Expected: focused/full tests, build, target guard, generated types, worker config/bundle dry-run, and whitespace gate PASS. Compare typecheck/full-suite diagnostics to a same-machine reproduction at base SHA and record only net-new errors; any new CRM-search diagnostic blocks completion. Re-read every changed file, check aliases, SSRF, secrets, selector sentinels, reactivity, duplicate UI, dark mode, queue/index names, default-off state, and raw-query/source-text leakage. Complete a requirement-by-requirement audit against the coverage matrix and record command SHA/digests.
 
-- [ ] **Step 4: Run fresh adversarial reviews and resolve every HIGH/MEDIUM finding**
+- [x] **Step 4: Run fresh adversarial reviews and resolve every HIGH/MEDIUM finding**
 
 Use independent authorization, indexing/provider, and operations/release reviewers. Each reviews the live diff and evidence against the approved design. Resolve findings in atomic commits and repeat Step 3 plus review until no HIGH/MEDIUM finding remains. Record the finding, evidence, disposition, corrective commit, and re-run command in `docs/reports/crm-search-implementation-review.md`.
 
-- [ ] **Step 5: Preflight the guarded Neon lifecycle without retaining external state**
+- [x] **Step 5: Preflight the guarded Neon lifecycle without retaining external state**
 
 Run: `pnpm crm-search:migrate:test -- --expected-project "$CRM_SEARCH_TEST_NEON_PROJECT_ID" --schema-only --dry-run`
 
@@ -1492,6 +1492,18 @@ git commit -m "test(crm-search): verify enterprise readiness"
 ```
 
 The handoff must say that implementation and isolated preview verification are complete while production schema/resources/code/indexing/shadow/assist remain unapproved and unchanged.
+
+#### Task 19 local-readiness evidence — 2026-08-11
+
+- Candidate `efd177a7d12d95190b37c8a301d1166d8022858d`; same-machine comparison base `f46d1e7793ba558e374c380e47d610a65d42756a`.
+- Steps 1–2 completed in atomic harness commit `f45fa96f86c1feb9fbb5f819ca024813d887a5a6`. The final 12-file compatibility slice passed 87/87 tests.
+- The final full suite completed with 1,651 files and 10,762 tests passing; its four failing files were Chromium sandbox, localhost-listen sandbox, or missing shared-checkout artifact failures. No plausible CRM-search regression remained.
+- Typecheck reproduced the known application baseline and returned no Task 19 or `crm/search*` diagnostic. It is not recorded as green.
+- Commit `efd177a7` replaced the obsolete raw-only size threshold with immutable 250,000-byte margins below the current Workers Paid 64,000,000-byte raw and 10,000,000-byte gzip limits. A clean Node 24.18.0 build completed in 253 seconds: client/server, 162 prerenders, Nitro, wrapping, and the dual size guard passed at 25,578,485 / 63,750,000 raw bytes and 6,570,472 / 9,750,000 conservative gzip bytes. BigInt/`es2019` messages remain recorded as verified build warnings.
+- All known HIGH/MEDIUM review findings were corrected in committed code (`a3e9dbfd`, `f7888767`, `00c59e60`, `9e6b392b`, `68b0e2fc`, `17764238`, `efd177a7`).
+- The guarded Neon schema-only TTL preflight and Task 18 artifact/resource/E2E/cleanup plans were dry-run only and reported zero mutations.
+- Step 6 was not performed: no external preview resource was provisioned or contacted, no signed resource/readiness evidence was supplied, and the sealed holdout remains `productionReady: false`.
+- Step 7 remains incomplete because isolated preview verification is not complete. Production schema, resources, code, indexing, shadow, and assist remain unapproved, halted, and unchanged.
 
 ---
 

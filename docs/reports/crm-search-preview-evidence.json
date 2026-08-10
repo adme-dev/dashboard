@@ -1,0 +1,118 @@
+{
+  "version": "crm-search-preview-evidence/v1",
+  "generatedAt": "2026-08-10T19:30:02Z",
+  "candidateSha": "efd177a7d12d95190b37c8a301d1166d8022858d",
+  "comparisonBaseSha": "f46d1e7793ba558e374c380e47d610a65d42756a",
+  "decision": "external_preview_pending",
+  "productionHalted": true,
+  "localVerification": {
+    "harnessCommit": "f45fa96f86c1feb9fbb5f819ca024813d887a5a6",
+    "compatibilitySlice": {
+      "testFilesPassed": 12,
+      "testsPassed": 87,
+      "testsFailed": 0
+    },
+    "fullSuite": {
+      "completed": true,
+      "testFilesPassed": 1651,
+      "testFilesFailed": 4,
+      "testFilesSkipped": 5,
+      "testsPassed": 10762,
+      "testsFailed": 5,
+      "testsSkipped": 30,
+      "unhandledEnvironmentErrors": 2,
+      "failingFileClassification": "environment_or_missing_artifact_only",
+      "failingFiles": [
+        "test/app/aiGovernanceControlPlane.test.ts",
+        "test/app/portalPdfExport.test.ts",
+        "test/workers/mcpRequestClaimRuntimeCompatibility.test.ts",
+        "test/workers/cloudflareNitroBindingBoundary.test.ts"
+      ]
+    },
+    "typecheck": {
+      "completed": true,
+      "passed": false,
+      "classification": "known_application_baseline",
+      "task19OrCrmSearchDiagnosticObserved": false
+    },
+    "detachedBuild": {
+      "completed": true,
+      "passed": true,
+      "clientBuilt": true,
+      "serverBuilt": true,
+      "prerenderedRouteCount": 162,
+      "nitroBundleBuilt": true,
+      "workerWrapped": true,
+      "rawBytes": 25578485,
+      "rawBudgetBytes": 63750000,
+      "conservativeGzipBytes": 6570472,
+      "conservativeGzipBudgetBytes": 9750000,
+      "officialRawLimitBytes": 64000000,
+      "officialGzipLimitBytes": 10000000,
+      "safetyMarginBytesPerDimension": 250000,
+      "classification": "local_build_and_release_size_guard_passed",
+      "localDispatcherSha256": "1e4154e92931461dc14b29bfa0f17334234f535ee2f01d446c4c12a4538746da",
+      "frozenArtifactBuilt": false,
+      "frozenArtifactDigest": null
+    },
+    "buildWarnings": [
+      "duplicated CrmSearchOperationPublicationClaim auto-import",
+      "BigInt literals reported against the configured es2019 target"
+    ],
+    "pagesTargetGuardPassed": true,
+    "workerGeneratedTypesPassed": true,
+    "workerStrictTypecheckPassed": true,
+    "workerBundleDryRunPassed": true,
+    "neonLifecycleDryRunMutationCount": 0,
+    "artifactVerifyDryRunMutationCount": 0,
+    "previewE2eDryRunMutationCount": 0,
+    "cleanupDryRunMutationCount": 0
+  },
+  "externalPreview": {
+    "executed": false,
+    "signedResourceApprovalVerified": false,
+    "signedReleaseEvidenceVerified": false,
+    "neonBranchCreated": false,
+    "pagesPreviewCreatedOrDeployed": false,
+    "workerPreviewCreatedOrUploaded": false,
+    "queueOrDlqCreated": false,
+    "vectorizeIndexCreated": false,
+    "r2ObjectImported": false,
+    "secretsProvisioned": false,
+    "providerCallsPerformed": false,
+    "cleanupReadbackVerified": false
+  },
+  "sealedHoldout": {
+    "productionReady": false,
+    "importState": "blocked_pending_task_18_approved_envelope_and_secret_readback",
+    "objectKey": "crm-search/evaluation/holdouts/holdout-v1.json",
+    "opaqueArtifactSha256": "cf3b0327f05a6bb1ac30bd5fea5842c043d2efbcc1c47b30a51f76b85706687b",
+    "judgementSha256": "a459ef8b7cdd373f8b016dc77014f9f2d8932f3551266a12c2f01d84013d5fdf",
+    "queryCount": 360,
+    "requiredKeyBinding": "CRM_SEARCH_SEALED_HOLDOUT_KEYRING"
+  },
+  "staticDigests": {
+    "pnpmLockSha256": "1b83b1a57e362ea7fecdf31e9fffdc1bd678305c925aa02221402483ad342ac0",
+    "pagesWranglerSha256": "72bc6848b77d97c341595116d1983b28c803c7c3bb7f3dc49c525ac1f04d499c",
+    "consumerWranglerSha256": "fc833859ac890535ab5a8160baac9dda46e6066b36b9f448f107674257642377",
+    "migration350Sha256": "b2afcc9aec2872689589a32e8122e17a552ea664ab3efd4298efcee6484f41c8",
+    "migration351Sha256": "8e20e19525b8de3efdd92d553e6c9403d922fd1b31f8d5c21d7e0968d6041ff3",
+    "migration352Sha256": "4fbfb937293a830825413add0ea9979b6c17aecc492e4f227f37c1f091e5d3af",
+    "sealedArtifactSha256": "cf3b0327f05a6bb1ac30bd5fea5842c043d2efbcc1c47b30a51f76b85706687b",
+    "deploymentManifestSha256": "b529c5e23fcfa0fe57d2a0d734d8156158ccb5242a8702d8a0a7015e49abacd5",
+    "holdoutManifestSha256": "b54dbd03698d322b80aeba2f7d6d1e95b78e299d7dc75f265ba67705ba3da2f0"
+  },
+  "unchangedProductionState": {
+    "schema": true,
+    "resources": true,
+    "codeDeployment": true,
+    "indexing": true,
+    "shadow": true,
+    "assist": true
+  },
+  "releaseBlockers": [
+    "signed Task 18 resource approval and immutable release evidence are absent",
+    "external isolated preview resources and E2E were not executed",
+    "sealed holdout import, key provisioning, readback, decryption, and judgement verification are pending"
+  ]
+}
