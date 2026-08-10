@@ -20,6 +20,10 @@ export const CRM_SEARCH_QUEUE_RETENTION_SECONDS
 export const CRM_SEARCH_RESOURCE_READBACK_REVISION
   = 'crm-search-resource-readback-v1' as const
 export const CRM_SEARCH_SUPPORTED_QUEUE_PLAN = 'workers_paid' as const
+export const CRM_SEARCH_ENVIRONMENT_RESOURCE_MANIFEST_VERSION
+  = 'crm-search-environment-resource-manifest-v1' as const
+export const CRM_SEARCH_ENVIRONMENT_RESOURCE_ENVELOPE_VERSION
+  = 'crm-search-environment-resource-envelope-v1' as const
 
 const HEALTH_RESPONSE_MAX_BYTES = 2_048
 const HEALTH_REQUEST_TIMEOUT_MS = 5_000
@@ -44,18 +48,49 @@ const pagesHealthSchema = z.object({
   }).strict()
 }).strict()
 
-const resourceManifestSchema = z.object({
-  revision: z.literal(CRM_SEARCH_RESOURCE_READBACK_REVISION),
+const resourcePayloadSchema = z.object({
+  version: z.literal(CRM_SEARCH_ENVIRONMENT_RESOURCE_MANIFEST_VERSION),
+  environment: z.enum(['preview', 'production']),
+  issuedAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
   readbackSource: z.literal('cloudflare_api'),
   plan: z.literal(CRM_SEARCH_SUPPORTED_QUEUE_PLAN),
-  primary: z.object({
-    name: z.literal(CRM_SEARCH_PRIMARY_QUEUE_NAME),
-    retentionSeconds: z.literal(CRM_SEARCH_QUEUE_RETENTION_SECONDS)
+  pages: z.object({
+    project: z.literal('agency-dashboard'),
+    branch: z.enum(['preview', 'main']),
+    origin: z.url()
   }).strict(),
-  deadLetter: z.object({
-    name: z.literal(CRM_SEARCH_DEAD_LETTER_QUEUE_NAME),
-    retentionSeconds: z.literal(CRM_SEARCH_QUEUE_RETENTION_SECONDS)
+  worker: z.object({ name: z.string().min(1).max(128) }).strict(),
+  vectorize: z.object({ crmSearch: z.string().min(1).max(128) }).strict(),
+  queues: z.object({
+    primary: z.object({
+      name: z.string().min(1).max(128),
+      retentionSeconds: z.literal(CRM_SEARCH_QUEUE_RETENTION_SECONDS)
+    }).strict(),
+    deadLetter: z.object({
+      name: z.string().min(1).max(128),
+      retentionSeconds: z.literal(CRM_SEARCH_QUEUE_RETENTION_SECONDS)
+    }).strict()
   }).strict()
+}).strict()
+
+const resourceEnvelopeSchema = z.object({
+  version: z.literal(CRM_SEARCH_ENVIRONMENT_RESOURCE_ENVELOPE_VERSION),
+  keyVersion: z.string().min(1).max(64).regex(/^[A-Za-z0-9._-]+$/u),
+  payload: resourcePayloadSchema,
+  payloadSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  signature: z.string().min(1).max(512).regex(/^[A-Za-z0-9_-]+$/u)
+}).strict()
+
+const resourceVerificationKeyringSchema = z.object({
+  version: z.literal('crm-search-resource-verification-keyring-v1'),
+  activeKeyVersion: z.string().min(1).max(64),
+  keys: z.record(z.string(), z.object({
+    algorithm: z.literal('Ed25519'),
+    publicKeySpki: z.string().min(1).max(512).regex(/^[A-Za-z0-9_-]+$/u),
+    notBefore: z.iso.datetime(),
+    notAfter: z.iso.datetime()
+  }).strict())
 }).strict()
 
 const releaseEvidenceSchema = z.object({
@@ -68,7 +103,7 @@ const releaseEvidenceSchema = z.object({
 }).strict()
 
 export interface CrmSearchConsumerBindings {
-  CRM_SEARCH_PAGES_BASE_URL: string
+  CRM_SEARCH_ENVIRONMENT: string
   CRM_SEARCH_SERVICE_KEYRING: string
   CRM_SEARCH_IMPLEMENTATION_SHA: string
   CRM_SEARCH_WORKER_ARTIFACT_DIGEST: string
@@ -77,6 +112,7 @@ export interface CrmSearchConsumerBindings {
   CRM_SEARCH_EXPECTED_PAGES_ARTIFACT_DIGEST: string
   CRM_SEARCH_EXPECTED_PAGES_BINDING_MANIFEST_DIGEST: string
   CRM_SEARCH_RESOURCE_MANIFEST: string
+  CRM_SEARCH_RESOURCE_MANIFEST_VERIFICATION_KEYRING: string
 }
 
 export interface CrmSearchConsumerHealthDependencies {
@@ -86,10 +122,13 @@ export interface CrmSearchConsumerHealthDependencies {
 
 export interface CrmSearchConsumerResourceHealth {
   revision: typeof CRM_SEARCH_RESOURCE_READBACK_REVISION
+  environment: 'preview' | 'production'
   plan: typeof CRM_SEARCH_SUPPORTED_QUEUE_PLAN
-  primaryQueue: typeof CRM_SEARCH_PRIMARY_QUEUE_NAME
+  workerName: string
+  vectorizeIndex: string
+  primaryQueue: string
   primaryRetentionSeconds: typeof CRM_SEARCH_QUEUE_RETENTION_SECONDS
-  deadLetterQueue: typeof CRM_SEARCH_DEAD_LETTER_QUEUE_NAME
+  deadLetterQueue: string
   deadLetterRetentionSeconds: typeof CRM_SEARCH_QUEUE_RETENTION_SECONDS
 }
 
@@ -109,7 +148,7 @@ export interface CrmSearchConsumerProtocolHealth {
 }
 
 interface PreparedCrmSearchConsumerRuntime {
-  origin: typeof CRM_SEARCH_PAGES_ORIGIN
+  origin: string
   keyring: CrmSearchServiceKeyring
   evidence: z.infer<typeof releaseEvidenceSchema>
   resources: CrmSearchConsumerResourceHealth
@@ -123,19 +162,19 @@ function parseJson(value: string): unknown {
   }
 }
 
-function requireOrigin(value: string): typeof CRM_SEARCH_PAGES_ORIGIN {
+function requireOrigin(value: string, expected: string): string {
   try {
     const parsed = new URL(value)
     if (
-      value !== CRM_SEARCH_PAGES_ORIGIN
-      || parsed.origin !== CRM_SEARCH_PAGES_ORIGIN
+      value !== expected
+      || parsed.origin !== expected
       || parsed.pathname !== '/'
       || parsed.username !== ''
       || parsed.password !== ''
       || parsed.search !== ''
       || parsed.hash !== ''
     ) throw new Error('crm_search_consumer_unready')
-    return CRM_SEARCH_PAGES_ORIGIN
+    return expected
   } catch {
     throw new Error('crm_search_consumer_unready')
   }
@@ -155,16 +194,118 @@ function requireActiveKeyring(value: string, nowMs: number): CrmSearchServiceKey
   return keyring
 }
 
-function requireResourceManifest(value: string): CrmSearchConsumerResourceHealth {
-  const parsed = resourceManifestSchema.safeParse(parseJson(value))
-  if (!parsed.success) throw new Error('crm_search_consumer_unready')
+function canonical(value: unknown): string {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') {
+    return JSON.stringify(value)
+  }
+  if (typeof value === 'number' && Number.isSafeInteger(value)) return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+  if (value && typeof value === 'object') {
+    const candidate = value as Record<string, unknown>
+    return `{${Object.keys(candidate).sort().map(key => (
+      `${JSON.stringify(key)}:${canonical(candidate[key])}`
+    )).join(',')}}`
+  }
+  throw new Error('crm_search_consumer_unready')
+}
+
+function decodeBase64Url(value: string): Uint8Array {
+  try {
+    const base64 = value.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = `${base64}${'='.repeat((4 - base64.length % 4) % 4)}`
+    const bytes = Uint8Array.from(atob(padded), char => char.charCodeAt(0))
+    if (bytes.byteLength === 0) throw new Error('empty')
+    return bytes
+  } catch {
+    throw new Error('crm_search_consumer_unready')
+  }
+}
+
+function hex(bytes: Uint8Array): string {
+  return [...bytes].map(byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function ownedBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength)
+  copy.set(bytes)
+  return copy.buffer
+}
+
+function exactEnvironmentResources(payload: z.infer<typeof resourcePayloadSchema>): boolean {
+  if (payload.environment === 'production') {
+    return payload.pages.branch === 'main'
+      && payload.pages.origin === CRM_SEARCH_PAGES_ORIGIN
+      && payload.worker.name === CRM_SEARCH_PRIMARY_QUEUE_NAME.replace('-index', '-consumer')
+      && payload.vectorize.crmSearch === 'agency-crm-search'
+      && payload.queues.primary.name === CRM_SEARCH_PRIMARY_QUEUE_NAME
+      && payload.queues.deadLetter.name === CRM_SEARCH_DEAD_LETTER_QUEUE_NAME
+  }
+  return payload.pages.branch === 'preview'
+    && payload.pages.origin === 'https://preview.agency-dashboard.pages.dev'
+    && payload.worker.name === 'agency-crm-search-consumer-preview'
+    && payload.vectorize.crmSearch === 'agency-crm-search-preview'
+    && payload.queues.primary.name === 'agency-crm-search-index-preview'
+    && payload.queues.deadLetter.name === 'agency-crm-search-index-preview-dlq'
+}
+
+export async function verifyCrmSearchEnvironmentResourceManifest(input: {
+  environment: string
+  envelope: string
+  verificationKeyring: string
+  nowMs: number
+}): Promise<{ origin: string, resources: CrmSearchConsumerResourceHealth }> {
+  if (typeof input.envelope !== 'string' || input.envelope.length > 16_384
+    || typeof input.verificationKeyring !== 'string'
+    || input.verificationKeyring.length > 8_192) {
+    throw new Error('crm_search_consumer_unready')
+  }
+  const parsed = resourceEnvelopeSchema.safeParse(parseJson(input.envelope))
+  const keyring = resourceVerificationKeyringSchema.safeParse(parseJson(input.verificationKeyring))
+  if (!parsed.success || !keyring.success
+    || Object.keys(keyring.data.keys).length < 1
+    || Object.keys(keyring.data.keys).length > 3
+    || keyring.data.activeKeyVersion !== parsed.data.keyVersion) {
+    throw new Error('crm_search_consumer_unready')
+  }
+  const payload = parsed.data.payload
+  const key = keyring.data.keys[parsed.data.keyVersion]
+  const issuedAt = Date.parse(payload.issuedAt)
+  const expiresAt = Date.parse(payload.expiresAt)
+  const keyNotBefore = key ? Date.parse(key.notBefore) : NaN
+  const keyNotAfter = key ? Date.parse(key.notAfter) : NaN
+  if (!key || input.environment !== payload.environment || !exactEnvironmentResources(payload)
+    || !Number.isFinite(input.nowMs) || issuedAt > input.nowMs || input.nowMs >= expiresAt
+    || expiresAt <= issuedAt || expiresAt - issuedAt > 31 * 24 * 60 * 60 * 1_000
+    || input.nowMs < keyNotBefore || input.nowMs >= keyNotAfter) {
+    throw new Error('crm_search_consumer_unready')
+  }
+  const bytes = new TextEncoder().encode(canonical(payload))
+  const digest = hex(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)))
+  if (digest !== parsed.data.payloadSha256) throw new Error('crm_search_consumer_unready')
+  try {
+    const verificationKey = await crypto.subtle.importKey(
+      'spki', ownedBuffer(decodeBase64Url(key.publicKeySpki)), { name: 'Ed25519' }, false, ['verify']
+    )
+    if (!await crypto.subtle.verify(
+      { name: 'Ed25519' }, verificationKey,
+      ownedBuffer(decodeBase64Url(parsed.data.signature)), ownedBuffer(bytes)
+    )) throw new Error('crm_search_consumer_unready')
+  } catch {
+    throw new Error('crm_search_consumer_unready')
+  }
   return {
-    revision: parsed.data.revision,
-    plan: parsed.data.plan,
-    primaryQueue: parsed.data.primary.name,
-    primaryRetentionSeconds: parsed.data.primary.retentionSeconds,
-    deadLetterQueue: parsed.data.deadLetter.name,
-    deadLetterRetentionSeconds: parsed.data.deadLetter.retentionSeconds
+    origin: requireOrigin(payload.pages.origin, payload.pages.origin),
+    resources: {
+      revision: CRM_SEARCH_RESOURCE_READBACK_REVISION,
+      environment: payload.environment,
+      plan: payload.plan,
+      workerName: payload.worker.name,
+      vectorizeIndex: payload.vectorize.crmSearch,
+      primaryQueue: payload.queues.primary.name,
+      primaryRetentionSeconds: payload.queues.primary.retentionSeconds,
+      deadLetterQueue: payload.queues.deadLetter.name,
+      deadLetterRetentionSeconds: payload.queues.deadLetter.retentionSeconds
+    }
   }
 }
 
@@ -184,15 +325,21 @@ function requireReleaseEvidence(
   return parsed.data
 }
 
-export function prepareCrmSearchConsumerRuntime(
+export async function prepareCrmSearchConsumerRuntime(
   bindings: CrmSearchConsumerBindings,
   nowMs: number
-): PreparedCrmSearchConsumerRuntime {
+): Promise<PreparedCrmSearchConsumerRuntime> {
+  const manifest = await verifyCrmSearchEnvironmentResourceManifest({
+    environment: bindings.CRM_SEARCH_ENVIRONMENT,
+    envelope: bindings.CRM_SEARCH_RESOURCE_MANIFEST,
+    verificationKeyring: bindings.CRM_SEARCH_RESOURCE_MANIFEST_VERIFICATION_KEYRING,
+    nowMs
+  })
   return {
-    origin: requireOrigin(bindings.CRM_SEARCH_PAGES_BASE_URL),
+    origin: manifest.origin,
     keyring: requireActiveKeyring(bindings.CRM_SEARCH_SERVICE_KEYRING, nowMs),
     evidence: requireReleaseEvidence(bindings),
-    resources: requireResourceManifest(bindings.CRM_SEARCH_RESOURCE_MANIFEST)
+    resources: manifest.resources
   }
 }
 
@@ -243,7 +390,7 @@ export async function evaluateCrmSearchConsumerHealth(
   bindings: CrmSearchConsumerBindings,
   dependencies: CrmSearchConsumerHealthDependencies
 ): Promise<CrmSearchConsumerProtocolHealth> {
-  const runtime = prepareCrmSearchConsumerRuntime(bindings, dependencies.now())
+  const runtime = await prepareCrmSearchConsumerRuntime(bindings, dependencies.now())
   const request = new Request(`${runtime.origin}${CRM_SEARCH_HEALTH_PATH}`, {
     method: 'GET',
     headers: { accept: 'application/json' },

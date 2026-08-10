@@ -10,8 +10,6 @@ import {
 } from '../../../shared/crmSearchIndexProtocol'
 import { createCrmSearchSignedServiceRequest } from '../../../shared/crmSearchIndexSigning'
 import {
-  CRM_SEARCH_DEAD_LETTER_QUEUE_NAME,
-  CRM_SEARCH_PRIMARY_QUEUE_NAME,
   evaluateCrmSearchConsumerHealth,
   prepareCrmSearchConsumerRuntime,
   type CrmSearchConsumerBindings,
@@ -152,7 +150,7 @@ async function forwardMessage(
   dependencies: CrmSearchConsumerDependencies,
   nowMs: number
 ): Promise<CrmSearchConsumerLogStatus> {
-  const runtime = prepareCrmSearchConsumerRuntime(bindings, nowMs)
+  const runtime = await prepareCrmSearchConsumerRuntime(bindings, nowMs)
   const signed = await createCrmSearchSignedServiceRequest(
     message,
     path,
@@ -207,9 +205,17 @@ export async function consumeCrmSearchQueueBatch(
   bindings: CrmSearchConsumerBindings,
   dependencies: CrmSearchConsumerDependencies = defaultDependencies
 ): Promise<void> {
-  const path = batch.queue === CRM_SEARCH_PRIMARY_QUEUE_NAME
+  let runtime
+  try {
+    runtime = await prepareCrmSearchConsumerRuntime(bindings, dependencies.now())
+  } catch {
+    safeLog(dependencies, { event: 'crm_search_consumer', status: 'health_unready' })
+    for (const message of batch.messages) retry(message)
+    return
+  }
+  const path = batch.queue === runtime.resources.primaryQueue
     ? CRM_SEARCH_PROCESS_PATH
-    : batch.queue === CRM_SEARCH_DEAD_LETTER_QUEUE_NAME
+    : batch.queue === runtime.resources.deadLetterQueue
       ? CRM_SEARCH_DEAD_LETTER_PATH
       : null
 

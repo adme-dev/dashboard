@@ -49,6 +49,13 @@ MONDAY_API_TOKEN=your_monday_api_token
 # ============================================
 CRON_SECRET=your_random_cron_secret
 
+# CRM search release/evaluation keys are deliberately distinct. Keep blank for
+# ordinary local development; semantic/evaluation paths then fail closed.
+CRM_SEARCH_RESOURCE_APPROVAL_VERIFICATION_KEYRING=
+CRM_SEARCH_RESOURCE_MANIFEST_VERIFICATION_KEYRING=
+CRM_SEARCH_RELEASE_APPROVAL_VERIFICATION_KEYRING=
+CRM_SEARCH_SEALED_HOLDOUT_KEYRING=
+
 # ============================================
 # Optional: Cloudflare R2 Storage
 # ============================================

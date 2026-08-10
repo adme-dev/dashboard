@@ -121,6 +121,12 @@ binding = "SEARCH_AUTHORITY_BUCKET"
 bucket_name = "agency-search-authority-publications"
 preview_bucket_name = "agency-search-authority-publications-preview"
 
+# Private encrypted CRM search evaluation holdouts. Never expose publicly.
+[[r2_buckets]]
+binding = "CRM_SEARCH_SEALED_HOLDOUTS"
+bucket_name = "agency-crm-search-sealed-holdouts"
+preview_bucket_name = "agency-crm-search-sealed-holdouts-preview"
+
 # AI — Workers AI for embeddings and edge inference
 [ai]
 binding = "AI"
@@ -134,6 +140,11 @@ index_name = "agency-search"
 [[vectorize]]
 binding = "SITE_INTELLIGENCE_VECTORIZE"
 index_name = "automotive-site-intelligence"
+
+# Dedicated CRM semantic index; never reuse the generic VECTORIZE binding.
+[[vectorize]]
+binding = "CRM_SEARCH_VECTORIZE"
+index_name = "agency-crm-search"
 
 # Browser Rendering — headless Chromium for banner image export (PNG/JPG)
 # Enable in Cloudflare dashboard: Workers & Pages > Browser Rendering
@@ -157,6 +168,14 @@ id = "90228af3e2cc461bbc09accc3b47bd9f"
 [[services]]
 binding = "AGENCY_WORKFLOWS"
 service = "agency-workflows"
+
+[[services]]
+binding = "CRM_SEARCH_EVALUATION_RUNNER"
+service = "agency-crm-search-evaluation-runner"
+
+[[services]]
+binding = "CRM_SEARCH_ANALYTICS_KEY_MANAGER"
+service = "agency-crm-search-analytics-key-manager"
 
 # ============================================
 # Environment Variables (non-secret)

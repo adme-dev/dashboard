@@ -225,6 +225,19 @@ ls -la .dev.vars
 4. **Use Wrangler for production** - Don't use `.env` files in production
 5. **Limit secret access** - Only give Cloudflare dashboard access to necessary team members
 
+### CRM search release and sealed evaluation
+
+| Binding | Runtime | Purpose |
+|---|---|---|
+| `CRM_SEARCH_RESOURCE_APPROVAL_VERIFICATION_KEYRING` | Pages | Active Ed25519 public verification keys for signed `resource_provision` bootstrap envelopes. |
+| `CRM_SEARCH_RESOURCE_MANIFEST` | CRM search consumer | Signed exact environment resource envelope; not an unsigned JSON readback. |
+| `CRM_SEARCH_RESOURCE_MANIFEST_VERIFICATION_KEYRING` | CRM search consumer | Independent active Ed25519 public verification keyring for resource manifests. |
+| `CRM_SEARCH_RELEASE_APPROVAL_VERIFICATION_KEYRING` | Protected release runner | Active Ed25519 public keyring for immutable deployment approval artifacts. |
+| `CRM_SEARCH_ENVIRONMENT` | CRM search consumer | Exact `preview` or `production` identity checked against the signed envelope. |
+| `CRM_SEARCH_SEALED_HOLDOUT_KEYRING` | Pages evaluation runtime | Dedicated AES-256-GCM keyring; no process-environment fallback. |
+
+Keyrings are bounded/versioned and may not reuse CRM search service, confirmation, analytics, or cron secrets. Missing, malformed, expired, retired, tampered, wrong-environment, or wrong-target evidence fails closed before provider or deployment work. The Task 18 release scripts execute only a dry-run in this repository state.
+
 ## Environment Variable Reference
 
 | Variable | Required | Description |

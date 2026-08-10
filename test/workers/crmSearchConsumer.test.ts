@@ -1,3 +1,4 @@
+import { createHash, generateKeyPairSync, sign } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -27,7 +28,8 @@ import {
 } from '../../workers/crm-search-consumer/src/consumer'
 import {
   CRM_SEARCH_QUEUE_RETENTION_SECONDS,
-  evaluateCrmSearchConsumerHealth
+  evaluateCrmSearchConsumerHealth,
+  verifyCrmSearchEnvironmentResourceManifest
 } from '../../workers/crm-search-consumer/src/health'
 
 const NOW_MS = Date.parse('2026-08-10T04:05:06.000Z')
@@ -37,6 +39,7 @@ const PAGES_ARTIFACT_DIGEST = `sha256:${'c'.repeat(64)}`
 const BINDING_MANIFEST_DIGEST = `sha256:${'d'.repeat(64)}`
 const ACTIVE_SECRET = Buffer.alloc(32, 7).toString('base64url')
 const PREVIOUS_SECRET = Buffer.alloc(32, 9).toString('base64url')
+const RESOURCE_KEYS = generateKeyPairSync('ed25519')
 
 const validMessage: CrmSearchIndexQueueMessage = Object.freeze({
   protocolVersion: CRM_SEARCH_INDEX_PROTOCOL_VERSION,
@@ -71,24 +74,70 @@ function serviceKeyring() {
 
 function resourceManifest(overrides: Record<string, unknown> = {}) {
   return {
-    revision: 'crm-search-resource-readback-v1',
+    version: 'crm-search-environment-resource-manifest-v1',
+    environment: 'production',
+    issuedAt: '2026-08-10T00:00:00.000Z',
+    expiresAt: '2026-08-11T00:00:00.000Z',
     readbackSource: 'cloudflare_api',
     plan: 'workers_paid',
-    primary: {
-      name: CRM_SEARCH_PRIMARY_QUEUE_NAME,
-      retentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS
+    pages: {
+      project: 'agency-dashboard',
+      branch: 'main',
+      origin: 'https://agency-dashboard-6cm.pages.dev'
     },
-    deadLetter: {
-      name: CRM_SEARCH_DEAD_LETTER_QUEUE_NAME,
-      retentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS
+    worker: { name: 'agency-crm-search-consumer' },
+    vectorize: { crmSearch: 'agency-crm-search' },
+    queues: {
+      primary: {
+        name: CRM_SEARCH_PRIMARY_QUEUE_NAME,
+        retentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS
+      },
+      deadLetter: {
+        name: CRM_SEARCH_DEAD_LETTER_QUEUE_NAME,
+        retentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS
+      }
     },
     ...overrides
   }
 }
 
+function canonical(value: unknown): string {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value)
+  if (typeof value === 'number') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+  const object = value as Record<string, unknown>
+  return `{${Object.keys(object).sort().map(key => `${JSON.stringify(key)}:${canonical(object[key])}`).join(',')}}`
+}
+
+function signedResourceManifest(payload = resourceManifest()): string {
+  const bytes = Buffer.from(canonical(payload), 'utf8')
+  return JSON.stringify({
+    version: 'crm-search-environment-resource-envelope-v1',
+    keyVersion: 'release-resource-2026-08',
+    payload,
+    payloadSha256: createHash('sha256').update(bytes).digest('hex'),
+    signature: sign(null, bytes, RESOURCE_KEYS.privateKey).toString('base64url')
+  })
+}
+
+function resourceVerificationKeyring(): string {
+  return JSON.stringify({
+    version: 'crm-search-resource-verification-keyring-v1',
+    activeKeyVersion: 'release-resource-2026-08',
+    keys: {
+      'release-resource-2026-08': {
+        algorithm: 'Ed25519',
+        publicKeySpki: RESOURCE_KEYS.publicKey.export({ type: 'spki', format: 'der' }).toString('base64url'),
+        notBefore: '2026-08-09T00:00:00.000Z',
+        notAfter: '2026-08-12T00:00:00.000Z'
+      }
+    }
+  })
+}
+
 function bindings(overrides: Partial<CrmSearchConsumerBindings> = {}): CrmSearchConsumerBindings {
   return {
-    CRM_SEARCH_PAGES_BASE_URL: 'https://agency-dashboard-6cm.pages.dev',
+    CRM_SEARCH_ENVIRONMENT: 'production',
     CRM_SEARCH_SERVICE_KEYRING: JSON.stringify(serviceKeyring()),
     CRM_SEARCH_IMPLEMENTATION_SHA: IMPLEMENTATION_SHA,
     CRM_SEARCH_WORKER_ARTIFACT_DIGEST: WORKER_ARTIFACT_DIGEST,
@@ -96,7 +145,8 @@ function bindings(overrides: Partial<CrmSearchConsumerBindings> = {}): CrmSearch
     CRM_SEARCH_EXPECTED_PAGES_SHA: IMPLEMENTATION_SHA,
     CRM_SEARCH_EXPECTED_PAGES_ARTIFACT_DIGEST: PAGES_ARTIFACT_DIGEST,
     CRM_SEARCH_EXPECTED_PAGES_BINDING_MANIFEST_DIGEST: BINDING_MANIFEST_DIGEST,
-    CRM_SEARCH_RESOURCE_MANIFEST: JSON.stringify(resourceManifest()),
+    CRM_SEARCH_RESOURCE_MANIFEST: signedResourceManifest(),
+    CRM_SEARCH_RESOURCE_MANIFEST_VERIFICATION_KEYRING: resourceVerificationKeyring(),
     ...overrides
   }
 }
@@ -158,6 +208,27 @@ function dependencies(
 }
 
 describe('dedicated CRM search Queue Worker', () => {
+  it('rejects unsigned or wrong-environment resource identities before Pages/provider work', async () => {
+    await expect(verifyCrmSearchEnvironmentResourceManifest({
+      environment: 'preview',
+      envelope: JSON.stringify(resourceManifest()),
+      verificationKeyring: '{}',
+      nowMs: NOW_MS
+    })).rejects.toThrow('crm_search_consumer_unready')
+
+    const message = queueMessage()
+    const fetch = vi.fn(async () => response(pagesHealth()))
+    await consumeCrmSearchQueueBatch(
+      batch('agency-crm-search-index-preview', [message]),
+      bindings({
+        CRM_SEARCH_ENVIRONMENT: 'preview',
+        CRM_SEARCH_RESOURCE_MANIFEST: JSON.stringify(resourceManifest())
+      } as never),
+      dependencies(fetch)
+    )
+    expect(fetch).not.toHaveBeenCalled()
+    expect(message.retry).toHaveBeenCalledOnce()
+  })
   it.each(['complete', 'accepted_provider_pending', 'superseded'] as const)(
     'acknowledges a signed primary outcome of %s',
     async (status) => {
@@ -387,12 +458,18 @@ describe('dedicated CRM search Queue Worker', () => {
 
   it.each([
     ['unknown retention', resourceManifest({
-      primary: { name: CRM_SEARCH_PRIMARY_QUEUE_NAME, retentionSeconds: null }
+      queues: {
+        ...resourceManifest().queues,
+        primary: { name: CRM_SEARCH_PRIMARY_QUEUE_NAME, retentionSeconds: null }
+      }
     })],
     ['short DLQ retention', resourceManifest({
-      deadLetter: {
-        name: CRM_SEARCH_DEAD_LETTER_QUEUE_NAME,
-        retentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS - 1
+      queues: {
+        ...resourceManifest().queues,
+        deadLetter: {
+          name: CRM_SEARCH_DEAD_LETTER_QUEUE_NAME,
+          retentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS - 1
+        }
       }
     })],
     ['unsupported plan', resourceManifest({ plan: 'workers_free' })]
@@ -403,7 +480,7 @@ describe('dedicated CRM search Queue Worker', () => {
 
     await consumeCrmSearchQueueBatch(
       batch(CRM_SEARCH_PRIMARY_QUEUE_NAME, [message]),
-      bindings({ CRM_SEARCH_RESOURCE_MANIFEST: JSON.stringify(manifest) }),
+      bindings({ CRM_SEARCH_RESOURCE_MANIFEST: signedResourceManifest(manifest) }),
       deps
     )
 
@@ -466,7 +543,10 @@ describe('dedicated CRM search Queue Worker', () => {
     }))
     expect(health.resources).toEqual({
       revision: 'crm-search-resource-readback-v1',
+      environment: 'production',
       plan: 'workers_paid',
+      workerName: 'agency-crm-search-consumer',
+      vectorizeIndex: 'agency-crm-search',
       primaryQueue: CRM_SEARCH_PRIMARY_QUEUE_NAME,
       primaryRetentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS,
       deadLetterQueue: CRM_SEARCH_DEAD_LETTER_QUEUE_NAME,

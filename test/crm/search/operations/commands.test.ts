@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { generateKeyPairSync, sign } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 
 const operationsRoot = new URL('../../../../server/utils/crm/search/operations/', import.meta.url)
@@ -179,7 +180,7 @@ describe('CRM search change approvals', () => {
         approvalType: 'production_deploy',
         requestedByActorId: admin.actorId
       } as Record<string, unknown>
-      delete draft[missing]
+      Reflect.deleteProperty(draft, missing)
       expect(() => parseCrmSearchApprovalDraft(draft)).toThrow('crm_search_invalid_approval')
     }
   })
@@ -262,33 +263,79 @@ describe('CRM search change approvals', () => {
     }))
   })
 
-  it('imports only a resource-provision bootstrap with preserved provenance and never reissues it', async () => {
+  it('imports only a verified resource-provision bootstrap with derived provenance and never reissues it', async () => {
     const { importCrmSearchApproval } = await loadCommands()
+    const {
+      canonicalCrmSearchBootstrapApprovalPayload,
+      verifyCrmSearchBootstrapApprovalEnvelope
+    } = await import('~~/server/utils/crm/search/operations/bootstrapApproval')
     const insertImportedApproval = vi.fn().mockResolvedValue({ approvalId: 'approval-imported' })
+
+    const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+    const payload = {
+      type: 'resource_provision',
+      environment: 'production',
+      originalTimestamp: '2026-08-09T00:00:00.000Z',
+      expiresAt: '2026-08-20T00:00:00.000Z',
+      implementationGitSha: 'a'.repeat(40),
+      artifactManifestDigest: 'b'.repeat(64),
+      bindingManifestDigest: 'c'.repeat(64),
+      evidenceBundleHash: 'd'.repeat(64),
+      organisationScopeId: admin.orgId,
+      requestedByActorId: admin.actorId,
+      approvedBy: baseApproval.approvedBy,
+      maximumCostUsdMicros: 25_000_000,
+      clientIds: [],
+      reason: 'Approved production CRM search resources'
+    }
+    const verifiedApproval = await verifyCrmSearchBootstrapApprovalEnvelope({
+      version: 'crm-search-bootstrap-approval-envelope-v1',
+      keyVersion: 'release-2026-08',
+      payload,
+      signature: sign(
+        null,
+        canonicalCrmSearchBootstrapApprovalPayload(payload),
+        privateKey
+      ).toString('base64url')
+    }, {
+      nowMs: Date.parse('2026-08-10T00:00:00.000Z'),
+      keyring: JSON.stringify({
+        version: 'crm-search-bootstrap-verification-keyring-v1',
+        activeKeyVersion: 'release-2026-08',
+        keys: {
+          'release-2026-08': {
+            algorithm: 'Ed25519',
+            publicKeySpki: publicKey.export({ type: 'spki', format: 'der' }).toString('base64url'),
+            notBefore: '2026-08-08T00:00:00.000Z',
+            notAfter: '2026-08-21T00:00:00.000Z'
+          }
+        }
+      })
+    })
 
     await expect(importCrmSearchApproval({
       actor: admin,
-      approval: {
-        ...baseApproval,
-        approvalType: 'resource_provision',
-        issuedAt: '2026-08-09T00:00:00.000Z',
-        importedProvenanceHash: '3'.repeat(64),
-        requestedByActorId: admin.actorId
-      },
+      verifiedApproval: { ...verifiedApproval },
+      insertImportedApproval
+    })).rejects.toThrow('crm_search_bootstrap_unverified')
+
+    await expect(importCrmSearchApproval({
+      actor: admin,
+      verifiedApproval,
       insertImportedApproval
     })).resolves.toEqual({ approvalId: 'approval-imported' })
 
     expect(insertImportedApproval).toHaveBeenCalledWith(expect.objectContaining({
       approvalType: 'resource_provision',
       issuedAt: '2026-08-09T00:00:00.000Z',
-      importedProvenanceHash: '3'.repeat(64)
+      importedProvenanceHash: expect.stringMatching(/^[a-f0-9]{64}$/)
     }))
 
     await expect(importCrmSearchApproval({
       actor: admin,
-      approval: { ...baseApproval, approvalType: 'production_deploy' },
+      verifiedApproval: { ...verifiedApproval, approvalType: 'production_deploy' as never },
       insertImportedApproval
-    })).rejects.toThrow('crm_search_import_resource_provision_only')
+    })).rejects.toThrow('crm_search_bootstrap_unverified')
   })
 
   it('revokes by appending an immutable revocation and never updates or deletes the approval', async () => {

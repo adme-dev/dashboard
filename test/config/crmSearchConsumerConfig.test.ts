@@ -29,6 +29,15 @@ interface WorkerConfig {
   queues?: { producers?: unknown[], consumers?: QueueConsumerConfig[] }
   ai?: unknown
   vectorize?: unknown
+  env?: {
+    preview?: {
+      name?: string
+      workers_dev?: boolean
+      vars?: Record<string, unknown>
+      secrets?: { required?: string[] }
+      queues?: { consumers?: QueueConsumerConfig[] }
+    }
+  }
 }
 
 const config = () => parse(readWorkerFile('wrangler.toml')) as WorkerConfig
@@ -47,8 +56,7 @@ describe('CRM search consumer configuration', () => {
       workers_dev: false,
       observability: { enabled: true }
     })
-    expect(config().vars?.CRM_SEARCH_PAGES_BASE_URL)
-      .toBe('https://agency-dashboard-6cm.pages.dev')
+    expect(config().vars?.CRM_SEARCH_ENVIRONMENT).toBe('production')
   })
 
   it('declares only the dedicated primary/DLQ consumers with fail-closed limits', () => {
@@ -77,6 +85,36 @@ describe('CRM search consumer configuration', () => {
     expect(config().vectorize).toBeUndefined()
   })
 
+  it('repeats non-inheritable preview bindings with exact isolated identities', () => {
+    expect(config().env?.preview).toMatchObject({
+      name: 'agency-crm-search-consumer-preview',
+      workers_dev: false,
+      vars: { CRM_SEARCH_ENVIRONMENT: 'preview' },
+      queues: {
+        consumers: [
+          {
+            queue: 'agency-crm-search-index-preview',
+            max_batch_size: 5,
+            max_batch_timeout: 5,
+            max_retries: 5,
+            retry_delay: 30,
+            max_concurrency: 4,
+            dead_letter_queue: 'agency-crm-search-index-preview-dlq'
+          },
+          {
+            queue: 'agency-crm-search-index-preview-dlq',
+            max_batch_size: 5,
+            max_batch_timeout: 5,
+            max_retries: 3,
+            retry_delay: 30,
+            max_concurrency: 2
+          }
+        ]
+      }
+    })
+    expect(config().env?.preview?.secrets?.required).toEqual(config().secrets?.required)
+  })
+
   it('requires signing and frozen release/readback evidence instead of ready defaults', () => {
     expect(config().secrets?.required).toEqual(expect.arrayContaining([
       'CRM_SEARCH_SERVICE_KEYRING',
@@ -86,11 +124,10 @@ describe('CRM search consumer configuration', () => {
       'CRM_SEARCH_EXPECTED_PAGES_SHA',
       'CRM_SEARCH_EXPECTED_PAGES_ARTIFACT_DIGEST',
       'CRM_SEARCH_EXPECTED_PAGES_BINDING_MANIFEST_DIGEST',
-      'CRM_SEARCH_RESOURCE_MANIFEST'
+      'CRM_SEARCH_RESOURCE_MANIFEST',
+      'CRM_SEARCH_RESOURCE_MANIFEST_VERIFICATION_KEYRING'
     ]))
-    expect(config().vars).toEqual({
-      CRM_SEARCH_PAGES_BASE_URL: 'https://agency-dashboard-6cm.pages.dev'
-    })
+    expect(config().vars).toEqual({ CRM_SEARCH_ENVIRONMENT: 'production' })
   })
 
   it('generates Cloudflare bindings, typechecks strictly, and exposes only a guarded dry run', () => {
@@ -112,11 +149,10 @@ describe('CRM search consumer configuration', () => {
     const deploy = readWorkerFile('scripts/deploy.mjs')
     expect(deploy).toContain(`const IMMUTABLE_WORKER_NAME = 'agency-crm-search-consumer'`)
     expect(deploy).toContain(`const IMMUTABLE_CONFIG_NAME = 'wrangler.toml'`)
-    expect(deploy).toContain(`const IMMUTABLE_PAGES_ORIGIN = 'https://agency-dashboard-6cm.pages.dev'`)
     expect(deploy).toContain(`const IMMUTABLE_COMPATIBILITY_DATE = '2026-08-10'`)
     expect(deploy).toContain('const REQUIRED_SECRET_NAMES = Object.freeze([')
     expect(deploy).toContain(`const REQUIRED_MODE = '--dry-run'`)
-    expect(deploy).toContain(`'deploy', '--dry-run'`)
+    expect(deploy).toContain(`'versions', 'upload', '--dry-run'`)
     expect(deploy).toContain('config.observability?.enabled === true')
     expect(deploy).toContain('config.ai === undefined')
     expect(deploy).toContain('config.vectorize === undefined')

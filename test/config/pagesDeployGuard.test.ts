@@ -39,9 +39,19 @@ describe('Pages deployment target guard', () => {
       '--project-name',
       'agency-dashboard',
       '--branch',
-      'preview',
-      '--commit-dirty=true'
+      'preview'
     ])
+  })
+
+  it('never rebuilds or permits dirty input in the frozen-artifact deploy wrapper', async () => {
+    const source = await import('node:fs/promises').then(async fs => [
+      await fs.readFile(new URL('../../scripts/deploy-pages.mjs', import.meta.url), 'utf8'),
+      await fs.readFile(new URL('../../scripts/crm-search/deploy-pages-artifact.mjs', import.meta.url), 'utf8')
+    ].join('\n'))
+    expect(source).not.toContain('--commit-dirty=true')
+    expect(source).not.toMatch(/run\(['"]pnpm['"],\s*\[['"]build['"]\]\)/)
+    expect(source).toContain('runFrozenPagesRelease')
+    expect(source).toContain('production_deploy')
   })
 
   it('rejects unsupported branch names', () => {

@@ -4,11 +4,14 @@
 
 Internal operations dashboard for a digital marketing agency. Manages work (boards, Kanban, timeline, calendar), clients, projects, financials (Xero integration, EOM invoicing, ad spend tracking), real-time chat, AI-powered insights, and a client portal.
 
+CRM hybrid search release operations are fail closed. Commands default to preview, require Node 24.18.0 and a clean frozen artifact, and verify signed environment resource readback before any release action. Production resource provisioning, migration, dormant deployment, client indexing, shadow, and assist are six separate approvals. See [CRM search staged rollout](docs/runbooks/crm-search-staged-rollout.md); Task 18 tooling is dry-run only and does not deploy or provision resources.
+
 ## Project Links
 
 - Source repository: https://github.com/adme-dev/dashboard
 - Project purpose: [docs/project-purpose.md](docs/project-purpose.md)
 - Graphify architecture artifacts: [docs/graphify.md](docs/graphify.md)
+- CRM search preview E2E: [docs/runbooks/crm-search-preview-e2e.md](docs/runbooks/crm-search-preview-e2e.md)
 
 ## Feature Highlights
 

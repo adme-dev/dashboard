@@ -8,6 +8,7 @@ import {
   type CrmSearchAdminActor,
   type CrmSearchApprovalDraft
 } from './contracts'
+import { requireVerifiedCrmSearchBootstrapApproval } from './bootstrapApproval'
 import {
   executeCrmSearchBackfill,
   executeCrmSearchReconciliationSchedule
@@ -137,14 +138,13 @@ export function mapCrmSearchCommandError(error: unknown) {
 
 export async function importCrmSearchApproval(input: {
   actor: CrmSearchAdminActor
-  approval: unknown
+  verifiedApproval: CrmSearchApprovalDraft
   insertImportedApproval(approval: CrmSearchApprovalDraft): Promise<{ approvalId: string }>
 }) {
-  const candidate = input.approval && typeof input.approval === 'object'
-    ? input.approval as Record<string, unknown>
-    : {}
+  const candidate = requireVerifiedCrmSearchBootstrapApproval(input.verifiedApproval)
   if (candidate.approvalType !== 'resource_provision') fail('crm_search_import_resource_provision_only')
-  const approval = parseCrmSearchApprovalDraft(input.approval)
+  if (candidate.organisationScopeId !== input.actor.orgId) fail('crm_search_invalid_approval')
+  const approval = parseCrmSearchApprovalDraft(candidate)
   if (!approval.issuedAt || !approval.importedProvenanceHash) fail('crm_search_invalid_approval')
   return await input.insertImportedApproval(approval)
 }
@@ -422,7 +422,7 @@ export async function importCrmSearchApprovalBootstrap(
     loadActiveRequester?: typeof loadActiveApprovalRequester
   } = {}
 ) {
-  const candidate = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  const candidate = requireVerifiedCrmSearchBootstrapApproval(value)
   const requestedByActorId = identifier(candidate.requestedByActorId)
   const requester = await (dependencies.loadActiveRequester ?? loadActiveApprovalRequester)(
     requestedByActorId,
@@ -433,7 +433,7 @@ export async function importCrmSearchApprovalBootstrap(
   }
   return await importCrmSearchApproval({
     actor,
-    approval: { ...candidate, organisationScopeId: actor.orgId },
+    verifiedApproval: candidate as CrmSearchApprovalDraft,
     insertImportedApproval: dependencies.insert ?? (approval => persistApproval(approval, actor.actorId))
   })
 }
@@ -616,7 +616,7 @@ export async function listCrmSearchApprovals(organisationScopeId: string) {
      ORDER BY approval.issued_at DESC
      LIMIT 200
   `, [organisationScopeId])
-  return rows.map(row => {
+  return rows.map((row) => {
     const integerFields = [
       'maximumCostUsdMicros', 'activeVectorCount', 'candidateVectorCount',
       'retiringVectorCount', 'sentinelVectorCount', 'deletionPendingVectorCount',

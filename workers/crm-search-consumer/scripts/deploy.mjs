@@ -13,7 +13,6 @@ import { parse } from 'smol-toml'
 
 const IMMUTABLE_WORKER_NAME = 'agency-crm-search-consumer'
 const IMMUTABLE_CONFIG_NAME = 'wrangler.toml'
-const IMMUTABLE_PAGES_ORIGIN = 'https://agency-dashboard-6cm.pages.dev'
 const IMMUTABLE_COMPATIBILITY_DATE = '2026-08-10'
 const REQUIRED_MODE = '--dry-run'
 const PRIMARY_QUEUE = 'agency-crm-search-index'
@@ -26,7 +25,8 @@ const REQUIRED_SECRET_NAMES = Object.freeze([
   'CRM_SEARCH_EXPECTED_PAGES_SHA',
   'CRM_SEARCH_EXPECTED_PAGES_ARTIFACT_DIGEST',
   'CRM_SEARCH_EXPECTED_PAGES_BINDING_MANIFEST_DIGEST',
-  'CRM_SEARCH_RESOURCE_MANIFEST'
+  'CRM_SEARCH_RESOURCE_MANIFEST',
+  'CRM_SEARCH_RESOURCE_MANIFEST_VERIFICATION_KEYRING'
 ])
 
 const workerDirectory = fileURLToPath(new URL('..', import.meta.url))
@@ -41,6 +41,8 @@ function fail(message) {
 function assert(condition, message) {
   if (!condition) fail(message)
 }
+
+assert(process.versions.node === '24.18.0', 'Node version must be exactly 24.18.0')
 
 function assertConsumer(actual, expected, label) {
   assert(actual && typeof actual === 'object', `${label} consumer is missing`)
@@ -70,7 +72,7 @@ assert(config.compatibility_date === IMMUTABLE_COMPATIBILITY_DATE, 'compatibilit
 assertExactArray(config.compatibility_flags, ['nodejs_compat'], 'compatibility flags')
 assert(config.workers_dev === false, 'workers_dev must remain disabled')
 assert(config.observability?.enabled === true, 'observability must remain enabled')
-assert(config.vars?.CRM_SEARCH_PAGES_BASE_URL === IMMUTABLE_PAGES_ORIGIN, 'Pages origin changed')
+assert(config.vars?.CRM_SEARCH_ENVIRONMENT === 'production', 'environment identity changed')
 assert(Object.keys(config.vars ?? {}).length === 1, 'unexpected public variables were added')
 assertExactArray(config.secrets?.required, REQUIRED_SECRET_NAMES, 'required secrets')
 assert(config.ai === undefined, 'Workers AI bindings are forbidden')
@@ -96,12 +98,37 @@ assertConsumer(config.queues.consumers[1], {
   max_concurrency: 2
 }, 'dead-letter')
 
+assert(config.env?.preview?.name === 'agency-crm-search-consumer-preview', 'preview Worker name changed')
+assert(config.env.preview.workers_dev === false, 'preview workers_dev must remain disabled')
+assert(config.env.preview.vars?.CRM_SEARCH_ENVIRONMENT === 'preview', 'preview environment changed')
+assert(Object.keys(config.env.preview.vars ?? {}).length === 1, 'unexpected preview variables were added')
+assertExactArray(config.env.preview.secrets?.required, REQUIRED_SECRET_NAMES, 'preview required secrets')
+assert(Array.isArray(config.env.preview.queues?.consumers), 'preview queue consumers are missing')
+assert(config.env.preview.queues.consumers.length === 2, 'exactly two preview queue consumers are required')
+assertConsumer(config.env.preview.queues.consumers[0], {
+  queue: 'agency-crm-search-index-preview',
+  max_batch_size: 5,
+  max_batch_timeout: 5,
+  max_retries: 5,
+  retry_delay: 30,
+  max_concurrency: 4,
+  dead_letter_queue: 'agency-crm-search-index-preview-dlq'
+}, 'preview primary')
+assertConsumer(config.env.preview.queues.consumers[1], {
+  queue: 'agency-crm-search-index-preview-dlq',
+  max_batch_size: 5,
+  max_batch_timeout: 5,
+  max_retries: 3,
+  retry_delay: 30,
+  max_concurrency: 2
+}, 'preview dead-letter')
+
 const outputDirectory = mkdtempSync(path.join(tmpdir(), 'crm-search-consumer-dry-run-'))
 let status
 try {
   const result = spawnSync(process.execPath, [
     wranglerEntry,
-    'deploy', '--dry-run',
+    'versions', 'upload', '--dry-run', '--env', '',
     '--config', configPath,
     '--outdir', outputDirectory
   ], {

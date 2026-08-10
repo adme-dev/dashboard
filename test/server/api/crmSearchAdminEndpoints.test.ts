@@ -216,8 +216,9 @@ describe('CRM search admin API command surface', () => {
     const source = await readRoute('approvals/import.post.ts')
 
     expect(source).toContain('resource_provision')
-    expect(source).toContain('issuedAt')
-    expect(source).toContain('importedProvenanceHash')
+    expect(source).toContain('CRM_SEARCH_RESOURCE_APPROVAL_VERIFICATION_KEYRING')
+    expect(source).toContain('verifyCrmSearchBootstrapApprovalEnvelope')
+    expect(source).not.toMatch(/importedProvenanceHash\s*:/)
     expect(source).not.toMatch(/production_deploy|client_indexing|client_shadow|client_assist/)
   })
 })

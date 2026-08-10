@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24.0.0"
+    "node": "24.18.0"
   },
   "scripts": {
     "build": "NODE_OPTIONS='--max-old-space-size=16384' nuxt build && node scripts/wrap-worker.mjs && node scripts/check-worker-size.mjs",
@@ -17,10 +17,17 @@
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
     "typecheck": "NODE_OPTIONS='--max-old-space-size=16384' nuxt typecheck",
-    "deploy": "node scripts/deploy-pages.mjs main",
+    "deploy": "node scripts/deploy-pages.mjs preview",
     "deploy:preview": "node scripts/deploy-pages.mjs preview",
     "deploy:production": "node scripts/deploy-pages.mjs main",
     "deploy:check": "node scripts/deploy-pages.mjs main --check-only",
+    "crm-search:bindings:check": "node scripts/crm-search/preview-binding-guard.mjs --dry-run",
+    "crm-search:artifact:build": "node scripts/crm-search/build-artifact.mjs --dry-run",
+    "crm-search:artifact:verify": "node scripts/crm-search/verify-artifact.mjs --dry-run",
+    "crm-search:migrate:test": "node scripts/crm-search/neon-lifecycle.mjs --dry-run",
+    "crm-search:e2e:preview": "node scripts/crm-search/e2e-preview.mjs --dry-run",
+    "crm-search:e2e:cleanup": "node scripts/crm-search/e2e-cleanup.mjs --dry-run",
+    "crm-search:evidence": "node scripts/crm-search/evidence-bundle.mjs --dry-run",
     "deploy:worker:staging": "node scripts/deploy-worker-staging.mjs",
     "deploy:worker:staging:check": "node scripts/deploy-worker-staging.mjs --check-only",
     "deploy:workflows": "pnpm --dir workers/agency-workflows run deploy",
