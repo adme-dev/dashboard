@@ -286,13 +286,10 @@ export async function xeroFetch<T = any>(options: {
     // Quota instrumentation: Xero sends remaining-call headers on every
     // response. One structured line per call makes "what burned the daily
     // quota" answerable from logs instead of an R&D session.
-    const dayRemaining = response.headers.get('x-daylimit-remaining')
-    const minRemaining = response.headers.get('x-minlimit-remaining')
-    if (dayRemaining !== null) {
-      const day = Number(dayRemaining)
-      const line = `[xero-quota] path=${path.split('?')[0]} day=${dayRemaining} min=${minRemaining ?? '?'}`
-      if (Number.isFinite(day) && day < 500) console.warn(line)
-      else console.info(line)
+    const day = response.headers.get('x-daylimit-remaining')
+    if (day !== null) {
+      const line = `[xero-quota] path=${path.split('?')[0]} day=${day} min=${response.headers.get('x-minlimit-remaining') ?? '?'}`
+      ;(Number(day) < 500 ? console.warn : console.info)(line)
     }
 
     // If-Modified-Since with no changes can come back 304 with an empty body.
