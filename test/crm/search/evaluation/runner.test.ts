@@ -11,6 +11,107 @@ import {
 } from '~~/server/utils/crm/search/evaluation/sealedArtifact'
 
 const digest = (character: string) => character.repeat(64)
+const sealedTestKeyBytes = Uint8Array.from({ length: 32 }, (_, index) => index + 1)
+const sealedTestKeyBase64 = Buffer.from(sealedTestKeyBytes).toString('base64')
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`
+  }
+  const encoded = JSON.stringify(value)
+  if (encoded === undefined) throw new Error('Synthetic test input is not JSON-serializable')
+  return encoded
+}
+
+function sha256(value: Uint8Array | string): string {
+  return createHash('sha256').update(value).digest('hex')
+}
+
+function sealedAad(input: {
+  version: string
+  encryption: string
+  compression: string
+  keyVersion: string
+  judgementSha256: string
+  queryCount: number
+}): Uint8Array {
+  return new TextEncoder().encode(canonicalJson(input))
+}
+
+async function buildSyntheticSealedArtifact(payload: Record<string, unknown>, options: {
+  keyBytes?: Uint8Array
+  keyVersion?: string
+  nonce?: Uint8Array
+  plaintextText?: string
+} = {}) {
+  const keyBytes = options.keyBytes ?? sealedTestKeyBytes
+  const keyVersion = options.keyVersion ?? 'sealed-test-k1'
+  const nonce = options.nonce ?? Uint8Array.from({ length: 12 }, (_, index) => index + 101)
+  const plaintext = new TextEncoder().encode(options.plaintextText ?? canonicalJson(payload))
+  const plaintextSha256 = sha256(plaintext)
+  const header = {
+    version: 'crm-search-sealed-holdout-envelope-v1',
+    encryption: 'AES-256-GCM',
+    compression: 'none',
+    keyVersion,
+    judgementSha256: plaintextSha256,
+    queryCount: Array.isArray(payload.queries) ? payload.queries.length : 0
+  }
+  const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt'])
+  const encryptedWithTag = new Uint8Array(await crypto.subtle.encrypt({
+    name: 'AES-GCM', iv: nonce, additionalData: sealedAad(header), tagLength: 128
+  }, key, plaintext))
+  const ciphertext = encryptedWithTag.slice(0, -16)
+  const authenticationTag = encryptedWithTag.slice(-16)
+  const envelopeText = canonicalJson({
+    ...header,
+    nonceBase64: Buffer.from(nonce).toString('base64'),
+    ciphertextBase64: Buffer.from(ciphertext).toString('base64'),
+    authenticationTagBase64: Buffer.from(authenticationTag).toString('base64')
+  })
+  const bytes = new TextEncoder().encode(envelopeText)
+  const contract = {
+    version: 'crm-search-sealed-holdout-import-v1',
+    objectKey: 'crm-search/evaluation/holdouts/holdout-v1.json',
+    contentSha256: sha256(bytes),
+    envelopeVersion: header.version,
+    encryption: header.encryption,
+    compression: header.compression,
+    keyVersion,
+    judgementSha256: plaintextSha256,
+    queryCount: header.queryCount,
+    productionReady: true
+  }
+  return {
+    bytes,
+    contract,
+    provider: {
+      contract,
+      readBytes: vi.fn(async () => bytes),
+      readKey: vi.fn(async ({ keyVersion: requested }: { keyVersion: string }) => {
+        if (requested !== keyVersion) throw new Error('wrong key')
+        return keyBytes
+      })
+    },
+    plaintextSha256
+  }
+}
+
+function buildSyntheticHoldout(queryCount = 360): Record<string, unknown> {
+  const entityTypes = ['person', 'company', 'opportunity'] as const
+  return {
+    version: 'crm-search-sealed-holdout-v1',
+    queries: Array.from({ length: queryCount }, (_, index) => ({
+      clientKeyDigest: sha256(`client-${index % 3}`),
+      entityType: entityTypes[index % entityTypes.length],
+      judgements: [{ entityKeyDigest: sha256(`entity-${index}`), relevance: index % 4 }],
+      queryKeyDigest: sha256(`query-${index}`),
+      strata: [index % 2 === 0 ? 'natural_language' : 'exact_name_or_identifier']
+    }))
+  }
+}
 
 describe('governed CRM search evaluation runner', () => {
   it('freezes candidate selection before unsealing labels and persists granular evidence for server recomputation', async () => {
@@ -147,7 +248,7 @@ describe('governed CRM search evaluation runner', () => {
 })
 
 describe('CRM search governed evidence adapters', () => {
-  it('resolves only exact Cloudflare evaluation service and sealed R2 bindings', async () => {
+  it('resolves only exact Cloudflare evaluation, sealed R2, and dedicated keyring bindings', async () => {
     const evaluationFetch = vi.fn()
     const get = vi.fn(async () => ({ arrayBuffer: async () => new ArrayBuffer(0) }))
     const event = { context: { cloudflare: { env: {
@@ -172,18 +273,32 @@ describe('CRM search governed evidence adapters', () => {
         }
       }),
       CRM_SEARCH_EVALUATION_RUNNER: { fetch: evaluationFetch },
-      CRM_SEARCH_SEALED_HOLDOUTS: { get }
+      CRM_SEARCH_SEALED_HOLDOUTS: { get },
+      CRM_SEARCH_SEALED_HOLDOUT_KEYRING: JSON.stringify({
+        version: 'crm-search-sealed-holdout-keyring-v1',
+        activeVersion: 'sealed-test-k1',
+        keys: { 'sealed-test-k1': sealedTestKeyBase64 }
+      })
     } } } } as never
 
     expect(resolveCrmSearchEvaluationRuntimeServices(event)).toMatchObject({
       organisationScopeId: '10000000-0000-4000-8000-000000000001',
       checkedInFixtures: { schemaVersion: 'crm-search-evaluation-v1' }
     })
-    const provider = resolveCrmSearchSealedArtifactProvider(event)
-    await provider.readBytes({ artifactId: 'artifact-1' })
-    expect(get).toHaveBeenCalledWith('crm-search/evaluation/holdouts/artifact-1.json')
+    const artifact = await buildSyntheticSealedArtifact(buildSyntheticHoldout())
+    const provider = resolveCrmSearchSealedArtifactProvider(event, artifact.contract)
+    await provider.readBytes({ artifactId: 'holdout-v1' })
+    expect(get).toHaveBeenCalledWith('crm-search/evaluation/holdouts/holdout-v1.json')
+    await expect(provider.readKey({ keyVersion: 'sealed-test-k1' })).resolves.toEqual(sealedTestKeyBytes)
     expect(() => resolveCrmSearchEvaluationRuntimeServices({ context: {} } as never)).toThrow()
     expect(() => resolveCrmSearchSealedArtifactProvider({ context: {} } as never)).toThrow()
+    expect(() => resolveCrmSearchSealedArtifactProvider({ context: { cloudflare: { env: {
+      CRM_SEARCH_SEALED_HOLDOUTS: { get },
+      CRM_SEARCH_CONFIRMATION_KEYRING: JSON.stringify({
+        version: 'crm-search-sealed-holdout-keyring-v1',
+        activeVersion: 'sealed-test-k1', keys: { 'sealed-test-k1': sealedTestKeyBase64 }
+      })
+    } } } } as never, artifact.contract)).toThrow()
 
     const malformed = { context: { cloudflare: { env: {
       CRM_SEARCH_EVALUATION_RUNNER: { fetch: evaluationFetch },
@@ -253,47 +368,88 @@ describe('CRM search governed evidence adapters', () => {
     expect(readParameters).toEqual(['10000000-0000-4000-8000-000000000010', ids[0]])
   })
 
-  it('fails closed when an unsealed artifact does not match its checked-in digest', async () => {
-    const bytes = new TextEncoder().encode('{"queries":[]}')
+  it('fails closed when an encrypted envelope does not match its pinned object digest', async () => {
+    const artifact = await buildSyntheticSealedArtifact(buildSyntheticHoldout())
     const provider = {
-      readBytes: vi.fn(async () => bytes)
+      ...artifact.provider,
+      contract: { ...artifact.contract, contentSha256: digest('d') }
     }
 
     await expect(unsealCrmSearchHoldout({
       artifactId: 'holdout-v1',
-      expectedSealedJudgementSha256: digest('d')
+      expectedSealedJudgementSha256: artifact.plaintextSha256
     }, provider)).rejects.toMatchObject({ code: 'crm_search_sealed_artifact_unavailable' })
   })
 
-  it('accepts only exact canonical sealed bytes and derives the judgement digest itself', async () => {
-    const canonical = '{"queries":[{"queryKeyDigest":"' + digest('1') + '"}]}'
-    const expected = createHash('sha256').update(canonical).digest('hex')
-    const provider = { readBytes: vi.fn(async () => new TextEncoder().encode(canonical)) }
+  it('authenticates and decrypts an exact canonical 360-query envelope with no compression', async () => {
+    const holdout = buildSyntheticHoldout()
+    const artifact = await buildSyntheticSealedArtifact(holdout)
 
     await expect(unsealCrmSearchHoldout({
       artifactId: 'holdout-v1',
-      expectedSealedJudgementSha256: expected
-    }, provider)).resolves.toEqual({
-      sealedJudgementSha256: expected,
-      queries: [{ queryKeyDigest: digest('1') }]
+      expectedSealedJudgementSha256: artifact.plaintextSha256
+    }, artifact.provider)).resolves.toMatchObject({
+      sealedJudgementSha256: artifact.plaintextSha256,
+      version: 'crm-search-sealed-holdout-v1',
+      queries: expect.arrayContaining([expect.objectContaining({ queryKeyDigest: expect.any(String) })])
     })
+    const result = await unsealCrmSearchHoldout({
+      artifactId: 'holdout-v1', expectedSealedJudgementSha256: artifact.plaintextSha256
+    }, artifact.provider)
+    expect(result.queries).toHaveLength(360)
+  })
 
-    for (const nonCanonical of [`\uFEFF${canonical}`, `{ "queries":[]}`, '{"queries":[],"z":1,"a":2}']) {
-      const nonCanonicalDigest = createHash('sha256').update(nonCanonical).digest('hex')
+  it('fails closed on the wrong key, header version, auth tag, or compressed envelope', async () => {
+    const artifact = await buildSyntheticSealedArtifact(buildSyntheticHoldout())
+    const parsed = JSON.parse(new TextDecoder().decode(artifact.bytes)) as Record<string, unknown>
+    const cases = [
+      { ...artifact.provider, readKey: vi.fn(async () => Uint8Array.from({ length: 32 }, () => 9)) },
+      { ...artifact.provider, contract: { ...artifact.contract, keyVersion: 'sealed-test-k2' } },
+      { ...artifact.provider, contract: { ...artifact.contract, envelopeVersion: 'crm-search-sealed-holdout-envelope-v2' } },
+      { ...artifact.provider, contract: { ...artifact.contract, compression: 'gzip' } },
+      {
+        ...artifact.provider,
+        readBytes: vi.fn(async () => new TextEncoder().encode(canonicalJson({
+          ...parsed, authenticationTagBase64: Buffer.from(new Uint8Array(16)).toString('base64')
+        }))),
+        contract: {
+          ...artifact.contract,
+          contentSha256: sha256(new TextEncoder().encode(canonicalJson({
+            ...parsed, authenticationTagBase64: Buffer.from(new Uint8Array(16)).toString('base64')
+          })))
+        }
+      }
+    ]
+    for (const provider of cases) {
       await expect(unsealCrmSearchHoldout({
-        artifactId: 'holdout-v1',
-        expectedSealedJudgementSha256: nonCanonicalDigest
-      }, { readBytes: vi.fn(async () => new TextEncoder().encode(nonCanonical)) })).rejects
-        .toMatchObject({ code: 'crm_search_sealed_artifact_unavailable' })
+        artifactId: 'holdout-v1', expectedSealedJudgementSha256: artifact.plaintextSha256
+      }, provider)).rejects.toMatchObject({ code: 'crm_search_sealed_artifact_unavailable' })
     }
   })
 
-  it('recursively rejects sensitive content inside a sealed artifact', async () => {
-    const canonical = '{"queries":[{"arbitrary":"alex@example.invalid"}]}'
+  it('recursively rejects sensitive content and non-canonical decrypted payloads', async () => {
+    const sensitive = buildSyntheticHoldout()
+    const first = (sensitive.queries as Array<Record<string, unknown>>)[0]!
+    first.arbitrary = { nested: ['safe', { value: 'alex@example.invalid' }] }
+    const sensitiveArtifact = await buildSyntheticSealedArtifact(sensitive)
     await expect(unsealCrmSearchHoldout({
       artifactId: 'holdout-v1',
-      expectedSealedJudgementSha256: createHash('sha256').update(canonical).digest('hex')
-    }, { readBytes: vi.fn(async () => new TextEncoder().encode(canonical)) })).rejects
+      expectedSealedJudgementSha256: sensitiveArtifact.plaintextSha256
+    }, sensitiveArtifact.provider)).rejects
+      .toMatchObject({ code: 'crm_search_sealed_artifact_unavailable' })
+
+    const shortArtifact = await buildSyntheticSealedArtifact(buildSyntheticHoldout(359))
+    await expect(unsealCrmSearchHoldout({
+      artifactId: 'holdout-v1', expectedSealedJudgementSha256: shortArtifact.plaintextSha256
+    }, shortArtifact.provider)).rejects.toMatchObject({ code: 'crm_search_sealed_artifact_unavailable' })
+
+    const canonicalPayload = buildSyntheticHoldout()
+    const nonCanonicalArtifact = await buildSyntheticSealedArtifact(canonicalPayload, {
+      plaintextText: JSON.stringify(canonicalPayload, null, 2)
+    })
+    await expect(unsealCrmSearchHoldout({
+      artifactId: 'holdout-v1', expectedSealedJudgementSha256: nonCanonicalArtifact.plaintextSha256
+    }, nonCanonicalArtifact.provider)).rejects
       .toMatchObject({ code: 'crm_search_sealed_artifact_unavailable' })
   })
 })

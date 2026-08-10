@@ -120,3 +120,30 @@ The repository-wide Nuxt typecheck still exits on its existing application diagn
 The guarded PostgreSQL 14 test now contains live assertions for a held operation successor, an independent expired operation, durable blocked counts, and no parent deletion. It remained skipped because `CRM_SEARCH_TASK6_TEST_DSN` is absent. Per the explicit residual direction, the previously hung local/escalated PostgreSQL startup path was not retried; verification relies on the new static/idempotence contracts, the guarded live case, and the accepted prior PostgreSQL 14 apply/reapply evidence.
 
 Every residual source, fixture, test, and migration diff was reread. Exact artifact-byte SHA-256 recomputation, JSON parsing, privacy/secret scans, SQL allowlist/privilege review, Node 24 lint, and whitespace checks were clean. Concurrent Task 16 implementation files and the two untracked Task 17 marketing RED tests were not edited or staged.
+
+## Acceptance Review 3 — Materializable Sealed Holdout
+
+The final sealed-artifact review replaces the opaque placeholder contract with a complete, test-materializable envelope while keeping production evaluation fail closed:
+
+1. The checked-in artifact is a 166,011-byte canonical JSON AES-256-GCM envelope containing the full encrypted 360-query synthetic payload. Compression is explicitly `none`; the envelope pins its version, key version, decrypted judgement SHA-256, query count, 96-bit nonce, 128-bit authentication tag, and ciphertext. Its exact object SHA-256 is `cf3b0327f05a6bb1ac30bd5fea5842c043d2efbcc1c47b30a51f76b85706687b`.
+2. Runtime verifies the exact object bytes against the import contract before parsing, requires the exact canonical envelope shape, and authenticates the security-relevant header as AES-GCM additional authenticated data. After decryption it rejects BOM/non-canonical bytes, verifies the independently pinned judgement digest `a459ef8b7cdd373f8b016dc77014f9f2d8932f3551266a12c2f01d84013d5fdf`, enforces exactly 360 queries, and recursively rejects sensitive keys plus email/phone-like values under arbitrary fields.
+3. Decryption keys resolve only from the Cloudflare `CRM_SEARCH_SEALED_HOLDOUT_KEYRING` secret binding. The keyring has its own exact versioned schema, bounded key count, exact active key-version match, and exact 32-byte base64 keys. Confirmation, service-auth, analytics, cron, and process-environment secrets cannot substitute.
+4. The checked-in artifact and deterministic test key prove that the production unsealer can materialize the complete payload; no plaintext fixture or production key is checked in. The deployment manifest remains `productionReady: false` with the import state `blocked_pending_task_18_approved_envelope_and_secret_readback`, so the default runtime rejects it. Task 18 must replace it with the independently approved production envelope, provision the dedicated secret, import the exact pinned R2 bytes, read those bytes back, and verify the object SHA/key version before marking the contract production-ready.
+
+### Sealed-envelope TDD and Verification
+
+The acceptance RED was captured before the production unsealer was changed:
+
+```text
+Runtime/keyring RED:             13 passed, 2 failed
+Full-artifact fixture RED:       20 passed, 1 failed
+Focused sealed GREEN:            36 passed (2 files)
+Bounded evaluation compatibility: 80 passed (5 files)
+Node 24 targeted ESLint:          0 diagnostics
+Strict server TS owned filter:    0 diagnostics
+git diff --check:                 clean
+```
+
+The repository-wide Nuxt typecheck still exits on unrelated existing application diagnostics. The first invocation also demonstrated the shell's Node 20 incompatibility with the current Nuxt CLI; the required Node 24 invocation reached the existing diagnostic baseline, and the strict server-project filter reported no sealed-artifact path diagnostics after the two discovered implicit parameter types were fixed.
+
+All sealed-provider, fixture, manifest, and test changes were reread end to end. Exact artifact and decrypted-content digests were independently recomputed; negative tests cover wrong object digest, key, key version, envelope version, compression mode, authentication tag, query count, canonical encoding, and recursively nested sensitive content. No database, provider, external network, resource mutation, deployment, or production artifact import was performed. Task 16 and Task 17 paths remained untouched and unstaged.

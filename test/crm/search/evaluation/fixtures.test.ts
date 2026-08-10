@@ -5,6 +5,7 @@ import {
   computeCrmSearchFixtureSha256,
   validateEvaluationFixtureBundle
 } from '~~/server/utils/crm/search/evaluation/fixtures'
+import { unsealCrmSearchHoldout } from '~~/server/utils/crm/search/evaluation/sealedArtifact'
 
 const digest = (character: string) => character.repeat(64)
 
@@ -185,7 +186,7 @@ describe('CRM search evaluation fixtures', () => {
     expect(() => validateEvaluationFixtureBundle(fixture)).toThrow(/sealed judgement|placeholder/i)
   })
 
-  it('binds the sealed judgement digest to an opaque materializable artifact and import contract', () => {
+  it('materializes the full opaque envelope with a synthetic key while production stays blocked', async () => {
     const artifactPath = 'test/fixtures/crm-search-evaluation/holdout.sealed.artifact.json'
     const importManifestPath = 'test/fixtures/crm-search-evaluation/holdout.deployment.manifest.json'
     expect(existsSync(artifactPath), 'opaque sealed artifact is missing').toBe(true)
@@ -200,11 +201,15 @@ describe('CRM search evaluation fixtures', () => {
     const importManifest = JSON.parse(readFileSync(importManifestPath, 'utf8')) as Record<string, unknown>
     const contentSha256 = createHash('sha256').update(artifactBytes).digest('hex')
 
-    expect(holdout.sealedJudgementSha256).toBe(contentSha256)
+    expect(artifactBytes.byteLength).toBeGreaterThan(100_000)
+    expect(holdout.sealedJudgementSha256).toBe(importManifest.judgementSha256)
     expect(contentSha256).not.toMatch(/^([a-f0-9])\1{63}$/)
     expect(artifact).toMatchObject({
-      version: 'crm-search-sealed-holdout-artifact-v1',
+      version: 'crm-search-sealed-holdout-envelope-v1',
       encryption: 'AES-256-GCM',
+      compression: 'none',
+      keyVersion: 'sealed-test-k1',
+      judgementSha256: holdout.sealedJudgementSha256,
       queryCount: 360
     })
     expect(importManifest).toMatchObject({
@@ -212,10 +217,38 @@ describe('CRM search evaluation fixtures', () => {
       sourcePath: artifactPath,
       objectKey: 'crm-search/evaluation/holdouts/holdout-v1.json',
       contentSha256,
-      provisioningOwner: 'task-18'
+      envelopeVersion: 'crm-search-sealed-holdout-envelope-v1',
+      encryption: 'AES-256-GCM',
+      compression: 'none',
+      keyVersion: 'sealed-test-k1',
+      judgementSha256: holdout.sealedJudgementSha256,
+      queryCount: 360,
+      keyBinding: 'CRM_SEARCH_SEALED_HOLDOUT_KEYRING',
+      provisioningOwner: 'task-18',
+      productionReady: false,
+      importState: 'blocked_pending_task_18_approved_envelope_and_secret_readback',
+      runtimeFormat: 'encrypted-envelope-v1'
     })
-    expect(JSON.stringify(artifact)).not.toMatch(
-      /queries|judgements|labels|plaintext|relevantEntity|rawQuery|sourceText|email|phone|notes/i
-    )
+    const keyBytes = Uint8Array.from({ length: 32 }, (_, index) => index + 1)
+    const materialized = await unsealCrmSearchHoldout({
+      artifactId: 'holdout-v1',
+      expectedSealedJudgementSha256: String(holdout.sealedJudgementSha256)
+    }, {
+      contract: { ...importManifest, productionReady: true } as never,
+      readBytes: async () => new Uint8Array(artifactBytes),
+      readKey: async ({ keyVersion }) => {
+        if (keyVersion !== 'sealed-test-k1') throw new Error('unexpected key')
+        return keyBytes
+      }
+    })
+    expect(materialized.queries).toHaveLength(360)
+    expect(materialized.sealedJudgementSha256).toBe(holdout.sealedJudgementSha256)
+    expect(Object.keys(artifact).sort()).toEqual([
+      'authenticationTagBase64', 'ciphertextBase64', 'compression', 'encryption',
+      'judgementSha256', 'keyVersion', 'nonceBase64', 'queryCount', 'version'
+    ])
+    expect(artifact).not.toHaveProperty('queries')
+    expect(artifact).not.toHaveProperty('judgements')
+    expect(artifact).not.toHaveProperty('plaintext')
   })
 })
