@@ -92,9 +92,9 @@ export async function syncXeroContactsCache(opts: SyncOpts): Promise<number> {
       accessToken,
       tenantId,
       path: `Contacts?${params.toString()}`,
-      // If-Modified-Since is per-request, not in the URL. xeroFetch doesn't
-      // expose extra headers — for the delta path we include all-pages every
-      // time and rely on Xero's filter. Acceptable for ~hundreds of contacts.
+      // Delta path: Xero filters server-side on If-Modified-Since, so an
+      // unchanged org costs one call instead of a full page-through.
+      headers: buildModifiedAfterHeader(modifiedAfter),
     })
 
     const contacts: any[] = body?.contacts ?? []
@@ -111,8 +111,8 @@ export async function syncXeroContactsCache(opts: SyncOpts): Promise<number> {
       const ar = c.balances?.accountsReceivable ?? {}
       const ap = c.balances?.accountsPayable ?? {}
 
-      // Skip filter is applied at modifiedAfter granularity — drop unchanged
-      // records on the JS side rather than passing If-Modified-Since.
+      // Belt-and-braces: Xero already filtered on If-Modified-Since, but keep
+      // the JS-side skip in case a proxy strips the header.
       if (modifiedAfter && c.updatedDateUTC) {
         const updated = new Date(c.updatedDateUTC)
         if (updated < modifiedAfter) continue
@@ -226,6 +226,9 @@ export async function syncXeroInvoicesCache(opts: SyncOpts): Promise<number> {
         accessToken,
         tenantId,
         path: `Invoices?${params.toString()}`,
+        // Delta path: server-side If-Modified-Since filter — an unchanged org
+        // costs one call per type instead of a full page-through.
+        headers: buildModifiedAfterHeader(modifiedAfter),
       })
 
       const invoices: any[] = body?.invoices ?? []
