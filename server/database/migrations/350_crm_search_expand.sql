@@ -576,6 +576,29 @@ CREATE INDEX IF NOT EXISTS crm_search_source_dirty_claim
   ON crm_search_source_dirty (next_attempt_at, event_sequence)
   WHERE claim_token IS NULL;
 
+CREATE OR REPLACE FUNCTION crm_search_complete_source_dirty_claim(
+  p_id UUID,
+  p_source_revision BIGINT,
+  p_event_sequence BIGINT,
+  p_claim_token UUID,
+  p_claim_generation BIGINT
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  DELETE FROM public.crm_search_source_dirty
+  WHERE id = p_id
+    AND source_revision = p_source_revision
+    AND event_sequence = p_event_sequence
+    AND claim_token = p_claim_token
+    AND claim_generation = p_claim_generation;
+  RETURN FOUND;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION crm_search_operation_state_transition_allowed(
   p_from TEXT,
   p_to TEXT
@@ -853,6 +876,9 @@ CREATE TABLE IF NOT EXISTS crm_search_usage_reservations (
   control_revision BIGINT NOT NULL CHECK (control_revision >= 0),
   policy_revision BIGINT NOT NULL CHECK (policy_revision >= 0),
   rate_card_id UUID NOT NULL REFERENCES crm_search_rate_cards(id) ON DELETE RESTRICT,
+  rate_card_revision TEXT NOT NULL CHECK (
+    rate_card_revision ~ '^[a-z0-9][a-z0-9._:-]{2,119}$'
+  ),
   reserved_provider_calls INTEGER NOT NULL CHECK (reserved_provider_calls BETWEEN 0 AND 1000),
   reserved_model_input_tokens INTEGER NOT NULL CHECK (
     reserved_model_input_tokens IN (0, 512)
@@ -4933,6 +4959,7 @@ BEGIN
         'crm_search_place_legal_hold', 'crm_search_release_legal_hold',
         'crm_search_attach_legal_hold', 'crm_search_expire_governed_rows',
         'crm_search_record_evaluation_run', 'crm_search_record_dormant_deployment',
+        'crm_search_complete_source_dirty_claim',
         'crm_search_admit_operation', 'crm_search_replace_terminal_operation',
         'crm_search_transition_global_control',
         'crm_search_transition_policy', 'crm_search_transition_dead_letter',

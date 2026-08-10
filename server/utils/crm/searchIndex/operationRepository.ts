@@ -172,15 +172,18 @@ function mapOperation(row: OperationRow): CrmSearchOperation {
 }
 
 const intentColumns = `
-  source_revision = $6,
-  source_event_sequence = $7,
-  desired_action = $8,
-  vector_id = $9,
-  namespace = $10,
-  content_hash = $11,
-  confirmation_tag = $12,
-  confirmation_key_version = $13,
-  state = 'pending_transport',
+  source_revision = $1,
+  source_event_sequence = $2,
+  desired_action = $3,
+  vector_id = $4,
+  namespace = $5,
+  content_hash = $6,
+  confirmation_tag = $7,
+  confirmation_key_version = $8,
+  state = CASE state
+    WHEN 'pending_transport' THEN 'pending_transport'
+    ELSE 'retryable'
+  END,
   lease_token = NULL,
   lease_expires_at = NULL,
   error_class = NULL,
@@ -238,12 +241,14 @@ export async function upsertCrmSearchOperation(
     result = await transaction.query<OperationRow>(`
       UPDATE crm_search_operations
       SET ${intentColumns},
-          successor_of = $14
-      WHERE id = $15
-        AND ${inflight ? 'successor_of = $14' : 'successor_of IS NULL'}
+          successor_of = $9
+      WHERE id = $10
+        AND ${inflight ? 'successor_of = $9' : 'successor_of IS NULL'}
         AND provider_admitted_at IS NULL
       RETURNING *
-    `, [...intentParams(input), inflight?.id ?? null, replaceable.id])
+    `, [input.sourceRevision, input.sourceEventSequence, input.desiredAction,
+      input.vectorId, input.namespace, input.contentHash, input.confirmationTag,
+      input.confirmationKeyVersion, inflight?.id ?? null, replaceable.id])
   } else {
     result = await transaction.query<OperationRow>(`
       INSERT INTO crm_search_operations (
@@ -281,10 +286,27 @@ export async function claimCrmSearchOperations(
   const run = dependencies.transactionWithoutRetry
     ?? crmSearchRepositoryDependencies.transactionWithoutRetry
   return run(async (transaction) => {
+    await transaction.query(`
+      WITH dispatchable AS (
+        SELECT id FROM crm_search_operations
+        WHERE state = 'pending_transport'
+          AND next_attempt_at <= $1
+          AND lease_token IS NULL
+        ORDER BY next_attempt_at, created_at, id
+        LIMIT $2
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE crm_search_operations operation
+      SET state = 'queued',
+          transport_attempt_count = operation.transport_attempt_count + 1,
+          updated_at = $1
+      FROM dispatchable
+      WHERE operation.id = dispatchable.id
+    `, [now, limit])
     const result = await transaction.query<OperationRow>(`
       WITH claimable AS (
         SELECT id FROM crm_search_operations
-        WHERE state IN ('pending_transport', 'retryable')
+        WHERE state IN ('queued', 'retryable')
           AND next_attempt_at <= $1
           AND (lease_token IS NULL OR lease_expires_at <= $1)
         ORDER BY next_attempt_at, created_at, id

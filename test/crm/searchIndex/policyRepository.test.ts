@@ -77,6 +77,7 @@ describe('CRM search policy repository', () => {
 
   it('locks global control and policy and stamps their exact revisions before upsert admission', async () => {
     const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{
         state: 'enabled', indexing_ready: true, revision: '7'
       }] })
@@ -102,8 +103,12 @@ describe('CRM search policy repository', () => {
       teardownId: null
     })
 
-    expect(query.mock.calls[0]?.[0]).toContain('FOR SHARE')
+    expect(query.mock.calls[0]?.[0]).toContain('pg_advisory_xact_lock_shared')
+    expect(query.mock.calls[0]?.[0]).toContain('crm_search_client_advisory_lock_key')
+    expect(query.mock.calls[1]?.[0]).toContain('crm_search_global_control')
     expect(query.mock.calls[1]?.[0]).toContain('FOR SHARE')
+    expect(query.mock.calls[2]?.[0]).toContain('crm_search_policies')
+    expect(query.mock.calls[2]?.[0]).toContain('FOR SHARE')
   })
 
   it('denies upserts after a control flip or when any authority row is missing', async () => {
@@ -119,6 +124,7 @@ describe('CRM search policy repository', () => {
 
   it('does not make an authorized privacy delete depend on sentinel query readiness', async () => {
     const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ state: 'enabled', indexing_ready: true, revision: '7' }] })
       .mockResolvedValueOnce({ rows: [{
         lifecycle_state: 'shadow', indexing_enabled: true, revision: '11',
@@ -138,6 +144,7 @@ describe('CRM search policy repository', () => {
   it('authorizes delete-only work from an independent teardown snapshot without a policy row', async () => {
     const teardownId = '44444444-4444-4444-8444-444444444444'
     const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ state: 'delete_only', indexing_ready: false, revision: '9' }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{
@@ -162,6 +169,7 @@ describe('CRM search policy repository', () => {
   it('continues an independently authorized partially confirmed teardown deletion', async () => {
     const teardownId = '44444444-4444-4444-8444-444444444444'
     const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ state: 'delete_only', indexing_ready: false, revision: '9' }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{

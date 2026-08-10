@@ -209,6 +209,12 @@ export async function requireCrmSearchProviderAuthority(
     const schemaVersion = requireSchemaVersion(input.schemaVersion, failureCode)
     if (input.infrastructureReady !== true) throw crmSearchRepositoryError(failureCode)
 
+    await transaction.query(`
+      SELECT pg_catalog.pg_advisory_xact_lock_shared(
+        crm_search_client_advisory_lock_key($1, $2)
+      )
+    `, [organisationScopeId, clientId])
+
     const control = firstRow(await transaction.query(`
       SELECT state, indexing_ready, revision
       FROM crm_search_global_control

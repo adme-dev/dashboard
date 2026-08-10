@@ -12,10 +12,18 @@ const rateCardId = '55555555-5555-4555-8555-555555555555'
 
 const authorityRow = {
   global_state: 'enabled',
+  global_maximum_mode: 'assist',
   indexing_ready: true,
   control_revision: '7',
   policy_state: 'shadow',
+  policy_effective_mode: 'shadow',
+  policy_indexing_enabled: true,
   policy_revision: '9',
+  policy_active_schema_version: 'crm-search-v1',
+  policy_candidate_schema_version: null,
+  policy_retiring_schema_versions: [],
+  schema_metadata_index_state: 'ready',
+  schema_sentinel_state: 'confirmed_absent',
   global_budget_usd_micros: '1000',
   client_budget_usd_micros: '900',
   global_max_provider_calls: '10',
@@ -29,6 +37,10 @@ const authorityRow = {
   rate_card_id: rateCardId,
   rate_card_revision: 'cloudflare-2026-08-09',
   rate_card_model_id: '@cf/baai/bge-base-en-v1.5',
+  model_input_usd_micros_per_million_tokens: '67000',
+  queried_dimension_usd_micros_per_million: '10000.000000',
+  inserted_dimension_usd_micros_per_million: '10000.000000',
+  stored_dimension_usd_micros_per_million_month: '500.000000',
   rate_card_valid_from: '2026-08-09T00:00:00.000Z',
   rate_card_valid_until: '2027-08-09T00:00:00.000Z',
   rate_card_revoked_at: null
@@ -64,14 +76,16 @@ const reserveInput = {
   operationId: null,
   usageKind: 'query' as const,
   provider: 'workers_ai' as const,
+  providerAction: 'query' as const,
+  surface: 'agency_global' as const,
+  schemaVersion: null,
+  teardownId: null,
   reservationAt: '2026-08-10T00:00:00.000Z',
   providerCalls: 1,
   modelInputTokens: 512,
   queryDimensions: 0,
   insertedDimensions: 0,
-  storedDimensions: 0,
-  usdMicros: 35,
-  rateCardRevision: 'cloudflare-2026-08-09'
+  storedDimensions: 0
 }
 
 function reservationRow() {
@@ -85,6 +99,7 @@ function reservationRow() {
     control_revision: '7',
     policy_revision: '9',
     rate_card_id: rateCardId,
+    rate_card_revision: 'cloudflare-2026-08-09',
     reserved_provider_calls: 1,
     reserved_model_input_tokens: 512,
     reserved_query_dimensions: '0',
@@ -103,6 +118,7 @@ describe('CRM search usage repository', () => {
       ? { ...row, reserved_provider_calls: row.cap_provider_calls }
       : row)
     const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [authorityRow] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: exhaustedRows })
@@ -112,13 +128,15 @@ describe('CRM search usage repository', () => {
       transactionWithoutRetry
     } as never)).rejects.toThrow('crm_search_budget_exhausted')
 
-    expect(query.mock.calls[2]?.[0]).toContain('FOR UPDATE')
-    expect(query.mock.calls[2]?.[0]).toContain('CASE usage_scope WHEN \'global\' THEN 0 ELSE 1 END')
-    expect(query).toHaveBeenCalledTimes(3)
+    expect(query.mock.calls[0]?.[0]).toContain('pg_advisory_xact_lock_shared')
+    expect(query.mock.calls[3]?.[0]).toContain('FOR UPDATE')
+    expect(query.mock.calls[3]?.[0]).toContain('CASE usage_scope WHEN \'global\' THEN 0 ELSE 1 END')
+    expect(query).toHaveBeenCalledTimes(4)
   })
 
   it('reserves one provider attempt atomically against both scopes and stamps revisions/rate card', async () => {
     const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [authorityRow] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: dailyRows })
@@ -133,18 +151,22 @@ describe('CRM search usage repository', () => {
       id: reservationId,
       controlRevision: 7,
       policyRevision: 9,
+      rateCardRevision: 'cloudflare-2026-08-09',
       reservedModelInputTokens: 512,
       state: 'reserved'
     })
-    expect(query.mock.calls[3]?.[0]).toContain('UPDATE crm_search_usage_daily')
-    expect(query.mock.calls[4]?.[0]).toContain('INSERT INTO crm_search_usage_reservations')
-    expect(query.mock.calls[4]?.[0]).toContain('created_at')
-    expect(query.mock.calls[4]?.[1]).toContain(reserveInput.reservationAt)
-    expect(query.mock.calls[0]?.[0]).toContain('$4::TIMESTAMPTZ')
+    expect(query.mock.calls[4]?.[0]).toContain('UPDATE crm_search_usage_daily')
+    expect(query.mock.calls[5]?.[0]).toContain('INSERT INTO crm_search_usage_reservations')
+    expect(query.mock.calls[5]?.[0]).toContain('created_at')
+    expect(query.mock.calls[5]?.[1]).toContain(reserveInput.reservationAt)
+    expect(query.mock.calls[5]?.[1]).toContain(35)
+    expect(query.mock.calls[5]?.[1]).toContain('cloudflare-2026-08-09')
+    expect(query.mock.calls[1]?.[0]).toContain('$4::TIMESTAMPTZ')
   })
 
   it('fails closed when a locked daily scope does not match current rate-card authority', async () => {
     const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [authorityRow] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: dailyRows.map(row => ({
@@ -155,7 +177,7 @@ describe('CRM search usage repository', () => {
     await expect(reserveCrmSearchUsage(reserveInput, {
       transactionWithoutRetry
     } as never)).rejects.toThrow('crm_search_budget_exhausted')
-    expect(query).toHaveBeenCalledTimes(3)
+    expect(query).toHaveBeenCalledTimes(4)
   })
 
   it('charges the full 512-token reservation once a Workers AI call is sent, including late discard', async () => {
@@ -231,15 +253,118 @@ describe('CRM search usage repository', () => {
     expect(transactionWithoutRetry).not.toHaveBeenCalled()
   })
 
-  it('fails closed before daily rows when configured token-cap multiplication is not exact', async () => {
-    const query = vi.fn().mockResolvedValueOnce({ rows: [{
-      ...authorityRow,
-      global_max_provider_calls: String(Number.MAX_SAFE_INTEGER)
-    }] })
+  it.each([
+    { policy_state: 'indexing', policy_effective_mode: 'off' },
+    { policy_state: 'off', policy_effective_mode: 'off' }
+  ])('rejects query provider admission after a downgrade to $policy_state', async (override) => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ ...authorityRow, ...override }] })
     const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
     await expect(reserveCrmSearchUsage(reserveInput, {
       transactionWithoutRetry
     } as never)).rejects.toThrow('crm_search_invalid_usage_reservation')
-    expect(query).toHaveBeenCalledOnce()
+    expect(query).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects a query surface whose ceiling resolves to off', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{
+        ...authorityRow,
+        policy_state: 'assist',
+        policy_effective_mode: 'assist'
+      }] })
+    const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
+    await expect(reserveCrmSearchUsage({
+      ...reserveInput,
+      surface: 'portal_global'
+    }, { transactionWithoutRetry } as never)).rejects.toThrow(
+      'crm_search_invalid_usage_reservation'
+    )
+    expect(query).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not accept a caller-provided zero cost in place of rate-card arithmetic', async () => {
+    const transactionWithoutRetry = vi.fn()
+    await expect(reserveCrmSearchUsage({
+      ...reserveInput,
+      usdMicros: 0
+    } as never, { transactionWithoutRetry } as never)).rejects.toThrow(
+      'crm_search_invalid_usage_reservation'
+    )
+    expect(transactionWithoutRetry).not.toHaveBeenCalled()
+  })
+
+  it('reserves teardown deletion from durable evidence without an ordinary policy row', async () => {
+    const teardownId = '88888888-8888-4888-8888-888888888888'
+    const operationId = '99999999-9999-4999-8999-999999999999'
+    const teardownAuthority = {
+      ...authorityRow,
+      global_state: 'delete_only',
+      global_maximum_mode: 'off',
+      indexing_ready: false,
+      policy_state: null,
+      policy_effective_mode: null,
+      policy_indexing_enabled: null,
+      policy_revision: '5',
+      teardown_id: teardownId,
+      teardown_state: 'provider_pending',
+      provider_deletion_state: 'partially_confirmed',
+      operation_desired_action: 'delete',
+      operation_schema_version: 'crm-search-v1'
+    }
+    const teardownReservation = {
+      ...reservationRow(),
+      operation_id: operationId,
+      usage_kind: 'indexing',
+      policy_revision: '5',
+      reserved_model_input_tokens: 0,
+      reserved_usd_micros: '0'
+    }
+    const indexingRows = dailyRows.map(row => ({
+      ...row,
+      usage_kind: 'indexing',
+      cap_model_input_tokens: row.usage_scope === 'global' ? '5120' : '4096'
+    }))
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [teardownAuthority] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: indexingRows })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [teardownReservation] })
+    const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
+
+    await expect(reserveCrmSearchUsage({
+      ...reserveInput,
+      operationId,
+      usageKind: 'indexing',
+      provider: 'vectorize',
+      providerAction: 'delete',
+      surface: null,
+      schemaVersion: 'crm-search-v1',
+      teardownId,
+      modelInputTokens: 0
+    }, { transactionWithoutRetry } as never)).resolves.toMatchObject({
+      operationId,
+      policyRevision: 5,
+      reservedUsdMicros: 0
+    })
+    expect(query.mock.calls[1]?.[0]).toContain('crm_search_client_teardowns')
+  })
+
+  it('fails closed before daily rows when configured token-cap multiplication is not exact', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{
+        ...authorityRow,
+        global_max_provider_calls: String(Number.MAX_SAFE_INTEGER)
+      }] })
+    const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
+    await expect(reserveCrmSearchUsage(reserveInput, {
+      transactionWithoutRetry
+    } as never)).rejects.toThrow('crm_search_invalid_usage_reservation')
+    expect(query).toHaveBeenCalledTimes(2)
   })
 })

@@ -234,6 +234,24 @@ describe('CRM search expand migration 350', () => {
     expect(sql).toMatch(/procedure\.proname = ANY[\s\S]*'crm_search_record_evaluation_run'[\s\S]*GRANT EXECUTE ON FUNCTION %s TO crm_search_runtime/i)
   })
 
+  it('completes dirty claims through one pinned least-privilege runtime function', () => {
+    const sql = readMigration()
+    const completion = functionDefinition(sql, 'crm_search_complete_source_dirty_claim')
+
+    expect(completion).toContain('SECURITY DEFINER')
+    expect(completion).toContain('SET search_path = pg_catalog, pg_temp')
+    expect(completion).toMatch(/DELETE FROM public\.crm_search_source_dirty/i)
+    for (const predicate of [
+      'id = p_id',
+      'source_revision = p_source_revision',
+      'event_sequence = p_event_sequence',
+      'claim_token = p_claim_token',
+      'claim_generation = p_claim_generation'
+    ]) expect(completion).toContain(predicate)
+    expect(sql).toMatch(/'crm_search_complete_source_dirty_claim'[\s\S]*GRANT EXECUTE ON FUNCTION %s TO crm_search_runtime/i)
+    expect(sql).not.toMatch(/GRANT DELETE ON TABLE[\s\S]*crm_search_source_dirty[\s\S]*TO crm_search_runtime/i)
+  })
+
   it('recomputes every evaluation gate from granular evidence, including paired bootstrap', () => {
     const sql = readMigration()
     const recordEvaluation = functionDefinition(sql, 'crm_search_record_evaluation_run')
@@ -363,12 +381,14 @@ describe('CRM search expand migration 350', () => {
     const globalTransition = functionDefinition(sql, 'crm_search_transition_global_control')
     const policyTransition = functionDefinition(sql, 'crm_search_transition_policy')
     const revocationGuard = functionDefinition(sql, 'crm_search_guard_change_approval_revocation')
+    const usageReservations = tableDefinition(sql, 'crm_search_usage_reservations')
 
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS crm_search_change_approval_consumptions')
     expect(globalTransition).toMatch(/FOR UPDATE OF approval/)
     expect(policyTransition).toMatch(/FOR UPDATE OF approval/)
     expect(revocationGuard).toMatch(/FOR UPDATE/)
     expect(revocationGuard).toMatch(/crm_search_change_approval_consumptions/)
+    expect(usageReservations).toMatch(/rate_card_revision TEXT NOT NULL/)
     expect(sql).toMatch(/crm_search_usage_reservations_query_identity[\s\S]*operation_id IS NULL/i)
     expect(sql).toMatch(/crm_search_daily_events_global_identity[\s\S]*client_id IS NULL/i)
   })

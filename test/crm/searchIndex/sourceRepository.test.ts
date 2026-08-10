@@ -42,7 +42,7 @@ describe('CRM search source repository', () => {
   })
 
   it('clears a dirty row only with revision, event-sequence, token, and generation CAS', async () => {
-    const query = vi.fn().mockResolvedValue({ rowCount: 1, rows: [] })
+    const query = vi.fn().mockResolvedValue({ rows: [{ completed: true }] })
     await expect(completeCrmSearchDirtySourceClaim({
       id: claimed.id,
       sourceRevision: 4,
@@ -52,14 +52,15 @@ describe('CRM search source repository', () => {
     }, { query } as never)).resolves.toBe(true)
 
     const sql = query.mock.calls[0]?.[0] as string
-    expect(sql).toContain('source_revision = $2')
-    expect(sql).toContain('event_sequence = $3')
-    expect(sql).toContain('claim_token = $4')
-    expect(sql).toContain('claim_generation = $5')
+    expect(sql).toContain('crm_search_complete_source_dirty_claim')
+    expect(sql).not.toMatch(/DELETE\s+FROM\s+crm_search_source_dirty/i)
+    expect(query.mock.calls[0]?.[1]).toEqual([
+      claimed.id, 4, 10, claimed.claim_token, 2
+    ])
   })
 
   it('does not clear a newer concurrent dirty intent through a stale claim', async () => {
-    const query = vi.fn().mockResolvedValue({ rowCount: 0, rows: [] })
+    const query = vi.fn().mockResolvedValue({ rows: [{ completed: false }] })
     await expect(completeCrmSearchDirtySourceClaim({
       id: claimed.id,
       sourceRevision: 4,

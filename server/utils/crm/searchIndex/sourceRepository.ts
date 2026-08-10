@@ -120,14 +120,9 @@ export async function completeCrmSearchDirtySourceClaim(
   const claimToken = requireUuid(input.claimToken, errorCode)
   const claimGeneration = requireSafeInteger(input.claimGeneration, errorCode, { minimum: 1 })
   const result = await transaction.query(`
-    DELETE FROM crm_search_source_dirty
-    WHERE id = $1
-      AND source_revision = $2
-      AND event_sequence = $3
-      AND claim_token = $4
-      AND claim_generation = $5
+    SELECT crm_search_complete_source_dirty_claim($1, $2, $3, $4, $5) AS completed
   `, [id, sourceRevision, eventSequence, claimToken, claimGeneration])
-  return affectedRows(result) === 1
+  return result.rows[0]?.completed === true
 }
 
 export interface ReleaseCrmSearchDirtySourceClaimInput {

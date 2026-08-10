@@ -66,3 +66,45 @@ PASS: 8 tests; 1 dedicated external-PostgreSQL integration test skipped without 
 1. Repository-wide Nuxt typecheck is still red on unowned baseline diagnostics; the Task 8 modules have no owned diagnostic under the targeted server pass.
 2. The guarded PostgreSQL integration portion of `crmSearchMigrationPostgres.test.ts` requires its dedicated opt-in DSN and was intentionally not run because Task 8 forbids external/shared database access. Its eight static/guard assertions passed.
 3. These repositories deliberately perform no provider call, routing, queue processing, or rollout. Downstream orchestration must preserve their fresh-read, same-transaction authority and CAS boundaries.
+
+---
+
+## Review Round 1 — Authority and State-Machine Alignment
+
+### Result
+
+- Status: `DONE`.
+- Commit target: `fix(crm-search): align repository authority contracts`.
+- Scope: migration 350's pre-production runtime surface; Task 8 operation, policy, source, and usage repositories; their focused tests; the migration 350 static contract; and this report. Task 6, Task 9, Task 10, routes, providers, queues, deployment, network, and external/shared databases were not modified or contacted.
+
+### Strict TDD Evidence
+
+The five combined-review findings were first captured in one consolidated RED run: 17 failures, 86 passes, and one guarded PostgreSQL test skipped. A credential-free local PostgreSQL 14.19 run then reproduced the actual migration trigger rejecting the illegal `pending_transport -> processing` transition.
+
+Incremental GREEN slices closed:
+
+1. legal `pending_transport -> queued -> processing` claims and legal retryable coalescing without resetting queued/processing work to pending transport;
+2. one `SECURITY DEFINER` dirty-claim completion function with fixed `pg_catalog, pg_temp` search path, exact revision/event/token/generation CAS, PUBLIC revocation, runtime-only execute, and no runtime table DELETE;
+3. the canonical shared client advisory fence before global, policy, schema, operation, and provider authority reads, including a live two-connection exclusive-promotion wait;
+4. usage-kind/action/surface-aware query, indexing, and durable teardown authorization, with missing, malformed, downgraded, wrong-schema, wrong-operation, off-surface, revoked, or expired evidence failing closed; and
+5. server-owned rate-card pricing using Task 7 exact `BigInt` ceiling arithmetic. Caller-controlled USD and revision inputs are rejected; the derived micro-USD amount, immutable rate-card ID, and immutable revision are persisted.
+
+The final rate-card revision assertion was independently RED in both the repository and migration contracts before the schema/repository stamp was added.
+
+### PostgreSQL 14 Behavioral Evidence
+
+An isolated temporary cluster under `/private/tmp` was reachable only through a credential-free Unix socket. No generic `DATABASE_URL`, TCP endpoint, shared database, or external resource was used.
+
+The live Task 8 case passed for trigger-backed operation transitions, processing-intent coalescing, direct runtime DELETE denial, successful narrow-function completion, and a two-connection shared/exclusive client advisory fence. The independent 350–352 compatibility case applied the migrations, exercised capture/runtime behavior and concurrency, and verified idempotent compatibility.
+
+### Final Verification
+
+```text
+Task 8 repository + modified migration gate:  9 files, 104 passed
+Migration 350–352 PostgreSQL 14 compatibility: 4 files, 53 passed
+Node 24.18 Nuxt typecheck:                     passed
+Node 24.18 ESLint on all modified TS files:    passed
+git diff --check:                              passed
+```
+
+The final reread covered every modified repository, test, migration delta in context, and this report. The security pass rechecked fixed definer search paths and ownership, exact runtime function ACL, canonical advisory-lock order, row-lock scope, legal operation transitions, revision/lease CAS, teardown independence from deleted policy state, strict reservation shape, active-rate-card validity/revocation/model evidence, exact cost arithmetic, dual-scope caps, and the absence of caller-provided cost authority or provider/network side effects.
