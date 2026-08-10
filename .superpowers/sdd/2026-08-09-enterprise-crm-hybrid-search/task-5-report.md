@@ -287,3 +287,25 @@ Node 24.18 repository typecheck:            864 baseline errors, 0 owned-file ma
 ```
 
 The final reread covered the complete owned test files, every migration delta in context, the final report, and the preserved Task 5/Task 6 boundary. The security pass verified all 14 `SECURITY DEFINER` functions retain `SET search_path = pg_catalog, pg_temp`, runtime cannot mutate internal admission/replacement authorization tables, source tables have no capture trigger, admitted and terminal evidence cannot be rewritten, approval and client advisory fences remain intact, and no owned file contains a private key or implicit `DATABASE_URL` access. Task 7 files were neither edited nor staged.
+
+---
+
+## Micro-Acceptance — Ed25519 Attestation Key Enforcement
+
+### Strict TDD Evidence
+
+The regression uses Node's real asymmetric primitives to sign the same canonical Task 18 attestation payload with generated Ed25519 and Ed448 key pairs while the attestation declares `signatureAlgorithm: 'ed25519'`. Before the guard change, the focused governance suite recorded one failure, 12 passes, and one guarded database skip: the trust constructor had no key-type-aware test seam and reached the incomplete-environment error instead of proving the declared algorithm against the imported key.
+
+`targetAttestationTrustFromEnvironment` now imports the configured public key, requires `verificationKey.asymmetricKeyType === 'ed25519'`, and only then constructs the trusted signature verifier. The valid Ed25519 attestation verifies; the cryptographically valid Ed448 signature is rejected even though its envelope claims Ed25519. Generated keys remain process-local test values, and no private key, external request, database connection, SQL change, or migration-contract change was introduced.
+
+### Verification
+
+```text
+Governance guard:                    13 passed, 1 guarded database skip
+Static migration contracts:          25 passed
+ESLint on the owned governance test: clean
+Node 24.18 repository typecheck:     864 baseline errors, 0 owned-file matches
+git diff --check:                    clean
+```
+
+The bounded reread covered the complete modified governance test, this report, and the final two-path diff. The micro-fix does not touch migration 350 or any Task 7 artifact.

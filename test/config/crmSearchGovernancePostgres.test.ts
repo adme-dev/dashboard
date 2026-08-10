@@ -1,6 +1,9 @@
 import {
   createHash,
   createPublicKey,
+  generateKeyPairSync,
+  sign as signDetached,
+  type KeyObject,
   verify as verifyDetachedSignature
 } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
@@ -61,6 +64,14 @@ interface TargetAttestationTrust {
   expectedSignerKeyId: string
   trustedSharedEndpointDenyset: string[]
   verifySignature: (payload: string, signature: string, signerKeyId: string) => boolean
+}
+
+interface TargetAttestationTrustInputs {
+  publicKeyPem?: string
+  signerKeyId?: string
+  trustedSharedEndpointDenysetJson?: string
+  expectedSourceGitSha?: string
+  expectedMigrationDigests?: Record<string, string>
 }
 
 function canonicalJson(value: unknown): string {
@@ -278,14 +289,20 @@ function workspaceMigrationDigests(): Record<string, string> {
   ]))
 }
 
-function targetAttestationTrustFromEnvironment(): TargetAttestationTrust {
-  if (!rawTargetAttestationPublicKey || !expectedTargetAttestationSignerKeyId
-    || !rawTrustedSharedEndpointDenyset) {
+function targetAttestationTrustFromEnvironment(
+  inputs: TargetAttestationTrustInputs = {}
+): TargetAttestationTrust {
+  const publicKeyPem = inputs.publicKeyPem ?? rawTargetAttestationPublicKey
+  const configuredSignerKeyId
+    = inputs.signerKeyId ?? expectedTargetAttestationSignerKeyId
+  const trustedSharedEndpointDenysetJson
+    = inputs.trustedSharedEndpointDenysetJson ?? rawTrustedSharedEndpointDenyset
+  if (!publicKeyPem || !configuredSignerKeyId || !trustedSharedEndpointDenysetJson) {
     throw new Error('CRM search target attestation trust environment is incomplete')
   }
   let trustedSharedEndpointDenyset: unknown
   try {
-    trustedSharedEndpointDenyset = JSON.parse(rawTrustedSharedEndpointDenyset)
+    trustedSharedEndpointDenyset = JSON.parse(trustedSharedEndpointDenysetJson)
   } catch {
     throw new Error('CRM search trusted shared endpoint denyset is invalid JSON')
   }
@@ -294,20 +311,25 @@ function targetAttestationTrustFromEnvironment(): TargetAttestationTrust {
     throw new Error('CRM search trusted shared endpoint denyset must be a JSON string array')
   }
   const repositoryRoot = fileURLToPath(new URL('../..', import.meta.url))
-  const expectedSourceGitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
-    cwd: repositoryRoot,
-    encoding: 'utf8'
-  }).trim()
+  const expectedSourceGitSha = inputs.expectedSourceGitSha
+    ?? execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: repositoryRoot,
+      encoding: 'utf8'
+    }).trim()
   const verificationKey = createPublicKey(
-    rawTargetAttestationPublicKey.replaceAll('\\n', '\n')
+    publicKeyPem.replaceAll('\\n', '\n')
   )
+  if (verificationKey.asymmetricKeyType !== 'ed25519') {
+    throw new Error('CRM search target attestation verification key must be Ed25519')
+  }
   return {
     expectedSourceGitSha,
-    expectedMigrationDigests: workspaceMigrationDigests(),
-    expectedSignerKeyId: expectedTargetAttestationSignerKeyId,
+    expectedMigrationDigests:
+      inputs.expectedMigrationDigests ?? workspaceMigrationDigests(),
+    expectedSignerKeyId: configuredSignerKeyId,
     trustedSharedEndpointDenyset,
     verifySignature: (payload, signature, signerKeyId) =>
-      signerKeyId === expectedTargetAttestationSignerKeyId
+      signerKeyId === configuredSignerKeyId
       && verifyDetachedSignature(
         null,
         Buffer.from(payload, 'utf8'),
@@ -594,6 +616,55 @@ describe('CRM search governance database target guard', () => {
         trustedSharedEndpointDenyset: ['ep-crm-search-e2e-a1b2c3d4']
       }
     )).toThrow(/shared/i)
+  })
+
+  it('accepts Ed25519 attestation signatures and rejects Ed448 keys mislabeled as Ed25519', () => {
+    const signedAttestation = (privateKey: KeyObject): CrmSearchTargetAttestation => {
+      const fixture = targetAttestationFixture()
+      const {
+        attestationSha256,
+        signature: fixtureSignature,
+        ...signaturePayload
+      } = fixture
+      void attestationSha256
+      void fixtureSignature
+      const signature = signDetached(
+        null,
+        Buffer.from(canonicalJson(signaturePayload), 'utf8'),
+        privateKey
+      ).toString('base64')
+      const signed = { ...signaturePayload, signature }
+      return { ...signed, attestationSha256: digestJson(signed) }
+    }
+    const trustOptions = (
+      attestation: CrmSearchTargetAttestation,
+      publicKeyPem: string
+    ) => ({
+      publicKeyPem,
+      signerKeyId: attestation.signerKeyId,
+      trustedSharedEndpointDenysetJson: JSON.stringify(['ep-production-shared-a1b2c3d4']),
+      expectedSourceGitSha: attestation.sourceGitSha,
+      expectedMigrationDigests: attestation.migrationDigests
+    })
+
+    const ed25519Keys = generateKeyPairSync('ed25519')
+    const ed25519Attestation = signedAttestation(ed25519Keys.privateKey)
+    const ed25519Trust = targetAttestationTrustFromEnvironment(trustOptions(
+      ed25519Attestation,
+      ed25519Keys.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+    ))
+    expect(verifyTargetAttestation(ed25519Attestation, ed25519Trust))
+      .toEqual(ed25519Attestation)
+
+    const ed448Keys = generateKeyPairSync('ed448')
+    const mislabeledEd448Attestation = signedAttestation(ed448Keys.privateKey)
+    expect(() => {
+      const mislabeledEd448Trust = targetAttestationTrustFromEnvironment(trustOptions(
+        mislabeledEd448Attestation,
+        ed448Keys.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+      ))
+      verifyTargetAttestation(mislabeledEd448Attestation, mislabeledEd448Trust)
+    }).toThrow(/verification key must be Ed25519/i)
   })
 
   it('keeps attestation preflight and migration under one connection, transaction, and fence', () => {
