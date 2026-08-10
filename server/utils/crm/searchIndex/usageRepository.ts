@@ -207,6 +207,7 @@ function validateReservationInput(input: ReserveCrmSearchUsageInput): ValidatedR
   }
   if (validated.provider === 'vectorize'
     && (validated.modelInputTokens !== 0
+      || validated.storedDimensions !== 0
       || (validated.providerAction === 'delete' && validated.insertedDimensions !== 0))) {
     throw crmSearchRepositoryError(invalidCode)
   }
@@ -511,7 +512,11 @@ function readDailyCapEvidence(
   }
 }
 
-function proveDailyCapacity(row: Record<string, unknown>, input: PricedReservationInput): boolean {
+function proveDailyCapacity(
+  row: Record<string, unknown>,
+  input: PricedReservationInput,
+  storedDimensions: number
+): boolean {
   const additions = {
     provider_calls: input.providerCalls,
     model_input_tokens: input.modelInputTokens,
@@ -527,7 +532,15 @@ function proveDailyCapacity(row: Record<string, unknown>, input: PricedReservati
   }
   const stored = readAmount(row, 'stored_dimension_high_watermark')
   const storedCap = readAmount(row, 'cap_stored_dimensions')
-  return input.storedDimensions <= storedCap && stored <= storedCap
+  return storedDimensions <= storedCap && stored <= storedCap
+}
+
+function storedInventoryDimensions(row: Record<string, unknown>, key: string): number {
+  const dimensions = readAmount(row, key)
+  if (dimensions % CRM_SEARCH_VECTOR_DIMENSIONS !== 0) {
+    throw crmSearchRepositoryError(invalidCode)
+  }
+  return dimensions
 }
 
 function dailyRowMatchesAuthority(
@@ -713,7 +726,7 @@ export async function reserveCrmSearchUsage(
     ))
     if (!authority) throw crmSearchRepositoryError(invalidCode)
     const proven = requireReservationAuthority(authority, input)
-    const pricedInput = proven.input
+    let pricedInput = proven.input
     const { controlRevision, policyRevision, rateCardId } = proven
     let globalCaps = proven.globalCaps
     let clientCaps = proven.clientCaps
@@ -796,6 +809,47 @@ export async function reserveCrmSearchUsage(
         FOR UPDATE
       `, [input.usageDate, input.organisationScopeId, input.usageKind, input.clientId])).rows
     }
+    let globalStoredDimensions = pricedInput.storedDimensions
+    let clientStoredDimensions = pricedInput.storedDimensions
+    if (input.usageKind === 'indexing' && input.provider === 'vectorize') {
+      const inventory = firstRow(await transaction.query(`
+        WITH live_vectors AS (
+          SELECT document.organisation_scope_id, document.client_id,
+                 document.namespace, document.vector_id
+          FROM crm_search_documents document
+          WHERE document.organisation_scope_id = $1
+            AND document.confirmation_state IN ('provider_pending', 'indexed', 'delete_pending')
+            AND document.tombstoned = FALSE
+          UNION
+          SELECT teardown_vector.organisation_scope_id, teardown_vector.client_id,
+                 teardown_vector.namespace, teardown_vector.vector_id
+          FROM crm_search_teardown_vectors teardown_vector
+          WHERE teardown_vector.organisation_scope_id = $1
+            AND teardown_vector.deletion_state <> 'confirmed_absent'
+          UNION
+          SELECT operation.organisation_scope_id, operation.client_id,
+                 operation.namespace, operation.vector_id
+          FROM crm_search_operations operation
+          WHERE operation.id = $3
+            AND operation.organisation_scope_id = $1
+            AND operation.desired_action = 'upsert'
+        )
+        SELECT
+          COUNT(*)::BIGINT * $4::BIGINT AS global_stored_dimensions,
+          COUNT(*) FILTER (WHERE client_id = $2)::BIGINT * $4::BIGINT
+            AS client_stored_dimensions
+        FROM live_vectors
+      `, [input.organisationScopeId, input.clientId, input.operationId,
+        CRM_SEARCH_VECTOR_DIMENSIONS]))
+      if (!inventory) throw crmSearchRepositoryError(invalidCode)
+      globalStoredDimensions = storedInventoryDimensions(inventory, 'global_stored_dimensions')
+      clientStoredDimensions = storedInventoryDimensions(inventory, 'client_stored_dimensions')
+      pricedInput = calculatePricedReservation({
+        ...input,
+        storedDimensions: clientStoredDimensions
+      }, authority)
+    }
+
     if (dailyRows.length !== 2
       || !dailyRowMatchesAuthority(
         dailyRows[0]!, 'global', input.clientId, globalCaps, globalTokenCap, rateCardId
@@ -803,7 +857,8 @@ export async function reserveCrmSearchUsage(
       || !dailyRowMatchesAuthority(
         dailyRows[1]!, 'client', input.clientId, clientCaps, clientTokenCap, rateCardId
       )
-      || !dailyRows.every(row => proveDailyCapacity(row, pricedInput))) {
+      || !proveDailyCapacity(dailyRows[0]!, pricedInput, globalStoredDimensions)
+      || !proveDailyCapacity(dailyRows[1]!, pricedInput, clientStoredDimensions)) {
       throw crmSearchRepositoryError(budgetCode)
     }
 
@@ -813,12 +868,16 @@ export async function reserveCrmSearchUsage(
           reserved_model_input_tokens = reserved_model_input_tokens + $2,
           reserved_query_dimensions = reserved_query_dimensions + $3,
           reserved_inserted_dimensions = reserved_inserted_dimensions + $4,
-          stored_dimension_high_watermark = GREATEST(stored_dimension_high_watermark, $5),
-          reserved_usd_micros = reserved_usd_micros + $6,
+          stored_dimension_high_watermark = GREATEST(
+            stored_dimension_high_watermark,
+            CASE usage_scope WHEN 'global' THEN $5 ELSE $6 END
+          ),
+          reserved_usd_micros = reserved_usd_micros + $7,
           updated_at = NOW()
-      WHERE id = ANY($7::UUID[])
+      WHERE id = ANY($8::UUID[])
     `, [pricedInput.providerCalls, pricedInput.modelInputTokens, pricedInput.queryDimensions,
-      pricedInput.insertedDimensions, pricedInput.storedDimensions, pricedInput.usdMicros,
+      pricedInput.insertedDimensions, globalStoredDimensions, clientStoredDimensions,
+      pricedInput.usdMicros,
       dailyRows.map(row => requireUuid(row.id, invalidCode))])
 
     const providerAction = input.provider === 'workers_ai'

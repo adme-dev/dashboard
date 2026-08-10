@@ -19,7 +19,7 @@ export const CRM_SEARCH_SEMANTIC_RETRIEVAL_CONTRACT = Object.freeze({
 
 const providerIdentityPattern = /^[A-Za-z0-9_-]{43}$/u
 const schemaVersionPattern = /^crm-search-v[1-9][0-9]{0,5}$/u
-const embeddingResponseKeys = new Set(['data'])
+const embeddingResponseKeys = new Set(['data', 'shape', 'pooling'])
 
 export interface CrmSearchSemanticMatch {
   vectorId: string
@@ -62,11 +62,20 @@ export function parseCrmSearchEmbedding(value: unknown): number[] {
     throw new TypeError('CRM search embedding response is invalid')
   }
   const response = value as Record<string, unknown>
+  const keys = Object.keys(response)
   const vector = Array.isArray(response.data) && response.data.length === 1
     ? response.data[0]
     : null
-  if (Object.keys(response).length !== embeddingResponseKeys.size
-    || Object.keys(response).some(key => !embeddingResponseKeys.has(key))
+  const shapeValid = response.shape === undefined
+    || (Array.isArray(response.shape)
+      && response.shape.length === 2
+      && response.shape[0] === 1
+      && response.shape[1] === CRM_SEARCH_VECTOR_DIMENSIONS)
+  const poolingValid = response.pooling === undefined || response.pooling === CRM_SEARCH_POOLING
+  if (!keys.includes('data')
+    || keys.some(key => !embeddingResponseKeys.has(key))
+    || !shapeValid
+    || !poolingValid
     || (!Array.isArray(vector) && !(vector instanceof Float32Array))
     || vector.length !== CRM_SEARCH_VECTOR_DIMENSIONS
     || !Array.from(vector).every(component => typeof component === 'number' && Number.isFinite(component))) {

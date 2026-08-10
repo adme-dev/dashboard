@@ -184,6 +184,69 @@ describe('CRM search usage repository', () => {
     expect(query.mock.calls[1]?.[0]).toContain('$4::TIMESTAMPTZ')
   })
 
+  it('derives cumulative stored inventory under the locked scopes instead of trusting one-vector caller input', async () => {
+    const cumulativeRows = indexingDailyRows.map(row => ({
+      ...row,
+      cap_inserted_dimensions: '7680',
+      cap_stored_dimensions: row.usage_scope === 'global' ? '3072' : '1536'
+    }))
+    const vectorAuthority = {
+      ...authorityRow,
+      global_max_inserted_dimensions: '7680',
+      client_max_inserted_dimensions: '7680',
+      global_max_stored_dimensions: '3072',
+      client_max_stored_dimensions: '1536'
+    }
+    const vectorReservation = {
+      ...reservationRow(),
+      usage_kind: 'indexing',
+      operation_id: teardownOperationId,
+      reserved_model_input_tokens: 0,
+      reserved_inserted_dimensions: '768',
+      reserved_stored_dimensions: '1536',
+      reserved_usd_micros: '9',
+      provider_attempt_id: providerAttemptId
+    }
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [vectorAuthority] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: cumulativeRows })
+      .mockResolvedValueOnce({ rows: [{
+        global_stored_dimensions: '3072',
+        client_stored_dimensions: '1536'
+      }] })
+      .mockResolvedValueOnce({ rows: [], rowCount: 2 })
+      .mockResolvedValueOnce({ rows: [{ id: providerAttemptId }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [vectorReservation] })
+    const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
+
+    await expect(reserveCrmSearchUsage({
+      ...reserveInput,
+      operationId: teardownOperationId,
+      usageKind: 'indexing',
+      provider: 'vectorize',
+      providerAction: 'upsert',
+      surface: null,
+      schemaVersion: 'crm-search-v1',
+      modelInputTokens: 0,
+      insertedDimensions: 768,
+      storedDimensions: 0,
+      providerAttemptId,
+      providerAttemptSequence: 1,
+      expectedLeaseGeneration: 3
+    }, { transactionWithoutRetry } as never)).resolves.toMatchObject({
+      reservedStoredDimensions: 1536
+    })
+
+    expect(query.mock.calls[4]?.[0]).toMatch(/crm_search_documents[\s\S]*UNION[\s\S]*crm_search_operations/i)
+    expect(query.mock.calls[4]?.[0]).toMatch(/confirmation_state IN \('provider_pending', 'indexed', 'delete_pending'\)/)
+    expect(query.mock.calls[5]?.[0]).toMatch(
+      /stored_dimension_high_watermark = GREATEST\([\s\S]*CASE usage_scope/i
+    )
+    expect(query.mock.calls[5]?.[1]).toEqual(expect.arrayContaining([3072, 1536]))
+  })
+
   it('precommits a distinct reloadable Workers AI indexing attempt with its 512-token reservation', async () => {
     const indexingReservation = {
       ...reservationRow(),
@@ -498,6 +561,9 @@ describe('CRM search usage repository', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [teardownAuthority] })
       .mockResolvedValueOnce({ rows: indexingDailyRows })
+      .mockResolvedValueOnce({ rows: [{
+        global_stored_dimensions: '768', client_stored_dimensions: '768'
+      }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: providerAttemptId }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [teardownReservation] })
@@ -563,6 +629,9 @@ describe('CRM search usage repository', () => {
       .mockResolvedValueOnce({ rows: [indexingDailyRows[1]] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: indexingDailyRows })
+      .mockResolvedValueOnce({ rows: [{
+        global_stored_dimensions: '768', client_stored_dimensions: '768'
+      }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: providerAttemptId }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [teardownReservation] })

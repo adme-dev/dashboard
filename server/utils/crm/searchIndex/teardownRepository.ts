@@ -211,5 +211,21 @@ export async function completeCrmSearchTeardownVectorClaim(
       AND deletion_state = $4
       AND provider_mutation_id = $5
   `, [teardownId, vectorId, schemaVersion, expectedState, providerMutationId, confirmedAbsentAt])
-  return affectedRows(result) === 1
+  if (affectedRows(result) !== 1) return false
+  const teardown = await transaction.query(`
+    UPDATE crm_search_client_teardowns teardown
+    SET state = 'provider_pending',
+        provider_deletion_state = CASE WHEN NOT EXISTS (
+          SELECT 1
+          FROM crm_search_teardown_vectors vector
+          WHERE vector.teardown_id = teardown.id
+            AND vector.deletion_state <> 'confirmed_absent'
+        ) THEN 'confirmed_absent' ELSE 'partially_confirmed' END,
+        updated_at = $2
+    WHERE teardown.id = $1
+      AND teardown.state IN ('deleting', 'provider_pending')
+      AND teardown.provider_deletion_state IN ('pending', 'partially_confirmed')
+    RETURNING teardown.id
+  `, [teardownId, confirmedAbsentAt])
+  return affectedRows(teardown) === 1
 }

@@ -2,17 +2,23 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   CRM_SEARCH_DEAD_LETTER_PATH,
+  CRM_SEARCH_MALFORMED_DEAD_LETTER_PATH,
   CRM_SEARCH_PROCESS_PATH,
+  crmSearchMalformedDeadLetterCoordinates,
   type CrmSearchIndexQueueMessage
 } from '../../../shared/crmSearchIndexProtocol'
 import {
   CRM_SEARCH_SERVICE_KEY_BYTES,
+  createCrmSearchSignedMalformedDeadLetterRequest,
   createCrmSearchSignedServiceRequest,
   type CrmSearchServiceKeyring
 } from '../../../shared/crmSearchIndexSigning'
 import {
   createCrmSearchDeadLetterPostHandler
 } from '../../../server/api/internal/crm-search/dead-letter.post'
+import {
+  createCrmSearchMalformedDeadLetterPostHandler
+} from '../../../server/api/internal/crm-search/malformed-dead-letter.post'
 
 const NOW_SEC = 2_000_000_000
 const NOW_MS = NOW_SEC * 1000
@@ -220,5 +226,67 @@ describe('POST /api/internal/crm-search/dead-letter', () => {
 
     await expect(handler({ context: {} } as never)).rejects.toMatchObject({ statusCode: 503 })
     expect(recordDeadLetter).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/internal/crm-search/malformed-dead-letter', () => {
+  const record = {
+    protocolVersion: 1 as const,
+    queueMessageIdDigest: `sha256:${'a'.repeat(64)}`,
+    queue: 'dead_letter' as const,
+    attempts: 3,
+    receivedAt: new Date(NOW_MS).toISOString()
+  }
+
+  it('verifies the signed bounded identity before durable recording', async () => {
+    const signed = await createCrmSearchSignedMalformedDeadLetterRequest(
+      record, keyring, { nowMs: NOW_MS }
+    )
+    const persistMalformed = vi.fn().mockResolvedValue({ status: 'recorded' })
+    const log = vi.fn()
+    const handler = createCrmSearchMalformedDeadLetterPostHandler({
+      readBody: async () => signed.body,
+      getHeaders: () => signed.headers,
+      resolveKeyring: () => keyring,
+      now: () => NOW_MS,
+      persistMalformed,
+      log
+    })
+
+    await expect(handler({ context: {} } as never)).resolves.toEqual({ status: 'recorded' })
+    expect(persistMalformed).toHaveBeenCalledWith(record)
+    expect(log).toHaveBeenCalledWith({
+      event: 'crm_search_malformed_dead_letter',
+      status: 'recorded'
+    })
+    const coordinates = crmSearchMalformedDeadLetterCoordinates(record.queueMessageIdDigest)
+    expect(signed.headers['x-xeroflow-crm-search-operation-id'])
+      .toBe(coordinates.operationId)
+    expect(signed.headers['x-xeroflow-crm-search-correlation-id'])
+      .toBe(coordinates.correlationId)
+    expect(JSON.stringify(persistMalformed.mock.calls)).not.toMatch(/sourceText|raw CRM|secret/u)
+  })
+
+  it('rejects path/body coordinate substitution before persistence', async () => {
+    const signed = await createCrmSearchSignedMalformedDeadLetterRequest(
+      record, keyring, { nowMs: NOW_MS }
+    )
+    const persistMalformed = vi.fn()
+    const handler = createCrmSearchMalformedDeadLetterPostHandler({
+      readBody: async () => signed.body,
+      getHeaders: () => ({
+        ...signed.headers,
+        'x-xeroflow-crm-search-operation-id': operationId
+      }),
+      resolveKeyring: () => keyring,
+      now: () => NOW_MS,
+      persistMalformed,
+      log: vi.fn()
+    })
+
+    await expect(handler({ context: {} } as never)).rejects.toMatchObject({ statusCode: 401 })
+    expect(persistMalformed).not.toHaveBeenCalled()
+    expect(CRM_SEARCH_MALFORMED_DEAD_LETTER_PATH)
+      .toBe('/api/internal/crm-search/malformed-dead-letter')
   })
 })

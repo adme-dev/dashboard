@@ -5,6 +5,7 @@ import {
   requireSafeInteger,
   requireUuid
 } from './repository'
+import type { CrmSearchMalformedDeadLetterRecord } from '~~/shared/crmSearchIndexProtocol'
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const classPattern = /^[a-z][a-z0-9_]{1,119}$/
@@ -206,5 +207,41 @@ export async function recordCrmSearchTransportDeadLetter(
         }
       }
     })
+  })
+}
+
+export async function recordCrmSearchMalformedTransportDeadLetter(
+  input: CrmSearchMalformedDeadLetterRecord
+): Promise<{ status: 'recorded' | 'duplicate' }> {
+  if (!input || input.protocolVersion !== 1 || input.queue !== 'dead_letter'
+    || !/^sha256:[a-f0-9]{64}$/.test(input.queueMessageIdDigest)
+    || !Number.isSafeInteger(input.attempts) || input.attempts < 1 || input.attempts > 1000
+    || typeof input.receivedAt !== 'string' || !Number.isFinite(Date.parse(input.receivedAt))
+    || new Date(Date.parse(input.receivedAt)).toISOString() !== input.receivedAt) {
+    fail('crm_search_invalid_dead_letter')
+  }
+  return crmSearchRepositoryDependencies.transactionWithoutRetry(async (transaction) => {
+    const row = firstRow(await transaction.query(`
+      INSERT INTO crm_search_malformed_transport_dead_letters (
+        queue_message_id_digest, protocol_version, queue_name,
+        attempts, first_received_at, last_received_at, retention_expires_at
+      ) VALUES ($1, 1, 'dead_letter', $2, $3, $3,
+        $3::TIMESTAMPTZ + INTERVAL '2 years')
+      ON CONFLICT (queue_message_id_digest) DO UPDATE
+      SET attempts = GREATEST(
+            crm_search_malformed_transport_dead_letters.attempts,
+            EXCLUDED.attempts
+          ),
+          last_received_at = GREATEST(
+            crm_search_malformed_transport_dead_letters.last_received_at,
+            EXCLUDED.last_received_at
+          ),
+          updated_at = NOW()
+      RETURNING (xmax <> 0) AS duplicate
+    `, [input.queueMessageIdDigest, input.attempts, input.receivedAt]))
+    if (!row || typeof row.duplicate !== 'boolean') {
+      throw crmSearchRepositoryError('crm_search_invalid_dead_letter')
+    }
+    return { status: row.duplicate ? 'duplicate' : 'recorded' }
   })
 }

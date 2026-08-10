@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   recordCrmSearchDeadLetter,
+  recordCrmSearchMalformedTransportDeadLetter,
   reserveCrmSearchDeadLetterRequest,
   requestCrmSearchDeadLetterRecovery
 } from '~~/server/utils/crm/searchIndex/deadLetters'
+import { crmSearchRepositoryDependencies } from '~~/server/utils/crm/searchIndex/repository'
 
 const deadLetterId = '11111111-1111-4111-8111-111111111111'
 const operationId = '22222222-2222-4222-8222-222222222222'
@@ -12,6 +14,28 @@ const correlationId = '33333333-3333-4333-8333-333333333333'
 const actorId = '44444444-4444-4444-8444-444444444444'
 
 describe('CRM search dead-letter lifecycle', () => {
+  it('persists malformed transport identity without any raw envelope field', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ duplicate: false }], rowCount: 1 })
+    const transaction = vi.spyOn(crmSearchRepositoryDependencies, 'transactionWithoutRetry')
+      .mockImplementation(async callback => await callback({ query } as never))
+    try {
+      await expect(recordCrmSearchMalformedTransportDeadLetter({
+        protocolVersion: 1,
+        queueMessageIdDigest: `sha256:${'a'.repeat(64)}`,
+        queue: 'dead_letter',
+        attempts: 6,
+        receivedAt: '2026-08-10T04:05:06.000Z'
+      })).resolves.toEqual({ status: 'recorded' })
+      expect(query.mock.calls[0]?.[0]).toContain('crm_search_malformed_transport_dead_letters')
+      expect(query.mock.calls[0]?.[1]).toEqual([
+        `sha256:${'a'.repeat(64)}`, 6, '2026-08-10T04:05:06.000Z'
+      ])
+      expect(JSON.stringify(query.mock.calls)).not.toMatch(/sourceText|raw CRM|provider body/u)
+    } finally {
+      transaction.mockRestore()
+    }
+  })
+
   it('reserves transport persistence only when no durable origin already owns the operation', async () => {
     const queryOneFresh = vi.fn()
       .mockResolvedValueOnce({ id: operationId, origin: null })

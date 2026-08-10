@@ -43,6 +43,8 @@ const RESOURCE_KEYS = generateKeyPairSync('ed25519')
 const EXTERNAL_MUTABLE_INTEGRATIONS = [
   'database',
   'provider_apis',
+  'ai_gateway',
+  'mcp',
   'meta',
   'google',
   'meta_audiences',
@@ -116,7 +118,7 @@ function resourceManifest(overrides: Record<string, unknown> = {}) {
       name,
       state: 'disabled',
       targetIdentityDigest: null,
-      verifiedAt: null
+      verifiedAt: '2026-08-10T00:00:00.000Z'
     })),
     ...overrides
   }
@@ -383,6 +385,79 @@ describe('dedicated CRM search Queue Worker', () => {
     const logText = JSON.stringify(deps.logs)
     expect(logText).not.toContain('raw CRM record')
     expect(logText).not.toContain('sourceText')
+  })
+
+  it('durably records a malformed DLQ envelope through a bounded signed identity before ack', async () => {
+    const malformed = {
+      ...validMessage,
+      sourceText: 'raw CRM record that must never be persisted or forwarded'
+    }
+    const message = queueMessage(malformed)
+    const requests: Request[] = []
+    const fetch = vi.fn(async (request: Request) => {
+      requests.push(request)
+      return request.method === 'GET'
+        ? response(pagesHealth())
+        : response({ status: 'recorded' })
+    })
+    const deps = dependencies(fetch)
+
+    await consumeCrmSearchQueueBatch(
+      batch(CRM_SEARCH_DEAD_LETTER_QUEUE_NAME, [message]),
+      bindings(),
+      deps
+    )
+
+    expect(message.ack).toHaveBeenCalledOnce()
+    expect(message.retry).not.toHaveBeenCalled()
+    expect(requests).toHaveLength(2)
+    const recordRequest = requests[1]!
+    expect(new URL(recordRequest.url).pathname)
+      .toBe('/api/internal/crm-search/malformed-dead-letter')
+    expect(recordRequest.headers.get(CRM_SEARCH_SERVICE_HEADERS.signature))
+      .toMatch(/^v1=[A-Za-z0-9_-]{43}$/)
+    const body = await recordRequest.text()
+    expect(body).not.toContain('raw CRM record')
+    expect(body).not.toContain('sourceText')
+    expect(JSON.parse(body)).toEqual({
+      protocolVersion: 1,
+      queueMessageIdDigest: `sha256:${createHash('sha256').update(message.id).digest('hex')}`,
+      queue: 'dead_letter',
+      attempts: 1,
+      receivedAt: '2026-08-10T04:05:06.000Z'
+    })
+  })
+
+  it('retries a malformed DLQ envelope when durable recording fails', async () => {
+    const message = queueMessage({ sourceText: 'never forward this value' })
+    const deps = dependencies(vi.fn(async (request: Request) => request.method === 'GET'
+      ? response(pagesHealth())
+      : response({ status: 'unavailable' }, 503)))
+
+    await consumeCrmSearchQueueBatch(
+      batch(CRM_SEARCH_DEAD_LETTER_QUEUE_NAME, [message]),
+      bindings(),
+      deps
+    )
+
+    expect(message.ack).not.toHaveBeenCalled()
+    expect(message.retry).toHaveBeenCalledWith({ delaySeconds: CRM_SEARCH_RETRY_DELAY_SECONDS })
+    expect(JSON.stringify(deps.logs)).not.toContain('never forward this value')
+  })
+
+  it('rejects an unbounded malformed queue identity before persistence', async () => {
+    const message = { ...queueMessage({ sourceText: 'never forward' }), id: 'x'.repeat(257) }
+    const fetch = vi.fn(async (request: Request) => request.method === 'GET'
+      ? response(pagesHealth())
+      : response({ status: 'recorded' }))
+    await consumeCrmSearchQueueBatch(
+      batch(CRM_SEARCH_DEAD_LETTER_QUEUE_NAME, [message]),
+      bindings(),
+      dependencies(fetch)
+    )
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(message.ack).not.toHaveBeenCalled()
+    expect(message.retry).toHaveBeenCalledOnce()
   })
 
   it('fails closed before forwarding when Pages release compatibility does not match', async () => {

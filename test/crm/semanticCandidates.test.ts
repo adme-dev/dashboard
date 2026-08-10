@@ -46,7 +46,9 @@ describe('CRM semantic provider candidate boundary', () => {
 
     const embedding = Array.from({ length: 768 }, (_, index) => index / 768)
     expect(parseCrmSearchEmbedding({
-      data: [embedding]
+      shape: [1, 768],
+      data: [embedding],
+      pooling: 'cls'
     })).toEqual(embedding)
     expect(parseCrmSearchEmbedding({
       data: [Float32Array.from(embedding)]
@@ -57,6 +59,8 @@ describe('CRM semantic provider candidate boundary', () => {
     ['wrong dimensions', { data: [Array(767).fill(0)] }],
     ['multiple vectors', { data: [Array(768).fill(0), Array(768).fill(0)] }],
     ['non-finite component', { data: [[...Array(767).fill(0), Number.NaN]] }],
+    ['wrong shape', { shape: [1, 767], data: [Array(768).fill(0)], pooling: 'cls' }],
+    ['wrong pooling', { shape: [1, 768], data: [Array(768).fill(0)], pooling: 'mean' }],
     ['unexpected provider fields', { data: [Array(768).fill(0)], query: 'secret' }]
   ])('rejects an untrusted embedding response with %s', (_label, response) => {
     expect(() => parseCrmSearchEmbedding(response)).toThrow()

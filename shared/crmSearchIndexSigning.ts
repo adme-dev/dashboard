@@ -3,11 +3,15 @@ import { z } from 'zod'
 import {
   CRM_SEARCH_CORRELATION_ID_BYTES,
   CRM_SEARCH_INDEX_PROTOCOL_VERSION,
+  CRM_SEARCH_MALFORMED_DEAD_LETTER_PATH,
   CRM_SEARCH_OPERATION_ID_BYTES,
   CRM_SEARCH_REQUEST_BODY_MAX_BYTES,
   canonicalCrmSearchIndexQueueMessage,
+  canonicalCrmSearchMalformedDeadLetterRecord,
+  crmSearchMalformedDeadLetterCoordinates,
   crmSearchAcceptedProtocolVersions,
   type CrmSearchIndexQueueMessage,
+  type CrmSearchMalformedDeadLetterRecord,
   type CrmSearchServicePath
 } from './crmSearchIndexProtocol'
 
@@ -249,13 +253,15 @@ function validProtocolVersion(value: unknown): value is number {
 function validServicePath(value: unknown): value is CrmSearchServicePath {
   return value === '/api/internal/crm-search/process'
     || value === '/api/internal/crm-search/dead-letter'
+    || value === CRM_SEARCH_MALFORMED_DEAD_LETTER_PATH
 }
 
 const serviceRequestSchema = z.object({
   method: z.literal('POST'),
   path: z.union([
     z.literal('/api/internal/crm-search/process'),
-    z.literal('/api/internal/crm-search/dead-letter')
+    z.literal('/api/internal/crm-search/dead-letter'),
+    z.literal('/api/internal/crm-search/malformed-dead-letter')
   ]),
   timestamp: z.string().regex(timestampPattern).refine((value) => {
     const seconds = Number(value)
@@ -465,6 +471,26 @@ export async function createCrmSearchSignedServiceRequest(
     operationId: message.operationId,
     correlationId: message.correlationId,
     protocolVersion: message.protocolVersion,
+    body
+  }, keyring, { nowMs })
+  return { body, headers }
+}
+
+export async function createCrmSearchSignedMalformedDeadLetterRequest(
+  record: CrmSearchMalformedDeadLetterRecord,
+  keyring: CrmSearchServiceKeyring,
+  options: { nowMs?: number } = {}
+): Promise<CrmSearchSignedServiceRequest> {
+  const nowMs = options.nowMs ?? Date.now()
+  const body = canonicalCrmSearchMalformedDeadLetterRecord(record)
+  const coordinates = crmSearchMalformedDeadLetterCoordinates(record.queueMessageIdDigest)
+  const headers = await signCrmSearchServiceRequest({
+    method: 'POST',
+    path: CRM_SEARCH_MALFORMED_DEAD_LETTER_PATH,
+    timestamp: String(Math.floor(nowMs / 1000)),
+    operationId: coordinates.operationId,
+    correlationId: coordinates.correlationId,
+    protocolVersion: record.protocolVersion,
     body
   }, keyring, { nowMs })
   return { body, headers }

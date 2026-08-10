@@ -9,6 +9,8 @@ import { z } from 'zod'
 export const CRM_SEARCH_INDEX_PROTOCOL_VERSION = 1 as const
 export const CRM_SEARCH_PROCESS_PATH = '/api/internal/crm-search/process' as const
 export const CRM_SEARCH_DEAD_LETTER_PATH = '/api/internal/crm-search/dead-letter' as const
+export const CRM_SEARCH_MALFORMED_DEAD_LETTER_PATH
+  = '/api/internal/crm-search/malformed-dead-letter' as const
 export const CRM_SEARCH_HEALTH_PATH = '/api/internal/crm-search/health' as const
 
 export const CRM_SEARCH_REQUEST_BODY_MAX_BYTES = 256 as const
@@ -24,12 +26,21 @@ const canonicalUuidPattern
 export type CrmSearchServicePath
   = | typeof CRM_SEARCH_PROCESS_PATH
     | typeof CRM_SEARCH_DEAD_LETTER_PATH
+    | typeof CRM_SEARCH_MALFORMED_DEAD_LETTER_PATH
 
 export interface CrmSearchIndexQueueMessage {
   protocolVersion: typeof CRM_SEARCH_INDEX_PROTOCOL_VERSION
   operationId: string
   correlationId: string
   enqueuedAt: string
+}
+
+export interface CrmSearchMalformedDeadLetterRecord {
+  protocolVersion: typeof CRM_SEARCH_INDEX_PROTOCOL_VERSION
+  queueMessageIdDigest: string
+  queue: 'dead_letter'
+  attempts: number
+  receivedAt: string
 }
 
 export type CrmSearchProcessOutcome
@@ -118,6 +129,13 @@ const queueMessageSchema = z.object({
     .refine(value => byteLength(value) === CRM_SEARCH_CORRELATION_ID_BYTES)
     .regex(canonicalUuidPattern),
   enqueuedAt: z.string().refine(value => byteLength(value) === CRM_SEARCH_ENQUEUED_AT_BYTES)
+}).strict()
+const malformedDeadLetterSchema = z.object({
+  protocolVersion: z.literal(CRM_SEARCH_INDEX_PROTOCOL_VERSION),
+  queueMessageIdDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  queue: z.literal('dead_letter'),
+  attempts: z.number().int().safe().min(1).max(1000),
+  receivedAt: z.string().refine(value => byteLength(value) === CRM_SEARCH_ENQUEUED_AT_BYTES)
 }).strict()
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -229,6 +247,70 @@ export function parseCrmSearchIndexQueueMessage(
   }
 }
 
+function validateMalformedDeadLetter(value: unknown): CrmSearchMalformedDeadLetterRecord {
+  if (!isPlainRecord(value)) throw new CrmSearchProtocolError('invalid_envelope_fields')
+  const parsed = malformedDeadLetterSchema.safeParse(value)
+  if (!parsed.success) throw new CrmSearchProtocolError('invalid_envelope_fields')
+  const receivedAt = parsed.data.receivedAt
+  if (!Number.isFinite(Date.parse(receivedAt))
+    || new Date(Date.parse(receivedAt)).toISOString() !== receivedAt) {
+    throw new CrmSearchProtocolError('invalid_enqueued_at')
+  }
+  return parsed.data
+}
+
+export function canonicalCrmSearchMalformedDeadLetterRecord(
+  value: CrmSearchMalformedDeadLetterRecord
+): string {
+  const valid = validateMalformedDeadLetter(value)
+  const canonical = JSON.stringify({
+    protocolVersion: valid.protocolVersion,
+    queueMessageIdDigest: valid.queueMessageIdDigest,
+    queue: valid.queue,
+    attempts: valid.attempts,
+    receivedAt: valid.receivedAt
+  })
+  if (byteLength(canonical) > CRM_SEARCH_REQUEST_BODY_MAX_BYTES) {
+    throw new CrmSearchProtocolError('body_too_large')
+  }
+  return canonical
+}
+
+export function parseCrmSearchMalformedDeadLetterRecord(
+  rawBody: string
+): CrmSearchMalformedDeadLetterRecord | null {
+  try {
+    if (typeof rawBody !== 'string' || byteLength(rawBody) > CRM_SEARCH_REQUEST_BODY_MAX_BYTES) {
+      return null
+    }
+    const valid = validateMalformedDeadLetter(JSON.parse(rawBody) as unknown)
+    return canonicalCrmSearchMalformedDeadLetterRecord(valid) === rawBody ? valid : null
+  } catch {
+    return null
+  }
+}
+
+function uuidFromHex(raw: string): string {
+  const hex = raw.toLowerCase().split('')
+  hex[12] = '5'
+  hex[16] = ['8', '9', 'a', 'b'][Number.parseInt(hex[16]!, 16) & 3]!
+  const value = hex.join('')
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`
+}
+
+export function crmSearchMalformedDeadLetterCoordinates(
+  queueMessageIdDigest: string
+): { operationId: string, correlationId: string } {
+  if (!/^sha256:[a-f0-9]{64}$/.test(queueMessageIdDigest)) {
+    throw new CrmSearchProtocolError('invalid_envelope_fields')
+  }
+  const digest = queueMessageIdDigest.slice('sha256:'.length)
+  return {
+    operationId: uuidFromHex(digest.slice(0, 32)),
+    correlationId: uuidFromHex(digest.slice(32))
+  }
+}
+
 export function crmSearchRequestIdempotencyKey(
   path: CrmSearchServicePath,
   operationId: string
@@ -239,6 +321,9 @@ export function crmSearchRequestIdempotencyKey(
   }
   if (path === CRM_SEARCH_DEAD_LETTER_PATH) {
     return `crm-search-service:v1:dead-letter:${validOperationId}`
+  }
+  if (path === CRM_SEARCH_MALFORMED_DEAD_LETTER_PATH) {
+    return `crm-search-service:v1:malformed-dead-letter:${validOperationId}`
   }
   throw new CrmSearchProtocolError('invalid_envelope_fields')
 }

@@ -8,7 +8,8 @@ const fixedScopeId = '00000000-0000-4351-8351-000000000001'
 const migrationPaths = [
   'server/database/migrations/350_crm_search_expand.sql',
   'server/database/migrations/351_crm_search_validate_backfill.sql',
-  'server/database/migrations/352_crm_search_activate_capture.sql'
+  'server/database/migrations/352_crm_search_activate_capture.sql',
+  'server/database/migrations/353_crm_search_malformed_transport_dead_letters.sql'
 ] as const
 
 function guardedLocalPostgresConfig(raw: string): ClientConfig {
@@ -135,7 +136,7 @@ describe('CRM search Task 6 database target guard', () => {
 
 const databaseDescribe = localDsn ? describe.sequential : describe.skip
 
-databaseDescribe('CRM search migrations 350-352 on isolated local PostgreSQL 14', () => {
+databaseDescribe('CRM search migrations 350-353 on isolated local PostgreSQL 14', () => {
   it('activates durable capture transactionally, idempotently, and without deadlocks', async () => {
     const config = guardedLocalPostgresConfig(localDsn!)
     const schema = `crm_search_task6_${crypto.randomUUID().replaceAll('-', '')}`
@@ -226,6 +227,7 @@ databaseDescribe('CRM search migrations 350-352 on isolated local PostgreSQL 14'
       const expand = migrationForSchema(migrationPaths[0], schema)
       const validate = migrationForSchema(migrationPaths[1], schema)
       const activate = migrationForSchema(migrationPaths[2], schema)
+      const malformedTransport = migrationForSchema(migrationPaths[3], schema)
 
       await connection.query('BEGIN')
       await connection.query(expand)
@@ -341,6 +343,8 @@ databaseDescribe('CRM search migrations 350-352 on isolated local PostgreSQL 14'
       await connection.query('BEGIN')
       await connection.query(activate)
       await connection.query(activate)
+      await connection.query(malformedTransport)
+      await connection.query(malformedTransport)
       await connection.query('COMMIT')
 
       const installedTriggers = await connection.query(

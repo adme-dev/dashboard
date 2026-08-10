@@ -2,13 +2,18 @@ import { z } from 'zod'
 
 import {
   CRM_SEARCH_DEAD_LETTER_PATH,
+  CRM_SEARCH_INDEX_PROTOCOL_VERSION,
+  CRM_SEARCH_MALFORMED_DEAD_LETTER_PATH,
   CRM_SEARCH_PROCESS_PATH,
   canonicalCrmSearchIndexQueueMessage,
   parseCrmSearchIndexQueueMessage,
   type CrmSearchIndexQueueMessage,
   type CrmSearchServicePath
 } from '../../../shared/crmSearchIndexProtocol'
-import { createCrmSearchSignedServiceRequest } from '../../../shared/crmSearchIndexSigning'
+import {
+  createCrmSearchSignedMalformedDeadLetterRequest,
+  createCrmSearchSignedServiceRequest
+} from '../../../shared/crmSearchIndexSigning'
 import {
   evaluateCrmSearchConsumerHealth,
   prepareCrmSearchConsumerRuntime,
@@ -176,6 +181,48 @@ async function forwardMessage(
   return parsed.data.status
 }
 
+async function sha256Hex(value: string): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(value)
+  ))
+  return [...digest].map(byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+async function recordMalformedDeadLetter(
+  queueMessage: CrmSearchQueueMessage,
+  bindings: CrmSearchConsumerBindings,
+  dependencies: CrmSearchConsumerDependencies,
+  nowMs: number
+): Promise<void> {
+  if (typeof queueMessage.id !== 'string' || queueMessage.id.length < 1
+    || new TextEncoder().encode(queueMessage.id).byteLength > 256
+    || !Number.isSafeInteger(queueMessage.attempts)
+    || queueMessage.attempts < 1 || queueMessage.attempts > 1000) {
+    throw new Error('crm_search_forward_failed')
+  }
+  const runtime = await prepareCrmSearchConsumerRuntime(bindings, nowMs)
+  const signed = await createCrmSearchSignedMalformedDeadLetterRequest({
+    protocolVersion: CRM_SEARCH_INDEX_PROTOCOL_VERSION,
+    queueMessageIdDigest: `sha256:${await sha256Hex(queueMessage.id)}`,
+    queue: 'dead_letter',
+    attempts: queueMessage.attempts,
+    receivedAt: new Date(nowMs).toISOString()
+  }, runtime.keyring, { nowMs })
+  const response = await dependencies.fetch(new Request(
+    `${runtime.origin}${CRM_SEARCH_MALFORMED_DEAD_LETTER_PATH}`,
+    {
+      method: 'POST',
+      headers: signed.headers,
+      body: signed.body,
+      redirect: 'error',
+      signal: AbortSignal.timeout(OUTCOME_REQUEST_TIMEOUT_MS)
+    }
+  ))
+  const parsed = deadLetterOutcomeSchema.safeParse(await readBoundedOutcome(response))
+  if (!parsed.success) throw new Error('crm_search_forward_failed')
+}
+
 async function processMessage(
   queueMessage: CrmSearchQueueMessage,
   path: CrmSearchServicePath,
@@ -186,7 +233,16 @@ async function processMessage(
   const message = parseMessage(queueMessage.body, nowMs)
   if (!message) {
     safeLog(dependencies, { event: 'crm_search_consumer', status: 'malformed_envelope' })
-    retry(queueMessage)
+    if (path !== CRM_SEARCH_DEAD_LETTER_PATH) {
+      retry(queueMessage)
+      return
+    }
+    try {
+      await recordMalformedDeadLetter(queueMessage, bindings, dependencies, nowMs)
+      queueMessage.ack()
+    } catch {
+      retry(queueMessage)
+    }
     return
   }
 

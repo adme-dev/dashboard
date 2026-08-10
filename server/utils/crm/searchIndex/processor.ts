@@ -593,7 +593,9 @@ export async function processCrmSearchOperation(
           teardownId: guardedAction === 'delete' ? context.teardownId : null,
           modelInputTokens: 0,
           insertedDimensions: guardedAction === 'upsert' ? CRM_SEARCH_VECTOR_DIMENSIONS : 0,
-          storedDimensions: guardedAction === 'upsert' ? CRM_SEARCH_VECTOR_DIMENSIONS : 0,
+          // The usage repository derives the fresh cumulative inventory while
+          // holding the global/client usage fences; callers cannot attest it.
+          storedDimensions: 0,
           leaseToken: operation.leaseToken,
           leaseGeneration: operation.leaseGeneration
         }))

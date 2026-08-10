@@ -380,6 +380,12 @@ describe('CRM search operation processor', () => {
       'settle_vectorize'
     ])
     expect(options.markIndexed).not.toHaveBeenCalled()
+    expect(options.admitProviderCall).toHaveBeenLastCalledWith(expect.objectContaining({
+      provider: 'vectorize',
+      action: 'upsert',
+      insertedDimensions: 768,
+      storedDimensions: 0
+    }))
   })
 
   it('re-reads the kill switch immediately before Vectorize and leaves the claim resumable', async () => {

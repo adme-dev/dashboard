@@ -443,6 +443,7 @@ describe('CRM search expand migration 350', () => {
   it('requires a current teardown cycle and explicit blue-green schema promotion', () => {
     const sql = readMigration()
     const policy = tableDefinition(sql, 'crm_search_policies')
+    const retirementWork = tableDefinition(sql, 'crm_search_schema_retirement_work')
     const transition = functionDefinition(sql, 'crm_search_transition_policy')
     const configure = functionDefinition(sql, 'crm_search_configure_candidate_schema')
     const promote = functionDefinition(sql, 'crm_search_promote_candidate_schema')
@@ -461,6 +462,14 @@ describe('CRM search expand migration 350', () => {
     expect(promote).toMatch(/captured_source_high_watermark/)
     expect(promote).toMatch(/confirmed_source_high_watermark/)
     expect(promote).toMatch(/retiring_schema_versions/)
+    expect(retirementWork).toMatch(/source_event_sequence BIGINT NOT NULL/)
+    expect(retirementWork).toMatch(/state IN \('pending', 'operation_created', 'confirmed_absent'\)/)
+    expect(retirementWork).toMatch(/state <> 'operation_created' OR operation_id IS NOT NULL/)
+    expect(retirementWork).toMatch(/UNIQUE \(organisation_scope_id, client_id, schema_version, vector_id\)/)
+    expect(promote).toMatch(/INSERT INTO public\.crm_search_schema_retirement_work/i)
+    expect(promote).toMatch(/FROM public\.crm_search_documents document/i)
+    expect(promote).toMatch(/nextval\('public\.crm_search_source_event_sequence'::regclass\)/i)
+    expect(promote).toMatch(/ON CONFLICT \(organisation_scope_id, client_id, schema_version, vector_id\)/i)
     expect(promote).toMatch(/lifecycle_state = 'indexing'/)
     expect(promote).toMatch(/approved_evaluation_run_id = NULL/)
     expect(promote).toMatch(/crm_search_change_approval_consumptions/)
@@ -468,6 +477,9 @@ describe('CRM search expand migration 350', () => {
     expect(completeRetiring).toMatch(/retiring_schema_versions/)
     expect(completeRetiring).toMatch(/confirmation_state <> 'deleted'/)
     expect(completeRetiring).toMatch(/crm_search_operation_converged\(operation\.id, TRUE\)/)
+    expect(completeRetiring).toMatch(
+      /crm_search_schema_retirement_work[\s\S]*state <> 'confirmed_absent'/
+    )
     expect(completeRetiring).toMatch(/crm_search_change_approval_consumptions/)
   })
 

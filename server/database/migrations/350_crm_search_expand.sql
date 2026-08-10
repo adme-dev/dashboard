@@ -952,6 +952,41 @@ CREATE INDEX IF NOT EXISTS crm_search_documents_join_back
   )
   WHERE confirmation_state = 'indexed' AND tombstoned = FALSE;
 
+-- Promotion snapshots every retiring vector into durable work before returning.
+-- Reconciliation consumes these rows without depending on a later CRM write.
+CREATE TABLE IF NOT EXISTS crm_search_schema_retirement_work (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organisation_scope_id UUID NOT NULL
+    REFERENCES crm_search_organisation_scopes(id) ON DELETE RESTRICT,
+  client_id UUID NOT NULL,
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('person', 'company', 'opportunity')),
+  entity_id UUID NOT NULL,
+  schema_version TEXT NOT NULL CHECK (schema_version ~ '^crm-search-v[1-9][0-9]*$'),
+  vector_id TEXT NOT NULL CHECK (
+    vector_id ~ '^[A-Za-z0-9_-]{1,64}$' AND octet_length(vector_id) <= 64
+  ),
+  namespace TEXT NOT NULL CHECK (
+    namespace ~ '^[A-Za-z0-9_-]{1,64}$' AND octet_length(namespace) <= 64
+  ),
+  source_revision BIGINT NOT NULL CHECK (source_revision >= 1),
+  source_event_sequence BIGINT NOT NULL CHECK (source_event_sequence >= 1),
+  state TEXT NOT NULL DEFAULT 'pending'
+    CHECK (state IN ('pending', 'operation_created', 'confirmed_absent')),
+  operation_id UUID REFERENCES crm_search_operations(id) ON DELETE RESTRICT,
+  confirmed_absent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  retention_expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '2 years'),
+  legal_hold_id UUID REFERENCES crm_search_legal_holds(id) ON DELETE RESTRICT,
+  UNIQUE (organisation_scope_id, client_id, schema_version, vector_id),
+  CHECK ((state = 'confirmed_absent') = (confirmed_absent_at IS NOT NULL)),
+  CHECK (state <> 'operation_created' OR operation_id IS NOT NULL)
+);
+
+CREATE INDEX IF NOT EXISTS crm_search_schema_retirement_work_pending
+  ON crm_search_schema_retirement_work (created_at, id)
+  WHERE state IN ('pending', 'operation_created');
+
 CREATE TABLE IF NOT EXISTS crm_search_usage_daily (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   usage_date DATE NOT NULL,
@@ -3740,6 +3775,8 @@ AS $$
     'crm_search_dead_letters',
     'crm_search_client_teardowns',
     'crm_search_teardown_vectors',
+    'crm_search_schema_retirement_work',
+    'crm_search_malformed_transport_dead_letters',
     'crm_search_retention_attestations'
   ]::TEXT[])
 $$;
@@ -4817,6 +4854,32 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'CRM search candidate promotion CAS failed';
   END IF;
+  IF v_policy.active_schema_version IS NOT NULL THEN
+    INSERT INTO public.crm_search_schema_retirement_work (
+      organisation_scope_id, client_id, entity_type, entity_id,
+      schema_version, vector_id, namespace, source_revision,
+      source_event_sequence, state, retention_expires_at
+    )
+    SELECT
+      document.organisation_scope_id,
+      document.client_id,
+      document.entity_type,
+      document.entity_id,
+      document.schema_version,
+      document.vector_id,
+      document.namespace,
+      document.source_revision,
+      nextval('public.crm_search_source_event_sequence'::regclass),
+      'pending',
+      NOW() + INTERVAL '2 years'
+    FROM public.crm_search_documents document
+    WHERE document.organisation_scope_id = p_organisation_scope_id
+      AND document.client_id = p_client_id
+      AND document.schema_version = v_policy.active_schema_version
+      AND document.confirmation_state <> 'deleted'
+    ON CONFLICT (organisation_scope_id, client_id, schema_version, vector_id)
+    DO NOTHING;
+  END IF;
   INSERT INTO public.crm_search_change_approval_consumptions (
     approval_id, consumed_by, consumption_kind
   ) VALUES (v_approval.id, p_actor_id, 'candidate_promotion');
@@ -4902,6 +4965,12 @@ BEGIN
       AND operation.client_id = p_client_id
       AND operation.schema_version = p_retiring_schema_version
       AND NOT public.crm_search_operation_converged(operation.id, TRUE)
+  ) OR EXISTS (
+    SELECT 1 FROM public.crm_search_schema_retirement_work retirement_work
+    WHERE retirement_work.organisation_scope_id = p_organisation_scope_id
+      AND retirement_work.client_id = p_client_id
+      AND retirement_work.schema_version = p_retiring_schema_version
+      AND retirement_work.state <> 'confirmed_absent'
   ) THEN
     RAISE EXCEPTION 'CRM search retiring schema deletion is not provider-confirmed';
   END IF;
@@ -5523,7 +5592,8 @@ BEGIN
     'crm_search_change_approval_revocations',
     'crm_search_change_approval_consumptions', 'crm_search_audit_log',
     'crm_search_dead_letters', 'crm_search_client_teardowns',
-    'crm_search_teardown_vectors', 'crm_search_retention_attestations'
+    'crm_search_teardown_vectors', 'crm_search_schema_retirement_work',
+    'crm_search_retention_attestations'
   ]::TEXT[]
   LOOP
     EXECUTE pg_catalog.format(
@@ -5557,6 +5627,7 @@ REVOKE ALL ON TABLE
   crm_search_change_approval_revocations, crm_search_change_approval_consumptions,
   crm_search_audit_log, crm_search_audit_log_default, crm_search_dead_letters,
   crm_search_client_teardowns, crm_search_teardown_vectors,
+  crm_search_schema_retirement_work,
   crm_search_retention_high_watermarks, crm_search_retention_attestations,
   crm_search_retention_attestations_default,
   crm_search_retention_delete_authorizations,
@@ -5582,7 +5653,8 @@ GRANT SELECT ON TABLE
   crm_search_evaluation_approval_consumptions, crm_search_change_approvals,
   crm_search_change_approval_revocations, crm_search_change_approval_consumptions,
   crm_search_audit_log, crm_search_dead_letters, crm_search_client_teardowns,
-  crm_search_teardown_vectors, crm_search_retention_high_watermarks,
+  crm_search_teardown_vectors, crm_search_schema_retirement_work,
+  crm_search_retention_high_watermarks,
   crm_search_retention_attestations, crm_search_analytics_key_retirements,
   crm_search_analytics_key_retirement_intents,
   crm_search_analytics_key_retirement_receipts
@@ -5593,7 +5665,8 @@ GRANT INSERT, UPDATE ON TABLE
   crm_search_documents,
   crm_search_usage_daily, crm_search_usage_reservations,
   crm_search_daily_events, crm_search_client_teardowns,
-  crm_search_teardown_vectors, crm_search_namespaces
+  crm_search_teardown_vectors, crm_search_schema_retirement_work,
+  crm_search_namespaces
 TO crm_search_runtime;
 GRANT INSERT ON TABLE
   crm_search_events, crm_search_dead_letters, crm_search_audit_log,
@@ -5677,6 +5750,7 @@ REVOKE DELETE, TRUNCATE ON TABLE
   crm_search_dead_letters,
   crm_search_client_teardowns,
   crm_search_teardown_vectors,
+  crm_search_schema_retirement_work,
   crm_search_retention_high_watermarks
 FROM PUBLIC;
 

@@ -77,7 +77,9 @@ describe('CRM search teardown repository', () => {
   })
 
   it('confirms absence only with teardown/vector/state/provider-mutation CAS', async () => {
-    const query = vi.fn().mockResolvedValue({ rows: [], rowCount: 1 })
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
     await expect(completeCrmSearchTeardownVectorClaim({
       teardownId,
       vectorId,
@@ -86,10 +88,14 @@ describe('CRM search teardown repository', () => {
       expectedProviderMutationId: 'mutation-1',
       confirmedAbsentAt: '2026-08-10T00:00:00.000Z'
     }, { query } as never)).resolves.toBe(true)
-    const sql = query.mock.calls[0]?.[0] as string
-    expect(sql).toContain('teardown_id = $1')
-    expect(sql).toContain('vector_id = $2')
-    expect(sql).toContain('schema_version = $3')
-    expect(sql).toContain('provider_mutation_id = $5')
+    const vectorSql = query.mock.calls[0]?.[0] as string
+    expect(vectorSql).toContain('teardown_id = $1')
+    expect(vectorSql).toContain('vector_id = $2')
+    expect(vectorSql).toContain('schema_version = $3')
+    expect(vectorSql).toContain('provider_mutation_id = $5')
+    const teardownSql = query.mock.calls[1]?.[0] as string
+    expect(teardownSql).toContain('UPDATE crm_search_client_teardowns')
+    expect(teardownSql).toContain('provider_deletion_state')
+    expect(teardownSql).toMatch(/NOT EXISTS[\s\S]*deletion_state <> 'confirmed_absent'/)
   })
 })
