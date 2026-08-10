@@ -367,7 +367,7 @@ function normalizeValue(value: any): any {
   return value
 }
 
-function camelCaseKeysDeep(value: any): any {
+export function camelCaseKeysDeep(value: any): any {
   if (Array.isArray(value)) return value.map(camelCaseKeysDeep)
   if (value && typeof value === 'object' && value.constructor === Object) {
     const out: Record<string, any> = {}
