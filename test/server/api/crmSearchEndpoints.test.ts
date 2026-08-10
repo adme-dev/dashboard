@@ -11,12 +11,16 @@ const {
   requireClientCrmAccess,
   resolveAgencyCrmSearchContext,
   resolvePortalCrmSearchContext,
-  runCrmKeywordSearch
+  runCrmKeywordSearch,
+  createCrmRetrievalDependencies,
+  retrieveCrm
 } = vi.hoisted(() => ({
   requireClientCrmAccess: vi.fn(),
   resolveAgencyCrmSearchContext: vi.fn(),
   resolvePortalCrmSearchContext: vi.fn(),
-  runCrmKeywordSearch: vi.fn()
+  runCrmKeywordSearch: vi.fn(),
+  createCrmRetrievalDependencies: vi.fn(),
+  retrieveCrm: vi.fn()
 }))
 
 vi.mock('~~/server/utils/crm/clientCrmAccess', () => ({
@@ -29,6 +33,10 @@ vi.mock('~~/server/utils/crm/searchContext', () => ({
 vi.mock('~~/server/utils/crm/search', () => ({
   CRM_KEYWORD_POOL_LIMIT: 50,
   runCrmKeywordSearch: (...args: unknown[]) => runCrmKeywordSearch(...args)
+}))
+vi.mock('~~/server/utils/crm/retrieval', () => ({
+  createCrmRetrievalDependencies: (...args: unknown[]) => createCrmRetrievalDependencies(...args),
+  retrieveCrm: (...args: unknown[]) => retrieveCrm(...args)
 }))
 
 const globals = globalThis as typeof globalThis & {
@@ -54,9 +62,11 @@ describe('CRM POST search endpoints', () => {
     resolveAgencyCrmSearchContext.mockResolvedValue(agencyContext)
     resolvePortalCrmSearchContext.mockResolvedValue(portalContext)
     runCrmKeywordSearch.mockResolvedValue(rows)
+    createCrmRetrievalDependencies.mockReturnValue({ boundary: 'dependencies' })
+    retrieveCrm.mockResolvedValue({ results: rows.slice(0, 2), mode: 'shadow' })
   })
 
-  it('normalizes an agency JSON body, resolves fresh authority, and limits after the stable pool', async () => {
+  it('normalizes an agency JSON body, resolves fresh authority, and delegates to the retrieval coordinator', async () => {
     const handler = (await import('~~/server/api/crm/search.post')).default
     const event = { context: {}, body: { clientId: CLIENT_ID, query: '  Ａcme\u202e ', limit: 2 } }
 
@@ -65,7 +75,18 @@ describe('CRM POST search endpoints', () => {
       clientId: CLIENT_ID,
       surface: 'agency_global'
     })
-    expect(runCrmKeywordSearch).toHaveBeenCalledWith(agencyContext, 'Acme', 50)
+    expect(createCrmRetrievalDependencies).toHaveBeenCalledWith(event)
+    expect(retrieveCrm).toHaveBeenCalledWith(
+      agencyContext,
+      {
+        clientId: CLIENT_ID,
+        query: 'Acme',
+        limit: 2,
+        semanticEligible: true
+      },
+      { boundary: 'dependencies' }
+    )
+    expect(runCrmKeywordSearch).not.toHaveBeenCalled()
   })
 
   it('requires an agency client selector and rejects unknown boundary fields', async () => {
@@ -76,6 +97,7 @@ describe('CRM POST search endpoints', () => {
     await expect(handler({ context: {}, body: { clientId: CLIENT_ID, query: 'Acme', namespace: 'foreign' } } as never))
       .rejects.toMatchObject({ name: 'ZodError' })
     expect(resolveAgencyCrmSearchContext).not.toHaveBeenCalled()
+    expect(retrieveCrm).not.toHaveBeenCalled()
     expect(runCrmKeywordSearch).not.toHaveBeenCalled()
   })
 
@@ -87,6 +109,7 @@ describe('CRM POST search endpoints', () => {
     expect(requireClientCrmAccess).toHaveBeenCalledWith(event, 'view')
     expect(resolvePortalCrmSearchContext).toHaveBeenCalledWith(event, { surface: 'portal_global' })
     expect(runCrmKeywordSearch).toHaveBeenCalledWith(portalContext, 'Acme', 50)
+    expect(retrieveCrm).not.toHaveBeenCalled()
   })
 
   it('rejects a portal caller-supplied client before context resolution or retrieval', async () => {

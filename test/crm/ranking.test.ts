@@ -59,11 +59,11 @@ describe('CRM search reciprocal rank fusion v1', () => {
   })
 
   it('assigns zero contribution for an absent source list', () => {
-    const [semanticOnly] = reciprocalRankFusion({
+    const semanticOnly = reciprocalRankFusion({
       keyword: [],
       semantic: [hit('opportunity', 'semantic-only', 'Semantic only')],
       finalLimit: 10
-    })
+    })[0]!
 
     expect(semanticOnly.keywordRank).toBeNull()
     expect(semanticOnly.semanticRank).toBe(1)
@@ -114,12 +114,41 @@ describe('CRM search reciprocal rank fusion v1', () => {
     expect(fused.map(result => result.key)).toEqual(['person:safe-id'])
   })
 
+  it('preserves authorized activity and task keyword hits through complete-pool fusion', () => {
+    const fused = reciprocalRankFusion({
+      keyword: [
+        { entityType: 'activity' as const, entityId: 'activity-a', title: 'Call' },
+        { entityType: 'task' as const, entityId: 'task-a', title: 'Follow up' },
+        hit('company', 'shared', 'Shared keyword')
+      ],
+      semantic: [hit('company', 'shared', 'Shared semantic')],
+      finalLimit: 10
+    })
+
+    expect(fused.map(result => result.key)).toEqual([
+      'company:shared',
+      'activity:activity-a',
+      'task:task-a'
+    ])
+  })
+
+  it.each(['activity', 'task'] as const)(
+    'fails closed when the semantic pool claims an unindexed %s entity',
+    (entityType) => {
+      expect(() => reciprocalRankFusion({
+        keyword: [],
+        semantic: [{ entityType, entityId: `${entityType}-semantic` }] as never,
+        finalLimit: 10
+      })).toThrow()
+    }
+  )
+
   it.each([
     ['zero final limit', { keyword: [], semantic: [], finalLimit: 0 }],
     ['oversized final limit', { keyword: [], semantic: [], finalLimit: 51 }],
     ['oversized keyword pool', { keyword: Array.from({ length: 51 }, (_, index) => hit('person', String(index), String(index))), semantic: [], finalLimit: 10 }],
     ['oversized semantic pool', { keyword: [], semantic: Array.from({ length: 31 }, (_, index) => hit('company', String(index), String(index))), finalLimit: 10 }],
-    ['unknown entity type', { keyword: [hit('person', 'a', 'A'), { entityType: 'activity', entityId: 'b' }], semantic: [], finalLimit: 10 }]
+    ['unknown entity type', { keyword: [hit('person', 'a', 'A'), { entityType: 'note', entityId: 'b' }], semantic: [], finalLimit: 10 }]
   ])('fails closed for %s', (_case, input) => {
     expect(() => reciprocalRankFusion(input as never)).toThrow()
   })

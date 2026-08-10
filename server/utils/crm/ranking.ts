@@ -3,6 +3,14 @@ import {
   type CrmSearchEntityType
 } from './searchIndex/contracts'
 
+export const CRM_SEARCH_KEYWORD_ENTITY_TYPES = Object.freeze([
+  ...CRM_SEARCH_ENTITY_TYPES,
+  'activity',
+  'task'
+] as const)
+
+export type CrmSearchKeywordEntityType = typeof CRM_SEARCH_KEYWORD_ENTITY_TYPES[number]
+
 export const CRM_SEARCH_RANKING_CONTRACT = Object.freeze({
   revision: 'rrf-v1',
   dedupeRevision: 'entity-key-best-one-based-rank-v1',
@@ -16,17 +24,21 @@ export const CRM_SEARCH_RANKING_CONTRACT = Object.freeze({
 } as const)
 
 export interface CrmSearchRankHit {
-  entityType: CrmSearchEntityType
+  entityType: CrmSearchKeywordEntityType
   entityId: string
   readonly [key: string]: unknown
 }
 
+export interface CrmSearchSemanticRankHit extends CrmSearchRankHit {
+  entityType: CrmSearchEntityType
+}
+
 export interface FusedCrmSearchHit<
   KeywordHit extends CrmSearchRankHit = CrmSearchRankHit,
-  SemanticHit extends CrmSearchRankHit = CrmSearchRankHit
+  SemanticHit extends CrmSearchSemanticRankHit = CrmSearchSemanticRankHit
 > {
   key: string
-  entityType: CrmSearchEntityType
+  entityType: CrmSearchKeywordEntityType
   entityId: string
   fusedScore: number
   keywordContribution: number
@@ -71,15 +83,18 @@ export function compareFusedCrmSearchHits(
   return typeOrder !== 0 ? typeOrder : compareText(left.entityId, right.entityId)
 }
 
-function canonicalEntityKey(hit: unknown): {
+function canonicalEntityKey(
+  hit: unknown,
+  allowedEntityTypes: readonly CrmSearchKeywordEntityType[]
+): {
   key: string
-  entityType: CrmSearchEntityType
+  entityType: CrmSearchKeywordEntityType
   entityId: string
 } {
   if (!hit || typeof hit !== 'object') throw new TypeError('CRM search rank hit must be an object')
   const candidate = hit as Partial<CrmSearchRankHit>
   if (typeof candidate.entityType !== 'string'
-    || !CRM_SEARCH_ENTITY_TYPES.includes(candidate.entityType as CrmSearchEntityType)) {
+    || !allowedEntityTypes.includes(candidate.entityType as CrmSearchKeywordEntityType)) {
     throw new TypeError('CRM search rank hit entity type is invalid')
   }
   if (typeof candidate.entityId !== 'string'
@@ -98,16 +113,17 @@ function canonicalEntityKey(hit: unknown): {
 function rankedDedupe<Hit extends CrmSearchRankHit>(
   hits: readonly Hit[],
   maximum: number,
-  source: string
-): Map<string, { hit: Hit, rank: number, entityType: CrmSearchEntityType, entityId: string }> {
+  source: string,
+  allowedEntityTypes: readonly CrmSearchKeywordEntityType[]
+): Map<string, { hit: Hit, rank: number, entityType: CrmSearchKeywordEntityType, entityId: string }> {
   if (!Array.isArray(hits)) throw new TypeError(`${source} CRM search rank pool must be an array`)
   if (hits.length > maximum) throw new RangeError(`${source} CRM search rank pool exceeds ${maximum}`)
   const deduplicated = new Map<
     string,
-    { hit: Hit, rank: number, entityType: CrmSearchEntityType, entityId: string }
+    { hit: Hit, rank: number, entityType: CrmSearchKeywordEntityType, entityId: string }
   >()
   hits.forEach((hit, index) => {
-    const identity = canonicalEntityKey(hit)
+    const identity = canonicalEntityKey(hit, allowedEntityTypes)
     if (!deduplicated.has(identity.key)) {
       deduplicated.set(identity.key, {
         hit,
@@ -122,7 +138,7 @@ function rankedDedupe<Hit extends CrmSearchRankHit>(
 
 export function reciprocalRankFusion<
   KeywordHit extends CrmSearchRankHit,
-  SemanticHit extends CrmSearchRankHit
+  SemanticHit extends CrmSearchSemanticRankHit
 >(input: {
   keyword: readonly KeywordHit[]
   semantic: readonly SemanticHit[]
@@ -138,12 +154,14 @@ export function reciprocalRankFusion<
   const keyword = rankedDedupe(
     input.keyword,
     CRM_SEARCH_RANKING_CONTRACT.keywordPoolLimit,
-    'Keyword'
+    'Keyword',
+    CRM_SEARCH_KEYWORD_ENTITY_TYPES
   )
   const semantic = rankedDedupe(
     input.semantic,
     CRM_SEARCH_RANKING_CONTRACT.semanticPoolLimit,
-    'Semantic'
+    'Semantic',
+    CRM_SEARCH_ENTITY_TYPES
   )
   const keys = new Set([...keyword.keys(), ...semantic.keys()])
   const fused: Array<FusedCrmSearchHit<KeywordHit, SemanticHit>> = []
