@@ -32,6 +32,7 @@ export interface CrmSearchEvaluationRecordInput {
   adjudicatorIds: string[]
   runnerId: string
   developmentQueryCount: number
+  reason: string
   queryEvidence: unknown[]
 }
 
@@ -68,7 +69,7 @@ export async function recordCrmSearchEvaluationRun(
       $1::UUID, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
       $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
       $24::UUID, $25::UUID[], $26::UUID[], $27::UUID[], $28::UUID[],
-      $29::UUID[], $30::UUID, $31, $32::JSONB
+      $29::UUID[], $30::UUID, $31, $32, $33::JSONB
     ) AS id
   `, [
     input.organisationScopeId,
@@ -102,6 +103,7 @@ export async function recordCrmSearchEvaluationRun(
     input.adjudicatorIds,
     input.runnerId,
     input.developmentQueryCount,
+    input.reason,
     JSON.stringify(input.queryEvidence)
   ])
   const id = requireRunId(row)

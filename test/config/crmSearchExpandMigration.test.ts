@@ -245,6 +245,31 @@ describe('CRM search expand migration 350', () => {
     expect(sql).toMatch(/REVOKE UPDATE, DELETE, TRUNCATE ON TABLE[\s\S]*crm_search_evaluation_runs[\s\S]*FROM PUBLIC/)
   })
 
+  it('transactionally records the bounded evaluation reason and rejects conflicted runners', () => {
+    const sql = readMigration()
+    const record = functionDefinition(sql, 'crm_search_record_evaluation_run')
+
+    expect(sql).toMatch(/crm_search_evaluation_runner_not_implementation_author[\s\S]*CHECK \(NOT \(implementation_author_ids && ARRAY\[runner_id\]::UUID\[\]\)\)/)
+    expect(sql).toMatch(/crm_search_evaluation_runner_not_fixture_author[\s\S]*CHECK \(NOT \(fixture_author_ids && ARRAY\[runner_id\]::UUID\[\]\)\)/)
+    expect(record).toMatch(/p_reason TEXT/)
+    expect(record).toMatch(/p_runner_id = ANY\(COALESCE\(p_implementation_author_ids/)
+    expect(record).toMatch(/p_runner_id = ANY\(COALESCE\(p_fixture_author_ids/)
+    expect(record).toMatch(/INSERT INTO public\.crm_search_audit_log[\s\S]*'evaluation\.executed'[\s\S]*p_reason/)
+  })
+
+  it('keeps held rows blocking completion and fences last-reference analytics key retirement', () => {
+    const sql = readMigration()
+    const expire = functionDefinition(sql, 'crm_search_expire_governed_rows')
+
+    expect(expire).toMatch(/v_legal_hold_blocked_count BIGINT/)
+    expect(expire).toMatch(/legalHoldBlockedCount/)
+    expect(expire).toMatch(/v_complete := NOT v_has_remaining AND v_legal_hold_blocked_count = 0/)
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS crm_search_analytics_key_retirements')
+    expect(sql).toContain('CREATE OR REPLACE FUNCTION crm_search_record_analytics_key_retirement')
+    expect(sql).toMatch(/pg_advisory_xact_lock_shared[\s\S]*query_digest_key_version/)
+    expect(sql).toMatch(/crm_search_analytics_key_retirements[\s\S]*query_digest_key_version/)
+  })
+
   it('makes the evaluation recorder the only runtime insert path and derives its evidence digest', () => {
     const sql = readMigration()
     const recordEvaluation = functionDefinition(sql, 'crm_search_record_evaluation_run')

@@ -55,3 +55,36 @@ Every owned implementation, endpoint, worker change, test, schema, and fixture w
 ## External-State Boundary
 
 No external database, provider, network request, Cloudflare/Neon resource mutation, deployment, or production migration was performed. Concurrent Task 16 component and admin-endpoint RED files were not edited or staged.
+
+## Acceptance Review 1 — Governance Gap Closure
+
+The bounded acceptance review found seven gaps in the initial Task 15 delivery. This follow-up closes each one without changing rollout state or calling a provider:
+
+1. Retention targets now run every known FK child before its parent, including usage/provider/operation, evaluation approval/query evidence/run, change approval, teardown, audit/dead-letter, and rate-card relationships.
+2. The holdout manifest has its own recomputed canonical SHA-256. Sealed R2 objects are read as exact bounded UTF-8 bytes, reject BOM/non-canonical encodings, derive rather than trust the judgement digest, and recursively reject sensitive keys and email/phone-like values under arbitrary fields.
+3. Production defaults resolve only exact Cloudflare bindings: bundled checked-in fixtures plus a strict `CRM_SEARCH_EVALUATION_CONFIG`, the `CRM_SEARCH_EVALUATION_RUNNER` service, `CRM_SEARCH_SEALED_HOLDOUTS` R2, `CRM_SEARCH_RETENTION_ALERTS` Queue, and the `CRM_SEARCH_ANALYTICS_KEY_MANAGER` service. Missing, malformed, oversized, non-JSON, non-2xx, or unexpected response shapes fail closed. Evaluation and key-manager calls have explicit deadlines.
+4. The retention definer counts active direct and target legal holds. A blocked row keeps the batch incomplete, keeps the cutoff pending, prevents high-watermark advancement, and returns `legalHoldBlockedCount` to the coordinator and count-only endpoint.
+5. Analytics key retirement is no longer a count-then-destroy race. A transaction-scoped exclusive advisory fence covers the last-reference check, mandatory idempotent manager destruction, and durable receipt recording. Event insertion takes the matching shared fence and rejects every retired key version, so no reference can appear between the check and retirement or after retirement.
+6. Runner identity is checked in the runner, immutable evaluation-row constraints, and the recorder; an implementation or fixture author cannot execute the sealed run.
+7. The bounded operator reason is now the recorder's 32nd parameter and query evidence the 33rd. The SECURITY DEFINER recorder inserts `evaluation.executed` audit evidence with the original trimmed reason in the same transaction as the run and granular evidence.
+
+Migration 350 was intentionally updated because the legal-hold watermark, durable retirement fence, actor constraint, and transactional audit cannot be made authoritative in application code alone. The new table, triggers, named constraints, definer function, changed evaluation recorder signature, privileges, and function replacement are guarded for apply/reapply. The previous report's statement that Task 15 did not modify migrations applied only to the initial commit and is superseded by this review section.
+
+### Review TDD and Verification
+
+The acceptance RED was captured before production edits:
+
+```text
+Task 15 focused RED:        61 passed, 13 failed (74 total)
+Task 15 focused GREEN:      90 passed (5 files)
+Bounded compatibility:      82 passed (6 files)
+Post-review focused checks:  4 passed (new binding/fence/idempotence slices)
+Node 24 targeted ESLint:     0 diagnostics
+Strict server TS filter:     0 Task 15-path diagnostics
+```
+
+The strict server project still reports unrelated pre-existing diagnostics and concurrent Task 16 operation diagnostics; none resolve to Task 15 paths. Static migration tests cover function replacement, idempotent named constraints, legal-hold count/completion/watermark behavior, event shared locking, permanent retirement evidence, mandatory definer access, runner separation, and transactional audit reason preservation. Canonical digest recomputation independently matched the checked-in holdout manifest.
+
+An isolated PostgreSQL 14 `initdb` under `/private/tmp` was attempted for local apply/reapply evidence. The sandbox denied SysV shared-memory creation and removed its partial data directory. The required escalated retry was interrupted after 709 seconds; no PostgreSQL server started, no database was contacted, and it was not retried per coordination direction. This review therefore relies on the passing static/idempotence contracts plus the accepted earlier PostgreSQL 14 migration evidence recorded by Tasks 5/12.
+
+All changed Task 15 source, migration, fixture, and test diffs were reread. Exact-path diff checks, secret scans, legacy event-context shim scans, process-environment scans, logging scans, and raw-query/source/provider-body scans were clean. Task 16's concurrent agency layout, operations, admin UI/API, and tests remained untouched and unstaged.

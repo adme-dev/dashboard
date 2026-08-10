@@ -1364,6 +1364,90 @@ CREATE INDEX IF NOT EXISTS crm_search_events_client_created
 CREATE INDEX IF NOT EXISTS crm_search_events_expiry
   ON crm_search_events (retention_expires_at, created_at, id);
 
+CREATE TABLE IF NOT EXISTS crm_search_analytics_key_retirements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key_version TEXT NOT NULL UNIQUE
+    CHECK (key_version ~ '^[a-zA-Z0-9._:-]{1,80}$'),
+  receipt_sha256 TEXT NOT NULL CHECK (receipt_sha256 ~ '^[a-f0-9]{64}$'),
+  retired_by UUID NOT NULL,
+  retired_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE OR REPLACE FUNCTION crm_search_guard_analytics_key_reference()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  IF NEW.query_digest_key_version IS NULL THEN
+    RETURN NEW;
+  END IF;
+  PERFORM pg_catalog.pg_advisory_xact_lock_shared(
+    pg_catalog.hashtextextended(NEW.query_digest_key_version, 355)
+  );
+  IF EXISTS (
+    SELECT 1
+    FROM public.crm_search_analytics_key_retirements retirement
+    WHERE retirement.key_version = NEW.query_digest_key_version
+  ) THEN
+    RAISE EXCEPTION 'retired CRM search analytics key cannot receive new references';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS crm_search_guard_analytics_key_reference ON crm_search_events;
+CREATE TRIGGER crm_search_guard_analytics_key_reference
+  BEFORE INSERT OR UPDATE OF query_digest_key_version ON crm_search_events
+  FOR EACH ROW EXECUTE FUNCTION crm_search_guard_analytics_key_reference();
+
+CREATE OR REPLACE FUNCTION crm_search_record_analytics_key_retirement(
+  p_key_version TEXT,
+  p_receipt_sha256 TEXT,
+  p_retired_by UUID,
+  p_retired_at TIMESTAMPTZ
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  v_retirement public.crm_search_analytics_key_retirements%ROWTYPE;
+BEGIN
+  IF p_key_version !~ '^[a-zA-Z0-9._:-]{1,80}$'
+     OR p_receipt_sha256 !~ '^[a-f0-9]{64}$'
+     OR p_retired_by IS NULL OR p_retired_at IS NULL OR p_retired_at > NOW() THEN
+    RAISE EXCEPTION 'CRM search analytics key retirement evidence invalid';
+  END IF;
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(p_key_version, 355)
+  );
+  IF EXISTS (
+    SELECT 1 FROM public.crm_search_events
+    WHERE query_digest_key_version = p_key_version
+  ) THEN
+    RAISE EXCEPTION 'CRM search analytics key still has retained references';
+  END IF;
+  SELECT * INTO v_retirement
+  FROM public.crm_search_analytics_key_retirements
+  WHERE key_version = p_key_version;
+  IF FOUND THEN
+    IF v_retirement.receipt_sha256 IS DISTINCT FROM p_receipt_sha256 THEN
+      RAISE EXCEPTION 'CRM search analytics key retirement receipt changed';
+    END IF;
+    RETURN v_retirement.id;
+  END IF;
+  INSERT INTO public.crm_search_analytics_key_retirements (
+    key_version, receipt_sha256, retired_by, retired_at
+  ) VALUES (
+    p_key_version, p_receipt_sha256, p_retired_by, p_retired_at
+  ) RETURNING id INTO v_retirement.id;
+  RETURN v_retirement.id;
+END;
+$$;
+
 CREATE TABLE IF NOT EXISTS crm_search_daily_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_date DATE NOT NULL,
@@ -1475,6 +1559,29 @@ CREATE TABLE IF NOT EXISTS crm_search_evaluation_runs (
   CHECK (NOT (implementation_author_ids && judgement_author_ids)),
   CHECK (NOT (fixture_author_ids && judgement_author_ids))
 );
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_constraint
+    WHERE conname = 'crm_search_evaluation_runner_not_implementation_author'
+      AND conrelid = 'crm_search_evaluation_runs'::REGCLASS
+  ) THEN
+    ALTER TABLE crm_search_evaluation_runs
+      ADD CONSTRAINT crm_search_evaluation_runner_not_implementation_author
+      CHECK (NOT (implementation_author_ids && ARRAY[runner_id]::UUID[]));
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_constraint
+    WHERE conname = 'crm_search_evaluation_runner_not_fixture_author'
+      AND conrelid = 'crm_search_evaluation_runs'::REGCLASS
+  ) THEN
+    ALTER TABLE crm_search_evaluation_runs
+      ADD CONSTRAINT crm_search_evaluation_runner_not_fixture_author
+      CHECK (NOT (fixture_author_ids && ARRAY[runner_id]::UUID[]));
+  END IF;
+END;
+$$;
 
 CREATE TABLE IF NOT EXISTS crm_search_evaluation_query_evidence (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2849,6 +2956,22 @@ CREATE TRIGGER crm_search_guard_evaluation_approval
   BEFORE INSERT ON crm_search_evaluation_approvals
   FOR EACH ROW EXECUTE FUNCTION crm_search_guard_evaluation_approval();
 
+DO $$
+DECLARE
+  v_function REGPROCEDURE;
+BEGIN
+  FOR v_function IN
+    SELECT procedure.oid::REGPROCEDURE
+    FROM pg_catalog.pg_proc procedure
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+    WHERE namespace.nspname = pg_catalog.current_schema()
+      AND procedure.proname = 'crm_search_record_evaluation_run'
+  LOOP
+    EXECUTE pg_catalog.format('DROP FUNCTION %s', v_function);
+  END LOOP;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION crm_search_record_evaluation_run(
   p_organisation_scope_id UUID,
   p_schema_version TEXT,
@@ -2881,6 +3004,7 @@ CREATE OR REPLACE FUNCTION crm_search_record_evaluation_run(
   p_adjudicator_ids UUID[],
   p_runner_id UUID,
   p_development_query_count INTEGER,
+  p_reason TEXT,
   p_query_evidence JSONB
 )
 RETURNS UUID
@@ -2949,6 +3073,7 @@ BEGIN
      OR p_preregistration_sha256 IS NULL OR p_adjudication_sha256 IS NULL
      OR p_binding_manifest_digest IS NULL OR p_rate_card_id IS NULL
      OR p_provider_contract_digest IS NULL
+     OR char_length(btrim(COALESCE(p_reason, ''))) NOT BETWEEN 10 AND 2000
      OR jsonb_typeof(p_query_evidence) <> 'array'
      OR jsonb_array_length(p_query_evidence) = 0 THEN
     RAISE EXCEPTION 'CRM search evaluation requires granular evidence, development split, and runner';
@@ -2991,6 +3116,10 @@ BEGIN
      OR NOT public.crm_search_uuid_array_is_distinct(COALESCE(p_domain_reviewer_ids, ARRAY[]::UUID[]))
      OR NOT public.crm_search_uuid_array_is_distinct(COALESCE(p_adjudicator_ids, ARRAY[]::UUID[])) THEN
     RAISE EXCEPTION 'CRM search evaluation actor lists must be distinct and non-null';
+  END IF;
+  IF p_runner_id = ANY(COALESCE(p_implementation_author_ids, ARRAY[]::UUID[]))
+     OR p_runner_id = ANY(COALESCE(p_fixture_author_ids, ARRAY[]::UUID[])) THEN
+    RAISE EXCEPTION 'CRM search evaluation runner must be independent of implementation and fixture authors';
   END IF;
 
   v_query_evidence_bundle_sha256 := public.crm_search_projection_hash(p_query_evidence::TEXT);
@@ -3400,6 +3529,19 @@ BEGIN
     v_created_at + INTERVAL '2 years'
   FROM jsonb_array_elements(p_query_evidence) AS query(item);
 
+  INSERT INTO public.crm_search_audit_log (
+    organisation_scope_id, event_type, actor_id, correlation_id,
+    reason, evidence_hash, details, retention_expires_at
+  ) VALUES (
+    p_organisation_scope_id, 'evaluation.executed', p_runner_id, gen_random_uuid(),
+    btrim(p_reason), v_query_evidence_bundle_sha256,
+    jsonb_build_object(
+      'action', 'evaluation_executed',
+      'schemaVersion', p_schema_version,
+      'evidenceHash', v_query_evidence_bundle_sha256
+    ), v_created_at + INTERVAL '2 years'
+  );
+
   RETURN v_run_id;
 END;
 $$;
@@ -3587,6 +3729,7 @@ DECLARE
   v_candidate_ids UUID[] := ARRAY[]::UUID[];
   v_row_count BIGINT := 0;
   v_deleted_count BIGINT := 0;
+  v_legal_hold_blocked_count BIGINT := 0;
   v_has_remaining BOOLEAN := FALSE;
   v_complete BOOLEAN := FALSE;
   v_authorization_id UUID;
@@ -3678,6 +3821,31 @@ BEGIN
     p_partition_name
   ) INTO v_candidate_ids USING p_expire_through, p_target_table, p_limit;
 
+  EXECUTE pg_catalog.format(
+    'SELECT COUNT(*)
+       FROM public.%I retained
+       WHERE retained.retention_expires_at <= $1
+         AND (
+           (
+             retained.legal_hold_id IS NOT NULL
+             AND NOT EXISTS (
+               SELECT 1 FROM public.crm_search_legal_hold_releases direct_release
+               WHERE direct_release.legal_hold_id = retained.legal_hold_id
+             )
+           )
+           OR EXISTS (
+             SELECT 1
+             FROM public.crm_search_legal_hold_targets held_target
+             LEFT JOIN public.crm_search_legal_hold_releases hold_release
+               ON hold_release.legal_hold_id = held_target.legal_hold_id
+             WHERE held_target.target_table = $2
+               AND held_target.target_row_id = retained.id
+               AND hold_release.id IS NULL
+           )
+         )',
+    p_partition_name
+  ) INTO v_legal_hold_blocked_count USING p_expire_through, p_target_table;
+
   v_row_count := COALESCE(cardinality(v_candidate_ids), 0);
   v_computed_manifest_hash := public.crm_search_projection_hash(pg_catalog.concat_ws(
     '|', p_target_table, p_partition_name, p_expire_through::TEXT,
@@ -3689,7 +3857,8 @@ BEGIN
 
   v_attestation_hash := public.crm_search_projection_hash(pg_catalog.concat_ws(
     '|', p_target_table, p_partition_name, v_watermark.last_expire_through::TEXT,
-    p_expire_through::TEXT, v_row_count::TEXT, v_watermark.last_attestation_hash,
+    p_expire_through::TEXT, v_row_count::TEXT, v_legal_hold_blocked_count::TEXT,
+    v_watermark.last_attestation_hash,
     v_computed_manifest_hash, p_executor_id::TEXT,
     COALESCE(p_secondary_approver_id::TEXT, '')
   ));
@@ -3746,7 +3915,7 @@ BEGIN
          )
      )', p_partition_name
   ) INTO v_has_remaining USING p_expire_through, p_target_table;
-  v_complete := NOT v_has_remaining;
+  v_complete := NOT v_has_remaining AND v_legal_hold_blocked_count = 0;
 
   v_next_high_watermark_hash := public.crm_search_projection_hash(pg_catalog.concat_ws(
     '|', p_target_table, p_partition_name,
@@ -3769,6 +3938,7 @@ BEGIN
 
   RETURN jsonb_build_object(
     'attestationId', v_attestation_id, 'rowCount', v_row_count,
+    'legalHoldBlockedCount', v_legal_hold_blocked_count,
     'deletionManifestHash', v_computed_manifest_hash,
     'attestationHash', v_attestation_hash,
     'highWatermarkHash', v_next_high_watermark_hash, 'complete', v_complete
@@ -4979,6 +5149,12 @@ CREATE TRIGGER crm_search_events_immutable
   BEFORE UPDATE OR DELETE OR TRUNCATE ON crm_search_events
   FOR EACH STATEMENT EXECUTE FUNCTION crm_search_reject_governed_evidence_mutation();
 
+DROP TRIGGER IF EXISTS crm_search_analytics_key_retirements_immutable
+  ON crm_search_analytics_key_retirements;
+CREATE TRIGGER crm_search_analytics_key_retirements_immutable
+  BEFORE UPDATE OR DELETE OR TRUNCATE ON crm_search_analytics_key_retirements
+  FOR EACH STATEMENT EXECUTE FUNCTION crm_search_reject_governed_evidence_mutation();
+
 DROP TRIGGER IF EXISTS crm_search_evaluation_runs_immutable ON crm_search_evaluation_runs;
 CREATE TRIGGER crm_search_evaluation_runs_immutable
   BEFORE UPDATE OR DELETE OR TRUNCATE ON crm_search_evaluation_runs
@@ -5096,6 +5272,7 @@ REVOKE ALL ON TABLE
   crm_search_documents,
   crm_search_usage_daily, crm_search_usage_reservations,
   crm_search_events, crm_search_events_default, crm_search_daily_events,
+  crm_search_analytics_key_retirements,
   crm_search_evaluation_runs, crm_search_evaluation_query_evidence,
   crm_search_evaluation_approvals, crm_search_evaluation_approval_revocations,
   crm_search_evaluation_approval_consumptions, crm_search_change_approvals,
@@ -5128,7 +5305,7 @@ GRANT SELECT ON TABLE
   crm_search_change_approval_revocations, crm_search_change_approval_consumptions,
   crm_search_audit_log, crm_search_dead_letters, crm_search_client_teardowns,
   crm_search_teardown_vectors, crm_search_retention_high_watermarks,
-  crm_search_retention_attestations
+  crm_search_retention_attestations, crm_search_analytics_key_retirements
 TO crm_search_runtime;
 
 GRANT INSERT, UPDATE ON TABLE
@@ -5163,6 +5340,7 @@ BEGIN
         'crm_search_place_legal_hold', 'crm_search_release_legal_hold',
         'crm_search_attach_legal_hold', 'crm_search_expire_governed_rows',
         'crm_search_record_evaluation_run', 'crm_search_record_dormant_deployment',
+        'crm_search_record_analytics_key_retirement',
         'crm_search_complete_source_dirty_claim',
         'crm_search_admit_operation', 'crm_search_replace_terminal_operation',
         'crm_search_transition_global_control',
@@ -5188,6 +5366,7 @@ REVOKE UPDATE, DELETE, TRUNCATE ON TABLE
   crm_search_rate_cards,
   crm_search_rate_card_revocations,
   crm_search_events,
+  crm_search_analytics_key_retirements,
   crm_search_evaluation_runs,
   crm_search_evaluation_query_evidence,
   crm_search_evaluation_approvals,

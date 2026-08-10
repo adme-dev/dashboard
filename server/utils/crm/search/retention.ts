@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import { queryOne, queryRows } from '~~/server/utils/db'
+import { queryOne, queryRows, transactionWithoutRetry } from '~~/server/utils/db'
 
 export const CRM_SEARCH_RETENTION_DEFAULTS = Object.freeze({
   detailedEventsDays: 30,
@@ -43,8 +43,11 @@ export interface CrmSearchRetentionDependencies {
     legalHoldBlockedCount?: number
   }>
   listRetiredAnalyticsKeys(): Promise<Array<{ keyVersion: string, retiredAt: string }>>
-  countRetainedEventsForKeyVersion(keyVersion: string): Promise<number>
-  destroyRetiredAnalyticsKey(keyVersion: string, evidence: { reason: 'last_reference_expired', now: string }): Promise<unknown>
+  retireAnalyticsKeyIfUnreferenced(keyVersion: string, evidence: {
+    reason: 'last_reference_expired'
+    now: string
+    executorId: string
+  }): Promise<{ retired: boolean, receiptSha256?: string }>
   listPendingClientErasures(): Promise<Array<{
     clientId: string
     requestedAt: string
@@ -126,13 +129,12 @@ export async function runCrmSearchRetention(
 
   const destroyedAnalyticsKeyVersions: string[] = []
   for (const retired of await dependencies.listRetiredAnalyticsKeys()) {
-    const references = await dependencies.countRetainedEventsForKeyVersion(retired.keyVersion)
-    if (references !== 0) continue
-    await dependencies.destroyRetiredAnalyticsKey(retired.keyVersion, {
+    const outcome = await dependencies.retireAnalyticsKeyIfUnreferenced(retired.keyVersion, {
       reason: 'last_reference_expired',
-      now: input.now
+      now: input.now,
+      executorId: input.executorId
     })
-    destroyedAnalyticsKeyVersions.push(retired.keyVersion)
+    if (outcome.retired) destroyedAnalyticsKeyVersions.push(retired.keyVersion)
   }
 
   let erasureAlerts = 0
@@ -171,41 +173,38 @@ export async function runCrmSearchRetention(
 
 interface CrmSearchAnalyticsKeyManager {
   listRetiredKeys(): Promise<Array<{ keyVersion: string, retiredAt: string }>>
-  destroyRetiredKey(keyVersion: string, evidence: { reason: 'last_reference_expired', now: string }): Promise<unknown>
+  destroyRetiredKey(keyVersion: string, evidence: {
+    reason: 'last_reference_expired'
+    now: string
+  }): Promise<{ receiptSha256: string }>
 }
 
-interface CrmSearchRetentionAlerts {
-  emit(alert: Record<string, unknown>): Promise<unknown> | unknown
-}
-
-function eventService<T>(event: H3Event, key: string): T | null {
-  const value = (event.context as Record<string, unknown>)[key]
-  return value && typeof value === 'object' ? value as T : null
-}
+const keyVersionPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/u
+const digestPattern = /^[a-f0-9]{64}$/u
 
 export const CRM_SEARCH_RETENTION_TARGETS = Object.freeze([
   ['crm_search_schema_versions', 'crm_search_schema_versions'],
-  ['crm_search_rate_cards', 'crm_search_rate_cards'],
   ['crm_search_rate_card_revocations', 'crm_search_rate_card_revocations'],
-  ['crm_search_operations', 'crm_search_operations'],
-  ['crm_search_provider_attempts', 'crm_search_provider_attempts'],
   ['crm_search_documents', 'crm_search_documents'],
   ['crm_search_usage_daily', 'crm_search_usage_daily'],
   ['crm_search_usage_reservations', 'crm_search_usage_reservations'],
+  ['crm_search_provider_attempts', 'crm_search_provider_attempts'],
+  ['crm_search_dead_letters', 'crm_search_dead_letters'],
+  ['crm_search_operations', 'crm_search_operations'],
   ['crm_search_events', 'crm_search_events_default'],
   ['crm_search_daily_events', 'crm_search_daily_events'],
-  ['crm_search_evaluation_runs', 'crm_search_evaluation_runs'],
-  ['crm_search_evaluation_query_evidence', 'crm_search_evaluation_query_evidence'],
-  ['crm_search_evaluation_approvals', 'crm_search_evaluation_approvals'],
   ['crm_search_evaluation_approval_revocations', 'crm_search_evaluation_approval_revocations'],
   ['crm_search_evaluation_approval_consumptions', 'crm_search_evaluation_approval_consumptions'],
-  ['crm_search_change_approvals', 'crm_search_change_approvals'],
+  ['crm_search_evaluation_approvals', 'crm_search_evaluation_approvals'],
+  ['crm_search_evaluation_query_evidence', 'crm_search_evaluation_query_evidence'],
+  ['crm_search_evaluation_runs', 'crm_search_evaluation_runs'],
   ['crm_search_change_approval_revocations', 'crm_search_change_approval_revocations'],
   ['crm_search_change_approval_consumptions', 'crm_search_change_approval_consumptions'],
-  ['crm_search_audit_log', 'crm_search_audit_log_default'],
-  ['crm_search_dead_letters', 'crm_search_dead_letters'],
+  ['crm_search_change_approvals', 'crm_search_change_approvals'],
+  ['crm_search_teardown_vectors', 'crm_search_teardown_vectors'],
   ['crm_search_client_teardowns', 'crm_search_client_teardowns'],
-  ['crm_search_teardown_vectors', 'crm_search_teardown_vectors']
+  ['crm_search_audit_log', 'crm_search_audit_log_default'],
+  ['crm_search_rate_cards', 'crm_search_rate_cards']
 ] as const)
 
 async function listDatabaseRetentionBatches(input: CrmSearchRetentionRunInput): Promise<CrmSearchRetentionBatch[]> {
@@ -274,9 +273,114 @@ async function listDatabaseRetentionBatches(input: CrmSearchRetentionRunInput): 
   return batches
 }
 
-export function createCrmSearchRetentionDependencies(event: H3Event): CrmSearchRetentionDependencies {
-  const keyManager = eventService<CrmSearchAnalyticsKeyManager>(event, 'crmSearchAnalyticsKeyManager')
-  const alerts = eventService<CrmSearchRetentionAlerts>(event, 'crmSearchRetentionAlerts')
+function projectManagerResponse(value: unknown): { receiptSha256: string } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new Error('CRM search analytics key manager response invalid')
+  }
+  const response = value as Record<string, unknown>
+  if (Object.keys(response).length !== 2 || response.status !== 'destroyed'
+    || typeof response.receiptSha256 !== 'string'
+    || !digestPattern.test(response.receiptSha256)) {
+    throw new Error('CRM search analytics key manager response invalid')
+  }
+  return { receiptSha256: response.receiptSha256 }
+}
+
+async function readJsonResponse(response: Response): Promise<unknown> {
+  if (!response.ok || response.headers.get('content-type')?.split(';', 1)[0]?.trim() !== 'application/json') {
+    throw new Error('CRM search service response invalid')
+  }
+  const text = await response.text()
+  if (text.length < 2 || text.length > 32_768) throw new Error('CRM search service response invalid')
+  return JSON.parse(text) as unknown
+}
+
+export function createCrmSearchRetentionDependencies(
+  event: H3Event,
+  overrides: Partial<Pick<CrmSearchRetentionDependencies, 'retireAnalyticsKeyIfUnreferenced'>> & {
+    transaction?: typeof transactionWithoutRetry
+  } = {}
+): CrmSearchRetentionDependencies {
+  const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env
+  const managerBinding = env?.CRM_SEARCH_ANALYTICS_KEY_MANAGER
+  const alertBinding = env?.CRM_SEARCH_RETENTION_ALERTS
+  if (!managerBinding || typeof managerBinding !== 'object'
+    || typeof (managerBinding as { fetch?: unknown }).fetch !== 'function') {
+    throw new Error('CRM search analytics key manager binding unavailable')
+  }
+  if (!alertBinding || typeof alertBinding !== 'object'
+    || typeof (alertBinding as { send?: unknown }).send !== 'function') {
+    throw new Error('CRM search retention alert binding unavailable')
+  }
+  const managerFetch = (managerBinding as {
+    fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>
+  }).fetch.bind(managerBinding)
+  const keyManager: CrmSearchAnalyticsKeyManager = {
+    async listRetiredKeys() {
+      const result = await readJsonResponse(await managerFetch(
+        'https://crm-search-key-manager.internal/v1/retired',
+        { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(5_000) }
+      ))
+      if (!result || typeof result !== 'object' || Array.isArray(result)
+        || Object.keys(result).length !== 1
+        || !Array.isArray((result as { keys?: unknown }).keys)
+        || (result as { keys: unknown[] }).keys.length > 8) {
+        throw new Error('CRM search analytics key manager response invalid')
+      }
+      return (result as { keys: unknown[] }).keys.map((value) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+          throw new Error('CRM search analytics key manager response invalid')
+        }
+        const row = value as Record<string, unknown>
+        if (Object.keys(row).length !== 2 || typeof row.keyVersion !== 'string'
+          || !keyVersionPattern.test(row.keyVersion) || typeof row.retiredAt !== 'string'
+          || !Number.isFinite(Date.parse(row.retiredAt))) {
+          throw new Error('CRM search analytics key manager response invalid')
+        }
+        return { keyVersion: row.keyVersion, retiredAt: row.retiredAt }
+      })
+    },
+    async destroyRetiredKey(keyVersion, evidence) {
+      const response = await managerFetch('https://crm-search-key-manager.internal/v1/destroy', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+        body: JSON.stringify({ version: 'crm-search-key-retirement-v1', keyVersion, ...evidence }),
+        signal: AbortSignal.timeout(5_000)
+      })
+      return projectManagerResponse(await readJsonResponse(response))
+    }
+  }
+  const runTransaction = overrides.transaction ?? transactionWithoutRetry
+  const retireAnalyticsKeyIfUnreferenced = overrides.retireAnalyticsKeyIfUnreferenced
+    ?? (async (keyVersion: string, evidence: {
+      reason: 'last_reference_expired'
+      now: string
+      executorId: string
+    }) => runTransaction(async (database) => {
+      if (!keyVersionPattern.test(keyVersion)) throw new Error('CRM search analytics key version invalid')
+      await database.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 355))', [keyVersion])
+      const existing = await database.query(`
+        SELECT receipt_sha256
+        FROM crm_search_analytics_key_retirements
+        WHERE key_version = $1
+      `, [keyVersion])
+      if (existing.rows[0]) return { retired: true, receiptSha256: String(existing.rows[0].receipt_sha256) }
+      const references = await database.query(`
+        SELECT COUNT(*)::TEXT AS count
+        FROM crm_search_events
+        WHERE query_digest_key_version = $1
+      `, [keyVersion])
+      if (Number(references.rows[0]?.count ?? 0) !== 0) return { retired: false }
+      const receipt = await keyManager.destroyRetiredKey(keyVersion, evidence)
+      const recorded = await database.query(`
+        SELECT crm_search_record_analytics_key_retirement(
+          $1, $2, $3::UUID, $4::TIMESTAMPTZ
+        ) AS id
+      `, [keyVersion, receipt.receiptSha256, evidence.executorId, evidence.now])
+      if (!recorded.rows[0]?.id) throw new Error('CRM search analytics key retirement was not recorded')
+      return { retired: true, receiptSha256: receipt.receiptSha256 }
+    }))
   return {
     aggregateDetailedEventsThrough: async (expireThrough) => {
       await queryRows(`
@@ -322,22 +426,12 @@ export function createCrmSearchRetentionDependencies(event: H3Event): CrmSearchR
       return {
         rowCount: Number(result.rowCount ?? 0),
         complete: result.complete === true,
-        attestationHash: String(result.attestationHash ?? '')
+        attestationHash: String(result.attestationHash ?? ''),
+        legalHoldBlockedCount: Number(result.legalHoldBlockedCount ?? 0)
       }
     },
-    listRetiredAnalyticsKeys: async () => keyManager?.listRetiredKeys() ?? [],
-    countRetainedEventsForKeyVersion: async (keyVersion) => {
-      const row = await queryOne<{ count: string }>(`
-        SELECT COUNT(*)::TEXT AS count
-        FROM crm_search_events
-        WHERE query_digest_key_version = $1
-      `, [keyVersion])
-      return Number(row?.count ?? 0)
-    },
-    destroyRetiredAnalyticsKey: async (keyVersion, evidence) => {
-      if (!keyManager) throw new Error('CRM search analytics key manager unavailable')
-      return keyManager.destroyRetiredKey(keyVersion, evidence)
-    },
+    listRetiredAnalyticsKeys: () => keyManager.listRetiredKeys(),
+    retireAnalyticsKeyIfUnreferenced,
     listPendingClientErasures: async () => queryRows(`
       SELECT client_id AS "clientId", requested_at AS "requestedAt",
         state IN ('provider_pending', 'confirmed') AS "databaseTombstoneRecorded",
@@ -356,8 +450,19 @@ export function createCrmSearchRetentionDependencies(event: H3Event): CrmSearchR
       return row?.created_at instanceof Date ? row.created_at.toISOString() : row ? String(row.created_at) : null
     },
     emitAlert: (alert) => {
-      if (!alerts) throw new Error('CRM search retention alert transport unavailable')
-      return alerts.emit(alert)
+      const severity = alert.severity
+      const reason = alert.reason
+      if ((severity !== 'warning' && severity !== 'page')
+        || typeof reason !== 'string'
+        || !['warning', 'page', 'privacy_incident', 'purge_stale_24h'].includes(reason)) {
+        throw new Error('CRM search retention alert invalid')
+      }
+      const projected: Record<string, unknown> = {
+        version: 'crm-search-retention-alert-v1', severity, reason
+      }
+      if (typeof alert.clientId === 'string') projected.clientId = alert.clientId
+      if (typeof alert.elapsedMinutes === 'number') projected.elapsedMinutes = alert.elapsedMinutes
+      return (alertBinding as { send(message: unknown): Promise<unknown> }).send(projected)
     },
     recordRetentionRun: async (result) => {
       const executorId = result.executorId

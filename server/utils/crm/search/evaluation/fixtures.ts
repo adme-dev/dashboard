@@ -22,6 +22,12 @@ const forbiddenKeys = new Set([
 const emailPattern = /\b[^\s@]+@[^\s@]+\.[^\s@]+\b/u
 const phonePattern = /(?:\+?\d[\d ()-]{7,}\d)/u
 
+function containsPiiLikeValue(value: string): boolean {
+  if (emailPattern.test(value)) return true
+  const digitCount = value.replace(/\D/gu, '').length
+  return digitCount >= 8 && digitCount <= 15 && phonePattern.test(value)
+}
+
 function fail(message: string): never {
   throw new Error(`Invalid CRM search evaluation fixture: ${message}`)
 }
@@ -50,9 +56,7 @@ function normalizeKey(key: string): string {
 function assertPrivacySafe(value: unknown, key = ''): void {
   const normalizedKey = normalizeKey(key)
   if (forbiddenKeys.has(normalizedKey)) fail(`sensitive or raw key ${key}`)
-  if (typeof value === 'string'
-    && ['approvedprojection', 'displaytext', 'text'].includes(normalizedKey)
-    && (emailPattern.test(value) || phonePattern.test(value))) {
+  if (typeof value === 'string' && containsPiiLikeValue(value)) {
     fail('PII-like string')
   }
   if (Array.isArray(value)) {
@@ -120,6 +124,8 @@ export function validateEvaluationFixtureBundle(value: unknown): CrmSearchFixtur
   const holdout = bundle.holdoutManifest
   if (!isRecord(holdout) || holdout.sealed !== true || holdout.queryCount < 360) fail('sealed 360-query holdout')
   requireString(holdout.version, 'holdout version')
+  requireDigest(holdout.sha256, 'holdout manifest digest')
+  if (holdout.sha256 !== computeCrmSearchFixtureSha256(holdout)) fail('holdout manifest digest mismatch')
   requireDigest(holdout.sealedJudgementSha256, 'sealed judgement digest')
   if (!isRecord(holdout.clientCounts)) fail('holdout client counts')
   const qualifyingClients = Object.values(holdout.clientCounts)

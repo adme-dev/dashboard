@@ -60,6 +60,7 @@ export interface CrmSearchFixtureBundle {
   }
   holdoutManifest: {
     version: string
+    sha256: string
     sealed: boolean
     sealedJudgementSha256: string
     queryCount: number

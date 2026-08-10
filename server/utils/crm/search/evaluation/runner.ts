@@ -1,4 +1,9 @@
 import type { H3Event } from 'h3'
+import adjudicationManifest from '../../../../../test/fixtures/crm-search-evaluation/adjudication.manifest.json'
+import corpus from '../../../../../test/fixtures/crm-search-evaluation/corpus.json'
+import development from '../../../../../test/fixtures/crm-search-evaluation/development.json'
+import holdoutManifest from '../../../../../test/fixtures/crm-search-evaluation/holdout.manifest.json'
+import preregistration from '../../../../../test/fixtures/crm-search-evaluation/preregistration.json'
 import { validateEvaluationFixtureBundle } from './fixtures'
 import { computeGranularQueryRankingMetrics } from './metrics'
 import type {
@@ -43,7 +48,9 @@ export class CrmSearchEvaluationRunnerError extends Error {
   constructor(code = 'crm_search_evaluation_failed') {
     super(code === 'crm_search_evaluation_caller_submitted_evidence'
       ? 'Caller-submitted CRM search evaluation evidence is forbidden'
-      : 'CRM search evaluation could not be completed')
+      : code === 'crm_search_evaluation_actor_separation'
+        ? 'CRM search evaluation actor separation failed'
+        : 'CRM search evaluation could not be completed')
     this.name = 'CrmSearchEvaluationRunnerError'
     this.code = code
   }
@@ -82,6 +89,17 @@ export async function runCrmSearchEvaluation(
 ): Promise<CrmSearchEvaluationRunRecord> {
   const request = validateRequest(input)
   const fixtures = await dependencies.loadCheckedInFixtures()
+  const adjudication = fixtures.adjudicationManifest
+  if (adjudication && typeof adjudication === 'object') {
+    const authors = adjudication as {
+      implementationAuthorIds?: unknown
+      fixtureAuthorIds?: unknown
+    }
+    if ([authors.implementationAuthorIds, authors.fixtureAuthorIds]
+      .some(ids => Array.isArray(ids) && ids.includes(request.requestedBy))) {
+      throw new CrmSearchEvaluationRunnerError('crm_search_evaluation_actor_separation')
+    }
+  }
   const frozen = await dependencies.freezePreregistration(fixtures)
   if (typeof frozen.frozenAt !== 'string' || typeof frozen.sha256 !== 'string') {
     throw new CrmSearchEvaluationRunnerError('crm_search_evaluation_preregistration_not_frozen')
@@ -107,11 +125,10 @@ export async function runCrmSearchEvaluation(
   }
   delete persisted.requestedBy
   delete persisted.sealedArtifactId
-  delete persisted.reason
   return dependencies.recordEvaluationRun(persisted)
 }
 
-interface RuntimeEvaluationServices {
+export interface RuntimeEvaluationServices {
   checkedInFixtures: Record<string, unknown>
   organisationScopeId: string
   deploymentBinding: {
@@ -140,21 +157,122 @@ interface RuntimeEvaluationServices {
   }): Promise<unknown[]>
 }
 
-function resolveRuntimeServices(event: H3Event): RuntimeEvaluationServices {
-  const services = (event.context as { crmSearchEvaluationServices?: unknown }).crmSearchEvaluationServices
-  if (!services || typeof services !== 'object') throw new CrmSearchEvaluationRunnerError()
-  const candidate = services as Partial<RuntimeEvaluationServices>
-  if (!candidate.checkedInFixtures || typeof candidate.checkedInFixtures !== 'object'
-    || typeof candidate.organisationScopeId !== 'string'
-    || !candidate.deploymentBinding || typeof candidate.deploymentBinding !== 'object'
-    || typeof candidate.executeGranularQueries !== 'function') throw new CrmSearchEvaluationRunnerError()
-  return candidate as RuntimeEvaluationServices
+function plainRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu
+const digestPattern = /^[a-f0-9]{64}$/u
+const deploymentRequiredKeys = [
+  'implementationGitSha', 'artifactManifestDigest', 'pagesBundleDigest',
+  'workerBundleDigest', 'bindingManifestDigest', 'schemaVersion', 'modelId',
+  'tokenizerRevision', 'documentBuilderRevision', 'rankingRevision',
+  'thresholdRevision', 'providerContractDigest', 'environment',
+  'loadProtocolDigest', 'rateCardId'
+] as const
+const deploymentOptionalKeys = ['previewPagesDeploymentId', 'previewWorkerDeploymentId'] as const
+const checkedInFixtures = Object.freeze({
+  schemaVersion: 'crm-search-evaluation-v1',
+  corpus,
+  development,
+  holdoutManifest,
+  preregistration,
+  adjudicationManifest
+}) as unknown as Record<string, unknown>
+
+function validateDeploymentBinding(value: unknown): value is RuntimeEvaluationServices['deploymentBinding'] {
+  if (!plainRecord(value)) return false
+  const allowed = new Set<string>([...deploymentRequiredKeys, ...deploymentOptionalKeys])
+  if (Object.keys(value).some(key => !allowed.has(key))
+    || deploymentRequiredKeys.some(key => !Object.prototype.hasOwnProperty.call(value, key))) return false
+  for (const key of [
+    'modelId', 'tokenizerRevision', 'documentBuilderRevision',
+    'rankingRevision', 'thresholdRevision'
+  ] as const) {
+    if (typeof value[key] !== 'string' || value[key].length < 1 || value[key].length > 240) return false
+  }
+  for (const key of [
+    'artifactManifestDigest', 'pagesBundleDigest', 'workerBundleDigest',
+    'bindingManifestDigest', 'providerContractDigest', 'loadProtocolDigest'
+  ] as const) {
+    if (typeof value[key] !== 'string' || !digestPattern.test(value[key])) return false
+  }
+  if (typeof value.implementationGitSha !== 'string'
+    || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(value.implementationGitSha)
+    || typeof value.schemaVersion !== 'string'
+    || !/^crm-search-v[1-9][0-9]*$/u.test(value.schemaVersion)
+    || (value.environment !== 'test' && value.environment !== 'preview')
+    || typeof value.rateCardId !== 'string' || !uuidPattern.test(value.rateCardId)) return false
+  return deploymentOptionalKeys.every(key => value[key] == null
+    || (typeof value[key] === 'string' && value[key].length >= 1 && value[key].length <= 200))
+}
+
+export function resolveCrmSearchEvaluationRuntimeServices(event: H3Event): RuntimeEvaluationServices {
+  const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env
+  const serialized = env?.CRM_SEARCH_EVALUATION_CONFIG
+  const runner = env?.CRM_SEARCH_EVALUATION_RUNNER
+  if (typeof serialized !== 'string' || serialized.length < 2 || serialized.length > 32_768
+    || !runner || typeof runner !== 'object'
+    || typeof (runner as { fetch?: unknown }).fetch !== 'function') {
+    throw new CrmSearchEvaluationRunnerError()
+  }
+  let services: unknown
+  try {
+    services = JSON.parse(serialized)
+  } catch {
+    throw new CrmSearchEvaluationRunnerError()
+  }
+  if (!plainRecord(services)
+    || Object.keys(services).length !== 2
+    || !Object.keys(services).every(key => [
+      'organisationScopeId', 'deploymentBinding'
+    ].includes(key))) throw new CrmSearchEvaluationRunnerError()
+  const candidate = services as unknown as Omit<Partial<RuntimeEvaluationServices>, 'checkedInFixtures'>
+  if (typeof candidate.organisationScopeId !== 'string'
+    || !uuidPattern.test(candidate.organisationScopeId)
+    || !validateDeploymentBinding(candidate.deploymentBinding)) {
+    throw new CrmSearchEvaluationRunnerError()
+  }
+  return {
+    ...candidate,
+    checkedInFixtures,
+    async executeGranularQueries(input) {
+      let response: Response
+      try {
+        response = await (runner as { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> }).fetch(
+          'https://crm-search-evaluation.internal/v1/run',
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ version: 'crm-search-evaluation-runner-v1', ...input }),
+            signal: AbortSignal.timeout(120_000)
+          }
+        )
+      } catch {
+        throw new CrmSearchEvaluationRunnerError()
+      }
+      const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim()
+      if (!response.ok || contentType !== 'application/json') throw new CrmSearchEvaluationRunnerError()
+      const text = await response.text()
+      if (text.length < 2 || text.length > 8 * 1024 * 1024) throw new CrmSearchEvaluationRunnerError()
+      let result: unknown
+      try {
+        result = JSON.parse(text)
+      } catch {
+        throw new CrmSearchEvaluationRunnerError()
+      }
+      if (!plainRecord(result) || Object.keys(result).length !== 1
+        || !Array.isArray(result.queryEvidence)) throw new CrmSearchEvaluationRunnerError()
+      return result.queryEvidence
+    }
+  } as RuntimeEvaluationServices
 }
 
 export function resolveCrmSearchEvaluationOrganisationScopeId(event: H3Event): string {
-  const organisationScopeId = resolveRuntimeServices(event).organisationScopeId
-  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu
-    .test(organisationScopeId)) throw new CrmSearchEvaluationRunnerError()
+  const organisationScopeId = resolveCrmSearchEvaluationRuntimeServices(event).organisationScopeId
+  if (!uuidPattern.test(organisationScopeId)) throw new CrmSearchEvaluationRunnerError()
   return organisationScopeId
 }
 
@@ -195,7 +313,7 @@ export async function startCrmSearchEvaluation(
   actorId: string,
   event: H3Event
 ): Promise<CrmSearchEvaluationRunRecord> {
-  const services = resolveRuntimeServices(event)
+  const services = resolveCrmSearchEvaluationRuntimeServices(event)
   const sealedProvider = resolveCrmSearchSealedArtifactProvider(event)
   const fixtures = validateEvaluationFixtureBundle(services.checkedInFixtures)
   const exactDeploymentKeys = [
@@ -259,6 +377,7 @@ export async function startCrmSearchEvaluation(
       adjudicatorIds: fixtures.adjudicationManifest.adjudicatorIds,
       runnerId: actorId,
       developmentQueryCount: fixtures.development.queries.length,
+      reason: String(persisted.reason),
       queryEvidence: (persisted.queryEvidence as unknown[]).map(buildDatabaseQueryEvidence)
     } satisfies CrmSearchEvaluationRecordInput)
   })

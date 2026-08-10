@@ -8,6 +8,7 @@
     "schemaVersion",
     "corpusSha256",
     "developmentSha256",
+    "holdoutManifestSha256",
     "sealedJudgementSha256",
     "preregistrationSha256",
     "adjudicationSha256"
@@ -21,6 +22,10 @@
       "pattern": "^[a-f0-9]{64}$"
     },
     "developmentSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "holdoutManifestSha256": {
       "type": "string",
       "pattern": "^[a-f0-9]{64}$"
     },

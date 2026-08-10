@@ -39,6 +39,7 @@ function validFixtureBundle() {
     },
     holdoutManifest: {
       version: 'holdout-v1',
+      sha256: '',
       sealed: true,
       sealedJudgementSha256: digest('d'),
       queryCount: 360,
@@ -70,6 +71,7 @@ function validFixtureBundle() {
   }
   fixture.corpus.sha256 = computeCrmSearchFixtureSha256(fixture.corpus)
   fixture.development.sha256 = computeCrmSearchFixtureSha256(fixture.development)
+  fixture.holdoutManifest.sha256 = computeCrmSearchFixtureSha256(fixture.holdoutManifest)
   fixture.preregistration.sha256 = computeCrmSearchFixtureSha256(fixture.preregistration)
   fixture.adjudicationManifest.sha256 = computeCrmSearchFixtureSha256(fixture.adjudicationManifest)
   return fixture
@@ -150,5 +152,22 @@ describe('CRM search evaluation fixtures', () => {
     const fixture = validFixtureBundle()
     fixture.development.queries[0]!.strata.push('cross_client_overlap')
     expect(() => validateEvaluationFixtureBundle(fixture)).toThrow(/digest mismatch/i)
+  })
+
+  it('recursively rejects sensitive values under arbitrary field names', () => {
+    const fixture = validFixtureBundle()
+    Object.assign(fixture.corpus.records[0]!, {
+      nested: { arbitraryComment: ['safe', { value: 'alex@example.invalid' }] }
+    })
+    fixture.corpus.sha256 = computeCrmSearchFixtureSha256(fixture.corpus)
+
+    expect(() => validateEvaluationFixtureBundle(fixture)).toThrow(/PII|sensitive/i)
+  })
+
+  it('binds every holdout manifest field to its own checked-in digest', () => {
+    const fixture = validFixtureBundle()
+    fixture.holdoutManifest.queryCount += 1
+
+    expect(() => validateEvaluationFixtureBundle(fixture)).toThrow(/holdout manifest digest mismatch/i)
   })
 })
