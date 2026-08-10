@@ -40,6 +40,21 @@ const BINDING_MANIFEST_DIGEST = `sha256:${'d'.repeat(64)}`
 const ACTIVE_SECRET = Buffer.alloc(32, 7).toString('base64url')
 const PREVIOUS_SECRET = Buffer.alloc(32, 9).toString('base64url')
 const RESOURCE_KEYS = generateKeyPairSync('ed25519')
+const EXTERNAL_MUTABLE_INTEGRATIONS = [
+  'database',
+  'provider_apis',
+  'meta',
+  'google',
+  'meta_audiences',
+  'google_audiences',
+  'xero',
+  'email_delivery',
+  'monday',
+  'slack',
+  'outbound_webhooks',
+  'google_sheets',
+  'social_dashboard'
+] as const
 
 const validMessage: CrmSearchIndexQueueMessage = Object.freeze({
   protocolVersion: CRM_SEARCH_INDEX_PROTOCOL_VERSION,
@@ -97,8 +112,20 @@ function resourceManifest(overrides: Record<string, unknown> = {}) {
         retentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS
       }
     },
+    externalIntegrations: EXTERNAL_MUTABLE_INTEGRATIONS.map(name => ({
+      name,
+      state: 'disabled',
+      targetIdentityDigest: null,
+      verifiedAt: null
+    })),
     ...overrides
   }
+}
+
+function resourceManifestWithoutExternalIntegrations() {
+  const { externalIntegrations: _externalIntegrations, ...manifest }
+    = resourceManifest()
+  return manifest
 }
 
 function canonical(value: unknown): string {
@@ -472,7 +499,26 @@ describe('dedicated CRM search Queue Worker', () => {
         }
       }
     })],
-    ['unsupported plan', resourceManifest({ plan: 'workers_free' })]
+    ['unsupported plan', resourceManifest({ plan: 'workers_free' })],
+    ['missing external integration inventory', resourceManifestWithoutExternalIntegrations()],
+    ['unknown external integration', resourceManifest({
+      externalIntegrations: [
+        ...resourceManifest().externalIntegrations.slice(0, -1),
+        {
+          name: 'unknown_provider_target',
+          state: 'disabled',
+          targetIdentityDigest: null,
+          verifiedAt: null
+        }
+      ]
+    })],
+    ['enabled external integration without a verified target', resourceManifest({
+      externalIntegrations: resourceManifest().externalIntegrations.map(integration => (
+        integration.name === 'meta'
+          ? { ...integration, state: 'enabled', targetIdentityDigest: null, verifiedAt: null }
+          : integration
+      ))
+    })]
   ])('fails readiness on %s before any Pages request', async (_name, manifest) => {
     const message = queueMessage()
     const fetch = vi.fn(async () => response(pagesHealth()))

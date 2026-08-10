@@ -16,6 +16,13 @@ const EXACT_CATEGORIES = Object.freeze([
   'ai', 'analytics_engine_datasets', 'browser', 'd1_databases', 'durable_objects', 'hyperdrive',
   'kv_namespaces', 'queues', 'r2_buckets', 'secrets', 'services', 'vars', 'vectorize'
 ])
+const EXACT_EXTERNAL_INTEGRATIONS = Object.freeze([
+  'database', 'provider_apis', 'meta', 'google', 'meta_audiences',
+  'google_audiences', 'xero', 'email_delivery', 'monday', 'slack',
+  'outbound_webhooks', 'google_sheets', 'social_dashboard'
+])
+const DIGEST = /^[a-f0-9]{64}$/u
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u
 const STATEFUL = new Set([
   'd1_databases', 'durable_objects', 'hyperdrive', 'kv_namespaces', 'queues',
   'r2_buckets', 'secrets', 'services', 'vectorize', 'analytics_engine_datasets'
@@ -114,7 +121,10 @@ function validateEnvironment(value, expected) {
   if (!value || value.environment !== expected
     || !Array.isArray(value.categories)
     || [...value.categories].sort().join('\0') !== [...EXACT_CATEGORIES].sort().join('\0')
-    || !Array.isArray(value.bindings)) {
+    || !Array.isArray(value.bindings)
+    || !Array.isArray(value.integrations)
+    || value.integrations.map(target => target?.name).join('\0')
+    !== EXACT_EXTERNAL_INTEGRATIONS.join('\0')) {
     throw new Error('crm_search_preview_binding_inventory_incomplete')
   }
   const bindings = new Map()
@@ -128,7 +138,22 @@ function validateEnvironment(value, expected) {
     if (bindings.has(key)) throw new Error('crm_search_preview_binding_inventory_invalid')
     bindings.set(key, binding.target)
   }
-  return bindings
+  const integrations = new Map()
+  for (const target of value.integrations) {
+    const exactKeys = target && Object.keys(target).sort().join('\0')
+      === ['name', 'state', 'targetIdentityDigest', 'verifiedAt'].sort().join('\0')
+    const enabled = target?.state === 'enabled'
+      && DIGEST.test(target.targetIdentityDigest ?? '')
+      && ISO_TIMESTAMP.test(target.verifiedAt ?? '')
+      && Number.isFinite(Date.parse(target.verifiedAt ?? ''))
+    const disabled = target?.state === 'disabled'
+      && target.targetIdentityDigest === null && target.verifiedAt === null
+    if (!exactKeys || (!enabled && !disabled) || integrations.has(target.name)) {
+      throw new Error('crm_search_preview_integration_inventory_invalid')
+    }
+    integrations.set(target.name, target)
+  }
+  return { bindings, integrations }
 }
 
 export function assertPreviewBindingReadback(readback, options = {}) {
@@ -141,14 +166,24 @@ export function assertPreviewBindingReadback(readback, options = {}) {
   if (readback.pagesInventory?.version !== 'crm-search-pages-environment-inventory-v1') {
     throw new Error('crm_search_preview_binding_inventory_incomplete')
   }
-  const production = validateEnvironment(readback.pagesInventory.production, 'production')
-  const preview = validateEnvironment(readback.pagesInventory.preview, 'preview')
+  const productionEnvironment = validateEnvironment(readback.pagesInventory.production, 'production')
+  const previewEnvironment = validateEnvironment(readback.pagesInventory.preview, 'preview')
+  const production = productionEnvironment.bindings
+  const preview = previewEnvironment.bindings
   if (production.size !== preview.size || [...production.keys()].some(key => !preview.has(key))) {
     throw new Error('crm_search_preview_binding_inventory_incomplete')
   }
   for (const [key, target] of production) {
     if (STATEFUL.has(key.split('\0', 1)[0]) && preview.get(key) === target) {
       throw new Error('crm_search_preview_binding_readback_mismatch')
+    }
+  }
+  for (const [name, target] of previewEnvironment.integrations) {
+    const productionTarget = productionEnvironment.integrations.get(name)
+    if (!productionTarget) throw new Error('crm_search_preview_integration_inventory_invalid')
+    if (target.state === 'enabled' && productionTarget.state === 'enabled'
+      && target.targetIdentityDigest === productionTarget.targetIdentityDigest) {
+      throw new Error('crm_search_preview_integration_target_mismatch')
     }
   }
   if (options.pagesConfigText !== undefined) {

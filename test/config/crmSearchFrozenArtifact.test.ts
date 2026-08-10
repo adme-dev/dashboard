@@ -34,6 +34,11 @@ async function frozenArtifactFixture() {
     'ai', 'analytics_engine_datasets', 'browser', 'd1_databases', 'durable_objects', 'hyperdrive',
     'kv_namespaces', 'queues', 'r2_buckets', 'secrets', 'services', 'vars', 'vectorize'
   ]
+  const integrationNames = [
+    'database', 'provider_apis', 'meta', 'google', 'meta_audiences',
+    'google_audiences', 'xero', 'email_delivery', 'monday', 'slack',
+    'outbound_webhooks', 'google_sheets', 'social_dashboard'
+  ]
   const pagesConfig = `name = "agency-dashboard"
 [[r2_buckets]]
 binding = "FILES"
@@ -57,6 +62,10 @@ bucket_name = "preview-files"
       version: 'crm-search-pages-environment-inventory-v1',
       production: {
         environment: 'production', categories,
+        integrations: integrationNames.map(name => ({
+          name, state: 'enabled', targetIdentityDigest: sha256(`production:${name}`),
+          verifiedAt: '2026-08-11T00:00:00.000Z'
+        })),
         bindings: [
           { category: 'r2_buckets', binding: 'FILES', target: 'prod-files' },
           { category: 'secrets', binding: 'DATABASE_URL', target: '1'.repeat(64) }
@@ -64,6 +73,9 @@ bucket_name = "preview-files"
       },
       preview: {
         environment: 'preview', categories,
+        integrations: integrationNames.map(name => ({
+          name, state: 'disabled', targetIdentityDigest: null, verifiedAt: null
+        })),
         bindings: [
           { category: 'r2_buckets', binding: 'FILES', target: 'preview-files' },
           { category: 'secrets', binding: 'DATABASE_URL', target: '2'.repeat(64) }

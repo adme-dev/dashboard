@@ -42,7 +42,17 @@ function requirePayload(payload, nowMs, expectedType) {
     'expectedControlRevision', 'organisationScopeId', 'requestedByActorId', 'approvedBy',
     'maximumCostUsdMicros', 'clientIds', 'reason'
   ]
-  const exact = expectedType === 'production_deploy' ? production : bootstrap
+  const migration = [
+    'approvalId', 'approvalRevision', 'type', 'environment', 'originalTimestamp',
+    'expiresAt', 'implementationGitSha', 'artifactManifestDigest',
+    'bindingManifestDigest', 'evidenceBundleHash', 'organisationScopeId',
+    'requestedByActorId', 'approvedBy', 'maximumCostUsdMicros', 'clientIds', 'reason'
+  ]
+  const exact = expectedType === 'production_deploy'
+    ? production
+    : expectedType === 'production_migration'
+      ? migration
+      : bootstrap
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)
     || Object.keys(payload).sort().join('\0') !== exact.sort().join('\0')
     || payload.type !== expectedType
@@ -62,6 +72,11 @@ function requirePayload(payload, nowMs, expectedType) {
       || !Number.isSafeInteger(payload.approvalRevision) || payload.approvalRevision < 0
       || !Number.isSafeInteger(payload.expectedControlRevision) || payload.expectedControlRevision < 0
       || !DIGEST.test(payload.pagesBundleDigest) || !DIGEST.test(payload.workerBundleDigest))) {
+    fail('crm_search_bootstrap_payload_invalid')
+  }
+  if (expectedType === 'production_migration'
+    && (payload.environment !== 'preview' || !UUID.test(payload.approvalId)
+      || !Number.isSafeInteger(payload.approvalRevision) || payload.approvalRevision < 0)) {
     fail('crm_search_bootstrap_payload_invalid')
   }
   const issued = Date.parse(payload.originalTimestamp)
@@ -98,6 +113,37 @@ export function assertFreshProductionApprovalReadback(readback, approval, nowMs)
   return { ok: true }
 }
 
+export function assertFreshDirectNeonApprovalReadback(readback, approval, nowMs) {
+  const approvalPayload = Object.fromEntries(
+    Object.entries(approval).filter(([key]) => key !== 'importedProvenanceHash')
+  )
+  if (!readback || typeof readback !== 'object' || Array.isArray(readback)
+    || Object.keys(readback).sort().join('\0') !== [
+      ...Object.keys(approvalPayload), 'status', 'revokedAt', 'readbackAt', 'readbackSource'
+    ].sort().join('\0')
+    || readback.readbackSource !== 'direct_neon') {
+    fail('crm_search_release_approval_readback_invalid')
+  }
+  const readbackAt = Date.parse(readback.readbackAt)
+  if (!ISO_TIMESTAMP.test(readback.readbackAt || '') || !Number.isFinite(readbackAt)
+    || readbackAt > nowMs + 5_000 || nowMs - readbackAt > 60_000) {
+    fail('crm_search_release_approval_readback_stale')
+  }
+  if (readback.status !== 'active' || readback.revokedAt !== null) {
+    fail('crm_search_release_approval_revoked')
+  }
+  if (nowMs >= Date.parse(approvalPayload.expiresAt)) {
+    fail('crm_search_bootstrap_approval_expired')
+  }
+  const currentPayload = Object.fromEntries(
+    Object.keys(approvalPayload).map(key => [key, readback[key]])
+  )
+  if (canonical(currentPayload) !== canonical(approvalPayload)) {
+    fail('crm_search_release_approval_drift')
+  }
+  return { ok: true }
+}
+
 export async function verifyReleaseApprovalEnvelope(envelope, options) {
   if (!Number.isFinite(options?.nowMs)) fail('crm_search_bootstrap_envelope_invalid')
   if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)
@@ -108,9 +154,9 @@ export async function verifyReleaseApprovalEnvelope(envelope, options) {
     || !BASE64URL.test(envelope.signature || '')) fail('crm_search_bootstrap_envelope_invalid')
   const expectedKeyringVersion = options.expectedType === 'resource_provision'
     ? BOOTSTRAP_KEYRING_VERSION
-    : options.expectedType === 'production_deploy'
-      ? RELEASE_KEYRING_VERSION
-      : null
+    : ['production_deploy', 'production_migration'].includes(options.expectedType)
+        ? RELEASE_KEYRING_VERSION
+        : null
   if (!expectedKeyringVersion || !options.keyring || typeof options.keyring !== 'object'
     || Array.isArray(options.keyring)
     || Object.keys(options.keyring).sort().join('\0') !== ['activeKeyVersion', 'keys', 'version'].sort().join('\0')

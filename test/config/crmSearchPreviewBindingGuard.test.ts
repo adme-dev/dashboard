@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import { assertPreviewBindingReadback } from '../../scripts/crm-search/preview-binding-guard.mjs'
@@ -10,6 +12,21 @@ import {
   buildPagesEnvironmentInventory,
   inventoryPagesBindings
 } from '../../scripts/crm-search/preview-binding-inventory'
+
+const externalIntegrationNames = [
+  'database', 'provider_apis', 'meta', 'google', 'meta_audiences',
+  'google_audiences', 'xero', 'email_delivery', 'monday', 'slack',
+  'outbound_webhooks', 'google_sheets', 'social_dashboard'
+] as const
+const targetDigest = (value: string) => createHash('sha256').update(value).digest('hex')
+const disabledIntegrations = () => externalIntegrationNames.map(name => ({
+  name, state: 'disabled' as const, targetIdentityDigest: null, verifiedAt: null
+}))
+const enabledIntegrations = (environment: string) => externalIntegrationNames.map(name => ({
+  name, state: 'enabled' as const,
+  targetIdentityDigest: targetDigest(`${environment}:${name}`),
+  verifiedAt: '2026-08-11T00:00:00.000Z'
+}))
 
 describe('CRM search preview binding isolation', () => {
   it('pins every mutable preview identity away from production', () => {
@@ -28,6 +45,7 @@ describe('CRM search preview binding isolation', () => {
         deadLetter: { name: 'agency-crm-search-index-preview-dlq', retentionSeconds: 1_209_600 }
       }
     })
+    expect(PREVIEW_CRM_SEARCH_RESOURCES.externalIntegrations).toEqual(disabledIntegrations())
   })
 
   it('fails closed when even one stateful preview target aliases production', () => {
@@ -98,10 +116,12 @@ describe('CRM search preview binding isolation', () => {
         version: 'crm-search-pages-environment-inventory-v1',
         production: {
           environment: 'production', categories,
+          integrations: enabledIntegrations('production'),
           bindings: [{ category: 'r2_buckets', binding: 'FILES', target: 'agency-files' }]
         },
         preview: {
           environment: 'preview', categories,
+          integrations: disabledIntegrations(),
           bindings: [{ category: 'r2_buckets', binding: 'FILES', target: 'agency-files-preview' }]
         }
       }
@@ -157,7 +177,11 @@ describe('CRM search preview binding isolation', () => {
       production: [{ binding: 'DATABASE_URL', digest: 'a'.repeat(64) }],
       preview: [{ binding: 'DATABASE_URL', digest: 'b'.repeat(64) }]
     }
-    const inventory = buildPagesEnvironmentInventory(fixture, secrets)
+    const integrations = {
+      production: enabledIntegrations('production'),
+      preview: disabledIntegrations()
+    }
+    const inventory = buildPagesEnvironmentInventory(fixture, secrets, integrations)
     expect(assertPagesEnvironmentIsolation(inventory)).toEqual({ ok: true })
     expect(inventory.production.categories).toEqual(inventory.preview.categories)
     expect(inventory.preview.bindings).toEqual(expect.arrayContaining([
@@ -168,18 +192,33 @@ describe('CRM search preview binding isolation', () => {
     expect(() => buildPagesEnvironmentInventory({
       ...fixture,
       env: { ...fixture.env, preview: { ...fixture.env.preview, kv_namespaces: undefined } }
-    }, secrets)).toThrow('crm_search_pages_environment_inherited')
+    }, secrets, integrations)).toThrow('crm_search_pages_environment_inherited')
     expect(() => buildPagesEnvironmentInventory({
       ...fixture,
       env: { ...fixture.env, preview: { ...fixture.env.preview, mystery_store: [] } }
-    }, secrets)).toThrow('crm_search_pages_binding_unknown')
+    }, secrets, integrations)).toThrow('crm_search_pages_binding_unknown')
     expect(() => assertPagesEnvironmentIsolation(buildPagesEnvironmentInventory({
       ...fixture,
       env: {
         ...fixture.env,
         preview: { ...fixture.env.preview, r2_buckets: fixture.env.production.r2_buckets }
       }
-    }, secrets))).toThrow('crm_search_pages_preview_resource_alias')
+    }, secrets, integrations))).toThrow('crm_search_pages_preview_resource_alias')
+
+    expect(() => assertPagesEnvironmentIsolation(buildPagesEnvironmentInventory(
+      fixture,
+      secrets,
+      {
+        production: enabledIntegrations('production'),
+        preview: enabledIntegrations('production')
+      }
+    ))).toThrow('crm_search_pages_preview_integration_alias')
+    expect(() => buildPagesEnvironmentInventory(fixture, secrets, {
+      production: enabledIntegrations('production'),
+      preview: enabledIntegrations('preview').map((target, index) => index === 0
+        ? { ...target, targetIdentityDigest: null }
+        : target)
+    })).toThrow('crm_search_pages_integration_inventory_invalid')
   })
 
   it('keeps the checked-in Pages production and preview environments explicit', () => {
@@ -187,5 +226,12 @@ describe('CRM search preview binding isolation', () => {
     expect(inventory.environments).toEqual(['production', 'preview'])
     expect(inventory.inheritedCategories).toEqual([])
     expect(inventory.unknownCategories).toEqual([])
+    const config = readFileSync(new URL('../../wrangler.toml', import.meta.url), 'utf8')
+    const previewVars = config.slice(config.indexOf('[env.preview.vars]'))
+    for (const flag of [
+      'CRM_EMAIL_CONVERSATIONS_ENABLED', 'PERSONA_AUDIENCE_PROVIDER_WRITES_ENABLED',
+      'PERSONA_META_AUDIENCE_WRITES_ENABLED', 'PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED',
+      'MCP_GEN_TOOLS_ENABLED', 'MCP_BANNER_TOOLS_ENABLED'
+    ]) expect(previewVars).toContain(`${flag} = "false"`)
   })
 })

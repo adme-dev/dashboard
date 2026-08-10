@@ -29,6 +29,51 @@ const HEALTH_RESPONSE_MAX_BYTES = 2_048
 const HEALTH_REQUEST_TIMEOUT_MS = 5_000
 const gitShaPattern = /^[a-f0-9]{40}$/
 const digestPattern = /^sha256:[a-f0-9]{64}$/
+const targetIdentityDigestPattern = /^[a-f0-9]{64}$/
+const externalMutableIntegrations = [
+  'database',
+  'provider_apis',
+  'meta',
+  'google',
+  'meta_audiences',
+  'google_audiences',
+  'xero',
+  'email_delivery',
+  'monday',
+  'slack',
+  'outbound_webhooks',
+  'google_sheets',
+  'social_dashboard'
+] as const
+
+const externalIntegrationTargetSchema = z.discriminatedUnion('state', [
+  z.object({
+    name: z.enum(externalMutableIntegrations),
+    state: z.literal('disabled'),
+    targetIdentityDigest: z.null(),
+    verifiedAt: z.null()
+  }).strict(),
+  z.object({
+    name: z.enum(externalMutableIntegrations),
+    state: z.literal('enabled'),
+    targetIdentityDigest: z.string().regex(targetIdentityDigestPattern),
+    verifiedAt: z.iso.datetime()
+  }).strict()
+])
+
+const externalIntegrationInventorySchema = z.array(externalIntegrationTargetSchema)
+  .length(externalMutableIntegrations.length)
+  .superRefine((integrations, context) => {
+    for (const [index, expectedName] of externalMutableIntegrations.entries()) {
+      if (integrations[index]?.name !== expectedName) {
+        context.addIssue({
+          code: 'custom',
+          message: 'external integration inventory must be exact and ordered',
+          path: [index, 'name']
+        })
+      }
+    }
+  })
 
 const pagesHealthSchema = z.object({
   status: z.literal('ready'),
@@ -71,7 +116,8 @@ const resourcePayloadSchema = z.object({
       name: z.string().min(1).max(128),
       retentionSeconds: z.literal(CRM_SEARCH_QUEUE_RETENTION_SECONDS)
     }).strict()
-  }).strict()
+  }).strict(),
+  externalIntegrations: externalIntegrationInventorySchema
 }).strict()
 
 const resourceEnvelopeSchema = z.object({

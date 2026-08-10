@@ -99,3 +99,28 @@ Strict consolidated RED before implementation recorded 7 failures and 16 passes 
 All local Task 18 plans and dry-runs remained non-mutating. No Cloudflare/Neon/provider/database/deployment call occurred. The checked-in Task 15 handoff remains deliberately `productionReady: false`; the production wrappers now reject it until the separately authorized external import/readback ceremony produces signed ready evidence. Task 19's two E2E harness files were committed independently at `f45fa96f86c1feb9fbb5f819ca024813d887a5a6` and were neither edited nor staged by this review.
 
 Official Cloudflare documentation was consulted read-only for Pages environment binding non-inheritance and the current `versions upload` config/cwd/no-bundle syntax. Official Neon documentation was consulted read-only for schema-only branch creation, RFC 3339 expiry, returned operation polling, and exact branch deletion. No external resource or provider action was taken.
+
+## Review 2 — Preview Integration Identity and Migration Authority
+
+This bounded review closes the two residual release-safety findings without adding another release category:
+
+1. The signed environment resource contract now inventories every external mutable integration target: database/direct endpoints, generic provider APIs, Meta, Google, both audience targets, Xero, email delivery, Monday, Slack, outbound webhooks, Google Sheets, and Social Dashboard. Each exact ordered entry is either disabled with null identity evidence or enabled with a stable target/account digest and verification timestamp. Missing, unknown, malformed, duplicate/reordered, or production-equal enabled preview targets fail before mutation. Secret digests remain binding evidence, not target identity. The committed preview Pages environment and both example environment files keep email-conversation, audience-provider/Meta/Google, MCP generation, and MCP banner writes disabled by default. The consumer verifies the complete integration map inside the canonical signed resource envelope before contacting Pages.
+2. The Neon execute seam no longer accepts caller-built mutation authority. It verifies the exact signed `production_migration` envelope with the active independent Ed25519 release keyring, preview environment, actor separation, implementation SHA, artifact/binding/evidence digests, scope, cost, reason and expiry. An injected direct-Neon current-approval readback must reproduce the accepted payload, remain active/unrevoked and be at most 60 seconds old immediately before branch creation and again before migration. Revocation between those boundaries prevents migration while the outer `finally` still deletes and polls the exact created branch. The create and migrate requests plus the signed Task 5-compatible target attestation bind the accepted approval ID/revision and exact digests. Dry-run needs no executor and emits only the required proof plan.
+
+Strict consolidated RED was recorded before implementation: 8 of 12 preview/Neon assertions failed on the absent integration identity, unsafe preview defaults, caller-built migration authority, missing proof plan, and absent fresh readbacks. The separately authorized Worker schema RED produced 11 failures and 14 passes while proving the newly present signed map was rejected until its strict schema existed. Final GREEN evidence:
+
+```text
+Focused preview/Neon/artifact/Worker suites: 45 passed (4 files)
+Full Task 18 release compatibility gate:   132 passed (10 files)
+Bounded Task 5/runtime compatibility slice: 64 passed, 1 guarded DB skip (6 files)
+Worker generated types + strict TSC:        passed under Node 24.18.0
+Strict resource manifest/inventory TSC:     passed
+Targeted ESLint:                            0 diagnostics
+Production Worker bundle dry-run:           passed
+Preview Worker bundle dry-run:              passed
+Preview binding guard dry-run:               mutationCount=0
+Neon lifecycle dry-run:                      mutationCount=0
+git diff --check:                            clean
+```
+
+All adapters, clocks and readbacks used by the executable tests were injected. No external database, provider, Cloudflare, Neon, queue, deployment, or resource mutation occurred. Task 19's E2E harness files were neither inspected nor edited, and remained outside this review's staging scope.

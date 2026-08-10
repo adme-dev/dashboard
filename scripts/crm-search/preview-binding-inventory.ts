@@ -4,13 +4,23 @@ import { readFileSync } from 'node:fs'
 import { parse } from 'smol-toml'
 
 import {
+  CRM_SEARCH_EXTERNAL_MUTABLE_INTEGRATIONS,
   CRM_SEARCH_ENVIRONMENT_RESOURCE_MANIFEST_VERSION,
   CRM_SEARCH_QUEUE_RETENTION_SECONDS,
+  type CrmSearchExternalIntegrationTarget,
   type CrmSearchEnvironmentResources
 } from './resource-manifest'
 
 const ISSUED_AT = '2026-08-11T00:00:00.000Z'
 const EXPIRES_AT = '2026-09-10T00:00:00.000Z'
+const DIGEST = /^[a-f0-9]{64}$/u
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u
+
+function disabledExternalIntegrations(): CrmSearchExternalIntegrationTarget[] {
+  return CRM_SEARCH_EXTERNAL_MUTABLE_INTEGRATIONS.map(name => ({
+    name, state: 'disabled', targetIdentityDigest: null, verifiedAt: null
+  }))
+}
 
 export const PREVIEW_CRM_SEARCH_RESOURCES: CrmSearchEnvironmentResources = Object.freeze({
   version: CRM_SEARCH_ENVIRONMENT_RESOURCE_MANIFEST_VERSION,
@@ -35,7 +45,8 @@ export const PREVIEW_CRM_SEARCH_RESOURCES: CrmSearchEnvironmentResources = Objec
       name: 'agency-crm-search-index-preview-dlq',
       retentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS
     }
-  }
+  },
+  externalIntegrations: disabledExternalIntegrations()
 } satisfies CrmSearchEnvironmentResources)
 
 export const PRODUCTION_CRM_SEARCH_RESOURCES: CrmSearchEnvironmentResources = Object.freeze({
@@ -61,7 +72,8 @@ export const PRODUCTION_CRM_SEARCH_RESOURCES: CrmSearchEnvironmentResources = Ob
       name: 'agency-crm-search-index-dlq',
       retentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS
     }
-  }
+  },
+  externalIntegrations: disabledExternalIntegrations()
 } satisfies CrmSearchEnvironmentResources)
 
 interface BindingRecord extends Record<string, unknown> {
@@ -131,7 +143,8 @@ function record(category: string, binding: unknown, target: unknown): Normalized
 function normalizeEnvironment(
   config: PagesWranglerConfig,
   environment: 'production' | 'preview',
-  secrets: SecretBinding[]
+  secrets: SecretBinding[],
+  integrations: CrmSearchExternalIntegrationTarget[]
 ) {
   const environmentConfig = config.env?.[environment]
   if (!environmentConfig || typeof environmentConfig !== 'object') {
@@ -146,6 +159,24 @@ function normalizeEnvironment(
   if (inheritedCategories.length > 0) throw new Error('crm_search_pages_environment_inherited')
   if (!Array.isArray(secrets) || secrets.length === 0) {
     throw new Error('crm_search_pages_secret_inventory_missing')
+  }
+  const integrationNames = integrations?.map(value => value?.name)
+  if (!Array.isArray(integrations)
+    || integrationNames.join('\0') !== CRM_SEARCH_EXTERNAL_MUTABLE_INTEGRATIONS.join('\0')) {
+    throw new Error('crm_search_pages_integration_inventory_invalid')
+  }
+  for (const integration of integrations) {
+    const exactKeys = Object.keys(integration).sort().join('\0')
+      === ['name', 'state', 'targetIdentityDigest', 'verifiedAt'].sort().join('\0')
+    const enabled = integration.state === 'enabled'
+      && DIGEST.test(integration.targetIdentityDigest ?? '')
+      && ISO_TIMESTAMP.test(integration.verifiedAt ?? '')
+      && Number.isFinite(Date.parse(integration.verifiedAt ?? ''))
+    const disabled = integration.state === 'disabled'
+      && integration.targetIdentityDigest === null && integration.verifiedAt === null
+    if (!exactKeys || (!enabled && !disabled)) {
+      throw new Error('crm_search_pages_integration_inventory_invalid')
+    }
   }
 
   const bindings: NormalizedBinding[] = []
@@ -195,6 +226,7 @@ function normalizeEnvironment(
     environment,
     categories: [...NON_INHERITABLE_CATEGORIES, 'secrets'].sort(),
     bindings,
+    integrations: integrations.map(value => Object.freeze({ ...value })),
     inheritedCategories,
     unknownCategories
   })
@@ -202,7 +234,11 @@ function normalizeEnvironment(
 
 export function buildPagesEnvironmentInventory(
   config: PagesWranglerConfig,
-  secrets: { production: SecretBinding[], preview: SecretBinding[] }
+  secrets: { production: SecretBinding[], preview: SecretBinding[] },
+  integrations: {
+    production: CrmSearchExternalIntegrationTarget[]
+    preview: CrmSearchExternalIntegrationTarget[]
+  }
 ) {
   const environments = Object.keys(config.env ?? {}).sort()
   if (environments.join('\0') !== ['preview', 'production'].join('\0')) {
@@ -210,8 +246,10 @@ export function buildPagesEnvironmentInventory(
   }
   return Object.freeze({
     version: 'crm-search-pages-environment-inventory-v1',
-    production: normalizeEnvironment(config, 'production', secrets.production),
-    preview: normalizeEnvironment(config, 'preview', secrets.preview)
+    production: normalizeEnvironment(
+      config, 'production', secrets.production, integrations?.production
+    ),
+    preview: normalizeEnvironment(config, 'preview', secrets.preview, integrations?.preview)
   })
 }
 
@@ -230,6 +268,16 @@ export function assertPagesEnvironmentIsolation(inventory: ReturnType<typeof bui
     const category = key.split('\0', 1)[0]!
     if (STATEFUL_CATEGORIES.has(category) && preview.get(key) === target) {
       throw new Error('crm_search_pages_preview_resource_alias')
+    }
+  }
+  const productionIntegrations = new Map(inventory.production.integrations.map(value => [value.name, value]))
+  for (const integration of inventory.preview.integrations) {
+    const productionIntegration = productionIntegrations.get(integration.name)
+    if (!productionIntegration) throw new Error('crm_search_pages_integration_inventory_invalid')
+    if (integration.state === 'enabled'
+      && productionIntegration.state === 'enabled'
+      && integration.targetIdentityDigest === productionIntegration.targetIdentityDigest) {
+      throw new Error('crm_search_pages_preview_integration_alias')
     }
   }
   return { ok: true } as const
@@ -314,6 +362,12 @@ export function assertPreviewIsolation(input: {
     || preview.vectorize.crmSearch !== 'agency-crm-search-preview'
     || preview.queues.primary.name !== 'agency-crm-search-index-preview'
     || preview.queues.deadLetter.name !== 'agency-crm-search-index-preview-dlq'
+    || preview.externalIntegrations.length !== CRM_SEARCH_EXTERNAL_MUTABLE_INTEGRATIONS.length
+    || preview.externalIntegrations.some((value, index) =>
+      value.name !== CRM_SEARCH_EXTERNAL_MUTABLE_INTEGRATIONS[index]
+      || value.state !== 'disabled'
+      || value.targetIdentityDigest !== null
+      || value.verifiedAt !== null)
   ) throw new Error('crm_search_preview_manifest_invalid')
 
   if (

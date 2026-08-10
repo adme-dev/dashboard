@@ -2,6 +2,11 @@ import { createHash, sign } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
+import {
+  assertFreshDirectNeonApprovalReadback,
+  verifyReleaseApprovalEnvelope
+} from './bootstrap-resource-approval.mjs'
+
 const SHA = /^[a-f0-9]{40}$/u
 const DIGEST = /^[a-f0-9]{64}$/u
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u
@@ -50,22 +55,6 @@ function assertDirectEndpoint(endpoint, trustedSharedEndpointDenyset) {
   }
 }
 
-function requireMutationAuthorization(value, plan) {
-  const keys = [
-    'version', 'purpose', 'environment', 'approvalId', 'approvalRevision',
-    'approvalType', 'projectId', 'expiresAt'
-  ]
-  if (!value || Object.keys(value).sort().join('\0') !== keys.sort().join('\0')
-    || value.version !== 'crm-search-neon-mutation-authorization-v1'
-    || value.purpose !== 'crm-search-task18-neon-lifecycle'
-    || value.environment !== 'preview' || value.approvalType !== 'production_migration'
-    || value.projectId !== plan.projectId || !UUID.test(value.approvalId)
-    || !Number.isSafeInteger(value.approvalRevision) || value.approvalRevision < 1
-    || !Number.isFinite(Date.parse(value.expiresAt)) || Date.now() >= Date.parse(value.expiresAt)) {
-    throw new Error('crm_search_neon_mutation_authorization_invalid')
-  }
-}
-
 export function buildNeonLifecyclePlan(input) {
   if (!input.projectId || input.projectId !== input.expectedProjectId) {
     throw new Error('crm_search_neon_project_mismatch')
@@ -108,6 +97,7 @@ export function createNeonTargetAttestation(input) {
     sourceGitSha: input.sourceGitSha,
     migrationPaths: input.migrationPaths,
     migrationDigests: input.migrationDigests,
+    governanceApproval: input.governanceApproval,
     schemaOnly: true,
     createdAt: input.createdAt,
     expiresAt: input.expiresAt,
@@ -120,11 +110,24 @@ export function createNeonTargetAttestation(input) {
   const expiresAt = Date.parse(unsigned.expiresAt)
   const branch = neonApi?.branch
   const exactMigrationDigests = workspaceMigrationDigests()
+  const governanceApproval = unsigned.governanceApproval
+  const governanceDigestsValid = [governanceApproval?.artifactManifestDigest,
+    governanceApproval?.bindingManifestDigest,
+    governanceApproval?.evidenceBundleHash].every(value => DIGEST.test(value ?? ''))
   if (!SHA.test(unsigned.sourceGitSha)
     || canonical(unsigned.migrationPaths) !== canonical(REQUIRED_MIGRATION_PATHS)
     || Object.keys(unsigned.migrationDigests).sort().join('\0') !== [...REQUIRED_MIGRATION_PATHS].sort().join('\0')
     || Object.values(unsigned.migrationDigests).some(value => !DIGEST.test(value))
     || canonical(unsigned.migrationDigests) !== canonical(exactMigrationDigests)
+    || !governanceApproval
+    || Object.keys(governanceApproval).sort().join('\0') !== [
+      'id', 'revision', 'type', 'artifactManifestDigest', 'bindingManifestDigest',
+      'evidenceBundleHash'
+    ].sort().join('\0')
+    || governanceApproval.type !== 'production_migration'
+    || !UUID.test(governanceApproval.id)
+    || !Number.isSafeInteger(governanceApproval.revision) || governanceApproval.revision < 0
+    || !governanceDigestsValid
     || !Number.isFinite(createdAt) || !Number.isFinite(expiresAt)
     || expiresAt <= createdAt || expiresAt > createdAt + 24 * 60 * 60_000
     || !neonApi?.project?.id || !neonApi?.sourceBranch?.id || !branch?.id
@@ -217,17 +220,62 @@ export function createNeonLifecycleExecutor(options) {
 }
 
 export async function runNeonLifecycle({
-  dryRun, mutationAuthorization, plan, trustedSharedEndpointDenyset, signing, execute
+  dryRun, approvalEnvelope, approvalVerification, readCurrentApproval, currentTime,
+  plan, trustedSharedEndpointDenyset, signing, execute
 }) {
-  if (!plan || typeof execute !== 'function') throw new Error('crm_search_neon_runtime_invalid')
-  if (dryRun === true) return { dryRun: true, mutationCount: 0, plan }
-  requireMutationAuthorization(mutationAuthorization, plan)
+  if (!plan) throw new Error('crm_search_neon_runtime_invalid')
+  if (dryRun === true) {
+    return {
+      dryRun: true,
+      mutationCount: 0,
+      plan,
+      requiredProofs: [
+        'signed-production-migration-approval',
+        'fresh-direct-neon-readback-before-create',
+        'fresh-direct-neon-readback-before-migrate'
+      ]
+    }
+  }
+  if (!approvalEnvelope || !approvalVerification || typeof readCurrentApproval !== 'function'
+    || typeof currentTime !== 'function') {
+    throw new Error('crm_search_neon_migration_approval_required')
+  }
+  if (typeof execute !== 'function') throw new Error('crm_search_neon_runtime_invalid')
+  const approvalNowMs = currentTime()
+  const approval = await verifyReleaseApprovalEnvelope(approvalEnvelope, {
+    ...approvalVerification,
+    nowMs: approvalNowMs,
+    expectedType: 'production_migration'
+  })
+  if (approval.implementationGitSha !== plan.implementationSha) {
+    throw new Error('crm_search_neon_migration_approval_mismatch')
+  }
+  const governanceApproval = Object.freeze({
+    id: approval.approvalId,
+    revision: approval.approvalRevision,
+    type: approval.type,
+    artifactManifestDigest: approval.artifactManifestDigest,
+    bindingManifestDigest: approval.bindingManifestDigest,
+    evidenceBundleHash: approval.evidenceBundleHash
+  })
+  const readFreshApproval = async (phase) => {
+    const readback = await readCurrentApproval({
+      approvalId: approval.approvalId,
+      approvalRevision: approval.approvalRevision,
+      phase,
+      projectId: plan.projectId
+    })
+    assertFreshDirectNeonApprovalReadback(readback, approval, currentTime())
+  }
   let branchId = null
   let result
   let lifecycleError
   let cleanupError
   try {
-    const created = await execute({ action: 'create', projectId: plan.projectId, body: plan.create })
+    await readFreshApproval('before-create')
+    const created = await execute({
+      action: 'create', projectId: plan.projectId, body: plan.create, governanceApproval
+    })
     branchId = created?.branch?.id ?? created?.branchId
     if (!branchId?.startsWith('br-')) throw new Error('crm_search_neon_create_invalid')
     const operationIds = created.operations?.map(operation => operation.id) ?? created.operationIds
@@ -247,9 +295,11 @@ export async function runNeonLifecycle({
       endpoint, tables: plan.assertEmptyTables
     })
     if (empty?.emptySourceProof !== true) throw new Error('crm_search_neon_empty_source_proof_required')
+    await readFreshApproval('before-migrate')
     await execute({
       action: 'migrate', projectId: plan.projectId, branchId, endpoint,
-      migrationPaths: plan.migrationPaths, migrationDigests: plan.migrationDigests
+      migrationPaths: plan.migrationPaths, migrationDigests: plan.migrationDigests,
+      governanceApproval
     })
     const branch = created.branch
     const neonApi = {
@@ -275,6 +325,7 @@ export async function runNeonLifecycle({
       sourceGitSha: plan.implementationSha,
       migrationPaths: plan.migrationPaths,
       migrationDigests: plan.migrationDigests,
+      governanceApproval,
       createdAt: neonApi.branch.createdAt,
       expiresAt: neonApi.branch.expiresAt,
       neonApi,
