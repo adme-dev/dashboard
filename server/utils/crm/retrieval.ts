@@ -66,7 +66,7 @@ export const CRM_SEARCH_RETRIEVAL_DEADLINE = Object.freeze({
 } as const)
 
 type CrmSearchProviderName = 'workers_ai' | 'vectorize'
-type CrmRetrievalFallbackReason = 'disabled' | 'privacy' | 'budget' | 'timeout' | 'provider' | 'semantic_db'
+type CrmRetrievalFallbackReason = 'disabled' | 'privacy' | 'budget' | 'timeout' | 'provider' | 'semantic_db' | 'authorization'
 
 export interface CrmRetrievalResult {
   results: CrmSearchHit[]
@@ -147,6 +147,7 @@ export interface CrmRetrievalDependencies {
     query: string
   }) => Promise<CrmSearchPrecomputedQueryDigestContext | null>
   loadFreshPolicy: (context: CrmSearchContext) => Promise<CrmSearchPolicySnapshot>
+  revalidateAuthority: (context: CrmSearchContext) => Promise<boolean>
   deriveCanonicalNamespace: (context: CrmSearchContext) => Promise<string>
   reserveProviderUsage: (input: {
     organisationScopeId: string
@@ -260,6 +261,26 @@ export async function revalidateCrmSemanticContext(
   }
 }
 
+function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length
+    && [...new Set(left)].sort().join('\u0000') === [...new Set(right)].sort().join('\u0000')
+}
+
+function sameCrmSearchAuthority(original: CrmSearchContext, fresh: CrmSearchContext): boolean {
+  const sameAssistantScope = !original.assistantScope || !fresh.assistantScope
+    ? original.assistantScope === fresh.assistantScope
+    : original.assistantScope.sourceRevision === fresh.assistantScope.sourceRevision
+      && sameStringSet(original.assistantScope.clientIds, fresh.assistantScope.clientIds)
+  return original.organisationScopeId === fresh.organisationScopeId
+    && original.clientId === fresh.clientId
+    && original.actorType === fresh.actorType
+    && original.actorId === fresh.actorId
+    && original.surface === fresh.surface
+    && original.visibility.ownerScoped === fresh.visibility.ownerScoped
+    && sameStringSet(original.permissionSet, fresh.permissionSet)
+    && sameAssistantScope
+}
+
 function keywordResult(
   keyword: readonly CrmSearchHit[],
   request: NormalizedCrmSearchRequest,
@@ -278,6 +299,7 @@ function fallbackClass(reason: CrmRetrievalFallbackReason): CrmSafeTelemetryReco
   if (reason === 'budget') return 'budget_exhausted'
   if (reason === 'timeout') return 'deadline'
   if (reason === 'semantic_db') return 'join_back_failure'
+  if (reason === 'authorization') return 'authorization_changed'
   return 'provider_unavailable'
 }
 
@@ -356,6 +378,24 @@ function isBudgetFailure(error: unknown): boolean {
   return error instanceof Error && /budget_exhausted|budget/i.test(error.message)
 }
 
+class CrmSearchAuthorityChangedError extends Error {
+  constructor() {
+    super('crm_search_authority_changed')
+    this.name = 'CrmSearchAuthorityChangedError'
+  }
+}
+
+async function providerAuthorityIsCurrent(
+  dependencies: CrmRetrievalDependencies,
+  context: CrmSearchContext
+): Promise<boolean> {
+  try {
+    return await dependencies.revalidateAuthority(context)
+  } catch {
+    return false
+  }
+}
+
 async function reserveProvider(
   dependencies: CrmRetrievalDependencies,
   context: CrmSearchContext,
@@ -404,7 +444,8 @@ async function invokeReservedProvider<T>(input: {
   call: (() => Promise<T>) | null
 }): Promise<CrmProviderExecutionResult<T>> {
   if (!input.context) throw new TypeError('CRM search provider context is missing')
-  const correlationId = input.context.correlationId
+  const authorityContext = input.context
+  const correlationId = authorityContext.correlationId
   const {
     dependencies,
     reservation,
@@ -437,6 +478,14 @@ async function invokeReservedProvider<T>(input: {
   }
   const executeProviderWork = async (): Promise<T> => {
     try {
+      if (abandoned) {
+        await settle(false, 'released_no_call')
+        throw new Error('crm_search_semantic_deadline_elapsed')
+      }
+      if (!(await providerAuthorityIsCurrent(dependencies, authorityContext))) {
+        await settle(false, 'released_no_call')
+        throw new CrmSearchAuthorityChangedError()
+      }
       if (abandoned) {
         await settle(false, 'released_no_call')
         throw new Error('crm_search_semantic_deadline_elapsed')
@@ -575,6 +624,9 @@ async function executeSemanticBranch(input: {
   }
 
   let aiReservation: CrmProviderUsageReservation | { status: 'denied' }
+  if (!(await providerAuthorityIsCurrent(dependencies, context))) {
+    return { status: 'fallback', reason: 'authorization', provider: 'workers_ai' }
+  }
   try {
     aiReservation = await reserveProvider(dependencies, context, 'workers_ai')
   } catch {
@@ -616,7 +668,10 @@ async function executeSemanticBranch(input: {
       return { status: 'fallback', reason: 'timeout', provider: 'workers_ai' }
     }
     embedding = embeddingExecution.value
-  } catch {
+  } catch (error) {
+    if (error instanceof CrmSearchAuthorityChangedError) {
+      return { status: 'fallback', reason: 'authorization', provider: 'workers_ai' }
+    }
     return { status: 'fallback', reason: 'provider', provider: 'workers_ai' }
   }
 
@@ -634,6 +689,9 @@ async function executeSemanticBranch(input: {
   }
 
   let vectorReservation: CrmProviderUsageReservation | { status: 'denied' }
+  if (!(await providerAuthorityIsCurrent(dependencies, context))) {
+    return { status: 'fallback', reason: 'authorization', provider: 'vectorize' }
+  }
   try {
     vectorReservation = await reserveProvider(dependencies, context, 'vectorize')
   } catch {
@@ -684,7 +742,10 @@ async function executeSemanticBranch(input: {
       return { status: 'fallback', reason: 'timeout', provider: 'vectorize' }
     }
     candidates = vectorExecution.value
-  } catch {
+  } catch (error) {
+    if (error instanceof CrmSearchAuthorityChangedError) {
+      return { status: 'fallback', reason: 'authorization', provider: 'vectorize' }
+    }
     return { status: 'fallback', reason: 'provider', provider: 'vectorize' }
   }
 
@@ -995,6 +1056,10 @@ export function createCrmRetrievalDependencies(event: H3Event): CrmRetrievalDepe
       infrastructureReady: bindings !== null,
       now: new Date().toISOString()
     }),
+    async revalidateAuthority(context) {
+      const fresh = await revalidateContext(context)
+      return fresh !== null && sameCrmSearchAuthority(context, fresh)
+    },
     deriveCanonicalNamespace: context => deriveCrmSearchNamespace({
       organisationScopeId: context.organisationScopeId,
       clientId: context.clientId

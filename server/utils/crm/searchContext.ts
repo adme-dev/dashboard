@@ -3,7 +3,7 @@ import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import { PERMISSION_GROUPS, SYSTEM_ROLE_PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { verifyJwt } from '~~/server/utils/auth'
 
 export interface CrmSearchContext {
   organisationScopeId: string
@@ -52,7 +52,16 @@ export type AgencyAiContextResolution =
   | { status: 'resolved'; context: CrmSearchContext; clientName: string }
   | { status: 'not_found' | 'ambiguous' | 'scope_unavailable' }
 
-type FreshAgencyActor = { id: string; role: string; customRoleId: string | null }
+type FreshAgencySession = {
+  actorId: string
+  issuedAtMs: number
+}
+type FreshAgencyActor = {
+  id: string
+  role: string
+  customRoleId: string | null
+  sessionsInvalidatedAt: string | null
+}
 type FreshClient = { id: string; name: string; recordVisibility: 'team' | 'owner' }
 type FreshPortalSession = {
   id: string
@@ -67,7 +76,7 @@ type FreshPortalSession = {
 }
 
 export interface CrmSearchContextDependencies {
-  resolveAgencyActorId: (event: H3Event) => Promise<string>
+  resolveAgencySession: (event: H3Event) => Promise<FreshAgencySession | null>
   loadAgencyActor: (actorId: string) => Promise<FreshAgencyActor | null>
   loadPermissionSet: (actor: FreshAgencyActor) => Promise<string[]>
   loadClient: (clientId: string) => Promise<FreshClient | null>
@@ -85,6 +94,7 @@ export interface CrmSearchContextDependencies {
 const permissionGroupSet = new Set<string>(PERMISSION_GROUPS)
 const enabledEntitlementStatuses = new Set(['trial', 'active', 'grace'])
 const internalCrmModes = new Set(['lightweight_crm', 'full_crm'])
+const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu
 
 function notFound(): never {
   throw createError({ statusCode: 404, statusMessage: 'Client not found' })
@@ -92,6 +102,16 @@ function notFound(): never {
 
 function scopeUnavailable(): never {
   throw createError({ statusCode: 503, statusMessage: 'CRM search scope is unavailable' })
+}
+
+function staffUnauthorized(): never {
+  throw createError({ statusCode: 401, statusMessage: 'Unauthorized - Invalid staff session' })
+}
+
+function sessionIsCurrent(session: FreshAgencySession, actor: FreshAgencyActor): boolean {
+  if (!actor.sessionsInvalidatedAt) return true
+  const invalidatedAtMs = Date.parse(actor.sessionsInvalidatedAt)
+  return Number.isFinite(invalidatedAtMs) && session.issuedAtMs > invalidatedAtMs
 }
 
 function isManagement(permissionSet: readonly string[]) {
@@ -116,20 +136,45 @@ function createRequestCorrelationId(event: H3Event, deps: CrmSearchContextDepend
 }
 
 const defaultDependencies: CrmSearchContextDependencies = {
-  async resolveAgencyActorId(event) {
-    // requireAuth establishes an authenticated identity; its role/groups are
-    // deliberately discarded and refreshed below before authority is granted.
-    return (await requireAuth(event)).id
+  async resolveAgencySession(event) {
+    // Bypass cached middleware identity. Every staff search must prove the
+    // signed token presented on this request and bind its issuance instant to
+    // the fresh database revocation marker below.
+    const cookieToken = getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client')
+    const authorization = getHeader(event, 'authorization')
+    const bearerToken = authorization?.startsWith('Bearer ')
+      ? authorization.slice('Bearer '.length)
+      : null
+    const token = cookieToken || bearerToken
+    if (!token) return null
+    const payload = await verifyJwt(token)
+    if (!payload || typeof payload.userId !== 'string' || !uuidPattern.test(payload.userId)
+      || typeof payload.iat !== 'number' || !Number.isSafeInteger(payload.iat)
+      || payload.iat < 0 || !Number.isFinite(new Date(payload.iat).getTime())) return null
+    return { actorId: payload.userId, issuedAtMs: payload.iat }
   },
   async loadAgencyActor(actorId) {
-    const row = await queryOneFresh<{ id: string; role: string; custom_role_id: string | null }>(
-      `SELECT id::text AS id, user_role::text AS role, custom_role_id::text AS custom_role_id
+    const row = await queryOneFresh<{
+      id: string
+      role: string
+      custom_role_id: string | null
+      sessions_invalidated_at: string | null
+    }>(
+      `SELECT id::text AS id, user_role::text AS role, custom_role_id::text AS custom_role_id,
+              sessions_invalidated_at
          FROM team_members
         WHERE id = $1 AND is_active = TRUE
         LIMIT 1`,
       [actorId]
     )
-    return row ? { id: row.id, role: row.role, customRoleId: row.custom_role_id } : null
+    return row
+      ? {
+          id: row.id,
+          role: row.role,
+          customRoleId: row.custom_role_id,
+          sessionsInvalidatedAt: row.sessions_invalidated_at
+        }
+      : null
   },
   async loadPermissionSet(actor) {
     if (!actor.customRoleId) return [...(SYSTEM_ROLE_PERMISSIONS[actor.role] ?? [])]
@@ -252,14 +297,15 @@ const defaultDependencies: CrmSearchContextDependencies = {
 }
 
 async function resolveAgencyForActor(
-  actorId: string,
+  session: FreshAgencySession,
   input: { clientId: string; surface: 'agency_global' | 'agency_ai' },
   deps: CrmSearchContextDependencies,
   requestCorrelationId: string,
   assistantScope?: { clientIds: readonly string[]; sourceRevision: string }
 ): Promise<CrmSearchContext> {
-  const actor = await deps.loadAgencyActor(actorId)
+  const actor = await deps.loadAgencyActor(session.actorId)
   if (!actor) notFound()
+  if (!sessionIsCurrent(session, actor)) staffUnauthorized()
   const permissionSet = await deps.loadPermissionSet(actor)
   const client = await deps.loadClient(input.clientId)
   if (!client || !permissionSet.includes('CLIENTS')) notFound()
@@ -292,7 +338,9 @@ export async function resolveAgencyCrmSearchContext(
   deps: CrmSearchContextDependencies = defaultDependencies
 ): Promise<CrmSearchContext> {
   const requestCorrelationId = createRequestCorrelationId(event, deps)
-  return await resolveAgencyForActor(await deps.resolveAgencyActorId(event), input, deps, requestCorrelationId)
+  const session = await deps.resolveAgencySession(event)
+  if (!session) staffUnauthorized()
+  return await resolveAgencyForActor(session, input, deps, requestCorrelationId)
 }
 
 export async function resolvePortalCrmSearchContext(
@@ -349,8 +397,10 @@ export async function resolveAgencyAiCrmContext(
   deps: CrmSearchContextDependencies = defaultDependencies
 ): Promise<AgencyAiContextResolution> {
   const requestCorrelationId = createRequestCorrelationId(tool.event, deps)
-  const actor = await deps.loadAgencyActor(tool.userId)
-  if (!actor) return { status: 'scope_unavailable' }
+  const session = await deps.resolveAgencySession(tool.event)
+  if (!session || session.actorId !== tool.userId) return { status: 'scope_unavailable' }
+  const actor = await deps.loadAgencyActor(session.actorId)
+  if (!actor || !sessionIsCurrent(session, actor)) return { status: 'scope_unavailable' }
   const permissionSet = await deps.loadPermissionSet(actor)
   if (!permissionSet.includes('CLIENTS')) return { status: 'scope_unavailable' }
   const assistantScope = await deps.loadAssistantAssignments(actor.id, permissionSet)
@@ -376,7 +426,7 @@ export async function resolveAgencyAiCrmContext(
   if (!selectedClient) return { status: 'not_found' }
   try {
     const context = await resolveAgencyForActor(
-      actor.id,
+      session,
       { clientId: selectedClient.id, surface: 'agency_ai' },
       deps,
       requestCorrelationId,
@@ -384,7 +434,7 @@ export async function resolveAgencyAiCrmContext(
     )
     return { status: 'resolved', context, clientName: selectedClient.name }
   } catch (error: any) {
-    if (error?.statusCode === 404) return { status: 'scope_unavailable' }
+    if (error?.statusCode === 401 || error?.statusCode === 404) return { status: 'scope_unavailable' }
     throw error
   }
 }

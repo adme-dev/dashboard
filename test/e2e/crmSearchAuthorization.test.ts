@@ -132,6 +132,7 @@ function createHarness(mode: 'off' | 'shadow' | 'assist'): Harness {
       queryLengthBucket: '17_32'
     }),
     loadFreshPolicy: vi.fn().mockResolvedValue(policy),
+    revalidateAuthority: vi.fn().mockResolvedValue(true),
     deriveCanonicalNamespace: vi.fn().mockResolvedValue(NAMESPACE),
     reserveProviderUsage: vi.fn().mockImplementation(async ({ provider }) => ({
       status: 'reserved',

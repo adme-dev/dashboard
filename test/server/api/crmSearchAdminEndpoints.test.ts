@@ -8,7 +8,8 @@ const readRoutes = [
   'policies/index.get.ts',
   'dead-letters/index.get.ts',
   'approvals/index.get.ts',
-  'telemetry.get.ts'
+  'telemetry.get.ts',
+  'evaluations/[id].get.ts'
 ] as const
 
 const mutationRoutes = [
@@ -19,7 +20,8 @@ const mutationRoutes = [
   'dead-letters/[id].post.ts',
   'approvals/index.post.ts',
   'approvals/import.post.ts',
-  'approvals/[id]/revoke.post.ts'
+  'approvals/[id]/revoke.post.ts',
+  'evaluations/index.post.ts'
 ] as const
 
 async function readRoute(path: string) {

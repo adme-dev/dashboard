@@ -41,6 +41,8 @@ describe('normalizeCrmSearchRequest', () => {
   it.each([
     ['full-width email', 'ｕｓｅｒ＠ｅｘａｍｐｌｅ．ｃｏｍ'],
     ['mixed-script email', 'uѕer@example.com'],
+    ['single-label email domain', 'alice@acme'],
+    ['localhost email domain', 'user@localhost'],
     ['full-width and mixed-script phone', '+６１ ٤١٢ ٣٤٥ ٦٧٨'],
     ['obfuscated UUID', '１２３e４５６７-e８９b-１２d３-a４５６-４２６６１４１７４０００'],
     ['high-entropy identifier', 'AKIAIOSFODNN7EXAMPLEabc123']
@@ -48,6 +50,14 @@ describe('normalizeCrmSearchRequest', () => {
     const result = normalizeCrmSearchRequest({ query })
     expect(result.query).toBeTruthy()
     expect(result.semanticEligible).toBe(false)
+  })
+
+  it.each([
+    ['standalone mention', 'review this with @alice tomorrow'],
+    ['ordinary at-sign prose', 'status @ risk for next quarter'],
+    ['separated local and domain words', 'contact alice @ acme']
+  ])('does not mistake %s for an address-like token', (_label, query) => {
+    expect(normalizeCrmSearchRequest({ query }).semanticEligible).toBe(true)
   })
 
   it.each([
@@ -106,10 +116,10 @@ describe('normalizeCrmSearchRequest', () => {
   })
 
   it('exposes a versioned classifier and tokenizer decision contract', () => {
-    expect(CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION).toBe('crm-search-privacy-v6')
+    expect(CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION).toBe('crm-search-privacy-v7')
     expect(CRM_SEARCH_TOKEN_ADMISSION_VERSION).toBe('bge-base-en-v1.5-conservative-utf8-v1')
     expect(classifyCrmSearchPrivacy('Acme account')).toEqual({
-      version: 'crm-search-privacy-v6',
+      version: 'crm-search-privacy-v7',
       semanticEligible: true,
       reason: 'eligible'
     })

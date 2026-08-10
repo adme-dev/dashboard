@@ -69,6 +69,7 @@ function makeDeps(overrides: Partial<CrmRetrievalDependencies> = {}): CrmRetriev
     runKeyword: vi.fn().mockResolvedValue(keyword),
     prepareTelemetry: vi.fn().mockResolvedValue(queryDigestContext),
     loadFreshPolicy: vi.fn().mockResolvedValue(policy),
+    revalidateAuthority: vi.fn().mockResolvedValue(true),
     deriveCanonicalNamespace: vi.fn().mockResolvedValue(NAMESPACE),
     reserveProviderUsage: vi.fn().mockImplementation(async ({ provider }) => ({
       status: 'reserved',
@@ -337,7 +338,7 @@ describe('authorized CRM retrieval coordinator', () => {
     )).not.toContain(request.query)
   })
 
-  it('fresh-reads the kill switch immediately before Workers AI and again immediately before Vectorize', async () => {
+  it('fresh-reads policy and session authority immediately around every provider admission and call', async () => {
     const order: string[] = []
     const loadFreshPolicy = vi.fn(async () => {
       order.push('policy')
@@ -349,6 +350,10 @@ describe('authorized CRM retrieval coordinator', () => {
         return keyword
       }),
       loadFreshPolicy,
+      revalidateAuthority: vi.fn(async () => {
+        order.push('authority')
+        return true
+      }),
       reserveProviderUsage: vi.fn(async ({ provider }) => {
         order.push(`reserve-${provider}`)
         return {
@@ -380,18 +385,67 @@ describe('authorized CRM retrieval coordinator', () => {
     expect(order).toEqual([
       'keyword',
       'policy',
+      'authority',
       'reserve-workers_ai',
       'policy',
+      'authority',
       'sent-workers_ai',
       'workers-ai',
       'settle-workers_ai',
       'policy',
+      'authority',
       'reserve-vectorize',
+      'authority',
       'sent-vectorize',
       'vectorize',
       'settle-vectorize'
     ])
     expect(loadFreshPolicy).toHaveBeenCalledTimes(3)
+  })
+
+  it.each([
+    ['Workers AI admission', 1, 0, 0, 0],
+    ['Workers AI call', 2, 0, 0, 1],
+    ['Vectorize admission', 3, 1, 0, 1],
+    ['Vectorize call', 4, 1, 0, 2]
+  ])('blocks invalidated session authority immediately before %s', async (
+    _label,
+    rejectOnCheck,
+    expectedEmbeddingCalls,
+    expectedVectorCalls,
+    expectedReservations
+  ) => {
+    let checks = 0
+    const revalidateAuthority = vi.fn(async () => {
+      checks += 1
+      return checks !== rejectOnCheck
+    })
+    const deps = makeDeps({ revalidateAuthority })
+
+    await expect(retrieveCrm(context, request, deps)).resolves.toEqual({
+      results: keyword,
+      mode: 'keyword',
+      fallbackReason: 'authorization'
+    })
+    expect(revalidateAuthority).toHaveBeenCalledTimes(rejectOnCheck)
+    expect(deps.embedQuery).toHaveBeenCalledTimes(expectedEmbeddingCalls)
+    expect(deps.queryVectorize).toHaveBeenCalledTimes(expectedVectorCalls)
+    expect(deps.reserveProviderUsage).toHaveBeenCalledTimes(expectedReservations)
+    expect(deps.markProviderCallSent).toHaveBeenCalledTimes(expectedEmbeddingCalls + expectedVectorCalls)
+    if (rejectOnCheck === 2) {
+      expect(deps.settleProviderUsage).toHaveBeenCalledWith({
+        reservationId: AI_RESERVATION_ID,
+        providerCallSent: false,
+        completion: 'released_no_call'
+      })
+    }
+    if (rejectOnCheck === 4) {
+      expect(deps.settleProviderUsage).toHaveBeenCalledWith({
+        reservationId: VECTOR_RESERVATION_ID,
+        providerCallSent: false,
+        completion: 'released_no_call'
+      })
+    }
   })
 
   it.each([

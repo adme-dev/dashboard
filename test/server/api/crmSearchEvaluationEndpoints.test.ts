@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const ACTOR_ID = '10000000-0000-4000-8000-000000000001'
-const OTHER_ACTOR_ID = '10000000-0000-4000-8000-000000000002'
 const RUN_ID = '10000000-0000-4000-8000-000000000003'
 const ARTIFACT_ID = '10000000-0000-4000-8000-000000000004'
 const ORGANISATION_SCOPE_ID = '10000000-0000-4000-8000-000000000005'
@@ -38,25 +37,26 @@ function validBody() {
 }
 
 describe('CRM search evaluation admin endpoints', () => {
-  const requireRole = vi.fn()
-  const requireWriteAccess = vi.fn()
+  const requireFreshAdmin = vi.fn()
   const readBody = vi.fn()
   const getRouterParam = vi.fn()
   const setResponseHeader = vi.fn()
   const setResponseStatus = vi.fn()
   const startEvaluation = vi.fn()
   const getEvaluation = vi.fn()
-  const resolveOrganisationScopeId = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
-    requireRole.mockResolvedValue({ id: ACTOR_ID, role: 'admin' })
-    requireWriteAccess.mockResolvedValue({ id: ACTOR_ID, role: 'admin' })
+    requireFreshAdmin.mockResolvedValue({
+      actorId: ACTOR_ID,
+      orgId: ORGANISATION_SCOPE_ID,
+      permissions: ['ADMIN'],
+      authorityRevision: 'fresh-admin-1'
+    })
     readBody.mockResolvedValue(validBody())
     getRouterParam.mockReturnValue(RUN_ID)
     startEvaluation.mockResolvedValue({ id: RUN_ID, gatePassed: false })
     getEvaluation.mockResolvedValue({ id: RUN_ID, gatePassed: false, metricBundle: {} })
-    resolveOrganisationScopeId.mockReturnValue(ORGANISATION_SCOPE_ID)
   })
 
   const event = () => ({ context: {} } as never)
@@ -65,9 +65,9 @@ describe('CRM search evaluation admin endpoints', () => {
     ['unauthenticated', 401],
     ['non-admin', 403]
   ])('rejects %s before evaluation material is read', async (_label, statusCode) => {
-    requireRole.mockRejectedValue(Object.assign(new Error('denied'), { statusCode }))
+    requireFreshAdmin.mockRejectedValue(Object.assign(new Error('denied'), { statusCode }))
     const handler = createCrmSearchEvaluationPostHandler({
-      requireRole, requireWriteAccess, readBody, setResponseHeader, setResponseStatus, startEvaluation
+      requireFreshAdmin, readBody, setResponseHeader, setResponseStatus, startEvaluation
     })
 
     await expect(handler(event())).rejects.toMatchObject({ statusCode })
@@ -75,18 +75,14 @@ describe('CRM search evaluation admin endpoints', () => {
     expect(startEvaluation).not.toHaveBeenCalled()
   })
 
-  it('requires a stable write-session identity and derives the runner from the server session', async () => {
-    requireWriteAccess.mockResolvedValue({ id: OTHER_ACTOR_ID, role: 'admin' })
+  it('derives the runner only from the fresh signed ADMIN session', async () => {
     const handler = createCrmSearchEvaluationPostHandler({
-      requireRole, requireWriteAccess, readBody, setResponseHeader, setResponseStatus, startEvaluation
+      requireFreshAdmin, readBody, setResponseHeader, setResponseStatus, startEvaluation
     })
 
-    await expect(handler(event())).rejects.toMatchObject({ statusCode: 403 })
-    expect(startEvaluation).not.toHaveBeenCalled()
-
-    requireWriteAccess.mockResolvedValue({ id: ACTOR_ID, role: 'admin' })
     await expect(handler(event())).resolves.toMatchObject({ id: RUN_ID })
     expect(startEvaluation).toHaveBeenCalledWith(validBody(), ACTOR_ID, expect.anything())
+    expect(requireFreshAdmin).toHaveBeenCalledOnce()
   })
 
   it.each(['gatePassed', 'metrics', 'queryEvidence', 'rawQuery', 'policyMode', 'approvedEvaluationRunId'])(
@@ -94,7 +90,7 @@ describe('CRM search evaluation admin endpoints', () => {
     async (field) => {
       readBody.mockResolvedValue({ ...validBody(), [field]: field === 'gatePassed' ? true : {} })
       const handler = createCrmSearchEvaluationPostHandler({
-        requireRole, requireWriteAccess, readBody, setResponseHeader, setResponseStatus, startEvaluation
+        requireFreshAdmin, readBody, setResponseHeader, setResponseStatus, startEvaluation
       })
 
       await expect(handler(event())).rejects.toMatchObject({ statusCode: 422 })
@@ -106,13 +102,12 @@ describe('CRM search evaluation admin endpoints', () => {
     const transitionPolicy = vi.fn()
     const currentEvent = event()
     const handler = createCrmSearchEvaluationGetHandler({
-      requireRole, getRouterParam, setResponseHeader, resolveOrganisationScopeId,
+      requireFreshAdmin, getRouterParam, setResponseHeader,
       getEvaluation, transitionPolicy
     } as never)
 
     await expect(handler(currentEvent)).resolves.toMatchObject({ id: RUN_ID, gatePassed: false })
-    expect(requireRole).toHaveBeenCalledWith(currentEvent, ['ADMIN'])
-    expect(resolveOrganisationScopeId).toHaveBeenCalledWith(currentEvent)
+    expect(requireFreshAdmin).toHaveBeenCalledWith(currentEvent)
     expect(getEvaluation).toHaveBeenCalledWith(RUN_ID, ORGANISATION_SCOPE_ID)
     expect(setResponseHeader).toHaveBeenCalledWith(currentEvent, 'Cache-Control', 'private, no-store')
     expect(transitionPolicy).not.toHaveBeenCalled()
@@ -121,12 +116,23 @@ describe('CRM search evaluation admin endpoints', () => {
   it('sanitizes repository failures without leaking labels, SQL, or raw queries', async () => {
     getEvaluation.mockRejectedValue(new Error('SELECT secret_label FROM holdout WHERE raw_query = acquisition'))
     const handler = createCrmSearchEvaluationGetHandler({
-      requireRole, getRouterParam, setResponseHeader, resolveOrganisationScopeId, getEvaluation
+      requireFreshAdmin, getRouterParam, setResponseHeader, getEvaluation
     })
 
     const failure = await handler(event()).catch((error: unknown) => error)
     expect(failure).toMatchObject({ statusCode: 500, data: { code: 'crm_search_evaluation_read_failed' } })
     expect(JSON.stringify(failure)).not.toMatch(/secret_label|SELECT|raw_query|acquisition/i)
+  })
+
+  it('rejects a stale ADMIN session before reading a route id or evaluation storage', async () => {
+    requireFreshAdmin.mockRejectedValue(Object.assign(new Error('invalidated'), { statusCode: 401 }))
+    const handler = createCrmSearchEvaluationGetHandler({
+      requireFreshAdmin, getRouterParam, setResponseHeader, getEvaluation
+    })
+
+    await expect(handler(event())).rejects.toMatchObject({ statusCode: 401 })
+    expect(getRouterParam).not.toHaveBeenCalled()
+    expect(getEvaluation).not.toHaveBeenCalled()
   })
 })
 

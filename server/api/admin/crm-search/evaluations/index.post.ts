@@ -7,8 +7,8 @@ import {
   type H3Event
 } from 'h3'
 import { z } from 'zod'
-import { requirePermission, requireWriteAccess, type User } from '~~/server/utils/auth'
 import { startCrmSearchEvaluation } from '~~/server/utils/crm/search/evaluation/runner'
+import { requireFreshCrmSearchAdmin } from '~~/server/utils/crm/search/operations/audit'
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/u)
 const revision = z.string().trim().min(1).max(240)
@@ -35,8 +35,7 @@ const BodySchema = z.strictObject({
 type EvaluationPostBody = z.infer<typeof BodySchema>
 
 export interface CrmSearchEvaluationPostDependencies {
-  requireRole(event: H3Event, roles: readonly ['ADMIN']): Promise<User>
-  requireWriteAccess(event: H3Event): Promise<User>
+  requireFreshAdmin(event: H3Event): ReturnType<typeof requireFreshCrmSearchAdmin>
   readBody(event: H3Event): Promise<unknown>
   setResponseHeader(event: H3Event, name: string, value: string): void
   setResponseStatus(event: H3Event, statusCode: number): void
@@ -44,8 +43,7 @@ export interface CrmSearchEvaluationPostDependencies {
 }
 
 const defaults: CrmSearchEvaluationPostDependencies = {
-  requireRole: event => requirePermission(event, 'ADMIN'),
-  requireWriteAccess,
+  requireFreshAdmin: event => requireFreshCrmSearchAdmin(event),
   readBody,
   setResponseHeader,
   setResponseStatus,
@@ -71,11 +69,7 @@ export function createCrmSearchEvaluationPostHandler(
 ) {
   const dependencies = { ...defaults, ...overrides }
   return async (event: H3Event) => {
-    const actor = await dependencies.requireRole(event, ['ADMIN'])
-    const writable = await dependencies.requireWriteAccess(event)
-    if (actor.id !== writable.id) {
-      throw createError({ statusCode: 403, statusMessage: 'Forbidden - Session identity changed' })
-    }
+    const authority = await dependencies.requireFreshAdmin(event)
     const parsed = BodySchema.safeParse(await dependencies.readBody(event))
     if (!parsed.success) {
       throw createError({
@@ -86,7 +80,7 @@ export function createCrmSearchEvaluationPostHandler(
     }
     dependencies.setResponseHeader(event, 'Cache-Control', 'private, no-store')
     try {
-      const result = await dependencies.startEvaluation(parsed.data, actor.id, event)
+      const result = await dependencies.startEvaluation(parsed.data, authority.actorId, event)
       dependencies.setResponseStatus(event, 201)
       return result
     } catch (error) {

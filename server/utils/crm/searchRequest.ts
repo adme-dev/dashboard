@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION = 'crm-search-privacy-v6' as const
+export const CRM_SEARCH_PRIVACY_CLASSIFIER_VERSION = 'crm-search-privacy-v7' as const
 export const CRM_SEARCH_TOKEN_ADMISSION_VERSION = 'bge-base-en-v1.5-conservative-utf8-v1' as const
 export const CRM_SEARCH_CLIENT_SELECTOR_NORMALIZER_VERSION = 'crm-search-client-selector-v1' as const
 export const CRM_SEARCH_MAX_CODE_POINTS = 256
@@ -105,6 +105,20 @@ function looksLikePhone(value: string): boolean {
   return candidates.some(candidate => digitCount(candidate) >= 7)
 }
 
+const addressAtomPattern = String.raw`[\p{Letter}\p{Number}!#$%&'*+/=?^_\u0060{|}~-]`
+const addressDomainLabelPattern = String.raw`[\p{Letter}\p{Number}](?:[\p{Letter}\p{Number}-]{0,61}[\p{Letter}\p{Number}])?`
+const addressBoundaryPattern = String.raw`[^\p{Letter}\p{Number}!#$%&'*+/=?^_\u0060{|}~.-]`
+// Require a complete local@domain token. A single DNS label is sufficient for
+// privacy rejection, while whitespace-separated mentions remain eligible.
+const addressTokenPattern = new RegExp(
+  `(?:^|${addressBoundaryPattern})${addressAtomPattern}+(?:\\.${addressAtomPattern}+)*@${addressDomainLabelPattern}(?:\\.${addressDomainLabelPattern})*(?=$|${addressBoundaryPattern})`,
+  'u'
+)
+
+function looksLikeAddressToken(value: string): boolean {
+  return addressTokenPattern.test(value)
+}
+
 function shannonEntropy(value: string): number {
   const characters = [...value]
   const counts = new Map<string, number>()
@@ -154,7 +168,7 @@ export function classifyCrmSearchPrivacy(value: string): CrmSearchPrivacyClassif
     reason
   })
 
-  if (/[^\s@]+@[^\s@]+(?:\.[^\s@.]+)+/u.test(normalized)) return decision('email')
+  if (looksLikeAddressToken(normalized)) return decision('email')
   if (looksLikePhone(normalized)) return decision('phone')
   if (/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/iu.test(normalized)
     || /[\p{Letter}\p{Number}]{8}-[\p{Letter}\p{Number}]{4}-[\p{Letter}\p{Number}]{4}-[\p{Letter}\p{Number}]{4}-[\p{Letter}\p{Number}]{12}/u.test(normalized)) {
