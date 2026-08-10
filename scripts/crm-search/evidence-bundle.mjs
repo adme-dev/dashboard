@@ -77,12 +77,32 @@ function requireEvidence(evidence) {
     || !KEY_VERSION.test(evidence.sealedHoldout.keyVersion)
     || evidence.sealedHoldout.envelopeVersion !== 'crm-search-sealed-holdout-v1'
     || typeof evidence.sealedHoldout.productionReady !== 'boolean'
-    || !exactKeys(evidence.cleanup, ['manifestDigest', 'confirmedAt', 'remainingMutableTargets'])
-    || !DIGEST.test(evidence.cleanup.manifestDigest)
+    || !exactKeys(evidence.cleanup, [
+      'journalVersion', 'journal', 'journalDigest', 'confirmedAt', 'remainingMutableTargets'
+    ])
+    || evidence.cleanup.journalVersion !== 'crm-search-cleanup-journal-v1'
+    || !Array.isArray(evidence.cleanup.journal) || evidence.cleanup.journal.length > 64
+    || !DIGEST.test(evidence.cleanup.journalDigest)
     || !requireTimestamp(evidence.cleanup.confirmedAt)
     || !Number.isSafeInteger(evidence.cleanup.remainingMutableTargets)
     || evidence.cleanup.remainingMutableTargets < 0) {
     throw new Error('crm_search_evidence_schema_invalid')
+  }
+  for (const entry of evidence.cleanup.journal) {
+    if (!exactKeys(entry, [
+      'resourceType', 'resourceIdentityDigest', 'baselineDigest',
+      'finalReadbackDigest', 'status', 'confirmedAt'
+    ]) || !/^[a-z][a-z0-9_-]{1,63}$/u.test(entry.resourceType ?? '')
+    || ![entry.resourceIdentityDigest, entry.baselineDigest, entry.finalReadbackDigest]
+      .every(value => DIGEST.test(value ?? ''))
+      || !['baseline_confirmed', 'baseline_restored'].includes(entry.status)
+      || !requireTimestamp(entry.confirmedAt)) {
+      throw new Error('crm_search_evidence_schema_invalid')
+    }
+  }
+  if (createHash('sha256').update(canonical(evidence.cleanup.journal), 'utf8').digest('hex')
+    !== evidence.cleanup.journalDigest) {
+    throw new Error('crm_search_cleanup_journal_digest_mismatch')
   }
   return evidence
 }

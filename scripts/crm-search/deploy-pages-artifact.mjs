@@ -35,28 +35,51 @@ export async function runFrozenPagesRelease(input) {
     })
   }
   if (typeof input.execute !== 'function') throw new Error('crm_search_release_executor_required')
-  if (input.mode === 'production') {
-    if (typeof input.readCurrentApproval !== 'function') {
-      throw new Error('crm_search_release_approval_readback_required')
-    }
-    const readback = await input.readCurrentApproval({
-      approvalId: approval.approvalId,
-      approvalRevision: approval.approvalRevision
-    })
-    assertFreshProductionApprovalReadback(readback, approval, input.currentTime?.() ?? Date.now())
+  if (typeof input.readCurrentApproval !== 'function'
+    || typeof input.recordDeploymentPhase !== 'function') {
+    throw new Error('crm_search_release_approval_readback_required')
   }
   const artifactDirectory = path.join(
     input.artifactVerification.artifactRoot,
     manifest.pages.directory
   )
   const artifactRoot = input.artifactVerification.artifactRoot
-  return await input.execute({
-    command: 'wrangler',
-    args: [
-      'pages', 'deploy', artifactDirectory, '--project-name', 'agency-dashboard',
-      '--branch', input.mode === 'production' ? 'main' : 'preview',
-      '--config', path.join(artifactRoot, 'config', 'pages.toml'), '--cwd', artifactRoot
-    ],
-    artifactDigest: verified.artifactManifestDigest
+  const phase = 'pages'
+  const readback = await input.readCurrentApproval({
+    approvalId: approval.approvalId,
+    approvalRevision: approval.approvalRevision,
+    phase: 'before-pages-deploy'
   })
+  assertFreshProductionApprovalReadback(readback, approval, input.currentTime?.() ?? Date.now())
+  await input.recordDeploymentPhase({
+    approvalId: approval.approvalId, approvalRevision: approval.approvalRevision,
+    phase, status: 'started', artifactManifestDigest: verified.artifactManifestDigest
+  })
+  try {
+    const deployed = await input.execute({
+      command: 'wrangler',
+      args: [
+        'pages', 'deploy', artifactDirectory, '--project-name', 'agency-dashboard',
+        '--branch', input.mode === 'production' ? 'main' : 'preview',
+        '--config', path.join(artifactRoot, 'config', 'pages.toml'), '--cwd', artifactRoot
+      ],
+      artifactDigest: verified.artifactManifestDigest
+    })
+    if (!/^[A-Za-z0-9._:-]{1,128}$/u.test(deployed?.deploymentId ?? '')) {
+      throw new Error('crm_search_pages_deployment_readback_required')
+    }
+    await input.recordDeploymentPhase({
+      approvalId: approval.approvalId, approvalRevision: approval.approvalRevision,
+      phase, status: 'succeeded', artifactManifestDigest: verified.artifactManifestDigest,
+      deploymentId: deployed.deploymentId
+    })
+    return deployed
+  } catch (error) {
+    await input.recordDeploymentPhase({
+      approvalId: approval.approvalId, approvalRevision: approval.approvalRevision,
+      phase, status: 'failed', artifactManifestDigest: verified.artifactManifestDigest,
+      failureCode: 'external_spawn_failed'
+    })
+    throw error
+  }
 }

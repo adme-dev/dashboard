@@ -133,7 +133,7 @@ describe('CRM search guarded Neon lifecycle', () => {
   it('models one outer finally and always requests exact branch cleanup after failure', async () => {
     const approval = migrationApprovalFixture()
     const calls: string[] = []
-    const execute = vi.fn(async (step: { action: string }) => {
+    const execute = vi.fn(async (step: { action: string, phase?: string }) => {
       calls.push(step.action)
       if (step.action === 'assert-empty') throw new Error('not_empty')
       if (step.action === 'create') return {
@@ -148,6 +148,16 @@ describe('CRM search guarded Neon lifecycle', () => {
         }],
         operations: [{ id: 'op-create' }]
       }
+      if (step.action === 'read-branch') return step.phase === 'post-delete'
+        ? { branch: null, readAt: '2026-08-11T00:02:00.000Z' }
+        : {
+            branch: {
+              id: 'br-created', project_id: 'project-preview-1', parent_id: 'br-preview-parent',
+              name: `crm-search-e2e-${'a'.repeat(12)}`, init_source: 'schema-only',
+              created_at: '2026-08-11T00:00:00.000Z', expires_at: '2026-08-11T06:00:00.000Z'
+            },
+            readAt: '2026-08-11T00:00:30.000Z'
+          }
       if (step.action === 'delete') return { operations: [{ id: 'op-delete' }] }
       return { ok: true }
     })
@@ -167,7 +177,9 @@ describe('CRM search guarded Neon lifecycle', () => {
       trustedSharedEndpointDenyset: ['ep-production-shared-a1b2c3d4'],
       execute
     })).rejects.toThrow('not_empty')
-    expect(calls).toEqual(['create', 'poll', 'assert-empty', 'delete', 'poll'])
+    expect(calls).toEqual([
+      'create', 'poll', 'read-branch', 'assert-empty', 'delete', 'poll', 'read-branch'
+    ])
   })
 
   it('creates a Task5-compatible signed direct-endpoint attestation after exact migrations and always deletes the branch', async () => {
@@ -179,7 +191,7 @@ describe('CRM search guarded Neon lifecycle', () => {
       parentBranchId: 'br-source-isolated', implementationSha: 'a'.repeat(40),
       nowMs: Date.parse('2026-08-11T00:00:00.000Z')
     })
-    const execute = vi.fn(async (step: { action: string }) => {
+    const execute = vi.fn(async (step: { action: string, phase?: string }) => {
       calls.push(step.action)
       if (step.action === 'create') return {
         branch: {
@@ -193,7 +205,22 @@ describe('CRM search guarded Neon lifecycle', () => {
         }],
         operations: [{ id: 'op-create' }]
       }
-      if (step.action === 'assert-empty') return { emptySourceProof: true }
+      if (step.action === 'read-branch') return step.phase === 'post-delete'
+        ? { branch: null, readAt: '2026-08-11T00:02:00.000Z' }
+        : {
+            branch: {
+              id: 'br-crm-search-e2e', project_id: plan.projectId,
+              parent_id: 'br-source-isolated', name: `crm-search-e2e-${'a'.repeat(12)}`,
+              init_source: 'schema-only', created_at: '2026-08-11T00:00:00.000Z',
+              expires_at: '2026-08-11T06:00:00.000Z'
+            },
+            readAt: '2026-08-11T00:00:30.000Z'
+          }
+      if (step.action === 'assert-empty') return {
+        organisationScopeId: approval.payload.organisationScopeId,
+        checkedAt: '2026-08-11T00:00:40.000Z',
+        tables: { crm_people: 0, crm_companies: 0, crm_opportunities: 0 }
+      }
       if (step.action === 'delete') return { operations: [{ id: 'op-delete' }] }
       return { ok: true }
     })
@@ -220,11 +247,19 @@ describe('CRM search guarded Neon lifecycle', () => {
         bindingManifestDigest: approval.payload.bindingManifestDigest,
         evidenceBundleHash: approval.payload.evidenceBundleHash
       },
+      sourceTableProof: {
+        organisationScopeId: approval.payload.organisationScopeId,
+        checkedAt: '2026-08-11T00:00:40.000Z',
+        tables: { crm_people: 0, crm_companies: 0, crm_opportunities: 0 }
+      },
       apiResponseSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
       attestationSha256: expect.stringMatching(/^[a-f0-9]{64}$/)
     })
     expect(Object.keys(result.attestation.migrationDigests)).toEqual(result.attestation.migrationPaths)
-    expect(calls).toEqual(['create', 'poll', 'assert-empty', 'migrate', 'delete', 'poll'])
+    expect(calls).toEqual([
+      'create', 'poll', 'read-branch', 'assert-empty', 'migrate',
+      'delete', 'poll', 'read-branch'
+    ])
     expect(execute.mock.calls.find(([step]) => step.action === 'create')?.[0]).toMatchObject({
       governanceApproval: expect.objectContaining({ id: approval.payload.approvalId })
     })
@@ -249,9 +284,10 @@ describe('CRM search guarded Neon lifecycle', () => {
     })).toThrow('crm_search_neon_attestation_invalid')
   })
 
-  it('performs a fresh direct-Neon revocation readback immediately before create and migrate', async () => {
+  it('rejects a data-bearing provider readback even when the caller requested schema-only', async () => {
     const approval = migrationApprovalFixture()
-    const execute = vi.fn(async (step: { action: string }) => {
+    const { privateKey } = generateKeyPairSync('ed25519')
+    const execute = vi.fn(async (step: { action: string, phase?: string }) => {
       if (step.action === 'create') return {
         branch: {
           id: 'br-created', project_id: 'project-preview-1', parent_id: 'br-preview-parent',
@@ -264,7 +300,74 @@ describe('CRM search guarded Neon lifecycle', () => {
         }],
         operations: [{ id: 'op-create' }]
       }
-      if (step.action === 'assert-empty') return { emptySourceProof: true }
+      if (step.action === 'read-branch') return step.phase === 'post-delete'
+        ? { branch: null, readAt: '2026-08-11T00:02:00.000Z' }
+        : {
+            branch: {
+              id: 'br-created', project_id: 'project-preview-1', parent_id: 'br-preview-parent',
+              name: `crm-search-e2e-${sha.slice(0, 12)}`, init_source: 'parent-data',
+              created_at: '2026-08-11T00:00:00.000Z', expires_at: '2026-08-11T06:00:00.000Z'
+            },
+            readAt: '2026-08-11T00:00:30.000Z'
+          }
+      if (step.action === 'assert-empty') return {
+        organisationScopeId: approval.payload.organisationScopeId,
+        checkedAt: '2026-08-11T00:00:40.000Z',
+        tables: { crm_people: 0, crm_companies: 0, crm_opportunities: 0 }
+      }
+      if (step.action === 'delete') return { operations: [{ id: 'op-delete' }] }
+      return { ok: true }
+    })
+
+    await expect(runNeonLifecycle({
+      dryRun: false,
+      approvalEnvelope: approval.envelope,
+      approvalVerification: approval.verification,
+      readCurrentApproval: vi.fn().mockResolvedValue(activeReadback(approval.payload)),
+      currentTime: () => Date.parse('2026-08-11T00:01:00.000Z'),
+      plan: buildNeonLifecyclePlan({
+        projectId: 'project-preview-1', expectedProjectId: 'project-preview-1',
+        parentBranchId: 'br-preview-parent', implementationSha: sha,
+        nowMs: Date.parse('2026-08-11T00:00:00.000Z')
+      }),
+      trustedSharedEndpointDenyset: ['ep-production-shared-a1b2c3d4'],
+      signing: { signerKeyId: 'crm-search-task18-test-key', privateKey },
+      execute
+    })).rejects.toThrow('crm_search_neon_schema_only_readback_required')
+    expect(execute.mock.calls.map(([step]) => step.action)).toEqual([
+      'create', 'poll', 'read-branch', 'delete', 'poll', 'read-branch'
+    ])
+  })
+
+  it('performs a fresh direct-Neon revocation readback immediately before create and migrate', async () => {
+    const approval = migrationApprovalFixture()
+    const execute = vi.fn(async (step: { action: string, phase?: string }) => {
+      if (step.action === 'create') return {
+        branch: {
+          id: 'br-created', project_id: 'project-preview-1', parent_id: 'br-preview-parent',
+          name: `crm-search-e2e-${sha.slice(0, 12)}`,
+          created_at: '2026-08-11T00:00:00.000Z', expires_at: '2026-08-11T06:00:00.000Z'
+        },
+        endpoints: [{
+          id: 'ep-crm-search-e2e-test', branch_id: 'br-created',
+          host: 'ep-crm-search-e2e-test.ap-southeast-2.aws.neon.tech'
+        }],
+        operations: [{ id: 'op-create' }]
+      }
+      if (step.action === 'read-branch') return step.phase === 'post-delete'
+        ? { branch: null, readAt: '2026-08-11T00:02:00.000Z' }
+        : {
+            branch: {
+              id: 'br-created', project_id: 'project-preview-1', parent_id: 'br-preview-parent',
+              name: `crm-search-e2e-${sha.slice(0, 12)}`, init_source: 'schema-only',
+              created_at: '2026-08-11T00:00:00.000Z', expires_at: '2026-08-11T06:00:00.000Z'
+            }, readAt: '2026-08-11T00:00:30.000Z'
+          }
+      if (step.action === 'assert-empty') return {
+        organisationScopeId: approval.payload.organisationScopeId,
+        checkedAt: '2026-08-11T00:00:40.000Z',
+        tables: { crm_people: 0, crm_companies: 0, crm_opportunities: 0 }
+      }
       if (step.action === 'delete') return { operations: [{ id: 'op-delete' }] }
       return { ok: true }
     })
@@ -292,7 +395,7 @@ describe('CRM search guarded Neon lifecycle', () => {
     expect(readCurrentApproval).toHaveBeenNthCalledWith(1, expect.objectContaining({ phase: 'before-create' }))
     expect(readCurrentApproval).toHaveBeenNthCalledWith(2, expect.objectContaining({ phase: 'before-migrate' }))
     expect(execute.mock.calls.map(([step]) => step.action)).toEqual([
-      'create', 'poll', 'assert-empty', 'delete', 'poll'
+      'create', 'poll', 'read-branch', 'assert-empty', 'delete', 'poll', 'read-branch'
     ])
   })
 })

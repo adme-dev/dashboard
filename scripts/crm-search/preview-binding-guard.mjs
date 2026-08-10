@@ -17,7 +17,7 @@ const EXACT_CATEGORIES = Object.freeze([
   'kv_namespaces', 'queues', 'r2_buckets', 'secrets', 'services', 'vars', 'vectorize'
 ])
 const EXACT_EXTERNAL_INTEGRATIONS = Object.freeze([
-  'database', 'provider_apis', 'meta', 'google', 'meta_audiences',
+  'database', 'provider_apis', 'ai_gateway', 'mcp', 'meta', 'google', 'meta_audiences',
   'google_audiences', 'xero', 'email_delivery', 'monday', 'slack',
   'outbound_webhooks', 'google_sheets', 'social_dashboard'
 ])
@@ -36,6 +36,33 @@ const ALLOWED_ENV_KEYS = new Set([
   ...NON_INHERITABLE,
   'name', 'pages_build_output_dir', 'compatibility_date', 'compatibility_flags', 'placement'
 ])
+const CONFIG_STATE = Object.freeze({
+  database: config => (config.hyperdrive?.length ?? 0) > 0,
+  provider_apis: config => config.vars?.CRM_SEARCH_PROVIDER_APIS_ENABLED === 'true',
+  ai_gateway: config => typeof config.vars?.AI_GATEWAY_URL === 'string'
+    && config.vars.AI_GATEWAY_URL.trim().length > 0,
+  mcp: config => config.vars?.MCP_SERVER_ENABLED === 'true',
+  meta: config => config.vars?.PERSONA_META_AUDIENCE_WRITES_ENABLED === 'true',
+  google: config => config.vars?.PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED === 'true',
+  meta_audiences: config => config.vars?.PERSONA_META_AUDIENCE_WRITES_ENABLED === 'true',
+  google_audiences: config => config.vars?.PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED === 'true'
+})
+
+function normalizedTargetDigest(value) {
+  if (typeof value !== 'string' || value.trim().length < 1) {
+    throw new Error('crm_search_pages_integration_config_mismatch')
+  }
+  let normalized = value.trim()
+  if (/^https?:/iu.test(normalized)) {
+    const target = new URL(normalized)
+    if (target.protocol !== 'https:' || target.username || target.password || target.search || target.hash) {
+      throw new Error('crm_search_pages_integration_config_mismatch')
+    }
+    target.pathname = target.pathname.replace(/\/+$/u, '') || '/'
+    normalized = target.toString()
+  }
+  return createHash('sha256').update(normalized).digest('hex')
+}
 
 function configRecord(category, binding, target) {
   if (typeof binding !== 'string' || !binding || typeof target !== 'string' || !target) {
@@ -111,6 +138,23 @@ function assertConfigMatchesReadback(readback, production, preview, pagesConfigT
       || [...expected].some(([key, target]) => nonSecret.get(key) !== target)) {
       throw new Error('crm_search_preview_binding_inventory_incomplete')
     }
+    const integrationInventory = readback.pagesInventory[environment].integrations
+    for (const [name, derive] of Object.entries(CONFIG_STATE)) {
+      const target = integrationInventory.find(value => value.name === name)
+      if (!target || (target.state === 'enabled') !== derive(config.env[environment])) {
+        throw new Error('crm_search_pages_integration_config_mismatch')
+      }
+    }
+    const vars = config.env[environment].vars ?? {}
+    for (const [name, configuredIdentity] of [
+      ['ai_gateway', vars.AI_GATEWAY_URL], ['mcp', vars.MCP_WORKER_ORIGIN]
+    ]) {
+      const target = integrationInventory.find(value => value.name === name)
+      if (target?.state === 'enabled'
+        && target.targetIdentityDigest !== normalizedTargetDigest(configuredIdentity)) {
+        throw new Error('crm_search_pages_integration_config_mismatch')
+      }
+    }
   }
   if (readback.pagesProject !== config.name) {
     throw new Error('crm_search_preview_binding_readback_mismatch')
@@ -147,7 +191,9 @@ function validateEnvironment(value, expected) {
       && ISO_TIMESTAMP.test(target.verifiedAt ?? '')
       && Number.isFinite(Date.parse(target.verifiedAt ?? ''))
     const disabled = target?.state === 'disabled'
-      && target.targetIdentityDigest === null && target.verifiedAt === null
+      && target.targetIdentityDigest === null
+      && ISO_TIMESTAMP.test(target.verifiedAt ?? '')
+      && Number.isFinite(Date.parse(target.verifiedAt ?? ''))
     if (!exactKeys || (!enabled && !disabled) || integrations.has(target.name)) {
       throw new Error('crm_search_preview_integration_inventory_invalid')
     }

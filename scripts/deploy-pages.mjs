@@ -1,8 +1,9 @@
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { tmpdir } from 'node:os'
 import { Client } from 'pg'
 import {
   FROZEN_BUILD_COMMAND,
@@ -59,14 +60,32 @@ export function verifyPagesDeployTarget({
   return { configuredProject, requestedProject }
 }
 
-function run(command, args) {
-  const result = spawnSync(command, args, { stdio: 'inherit' })
-  if (result.error) throw result.error
-  if (result.status !== 0) process.exit(result.status ?? 1)
+function runPagesReleaseCommand({ args }) {
+  const outputDirectory = mkdtempSync(path.join(tmpdir(), 'crm-search-pages-release-'))
+  const outputPath = path.join(outputDirectory, 'wrangler-output.ndjson')
+  const result = spawnSync('pnpm', ['exec', ...args], {
+    stdio: 'inherit',
+    env: { ...process.env, WRANGLER_OUTPUT_FILE_PATH: outputPath }
+  })
+  if (result.error || result.status !== 0) {
+    throw result.error ?? new Error('crm_search_pages_deploy_failed')
+  }
+  let output
+  try {
+    output = readFileSync(outputPath, 'utf8').trim().split('\n')
+      .map(line => JSON.parse(line))
+      .find(entry => entry?.type === 'pages-deploy')
+  } catch {
+    throw new Error('crm_search_pages_deployment_readback_required')
+  }
+  if (!/^[A-Za-z0-9._:-]{1,128}$/u.test(output?.deployment_id ?? '')) {
+    throw new Error('crm_search_pages_deployment_readback_required')
+  }
+  return { deploymentId: output.deployment_id }
 }
 
-function capture(command, args) {
-  const result = spawnSync(command, args, { encoding: 'utf8' })
+function capture(command, args, cwd) {
+  const result = spawnSync(command, args, { encoding: 'utf8', cwd })
   if (result.error || result.status !== 0) throw result.error ?? new Error(`crm_search_release_command_failed:${command}`)
   return result.stdout.trim()
 }
@@ -108,18 +127,10 @@ export async function readCurrentProductionApproval({ databaseUrl, approvalId, a
              rate_revocation.revoked_at AS "rateCardRevokedAt",
              (rate_card.valid_from <= clock_timestamp()
                AND rate_card.valid_until > clock_timestamp()) AS "rateCardCurrent",
-             (consumption.consumption_kind = 'dormant_deployment') AS "dormantConsumed",
+             (consumption.id IS NULL) AS "unconsumed",
              (control.state = 'halted' AND control.maximum_mode = 'off'
                AND control.indexing_ready = FALSE
-               AND control.active_deployment_approval_id = approval.id
-               AND control.revision = approval.expected_control_revision + 1
-               AND control.deployed_git_sha = approval.implementation_git_sha
-               AND control.artifact_manifest_digest = approval.artifact_manifest_digest
-               AND control.pages_bundle_digest = approval.pages_bundle_digest
-               AND control.worker_bundle_digest = approval.worker_bundle_digest
-               AND control.binding_manifest_digest = approval.binding_manifest_digest
-               AND control.evidence_bundle_hash = approval.evidence_bundle_hash
-               AND control.rate_card_id = approval.rate_card_id) AS "controlCurrent",
+               AND control.revision = approval.expected_control_revision) AS "controlReady",
              clock_timestamp() AS "readbackAt"
         FROM crm_search_change_approvals approval
         JOIN crm_search_rate_cards rate_card ON rate_card.id = approval.rate_card_id
@@ -139,7 +150,7 @@ export async function readCurrentProductionApproval({ databaseUrl, approvalId, a
     if (!row) throw new Error('crm_search_release_approval_readback_missing')
     const revokedAt = row.approvalRevokedAt ?? row.rateCardRevokedAt ?? null
     const current = revokedAt === null && row.rateCardCurrent === true
-      && row.dormantConsumed === true && row.controlCurrent === true
+      && row.unconsumed === true && row.controlReady === true
     const maximumCostUsdMicros = Number(row.maximumCostUsdMicros)
     const expectedControlRevision = Number(row.expectedControlRevision)
     if (!Number.isSafeInteger(maximumCostUsdMicros)
@@ -176,6 +187,87 @@ export async function readCurrentProductionApproval({ databaseUrl, approvalId, a
   }
 }
 
+function assertReleaseDatabaseUrl(databaseUrl) {
+  let target
+  try {
+    target = new URL(databaseUrl)
+  } catch {
+    throw new Error('crm_search_release_approval_database_invalid')
+  }
+  if (target.protocol !== 'postgresql:' || !target.hostname.endsWith('.neon.tech')
+    || target.hostname.split('.')[0]?.endsWith('-pooler')
+    || target.searchParams.get('sslmode') !== 'require') {
+    throw new Error('crm_search_release_approval_database_invalid')
+  }
+}
+
+export async function recordProductionDeploymentPhase({ databaseUrl, approval, event }) {
+  assertReleaseDatabaseUrl(databaseUrl)
+  const optionalIdentifiers = [event?.deploymentId, event?.versionId]
+  if (!['pages', 'worker_upload', 'worker_activate'].includes(event?.phase)
+    || !['started', 'succeeded', 'failed'].includes(event?.status)
+    || event.approvalId !== approval.approvalId
+    || event.approvalRevision !== approval.approvalRevision
+    || event.artifactManifestDigest !== approval.artifactManifestDigest
+    || optionalIdentifiers.some(value => value !== undefined
+      && !/^[A-Za-z0-9._:-]{1,128}$/u.test(value))
+    || (event.failureCode !== undefined && event.failureCode !== 'external_spawn_failed')) {
+    throw new Error('crm_search_release_phase_event_invalid')
+  }
+  const client = new Client({ connectionString: databaseUrl })
+  await client.connect()
+  try {
+    const result = await client.query(`
+      INSERT INTO crm_search_audit_log (
+        organisation_scope_id, event_type, actor_id, correlation_id,
+        reason, evidence_hash, details
+      )
+      SELECT approval.organisation_scope_id, 'deployment.phase_' || $2,
+             approval.requested_by, gen_random_uuid(),
+             'Record exact CRM search deployment phase evidence',
+             approval.evidence_bundle_hash,
+             jsonb_strip_nulls(jsonb_build_object(
+               'approvalId', approval.id, 'phase', $1, 'status', $2,
+               'artifactManifestDigest', $3, 'approvalRevision', $4,
+               'deploymentId', $5, 'versionId', $6, 'failureCode', $7
+             ))
+        FROM crm_search_change_approvals approval
+       WHERE approval.id = $8::UUID
+         AND approval.approval_type = 'production_deploy'
+         AND approval.artifact_manifest_digest = $3
+         AND approval.organisation_scope_id = $9::UUID
+      RETURNING id::TEXT AS id
+    `, [event.phase, event.status, event.artifactManifestDigest,
+      event.approvalRevision, event.deploymentId ?? null, event.versionId ?? null,
+      event.failureCode ?? null, approval.approvalId, approval.organisationScopeId])
+    if (!result.rows[0]?.id) throw new Error('crm_search_release_phase_record_failed')
+    return { journalId: result.rows[0].id }
+  } finally {
+    await client.end()
+  }
+}
+
+export async function finalizeProductionDeploymentApproval({ databaseUrl, approval }) {
+  assertReleaseDatabaseUrl(databaseUrl)
+  const client = new Client({ connectionString: databaseUrl })
+  await client.connect()
+  try {
+    const result = await client.query(`
+      SELECT crm_search_record_dormant_deployment(
+        $1::UUID, $2::BIGINT, $3::UUID, $4, $5::UUID
+      )::BIGINT AS revision
+    `, [approval.organisationScopeId, approval.expectedControlRevision,
+      approval.requestedByActorId,
+      'Finalize exact Pages and Worker dormant deployment after durable phase evidence',
+      approval.approvalId])
+    const revision = Number(result.rows[0]?.revision)
+    if (!Number.isSafeInteger(revision)) throw new Error('crm_search_release_finalize_failed')
+    return { consumptionId: approval.approvalId, revision }
+  } finally {
+    await client.end()
+  }
+}
+
 export async function runPagesDeploy({
   branch,
   checkOnly = false,
@@ -187,24 +279,27 @@ export async function runPagesDeploy({
   evidenceKeyring,
   artifactVerificationKeyring,
   approvalDatabaseUrl,
-  execute = ({ args }) => run('pnpm', ['exec', ...args])
+  execute = runPagesReleaseCommand
 } = {}) {
   if (process.versions.node !== '24.18.0') throw new Error('crm_search_node_version_mismatch')
   const target = verifyPagesDeployTarget()
   buildPagesDeployArgs(branch)
+  const repositoryRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 
   console.log(`Pages deploy guard: ${target.configuredProject} / ${branch}`)
   if (checkOnly) return
+  if (capture('git', ['status', '--short'], repositoryRoot) !== '') {
+    throw new Error('crm_search_dirty_tree')
+  }
   if (!artifactManifestPath) throw new Error('crm_search_release_manifest_required')
   if (!artifactRoot || !path.isAbsolute(artifactRoot)) throw new Error('crm_search_artifact_output_invalid')
   const manifestEnvelope = JSON.parse(readFileSync(artifactManifestPath, 'utf8'))
   if (!artifactVerificationKeyring) throw new Error('crm_search_artifact_key_unavailable')
-  if (branch === 'main' && !approvalDatabaseUrl) {
+  if (!approvalDatabaseUrl) {
     throw new Error('crm_search_release_approval_readback_required')
   }
-  const repositoryRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
   const expectedPins = {
-    implementationSha: capture('git', ['rev-parse', 'HEAD']),
+    implementationSha: capture('git', ['rev-parse', 'HEAD'], repositoryRoot),
     nodeVersion: process.versions.node,
     lockfileDigest: sha256File(path.join(repositoryRoot, 'pnpm-lock.yaml')),
     buildCommandDigest: createHash('sha256').update(FROZEN_BUILD_COMMAND).digest('hex'),
@@ -225,11 +320,12 @@ export async function runPagesDeploy({
     approvalVerification,
     evidenceBundle,
     evidenceKeyring,
-    readCurrentApproval: branch === 'main'
-      ? ({ approvalId, approvalRevision }) => readCurrentProductionApproval({
-          databaseUrl: approvalDatabaseUrl, approvalId, approvalRevision
-        })
-      : undefined,
+    readCurrentApproval: ({ approvalId, approvalRevision }) => readCurrentProductionApproval({
+      databaseUrl: approvalDatabaseUrl, approvalId, approvalRevision
+    }),
+    recordDeploymentPhase: event => recordProductionDeploymentPhase({
+      databaseUrl: approvalDatabaseUrl, approval: approvalEnvelope.payload, event
+    }),
     execute
   })
 }

@@ -7,74 +7,155 @@ import {
   CRM_SEARCH_EXTERNAL_MUTABLE_INTEGRATIONS,
   CRM_SEARCH_ENVIRONMENT_RESOURCE_MANIFEST_VERSION,
   CRM_SEARCH_QUEUE_RETENTION_SECONDS,
+  type CrmSearchExternalMutableIntegration,
   type CrmSearchExternalIntegrationTarget,
   type CrmSearchEnvironmentResources
 } from './resource-manifest'
 
 const ISSUED_AT = '2026-08-11T00:00:00.000Z'
 const EXPIRES_AT = '2026-09-10T00:00:00.000Z'
-const DIGEST = /^[a-f0-9]{64}$/u
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u
 
-function disabledExternalIntegrations(): CrmSearchExternalIntegrationTarget[] {
-  return CRM_SEARCH_EXTERNAL_MUTABLE_INTEGRATIONS.map(name => ({
-    name, state: 'disabled', targetIdentityDigest: null, verifiedAt: null
-  }))
+export interface ExternalIntegrationReadback {
+  name: CrmSearchExternalMutableIntegration
+  enabled: boolean
+  targetIdentity: string | null
+  verifiedAt: string
+  source: 'cloudflare_api'
 }
 
-export const PREVIEW_CRM_SEARCH_RESOURCES: CrmSearchEnvironmentResources = Object.freeze({
-  version: CRM_SEARCH_ENVIRONMENT_RESOURCE_MANIFEST_VERSION,
-  environment: 'preview',
-  issuedAt: ISSUED_AT,
-  expiresAt: EXPIRES_AT,
-  readbackSource: 'cloudflare_api',
-  plan: 'workers_paid',
-  pages: {
-    project: 'agency-dashboard',
-    branch: 'preview',
-    origin: 'https://preview.agency-dashboard.pages.dev'
-  },
-  worker: { name: 'agency-crm-search-consumer-preview' },
-  vectorize: { crmSearch: 'agency-crm-search-preview' },
-  queues: {
-    primary: {
-      name: 'agency-crm-search-index-preview',
-      retentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS
-    },
-    deadLetter: {
-      name: 'agency-crm-search-index-preview-dlq',
-      retentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS
-    }
-  },
-  externalIntegrations: disabledExternalIntegrations()
-} satisfies CrmSearchEnvironmentResources)
+const SAFETY_STATE_FROM_CONFIG: Partial<Record<CrmSearchExternalMutableIntegration, (config: PagesWranglerConfig) => boolean>> = {
+  database: config => (config.hyperdrive?.length ?? 0) > 0,
+  provider_apis: config => config.vars?.CRM_SEARCH_PROVIDER_APIS_ENABLED === 'true',
+  ai_gateway: config => typeof config.vars?.AI_GATEWAY_URL === 'string'
+    && config.vars.AI_GATEWAY_URL.trim().length > 0,
+  mcp: config => config.vars?.MCP_SERVER_ENABLED === 'true',
+  meta: config => config.vars?.PERSONA_META_AUDIENCE_WRITES_ENABLED === 'true',
+  google: config => config.vars?.PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED === 'true',
+  meta_audiences: config => config.vars?.PERSONA_META_AUDIENCE_WRITES_ENABLED === 'true',
+  google_audiences: config => config.vars?.PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED === 'true'
+}
 
-export const PRODUCTION_CRM_SEARCH_RESOURCES: CrmSearchEnvironmentResources = Object.freeze({
-  version: CRM_SEARCH_ENVIRONMENT_RESOURCE_MANIFEST_VERSION,
-  environment: 'production',
-  issuedAt: ISSUED_AT,
-  expiresAt: EXPIRES_AT,
-  readbackSource: 'cloudflare_api',
-  plan: 'workers_paid',
-  pages: {
-    project: 'agency-dashboard',
-    branch: 'main',
-    origin: 'https://agency-dashboard-6cm.pages.dev'
-  },
-  worker: { name: 'agency-crm-search-consumer' },
-  vectorize: { crmSearch: 'agency-crm-search' },
-  queues: {
-    primary: {
-      name: 'agency-crm-search-index',
-      retentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS
-    },
-    deadLetter: {
-      name: 'agency-crm-search-index-dlq',
-      retentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS
+const SAFETY_TARGET_FROM_CONFIG: Partial<Record<CrmSearchExternalMutableIntegration, (config: PagesWranglerConfig) => string | null>> = {
+  ai_gateway: config => typeof config.vars?.AI_GATEWAY_URL === 'string'
+    ? config.vars.AI_GATEWAY_URL
+    : null,
+  mcp: config => typeof config.vars?.MCP_WORKER_ORIGIN === 'string'
+    ? config.vars.MCP_WORKER_ORIGIN
+    : null
+}
+
+function normalizeTargetIdentity(value: string): string {
+  const normalized = value.trim()
+  if (normalized.length < 1 || normalized.length > 512 || /[\s@]/u.test(normalized)) {
+    throw new Error('crm_search_pages_integration_target_invalid')
+  }
+  if (/^https?:/iu.test(normalized)) {
+    let target: URL
+    try {
+      target = new URL(normalized)
+    } catch {
+      throw new Error('crm_search_pages_integration_target_invalid')
     }
-  },
-  externalIntegrations: disabledExternalIntegrations()
-} satisfies CrmSearchEnvironmentResources)
+    if (target.protocol !== 'https:' || target.username || target.password || target.search || target.hash) {
+      throw new Error('crm_search_pages_integration_target_invalid')
+    }
+    target.pathname = target.pathname.replace(/\/+$/u, '') || '/'
+    return target.toString()
+  }
+  if (!/^[A-Za-z0-9:._/-]+$/u.test(normalized)) {
+    throw new Error('crm_search_pages_integration_target_invalid')
+  }
+  return normalized
+}
+
+function deriveExternalIntegrations(
+  environmentConfig: PagesWranglerConfig,
+  readbacks: ExternalIntegrationReadback[]
+): CrmSearchExternalIntegrationTarget[] {
+  if (!Array.isArray(readbacks)
+    || readbacks.map(value => value?.name).join('\0') !== CRM_SEARCH_EXTERNAL_MUTABLE_INTEGRATIONS.join('\0')) {
+    throw new Error('crm_search_pages_integration_inventory_invalid')
+  }
+  return readbacks.map((readback) => {
+    const exactKeys = Object.keys(readback ?? {}).sort().join('\0')
+      === ['name', 'enabled', 'targetIdentity', 'verifiedAt', 'source'].sort().join('\0')
+    const verifiedAt = Date.parse(readback?.verifiedAt ?? '')
+    if (!exactKeys || readback.source !== 'cloudflare_api'
+      || typeof readback.enabled !== 'boolean'
+      || !ISO_TIMESTAMP.test(readback.verifiedAt ?? '') || !Number.isFinite(verifiedAt)) {
+      throw new Error('crm_search_pages_integration_inventory_invalid')
+    }
+    const configuredState = SAFETY_STATE_FROM_CONFIG[readback.name]?.(environmentConfig)
+    if (configuredState !== undefined && configuredState !== readback.enabled) {
+      throw new Error('crm_search_pages_integration_config_mismatch')
+    }
+    if (!readback.enabled) {
+      if (readback.targetIdentity !== null) {
+        throw new Error('crm_search_pages_integration_inventory_invalid')
+      }
+      return Object.freeze({
+        name: readback.name, state: 'disabled' as const,
+        targetIdentityDigest: null, verifiedAt: readback.verifiedAt
+      })
+    }
+    if (typeof readback.targetIdentity !== 'string') {
+      throw new Error('crm_search_pages_integration_inventory_invalid')
+    }
+    const normalizedTarget = normalizeTargetIdentity(readback.targetIdentity)
+    const configuredTarget = SAFETY_TARGET_FROM_CONFIG[readback.name]?.(environmentConfig)
+    if (configuredTarget != null
+      && normalizedTarget !== normalizeTargetIdentity(configuredTarget)) {
+      throw new Error('crm_search_pages_integration_config_mismatch')
+    }
+    return Object.freeze({
+      name: readback.name, state: 'enabled' as const,
+      targetIdentityDigest: createHash('sha256')
+        .update(normalizedTarget).digest('hex'),
+      verifiedAt: readback.verifiedAt
+    })
+  })
+}
+
+export function buildCrmSearchEnvironmentResources(
+  environment: 'production' | 'preview',
+  integrationReadbacks: ExternalIntegrationReadback[]
+): CrmSearchEnvironmentResources {
+  const config = parse(
+    readFileSync(new URL('../../wrangler.toml', import.meta.url), 'utf8')
+  ) as PagesWranglerConfig
+  const environmentConfig = config.env?.[environment]
+  if (!environmentConfig) throw new Error('crm_search_pages_environment_missing')
+  const preview = environment === 'preview'
+  return Object.freeze({
+    version: CRM_SEARCH_ENVIRONMENT_RESOURCE_MANIFEST_VERSION,
+    environment,
+    issuedAt: ISSUED_AT,
+    expiresAt: EXPIRES_AT,
+    readbackSource: 'cloudflare_api',
+    plan: 'workers_paid',
+    pages: {
+      project: 'agency-dashboard',
+      branch: preview ? 'preview' : 'main',
+      origin: preview
+        ? 'https://preview.agency-dashboard.pages.dev'
+        : 'https://agency-dashboard-6cm.pages.dev'
+    },
+    worker: { name: preview ? 'agency-crm-search-consumer-preview' : 'agency-crm-search-consumer' },
+    vectorize: { crmSearch: preview ? 'agency-crm-search-preview' : 'agency-crm-search' },
+    queues: {
+      primary: {
+        name: preview ? 'agency-crm-search-index-preview' : 'agency-crm-search-index',
+        retentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS
+      },
+      deadLetter: {
+        name: preview ? 'agency-crm-search-index-preview-dlq' : 'agency-crm-search-index-dlq',
+        retentionSeconds: CRM_SEARCH_QUEUE_RETENTION_SECONDS
+      }
+    },
+    externalIntegrations: deriveExternalIntegrations(environmentConfig, integrationReadbacks)
+  })
+}
 
 interface BindingRecord extends Record<string, unknown> {
   binding?: string
@@ -144,7 +225,7 @@ function normalizeEnvironment(
   config: PagesWranglerConfig,
   environment: 'production' | 'preview',
   secrets: SecretBinding[],
-  integrations: CrmSearchExternalIntegrationTarget[]
+  integrationReadbacks: ExternalIntegrationReadback[]
 ) {
   const environmentConfig = config.env?.[environment]
   if (!environmentConfig || typeof environmentConfig !== 'object') {
@@ -160,24 +241,7 @@ function normalizeEnvironment(
   if (!Array.isArray(secrets) || secrets.length === 0) {
     throw new Error('crm_search_pages_secret_inventory_missing')
   }
-  const integrationNames = integrations?.map(value => value?.name)
-  if (!Array.isArray(integrations)
-    || integrationNames.join('\0') !== CRM_SEARCH_EXTERNAL_MUTABLE_INTEGRATIONS.join('\0')) {
-    throw new Error('crm_search_pages_integration_inventory_invalid')
-  }
-  for (const integration of integrations) {
-    const exactKeys = Object.keys(integration).sort().join('\0')
-      === ['name', 'state', 'targetIdentityDigest', 'verifiedAt'].sort().join('\0')
-    const enabled = integration.state === 'enabled'
-      && DIGEST.test(integration.targetIdentityDigest ?? '')
-      && ISO_TIMESTAMP.test(integration.verifiedAt ?? '')
-      && Number.isFinite(Date.parse(integration.verifiedAt ?? ''))
-    const disabled = integration.state === 'disabled'
-      && integration.targetIdentityDigest === null && integration.verifiedAt === null
-    if (!exactKeys || (!enabled && !disabled)) {
-      throw new Error('crm_search_pages_integration_inventory_invalid')
-    }
-  }
+  const integrations = deriveExternalIntegrations(environmentConfig, integrationReadbacks)
 
   const bindings: NormalizedBinding[] = []
   for (const value of environmentConfig.kv_namespaces ?? []) {
@@ -226,7 +290,7 @@ function normalizeEnvironment(
     environment,
     categories: [...NON_INHERITABLE_CATEGORIES, 'secrets'].sort(),
     bindings,
-    integrations: integrations.map(value => Object.freeze({ ...value })),
+    integrations,
     inheritedCategories,
     unknownCategories
   })
@@ -236,8 +300,8 @@ export function buildPagesEnvironmentInventory(
   config: PagesWranglerConfig,
   secrets: { production: SecretBinding[], preview: SecretBinding[] },
   integrations: {
-    production: CrmSearchExternalIntegrationTarget[]
-    preview: CrmSearchExternalIntegrationTarget[]
+    production: ExternalIntegrationReadback[]
+    preview: ExternalIntegrationReadback[]
   }
 ) {
   const environments = Object.keys(config.env ?? {}).sort()
@@ -365,10 +429,24 @@ export function assertPreviewIsolation(input: {
     || preview.externalIntegrations.length !== CRM_SEARCH_EXTERNAL_MUTABLE_INTEGRATIONS.length
     || preview.externalIntegrations.some((value, index) =>
       value.name !== CRM_SEARCH_EXTERNAL_MUTABLE_INTEGRATIONS[index]
-      || value.state !== 'disabled'
-      || value.targetIdentityDigest !== null
-      || value.verifiedAt !== null)
+      || !['disabled', 'enabled'].includes(value.state)
+      || (value.state === 'disabled'
+        ? value.targetIdentityDigest !== null
+        : !/^[a-f0-9]{64}$/u.test(value.targetIdentityDigest ?? ''))
+      || !ISO_TIMESTAMP.test(value.verifiedAt))
+    || production.externalIntegrations.some((value, index) =>
+      value.name !== CRM_SEARCH_EXTERNAL_MUTABLE_INTEGRATIONS[index])
   ) throw new Error('crm_search_preview_manifest_invalid')
+
+  const productionIntegrations = new Map(
+    production.externalIntegrations.map(value => [value.name, value])
+  )
+  if (preview.externalIntegrations.some((value) => {
+    const productionTarget = productionIntegrations.get(value.name)
+    return !productionTarget || (value.state === 'enabled'
+      && productionTarget.state === 'enabled'
+      && value.targetIdentityDigest === productionTarget.targetIdentityDigest)
+  })) throw new Error('crm_search_preview_integration_alias')
 
   if (
     preview.queues.primary.retentionSeconds !== CRM_SEARCH_QUEUE_RETENTION_SECONDS

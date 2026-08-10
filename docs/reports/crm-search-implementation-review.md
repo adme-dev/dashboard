@@ -2,15 +2,22 @@
 
 ## Decision
 
-**Local implementation verification is complete, but the candidate is not release ready. Production remains halted.**
+**The historical local candidate was verified, and the release-safety correction tree now passes its bounded local gates. It is not externally verified or release ready. Production remains halted.**
 
-- Candidate SHA: `efd177a7d12d95190b37c8a301d1166d8022858d`
+- Historical candidate SHA: `efd177a7d12d95190b37c8a301d1166d8022858d`
+- Current correction base SHA: `ee653429570239eaa783f941a0f11a3d0ec0417f`
+- Current corrected candidate SHA: assigned by the pending release-correction commit; never self-attested in this file
 - Same-machine comparison base: `f46d1e7793ba558e374c380e47d610a65d42756a`
 - Review date: 2026-08-11
 - External preview execution: not performed
+- Guarded external preview/cleanup adapter path: implemented locally; not externally executed
 - Production schema, resources, code, indexing, shadow, and assist: unchanged
 
-No Cloudflare, Neon, database, provider, Queue, Vectorize, R2, Pages, Worker, secret, deployment, or production resource was created, changed, queried, uploaded, or deleted during Task 19.
+No Cloudflare, Neon, database, provider, Queue, Vectorize, R2, Pages, Worker, secret, deployment, or production resource was created, changed, queried, uploaded, or deleted during Task 19 or the current correction pass.
+
+Build sizes and static digests below are historical evidence for `efd177a7`; they do not verify the current corrected bytes. The current code contains injected, fail-closed preview execution and cleanup adapters, provider-backed Neon schema-only/absence readbacks, phase-specific deployment approval checks, exact Worker version activation, and durable 90% admission. Those paths have only been exercised with deterministic local adapters. A new clean build, signed frozen artifact, external preview ceremony, and final independent review remain pending.
+
+The correction tree passed two bounded local gates on 2026-08-11: the affected approval/migration slice passed 59 tests with one opt-in isolated-local-Postgres test skipped, and the nine-file release slice passed 56 tests with one guarded external-database test skipped. Focused ESLint, Worker generated types plus strict TypeScript, diff validation, JSON parsing, and secret-pattern scanning also passed. These results verify local code paths only; they are not external-resource, deployment, provider, or production evidence.
 
 ## Requirement Audit
 
@@ -32,7 +39,7 @@ No Cloudflare, Neon, database, provider, Queue, Vectorize, R2, Pages, Worker, se
 
 The two Task 19 harness files were written RED-first and committed independently as `f45fa96f86c1feb9fbb5f819ca024813d887a5a6`. They exercise real route handlers and injected deterministic repositories/providers. External-resource cases skip only behind explicit Task 18 attestations and never fall back to `DATABASE_URL`.
 
-### Final compatibility candidate
+### Historical final compatibility candidate
 
 The exact 12 CRM/release files that had failed before the compatibility corrections passed together at the final candidate: 12 files, 87 tests, zero failures. The corrective commits were `68b0e2fc` and `17764238`.
 
@@ -57,7 +64,7 @@ All plausible CRM-search and release-tooling regressions from the earlier candid
 
 Nuxt typecheck ran once at the final candidate under Node 24 with the inherited 16 GiB heap ceiling. It completed without OOM and exited 2 after about 89 seconds with approximately 2,150 known application-baseline diagnostic lines, consistent with the documented baseline. No returned diagnostic named a Task 19 harness or `crm/search*` file. One displayed diagnostic in `server/utils/crm/catalogFeed.ts` is on a file byte-identical to the recorded base SHA. Typecheck is therefore recorded as baseline-non-green, not as a pass.
 
-### Clean detached build
+### Historical clean detached build
 
 One detached worktree at the exact candidate SHA was created under `/private/tmp`, linked only to the repository's existing `node_modules`, built once with the existing `pnpm build`, and removed by exact worktree cleanup. There was no install, network access, deployment, or release mutation.
 
@@ -71,7 +78,7 @@ The final clean Node 24.18.0 build at `efd177a7` exited 0 in 253 seconds. The cl
 
 This conclusively classifies the earlier shared-cache failure as incidental and closes the obsolete local size-guard blocker. The locally generated dispatcher was 1,225 bytes with SHA-256 `1e4154e92931461dc14b29bfa0f17334234f535ee2f01d446c4c12a4538746da`; it is not a signed Task 18 frozen-artifact manifest and is not external release evidence. The build continued to emit BigInt-versus-`es2019` compatibility warnings in `server/utils/crm/searchIndex/usage.ts`. Read-only bundle analysis verified that esbuild rewrites the unsupported literal syntax to `BigInt(...)` constructor calls, the final bundle contains no `n` literals, and the focused usage suite passes 15/15 including large exact-cost and 80-percent boundary arithmetic. The messages are therefore recorded as verified warning-only; they are not silently described as absent.
 
-### Mutation-free release gates
+### Historical mutation-free release gates
 
 - Pages immutable project/branch guard: passed for `agency-dashboard` / `main`.
 - Worker generated types and strict TypeScript: passed.
@@ -94,7 +101,7 @@ These are local plan and dry-run results only. They are not substitutes for sign
 | Task 19 repository-wide compatibility | Closed in code | `68b0e2fc`, `17764238`; final 87/87 slice |
 | Worker raw/compressed release-size guard | Closed in code | `efd177a7`; final clean build exit 0 |
 
-All known HIGH and MEDIUM implementation-review findings are closed in committed code. That does not override the remaining release blockers below.
+The table above records the historical review state at `efd177a7`. It is superseded by the current release-safety correction pass and must not be read as external or final acceptance evidence for the corrected bytes. Final independent HIGH/MEDIUM review convergence remains pending after commit.
 
 ## Release Blockers
 
@@ -103,5 +110,6 @@ All known HIGH and MEDIUM implementation-review findings are closed in committed
 3. External Task 19 preview E2E was not executed.
 4. The sealed holdout remains synthetic and `productionReady: false`; the approved envelope replacement, independent key provisioning, exact R2 import/readback, authenticated decryption, and judgement-digest verification remain pending.
 5. No production migration, deployment, client indexing, shadow, or assist approval was granted.
+6. The current corrected bytes do not yet have a fresh clean build, signed frozen artifact, full-suite comparison, external preview readback, or final independent acceptance review.
 
 The next release step must complete the signed Task 18 preview-resource and sealed-holdout ceremonies before external E2E. Any code, configuration, or dependency change invalidates this evidence and requires a fresh artifact and review cycle.

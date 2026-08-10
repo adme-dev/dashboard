@@ -7,8 +7,42 @@ export const CRM_SEARCH_CAPACITY_THRESHOLDS_BASIS_POINTS = Object.freeze({
   blockNewIndexing: 9_000
 })
 
+// Durable row ceilings are deliberately independent from provider-call and cost budgets.
+export const CRM_SEARCH_DURABLE_TABLE_CAPACITIES = Object.freeze({
+  dirty: 100_000,
+  operations: 50_000
+})
+
 interface CapacityCounter { used: number, limit: number }
-interface CrmSearchCapacity { dirty: CapacityCounter, operations: CapacityCounter }
+export interface CrmSearchCapacity { dirty: CapacityCounter, operations: CapacityCounter }
+
+export function assertCrmSearchDurableCapacityAdmission(capacity: CrmSearchCapacity) {
+  const health = evaluateCrmSearchCapacityHealth(capacity)
+  if (health.blockNewIndexing) throw new Error('crm_search_dirty_operation_capacity_blocked')
+  return health
+}
+
+export async function loadCrmSearchDurableCapacity(organisationScopeId: string): Promise<CrmSearchCapacity> {
+  const row = await queryOneFresh<{ dirty: number, operations: number }>(`
+    SELECT
+      (SELECT COUNT(*)::INT FROM crm_search_source_dirty dirty
+        WHERE dirty.organisation_scope_id = $1::UUID) AS dirty,
+      (SELECT COUNT(*)::INT FROM crm_search_operations operation
+        WHERE operation.organisation_scope_id = $1::UUID) AS operations
+  `, [organisationScopeId])
+  if (!row || !Number.isSafeInteger(Number(row.dirty))
+    || !Number.isSafeInteger(Number(row.operations))) {
+    throw new Error('crm_search_dirty_operation_capacity_unavailable')
+  }
+  return Object.freeze({
+    dirty: Object.freeze({
+      used: Number(row.dirty), limit: CRM_SEARCH_DURABLE_TABLE_CAPACITIES.dirty
+    }),
+    operations: Object.freeze({
+      used: Number(row.operations), limit: CRM_SEARCH_DURABLE_TABLE_CAPACITIES.operations
+    })
+  })
+}
 
 export interface CrmSearchHealthInput {
   global: { state: CrmSearchGlobalState, revision: number, maximumMode: 'off' | 'shadow' | 'assist', indexingReady: boolean }
@@ -117,6 +151,7 @@ interface HealthAggregateRow extends Record<string, unknown> {
   indexing_ready: boolean
   dirty: number
   pending: number
+  operations_total: number
   provider_pending: number
   retryable: number
   dead_letters: number
@@ -148,6 +183,8 @@ export async function loadCrmSearchHealth(organisationScopeId: string) {
       (SELECT COUNT(*)::INT FROM crm_search_operations operation
         WHERE operation.organisation_scope_id = control.organisation_scope_id
           AND operation.state IN ('pending_transport','queued','processing','admitted')) AS pending,
+      (SELECT COUNT(*)::INT FROM crm_search_operations operation
+        WHERE operation.organisation_scope_id = control.organisation_scope_id) AS operations_total,
       (SELECT COUNT(*)::INT FROM crm_search_operations operation
         WHERE operation.organisation_scope_id = control.organisation_scope_id
           AND operation.state = 'provider_pending') AS provider_pending,
@@ -294,7 +331,6 @@ export async function loadCrmSearchHealth(organisationScopeId: string) {
      GROUP BY fallback_class
      ORDER BY fallback_class
   `, [organisationScopeId])
-  const capacityLimit = Math.max(1, Number(row.max_indexing_provider_calls))
   const dependencyStatus = (open: number, age: number | null): 'ok' | 'degraded' | 'down' => {
     if ((age ?? 0) >= 900) return 'down'
     if (open > 0 || (age ?? 0) >= 300) return 'degraded'
@@ -315,8 +351,10 @@ export async function loadCrmSearchHealth(organisationScopeId: string) {
       retryable: Number(row.retryable), deadLetters: Number(row.dead_letters)
     },
     capacity: {
-      dirty: { used: Number(row.dirty), limit: capacityLimit },
-      operations: { used: Number(row.pending) + Number(row.provider_pending) + Number(row.retryable), limit: capacityLimit }
+      dirty: { used: Number(row.dirty), limit: CRM_SEARCH_DURABLE_TABLE_CAPACITIES.dirty },
+      operations: {
+        used: Number(row.operations_total), limit: CRM_SEARCH_DURABLE_TABLE_CAPACITIES.operations
+      }
     },
     oldestAgeSeconds: {
       dirty: row.oldest_dirty_age, operation: row.oldest_operation_age, queue: row.queue_age
@@ -419,7 +457,7 @@ export async function loadCrmSearchTelemetry(organisationScopeId: string) {
     'requestCount', 'fallbackCount', 'timeoutCount', 'lateBilledCompletionCount',
     'latencyCount', 'latencySumMs', 'latencyMaxMs'
   ] as const
-  return rows.map(row => {
+  return rows.map((row) => {
     const normalized = { ...row }
     for (const field of integerFields) {
       const numeric = Number(row[field])

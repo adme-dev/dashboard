@@ -4,7 +4,7 @@ export const CRM_SEARCH_ENVIRONMENT_RESOURCE_ENVELOPE_VERSION
   = 'crm-search-environment-resource-envelope-v1' as const
 export const CRM_SEARCH_QUEUE_RETENTION_SECONDS = 1_209_600 as const
 export const CRM_SEARCH_EXTERNAL_MUTABLE_INTEGRATIONS = [
-  'database', 'provider_apis', 'meta', 'google', 'meta_audiences',
+  'database', 'provider_apis', 'ai_gateway', 'mcp', 'meta', 'google', 'meta_audiences',
   'google_audiences', 'xero', 'email_delivery', 'monday', 'slack',
   'outbound_webhooks', 'google_sheets', 'social_dashboard'
 ] as const
@@ -17,7 +17,7 @@ export interface CrmSearchExternalIntegrationTarget {
   name: CrmSearchExternalMutableIntegration
   state: 'disabled' | 'enabled'
   targetIdentityDigest: string | null
-  verifiedAt: string | null
+  verifiedAt: string
 }
 
 export interface CrmSearchEnvironmentResources {

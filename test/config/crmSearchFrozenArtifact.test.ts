@@ -25,6 +25,28 @@ import {
 const sha = 'a'.repeat(40)
 const digest = (value: string) => `${value.repeat(64)}`
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex')
+const canonical = (value: unknown): string => {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value)
+  if (typeof value === 'number' && Number.isSafeInteger(value)) return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonical(record[key])}`).join(',')}}`
+  }
+  throw new Error('noncanonical fixture')
+}
+const cleanupEvidence = () => {
+  const journal = [{
+    resourceType: 'vectorize', resourceIdentityDigest: digest('a'),
+    baselineDigest: digest('b'), finalReadbackDigest: digest('b'),
+    status: 'baseline_restored', confirmedAt: '2026-08-11T00:59:59.000Z'
+  }]
+  return {
+    journalVersion: 'crm-search-cleanup-journal-v1', journal,
+    journalDigest: sha256(canonical(journal)),
+    confirmedAt: '2026-08-11T00:59:59.000Z', remainingMutableTargets: 0
+  }
+}
 
 async function frozenArtifactFixture() {
   const root = mkdtempSync(path.join(tmpdir(), 'crm-search-artifact-'))
@@ -35,7 +57,7 @@ async function frozenArtifactFixture() {
     'kv_namespaces', 'queues', 'r2_buckets', 'secrets', 'services', 'vars', 'vectorize'
   ]
   const integrationNames = [
-    'database', 'provider_apis', 'meta', 'google', 'meta_audiences',
+    'database', 'provider_apis', 'ai_gateway', 'mcp', 'meta', 'google', 'meta_audiences',
     'google_audiences', 'xero', 'email_delivery', 'monday', 'slack',
     'outbound_webhooks', 'google_sheets', 'social_dashboard'
   ]
@@ -63,7 +85,7 @@ bucket_name = "preview-files"
       production: {
         environment: 'production', categories,
         integrations: integrationNames.map(name => ({
-          name, state: 'enabled', targetIdentityDigest: sha256(`production:${name}`),
+          name, state: 'disabled', targetIdentityDigest: null,
           verifiedAt: '2026-08-11T00:00:00.000Z'
         })),
         bindings: [
@@ -74,7 +96,8 @@ bucket_name = "preview-files"
       preview: {
         environment: 'preview', categories,
         integrations: integrationNames.map(name => ({
-          name, state: 'disabled', targetIdentityDigest: null, verifiedAt: null
+          name, state: 'disabled', targetIdentityDigest: null,
+          verifiedAt: '2026-08-11T00:00:00.000Z'
         })),
         bindings: [
           { category: 'r2_buckets', binding: 'FILES', target: 'preview-files' },
@@ -144,6 +167,13 @@ describe('CRM search frozen release artifact', () => {
     expect(envelope.payload.pages.files).toEqual([
       { path: '_worker.js', size: 30, sha256: expect.stringMatching(/^[a-f0-9]{64}$/) }
     ])
+    expect(envelope.payload.pages.sizeEvidence).toMatchObject({
+      rawBytes: 30,
+      gzipBytes: expect.any(Number),
+      rawBudgetBytes: 63_750_000,
+      gzipBudgetBytes: 9_750_000,
+      guardScriptSha256: expect.stringMatching(/^[a-f0-9]{64}$/)
+    })
     expect(envelope.payload.worker.entrypoint).toBe('worker/worker.mjs')
     expect(verifyFrozenArtifactEnvelope(envelope, artifactVerification)).toMatchObject({
       ok: true, pagesBundleDigest: expect.any(String), workerBundleDigest: expect.any(String),
@@ -384,6 +414,41 @@ describe('CRM search frozen release artifact', () => {
       execute
     })).rejects.toThrow('crm_search_worker_target_mismatch')
     expect(execute).not.toHaveBeenCalled()
+
+    const previewEnvelope = {
+      version: 'crm-search-bootstrap-approval-envelope-v1',
+      keyVersion: 'release-2026-08', payload: approvalPayload,
+      signature: sign(null, approvalBytes, privateKey).toString('base64url')
+    }
+    const previewVerification = {
+      nowMs: Date.parse('2026-08-11T01:00:00.000Z'),
+      keyring: {
+        version: 'crm-search-release-verification-keyring-v1',
+        activeKeyVersion: 'release-2026-08',
+        keys: {
+          'release-2026-08': {
+            algorithm: 'Ed25519',
+            publicKeySpki: publicKey.export({ type: 'spki', format: 'der' }).toString('base64url'),
+            notBefore: '2026-08-10T00:00:00.000Z', notAfter: '2026-08-20T00:00:00.000Z'
+          }
+        }
+      }
+    }
+    await expect(runFrozenPagesRelease({
+      mode: 'preview', manifestEnvelope: frozen.manifestEnvelope,
+      artifactVerification: frozen.artifactVerification,
+      approvalEnvelope: previewEnvelope, approvalVerification: previewVerification,
+      execute
+    })).rejects.toThrow('crm_search_release_approval_readback_required')
+    await expect(runFrozenConsumerUpload({
+      mode: 'preview', manifestEnvelope: frozen.manifestEnvelope,
+      artifactVerification: frozen.artifactVerification,
+      approvalEnvelope: previewEnvelope, approvalVerification: previewVerification,
+      resourceManifest: { worker: { name: 'agency-crm-search-consumer-preview' } },
+      configPath: path.join(frozen.artifactVerification.artifactRoot, 'config', 'worker.toml'),
+      execute
+    })).rejects.toThrow('crm_search_release_approval_readback_required')
+    expect(execute).not.toHaveBeenCalled()
   })
 
   it('requires the complete production approval and a fresh unrevoked revision readback immediately before spawn', async () => {
@@ -436,8 +501,7 @@ describe('CRM search frozen release artifact', () => {
         productionReady: true
       },
       cleanup: {
-        manifestDigest: digest('a'), confirmedAt: '2026-08-11T00:59:59.000Z',
-        remainingMutableTargets: 0
+        ...cleanupEvidence()
       }
     }, { keyVersion: 'evidence-2026-08', privateKey: evidenceKeys.privateKey })
     approvalPayload.evidenceBundleHash = evidenceBundle.evidenceBundleHash
@@ -472,17 +536,55 @@ describe('CRM search frozen release artifact', () => {
       }
     }
     const order: string[] = []
-    const readCurrentApproval = vi.fn(async () => {
-      order.push('readback')
+    const readCurrentApproval = vi.fn(async (context) => {
+      order.push(`readback:${context.phase}`)
       return {
         ...approvalPayload, status: 'active', revokedAt: null,
         readbackAt: '2026-08-11T01:00:00.000Z'
       }
     })
     const execute = vi.fn(async (command) => {
-      order.push('spawn')
-      return command
+      if (command.args[0] === 'pages') {
+        order.push('spawn:pages')
+        return { deploymentId: 'pages-deployment-123' }
+      }
+      if (command.args[1] === 'upload') {
+        order.push('spawn:worker-upload')
+        return { versionId: 'worker-version-123' }
+      }
+      if (command.args[1] === 'deploy') {
+        order.push('spawn:worker-activate')
+        return { versionId: 'worker-version-123', deploymentId: 'worker-deployment-456' }
+      }
+      throw new Error('unexpected release command')
     })
+    const recordDeploymentPhase = vi.fn(async (event) => {
+      order.push(`record:${event.phase}:${event.status}`)
+      return { journalId: `${event.phase}-${event.status}` }
+    })
+    const finalizeDeploymentApproval = vi.fn(async (event) => {
+      order.push('finalize')
+      return { consumptionId: 'consumption-1', ...event }
+    })
+    const pagesResult = await runFrozenPagesRelease({
+      mode: 'production', manifestEnvelope: frozen.manifestEnvelope,
+      artifactVerification: frozen.artifactVerification,
+      approvalEnvelope: envelope, approvalVerification: verification,
+      evidenceBundle, evidenceKeyring,
+      currentTime: () => verification.nowMs,
+      readCurrentApproval, recordDeploymentPhase, execute
+    })
+    expect(order).toEqual([
+      'readback:before-pages-deploy', 'record:pages:started',
+      'spawn:pages', 'record:pages:succeeded'
+    ])
+    expect(pagesResult).toMatchObject({ deploymentId: 'pages-deployment-123' })
+    expect(finalizeDeploymentApproval).not.toHaveBeenCalled()
+    order.length = 0
+    execute.mockClear()
+    readCurrentApproval.mockClear()
+    recordDeploymentPhase.mockClear()
+
     const result = await runFrozenConsumerUpload({
       mode: 'production', manifestEnvelope: frozen.manifestEnvelope,
       artifactVerification: frozen.artifactVerification,
@@ -490,16 +592,67 @@ describe('CRM search frozen release artifact', () => {
       evidenceBundle, evidenceKeyring,
       currentTime: () => verification.nowMs,
       readCurrentApproval,
+      recordDeploymentPhase,
+      finalizeDeploymentApproval,
       resourceManifest: { worker: { name: 'agency-crm-search-consumer' } },
       configPath: path.join(frozen.artifactVerification.artifactRoot, 'config', 'worker.toml'),
       execute
     })
-    expect(order).toEqual(['readback', 'spawn'])
-    expect(result.args).toEqual([
+    expect(order).toEqual([
+      'readback:before-worker-upload', 'record:worker_upload:started',
+      'spawn:worker-upload', 'record:worker_upload:succeeded',
+      'readback:before-worker-activate', 'record:worker_activate:started',
+      'spawn:worker-activate', 'record:worker_activate:succeeded', 'finalize'
+    ])
+    expect(execute).toHaveBeenNthCalledWith(1, expect.objectContaining({ args: [
       'versions', 'upload', path.join(frozen.artifactVerification.artifactRoot, 'worker', 'worker.mjs'), '--no-bundle',
       '--config', path.join(frozen.artifactVerification.artifactRoot, 'config', 'worker.toml'),
-      '--cwd', frozen.artifactVerification.artifactRoot, '--env', ''
-    ])
+      '--cwd', frozen.artifactVerification.artifactRoot
+    ] }))
+    expect(execute).toHaveBeenNthCalledWith(2, expect.objectContaining({ args: [
+      'versions', 'deploy', 'worker-version-123@100%', '--yes',
+      '--config', path.join(frozen.artifactVerification.artifactRoot, 'config', 'worker.toml'),
+      '--cwd', frozen.artifactVerification.artifactRoot
+    ] }))
+    expect(result).toMatchObject({
+      versionId: 'worker-version-123', deploymentId: 'worker-deployment-456'
+    })
+    expect(finalizeDeploymentApproval).toHaveBeenCalledWith(expect.objectContaining({
+      approvalId: approvalPayload.approvalId,
+      workerVersionId: 'worker-version-123', workerDeploymentId: 'worker-deployment-456'
+    }))
+
+    order.length = 0
+    execute.mockClear()
+    recordDeploymentPhase.mockClear()
+    finalizeDeploymentApproval.mockClear()
+    const revokedBeforeActivation = vi.fn()
+      .mockResolvedValueOnce({
+        ...approvalPayload, status: 'active', revokedAt: null,
+        readbackAt: '2026-08-11T01:00:00.000Z'
+      })
+      .mockResolvedValueOnce({
+        ...approvalPayload, status: 'revoked', revokedAt: '2026-08-11T01:00:00.000Z',
+        readbackAt: '2026-08-11T01:00:00.000Z'
+      })
+    await expect(runFrozenConsumerUpload({
+      mode: 'production', manifestEnvelope: frozen.manifestEnvelope,
+      artifactVerification: frozen.artifactVerification,
+      approvalEnvelope: envelope, approvalVerification: verification,
+      evidenceBundle, evidenceKeyring,
+      currentTime: () => verification.nowMs,
+      readCurrentApproval: revokedBeforeActivation,
+      recordDeploymentPhase,
+      finalizeDeploymentApproval,
+      resourceManifest: { worker: { name: 'agency-crm-search-consumer' } },
+      configPath: path.join(frozen.artifactVerification.artifactRoot, 'config', 'worker.toml'),
+      execute
+    })).rejects.toThrow('crm_search_release_approval_revoked')
+    expect(execute).toHaveBeenCalledTimes(1)
+    expect(recordDeploymentPhase).toHaveBeenCalledWith(expect.objectContaining({
+      phase: 'worker_upload', status: 'succeeded', versionId: 'worker-version-123'
+    }))
+    expect(finalizeDeploymentApproval).not.toHaveBeenCalled()
 
     execute.mockClear()
     await expect(runFrozenConsumerUpload({
@@ -513,7 +666,8 @@ describe('CRM search frozen release artifact', () => {
         readbackAt: '2026-08-11T01:00:00.000Z'
       }),
       resourceManifest: { worker: { name: 'agency-crm-search-consumer' } },
-      configPath: path.join(frozen.artifactVerification.artifactRoot, 'config', 'worker.toml'), execute
+      configPath: path.join(frozen.artifactVerification.artifactRoot, 'config', 'worker.toml'),
+      recordDeploymentPhase, finalizeDeploymentApproval, execute
     })).rejects.toThrow('crm_search_release_approval_revoked')
     expect(execute).not.toHaveBeenCalled()
   })
@@ -541,7 +695,7 @@ describe('CRM search frozen release artifact', () => {
         envelopeVersion: 'crm-search-sealed-holdout-v1', judgementSha256: digest('9'),
         productionReady: false
       },
-      cleanup: { manifestDigest: digest('a'), confirmedAt: '2026-08-11T01:00:00.000Z', remainingMutableTargets: 0 }
+      cleanup: cleanupEvidence()
     }
     const bundle = createEvidenceBundle(evidence, { keyVersion: 'evidence-2026-08', privateKey })
     expect(verifyEvidenceBundle(bundle, {
@@ -556,5 +710,12 @@ describe('CRM search frozen release artifact', () => {
       ...evidence,
       cleanup: { ...evidence.cleanup, query: 'select * from crm_people' }
     }, { keyVersion: 'evidence-2026-08', privateKey })).toThrow('crm_search_evidence_privacy_violation')
+    expect(() => createEvidenceBundle({
+      ...evidence,
+      cleanup: {
+        ...evidence.cleanup,
+        journal: [{ ...evidence.cleanup.journal[0], finalReadbackDigest: digest('c') }]
+      }
+    }, { keyVersion: 'evidence-2026-08', privateKey })).toThrow('crm_search_cleanup_journal_digest_mismatch')
   })
 })

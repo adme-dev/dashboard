@@ -2,10 +2,36 @@
   "version": "crm-search-preview-evidence/v1",
   "generatedAt": "2026-08-10T19:30:02Z",
   "candidateSha": "efd177a7d12d95190b37c8a301d1166d8022858d",
+  "candidateScope": "historical_candidate_superseded_by_release_safety_corrections",
+  "currentCorrectedCandidateSha": null,
+  "currentCorrectedCandidateBaseSha": "ee653429570239eaa783f941a0f11a3d0ec0417f",
   "comparisonBaseSha": "f46d1e7793ba558e374c380e47d610a65d42756a",
   "decision": "external_preview_pending",
   "productionHalted": true,
   "localVerification": {
+    "appliesOnlyToCandidateSha": "efd177a7d12d95190b37c8a301d1166d8022858d",
+    "currentCorrectionVerificationComplete": true,
+    "currentCorrectionVerificationScope": "bounded_local_release_and_affected_slices_only",
+    "currentCorrectionAffectedSlice": {
+      "testFilesPassed": 4,
+      "testsPassed": 59,
+      "testsSkipped": 1,
+      "testsFailed": 0
+    },
+    "currentCorrectionReleaseSlice": {
+      "testFilesPassed": 9,
+      "testsPassed": 56,
+      "testsSkipped": 1,
+      "testsFailed": 0
+    },
+    "currentCorrectionStaticGates": {
+      "focusedLintPassed": true,
+      "workerGeneratedTypesPassed": true,
+      "workerStrictTypecheckPassed": true,
+      "diffCheckPassed": true,
+      "evidenceJsonParsed": true,
+      "secretPatternMatches": 0
+    },
     "harnessCommit": "f45fa96f86c1feb9fbb5f819ca024813d887a5a6",
     "compatibilitySlice": {
       "testFilesPassed": 12,
@@ -70,6 +96,8 @@
   },
   "externalPreview": {
     "executed": false,
+    "guardedExecutionAndCleanupCodePathImplemented": true,
+    "guardedCodePathExercisedOnlyWithLocalInjectedAdapters": true,
     "signedResourceApprovalVerified": false,
     "signedReleaseEvidenceVerified": false,
     "neonBranchCreated": false,
@@ -92,6 +120,7 @@
     "requiredKeyBinding": "CRM_SEARCH_SEALED_HOLDOUT_KEYRING"
   },
   "staticDigests": {
+    "digestScope": "historical_candidate_only",
     "pnpmLockSha256": "1b83b1a57e362ea7fecdf31e9fffdc1bd678305c925aa02221402483ad342ac0",
     "pagesWranglerSha256": "72bc6848b77d97c341595116d1983b28c803c7c3bb7f3dc49c525ac1f04d499c",
     "consumerWranglerSha256": "fc833859ac890535ab5a8160baac9dda46e6066b36b9f448f107674257642377",
@@ -113,6 +142,7 @@
   "releaseBlockers": [
     "signed Task 18 resource approval and immutable release evidence are absent",
     "external isolated preview resources and E2E were not executed",
-    "sealed holdout import, key provisioning, readback, decryption, and judgement verification are pending"
+    "sealed holdout import, key provisioning, readback, decryption, and judgement verification are pending",
+    "current corrected bytes require a fresh clean build, signed artifact, external preview readback, and independent final review"
   ]
 }

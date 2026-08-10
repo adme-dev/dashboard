@@ -137,11 +137,19 @@ describe('CRM search change approvals', () => {
   it('exposes exactly the six accepted approval types and their global/client scopes', async () => {
     const {
       CRM_SEARCH_CHANGE_APPROVAL_TYPES,
+      CRM_SEARCH_ORDINARY_CHANGE_APPROVAL_TYPES,
       crmSearchApprovalScope
     } = await loadContracts()
 
     expect(CRM_SEARCH_CHANGE_APPROVAL_TYPES).toEqual([
       'resource_provision',
+      'production_migration',
+      'production_deploy',
+      'client_indexing',
+      'client_shadow',
+      'client_assist'
+    ])
+    expect(CRM_SEARCH_ORDINARY_CHANGE_APPROVAL_TYPES).toEqual([
       'production_migration',
       'production_deploy',
       'client_indexing',
@@ -384,6 +392,10 @@ describe('CRM search durable operator work', () => {
       limit: 500,
       reason: 'Initial approved client backfill',
       confirmation: 'SCHEDULE CRM SEARCH BACKFILL',
+      loadDurableCapacity: vi.fn().mockResolvedValue({
+        dirty: { used: 1, limit: 100_000 },
+        operations: { used: 1, limit: 50_000 }
+      }),
       createDurableOperation
     })).resolves.toMatchObject({ status: 'pending' })
 
@@ -446,7 +458,7 @@ describe('CRM search durable operator work', () => {
 
     await expect(createCrmSearchApproval({
       ...baseApproval,
-      approvalType: 'resource_provision',
+      approvalType: 'production_migration',
       requestedByActorId: requesterId
     }, admin, { insert, loadActiveRequester })).resolves.toEqual({ approvalId: 'approval-16' })
 
@@ -456,7 +468,7 @@ describe('CRM search durable operator work', () => {
     loadActiveRequester.mockResolvedValueOnce(null)
     await expect(createCrmSearchApproval({
       ...baseApproval,
-      approvalType: 'resource_provision',
+      approvalType: 'production_migration',
       requestedByActorId: requesterId
     }, admin, { insert, loadActiveRequester })).rejects.toThrow('crm_search_approval_requester_unavailable')
   })

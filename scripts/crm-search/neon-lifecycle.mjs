@@ -15,6 +15,9 @@ const REQUIRED_MIGRATION_PATHS = Object.freeze([
   'server/database/migrations/351_crm_search_validate_backfill.sql',
   'server/database/migrations/352_crm_search_activate_capture.sql'
 ])
+const REQUIRED_EMPTY_SOURCE_TABLES = Object.freeze([
+  'crm_people', 'crm_companies', 'crm_opportunities'
+])
 
 function canonical(value) {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value)
@@ -55,6 +58,25 @@ function assertDirectEndpoint(endpoint, trustedSharedEndpointDenyset) {
   }
 }
 
+function normalizeSourceTableProof(proof, organisationScopeId) {
+  if (!proof || Object.keys(proof).sort().join('\0') !== [
+    'organisationScopeId', 'checkedAt', 'tables'
+  ].sort().join('\0')
+  || proof.organisationScopeId !== organisationScopeId
+  || !UUID.test(proof.organisationScopeId)
+  || !Number.isFinite(Date.parse(proof.checkedAt))
+  || !proof.tables
+  || Object.keys(proof.tables).sort().join('\0') !== [...REQUIRED_EMPTY_SOURCE_TABLES].sort().join('\0')
+  || REQUIRED_EMPTY_SOURCE_TABLES.some(table => proof.tables[table] !== 0)) {
+    throw new Error('crm_search_neon_empty_source_proof_required')
+  }
+  return Object.freeze({
+    organisationScopeId: proof.organisationScopeId,
+    checkedAt: proof.checkedAt,
+    tables: Object.freeze(Object.fromEntries(REQUIRED_EMPTY_SOURCE_TABLES.map(table => [table, 0])))
+  })
+}
+
 export function buildNeonLifecyclePlan(input) {
   if (!input.projectId || input.projectId !== input.expectedProjectId) {
     throw new Error('crm_search_neon_project_mismatch')
@@ -75,7 +97,7 @@ export function buildNeonLifecyclePlan(input) {
       endpoints: [{ type: 'read_write' }]
     },
     pollOperations: true,
-    assertEmptyTables: ['crm_people', 'crm_companies', 'crm_opportunities'],
+    assertEmptyTables: [...REQUIRED_EMPTY_SOURCE_TABLES],
     migrations: [350, 351, 352],
     migrationPaths: [...REQUIRED_MIGRATION_PATHS],
     migrationDigests: workspaceMigrationDigests(),
@@ -103,6 +125,7 @@ export function createNeonTargetAttestation(input) {
     expiresAt: input.expiresAt,
     neonApi,
     apiResponseSha256: digest(neonApi),
+    sourceTableProof: input.sourceTableProof,
     signerKeyId: input.signing.signerKeyId,
     signatureAlgorithm: 'ed25519'
   }
@@ -111,6 +134,14 @@ export function createNeonTargetAttestation(input) {
   const branch = neonApi?.branch
   const exactMigrationDigests = workspaceMigrationDigests()
   const governanceApproval = unsigned.governanceApproval
+  let sourceTableProof
+  try {
+    sourceTableProof = normalizeSourceTableProof(
+      unsigned.sourceTableProof, governanceApproval?.organisationScopeId
+    )
+  } catch {
+    throw new Error('crm_search_neon_attestation_invalid')
+  }
   const governanceDigestsValid = [governanceApproval?.artifactManifestDigest,
     governanceApproval?.bindingManifestDigest,
     governanceApproval?.evidenceBundleHash].every(value => DIGEST.test(value ?? ''))
@@ -122,10 +153,11 @@ export function createNeonTargetAttestation(input) {
     || !governanceApproval
     || Object.keys(governanceApproval).sort().join('\0') !== [
       'id', 'revision', 'type', 'artifactManifestDigest', 'bindingManifestDigest',
-      'evidenceBundleHash'
+      'evidenceBundleHash', 'organisationScopeId'
     ].sort().join('\0')
     || governanceApproval.type !== 'production_migration'
     || !UUID.test(governanceApproval.id)
+    || !UUID.test(governanceApproval.organisationScopeId)
     || !Number.isSafeInteger(governanceApproval.revision) || governanceApproval.revision < 0
     || !governanceDigestsValid
     || !Number.isFinite(createdAt) || !Number.isFinite(expiresAt)
@@ -135,7 +167,9 @@ export function createNeonTargetAttestation(input) {
     || branch.id === neonApi.sourceBranch.id || neonApi.endpoint.branchId !== branch.id
     || branch.name !== `crm-search-e2e-${unsigned.sourceGitSha.slice(0, 12)}`
     || branch.initSource !== 'schema-only'
+    || !Number.isFinite(Date.parse(neonApi.branchReadbackAt))
     || branch.createdAt !== unsigned.createdAt || branch.expiresAt !== unsigned.expiresAt
+    || canonical(unsigned.sourceTableProof) !== canonical(sourceTableProof)
     || /(^|[^a-z])(prod|production|main|primary|shared|default)([^a-z]|$)/u.test(
       `${neonApi.project.id} ${branch.id} ${branch.name}`.toLowerCase()
     )) {
@@ -153,6 +187,7 @@ export function createNeonLifecycleExecutor(options) {
   const databaseAdapter = options?.databaseAdapter
   const sleep = options?.sleep ?? (milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)))
   const maxPolls = options?.maxPolls ?? 120
+  const currentTime = options?.currentTime ?? (() => Date.now())
   if (typeof fetchImpl !== 'function' || !databaseAdapter
     || typeof databaseAdapter.assertEmpty !== 'function'
     || typeof databaseAdapter.applyMigrations !== 'function'
@@ -182,6 +217,18 @@ export function createNeonLifecycleExecutor(options) {
         `/projects/${encodeURIComponent(step.projectId)}/branches/${encodeURIComponent(step.branchId)}`,
         { method: 'DELETE' }
       )
+    }
+    if (step.action === 'read-branch') {
+      const pathname = `/projects/${encodeURIComponent(step.projectId)}/branches/${encodeURIComponent(step.branchId)}`
+      const response = await fetchImpl(`https://console.neon.tech/api/v2${pathname}`, {
+        method: 'GET',
+        headers: { accept: 'application/json', authorization: `Bearer ${options.apiKey}` }
+      })
+      const readAt = new Date(currentTime()).toISOString()
+      if (response?.status === 404) return { branch: null, readAt }
+      if (!response?.ok) throw new Error('crm_search_neon_api_failed')
+      const readback = await response.json()
+      return { ...readback, readAt }
     }
     if (step.action === 'poll') {
       for (const operationId of step.operationIds ?? []) {
@@ -232,7 +279,10 @@ export async function runNeonLifecycle({
       requiredProofs: [
         'signed-production-migration-approval',
         'fresh-direct-neon-readback-before-create',
-        'fresh-direct-neon-readback-before-migrate'
+        'fresh-direct-neon-readback-before-migrate',
+        'provider-schema-only-branch-readback',
+        'organisation-scoped-zero-source-table-proof',
+        'fresh-post-delete-branch-absence-readback'
       ]
     }
   }
@@ -256,7 +306,8 @@ export async function runNeonLifecycle({
     type: approval.type,
     artifactManifestDigest: approval.artifactManifestDigest,
     bindingManifestDigest: approval.bindingManifestDigest,
-    evidenceBundleHash: approval.evidenceBundleHash
+    evidenceBundleHash: approval.evidenceBundleHash,
+    organisationScopeId: approval.organisationScopeId
   })
   const readFreshApproval = async (phase) => {
     const readback = await readCurrentApproval({
@@ -271,6 +322,7 @@ export async function runNeonLifecycle({
   let result
   let lifecycleError
   let cleanupError
+  let cleanupReadback
   try {
     await readFreshApproval('before-create')
     const created = await execute({
@@ -283,6 +335,19 @@ export async function runNeonLifecycle({
       throw new Error('crm_search_neon_operation_ids_required')
     }
     await execute({ action: 'poll', projectId: plan.projectId, branchId, operationIds })
+    const branchReadback = await execute({
+      action: 'read-branch', phase: 'post-create', projectId: plan.projectId, branchId
+    })
+    const branch = branchReadback?.branch
+    if (!branch || branch.id !== branchId || branch.project_id !== plan.projectId
+      || branch.parent_id !== plan.create.branch.parent_id
+      || branch.name !== plan.create.branch.name
+      || branch.init_source !== 'schema-only'
+      || branch.expires_at !== plan.create.branch.expires_at
+      || !Number.isFinite(Date.parse(branch.created_at))
+      || !Number.isFinite(Date.parse(branchReadback.readAt))) {
+      throw new Error('crm_search_neon_schema_only_readback_required')
+    }
     const endpointRecord = created.endpoints?.find(endpoint => endpoint.branch_id === branchId)
     const endpoint = endpointRecord && {
       id: endpointRecord.id,
@@ -294,14 +359,13 @@ export async function runNeonLifecycle({
       action: 'assert-empty', projectId: plan.projectId, branchId,
       endpoint, tables: plan.assertEmptyTables
     })
-    if (empty?.emptySourceProof !== true) throw new Error('crm_search_neon_empty_source_proof_required')
+    const sourceTableProof = normalizeSourceTableProof(empty, approval.organisationScopeId)
     await readFreshApproval('before-migrate')
     await execute({
       action: 'migrate', projectId: plan.projectId, branchId, endpoint,
       migrationPaths: plan.migrationPaths, migrationDigests: plan.migrationDigests,
       governanceApproval
     })
-    const branch = created.branch
     const neonApi = {
       project: { id: plan.projectId },
       sourceBranch: { id: plan.create.branch.parent_id },
@@ -314,6 +378,7 @@ export async function runNeonLifecycle({
         createdAt: branch.created_at,
         expiresAt: branch.expires_at
       },
+      branchReadbackAt: branchReadback.readAt,
       endpoint
     }
     if (neonApi.branch.projectId !== neonApi.project.id
@@ -329,6 +394,7 @@ export async function runNeonLifecycle({
       createdAt: neonApi.branch.createdAt,
       expiresAt: neonApi.branch.expiresAt,
       neonApi,
+      sourceTableProof,
       trustedSharedEndpointDenyset,
       signing
     })
@@ -344,6 +410,13 @@ export async function runNeonLifecycle({
           cleanupError = new Error('crm_search_neon_cleanup_operation_ids_required')
         } else {
           await execute({ action: 'poll', projectId: plan.projectId, branchId, operationIds })
+          cleanupReadback = await execute({
+            action: 'read-branch', phase: 'post-delete', projectId: plan.projectId, branchId
+          })
+          if (cleanupReadback?.branch !== null
+            || !Number.isFinite(Date.parse(cleanupReadback?.readAt))) {
+            cleanupError = new Error('crm_search_neon_cleanup_absence_readback_required')
+          }
         }
       } catch (error) {
         cleanupError = error
@@ -355,7 +428,10 @@ export async function runNeonLifecycle({
   }
   if (lifecycleError) throw lifecycleError
   if (cleanupError) throw cleanupError
-  return result
+  return {
+    ...result,
+    cleanup: Object.freeze({ branchId, absent: true, readAt: cleanupReadback.readAt })
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

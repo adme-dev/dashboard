@@ -33,6 +33,8 @@ const targetIdentityDigestPattern = /^[a-f0-9]{64}$/
 const externalMutableIntegrations = [
   'database',
   'provider_apis',
+  'ai_gateway',
+  'mcp',
   'meta',
   'google',
   'meta_audiences',
@@ -51,7 +53,7 @@ const externalIntegrationTargetSchema = z.discriminatedUnion('state', [
     name: z.enum(externalMutableIntegrations),
     state: z.literal('disabled'),
     targetIdentityDigest: z.null(),
-    verifiedAt: z.null()
+    verifiedAt: z.iso.datetime()
   }).strict(),
   z.object({
     name: z.enum(externalMutableIntegrations),

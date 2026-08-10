@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { Client, type ClientConfig } from 'pg'
 import { describe, expect, it } from 'vitest'
 
+import { verifyReleaseApprovalFinalization } from '../helpers/crmSearchReleaseApprovalPostgres'
+
 const localDsn = process.env.CRM_SEARCH_TASK6_TEST_DSN?.trim()
 const requiredApplicationName = 'crm-search-task6-test'
 const fixedScopeId = '00000000-0000-4351-8351-000000000001'
@@ -335,6 +337,9 @@ databaseDescribe('CRM search migrations 350-353 on isolated local PostgreSQL 14'
         max_query_provider_calls: '0',
         max_indexing_provider_calls: '0'
       }])
+
+      await verifyReleaseApprovalFinalization(administrator, fixedScopeId)
+
       expect((await connection.query(
         `SELECT search_revision FROM crm_people WHERE id = $1`,
         [initialPerson]

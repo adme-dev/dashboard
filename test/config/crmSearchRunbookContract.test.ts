@@ -12,6 +12,10 @@ describe('CRM search release runbooks', () => {
     expect(operations).toMatch(/block[^\n]*90%/i)
     expect(operations).toMatch(/keyword error rate/i)
     expect(operations).toMatch(/queue age/i)
+    expect(operations).toMatch(/keyword error rate[^\n]*1%[^\n]*page/i)
+    expect(operations).toMatch(/queue age[^\n]*900[^\n]*page/i)
+    expect(operations).toMatch(/90%[^\n]*(?:reject|block)[^\n]*(?:approval|backfill)/i)
+    expect(operations).toMatch(/existing[^\n]*(?:delete|reconcil)/i)
     expect(operations).toMatch(/self-healing retries[^\n]*dashboard-only/i)
   })
 

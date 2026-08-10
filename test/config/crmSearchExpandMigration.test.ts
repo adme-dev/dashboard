@@ -691,6 +691,46 @@ describe('CRM search expand migration 350', () => {
     }
   })
 
+  it('consumes production deployment approval only after exact durable phase success', () => {
+    const sql = readMigration()
+    const recordDeployment = functionDefinition(sql, 'crm_search_record_dormant_deployment')
+    const safeJson = functionDefinition(sql, 'crm_search_json_schema_is_safe')
+
+    expect(recordDeployment).toMatch(/v_pages_phase[\s\S]*v_worker_upload_phase[\s\S]*v_worker_activate_phase/)
+    expect(recordDeployment).toMatch(
+      /crm_search_change_approval_revocations[\s\S]*deployment\.phase_[\s\S]*crm_search_change_approval_consumptions/
+    )
+    for (const phase of ['pages', 'worker_upload', 'worker_activate']) {
+      expect(recordDeployment).toMatch(new RegExp(
+        `details->>'phase'\\s*=\\s*'${phase}'[\\s\\S]*ORDER BY phase\\.created_at DESC, phase\\.id DESC[\\s\\S]*LIMIT 1`,
+        'i'
+      ))
+    }
+    expect(recordDeployment).toMatch(
+      /v_pages_event_type IS DISTINCT FROM 'deployment\.phase_succeeded'/
+    )
+    expect(recordDeployment).toMatch(/v_pages_phase->>'status' IS DISTINCT FROM 'succeeded'/)
+    expect(recordDeployment).toMatch(/details->>'approvalId' = v_approval\.id::TEXT/)
+    expect(recordDeployment).toMatch(
+      /details->>'artifactManifestDigest' = v_approval\.artifact_manifest_digest/
+    )
+    expect(recordDeployment).toMatch(/v_pages_phase->>'deploymentId'/)
+    expect(recordDeployment).toMatch(/v_worker_upload_phase->>'versionId'/)
+    expect(recordDeployment).toMatch(
+      /v_worker_activate_phase->>'versionId'[\s\S]*v_worker_upload_phase->>'versionId'/
+    )
+    expect(recordDeployment).toMatch(/v_worker_activate_phase->>'deploymentId'/)
+    expect(recordDeployment).toMatch(
+      /INSERT INTO public\.crm_search_change_approval_consumptions/
+    )
+    for (const field of [
+      'phase', 'status', 'artifactmanifestdigest', 'approvalrevision',
+      'deploymentid', 'versionid', 'failurecode'
+    ]) {
+      expect(safeJson).toContain(`'${field}'`)
+    }
+  })
+
   it('evaluates the complete client/entity/load matrix and independent capacity headroom', () => {
     const sql = readMigration()
     const evidence = tableDefinition(sql, 'crm_search_evaluation_query_evidence')

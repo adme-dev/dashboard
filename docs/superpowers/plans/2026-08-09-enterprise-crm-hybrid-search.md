@@ -1493,14 +1493,16 @@ git commit -m "test(crm-search): verify enterprise readiness"
 
 The handoff must say that implementation and isolated preview verification are complete while production schema/resources/code/indexing/shadow/assist remain unapproved and unchanged.
 
-#### Task 19 local-readiness evidence — 2026-08-11
+#### Task 19 historical local-readiness evidence — 2026-08-11
+
+The evidence below applies only to historical candidate `efd177a7d12d95190b37c8a301d1166d8022858d`. A later release-safety correction pass supersedes its final-readiness conclusion. The correction tree based on `ee653429570239eaa783f941a0f11a3d0ec0417f` has a real guarded preview execution/cleanup path behind exact flags, verified authorization bindings, injected adapters, production denylisting, an outer `finally`, exact mutation journalling, and baseline readback. Its bounded affected slice passed 59 tests with one opt-in local-Postgres skip; its nine-file release slice passed 56 tests with one guarded external-database skip. No external adapter has been run: preview execution, resource provisioning, provider calls, Neon lifecycle, deploys, cleanup readback, and sealed-holdout ceremony all remain pending. The corrected bytes still require a new clean build, signed frozen artifact, and independent final review.
 
 - Candidate `efd177a7d12d95190b37c8a301d1166d8022858d`; same-machine comparison base `f46d1e7793ba558e374c380e47d610a65d42756a`.
 - Steps 1–2 completed in atomic harness commit `f45fa96f86c1feb9fbb5f819ca024813d887a5a6`. The final 12-file compatibility slice passed 87/87 tests.
 - The final full suite completed with 1,651 files and 10,762 tests passing; its four failing files were Chromium sandbox, localhost-listen sandbox, or missing shared-checkout artifact failures. No plausible CRM-search regression remained.
 - Typecheck reproduced the known application baseline and returned no Task 19 or `crm/search*` diagnostic. It is not recorded as green.
 - Commit `efd177a7` replaced the obsolete raw-only size threshold with immutable 250,000-byte margins below the current Workers Paid 64,000,000-byte raw and 10,000,000-byte gzip limits. A clean Node 24.18.0 build completed in 253 seconds: client/server, 162 prerenders, Nitro, wrapping, and the dual size guard passed at 25,578,485 / 63,750,000 raw bytes and 6,570,472 / 9,750,000 conservative gzip bytes. BigInt/`es2019` messages remain recorded as verified build warnings.
-- All known HIGH/MEDIUM review findings were corrected in committed code (`a3e9dbfd`, `f7888767`, `00c59e60`, `9e6b392b`, `68b0e2fc`, `17764238`, `efd177a7`).
+- At that historical candidate, all then-known HIGH/MEDIUM review findings were corrected in committed code (`a3e9dbfd`, `f7888767`, `00c59e60`, `9e6b392b`, `68b0e2fc`, `17764238`, `efd177a7`). This statement does not constitute final review of the current corrected bytes.
 - The guarded Neon schema-only TTL preflight and Task 18 artifact/resource/E2E/cleanup plans were dry-run only and reported zero mutations.
 - Step 6 was not performed: no external preview resource was provisioned or contacted, no signed resource/readiness evidence was supplied, and the sealed holdout remains `productionReady: false`.
 - Step 7 remains incomplete because isolated preview verification is not complete. Production schema, resources, code, indexing, shadow, and assist remain unapproved, halted, and unchanged.

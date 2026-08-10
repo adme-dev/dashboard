@@ -5,6 +5,7 @@ import {
 } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { constants as zlibConstants, gzipSync } from 'node:zlib'
 
 import { assertPreviewBindingReadback } from './preview-binding-guard.mjs'
 
@@ -13,6 +14,8 @@ const DIGEST = /^[a-f0-9]{64}$/u
 const KEY_VERSION = /^[A-Za-z0-9._-]{1,64}$/u
 export const REQUIRED_NODE_VERSION = '24.18.0'
 export const FROZEN_BUILD_COMMAND = 'pnpm build\npnpm --dir workers/crm-search-consumer exec wrangler versions upload --dry-run --outdir <controlled-worker-output>\n'
+const PAGES_WORKER_RAW_BUDGET_BYTES = 63_750_000
+const PAGES_WORKER_GZIP_BUDGET_BYTES = 9_750_000
 
 function fail(code) {
   throw new Error(code)
@@ -35,6 +38,34 @@ export function canonicalArtifactJson(value) {
 
 function digestCanonical(value) {
   return createHash('sha256').update(canonicalArtifactJson(value), 'utf8').digest('hex')
+}
+
+function pagesWorkerSizeEvidence(pagesDirectory) {
+  const workerRoot = path.join(pagesDirectory, '_worker.js')
+  const stat = lstatSync(workerRoot)
+  const files = stat.isDirectory()
+    ? exactFileManifest(workerRoot)
+    : [Object.freeze({ path: '_worker.js', size: stat.size, sha256: sha256File(workerRoot) })]
+  let rawBytes = 0
+  let gzipBytes = 0
+  for (const file of files) {
+    if (file.path.endsWith('.map') || path.basename(file.path).startsWith('wrangler.')) continue
+    const filePath = stat.isDirectory() ? path.join(workerRoot, file.path) : workerRoot
+    const bytes = readFileSync(filePath)
+    rawBytes += bytes.byteLength
+    gzipBytes += gzipSync(bytes, { level: zlibConstants.Z_BEST_COMPRESSION }).byteLength
+  }
+  if (rawBytes > PAGES_WORKER_RAW_BUDGET_BYTES
+    || gzipBytes > PAGES_WORKER_GZIP_BUDGET_BYTES) {
+    fail('crm_search_pages_worker_size_budget_exceeded')
+  }
+  return Object.freeze({
+    rawBytes,
+    gzipBytes,
+    rawBudgetBytes: PAGES_WORKER_RAW_BUDGET_BYTES,
+    gzipBudgetBytes: PAGES_WORKER_GZIP_BUDGET_BYTES,
+    guardScriptSha256: sha256File(new URL('../check-worker-size.mjs', import.meta.url))
+  })
 }
 
 export function exactFileManifest(root) {
@@ -147,6 +178,7 @@ export async function buildFrozenArtifact(input) {
   await input.buildConsumer({ outputDirectory: workerDirectory })
   await input.stageProvenance({ outputDirectory: configDirectory })
   const pagesFiles = exactFileManifest(pagesDirectory)
+  const sizeEvidence = pagesWorkerSizeEvidence(pagesDirectory)
   const workerFiles = exactFileManifest(workerDirectory)
   const configFiles = exactFileManifest(configDirectory)
   const requiredConfig = {
@@ -177,7 +209,9 @@ export async function buildFrozenArtifact(input) {
     version: 'crm-search-frozen-artifact-v2',
     ...pins,
     cleanTree: true,
-    pages: Object.freeze({ directory: 'pages', files: pagesFiles, digest: digestCanonical(pagesFiles) }),
+    pages: Object.freeze({
+      directory: 'pages', files: pagesFiles, digest: digestCanonical(pagesFiles), sizeEvidence
+    }),
     worker: Object.freeze({
       directory: 'worker',
       entrypoint: `worker/${workerEntrypoint}`,
@@ -226,8 +260,16 @@ export function verifyFrozenArtifactEnvelope(envelope, options) {
     'bindingManifestDigest', 'cleanTree', 'pages', 'worker', 'config'
   ]) || envelope.payload.version !== 'crm-search-frozen-artifact-v2'
   || envelope.payload.cleanTree !== true
-  || !exactKeys(envelope.payload.pages, ['directory', 'files', 'digest'])
+  || !exactKeys(envelope.payload.pages, ['directory', 'files', 'digest', 'sizeEvidence'])
   || envelope.payload.pages.directory !== 'pages'
+  || !exactKeys(envelope.payload.pages.sizeEvidence, [
+    'rawBytes', 'gzipBytes', 'rawBudgetBytes', 'gzipBudgetBytes', 'guardScriptSha256'
+  ])
+  || !Number.isSafeInteger(envelope.payload.pages.sizeEvidence.rawBytes)
+  || !Number.isSafeInteger(envelope.payload.pages.sizeEvidence.gzipBytes)
+  || envelope.payload.pages.sizeEvidence.rawBudgetBytes !== PAGES_WORKER_RAW_BUDGET_BYTES
+  || envelope.payload.pages.sizeEvidence.gzipBudgetBytes !== PAGES_WORKER_GZIP_BUDGET_BYTES
+  || !DIGEST.test(envelope.payload.pages.sizeEvidence.guardScriptSha256 ?? '')
   || !exactKeys(envelope.payload.worker, ['directory', 'entrypoint', 'files', 'digest'])
   || envelope.payload.worker.directory !== 'worker'
   || !exactKeys(envelope.payload.config, ['directory', 'files', 'digest'])
@@ -262,6 +304,13 @@ export function verifyFrozenArtifactEnvelope(envelope, options) {
   const configFiles = exactFileManifest(path.join(options.artifactRoot, envelope.payload.config.directory))
   if (canonicalArtifactJson(pagesFiles) !== canonicalArtifactJson(envelope.payload.pages.files)
     || digestCanonical(pagesFiles) !== envelope.payload.pages.digest) fail('crm_search_pages_bundle_mismatch')
+  const sizeEvidence = pagesWorkerSizeEvidence(
+    path.join(options.artifactRoot, envelope.payload.pages.directory)
+  )
+  if (canonicalArtifactJson(sizeEvidence)
+    !== canonicalArtifactJson(envelope.payload.pages.sizeEvidence)) {
+    fail('crm_search_pages_worker_size_evidence_mismatch')
+  }
   if (canonicalArtifactJson(workerFiles) !== canonicalArtifactJson(envelope.payload.worker.files)
     || digestCanonical(workerFiles) !== envelope.payload.worker.digest) fail('crm_search_worker_bundle_mismatch')
   if (!workerFiles.some(file => `worker/${file.path}` === envelope.payload.worker.entrypoint)) {

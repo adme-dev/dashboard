@@ -2,14 +2,12 @@ import { createError, eventHandler, readBody, setResponseHeader, setResponseStat
 import { z } from 'zod'
 import { requireFreshCrmSearchAdmin } from '~~/server/utils/crm/search/operations/audit'
 import { createCrmSearchApproval, mapCrmSearchCommandError } from '~~/server/utils/crm/search/operations/commands'
+import { CRM_SEARCH_ORDINARY_CHANGE_APPROVAL_TYPES } from '~~/server/utils/crm/search/operations/contracts'
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/u)
 const count = z.number().int().nonnegative()
 const BodySchema = z.strictObject({
-  approvalType: z.enum([
-    'resource_provision', 'production_migration', 'production_deploy',
-    'client_indexing', 'client_shadow', 'client_assist'
-  ]),
+  approvalType: z.enum(CRM_SEARCH_ORDINARY_CHANGE_APPROVAL_TYPES),
   environment: z.enum(['preview', 'production']),
   implementationGitSha: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u),
   artifactManifestDigest: digest,

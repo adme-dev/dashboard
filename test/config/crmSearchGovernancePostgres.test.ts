@@ -37,6 +37,20 @@ interface CrmSearchTargetAttestation {
   schemaOnly: boolean
   createdAt: string
   expiresAt: string
+  governanceApproval: {
+    id: string
+    revision: number
+    type: 'production_migration'
+    artifactManifestDigest: string
+    bindingManifestDigest: string
+    evidenceBundleHash: string
+    organisationScopeId: string
+  }
+  sourceTableProof: {
+    organisationScopeId: string
+    checkedAt: string
+    tables: { crm_people: number, crm_companies: number, crm_opportunities: number }
+  }
   neonApi: {
     project: { id: string }
     sourceBranch: { id: string }
@@ -49,6 +63,7 @@ interface CrmSearchTargetAttestation {
       createdAt: string
       expiresAt: string
     }
+    branchReadbackAt: string
     endpoint: { id: string, branchId: string, host: string }
   }
   apiResponseSha256: string
@@ -118,6 +133,16 @@ function targetAttestationFixture(
     schemaOnly: true,
     createdAt,
     expiresAt,
+    governanceApproval: {
+      id: '40000000-0000-4000-8000-000000000001', revision: 0,
+      type: 'production_migration', artifactManifestDigest: '1'.repeat(64),
+      bindingManifestDigest: '2'.repeat(64), evidenceBundleHash: '3'.repeat(64),
+      organisationScopeId: '20000000-0000-4000-8000-000000000001'
+    },
+    sourceTableProof: {
+      organisationScopeId: '20000000-0000-4000-8000-000000000001', checkedAt: createdAt,
+      tables: { crm_people: 0, crm_companies: 0, crm_opportunities: 0 }
+    },
     neonApi: {
       project: { id: 'prj-crm-search-e2e' },
       sourceBranch: { id: 'br-source-shared' },
@@ -130,6 +155,7 @@ function targetAttestationFixture(
         createdAt,
         expiresAt
       },
+      branchReadbackAt: createdAt,
       endpoint: {
         id: 'ep-crm-search-e2e-a1b2c3d4',
         branchId: 'br-crm-search-e2e',
@@ -234,6 +260,16 @@ function verifyTargetAttestation(
   }
   if (attestation.schemaOnly !== true || attestation.neonApi.branch.initSource !== 'schema-only') {
     throw new Error('CRM search target attestation must prove schema-only creation')
+  }
+  const sourceProof = attestation.sourceTableProof
+  if (attestation.governanceApproval?.type !== 'production_migration'
+    || sourceProof?.organisationScopeId !== attestation.governanceApproval.organisationScopeId
+    || !Number.isFinite(Date.parse(sourceProof?.checkedAt ?? ''))
+    || Object.keys(sourceProof?.tables ?? {}).sort().join('\0')
+    !== ['crm_companies', 'crm_opportunities', 'crm_people'].join('\0')
+    || Object.values(sourceProof?.tables ?? {}).some(value => value !== 0)
+    || !Number.isFinite(Date.parse(attestation.neonApi.branchReadbackAt ?? ''))) {
+    throw new Error('CRM search target attestation source-table or provider readback proof is invalid')
   }
 
   const createdAt = Date.parse(attestation.createdAt)

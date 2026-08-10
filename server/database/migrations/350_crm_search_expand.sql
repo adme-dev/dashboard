@@ -1285,7 +1285,8 @@ BEGIN
         'approvalid', 'teardownid', 'operationid', 'resolutionstate',
         'expectedstate', 'correlationid', 'evidencehash', 'manifesthash',
         'highwatermarkhash', 'complete', 'requestedbyactorid',
-        'importedprovenancehash'
+        'importedprovenancehash', 'phase', 'status', 'artifactmanifestdigest',
+        'approvalrevision', 'deploymentid', 'versionid', 'failurecode'
       ]::TEXT[])) OR jsonb_typeof(v_child) IN ('array', 'object', 'null') THEN
         RETURN FALSE;
       END IF;
@@ -1322,16 +1323,41 @@ BEGIN
         END IF;
       ELSIF v_normalized_key = ANY(ARRAY[
         'evidencehash', 'manifesthash', 'highwatermarkhash',
-        'importedprovenancehash'
+        'importedprovenancehash', 'artifactmanifestdigest'
       ]::TEXT[]) THEN
         IF jsonb_typeof(v_child) <> 'string'
            OR (v_child #>> '{}') !~ '^(hmac-sha256:)?[a-f0-9]{64}$' THEN
           RETURN FALSE;
         END IF;
       ELSIF v_normalized_key = ANY(ARRAY[
-        'fromrevision', 'torevision', 'rowcount'
+        'fromrevision', 'torevision', 'rowcount', 'approvalrevision'
       ]::TEXT[]) THEN
         IF jsonb_typeof(v_child) <> 'number' OR (v_child #>> '{}') !~ '^[0-9]+$' THEN
+          RETURN FALSE;
+        END IF;
+      ELSIF v_normalized_key = 'phase' THEN
+        IF jsonb_typeof(v_child) <> 'string'
+           OR (v_child #>> '{}') NOT IN ('pages', 'worker_upload', 'worker_activate') THEN
+          RETURN FALSE;
+        END IF;
+      ELSIF v_normalized_key = 'status' THEN
+        IF jsonb_typeof(v_child) <> 'string'
+           OR (v_child #>> '{}') NOT IN ('started', 'succeeded', 'failed') THEN
+          RETURN FALSE;
+        END IF;
+      ELSIF v_normalized_key = 'failurecode' THEN
+        IF jsonb_typeof(v_child) <> 'string'
+           OR (v_child #>> '{}') <> 'external_spawn_failed' THEN
+          RETURN FALSE;
+        END IF;
+      ELSIF v_normalized_key = 'deploymentid' THEN
+        IF jsonb_typeof(v_child) <> 'string'
+           OR (v_child #>> '{}') !~ '^[A-Za-z0-9._:-]{1,128}$' THEN
+          RETURN FALSE;
+        END IF;
+      ELSIF v_normalized_key = 'versionid' THEN
+        IF jsonb_typeof(v_child) <> 'string'
+           OR (v_child #>> '{}') !~ '^[A-Za-z0-9._-]{1,128}$' THEN
           RETURN FALSE;
         END IF;
       ELSIF v_normalized_key = 'complete' AND jsonb_typeof(v_child) <> 'boolean' THEN
@@ -1951,6 +1977,9 @@ CREATE TABLE IF NOT EXISTS crm_search_change_approvals (
     OR (scope_kind = 'client' AND client_id IS NOT NULL)
   ),
   CHECK (expires_at > issued_at),
+  CHECK (
+    approval_type <> 'resource_provision' OR imported_provenance_hash IS NOT NULL
+  ),
   CHECK (approval_type <> 'client_assist' OR scope_kind = 'client'),
   CHECK (
     approval_type <> 'client_indexing'
@@ -4285,6 +4314,12 @@ AS $$
 DECLARE
   v_control public.crm_search_global_control%ROWTYPE;
   v_approval public.crm_search_change_approvals%ROWTYPE;
+  v_pages_event_type TEXT;
+  v_pages_phase JSONB;
+  v_worker_upload_event_type TEXT;
+  v_worker_upload_phase JSONB;
+  v_worker_activate_event_type TEXT;
+  v_worker_activate_phase JSONB;
   v_new_revision BIGINT;
 BEGIN
   IF p_actor_id IS NULL
@@ -4309,6 +4344,7 @@ BEGIN
     ON revocation.approval_id = approval.id
   WHERE approval.id = p_change_approval_id
     AND approval.approval_type = 'production_deploy'
+    AND approval.environment = 'production'
     AND approval.scope_kind = 'global'
     AND approval.organisation_scope_id = p_organisation_scope_id
     AND approval.expected_control_revision = p_expected_control_revision
@@ -4334,6 +4370,63 @@ BEGIN
   FOR UPDATE OF approval;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'CRM search dormant deployment lacks exact production-deploy approval';
+  END IF;
+
+  SELECT phase.event_type, phase.details
+  INTO v_pages_event_type, v_pages_phase
+  FROM public.crm_search_audit_log phase
+  WHERE phase.organisation_scope_id = p_organisation_scope_id
+    AND phase.event_type IN (
+      'deployment.phase_started', 'deployment.phase_succeeded', 'deployment.phase_failed'
+    )
+    AND phase.details->>'approvalId' = v_approval.id::TEXT
+    AND phase.details->>'artifactManifestDigest' = v_approval.artifact_manifest_digest
+    AND phase.details->>'phase' = 'pages'
+  ORDER BY phase.created_at DESC, phase.id DESC
+  LIMIT 1;
+
+  SELECT phase.event_type, phase.details
+  INTO v_worker_upload_event_type, v_worker_upload_phase
+  FROM public.crm_search_audit_log phase
+  WHERE phase.organisation_scope_id = p_organisation_scope_id
+    AND phase.event_type IN (
+      'deployment.phase_started', 'deployment.phase_succeeded', 'deployment.phase_failed'
+    )
+    AND phase.details->>'approvalId' = v_approval.id::TEXT
+    AND phase.details->>'artifactManifestDigest' = v_approval.artifact_manifest_digest
+    AND phase.details->>'phase' = 'worker_upload'
+  ORDER BY phase.created_at DESC, phase.id DESC
+  LIMIT 1;
+
+  SELECT phase.event_type, phase.details
+  INTO v_worker_activate_event_type, v_worker_activate_phase
+  FROM public.crm_search_audit_log phase
+  WHERE phase.organisation_scope_id = p_organisation_scope_id
+    AND phase.event_type IN (
+      'deployment.phase_started', 'deployment.phase_succeeded', 'deployment.phase_failed'
+    )
+    AND phase.details->>'approvalId' = v_approval.id::TEXT
+    AND phase.details->>'artifactManifestDigest' = v_approval.artifact_manifest_digest
+    AND phase.details->>'phase' = 'worker_activate'
+  ORDER BY phase.created_at DESC, phase.id DESC
+  LIMIT 1;
+
+  IF v_pages_event_type IS DISTINCT FROM 'deployment.phase_succeeded'
+     OR v_pages_phase->>'status' IS DISTINCT FROM 'succeeded'
+     OR v_pages_phase->>'approvalRevision' IS DISTINCT FROM '0'
+     OR COALESCE(v_pages_phase->>'deploymentId', '') !~ '^[A-Za-z0-9._:-]{1,128}$'
+     OR v_worker_upload_event_type IS DISTINCT FROM 'deployment.phase_succeeded'
+     OR v_worker_upload_phase->>'status' IS DISTINCT FROM 'succeeded'
+     OR v_worker_upload_phase->>'approvalRevision' IS DISTINCT FROM '0'
+     OR COALESCE(v_worker_upload_phase->>'versionId', '') !~ '^[A-Za-z0-9._-]{1,128}$'
+     OR v_worker_activate_event_type IS DISTINCT FROM 'deployment.phase_succeeded'
+     OR v_worker_activate_phase->>'status' IS DISTINCT FROM 'succeeded'
+     OR v_worker_activate_phase->>'approvalRevision' IS DISTINCT FROM '0'
+     OR v_worker_activate_phase->>'versionId'
+       IS DISTINCT FROM v_worker_upload_phase->>'versionId'
+     OR COALESCE(v_worker_activate_phase->>'deploymentId', '')
+       !~ '^[A-Za-z0-9._:-]{1,128}$' THEN
+    RAISE EXCEPTION 'CRM search dormant deployment lacks exact successful phase evidence';
   END IF;
 
   UPDATE public.crm_search_global_control

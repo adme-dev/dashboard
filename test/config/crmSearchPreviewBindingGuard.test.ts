@@ -5,37 +5,76 @@ import { describe, expect, it } from 'vitest'
 import { assertPreviewBindingReadback } from '../../scripts/crm-search/preview-binding-guard.mjs'
 
 import {
-  PREVIEW_CRM_SEARCH_RESOURCES,
-  PRODUCTION_CRM_SEARCH_RESOURCES,
   assertPreviewIsolation,
   assertPagesEnvironmentIsolation,
+  buildCrmSearchEnvironmentResources,
   buildPagesEnvironmentInventory,
   inventoryPagesBindings
 } from '../../scripts/crm-search/preview-binding-inventory'
 
 const externalIntegrationNames = [
-  'database', 'provider_apis', 'meta', 'google', 'meta_audiences',
+  'database', 'provider_apis', 'ai_gateway', 'mcp', 'meta', 'google', 'meta_audiences',
   'google_audiences', 'xero', 'email_delivery', 'monday', 'slack',
   'outbound_webhooks', 'google_sheets', 'social_dashboard'
 ] as const
 const targetDigest = (value: string) => createHash('sha256').update(value).digest('hex')
 const disabledIntegrations = () => externalIntegrationNames.map(name => ({
-  name, state: 'disabled' as const, targetIdentityDigest: null, verifiedAt: null
+  name, state: 'disabled' as const, targetIdentityDigest: null,
+  verifiedAt: '2026-08-11T00:00:00.000Z'
 }))
 const enabledIntegrations = (environment: string) => externalIntegrationNames.map(name => ({
   name, state: 'enabled' as const,
   targetIdentityDigest: targetDigest(`${environment}:${name}`),
   verifiedAt: '2026-08-11T00:00:00.000Z'
 }))
+const previewIntegrationReadbacks = () => externalIntegrationNames.map(name => ({
+  name, enabled: name === 'database', targetIdentity: name === 'database' ? 'preview:database' : null,
+  verifiedAt: '2026-08-11T00:00:00.000Z', source: 'cloudflare_api' as const
+}))
+const previewIntegrations = () => externalIntegrationNames.map(name => name === 'database'
+  ? {
+      name, state: 'enabled' as const, targetIdentityDigest: targetDigest('preview:database'),
+      verifiedAt: '2026-08-11T00:00:00.000Z'
+    }
+  : {
+      name, state: 'disabled' as const, targetIdentityDigest: null,
+      verifiedAt: '2026-08-11T00:00:00.000Z'
+    })
+const enabledIntegrationReadbacks = (environment: string) => externalIntegrationNames.map(name => ({
+  name,
+  enabled: true,
+  targetIdentity: name === 'ai_gateway'
+    ? `https://gateway.example.com/${environment}`
+    : name === 'mcp' ? 'https://mcp.example.com' : `${environment}:${name}`,
+  verifiedAt: '2026-08-11T00:00:00.000Z', source: 'cloudflare_api' as const
+}))
+const productionIntegrationReadbacks = () => externalIntegrationNames.map((name) => {
+  const disabled = name === 'provider_apis'
+  return {
+    name, enabled: !disabled,
+    targetIdentity: disabled
+      ? null
+      : name === 'ai_gateway'
+        ? 'https://gateway.ai.cloudflare.com/v1/a5b299b3ad15c1b5b895dc66f9357b17/default'
+        : name === 'mcp' ? 'https://mcp-server.adme-dev.workers.dev' : `production:${name}`,
+    verifiedAt: '2026-08-11T00:00:00.000Z', source: 'cloudflare_api' as const
+  }
+})
+const previewResources = buildCrmSearchEnvironmentResources(
+  'preview', previewIntegrationReadbacks()
+)
+const productionResources = buildCrmSearchEnvironmentResources(
+  'production', productionIntegrationReadbacks()
+)
 
 describe('CRM search preview binding isolation', () => {
   it('pins every mutable preview identity away from production', () => {
     expect(assertPreviewIsolation({
-      preview: PREVIEW_CRM_SEARCH_RESOURCES,
-      production: PRODUCTION_CRM_SEARCH_RESOURCES
+      preview: previewResources,
+      production: productionResources
     })).toEqual({ ok: true })
 
-    expect(PREVIEW_CRM_SEARCH_RESOURCES).toMatchObject({
+    expect(previewResources).toMatchObject({
       environment: 'preview',
       pages: { project: 'agency-dashboard', branch: 'preview' },
       worker: { name: 'agency-crm-search-consumer-preview' },
@@ -45,30 +84,30 @@ describe('CRM search preview binding isolation', () => {
         deadLetter: { name: 'agency-crm-search-index-preview-dlq', retentionSeconds: 1_209_600 }
       }
     })
-    expect(PREVIEW_CRM_SEARCH_RESOURCES.externalIntegrations).toEqual(disabledIntegrations())
+    expect(previewResources.externalIntegrations).toEqual(previewIntegrations())
   })
 
   it('fails closed when even one stateful preview target aliases production', () => {
     expect(() => assertPreviewIsolation({
       preview: {
-        ...PREVIEW_CRM_SEARCH_RESOURCES,
-        queues: PRODUCTION_CRM_SEARCH_RESOURCES.queues
+        ...previewResources,
+        queues: productionResources.queues
       },
-      production: PRODUCTION_CRM_SEARCH_RESOURCES
+      production: productionResources
     })).toThrow('crm_search_preview_resource_alias')
 
     expect(() => assertPreviewIsolation({
       preview: {
-        ...PREVIEW_CRM_SEARCH_RESOURCES,
+        ...previewResources,
         queues: {
-          ...PREVIEW_CRM_SEARCH_RESOURCES.queues,
+          ...previewResources.queues,
           primary: {
-            ...PREVIEW_CRM_SEARCH_RESOURCES.queues.primary,
+            ...previewResources.queues.primary,
             name: 'agency-jobs'
           }
         }
       },
-      production: PRODUCTION_CRM_SEARCH_RESOURCES
+      production: productionResources
     })).toThrow('crm_search_preview_resource_alias')
   })
 
@@ -157,7 +196,13 @@ describe('CRM search preview binding isolation', () => {
           durable_objects: { bindings: [{ name: 'ROOMS', class_name: 'Room', script_name: 'prod-rooms' }] },
           ai: { binding: 'AI' },
           browser: { binding: 'BROWSER' },
-          vars: { RELEASE_ENVIRONMENT: 'production' }
+          vars: {
+            RELEASE_ENVIRONMENT: 'production', CRM_SEARCH_PROVIDER_APIS_ENABLED: 'true',
+            AI_GATEWAY_URL: 'https://gateway.example.com/production', MCP_SERVER_ENABLED: 'true',
+            MCP_WORKER_ORIGIN: 'https://mcp.example.com',
+            PERSONA_META_AUDIENCE_WRITES_ENABLED: 'true',
+            PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED: 'true'
+          }
         },
         preview: {
           kv_namespaces: [{ binding: 'CACHE', id: 'preview-kv' }],
@@ -169,7 +214,12 @@ describe('CRM search preview binding isolation', () => {
           durable_objects: { bindings: [{ name: 'ROOMS', class_name: 'Room', script_name: 'preview-rooms' }] },
           ai: { binding: 'AI' },
           browser: { binding: 'BROWSER' },
-          vars: { RELEASE_ENVIRONMENT: 'preview' }
+          vars: {
+            RELEASE_ENVIRONMENT: 'preview', CRM_SEARCH_PROVIDER_APIS_ENABLED: 'false',
+            AI_GATEWAY_URL: '', MCP_SERVER_ENABLED: 'false', MCP_WORKER_ORIGIN: '',
+            PERSONA_META_AUDIENCE_WRITES_ENABLED: 'false',
+            PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED: 'false'
+          }
         }
       }
     }
@@ -178,8 +228,8 @@ describe('CRM search preview binding isolation', () => {
       preview: [{ binding: 'DATABASE_URL', digest: 'b'.repeat(64) }]
     }
     const integrations = {
-      production: enabledIntegrations('production'),
-      preview: disabledIntegrations()
+      production: enabledIntegrationReadbacks('production'),
+      preview: previewIntegrationReadbacks()
     }
     const inventory = buildPagesEnvironmentInventory(fixture, secrets, integrations)
     expect(assertPagesEnvironmentIsolation(inventory)).toEqual({ ok: true })
@@ -205,20 +255,90 @@ describe('CRM search preview binding isolation', () => {
       }
     }, secrets, integrations))).toThrow('crm_search_pages_preview_resource_alias')
 
-    expect(() => assertPagesEnvironmentIsolation(buildPagesEnvironmentInventory(
-      fixture,
-      secrets,
-      {
-        production: enabledIntegrations('production'),
-        preview: enabledIntegrations('production')
+    const aliasedIntegrations = buildPagesEnvironmentInventory(fixture, secrets, integrations)
+    expect(() => assertPagesEnvironmentIsolation({
+      ...aliasedIntegrations,
+      preview: {
+        ...aliasedIntegrations.preview,
+        integrations: aliasedIntegrations.preview.integrations.map(target => target.name === 'database'
+          ? { ...aliasedIntegrations.production.integrations[0] }
+          : target)
       }
-    ))).toThrow('crm_search_pages_preview_integration_alias')
+    })).toThrow('crm_search_pages_preview_integration_alias')
     expect(() => buildPagesEnvironmentInventory(fixture, secrets, {
-      production: enabledIntegrations('production'),
-      preview: enabledIntegrations('preview').map((target, index) => index === 0
-        ? { ...target, targetIdentityDigest: null }
+      production: enabledIntegrationReadbacks('production'),
+      preview: enabledIntegrationReadbacks('preview').map((target, index) => index === 0
+        ? { ...target, targetIdentity: null }
         : target)
     })).toThrow('crm_search_pages_integration_inventory_invalid')
+  })
+
+  it('derives signed integration state and target digests from normalized config readback', () => {
+    const fixture = {
+      name: 'agency-dashboard',
+      env: {
+        production: {
+          vars: {
+            CRM_SEARCH_PROVIDER_APIS_ENABLED: 'true',
+            AI_GATEWAY_URL: 'https://gateway.ai.cloudflare.com/v1/account/production',
+            MCP_SERVER_ENABLED: 'true',
+            MCP_WORKER_ORIGIN: 'https://mcp-production.example.com',
+            PERSONA_META_AUDIENCE_WRITES_ENABLED: 'true',
+            PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED: 'true'
+          }
+        },
+        preview: {
+          vars: {
+            CRM_SEARCH_PROVIDER_APIS_ENABLED: 'false',
+            AI_GATEWAY_URL: '',
+            MCP_SERVER_ENABLED: 'false',
+            MCP_WORKER_ORIGIN: '',
+            PERSONA_META_AUDIENCE_WRITES_ENABLED: 'false',
+            PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED: 'false'
+          }
+        }
+      }
+    }
+    const secrets = {
+      production: [{ binding: 'DATABASE_URL', digest: 'a'.repeat(64) }],
+      preview: [{ binding: 'DATABASE_URL', digest: 'b'.repeat(64) }]
+    }
+    const readbacks = {
+      production: externalIntegrationNames.map(name => ({
+        name,
+        enabled: ['provider_apis', 'ai_gateway', 'mcp', 'meta', 'google', 'meta_audiences', 'google_audiences'].includes(name),
+        targetIdentity: ['provider_apis', 'ai_gateway', 'mcp', 'meta', 'google', 'meta_audiences', 'google_audiences'].includes(name)
+          ? name === 'ai_gateway'
+            ? 'https://gateway.ai.cloudflare.com/v1/account/production'
+            : name === 'mcp' ? 'https://mcp-production.example.com' : `production:${name}`
+          : null,
+        verifiedAt: '2026-08-11T00:00:00.000Z',
+        source: 'cloudflare_api'
+      })),
+      preview: externalIntegrationNames.map(name => ({
+        name, enabled: false, targetIdentity: null,
+        verifiedAt: '2026-08-11T00:00:00.000Z', source: 'cloudflare_api'
+      }))
+    }
+
+    const inventory = buildPagesEnvironmentInventory(fixture, secrets, readbacks)
+    expect(inventory.production.integrations.find(value => value.name === 'mcp')).toEqual({
+      name: 'mcp', state: 'enabled',
+      targetIdentityDigest: targetDigest('https://mcp-production.example.com/'),
+      verifiedAt: '2026-08-11T00:00:00.000Z'
+    })
+    expect(inventory.preview.integrations.find(value => value.name === 'mcp')).toEqual({
+      name: 'mcp', state: 'disabled', targetIdentityDigest: null,
+      verifiedAt: '2026-08-11T00:00:00.000Z'
+    })
+    expect(assertPagesEnvironmentIsolation(inventory)).toEqual({ ok: true })
+
+    expect(() => buildPagesEnvironmentInventory(fixture, secrets, {
+      ...readbacks,
+      preview: readbacks.preview.map(value => value.name === 'mcp'
+        ? { ...value, enabled: true, targetIdentity: 'production:mcp' }
+        : value)
+    })).toThrow('crm_search_pages_integration_config_mismatch')
   })
 
   it('keeps the checked-in Pages production and preview environments explicit', () => {
@@ -231,7 +351,10 @@ describe('CRM search preview binding isolation', () => {
     for (const flag of [
       'CRM_EMAIL_CONVERSATIONS_ENABLED', 'PERSONA_AUDIENCE_PROVIDER_WRITES_ENABLED',
       'PERSONA_META_AUDIENCE_WRITES_ENABLED', 'PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED',
-      'MCP_GEN_TOOLS_ENABLED', 'MCP_BANNER_TOOLS_ENABLED'
+      'CRM_SEARCH_PROVIDER_APIS_ENABLED', 'MCP_SERVER_ENABLED', 'MCP_GEN_TOOLS_ENABLED',
+      'MCP_VIDEO_TOOLS_ENABLED', 'MCP_BANNER_TOOLS_ENABLED'
     ]) expect(previewVars).toContain(`${flag} = "false"`)
+    expect(previewVars).toContain('AI_GATEWAY_URL = ""')
+    expect(previewVars).toContain('MCP_WORKER_ORIGIN = ""')
   })
 })

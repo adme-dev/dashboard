@@ -13,6 +13,11 @@ import {
   executeCrmSearchBackfill,
   executeCrmSearchReconciliationSchedule
 } from './execution'
+import {
+  assertCrmSearchDurableCapacityAdmission,
+  loadCrmSearchDurableCapacity,
+  type CrmSearchCapacity
+} from './health'
 
 const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu
 const reasonMinimum = 10
@@ -174,12 +179,15 @@ export async function revokeCrmSearchApproval(input: {
 
 export async function scheduleCrmSearchBackfillCommand(input: Record<string, unknown> & {
   actor: CrmSearchAdminActor
+  loadDurableCapacity?: (organisationScopeId: string) => Promise<CrmSearchCapacity>
   createDurableOperation(value: Record<string, unknown>): Promise<unknown>
 }) {
   const clientId = identifier(input.clientId)
   const expectedPolicyRevision = revision(input.expectedPolicyRevision)
   const reason = boundedReason(input.reason)
   exactConfirmation(input.confirmation, 'SCHEDULE CRM SEARCH BACKFILL')
+  const capacity = await (input.loadDurableCapacity ?? loadCrmSearchDurableCapacity)(input.actor.orgId)
+  assertCrmSearchDurableCapacityAdmission(capacity)
   return await input.createDurableOperation({
     ...input,
     type: 'backfill',
@@ -396,14 +404,22 @@ export async function createCrmSearchApproval(
   dependencies: {
     insert?: (approval: CrmSearchApprovalDraft) => Promise<{ approvalId: string }>
     loadActiveRequester?: typeof loadActiveApprovalRequester
+    loadDurableCapacity?: (organisationScopeId: string) => Promise<CrmSearchCapacity>
   } = {}
 ) {
   const input = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  if (input.approvalType === 'resource_provision') {
+    fail('crm_search_resource_provision_import_required')
+  }
   const approval = parseCrmSearchApprovalDraft({
     ...input,
     organisationScopeId: actor.orgId,
     approvedBy: actor.actorId
   })
+  if (approval.approvalType === 'client_indexing') {
+    const capacity = await (dependencies.loadDurableCapacity ?? loadCrmSearchDurableCapacity)(actor.orgId)
+    assertCrmSearchDurableCapacityAdmission(capacity)
+  }
   const requester = await (dependencies.loadActiveRequester ?? loadActiveApprovalRequester)(
     approval.requestedByActorId,
     actor.orgId

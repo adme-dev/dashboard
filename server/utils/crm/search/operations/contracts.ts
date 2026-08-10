@@ -14,6 +14,14 @@ export const CRM_SEARCH_CHANGE_APPROVAL_TYPES = [
   'client_assist'
 ] as const
 
+export const CRM_SEARCH_ORDINARY_CHANGE_APPROVAL_TYPES = [
+  'production_migration',
+  'production_deploy',
+  'client_indexing',
+  'client_shadow',
+  'client_assist'
+] as const
+
 export type CrmSearchChangeApprovalType = typeof CRM_SEARCH_CHANGE_APPROVAL_TYPES[number]
 export type CrmSearchApprovalScope = 'global' | 'client'
 
@@ -160,7 +168,11 @@ export function parseCrmSearchApprovalDraft(value: unknown): CrmSearchApprovalDr
   else if (input.clientId != null) invalid()
   if (approvalType === 'production_deploy') requireProductionDeploymentEvidence(input)
   if (approvalType === 'client_indexing') requireIndexingCapacity(input)
-  if (input.importedProvenanceHash !== undefined) string(input.importedProvenanceHash, digestPattern)
+  if (approvalType === 'resource_provision') {
+    string(input.importedProvenanceHash, digestPattern)
+  } else if (input.importedProvenanceHash !== undefined) {
+    string(input.importedProvenanceHash, digestPattern)
+  }
 
   return Object.freeze({ ...input, approvalType, reason }) as CrmSearchApprovalDraft
 }
