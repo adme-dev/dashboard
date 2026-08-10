@@ -8,6 +8,12 @@ import { kvGet, kvPut } from '../utils/kv'
 import { resolveUserPermissions } from '../utils/roleResolver'
 import { isReadOnlyRole } from '../utils/permissions'
 
+import {
+  CRM_SEARCH_DEAD_LETTER_PATH,
+  CRM_SEARCH_HEALTH_PATH,
+  CRM_SEARCH_PROCESS_PATH
+} from '~~/shared/crmSearchIndexProtocol'
+
 // Routes that don't require authentication
 const publicRoutes = [
   '/api/auth/login',
@@ -99,6 +105,15 @@ const selfAuthenticatingRoutes = new Set([
   '/api/agency/social/publishing/workflows/readiness'
 ])
 
+// The dedicated CRM Queue Worker has no staff session. Only these exact
+// machine routes may reach their inline HMAC/release-evidence guards; sibling
+// paths remain behind the ordinary staff-session boundary below.
+const crmSearchMachineRoutes: ReadonlySet<string> = new Set([
+  CRM_SEARCH_PROCESS_PATH,
+  CRM_SEARCH_DEAD_LETTER_PATH,
+  CRM_SEARCH_HEALTH_PATH
+])
+
 // Paths that an authenticated cron can read with X-Internal-Cron-Secret.
 // Narrow to read-only Xero + advisor surfaces — never include auth/
 // admin/mutation endpoints, even with the secret.
@@ -131,7 +146,7 @@ function getErrorMessage(error: unknown) {
 export default defineEventHandler(async (event) => {
   const { pathname } = getRequestURL(event)
 
-  if (selfAuthenticatingRoutes.has(pathname)) {
+  if (selfAuthenticatingRoutes.has(pathname) || crmSearchMachineRoutes.has(pathname)) {
     return
   }
 

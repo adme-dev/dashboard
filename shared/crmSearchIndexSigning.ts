@@ -246,6 +246,11 @@ function validProtocolVersion(value: unknown): value is number {
     && value <= 65_535
 }
 
+function validServicePath(value: unknown): value is CrmSearchServicePath {
+  return value === '/api/internal/crm-search/process'
+    || value === '/api/internal/crm-search/dead-letter'
+}
+
 const serviceRequestSchema = z.object({
   method: z.literal('POST'),
   path: z.union([
@@ -267,7 +272,9 @@ const serviceRequestSchema = z.object({
 
 function validateRequestStructure(value: unknown): CrmSearchServiceRequest | null {
   const parsed = serviceRequestSchema.safeParse(value)
-  return parsed.success ? parsed.data : null
+  if (!parsed.success || !validServicePath(parsed.data.path)) return null
+
+  return { ...parsed.data, path: parsed.data.path }
 }
 
 function canonicalCoordinates(value: {

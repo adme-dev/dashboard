@@ -34,11 +34,20 @@ function unavailable(): never {
   })
 }
 
-function validDeadLetterOutcome(value: unknown): value is CrmSearchDeadLetterOutcome {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const record = value as Record<string, unknown>
-  return Object.keys(record).length === 1
-    && (record.status === 'recorded' || record.status === 'duplicate')
+function projectDeadLetterOutcome(value: unknown): CrmSearchDeadLetterOutcome | null {
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+    const prototype = Object.getPrototypeOf(value)
+    if (prototype !== Object.prototype && prototype !== null) return null
+    if (Object.keys(value).length !== 1) return null
+    const statusDescriptor = Object.getOwnPropertyDescriptor(value, 'status')
+    if (!statusDescriptor || !('value' in statusDescriptor)) return null
+    const status = statusDescriptor.value
+    if (status !== 'recorded' && status !== 'duplicate') return null
+    return { status }
+  } catch {
+    return null
+  }
 }
 
 const defaultDependencies: CrmSearchDeadLetterEndpointDependencies = {
@@ -83,8 +92,8 @@ export function createCrmSearchDeadLetterPostHandler(
     })
     if (reservation.status === 'in_progress') unavailable()
     if (reservation.status === 'replay') {
-      const outcome = reservation.outcome
-      if (!validDeadLetterOutcome(outcome)) unavailable()
+      const outcome = projectDeadLetterOutcome(reservation.outcome)
+      if (!outcome) unavailable()
       dependencies.log({
         event: 'crm_search_dead_letter',
         operationId: envelope.operationId,
@@ -96,12 +105,12 @@ export function createCrmSearchDeadLetterPostHandler(
     }
     if (reservation.status !== 'reserved') unavailable()
 
-    const outcome = await dependencies.recordDeadLetter({
+    const outcome = projectDeadLetterOutcome(await dependencies.recordDeadLetter({
       operationId: envelope.operationId,
       correlationId: envelope.correlationId,
       protocolVersion: envelope.protocolVersion
-    })
-    if (!validDeadLetterOutcome(outcome)) unavailable()
+    }))
+    if (!outcome) unavailable()
     dependencies.log({
       event: 'crm_search_dead_letter',
       operationId: envelope.operationId,

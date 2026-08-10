@@ -78,3 +78,39 @@ PASS: 6 files, 42 tests
 2. Task 10 must import this exact shared signer/protocol, expose the Worker's observed SHA/artifact/binding/protocol evidence, and compare it with the Pages health contract before becoming ready.
 3. Queue retention, individual `ack()`/`retry()`, concrete bindings, and real runtime deployment health remain Task 10/resource-manifest responsibilities; no Cloudflare resource or network verification occurred in Task 9.
 4. Mocked/standalone gates do not satisfy the approved design's later isolated non-production end-to-end release evidence requirement.
+
+## Review 1 — Machine Route Boundary Hardening
+
+### Review Result
+
+- Status: `PASS` for the requested Task 9 review corrections.
+- Intended review commit: `fix(crm-search): harden machine route boundaries`.
+- Expanded scope is limited to the existing Task 9 protocol/signing/endpoints/tests, the global staff-auth middleware, one full middleware-chain regression suite, and this report. Concurrent Task 6 and Task 8 paths were not edited, staged, or inspected.
+
+### Strict RED Evidence
+
+The review regressions were added before the production fixes. The first focused run produced 8 expected failures across the three affected suites:
+
+- all three exact CRM machine routes were pre-empted by the staff-session middleware instead of reaching their inline HMAC/release-evidence guards;
+- a valid signed body with actual `EF BB BF` wire bytes prepended was accepted because the default `TextDecoder` consumed the UTF-8 BOM before the body digest was checked;
+- process and dead-letter dependency outcomes with a custom prototype and inherited `toJSON` were accepted, allowing attacker-controlled serialization behavior to cross the handler boundary; and
+- valid dependency outcomes were returned by reference instead of being projected to a new status-only response.
+
+The initial full Nuxt typecheck after the runtime fixes also supplied compile-time RED evidence: the exact-route set was inferred as a literal union incompatible with the middleware's arbitrary string pathname, and Zod's full-project inference left the validated signer path optional. Both diagnostics were corrected without relaxing runtime validation.
+
+### Implemented Corrections
+
+- `auth.ts` exempts only the three shared exact path constants for process, dead-letter, and health. No CRM prefix is public: sibling, suffix, trailing-slash, and similarly named paths continue to the normal staff-auth 401 boundary. The full-chain suite invokes the real middleware and real Task 9 handlers, proving that process and DLQ reach and fail their HMAC guards while health reaches its fail-closed release proof.
+- The bounded request reader now configures `TextDecoder` with `ignoreBOM: true`, which preserves a leading U+FEFF instead of stripping its `EF BB BF` bytes. Digest verification therefore binds the exact valid UTF-8 wire representation; the prepended-BOM regression fails authentication before reservation or provider work.
+- Process and DLQ outcomes must have `Object.prototype` or a null prototype, exactly one enumerable key, and an own data-property `status` with an allowed literal. Both new and replayed outcomes pass through the same projector and handlers return a fresh `{ status }`, so dependency prototypes, inherited `toJSON`, accessors, and extra enumerable fields cannot cross the response/log boundary.
+- The signer now explicitly reasserts the exact service-path guard after Zod validation, resolving the full-project Zod inference mismatch while preserving the same two-path runtime allowlist.
+
+### Fresh Review Verification
+
+- Focused post-fix gate: 3 files, 28 tests passed.
+- Final Task 9, MCP-signing, and impacted auth middleware regression gate: 12 files, 87 tests passed.
+- Signing/MCP/full-chain compiler-fix regression gate: 3 files, 21 tests passed.
+- Strict standalone TypeScript over the ten original Task 9 source/test modules: exit 0.
+- Full Nuxt typecheck retains the repository's unrelated baseline (`typecheck` exit 2) but the changed Task 9/auth path filter emitted no diagnostics (`rg` exit 1, no matches) after the fixes.
+- Node 24.18.0 ESLint over all Task 9 source/tests plus `auth.ts` and the new middleware-chain suite: exit 0.
+- End-to-end reread and targeted scans confirmed exact-match auth behavior, exact body-byte binding, identical process/DLQ projection rules, privacy-safe status-only responses/logging, shared `~~/` server aliases, and no added database, provider, Queue, resource, outbound network, deployment, or cron-secret shortcut behavior.

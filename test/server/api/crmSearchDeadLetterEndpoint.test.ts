@@ -152,6 +152,54 @@ describe('POST /api/internal/crm-search/dead-letter', () => {
     expect(recordDeadLetter).not.toHaveBeenCalled()
   })
 
+  it('rejects a recorder outcome with a custom prototype or inherited toJSON', async () => {
+    const signed = await createCrmSearchSignedServiceRequest(
+      message,
+      CRM_SEARCH_DEAD_LETTER_PATH,
+      keyring,
+      { nowMs: NOW_MS }
+    )
+    const hostileOutcome = Object.assign(Object.create({
+      toJSON: () => ({ secret: 'must-not-serialize' })
+    }), { status: 'recorded' })
+    const log = vi.fn()
+    const handler = createCrmSearchDeadLetterPostHandler({
+      readBody: async () => signed.body,
+      getHeaders: () => signed.headers,
+      resolveKeyring: () => keyring,
+      reserveRequest: async () => ({ status: 'reserved' }),
+      recordDeadLetter: async () => hostileOutcome,
+      now: () => NOW_MS,
+      log
+    })
+
+    await expect(handler({ context: {} } as never)).rejects.toMatchObject({ statusCode: 503 })
+    expect(log).not.toHaveBeenCalled()
+  })
+
+  it('returns a new status-only projection of a null-prototype recorder outcome', async () => {
+    const signed = await createCrmSearchSignedServiceRequest(
+      message,
+      CRM_SEARCH_DEAD_LETTER_PATH,
+      keyring,
+      { nowMs: NOW_MS }
+    )
+    const dependencyOutcome = Object.assign(Object.create(null), { status: 'recorded' })
+    const handler = createCrmSearchDeadLetterPostHandler({
+      readBody: async () => signed.body,
+      getHeaders: () => signed.headers,
+      resolveKeyring: () => keyring,
+      reserveRequest: async () => ({ status: 'reserved' }),
+      recordDeadLetter: async () => dependencyOutcome,
+      now: () => NOW_MS,
+      log: vi.fn()
+    })
+
+    const result = await handler({ context: {} } as never)
+    expect(result).toEqual({ status: 'recorded' })
+    expect(result).not.toBe(dependencyOutcome)
+  })
+
   it('fails closed when the dedicated service keyring is unavailable', async () => {
     const signed = await createCrmSearchSignedServiceRequest(
       message,

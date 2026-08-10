@@ -102,7 +102,9 @@ export async function readBoundedCrmSearchInternalBody(event: H3Event): Promise<
     offset += chunk.byteLength
   }
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(body)
+    // `ignoreBOM: true` preserves U+FEFF instead of silently consuming the
+    // UTF-8 BOM, so the digest is over the exact valid UTF-8 wire bytes.
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(body)
   } catch {
     fail(400, 'invalid_crm_search_service_request')
   }
@@ -166,15 +168,24 @@ export async function authenticateCrmSearchInternalRequest(
   return { request, envelope }
 }
 
-function validProcessOutcome(value: unknown): value is CrmSearchProcessOutcome {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const record = value as Record<string, unknown>
-  return Object.keys(record).length === 1
-    && (
-      record.status === 'complete'
-      || record.status === 'accepted_provider_pending'
-      || record.status === 'superseded'
-    )
+function projectProcessOutcome(value: unknown): CrmSearchProcessOutcome | null {
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+    const prototype = Object.getPrototypeOf(value)
+    if (prototype !== Object.prototype && prototype !== null) return null
+    if (Object.keys(value).length !== 1) return null
+    const statusDescriptor = Object.getOwnPropertyDescriptor(value, 'status')
+    if (!statusDescriptor || !('value' in statusDescriptor)) return null
+    const status = statusDescriptor.value
+    if (
+      status !== 'complete'
+      && status !== 'accepted_provider_pending'
+      && status !== 'superseded'
+    ) return null
+    return { status }
+  } catch {
+    return null
+  }
 }
 
 const defaultDependencies: CrmSearchProcessEndpointDependencies = {
@@ -218,8 +229,8 @@ export function createCrmSearchProcessPostHandler(
       fail(503, 'crm_search_request_in_progress')
     }
     if (reservation.status === 'replay') {
-      const outcome = reservation.outcome
-      if (!validProcessOutcome(outcome)) fail(503, 'crm_search_processor_unavailable')
+      const outcome = projectProcessOutcome(reservation.outcome)
+      if (!outcome) fail(503, 'crm_search_processor_unavailable')
       dependencies.log({
         event: 'crm_search_process',
         operationId: envelope.operationId,
@@ -233,12 +244,12 @@ export function createCrmSearchProcessPostHandler(
       fail(503, 'crm_search_processor_unavailable')
     }
 
-    const outcome = await dependencies.processOperation({
+    const outcome = projectProcessOutcome(await dependencies.processOperation({
       operationId: envelope.operationId,
       correlationId: envelope.correlationId,
       protocolVersion: envelope.protocolVersion
-    })
-    if (!validProcessOutcome(outcome)) fail(503, 'crm_search_processor_unavailable')
+    }))
+    if (!outcome) fail(503, 'crm_search_processor_unavailable')
     dependencies.log({
       event: 'crm_search_process',
       operationId: envelope.operationId,

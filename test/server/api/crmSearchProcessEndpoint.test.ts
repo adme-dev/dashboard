@@ -1,3 +1,7 @@
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { Readable } from 'node:stream'
+
+import { createEvent } from 'h3'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -45,6 +49,21 @@ async function signedRequest() {
   return await createCrmSearchSignedServiceRequest(message, CRM_SEARCH_PROCESS_PATH, keyring, {
     nowMs: NOW_MS
   })
+}
+
+function wireEvent(body: Uint8Array, headers: Record<string, string>) {
+  const request = Readable.from([body]) as unknown as IncomingMessage
+  request.method = 'POST'
+  request.url = CRM_SEARCH_PROCESS_PATH
+  request.headers = {
+    'host': 'app.xeroflow.test',
+    'content-length': String(body.byteLength),
+    ...headers
+  }
+  return createEvent(
+    request,
+    { writableEnded: false, headersSent: false } as ServerResponse
+  )
 }
 
 describe('POST /api/internal/crm-search/process', () => {
@@ -181,6 +200,44 @@ describe('POST /api/internal/crm-search/process', () => {
     expect(log).not.toHaveBeenCalled()
   })
 
+  it('rejects a processor outcome with a custom prototype or inherited toJSON', async () => {
+    const signed = await signedRequest()
+    const hostileOutcome = Object.assign(Object.create({
+      toJSON: () => ({ secret: 'must-not-serialize' })
+    }), { status: 'complete' })
+    const log = vi.fn()
+    const handler = createCrmSearchProcessPostHandler({
+      readBody: async () => signed.body,
+      getHeaders: () => signed.headers,
+      resolveKeyring: () => keyring,
+      reserveRequest: async () => ({ status: 'reserved' }),
+      processOperation: async () => hostileOutcome,
+      now: () => NOW_MS,
+      log
+    })
+
+    await expect(handler({ context: {} } as never)).rejects.toMatchObject({ statusCode: 503 })
+    expect(log).not.toHaveBeenCalled()
+  })
+
+  it('returns a new status-only projection of a plain processor outcome', async () => {
+    const signed = await signedRequest()
+    const dependencyOutcome = { status: 'complete' as const }
+    const handler = createCrmSearchProcessPostHandler({
+      readBody: async () => signed.body,
+      getHeaders: () => signed.headers,
+      resolveKeyring: () => keyring,
+      reserveRequest: async () => ({ status: 'reserved' }),
+      processOperation: async () => dependencyOutcome,
+      now: () => NOW_MS,
+      log: vi.fn()
+    })
+
+    const result = await handler({ context: {} } as never)
+    expect(result).toEqual({ status: 'complete' })
+    expect(result).not.toBe(dependencyOutcome)
+  })
+
   it('does not hide a malformed runtime key binding with a process-env fallback', () => {
     vi.stubEnv('CRM_SEARCH_SERVICE_KEYRING', JSON.stringify(keyring))
     try {
@@ -211,6 +268,30 @@ describe('POST /api/internal/crm-search/process', () => {
 
     await expect(handler({ context: {} } as never)).resolves.toEqual({ status: 'complete' })
     expect(now).toHaveBeenCalledOnce()
+  })
+
+  it('does not let a UTF-8 BOM disappear before signed body-digest verification', async () => {
+    const signed = await signedRequest()
+    const wireBody = Buffer.concat([
+      Buffer.from([0xEF, 0xBB, 0xBF]),
+      Buffer.from(signed.body)
+    ])
+    const reserveRequest = vi.fn(async () => ({ status: 'reserved' as const }))
+    const processOperation = vi.fn(async () => ({ status: 'complete' as const }))
+    const handler = createCrmSearchProcessPostHandler({
+      resolveKeyring: () => keyring,
+      reserveRequest,
+      processOperation,
+      now: () => NOW_MS,
+      log: vi.fn()
+    })
+
+    await expect(handler(wireEvent(wireBody, signed.headers))).rejects.toMatchObject({
+      statusCode: 401,
+      statusMessage: 'invalid_crm_search_service_request'
+    })
+    expect(reserveRequest).not.toHaveBeenCalled()
+    expect(processOperation).not.toHaveBeenCalled()
   })
 
   it('rejects a validly signed envelope with extra fields before operation loading', async () => {
