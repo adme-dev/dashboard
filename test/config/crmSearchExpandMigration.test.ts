@@ -55,6 +55,7 @@ describe('CRM search expand migration 350', () => {
       'crm_search_policies',
       'crm_search_source_dirty',
       'crm_search_operations',
+      'crm_search_provider_attempts',
       'crm_search_documents',
       'crm_search_usage_daily',
       'crm_search_usage_reservations',
@@ -154,6 +155,31 @@ describe('CRM search expand migration 350', () => {
     expect(sql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS crm_search_operations_one_provider_inflight[\s\S]*?provider_admitted_at IS NOT NULL/i)
     expect(sql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS crm_search_operations_one_successor[\s\S]*?WHERE successor_of IS NOT NULL/i)
     expect(sql).toContain('CREATE OR REPLACE FUNCTION crm_search_operation_state_transition_allowed')
+  })
+
+  it('normalizes every indexing provider send into a reloadable attempt with one reservation', () => {
+    const sql = readMigration()
+    const attempts = tableDefinition(sql, 'crm_search_provider_attempts')
+    const reservations = tableDefinition(sql, 'crm_search_usage_reservations')
+
+    expect(attempts).toMatch(/provider IN \('workers_ai', 'vectorize'\)/)
+    expect(attempts).toMatch(/provider_action IN \('embedding', 'query', 'upsert', 'delete'\)/)
+    expect(attempts).toMatch(/state IN \([\s\S]*'precommitted'[\s\S]*'sent'[\s\S]*'released'[\s\S]*'settled'[\s\S]*'accepted'[\s\S]*'ambiguous'/)
+    expect(attempts).toMatch(/usage_kind IN \('query', 'indexing'\)/)
+    expect(sql).toMatch(/crm_search_provider_attempts_indexing_identity[\s\S]*operation_id, provider, attempt_sequence/)
+    expect(sql).toMatch(/crm_search_provider_attempts_query_identity[\s\S]*correlation_id, provider, attempt_sequence/)
+    expect(attempts).toMatch(/CHECK \([\s\S]*provider = 'workers_ai'[\s\S]*provider_action = 'embedding'/)
+    expect(attempts).toMatch(
+      /state <> 'accepted'[\s\S]*provider = 'vectorize'[\s\S]*provider_action IN \('upsert', 'delete'\)[\s\S]*provider_mutation_id IS NOT NULL/
+    )
+    expect(reservations).toMatch(/provider_attempt_id UUID NOT NULL[\s\S]*REFERENCES crm_search_provider_attempts\(id\) ON DELETE RESTRICT/)
+    expect(reservations).not.toMatch(/UNIQUE \(correlation_id, usage_kind, operation_id\)/)
+    expect(sql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS crm_search_usage_reservations_provider_attempt_identity[\s\S]*provider_attempt_id/)
+    expect(sql).toMatch(/DROP INDEX IF EXISTS crm_search_usage_reservations_query_identity/)
+    expect(sql).toMatch(/WHEN 'precommitted' THEN p_to IN \('precommitted', 'sent', 'released'\)/)
+    expect(sql).toMatch(/OLD\.state IN \('released', 'settled', 'accepted', 'ambiguous'\)/)
+    expect(sql).toMatch(/TG_OP = 'INSERT'[\s\S]*NEW\.state <> 'precommitted'/)
+    expect(sql).toMatch(/BEFORE INSERT OR UPDATE ON crm_search_provider_attempts/)
   })
 
   it('keeps dead-letter origins disjoint and gives each origin its own legal transitions', () => {
@@ -389,7 +415,7 @@ describe('CRM search expand migration 350', () => {
     expect(revocationGuard).toMatch(/FOR UPDATE/)
     expect(revocationGuard).toMatch(/crm_search_change_approval_consumptions/)
     expect(usageReservations).toMatch(/rate_card_revision TEXT NOT NULL/)
-    expect(sql).toMatch(/crm_search_usage_reservations_query_identity[\s\S]*operation_id IS NULL/i)
+    expect(sql).toMatch(/crm_search_provider_attempts_query_identity[\s\S]*correlation_id, provider, attempt_sequence/i)
     expect(sql).toMatch(/crm_search_daily_events_global_identity[\s\S]*client_id IS NULL/i)
   })
 

@@ -14,6 +14,10 @@ import {
   resolveCrmSearchServiceKeyring,
   type CrmSearchInternalAuthDependencies
 } from '~~/server/api/internal/crm-search/process.post'
+import {
+  recordCrmSearchTransportDeadLetter,
+  reserveCrmSearchDeadLetterRequest
+} from '~~/server/utils/crm/searchIndex/deadLetters'
 
 export interface CrmSearchDeadLetterEndpointDependencies extends CrmSearchInternalAuthDependencies {
   reserveRequest(
@@ -23,7 +27,7 @@ export interface CrmSearchDeadLetterEndpointDependencies extends CrmSearchIntern
     operationId: string
     correlationId: string
     protocolVersion: 1
-  }): Promise<CrmSearchDeadLetterOutcome>
+  }, event: H3Event): Promise<CrmSearchDeadLetterOutcome>
   log(record: CrmSearchDeadLetterLogRecord): void
 }
 
@@ -54,13 +58,9 @@ const defaultDependencies: CrmSearchDeadLetterEndpointDependencies = {
   readBody: readBoundedCrmSearchInternalBody,
   getHeaders: event => getRequestHeaders(event),
   resolveKeyring: resolveCrmSearchServiceKeyring,
-  async reserveRequest() {
-    unavailable()
-  },
+  reserveRequest: reserveCrmSearchDeadLetterRequest,
   now: Date.now,
-  async recordDeadLetter() {
-    unavailable()
-  },
+  recordDeadLetter: recordCrmSearchTransportDeadLetter,
   log(record) {
     console.info(JSON.stringify(record))
   }
@@ -109,7 +109,7 @@ export function createCrmSearchDeadLetterPostHandler(
       operationId: envelope.operationId,
       correlationId: envelope.correlationId,
       protocolVersion: envelope.protocolVersion
-    }))
+    }, event))
     if (!outcome) unavailable()
     dependencies.log({
       event: 'crm_search_dead_letter',

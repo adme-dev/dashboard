@@ -22,6 +22,7 @@ import {
   requireTimestamp,
   requireUuid,
   type CrmSearchQueryResult,
+  type CrmSearchQueryOneFresh,
   type CrmSearchTransactionClient,
   type CrmSearchTransactionWithoutRetry
 } from './repository'
@@ -32,6 +33,10 @@ const operationStates = [
   'retryable', 'confirmed', 'superseded', 'terminal_dead_letter'
 ] as const
 type OperationState = typeof operationStates[number]
+const providerAttemptProviders = ['workers_ai', 'vectorize'] as const
+const providerAttemptUsageKinds = ['query', 'indexing'] as const
+const providerAttemptActions = ['embedding', 'query', 'upsert', 'delete'] as const
+const providerAttemptStates = ['precommitted', 'sent', 'released', 'settled', 'accepted', 'ambiguous'] as const
 
 interface OperationRow extends Record<string, unknown> {
   id: unknown
@@ -272,8 +277,426 @@ export interface ClaimCrmSearchOperationsInput {
   now: string
 }
 
+export interface ClaimCrmSearchOperationInput {
+  operationId: string
+  leaseSeconds: number
+  now: string
+}
+
 export interface OperationRepositoryDependencies {
   transactionWithoutRetry?: CrmSearchTransactionWithoutRetry
+}
+
+export async function claimCrmSearchOperation(
+  input: ClaimCrmSearchOperationInput,
+  dependencies: OperationRepositoryDependencies = {}
+): Promise<CrmSearchOperation | null> {
+  const operationId = requireUuid(input.operationId, errorCode)
+  const leaseSeconds = requireSafeInteger(input.leaseSeconds, errorCode, { minimum: 1, maximum: 900 })
+  const now = requireTimestamp(input.now, errorCode)
+  const run = dependencies.transactionWithoutRetry
+    ?? crmSearchRepositoryDependencies.transactionWithoutRetry
+  return run(async (transaction) => {
+    await transaction.query(`
+      UPDATE crm_search_operations
+      SET state = 'queued',
+          transport_attempt_count = transport_attempt_count + 1,
+          updated_at = $2
+      WHERE id = $1
+        AND state = 'pending_transport'
+        AND next_attempt_at <= $2
+        AND lease_token IS NULL
+    `, [operationId, now])
+    const row = firstRow<OperationRow>(await transaction.query<OperationRow>(`
+      UPDATE crm_search_operations operation
+      SET state = 'processing',
+          lease_token = gen_random_uuid(),
+          lease_generation = operation.lease_generation + 1,
+          lease_expires_at = $2::TIMESTAMPTZ + ($3 * INTERVAL '1 second'),
+          processing_attempt_count = operation.processing_attempt_count + 1,
+          updated_at = $2
+      WHERE operation.id = $1
+        AND operation.state IN ('queued', 'retryable')
+        AND operation.next_attempt_at <= $2
+        AND (operation.lease_expires_at IS NULL OR operation.lease_expires_at <= $2)
+      RETURNING operation.*
+    `, [operationId, now, leaseSeconds]))
+    return row ? mapOperation(row) : null
+  })
+}
+
+interface ProviderAttemptRow extends Record<string, unknown> {
+  id: unknown
+  organisation_scope_id: unknown
+  client_id: unknown
+  usage_kind: unknown
+  operation_id: unknown
+  correlation_id: unknown
+  provider: unknown
+  provider_action: unknown
+  attempt_sequence: unknown
+  control_revision: unknown
+  policy_revision: unknown
+  lease_generation: unknown
+  state: unknown
+  provider_call_sent: unknown
+  provider_mutation_id: unknown
+  usage_reservation_id: unknown
+}
+
+export interface CrmSearchProviderAttempt {
+  id: string
+  organisationScopeId: string
+  clientId: string
+  usageKind: typeof providerAttemptUsageKinds[number]
+  operationId: string | null
+  correlationId: string
+  provider: typeof providerAttemptProviders[number]
+  action: typeof providerAttemptActions[number]
+  attemptSequence: number
+  controlRevision: number
+  policyRevision: number
+  leaseGeneration: number | null
+  state: typeof providerAttemptStates[number]
+  providerCallSent: boolean
+  providerMutationId: string | null
+  usageReservationId: string
+}
+
+function mapProviderAttempt(row: ProviderAttemptRow): CrmSearchProviderAttempt {
+  if (typeof row.provider_call_sent !== 'boolean') throw crmSearchRepositoryError(errorCode)
+  return {
+    id: requireUuid(row.id, errorCode),
+    organisationScopeId: requireUuid(row.organisation_scope_id, errorCode),
+    clientId: requireUuid(row.client_id, errorCode),
+    usageKind: requireEnum(row.usage_kind, providerAttemptUsageKinds, errorCode),
+    operationId: requireOptionalUuid(row.operation_id, errorCode),
+    correlationId: requireUuid(row.correlation_id, errorCode),
+    provider: requireEnum(row.provider, providerAttemptProviders, errorCode),
+    action: requireEnum(row.provider_action, providerAttemptActions, errorCode),
+    attemptSequence: requireSafeInteger(row.attempt_sequence, errorCode, { minimum: 1, maximum: 1000 }),
+    controlRevision: requireSafeInteger(row.control_revision, errorCode),
+    policyRevision: requireSafeInteger(row.policy_revision, errorCode),
+    leaseGeneration: row.lease_generation === null
+      ? null
+      : requireSafeInteger(row.lease_generation, errorCode, { minimum: 1 }),
+    state: requireEnum(row.state, providerAttemptStates, errorCode),
+    providerCallSent: row.provider_call_sent,
+    providerMutationId: optionalString(row.provider_mutation_id, 256),
+    usageReservationId: requireUuid(row.usage_reservation_id, errorCode)
+  }
+}
+
+export async function loadCrmSearchProviderAttempt(
+  input:
+    | { operationId: string, providerAttemptId: string }
+    | { correlationId: string, providerAttemptId: string },
+  dependencies: { queryOneFresh?: CrmSearchQueryOneFresh } = {}
+): Promise<CrmSearchProviderAttempt | null> {
+  const providerAttemptId = requireUuid(input.providerAttemptId, errorCode)
+  const isIndexing = 'operationId' in input
+  const scopeId = requireUuid(
+    isIndexing ? input.operationId : input.correlationId,
+    errorCode
+  )
+  const read = dependencies.queryOneFresh ?? crmSearchRepositoryDependencies.queryOneFresh
+  const row = await read<ProviderAttemptRow>(`
+    SELECT attempt.*, reservation.id AS usage_reservation_id
+    FROM crm_search_provider_attempts attempt
+    JOIN crm_search_usage_reservations reservation
+      ON reservation.provider_attempt_id = attempt.id
+    WHERE attempt.id = $1
+      AND attempt.${isIndexing ? 'operation_id' : 'correlation_id'} = $2
+      AND attempt.usage_kind = '${isIndexing ? 'indexing' : 'query'}'
+  `, [providerAttemptId, scopeId])
+  return row ? mapProviderAttempt(row) : null
+}
+
+type MarkProviderAttemptSentInput
+  = | {
+    usageKind?: 'indexing'
+    operationId: string
+    providerAttemptId: string
+    leaseToken: string
+    leaseGeneration: number
+  }
+  | {
+    usageKind: 'query'
+    correlationId: string
+    providerAttemptId: string
+    expectedControlRevision: number
+    expectedPolicyRevision: number
+  }
+
+export async function markCrmSearchProviderAttemptSent(
+  input: MarkProviderAttemptSentInput,
+  dependencies: OperationRepositoryDependencies = {}
+): Promise<CrmSearchProviderAttempt> {
+  const providerAttemptId = requireUuid(input.providerAttemptId, errorCode)
+  const run = dependencies.transactionWithoutRetry
+    ?? crmSearchRepositoryDependencies.transactionWithoutRetry
+  if (input.usageKind === 'query') {
+    const correlationId = requireUuid(input.correlationId, errorCode)
+    const controlRevision = requireSafeInteger(input.expectedControlRevision, errorCode)
+    const policyRevision = requireSafeInteger(input.expectedPolicyRevision, errorCode)
+    return run(async (transaction) => {
+      const row = firstRow<ProviderAttemptRow>(await transaction.query<ProviderAttemptRow>(`
+        WITH sent_attempt AS (
+          UPDATE crm_search_provider_attempts attempt
+          SET state = 'sent', provider_call_sent = TRUE, sent_at = NOW(), updated_at = NOW()
+          WHERE attempt.id = $1
+            AND attempt.correlation_id = $2
+            AND attempt.usage_kind = 'query'
+            AND attempt.control_revision = $3
+            AND attempt.policy_revision = $4
+            AND attempt.state = 'precommitted'
+            AND attempt.provider_call_sent = FALSE
+          RETURNING attempt.*
+        ), sent_reservation AS (
+          UPDATE crm_search_usage_reservations reservation
+          SET provider_call_sent = TRUE
+          FROM sent_attempt
+          WHERE reservation.provider_attempt_id = sent_attempt.id
+            AND reservation.state = 'reserved'
+          RETURNING reservation.id, reservation.provider_attempt_id
+        )
+        SELECT sent_attempt.*, sent_reservation.id AS usage_reservation_id
+        FROM sent_attempt
+        JOIN sent_reservation ON sent_reservation.provider_attempt_id = sent_attempt.id
+      `, [providerAttemptId, correlationId, controlRevision, policyRevision]))
+      if (!row) throw crmSearchRepositoryError('crm_search_provider_attempt_changed')
+      return mapProviderAttempt(row)
+    })
+  }
+  const operationId = requireUuid(input.operationId, errorCode)
+  const leaseToken = requireUuid(input.leaseToken, errorCode)
+  const leaseGeneration = requireSafeInteger(input.leaseGeneration, errorCode, { minimum: 1 })
+  return run(async (transaction) => {
+    const row = firstRow<ProviderAttemptRow>(await transaction.query<ProviderAttemptRow>(`
+      WITH eligible AS (
+        SELECT attempt.id
+        FROM crm_search_provider_attempts attempt
+        JOIN crm_search_operations operation ON operation.id = attempt.operation_id
+        WHERE attempt.id = $1
+          AND attempt.operation_id = $2
+          AND operation.lease_token = $3
+          AND operation.lease_generation = $4
+          AND attempt.lease_generation = $4
+          AND attempt.state = 'precommitted'
+          AND attempt.provider_call_sent = FALSE
+        FOR UPDATE OF attempt, operation
+      ), sent_attempt AS (
+        UPDATE crm_search_provider_attempts attempt
+        SET state = 'sent', provider_call_sent = TRUE, sent_at = NOW(), updated_at = NOW()
+        FROM eligible
+        WHERE attempt.id = eligible.id
+        RETURNING attempt.*
+      ), sent_reservation AS (
+        UPDATE crm_search_usage_reservations reservation
+        SET provider_call_sent = TRUE
+        FROM sent_attempt
+        WHERE reservation.provider_attempt_id = sent_attempt.id
+          AND reservation.state = 'reserved'
+        RETURNING reservation.id, reservation.provider_attempt_id
+      )
+      SELECT sent_attempt.*, sent_reservation.id AS usage_reservation_id
+      FROM sent_attempt
+      JOIN sent_reservation ON sent_reservation.provider_attempt_id = sent_attempt.id
+    `, [providerAttemptId, operationId, leaseToken, leaseGeneration]))
+    if (!row) throw crmSearchRepositoryError('crm_search_provider_attempt_changed')
+    return mapProviderAttempt(row)
+  })
+}
+
+export interface RecordCrmSearchProviderAcceptanceInput {
+  operationId: string
+  providerAttemptId: string
+  reservationId: string
+  mutationId: string
+  controlRevision: number
+  leaseToken: string
+  leaseGeneration: number
+}
+
+export async function recordCrmSearchProviderAcceptance(
+  input: RecordCrmSearchProviderAcceptanceInput,
+  dependencies: OperationRepositoryDependencies = {}
+): Promise<void> {
+  const operationId = requireUuid(input.operationId, errorCode)
+  const providerAttemptId = requireUuid(input.providerAttemptId, errorCode)
+  const reservationId = requireUuid(input.reservationId, errorCode)
+  const mutationId = requireString(input.mutationId, errorCode, { maximumLength: 256 })
+  const controlRevision = requireSafeInteger(input.controlRevision, errorCode)
+  const leaseToken = requireUuid(input.leaseToken, errorCode)
+  const leaseGeneration = requireSafeInteger(input.leaseGeneration, errorCode, { minimum: 1 })
+  const run = dependencies.transactionWithoutRetry
+    ?? crmSearchRepositoryDependencies.transactionWithoutRetry
+  await run(async (transaction) => {
+    const row = firstRow(await transaction.query(`
+      WITH eligible AS (
+        SELECT attempt.id
+        FROM crm_search_provider_attempts attempt
+        JOIN crm_search_usage_reservations reservation
+          ON reservation.provider_attempt_id = attempt.id
+        JOIN crm_search_operations operation
+          ON operation.id = attempt.operation_id
+        WHERE attempt.id = $1
+          AND reservation.id = $2
+          AND operation.id = $3
+          AND operation.state = 'admitted'
+          AND operation.lease_token = $4
+          AND operation.lease_generation = $5
+          AND attempt.lease_generation = $5
+          AND attempt.control_revision = $6
+          AND attempt.provider = 'vectorize'
+          AND attempt.provider_action IN ('upsert', 'delete')
+          AND attempt.state = 'sent'
+          AND attempt.provider_call_sent = TRUE
+        FOR UPDATE OF attempt, reservation, operation
+      ), accepted_attempt AS (
+        UPDATE crm_search_provider_attempts attempt
+        SET state = 'accepted', provider_mutation_id = $7,
+            settled_at = NOW(), updated_at = NOW()
+        FROM eligible
+        WHERE attempt.id = eligible.id
+        RETURNING attempt.id
+      ), provider_pending AS (
+        UPDATE crm_search_operations operation
+        SET state = 'provider_pending', provider_mutation_id = $7,
+            provider_accepted_at = NOW(), provider_attempt_count = provider_attempt_count + 1,
+            updated_at = NOW()
+        FROM accepted_attempt
+        WHERE operation.id = $3
+        RETURNING operation.id
+      ), document_pending AS (
+        INSERT INTO crm_search_documents (
+          organisation_scope_id, client_id, entity_type, entity_id, schema_version,
+          vector_id, namespace, source_revision, source_event_sequence, content_hash,
+          confirmation_tag, confirmation_key_version, confirmation_state, tombstoned,
+          provider_mutation_id
+        )
+        SELECT operation.organisation_scope_id, operation.client_id,
+               operation.entity_type, operation.entity_id, operation.schema_version,
+               operation.vector_id, operation.namespace, operation.source_revision,
+               operation.source_event_sequence, operation.content_hash,
+               operation.confirmation_tag, operation.confirmation_key_version,
+               CASE WHEN operation.desired_action = 'upsert'
+                 THEN 'provider_pending' ELSE 'delete_pending' END,
+               FALSE, $7
+        FROM provider_pending
+        JOIN crm_search_operations operation ON operation.id = provider_pending.id
+        ON CONFLICT (organisation_scope_id, client_id, entity_type, entity_id, schema_version)
+        DO UPDATE SET
+          vector_id = EXCLUDED.vector_id,
+          namespace = EXCLUDED.namespace,
+          source_revision = EXCLUDED.source_revision,
+          source_event_sequence = EXCLUDED.source_event_sequence,
+          content_hash = EXCLUDED.content_hash,
+          confirmation_tag = EXCLUDED.confirmation_tag,
+          confirmation_key_version = EXCLUDED.confirmation_key_version,
+          confirmation_state = EXCLUDED.confirmation_state,
+          tombstoned = FALSE,
+          provider_mutation_id = EXCLUDED.provider_mutation_id,
+          updated_at = NOW()
+        WHERE crm_search_documents.source_revision <= EXCLUDED.source_revision
+          AND crm_search_documents.source_event_sequence <= EXCLUDED.source_event_sequence
+          AND (crm_search_documents.source_revision < EXCLUDED.source_revision
+            OR crm_search_documents.source_event_sequence < EXCLUDED.source_event_sequence)
+        RETURNING id
+      )
+      SELECT provider_pending.id
+      FROM provider_pending
+      JOIN document_pending ON TRUE
+    `, [providerAttemptId, reservationId, operationId, leaseToken, leaseGeneration,
+      controlRevision, mutationId]))
+    if (!row || requireUuid(row.id, errorCode) !== operationId) {
+      throw crmSearchRepositoryError('crm_search_provider_acceptance_changed')
+    }
+  })
+}
+
+export interface MarkCrmSearchProviderAttemptAmbiguousInput {
+  operationId: string
+  providerAttemptId: string
+  reservationId: string
+  leaseToken: string
+  leaseGeneration: number
+}
+
+export async function markCrmSearchProviderAttemptAmbiguous(
+  input: MarkCrmSearchProviderAttemptAmbiguousInput,
+  dependencies: OperationRepositoryDependencies = {}
+): Promise<void> {
+  const operationId = requireUuid(input.operationId, errorCode)
+  const providerAttemptId = requireUuid(input.providerAttemptId, errorCode)
+  const reservationId = requireUuid(input.reservationId, errorCode)
+  const leaseToken = requireUuid(input.leaseToken, errorCode)
+  const leaseGeneration = requireSafeInteger(input.leaseGeneration, errorCode, { minimum: 1 })
+  const run = dependencies.transactionWithoutRetry
+    ?? crmSearchRepositoryDependencies.transactionWithoutRetry
+  await run(async (transaction) => {
+    const row = firstRow(await transaction.query(`
+      WITH ambiguous_attempt AS (
+        UPDATE crm_search_provider_attempts attempt
+        SET state = 'ambiguous', settled_at = NOW(), updated_at = NOW()
+        FROM crm_search_usage_reservations reservation,
+             crm_search_operations operation
+        WHERE attempt.id = $1
+          AND reservation.id = $2
+          AND reservation.provider_attempt_id = attempt.id
+          AND operation.id = $3
+          AND operation.id = attempt.operation_id
+          AND operation.lease_token = $4
+          AND operation.lease_generation = $5
+          AND attempt.lease_generation = $5
+          AND attempt.state = 'sent'
+          AND attempt.provider_call_sent = TRUE
+        RETURNING attempt.id, attempt.provider
+      ), document_pending AS (
+        INSERT INTO crm_search_documents (
+          organisation_scope_id, client_id, entity_type, entity_id, schema_version,
+          vector_id, namespace, source_revision, source_event_sequence, content_hash,
+          confirmation_tag, confirmation_key_version, confirmation_state, tombstoned
+        )
+        SELECT operation.organisation_scope_id, operation.client_id,
+               operation.entity_type, operation.entity_id, operation.schema_version,
+               operation.vector_id, operation.namespace, operation.source_revision,
+               operation.source_event_sequence, operation.content_hash,
+               operation.confirmation_tag, operation.confirmation_key_version,
+               CASE WHEN operation.desired_action = 'upsert'
+                 THEN 'provider_pending' ELSE 'delete_pending' END,
+               FALSE
+        FROM ambiguous_attempt
+        JOIN crm_search_operations operation ON operation.id = $3
+        WHERE ambiguous_attempt.provider = 'vectorize'
+        ON CONFLICT (organisation_scope_id, client_id, entity_type, entity_id, schema_version)
+        DO UPDATE SET
+          vector_id = EXCLUDED.vector_id,
+          namespace = EXCLUDED.namespace,
+          source_revision = EXCLUDED.source_revision,
+          source_event_sequence = EXCLUDED.source_event_sequence,
+          content_hash = EXCLUDED.content_hash,
+          confirmation_tag = EXCLUDED.confirmation_tag,
+          confirmation_key_version = EXCLUDED.confirmation_key_version,
+          confirmation_state = EXCLUDED.confirmation_state,
+          tombstoned = FALSE,
+          provider_mutation_id = NULL,
+          updated_at = NOW()
+        WHERE crm_search_documents.source_revision <= EXCLUDED.source_revision
+          AND crm_search_documents.source_event_sequence <= EXCLUDED.source_event_sequence
+          AND (crm_search_documents.source_revision < EXCLUDED.source_revision
+            OR crm_search_documents.source_event_sequence < EXCLUDED.source_event_sequence)
+        RETURNING id
+      )
+      SELECT ambiguous_attempt.id
+      FROM ambiguous_attempt
+      LEFT JOIN document_pending ON TRUE
+      WHERE ambiguous_attempt.provider = 'workers_ai' OR document_pending.id IS NOT NULL
+    `, [providerAttemptId, reservationId, operationId, leaseToken, leaseGeneration]))
+    if (!row || requireUuid(row.id, errorCode) !== providerAttemptId) {
+      throw crmSearchRepositoryError('crm_search_provider_attempt_changed')
+    }
+  })
 }
 
 export async function claimCrmSearchOperations(

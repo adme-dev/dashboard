@@ -46,6 +46,7 @@ interface UsageReservationRow extends Record<string, unknown> {
   usage_kind: unknown
   correlation_id: unknown
   operation_id: unknown
+  provider_attempt_id: unknown
   control_revision: unknown
   policy_revision: unknown
   rate_card_id: unknown
@@ -68,6 +69,7 @@ export interface CrmSearchUsageReservation {
   usageKind: typeof usageKinds[number]
   correlationId: string
   operationId: string | null
+  providerAttemptId: string
   controlRevision: number
   policyRevision: number
   rateCardId: string
@@ -100,10 +102,14 @@ export interface ReserveCrmSearchUsageInput {
   queryDimensions: number
   insertedDimensions: number
   storedDimensions: number
+  providerAttemptId: string | null
+  providerAttemptSequence: number | null
+  expectedLeaseGeneration: number | null
 }
 
 export interface UsageRepositoryDependencies {
   transactionWithoutRetry?: CrmSearchTransactionWithoutRetry
+  randomUuid?: () => string
 }
 
 interface ValidatedReservationInput extends ReserveCrmSearchUsageInput {
@@ -115,11 +121,17 @@ interface PricedReservationInput extends ValidatedReservationInput {
   rateCardRevision: string
 }
 
+interface NormalizedReservationInput extends ValidatedReservationInput {
+  providerAttemptId: string
+  providerAttemptSequence: number
+}
+
 const reservationInputKeys = new Set<keyof ReserveCrmSearchUsageInput>([
   'organisationScopeId', 'clientId', 'correlationId', 'operationId', 'usageKind',
   'provider', 'providerAction', 'surface', 'schemaVersion', 'teardownId',
   'reservationAt', 'providerCalls', 'modelInputTokens', 'queryDimensions',
-  'insertedDimensions', 'storedDimensions'
+  'insertedDimensions', 'storedDimensions', 'providerAttemptId',
+  'providerAttemptSequence', 'expectedLeaseGeneration'
 ])
 
 function optionalSchemaVersion(value: unknown): string | null {
@@ -150,6 +162,13 @@ function validateReservationInput(input: ReserveCrmSearchUsageInput): ValidatedR
     queryDimensions: requireSafeInteger(input.queryDimensions, invalidCode),
     insertedDimensions: requireSafeInteger(input.insertedDimensions, invalidCode),
     storedDimensions: requireSafeInteger(input.storedDimensions, invalidCode),
+    providerAttemptId: requireOptionalUuid(input.providerAttemptId, invalidCode),
+    providerAttemptSequence: input.providerAttemptSequence === null
+      ? null
+      : requireSafeInteger(input.providerAttemptSequence, invalidCode, { minimum: 1, maximum: 1000 }),
+    expectedLeaseGeneration: input.expectedLeaseGeneration === null
+      ? null
+      : requireSafeInteger(input.expectedLeaseGeneration, invalidCode, { minimum: 1 }),
     usageDate: input.reservationAt.slice(0, 10)
   }
   const queryShape = validated.usageKind === 'query'
@@ -158,23 +177,32 @@ function validateReservationInput(input: ReserveCrmSearchUsageInput): ValidatedR
     && validated.schemaVersion === null
     && validated.teardownId === null
     && validated.operationId === null
+    && ((validated.providerAttemptId === null && validated.providerAttemptSequence === null)
+      || (validated.providerAttemptId !== null && validated.providerAttemptSequence !== null))
+    && validated.expectedLeaseGeneration === null
     && validated.insertedDimensions === 0
     && validated.storedDimensions === 0
   const indexingShape = validated.usageKind === 'indexing'
-    && validated.provider === 'vectorize'
     && validated.providerAction !== 'query'
     && validated.surface === null
     && validated.schemaVersion !== null
     && validated.operationId !== null
+    && validated.providerAttemptId !== null
+    && validated.providerAttemptSequence !== null
+    && validated.expectedLeaseGeneration !== null
     && validated.queryDimensions === 0
     && (validated.teardownId === null || validated.providerAction === 'delete')
   if (!queryShape && !indexingShape) throw crmSearchRepositoryError(invalidCode)
 
   if (validated.provider === 'workers_ai'
-    && (!queryShape
-      || validated.providerCalls !== 1
-      || validated.modelInputTokens !== CRM_SEARCH_MAX_INPUT_TOKENS
-      || validated.queryDimensions !== 0)) {
+    && (!(queryShape || (indexingShape
+      && validated.providerAction === 'upsert'
+      && validated.teardownId === null
+      && validated.insertedDimensions === 0
+      && validated.storedDimensions === 0))
+    || validated.providerCalls !== 1
+    || validated.modelInputTokens !== CRM_SEARCH_MAX_INPUT_TOKENS
+    || validated.queryDimensions !== 0)) {
     throw crmSearchRepositoryError(invalidCode)
   }
   if (validated.provider === 'vectorize'
@@ -183,6 +211,21 @@ function validateReservationInput(input: ReserveCrmSearchUsageInput): ValidatedR
     throw crmSearchRepositoryError(invalidCode)
   }
   return validated
+}
+
+function normalizeProviderAttemptIdentity(
+  input: ValidatedReservationInput,
+  dependencies: UsageRepositoryDependencies
+): NormalizedReservationInput {
+  const generatedId = input.providerAttemptId ?? requireUuid(
+    (dependencies.randomUuid ?? (() => globalThis.crypto.randomUUID()))(),
+    invalidCode
+  )
+  return {
+    ...input,
+    providerAttemptId: generatedId,
+    providerAttemptSequence: input.providerAttemptSequence ?? 1
+  }
 }
 
 function nullableBoolean(value: unknown): boolean | null {
@@ -198,6 +241,7 @@ function mapReservation(row: UsageReservationRow): CrmSearchUsageReservation {
     usageKind: requireEnum(row.usage_kind, usageKinds, invalidCode),
     correlationId: requireUuid(row.correlation_id, invalidCode),
     operationId: requireOptionalUuid(row.operation_id, invalidCode),
+    providerAttemptId: requireUuid(row.provider_attempt_id, invalidCode),
     controlRevision: requireSafeInteger(row.control_revision, invalidCode),
     policyRevision: requireSafeInteger(row.policy_revision, invalidCode),
     rateCardId: requireUuid(row.rate_card_id, invalidCode),
@@ -358,7 +402,10 @@ function requireReservationAuthority(
       || !['deleting', 'provider_pending'].includes(String(row.teardown_state))
       || !['pending', 'partially_confirmed'].includes(String(row.provider_deletion_state))
       || row.operation_desired_action !== 'delete'
-      || row.operation_schema_version !== input.schemaVersion) {
+      || row.operation_schema_version !== input.schemaVersion
+      || !['processing', 'retryable', 'admitted'].includes(String(row.operation_state))
+      || requireSafeInteger(row.operation_lease_generation, invalidCode, { minimum: 1 })
+      !== input.expectedLeaseGeneration) {
       throw crmSearchRepositoryError(invalidCode)
     }
   } else {
@@ -386,12 +433,24 @@ function requireReservationAuthority(
     } else {
       const schemaVersion = input.schemaVersion!
       const schemaRole = requireSchemaRole(row, schemaVersion)
+      const operationState = requireEnum(
+        row.operation_state,
+        ['processing', 'retryable', 'admitted'] as const,
+        invalidCode
+      )
+      const operationLeaseGeneration = requireSafeInteger(
+        row.operation_lease_generation,
+        invalidCode,
+        { minimum: 1 }
+      )
       const schemaReady = input.providerAction === 'delete'
         || (row.schema_metadata_index_state === 'ready'
           && row.schema_sentinel_state === 'confirmed_absent')
       if (!indexingReady
         || row.operation_desired_action !== input.providerAction
         || row.operation_schema_version !== schemaVersion
+        || operationLeaseGeneration !== input.expectedLeaseGeneration
+        || (input.provider === 'workers_ai' && operationState === 'admitted')
         || !schemaReady
         || !isCrmSearchProviderActionAllowed({
           globalState,
@@ -499,7 +558,10 @@ export async function reserveCrmSearchUsage(
   rawInput: ReserveCrmSearchUsageInput,
   dependencies: UsageRepositoryDependencies = {}
 ): Promise<CrmSearchUsageReservation> {
-  const input = validateReservationInput(rawInput)
+  const input = normalizeProviderAttemptIdentity(
+    validateReservationInput(rawInput),
+    dependencies
+  )
   const run = dependencies.transactionWithoutRetry
     ?? crmSearchRepositoryDependencies.transactionWithoutRetry
   return run(async (transaction) => {
@@ -526,6 +588,8 @@ export async function reserveCrmSearchUsage(
         schema.sentinel_state AS schema_sentinel_state,
         operation.desired_action AS operation_desired_action,
         operation.schema_version AS operation_schema_version,
+        operation.state AS operation_state,
+        operation.lease_generation AS operation_lease_generation,
         CASE WHEN $3 = 'query' THEN control.daily_query_budget_usd_micros
              ELSE control.daily_indexing_budget_usd_micros END AS global_budget_usd_micros,
         CASE WHEN $3 = 'query' THEN policy.daily_query_budget_usd_micros
@@ -593,6 +657,8 @@ export async function reserveCrmSearchUsage(
         teardown.provider_deletion_state,
         operation.desired_action AS operation_desired_action,
         operation.schema_version AS operation_schema_version,
+        operation.state AS operation_state,
+        operation.lease_generation AS operation_lease_generation,
         control.daily_indexing_budget_usd_micros AS global_budget_usd_micros,
         control.daily_indexing_budget_usd_micros AS client_budget_usd_micros,
         control.max_indexing_provider_calls AS global_max_provider_calls,
@@ -755,16 +821,40 @@ export async function reserveCrmSearchUsage(
       pricedInput.insertedDimensions, pricedInput.storedDimensions, pricedInput.usdMicros,
       dailyRows.map(row => requireUuid(row.id, invalidCode))])
 
+    const providerAction = input.provider === 'workers_ai'
+      ? 'embedding'
+      : input.providerAction
+    const attempt = firstRow(await transaction.query(`
+      INSERT INTO crm_search_provider_attempts (
+        id, organisation_scope_id, client_id, usage_kind, operation_id,
+        correlation_id, provider, provider_action, attempt_sequence,
+        control_revision, policy_revision, lease_generation, state,
+        provider_call_sent, created_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+        'precommitted', FALSE, $13
+      )
+      RETURNING id
+    `, [input.providerAttemptId, input.organisationScopeId, input.clientId,
+      input.usageKind, input.operationId, input.correlationId, input.provider,
+      providerAction, input.providerAttemptSequence, controlRevision, policyRevision,
+      input.expectedLeaseGeneration, input.reservationAt]))
+    if (!attempt || requireUuid(attempt.id, invalidCode) !== input.providerAttemptId) {
+      throw crmSearchRepositoryError(invalidCode)
+    }
+
     const stored = firstRow<UsageReservationRow>(await transaction.query<UsageReservationRow>(`
       INSERT INTO crm_search_usage_reservations (
         organisation_scope_id, client_id, usage_kind, correlation_id, operation_id,
+        provider_attempt_id,
         control_revision, policy_revision, rate_card_id, rate_card_revision, reserved_provider_calls,
         reserved_model_input_tokens, reserved_query_dimensions, reserved_inserted_dimensions,
         reserved_stored_dimensions, reserved_usd_micros, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING *
     `, [input.organisationScopeId, input.clientId, input.usageKind, input.correlationId,
-      input.operationId, controlRevision, policyRevision, rateCardId, pricedInput.rateCardRevision,
+      input.operationId, input.providerAttemptId, controlRevision, policyRevision, rateCardId,
+      pricedInput.rateCardRevision,
       pricedInput.providerCalls, pricedInput.modelInputTokens, pricedInput.queryDimensions,
       pricedInput.insertedDimensions, pricedInput.storedDimensions, pricedInput.usdMicros,
       input.reservationAt]))
@@ -800,6 +890,10 @@ export async function settleCrmSearchUsage(
     if (!locked) throw crmSearchRepositoryError(invalidCode)
     const reservation = mapReservation(locked)
     if (reservation.state !== 'reserved') return reservation
+    if ((input.providerCallSent && reservation.providerCallSent !== true)
+      || (!input.providerCallSent && reservation.providerCallSent === true)) {
+      throw crmSearchRepositoryError('crm_search_usage_settlement_conflict')
+    }
 
     if (input.providerCallSent) {
       const dailyUpdate = await transaction.query(`
@@ -841,6 +935,36 @@ export async function settleCrmSearchUsage(
       if (dailyUpdate.rowCount !== 2) {
         throw crmSearchRepositoryError('crm_search_usage_settlement_conflict')
       }
+    }
+
+    const transitionedAttempt = firstRow(await transaction.query(`
+      WITH transitioned AS (
+        UPDATE crm_search_provider_attempts attempt
+        SET state = CASE WHEN $2 = TRUE THEN 'settled' ELSE 'released' END,
+            settled_at = NOW(), updated_at = NOW()
+        WHERE attempt.id = $1
+          AND (($2 = TRUE AND attempt.state = 'sent' AND attempt.provider_call_sent = TRUE
+              AND (attempt.provider = 'workers_ai' OR attempt.provider_action = 'query'))
+            OR ($2 = FALSE AND attempt.state = 'precommitted'
+              AND attempt.provider_call_sent = FALSE))
+        RETURNING attempt.id
+      )
+      SELECT id FROM transitioned
+      UNION ALL
+      SELECT attempt.id
+      FROM crm_search_provider_attempts attempt
+      WHERE $2 = TRUE
+        AND attempt.id = $1
+        AND attempt.provider = 'vectorize'
+        AND attempt.provider_action IN ('upsert', 'delete')
+        AND attempt.state IN ('accepted', 'ambiguous')
+        AND attempt.provider_call_sent = TRUE
+        AND attempt.settled_at IS NOT NULL
+      LIMIT 1
+    `, [reservation.providerAttemptId, input.providerCallSent]))
+    if (!transitionedAttempt
+      || requireUuid(transitionedAttempt.id, invalidCode) !== reservation.providerAttemptId) {
+      throw crmSearchRepositoryError('crm_search_usage_settlement_conflict')
     }
 
     const state = !input.providerCallSent

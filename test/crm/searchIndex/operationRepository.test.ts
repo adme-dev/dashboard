@@ -3,8 +3,13 @@ import { Client, type ClientConfig } from 'pg'
 import { describe, expect, it, vi } from 'vitest'
 import {
   admitCrmSearchOperation,
+  claimCrmSearchOperation,
   claimCrmSearchOperations,
   completeCrmSearchOperationClaim,
+  loadCrmSearchProviderAttempt,
+  markCrmSearchProviderAttemptAmbiguous,
+  markCrmSearchProviderAttemptSent,
+  recordCrmSearchProviderAcceptance,
   upsertCrmSearchOperation
 } from '~~/server/utils/crm/searchIndex/operationRepository'
 import {
@@ -55,6 +60,32 @@ const operationRow = {
 }
 
 describe('CRM search operation repository', () => {
+  it('claims only the requested operation through legal queued then processing transitions', async () => {
+    const claimed = {
+      ...operationRow,
+      state: 'processing',
+      lease_token: '77777777-7777-4777-8777-777777777777',
+      lease_generation: '4',
+      lease_expires_at: '2026-08-10T00:01:00.000Z'
+    }
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [claimed], rowCount: 1 })
+    const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
+
+    await expect(claimCrmSearchOperation({
+      operationId: operationRow.id,
+      leaseSeconds: 60,
+      now: '2026-08-10T00:00:00.000Z'
+    }, { transactionWithoutRetry } as never)).resolves.toMatchObject({
+      id: operationRow.id, state: 'processing', leaseGeneration: 4
+    })
+    expect(query.mock.calls[0]?.[0]).toContain('state = \'queued\'')
+    expect(query.mock.calls[0]?.[0]).toContain('state = \'pending_transport\'')
+    expect(query.mock.calls[1]?.[0]).toContain('state IN (\'queued\', \'retryable\')')
+    expect(query.mock.calls[1]?.[0]).toContain('WHERE operation.id = $1')
+  })
+
   it('keeps one admitted provider operation and replaces only its one coalesced successor', async () => {
     const pending = {
       ...operationRow,
@@ -232,6 +263,146 @@ describe('CRM search operation repository', () => {
       state: 'admitted', controlRevision: 19, leaseGeneration: 4
     })
     expect(query.mock.calls[0]?.[0]).toContain('crm_search_admit_operation')
+  })
+
+  it('reloads a provider attempt by durable identity and marks sent only by operation lease CAS', async () => {
+    const providerAttemptId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const leaseToken = '77777777-7777-4777-8777-777777777777'
+    const attemptRow = {
+      id: providerAttemptId,
+      organisation_scope_id: base.organisationScopeId,
+      client_id: base.clientId,
+      usage_kind: 'indexing',
+      operation_id: operationRow.id,
+      correlation_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      provider: 'workers_ai',
+      provider_action: 'embedding',
+      attempt_sequence: '1',
+      control_revision: '19',
+      policy_revision: '23',
+      lease_generation: '4',
+      state: 'precommitted',
+      provider_call_sent: false,
+      provider_mutation_id: null,
+      usage_reservation_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+    }
+    const queryOneFresh = vi.fn().mockResolvedValue(attemptRow)
+
+    await expect(loadCrmSearchProviderAttempt({
+      operationId: operationRow.id,
+      providerAttemptId
+    }, { queryOneFresh } as never)).resolves.toMatchObject({
+      id: providerAttemptId,
+      provider: 'workers_ai',
+      action: 'embedding',
+      state: 'precommitted',
+      providerCallSent: false
+    })
+    expect(queryOneFresh.mock.calls[0]?.[0]).toContain('crm_search_provider_attempts')
+
+    const query = vi.fn().mockResolvedValue({ rows: [{ ...attemptRow, state: 'sent', provider_call_sent: true }] })
+    const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
+    await expect(markCrmSearchProviderAttemptSent({
+      operationId: operationRow.id,
+      providerAttemptId,
+      leaseToken,
+      leaseGeneration: 4
+    }, { transactionWithoutRetry } as never)).resolves.toMatchObject({
+      state: 'sent',
+      providerCallSent: true
+    })
+    const sql = query.mock.calls[0]?.[0] as string
+    expect(sql).toContain('lease_token = $3')
+    expect(sql).toContain('lease_generation = $4')
+    expect(sql).toContain('attempt.state = \'precommitted\'')
+  })
+
+  it('marks a query provider attempt sent by correlation plus immutable authority revisions', async () => {
+    const providerAttemptId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const correlationId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const attemptRow = {
+      id: providerAttemptId,
+      organisation_scope_id: base.organisationScopeId,
+      client_id: base.clientId,
+      usage_kind: 'query',
+      operation_id: null,
+      correlation_id: correlationId,
+      provider: 'vectorize',
+      provider_action: 'query',
+      attempt_sequence: '1',
+      control_revision: '19',
+      policy_revision: '23',
+      lease_generation: null,
+      state: 'sent',
+      provider_call_sent: true,
+      provider_mutation_id: null,
+      usage_reservation_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+    }
+    const query = vi.fn().mockResolvedValue({ rows: [attemptRow], rowCount: 1 })
+    const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
+
+    const queryOneFresh = vi.fn().mockResolvedValue({
+      ...attemptRow,
+      state: 'precommitted',
+      provider_call_sent: false
+    })
+    await expect(loadCrmSearchProviderAttempt({
+      correlationId,
+      providerAttemptId
+    }, { queryOneFresh } as never)).resolves.toMatchObject({
+      usageKind: 'query', operationId: null, correlationId, action: 'query'
+    })
+    expect(queryOneFresh.mock.calls[0]?.[0]).toContain('attempt.correlation_id = $2')
+
+    await expect(markCrmSearchProviderAttemptSent({
+      usageKind: 'query',
+      correlationId,
+      providerAttemptId,
+      expectedControlRevision: 19,
+      expectedPolicyRevision: 23
+    }, { transactionWithoutRetry } as never)).resolves.toMatchObject({
+      usageKind: 'query', operationId: null, action: 'query', state: 'sent'
+    })
+    expect(query.mock.calls[0]?.[0]).toContain('attempt.correlation_id = $2')
+    expect(query.mock.calls[0]?.[0]).toContain('attempt.control_revision = $3')
+    expect(query.mock.calls[0]?.[0]).toContain('attempt.policy_revision = $4')
+  })
+
+  it('records Vectorize acceptance and ambiguous sends by exact attempt and lease CAS', async () => {
+    const providerAttemptId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const reservationId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+    const leaseToken = '77777777-7777-4777-8777-777777777777'
+    const acceptedQuery = vi.fn().mockResolvedValue({ rows: [{ id: operationRow.id }], rowCount: 1 })
+    const acceptedTransaction = vi.fn(async callback => await callback({ query: acceptedQuery }))
+
+    await expect(recordCrmSearchProviderAcceptance({
+      operationId: operationRow.id,
+      providerAttemptId,
+      reservationId,
+      mutationId: 'mutation-accepted-1',
+      controlRevision: 19,
+      leaseToken,
+      leaseGeneration: 4
+    }, { transactionWithoutRetry: acceptedTransaction } as never)).resolves.toBeUndefined()
+    expect(acceptedQuery.mock.calls[0]?.[0]).toContain('attempt.state = \'sent\'')
+    expect(acceptedQuery.mock.calls[0]?.[0]).toContain('operation.state = \'admitted\'')
+    expect(acceptedQuery.mock.calls[0]?.[0]).toContain('state = \'accepted\'')
+    expect(acceptedQuery.mock.calls[0]?.[0]).toContain('state = \'provider_pending\'')
+    expect(acceptedQuery.mock.calls[0]?.[0]).toContain('INSERT INTO crm_search_documents')
+    expect(acceptedQuery.mock.calls[0]?.[0]).toContain('ON CONFLICT (organisation_scope_id, client_id, entity_type, entity_id, schema_version)')
+
+    const ambiguousQuery = vi.fn().mockResolvedValue({ rows: [{ id: providerAttemptId }], rowCount: 1 })
+    const ambiguousTransaction = vi.fn(async callback => await callback({ query: ambiguousQuery }))
+    await expect(markCrmSearchProviderAttemptAmbiguous({
+      operationId: operationRow.id,
+      providerAttemptId,
+      reservationId,
+      leaseToken,
+      leaseGeneration: 4
+    }, { transactionWithoutRetry: ambiguousTransaction } as never)).resolves.toBeUndefined()
+    expect(ambiguousQuery.mock.calls[0]?.[0]).toContain('state = \'ambiguous\'')
+    expect(ambiguousQuery.mock.calls[0]?.[0]).toContain('settled_at = NOW()')
+    expect(ambiguousQuery.mock.calls[0]?.[0]).toContain('INSERT INTO crm_search_documents')
   })
 
   it('updates document state only when source high-watermark and lease generation match', async () => {
@@ -456,6 +627,119 @@ task8DatabaseDescribe('CRM search Task 8 repositories on isolated local PostgreS
       } as never)
       expect(claims).toHaveLength(1)
       expect(claims[0]).toMatchObject({ id: operation.id, state: 'processing' })
+
+      const rateCardId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      const indexingAttemptId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+      const indexingCorrelationId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+      const indexingReservationId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+      const queryAttemptId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+      const queryCorrelationId = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
+      const queryReservationId = '12121212-1212-4212-8212-121212121212'
+      await administrator.query(
+        `INSERT INTO crm_search_rate_cards (
+           id, organisation_scope_id, provider, revision, model_id,
+           model_input_usd_micros_per_million_tokens,
+           queried_dimension_usd_micros_per_million,
+           inserted_dimension_usd_micros_per_million,
+           stored_dimension_usd_micros_per_million_month,
+           source_revision_digest, valid_from, valid_until, created_by
+         ) VALUES ($1, $2, 'cloudflare_workers_ai_vectorize', 'task12-pg-v1',
+           '@cf/baai/bge-base-en-v1.5', 67000, 10000, 10000, 500, $3,
+           NOW() - INTERVAL '1 day', NOW() + INTERVAL '1 day', $4)`,
+        [rateCardId, base.organisationScopeId, 'f'.repeat(64), base.entityId]
+      )
+      await administrator.query(
+        `INSERT INTO crm_search_provider_attempts (
+           id, organisation_scope_id, client_id, usage_kind, operation_id,
+           correlation_id, provider, provider_action, attempt_sequence,
+           control_revision, policy_revision, lease_generation
+         ) VALUES
+           ($1, $2, $3, 'indexing', $4, $5, 'workers_ai', 'embedding', 1, 7, 11, $6),
+           ($7, $2, $3, 'query', NULL, $8, 'vectorize', 'query', 1, 7, 11, NULL)`,
+        [indexingAttemptId, base.organisationScopeId, base.clientId, operation.id,
+          indexingCorrelationId, claims[0]!.leaseGeneration, queryAttemptId, queryCorrelationId]
+      )
+      await administrator.query(
+        `INSERT INTO crm_search_usage_reservations (
+           id, organisation_scope_id, client_id, usage_kind, correlation_id,
+           operation_id, provider_attempt_id, control_revision, policy_revision,
+           rate_card_id, rate_card_revision, reserved_provider_calls,
+           reserved_model_input_tokens, reserved_query_dimensions
+         ) VALUES
+           ($1, $2, $3, 'indexing', $4, $5, $6, 7, 11, $7, 'task12-pg-v1', 1, 512, 0),
+           ($8, $2, $3, 'query', $9, NULL, $10, 7, 11, $7, 'task12-pg-v1', 1, 0, 768)`,
+        [indexingReservationId, base.organisationScopeId, base.clientId,
+          indexingCorrelationId, operation.id, indexingAttemptId, rateCardId,
+          queryReservationId, queryCorrelationId, queryAttemptId]
+      )
+
+      const runtimeRepositoryQuery = task8NeonCompatibleQuery(runtime)
+      const runtimeTransactionWithoutRetry = async (callback: never) => {
+        await runtime.query('BEGIN')
+        try {
+          const result = await (callback as (client: unknown) => Promise<unknown>)({
+            query: runtimeRepositoryQuery
+          })
+          await runtime.query('COMMIT')
+          return result
+        } catch (error) {
+          await runtime.query('ROLLBACK')
+          throw error
+        }
+      }
+      await expect(markCrmSearchProviderAttemptSent({
+        operationId: operation.id,
+        providerAttemptId: indexingAttemptId,
+        leaseToken: claims[0]!.leaseToken!,
+        leaseGeneration: claims[0]!.leaseGeneration
+      }, { transactionWithoutRetry: runtimeTransactionWithoutRetry } as never)).resolves.toMatchObject({
+        usageKind: 'indexing', state: 'sent', providerCallSent: true
+      })
+      await expect(markCrmSearchProviderAttemptSent({
+        usageKind: 'query',
+        correlationId: queryCorrelationId,
+        providerAttemptId: queryAttemptId,
+        expectedControlRevision: 7,
+        expectedPolicyRevision: 11
+      }, { transactionWithoutRetry: runtimeTransactionWithoutRetry } as never)).resolves.toMatchObject({
+        usageKind: 'query', state: 'sent', providerCallSent: true
+      })
+
+      await runtime.query('BEGIN')
+      await expect(runtime.query(
+        `UPDATE crm_search_provider_attempts
+            SET state = 'accepted', provider_mutation_id = 'forged-query-mutation',
+                settled_at = NOW()
+          WHERE id = $1`,
+        [queryAttemptId]
+      )).rejects.toThrow(/check constraint/i)
+      await runtime.query('ROLLBACK')
+
+      await runtime.query(
+        `UPDATE crm_search_provider_attempts
+            SET state = 'settled', settled_at = NOW()
+          WHERE id = $1`,
+        [queryAttemptId]
+      )
+      await runtime.query('BEGIN')
+      await expect(runtime.query(
+        `UPDATE crm_search_provider_attempts SET provider_action = 'upsert' WHERE id = $1`,
+        [queryAttemptId]
+      )).rejects.toThrow(/immutable/i)
+      await runtime.query('ROLLBACK')
+      await runtime.query('BEGIN')
+      await expect(runtime.query(
+        `INSERT INTO crm_search_provider_attempts (
+           id, organisation_scope_id, client_id, usage_kind, correlation_id,
+           provider, provider_action, attempt_sequence, control_revision,
+           policy_revision, state, provider_call_sent, provider_mutation_id,
+           sent_at, settled_at
+         ) VALUES ($1, $2, $3, 'query', $4, 'vectorize', 'query', 2, 7, 11,
+           'accepted', TRUE, 'forged-mutation', NOW(), NOW())`,
+        ['13131313-1313-4313-8313-131313131313', base.organisationScopeId,
+          base.clientId, queryCorrelationId]
+      )).rejects.toThrow(/must begin precommitted/i)
+      await runtime.query('ROLLBACK')
 
       const coalesced = await upsertCrmSearchOperation({
         ...base,

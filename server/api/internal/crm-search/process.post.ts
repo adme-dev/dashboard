@@ -27,6 +27,10 @@ import {
   type CrmSearchServiceKeyring,
   type CrmSearchServiceRequest
 } from '~~/shared/crmSearchIndexSigning'
+import {
+  processCrmSearchOperationRequest,
+  reserveCrmSearchProcessRequest
+} from '~~/server/utils/crm/searchIndex/processor'
 
 export interface CrmSearchInternalAuthDependencies {
   readBody(event: H3Event): Promise<string>
@@ -48,7 +52,7 @@ export interface CrmSearchProcessEndpointDependencies extends CrmSearchInternalA
     operationId: string
     correlationId: string
     protocolVersion: 1
-  }): Promise<CrmSearchProcessOutcome>
+  }, event: H3Event): Promise<CrmSearchProcessOutcome>
   log(record: CrmSearchProcessLogRecord): void
 }
 
@@ -190,12 +194,8 @@ function projectProcessOutcome(value: unknown): CrmSearchProcessOutcome | null {
 
 const defaultDependencies: CrmSearchProcessEndpointDependencies = {
   ...defaultAuthDependencies(),
-  async reserveRequest() {
-    fail(503, 'crm_search_processor_unavailable')
-  },
-  async processOperation() {
-    fail(503, 'crm_search_processor_unavailable')
-  },
+  reserveRequest: reserveCrmSearchProcessRequest,
+  processOperation: processCrmSearchOperationRequest,
   log(record) {
     console.info(JSON.stringify(record))
   }
@@ -248,7 +248,7 @@ export function createCrmSearchProcessPostHandler(
       operationId: envelope.operationId,
       correlationId: envelope.correlationId,
       protocolVersion: envelope.protocolVersion
-    }))
+    }, event))
     if (!outcome) fail(503, 'crm_search_processor_unavailable')
     dependencies.log({
       event: 'crm_search_process',

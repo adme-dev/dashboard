@@ -11,6 +11,7 @@ const reservationId = '44444444-4444-4444-8444-444444444444'
 const rateCardId = '55555555-5555-4555-8555-555555555555'
 const teardownId = '88888888-8888-4888-8888-888888888888'
 const teardownOperationId = '99999999-9999-4999-8999-999999999999'
+const providerAttemptId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 
 const authorityRow = {
   global_state: 'enabled',
@@ -26,6 +27,10 @@ const authorityRow = {
   policy_retiring_schema_versions: [],
   schema_metadata_index_state: 'ready',
   schema_sentinel_state: 'confirmed_absent',
+  operation_desired_action: 'upsert',
+  operation_schema_version: 'crm-search-v1',
+  operation_state: 'processing',
+  operation_lease_generation: '3',
   global_budget_usd_micros: '1000',
   client_budget_usd_micros: '900',
   global_max_provider_calls: '10',
@@ -93,7 +98,10 @@ const reserveInput = {
   modelInputTokens: 512,
   queryDimensions: 0,
   insertedDimensions: 0,
-  storedDimensions: 0
+  storedDimensions: 0,
+  providerAttemptId: null,
+  providerAttemptSequence: null,
+  expectedLeaseGeneration: null
 }
 
 function reservationRow() {
@@ -116,7 +124,8 @@ function reservationRow() {
     reserved_usd_micros: '35',
     state: 'reserved',
     provider_call_sent: null,
-    completion_class: null
+    completion_class: null,
+    provider_attempt_id: providerAttemptId
   }
 }
 
@@ -149,11 +158,13 @@ describe('CRM search usage repository', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: dailyRows })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: providerAttemptId }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [reservationRow()] })
     const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
 
     const reservation = await reserveCrmSearchUsage(reserveInput, {
-      transactionWithoutRetry
+      transactionWithoutRetry,
+      randomUuid: () => providerAttemptId
     } as never)
     expect(reservation).toMatchObject({
       id: reservationId,
@@ -164,12 +175,105 @@ describe('CRM search usage repository', () => {
       state: 'reserved'
     })
     expect(query.mock.calls[4]?.[0]).toContain('UPDATE crm_search_usage_daily')
-    expect(query.mock.calls[5]?.[0]).toContain('INSERT INTO crm_search_usage_reservations')
-    expect(query.mock.calls[5]?.[0]).toContain('created_at')
-    expect(query.mock.calls[5]?.[1]).toContain(reserveInput.reservationAt)
-    expect(query.mock.calls[5]?.[1]).toContain(35)
-    expect(query.mock.calls[5]?.[1]).toContain('cloudflare-2026-08-09')
+    expect(query.mock.calls[5]?.[0]).toContain('INSERT INTO crm_search_provider_attempts')
+    expect(query.mock.calls[6]?.[0]).toContain('INSERT INTO crm_search_usage_reservations')
+    expect(query.mock.calls[6]?.[0]).toContain('created_at')
+    expect(query.mock.calls[6]?.[1]).toContain(reserveInput.reservationAt)
+    expect(query.mock.calls[6]?.[1]).toContain(35)
+    expect(query.mock.calls[6]?.[1]).toContain('cloudflare-2026-08-09')
     expect(query.mock.calls[1]?.[0]).toContain('$4::TIMESTAMPTZ')
+  })
+
+  it('precommits a distinct reloadable Workers AI indexing attempt with its 512-token reservation', async () => {
+    const indexingReservation = {
+      ...reservationRow(),
+      usage_kind: 'indexing',
+      operation_id: teardownOperationId,
+      provider_attempt_id: providerAttemptId
+    }
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [authorityRow] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: indexingDailyRows })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: providerAttemptId }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [indexingReservation] })
+    const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
+
+    await expect(reserveCrmSearchUsage({
+      ...reserveInput,
+      operationId: teardownOperationId,
+      usageKind: 'indexing',
+      provider: 'workers_ai',
+      providerAction: 'upsert',
+      surface: null,
+      schemaVersion: 'crm-search-v1',
+      providerAttemptId,
+      providerAttemptSequence: 1,
+      expectedLeaseGeneration: 3
+    }, { transactionWithoutRetry } as never)).resolves.toMatchObject({
+      operationId: teardownOperationId,
+      providerAttemptId,
+      reservedModelInputTokens: 512
+    })
+
+    expect(query.mock.calls[5]?.[0]).toContain('INSERT INTO crm_search_provider_attempts')
+    expect(query.mock.calls[5]?.[1]).toEqual(expect.arrayContaining([
+      providerAttemptId, teardownOperationId, 'workers_ai', 'embedding', 1, 3
+    ]))
+    expect(query.mock.calls[6]?.[0]).toContain('provider_attempt_id')
+  })
+
+  it('admits distinct Workers AI and Vectorize query attempts for one correlation without collision', async () => {
+    const vectorAttemptId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+    const vectorReservationId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+    const queryMocks = (attemptId: string, row: Record<string, unknown>) => vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [authorityRow] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: dailyRows })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: attemptId }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [row] })
+
+    const aiQuery = queryMocks(providerAttemptId, {
+      ...reservationRow(),
+      provider_attempt_id: providerAttemptId
+    })
+    const vectorQuery = queryMocks(vectorAttemptId, {
+      ...reservationRow(),
+      id: vectorReservationId,
+      provider_attempt_id: vectorAttemptId,
+      reserved_model_input_tokens: 0,
+      reserved_query_dimensions: '768',
+      reserved_usd_micros: '8'
+    })
+
+    const ai = await reserveCrmSearchUsage({
+      ...reserveInput,
+      providerAttemptId,
+      providerAttemptSequence: 1
+    }, { transactionWithoutRetry: async callback => await callback({ query: aiQuery }) } as never)
+    const vector = await reserveCrmSearchUsage({
+      ...reserveInput,
+      provider: 'vectorize',
+      providerAction: 'query',
+      modelInputTokens: 0,
+      queryDimensions: 768,
+      providerAttemptId: vectorAttemptId,
+      providerAttemptSequence: 1
+    }, { transactionWithoutRetry: async callback => await callback({ query: vectorQuery }) } as never)
+
+    expect(ai.providerAttemptId).toBe(providerAttemptId)
+    expect(vector.providerAttemptId).toBe(vectorAttemptId)
+    expect(ai.id).not.toBe(vector.id)
+    expect(aiQuery.mock.calls[5]?.[1]).toEqual(expect.arrayContaining([
+      providerAttemptId, correlationId, 'workers_ai', 'embedding'
+    ]))
+    expect(vectorQuery.mock.calls[5]?.[1]).toEqual(expect.arrayContaining([
+      vectorAttemptId, correlationId, 'vectorize', 'query'
+    ]))
   })
 
   it('fails closed when a locked daily scope does not match current rate-card authority', async () => {
@@ -190,8 +294,9 @@ describe('CRM search usage repository', () => {
 
   it('charges the full 512-token reservation once a Workers AI call is sent, including late discard', async () => {
     const query = vi.fn()
-      .mockResolvedValueOnce({ rows: [reservationRow()] })
+      .mockResolvedValueOnce({ rows: [{ ...reservationRow(), provider_call_sent: true }] })
       .mockResolvedValueOnce({ rows: [], rowCount: 2 })
+      .mockResolvedValueOnce({ rows: [{ id: providerAttemptId }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [{ ...reservationRow(), state: 'late_charged' }], rowCount: 1 })
     const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
 
@@ -204,12 +309,15 @@ describe('CRM search usage repository', () => {
     expect(settled.state).toBe('late_charged')
     expect(query.mock.calls[1]?.[0]).toContain('charged_model_input_tokens = charged_model_input_tokens + $')
     expect(query.mock.calls[1]?.[1]).toContain(512)
+    expect(query.mock.calls[2]?.[0]).toContain('UPDATE crm_search_provider_attempts')
+    expect(query.mock.calls[2]?.[0]).toContain('THEN \'settled\'')
   })
 
   it('releases reserved capacity only with explicit evidence that no provider call was sent', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [reservationRow()] })
       .mockResolvedValueOnce({ rows: [], rowCount: 2 })
+      .mockResolvedValueOnce({ rows: [{ id: providerAttemptId }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [{ ...reservationRow(), state: 'released_no_call' }], rowCount: 1 })
     const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
 
@@ -220,6 +328,8 @@ describe('CRM search usage repository', () => {
     }, { transactionWithoutRetry } as never)
     expect(settled.state).toBe('released_no_call')
     expect(query.mock.calls[1]?.[0]).toContain('reserved_model_input_tokens = reserved_model_input_tokens - $')
+    expect(query.mock.calls[2]?.[0]).toContain('UPDATE crm_search_provider_attempts')
+    expect(query.mock.calls[2]?.[0]).toContain('ELSE \'released\'')
   })
 
   it('settles idempotently without double charge after the first durable settlement', async () => {
@@ -237,7 +347,7 @@ describe('CRM search usage repository', () => {
 
   it('rolls back settlement unless both global and client daily rows are updated', async () => {
     const query = vi.fn()
-      .mockResolvedValueOnce({ rows: [reservationRow()] })
+      .mockResolvedValueOnce({ rows: [{ ...reservationRow(), provider_call_sent: true }] })
       .mockResolvedValueOnce({ rows: [], rowCount: 1 })
     const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
     await expect(settleCrmSearchUsage({
@@ -324,6 +434,8 @@ describe('CRM search usage repository', () => {
       provider_deletion_state: 'partially_confirmed',
       operation_desired_action: 'delete',
       operation_schema_version: 'crm-search-v1',
+      operation_state: 'processing',
+      operation_lease_generation: '3',
       global_budget_usd_micros: '1000',
       client_budget_usd_micros: '1000',
       global_max_provider_calls: '10',
@@ -351,13 +463,15 @@ describe('CRM search usage repository', () => {
       usage_kind: 'indexing',
       policy_revision: '5',
       reserved_model_input_tokens: 0,
-      reserved_usd_micros: '0'
+      reserved_usd_micros: '0',
+      provider_attempt_id: providerAttemptId
     }
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [teardownAuthority] })
       .mockResolvedValueOnce({ rows: indexingDailyRows })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: providerAttemptId }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [teardownReservation] })
     const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
 
@@ -370,7 +484,10 @@ describe('CRM search usage repository', () => {
       surface: null,
       schemaVersion: 'crm-search-v1',
       teardownId,
-      modelInputTokens: 0
+      modelInputTokens: 0,
+      providerAttemptId,
+      providerAttemptSequence: 1,
+      expectedLeaseGeneration: 3
     }, { transactionWithoutRetry } as never)).resolves.toMatchObject({
       operationId: teardownOperationId,
       policyRevision: 5,
@@ -394,6 +511,8 @@ describe('CRM search usage repository', () => {
       provider_deletion_state: 'partially_confirmed',
       operation_desired_action: 'delete',
       operation_schema_version: 'crm-search-v1',
+      operation_state: 'processing',
+      operation_lease_generation: '3',
       client_budget_usd_micros: '1000',
       client_max_provider_calls: '10',
       client_max_query_dimensions: '7680',
@@ -406,7 +525,8 @@ describe('CRM search usage repository', () => {
       usage_kind: 'indexing',
       policy_revision: '5',
       reserved_model_input_tokens: 0,
-      reserved_usd_micros: '0'
+      reserved_usd_micros: '0',
+      provider_attempt_id: providerAttemptId
     }
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
@@ -416,6 +536,7 @@ describe('CRM search usage repository', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: indexingDailyRows })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: providerAttemptId }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [teardownReservation] })
     const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
 
@@ -428,7 +549,10 @@ describe('CRM search usage repository', () => {
       surface: null,
       schemaVersion: 'crm-search-v1',
       teardownId,
-      modelInputTokens: 0
+      modelInputTokens: 0,
+      providerAttemptId,
+      providerAttemptSequence: 1,
+      expectedLeaseGeneration: 3
     }, { transactionWithoutRetry } as never)).resolves.toMatchObject({
       operationId: teardownOperationId,
       reservedUsdMicros: 0
@@ -453,6 +577,8 @@ describe('CRM search usage repository', () => {
       provider_deletion_state: 'partially_confirmed',
       operation_desired_action: 'delete',
       operation_schema_version: 'crm-search-v1',
+      operation_state: 'processing',
+      operation_lease_generation: '3',
       client_budget_usd_micros: '1000',
       client_max_provider_calls: '10',
       client_max_query_dimensions: '7680',
@@ -475,7 +601,10 @@ describe('CRM search usage repository', () => {
       surface: null,
       schemaVersion: 'crm-search-v1',
       teardownId,
-      modelInputTokens: 0
+      modelInputTokens: 0,
+      providerAttemptId,
+      providerAttemptSequence: 1,
+      expectedLeaseGeneration: 3
     }, { transactionWithoutRetry } as never)).rejects.toThrow('crm_search_budget_exhausted')
     expect(query.mock.calls[3]?.[0]).toContain('usage_date < $3')
     expect(query).toHaveBeenCalledTimes(4)

@@ -762,6 +762,144 @@ CREATE TABLE IF NOT EXISTS crm_search_terminal_replacement_authorizations (
   UNIQUE (backend_pid, transaction_id, replacement_operation_id)
 );
 
+CREATE OR REPLACE FUNCTION crm_search_provider_attempt_transition_allowed(
+  p_provider TEXT,
+  p_from TEXT,
+  p_to TEXT
+)
+RETURNS BOOLEAN
+LANGUAGE sql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT CASE p_from
+    WHEN 'precommitted' THEN p_to IN ('precommitted', 'sent', 'released')
+    WHEN 'sent' THEN p_to IN ('sent', 'settled', 'accepted', 'ambiguous')
+    WHEN 'released' THEN p_to = 'released'
+    WHEN 'settled' THEN p_to = 'settled'
+    WHEN 'ambiguous' THEN p_to = 'ambiguous'
+    WHEN 'accepted' THEN p_to = 'accepted'
+    ELSE FALSE
+  END
+$$;
+
+CREATE TABLE IF NOT EXISTS crm_search_provider_attempts (
+  id UUID PRIMARY KEY,
+  organisation_scope_id UUID NOT NULL
+    REFERENCES crm_search_organisation_scopes(id) ON DELETE RESTRICT,
+  client_id UUID NOT NULL,
+  usage_kind TEXT NOT NULL CHECK (usage_kind IN ('query', 'indexing')),
+  operation_id UUID
+    REFERENCES crm_search_operations(id) ON DELETE RESTRICT,
+  correlation_id UUID NOT NULL,
+  provider TEXT NOT NULL CHECK (provider IN ('workers_ai', 'vectorize')),
+  provider_action TEXT NOT NULL
+    CHECK (provider_action IN ('embedding', 'query', 'upsert', 'delete')),
+  attempt_sequence INTEGER NOT NULL CHECK (attempt_sequence BETWEEN 1 AND 1000),
+  control_revision BIGINT NOT NULL CHECK (control_revision >= 0),
+  policy_revision BIGINT NOT NULL CHECK (policy_revision >= 0),
+  lease_generation BIGINT CHECK (lease_generation IS NULL OR lease_generation >= 1),
+  state TEXT NOT NULL DEFAULT 'precommitted'
+    CHECK (state IN ('precommitted', 'sent', 'released', 'settled', 'accepted', 'ambiguous')),
+  provider_call_sent BOOLEAN NOT NULL DEFAULT FALSE,
+  provider_mutation_id TEXT CHECK (
+    provider_mutation_id IS NULL OR char_length(provider_mutation_id) BETWEEN 1 AND 256
+  ),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  sent_at TIMESTAMPTZ,
+  settled_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  retention_expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '400 days'),
+  legal_hold_id UUID REFERENCES crm_search_legal_holds(id) ON DELETE RESTRICT,
+  CHECK (
+    (usage_kind = 'query' AND operation_id IS NULL AND lease_generation IS NULL
+      AND ((provider = 'workers_ai' AND provider_action = 'embedding')
+        OR (provider = 'vectorize' AND provider_action = 'query')))
+    OR (usage_kind = 'indexing' AND operation_id IS NOT NULL AND lease_generation IS NOT NULL
+      AND ((provider = 'workers_ai' AND provider_action = 'embedding')
+        OR (provider = 'vectorize' AND provider_action IN ('upsert', 'delete'))))
+  ),
+  CHECK (
+    (state IN ('precommitted', 'released') AND provider_call_sent = FALSE AND sent_at IS NULL)
+    OR (state IN ('sent', 'settled', 'accepted', 'ambiguous')
+      AND provider_call_sent = TRUE AND sent_at IS NOT NULL)
+  ),
+  CHECK (
+    (state IN ('precommitted', 'sent') AND settled_at IS NULL)
+    OR (state IN ('released', 'settled', 'accepted', 'ambiguous') AND settled_at IS NOT NULL)
+  ),
+  CHECK (provider = 'vectorize' OR provider_mutation_id IS NULL),
+  CHECK (state <> 'accepted' OR (
+    provider = 'vectorize'
+    AND provider_action IN ('upsert', 'delete')
+    AND provider_mutation_id IS NOT NULL
+  ))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS crm_search_provider_attempts_indexing_identity
+  ON crm_search_provider_attempts (operation_id, provider, attempt_sequence)
+  WHERE usage_kind = 'indexing';
+
+CREATE UNIQUE INDEX IF NOT EXISTS crm_search_provider_attempts_query_identity
+  ON crm_search_provider_attempts (correlation_id, provider, attempt_sequence)
+  WHERE usage_kind = 'query';
+
+CREATE OR REPLACE FUNCTION crm_search_guard_provider_attempt_transition()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.state <> 'precommitted'
+      OR NEW.provider_call_sent <> FALSE
+      OR NEW.sent_at IS NOT NULL
+      OR NEW.settled_at IS NOT NULL
+      OR NEW.provider_mutation_id IS NOT NULL THEN
+      RAISE EXCEPTION 'CRM search provider attempt must begin precommitted';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF ROW(
+       NEW.organisation_scope_id, NEW.client_id, NEW.usage_kind,
+       NEW.operation_id, NEW.correlation_id, NEW.provider, NEW.provider_action,
+       NEW.attempt_sequence, NEW.control_revision, NEW.policy_revision, NEW.lease_generation,
+       NEW.created_at, NEW.retention_expires_at
+     ) IS DISTINCT FROM ROW(
+       OLD.organisation_scope_id, OLD.client_id, OLD.usage_kind,
+       OLD.operation_id, OLD.correlation_id, OLD.provider, OLD.provider_action,
+       OLD.attempt_sequence, OLD.control_revision, OLD.policy_revision, OLD.lease_generation,
+       OLD.created_at, OLD.retention_expires_at
+     ) THEN
+    RAISE EXCEPTION 'CRM search provider-attempt identity is immutable';
+  END IF;
+  IF NOT public.crm_search_provider_attempt_transition_allowed(
+    OLD.provider, OLD.state, NEW.state
+  ) THEN
+    RAISE EXCEPTION 'invalid CRM search provider-attempt transition';
+  END IF;
+  IF OLD.state IN ('released', 'settled', 'accepted', 'ambiguous') AND ROW(
+       NEW.state, NEW.provider_call_sent, NEW.provider_mutation_id,
+       NEW.sent_at, NEW.settled_at
+     ) IS DISTINCT FROM ROW(
+       OLD.state, OLD.provider_call_sent, OLD.provider_mutation_id,
+       OLD.sent_at, OLD.settled_at
+     ) THEN
+    RAISE EXCEPTION 'CRM search provider-attempt terminal evidence is immutable';
+  END IF;
+  NEW.updated_at := NOW();
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS crm_search_guard_provider_attempt_transition
+  ON crm_search_provider_attempts;
+CREATE TRIGGER crm_search_guard_provider_attempt_transition
+  BEFORE INSERT OR UPDATE ON crm_search_provider_attempts
+  FOR EACH ROW EXECUTE FUNCTION crm_search_guard_provider_attempt_transition();
+
 CREATE TABLE IF NOT EXISTS crm_search_documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organisation_scope_id UUID NOT NULL
@@ -873,6 +1011,9 @@ CREATE TABLE IF NOT EXISTS crm_search_usage_reservations (
   usage_kind TEXT NOT NULL CHECK (usage_kind IN ('query', 'indexing')),
   correlation_id UUID NOT NULL,
   operation_id UUID,
+  provider_attempt_id UUID NOT NULL
+    CONSTRAINT crm_search_usage_reservations_provider_attempt_fk
+    REFERENCES crm_search_provider_attempts(id) ON DELETE RESTRICT,
   control_revision BIGINT NOT NULL CHECK (control_revision >= 0),
   policy_revision BIGINT NOT NULL CHECK (policy_revision >= 0),
   rate_card_id UUID NOT NULL REFERENCES crm_search_rate_cards(id) ON DELETE RESTRICT,
@@ -899,7 +1040,10 @@ CREATE TABLE IF NOT EXISTS crm_search_usage_reservations (
   settled_at TIMESTAMPTZ,
   retention_expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '400 days'),
   legal_hold_id UUID REFERENCES crm_search_legal_holds(id) ON DELETE RESTRICT,
-  UNIQUE (correlation_id, usage_kind, operation_id),
+  CHECK (
+    (usage_kind = 'query' AND operation_id IS NULL)
+    OR (usage_kind = 'indexing' AND operation_id IS NOT NULL AND provider_attempt_id IS NOT NULL)
+  ),
   CHECK (
     state = 'reserved'
     OR (settled_at IS NOT NULL AND provider_call_sent IS NOT NULL AND completion_class IS NOT NULL)
@@ -908,9 +1052,65 @@ CREATE TABLE IF NOT EXISTS crm_search_usage_reservations (
   CHECK (state NOT IN ('charged', 'late_charged') OR provider_call_sent = TRUE)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS crm_search_usage_reservations_query_identity
-  ON crm_search_usage_reservations (correlation_id, usage_kind)
-  WHERE operation_id IS NULL;
+ALTER TABLE crm_search_usage_reservations
+  ADD COLUMN IF NOT EXISTS provider_attempt_id UUID;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM crm_search_usage_reservations WHERE provider_attempt_id IS NULL
+  ) THEN
+    RAISE EXCEPTION 'existing CRM search usage rows lack durable provider-attempt identity';
+  END IF;
+END;
+$$;
+
+ALTER TABLE crm_search_usage_reservations
+  ALTER COLUMN provider_attempt_id SET NOT NULL;
+
+DO $$
+DECLARE
+  v_constraint RECORD;
+BEGIN
+  FOR v_constraint IN
+    SELECT constraint_row.conname
+    FROM pg_catalog.pg_constraint constraint_row
+    WHERE constraint_row.conrelid = 'crm_search_usage_reservations'::REGCLASS
+      AND constraint_row.contype = 'u'
+      AND pg_catalog.pg_get_constraintdef(constraint_row.oid)
+        = 'UNIQUE (correlation_id, usage_kind, operation_id)'
+  LOOP
+    EXECUTE pg_catalog.format(
+      'ALTER TABLE crm_search_usage_reservations DROP CONSTRAINT %I',
+      v_constraint.conname
+    );
+  END LOOP;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_constraint
+    WHERE conrelid = 'crm_search_usage_reservations'::REGCLASS
+      AND conname = 'crm_search_usage_reservations_provider_attempt_fk'
+  ) THEN
+    ALTER TABLE crm_search_usage_reservations
+      ADD CONSTRAINT crm_search_usage_reservations_provider_attempt_fk
+      FOREIGN KEY (provider_attempt_id)
+      REFERENCES crm_search_provider_attempts(id) ON DELETE RESTRICT;
+  END IF;
+END;
+$$;
+
+ALTER TABLE crm_search_usage_reservations
+  DROP CONSTRAINT IF EXISTS crm_search_usage_reservations_attempt_shape;
+ALTER TABLE crm_search_usage_reservations
+  ADD CONSTRAINT crm_search_usage_reservations_attempt_shape CHECK (
+    (usage_kind = 'query' AND operation_id IS NULL)
+    OR (usage_kind = 'indexing' AND operation_id IS NOT NULL)
+  );
+
+CREATE UNIQUE INDEX IF NOT EXISTS crm_search_usage_reservations_provider_attempt_identity
+  ON crm_search_usage_reservations (provider_attempt_id)
+  WHERE provider_attempt_id IS NOT NULL;
+
+DROP INDEX IF EXISTS crm_search_usage_reservations_query_identity;
 
 CREATE OR REPLACE FUNCTION crm_search_json_schema_is_safe(
   p_value JSONB,
@@ -3217,6 +3417,7 @@ AS $$
     'crm_search_rate_cards',
     'crm_search_rate_card_revocations',
     'crm_search_operations',
+    'crm_search_provider_attempts',
     'crm_search_documents',
     'crm_search_usage_daily',
     'crm_search_usage_reservations',
@@ -4861,7 +5062,7 @@ BEGIN
   FOREACH v_table IN ARRAY ARRAY[
     'crm_search_schema_versions', 'crm_search_rate_cards',
     'crm_search_rate_card_revocations', 'crm_search_operations',
-    'crm_search_documents', 'crm_search_usage_daily',
+    'crm_search_provider_attempts', 'crm_search_documents', 'crm_search_usage_daily',
     'crm_search_usage_reservations', 'crm_search_events',
     'crm_search_daily_events', 'crm_search_evaluation_runs',
     'crm_search_evaluation_query_evidence', 'crm_search_evaluation_approvals',
@@ -4891,7 +5092,8 @@ REVOKE ALL ON TABLE
   crm_search_legal_hold_targets, crm_search_namespaces,
   crm_search_schema_versions, crm_search_rate_cards,
   crm_search_rate_card_revocations, crm_search_policies,
-  crm_search_source_dirty, crm_search_operations, crm_search_documents,
+  crm_search_source_dirty, crm_search_operations, crm_search_provider_attempts,
+  crm_search_documents,
   crm_search_usage_daily, crm_search_usage_reservations,
   crm_search_events, crm_search_events_default, crm_search_daily_events,
   crm_search_evaluation_runs, crm_search_evaluation_query_evidence,
@@ -4916,7 +5118,8 @@ GRANT SELECT ON TABLE
   crm_search_legal_hold_targets, crm_search_namespaces,
   crm_search_schema_versions, crm_search_rate_cards,
   crm_search_rate_card_revocations, crm_search_policies,
-  crm_search_source_dirty, crm_search_operations, crm_search_documents,
+  crm_search_source_dirty, crm_search_operations, crm_search_provider_attempts,
+  crm_search_documents,
   crm_search_usage_daily, crm_search_usage_reservations,
   crm_search_events, crm_search_daily_events, crm_search_evaluation_runs,
   crm_search_evaluation_query_evidence, crm_search_evaluation_approvals,
@@ -4929,7 +5132,8 @@ GRANT SELECT ON TABLE
 TO crm_search_runtime;
 
 GRANT INSERT, UPDATE ON TABLE
-  crm_search_source_dirty, crm_search_operations, crm_search_documents,
+  crm_search_source_dirty, crm_search_operations, crm_search_provider_attempts,
+  crm_search_documents,
   crm_search_usage_daily, crm_search_usage_reservations,
   crm_search_daily_events, crm_search_client_teardowns,
   crm_search_teardown_vectors, crm_search_namespaces
@@ -5001,6 +5205,7 @@ REVOKE DELETE, TRUNCATE ON TABLE
   crm_search_policies,
   crm_search_source_dirty,
   crm_search_operations,
+  crm_search_provider_attempts,
   crm_search_documents,
   crm_search_usage_daily,
   crm_search_usage_reservations,
