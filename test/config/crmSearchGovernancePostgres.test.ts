@@ -1,10 +1,22 @@
-import { createHash } from 'node:crypto'
+import {
+  createHash,
+  createPublicKey,
+  verify as verifyDetachedSignature
+} from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { Client } from 'pg'
 import { describe, expect, it } from 'vitest'
 
 const rawDatabaseUrl = process.env.CRM_SEARCH_TEST_DATABASE_URL?.trim()
 const rawTargetAttestation = process.env.CRM_SEARCH_TEST_TARGET_ATTESTATION_JSON?.trim()
+const rawTargetAttestationPublicKey
+  = process.env.CRM_SEARCH_TEST_TARGET_ATTESTATION_PUBLIC_KEY_PEM?.trim()
+const expectedTargetAttestationSignerKeyId
+  = process.env.CRM_SEARCH_TEST_TARGET_ATTESTATION_SIGNER_KEY_ID?.trim()
+const rawTrustedSharedEndpointDenyset
+  = process.env.CRM_SEARCH_TEST_TRUSTED_SHARED_ENDPOINT_DENYSET?.trim()
 const schema = `crm_search_expand_test_${crypto.randomUUID().replaceAll('-', '')}`
 const requiredApplicationName = 'crm-search-governance-test'
 const requiredMigrationPaths = [
@@ -18,6 +30,7 @@ interface CrmSearchTargetAttestation {
   producer: 'scripts/crm-search/neon-lifecycle.mjs'
   sourceGitSha: string
   migrationPaths: string[]
+  migrationDigests: Record<string, string>
   schemaOnly: boolean
   createdAt: string
   expiresAt: string
@@ -35,9 +48,19 @@ interface CrmSearchTargetAttestation {
     }
     endpoint: { id: string, branchId: string, host: string }
   }
-  sharedEndpointDenyset: string[]
   apiResponseSha256: string
+  signerKeyId: string
+  signatureAlgorithm: 'ed25519'
+  signature: string
   attestationSha256: string
+}
+
+interface TargetAttestationTrust {
+  expectedSourceGitSha: string
+  expectedMigrationDigests: Record<string, string>
+  expectedSignerKeyId: string
+  trustedSharedEndpointDenyset: string[]
+  verifySignature: (payload: string, signature: string, signerKeyId: string) => boolean
 }
 
 function canonicalJson(value: unknown): string {
@@ -56,12 +79,22 @@ function digestJson(value: unknown): string {
 }
 
 function targetAttestationFixture(
-  mutate?: (draft: Omit<CrmSearchTargetAttestation, 'apiResponseSha256' | 'attestationSha256'>) => void
+  mutate?: (draft: Omit<
+    CrmSearchTargetAttestation,
+    'apiResponseSha256' | 'signature' | 'attestationSha256'
+  >) => void
 ): CrmSearchTargetAttestation {
   const createdAt = new Date(Date.now() - 60_000).toISOString()
   const expiresAt = new Date(Date.now() + 3_600_000).toISOString()
   const sourceGitSha = 'a'.repeat(40)
-  const draft: Omit<CrmSearchTargetAttestation, 'apiResponseSha256' | 'attestationSha256'> = {
+  const migrationDigests = Object.fromEntries(requiredMigrationPaths.map(path => [
+    path,
+    createHash('sha256').update(`fixture:${path}:${sourceGitSha}`).digest('hex')
+  ]))
+  const draft: Omit<
+    CrmSearchTargetAttestation,
+    'apiResponseSha256' | 'signature' | 'attestationSha256'
+  > = {
     version: 'crm-search-neon-target-attestation-v1' as const,
     producer: 'scripts/crm-search/neon-lifecycle.mjs' as const,
     sourceGitSha,
@@ -70,6 +103,7 @@ function targetAttestationFixture(
       'server/database/migrations/351_crm_search_validate_backfill.sql',
       'server/database/migrations/352_crm_search_activate_capture.sql'
     ],
+    migrationDigests,
     schemaOnly: true,
     createdAt,
     expiresAt,
@@ -91,36 +125,80 @@ function targetAttestationFixture(
         host: 'ep-crm-search-e2e-a1b2c3d4.ap-southeast-2.aws.neon.tech'
       }
     },
-    sharedEndpointDenyset: ['ep-production-shared-a1b2c3d4']
+    signerKeyId: 'crm-search-task18-test-key',
+    signatureAlgorithm: 'ed25519'
   }
   mutate?.(draft)
   const withApiDigest = { ...draft, apiResponseSha256: digestJson(draft.neonApi) }
-  return { ...withApiDigest, attestationSha256: digestJson(withApiDigest) }
+  const signature = `test:${createHash('sha256').update(canonicalJson(withApiDigest)).digest('hex')}`
+  const signed = { ...withApiDigest, signature }
+  return { ...signed, attestationSha256: digestJson(signed) }
+}
+
+function targetAttestationFixtureTrust(
+  attestation: CrmSearchTargetAttestation
+): TargetAttestationTrust {
+  return {
+    expectedSourceGitSha: attestation.sourceGitSha,
+    expectedMigrationDigests: { ...attestation.migrationDigests },
+    expectedSignerKeyId: attestation.signerKeyId,
+    trustedSharedEndpointDenyset: ['ep-production-shared-a1b2c3d4'],
+    verifySignature: (payload, signature, signerKeyId) =>
+      signerKeyId === attestation.signerKeyId
+      && signature === `test:${createHash('sha256').update(payload).digest('hex')}`
+  }
 }
 
 function endpointFromHost(hostname: string): string {
   return hostname.split('.')[0]?.replace(/-pooler$/, '') || ''
 }
 
-function parseAndVerifyTargetAttestation(raw: string): CrmSearchTargetAttestation {
+function parseAndVerifyTargetAttestation(
+  raw: string,
+  trust: TargetAttestationTrust
+): CrmSearchTargetAttestation {
   let value: unknown
   try {
     value = JSON.parse(raw)
   } catch {
     throw new Error('CRM search target attestation is invalid JSON')
   }
-  return verifyTargetAttestation(value)
+  return verifyTargetAttestation(value, trust)
 }
 
-function verifyTargetAttestation(value: unknown): CrmSearchTargetAttestation {
+function verifyTargetAttestation(
+  value: unknown,
+  trust: TargetAttestationTrust
+): CrmSearchTargetAttestation {
   if (!value || typeof value !== 'object') {
     throw new Error('CRM search target attestation is missing')
   }
+  if (!/^[a-f0-9]{40}([a-f0-9]{24})?$/.test(trust.expectedSourceGitSha)
+    || !/^[a-z0-9][a-z0-9._:-]{2,119}$/i.test(trust.expectedSignerKeyId)
+    || typeof trust.verifySignature !== 'function') {
+    throw new Error('CRM search target attestation trust configuration is invalid')
+  }
+  if (!Array.isArray(trust.trustedSharedEndpointDenyset)
+    || trust.trustedSharedEndpointDenyset.length === 0
+    || new Set(trust.trustedSharedEndpointDenyset).size
+    !== trust.trustedSharedEndpointDenyset.length
+    || trust.trustedSharedEndpointDenyset.some(id => !/^ep-[a-z0-9-]{3,119}$/i.test(id))) {
+    throw new Error('CRM search trusted shared endpoint denyset is invalid')
+  }
   const attestation = value as CrmSearchTargetAttestation
-  const { attestationSha256, ...unsignedAttestation } = attestation
+  const { attestationSha256, ...signedAttestation } = attestation
   if (!/^[a-f0-9]{64}$/.test(attestationSha256 || '')
-    || digestJson(unsignedAttestation) !== attestationSha256) {
+    || digestJson(signedAttestation) !== attestationSha256) {
     throw new Error('CRM search target attestation digest does not match')
+  }
+  const { signature, ...signaturePayload } = signedAttestation
+  if (attestation.signatureAlgorithm !== 'ed25519'
+    || attestation.signerKeyId !== trust.expectedSignerKeyId
+    || typeof signature !== 'string' || signature.length > 2048
+    || !trust.verifySignature(
+      canonicalJson(signaturePayload), signature, attestation.signerKeyId
+    )) {
+    throw new Error('CRM search target attestation signature is invalid')
   }
   if (attestation.version !== 'crm-search-neon-target-attestation-v1'
     || attestation.producer !== 'scripts/crm-search/neon-lifecycle.mjs') {
@@ -129,11 +207,19 @@ function verifyTargetAttestation(value: unknown): CrmSearchTargetAttestation {
   if (!attestation.neonApi || digestJson(attestation.neonApi) !== attestation.apiResponseSha256) {
     throw new Error('CRM search target attestation API response digest does not match')
   }
-  if (!/^[a-f0-9]{40}([a-f0-9]{24})?$/.test(attestation.sourceGitSha || '')) {
-    throw new Error('CRM search target attestation source Git SHA is invalid')
+  if (attestation.sourceGitSha !== trust.expectedSourceGitSha) {
+    throw new Error('CRM search target attestation source Git SHA does not match checked-out SHA')
   }
   if (canonicalJson(attestation.migrationPaths) !== canonicalJson(requiredMigrationPaths)) {
     throw new Error('CRM search target attestation migration set is not exact')
+  }
+  if (canonicalJson(Object.keys(attestation.migrationDigests || {}).sort())
+    !== canonicalJson([...requiredMigrationPaths].sort())
+    || canonicalJson(attestation.migrationDigests)
+    !== canonicalJson(trust.expectedMigrationDigests)
+    || Object.values(attestation.migrationDigests || {})
+      .some(digest => !/^[a-f0-9]{64}$/.test(digest))) {
+    throw new Error('CRM search target attestation migration byte digest does not match')
   }
   if (attestation.schemaOnly !== true || attestation.neonApi.branch.initSource !== 'schema-only') {
     throw new Error('CRM search target attestation must prove schema-only creation')
@@ -173,13 +259,7 @@ function verifyTargetAttestation(value: unknown): CrmSearchTargetAttestation {
     || !endpoint.host.startsWith('ep-') || endpoint.host.split('.')[0]?.endsWith('-pooler')) {
     throw new Error('CRM search target attestation endpoint binding is invalid')
   }
-  if (!Array.isArray(attestation.sharedEndpointDenyset)
-    || attestation.sharedEndpointDenyset.length === 0
-    || new Set(attestation.sharedEndpointDenyset).size !== attestation.sharedEndpointDenyset.length
-    || attestation.sharedEndpointDenyset.some(id => !/^ep-[a-z0-9-]{3,119}$/i.test(id))) {
-    throw new Error('CRM search target attestation shared endpoint denyset is invalid')
-  }
-  if (attestation.sharedEndpointDenyset.includes(endpoint.id)) {
+  if (trust.trustedSharedEndpointDenyset.includes(endpoint.id)) {
     throw new Error('CRM search target attestation identifies a shared endpoint')
   }
   const targetIdentity = `${project.id} ${branch.id} ${branch.name} ${endpoint.id}`.toLowerCase()
@@ -189,11 +269,60 @@ function verifyTargetAttestation(value: unknown): CrmSearchTargetAttestation {
   return attestation
 }
 
+function workspaceMigrationDigests(): Record<string, string> {
+  return Object.fromEntries(requiredMigrationPaths.map(path => [
+    path,
+    createHash('sha256').update(readFileSync(
+      new URL(`../../${path}`, import.meta.url)
+    )).digest('hex')
+  ]))
+}
+
+function targetAttestationTrustFromEnvironment(): TargetAttestationTrust {
+  if (!rawTargetAttestationPublicKey || !expectedTargetAttestationSignerKeyId
+    || !rawTrustedSharedEndpointDenyset) {
+    throw new Error('CRM search target attestation trust environment is incomplete')
+  }
+  let trustedSharedEndpointDenyset: unknown
+  try {
+    trustedSharedEndpointDenyset = JSON.parse(rawTrustedSharedEndpointDenyset)
+  } catch {
+    throw new Error('CRM search trusted shared endpoint denyset is invalid JSON')
+  }
+  if (!Array.isArray(trustedSharedEndpointDenyset)
+    || trustedSharedEndpointDenyset.some(value => typeof value !== 'string')) {
+    throw new Error('CRM search trusted shared endpoint denyset must be a JSON string array')
+  }
+  const repositoryRoot = fileURLToPath(new URL('../..', import.meta.url))
+  const expectedSourceGitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: repositoryRoot,
+    encoding: 'utf8'
+  }).trim()
+  const verificationKey = createPublicKey(
+    rawTargetAttestationPublicKey.replaceAll('\\n', '\n')
+  )
+  return {
+    expectedSourceGitSha,
+    expectedMigrationDigests: workspaceMigrationDigests(),
+    expectedSignerKeyId: expectedTargetAttestationSignerKeyId,
+    trustedSharedEndpointDenyset,
+    verifySignature: (payload, signature, signerKeyId) =>
+      signerKeyId === expectedTargetAttestationSignerKeyId
+      && verifyDetachedSignature(
+        null,
+        Buffer.from(payload, 'utf8'),
+        verificationKey,
+        Buffer.from(signature, 'base64')
+      )
+  }
+}
+
 function assertGuardedCrmSearchTestDatabaseUrl(
   raw: string,
-  attestation: CrmSearchTargetAttestation
+  attestation: CrmSearchTargetAttestation,
+  trust: TargetAttestationTrust
 ): string {
-  const verified = verifyTargetAttestation(attestation)
+  const verified = verifyTargetAttestation(attestation, trust)
   let url: URL
   try {
     url = new URL(raw)
@@ -219,7 +348,7 @@ function assertGuardedCrmSearchTestDatabaseUrl(
     throw new Error('CRM search test URL does not match the attested endpoint')
   }
 
-  if (verified.sharedEndpointDenyset.includes(endpointFromHost(url.hostname))) {
+  if (trust.trustedSharedEndpointDenyset.includes(endpointFromHost(url.hostname))) {
     throw new Error('CRM search tests reject an attested shared endpoint')
   }
   if (url.searchParams.getAll('application_name').length !== 1
@@ -237,6 +366,17 @@ function assertGuardedCrmSearchTestDatabaseUrl(
     throw new Error('CRM search governance tests reject shared or production-like database identities')
   }
   return raw
+}
+
+function assertGuardedTargetFixture(
+  raw: string,
+  attestation: CrmSearchTargetAttestation
+): string {
+  return assertGuardedCrmSearchTestDatabaseUrl(
+    raw,
+    attestation,
+    targetAttestationFixtureTrust(attestation)
+  )
 }
 
 async function assertEmptyIsolatedTargetPreflight(
@@ -374,7 +514,7 @@ async function withGuardedCrmSearchSchema(options: {
 describe('CRM search governance database target guard', () => {
   it('accepts only a direct isolated Neon URL bound to a Task18 lifecycle attestation', () => {
     const safe = `postgresql://crm_search_test:secret@ep-crm-search-e2e-a1b2c3d4.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&application_name=${requiredApplicationName}`
-    expect(assertGuardedCrmSearchTestDatabaseUrl(safe, targetAttestationFixture())).toBe(safe)
+    expect(assertGuardedTargetFixture(safe, targetAttestationFixture())).toBe(safe)
   })
 
   it.each([
@@ -387,7 +527,7 @@ describe('CRM search governance database target guard', () => {
     'postgresql://test:secret@not-an-endpoint.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&application_name=crm-search-governance-test',
     'postgresql://test:secret@ep-crm-search-e2e-a1b2c3d4.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&application_name=crm-search-governance-test&application_name=other'
   ])('rejects an unguarded or production-like target before a connection can be made', (unsafe) => {
-    expect(() => assertGuardedCrmSearchTestDatabaseUrl(unsafe, targetAttestationFixture((draft) => {
+    expect(() => assertGuardedTargetFixture(unsafe, targetAttestationFixture((draft) => {
       draft.neonApi.endpoint.id = endpointFromHost(new URL(unsafe).hostname)
       draft.neonApi.endpoint.host = new URL(unsafe).hostname
     }))).toThrow()
@@ -397,20 +537,63 @@ describe('CRM search governance database target guard', () => {
     const safe = `postgresql://crm_search_test:secret@ep-crm-search-e2e-a1b2c3d4.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&application_name=${requiredApplicationName}`
     const forged = targetAttestationFixture()
     forged.neonApi.branch.id = 'br-forged-after-signing'
-    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, forged)).toThrow(/attestation digest/i)
-    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, targetAttestationFixture((draft) => {
+    expect(() => assertGuardedTargetFixture(safe, forged)).toThrow(/attestation digest/i)
+    expect(() => assertGuardedTargetFixture(safe, targetAttestationFixture((draft) => {
       draft.expiresAt = new Date(Date.now() - 1_000).toISOString()
       draft.neonApi.branch.expiresAt = draft.expiresAt
     }))).toThrow(/expired/i)
-    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, targetAttestationFixture((draft) => {
+    expect(() => assertGuardedTargetFixture(safe, targetAttestationFixture((draft) => {
       Object.assign(draft, { schemaOnly: false })
     }))).toThrow(/schema-only/i)
-    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, targetAttestationFixture((draft) => {
+    expect(() => assertGuardedTargetFixture(safe, targetAttestationFixture((draft) => {
       draft.neonApi.endpoint.branchId = 'br-other'
     }))).toThrow(/branch/i)
-    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, targetAttestationFixture((draft) => {
-      draft.sharedEndpointDenyset.push(draft.neonApi.endpoint.id)
-    }))).toThrow(/shared/i)
+    const sharedTarget = targetAttestationFixture()
+    expect(() => assertGuardedCrmSearchTestDatabaseUrl(
+      safe,
+      sharedTarget,
+      {
+        ...targetAttestationFixtureTrust(sharedTarget),
+        trustedSharedEndpointDenyset: [sharedTarget.neonApi.endpoint.id]
+      }
+    )).toThrow(/shared/i)
+  })
+
+  it('requires authenticated lifecycle provenance, checkout SHA, byte digests, and a trusted denyset', () => {
+    const safe = `postgresql://crm_search_test:secret@ep-crm-search-e2e-a1b2c3d4.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&application_name=${requiredApplicationName}`
+    const attestation = targetAttestationFixture()
+    const trustedMigrationDigests = { ...attestation.migrationDigests }
+    const baseTrust: TargetAttestationTrust = {
+      expectedSourceGitSha: attestation.sourceGitSha,
+      expectedMigrationDigests: trustedMigrationDigests,
+      expectedSignerKeyId: 'crm-search-task18-test-key',
+      trustedSharedEndpointDenyset: ['ep-production-shared-a1b2c3d4'],
+      verifySignature: () => true
+    }
+
+    expect(() => verifyTargetAttestation(attestation, {
+      ...baseTrust,
+      verifySignature: () => false
+    })).toThrow(/signature/i)
+    expect(() => verifyTargetAttestation(attestation, {
+      ...baseTrust,
+      expectedSourceGitSha: 'b'.repeat(40)
+    })).toThrow(/checked-out.*SHA|source Git SHA/i)
+    expect(() => verifyTargetAttestation(attestation, {
+      ...baseTrust,
+      expectedMigrationDigests: {
+        ...trustedMigrationDigests,
+        [requiredMigrationPaths[0]!]: '0'.repeat(64)
+      }
+    })).toThrow(/migration.*digest/i)
+    expect(() => assertGuardedCrmSearchTestDatabaseUrl(
+      safe,
+      verifyTargetAttestation(attestation, baseTrust),
+      {
+        ...baseTrust,
+        trustedSharedEndpointDenyset: ['ep-crm-search-e2e-a1b2c3d4']
+      }
+    )).toThrow(/shared/i)
   })
 
   it('keeps attestation preflight and migration under one connection, transaction, and fence', () => {
@@ -418,6 +601,13 @@ describe('CRM search governance database target guard', () => {
     expect(source).not.toContain(['const preflight', 'Client ='].join(''))
     expect(source).not.toContain(['CRM_SEARCH_TEST', 'EXPECTED_PROJECT_ID'].join('_'))
     expect(source).not.toContain(['CRM_SEARCH_TEST', 'FORBIDDEN_DATABASE_URLS'].join('_'))
+    expect(source).toContain('CRM_SEARCH_TEST_TARGET_ATTESTATION_PUBLIC_KEY_PEM')
+    expect(source).toContain('CRM_SEARCH_TEST_TARGET_ATTESTATION_SIGNER_KEY_ID')
+    expect(source).toContain('CRM_SEARCH_TEST_TRUSTED_SHARED_ENDPOINT_DENYSET')
+    expect(source).toContain('migrationDigests')
+    expect(source).toMatch(/git[\s\S]*rev-parse[\s\S]*HEAD/)
+    expect(source).toMatch(/verifySignature[\s\S]*signature/i)
+    expect(source).not.toMatch(/attestation\.sharedEndpointDenyset/)
     expect(source).toMatch(
       /await client\.connect\(\)[\s\S]*await client\.query\('BEGIN'\)[\s\S]*pg_advisory_xact_lock[\s\S]*assertEmptyIsolatedTargetPreflight[\s\S]*await client\.query\(migrationSql\)/
     )
@@ -431,8 +621,16 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
     if (!rawTargetAttestation) {
       throw new Error('CRM_SEARCH_TEST_TARGET_ATTESTATION_JSON is required with the guarded database URL')
     }
-    const targetAttestation = parseAndVerifyTargetAttestation(rawTargetAttestation)
-    const guardedDatabaseUrl = assertGuardedCrmSearchTestDatabaseUrl(rawDatabaseUrl!, targetAttestation)
+    const targetTrust = targetAttestationTrustFromEnvironment()
+    const targetAttestation = parseAndVerifyTargetAttestation(
+      rawTargetAttestation,
+      targetTrust
+    )
+    const guardedDatabaseUrl = assertGuardedCrmSearchTestDatabaseUrl(
+      rawDatabaseUrl!,
+      targetAttestation,
+      targetTrust
+    )
     const clientOptions = {
       connectionString: guardedDatabaseUrl,
       connectionTimeoutMillis: 10_000,
@@ -620,6 +818,18 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
           `UPDATE "${schema}".crm_search_operations SET state = 'processing' WHERE id = $1`,
           [operationId]
         )
+        await expectRejectedAtSavepoint(
+          connection,
+          'forge_provider_evidence_before_admission',
+          () => connection.query(
+            `UPDATE "${schema}".crm_search_operations
+                SET provider_mutation_id = 'forged-before-admission',
+                    provider_accepted_at = NOW()
+              WHERE id = $1`,
+            [operationId]
+          ),
+          /provider evidence|server-controlled|admission/i
+        )
         const admitted = await connection.query(
           `SELECT "${schema}".crm_search_admit_operation($1, 'processing', 1) AS state`,
           [operationId]
@@ -667,6 +877,25 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
           admitted: true,
           identity_frozen: true
         }])
+        await expectRejectedAtSavepoint(
+          connection,
+          'forge_admitted_successor',
+          () => connection.query(
+            `INSERT INTO "${schema}".crm_search_operations
+               (organisation_scope_id, client_id, entity_type, entity_id, schema_version,
+                source_revision, source_event_sequence, desired_action, vector_id, namespace,
+                content_hash, confirmation_tag, confirmation_key_version, control_revision,
+                state, successor_of, provider_mutation_id, provider_accepted_at,
+                provider_admitted_at, admission_identity_hash)
+             VALUES ($1, $2, 'person', $3, $4, 2, 2, 'upsert', $5, $6, $7, $8,
+               'k1', 1, 'provider_pending', $9, 'forged-successor', NOW(), NOW(), $10)`,
+            [
+              ...operationKey, 'c'.repeat(64), `hmac-sha256:${'d'.repeat(64)}`,
+              operationId, 'f'.repeat(64)
+            ]
+          ),
+          /provider evidence|server controlled|admission/i
+        )
 
         const rankSchemas = await connection.query(
           `SELECT
@@ -681,12 +910,17 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
              "${schema}".crm_search_json_schema_is_safe(
                '{"keywordRanks":[{"entityType":"person","entityIdDigest":"${'e'.repeat(64)}","rank":1,"displayName":"Jane Person"}]}'::jsonb,
                'rank_evidence'
-             ) AS renamed_pii_rejected`
+             ) AS renamed_pii_rejected,
+             "${schema}".crm_search_json_schema_is_safe(
+               '{"keywordRanks":[{"entityType":"person","entity_type":"person","entityIdDigest":"${'e'.repeat(64)}","rank":1,"scoreBucket":80}]}'::jsonb,
+               'rank_evidence'
+             ) AS duplicate_alias_rejected`
         )
         expect(rankSchemas.rows).toEqual([{
           valid: true,
           nested_raw_rejected: false,
-          renamed_pii_rejected: false
+          renamed_pii_rejected: false,
+          duplicate_alias_rejected: false
         }])
 
         const terminalOperation = await connection.query(
@@ -767,6 +1001,203 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
           /already has recovery evidence/i
         )
 
+        const confirmationTerminal = await connection.query(
+          `INSERT INTO "${schema}".crm_search_operations
+             (organisation_scope_id, client_id, entity_type, entity_id, schema_version,
+              source_revision, source_event_sequence, desired_action, vector_id, namespace,
+              content_hash, confirmation_tag, confirmation_key_version)
+           VALUES ($1, $2, 'person', $3, 'crm-search-v1', 1, 20, 'upsert',
+             'v_confirmation_terminal', 'n_confirmation_terminal', $4, $5, 'k1')
+           RETURNING id`,
+          [
+            scopeId, clientId, '35353535-3535-4353-8353-353535353535',
+            '1'.repeat(64), `hmac-sha256:${'2'.repeat(64)}`
+          ]
+        )
+        const confirmationTerminalId = confirmationTerminal.rows[0].id as string
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations SET state = 'queued' WHERE id = $1`,
+          [confirmationTerminalId]
+        )
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations SET state = 'processing' WHERE id = $1`,
+          [confirmationTerminalId]
+        )
+        await connection.query(
+          `SELECT "${schema}".crm_search_admit_operation($1, 'processing', 1)`,
+          [confirmationTerminalId]
+        )
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations
+              SET state = 'provider_pending',
+                  provider_mutation_id = 'provider-mutation-confirmation-1',
+                  provider_accepted_at = NOW()
+            WHERE id = $1`,
+          [confirmationTerminalId]
+        )
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations
+              SET state = 'terminal_dead_letter', error_class = 'confirmation_exhausted'
+            WHERE id = $1`,
+          [confirmationTerminalId]
+        )
+        await connection.query(
+          `INSERT INTO "${schema}".crm_search_dead_letters
+             (organisation_scope_id, client_id, operation_id, origin, attempts, error_class)
+           VALUES ($1, $2, $3, 'provider_confirmation', 3, 'confirmation_exhausted')`,
+          [scopeId, clientId, confirmationTerminalId]
+        )
+        await expectRejectedAtSavepoint(
+          connection,
+          'one_dead_letter_origin_per_operation',
+          () => connection.query(
+            `INSERT INTO "${schema}".crm_search_dead_letters
+               (organisation_scope_id, client_id, operation_id, origin, attempts, error_class)
+             VALUES ($1, $2, $3, 'cloudflare_transport', 3, 'queue_delivery_exhausted')`,
+            [scopeId, clientId, confirmationTerminalId]
+          ),
+          /duplicate key|one origin/i
+        )
+        const confirmationReplacement = await connection.query(
+          `SELECT "${schema}".crm_search_replace_terminal_operation(
+             $1, 1, 20, 'upsert', 'v_confirmation_terminal', 'n_confirmation_terminal',
+             $2, $3, 'k1', $4, 'Reconcile accepted provider confirmation exactly once'
+           ) AS id`,
+          [
+            confirmationTerminalId, '1'.repeat(64), `hmac-sha256:${'2'.repeat(64)}`,
+            '45454545-4545-4545-8545-454545454545'
+          ]
+        )
+        const confirmationReplacementId = confirmationReplacement.rows[0].id as string
+        expect((await connection.query(
+          `SELECT replacement.state,
+                  replacement.provider_admitted_at IS NOT NULL AS admitted,
+                  replacement.admission_identity_hash IS NOT NULL AS identity_frozen,
+                  replacement.control_revision,
+                  replacement.provider_mutation_id,
+                  replacement.provider_accepted_at = terminal.provider_accepted_at AS accepted_at_preserved,
+                  replacement.successor_of
+             FROM "${schema}".crm_search_operations replacement
+             JOIN "${schema}".crm_search_operations terminal ON terminal.id = $1
+            WHERE replacement.id = $2`,
+          [confirmationTerminalId, confirmationReplacementId]
+        )).rows).toEqual([{
+          state: 'provider_pending',
+          admitted: true,
+          identity_frozen: true,
+          control_revision: '1',
+          provider_mutation_id: 'provider-mutation-confirmation-1',
+          accepted_at_preserved: true,
+          successor_of: confirmationTerminalId
+        }])
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations
+              SET state = 'confirmed', confirmed_at = NOW()
+            WHERE id = $1`,
+          [confirmationReplacementId]
+        )
+
+        const erasureAfterRecovery = await connection.query(
+          `INSERT INTO "${schema}".crm_search_operations
+             (organisation_scope_id, client_id, entity_type, entity_id, schema_version,
+              source_revision, source_event_sequence, desired_action, vector_id, namespace,
+              content_hash, confirmation_tag, confirmation_key_version)
+           VALUES ($1, $2, 'person', $3, 'crm-search-v1', 2, 21, 'delete',
+             'v_confirmation_terminal', 'n_confirmation_terminal', NULL, $4, 'k1')
+           RETURNING id`,
+          [
+            scopeId, clientId, '35353535-3535-4353-8353-353535353535',
+            `hmac-sha256:${'3'.repeat(64)}`
+          ]
+        )
+        const erasureAfterRecoveryId = erasureAfterRecovery.rows[0].id as string
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations SET state = 'queued' WHERE id = $1`,
+          [erasureAfterRecoveryId]
+        )
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations SET state = 'processing' WHERE id = $1`,
+          [erasureAfterRecoveryId]
+        )
+        await connection.query(
+          `SELECT "${schema}".crm_search_admit_operation($1, 'processing', 1)`,
+          [erasureAfterRecoveryId]
+        )
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations
+              SET state = 'provider_pending', provider_mutation_id = 'provider-delete-after-recovery',
+                  provider_accepted_at = NOW()
+            WHERE id = $1`,
+          [erasureAfterRecoveryId]
+        )
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations
+              SET state = 'confirmed', confirmed_at = NOW()
+            WHERE id = $1`,
+          [erasureAfterRecoveryId]
+        )
+        expect((await connection.query(
+          `SELECT "${schema}".crm_search_operation_converged($1, TRUE) AS terminal_absent,
+                  "${schema}".crm_search_operation_converged($2, TRUE) AS replacement_absent`,
+          [confirmationTerminalId, confirmationReplacementId]
+        )).rows).toEqual([{ terminal_absent: true, replacement_absent: true }])
+
+        const historicalEntityId = '36363636-3636-4363-8363-363636363636'
+        const confirmHistoricalUpsert = async (
+          sourceRevision: number,
+          sourceEventSequence: number,
+          mutationId: string
+        ): Promise<string> => {
+          const inserted = await connection.query(
+            `INSERT INTO "${schema}".crm_search_operations
+               (organisation_scope_id, client_id, entity_type, entity_id, schema_version,
+                source_revision, source_event_sequence, desired_action, vector_id, namespace,
+                content_hash, confirmation_tag, confirmation_key_version)
+             VALUES ($1, $2, 'person', $3, 'crm-search-v1', $4, $5, 'upsert',
+               'v_historical', 'n_historical', $6, $7, 'k1')
+             RETURNING id`,
+            [
+              scopeId, clientId, historicalEntityId, sourceRevision, sourceEventSequence,
+              String(sourceRevision).repeat(64),
+              `hmac-sha256:${String(sourceRevision + 3).repeat(64)}`
+            ]
+          )
+          const id = inserted.rows[0].id as string
+          await connection.query(
+            `UPDATE "${schema}".crm_search_operations SET state = 'queued' WHERE id = $1`,
+            [id]
+          )
+          await connection.query(
+            `UPDATE "${schema}".crm_search_operations SET state = 'processing' WHERE id = $1`,
+            [id]
+          )
+          await connection.query(
+            `SELECT "${schema}".crm_search_admit_operation($1, 'processing', 1)`,
+            [id]
+          )
+          await connection.query(
+            `UPDATE "${schema}".crm_search_operations
+                SET state = 'provider_pending', provider_mutation_id = $2,
+                    provider_accepted_at = NOW()
+              WHERE id = $1`,
+            [id, mutationId]
+          )
+          await connection.query(
+            `UPDATE "${schema}".crm_search_operations
+                SET state = 'confirmed', confirmed_at = NOW()
+              WHERE id = $1`,
+            [id]
+          )
+          return id
+        }
+        const historicalRevisionOneId = await confirmHistoricalUpsert(1, 30, 'historical-upsert-1')
+        const historicalRevisionTwoId = await confirmHistoricalUpsert(2, 31, 'historical-upsert-2')
+        expect((await connection.query(
+          `SELECT "${schema}".crm_search_operation_converged($1, FALSE) AS revision_one,
+                  "${schema}".crm_search_operation_converged($2, FALSE) AS revision_two`,
+          [historicalRevisionOneId, historicalRevisionTwoId]
+        )).rows).toEqual([{ revision_one: true, revision_two: true }])
+
         await connection.query(
           `INSERT INTO "${schema}".crm_search_dead_letters
              (organisation_scope_id, client_id, operation_id, origin, attempts, error_class)
@@ -798,6 +1229,42 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
               NOW() - INTERVAL '1 day', NOW() + INTERVAL '14 days', $3)
            RETURNING id`,
           [scopeId, 'f'.repeat(64), '56565656-5656-4565-8565-565656565656']
+        )
+        await expectRejectedAtSavepoint(
+          connection,
+          'client_indexing_requires_target_and_action',
+          () => connection.query(
+            `INSERT INTO "${schema}".crm_search_change_approvals (
+               approval_type, environment, implementation_git_sha,
+               artifact_manifest_digest, pages_bundle_digest, worker_bundle_digest,
+               binding_manifest_digest, evidence_bundle_hash, load_protocol_digest,
+               provider_contract_digest, rate_card_id, organisation_scope_id,
+               scope_kind, client_id, maximum_cost_usd_micros,
+               active_vector_count, candidate_vector_count, retiring_vector_count,
+               sentinel_vector_count, deletion_pending_vector_count,
+               forecast_vector_count, vector_capacity,
+               active_namespace_count, candidate_namespace_count,
+               retiring_namespace_count, sentinel_namespace_count,
+               deletion_pending_namespace_count, forecast_namespace_count,
+               namespace_capacity, expected_control_revision, expected_policy_revision,
+               expected_deployment_approval_id, approved_by, reason, expires_at
+             ) VALUES (
+               'client_indexing', 'preview', $1, $2, $3, $4, $5, $6, $7, $8,
+               $9, $10, 'client', $11, 1000,
+               1, 1, 0, 1, 0, 3, 10,
+               1, 1, 0, 1, 0, 3, 10,
+               1, 0, $12, $13, 'Missing exact candidate and requested action',
+               NOW() + INTERVAL '1 hour'
+             )`,
+            [
+              '4'.repeat(40), '5'.repeat(64), '6'.repeat(64), '7'.repeat(64),
+              '8'.repeat(64), '9'.repeat(64), 'a'.repeat(64), 'b'.repeat(64),
+              evaluationRateCard.rows[0].id, scopeId, clientId,
+              '67676767-6767-4767-8767-676767676767',
+              '68686868-6868-4868-8868-686868686868'
+            ]
+          ),
+          /check constraint|target schema|requested action/i
         )
         const immutableRun = await connection.query(
           `INSERT INTO "${schema}".crm_search_evaluation_runs

@@ -354,8 +354,7 @@ describe('CRM search expand migration 350', () => {
     expect(completeRetiring).toMatch(/pg_advisory_xact_lock/)
     expect(completeRetiring).toMatch(/retiring_schema_versions/)
     expect(completeRetiring).toMatch(/confirmation_state <> 'deleted'/)
-    expect(completeRetiring).toMatch(/desired_action <> 'delete'/)
-    expect(completeRetiring).toMatch(/state <> 'confirmed'/)
+    expect(completeRetiring).toMatch(/crm_search_operation_converged\(operation\.id, TRUE\)/)
     expect(completeRetiring).toMatch(/crm_search_change_approval_consumptions/)
   })
 
@@ -423,14 +422,26 @@ describe('CRM search expand migration 350', () => {
     const admit = functionDefinition(sql, 'crm_search_admit_operation')
     const identity = functionDefinition(sql, 'crm_search_operation_identity_hash')
     const guard = functionDefinition(sql, 'crm_search_guard_operation_transition')
+    const insertGuard = functionDefinition(sql, 'crm_search_guard_operation_admission')
 
     expect(operations).toContain('\'admitted\'')
     expect(identity).toMatch(/p_operation\.control_revision::TEXT/)
     expect(admit).toContain('SECURITY DEFINER')
     expect(admit).toMatch(/crm_search_global_control[\s\S]*FOR (KEY )?SHARE/i)
     expect(admit).toMatch(/provider_admitted_at[\s\S]*admission_identity_hash/)
-    expect(admit).not.toMatch(/provider_mutation_id IS NOT NULL|provider_accepted_at IS NOT NULL/i)
+    expect(admit).toMatch(
+      /provider_mutation_id IS NOT NULL[\s\S]*provider_accepted_at IS NOT NULL/i
+    )
     expect(guard).toMatch(/NEW\.control_revision[\s\S]*OLD\.control_revision/)
+    expect(guard).toMatch(
+      /OLD\.provider_admitted_at IS NULL[\s\S]*NEW\.provider_mutation_id[\s\S]*NEW\.provider_accepted_at[\s\S]*server controlled/i
+    )
+    expect(operations).toMatch(
+      /provider_admitted_at IS NOT NULL[\s\S]*provider_mutation_id IS NULL[\s\S]*provider_accepted_at IS NULL/
+    )
+    expect(insertGuard).toMatch(
+      /v_parent\.state IN \('confirmed', 'superseded'\)[\s\S]*NEW\.provider_admitted_at[\s\S]*NEW\.provider_mutation_id[\s\S]*server controlled/i
+    )
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS crm_search_operation_admission_authorizations')
   })
 
@@ -438,21 +449,39 @@ describe('CRM search expand migration 350', () => {
     const sql = readMigration()
     const replace = functionDefinition(sql, 'crm_search_replace_terminal_operation')
     const replacementSatisfied = functionDefinition(sql, 'crm_search_terminal_replacement_satisfied')
+    const operationConverged = functionDefinition(sql, 'crm_search_operation_converged')
     const guard = functionDefinition(sql, 'crm_search_guard_operation_admission')
     const retire = functionDefinition(sql, 'crm_search_complete_retiring_schema')
     const transition = functionDefinition(sql, 'crm_search_transition_policy')
+    const deadLetters = tableDefinition(sql, 'crm_search_dead_letters')
 
     expect(replace).toContain('SECURITY DEFINER')
     expect(replace).toMatch(/state <> 'terminal_dead_letter'/)
     expect(replace).toMatch(/successor_of/)
     expect(replace).toMatch(/INSERT INTO public\.crm_search_audit_log/)
     expect(replace).toMatch(/crm_search_dead_letters/)
+    expect(replace).toMatch(
+      /v_dead_letter\.origin = 'provider_confirmation'[\s\S]*'provider_pending'/
+    )
+    expect(replace).toMatch(
+      /provider_mutation_id[\s\S]*v_terminal\.provider_mutation_id[\s\S]*provider_accepted_at[\s\S]*v_terminal\.provider_accepted_at/
+    )
+    expect(replace).toMatch(/crm_search_operation_identity_hash\(v_replacement\)/)
     expect(sql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS crm_search_operations_one_direct_successor[\s\S]*ON crm_search_operations \(successor_of\)[\s\S]*WHERE successor_of IS NOT NULL/)
+    expect(deadLetters).toMatch(/UNIQUE \(operation_id\)/)
+    expect(sql).toMatch(
+      /crm_search_dead_letters_one_origin[\s\S]*ON crm_search_dead_letters \(operation_id\)/
+    )
     expect(replacementSatisfied).toMatch(/WITH RECURSIVE/i)
     expect(replacementSatisfied).toMatch(/state = 'confirmed'/)
-    expect(guard).toMatch(/terminal_dead_letter[\s\S]*replacement/i)
-    expect(retire).toMatch(/crm_search_terminal_replacement_satisfied/)
-    expect(transition).toMatch(/crm_search_terminal_replacement_satisfied/)
+    expect(guard).toMatch(/provider_confirmation[\s\S]*provider_pending/i)
+    expect(operationConverged).toMatch(/state = 'superseded'/)
+    expect(operationConverged).toMatch(/crm_search_terminal_replacement_satisfied/)
+    expect(operationConverged).toMatch(
+      /desired_action = 'delete'[\s\S]*state = 'confirmed'[\s\S]*source_event_sequence > operation_row\.source_event_sequence/
+    )
+    expect(retire).toMatch(/crm_search_operation_converged/)
+    expect(transition).toMatch(/crm_search_operation_converged/)
   })
 
   it('separates dormant deployment from per-client rollout and binds exact deployment authority', () => {
@@ -476,6 +505,11 @@ describe('CRM search expand migration 350', () => {
     expect(approvals).toMatch(/load_protocol_digest TEXT/)
     expect(approvals).toMatch(/provider_contract_digest TEXT/)
     expect(approvals).toMatch(/expected_deployment_approval_id UUID/)
+    expect(approvals).toMatch(/target_schema_version TEXT/)
+    expect(approvals).toMatch(/requested_action TEXT/)
+    expect(approvals).toMatch(
+      /approval_type <> 'client_indexing'[\s\S]*target_schema_version IS NOT NULL[\s\S]*requested_action IS NOT NULL/
+    )
     expect(approvals).toMatch(/approval_type NOT IN \('client_indexing', 'client_shadow', 'client_assist'\)[\s\S]*rate_card_id IS NOT NULL/)
     expect(approvals).toMatch(
       /active_vector_count[\s\S]*candidate_vector_count[\s\S]*retiring_vector_count[\s\S]*sentinel_vector_count[\s\S]*deletion_pending_vector_count[\s\S]*forecast_vector_count = active_vector_count\s*\+\s*candidate_vector_count\s*\+\s*retiring_vector_count\s*\+\s*sentinel_vector_count\s*\+\s*deletion_pending_vector_count/
@@ -491,6 +525,15 @@ describe('CRM search expand migration 350', () => {
     )
     expect(globalTransition).not.toMatch(/approval_type = 'production_deploy'/)
     expect(matchDeployment).toMatch(/expected_deployment_approval_id = p_control\.active_deployment_approval_id/)
+    expect(globalTransition).toMatch(/requested_action = v_requested_action/)
+    expect(configure).toMatch(/requested_action = 'configure_candidate'/)
+    expect(configure).toMatch(/target_schema_version = p_candidate_schema_version/)
+    expect(promote).toMatch(/requested_action = 'promote_candidate'/)
+    expect(promote).toMatch(/target_schema_version = v_policy\.candidate_schema_version/)
+    expect(functionDefinition(sql, 'crm_search_complete_retiring_schema')).toMatch(
+      /requested_action = 'retire_schema'[\s\S]*target_schema_version = p_retiring_schema_version/
+    )
+    expect(policy).toMatch(/requested_action = 'policy_indexing'/)
 
     for (const fn of [globalTransition, configure, promote, policy]) {
       expect(fn).toMatch(/expected_control_revision/)
@@ -521,9 +564,13 @@ describe('CRM search expand migration 350', () => {
     expect(record).toMatch(/forecast_namespace_count \* 5 < namespace_capacity \* 4/)
     expect(record).toMatch(/forecast_vector_count = active_vector_count\s*\+\s*candidate_vector_count\s*\+\s*retiring_vector_count\s*\+\s*sentinel_vector_count\s*\+\s*deletion_pending_vector_count/)
     expect(record).toMatch(/forecast_namespace_count = active_namespace_count\s*\+\s*candidate_namespace_count\s*\+\s*retiring_namespace_count\s*\+\s*sentinel_namespace_count\s*\+\s*deletion_pending_namespace_count/)
-    expect(record).toMatch(/last_day <= v_created_at::DATE/)
-    expect(record).toMatch(/approval\.issued_at::DATE <= per_client\.first_day/)
-    expect(record).toMatch(/approval\.expires_at::DATE > per_client\.last_day/)
+    expect(record).toMatch(/day_count = 7/)
+    expect(record).toMatch(/last_day - first_day = 6/)
+    expect(record).toMatch(/first_observed_at >= v_created_at - INTERVAL '7 days'/)
+    expect(record).toMatch(/last_observed_at <= v_created_at/)
+    expect(record).toMatch(/approval\.issued_at <= per_client\.first_observed_at/)
+    expect(record).toMatch(/approval\.expires_at > per_client\.last_observed_at/)
+    expect(record).not.toMatch(/approval\.(issued_at|expires_at)::DATE/)
     expect(record).toMatch(/shadowSamplingDigest/)
     expect(record).toMatch(/shadowSampleBucket/)
     expect(record).toMatch(/generate_series\(1,\s*1000\)/)
@@ -558,6 +605,11 @@ describe('CRM search expand migration 350', () => {
     expect(jsonSchema).toMatch(/p_schema = 'rank_entry'[\s\S]*jsonb_object_keys\(p_value\)[\s\S]*entitytype[\s\S]*entityiddigest[\s\S]*rank/)
     expect(jsonSchema).toMatch(/v_rank BETWEEN 1 AND 50/)
     expect(jsonSchema).toMatch(/v_score_bucket BETWEEN 0 AND 100/)
+    expect(jsonSchema).toMatch(
+      /COUNT\(DISTINCT lower\(regexp_replace\(key, '\[\^a-zA-Z0-9\]', '', 'g'\)\)\)/
+    )
+    expect(jsonSchema.match(/COUNT\(DISTINCT lower\(regexp_replace/g)?.length)
+      .toBeGreaterThanOrEqual(3)
     expect(jsonSchema).not.toMatch(/WHEN 'string' THEN\s*RETURN octet_length\(p_value #>> '\{\}'\) <= 512/)
   })
 
@@ -569,5 +621,9 @@ describe('CRM search expand migration 350', () => {
     expect(promote).toMatch(/candidate_document[\s\S]*current_source/)
     expect(promote).toMatch(/confirmation_state = 'deleted'[\s\S]*tombstoned = TRUE/)
     expect(promote).toMatch(/candidate document has no current source or completed delete|reverse-orphan/i)
+    expect(promote).toMatch(/crm_search_operation_converged\(operation\.id, FALSE\)/)
+    expect(promote).not.toMatch(
+      /candidate_operation\.source_revision = current_source\.search_revision/
+    )
   })
 })

@@ -654,10 +654,6 @@ CREATE TABLE IF NOT EXISTS crm_search_operations (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   retention_expires_at TIMESTAMPTZ,
   legal_hold_id UUID REFERENCES crm_search_legal_holds(id) ON DELETE RESTRICT,
-  UNIQUE (
-    organisation_scope_id, client_id, entity_type, entity_id, schema_version,
-    source_revision, source_event_sequence, desired_action
-  ),
   CHECK (successor_of IS NULL OR successor_of <> id),
   CHECK ((lease_token IS NULL) = (lease_expires_at IS NULL)),
   CHECK (
@@ -669,6 +665,10 @@ CREATE TABLE IF NOT EXISTS crm_search_operations (
     state NOT IN ('provider_pending', 'confirmed')
     OR (provider_mutation_id IS NOT NULL AND provider_accepted_at IS NOT NULL)
   ),
+  CHECK (
+    provider_admitted_at IS NOT NULL
+    OR (provider_mutation_id IS NULL AND provider_accepted_at IS NULL)
+  ),
   CHECK (state <> 'confirmed' OR confirmed_at IS NOT NULL),
   CHECK ((provider_admitted_at IS NULL) = (admission_identity_hash IS NULL)),
   CHECK (
@@ -676,6 +676,13 @@ CREATE TABLE IF NOT EXISTS crm_search_operations (
     OR provider_admitted_at IS NOT NULL
   )
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS crm_search_operations_unique_root_intent
+  ON crm_search_operations (
+    organisation_scope_id, client_id, entity_type, entity_id, schema_version,
+    source_revision, source_event_sequence, desired_action
+  )
+  WHERE successor_of IS NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS crm_search_operations_one_pre_admission
   ON crm_search_operations (
@@ -905,7 +912,10 @@ BEGIN
 
   IF p_schema = 'rank_evidence' THEN
     IF jsonb_typeof(p_value) <> 'object' OR p_depth <> 0
-       OR (SELECT COUNT(*) FROM jsonb_object_keys(p_value)) > 10 THEN
+       OR (SELECT COUNT(*) FROM jsonb_object_keys(p_value)) > 10
+       OR (SELECT COUNT(*) FROM jsonb_object_keys(p_value)) <>
+          (SELECT COUNT(DISTINCT lower(regexp_replace(key, '[^a-zA-Z0-9]', '', 'g')))
+           FROM jsonb_object_keys(p_value) AS object_key(key)) THEN
       RETURN FALSE;
     END IF;
     FOR v_key, v_child IN SELECT key, value FROM jsonb_each(p_value)
@@ -955,7 +965,10 @@ BEGIN
 
   IF p_schema = 'rank_entry' THEN
     IF jsonb_typeof(p_value) <> 'object'
-       OR (SELECT COUNT(*) FROM jsonb_object_keys(p_value)) NOT BETWEEN 3 AND 4 THEN
+       OR (SELECT COUNT(*) FROM jsonb_object_keys(p_value)) NOT BETWEEN 3 AND 4
+       OR (SELECT COUNT(*) FROM jsonb_object_keys(p_value)) <>
+          (SELECT COUNT(DISTINCT lower(regexp_replace(key, '[^a-zA-Z0-9]', '', 'g')))
+           FROM jsonb_object_keys(p_value) AS object_key(key)) THEN
       RETURN FALSE;
     END IF;
     FOR v_key, v_child IN SELECT key, value FROM jsonb_each(p_value)
@@ -995,7 +1008,10 @@ BEGIN
 
   IF p_schema = 'audit_details' THEN
     IF jsonb_typeof(p_value) <> 'object'
-       OR (SELECT COUNT(*) FROM jsonb_object_keys(p_value)) > 32 THEN
+       OR (SELECT COUNT(*) FROM jsonb_object_keys(p_value)) > 32
+       OR (SELECT COUNT(*) FROM jsonb_object_keys(p_value)) <>
+          (SELECT COUNT(DISTINCT lower(regexp_replace(key, '[^a-zA-Z0-9]', '', 'g')))
+           FROM jsonb_object_keys(p_value) AS object_key(key)) THEN
       RETURN FALSE;
     END IF;
     FOR v_key, v_child IN SELECT key, value FROM jsonb_each(p_value)
@@ -1418,6 +1434,13 @@ CREATE TABLE IF NOT EXISTS crm_search_change_approvals (
   expected_control_revision BIGINT CHECK (expected_control_revision IS NULL OR expected_control_revision >= 0),
   expected_policy_revision BIGINT CHECK (expected_policy_revision IS NULL OR expected_policy_revision >= 0),
   expected_deployment_approval_id UUID,
+  target_schema_version TEXT CHECK (
+    target_schema_version IS NULL OR target_schema_version ~ '^crm-search-v[1-9][0-9]*$'
+  ),
+  requested_action TEXT CHECK (requested_action IS NULL OR requested_action IN (
+    'enable_indexing', 'restore_indexing_readiness', 'policy_indexing',
+    'configure_candidate', 'promote_candidate', 'retire_schema'
+  )),
   approved_by UUID NOT NULL,
   reason TEXT NOT NULL CHECK (char_length(btrim(reason)) BETWEEN 10 AND 2000),
   issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1433,6 +1456,10 @@ CREATE TABLE IF NOT EXISTS crm_search_change_approvals (
   ),
   CHECK (expires_at > issued_at),
   CHECK (approval_type <> 'client_assist' OR scope_kind = 'client'),
+  CHECK (
+    approval_type <> 'client_indexing'
+    OR (target_schema_version IS NOT NULL AND requested_action IS NOT NULL)
+  ),
   CHECK (
     approval_type NOT IN ('client_indexing', 'client_shadow', 'client_assist')
     OR (
@@ -1477,6 +1504,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS crm_search_change_approvals_exact_authority
     COALESCE(expected_control_revision, -1),
     COALESCE(expected_policy_revision, -1),
     COALESCE(expected_deployment_approval_id, '00000000-0000-0000-0000-000000000000'::UUID),
+    COALESCE(target_schema_version, ''), COALESCE(requested_action, ''),
     approved_by
   );
 
@@ -1656,7 +1684,7 @@ CREATE TABLE IF NOT EXISTS crm_search_dead_letters (
   legal_hold_id UUID REFERENCES crm_search_legal_holds(id) ON DELETE RESTRICT,
   FOREIGN KEY (audit_log_created_at, audit_log_id)
     REFERENCES crm_search_audit_log(created_at, id) ON DELETE RESTRICT,
-  UNIQUE (origin, operation_id),
+  UNIQUE (operation_id),
   CHECK (last_failed_at >= first_failed_at),
   CHECK (
     (origin = 'cloudflare_transport' AND resolution_state IN (
@@ -1673,6 +1701,9 @@ CREATE TABLE IF NOT EXISTS crm_search_dead_letters (
   ),
   CHECK ((audit_log_id IS NULL) = (audit_log_created_at IS NULL))
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS crm_search_dead_letters_one_origin
+  ON crm_search_dead_letters (operation_id);
 
 CREATE INDEX IF NOT EXISTS crm_search_dead_letters_open
   ON crm_search_dead_letters (origin, first_failed_at, operation_id)
@@ -1936,6 +1967,58 @@ AS $$
   )
 $$;
 
+CREATE OR REPLACE FUNCTION crm_search_operation_converged(
+  p_operation_id UUID,
+  p_require_confirmed_delete BOOLEAN DEFAULT FALSE
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+STABLE
+STRICT
+PARALLEL SAFE
+SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  operation_row public.crm_search_operations%ROWTYPE;
+BEGIN
+  SELECT * INTO operation_row
+  FROM public.crm_search_operations
+  WHERE id = p_operation_id;
+  IF NOT FOUND THEN
+    RETURN FALSE;
+  END IF;
+
+  IF p_require_confirmed_delete THEN
+    RETURN EXISTS (
+      SELECT 1
+      FROM public.crm_search_operations later_delete
+      WHERE later_delete.organisation_scope_id = operation_row.organisation_scope_id
+        AND later_delete.client_id = operation_row.client_id
+        AND later_delete.entity_type = operation_row.entity_type
+        AND later_delete.entity_id = operation_row.entity_id
+        AND later_delete.schema_version = operation_row.schema_version
+        AND later_delete.desired_action = 'delete'
+        AND later_delete.state = 'confirmed'
+        AND (
+          later_delete.source_event_sequence > operation_row.source_event_sequence
+          OR later_delete.id = operation_row.id
+          OR later_delete.successor_of = operation_row.id
+        )
+    ) OR (
+      operation_row.state = 'terminal_dead_letter'
+      AND public.crm_search_terminal_replacement_satisfied(operation_row.id, TRUE)
+    );
+  END IF;
+
+  RETURN operation_row.state = 'confirmed'
+    OR operation_row.state = 'superseded'
+    OR (
+      operation_row.state = 'terminal_dead_letter'
+      AND public.crm_search_terminal_replacement_satisfied(operation_row.id, FALSE)
+    );
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION crm_search_guard_operation_admission()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -1943,6 +2026,7 @@ SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
   v_parent public.crm_search_operations%ROWTYPE;
+  v_recovery_origin TEXT;
 BEGIN
   PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
     pg_catalog.concat_ws(
@@ -1951,6 +2035,14 @@ BEGIN
     ),
     350
   ));
+
+  IF NEW.successor_of IS NULL
+     AND (NEW.provider_admitted_at IS NOT NULL
+       OR NEW.admission_identity_hash IS NOT NULL
+       OR NEW.provider_mutation_id IS NOT NULL
+       OR NEW.provider_accepted_at IS NOT NULL) THEN
+    RAISE EXCEPTION 'CRM search provider evidence and admission markers are server controlled';
+  END IF;
 
   IF NEW.successor_of IS NULL THEN
     IF EXISTS (
@@ -1998,9 +2090,40 @@ BEGIN
       ) OR public.crm_search_terminal_replacement_satisfied(v_parent.id, FALSE) THEN
         RAISE EXCEPTION 'terminal CRM search operation requires one audited replacement';
       END IF;
+      SELECT dead_letter.origin INTO v_recovery_origin
+      FROM public.crm_search_dead_letters dead_letter
+      WHERE dead_letter.operation_id = v_parent.id
+        AND dead_letter.resolution_state = 'open';
+      IF v_recovery_origin = 'provider_confirmation' THEN
+        IF v_parent.provider_admitted_at IS NULL
+           OR NEW.state <> 'provider_pending'
+           OR NEW.control_revision IS DISTINCT FROM v_parent.control_revision
+           OR NEW.provider_admitted_at IS DISTINCT FROM v_parent.provider_admitted_at
+           OR NEW.provider_mutation_id IS DISTINCT FROM v_parent.provider_mutation_id
+           OR NEW.provider_accepted_at IS DISTINCT FROM v_parent.provider_accepted_at
+           OR NEW.admission_identity_hash IS DISTINCT FROM
+              public.crm_search_operation_identity_hash(NEW) THEN
+          RAISE EXCEPTION 'provider_confirmation replacement must be born admitted with frozen provider evidence';
+        END IF;
+      ELSIF v_recovery_origin = 'cloudflare_transport' THEN
+        IF NEW.state <> 'pending_transport'
+           OR NEW.provider_admitted_at IS NOT NULL
+           OR NEW.admission_identity_hash IS NOT NULL
+           OR NEW.provider_mutation_id IS NOT NULL
+           OR NEW.provider_accepted_at IS NOT NULL THEN
+          RAISE EXCEPTION 'transport replacement cannot forge provider admission evidence';
+        END IF;
+      ELSE
+        RAISE EXCEPTION 'terminal CRM search operation lacks an exact dead-letter origin';
+      END IF;
     ELSIF v_parent.provider_admitted_at IS NULL
        OR v_parent.state IN ('confirmed', 'superseded') THEN
       RAISE EXCEPTION 'CRM search successor must reference the current same-key admitted operation';
+    ELSIF NEW.provider_admitted_at IS NOT NULL
+       OR NEW.admission_identity_hash IS NOT NULL
+       OR NEW.provider_mutation_id IS NOT NULL
+       OR NEW.provider_accepted_at IS NOT NULL THEN
+      RAISE EXCEPTION 'CRM search successor provider evidence and admission markers are server controlled';
     END IF;
   END IF;
   RETURN NEW;
@@ -2037,6 +2160,25 @@ BEGIN
        OLD.entity_id, OLD.schema_version, OLD.successor_of, OLD.created_at
      ) THEN
     RAISE EXCEPTION 'CRM search operation ordering identity is immutable';
+  END IF;
+
+  IF OLD.provider_admitted_at IS NULL
+     AND (NEW.provider_mutation_id IS NOT NULL
+       OR NEW.provider_accepted_at IS NOT NULL) THEN
+    RAISE EXCEPTION 'CRM search provider evidence is server controlled until governed admission';
+  END IF;
+
+  IF OLD.provider_mutation_id IS NOT NULL
+     AND ROW(NEW.provider_mutation_id, NEW.provider_accepted_at)
+       IS DISTINCT FROM ROW(OLD.provider_mutation_id, OLD.provider_accepted_at) THEN
+    RAISE EXCEPTION 'accepted CRM search provider evidence is immutable';
+  END IF;
+  IF OLD.provider_admitted_at IS NOT NULL
+     AND OLD.provider_mutation_id IS NULL
+     AND (NEW.provider_mutation_id IS NOT NULL OR NEW.provider_accepted_at IS NOT NULL)
+     AND (NEW.state <> 'provider_pending'
+       OR NEW.provider_mutation_id IS NULL OR NEW.provider_accepted_at IS NULL) THEN
+    RAISE EXCEPTION 'CRM search provider acceptance must atomically enter provider_pending';
   END IF;
 
   IF OLD.provider_admitted_at IS NOT NULL
@@ -2140,6 +2282,10 @@ BEGIN
           public.crm_search_operation_identity_hash(v_operation)
      ) THEN
     RAISE EXCEPTION 'CRM search admitted operation no longer matches its frozen identity';
+  END IF;
+  IF v_operation.provider_mutation_id IS NOT NULL
+     OR v_operation.provider_accepted_at IS NOT NULL THEN
+    RAISE EXCEPTION 'CRM search admission requires provider_mutation_id and provider_accepted_at to be NULL';
   END IF;
 
   INSERT INTO public.crm_search_operation_admission_authorizations (
@@ -2297,6 +2443,7 @@ AS $$
 DECLARE
   v_terminal public.crm_search_operations%ROWTYPE;
   v_dead_letter public.crm_search_dead_letters%ROWTYPE;
+  v_replacement public.crm_search_operations%ROWTYPE;
   v_replacement_id UUID := gen_random_uuid();
   v_audit_id UUID := gen_random_uuid();
   v_audit_created_at TIMESTAMPTZ := NOW();
@@ -2356,6 +2503,34 @@ BEGIN
     WHEN 'provider_confirmation' THEN 'confirmation_reconcile_requested'
   END;
 
+  v_replacement.id := v_replacement_id;
+  v_replacement.organisation_scope_id := v_terminal.organisation_scope_id;
+  v_replacement.client_id := v_terminal.client_id;
+  v_replacement.entity_type := v_terminal.entity_type;
+  v_replacement.entity_id := v_terminal.entity_id;
+  v_replacement.schema_version := v_terminal.schema_version;
+  v_replacement.source_revision := p_source_revision;
+  v_replacement.source_event_sequence := p_source_event_sequence;
+  v_replacement.desired_action := p_desired_action;
+  v_replacement.vector_id := p_vector_id;
+  v_replacement.namespace := p_namespace;
+  v_replacement.content_hash := p_content_hash;
+  v_replacement.confirmation_tag := p_confirmation_tag;
+  v_replacement.confirmation_key_version := p_confirmation_key_version;
+  v_replacement.successor_of := v_terminal.id;
+  IF v_dead_letter.origin = 'provider_confirmation' THEN
+    v_replacement.state := 'provider_pending';
+    v_replacement.control_revision := v_terminal.control_revision;
+    v_replacement.provider_mutation_id := v_terminal.provider_mutation_id;
+    v_replacement.provider_accepted_at := v_terminal.provider_accepted_at;
+    v_replacement.provider_admitted_at := v_terminal.provider_admitted_at;
+    v_replacement.admission_identity_hash :=
+      public.crm_search_operation_identity_hash(v_replacement);
+  ELSE
+    v_replacement.state := 'pending_transport';
+    v_replacement.control_revision := 0;
+  END IF;
+
   INSERT INTO public.crm_search_audit_log (
     id, organisation_scope_id, client_id, event_type, actor_id, correlation_id,
     operation_id, reason, details, created_at
@@ -2382,13 +2557,19 @@ BEGIN
   INSERT INTO public.crm_search_operations (
     id, organisation_scope_id, client_id, entity_type, entity_id, schema_version,
     source_revision, source_event_sequence, desired_action, vector_id, namespace,
-    content_hash, confirmation_tag, confirmation_key_version, successor_of
+    content_hash, confirmation_tag, confirmation_key_version, control_revision,
+    state, successor_of, provider_mutation_id, provider_accepted_at,
+    provider_admitted_at, admission_identity_hash
   ) VALUES (
-    v_replacement_id, v_terminal.organisation_scope_id, v_terminal.client_id,
-    v_terminal.entity_type, v_terminal.entity_id, v_terminal.schema_version,
-    p_source_revision, p_source_event_sequence, p_desired_action, p_vector_id,
-    p_namespace, p_content_hash, p_confirmation_tag,
-    p_confirmation_key_version, v_terminal.id
+    v_replacement.id, v_replacement.organisation_scope_id, v_replacement.client_id,
+    v_replacement.entity_type, v_replacement.entity_id, v_replacement.schema_version,
+    v_replacement.source_revision, v_replacement.source_event_sequence,
+    v_replacement.desired_action, v_replacement.vector_id, v_replacement.namespace,
+    v_replacement.content_hash, v_replacement.confirmation_tag,
+    v_replacement.confirmation_key_version, v_replacement.control_revision,
+    v_replacement.state, v_replacement.successor_of, v_replacement.provider_mutation_id,
+    v_replacement.provider_accepted_at, v_replacement.provider_admitted_at,
+    v_replacement.admission_identity_hash
   );
 
   DELETE FROM public.crm_search_terminal_replacement_authorizations
@@ -2806,6 +2987,7 @@ BEGIN
   WITH shadow AS (
     SELECT
       (item->>'shadowClientId')::UUID AS client_id,
+      (item->>'shadowObservedAt')::TIMESTAMPTZ AS observed_at,
       (item->>'shadowObservedAt')::TIMESTAMPTZ::DATE AS observed_date,
       item->>'shadowSamplingDigest' AS sampling_digest,
       (item->>'shadowSampleBucket')::INTEGER AS sample_bucket,
@@ -2815,6 +2997,8 @@ BEGIN
   ), per_client AS (
     SELECT client_id, COUNT(*) AS sample_count, COUNT(DISTINCT observed_date) AS day_count,
            MIN(observed_date) AS first_day, MAX(observed_date) AS last_day,
+           MIN(observed_at) AS first_observed_at,
+           MAX(observed_at) AS last_observed_at,
            BOOL_AND(
              sampling_digest ~ '^[a-f0-9]{64}$'
              AND sample_bucket BETWEEN 0 AND 9999
@@ -2825,8 +3009,9 @@ BEGIN
   )
   SELECT COUNT(*), COALESCE(MIN(sample_count), 0),
          COALESCE(BOOL_AND(
-           day_count >= 7 AND last_day - first_day = day_count - 1
-           AND last_day <= v_created_at::DATE
+           day_count = 7 AND last_day - first_day = 6
+           AND first_observed_at >= v_created_at - INTERVAL '7 days'
+           AND last_observed_at <= v_created_at
          ), FALSE),
          COALESCE(BOOL_AND(EXISTS (
            SELECT 1
@@ -2836,9 +3021,9 @@ BEGIN
            WHERE approval.approval_type = 'client_shadow'
              AND approval.organisation_scope_id = p_organisation_scope_id
              AND approval.client_id = per_client.client_id
-             AND approval.issued_at::DATE <= per_client.first_day
-             AND approval.expires_at::DATE > per_client.last_day
-             AND per_client.last_day <= v_created_at::DATE
+             AND approval.issued_at <= per_client.first_observed_at
+             AND approval.expires_at > per_client.last_observed_at
+             AND per_client.last_observed_at <= v_created_at
              AND revocation.id IS NULL
          )), FALSE),
          COALESCE(BOOL_AND(unbiased_sampling), FALSE)
@@ -3515,6 +3700,7 @@ DECLARE
   v_approval public.crm_search_change_approvals%ROWTYPE;
   v_policy public.crm_search_policies%ROWTYPE;
   v_new_revision BIGINT;
+  v_requested_action TEXT;
 BEGIN
   IF p_actor_id IS NULL
      OR char_length(btrim(COALESCE(p_reason, ''))) NOT BETWEEN 10 AND 2000
@@ -3531,6 +3717,10 @@ BEGIN
   IF NOT FOUND OR v_control.revision IS DISTINCT FROM p_expected_revision THEN
     RAISE EXCEPTION 'CRM search global-control revision changed';
   END IF;
+  v_requested_action := CASE
+    WHEN v_control.state <> 'enabled' THEN 'enable_indexing'
+    ELSE 'restore_indexing_readiness'
+  END;
 
   IF p_next_state = 'enabled'
      AND (
@@ -3550,6 +3740,7 @@ BEGIN
       AND approval.scope_kind = 'client'
       AND approval.organisation_scope_id = p_organisation_scope_id
       AND approval.expected_control_revision = p_expected_revision
+      AND approval.requested_action = v_requested_action
       AND public.crm_search_approval_matches_active_deployment(approval, v_control)
       AND approval.maximum_cost_usd_micros > 0
       AND approval.rate_card_id = v_control.rate_card_id
@@ -3581,6 +3772,11 @@ BEGIN
         AND rate_card.organisation_scope_id = p_organisation_scope_id
         AND rate_card.valid_from <= NOW() AND rate_card.valid_until > NOW()
         AND revocation.id IS NULL
+    ) OR NOT EXISTS (
+      SELECT 1 FROM public.crm_search_schema_versions target_schema
+      WHERE target_schema.organisation_scope_id = p_organisation_scope_id
+        AND target_schema.schema_version = v_approval.target_schema_version
+        AND target_schema.provider_contract_digest = v_approval.provider_contract_digest
     ) THEN
       RAISE EXCEPTION 'CRM search client-indexing cost or rate-card authority is stale';
     END IF;
@@ -3696,6 +3892,8 @@ BEGIN
     AND approval.client_id = p_client_id
     AND approval.expected_control_revision = v_control.revision
     AND approval.expected_policy_revision = p_expected_policy_revision
+    AND approval.requested_action = 'configure_candidate'
+    AND approval.target_schema_version = p_candidate_schema_version
     AND public.crm_search_approval_matches_active_deployment(approval, v_control)
     AND approval.maximum_cost_usd_micros >=
       v_policy.daily_query_budget_usd_micros + v_policy.daily_indexing_budget_usd_micros
@@ -3823,7 +4021,7 @@ BEGIN
          AND operation.client_id = p_client_id
          AND operation.schema_version = v_policy.candidate_schema_version
          AND operation.source_event_sequence <= v_schema.captured_source_high_watermark
-         AND operation.state NOT IN ('confirmed', 'superseded')
+         AND NOT public.crm_search_operation_converged(operation.id, FALSE)
      )
      OR EXISTS (
        SELECT 1 FROM public.crm_search_documents document
@@ -3893,36 +4091,6 @@ BEGIN
           AND candidate_document.tombstoned = FALSE
         )
       )
-  ) OR EXISTS (
-    SELECT 1
-    FROM public.crm_search_operations candidate_operation
-    LEFT JOIN (
-      SELECT 'person'::TEXT AS entity_type, source.id, source.search_revision, source.deleted_at
-      FROM public.crm_people source WHERE source.client_id = p_client_id
-      UNION ALL
-      SELECT 'company', source.id, source.search_revision, source.deleted_at
-      FROM public.crm_companies source WHERE source.client_id = p_client_id
-      UNION ALL
-      SELECT 'opportunity', source.id, source.search_revision, source.deleted_at
-      FROM public.crm_opportunities source WHERE source.client_id = p_client_id
-    ) current_source
-      ON current_source.entity_type = candidate_operation.entity_type
-     AND current_source.id = candidate_operation.entity_id
-    WHERE candidate_operation.organisation_scope_id = p_organisation_scope_id
-      AND candidate_operation.client_id = p_client_id
-      AND candidate_operation.schema_version = v_policy.candidate_schema_version
-      AND candidate_operation.source_event_sequence <= v_schema.captured_source_high_watermark
-      AND NOT (
-        (candidate_operation.desired_action = 'delete'
-          AND candidate_operation.state = 'confirmed')
-        OR (
-          current_source.id IS NOT NULL
-          AND current_source.deleted_at IS NULL
-          AND candidate_operation.source_revision = current_source.search_revision
-          AND candidate_operation.desired_action = 'upsert'
-          AND candidate_operation.state = 'confirmed'
-        )
-      )
   ) THEN
     RAISE EXCEPTION 'CRM search reverse-orphan: candidate document has no current source or completed delete';
   END IF;
@@ -3941,6 +4109,8 @@ BEGIN
     AND approval.client_id = p_client_id
     AND approval.expected_control_revision = v_control.revision
     AND approval.expected_policy_revision = p_expected_policy_revision
+    AND approval.requested_action = 'promote_candidate'
+    AND approval.target_schema_version = v_policy.candidate_schema_version
     AND public.crm_search_approval_matches_active_deployment(approval, v_control)
     AND approval.maximum_cost_usd_micros >=
       v_policy.daily_query_budget_usd_micros + v_policy.daily_indexing_budget_usd_micros
@@ -4070,20 +4240,7 @@ BEGIN
     WHERE operation.organisation_scope_id = p_organisation_scope_id
       AND operation.client_id = p_client_id
       AND operation.schema_version = p_retiring_schema_version
-      AND (
-        (
-          operation.state = 'terminal_dead_letter'
-          AND NOT public.crm_search_terminal_replacement_satisfied(operation.id, TRUE)
-        )
-        OR (
-          operation.state <> 'terminal_dead_letter'
-          AND (
-            (operation.desired_action = 'delete' AND operation.state <> 'confirmed')
-            OR (operation.desired_action <> 'delete'
-              AND operation.state NOT IN ('confirmed', 'superseded'))
-          )
-        )
-      )
+      AND NOT public.crm_search_operation_converged(operation.id, TRUE)
   ) THEN
     RAISE EXCEPTION 'CRM search retiring schema deletion is not provider-confirmed';
   END IF;
@@ -4102,6 +4259,8 @@ BEGIN
     AND approval.client_id = p_client_id
     AND approval.expected_control_revision = v_control.revision
     AND approval.expected_policy_revision = p_expected_policy_revision
+    AND approval.requested_action = 'retire_schema'
+    AND approval.target_schema_version = p_retiring_schema_version
     AND public.crm_search_approval_matches_active_deployment(approval, v_control)
     AND approval.maximum_cost_usd_micros >=
       v_policy.daily_query_budget_usd_micros + v_policy.daily_indexing_budget_usd_micros
@@ -4271,6 +4430,18 @@ BEGIN
       AND approval.client_id = p_client_id
       AND approval.expected_control_revision = v_control.revision
       AND approval.expected_policy_revision = p_expected_revision
+      AND (
+        v_required_approval_type <> 'client_indexing'
+        OR (
+          approval.requested_action = 'policy_indexing'
+          AND EXISTS (
+            SELECT 1 FROM public.crm_search_schema_versions target_schema
+            WHERE target_schema.organisation_scope_id = p_organisation_scope_id
+              AND target_schema.schema_version = approval.target_schema_version
+              AND target_schema.provider_contract_digest = approval.provider_contract_digest
+          )
+        )
+      )
       AND public.crm_search_approval_matches_active_deployment(approval, v_control)
       AND approval.maximum_cost_usd_micros >=
         v_policy.daily_query_budget_usd_micros + v_policy.daily_indexing_budget_usd_micros
@@ -4335,19 +4506,7 @@ BEGIN
            SELECT 1 FROM public.crm_search_operations operation
            WHERE operation.organisation_scope_id = teardown.organisation_scope_id
              AND operation.client_id = teardown.client_id
-             AND (
-               (
-                 operation.state = 'terminal_dead_letter'
-                 AND NOT public.crm_search_terminal_replacement_satisfied(operation.id, TRUE)
-               )
-               OR (
-                 operation.state <> 'terminal_dead_letter'
-                 AND (
-                   operation.state NOT IN ('confirmed', 'superseded')
-                   OR (operation.desired_action = 'delete' AND operation.state <> 'confirmed')
-                 )
-               )
-             )
+             AND NOT public.crm_search_operation_converged(operation.id, TRUE)
          )
      )) THEN
     RAISE EXCEPTION 'CRM search teardown is not provider-confirmed absent';

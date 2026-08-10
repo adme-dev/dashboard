@@ -225,3 +225,65 @@ git diff --check:                              clean
 ```
 
 The round-2 deep read covered all 4,857 migration lines and both complete test files (6,621 modified-file lines before this report append). The security review rechecked every definer search path, internal authorization-table revocation, runtime grants, immutable terminal/evaluation/approval evidence, client and approval advisory fences, retention relation/partition/candidate binding, partition guards, blue/green transitions, approval-revocation serialization, and the Task 5/Task 6 no-capture boundary. Parallel Task 7 ranking/search-index files were neither inspected, staged, nor modified.
+
+---
+
+## Review Round 3 — Final Lifecycle Gaps
+
+### Result
+
+- Commit target: `fix(crm-search): close final lifecycle gaps`.
+- Scope remained Task 5 only. Migration 350 still adds no CRM source-capture trigger and performs no provider call, deployment, external network request, or Neon lifecycle action.
+- The guarded Neon block skipped because `CRM_SEARCH_TEST_DATABASE_URL` and its Task 18 attestation inputs were absent. No `DATABASE_URL` value was read or inferred, and no shared or production database was contacted.
+
+### Strict TDD Evidence
+
+Round-3 static, guard, and guarded-runtime regressions were written before production SQL changes. The consolidated RED run recorded 8 failures, 29 passes, and one guarded database skip. The failures covered pre-admission provider evidence, atomic provider-confirmation recovery, historical/current-key convergence, exact rollout approval identity, shadow timestamp validity, recursive normalized-key aliases, reverse-orphan promotion, and authenticated Task 18 provenance.
+
+The first incremental gate improved to 23 passes and two assertion-reconciliation failures; after aligning those earlier contracts with the centralized convergence predicate, the focused gate reached 37 passes and one expected guarded skip. A final security reread added and captured one additional RED regression: a runtime caller with operation `INSERT` could otherwise try to create a non-terminal successor carrying caller-selected admission/provider evidence. The insert guard now rejects that path, while the audited provider-confirmation replacement remains the sole atomic admitted-successor path.
+
+### Review Findings Closed
+
+1. Provider mutation ID and acceptance time must be null before governed admission. Table checks, the admission function, update transition guard, and insert guard all reject provider evidence before admission, including retryable roots and forged non-terminal successors. Provider acceptance may be attached only atomically with the admitted operation's transition to `provider_pending`.
+2. A `provider_confirmation` recovery is created atomically in `provider_pending` with the terminal operation's exact control revision, provider mutation ID, acceptance timestamp, admitted timestamp, same accepted identity, and a freshly computed immutable admission identity hash. A root-only intent-identity index permits this exact same-intent successor while retaining uniqueness for unrelated root work.
+3. `crm_search_operation_converged` centralizes history semantics. Confirmed and superseded history is converged, terminal rows may be satisfied by their audited confirmed replacement, and ordinary revision-one followed by revision-two history no longer blocks candidate promotion. Only live unresolved work through the candidate high watermark blocks promotion.
+4. Provider absence is a current-key rule rather than a brittle direct-chain rule. A later same-key, greater-sequence confirmed delete satisfies an original terminal upsert and its confirmed recovery successor for retirement and teardown, while the immutable original and replacement rows remain present. Any later upsert without a subsequent confirmed delete still blocks because each operation is checked.
+5. `crm_search_dead_letters` permits one origin per operation. Provider-confirmation and transport recovery cannot coexist for the same terminal operation, so the replacement function cannot select an arbitrary or weaker origin.
+6. Rank evidence and audit JSON reject recursively normalized aliases. Each accepted object must have the same raw-key and normalized-key cardinality, so pairs such as `entityType` plus `entity_type` fail closed before typed interpretation.
+7. Shadow qualification uses full timestamps. Each client must have exactly seven distinct consecutive dates spanning six days; the first and last observations must be within the bounded seven-day interval, non-future, and inside the exact approval `issued_at`/`expires_at` interval without date truncation.
+8. Every `client_indexing` approval carries a non-null `target_schema_version` and `requested_action`. Global enable/readiness, policy indexing, candidate configuration, candidate promotion, and retiring completion each select the exact action/schema authority and retain the active deployment, rate-card, cost, control-revision, and policy-revision bindings.
+9. The Task 18 target attestation contract is authenticated and provenance-bound. It requires an Ed25519 signer/key ID and injected verification seam, exact checked-out Git SHA, exact byte digest for every required migration, schema-only lifecycle/API bindings and TTL, and a trusted configured shared-endpoint denyset that is not supplied by the attestation. URL validation, empty-target preflight, advisory fence, and migration remain on one connection and transaction.
+
+### PostgreSQL 14 Behavioral Evidence
+
+A fresh local PostgreSQL 14 cluster and disposable database under `/private/tmp` were used; no environment database URL or external connection was involved. Migration 350 applied and reapplied successfully from a fresh state.
+
+The first operation runtime exposed one real PostgreSQL/schema interaction: the table-wide intent `UNIQUE` prevented a provider-confirmation successor from preserving the accepted identity. The constraint was replaced with a root-only partial unique index, the database was rebuilt from scratch, and apply/reapply plus the complete runtime case passed.
+
+Runtime checks then passed for:
+
+- direct provider-evidence forgery before admission and on a non-terminal successor being rejected;
+- governed admission, immutable control/identity, and atomic accepted evidence;
+- strict normalized rank-alias rejection;
+- one dead-letter origin per operation;
+- provider-confirmation recovery born admitted and frozen with exact accepted evidence;
+- a later independent confirmed delete satisfying both terminal and replacement history;
+- valid ordinary historical upserts remaining converged;
+- missing client-indexing target/action being rejected;
+- a 600-query, three-client, three-entity, three-load-stratum evaluator bundle remaining failed when same-day observations were future or before the exact approval timestamp.
+
+The evaluator harness initially exceeded PostgreSQL 14's 100-argument function-call limit while constructing one test JSON object; splitting the test-only builder into two concatenated JSONB objects fixed the harness. Production SQL was unaffected.
+
+### Final Verification
+
+```text
+Focused Task 5 tests:                       37 passed, 1 guarded skip
+Task 5 + relevant migration regressions:    55 passed, 13 expected skips
+Fresh local PostgreSQL 14 apply/reapply:    passed
+Focused PostgreSQL 14 runtime cases:        passed
+ESLint on both owned TypeScript tests:      clean
+git diff --check:                           clean
+Node 24.18 repository typecheck:            864 baseline errors, 0 owned-file matches
+```
+
+The final reread covered the complete owned test files, every migration delta in context, the final report, and the preserved Task 5/Task 6 boundary. The security pass verified all 14 `SECURITY DEFINER` functions retain `SET search_path = pg_catalog, pg_temp`, runtime cannot mutate internal admission/replacement authorization tables, source tables have no capture trigger, admitted and terminal evidence cannot be rewritten, approval and client advisory fences remain intact, and no owned file contains a private key or implicit `DATABASE_URL` access. Task 7 files were neither edited nor staged.
