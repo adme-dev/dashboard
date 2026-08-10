@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -192,4 +193,32 @@ for (const required of [
   if (!required.test(renderedContract)) fail(`central copy is missing ${required.source}`)
 }
 
-console.log(`CRM search marketing smoke passed: ${sources.length} surfaces, ${CRM_SEARCH_MARKETING_CLAIMS.claims.length} mapped claims, ${FORBIDDEN_PRESENT_TENSE_CLAIMS.length} negative assertions`)
+const renderHarness = resolve(repositoryRoot, 'node_modules/vitest/vitest.mjs')
+const renderVerification = spawnSync(process.execPath, [
+  renderHarness,
+  'run',
+  'test/public/crmSearchMarketingRendered.test.ts',
+  '-t',
+  'renders every non-dynamic public surface|server-renders actual dynamic routes'
+], {
+  cwd: repositoryRoot,
+  encoding: 'utf8',
+  env: {
+    ...process.env,
+    CRM_SEARCH_MARKETING_SMOKE_RENDER: '1'
+  }
+})
+
+if (renderVerification.error) {
+  fail(`real render harness could not start: ${renderVerification.error.message}`)
+}
+if (renderVerification.status !== 0) {
+  fail(`real render harness failed:\n${renderVerification.stdout}${renderVerification.stderr}`)
+}
+
+const renderSummary = renderVerification.stdout
+  .split('\n')
+  .find(line => /Tests\s+2 passed/.test(line))
+if (!renderSummary) fail('real render harness did not report both route render assertions')
+
+console.log(`CRM search marketing smoke passed: ${sources.length} surfaces, ${CRM_SEARCH_MARKETING_CLAIMS.claims.length} mapped claims, ${FORBIDDEN_PRESENT_TENSE_CLAIMS.length} negative assertions, 2 real render assertions`)

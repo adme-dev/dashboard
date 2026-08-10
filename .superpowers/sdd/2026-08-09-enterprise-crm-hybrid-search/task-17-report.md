@@ -82,3 +82,37 @@ git diff --check:                                    clean
 ```
 
 Every modified file was reread end-to-end. The review checked unique claim keys, exact per-surface modes, source needles, resolved dynamic-route bodies, SEO/OG equality, HTML entity handling, explicit always-dark exceptions, light/dark feature surfaces, Nuxt aliases, and whitespace. No form, provider, database, queue, secret, deployment, or external network path changed.
+
+## Review 2 — Real Rendering for Every Public Surface
+
+The remaining rendered-coverage finding is closed without a browser, network request, provider, or deployment dependency:
+
+- The rendered contract now imports and executes all changed non-dynamic Vue surfaces rather than treating source text plus manifest-authored text as rendered evidence.
+- Ten public pages and the pricing draft are rendered through Vue SSR. Their actual HTML must contain the bounded rollout claim and the expected responsive light/dark classes or explicit always-dark classes.
+- `MarketingNav` is mounted as the real Vue component in `happy-dom`; the Features interaction is dispatched so the controlled CRM navigation claim must appear in resolved output.
+- Every surface that declares SEO must execute `useSeoMeta` and provide a non-empty title, description, Open Graph title, and Open Graph description. The two surfaces without SEO declarations are asserted to remain explicit exceptions.
+- The offline smoke script retains the independent source/manifest inventory and additionally launches the existing seven-route dynamic SSR assertion plus the new non-dynamic render assertion. It fails if either real render slice fails or does not execute.
+
+Strict RED was captured before each implementation slice:
+
+```text
+Non-dynamic render RED: 1 failed / 32 skipped
+  - real public-surface renderer intentionally absent
+Smoke render RED:       1 failed / 33 skipped
+  - smoke did not execute the Vue render harness
+```
+
+Final bounded evidence under Node 24.18.0:
+
+```text
+New render + smoke regressions: 2 passed / 32 skipped
+Focused public claim suites:    41 passed (2 files)
+Offline marketing smoke:        13 surfaces, 64 claims, 17 negatives, 2 real render assertions
+Smoke Node syntax:               passed
+Targeted ESLint:                 0 errors (the rendered test is excluded by the repository ignore pattern)
+git diff --check (owned code):   clean
+```
+
+A raw standalone `vue-tsc` invocation was also attempted against the test file, but without the generated Nuxt project context it followed the imported SFCs and reported unresolved Nuxt auto-import globals and the `~/` alias. That invocation is not a valid repository type signal. Vitest successfully transformed and compiled every imported Vue surface during both the 41-assertion focused run and the smoke-launched render run; no full Nuxt typecheck was repeated because the repository baseline is already documented above.
+
+Both owned implementation files were reread end-to-end after GREEN. The final review confirmed that the smoke uses `spawnSync` without a shell or external input, executes the checked Vitest file from the repository root, fails closed on start/test/summary errors, and preserves the existing source inventory and dynamic route SSR coverage. No Task 18 file was edited or staged.

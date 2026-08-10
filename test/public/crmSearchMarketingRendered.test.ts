@@ -1,5 +1,18 @@
+// @vitest-environment happy-dom
+
 import { readFileSync } from 'node:fs'
-import { computed, createSSRApp, h } from 'vue'
+import {
+  computed,
+  createApp,
+  createSSRApp,
+  h,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+  watch
+} from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -19,6 +32,174 @@ interface CapturedSeo {
   description?: string
   ogTitle?: string
   ogDescription?: string
+}
+
+interface PublicSurfaceRenderContract {
+  key: string
+  route: string
+  load: () => Promise<{ default: object }>
+  renderedClaim: RegExp
+  seo: boolean
+  theme: 'responsive' | 'always-dark'
+}
+
+interface RenderedPublicSurface {
+  html: string
+  seo: CapturedSeo
+  warnings: string[]
+}
+
+const publicSurfaceRenderContracts: readonly PublicSurfaceRenderContract[] = [
+  {
+    key: 'features-index',
+    route: '/features',
+    load: () => import('../../app/pages/features/index.vue'),
+    renderedClaim: /Visible CRM search uses keyword ranking/i,
+    seo: true,
+    theme: 'responsive'
+  },
+  {
+    key: 'marketing-nav',
+    route: 'component:MarketingNav',
+    load: () => import('../../app/components/MarketingNav.vue'),
+    renderedClaim: /Controlled CRM Search/i,
+    seo: false,
+    theme: 'always-dark'
+  },
+  {
+    key: 'platform-ai',
+    route: '/platform/ai',
+    load: () => import('../../app/pages/platform/ai.vue'),
+    renderedClaim: /Visible agency and portal CRM search remains keyword-ranked/i,
+    seo: false,
+    theme: 'responsive'
+  },
+  {
+    key: 'resources-ai-automation',
+    route: '/resources/ai-automation',
+    load: () => import('../../app/pages/resources/ai-automation.vue'),
+    renderedClaim: /Visible agency and portal CRM results use deterministic keyword ranking/i,
+    seo: true,
+    theme: 'responsive'
+  },
+  {
+    key: 'resources-integrations',
+    route: '/resources/integrations',
+    load: () => import('../../app/pages/resources/integrations.vue'),
+    renderedClaim: /dedicated CRM Vectorize index/i,
+    seo: true,
+    theme: 'responsive'
+  },
+  {
+    key: 'resources-index',
+    route: '/resources',
+    load: () => import('../../app/pages/resources/index.vue'),
+    renderedClaim: /controlled CRM retrieval through approved agency-assistant contexts/i,
+    seo: true,
+    theme: 'responsive'
+  },
+  {
+    key: 'landing',
+    route: '/landing',
+    load: () => import('../../app/pages/landing.vue'),
+    renderedClaim: /visible CRM keyword search/i,
+    seo: true,
+    theme: 'always-dark'
+  },
+  {
+    key: 'ai-training',
+    route: '/ai-training',
+    load: () => import('../../app/pages/ai-training.vue'),
+    renderedClaim: /Controlled CRM semantic assistance is separate/i,
+    seo: true,
+    theme: 'always-dark'
+  },
+  {
+    key: 'home',
+    route: '/',
+    load: () => import('../../app/pages/index.vue'),
+    renderedClaim: /visible CRM keyword search/i,
+    seo: true,
+    theme: 'responsive'
+  },
+  {
+    key: 'creativity',
+    route: '/creativity',
+    load: () => import('../../app/pages/creativity.vue'),
+    renderedClaim: /controlled CRM semantic assistance/i,
+    seo: true,
+    theme: 'responsive'
+  },
+  {
+    key: 'privacy',
+    route: '/privacy',
+    load: () => import('../../app/pages/privacy.vue'),
+    renderedClaim: /Controlled CRM semantic assistance/i,
+    seo: true,
+    theme: 'responsive'
+  },
+  {
+    key: 'pricing-draft',
+    route: 'draft:pricing-self-service',
+    load: () => import('../../app/_drafts/pricing-self-service.vue'),
+    renderedClaim: /Controlled CRM assist \(off by default\)/i,
+    seo: true,
+    theme: 'responsive'
+  }
+]
+
+async function renderPublicSurface(contract: PublicSurfaceRenderContract): Promise<RenderedPublicSurface> {
+  const seo: CapturedSeo = {}
+  const warnings: string[] = []
+
+  Object.assign(globalThis, {
+    computed,
+    definePageMeta: vi.fn(),
+    nextTick,
+    onMounted,
+    onUnmounted,
+    reactive,
+    ref,
+    useColorMode: () => reactive({ preference: 'dark', value: 'dark' }),
+    useHead: vi.fn(),
+    useRoute: () => ({ path: contract.route, query: {}, params: {} }),
+    useSeoMeta: (value: CapturedSeo) => Object.assign(seo, value),
+    watch
+  })
+
+  vi.resetModules()
+  const Surface = (await contract.load()).default
+  const passthroughComponent = { template: '<div><slot /></div>' }
+
+  const registerRenderDependencies = (app: ReturnType<typeof createApp> | ReturnType<typeof createSSRApp>) => {
+    app.config.warnHandler = warning => warnings.push(warning)
+    app.component('AiTrainingScene', passthroughComponent)
+    app.component('MarketingFooter', passthroughComponent)
+    app.component('MarketingHeroBackground', passthroughComponent)
+    app.component('MarketingNav', { template: '<nav class="bg-[#121317] text-white"><slot /></nav>' })
+    app.component('MorphBlob', passthroughComponent)
+    app.component('NuxtLink', { template: '<a><slot /></a>' })
+    app.component('UIcon', { template: '<i />' })
+  }
+
+  if (contract.key === 'marketing-nav') {
+    const app = createApp(Surface)
+    const host = document.createElement('div')
+    registerRenderDependencies(app)
+    app.mount(host)
+
+    const featuresTrigger = [...host.querySelectorAll('button')]
+      .find(button => button.textContent?.trim() === 'Features')
+    featuresTrigger?.dispatchEvent(new MouseEvent('mouseenter'))
+    await nextTick()
+    const html = host.innerHTML
+    app.unmount()
+    return { html, seo, warnings }
+  }
+
+  const app = createSSRApp({ render: () => h(Surface) })
+  registerRenderDependencies(app)
+  return { html: await renderToString(app), seo, warnings }
 }
 
 const dynamicRouteExpectations = new Map([
@@ -170,6 +351,30 @@ describe('rendered CRM search marketing contract', () => {
     }
   })
 
+  it('renders every non-dynamic public surface with real claims, SEO, and theme output', async () => {
+    for (const contract of publicSurfaceRenderContracts) {
+      const { html, seo, warnings } = await renderPublicSurface(contract)
+
+      expect(warnings, `${contract.route} SSR warnings`).toEqual([])
+      expect(html, `${contract.route} rollout claim`).toMatch(contract.renderedClaim)
+      if (contract.seo) {
+        expect(seo.title, `${contract.route} SEO title`).toBeTruthy()
+        expect(seo.description, `${contract.route} SEO description`).toBeTruthy()
+        expect(seo.ogTitle, `${contract.route} Open Graph title`).toBeTruthy()
+        expect(seo.ogDescription, `${contract.route} Open Graph description`).toBeTruthy()
+      } else {
+        expect(seo, `${contract.route} has no declared SEO contract`).toEqual({})
+      }
+
+      if (contract.theme === 'always-dark') {
+        expect(html, `${contract.route} always-dark background`).toMatch(/bg-\[#(?:0a0a0a|121317)\]/)
+        expect(html, `${contract.route} always-dark text`).toContain('text-white')
+      } else {
+        expect(html, `${contract.route} light/dark semantic output`).toMatch(/(?:bg-white|text-\[#121317\]|text-\[#45474D\])[^"\n]*dark:/)
+      }
+    }
+  })
+
   it('qualifies every semantic-search SEO description', () => {
     const aiAutomation = read('app/pages/resources/ai-automation.vue')
     const featureDetail = read('app/pages/features/[slug].vue')
@@ -197,6 +402,14 @@ describe('rendered CRM search marketing contract', () => {
     expect(integrations).toMatch(/other XeroFlow features[^.]*separate Vectorize (?:indexes|paths)/i)
     expect(integrations).not.toMatch(/Vectorize(?:<\/strong>)? is reserved for controlled CRM/i)
     expect(integrations).not.toMatch(/Cloudflare Vectorize is used only for controlled CRM/i)
+  })
+
+  it('makes the offline smoke execute the real Vue render harness', () => {
+    const smoke = read('scripts/crm-search/marketing-smoke.mjs')
+
+    expect(smoke).toContain('crmSearchMarketingRendered.test.ts')
+    expect(smoke).toContain('spawnSync')
+    expect(smoke).toContain('CRM_SEARCH_MARKETING_SMOKE_RENDER')
   })
 
   it('keeps visible and portal ranking deterministic while semantic assistance is controlled', () => {
