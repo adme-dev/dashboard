@@ -98,6 +98,12 @@ export interface VerifyCrmSearchProviderReadinessInput {
   sentinelValues: readonly number[]
 }
 
+export interface VerifyCrmSearchProviderReadinessOptions {
+  maximumPollAttempts?: number
+  pollDelayMs?: number
+  sleep?: (delayMs: number) => Promise<void>
+}
+
 export interface CrmSearchProvider {
   embedDocument(text: string): Promise<number[]>
   upsertVector(vector: CrmSearchVector): Promise<CrmSearchVectorizeMutationResult>
@@ -207,6 +213,19 @@ function hasExactMetadataIndexes(value: unknown): boolean {
       : null
   })
   return actual.includes('entityType') && actual.includes('schemaVersion')
+}
+
+async function pollReadiness<Value>(
+  read: () => Promise<Value>,
+  matches: (value: Value) => boolean,
+  options: Required<VerifyCrmSearchProviderReadinessOptions>
+): Promise<Value | null> {
+  for (let attempt = 1; attempt <= options.maximumPollAttempts; attempt += 1) {
+    const value = await read()
+    if (matches(value)) return value
+    if (attempt < options.maximumPollAttempts) await options.sleep(options.pollDelayMs)
+  }
+  return null
 }
 
 export function resolveCrmSearchProviderRuntime(event: unknown): CrmSearchProviderRuntime | null {
@@ -348,7 +367,8 @@ export function confirmStoredCrmSearchVector(
 
 export async function verifyCrmSearchProviderReadiness(
   input: VerifyCrmSearchProviderReadinessInput,
-  runtime: CrmSearchReadinessRuntime
+  runtime: CrmSearchReadinessRuntime,
+  rawOptions: VerifyCrmSearchProviderReadinessOptions = {}
 ): Promise<{
   metadataIndexesReady: true
   sentinelRoundTripConfirmed: true
@@ -357,6 +377,19 @@ export async function verifyCrmSearchProviderReadiness(
   const namespace = requireProviderId(input.namespace, 'crm_search_invalid_readiness')
   const sentinelId = requireProviderId(input.sentinelId, 'crm_search_invalid_readiness')
   const values = requireVector(input.sentinelValues, 'crm_search_invalid_readiness')
+  const maximumPollAttempts = rawOptions.maximumPollAttempts ?? 6
+  const pollDelayMs = rawOptions.pollDelayMs ?? 50
+  if (!Number.isSafeInteger(maximumPollAttempts)
+    || maximumPollAttempts < 1 || maximumPollAttempts > 20
+    || !Number.isSafeInteger(pollDelayMs) || pollDelayMs < 0 || pollDelayMs > 1_000
+    || (rawOptions.sleep !== undefined && typeof rawOptions.sleep !== 'function')) {
+    throw providerError('crm_search_invalid_readiness')
+  }
+  const options: Required<VerifyCrmSearchProviderReadinessOptions> = {
+    maximumPollAttempts,
+    pollDelayMs,
+    sleep: rawOptions.sleep ?? (delayMs => new Promise(resolve => setTimeout(resolve, delayMs)))
+  }
   let indexes: unknown
   try {
     indexes = await runtime.vectorize.listMetadataIndexes()
@@ -381,32 +414,44 @@ export async function verifyCrmSearchProviderReadiness(
       await runtime.vectorize.upsert([sentinel as never]),
       'crm_search_sentinel_upsert_failed'
     )
-    const exact = await runtime.vectorize.getByIds([sentinelId])
-    if (!Array.isArray(exact) || exact.length !== 1
-      || !exactStoredReadinessSentinel(exact[0], { id: sentinelId, namespace })) {
+    const exact = await pollReadiness(
+      () => runtime.vectorize.getByIds([sentinelId]),
+      rows => Array.isArray(rows) && rows.length === 1
+        && exactStoredReadinessSentinel(rows[0], { id: sentinelId, namespace }),
+      options
+    )
+    if (!exact) {
       throw providerError('crm_search_sentinel_not_confirmed')
     }
-    const filtered = await runtime.vectorize.query(values, {
-      namespace,
-      topK: 1,
-      returnMetadata: 'all',
-      returnValues: false,
-      filter: {
-        entityType: { $eq: readinessEntityType },
-        schemaVersion: { $eq: readinessSchemaVersion }
-      }
-    })
-    if (!Array.isArray(filtered?.matches)
-      || !filtered.matches.some(match => exactStoredReadinessSentinel(
-        match,
-        { id: sentinelId, namespace }
-      ))) throw providerError('crm_search_sentinel_filter_not_confirmed')
+    const filtered = await pollReadiness(
+      () => runtime.vectorize.query(values, {
+        namespace,
+        topK: 1,
+        returnMetadata: 'all',
+        returnValues: false,
+        filter: {
+          entityType: { $eq: readinessEntityType },
+          schemaVersion: { $eq: readinessSchemaVersion }
+        }
+      }),
+      result => Array.isArray(result?.matches)
+        && result.matches.some(match => exactStoredReadinessSentinel(
+          match,
+          { id: sentinelId, namespace }
+        )),
+      options
+    )
+    if (!filtered) throw providerError('crm_search_sentinel_filter_not_confirmed')
     requireMutationResult(
       await runtime.vectorize.deleteByIds([sentinelId]),
       'crm_search_sentinel_delete_failed'
     )
-    const afterDelete = await runtime.vectorize.getByIds([sentinelId])
-    if (!Array.isArray(afterDelete) || afterDelete.length !== 0) {
+    const afterDelete = await pollReadiness(
+      () => runtime.vectorize.getByIds([sentinelId]),
+      rows => Array.isArray(rows) && rows.length === 0,
+      options
+    )
+    if (!afterDelete) {
       throw providerError('crm_search_sentinel_absence_not_confirmed')
     }
     return {

@@ -313,6 +313,34 @@ describe('CRM search usage repository', () => {
     expect(query.mock.calls[2]?.[0]).toContain('THEN \'settled\'')
   })
 
+  it('charges a Workers AI attempt that was durably marked ambiguous after send', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ ...reservationRow(), provider_call_sent: true }] })
+      .mockResolvedValueOnce({ rows: [], rowCount: 2 })
+      .mockResolvedValueOnce({ rows: [{ id: providerAttemptId }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{
+        ...reservationRow(),
+        state: 'charged',
+        provider_call_sent: true,
+        completion_class: 'failed'
+      }], rowCount: 1 })
+    const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
+
+    await expect(settleCrmSearchUsage({
+      reservationId,
+      providerCallSent: true,
+      completion: 'failed'
+    }, { transactionWithoutRetry } as never)).resolves.toMatchObject({
+      state: 'charged', completionClass: 'failed'
+    })
+
+    const attemptTransitionSql = String(query.mock.calls[2]?.[0])
+    expect(attemptTransitionSql).toContain('attempt.state = \'ambiguous\'')
+    expect(attemptTransitionSql).not.toMatch(
+      /attempt\.provider = 'vectorize'[\s\S]+attempt\.state = 'ambiguous'/
+    )
+  })
+
   it('releases reserved capacity only with explicit evidence that no provider call was sent', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [reservationRow()] })

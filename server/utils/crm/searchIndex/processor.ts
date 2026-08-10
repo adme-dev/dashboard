@@ -9,6 +9,7 @@ import { buildCrmSearchDocument } from './documents'
 import {
   admitCrmSearchOperation,
   claimCrmSearchOperation,
+  convertCrmSearchOperationToDelete,
   markCrmSearchProviderAttemptAmbiguous,
   markCrmSearchProviderAttemptSent,
   recordCrmSearchProviderAcceptance
@@ -27,6 +28,7 @@ import {
   requireUuid,
   type CrmSearchTransactionClient
 } from './repository'
+import { requireCrmSearchProviderAuthority } from './policyRepository'
 import { reserveCrmSearchUsage, settleCrmSearchUsage } from './usageRepository'
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -92,10 +94,30 @@ interface PriorProviderAttempt {
   reservationId: string
 }
 
+export interface CrmSearchProviderCallGuardInput {
+  organisationScopeId: string
+  clientId: string
+  provider: 'workers_ai' | 'vectorize'
+  action: 'upsert' | 'delete'
+  schemaVersion: string
+  teardownId: string | null
+}
+
 export interface CrmSearchProcessorDependencies {
   correlationId: string
   claimOperation(operationId: string): Promise<CrmSearchProcessorOperation | null>
   loadCurrentContext(operation: CrmSearchProcessorOperation): Promise<CrmSearchProcessorContext>
+  convertOperationToDelete(input: {
+    operationId: string
+    sourceRevision: number
+    sourceEventSequence: number
+    leaseToken: string
+    leaseGeneration: number
+  }): Promise<void>
+  withProviderCallGuard<Result>(
+    input: CrmSearchProviderCallGuardInput,
+    callback: () => Promise<Result>
+  ): Promise<Result>
   admitProviderCall(input: {
     operationId: string
     correlationId: string
@@ -277,6 +299,29 @@ async function release(
   })
 }
 
+async function guardedProviderCall<Result>(
+  operation: CrmSearchProcessorOperation,
+  input: Omit<CrmSearchProviderCallGuardInput, 'organisationScopeId' | 'clientId' | 'schemaVersion'>,
+  dependencies: CrmSearchProcessorDependencies,
+  callback: () => Promise<Result>
+): Promise<Result> {
+  let callbackStarted = false
+  try {
+    return await dependencies.withProviderCallGuard({
+      organisationScopeId: operation.organisationScopeId,
+      clientId: operation.clientId,
+      schemaVersion: operation.schemaVersion,
+      ...input
+    }, async () => {
+      callbackStarted = true
+      return callback()
+    })
+  } catch (error) {
+    if (callbackStarted) throw error
+    return retryable(operation, error, false, dependencies)
+  }
+}
+
 export async function processCrmSearchOperation(
   operationId: string,
   runtime: CrmSearchProviderRuntime,
@@ -285,8 +330,9 @@ export async function processCrmSearchOperation(
   if (!uuidPattern.test(operationId) || !uuidPattern.test(dependencies?.correlationId)) {
     fail('crm_search_invalid_operation')
   }
-  const operation = await dependencies.claimOperation(operationId)
-  if (!validOperation(operation, operationId)) fail('crm_search_operation_unavailable')
+  const claimedOperation = await dependencies.claimOperation(operationId)
+  if (!validOperation(claimedOperation, operationId)) fail('crm_search_operation_unavailable')
+  let operation = claimedOperation
 
   const priorAttempt = await dependencies.loadProviderAttempt({
     operationId,
@@ -304,14 +350,29 @@ export async function processCrmSearchOperation(
       || typeof priorAttempt.reservationId !== 'string') {
       fail('crm_search_provider_attempt_invalid')
     }
-    await dependencies.markAmbiguousProviderOutcome({
+    if (priorAttempt.status === 'sent') {
+      await dependencies.markAmbiguousProviderOutcome({
+        operationId,
+        provider: 'workers_ai',
+        providerAttemptId: priorAttempt.providerAttemptId,
+        reservationId: priorAttempt.reservationId,
+        providerCallSent: true
+      })
+    }
+    await dependencies.settleProviderCall({
       operationId,
       provider: 'workers_ai',
       providerAttemptId: priorAttempt.providerAttemptId,
       reservationId: priorAttempt.reservationId,
-      providerCallSent: true
+      providerCallSent: true,
+      completionClass: 'failed'
     })
-    fail('crm_search_workers_ai_attempt_ambiguous')
+    return retryable(
+      operation,
+      new Error('crm_search_workers_ai_attempt_ambiguous'),
+      true,
+      dependencies
+    )
   }
 
   const context = await dependencies.loadCurrentContext(operation)
@@ -320,6 +381,26 @@ export async function processCrmSearchOperation(
   }
   const sourceMoved = !!context.source.clientId && context.source.clientId !== operation.clientId
   const requiresDelete = sourceMoved || !context.source.exists || context.source.deleted
+  if (requiresDelete && operation.desiredAction === 'upsert') {
+    try {
+      await dependencies.convertOperationToDelete({
+        operationId: operation.id,
+        sourceRevision: operation.sourceRevision,
+        sourceEventSequence: operation.sourceEventSequence,
+        leaseToken: operation.leaseToken,
+        leaseGeneration: operation.leaseGeneration
+      })
+      operation = {
+        ...operation,
+        desiredAction: 'delete',
+        contentHash: null,
+        confirmationTag: null,
+        confirmationKeyVersion: null
+      }
+    } catch (error) {
+      return retryable(operation, error, false, dependencies)
+    }
+  }
   if (!requiresDelete && context.schemaRole === 'retiring') {
     await dependencies.markSuperseded({ ...operation, reason: 'schema_retiring' })
     return { status: 'superseded' }
@@ -344,20 +425,98 @@ export async function processCrmSearchOperation(
       || document.contentHash !== operation.contentHash) {
       return retryable(operation, new Error('crm_search_document_changed'), false, dependencies)
     }
-    let admission: ProviderAdmission
+    embedding = await guardedProviderCall(operation, {
+      provider: 'workers_ai',
+      action,
+      teardownId: null
+    }, dependencies, async () => {
+      let admission: ProviderAdmission
+      try {
+        admission = validateAdmission(await dependencies.admitProviderCall({
+          operationId,
+          correlationId: dependencies.correlationId,
+          organisationScopeId: operation.organisationScopeId,
+          clientId: operation.clientId,
+          provider: 'workers_ai',
+          action,
+          schemaVersion: operation.schemaVersion,
+          teardownId: null,
+          modelInputTokens: CRM_SEARCH_MAX_INPUT_TOKENS,
+          insertedDimensions: 0,
+          storedDimensions: 0,
+          leaseToken: operation.leaseToken,
+          leaseGeneration: operation.leaseGeneration
+        }))
+      } catch (error) {
+        return retryable(operation, error, false, dependencies)
+      }
+      try {
+        await dependencies.markProviderCallSent({
+          operationId,
+          provider: 'workers_ai',
+          providerAttemptId: admission.providerAttemptId,
+          reservationId: admission.reservationId,
+          leaseToken: operation.leaseToken,
+          leaseGeneration: operation.leaseGeneration
+        })
+      } catch (error) {
+        await release(operation, 'workers_ai', admission, dependencies)
+        return retryable(operation, error, false, dependencies)
+      }
+      let providerEmbedding: number[]
+      try {
+        providerEmbedding = await provider.embedDocument(document.providerInput)
+      } catch (error) {
+        try {
+          await dependencies.markAmbiguousProviderOutcome({
+            operationId,
+            provider: 'workers_ai',
+            providerAttemptId: admission.providerAttemptId,
+            reservationId: admission.reservationId,
+            providerCallSent: true
+          })
+        } catch {
+          return retryable(operation, error, true, dependencies)
+        }
+        await settle(operation, 'workers_ai', admission, 'failed', dependencies)
+        return retryable(operation, error, true, dependencies)
+      }
+      try {
+        await settle(operation, 'workers_ai', admission, 'completed', dependencies)
+      } catch {
+        await dependencies.markAmbiguousProviderOutcome({
+          operationId,
+          provider: 'workers_ai',
+          providerAttemptId: admission.providerAttemptId,
+          reservationId: admission.reservationId,
+          providerCallSent: true
+        })
+        // The embedding remains in this invocation; the prior call is retained as
+        // charged and is not replayed before the next provider admission.
+      }
+      return providerEmbedding
+    })
+  }
+
+  return guardedProviderCall(operation, {
+    provider: 'vectorize',
+    action,
+    teardownId: action === 'delete' ? context.teardownId : null
+  }, dependencies, async () => {
+    let vectorAdmission: ProviderAdmission
     try {
-      admission = validateAdmission(await dependencies.admitProviderCall({
+      vectorAdmission = validateAdmission(await dependencies.admitProviderCall({
         operationId,
         correlationId: dependencies.correlationId,
         organisationScopeId: operation.organisationScopeId,
         clientId: operation.clientId,
-        provider: 'workers_ai',
+        provider: 'vectorize',
         action,
         schemaVersion: operation.schemaVersion,
-        teardownId: null,
-        modelInputTokens: CRM_SEARCH_MAX_INPUT_TOKENS,
-        insertedDimensions: 0,
-        storedDimensions: 0,
+        teardownId: action === 'delete' ? context.teardownId : null,
+        modelInputTokens: 0,
+        insertedDimensions: action === 'upsert' ? CRM_SEARCH_VECTOR_DIMENSIONS : 0,
+        storedDimensions: action === 'upsert' ? CRM_SEARCH_VECTOR_DIMENSIONS : 0,
         leaseToken: operation.leaseToken,
         leaseGeneration: operation.leaseGeneration
       }))
@@ -365,135 +524,82 @@ export async function processCrmSearchOperation(
       return retryable(operation, error, false, dependencies)
     }
     try {
-      await dependencies.markProviderCallSent({
+      await dependencies.admitOperation({
         operationId,
-        provider: 'workers_ai',
-        providerAttemptId: admission.providerAttemptId,
-        reservationId: admission.reservationId,
+        expectedState: operation.state === 'retryable' ? 'retryable' : 'processing',
+        expectedControlRevision: vectorAdmission.controlRevision,
         leaseToken: operation.leaseToken,
         leaseGeneration: operation.leaseGeneration
       })
     } catch (error) {
-      await release(operation, 'workers_ai', admission, dependencies)
+      await release(operation, 'vectorize', vectorAdmission, dependencies)
       return retryable(operation, error, false, dependencies)
     }
     try {
-      embedding = await provider.embedDocument(document.providerInput)
+      await dependencies.markProviderCallSent({
+        operationId,
+        provider: 'vectorize',
+        providerAttemptId: vectorAdmission.providerAttemptId,
+        reservationId: vectorAdmission.reservationId,
+        leaseToken: operation.leaseToken,
+        leaseGeneration: operation.leaseGeneration
+      })
     } catch (error) {
-      await settle(operation, 'workers_ai', admission, 'failed', dependencies)
-      return retryable(operation, error, true, dependencies)
+      await release(operation, 'vectorize', vectorAdmission, dependencies)
+      return retryable(operation, error, false, dependencies)
     }
+
+    let mutationId: string
     try {
-      await settle(operation, 'workers_ai', admission, 'completed', dependencies)
+      const result = action === 'upsert'
+        ? await provider.upsertVector({
+            id: operation.vectorId,
+            namespace: operation.namespace,
+            values: embedding!,
+            metadata: {
+              entityType: operation.entityType,
+              schemaVersion: operation.schemaVersion,
+              sourceRevision: operation.sourceRevision,
+              confirmationTag: operation.confirmationTag!,
+              confirmationKeyVersion: operation.confirmationKeyVersion!
+            }
+          })
+        : await provider.deleteVector(operation.vectorId)
+      mutationId = result.mutationId
     } catch {
       await dependencies.markAmbiguousProviderOutcome({
         operationId,
-        provider: 'workers_ai',
-        providerAttemptId: admission.providerAttemptId,
-        reservationId: admission.reservationId,
+        provider: 'vectorize',
+        providerAttemptId: vectorAdmission.providerAttemptId,
+        reservationId: vectorAdmission.reservationId,
         providerCallSent: true
       })
-      // The embedding remains in this invocation; the prior call is retained as
-      // charged and is not replayed before the next provider admission.
+      await settle(operation, 'vectorize', vectorAdmission, 'failed', dependencies)
+      return { status: 'accepted_provider_pending' }
     }
-  }
-
-  let vectorAdmission: ProviderAdmission
-  try {
-    vectorAdmission = validateAdmission(await dependencies.admitProviderCall({
-      operationId,
-      correlationId: dependencies.correlationId,
-      organisationScopeId: operation.organisationScopeId,
-      clientId: operation.clientId,
-      provider: 'vectorize',
-      action,
-      schemaVersion: operation.schemaVersion,
-      teardownId: action === 'delete' ? context.teardownId : null,
-      modelInputTokens: 0,
-      insertedDimensions: action === 'upsert' ? CRM_SEARCH_VECTOR_DIMENSIONS : 0,
-      storedDimensions: action === 'upsert' ? CRM_SEARCH_VECTOR_DIMENSIONS : 0,
-      leaseToken: operation.leaseToken,
-      leaseGeneration: operation.leaseGeneration
-    }))
-  } catch (error) {
-    return retryable(operation, error, false, dependencies)
-  }
-  try {
-    await dependencies.admitOperation({
-      operationId,
-      expectedState: operation.state === 'retryable' ? 'retryable' : 'processing',
-      expectedControlRevision: vectorAdmission.controlRevision,
-      leaseToken: operation.leaseToken,
-      leaseGeneration: operation.leaseGeneration
-    })
-  } catch (error) {
-    await release(operation, 'vectorize', vectorAdmission, dependencies)
-    return retryable(operation, error, false, dependencies)
-  }
-  try {
-    await dependencies.markProviderCallSent({
-      operationId,
-      provider: 'vectorize',
-      providerAttemptId: vectorAdmission.providerAttemptId,
-      reservationId: vectorAdmission.reservationId,
-      leaseToken: operation.leaseToken,
-      leaseGeneration: operation.leaseGeneration
-    })
-  } catch (error) {
-    await release(operation, 'vectorize', vectorAdmission, dependencies)
-    return retryable(operation, error, false, dependencies)
-  }
-
-  let mutationId: string
-  try {
-    const result = action === 'upsert'
-      ? await provider.upsertVector({
-          id: operation.vectorId,
-          namespace: operation.namespace,
-          values: embedding!,
-          metadata: {
-            entityType: operation.entityType,
-            schemaVersion: operation.schemaVersion,
-            sourceRevision: operation.sourceRevision,
-            confirmationTag: operation.confirmationTag!,
-            confirmationKeyVersion: operation.confirmationKeyVersion!
-          }
-        })
-      : await provider.deleteVector(operation.vectorId)
-    mutationId = result.mutationId
-  } catch {
-    await dependencies.markAmbiguousProviderOutcome({
-      operationId,
-      provider: 'vectorize',
-      providerAttemptId: vectorAdmission.providerAttemptId,
-      reservationId: vectorAdmission.reservationId,
-      providerCallSent: true
-    })
-    await settle(operation, 'vectorize', vectorAdmission, 'failed', dependencies)
+    try {
+      await dependencies.recordProviderAcceptance({
+        operationId,
+        action,
+        providerAttemptId: vectorAdmission.providerAttemptId,
+        reservationId: vectorAdmission.reservationId,
+        mutationId,
+        controlRevision: vectorAdmission.controlRevision,
+        leaseToken: operation.leaseToken,
+        leaseGeneration: operation.leaseGeneration
+      })
+    } catch {
+      await dependencies.markAmbiguousProviderOutcome({
+        operationId,
+        provider: 'vectorize',
+        providerAttemptId: vectorAdmission.providerAttemptId,
+        reservationId: vectorAdmission.reservationId,
+        providerCallSent: true
+      })
+    }
+    await settle(operation, 'vectorize', vectorAdmission, 'completed', dependencies)
     return { status: 'accepted_provider_pending' }
-  }
-  try {
-    await dependencies.recordProviderAcceptance({
-      operationId,
-      action,
-      providerAttemptId: vectorAdmission.providerAttemptId,
-      reservationId: vectorAdmission.reservationId,
-      mutationId,
-      controlRevision: vectorAdmission.controlRevision,
-      leaseToken: operation.leaseToken,
-      leaseGeneration: operation.leaseGeneration
-    })
-  } catch {
-    await dependencies.markAmbiguousProviderOutcome({
-      operationId,
-      provider: 'vectorize',
-      providerAttemptId: vectorAdmission.providerAttemptId,
-      reservationId: vectorAdmission.reservationId,
-      providerCallSent: true
-    })
-  }
-  await settle(operation, 'vectorize', vectorAdmission, 'completed', dependencies)
-  return { status: 'accepted_provider_pending' }
+  })
 }
 
 export interface CrmSearchProcessRequestInput {
@@ -577,6 +683,38 @@ function sourceFields(entityType: CrmSearchEntityType, row: Record<string, unkno
     name: row.name, domain: row.domain, lifecycle_stage: row.lifecycle_stage
   }
   return { name: row.name, status: row.status, source: row.source }
+}
+
+export async function withCrmSearchProviderCallGuard<Result>(
+  input: CrmSearchProviderCallGuardInput,
+  callback: () => Promise<Result>,
+  dependencies: {
+    transactionWithoutRetry?: typeof crmSearchRepositoryDependencies.transactionWithoutRetry
+  } = {}
+): Promise<Result> {
+  if (!input || !uuidPattern.test(input.organisationScopeId)
+    || !uuidPattern.test(input.clientId)
+    || !['workers_ai', 'vectorize'].includes(input.provider)
+    || !['upsert', 'delete'].includes(input.action)
+    || (input.provider === 'workers_ai' && input.action !== 'upsert')
+    || !schemaPattern.test(input.schemaVersion)
+    || (input.teardownId !== null && !uuidPattern.test(input.teardownId))
+    || typeof callback !== 'function') {
+    throw crmSearchRepositoryError('crm_search_provider_disabled')
+  }
+  const run = dependencies.transactionWithoutRetry
+    ?? crmSearchRepositoryDependencies.transactionWithoutRetry
+  return run(async (transaction) => {
+    await requireCrmSearchProviderAuthority({
+      organisationScopeId: input.organisationScopeId,
+      clientId: input.clientId,
+      action: input.action,
+      schemaVersion: input.schemaVersion,
+      infrastructureReady: true,
+      ...(input.teardownId === null ? {} : { teardownId: input.teardownId })
+    }, transaction)
+    return callback()
+  })
 }
 
 export function createDefaultCrmSearchProcessorDependencies(
@@ -697,6 +835,12 @@ export function createDefaultCrmSearchProcessorDependencies(
             && authority.document_content_hash === document.contentHash
         }
       })
+    },
+    async convertOperationToDelete(input) {
+      await convertCrmSearchOperationToDelete(input)
+    },
+    async withProviderCallGuard(input, callback) {
+      return withCrmSearchProviderCallGuard(input, callback)
     },
     async admitProviderCall(input) {
       const sequenceRow = await crmSearchRepositoryDependencies.queryOneFresh(`

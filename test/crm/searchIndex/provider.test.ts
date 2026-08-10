@@ -127,6 +127,56 @@ describe('CRM search provider contract', () => {
     ])
   })
 
+  it('bounded-polls sentinel visibility, filtered query visibility, and delete absence', async () => {
+    const sentinelId = 'crm-search-readiness-sentinel-v1'
+    const storedSentinel = {
+      id: sentinelId,
+      namespace,
+      metadata: {
+        entityType: '__crm_search_sentinel__',
+        schemaVersion: '__crm_search_readiness_v1__'
+      }
+    }
+    const sleep = vi.fn().mockResolvedValue(undefined)
+    const runtime = {
+      vectorize: {
+        listMetadataIndexes: vi.fn().mockResolvedValue([
+          { propertyName: 'entityType', type: 'string' },
+          { propertyName: 'schemaVersion', type: 'string' }
+        ]),
+        upsert: vi.fn().mockResolvedValue({ mutationId: 'sentinel-upsert-1' }),
+        getByIds: vi.fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([storedSentinel])
+          .mockResolvedValueOnce([storedSentinel])
+          .mockResolvedValueOnce([]),
+        query: vi.fn()
+          .mockResolvedValueOnce({ matches: [] })
+          .mockResolvedValueOnce({ matches: [storedSentinel] }),
+        deleteByIds: vi.fn().mockResolvedValue({ mutationId: 'sentinel-delete-1' })
+      }
+    }
+
+    await expect(verifyCrmSearchProviderReadiness({
+      namespace,
+      sentinelId,
+      sentinelValues: Array(768).fill(0)
+    }, runtime as never, {
+      maximumPollAttempts: 3,
+      pollDelayMs: 1,
+      sleep
+    })).resolves.toEqual({
+      metadataIndexesReady: true,
+      sentinelRoundTripConfirmed: true,
+      sentinelAbsenceConfirmed: true
+    })
+
+    expect(runtime.vectorize.getByIds).toHaveBeenCalledTimes(4)
+    expect(runtime.vectorize.query).toHaveBeenCalledTimes(2)
+    expect(sleep).toHaveBeenCalledTimes(3)
+    expect(sleep).toHaveBeenCalledWith(1)
+  })
+
   it('fails before sentinel or CRM work when either exact string metadata index is absent', async () => {
     const upsert = vi.fn()
     const runtime = {

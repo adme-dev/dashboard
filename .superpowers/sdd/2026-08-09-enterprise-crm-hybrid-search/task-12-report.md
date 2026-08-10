@@ -96,3 +96,32 @@ The live cases cover legal pending-transport/queued/processing flow, indexing/qu
 1. The deployment must inject the pinned exact tokenizer implementation into `event.context.crmSearchExactTokenizer`; without it, upsert processing intentionally fails closed before Workers AI. No approximate fallback is permitted.
 2. Dedicated `AI`, `CRM_SEARCH_VECTORIZE`, service-keyring, cron-secret, queue, and confirmation-key bindings remain release-time responsibilities. This task validates exact names/shapes but creates or changes no Cloudflare resource.
 3. The repository-wide Nuxt typecheck retains unrelated baseline diagnostics; the stricter targeted pass is clean for every owned file.
+
+## Acceptance Review Repair — Provider Lifecycle Fences
+
+- Status: `DONE_WITH_CONCERNS`; the remaining concerns above are release-time integration responsibilities, not acceptance defects.
+- Repair commit: `fix(crm-search): fence provider lifecycle transitions`.
+- Each Workers AI or Vectorize call now runs inside its own non-retryable outer guard transaction. That transaction acquires the canonical shared client advisory lock and fresh global-control, client-policy, schema, and applicable teardown authority, then holds them continuously until the provider callback and its durable settlement finish. Attempt precommit/reservation, sent evidence, operation admission, acceptance, and settlement remain separate committing transactions.
+- A source-missing, source-deleted, or source-moved upsert is CAS-converted durably to `delete`—including clearing its content hash and confirmation evidence—before any delete reservation. Vectorize acceptance now CAS-matches the persisted operation action and attempt action.
+- A Workers AI error after sent evidence is durably marked ambiguous and conservatively charged. A later claim detects sent/ambiguous evidence before any provider work, settles it idempotently, and returns retryable without replaying the ambiguous call.
+- Readiness now bounded-polls exact sentinel visibility, filtered-query visibility, and exact post-delete absence. Poll attempts and delay are validated and bounded.
+
+### Repair RED→GREEN Evidence
+
+Strict RED-first tests independently reproduced all four findings: immediate sentinel reads failed under delayed visibility; delete conversion was absent and then not invoked before admission; post-sent Workers AI failures were not ambiguous; and provider calls ran without a continuously held authority guard. A mutation check that bypassed the authority reread failed the focused guard regression before the implementation was restored.
+
+Final evidence after the repair:
+
+```text
+Bounded Task 12 unit/API gate:                              147 passed, 1 guarded PostgreSQL case skipped
+Migration static gate:                                      53 passed, 1 guarded PostgreSQL case skipped
+Task 8/12 PostgreSQL 14 lifecycle/race/evidence gate:        18/18 passed
+Migrations 350–352 PostgreSQL 14 apply/reapply gate:          9/9 passed
+Node 24 ESLint over the eight repair source/test files:       exit 0
+Strict server TypeScript owned-path diagnostic search:        0 diagnostics
+git diff --check over the repair scope:                       exit 0
+```
+
+The live two-connection PostgreSQL test proves that candidate-promotion's exclusive client fence and a global halt update both block while a provider callback holds its shared advisory/row authority, then complete only after the callback releases. It also proves persisted upsert-to-delete conversion and a sent Workers AI attempt converging to `ambiguous` plus a `charged` failed reservation with the expected token and USD-micro accounting evidence.
+
+All repair validation used disposable local PostgreSQL 14 clusters under `/private/tmp`. No external database, provider, network, Cloudflare resource, deployment, or production migration was touched. Concurrent Task 13 retrieval, ranking, analytics, shadow-search, and public search-route files remained outside the repair scope and staging set.

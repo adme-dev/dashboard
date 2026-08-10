@@ -325,6 +325,52 @@ export async function claimCrmSearchOperation(
   })
 }
 
+export interface ConvertCrmSearchOperationToDeleteInput {
+  operationId: string
+  sourceRevision: number
+  sourceEventSequence: number
+  leaseToken: string
+  leaseGeneration: number
+}
+
+export async function convertCrmSearchOperationToDelete(
+  input: ConvertCrmSearchOperationToDeleteInput,
+  dependencies: OperationRepositoryDependencies = {}
+): Promise<void> {
+  const operationId = requireUuid(input.operationId, errorCode)
+  const sourceRevision = requireSafeInteger(input.sourceRevision, errorCode, { minimum: 1 })
+  const sourceEventSequence = requireSafeInteger(input.sourceEventSequence, errorCode, { minimum: 1 })
+  const leaseToken = requireUuid(input.leaseToken, errorCode)
+  const leaseGeneration = requireSafeInteger(input.leaseGeneration, errorCode, { minimum: 1 })
+  const run = dependencies.transactionWithoutRetry
+    ?? crmSearchRepositoryDependencies.transactionWithoutRetry
+  await run(async (transaction) => {
+    const changed = await transaction.query(`
+      UPDATE crm_search_operations
+      SET desired_action = 'delete',
+          content_hash = NULL,
+          confirmation_tag = NULL,
+          confirmation_key_version = NULL,
+          updated_at = NOW()
+      WHERE id = $1
+        AND source_revision = $2
+        AND source_event_sequence = $3
+        AND lease_token = $4
+        AND lease_generation = $5
+        AND state = 'processing'
+        AND desired_action = 'upsert'
+        AND provider_admitted_at IS NULL
+        AND provider_mutation_id IS NULL
+        AND provider_accepted_at IS NULL
+      RETURNING id
+    `, [operationId, sourceRevision, sourceEventSequence, leaseToken, leaseGeneration])
+    const row = firstRow(changed)
+    if (!row || requireUuid(row.id, errorCode) !== operationId) {
+      throw crmSearchRepositoryError('crm_search_operation_changed')
+    }
+  })
+}
+
 interface ProviderAttemptRow extends Record<string, unknown> {
   id: unknown
   organisation_scope_id: unknown
@@ -510,6 +556,7 @@ export async function markCrmSearchProviderAttemptSent(
 
 export interface RecordCrmSearchProviderAcceptanceInput {
   operationId: string
+  action: CrmSearchProviderAction
   providerAttemptId: string
   reservationId: string
   mutationId: string
@@ -523,6 +570,7 @@ export async function recordCrmSearchProviderAcceptance(
   dependencies: OperationRepositoryDependencies = {}
 ): Promise<void> {
   const operationId = requireUuid(input.operationId, errorCode)
+  const action = requireEnum(input.action, CRM_SEARCH_PROVIDER_ACTIONS, errorCode)
   const providerAttemptId = requireUuid(input.providerAttemptId, errorCode)
   const reservationId = requireUuid(input.reservationId, errorCode)
   const mutationId = requireString(input.mutationId, errorCode, { maximumLength: 256 })
@@ -548,21 +596,22 @@ export async function recordCrmSearchProviderAcceptance(
           AND operation.lease_generation = $5
           AND attempt.lease_generation = $5
           AND attempt.control_revision = $6
+          AND operation.desired_action = $7
           AND attempt.provider = 'vectorize'
-          AND attempt.provider_action IN ('upsert', 'delete')
+          AND attempt.provider_action = $7
           AND attempt.state = 'sent'
           AND attempt.provider_call_sent = TRUE
         FOR UPDATE OF attempt, reservation, operation
       ), accepted_attempt AS (
         UPDATE crm_search_provider_attempts attempt
-        SET state = 'accepted', provider_mutation_id = $7,
+        SET state = 'accepted', provider_mutation_id = $8,
             settled_at = NOW(), updated_at = NOW()
         FROM eligible
         WHERE attempt.id = eligible.id
         RETURNING attempt.id
       ), provider_pending AS (
         UPDATE crm_search_operations operation
-        SET state = 'provider_pending', provider_mutation_id = $7,
+        SET state = 'provider_pending', provider_mutation_id = $8,
             provider_accepted_at = NOW(), provider_attempt_count = provider_attempt_count + 1,
             updated_at = NOW()
         FROM accepted_attempt
@@ -582,7 +631,7 @@ export async function recordCrmSearchProviderAcceptance(
                operation.confirmation_tag, operation.confirmation_key_version,
                CASE WHEN operation.desired_action = 'upsert'
                  THEN 'provider_pending' ELSE 'delete_pending' END,
-               FALSE, $7
+               FALSE, $8
         FROM provider_pending
         JOIN crm_search_operations operation ON operation.id = provider_pending.id
         ON CONFLICT (organisation_scope_id, client_id, entity_type, entity_id, schema_version)
@@ -608,7 +657,7 @@ export async function recordCrmSearchProviderAcceptance(
       FROM provider_pending
       JOIN document_pending ON TRUE
     `, [providerAttemptId, reservationId, operationId, leaseToken, leaseGeneration,
-      controlRevision, mutationId]))
+      controlRevision, action, mutationId]))
     if (!row || requireUuid(row.id, errorCode) !== operationId) {
       throw crmSearchRepositoryError('crm_search_provider_acceptance_changed')
     }

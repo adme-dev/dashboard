@@ -955,9 +955,10 @@ export async function settleCrmSearchUsage(
       FROM crm_search_provider_attempts attempt
       WHERE $2 = TRUE
         AND attempt.id = $1
-        AND attempt.provider = 'vectorize'
-        AND attempt.provider_action IN ('upsert', 'delete')
-        AND attempt.state IN ('accepted', 'ambiguous')
+        AND (attempt.state = 'ambiguous'
+          OR (attempt.provider = 'vectorize'
+            AND attempt.provider_action IN ('upsert', 'delete')
+            AND attempt.state = 'accepted'))
         AND attempt.provider_call_sent = TRUE
         AND attempt.settled_at IS NOT NULL
       LIMIT 1

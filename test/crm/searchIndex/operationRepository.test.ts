@@ -6,6 +6,7 @@ import {
   claimCrmSearchOperation,
   claimCrmSearchOperations,
   completeCrmSearchOperationClaim,
+  convertCrmSearchOperationToDelete,
   loadCrmSearchProviderAttempt,
   markCrmSearchProviderAttemptAmbiguous,
   markCrmSearchProviderAttemptSent,
@@ -16,8 +17,9 @@ import {
   completeCrmSearchDocumentClaim,
   upsertCrmSearchDocumentCas
 } from '~~/server/utils/crm/searchIndex/documentRepository'
-import { requireCrmSearchProviderAuthority } from '~~/server/utils/crm/searchIndex/policyRepository'
+import { withCrmSearchProviderCallGuard } from '~~/server/utils/crm/searchIndex/processor'
 import { completeCrmSearchDirtySourceClaim } from '~~/server/utils/crm/searchIndex/sourceRepository'
+import { settleCrmSearchUsage } from '~~/server/utils/crm/searchIndex/usageRepository'
 
 const base = {
   organisationScopeId: '11111111-1111-4111-8111-111111111111',
@@ -84,6 +86,32 @@ describe('CRM search operation repository', () => {
     expect(query.mock.calls[0]?.[0]).toContain('state = \'pending_transport\'')
     expect(query.mock.calls[1]?.[0]).toContain('state IN (\'queued\', \'retryable\')')
     expect(query.mock.calls[1]?.[0]).toContain('WHERE operation.id = $1')
+  })
+
+  it('CAS-persists an upsert-to-delete conversion before provider admission', async () => {
+    const leaseToken = '77777777-7777-4777-8777-777777777777'
+    const query = vi.fn().mockResolvedValue({ rows: [{ id: operationRow.id }], rowCount: 1 })
+    const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
+
+    await expect(convertCrmSearchOperationToDelete({
+      operationId: operationRow.id,
+      sourceRevision: 3,
+      sourceEventSequence: 13,
+      leaseToken,
+      leaseGeneration: 4
+    }, { transactionWithoutRetry } as never)).resolves.toBeUndefined()
+
+    const sql = String(query.mock.calls[0]?.[0])
+    expect(sql).toContain('desired_action = \'delete\'')
+    expect(sql).toContain('content_hash = NULL')
+    expect(sql).toContain('confirmation_tag = NULL')
+    expect(sql).toContain('confirmation_key_version = NULL')
+    expect(sql).toContain('state = \'processing\'')
+    expect(sql).toContain('desired_action = \'upsert\'')
+    expect(sql).toContain('provider_admitted_at IS NULL')
+    expect(query.mock.calls[0]?.[1]).toEqual([
+      operationRow.id, 3, 13, leaseToken, 4
+    ])
   })
 
   it('keeps one admitted provider operation and replaces only its one coalesced successor', async () => {
@@ -377,6 +405,7 @@ describe('CRM search operation repository', () => {
 
     await expect(recordCrmSearchProviderAcceptance({
       operationId: operationRow.id,
+      action: 'upsert',
       providerAttemptId,
       reservationId,
       mutationId: 'mutation-accepted-1',
@@ -386,6 +415,7 @@ describe('CRM search operation repository', () => {
     }, { transactionWithoutRetry: acceptedTransaction } as never)).resolves.toBeUndefined()
     expect(acceptedQuery.mock.calls[0]?.[0]).toContain('attempt.state = \'sent\'')
     expect(acceptedQuery.mock.calls[0]?.[0]).toContain('operation.state = \'admitted\'')
+    expect(acceptedQuery.mock.calls[0]?.[0]).toContain('operation.desired_action = $7')
     expect(acceptedQuery.mock.calls[0]?.[0]).toContain('state = \'accepted\'')
     expect(acceptedQuery.mock.calls[0]?.[0]).toContain('state = \'provider_pending\'')
     expect(acceptedQuery.mock.calls[0]?.[0]).toContain('INSERT INTO crm_search_documents')
@@ -537,7 +567,7 @@ async function waitForTask8BackendLock(observer: Client, processId: number): Pro
 const task8DatabaseDescribe = task8LocalDsn ? describe.sequential : describe.skip
 
 task8DatabaseDescribe('CRM search Task 8 repositories on isolated local PostgreSQL 14', () => {
-  it('uses legal trigger-backed operation transitions, narrow runtime completion, and a shared promotion fence', async () => {
+  it('uses legal transitions and holds provider authority against promotion and halt races', async () => {
     const config = guardedTask8LocalPostgresConfig(task8LocalDsn!)
     const schema = `crm_search_task8_${crypto.randomUUID().replaceAll('-', '')}`
     const runtimeLogin = `crm_search_task8_runtime_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`
@@ -628,6 +658,62 @@ task8DatabaseDescribe('CRM search Task 8 repositories on isolated local PostgreS
       expect(claims).toHaveLength(1)
       expect(claims[0]).toMatchObject({ id: operation.id, state: 'processing' })
 
+      const conversionEntityId = '14141414-1414-4414-8414-141414141414'
+      const conversionOperation = await upsertCrmSearchOperation({
+        ...base,
+        entityId: conversionEntityId,
+        vectorId: 'conversion-vector-id',
+        sourceRevision: 5,
+        sourceEventSequence: 5
+      }, { query: administratorRepositoryQuery } as never)
+      const conversionClaim = await claimCrmSearchOperation({
+        operationId: conversionOperation.id,
+        leaseSeconds: 60,
+        now: '2026-08-10T23:59:00.000Z'
+      }, { transactionWithoutRetry: async (callback: never) => {
+        await administrator.query('BEGIN')
+        try {
+          const result = await (callback as (client: unknown) => Promise<unknown>)({
+            query: administratorRepositoryQuery
+          })
+          await administrator.query('COMMIT')
+          return result
+        } catch (error) {
+          await administrator.query('ROLLBACK')
+          throw error
+        }
+      } } as never)
+      expect(conversionClaim).not.toBeNull()
+      await convertCrmSearchOperationToDelete({
+        operationId: conversionOperation.id,
+        sourceRevision: 5,
+        sourceEventSequence: 5,
+        leaseToken: conversionClaim!.leaseToken!,
+        leaseGeneration: conversionClaim!.leaseGeneration
+      }, { transactionWithoutRetry: async (callback: never) => {
+        await administrator.query('BEGIN')
+        try {
+          const result = await (callback as (client: unknown) => Promise<unknown>)({
+            query: administratorRepositoryQuery
+          })
+          await administrator.query('COMMIT')
+          return result
+        } catch (error) {
+          await administrator.query('ROLLBACK')
+          throw error
+        }
+      } } as never)
+      const converted = (await administrator.query(`
+        SELECT desired_action, content_hash, confirmation_tag, confirmation_key_version
+        FROM crm_search_operations WHERE id = $1
+      `, [conversionOperation.id])).rows[0]
+      expect(converted).toEqual({
+        desired_action: 'delete',
+        content_hash: null,
+        confirmation_tag: null,
+        confirmation_key_version: null
+      })
+
       const rateCardId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
       const indexingAttemptId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
       const indexingCorrelationId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
@@ -664,14 +750,24 @@ task8DatabaseDescribe('CRM search Task 8 repositories on isolated local PostgreS
            id, organisation_scope_id, client_id, usage_kind, correlation_id,
            operation_id, provider_attempt_id, control_revision, policy_revision,
            rate_card_id, rate_card_revision, reserved_provider_calls,
-           reserved_model_input_tokens, reserved_query_dimensions
+           reserved_model_input_tokens, reserved_query_dimensions, reserved_usd_micros
          ) VALUES
-           ($1, $2, $3, 'indexing', $4, $5, $6, 7, 11, $7, 'task12-pg-v1', 1, 512, 0),
-           ($8, $2, $3, 'query', $9, NULL, $10, 7, 11, $7, 'task12-pg-v1', 1, 0, 768)`,
+           ($1, $2, $3, 'indexing', $4, $5, $6, 7, 11, $7, 'task12-pg-v1', 1, 512, 0, 35),
+           ($8, $2, $3, 'query', $9, NULL, $10, 7, 11, $7, 'task12-pg-v1', 1, 0, 768, 0)`,
         [indexingReservationId, base.organisationScopeId, base.clientId,
           indexingCorrelationId, operation.id, indexingAttemptId, rateCardId,
           queryReservationId, queryCorrelationId, queryAttemptId]
       )
+      await administrator.query(`
+        INSERT INTO crm_search_usage_daily (
+          usage_date, organisation_scope_id, usage_scope, client_id, usage_kind,
+          cap_provider_calls, cap_model_input_tokens, cap_charged_usd_micros,
+          reserved_provider_calls, reserved_model_input_tokens, reserved_usd_micros,
+          rate_card_id
+        ) VALUES
+          (CURRENT_DATE, $1, 'global', NULL, 'indexing', 10, 5120, 1000, 1, 512, 35, $3),
+          (CURRENT_DATE, $1, 'client', $2, 'indexing', 10, 5120, 1000, 1, 512, 35, $3)
+      `, [base.organisationScopeId, base.clientId, rateCardId])
 
       const runtimeRepositoryQuery = task8NeonCompatibleQuery(runtime)
       const runtimeTransactionWithoutRetry = async (callback: never) => {
@@ -694,6 +790,43 @@ task8DatabaseDescribe('CRM search Task 8 repositories on isolated local PostgreS
         leaseGeneration: claims[0]!.leaseGeneration
       }, { transactionWithoutRetry: runtimeTransactionWithoutRetry } as never)).resolves.toMatchObject({
         usageKind: 'indexing', state: 'sent', providerCallSent: true
+      })
+      await expect(markCrmSearchProviderAttemptAmbiguous({
+        operationId: operation.id,
+        providerAttemptId: indexingAttemptId,
+        reservationId: indexingReservationId,
+        leaseToken: claims[0]!.leaseToken!,
+        leaseGeneration: claims[0]!.leaseGeneration
+      }, { transactionWithoutRetry: runtimeTransactionWithoutRetry } as never)).resolves.toBeUndefined()
+      await expect(settleCrmSearchUsage({
+        reservationId: indexingReservationId,
+        providerCallSent: true,
+        completion: 'failed'
+      }, { transactionWithoutRetry: runtimeTransactionWithoutRetry } as never)).resolves.toMatchObject({
+        state: 'charged', completionClass: 'failed'
+      })
+      const ambiguousEvidence = (await administrator.query(`
+        SELECT attempt.state AS attempt_state,
+               reservation.state AS reservation_state,
+               reservation.completion_class,
+               daily.charged_model_input_tokens,
+               daily.charged_usd_micros
+        FROM crm_search_provider_attempts attempt
+        JOIN crm_search_usage_reservations reservation
+          ON reservation.provider_attempt_id = attempt.id
+        JOIN crm_search_usage_daily daily
+          ON daily.organisation_scope_id = attempt.organisation_scope_id
+         AND daily.client_id = attempt.client_id
+         AND daily.usage_scope = 'client'
+         AND daily.usage_kind = 'indexing'
+        WHERE attempt.id = $1
+      `, [indexingAttemptId])).rows[0]
+      expect(ambiguousEvidence).toMatchObject({
+        attempt_state: 'ambiguous',
+        reservation_state: 'charged',
+        completion_class: 'failed',
+        charged_model_input_tokens: '512',
+        charged_usd_micros: '35'
       })
       await expect(markCrmSearchProviderAttemptSent({
         usageKind: 'query',
@@ -784,14 +917,41 @@ task8DatabaseDescribe('CRM search Task 8 repositories on isolated local PostgreS
       const peerPid = Number((await peer.query(
         'SELECT pg_catalog.pg_backend_pid() AS pid'
       )).rows[0].pid)
-      await administrator.query('BEGIN')
-      await requireCrmSearchProviderAuthority({
+      const administratorTransactionWithoutRetry = async (callback: never) => {
+        await administrator.query('BEGIN')
+        try {
+          const result = await (callback as (client: unknown) => Promise<unknown>)({
+            query: administratorRepositoryQuery
+          })
+          await administrator.query('COMMIT')
+          return result
+        } catch (error) {
+          await administrator.query('ROLLBACK')
+          throw error
+        }
+      }
+      let releaseProviderCall = () => undefined
+      let markProviderCallStarted = () => undefined
+      const providerCallStarted = new Promise<void>((resolve) => {
+        markProviderCallStarted = resolve
+      })
+      const providerCallHeld = new Promise<void>((resolve) => {
+        releaseProviderCall = resolve
+      })
+      const guardedProviderCall = withCrmSearchProviderCallGuard({
         organisationScopeId: base.organisationScopeId,
         clientId: base.clientId,
+        provider: 'vectorize',
         action: 'upsert',
         schemaVersion: base.schemaVersion,
-        infrastructureReady: true
-      }, { query: administratorRepositoryQuery } as never)
+        teardownId: null
+      }, async () => {
+        markProviderCallStarted()
+        await providerCallHeld
+        return 'accepted'
+      }, { transactionWithoutRetry: administratorTransactionWithoutRetry } as never)
+      await providerCallStarted
+
       await peer.query('BEGIN')
       let exclusiveSettled = false
       const exclusive = peer.query(
@@ -800,8 +960,45 @@ task8DatabaseDescribe('CRM search Task 8 repositories on isolated local PostgreS
       ).finally(() => { exclusiveSettled = true })
       await waitForTask8BackendLock(administrator, peerPid)
       expect(exclusiveSettled).toBe(false)
-      await administrator.query('COMMIT')
+      releaseProviderCall()
+      await expect(guardedProviderCall).resolves.toBe('accepted')
       await exclusive
+      await peer.query('ROLLBACK')
+
+      let releaseSecondProviderCall = () => undefined
+      let markSecondProviderCallStarted = () => undefined
+      const secondProviderCallStarted = new Promise<void>((resolve) => {
+        markSecondProviderCallStarted = resolve
+      })
+      const secondProviderCallHeld = new Promise<void>((resolve) => {
+        releaseSecondProviderCall = resolve
+      })
+      const secondGuardedProviderCall = withCrmSearchProviderCallGuard({
+        organisationScopeId: base.organisationScopeId,
+        clientId: base.clientId,
+        provider: 'workers_ai',
+        action: 'upsert',
+        schemaVersion: base.schemaVersion,
+        teardownId: null
+      }, async () => {
+        markSecondProviderCallStarted()
+        await secondProviderCallHeld
+        return 'embedded'
+      }, { transactionWithoutRetry: administratorTransactionWithoutRetry } as never)
+      await secondProviderCallStarted
+
+      await peer.query('BEGIN')
+      let haltSettled = false
+      const halt = peer.query(`
+        UPDATE crm_search_global_control
+        SET state = 'halted', maximum_mode = 'off', indexing_ready = FALSE
+        WHERE organisation_scope_id = $1
+      `, [base.organisationScopeId]).finally(() => { haltSettled = true })
+      await waitForTask8BackendLock(administrator, peerPid)
+      expect(haltSettled).toBe(false)
+      releaseSecondProviderCall()
+      await expect(secondGuardedProviderCall).resolves.toBe('embedded')
+      await halt
       await peer.query('ROLLBACK')
     } finally {
       await administrator.query('ROLLBACK').catch(() => undefined)

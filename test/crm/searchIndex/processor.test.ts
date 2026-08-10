@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   processCrmSearchOperation,
-  reserveCrmSearchProcessRequest
+  reserveCrmSearchProcessRequest,
+  withCrmSearchProviderCallGuard
 } from '~~/server/utils/crm/searchIndex/processor'
 
 const operationId = '11111111-1111-4111-8111-111111111111'
@@ -87,6 +88,20 @@ function dependencies(events: string[], overrides: Record<string, unknown> = {})
         documentAlreadyCurrent: false
       }
     }),
+    convertOperationToDelete: vi.fn(async () => {
+      events.push('persist_delete')
+    }),
+    withProviderCallGuard: vi.fn(async (
+      input: { provider: string },
+      callback: () => Promise<unknown>
+    ) => {
+      events.push(`guard_${input.provider}_open`)
+      try {
+        return await callback()
+      } finally {
+        events.push(`guard_${input.provider}_close`)
+      }
+    }),
     admitProviderCall: vi.fn(async (input: { provider: string }) => {
       events.push(`admit_${input.provider}`)
       return {
@@ -124,6 +139,52 @@ function dependencies(events: string[], overrides: Record<string, unknown> = {})
 }
 
 describe('CRM search operation processor', () => {
+  it('holds fresh shared client and row authority throughout the provider callback', async () => {
+    let transactionActive = false
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{
+        state: 'enabled', indexing_ready: true, revision: '9'
+      }] })
+      .mockResolvedValueOnce({ rows: [{
+        lifecycle_state: 'indexing', indexing_enabled: true, revision: '12',
+        active_schema_version: 'crm-search-v1', candidate_schema_version: null,
+        retiring_schema_versions: []
+      }] })
+      .mockResolvedValueOnce({ rows: [{
+        metadata_index_state: 'ready', sentinel_state: 'confirmed_absent'
+      }] })
+    const transactionWithoutRetry = vi.fn(async (callback) => {
+      transactionActive = true
+      try {
+        return await callback({ query })
+      } finally {
+        transactionActive = false
+      }
+    })
+    const providerCall = vi.fn(async () => {
+      expect(transactionActive).toBe(true)
+      expect(query).toHaveBeenCalledTimes(4)
+      return 'accepted'
+    })
+
+    await expect(withCrmSearchProviderCallGuard({
+      organisationScopeId,
+      clientId,
+      provider: 'vectorize',
+      action: 'upsert',
+      schemaVersion: 'crm-search-v1',
+      teardownId: null
+    }, providerCall, { transactionWithoutRetry } as never)).resolves.toBe('accepted')
+
+    expect(transactionActive).toBe(false)
+    expect(query.mock.calls[0]?.[0]).toContain('pg_advisory_xact_lock_shared')
+    expect(query.mock.calls[1]?.[0]).toContain('crm_search_global_control')
+    expect(query.mock.calls[1]?.[0]).toContain('FOR SHARE')
+    expect(query.mock.calls[2]?.[0]).toContain('crm_search_policies')
+    expect(query.mock.calls[3]?.[0]).toContain('crm_search_schema_versions')
+  })
+
   it('derives endpoint replay/idempotency only from fresh durable operation state', async () => {
     const queryOneFresh = vi.fn()
       .mockResolvedValueOnce({ state: 'provider_pending', lease_expires_at: null })
@@ -150,16 +211,20 @@ describe('CRM search operation processor', () => {
     expect(events).toEqual([
       'claim',
       'fresh_context',
+      'guard_workers_ai_open',
       'admit_workers_ai',
       'sent_workers_ai',
       'workers_ai',
       'settle_workers_ai',
+      'guard_workers_ai_close',
+      'guard_vectorize_open',
       'admit_vectorize',
       'admit_operation',
       'sent_vectorize',
       'vectorize_upsert',
       'provider_pending',
-      'settle_vectorize'
+      'settle_vectorize',
+      'guard_vectorize_close'
     ])
     expect(options.markIndexed).not.toHaveBeenCalled()
   })
@@ -303,14 +368,27 @@ describe('CRM search operation processor', () => {
     }))
   })
 
-  it('charges a sent Workers AI attempt and returns to retryable on provider timeout', async () => {
+  it('marks a post-sent Workers AI error ambiguous and charged without blind replay', async () => {
     const events: string[] = []
     const providerRuntime = runtime(events)
     providerRuntime.ai.run.mockRejectedValueOnce(new Error('provider timeout detail'))
-    const options = dependencies(events)
+    const options = dependencies(events, {
+      loadProviderAttempt: vi.fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          status: 'ambiguous',
+          provider: 'workers_ai',
+          providerCallSent: true,
+          reservationState: 'charged',
+          providerAttemptId: 'workers-ai-attempt-1',
+          reservationId: '77777777-7777-4777-8777-777777777777'
+        })
+    })
 
     await expect(processCrmSearchOperation(operationId, providerRuntime as never, options as never))
       .rejects.toMatchObject({ code: 'crm_search_workers_ai_failed' })
+    expect(options.markAmbiguousProviderOutcome).toHaveBeenCalledOnce()
+    expect(events.indexOf('ambiguous')).toBeLessThan(events.indexOf('settle_workers_ai'))
     expect(options.settleProviderCall).toHaveBeenCalledWith(expect.objectContaining({
       provider: 'workers_ai',
       providerCallSent: true,
@@ -321,6 +399,11 @@ describe('CRM search operation processor', () => {
       providerCallSent: true
     }))
     expect(providerRuntime.vectorize.upsert).not.toHaveBeenCalled()
+
+    await expect(processCrmSearchOperation(operationId, providerRuntime as never, options as never))
+      .rejects.toThrow('crm_search_workers_ai_attempt_ambiguous')
+    expect(providerRuntime.ai.run).toHaveBeenCalledOnce()
+    expect(options.markAmbiguousProviderOutcome).toHaveBeenCalledOnce()
   })
 
   it('turns a source moved to another client into deletion of the old client vector', async () => {
@@ -366,6 +449,14 @@ describe('CRM search operation processor', () => {
       .resolves.toEqual({ status: 'accepted_provider_pending' })
     expect(providerRuntime.ai.run).not.toHaveBeenCalled()
     expect(providerRuntime.vectorize.deleteByIds).toHaveBeenCalledWith([vectorId])
+    expect(options.convertOperationToDelete).toHaveBeenCalledWith({
+      operationId,
+      sourceRevision: 7,
+      sourceEventSequence: 12,
+      leaseToken: '66666666-6666-4666-8666-666666666666',
+      leaseGeneration: 3
+    })
+    expect(events.indexOf('persist_delete')).toBeLessThan(events.indexOf('admit_vectorize'))
     expect(options.admitProviderCall).toHaveBeenCalledTimes(1)
     expect(options.admitProviderCall).toHaveBeenCalledWith(expect.objectContaining({
       provider: 'vectorize',
