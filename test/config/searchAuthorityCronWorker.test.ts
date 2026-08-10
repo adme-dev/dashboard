@@ -27,20 +27,23 @@ describe('Search Authority cron worker registration', () => {
     )
   })
 
-  it('declares the daily trigger with the Knox production pilot globally armed', () => {
+  it('declares the daily trigger with the Knox pilot explicit in production config', () => {
     const cronConfig = parse(
       readFileSync('workers/pages-cron/wrangler.toml', 'utf8')
     ) as { triggers?: { crons?: string[] } }
     const pagesConfig = parse(readFileSync('wrangler.toml', 'utf8')) as {
       vars?: Record<string, string>
+      env?: { production?: { vars?: Record<string, string> } }
     }
-    const productionWorkflow = readFileSync('.github/workflows/ci.yml', 'utf8')
+    const productionVars = pagesConfig.env?.production?.vars
 
     expect(cronConfig.triggers?.crons).toContain('15 2 * * *')
     expect(pagesConfig.vars?.SEARCH_AUTHORITY_ENABLED).toBe('true')
     expect(pagesConfig.vars?.NUXT_SEARCH_AUTHORITY_ENABLED).toBe('true')
     expect(pagesConfig.vars?.NUXT_PUBLIC_SEARCH_AUTHORITY_ENABLED).toBe('true')
-    expect(productionWorkflow).toContain('SEARCH_AUTHORITY_ENABLED: \'true\'')
+    expect(productionVars?.SEARCH_AUTHORITY_ENABLED).toBe('true')
+    expect(productionVars?.NUXT_SEARCH_AUTHORITY_ENABLED).toBe('true')
+    expect(productionVars?.NUXT_PUBLIC_SEARCH_AUTHORITY_ENABLED).toBe('true')
   })
 
   it('dispatches the optional Google Business performance refresh on its own offset', async () => {

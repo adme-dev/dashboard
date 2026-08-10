@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import { spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
 import {
   parseAiAssistantReadinessArgs,
   runAiAssistantReadiness
@@ -97,15 +96,14 @@ describe('AI assistant readiness CLI arguments', () => {
   })
 
   it('exits one and emits JSON from the CLI process for invalid arguments', () => {
-    const tsxCli = fileURLToPath(new URL('./cli.mjs', import.meta.resolve('tsx')))
     const result = spawnSync(process.execPath, [
-      tsxCli,
-      '--tsconfig', '.nuxt/tsconfig.server.json',
+      '--import', 'tsx',
       'scripts/ai-assistant-readiness.ts',
       '--json', '--gate', 'unknown'
     ], {
       cwd: process.cwd(),
-      encoding: 'utf8'
+      encoding: 'utf8',
+      env: { ...process.env, TSX_TSCONFIG_PATH: '.nuxt/tsconfig.server.json' }
     })
 
     expect(result.status).toBe(1)

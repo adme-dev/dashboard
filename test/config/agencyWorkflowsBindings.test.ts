@@ -129,22 +129,20 @@ describe('agency workflows worker config', () => {
     expect(socialPublishingTestCommand).toContain('test/config/agencyWorkflowsBindings.test.ts')
   })
 
-  it('runs authenticated Workflows smoke after production deploy when CI auth secrets are configured', () => {
+  it('runs authenticated Workflows smoke only in the guarded manual production deploy', () => {
     const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
       scripts?: Record<string, string>
     }
     const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
 
     expect(packageJson.scripts?.['smoke:agency-workflows:ci']).toBe('node scripts/agency-workflows-ci-smoke-gate.mjs')
+    expect(workflow).toContain('inputs.release_action == \'deploy\'')
+    expect(workflow).toContain('environment: production_deploy')
     expect(workflow).toContain('Smoke agency workflows readiness')
     expect(workflow).toContain('AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET')
     expect(workflow).toContain('AGENCY_WORKFLOWS_SMOKE_AUTH_TOKEN')
     expect(workflow).toContain('AGENCY_WORKFLOWS_SMOKE_COOKIE')
     expect(workflow).toContain('AGENCY_WORKFLOWS_CI_REQUIRE_SMOKE_AUTH: \'true\'')
-    expect(workflow).toContain('Sync agency workflows smoke verifier')
-    expect(workflow).toContain('node scripts/sync-agency-workflows-smoke-verifier.mjs')
-    expect(workflow).toContain('secrets: |')
-    expect(workflow).toContain('AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET')
     expect(workflow).toContain('pnpm run smoke:agency-workflows:ci')
   })
 

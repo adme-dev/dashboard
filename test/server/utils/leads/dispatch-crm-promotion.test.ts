@@ -34,7 +34,7 @@ describe('CRM promotion queue dispatch', () => {
     })
   })
 
-  it('promotes the requested lead and logs identifiers without customer identity data', async () => {
+  it('promotes the requested lead and logs status without record or customer identifiers', async () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {})
 
     await handleQueueMessage({ type: 'crm.promote', payload: { lead_id: 'lead-1' } })
@@ -42,12 +42,11 @@ describe('CRM promotion queue dispatch', () => {
     expect(promote).toHaveBeenCalledWith('lead-1')
     expect(info).toHaveBeenCalledWith({
       event: 'crm_lead_promotion_completed',
-      leadId: 'lead-1',
-      status: 'promoted',
-      personId: 'person-1',
-      opportunityId: 'opportunity-1'
+      status: 'promoted'
     })
-    expect(JSON.stringify(info.mock.calls)).not.toMatch(/email|phone|customer/i)
+    expect(JSON.stringify(info.mock.calls)).not.toMatch(
+      /lead-1|person-1|opportunity-1|email|phone|customer/i
+    )
     info.mockRestore()
   })
 })
