@@ -1,0 +1,70 @@
+{
+  "version": "synthetic-corpus-v1",
+  "sha256": "1153429cbd44a4045600ce1bebb90d47184c95800cf4eb7aaea864b28ef82c41",
+  "piiFree": true,
+  "records": [
+    {
+      "entityKeyDigest": "0000000000000000000000000000000000000000000000000000000000000064",
+      "clientKey": "client-1",
+      "entityType": "company",
+      "syntheticKey": "company-alpha",
+      "approvedProjection": "company | Example Motors | automotive"
+    },
+    {
+      "entityKeyDigest": "0000000000000000000000000000000000000000000000000000000000000065",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "syntheticKey": "person-alpha",
+      "approvedProjection": "person | Alex Carter | account manager"
+    },
+    {
+      "entityKeyDigest": "0000000000000000000000000000000000000000000000000000000000000066",
+      "clientKey": "client-1",
+      "entityType": "opportunity",
+      "syntheticKey": "opportunity-alpha",
+      "approvedProjection": "opportunity | Fleet renewal | proposal"
+    },
+    {
+      "entityKeyDigest": "0000000000000000000000000000000000000000000000000000000000000067",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "syntheticKey": "company-bravo",
+      "approvedProjection": "company | Northside Mobility | automotive"
+    },
+    {
+      "entityKeyDigest": "0000000000000000000000000000000000000000000000000000000000000068",
+      "clientKey": "client-2",
+      "entityType": "person",
+      "syntheticKey": "person-bravo",
+      "approvedProjection": "person | Jordan Lee | fleet manager"
+    },
+    {
+      "entityKeyDigest": "0000000000000000000000000000000000000000000000000000000000000069",
+      "clientKey": "client-2",
+      "entityType": "opportunity",
+      "syntheticKey": "opportunity-bravo",
+      "approvedProjection": "opportunity | Vehicle refresh | discovery"
+    },
+    {
+      "entityKeyDigest": "000000000000000000000000000000000000000000000000000000000000006a",
+      "clientKey": "client-3",
+      "entityType": "company",
+      "syntheticKey": "company-charlie",
+      "approvedProjection": "company | Harbour Transport | logistics"
+    },
+    {
+      "entityKeyDigest": "000000000000000000000000000000000000000000000000000000000000006b",
+      "clientKey": "client-3",
+      "entityType": "person",
+      "syntheticKey": "person-charlie",
+      "approvedProjection": "person | Morgan Taylor | operations lead"
+    },
+    {
+      "entityKeyDigest": "000000000000000000000000000000000000000000000000000000000000006c",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "syntheticKey": "opportunity-charlie",
+      "approvedProjection": "opportunity | Growth campaign | negotiation"
+    }
+  ]
+}
