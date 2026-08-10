@@ -1,40 +1,51 @@
-import { readdir, stat } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
+import { constants, gzipSync } from 'node:zlib'
 
-const MIB = 1024 * 1024
 const workerDir = path.resolve('dist/_worker.js')
-const RELEASE_BUDGET_BYTES = 24_750_000
+// Pages Functions run on Workers and inherit the Workers script-size limits.
+// Keep an immutable 250 kB safety margin below the current paid-plan limits.
+// https://developers.cloudflare.com/workers/platform/limits/#worker-size
+// https://developers.cloudflare.com/pages/functions/
+const RAW_RELEASE_BUDGET_BYTES = 63_750_000
+const GZIP_RELEASE_BUDGET_BYTES = 9_750_000
 
 async function deployedBytes(directory) {
-  let total = 0
+  let raw = 0
+  let gzip = 0
 
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (entry.name.endsWith('.map') || entry.name.startsWith('wrangler.')) continue
 
     const absolutePath = path.join(directory, entry.name)
     if (entry.isDirectory()) {
-      total += await deployedBytes(absolutePath)
+      const nested = await deployedBytes(absolutePath)
+      raw += nested.raw
+      gzip += nested.gzip
     } else if (entry.isFile()) {
-      total += (await stat(absolutePath)).size
+      const contents = await readFile(absolutePath)
+      raw += contents.byteLength
+      gzip += gzipSync(contents, { level: constants.Z_BEST_COMPRESSION }).byteLength
     }
   }
 
-  return total
+  return { raw, gzip }
 }
 
 const bytes = await deployedBytes(workerDir)
-const remaining = RELEASE_BUDGET_BYTES - bytes
-const format = value => `${(value / MIB).toFixed(2)} MiB`
+const rawRemaining = RAW_RELEASE_BUDGET_BYTES - bytes.raw
+const gzipRemaining = GZIP_RELEASE_BUDGET_BYTES - bytes.gzip
+const margin = remaining => remaining >= 0
+  ? `${remaining} remaining`
+  : `${Math.abs(remaining)} over`
+const summary = `raw ${bytes.raw} / ${RAW_RELEASE_BUDGET_BYTES} bytes (${margin(rawRemaining)}); `
+  + `gzip ${bytes.gzip} / ${GZIP_RELEASE_BUDGET_BYTES} bytes (${margin(gzipRemaining)})`
 
-console.log(
-  `[worker-size] ${format(bytes)} / ${format(RELEASE_BUDGET_BYTES)} `
-  + `(${format(remaining)} remaining)`
-)
+console.log(`[worker-size] ${summary}`)
 
-if (remaining < 0) {
+if (rawRemaining < 0 || gzipRemaining < 0) {
   throw new Error(
-    `Worker exceeds the ${format(RELEASE_BUDGET_BYTES)} release budget by `
-    + `${format(Math.abs(remaining))}. `
+    `Worker exceeds the immutable Workers Paid safety budget: ${summary}. `
     + 'Move server functionality to a standalone Worker before deploying Pages.'
   )
 }
