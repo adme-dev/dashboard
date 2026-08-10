@@ -330,7 +330,14 @@ export async function executeCrmSearchReconciliationSchedule(
            AND operation.state IN ('admitted','provider_pending')
            AND document.confirmation_state IN ('provider_pending','delete_pending')
            AND (document.lease_expires_at IS NULL OR document.lease_expires_at <= NOW())
-         ORDER BY document.updated_at, document.id
+           AND (operation.state = 'provider_pending' OR EXISTS (
+             SELECT 1
+               FROM crm_search_provider_attempts attempt
+              WHERE attempt.operation_id = operation.id
+                AND attempt.provider = 'vectorize'
+                AND attempt.state = 'ambiguous'
+           ))
+         ORDER BY operation.next_attempt_at, document.updated_at, document.id
          LIMIT $2
          FOR UPDATE OF operation, document SKIP LOCKED
       )

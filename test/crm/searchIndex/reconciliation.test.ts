@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { reconcileCrmSearchIndex } from '~~/server/utils/crm/searchIndex/reconciliation'
+import { crmSearchRepositoryDependencies } from '~~/server/utils/crm/searchIndex/repository'
+import {
+  createDefaultCrmSearchReconciliationDependencies,
+  reconcileCrmSearchIndex
+} from '~~/server/utils/crm/searchIndex/reconciliation'
 
 const organisationScopeId = '11111111-1111-4111-8111-111111111111'
 const clientId = '22222222-2222-4222-8222-222222222222'
@@ -48,6 +52,27 @@ function dependencies(claims: unknown[]) {
 }
 
 describe('CRM search reconciliation', () => {
+  it('claims only due work and prioritizes manual-now operations ahead of future backoff', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] })
+    const transactionSpy = vi.spyOn(crmSearchRepositoryDependencies, 'transactionWithoutRetry')
+      .mockImplementation(async work => await work({ query } as never))
+    try {
+      const deps = createDefaultCrmSearchReconciliationDependencies()
+
+      await expect(deps.claimPendingConfirmations({
+        limit: 25,
+        now: '2026-08-11T01:02:03.456Z'
+      })).resolves.toEqual([])
+
+      const claimSql = String(query.mock.calls[0]?.[0])
+      expect(claimSql).toMatch(/operation\.next_attempt_at\s*<=\s*\$1(?:::TIMESTAMPTZ)?/i)
+      expect(claimSql).toMatch(/ORDER\s+BY\s+operation\.next_attempt_at,\s*document\.updated_at,\s*document\.id/i)
+      expect(claimSql).toMatch(/operation\.state\s*=\s*'provider_pending'\s+OR\s+EXISTS[\s\S]*attempt\.provider\s*=\s*'vectorize'[\s\S]*attempt\.state\s*=\s*'ambiguous'/i)
+    } finally {
+      transactionSpy.mockRestore()
+    }
+  })
+
   it('confirms an upsert only for the exact canonical namespace, active schema, revision, key, and tag', async () => {
     const claim = pending('upsert')
     const runtime = {

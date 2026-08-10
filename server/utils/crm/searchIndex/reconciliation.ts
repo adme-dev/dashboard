@@ -299,13 +299,14 @@ export function createDefaultCrmSearchReconciliationDependencies(): CrmSearchRec
             WHERE document.confirmation_state IN ('provider_pending', 'delete_pending')
               AND operation.state IN ('admitted', 'provider_pending')
               AND (document.lease_expires_at IS NULL OR document.lease_expires_at <= $1)
+              AND operation.next_attempt_at <= $1::TIMESTAMPTZ
               AND (operation.state = 'provider_pending' OR EXISTS (
                 SELECT 1 FROM crm_search_provider_attempts attempt
                 WHERE attempt.operation_id = operation.id
                   AND attempt.provider = 'vectorize'
                   AND attempt.state = 'ambiguous'
               ))
-            ORDER BY document.updated_at, document.id
+            ORDER BY operation.next_attempt_at, document.updated_at, document.id
             LIMIT $2
             FOR UPDATE OF document, operation SKIP LOCKED
           ), leased_documents AS (
