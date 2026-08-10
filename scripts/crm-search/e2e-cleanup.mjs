@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 
+import { verifyPreviewExecutionAuthorizationEnvelope } from './preview-execution-authorization.mjs'
+
 const DIGEST = /^[a-f0-9]{64}$/u
 const SHA = /^[a-f0-9]{40}$/u
 const EXACT_EXECUTE_FLAG = 'EXECUTE ISOLATED CRM SEARCH PREVIEW CLEANUP'
@@ -49,7 +51,7 @@ function assertResource(resource, productionDenylist) {
 }
 
 export async function planPreviewCleanup({
-  dryRun = true, executeFlag, authorization, verifyExecutionAuthorization,
+  dryRun = true, executeFlag, authorizationEnvelope, authorizationVerification,
   ownedResources, authorizedResources = ownedResources, productionDenylist, execute,
   nowMs = Date.now()
 }) {
@@ -64,10 +66,14 @@ export async function planPreviewCleanup({
       ownedResources: [...ownedResources].sort((left, right) => left.identity.localeCompare(right.identity))
     }
   }
-  if (executeFlag !== EXACT_EXECUTE_FLAG
-    || typeof verifyExecutionAuthorization !== 'function' || typeof execute !== 'function') {
+  if (executeFlag !== EXACT_EXECUTE_FLAG || !authorizationEnvelope
+    || !authorizationVerification || typeof execute !== 'function') {
     throw new Error('crm_search_preview_execute_authorization_required')
   }
+  const authorization = verifyPreviewExecutionAuthorizationEnvelope(authorizationEnvelope, {
+    ...authorizationVerification,
+    nowMs
+  })
   assertAuthorization(authorization, nowMs)
   for (const resource of authorizedResources) assertResource(resource, productionDenylist)
   for (const resource of ownedResources) assertResource(resource, productionDenylist)
@@ -82,10 +88,7 @@ export async function planPreviewCleanup({
     ))) {
     throw new Error('crm_search_cleanup_inventory_authorization_drift')
   }
-  const verifiedAuthorization = await verifyExecutionAuthorization(authorization)
-  if (canonical(verifiedAuthorization) !== canonical(authorization)) {
-    throw new Error('crm_search_preview_execute_authorization_required')
-  }
+  const verifiedAuthorization = authorization
 
   const journal = []
   const mutationJournal = []

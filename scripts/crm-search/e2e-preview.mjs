@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 
 import { planPreviewCleanup } from './e2e-cleanup.mjs'
+import { verifyPreviewExecutionAuthorizationEnvelope } from './preview-execution-authorization.mjs'
 
 const DIGEST = /^[a-f0-9]{64}$/u
 const SHA = /^[a-f0-9]{40}$/u
@@ -70,19 +71,20 @@ function assertMutation(result, resource) {
 }
 
 export async function runPreviewE2E({
-  dryRun = true, executeFlag, authorization, verifyExecutionAuthorization,
+  dryRun = true, executeFlag, authorizationEnvelope, authorizationVerification,
   plan, execute, nowMs = Date.now()
 }) {
   if (!plan || typeof execute !== 'function') throw new Error('crm_search_preview_plan_invalid')
   if (dryRun) return { dryRun: true, mutationCount: 0, plan }
-  if (executeFlag !== EXACT_EXECUTE_FLAG || typeof verifyExecutionAuthorization !== 'function') {
+  if (executeFlag !== EXACT_EXECUTE_FLAG || !authorizationEnvelope || !authorizationVerification) {
     throw new Error('crm_search_preview_execute_authorization_required')
   }
+  const authorization = verifyPreviewExecutionAuthorizationEnvelope(authorizationEnvelope, {
+    ...authorizationVerification,
+    nowMs
+  })
   assertPlanAndAuthorization(plan, authorization, nowMs)
-  const verifiedAuthorization = await verifyExecutionAuthorization(authorization)
-  if (canonical(verifiedAuthorization) !== canonical(authorization)) {
-    throw new Error('crm_search_preview_execute_authorization_required')
-  }
+  const verifiedAuthorization = authorization
 
   const journal = []
   const capturedResources = []
@@ -160,8 +162,8 @@ export async function runPreviewE2E({
       cleanup = await planPreviewCleanup({
         dryRun: false,
         executeFlag: 'EXECUTE ISOLATED CRM SEARCH PREVIEW CLEANUP',
-        authorization: verifiedAuthorization,
-        verifyExecutionAuthorization: async () => verifiedAuthorization,
+        authorizationEnvelope,
+        authorizationVerification,
         ownedResources: capturedResources,
         authorizedResources: plan.resources,
         productionDenylist: plan.productionDenylist,

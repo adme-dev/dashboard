@@ -1,8 +1,9 @@
-import { createHash } from 'node:crypto'
+import { createHash, generateKeyPairSync, sign } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 
 import { planPreviewCleanup } from '../../scripts/crm-search/e2e-cleanup.mjs'
 import { runPreviewE2E } from '../../scripts/crm-search/e2e-preview.mjs'
+import { canonicalPreviewAuthorizationPayload } from '../../scripts/crm-search/preview-execution-authorization.mjs'
 
 const sha = 'a'.repeat(40)
 const digest = (value: string) => createHash('sha256').update(value).digest('hex')
@@ -36,13 +37,54 @@ const workerResource = {
 const resources = [resource, pagesResource, workerResource]
 const authorization = {
   version: 'crm-search-preview-execution-authorization-v1',
+  approvalId: '10000000-0000-4000-8000-000000000001',
   environment: 'preview',
   implementationSha: sha,
   artifactManifestDigest: digest('artifact'),
   bindingManifestDigest: digest('bindings'),
   resourceReadbackDigest: digest(canonical(resources)),
   neonAttestationDigest: digest('neon'),
-  expiresAt: '2026-08-12T00:00:00.000Z'
+  cloudflareAccountId: 'a5b299b3ad15c1b5b895dc66f9357b17',
+  neonProjectId: 'square-tooth-23821574',
+  neonParentBranchId: 'br-small-hall-a4qtwjgo',
+  pagesProject: 'agency-dashboard',
+  adapterDigest: digest('adapter'),
+  reason: 'Isolated final-SHA CRM search verification with mandatory cleanup',
+  issuedAt: '2026-08-11T00:00:00.000Z',
+  expiresAt: '2026-08-11T00:15:00.000Z'
+}
+const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+const authorizationEnvelope = {
+  version: 'crm-search-preview-execution-authorization-envelope-v1',
+  keyId: 'preview-release-v1',
+  payload: authorization,
+  signature: sign(
+    null,
+    Buffer.from(canonicalPreviewAuthorizationPayload(authorization), 'utf8'),
+    privateKey
+  ).toString('base64url')
+}
+const authorizationVerification = {
+  keyring: {
+    version: 'crm-search-preview-execution-keyring-v1',
+    activeKeyId: 'preview-release-v1',
+    keys: [{
+      keyId: 'preview-release-v1',
+      publicKeyPem: publicKey.export({ type: 'spki', format: 'pem' }).toString()
+    }]
+  },
+  expected: {
+    cloudflareAccountId: authorization.cloudflareAccountId,
+    neonProjectId: authorization.neonProjectId,
+    neonParentBranchId: authorization.neonParentBranchId,
+    pagesProject: authorization.pagesProject,
+    implementationSha: authorization.implementationSha,
+    artifactManifestDigest: authorization.artifactManifestDigest,
+    bindingManifestDigest: authorization.bindingManifestDigest,
+    resourceReadbackDigest: authorization.resourceReadbackDigest,
+    neonAttestationDigest: authorization.neonAttestationDigest,
+    adapterDigest: authorization.adapterDigest
+  }
 }
 const planBindings = {
   artifactManifestDigest: authorization.artifactManifestDigest,
@@ -57,14 +99,14 @@ describe('CRM search guarded preview execution', () => {
     await expect(runPreviewE2E({
       dryRun: false,
       executeFlag: 'wrong',
-      authorization,
+      authorizationEnvelope,
+      authorizationVerification,
       plan: {
         version: 'crm-search-preview-e2e-plan-v1', environment: 'preview',
         implementationSha: sha, productionDenylist: ['agency-crm-search'],
         resources, exercises: ['portal_keyword', 'agency_shadow', 'agency_assist'],
         ...planBindings
       },
-      verifyExecutionAuthorization: vi.fn(async () => authorization),
       execute
     })).rejects.toThrow('crm_search_preview_execute_authorization_required')
     expect(execute).not.toHaveBeenCalled()
@@ -72,14 +114,14 @@ describe('CRM search guarded preview execution', () => {
     await expect(runPreviewE2E({
       dryRun: false,
       executeFlag: 'EXECUTE ISOLATED CRM SEARCH PREVIEW',
-      authorization,
+      authorizationEnvelope,
+      authorizationVerification,
       plan: {
         version: 'crm-search-preview-e2e-plan-v1', environment: 'preview',
         implementationSha: sha, productionDenylist: ['agency-crm-search'],
         resources, exercises: ['portal_keyword', 'agency_shadow', 'agency_assist'],
         ...planBindings, resourceReadbackDigest: digest('drifted-resource-readback')
       },
-      verifyExecutionAuthorization: vi.fn(async () => authorization),
       execute
     })).rejects.toThrow('crm_search_preview_execute_authorization_required')
     expect(execute).not.toHaveBeenCalled()
@@ -121,7 +163,8 @@ describe('CRM search guarded preview execution', () => {
     const result = await runPreviewE2E({
       dryRun: false,
       executeFlag: 'EXECUTE ISOLATED CRM SEARCH PREVIEW',
-      authorization,
+      authorizationEnvelope,
+      authorizationVerification,
       nowMs: Date.parse('2026-08-11T00:01:00.000Z'),
       plan: {
         version: 'crm-search-preview-e2e-plan-v1', environment: 'preview',
@@ -129,7 +172,6 @@ describe('CRM search guarded preview execution', () => {
         resources, exercises: ['portal_keyword', 'agency_shadow', 'agency_assist'],
         ...planBindings
       },
-      verifyExecutionAuthorization: vi.fn(async () => authorization),
       execute
     })
 
@@ -161,8 +203,8 @@ describe('CRM search guarded preview execution', () => {
       executeFlag: 'EXECUTE ISOLATED CRM SEARCH PREVIEW CLEANUP',
       ownedResources: [{ ...resource, identity: 'agency-crm-search' }],
       productionDenylist: ['agency-crm-search'],
-      authorization,
-      verifyExecutionAuthorization: vi.fn(async () => authorization),
+      authorizationEnvelope,
+      authorizationVerification,
       execute
     })).rejects.toThrow('crm_search_cleanup_production_target_forbidden')
     expect(execute).not.toHaveBeenCalled()
@@ -173,8 +215,8 @@ describe('CRM search guarded preview execution', () => {
       ownedResources: [resource],
       authorizedResources: resources,
       productionDenylist: ['agency-crm-search'],
-      authorization,
-      verifyExecutionAuthorization: vi.fn(async () => authorization),
+      authorizationEnvelope,
+      authorizationVerification,
       execute
     })
     expect(execute).toHaveBeenCalledTimes(1)
