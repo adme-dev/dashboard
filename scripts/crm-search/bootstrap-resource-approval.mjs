@@ -29,12 +29,20 @@ export function canonicalBootstrapApprovalPayload(payload) {
 }
 
 function requirePayload(payload, nowMs, expectedType) {
-  const exact = [
+  const bootstrap = [
     'type', 'environment', 'originalTimestamp', 'expiresAt', 'implementationGitSha',
     'artifactManifestDigest', 'bindingManifestDigest', 'evidenceBundleHash',
     'organisationScopeId', 'requestedByActorId', 'approvedBy', 'maximumCostUsdMicros',
     'clientIds', 'reason'
   ]
+  const production = [
+    'approvalId', 'approvalRevision', 'type', 'environment', 'originalTimestamp',
+    'expiresAt', 'implementationGitSha', 'artifactManifestDigest', 'pagesBundleDigest',
+    'workerBundleDigest', 'bindingManifestDigest', 'evidenceBundleHash', 'rateCardId',
+    'expectedControlRevision', 'organisationScopeId', 'requestedByActorId', 'approvedBy',
+    'maximumCostUsdMicros', 'clientIds', 'reason'
+  ]
+  const exact = expectedType === 'production_deploy' ? production : bootstrap
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)
     || Object.keys(payload).sort().join('\0') !== exact.sort().join('\0')
     || payload.type !== expectedType
@@ -49,6 +57,13 @@ function requirePayload(payload, nowMs, expectedType) {
     || payload.reason.length < 10 || payload.reason.length > 2_000) {
     fail('crm_search_bootstrap_payload_invalid')
   }
+  if (expectedType === 'production_deploy'
+    && (!UUID.test(payload.approvalId) || !UUID.test(payload.rateCardId)
+      || !Number.isSafeInteger(payload.approvalRevision) || payload.approvalRevision < 0
+      || !Number.isSafeInteger(payload.expectedControlRevision) || payload.expectedControlRevision < 0
+      || !DIGEST.test(payload.pagesBundleDigest) || !DIGEST.test(payload.workerBundleDigest))) {
+    fail('crm_search_bootstrap_payload_invalid')
+  }
   const issued = Date.parse(payload.originalTimestamp)
   const expires = Date.parse(payload.expiresAt)
   if (!ISO_TIMESTAMP.test(payload.originalTimestamp) || !ISO_TIMESTAMP.test(payload.expiresAt)
@@ -57,6 +72,30 @@ function requirePayload(payload, nowMs, expectedType) {
     fail('crm_search_bootstrap_approval_expired')
   }
   return payload
+}
+
+export function assertFreshProductionApprovalReadback(readback, approval, nowMs) {
+  const approvalPayload = Object.fromEntries(
+    Object.entries(approval).filter(([key]) => key !== 'importedProvenanceHash')
+  )
+  if (!readback || typeof readback !== 'object' || Array.isArray(readback)
+    || Object.keys(readback).sort().join('\0') !== [
+      ...Object.keys(approvalPayload), 'status', 'revokedAt', 'readbackAt'
+    ].sort().join('\0')) fail('crm_search_release_approval_readback_invalid')
+  const readbackAt = Date.parse(readback.readbackAt)
+  if (!ISO_TIMESTAMP.test(readback.readbackAt || '') || !Number.isFinite(readbackAt)
+    || readbackAt > nowMs + 5_000 || nowMs - readbackAt > 60_000) {
+    fail('crm_search_release_approval_readback_stale')
+  }
+  if (readback.status !== 'active' || readback.revokedAt !== null) {
+    fail('crm_search_release_approval_revoked')
+  }
+  if (nowMs >= Date.parse(approvalPayload.expiresAt)) {
+    fail('crm_search_bootstrap_approval_expired')
+  }
+  const currentPayload = Object.fromEntries(Object.keys(approvalPayload).map(key => [key, readback[key]]))
+  if (canonical(currentPayload) !== canonical(approvalPayload)) fail('crm_search_release_approval_drift')
+  return { ok: true }
 }
 
 export async function verifyReleaseApprovalEnvelope(envelope, options) {

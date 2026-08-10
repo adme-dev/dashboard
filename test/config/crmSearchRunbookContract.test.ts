@@ -49,6 +49,8 @@ describe('CRM search release runbooks', () => {
     expect(pkg.scripts['crm-search:artifact:verify']).toContain('--dry-run')
     expect(pkg.scripts['crm-search:migrate:test']).toContain('--dry-run')
     const ci = project('.github/workflows/ci.yml')
+    expect(ci).toContain('Build and sign frozen release bytes')
+    expect(ci).toContain('Upload frozen release artifact')
     const deployJob = ci.slice(ci.indexOf('\n  deploy:'))
     expect(deployJob).toContain('environment: production_deploy')
     expect(deployJob).toContain('Download frozen release artifact')
@@ -56,6 +58,8 @@ describe('CRM search release runbooks', () => {
     expect(deployJob).not.toContain('pnpm run build')
     expect(deployJob).not.toContain('cloudflare/wrangler-action')
     expect(deployJob).not.toContain('--commit-dirty=true')
+    expect(deployJob).toContain('CRM_SEARCH_RELEASE_APPROVAL_DATABASE_URL')
+    expect(deployJob).toContain('crm-search:consumer:upload')
   })
 
   it('documents independent release/sealed keys without a local secret fallback', () => {

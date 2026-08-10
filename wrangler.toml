@@ -325,8 +325,301 @@ name = "RATE_LIMITER"
 class_name = "RateLimiter"
 script_name = "rate-limiter-worker"
 
-# Environment-specific variables are managed in the Cloudflare Pages dashboard
-# (Settings > Variables and Secrets) for preview and production environments.
+# Pages bindings are non-inheritable. Both deployable environments repeat the
+# complete checked-in surface so Wrangler cannot silently inherit production
+# state into preview. Secret values remain dashboard-managed and the release
+# guard requires a separately signed name+digest readback for both environments.
+[env.production]
+
+[[env.production.kv_namespaces]]
+binding = "CACHE"
+id = "7d5db1c489cb40f4b809d611e1408acd"
+
+[[env.production.queues.producers]]
+binding = "JOBS_QUEUE"
+queue = "agency-jobs"
+[[env.production.queues.producers]]
+binding = "LEADS_DELIVERY_QUEUE"
+queue = "leads-delivery-queue"
+[[env.production.queues.producers]]
+binding = "CRM_EMAIL_INBOUND_QUEUE"
+queue = "crm-email-inbound-queue"
+[[env.production.queues.producers]]
+binding = "MEASUREMENT_DELIVERY_QUEUE"
+queue = "measurement-delivery"
+[[env.production.queues.producers]]
+binding = "CRM_SEARCH_INDEX_QUEUE"
+queue = "agency-crm-search-index"
+[[env.production.queues.producers]]
+binding = "MUSIC_QUEUE"
+queue = "music-gen"
+[[env.production.queues.producers]]
+binding = "TIMELINE_RENDER_QUEUE"
+queue = "timeline-render"
+[[env.production.queues.producers]]
+binding = "VIDEO_RENDER_QUEUE"
+queue = "video-render"
+[[env.production.queues.producers]]
+binding = "BANNER_RENDER_QUEUE"
+queue = "banner-render"
+[[env.production.queues.producers]]
+binding = "VIDEO_GENERATION_QUEUE"
+queue = "video-generation"
+[[env.production.queues.producers]]
+binding = "ASSET_INTELLIGENCE_QUEUE"
+queue = "asset-intelligence"
+
+[[env.production.r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "agency-files"
+[[env.production.r2_buckets]]
+binding = "EMAIL_QUARANTINE_BUCKET"
+bucket_name = "email-lead-quarantine"
+[[env.production.r2_buckets]]
+binding = "SITE_INTELLIGENCE_BUCKET"
+bucket_name = "agency-site-intelligence"
+[[env.production.r2_buckets]]
+binding = "SEARCH_AUTHORITY_BUCKET"
+bucket_name = "agency-search-authority-publications"
+[[env.production.r2_buckets]]
+binding = "CRM_SEARCH_SEALED_HOLDOUTS"
+bucket_name = "agency-crm-search-sealed-holdouts"
+
+[env.production.ai]
+binding = "AI"
+[env.production.browser]
+binding = "BROWSER"
+
+[[env.production.vectorize]]
+binding = "VECTORIZE"
+index_name = "agency-search"
+[[env.production.vectorize]]
+binding = "SITE_INTELLIGENCE_VECTORIZE"
+index_name = "automotive-site-intelligence"
+[[env.production.vectorize]]
+binding = "CRM_SEARCH_VECTORIZE"
+index_name = "agency-crm-search"
+
+[[env.production.hyperdrive]]
+binding = "HYPERDRIVE"
+id = "900b4b74ec41462cbbabebd0aa8775aa"
+[[env.production.hyperdrive]]
+binding = "HYPERDRIVE_FRESH"
+id = "90228af3e2cc461bbc09accc3b47bd9f"
+
+[[env.production.services]]
+binding = "AGENCY_WORKFLOWS"
+service = "agency-workflows"
+[[env.production.services]]
+binding = "CRM_SEARCH_EVALUATION_RUNNER"
+service = "agency-crm-search-evaluation-runner"
+[[env.production.services]]
+binding = "CRM_SEARCH_ANALYTICS_KEY_MANAGER"
+service = "agency-crm-search-analytics-key-manager"
+
+[[env.production.durable_objects.bindings]]
+name = "CHAT_ROOMS"
+class_name = "ChatRoom"
+script_name = "chat-rooms-worker"
+[[env.production.durable_objects.bindings]]
+name = "BOARD_ROOMS"
+class_name = "BoardRoom"
+script_name = "board-events-worker"
+[[env.production.durable_objects.bindings]]
+name = "SOCIAL_INBOX_ROOMS"
+class_name = "InboxRoom"
+script_name = "social-inbox-rooms"
+[[env.production.durable_objects.bindings]]
+name = "BANNER_ROOMS"
+class_name = "BannerRoom"
+script_name = "banner-rooms-worker"
+[[env.production.durable_objects.bindings]]
+name = "OFFICE_ROOMS"
+class_name = "OfficeRoom"
+script_name = "office-room-worker"
+[[env.production.durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
+script_name = "rate-limiter-worker"
+
+[env.production.vars]
+APP_NAME = "XeroFlow Agency"
+NODE_VERSION = "24"
+AI_GOVERNED_CATALOG_MODE = "legacy"
+EMAIL_FROM = "notification@adme.net.au"
+SEARCH_AUTHORITY_ENABLED = "true"
+NUXT_SEARCH_AUTHORITY_ENABLED = "true"
+NUXT_PUBLIC_SEARCH_AUTHORITY_ENABLED = "true"
+CRM_EMAIL_CONVERSATIONS_ENABLED = "true"
+CRM_EMAIL_REPLY_CURRENT_VERSION = "1"
+CRM_EMAIL_LEAD_ROUTE_DOMAIN = "xeroflow.io"
+PERSONA_AUDIENCE_PROVIDER_WRITES_ENABLED = "true"
+PERSONA_META_AUDIENCE_WRITES_ENABLED = "true"
+PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED = "true"
+USER_MEMBER_NOTIFICATIONS_DISABLED = "true"
+AI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/a5b299b3ad15c1b5b895dc66f9357b17/default"
+AGENCY_WORKFLOWS_ENABLED = "true"
+SITE_INTELLIGENCE_ENABLED = "true"
+SITE_INTELLIGENCE_AI_ENABLED = "false"
+NEARBY_MARKET_DISCOVERY_ENABLED = "false"
+AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256 = "8aa2f98fd3d621bb0ac8f0157622d86cae347e14cdb35f32375b9467778462f2"
+AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY = "false"
+AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED = "false"
+AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY = "false"
+MCP_SERVER_ENABLED = "true"
+MCP_WORKER_ORIGIN = "https://mcp-server.adme-dev.workers.dev"
+MCP_GEN_TOOLS_ENABLED = "true"
+MCP_VIDEO_TOOLS_ENABLED = "true"
+MCP_BANNER_TOOLS_ENABLED = "true"
+MCP_FINANCIAL_TOOLS_ENABLED = "false"
+MCP_REQUIRE_WRITE_SCOPE = "false"
+CRM_SEARCH_RELEASE_ENVIRONMENT = "production"
+
+[env.preview]
+
+[[env.preview.kv_namespaces]]
+binding = "CACHE"
+id = "c6f67b2b5e2d4e878c6cb0ad7ee0f001"
+
+[[env.preview.queues.producers]]
+binding = "JOBS_QUEUE"
+queue = "agency-jobs-preview"
+[[env.preview.queues.producers]]
+binding = "LEADS_DELIVERY_QUEUE"
+queue = "leads-delivery-queue-preview"
+[[env.preview.queues.producers]]
+binding = "CRM_EMAIL_INBOUND_QUEUE"
+queue = "crm-email-inbound-queue-preview"
+[[env.preview.queues.producers]]
+binding = "MEASUREMENT_DELIVERY_QUEUE"
+queue = "measurement-delivery-preview"
+[[env.preview.queues.producers]]
+binding = "CRM_SEARCH_INDEX_QUEUE"
+queue = "agency-crm-search-index-preview"
+[[env.preview.queues.producers]]
+binding = "MUSIC_QUEUE"
+queue = "music-gen-preview"
+[[env.preview.queues.producers]]
+binding = "TIMELINE_RENDER_QUEUE"
+queue = "timeline-render-preview"
+[[env.preview.queues.producers]]
+binding = "VIDEO_RENDER_QUEUE"
+queue = "video-render-preview"
+[[env.preview.queues.producers]]
+binding = "BANNER_RENDER_QUEUE"
+queue = "banner-render-preview"
+[[env.preview.queues.producers]]
+binding = "VIDEO_GENERATION_QUEUE"
+queue = "video-generation-preview"
+[[env.preview.queues.producers]]
+binding = "ASSET_INTELLIGENCE_QUEUE"
+queue = "asset-intelligence-preview"
+
+[[env.preview.r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "agency-files-preview"
+[[env.preview.r2_buckets]]
+binding = "EMAIL_QUARANTINE_BUCKET"
+bucket_name = "email-lead-quarantine-preview"
+[[env.preview.r2_buckets]]
+binding = "SITE_INTELLIGENCE_BUCKET"
+bucket_name = "agency-site-intelligence-preview"
+[[env.preview.r2_buckets]]
+binding = "SEARCH_AUTHORITY_BUCKET"
+bucket_name = "agency-search-authority-publications-preview"
+[[env.preview.r2_buckets]]
+binding = "CRM_SEARCH_SEALED_HOLDOUTS"
+bucket_name = "agency-crm-search-sealed-holdouts-preview"
+
+[env.preview.ai]
+binding = "AI"
+[env.preview.browser]
+binding = "BROWSER"
+
+[[env.preview.vectorize]]
+binding = "VECTORIZE"
+index_name = "agency-search-preview"
+[[env.preview.vectorize]]
+binding = "SITE_INTELLIGENCE_VECTORIZE"
+index_name = "automotive-site-intelligence-preview"
+[[env.preview.vectorize]]
+binding = "CRM_SEARCH_VECTORIZE"
+index_name = "agency-crm-search-preview"
+
+[[env.preview.hyperdrive]]
+binding = "HYPERDRIVE"
+id = "c6f67b2b5e2d4e878c6cb0ad7ee0f002"
+[[env.preview.hyperdrive]]
+binding = "HYPERDRIVE_FRESH"
+id = "c6f67b2b5e2d4e878c6cb0ad7ee0f003"
+
+[[env.preview.services]]
+binding = "AGENCY_WORKFLOWS"
+service = "agency-workflows-preview"
+[[env.preview.services]]
+binding = "CRM_SEARCH_EVALUATION_RUNNER"
+service = "agency-crm-search-evaluation-runner-preview"
+[[env.preview.services]]
+binding = "CRM_SEARCH_ANALYTICS_KEY_MANAGER"
+service = "agency-crm-search-analytics-key-manager-preview"
+
+[[env.preview.durable_objects.bindings]]
+name = "CHAT_ROOMS"
+class_name = "ChatRoom"
+script_name = "chat-rooms-worker-preview"
+[[env.preview.durable_objects.bindings]]
+name = "BOARD_ROOMS"
+class_name = "BoardRoom"
+script_name = "board-events-worker-preview"
+[[env.preview.durable_objects.bindings]]
+name = "SOCIAL_INBOX_ROOMS"
+class_name = "InboxRoom"
+script_name = "social-inbox-rooms-preview"
+[[env.preview.durable_objects.bindings]]
+name = "BANNER_ROOMS"
+class_name = "BannerRoom"
+script_name = "banner-rooms-worker-preview"
+[[env.preview.durable_objects.bindings]]
+name = "OFFICE_ROOMS"
+class_name = "OfficeRoom"
+script_name = "office-room-worker-preview"
+[[env.preview.durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
+script_name = "rate-limiter-worker-preview"
+
+[env.preview.vars]
+APP_NAME = "XeroFlow Agency"
+NODE_VERSION = "24"
+AI_GOVERNED_CATALOG_MODE = "legacy"
+EMAIL_FROM = "notification@adme.net.au"
+SEARCH_AUTHORITY_ENABLED = "true"
+NUXT_SEARCH_AUTHORITY_ENABLED = "true"
+NUXT_PUBLIC_SEARCH_AUTHORITY_ENABLED = "true"
+CRM_EMAIL_CONVERSATIONS_ENABLED = "true"
+CRM_EMAIL_REPLY_CURRENT_VERSION = "1"
+CRM_EMAIL_LEAD_ROUTE_DOMAIN = "xeroflow.io"
+PERSONA_AUDIENCE_PROVIDER_WRITES_ENABLED = "true"
+PERSONA_META_AUDIENCE_WRITES_ENABLED = "true"
+PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED = "true"
+USER_MEMBER_NOTIFICATIONS_DISABLED = "true"
+AI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/a5b299b3ad15c1b5b895dc66f9357b17/default"
+AGENCY_WORKFLOWS_ENABLED = "true"
+SITE_INTELLIGENCE_ENABLED = "true"
+SITE_INTELLIGENCE_AI_ENABLED = "false"
+NEARBY_MARKET_DISCOVERY_ENABLED = "false"
+AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256 = "8aa2f98fd3d621bb0ac8f0157622d86cae347e14cdb35f32375b9467778462f2"
+AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY = "false"
+AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED = "false"
+AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY = "false"
+MCP_SERVER_ENABLED = "true"
+MCP_WORKER_ORIGIN = "https://mcp-server.adme-dev.workers.dev"
+MCP_GEN_TOOLS_ENABLED = "true"
+MCP_VIDEO_TOOLS_ENABLED = "true"
+MCP_BANNER_TOOLS_ENABLED = "true"
+MCP_FINANCIAL_TOOLS_ENABLED = "false"
+MCP_REQUIRE_WRITE_SCOPE = "false"
+CRM_SEARCH_RELEASE_ENVIRONMENT = "preview"
 
 # ============================================
 # Scheduled Triggers
