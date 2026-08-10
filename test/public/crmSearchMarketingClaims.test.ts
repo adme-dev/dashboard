@@ -37,7 +37,10 @@ const FORBIDDEN_PRESENT_TENSE_CLAIMS = [
   /hybrid approach delivers better recall than either method alone/i,
   /text embeddings are generated to enable vector-based search across your data/i,
   /tasks, briefs, clients, and spend data/i,
-  /tasks, clients, briefs, and knowledge base entries are embedded as vectors/i
+  /tasks, clients, briefs, and knowledge base entries are embedded as vectors/i,
+  /Your agency AI, trained on your data/i,
+  /XeroFlow learns from your unique workflows, clients, and operations/i,
+  /Private, continuous, and entirely under your control/i
 ] as const
 
 interface MarketingClaimEntry {
@@ -46,6 +49,7 @@ interface MarketingClaimEntry {
   route: string
   location: 'rendered_text' | 'seo_description' | 'seo_og_description' | 'navigation' | 'feature_catalog' | 'privacy_disclosure'
   renderedText: string
+  routeNeedle?: string
   sourceNeedle: string
   entitySet: readonly string[]
   userSurface: string
@@ -60,19 +64,27 @@ interface MarketingClaimManifest {
   portalSemanticRanking: boolean
   freshness: string
   semanticEntitySet: readonly string[]
+  surfaceCeilings: Readonly<Record<'agency_global' | 'portal_global' | 'agency_ai', 'off' | 'shadow' | 'assist'>>
   claims: readonly MarketingClaimEntry[]
   negativeAssertions: readonly { key: string, pattern: string }[]
 }
 
-async function loadManifest(): Promise<MarketingClaimManifest> {
+interface MarketingClaimModule {
+  CRM_SEARCH_MARKETING_CLAIMS?: MarketingClaimManifest
+  assertMarketingClaimSurfaceCeilings?: (claims: readonly Pick<MarketingClaimEntry, 'key' | 'userSurface' | 'maximumMode'>[]) => void
+}
+
+async function loadManifestModule(): Promise<MarketingClaimModule> {
   if (!existsSync(MANIFEST_PATH)) {
     throw new Error(`Missing checked marketing claim manifest: ${MANIFEST_PATH}`)
   }
 
   const manifestUrl = pathToFileURL(MANIFEST_PATH).href
-  const loaded = await import(/* @vite-ignore */ manifestUrl) as {
-    CRM_SEARCH_MARKETING_CLAIMS?: MarketingClaimManifest
-  }
+  return await import(/* @vite-ignore */ manifestUrl) as MarketingClaimModule
+}
+
+async function loadManifest(): Promise<MarketingClaimManifest> {
+  const loaded = await loadManifestModule()
 
   if (!loaded.CRM_SEARCH_MARKETING_CLAIMS) {
     throw new Error('marketingClaimManifest.ts must export CRM_SEARCH_MARKETING_CLAIMS')
@@ -98,8 +110,41 @@ describe('CRM search public claim manifest', () => {
       defaultMode: 'off',
       portalSemanticRanking: false,
       freshness: 'after_confirmed_indexing',
-      semanticEntitySet: ['person', 'company', 'opportunity']
+      semanticEntitySet: ['person', 'company', 'opportunity'],
+      surfaceCeilings: {
+        agency_global: 'shadow',
+        portal_global: 'off',
+        agency_ai: 'assist'
+      }
     })
+  })
+
+  it('rejects a claim whose mode exceeds its exact user-surface ceiling', async () => {
+    const loaded = await loadManifestModule()
+    const assertSurfaceCeilings = loaded.assertMarketingClaimSurfaceCeilings
+
+    expect(assertSurfaceCeilings).toBeTypeOf('function')
+    expect(() => assertSurfaceCeilings?.([
+      { key: 'agency-visible-assist', userSurface: 'agency_global', maximumMode: 'assist' },
+      { key: 'portal-shadow', userSurface: 'portal_global', maximumMode: 'shadow' },
+      { key: 'agency-ai-assist', userSurface: 'agency_ai', maximumMode: 'assist' }
+    ])).toThrow(/agency-visible-assist.*agency_global.*shadow|portal-shadow.*portal_global.*off/i)
+  })
+
+  it('splits composite feature copy across the agency, portal, and assistant ceilings', async () => {
+    const manifest = await loadManifest()
+    const featureClaims = manifest.claims.filter(claim => claim.key.startsWith('features.catalogue.crm_search'))
+    const detailClaims = manifest.claims.filter(claim => claim.key.startsWith('features.detail.crm_search'))
+
+    expect(featureClaims.map(claim => [claim.userSurface, claim.maximumMode])).toEqual([
+      ['agency_global', 'shadow'],
+      ['agency_ai', 'assist']
+    ])
+    expect(new Set(detailClaims.map(claim => `${claim.userSurface}:${claim.maximumMode}`))).toEqual(new Set([
+      'agency_global:shadow',
+      'portal_global:off',
+      'agency_ai:assist'
+    ]))
   })
 
   it('removes every known broad, automatic, continuous, or instant claim', () => {
@@ -146,16 +191,23 @@ describe('CRM search public claim manifest', () => {
     const expectedRoutes = new Map(PUBLIC_CLAIM_SURFACES.map(surface => [surface.sourcePath, surface.route]))
 
     for (const claim of manifest.claims) {
-      expect(expectedRoutes.get(claim.sourcePath)).toBe(claim.route)
+      if (claim.sourcePath === 'app/pages/features/[slug].vue') {
+        expect(claim.route).toMatch(/^\/features\/[a-z0-9-]+$/)
+      } else {
+        expect(expectedRoutes.get(claim.sourcePath)).toBe(claim.route)
+      }
       expect(claim.renderedText.trim().length).toBeGreaterThan(0)
       expect(claim.sourceNeedle.trim().length).toBeGreaterThan(0)
       expect(claim.entitySet.length).toBeGreaterThan(0)
       expect([
-        'visible_keyword', 'agency_ai_assist', 'privacy_disclosure',
+        'agency_global', 'portal_global', 'agency_ai', 'privacy_disclosure',
         'provider_disclosure', 'separate_existing_feature'
       ]).toContain(claim.userSurface)
       expect(['off', 'shadow', 'assist']).toContain(claim.maximumMode)
       expect(['off_by_default', 'controlled', 'unavailable', 'available']).toContain(claim.rolloutState)
+
+      const exactCeiling = manifest.surfaceCeilings[claim.userSurface as keyof typeof manifest.surfaceCeilings]
+      if (exactCeiling) expect(claim.maximumMode).toBe(exactCeiling)
     }
   })
 

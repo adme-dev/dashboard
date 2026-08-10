@@ -24,6 +24,29 @@ export const CRM_SEARCH_MARKETING_COPY = Object.freeze({
   navigationSubtitle: 'Controlled agency-assistant retrieval'
 })
 
+export const CRM_SEARCH_MARKETING_SURFACE_CEILINGS = Object.freeze({
+  agency_global: 'shadow',
+  portal_global: 'off',
+  agency_ai: 'assist'
+} as const)
+
+interface MarketingSurfaceClaim {
+  key: string
+  userSurface: string
+  maximumMode: string
+}
+
+export function assertMarketingClaimSurfaceCeilings(claims: readonly MarketingSurfaceClaim[]): void {
+  for (const claim of claims) {
+    const exactCeiling = CRM_SEARCH_MARKETING_SURFACE_CEILINGS[
+      claim.userSurface as keyof typeof CRM_SEARCH_MARKETING_SURFACE_CEILINGS
+    ]
+    if (exactCeiling && claim.maximumMode !== exactCeiling) {
+      throw new Error(`${claim.key} uses ${claim.userSurface} with ${claim.maximumMode}; exact ceiling is ${exactCeiling}`)
+    }
+  }
+}
+
 export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
   visibleRanking: 'keyword',
   semanticSurface: 'agency_ai_assist',
@@ -31,16 +54,29 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
   portalSemanticRanking: false,
   freshness: 'after_confirmed_indexing',
   semanticEntitySet: Object.freeze(['person', 'company', 'opportunity']),
+  surfaceCeilings: CRM_SEARCH_MARKETING_SURFACE_CEILINGS,
   claims: Object.freeze([
     {
-      key: 'features.catalogue.crm_search',
+      key: 'features.catalogue.crm_search_agency',
       sourcePath: 'app/pages/features/index.vue',
       route: '/features',
       location: 'feature_catalog',
-      renderedText: CRM_SEARCH_MARKETING_COPY.featureCardDescription,
+      renderedText: 'Visible CRM search uses keyword ranking.',
       sourceNeedle: 'CRM_SEARCH_MARKETING_COPY.featureCardDescription',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'visible_keyword',
+      userSurface: 'agency_global',
+      maximumMode: 'shadow',
+      rolloutState: 'off_by_default'
+    },
+    {
+      key: 'features.catalogue.crm_search_assist',
+      sourcePath: 'app/pages/features/index.vue',
+      route: '/features',
+      location: 'feature_catalog',
+      renderedText: 'Semantic assistance is limited to approved agency-assistant contexts and is off by default.',
+      sourceNeedle: 'CRM_SEARCH_MARKETING_COPY.featureCardDescription',
+      entitySet: ['person', 'company', 'opportunity'],
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
     },
@@ -74,42 +110,85 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       route: '/features/semantic-search',
       location: 'feature_catalog',
       renderedText: CRM_SEARCH_MARKETING_COPY.featureTitle,
+      routeNeedle: CRM_SEARCH_MARKETING_COPY.featureTitle,
       sourceNeedle: 'CRM_SEARCH_MARKETING_COPY.featureTitle',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'visible_keyword',
-      maximumMode: 'assist',
+      userSurface: 'agency_global',
+      maximumMode: 'shadow',
       rolloutState: 'off_by_default'
     },
     {
-      key: 'features.detail.crm_search',
+      key: 'features.detail.crm_search_agency',
       sourcePath: 'app/pages/features/[slug].vue',
       route: '/features/semantic-search',
       location: 'rendered_text',
-      renderedText: CRM_SEARCH_MARKETING_COPY.featureDescription,
+      renderedText: 'Visible CRM search uses deterministic keyword ranking.',
+      routeNeedle: 'Visible CRM search uses deterministic keyword ranking.',
       sourceNeedle: 'CRM_SEARCH_MARKETING_COPY.featureDescription',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'visible_keyword',
+      userSurface: 'agency_global',
+      maximumMode: 'shadow',
+      rolloutState: 'off_by_default'
+    },
+    {
+      key: 'features.detail.crm_search_assist',
+      sourcePath: 'app/pages/features/[slug].vue',
+      route: '/features/semantic-search',
+      location: 'rendered_text',
+      renderedText: 'Semantic assistance is limited to approved agency-assistant contexts and is off by default.',
+      routeNeedle: 'Semantic assistance is limited to approved agency-assistant contexts',
+      sourceNeedle: 'CRM_SEARCH_MARKETING_COPY.featureDescription',
+      entitySet: ['person', 'company', 'opportunity'],
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
     },
     {
-      key: 'features.detail.crm_search_sections',
+      key: 'features.detail.crm_search_sections_agency',
       sourcePath: 'app/pages/features/[slug].vue',
       route: '/features/semantic-search',
       location: 'rendered_text',
-      renderedText: CRM_SEARCH_MARKETING_COPY.featureDetails.map(detail => `${detail.title}: ${detail.content}`).join(' '),
+      renderedText: CRM_SEARCH_MARKETING_COPY.featureDetails[0]?.content ?? '',
+      routeNeedle: 'Visible Keyword Ranking',
       sourceNeedle: 'CRM_SEARCH_MARKETING_COPY.featureDetails',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_global',
+      maximumMode: 'shadow',
+      rolloutState: 'off_by_default'
+    },
+    {
+      key: 'features.detail.crm_search_sections_portal',
+      sourcePath: 'app/pages/features/[slug].vue',
+      route: '/features/semantic-search',
+      location: 'rendered_text',
+      renderedText: 'Portal semantic ranking is unavailable.',
+      routeNeedle: 'Portal semantic ranking is unavailable',
+      sourceNeedle: 'CRM_SEARCH_MARKETING_COPY.featureDetails',
+      entitySet: ['person', 'company', 'opportunity'],
+      userSurface: 'portal_global',
+      maximumMode: 'off',
+      rolloutState: 'unavailable'
+    },
+    {
+      key: 'features.detail.crm_search_sections_assist',
+      sourcePath: 'app/pages/features/[slug].vue',
+      route: '/features/semantic-search',
+      location: 'rendered_text',
+      renderedText: CRM_SEARCH_MARKETING_COPY.featureDetails.slice(1).map(detail => `${detail.title}: ${detail.content}`).join(' '),
+      routeNeedle: 'Confirmed, Eventually Consistent Indexing',
+      sourceNeedle: 'CRM_SEARCH_MARKETING_COPY.featureDetails',
+      entitySet: ['person', 'company', 'opportunity'],
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'controlled'
     },
     {
       key: 'features.detail.ai_chat_context',
       sourcePath: 'app/pages/features/[slug].vue',
-      route: '/features/semantic-search',
+      route: '/features/ai-chat',
       location: 'feature_catalog',
       renderedText: 'Existing AI chat context scoring is separate from CRM search.',
+      routeNeedle: 'composite scoring system that combines semantic similarity',
       sourceNeedle: 'composite scoring system that combines semantic similarity',
       entitySet: ['ai_context'],
       userSurface: 'separate_existing_feature',
@@ -119,9 +198,10 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
     {
       key: 'features.detail.intent_classifier',
       sourcePath: 'app/pages/features/[slug].vue',
-      route: '/features/semantic-search',
+      route: '/features/intent-classification',
       location: 'feature_catalog',
       renderedText: 'Intent classification is a separate existing feature.',
+      routeNeedle: 'weights for semantic similarity, recency, importance',
       sourceNeedle: 'weights for semantic similarity, recency, importance',
       entitySet: ['ai_intent'],
       userSurface: 'separate_existing_feature',
@@ -131,9 +211,10 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
     {
       key: 'features.detail.smart_watch_summary',
       sourcePath: 'app/pages/features/[slug].vue',
-      route: '/features/semantic-search',
+      route: '/features/smart-watch',
       location: 'feature_catalog',
       renderedText: 'Smart Watch semantic keyword subscriptions remain a separate feature.',
+      routeNeedle: 'semantic keyword watch',
       sourceNeedle: 'semantic keyword watch',
       entitySet: ['board_notification'],
       userSurface: 'separate_existing_feature',
@@ -143,9 +224,10 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
     {
       key: 'features.detail.smart_watch_title',
       sourcePath: 'app/pages/features/[slug].vue',
-      route: '/features/semantic-search',
+      route: '/features/smart-watch',
       location: 'feature_catalog',
       renderedText: 'Semantic keyword subscriptions',
+      routeNeedle: 'Semantic keyword subscriptions',
       sourceNeedle: 'title: \'Semantic keyword subscriptions\'',
       entitySet: ['board_notification'],
       userSurface: 'separate_existing_feature',
@@ -155,9 +237,10 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
     {
       key: 'features.detail.smart_watch_subscription',
       sourcePath: 'app/pages/features/[slug].vue',
-      route: '/features/semantic-search',
+      route: '/features/smart-watch',
       location: 'feature_catalog',
       renderedText: 'Smart Watch uses its own Workers AI and Vectorize notification path.',
+      routeNeedle: 'every keyword is embedded with Workers AI',
       sourceNeedle: 'every keyword is embedded with Workers AI',
       entitySet: ['board_notification'],
       userSurface: 'separate_existing_feature',
@@ -167,9 +250,10 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
     {
       key: 'features.detail.composite_summary',
       sourcePath: 'app/pages/features/[slug].vue',
-      route: '/features/semantic-search',
+      route: '/features/composite-scoring',
       location: 'feature_catalog',
       renderedText: 'Composite AI-context scoring remains separate from CRM search.',
+      routeNeedle: 'blends semantic similarity, recency',
       sourceNeedle: 'blends semantic similarity, recency',
       entitySet: ['ai_context'],
       userSurface: 'separate_existing_feature',
@@ -179,9 +263,10 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
     {
       key: 'features.detail.composite_formula',
       sourcePath: 'app/pages/features/[slug].vue',
-      route: '/features/semantic-search',
+      route: '/features/composite-scoring',
       location: 'feature_catalog',
       renderedText: 'Existing AI-context scoring may use Vectorize.',
+      routeNeedle: 'semantic similarity (Vectorize cosine distance)',
       sourceNeedle: 'semantic similarity (Vectorize cosine distance)',
       entitySet: ['ai_context'],
       userSurface: 'separate_existing_feature',
@@ -191,9 +276,10 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
     {
       key: 'features.detail.composite_profiles',
       sourcePath: 'app/pages/features/[slug].vue',
-      route: '/features/semantic-search',
+      route: '/features/composite-scoring',
       location: 'feature_catalog',
       renderedText: 'Existing AI-context profiles are not visible CRM ranking.',
+      routeNeedle: 'Process queries emphasise semantic similarity',
       sourceNeedle: 'Process queries emphasise semantic similarity',
       entitySet: ['ai_context'],
       userSurface: 'separate_existing_feature',
@@ -203,9 +289,10 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
     {
       key: 'features.detail.semantic_reranking_title',
       sourcePath: 'app/pages/features/[slug].vue',
-      route: '/features/semantic-search',
+      route: '/features/composite-scoring',
       location: 'feature_catalog',
       renderedText: 'Semantic Reranking',
+      routeNeedle: 'Semantic Reranking',
       sourceNeedle: 'title: \'Semantic Reranking\'',
       entitySet: ['ai_context'],
       userSurface: 'separate_existing_feature',
@@ -215,9 +302,10 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
     {
       key: 'features.detail.composite_reranking',
       sourcePath: 'app/pages/features/[slug].vue',
-      route: '/features/semantic-search',
+      route: '/features/composite-scoring',
       location: 'feature_catalog',
       renderedText: 'Legacy AI-context reranking is separate from controlled CRM retrieval.',
+      routeNeedle: 'Items sourced from the database are reranked by Vectorize',
       sourceNeedle: 'Items sourced from the database are reranked by Vectorize',
       entitySet: ['ai_context'],
       userSurface: 'separate_existing_feature',
@@ -227,9 +315,10 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
     {
       key: 'features.detail.knowledge_upload',
       sourcePath: 'app/pages/features/[slug].vue',
-      route: '/features/semantic-search',
+      route: '/features/knowledge-base',
       location: 'feature_catalog',
       renderedText: 'Knowledge uploads use their own existing Vectorize path.',
+      routeNeedle: 'queues entries for Vectorize embedding',
       sourceNeedle: 'queues entries for Vectorize embedding',
       entitySet: ['knowledge_entry'],
       userSurface: 'separate_existing_feature',
@@ -239,9 +328,10 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
     {
       key: 'features.detail.vectorize_deduplication_title',
       sourcePath: 'app/pages/features/[slug].vue',
-      route: '/features/semantic-search',
+      route: '/features/knowledge-base',
       location: 'feature_catalog',
       renderedText: 'Vectorize Deduplication',
+      routeNeedle: 'Vectorize Deduplication',
       sourceNeedle: 'title: \'Vectorize Deduplication\'',
       entitySet: ['knowledge_entry'],
       userSurface: 'separate_existing_feature',
@@ -251,9 +341,10 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
     {
       key: 'features.detail.knowledge_deduplication',
       sourcePath: 'app/pages/features/[slug].vue',
-      route: '/features/semantic-search',
+      route: '/features/knowledge-base',
       location: 'feature_catalog',
       renderedText: 'Knowledge deduplication is separate from CRM search.',
+      routeNeedle: 'checks for semantic duplicates using Vectorize',
       sourceNeedle: 'checks for semantic duplicates using Vectorize',
       entitySet: ['knowledge_entry'],
       userSurface: 'separate_existing_feature',
@@ -263,9 +354,10 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
     {
       key: 'features.detail.knowledge_lifecycle',
       sourcePath: 'app/pages/features/[slug].vue',
-      route: '/features/semantic-search',
+      route: '/features/knowledge-base',
       location: 'feature_catalog',
       renderedText: 'Knowledge lifecycle cleanup is separate from CRM search.',
+      routeNeedle: 'delete entries with Vectorize cleanup',
       sourceNeedle: 'delete entries with Vectorize cleanup',
       entitySet: ['knowledge_entry'],
       userSurface: 'separate_existing_feature',
@@ -275,9 +367,10 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
     {
       key: 'features.detail.rate_card_context',
       sourcePath: 'app/pages/features/[slug].vue',
-      route: '/features/semantic-search',
+      route: '/features/rate-cards',
       location: 'feature_catalog',
       renderedText: 'Rate-card AI context is separate from CRM search.',
+      routeNeedle: 'embedded in the vector database so pricing information',
       sourceNeedle: 'embedded in the vector database so pricing information',
       entitySet: ['rate_card'],
       userSurface: 'separate_existing_feature',
@@ -292,7 +385,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: `${CRM_SEARCH_MARKETING_COPY.navigationTitle}: ${CRM_SEARCH_MARKETING_COPY.navigationSubtitle}`,
       sourceNeedle: 'CRM_SEARCH_MARKETING_COPY.navigationSubtitle',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'controlled'
     },
@@ -304,20 +397,32 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Visible CRM keyword search; controlled semantic assistance is off by default.',
       sourceNeedle: 'visible CRM keyword search. Controlled CRM semantic assistance',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
     },
     {
-      key: 'platform.ai.boundary',
+      key: 'platform.ai.agency_boundary',
       sourcePath: 'app/pages/platform/ai.vue',
       route: '/platform/ai',
       location: 'rendered_text',
-      renderedText: 'Visible and portal CRM ranking stays keyword-based; assist is controlled.',
+      renderedText: 'Visible agency CRM ranking stays keyword-based.',
       sourceNeedle: 'Visible agency and portal CRM search remains keyword-ranked',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'visible_keyword',
-      maximumMode: 'assist',
+      userSurface: 'agency_global',
+      maximumMode: 'shadow',
+      rolloutState: 'controlled'
+    },
+    {
+      key: 'platform.ai.portal_boundary',
+      sourcePath: 'app/pages/platform/ai.vue',
+      route: '/platform/ai',
+      location: 'rendered_text',
+      renderedText: 'Portal CRM ranking stays keyword-based and semantic ranking is unavailable.',
+      sourceNeedle: 'Visible agency and portal CRM search remains keyword-ranked',
+      entitySet: ['person', 'company', 'opportunity'],
+      userSurface: 'portal_global',
+      maximumMode: 'off',
       rolloutState: 'controlled'
     },
     {
@@ -328,7 +433,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Only confirmed current records can contribute to controlled assist.',
       sourceNeedle: 'only records at confirmed index state',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'controlled'
     },
@@ -352,7 +457,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Controlled Semantic Candidates',
       sourceNeedle: 'title: \'Controlled Semantic Candidates\'',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'controlled'
     },
@@ -364,7 +469,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Vector candidates are authorized before keyword fusion.',
       sourceNeedle: 'Vectorize candidates are filtered by current authorization',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'controlled'
     },
@@ -376,9 +481,21 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Visible keyword search with controlled CRM semantic assistance off by default.',
       sourceNeedle: 'visible keyword search, and controlled CRM semantic assistance',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
+    },
+    {
+      key: 'resources.ai.agency_boundary',
+      sourcePath: 'app/pages/resources/ai-automation.vue',
+      route: '/resources/ai-automation',
+      location: 'rendered_text',
+      renderedText: 'Visible agency CRM ranking remains keyword-based.',
+      sourceNeedle: 'Visible agency and portal CRM results use deterministic keyword ranking',
+      entitySet: ['person', 'company', 'opportunity'],
+      userSurface: 'agency_global',
+      maximumMode: 'shadow',
+      rolloutState: 'controlled'
     },
     {
       key: 'resources.ai.portal_boundary',
@@ -388,7 +505,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Portal CRM ranking remains keyword-only.',
       sourceNeedle: 'Visible agency and portal CRM results use deterministic keyword ranking',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'visible_keyword',
+      userSurface: 'portal_global',
       maximumMode: 'off',
       rolloutState: 'unavailable'
     },
@@ -400,7 +517,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Semantic eligibility follows confirmed indexing.',
       sourceNeedle: 'Authorized indexing is asynchronous',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'controlled'
     },
@@ -424,7 +541,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Controlled CRM semantic assistance, visible keyword search, and an off by default rollout.',
       sourceNeedle: 'description: \'How AI automation works alongside controlled CRM semantic assistance',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
     },
@@ -436,7 +553,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Controlled CRM semantic assistance, visible keyword search, and an off by default rollout.',
       sourceNeedle: 'ogDescription: \'How AI automation works alongside controlled CRM semantic assistance',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
     },
@@ -445,10 +562,10 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       sourcePath: 'app/pages/resources/integrations.vue',
       route: '/resources/integrations',
       location: 'rendered_text',
-      renderedText: 'Vectorize is reserved for controlled CRM assistance after authorized indexing.',
-      sourceNeedle: 'Vectorize</strong> is reserved for controlled CRM semantic assistance',
+      renderedText: 'The dedicated CRM Vectorize index is reserved for controlled CRM assistance after authorized indexing.',
+      sourceNeedle: 'dedicated CRM Vectorize index</strong> is reserved for controlled CRM semantic assistance',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
     },
@@ -482,9 +599,9 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       route: '/resources/integrations',
       location: 'rendered_text',
       renderedText: 'Controlled CRM assist is off by default and requires confirmed indexing.',
-      sourceNeedle: 'Cloudflare Vectorize is used only for controlled CRM semantic assistance',
+      sourceNeedle: 'dedicated CRM Vectorize path is used only for controlled CRM semantic assistance',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
     },
@@ -496,7 +613,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Authorized indexing',
       sourceNeedle: '>Authorized indexing</span>',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'controlled'
     },
@@ -508,7 +625,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Controlled CRM retrieval has separate rollout and indexing checks.',
       sourceNeedle: 'controlled CRM semantic assistance uses Workers AI and Vectorize',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'controlled'
     },
@@ -520,7 +637,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Off-by-default Vectorize infrastructure for authorized confirmed CRM indexing.',
       sourceNeedle: 'description: \'XeroFlow integrations, including off-by-default Vectorize',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
     },
@@ -532,7 +649,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Off-by-default Vectorize infrastructure for authorized confirmed CRM indexing.',
       sourceNeedle: 'ogDescription: \'XeroFlow integrations, including off-by-default Vectorize',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
     },
@@ -544,7 +661,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Controlled CRM retrieval through approved agency-assistant contexts.',
       sourceNeedle: 'controlled CRM retrieval through approved agency-assistant contexts',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'controlled'
     },
@@ -556,7 +673,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Vectorize: Controlled CRM assist',
       sourceNeedle: 'title: \'Vectorize\', icon: \'i-lucide-search\', status: \'Controlled CRM assist\'',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'controlled'
     },
@@ -568,7 +685,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Visible CRM keyword search with controlled semantic assistance off by default.',
       sourceNeedle: 'visible CRM keyword search. Controlled semantic assistance',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
     },
@@ -580,7 +697,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Visible CRM keyword search and controlled agency-assistant retrieval.',
       sourceNeedle: 'visible CRM keyword search, and controlled agency-assistant retrieval',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'controlled'
     },
@@ -592,7 +709,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Semantic assistance follows confirmed indexing.',
       sourceNeedle: 'after confirmed indexing',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
     },
@@ -604,7 +721,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Controlled CRM assistance is separate and requires confirmed index state.',
       sourceNeedle: 'Controlled CRM semantic assistance is separate',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
     },
@@ -616,9 +733,33 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Controlled CRM Indexing',
       sourceNeedle: 'label: \'Controlled CRM Indexing\'',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'controlled'
+    },
+    {
+      key: 'training.seo',
+      sourcePath: 'app/pages/ai-training.vue',
+      route: '/ai-training',
+      location: 'seo_description',
+      renderedText: 'Governed AI context and controlled CRM assistance are off by default.',
+      sourceNeedle: 'description: \'Governed AI context and controlled CRM assistance',
+      entitySet: ['person', 'company', 'opportunity'],
+      userSurface: 'agency_ai',
+      maximumMode: 'assist',
+      rolloutState: 'off_by_default'
+    },
+    {
+      key: 'training.og',
+      sourcePath: 'app/pages/ai-training.vue',
+      route: '/ai-training',
+      location: 'seo_og_description',
+      renderedText: 'Visible keyword search with controlled agency-assistant retrieval off by default.',
+      sourceNeedle: 'ogDescription: \'Visible CRM keyword search with controlled agency-assistant retrieval',
+      entitySet: ['person', 'company', 'opportunity'],
+      userSurface: 'agency_ai',
+      maximumMode: 'assist',
+      rolloutState: 'off_by_default'
     },
     {
       key: 'home.ai_summary',
@@ -628,7 +769,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Visible CRM keyword search with approved agency-assistant semantic assistance.',
       sourceNeedle: 'visible CRM keyword search; semantic assistance',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'controlled'
     },
@@ -640,7 +781,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Controlled CRM semantic assistance is off by default.',
       sourceNeedle: 'controlled CRM semantic assistance, which is off by default',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
     },
@@ -688,7 +829,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Controlled CRM assist (off by default)',
       sourceNeedle: 'Controlled CRM assist (off by default)',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
     },
@@ -700,7 +841,7 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
       renderedText: 'Controlled CRM agency-assistant retrieval requires approval.',
       sourceNeedle: 'Controlled CRM agency-assistant retrieval (off by default)',
       entitySet: ['person', 'company', 'opportunity'],
-      userSurface: 'agency_ai_assist',
+      userSurface: 'agency_ai',
       maximumMode: 'assist',
       rolloutState: 'off_by_default'
     }
@@ -719,6 +860,11 @@ export const CRM_SEARCH_MARKETING_CLAIMS = Object.freeze({
     { key: 'no_better_recall_claim', pattern: 'hybrid approach delivers better recall than either method alone' },
     { key: 'no_universal_embedding_disclosure', pattern: 'text embeddings are generated to enable vector-based search across your data' },
     { key: 'no_broad_crm_entity_set', pattern: 'tasks, briefs, clients, and spend data' },
-    { key: 'no_broad_embedded_entity_set', pattern: 'tasks, clients, briefs, and knowledge base entries are embedded as vectors' }
+    { key: 'no_broad_embedded_entity_set', pattern: 'tasks, clients, briefs, and knowledge base entries are embedded as vectors' },
+    { key: 'no_unqualified_training_seo', pattern: 'Your agency AI, trained on your data' },
+    { key: 'no_unqualified_learning_seo', pattern: 'XeroFlow learns from your unique workflows, clients, and operations' },
+    { key: 'no_continuous_training_og', pattern: 'Private, continuous, and entirely under your control' }
   ])
 })
+
+assertMarketingClaimSurfaceCeilings(CRM_SEARCH_MARKETING_CLAIMS.claims)

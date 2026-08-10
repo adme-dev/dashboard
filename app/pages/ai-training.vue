@@ -172,9 +172,9 @@ definePageMeta({
 
 useSeoMeta({
   title: 'AI Training — XeroFlow',
-  description: 'Your agency AI, trained on your data. XeroFlow learns from your unique workflows, clients, and operations — while keeping your IP completely private.',
+  description: 'Governed AI context and controlled CRM assistance, with visible keyword search and semantic retrieval off by default.',
   ogTitle: 'AI Training — XeroFlow',
-  ogDescription: 'Your agency AI, trained on your data. Private, continuous, and entirely under your control.',
+  ogDescription: 'Visible CRM keyword search with controlled agency-assistant retrieval that is off by default.',
 })
 
 useHead({

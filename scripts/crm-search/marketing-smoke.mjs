@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import typescript from 'typescript'
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -28,6 +29,36 @@ const EXPECTED_CAPABILITY = Object.freeze({
   freshness: 'after_confirmed_indexing'
 })
 
+const EXPECTED_SURFACE_CEILINGS = Object.freeze({
+  agency_global: 'shadow',
+  portal_global: 'off',
+  agency_ai: 'assist'
+})
+
+const DYNAMIC_FEATURE_ROUTE_CONTRACTS = new Map([
+  ['features.detail.crm_search_title', '/features/semantic-search'],
+  ['features.detail.crm_search_agency', '/features/semantic-search'],
+  ['features.detail.crm_search_assist', '/features/semantic-search'],
+  ['features.detail.crm_search_sections_agency', '/features/semantic-search'],
+  ['features.detail.crm_search_sections_portal', '/features/semantic-search'],
+  ['features.detail.crm_search_sections_assist', '/features/semantic-search'],
+  ['features.detail.ai_chat_context', '/features/ai-chat'],
+  ['features.detail.intent_classifier', '/features/intent-classification'],
+  ['features.detail.smart_watch_summary', '/features/smart-watch'],
+  ['features.detail.smart_watch_title', '/features/smart-watch'],
+  ['features.detail.smart_watch_subscription', '/features/smart-watch'],
+  ['features.detail.composite_summary', '/features/composite-scoring'],
+  ['features.detail.composite_formula', '/features/composite-scoring'],
+  ['features.detail.composite_profiles', '/features/composite-scoring'],
+  ['features.detail.semantic_reranking_title', '/features/composite-scoring'],
+  ['features.detail.composite_reranking', '/features/composite-scoring'],
+  ['features.detail.knowledge_upload', '/features/knowledge-base'],
+  ['features.detail.vectorize_deduplication_title', '/features/knowledge-base'],
+  ['features.detail.knowledge_deduplication', '/features/knowledge-base'],
+  ['features.detail.knowledge_lifecycle', '/features/knowledge-base'],
+  ['features.detail.rate_card_context', '/features/rate-cards']
+])
+
 const FORBIDDEN_PRESENT_TENSE_CLAIMS = [
   /Vectorize-powered search across tasks, clients, briefs, and knowledge base entries/i,
   /semantic search surface what matters before you even think to ask/i,
@@ -42,7 +73,10 @@ const FORBIDDEN_PRESENT_TENSE_CLAIMS = [
   /hybrid approach delivers better recall than either method alone/i,
   /text embeddings are generated to enable vector-based search across your data/i,
   /tasks, briefs, clients, and spend data/i,
-  /tasks, clients, briefs, and knowledge base entries are embedded as vectors/i
+  /tasks, clients, briefs, and knowledge base entries are embedded as vectors/i,
+  /Your agency AI, trained on your data/i,
+  /XeroFlow learns from your unique workflows, clients, and operations/i,
+  /Private, continuous, and entirely under your control/i
 ]
 
 const CLAIM_LINE_PATTERN = /semantic|vectorize|vector[- ]based|vector database|embeddings?|embedded (?:as vectors|with Workers AI|in(?:to)? (?:a |the )?vector)|hybrid (?:search|retrieval)|keyword search|natural-language retrieval|index (?:fresh|current)|indexing|CRM_SEARCH_MARKETING_COPY/i
@@ -62,7 +96,13 @@ function read(relativePath) {
 }
 
 const manifestSource = read('app/utils/marketingClaimManifest.ts')
-const manifestModuleUrl = `data:text/javascript;base64,${Buffer.from(manifestSource).toString('base64')}`
+const manifestJavaScript = typescript.transpileModule(manifestSource, {
+  compilerOptions: {
+    module: typescript.ModuleKind.ESNext,
+    target: typescript.ScriptTarget.ES2022
+  }
+}).outputText
+const manifestModuleUrl = `data:text/javascript;base64,${Buffer.from(manifestJavaScript).toString('base64')}`
 const { CRM_SEARCH_MARKETING_CLAIMS, CRM_SEARCH_MARKETING_COPY } = await import(manifestModuleUrl)
 
 for (const [field, expected] of Object.entries(EXPECTED_CAPABILITY)) {
@@ -73,6 +113,29 @@ for (const [field, expected] of Object.entries(EXPECTED_CAPABILITY)) {
 
 if (CRM_SEARCH_MARKETING_CLAIMS.semanticEntitySet.join(',') !== 'person,company,opportunity') {
   fail('semantic entity set must remain person, company, and opportunity')
+}
+
+for (const [surface, ceiling] of Object.entries(EXPECTED_SURFACE_CEILINGS)) {
+  if (CRM_SEARCH_MARKETING_CLAIMS.surfaceCeilings[surface] !== ceiling) {
+    fail(`${surface} must have exact ${ceiling} ceiling`)
+  }
+}
+
+for (const claim of CRM_SEARCH_MARKETING_CLAIMS.claims) {
+  const exactCeiling = EXPECTED_SURFACE_CEILINGS[claim.userSurface]
+  if (exactCeiling && claim.maximumMode !== exactCeiling) {
+    fail(`${claim.key} exceeds ${claim.userSurface} ceiling`)
+  }
+}
+
+const dynamicClaims = CRM_SEARCH_MARKETING_CLAIMS.claims.filter(claim => claim.sourcePath === 'app/pages/features/[slug].vue')
+if (dynamicClaims.length !== DYNAMIC_FEATURE_ROUTE_CONTRACTS.size) {
+  fail('dynamic feature claim inventory is incomplete')
+}
+for (const claim of dynamicClaims) {
+  if (claim.route !== DYNAMIC_FEATURE_ROUTE_CONTRACTS.get(claim.key) || !claim.routeNeedle) {
+    fail(`${claim.key} is not bound to its actual dynamic route`)
+  }
 }
 
 const sources = PUBLIC_CLAIM_SURFACES.map(sourcePath => ({ sourcePath, source: read(sourcePath) }))
