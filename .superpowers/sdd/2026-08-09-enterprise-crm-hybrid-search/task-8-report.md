@@ -108,3 +108,35 @@ git diff --check:                              passed
 ```
 
 The final reread covered every modified repository, test, migration delta in context, and this report. The security pass rechecked fixed definer search paths and ownership, exact runtime function ACL, canonical advisory-lock order, row-lock scope, legal operation transitions, revision/lease CAS, teardown independence from deleted policy state, strict reservation shape, active-rate-card validity/revocation/model evidence, exact cost arithmetic, dual-scope caps, and the absence of caller-provided cost authority or provider/network side effects.
+
+---
+
+## Acceptance Fix — Durable Teardown Daily Cap Evidence
+
+### Result
+
+- Status: `DONE`.
+- Scope: `usageRepository.ts`, its focused repository suite, and this report only. Task 10, Task 11, migrations, routes, providers, queues, deployments, networks, shared databases, and external resources were not modified or contacted.
+- Teardown admission no longer aliases the client budget to the current global control after the ordinary policy row is gone. Existing same-day global and client daily rows are locked in canonical order and their independent immutable caps are reused. On a new UTC day, the current global control remains the durable global cap authority while the latest prior client indexing row for the same immutable rate card supplies the conservative client cap. Missing, partial, malformed, wrong-scope, wrong-client, wrong-rate-card, or token-incoherent evidence fails closed before any reservation.
+- Exact server-derived rate-card cost, both daily scopes, canonical client advisory fencing, row locks, capacity proofs, and atomic reservation accounting remain unchanged.
+
+### Strict TDD Evidence
+
+The real delete-only teardown fixture deliberately exposed current global aliases of 10 provider calls / 1,000 micro-USD while the same-day immutable client row retained its lower policy-derived 8-call / 900-micro-USD caps. The focused RED run failed that case with `crm_search_budget_exhausted`. Two new-day cases then extended the consolidated RED to 3 failures / 13 passes: one required the latest durable client indexing evidence and one required no-evidence admission to fail closed.
+
+The focused GREEN run passed 16/16 after implementing independent same-day evidence reuse and conservative prior-day client-cap derivation.
+
+### Final Verification
+
+```text
+Focused usage repository suite:                1 file, 16 passed
+Task 8 repository + modified migration gate:   9 files, 106 passed
+Migration 350–352 PostgreSQL 14 compatibility: 4 files, 53 passed
+Node 24.18 ESLint on modified TS files:         passed
+Strict targeted TypeScript pass:                zero Task 8-owned diagnostics
+git diff --check (bounded scope):               passed
+```
+
+The repository-wide Nuxt typecheck completed red on the repository's existing broad baseline diagnostics and also emitted one concurrent Task 11 duplicate-auto-import warning. The strict targeted server pass reported only the same six inherited `server/utils/db.ts` diagnostics documented in the original Task 8 report and no diagnostic in either modified Task 8 file.
+
+The final end-to-end reread covered both modified files and their complete scoped diff. It rechecked deterministic lock order, immutable cap identity, exact 512-token cap derivation, same-rate-card history, fail-closed partial evidence, dual-scope capacity/update behavior, exact cost persistence, and the absence of provider, network, route, migration, Task 10, or Task 11 changes.

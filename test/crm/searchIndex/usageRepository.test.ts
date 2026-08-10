@@ -9,6 +9,8 @@ const clientId = '22222222-2222-4222-8222-222222222222'
 const correlationId = '33333333-3333-4333-8333-333333333333'
 const reservationId = '44444444-4444-4444-8444-444444444444'
 const rateCardId = '55555555-5555-4555-8555-555555555555'
+const teardownId = '88888888-8888-4888-8888-888888888888'
+const teardownOperationId = '99999999-9999-4999-8999-999999999999'
 
 const authorityRow = {
   global_state: 'enabled',
@@ -68,6 +70,12 @@ const dailyRows = [
     stored_dimension_high_watermark: '0', reserved_usd_micros: '0', charged_usd_micros: '0'
   }
 ]
+
+const indexingDailyRows = dailyRows.map(row => ({
+  ...row,
+  usage_kind: 'indexing',
+  cap_model_input_tokens: row.usage_scope === 'global' ? '5120' : '4096'
+}))
 
 const reserveInput = {
   organisationScopeId,
@@ -296,9 +304,82 @@ describe('CRM search usage repository', () => {
     expect(transactionWithoutRetry).not.toHaveBeenCalled()
   })
 
-  it('reserves teardown deletion from durable evidence without an ordinary policy row', async () => {
-    const teardownId = '88888888-8888-4888-8888-888888888888'
-    const operationId = '99999999-9999-4999-8999-999999999999'
+  it('reuses a lower same-day client indexing cap for teardown after the policy row is gone', async () => {
+    const teardownAuthority = {
+      global_state: 'delete_only',
+      global_maximum_mode: 'off',
+      indexing_ready: false,
+      control_revision: '7',
+      policy_state: null,
+      policy_effective_mode: null,
+      policy_indexing_enabled: null,
+      policy_revision: '5',
+      policy_active_schema_version: null,
+      policy_candidate_schema_version: null,
+      policy_retiring_schema_versions: [],
+      schema_metadata_index_state: null,
+      schema_sentinel_state: null,
+      teardown_id: teardownId,
+      teardown_state: 'provider_pending',
+      provider_deletion_state: 'partially_confirmed',
+      operation_desired_action: 'delete',
+      operation_schema_version: 'crm-search-v1',
+      global_budget_usd_micros: '1000',
+      client_budget_usd_micros: '1000',
+      global_max_provider_calls: '10',
+      client_max_provider_calls: '10',
+      global_max_query_dimensions: '7680',
+      client_max_query_dimensions: '7680',
+      global_max_inserted_dimensions: '0',
+      client_max_inserted_dimensions: '0',
+      global_max_stored_dimensions: '100000',
+      client_max_stored_dimensions: '100000',
+      rate_card_id: rateCardId,
+      rate_card_revision: 'cloudflare-2026-08-09',
+      rate_card_model_id: '@cf/baai/bge-base-en-v1.5',
+      model_input_usd_micros_per_million_tokens: '67000',
+      queried_dimension_usd_micros_per_million: '10000.000000',
+      inserted_dimension_usd_micros_per_million: '10000.000000',
+      stored_dimension_usd_micros_per_million_month: '500.000000',
+      rate_card_valid_from: '2026-08-09T00:00:00.000Z',
+      rate_card_valid_until: '2027-08-09T00:00:00.000Z',
+      rate_card_revoked_at: null
+    }
+    const teardownReservation = {
+      ...reservationRow(),
+      operation_id: teardownOperationId,
+      usage_kind: 'indexing',
+      policy_revision: '5',
+      reserved_model_input_tokens: 0,
+      reserved_usd_micros: '0'
+    }
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [teardownAuthority] })
+      .mockResolvedValueOnce({ rows: indexingDailyRows })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [teardownReservation] })
+    const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
+
+    await expect(reserveCrmSearchUsage({
+      ...reserveInput,
+      operationId: teardownOperationId,
+      usageKind: 'indexing',
+      provider: 'vectorize',
+      providerAction: 'delete',
+      surface: null,
+      schemaVersion: 'crm-search-v1',
+      teardownId,
+      modelInputTokens: 0
+    }, { transactionWithoutRetry } as never)).resolves.toMatchObject({
+      operationId: teardownOperationId,
+      policyRevision: 5,
+      reservedUsdMicros: 0
+    })
+    expect(query.mock.calls[1]?.[0]).toContain('crm_search_client_teardowns')
+  })
+
+  it('derives a new UTC-day teardown client cap from the latest immutable indexing evidence', async () => {
     const teardownAuthority = {
       ...authorityRow,
       global_state: 'delete_only',
@@ -312,33 +393,35 @@ describe('CRM search usage repository', () => {
       teardown_state: 'provider_pending',
       provider_deletion_state: 'partially_confirmed',
       operation_desired_action: 'delete',
-      operation_schema_version: 'crm-search-v1'
+      operation_schema_version: 'crm-search-v1',
+      client_budget_usd_micros: '1000',
+      client_max_provider_calls: '10',
+      client_max_query_dimensions: '7680',
+      client_max_inserted_dimensions: '0',
+      client_max_stored_dimensions: '100000'
     }
     const teardownReservation = {
       ...reservationRow(),
-      operation_id: operationId,
+      operation_id: teardownOperationId,
       usage_kind: 'indexing',
       policy_revision: '5',
       reserved_model_input_tokens: 0,
       reserved_usd_micros: '0'
     }
-    const indexingRows = dailyRows.map(row => ({
-      ...row,
-      usage_kind: 'indexing',
-      cap_model_input_tokens: row.usage_scope === 'global' ? '5120' : '4096'
-    }))
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [teardownAuthority] })
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: indexingRows })
+      .mockResolvedValueOnce({ rows: [indexingDailyRows[1]] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: indexingDailyRows })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [teardownReservation] })
     const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
 
     await expect(reserveCrmSearchUsage({
       ...reserveInput,
-      operationId,
+      operationId: teardownOperationId,
       usageKind: 'indexing',
       provider: 'vectorize',
       providerAction: 'delete',
@@ -347,11 +430,55 @@ describe('CRM search usage repository', () => {
       teardownId,
       modelInputTokens: 0
     }, { transactionWithoutRetry } as never)).resolves.toMatchObject({
-      operationId,
-      policyRevision: 5,
+      operationId: teardownOperationId,
       reservedUsdMicros: 0
     })
-    expect(query.mock.calls[1]?.[0]).toContain('crm_search_client_teardowns')
+    expect(query.mock.calls[3]?.[0]).toContain('usage_date < $3')
+    expect(query.mock.calls[4]?.[1]).toContain(8)
+    expect(query.mock.calls[4]?.[1]).toContain(900)
+  })
+
+  it('fails closed when a new UTC-day teardown has no durable client cap evidence', async () => {
+    const teardownAuthority = {
+      ...authorityRow,
+      global_state: 'delete_only',
+      global_maximum_mode: 'off',
+      indexing_ready: false,
+      policy_state: null,
+      policy_effective_mode: null,
+      policy_indexing_enabled: null,
+      policy_revision: '5',
+      teardown_id: teardownId,
+      teardown_state: 'provider_pending',
+      provider_deletion_state: 'partially_confirmed',
+      operation_desired_action: 'delete',
+      operation_schema_version: 'crm-search-v1',
+      client_budget_usd_micros: '1000',
+      client_max_provider_calls: '10',
+      client_max_query_dimensions: '7680',
+      client_max_inserted_dimensions: '0',
+      client_max_stored_dimensions: '100000'
+    }
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [teardownAuthority] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+    const transactionWithoutRetry = vi.fn(async callback => await callback({ query }))
+
+    await expect(reserveCrmSearchUsage({
+      ...reserveInput,
+      operationId: teardownOperationId,
+      usageKind: 'indexing',
+      provider: 'vectorize',
+      providerAction: 'delete',
+      surface: null,
+      schemaVersion: 'crm-search-v1',
+      teardownId,
+      modelInputTokens: 0
+    }, { transactionWithoutRetry } as never)).rejects.toThrow('crm_search_budget_exhausted')
+    expect(query.mock.calls[3]?.[0]).toContain('usage_date < $3')
+    expect(query).toHaveBeenCalledTimes(4)
   })
 
   it('fails closed before daily rows when configured token-cap multiplication is not exact', async () => {

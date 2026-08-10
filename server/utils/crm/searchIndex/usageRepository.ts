@@ -334,7 +334,7 @@ interface ReservationAuthority {
   policyRevision: number
   rateCardId: string
   globalCaps: readonly number[]
-  clientCaps: readonly number[]
+  clientCaps: readonly number[] | null
 }
 
 function requireReservationAuthority(
@@ -410,9 +410,11 @@ function requireReservationAuthority(
   const globalCaps = [cap('global_max_provider_calls'), cap('global_max_query_dimensions'),
     cap('global_max_inserted_dimensions'), cap('global_max_stored_dimensions'),
     cap('global_budget_usd_micros')]
-  const clientCaps = [cap('client_max_provider_calls'), cap('client_max_query_dimensions'),
-    cap('client_max_inserted_dimensions'), cap('client_max_stored_dimensions'),
-    cap('client_budget_usd_micros')]
+  const clientCaps = input.teardownId === null
+    ? [cap('client_max_provider_calls'), cap('client_max_query_dimensions'),
+        cap('client_max_inserted_dimensions'), cap('client_max_stored_dimensions'),
+        cap('client_budget_usd_micros')]
+    : null
   return {
     input: calculatePricedReservation(input, row),
     controlRevision,
@@ -420,6 +422,33 @@ function requireReservationAuthority(
     rateCardId,
     globalCaps,
     clientCaps
+  }
+}
+
+interface DailyCapEvidence {
+  caps: readonly number[]
+  tokenCap: number
+}
+
+function readDailyCapEvidence(
+  row: Record<string, unknown>,
+  scope: 'global' | 'client',
+  clientId: string,
+  rateCardId: string
+): DailyCapEvidence | null {
+  const expectedClientId = scope === 'global' ? null : clientId
+  try {
+    const caps = [readAmount(row, 'cap_provider_calls'), readAmount(row, 'cap_query_dimensions'),
+      readAmount(row, 'cap_inserted_dimensions'), readAmount(row, 'cap_stored_dimensions'),
+      readAmount(row, 'cap_charged_usd_micros')]
+    const tokenCap = checkedTokenCap(caps[0]!)
+    if (row.usage_scope !== scope
+      || row.client_id !== expectedClientId
+      || requireUuid(row.rate_card_id, invalidCode) !== rateCardId
+      || readAmount(row, 'cap_model_input_tokens') !== tokenCap) return null
+    return { caps, tokenCap }
+  } catch {
+    return null
   }
 }
 
@@ -619,32 +648,88 @@ export async function reserveCrmSearchUsage(
     if (!authority) throw crmSearchRepositoryError(invalidCode)
     const proven = requireReservationAuthority(authority, input)
     const pricedInput = proven.input
-    const { controlRevision, policyRevision, rateCardId, globalCaps, clientCaps } = proven
-    const globalTokenCap = checkedTokenCap(globalCaps[0]!)
-    const clientTokenCap = checkedTokenCap(clientCaps[0]!)
+    const { controlRevision, policyRevision, rateCardId } = proven
+    let globalCaps = proven.globalCaps
+    let clientCaps = proven.clientCaps
+    let globalTokenCap = checkedTokenCap(globalCaps[0]!)
+    let clientTokenCap = clientCaps === null ? null : checkedTokenCap(clientCaps[0]!)
+    let dailyRows: Record<string, unknown>[] | null = null
 
-    await transaction.query(`
-      INSERT INTO crm_search_usage_daily (
-        usage_date, organisation_scope_id, usage_scope, client_id, usage_kind,
-        cap_provider_calls, cap_model_input_tokens, cap_query_dimensions,
-        cap_inserted_dimensions, cap_stored_dimensions, cap_charged_usd_micros, rate_card_id
-      ) VALUES
-        ($1, $2, 'global', NULL, $3, $4, $5, $6, $7, $8, $9, $10),
-        ($1, $2, 'client', $11, $3, $12, $13, $14, $15, $16, $17, $10)
-      ON CONFLICT DO NOTHING
-    `, [input.usageDate, input.organisationScopeId, input.usageKind,
-      globalCaps[0], globalTokenCap, globalCaps[1], globalCaps[2], globalCaps[3], globalCaps[4],
-      rateCardId, input.clientId,
-      clientCaps[0], clientTokenCap, clientCaps[1], clientCaps[2], clientCaps[3], clientCaps[4]])
+    if (input.teardownId !== null) {
+      const currentRows = (await transaction.query(`
+        SELECT * FROM crm_search_usage_daily
+        WHERE usage_date = $1 AND organisation_scope_id = $2 AND usage_kind = 'indexing'
+          AND ((usage_scope = 'global' AND client_id IS NULL)
+            OR (usage_scope = 'client' AND client_id = $3))
+        ORDER BY CASE usage_scope WHEN 'global' THEN 0 ELSE 1 END
+        FOR UPDATE
+      `, [input.usageDate, input.organisationScopeId, input.clientId])).rows
+      if (currentRows.length === 2) {
+        const globalEvidence = readDailyCapEvidence(
+          currentRows[0]!, 'global', input.clientId, rateCardId
+        )
+        const clientEvidence = readDailyCapEvidence(
+          currentRows[1]!, 'client', input.clientId, rateCardId
+        )
+        if (!globalEvidence || !clientEvidence) throw crmSearchRepositoryError(budgetCode)
+        globalCaps = globalEvidence.caps
+        globalTokenCap = globalEvidence.tokenCap
+        clientCaps = clientEvidence.caps
+        clientTokenCap = clientEvidence.tokenCap
+        dailyRows = currentRows
+      } else if (currentRows.length === 0) {
+        const historicalClient = firstRow(await transaction.query(`
+          SELECT * FROM crm_search_usage_daily
+          WHERE organisation_scope_id = $1
+            AND client_id = $2
+            AND usage_date < $3::DATE
+            AND usage_scope = 'client'
+            AND usage_kind = 'indexing'
+            AND rate_card_id = $4
+          ORDER BY usage_date DESC, created_at DESC, id DESC
+          LIMIT 1
+          FOR SHARE
+        `, [input.organisationScopeId, input.clientId, input.usageDate, rateCardId]))
+        if (!historicalClient) throw crmSearchRepositoryError(budgetCode)
+        const clientEvidence = readDailyCapEvidence(
+          historicalClient, 'client', input.clientId, rateCardId
+        )
+        if (!clientEvidence) throw crmSearchRepositoryError(budgetCode)
+        clientCaps = clientEvidence.caps
+        clientTokenCap = clientEvidence.tokenCap
+      } else {
+        throw crmSearchRepositoryError(budgetCode)
+      }
+    }
 
-    const dailyRows = (await transaction.query(`
-      SELECT * FROM crm_search_usage_daily
-      WHERE usage_date = $1 AND organisation_scope_id = $2 AND usage_kind = $3
-        AND ((usage_scope = 'global' AND client_id IS NULL)
-          OR (usage_scope = 'client' AND client_id = $4))
-      ORDER BY CASE usage_scope WHEN 'global' THEN 0 ELSE 1 END
-      FOR UPDATE
-    `, [input.usageDate, input.organisationScopeId, input.usageKind, input.clientId])).rows
+    if (clientCaps === null || clientTokenCap === null) {
+      throw crmSearchRepositoryError(budgetCode)
+    }
+
+    if (dailyRows === null) {
+      await transaction.query(`
+        INSERT INTO crm_search_usage_daily (
+          usage_date, organisation_scope_id, usage_scope, client_id, usage_kind,
+          cap_provider_calls, cap_model_input_tokens, cap_query_dimensions,
+          cap_inserted_dimensions, cap_stored_dimensions, cap_charged_usd_micros, rate_card_id
+        ) VALUES
+          ($1, $2, 'global', NULL, $3, $4, $5, $6, $7, $8, $9, $10),
+          ($1, $2, 'client', $11, $3, $12, $13, $14, $15, $16, $17, $10)
+        ON CONFLICT DO NOTHING
+      `, [input.usageDate, input.organisationScopeId, input.usageKind,
+        globalCaps[0], globalTokenCap, globalCaps[1], globalCaps[2], globalCaps[3], globalCaps[4],
+        rateCardId, input.clientId,
+        clientCaps[0], clientTokenCap, clientCaps[1], clientCaps[2], clientCaps[3], clientCaps[4]])
+
+      dailyRows = (await transaction.query(`
+        SELECT * FROM crm_search_usage_daily
+        WHERE usage_date = $1 AND organisation_scope_id = $2 AND usage_kind = $3
+          AND ((usage_scope = 'global' AND client_id IS NULL)
+            OR (usage_scope = 'client' AND client_id = $4))
+        ORDER BY CASE usage_scope WHEN 'global' THEN 0 ELSE 1 END
+        FOR UPDATE
+      `, [input.usageDate, input.organisationScopeId, input.usageKind, input.clientId])).rows
+    }
     if (dailyRows.length !== 2
       || !dailyRowMatchesAuthority(
         dailyRows[0]!, 'global', input.clientId, globalCaps, globalTokenCap, rateCardId
