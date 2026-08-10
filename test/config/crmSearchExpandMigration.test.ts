@@ -73,6 +73,8 @@ describe('CRM search expand migration 350', () => {
       'crm_search_dead_letters',
       'crm_search_client_teardowns',
       'crm_search_teardown_vectors',
+      'crm_search_analytics_key_retirement_intents',
+      'crm_search_analytics_key_retirement_receipts',
       'crm_search_retention_high_watermarks',
       'crm_search_retention_attestations',
       'crm_search_retention_delete_authorizations'
@@ -263,11 +265,53 @@ describe('CRM search expand migration 350', () => {
 
     expect(expire).toMatch(/v_legal_hold_blocked_count BIGINT/)
     expect(expire).toMatch(/legalHoldBlockedCount/)
-    expect(expire).toMatch(/v_complete := NOT v_has_remaining AND v_legal_hold_blocked_count = 0/)
-    expect(sql).toContain('CREATE TABLE IF NOT EXISTS crm_search_analytics_key_retirements')
-    expect(sql).toContain('CREATE OR REPLACE FUNCTION crm_search_record_analytics_key_retirement')
+    expect(expire).toMatch(/v_complete := NOT v_has_remaining\s+AND v_legal_hold_blocked_count = 0/)
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS crm_search_analytics_key_retirement_intents')
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS crm_search_analytics_key_retirement_receipts')
+    expect(sql).toContain('CREATE OR REPLACE FUNCTION crm_search_begin_analytics_key_retirement')
+    expect(sql).toContain('CREATE OR REPLACE FUNCTION crm_search_complete_analytics_key_retirement')
     expect(sql).toMatch(/pg_advisory_xact_lock_shared[\s\S]*query_digest_key_version/)
-    expect(sql).toMatch(/crm_search_analytics_key_retirements[\s\S]*query_digest_key_version/)
+    expect(sql).toMatch(/crm_search_analytics_key_retirement_intents[\s\S]*query_digest_key_version/)
+  })
+
+  it('filters the dependency DAG before deletion and persists every attestation hash input', () => {
+    const sql = readMigration()
+    const dependents = functionDefinition(sql, 'crm_search_retention_row_has_dependents')
+    const expire = functionDefinition(sql, 'crm_search_expire_governed_rows')
+    const attestations = sql.match(
+      /CREATE TABLE IF NOT EXISTS crm_search_retention_attestations \([\s\S]*?\n\) PARTITION BY RANGE \(created_at\);/i
+    )?.[0]
+
+    expect(dependents).toContain('SECURITY DEFINER')
+    expect(dependents).toMatch(/crm_search_retention_target_allowed\(p_target_table\)/)
+    expect(dependents).toMatch(/pg_catalog\.pg_constraint/)
+    expect(dependents).toMatch(/confrelid/)
+    expect(dependents).toMatch(/conkey/)
+    expect(dependents).toMatch(/confkey/)
+    expect(expire).toMatch(/NOT public\.crm_search_retention_row_has_dependents\(\$2, retained\.id\)/)
+    expect(expire).toMatch(/v_dependency_blocked_count/)
+    expect(expire).toMatch(/v_complete := NOT v_has_remaining[\s\S]*v_legal_hold_blocked_count = 0[\s\S]*v_dependency_blocked_count = 0/)
+    expect(attestations, 'retention attestation definition is missing').toBeDefined()
+    expect(attestations).toMatch(/legal_hold_blocked_count BIGINT NOT NULL/)
+    expect(attestations).toMatch(/dependency_blocked_count BIGINT NOT NULL/)
+    expect(expire).toMatch(/INSERT INTO public\.crm_search_retention_attestations[\s\S]*legal_hold_blocked_count[\s\S]*dependency_blocked_count/)
+    expect(expire).toMatch(/v_row_count::TEXT, v_legal_hold_blocked_count::TEXT,[\s\S]*v_dependency_blocked_count::TEXT/)
+  })
+
+  it('uses a crash-safe two-phase analytics key retirement fence and immutable receipt', () => {
+    const sql = readMigration()
+    const begin = functionDefinition(sql, 'crm_search_begin_analytics_key_retirement')
+    const complete = functionDefinition(sql, 'crm_search_complete_analytics_key_retirement')
+    const guard = functionDefinition(sql, 'crm_search_guard_analytics_key_reference')
+
+    expect(begin).toMatch(/pg_advisory_xact_lock/)
+    expect(begin).toMatch(/crm_search_events[\s\S]*query_digest_key_version/)
+    expect(begin).toMatch(/INSERT INTO public\.crm_search_analytics_key_retirement_intents/)
+    expect(complete).toMatch(/crm_search_analytics_key_retirement_intents[\s\S]*FOR UPDATE/)
+    expect(complete).toMatch(/INSERT INTO public\.crm_search_analytics_key_retirement_receipts/)
+    expect(guard).toMatch(/crm_search_analytics_key_retirement_intents/)
+    expect(sql).toMatch(/crm_search_analytics_key_retirement_intents_immutable/)
+    expect(sql).toMatch(/crm_search_analytics_key_retirement_receipts_immutable/)
   })
 
   it('makes the evaluation recorder the only runtime insert path and derives its evidence digest', () => {
@@ -461,6 +505,25 @@ describe('CRM search expand migration 350', () => {
     expect(jsonSchema).toMatch(/v_child #>> '\{\}'[\s\S]*\^\[a-z\]\[a-z0-9_.:-\]/i)
     expect(tableDefinition(sql, 'crm_search_events')).toMatch(/crm_search_json_schema_is_safe\(rank_evidence, 'rank_evidence'\)/)
     expect(tableDefinition(sql, 'crm_search_audit_log')).toMatch(/crm_search_json_schema_is_safe\(details, 'audit_details'\)/)
+  })
+
+  it('adds idempotent requester provenance storage and bounded audit-detail keys for Task 16', () => {
+    const sql = readMigration()
+    const approvals = tableDefinition(sql, 'crm_search_change_approvals')
+    const jsonSchema = functionDefinition(sql, 'crm_search_json_schema_is_safe')
+
+    expect(approvals).toMatch(/requested_by UUID/)
+    expect(sql).toMatch(
+      /ALTER TABLE crm_search_change_approvals\s+ADD COLUMN IF NOT EXISTS requested_by UUID;/i
+    )
+    expect(jsonSchema).toContain('\'requestedbyactorid\'')
+    expect(jsonSchema).toContain('\'importedprovenancehash\'')
+    expect(jsonSchema).toMatch(
+      /'approvalid'[\s\S]*'requestedbyactorid'[\s\S]*\^\[a-f0-9\]\{8\}/i
+    )
+    expect(jsonSchema).toMatch(
+      /'evidencehash'[\s\S]*'importedprovenancehash'[\s\S]*\^\(hmac-sha256:\)\?/i
+    )
   })
 
   it('uses narrow legal-hold and high-watermark retention functions with chained attestations', () => {

@@ -41,6 +41,7 @@ export interface CrmSearchRetentionDependencies {
     complete: boolean
     attestationHash: string
     legalHoldBlockedCount?: number
+    dependencyBlockedCount?: number
   }>
   listRetiredAnalyticsKeys(): Promise<Array<{ keyVersion: string, retiredAt: string }>>
   retireAnalyticsKeyIfUnreferenced(keyVersion: string, evidence: {
@@ -176,6 +177,8 @@ interface CrmSearchAnalyticsKeyManager {
   destroyRetiredKey(keyVersion: string, evidence: {
     reason: 'last_reference_expired'
     now: string
+    retirementIntentId: string
+    executorId: string
   }): Promise<{ receiptSha256: string }>
 }
 
@@ -240,6 +243,7 @@ async function listDatabaseRetentionBatches(input: CrmSearchRetentionRunInput): 
               AND held_target.target_row_id = retained.id
               AND hold_release.id IS NULL
           )
+          AND NOT crm_search_retention_row_has_dependents($1, retained.id)
         ORDER BY retained.retention_expires_at, retained.id
         LIMIT $4
       ), candidate_list AS (
@@ -357,30 +361,53 @@ export function createCrmSearchRetentionDependencies(
       reason: 'last_reference_expired'
       now: string
       executorId: string
-    }) => runTransaction(async (database) => {
+    }) => {
       if (!keyVersionPattern.test(keyVersion)) throw new Error('CRM search analytics key version invalid')
-      await database.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 355))', [keyVersion])
-      const existing = await database.query(`
-        SELECT receipt_sha256
-        FROM crm_search_analytics_key_retirements
-        WHERE key_version = $1
-      `, [keyVersion])
-      if (existing.rows[0]) return { retired: true, receiptSha256: String(existing.rows[0].receipt_sha256) }
-      const references = await database.query(`
-        SELECT COUNT(*)::TEXT AS count
-        FROM crm_search_events
-        WHERE query_digest_key_version = $1
-      `, [keyVersion])
-      if (Number(references.rows[0]?.count ?? 0) !== 0) return { retired: false }
-      const receipt = await keyManager.destroyRetiredKey(keyVersion, evidence)
-      const recorded = await database.query(`
-        SELECT crm_search_record_analytics_key_retirement(
-          $1, $2, $3::UUID, $4::TIMESTAMPTZ
-        ) AS id
-      `, [keyVersion, receipt.receiptSha256, evidence.executorId, evidence.now])
-      if (!recorded.rows[0]?.id) throw new Error('CRM search analytics key retirement was not recorded')
+      const intent = await runTransaction(async (database) => {
+        const begun = await database.query(`
+          SELECT intent_id, receipt_sha256
+          FROM crm_search_begin_analytics_key_retirement(
+            $1, $2, $3::UUID, $4::TIMESTAMPTZ
+          )
+        `, [keyVersion, evidence.reason, evidence.executorId, evidence.now])
+        const row = begun.rows[0]
+        if (!row) return null
+        const intentId = String(row.intent_id ?? '')
+        if (!intentId) throw new Error('CRM search analytics key retirement intent invalid')
+        return {
+          intentId,
+          receiptSha256: row.receipt_sha256 == null ? null : String(row.receipt_sha256)
+        }
+      })
+      if (!intent) return { retired: false }
+      if (intent.receiptSha256) {
+        if (!digestPattern.test(intent.receiptSha256)) {
+          throw new Error('CRM search analytics key retirement receipt invalid')
+        }
+        return { retired: true, receiptSha256: intent.receiptSha256 }
+      }
+
+      // External destruction must never run inside a database transaction. If
+      // its response is lost, the committed intent still rejects new event
+      // references and the idempotent manager call can be retried safely.
+      const receipt = await keyManager.destroyRetiredKey(keyVersion, {
+        reason: evidence.reason,
+        now: evidence.now,
+        retirementIntentId: intent.intentId,
+        executorId: evidence.executorId
+      })
+      await runTransaction(async (database) => {
+        const recorded = await database.query(`
+          SELECT crm_search_complete_analytics_key_retirement(
+            $1::UUID, $2, $3::UUID, $4::TIMESTAMPTZ
+          ) AS id
+        `, [intent.intentId, receipt.receiptSha256, evidence.executorId, evidence.now])
+        if (!recorded.rows[0]?.id) {
+          throw new Error('CRM search analytics key retirement receipt was not recorded')
+        }
+      })
       return { retired: true, receiptSha256: receipt.receiptSha256 }
-    }))
+    })
   return {
     aggregateDetailedEventsThrough: async (expireThrough) => {
       await queryRows(`
@@ -427,7 +454,8 @@ export function createCrmSearchRetentionDependencies(
         rowCount: Number(result.rowCount ?? 0),
         complete: result.complete === true,
         attestationHash: String(result.attestationHash ?? ''),
-        legalHoldBlockedCount: Number(result.legalHoldBlockedCount ?? 0)
+        legalHoldBlockedCount: Number(result.legalHoldBlockedCount ?? 0),
+        dependencyBlockedCount: Number(result.dependencyBlockedCount ?? 0)
       }
     },
     listRetiredAnalyticsKeys: () => keyManager.listRetiredKeys(),

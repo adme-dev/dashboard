@@ -5,6 +5,7 @@ import {
 } from './contracts'
 
 const sha256Pattern = /^[a-f0-9]{64}$/u
+const placeholderSha256Pattern = /^([a-f0-9])\1{63}$/u
 const forbiddenKeys = new Set([
   'email',
   'emailaddress',
@@ -127,6 +128,9 @@ export function validateEvaluationFixtureBundle(value: unknown): CrmSearchFixtur
   requireDigest(holdout.sha256, 'holdout manifest digest')
   if (holdout.sha256 !== computeCrmSearchFixtureSha256(holdout)) fail('holdout manifest digest mismatch')
   requireDigest(holdout.sealedJudgementSha256, 'sealed judgement digest')
+  if (placeholderSha256Pattern.test(holdout.sealedJudgementSha256)) {
+    fail('sealed judgement placeholder digest')
+  }
   if (!isRecord(holdout.clientCounts)) fail('holdout client counts')
   const qualifyingClients = Object.values(holdout.clientCounts)
     .filter(count => Number.isInteger(count) && count >= 80)

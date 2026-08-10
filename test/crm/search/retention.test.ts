@@ -243,29 +243,48 @@ describe('CRM search governed retention', () => {
     })
   })
 
-  it('holds the database fence across mandatory key-manager destruction and durable recording', async () => {
+  it('commits an immutable retirement fence before calling the key manager and records the receipt afterward', async () => {
     const steps: string[] = []
-    const managerFetch = vi.fn(async () => {
+    const managerFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       steps.push('manager')
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        version: 'crm-search-key-retirement-v1',
+        keyVersion: 'analytics-k1',
+        retirementIntentId: '10000000-0000-4000-8000-000000000001',
+        executorId: '10000000-0000-4000-8000-000000000002'
+      })
       return new Response(JSON.stringify({ status: 'destroyed', receiptSha256: digest('f') }), {
         headers: { 'content-type': 'application/json' }
       })
     })
-    const transaction = vi.fn(async (callback: (database: { query: (sql: string) => Promise<unknown> }) => Promise<unknown>) => callback({
-      async query(sql: string) {
-        if (sql.includes('pg_advisory_xact_lock')) steps.push('fence')
-        if (sql.includes('FROM crm_search_analytics_key_retirements')) return { rows: [] }
-        if (sql.includes('COUNT(*)')) {
-          steps.push('references')
-          return { rows: [{ count: '0' }] }
+    let transactionNumber = 0
+    const transaction = vi.fn(async (callback: (database: { query: (sql: string) => Promise<unknown> }) => Promise<unknown>) => {
+      transactionNumber += 1
+      const current = transactionNumber
+      steps.push(`tx${current}:start`)
+      const result = await callback({
+        async query(sql: string) {
+          if (sql.includes('crm_search_begin_analytics_key_retirement')) {
+            steps.push('fence')
+            return { rows: [{ intent_id: '10000000-0000-4000-8000-000000000001', receipt_sha256: null }] }
+          }
+          if (sql.includes('crm_search_complete_analytics_key_retirement')) {
+            steps.push('receipt')
+            return { rows: [{ id: '20000000-0000-4000-8000-000000000002' }] }
+          }
+          if (sql.includes('pg_advisory_xact_lock')) steps.push('legacy-fence')
+          if (sql.includes('FROM crm_search_analytics_key_retirements')) return { rows: [] }
+          if (sql.includes('COUNT(*)')) return { rows: [{ count: '0' }] }
+          if (sql.includes('crm_search_record_analytics_key_retirement')) {
+            steps.push('legacy-receipt')
+            return { rows: [{ id: '20000000-0000-4000-8000-000000000002' }] }
+          }
+          return { rows: [] }
         }
-        if (sql.includes('crm_search_record_analytics_key_retirement')) {
-          steps.push('record')
-          return { rows: [{ id: '10000000-0000-4000-8000-000000000001' }] }
-        }
-        return { rows: [] }
-      }
-    }))
+      })
+      steps.push(`tx${current}:commit`)
+      return result
+    })
     const dependencies = createCrmSearchRetentionDependencies({ context: { cloudflare: { env: {
       CRM_SEARCH_RETENTION_ALERTS: { send: vi.fn() },
       CRM_SEARCH_ANALYTICS_KEY_MANAGER: { fetch: managerFetch }
@@ -276,6 +295,61 @@ describe('CRM search governed retention', () => {
       now: '2026-08-10T00:00:00.000Z',
       executorId: '10000000-0000-4000-8000-000000000002'
     })).resolves.toEqual({ retired: true, receiptSha256: digest('f') })
-    expect(steps).toEqual(['fence', 'references', 'manager', 'record'])
+    expect(steps).toEqual([
+      'tx1:start', 'fence', 'tx1:commit',
+      'manager',
+      'tx2:start', 'receipt', 'tx2:commit'
+    ])
+  })
+
+  it('leaves a committed retirement fence after an ambiguous manager response and retries safely', async () => {
+    const steps: string[] = []
+    const managerFetch = vi.fn()
+      .mockRejectedValueOnce(new Error('response lost after destruction'))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        status: 'destroyed', receiptSha256: digest('f')
+      }), { headers: { 'content-type': 'application/json' } }))
+    const transaction = vi.fn(async (callback: (database: { query: (sql: string) => Promise<unknown> }) => Promise<unknown>) => {
+      steps.push('tx:start')
+      const result = await callback({
+        async query(sql: string) {
+          if (sql.includes('crm_search_begin_analytics_key_retirement')) {
+            steps.push('intent')
+            return { rows: [{ intent_id: '10000000-0000-4000-8000-000000000001', receipt_sha256: null }] }
+          }
+          if (sql.includes('crm_search_complete_analytics_key_retirement')) {
+            steps.push('receipt')
+            return { rows: [{ id: '20000000-0000-4000-8000-000000000002' }] }
+          }
+          if (sql.includes('FROM crm_search_analytics_key_retirements')) return { rows: [] }
+          if (sql.includes('COUNT(*)')) return { rows: [{ count: '0' }] }
+          return { rows: [] }
+        }
+      })
+      steps.push('tx:commit')
+      return result
+    })
+    const dependencies = createCrmSearchRetentionDependencies({ context: { cloudflare: { env: {
+      CRM_SEARCH_RETENTION_ALERTS: { send: vi.fn() },
+      CRM_SEARCH_ANALYTICS_KEY_MANAGER: { fetch: managerFetch }
+    } } } } as never, { transaction } as never)
+    const evidence = {
+      reason: 'last_reference_expired' as const,
+      now: '2026-08-10T00:00:00.000Z',
+      executorId: '10000000-0000-4000-8000-000000000002'
+    }
+
+    await expect(dependencies.retireAnalyticsKeyIfUnreferenced('analytics-k1', evidence))
+      .rejects.toThrow(/response lost|service response/i)
+    expect(steps).toEqual(['tx:start', 'intent', 'tx:commit'])
+
+    await expect(dependencies.retireAnalyticsKeyIfUnreferenced('analytics-k1', evidence))
+      .resolves.toEqual({ retired: true, receiptSha256: digest('f') })
+    expect(managerFetch).toHaveBeenCalledTimes(2)
+    expect(steps).toEqual([
+      'tx:start', 'intent', 'tx:commit',
+      'tx:start', 'intent', 'tx:commit',
+      'tx:start', 'receipt', 'tx:commit'
+    ])
   })
 })

@@ -88,3 +88,35 @@ The strict server project still reports unrelated pre-existing diagnostics and c
 An isolated PostgreSQL 14 `initdb` under `/private/tmp` was attempted for local apply/reapply evidence. The sandbox denied SysV shared-memory creation and removed its partial data directory. The required escalated retry was interrupted after 709 seconds; no PostgreSQL server started, no database was contacted, and it was not retried per coordination direction. This review therefore relies on the passing static/idempotence contracts plus the accepted earlier PostgreSQL 14 migration evidence recorded by Tasks 5/12.
 
 All changed Task 15 source, migration, fixture, and test diffs were reread. Exact-path diff checks, secret scans, legacy event-context shim scans, process-environment scans, logging scans, and raw-query/source/provider-body scans were clean. Task 16's concurrent agency layout, operations, admin UI/API, and tests remained untouched and unstaged.
+
+## Acceptance Review 2 — Crash-safe Retention Recovery
+
+The final residual review closes the remaining four governance gaps without provider, database, network, resource, or deployment activity:
+
+1. Governed expiry now derives the installed foreign-key dependency graph from PostgreSQL catalog metadata and selects only leaf rows. Any retained successor or other direct child blocks its parent; that rule propagates through arbitrary DAG depth as leaves are removed. A held successor therefore leaves its parent pending without an FK deletion failure or cutoff advancement, while unrelated leaf rows in the same pass are still deleted. The dependency helper is SECURITY DEFINER but accepts only the existing retention-target allowlist.
+2. `legal_hold_blocked_count` and `dependency_blocked_count` are durable non-negative attestation columns. Both values are inputs to the chained attestation SHA-256, returned by the definer, and required to be zero before the high-watermark cutoff advances. Fresh creation plus `ADD COLUMN IF NOT EXISTS` and named guarded constraints cover migration apply/reapply.
+3. Analytics-key destruction is now a crash-safe two-transaction protocol. The first transaction takes the key-version fence, proves zero detailed-event references, and commits one immutable retirement intent. Only then does the mandatory key-manager call run, bound to the intent id and executor. A lost response leaves the permanent event-insertion fence in place and retries the external idempotency key safely. A second transaction records the immutable receipt. Existing legacy receipts remain terminal fences; the compatibility recorder can only complete a previously committed intent.
+4. The checked-in holdout manifest no longer contains a repeated-character placeholder. Its judgement digest is the exact SHA-256 of a 589-byte AES-256-GCM opaque artifact. The repository contains no plaintext holdout labels, key material, queries, judgements, or relevant-entity evidence. A separate deployment-import manifest pins source path, R2 object key, media type, artifact digest, encryption/key reference, and Task 18 ownership. It is deliberately `productionReady: false` and `blocked_pending_task_18_decryption_adapter`: Task 18 must provision the external key, verify ciphertext bytes, implement guarded decryption/materialization compatible with the runtime sealed-artifact digest contract, and import the resulting canonical object. Until then evaluation remains fail closed.
+
+While migration 350 was exclusively owned here, the bounded Task 16 provenance prerequisite was also added: `crm_search_change_approvals.requested_by UUID` is nullable only for legacy rows and added idempotently. Task 16 was given the exact contract to require it on every new API/repository write, preserve an imported original requester, and read the column directly. Recursive audit details now admit only the new scalar keys `requestedByActorId` (UUID) and `importedProvenanceHash` (SHA-256/HMAC digest); the existing 32-key/depth/size bounds remain unchanged.
+
+### Residual TDD and Verification
+
+The residual RED was captured before production edits:
+
+```text
+Retention/fixture/migration RED:       67 passed, 8 failed, 1 guarded PG skip
+Task 16 provenance contract RED:       31 passed, 1 failed
+Final focused gate:                    76 passed, 1 guarded PG skip
+Non-overlapping Task 15 compatibility: 58 passed
+Post-review fixture materialization:   21 passed
+Node 24 targeted ESLint:                0 diagnostics
+Owned-path Nuxt TypeScript filter:      0 diagnostics
+git diff --check:                       clean
+```
+
+The repository-wide Nuxt typecheck still exits on its existing application diagnostics (approximately 2,150 emitted lines); filtering that same run produced no Task 15-owned path. The first targeted ESLint invocation used the shell's Node 20 and failed while loading configuration because `Object.groupBy` is unavailable; the exact source/test paths passed under the project's available Node 24 runtime. Neither failure reflects a code diagnostic.
+
+The guarded PostgreSQL 14 test now contains live assertions for a held operation successor, an independent expired operation, durable blocked counts, and no parent deletion. It remained skipped because `CRM_SEARCH_TASK6_TEST_DSN` is absent. Per the explicit residual direction, the previously hung local/escalated PostgreSQL startup path was not retried; verification relies on the new static/idempotence contracts, the guarded live case, and the accepted prior PostgreSQL 14 apply/reapply evidence.
+
+Every residual source, fixture, test, and migration diff was reread. Exact artifact-byte SHA-256 recomputation, JSON parsing, privacy/secret scans, SQL allowlist/privilege review, Node 24 lint, and whitespace checks were clean. Concurrent Task 16 implementation files and the two untracked Task 17 marketing RED tests were not edited or staged.

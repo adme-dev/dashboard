@@ -234,6 +234,84 @@ databaseDescribe('CRM search migrations 350-352 on isolated local PostgreSQL 14'
       await connection.query(validate)
       await connection.query('COMMIT')
 
+      const retentionParent = '71000000-0000-4000-8000-000000000001'
+      const retentionHeldChild = '71000000-0000-4000-8000-000000000002'
+      const retentionIndependent = '71000000-0000-4000-8000-000000000003'
+      const hold = await administrator.query(
+        `SELECT crm_search_place_legal_hold(
+           $1, $2, 'retention-successor-hold', 'Hold successor during dependency retention test.',
+           $3, $4
+         ) AS id`,
+        [fixedScopeId, clientA,
+          '71000000-0000-4000-8000-000000000010',
+          '71000000-0000-4000-8000-000000000011']
+      )
+      await administrator.query(
+        `INSERT INTO crm_search_operations (
+           id, organisation_scope_id, client_id, entity_type, entity_id, schema_version,
+           source_revision, source_event_sequence, desired_action, vector_id, namespace,
+           state, successor_of, retention_expires_at
+         ) VALUES
+           ($1, $4, $5, 'person', $6, 'crm-search-v1', 1, 901, 'delete',
+             'v_retention_parent', 'n_retention_dependency', 'terminal_dead_letter', NULL,
+             NOW() - INTERVAL '2 days'),
+           ($2, $4, $5, 'person', $6, 'crm-search-v1', 2, 902, 'delete',
+             'v_retention_child', 'n_retention_dependency', 'terminal_dead_letter', $1,
+             NOW() - INTERVAL '2 days'),
+           ($3, $4, $5, 'company', $7, 'crm-search-v1', 1, 903, 'delete',
+             'v_retention_independent', 'n_retention_dependency', 'terminal_dead_letter', NULL,
+             NOW() - INTERVAL '2 days')`,
+        [retentionParent, retentionHeldChild, retentionIndependent, fixedScopeId, clientA,
+          initialPerson, initialCompany]
+      )
+      await administrator.query(
+        `SELECT crm_search_attach_legal_hold($1, 'crm_search_operations', $2, $3)`,
+        [hold.rows[0].id, retentionHeldChild, '71000000-0000-4000-8000-000000000012']
+      )
+      const retentionCutoff = new Date(Date.now() - 24 * 60 * 60 * 1_000).toISOString()
+      const retentionManifest = await administrator.query(
+        `SELECT crm_search_projection_hash(concat_ws(
+           '|', 'crm_search_operations', 'crm_search_operations', $1::TIMESTAMPTZ::TEXT,
+           COALESCE(array_to_string(array_agg(operation.id ORDER BY operation.retention_expires_at, operation.id), ','), '')
+         )) AS hash
+         FROM crm_search_operations operation
+         WHERE operation.retention_expires_at <= $1::TIMESTAMPTZ
+           AND operation.legal_hold_id IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM crm_search_legal_hold_targets held
+             LEFT JOIN crm_search_legal_hold_releases released
+               ON released.legal_hold_id = held.legal_hold_id
+             WHERE held.target_table = 'crm_search_operations'
+               AND held.target_row_id = operation.id AND released.id IS NULL
+           )
+           AND NOT crm_search_retention_row_has_dependents('crm_search_operations', operation.id)`,
+        [retentionCutoff]
+      )
+      const retentionResult = await administrator.query(
+        `SELECT crm_search_expire_governed_rows(
+           'crm_search_operations', 'crm_search_operations', $1::TIMESTAMPTZ,
+           repeat('0', 64), $2, $3, NULL, 1000
+         ) AS result`,
+        [retentionCutoff, retentionManifest.rows[0].hash,
+          '71000000-0000-4000-8000-000000000013']
+      )
+      expect(retentionResult.rows[0].result).toMatchObject({
+        rowCount: 1,
+        complete: false,
+        legalHoldBlockedCount: 1,
+        dependencyBlockedCount: 1
+      })
+      expect((await administrator.query(
+        `SELECT id FROM crm_search_operations WHERE id = ANY($1::UUID[]) ORDER BY id`,
+        [[retentionParent, retentionHeldChild, retentionIndependent]]
+      )).rows).toEqual([{ id: retentionParent }, { id: retentionHeldChild }])
+      expect((await administrator.query(
+        `SELECT legal_hold_blocked_count, dependency_blocked_count
+           FROM crm_search_retention_attestations
+          WHERE target_table = 'crm_search_operations'
+          ORDER BY created_at DESC, id DESC LIMIT 1`
+      )).rows).toEqual([{ legal_hold_blocked_count: '1', dependency_blocked_count: '1' }])
+
       const phaseTwoTriggers = await connection.query(
         `SELECT trigger_name FROM information_schema.triggers
           WHERE trigger_schema = $1 AND trigger_name LIKE 'crm_search_capture_%'`,

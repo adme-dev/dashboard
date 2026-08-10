@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import {
   computeCrmSearchFixtureSha256,
@@ -41,7 +42,7 @@ function validFixtureBundle() {
       version: 'holdout-v1',
       sha256: '',
       sealed: true,
-      sealedJudgementSha256: digest('d'),
+      sealedJudgementSha256: createHash('sha256').update('sealed-test-artifact').digest('hex'),
       queryCount: 360,
       clientCounts: { 'client-1': 120, 'client-2': 120, 'client-3': 120 },
       entityTypeCounts: { person: 120, company: 120, opportunity: 120 },
@@ -97,7 +98,12 @@ describe('CRM search evaluation fixtures', () => {
     expect(checkedIn.development.queries).toHaveLength(180)
     expect(checkedIn.holdoutManifest.queryCount).toBe(360)
     expect(schema).toMatchObject({ $schema: 'https://json-schema.org/draft/2020-12/schema', additionalProperties: false })
-    expect(sample).toMatchObject({ schemaVersion: 'crm-search-evaluation-v1' })
+    expect(sample).toMatchObject({
+      schemaVersion: 'crm-search-evaluation-v1',
+      holdoutManifestSha256: checkedIn.holdoutManifest.sha256,
+      sealedJudgementSha256: checkedIn.holdoutManifest.sealedJudgementSha256
+    })
+    expect(sample.sealedJudgementSha256).not.toMatch(/^([a-f0-9])\1{63}$/)
     expect(JSON.stringify({ checkedIn, sample })).not.toMatch(/rawQuery|sourceText|email|phone|notes/i)
   })
 
@@ -169,5 +175,47 @@ describe('CRM search evaluation fixtures', () => {
     fixture.holdoutManifest.queryCount += 1
 
     expect(() => validateEvaluationFixtureBundle(fixture)).toThrow(/holdout manifest digest mismatch/i)
+  })
+
+  it('rejects a placeholder sealed-judgement digest even when the manifest digest is recomputed', () => {
+    const fixture = validFixtureBundle()
+    fixture.holdoutManifest.sealedJudgementSha256 = 'c'.repeat(64)
+    fixture.holdoutManifest.sha256 = computeCrmSearchFixtureSha256(fixture.holdoutManifest)
+
+    expect(() => validateEvaluationFixtureBundle(fixture)).toThrow(/sealed judgement|placeholder/i)
+  })
+
+  it('binds the sealed judgement digest to an opaque materializable artifact and import contract', () => {
+    const artifactPath = 'test/fixtures/crm-search-evaluation/holdout.sealed.artifact.json'
+    const importManifestPath = 'test/fixtures/crm-search-evaluation/holdout.deployment.manifest.json'
+    expect(existsSync(artifactPath), 'opaque sealed artifact is missing').toBe(true)
+    expect(existsSync(importManifestPath), 'sealed artifact deployment manifest is missing').toBe(true)
+    if (!existsSync(artifactPath) || !existsSync(importManifestPath)) return
+
+    const holdout = JSON.parse(readFileSync(
+      'test/fixtures/crm-search-evaluation/holdout.manifest.json', 'utf8'
+    )) as Record<string, unknown>
+    const artifactBytes = readFileSync(artifactPath)
+    const artifact = JSON.parse(artifactBytes.toString('utf8')) as Record<string, unknown>
+    const importManifest = JSON.parse(readFileSync(importManifestPath, 'utf8')) as Record<string, unknown>
+    const contentSha256 = createHash('sha256').update(artifactBytes).digest('hex')
+
+    expect(holdout.sealedJudgementSha256).toBe(contentSha256)
+    expect(contentSha256).not.toMatch(/^([a-f0-9])\1{63}$/)
+    expect(artifact).toMatchObject({
+      version: 'crm-search-sealed-holdout-artifact-v1',
+      encryption: 'AES-256-GCM',
+      queryCount: 360
+    })
+    expect(importManifest).toMatchObject({
+      version: 'crm-search-sealed-holdout-import-v1',
+      sourcePath: artifactPath,
+      objectKey: 'crm-search/evaluation/holdouts/holdout-v1.json',
+      contentSha256,
+      provisioningOwner: 'task-18'
+    })
+    expect(JSON.stringify(artifact)).not.toMatch(
+      /queries|judgements|labels|plaintext|relevantEntity|rawQuery|sourceText|email|phone|notes/i
+    )
   })
 })

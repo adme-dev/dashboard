@@ -1,8 +1,8 @@
 {
   "version": "holdout-v1",
-  "sha256": "aca7a955afb240227aa494ddb1d93c9e34e33efa63acb9b3dda0e027620e5cae",
+  "sha256": "409e38b57ba18d81233831bc7511ce062042cc5e99a2f050619568ced514a913",
   "sealed": true,
-  "sealedJudgementSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "sealedJudgementSha256": "6f657db2d074eb64a59af7efb6408497a36c149f45c6d9d5846f4a9e1f77d9bc",
   "queryCount": 360,
   "clientCounts": {
     "client-1": 120,
