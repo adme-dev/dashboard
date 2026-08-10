@@ -73,6 +73,13 @@ interface DeleteTargetRow extends Record<string, unknown> {
   namespace: unknown
 }
 
+interface DeleteTarget {
+  schemaVersion: string
+  vectorId: string
+  namespace: string
+  teardownAuthorized: boolean
+}
+
 export interface ExpandCrmSearchDirtySourceBatchInput {
   limit: number
   leaseSeconds: number
@@ -213,10 +220,7 @@ async function loadSource(
 async function loadDeleteTargets(
   claim: CrmSearchDirtySourceClaim,
   transaction: CrmSearchTransactionClient
-): Promise<{
-  targets: Map<string, { schemaVersion: string, vectorId: string, namespace: string }>
-  hasActiveTeardown: boolean
-}> {
+): Promise<Map<string, DeleteTarget>> {
   const params = [claim.organisationScopeId, claim.clientId, claim.entityType, claim.entityId]
   const documentRows = await transaction.query<DeleteTargetRow>(`
     SELECT schema_version, vector_id, namespace
@@ -237,22 +241,28 @@ async function loadDeleteTargets(
       AND vector.client_id = $2
       AND vector.entity_type = $3
       AND vector.entity_id = $4
-      AND vector.deletion_state <> 'confirmed_absent'
-      AND teardown.state IN ('pending', 'deleting', 'provider_pending', 'failed')
+      AND vector.deletion_state IN ('pending', 'provider_pending', 'failed')
+      AND teardown.state IN ('deleting', 'provider_pending')
+      AND teardown.provider_deletion_state IN ('pending', 'partially_confirmed')
     ORDER BY vector.schema_version, vector.vector_id
     FOR SHARE OF vector, teardown
   `, params)
-  const targets = new Map<string, { schemaVersion: string, vectorId: string, namespace: string }>()
-  for (const row of [...documentRows.rows, ...teardownRows.rows]) {
+  const targets = new Map<string, DeleteTarget>()
+  const addTarget = (row: DeleteTargetRow, teardownAuthorized: boolean) => {
     const target = mapDeleteTarget(row)
     const previous = targets.get(target.schemaVersion)
     if (previous && (
       previous.vectorId !== target.vectorId || previous.namespace !== target.namespace
     )) throw new Error(errorCode)
-    targets.set(target.schemaVersion, target)
+    targets.set(target.schemaVersion, {
+      ...target,
+      teardownAuthorized: teardownAuthorized || previous?.teardownAuthorized === true
+    })
   }
+  for (const row of documentRows.rows) addTarget(row, false)
+  for (const row of teardownRows.rows) addTarget(row, true)
   if (targets.size > CRM_SEARCH_DIRTY_EXPANSION_MAX_SCHEMAS) throw new Error(errorCode)
-  return { targets, hasActiveTeardown: teardownRows.rows.length > 0 }
+  return targets
 }
 
 function nextAttemptAt(now: string): string {
@@ -348,33 +358,32 @@ async function expandClaim(
       }
     }
 
-    const deletion = action === 'delete'
+    const targets = action === 'delete'
       ? await loadDeleteTargets(claim, transaction)
-      : {
-          targets: new Map<string, {
-            schemaVersion: string
-            vectorId: string
-            namespace: string
-          }>(),
-          hasActiveTeardown: false
-        }
-    const targets = deletion.targets
+      : new Map<string, DeleteTarget>()
+    let ordinaryDeleteAllowed = false
     if (action === 'delete') {
-      const ordinaryDeleteAllowed = globalState === 'enabled'
+      ordinaryDeleteAllowed = globalState === 'enabled'
         && indexingReady
         && schemas.indexingEnabled
         && schemas.lifecycle !== 'off'
         && schemas.lifecycle !== 'teardown_pending'
-      if (
-        globalState !== 'delete_only'
-        && !ordinaryDeleteAllowed
-        && !deletion.hasActiveTeardown
-      ) {
+      const ordinarySchemas = new Set(schemas.deletion)
+      for (const [schemaVersion, target] of targets) {
+        if (!target.teardownAuthorized && (
+          !ordinaryDeleteAllowed || !ordinarySchemas.has(schemaVersion)
+        )) targets.delete(schemaVersion)
+      }
+      if (!ordinaryDeleteAllowed && targets.size === 0) {
         await release(claim, 'control_disabled', input.now, transaction, dependencies)
         return { operationsCreated: 0, skippedByControl: 1 }
       }
     }
-    const schemaVersions = action === 'upsert' ? schemas.upsert : schemas.deletion
+    const schemaVersions = action === 'upsert'
+      ? schemas.upsert
+      : ordinaryDeleteAllowed
+        ? schemas.deletion
+        : []
     for (const schemaVersion of schemaVersions) {
       if (!targets.has(schemaVersion)) {
         if (!canonicalNamespace) continue
@@ -387,7 +396,8 @@ async function expandClaim(
             entityType: claim.entityType,
             entityId: claim.entityId
           }),
-          namespace: canonicalNamespace
+          namespace: canonicalNamespace,
+          teardownAuthorized: false
         })
       }
     }
@@ -431,7 +441,9 @@ async function expandClaim(
       }, transaction)
       operationsCreated += 1
     }
-    await dependencies.completeDirtyClaim(claim, transaction)
+    if (!await dependencies.completeDirtyClaim(claim, transaction)) {
+      throw new Error('crm_search_dirty_claim_superseded')
+    }
     return { operationsCreated, skippedByControl: 0 }
   })
 }

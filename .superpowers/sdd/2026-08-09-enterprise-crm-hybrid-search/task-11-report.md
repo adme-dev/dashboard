@@ -77,3 +77,46 @@ PASS: 33 files, 402 tests; 1 guarded external-PostgreSQL case skipped
 1. The dedicated queue and secret bindings must be provisioned and supplied by an authorized release workflow. This task only freezes and tests their exact names; it deliberately creates no resource.
 2. Task 12 must reuse the confirmation helper, re-prove current authority at processing time, and preserve the operation/document confirmation CAS. Task 11 performs no provider mutation or reconciliation.
 3. The repository-wide Nuxt typecheck retains unrelated baseline diagnostics; all Task 11-owned TypeScript is clean under the stricter isolated pass.
+
+---
+
+## Review Round 1 — Atomic Dirty Completion and Exact Delete Authority
+
+### Result
+
+- Status: `DONE`.
+- Commit target: `fix(crm-search): bind publication to fresh delete authority`.
+- Scope: Task 11's dirty-expansion/publication repositories, their focused suites, and this report only. Concurrent Task 12 provider/processor/reconciliation/backfill/teardown/dead-letter source and tests remained uninspected, unmodified, and unstaged.
+
+### Strict TDD Evidence
+
+Five focused failures first reproduced the review findings:
+
+1. an absent-source delete operation was counted/committed after a concurrent newer dirty recapture made exact completion CAS return false;
+2. global `delete_only` admitted a document-only delete without teardown authority;
+3. one entity teardown vector authorized an unrelated document schema target;
+4. dirty expansion accepted noncanonical pending/failed teardown-level states; and
+5. publication proved only client-level teardown existence rather than exact operation/vector membership.
+
+The initial review RED was 5 failures / 17 passes across the two focused suites.
+
+The operation upsert and exact dirty completion already execute inside the same non-retry database transaction. Expansion now treats a false revision/event/token/generation completion CAS as a transaction failure. PostgreSQL therefore rolls back every operation insert/coalescing mutation from that stale expansion. The follow-up old-claim release remains exact token/generation CAS, returns false after concurrent recapture, and cannot overwrite the newer dirty intent. The absent-source delete regression models transaction commit/rollback explicitly and proves no stale operation reaches the committed publication set.
+
+Delete target expansion now records authority per exact schema/vector/namespace target. Ordinary document-ledger deletion requires current globally enabled indexing policy plus an active/candidate/retiring schema. Delete-only or policy-independent teardown deletion retains only exact teardown-vector members for the same organisation, client, entity type/ID, schema, vector, and namespace under the canonical teardown states (`deleting`/`provider_pending`, provider deletion `pending`/`partially_confirmed`, vector deletion `pending`/`provider_pending`/`failed`). One authorized teardown member cannot authorize an unrelated ledger target.
+
+Publication applies the same fail-closed split: ordinary deletes require `enabled` current policy/schema authority; teardown deletes require an exact joined teardown-vector identity and canonical current states. Client-level teardown existence and unconditional `delete_only` are no longer publication authority.
+
+### Final Verification
+
+```text
+Focused review suites:                         2 files, 22 passed
+Full Task 11 gate:                             6 files, 66 passed
+Task 8/9/10/11 compatibility:                 33 files, 405 passed; 1 guarded PG skip
+Strict isolated TypeScript on modified scope: exit 0
+Node 24.18 ESLint on modified scope:           exit 0
+git diff --check:                              passed
+```
+
+The first combined compatibility run had one timeout in the repository-wide caller scanner while 32 suites and 404 tests passed. The scanner passed alone (54/54 in 3.17 seconds), and the unchanged combined command then passed in 3.73 seconds. This demonstrated transient parallel scan contention rather than a caller-contract failure, so no unrelated timeout or scanner change was made.
+
+The final reread covered all four modified source/test files end-to-end. It rechecked transaction rollback behavior, exact old-claim release CAS, absence-source delete handling, schema/vector/namespace collision rejection, canonical teardown states, ordinary-vs-teardown authority separation, identifier-only publication, parameterized SQL, privacy-safe failure handling, and exclusion of every concurrent Task 12 path.

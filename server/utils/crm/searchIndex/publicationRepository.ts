@@ -93,16 +93,28 @@ export async function claimCrmSearchOperationsForPublication(
               operation.desired_action = 'delete'
               AND control.state IN ('enabled', 'delete_only')
               AND (
-                control.state = 'delete_only'
-                OR EXISTS (
+                EXISTS (
                   SELECT 1
                   FROM crm_search_client_teardowns teardown
+                  JOIN crm_search_teardown_vectors vector
+                    ON vector.teardown_id = teardown.id
                   WHERE teardown.organisation_scope_id = operation.organisation_scope_id
                     AND teardown.client_id = operation.client_id
-                    AND teardown.state IN ('pending', 'deleting', 'provider_pending', 'failed')
+                    AND teardown.namespace = operation.namespace
+                    AND teardown.state IN ('deleting', 'provider_pending')
+                    AND teardown.provider_deletion_state IN ('pending', 'partially_confirmed')
+                    AND vector.organisation_scope_id = operation.organisation_scope_id
+                    AND vector.client_id = operation.client_id
+                    AND vector.entity_type = operation.entity_type
+                    AND vector.entity_id = operation.entity_id
+                    AND vector.schema_version = operation.schema_version
+                    AND vector.vector_id = operation.vector_id
+                    AND vector.namespace = operation.namespace
+                    AND vector.deletion_state IN ('pending', 'provider_pending', 'failed')
                 )
                 OR (
-                  control.indexing_ready = TRUE
+                  control.state = 'enabled'
+                  AND control.indexing_ready = TRUE
                   AND policy.indexing_enabled = TRUE
                   AND policy.lifecycle_state IN ('indexing', 'shadow', 'assist')
                   AND (

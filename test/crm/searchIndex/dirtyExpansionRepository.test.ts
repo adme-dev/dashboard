@@ -158,7 +158,7 @@ describe('CRM search dirty-source expansion repository', () => {
     }), expect.anything())
   })
 
-  it('allows delete-only to fan out deletes without reading confirmation key material', async () => {
+  it('allows delete-only to fan out exact teardown deletes without reading confirmation key material', async () => {
     const deleteClaim = { ...claim, desiredAction: 'delete' as const }
     const query = vi.fn(async (sql: string) => {
       if (sql.includes('pg_advisory_xact_lock_shared')) return { rows: [{}] }
@@ -175,14 +175,14 @@ describe('CRM search dirty-source expansion repository', () => {
       if (sql.includes('FROM crm_search_namespaces')) {
         return { rows: [{ namespace: 'canonical_namespace_123' }] }
       }
-      if (sql.includes('FROM crm_search_documents')) {
+      if (sql.includes('FROM crm_search_documents')) return { rows: [] }
+      if (sql.includes('FROM crm_search_teardown_vectors')) {
         return { rows: [{
           schema_version: 'crm-search-v1',
-          vector_id: 'ledger_vector_id_123',
+          vector_id: 'teardown_vector_id_123',
           namespace: 'canonical_namespace_123'
         }] }
       }
-      if (sql.includes('FROM crm_search_teardown_vectors')) return { rows: [] }
       if (sql.includes('FROM crm_companies')) return { rows: [] }
       throw new Error(`unexpected delete SQL: ${sql}`)
     })
@@ -202,10 +202,52 @@ describe('CRM search dirty-source expansion repository', () => {
     expect(createConfirmationTag).not.toHaveBeenCalled()
     expect(deps.upsertOperation).toHaveBeenCalledWith(expect.objectContaining({
       desiredAction: 'delete',
-      vectorId: 'ledger_vector_id_123',
+      vectorId: 'teardown_vector_id_123',
       contentHash: null,
       confirmationTag: null,
       confirmationKeyVersion: null
+    }), expect.anything())
+    const teardownSql = query.mock.calls.find(([sql]) =>
+      String(sql).includes('FROM crm_search_teardown_vectors'))?.[0] as string
+    expect(teardownSql).toContain('teardown.state IN (\'deleting\', \'provider_pending\')')
+    expect(teardownSql).toContain('teardown.provider_deletion_state IN (\'pending\', \'partially_confirmed\')')
+    expect(teardownSql).toContain('vector.deletion_state IN (\'pending\', \'provider_pending\', \'failed\')')
+  })
+
+  it('retains document-only delete intent while global control is delete-only', async () => {
+    const deleteClaim = { ...claim, desiredAction: 'delete' as const }
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes('pg_advisory_xact_lock_shared')) return { rows: [{}] }
+      if (sql.includes('FROM crm_search_global_control')) {
+        return { rows: [{ state: 'delete_only', indexing_ready: false, revision: '8' }] }
+      }
+      if (sql.includes('FROM crm_search_policies')) return { rows: [] }
+      if (sql.includes('FROM crm_search_namespaces')) return { rows: [] }
+      if (sql.includes('FROM crm_search_documents')) {
+        return { rows: [{
+          schema_version: 'crm-search-v1',
+          vector_id: 'ordinary_ledger_vector_123',
+          namespace: 'canonical_namespace_123'
+        }] }
+      }
+      if (sql.includes('FROM crm_search_teardown_vectors')) return { rows: [] }
+      throw new Error(`unexpected document-only delete SQL: ${sql}`)
+    })
+    const deps = dependencies({
+      claimDirtySources: async () => [deleteClaim],
+      transactionWithoutRetry: vi.fn(async callback => await callback({ query } as never))
+    })
+
+    await expect(expandCrmSearchDirtySourceBatch({
+      limit: 25, leaseSeconds: 60, now: NOW, confirmationKeyring: null
+    }, deps)).resolves.toEqual({
+      dirtyClaimed: 1,
+      operationsCreated: 0,
+      skippedByControl: 1
+    })
+    expect(deps.upsertOperation).not.toHaveBeenCalled()
+    expect(deps.releaseDirtyClaim).toHaveBeenCalledWith(expect.objectContaining({
+      errorClass: 'control_disabled'
     }), expect.anything())
   })
 
@@ -283,6 +325,121 @@ describe('CRM search dirty-source expansion repository', () => {
       desiredAction: 'delete',
       vectorId: 'teardown_vector_id_123'
     }), expect.anything())
+  })
+
+  it('does not let one teardown vector authorize an unrelated document delete', async () => {
+    const deleteClaim = { ...claim, desiredAction: 'delete' as const }
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes('pg_advisory_xact_lock_shared')) return { rows: [{}] }
+      if (sql.includes('FROM crm_search_global_control')) {
+        return { rows: [{ state: 'enabled', indexing_ready: true, revision: '8' }] }
+      }
+      if (sql.includes('FROM crm_search_policies')) return { rows: [] }
+      if (sql.includes('FROM crm_search_namespaces')) return { rows: [] }
+      if (sql.includes('FROM crm_search_documents')) {
+        return { rows: [{
+          schema_version: 'crm-search-v2',
+          vector_id: 'unrelated_document_vector_123',
+          namespace: 'unrelated_namespace_123'
+        }] }
+      }
+      if (sql.includes('FROM crm_search_teardown_vectors')) {
+        return { rows: [{
+          schema_version: 'crm-search-v1',
+          vector_id: 'teardown_vector_id_123',
+          namespace: 'canonical_namespace_123'
+        }] }
+      }
+      throw new Error(`unexpected exact teardown SQL: ${sql}`)
+    })
+    const deps = dependencies({
+      claimDirtySources: async () => [deleteClaim],
+      transactionWithoutRetry: vi.fn(async callback => await callback({ query } as never))
+    })
+
+    await expect(expandCrmSearchDirtySourceBatch({
+      limit: 25, leaseSeconds: 60, now: NOW, confirmationKeyring: null
+    }, deps)).resolves.toMatchObject({ operationsCreated: 1, skippedByControl: 0 })
+    expect(deps.upsertOperation).toHaveBeenCalledTimes(1)
+    expect(deps.upsertOperation).toHaveBeenCalledWith(expect.objectContaining({
+      schemaVersion: 'crm-search-v1',
+      vectorId: 'teardown_vector_id_123',
+      namespace: 'canonical_namespace_123'
+    }), expect.anything())
+  })
+
+  it('rolls back an absent-source delete when concurrent recapture wins dirty completion CAS', async () => {
+    const deleteClaim = { ...claim, desiredAction: 'delete' as const }
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes('pg_advisory_xact_lock_shared')) return { rows: [{}] }
+      if (sql.includes('FROM crm_search_global_control')) {
+        return { rows: [{ state: 'enabled', indexing_ready: true, revision: '8' }] }
+      }
+      if (sql.includes('FROM crm_search_policies')) {
+        return { rows: [{
+          lifecycle_state: 'indexing', indexing_enabled: true,
+          active_schema_version: 'crm-search-v1', candidate_schema_version: null,
+          retiring_schema_versions: []
+        }] }
+      }
+      if (sql.includes('FROM crm_search_namespaces')) {
+        return { rows: [{ namespace: 'canonical_namespace_123' }] }
+      }
+      if (sql.includes('FROM crm_search_documents')) {
+        return { rows: [{
+          schema_version: 'crm-search-v1',
+          vector_id: 'ledger_vector_id_123',
+          namespace: 'canonical_namespace_123'
+        }] }
+      }
+      if (sql.includes('FROM crm_search_teardown_vectors')) return { rows: [] }
+      if (sql.includes('FROM crm_companies')) return { rows: [] }
+      throw new Error(`unexpected concurrent recapture SQL: ${sql}`)
+    })
+    const stagedOperations: unknown[] = []
+    const committedOperations: unknown[] = []
+    let transactionNumber = 0
+    const transactionWithoutRetry = vi.fn(async (callback) => {
+      transactionNumber += 1
+      const isExpansionTransaction = transactionNumber === 1
+      try {
+        const result = await callback({ query } as never)
+        if (isExpansionTransaction) committedOperations.push(...stagedOperations.splice(0))
+        return result
+      } catch (error) {
+        if (isExpansionTransaction) stagedOperations.splice(0)
+        throw error
+      }
+    })
+    const upsertOperation = vi.fn(async (input) => {
+      stagedOperations.push(input)
+      return { id: 'stale-operation' } as never
+    })
+    const deps = dependencies({
+      claimDirtySources: async () => [deleteClaim],
+      transactionWithoutRetry,
+      upsertOperation,
+      completeDirtyClaim: vi.fn(async () => false),
+      releaseDirtyClaim: vi.fn(async () => false)
+    })
+
+    await expect(expandCrmSearchDirtySourceBatch({
+      limit: 25, leaseSeconds: 60, now: NOW, confirmationKeyring: null
+    }, deps)).resolves.toEqual({
+      dirtyClaimed: 1,
+      operationsCreated: 0,
+      skippedByControl: 0
+    })
+    expect(upsertOperation).toHaveBeenCalledTimes(1)
+    expect(deps.completeDirtyClaim).toHaveBeenCalledWith(deleteClaim, expect.anything())
+    expect(committedOperations).toEqual([])
+    expect(deps.releaseDirtyClaim).toHaveBeenCalledWith(expect.objectContaining({
+      id: deleteClaim.id,
+      claimToken: deleteClaim.claimToken,
+      claimGeneration: deleteClaim.claimGeneration,
+      errorClass: 'expansion_failed'
+    }), expect.anything())
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('FROM crm_companies'))).toBe(false)
   })
 
   it('releases rather than expanding when the source revision has advanced', async () => {
