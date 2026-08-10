@@ -41,6 +41,12 @@ queue = "crm-email-inbound-queue"
 binding = "MEASUREMENT_DELIVERY_QUEUE"
 queue = "measurement-delivery"
 
+# Identifier-only CRM search operation messages. The dedicated standalone
+# workers/crm-search-consumer Worker is the sole consumer for this queue.
+[[queues.producers]]
+binding = "CRM_SEARCH_INDEX_QUEUE"
+queue = "agency-crm-search-index"
+
 # Producer binding for the Audio Studio music-generation queue. Consumer runs in
 # workers/audio-jobs/ (the Pages worker entry exports only fetch+scheduled, so a
 # Pages-side queue consumer never fires — it must live in a standalone Worker).

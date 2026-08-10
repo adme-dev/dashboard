@@ -46,7 +46,8 @@ export const ROUTES: Record<string, string[]> = {
     '/api/cron/monday-webhooks',
     '/api/cron/measurement-outbox-repair',
     '/api/cron/god-mode-reconciliation',
-    '/api/cron/memory-index-outbox'
+    '/api/cron/memory-index-outbox',
+    '/api/cron/crm-search-index-repair'
   ],
   // every 15 min — keep the Xero customer cache and rollups fresh. Delta syncs
   // are idempotent and use the shared cron token resolver.
