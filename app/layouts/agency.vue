@@ -424,6 +424,8 @@ const footerNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Security', to: '/settings/security', onSelect: close },
       ...(canAccessAdmin.value ? [{ label: 'AI Governance', icon: 'i-lucide-shield-check', to: '/admin/ai/governance', onSelect: close }] : []),
       ...(canAccessAdmin.value ? [{ label: 'AI Model Ops', icon: 'i-lucide-brain-circuit', to: '/admin/ai/model-ops', onSelect: close }] : []),
+      // ADMIN-only CRM Search operations control plane.
+      ...(canAccessAdmin.value ? [{ label: 'CRM Search Operations', icon: 'i-lucide-database-zap', to: '/admin/ai/crm-search', onSelect: close }] : []),
       ...(canAccessAdmin.value ? [{ label: 'Admin', to: '/settings/admin', onSelect: close }] : []),
       { label: 'Integrations', to: '/settings/integrations/monday', onSelect: close }
     ]
