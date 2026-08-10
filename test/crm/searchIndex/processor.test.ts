@@ -39,6 +39,27 @@ function operation(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function currentGuardSnapshot(overrides: Record<string, unknown> = {}) {
+  return {
+    disposition: 'current',
+    source: {
+      exists: true,
+      deleted: false,
+      clientId,
+      revision: 7,
+      eventSequence: 12,
+      document: {
+        canonicalText: 'Name: Atlas Motors',
+        providerInput: 'Name: Atlas Motors',
+        contentHash: 'b'.repeat(64)
+      }
+    },
+    documentAlreadyCurrent: false,
+    ledger: null,
+    ...overrides
+  }
+}
+
 function runtime(events: string[]) {
   return {
     ai: {
@@ -93,11 +114,11 @@ function dependencies(events: string[], overrides: Record<string, unknown> = {})
     }),
     withProviderCallGuard: vi.fn(async (
       input: { provider: string },
-      callback: () => Promise<unknown>
+      callback: (snapshot: ReturnType<typeof currentGuardSnapshot>) => Promise<unknown>
     ) => {
       events.push(`guard_${input.provider}_open`)
       try {
-        return await callback()
+        return await callback(currentGuardSnapshot())
       } finally {
         events.push(`guard_${input.provider}_close`)
       }
@@ -154,6 +175,34 @@ describe('CRM search operation processor', () => {
       .mockResolvedValueOnce({ rows: [{
         metadata_index_state: 'ready', sentinel_state: 'confirmed_absent'
       }] })
+      .mockResolvedValueOnce({ rows: [{
+        id: operationId,
+        organisation_scope_id: organisationScopeId,
+        client_id: clientId,
+        entity_type: 'company',
+        entity_id: entityId,
+        schema_version: 'crm-search-v1',
+        source_revision: '7',
+        source_event_sequence: '12',
+        desired_action: 'upsert',
+        namespace,
+        content_hash: 'b'.repeat(64),
+        confirmation_tag: confirmationTag,
+        confirmation_key_version: 'k1',
+        state: 'processing',
+        lease_token: '66666666-6666-4666-8666-666666666666',
+        lease_generation: '3'
+      }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{
+        client_id: clientId,
+        search_revision: '7',
+        deleted_at: null,
+        name: 'Atlas Motors',
+        domain: null,
+        lifecycle_stage: null
+      }] })
+      .mockResolvedValueOnce({ rows: [] })
     const transactionWithoutRetry = vi.fn(async (callback) => {
       transactionActive = true
       try {
@@ -162,9 +211,13 @@ describe('CRM search operation processor', () => {
         transactionActive = false
       }
     })
-    const providerCall = vi.fn(async () => {
+    const providerCall = vi.fn(async (snapshot) => {
       expect(transactionActive).toBe(true)
-      expect(query).toHaveBeenCalledTimes(4)
+      expect(query).toHaveBeenCalledTimes(8)
+      expect(snapshot).toMatchObject({
+        disposition: 'current',
+        source: { clientId, revision: 7, eventSequence: 12 }
+      })
       return 'accepted'
     })
 
@@ -174,8 +227,24 @@ describe('CRM search operation processor', () => {
       provider: 'vectorize',
       action: 'upsert',
       schemaVersion: 'crm-search-v1',
-      teardownId: null
-    }, providerCall, { transactionWithoutRetry } as never)).resolves.toBe('accepted')
+      teardownId: null,
+      operationId,
+      entityType: 'company',
+      entityId,
+      sourceRevision: 7,
+      sourceEventSequence: 12,
+      namespace,
+      contentHash: 'b'.repeat(64),
+      leaseToken: '66666666-6666-4666-8666-666666666666',
+      leaseGeneration: 3
+    }, providerCall, {
+      transactionWithoutRetry,
+      buildDocument: vi.fn(async () => ({
+        canonicalText: 'Name: Atlas Motors',
+        providerInput: 'Name: Atlas Motors',
+        contentHash: 'b'.repeat(64)
+      }))
+    } as never)).resolves.toBe('accepted')
 
     expect(transactionActive).toBe(false)
     expect(query.mock.calls[0]?.[0]).toContain('pg_advisory_xact_lock_shared')
@@ -183,6 +252,90 @@ describe('CRM search operation processor', () => {
     expect(query.mock.calls[1]?.[0]).toContain('FOR SHARE')
     expect(query.mock.calls[2]?.[0]).toContain('crm_search_policies')
     expect(query.mock.calls[3]?.[0]).toContain('crm_search_schema_versions')
+    expect(query.mock.calls[4]?.[0]).toContain('crm_search_operations')
+    expect(query.mock.calls[4]?.[0]).toContain('FOR KEY SHARE')
+    expect(query.mock.calls[5]?.[0]).toContain('crm_search_source_dirty')
+    expect(query.mock.calls[5]?.[0]).toContain('FOR SHARE')
+    expect(query.mock.calls[6]?.[0]).toContain('crm_companies')
+    expect(query.mock.calls[6]?.[0]).toContain('FOR SHARE')
+    expect(query.mock.calls[7]?.[0]).toContain('crm_search_documents')
+    expect(query.mock.calls[7]?.[0]).toContain('FOR SHARE')
+  })
+
+  it('supersedes a source revision captured after initial context but before Workers AI', async () => {
+    const events: string[] = []
+    const providerRuntime = runtime(events)
+    const options = dependencies(events, {
+      withProviderCallGuard: vi.fn(async (
+        _input: unknown,
+        callback: (snapshot: ReturnType<typeof currentGuardSnapshot>) => Promise<unknown>
+      ) => callback(currentGuardSnapshot({
+        disposition: 'superseded',
+        source: {
+          exists: true,
+          deleted: false,
+          clientId,
+          revision: 8,
+          eventSequence: 13
+        }
+      })))
+    })
+
+    await expect(processCrmSearchOperation(operationId, providerRuntime as never, options as never))
+      .resolves.toEqual({ status: 'superseded' })
+
+    expect(options.markSuperseded).toHaveBeenCalledWith(expect.objectContaining({
+      reason: 'newer_source_intent'
+    }))
+    expect(options.admitProviderCall).not.toHaveBeenCalled()
+    expect(providerRuntime.ai.run).not.toHaveBeenCalled()
+    expect(providerRuntime.vectorize.upsert).not.toHaveBeenCalled()
+  })
+
+  it('converts a source move between AI and Vectorize into a freshly guarded delete', async () => {
+    const events: string[] = []
+    const providerRuntime = runtime(events)
+    let vectorGuardCount = 0
+    const options = dependencies(events, {
+      withProviderCallGuard: vi.fn(async (
+        input: { provider: string, action: string },
+        callback: (snapshot: ReturnType<typeof currentGuardSnapshot>) => Promise<unknown>
+      ) => {
+        if (input.provider === 'workers_ai') return callback(currentGuardSnapshot())
+        vectorGuardCount += 1
+        return callback(vectorGuardCount === 1
+          ? currentGuardSnapshot({
+              disposition: 'delete',
+              source: {
+                exists: true,
+                deleted: false,
+                clientId: '99999999-9999-4999-8999-999999999999',
+                revision: 8,
+                eventSequence: 13
+              }
+            })
+          : currentGuardSnapshot({
+              source: {
+                exists: true,
+                deleted: false,
+                clientId: '99999999-9999-4999-8999-999999999999',
+                revision: 8,
+                eventSequence: 13
+              }
+            }))
+      })
+    })
+
+    await expect(processCrmSearchOperation(operationId, providerRuntime as never, options as never))
+      .resolves.toEqual({ status: 'accepted_provider_pending' })
+
+    expect(providerRuntime.ai.run).toHaveBeenCalledOnce()
+    expect(providerRuntime.vectorize.upsert).not.toHaveBeenCalled()
+    expect(providerRuntime.vectorize.deleteByIds).toHaveBeenCalledWith([vectorId])
+    expect(options.convertOperationToDelete).toHaveBeenCalledOnce()
+    expect(options.admitProviderCall).toHaveBeenLastCalledWith(expect.objectContaining({
+      provider: 'vectorize', action: 'delete'
+    }))
   })
 
   it('derives endpoint replay/idempotency only from fresh durable operation state', async () => {
@@ -222,9 +375,9 @@ describe('CRM search operation processor', () => {
       'admit_operation',
       'sent_vectorize',
       'vectorize_upsert',
+      'guard_vectorize_close',
       'provider_pending',
-      'settle_vectorize',
-      'guard_vectorize_close'
+      'settle_vectorize'
     ])
     expect(options.markIndexed).not.toHaveBeenCalled()
   })

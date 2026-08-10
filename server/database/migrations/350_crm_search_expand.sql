@@ -2485,7 +2485,7 @@ BEGIN
   SELECT * INTO v_operation
   FROM public.crm_search_operations
   WHERE id = p_operation_id
-  FOR UPDATE;
+  FOR NO KEY UPDATE;
   IF NOT FOUND OR v_operation.state IS DISTINCT FROM p_expected_state
      OR v_operation.state NOT IN ('processing', 'retryable') THEN
     RAISE EXCEPTION 'CRM search operation is not ready for provider admission';

@@ -530,7 +530,7 @@ export async function markCrmSearchProviderAttemptSent(
           AND attempt.lease_generation = $4
           AND attempt.state = 'precommitted'
           AND attempt.provider_call_sent = FALSE
-        FOR UPDATE OF attempt, operation
+        FOR UPDATE OF attempt
       ), sent_attempt AS (
         UPDATE crm_search_provider_attempts attempt
         SET state = 'sent', provider_call_sent = TRUE, sent_at = NOW(), updated_at = NOW()
@@ -854,7 +854,7 @@ export async function admitCrmSearchOperation(
     WITH leased AS (
       SELECT id FROM crm_search_operations
       WHERE id = $1 AND state = $2 AND lease_token = $4 AND lease_generation = $5
-      FOR UPDATE
+      FOR NO KEY UPDATE
     ), admitted AS (
       SELECT crm_search_admit_operation($1, $2, $3) AS state
       FROM leased

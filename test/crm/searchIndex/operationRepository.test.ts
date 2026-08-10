@@ -291,6 +291,8 @@ describe('CRM search operation repository', () => {
       state: 'admitted', controlRevision: 19, leaseGeneration: 4
     })
     expect(query.mock.calls[0]?.[0]).toContain('crm_search_admit_operation')
+    expect(query.mock.calls[0]?.[0]).toContain('FOR NO KEY UPDATE')
+    expect(query.mock.calls[0]?.[0]).not.toMatch(/FOR UPDATE(?:\s|$)/)
   })
 
   it('reloads a provider attempt by durable identity and marks sent only by operation lease CAS', async () => {
@@ -343,6 +345,8 @@ describe('CRM search operation repository', () => {
     expect(sql).toContain('lease_token = $3')
     expect(sql).toContain('lease_generation = $4')
     expect(sql).toContain('attempt.state = \'precommitted\'')
+    expect(sql).toContain('FOR UPDATE OF attempt')
+    expect(sql).not.toContain('FOR UPDATE OF attempt, operation')
   })
 
   it('marks a query provider attempt sent by correlation plus immutable authority revisions', async () => {
@@ -586,9 +590,18 @@ task8DatabaseDescribe('CRM search Task 8 repositories on isolated local PostgreS
       schemaCreated = true
       await administrator.query(`SET search_path TO "${schema}", pg_catalog`)
       await administrator.query(`
-        CREATE TABLE crm_people (id UUID PRIMARY KEY, client_id UUID NOT NULL, deleted_at TIMESTAMPTZ);
-        CREATE TABLE crm_companies (id UUID PRIMARY KEY, client_id UUID NOT NULL, deleted_at TIMESTAMPTZ);
-        CREATE TABLE crm_opportunities (id UUID PRIMARY KEY, client_id UUID NOT NULL, deleted_at TIMESTAMPTZ);
+        CREATE TABLE crm_people (
+          id UUID PRIMARY KEY, client_id UUID NOT NULL, deleted_at TIMESTAMPTZ,
+          first_name TEXT, last_name TEXT, job_title TEXT, department TEXT, lifecycle_stage TEXT
+        );
+        CREATE TABLE crm_companies (
+          id UUID PRIMARY KEY, client_id UUID NOT NULL, deleted_at TIMESTAMPTZ,
+          name TEXT, domain TEXT, lifecycle_stage TEXT
+        );
+        CREATE TABLE crm_opportunities (
+          id UUID PRIMARY KEY, client_id UUID NOT NULL, deleted_at TIMESTAMPTZ,
+          name TEXT, status TEXT, source TEXT
+        );
       `)
       await administrator.query(task8MigrationForSchema(schema))
 
@@ -930,76 +943,214 @@ task8DatabaseDescribe('CRM search Task 8 repositories on isolated local PostgreS
           throw error
         }
       }
-      let releaseProviderCall = () => undefined
-      let markProviderCallStarted = () => undefined
-      const providerCallStarted = new Promise<void>((resolve) => {
-        markProviderCallStarted = resolve
-      })
-      const providerCallHeld = new Promise<void>((resolve) => {
-        releaseProviderCall = resolve
-      })
-      const guardedProviderCall = withCrmSearchProviderCallGuard({
+      const guardEntityId = '15151515-1515-4515-8515-151515151515'
+      await administrator.query(`
+        INSERT INTO crm_companies (
+          id, client_id, deleted_at, search_revision, name, domain, lifecycle_stage
+        ) VALUES ($1, $2, NULL, 1, 'Guarded Motors', NULL, NULL)
+      `, [guardEntityId, base.clientId])
+      const guardOperation = await upsertCrmSearchOperation({
+        ...base,
+        entityId: guardEntityId,
+        vectorId: 'guarded-vector-id',
+        sourceRevision: 1,
+        sourceEventSequence: 50
+      }, { query: administratorRepositoryQuery } as never)
+      const guardClaim = await claimCrmSearchOperation({
+        operationId: guardOperation.id,
+        leaseSeconds: 60,
+        now: '2026-08-10T23:59:00.000Z'
+      }, { transactionWithoutRetry: administratorTransactionWithoutRetry } as never)
+      expect(guardClaim).not.toBeNull()
+      await administrator.query(`
+        INSERT INTO crm_search_source_dirty (
+          organisation_scope_id, client_id, entity_type, entity_id,
+          source_revision, desired_action, event_sequence
+        ) VALUES ($1, $2, 'company', $3, 1, 'upsert', 50)
+      `, [base.organisationScopeId, base.clientId, guardEntityId])
+      const providerGuardInput = {
         organisationScopeId: base.organisationScopeId,
         clientId: base.clientId,
+        operationId: guardOperation.id,
+        entityType: base.entityType,
+        entityId: guardEntityId,
         provider: 'vectorize',
         action: 'upsert',
         schemaVersion: base.schemaVersion,
+        sourceRevision: 1,
+        sourceEventSequence: 50,
+        namespace: base.namespace,
+        contentHash: base.contentHash,
+        leaseToken: guardClaim!.leaseToken!,
+        leaseGeneration: guardClaim!.leaseGeneration,
         teardownId: null
-      }, async () => {
-        markProviderCallStarted()
-        await providerCallHeld
-        return 'accepted'
-      }, { transactionWithoutRetry: administratorTransactionWithoutRetry } as never)
-      await providerCallStarted
+      } as const
+      const providerGuardDependencies = {
+        transactionWithoutRetry: administratorTransactionWithoutRetry,
+        buildDocument: async () => ({
+          canonicalText: 'Name: Guarded Motors',
+          providerInput: 'Name: Guarded Motors',
+          contentHash: base.contentHash
+        })
+      }
 
-      await peer.query('BEGIN')
-      let exclusiveSettled = false
-      const exclusive = peer.query(
+      const proveBlockedDuringProviderCall = async (
+        provider: 'workers_ai' | 'vectorize',
+        sql: string,
+        values: unknown[]
+      ) => {
+        let releaseProviderCall = () => undefined
+        let markProviderCallStarted = () => undefined
+        const providerCallStarted = new Promise<void>((resolve) => {
+          markProviderCallStarted = resolve
+        })
+        const providerCallHeld = new Promise<void>((resolve) => {
+          releaseProviderCall = resolve
+        })
+        const guardedProviderCall = withCrmSearchProviderCallGuard({
+          ...providerGuardInput,
+          provider
+        }, async (snapshot) => {
+          expect(snapshot).toMatchObject({
+            disposition: 'current',
+            source: { clientId: base.clientId, revision: 1, eventSequence: 50 }
+          })
+          markProviderCallStarted()
+          await providerCallHeld
+          return 'accepted'
+        }, providerGuardDependencies as never)
+        await providerCallStarted
+        await peer.query('BEGIN')
+        let mutationSettled = false
+        const mutation = peer.query(sql, values).finally(() => {
+          mutationSettled = true
+        })
+        await waitForTask8BackendLock(administrator, peerPid)
+        expect(mutationSettled).toBe(false)
+        releaseProviderCall()
+        await expect(guardedProviderCall).resolves.toBe('accepted')
+        await mutation
+        await peer.query('ROLLBACK')
+      }
+
+      await proveBlockedDuringProviderCall('workers_ai', `
+        UPDATE crm_companies
+        SET name = 'Changed Motors', search_revision = 2
+        WHERE id = $1
+      `, [guardEntityId])
+      await proveBlockedDuringProviderCall('workers_ai', `
+        UPDATE crm_companies
+        SET deleted_at = NOW(), search_revision = 2
+        WHERE id = $1
+      `, [guardEntityId])
+      await proveBlockedDuringProviderCall('vectorize', `
+        UPDATE crm_companies
+        SET client_id = $2, search_revision = 2
+        WHERE id = $1
+      `, [guardEntityId, '16161616-1616-4616-8616-161616161616'])
+      await proveBlockedDuringProviderCall('workers_ai', `
+        UPDATE crm_search_source_dirty
+        SET source_revision = 2, event_sequence = 52
+        WHERE organisation_scope_id = $1 AND client_id = $2
+          AND entity_type = 'company' AND entity_id = $3
+      `, [base.organisationScopeId, base.clientId, guardEntityId])
+
+      await proveBlockedDuringProviderCall('vectorize',
         'SELECT pg_catalog.pg_advisory_xact_lock(crm_search_client_advisory_lock_key($1, $2))',
-        [base.organisationScopeId, base.clientId]
-      ).finally(() => { exclusiveSettled = true })
-      await waitForTask8BackendLock(administrator, peerPid)
-      expect(exclusiveSettled).toBe(false)
-      releaseProviderCall()
-      await expect(guardedProviderCall).resolves.toBe('accepted')
-      await exclusive
-      await peer.query('ROLLBACK')
-
-      let releaseSecondProviderCall = () => undefined
-      let markSecondProviderCallStarted = () => undefined
-      const secondProviderCallStarted = new Promise<void>((resolve) => {
-        markSecondProviderCallStarted = resolve
-      })
-      const secondProviderCallHeld = new Promise<void>((resolve) => {
-        releaseSecondProviderCall = resolve
-      })
-      const secondGuardedProviderCall = withCrmSearchProviderCallGuard({
-        organisationScopeId: base.organisationScopeId,
-        clientId: base.clientId,
-        provider: 'workers_ai',
-        action: 'upsert',
-        schemaVersion: base.schemaVersion,
-        teardownId: null
-      }, async () => {
-        markSecondProviderCallStarted()
-        await secondProviderCallHeld
-        return 'embedded'
-      }, { transactionWithoutRetry: administratorTransactionWithoutRetry } as never)
-      await secondProviderCallStarted
-
-      await peer.query('BEGIN')
-      let haltSettled = false
-      const halt = peer.query(`
+        [base.organisationScopeId, base.clientId])
+      await proveBlockedDuringProviderCall('workers_ai', `
         UPDATE crm_search_global_control
         SET state = 'halted', maximum_mode = 'off', indexing_ready = FALSE
         WHERE organisation_scope_id = $1
-      `, [base.organisationScopeId]).finally(() => { haltSettled = true })
-      await waitForTask8BackendLock(administrator, peerPid)
-      expect(haltSettled).toBe(false)
-      releaseSecondProviderCall()
-      await expect(secondGuardedProviderCall).resolves.toBe('embedded')
-      await halt
-      await peer.query('ROLLBACK')
+      `, [base.organisationScopeId])
+
+      const nestedEntityId = '17171717-1717-4717-8717-171717171717'
+      await administrator.query(`
+        INSERT INTO crm_companies (
+          id, client_id, deleted_at, search_revision, name, domain, lifecycle_stage
+        ) VALUES ($1, $2, NULL, 1, 'Nested Motors', NULL, NULL)
+      `, [nestedEntityId, base.clientId])
+      const nestedOperation = await upsertCrmSearchOperation({
+        ...base,
+        entityId: nestedEntityId,
+        vectorId: 'nested-vector-id',
+        sourceRevision: 1,
+        sourceEventSequence: 51
+      }, { query: administratorRepositoryQuery } as never)
+      const nestedClaim = await claimCrmSearchOperation({
+        operationId: nestedOperation.id,
+        leaseSeconds: 60,
+        now: '2026-08-10T23:59:00.000Z'
+      }, { transactionWithoutRetry: administratorTransactionWithoutRetry } as never)
+      expect(nestedClaim).not.toBeNull()
+      const nestedAttemptId = '18181818-1818-4818-8818-181818181818'
+      const nestedReservationId = '19191919-1919-4919-8919-191919191919'
+      await administrator.query(`
+        INSERT INTO crm_search_provider_attempts (
+          id, organisation_scope_id, client_id, usage_kind, operation_id,
+          correlation_id, provider, provider_action, attempt_sequence,
+          control_revision, policy_revision, lease_generation
+        ) VALUES ($1, $2, $3, 'indexing', $4, $5, 'vectorize', 'upsert', 1, 7, 11, $6)
+      `, [nestedAttemptId, base.organisationScopeId, base.clientId,
+        nestedOperation.id, '20202020-2020-4020-8020-202020202020',
+        nestedClaim!.leaseGeneration])
+      await administrator.query(`
+        INSERT INTO crm_search_usage_reservations (
+          id, organisation_scope_id, client_id, usage_kind, correlation_id,
+          operation_id, provider_attempt_id, control_revision, policy_revision,
+          rate_card_id, rate_card_revision, reserved_provider_calls,
+          reserved_model_input_tokens, reserved_inserted_dimensions,
+          reserved_stored_dimensions
+        ) VALUES ($1, $2, $3, 'indexing', $4, $5, $6, 7, 11, $7,
+          'task12-pg-v1', 1, 0, 768, 768)
+      `, [nestedReservationId, base.organisationScopeId, base.clientId,
+        '20202020-2020-4020-8020-202020202020', nestedOperation.id,
+        nestedAttemptId, rateCardId])
+
+      await expect(withCrmSearchProviderCallGuard({
+        ...providerGuardInput,
+        operationId: nestedOperation.id,
+        entityId: nestedEntityId,
+        sourceEventSequence: 51,
+        leaseToken: nestedClaim!.leaseToken!,
+        leaseGeneration: nestedClaim!.leaseGeneration
+      }, async () => {
+        await runtime.query('BEGIN')
+        try {
+          await admitCrmSearchOperation({
+            operationId: nestedOperation.id,
+            expectedState: 'processing',
+            expectedControlRevision: 7,
+            leaseToken: nestedClaim!.leaseToken!,
+            leaseGeneration: nestedClaim!.leaseGeneration
+          }, { query: runtimeRepositoryQuery } as never)
+          await runtime.query('COMMIT')
+        } catch (error) {
+          await runtime.query('ROLLBACK')
+          throw error
+        }
+        await markCrmSearchProviderAttemptSent({
+          operationId: nestedOperation.id,
+          providerAttemptId: nestedAttemptId,
+          leaseToken: nestedClaim!.leaseToken!,
+          leaseGeneration: nestedClaim!.leaseGeneration
+        }, { transactionWithoutRetry: runtimeTransactionWithoutRetry } as never)
+        return 'sent'
+      }, providerGuardDependencies as never)).resolves.toBe('sent')
+      const nestedEvidence = (await administrator.query(`
+        SELECT operation.state, attempt.state AS attempt_state,
+               attempt.provider_call_sent, reservation.provider_call_sent AS reservation_sent
+        FROM crm_search_operations operation
+        JOIN crm_search_provider_attempts attempt ON attempt.operation_id = operation.id
+        JOIN crm_search_usage_reservations reservation ON reservation.provider_attempt_id = attempt.id
+        WHERE operation.id = $1 AND attempt.id = $2
+      `, [nestedOperation.id, nestedAttemptId])).rows[0]
+      expect(nestedEvidence).toMatchObject({
+        state: 'admitted',
+        attempt_state: 'sent',
+        provider_call_sent: true,
+        reservation_sent: true
+      })
     } finally {
       await administrator.query('ROLLBACK').catch(() => undefined)
       if (peerConnected) {

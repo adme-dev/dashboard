@@ -377,10 +377,10 @@ export async function verifyCrmSearchProviderReadiness(
   const namespace = requireProviderId(input.namespace, 'crm_search_invalid_readiness')
   const sentinelId = requireProviderId(input.sentinelId, 'crm_search_invalid_readiness')
   const values = requireVector(input.sentinelValues, 'crm_search_invalid_readiness')
-  const maximumPollAttempts = rawOptions.maximumPollAttempts ?? 6
-  const pollDelayMs = rawOptions.pollDelayMs ?? 50
+  const maximumPollAttempts = rawOptions.maximumPollAttempts ?? 40
+  const pollDelayMs = rawOptions.pollDelayMs ?? 250
   if (!Number.isSafeInteger(maximumPollAttempts)
-    || maximumPollAttempts < 1 || maximumPollAttempts > 20
+    || maximumPollAttempts < 1 || maximumPollAttempts > 60
     || !Number.isSafeInteger(pollDelayMs) || pollDelayMs < 0 || pollDelayMs > 1_000
     || (rawOptions.sleep !== undefined && typeof rawOptions.sleep !== 'function')) {
     throw providerError('crm_search_invalid_readiness')

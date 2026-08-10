@@ -125,3 +125,29 @@ git diff --check over the repair scope:                       exit 0
 The live two-connection PostgreSQL test proves that candidate-promotion's exclusive client fence and a global halt update both block while a provider callback holds its shared advisory/row authority, then complete only after the callback releases. It also proves persisted upsert-to-delete conversion and a sent Workers AI attempt converging to `ambiguous` plus a `charged` failed reservation with the expected token and USD-micro accounting evidence.
 
 All repair validation used disposable local PostgreSQL 14 clusters under `/private/tmp`. No external database, provider, network, Cloudflare resource, deployment, or production migration was touched. Concurrent Task 13 retrieval, ranking, analytics, shadow-search, and public search-route files remained outside the repair scope and staging set.
+
+## Final Acceptance Repair — Source Authority at Provider Calls
+
+- Repair commit: `fix(crm-search): revalidate source authority at provider calls`.
+- This section supersedes the prior statement that every finalization occurs before its guard closes. The final contract holds source and policy authority continuously through the external provider call; Vectorize acceptance and usage settlement then apply exact durable CAS after the guard releases so they do not conflict with the intentionally locked document ledger.
+- Every Workers AI and Vectorize guard now fresh-reads the exact claimed operation and locks it `FOR KEY SHARE`, validating organisation/client/entity/schema, source revision/event, desired action, namespace/content evidence, state, lease token, and lease generation. It also locks the exact dirty intent, current source row when present, and exact document ledger row `FOR SHARE`.
+- The callback receives the locked fresh source/document/ledger snapshot. A newer same-client revision supersedes before a provider call; a delete or client move CAS-converts the operation and re-enters Vectorize under a fresh delete guard; an exact already-indexed ledger completes without a redundant call. Fresh document text, rather than the earlier context copy, supplies Workers AI.
+- Reservation, operation admission, and sent evidence remain independently committed before provider dispatch while the outer guard is live. The operation admission path uses lock-compatible `FOR NO KEY UPDATE`; sent transition locks only the attempt while retaining exact operation lease/generation CAS.
+- The only authorized migration change replaces the internal `crm_search_admit_operation` operation-row `FOR UPDATE` with `FOR NO KEY UPDATE`. All identity, state, revision, authorization-trigger, SECURITY DEFINER, search-path, and runtime privilege contracts remain unchanged.
+- Provider readiness defaults to 40 attempts at 250 ms intervals, covering approximately 9.75 seconds per visibility phase. One sentinel upsert and one sentinel delete are issued; exact visibility, filtered-query visibility, and post-delete absence are polled without oscillating mutations. Tests retain an injected zero-delay clock.
+
+### Final RED→GREEN and Lock Evidence
+
+Four focused RED failures proved the missing behavior: the guard stopped after four policy reads, a pre-AI source revision still called Workers AI, an inter-call client move still issued a stale upsert, and readiness stopped after six polls. The first live PostgreSQL nested-connection attempt then produced an exact 10-second lock timeout inside `crm_search_admit_operation`; its internal `FOR UPDATE` conflicted with the outer `FOR KEY SHARE`. A static mutation test failed until the authorized lock mode changed to `FOR NO KEY UPDATE`.
+
+Final evidence:
+
+```text
+Bounded Task 12 unit/API gate:                              150 passed, 1 guarded PostgreSQL case skipped
+Migration static gate:                                      53 passed, 1 guarded PostgreSQL case skipped
+Task 8/12 PostgreSQL 14 lifecycle/source-race gate:          18/18 passed
+Migrations 350–352 PostgreSQL 14 apply/reapply gate:          9/9 passed
+Strict server TypeScript owned-path diagnostic search:        0 diagnostics
+```
+
+The live two-connection test proves that source content update, soft delete, and client move are blocked across Workers AI and Vectorize windows; promotion and global halt remain blocked; and separate runtime-role operation admission plus sent-attempt/reservation transitions commit successfully beneath the live outer guard. All live tests used credential-free disposable PostgreSQL 14 clusters under `/private/tmp`. No provider, external database, network resource, deployment, or production migration was touched. Task 14 authorization/tool files remained outside this repair and its staging set.

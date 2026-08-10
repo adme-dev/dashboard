@@ -473,6 +473,8 @@ describe('CRM search expand migration 350', () => {
     expect(operations).toContain('\'admitted\'')
     expect(identity).toMatch(/p_operation\.control_revision::TEXT/)
     expect(admit).toContain('SECURITY DEFINER')
+    expect(admit).toMatch(/crm_search_operations[\s\S]*FOR NO KEY UPDATE/i)
+    expect(admit).not.toMatch(/crm_search_operations[\s\S]*FOR UPDATE(?:\s|;)/i)
     expect(admit).toMatch(/crm_search_global_control[\s\S]*FOR (KEY )?SHARE/i)
     expect(admit).toMatch(/provider_admitted_at[\s\S]*admission_identity_hash/)
     expect(admit).toMatch(

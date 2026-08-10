@@ -177,6 +177,65 @@ describe('CRM search provider contract', () => {
     expect(sleep).toHaveBeenCalledWith(1)
   })
 
+  it('uses one sentinel mutation per phase while polling the default ten-second visibility window', async () => {
+    const sentinelId = 'crm-search-readiness-sentinel-v1'
+    const storedSentinel = {
+      id: sentinelId,
+      namespace,
+      metadata: {
+        entityType: '__crm_search_sentinel__',
+        schemaVersion: '__crm_search_readiness_v1__'
+      }
+    }
+    let exactReads = 0
+    let filteredReads = 0
+    let deletionStarted = false
+    let absenceReads = 0
+    const sleep = vi.fn().mockResolvedValue(undefined)
+    const runtime = {
+      vectorize: {
+        listMetadataIndexes: vi.fn().mockResolvedValue([
+          { propertyName: 'entityType', type: 'string' },
+          { propertyName: 'schemaVersion', type: 'string' }
+        ]),
+        upsert: vi.fn().mockResolvedValue({ mutationId: 'sentinel-upsert-1' }),
+        getByIds: vi.fn(async () => {
+          if (!deletionStarted) {
+            exactReads += 1
+            return exactReads === 40 ? [storedSentinel] : []
+          }
+          absenceReads += 1
+          return absenceReads === 40 ? [] : [storedSentinel]
+        }),
+        query: vi.fn(async () => {
+          filteredReads += 1
+          return { matches: filteredReads === 40 ? [storedSentinel] : [] }
+        }),
+        deleteByIds: vi.fn(async () => {
+          deletionStarted = true
+          return { mutationId: 'sentinel-delete-1' }
+        })
+      }
+    }
+
+    await expect(verifyCrmSearchProviderReadiness({
+      namespace,
+      sentinelId,
+      sentinelValues: Array(768).fill(0)
+    }, runtime as never, { sleep })).resolves.toMatchObject({
+      sentinelRoundTripConfirmed: true,
+      sentinelAbsenceConfirmed: true
+    })
+
+    expect(runtime.vectorize.upsert).toHaveBeenCalledOnce()
+    expect(runtime.vectorize.deleteByIds).toHaveBeenCalledOnce()
+    expect(exactReads).toBe(40)
+    expect(filteredReads).toBe(40)
+    expect(absenceReads).toBe(40)
+    expect(sleep).toHaveBeenCalledTimes(117)
+    expect(sleep).toHaveBeenCalledWith(250)
+  })
+
   it('fails before sentinel or CRM work when either exact string metadata index is absent', async () => {
     const upsert = vi.fn()
     const runtime = {
