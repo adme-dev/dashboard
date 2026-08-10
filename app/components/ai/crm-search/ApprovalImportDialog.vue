@@ -1,18 +1,12 @@
 <script setup lang="ts">
-import { CalendarDate, getLocalTimeZone } from '@internationalized/date'
-
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean], changed: [] }>()
 const model = computed({ get: () => props.open, set: value => emit('update:open', value) })
 const pending = ref(false); const error = ref<string | null>(null)
-const now = new Date(); const future = new Date(Date.now() + 7 * 86_400_000)
-const issuedDate = shallowRef(new CalendarDate(now.getFullYear(), now.getMonth() + 1, now.getDate()))
-const expiresDate = shallowRef(new CalendarDate(future.getFullYear(), future.getMonth() + 1, future.getDate()))
-const form = reactive({ environment: 'production', implementationGitSha: '', artifactManifestDigest: '', bindingManifestDigest: '', evidenceBundleHash: '', maximumCostUsdMicros: 0, approvedBy: '', requestedByActorId: '', importedProvenanceHash: '', reason: '' })
+const form = reactive({ environment: 'production', implementationGitSha: '', artifactManifestDigest: '', bindingManifestDigest: '', evidenceBundleHash: '', maximumCostUsdMicros: 0, approvedBy: '', requestedByActorId: '', importedProvenanceHash: '', issuedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(), reason: '' })
 const environmentOptions = ['preview', 'production'].map(value => ({ label: value, value }))
-const issuedAt = computed(() => issuedDate.value.toDate(getLocalTimeZone()).toISOString())
-const expiresAt = computed(() => expiresDate.value.toDate(getLocalTimeZone()).toISOString())
-const canSubmit = computed(() => Boolean(form.implementationGitSha && form.artifactManifestDigest && form.bindingManifestDigest && form.evidenceBundleHash && form.approvedBy && form.requestedByActorId && form.importedProvenanceHash && form.reason.trim().length >= 10 && !pending.value))
+const validTimestamp = (value: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value) && Number.isFinite(Date.parse(value))
+const canSubmit = computed(() => Boolean(form.implementationGitSha && form.artifactManifestDigest && form.bindingManifestDigest && form.evidenceBundleHash && form.approvedBy && form.requestedByActorId && form.importedProvenanceHash && validTimestamp(form.issuedAt) && validTimestamp(form.expiresAt) && Date.parse(form.expiresAt) > Date.parse(form.issuedAt) && form.reason.trim().length >= 10 && !pending.value))
 function close() { model.value = false }
 
 async function submit() {
@@ -20,7 +14,7 @@ async function submit() {
   pending.value = true; error.value = null
   try {
     await $fetch('/api/admin/crm-search/approvals/import', { method: 'POST', body: {
-      approvalType: 'resource_provision', ...form, issuedAt: issuedAt.value, expiresAt: expiresAt.value
+      approvalType: 'resource_provision', ...form
     } })
     emit('changed'); model.value = false
   } catch { error.value = 'The bootstrap approval import was rejected. Original timestamp, provenance hash, evidence, expiry, and actor separation must remain intact.' }
@@ -42,8 +36,8 @@ async function submit() {
         <UFormField label="Evidence bundle hash"><UInput v-model="form.evidenceBundleHash" class="w-full" /></UFormField>
         <UFormField label="Provenance hash"><UInput v-model="form.importedProvenanceHash" class="w-full" /></UFormField>
         <UFormField label="Maximum cost (USD micros)"><UInput v-model.number="form.maximumCostUsdMicros" type="number" class="w-full" /></UFormField>
-        <UFormField label="Original issue date"><UPopover><UButton color="neutral" variant="outline" class="w-full justify-start">{{ issuedAt }}</UButton><template #content><div class="p-3"><UCalendar v-model="issuedDate" /></div></template></UPopover></UFormField>
-        <UFormField label="Expiry date"><UPopover><UButton color="neutral" variant="outline" class="w-full justify-start">{{ expiresAt }}</UButton><template #content><div class="p-3"><UCalendar v-model="expiresDate" /></div></template></UPopover></UFormField>
+        <UFormField label="Original issue timestamp" help="Exact UTC ISO timestamp, including time and milliseconds"><UInput v-model="form.issuedAt" placeholder="2026-08-11T01:02:03.456Z" class="w-full" /></UFormField>
+        <UFormField label="Expiry timestamp" help="Exact UTC ISO timestamp, including time and milliseconds"><UInput v-model="form.expiresAt" placeholder="2026-08-18T01:02:03.456Z" class="w-full" /></UFormField>
         <UFormField label="Import reason" class="@lg:col-span-2"><UTextarea v-model="form.reason" :rows="3" class="w-full" /></UFormField>
       </div>
       <UAlert v-if="error" color="error" variant="soft" title="Import unavailable" :description="error" />

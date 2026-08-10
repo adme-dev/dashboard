@@ -87,7 +87,7 @@ describe('CRM search operator UI design contract', () => {
   })
 
   it('shows a refresh action on stale revisions instead of silently retrying', async () => {
-    for (const name of ['PolicyTransitionDialog.vue', 'GlobalControlDialog.vue', 'ApprovalRevokeDialog.vue'] as const) {
+    for (const name of ['PolicyTransitionDialog.vue', 'GlobalControlDialog.vue', 'DeadLetterResolutionDialog.vue', 'ApprovalRevokeDialog.vue'] as const) {
       const source = await readComponent(name)
       expect(source).toContain('crm_search_stale_revision')
       expect(source).toMatch(/refresh/i)
@@ -173,7 +173,19 @@ describe('CRM search operational workflows', () => {
     expect(source).toContain('resource_provision')
     expect(source).toContain('issuedAt')
     expect(source).toContain('importedProvenanceHash')
+    expect(source).toMatch(/Original issue timestamp/i)
+    expect(source).not.toContain('UCalendar')
+    expect(source).not.toContain('getLocalTimeZone')
     expect(source).not.toMatch(/client_shadow|client_assist|production_deploy/)
+  })
+
+  it('submits exact dead-letter revision and generation then refreshes on a 409', async () => {
+    const source = await readComponent('DeadLetterResolutionDialog.vue')
+
+    expect(source).toContain('expectedRevision: props.item.revision')
+    expect(source).toContain('expectedGeneration: props.item.generation')
+    expect(source).toContain('crm_search_stale_revision')
+    expect(source).toMatch(/emit\(['"]refresh['"]\)/)
   })
 
   it('assembles all operator panels and every accepted admin endpoint on the admin page', async () => {

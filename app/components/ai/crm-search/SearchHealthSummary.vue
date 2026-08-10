@@ -31,7 +31,7 @@ const alertCopy: Record<string, string> = {
       <div class="flex flex-wrap items-center gap-2">
         <span class="text-xs font-medium text-muted">Dependencies</span>
         <UBadge v-for="item in health.dependency" :key="item.name" :color="item.status === 'ok' ? 'success' : item.status === 'degraded' ? 'warning' : 'error'" variant="subtle">{{ item.name }} · {{ item.status }}</UBadge>
-        <span class="text-xs text-muted">{{ health.freshness.staleClients }} stale clients · queue {{ formatAge(health.oldestAgeSeconds.queue) }} · {{ health.security.crossScopeCandidateRejections }} cross-scope rejections</span>
+        <span class="text-xs text-muted">{{ health.freshness.staleClients }} stale clients · source watermark lag {{ health.freshness.sourceHighWatermarkLag }} · p95 revision lag {{ health.freshness.p95RevisionLag ?? 'none' }} · queue {{ formatAge(health.oldestAgeSeconds.queue) }} · {{ health.security.crossScopeCandidateRejections }} cross-scope rejections</span>
       </div>
       <div v-if="health.alerts.length" class="space-y-2">
         <UAlert v-for="item in health.alerts" :key="item.signal" :color="item.action === 'alert' ? 'warning' : 'neutral'" variant="soft" :title="item.signal.replaceAll('_', ' ')" :description="alertCopy[item.signal] ?? 'Review this bounded operational signal.'" />

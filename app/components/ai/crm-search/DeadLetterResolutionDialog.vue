@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { CrmSearchDeadLetterView } from '~/types/crmSearchOperations'
+import type { CrmSearchDeadLetterView, CrmSearchOperationError } from '~/types/crmSearchOperations'
 
 const props = defineProps<{ open: boolean, item: CrmSearchDeadLetterView | null }>()
-const emit = defineEmits<{ 'update:open': [value: boolean], changed: [] }>()
+const emit = defineEmits<{ 'update:open': [value: boolean], changed: [], refresh: [] }>()
 const reason = ref(''); const confirmation = ref(''); const pending = ref(false); const error = ref<string | null>(null)
 const model = computed({ get: () => props.open, set: value => emit('update:open', value) })
 const action = computed(() => props.item?.origin === 'cloudflare_transport' ? 'transport_retry' : 'confirmation_reconcile')
@@ -15,11 +15,19 @@ async function submit() {
   pending.value = true; error.value = null
   try {
     await $fetch(`/api/admin/crm-search/dead-letters/${props.item.id}`, { method: 'POST', body: {
-      origin: props.item.origin, action: action.value, expectedRevision: props.item.revision,
+      origin: props.item.origin, action: action.value,
+      expectedRevision: props.item.revision, expectedGeneration: props.item.generation,
       reason: reason.value.trim(), confirmation: confirmation.value
     } })
     emit('changed'); model.value = false
-  } catch { error.value = 'The origin-specific recovery request was not admitted.' }
+  } catch (caught) {
+    const response = caught as CrmSearchOperationError
+    const code = response.data?.code ?? response.data?.data?.code
+    if (code === 'crm_search_stale_revision') {
+      error.value = 'Dead-letter evidence changed. The latest revision and generation are being refreshed.'
+      emit('refresh')
+    } else error.value = 'The origin-specific recovery request was not admitted.'
+  }
   finally { pending.value = false }
 }
 </script>
@@ -32,6 +40,7 @@ async function submit() {
       <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
         <UFormField label="Origin-specific action"><UInput :model-value="action" disabled class="w-full" /></UFormField>
         <UFormField label="Expected revision"><UInput :model-value="String(item?.revision ?? 0)" disabled class="w-full" /></UFormField>
+        <UFormField label="Expected generation"><UInput :model-value="String(item?.generation ?? 0)" disabled class="w-full" /></UFormField>
         <UFormField label="Audit reason" class="@lg:col-span-2"><UTextarea v-model="reason" :rows="3" class="w-full" /></UFormField>
         <UFormField label="Type RECOVER CRM SEARCH DEAD LETTER" class="@lg:col-span-2"><UInput v-model="confirmation" autocomplete="off" class="w-full" /></UFormField>
       </div>

@@ -21,7 +21,7 @@ const baseHealthInput = {
     { name: 'vectorize' as const, status: 'ok' as const },
     { name: 'queue' as const, status: 'ok' as const }
   ],
-  freshness: { staleClients: 1, p95RevisionLagSeconds: 20 },
+  freshness: { staleClients: 1, sourceHighWatermarkLag: 23, p95RevisionLag: 20 },
   cost: {
     globalBudgetUsedBasisPoints: 0,
     clientsNearBudget: 0,
@@ -86,7 +86,7 @@ describe('CRM search operations health', () => {
       dependency: expect.arrayContaining([
         { name: 'workers_ai', status: 'degraded' }
       ]),
-      freshness: { staleClients: 1, p95RevisionLagSeconds: 20 },
+      freshness: { staleClients: 1, sourceHighWatermarkLag: 23, p95RevisionLag: 20 },
       cost: expect.objectContaining({
         globalBudgetUsedBasisPoints: 0,
         clientsNearBudget: 0,

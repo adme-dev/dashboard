@@ -80,7 +80,7 @@ function openApprovalImport() { approvalImportOpen.value = true }
 
     <AiCrmSearchGlobalControlDialog v-model:open="globalOpen" :health="health" @changed="refreshAll" @refresh="loadHealth" />
     <AiCrmSearchPolicyTransitionDialog v-model:open="policyOpen" :policy="selectedPolicy" @changed="refreshAll" @refresh="loadPolicies" />
-    <AiCrmSearchDeadLetterResolutionDialog v-model:open="deadLetterOpen" :item="selectedDeadLetter" @changed="refreshAll" />
+    <AiCrmSearchDeadLetterResolutionDialog v-model:open="deadLetterOpen" :item="selectedDeadLetter" @changed="refreshAll" @refresh="loadDeadLetters" />
     <AiCrmSearchApprovalCreateDialog v-model:open="approvalCreateOpen" @changed="loadApprovals" />
     <AiCrmSearchApprovalImportDialog v-model:open="approvalImportOpen" @changed="loadApprovals" />
     <AiCrmSearchApprovalRevokeDialog v-model:open="approvalRevokeOpen" :approval="selectedApproval" @changed="loadApprovals" @refresh="loadApprovals" />

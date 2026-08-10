@@ -8,6 +8,10 @@ import {
   type CrmSearchAdminActor,
   type CrmSearchApprovalDraft
 } from './contracts'
+import {
+  executeCrmSearchBackfill,
+  executeCrmSearchReconciliationSchedule
+} from './execution'
 
 const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu
 const reasonMinimum = 10
@@ -20,6 +24,14 @@ function fail(code: string): never {
 function revision(value: unknown, code = 'crm_search_expected_revision_required'): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) fail(code)
   return value as number
+}
+
+function exactTimestampRevision(value: unknown): string {
+  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3,6}Z$/u.test(value)) {
+    fail('crm_search_expected_revision_required')
+  }
+  return value
 }
 
 function identifier(value: unknown, code = 'crm_search_invalid_command'): string {
@@ -201,7 +213,8 @@ export async function recoverCrmSearchDeadLetterCommand(input: Record<string, un
   requestDurableRecovery(value: Record<string, unknown>): Promise<unknown>
 }) {
   const deadLetterId = identifier(input.deadLetterId)
-  const expectedRevision = revision(input.expectedRevision)
+  const expectedRevision = exactTimestampRevision(input.expectedRevision)
+  const expectedGeneration = revision(input.expectedGeneration, 'crm_search_expected_generation_required')
   const reason = boundedReason(input.reason)
   exactConfirmation(input.confirmation, 'RECOVER CRM SEARCH DEAD LETTER')
   const origin = input.origin
@@ -215,6 +228,7 @@ export async function recoverCrmSearchDeadLetterCommand(input: Record<string, un
   return await input.requestDurableRecovery({
     deadLetterId,
     expectedRevision,
+    expectedGeneration,
     reason,
     origin,
     action,
@@ -302,7 +316,7 @@ function approvalParams(approval: CrmSearchApprovalDraft) {
     approval.forecastNamespaceCount ?? null, approval.namespaceCapacity ?? null,
     approval.expectedControlRevision ?? null, approval.expectedPolicyRevision ?? null,
     approval.expectedDeploymentApprovalId ?? null, approval.targetSchemaVersion ?? null,
-    approval.requestedAction ?? null, approval.approvedBy, approval.reason,
+    approval.requestedAction ?? null, approval.requestedByActorId, approval.approvedBy, approval.reason,
     approval.issuedAt ?? null, approval.expiresAt, approval.importedProvenanceHash ?? null
   ]
 }
@@ -320,12 +334,14 @@ async function persistApproval(approval: CrmSearchApprovalDraft, importerId?: st
         active_namespace_count, candidate_namespace_count, retiring_namespace_count,
         sentinel_namespace_count, deletion_pending_namespace_count, forecast_namespace_count,
         namespace_capacity, expected_control_revision, expected_policy_revision,
-        expected_deployment_approval_id, target_schema_version, requested_action, approved_by,
+        expected_deployment_approval_id, target_schema_version, requested_action, requested_by,
+        approved_by,
         reason, issued_at, expires_at, imported_provenance_hash
       ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::UUID,$12::UUID,$13,$14::UUID,$15,
         $16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,
-        $32::UUID,$33,$34,$35::UUID,$36,COALESCE($37::TIMESTAMPTZ,NOW()),$38::TIMESTAMPTZ,$39
+        $32::UUID,$33,$34,$35::UUID,$36::UUID,$37,COALESCE($38::TIMESTAMPTZ,NOW()),
+        $39::TIMESTAMPTZ,$40
       ) RETURNING id::TEXT AS id
     `, approvalParams(approval))
     if (!row || typeof row.id !== 'string') fail('crm_search_approval_create_failed')
@@ -334,19 +350,53 @@ async function persistApproval(approval: CrmSearchApprovalDraft, importerId?: st
         organisation_scope_id, client_id, event_type, actor_id, correlation_id,
         reason, evidence_hash, details
       ) VALUES ($1::UUID, $2::UUID, $3, $4::UUID, gen_random_uuid(), $5, $6,
-        jsonb_build_object('approvalId',$7,'action',$8,'expectedState',$9))
+        jsonb_strip_nulls(jsonb_build_object(
+          'approvalId',$7,'action',$8,'expectedState',$9,
+          'requestedByActorId',$10::UUID,'importedProvenanceHash',$11
+        )))
     `, [approval.organisationScopeId, approval.clientId ?? null,
       importerId ? 'approval.imported' : 'approval.created', importerId ?? approval.approvedBy,
       approval.reason, approval.evidenceBundleHash, row.id, approval.approvalType,
-      crmSearchApprovalScope(approval.approvalType)])
+      crmSearchApprovalScope(approval.approvalType), approval.requestedByActorId,
+      approval.importedProvenanceHash ?? null])
+    await transaction.query(`
+      INSERT INTO crm_search_audit_log (
+        organisation_scope_id, client_id, event_type, actor_id, correlation_id,
+        reason, evidence_hash, details
+      ) VALUES ($1::UUID, $2::UUID, 'approval.requested', $3::UUID, gen_random_uuid(),
+        $4, $5, jsonb_build_object('approvalId',$6,'action',$7,'expectedState',$8))
+    `, [approval.organisationScopeId, approval.clientId ?? null,
+      approval.requestedByActorId, approval.reason, approval.evidenceBundleHash, row.id,
+      approval.approvalType, crmSearchApprovalScope(approval.approvalType)])
     return { approvalId: row.id }
   })
+}
+
+async function loadActiveApprovalRequester(requestedByActorId: string, organisationScopeId: string) {
+  const requester = await queryOneFresh<{ actor_id: string }>(`
+    SELECT actor.id::TEXT AS actor_id
+      FROM team_members actor
+     WHERE actor.id = $1::UUID
+       AND actor.is_active = TRUE
+       AND EXISTS (
+         SELECT 1
+           FROM crm_search_organisation_scopes scope
+          WHERE scope.id = $2::UUID
+            AND scope.is_primary = TRUE
+            AND scope.is_active = TRUE
+       )
+     LIMIT 1
+  `, [requestedByActorId, organisationScopeId])
+  return requester ? { actorId: requester.actor_id, active: true as const } : null
 }
 
 export async function createCrmSearchApproval(
   value: unknown,
   actor: CrmSearchAdminActor,
-  dependencies: { insert?: (approval: CrmSearchApprovalDraft) => Promise<{ approvalId: string }> } = {}
+  dependencies: {
+    insert?: (approval: CrmSearchApprovalDraft) => Promise<{ approvalId: string }>
+    loadActiveRequester?: typeof loadActiveApprovalRequester
+  } = {}
 ) {
   const input = value && typeof value === 'object' ? value as Record<string, unknown> : {}
   const approval = parseCrmSearchApprovalDraft({
@@ -354,15 +404,33 @@ export async function createCrmSearchApproval(
     organisationScopeId: actor.orgId,
     approvedBy: actor.actorId
   })
+  const requester = await (dependencies.loadActiveRequester ?? loadActiveApprovalRequester)(
+    approval.requestedByActorId,
+    actor.orgId
+  )
+  if (!requester || requester.active !== true || requester.actorId !== approval.requestedByActorId) {
+    fail('crm_search_approval_requester_unavailable')
+  }
   return dependencies.insert ? dependencies.insert(approval) : persistApproval(approval)
 }
 
 export async function importCrmSearchApprovalBootstrap(
   value: unknown,
   actor: CrmSearchAdminActor,
-  dependencies: { insert?: (approval: CrmSearchApprovalDraft) => Promise<{ approvalId: string }> } = {}
+  dependencies: {
+    insert?: (approval: CrmSearchApprovalDraft) => Promise<{ approvalId: string }>
+    loadActiveRequester?: typeof loadActiveApprovalRequester
+  } = {}
 ) {
   const candidate = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  const requestedByActorId = identifier(candidate.requestedByActorId)
+  const requester = await (dependencies.loadActiveRequester ?? loadActiveApprovalRequester)(
+    requestedByActorId,
+    actor.orgId
+  )
+  if (!requester || requester.active !== true || requester.actorId !== requestedByActorId) {
+    fail('crm_search_approval_requester_unavailable')
+  }
   return await importCrmSearchApproval({
     actor,
     approval: { ...candidate, organisationScopeId: actor.orgId },
@@ -414,97 +482,131 @@ export async function revokeCrmSearchApprovalRecord(value: Record<string, unknow
 }
 
 export async function createDurableCrmSearchRequest(input: Record<string, unknown>) {
-  const isBackfill = input.type === 'backfill'
-  const eventType = isBackfill ? 'backfill.requested' : 'reconciliation.requested'
-  const details: Record<string, unknown> = {
-    action: input.type,
-    expectedState: 'pending'
+  if (input.type === 'backfill') {
+    return await executeCrmSearchBackfill({
+      ...input,
+      organisationScopeId: String(input.organisationScopeId),
+      clientId: String(input.clientId),
+      candidateSchemaVersion: String(input.candidateSchemaVersion),
+      expectedPolicyRevision: Number(input.expectedPolicyRevision),
+      approvalId: String(input.approvalId),
+      requestedByActorId: String(input.requestedByActorId),
+      reason: String(input.reason),
+      limit: Number(input.limit),
+      requestedAt: typeof input.requestedAt === 'string'
+        ? input.requestedAt
+        : new Date().toISOString(),
+      confirmationKeyring: input.confirmationKeyring as never
+    })
   }
-  const expectedRevision = input.expectedControlRevision ?? input.expectedPolicyRevision
-  if (expectedRevision !== undefined && expectedRevision !== null) details.fromRevision = expectedRevision
-  if (input.candidateSchemaVersion) details.candidateSchemaVersion = input.candidateSchemaVersion
-  if (input.approvalId) details.approvalId = input.approvalId
-  if (input.limit) details.rowCount = input.limit
-
-  return await transactionWithoutRetry(async (transaction) => {
-    const admitted = isBackfill
-      ? await transactionRow(transaction, `
-          SELECT policy.revision
-            FROM crm_search_policies policy
-            JOIN crm_search_global_control control
-              ON control.organisation_scope_id = policy.organisation_scope_id
-            JOIN crm_search_schema_versions schema_version
-              ON schema_version.organisation_scope_id = policy.organisation_scope_id
-             AND schema_version.schema_version = policy.candidate_schema_version
-            JOIN crm_search_change_approvals approval
-              ON approval.id = $5::UUID
-             AND approval.approval_type = 'client_indexing'
-             AND approval.scope_kind = 'client'
-             AND approval.organisation_scope_id = policy.organisation_scope_id
-             AND approval.client_id = policy.client_id
-             AND approval.expected_control_revision = control.revision
-             AND approval.expected_policy_revision = policy.revision
-             AND approval.target_schema_version = policy.candidate_schema_version
-             AND approval.approved_by <> $6::UUID
-             AND approval.maximum_cost_usd_micros > 0
-             AND approval.expires_at > NOW()
-             AND crm_search_approval_matches_active_deployment(approval, control)
-            LEFT JOIN crm_search_change_approval_revocations revocation
-              ON revocation.approval_id = approval.id
-           WHERE policy.organisation_scope_id = $1::UUID
-             AND policy.client_id = $2::UUID
-             AND policy.revision = $3::BIGINT
-             AND policy.candidate_schema_version = $4
-             AND policy.lifecycle_state = 'indexing'
-             AND control.state = 'enabled'
-             AND control.indexing_ready = TRUE
-             AND schema_version.metadata_index_state = 'ready'
-             AND schema_version.sentinel_state = 'confirmed_absent'
-             AND revocation.id IS NULL
-           FOR SHARE OF policy, control, schema_version, approval
-        `, [input.organisationScopeId, input.clientId, input.expectedPolicyRevision,
-          input.candidateSchemaVersion, input.approvalId, input.requestedByActorId])
-      : await transactionRow(transaction, `
-          SELECT revision
-            FROM crm_search_global_control
-           WHERE organisation_scope_id = $1::UUID
-             AND revision = $2::BIGINT
-           FOR SHARE
-        `, [input.organisationScopeId, input.expectedControlRevision])
-    if (!admitted) fail('crm_search_stale_revision')
-
-    const row = await transactionRow(transaction, `
-      INSERT INTO crm_search_audit_log (
-        organisation_scope_id, client_id, event_type, actor_id, correlation_id, reason, details
-      ) VALUES ($1::UUID,$2::UUID,$3,$4::UUID,gen_random_uuid(),$5,$6::JSONB)
-      RETURNING id::TEXT AS id
-    `, [input.organisationScopeId, input.clientId ?? null, eventType, input.requestedByActorId,
-      input.reason, JSON.stringify(details)])
-    if (!row || typeof row.id !== 'string') fail('crm_search_durable_request_failed')
-    return { operationId: row.id, status: 'pending' as const }
-  })
+  if (input.type === 'reconcile') {
+    return await executeCrmSearchReconciliationSchedule({
+      organisationScopeId: String(input.organisationScopeId),
+      expectedControlRevision: Number(input.expectedControlRevision),
+      requestedByActorId: String(input.requestedByActorId),
+      reason: String(input.reason),
+      limit: 25
+    })
+  }
+  fail('crm_search_invalid_command')
 }
 
-export async function requestCrmSearchDeadLetterRecoveryRecord(input: Record<string, unknown>) {
+export async function requestCrmSearchDeadLetterRecoveryRecord(
+  input: Record<string, unknown>,
+  dependencies: { transactionWithoutRetry?: typeof transactionWithoutRetry } = {}
+) {
   const nextState = input.action === 'transport_retry'
     ? 'transport_retry_requested'
     : 'confirmation_reconcile_requested'
-  const row = await queryOneFresh<{ state: string }>(`
-    SELECT crm_search_transition_dead_letter($1::UUID,'open',$2,$3::UUID,$4)::TEXT AS state
-  `, [input.deadLetterId, nextState, input.actorId, input.reason])
-  if (!row || row.state !== nextState) fail('crm_search_dead_letter_changed')
-  return { recoveryId: String(input.deadLetterId), status: row.state }
+  const runTransaction = dependencies.transactionWithoutRetry ?? transactionWithoutRetry
+  return await runTransaction(async (transaction) => {
+    const terminal = await transactionRow(transaction, `
+      SELECT dead_letter.id::TEXT AS id,
+             dead_letter.operation_id::TEXT AS operation_id,
+             dead_letter.origin, dead_letter.resolution_state,
+             to_char(dead_letter.updated_at AT TIME ZONE 'UTC',
+               'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS revision,
+             operation.lease_generation::INT AS generation,
+             operation.source_revision::INT AS source_revision,
+             operation.source_event_sequence::INT AS source_event_sequence,
+             operation.desired_action, operation.vector_id, operation.namespace,
+             operation.content_hash, operation.confirmation_tag,
+             operation.confirmation_key_version
+        FROM crm_search_dead_letters dead_letter
+        JOIN crm_search_operations operation ON operation.id = dead_letter.operation_id
+       WHERE dead_letter.id = $1::UUID
+         AND dead_letter.organisation_scope_id = $2::UUID
+         AND dead_letter.origin = $3
+         AND dead_letter.resolution_state = 'open'
+         AND dead_letter.updated_at = $4::TIMESTAMPTZ
+         AND operation.lease_generation = $5::BIGINT
+         AND operation.state = 'terminal_dead_letter'
+       FOR UPDATE OF dead_letter, operation
+    `, [input.deadLetterId, input.organisationScopeId, input.origin,
+      input.expectedRevision, input.expectedGeneration])
+    if (!terminal || terminal.id !== input.deadLetterId
+      || terminal.origin !== input.origin
+      || Number(terminal.generation) !== input.expectedGeneration) {
+      fail('crm_search_dead_letter_changed')
+    }
+    const replacement = await transactionRow(transaction, `
+      SELECT crm_search_replace_terminal_operation(
+        $1::UUID,$2::BIGINT,$3::BIGINT,$4,$5,$6,$7,$8,$9,$10::UUID,$11
+      )::TEXT AS replacement_operation_id
+    `, [terminal.operation_id, terminal.source_revision, terminal.source_event_sequence,
+      terminal.desired_action, terminal.vector_id, terminal.namespace, terminal.content_hash,
+      terminal.confirmation_tag, terminal.confirmation_key_version, input.actorId, input.reason])
+    if (!replacement || typeof replacement.replacement_operation_id !== 'string') {
+      fail('crm_search_dead_letter_changed')
+    }
+    const replacementId = identifier(replacement.replacement_operation_id)
+    return {
+      recoveryId: replacementId,
+      operationId: replacementId,
+      status: nextState
+    }
+  })
 }
 
 export async function listCrmSearchApprovals(organisationScopeId: string) {
   const rows = await queryRowsFresh<Record<string, unknown>>(`
     SELECT approval.id::TEXT AS id, approval.approval_type AS "approvalType",
            approval.environment, approval.scope_kind AS "scopeKind",
+           approval.organisation_scope_id::TEXT AS "organisationScopeId",
            approval.client_id::TEXT AS "clientId", approval.reason,
+           approval.implementation_git_sha AS "implementationGitSha",
+           approval.artifact_manifest_digest AS "artifactManifestDigest",
+           approval.pages_bundle_digest AS "pagesBundleDigest",
+           approval.worker_bundle_digest AS "workerBundleDigest",
+           approval.binding_manifest_digest AS "bindingManifestDigest",
            approval.evidence_bundle_hash AS "evidenceBundleHash",
+           approval.load_protocol_digest AS "loadProtocolDigest",
+           approval.provider_contract_digest AS "providerContractDigest",
+           approval.rate_card_id::TEXT AS "rateCardId",
            approval.maximum_cost_usd_micros::BIGINT AS "maximumCostUsdMicros",
+           approval.active_vector_count::BIGINT AS "activeVectorCount",
+           approval.candidate_vector_count::BIGINT AS "candidateVectorCount",
+           approval.retiring_vector_count::BIGINT AS "retiringVectorCount",
+           approval.sentinel_vector_count::BIGINT AS "sentinelVectorCount",
+           approval.deletion_pending_vector_count::BIGINT AS "deletionPendingVectorCount",
+           approval.forecast_vector_count::BIGINT AS "forecastVectorCount",
+           approval.vector_capacity::BIGINT AS "vectorCapacity",
+           approval.active_namespace_count::BIGINT AS "activeNamespaceCount",
+           approval.candidate_namespace_count::BIGINT AS "candidateNamespaceCount",
+           approval.retiring_namespace_count::BIGINT AS "retiringNamespaceCount",
+           approval.sentinel_namespace_count::BIGINT AS "sentinelNamespaceCount",
+           approval.deletion_pending_namespace_count::BIGINT AS "deletionPendingNamespaceCount",
+           approval.forecast_namespace_count::BIGINT AS "forecastNamespaceCount",
+           approval.namespace_capacity::BIGINT AS "namespaceCapacity",
+           approval.expected_control_revision::BIGINT AS "expectedControlRevision",
+           approval.expected_policy_revision::BIGINT AS "expectedPolicyRevision",
+           approval.expected_deployment_approval_id::TEXT AS "expectedDeploymentApprovalId",
+           approval.target_schema_version AS "targetSchemaVersion",
+           approval.requested_action AS "requestedAction",
            approval.issued_at AS "issuedAt", approval.expires_at AS "expiresAt",
            approval.approved_by::TEXT AS "approvedBy",
+           approval.requested_by::TEXT AS "requestedByActorId",
+           approval.imported_provenance_hash AS "importedProvenanceHash",
            CASE WHEN revocation.id IS NULL THEN 0 ELSE 1 END AS revision,
            revocation.revoked_at AS "revokedAt", consumption.consumed_at AS "consumedAt"
       FROM crm_search_change_approvals approval
@@ -515,12 +617,27 @@ export async function listCrmSearchApprovals(organisationScopeId: string) {
      LIMIT 200
   `, [organisationScopeId])
   return rows.map(row => {
-    const maximumCostUsdMicros = Number(row.maximumCostUsdMicros)
+    const integerFields = [
+      'maximumCostUsdMicros', 'activeVectorCount', 'candidateVectorCount',
+      'retiringVectorCount', 'sentinelVectorCount', 'deletionPendingVectorCount',
+      'forecastVectorCount', 'vectorCapacity', 'activeNamespaceCount',
+      'candidateNamespaceCount', 'retiringNamespaceCount', 'sentinelNamespaceCount',
+      'deletionPendingNamespaceCount', 'forecastNamespaceCount', 'namespaceCapacity',
+      'expectedControlRevision', 'expectedPolicyRevision'
+    ] as const
+    const normalized = { ...row }
+    for (const field of integerFields) {
+      if (row[field] === null || row[field] === undefined) continue
+      const numeric = Number(row[field])
+      if (!Number.isSafeInteger(numeric) || numeric < 0) fail('crm_search_approval_read_invalid')
+      normalized[field] = numeric
+    }
+    const maximumCostUsdMicros = Number(normalized.maximumCostUsdMicros)
     const approvalRevision = Number(row.revision)
     if (!Number.isSafeInteger(maximumCostUsdMicros) || maximumCostUsdMicros < 0
       || !Number.isSafeInteger(approvalRevision) || approvalRevision < 0) {
       fail('crm_search_approval_read_invalid')
     }
-    return { ...row, maximumCostUsdMicros, revision: approvalRevision }
+    return { ...normalized, maximumCostUsdMicros, revision: approvalRevision }
   })
 }

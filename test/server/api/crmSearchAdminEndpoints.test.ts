@@ -108,6 +108,7 @@ describe('CRM search admin API command surface', () => {
     ['global-control.put.ts', 'expectedRevision'],
     ['policies/[clientId].put.ts', 'expectedPolicyRevision'],
     ['dead-letters/[id].post.ts', 'expectedRevision'],
+    ['dead-letters/[id].post.ts', 'expectedGeneration'],
     ['approvals/[id]/revoke.post.ts', 'expectedRevision']
   ] as const)('%s validates %s for CAS protection', async (path, revisionField) => {
     const source = await readRoute(path)
@@ -177,6 +178,38 @@ describe('CRM search admin API command surface', () => {
     expect(source).toContain('provider_confirmation')
     expect(source).toContain('confirmation_reconcile')
     expect(source).toContain('crm_search_dead_letter_action_mismatch')
+    expect(source).toContain('expectedGeneration')
+  })
+
+  it('returns 409 refresh guidance when exact dead-letter revision or generation changed', async () => {
+    const { createCrmSearchDeadLetterActionHandler } = await import(
+      '~~/server/api/admin/crm-search/dead-letters/[id].post'
+    )
+    const handler = createCrmSearchDeadLetterActionHandler({
+      requireFreshAdmin: vi.fn().mockResolvedValue({
+        actorId: '10000000-0000-4000-8000-000000000001',
+        orgId: '20000000-0000-4000-8000-000000000001',
+        permissions: ['ADMIN'],
+        authorityRevision: 'fresh-8'
+      }),
+      getId: vi.fn().mockReturnValue('80000000-0000-4000-8000-000000000001'),
+      readValidatedBody: vi.fn().mockResolvedValue({
+        origin: 'provider_confirmation',
+        action: 'confirmation_reconcile',
+        expectedRevision: '2026-08-11T01:02:03.456789Z',
+        expectedGeneration: 9,
+        reason: 'Recover exact accepted provider mutation',
+        confirmation: 'RECOVER CRM SEARCH DEAD LETTER'
+      }),
+      requestDurableRecovery: vi.fn().mockRejectedValue({ code: 'crm_search_dead_letter_changed' }),
+      setResponseHeader: vi.fn(),
+      setResponseStatus: vi.fn()
+    })
+
+    await expect(handler({ context: {} } as never)).rejects.toMatchObject({
+      statusCode: 409,
+      data: { code: 'crm_search_stale_revision', action: 'refresh' }
+    })
   })
 
   it('limits bootstrap import to resource_provision while preserving original provenance', async () => {

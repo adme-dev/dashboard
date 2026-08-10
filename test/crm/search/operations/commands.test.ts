@@ -370,7 +370,8 @@ describe('CRM search durable operator work', () => {
       deadLetterId: '80000000-0000-4000-8000-000000000001',
       origin,
       action,
-      expectedRevision: 4,
+      expectedRevision: '2026-08-11T01:02:03.456789Z',
+      expectedGeneration: 4,
       reason: 'Operator reviewed durable failure evidence',
       confirmation: 'RECOVER CRM SEARCH DEAD LETTER',
       requestDurableRecovery
@@ -382,11 +383,35 @@ describe('CRM search durable operator work', () => {
       deadLetterId: '80000000-0000-4000-8000-000000000001',
       origin,
       action: wrongAction,
-      expectedRevision: 4,
+      expectedRevision: '2026-08-11T01:02:03.456789Z',
+      expectedGeneration: 4,
       reason: 'Operator reviewed durable failure evidence',
       confirmation: 'RECOVER CRM SEARCH DEAD LETTER',
       requestDurableRecovery
     })).rejects.toThrow('crm_search_dead_letter_action_mismatch')
+  })
+
+  it('resolves the requested-by actor from fresh active storage before persisting approval provenance', async () => {
+    const { createCrmSearchApproval } = await loadCommands()
+    const requesterId = '30000000-0000-4000-8000-000000000001'
+    const insert = vi.fn().mockResolvedValue({ approvalId: 'approval-16' })
+    const loadActiveRequester = vi.fn().mockResolvedValue({ actorId: requesterId, active: true })
+
+    await expect(createCrmSearchApproval({
+      ...baseApproval,
+      approvalType: 'resource_provision',
+      requestedByActorId: requesterId
+    }, admin, { insert, loadActiveRequester })).resolves.toEqual({ approvalId: 'approval-16' })
+
+    expect(loadActiveRequester).toHaveBeenCalledWith(requesterId, admin.orgId)
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ requestedByActorId: requesterId }))
+
+    loadActiveRequester.mockResolvedValueOnce(null)
+    await expect(createCrmSearchApproval({
+      ...baseApproval,
+      approvalType: 'resource_provision',
+      requestedByActorId: requesterId
+    }, admin, { insert, loadActiveRequester })).rejects.toThrow('crm_search_approval_requester_unavailable')
   })
 
   it('contains no direct provider, queue transport, HTTP or deployment boundary', async () => {

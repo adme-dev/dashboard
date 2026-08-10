@@ -10,7 +10,8 @@ import {
 const BodySchema = z.strictObject({
   origin: z.enum(['cloudflare_transport', 'provider_confirmation']),
   action: z.enum(['transport_retry', 'confirmation_reconcile']),
-  expectedRevision: z.number().int().nonnegative(),
+  expectedRevision: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3,6}Z$/u),
+  expectedGeneration: z.number().int().nonnegative(),
   reason: z.string().trim().min(10).max(2_000),
   confirmation: z.literal('RECOVER CRM SEARCH DEAD LETTER')
 })
@@ -25,6 +26,8 @@ export function createCrmSearchDeadLetterActionHandler(overrides: Partial<{
   readValidatedBody(event: H3Event): Promise<z.infer<typeof BodySchema>>
   getId(event: H3Event): string | undefined
   requestDurableRecovery(command: Record<string, unknown>): Promise<unknown>
+  setResponseHeader(event: H3Event, name: string, value: string): void
+  setResponseStatus(event: H3Event, status: number): void
 }> = {}) {
   const dependencies = {
     requireFreshAdmin: (event: H3Event) => requireFreshCrmSearchAdmin(event),
@@ -38,6 +41,8 @@ export function createCrmSearchDeadLetterActionHandler(overrides: Partial<{
     },
     getId: (event: H3Event) => getRouterParam(event, 'id'),
     requestDurableRecovery: requestCrmSearchDeadLetterRecoveryRecord,
+    setResponseHeader,
+    setResponseStatus,
     ...overrides
   }
   return async (event: H3Event) => {
@@ -47,17 +52,21 @@ export function createCrmSearchDeadLetterActionHandler(overrides: Partial<{
       throw createError({ statusCode: 404, statusMessage: 'CRM search dead letter not found' })
     }
     const body = await dependencies.readValidatedBody(event)
-    setResponseHeader(event, 'Cache-Control', 'private, no-store')
+    dependencies.setResponseHeader(event, 'Cache-Control', 'private, no-store')
     try {
       const pending = await recoverCrmSearchDeadLetterCommand({
         ...body, deadLetterId, actor: authority,
         requestDurableRecovery: dependencies.requestDurableRecovery
       })
-      setResponseStatus(event, 202)
+      dependencies.setResponseStatus(event, 202)
       return pending
     } catch (error) {
       const mapped = mapCrmSearchCommandError(error)
-      throw createError({ statusCode: mapped.statusCode, statusMessage: mapped.statusMessage, data: { code: mapped.code } })
+      throw createError({
+        statusCode: mapped.statusCode,
+        statusMessage: mapped.statusMessage,
+        data: { code: mapped.code, ...('action' in mapped ? { action: mapped.action } : {}) }
+      })
     }
   }
 }

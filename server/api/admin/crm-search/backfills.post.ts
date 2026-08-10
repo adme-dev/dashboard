@@ -6,6 +6,7 @@ import {
   mapCrmSearchCommandError,
   scheduleCrmSearchBackfillCommand
 } from '~~/server/utils/crm/search/operations/commands'
+import { resolveCrmSearchConfirmationKeyring } from '~~/server/utils/crm/searchIndex/bindings'
 
 const BodySchema = z.strictObject({
   clientId: z.uuid(),
@@ -21,6 +22,7 @@ export function createCrmSearchBackfillHandler(overrides: Partial<{
   requireFreshAdmin(event: H3Event): ReturnType<typeof requireFreshCrmSearchAdmin>
   readValidatedBody(event: H3Event): Promise<z.infer<typeof BodySchema>>
   createDurableOperation(command: Record<string, unknown>): Promise<unknown>
+  resolveConfirmationKeyring(event: H3Event): ReturnType<typeof resolveCrmSearchConfirmationKeyring>
 }> = {}) {
   const dependencies = {
     requireFreshAdmin: (event: H3Event) => requireFreshCrmSearchAdmin(event),
@@ -30,6 +32,7 @@ export function createCrmSearchBackfillHandler(overrides: Partial<{
       return parsed.data
     },
     createDurableOperation: createDurableCrmSearchRequest,
+    resolveConfirmationKeyring: resolveCrmSearchConfirmationKeyring,
     ...overrides
   }
   return async (event: H3Event) => {
@@ -38,10 +41,14 @@ export function createCrmSearchBackfillHandler(overrides: Partial<{
     setResponseHeader(event, 'Cache-Control', 'private, no-store')
     try {
       const pending = await scheduleCrmSearchBackfillCommand({
-        ...body, actor: authority, createDurableOperation: dependencies.createDurableOperation
+        ...body, actor: authority,
+        createDurableOperation: command => dependencies.createDurableOperation({
+          ...command,
+          confirmationKeyring: dependencies.resolveConfirmationKeyring(event)
+        })
       })
       setResponseStatus(event, 202)
-      return pending as { operationId: string, status: 'pending' }
+      return pending as { operationIds: string[], auditId: string, status: 'pending' }
     } catch (error) {
       const mapped = mapCrmSearchCommandError(error)
       throw createError({ statusCode: mapped.statusCode, statusMessage: mapped.statusMessage, data: { code: mapped.code } })

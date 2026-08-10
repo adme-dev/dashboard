@@ -16,8 +16,12 @@ export interface CrmSearchHealthInput {
   capacity: CrmSearchCapacity
   oldestAgeSeconds: { dirty: number | null, operation: number | null, queue: number | null }
   schema: Array<{ version: string, role: CrmSearchSchemaRole, confirmedVectors: number }>
-  dependency: Array<{ name: 'neon' | 'workers_ai' | 'vectorize' | 'queue', status: 'ok' | 'degraded' | 'down' }>
-  freshness: { staleClients: number, p95RevisionLagSeconds: number | null }
+  dependency: Array<{
+    name: 'neon' | 'workers_ai' | 'vectorize' | 'queue'
+    status: 'ok' | 'degraded' | 'down'
+    evidence?: Readonly<Record<string, number | boolean | null>>
+  }>
+  freshness: { staleClients: number, sourceHighWatermarkLag: number, p95RevisionLag: number | null }
   cost: { globalBudgetUsedBasisPoints: number, clientsNearBudget: number, configuredGlobalBudgetUsdMicros: number }
   keyword: { requests: number, failures: number }
   fallbacks: Readonly<Record<string, number>>
@@ -119,12 +123,18 @@ interface HealthAggregateRow extends Record<string, unknown> {
   oldest_dirty_age: number | null
   oldest_operation_age: number | null
   queue_age: number | null
+  queue_pending: number
   max_indexing_provider_calls: number
   configured_global_budget_usd_micros: number
   global_budget_used_basis_points: number
   clients_near_budget: number
   stale_clients: number
+  source_high_watermark_lag: number
   p95_revision_lag: number | null
+  workers_ai_open_attempts: number
+  workers_ai_open_age: number | null
+  vectorize_open_attempts: number
+  vectorize_open_age: number | null
   keyword_requests: number
   keyword_failures: number
   cross_scope_rejections: number
@@ -158,6 +168,9 @@ export async function loadCrmSearchHealth(organisationScopeId: string) {
          FROM crm_search_operations operation
         WHERE operation.organisation_scope_id = control.organisation_scope_id
           AND operation.state IN ('pending_transport','queued')) AS queue_age,
+      (SELECT COUNT(*)::INT FROM crm_search_operations operation
+        WHERE operation.organisation_scope_id = control.organisation_scope_id
+          AND operation.state IN ('pending_transport','queued')) AS queue_pending,
       control.max_indexing_provider_calls::INT,
       (control.daily_query_budget_usd_micros
         + control.daily_indexing_budget_usd_micros)::BIGINT AS configured_global_budget_usd_micros,
@@ -185,7 +198,65 @@ export async function loadCrmSearchHealth(organisationScopeId: string) {
       (SELECT COUNT(*)::INT FROM crm_search_policies policy
         WHERE policy.organisation_scope_id = control.organisation_scope_id
           AND policy.approved_control_revision IS DISTINCT FROM control.revision) AS stale_clients,
-      NULL::INT AS p95_revision_lag,
+      (SELECT COALESCE(MAX(GREATEST(
+          schema.captured_source_high_watermark - schema.confirmed_source_high_watermark, 0
+        )), 0)::INT
+         FROM crm_search_schema_versions schema
+        WHERE schema.organisation_scope_id = control.organisation_scope_id
+      ) AS source_high_watermark_lag,
+      (SELECT CEIL(PERCENTILE_CONT(0.95) WITHIN GROUP (
+          ORDER BY GREATEST(source.source_revision - COALESCE(source.confirmed_revision, 0), 0)
+        ))::INT
+         FROM (
+           SELECT current_source.entity_type, current_source.entity_id,
+                  current_source.search_revision AS source_revision,
+                  MAX(document.source_revision) FILTER (
+                    WHERE document.confirmation_state = 'indexed'
+                      AND document.tombstoned = FALSE
+                  ) AS confirmed_revision
+             FROM (
+               SELECT 'person'::TEXT AS entity_type, person.id AS entity_id, person.client_id,
+                      person.search_revision
+                 FROM crm_people person WHERE person.deleted_at IS NULL
+               UNION ALL
+               SELECT 'company', company.id, company.client_id, company.search_revision
+                 FROM crm_companies company WHERE company.deleted_at IS NULL
+               UNION ALL
+               SELECT 'opportunity', opportunity.id, opportunity.client_id,
+                      opportunity.search_revision
+                 FROM crm_opportunities opportunity WHERE opportunity.deleted_at IS NULL
+             ) current_source
+             JOIN crm_search_policies policy
+               ON policy.organisation_scope_id = control.organisation_scope_id
+              AND policy.client_id = current_source.client_id
+             LEFT JOIN crm_search_documents document
+               ON document.organisation_scope_id = policy.organisation_scope_id
+              AND document.client_id = policy.client_id
+              AND document.entity_type = current_source.entity_type
+              AND document.entity_id = current_source.entity_id
+            GROUP BY current_source.entity_type, current_source.entity_id,
+                     current_source.client_id,
+                     current_source.search_revision
+         ) source
+      ) AS p95_revision_lag,
+      (SELECT COUNT(*)::INT FROM crm_search_provider_attempts attempt
+        WHERE attempt.organisation_scope_id = control.organisation_scope_id
+          AND attempt.provider = 'workers_ai'
+          AND attempt.state IN ('sent','ambiguous')) AS workers_ai_open_attempts,
+      (SELECT EXTRACT(EPOCH FROM NOW() - MIN(COALESCE(attempt.sent_at, attempt.created_at)))::INT
+         FROM crm_search_provider_attempts attempt
+        WHERE attempt.organisation_scope_id = control.organisation_scope_id
+          AND attempt.provider = 'workers_ai'
+          AND attempt.state IN ('sent','ambiguous')) AS workers_ai_open_age,
+      (SELECT COUNT(*)::INT FROM crm_search_provider_attempts attempt
+        WHERE attempt.organisation_scope_id = control.organisation_scope_id
+          AND attempt.provider = 'vectorize'
+          AND attempt.state IN ('sent','ambiguous')) AS vectorize_open_attempts,
+      (SELECT EXTRACT(EPOCH FROM NOW() - MIN(COALESCE(attempt.sent_at, attempt.created_at)))::INT
+         FROM crm_search_provider_attempts attempt
+        WHERE attempt.organisation_scope_id = control.organisation_scope_id
+          AND attempt.provider = 'vectorize'
+          AND attempt.state IN ('sent','ambiguous')) AS vectorize_open_age,
       (SELECT COALESCE(SUM(event.request_count),0)::INT FROM crm_search_daily_events event
         WHERE event.organisation_scope_id = control.organisation_scope_id
           AND event.event_date >= CURRENT_DATE - 1) AS keyword_requests,
@@ -224,7 +295,14 @@ export async function loadCrmSearchHealth(organisationScopeId: string) {
      ORDER BY fallback_class
   `, [organisationScopeId])
   const capacityLimit = Math.max(1, Number(row.max_indexing_provider_calls))
-  const providerDegraded = Number(row.provider_pending) > 0 || (row.oldest_operation_age ?? 0) >= 900
+  const dependencyStatus = (open: number, age: number | null): 'ok' | 'degraded' | 'down' => {
+    if ((age ?? 0) >= 900) return 'down'
+    if (open > 0 || (age ?? 0) >= 300) return 'degraded'
+    return 'ok'
+  }
+  const workersAiOpenAttempts = Number(row.workers_ai_open_attempts)
+  const vectorizeOpenAttempts = Number(row.vectorize_open_attempts)
+  const queuePending = Number(row.queue_pending)
   return buildCrmSearchHealthView({
     global: {
       state: row.state,
@@ -247,12 +325,34 @@ export async function loadCrmSearchHealth(organisationScopeId: string) {
       version: schema.version, role: schema.role, confirmedVectors: Number(schema.confirmed_vectors)
     })),
     dependency: [
-      { name: 'neon', status: 'ok' },
-      { name: 'workers_ai', status: providerDegraded ? 'degraded' : 'ok' },
-      { name: 'vectorize', status: providerDegraded ? 'degraded' : 'ok' },
-      { name: 'queue', status: (row.queue_age ?? 0) >= 900 ? 'degraded' : 'ok' }
+      { name: 'neon', status: 'ok', evidence: { querySucceeded: true } },
+      {
+        name: 'workers_ai',
+        status: dependencyStatus(workersAiOpenAttempts, row.workers_ai_open_age),
+        evidence: {
+          openAttempts: workersAiOpenAttempts,
+          oldestOpenAgeSeconds: row.workers_ai_open_age
+        }
+      },
+      {
+        name: 'vectorize',
+        status: dependencyStatus(vectorizeOpenAttempts, row.vectorize_open_age),
+        evidence: {
+          openAttempts: vectorizeOpenAttempts,
+          oldestOpenAgeSeconds: row.vectorize_open_age
+        }
+      },
+      {
+        name: 'queue',
+        status: dependencyStatus(queuePending, row.queue_age),
+        evidence: { pendingOperations: queuePending, oldestAgeSeconds: row.queue_age }
+      }
     ],
-    freshness: { staleClients: Number(row.stale_clients), p95RevisionLagSeconds: row.p95_revision_lag },
+    freshness: {
+      staleClients: Number(row.stale_clients),
+      sourceHighWatermarkLag: Number(row.source_high_watermark_lag),
+      p95RevisionLag: row.p95_revision_lag
+    },
     cost: {
       globalBudgetUsedBasisPoints: Number(row.global_budget_used_basis_points),
       clientsNearBudget: Number(row.clients_near_budget),
@@ -288,8 +388,11 @@ export async function listCrmSearchDeadLetters(organisationScopeId: string) {
            dead_letter.client_id::TEXT AS "clientId", dead_letter.origin,
            dead_letter.resolution_state AS "resolutionState", dead_letter.attempts::INT,
            dead_letter.error_class AS "errorClass", dead_letter.last_failed_at AS "lastFailedAt",
-           CASE WHEN dead_letter.resolution_state = 'open' THEN 0 ELSE 1 END AS revision
+           to_char(dead_letter.updated_at AT TIME ZONE 'UTC',
+             'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS revision,
+           operation.lease_generation::INT AS generation
       FROM crm_search_dead_letters dead_letter
+      JOIN crm_search_operations operation ON operation.id = dead_letter.operation_id
      WHERE dead_letter.organisation_scope_id = $1::UUID
      ORDER BY dead_letter.last_failed_at DESC
      LIMIT 200

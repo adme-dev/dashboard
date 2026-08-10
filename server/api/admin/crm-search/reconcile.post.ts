@@ -37,7 +37,7 @@ export function createCrmSearchReconcileHandler(overrides: Partial<{
         ...body, actor: authority, createDurableOperation: dependencies.createDurableOperation
       })
       setResponseStatus(event, 202)
-      return pending as { operationId: string, status: 'pending' }
+      return pending as { operationIds: string[], auditId: string, status: 'pending' }
     } catch (error) {
       const mapped = mapCrmSearchCommandError(error)
       throw createError({ statusCode: mapped.statusCode, statusMessage: mapped.statusMessage, data: { code: mapped.code } })

@@ -21,8 +21,8 @@ const columns = [
     <div v-if="pending && !approvals.length" class="space-y-2" aria-busy="true" aria-label="Loading approval ledger"><USkeleton v-for="item in 3" :key="item" class="h-14 w-full" /></div>
     <UAlert v-else-if="error && !approvals.length" color="error" variant="soft" title="Approval ledger unavailable" :description="error" />
     <UTable v-else-if="approvals.length" :data="approvals" :columns="columns">
-      <template #approvalType-cell="{ row }"><div><p class="text-sm font-medium text-highlighted">{{ row.original.approvalType }}</p><p class="text-xs text-muted">{{ row.original.scopeKind }} scope · {{ row.original.environment }}</p></div></template>
-      <template #evidenceBundleHash-cell="{ row }"><span class="font-mono text-xs text-muted">{{ row.original.evidenceBundleHash.slice(0, 12) }}…</span></template>
+      <template #approvalType-cell="{ row }"><div><p class="text-sm font-medium text-highlighted">{{ row.original.approvalType }}</p><p class="text-xs text-muted">{{ row.original.scopeKind }} scope · {{ row.original.environment }}</p><p class="text-xs text-muted">requested {{ row.original.requestedByActorId ?? 'legacy unknown' }} · approved {{ row.original.approvedBy }}</p></div></template>
+      <template #evidenceBundleHash-cell="{ row }"><div class="space-y-0.5"><p class="font-mono text-xs text-muted">evidence {{ row.original.evidenceBundleHash.slice(0, 12) }}…</p><p class="font-mono text-xs text-muted">artifact {{ row.original.artifactManifestDigest.slice(0, 12) }}…</p><p v-if="row.original.importedProvenanceHash" class="font-mono text-xs text-muted">import {{ row.original.importedProvenanceHash.slice(0, 12) }}…</p></div></template>
       <template #maximumCostUsdMicros-cell="{ row }"><span class="text-sm text-default">{{ (row.original.maximumCostUsdMicros / 1_000_000).toFixed(2) }} USD</span></template>
       <template #expiresAt-cell="{ row }"><span class="text-sm text-muted">{{ new Date(row.original.expiresAt).toLocaleString() }}</span></template>
       <template #status-cell="{ row }"><UBadge color="neutral" variant="subtle">{{ status(row.original) }}</UBadge></template>
