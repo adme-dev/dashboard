@@ -316,9 +316,13 @@ describe('authorized CRM retrieval coordinator', () => {
     )).resolves.toEqual({ results: keyword, mode: 'shadow' })
     await shadowWork
 
-    expect(deps.runWithinDeadline).toHaveBeenCalledWith(expect.objectContaining({
-      deadlineMs: CRM_SEARCH_RETRIEVAL_DEADLINE.defaultMs
-    }))
+    const shadowDeadlineInputs = (deps.runWithinDeadline as ReturnType<typeof vi.fn>).mock.calls
+      .map(call => call[0].deadlineMs as number)
+    expect(shadowDeadlineInputs).toHaveLength(2)
+    expect(shadowDeadlineInputs.every(value => (
+      value > 0 && value <= CRM_SEARCH_RETRIEVAL_DEADLINE.defaultMs
+    ))).toBe(true)
+    expect(shadowDeadlineInputs[1]).toBeLessThanOrEqual(shadowDeadlineInputs[0]!)
     expect(scheduleShadow).toHaveBeenCalledWith(expect.objectContaining({
       providerEnabled: true
     }))
