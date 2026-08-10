@@ -30,6 +30,19 @@ describe('CRM record authorization inventory', () => {
     ]))
   })
 
+  it('requires every CRM search indexing and retrieval service to be explicitly classified', () => {
+    const searchServices = discoverCrmIndirectServiceSurfaces().filter(surface =>
+      /(?:\/crm-search-|\/crm\/(?:ranking|retrieval|semanticCandidates|semanticJoinBack|shadowSearch)\.ts$|\/crm\/searchIndex\/)/u
+        .test(surface)
+    )
+
+    expect(searchServices.length).toBeGreaterThan(0)
+    expect(discoverCrmInventoryDrift(
+      searchServices,
+      CRM_RECORD_ACCESS_SURFACE_INVENTORY
+    ).unclassified).toEqual([])
+  })
+
   it('recursively discovers only CRM-bearing routes in the reviewed external route roots', () => {
     const root = mkdtempSync(join(tmpdir(), 'crm-external-routes-'))
     const actionItemDirectory = join(root, 'server/api/office/[officeId]/meetings/[meetingId]/action-items/[actionItemId]')
