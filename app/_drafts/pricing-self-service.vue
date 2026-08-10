@@ -271,7 +271,7 @@ const agencyFeatures = [
   'EOM invoice generation',
   'Client portal (unlimited clients)',
   'AI chat & anomaly detection',
-  'Semantic search',
+  'Controlled CRM assist (off by default)',
   'Time tracking & timesheets',
   'Email automations',
   '50GB R2 file storage',
@@ -343,7 +343,7 @@ const comparisonData: ComparisonCategory[] = [
     features: [
       { name: 'AI chat assistant', starter: false, agency: true, enterprise: true },
       { name: 'Anomaly detection', starter: false, agency: '8 analyzers', enterprise: '8 analyzers + custom' },
-      { name: 'Semantic search', starter: false, agency: true, enterprise: true },
+      { name: 'Controlled CRM agency-assistant retrieval (off by default)', starter: false, agency: false, enterprise: 'Approval required' },
       { name: 'Intent classification', starter: false, agency: true, enterprise: true },
       { name: 'LoRA adapters', starter: false, agency: false, enterprise: true },
     ],

@@ -104,6 +104,8 @@
 </template>
 
 <script setup lang="ts">
+import { CRM_SEARCH_MARKETING_COPY } from '~/utils/marketingClaimManifest'
+
 definePageMeta({
   layout: false,
   public: true
@@ -282,7 +284,7 @@ const categories = [
       { title: 'Owner God Mode', slug: 'owner-god-mode', icon: 'i-lucide-crown', description: 'Always-on access to every registered application and MCP capability for active owners, including audited creation of editable Banner Studio drafts. Authentication, isolation and emergency controls remain enforced.' },
       { title: 'Voice AI', slug: 'voice-ai', icon: 'i-lucide-mic', description: 'Talk to your AI assistant. Speech-to-text transcription and text-to-speech responses powered by Workers AI.' },
       { title: 'Anomaly Detection', slug: 'anomaly-detection', icon: 'i-lucide-alert-triangle', description: '10 specialised analysers that proactively flag anomalies across profit, revenue, expenses, cashflow, receivables, budget, ad-spend pacing/delivery health and per-client risk — surfaced in the daily digest, push, and in-app.' },
-      { title: 'Semantic Search', slug: 'semantic-search', icon: 'i-lucide-search', description: 'Vectorize-powered search across tasks, clients, briefs, and knowledge base entries.' },
+      { title: CRM_SEARCH_MARKETING_COPY.featureTitle, slug: 'semantic-search', icon: 'i-lucide-search', description: CRM_SEARCH_MARKETING_COPY.featureCardDescription },
       { title: 'Intent Classification', slug: 'intent-classification', icon: 'i-lucide-target', description: 'Edge-first intent classifier routes queries to the right data sources automatically.' },
       { title: 'Composite Scoring', slug: 'composite-scoring', icon: 'i-lucide-blend', description: 'Five-signal retrieval formula — semantic, recency, importance, intent match, and entity overlap.' },
       { title: 'AI Reports', slug: 'ai-reports', icon: 'i-lucide-file-text', description: 'Auto-generated reports with insights, trends, and recommendations for your agency.' },

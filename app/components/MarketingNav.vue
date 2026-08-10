@@ -555,6 +555,8 @@
 </template>
 
 <script setup lang="ts">
+import { CRM_SEARCH_MARKETING_COPY } from '~/utils/marketingClaimManifest'
+
 defineProps<{
   active?: 'features' | 'pricing' | 'resources' | 'contact' | ''
 }>()
@@ -658,7 +660,7 @@ const featuresCol4 = [
   { title: 'Advisor Backlog', subtitle: 'CFO recommendations as a triage queue', icon: 'i-lucide-target', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/advisor-backlog' },
   { title: 'AI Training', subtitle: 'Your data trains your AI, privately', icon: 'i-lucide-brain', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/ai-training' },
   { title: 'Voice AI', subtitle: 'Talk to your AI by voice', icon: 'i-lucide-mic', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/voice-ai' },
-  { title: 'Semantic Search', subtitle: 'Vectorize-powered discovery', icon: 'i-lucide-search', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/platform/ai' },
+  { title: CRM_SEARCH_MARKETING_COPY.navigationTitle, subtitle: CRM_SEARCH_MARKETING_COPY.navigationSubtitle, icon: 'i-lucide-search', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/semantic-search' },
   { title: 'AI Assistant Connectors', subtitle: 'Use XeroFlow in Claude, Cursor & ChatGPT', icon: 'i-lucide-plug', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/ai-connectors' },
 ]
 

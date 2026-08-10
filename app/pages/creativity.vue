@@ -378,7 +378,7 @@ const capabilityCards = [
   },
   {
     title: 'AI-Powered Insights',
-    description: 'Anomaly detection, proactive recommendations, and semantic search surface what matters before you even think to ask. Your AI co-pilot for operations.',
+    description: 'Anomaly detection and proactive recommendations alongside controlled CRM semantic assistance, which is off by default and limited to approved agency-assistant contexts.',
     icon: 'i-lucide-sparkles',
     iconBg: 'bg-amber-500/10',
     iconColor: 'text-amber-600'

@@ -176,7 +176,7 @@
               AI That<br>Knows<br>Your Agency
             </h2>
             <p class="text-[clamp(1rem,1.8vw,1.35rem)] max-w-[560px] mb-12 text-white/80 font-light leading-relaxed reveal reveal-d1">
-              Groq-powered chat, 8 proactive analyzers, semantic search via Vectorize, LoRA fine-tuning on your data, and private edge inference — trained exclusively on your operations.
+              Conversational AI and proactive analysis with visible CRM keyword search. Controlled semantic assistance is limited to approved agency-assistant contexts and is off by default.
             </p>
 
             <div class="flex flex-col gap-3">
@@ -622,7 +622,7 @@ const platformFeatures = [
   },
   {
     title: 'AI Assistant',
-    desc: 'Groq-powered chat with @entity mentions, anomaly detection, semantic search, and proactive recommendations.',
+    desc: 'Conversational AI, anomaly detection, visible CRM keyword search, and controlled agency-assistant retrieval.',
     icon: 'i-lucide-sparkles',
     bg: 'bg-amber-500/15',
     color: 'text-amber-400',
@@ -681,8 +681,8 @@ const aiFeatures = [
     color: 'text-rose-400'
   },
   {
-    label: 'Semantic Search',
-    desc: 'Vectorize-powered embedding of tasks, briefs, clients, and spend data for instant natural-language retrieval.',
+    label: 'Controlled CRM Search',
+    desc: 'Visible keyword ranking with off-by-default semantic assistance for approved agency-assistant contexts after confirmed indexing.',
     icon: 'i-lucide-search',
     bg: 'bg-blue-500/15',
     color: 'text-blue-400'

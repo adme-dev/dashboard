@@ -345,7 +345,7 @@
               AI-Powered Insights
             </h2>
             <p class="text-[#45474D] dark:text-white/60 text-base md:text-lg leading-relaxed max-w-[480px]">
-              Groq-powered chat with @entity mentions, anomaly detection across 8 analyzers, semantic search, and proactive recommendations.
+              Conversational AI and anomaly analysis with visible CRM keyword search; semantic assistance is limited to approved agency-assistant contexts.
             </p>
             <NuxtLink to="/platform/ai" class="inline-flex items-center gap-1.5 mt-5 text-[15px] font-medium text-[#121317] dark:text-white hover:opacity-70 transition-opacity group">
               Learn more

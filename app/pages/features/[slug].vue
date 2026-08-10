@@ -112,6 +112,8 @@
 </template>
 
 <script setup lang="ts">
+import { CRM_SEARCH_MARKETING_COPY } from '~/utils/marketingClaimManifest'
+
 definePageMeta({
   layout: false,
   public: true
@@ -1581,32 +1583,15 @@ const features: Record<string, Feature> = {
     ]
   },
   'semantic-search': {
-    title: 'Semantic Search',
+    title: CRM_SEARCH_MARKETING_COPY.featureTitle,
     slug: 'semantic-search',
     icon: 'i-lucide-search',
     category: 'AI & Intelligence',
     categoryIcon: 'i-lucide-brain',
     categoryIconBg: 'bg-amber-50',
     categoryIconColor: 'text-amber-600',
-    description: 'Vectorize-powered search across tasks, clients, briefs, and knowledge base entries. Find what you need by meaning, not just by keyword.',
-    details: [
-      {
-        title: 'Meaning-Based Search',
-        content: 'Traditional keyword search fails when you do not remember the exact terms used. Semantic search understands meaning — searching for "social media campaign performance" will find tasks about "Facebook ad results" or "Instagram engagement metrics" even if those exact words do not appear in your query. The search uses Cloudflare Vectorize with embedding-based similarity scoring.'
-      },
-      {
-        title: 'Cross-Entity Search',
-        content: 'Search across all entity types simultaneously — tasks, clients, briefs, projects, and knowledge base entries. Results are ranked by a composite score that combines semantic similarity with recency, importance, and entity type diversity. A single search might return a relevant brief, the associated task, and a knowledge base article, giving you complete context in one query.'
-      },
-      {
-        title: 'Hybrid Search Strategy',
-        content: 'The search system combines vector-based semantic search with traditional keyword ILIKE queries. Keyword results catch exact matches that semantic search might rank lower, while semantic results catch conceptual matches that keyword search misses entirely. The hybrid approach delivers better recall than either method alone, especially for agencies with diverse terminology across clients and departments.'
-      },
-      {
-        title: 'Automatic Embedding Pipeline',
-        content: 'Tasks, briefs, and clients are automatically embedded when created or updated. A queue-based pipeline processes embed jobs asynchronously using SHA-256 change detection to avoid redundant re-embedding. The Vectorize index is continuously updated so search results reflect the latest data. No manual indexing or maintenance required — the system keeps itself current.'
-      }
-    ]
+    description: CRM_SEARCH_MARKETING_COPY.featureDescription,
+    details: CRM_SEARCH_MARKETING_COPY.featureDetails.map(detail => ({ ...detail }))
   },
   'intent-classification': {
     title: 'Intent Classification',

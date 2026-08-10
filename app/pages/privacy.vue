@@ -143,7 +143,7 @@
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Infrastructure &amp; hosting</strong> &mdash; Cloudflare, Inc. (CDN, edge compute, R2 storage, Workers, Durable Objects, AI inference, Vectorize).</li>
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Database</strong> &mdash; Neon, Inc. (serverless PostgreSQL hosting).</li>
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Email delivery</strong> &mdash; Resend, Inc. (transactional and notification emails).</li>
-              <li><strong class="text-[#121317] dark:text-white/80 font-[450]">AI processing</strong> &mdash; Groq, Inc. (LLM inference for AI chat and classification); Cloudflare Workers AI (edge inference and embeddings).</li>
+              <li><strong class="text-[#121317] dark:text-white/80 font-[450]">AI processing</strong> &mdash; Groq, Inc. (LLM inference for AI chat and classification); Cloudflare Workers AI (controlled edge inference and CRM embeddings only when the off-by-default capability is enabled).</li>
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">User-initiated integrations</strong> &mdash; Xero Limited (accounting), Meta Platforms, Inc. (advertising), Google LLC (advertising). These connections are established by you and governed by each provider's own privacy policy.</li>
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Mapping and place discovery</strong> &mdash; Google LLC (Google Maps and Places), when an authorised user uses nearby dealership discovery.</li>
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Customer-configured recipients</strong> &mdash; CRM systems, dealerships, dealer groups, lead-management services, spreadsheets, webhooks, advertising platforms, analytics services, and other destinations selected by the customer.</li>
@@ -252,10 +252,10 @@
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">AI Chat Assistant</strong> &mdash; answers questions about your agency data using large language models. Conversations are processed by Groq and/or Cloudflare Workers AI.</li>
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Intent classification &amp; anomaly detection</strong> &mdash; analyses patterns in your data to route queries and surface proactive insights.</li>
               <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Content suggestions</strong> &mdash; AI-generated copy and creative recommendations within the banner studio.</li>
-              <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Semantic search</strong> &mdash; text embeddings are generated to enable vector-based search across your data, stored in Cloudflare Vectorize.</li>
+              <li><strong class="text-[#121317] dark:text-white/80 font-[450]">Controlled CRM semantic assistance</strong> &mdash; off by default and limited to approved agency-assistant contexts. When enabled, Workers AI creates embeddings only for authorized people, companies, and opportunities; Vectorize stores scoped vectors, and only records at confirmed index state are eligible. Portal semantic ranking remains unavailable.</li>
             </ul>
             <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed mt-3">
-              AI features process your data only in the context of your organisation. Your data is not used to train general-purpose AI models and is not shared across organisations. No automated decision-making with legal or similarly significant effects is performed without human oversight.
+              AI features process your data only in the context of your organisation. Your data is not used to train general-purpose AI models and is not shared across organisations. Controlled CRM retrieval records privacy-safe operational evidence; source records and confirmed vectors follow the applicable retention and legal-hold rules, and erasure is not reported complete until confirmed erasure covers both database and provider state. No automated decision-making with legal or similarly significant effects is performed without human oversight.
             </p>
           </section>
 
