@@ -1,34 +1,199 @@
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { Client } from 'pg'
 import { describe, expect, it } from 'vitest'
-import { withDisposablePostgresSchema } from '../utils/disposablePostgresSchema'
 
 const rawDatabaseUrl = process.env.CRM_SEARCH_TEST_DATABASE_URL?.trim()
-const expectedProjectId = process.env.CRM_SEARCH_TEST_EXPECTED_PROJECT_ID?.trim()
-const expectedBranchId = process.env.CRM_SEARCH_TEST_EXPECTED_BRANCH_ID?.trim()
-const expectedEndpointId = process.env.CRM_SEARCH_TEST_EXPECTED_ENDPOINT_ID?.trim()
-const forbiddenDatabaseUrls = process.env.CRM_SEARCH_TEST_FORBIDDEN_DATABASE_URLS
-  ?.split(',')
-  .map(value => value.trim())
-  .filter(Boolean) || []
+const rawTargetAttestation = process.env.CRM_SEARCH_TEST_TARGET_ATTESTATION_JSON?.trim()
 const schema = `crm_search_expand_test_${crypto.randomUUID().replaceAll('-', '')}`
 const requiredApplicationName = 'crm-search-governance-test'
+const requiredMigrationPaths = [
+  'server/database/migrations/350_crm_search_expand.sql',
+  'server/database/migrations/351_crm_search_validate_backfill.sql',
+  'server/database/migrations/352_crm_search_activate_capture.sql'
+]
 
-interface ExpectedCrmSearchTestIdentity {
-  projectId: string
-  branchId: string
-  endpointId: string
-  forbiddenDatabaseUrls: string[]
+interface CrmSearchTargetAttestation {
+  version: 'crm-search-neon-target-attestation-v1'
+  producer: 'scripts/crm-search/neon-lifecycle.mjs'
+  sourceGitSha: string
+  migrationPaths: string[]
+  schemaOnly: boolean
+  createdAt: string
+  expiresAt: string
+  neonApi: {
+    project: { id: string }
+    sourceBranch: { id: string }
+    branch: {
+      id: string
+      projectId: string
+      parentId: string
+      name: string
+      initSource: string
+      createdAt: string
+      expiresAt: string
+    }
+    endpoint: { id: string, branchId: string, host: string }
+  }
+  sharedEndpointDenyset: string[]
+  apiResponseSha256: string
+  attestationSha256: string
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+function digestJson(value: unknown): string {
+  return createHash('sha256').update(canonicalJson(value)).digest('hex')
+}
+
+function targetAttestationFixture(
+  mutate?: (draft: Omit<CrmSearchTargetAttestation, 'apiResponseSha256' | 'attestationSha256'>) => void
+): CrmSearchTargetAttestation {
+  const createdAt = new Date(Date.now() - 60_000).toISOString()
+  const expiresAt = new Date(Date.now() + 3_600_000).toISOString()
+  const sourceGitSha = 'a'.repeat(40)
+  const draft: Omit<CrmSearchTargetAttestation, 'apiResponseSha256' | 'attestationSha256'> = {
+    version: 'crm-search-neon-target-attestation-v1' as const,
+    producer: 'scripts/crm-search/neon-lifecycle.mjs' as const,
+    sourceGitSha,
+    migrationPaths: [
+      'server/database/migrations/350_crm_search_expand.sql',
+      'server/database/migrations/351_crm_search_validate_backfill.sql',
+      'server/database/migrations/352_crm_search_activate_capture.sql'
+    ],
+    schemaOnly: true,
+    createdAt,
+    expiresAt,
+    neonApi: {
+      project: { id: 'prj-crm-search-e2e' },
+      sourceBranch: { id: 'br-source-shared' },
+      branch: {
+        id: 'br-crm-search-e2e',
+        projectId: 'prj-crm-search-e2e',
+        parentId: 'br-source-shared',
+        name: `crm-search-e2e-${sourceGitSha.slice(0, 12)}`,
+        initSource: 'schema-only',
+        createdAt,
+        expiresAt
+      },
+      endpoint: {
+        id: 'ep-crm-search-e2e-a1b2c3d4',
+        branchId: 'br-crm-search-e2e',
+        host: 'ep-crm-search-e2e-a1b2c3d4.ap-southeast-2.aws.neon.tech'
+      }
+    },
+    sharedEndpointDenyset: ['ep-production-shared-a1b2c3d4']
+  }
+  mutate?.(draft)
+  const withApiDigest = { ...draft, apiResponseSha256: digestJson(draft.neonApi) }
+  return { ...withApiDigest, attestationSha256: digestJson(withApiDigest) }
 }
 
 function endpointFromHost(hostname: string): string {
   return hostname.split('.')[0]?.replace(/-pooler$/, '') || ''
 }
 
+function parseAndVerifyTargetAttestation(raw: string): CrmSearchTargetAttestation {
+  let value: unknown
+  try {
+    value = JSON.parse(raw)
+  } catch {
+    throw new Error('CRM search target attestation is invalid JSON')
+  }
+  return verifyTargetAttestation(value)
+}
+
+function verifyTargetAttestation(value: unknown): CrmSearchTargetAttestation {
+  if (!value || typeof value !== 'object') {
+    throw new Error('CRM search target attestation is missing')
+  }
+  const attestation = value as CrmSearchTargetAttestation
+  const { attestationSha256, ...unsignedAttestation } = attestation
+  if (!/^[a-f0-9]{64}$/.test(attestationSha256 || '')
+    || digestJson(unsignedAttestation) !== attestationSha256) {
+    throw new Error('CRM search target attestation digest does not match')
+  }
+  if (attestation.version !== 'crm-search-neon-target-attestation-v1'
+    || attestation.producer !== 'scripts/crm-search/neon-lifecycle.mjs') {
+    throw new Error('CRM search target attestation producer is not Task18 lifecycle')
+  }
+  if (!attestation.neonApi || digestJson(attestation.neonApi) !== attestation.apiResponseSha256) {
+    throw new Error('CRM search target attestation API response digest does not match')
+  }
+  if (!/^[a-f0-9]{40}([a-f0-9]{24})?$/.test(attestation.sourceGitSha || '')) {
+    throw new Error('CRM search target attestation source Git SHA is invalid')
+  }
+  if (canonicalJson(attestation.migrationPaths) !== canonicalJson(requiredMigrationPaths)) {
+    throw new Error('CRM search target attestation migration set is not exact')
+  }
+  if (attestation.schemaOnly !== true || attestation.neonApi.branch.initSource !== 'schema-only') {
+    throw new Error('CRM search target attestation must prove schema-only creation')
+  }
+
+  const createdAt = Date.parse(attestation.createdAt)
+  const expiresAt = Date.parse(attestation.expiresAt)
+  const now = Date.now()
+  if (!Number.isFinite(createdAt) || !Number.isFinite(expiresAt)
+    || createdAt > now + 5 * 60_000 || expiresAt <= now
+    || expiresAt > createdAt + 24 * 60 * 60_000) {
+    throw new Error('CRM search target attestation is expired or has an invalid TTL')
+  }
+  if (attestation.neonApi.branch.createdAt !== attestation.createdAt
+    || attestation.neonApi.branch.expiresAt !== attestation.expiresAt) {
+    throw new Error('CRM search target attestation branch TTL does not match')
+  }
+
+  const { project, sourceBranch, branch, endpoint } = attestation.neonApi
+  for (const [label, identity] of [
+    ['project', project?.id], ['source branch', sourceBranch?.id],
+    ['target branch', branch?.id], ['endpoint', endpoint?.id]
+  ]) {
+    if (!identity || !/^[a-z0-9][a-z0-9_-]{2,119}$/i.test(identity)) {
+      throw new Error(`CRM search target attestation ${label} identity is invalid`)
+    }
+  }
+  if (branch.projectId !== project.id || branch.parentId !== sourceBranch.id
+    || branch.id === sourceBranch.id || endpoint.branchId !== branch.id) {
+    throw new Error('CRM search target attestation project or branch binding does not match')
+  }
+  if (branch.name !== `crm-search-e2e-${attestation.sourceGitSha.slice(0, 12)}`) {
+    throw new Error('CRM search target attestation branch name is not lifecycle-bound')
+  }
+  const endpointId = endpointFromHost(endpoint.host || '')
+  if (endpointId !== endpoint.id || !endpoint.host.endsWith('.neon.tech')
+    || !endpoint.host.startsWith('ep-') || endpoint.host.split('.')[0]?.endsWith('-pooler')) {
+    throw new Error('CRM search target attestation endpoint binding is invalid')
+  }
+  if (!Array.isArray(attestation.sharedEndpointDenyset)
+    || attestation.sharedEndpointDenyset.length === 0
+    || new Set(attestation.sharedEndpointDenyset).size !== attestation.sharedEndpointDenyset.length
+    || attestation.sharedEndpointDenyset.some(id => !/^ep-[a-z0-9-]{3,119}$/i.test(id))) {
+    throw new Error('CRM search target attestation shared endpoint denyset is invalid')
+  }
+  if (attestation.sharedEndpointDenyset.includes(endpoint.id)) {
+    throw new Error('CRM search target attestation identifies a shared endpoint')
+  }
+  const targetIdentity = `${project.id} ${branch.id} ${branch.name} ${endpoint.id}`.toLowerCase()
+  if (/(^|[^a-z])(prod|production|main|primary|shared|default)([^a-z]|$)/.test(targetIdentity)) {
+    throw new Error('CRM search target attestation identifies a production-like target')
+  }
+  return attestation
+}
+
 function assertGuardedCrmSearchTestDatabaseUrl(
   raw: string,
-  expected: ExpectedCrmSearchTestIdentity
+  attestation: CrmSearchTargetAttestation
 ): string {
+  const verified = verifyTargetAttestation(attestation)
   let url: URL
   try {
     url = new URL(raw)
@@ -49,31 +214,13 @@ function assertGuardedCrmSearchTestDatabaseUrl(
     throw new Error('CRM search governance tests require a direct, non-pooled Neon endpoint')
   }
 
-  for (const [label, value] of [
-    ['project', expected.projectId],
-    ['branch', expected.branchId],
-    ['endpoint', expected.endpointId]
-  ]) {
-    if (!value || !/^[a-z0-9][a-z0-9_-]{2,119}$/i.test(value)) {
-      throw new Error(`CRM search test ${label} identity is missing or invalid`)
-    }
-    if (/(^|[-_])(prod|production|main|primary|shared|default)([-_]|$)/i.test(value)) {
-      throw new Error(`CRM search test ${label} identity is production-like`)
-    }
-  }
-  if (endpointFromHost(url.hostname) !== expected.endpointId) {
-    throw new Error('CRM search test URL does not match the explicitly expected endpoint')
+  if (endpointFromHost(url.hostname) !== verified.neonApi.endpoint.id
+    || url.hostname !== verified.neonApi.endpoint.host) {
+    throw new Error('CRM search test URL does not match the attested endpoint')
   }
 
-  if (expected.forbiddenDatabaseUrls.length === 0) {
-    throw new Error('CRM search test database requires explicit forbidden shared URLs')
-  }
-
-  for (const forbiddenRaw of expected.forbiddenDatabaseUrls) {
-    const forbidden = new URL(forbiddenRaw)
-    if (endpointFromHost(forbidden.hostname) === endpointFromHost(url.hostname)) {
-      throw new Error('CRM search tests reject an endpoint equivalent to a forbidden shared URL')
-    }
+  if (verified.sharedEndpointDenyset.includes(endpointFromHost(url.hostname))) {
+    throw new Error('CRM search tests reject an attested shared endpoint')
   }
   if (url.searchParams.getAll('application_name').length !== 1
     || url.searchParams.get('application_name') !== requiredApplicationName) {
@@ -90,15 +237,6 @@ function assertGuardedCrmSearchTestDatabaseUrl(
     throw new Error('CRM search governance tests reject shared or production-like database identities')
   }
   return raw
-}
-
-function requiredIdentityFromDedicatedEnvironment(): ExpectedCrmSearchTestIdentity {
-  return {
-    projectId: expectedProjectId || '',
-    branchId: expectedBranchId || '',
-    endpointId: expectedEndpointId || '',
-    forbiddenDatabaseUrls
-  }
 }
 
 async function assertEmptyIsolatedTargetPreflight(
@@ -167,17 +305,76 @@ async function expectRejectedAtSavepoint(
   }
 }
 
+async function withGuardedCrmSearchSchema(options: {
+  client: Client
+  schema: string
+  attestation: CrmSearchTargetAttestation
+  migrationSql: string
+  bootstrapSql: string
+  run: (connection: Client) => Promise<void>
+  runConcurrency?: (connection: Client) => Promise<void>
+}): Promise<void> {
+  const {
+    client, schema: disposableSchema, attestation, migrationSql, bootstrapSql,
+    run, runConcurrency
+  } = options
+  let transactionOpen = false
+  let disposableSchemaCreated = false
+  await client.connect()
+  try {
+    await client.query('BEGIN')
+    transactionOpen = true
+    await client.query(
+      'SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended($1, 350))',
+      [attestation.attestationSha256]
+    )
+    await assertEmptyIsolatedTargetPreflight(client, disposableSchema)
+    const before = await client.query(
+      `SELECT relation.relname, relation.relkind
+         FROM pg_catalog.pg_class relation
+         JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = 'public'
+          AND relation.relname LIKE 'crm_search_%'
+        ORDER BY relation.relname, relation.relkind`
+    )
+    await client.query(`CREATE SCHEMA "${disposableSchema}"`)
+    disposableSchemaCreated = true
+    await client.query(`SET LOCAL search_path TO "${disposableSchema}", pg_catalog`)
+    await client.query(bootstrapSql)
+    await client.query(migrationSql)
+    await client.query(migrationSql)
+    await client.query('COMMIT')
+    transactionOpen = false
+
+    await client.query('BEGIN')
+    transactionOpen = true
+    await run(client)
+    await client.query('ROLLBACK')
+    transactionOpen = false
+    await runConcurrency?.(client)
+
+    const after = await client.query(
+      `SELECT relation.relname, relation.relkind
+         FROM pg_catalog.pg_class relation
+         JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = 'public'
+          AND relation.relname LIKE 'crm_search_%'
+        ORDER BY relation.relname, relation.relkind`
+    )
+    expect(after.rows).toEqual(before.rows)
+  } finally {
+    if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined)
+    if (disposableSchemaCreated) {
+      await client.query(`DROP SCHEMA IF EXISTS "${disposableSchema}" CASCADE`).catch(() => undefined)
+    }
+    await client.end()
+  }
+}
+
 describe('CRM search governance database target guard', () => {
-  it('accepts only an explicitly marked direct isolated Neon URL', () => {
+  it('accepts only a direct isolated Neon URL bound to a Task18 lifecycle attestation', () => {
     const safe = `postgresql://crm_search_test:secret@ep-crm-search-e2e-a1b2c3d4.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&application_name=${requiredApplicationName}`
-    expect(assertGuardedCrmSearchTestDatabaseUrl(safe, {
-      projectId: 'prj-crm-search-e2e',
-      branchId: 'br-crm-search-e2e',
-      endpointId: 'ep-crm-search-e2e-a1b2c3d4',
-      forbiddenDatabaseUrls: [
-        'postgresql://shared:secret@ep-shared-other-a1b2c3d4.ap-southeast-2.aws.neon.tech/prod?sslmode=require'
-      ]
-    })).toBe(safe)
+    expect(assertGuardedCrmSearchTestDatabaseUrl(safe, targetAttestationFixture())).toBe(safe)
   })
 
   it.each([
@@ -190,39 +387,40 @@ describe('CRM search governance database target guard', () => {
     'postgresql://test:secret@not-an-endpoint.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&application_name=crm-search-governance-test',
     'postgresql://test:secret@ep-crm-search-e2e-a1b2c3d4.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&application_name=crm-search-governance-test&application_name=other'
   ])('rejects an unguarded or production-like target before a connection can be made', (unsafe) => {
-    expect(() => assertGuardedCrmSearchTestDatabaseUrl(unsafe, {
-      projectId: 'prj-crm-search-e2e',
-      branchId: 'br-crm-search-e2e',
-      endpointId: endpointFromHost(new URL(unsafe).hostname),
-      forbiddenDatabaseUrls: [
-        'postgresql://shared:secret@ep-shared-other-a1b2c3d4.ap-southeast-2.aws.neon.tech/prod?sslmode=require'
-      ]
-    })).toThrow()
+    expect(() => assertGuardedCrmSearchTestDatabaseUrl(unsafe, targetAttestationFixture((draft) => {
+      draft.neonApi.endpoint.id = endpointFromHost(new URL(unsafe).hostname)
+      draft.neonApi.endpoint.host = new URL(unsafe).hostname
+    }))).toThrow()
   })
 
-  it('rejects missing identities, endpoint mismatches, and equivalent shared endpoints', () => {
+  it('rejects forged, expired, non-schema-only, mismatched, and shared target attestations', () => {
     const safe = `postgresql://crm_search_test:secret@ep-crm-search-e2e-a1b2c3d4.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&application_name=${requiredApplicationName}`
-    const identity = {
-      projectId: 'prj-crm-search-e2e',
-      branchId: 'br-crm-search-e2e',
-      endpointId: 'ep-crm-search-e2e-a1b2c3d4',
-      forbiddenDatabaseUrls: [
-        'postgresql://shared:secret@ep-shared-other-a1b2c3d4.ap-southeast-2.aws.neon.tech/prod?sslmode=require'
-      ]
-    }
-    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, { ...identity, projectId: '' })).toThrow(/project identity/)
-    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, { ...identity, branchId: 'main' })).toThrow(/production-like/)
-    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, { ...identity, endpointId: 'ep-different-test' })).toThrow(/expected endpoint/)
-    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, {
-      ...identity,
-      forbiddenDatabaseUrls: []
-    })).toThrow(/forbidden shared URLs/)
-    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, {
-      ...identity,
-      forbiddenDatabaseUrls: [
-        `postgresql://shared:secret@ep-crm-search-e2e-a1b2c3d4-pooler.ap-southeast-2.aws.neon.tech/prod?sslmode=require`
-      ]
-    })).toThrow(/equivalent/)
+    const forged = targetAttestationFixture()
+    forged.neonApi.branch.id = 'br-forged-after-signing'
+    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, forged)).toThrow(/attestation digest/i)
+    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, targetAttestationFixture((draft) => {
+      draft.expiresAt = new Date(Date.now() - 1_000).toISOString()
+      draft.neonApi.branch.expiresAt = draft.expiresAt
+    }))).toThrow(/expired/i)
+    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, targetAttestationFixture((draft) => {
+      Object.assign(draft, { schemaOnly: false })
+    }))).toThrow(/schema-only/i)
+    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, targetAttestationFixture((draft) => {
+      draft.neonApi.endpoint.branchId = 'br-other'
+    }))).toThrow(/branch/i)
+    expect(() => assertGuardedCrmSearchTestDatabaseUrl(safe, targetAttestationFixture((draft) => {
+      draft.sharedEndpointDenyset.push(draft.neonApi.endpoint.id)
+    }))).toThrow(/shared/i)
+  })
+
+  it('keeps attestation preflight and migration under one connection, transaction, and fence', () => {
+    const source = readFileSync(new URL(import.meta.url), 'utf8')
+    expect(source).not.toContain(['const preflight', 'Client ='].join(''))
+    expect(source).not.toContain(['CRM_SEARCH_TEST', 'EXPECTED_PROJECT_ID'].join('_'))
+    expect(source).not.toContain(['CRM_SEARCH_TEST', 'FORBIDDEN_DATABASE_URLS'].join('_'))
+    expect(source).toMatch(
+      /await client\.connect\(\)[\s\S]*await client\.query\('BEGIN'\)[\s\S]*pg_advisory_xact_lock[\s\S]*assertEmptyIsolatedTargetPreflight[\s\S]*await client\.query\(migrationSql\)/
+    )
   })
 })
 
@@ -230,17 +428,17 @@ const databaseDescribe = rawDatabaseUrl ? describe.sequential : describe.skip
 
 databaseDescribe('CRM search expand migration disposable Postgres governance', () => {
   it('applies twice, stays schema-confined, and enforces state, projection, evidence, and retention contracts', async () => {
-    const guardedDatabaseUrl = assertGuardedCrmSearchTestDatabaseUrl(
-      rawDatabaseUrl!,
-      requiredIdentityFromDedicatedEnvironment()
-    )
+    if (!rawTargetAttestation) {
+      throw new Error('CRM_SEARCH_TEST_TARGET_ATTESTATION_JSON is required with the guarded database URL')
+    }
+    const targetAttestation = parseAndVerifyTargetAttestation(rawTargetAttestation)
+    const guardedDatabaseUrl = assertGuardedCrmSearchTestDatabaseUrl(rawDatabaseUrl!, targetAttestation)
     const clientOptions = {
       connectionString: guardedDatabaseUrl,
       connectionTimeoutMillis: 10_000,
       query_timeout: 30_000,
       statement_timeout: 30_000
     }
-    const preflightClient = new Client(clientOptions)
     const migrationSql = migrationForSchema(schema)
     const fixture = JSON.parse(readFileSync(
       new URL('../fixtures/crm-search-documents.json', import.meta.url),
@@ -254,40 +452,21 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
       }>
     }
 
-    await preflightClient.connect()
-    try {
-      await assertEmptyIsolatedTargetPreflight(preflightClient, schema)
-    } finally {
-      await preflightClient.end()
-    }
-
     const client = new Client(clientOptions)
-    await withDisposablePostgresSchema({
+    await withGuardedCrmSearchSchema({
       client,
       schema,
-      snapshotSharedState: connection => connection.query(
-        `SELECT relation.relname, relation.relkind
-           FROM pg_catalog.pg_class relation
-           JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
-          WHERE namespace.nspname = 'public'
-            AND relation.relname LIKE 'crm_search_%'
-          ORDER BY relation.relname, relation.relkind`
-      ),
-      verifySharedState: async (connection, before) => {
-        const after = await connection.query(
-          `SELECT relation.relname, relation.relkind
-             FROM pg_catalog.pg_class relation
-             JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
-            WHERE namespace.nspname = 'public'
-              AND relation.relname LIKE 'crm_search_%'
-            ORDER BY relation.relname, relation.relkind`
-        )
-        expect(after.rows).toEqual((before as { rows: unknown[] }).rows)
-      },
+      attestation: targetAttestation,
       bootstrapSql: `
-        CREATE TABLE "${schema}".crm_people (id UUID PRIMARY KEY);
-        CREATE TABLE "${schema}".crm_companies (id UUID PRIMARY KEY);
-        CREATE TABLE "${schema}".crm_opportunities (id UUID PRIMARY KEY);
+        CREATE TABLE "${schema}".crm_people (
+          id UUID PRIMARY KEY, client_id UUID NOT NULL, deleted_at TIMESTAMPTZ
+        );
+        CREATE TABLE "${schema}".crm_companies (
+          id UUID PRIMARY KEY, client_id UUID NOT NULL, deleted_at TIMESTAMPTZ
+        );
+        CREATE TABLE "${schema}".crm_opportunities (
+          id UUID PRIMARY KEY, client_id UUID NOT NULL, deleted_at TIMESTAMPTZ
+        );
       `,
       migrationSql,
       run: async (connection) => {
@@ -359,6 +538,13 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
           daily_indexing_budget_usd_micros: '0',
           client_daily_query_budget_usd_micros: '0'
         }])
+
+        await connection.query(
+          `UPDATE "${schema}".crm_search_global_control
+              SET state = 'enabled', indexing_ready = TRUE, revision = 1
+            WHERE organisation_scope_id = $1`,
+          [scopeId]
+        )
 
         for (const document of fixture.documents) {
           let result: { rows: Array<{ canonical: string, digest: string }> }
@@ -434,6 +620,33 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
           `UPDATE "${schema}".crm_search_operations SET state = 'processing' WHERE id = $1`,
           [operationId]
         )
+        const admitted = await connection.query(
+          `SELECT "${schema}".crm_search_admit_operation($1, 'processing', 1) AS state`,
+          [operationId]
+        )
+        expect(admitted.rows).toEqual([{ state: 'admitted' }])
+        expect((await connection.query(
+          `SELECT state, provider_admitted_at IS NOT NULL AS admitted,
+                  admission_identity_hash IS NOT NULL AS identity_frozen,
+                  provider_mutation_id, provider_accepted_at
+             FROM "${schema}".crm_search_operations WHERE id = $1`,
+          [operationId]
+        )).rows).toEqual([{
+          state: 'admitted',
+          admitted: true,
+          identity_frozen: true,
+          provider_mutation_id: null,
+          provider_accepted_at: null
+        }])
+        await expectRejectedAtSavepoint(
+          connection,
+          'frozen_admission_identity',
+          () => connection.query(
+            `UPDATE "${schema}".crm_search_operations SET control_revision = 2 WHERE id = $1`,
+            [operationId]
+          ),
+          /identity is immutable/i
+        )
         await connection.query(
           `UPDATE "${schema}".crm_search_operations
               SET state = 'provider_pending', provider_mutation_id = 'mutation-1',
@@ -455,6 +668,105 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
           identity_frozen: true
         }])
 
+        const rankSchemas = await connection.query(
+          `SELECT
+             "${schema}".crm_search_json_schema_is_safe(
+               '{"keywordRanks":[{"entityType":"person","entityIdDigest":"${'e'.repeat(64)}","rank":1,"scoreBucket":80}]}'::jsonb,
+               'rank_evidence'
+             ) AS valid,
+             "${schema}".crm_search_json_schema_is_safe(
+               '{"keywordRanks":[{"entityType":"person","entityIdDigest":"${'e'.repeat(64)}","rank":1,"source":{"rawQuery":"secret@example.com"}}]}'::jsonb,
+               'rank_evidence'
+             ) AS nested_raw_rejected,
+             "${schema}".crm_search_json_schema_is_safe(
+               '{"keywordRanks":[{"entityType":"person","entityIdDigest":"${'e'.repeat(64)}","rank":1,"displayName":"Jane Person"}]}'::jsonb,
+               'rank_evidence'
+             ) AS renamed_pii_rejected`
+        )
+        expect(rankSchemas.rows).toEqual([{
+          valid: true,
+          nested_raw_rejected: false,
+          renamed_pii_rejected: false
+        }])
+
+        const terminalOperation = await connection.query(
+          `INSERT INTO "${schema}".crm_search_operations
+             (organisation_scope_id, client_id, entity_type, entity_id, schema_version,
+              source_revision, source_event_sequence, desired_action, vector_id, namespace,
+              content_hash, confirmation_tag, confirmation_key_version)
+           VALUES ($1, $2, 'person', $3, 'crm-search-v1', 1, 10, 'upsert',
+             'v_terminal', 'n_terminal', $4, $5, 'k1')
+           RETURNING id`,
+          [
+            scopeId, clientId, '34343434-3434-4343-8343-343434343434',
+            'a'.repeat(64), `hmac-sha256:${'b'.repeat(64)}`
+          ]
+        )
+        const terminalOperationId = terminalOperation.rows[0].id as string
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations SET state = 'queued' WHERE id = $1`,
+          [terminalOperationId]
+        )
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations SET state = 'processing' WHERE id = $1`,
+          [terminalOperationId]
+        )
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations
+              SET state = 'terminal_dead_letter', error_class = 'queue_delivery_exhausted'
+            WHERE id = $1`,
+          [terminalOperationId]
+        )
+        await connection.query(
+          `INSERT INTO "${schema}".crm_search_dead_letters
+             (organisation_scope_id, client_id, operation_id, origin, attempts, error_class)
+           VALUES ($1, $2, $3, 'cloudflare_transport', 3, 'queue_delivery_exhausted')`,
+          [scopeId, clientId, terminalOperationId]
+        )
+        const replacement = await connection.query(
+          `SELECT "${schema}".crm_search_replace_terminal_operation(
+             $1, 2, 11, 'upsert', 'v_terminal', 'n_terminal', $2, $3, 'k1',
+             $4, 'Recover terminal transport failure exactly once'
+           ) AS id`,
+          [
+            terminalOperationId, 'c'.repeat(64), `hmac-sha256:${'d'.repeat(64)}`,
+            '45454545-4545-4545-8545-454545454545'
+          ]
+        )
+        expect((await connection.query(
+          `SELECT original.state AS original_state, successor.state AS successor_state,
+                  successor.successor_of, dead_letter.resolution_state,
+                  dead_letter.audit_log_id IS NOT NULL AS audited
+             FROM "${schema}".crm_search_operations original
+             JOIN "${schema}".crm_search_operations successor
+               ON successor.successor_of = original.id
+             JOIN "${schema}".crm_search_dead_letters dead_letter
+               ON dead_letter.operation_id = original.id
+            WHERE original.id = $1 AND successor.id = $2`,
+          [terminalOperationId, replacement.rows[0].id]
+        )).rows).toEqual([{
+          original_state: 'terminal_dead_letter',
+          successor_state: 'pending_transport',
+          successor_of: terminalOperationId,
+          resolution_state: 'transport_retry_requested',
+          audited: true
+        }])
+        await expectRejectedAtSavepoint(
+          connection,
+          'second_terminal_replacement',
+          () => connection.query(
+            `SELECT "${schema}".crm_search_replace_terminal_operation(
+               $1, 3, 12, 'upsert', 'v_terminal', 'n_terminal', $2, $3, 'k1',
+               $4, 'Reject a second replacement for terminal evidence'
+             )`,
+            [
+              terminalOperationId, 'e'.repeat(64), `hmac-sha256:${'f'.repeat(64)}`,
+              '45454545-4545-4545-8545-454545454545'
+            ]
+          ),
+          /already has recovery evidence/i
+        )
+
         await connection.query(
           `INSERT INTO "${schema}".crm_search_dead_letters
              (organisation_scope_id, client_id, operation_id, origin, attempts, error_class)
@@ -473,24 +785,44 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
           /dead-letter|check constraint/i
         )
 
+        const evaluationRateCard = await connection.query(
+          `INSERT INTO "${schema}".crm_search_rate_cards
+             (organisation_scope_id, provider, revision, model_id,
+              model_input_usd_micros_per_million_tokens,
+              queried_dimension_usd_micros_per_million,
+              inserted_dimension_usd_micros_per_million,
+              stored_dimension_usd_micros_per_million_month,
+              source_revision_digest, valid_from, valid_until, created_by)
+           VALUES ($1, 'cloudflare_workers_ai_vectorize', 'evaluation-rate-v1',
+              '@cf/baai/bge-base-en-v1.5', 1, 1, 1, 1, $2,
+              NOW() - INTERVAL '1 day', NOW() + INTERVAL '14 days', $3)
+           RETURNING id`,
+          [scopeId, 'f'.repeat(64), '56565656-5656-4565-8565-565656565656']
+        )
         const immutableRun = await connection.query(
           `INSERT INTO "${schema}".crm_search_evaluation_runs
              (organisation_scope_id, schema_version, dataset_version, dataset_sha256,
-              sealed_judgement_sha256, query_evidence_bundle_sha256, implementation_git_sha,
+              sealed_judgement_sha256, query_evidence_bundle_sha256,
+              preregistration_sha256, adjudication_sha256, implementation_git_sha,
               artifact_manifest_digest, pages_bundle_digest, worker_bundle_digest,
+              binding_manifest_digest,
               model_id, pooling, tokenizer_revision, document_builder_revision,
-              ranking_revision, threshold_revision, environment, load_protocol_digest,
+              ranking_revision, threshold_revision, provider_contract_digest,
+              environment, load_protocol_digest, rate_card_id,
               metric_bundle, gate_passed, runner_id, development_query_count,
               expires_at, retention_expires_at)
-           VALUES ($1, 'crm-search-v1', 'fixture-v1', $2, $3, $4, $5, $6, $7, $8,
+           VALUES ($1, 'crm-search-v1', 'fixture-v1', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
               '@cf/baai/bge-base-en-v1.5', 'cls', 'tokenizer-v1', 'builder-v1',
-              'rrf-v1', 'threshold-v1', 'preview', $9, '{}'::jsonb, FALSE, $10, 180,
+              'rrf-v1', 'threshold-v1', $12, 'preview', $13, $14,
+              '{}'::jsonb, FALSE, $15, 180,
               NOW() + INTERVAL '14 days', NOW() + INTERVAL '2 years')
            RETURNING id`,
           [
             scopeId,
-            '1'.repeat(64), '2'.repeat(64), '3'.repeat(64), '4'.repeat(40),
-            '5'.repeat(64), '6'.repeat(64), '7'.repeat(64), '8'.repeat(64),
+            '1'.repeat(64), '2'.repeat(64), '3'.repeat(64),
+            'a'.repeat(64), 'b'.repeat(64), '4'.repeat(40),
+            '5'.repeat(64), '6'.repeat(64), '7'.repeat(64), 'c'.repeat(64),
+            'd'.repeat(64), '8'.repeat(64), evaluationRateCard.rows[0].id,
             '55555555-5555-4555-8555-555555555555'
           ]
         )
@@ -763,6 +1095,96 @@ databaseDescribe('CRM search expand migration disposable Postgres governance', (
           [schema]
         )
         expect(publicGovernedMutationGrants.rows).toEqual([])
+      },
+      runConcurrency: async (connection) => {
+        const scopeId = '12121212-1212-4121-8121-121212121212'
+        const clientId = '23232323-2323-4232-8232-232323232323'
+        const entityId = '34343434-3434-4343-8343-343434343434'
+        const actorId = '45454545-4545-4454-8545-454545454545'
+        await connection.query(
+          `INSERT INTO "${schema}".crm_search_organisation_scopes
+             (id, scope_key, scope_kind, is_primary, is_active)
+           VALUES ($1, 'concurrency-installation', 'installation', TRUE, TRUE)`,
+          [scopeId]
+        )
+        await connection.query(
+          `INSERT INTO "${schema}".crm_search_global_control
+             (organisation_scope_id, state, indexing_ready, revision)
+           VALUES ($1, 'enabled', TRUE, 1)`,
+          [scopeId]
+        )
+        const terminal = await connection.query(
+          `INSERT INTO "${schema}".crm_search_operations
+             (organisation_scope_id, client_id, entity_type, entity_id, schema_version,
+              source_revision, source_event_sequence, desired_action, vector_id, namespace,
+              content_hash, confirmation_tag, confirmation_key_version)
+           VALUES ($1, $2, 'person', $3, 'crm-search-v1', 1, 1, 'upsert',
+             'v_concurrent', 'n_concurrent', $4, $5, 'k1')
+           RETURNING id`,
+          [scopeId, clientId, entityId, 'a'.repeat(64), `hmac-sha256:${'b'.repeat(64)}`]
+        )
+        const terminalId = terminal.rows[0].id as string
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations SET state = 'queued' WHERE id = $1`,
+          [terminalId]
+        )
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations SET state = 'processing' WHERE id = $1`,
+          [terminalId]
+        )
+        await connection.query(
+          `UPDATE "${schema}".crm_search_operations
+              SET state = 'terminal_dead_letter', error_class = 'queue_delivery_exhausted'
+            WHERE id = $1`,
+          [terminalId]
+        )
+        await connection.query(
+          `INSERT INTO "${schema}".crm_search_dead_letters
+             (organisation_scope_id, client_id, operation_id, origin, attempts, error_class)
+           VALUES ($1, $2, $3, 'cloudflare_transport', 3, 'queue_delivery_exhausted')`,
+          [scopeId, clientId, terminalId]
+        )
+
+        const peer = new Client(clientOptions)
+        await peer.connect()
+        try {
+          await connection.query('BEGIN')
+          await peer.query('BEGIN')
+          await connection.query(
+            `SELECT "${schema}".crm_search_replace_terminal_operation(
+               $1, 2, 2, 'upsert', 'v_concurrent', 'n_concurrent', $2, $3, 'k1',
+               $4, 'First concurrent terminal replacement request'
+             )`,
+            [terminalId, 'c'.repeat(64), `hmac-sha256:${'d'.repeat(64)}`, actorId]
+          )
+          let peerSettled = false
+          const peerAttempt = peer.query(
+            `SELECT "${schema}".crm_search_replace_terminal_operation(
+               $1, 3, 3, 'upsert', 'v_concurrent', 'n_concurrent', $2, $3, 'k1',
+               $4, 'Second concurrent terminal replacement request'
+             )`,
+            [terminalId, 'e'.repeat(64), `hmac-sha256:${'f'.repeat(64)}`, actorId]
+          ).then(
+            result => ({ result, error: undefined }),
+            error => ({ result: undefined, error: error as Error })
+          ).finally(() => { peerSettled = true })
+          await new Promise(resolve => setTimeout(resolve, 50))
+          expect(peerSettled).toBe(false)
+          await connection.query('COMMIT')
+          const peerOutcome = await peerAttempt
+          expect(peerOutcome.result).toBeUndefined()
+          expect(peerOutcome.error?.message).toMatch(/already has recovery evidence/i)
+          await peer.query('ROLLBACK')
+        } finally {
+          await connection.query('ROLLBACK').catch(() => undefined)
+          await peer.query('ROLLBACK').catch(() => undefined)
+          await peer.end()
+        }
+        expect((await connection.query(
+          `SELECT COUNT(*)::INTEGER AS count
+             FROM "${schema}".crm_search_operations WHERE successor_of = $1`,
+          [terminalId]
+        )).rows).toEqual([{ count: 1 }])
       }
     })
   }, 60_000)

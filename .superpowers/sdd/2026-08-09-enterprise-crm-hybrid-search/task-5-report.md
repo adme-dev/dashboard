@@ -158,3 +158,70 @@ git diff --check:                    clean
 The repository-wide Node 24 typecheck remains red in broad pre-existing, unowned application/server files; neither owned TypeScript test produced a diagnostic. All commands for this round used the explicit Node 24.18 path.
 
 The final deep read covered all 3,840 migration lines, both test files, the shared fixture, and this report. The security pass specifically rechecked pinned `search_path`, object ownership and grants, dynamic identifier allowlisting/quoting, approval and client advisory fences, immutable evidence triggers, retention authorization consumption, operation/dead-letter transitions, and the Task 5/Task 6 no-capture boundary.
+
+---
+
+## Review Round 2 — Admission and Rollout Evidence Binding
+
+### Result
+
+- Commit target: `fix(crm-search): bind admission and rollout evidence`.
+- Scope remained Task 5 only. Migration 350 still adds no source-capture trigger and makes no provider or deployment call.
+- The dedicated Neon block skipped because `CRM_SEARCH_TEST_DATABASE_URL` was absent. The test never reads `DATABASE_URL`; no external, shared, or production database was contacted and no Neon resource was created, deleted, or queried.
+
+### Strict TDD Evidence
+
+Round 2 contract and guarded-runtime tests were written before production SQL changes. The consolidated RED run recorded 10 failures, 25 passes, and one guarded database skip. The failures covered pre-call admission, terminal replacement, deployment authority, evaluator matrix/capacity, strict rank evidence, PG14 nullable approval uniqueness, reverse-orphan promotion, and the Task 18 target-attestation boundary.
+
+Later reread-driven contracts were also captured red before their fixes:
+
+- two failures for explicit active-deployment identity and independently accounted vector/namespace capacity components;
+- one failure for a company domain capped before Unicode lowercase expansion;
+- one failure for restoring `indexing_ready` without fresh client-indexing authority.
+
+Each contract was then made green independently before the consolidated gates were rerun.
+
+### Review Findings Closed
+
+1. Provider work now has an explicit `admitted` state and `crm_search_admit_operation` entry point. Admission occurs while no provider mutation/acceptance evidence exists, records `provider_admitted_at`, freezes a server-computed identity hash, and binds `control_revision`. The identity remains immutable through retry, provider-pending, confirmation, supersession, or terminal dead-lettering.
+2. A terminal dead-letter remains immutable and ordering-fenced while `crm_search_replace_terminal_operation` can create exactly one audited, same-key successor. Provider-confirmation recovery preserves the accepted identity; transport recovery cannot regress source ordering. Recursive confirmed replacements satisfy retirement/teardown without deleting the original evidence.
+3. `production_deploy` records only a halted dormant deployment identity. Fresh `client_indexing` authority is required to enable indexing, configure/promote/retire schemas, or restore readiness after it was lowered. Client shadow and assist promotions use their separate approval types. Approvals bind the active deployment approval ID, environment, implementation SHA, artifact/Pages/Worker/binding digests, evidence/load/provider contracts, control and policy revisions, rate card, and maximum cost.
+4. The evaluator requires the complete observed client × entity × load matrix, at least three clients, all three entities, all three credible load strata, the design's total/client/entity/strata minima, per-client/entity regression ceilings, per-load latency/fallback/late-completion limits, convergence and telemetry checks, unbiased seven-consecutive-day non-future shadow samples valid throughout approval, and a deterministic 1,000-sample paired bootstrap.
+5. Vector and namespace capacity are independently enforced below 80 percent. Active, candidate, retiring, sentinel, and deletion-pending components must all be present and must exactly sum to each forecast in both evaluation evidence and client-indexing approvals.
+6. Rank evidence is a strict object schema. Rank arrays contain only bounded typed entries with entity type, HMAC/SHA identity digest, rank, and optional numeric score bucket; arbitrary nested objects, strings, renamed raw query/source text, and PII fields fail closed.
+7. The PostgreSQL 14 approval identity index normalizes nullable control revision, policy revision, deployment approval ID, and client ID through expressions, preventing duplicate logical authorities through null distinctness.
+8. Promotion performs forward reconciliation and reverse-orphan checks for candidate documents and operation ledger rows through the captured high watermark. Every row must map to a current authorized source revision or be a completed delete.
+9. The guarded test consumes a Task 18-style signed target attestation containing exact lifecycle producer, source SHA, exact migration set, schema-only creation, project/source-branch/target-branch/endpoint bindings, TTL, API-response digest, and a non-empty shared endpoint denyset. URL validation happens before connection, and preflight plus migration run on the same connection, transaction, and advisory fence.
+10. Company-domain canonicalization now applies its final 253-code-point bound after Unicode lowercase conversion: `left(lower(crm_search_normalize_text(domain, 253)), 253)`. Existing projection fixtures and hashes remain unchanged.
+
+### PostgreSQL 14 Behavioral Evidence
+
+An isolated PostgreSQL 14.19 cluster under `/private/tmp` was reachable only through its Unix socket. It was stopped after validation. No environment database URL or network connection was used.
+
+The initial round-2 application exposed one PostgreSQL 14 parser defect: `authorization` was used as a PL/pgSQL relation alias. It was renamed to `auth_row`, after which the migration applied and reapplied cleanly. A later fresh database verified the final table shapes after the capacity/deployment columns were added.
+
+Runtime checks passed for:
+
+- admission before provider evidence, frozen identity/control revision, accepted retries, and terminal immutability;
+- one audited same-key terminal replacement, preserved original evidence, and a two-connection race in which the second replacement waited and then failed after recheck;
+- strict rank-evidence acceptance/rejection;
+- a 600-query evaluator run spanning three clients, three entities, three load strata, seven shadow days, paired bootstrap, and exact vector/namespace component headroom;
+- dormant deployment, fresh client-indexing enablement, candidate configure/promote, reverse-orphan rejection, completed-delete recovery, and exact assist evidence binding;
+- readiness reduction followed by rejection of a `false -> true` restoration without fresh client-indexing approval;
+- Unicode lowercase/final-cap projection length and projection-hash consistency;
+- migration application and idempotent reapplication on the fresh PostgreSQL 14 database.
+
+The manual evaluator evidence builder briefly exceeded PostgreSQL's 100-argument function-call limit after adding capacity components. Splitting that test-only JSON builder into two concatenated objects resolved the harness issue; production SQL was unaffected.
+
+### Final Verification
+
+```text
+Focused Task 5 + relevant migration regressions: 6 files passed
+Tests:                                         54 passed, 13 skipped
+Guarded Neon database block:                   skipped (dedicated URL absent)
+ESLint on both owned TypeScript tests:         clean
+Node 24.18 pnpm run typecheck:                 clean
+git diff --check:                              clean
+```
+
+The round-2 deep read covered all 4,857 migration lines and both complete test files (6,621 modified-file lines before this report append). The security review rechecked every definer search path, internal authorization-table revocation, runtime grants, immutable terminal/evaluation/approval evidence, client and approval advisory fences, retention relation/partition/candidate binding, partition guards, blue/green transitions, approval-revocation serialization, and the Task 5/Task 6 no-capture boundary. Parallel Task 7 ranking/search-index files were neither inspected, staged, nor modified.
