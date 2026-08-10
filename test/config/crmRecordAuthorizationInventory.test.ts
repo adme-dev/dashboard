@@ -24,6 +24,10 @@ describe('CRM record authorization inventory', () => {
       'tool:search_crm',
       'tool:get_crm_pipeline',
       'service:server/utils/crm/recordAccess.ts',
+      'service:server/utils/crm/search/evaluation/gates.ts',
+      'service:server/utils/crm/search/operations/commands.ts',
+      'service:server/utils/crm/search/retention.ts',
+      'service:server/api/cron/crm-search-retention.post.ts',
       'service:workers/crm-cron/src/index.ts',
       'service:workers/email-worker/src/crmAdapter.ts',
       'service:server/utils/leads/crmPromotion.ts'

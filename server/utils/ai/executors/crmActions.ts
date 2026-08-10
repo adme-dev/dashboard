@@ -16,6 +16,7 @@ export function makeOpportunityExecutor(post: Poster = defaultPost): ActionExecu
     toolName: 'propose_opportunity',
     label: 'opportunity',
     riskTier: 'confirm',
+    requiredPermission: 'CLIENTS',
     executionClass: 'internal-http',
     async execute(p: any, ctx: ToolContext): Promise<ExecutorResult> {
       const r = await post('/api/crm/opportunities', {
@@ -34,6 +35,7 @@ export function makeLogActivityExecutor(post: Poster = defaultPost): ActionExecu
     toolName: 'log_crm_activity',
     label: 'CRM activity',
     riskTier: 'confirm',
+    requiredPermission: 'CLIENTS',
     executionClass: 'internal-http',
     async execute(p: any, ctx: ToolContext): Promise<ExecutorResult> {
       const r = await post('/api/crm/activities', {
@@ -52,7 +54,7 @@ export function makeQuoteExecutor(post: Poster = defaultPost): ActionExecutor {
     toolName: 'propose_quote',
     label: 'quote',
     riskTier: 'confirm',
-    requiredPermission: 'MANAGEMENT',
+    requiredPermission: 'CLIENTS',
     executionClass: 'internal-http',
     async execute(p: any, ctx: ToolContext): Promise<ExecutorResult> {
       const r = await post(`/api/crm/opportunities/${p.opportunity_id}/create-quote`, { client_id: p.client_id }, ctx)

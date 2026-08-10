@@ -4,6 +4,11 @@ import { makeCreateTaskExecutor } from '~~/server/utils/ai/executors/createTask'
 import { makeScheduleSocialPostExecutor } from '~~/server/utils/ai/executors/scheduleSocialPost'
 import { makeBudgetAlertExecutor } from '~~/server/utils/ai/executors/proposeBudgetAlert'
 import { makeBudgetChangeExecutor } from '~~/server/utils/ai/executors/proposeBudgetChange'
+import {
+  makeLogActivityExecutor,
+  makeOpportunityExecutor,
+  makeQuoteExecutor
+} from '~~/server/utils/ai/executors/crmActions'
 import { effectiveRiskTier } from '~~/server/utils/ai/toolRegistry'
 
 const ctx = (userId = 'u1') => ({ userId, userRole: 'account_manager', conversationId: 'c1', event: { headers: {} } as any })
@@ -128,6 +133,14 @@ describe('createTask executor', () => {
 })
 
 describe('executor ↔ tool gating parity (no silent gate downgrade)', () => {
+  it('rechecks CLIENTS permission for every confirmed CRM mutation', () => {
+    expect([
+      makeOpportunityExecutor().requiredPermission,
+      makeLogActivityExecutor().requiredPermission,
+      makeQuoteExecutor().requiredPermission
+    ]).toEqual(['CLIENTS', 'CLIENTS', 'CLIENTS'])
+  })
+
   it('every mutating tool has exactly one complete execution path with no gate drift', async () => {
     const { registry } = await import('~~/server/utils/ai/tools')
     const writeTools = registry.filter((t: any) => t.mutates)
