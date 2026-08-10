@@ -342,7 +342,10 @@ export async function resolveTrustedCrmSystemContext(
 
 export async function resolveAgencyAiCrmContext(
   tool: Pick<ToolContext, 'userId' | 'event'>,
-  input: { clientName: string; correlationId?: unknown },
+  input: (
+    | { clientName: string, clientId?: never }
+    | { clientId: string, clientName?: never }
+  ) & { correlationId?: unknown },
   deps: CrmSearchContextDependencies = defaultDependencies
 ): Promise<AgencyAiContextResolution> {
   const requestCorrelationId = createRequestCorrelationId(tool.event, deps)
@@ -356,16 +359,21 @@ export async function resolveAgencyAiCrmContext(
   const authorizedIds = new Set(assistantScope.clientIds)
   const clients = (await deps.loadAuthorizedActiveClients(assistantScope.clientIds))
     .filter(client => authorizedIds.has(client.id))
-  const selector = normalizeClientName(input.clientName)
-  if (!selector) return { status: 'not_found' }
-  const exactMatches = clients.filter(client => normalizeClientName(client.name) === selector)
-  if (exactMatches.length > 1) return { status: 'ambiguous' }
-  const partialMatches = exactMatches.length === 0
-    ? clients.filter(client => normalizeClientName(client.name).includes(selector))
-    : exactMatches
-  if (partialMatches.length === 0) return { status: 'not_found' }
-  if (partialMatches.length > 1) return { status: 'ambiguous' }
-  const selectedClient = partialMatches[0]!
+  let selectedClient: (typeof clients)[number] | undefined
+  if ('clientId' in input && typeof input.clientId === 'string') {
+    selectedClient = clients.find(client => client.id === input.clientId)
+  } else {
+    const selector = normalizeClientName(input.clientName)
+    if (!selector) return { status: 'not_found' }
+    const exactMatches = clients.filter(client => normalizeClientName(client.name) === selector)
+    if (exactMatches.length > 1) return { status: 'ambiguous' }
+    const partialMatches = exactMatches.length === 0
+      ? clients.filter(client => normalizeClientName(client.name).includes(selector))
+      : exactMatches
+    if (partialMatches.length > 1) return { status: 'ambiguous' }
+    selectedClient = partialMatches[0]
+  }
+  if (!selectedClient) return { status: 'not_found' }
   try {
     const context = await resolveAgencyForActor(
       actor.id,

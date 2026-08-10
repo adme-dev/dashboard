@@ -53,3 +53,30 @@ The final Task 13-focused gate passes 7 files and 138 tests. The combined Task 4
 ## External-State Boundary and Remaining Concerns
 
 No external provider, network, deployment, production database, or migration action was performed for Task 13. Production remains fail-closed until the dedicated analytics secret and exact Cloudflare AI/Vectorize resources are provisioned and the existing rollout policy authorizes shadow/assist. The guarded PostgreSQL suites require their explicit operator opt-in for live execution.
+
+## Final Acceptance Repair — Assist Authority and Timeout Privacy
+
+- Intended repair commit: `fix(crm-search): preserve assist authority and timeout privacy`.
+- Production `agency_ai` join-back revalidation now calls `resolveAgencyAiCrmContext` with the exact previously selected client ID. It reloads the active actor, permissions, assistant assignment set/revision, selected active client, direct assignment, organisation scope, owner visibility, and fixed `agency_ai` surface. The original correlation is preserved after the fresh authority read. Join-back compares the complete canonical authority and fails closed before current-row access when the assignment set or source revision changes.
+- The canonical join-back fixture now includes `assistantScope`; a valid indexed/current semantic candidate survives unchanged authority, while a changed assignment revision rejects the entire semantic branch.
+- The deadline now bounds each reserved provider attempt against one absolute 500 ms semantic window instead of registering the full semantic branch as late work. The coordinator clears its raw-query invocation closure and full context before any background registration.
+- A timeout continuation receives only correlation, reservation/provider-attempt identity, provider, precomputed digest context, timeout timing, sent-at-timeout state, and accounting disposition. Its promise resolves only after the in-flight attempt settles/releases and projects `undefined`; late Workers AI output cannot start Vectorize, and late Vectorize output cannot reach join-back or fusion.
+- Provider-attempt settlement is single-flight across timeout callback ordering, pre-sent abandonment, sent-CAS races, provider completion/failure, and deadline-coordinator rejection. Late output is conservatively discarded/charged when sent and released without a call when abandonment wins first.
+
+### Repair RED → GREEN Evidence
+
+The first RED run failed five intended cases across the retrieval, join-back, and context suites. It proved the missing exact-ID AI resolver path, production revalidation adapter, provider-only deadline boundary, safe late provenance, and no-resume settlement promise. The other 54 cases remained green. The minimal implementation then passed all 59 cases.
+
+Fresh final verification on the coordinated Task 14 HEAD:
+
+```text
+Focused Task 13 authority/retrieval/context gate:            8 files, 145 passed
+Task 13 + Task 14 direct-assist compatibility gate:         11 files, 171 passed
+Broad CRM-search compatibility gate:                        51 files, 664 passed, 3 guarded skips
+Node 24 ESLint, Task 13 runtime/owned tests:                  exit 0
+Node 24 baseline-suppressed context lint:                    exit 0; normal lint has 36 existing findings vs 37 at HEAD
+Node 24 Nuxt typecheck:                                      exit 0 (one existing duplicate-import warning)
+git diff --check over the exact repair scope:                exit 0
+```
+
+All five modified runtime/test files were reread end-to-end. The review confirmed exact-ID selection remains intersected with fresh server-owned assignments; no caller-provided ID bypass exists; join-back still authorizes from Postgres rather than provider metadata; the background continuation carries no query, title, actor, client, permission, assistant-scope, vector, candidate, fused pool, or provider result; and the Nitro aliases and Task 12 query-attempt repository signatures remain valid. No Task 12 provider/indexing implementation or Task 14 tool/inventory path was edited or staged by this repair. No external provider, network, database, migration, deployment, or production action was performed.

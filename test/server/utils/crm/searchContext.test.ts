@@ -310,6 +310,37 @@ describe('CRM search context', () => {
     expect(loadAuthorizedActiveClients).toHaveBeenCalledWith([clientId, secondClientId])
   })
 
+  it('reselects one fresh assistant client by exact id for semantic join-back revalidation', async () => {
+    const deps = fakeAgencyContextDeps({
+      loadAssistantAssignments: vi.fn().mockResolvedValue({
+        clientIds: [clientId, secondClientId],
+        sourceRevision: 'fresh-assignment-revision'
+      }),
+      loadAuthorizedActiveClients: vi.fn().mockResolvedValue([
+        { id: clientId, name: 'Acme' },
+        { id: secondClientId, name: 'Acme' }
+      ])
+    })
+
+    await expect(resolveAgencyAiCrmContext(
+      { userId: actorId, event: fakeEvent() },
+      { clientId },
+      deps
+    )).resolves.toMatchObject({
+      status: 'resolved',
+      context: {
+        clientId,
+        surface: 'agency_ai',
+        assistantScope: {
+          clientIds: [clientId, secondClientId],
+          sourceRevision: 'fresh-assignment-revision'
+        }
+      },
+      clientName: 'Acme'
+    })
+    expect(deps.loadAgencyAssignment).toHaveBeenCalledWith(actorId, clientId)
+  })
+
   it('accepts a partial client name only when exactly one authorized active client matches', async () => {
     const deps = fakeAgencyContextDeps({
       loadAssistantAssignments: vi.fn().mockResolvedValue({

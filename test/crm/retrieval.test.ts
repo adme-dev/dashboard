@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   CRM_SEARCH_RETRIEVAL_DEADLINE,
   createCrmRetrievalDependencies,
+  revalidateCrmSemanticContext,
   retrieveCrm,
   type CrmRetrievalDependencies
 } from '~~/server/utils/crm/retrieval'
@@ -28,7 +29,11 @@ const context = {
   actorId: ACTOR_ID,
   surface: 'agency_ai' as const,
   permissionSet: ['CLIENTS'],
-  visibility: { ownerScoped: false }
+  visibility: { ownerScoped: false },
+  assistantScope: {
+    clientIds: [CLIENT_ID],
+    sourceRevision: 'assignment-revision-7'
+  }
 }
 
 const request = {
@@ -100,6 +105,34 @@ function makeDeps(overrides: Partial<CrmRetrievalDependencies> = {}): CrmRetriev
 }
 
 describe('authorized CRM retrieval coordinator', () => {
+  it('revalidates the exact selected agency AI client through fresh assistant authority', async () => {
+    const event = { context: {} } as never
+    const freshContext = {
+      ...context,
+      correlationId: '10000000-0000-4000-8000-000000000099',
+      assistantScope: {
+        clientIds: [CLIENT_ID],
+        sourceRevision: 'assignment-revision-7'
+      }
+    }
+    const resolveAgencyAiContext = vi.fn().mockResolvedValue({
+      status: 'resolved',
+      context: freshContext,
+      clientName: 'Acme'
+    })
+    const resolveAgencyGlobalContext = vi.fn()
+
+    await expect(revalidateCrmSemanticContext(event, context, {
+      resolveAgencyAiContext,
+      resolveAgencyGlobalContext
+    })).resolves.toEqual({ ...freshContext, correlationId: CORRELATION_ID })
+    expect(resolveAgencyAiContext).toHaveBeenCalledWith(
+      { userId: ACTOR_ID, event },
+      { clientId: CLIENT_ID }
+    )
+    expect(resolveAgencyGlobalContext).not.toHaveBeenCalled()
+  })
+
   it('runs authorized keyword retrieval first, then independently reserves each provider inside one deadline', async () => {
     const order: string[] = []
     const deps = makeDeps({
@@ -178,9 +211,11 @@ describe('authorized CRM retrieval coordinator', () => {
       providerCallSent: true,
       completion: 'completed'
     })
-    expect(deps.runWithinDeadline).toHaveBeenCalledWith(expect.objectContaining({
-      deadlineMs: 500
-    }))
+    const deadlineInputs = (deps.runWithinDeadline as ReturnType<typeof vi.fn>).mock.calls
+      .map(call => call[0].deadlineMs as number)
+    expect(deadlineInputs).toHaveLength(2)
+    expect(deadlineInputs.every(value => value > 0 && value <= 500)).toBe(true)
+    expect(deadlineInputs[1]).toBeLessThanOrEqual(deadlineInputs[0]!)
     expect(CRM_SEARCH_RETRIEVAL_DEADLINE).toEqual({
       revision: 'crm-search-semantic-deadline-v1',
       defaultMs: 500,
@@ -188,21 +223,27 @@ describe('authorized CRM retrieval coordinator', () => {
     })
   })
 
-  it('keeps deterministic fusion inside the bounded semantic deadline', async () => {
-    let deadlineValue: unknown
+  it('bounds provider attempts without wrapping the full semantic join and fusion branch', async () => {
+    const deadlineValues: unknown[] = []
     const deps = makeDeps({
       runWithinDeadline: vi.fn(async ({ task }) => {
-        deadlineValue = await task()
-        return { status: 'completed' as const, value: deadlineValue }
+        const value = await task()
+        deadlineValues.push(value)
+        return { status: 'completed' as const, value }
       }) as never
     })
 
-    await retrieveCrm(context, request, deps)
+    const result = await retrieveCrm(context, request, deps)
 
-    expect(deadlineValue).toEqual(expect.objectContaining({
-      status: 'success',
-      fused: expect.any(Array)
-    }))
+    expect(result.mode).toBe('assist')
+    expect(deadlineValues).toHaveLength(2)
+    expect(deadlineValues[0]).toEqual(embedding)
+    expect(deadlineValues[1]).toEqual([{
+      vectorId: VECTOR_ID,
+      score: 0.9,
+      semanticRank: 1
+    }])
+    expect(deadlineValues).not.toContainEqual(expect.objectContaining({ fused: expect.any(Array) }))
   })
 
   it('fails closed to authorized keyword before policy or provider admission when the analytics keyring is unavailable', async () => {
@@ -414,7 +455,12 @@ describe('authorized CRM retrieval coordinator', () => {
       mode: 'keyword',
       fallbackReason: 'provider'
     })
-    expect(deps.reserveProviderUsage).not.toHaveBeenCalled()
+    expect(deps.reserveProviderUsage).toHaveBeenCalledTimes(1)
+    expect(deps.settleProviderUsage).toHaveBeenCalledWith({
+      reservationId: AI_RESERVATION_ID,
+      providerCallSent: false,
+      completion: 'released_no_call'
+    })
     expect(deps.embedQuery).not.toHaveBeenCalled()
     expect(deps.queryVectorize).not.toHaveBeenCalled()
   })
@@ -466,7 +512,21 @@ describe('authorized CRM retrieval coordinator', () => {
     const embeddingPending = new Promise<void>((resolve) => {
       releaseEmbedding = resolve
     })
-    let lateWork: Promise<unknown> | undefined
+    let settlementOnlyWork: Promise<void> | undefined
+    const continueLateSettlement = vi.fn((provenance, work: Promise<void>) => {
+      settlementOnlyWork = work
+      expect(Object.keys(provenance).sort()).toEqual([
+        'accountingDisposition',
+        'correlationId',
+        'deadlineMs',
+        'elapsedMs',
+        'provider',
+        'providerAttemptId',
+        'providerCallSentAtTimeout',
+        'queryDigestContext',
+        'reservationId'
+      ])
+    })
     const deps = makeDeps({
       embedQuery: vi.fn(async () => {
         await embeddingPending
@@ -477,10 +537,10 @@ describe('authorized CRM retrieval coordinator', () => {
         for (let turn = 0; turn < 20 && !(deps.embedQuery as ReturnType<typeof vi.fn>).mock.calls.length; turn += 1) {
           await Promise.resolve()
         }
-        lateWork = work
         onLateCompletion(work)
         return { status: 'timed_out' as const }
-      })
+      }),
+      continueLateSettlement
     })
 
     await expect(retrieveCrm(context, request, deps)).resolves.toEqual({
@@ -489,41 +549,33 @@ describe('authorized CRM retrieval coordinator', () => {
       fallbackReason: 'timeout'
     })
     expect(deps.continueLateSettlement).toHaveBeenCalledTimes(1)
-    const retained = (deps.continueLateSettlement as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
-    expect(retained).toEqual({
+    const retained = continueLateSettlement.mock.calls[0]?.[0]
+    expect(retained).toMatchObject({
       reservationId: AI_RESERVATION_ID,
+      providerAttemptId: AI_ATTEMPT_ID,
       correlationId: CORRELATION_ID,
-      providerCallSent: true,
-      completion: 'late_discarded'
+      provider: 'workers_ai',
+      providerCallSentAtTimeout: true,
+      accountingDisposition: 'late_discarded',
+      queryDigestContext
     })
     expect(JSON.stringify(retained)).not.toContain(request.query)
+    expect(JSON.stringify(retained)).not.toContain('Acme')
     releaseEmbedding()
-    await lateWork
+    await expect(settlementOnlyWork).resolves.toBeUndefined()
     expect(deps.settleProviderUsage).toHaveBeenCalledWith({
       reservationId: AI_RESERVATION_ID,
       providerCallSent: true,
       completion: 'late_discarded'
     })
     expect(deps.queryVectorize).not.toHaveBeenCalled()
+    expect(deps.joinBack).not.toHaveBeenCalled()
   })
 
   it('releases an admission when the deadline expires before the provider attempt is sent', async () => {
-    let policyReads = 0
-    let releasePolicy!: () => void
-    const policyPending = new Promise<void>((resolve) => {
-      releasePolicy = resolve
-    })
-    let lateWork: Promise<unknown> | undefined
     const deps = makeDeps({
-      loadFreshPolicy: vi.fn(async () => {
-        policyReads += 1
-        if (policyReads === 2) await policyPending
-        return policy
-      }),
       runWithinDeadline: vi.fn(async ({ task, onLateCompletion }) => {
-        const work = task()
-        for (let turn = 0; turn < 40 && policyReads < 2; turn += 1) await Promise.resolve()
-        lateWork = work
+        const work = Promise.resolve().then(task)
         onLateCompletion(work)
         return { status: 'timed_out' as const }
       })
@@ -534,8 +586,8 @@ describe('authorized CRM retrieval coordinator', () => {
       mode: 'keyword',
       fallbackReason: 'timeout'
     })
-    releasePolicy()
-    await lateWork
+    const settlementOnlyWork = (deps.continueLateSettlement as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]
+    await settlementOnlyWork
 
     expect(deps.markProviderCallSent).not.toHaveBeenCalled()
     expect(deps.embedQuery).not.toHaveBeenCalled()
@@ -551,7 +603,6 @@ describe('authorized CRM retrieval coordinator', () => {
     const sentCasPending = new Promise<void>((resolve) => {
       releaseSentCas = resolve
     })
-    let lateWork: Promise<unknown> | undefined
     const deps = makeDeps({
       markProviderCallSent: vi.fn(async () => {
         await sentCasPending
@@ -561,7 +612,6 @@ describe('authorized CRM retrieval coordinator', () => {
         for (let turn = 0; turn < 40
           && !(deps.markProviderCallSent as ReturnType<typeof vi.fn>).mock.calls.length;
           turn += 1) await Promise.resolve()
-        lateWork = work
         onLateCompletion(work)
         return { status: 'timed_out' as const }
       })
@@ -573,7 +623,8 @@ describe('authorized CRM retrieval coordinator', () => {
       fallbackReason: 'timeout'
     })
     releaseSentCas()
-    await lateWork
+    const settlementOnlyWork = (deps.continueLateSettlement as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]
+    await settlementOnlyWork
 
     expect(deps.embedQuery).not.toHaveBeenCalled()
     expect(deps.settleProviderUsage).toHaveBeenCalledWith({
@@ -624,20 +675,27 @@ describe('authorized CRM retrieval coordinator', () => {
     const vectorPending = new Promise<void>((resolve) => {
       releaseVector = resolve
     })
-    let lateWork: Promise<unknown> | undefined
+    let deadlineRuns = 0
+    let settlementOnlyWork: Promise<void> | undefined
     const deps = makeDeps({
       queryVectorize: vi.fn(async () => {
         await vectorPending
         return { count: 1, matches: [{ id: VECTOR_ID, score: 0.9 }] }
       }),
       runWithinDeadline: vi.fn(async ({ task, onLateCompletion }) => {
+        deadlineRuns += 1
         const work = task()
+        if (deadlineRuns === 1) {
+          return { status: 'completed' as const, value: await work }
+        }
         for (let turn = 0; turn < 40
           && !(deps.queryVectorize as ReturnType<typeof vi.fn>).mock.calls.length;
           turn += 1) await Promise.resolve()
-        lateWork = work
         onLateCompletion(work)
         return { status: 'timed_out' as const }
+      }),
+      continueLateSettlement: vi.fn((_provenance, work) => {
+        settlementOnlyWork = work
       })
     })
 
@@ -647,7 +705,7 @@ describe('authorized CRM retrieval coordinator', () => {
       fallbackReason: 'timeout'
     })
     releaseVector()
-    await lateWork
+    await settlementOnlyWork
 
     expect(deps.settleProviderUsage).toHaveBeenCalledWith({
       reservationId: VECTOR_RESERVATION_ID,

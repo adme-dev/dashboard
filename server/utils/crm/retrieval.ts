@@ -5,8 +5,12 @@ import {
   runCrmKeywordSearch,
   type CrmSearchHit
 } from './search'
-import type { CrmSearchContext } from './searchContext'
-import { resolveAgencyCrmSearchContext } from './searchContext'
+import {
+  resolveAgencyAiCrmContext,
+  resolveAgencyCrmSearchContext,
+  type AgencyAiContextResolution,
+  type CrmSearchContext
+} from './searchContext'
 import type { NormalizedCrmSearchRequest } from './searchRequest'
 import {
   reciprocalRankFusion
@@ -109,6 +113,29 @@ type CrmSemanticDeadlineResult<T>
   = | { status: 'completed', value: T }
     | { status: 'timed_out' }
 
+export interface CrmSemanticContextResolvers {
+  resolveAgencyAiContext: (
+    tool: { userId: string, event: H3Event },
+    input: { clientId: string }
+  ) => Promise<AgencyAiContextResolution>
+  resolveAgencyGlobalContext: (
+    event: H3Event,
+    input: { clientId: string, surface: 'agency_global' }
+  ) => Promise<CrmSearchContext>
+}
+
+export interface CrmLateSettlementProvenance {
+  correlationId: string
+  reservationId: string
+  providerAttemptId: string
+  provider: CrmSearchProviderName
+  queryDigestContext: CrmSearchPrecomputedQueryDigestContext
+  providerCallSentAtTimeout: boolean
+  accountingDisposition: 'late_discarded' | 'released_no_call'
+  deadlineMs: number
+  elapsedMs: number
+}
+
 export interface CrmRetrievalDependencies {
   runKeyword: (
     context: CrmSearchContext,
@@ -167,13 +194,8 @@ export interface CrmRetrievalDependencies {
   }) => Promise<CrmSearchJoinedSemanticHit[]>
   emitTelemetry: (record: CrmSafeTelemetryRecord) => Promise<void>
   continueLateSettlement: (
-    input: {
-      reservationId: string | null
-      correlationId: string
-      providerCallSent: boolean
-      completion: 'late_discarded'
-    },
-    work?: Promise<unknown>
+    input: CrmLateSettlementProvenance,
+    settlementOnlyWork: Promise<void>
   ) => void
   scheduleShadow?: (input: {
     context: CrmSearchContext
@@ -197,6 +219,46 @@ interface SemanticBranchFallback {
 }
 
 type SemanticBranchResult = SemanticBranchSuccess | SemanticBranchFallback
+
+type CrmProviderExecutionResult<T>
+  = | { status: 'completed', value: T }
+    | { status: 'timed_out' }
+
+const defaultSemanticContextResolvers: CrmSemanticContextResolvers = {
+  resolveAgencyAiContext: (tool, input) => resolveAgencyAiCrmContext(tool, input),
+  resolveAgencyGlobalContext: (event, input) => resolveAgencyCrmSearchContext(event, input)
+}
+
+export async function revalidateCrmSemanticContext(
+  event: H3Event,
+  context: CrmSearchContext,
+  resolvers: CrmSemanticContextResolvers = defaultSemanticContextResolvers
+): Promise<CrmSearchContext | null> {
+  try {
+    if (context.surface === 'agency_ai') {
+      if (context.actorType !== 'staff' || !context.assistantScope) return null
+      const resolution = await resolvers.resolveAgencyAiContext(
+        { userId: context.actorId, event },
+        { clientId: context.clientId }
+      )
+      return resolution.status === 'resolved'
+        && resolution.context.clientId === context.clientId
+        && resolution.context.surface === 'agency_ai'
+        ? { ...resolution.context, correlationId: context.correlationId }
+        : null
+    }
+    if (context.surface !== 'agency_global') return null
+    const fresh = await resolvers.resolveAgencyGlobalContext(event, {
+      clientId: context.clientId,
+      surface: 'agency_global'
+    })
+    return fresh.clientId === context.clientId && fresh.surface === 'agency_global'
+      ? { ...fresh, correlationId: context.correlationId }
+      : null
+  } catch {
+    return null
+  }
+}
 
 function keywordResult(
   keyword: readonly CrmSearchHit[],
@@ -328,62 +390,160 @@ async function releaseReservation(
   })
 }
 
+function remainingSemanticDeadlineMs(startedAtMs: number): number {
+  return CRM_SEARCH_RETRIEVAL_DEADLINE.defaultMs - Math.max(0, Date.now() - startedAtMs)
+}
+
 async function invokeReservedProvider<T>(input: {
   dependencies: CrmRetrievalDependencies
-  context: CrmSearchContext
+  context: CrmSearchContext | null
   reservation: CrmProviderUsageReservation
-  isAbandoned: () => boolean
-  call: () => Promise<T>
-}): Promise<T> {
+  provider: CrmSearchProviderName
+  queryDigestContext: CrmSearchPrecomputedQueryDigestContext
+  deadlineStartedAtMs: number
+  call: (() => Promise<T>) | null
+}): Promise<CrmProviderExecutionResult<T>> {
+  if (!input.context) throw new TypeError('CRM search provider context is missing')
+  const correlationId = input.context.correlationId
+  const {
+    dependencies,
+    reservation,
+    provider,
+    queryDigestContext,
+    deadlineStartedAtMs
+  } = input
   let sent = false
   let settled = false
+  let settlementWork: Promise<void> | null = null
+  let abandoned = false
+  let continuationRegistered = false
+  let providerCall: (() => Promise<T>) | null = input.call
+  input.context = null
+  input.call = null
+  let activeWork: Promise<T> | null = null
+
+  const settle = async (
+    providerCallSent: boolean,
+    completion: 'completed' | 'failed' | 'late_discarded' | 'released_no_call'
+  ) => {
+    settlementWork ??= dependencies.settleProviderUsage({
+      reservationId: reservation.reservationId,
+      providerCallSent,
+      completion
+    }).then(() => {
+      settled = true
+    })
+    await settlementWork
+  }
+  const executeProviderWork = async (): Promise<T> => {
+    try {
+      if (abandoned) {
+        await settle(false, 'released_no_call')
+        throw new Error('crm_search_semantic_deadline_elapsed')
+      }
+      await dependencies.markProviderCallSent({
+        correlationId,
+        providerAttemptId: reservation.providerAttemptId,
+        expectedControlRevision: reservation.controlRevision,
+        expectedPolicyRevision: reservation.policyRevision
+      })
+      sent = true
+      if (abandoned || !providerCall) {
+        await settle(true, 'late_discarded')
+        throw new Error('crm_search_semantic_deadline_elapsed')
+      }
+
+      // Invoke once, then clear the only coordinator-owned closure that can
+      // reach the raw embedding request before awaiting provider completion.
+      const providerWork = providerCall()
+      providerCall = null
+      const result = await providerWork
+      await settle(true, abandoned ? 'late_discarded' : 'completed')
+      return result
+    } catch (error) {
+      if (!settled) {
+        try {
+          await settle(
+            sent,
+            sent ? abandoned ? 'late_discarded' : 'failed' : 'released_no_call'
+          )
+        } catch {
+          // Preserve the provider failure. Its durable reservation remains
+          // visible to reconciliation if settlement itself is unavailable.
+        }
+      }
+      throw error
+    }
+  }
+  const registerSettlementOnlyContinuation = (work: Promise<T>) => {
+    if (continuationRegistered) return
+    continuationRegistered = true
+    abandoned = true
+    providerCall = null
+    const elapsedMs = Math.max(0, Math.floor(Date.now() - deadlineStartedAtMs))
+    const settlementOnlyWork = work.then(() => undefined, () => undefined)
+    try {
+      dependencies.continueLateSettlement({
+        correlationId,
+        reservationId: reservation.reservationId,
+        providerAttemptId: reservation.providerAttemptId,
+        provider,
+        queryDigestContext,
+        providerCallSentAtTimeout: sent,
+        accountingDisposition: sent ? 'late_discarded' : 'released_no_call',
+        deadlineMs: CRM_SEARCH_RETRIEVAL_DEADLINE.defaultMs,
+        elapsedMs
+      }, settlementOnlyWork)
+    } catch {
+      // The settlement-only promise already absorbs the late provider result;
+      // registration failure must not resume retrieval or expose provider data.
+      void settlementOnlyWork
+    }
+  }
+
+  const remainingMs = remainingSemanticDeadlineMs(deadlineStartedAtMs)
+  if (remainingMs <= 0) {
+    providerCall = null
+    try {
+      await settle(false, 'released_no_call')
+    } catch {
+      // The reserved attempt remains durable for reconciliation.
+    }
+    return { status: 'timed_out' }
+  }
+
   try {
-    if (input.isAbandoned()) {
-      await input.dependencies.settleProviderUsage({
-        reservationId: input.reservation.reservationId,
-        providerCallSent: false,
-        completion: 'released_no_call'
-      })
-      settled = true
-      throw new Error('crm_search_semantic_deadline_elapsed')
-    }
-    await input.dependencies.markProviderCallSent({
-      correlationId: input.context.correlationId,
-      providerAttemptId: input.reservation.providerAttemptId,
-      expectedControlRevision: input.reservation.controlRevision,
-      expectedPolicyRevision: input.reservation.policyRevision
+    const deadline = await dependencies.runWithinDeadline({
+      deadlineMs: remainingMs,
+      task: () => {
+        activeWork ??= executeProviderWork()
+        return activeWork
+      },
+      onLateCompletion: registerSettlementOnlyContinuation
     })
-    sent = true
-    if (input.isAbandoned()) {
-      await input.dependencies.settleProviderUsage({
-        reservationId: input.reservation.reservationId,
-        providerCallSent: true,
-        completion: 'late_discarded'
-      })
-      settled = true
-      throw new Error('crm_search_semantic_deadline_elapsed')
+    if (deadline.status === 'completed' && !continuationRegistered) {
+      return { status: 'completed', value: deadline.value }
     }
-    const result = await input.call()
-    await input.dependencies.settleProviderUsage({
-      reservationId: input.reservation.reservationId,
-      providerCallSent: true,
-      completion: input.isAbandoned() ? 'late_discarded' : 'completed'
-    })
-    settled = true
-    return result
-  } catch (error) {
-    if (!settled) {
+    abandoned = true
+    providerCall = null
+    if (activeWork) registerSettlementOnlyContinuation(activeWork)
+    else if (!continuationRegistered) {
       try {
-        await input.dependencies.settleProviderUsage({
-          reservationId: input.reservation.reservationId,
-          providerCallSent: sent,
-          completion: sent
-            ? input.isAbandoned() ? 'late_discarded' : 'failed'
-            : 'released_no_call'
-        })
+        await settle(false, 'released_no_call')
       } catch {
-        // Preserve the semantic failure. The durable precommit remains visible
-        // for reconciliation instead of being hidden by a second exception.
+        // The reserved attempt remains durable for reconciliation.
+      }
+    }
+    return { status: 'timed_out' }
+  } catch (error) {
+    abandoned = true
+    providerCall = null
+    if (activeWork) registerSettlementOnlyContinuation(activeWork)
+    else if (!settled && !continuationRegistered) {
+      try {
+        await settle(false, 'released_no_call')
+      } catch {
+        // Preserve the coordinator error.
       }
     }
     throw error
@@ -404,11 +564,7 @@ async function executeSemanticBranch(input: {
   dependencies: CrmRetrievalDependencies
   queryDigestContext: CrmSearchPrecomputedQueryDigestContext
   keywordResultCount: number
-  setActiveReservation: (
-    reservation: CrmProviderUsageReservation | null,
-    provider: CrmSearchProviderName | null
-  ) => void
-  isAbandoned: () => boolean
+  deadlineStartedAtMs: number
 }): Promise<SemanticBranchResult> {
   const { context, request, initialPolicy, dependencies } = input
   let namespace: string
@@ -427,43 +583,41 @@ async function executeSemanticBranch(input: {
   if (aiReservation.status === 'denied') {
     return { status: 'fallback', reason: 'budget', provider: 'workers_ai' }
   }
-  input.setActiveReservation(aiReservation, 'workers_ai')
 
   let beforeEmbedding: CrmSearchPolicySnapshot
   try {
     beforeEmbedding = await dependencies.loadFreshPolicy(context)
   } catch {
     await releaseReservation(dependencies, aiReservation)
-    input.setActiveReservation(null, null)
     return { status: 'fallback', reason: 'provider', provider: 'postgres' }
   }
   if (!validPolicy(beforeEmbedding, initialPolicy.effectiveMode, aiReservation)
     || beforeEmbedding.activeSchemaVersion !== initialPolicy.activeSchemaVersion) {
     await releaseReservation(dependencies, aiReservation)
-    input.setActiveReservation(null, null)
     return { status: 'fallback', reason: 'disabled', provider: 'postgres' }
   }
 
   let embedding: number[]
   try {
-    embedding = await invokeReservedProvider({
+    const embeddingExecution = await invokeReservedProvider({
       dependencies,
       context,
       reservation: aiReservation,
-      isAbandoned: input.isAbandoned,
+      provider: 'workers_ai',
+      queryDigestContext: input.queryDigestContext,
+      deadlineStartedAtMs: input.deadlineStartedAtMs,
       call: async () => parseCrmSearchEmbedding(await dependencies.embedQuery({
         model: CRM_SEARCH_MODEL_ID,
         request: buildCrmSearchEmbeddingRequest(request.query),
         correlationId: context.correlationId
       }))
     })
+    if (embeddingExecution.status === 'timed_out') {
+      return { status: 'fallback', reason: 'timeout', provider: 'workers_ai' }
+    }
+    embedding = embeddingExecution.value
   } catch {
-    input.setActiveReservation(null, null)
     return { status: 'fallback', reason: 'provider', provider: 'workers_ai' }
-  }
-  input.setActiveReservation(null, null)
-  if (input.isAbandoned()) {
-    return { status: 'fallback', reason: 'disabled', provider: 'workers_ai' }
   }
 
   let beforeVector: CrmSearchPolicySnapshot
@@ -493,7 +647,6 @@ async function executeSemanticBranch(input: {
     await releaseReservation(dependencies, vectorReservation)
     return { status: 'fallback', reason: 'disabled', provider: 'postgres' }
   }
-  input.setActiveReservation(vectorReservation, 'vectorize')
 
   let candidates: ReturnType<typeof filterSemanticMatches>
   try {
@@ -502,11 +655,13 @@ async function executeSemanticBranch(input: {
       activeSchemaVersion: initialPolicy.activeSchemaVersion,
       allowedEntityTypes: CRM_SEARCH_ENTITY_TYPES
     })
-    candidates = await invokeReservedProvider({
+    const vectorExecution = await invokeReservedProvider({
       dependencies,
       context,
       reservation: vectorReservation,
-      isAbandoned: input.isAbandoned,
+      provider: 'vectorize',
+      queryDigestContext: input.queryDigestContext,
+      deadlineStartedAtMs: input.deadlineStartedAtMs,
       call: async () => {
         const response = await dependencies.queryVectorize({
           vector: embedding,
@@ -525,13 +680,12 @@ async function executeSemanticBranch(input: {
         return filterSemanticMatches(value.matches)
       }
     })
+    if (vectorExecution.status === 'timed_out') {
+      return { status: 'fallback', reason: 'timeout', provider: 'vectorize' }
+    }
+    candidates = vectorExecution.value
   } catch {
-    input.setActiveReservation(null, null)
     return { status: 'fallback', reason: 'provider', provider: 'vectorize' }
-  }
-  input.setActiveReservation(null, null)
-  if (input.isAbandoned()) {
-    return { status: 'fallback', reason: 'disabled', provider: 'vectorize' }
   }
 
   let semantic: CrmSearchJoinedSemanticHit[]
@@ -655,10 +809,7 @@ export async function retrieveCrm(
     return keywordResult(keyword, request, 'disabled')
   }
 
-  let activeReservation: CrmProviderUsageReservation | null = null
-  let activeProvider: CrmSearchProviderName | null = null
-  let abandoned = false
-  const semanticTask = () => executeSemanticBranch({
+  const semanticWithinDeadline = () => executeSemanticBranch({
     context,
     request,
     keyword,
@@ -666,46 +817,8 @@ export async function retrieveCrm(
     dependencies,
     queryDigestContext,
     keywordResultCount: keyword.length,
-    setActiveReservation: (reservation, provider) => {
-      activeReservation = reservation
-      activeProvider = provider
-    },
-    isAbandoned: () => abandoned
+    deadlineStartedAtMs: Date.now()
   })
-  const semanticWithinDeadline = async (): Promise<SemanticBranchResult> => {
-    try {
-      const deadline = await dependencies.runWithinDeadline({
-        deadlineMs: CRM_SEARCH_RETRIEVAL_DEADLINE.defaultMs,
-        task: semanticTask,
-        onLateCompletion(work) {
-          // The timeout signal must fence the branch before the provider task
-          // can resume; waiting for runWithinDeadline to return leaves a race.
-          abandoned = true
-          const safeSettlement = {
-            reservationId: activeReservation?.reservationId ?? null,
-            correlationId: context.correlationId,
-            providerCallSent: activeReservation !== null,
-            completion: 'late_discarded' as const
-          }
-          const sanitized = work.then(() => undefined, () => undefined)
-          dependencies.continueLateSettlement(safeSettlement, sanitized)
-        }
-      })
-      if (deadline.status === 'completed') return deadline.value
-      abandoned = true
-      return {
-        status: 'fallback',
-        reason: 'timeout',
-        provider: activeProvider ?? 'postgres'
-      }
-    } catch {
-      return {
-        status: 'fallback',
-        reason: 'provider',
-        provider: activeProvider ?? 'postgres'
-      }
-    }
-  }
 
   if (policy.effectiveMode === 'shadow') {
     const runShadowSemantic = async (): Promise<SemanticBranchResult> => {
@@ -858,16 +971,7 @@ export function createCrmRetrievalDependencies(event: H3Event): CrmRetrievalDepe
   const analyticsKey = selectActiveCrmSearchAnalyticsDigestKey(
     resolveCrmSearchAnalyticsKeyring(event)
   )
-  const revalidateContext = async (context: CrmSearchContext) => {
-    try {
-      return await resolveAgencyCrmSearchContext(event, {
-        clientId: context.clientId,
-        surface: context.surface === 'agency_ai' ? 'agency_ai' : 'agency_global'
-      } as never)
-    } catch {
-      return null
-    }
-  }
+  const revalidateContext = (context: CrmSearchContext) => revalidateCrmSemanticContext(event, context)
   const dependencies: CrmRetrievalDependencies = {
     runKeyword: runCrmKeywordSearch,
     async prepareTelemetry(input) {
@@ -939,11 +1043,11 @@ export function createCrmRetrievalDependencies(event: H3Event): CrmRetrievalDepe
     }),
     settleProviderUsage: settleCrmSearchUsage,
     runWithinDeadline: defaultRunWithinDeadline,
-    async embedQuery(input) {
+    embedQuery(input) {
       if (!bindings) throw new Error('crm_search_provider_unavailable')
       return bindings.ai.run(input.model, input.request)
     },
-    async queryVectorize(input) {
+    queryVectorize(input) {
       if (!bindings) throw new Error('crm_search_provider_unavailable')
       return bindings.vectorize.query(input.vector, input.options)
     },
@@ -971,8 +1075,8 @@ export function createCrmRetrievalDependencies(event: H3Event): CrmRetrievalDepe
         })
       })),
     emitTelemetry: persistSafeTelemetryRecord,
-    continueLateSettlement(_input, work) {
-      if (work) runAfterResponse(event, work, 'crm-search-late-settlement')
+    continueLateSettlement(_input, settlementOnlyWork) {
+      runAfterResponse(event, settlementOnlyWork, 'crm-search-late-settlement')
     }
   }
   dependencies.scheduleShadow = input => runCrmShadowSearch({

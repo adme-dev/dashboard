@@ -24,7 +24,11 @@ const context = {
   actorId: ACTOR_ID,
   surface: 'agency_ai' as const,
   permissionSet: ['CLIENTS'],
-  visibility: { ownerScoped: true }
+  visibility: { ownerScoped: true },
+  assistantScope: {
+    clientIds: [CLIENT_ID],
+    sourceRevision: 'assignment-revision-7'
+  }
 }
 
 let namespace: string
@@ -189,6 +193,26 @@ describe('CRM semantic Postgres authority join-back', () => {
 
   it('fails the semantic branch when fresh session/client/permission/owner authority is revoked', async () => {
     const deps = dependencies({ freshContext: null })
+    await expect(joinBackSemanticCandidates({
+      context,
+      activeSchemaVersion: SCHEMA_VERSION,
+      canonicalNamespace: namespace,
+      candidates: [{ vectorId: companyVectorId, score: 0.91, semanticRank: 1 }]
+    }, deps)).rejects.toThrow('crm_search_authorization_changed')
+    expect(deps.loadCurrentRows).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when the fresh assistant assignment changes before current rows are loaded', async () => {
+    const deps = dependencies({
+      freshContext: {
+        ...context,
+        assistantScope: {
+          clientIds: [CLIENT_ID],
+          sourceRevision: 'assignment-revision-8'
+        }
+      }
+    })
+
     await expect(joinBackSemanticCandidates({
       context,
       activeSchemaVersion: SCHEMA_VERSION,
