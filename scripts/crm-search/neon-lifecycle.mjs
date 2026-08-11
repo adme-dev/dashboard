@@ -189,7 +189,7 @@ export function createNeonTargetAttestation(input) {
     || branch.projectId !== neonApi.project.id || branch.parentId !== neonApi.sourceBranch.id
     || branch.id === neonApi.sourceBranch.id || neonApi.endpoint.branchId !== branch.id
     || branch.name !== `crm-search-e2e-${unsigned.sourceGitSha.slice(0, 12)}`
-    || branch.initSource !== 'schema-only'
+    || !['schema-only', 'parent-schema'].includes(branch.initSource)
     || !Number.isFinite(Date.parse(neonApi.branchReadbackAt))
     || branch.createdAt !== unsigned.createdAt || branch.expiresAt !== unsigned.expiresAt
     || canonical(unsigned.sourceTableProof) !== canonical(sourceTableProof)
@@ -412,11 +412,16 @@ export async function runNeonLifecycle({
       action: 'read-branch', phase: 'post-create', projectId: plan.projectId, branchId
     })
     const branch = branchReadback?.branch
+    const requestedExpiry = Date.parse(plan.create.branch.expires_at)
+    const providerExpiry = Date.parse(branch?.expires_at)
+    const schemaOnlyReadback = branch?.init_source === 'schema-only'
+      ? branch.parent_id === plan.create.branch.parent_id
+      : branch?.init_source === 'parent-schema' && branch.parent_id === undefined
     if (!branch || branch.id !== branchId || branch.project_id !== plan.projectId
-      || branch.parent_id !== plan.create.branch.parent_id
       || branch.name !== plan.create.branch.name
-      || branch.init_source !== 'schema-only'
-      || Date.parse(branch.expires_at) !== Date.parse(plan.create.branch.expires_at)
+      || !schemaOnlyReadback
+      || !Number.isFinite(providerExpiry) || providerExpiry > requestedExpiry
+      || requestedExpiry - providerExpiry >= 1_000
       || !Number.isFinite(Date.parse(branch.created_at))
       || !Number.isFinite(Date.parse(branchReadback.readAt))) {
       throw new Error('crm_search_neon_schema_only_readback_required')
@@ -446,9 +451,9 @@ export async function runNeonLifecycle({
       branch: {
         id: branch.id,
         projectId: branch.project_id,
-        parentId: branch.parent_id,
+        parentId: branch.parent_id ?? plan.create.branch.parent_id,
         name: branch.name,
-        initSource: plan.create.branch.init_source,
+        initSource: branch.init_source,
         createdAt: branch.created_at,
         expiresAt: branch.expires_at
       },
