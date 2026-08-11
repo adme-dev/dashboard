@@ -276,7 +276,8 @@ export function createNeonLifecycleExecutor(options) {
     if (step.action === 'assert-empty') {
       return await databaseAdapter.assertEmpty({
         projectId: step.projectId, branchId: step.branchId,
-        endpoint: step.endpoint, tables: step.tables
+        endpoint: step.endpoint, organisationScopeId: step.organisationScopeId,
+        tables: step.tables
       })
     }
     if (step.action === 'migrate') {
@@ -429,7 +430,8 @@ export async function runNeonLifecycle({
     assertDirectEndpoint(endpoint, trustedSharedEndpointDenyset)
     const empty = await execute({
       action: 'assert-empty', projectId: plan.projectId, branchId,
-      endpoint, tables: plan.assertEmptyTables
+      endpoint, organisationScopeId: approval.organisationScopeId,
+      tables: plan.assertEmptyTables
     })
     const sourceTableProof = normalizeSourceTableProof(empty, approval.organisationScopeId)
     await readFreshApproval('before-migrate')
