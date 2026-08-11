@@ -378,7 +378,7 @@ describe('CRM search guarded Neon lifecycle', () => {
         : {
             branch: {
               id: 'br-crm-search-preview-1234', project_id: plan.projectId,
-              parent_id: plan.create.branch.parent_id, name: plan.create.branch.name,
+              name: plan.create.branch.name,
               init_source: 'parent-schema', created_at: '2026-08-11T00:00:00.000Z',
               expires_at: new Date(Date.parse(plan.create.branch.expires_at) - 500).toISOString()
             },
@@ -429,6 +429,11 @@ describe('CRM search guarded Neon lifecycle', () => {
       organisationScopeId: bootstrap.payload.organisationScopeId
     })
     expect(result.attestation.neonApi.branch.initSource).toBe('parent-schema')
+    expect(result.attestation.neonApi.branch).toMatchObject({
+      parentId: plan.create.branch.parent_id,
+      providerParentId: null,
+      parentBindingSource: 'signed_create_request'
+    })
     expect(result.cleanup).toMatchObject({
       branchId: 'br-crm-search-preview-1234', absent: true
     })

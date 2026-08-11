@@ -184,6 +184,10 @@ export function createNeonTargetAttestation(input) {
     ? PREVIEW_MIGRATION_PATHS
     : REQUIRED_MIGRATION_PATHS
   const exactMigrationDigests = workspaceMigrationDigests(expectedMigrationPaths)
+  const parentBindingValid = branch?.parentBindingSource === 'provider_readback'
+    ? branch.providerParentId === neonApi?.sourceBranch?.id
+    : branch?.parentBindingSource === 'signed_create_request'
+      && branch.providerParentId === null
   let sourceTableProof
   try {
     sourceTableProof = normalizeSourceTableProof(
@@ -201,6 +205,7 @@ export function createNeonTargetAttestation(input) {
     || expiresAt <= createdAt || expiresAt > createdAt + 24 * 60 * 60_000
     || !neonApi?.project?.id || !neonApi?.sourceBranch?.id || !branch?.id
     || branch.projectId !== neonApi.project.id || branch.parentId !== neonApi.sourceBranch.id
+    || !parentBindingValid
     || branch.id === neonApi.sourceBranch.id || neonApi.endpoint.branchId !== branch.id
     || branch.name !== `crm-search-e2e-${unsigned.sourceGitSha.slice(0, 12)}`
     || branch.initSource !== 'parent-schema'
@@ -438,7 +443,7 @@ export async function runNeonLifecycle({
     const requestedExpiry = Date.parse(plan.create.branch.expires_at)
     const providerExpiry = Date.parse(branch?.expires_at)
     const schemaOnlyReadback = branch?.init_source === plan.create.branch.init_source
-      && branch.parent_id === plan.create.branch.parent_id
+      && (branch.parent_id === undefined || branch.parent_id === plan.create.branch.parent_id)
     if (!branch || branch.id !== branchId || branch.project_id !== plan.projectId
       || branch.name !== plan.create.branch.name
       || !schemaOnlyReadback
@@ -486,6 +491,10 @@ export async function runNeonLifecycle({
         id: branch.id,
         projectId: branch.project_id,
         parentId: branch.parent_id ?? plan.create.branch.parent_id,
+        providerParentId: branch.parent_id ?? null,
+        parentBindingSource: branch.parent_id
+          ? 'provider_readback'
+          : 'signed_create_request',
         name: branch.name,
         initSource: branch.init_source,
         createdAt: branch.created_at,
