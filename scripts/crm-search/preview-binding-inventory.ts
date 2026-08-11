@@ -71,7 +71,8 @@ function normalizeTargetIdentity(value: string): string {
 
 function deriveExternalIntegrations(
   environmentConfig: PagesWranglerConfig,
-  readbacks: ExternalIntegrationReadback[]
+  readbacks: ExternalIntegrationReadback[],
+  secrets: SecretBinding[] = []
 ): CrmSearchExternalIntegrationTarget[] {
   if (!Array.isArray(readbacks)
     || readbacks.map(value => value?.name).join('\0') !== CRM_SEARCH_EXTERNAL_MUTABLE_INTEGRATIONS.join('\0')) {
@@ -86,7 +87,11 @@ function deriveExternalIntegrations(
       || !ISO_TIMESTAMP.test(readback.verifiedAt ?? '') || !Number.isFinite(verifiedAt)) {
       throw new Error('crm_search_pages_integration_inventory_invalid')
     }
-    const configuredState = SAFETY_STATE_FROM_CONFIG[readback.name]?.(environmentConfig)
+    const databaseConfigured = (environmentConfig.hyperdrive?.length ?? 0) > 0
+      || secrets.some(secret => secret.binding === 'DATABASE_URL')
+    const configuredState = readback.name === 'database'
+      ? databaseConfigured
+      : SAFETY_STATE_FROM_CONFIG[readback.name]?.(environmentConfig)
     if (configuredState !== undefined && configuredState !== readback.enabled) {
       throw new Error('crm_search_pages_integration_config_mismatch')
     }
@@ -241,7 +246,7 @@ function normalizeEnvironment(
   if (!Array.isArray(secrets) || secrets.length === 0) {
     throw new Error('crm_search_pages_secret_inventory_missing')
   }
-  const integrations = deriveExternalIntegrations(environmentConfig, integrationReadbacks)
+  const integrations = deriveExternalIntegrations(environmentConfig, integrationReadbacks, secrets)
 
   const bindings: NormalizedBinding[] = []
   for (const value of environmentConfig.kv_namespaces ?? []) {
@@ -324,13 +329,14 @@ export function assertPagesEnvironmentIsolation(inventory: ReturnType<typeof bui
   const preview = new Map(inventory.preview.bindings.map(value => [
     `${value.category}\0${value.binding}`, value.target
   ]))
-  if (production.size !== preview.size
-    || [...production.keys()].some(key => !preview.has(key))) {
-    throw new Error('crm_search_pages_binding_inventory_incomplete')
-  }
-  for (const [key, target] of production) {
+  const productionStatefulTargets = new Set(
+    [...production]
+      .filter(([key]) => STATEFUL_CATEGORIES.has(key.split('\0', 1)[0]!))
+      .map(([, target]) => target)
+  )
+  for (const [key, target] of preview) {
     const category = key.split('\0', 1)[0]!
-    if (STATEFUL_CATEGORIES.has(category) && preview.get(key) === target) {
+    if (STATEFUL_CATEGORIES.has(category) && productionStatefulTargets.has(target)) {
       throw new Error('crm_search_pages_preview_resource_alias')
     }
   }
@@ -347,6 +353,8 @@ export function assertPagesEnvironmentIsolation(inventory: ReturnType<typeof bui
   return { ok: true } as const
 }
 
+const productionPagesConfig = pagesConfig.env?.production ?? {}
+
 export const PAGES_BINDING_INVENTORY = Object.freeze({
   categories: [
     'kv', 'd1', 'queues', 'r2', 'ai', 'vectorize', 'browser', 'hyperdrive',
@@ -354,23 +362,29 @@ export const PAGES_BINDING_INVENTORY = Object.freeze({
   ],
   mutableBindings: [...new Set([
     'R2',
-    ...values(pagesConfig.kv_namespaces, 'binding'),
-    ...values(pagesConfig.queues?.producers, 'binding'),
-    ...values(pagesConfig.r2_buckets, 'binding'),
-    ...(pagesConfig.ai?.binding ? [pagesConfig.ai.binding] : []),
-    ...values(pagesConfig.vectorize, 'binding'),
-    ...(pagesConfig.browser?.binding ? [pagesConfig.browser.binding] : []),
-    ...values(pagesConfig.hyperdrive, 'binding'),
-    ...values(pagesConfig.services, 'binding'),
-    ...Object.keys(pagesConfig.vars ?? {})
+    ...values(productionPagesConfig.kv_namespaces, 'binding'),
+    ...values(productionPagesConfig.d1_databases, 'binding'),
+    ...values(productionPagesConfig.queues?.producers, 'binding'),
+    ...values(productionPagesConfig.r2_buckets, 'binding'),
+    ...(productionPagesConfig.ai?.binding ? [productionPagesConfig.ai.binding] : []),
+    ...values(productionPagesConfig.vectorize, 'binding'),
+    ...(productionPagesConfig.browser?.binding ? [productionPagesConfig.browser.binding] : []),
+    ...values(productionPagesConfig.hyperdrive, 'binding'),
+    ...values(productionPagesConfig.services, 'binding'),
+    ...values(productionPagesConfig.analytics_engine_datasets, 'binding'),
+    ...values(productionPagesConfig.durable_objects?.bindings, 'name'),
+    ...Object.keys(productionPagesConfig.vars ?? {})
   ])].sort(),
   productionResourceNames: [...new Set([
-    ...values(pagesConfig.kv_namespaces, 'id'),
-    ...values(pagesConfig.queues?.producers, 'queue'),
-    ...values(pagesConfig.r2_buckets, 'bucket_name'),
-    ...values(pagesConfig.vectorize, 'index_name'),
-    ...values(pagesConfig.hyperdrive, 'id'),
-    ...values(pagesConfig.services, 'service')
+    ...values(productionPagesConfig.kv_namespaces, 'id'),
+    ...values(productionPagesConfig.d1_databases, 'database_id'),
+    ...values(productionPagesConfig.queues?.producers, 'queue'),
+    ...values(productionPagesConfig.r2_buckets, 'bucket_name'),
+    ...values(productionPagesConfig.vectorize, 'index_name'),
+    ...values(productionPagesConfig.hyperdrive, 'id'),
+    ...values(productionPagesConfig.services, 'service'),
+    ...values(productionPagesConfig.analytics_engine_datasets, 'dataset'),
+    ...values(productionPagesConfig.durable_objects?.bindings, 'script_name')
   ])].sort()
 })
 

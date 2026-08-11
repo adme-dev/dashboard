@@ -2,180 +2,9 @@ name = "agency-dashboard"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat", "no_handle_cross_request_promise_resolution"]
 
-# ============================================
-# Cloudflare Bindings
-# ============================================
-
-# KV — edge caching for tokens, sessions, and report responses
-# Create with: npx wrangler kv namespace create CACHE
-# Then paste the ID below
-[[kv_namespaces]]
-binding = "CACHE"
-id = "7d5db1c489cb40f4b809d611e1408acd"
-
-# Queues — reliable background job processing with retry and dead-letter
-# Create with: npx wrangler queues create agency-jobs
-# NOTE: consumers must be configured on a separate Worker, not on Pages.
-# Consumer: workers/jobs-consumer (bridges each message → /api/internal/process-job).
-[[queues.producers]]
-binding = "JOBS_QUEUE"
-queue = "agency-jobs"
-
-# Producer binding for the leads delivery queue. Consumer runs in
-# workers/leads-delivery-worker/ — registered via [[queues.consumers]] in that
-# worker's wrangler.toml, which uses [alias] to redirect Nitro-style imports
-# to worker-local pg-based adapters.
-[[queues.producers]]
-binding = "LEADS_DELIVERY_QUEUE"
-queue = "leads-delivery-queue"
-
-# Validated inbound CRM messages are enqueued by Pages after route-token
-# verification. The standalone email Worker consumes this queue.
-[[queues.producers]]
-binding = "CRM_EMAIL_INBOUND_QUEUE"
-queue = "crm-email-inbound-queue"
-
-# Minimal conversion identity messages only. The standalone measurement delivery
-# Worker consumes this queue; canonical event and destination data stay in Neon.
-[[queues.producers]]
-binding = "MEASUREMENT_DELIVERY_QUEUE"
-queue = "measurement-delivery"
-
-# Identifier-only CRM search operation messages. The dedicated standalone
-# workers/crm-search-consumer Worker is the sole consumer for this queue.
-[[queues.producers]]
-binding = "CRM_SEARCH_INDEX_QUEUE"
-queue = "agency-crm-search-index"
-
-# Producer binding for the Audio Studio music-generation queue. Consumer runs in
-# workers/audio-jobs/ (the Pages worker entry exports only fetch+scheduled, so a
-# Pages-side queue consumer never fires — it must live in a standalone Worker).
-# Without this binding generate.post.ts returns 503 ("not enabled yet").
-[[queues.producers]]
-binding = "MUSIC_QUEUE"
-queue = "music-gen"
-
-# Producer binding for Media Studio timeline renders. Consumer runs in
-# workers/audio-jobs/ as the `timeline-render` queue branch.
-[[queues.producers]]
-binding = "TIMELINE_RENDER_QUEUE"
-queue = "timeline-render"
-
-# Producer binding for Video Studio composite renders. Consumer runs in
-# workers/audio-jobs/ as the `video-render` queue branch.
-[[queues.producers]]
-binding = "VIDEO_RENDER_QUEUE"
-queue = "video-render"
-
-# Producer binding for Banner Studio MP4 renders (#2a). Consumer runs in
-# workers/audio-jobs/ as the `banner-render` queue branch.
-# ACTIVATED 2026-06-22 (sign-off): banner-render + banner-render-dlq queues created;
-# audio-jobs Worker + Chromium container (bannerCapture.mjs) deployed with the
-# banner-render consumer attached. In-app MP4 export + MCP banner-confirm enqueue here.
-[[queues.producers]]
-binding = "BANNER_RENDER_QUEUE"
-queue = "banner-render"
-
-# Producer binding for AI Video Studio generation jobs. Consumer runs in
-# workers/video-generation/ as the `video-generation` queue branch.
-[[queues.producers]]
-binding = "VIDEO_GENERATION_QUEUE"
-queue = "video-generation"
-
-# Producer binding for Video Studio asset intelligence jobs. The dedicated
-# workers/asset-intelligence/ Worker consumes the `asset-intelligence` queue.
-[[queues.producers]]
-binding = "ASSET_INTELLIGENCE_QUEUE"
-queue = "asset-intelligence"
-
-# R2 — native object storage binding for server-side uploads. The S3-SDK-over-fetch
-# path silently drops PutObject bodies in the Pages/workerd runtime (200 but no object
-# written — UNSIGNED-PAYLOAD means R2 won't reject a missing body), so storage.ts
-# prefers this binding and falls back to the S3 SDK only outside Cloudflare.
-# ⚠️ Verify it reaches the deployed Pages runtime via dashboard → Settings → Bindings;
-# binding propagation from wrangler.toml has been inconsistent (VIDEO_RENDER_QUEUE).
-[[r2_buckets]]
-binding = "MEDIA_BUCKET"
-bucket_name = "agency-files"
-
-# Private encrypted raw-email recovery evidence. This bucket has no public URL.
-# EMAIL_QUARANTINE_ENCRYPTION_SECRET must be configured as a Pages secret in
-# each deployed environment and must match the Email Routing Worker secret.
-[[r2_buckets]]
-binding = "EMAIL_QUARANTINE_BUCKET"
-bucket_name = "email-lead-quarantine"
-preview_bucket_name = "email-lead-quarantine-preview"
-
-# Private raw crawl snapshots for governed automotive site intelligence. Objects
-# are never exposed through a public route; tenant/domain/run prefixes support
-# lifecycle cleanup and reconciliation without mixing client data.
-[[r2_buckets]]
-binding = "SITE_INTELLIGENCE_BUCKET"
-bucket_name = "agency-site-intelligence"
-
-# Immutable, approved Search Authority publication objects. Pages writes only
-# through governed agency routes; the standalone public Worker has read access
-# to the same private bucket and exposes only manifest-allowlisted objects.
-[[r2_buckets]]
-binding = "SEARCH_AUTHORITY_BUCKET"
-bucket_name = "agency-search-authority-publications"
-preview_bucket_name = "agency-search-authority-publications-preview"
-
-# Private encrypted CRM search evaluation holdouts. Never expose publicly.
-[[r2_buckets]]
-binding = "CRM_SEARCH_SEALED_HOLDOUTS"
-bucket_name = "agency-crm-search-sealed-holdouts"
-preview_bucket_name = "agency-crm-search-sealed-holdouts-preview"
-
-# AI — Workers AI for embeddings and edge inference
-[ai]
-binding = "AI"
-
-# Vectorize — semantic search index for tasks, briefs, clients, knowledge
-# Create with: npx wrangler vectorize create agency-search --dimensions=768 --metric=cosine
-[[vectorize]]
-binding = "VECTORIZE"
-index_name = "agency-search"
-
-[[vectorize]]
-binding = "SITE_INTELLIGENCE_VECTORIZE"
-index_name = "automotive-site-intelligence"
-
-# Dedicated CRM semantic index; never reuse the generic VECTORIZE binding.
-[[vectorize]]
-binding = "CRM_SEARCH_VECTORIZE"
-index_name = "agency-crm-search"
-
-# Browser Rendering — headless Chromium for banner image export (PNG/JPG)
-# Enable in Cloudflare dashboard: Workers & Pages > Browser Rendering
-[browser]
-binding = "BROWSER"
-
-# Hyperdrive — edge TCP connection pooling for Neon Postgres (~9x faster queries)
-# db.ts uses pg.Client (TCP) with this binding; falls back to neon() HTTP in local dev.
-# Config points to direct Neon host (not -pooler) — Hyperdrive handles pooling.
-[[hyperdrive]]
-binding = "HYPERDRIVE"
-id = "900b4b74ec41462cbbabebd0aa8775aa"
-
-[[hyperdrive]]
-binding = "HYPERDRIVE_FRESH"
-id = "90228af3e2cc461bbc09accc3b47bd9f"
-
-# Service binding — Pages-to-Worker bridge for Cloudflare Workflows.
-# The standalone Worker keeps Workflow control logic out of Pages; Pages starts
-# instances through this binding and cron remains the fallback until cutover.
-[[services]]
-binding = "AGENCY_WORKFLOWS"
-service = "agency-workflows"
-
-[[services]]
-binding = "CRM_SEARCH_EVALUATION_RUNNER"
-service = "agency-crm-search-evaluation-runner"
-
-[[services]]
-binding = "CRM_SEARCH_ANALYTICS_KEY_MANAGER"
-service = "agency-crm-search-analytics-key-manager"
+# Bindings are declared only inside env.production and env.preview. Keeping the
+# top level binding-free prevents Cloudflare preview deploys from inheriting a
+# production mutable resource when an environment-specific entry is absent.
 
 # ============================================
 # Environment Variables (non-secret)
@@ -290,46 +119,10 @@ MCP_FINANCIAL_TOOLS_ENABLED = "false"
 # Flipping MCP_FINANCIAL_TOOLS_ENABLED without this on would expose money-movers under a read-only consent.
 MCP_REQUIRE_WRITE_SCOPE = "false"
 
-# Chat — Durable Objects (hosted in separate worker)
-[[durable_objects.bindings]]
-name = "CHAT_ROOMS"
-class_name = "ChatRoom"
-script_name = "chat-rooms-worker"
-
-# Board Events — Durable Objects (hosted in separate worker)
-[[durable_objects.bindings]]
-name = "BOARD_ROOMS"
-class_name = "BoardRoom"
-script_name = "board-events-worker"
-
-# Social Inbox Events — Durable Objects (hosted in separate worker)
-[[durable_objects.bindings]]
-name = "SOCIAL_INBOX_ROOMS"
-class_name = "InboxRoom"
-script_name = "social-inbox-rooms"
-
-# Banner Rooms — Durable Objects for real-time banner collaboration
-[[durable_objects.bindings]]
-name = "BANNER_ROOMS"
-class_name = "BannerRoom"
-script_name = "banner-rooms-worker"
-
-# Office Rooms — Durable Objects for virtual office presence (Phase 1a)
-[[durable_objects.bindings]]
-name = "OFFICE_ROOMS"
-class_name = "OfficeRoom"
-script_name = "office-room-worker"
-
-# Rate Limiter — Durable Object for the public tracking beacon (hosted in rate-limiter-worker)
-[[durable_objects.bindings]]
-name = "RATE_LIMITER"
-class_name = "RateLimiter"
-script_name = "rate-limiter-worker"
-
-# Pages bindings are non-inheritable. Both deployable environments repeat the
-# complete checked-in surface so Wrangler cannot silently inherit production
-# state into preview. Secret values remain dashboard-managed and the release
-# guard requires a separately signed name+digest readback for both environments.
+# Pages bindings are non-inheritable. Production declares the complete platform
+# surface; preview declares only the CRM resources used by the isolated E2E.
+# Secret values remain dashboard-managed and the release guard requires a
+# separately signed name+digest readback for both environments.
 [env.production]
 
 [[env.production.kv_namespaces]]
@@ -479,149 +272,39 @@ CRM_SEARCH_RELEASE_ENVIRONMENT = "production"
 
 [env.preview]
 
-[[env.preview.kv_namespaces]]
-binding = "CACHE"
-id = "c6f67b2b5e2d4e878c6cb0ad7ee0f001"
-
-[[env.preview.queues.producers]]
-binding = "JOBS_QUEUE"
-queue = "agency-jobs-preview"
-[[env.preview.queues.producers]]
-binding = "LEADS_DELIVERY_QUEUE"
-queue = "leads-delivery-queue-preview"
-[[env.preview.queues.producers]]
-binding = "CRM_EMAIL_INBOUND_QUEUE"
-queue = "crm-email-inbound-queue-preview"
-[[env.preview.queues.producers]]
-binding = "MEASUREMENT_DELIVERY_QUEUE"
-queue = "measurement-delivery-preview"
 [[env.preview.queues.producers]]
 binding = "CRM_SEARCH_INDEX_QUEUE"
 queue = "agency-crm-search-index-preview"
-[[env.preview.queues.producers]]
-binding = "MUSIC_QUEUE"
-queue = "music-gen-preview"
-[[env.preview.queues.producers]]
-binding = "TIMELINE_RENDER_QUEUE"
-queue = "timeline-render-preview"
-[[env.preview.queues.producers]]
-binding = "VIDEO_RENDER_QUEUE"
-queue = "video-render-preview"
-[[env.preview.queues.producers]]
-binding = "BANNER_RENDER_QUEUE"
-queue = "banner-render-preview"
-[[env.preview.queues.producers]]
-binding = "VIDEO_GENERATION_QUEUE"
-queue = "video-generation-preview"
-[[env.preview.queues.producers]]
-binding = "ASSET_INTELLIGENCE_QUEUE"
-queue = "asset-intelligence-preview"
-
-[[env.preview.r2_buckets]]
-binding = "MEDIA_BUCKET"
-bucket_name = "agency-files-preview"
-[[env.preview.r2_buckets]]
-binding = "EMAIL_QUARANTINE_BUCKET"
-bucket_name = "email-lead-quarantine-preview"
-[[env.preview.r2_buckets]]
-binding = "SITE_INTELLIGENCE_BUCKET"
-bucket_name = "agency-site-intelligence-preview"
-[[env.preview.r2_buckets]]
-binding = "SEARCH_AUTHORITY_BUCKET"
-bucket_name = "agency-search-authority-publications-preview"
-[[env.preview.r2_buckets]]
-binding = "CRM_SEARCH_SEALED_HOLDOUTS"
-bucket_name = "agency-crm-search-sealed-holdouts-preview"
 
 [env.preview.ai]
 binding = "AI"
-[env.preview.browser]
-binding = "BROWSER"
-
-[[env.preview.vectorize]]
-binding = "VECTORIZE"
-index_name = "agency-search-preview"
-[[env.preview.vectorize]]
-binding = "SITE_INTELLIGENCE_VECTORIZE"
-index_name = "automotive-site-intelligence-preview"
 [[env.preview.vectorize]]
 binding = "CRM_SEARCH_VECTORIZE"
 index_name = "agency-crm-search-preview"
 
-[[env.preview.hyperdrive]]
-binding = "HYPERDRIVE"
-id = "c6f67b2b5e2d4e878c6cb0ad7ee0f002"
-[[env.preview.hyperdrive]]
-binding = "HYPERDRIVE_FRESH"
-id = "c6f67b2b5e2d4e878c6cb0ad7ee0f003"
-
-[[env.preview.services]]
-binding = "AGENCY_WORKFLOWS"
-service = "agency-workflows-preview"
-[[env.preview.services]]
-binding = "CRM_SEARCH_EVALUATION_RUNNER"
-service = "agency-crm-search-evaluation-runner-preview"
-[[env.preview.services]]
-binding = "CRM_SEARCH_ANALYTICS_KEY_MANAGER"
-service = "agency-crm-search-analytics-key-manager-preview"
-
-[[env.preview.durable_objects.bindings]]
-name = "CHAT_ROOMS"
-class_name = "ChatRoom"
-script_name = "chat-rooms-worker-preview"
-[[env.preview.durable_objects.bindings]]
-name = "BOARD_ROOMS"
-class_name = "BoardRoom"
-script_name = "board-events-worker-preview"
-[[env.preview.durable_objects.bindings]]
-name = "SOCIAL_INBOX_ROOMS"
-class_name = "InboxRoom"
-script_name = "social-inbox-rooms-preview"
-[[env.preview.durable_objects.bindings]]
-name = "BANNER_ROOMS"
-class_name = "BannerRoom"
-script_name = "banner-rooms-worker-preview"
-[[env.preview.durable_objects.bindings]]
-name = "OFFICE_ROOMS"
-class_name = "OfficeRoom"
-script_name = "office-room-worker-preview"
-[[env.preview.durable_objects.bindings]]
-name = "RATE_LIMITER"
-class_name = "RateLimiter"
-script_name = "rate-limiter-worker-preview"
-
 [env.preview.vars]
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
-AI_GOVERNED_CATALOG_MODE = "legacy"
-EMAIL_FROM = "notification@adme.net.au"
-SEARCH_AUTHORITY_ENABLED = "true"
-NUXT_SEARCH_AUTHORITY_ENABLED = "true"
-NUXT_PUBLIC_SEARCH_AUTHORITY_ENABLED = "true"
-CRM_EMAIL_CONVERSATIONS_ENABLED = "false"
-CRM_EMAIL_REPLY_CURRENT_VERSION = "1"
-CRM_EMAIL_LEAD_ROUTE_DOMAIN = "xeroflow.io"
+SEARCH_AUTHORITY_ENABLED = "false"
+NUXT_SEARCH_AUTHORITY_ENABLED = "false"
+NUXT_PUBLIC_SEARCH_AUTHORITY_ENABLED = "false"
 PERSONA_AUDIENCE_PROVIDER_WRITES_ENABLED = "false"
 PERSONA_META_AUDIENCE_WRITES_ENABLED = "false"
 PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED = "false"
-USER_MEMBER_NOTIFICATIONS_DISABLED = "true"
 AI_GATEWAY_URL = ""
 CRM_SEARCH_PROVIDER_APIS_ENABLED = "false"
-AGENCY_WORKFLOWS_ENABLED = "true"
-SITE_INTELLIGENCE_ENABLED = "true"
+AGENCY_WORKFLOWS_ENABLED = "false"
+SITE_INTELLIGENCE_ENABLED = "false"
 SITE_INTELLIGENCE_AI_ENABLED = "false"
-NEARBY_MARKET_DISCOVERY_ENABLED = "false"
-AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256 = "8aa2f98fd3d621bb0ac8f0157622d86cae347e14cdb35f32375b9467778462f2"
 AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY = "false"
 AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED = "false"
-AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY = "false"
 MCP_SERVER_ENABLED = "false"
 MCP_WORKER_ORIGIN = ""
-MCP_GEN_TOOLS_ENABLED = "false"
-MCP_VIDEO_TOOLS_ENABLED = "false"
-MCP_BANNER_TOOLS_ENABLED = "false"
-MCP_FINANCIAL_TOOLS_ENABLED = "false"
-MCP_REQUIRE_WRITE_SCOPE = "false"
+SEND_ENABLED = "false"
+SEND_PUBLIC_ENABLED = "false"
+NUXT_SEND_ENABLED = "false"
+NUXT_PUBLIC_SEND_ENABLED = "false"
+NUXT_PUBLIC_SEND_PUBLIC_ENABLED = "false"
 CRM_SEARCH_RELEASE_ENVIRONMENT = "preview"
 
 # ============================================

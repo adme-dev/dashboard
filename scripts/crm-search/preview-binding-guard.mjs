@@ -131,7 +131,10 @@ function assertConfigMatchesReadback(readback, production, preview, pagesConfigT
     || Object.keys(config.env ?? {}).sort().join('\0') !== ['preview', 'production'].join('\0')) {
     throw new Error('crm_search_preview_binding_config_invalid')
   }
-  for (const [environment, actual] of [['production', production], ['preview', preview]]) {
+  const targetEnvironment = readback.pagesBranch === 'preview' ? 'preview' : 'production'
+  const actualByEnvironment = { production, preview }
+  for (const environment of [targetEnvironment]) {
+    const actual = actualByEnvironment[environment]
     const expected = expectedConfigBindings(config, environment)
     const nonSecret = new Map([...actual].filter(([key]) => !key.startsWith('secrets\0')))
     if (expected.size !== nonSecret.size
@@ -216,11 +219,11 @@ export function assertPreviewBindingReadback(readback, options = {}) {
   const previewEnvironment = validateEnvironment(readback.pagesInventory.preview, 'preview')
   const production = productionEnvironment.bindings
   const preview = previewEnvironment.bindings
-  if (production.size !== preview.size || [...production.keys()].some(key => !preview.has(key))) {
-    throw new Error('crm_search_preview_binding_inventory_incomplete')
-  }
-  for (const [key, target] of production) {
-    if (STATEFUL.has(key.split('\0', 1)[0]) && preview.get(key) === target) {
+  const productionStatefulTargets = new Set(
+    [...production].filter(([key]) => STATEFUL.has(key.split('\0', 1)[0])).map(([, target]) => target)
+  )
+  for (const [key, target] of preview) {
+    if (STATEFUL.has(key.split('\0', 1)[0]) && productionStatefulTargets.has(target)) {
       throw new Error('crm_search_preview_binding_readback_mismatch')
     }
   }

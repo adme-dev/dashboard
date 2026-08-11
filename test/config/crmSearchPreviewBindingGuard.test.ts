@@ -31,15 +31,14 @@ const previewIntegrationReadbacks = () => externalIntegrationNames.map(name => (
   name, enabled: name === 'database', targetIdentity: name === 'database' ? 'preview:database' : null,
   verifiedAt: '2026-08-11T00:00:00.000Z', source: 'cloudflare_api' as const
 }))
-const previewIntegrations = () => externalIntegrationNames.map(name => name === 'database'
-  ? {
-      name, state: 'enabled' as const, targetIdentityDigest: targetDigest('preview:database'),
-      verifiedAt: '2026-08-11T00:00:00.000Z'
-    }
-  : {
-      name, state: 'disabled' as const, targetIdentityDigest: null,
-      verifiedAt: '2026-08-11T00:00:00.000Z'
-    })
+const disabledPreviewIntegrationReadbacks = () => externalIntegrationNames.map(name => ({
+  name, enabled: false, targetIdentity: null,
+  verifiedAt: '2026-08-11T00:00:00.000Z', source: 'cloudflare_api' as const
+}))
+const previewIntegrations = () => externalIntegrationNames.map(name => ({
+  name, state: 'disabled' as const, targetIdentityDigest: null,
+  verifiedAt: '2026-08-11T00:00:00.000Z'
+}))
 const enabledIntegrationReadbacks = (environment: string) => externalIntegrationNames.map(name => ({
   name,
   enabled: true,
@@ -61,7 +60,7 @@ const productionIntegrationReadbacks = () => externalIntegrationNames.map((name)
   }
 })
 const previewResources = buildCrmSearchEnvironmentResources(
-  'preview', previewIntegrationReadbacks()
+  'preview', disabledPreviewIntegrationReadbacks()
 )
 const productionResources = buildCrmSearchEnvironmentResources(
   'production', productionIntegrationReadbacks()
@@ -169,6 +168,54 @@ describe('CRM search preview binding isolation', () => {
     expect(() => assertPreviewBindingReadback({
       ...readback,
       queue: 'agency-crm-search-index'
+    })).toThrow('crm_search_preview_binding_readback_mismatch')
+  })
+
+  it('allows production bindings to be absent from preview while rejecting aliases under other names', () => {
+    const categories = [
+      'ai', 'analytics_engine_datasets', 'browser', 'd1_databases', 'durable_objects',
+      'hyperdrive', 'kv_namespaces', 'queues', 'r2_buckets', 'secrets', 'services',
+      'vars', 'vectorize'
+    ]
+    const base = {
+      pagesProject: 'agency-dashboard', pagesBranch: 'preview',
+      worker: 'agency-crm-search-consumer-preview', vectorize: 'agency-crm-search-preview',
+      queue: 'agency-crm-search-index-preview',
+      deadLetterQueue: 'agency-crm-search-index-preview-dlq', retentionSeconds: 1_209_600,
+      mutableBindings: ['CRM_SEARCH_INDEX_QUEUE', 'CRM_SEARCH_VECTORIZE', 'DATABASE_URL'],
+      pagesInventory: {
+        version: 'crm-search-pages-environment-inventory-v1',
+        production: {
+          environment: 'production', categories, integrations: enabledIntegrations('production'),
+          bindings: [
+            { category: 'r2_buckets', binding: 'FILES', target: 'agency-files' },
+            { category: 'queues', binding: 'JOBS', target: 'agency-jobs' },
+            { category: 'secrets', binding: 'DATABASE_URL', target: 'a'.repeat(64) }
+          ]
+        },
+        preview: {
+          environment: 'preview', categories, integrations: disabledIntegrations(),
+          bindings: [
+            { category: 'queues', binding: 'CRM_SEARCH_INDEX_QUEUE', target: 'agency-crm-search-index-preview' },
+            { category: 'vectorize', binding: 'CRM_SEARCH_VECTORIZE', target: 'agency-crm-search-preview' },
+            { category: 'secrets', binding: 'DATABASE_URL', target: 'b'.repeat(64) }
+          ]
+        }
+      }
+    }
+    expect(assertPreviewBindingReadback(base)).toEqual({ ok: true })
+    expect(() => assertPreviewBindingReadback({
+      ...base,
+      pagesInventory: {
+        ...base.pagesInventory,
+        preview: {
+          ...base.pagesInventory.preview,
+          bindings: [
+            ...base.pagesInventory.preview.bindings,
+            { category: 'r2_buckets', binding: 'OTHER_FILES', target: 'agency-files' }
+          ]
+        }
+      }
     })).toThrow('crm_search_preview_binding_readback_mismatch')
   })
 
@@ -301,13 +348,13 @@ describe('CRM search preview binding isolation', () => {
     }
     const secrets = {
       production: [{ binding: 'DATABASE_URL', digest: 'a'.repeat(64) }],
-      preview: [{ binding: 'DATABASE_URL', digest: 'b'.repeat(64) }]
+      preview: [{ binding: 'SESSION_SECRET', digest: 'b'.repeat(64) }]
     }
     const readbacks = {
       production: externalIntegrationNames.map(name => ({
         name,
-        enabled: ['provider_apis', 'ai_gateway', 'mcp', 'meta', 'google', 'meta_audiences', 'google_audiences'].includes(name),
-        targetIdentity: ['provider_apis', 'ai_gateway', 'mcp', 'meta', 'google', 'meta_audiences', 'google_audiences'].includes(name)
+        enabled: ['database', 'provider_apis', 'ai_gateway', 'mcp', 'meta', 'google', 'meta_audiences', 'google_audiences'].includes(name),
+        targetIdentity: ['database', 'provider_apis', 'ai_gateway', 'mcp', 'meta', 'google', 'meta_audiences', 'google_audiences'].includes(name)
           ? name === 'ai_gateway'
             ? 'https://gateway.ai.cloudflare.com/v1/account/production'
             : name === 'mcp' ? 'https://mcp-production.example.com' : `production:${name}`
@@ -349,12 +396,19 @@ describe('CRM search preview binding isolation', () => {
     const config = readFileSync(new URL('../../wrangler.toml', import.meta.url), 'utf8')
     const previewVars = config.slice(config.indexOf('[env.preview.vars]'))
     for (const flag of [
-      'CRM_EMAIL_CONVERSATIONS_ENABLED', 'PERSONA_AUDIENCE_PROVIDER_WRITES_ENABLED',
+      'SEARCH_AUTHORITY_ENABLED', 'NUXT_SEARCH_AUTHORITY_ENABLED',
+      'NUXT_PUBLIC_SEARCH_AUTHORITY_ENABLED', 'PERSONA_AUDIENCE_PROVIDER_WRITES_ENABLED',
       'PERSONA_META_AUDIENCE_WRITES_ENABLED', 'PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED',
-      'CRM_SEARCH_PROVIDER_APIS_ENABLED', 'MCP_SERVER_ENABLED', 'MCP_GEN_TOOLS_ENABLED',
-      'MCP_VIDEO_TOOLS_ENABLED', 'MCP_BANNER_TOOLS_ENABLED'
+      'CRM_SEARCH_PROVIDER_APIS_ENABLED', 'MCP_SERVER_ENABLED', 'AGENCY_WORKFLOWS_ENABLED',
+      'SITE_INTELLIGENCE_ENABLED', 'SEND_ENABLED', 'SEND_PUBLIC_ENABLED'
     ]) expect(previewVars).toContain(`${flag} = "false"`)
     expect(previewVars).toContain('AI_GATEWAY_URL = ""')
     expect(previewVars).toContain('MCP_WORKER_ORIGIN = ""')
+    const previewBindings = config.slice(
+      config.indexOf('[env.preview]'), config.indexOf('[env.preview.vars]')
+    )
+    expect(previewBindings).toContain('queue = "agency-crm-search-index-preview"')
+    expect(previewBindings).toContain('index_name = "agency-crm-search-preview"')
+    expect(previewBindings).not.toMatch(/agency-files|HYPERDRIVE|services|durable_objects/u)
   })
 })
