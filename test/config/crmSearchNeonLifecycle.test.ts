@@ -389,6 +389,15 @@ describe('CRM search guarded Neon lifecycle', () => {
         checkedAt: '2026-08-11T00:01:10.000Z',
         tables: { crm_people: 0, crm_companies: 0, crm_opportunities: 0 }
       }
+      if (step.action === 'migrate-prerequisites') return {
+        ok: true,
+        applied: plan.prerequisiteMigrationPaths,
+        sourceSchemaProof: {
+          method: 'pg_dump_schema_only',
+          sourceBranchId: plan.create.branch.parent_id,
+          sha256: '9'.repeat(64)
+        }
+      }
       if (step.action === 'delete') return { operations: [{ id: 'op-delete' }] }
       return { ok: true }
     })
@@ -434,6 +443,13 @@ describe('CRM search guarded Neon lifecycle', () => {
       providerParentId: null,
       parentBindingSource: 'signed_create_request'
     })
+    expect(result.attestation.sourceSchemaProof).toEqual({
+      method: 'pg_dump_schema_only',
+      sourceBranchId: plan.create.branch.parent_id,
+      sha256: '9'.repeat(64)
+    })
+    expect(execute.mock.calls.find(([step]) => step.action === 'migrate-prerequisites')?.[0])
+      .toMatchObject({ sourceBranchId: plan.create.branch.parent_id })
     expect(result.cleanup).toMatchObject({
       branchId: 'br-crm-search-preview-1234', absent: true
     })

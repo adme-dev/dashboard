@@ -89,6 +89,22 @@ function normalizeSourceTableProof(proof, organisationScopeId) {
   })
 }
 
+function normalizeSourceSchemaProof(proof, sourceBranchId) {
+  if (!proof || Object.keys(proof).sort().join('\0') !== [
+    'method', 'sourceBranchId', 'sha256'
+  ].sort().join('\0')
+  || proof.method !== 'pg_dump_schema_only'
+  || proof.sourceBranchId !== sourceBranchId
+  || !DIGEST.test(proof.sha256 ?? '')) {
+    throw new Error('crm_search_neon_source_schema_proof_required')
+  }
+  return Object.freeze({
+    method: proof.method,
+    sourceBranchId: proof.sourceBranchId,
+    sha256: proof.sha256
+  })
+}
+
 function assertGovernanceAuthority(governanceApproval) {
   const productionKeys = [
     'id', 'revision', 'type', 'artifactManifestDigest', 'bindingManifestDigest',
@@ -167,6 +183,7 @@ export function createNeonTargetAttestation(input) {
     expiresAt: input.expiresAt,
     neonApi,
     apiResponseSha256: digest(neonApi),
+    sourceSchemaProof: input.sourceSchemaProof ?? null,
     sourceTableProof: input.sourceTableProof,
     signerKeyId: input.signing.signerKeyId,
     signatureAlgorithm: 'ed25519'
@@ -189,12 +206,22 @@ export function createNeonTargetAttestation(input) {
     : branch?.parentBindingSource === 'signed_create_request'
       && branch.providerParentId === null
   let sourceTableProof
+  let sourceSchemaProof = null
   try {
     sourceTableProof = normalizeSourceTableProof(
       unsigned.sourceTableProof, governanceApproval?.organisationScopeId
     )
   } catch {
     throw new Error('crm_search_neon_attestation_invalid')
+  }
+  if (governanceApproval.type === 'preview_migration') {
+    try {
+      sourceSchemaProof = normalizeSourceSchemaProof(
+        unsigned.sourceSchemaProof, neonApi?.sourceBranch?.id
+      )
+    } catch {
+      throw new Error('crm_search_neon_attestation_invalid')
+    }
   }
   if (!SHA.test(unsigned.sourceGitSha)
     || canonical(unsigned.migrationPaths) !== canonical(expectedMigrationPaths)
@@ -211,6 +238,7 @@ export function createNeonTargetAttestation(input) {
     || branch.initSource !== 'parent-schema'
     || !Number.isFinite(Date.parse(neonApi.branchReadbackAt))
     || branch.createdAt !== unsigned.createdAt || branch.expiresAt !== unsigned.expiresAt
+    || canonical(unsigned.sourceSchemaProof) !== canonical(sourceSchemaProof)
     || canonical(unsigned.sourceTableProof) !== canonical(sourceTableProof)
     || /(^|[^a-z])(prod|production|main|primary|shared|default)([^a-z]|$)/u.test(
       `${neonApi.project.id} ${branch.id} ${branch.name}`.toLowerCase()
@@ -305,6 +333,7 @@ export function createNeonLifecycleExecutor(options) {
       }
       return await databaseAdapter.applyPrerequisiteMigrations({
         projectId: step.projectId, branchId: step.branchId, endpoint: step.endpoint,
+        sourceBranchId: step.sourceBranchId,
         migrationPaths: step.migrationPaths, migrationDigests: step.migrationDigests
       })
     }
@@ -424,6 +453,7 @@ export async function runNeonLifecycle({
   let lifecycleError
   let cleanupError
   let cleanupReadback
+  let sourceSchemaProof = null
   try {
     await readFreshApproval('before-create')
     const created = await execute({
@@ -462,12 +492,16 @@ export async function runNeonLifecycle({
     assertDirectEndpoint(endpoint, trustedSharedEndpointDenyset)
     if (hasPreviewBootstrap) {
       await readFreshApproval('before-prerequisites')
-      await execute({
+      const prerequisiteResult = await execute({
         action: 'migrate-prerequisites', projectId: plan.projectId, branchId, endpoint,
+        sourceBranchId: plan.create.branch.parent_id,
         migrationPaths: plan.prerequisiteMigrationPaths,
         migrationDigests: plan.previewMigrationDigests,
         governanceApproval
       })
+      sourceSchemaProof = normalizeSourceSchemaProof(
+        prerequisiteResult?.sourceSchemaProof, plan.create.branch.parent_id
+      )
     }
     const empty = await execute({
       action: 'assert-empty', projectId: plan.projectId, branchId,
@@ -518,6 +552,7 @@ export async function runNeonLifecycle({
       expiresAt: neonApi.branch.expiresAt,
       neonApi,
       sourceTableProof,
+      sourceSchemaProof,
       trustedSharedEndpointDenyset,
       signing
     })

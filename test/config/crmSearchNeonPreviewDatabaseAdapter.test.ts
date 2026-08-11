@@ -6,6 +6,7 @@ import { createNeonPreviewDatabaseAdapter } from '../../scripts/crm-search/neon-
 
 const projectId = 'square-tooth-23821574'
 const branchId = 'br-crm-search-preview-1234'
+const sourceBranchId = 'br-small-hall-a4qtwjgo'
 const endpoint = {
   id: 'ep-crm-search-preview-1234',
   branchId,
@@ -48,6 +49,91 @@ function dependencies(overrides: Record<string, unknown> = {}) {
 }
 
 describe('CRM search Neon preview database adapter', () => {
+  it('copies only parent DDL in memory before applying preview prerequisites', async () => {
+    const fetchImpl = vi.fn(async (input: string) => {
+      const source = input.includes(`/branches/${sourceBranchId}/`)
+        || input.includes(`branch_id=${sourceBranchId}`)
+      if (input.endsWith('/roles')) return jsonResponse({ roles: [{ name: 'neondb_owner' }] })
+      if (input.endsWith('/databases')) {
+        return jsonResponse({ databases: [{ name: 'neondb', owner_name: 'neondb_owner' }] })
+      }
+      return jsonResponse({
+        uri: source
+          ? 'postgresql://neondb_owner:source-password@ep-source-direct-1234.ap-southeast-2.aws.neon.tech/neondb?sslmode=require'
+          : `postgresql://neondb_owner:target-password@${endpoint.host}/neondb?sslmode=require`
+      })
+    })
+    const schemaSql = [
+      '-- PostgreSQL database schema dump',
+      'CREATE TABLE public.agency_clients (id uuid PRIMARY KEY);'
+    ].join('\n')
+    const spawnSyncImpl = vi.fn()
+      .mockReturnValueOnce({ status: 0, stdout: schemaSql, stderr: '' })
+      .mockReturnValueOnce({ status: 0, stdout: 'missing\n', stderr: '' })
+      .mockReturnValueOnce({ status: 0, stdout: '', stderr: '' })
+      .mockReturnValueOnce({ status: 0, stdout: 'ready\n', stderr: '' })
+      .mockReturnValue({ status: 0, stdout: '', stderr: '' })
+    const adapter = createNeonPreviewDatabaseAdapter({
+      apiToken: 'oauth-access-token-not-logged',
+      sourceBranchId,
+      pgDumpCommand: '/opt/homebrew/opt/postgresql@17/bin/pg_dump',
+      fetchImpl,
+      spawnSyncImpl,
+      sleep: vi.fn().mockResolvedValue(undefined),
+      schemaPollAttempts: 1
+    })
+
+    await expect(adapter.applyPrerequisiteMigrations({
+      projectId, branchId, sourceBranchId, endpoint,
+      migrationPaths: migrationPaths.slice(0, 2), migrationDigests
+    })).resolves.toEqual({
+      ok: true,
+      applied: migrationPaths.slice(0, 2),
+      sourceSchemaProof: {
+        method: 'pg_dump_schema_only',
+        sourceBranchId,
+        sha256: createHash('sha256').update(schemaSql).digest('hex')
+      }
+    })
+
+    expect(spawnSyncImpl.mock.calls[0]?.[0]).toBe('/opt/homebrew/opt/postgresql@17/bin/pg_dump')
+    expect(spawnSyncImpl.mock.calls[0]?.[1]).toEqual(expect.arrayContaining([
+      '--schema-only', '--no-owner', '--no-privileges'
+    ]))
+    expect(spawnSyncImpl.mock.calls[0]?.[2]?.env).toMatchObject({
+      PGHOST: 'ep-source-direct-1234.ap-southeast-2.aws.neon.tech',
+      PGPASSWORD: 'source-password'
+    })
+    expect(spawnSyncImpl.mock.calls[2]?.[0]).toBe('psql')
+    expect(spawnSyncImpl.mock.calls[2]?.[1]).toContain('--single-transaction')
+    expect(spawnSyncImpl.mock.calls[2]?.[2]).toMatchObject({
+      input: schemaSql,
+      env: expect.objectContaining({
+        PGHOST: endpoint.host,
+        PGPASSWORD: 'target-password'
+      })
+    })
+    expect(spawnSyncImpl.mock.calls.flatMap(call => call[1] as string[]).join(' '))
+      .not.toContain('source-password')
+
+    const unsafeSpawn = vi.fn().mockReturnValue({
+      status: 0,
+      stdout: `${schemaSql}\nCOPY public.agency_clients (id) FROM stdin;\n`,
+      stderr: ''
+    })
+    const unsafeAdapter = createNeonPreviewDatabaseAdapter({
+      apiToken: 'oauth-access-token-not-logged',
+      sourceBranchId,
+      fetchImpl,
+      spawnSyncImpl: unsafeSpawn
+    })
+    await expect(unsafeAdapter.applyPrerequisiteMigrations({
+      projectId, branchId, sourceBranchId, endpoint,
+      migrationPaths: migrationPaths.slice(0, 2), migrationDigests
+    })).rejects.toThrow('crm_search_neon_parent_schema_dump_invalid')
+    expect(unsafeSpawn).toHaveBeenCalledTimes(1)
+  })
+
   it('waits for the copied parent schema before applying prerequisite migrations', async () => {
     const deps = dependencies()
     deps.spawnSyncImpl.mockReset()
