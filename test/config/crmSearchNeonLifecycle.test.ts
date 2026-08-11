@@ -1,4 +1,4 @@
-import { generateKeyPairSync, sign } from 'node:crypto'
+import { createHash, generateKeyPairSync, sign } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 
 import { canonicalBootstrapApprovalPayload } from '../../scripts/crm-search/bootstrap-resource-approval.mjs'
@@ -8,6 +8,7 @@ import {
   createNeonTargetAttestation,
   runNeonLifecycle
 } from '../../scripts/crm-search/neon-lifecycle.mjs'
+import { canonicalPreviewNeonBootstrapPayload } from '../../scripts/crm-search/preview-neon-bootstrap-authorization.mjs'
 
 const sha = 'a'.repeat(40)
 const digest = (value: string) => value.repeat(64)
@@ -64,6 +65,64 @@ function activeReadback(payload: ReturnType<typeof migrationApprovalFixture>['pa
     status: 'active', revokedAt: null,
     readbackAt: '2026-08-11T00:00:30.000Z',
     readbackSource: 'direct_neon'
+  }
+}
+
+function previewBootstrapFixture(plan: ReturnType<typeof buildNeonLifecyclePlan>) {
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+  const payload = {
+    version: 'crm-search-preview-neon-bootstrap-authorization-v1',
+    approvalId: '50000000-0000-4000-8000-000000000005',
+    environment: 'preview',
+    implementationSha: plan.implementationSha,
+    neonProjectId: plan.projectId,
+    neonParentBranchId: plan.create.branch.parent_id,
+    organisationScopeId: '20000000-0000-4000-8000-000000000002',
+    branchName: plan.create.branch.name,
+    branchExpiresAt: plan.create.branch.expires_at,
+    migrationDigests: plan.migrationDigests,
+    pagesPreviewDigest: 'b'.repeat(64),
+    resourceReadbackDigest: 'c'.repeat(64),
+    maximumCostUsdMicros: 0,
+    cleanupRequired: true,
+    reason: 'User-approved isolated preview migration proof with mandatory branch cleanup',
+    issuedAt: '2026-08-11T00:00:00.000Z',
+    expiresAt: '2026-08-11T00:20:00.000Z'
+  }
+  const envelope = {
+    version: 'crm-search-preview-neon-bootstrap-envelope-v1',
+    keyId: 'preview-neon-ephemeral-v1',
+    payload,
+    signature: sign(
+      null,
+      Buffer.from(canonicalPreviewNeonBootstrapPayload(payload), 'utf8'),
+      privateKey
+    ).toString('base64url')
+  }
+  return {
+    envelope,
+    verification: {
+      keyring: {
+        version: 'crm-search-preview-neon-bootstrap-keyring-v1',
+        activeKeyId: envelope.keyId,
+        keys: [{
+          keyId: envelope.keyId,
+          publicKeyPem: publicKey.export({ type: 'spki', format: 'pem' }).toString()
+        }]
+      },
+      expected: {
+        implementationSha: payload.implementationSha,
+        neonProjectId: payload.neonProjectId,
+        neonParentBranchId: payload.neonParentBranchId,
+        organisationScopeId: payload.organisationScopeId,
+        branchName: payload.branchName,
+        branchExpiresAt: payload.branchExpiresAt,
+        migrationDigests: payload.migrationDigests,
+        pagesPreviewDigest: payload.pagesPreviewDigest,
+        resourceReadbackDigest: payload.resourceReadbackDigest
+      }
+    },
+    payload
   }
 }
 
@@ -282,6 +341,84 @@ describe('CRM search guarded Neon lifecycle', () => {
       trustedSharedEndpointDenyset: ['ep-production-shared-a1b2c3d4'],
       signing: { signerKeyId: 'crm-search-task18-test-key', privateKey }
     })).toThrow('crm_search_neon_attestation_invalid')
+  })
+
+  it('uses short-lived preview-only bootstrap authority when production approval tables do not exist', async () => {
+    const plan = buildNeonLifecyclePlan({
+      projectId: 'square-tooth-23821574', expectedProjectId: 'square-tooth-23821574',
+      parentBranchId: 'br-small-hall-a4qtwjgo', implementationSha: sha,
+      nowMs: Date.parse('2026-08-11T00:00:00.000Z')
+    })
+    const bootstrap = previewBootstrapFixture(plan)
+    const { privateKey } = generateKeyPairSync('ed25519')
+    const readCurrentPreviewBootstrap = vi.fn().mockResolvedValue({
+      source: 'local_ephemeral_approval', status: 'active', revokedAt: null,
+      readbackAt: '2026-08-11T00:01:00.000Z', envelope: bootstrap.envelope
+    })
+    const execute = vi.fn(async (step: { action: string, phase?: string }) => {
+      if (step.action === 'create') return {
+        branch: {
+          id: 'br-crm-search-preview-1234', project_id: plan.projectId,
+          parent_id: plan.create.branch.parent_id, name: plan.create.branch.name,
+          created_at: '2026-08-11T00:00:00.000Z', expires_at: plan.create.branch.expires_at
+        },
+        endpoints: [{
+          id: 'ep-crm-search-preview-1234', branch_id: 'br-crm-search-preview-1234',
+          host: 'ep-crm-search-preview-1234.ap-southeast-2.aws.neon.tech'
+        }],
+        operations: [{ id: 'op-create' }]
+      }
+      if (step.action === 'read-branch') return step.phase === 'post-delete'
+        ? { branch: null, readAt: '2026-08-11T00:03:00.000Z' }
+        : {
+            branch: {
+              id: 'br-crm-search-preview-1234', project_id: plan.projectId,
+              parent_id: plan.create.branch.parent_id, name: plan.create.branch.name,
+              init_source: 'schema-only', created_at: '2026-08-11T00:00:00.000Z',
+              expires_at: plan.create.branch.expires_at
+            },
+            readAt: '2026-08-11T00:01:00.000Z'
+          }
+      if (step.action === 'assert-empty') return {
+        organisationScopeId: bootstrap.payload.organisationScopeId,
+        checkedAt: '2026-08-11T00:01:10.000Z',
+        tables: { crm_people: 0, crm_companies: 0, crm_opportunities: 0 }
+      }
+      if (step.action === 'delete') return { operations: [{ id: 'op-delete' }] }
+      return { ok: true }
+    })
+
+    const result = await runNeonLifecycle({
+      dryRun: false,
+      executeFlag: 'EXECUTE PREVIEW NEON BOOTSTRAP',
+      previewBootstrapEnvelope: bootstrap.envelope,
+      previewBootstrapVerification: bootstrap.verification,
+      readCurrentPreviewBootstrap,
+      currentTime: () => Date.parse('2026-08-11T00:01:00.000Z'),
+      plan,
+      trustedSharedEndpointDenyset: ['ep-production-shared-a1b2c3d4'],
+      signing: { signerKeyId: 'crm-search-preview-attestation-v1', privateKey },
+      execute
+    })
+
+    expect(readCurrentPreviewBootstrap).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      phase: 'before-create', approvalId: bootstrap.payload.approvalId
+    }))
+    expect(readCurrentPreviewBootstrap).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      phase: 'before-migrate', approvalId: bootstrap.payload.approvalId
+    }))
+    expect(result.attestation.governanceApproval).toEqual({
+      id: bootstrap.payload.approvalId,
+      type: 'preview_migration',
+      migrationSetDigest: createHash('sha256')
+        .update(canonicalPreviewNeonBootstrapPayload(plan.migrationDigests), 'utf8').digest('hex'),
+      pagesPreviewDigest: bootstrap.payload.pagesPreviewDigest,
+      resourceReadbackDigest: bootstrap.payload.resourceReadbackDigest,
+      organisationScopeId: bootstrap.payload.organisationScopeId
+    })
+    expect(result.cleanup).toMatchObject({
+      branchId: 'br-crm-search-preview-1234', absent: true
+    })
   })
 
   it('rejects a data-bearing provider readback even when the caller requested schema-only', async () => {

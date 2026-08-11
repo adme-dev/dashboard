@@ -6,6 +6,10 @@ import {
   assertFreshDirectNeonApprovalReadback,
   verifyReleaseApprovalEnvelope
 } from './bootstrap-resource-approval.mjs'
+import {
+  assertFreshPreviewNeonBootstrapReadback,
+  verifyPreviewNeonBootstrapAuthorization
+} from './preview-neon-bootstrap-authorization.mjs'
 
 const SHA = /^[a-f0-9]{40}$/u
 const DIGEST = /^[a-f0-9]{64}$/u
@@ -18,6 +22,7 @@ const REQUIRED_MIGRATION_PATHS = Object.freeze([
 const REQUIRED_EMPTY_SOURCE_TABLES = Object.freeze([
   'crm_people', 'crm_companies', 'crm_opportunities'
 ])
+const EXACT_PREVIEW_EXECUTE_FLAG = 'EXECUTE PREVIEW NEON BOOTSTRAP'
 
 function canonical(value) {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value)
@@ -77,6 +82,32 @@ function normalizeSourceTableProof(proof, organisationScopeId) {
   })
 }
 
+function assertGovernanceAuthority(governanceApproval) {
+  const productionKeys = [
+    'id', 'revision', 'type', 'artifactManifestDigest', 'bindingManifestDigest',
+    'evidenceBundleHash', 'organisationScopeId'
+  ]
+  const previewKeys = [
+    'id', 'type', 'migrationSetDigest', 'pagesPreviewDigest',
+    'resourceReadbackDigest', 'organisationScopeId'
+  ]
+  const production = governanceApproval?.type === 'production_migration'
+    && Object.keys(governanceApproval).sort().join('\0') === productionKeys.sort().join('\0')
+    && UUID.test(governanceApproval.id ?? '')
+    && UUID.test(governanceApproval.organisationScopeId ?? '')
+    && Number.isSafeInteger(governanceApproval.revision) && governanceApproval.revision >= 0
+    && [governanceApproval.artifactManifestDigest, governanceApproval.bindingManifestDigest,
+      governanceApproval.evidenceBundleHash].every(value => DIGEST.test(value ?? ''))
+  const preview = governanceApproval?.type === 'preview_migration'
+    && Object.keys(governanceApproval).sort().join('\0') === previewKeys.sort().join('\0')
+    && UUID.test(governanceApproval.id ?? '')
+    && UUID.test(governanceApproval.organisationScopeId ?? '')
+    && [governanceApproval.migrationSetDigest, governanceApproval.pagesPreviewDigest,
+      governanceApproval.resourceReadbackDigest].every(value => DIGEST.test(value ?? ''))
+  if (!production && !preview) throw new Error('crm_search_neon_attestation_invalid')
+  return governanceApproval
+}
+
 export function buildNeonLifecyclePlan(input) {
   if (!input.projectId || input.projectId !== input.expectedProjectId) {
     throw new Error('crm_search_neon_project_mismatch')
@@ -133,7 +164,12 @@ export function createNeonTargetAttestation(input) {
   const expiresAt = Date.parse(unsigned.expiresAt)
   const branch = neonApi?.branch
   const exactMigrationDigests = workspaceMigrationDigests()
-  const governanceApproval = unsigned.governanceApproval
+  let governanceApproval
+  try {
+    governanceApproval = assertGovernanceAuthority(unsigned.governanceApproval)
+  } catch {
+    throw new Error('crm_search_neon_attestation_invalid')
+  }
   let sourceTableProof
   try {
     sourceTableProof = normalizeSourceTableProof(
@@ -142,24 +178,11 @@ export function createNeonTargetAttestation(input) {
   } catch {
     throw new Error('crm_search_neon_attestation_invalid')
   }
-  const governanceDigestsValid = [governanceApproval?.artifactManifestDigest,
-    governanceApproval?.bindingManifestDigest,
-    governanceApproval?.evidenceBundleHash].every(value => DIGEST.test(value ?? ''))
   if (!SHA.test(unsigned.sourceGitSha)
     || canonical(unsigned.migrationPaths) !== canonical(REQUIRED_MIGRATION_PATHS)
     || Object.keys(unsigned.migrationDigests).sort().join('\0') !== [...REQUIRED_MIGRATION_PATHS].sort().join('\0')
     || Object.values(unsigned.migrationDigests).some(value => !DIGEST.test(value))
     || canonical(unsigned.migrationDigests) !== canonical(exactMigrationDigests)
-    || !governanceApproval
-    || Object.keys(governanceApproval).sort().join('\0') !== [
-      'id', 'revision', 'type', 'artifactManifestDigest', 'bindingManifestDigest',
-      'evidenceBundleHash', 'organisationScopeId'
-    ].sort().join('\0')
-    || governanceApproval.type !== 'production_migration'
-    || !UUID.test(governanceApproval.id)
-    || !UUID.test(governanceApproval.organisationScopeId)
-    || !Number.isSafeInteger(governanceApproval.revision) || governanceApproval.revision < 0
-    || !governanceDigestsValid
     || !Number.isFinite(createdAt) || !Number.isFinite(expiresAt)
     || expiresAt <= createdAt || expiresAt > createdAt + 24 * 60 * 60_000
     || !neonApi?.project?.id || !neonApi?.sourceBranch?.id || !branch?.id
@@ -268,7 +291,8 @@ export function createNeonLifecycleExecutor(options) {
 
 export async function runNeonLifecycle({
   dryRun, approvalEnvelope, approvalVerification, readCurrentApproval, currentTime,
-  plan, trustedSharedEndpointDenyset, signing, execute
+  executeFlag, previewBootstrapEnvelope, previewBootstrapVerification,
+  readCurrentPreviewBootstrap, plan, trustedSharedEndpointDenyset, signing, execute
 }) {
   if (!plan) throw new Error('crm_search_neon_runtime_invalid')
   if (dryRun === true) {
@@ -286,37 +310,85 @@ export async function runNeonLifecycle({
       ]
     }
   }
-  if (!approvalEnvelope || !approvalVerification || typeof readCurrentApproval !== 'function'
-    || typeof currentTime !== 'function') {
+  const hasProductionApproval = Boolean(
+    approvalEnvelope || approvalVerification || readCurrentApproval
+  )
+  const hasPreviewBootstrap = Boolean(
+    previewBootstrapEnvelope || previewBootstrapVerification || readCurrentPreviewBootstrap
+  )
+  if (typeof currentTime !== 'function' || hasProductionApproval === hasPreviewBootstrap) {
     throw new Error('crm_search_neon_migration_approval_required')
   }
   if (typeof execute !== 'function') throw new Error('crm_search_neon_runtime_invalid')
-  const approvalNowMs = currentTime()
-  const approval = await verifyReleaseApprovalEnvelope(approvalEnvelope, {
-    ...approvalVerification,
-    nowMs: approvalNowMs,
-    expectedType: 'production_migration'
-  })
-  if (approval.implementationGitSha !== plan.implementationSha) {
-    throw new Error('crm_search_neon_migration_approval_mismatch')
-  }
-  const governanceApproval = Object.freeze({
-    id: approval.approvalId,
-    revision: approval.approvalRevision,
-    type: approval.type,
-    artifactManifestDigest: approval.artifactManifestDigest,
-    bindingManifestDigest: approval.bindingManifestDigest,
-    evidenceBundleHash: approval.evidenceBundleHash,
-    organisationScopeId: approval.organisationScopeId
-  })
-  const readFreshApproval = async (phase) => {
-    const readback = await readCurrentApproval({
-      approvalId: approval.approvalId,
-      approvalRevision: approval.approvalRevision,
-      phase,
-      projectId: plan.projectId
+  let approval
+  let governanceApproval
+  let readFreshApproval
+  if (hasPreviewBootstrap) {
+    if (executeFlag !== EXACT_PREVIEW_EXECUTE_FLAG
+      || typeof readCurrentPreviewBootstrap !== 'function') {
+      throw new Error('crm_search_neon_migration_approval_required')
+    }
+    approval = verifyPreviewNeonBootstrapAuthorization(previewBootstrapEnvelope, {
+      ...previewBootstrapVerification,
+      nowMs: currentTime()
     })
-    assertFreshDirectNeonApprovalReadback(readback, approval, currentTime())
+    if (approval.implementationSha !== plan.implementationSha
+      || approval.neonProjectId !== plan.projectId
+      || approval.neonParentBranchId !== plan.create.branch.parent_id
+      || approval.branchName !== plan.create.branch.name
+      || approval.branchExpiresAt !== plan.create.branch.expires_at
+      || canonical(approval.migrationDigests) !== canonical(plan.migrationDigests)) {
+      throw new Error('crm_search_neon_migration_approval_mismatch')
+    }
+    governanceApproval = Object.freeze({
+      id: approval.approvalId,
+      type: 'preview_migration',
+      migrationSetDigest: digest(plan.migrationDigests),
+      pagesPreviewDigest: approval.pagesPreviewDigest,
+      resourceReadbackDigest: approval.resourceReadbackDigest,
+      organisationScopeId: approval.organisationScopeId
+    })
+    readFreshApproval = async (phase) => {
+      const readback = await readCurrentPreviewBootstrap({
+        approvalId: approval.approvalId,
+        phase,
+        projectId: plan.projectId
+      })
+      assertFreshPreviewNeonBootstrapReadback(readback, approval, {
+        ...previewBootstrapVerification,
+        nowMs: currentTime()
+      })
+    }
+  } else {
+    if (!approvalEnvelope || !approvalVerification || typeof readCurrentApproval !== 'function') {
+      throw new Error('crm_search_neon_migration_approval_required')
+    }
+    approval = await verifyReleaseApprovalEnvelope(approvalEnvelope, {
+      ...approvalVerification,
+      nowMs: currentTime(),
+      expectedType: 'production_migration'
+    })
+    if (approval.implementationGitSha !== plan.implementationSha) {
+      throw new Error('crm_search_neon_migration_approval_mismatch')
+    }
+    governanceApproval = Object.freeze({
+      id: approval.approvalId,
+      revision: approval.approvalRevision,
+      type: approval.type,
+      artifactManifestDigest: approval.artifactManifestDigest,
+      bindingManifestDigest: approval.bindingManifestDigest,
+      evidenceBundleHash: approval.evidenceBundleHash,
+      organisationScopeId: approval.organisationScopeId
+    })
+    readFreshApproval = async (phase) => {
+      const readback = await readCurrentApproval({
+        approvalId: approval.approvalId,
+        approvalRevision: approval.approvalRevision,
+        phase,
+        projectId: plan.projectId
+      })
+      assertFreshDirectNeonApprovalReadback(readback, approval, currentTime())
+    }
   }
   let branchId = null
   let result
