@@ -288,7 +288,7 @@ export function createNeonPreviewDatabaseAdapter(options = {}) {
           env: connectionEnvironment(target),
           input: schemaSql,
           maxBuffer: 64 * 1024 * 1024,
-          timeout: 120_000
+          timeout: 240_000
         }
       )
       if (restored?.status !== 0) throw new Error('crm_search_neon_parent_schema_restore_failed')

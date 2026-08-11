@@ -108,6 +108,7 @@ describe('CRM search Neon preview database adapter', () => {
     expect(spawnSyncImpl.mock.calls[2]?.[1]).toContain('--single-transaction')
     expect(spawnSyncImpl.mock.calls[2]?.[2]).toMatchObject({
       input: schemaSql,
+      timeout: 240_000,
       env: expect.objectContaining({
         PGHOST: endpoint.host,
         PGPASSWORD: 'target-password'
