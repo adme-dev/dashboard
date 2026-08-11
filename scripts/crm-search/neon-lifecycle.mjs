@@ -416,7 +416,7 @@ export async function runNeonLifecycle({
       || branch.parent_id !== plan.create.branch.parent_id
       || branch.name !== plan.create.branch.name
       || branch.init_source !== 'schema-only'
-      || branch.expires_at !== plan.create.branch.expires_at
+      || Date.parse(branch.expires_at) !== Date.parse(plan.create.branch.expires_at)
       || !Number.isFinite(Date.parse(branch.created_at))
       || !Number.isFinite(Date.parse(branchReadback.readAt))) {
       throw new Error('crm_search_neon_schema_only_readback_required')
@@ -457,7 +457,7 @@ export async function runNeonLifecycle({
     }
     if (neonApi.branch.projectId !== neonApi.project.id
       || neonApi.branch.parentId !== neonApi.sourceBranch.id
-      || neonApi.branch.expiresAt !== plan.create.branch.expires_at) {
+      || Date.parse(neonApi.branch.expiresAt) !== Date.parse(plan.create.branch.expires_at)) {
       throw new Error('crm_search_neon_api_binding_invalid')
     }
     const attestation = createNeonTargetAttestation({

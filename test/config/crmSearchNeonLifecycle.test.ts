@@ -375,7 +375,7 @@ describe('CRM search guarded Neon lifecycle', () => {
               id: 'br-crm-search-preview-1234', project_id: plan.projectId,
               parent_id: plan.create.branch.parent_id, name: plan.create.branch.name,
               init_source: 'schema-only', created_at: '2026-08-11T00:00:00.000Z',
-              expires_at: plan.create.branch.expires_at
+              expires_at: plan.create.branch.expires_at.replace('.000Z', 'Z')
             },
             readAt: '2026-08-11T00:01:00.000Z'
           }
