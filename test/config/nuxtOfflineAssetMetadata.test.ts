@@ -12,6 +12,7 @@ async function loadNuxtConfig() {
         collections?: string[]
       }
       clientBundle?: {
+        icons?: string[]
         scan?: boolean | {
           globInclude?: string[]
           globExclude?: string[]
@@ -35,6 +36,14 @@ describe('Nuxt asset metadata configuration', () => {
       provider: 'none',
       serverBundle: false,
       clientBundle: {
+        icons: [
+          'lucide:home',
+          'lucide:building',
+          'lucide:megaphone',
+          'lucide:hammer',
+          'lucide:trending-up',
+          'lucide:users'
+        ],
         scan: {
           globInclude: [
             '{app,shared}/**',

@@ -457,6 +457,15 @@ export default defineNuxtConfig({
     provider: 'none',
     serverBundle: false,
     clientBundle: {
+      // Workspace icons come from Neon, so source scanning cannot discover them.
+      icons: [
+        'lucide:home',
+        'lucide:building',
+        'lucide:megaphone',
+        'lucide:hammer',
+        'lucide:trending-up',
+        'lucide:users'
+      ],
       scan: {
         globInclude: [
           '{app,shared}/**',
