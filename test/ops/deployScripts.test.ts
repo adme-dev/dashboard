@@ -10,4 +10,10 @@ describe('deploy scripts', () => {
     expect(buildPagesDeployArgs('preview')).toContain('preview')
     expect(buildPagesDeployArgs('main')).toContain('main')
   })
+
+  it('keeps ordinary Pages deployment separate from CRM search activation', () => {
+    expect(pkg.scripts['deploy:production']).toBe('node scripts/deploy-pages.mjs main')
+    expect(pkg.scripts['crm-search:release:production'])
+      .toBe('node scripts/deploy-pages.mjs main --crm-search-release')
+  })
 })

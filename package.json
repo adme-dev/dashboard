@@ -21,6 +21,7 @@
     "deploy:preview": "node scripts/deploy-pages.mjs preview",
     "deploy:production": "node scripts/deploy-pages.mjs main",
     "deploy:check": "node scripts/deploy-pages.mjs main --check-only",
+    "crm-search:release:production": "node scripts/deploy-pages.mjs main --crm-search-release",
     "crm-search:bindings:check": "node scripts/crm-search/preview-binding-guard.mjs --dry-run",
     "crm-search:preview:isolate": "node scripts/crm-search/pages-preview-isolation-adapter.mjs --dry-run",
     "crm-search:preview:bind": "node scripts/crm-search/pages-preview-isolation-adapter.mjs --bind-crm --dry-run",
