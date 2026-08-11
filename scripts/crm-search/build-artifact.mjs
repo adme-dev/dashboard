@@ -14,7 +14,7 @@ const DIGEST = /^[a-f0-9]{64}$/u
 const KEY_VERSION = /^[A-Za-z0-9._-]{1,64}$/u
 export const REQUIRED_NODE_VERSION = '24.18.0'
 export const FROZEN_BUILD_COMMAND = 'pnpm build\npnpm --dir workers/crm-search-consumer exec wrangler versions upload --dry-run --outdir <controlled-worker-output>\n'
-const PAGES_WORKER_RAW_BUDGET_BYTES = 63_750_000
+const PAGES_WORKER_RAW_BUDGET_BYTES = 25 * 1024 * 1024 - 256 * 1024
 const PAGES_WORKER_GZIP_BUDGET_BYTES = 9_750_000
 
 function fail(code) {
