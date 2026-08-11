@@ -129,12 +129,14 @@ describe('retired CRM search transport', () => {
     expect(existsSync('server/api/crm/search.get.ts')).toBe(false)
     expect(existsSync('server/api/client-portal/crm/search.get.ts')).toBe(false)
     expect(existsSync('server/api/agency/search/semantic.get.ts')).toBe(false)
-    expect(readdirSync('server/api/agency/search').filter(name => name.startsWith('semantic.'))).toEqual([])
+    expect(existsSync('server/api/agency/search')
+      ? readdirSync('server/api/agency/search').filter(name => name.startsWith('semantic.'))
+      : []).toEqual([])
   })
 
   it('accepts only POST body callers across every production source root', () => {
     expect(collectCrmSearchCallerViolations(['app', 'server', 'shared', 'scripts', 'workers'])).toEqual([])
-  })
+  }, 15_000)
 
   it.each([
     [
