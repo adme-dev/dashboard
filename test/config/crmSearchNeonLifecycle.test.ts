@@ -138,7 +138,7 @@ describe('CRM search guarded Neon lifecycle', () => {
     expect(plan.create.branch).toMatchObject({
       name: `crm-search-e2e-${'a'.repeat(12)}`,
       parent_id: 'br-preview-parent',
-      init_source: 'schema-only',
+      init_source: 'parent-schema',
       expires_at: '2026-08-11T06:00:00.000Z'
     })
     expect(plan.pollOperations).toBe(true)
@@ -217,7 +217,7 @@ describe('CRM search guarded Neon lifecycle', () => {
         : {
             branch: {
               id: 'br-created', project_id: 'project-preview-1', parent_id: 'br-preview-parent',
-              name: `crm-search-e2e-${'a'.repeat(12)}`, init_source: 'schema-only',
+              name: `crm-search-e2e-${'a'.repeat(12)}`, init_source: 'parent-schema',
               created_at: '2026-08-11T00:00:00.000Z', expires_at: '2026-08-11T06:00:00.000Z'
             },
             readAt: '2026-08-11T00:00:30.000Z'
@@ -275,7 +275,7 @@ describe('CRM search guarded Neon lifecycle', () => {
             branch: {
               id: 'br-crm-search-e2e', project_id: plan.projectId,
               parent_id: 'br-source-isolated', name: `crm-search-e2e-${'a'.repeat(12)}`,
-              init_source: 'schema-only', created_at: '2026-08-11T00:00:00.000Z',
+              init_source: 'parent-schema', created_at: '2026-08-11T00:00:00.000Z',
               expires_at: '2026-08-11T06:00:00.000Z'
             },
             readAt: '2026-08-11T00:00:30.000Z'
@@ -378,7 +378,7 @@ describe('CRM search guarded Neon lifecycle', () => {
         : {
             branch: {
               id: 'br-crm-search-preview-1234', project_id: plan.projectId,
-              name: plan.create.branch.name,
+              parent_id: plan.create.branch.parent_id, name: plan.create.branch.name,
               init_source: 'parent-schema', created_at: '2026-08-11T00:00:00.000Z',
               expires_at: new Date(Date.parse(plan.create.branch.expires_at) - 500).toISOString()
             },
@@ -509,7 +509,7 @@ describe('CRM search guarded Neon lifecycle', () => {
         : {
             branch: {
               id: 'br-created', project_id: 'project-preview-1', parent_id: 'br-preview-parent',
-              name: `crm-search-e2e-${sha.slice(0, 12)}`, init_source: 'schema-only',
+              name: `crm-search-e2e-${sha.slice(0, 12)}`, init_source: 'parent-schema',
               created_at: '2026-08-11T00:00:00.000Z', expires_at: '2026-08-11T06:00:00.000Z'
             }, readAt: '2026-08-11T00:00:30.000Z'
           }

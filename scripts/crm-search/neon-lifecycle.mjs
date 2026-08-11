@@ -129,7 +129,7 @@ export function buildNeonLifecyclePlan(input) {
       branch: {
         name: `crm-search-e2e-${input.implementationSha.slice(0, 12)}`,
         parent_id: input.parentBranchId,
-        init_source: 'schema-only',
+        init_source: 'parent-schema',
         expires_at: expiresAt
       },
       endpoints: [{ type: 'read_write' }]
@@ -203,7 +203,7 @@ export function createNeonTargetAttestation(input) {
     || branch.projectId !== neonApi.project.id || branch.parentId !== neonApi.sourceBranch.id
     || branch.id === neonApi.sourceBranch.id || neonApi.endpoint.branchId !== branch.id
     || branch.name !== `crm-search-e2e-${unsigned.sourceGitSha.slice(0, 12)}`
-    || !['schema-only', 'parent-schema'].includes(branch.initSource)
+    || branch.initSource !== 'parent-schema'
     || !Number.isFinite(Date.parse(neonApi.branchReadbackAt))
     || branch.createdAt !== unsigned.createdAt || branch.expiresAt !== unsigned.expiresAt
     || canonical(unsigned.sourceTableProof) !== canonical(sourceTableProof)
@@ -437,9 +437,8 @@ export async function runNeonLifecycle({
     const branch = branchReadback?.branch
     const requestedExpiry = Date.parse(plan.create.branch.expires_at)
     const providerExpiry = Date.parse(branch?.expires_at)
-    const schemaOnlyReadback = branch?.init_source === 'schema-only'
-      ? branch.parent_id === plan.create.branch.parent_id
-      : branch?.init_source === 'parent-schema' && branch.parent_id === undefined
+    const schemaOnlyReadback = branch?.init_source === plan.create.branch.init_source
+      && branch.parent_id === plan.create.branch.parent_id
     if (!branch || branch.id !== branchId || branch.project_id !== plan.projectId
       || branch.name !== plan.create.branch.name
       || !schemaOnlyReadback
