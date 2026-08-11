@@ -49,9 +49,12 @@ export const ROUTES: Record<string, string[]> = {
     '/api/cron/memory-index-outbox',
     '/api/cron/crm-search-index-repair'
   ],
-  // every 15 min — keep the Xero customer cache and rollups fresh. Delta syncs
-  // are idempotent and use the shared cron token resolver.
-  '*/15 * * * *': ['/api/cron/xero-customer-sync'],
+  // hourly at :45 — keep the Xero customer cache and rollups fresh. Delta
+  // syncs are idempotent and use the shared cron token resolver. Was */15:
+  // 96 runs/day × full page-throughs was the main burner of the 5,000/day
+  // Xero API quota (exhausted by mid-morning, 2026-08-10). Hourly + real
+  // If-Modified-Since deltas keeps the cache fresh at ~1% of the cost.
+  '45 * * * *': ['/api/cron/xero-customer-sync'],
   // daily — refresh entitled Search Console evidence and inspect up to 50
   // priority URLs per client using Google's indexed-version inspection result.
   '15 2 * * *': ['/api/cron/search-console-sync'],

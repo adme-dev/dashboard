@@ -11,7 +11,7 @@
  * small.
  */
 
-import { xeroFetch } from './xeroClient'
+import { xeroFetch, camelCaseKeysDeep } from './xeroClient'
 import { execute, query } from './db'
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -64,6 +64,39 @@ function formatPhone(p: any): string | null {
   return parts.length ? parts.join(' ').trim() : null
 }
 
+/**
+ * Land a faithful copy of a Xero payload (ADR-007): upsert the latest
+ * version into the xero_raw_* mirror and append every distinct version
+ * (keyed by Xero's UpdatedDateUTC) to xero_raw_history for audits.
+ * The payload is stored EXACTLY as Xero sent it — PascalCase, untransformed.
+ */
+async function landRaw(
+  entity: 'invoice' | 'contact',
+  tenantId: string,
+  xeroId: string,
+  updatedUtc: string | null | undefined,
+  rawPayload: unknown,
+): Promise<void> {
+  if (!xeroId || !updatedUtc) return
+  const table = entity === 'invoice' ? 'xero_raw_invoices' : 'xero_raw_contacts'
+  const json = JSON.stringify(rawPayload)
+  await execute(
+    `INSERT INTO ${table} (xero_id, tenant_id, xero_updated_utc, raw_payload, synced_at)
+     VALUES ($1, $2, $3, $4::jsonb, NOW())
+     ON CONFLICT (xero_id) DO UPDATE SET
+       xero_updated_utc = EXCLUDED.xero_updated_utc,
+       raw_payload = EXCLUDED.raw_payload,
+       synced_at = NOW()`,
+    [xeroId, tenantId, updatedUtc, json],
+  )
+  await execute(
+    `INSERT INTO xero_raw_history (entity, tenant_id, xero_id, xero_updated_utc, raw_payload)
+     VALUES ($1, $2, $3, $4, $5::jsonb)
+     ON CONFLICT DO NOTHING`,
+    [entity, tenantId, xeroId, updatedUtc, json],
+  )
+}
+
 function buildModifiedAfterHeader(d?: Date): Record<string, string> {
   // Xero accepts If-Modified-Since as RFC 1123, but the SDK sets a bespoke
   // header. With our raw fetch we use If-Modified-Since which works for the
@@ -92,15 +125,21 @@ export async function syncXeroContactsCache(opts: SyncOpts): Promise<number> {
       accessToken,
       tenantId,
       path: `Contacts?${params.toString()}`,
-      // If-Modified-Since is per-request, not in the URL. xeroFetch doesn't
-      // expose extra headers — for the delta path we include all-pages every
-      // time and rely on Xero's filter. Acceptable for ~hundreds of contacts.
+      // Delta path: Xero filters server-side on If-Modified-Since, so an
+      // unchanged org costs one call instead of a full page-through.
+      headers: buildModifiedAfterHeader(modifiedAfter),
+      // Raw so the landing layer stores the payload exactly as sent
+      // (ADR-007); camelCase per record below for processing.
+      raw: true,
     })
 
-    const contacts: any[] = body?.contacts ?? []
-    if (!contacts.length) break
+    const rawContacts: any[] = body?.Contacts ?? []
+    if (!rawContacts.length) break
 
-    for (const c of contacts) {
+    for (const rawC of rawContacts) {
+      const c = camelCaseKeysDeep(rawC)
+      // Land BEFORE the cache-side skips — the audit layer keeps everything.
+      await landRaw('contact', tenantId, c.contactID, c.updatedDateUTC, rawC)
       const street = pickPrimary(c.addresses, (a: any) => a.addressType === 'STREET')
       const phone = pickPrimary(c.phones, (p: any) => p.phoneType === 'DEFAULT')
       const primaryPerson = pickPrimary(c.contactPersons, (p: any) => p.includeInEmails)
@@ -111,8 +150,8 @@ export async function syncXeroContactsCache(opts: SyncOpts): Promise<number> {
       const ar = c.balances?.accountsReceivable ?? {}
       const ap = c.balances?.accountsPayable ?? {}
 
-      // Skip filter is applied at modifiedAfter granularity — drop unchanged
-      // records on the JS side rather than passing If-Modified-Since.
+      // Belt-and-braces: Xero already filtered on If-Modified-Since, but keep
+      // the JS-side skip in case a proxy strips the header.
       if (modifiedAfter && c.updatedDateUTC) {
         const updated = new Date(c.updatedDateUTC)
         if (updated < modifiedAfter) continue
@@ -196,7 +235,7 @@ export async function syncXeroContactsCache(opts: SyncOpts): Promise<number> {
       upserted++
     }
 
-    if (contacts.length < 100) break
+    if (rawContacts.length < 100) break
   }
 
   return upserted
@@ -226,12 +265,22 @@ export async function syncXeroInvoicesCache(opts: SyncOpts): Promise<number> {
         accessToken,
         tenantId,
         path: `Invoices?${params.toString()}`,
+        // Delta path: server-side If-Modified-Since filter — an unchanged org
+        // costs one call per type instead of a full page-through.
+        headers: buildModifiedAfterHeader(modifiedAfter),
+        // Raw so the landing layer stores the payload exactly as sent
+        // (ADR-007); camelCase per record below for processing.
+        raw: true,
       })
 
-      const invoices: any[] = body?.invoices ?? []
-      if (!invoices.length) break
+      const rawInvoices: any[] = body?.Invoices ?? []
+      if (!rawInvoices.length) break
 
-      for (const inv of invoices) {
+      for (const rawInv of rawInvoices) {
+        const inv = camelCaseKeysDeep(rawInv)
+        // Land BEFORE the cache-side skips: the audit layer keeps everything
+        // Xero sends, including DELETED records the cache ignores.
+        await landRaw('invoice', tenantId, inv.invoiceID, inv.updatedDateUTC, rawInv)
         if (modifiedAfter && inv.updatedDateUTC) {
           const updated = new Date(inv.updatedDateUTC)
           if (updated < modifiedAfter) continue
@@ -297,7 +346,7 @@ export async function syncXeroInvoicesCache(opts: SyncOpts): Promise<number> {
         upserted++
       }
 
-      if (invoices.length < 100) break
+      if (rawInvoices.length < 100) break
     }
   }
 

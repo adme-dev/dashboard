@@ -261,8 +261,10 @@ export async function xeroFetch<T = any>(options: {
   body?: unknown
   timeoutMs?: number
   raw?: boolean
+  /** Extra request headers, e.g. If-Modified-Since for delta syncs. */
+  headers?: Record<string, string>
 }): Promise<T> {
-  const { accessToken, tenantId, path, method = 'GET', body, timeoutMs = 15_000, raw = false } = options
+  const { accessToken, tenantId, path, method = 'GET', body, timeoutMs = 15_000, raw = false, headers: extraHeaders } = options
   const url = `https://api.xero.com/api.xro/2.0/${path.replace(/^\//, '')}`
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -276,9 +278,22 @@ export async function xeroFetch<T = any>(options: {
         'Xero-Tenant-Id': tenantId,
         'Accept': 'application/json',
         ...(body ? { 'Content-Type': 'application/json' } : {}),
+        ...extraHeaders,
       },
       body: body ? JSON.stringify(body) : undefined,
     })
+
+    // Quota instrumentation: Xero sends remaining-call headers on every
+    // response. One structured line per call makes "what burned the daily
+    // quota" answerable from logs instead of an R&D session.
+    const day = response.headers.get('x-daylimit-remaining')
+    if (day !== null) {
+      const line = `[xero-quota] path=${path.split('?')[0]} day=${day} min=${response.headers.get('x-minlimit-remaining') ?? '?'}`
+      ;(Number(day) < 500 ? console.warn : console.info)(line)
+    }
+
+    // If-Modified-Since with no changes can come back 304 with an empty body.
+    if (response.status === 304) return (raw ? {} : {}) as T
 
     if (!response.ok) {
       const text = await response.text().catch(() => '')
@@ -352,7 +367,7 @@ function normalizeValue(value: any): any {
   return value
 }
 
-function camelCaseKeysDeep(value: any): any {
+export function camelCaseKeysDeep(value: any): any {
   if (Array.isArray(value)) return value.map(camelCaseKeysDeep)
   if (value && typeof value === 'object' && value.constructor === Object) {
     const out: Record<string, any> = {}
