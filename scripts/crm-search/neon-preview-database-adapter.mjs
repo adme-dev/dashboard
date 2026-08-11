@@ -309,8 +309,8 @@ export function createNeonPreviewDatabaseAdapter(options = {}) {
       }
       validateExactList(input.tables, REQUIRED_TABLES, 'crm_search_neon_source_tables_invalid')
       const sql = REQUIRED_TABLES
-        .map(table => `SELECT '${table}', COUNT(*) FROM ${table};`)
-        .join('\n')
+        .map(table => `SELECT '${table}', COUNT(*) FROM ${table}`)
+        .join('\nUNION ALL\n') + ';'
       const output = await runPsql(input, ['-At', '-F', ',', '-c', sql])
       const rows = output.trim().split(/\r?\n/u).filter(Boolean)
       if (rows.length !== REQUIRED_TABLES.length) {

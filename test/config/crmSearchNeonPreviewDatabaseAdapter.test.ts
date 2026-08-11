@@ -198,6 +198,9 @@ describe('CRM search Neon preview database adapter', () => {
       PGPASSWORD: 'ephemeral-password',
       PGSSLMODE: 'require'
     })
+    const countSql = args.at(-1)
+    expect(countSql).toContain('UNION ALL')
+    expect(countSql?.match(/;\s*$/gu)).toHaveLength(1)
   })
 
   it('applies only exact-byte migrations and fails closed on data, pooled endpoints, or process errors', async () => {
