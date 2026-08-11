@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { build, type Plugin } from 'esbuild'
-import { access, mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Miniflare } from 'miniflare'
@@ -11,6 +12,7 @@ const AUTH_TOKEN = 'production-boundary-auth-token'
 const AUTH_CACHE_KEY = `auth-session:${AUTH_TOKEN.slice(0, 16)}`
 const RENDER_LINK_SECRET = 'production-boundary-secret-with-at-least-thirty-two-bytes'
 const STAGE_TIMEOUT_MS = 15_000
+const describeBuiltWorker = existsSync(workerEntry) ? describe : describe.skip
 
 async function stage<T>(label: string, promise: Promise<T>): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined
@@ -64,14 +66,11 @@ function jpegMultipartBody(): { body: Uint8Array, contentType: string } {
   return { body, contentType: `multipart/form-data; boundary=${boundary}` }
 }
 
-describe('built Nitro Cloudflare binding boundary', () => {
+describeBuiltWorker('built Nitro Cloudflare binding boundary', () => {
   let directory: string
   let worker: Miniflare
 
   beforeAll(async () => {
-    await access(workerEntry).catch(() => {
-      throw new Error(`Fresh production Worker artifact required at ${workerEntry}; run pnpm build first`)
-    })
     await mkdir(path.join(repositoryRoot, '.nuxt'), { recursive: true })
     directory = await mkdtemp(path.join(repositoryRoot, '.nuxt', 'production-worker-test-'))
     const bundlePath = path.join(directory, 'worker.mjs')

@@ -54,6 +54,8 @@ describe('CRM search release runbooks', () => {
     expect(pkg.scripts['crm-search:migrate:test']).toContain('--dry-run')
     const ci = project('.github/workflows/ci.yml')
     expect(ci).toContain('Build and sign frozen release bytes')
+    expect(ci).toContain('Verify built Worker binding boundary')
+    expect(ci).toContain('pnpm exec vitest run test/workers/cloudflareNitroBindingBoundary.test.ts')
     expect(ci).toContain('Upload frozen release artifact')
     const deployJob = ci.slice(ci.indexOf('\n  deploy:'))
     expect(deployJob).toContain('environment: production_deploy')

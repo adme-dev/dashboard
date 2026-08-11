@@ -132,6 +132,9 @@ jobs:
           CRM_SEARCH_ARTIFACT_SIGNING_PRIVATE_KEY_PEM: ${{ secrets.CRM_SEARCH_ARTIFACT_SIGNING_PRIVATE_KEY_PEM }}
         run: pnpm crm-search:artifact:produce -- --output ${{ runner.temp }}/crm-search-frozen
 
+      - name: Verify built Worker binding boundary
+        run: pnpm exec vitest run test/workers/cloudflareNitroBindingBoundary.test.ts
+
       - name: Upload frozen release artifact
         uses: actions/upload-artifact@v5
         with:
