@@ -106,6 +106,21 @@ describe('agency client portal access API', () => {
     })
   })
 
+  it('grants CRM view authority when creating or refreshing an agency portal user', async () => {
+    await accessHandler({
+      body: { clientId: 'client-1' },
+      headers: { 'user-agent': 'vitest', 'x-real-ip': '127.0.0.1' }
+    })
+
+    const portalUserInsert = mockDbQuery.mock.calls.find(call =>
+      String(call[0]).includes('INSERT INTO client_users')
+    )
+    const sql = String(portalUserInsert?.[0]).replace(/\s+/g, ' ')
+
+    expect(sql).toMatch(/can_view_crm[^)]*\) VALUES \([^)]*true/i)
+    expect(sql).toMatch(/ON CONFLICT[\s\S]*can_view_crm[\s\S]*true/i)
+  })
+
   it('requires a client id', async () => {
     await expect(accessHandler({ body: {} })).rejects.toMatchObject({
       statusCode: 400,

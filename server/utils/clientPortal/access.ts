@@ -122,16 +122,17 @@ async function create(
       client_id, email, name, title, role, status, email_verified, email_verified_at,
       invited_by, activated_at, can_view_projects, can_view_invoices, can_approve_work,
       can_view_time_entries, can_view_budgets, can_add_comments, can_upload_files,
-      can_invite_users, can_view_analytics, can_submit_requests, last_login_at, login_count
+      can_invite_users, can_view_analytics, can_submit_requests, can_view_crm,
+      last_login_at, login_count
     ) VALUES (
       $1, $2, $3, 'Agency portal access', 'viewer', 'active', true, NOW(), $4, NOW(),
-      true, true, false, true, true, false, false, false, true, false, NOW(), 1
+      true, true, false, true, true, false, false, false, true, false, true, NOW(), 1
     ) ON CONFLICT (client_id, email) DO UPDATE SET
       (name,title,status,email_verified,email_verified_at,invited_by,can_view_projects,can_view_invoices,
        can_approve_work,can_view_time_entries,can_view_budgets,can_add_comments,can_upload_files,
-       can_invite_users,can_view_analytics,can_submit_requests,last_login_at,login_count,updated_at) =
+       can_invite_users,can_view_analytics,can_submit_requests,can_view_crm,last_login_at,login_count,updated_at) =
       (EXCLUDED.name,EXCLUDED.title,'active',true,COALESCE(client_users.email_verified_at,NOW()),
-       EXCLUDED.invited_by,true,true,false,true,true,false,false,false,true,false,NOW(),client_users.login_count+1,NOW())
+       EXCLUDED.invited_by,true,true,false,true,true,false,false,false,true,false,true,NOW(),client_users.login_count+1,NOW())
     RETURNING id
   `, [client.id, accessEmail, `${actor.name || actor.email} (Agency)`, actor.id])).rows[0]
   if (!user) throw new Error('Failed to create agency portal user')
