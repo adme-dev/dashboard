@@ -17,7 +17,7 @@
           AI & Automation
         </h1>
         <p class="text-lg text-[#45474D] dark:text-white/60 leading-relaxed mb-3">
-          How XeroFlow uses AI chat, anomaly detection, semantic search, and automation recipes to keep your agency running smarter.
+          How XeroFlow uses AI chat, anomaly detection, visible keyword search, and controlled CRM semantic assistance that is off by default.
         </p>
         <p class="text-[13px] text-[#45474D]/50 dark:text-white/40 mb-14">11 min read</p>
 
@@ -65,8 +65,8 @@
                 <div class="w-9 h-9 rounded-lg bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center mb-3">
                   <UIcon name="i-lucide-search" class="w-4 h-4 text-violet-600 dark:text-violet-400" />
                 </div>
-                <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Semantic Search</p>
-                <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Meaning-based search powered by Cloudflare Vectorize.</p>
+                <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Controlled CRM Search</p>
+                <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Keyword-visible search with off-by-default agency-assistant retrieval.</p>
               </div>
             </div>
           </section>
@@ -108,12 +108,12 @@
 
           <!-- Section 3 -->
           <section>
-            <h2 class="text-[22px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-4">Semantic Search with Vectorize</h2>
+            <h2 class="text-[22px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-4">Controlled CRM Retrieval</h2>
             <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed mb-4">
-              Traditional keyword search misses results when people use different terminology. XeroFlow's semantic search uses Cloudflare Vectorize to understand the <em>meaning</em> behind your queries, not just the exact words. When you search for "logo project for the coffee brand," it finds tasks related to branding deliverables for your cafe client, even if no task contains those exact words.
+              Visible agency and portal CRM results use deterministic keyword ranking. Semantic assistance is limited to approved agency-assistant contexts and people, companies, and opportunities; it is off by default and does not alter portal ranking.
             </p>
             <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed">
-              Behind the scenes, tasks, clients, briefs, and knowledge base entries are embedded as vectors using a change-detection system. Only modified items are re-embedded, keeping the index fresh without reprocessing your entire dataset. The search combines semantic similarity with recency scoring, entity importance weighting, and diversity penalties to return the most relevant and varied results.
+              Authorized indexing is asynchronous. A current record can contribute to controlled assist only after confirmed index state, fresh authorization, and rollout checks; accepted work is not described as fresh or immediately searchable.
             </p>
           </section>
 
@@ -195,8 +195,8 @@ definePageMeta({
 
 useSeoMeta({
   title: 'AI & Automation — XeroFlow',
-  description: 'How XeroFlow uses AI chat, anomaly detection, semantic search, and automation recipes to keep your agency running smarter.',
+  description: 'How AI automation works alongside controlled CRM semantic assistance, visible keyword search, and an off by default rollout.',
   ogTitle: 'AI & Automation — XeroFlow',
-  ogDescription: 'How XeroFlow uses AI chat, anomaly detection, semantic search, and automation recipes to keep your agency running smarter.',
+  ogDescription: 'How AI automation works alongside controlled CRM semantic assistance, visible keyword search, and an off by default rollout.',
 })
 </script>

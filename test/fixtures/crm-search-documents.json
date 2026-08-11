@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "crm-search-v1",
+  "normalizationRevision": "nfkc-controls-whitespace-v1",
+  "documents": [
+    {
+      "case": "person normalizes approved fields and excludes direct identifiers and notes",
+      "entityType": "person",
+      "source": {
+        "first_name": "  Ａｌｅｘ\u0007 ",
+        "last_name": "  O’Connor  ",
+        "job_title": " Senior\t Strategist ",
+        "department": "Growth\n & Media",
+        "lifecycle_stage": " customer ",
+        "email": "alex@example.invalid",
+        "phone": "+61 400 000 000",
+        "notes": "notes-secret-must-never-be-projected"
+      },
+      "expectedCanonicalText": "First name: Alex\nLast name: O’Connor\nJob title: Senior Strategist\nDepartment: Growth & Media\nLifecycle stage: customer",
+      "expectedContentHash": "b28565a101015f818827a747c82ff80e24fee5111b26e80c69beafb37579ea0d"
+    },
+    {
+      "case": "company lowercases a bounded domain and omits blank values",
+      "entityType": "company",
+      "source": {
+        "name": "  Acme   Motors ",
+        "domain": " Example.COM ",
+        "lifecycle_stage": "prospect",
+        "phone": "03 9000 0000",
+        "notes": "company-secret-must-never-be-projected"
+      },
+      "expectedCanonicalText": "Name: Acme Motors\nDomain: example.com\nLifecycle stage: prospect",
+      "expectedContentHash": "44e4ee8a5eac31b9a5c14202d64bdf4e493ee008d08e47b81d5eb70c4cfbe39c"
+    },
+    {
+      "case": "opportunity strips bidi controls from approved fields",
+      "entityType": "opportunity",
+      "source": {
+        "name": " Fleet Renewal 2027 ",
+        "status": " open ",
+        "source": "Web\u202e",
+        "notes": "opportunity-secret-must-never-be-projected",
+        "amount": 900000
+      },
+      "expectedCanonicalText": "Name: Fleet Renewal 2027\nStatus: open\nSource: Web",
+      "expectedContentHash": "9cee8e3f1b462e9feb50702486d03d5c19b04b45a289ee1c1117786ad009c125"
+    },
+    {
+      "case": "person omits null and blank approved fields",
+      "entityType": "person",
+      "source": {
+        "first_name": "Priya",
+        "last_name": "   ",
+        "job_title": null,
+        "department": null,
+        "lifecycle_stage": ""
+      },
+      "expectedCanonicalText": "First name: Priya",
+      "expectedContentHash": "8b78f74f9d2c2f002690b0266fd1bb67f6751f547448e6b06b43862b9652396b"
+    }
+  ]
+}

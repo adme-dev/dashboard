@@ -1,8 +1,6 @@
-// server/utils/crm/search.ts
-// F8 — client-scoped, ranked full-text search across CRM entities.
-// Pure query-builder: returns parameterised SQL ($1=term, $2=client, $3=limit)
-// for the API handler to run. Each entity's tsvector expression MUST mirror the
-// matching GIN index in migration 152 so the index is actually used.
+import { queryRows } from '~~/server/utils/db'
+import { crmVisibilityCond } from '~~/server/utils/crm/recordAccess'
+import type { CrmSearchContext } from '~~/server/utils/crm/searchContext'
 
 export type CrmSearchTargetType = 'person' | 'company' | 'opportunity' | 'activity' | 'task'
 
@@ -17,11 +15,10 @@ export interface CrmSearchHit {
 interface EntitySpec {
   type: CrmSearchTargetType
   table: string
-  /** tsvector expression — keep byte-identical to the GIN index in mig 152. */
+  alias: string
+  /** Keep byte-identical to the matching GIN expression in migration 152. */
   vector: string
-  /** SQL expression projecting a human title. */
   title: string
-  /** SQL expression projecting a secondary line (nullable). */
   subtitle: string
 }
 
@@ -29,66 +26,128 @@ export const SEARCH_ENTITIES: EntitySpec[] = [
   {
     type: 'person',
     table: 'crm_people',
-    vector:
-      "to_tsvector('english', COALESCE(first_name,'') || ' ' || COALESCE(last_name,'') || ' ' || COALESCE(email,'') || ' ' || COALESCE(job_title,'') || ' ' || COALESCE(notes,''))",
-    title: "TRIM(COALESCE(first_name,'') || ' ' || COALESCE(last_name,''))",
-    subtitle: 'email',
+    alias: 'person',
+    vector: `to_tsvector('english', COALESCE(first_name,'') || ' ' || COALESCE(last_name,'') || ' ' || COALESCE(email,'') || ' ' || COALESCE(job_title,'') || ' ' || COALESCE(notes,''))`,
+    title: `TRIM(COALESCE(first_name,'') || ' ' || COALESCE(last_name,''))`,
+    subtitle: 'email'
   },
   {
     type: 'company',
     table: 'crm_companies',
-    vector: "to_tsvector('english', COALESCE(name,'') || ' ' || COALESCE(domain,'') || ' ' || COALESCE(notes,''))",
+    alias: 'company',
+    vector: `to_tsvector('english', COALESCE(name,'') || ' ' || COALESCE(domain,'') || ' ' || COALESCE(notes,''))`,
     title: 'name',
-    subtitle: 'domain',
+    subtitle: 'domain'
   },
   {
     type: 'opportunity',
     table: 'crm_opportunities',
-    vector: "to_tsvector('english', COALESCE(name,'') || ' ' || COALESCE(notes,''))",
+    alias: 'opportunity',
+    vector: `to_tsvector('english', COALESCE(name,'') || ' ' || COALESCE(notes,''))`,
     title: 'name',
-    subtitle: 'status',
+    subtitle: 'status'
   },
   {
     type: 'activity',
     table: 'crm_activities',
-    vector: "to_tsvector('english', COALESCE(title,'') || ' ' || COALESCE(body,''))",
+    alias: 'activity',
+    vector: `to_tsvector('english', COALESCE(title,'') || ' ' || COALESCE(body,''))`,
     title: 'title',
-    subtitle: 'type',
+    subtitle: 'type'
   },
   {
     type: 'task',
     table: 'crm_tasks',
-    vector: "to_tsvector('english', COALESCE(title,'') || ' ' || COALESCE(description,''))",
+    alias: 'task',
+    vector: `to_tsvector('english', COALESCE(title,'') || ' ' || COALESCE(description,''))`,
     title: 'title',
-    subtitle: 'status',
-  },
+    subtitle: 'status'
+  }
 ]
 
-const DEFAULT_LIMIT = 20
-const MAX_LIMIT = 50
+export const CRM_KEYWORD_POOL_LIMIT = 50
+
+type KeywordRow = {
+  type: string
+  id: string
+  title: string | null
+  subtitle: string | null
+  rank: string | number
+}
+
+export interface CrmKeywordSearchDependencies {
+  queryRows: <T>(sql: string, params?: unknown[]) => Promise<T[]>
+}
+
+const defaultDependencies: CrmKeywordSearchDependencies = { queryRows }
+
+function boundedPoolLimit(value: number) {
+  const integer = Math.floor(value)
+  return Number.isFinite(integer) ? Math.max(1, Math.min(CRM_KEYWORD_POOL_LIMIT, integer)) : CRM_KEYWORD_POOL_LIMIT
+}
+
+function numberVisibility(
+  sql: string,
+  values: readonly unknown[],
+  params: unknown[]
+): string {
+  let consumed = 0
+  const numbered = sql.replace(/\?/g, () => {
+    const index = params.length + consumed + 1
+    consumed += 1
+    return `$${index}`
+  })
+  if (consumed !== values.length) throw new Error('CRM search visibility placeholder mismatch')
+  params.push(...values)
+  return numbered
+}
 
 /**
- * Build the search query, or null when the term is blank.
- * Params are positional and shared across branches: $1 term, $2 client, $3 limit.
+ * Builds deterministic keyword SQL from a fresh, server-owned context.
+ * $1 is the normalized term, $2 the authorized client, and $3 the pool limit.
  */
 export function buildSearchQuery(
-  clientId: string,
-  term: string,
-  limit = DEFAULT_LIMIT,
+  context: CrmSearchContext,
+  normalizedTerm: string,
+  poolLimit = CRM_KEYWORD_POOL_LIMIT
 ): { sql: string, params: unknown[] } | null {
-  const trimmed = term.trim()
-  if (!trimmed) return null
-  const n = Math.floor(limit)
-  const lim = Number.isFinite(n) ? Math.max(1, Math.min(MAX_LIMIT, n)) : DEFAULT_LIMIT
+  const term = normalizedTerm.trim()
+  if (!term) return null
+  const params: unknown[] = [term, context.clientId, boundedPoolLimit(poolLimit)]
 
-  const branches = SEARCH_ENTITIES.map(e =>
-    `SELECT '${e.type}' AS type, id::text AS id, ${e.title} AS title, ${e.subtitle} AS subtitle, ` +
-    `ts_rank(${e.vector}, websearch_to_tsquery('english', $1)) AS rank ` +
-    `FROM ${e.table} ` +
-    `WHERE client_id = $2 AND deleted_at IS NULL ` +
-    `AND ${e.vector} @@ websearch_to_tsquery('english', $1)`,
-  )
+  const branches = SEARCH_ENTITIES.map((entity) => {
+    const visibility = crmVisibilityCond(context, entity.type, entity.alias)
+    const visibilitySql = visibility
+      ? ` AND ${numberVisibility(visibility.sql, visibility.params, params)}`
+      : ''
+    return `SELECT '${entity.type}' AS type, ${entity.alias}.id::text AS id, ${entity.title} AS title, ${entity.subtitle} AS subtitle, `
+      + `ts_rank(${entity.vector}, websearch_to_tsquery('english', $1)) AS rank `
+      + `FROM ${entity.table} ${entity.alias} `
+      + `WHERE ${entity.alias}.client_id = $2 AND ${entity.alias}.deleted_at IS NULL${visibilitySql} `
+      + `AND ${entity.vector} @@ websearch_to_tsquery('english', $1)`
+  })
 
-  const sql = `SELECT * FROM (\n  ${branches.join('\n  UNION ALL\n  ')}\n) s ORDER BY rank DESC, title ASC LIMIT $3`
-  return { sql, params: [trimmed, clientId, lim] }
+  return {
+    sql: `SELECT * FROM (\n  ${branches.join('\n  UNION ALL\n  ')}\n) search_hits ORDER BY rank DESC, title ASC, type ASC, id ASC LIMIT $3`,
+    params
+  }
+}
+
+/** Executes only the authorized Postgres keyword branch and returns public hits. */
+export async function runCrmKeywordSearch(
+  context: CrmSearchContext,
+  normalizedTerm: string,
+  poolLimit = CRM_KEYWORD_POOL_LIMIT,
+  dependencies: CrmKeywordSearchDependencies = defaultDependencies
+): Promise<CrmSearchHit[]> {
+  const built = buildSearchQuery(context, normalizedTerm, poolLimit)
+  if (!built) return []
+  const rows = await dependencies.queryRows<KeywordRow>(built.sql, built.params)
+  return rows.map(row => ({
+    type: row.type as CrmSearchTargetType,
+    id: row.id,
+    title: row.title || '(untitled)',
+    subtitle: row.subtitle,
+    rank: Number(row.rank)
+  }))
 }

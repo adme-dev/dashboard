@@ -1,4 +1,14 @@
 import type { CrmEmailDirection } from '~~/server/utils/crm/emailContracts'
+import {
+  requireAllCrmRecordsAccess,
+  type AuthoritativeCrmRecord,
+  type CrmRecordRef,
+  type TransactionClient
+} from '~~/server/utils/crm/recordAccess'
+import {
+  resolveTrustedCrmSystemContext,
+  type CrmRecordAccessContext
+} from '~~/server/utils/crm/searchContext'
 
 export interface CrmEmailProjectionQueryResult {
   rows: unknown[]
@@ -42,6 +52,20 @@ export type ProjectCrmEmailMessageResult
     status: 'unchanged'
   }
 
+interface ProjectionDependencies {
+  resolveContext(input: { clientId: string; purpose: 'crm_email_projection' }): Promise<CrmRecordAccessContext>
+  authorizeAll(
+    context: CrmRecordAccessContext,
+    refs: readonly CrmRecordRef[],
+    client?: TransactionClient
+  ): Promise<readonly AuthoritativeCrmRecord[]>
+}
+
+const defaultProjectionDependencies: ProjectionDependencies = {
+  resolveContext: resolveTrustedCrmSystemContext,
+  authorizeAll: requireAllCrmRecordsAccess
+}
+
 interface CommunicationRow {
   id: string
   client_id: string
@@ -82,8 +106,44 @@ function mapCommunication(row: CommunicationRow): CrmEmailCommunicationRecord {
 
 export async function projectCrmEmailMessageToCommunication(
   database: CrmEmailProjectionDatabase,
-  input: ProjectCrmEmailMessageInput
+  input: ProjectCrmEmailMessageInput,
+  deps: ProjectionDependencies = defaultProjectionDependencies
 ): Promise<ProjectCrmEmailMessageResult> {
+  const messageResult = await database.query(`
+    SELECT message.client_id::text AS client_id,
+           message.conversation_id::text AS conversation_id
+      FROM crm_messages AS message
+     WHERE message.id = $1
+       AND message.deleted_at IS NULL
+     FOR UPDATE OF message
+  `, [input.messageId])
+  const message = messageResult.rows[0] as { client_id: string, conversation_id: string } | undefined
+  if (!message) return { status: 'unchanged' }
+
+  const context = await deps.resolveContext({
+    clientId: message.client_id,
+    purpose: 'crm_email_projection'
+  })
+  const linkedResult = await database.query(`
+    SELECT conversation.person_id::text AS person_id,
+           conversation.company_id::text AS company_id
+      FROM crm_conversations AS conversation
+     WHERE conversation.client_id = $1
+       AND conversation.id = $2
+       AND conversation.deleted_at IS NULL
+       AND (conversation.person_id IS NOT NULL OR conversation.company_id IS NOT NULL)
+     FOR UPDATE OF conversation
+  `, [message.client_id, message.conversation_id])
+  const linked = linkedResult.rows[0] as { person_id: string | null, company_id: string | null } | undefined
+  if (!linked) return { status: 'unchanged' }
+  const refs: CrmRecordRef[] = []
+  if (linked.person_id) refs.push({ type: 'person', id: linked.person_id })
+  if (linked.company_id) refs.push({ type: 'company', id: linked.company_id })
+  const authorized = await deps.authorizeAll(context, refs, database)
+  if (authorized.length !== refs.length) {
+    throw new Error('CRM email projection authorization was incomplete')
+  }
+
   const result = await database.query(`
     INSERT INTO crm_communications (
       client_id, person_id, company_id, channel, direction, subject, body,
@@ -131,7 +191,7 @@ export async function projectCrmEmailMessageToCommunication(
     RETURNING
       id, client_id, person_id, company_id, channel, direction, subject, body,
       occurred_at, external_id, source, metadata, created_at
-  `, [input.clientId, input.messageId])
+  `, [message.client_id, input.messageId])
   const row = result.rows[0] as CommunicationRow | undefined
 
   if (!row) {

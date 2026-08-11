@@ -1,0 +1,592 @@
+import { describe, expect, it, vi } from 'vitest'
+
+const {
+  queryOneFresh,
+  queryRowsFresh,
+  queryOne,
+  queryRows,
+  requireAuth,
+  verifyJwt,
+  digestPortalSessionToken
+} = vi.hoisted(() => ({
+  queryOneFresh: vi.fn(),
+  queryRowsFresh: vi.fn(),
+  queryOne: vi.fn(),
+  queryRows: vi.fn(),
+  requireAuth: vi.fn(),
+  verifyJwt: vi.fn(),
+  digestPortalSessionToken: vi.fn()
+}))
+
+vi.mock('~~/server/utils/db', () => ({
+  queryOneFresh,
+  queryRowsFresh,
+  queryOne,
+  queryRows
+}))
+vi.mock('~~/server/utils/auth', () => ({ requireAuth, verifyJwt }))
+vi.mock('~~/server/utils/portalSession', () => ({ digestPortalSessionToken }))
+import {
+  resolveAgencyAiCrmContext,
+  resolveAgencyCrmSearchContext,
+  resolvePortalCrmSearchContext,
+  type CrmSearchContextDependencies
+} from '~~/server/utils/crm/searchContext'
+
+const clientId = '11111111-1111-4111-8111-111111111111'
+const secondClientId = '44444444-4444-4444-8444-444444444444'
+const actorId = '22222222-2222-4222-8222-222222222222'
+const portalUserId = '33333333-3333-4333-8333-333333333333'
+const organisationScopeId = '55555555-5555-4555-8555-555555555555'
+const sessionIssuedAtMs = Date.parse('2026-08-11T01:02:03.000Z')
+
+const fakeEvent = () => ({ context: {} }) as never
+
+function mockStaffSession(payload: Record<string, unknown> = { userId: actorId, iat: sessionIssuedAtMs }) {
+  ;(globalThis as typeof globalThis & { getCookie: ReturnType<typeof vi.fn> }).getCookie = vi.fn(
+    (_event, name) => name === 'auth_token' ? 'signed-staff-token' : undefined
+  )
+  ;(globalThis as typeof globalThis & { getHeader: ReturnType<typeof vi.fn> }).getHeader = vi.fn(() => undefined)
+  verifyJwt.mockResolvedValue(payload)
+  // Kept only so this regression suite proves the old cached requireAuth path
+  // is bypassed once direct signed-session validation is implemented.
+  requireAuth.mockResolvedValue({ id: actorId })
+}
+
+function fakeAgencyContextDeps(overrides: Partial<CrmSearchContextDependencies> = {}): CrmSearchContextDependencies {
+  return {
+    resolveAgencySession: vi.fn().mockResolvedValue({ actorId, issuedAtMs: sessionIssuedAtMs }),
+    loadAgencyActor: vi.fn().mockResolvedValue({
+      id: actorId,
+      role: 'account_manager',
+      customRoleId: null,
+      sessionsInvalidatedAt: null
+    }),
+    loadPermissionSet: vi.fn().mockResolvedValue(['CLIENTS']),
+    loadClient: vi.fn().mockResolvedValue({ id: clientId, name: 'Acme', recordVisibility: 'team' }),
+    loadAgencyAssignment: vi.fn().mockResolvedValue(true),
+    loadAssistantAssignments: vi.fn().mockResolvedValue({ clientIds: [clientId], sourceRevision: 'assignment-revision' }),
+    loadAuthorizedActiveClients: vi.fn().mockResolvedValue([{ id: clientId, name: 'Acme' }]),
+    loadOrganisationScope: vi.fn().mockResolvedValue(organisationScopeId),
+    loadPortalSession: vi.fn(),
+    loadPortalEntitlement: vi.fn().mockResolvedValue(true),
+    createCorrelationId: vi.fn().mockReturnValue('server-generated-correlation-id'),
+    runKeyword: vi.fn(),
+    ...overrides
+  }
+}
+
+describe('CRM search context', () => {
+  it('uses only fresh DB helpers for the default agency resolver and enforces active actor, client, custom-role, and installation-scope predicates', async () => {
+    vi.clearAllMocks()
+    mockStaffSession()
+    queryRowsFresh.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (sql.includes('role_permission_groups')) {
+        return sql.includes('role.id = $1') && params[0] === 'custom-role-1'
+          ? [{ permission_group: 'CLIENTS' }]
+          : []
+      }
+      if (sql.includes('crm_search_organisation_scopes')) {
+        return sql.includes('is_primary = TRUE') && sql.includes('is_active = TRUE')
+          ? [{ id: organisationScopeId }]
+          : []
+      }
+      return []
+    })
+    queryOneFresh.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (sql.includes('FROM team_members')) {
+        return sql.includes('is_active = TRUE') && params[0] === actorId
+          ? { id: actorId, role: 'custom', custom_role_id: 'custom-role-1', sessions_invalidated_at: null }
+          : null
+      }
+      if (sql.includes('FROM agency_clients client')) {
+        return sql.includes('client.is_active = TRUE') && params[0] === clientId
+          ? { id: clientId, name: 'Acme', record_visibility: 'owner' }
+          : null
+      }
+      return null
+    })
+
+    const context = await resolveAgencyCrmSearchContext(fakeEvent(), { clientId, surface: 'agency_global' })
+
+    expect(context).toMatchObject({
+      actorId,
+      permissionSet: ['CLIENTS'],
+      organisationScopeId,
+      clientId,
+      visibility: { ownerScoped: true }
+    })
+    expect(queryOneFresh).toHaveBeenCalled()
+    expect(queryRowsFresh).toHaveBeenCalled()
+    expect(verifyJwt).toHaveBeenCalledWith('signed-staff-token')
+    expect(requireAuth).not.toHaveBeenCalled()
+    expect(queryOne).not.toHaveBeenCalled()
+    expect(queryRows).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['missing', { userId: actorId }],
+    ['malformed', { userId: actorId, iat: 'yesterday' }]
+  ])('rejects a signed staff token with %s iat before fresh actor or client work', async (_label, payload) => {
+    vi.clearAllMocks()
+    mockStaffSession(payload)
+
+    await expect(resolveAgencyCrmSearchContext(fakeEvent(), { clientId, surface: 'agency_global' }))
+      .rejects.toMatchObject({ statusCode: 401 })
+    expect(queryOneFresh).not.toHaveBeenCalled()
+    expect(queryRowsFresh).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['at', sessionIssuedAtMs],
+    ['before', sessionIssuedAtMs - 1]
+  ])('rejects a staff token issued %s the authoritative invalidation instant before client work', async (
+    _label,
+    issuedAtMs
+  ) => {
+    vi.clearAllMocks()
+    mockStaffSession({ userId: actorId, iat: issuedAtMs })
+    queryOneFresh.mockImplementation(async (sql: string) => sql.includes('FROM team_members')
+      ? {
+          id: actorId,
+          role: 'custom',
+          custom_role_id: 'custom-role-1',
+          sessions_invalidated_at: new Date(sessionIssuedAtMs).toISOString()
+        }
+      : null)
+
+    await expect(resolveAgencyCrmSearchContext(fakeEvent(), { clientId, surface: 'agency_global' }))
+      .rejects.toMatchObject({ statusCode: 401 })
+    expect(queryOneFresh).toHaveBeenCalledOnce()
+    expect(queryRowsFresh).not.toHaveBeenCalled()
+  })
+
+  it('uses only fresh DB helpers for the default portal resolver and rejects a query missing active session, portal-user, client, entitlement, or CRM-view predicates', async () => {
+    vi.clearAllMocks()
+    ;(globalThis as typeof globalThis & { getCookie: ReturnType<typeof vi.fn> }).getCookie = vi.fn(() => 'portal-token')
+    digestPortalSessionToken.mockResolvedValue('session-digest')
+    queryRowsFresh.mockImplementation(async (sql: string) => sql.includes('crm_search_organisation_scopes')
+      && sql.includes('is_primary = TRUE') && sql.includes('is_active = TRUE')
+      ? [{ id: organisationScopeId }]
+      : [])
+    queryOneFresh.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (sql.includes('FROM client_sessions session')) {
+        const requiresFreshPortalAuthority = [
+          'session.expires_at > NOW()',
+          "portal_user.status = 'active'",
+          'client.is_active = TRUE'
+        ].every(predicate => sql.includes(predicate))
+        return requiresFreshPortalAuthority && params[0] === 'session-digest'
+          ? {
+              id: portalUserId,
+              client_id: clientId,
+              client_name: 'Acme',
+              lead_capture_mode: 'full_crm',
+              is_primary_contact: false,
+              can_view_crm: true,
+              can_edit_crm: false,
+              can_admin_crm: false,
+              record_visibility: 'team'
+            }
+          : null
+      }
+      if (sql.includes('client_entitlement_overrides')) {
+        const requiresEntitlementPolicy = sql.includes("feature_key = 'crm.core'")
+          && sql.includes('starts_at <= NOW()')
+          && sql.includes('expires_at IS NULL OR expires_at > NOW()')
+        return requiresEntitlementPolicy && params[0] === clientId ? { status: 'active' } : null
+      }
+      return null
+    })
+
+    await expect(resolvePortalCrmSearchContext(fakeEvent(), { surface: 'portal_global' }))
+      .resolves.toMatchObject({ actorId: portalUserId, actorType: 'portal', clientId })
+    expect(queryOneFresh).toHaveBeenCalledTimes(2)
+    expect(queryRowsFresh).toHaveBeenCalledOnce()
+    expect(queryOne).not.toHaveBeenCalled()
+    expect(queryRows).not.toHaveBeenCalled()
+
+    vi.clearAllMocks()
+    ;(globalThis as typeof globalThis & { getCookie: ReturnType<typeof vi.fn> }).getCookie = vi.fn(() => 'portal-token')
+    digestPortalSessionToken.mockResolvedValue('session-digest')
+    queryOneFresh.mockImplementation(async (sql: string) => sql.includes('FROM client_sessions session')
+      ? {
+          id: portalUserId,
+          client_id: clientId,
+          client_name: 'Acme',
+          lead_capture_mode: 'full_crm',
+          is_primary_contact: false,
+          can_view_crm: false,
+          can_edit_crm: false,
+          can_admin_crm: false,
+          record_visibility: 'team'
+        }
+      : null)
+
+    await expect(resolvePortalCrmSearchContext(fakeEvent(), { surface: 'portal_global' }))
+      .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Client not found' })
+    expect(queryOneFresh).toHaveBeenCalledOnce()
+    expect(queryOne).not.toHaveBeenCalled()
+    expect(queryRows).not.toHaveBeenCalled()
+  })
+
+  it('returns the uniform denial for a missing active client before retrieval', async () => {
+    const missing = fakeAgencyContextDeps({ loadClient: vi.fn().mockResolvedValue(null) })
+
+    await expect(resolveAgencyCrmSearchContext(fakeEvent(), {
+      clientId,
+      surface: 'agency_global',
+      correlationId: 'caller-controlled'
+    }, missing)).rejects.toMatchObject({ statusCode: 404, statusMessage: 'Client not found' })
+    expect(missing.runKeyword).not.toHaveBeenCalled()
+    expect(missing.createCorrelationId).toHaveBeenCalledOnce()
+  })
+
+  it('lets CLIENTS-authorized agency search select multiple active clients without assignment while AI retains the direct-assignment intersection', async () => {
+    const loadClient = vi.fn(async (id: string) => id === clientId
+      ? { id: clientId, name: 'Acme', recordVisibility: 'team' as const }
+      : id === secondClientId
+        ? { id: secondClientId, name: 'Beta', recordVisibility: 'team' as const }
+        : null)
+    const global = fakeAgencyContextDeps({
+      loadClient,
+      loadAgencyAssignment: vi.fn().mockResolvedValue(false)
+    })
+
+    const first = await resolveAgencyCrmSearchContext(fakeEvent(), { clientId, surface: 'agency_global' }, global)
+    const second = await resolveAgencyCrmSearchContext(fakeEvent(), { clientId: secondClientId, surface: 'agency_global' }, global)
+
+    expect(first).toMatchObject({ clientId, organisationScopeId })
+    expect(second).toMatchObject({ clientId: secondClientId, organisationScopeId })
+    expect(global.loadAgencyAssignment).not.toHaveBeenCalled()
+
+    const ai = fakeAgencyContextDeps({
+      loadClient,
+      loadAgencyAssignment: vi.fn().mockResolvedValue(false),
+      loadAuthorizedActiveClients: vi.fn().mockResolvedValue([{ id: secondClientId, name: 'Beta' }]),
+      loadAssistantAssignments: vi.fn().mockResolvedValue({ clientIds: [secondClientId], sourceRevision: 'assignment-revision' })
+    })
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'Beta' }, ai))
+      .resolves.toEqual({ status: 'scope_unavailable' })
+    expect(ai.loadAgencyAssignment).toHaveBeenCalledWith(actorId, secondClientId)
+    expect(ai.runKeyword).not.toHaveBeenCalled()
+  })
+
+  it('uses fresh server-owned permissions and ignores caller-supplied identity and correlation claims', async () => {
+    const deps = fakeAgencyContextDeps()
+    const context = await resolveAgencyCrmSearchContext(fakeEvent(), {
+      clientId,
+      surface: 'agency_global',
+      correlationId: 'caller-controlled',
+      actorId: 'caller-controlled'
+    }, deps)
+
+    expect(context).toMatchObject({
+      organisationScopeId,
+      clientId,
+      actorType: 'staff',
+      actorId,
+      correlationId: 'server-generated-correlation-id',
+      permissionSet: ['CLIENTS'],
+      visibility: { ownerScoped: false }
+    })
+    expect(deps.resolveAgencySession).toHaveBeenCalledWith(expect.anything())
+    expect(deps.loadAgencyActor).toHaveBeenCalledWith(actorId)
+  })
+
+  it('sets owner visibility only after the fresh client and role policy checks pass', async () => {
+    const deps = fakeAgencyContextDeps({
+      loadClient: vi.fn().mockResolvedValue({ id: clientId, name: 'Acme', recordVisibility: 'owner' })
+    })
+
+    await expect(resolveAgencyCrmSearchContext(fakeEvent(), { clientId, surface: 'agency_global' }, deps))
+      .resolves.toMatchObject({ visibility: { ownerScoped: true } })
+  })
+
+  it('denies an inactive portal session/client or a portal user without CRM view access before retrieval', async () => {
+    const deniedSession = fakeAgencyContextDeps({ loadPortalSession: vi.fn().mockResolvedValue(null) })
+    const deniedPermission = fakeAgencyContextDeps({
+      loadPortalSession: vi.fn().mockResolvedValue({
+        id: portalUserId,
+        clientId,
+        clientName: 'Acme',
+        leadCaptureMode: 'full_crm',
+        isPrimaryContact: false,
+        canViewCrm: false,
+        canEditCrm: false,
+        canAdminCrm: false,
+        recordVisibility: 'team'
+      })
+    })
+
+    for (const deps of [deniedSession, deniedPermission]) {
+      await expect(resolvePortalCrmSearchContext(fakeEvent(), { surface: 'portal_global' }, deps))
+        .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Client not found' })
+      expect(deps.runKeyword).not.toHaveBeenCalled()
+      expect(deps.createCorrelationId).toHaveBeenCalledOnce()
+    }
+  })
+
+  it('returns an explicit ambiguity result for an AI client-name match and never executes retrieval', async () => {
+    const deps = fakeAgencyContextDeps({
+      loadAssistantAssignments: vi.fn().mockResolvedValue({
+        clientIds: [clientId, secondClientId],
+        sourceRevision: 'assignment-revision'
+      }),
+      loadAuthorizedActiveClients: vi.fn().mockResolvedValue([
+        { id: clientId, name: 'Acme' },
+        { id: secondClientId, name: 'Acme' }
+      ])
+    })
+
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, userRole: 'owner', event: fakeEvent() }, {
+      clientName: 'Acme',
+      correlationId: 'caller-controlled'
+    }, deps)).resolves.toEqual({ status: 'ambiguous' })
+    expect(deps.runKeyword).not.toHaveBeenCalled()
+    expect(deps.createCorrelationId).toHaveBeenCalledOnce()
+  })
+
+  it('loads fresh assistant scope first and prefers a normalized authorized exact match over partial matches', async () => {
+    const loadAssistantAssignments = vi.fn().mockResolvedValue({
+      clientIds: [clientId, secondClientId],
+      sourceRevision: 'fresh-assignment-revision'
+    })
+    const loadAuthorizedActiveClients = vi.fn().mockResolvedValue([
+      { id: secondClientId, name: 'Acme Automotive' },
+      { id: clientId, name: '  ACME  ' }
+    ])
+    const deps = fakeAgencyContextDeps({
+      loadAssistantAssignments,
+      loadAuthorizedActiveClients
+    })
+
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'Ａｃｍｅ' }, deps))
+      .resolves.toMatchObject({ status: 'resolved', context: { clientId }, clientName: '  ACME  ' })
+    expect(loadAssistantAssignments.mock.invocationCallOrder[0])
+      .toBeLessThan(loadAuthorizedActiveClients.mock.invocationCallOrder[0]!)
+    expect(loadAuthorizedActiveClients).toHaveBeenCalledWith([clientId, secondClientId])
+  })
+
+  it('reselects one fresh assistant client by exact id for semantic join-back revalidation', async () => {
+    const deps = fakeAgencyContextDeps({
+      loadAssistantAssignments: vi.fn().mockResolvedValue({
+        clientIds: [clientId, secondClientId],
+        sourceRevision: 'fresh-assignment-revision'
+      }),
+      loadAuthorizedActiveClients: vi.fn().mockResolvedValue([
+        { id: clientId, name: 'Acme' },
+        { id: secondClientId, name: 'Acme' }
+      ])
+    })
+
+    await expect(resolveAgencyAiCrmContext(
+      { userId: actorId, event: fakeEvent() },
+      { clientId },
+      deps
+    )).resolves.toMatchObject({
+      status: 'resolved',
+      context: {
+        clientId,
+        surface: 'agency_ai',
+        assistantScope: {
+          clientIds: [clientId, secondClientId],
+          sourceRevision: 'fresh-assignment-revision'
+        }
+      },
+      clientName: 'Acme'
+    })
+    expect(deps.loadAgencyAssignment).toHaveBeenCalledWith(actorId, clientId)
+  })
+
+  it('accepts a partial client name only when exactly one authorized active client matches', async () => {
+    const deps = fakeAgencyContextDeps({
+      loadAssistantAssignments: vi.fn().mockResolvedValue({
+        clientIds: [clientId, secondClientId],
+        sourceRevision: 'fresh-assignment-revision'
+      }),
+      loadAuthorizedActiveClients: vi.fn().mockResolvedValue([
+        { id: clientId, name: 'Acme Automotive' },
+        { id: secondClientId, name: 'Beta Retail' }
+      ]),
+      loadClient: vi.fn().mockResolvedValue({ id: clientId, name: 'Acme Automotive', recordVisibility: 'team' })
+    })
+
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'automotive' }, deps))
+      .resolves.toMatchObject({ status: 'resolved', context: { clientId }, clientName: 'Acme Automotive' })
+  })
+
+  it('returns ambiguity for multiple authorized partial matches without downstream client work', async () => {
+    const deps = fakeAgencyContextDeps({
+      loadAssistantAssignments: vi.fn().mockResolvedValue({
+        clientIds: [clientId, secondClientId],
+        sourceRevision: 'fresh-assignment-revision'
+      }),
+      loadAuthorizedActiveClients: vi.fn().mockResolvedValue([
+        { id: clientId, name: 'Acme North' },
+        { id: secondClientId, name: 'Acme South' }
+      ])
+    })
+
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'acme' }, deps))
+      .resolves.toEqual({ status: 'ambiguous' })
+    expect(deps.loadClient).not.toHaveBeenCalled()
+    expect(deps.loadAgencyAssignment).not.toHaveBeenCalled()
+    expect(deps.loadOrganisationScope).not.toHaveBeenCalled()
+    expect(deps.runKeyword).not.toHaveBeenCalled()
+  })
+
+  it('returns not found for zero authorized matches without downstream client or retrieval work', async () => {
+    const deps = fakeAgencyContextDeps({
+      loadAuthorizedActiveClients: vi.fn().mockResolvedValue([{ id: clientId, name: 'Beta Retail' }])
+    })
+
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'acme' }, deps))
+      .resolves.toEqual({ status: 'not_found' })
+    expect(deps.loadClient).not.toHaveBeenCalled()
+    expect(deps.loadAgencyAssignment).not.toHaveBeenCalled()
+    expect(deps.loadOrganisationScope).not.toHaveBeenCalled()
+    expect(deps.runKeyword).not.toHaveBeenCalled()
+  })
+
+  it('does not let an unauthorized duplicate make an authorized exact match ambiguous', async () => {
+    const unauthorizedClientId = '66666666-6666-4666-8666-666666666666'
+    const deps = fakeAgencyContextDeps({
+      loadAssistantAssignments: vi.fn().mockResolvedValue({
+        clientIds: [clientId],
+        sourceRevision: 'fresh-assignment-revision'
+      }),
+      loadAuthorizedActiveClients: vi.fn().mockResolvedValue([
+        { id: unauthorizedClientId, name: 'Acme' },
+        { id: clientId, name: 'Acme' }
+      ])
+    })
+
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'acme' }, deps))
+      .resolves.toMatchObject({ status: 'resolved', context: { clientId } })
+    expect(deps.loadAgencyAssignment).toHaveBeenCalledWith(actorId, clientId)
+  })
+
+  it('returns the same public agency-global denial for missing and inaccessible clients before downstream work', async () => {
+    const missing = fakeAgencyContextDeps({ loadClient: vi.fn().mockResolvedValue(null) })
+    const inaccessible = fakeAgencyContextDeps({ loadPermissionSet: vi.fn().mockResolvedValue([]) })
+    const denials: Array<{ statusCode?: number; statusMessage?: string }> = []
+
+    for (const deps of [missing, inaccessible]) {
+      try {
+        await resolveAgencyCrmSearchContext(fakeEvent(), { clientId, surface: 'agency_global' }, deps)
+      } catch (error) {
+        denials.push(error as { statusCode?: number; statusMessage?: string })
+      }
+      expect(deps.loadAgencyAssignment).not.toHaveBeenCalled()
+      expect(deps.loadOrganisationScope).not.toHaveBeenCalled()
+      expect(deps.runKeyword).not.toHaveBeenCalled()
+    }
+
+    expect(denials.map(({ statusCode, statusMessage }) => ({ statusCode, statusMessage }))).toEqual([
+      { statusCode: 404, statusMessage: 'Client not found' },
+      { statusCode: 404, statusMessage: 'Client not found' }
+    ])
+  })
+
+  it('uses fresh default authority for agency AI client-name resolution and intersects active assignments', async () => {
+    vi.clearAllMocks()
+    mockStaffSession()
+    queryOne.mockRejectedValue(new Error('cached authority must not run'))
+    queryRows.mockRejectedValue(new Error('cached authority must not run'))
+    queryOneFresh.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (sql.includes('FROM team_members')) {
+        return sql.includes('is_active = TRUE') && params[0] === actorId
+          ? { id: actorId, role: 'custom', custom_role_id: 'custom-role-1', sessions_invalidated_at: null }
+          : null
+      }
+      if (sql.includes('FROM agency_clients client')) {
+        return sql.includes('client.is_active = TRUE') && params[0] === clientId
+          ? { id: clientId, name: 'Acme', record_visibility: 'team' }
+          : null
+      }
+      if (sql.includes('FROM client_team_assignments')) {
+        return sql.includes('assignment.team_member_id = $1') && sql.includes('assignment.client_id = $2')
+          && sql.includes('client.is_active = TRUE') && params[0] === actorId && params[1] === clientId
+          ? { '?column?': 1 }
+          : null
+      }
+      return null
+    })
+    queryRowsFresh.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (sql.includes('role_permission_groups')) {
+        return sql.includes('role.id = $1') && params[0] === 'custom-role-1'
+          ? [{ permission_group: 'CLIENTS' }]
+          : []
+      }
+      if (sql.includes('crm_search_organisation_scopes')) {
+        return sql.includes('is_primary = TRUE') && sql.includes('is_active = TRUE')
+          ? [{ id: organisationScopeId }]
+          : []
+      }
+      if (sql.includes('FROM agency_clients') && sql.includes('id = ANY($1::uuid[])')) {
+        return sql.includes('is_active = TRUE') && params[0]?.[0] === clientId
+          ? [{ id: clientId, name: 'Acme' }]
+          : []
+      }
+      if (sql.includes('FROM client_team_assignments assignment')) {
+        return sql.includes('assignment.team_member_id = $1') && sql.includes('client.is_active = TRUE')
+          && params[0] === actorId
+          ? [{ id: clientId, source_revision: 'assignment-revision' }]
+          : []
+      }
+      return []
+    })
+
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'Acme' }))
+      .resolves.toMatchObject({ status: 'resolved', context: { actorId, clientId, surface: 'agency_ai', permissionSet: ['CLIENTS'] } })
+    const assignmentCall = queryRowsFresh.mock.calls.findIndex(([sql]) => sql.includes('FROM client_team_assignments assignment'))
+    const candidateCall = queryRowsFresh.mock.calls.findIndex(([sql]) => sql.includes('id = ANY($1::uuid[])'))
+    expect(assignmentCall).toBeGreaterThanOrEqual(0)
+    expect(candidateCall).toBeGreaterThan(assignmentCall)
+    expect(queryOne).not.toHaveBeenCalled()
+    expect(queryRows).not.toHaveBeenCalled()
+  })
+
+  it('keeps unresolved default agency-AI authority from reaching client or assignment work', async () => {
+    vi.clearAllMocks()
+    mockStaffSession()
+    queryOne.mockRejectedValue(new Error('cached authority must not run'))
+    queryRows.mockRejectedValue(new Error('cached authority must not run'))
+    queryOneFresh.mockImplementation(async (sql: string, params: unknown[]) => sql.includes('FROM team_members')
+      && sql.includes('is_active = TRUE') && params[0] === actorId
+      ? { id: actorId, role: 'custom', custom_role_id: 'custom-role-without-clients', sessions_invalidated_at: null }
+      : null)
+    queryRowsFresh.mockImplementation(async (sql: string, params: unknown[]) => sql.includes('role_permission_groups')
+      && sql.includes('role.id = $1') && params[0] === 'custom-role-without-clients'
+      ? []
+      : [])
+
+    await expect(resolveAgencyAiCrmContext({ userId: actorId, event: fakeEvent() }, { clientName: 'Acme' }))
+      .resolves.toEqual({ status: 'scope_unavailable' })
+    expect(queryOneFresh).toHaveBeenCalledOnce()
+    expect(queryRowsFresh).toHaveBeenCalledOnce()
+    expect(queryOne).not.toHaveBeenCalled()
+    expect(queryRows).not.toHaveBeenCalled()
+  })
+
+  it('revalidates the presented agency-AI token against the fresh invalidation marker before scope discovery', async () => {
+    vi.clearAllMocks()
+    mockStaffSession()
+    queryOneFresh.mockImplementation(async (sql: string) => sql.includes('FROM team_members')
+      ? {
+          id: actorId,
+          role: 'custom',
+          custom_role_id: 'custom-role-1',
+          sessions_invalidated_at: new Date(sessionIssuedAtMs).toISOString()
+        }
+      : null)
+
+    await expect(resolveAgencyAiCrmContext(
+      { userId: actorId, event: fakeEvent() },
+      { clientName: 'Acme' }
+    )).resolves.toEqual({ status: 'scope_unavailable' })
+    expect(queryOneFresh).toHaveBeenCalledOnce()
+    expect(queryRowsFresh).not.toHaveBeenCalled()
+  })
+})

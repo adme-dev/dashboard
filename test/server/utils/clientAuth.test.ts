@@ -90,4 +90,13 @@ describe('portal client authentication', () => {
     })
     expect(mockQueryOne).toHaveBeenCalledOnce()
   })
+
+  it('rejects a session whose client was deactivated after it was issued', async () => {
+    mockQueryOne.mockResolvedValueOnce({ ...activeUserRow, client_is_active: false })
+
+    await expect(requireClientAuth({ context: {} } as never)).rejects.toMatchObject({
+      statusCode: 401,
+      statusMessage: 'Invalid or expired session'
+    })
+  })
 })

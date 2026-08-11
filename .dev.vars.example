@@ -49,6 +49,25 @@ MONDAY_API_TOKEN=your_monday_api_token
 # ============================================
 CRON_SECRET=your_random_cron_secret
 
+# CRM search release/evaluation keys are deliberately distinct. Keep blank for
+# ordinary local development; semantic/evaluation paths then fail closed.
+CRM_SEARCH_RESOURCE_APPROVAL_VERIFICATION_KEYRING=
+CRM_SEARCH_RESOURCE_MANIFEST_VERIFICATION_KEYRING=
+CRM_SEARCH_RELEASE_APPROVAL_VERIFICATION_KEYRING=
+CRM_SEARCH_ARTIFACT_VERIFICATION_KEYRING=
+CRM_SEARCH_EVIDENCE_VERIFICATION_KEYRING=
+CRM_SEARCH_RELEASE_APPROVAL_DATABASE_URL=
+CRM_SEARCH_SEALED_HOLDOUT_KEYRING=
+
+# Preview/local write-capable integrations stay disabled unless the signed
+# environment manifest proves a distinct non-production target identity.
+CRM_EMAIL_CONVERSATIONS_ENABLED=false
+PERSONA_AUDIENCE_PROVIDER_WRITES_ENABLED=false
+PERSONA_META_AUDIENCE_WRITES_ENABLED=false
+PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED=false
+MCP_GEN_TOOLS_ENABLED=false
+MCP_BANNER_TOOLS_ENABLED=false
+
 # ============================================
 # Optional: Cloudflare R2 Storage
 # ============================================

@@ -5,7 +5,7 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { ensureOfficeMeetingArtifactsTables } from '~~/server/utils/officeMeetingArtifacts'
-import { findMeetingCrmCandidates, rankTargets } from '~~/server/utils/crm/meetingBridge'
+import { findMeetingCrmCandidates, rankTargets, authorizeMeetingCandidatesForEvent } from '~~/server/utils/crm/meetingBridge'
 import type { OfficeMemberRow, OfficeMeetingActionItemRow } from '~~/app/types/office'
 
 export default defineEventHandler(async (event) => {
@@ -32,6 +32,6 @@ export default defineEventHandler(async (event) => {
   )
   if (!actionItem) throw createError({ statusCode: 404, statusMessage: 'Action item not found' })
 
-  const candidates = await findMeetingCrmCandidates(meetingId)
+  const candidates = await authorizeMeetingCandidatesForEvent(event, await findMeetingCrmCandidates(meetingId))
   return { proposals: rankTargets(candidates), alreadyConverted: !!actionItem.crm_task_id }
 })

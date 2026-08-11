@@ -7,6 +7,8 @@ import {
   funnel, winRate, weightedForecast, avgCycleLengthDays, avgTimeInStageDays,
   type AnalyticsOpp, type AnalyticsStage, type StageHistoryRow,
 } from '~~/server/utils/crm/analytics'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { buildWhere, visibilityCondsForContext, type Cond } from '~~/server/utils/crm/queryScope'
 
 const Query = z.object({
   client_id: z.string().uuid(),
@@ -18,31 +20,33 @@ const Query = z.object({
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const q = Query.parse(getQuery(event))
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: q.client_id, surface: 'agency_global' })
 
   const stages = await queryRows<AnalyticsStage>(
     `SELECT id, code, name, sort_order, is_won, is_lost FROM crm_stages
       WHERE client_id IS NULL OR client_id = $1`,
-    [q.client_id],
+    [context.clientId],
   )
 
-  const conds: string[] = ['client_id = $1', 'deleted_at IS NULL']
-  const params: unknown[] = [q.client_id]
-  if (q.from) { params.push(q.from); conds.push(`created_at >= $${params.length}`) }
-  if (q.to) { params.push(q.to); conds.push(`created_at <= $${params.length}`) }
-  if (q.owner_id) { params.push(q.owner_id); conds.push(`owner_id = $${params.length}`) }
+  const conds: Cond[] = [...visibilityCondsForContext(context, 'opportunity', 'crm_opportunities')]
+  if (q.from) conds.push({ sql: 'crm_opportunities.created_at >= ?', params: [q.from] })
+  if (q.to) conds.push({ sql: 'crm_opportunities.created_at <= ?', params: [q.to] })
+  if (q.owner_id) conds.push({ sql: 'crm_opportunities.owner_id = ?', params: [q.owner_id] })
+  const { where, params } = buildWhere(context.clientId, conds)
   const opps = await queryRows<AnalyticsOpp>(
     // Cast dates to UTC date-only text so cycle-length is exact and identical across
     // drivers (pg returns DATE as a local-midnight Date; neon-http as a string).
     `SELECT id, stage_id, amount, probability, status, owner_id,
             created_at::date::text AS created_at, actual_close_date::text AS actual_close_date
-       FROM crm_opportunities WHERE ${conds.join(' AND ')}`,
+       FROM crm_opportunities ${where}`,
     params,
   )
 
-  const history = await queryRows<StageHistoryRow>(
+  const visibleOpportunityIds = opps.map(opportunity => opportunity.id)
+  const history = visibleOpportunityIds.length === 0 ? [] : await queryRows<StageHistoryRow>(
     `SELECT opportunity_id, from_stage_id, to_stage_id, changed_at
-       FROM crm_opportunity_stage_history WHERE client_id = $1`,
-    [q.client_id],
+       FROM crm_opportunity_stage_history WHERE client_id = $1 AND opportunity_id = ANY($2::uuid[])`,
+    [context.clientId, visibleOpportunityIds],
   )
 
   const openPipelineValue = opps

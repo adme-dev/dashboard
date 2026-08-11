@@ -5,16 +5,23 @@ import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
 import { winRate, weightedForecast, type AnalyticsOpp } from '~~/server/utils/crm/analytics'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { buildWhere, visibilityCondsForContext } from '~~/server/utils/crm/queryScope'
 
 const Query = z.object({ client_id: z.string().uuid() })
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const { client_id } = Query.parse(getQuery(event))
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: client_id, surface: 'agency_global' })
+  const { where, params } = buildWhere(
+    context.clientId,
+    visibilityCondsForContext(context, 'opportunity', 'crm_opportunities')
+  )
   const opps = await queryRows<AnalyticsOpp>(
     `SELECT id, stage_id, amount, probability, status, owner_id, created_at, actual_close_date
-       FROM crm_opportunities WHERE client_id = $1 AND deleted_at IS NULL`,
-    [client_id],
+       FROM crm_opportunities ${where}`,
+    params,
   )
 
   const byOwner = new Map<string, AnalyticsOpp[]>()

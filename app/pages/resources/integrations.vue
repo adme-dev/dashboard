@@ -144,7 +144,7 @@
               </div>
             </div>
             <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed mb-5">
-              XeroFlow runs entirely on the Cloudflare network. <strong class="font-medium text-[#121317] dark:text-white">Pages</strong> hosts the application. <strong class="font-medium text-[#121317] dark:text-white">R2</strong> provides S3-compatible object storage for file uploads, EOM invoice archives, and training data exports. <strong class="font-medium text-[#121317] dark:text-white">Workers</strong> handle edge functions including the email processing worker and AI agent worker. <strong class="font-medium text-[#121317] dark:text-white">Durable Objects</strong> power real-time chat rooms and board event broadcasting. <strong class="font-medium text-[#121317] dark:text-white">KV</strong> serves as a caching layer. <strong class="font-medium text-[#121317] dark:text-white">Workers AI</strong> runs edge inference for intent classification. <strong class="font-medium text-[#121317] dark:text-white">Vectorize</strong> hosts the semantic search index. <strong class="font-medium text-[#121317] dark:text-white">Queues</strong> manage async job processing for embedding, training extraction, and background tasks.
+              XeroFlow runs entirely on the Cloudflare network. <strong class="font-medium text-[#121317] dark:text-white">Pages</strong> hosts the application. <strong class="font-medium text-[#121317] dark:text-white">R2</strong> provides S3-compatible object storage for file uploads, EOM invoice archives, and training data exports. <strong class="font-medium text-[#121317] dark:text-white">Workers</strong> handle edge functions including the email processing worker and AI agent worker. <strong class="font-medium text-[#121317] dark:text-white">Durable Objects</strong> power real-time chat rooms and board event broadcasting. <strong class="font-medium text-[#121317] dark:text-white">KV</strong> serves as a caching layer. <strong class="font-medium text-[#121317] dark:text-white">Workers AI</strong> supports controlled inference. The <strong class="font-medium text-[#121317] dark:text-white">dedicated CRM Vectorize index</strong> is reserved for controlled CRM semantic assistance after authorized indexing; other XeroFlow features use separate Vectorize indexes for their own bounded purposes. <strong class="font-medium text-[#121317] dark:text-white">Queues</strong> manage asynchronous work, including the dedicated CRM indexing path when that off-by-default capability is enabled.
             </p>
             <div class="flex flex-wrap gap-2">
               <span class="text-[12px] text-[#45474D]/70 dark:text-white/40 px-2.5 py-1 rounded-full bg-[#f4f5f7] dark:bg-white/[0.06]">Pages</span>
@@ -211,18 +211,17 @@
               </div>
               <div>
                 <h2 class="text-[20px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Vectorize</h2>
-                <p class="text-[13px] text-[#45474D]/60 dark:text-white/40">Semantic search & embeddings</p>
+                <p class="text-[13px] text-[#45474D]/60 dark:text-white/40">Controlled CRM retrieval infrastructure</p>
               </div>
             </div>
             <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed mb-5">
-              Cloudflare Vectorize hosts the semantic search index that powers XeroFlow's intelligent search. Tasks, clients, briefs, and knowledge base entries are embedded as vectors using a change-detection system -- only modified items are re-processed, keeping the index current without full reindexing. The composite retrieval scoring system combines semantic similarity, recency, entity importance, intent matching, and diversity penalties to rank results. Vectorize also supports the AI context retrieval pipeline, providing semantically relevant background data for chat conversations.
+              The dedicated CRM Vectorize path is used only for controlled CRM semantic assistance in approved agency-assistant contexts; other XeroFlow features use their own separate Vectorize paths. The CRM capability is off by default. Authorized indexing covers people, companies, and opportunities; it is asynchronous, and a record is eligible only after its current revision reaches confirmed index state. Visible and portal CRM ranking remains keyword-based.
             </p>
             <div class="flex flex-wrap gap-2">
-              <span class="text-[12px] text-[#45474D]/70 dark:text-white/40 px-2.5 py-1 rounded-full bg-[#f4f5f7] dark:bg-white/[0.06]">Semantic search</span>
-              <span class="text-[12px] text-[#45474D]/70 dark:text-white/40 px-2.5 py-1 rounded-full bg-[#f4f5f7] dark:bg-white/[0.06]">Vector embeddings</span>
-              <span class="text-[12px] text-[#45474D]/70 dark:text-white/40 px-2.5 py-1 rounded-full bg-[#f4f5f7] dark:bg-white/[0.06]">Change detection</span>
-              <span class="text-[12px] text-[#45474D]/70 dark:text-white/40 px-2.5 py-1 rounded-full bg-[#f4f5f7] dark:bg-white/[0.06]">Composite scoring</span>
-              <span class="text-[12px] text-[#45474D]/70 dark:text-white/40 px-2.5 py-1 rounded-full bg-[#f4f5f7] dark:bg-white/[0.06]">Knowledge base</span>
+              <span class="text-[12px] text-[#45474D]/70 dark:text-white/40 px-2.5 py-1 rounded-full bg-[#f4f5f7] dark:bg-white/[0.06]">Controlled CRM assist</span>
+              <span class="text-[12px] text-[#45474D]/70 dark:text-white/40 px-2.5 py-1 rounded-full bg-[#f4f5f7] dark:bg-white/[0.06]">Authorized indexing</span>
+              <span class="text-[12px] text-[#45474D]/70 dark:text-white/40 px-2.5 py-1 rounded-full bg-[#f4f5f7] dark:bg-white/[0.06]">Confirmed state</span>
+              <span class="text-[12px] text-[#45474D]/70 dark:text-white/40 px-2.5 py-1 rounded-full bg-[#f4f5f7] dark:bg-white/[0.06]">Off by default</span>
             </div>
           </section>
 
@@ -234,7 +233,7 @@
               </div>
               <div>
                 <p class="text-[15px] font-medium text-[#121317] dark:text-white mb-1">One Connected Platform</p>
-                <p class="text-[14px] text-[#45474D] dark:text-white/60 leading-relaxed">All 8 integrations feed data into a single system. Financial data from Xero and ad platforms flows into P&L dashboards. AI models from Groq and Vectorize power search and recommendations. Everything stays in sync so your team works from one source of truth.</p>
+                <p class="text-[14px] text-[#45474D] dark:text-white/60 leading-relaxed">Each integration has its own bounded purpose. Financial data from Xero and ad platforms flows into P&amp;L dashboards; controlled CRM semantic assistance uses Workers AI and Vectorize only after its separate rollout and indexing checks pass.</p>
               </div>
             </div>
           </div>
@@ -253,7 +252,7 @@
               <NuxtLink to="/resources/ai-automation" class="flex items-center justify-between p-4 rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] hover:bg-[#eef0f3] dark:hover:bg-white/[0.05] transition-colors group">
                 <div>
                   <p class="text-[15px] font-medium text-[#121317] dark:text-white">AI & Automation</p>
-                  <p class="text-[13px] text-[#45474D]/60 dark:text-white/40">How Groq and Vectorize power AI features</p>
+                  <p class="text-[13px] text-[#45474D]/60 dark:text-white/40">How AI features and controlled CRM retrieval are bounded</p>
                 </div>
                 <UIcon name="i-lucide-arrow-right" class="w-4 h-4 text-[#45474D]/40 dark:text-white/30 group-hover:text-[#121317] dark:group-hover:text-white transition-colors" />
               </NuxtLink>
@@ -284,8 +283,8 @@ definePageMeta({
 
 useSeoMeta({
   title: 'Integrations — XeroFlow',
-  description: 'XeroFlow integrates with Xero, Meta Ads, Google Ads, Resend, Cloudflare, Monday.com, Groq, and Vectorize for a connected agency platform.',
+  description: 'XeroFlow integrations, including off-by-default Vectorize infrastructure for authorized, confirmed CRM indexing and controlled agency-assistant retrieval.',
   ogTitle: 'Integrations — XeroFlow',
-  ogDescription: 'XeroFlow integrates with Xero, Meta Ads, Google Ads, Resend, Cloudflare, Monday.com, Groq, and Vectorize for a connected agency platform.',
+  ogDescription: 'XeroFlow integrations, including off-by-default Vectorize infrastructure for authorized, confirmed CRM indexing and controlled agency-assistant retrieval.',
 })
 </script>

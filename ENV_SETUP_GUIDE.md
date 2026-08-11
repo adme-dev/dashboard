@@ -165,6 +165,16 @@ npx wrangler pages secret delete DATABASE_URL --env production
 
 ## 📚 Additional Resources
 
+### CRM search release-only bindings
+
+CRM search release authority uses three unrelated bindings:
+
+- `CRM_SEARCH_RESOURCE_APPROVAL_VERIFICATION_KEYRING` verifies trusted Ed25519 bootstrap approval envelopes.
+- `CRM_SEARCH_RESOURCE_MANIFEST_VERIFICATION_KEYRING` verifies the exact preview/production Cloudflare resource manifest consumed by the Queue Worker.
+- `CRM_SEARCH_SEALED_HOLDOUT_KEYRING` contains only AES-256-GCM sealed-holdout keys.
+
+Never reuse `CRON_SECRET`, service-signing, confirmation, or analytics keys. Preview/production resource identities must be read back from Cloudflare and match the signed manifest. The sealed holdout remains blocked until the approved opaque object is imported to `crm-search/evaluation/holdouts/holdout-v1.json`, read back, and both the object and decrypted judgement SHA-256 values match. Do not put any of these values in `wrangler.toml`.
+
 - [Full Environment Variables Docs](./docs/ENVIRONMENT_VARIABLES.md)
 - [Wrangler Secrets Documentation](https://developers.cloudflare.com/pages/functions/wrangler-configuration/#secrets)
 - [Neon Connection Strings](https://neon.tech/docs/connect/connect-pgkit)
@@ -180,8 +190,8 @@ pnpm dev:wrangler          # Start with Wrangler (uses .dev.vars)
 pnpm env:setup:local       # Setup local env file
 
 # Deployment
-pnpm deploy:preview        # Deploy to preview
-pnpm deploy:production     # Deploy to production
+pnpm deploy:preview        # Requires verified frozen preview artifact/approval
+pnpm deploy:production     # Protected manual production_deploy approval only
 
 # Secrets management
 pnpm env:setup             # Interactive env setup

@@ -33,8 +33,34 @@ describe('validateRecord', () => {
     expect(() => validateRecord(defs, { name: 'W', customer: 'not-a-uuid' })).toThrow(/customer/)
   })
 
+  it.each([
+    [['11111111-1111-1111-1111-111111111111']],
+    [{ id: '11111111-1111-1111-1111-111111111111' }]
+  ])('rejects a present non-string relation value before coercion (%j)', value => {
+    expect(() => validateRecord(defs, { name: 'W', customer: value })).toThrow(/customer/)
+  })
+
   it('accepts a uuid relation value (existence checked separately at the DB layer)', () => {
     const out = validateRecord(defs, { name: 'W', customer: '11111111-1111-1111-1111-111111111111' })
     expect(out.customer).toBe('11111111-1111-1111-1111-111111111111')
+  })
+
+  it('rejects a relation definition without a protected target type', () => {
+    const unsafeDefs: ValidatorFieldDef[] = [
+      { key: 'name', field_type: 'text', options: [], relation_target: null, is_required: true },
+      { key: 'customer', field_type: 'relation', options: [], relation_target: null, is_required: false }
+    ]
+    expect(() => validateRecord(unsafeDefs, {
+      name: 'Widget',
+      customer: '11111111-1111-1111-1111-111111111111'
+    })).toThrow(/protected target/)
+  })
+
+  it('rejects a malformed relation definition even when that field is absent', () => {
+    const unsafeDefs: ValidatorFieldDef[] = [
+      { key: 'name', field_type: 'text', options: [], relation_target: null, is_required: true },
+      { key: 'customer', field_type: 'relation', options: [], relation_target: null, is_required: false }
+    ]
+    expect(() => validateRecord(unsafeDefs, { name: 'Widget' })).toThrow(/protected target/)
   })
 })

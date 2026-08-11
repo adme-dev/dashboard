@@ -3,7 +3,9 @@
 // (with `?` placeholders) + params, or null when the (entity, action) combo is
 // unsupported. runBulk appends client + id-list scoping and executes — a single
 // statement, so inherently atomic; rows of other clients are never matched.
-import { execute } from '~~/server/utils/db'
+import { execute, transaction } from '~~/server/utils/db'
+import type { CrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { requireAllCrmRecordsAccess, type TransactionClient } from '~~/server/utils/crm/recordAccess'
 
 export type BulkEntity = 'people' | 'companies' | 'opportunities'
 export type BulkAction = 'assign' | 'tag' | 'untag' | 'status' | 'delete'
@@ -62,10 +64,25 @@ export interface BulkArgs {
   payload: Record<string, unknown>
 }
 
+type BulkTransaction = <T>(callback: (db: TransactionClient) => Promise<T>) => Promise<T>
+
+export interface RunBulkDependencies {
+  transaction: BulkTransaction
+}
+
+const defaultRunBulkDependencies: RunBulkDependencies = {
+  transaction: transaction as BulkTransaction
+}
+
 /** Apply a bulk action to the caller's rows only. Returns the affected row count. */
-export async function runBulk(clientId: string, args: BulkArgs): Promise<{ updated: number }> {
+export async function runBulk(
+  scope: string | CrmSearchContext,
+  args: BulkArgs,
+  deps: RunBulkDependencies = defaultRunBulkDependencies
+): Promise<{ updated: number }> {
   const op = buildBulkOp(args.entity, args.action, args.payload)
   if (!op) throw createError({ statusCode: 400, statusMessage: `Unsupported bulk action "${args.action}" for ${args.entity}` })
+  const clientId = typeof scope === 'string' ? scope : scope.clientId
   let i = 0
   const setSql = op.setSql.replace(/\?/g, () => `$${++i}`)
   const params: unknown[] = [...op.params]
@@ -73,6 +90,22 @@ export async function runBulk(clientId: string, args: BulkArgs): Promise<{ updat
   const idsIdx = params.push(args.ids)
   const sql = `UPDATE ${BULK_TABLE[args.entity]} SET ${setSql}, updated_at = now()
     WHERE client_id = $${cIdx} AND id = ANY($${idsIdx}) AND deleted_at IS NULL`
+
+  // Portal callers retain their existing client-session boundary. Agency
+  // callers preauthorize the complete requested set and mutate it in the same
+  // transaction, so one hidden/missing ID cannot become a partial write or a
+  // row-count oracle.
+  if (typeof scope !== 'string') {
+    return await deps.transaction(async (db) => {
+      const type = args.entity === 'people' ? 'person'
+        : args.entity === 'companies' ? 'company'
+          : 'opportunity'
+      await requireAllCrmRecordsAccess(scope, args.ids.map(id => ({ type, id })), db)
+      const result = await db.query(sql, params) as { rowCount?: number }
+      return { updated: result.rowCount ?? 0 }
+    })
+  }
+
   const updated = await execute(sql, params)
   return { updated }
 }

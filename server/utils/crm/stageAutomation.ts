@@ -2,9 +2,15 @@
 // On opportunity stage entry: record a queryable history row and create follow-up
 // tasks from per-client automation rules. buildAutomationTasks is pure (TDD);
 // recordStageChange does the DB I/O and idempotency.
-import { queryRows, queryOne, execute } from '~~/server/utils/db'
+import { queryRows, queryOne, execute, transaction } from '~~/server/utils/db'
 import { recomputeIfScorable } from './scoreSignals'
 import { applyLifecycleEvent } from './lifecycle'
+import {
+  resolveTrustedCrmSystemContext,
+  type CrmRecordAccessContext
+} from '~~/server/utils/crm/searchContext'
+import { requireAllCrmRecordsAccess, requireCrmRecordAccess, type CrmRecordRef } from '~~/server/utils/crm/recordAccess'
+import { requireAssignmentPoolMembers } from '~~/server/utils/crm/assignment'
 
 export interface StageAutomationTemplate {
   title?: string
@@ -86,8 +92,14 @@ export async function runStageEntryAutomations(opts: {
   changedBy: string | null
   isWon?: boolean
   now?: Date
+  accessContext?: CrmRecordAccessContext
 }): Promise<void> {
   const now = opts.now ?? new Date()
+  const accessContext = opts.accessContext ?? await resolveTrustedCrmSystemContext({
+    clientId: opts.clientId,
+    purpose: 'crm_activation'
+  })
+  await requireCrmRecordAccess(accessContext, { type: 'opportunity', id: opts.opportunityId })
 
   // A stage change shifts open-opportunity intent — refresh the linked contact's score.
   const contacts = await queryOne<{ person_id: string | null, company_id: string | null }>(
@@ -99,13 +111,17 @@ export async function runStageEntryAutomations(opts: {
     [opts.opportunityId, opts.clientId]
   )
   if (contacts) {
-    await recomputeIfScorable(opts.clientId, 'person', contacts.person_id, 'opportunity_stage')
-    await recomputeIfScorable(opts.clientId, 'company', contacts.company_id, 'opportunity_stage')
+    const refs: CrmRecordRef[] = []
+    if (contacts.person_id) refs.push({ type: 'person', id: contacts.person_id })
+    if (contacts.company_id) refs.push({ type: 'company', id: contacts.company_id })
+    await requireAllCrmRecordsAccess(accessContext, refs)
+    await recomputeIfScorable(opts.clientId, 'person', contacts.person_id, 'opportunity_stage', accessContext)
+    await recomputeIfScorable(opts.clientId, 'company', contacts.company_id, 'opportunity_stage', accessContext)
     // Winning a deal promotes the linked contact(s) to `customer` + a `won` tag.
     if (opts.isWon) {
       try {
-        await applyLifecycleEvent({ clientId: opts.clientId, entityType: 'person', entityId: contacts.person_id, event: 'opportunity_won' })
-        await applyLifecycleEvent({ clientId: opts.clientId, entityType: 'company', entityId: contacts.company_id, event: 'opportunity_won' })
+        await applyLifecycleEvent({ clientId: opts.clientId, entityType: 'person', entityId: contacts.person_id, event: 'opportunity_won', context: accessContext })
+        await applyLifecycleEvent({ clientId: opts.clientId, entityType: 'company', entityId: contacts.company_id, event: 'opportunity_won', context: accessContext })
       } catch (e) {
         console.error('[crm] lifecycle win hook failed', e)
       }
@@ -120,20 +136,25 @@ export async function runStageEntryAutomations(opts: {
 
   const planned = buildAutomationTasks(rules, { id: opts.opportunityId, owner_id: opts.ownerId }, now)
   for (const p of planned) {
-    // Idempotency: don't stack a second open task with the same title for this opportunity.
-    const existing = await queryOne(
-      `SELECT id FROM crm_tasks
-        WHERE client_id = $1 AND target_type = 'opportunity' AND target_id = $2
-          AND title = $3 AND status IN ('pending','in_progress') AND deleted_at IS NULL
-        LIMIT 1`,
-      [opts.clientId, opts.opportunityId, p.title]
-    )
-    if (existing) continue
-    await execute(
-      `INSERT INTO crm_tasks
-         (client_id, target_type, target_id, title, task_type, priority, due_at, assigned_to, created_by)
-       VALUES ($1,'opportunity',$2,$3,$4,$5,$6,$7,$8)`,
-      [opts.clientId, opts.opportunityId, p.title, p.task_type, p.priority, p.due_at, p.assigned_to, opts.changedBy]
-    )
+    await transaction(async (database) => {
+      await requireCrmRecordAccess(accessContext, { type: 'opportunity', id: opts.opportunityId }, database)
+      if (p.assigned_to) {
+        await requireAssignmentPoolMembers(accessContext.clientId, [p.assigned_to], database)
+      }
+      const existingResult = await database.query(
+        `SELECT id FROM crm_tasks
+          WHERE client_id = $1 AND target_type = 'opportunity' AND target_id = $2
+            AND title = $3 AND status IN ('pending','in_progress') AND deleted_at IS NULL
+          LIMIT 1`,
+        [accessContext.clientId, opts.opportunityId, p.title]
+      )
+      if (existingResult.rows[0]) return
+      await database.query(
+        `INSERT INTO crm_tasks
+           (client_id, target_type, target_id, title, task_type, priority, due_at, assigned_to, created_by)
+         VALUES ($1,'opportunity',$2,$3,$4,$5,$6,$7,$8)`,
+        [accessContext.clientId, opts.opportunityId, p.title, p.task_type, p.priority, p.due_at, p.assigned_to, opts.changedBy]
+      )
+    })
   }
 }

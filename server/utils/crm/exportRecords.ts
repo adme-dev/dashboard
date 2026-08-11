@@ -7,6 +7,8 @@ import { queryRows } from '~~/server/utils/db'
 import { buildWhere, type Cond } from '~~/server/utils/crm/queryScope'
 import { buildFilterConds, type FilterClause } from '~~/server/utils/crm/filters'
 import { toCsv } from '~~/server/utils/crm/csv'
+import type { CrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { visibilityCondsForContext } from '~~/server/utils/crm/queryScope'
 
 export type ExportEntity = 'people' | 'companies' | 'opportunities'
 export type ExportFormat = 'csv' | 'xlsx'
@@ -33,13 +35,21 @@ function searchCond(entity: ExportEntity, q: string | undefined): Cond[] {
 const MAX_EXPORT = 10000
 
 export async function fetchExportRows(
-  entity: ExportEntity, clientId: string,
+  entity: ExportEntity, scope: string | CrmSearchContext,
   opts: { q?: string, filters?: FilterClause[], extraConds?: Cond[] },
+  deps: { queryRows: typeof queryRows } = { queryRows },
 ): Promise<Record<string, unknown>[]> {
-  const conds: Cond[] = [...(opts.extraConds ?? []), ...searchCond(entity, opts.q), ...buildFilterConds(entity, opts.filters)]
+  const clientId = typeof scope === 'string' ? scope : scope.clientId
+  const type = entity === 'people' ? 'person' : entity === 'companies' ? 'company' : 'opportunity'
+  const conds: Cond[] = [
+    ...(typeof scope === 'string' ? [] : visibilityCondsForContext(scope, type, TABLE[entity])),
+    ...(opts.extraConds ?? []),
+    ...searchCond(entity, opts.q),
+    ...buildFilterConds(entity, opts.filters)
+  ]
   const { where, params } = buildWhere(clientId, conds)
   const cols = EXPORT_COLUMNS[entity].join(', ')
-  return await queryRows<Record<string, unknown>>(
+  return await deps.queryRows<Record<string, unknown>>(
     `SELECT ${cols} FROM ${TABLE[entity]} ${where} ORDER BY created_at DESC LIMIT ${MAX_EXPORT}`,
     params,
   )

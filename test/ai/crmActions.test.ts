@@ -5,18 +5,49 @@ import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
 const ctx = { userId: 'u1', userRole: 'sales', conversationId: 'c1', event: { headers: {} } as any } as ToolContext
 
+const crmContext = {
+  organisationScopeId: 'org1',
+  clientId: 'cl1',
+  correlationId: 'corr1',
+  actorType: 'staff',
+  actorId: 'u1',
+  surface: 'agency_ai',
+  permissionSet: ['CLIENTS'],
+  visibility: { ownerScoped: true },
+  assistantScope: { clientIds: ['cl1'], sourceRevision: 'r1' }
+} as const
+
 const deps = (over: Partial<CrmDeps> = {}): CrmDeps => ({
-  resolveClient: async () => [{ id: 'cl1', name: 'Acme' }],
+  resolveContext: async () => ({ status: 'resolved', context: crmContext as any, clientName: 'Acme' }),
   resolveStage: async () => [{ id: 'st1', name: 'new' }],
   resolvePerson: async () => [{ id: 'pe1', name: 'Jane Doe' }],
   resolveCompany: async () => [{ id: 'co1', name: 'Acme Pty' }],
   resolveOpportunity: async () => [{ id: 'op1', name: 'Q3 retainer' }],
+  authorizeMatches: async (_context, _type, matches) => matches,
   propose: async () => 'prop-1',
   draftFollowup: async () => 'Hi Jane, just following up…',
   ...over,
 })
 
 describe('propose_opportunity', () => {
+  it('does not disclose a client when the fresh CRM-specific scope is unavailable', async () => {
+    const propose = vi.fn()
+    const resolveClient = vi.fn(async () => [{ id: 'cl-hidden', name: 'Hidden Client' }])
+    const res = await proposeOpportunity(
+      { clientName: 'Hidden', name: 'Secret deal', stageName: 'new' } as any,
+      ctx,
+      deps({
+        resolveClient,
+        resolveContext: vi.fn(async () => ({ status: 'scope_unavailable' })),
+        propose
+      } as any)
+    )
+
+    expect(res).toEqual({ ok: false, error: 'No matching client.' })
+    expect(resolveClient).not.toHaveBeenCalled()
+    expect(propose).not.toHaveBeenCalled()
+  })
+
   it('resolves client + stage (+ optional person) and stages a proposal', async () => {
     const res: any = await proposeOpportunity({ clientName: 'Acme', name: 'Q4 deal', stageName: 'new', amount: 5000, personName: 'Jane' } as any, ctx, deps())
     expect(res.ok).toBe(true)
@@ -26,20 +57,51 @@ describe('propose_opportunity', () => {
     const res: any = await proposeOpportunity({ clientName: 'Acme', name: 'X', stageName: 'bogus' } as any, ctx, deps({ resolveStage: async () => [] }))
     expect(res.ok).toBe(false)
   })
-  it('disambiguates client matches without proposing', async () => {
+  it('does not disclose ambiguous client matches or propose', async () => {
     const propose = vi.fn()
     const res: any = await proposeOpportunity({ clientName: 'Ac', name: 'X', stageName: 'new' } as any, ctx,
-      deps({ resolveClient: async () => [{ id: 'cl1', name: 'Acme' }, { id: 'cl2', name: 'Acme Two' }], propose }))
-    expect(res.data.disambiguation.field).toBe('clientName')
+      deps({ resolveContext: async () => ({ status: 'ambiguous' }), propose }))
+    expect(res).toEqual({ ok: false, error: 'No matching client.' })
     expect(propose).not.toHaveBeenCalled()
   })
 })
 
 describe('log_crm_activity', () => {
+  it('authorizes every match before exposing a disambiguation option', async () => {
+    const authorizeMatches = vi.fn(async (_context, _type, matches) =>
+      matches.filter((match: { id: string }) => match.id === 'pe1'))
+    const propose = vi.fn()
+    const res: any = await logCrmActivity({
+      clientName: 'Acme',
+      targetType: 'person',
+      targetName: 'Jane',
+      type: 'note',
+      title: 'Follow up'
+    } as any, ctx, deps({
+      resolvePerson: async () => [
+        { id: 'pe1', name: 'Jane Visible' },
+        { id: 'pe-hidden', name: 'Jane Hidden' }
+      ],
+      authorizeMatches,
+      propose
+    } as any))
+
+    expect(authorizeMatches).toHaveBeenCalledWith(
+      expect.anything(),
+      'person',
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'pe1' }),
+        expect.objectContaining({ id: 'pe-hidden' })
+      ])
+    )
+    expect(JSON.stringify(res)).not.toContain('pe-hidden')
+    expect(JSON.stringify(res)).not.toContain('Jane Hidden')
+  })
+
   it('routes targetType to the right resolver and stages a proposal', async () => {
     const resolveCompany = vi.fn(async () => [{ id: 'co1', name: 'Acme Pty' }])
     const res: any = await logCrmActivity({ clientName: 'Acme', targetType: 'company', targetName: 'Acme Pty', type: 'call', title: 'Intro call' } as any, ctx, deps({ resolveCompany }))
-    expect(resolveCompany).toHaveBeenCalledWith('cl1', 'Acme Pty')
+    expect(resolveCompany).toHaveBeenCalledWith(expect.objectContaining({ clientId: 'cl1' }), 'Acme Pty')
     expect(res.data.resolved).toMatchObject({ target_type: 'company', target_id: 'co1', type: 'call', title: 'Intro call' })
   })
 })

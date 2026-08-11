@@ -1,0 +1,23 @@
+{
+  "version": "holdout-v1",
+  "sha256": "2ca5fd71153ea3fba226a2da231833675568bccf0a2229581e87ca2edea7d093",
+  "sealed": true,
+  "sealedJudgementSha256": "a459ef8b7cdd373f8b016dc77014f9f2d8932f3551266a12c2f01d84013d5fdf",
+  "queryCount": 360,
+  "clientCounts": {
+    "client-1": 120,
+    "client-2": 120,
+    "client-3": 120
+  },
+  "entityTypeCounts": {
+    "person": 120,
+    "company": 120,
+    "opportunity": 120
+  },
+  "strataCounts": {
+    "natural_language": 120,
+    "exact_name_or_identifier": 60,
+    "no_result": 60,
+    "cross_client_overlap": 60
+  }
+}

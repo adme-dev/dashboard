@@ -46,7 +46,8 @@ export const ROUTES: Record<string, string[]> = {
     '/api/cron/monday-webhooks',
     '/api/cron/measurement-outbox-repair',
     '/api/cron/god-mode-reconciliation',
-    '/api/cron/memory-index-outbox'
+    '/api/cron/memory-index-outbox',
+    '/api/cron/crm-search-index-repair'
   ],
   // hourly at :45 — keep the Xero customer cache and rollups fresh. Delta
   // syncs are idempotent and use the shared cron token resolver. Was */15:
@@ -63,8 +64,12 @@ export const ROUTES: Record<string, string[]> = {
   // daily — refresh the Xero invoice line-item cache (AGI / True Position).
   // Syncs current + previous month so month-end backdated entries are caught.
   '20 3 * * *': ['/api/cron/xero-invoice-lines-sync'],
-  // daily — office meeting/recording retention cleanup
-  '35 3 * * *': ['/api/cron/office-retention'],
+  // daily — office meeting/recording cleanup plus bounded, legal-hold-aware
+  // CRM-search governed retention. Both endpoints are independently idempotent.
+  '35 3 * * *': [
+    '/api/cron/office-retention',
+    '/api/cron/crm-search-retention'
+  ],
   // daily — purge tracking_events past each site's retention_days
   '45 3 * * *': ['/api/cron/tracking-retention'],
   // daily — recompute hot/warm/cold intent-tier membership from the last 30

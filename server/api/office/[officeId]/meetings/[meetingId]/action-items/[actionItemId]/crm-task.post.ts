@@ -8,7 +8,9 @@ import { queryOne } from '~~/server/utils/db'
 import { ensureOfficeMeetingArtifactsTables } from '~~/server/utils/officeMeetingArtifacts'
 import {
   findMeetingCrmCandidates, rankTargets, isTargetInCandidates, convertActionItemToCrmTask, AlreadyConvertedError,
+  authorizeMeetingCandidatesForEvent,
 } from '~~/server/utils/crm/meetingBridge'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
 import type { OfficeMemberRow, OfficeMeetingActionItemRow } from '~~/app/types/office'
 
 type ActionItemWithMeetingTitle = OfficeMeetingActionItemRow & { meeting_title: string }
@@ -49,10 +51,12 @@ export default defineEventHandler(async (event) => {
 
   // Guard: the chosen target must be one the resolver actually proposed (primary
   // OR an alternative) — blocks injecting an arbitrary cross-tenant target.
-  const proposals = rankTargets(await findMeetingCrmCandidates(meetingId))
+  const candidates = await authorizeMeetingCandidatesForEvent(event, await findMeetingCrmCandidates(meetingId))
+  const proposals = rankTargets(candidates)
   if (!isTargetInCandidates(proposals, body)) {
     throw createError({ statusCode: 400, statusMessage: 'Chosen target is not a valid candidate for this meeting' })
   }
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: body.client_id, surface: 'agency_global' })
 
   try {
     return await convertActionItemToCrmTask(
@@ -62,7 +66,7 @@ export default defineEventHandler(async (event) => {
         content: actionItem.content, due_at: actionItem.due_at, crm_task_id: actionItem.crm_task_id,
       },
       { client_id: body.client_id, target_type: body.target_type, target_id: body.target_id },
-      { actor: user.id, mode: 'manual_office', priority: body.priority },
+      { actor: context.actorId, mode: 'manual_office', priority: body.priority, accessContext: context },
     )
   } catch (e) {
     if (e instanceof AlreadyConvertedError) {

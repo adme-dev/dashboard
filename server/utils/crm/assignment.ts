@@ -3,6 +3,7 @@
 // (TDD); runAssignment does the DB I/O, using an atomic UPDATE…RETURNING for
 // race-free round-robin under concurrent creates.
 import { queryOne, queryRows, execute } from '~~/server/utils/db'
+import type { TransactionClient } from '~~/server/utils/crm/recordAccess'
 
 export type AssignStrategy = 'round_robin' | 'load_balanced' | 'priority' | 'single'
 
@@ -13,6 +14,33 @@ export interface AssignmentRule {
 }
 export interface AssignContext { loads?: Record<string, number> }
 export interface AssignResult { userId: string | null, nextIndex: number }
+
+export async function requireAssignmentPoolMembers(
+  clientId: string,
+  pool: readonly string[],
+  database: TransactionClient
+) {
+  const uniqueIds = [...new Set(pool)]
+  if (!uniqueIds.length) return []
+  const result = await database.query(
+    `SELECT member.id::text AS id
+       FROM team_members member
+       JOIN client_team_assignments assignment
+         ON assignment.team_member_id = member.id
+        AND assignment.client_id = $1
+      WHERE member.id = ANY($2::uuid[])
+        AND member.is_active = TRUE
+      FOR SHARE OF member, assignment`,
+    [clientId, uniqueIds]
+  )
+  const rows = (result.rows ?? []) as Array<{ id: string }>
+  const authorizedIds = new Set(rows.map(row => row.id))
+  if (authorizedIds.size !== uniqueIds.length
+    || uniqueIds.some(id => !authorizedIds.has(id))) {
+    throw createError({ statusCode: 404, statusMessage: 'Record not found' })
+  }
+  return rows
+}
 
 // Pure: given a rule (+ optional load map for load_balanced), pick the assignee
 // and the index to store next. round_robin is the only strategy that rotates.

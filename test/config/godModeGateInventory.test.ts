@@ -25,7 +25,7 @@ const TASK_3_OWNED_FILES = new Set([
   'server/plugins/godModeAudit.ts',
   'server/api/crm/ai/status.get.ts'
 ])
-const GATE_PATTERN = /process\.env\.|useRuntimeConfig\(|runtimeConfig\.|feature.?flag|suite.?enabled|roleHasPermission\(|hasRole\(|user\.role|user_role|permissionGroups|requirePermission\(|requireRole\(|requireWriteAccess\(|isReadOnlyRole\(|GOD_MODE_DISABLED|AI_GATEWAY_URL/i
+const GATE_PATTERN = /process\.env\.|useRuntimeConfig\(|runtimeConfig\.|feature.?flag|suite.?enabled|roleHasPermission\(|hasRole\(|user\.role|user_role|permissionGroups|requirePermission\(|requireRole\(|requireWriteAccess\(|requireFreshCrmSearchAdmin|isReadOnlyRole\(|GOD_MODE_DISABLED|AI_GATEWAY_URL/i
 
 const CENTRAL_HELPER_BY_CLASS = {
   identity_tenant_hard_boundary: 'unchanged independent scope helper',
@@ -64,7 +64,7 @@ function classifyGate(file: string, line: string): GateClass {
     || (file === 'server/utils/godMode/authority.ts' && /process\.env/.test(line))) {
     return 'provider_infrastructure_availability'
   }
-  if (/requirePermission\(|requireRole\(|requireWriteAccess\(|roleHasPermission\(|hasRole\(|isReadOnlyRole\(|feature.?flag|suite.?enabled|(?:^|[_A-Z])ENABLED(?:\b|_)/i.test(line)) {
+  if (/requirePermission\(|requireRole\(|requireWriteAccess\(|requireFreshCrmSearchAdmin|roleHasPermission\(|hasRole\(|isReadOnlyRole\(|feature.?flag|suite.?enabled|(?:^|[_A-Z])ENABLED(?:\b|_)/i.test(line)) {
     return 'application_governance_bypass'
   }
   if (/secret|api.?key|token|binding|provider|credential|database_url|account_id|bucket|r2_|resend|groq|anthropic|xero|google.?maps/i.test(line)) {
@@ -151,15 +151,15 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/utils/aiVoice.ts\t?? process.env.AI_GATEWAY_URL\tprovider_infrastructure_availability'
     )
-    expect(inventory.rows).toHaveLength(1359)
+    expect(inventory.rows).toHaveLength(1415)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 98,
-      provider_infrastructure_availability: 204,
-      application_governance_bypass: 677,
+      identity_tenant_hard_boundary: 100,
+      provider_infrastructure_availability: 206,
+      application_governance_bypass: 726,
       ordinary_user_behavior: 173,
-      unrelated_configuration: 207
+      unrelated_configuration: 210
     })
-    expect(inventory.digest).toBe('46f89925e0fdfec6777ecfd37c0c6c90dc6918eec28d9b7d84499c6945ffefbe')
+    expect(inventory.digest).toBe('1e207f186f788c221b04a4bc0db1d0af0084c60c1a153c962e91cb0bac24a419')
     expect(CENTRAL_HELPER_BY_CLASS).toEqual({
       identity_tenant_hard_boundary: 'unchanged independent scope helper',
       provider_infrastructure_availability: 'unchanged provider/configuration check',

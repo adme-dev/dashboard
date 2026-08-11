@@ -7,11 +7,13 @@ import type {
 } from '../../../../server/utils/crm/emailInboundProcessingContracts'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
+const FORGED_CLIENT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const ROUTE_ID = '22222222-2222-4222-8222-222222222222'
 const CONVERSATION_ID = '33333333-3333-4333-8333-333333333333'
 const MESSAGE_ID = '44444444-4444-4444-8444-444444444444'
 const LEAD_ID = '55555555-5555-4555-8555-555555555555'
 const PERSON_ID = '66666666-6666-4666-8666-666666666666'
+const RETARGETED_PERSON_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const OPPORTUNITY_ID = '77777777-7777-4777-8777-777777777777'
 const ASSIGNED_TO = '88888888-8888-4888-8888-888888888888'
 const R2_PREFIX
@@ -22,6 +24,7 @@ function input(
     routeKind?: 'lead_inbox' | 'conversation_reply'
     conversationId?: string | null
     fromName?: string | null
+    clientId?: string
   } = {}
 ): CrmEmailInboundProcessingRequest {
   const routeKind = overrides.routeKind ?? 'lead_inbox'
@@ -33,7 +36,7 @@ function input(
       type: 'crm.email.inbound',
       idempotencyKey: `crm-inbound:${'a'.repeat(64)}`,
       routeId: ROUTE_ID,
-      clientId: CLIENT_ID,
+      clientId: overrides.clientId ?? CLIENT_ID,
       conversationId,
       routeKind,
       provider: 'cloudflare_email',
@@ -89,6 +92,12 @@ function createHarness(options: {
   promotionError?: Error
   messageStatus?: 'created' | 'existing'
   onStage?: (stage: string) => void
+  inactiveClient?: boolean
+  routeClientId?: string
+  routePersonId?: string | null
+  currentConversationPersonId?: string | null
+  routeKind?: 'lead_inbox' | 'conversation_reply'
+  routeConversationId?: string | null
 } = {}) {
   const statements: Array<{ sql: string, params: unknown[] }> = []
   const db = {
@@ -106,10 +115,25 @@ function createHarness(options: {
             ? []
             : [{
                 id: ROUTE_ID,
-                client_id: CLIENT_ID,
-                conversation_id: params[3] as string | null,
-                route_kind: params[2] as string
+                client_id: options.routeClientId ?? CLIENT_ID,
+                route_kind: options.routeKind ?? (params[2] as string | undefined) ?? 'lead_inbox',
+                conversation_id: options.routeConversationId
+                  ?? (params[3] as string | null | undefined)
+                  ?? null,
+                person_id: options.routePersonId ?? null,
+                company_id: null,
+                opportunity_id: null
               }]
+        }
+      }
+      if (/FROM crm_conversations/.test(sql)) {
+        return {
+          rows: [{
+            id: CONVERSATION_ID,
+            person_id: options.currentConversationPersonId ?? PERSON_ID,
+            company_id: null,
+            opportunity_id: null
+          }]
         }
       }
       if (/FROM client_team_assignments/.test(sql)) {
@@ -153,11 +177,28 @@ function createHarness(options: {
           personCreated: true
         }
       )
+  const resolveContext = vi.fn(async (request: { clientId: string }) => {
+    if (options.inactiveClient) {
+      throw Object.assign(new Error('Client not found'), {
+        statusCode: 404,
+        statusMessage: 'Client not found'
+      })
+    }
+    return {
+      clientId: request.clientId,
+      actorType: 'system',
+      actorId: 'trusted-system:crm_email_inbound',
+      visibility: { ownerScoped: false }
+    }
+  })
+  const authorizeAll = vi.fn(async (_context, refs) => refs)
   const processor = createCrmInboundEmailProcessor({
     transaction: async callback => callback(db),
     repositoryFor: () => repository as never,
     ingestLead: ingestLead as never,
     promoteLead: promoteLead as never,
+    resolveContext: resolveContext as never,
+    authorizeAll: authorizeAll as never,
     onStage: options.onStage
   })
 
@@ -166,11 +207,29 @@ function createHarness(options: {
     repository,
     ingestLead,
     promoteLead,
+    resolveContext,
+    authorizeAll,
     statements
   }
 }
 
 describe('CRM inbound email processor', () => {
+  it('locks the server-owned route and derives its tenant before resolving trusted authority', async () => {
+    const harness = createHarness({ inactiveClient: true })
+
+    await expect(harness.processor.process(input())).rejects.toMatchObject({
+      statusCode: 404,
+      statusMessage: 'Client not found'
+    })
+    expect(harness.resolveContext).toHaveBeenCalledWith({
+      clientId: CLIENT_ID,
+      purpose: 'crm_email_inbound'
+    })
+    expect(harness.statements).toHaveLength(1)
+    expect(harness.statements[0]?.sql).toMatch(/FROM crm_email_routes[\s\S]*FOR UPDATE OF route/)
+    expect(harness.statements[0]?.params).toEqual([ROUTE_ID])
+  })
+
   it('reports the safe processor stage before a promotion failure', async () => {
     const stages: string[] = []
     const harness = createHarness({
@@ -185,7 +244,7 @@ describe('CRM inbound email processor', () => {
     expect(stages.at(-1)).toBe('promote_lead')
   })
 
-  it('returns an existing message before route or conversation mutation', async () => {
+  it('deduplicates only after the authoritative route tenant is resolved', async () => {
     const harness = createHarness({ existingMessage: true })
 
     await expect(harness.processor.process(input())).resolves.toEqual({
@@ -194,9 +253,7 @@ describe('CRM inbound email processor', () => {
 
     expect(harness.repository.createConversation).not.toHaveBeenCalled()
     expect(harness.repository.createMessage).not.toHaveBeenCalled()
-    expect(harness.statements.some(statement =>
-      /FROM crm_email_routes/.test(statement.sql)
-    )).toBe(false)
+    expect(harness.statements[0]?.sql).toMatch(/FROM crm_email_routes/)
   })
 
   it('rejects a route that is revoked, expired, inactive, or cross-tenant', async () => {
@@ -209,22 +266,16 @@ describe('CRM inbound email processor', () => {
     const routeLookup = harness.statements.find(statement =>
       /FROM crm_email_routes/.test(statement.sql)
     )
-    expect(routeLookup?.sql).toMatch(/client_id = \$2/)
+    expect(routeLookup?.sql).not.toMatch(/route\.client_id = \$2/)
     expect(routeLookup?.sql).toMatch(/is_active = TRUE/)
     expect(routeLookup?.sql).toMatch(/revoked_at IS NULL/)
     expect(routeLookup?.sql).toMatch(/expires_at > NOW\(\)/)
-    expect(routeLookup?.sql).toMatch(/conversation_id IS NOT DISTINCT FROM \$4/)
-    expect(routeLookup?.params).toEqual([
-      ROUTE_ID,
-      CLIENT_ID,
-      'lead_inbox',
-      null
-    ])
+    expect(routeLookup?.params).toEqual([ROUTE_ID])
     expect(harness.repository.createConversation).not.toHaveBeenCalled()
   })
 
   it('appends a reply to its pre-resolved conversation without creating a lead', async () => {
-    const harness = createHarness()
+    const harness = createHarness({ routeKind: 'conversation_reply', routeConversationId: CONVERSATION_ID })
     const reply = input({ routeKind: 'conversation_reply' })
     await harness.processor.process(reply)
 
@@ -249,6 +300,45 @@ describe('CRM inbound email processor', () => {
         })
       })
     )
+  })
+
+  it('ignores a forged payload client and uses only the tenant derived from the locked route', async () => {
+    const harness = createHarness({ routeClientId: CLIENT_ID })
+
+    await harness.processor.process(input({ clientId: FORGED_CLIENT_ID }))
+
+    expect(harness.resolveContext).toHaveBeenCalledWith({
+      clientId: CLIENT_ID,
+      purpose: 'crm_email_inbound'
+    })
+    expect(harness.repository.createConversation).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: CLIENT_ID })
+    )
+    expect(harness.repository.createMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: CLIENT_ID })
+    )
+    expect(JSON.stringify(harness.statements)).not.toContain(FORGED_CLIENT_ID)
+  })
+
+  it('authorizes the locked current conversation targets after a concurrent retarget', async () => {
+    const harness = createHarness({
+      routePersonId: PERSON_ID,
+      currentConversationPersonId: RETARGETED_PERSON_ID,
+      routeKind: 'conversation_reply',
+      routeConversationId: CONVERSATION_ID
+    })
+
+    await harness.processor.process(input({ routeKind: 'conversation_reply' }))
+
+    expect(harness.authorizeAll).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: CLIENT_ID }),
+      [{ type: 'person', id: RETARGETED_PERSON_ID }],
+      expect.anything()
+    )
+    const conversationLock = harness.statements.find(statement =>
+      /FROM crm_conversations/.test(statement.sql)
+    )
+    expect(conversationLock?.sql).toMatch(/FOR UPDATE OF conversation/)
   })
 
   it('creates an email lead with unknown consent and reuses CRM promotion links', async () => {

@@ -209,7 +209,7 @@ const platformGuides = [
   },
   {
     title: 'AI & Automation',
-    description: 'Using AI chat, @mentions, anomaly detection, semantic search, and building automation recipes.',
+    description: 'Using AI chat, anomaly detection, automation recipes, and controlled CRM retrieval through approved agency-assistant contexts.',
     icon: 'i-lucide-brain',
     bg: 'bg-amber-100 dark:bg-amber-500/15',
     color: 'text-amber-700 dark:text-amber-400',
@@ -280,6 +280,6 @@ const integrations = [
   { title: 'Cloudflare', icon: 'i-lucide-cloud', status: 'Full platform', to: '/resources/integrations#cloudflare' },
   { title: 'Monday.com', icon: 'i-lucide-kanban', status: 'Import', to: '/resources/integrations#monday' },
   { title: 'Groq', icon: 'i-lucide-brain', status: 'LLM inference', to: '/resources/integrations#groq' },
-  { title: 'Vectorize', icon: 'i-lucide-search', status: 'Semantic search', to: '/resources/integrations#vectorize' },
+  { title: 'Vectorize', icon: 'i-lucide-search', status: 'Controlled CRM assist', to: '/resources/integrations#vectorize' },
 ]
 </script>

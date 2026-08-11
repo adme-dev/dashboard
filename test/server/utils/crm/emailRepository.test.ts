@@ -164,7 +164,7 @@ describe('CRM email repository conversation and message writes', () => {
     expect(params[0]).toBe(CLIENT_ID)
   })
 
-  it('creates a message once and updates its tenant-owned conversation timestamp', async () => {
+  it('creates a message once, updates its conversation, and enters the authorized projection', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [messageRow], rowCount: 1 })
@@ -193,8 +193,9 @@ describe('CRM email repository conversation and message writes', () => {
     expect(updateSql).toContain('WHERE client_id = $1')
     expect(updateParams).toEqual([CLIENT_ID, CONVERSATION_ID, messageInput.envelope.occurredAt])
     const [projectionSql, projectionParams] = query.mock.calls[3]!
-    expect(projectionSql).toContain('INSERT INTO crm_communications')
-    expect(projectionParams).toEqual([CLIENT_ID, MESSAGE_ID])
+    expect(projectionSql).toContain('FROM crm_messages AS message')
+    expect(projectionSql).toContain('FOR UPDATE OF message')
+    expect(projectionParams).toEqual([MESSAGE_ID])
     expect(query).toHaveBeenCalledTimes(4)
   })
 

@@ -3,6 +3,8 @@
 import { queryOne } from '~~/server/utils/db'
 import { hasRole, type User } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
+import type { CrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { crmVisibilityCond, type CrmRecordType } from '~~/server/utils/crm/recordAccess'
 
 // A condition fragment with one `?` placeholder per supplied value.
 // `params` length MUST equal the number of `?` in `sql` (supports multi-placeholder
@@ -48,4 +50,14 @@ export async function isOwnerScoped(clientId: string, user: User): Promise<boole
 export async function visibilityConds(clientId: string, user: User): Promise<Cond[]> {
   if (!(await isOwnerScoped(clientId, user))) return []
   return [{ sql: '(owner_id = ? OR assigned_to = ?)', params: [user.id, user.id] }]
+}
+
+/** Use the already-authoritative request context instead of re-reading cached scope. */
+export function visibilityCondsForContext(
+  context: CrmSearchContext,
+  type: CrmRecordType,
+  alias?: string
+): Cond[] {
+  const condition = crmVisibilityCond(context, type, alias)
+  return condition ? [condition] : []
 }

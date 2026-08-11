@@ -2,10 +2,10 @@
 // Client-scoped opportunity list with person/company names. Joined query, so the WHERE is
 // built directly with `o.`-aliased columns (always client_id-scoped + soft-delete).
 import { z } from 'zod'
-import { requireAuth } from '~~/server/utils/auth'
 import { queryRows, queryCount } from '~~/server/utils/db'
-import { isOwnerScoped } from '~~/server/utils/crm/queryScope'
+import { visibilityCondsForContext } from '~~/server/utils/crm/queryScope'
 import { buildFilterConds, parseFilters } from '~~/server/utils/crm/filters'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
 
 const Query = z.object({
   client_id: z.string().uuid(),
@@ -18,10 +18,10 @@ const Query = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
   const q = Query.parse(getQuery(event))
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: q.client_id, surface: 'agency_global' })
 
-  const params: unknown[] = [q.client_id]
+  const params: unknown[] = [context.clientId]
   const conds: string[] = ['o.deleted_at IS NULL', 'o.client_id = $1']
   if (q.stage_id) { params.push(q.stage_id); conds.push(`o.stage_id = $${params.length}`) }
   if (q.status) { params.push(q.status); conds.push(`o.status = $${params.length}`) }
@@ -35,10 +35,13 @@ export default defineEventHandler(async (event) => {
     for (const p of c.params) { params.push(p); sql = sql.replace('?', `$${params.length}`) }
     conds.push(sql)
   }
-  // Owner-visibility (default 'team' adds nothing → query unchanged).
-  if (await isOwnerScoped(q.client_id, user)) {
-    params.push(user.id)
-    conds.push(`(o.owner_id = $${params.length} OR o.assigned_to = $${params.length})`)
+  for (const condition of visibilityCondsForContext(context, 'opportunity', 'o')) {
+    let sql = condition.sql
+    for (const value of condition.params) {
+      params.push(value)
+      sql = sql.replace('?', `$${params.length}`)
+    }
+    conds.push(sql)
   }
   const where = `WHERE ${conds.join(' AND ')}`
   const offset = (q.page - 1) * q.page_size

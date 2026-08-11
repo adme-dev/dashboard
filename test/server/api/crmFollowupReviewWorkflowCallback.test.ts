@@ -5,14 +5,26 @@ interface TestEvent {
   body?: unknown
 }
 
-const mockQueryRows = vi.fn()
+const mockListCandidates = vi.fn()
+const mockAuthorizeTask = vi.fn()
+const mockQueryOneFresh = vi.fn()
+const mockQueryRowsFresh = vi.fn()
+const mockClaimCandidates = vi.fn()
+const mockTransactionQuery = vi.fn()
+const mockTransaction = vi.fn()
 const mockCreateNotification = vi.fn()
 const mockRecordFieldChanges = vi.fn()
 const mockConsoleInfo = vi.spyOn(console, 'info').mockImplementation(() => {})
 const mockConsoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+let reviewCandidates: Array<ReturnType<typeof task>> = []
 
 vi.mock('~~/server/utils/db', () => ({
-  queryRows: (...args: unknown[]) => mockQueryRows(...args)
+  queryRows: (sql: string, params: unknown[]) => String(sql).includes('FROM crm_tasks task')
+    ? mockAuthorizeTask(sql, params)
+    : mockListCandidates(sql, params),
+  queryOneFresh: (...args: unknown[]) => mockQueryOneFresh(...args),
+  queryRowsFresh: (...args: unknown[]) => mockQueryRowsFresh(...args),
+  transaction: (...args: unknown[]) => mockTransaction(...args)
 }))
 
 vi.mock('~~/server/utils/notifications', () => ({
@@ -44,14 +56,46 @@ describe('crm follow-up review workflow callback', () => {
       WORKFLOW_CALLBACK_SECRET: 'workflow-secret'
     }
     vi.clearAllMocks()
-    mockQueryRows.mockReset()
+    mockListCandidates.mockReset()
+    mockAuthorizeTask.mockReset()
+    mockQueryOneFresh.mockReset()
+    mockQueryRowsFresh.mockReset()
+    mockClaimCandidates.mockReset()
+    mockTransactionQuery.mockReset()
+    mockTransaction.mockReset()
     mockCreateNotification.mockReset()
     mockRecordFieldChanges.mockReset()
-    mockQueryRows.mockResolvedValue([
+    reviewCandidates = [
       task({ id: 'notify-1', assigned_to: 'user-1', reminder_at: '2026-07-04T04:30:00.000Z' }),
       task({ id: 'drain-1', assigned_to: null, reminder_at: '2026-07-04T04:40:00.000Z' }),
       task({ id: 'overdue-1', assigned_to: 'user-2', reminder_at: '2026-07-04T04:50:00.000Z', due_at: '2026-07-03T04:50:00.000Z' })
-    ])
+    ]
+    mockListCandidates.mockImplementation(async () => reviewCandidates)
+    mockAuthorizeTask.mockImplementation(async (_sql: string, params: unknown[]) => {
+      const row = reviewCandidates.find(candidate => candidate.id === params[0])
+      return row ? [row] : []
+    })
+    mockQueryOneFresh.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (sql.includes('FROM agency_clients client')) {
+        return { id: params[0], name: 'Test client', record_visibility: 'team' }
+      }
+      throw new Error('unexpected fresh single-row query')
+    })
+    mockQueryRowsFresh.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM crm_search_organisation_scopes')) return [{ id: 'organisation-1' }]
+      throw new Error('unexpected fresh multi-row query')
+    })
+    mockClaimCandidates.mockResolvedValue([])
+    mockTransactionQuery.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (sql.includes('FROM crm_tasks task')) {
+        return { rows: await mockAuthorizeTask(sql, params) }
+      }
+      if (sql.includes('UPDATE crm_tasks')) {
+        return { rows: await mockClaimCandidates(sql, params) }
+      }
+      throw new Error('unexpected CRM reminder transaction query')
+    })
+    mockTransaction.mockImplementation(async callback => callback({ query: mockTransactionQuery }))
     mockCreateNotification.mockResolvedValue({ id: 'notification-1' })
     mockRecordFieldChanges.mockResolvedValue(undefined)
   })
@@ -62,7 +106,7 @@ describe('crm follow-up review workflow callback', () => {
       body: validPayload()
     })).rejects.toMatchObject({ statusCode: 401 })
 
-    expect(mockQueryRows).not.toHaveBeenCalled()
+    expect(mockListCandidates).not.toHaveBeenCalled()
     expect(mockCreateNotification).not.toHaveBeenCalled()
     expect(mockRecordFieldChanges).not.toHaveBeenCalled()
   })
@@ -75,7 +119,7 @@ describe('crm follow-up review workflow callback', () => {
       body: validPayload()
     })).rejects.toMatchObject({ statusCode: 503 })
 
-    expect(mockQueryRows).not.toHaveBeenCalled()
+    expect(mockListCandidates).not.toHaveBeenCalled()
     expect(mockCreateNotification).not.toHaveBeenCalled()
     expect(mockRecordFieldChanges).not.toHaveBeenCalled()
   })
@@ -111,10 +155,18 @@ describe('crm follow-up review workflow callback', () => {
         newestReminderAt: '2026-07-04T04:50:00.000Z'
       }
     })
-    expect(mockQueryRows).toHaveBeenCalledWith(
+    expect(mockListCandidates).toHaveBeenCalledWith(
       expect.stringContaining('AND client_id = $2'),
       ['2026-07-04T06:00:00.000Z', 'client-1']
     )
+    expect(mockQueryOneFresh).toHaveBeenCalledWith(
+      expect.stringContaining('client.is_active = TRUE'),
+      ['client-1']
+    )
+    expect(mockQueryRowsFresh).toHaveBeenCalledWith(
+      expect.stringContaining('crm_search_organisation_scopes')
+    )
+    expect(mockAuthorizeTask).toHaveBeenCalledTimes(3)
     expect(mockCreateNotification).not.toHaveBeenCalled()
     expect(mockRecordFieldChanges).not.toHaveBeenCalled()
     expect(mockConsoleInfo).toHaveBeenCalledWith(
@@ -148,7 +200,7 @@ describe('crm follow-up review workflow callback', () => {
       clientId: null,
       result: { considered: 3 }
     })
-    expect(mockQueryRows).toHaveBeenCalledWith(
+    expect(mockListCandidates).toHaveBeenCalledWith(
       expect.not.stringContaining('AND client_id = $1'),
       ['2026-07-04T06:00:00.000Z']
     )
@@ -158,17 +210,16 @@ describe('crm follow-up review workflow callback', () => {
 
   it('creates notifications, stamps reminded_at, and audits claimed reminders when write mode is explicitly enabled', async () => {
     process.env.AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED = 'true'
-    mockQueryRows
-      .mockResolvedValueOnce([
-        task({ id: '00000000-0000-4000-8000-000000000001', assigned_to: 'user-1', reminder_at: '2026-07-04T04:30:00.000Z' }),
-        task({ id: '00000000-0000-4000-8000-000000000002', assigned_to: null, reminder_at: '2026-07-04T04:40:00.000Z' }),
-        task({ id: '00000000-0000-4000-8000-000000000003', assigned_to: 'user-2', reminder_at: '2026-07-04T04:50:00.000Z', due_at: '2026-07-03T04:50:00.000Z' })
-      ])
-      .mockResolvedValueOnce([
-        { id: '00000000-0000-4000-8000-000000000001', client_id: 'client-1', reminded_at: '2026-07-04T06:00:00.000Z' },
-        { id: '00000000-0000-4000-8000-000000000002', client_id: 'client-1', reminded_at: '2026-07-04T06:00:00.000Z' },
-        { id: '00000000-0000-4000-8000-000000000003', client_id: 'client-1', reminded_at: '2026-07-04T06:00:00.000Z' }
-      ])
+    reviewCandidates = [
+      task({ id: '00000000-0000-4000-8000-000000000001', assigned_to: 'user-1', reminder_at: '2026-07-04T04:30:00.000Z' }),
+      task({ id: '00000000-0000-4000-8000-000000000002', assigned_to: null, reminder_at: '2026-07-04T04:40:00.000Z' }),
+      task({ id: '00000000-0000-4000-8000-000000000003', assigned_to: 'user-2', reminder_at: '2026-07-04T04:50:00.000Z', due_at: '2026-07-03T04:50:00.000Z' })
+    ]
+    mockClaimCandidates.mockResolvedValue([
+      { id: '00000000-0000-4000-8000-000000000001', client_id: 'client-1', reminded_at: '2026-07-04T06:00:00.000Z' },
+      { id: '00000000-0000-4000-8000-000000000002', client_id: 'client-1', reminded_at: '2026-07-04T06:00:00.000Z' },
+      { id: '00000000-0000-4000-8000-000000000003', client_id: 'client-1', reminded_at: '2026-07-04T06:00:00.000Z' }
+    ])
 
     const result = await workflowCallback({
       headers: { 'x-workflow-secret': 'workflow-secret' },
@@ -191,11 +242,11 @@ describe('crm follow-up review workflow callback', () => {
         auditFailureCount: 0
       }
     })
-    expect(mockQueryRows).toHaveBeenNthCalledWith(
-      2,
-      expect.stringContaining('WHERE id = ANY($2::uuid[])'),
+    expect(mockClaimCandidates).toHaveBeenCalledWith(
+      expect.stringContaining('AND id = ANY($3::uuid[])'),
       [
         '2026-07-04T06:00:00.000Z',
+        'client-1',
         [
           '00000000-0000-4000-8000-000000000001',
           '00000000-0000-4000-8000-000000000003',
@@ -203,7 +254,7 @@ describe('crm follow-up review workflow callback', () => {
         ]
       ]
     )
-    expect(String(mockQueryRows.mock.calls[1][0])).toContain('AND reminded_at IS NULL')
+    expect(String(mockClaimCandidates.mock.calls[0][0])).toContain('AND reminded_at IS NULL')
     expect(mockCreateNotification).toHaveBeenCalledTimes(2)
     expect(mockCreateNotification).toHaveBeenNthCalledWith(1, expect.objectContaining({
       userId: 'user-1',
@@ -238,14 +289,13 @@ describe('crm follow-up review workflow callback', () => {
 
   it('does not notify reminders that lose the idempotent claim race', async () => {
     process.env.AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED = 'true'
-    mockQueryRows
-      .mockResolvedValueOnce([
-        task({ id: '00000000-0000-4000-8000-000000000001', assigned_to: 'user-1' }),
-        task({ id: '00000000-0000-4000-8000-000000000002', assigned_to: 'user-2' })
-      ])
-      .mockResolvedValueOnce([
-        { id: '00000000-0000-4000-8000-000000000002', client_id: 'client-1', reminded_at: '2026-07-04T06:00:00.000Z' }
-      ])
+    reviewCandidates = [
+      task({ id: '00000000-0000-4000-8000-000000000001', assigned_to: 'user-1' }),
+      task({ id: '00000000-0000-4000-8000-000000000002', assigned_to: 'user-2' })
+    ]
+    mockClaimCandidates.mockResolvedValue([
+      { id: '00000000-0000-4000-8000-000000000002', client_id: 'client-1', reminded_at: '2026-07-04T06:00:00.000Z' }
+    ])
 
     const result = await workflowCallback({
       headers: { 'x-workflow-secret': 'workflow-secret' },
@@ -266,9 +316,10 @@ describe('crm follow-up review workflow callback', () => {
 
   it('keeps notification and audit failures observable without retrying claimed CRM reminders forever', async () => {
     process.env.AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED = 'true'
-    mockQueryRows
-      .mockResolvedValueOnce([task({ id: '00000000-0000-4000-8000-000000000001', assigned_to: 'user-1' })])
-      .mockResolvedValueOnce([{ id: '00000000-0000-4000-8000-000000000001', client_id: 'client-1', reminded_at: '2026-07-04T06:00:00.000Z' }])
+    reviewCandidates = [task({ id: '00000000-0000-4000-8000-000000000001', assigned_to: 'user-1' })]
+    mockClaimCandidates.mockResolvedValue([
+      { id: '00000000-0000-4000-8000-000000000001', client_id: 'client-1', reminded_at: '2026-07-04T06:00:00.000Z' }
+    ])
     mockCreateNotification.mockRejectedValueOnce(new Error('push transport failed'))
     mockRecordFieldChanges.mockRejectedValueOnce(new Error('audit failed'))
 
@@ -302,7 +353,7 @@ describe('crm follow-up review workflow callback', () => {
       body: { kind: 'crm.followup.review', bucket: '2026-07-04T05', scope: 'client', trigger: 'cron' }
     })).rejects.toMatchObject({ statusCode: 400 })
 
-    expect(mockQueryRows).not.toHaveBeenCalled()
+    expect(mockListCandidates).not.toHaveBeenCalled()
     expect(mockCreateNotification).not.toHaveBeenCalled()
     expect(mockRecordFieldChanges).not.toHaveBeenCalled()
   })

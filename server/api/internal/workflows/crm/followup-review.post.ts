@@ -1,6 +1,11 @@
 import { defineEventHandler, getHeader, readBody, createError, type H3Event } from 'h3'
 import { queryRows } from '~~/server/utils/db'
-import { partitionReminders, type ReminderTask } from '~~/server/utils/crm/activation'
+import {
+  authorizeTrustedReminderTasks,
+  claimTrustedReminderTasks,
+  partitionReminders,
+  type ReminderTask
+} from '~~/server/utils/crm/activation'
 import { recordFieldChanges } from '~~/server/utils/crm/audit'
 import { createNotification } from '~~/server/utils/notifications'
 import {
@@ -25,7 +30,7 @@ export default defineEventHandler(async (event) => {
 
   const payload = await readWorkflowPayload(event)
   const reviewCutoff = reviewCutoffFromBucket(payload.bucket)
-  const tasks = await queryRows<ReminderTask>(
+  const candidates = await queryRows<ReminderTask>(
     `SELECT id::text AS id, client_id::text AS client_id, title, assigned_to::text AS assigned_to,
             reminder_at::text AS reminder_at, due_at::text AS due_at
        FROM crm_tasks
@@ -39,6 +44,7 @@ export default defineEventHandler(async (event) => {
       LIMIT 500`,
     payload.scope === 'client' ? [reviewCutoff.toISOString(), payload.clientId as string] : [reviewCutoff.toISOString()]
   )
+  const tasks = await authorizeTrustedReminderTasks(candidates, 'crm_followup_review')
   const { toNotify, toDrain } = partitionReminders(tasks, reviewCutoff)
   const writesEnabled = process.env.AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED === 'true'
   const writeSummary = writesEnabled
@@ -77,12 +83,6 @@ export default defineEventHandler(async (event) => {
   }
 })
 
-interface ClaimedReminderRow {
-  id: string
-  client_id: string
-  reminded_at: string
-}
-
 interface ProcessReminderWritesInput {
   bucket: string
   tasksToNotify: ReminderTask[]
@@ -108,18 +108,11 @@ async function processReminderWrites(input: ProcessReminderWritesInput) {
 
   const candidateIds = candidates.map(task => task.id)
   const remindedAt = input.reviewCutoff.toISOString()
-  const claimed = await queryRows<ClaimedReminderRow>(
-    `UPDATE crm_tasks
-        SET reminded_at = $1::timestamptz
-      WHERE id = ANY($2::uuid[])
-        AND deleted_at IS NULL
-        AND status IN ('pending','in_progress')
-        AND reminder_at IS NOT NULL
-        AND reminded_at IS NULL
-        AND reminder_at < $1::timestamptz
-      RETURNING id::text AS id, client_id::text AS client_id, reminded_at::text AS reminded_at`,
-    [remindedAt, candidateIds]
-  )
+  const claimed = await claimTrustedReminderTasks({
+    tasks: candidates,
+    remindedAt: input.reviewCutoff,
+    purpose: 'crm_followup_review'
+  })
   const claimedIds = new Set(claimed.map(row => row.id))
   const notifyTasks = input.tasksToNotify.filter(task => claimedIds.has(task.id))
   const drainedTasks = input.tasksToDrain.filter(task => claimedIds.has(task.id))

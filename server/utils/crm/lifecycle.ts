@@ -6,7 +6,12 @@
 // side-states (a positive event lifts a contact back into the funnel). We never
 // auto-downgrade an advanced stage, and we never auto-set lost/dormant here —
 // those come from manual edits or score decay, out of scope for F5.
-import { queryOne, execute } from '~~/server/utils/db'
+import { transaction } from '~~/server/utils/db'
+import { requireCrmRecordAccess } from '~~/server/utils/crm/recordAccess'
+import {
+  resolveTrustedCrmSystemContext,
+  type CrmRecordAccessContext
+} from '~~/server/utils/crm/searchContext'
 
 export type LifecycleStage = 'lead' | 'prospect' | 'active' | 'customer' | 'lost' | 'dormant'
 
@@ -63,22 +68,32 @@ export async function applyLifecycleEvent(opts: {
   entityType: 'person' | 'company'
   entityId: string | null | undefined
   event: string
+  context?: CrmRecordAccessContext
 }): Promise<void> {
   if (!opts.entityId) return
   const table = opts.entityType === 'person' ? 'crm_people' : 'crm_companies'
-  const row = await queryOne<{ lifecycle_stage: string | null, tags: string[] | null }>(
-    `SELECT lifecycle_stage, tags FROM ${table} WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL`,
-    [opts.entityId, opts.clientId],
-  )
-  if (!row) return
-  const curTags = row.tags ?? []
-  const newStage = nextLifecycle(opts.event, row.lifecycle_stage)
-  const newTags = deriveTags(opts.event, curTags)
-  const stageChanged = newStage !== (row.lifecycle_stage || null)
-  const tagsChanged = newTags.length !== curTags.length
-  if (!stageChanged && !tagsChanged) return
-  await execute(
-    `UPDATE ${table} SET lifecycle_stage = $1, tags = $2, updated_at = NOW() WHERE id = $3 AND client_id = $4`,
-    [newStage, newTags, opts.entityId, opts.clientId],
-  )
+  const context = opts.context ?? await resolveTrustedCrmSystemContext({
+    clientId: opts.clientId,
+    purpose: 'crm_lifecycle'
+  })
+  await transaction(async (database) => {
+    const record = await requireCrmRecordAccess(
+      context,
+      { type: opts.entityType, id: opts.entityId! },
+      database
+    )
+    const row = record.row as { lifecycle_stage?: string | null, tags?: string[] | null }
+    const curTags = row.tags ?? []
+    const newStage = nextLifecycle(opts.event, row.lifecycle_stage)
+    const newTags = deriveTags(opts.event, curTags)
+    const stageChanged = newStage !== (row.lifecycle_stage || null)
+    const tagsChanged = newTags.length !== curTags.length
+    if (!stageChanged && !tagsChanged) return
+    await database.query(
+      `UPDATE ${table}
+          SET lifecycle_stage = $1, tags = $2, updated_at = NOW()
+        WHERE id = $3 AND client_id = $4 AND deleted_at IS NULL`,
+      [newStage, newTags, opts.entityId, context.clientId]
+    )
+  })
 }

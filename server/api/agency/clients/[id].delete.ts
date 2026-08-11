@@ -5,7 +5,7 @@
  * Soft-deletes (deactivates) a client. Clients with active projects cannot be deleted.
  */
 
-import { queryOne, queryRows } from '~~/server/utils/db'
+import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { requireAuth, requireRole } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
@@ -69,10 +69,15 @@ export default defineEventHandler(async (event) => {
         })
       }
 
-      await queryOne(
-        `DELETE FROM agency_clients WHERE id = $1 RETURNING id`,
-        [clientId]
-      )
+      await transaction(async (db) => {
+        await db.query(`
+          DELETE FROM client_sessions
+          WHERE client_user_id IN (
+            SELECT id FROM client_users WHERE client_id = $1
+          )
+        `, [clientId])
+        await db.query(`DELETE FROM agency_clients WHERE id = $1 RETURNING id`, [clientId])
+      })
 
       return {
         success: true,
@@ -81,12 +86,20 @@ export default defineEventHandler(async (event) => {
       }
     } else {
       // Soft delete - deactivate the client
-      await queryOne(`
-        UPDATE agency_clients
-        SET is_active = false, updated_at = NOW()
-        WHERE id = $1
-        RETURNING id
-      `, [clientId])
+      await transaction(async (db) => {
+        await db.query(`
+          UPDATE agency_clients
+          SET is_active = false, updated_at = NOW()
+          WHERE id = $1
+          RETURNING id
+        `, [clientId])
+        await db.query(`
+          DELETE FROM client_sessions
+          WHERE client_user_id IN (
+            SELECT id FROM client_users WHERE client_id = $1
+          )
+        `, [clientId])
+      })
 
       return {
         success: true,

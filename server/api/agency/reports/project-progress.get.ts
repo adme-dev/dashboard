@@ -113,7 +113,7 @@ export default defineEventHandler(async (event) => {
           ELSE 0
         END AS progress_percent
       FROM projects p
-      LEFT JOIN clients c ON p.client_id = c.id
+      LEFT JOIN agency_clients c ON p.client_id = c.id
       LEFT JOIN tasks t ON t.project_id = p.id
       LEFT JOIN task_statuses ts ON t.status_id = ts.id
       ${whereClause}
@@ -170,7 +170,7 @@ export default defineEventHandler(async (event) => {
     }
 
     const today = new Date()
-    const projects: ProjectProgress[] = projectsResult.map(row => {
+    const projects: ProjectProgress[] = projectsResult.map((row) => {
       const dueDate = row.due_date ? new Date(row.due_date) : null
       const isOverdue = dueDate ? dueDate < today && row.status !== 'completed' : false
       const daysRemaining = dueDate
@@ -188,9 +188,9 @@ export default defineEventHandler(async (event) => {
       if (isOverdue || blockedTasks > 3 || (daysRemaining !== null && daysRemaining < 0)) {
         health = 'critical'
       } else if (
-        blockedTasks > 0 ||
-        (daysRemaining !== null && daysRemaining < 7 && progressPercent < 80) ||
-        hoursVariance > estimatedHours * 0.2
+        blockedTasks > 0
+        || (daysRemaining !== null && daysRemaining < 7 && progressPercent < 80)
+        || hoursVariance > estimatedHours * 0.2
       ) {
         health = 'at_risk'
       } else {

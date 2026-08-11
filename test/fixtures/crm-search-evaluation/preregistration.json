@@ -1,0 +1,9 @@
+{
+  "sha256": "dfc6d87917a31dabafb1030418c3f179fa0c7449755675c84b2142dfab20404f",
+  "frozenAt": "2026-08-01T00:00:00.000Z",
+  "candidateIds": [
+    "keyword-v1",
+    "rrf-v1"
+  ],
+  "selectionRule": "Choose only among frozen candidates; quality and safety gates remain conjunctive."
+}

@@ -45,7 +45,10 @@ export function diceCoefficient(a: string, b: string): number {
   return (2 * overlap) / (A.length + B.length)
 }
 
-import { transaction } from '~~/server/utils/db'
+import { queryRows, transaction } from '~~/server/utils/db'
+import type { CrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { requireAllCrmRecordsAccess, type TransactionClient } from '~~/server/utils/crm/recordAccess'
+import { buildWhere, visibilityCondsForContext } from '~~/server/utils/crm/queryScope'
 
 export interface DedupeRecord { id: string, email?: string | null, phone?: string | null, name: string }
 
@@ -63,6 +66,29 @@ export function similarityScore(a: DedupeRecord, b: DedupeRecord): number {
 }
 
 export interface CandidatePair { a_id: string, b_id: string, score: number }
+
+type DedupeRow = {
+  id: string
+  first_name?: string | null
+  last_name?: string | null
+  name?: string | null
+  email?: string | null
+  domain?: string | null
+  phone?: string | null
+  mobile?: string | null
+}
+
+export interface DedupeSuggestion {
+  score: number
+  a: { id: string, name: string, email?: string | null, phone?: string | null }
+  b: { id: string, name: string, email?: string | null, phone?: string | null }
+}
+
+export interface DedupeSuggestionDependencies {
+  queryRows: (sql: string, params?: unknown[]) => Promise<DedupeRow[]>
+}
+
+const defaultSuggestionDependencies: DedupeSuggestionDependencies = { queryRows }
 
 // Blocked candidate generation: only compare records that share an exact email,
 // exact phone, or a name prefix — keeps it ~linear instead of O(n²). Each pair is
@@ -98,29 +124,75 @@ export function candidatePairs(records: DedupeRecord[], threshold = 0.72): Candi
   return out.sort((x, y) => y.score - x.score)
 }
 
+/** Load only actor-visible candidates before pairing or projecting either side. */
+export async function findDedupeSuggestions(
+  context: CrmSearchContext,
+  input: { entityType: 'person' | 'company', limit: number },
+  deps: DedupeSuggestionDependencies = defaultSuggestionDependencies
+): Promise<DedupeSuggestion[]> {
+  const isPerson = input.entityType === 'person'
+  const table = isPerson ? 'crm_people' : 'crm_companies'
+  const type = isPerson ? 'person' : 'company'
+  const { where, params } = buildWhere(
+    context.clientId,
+    visibilityCondsForContext(context, type, table)
+  )
+  const rows = await deps.queryRows(
+    `SELECT id, ${isPerson ? 'first_name, last_name, email, phone, mobile' : 'name, domain, phone'}
+       FROM ${table} ${where}
+      ORDER BY created_at DESC LIMIT 5000`,
+    params
+  )
+  const records: DedupeRecord[] = rows.map(row => isPerson
+    ? {
+        id: row.id,
+        email: row.email,
+        phone: row.phone || row.mobile,
+        name: [row.first_name, row.last_name].filter(Boolean).join(' ')
+      }
+    : { id: row.id, email: row.domain, phone: row.phone, name: row.name ?? '' })
+  const byId = new Map(rows.map(row => [row.id, row]))
+  const display = (row: DedupeRow) => isPerson
+    ? {
+        id: row.id,
+        name: [row.first_name, row.last_name].filter(Boolean).join(' ') || '(no name)',
+        email: row.email,
+        phone: row.phone || row.mobile
+      }
+    : { id: row.id, name: row.name ?? '', email: row.domain, phone: row.phone }
+
+  return candidatePairs(records).slice(0, input.limit).map(pair => ({
+    score: Math.round(pair.score * 100) / 100,
+    a: display(byId.get(pair.a_id)!),
+    b: display(byId.get(pair.b_id)!)
+  }))
+}
+
 // ── Merge ─────────────────────────────────────────────────────────────────────
 // Reassign every child row from loser→winner, delete the loser, and log the
 // merge — all in ONE transaction so there are never orphaned rows pointing at a
 // deleted contact. Returns per-table reassignment counts.
 export async function mergeContacts(opts: {
+  context: CrmSearchContext
   clientId: string
   entityType: 'person' | 'company'
   winnerId: string
   loserId: string
   actor: string | null
+}, deps: { transaction: <T>(callback: (db: TransactionClient) => Promise<T>) => Promise<T> } = {
+  transaction: transaction as <T>(callback: (db: TransactionClient) => Promise<T>) => Promise<T>
 }): Promise<Record<string, number>> {
-  const { clientId, entityType, winnerId, loserId } = opts
+  const { context, entityType, winnerId, loserId } = opts
+  const clientId = context.clientId
   if (winnerId === loserId) throw new Error('Cannot merge a record into itself')
   const isPerson = entityType === 'person'
   const table = isPerson ? 'crm_people' : 'crm_companies'
 
-  return transaction(async (db: any) => {
-    // Both records must exist, be live, and belong to this client.
-    const both = await db.query(
-      `SELECT id FROM ${table} WHERE id = ANY($1::uuid[]) AND client_id = $2 AND deleted_at IS NULL`,
-      [[winnerId, loserId], clientId],
-    )
-    if (both.rows.length !== 2) throw new Error('Winner and loser must both exist for this client')
+  return deps.transaction(async (db: any) => {
+    await requireAllCrmRecordsAccess(context, [
+      { type: entityType, id: winnerId },
+      { type: entityType, id: loserId }
+    ], db)
 
     const counts: Record<string, number> = {}
     const run = async (key: string, sql: string, params: unknown[]) => {

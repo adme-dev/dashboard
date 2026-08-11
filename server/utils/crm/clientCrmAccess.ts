@@ -10,6 +10,7 @@ type CrmPermissionSubject = Pick<ServerClientUser, 'isPrimaryContact' | 'permiss
 
 const INTERNAL_CRM_MODES = new Set(['lightweight_crm', 'full_crm'])
 const CRM_API_PREFIX = '/api/client-portal/crm'
+const CRM_SEARCH_POST_PATH = `${CRM_API_PREFIX}/search`
 const READ_ONLY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const ADMIN_READ_PATHS = new Set([
   `${CRM_API_PREFIX}/audit`,
@@ -47,6 +48,7 @@ export function resolveClientCrmAccessLevel(
 ): ClientCrmAccessLevel {
   const normalizedMethod = method.toUpperCase()
   if (normalizedMethod === 'DELETE') return 'admin'
+  if (normalizedMethod === 'POST' && pathname === CRM_SEARCH_POST_PATH) return 'view'
 
   if (READ_ONLY_METHODS.has(normalizedMethod)) {
     return [...ADMIN_READ_PATHS].some(path => isPathOrChild(pathname, path))

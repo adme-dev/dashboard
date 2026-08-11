@@ -1,0 +1,18 @@
+{
+  "version": "crm-search-sealed-holdout-import-v1",
+  "sourcePath": "test/fixtures/crm-search-evaluation/holdout.sealed.artifact.json",
+  "objectKey": "crm-search/evaluation/holdouts/holdout-v1.json",
+  "contentType": "application/vnd.xeroflow.crm-search-sealed+json",
+  "contentSha256": "cf3b0327f05a6bb1ac30bd5fea5842c043d2efbcc1c47b30a51f76b85706687b",
+  "envelopeVersion": "crm-search-sealed-holdout-envelope-v1",
+  "encryption": "AES-256-GCM",
+  "compression": "none",
+  "keyVersion": "sealed-test-k1",
+  "judgementSha256": "a459ef8b7cdd373f8b016dc77014f9f2d8932f3551266a12c2f01d84013d5fdf",
+  "queryCount": 360,
+  "keyBinding": "CRM_SEARCH_SEALED_HOLDOUT_KEYRING",
+  "provisioningOwner": "task-18",
+  "productionReady": false,
+  "importState": "blocked_pending_task_18_approved_envelope_and_secret_readback",
+  "runtimeFormat": "encrypted-envelope-v1"
+}

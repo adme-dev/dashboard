@@ -78,7 +78,7 @@
               Learns<br>While You<br>Work
             </h2>
             <p class="text-[clamp(1rem,1.8vw,1.35rem)] max-w-[560px] mb-12 text-white/80 font-light leading-relaxed reveal reveal-d1">
-              Every chat, every decision, every workflow pattern makes your AI smarter. Knowledge extraction, intent classification, and semantic search — all trained on your real operations, continuously.
+              Knowledge curation and intent classification remain governed. Controlled CRM semantic assistance is separate, off by default, and can use a record only after authorized indexing reaches confirmed index state.
             </p>
 
             <!-- Pipeline steps -->
@@ -172,9 +172,9 @@ definePageMeta({
 
 useSeoMeta({
   title: 'AI Training — XeroFlow',
-  description: 'Your agency AI, trained on your data. XeroFlow learns from your unique workflows, clients, and operations — while keeping your IP completely private.',
+  description: 'Governed AI context and controlled CRM assistance, with visible keyword search and semantic retrieval off by default.',
   ogTitle: 'AI Training — XeroFlow',
-  ogDescription: 'Your agency AI, trained on your data. Private, continuous, and entirely under your control.',
+  ogDescription: 'Visible CRM keyword search with controlled agency-assistant retrieval that is off by default.',
 })
 
 useHead({
@@ -216,8 +216,8 @@ const pipelineSteps = [
     color: 'text-violet-400'
   },
   {
-    label: 'Semantic Indexing',
-    desc: 'Every entity — tasks, briefs, clients, spend data — is embedded into a vector index for instant retrieval.',
+    label: 'Controlled CRM Indexing',
+    desc: 'When approved, people, companies, and opportunities enter an asynchronous index and become eligible only at confirmed index state.',
     icon: 'i-lucide-search',
     bg: 'bg-blue-500/15',
     color: 'text-blue-400'

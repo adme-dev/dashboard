@@ -2,10 +2,10 @@
 // Lists CRM follow-up tasks. Supports per-target (slideover) and filtered global
 // (Tasks tab) views. Adds a derived `derived_status` ('overdue') per row.
 import { z } from 'zod'
-import { requireAuth } from '~~/server/utils/auth'
 import { queryRows, queryOne } from '~~/server/utils/db'
-import { buildWhere } from '~~/server/utils/crm/queryScope'
+import { buildWhere, visibilityCondsForContext } from '~~/server/utils/crm/queryScope'
 import { buildTaskFilter, deriveStatus } from '~~/server/utils/crm/tasks'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
 
 const Query = z.object({
   client_id: z.string().uuid(),
@@ -20,10 +20,13 @@ const Query = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const q = Query.parse(getQuery(event))
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: q.client_id, surface: 'agency_global' })
   const now = new Date()
-  const { where, params } = buildWhere(q.client_id, buildTaskFilter(q, now))
+  const { where, params } = buildWhere(context.clientId, [
+    ...visibilityCondsForContext(context, 'task', 'crm_tasks'),
+    ...buildTaskFilter(q, now)
+  ])
 
   const total = await queryOne<{ count: string }>(
     `SELECT COUNT(*)::text AS count FROM crm_tasks ${where}`,

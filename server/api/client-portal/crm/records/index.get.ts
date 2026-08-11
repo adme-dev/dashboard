@@ -18,7 +18,13 @@ export default defineEventHandler(async (event) => {
   const q = Query.parse(getQuery(event))
   const obj = await assertObjectVisible(client.clientId, q.objectKey)
   const defs = await loadFieldDefs(obj.id, client.clientId)
-  const { where, params } = buildRecordFilter(client.clientId, obj.id, { q: q.q, titleKeys: titleKeys(defs) })
+  const { where, params } = buildRecordFilter(client.clientId, obj.id, {
+    q: q.q,
+    titleKeys: titleKeys(defs),
+    relationFields: defs
+      .filter(def => def.field_type === 'relation')
+      .map(def => ({ key: def.key, target: def.relation_target }))
+  })
   const offset = (q.page - 1) * q.page_size
   const items = await queryRows(
     `SELECT * FROM crm_records ${where} ORDER BY created_at DESC LIMIT ${q.page_size} OFFSET ${offset}`,

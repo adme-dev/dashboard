@@ -1,0 +1,1944 @@
+{
+  "version": "development-v1",
+  "sha256": "ac48fd3d67a9575b38dc9699d7ed002adfb7e5e4b78aba76f3f6b5e72f27effa",
+  "queries": [
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000001",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000002",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003e9"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000003",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003ea"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000004",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003eb"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000005",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003ec"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000006",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000007",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003ee"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000008",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003ef"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000009",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003f0"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000000a",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003f1"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000000b",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000000c",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003f3"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000000d",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003f4"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000000e",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003f5"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000000f",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003f6"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000010",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000011",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003f8"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000012",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003f9"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000013",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003fa"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000014",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003fb"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000015",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000016",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003fd"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000017",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003fe"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000018",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "00000000000000000000000000000000000000000000000000000000000003ff"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000019",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000400"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000001a",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000001b",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000402"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000001c",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000403"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000001d",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000404"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000001e",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000405"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000001f",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000020",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000407"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000021",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000408"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000022",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000409"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000023",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000040a"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000024",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000025",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000040c"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000026",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000040d"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000027",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000040e"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000028",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000040f"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000029",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000002a",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000411"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000002b",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000412"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000002c",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000413"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000002d",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000414"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000002e",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000002f",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000416"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000030",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000417"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000031",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000418"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000032",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000419"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000033",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000034",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000041b"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000035",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000041c"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000036",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000041d"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000037",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000041e"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000038",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000039",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000420"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000003a",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000421"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000003b",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000422"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000003c",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000423"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000003d",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000003e",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000425"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000003f",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000426"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000040",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000427"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000041",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000428"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000042",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000043",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000042a"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000044",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000042b"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000045",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000042c"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000046",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000042d"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000047",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000048",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000042f"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000049",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000430"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000004a",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000431"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000004b",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000432"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000004c",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000004d",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000434"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000004e",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000435"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000004f",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000436"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000050",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000437"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000051",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000052",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000439"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000053",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000043a"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000054",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000043b"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000055",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000043c"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000056",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000057",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000043e"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000058",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000043f"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000059",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000440"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000005a",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000441"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000005b",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000005c",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000443"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000005d",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000444"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000005e",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000445"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000005f",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000446"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000060",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000061",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000448"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000062",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000449"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000063",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000044a"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000064",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000044b"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000065",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000066",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000044d"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000067",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000044e"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000068",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000044f"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000069",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000450"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000006a",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000006b",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000452"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000006c",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000453"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000006d",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000454"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000006e",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000455"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000006f",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000070",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000457"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000071",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000458"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000072",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000459"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000073",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000045a"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000074",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000075",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000045c"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000076",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000045d"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000077",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000045e"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000078",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000045f"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000079",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000007a",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000461"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000007b",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000462"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000007c",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000463"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000007d",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000464"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000007e",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000007f",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000466"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000080",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000467"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000081",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000468"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000082",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000469"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000083",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000084",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000046b"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000085",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000046c"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000086",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000046d"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000087",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000046e"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000088",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000089",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000470"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000008a",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000471"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000008b",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000472"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000008c",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000473"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000008d",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000008e",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000475"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000008f",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000476"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000090",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000477"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000091",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000478"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000092",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000093",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000047a"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000094",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000047b"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000095",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000047c"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000096",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000047d"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000097",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000098",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000047f"
+      ]
+    },
+    {
+      "queryKeyDigest": "0000000000000000000000000000000000000000000000000000000000000099",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000480"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000009a",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000481"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000009b",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000482"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000009c",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000009d",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000484"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000009e",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000485"
+      ]
+    },
+    {
+      "queryKeyDigest": "000000000000000000000000000000000000000000000000000000000000009f",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000486"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000a0",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000487"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000a1",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000a2",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000489"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000a3",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000048a"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000a4",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000048b"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000a5",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000048c"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000a6",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000a7",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000048e"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000a8",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000048f"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000a9",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000490"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000aa",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000491"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000ab",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000ac",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000493"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000ad",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000494"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000ae",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000495"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000af",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "natural_language",
+        "cross_client_overlap"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000496"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000b0",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "no_result"
+      ],
+      "relevantEntityDigests": []
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000b1",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000498"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000b2",
+      "clientKey": "client-1",
+      "entityType": "person",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "0000000000000000000000000000000000000000000000000000000000000499"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000b3",
+      "clientKey": "client-2",
+      "entityType": "company",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000049a"
+      ]
+    },
+    {
+      "queryKeyDigest": "00000000000000000000000000000000000000000000000000000000000000b4",
+      "clientKey": "client-3",
+      "entityType": "opportunity",
+      "strata": [
+        "exact_name"
+      ],
+      "relevantEntityDigests": [
+        "000000000000000000000000000000000000000000000000000000000000049b"
+      ]
+    }
+  ]
+}

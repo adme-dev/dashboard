@@ -14,7 +14,7 @@
           AI that knows<br class="hidden sm:block">your agency
         </h1>
         <p class="text-lg md:text-xl text-white/50 max-w-[560px] mx-auto leading-relaxed">
-          Groq-powered conversational AI, 8 anomaly analyzers, semantic search, and fine-tuned models -- all trained on your agency data.
+          Conversational AI and anomaly analysis with visible CRM keyword search. Controlled CRM semantic assistance is off by default and limited to approved agency-assistant contexts.
         </p>
         <NuxtLink
           to="/ai-assistants"
@@ -98,7 +98,7 @@
       </div>
     </section>
 
-    <!-- Semantic Search Section -->
+    <!-- Controlled CRM Search Section -->
     <section class="pb-20 md:pb-32">
       <div class="max-w-[1200px] mx-auto px-6">
         <div class="grid md:grid-cols-2 gap-12 md:gap-16 items-start">
@@ -108,13 +108,13 @@
               <div class="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
                 <UIcon name="i-lucide-search" class="w-5 h-5 text-amber-600 dark:text-amber-400" />
               </div>
-              <h2 class="text-[clamp(24px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Semantic Search</h2>
+              <h2 class="text-[clamp(24px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Controlled CRM Search</h2>
             </div>
             <p class="text-[16px] text-[#45474D] dark:text-white/60 leading-relaxed mb-6">
-              Powered by Cloudflare Vectorize, search goes beyond keyword matching. Find tasks, clients, briefs, and knowledge base entries by meaning -- not just exact text.
+              Visible agency and portal CRM search remains keyword-ranked. Semantic assistance through Cloudflare Workers AI and Vectorize is available only to approved agency-assistant contexts, covers people, companies, and opportunities, and is off by default.
             </p>
             <p class="text-[15px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">
-              Every result is ranked by a 5-signal composite score that combines semantic similarity, recency, entity importance, intent match, and entity overlap. The system automatically diversifies results so you see the full picture, not just one type of match.
+              When controlled assist is enabled, current authorization is rechecked and only records at confirmed index state can contribute semantic candidates. Portal semantic ranking remains unavailable.
             </p>
           </div>
 
@@ -307,7 +307,7 @@ const chatFeatures = [
   {
     title: 'Rate Card Queries',
     icon: 'i-lucide-credit-card',
-    description: 'Ask pricing questions in plain language. Rate card entries are embedded in the vector database so the AI knows your exact service rates.'
+    description: 'Ask pricing questions in plain language through authorized live data lookups. CRM semantic assistance does not broaden access to rate-card data.'
   },
   {
     title: 'Time Tracking Queries',
@@ -361,9 +361,9 @@ const analyzers = [
 
 const scoringSignals = [
   {
-    title: 'Semantic Similarity',
+    title: 'Controlled Semantic Candidates',
     icon: 'i-lucide-sparkles',
-    description: 'Vectorize cosine similarity matches results by meaning, not just keywords.'
+    description: 'For approved CRM assist only, Vectorize candidates are filtered by current authorization before fusion with keyword results.'
   },
   {
     title: 'Recency',

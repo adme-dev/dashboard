@@ -5,6 +5,8 @@
 import { z } from 'zod'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { recomputeHealth } from '~~/server/utils/crm/healthSignals'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { requireCrmRecordAccess } from '~~/server/utils/crm/recordAccess'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -18,6 +20,14 @@ export default defineEventHandler(async (event) => {
   const parsed = Body.safeParse(await readBody(event))
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.message })
   const b = parsed.data
-  const item = await recomputeHealth({ clientId: b.client_id, targetType: b.target_type, targetId: b.target_id, reason: 'manual' })
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: b.client_id, surface: 'agency_global' })
+  await requireCrmRecordAccess(context, { type: b.target_type, id: b.target_id })
+  const item = await recomputeHealth({
+    clientId: context.clientId,
+    targetType: b.target_type,
+    targetId: b.target_id,
+    reason: 'manual',
+    context
+  })
   return { item }
 })

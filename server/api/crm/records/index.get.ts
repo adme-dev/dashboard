@@ -1,10 +1,10 @@
 // server/api/crm/records/index.get.ts — list records of one object (paginated, title search).
 import { z } from 'zod'
-import { requireAuth } from '~~/server/utils/auth'
 import { queryRows, queryCount } from '~~/server/utils/db'
 import { assertObjectVisible } from '~~/server/utils/crm/engine/resolveObjects'
 import { buildRecordFilter } from '~~/server/utils/crm/engine/recordFilter'
 import { loadFieldDefs, titleKeys } from '~~/server/utils/crm/engine/recordWrite'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
 
 const Query = z.object({
   client_id: z.string().uuid(),
@@ -15,11 +15,18 @@ const Query = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const q = Query.parse(getQuery(event))
-  const obj = await assertObjectVisible(q.client_id, q.objectKey)
-  const defs = await loadFieldDefs(obj.id, q.client_id)
-  const { where, params } = buildRecordFilter(q.client_id, obj.id, { q: q.q, titleKeys: titleKeys(defs) })
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: q.client_id, surface: 'agency_global' })
+  const obj = await assertObjectVisible(context.clientId, q.objectKey)
+  const defs = await loadFieldDefs(obj.id, context.clientId)
+  const { where, params } = buildRecordFilter(context.clientId, obj.id, {
+    q: q.q,
+    titleKeys: titleKeys(defs),
+    context,
+    relationFields: defs
+      .filter(def => def.field_type === 'relation')
+      .map(def => ({ key: def.key, target: def.relation_target }))
+  })
   const offset = (q.page - 1) * q.page_size
   const items = await queryRows(
     `SELECT * FROM crm_records ${where} ORDER BY created_at DESC LIMIT ${q.page_size} OFFSET ${offset}`,

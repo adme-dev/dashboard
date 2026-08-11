@@ -225,6 +225,28 @@ ls -la .dev.vars
 4. **Use Wrangler for production** - Don't use `.env` files in production
 5. **Limit secret access** - Only give Cloudflare dashboard access to necessary team members
 
+### CRM search release and sealed evaluation
+
+| Binding | Runtime | Purpose |
+|---|---|---|
+| `CRM_SEARCH_RESOURCE_APPROVAL_VERIFICATION_KEYRING` | Pages | Active Ed25519 public verification keys for signed `resource_provision` bootstrap envelopes. |
+| `CRM_SEARCH_RESOURCE_MANIFEST` | CRM search consumer | Signed exact environment resource envelope; not an unsigned JSON readback. |
+| `CRM_SEARCH_RESOURCE_MANIFEST_VERIFICATION_KEYRING` | CRM search consumer | Independent active Ed25519 public verification keyring for resource manifests. |
+| `CRM_SEARCH_RELEASE_APPROVAL_VERIFICATION_KEYRING` | Protected release runner | Active Ed25519 public keyring for immutable deployment approval artifacts. |
+| `CRM_SEARCH_ARTIFACT_VERIFICATION_KEYRING` | Protected release runner | Independent active Ed25519 public keyring used to verify the canonical exact-file frozen artifact before either Pages or Worker mutation. |
+| `CRM_SEARCH_EVIDENCE_VERIFICATION_KEYRING` | Protected release runner | Independent active Ed25519 public keyring for the bounded privacy-safe release evidence; the approval must pin its exact canonical hash. |
+| `CRM_SEARCH_RELEASE_APPROVAL_DATABASE_URL` | Protected release runner | Direct, non-pooler Neon URL used only for the fresh approval/revocation/rate-card readback immediately before each spawn. Never expose it to Pages or a Worker. |
+| `CRM_SEARCH_ARTIFACT_SIGNING_KEY_VERSION` | Release-artifact CI environment | Active key ID for artifact production. CI-only; never configure on an application runtime. |
+| `CRM_SEARCH_ARTIFACT_SIGNING_PRIVATE_KEY_PEM` | Release-artifact CI environment | Ed25519 private key for the build-once artifact envelope. CI-only and independently protected from approval/evidence keys. |
+| `CRM_SEARCH_ENVIRONMENT` | CRM search consumer | Exact `preview` or `production` identity checked against the signed envelope. |
+| `CRM_SEARCH_SEALED_HOLDOUT_KEYRING` | Pages evaluation runtime | Dedicated AES-256-GCM keyring; no process-environment fallback. |
+
+The signed resource manifest contains an exact `externalIntegrations` inventory for `database`, provider APIs, Meta, Google, audience writers, Xero, email delivery, Monday, Slack, outbound webhooks, Google Sheets, and Social Dashboard. Every entry is either explicitly disabled or carries a stable verified target/account identity digest and verification timestamp. A different secret digest is not target isolation. An enabled preview entry must name a verified target distinct from production; unknown, omitted, inherited, malformed, or production-equal identities fail before deployment or provider work. The committed preview environment keeps `CRM_EMAIL_CONVERSATIONS_ENABLED`, all three `PERSONA_*_WRITES_ENABLED` flags, `MCP_GEN_TOOLS_ENABLED`, and `MCP_BANNER_TOOLS_ENABLED` false.
+
+Neon execution additionally requires a signed `production_migration` approval envelope and an injected direct-Neon readback immediately before both branch creation and migration. Verification covers the approval ID/revision, implementation SHA, artifact/binding/evidence digests, cost ceiling, reason, expiry, and separated requester/approver actors. The branch request and signed target attestation bind the accepted approval ID/revision and exact digests. A caller-built authority object is never accepted; dry-run emits only the required proof plan.
+
+Keyrings are bounded/versioned and may not reuse CRM search service, confirmation, analytics, or cron secrets. Missing, malformed, expired, retired, tampered, wrong-environment, or wrong-target evidence fails closed before provider or deployment work. The Task 18 release scripts execute only a dry-run in this repository state.
+
 ## Environment Variable Reference
 
 | Variable | Required | Description |

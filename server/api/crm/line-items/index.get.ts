@@ -2,11 +2,13 @@
 import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
 import { listLineItems } from '~~/server/utils/crm/lineItemsDb'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
 
 const Query = z.object({ client_id: z.string().uuid(), opportunity_id: z.string().uuid() })
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const q = Query.parse(getQuery(event))
-  return { items: await listLineItems(q.client_id, q.opportunity_id) }
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: q.client_id, surface: 'agency_global' })
+  return { items: await listLineItems(context, q.opportunity_id) }
 })

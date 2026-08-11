@@ -1,0 +1,175 @@
+{
+  "version": "crm-search-preview-evidence/v1",
+  "generatedAt": "2026-08-11T03:45:28.345Z",
+  "candidateSha": "efd177a7d12d95190b37c8a301d1166d8022858d",
+  "candidateScope": "historical_candidate_superseded_by_release_safety_corrections",
+  "currentCorrectedCandidateSha": "d76f10f4fe5df85b485b4b930e4b072534d60050",
+  "currentCorrectedCandidateBaseSha": "ee653429570239eaa783f941a0f11a3d0ec0417f",
+  "comparisonBaseSha": "f46d1e7793ba558e374c380e47d610a65d42756a",
+  "decision": "external_preview_pending",
+  "productionHalted": true,
+  "localVerification": {
+    "appliesOnlyToCandidateSha": "efd177a7d12d95190b37c8a301d1166d8022858d",
+    "currentCorrectionVerificationComplete": true,
+    "currentCorrectionVerificationScope": "bounded_local_release_and_affected_slices_only",
+    "currentCorrectionAffectedSlice": {
+      "testFilesPassed": 4,
+      "testsPassed": 59,
+      "testsSkipped": 1,
+      "testsFailed": 0
+    },
+    "currentCorrectionReleaseSlice": {
+      "testFilesPassed": 9,
+      "testsPassed": 56,
+      "testsSkipped": 1,
+      "testsFailed": 0
+    },
+    "currentCorrectionStaticGates": {
+      "focusedLintPassed": true,
+      "workerGeneratedTypesPassed": true,
+      "workerStrictTypecheckPassed": true,
+      "diffCheckPassed": true,
+      "evidenceJsonParsed": true,
+      "secretPatternMatches": 0
+    },
+    "harnessCommit": "f45fa96f86c1feb9fbb5f819ca024813d887a5a6",
+    "compatibilitySlice": {
+      "testFilesPassed": 12,
+      "testsPassed": 87,
+      "testsFailed": 0
+    },
+    "fullSuite": {
+      "completed": true,
+      "testFilesPassed": 1651,
+      "testFilesFailed": 4,
+      "testFilesSkipped": 5,
+      "testsPassed": 10762,
+      "testsFailed": 5,
+      "testsSkipped": 30,
+      "unhandledEnvironmentErrors": 2,
+      "failingFileClassification": "environment_or_missing_artifact_only",
+      "failingFiles": [
+        "test/app/aiGovernanceControlPlane.test.ts",
+        "test/app/portalPdfExport.test.ts",
+        "test/workers/mcpRequestClaimRuntimeCompatibility.test.ts",
+        "test/workers/cloudflareNitroBindingBoundary.test.ts"
+      ]
+    },
+    "typecheck": {
+      "completed": true,
+      "passed": false,
+      "classification": "known_application_baseline",
+      "task19OrCrmSearchDiagnosticObserved": false
+    },
+    "detachedBuild": {
+      "completed": true,
+      "passed": true,
+      "clientBuilt": true,
+      "serverBuilt": true,
+      "prerenderedRouteCount": 162,
+      "nitroBundleBuilt": true,
+      "workerWrapped": true,
+      "rawBytes": 25578485,
+      "rawBudgetBytes": 63750000,
+      "conservativeGzipBytes": 6570472,
+      "conservativeGzipBudgetBytes": 9750000,
+      "officialRawLimitBytes": 64000000,
+      "officialGzipLimitBytes": 10000000,
+      "safetyMarginBytesPerDimension": 250000,
+      "classification": "local_build_and_release_size_guard_passed",
+      "localDispatcherSha256": "1e4154e92931461dc14b29bfa0f17334234f535ee2f01d446c4c12a4538746da",
+      "frozenArtifactBuilt": false,
+      "frozenArtifactDigest": null
+    },
+    "buildWarnings": [
+      "duplicated CrmSearchOperationPublicationClaim auto-import",
+      "BigInt literals reported against the configured es2019 target"
+    ],
+    "pagesTargetGuardPassed": true,
+    "workerGeneratedTypesPassed": true,
+    "workerStrictTypecheckPassed": true,
+    "workerBundleDryRunPassed": true,
+    "neonLifecycleDryRunMutationCount": 0,
+    "artifactVerifyDryRunMutationCount": 0,
+    "previewE2eDryRunMutationCount": 0,
+    "cleanupDryRunMutationCount": 0
+  },
+  "neonSchemaPreview": {
+    "executed": true,
+    "completedAt": "2026-08-11T03:45:28.345Z",
+    "sourceGitSha": "d76f10f4fe5df85b485b4b930e4b072534d60050",
+    "projectId": "square-tooth-23821574",
+    "sourceBranchId": "br-small-hall-a4qtwjgo",
+    "temporaryBranchId": "br-delicate-brook-a4ncpcnk",
+    "schemaOnly": true,
+    "sourceSchemaSha256": "79052fc37fc320c64b72b2ad72464a81d96346e2e7013f8015e69c3f75d69a8c",
+    "migrationDigests": {
+      "server/database/migrations/134-crm-core.sql": "818ef7a8096cc778667ac61f6211b78638e63fbeeaa77aae1b4d2d1feb73cffa",
+      "server/database/migrations/135-crm-opportunities.sql": "7adf2caabc6ff4bb3a2454e6d40cd49bf6a09d5c790a277fe3cad0d200e63fd5",
+      "server/database/migrations/350_crm_search_expand.sql": "956f06a88d41f22e94b0fd82b52bfb2e2f5330f3edbfaf92e275e3011c75361a",
+      "server/database/migrations/351_crm_search_validate_backfill.sql": "8e20e19525b8de3efdd92d553e6c9403d922fd1b31f8d5c21d7e0968d6041ff3",
+      "server/database/migrations/352_crm_search_activate_capture.sql": "4fbfb937293a830825413add0ea9979b6c17aecc492e4f227f37c1f091e5d3af"
+    },
+    "sourceTableCounts": {
+      "crm_people": 0,
+      "crm_companies": 0,
+      "crm_opportunities": 0
+    },
+    "attestationSha256": "f1511e0fdba87faa84680654bf66826ece1c04d0986486fad15303884fd81cfb",
+    "lifecycleCleanupAbsent": true,
+    "independentBranchAbsenceVerified": true,
+    "productionMutationCount": 0,
+    "providerCallCount": 0
+  },
+  "externalPreview": {
+    "executed": false,
+    "guardedExecutionAndCleanupCodePathImplemented": true,
+    "guardedCodePathExercisedOnlyWithLocalInjectedAdapters": false,
+    "signedResourceApprovalVerified": false,
+    "signedReleaseEvidenceVerified": false,
+    "neonBranchCreated": true,
+    "pagesPreviewCreatedOrDeployed": false,
+    "workerPreviewCreatedOrUploaded": false,
+    "queueOrDlqCreated": false,
+    "vectorizeIndexCreated": false,
+    "r2ObjectImported": false,
+    "secretsProvisioned": false,
+    "providerCallsPerformed": false,
+    "cleanupReadbackVerified": true
+  },
+  "sealedHoldout": {
+    "productionReady": false,
+    "importState": "blocked_pending_task_18_approved_envelope_and_secret_readback",
+    "objectKey": "crm-search/evaluation/holdouts/holdout-v1.json",
+    "opaqueArtifactSha256": "cf3b0327f05a6bb1ac30bd5fea5842c043d2efbcc1c47b30a51f76b85706687b",
+    "judgementSha256": "a459ef8b7cdd373f8b016dc77014f9f2d8932f3551266a12c2f01d84013d5fdf",
+    "queryCount": 360,
+    "requiredKeyBinding": "CRM_SEARCH_SEALED_HOLDOUT_KEYRING"
+  },
+  "staticDigests": {
+    "digestScope": "historical_candidate_only",
+    "pnpmLockSha256": "1b83b1a57e362ea7fecdf31e9fffdc1bd678305c925aa02221402483ad342ac0",
+    "pagesWranglerSha256": "72bc6848b77d97c341595116d1983b28c803c7c3bb7f3dc49c525ac1f04d499c",
+    "consumerWranglerSha256": "fc833859ac890535ab5a8160baac9dda46e6066b36b9f448f107674257642377",
+    "migration350Sha256": "b2afcc9aec2872689589a32e8122e17a552ea664ab3efd4298efcee6484f41c8",
+    "migration351Sha256": "8e20e19525b8de3efdd92d553e6c9403d922fd1b31f8d5c21d7e0968d6041ff3",
+    "migration352Sha256": "4fbfb937293a830825413add0ea9979b6c17aecc492e4f227f37c1f091e5d3af",
+    "sealedArtifactSha256": "cf3b0327f05a6bb1ac30bd5fea5842c043d2efbcc1c47b30a51f76b85706687b",
+    "deploymentManifestSha256": "b529c5e23fcfa0fe57d2a0d734d8156158ccb5242a8702d8a0a7015e49abacd5",
+    "holdoutManifestSha256": "b54dbd03698d322b80aeba2f7d6d1e95b78e299d7dc75f265ba67705ba3da2f0"
+  },
+  "unchangedProductionState": {
+    "schema": true,
+    "resources": true,
+    "codeDeployment": true,
+    "indexing": true,
+    "shadow": true,
+    "assist": true
+  },
+  "releaseBlockers": [
+    "signed Task 18 resource approval and immutable release evidence are absent",
+    "the Neon schema-only migration and cleanup slice passed, but Pages, Worker, Queue/DLQ, Vectorize, R2, secret, and full external E2E remain pending",
+    "sealed holdout import, key provisioning, readback, decryption, and judgement verification are pending",
+    "current corrected bytes require a fresh clean build, signed artifact, external preview readback, and independent final review"
+  ]
+}

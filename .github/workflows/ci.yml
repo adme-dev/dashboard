@@ -5,6 +5,37 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      release_action:
+        description: Build a signed frozen artifact, or deploy a previously signed artifact
+        required: true
+        default: build
+        type: choice
+        options: [build, deploy]
+      release_run_id:
+        description: Run containing the verified frozen artifact and approval
+        required: false
+        type: string
+      frozen_artifact_name:
+        description: Immutable artifact bundle name
+        required: false
+        type: string
+      approval_artifact_name:
+        description: Signed production_deploy approval artifact name
+        required: false
+        type: string
+      evidence_artifact_name:
+        description: Signed privacy-safe release evidence artifact name
+        required: false
+        type: string
+      binding_manifest_run_id:
+        description: Run containing the signed Cloudflare binding readback manifest
+        required: false
+        type: string
+      binding_manifest_artifact_name:
+        description: Signed Cloudflare binding readback artifact name
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -21,7 +52,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        node: [24]
+        node: [24.18.0]
 
     steps:
       - name: Checkout
@@ -56,12 +87,70 @@ jobs:
       - name: Pages deployment target guard
         run: pnpm run test:deployment-guards
 
-  deploy:
+  release_artifact:
     needs: ci
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release_action == 'build'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: release_artifact
     permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout exact detached release SHA
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download signed binding readback
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.binding_manifest_artifact_name }}
+          run-id: ${{ inputs.binding_manifest_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/crm-search-binding
+
+      - name: Build and sign frozen release bytes
+        env:
+          CRM_SEARCH_ARTIFACT_BUILD_AUTHORIZATION: crm-search-task18-ci-build-v1
+          CRM_SEARCH_RELEASE_SHA: ${{ github.sha }}
+          CRM_SEARCH_FROZEN_BINDING_MANIFEST_SOURCE: ${{ runner.temp }}/crm-search-binding/binding-manifest.json
+          CRM_SEARCH_ARTIFACT_SIGNING_KEY_VERSION: ${{ vars.CRM_SEARCH_ARTIFACT_SIGNING_KEY_VERSION }}
+          CRM_SEARCH_ARTIFACT_SIGNING_PRIVATE_KEY_PEM: ${{ secrets.CRM_SEARCH_ARTIFACT_SIGNING_PRIVATE_KEY_PEM }}
+        run: pnpm crm-search:artifact:produce -- --output ${{ runner.temp }}/crm-search-frozen
+
+      - name: Verify built Worker binding boundary
+        run: pnpm exec vitest run test/workers/cloudflareNitroBindingBoundary.test.ts
+
+      - name: Upload frozen release artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: crm-search-frozen-${{ github.sha }}
+          path: ${{ runner.temp }}/crm-search-frozen
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    needs: ci
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release_action == 'deploy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production_deploy
+    permissions:
+      actions: read
       contents: read
       deployments: write
 
@@ -75,37 +164,74 @@ jobs:
       - name: Install node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version: 24.18.0
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Sync agency workflows smoke verifier
-        env:
-          AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: ${{ secrets.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET }}
-        run: node scripts/sync-agency-workflows-smoke-verifier.mjs
+      - name: Download frozen release artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.frozen_artifact_name }}
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/crm-search-frozen
 
-      - name: Build
-        run: pnpm run build
-        timeout-minutes: 20
-        env:
-          NODE_OPTIONS: '--max-old-space-size=8192'
-          SEARCH_AUTHORITY_ENABLED: 'true'
+      - name: Download signed production approval
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.approval_artifact_name }}
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/crm-search-approval
+
+      - name: Download signed release evidence
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.evidence_artifact_name }}
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/crm-search-evidence
 
       - name: Verify Pages deployment target
         run: pnpm run deploy:check
 
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v4
+      - name: Verify downloaded frozen bytes
         env:
-          AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET: ${{ secrets.AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET }}
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=agency-dashboard --branch=main --commit-dirty=true
-          secrets: |
-            AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET
+          CRM_SEARCH_RELEASE_SHA: ${{ github.sha }}
+          CRM_SEARCH_ARTIFACT_VERIFICATION_KEYRING: ${{ secrets.CRM_SEARCH_ARTIFACT_VERIFICATION_KEYRING }}
+        run: node scripts/crm-search/verify-artifact.mjs --verify --artifact-root ${{ runner.temp }}/crm-search-frozen --manifest ${{ runner.temp }}/crm-search-frozen/artifact-manifest.json
+
+      - name: Deploy verified frozen bytes
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CRM_SEARCH_FROZEN_ARTIFACT_MANIFEST: ${{ runner.temp }}/crm-search-frozen/artifact-manifest.json
+          CRM_SEARCH_FROZEN_ARTIFACT_ROOT: ${{ runner.temp }}/crm-search-frozen
+          CRM_SEARCH_RELEASE_SHA: ${{ github.sha }}
+          CRM_SEARCH_DEPLOYMENT_APPROVAL: ${{ runner.temp }}/crm-search-approval/production-deploy-approval.json
+          CRM_SEARCH_RELEASE_EVIDENCE: ${{ runner.temp }}/crm-search-evidence/release-evidence.json
+          CRM_SEARCH_ARTIFACT_VERIFICATION_KEYRING: ${{ secrets.CRM_SEARCH_ARTIFACT_VERIFICATION_KEYRING }}
+          CRM_SEARCH_RELEASE_APPROVAL_VERIFICATION_KEYRING: ${{ secrets.CRM_SEARCH_RELEASE_APPROVAL_VERIFICATION_KEYRING }}
+          CRM_SEARCH_EVIDENCE_VERIFICATION_KEYRING: ${{ secrets.CRM_SEARCH_EVIDENCE_VERIFICATION_KEYRING }}
+          CRM_SEARCH_RELEASE_APPROVAL_DATABASE_URL: ${{ secrets.CRM_SEARCH_RELEASE_APPROVAL_DATABASE_URL }}
+        run: pnpm deploy:production
+
+      - name: Upload verified frozen consumer bytes
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CRM_SEARCH_FROZEN_ARTIFACT_MANIFEST: ${{ runner.temp }}/crm-search-frozen/artifact-manifest.json
+          CRM_SEARCH_FROZEN_ARTIFACT_ROOT: ${{ runner.temp }}/crm-search-frozen
+          CRM_SEARCH_RELEASE_SHA: ${{ github.sha }}
+          CRM_SEARCH_DEPLOYMENT_APPROVAL: ${{ runner.temp }}/crm-search-approval/production-deploy-approval.json
+          CRM_SEARCH_RELEASE_EVIDENCE: ${{ runner.temp }}/crm-search-evidence/release-evidence.json
+          CRM_SEARCH_ARTIFACT_VERIFICATION_KEYRING: ${{ secrets.CRM_SEARCH_ARTIFACT_VERIFICATION_KEYRING }}
+          CRM_SEARCH_RELEASE_APPROVAL_VERIFICATION_KEYRING: ${{ secrets.CRM_SEARCH_RELEASE_APPROVAL_VERIFICATION_KEYRING }}
+          CRM_SEARCH_EVIDENCE_VERIFICATION_KEYRING: ${{ secrets.CRM_SEARCH_EVIDENCE_VERIFICATION_KEYRING }}
+          CRM_SEARCH_RELEASE_APPROVAL_DATABASE_URL: ${{ secrets.CRM_SEARCH_RELEASE_APPROVAL_DATABASE_URL }}
+        run: pnpm crm-search:consumer:upload
 
       - name: Smoke production origin
         run: curl --fail --retry 5 --retry-delay 5 --silent --show-error --head https://agency-dashboard-6cm.pages.dev/

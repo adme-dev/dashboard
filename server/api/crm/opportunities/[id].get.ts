@@ -1,18 +1,14 @@
 // server/api/crm/opportunities/[id].get.ts
 import { z } from 'zod'
-import { requireAuth } from '~~/server/utils/auth'
-import { queryOne } from '~~/server/utils/db'
+import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { requireCrmRecordAccess } from '~~/server/utils/crm/recordAccess'
 
 const Query = z.object({ client_id: z.string().uuid() })
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const id = getRouterParam(event, 'id')
   const { client_id } = Query.parse(getQuery(event))
-  const row = await queryOne(
-    `SELECT * FROM crm_opportunities WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL`,
-    [id, client_id],
-  )
-  if (!row) throw createError({ statusCode: 404, statusMessage: 'Opportunity not found' })
-  return { item: row }
+  const context = await resolveAgencyCrmSearchContext(event, { clientId: client_id, surface: 'agency_global' })
+  const record = await requireCrmRecordAccess(context, { type: 'opportunity', id: id as string })
+  return { item: record.row }
 })

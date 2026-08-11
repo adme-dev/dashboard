@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const requireAuth = vi.fn()
+const requirePermission = vi.fn()
 const isCrmAiEnabled = vi.fn(() => false)
 const resolveGodModeAuthority = vi.fn()
 
-vi.mock('../../../server/utils/auth', () => ({ requireAuth }))
+vi.mock('../../../server/utils/auth', () => ({ requireAuth, requirePermission }))
 vi.mock('../../../server/utils/crm/aiConfig', () => ({ isCrmAiEnabled }))
 vi.mock('../../../server/utils/godMode/authority', () => ({ resolveGodModeAuthority }))
 
@@ -53,10 +54,12 @@ describe('CRM AI status God mode feature gate', () => {
       emergencyDisabled: false
     })
     requireAuth.mockImplementation(async request => request.context.user)
+    requirePermission.mockImplementation(async request => request.context.user)
   })
 
   it('uses the reviewed application feature adapter for an audited active-owner read', async () => {
     await expect(handler(event())).resolves.toEqual({ enabled: true })
+    expect(requirePermission).toHaveBeenCalledWith(expect.anything(), 'CLIENTS')
     expect(isCrmAiEnabled).toHaveBeenCalledOnce()
   })
 

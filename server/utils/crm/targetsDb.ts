@@ -2,6 +2,8 @@
 // F15 — sales-target persistence + the attainment leaderboard query.
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { leaderboard, type CrmTargetType, type AttainmentRow } from '~~/server/utils/crm/analytics'
+import type { CrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { buildWhere, visibilityCondsForContext } from '~~/server/utils/crm/queryScope'
 
 export interface TargetRow {
   id: string
@@ -15,11 +17,27 @@ export interface TargetRow {
   created_at: string
 }
 
-export async function listTargets(clientId: string, period?: { start: string, end: string }): Promise<TargetRow[]> {
+type TargetDbDependencies = { queryRows: typeof queryRows }
+const defaultTargetDbDependencies: TargetDbDependencies = { queryRows }
+
+function ownerScoped(scope: string | CrmSearchContext): scope is CrmSearchContext {
+  return typeof scope !== 'string' && scope.actorType === 'staff' && scope.visibility.ownerScoped
+}
+
+export async function listTargets(
+  scope: string | CrmSearchContext,
+  period?: { start: string, end: string },
+  deps: TargetDbDependencies = defaultTargetDbDependencies
+): Promise<TargetRow[]> {
+  const clientId = typeof scope === 'string' ? scope : scope.clientId
   const conds = ['t.client_id = $1']
   const params: unknown[] = [clientId]
-  if (period) { params.push(period.start, period.end); conds.push(`t.period_start = $2 AND t.period_end = $3`) }
-  return await queryRows<TargetRow>(
+  if (ownerScoped(scope)) { params.push(scope.actorId); conds.push(`t.user_id = $${params.length}`) }
+  if (period) {
+    params.push(period.start); conds.push(`t.period_start = $${params.length}`)
+    params.push(period.end); conds.push(`t.period_end = $${params.length}`)
+  }
+  return await deps.queryRows<TargetRow>(
     `SELECT t.*, u.name AS user_name
        FROM crm_sales_targets t
        LEFT JOIN team_members u ON u.id = t.user_id
@@ -53,13 +71,23 @@ export async function deleteTarget(id: string, clientId: string): Promise<boolea
 export type LeaderboardRow = AttainmentRow & { user_name: string | null }
 
 /** Targets for the window + won deals closed in it → ranked attainment rows with names. */
-export async function getLeaderboard(clientId: string, periodStart: string, periodEnd: string): Promise<LeaderboardRow[]> {
-  const targets = await listTargets(clientId, { start: periodStart, end: periodEnd })
-  const wonOpps = await queryRows<{ owner_id: string | null, amount: number }>(
-    `SELECT owner_id, amount FROM crm_opportunities
-      WHERE client_id = $1 AND deleted_at IS NULL AND status = 'won'
-        AND actual_close_date >= $2 AND actual_close_date <= $3`,
-    [clientId, periodStart, periodEnd],
+export async function getLeaderboard(
+  scope: string | CrmSearchContext,
+  periodStart: string,
+  periodEnd: string,
+  deps: TargetDbDependencies = defaultTargetDbDependencies
+): Promise<LeaderboardRow[]> {
+  const clientId = typeof scope === 'string' ? scope : scope.clientId
+  const targets = await listTargets(scope, { start: periodStart, end: periodEnd }, deps)
+  const { where, params } = buildWhere(clientId, [
+    ...(typeof scope === 'string' ? [] : visibilityCondsForContext(scope, 'opportunity', 'crm_opportunities')),
+    { sql: "crm_opportunities.status = ?", params: ['won'] },
+    { sql: 'crm_opportunities.actual_close_date >= ?', params: [periodStart] },
+    { sql: 'crm_opportunities.actual_close_date <= ?', params: [periodEnd] }
+  ])
+  const wonOpps = await deps.queryRows<{ owner_id: string | null, amount: number }>(
+    `SELECT owner_id, amount FROM crm_opportunities ${where}`,
+    params,
   )
   const rows = leaderboard(
     targets.map(t => ({ user_id: t.user_id, target_type: t.target_type, target_value: Number(t.target_value) })),

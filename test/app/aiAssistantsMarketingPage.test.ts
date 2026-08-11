@@ -64,7 +64,9 @@ describe('AI Assistants public launch surface', () => {
     expect(navigation).toContain('to: \'/ai-assistants\'')
 
     expect(homepage).toContain('AI-Powered Insights')
-    expect(homepage).toContain('Groq-powered chat with @entity mentions, anomaly detection across 8 analyzers, semantic search, and proactive recommendations.')
+    expect(homepage).toContain('visible CRM keyword search')
+    expect(homepage).toContain('semantic assistance is limited to approved agency-assistant contexts')
+    expect(homepage).not.toContain('Groq-powered chat with @entity mentions, anomaly detection across 8 analyzers, semantic search, and proactive recommendations.')
     expect(homepage).toMatch(/<NuxtLink to="\/platform\/ai"[^>]*>\s*Learn more/)
     expect(homepage).toContain('{ title: \'AI Insights\'')
     expect(homepage).toContain('to: \'/platform/ai\'')

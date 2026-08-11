@@ -7,6 +7,7 @@ interface PagesConfig {
   queues?: {
     producers?: Array<{ binding: string, queue: string }>
   }
+  env?: { production?: PagesConfig }
 }
 
 interface WorkerConfig {
@@ -31,9 +32,10 @@ interface WorkerConfig {
 describe('CRM inbound email production wiring', () => {
   it('enables the Pages feature gate and dedicated queue producer', () => {
     const config = parse(readFileSync('wrangler.toml', 'utf8')) as PagesConfig
+    const production = config.env?.production
 
-    expect(config.vars?.CRM_EMAIL_CONVERSATIONS_ENABLED).toBe('true')
-    expect(config.queues?.producers).toContainEqual({
+    expect(production?.vars?.CRM_EMAIL_CONVERSATIONS_ENABLED).toBe('true')
+    expect(production?.queues?.producers).toContainEqual({
       binding: 'CRM_EMAIL_INBOUND_QUEUE',
       queue: 'crm-email-inbound-queue'
     })

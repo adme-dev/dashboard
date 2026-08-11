@@ -5,6 +5,8 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, expect, it } from 'vitest'
 
+const RAW_RELEASE_BUDGET_BYTES = 63_750_000
+const GZIP_RELEASE_BUDGET_BYTES = 9_750_000
 const execFileAsync = promisify(execFile)
 const temporaryDirectories: string[] = []
 const sizeGuard = path.resolve('scripts/check-worker-size.mjs')
@@ -15,92 +17,112 @@ afterEach(async () => {
   ))
 })
 
-it('rejects a Worker that exceeds the immutable 24,750,000-byte release budget', async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'worker-size-guard-'))
+async function createWorkerDirectory(prefix: string) {
+  const directory = await mkdtemp(path.join(tmpdir(), prefix))
   temporaryDirectories.push(directory)
   const workerDirectory = path.join(directory, 'dist', '_worker.js')
   await mkdir(workerDirectory, { recursive: true })
+  return { directory, workerDirectory }
+}
+
+function deterministicIncompressibleBytes(length: number) {
+  const bytes = Buffer.allocUnsafe(length)
+  let state = 0x9e3779b9
+  for (let index = 0; index < bytes.length; index += 1) {
+    state ^= state << 13
+    state ^= state >>> 17
+    state ^= state << 5
+    bytes[index] = state & 0xff
+  }
+  return bytes
+}
+
+it('accepts a Worker exactly at the immutable raw safety budget and reports exact dual margins', async () => {
+  const { directory, workerDirectory } = await createWorkerDirectory('worker-size-boundary-')
   const workerModule = path.join(workerDirectory, 'worker.mjs')
   await writeFile(workerModule, '')
-  await truncate(workerModule, 24_750_001)
+  await truncate(workerModule, RAW_RELEASE_BUDGET_BYTES)
 
-  await expect(execFileAsync(process.execPath, [sizeGuard], {
+  const { stdout } = await execFileAsync(process.execPath, [sizeGuard], {
     cwd: directory
-  })).rejects.toMatchObject({
-    code: 1
   })
+
+  const metrics = stdout.match(
+    /raw (\d+) \/ (\d+) bytes \((-?\d+) remaining\); gzip (\d+) \/ (\d+) bytes \((-?\d+) remaining\)/u
+  )
+  expect(metrics).not.toBeNull()
+  expect(metrics?.slice(1).map(Number)).toEqual([
+    RAW_RELEASE_BUDGET_BYTES,
+    RAW_RELEASE_BUDGET_BYTES,
+    0,
+    expect.any(Number),
+    GZIP_RELEASE_BUDGET_BYTES,
+    GZIP_RELEASE_BUDGET_BYTES - Number(metrics?.[4])
+  ])
 })
 
-it('does not allow a higher environment override to raise the release budget', async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'worker-size-high-override-'))
-  temporaryDirectories.push(directory)
-  const workerDirectory = path.join(directory, 'dist', '_worker.js')
-  await mkdir(workerDirectory, { recursive: true })
+it('rejects a Worker one byte over the raw safety budget before overrides can raise or disable it', async () => {
+  const { directory, workerDirectory } = await createWorkerDirectory('worker-size-raw-over-')
   const workerModule = path.join(workerDirectory, 'worker.mjs')
   await writeFile(workerModule, '')
-  await truncate(workerModule, 24_750_001)
+  await truncate(workerModule, RAW_RELEASE_BUDGET_BYTES + 1)
 
   await expect(execFileAsync(process.execPath, [sizeGuard], {
     cwd: directory,
     env: {
       ...process.env,
-      WORKER_SIZE_BUDGET_BYTES: '25000000'
+      WORKER_SIZE_BUDGET_BYTES: '999999999',
+      WORKER_RAW_SIZE_BUDGET_BYTES: '999999999',
+      WORKER_GZIP_SIZE_BUDGET_BYTES: 'not-a-number'
     }
   })).rejects.toMatchObject({
-    code: 1
+    code: 1,
+    stderr: expect.stringMatching(/raw[^\n]*1 over/u)
   })
 })
 
-it('does not allow a nonnumeric environment override to disable the release budget', async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'worker-size-invalid-override-'))
-  temporaryDirectories.push(directory)
-  const workerDirectory = path.join(directory, 'dist', '_worker.js')
-  await mkdir(workerDirectory, { recursive: true })
-  const workerModule = path.join(workerDirectory, 'worker.mjs')
-  await writeFile(workerModule, '')
-  await truncate(workerModule, 24_750_001)
+it('rejects a bounded incompressible Worker over the gzip safety budget before overrides can raise it', async () => {
+  const { directory, workerDirectory } = await createWorkerDirectory('worker-size-gzip-over-')
+  await writeFile(
+    path.join(workerDirectory, 'worker.mjs'),
+    deterministicIncompressibleBytes(GZIP_RELEASE_BUDGET_BYTES + 1)
+  )
 
   await expect(execFileAsync(process.execPath, [sizeGuard], {
     cwd: directory,
     env: {
       ...process.env,
-      WORKER_SIZE_BUDGET_BYTES: 'not-a-number'
+      WORKER_SIZE_BUDGET_BYTES: 'not-a-number',
+      WORKER_RAW_SIZE_BUDGET_BYTES: 'not-a-number',
+      WORKER_GZIP_SIZE_BUDGET_BYTES: '999999999'
     }
   })).rejects.toMatchObject({
-    code: 1
+    code: 1,
+    stderr: expect.stringMatching(/gzip[^\n]*over/u)
   })
 })
 
-it('accepts a Worker exactly at the immutable release budget', async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'worker-size-boundary-'))
-  temporaryDirectories.push(directory)
-  const workerDirectory = path.join(directory, 'dist', '_worker.js')
-  await mkdir(workerDirectory, { recursive: true })
-  const workerModule = path.join(workerDirectory, 'worker.mjs')
-  await writeFile(workerModule, '')
-  await truncate(workerModule, 24_750_000)
-
-  await expect(execFileAsync(process.execPath, [sizeGuard], {
-    cwd: directory
-  })).resolves.toMatchObject({
-    stdout: expect.stringContaining('(0.00 MiB remaining)')
-  })
-})
-
-it('counts deployed entry modules while excluding adjacent source maps', async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'worker-size-maps-'))
-  temporaryDirectories.push(directory)
-  const workerDirectory = path.join(directory, 'dist', '_worker.js')
-  await mkdir(workerDirectory, { recursive: true })
-  await writeFile(path.join(workerDirectory, 'index.js'), 'export default {}\n')
-  await writeFile(path.join(workerDirectory, '_nitro.js'), 'export default {}\n')
-  const sourceMap = path.join(workerDirectory, '_nitro.js.map')
+it('recursively excludes source maps and Wrangler artifacts from both measurements', async () => {
+  const { directory, workerDirectory } = await createWorkerDirectory('worker-size-exclusions-')
+  const chunksDirectory = path.join(workerDirectory, 'chunks', 'nested')
+  await mkdir(chunksDirectory, { recursive: true })
+  const deployedModules = ['export default {}\n', 'export const value = 1\n']
+  await writeFile(path.join(workerDirectory, 'index.js'), deployedModules[0]!)
+  await writeFile(path.join(chunksDirectory, 'module.mjs'), deployedModules[1]!)
+  const sourceMap = path.join(chunksDirectory, 'module.mjs.map')
   await writeFile(sourceMap, '')
-  await truncate(sourceMap, 24_750_001)
+  await truncate(sourceMap, RAW_RELEASE_BUDGET_BYTES + 1)
+  await writeFile(
+    path.join(chunksDirectory, 'wrangler.generated'),
+    deterministicIncompressibleBytes(GZIP_RELEASE_BUDGET_BYTES + 1)
+  )
 
-  await expect(execFileAsync(process.execPath, [sizeGuard], {
+  const { stdout } = await execFileAsync(process.execPath, [sizeGuard], {
     cwd: directory
-  })).resolves.toMatchObject({
-    stdout: expect.stringContaining('remaining')
   })
+
+  expect(stdout).toContain(
+    `raw ${deployedModules.reduce((total, module) => total + Buffer.byteLength(module), 0)} `
+  )
+  expect(stdout).toMatch(/gzip \d+ \/ 9750000 bytes \(\d+ remaining\)/u)
 })

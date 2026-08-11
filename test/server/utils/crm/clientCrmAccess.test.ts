@@ -9,11 +9,23 @@ const {
   requireClientAuth,
   requireClientEntitlement,
   execute,
+  queryOne,
+  queryRows,
+  transaction,
+  transactionQuery,
+  requireAuth,
+  requireRole,
   revokeCrmLeadInboxRoute
 } = vi.hoisted(() => ({
   requireClientAuth: vi.fn(),
   requireClientEntitlement: vi.fn(),
   execute: vi.fn(),
+  queryOne: vi.fn(),
+  queryRows: vi.fn(),
+  transaction: vi.fn(),
+  transactionQuery: vi.fn(),
+  requireAuth: vi.fn(),
+  requireRole: vi.fn(),
   revokeCrmLeadInboxRoute: vi.fn()
 }))
 
@@ -24,7 +36,14 @@ vi.mock('~~/server/utils/billing/entitlements', () => ({
   requireClientEntitlement: (...args: unknown[]) => requireClientEntitlement(...args)
 }))
 vi.mock('~~/server/utils/db', () => ({
-  execute: (...args: unknown[]) => execute(...args)
+  execute: (...args: unknown[]) => execute(...args),
+  queryOne: (...args: unknown[]) => queryOne(...args),
+  queryRows: (...args: unknown[]) => queryRows(...args),
+  transaction: (...args: unknown[]) => transaction(...args)
+}))
+vi.mock('~~/server/utils/auth', () => ({
+  requireAuth: (...args: unknown[]) => requireAuth(...args),
+  requireRole: (...args: unknown[]) => requireRole(...args)
 }))
 vi.mock('~~/server/utils/crm/emailRouteManagement', () => ({
   revokeCrmLeadInboxRoute: (...args: unknown[]) => revokeCrmLeadInboxRoute(...args)
@@ -41,12 +60,14 @@ const globals = globalThis as typeof globalThis & {
   defineEventHandler: <T>(handler: T) => T
   getRequestURL: (event: { path: string }) => URL
   getRouterParam: (event: { params?: Record<string, string> }, key: string) => string | undefined
+  getQuery: (event: { query?: Record<string, string> }) => Record<string, string>
   readBody: (event: { body?: unknown }) => Promise<unknown>
   setResponseHeader: ReturnType<typeof vi.fn>
 }
 globals.defineEventHandler = handler => handler
 globals.getRequestURL = event => new URL(event.path, 'https://portal.example.test')
 globals.getRouterParam = (event, key) => event.params?.[key]
+globals.getQuery = event => event.query ?? {}
 globals.readBody = async event => event.body
 globals.setResponseHeader = vi.fn()
 
@@ -84,6 +105,12 @@ describe('client CRM access', () => {
     })
     requireClientEntitlement.mockResolvedValue(undefined)
     execute.mockResolvedValue(undefined)
+    requireAuth.mockResolvedValue({ id: 'staff-1' })
+    requireRole.mockResolvedValue(undefined)
+    transaction.mockImplementation(async (callback: (db: { query: typeof transactionQuery }) => unknown) =>
+      await callback({ query: transactionQuery })
+    )
+    transactionQuery.mockResolvedValue({ rows: [{ id: '11111111-1111-4111-8111-111111111111' }] })
     revokeCrmLeadInboxRoute.mockResolvedValue({ route: { id: '22222222-2222-4222-8222-222222222222' } })
   })
 
@@ -115,6 +142,13 @@ describe('client CRM access', () => {
     expect(resolveClientCrmAccessLevel('/api/client-portal/crm/people', 'GET')).toBe('view')
     expect(resolveClientCrmAccessLevel('/api/client-portal/crm/people', 'POST')).toBe('edit')
     expect(resolveClientCrmAccessLevel('/api/client-portal/crm/tasks/123', 'PATCH')).toBe('edit')
+  })
+
+  it('treats only the exact privacy-preserving search POST as a view', () => {
+    expect(resolveClientCrmAccessLevel('/api/client-portal/crm/search', 'POST')).toBe('view')
+    expect(resolveClientCrmAccessLevel('/api/client-portal/crm/search/', 'POST')).toBe('edit')
+    expect(resolveClientCrmAccessLevel('/api/client-portal/crm/search/export', 'POST')).toBe('edit')
+    expect(resolveClientCrmAccessLevel('/api/client-portal/crm/searching', 'POST')).toBe('edit')
   })
 
   it('caches an exact successful access level for middleware and an explicit mutation handler', async () => {
@@ -151,5 +185,51 @@ describe('client CRM access', () => {
 
     expect(requireClientAuth).toHaveBeenCalledTimes(2)
     expect(requireClientEntitlement).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects non-boolean client deactivation values before opening a transaction', async () => {
+    const handler = (await import('../../../../server/api/agency/clients/[id].put')).default
+
+    for (const isActive of ['false', null]) {
+      await expect(handler({
+        context: {},
+        params: { id: '11111111-1111-4111-8111-111111111111' },
+        body: { isActive }
+      } as never)).rejects.toMatchObject({ statusCode: 400, statusMessage: 'isActive must be a boolean' })
+    }
+
+    expect(transaction).not.toHaveBeenCalled()
+  })
+
+  it('revokes portal sessions in the same transaction when an accepted update results in deactivation', async () => {
+    const handler = (await import('../../../../server/api/agency/clients/[id].put')).default
+    transactionQuery.mockResolvedValueOnce({ rows: [{ id: '11111111-1111-4111-8111-111111111111', is_active: false }] })
+
+    await handler({
+      context: {},
+      params: { id: '11111111-1111-4111-8111-111111111111' },
+      body: { isActive: false }
+    } as never)
+
+    expect(transaction).toHaveBeenCalledOnce()
+    expect(transactionQuery).toHaveBeenCalledTimes(2)
+    expect(transactionQuery.mock.calls[0]?.[1]).toEqual([false, '11111111-1111-4111-8111-111111111111'])
+    expect(String(transactionQuery.mock.calls[1]?.[0])).toContain('DELETE FROM client_sessions')
+  })
+
+  it('revokes portal sessions in the same transaction when delete performs a soft deactivation', async () => {
+    queryOne.mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111', name: 'Acme', is_active: true })
+    queryRows.mockResolvedValue([])
+    const handler = (await import('../../../../server/api/agency/clients/[id].delete')).default
+
+    await handler({
+      context: {},
+      params: { id: '11111111-1111-4111-8111-111111111111' },
+      query: {}
+    } as never)
+
+    expect(transaction).toHaveBeenCalledOnce()
+    expect(transactionQuery).toHaveBeenCalledTimes(2)
+    expect(String(transactionQuery.mock.calls[1]?.[0])).toContain('DELETE FROM client_sessions')
   })
 })

@@ -2,6 +2,18 @@
 // Pure helpers for the CRM activation crons (P4.1) — reminders, score decay,
 // lifecycle dormancy. DB I/O + notification fan-out live in the cron endpoints;
 // these are the framework-free, unit-tested decisions.
+import { transaction as defaultTransaction } from '~~/server/utils/db'
+import {
+  requireAllCrmRecordsAccess,
+  type AuthoritativeCrmRecord,
+  type CrmRecordRef,
+  type TransactionClient
+} from '~~/server/utils/crm/recordAccess'
+import {
+  resolveTrustedCrmSystemContext,
+  type CrmRecordAccessContext,
+  type TrustedCrmSystemPurpose
+} from '~~/server/utils/crm/searchContext'
 
 export interface ReminderTask {
   id: string
@@ -17,6 +29,116 @@ export interface ReminderPartition {
   toNotify: ReminderTask[]
   /** Older-than-window or unassigned — mark reminded WITHOUT notifying. */
   toDrain: ReminderTask[]
+}
+
+export interface ClaimedReminderTask {
+  id: string
+  client_id: string
+  reminded_at: string
+}
+
+interface TrustedReminderDependencies {
+  resolveContext: (input: { clientId: string; purpose: TrustedCrmSystemPurpose }) => Promise<CrmRecordAccessContext>
+  authorizeAll: (
+    context: CrmRecordAccessContext,
+    refs: readonly CrmRecordRef[],
+    client?: TransactionClient
+  ) => Promise<readonly AuthoritativeCrmRecord[]>
+}
+
+interface ClaimReminderDependencies extends TrustedReminderDependencies {
+  transaction: <T>(callback: (client: TransactionClient) => Promise<T>) => Promise<T>
+}
+
+const trustedReminderDependencies: TrustedReminderDependencies = {
+  resolveContext: resolveTrustedCrmSystemContext,
+  authorizeAll: requireAllCrmRecordsAccess
+}
+
+function groupRemindersByClient(tasks: readonly ReminderTask[]) {
+  const groups = new Map<string, ReminderTask[]>()
+  for (const task of tasks) {
+    const group = groups.get(task.client_id) ?? []
+    group.push(task)
+    groups.set(task.client_id, group)
+  }
+  return groups
+}
+
+function isUniformNotFound(error: unknown) {
+  return (error as { statusCode?: unknown } | null)?.statusCode === 404
+}
+
+/**
+ * Removes work whose client or records cannot be authoritatively reloaded.
+ * A whole client batch is discarded if any candidate has gone stale so a
+ * downstream summary cannot disclose partial record state.
+ */
+export async function authorizeTrustedReminderTasks(
+  tasks: readonly ReminderTask[],
+  purpose: TrustedCrmSystemPurpose,
+  deps: TrustedReminderDependencies = trustedReminderDependencies
+): Promise<ReminderTask[]> {
+  const authorized: ReminderTask[] = []
+  for (const [clientId, clientTasks] of groupRemindersByClient(tasks)) {
+    try {
+      const context = await deps.resolveContext({ clientId, purpose })
+      const records = await deps.authorizeAll(
+        context,
+        clientTasks.map(task => ({ type: 'task' as const, id: task.id }))
+      )
+      if (records.length === clientTasks.length) authorized.push(...clientTasks)
+    } catch (error) {
+      if (!isUniformNotFound(error)) throw error
+    }
+  }
+  return authorized
+}
+
+/** Authorize and lock every task in each client batch before marking it. */
+export async function claimTrustedReminderTasks(
+  input: {
+    tasks: readonly ReminderTask[]
+    remindedAt: Date
+    purpose: TrustedCrmSystemPurpose
+  },
+  deps: ClaimReminderDependencies = {
+    ...trustedReminderDependencies,
+    transaction: defaultTransaction as unknown as ClaimReminderDependencies['transaction']
+  }
+): Promise<ClaimedReminderTask[]> {
+  const claimed: ClaimedReminderTask[] = []
+  for (const [clientId, clientTasks] of groupRemindersByClient(input.tasks)) {
+    try {
+      const context = await deps.resolveContext({ clientId, purpose: input.purpose })
+      const rows = await deps.transaction(async (client) => {
+        const records = await deps.authorizeAll(
+          context,
+          clientTasks.map(task => ({ type: 'task' as const, id: task.id })),
+          client
+        )
+        if (records.length !== clientTasks.length) return []
+        const result = await client.query(
+          `UPDATE crm_tasks
+              SET reminded_at = $1::timestamptz
+            WHERE client_id = $2
+              AND id = ANY($3::uuid[])
+              AND deleted_at IS NULL
+              AND status IN ('pending','in_progress')
+              AND reminder_at IS NOT NULL
+              AND reminded_at IS NULL
+              AND reminder_at <= $1::timestamptz
+            RETURNING id::text AS id, client_id::text AS client_id, reminded_at::text AS reminded_at`,
+          [input.remindedAt.toISOString(), clientId, clientTasks.map(task => task.id)]
+        )
+        return (result.rows ?? []) as ClaimedReminderTask[]
+      })
+      claimed.push(...rows)
+    } catch (error) {
+      if (!isUniformNotFound(error)) throw error
+    }
+  }
+  return claimed
 }
 
 // Reminders due more than this many hours ago are quietly drained rather than

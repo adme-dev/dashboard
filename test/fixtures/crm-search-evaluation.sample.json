@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "crm-search-evaluation-v1",
+  "corpusSha256": "1153429cbd44a4045600ce1bebb90d47184c95800cf4eb7aaea864b28ef82c41",
+  "developmentSha256": "ac48fd3d67a9575b38dc9699d7ed002adfb7e5e4b78aba76f3f6b5e72f27effa",
+  "holdoutManifestSha256": "2ca5fd71153ea3fba226a2da231833675568bccf0a2229581e87ca2edea7d093",
+  "sealedJudgementSha256": "a459ef8b7cdd373f8b016dc77014f9f2d8932f3551266a12c2f01d84013d5fdf",
+  "preregistrationSha256": "dfc6d87917a31dabafb1030418c3f179fa0c7449755675c84b2142dfab20404f",
+  "adjudicationSha256": "894217da05260c0d830f1032d33139c959a2e1e0848717b581bde5a794049f27"
+}

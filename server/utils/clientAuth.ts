@@ -86,13 +86,15 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
       c.id as client_id,
       c.name as client_name,
       c.logo_url as client_logo,
-      c.lead_capture_mode
+      c.lead_capture_mode,
+      c.is_active as client_is_active
     FROM client_sessions cs
     JOIN client_users cu ON cu.id = cs.client_user_id
     JOIN agency_clients c ON c.id = cu.client_id
     WHERE cs.token_hash = $1
       AND cs.expires_at > NOW()
       AND cu.status = 'active'
+      AND c.is_active = TRUE
     LIMIT 1
   `, [sessionDigest])
 
@@ -101,6 +103,16 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
   // authentication into an unbounded CPU workload. Existing users sign in once
   // to receive an indexed digest session.
   if (!user) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Invalid or expired session'
+    })
+  }
+
+  // A session is no authority after its tenant is deactivated. The fresh query
+  // should normally filter it out; retain this guard for replicas/mocks and any
+  // future query refactor that exposes the active flag.
+  if (user.client_is_active === false) {
     throw createError({
       statusCode: 401,
       statusMessage: 'Invalid or expired session'

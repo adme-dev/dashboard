@@ -343,7 +343,6 @@ describe('God mode internal execution delegation', () => {
     ['/api/leads/list', [['client_id', READ_ID], ['from', '2026-08-01T00:00:00.000Z'], ['page_size', '20']]],
     ['/api/agency/analytics/campaigns', [['startDate', '2026-08-01'], ['endDate', '2026-08-05'], ['sortBy', 'spend'], ['limit', '200'], ['platform', 'meta']]],
     ['/api/agency/analytics/campaigns', [['startDate', '2026-08-01'], ['endDate', '2026-08-05'], ['sortBy', 'spend'], ['limit', '200']]],
-    ['/api/crm/search', [['client_id', READ_ID], ['q', 'Alice & Bob'], ['limit', '20']]],
     ['/api/agency/social/reporting/overview', [['clientId', READ_ID], ['from', '2026-07-06T00:00:00.000Z'], ['to', '2026-08-05T00:00:00.000Z']]],
     [`/api/agency/social/news/profiles/${READ_ID}`, []],
     [`/api/agency/social/news/profiles/${READ_ID}/context`, []],
@@ -369,6 +368,8 @@ describe('God mode internal execution delegation', () => {
     ['GET', `/api/agency/social/inbox/conversations?clientId=${READ_ID}&status=closed&limit=25`],
     ['GET', `/api/agency/social/inbox/conversations?clientId=${READ_ID}&status=open&limit=24`],
     ['GET', `/api/agency/social/listening/mentions?clientId=${READ_ID}&sentiment=negative&limit=4`],
+    ['GET', `/api/crm/search?client_id=${READ_ID}&q=Alice&limit=20`],
+    ['POST', '/api/crm/search'],
     ['GET', '/api/email/campaigns/not-a-uuid/events'],
     ['POST', '/api/xero/invoices'],
     ['GET', '/api/crm/ai/draft-followup']

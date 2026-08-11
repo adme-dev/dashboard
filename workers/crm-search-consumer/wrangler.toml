@@ -1,0 +1,80 @@
+name = "agency-crm-search-consumer"
+main = "src/index.ts"
+compatibility_date = "2026-08-10"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+[observability]
+enabled = true
+
+[[queues.consumers]]
+queue = "agency-crm-search-index"
+max_batch_size = 5
+max_batch_timeout = 5
+max_retries = 5
+retry_delay = 30
+max_concurrency = 4
+dead_letter_queue = "agency-crm-search-index-dlq"
+
+[[queues.consumers]]
+queue = "agency-crm-search-index-dlq"
+max_batch_size = 5
+max_batch_timeout = 5
+max_retries = 3
+retry_delay = 30
+max_concurrency = 2
+
+[vars]
+CRM_SEARCH_ENVIRONMENT = "production"
+
+[secrets]
+required = [
+  "CRM_SEARCH_SERVICE_KEYRING",
+  "CRM_SEARCH_IMPLEMENTATION_SHA",
+  "CRM_SEARCH_WORKER_ARTIFACT_DIGEST",
+  "CRM_SEARCH_BINDING_MANIFEST_DIGEST",
+  "CRM_SEARCH_EXPECTED_PAGES_SHA",
+  "CRM_SEARCH_EXPECTED_PAGES_ARTIFACT_DIGEST",
+  "CRM_SEARCH_EXPECTED_PAGES_BINDING_MANIFEST_DIGEST",
+  "CRM_SEARCH_RESOURCE_MANIFEST",
+  "CRM_SEARCH_RESOURCE_MANIFEST_VERIFICATION_KEYRING"
+]
+
+# Preview is a distinct Worker and distinct Queue/DLQ pair. Non-inheritable
+# bindings are repeated explicitly so `--env preview` cannot reach production.
+[env.preview]
+name = "agency-crm-search-consumer-preview"
+workers_dev = false
+
+[[env.preview.queues.consumers]]
+queue = "agency-crm-search-index-preview"
+max_batch_size = 5
+max_batch_timeout = 5
+max_retries = 5
+retry_delay = 30
+max_concurrency = 4
+dead_letter_queue = "agency-crm-search-index-preview-dlq"
+
+[[env.preview.queues.consumers]]
+queue = "agency-crm-search-index-preview-dlq"
+max_batch_size = 5
+max_batch_timeout = 5
+max_retries = 3
+retry_delay = 30
+max_concurrency = 2
+
+[env.preview.vars]
+CRM_SEARCH_ENVIRONMENT = "preview"
+
+[env.preview.secrets]
+required = [
+  "CRM_SEARCH_SERVICE_KEYRING",
+  "CRM_SEARCH_IMPLEMENTATION_SHA",
+  "CRM_SEARCH_WORKER_ARTIFACT_DIGEST",
+  "CRM_SEARCH_BINDING_MANIFEST_DIGEST",
+  "CRM_SEARCH_EXPECTED_PAGES_SHA",
+  "CRM_SEARCH_EXPECTED_PAGES_ARTIFACT_DIGEST",
+  "CRM_SEARCH_EXPECTED_PAGES_BINDING_MANIFEST_DIGEST",
+  "CRM_SEARCH_RESOURCE_MANIFEST",
+  "CRM_SEARCH_RESOURCE_MANIFEST_VERIFICATION_KEYRING"
+]
