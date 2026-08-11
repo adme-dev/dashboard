@@ -7,6 +7,7 @@
  * - projectName: Name for the new project
  * - startDate: Project start date
  * - budgetOverride: Optional budget override
+ * - projectManagerId: Optional team member responsible for the project
  */
 
 import { queryOne, queryRows } from '~~/server/utils/db'
@@ -33,7 +34,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { clientId, projectName, startDate, budgetOverride } = body
+  const { clientId, projectName, startDate, budgetOverride, projectManagerId } = body
 
   if (!clientId || !projectName) {
     throw createError({
@@ -65,6 +66,21 @@ export default defineEventHandler(async (event) => {
         statusCode: 404,
         statusMessage: 'Client not found'
       })
+    }
+
+    if (projectManagerId) {
+      const projectManager = await queryOne(`
+        SELECT id, name
+        FROM team_members
+        WHERE id = $1 AND is_active = true
+      `, [projectManagerId])
+
+      if (!projectManager) {
+        throw createError({
+          statusCode: 404,
+          statusMessage: 'Project manager not found'
+        })
+      }
     }
 
     const projectStartDate = startDate ? new Date(startDate) : new Date()
@@ -141,8 +157,9 @@ export default defineEventHandler(async (event) => {
         budget_type,
         budget_amount,
         start_date,
-        end_date
-      ) VALUES ($1, $2, 'active', $3, $4, $5, $6)
+        end_date,
+        project_manager_id
+      ) VALUES ($1, $2, 'active', $3, $4, $5, $6, $7)
       RETURNING *
     `, [
       projectName,
@@ -150,7 +167,8 @@ export default defineEventHandler(async (event) => {
       template.default_budget_type || 'time_materials',
       budgetOverride || template.default_budget_amount || 0,
       projectStartDate.toISOString().split('T')[0],
-      projectEndDate.toISOString().split('T')[0]
+      projectEndDate.toISOString().split('T')[0],
+      projectManagerId || null
     ])
 
     // Create tasks from template
@@ -218,6 +236,7 @@ export default defineEventHandler(async (event) => {
         budgetAmount: Number(project.budget_amount || 0),
         startDate: project.start_date,
         endDate: project.end_date,
+        projectManagerId: project.project_manager_id,
         createdAt: project.created_at
       },
       tasksCreated: Object.keys(taskIdMap).length,

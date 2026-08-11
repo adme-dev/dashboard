@@ -203,6 +203,43 @@ describe('project template write routes', () => {
     expect(taskInsertParams).toContain('review')
   })
 
+  it('assigns the selected project manager when instantiating a template', async () => {
+    mockQueryOne
+      .mockResolvedValueOnce({ id: 'template-1', name: 'Template', estimated_duration_days: 7 })
+      .mockResolvedValueOnce({ id: 'client-1', name: 'Client' })
+      .mockResolvedValueOnce({ id: 'manager-1', name: 'Alicia' })
+      .mockResolvedValueOnce({
+        id: 'project-1',
+        name: 'Project',
+        client_id: 'client-1',
+        project_manager_id: 'manager-1',
+        status: 'active',
+        budget_type: 'time_materials',
+        budget_amount: 0,
+        start_date: '2026-06-26',
+        end_date: '2026-07-03',
+        created_at: '2026-06-26T00:00:00.000Z'
+      })
+      .mockResolvedValue({})
+    mockQueryRows.mockResolvedValueOnce([])
+
+    const result = await useTemplate({
+      params: { id: 'template-1' },
+      body: {
+        clientId: 'client-1',
+        projectName: 'Project',
+        projectManagerId: 'manager-1',
+        startDate: '2026-06-26'
+      }
+    })
+
+    const projectInsert = mockQueryOne.mock.calls.find(call => String(call[0]).includes('INSERT INTO projects'))
+    expect(projectInsert).toBeDefined()
+    expect(String(projectInsert?.[0])).toContain('project_manager_id')
+    expect(projectInsert?.[1]).toContain('manager-1')
+    expect(result.project.projectManagerId).toBe('manager-1')
+  })
+
   it('requires write access before updating or deleting a template', async () => {
     mockQueryOne.mockResolvedValueOnce({ id: 'template-1' }).mockResolvedValueOnce({
       id: 'template-1',
