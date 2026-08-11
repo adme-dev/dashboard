@@ -7,8 +7,16 @@ async function loadNuxtConfig() {
   return (await import('../../nuxt.config')).default as {
     fonts?: { provider?: string }
     icon?: {
-      serverBundle?: string | {
+      provider?: string
+      serverBundle?: boolean | string | {
         collections?: string[]
+      }
+      clientBundle?: {
+        scan?: boolean | {
+          globInclude?: string[]
+          globExclude?: string[]
+        }
+        sizeLimitKb?: number
       }
     }
   }
@@ -19,12 +27,23 @@ afterEach(() => {
 })
 
 describe('Nuxt asset metadata configuration', () => {
-  it('resolves fonts and installed icon collections without remote metadata', async () => {
+  it('resolves fonts and only source-used icons without remote metadata', async () => {
     const config = await loadNuxtConfig()
 
     expect(config.fonts?.provider).toBe('local')
-    expect(config.icon?.serverBundle).toEqual({
-      collections: ['lucide', 'simple-icons']
+    expect(config.icon).toMatchObject({
+      provider: 'none',
+      serverBundle: false,
+      clientBundle: {
+        scan: {
+          globInclude: [
+            '{app,shared}/**',
+            'node_modules/@nuxt/ui/dist/**'
+          ],
+          globExclude: ['node_modules']
+        },
+        sizeLimitKb: 1024
+      }
     })
   })
 })

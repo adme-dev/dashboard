@@ -3,11 +3,11 @@ import path from 'node:path'
 import { constants, gzipSync } from 'node:zlib'
 
 const workerDir = path.resolve('dist/_worker.js')
-// Pages Functions run on Workers and inherit the Workers script-size limits.
-// Keep an immutable 250 kB safety margin below the current paid-plan limits.
-// https://developers.cloudflare.com/workers/platform/limits/#worker-size
+// Pages currently enforces a 25 MiB uncompressed Functions upload limit even
+// when the account has the broader Workers Paid limits. Keep a 256 KiB margin
+// so a locally accepted artifact cannot be rejected at the Pages API boundary.
 // https://developers.cloudflare.com/pages/functions/
-const RAW_RELEASE_BUDGET_BYTES = 63_750_000
+const RAW_RELEASE_BUDGET_BYTES = 25 * 1024 * 1024 - 256 * 1024
 const GZIP_RELEASE_BUDGET_BYTES = 9_750_000
 
 async function deployedBytes(directory) {
@@ -45,7 +45,7 @@ console.log(`[worker-size] ${summary}`)
 
 if (rawRemaining < 0 || gzipRemaining < 0) {
   throw new Error(
-    `Worker exceeds the immutable Workers Paid safety budget: ${summary}. `
+    `Worker exceeds the immutable Cloudflare Pages safety budget: ${summary}. `
     + 'Move server functionality to a standalone Worker before deploying Pages.'
   )
 }

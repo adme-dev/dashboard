@@ -454,8 +454,17 @@ export default defineNuxtConfig({
   },
 
   icon: {
-    serverBundle: {
-      collections: ['lucide', 'simple-icons']
+    provider: 'none',
+    serverBundle: false,
+    clientBundle: {
+      scan: {
+        globInclude: [
+          '{app,shared}/**',
+          'node_modules/@nuxt/ui/dist/**'
+        ],
+        globExclude: ['node_modules']
+      },
+      sizeLimitKb: 1024
     }
   }
 })

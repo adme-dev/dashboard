@@ -170,7 +170,7 @@ describe('CRM search frozen release artifact', () => {
     expect(envelope.payload.pages.sizeEvidence).toMatchObject({
       rawBytes: 30,
       gzipBytes: expect.any(Number),
-      rawBudgetBytes: 63_750_000,
+      rawBudgetBytes: 25 * 1024 * 1024 - 256 * 1024,
       gzipBudgetBytes: 9_750_000,
       guardScriptSha256: expect.stringMatching(/^[a-f0-9]{64}$/)
     })
