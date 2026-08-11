@@ -82,7 +82,35 @@ CRM_SEARCH_PROVIDER_APIS_ENABLED = "true"
             MODE: 'production',
             CRM_SEARCH_PROVIDER_APIS_ENABLED: 'false'
           },
-          kv_namespaces: [{ binding: 'CACHE', id: 'production-cache' }]
+          kv_namespaces: [{ binding: 'CACHE', id: 'production-cache' }],
+          queues: {
+            producers: [
+              { binding: 'JOBS_QUEUE', queue: 'agency-jobs' },
+              { binding: 'CRM_SEARCH_INDEX_QUEUE', queue: 'agency-crm-search-index' }
+            ]
+          },
+          r2_buckets: [
+            { binding: 'MEDIA_BUCKET', bucket_name: 'agency-files' },
+            {
+              binding: 'CRM_SEARCH_SEALED_HOLDOUTS',
+              bucket_name: 'agency-crm-search-sealed-holdouts'
+            }
+          ],
+          vectorize: [
+            { binding: 'VECTORIZE', index_name: 'agency-search' },
+            { binding: 'CRM_SEARCH_VECTORIZE', index_name: 'agency-crm-search' }
+          ],
+          services: [
+            { binding: 'AGENCY_WORKFLOWS', service: 'agency-workflows' },
+            {
+              binding: 'CRM_SEARCH_EVALUATION_RUNNER',
+              service: 'agency-crm-search-evaluation-runner'
+            },
+            {
+              binding: 'CRM_SEARCH_ANALYTICS_KEY_MANAGER',
+              service: 'agency-crm-search-analytics-key-manager'
+            }
+          ]
         },
         preview: {
           vars: {
@@ -104,9 +132,16 @@ CRM_SEARCH_PROVIDER_APIS_ENABLED = "true"
         MODE: 'production',
         CRM_SEARCH_PROVIDER_APIS_ENABLED: 'false'
       },
-      kv_namespaces: [{ binding: 'CACHE', id: 'production-cache' }]
+      kv_namespaces: [{ binding: 'CACHE', id: 'production-cache' }],
+      queues: { producers: [{ binding: 'JOBS_QUEUE', queue: 'agency-jobs' }] },
+      r2_buckets: [{ binding: 'MEDIA_BUCKET', bucket_name: 'agency-files' }],
+      vectorize: [{ binding: 'VECTORIZE', index_name: 'agency-search' }],
+      services: [{ binding: 'AGENCY_WORKFLOWS', service: 'agency-workflows' }]
     })
     expect(flattened).not.toHaveProperty('env')
+    expect(JSON.stringify(flattened)).not.toMatch(
+      /CRM_SEARCH_(?:INDEX_QUEUE|SEALED_HOLDOUTS|VECTORIZE|EVALUATION_RUNNER|ANALYTICS_KEY_MANAGER)/u
+    )
   })
 
   it('never rebuilds or permits dirty input in the frozen-artifact deploy wrapper', async () => {

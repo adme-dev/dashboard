@@ -14,6 +14,13 @@ import { runFrozenPagesRelease } from './crm-search/deploy-pages-artifact.mjs'
 
 export const ALLOWED_PAGES_PROJECT = 'agency-dashboard'
 const ALLOWED_BRANCHES = new Set(['main', 'preview'])
+const DORMANT_CRM_SEARCH_BINDINGS = new Set([
+  'CRM_SEARCH_INDEX_QUEUE',
+  'CRM_SEARCH_SEALED_HOLDOUTS',
+  'CRM_SEARCH_VECTORIZE',
+  'CRM_SEARCH_EVALUATION_RUNNER',
+  'CRM_SEARCH_ANALYTICS_KEY_MANAGER'
+])
 
 export function assertPagesDeployTarget({ configuredProject, requestedProject }) {
   if (configuredProject !== ALLOWED_PAGES_PROJECT) {
@@ -76,6 +83,28 @@ export function assertDormantCrmSearch(configText, branch) {
   }
 }
 
+function stripDormantCrmSearchBindings(config) {
+  for (const key of ['r2_buckets', 'vectorize', 'services']) {
+    if (!Array.isArray(config[key])) continue
+    const retained = config[key].filter(binding =>
+      !DORMANT_CRM_SEARCH_BINDINGS.has(binding?.binding)
+    )
+    if (retained.length > 0) config[key] = retained
+    else delete config[key]
+  }
+
+  if (config.queues && typeof config.queues === 'object' && !Array.isArray(config.queues)
+    && Array.isArray(config.queues.producers)) {
+    const queues = { ...config.queues }
+    queues.producers = queues.producers.filter(binding =>
+      !DORMANT_CRM_SEARCH_BINDINGS.has(binding?.binding)
+    )
+    if (queues.producers.length === 0) delete queues.producers
+    if (Object.keys(queues).length > 0) config.queues = queues
+    else delete config.queues
+  }
+}
+
 export function flattenRedirectedPagesConfig({ repositoryRoot = '.', branch } = {}) {
   if (!ALLOWED_BRANCHES.has(branch)) {
     throw new Error(`Unsupported Pages branch "${branch}". Expected main or preview.`)
@@ -112,6 +141,7 @@ export function flattenRedirectedPagesConfig({ repositoryRoot = '.', branch } = 
   if (flattened.vars?.CRM_SEARCH_PROVIDER_APIS_ENABLED !== 'false') {
     throw new Error('pages_generated_config_crm_search_not_dormant')
   }
+  stripDormantCrmSearchBindings(flattened)
 
   writeFileSync(generatedPath, `${JSON.stringify(flattened, null, 2)}\n`)
   return generatedPath
