@@ -216,7 +216,7 @@ jobs:
           CRM_SEARCH_RELEASE_APPROVAL_VERIFICATION_KEYRING: ${{ secrets.CRM_SEARCH_RELEASE_APPROVAL_VERIFICATION_KEYRING }}
           CRM_SEARCH_EVIDENCE_VERIFICATION_KEYRING: ${{ secrets.CRM_SEARCH_EVIDENCE_VERIFICATION_KEYRING }}
           CRM_SEARCH_RELEASE_APPROVAL_DATABASE_URL: ${{ secrets.CRM_SEARCH_RELEASE_APPROVAL_DATABASE_URL }}
-        run: pnpm deploy:production
+        run: pnpm crm-search:release:production
 
       - name: Upload verified frozen consumer bytes
         env:

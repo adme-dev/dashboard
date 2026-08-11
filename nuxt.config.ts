@@ -61,6 +61,7 @@ export default defineNuxtConfig({
     '@nuxt/ui',
     '@vueuse/nuxt'
   ],
+
   ssr: true,
 
   components: [
@@ -443,6 +444,18 @@ export default defineNuxtConfig({
         commaDangle: 'never',
         braceStyle: '1tbs'
       }
+    }
+  },
+
+  // Keep production builds independent of remote font/icon metadata services.
+  // Nuxt UI auto-registers both modules, so constrain them to installed assets.
+  fonts: {
+    provider: 'local'
+  },
+
+  icon: {
+    serverBundle: {
+      collections: ['lucide', 'simple-icons']
     }
   }
 })

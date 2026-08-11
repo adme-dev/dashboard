@@ -60,6 +60,51 @@ export function verifyPagesDeployTarget({
   return { configuredProject, requestedProject }
 }
 
+export function assertDormantCrmSearch(configText, branch) {
+  const environment = branch === 'main' ? 'production' : branch
+  const marker = `[env.${environment}.vars]`
+  const start = configText.indexOf(marker)
+  if (start < 0) throw new Error(`Missing ${marker} in wrangler.toml`)
+
+  const remainder = configText.slice(start + marker.length)
+  const nextSection = remainder.search(/^\[/mu)
+  const vars = nextSection < 0 ? remainder : remainder.slice(0, nextSection)
+  if (!/^CRM_SEARCH_PROVIDER_APIS_ENABLED\s*=\s*["']false["']\s*$/mu.test(vars)) {
+    throw new Error(
+      'CRM search activation requires the signed release command; ordinary Pages deployment is allowed only while CRM_SEARCH_PROVIDER_APIS_ENABLED=false.'
+    )
+  }
+}
+
+function runSourceCommand(command, args, cwd) {
+  const result = spawnSync(command, args, { stdio: 'inherit', cwd })
+  if (result.error || result.status !== 0) {
+    throw result.error ?? new Error(`pages_deploy_command_failed:${command}`)
+  }
+}
+
+export function runSourcePagesDeploy({
+  branch,
+  checkOnly = false,
+  execute = runSourceCommand
+} = {}) {
+  if (process.versions.node !== '24.18.0') throw new Error('crm_search_node_version_mismatch')
+  const repositoryRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
+  const configPath = path.join(repositoryRoot, 'wrangler.toml')
+  const target = verifyPagesDeployTarget({ configPath })
+  const deployArgs = buildPagesDeployArgs(branch)
+  assertDormantCrmSearch(readFileSync(configPath, 'utf8'), branch)
+
+  console.log(`Pages deploy guard: ${target.configuredProject} / ${branch} / CRM search dormant`)
+  if (checkOnly) return
+  if (capture('git', ['status', '--short'], repositoryRoot) !== '') {
+    throw new Error('crm_search_dirty_tree')
+  }
+
+  execute('pnpm', ['build'], repositoryRoot)
+  execute('pnpm', ['exec', ...deployArgs], repositoryRoot)
+}
+
 function runPagesReleaseCommand({ args }) {
   const outputDirectory = mkdtempSync(path.join(tmpdir(), 'crm-search-pages-release-'))
   const outputPath = path.join(outputDirectory, 'wrangler-output.ndjson')
@@ -268,7 +313,7 @@ export async function finalizeProductionDeploymentApproval({ databaseUrl, approv
   }
 }
 
-export async function runPagesDeploy({
+export async function runCrmSearchPagesRelease({
   branch,
   checkOnly = false,
   artifactManifestPath,
@@ -334,37 +379,42 @@ const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv
 if (isMain) {
   const args = process.argv.slice(2)
   const checkOnly = args.includes('--check-only')
+  const crmSearchRelease = args.includes('--crm-search-release')
   const branch = args.find(arg => !arg.startsWith('--')) || 'main'
-  const artifactManifestPath = process.env.CRM_SEARCH_FROZEN_ARTIFACT_MANIFEST
-  const artifactRoot = process.env.CRM_SEARCH_FROZEN_ARTIFACT_ROOT
-  const approvalEnvelope = process.env.CRM_SEARCH_DEPLOYMENT_APPROVAL
-    ? JSON.parse(readFileSync(process.env.CRM_SEARCH_DEPLOYMENT_APPROVAL, 'utf8'))
-    : null
-  const evidenceBundle = process.env.CRM_SEARCH_RELEASE_EVIDENCE
-    ? JSON.parse(readFileSync(process.env.CRM_SEARCH_RELEASE_EVIDENCE, 'utf8'))
-    : null
-  const evidenceKeyring = process.env.CRM_SEARCH_EVIDENCE_VERIFICATION_KEYRING
-    ? JSON.parse(process.env.CRM_SEARCH_EVIDENCE_VERIFICATION_KEYRING)
-    : null
-  const approvalVerification = process.env.CRM_SEARCH_RELEASE_APPROVAL_VERIFICATION_KEYRING
-    ? {
-        nowMs: Date.now(),
-        keyring: JSON.parse(process.env.CRM_SEARCH_RELEASE_APPROVAL_VERIFICATION_KEYRING)
-      }
-    : null
-  const artifactVerificationKeyring = process.env.CRM_SEARCH_ARTIFACT_VERIFICATION_KEYRING
-    ? JSON.parse(process.env.CRM_SEARCH_ARTIFACT_VERIFICATION_KEYRING)
-    : null
-  await runPagesDeploy({
-    branch,
-    checkOnly,
-    artifactManifestPath,
-    artifactRoot,
-    approvalEnvelope,
-    approvalVerification,
-    evidenceBundle,
-    evidenceKeyring,
-    artifactVerificationKeyring,
-    approvalDatabaseUrl: process.env.CRM_SEARCH_RELEASE_APPROVAL_DATABASE_URL
-  })
+  if (!crmSearchRelease) {
+    runSourcePagesDeploy({ branch, checkOnly })
+  } else {
+    const artifactManifestPath = process.env.CRM_SEARCH_FROZEN_ARTIFACT_MANIFEST
+    const artifactRoot = process.env.CRM_SEARCH_FROZEN_ARTIFACT_ROOT
+    const approvalEnvelope = process.env.CRM_SEARCH_DEPLOYMENT_APPROVAL
+      ? JSON.parse(readFileSync(process.env.CRM_SEARCH_DEPLOYMENT_APPROVAL, 'utf8'))
+      : null
+    const evidenceBundle = process.env.CRM_SEARCH_RELEASE_EVIDENCE
+      ? JSON.parse(readFileSync(process.env.CRM_SEARCH_RELEASE_EVIDENCE, 'utf8'))
+      : null
+    const evidenceKeyring = process.env.CRM_SEARCH_EVIDENCE_VERIFICATION_KEYRING
+      ? JSON.parse(process.env.CRM_SEARCH_EVIDENCE_VERIFICATION_KEYRING)
+      : null
+    const approvalVerification = process.env.CRM_SEARCH_RELEASE_APPROVAL_VERIFICATION_KEYRING
+      ? {
+          nowMs: Date.now(),
+          keyring: JSON.parse(process.env.CRM_SEARCH_RELEASE_APPROVAL_VERIFICATION_KEYRING)
+        }
+      : null
+    const artifactVerificationKeyring = process.env.CRM_SEARCH_ARTIFACT_VERIFICATION_KEYRING
+      ? JSON.parse(process.env.CRM_SEARCH_ARTIFACT_VERIFICATION_KEYRING)
+      : null
+    await runCrmSearchPagesRelease({
+      branch,
+      checkOnly,
+      artifactManifestPath,
+      artifactRoot,
+      approvalEnvelope,
+      approvalVerification,
+      evidenceBundle,
+      evidenceKeyring,
+      artifactVerificationKeyring,
+      approvalDatabaseUrl: process.env.CRM_SEARCH_RELEASE_APPROVAL_DATABASE_URL
+    })
+  }
 }
