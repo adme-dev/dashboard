@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  applyPagesPreviewCrmBindings,
   applyPagesPreviewIsolation,
+  buildPagesPreviewCrmBindingPatch,
   buildPagesPreviewIsolationPatch,
   previewDeploymentDigest
 } from '../../scripts/crm-search/pages-preview-isolation-adapter.mjs'
@@ -86,6 +88,18 @@ function isolatedProject() {
     ai_bindings: {},
     browsers: {}
   }
+  return value
+}
+
+function boundProject() {
+  const value = isolatedProject()
+  value.deployment_configs.preview.queue_producers = {
+    CRM_SEARCH_INDEX_QUEUE: { name: 'agency-crm-search-index-preview' }
+  }
+  value.deployment_configs.preview.vectorize_bindings = {
+    CRM_SEARCH_VECTORIZE: { index_name: 'agency-crm-search-preview' }
+  }
+  value.deployment_configs.preview.ai_bindings = { AI: {} }
   return value
 }
 
@@ -177,6 +191,94 @@ describe('CRM search Pages preview isolation adapter', () => {
       apiToken: 'oauth-token-not-logged',
       executeFlag: 'EXECUTE CRM SEARCH PREVIEW ISOLATION',
       request
+    })).rejects.toThrow('crm_search_preview_isolation_production_drift')
+  })
+
+  it('binds only the isolated CRM queue, Vectorize index, and Workers AI from the disabled baseline', async () => {
+    expect(buildPagesPreviewCrmBindingPatch(isolatedProject())).toEqual({
+      deployment_configs: {
+        preview: {
+          queue_producers: {
+            CRM_SEARCH_INDEX_QUEUE: { name: 'agency-crm-search-index-preview' }
+          },
+          vectorize_bindings: {
+            CRM_SEARCH_VECTORIZE: { index_name: 'agency-crm-search-preview' }
+          },
+          ai_bindings: { AI: {} }
+        }
+      }
+    })
+
+    const before = isolatedProject()
+    const after = boundProject()
+    const request = vi.fn()
+      .mockResolvedValueOnce(before)
+      .mockResolvedValueOnce(after)
+      .mockResolvedValueOnce(after)
+
+    await expect(applyPagesPreviewCrmBindings({
+      accountId,
+      projectName,
+      apiToken: 'oauth-token-not-logged',
+      executeFlag: 'EXECUTE CRM SEARCH PREVIEW CRM BINDINGS',
+      request
+    })).resolves.toMatchObject({
+      accountId,
+      projectName,
+      environment: 'preview',
+      status: 'crm-bindings-applied',
+      productionUnchanged: true,
+      queue: 'agency-crm-search-index-preview',
+      vectorize: 'agency-crm-search-preview'
+    })
+    expect(request.mock.calls[1]?.[0].body).not.toHaveProperty('deployment_configs.production')
+  })
+
+  it('rejects binding from a non-isolated preview, aliases, extra bindings, or production drift', async () => {
+    await expect(applyPagesPreviewCrmBindings({
+      accountId,
+      projectName,
+      apiToken: 'oauth-token-not-logged',
+      executeFlag: 'yes',
+      request: vi.fn()
+    })).rejects.toThrow('crm_search_preview_binding_authorization_required')
+
+    expect(() => buildPagesPreviewCrmBindingPatch(project()))
+      .toThrow('crm_search_preview_isolation_readback_failed')
+
+    const aliased = isolatedProject()
+    aliased.deployment_configs.production.queue_producers.CRM_SEARCH_INDEX_QUEUE = {
+      name: 'agency-crm-search-index-preview'
+    }
+    expect(() => buildPagesPreviewCrmBindingPatch(aliased))
+      .toThrow('crm_search_preview_binding_target_alias')
+
+    const extra = boundProject()
+    extra.deployment_configs.preview.r2_buckets = { FILES: { name: 'preview-files' } }
+    const extraRequest = vi.fn()
+      .mockResolvedValueOnce(isolatedProject())
+      .mockResolvedValueOnce(extra)
+      .mockResolvedValueOnce(extra)
+    await expect(applyPagesPreviewCrmBindings({
+      accountId,
+      projectName,
+      apiToken: 'oauth-token-not-logged',
+      executeFlag: 'EXECUTE CRM SEARCH PREVIEW CRM BINDINGS',
+      request: extraRequest
+    })).rejects.toThrow('crm_search_preview_binding_readback_failed')
+
+    const drifted = boundProject()
+    drifted.deployment_configs.production.env_vars.MCP_SERVER_ENABLED.value = 'false'
+    const driftRequest = vi.fn()
+      .mockResolvedValueOnce(isolatedProject())
+      .mockResolvedValueOnce(drifted)
+      .mockResolvedValueOnce(drifted)
+    await expect(applyPagesPreviewCrmBindings({
+      accountId,
+      projectName,
+      apiToken: 'oauth-token-not-logged',
+      executeFlag: 'EXECUTE CRM SEARCH PREVIEW CRM BINDINGS',
+      request: driftRequest
     })).rejects.toThrow('crm_search_preview_isolation_production_drift')
   })
 })

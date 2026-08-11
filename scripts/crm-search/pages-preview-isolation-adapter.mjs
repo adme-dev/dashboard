@@ -4,6 +4,9 @@ import { pathToFileURL } from 'node:url'
 const ACCOUNT_ID = /^[a-f0-9]{32}$/u
 const EXACT_PROJECT = 'agency-dashboard'
 const EXACT_EXECUTE_FLAG = 'EXECUTE CRM SEARCH PREVIEW ISOLATION'
+const EXACT_BINDINGS_EXECUTE_FLAG = 'EXECUTE CRM SEARCH PREVIEW CRM BINDINGS'
+const EXACT_CRM_QUEUE = 'agency-crm-search-index-preview'
+const EXACT_CRM_VECTORIZE = 'agency-crm-search-preview'
 
 const BINDING_MAPS = Object.freeze([
   'ai_bindings',
@@ -130,6 +133,59 @@ function assertDisabledPreview(config) {
   }
 }
 
+function containsTarget(value, target) {
+  if (value === target) return true
+  if (Array.isArray(value)) return value.some(item => containsTarget(item, target))
+  if (value && typeof value === 'object') {
+    return Object.values(value).some(item => containsTarget(item, target))
+  }
+  return false
+}
+
+function assertCrmPreviewBindings(config) {
+  const normalized = normalizedDeploymentConfig(config)
+  const expected = {
+    ai_bindings: { AI: {} },
+    queue_producers: {
+      CRM_SEARCH_INDEX_QUEUE: { name: EXACT_CRM_QUEUE }
+    },
+    vectorize_bindings: {
+      CRM_SEARCH_VECTORIZE: { index_name: EXACT_CRM_VECTORIZE }
+    }
+  }
+  for (const mapName of BINDING_MAPS) {
+    const value = normalized[mapName] ?? {}
+    if (canonical(value) !== canonical(expected[mapName] ?? {})) {
+      fail('crm_search_preview_binding_readback_failed')
+    }
+  }
+  const withoutBindings = structuredClone(normalized)
+  for (const mapName of BINDING_MAPS) withoutBindings[mapName] = {}
+  assertDisabledPreview(withoutBindings)
+}
+
+export function buildPagesPreviewCrmBindingPatch(project) {
+  const current = assertProject(project)
+  assertDisabledPreview(current.deployment_configs.preview)
+  if (containsTarget(current.deployment_configs.production, EXACT_CRM_QUEUE)
+    || containsTarget(current.deployment_configs.production, EXACT_CRM_VECTORIZE)) {
+    fail('crm_search_preview_binding_target_alias')
+  }
+  return {
+    deployment_configs: {
+      preview: {
+        queue_producers: {
+          CRM_SEARCH_INDEX_QUEUE: { name: EXACT_CRM_QUEUE }
+        },
+        vectorize_bindings: {
+          CRM_SEARCH_VECTORIZE: { index_name: EXACT_CRM_VECTORIZE }
+        },
+        ai_bindings: { AI: {} }
+      }
+    }
+  }
+}
+
 export async function requestCloudflarePagesProject({
   method, accountId, projectName, apiToken, body, fetchImpl = fetch
 }) {
@@ -196,10 +252,56 @@ export async function applyPagesPreviewIsolation({
   })
 }
 
+export async function applyPagesPreviewCrmBindings({
+  accountId,
+  projectName,
+  apiToken,
+  executeFlag,
+  request = requestCloudflarePagesProject
+}) {
+  if (executeFlag !== EXACT_BINDINGS_EXECUTE_FLAG) {
+    fail('crm_search_preview_binding_authorization_required')
+  }
+  const requestInput = { accountId, projectName, apiToken }
+  const before = assertProject(await request({ method: 'GET', ...requestInput }))
+  const productionDigest = previewDeploymentDigest(before.deployment_configs.production)
+  const beforeDigest = previewDeploymentDigest(before.deployment_configs.preview)
+  const body = buildPagesPreviewCrmBindingPatch(before)
+  const patched = assertProject(await request({ method: 'PATCH', ...requestInput, body }))
+  const after = assertProject(await request({ method: 'GET', ...requestInput }))
+  if (previewDeploymentDigest(patched.deployment_configs.production) !== productionDigest
+    || previewDeploymentDigest(after.deployment_configs.production) !== productionDigest) {
+    fail('crm_search_preview_isolation_production_drift')
+  }
+  assertCrmPreviewBindings(patched.deployment_configs.preview)
+  assertCrmPreviewBindings(after.deployment_configs.preview)
+  return Object.freeze({
+    accountId,
+    projectName,
+    environment: 'preview',
+    status: 'crm-bindings-applied',
+    productionUnchanged: true,
+    queue: EXACT_CRM_QUEUE,
+    vectorize: EXACT_CRM_VECTORIZE,
+    beforeDigest,
+    afterDigest: previewDeploymentDigest(after.deployment_configs.preview)
+  })
+}
+
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
 if (isMain) {
   if (process.versions.node !== '24.18.0') fail('crm_search_node_version_mismatch')
-  if (process.argv.includes('--dry-run')) {
+  if (process.argv.includes('--bind-crm') && process.argv.includes('--dry-run')) {
+    console.log(JSON.stringify({ status: 'preview-crm-binding-plan-only', mutationCount: 0 }))
+  } else if (process.argv.includes('--bind-crm') && process.argv.includes('--execute')) {
+    const result = await applyPagesPreviewCrmBindings({
+      accountId: process.env.CRM_SEARCH_CLOUDFLARE_ACCOUNT_ID,
+      projectName: process.env.CRM_SEARCH_PAGES_PROJECT,
+      apiToken: process.env.CLOUDFLARE_API_TOKEN,
+      executeFlag: process.env.CRM_SEARCH_PREVIEW_BINDINGS_CONFIRM
+    })
+    console.log(JSON.stringify(result))
+  } else if (process.argv.includes('--dry-run')) {
     console.log(JSON.stringify({ status: 'preview-isolation-plan-only', mutationCount: 0 }))
   } else if (process.argv.includes('--execute')) {
     const result = await applyPagesPreviewIsolation({

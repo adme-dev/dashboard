@@ -23,6 +23,7 @@
     "deploy:check": "node scripts/deploy-pages.mjs main --check-only",
     "crm-search:bindings:check": "node scripts/crm-search/preview-binding-guard.mjs --dry-run",
     "crm-search:preview:isolate": "node scripts/crm-search/pages-preview-isolation-adapter.mjs --dry-run",
+    "crm-search:preview:bind": "node scripts/crm-search/pages-preview-isolation-adapter.mjs --bind-crm --dry-run",
     "crm-search:artifact:build": "node scripts/crm-search/build-artifact.mjs --dry-run",
     "crm-search:artifact:produce": "node scripts/crm-search/build-artifact.mjs --build",
     "crm-search:artifact:verify": "node scripts/crm-search/verify-artifact.mjs --dry-run",
