@@ -116,6 +116,10 @@ const showModal = ref(false)
 - Dark mode supported — always use semantic colors (`text-muted`, `bg-elevated`, `border-default`) over hardcoded colors
 - Responsive: mobile-first, use `sm:`, `md:`, `lg:` breakpoints
 
+### Dashboard Scroll Ownership
+
+The agency layout intentionally clips its main slot with `overflow-hidden`. Every standard `UDashboardPanel` page must therefore provide its own bounded vertical scroll region. Use a `min-h-0` page wrapper and a content container such as `class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6"`; for long panels, pin the root with `:ui="{ root: 'max-h-svh' }"`. Never rely on document/body scrolling inside the agency layout—without an explicit page scroll owner, content below the viewport becomes unreachable.
+
 ### Dark Mode on Marketing / Public Pages
 - `colorMode.preference` is `'dark'` — dark mode is the **default** for all users
 - Marketing pages (`layout: false`, `public: true`) use hardcoded hex colors (e.g. `text-[#121317]`, `bg-[#f4f5f7]`) — every such color **must** have a `dark:` variant (e.g. `text-[#121317] dark:text-white`, `bg-[#f4f5f7] dark:bg-white/[0.03]`)

@@ -101,8 +101,8 @@ const formatHours = (value: number) => `${value}h`
 </script>
 
 <template>
-  <div class="flex-1 min-w-0">
-    <UDashboardPanel>
+  <div class="flex-1 min-w-0 min-h-0">
+    <UDashboardPanel :ui="{ root: 'max-h-svh' }">
       <UDashboardNavbar title="Reports & Analytics">
         <template #leading>
           <UIcon name="i-lucide-bar-chart-3" class="h-5 w-5" />
@@ -141,7 +141,7 @@ const formatHours = (value: number) => `${value}h`
         </template>
       </UDashboardNavbar>
 
-      <div class="p-6 space-y-6">
+      <div class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6">
         <!-- Filters -->
         <div class="flex flex-wrap gap-4">
           <UFormField label="Department">
