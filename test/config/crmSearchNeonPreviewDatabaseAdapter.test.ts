@@ -98,8 +98,10 @@ describe('CRM search Neon preview database adapter', () => {
 
     expect(spawnSyncImpl.mock.calls[0]?.[0]).toBe('/opt/homebrew/opt/postgresql@17/bin/pg_dump')
     expect(spawnSyncImpl.mock.calls[0]?.[1]).toEqual(expect.arrayContaining([
-      '--schema-only', '--no-owner', '--no-privileges'
+      '--schema-only', '--no-owner', '--no-privileges', '--strict-names',
+      '--table=public.agency_clients'
     ]))
+    expect(spawnSyncImpl.mock.calls[0]?.[1]).not.toContain('--table=public.*')
     expect(spawnSyncImpl.mock.calls[0]?.[2]?.env).toMatchObject({
       PGHOST: 'ep-source-direct-1234.ap-southeast-2.aws.neon.tech',
       PGPASSWORD: 'source-password'

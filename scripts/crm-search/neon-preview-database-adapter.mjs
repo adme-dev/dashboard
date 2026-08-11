@@ -262,7 +262,8 @@ export function createNeonPreviewDatabaseAdapter(options = {}) {
     const source = await resolveSourceConnection(input)
     const dumped = spawnSyncImpl(pgDumpCommand, [
       '--schema-only', '--no-owner', '--no-privileges', '--no-comments',
-      '--no-security-labels', '--format=plain'
+      '--no-security-labels', '--format=plain', '--strict-names',
+      '--table=public.agency_clients'
     ], {
       cwd: new URL('../..', import.meta.url),
       encoding: 'utf8',
