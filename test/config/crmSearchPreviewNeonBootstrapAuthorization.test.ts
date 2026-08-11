@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import {
+  assertFreshPreviewNeonBootstrapReadback,
   canonicalPreviewNeonBootstrapPayload,
   verifyPreviewNeonBootstrapAuthorization
 } from '../../scripts/crm-search/preview-neon-bootstrap-authorization.mjs'
@@ -114,5 +115,37 @@ describe('CRM search preview-only Neon bootstrap authorization', () => {
       expected,
       nowMs: Date.parse(payload.expiresAt)
     })).toThrow('crm_search_preview_neon_bootstrap_expired')
+  })
+
+  it('requires a fresh active reread of the same signed envelope before every mutation phase', () => {
+    const verified = verifyPreviewNeonBootstrapAuthorization(envelope(), {
+      keyring,
+      expected,
+      nowMs: Date.parse('2026-08-11T00:01:00.000Z')
+    })
+    const readback = {
+      source: 'local_ephemeral_approval',
+      status: 'active',
+      revokedAt: null,
+      readbackAt: '2026-08-11T00:01:00.000Z',
+      envelope: envelope()
+    }
+    expect(assertFreshPreviewNeonBootstrapReadback(readback, verified, {
+      keyring,
+      expected,
+      nowMs: Date.parse(readback.readbackAt)
+    })).toEqual({ ok: true })
+
+    for (const changed of [
+      { ...readback, status: 'revoked', revokedAt: readback.readbackAt },
+      { ...readback, readbackAt: '2026-08-10T23:59:00.000Z' },
+      { ...readback, envelope: envelope({ ...payload, reason: 'A different valid envelope must not replace the approved payload' }) }
+    ]) {
+      expect(() => assertFreshPreviewNeonBootstrapReadback(changed, verified, {
+        keyring,
+        expected,
+        nowMs: Date.parse('2026-08-11T00:01:00.000Z')
+      })).toThrow(/crm_search_preview_neon_bootstrap_(readback_invalid|revoked|readback_stale|target_drift)/u)
+    }
   })
 })

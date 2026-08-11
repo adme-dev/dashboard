@@ -92,7 +92,7 @@ function assertPayload(payload) {
   || branchExpiresAt > issuedAt + MAX_BRANCH_LIFETIME_MS) {
     fail('crm_search_preview_neon_bootstrap_invalid')
   }
-  return { expiresAt }
+  return { issuedAt, expiresAt }
 }
 
 function activePublicKey(envelope, keyring) {
@@ -138,7 +138,7 @@ export function verifyPreviewNeonBootstrapAuthorization(envelope, options) {
   || !Number.isSafeInteger(options?.nowMs)) {
     fail('crm_search_preview_neon_bootstrap_invalid')
   }
-  const { expiresAt } = assertPayload(envelope.payload)
+  const { issuedAt, expiresAt } = assertPayload(envelope.payload)
   const publicKey = activePublicKey(envelope, options.keyring)
   const valid = verify(
     null,
@@ -147,10 +147,38 @@ export function verifyPreviewNeonBootstrapAuthorization(envelope, options) {
     Buffer.from(envelope.signature, 'base64url')
   )
   if (!valid) fail('crm_search_preview_neon_bootstrap_signature_invalid')
-  if (options.nowMs >= expiresAt) fail('crm_search_preview_neon_bootstrap_expired')
+  if (options.nowMs < issuedAt || options.nowMs >= expiresAt) {
+    fail('crm_search_preview_neon_bootstrap_expired')
+  }
   if (!options.expected || canonical(Object.keys(options.expected).sort()) !== canonical(EXPECTED_KEYS)
     || EXPECTED_KEYS.some(key => canonical(options.expected[key]) !== canonical(envelope.payload[key]))) {
     fail('crm_search_preview_neon_bootstrap_target_drift')
   }
   return Object.freeze({ ...envelope.payload })
+}
+
+export function assertFreshPreviewNeonBootstrapReadback(readback, authorized, options) {
+  if (!readback || canonical(Object.keys(readback).sort()) !== canonical([
+    'envelope', 'readbackAt', 'revokedAt', 'source', 'status'
+  ].sort())
+  || readback.source !== 'local_ephemeral_approval'
+  || readback.status !== 'active'
+  || readback.revokedAt !== null) {
+    fail(readback?.status === 'revoked'
+      ? 'crm_search_preview_neon_bootstrap_revoked'
+      : 'crm_search_preview_neon_bootstrap_readback_invalid')
+  }
+  const readbackAt = Date.parse(readback.readbackAt)
+  if (typeof readback.readbackAt !== 'string'
+    || !ISO_TIMESTAMP.test(readback.readbackAt)
+    || !Number.isFinite(readbackAt)
+    || readbackAt > options.nowMs + 5_000
+    || options.nowMs - readbackAt > 60_000) {
+    fail('crm_search_preview_neon_bootstrap_readback_stale')
+  }
+  const current = verifyPreviewNeonBootstrapAuthorization(readback.envelope, options)
+  if (canonical(current) !== canonical(authorized)) {
+    fail('crm_search_preview_neon_bootstrap_readback_invalid')
+  }
+  return { ok: true }
 }
