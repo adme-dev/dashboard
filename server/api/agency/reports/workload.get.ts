@@ -69,7 +69,7 @@ export default defineEventHandler(async (event) => {
     let paramIdx = 1
 
     if (!includeInactive) {
-      memberConditions.push(`tm.status = 'active'`)
+      memberConditions.push('tm.is_active = true')
     }
 
     if (departmentId) {
@@ -113,7 +113,7 @@ export default defineEventHandler(async (event) => {
     // Calculate workload status for each member
     // Assuming 40 hours/week capacity, 8 hours/day
     const weeklyCapacity = 40
-    const members: MemberWorkload[] = membersResult.map(row => {
+    const members: MemberWorkload[] = membersResult.map((row) => {
       const estimatedHours = Number(row.estimated_hours) || 0
       const utilizationPercent = Math.round((estimatedHours / weeklyCapacity) * 100)
 
@@ -177,7 +177,7 @@ export default defineEventHandler(async (event) => {
         COALESCE(SUM(t.actual_hours), 0) AS tracked_hours,
         COUNT(t.id) AS task_count
       FROM projects p
-      LEFT JOIN clients c ON p.client_id = c.id
+      LEFT JOIN agency_clients c ON p.client_id = c.id
       LEFT JOIN tasks t ON t.project_id = p.id
       ${projectWhereClause}
       GROUP BY p.id, p.name, c.name
@@ -219,7 +219,7 @@ export default defineEventHandler(async (event) => {
         ) AS avg_utilization,
         COUNT(DISTINCT t.id) AS total_tasks
       FROM departments d
-      LEFT JOIN team_members tm ON tm.department_id = d.id AND tm.status = 'active'
+      LEFT JOIN team_members tm ON tm.department_id = d.id AND tm.is_active = true
       LEFT JOIN tasks t ON t.department_id = d.id
       GROUP BY d.id, d.name
       ORDER BY total_tasks DESC
