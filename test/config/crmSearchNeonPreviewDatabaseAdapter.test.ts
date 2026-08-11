@@ -67,6 +67,7 @@ describe('CRM search Neon preview database adapter', () => {
       '-- PostgreSQL database schema dump',
       'CREATE TABLE public.agency_clients (id uuid PRIMARY KEY);'
     ].join('\n')
+    const restoredSchemaSql = `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";\n${schemaSql}`
     const spawnSyncImpl = vi.fn()
       .mockReturnValueOnce({ status: 0, stdout: schemaSql, stderr: '' })
       .mockReturnValueOnce({ status: 0, stdout: 'missing\n', stderr: '' })
@@ -92,7 +93,7 @@ describe('CRM search Neon preview database adapter', () => {
       sourceSchemaProof: {
         method: 'pg_dump_schema_only',
         sourceBranchId,
-        sha256: createHash('sha256').update(schemaSql).digest('hex')
+        sha256: createHash('sha256').update(restoredSchemaSql).digest('hex')
       }
     })
 
@@ -109,7 +110,7 @@ describe('CRM search Neon preview database adapter', () => {
     expect(spawnSyncImpl.mock.calls[2]?.[0]).toBe('psql')
     expect(spawnSyncImpl.mock.calls[2]?.[1]).toContain('--single-transaction')
     expect(spawnSyncImpl.mock.calls[2]?.[2]).toMatchObject({
-      input: schemaSql,
+      input: restoredSchemaSql,
       timeout: 240_000,
       env: expect.objectContaining({
         PGHOST: endpoint.host,

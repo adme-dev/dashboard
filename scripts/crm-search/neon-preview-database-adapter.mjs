@@ -11,6 +11,7 @@ const DIGEST = /^[a-f0-9]{64}$/u
 const COMMAND = /^[A-Za-z0-9_+@./-]{1,512}$/u
 const REQUIRED_ROLE = 'neondb_owner'
 const REQUIRED_DATABASE = 'neondb'
+const PREREQUISITE_EXTENSION_SQL = 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
 const REQUIRED_TABLES = Object.freeze([
   'crm_people', 'crm_companies', 'crm_opportunities'
 ])
@@ -276,9 +277,11 @@ export function createNeonPreviewDatabaseAdapter(options = {}) {
     if (dumped?.status !== 0 || schemaBytes < 64 || schemaBytes > 64 * 1024 * 1024
       || !/CREATE TABLE public\.agency_clients\s*\(/u.test(schemaSql)
       || /(?:^|\n)(?:COPY|INSERT INTO)\s/iu.test(schemaSql)
+      || /(?:^|\n)CREATE EXTENSION\s/iu.test(schemaSql)
       || /\bcrm_search_[a-z0-9_]+\b/iu.test(schemaSql)) {
       throw new Error('crm_search_neon_parent_schema_dump_invalid')
     }
+    const restoredSchemaSql = `${PREREQUISITE_EXTENSION_SQL}\n${schemaSql}`
 
     if (!await parentSchemaReady(input)) {
       const target = await resolveConnection(input)
@@ -287,7 +290,7 @@ export function createNeonPreviewDatabaseAdapter(options = {}) {
           cwd: new URL('../..', import.meta.url),
           encoding: 'utf8',
           env: connectionEnvironment(target),
-          input: schemaSql,
+          input: restoredSchemaSql,
           maxBuffer: 64 * 1024 * 1024,
           timeout: 240_000
         }
@@ -297,7 +300,7 @@ export function createNeonPreviewDatabaseAdapter(options = {}) {
     return Object.freeze({
       method: 'pg_dump_schema_only',
       sourceBranchId: input.sourceBranchId,
-      sha256: createHash('sha256').update(schemaSql).digest('hex')
+      sha256: createHash('sha256').update(restoredSchemaSql).digest('hex')
     })
   }
 
