@@ -6,16 +6,16 @@
 
 - Historical candidate SHA: `efd177a7d12d95190b37c8a301d1166d8022858d`
 - Current correction base SHA: `ee653429570239eaa783f941a0f11a3d0ec0417f`
-- Current corrected candidate SHA: assigned by the pending release-correction commit; never self-attested in this file
+- Current corrected candidate SHA: `d76f10f4fe5df85b485b4b930e4b072534d60050` for the bounded Neon schema proof
 - Same-machine comparison base: `f46d1e7793ba558e374c380e47d610a65d42756a`
 - Review date: 2026-08-11
-- External preview execution: not performed
-- Guarded external preview/cleanup adapter path: implemented locally; not externally executed
+- External preview execution: Neon schema-only migration/cleanup slice passed; full Cloudflare preview not performed
+- Guarded external preview/cleanup adapter path: real Neon slice executed; Cloudflare resource slice remains pending
 - Production schema, resources, code, indexing, shadow, and assist: unchanged
 
-No Cloudflare, Neon, database, provider, Queue, Vectorize, R2, Pages, Worker, secret, deployment, or production resource was created, changed, queried, uploaded, or deleted during Task 19 or the current correction pass.
+No production resource was changed. On 2026-08-11, the guarded runner created one TTL-bound schema-only Neon preview branch, restored only the `agency_clients` prerequisite DDL, applied migrations 134, 135, and 350–352, proved the three CRM source tables empty, then deleted the branch. Lifecycle cleanup and an independent branch listing both proved it absent. No provider call, Pages/Worker deployment, Queue, Vectorize, R2, secret, or production database mutation occurred.
 
-Build sizes and static digests below are historical evidence for `efd177a7`; they do not verify the current corrected bytes. The current code contains injected, fail-closed preview execution and cleanup adapters, provider-backed Neon schema-only/absence readbacks, phase-specific deployment approval checks, exact Worker version activation, and durable 90% admission. Those paths have only been exercised with deterministic local adapters. A new clean build, signed frozen artifact, external preview ceremony, and final independent review remain pending.
+Build sizes and static digests below are historical evidence for `efd177a7`; they do not verify the current corrected bytes. The current Neon schema-only path has now been exercised against project `square-tooth-23821574` at source Git SHA `d76f10f4fe5df85b485b4b930e4b072534d60050`; its signed attestation digest is `f1511e0fdba87faa84680654bf66826ece1c04d0986486fad15303884fd81cfb`. A new clean build, signed frozen artifact, remaining Cloudflare preview ceremony, and final independent review remain pending.
 
 The correction tree passed two bounded local gates on 2026-08-11: the affected approval/migration slice passed 59 tests with one opt-in isolated-local-Postgres test skipped, and the nine-file release slice passed 56 tests with one guarded external-database test skipped. Focused ESLint, Worker generated types plus strict TypeScript, diff validation, JSON parsing, and secret-pattern scanning also passed. These results verify local code paths only; they are not external-resource, deployment, provider, or production evidence.
 
@@ -25,7 +25,7 @@ The correction tree passed two bounded local gates on 2026-08-11: the affected a
 |---|---|---|---|
 | Fresh server-owned organisation, client, actor, owner, assignment, and `CLIENTS` authorization with indistinguishable denial | Real agency, portal, and direct-tool route harnesses cover owner visibility, fresh assignment, cross-tenant denial, and post-retrieval reauthorization | Isolated preview not executed | Local pass; external pending |
 | POST-only normalized privacy-safe query handling and portal view semantics | Route harness proves portal keyword-only behavior and zero semantic-provider calls; privacy assertions reject raw query/source/error telemetry | Isolated preview not executed | Local pass; external pending |
-| Durable expand, validate, activate, revision, move, teardown, replay, and DLQ behavior | Provider-lifecycle harness covers publish, confirmation, replay, delete, client move, teardown, reconciliation, and DLQ outcomes | Neon schema-only preview dry-run only; no branch was created | Local pass; external pending |
+| Durable expand, validate, activate, revision, move, teardown, replay, and DLQ behavior | Provider-lifecycle harness covers publish, confirmation, replay, delete, client move, teardown, reconciliation, and DLQ outcomes | Migrations 134/135/350–352 passed on a TTL-bound schema-only Neon branch; all source counts were zero and cleanup absence was independently verified | Neon migration slice passed; provider lifecycle remains pending |
 | Dedicated Queue, Worker, Vectorize, signed identifier-only protocol | Task 18 compatibility, generated types, strict Worker typecheck, signed resource-manifest tests, and both Worker bundle dry-runs pass | No Queue, Worker, or Vectorize preview resource was created | Local pass; external pending |
 | Keyword-first visible ranking with semantic assist restricted to `agency_ai` | Real route harness proves off, shadow, and assist; agency-global shadow preserves keyword order; only agency-AI assist exposes fused results | Isolated preview not executed | Local pass; external pending |
 | Threshold abstention, deadlines, kill-switch re-read, stepwise provider admission, and settlement | Harness covers abstention, timeout fallback settlement, control flips, and per-surface provider eligibility | Isolated preview not executed | Local pass; external pending |
@@ -90,7 +90,7 @@ This conclusively classifies the earlier shared-cache failure as incidental and 
 - Preview E2E plan: `mutationCount=0`.
 - Cleanup plan: `mutationCount=0`.
 
-These are local plan and dry-run results only. They are not substitutes for signed external readback or preview execution.
+These bullets record the historical plan-only gate. The Neon schema-only item was subsequently executed with signed attestation and independent cleanup absence as documented above; the remaining items are still local plan/dry-run results and are not substitutes for their external preview readbacks.
 
 ## Adversarial Review Disposition
 
@@ -106,8 +106,8 @@ The table above records the historical review state at `efd177a7`. It is superse
 ## Release Blockers
 
 1. No Task 18 signed resource-provisioning approval, immutable release evidence, or external resource readback was supplied.
-2. No isolated Neon branch, preview Pages/Worker, Queue/DLQ, Vectorize index, R2 object, or preview secret was created.
-3. External Task 19 preview E2E was not executed.
+2. The isolated Neon migration/cleanup slice passed, but preview Pages/Worker, Queue/DLQ, Vectorize index, R2 object, and preview secrets were not created.
+3. The full external Task 19 preview E2E was not executed.
 4. The sealed holdout remains synthetic and `productionReady: false`; the approved envelope replacement, independent key provisioning, exact R2 import/readback, authenticated decryption, and judgement-digest verification remain pending.
 5. No production migration, deployment, client indexing, shadow, or assist approval was granted.
 6. The current corrected bytes do not yet have a fresh clean build, signed frozen artifact, full-suite comparison, external preview readback, or final independent acceptance review.

@@ -2,11 +2,17 @@
 
 ## Result
 
-Task 19 completed its local, mutation-free implementation verification but did not establish external preview or production readiness. The guarded E2E harness is committed, the final compatibility candidate closes the known CRM/release regressions, and the full suite leaves only four environment or missing-artifact failing files. After `efd177a7` aligned the release guard with the current Workers Paid raw and gzip limits plus immutable safety margins, a clean detached build passed end to end. External preview execution was not authorized or performed. Production remains halted and unchanged.
+Task 19 completed its local, mutation-free implementation verification but did not establish full external preview or production readiness. The guarded E2E harness is committed, the final compatibility candidate closes the known CRM/release regressions, and the full suite leaves only four environment or missing-artifact failing files. After `efd177a7` aligned the release guard with the current Workers Paid raw and gzip limits plus immutable safety margins, a clean detached build passed end to end. At the original report boundary, external preview execution was not authorized or performed; the later successful Neon-only slice is recorded below. Production remains halted and unchanged.
 
 Candidate: `efd177a7d12d95190b37c8a301d1166d8022858d`
 
 Comparison base: `f46d1e7793ba558e374c380e47d610a65d42756a`
+
+## Post-Task 19 Neon Preview Proof — 2026-08-11
+
+The guarded schema-only Neon slice subsequently passed at source Git SHA `d76f10f4fe5df85b485b4b930e4b072534d60050`. One TTL-bound preview branch was created from the production parent schema contract, the exact prerequisite migrations 134 and 135 plus CRM-search migrations 350–352 were applied, and `crm_people`, `crm_companies`, and `crm_opportunities` each read back with zero rows. The signed attestation digest is `f1511e0fdba87faa84680654bf66826ece1c04d0986486fad15303884fd81cfb`.
+
+The lifecycle's outer cleanup reported the temporary branch absent, and an independent Neon branch listing confirmed only the original production and archived development branches remained. Production mutation count and provider call count were both zero. This closes only the Neon schema/migration/cleanup slice; Cloudflare Pages, Worker, Queue/DLQ, Vectorize, R2, secrets, sealed holdout, and the complete external preview E2E remain pending, so production stays halted.
 
 ## TDD and Atomic Harness Evidence
 
@@ -78,7 +84,7 @@ The immutable Pages target guard, Worker generated types, strict Worker TypeScri
 
 Local deterministic coverage exists for all approved behavior families: authorization and indistinguishability; portal and agency surface semantics; expand/index/confirm/delete lifecycle; move, teardown, replay, DLQ, reconciliation; stepwise provider admission and timeout settlement; active-schema canonical join-back; keyword/RRF ranking; controls and promotion isolation; privacy evidence; and signed release/resource boundaries.
 
-The coverage audit intentionally distinguishes local behavior from absent external proof. It does not claim that the Neon migrations, Queue/DLQ, Worker, Vectorize index, R2 holdout, Pages preview, secret bindings, or cleanup readbacks were exercised against isolated remote resources.
+The coverage audit intentionally distinguishes local behavior from external proof. Migrations 134/135/350–352 and Neon cleanup were exercised on one isolated remote schema-only branch. It does not claim that Queue/DLQ, Worker, Vectorize, R2 holdout, Pages preview, secret bindings, or the complete Cloudflare cleanup path were exercised against isolated remote resources.
 
 ## External Readiness Blockers
 
@@ -91,4 +97,4 @@ The coverage audit intentionally distinguishes local behavior from absent extern
 
 The two harness files, implementation review, preview evidence JSON, this report, and the Task 19 plan evidence were reread end-to-end. The review checked the candidate/base SHAs, exact counts, test-failure classification, production-state language, external-execution language, raw-sensitive-data absence, digest consistency, sealed-holdout status, size arithmetic, and the distinction between plan-only dry-runs and signed external proof.
 
-No external mutation, provider call, deployment, database access, preview-resource operation, or production operation occurred. The final evidence commit is limited to the Task 19 review, JSON evidence, report, and plan section.
+The original Task 19 evidence commit performed no external mutation, provider call, deployment, database access, preview-resource operation, or production operation. The later bounded Neon proof created and deleted one TTL-bound preview branch, with zero production mutations and zero provider calls. The evidence update remains limited to review, JSON evidence, report, and runbook files.

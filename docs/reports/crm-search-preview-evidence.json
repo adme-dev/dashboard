@@ -1,9 +1,9 @@
 {
   "version": "crm-search-preview-evidence/v1",
-  "generatedAt": "2026-08-10T19:30:02Z",
+  "generatedAt": "2026-08-11T03:45:28.345Z",
   "candidateSha": "efd177a7d12d95190b37c8a301d1166d8022858d",
   "candidateScope": "historical_candidate_superseded_by_release_safety_corrections",
-  "currentCorrectedCandidateSha": null,
+  "currentCorrectedCandidateSha": "d76f10f4fe5df85b485b4b930e4b072534d60050",
   "currentCorrectedCandidateBaseSha": "ee653429570239eaa783f941a0f11a3d0ec0417f",
   "comparisonBaseSha": "f46d1e7793ba558e374c380e47d610a65d42756a",
   "decision": "external_preview_pending",
@@ -94,13 +94,40 @@
     "previewE2eDryRunMutationCount": 0,
     "cleanupDryRunMutationCount": 0
   },
+  "neonSchemaPreview": {
+    "executed": true,
+    "completedAt": "2026-08-11T03:45:28.345Z",
+    "sourceGitSha": "d76f10f4fe5df85b485b4b930e4b072534d60050",
+    "projectId": "square-tooth-23821574",
+    "sourceBranchId": "br-small-hall-a4qtwjgo",
+    "temporaryBranchId": "br-delicate-brook-a4ncpcnk",
+    "schemaOnly": true,
+    "sourceSchemaSha256": "79052fc37fc320c64b72b2ad72464a81d96346e2e7013f8015e69c3f75d69a8c",
+    "migrationDigests": {
+      "server/database/migrations/134-crm-core.sql": "818ef7a8096cc778667ac61f6211b78638e63fbeeaa77aae1b4d2d1feb73cffa",
+      "server/database/migrations/135-crm-opportunities.sql": "7adf2caabc6ff4bb3a2454e6d40cd49bf6a09d5c790a277fe3cad0d200e63fd5",
+      "server/database/migrations/350_crm_search_expand.sql": "956f06a88d41f22e94b0fd82b52bfb2e2f5330f3edbfaf92e275e3011c75361a",
+      "server/database/migrations/351_crm_search_validate_backfill.sql": "8e20e19525b8de3efdd92d553e6c9403d922fd1b31f8d5c21d7e0968d6041ff3",
+      "server/database/migrations/352_crm_search_activate_capture.sql": "4fbfb937293a830825413add0ea9979b6c17aecc492e4f227f37c1f091e5d3af"
+    },
+    "sourceTableCounts": {
+      "crm_people": 0,
+      "crm_companies": 0,
+      "crm_opportunities": 0
+    },
+    "attestationSha256": "f1511e0fdba87faa84680654bf66826ece1c04d0986486fad15303884fd81cfb",
+    "lifecycleCleanupAbsent": true,
+    "independentBranchAbsenceVerified": true,
+    "productionMutationCount": 0,
+    "providerCallCount": 0
+  },
   "externalPreview": {
     "executed": false,
     "guardedExecutionAndCleanupCodePathImplemented": true,
-    "guardedCodePathExercisedOnlyWithLocalInjectedAdapters": true,
+    "guardedCodePathExercisedOnlyWithLocalInjectedAdapters": false,
     "signedResourceApprovalVerified": false,
     "signedReleaseEvidenceVerified": false,
-    "neonBranchCreated": false,
+    "neonBranchCreated": true,
     "pagesPreviewCreatedOrDeployed": false,
     "workerPreviewCreatedOrUploaded": false,
     "queueOrDlqCreated": false,
@@ -108,7 +135,7 @@
     "r2ObjectImported": false,
     "secretsProvisioned": false,
     "providerCallsPerformed": false,
-    "cleanupReadbackVerified": false
+    "cleanupReadbackVerified": true
   },
   "sealedHoldout": {
     "productionReady": false,
@@ -141,7 +168,7 @@
   },
   "releaseBlockers": [
     "signed Task 18 resource approval and immutable release evidence are absent",
-    "external isolated preview resources and E2E were not executed",
+    "the Neon schema-only migration and cleanup slice passed, but Pages, Worker, Queue/DLQ, Vectorize, R2, secret, and full external E2E remain pending",
     "sealed holdout import, key provisioning, readback, decryption, and judgement verification are pending",
     "current corrected bytes require a fresh clean build, signed artifact, external preview readback, and independent final review"
   ]
