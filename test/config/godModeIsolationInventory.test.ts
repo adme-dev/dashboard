@@ -8,9 +8,9 @@ import {
 } from '../../server/utils/godMode/featureGate'
 
 const API_INVENTORY = {
-  totalRouteFiles: 1967,
-  mutationRouteFiles: 1081,
-  explicitlyGuardedMutationFiles: 364,
+  totalRouteFiles: 1968,
+  mutationRouteFiles: 1082,
+  explicitlyGuardedMutationFiles: 372,
   guardedMutationFilesWithTransactionCall: 50
 } as const
 
@@ -34,7 +34,7 @@ function listApiFiles(root = 'server/api'): string[] {
 function mechanicalInventory() {
   const files = listApiFiles()
   const mutations = files.filter(file => /\.(post|put|patch|delete)\.ts$/.test(file))
-  const guarded = mutations.filter(file => /(requireRole|requirePermission|requireWriteAccess|isReadOnlyRole|user\.role|roleHasPermission)/.test(readFileSync(file, 'utf8')))
+  const guarded = mutations.filter(file => /(requireRole|requirePermission|requireWriteAccess|requireFreshCrmSearchAdmin|isReadOnlyRole|user\.role|roleHasPermission)/.test(readFileSync(file, 'utf8')))
   const transactional = guarded.filter(file => /\btransaction\s*\(/.test(readFileSync(file, 'utf8')))
   return {
     totalRouteFiles: files.length,
@@ -48,9 +48,9 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 1967,
-      mutationRouteFiles: 1081,
-      explicitlyGuardedMutationFiles: 364,
+      totalRouteFiles: 1968,
+      mutationRouteFiles: 1082,
+      explicitlyGuardedMutationFiles: 372,
       guardedMutationFilesWithTransactionCall: 50
     })
   })

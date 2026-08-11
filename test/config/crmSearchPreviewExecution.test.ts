@@ -6,6 +6,7 @@ import { runPreviewE2E } from '../../scripts/crm-search/e2e-preview.mjs'
 import { canonicalPreviewAuthorizationPayload } from '../../scripts/crm-search/preview-execution-authorization.mjs'
 
 const sha = 'a'.repeat(40)
+const authorizedNowMs = Date.parse('2026-08-11T00:01:00.000Z')
 const digest = (value: string) => createHash('sha256').update(value).digest('hex')
 const canonical = (value: unknown): string => {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') {
@@ -101,6 +102,7 @@ describe('CRM search guarded preview execution', () => {
       executeFlag: 'wrong',
       authorizationEnvelope,
       authorizationVerification,
+      nowMs: authorizedNowMs,
       plan: {
         version: 'crm-search-preview-e2e-plan-v1', environment: 'preview',
         implementationSha: sha, productionDenylist: ['agency-crm-search'],
@@ -116,6 +118,7 @@ describe('CRM search guarded preview execution', () => {
       executeFlag: 'EXECUTE ISOLATED CRM SEARCH PREVIEW',
       authorizationEnvelope,
       authorizationVerification,
+      nowMs: authorizedNowMs,
       plan: {
         version: 'crm-search-preview-e2e-plan-v1', environment: 'preview',
         implementationSha: sha, productionDenylist: ['agency-crm-search'],
@@ -165,7 +168,7 @@ describe('CRM search guarded preview execution', () => {
       executeFlag: 'EXECUTE ISOLATED CRM SEARCH PREVIEW',
       authorizationEnvelope,
       authorizationVerification,
-      nowMs: Date.parse('2026-08-11T00:01:00.000Z'),
+      nowMs: authorizedNowMs,
       plan: {
         version: 'crm-search-preview-e2e-plan-v1', environment: 'preview',
         implementationSha: sha, productionDenylist: ['agency-crm-search'],
@@ -205,6 +208,7 @@ describe('CRM search guarded preview execution', () => {
       productionDenylist: ['agency-crm-search'],
       authorizationEnvelope,
       authorizationVerification,
+      nowMs: authorizedNowMs,
       execute
     })).rejects.toThrow('crm_search_cleanup_production_target_forbidden')
     expect(execute).not.toHaveBeenCalled()
@@ -217,6 +221,7 @@ describe('CRM search guarded preview execution', () => {
       productionDenylist: ['agency-crm-search'],
       authorizationEnvelope,
       authorizationVerification,
+      nowMs: authorizedNowMs,
       execute
     })
     expect(execute).toHaveBeenCalledTimes(1)

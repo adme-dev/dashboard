@@ -219,7 +219,13 @@ function reconciliationDependencies(claims: ReturnType<typeof confirmationClaim>
     rescheduleConfirmation: vi.fn().mockResolvedValue(true),
     recoverAmbiguousAcceptance: vi.fn().mockResolvedValue(true),
     recordConfirmationDeadLetter: vi.fn().mockResolvedValue(true),
-    createRepairOperation: vi.fn().mockResolvedValue(true)
+    createRepairOperation: vi.fn().mockResolvedValue(true),
+    claimInventoryRepairs: vi.fn().mockResolvedValue([]),
+    resolveRepairEvidence: vi.fn().mockResolvedValue(true),
+    schedulePendingTeardowns: vi.fn().mockResolvedValue({
+      scheduled: 0,
+      finalized: 0
+    })
   }
   return dependencies
 }

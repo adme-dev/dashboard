@@ -11,6 +11,7 @@ interface WorkflowToml {
 interface PagesToml {
   vars?: Record<string, unknown>
   services?: Array<Record<string, unknown>>
+  env?: { production?: PagesToml }
 }
 
 describe('agency workflows worker config', () => {
@@ -149,7 +150,7 @@ describe('agency workflows worker config', () => {
   it('binds the Pages app to the agency workflows worker', () => {
     const config = parse(readFileSync('wrangler.toml', 'utf8')) as PagesToml
 
-    expect(config.services).toContainEqual({
+    expect(config.env?.production?.services).toContainEqual({
       binding: 'AGENCY_WORKFLOWS',
       service: 'agency-workflows'
     })

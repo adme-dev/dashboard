@@ -143,7 +143,7 @@ describe('asset intelligence production bindings', () => {
   it('declares the Pages producer binding for asset intelligence jobs', () => {
     const rootWrangler = parseTomlSubset(readFileSync(resolve(root, 'wrangler.toml'), 'utf8'))
 
-    const producer = tomlArray(rootWrangler, 'queues.producers')
+    const producer = tomlArray(rootWrangler, 'env.production.queues.producers')
       .find(item => item.binding === 'ASSET_INTELLIGENCE_QUEUE')
     expect(producer).toEqual({
       binding: 'ASSET_INTELLIGENCE_QUEUE',

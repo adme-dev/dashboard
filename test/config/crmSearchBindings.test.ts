@@ -7,12 +7,14 @@ interface QueueConfig {
     producers?: Array<{ binding: string, queue: string }>
     consumers?: Array<{ queue: string }>
   }
+  env?: { production?: QueueConfig }
 }
 
 describe('CRM search producer and repair wiring', () => {
   it('declares only the dedicated identifier-message producer on Pages', () => {
     const config = parse(readFileSync('wrangler.toml', 'utf8')) as QueueConfig
-    const crmBinding = config.queues?.producers?.filter(({ binding, queue }) =>
+    const production = config.env?.production
+    const crmBinding = production?.queues?.producers?.filter(({ binding, queue }) =>
       binding.includes('CRM_SEARCH') || queue.includes('crm-search')
     )
 
@@ -20,7 +22,7 @@ describe('CRM search producer and repair wiring', () => {
       binding: 'CRM_SEARCH_INDEX_QUEUE',
       queue: 'agency-crm-search-index'
     }])
-    expect(config.queues?.consumers ?? []).not.toContainEqual(expect.objectContaining({
+    expect(production?.queues?.consumers ?? []).not.toContainEqual(expect.objectContaining({
       queue: 'agency-crm-search-index'
     }))
     expect(crmBinding?.[0]?.binding).not.toBe('JOBS_QUEUE')
@@ -40,6 +42,7 @@ describe('CRM search producer and repair wiring', () => {
 
   it('keeps producer and consumer package/config names pinned to the same dedicated queue', () => {
     const pages = parse(readFileSync('wrangler.toml', 'utf8')) as QueueConfig
+    const production = pages.env?.production
     const consumer = parse(
       readFileSync('workers/crm-search-consumer/wrangler.toml', 'utf8')
     ) as { queues?: { consumers?: Array<{ queue: string }> } }
@@ -54,7 +57,7 @@ describe('CRM search producer and repair wiring', () => {
       devDependencies?: Record<string, string>
     }
 
-    const producer = pages.queues?.producers?.find(
+    const producer = production?.queues?.producers?.find(
       item => item.binding === 'CRM_SEARCH_INDEX_QUEUE'
     )
     expect(producer?.queue).toBe('agency-crm-search-index')

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 function queueForBinding(config: string, binding: string): string | null {
-  const blocks = config.match(/\[\[queues\.producers\]\][\s\S]*?(?=\n\[\[|\n\[|$)/g) || []
+  const blocks = config.match(/\[\[env\.production\.queues\.producers\]\][\s\S]*?(?=\n\[\[|\n\[|$)/g) || []
   const block = blocks.find(item => new RegExp(`binding\\s*=\\s*["']${binding}["']`).test(item))
   return block?.match(/queue\s*=\s*["']([^"']+)["']/)?.[1] ?? null
 }

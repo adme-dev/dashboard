@@ -4,6 +4,7 @@ import { digestPortalSessionToken } from '~~/server/utils/portalSession'
 import { PERMISSION_GROUPS, SYSTEM_ROLE_PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
 import { verifyJwt } from '~~/server/utils/auth'
+import { getTrustedTask5DelegatedExecution } from '~~/server/utils/godMode/internalExecutionDelegation'
 
 export interface CrmSearchContext {
   organisationScopeId: string
@@ -52,10 +53,15 @@ export type AgencyAiContextResolution =
   | { status: 'resolved'; context: CrmSearchContext; clientName: string }
   | { status: 'not_found' | 'ambiguous' | 'scope_unavailable' }
 
-type FreshAgencySession = {
-  actorId: string
-  issuedAtMs: number
-}
+type FreshAgencySession
+  = | {
+    actorId: string
+    issuedAtMs: number
+  }
+  | {
+    actorId: string
+    trustedInternal: true
+  }
 type FreshAgencyActor = {
   id: string
   role: string
@@ -109,6 +115,10 @@ function staffUnauthorized(): never {
 }
 
 function sessionIsCurrent(session: FreshAgencySession, actor: FreshAgencyActor): boolean {
+  // Trusted internal execution is already exact-request bound, nonce protected,
+  // short-lived, and freshly revalidates active owner authority before this
+  // context resolver runs. It is not a reusable browser session.
+  if ('trustedInternal' in session) return true
   if (!actor.sessionsInvalidatedAt) return true
   const invalidatedAtMs = Date.parse(actor.sessionsInvalidatedAt)
   return Number.isFinite(invalidatedAtMs) && session.issuedAtMs > invalidatedAtMs
@@ -137,6 +147,8 @@ function createRequestCorrelationId(event: H3Event, deps: CrmSearchContextDepend
 
 const defaultDependencies: CrmSearchContextDependencies = {
   async resolveAgencySession(event) {
+    const delegated = await getTrustedTask5DelegatedExecution(event)
+    if (delegated) return { actorId: delegated.actorUserId, trustedInternal: true }
     // Bypass cached middleware identity. Every staff search must prove the
     // signed token presented on this request and bind its issuance instant to
     // the fresh database revocation marker below.

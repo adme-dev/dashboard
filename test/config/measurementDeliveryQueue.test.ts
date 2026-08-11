@@ -6,13 +6,14 @@ interface QueueConfig {
   queues?: {
     producers?: Array<{ binding: string, queue: string }>
   }
+  env?: { production?: QueueConfig }
 }
 
 describe('measurement delivery queue production wiring', () => {
   it('declares the dedicated Pages producer binding', () => {
     const config = parse(readFileSync('wrangler.toml', 'utf8')) as QueueConfig
 
-    expect(config.queues?.producers).toContainEqual({
+    expect(config.env?.production?.queues?.producers).toContainEqual({
       binding: 'MEASUREMENT_DELIVERY_QUEUE',
       queue: 'measurement-delivery'
     })

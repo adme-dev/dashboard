@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 interface HyperdriveConfig {
   hyperdrive?: Array<Record<string, unknown>>
+  env?: { production?: HyperdriveConfig }
 }
 
 const HYPERDRIVE_ID = '900b4b74ec41462cbbabebd0aa8775aa'
@@ -23,12 +24,13 @@ function readToml(path: string): HyperdriveConfig {
 describe('Cloudflare Hyperdrive production binding', () => {
   it('binds the Pages app to the production Neon Hyperdrive config', () => {
     const config = readToml('wrangler.toml')
+    const production = config.env?.production
 
-    expect(config.hyperdrive).toContainEqual({
+    expect(production?.hyperdrive).toContainEqual({
       binding: 'HYPERDRIVE',
       id: HYPERDRIVE_ID
     })
-    expect(config.hyperdrive).toContainEqual({
+    expect(production?.hyperdrive).toContainEqual({
       binding: 'HYPERDRIVE_FRESH',
       id: HYPERDRIVE_FRESH_ID
     })
