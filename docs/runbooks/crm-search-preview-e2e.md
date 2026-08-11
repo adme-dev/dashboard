@@ -14,3 +14,12 @@ pnpm crm-search:e2e:preview -- --dry-run
 ```
 
 Any missing project identity, TTL/schema-only proof, operation-poll plan, empty-table assertion, cleanup handler, frozen digest, or signed readback stops before execution.
+
+Before provisioning CRM-specific resources, reduce the Pages preview environment to the committed
+disabled baseline with `pnpm crm-search:preview:isolate`. The package command is intentionally
+dry-run-only. The executable adapter requires `--execute`, the exact `agency-dashboard` account and
+project inputs, a transient OAuth/API token, and the exact confirmation phrase. It deletes preview
+secrets and mutable bindings, keeps external/provider feature switches disabled, verifies the
+production deployment config stayed unchanged, then fresh-reads the preview configuration before
+reporting success. CRM Queue, Vectorize, Worker, and temporary Neon bindings are added only by the
+subsequent authorized E2E lifecycle and are removed or restored in its outer `finally`.
