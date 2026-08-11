@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { tmpdir } from 'node:os'
@@ -76,6 +76,47 @@ export function assertDormantCrmSearch(configText, branch) {
   }
 }
 
+export function flattenRedirectedPagesConfig({ repositoryRoot = '.', branch } = {}) {
+  if (!ALLOWED_BRANCHES.has(branch)) {
+    throw new Error(`Unsupported Pages branch "${branch}". Expected main or preview.`)
+  }
+
+  const absoluteRepositoryRoot = path.resolve(repositoryRoot)
+  const absoluteBuildRoot = path.join(absoluteRepositoryRoot, 'dist')
+  const redirectPath = path.join(absoluteRepositoryRoot, '.wrangler/deploy/config.json')
+  const redirect = JSON.parse(readFileSync(redirectPath, 'utf8'))
+  if (typeof redirect.configPath !== 'string' || redirect.configPath.length === 0) {
+    throw new Error('pages_generated_config_redirect_invalid')
+  }
+
+  const generatedPath = path.resolve(path.dirname(redirectPath), redirect.configPath)
+  const relativeGeneratedPath = path.relative(absoluteBuildRoot, generatedPath)
+  if (relativeGeneratedPath.startsWith('..') || path.isAbsolute(relativeGeneratedPath)) {
+    throw new Error('pages_generated_config_outside_build')
+  }
+
+  const generated = JSON.parse(readFileSync(generatedPath, 'utf8'))
+  assertPagesDeployTarget({
+    configuredProject: generated.name,
+    requestedProject: ALLOWED_PAGES_PROJECT
+  })
+
+  const environment = branch === 'main' ? 'production' : branch
+  const environmentConfig = generated.env?.[environment]
+  if (!environmentConfig || typeof environmentConfig !== 'object' || Array.isArray(environmentConfig)) {
+    throw new Error(`pages_generated_config_missing_environment:${environment}`)
+  }
+
+  const flattened = { ...generated, ...environmentConfig }
+  delete flattened.env
+  if (flattened.vars?.CRM_SEARCH_PROVIDER_APIS_ENABLED !== 'false') {
+    throw new Error('pages_generated_config_crm_search_not_dormant')
+  }
+
+  writeFileSync(generatedPath, `${JSON.stringify(flattened, null, 2)}\n`)
+  return generatedPath
+}
+
 function runSourceCommand(command, args, cwd) {
   const result = spawnSync(command, args, { stdio: 'inherit', cwd })
   if (result.error || result.status !== 0) {
@@ -102,6 +143,10 @@ export function runSourcePagesDeploy({
   }
 
   execute('pnpm', ['build'], repositoryRoot)
+  flattenRedirectedPagesConfig({
+    repositoryRoot,
+    branch
+  })
   execute('pnpm', ['exec', ...deployArgs], repositoryRoot)
 }
 

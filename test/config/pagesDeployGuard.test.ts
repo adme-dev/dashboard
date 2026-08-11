@@ -1,10 +1,14 @@
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import {
   ALLOWED_PAGES_PROJECT,
   assertDormantCrmSearch,
   assertPagesDeployTarget,
-  buildPagesDeployArgs
+  buildPagesDeployArgs,
+  flattenRedirectedPagesConfig
 } from '../../scripts/deploy-pages.mjs'
 
 describe('Pages deployment target guard', () => {
@@ -57,6 +61,52 @@ CRM_SEARCH_PROVIDER_APIS_ENABLED = "true"
       '--branch',
       'preview'
     ])
+  })
+
+  it('flattens the generated Pages config to the selected environment before Wrangler deploys', async () => {
+    const repositoryRoot = await mkdtemp(path.join(tmpdir(), 'pages-deploy-config-'))
+    const redirectDirectory = path.join(repositoryRoot, '.wrangler/deploy')
+    const generatedDirectory = path.join(repositoryRoot, 'dist/_worker.js')
+    await mkdir(redirectDirectory, { recursive: true })
+    await mkdir(generatedDirectory, { recursive: true })
+    await writeFile(path.join(redirectDirectory, 'config.json'), JSON.stringify({
+      configPath: '../../dist/_worker.js/wrangler.json'
+    }))
+    await writeFile(path.join(generatedDirectory, 'wrangler.json'), JSON.stringify({
+      name: 'agency-dashboard',
+      compatibility_date: '2024-12-01',
+      vars: { MODE: 'base' },
+      env: {
+        production: {
+          vars: {
+            MODE: 'production',
+            CRM_SEARCH_PROVIDER_APIS_ENABLED: 'false'
+          },
+          kv_namespaces: [{ binding: 'CACHE', id: 'production-cache' }]
+        },
+        preview: {
+          vars: {
+            MODE: 'preview',
+            CRM_SEARCH_PROVIDER_APIS_ENABLED: 'false'
+          },
+          kv_namespaces: [{ binding: 'CACHE', id: 'preview-cache' }]
+        }
+      }
+    }))
+
+    const generatedPath = flattenRedirectedPagesConfig({ repositoryRoot, branch: 'main' })
+    const flattened = JSON.parse(await readFile(generatedPath, 'utf8'))
+
+    expect(flattened).toMatchObject({
+      name: 'agency-dashboard',
+      compatibility_date: '2024-12-01',
+      vars: {
+        MODE: 'production',
+        CRM_SEARCH_PROVIDER_APIS_ENABLED: 'false'
+      },
+      kv_namespaces: [{ binding: 'CACHE', id: 'production-cache' }]
+    })
+    expect(flattened).not.toHaveProperty('env')
   })
 
   it('never rebuilds or permits dirty input in the frozen-artifact deploy wrapper', async () => {
