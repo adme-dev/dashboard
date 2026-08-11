@@ -42,11 +42,42 @@ function dependencies(overrides: Record<string, unknown> = {}) {
       stdout: 'crm_people,0\ncrm_companies,0\ncrm_opportunities,0\n',
       stderr: ''
     })
+    .mockReturnValueOnce({ status: 0, stdout: 'ready\n', stderr: '' })
     .mockReturnValue({ status: 0, stdout: '', stderr: '' })
   return { fetchImpl, spawnSyncImpl, ...overrides }
 }
 
 describe('CRM search Neon preview database adapter', () => {
+  it('waits for the copied parent schema before applying prerequisite migrations', async () => {
+    const deps = dependencies()
+    deps.spawnSyncImpl.mockReset()
+      .mockReturnValueOnce({ status: 0, stdout: 'missing\n', stderr: '' })
+      .mockReturnValueOnce({ status: 0, stdout: 'ready\n', stderr: '' })
+      .mockReturnValue({ status: 0, stdout: '', stderr: '' })
+    const sleep = vi.fn().mockResolvedValue(undefined)
+    const adapter = createNeonPreviewDatabaseAdapter({
+      apiToken: 'oauth-access-token-not-logged',
+      fetchImpl: deps.fetchImpl,
+      spawnSyncImpl: deps.spawnSyncImpl,
+      sleep,
+      schemaPollAttempts: 3
+    })
+
+    await expect(adapter.applyPrerequisiteMigrations({
+      projectId, branchId, endpoint,
+      migrationPaths: migrationPaths.slice(0, 2), migrationDigests
+    })).resolves.toEqual({ ok: true, applied: migrationPaths.slice(0, 2) })
+
+    expect(deps.spawnSyncImpl).toHaveBeenCalledTimes(4)
+    expect(deps.spawnSyncImpl.mock.calls[0]?.[1]).toEqual(expect.arrayContaining([
+      '-c', expect.stringContaining('to_regclass(\'public.agency_clients\')')
+    ]))
+    expect(deps.spawnSyncImpl.mock.calls[2]?.[1]).toEqual(expect.arrayContaining([
+      '-f', expect.stringContaining('134-crm-core.sql')
+    ]))
+    expect(sleep).toHaveBeenCalledTimes(1)
+  })
+
   it('uses only the exact direct endpoint and proves every source table is empty', async () => {
     const deps = dependencies()
     const adapter = createNeonPreviewDatabaseAdapter({
@@ -101,7 +132,7 @@ describe('CRM search Neon preview database adapter', () => {
       projectId, branchId, endpoint,
       migrationPaths: migrationPaths.slice(2), migrationDigests
     })).resolves.toEqual({ ok: true, applied: migrationPaths.slice(2) })
-    expect(deps.spawnSyncImpl).toHaveBeenCalledTimes(6)
+    expect(deps.spawnSyncImpl).toHaveBeenCalledTimes(7)
 
     const dataDeps = dependencies()
     dataDeps.spawnSyncImpl.mockReset().mockReturnValue({

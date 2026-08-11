@@ -61,9 +61,13 @@ export function createNeonPreviewDatabaseAdapter(options = {}) {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch
   const spawnSyncImpl = options.spawnSyncImpl ?? spawnSync
   const currentTime = options.currentTime ?? (() => Date.now())
+  const sleep = options.sleep ?? (milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)))
+  const schemaPollAttempts = options.schemaPollAttempts ?? 24
   if (typeof options.apiToken !== 'string' || options.apiToken.length < 20
     || typeof fetchImpl !== 'function' || typeof spawnSyncImpl !== 'function'
-    || typeof currentTime !== 'function') {
+    || typeof currentTime !== 'function' || typeof sleep !== 'function'
+    || !Number.isSafeInteger(schemaPollAttempts)
+    || schemaPollAttempts < 1 || schemaPollAttempts > 48) {
     throw new Error('crm_search_neon_database_adapter_invalid')
   }
 
@@ -170,6 +174,18 @@ export function createNeonPreviewDatabaseAdapter(options = {}) {
     return Object.freeze({ ok: true, applied: [...requiredPaths] })
   }
 
+  const waitForParentSchema = async (input) => {
+    for (let attempt = 0; attempt < schemaPollAttempts; attempt += 1) {
+      const output = await runPsql(input, [
+        '-At', '-c',
+        'SELECT CASE WHEN to_regclass(\'public.agency_clients\') IS NULL THEN \'missing\' ELSE \'ready\' END'
+      ])
+      if (output.trim() === 'ready') return
+      if (attempt + 1 < schemaPollAttempts) await sleep(2_500)
+    }
+    throw new Error('crm_search_neon_parent_schema_unavailable')
+  }
+
   return Object.freeze({
     async assertEmpty(input) {
       validateTarget(input)
@@ -206,6 +222,7 @@ export function createNeonPreviewDatabaseAdapter(options = {}) {
     },
 
     async applyPrerequisiteMigrations(input) {
+      await waitForParentSchema(input)
       return await applyExactMigrations(input, PREREQUISITE_MIGRATIONS)
     },
 
