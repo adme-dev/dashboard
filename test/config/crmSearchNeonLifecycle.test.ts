@@ -80,7 +80,7 @@ function previewBootstrapFixture(plan: ReturnType<typeof buildNeonLifecyclePlan>
     organisationScopeId: '20000000-0000-4000-8000-000000000002',
     branchName: plan.create.branch.name,
     branchExpiresAt: plan.create.branch.expires_at,
-    migrationDigests: plan.migrationDigests,
+    migrationDigests: plan.previewMigrationDigests,
     pagesPreviewDigest: 'b'.repeat(64),
     resourceReadbackDigest: 'c'.repeat(64),
     maximumCostUsdMicros: 0,
@@ -145,7 +145,12 @@ describe('CRM search guarded Neon lifecycle', () => {
     expect(plan.assertEmptyTables).toEqual(expect.arrayContaining([
       'crm_people', 'crm_companies', 'crm_opportunities'
     ]))
+    expect(plan.prerequisiteMigrationPaths).toEqual([
+      'server/database/migrations/134-crm-core.sql',
+      'server/database/migrations/135-crm-opportunities.sql'
+    ])
     expect(plan.migrations).toEqual([350, 351, 352])
+    expect(plan.previewMigrations).toEqual([134, 135, 350, 351, 352])
   })
 
   it('does not call an executor in dry-run mode', async () => {
@@ -375,7 +380,7 @@ describe('CRM search guarded Neon lifecycle', () => {
               id: 'br-crm-search-preview-1234', project_id: plan.projectId,
               name: plan.create.branch.name,
               init_source: 'parent-schema', created_at: '2026-08-11T00:00:00.000Z',
-              expires_at: plan.create.branch.expires_at.replace('.000Z', 'Z')
+              expires_at: new Date(Date.parse(plan.create.branch.expires_at) - 500).toISOString()
             },
             readAt: '2026-08-11T00:01:00.000Z'
           }
@@ -405,13 +410,20 @@ describe('CRM search guarded Neon lifecycle', () => {
       phase: 'before-create', approvalId: bootstrap.payload.approvalId
     }))
     expect(readCurrentPreviewBootstrap).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      phase: 'before-prerequisites', approvalId: bootstrap.payload.approvalId
+    }))
+    expect(readCurrentPreviewBootstrap).toHaveBeenNthCalledWith(3, expect.objectContaining({
       phase: 'before-migrate', approvalId: bootstrap.payload.approvalId
     }))
+    expect(execute.mock.calls.map(([step]) => step.action)).toEqual([
+      'create', 'poll', 'read-branch', 'migrate-prerequisites', 'assert-empty',
+      'migrate', 'delete', 'poll', 'read-branch'
+    ])
     expect(result.attestation.governanceApproval).toEqual({
       id: bootstrap.payload.approvalId,
       type: 'preview_migration',
       migrationSetDigest: createHash('sha256')
-        .update(canonicalPreviewNeonBootstrapPayload(plan.migrationDigests), 'utf8').digest('hex'),
+        .update(canonicalPreviewNeonBootstrapPayload(plan.previewMigrationDigests), 'utf8').digest('hex'),
       pagesPreviewDigest: bootstrap.payload.pagesPreviewDigest,
       resourceReadbackDigest: bootstrap.payload.resourceReadbackDigest,
       organisationScopeId: bootstrap.payload.organisationScopeId

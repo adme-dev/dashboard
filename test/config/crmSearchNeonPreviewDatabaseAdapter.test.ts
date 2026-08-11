@@ -12,6 +12,8 @@ const endpoint = {
   host: 'ep-crm-search-preview-1234.ap-southeast-2.aws.neon.tech'
 }
 const migrationPaths = [
+  'server/database/migrations/134-crm-core.sql',
+  'server/database/migrations/135-crm-opportunities.sql',
   'server/database/migrations/350_crm_search_expand.sql',
   'server/database/migrations/351_crm_search_validate_backfill.sql',
   'server/database/migrations/352_crm_search_activate_capture.sql'
@@ -91,10 +93,15 @@ describe('CRM search Neon preview database adapter', () => {
       organisationScopeId: '20000000-0000-4000-8000-000000000002',
       tables: ['crm_people', 'crm_companies', 'crm_opportunities']
     })
+    await expect(adapter.applyPrerequisiteMigrations({
+      projectId, branchId, endpoint,
+      migrationPaths: migrationPaths.slice(0, 2), migrationDigests
+    })).resolves.toEqual({ ok: true, applied: migrationPaths.slice(0, 2) })
     await expect(adapter.applyMigrations({
-      projectId, branchId, endpoint, migrationPaths, migrationDigests
-    })).resolves.toEqual({ ok: true, applied: migrationPaths })
-    expect(deps.spawnSyncImpl).toHaveBeenCalledTimes(4)
+      projectId, branchId, endpoint,
+      migrationPaths: migrationPaths.slice(2), migrationDigests
+    })).resolves.toEqual({ ok: true, applied: migrationPaths.slice(2) })
+    expect(deps.spawnSyncImpl).toHaveBeenCalledTimes(6)
 
     const dataDeps = dependencies()
     dataDeps.spawnSyncImpl.mockReset().mockReturnValue({

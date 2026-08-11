@@ -9,6 +9,8 @@ import {
 } from '../../scripts/crm-search/preview-neon-bootstrap-authorization.mjs'
 
 const migrationPaths = [
+  'server/database/migrations/134-crm-core.sql',
+  'server/database/migrations/135-crm-opportunities.sql',
   'server/database/migrations/350_crm_search_expand.sql',
   'server/database/migrations/351_crm_search_validate_backfill.sql',
   'server/database/migrations/352_crm_search_activate_capture.sql'

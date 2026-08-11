@@ -13,10 +13,17 @@ const REQUIRED_DATABASE = 'neondb'
 const REQUIRED_TABLES = Object.freeze([
   'crm_people', 'crm_companies', 'crm_opportunities'
 ])
-const REQUIRED_MIGRATIONS = Object.freeze([
+const PREREQUISITE_MIGRATIONS = Object.freeze([
+  'server/database/migrations/134-crm-core.sql',
+  'server/database/migrations/135-crm-opportunities.sql'
+])
+const SEARCH_MIGRATIONS = Object.freeze([
   'server/database/migrations/350_crm_search_expand.sql',
   'server/database/migrations/351_crm_search_validate_backfill.sql',
   'server/database/migrations/352_crm_search_activate_capture.sql'
+])
+const ALL_MIGRATIONS = Object.freeze([
+  ...PREREQUISITE_MIGRATIONS, ...SEARCH_MIGRATIONS
 ])
 
 function exactKeys(value, keys) {
@@ -42,7 +49,7 @@ function validateExactList(actual, expected, errorCode) {
 }
 
 function workspaceMigrationDigests() {
-  return Object.fromEntries(REQUIRED_MIGRATIONS.map(path => [
+  return Object.fromEntries(ALL_MIGRATIONS.map(path => [
     path,
     createHash('sha256')
       .update(readFileSync(new URL(`../../${path}`, import.meta.url)))
@@ -148,6 +155,21 @@ export function createNeonPreviewDatabaseAdapter(options = {}) {
     return typeof result.stdout === 'string' ? result.stdout : ''
   }
 
+  const applyExactMigrations = async (input, requiredPaths) => {
+    validateTarget(input)
+    validateExactList(input.migrationPaths, requiredPaths, 'crm_search_neon_migrations_invalid')
+    const expectedDigests = workspaceMigrationDigests()
+    if (!exactKeys(input.migrationDigests, ALL_MIGRATIONS)
+      || ALL_MIGRATIONS.some(path => !DIGEST.test(input.migrationDigests[path] ?? '')
+        || input.migrationDigests[path] !== expectedDigests[path])) {
+      throw new Error('crm_search_neon_migrations_invalid')
+    }
+    for (const path of requiredPaths) {
+      await runPsql(input, ['-f', new URL(`../../${path}`, import.meta.url).pathname])
+    }
+    return Object.freeze({ ok: true, applied: [...requiredPaths] })
+  }
+
   return Object.freeze({
     async assertEmpty(input) {
       validateTarget(input)
@@ -183,19 +205,12 @@ export function createNeonPreviewDatabaseAdapter(options = {}) {
       })
     },
 
+    async applyPrerequisiteMigrations(input) {
+      return await applyExactMigrations(input, PREREQUISITE_MIGRATIONS)
+    },
+
     async applyMigrations(input) {
-      validateTarget(input)
-      validateExactList(input.migrationPaths, REQUIRED_MIGRATIONS, 'crm_search_neon_migrations_invalid')
-      const expectedDigests = workspaceMigrationDigests()
-      if (!exactKeys(input.migrationDigests, REQUIRED_MIGRATIONS)
-        || REQUIRED_MIGRATIONS.some(path => !DIGEST.test(input.migrationDigests[path] ?? '')
-          || input.migrationDigests[path] !== expectedDigests[path])) {
-        throw new Error('crm_search_neon_migrations_invalid')
-      }
-      for (const path of REQUIRED_MIGRATIONS) {
-        await runPsql(input, ['-f', new URL(`../../${path}`, import.meta.url).pathname])
-      }
-      return Object.freeze({ ok: true, applied: [...REQUIRED_MIGRATIONS] })
+      return await applyExactMigrations(input, SEARCH_MIGRATIONS)
     }
   })
 }

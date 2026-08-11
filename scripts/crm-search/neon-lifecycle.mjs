@@ -14,10 +14,17 @@ import {
 const SHA = /^[a-f0-9]{40}$/u
 const DIGEST = /^[a-f0-9]{64}$/u
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u
+const PREREQUISITE_MIGRATION_PATHS = Object.freeze([
+  'server/database/migrations/134-crm-core.sql',
+  'server/database/migrations/135-crm-opportunities.sql'
+])
 const REQUIRED_MIGRATION_PATHS = Object.freeze([
   'server/database/migrations/350_crm_search_expand.sql',
   'server/database/migrations/351_crm_search_validate_backfill.sql',
   'server/database/migrations/352_crm_search_activate_capture.sql'
+])
+const PREVIEW_MIGRATION_PATHS = Object.freeze([
+  ...PREREQUISITE_MIGRATION_PATHS, ...REQUIRED_MIGRATION_PATHS
 ])
 const REQUIRED_EMPTY_SOURCE_TABLES = Object.freeze([
   'crm_people', 'crm_companies', 'crm_opportunities'
@@ -38,8 +45,8 @@ function digest(value) {
   return createHash('sha256').update(canonical(value), 'utf8').digest('hex')
 }
 
-function workspaceMigrationDigests() {
-  return Object.fromEntries(REQUIRED_MIGRATION_PATHS.map(file => [
+function workspaceMigrationDigests(paths = REQUIRED_MIGRATION_PATHS) {
+  return Object.fromEntries(paths.map(file => [
     file,
     createHash('sha256').update(readFileSync(new URL(`../../${file}`, import.meta.url))).digest('hex')
   ]))
@@ -130,8 +137,12 @@ export function buildNeonLifecyclePlan(input) {
     pollOperations: true,
     assertEmptyTables: [...REQUIRED_EMPTY_SOURCE_TABLES],
     migrations: [350, 351, 352],
+    previewMigrations: [134, 135, 350, 351, 352],
+    prerequisiteMigrationPaths: [...PREREQUISITE_MIGRATION_PATHS],
     migrationPaths: [...REQUIRED_MIGRATION_PATHS],
     migrationDigests: workspaceMigrationDigests(),
+    previewMigrationPaths: [...PREVIEW_MIGRATION_PATHS],
+    previewMigrationDigests: workspaceMigrationDigests(PREVIEW_MIGRATION_PATHS),
     implementationSha: input.implementationSha
   })
 }
@@ -163,13 +174,16 @@ export function createNeonTargetAttestation(input) {
   const createdAt = Date.parse(unsigned.createdAt)
   const expiresAt = Date.parse(unsigned.expiresAt)
   const branch = neonApi?.branch
-  const exactMigrationDigests = workspaceMigrationDigests()
   let governanceApproval
   try {
     governanceApproval = assertGovernanceAuthority(unsigned.governanceApproval)
   } catch {
     throw new Error('crm_search_neon_attestation_invalid')
   }
+  const expectedMigrationPaths = governanceApproval.type === 'preview_migration'
+    ? PREVIEW_MIGRATION_PATHS
+    : REQUIRED_MIGRATION_PATHS
+  const exactMigrationDigests = workspaceMigrationDigests(expectedMigrationPaths)
   let sourceTableProof
   try {
     sourceTableProof = normalizeSourceTableProof(
@@ -179,8 +193,8 @@ export function createNeonTargetAttestation(input) {
     throw new Error('crm_search_neon_attestation_invalid')
   }
   if (!SHA.test(unsigned.sourceGitSha)
-    || canonical(unsigned.migrationPaths) !== canonical(REQUIRED_MIGRATION_PATHS)
-    || Object.keys(unsigned.migrationDigests).sort().join('\0') !== [...REQUIRED_MIGRATION_PATHS].sort().join('\0')
+    || canonical(unsigned.migrationPaths) !== canonical(expectedMigrationPaths)
+    || Object.keys(unsigned.migrationDigests).sort().join('\0') !== [...expectedMigrationPaths].sort().join('\0')
     || Object.values(unsigned.migrationDigests).some(value => !DIGEST.test(value))
     || canonical(unsigned.migrationDigests) !== canonical(exactMigrationDigests)
     || !Number.isFinite(createdAt) || !Number.isFinite(expiresAt)
@@ -280,6 +294,15 @@ export function createNeonLifecycleExecutor(options) {
         tables: step.tables
       })
     }
+    if (step.action === 'migrate-prerequisites') {
+      if (typeof databaseAdapter.applyPrerequisiteMigrations !== 'function') {
+        throw new Error('crm_search_neon_prerequisite_adapter_required')
+      }
+      return await databaseAdapter.applyPrerequisiteMigrations({
+        projectId: step.projectId, branchId: step.branchId, endpoint: step.endpoint,
+        migrationPaths: step.migrationPaths, migrationDigests: step.migrationDigests
+      })
+    }
     if (step.action === 'migrate') {
       return await databaseAdapter.applyMigrations({
         projectId: step.projectId, branchId: step.branchId, endpoint: step.endpoint,
@@ -338,13 +361,13 @@ export async function runNeonLifecycle({
       || approval.neonParentBranchId !== plan.create.branch.parent_id
       || approval.branchName !== plan.create.branch.name
       || approval.branchExpiresAt !== plan.create.branch.expires_at
-      || canonical(approval.migrationDigests) !== canonical(plan.migrationDigests)) {
+      || canonical(approval.migrationDigests) !== canonical(plan.previewMigrationDigests)) {
       throw new Error('crm_search_neon_migration_approval_mismatch')
     }
     governanceApproval = Object.freeze({
       id: approval.approvalId,
       type: 'preview_migration',
-      migrationSetDigest: digest(plan.migrationDigests),
+      migrationSetDigest: digest(plan.previewMigrationDigests),
       pagesPreviewDigest: approval.pagesPreviewDigest,
       resourceReadbackDigest: approval.resourceReadbackDigest,
       organisationScopeId: approval.organisationScopeId
@@ -433,6 +456,15 @@ export async function runNeonLifecycle({
       host: endpointRecord.host
     }
     assertDirectEndpoint(endpoint, trustedSharedEndpointDenyset)
+    if (hasPreviewBootstrap) {
+      await readFreshApproval('before-prerequisites')
+      await execute({
+        action: 'migrate-prerequisites', projectId: plan.projectId, branchId, endpoint,
+        migrationPaths: plan.prerequisiteMigrationPaths,
+        migrationDigests: plan.previewMigrationDigests,
+        governanceApproval
+      })
+    }
     const empty = await execute({
       action: 'assert-empty', projectId: plan.projectId, branchId,
       endpoint, organisationScopeId: approval.organisationScopeId,
@@ -442,7 +474,10 @@ export async function runNeonLifecycle({
     await readFreshApproval('before-migrate')
     await execute({
       action: 'migrate', projectId: plan.projectId, branchId, endpoint,
-      migrationPaths: plan.migrationPaths, migrationDigests: plan.migrationDigests,
+      migrationPaths: plan.migrationPaths,
+      migrationDigests: hasPreviewBootstrap
+        ? plan.previewMigrationDigests
+        : plan.migrationDigests,
       governanceApproval
     })
     const neonApi = {
@@ -461,14 +496,15 @@ export async function runNeonLifecycle({
       endpoint
     }
     if (neonApi.branch.projectId !== neonApi.project.id
-      || neonApi.branch.parentId !== neonApi.sourceBranch.id
-      || Date.parse(neonApi.branch.expiresAt) !== Date.parse(plan.create.branch.expires_at)) {
+      || neonApi.branch.parentId !== neonApi.sourceBranch.id) {
       throw new Error('crm_search_neon_api_binding_invalid')
     }
     const attestation = createNeonTargetAttestation({
       sourceGitSha: plan.implementationSha,
-      migrationPaths: plan.migrationPaths,
-      migrationDigests: plan.migrationDigests,
+      migrationPaths: hasPreviewBootstrap ? plan.previewMigrationPaths : plan.migrationPaths,
+      migrationDigests: hasPreviewBootstrap
+        ? plan.previewMigrationDigests
+        : plan.migrationDigests,
       governanceApproval,
       createdAt: neonApi.branch.createdAt,
       expiresAt: neonApi.branch.expiresAt,

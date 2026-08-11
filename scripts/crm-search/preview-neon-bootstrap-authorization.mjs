@@ -11,6 +11,8 @@ const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u
 const MAX_AUTHORIZATION_LIFETIME_MS = 30 * 60_000
 const MAX_BRANCH_LIFETIME_MS = 6 * 60 * 60_000
 const MIGRATION_PATHS = Object.freeze([
+  'server/database/migrations/134-crm-core.sql',
+  'server/database/migrations/135-crm-opportunities.sql',
   'server/database/migrations/350_crm_search_expand.sql',
   'server/database/migrations/351_crm_search_validate_backfill.sql',
   'server/database/migrations/352_crm_search_activate_capture.sql'
