@@ -138,6 +138,7 @@ async function getXeroInvoices(
   limit: number,
   period: InvestmentPeriod
 ) {
+  const financialYearBounds = investmentPeriodBounds('financial-year')
   const invoices = await queryRows(`
     SELECT
       i.invoice_id,
@@ -185,19 +186,13 @@ async function getXeroInvoices(
       COALESCE(SUM(amount_paid_cents) FILTER (WHERE status = 'PAID'), 0) AS total_paid_cents,
       COALESCE(SUM(amount_paid_cents) FILTER (
         WHERE status = 'PAID'
-          AND fully_paid_on_date >= make_date(
-            CASE WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 7
-              THEN EXTRACT(YEAR FROM CURRENT_DATE)::int
-              ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 1
-            END, 7, 1)
+          AND fully_paid_on_date >= $3::date
+          AND fully_paid_on_date < $4::date
       ), 0) AS financial_year_cash_paid_cents,
       COALESCE(SUM(amount_credited_cents) FILTER (
         WHERE status = 'PAID'
-          AND fully_paid_on_date >= make_date(
-            CASE WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 7
-              THEN EXTRACT(YEAR FROM CURRENT_DATE)::int
-              ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 1
-            END, 7, 1)
+          AND fully_paid_on_date >= $3::date
+          AND fully_paid_on_date < $4::date
       ), 0) AS financial_year_credits_cents,
       COALESCE(SUM(amount_paid_cents) FILTER (WHERE status = 'PAID' AND fully_paid_on_date >= CURRENT_DATE - INTERVAL '90 days'), 0) AS paid_last_90_cents,
       COALESCE(AVG(total_cents) FILTER (WHERE status = 'PAID'), 0) AS avg_paid_invoice_cents,
@@ -214,7 +209,12 @@ async function getXeroInvoices(
       AND contact_id = $2
       AND type = 'ACCREC'
       AND status IN ('AUTHORISED', 'PAID')
-  `, [source.tenant_id, source.xero_contact_id])
+  `, [
+    source.tenant_id,
+    source.xero_contact_id,
+    financialYearBounds.start,
+    financialYearBounds.endExclusive
+  ])
 
   const investment = await getXeroInvestment(source, period)
 
@@ -371,6 +371,7 @@ export default defineEventHandler(async (event) => {
       LIMIT $${idx}
     `, params)
 
+    const financialYearBounds = investmentPeriodBounds('financial-year')
     const summary = await queryOne(`
       SELECT
         COUNT(*) as total,
@@ -388,11 +389,10 @@ export default defineEventHandler(async (event) => {
         COUNT(CASE WHEN status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '60 days' THEN 1 END) as aging_90_count,
         COALESCE(SUM(total_amount), 0) as total_billed,
         COALESCE(SUM(CASE WHEN status = 'paid' THEN total_amount ELSE 0 END), 0) as total_paid,
-        COALESCE(SUM(CASE WHEN status = 'paid' AND paid_date >= make_date(
-          CASE WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 7
-            THEN EXTRACT(YEAR FROM CURRENT_DATE)::int
-            ELSE EXTRACT(YEAR FROM CURRENT_DATE)::int - 1
-          END, 7, 1) THEN amount_paid ELSE 0 END), 0) as financial_year_cash_paid,
+        COALESCE(SUM(CASE WHEN status = 'paid'
+          AND paid_date >= $2::date
+          AND paid_date < $3::date
+          THEN amount_paid ELSE 0 END), 0) as financial_year_cash_paid,
         COALESCE(SUM(CASE WHEN status = 'paid' AND paid_date >= CURRENT_DATE - INTERVAL '90 days' THEN total_amount ELSE 0 END), 0) as paid_last_90,
         COALESCE(AVG(CASE WHEN status = 'paid' THEN total_amount END), 0) as avg_paid_invoice,
         COALESCE(AVG(CASE WHEN status = 'paid' AND paid_date IS NOT NULL AND issue_date IS NOT NULL THEN paid_date - issue_date END), 0) as avg_days_to_pay,
@@ -405,7 +405,7 @@ export default defineEventHandler(async (event) => {
         COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '60 days' THEN total_amount - amount_paid ELSE 0 END), 0) as aging_90_amount
       FROM invoices
       WHERE client_id = $1
-    `, [clientUser.clientId])
+    `, [clientUser.clientId, financialYearBounds.start, financialYearBounds.endExclusive])
 
     return {
       invoices: invoices.map(i => ({

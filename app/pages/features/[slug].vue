@@ -1831,7 +1831,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-briefcase',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'Permission-gated invoice viewing so clients can check billing without sending emails. Self-service financial transparency for your client relationships.',
+    description: 'Permission-gated invoice viewing with clear payment status and an honest breakdown of agency services, media, suppliers, tax, and adjustments.',
     details: [
       {
         title: 'Permission-Gated Access',
@@ -1839,15 +1839,15 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Invoice List and Detail Views',
-        content: 'Clients see a list of all their invoices with status (draft, sent, paid, overdue), dates, and amounts. Click any invoice to see full line-item detail — service descriptions, quantities, rates, tax, and totals. The detail view matches what appears in Xero, so clients can reconcile against their own records without requesting copies from your finance team.'
+        content: 'Clients see a list of all their invoices with status, dates, and amounts. Click any invoice to see full line-item detail, credits, tax, and totals. The detail view matches the synced Xero record so clients can reconcile against their own records without requesting a breakdown from your finance team.'
       },
       {
-        title: 'Payment Status Tracking',
-        content: 'Invoice status syncs from Xero in real time. When a client pays an invoice, the status updates automatically. Clients can see their outstanding balance, overdue amounts, and payment history. This self-service access eliminates the back-and-forth emails about "has our payment been received?" and "which invoices are still outstanding?" that consume your accounts receivable team\'s time.'
+        title: 'Payment Status, Without Inflated Revenue Claims',
+        content: 'Invoice status syncs from Xero, including cash payments and credits applied. The portal leads with the amount currently due, overdue invoices, upcoming due dates, and the last payment. It avoids presenting gross billings or pass-through media spend as though it were agency income.'
       },
       {
-        title: 'PDF Download',
-        content: 'Clients can download PDF copies of any invoice directly from the portal. PDFs are generated from the Xero invoice data and formatted with your agency branding. For clients who need to submit invoices to their own internal finance systems, the download feature provides exactly what they need without requiring them to contact your team for a copy.'
+        title: 'Marketing Investment Breakdown',
+        content: 'Clients can switch between the current Australian financial year, the last 90 days, and all time. XeroFlow uses synced Xero account codes and invoice lines to separate agency services from media and external suppliers, GST, and adjustments, with channels such as Google, Meta, Carsales, displays, printing, and SMS shown separately. If allocation data is incomplete, the portal says so and leaves the difference unclassified instead of inventing a split.'
       }
     ]
   },

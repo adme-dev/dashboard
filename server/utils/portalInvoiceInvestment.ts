@@ -39,6 +39,17 @@ function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10)
 }
 
+function melbourneIsoDate(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-AU', {
+    timeZone: 'Australia/Melbourne',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date)
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]))
+  return `${values.year}-${values.month}-${values.day}`
+}
+
 function numericCents(value: unknown): number {
   const amount = Number(value ?? 0)
   return Number.isFinite(amount) ? amount : 0
@@ -75,7 +86,7 @@ export function investmentPeriodBounds(
     return { start: null, endExclusive: null }
   }
 
-  const current = new Date(`${isoDate(today)}T00:00:00Z`)
+  const current = new Date(`${melbourneIsoDate(today)}T00:00:00Z`)
 
   if (period === 'last-90-days') {
     const start = new Date(current)

@@ -172,6 +172,14 @@ describe('portal Xero invoice linkage', () => {
     const summarySql = String(mockQueryOne.mock.calls[1]?.[0])
     expect(summarySql).toContain('financial_year_cash_paid_cents')
     expect(summarySql).toContain('financial_year_credits_cents')
+    expect(summarySql).toContain('fully_paid_on_date >= $3::date')
+    expect(summarySql).toContain('fully_paid_on_date < $4::date')
+    expect(mockQueryOne.mock.calls[1]?.[1]).toEqual([
+      'adme-xero-tenant',
+      'south-morang-xero-contact',
+      expect.stringMatching(/^\d{4}-07-01$/),
+      expect.stringMatching(/^\d{4}-07-01$/)
+    ])
     const investmentSql = String(mockQueryRows.mock.calls[1]?.[0])
     expect(investmentSql).toContain('xero_invoice_lines_cache')
     expect(investmentSql).toContain('xero_accounts_cache')

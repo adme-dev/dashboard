@@ -21,6 +21,11 @@ describe('portal invoice investment periods', () => {
       .toEqual({ start: '2025-07-01', endExclusive: '2026-07-01' })
   })
 
+  it('uses the Melbourne calendar date around the UTC financial-year boundary', () => {
+    expect(investmentPeriodBounds('financial-year', new Date('2026-06-30T14:30:00Z')))
+      .toEqual({ start: '2026-07-01', endExclusive: '2027-07-01' })
+  })
+
   it('calculates a 90-day inclusive window and leaves all-time unbounded', () => {
     expect(investmentPeriodBounds('last-90-days', new Date('2026-08-12T00:00:00Z')))
       .toEqual({ start: '2026-05-15', endExclusive: '2026-08-13' })
