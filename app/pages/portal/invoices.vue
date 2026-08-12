@@ -9,6 +9,87 @@ const routeQueryString = (value: unknown) => Array.isArray(value) ? value[0] : v
 const invoiceTabs = ['current', 'overdue', 'history', 'all']
 const initialView = routeQueryString(route.query.view)
 const initialStatus = routeQueryString(route.query.status)
+type InvestmentPeriod = 'financial-year' | 'last-90-days' | 'all-time'
+
+interface PortalInvoiceListItem {
+  id: string
+  invoiceNumber: string
+  status: string
+  issueDate: string | null
+  dueDate: string | null
+  totalAmount: number
+  amountDue: number
+  projectName: string | null
+  isOverdue: boolean
+}
+
+interface PortalInvoicesResponse {
+  invoices: PortalInvoiceListItem[]
+  summary: {
+    aging: Record<string, { count: number, amount: number }>
+  }
+  paymentStatus: {
+    outstanding: number
+    openInvoiceCount: number
+    overdueAmount: number
+    overdueCount: number
+    dueNext7Amount: number
+    dueNext7Count: number
+    lastPaymentDate: string | null
+    financialYearCashPaid: number
+    financialYearCreditsApplied: number
+  }
+  investment: {
+    period: InvestmentPeriod
+    periodStart: string | null
+    periodEnd: string | null
+    totalInvoiced: number
+    mediaAndSuppliers: number
+    agencyServices: number
+    gst: number
+    unclassifiedAndAdjustments: number
+    allocationAvailable: boolean
+    channels: Array<{ name: string, amount: number }>
+  }
+}
+
+interface PortalInvoiceDetailResponse {
+  invoice: {
+    invoiceNumber: string
+    projectName: string | null
+    status: string
+    isOverdue: boolean
+    agingBucket: string
+    daysOverdue: number
+    issueDate: string | null
+    dueDate: string | null
+    paidDate: string | null
+    paymentTerms: string | null
+    subtotal: number
+    discountAmount: number
+    taxAmount: number
+    taxRate: number
+    totalAmount: number
+    amountPaid: number
+    amountCredited: number
+    amountDue: number
+    notes: string | null
+  }
+  lineItems: Array<{
+    id: string
+    description: string
+    quantity: number
+    unitPrice: number
+    amount: number
+  }>
+}
+
+const investmentPeriod = ref<InvestmentPeriod>('financial-year')
+const investmentPeriodOptions = [
+  { label: 'This financial year', value: 'financial-year' },
+  { label: 'Last 90 days', value: 'last-90-days' },
+  { label: 'All time', value: 'all-time' }
+]
 
 const activeTab = ref(
   typeof initialView === 'string' && invoiceTabs.includes(initialView)
@@ -17,24 +98,25 @@ const activeTab = ref(
       ? 'overdue'
       : 'current'
 )
-const invoiceQuery = computed(() => {
+const invoiceQuery = computed<Record<string, string>>(() => {
+  const query = { period: investmentPeriod.value }
   if (activeTab.value === 'current' || activeTab.value === 'history') {
-    return { view: activeTab.value }
+    return { ...query, view: activeTab.value }
   }
   if (activeTab.value === 'overdue') {
-    return { status: 'overdue' }
+    return { ...query, status: 'overdue' }
   }
-  return {}
+  return query
 })
 
 const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
-const data = ref<any | null>(null)
+const data = ref<PortalInvoicesResponse | null>(null)
 const pending = ref(false)
 
 async function refreshInvoices() {
   pending.value = true
   try {
-    data.value = await apiFetch<any>('/api/portal/invoices', { query: invoiceQuery.value })
+    data.value = await apiFetch<PortalInvoicesResponse>('/api/portal/invoices', { query: invoiceQuery.value })
   } catch {
     data.value = null
   } finally {
@@ -90,11 +172,48 @@ const agingBuckets = computed(() => {
   ]
 })
 
+const investmentCategories = computed(() => {
+  const investment = data.value?.investment
+  const categories = [
+    {
+      label: 'Media & external suppliers',
+      description: 'Advertising platforms and external delivery',
+      amount: investment?.mediaAndSuppliers ?? 0,
+      colorClass: 'bg-info'
+    },
+    {
+      label: 'Agency services',
+      description: 'Strategy, creative, management and delivery',
+      amount: investment?.agencyServices ?? 0,
+      colorClass: 'bg-primary'
+    },
+    {
+      label: 'GST',
+      description: 'Goods and services tax',
+      amount: investment?.gst ?? 0,
+      colorClass: 'bg-warning'
+    },
+    {
+      label: 'Unclassified & adjustments',
+      description: 'Unallocated lines or reconciliation differences',
+      amount: investment?.unclassifiedAndAdjustments ?? 0,
+      colorClass: 'bg-neutral-500'
+    }
+  ]
+
+  return categories.filter(category => category.label !== 'Unclassified & adjustments' || category.amount !== 0)
+})
+
+function investmentShare(amount: number): number {
+  const total = Math.abs(Number(data.value?.investment?.totalInvoiced ?? 0))
+  return total > 0 ? Math.max(0, (amount / total) * 100) : 0
+}
+
 // Detail slideover
 const selectedInvoiceId = ref<string | null>(null)
 const showDetail = ref(false)
 
-const detailData = ref<any | null>(null)
+const detailData = ref<PortalInvoiceDetailResponse | null>(null)
 const detailPending = ref(false)
 
 async function refreshDetail() {
@@ -104,7 +223,7 @@ async function refreshDetail() {
   }
   detailPending.value = true
   try {
-    detailData.value = await apiFetch<any>(`/api/portal/invoices/${selectedInvoiceId.value}`)
+    detailData.value = await apiFetch<PortalInvoiceDetailResponse>(`/api/portal/invoices/${selectedInvoiceId.value}`)
   } catch {
     detailData.value = null
   } finally {
@@ -130,8 +249,8 @@ function formatCurrency(amount: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 2 }).format(amount)
 }
 
-function daysOverdue(dueDate: string, status: string): number {
-  if (status === 'paid') return 0
+function daysOverdue(dueDate: string | null, status: string): number {
+  if (!dueDate || status === 'paid') return 0
   const due = new Date(dueDate)
   const now = new Date()
   return Math.max(0, Math.floor((now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24)))
@@ -165,232 +284,215 @@ const agingColors: Record<string, string> = {
     </div>
 
     <template v-else>
-      <h1 class="text-2xl font-bold">
-        Invoices
-      </h1>
-
-      <!-- Summary Cards -->
-      <div v-if="data?.summary" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <UCard>
-          <div class="text-center">
-            <p class="text-sm text-muted">
-              Outstanding
-            </p>
-            <p class="text-2xl font-bold text-warning">
-              {{ formatCurrency(data.summary.totalOutstanding) }}
-            </p>
-          </div>
-        </UCard>
-        <UCard>
-          <div class="text-center">
-            <p class="text-sm text-muted">
-              Paid This Year
-            </p>
-            <p class="text-2xl font-bold text-success">
-              {{ formatCurrency(data.summary.totalPaid) }}
-            </p>
-          </div>
-        </UCard>
-        <UCard>
-          <div class="text-center">
-            <p class="text-sm text-muted">
-              Overdue
-            </p>
-            <p class="text-2xl font-bold" :class="data.summary.overdue > 0 ? 'text-error' : 'text-muted'">
-              {{ data.summary.overdue }}
-            </p>
-          </div>
-        </UCard>
-        <UCard>
-          <div class="text-center">
-            <p class="text-sm text-muted">
-              Total Billed
-            </p>
-            <p class="text-2xl font-bold">
-              {{ formatCurrency(data.summary.totalBilled) }}
-            </p>
-          </div>
-        </UCard>
+      <div>
+        <h1 class="text-2xl font-bold">
+          Invoices &amp; marketing investment
+        </h1>
+        <p class="mt-1 text-sm text-muted">
+          See what is due and how your invoiced investment is allocated.
+        </p>
       </div>
+
+      <UCard v-if="data?.paymentStatus">
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)] lg:items-stretch">
+          <div class="flex min-h-40 flex-col justify-between rounded-lg border border-default bg-elevated p-5">
+            <div class="flex items-center gap-2 text-sm font-medium text-muted">
+              <UIcon name="i-lucide-wallet-cards" class="size-4" />
+              Amount currently due
+            </div>
+            <div class="mt-6">
+              <p class="text-3xl font-semibold tracking-tight sm:text-4xl">
+                {{ formatCurrency(data.paymentStatus.outstanding) }}
+              </p>
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <UBadge color="neutral" variant="subtle">
+                  {{ data.paymentStatus.openInvoiceCount }} open invoice{{ data.paymentStatus.openInvoiceCount === 1 ? '' : 's' }}
+                </UBadge>
+                <UBadge v-if="data.paymentStatus.overdueCount > 0" color="error" variant="subtle">
+                  {{ data.paymentStatus.overdueCount }} overdue · {{ formatCurrency(data.paymentStatus.overdueAmount) }}
+                </UBadge>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-default bg-default sm:grid-cols-3">
+            <div class="bg-default p-4">
+              <p class="text-xs font-medium text-muted">
+                Due in the next 7 days
+              </p>
+              <p class="mt-2 text-lg font-semibold">
+                {{ formatCurrency(data.paymentStatus.dueNext7Amount) }}
+              </p>
+              <p class="mt-1 text-xs text-muted">
+                {{ data.paymentStatus.dueNext7Count }} invoice{{ data.paymentStatus.dueNext7Count === 1 ? '' : 's' }}
+              </p>
+            </div>
+            <div class="border-t border-default bg-default p-4 sm:border-l sm:border-t-0">
+              <p class="text-xs font-medium text-muted">
+                Last settlement
+              </p>
+              <p class="mt-2 text-lg font-semibold">
+                {{ formatDate(data.paymentStatus.lastPaymentDate) }}
+              </p>
+              <p class="mt-1 text-xs text-muted">
+                Most recent Xero settlement
+              </p>
+            </div>
+            <div class="border-t border-default bg-default p-4 sm:border-l sm:border-t-0">
+              <p class="text-xs font-medium text-muted">
+                Cash on invoices settled this financial year
+              </p>
+              <p class="mt-2 text-lg font-semibold">
+                {{ formatCurrency(data.paymentStatus.financialYearCashPaid) }}
+              </p>
+              <p class="mt-1 text-xs text-muted">
+                Cash component recorded in Xero
+              </p>
+              <p v-if="data.paymentStatus.financialYearCreditsApplied > 0" class="mt-2 text-xs text-primary">
+                Plus {{ formatCurrency(data.paymentStatus.financialYearCreditsApplied) }} settled by Xero credits
+              </p>
+            </div>
+          </div>
+        </div>
+      </UCard>
+
+      <UCard v-if="data?.investment">
+        <template #header>
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <UIcon name="i-lucide-chart-pie" class="text-primary" />
+                <h2 class="font-semibold">
+                  Your marketing investment
+                </h2>
+              </div>
+              <p class="mt-1 max-w-3xl text-sm text-muted">
+                Charges associated with media platforms and external delivery are shown separately from agency services.
+              </p>
+            </div>
+            <USelect
+              v-model="investmentPeriod"
+              :items="investmentPeriodOptions"
+              value-key="value"
+              aria-label="Investment period"
+              class="w-full sm:w-48"
+            />
+          </div>
+        </template>
+
+        <div class="space-y-5">
+          <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p class="text-xs font-medium uppercase tracking-wide text-muted">
+                Total invoiced, including GST
+              </p>
+              <p class="mt-1 text-2xl font-semibold tracking-tight">
+                {{ formatCurrency(data.investment.totalInvoiced) }}
+              </p>
+            </div>
+            <p v-if="data.investment.periodStart" class="text-xs text-muted">
+              {{ formatDate(data.investment.periodStart) }} – {{ formatDate(data.investment.periodEnd) }}
+            </p>
+          </div>
+
+          <div
+            v-if="data.investment.totalInvoiced > 0"
+            class="flex h-2.5 w-full overflow-hidden rounded-full bg-elevated"
+            role="img"
+            :aria-label="`Investment allocation for ${formatCurrency(data.investment.totalInvoiced)}`"
+          >
+            <div
+              v-for="category in investmentCategories"
+              :key="category.label"
+              :class="category.colorClass"
+              :style="{ width: `${investmentShare(category.amount)}%` }"
+            />
+          </div>
+
+          <UAlert
+            v-if="!data.investment.allocationAvailable && data.investment.totalInvoiced > 0"
+            icon="i-lucide-info"
+            color="neutral"
+            variant="subtle"
+            title="Detailed allocation is not available for these invoices yet."
+            description="The full unresolved value remains visible under Unclassified & adjustments."
+          />
+
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div
+              v-for="category in investmentCategories"
+              :key="category.label"
+              class="rounded-lg border border-default p-4"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="text-sm font-medium">
+                    {{ category.label }}
+                  </p>
+                  <p class="mt-1 text-xs text-muted">
+                    {{ category.description }}
+                  </p>
+                </div>
+                <span class="mt-1 size-2.5 shrink-0 rounded-full" :class="category.colorClass" />
+              </div>
+              <p class="mt-4 text-lg font-semibold">
+                {{ formatCurrency(category.amount) }}
+              </p>
+              <p class="mt-1 text-xs text-muted">
+                {{ investmentShare(category.amount).toFixed(1) }}% of invoiced total
+              </p>
+            </div>
+          </div>
+
+          <div v-if="data.investment.channels?.length" class="border-t border-default pt-4">
+            <p class="text-xs font-medium uppercase tracking-wide text-muted">
+              Media &amp; supplier allocation
+            </p>
+            <div class="mt-3 grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+              <div
+                v-for="channel in data.investment.channels"
+                :key="channel.name"
+                class="flex items-center justify-between gap-3 text-sm"
+              >
+                <span class="text-muted">{{ channel.name }}</span>
+                <span class="font-medium">{{ formatCurrency(channel.amount) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </UCard>
 
       <UCard v-if="data?.summary">
         <template #header>
           <div class="flex items-center gap-2">
             <UIcon name="i-lucide-chart-no-axes-column-increasing" class="text-primary" />
-            <span class="font-semibold">Receivables aging</span>
+            <h2 class="font-semibold">
+              Receivables ageing
+            </h2>
           </div>
         </template>
 
-        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          <button
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-4">
+          <UButton
             v-for="bucket in agingBuckets"
             :key="bucket.key"
-            type="button"
-            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+            color="neutral"
+            variant="outline"
+            class="h-auto justify-start p-3 text-left"
             @click="activeTab = bucket.key === 'current' ? 'current' : 'overdue'"
           >
-            <div class="flex items-center justify-between gap-2">
-              <p class="text-sm text-muted">
-                {{ bucket.label }}
+            <div class="w-full">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs text-muted">{{ bucket.label }}</span>
+                <UBadge :color="(bucket.color as any)" variant="subtle" size="xs">
+                  {{ bucket.count }}
+                </UBadge>
+              </div>
+              <p class="mt-2 text-sm font-semibold text-highlighted">
+                {{ formatCurrency(bucket.amount) }}
               </p>
-              <UBadge :color="(bucket.color as any)" variant="subtle" size="xs">
-                {{ bucket.count }}
-              </UBadge>
             </div>
-            <p class="mt-2 text-lg font-semibold">
-              {{ formatCurrency(bucket.amount) }}
-            </p>
-          </button>
-        </div>
-      </UCard>
-
-      <UCard v-if="data?.summary">
-        <template #header>
-          <div class="flex items-center gap-2">
-            <UIcon name="i-lucide-landmark" class="text-primary" />
-            <span class="font-semibold">Commercial summary</span>
-          </div>
-        </template>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <button
-            type="button"
-            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
-            @click="activeTab = 'current'"
-          >
-            <p class="text-xs text-muted">
-              Next due date
-            </p>
-            <p class="mt-1 text-sm font-semibold">
-              {{ formatDate(data.summary.nextDueDate) }}
-            </p>
-            <p class="mt-1 text-xs text-muted">
-              {{ data.summary.current }} current invoice{{ data.summary.current === 1 ? '' : 's' }}
-            </p>
-          </button>
-
-          <button
-            type="button"
-            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
-            @click="activeTab = 'overdue'"
-          >
-            <p class="text-xs text-muted">
-              Overdue balance
-            </p>
-            <p class="mt-1 text-sm font-semibold" :class="data.summary.overdueAmount > 0 ? 'text-error' : ''">
-              {{ formatCurrency(data.summary.overdueAmount) }}
-            </p>
-            <p class="mt-1 text-xs text-muted">
-              {{ data.summary.overdue }} overdue invoice{{ data.summary.overdue === 1 ? '' : 's' }}
-            </p>
-          </button>
-
-          <button
-            type="button"
-            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
-            @click="activeTab = 'history'"
-          >
-            <p class="text-xs text-muted">
-              Last paid
-            </p>
-            <p class="mt-1 text-sm font-semibold">
-              {{ formatDate(data.summary.lastPaidDate) }}
-            </p>
-            <p class="mt-1 text-xs text-muted">
-              {{ data.summary.history }} paid invoice{{ data.summary.history === 1 ? '' : 's' }}
-            </p>
-          </button>
-
-          <button
-            type="button"
-            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
-            @click="activeTab = 'history'"
-          >
-            <p class="text-xs text-muted">
-              Average paid invoice
-            </p>
-            <p class="mt-1 text-sm font-semibold">
-              {{ formatCurrency(data.summary.averagePaidInvoice) }}
-            </p>
-            <p class="mt-1 text-xs text-muted">
-              {{ formatCurrency(data.summary.totalPaid) }} paid total
-            </p>
-          </button>
-        </div>
-      </UCard>
-
-      <UCard v-if="data?.summary">
-        <template #header>
-          <div class="flex items-center gap-2">
-            <UIcon name="i-lucide-calendar-days" class="text-primary" />
-            <span class="font-semibold">Payment planning</span>
-          </div>
-        </template>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <button
-            type="button"
-            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
-            @click="activeTab = 'current'"
-          >
-            <p class="text-xs text-muted">
-              Due next 7 days
-            </p>
-            <p class="mt-1 text-sm font-semibold" :class="data.summary.dueNext7Amount > 0 ? 'text-warning' : ''">
-              {{ formatCurrency(data.summary.dueNext7Amount) }}
-            </p>
-            <p class="mt-1 text-xs text-muted">
-              {{ data.summary.dueNext7Count }} invoice{{ data.summary.dueNext7Count === 1 ? '' : 's' }}
-            </p>
-          </button>
-
-          <button
-            type="button"
-            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
-            @click="activeTab = 'history'"
-          >
-            <p class="text-xs text-muted">
-              Paid last 90 days
-            </p>
-            <p class="mt-1 text-sm font-semibold">
-              {{ formatCurrency(data.summary.paidLast90) }}
-            </p>
-            <p class="mt-1 text-xs text-muted">
-              Recent billing throughput
-            </p>
-          </button>
-
-          <button
-            type="button"
-            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
-            @click="activeTab = 'history'"
-          >
-            <p class="text-xs text-muted">
-              Avg days to pay
-            </p>
-            <p class="mt-1 text-sm font-semibold">
-              {{ data.summary.averageDaysToPay }}d
-            </p>
-            <p class="mt-1 text-xs text-muted">
-              Based on paid invoices
-            </p>
-          </button>
-
-          <button
-            type="button"
-            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
-            @click="activeTab = data.summary.overdue > 0 ? 'overdue' : 'current'"
-          >
-            <p class="text-xs text-muted">
-              Balance at risk
-            </p>
-            <p class="mt-1 text-sm font-semibold" :class="data.summary.overdueAmount > 0 ? 'text-error' : ''">
-              {{ formatCurrency(data.summary.overdueAmount + data.summary.dueNext7Amount) }}
-            </p>
-            <p class="mt-1 text-xs text-muted">
-              Overdue plus due this week
-            </p>
-          </button>
+          </UButton>
         </div>
       </UCard>
 
@@ -609,6 +711,10 @@ const agingColors: Record<string, string> = {
               <div v-if="detailData.invoice.amountPaid > 0" class="flex justify-between text-success">
                 <span>Paid</span>
                 <span>-{{ formatCurrency(detailData.invoice.amountPaid) }}</span>
+              </div>
+              <div v-if="detailData.invoice.amountCredited > 0" class="flex justify-between text-primary">
+                <span>Credits applied</span>
+                <span>-{{ formatCurrency(detailData.invoice.amountCredited) }}</span>
               </div>
               <div v-if="detailData.invoice.amountDue > 0" class="flex justify-between font-semibold text-warning">
                 <span>Amount Due</span>

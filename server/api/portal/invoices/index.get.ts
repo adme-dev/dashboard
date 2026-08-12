@@ -6,10 +6,116 @@
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { dollarsFromCents, portalStatusForXeroInvoice, xeroInvoiceIsOverdue } from '~~/server/utils/portalXeroInvoices'
+import {
+  buildInvestmentBreakdown,
+  investmentPeriodBounds,
+  parseInvestmentPeriod,
+  type InvestmentLine,
+  type InvestmentPeriod,
+  type PortalInvestmentBreakdown
+} from '~~/server/utils/portalInvoiceInvestment'
 
 interface XeroInvoiceSource {
   xero_contact_id: string | null
   tenant_id: string | null
+}
+
+function inclusiveEndDate(endExclusive: string | null): string | null {
+  if (!endExclusive) return null
+  const date = new Date(`${endExclusive}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() - 1)
+  return date.toISOString().slice(0, 10)
+}
+
+function emptyInvestment(period: InvestmentPeriod): PortalInvestmentBreakdown {
+  const bounds = investmentPeriodBounds(period)
+  return buildInvestmentBreakdown({
+    period,
+    periodStart: bounds.start,
+    periodEnd: inclusiveEndDate(bounds.endExclusive),
+    totalInvoicedCents: 0,
+    gstCents: 0,
+    invoiceCount: 0,
+    lines: []
+  })
+}
+
+async function getXeroInvestment(
+  source: XeroInvoiceSource,
+  period: InvestmentPeriod
+): Promise<PortalInvestmentBreakdown> {
+  const bounds = investmentPeriodBounds(period)
+  const params = [source.tenant_id, source.xero_contact_id, bounds.start, bounds.endExclusive]
+  let totals: Record<string, unknown> | null
+
+  try {
+    totals = await queryOne(`
+      SELECT
+        COUNT(*) AS invoice_count,
+        COALESCE(SUM(i.total_cents), 0) AS total_invoiced_cents,
+        COALESCE(SUM(i.total_tax_cents), 0) AS gst_cents
+      FROM xero_invoices_cache i
+      WHERE i.tenant_id = $1
+        AND i.contact_id = $2
+        AND i.type = 'ACCREC'
+        AND i.status IN ('AUTHORISED', 'PAID')
+        AND ($3::date IS NULL OR i.date >= $3::date)
+        AND ($4::date IS NULL OR i.date < $4::date)
+    `, params)
+  } catch (error) {
+    console.error('Failed to aggregate portal invoice investment headers', {
+      tenantId: source.tenant_id,
+      contactId: source.xero_contact_id,
+      error
+    })
+    return emptyInvestment(period)
+  }
+
+  let lines: InvestmentLine[] = []
+  try {
+    const rows = await queryRows(`
+      SELECT
+        a.type AS account_type,
+        a.name AS account_name,
+        l.tracking_media,
+        l.line_ex_gst_cents
+      FROM xero_invoice_lines_cache l
+      JOIN xero_invoices_cache i
+        ON i.tenant_id = l.tenant_id
+       AND i.invoice_id = l.invoice_id
+      LEFT JOIN xero_accounts_cache a
+        ON a.tenant_id = l.tenant_id
+       AND a.code = l.account_code
+      WHERE i.tenant_id = $1
+        AND i.contact_id = $2
+        AND i.type = 'ACCREC'
+        AND i.status IN ('AUTHORISED', 'PAID')
+        AND ($3::date IS NULL OR i.date >= $3::date)
+        AND ($4::date IS NULL OR i.date < $4::date)
+    `, params)
+    lines = rows.map(row => ({
+      accountType: row.account_type ?? null,
+      accountName: row.account_name ?? null,
+      trackingMedia: row.tracking_media ?? null,
+      lineExGstCents: row.line_ex_gst_cents
+    }))
+  } catch (error) {
+    console.error('Failed to aggregate portal invoice investment lines', {
+      tenantId: source.tenant_id,
+      contactId: source.xero_contact_id,
+      error
+    })
+  }
+
+  return buildInvestmentBreakdown({
+    period,
+    periodStart: bounds.start,
+    periodEnd: inclusiveEndDate(bounds.endExclusive),
+    totalInvoicedCents: totals?.total_invoiced_cents,
+    gstCents: totals?.gst_cents,
+    invoiceCount: totals?.invoice_count,
+    lines
+  })
 }
 
 function xeroStatusCondition(view?: string, status?: string): string {
@@ -29,8 +135,10 @@ async function getXeroInvoices(
   source: XeroInvoiceSource,
   view: string | undefined,
   status: string | undefined,
-  limit: number
+  limit: number,
+  period: InvestmentPeriod
 ) {
+  const financialYearBounds = investmentPeriodBounds('financial-year')
   const invoices = await queryRows(`
     SELECT
       i.invoice_id,
@@ -76,6 +184,16 @@ async function getXeroInvoices(
       COUNT(*) FILTER (WHERE status = 'AUTHORISED' AND amount_due_cents > 0 AND due_date < CURRENT_DATE - INTERVAL '60 days') AS aging_90_count,
       COALESCE(SUM(total_cents), 0) AS total_billed_cents,
       COALESCE(SUM(amount_paid_cents) FILTER (WHERE status = 'PAID'), 0) AS total_paid_cents,
+      COALESCE(SUM(amount_paid_cents) FILTER (
+        WHERE status = 'PAID'
+          AND fully_paid_on_date >= $3::date
+          AND fully_paid_on_date < $4::date
+      ), 0) AS financial_year_cash_paid_cents,
+      COALESCE(SUM(amount_credited_cents) FILTER (
+        WHERE status = 'PAID'
+          AND fully_paid_on_date >= $3::date
+          AND fully_paid_on_date < $4::date
+      ), 0) AS financial_year_credits_cents,
       COALESCE(SUM(amount_paid_cents) FILTER (WHERE status = 'PAID' AND fully_paid_on_date >= CURRENT_DATE - INTERVAL '90 days'), 0) AS paid_last_90_cents,
       COALESCE(AVG(total_cents) FILTER (WHERE status = 'PAID'), 0) AS avg_paid_invoice_cents,
       COALESCE(AVG(fully_paid_on_date - date) FILTER (WHERE status = 'PAID' AND fully_paid_on_date IS NOT NULL), 0) AS avg_days_to_pay,
@@ -91,7 +209,14 @@ async function getXeroInvoices(
       AND contact_id = $2
       AND type = 'ACCREC'
       AND status IN ('AUTHORISED', 'PAID')
-  `, [source.tenant_id, source.xero_contact_id])
+  `, [
+    source.tenant_id,
+    source.xero_contact_id,
+    financialYearBounds.start,
+    financialYearBounds.endExclusive
+  ])
+
+  const investment = await getXeroInvestment(source, period)
 
   return {
     invoices: invoices.map(invoice => ({
@@ -146,7 +271,19 @@ async function getXeroInvoices(
           amount: dollarsFromCents(summary?.aging_90_cents)
         }
       }
-    }
+    },
+    paymentStatus: {
+      outstanding: dollarsFromCents(summary?.total_outstanding_cents),
+      openInvoiceCount: Number(summary?.current || 0),
+      overdueAmount: dollarsFromCents(summary?.overdue_cents),
+      overdueCount: Number(summary?.overdue || 0),
+      dueNext7Amount: dollarsFromCents(summary?.due_next_7_cents),
+      dueNext7Count: Number(summary?.due_next_7_count || 0),
+      lastPaymentDate: summary?.last_paid_date || null,
+      financialYearCashPaid: dollarsFromCents(summary?.financial_year_cash_paid_cents),
+      financialYearCreditsApplied: dollarsFromCents(summary?.financial_year_credits_cents)
+    },
+    investment
   }
 }
 
@@ -160,6 +297,7 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const view = query.view as 'current' | 'history' | undefined
   const status = query.status as string | undefined
+  const period = parseInvestmentPeriod(query.period)
   const requestedLimit = Number(query.limit)
   const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
     ? Math.min(Math.floor(requestedLimit), 100)
@@ -182,7 +320,7 @@ export default defineEventHandler(async (event) => {
     `, [clientUser.clientId])
 
     if (xeroSource?.xero_contact_id && xeroSource.tenant_id) {
-      return await getXeroInvoices(xeroSource, view, status, limit)
+      return await getXeroInvoices(xeroSource, view, status, limit, period)
     }
 
     const conditions: string[] = ['i.client_id = $1']
@@ -233,6 +371,7 @@ export default defineEventHandler(async (event) => {
       LIMIT $${idx}
     `, params)
 
+    const financialYearBounds = investmentPeriodBounds('financial-year')
     const summary = await queryOne(`
       SELECT
         COUNT(*) as total,
@@ -250,6 +389,10 @@ export default defineEventHandler(async (event) => {
         COUNT(CASE WHEN status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '60 days' THEN 1 END) as aging_90_count,
         COALESCE(SUM(total_amount), 0) as total_billed,
         COALESCE(SUM(CASE WHEN status = 'paid' THEN total_amount ELSE 0 END), 0) as total_paid,
+        COALESCE(SUM(CASE WHEN status = 'paid'
+          AND paid_date >= $2::date
+          AND paid_date < $3::date
+          THEN amount_paid ELSE 0 END), 0) as financial_year_cash_paid,
         COALESCE(SUM(CASE WHEN status = 'paid' AND paid_date >= CURRENT_DATE - INTERVAL '90 days' THEN total_amount ELSE 0 END), 0) as paid_last_90,
         COALESCE(AVG(CASE WHEN status = 'paid' THEN total_amount END), 0) as avg_paid_invoice,
         COALESCE(AVG(CASE WHEN status = 'paid' AND paid_date IS NOT NULL AND issue_date IS NOT NULL THEN paid_date - issue_date END), 0) as avg_days_to_pay,
@@ -262,7 +405,7 @@ export default defineEventHandler(async (event) => {
         COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '60 days' THEN total_amount - amount_paid ELSE 0 END), 0) as aging_90_amount
       FROM invoices
       WHERE client_id = $1
-    `, [clientUser.clientId])
+    `, [clientUser.clientId, financialYearBounds.start, financialYearBounds.endExclusive])
 
     return {
       invoices: invoices.map(i => ({
@@ -317,7 +460,19 @@ export default defineEventHandler(async (event) => {
             amount: Number(summary?.aging_90_amount || 0)
           }
         }
-      }
+      },
+      paymentStatus: {
+        outstanding: Number(summary?.total_outstanding || 0),
+        openInvoiceCount: Number(summary?.current || 0),
+        overdueAmount: Number(summary?.overdue_amount || 0),
+        overdueCount: Number(summary?.overdue || 0),
+        dueNext7Amount: Number(summary?.due_next_7_amount || 0),
+        dueNext7Count: Number(summary?.due_next_7_count || 0),
+        lastPaymentDate: summary?.last_paid_date || null,
+        financialYearCashPaid: Number(summary?.financial_year_cash_paid || 0),
+        financialYearCreditsApplied: 0
+      },
+      investment: emptyInvestment(period)
     }
   } catch (error) {
     console.error('Failed to fetch invoices:', error)

@@ -82,6 +82,8 @@ describe('portal invoice billing views', () => {
     expect(summarySql).toContain('MAX(CASE WHEN status = \'paid\' THEN paid_date END) as last_paid_date')
     expect(summarySql).toContain('MIN(CASE WHEN status IN (\'sent\', \'overdue\') THEN due_date END) as next_due_date')
     expect(summarySql).toContain('paid_last_90')
+    expect(summarySql).toContain('paid_date >= $2::date')
+    expect(summarySql).toContain('paid_date < $3::date')
     expect(summarySql).toContain('avg_days_to_pay')
     expect(summarySql).toContain('due_next_7_amount')
     expect(summarySql).toContain('AVG(CASE WHEN status = \'paid\' THEN total_amount END)')
@@ -89,6 +91,11 @@ describe('portal invoice billing views', () => {
     expect(summarySql).toContain('aging_30_amount')
     expect(summarySql).toContain('CURRENT_DATE - INTERVAL \'60 days\'')
     expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['client-1', 50, 'current'])
+    expect(mockQueryOne.mock.calls[1]?.[1]).toEqual([
+      'client-1',
+      expect.stringMatching(/^\d{4}-07-01$/),
+      expect.stringMatching(/^\d{4}-07-01$/)
+    ])
   })
 
   it('returns billing history as paid invoices with recent paid sorting', async () => {
@@ -110,6 +117,7 @@ describe('portal invoice billing views', () => {
         aging_90_count: '0',
         total_billed: '8000',
         total_paid: '5000',
+        financial_year_cash_paid: '4500',
         paid_last_90: '4500',
         avg_paid_invoice: '2500',
         avg_days_to_pay: '12.6',
@@ -147,6 +155,22 @@ describe('portal invoice billing views', () => {
         sixty: { count: 0, amount: 0 },
         ninetyPlus: { count: 0, amount: 0 }
       }
+    })
+    expect(result.paymentStatus).toEqual({
+      outstanding: 3000,
+      openInvoiceCount: 2,
+      overdueAmount: 2000,
+      overdueCount: 1,
+      dueNext7Amount: 1000,
+      dueNext7Count: 1,
+      lastPaymentDate: '2026-05-01',
+      financialYearCashPaid: 4500,
+      financialYearCreditsApplied: 0
+    })
+    expect(result.investment).toMatchObject({
+      period: 'financial-year',
+      totalInvoiced: 0,
+      allocationAvailable: false
     })
   })
 })

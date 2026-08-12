@@ -33,6 +33,7 @@ export default defineEventHandler(async (event) => {
         i.total_tax_cents AS tax_cents,
         i.total_cents,
         i.amount_paid_cents,
+        i.amount_credited_cents,
         i.amount_due_cents,
         i.currency_code AS currency,
         i.reference
@@ -80,6 +81,7 @@ export default defineEventHandler(async (event) => {
           discountAmount: 0,
           totalAmount: dollarsFromCents(xeroInvoice.total_cents),
           amountPaid: dollarsFromCents(xeroInvoice.amount_paid_cents),
+          amountCredited: dollarsFromCents(xeroInvoice.amount_credited_cents),
           amountDue: dollarsFromCents(xeroInvoice.amount_due_cents),
           currency: xeroInvoice.currency || 'AUD',
           paymentTerms: null,
@@ -178,6 +180,7 @@ export default defineEventHandler(async (event) => {
         discountAmount: Number(invoice.discount_amount || 0),
         totalAmount: Number(invoice.total_amount || 0),
         amountPaid: Number(invoice.amount_paid || 0),
+        amountCredited: 0,
         amountDue: Number(invoice.total_amount || 0) - Number(invoice.amount_paid || 0),
         currency: invoice.currency || 'AUD',
         paymentTerms: invoice.payment_terms,
