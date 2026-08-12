@@ -327,6 +327,26 @@ describe('Google Merchant vehicle HTTP client', () => {
     )
   })
 
+  it('registers the connector cloud project through the official one-time Merchant endpoint', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({}), {
+      status: 200,
+      headers: { 'x-request-id': 'registration-request' }
+    }))
+    const client = createGoogleMerchantVehicleClient({ accessToken: 'token', fetch })
+
+    await expect(client.registerDeveloper({
+      merchantAccountId: '5817965641',
+      developerEmail: 'advertising@adme.net.au'
+    })).resolves.toEqual({ requestId: 'registration-request' })
+    expect(fetch).toHaveBeenCalledWith(
+      'https://merchantapi.googleapis.com/accounts/v1/accounts/5817965641/developerRegistration:registerGcp',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ developerEmail: 'advertising@adme.net.au' })
+      })
+    )
+  })
+
   it('inserts and deletes only within the exact account and API data source', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({

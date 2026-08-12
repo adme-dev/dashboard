@@ -3,6 +3,7 @@ import {
   createMerchantCatalogReadback,
   createMerchantCatalogReconciler
 } from '../../../workers/google-pmax-provider/src/merchantCatalogReconciler'
+import { GoogleMerchantVehicleCatalogError } from '~~/server/utils/googleMerchantVehicleCatalog'
 
 const request = {
   tenantId: 'tenant-1',
@@ -27,6 +28,7 @@ const merchant = {
   store_code: 'BrightonGWM',
   auto_publish: true,
   api_source_display_name: 'XeroFlow Vehicle Inventory · Brighton GWM',
+  developer_email: 'advertising@adme.net.au',
   ads_connection_id: request.connection.id,
   ads_customer_id: request.connection.customerId
 }
@@ -98,6 +100,7 @@ describe('governed Merchant catalog reconciler', () => {
       getDataSource: vi.fn().mockResolvedValue(apiSource()),
       listDataSources: vi.fn(),
       createVehicleDataSource: vi.fn(),
+      registerDeveloper: vi.fn(),
       insertProduct: vi.fn().mockResolvedValue({
         name: 'accounts/5817965641/productInputs/one',
         product: 'accounts/5817965641/products/one',
@@ -153,6 +156,7 @@ describe('governed Merchant catalog reconciler', () => {
       }),
       listDataSources: vi.fn().mockResolvedValue([apiSource(replacement)]),
       createVehicleDataSource: vi.fn(),
+      registerDeveloper: vi.fn(),
       insertProduct: vi.fn(),
       deleteProduct: vi.fn()
     }
@@ -164,6 +168,47 @@ describe('governed Merchant catalog reconciler', () => {
     await expect(reconcile(request)).resolves.toMatchObject({ dataSource: replacement })
     expect(repository.setDataSource).toHaveBeenCalledWith(request.sourceId, request.clientId, replacement)
     expect(client.createVehicleDataSource).not.toHaveBeenCalled()
+  })
+
+  it('registers the cloud project once when Google blocks an unregistered connector', async () => {
+    const repository = {
+      loadScope: vi.fn().mockResolvedValue({
+        source: {
+          id: request.sourceId,
+          clientId: request.clientId,
+          displayName: 'Brighton GWM',
+          connectionConfig: { merchant }
+        },
+        products: [],
+        publications: []
+      }),
+      setDataSource: vi.fn(),
+      beginRun: vi.fn().mockResolvedValue('77777777-7777-4777-8777-777777777777'),
+      finishRun: vi.fn()
+    }
+    const client = {
+      getDataSource: vi.fn()
+        .mockRejectedValueOnce(new GoogleMerchantVehicleCatalogError(
+          'MERCHANT_VEHICLE_REQUEST_FAILED', 401
+        ))
+        .mockResolvedValueOnce(apiSource()),
+      listDataSources: vi.fn(),
+      createVehicleDataSource: vi.fn(),
+      registerDeveloper: vi.fn().mockResolvedValue({ requestId: 'registration-request' }),
+      insertProduct: vi.fn(),
+      deleteProduct: vi.fn()
+    }
+    const reconcile = createMerchantCatalogReconciler({
+      repository,
+      createClient: vi.fn().mockReturnValue(client) as never
+    })
+
+    await expect(reconcile(request)).resolves.toMatchObject({ publishCount: 0 })
+    expect(client.registerDeveloper).toHaveBeenCalledWith({
+      merchantAccountId: merchant.account_id,
+      developerEmail: 'advertising@adme.net.au'
+    })
+    expect(client.getDataSource).toHaveBeenCalledTimes(2)
   })
 
   it('records official Vehicle Ads processed, disapproved, and pending states', async () => {

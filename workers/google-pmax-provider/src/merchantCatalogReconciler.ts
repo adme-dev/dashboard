@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   createGoogleMerchantVehicleClient,
+  GoogleMerchantVehicleCatalogError,
   planGoogleMerchantVehicleReconciliation,
   type GoogleMerchantVehicleConfig,
   type GoogleMerchantVehicleProcessedProduct,
@@ -115,6 +116,7 @@ function merchantConfig(scope: CatalogScope, request: z.infer<typeof RequestSche
   const feedLabel = text(merchant?.feed_label)
   const contentLanguage = text(merchant?.content_language)
   const storeCode = text(merchant?.store_code)
+  const developerEmail = text(merchant?.developer_email)
   if (
     scope.source.id !== request.sourceId
     || scope.source.clientId !== request.clientId
@@ -126,9 +128,10 @@ function merchantConfig(scope: CatalogScope, request: z.infer<typeof RequestSche
     || !DATA_SOURCE.test(dataSource)
     || DATA_SOURCE.exec(dataSource)?.[1] !== accountId
     || !displayName || !feedLabel || !contentLanguage || !storeCode
+    || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(developerEmail)
     || merchant?.auto_publish !== true
   ) throw new MerchantCatalogReconcileError('MERCHANT_CATALOG_CONFIG_INVALID')
-  return { accountId, dataSource, displayName, feedLabel, contentLanguage, storeCode }
+  return { accountId, dataSource, displayName, feedLabel, contentLanguage, storeCode, developerEmail }
 }
 
 function compatibleApiSource(source: Awaited<ReturnType<MerchantClient['getDataSource']>>, input: {
@@ -209,13 +212,24 @@ export function createMerchantCatalogReconciler(dependencies: ReconcilerDependen
     const client = (dependencies.createClient || createGoogleMerchantVehicleClient)({
       accessToken: request.data.connection.accessToken
     })
-    const dataSource = await resolveApiSource(client, {
+    const sourceInput = {
       accountId: merchant.accountId,
       currentDataSource: merchant.dataSource,
       displayName: merchant.displayName,
       feedLabel: merchant.feedLabel,
       contentLanguage: merchant.contentLanguage
-    })
+    }
+    let dataSource: string
+    try {
+      dataSource = await resolveApiSource(client, sourceInput)
+    } catch (error) {
+      if (!(error instanceof GoogleMerchantVehicleCatalogError) || error.httpStatus !== 401) throw error
+      await client.registerDeveloper({
+        merchantAccountId: merchant.accountId,
+        developerEmail: merchant.developerEmail
+      })
+      dataSource = await resolveApiSource(client, sourceInput)
+    }
     if (dataSource !== merchant.dataSource) {
       await dependencies.repository.setDataSource(request.data.sourceId, request.data.clientId, dataSource)
     }

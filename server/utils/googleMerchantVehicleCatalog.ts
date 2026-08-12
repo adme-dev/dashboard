@@ -527,6 +527,28 @@ export function createGoogleMerchantVehicleClient(input: {
       return dataSourceResult(await parsedResponse(response))
     },
 
+    async registerDeveloper(args: {
+      merchantAccountId: string
+      developerEmail: string
+    }) {
+      if (
+        !ACCOUNT_ID.test(args.merchantAccountId)
+        || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(args.developerEmail)
+        || args.developerEmail.length > 254
+      ) throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_CONFIG_INVALID')
+      const response = await request(
+        `${MERCHANT_API_ROOT}/accounts/v1/accounts/${args.merchantAccountId}/developerRegistration:registerGcp`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ developerEmail: args.developerEmail })
+        }
+      )
+      if (!response.ok) {
+        throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_REQUEST_FAILED', response.status)
+      }
+      return { requestId: merchantRequestId(response) }
+    },
+
     async insertProduct(args: {
       merchantAccountId: string
       dataSource: string
