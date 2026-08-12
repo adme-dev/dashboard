@@ -5,6 +5,7 @@
 
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
+import { dollarsFromCents, portalStatusForXeroInvoice, xeroInvoiceAging } from '~~/server/utils/portalXeroInvoices'
 
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
@@ -19,6 +20,90 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
+    const xeroInvoice = await queryOne(`
+      SELECT
+        i.tenant_id,
+        i.invoice_id AS id,
+        i.invoice_number,
+        i.status,
+        i.date AS issue_date,
+        i.due_date,
+        i.fully_paid_on_date AS paid_date,
+        i.subtotal_cents,
+        i.total_tax_cents AS tax_cents,
+        i.total_cents,
+        i.amount_paid_cents,
+        i.amount_due_cents,
+        i.currency_code AS currency,
+        i.reference
+      FROM xero_invoices_cache i
+      JOIN agency_clients c
+        ON c.xero_contact_id = i.contact_id
+       AND c.id = $2
+      WHERE i.invoice_id = $1
+        AND i.type = 'ACCREC'
+        AND i.status IN ('AUTHORISED', 'PAID')
+      ORDER BY i.synced_at DESC
+      LIMIT 1
+    `, [invoiceId, clientUser.clientId])
+
+    if (xeroInvoice) {
+      const lineItems = await queryRows(`
+        SELECT
+          line_item_id AS id,
+          description,
+          quantity,
+          unit_amount_cents,
+          line_ex_gst_cents,
+          tax_amount_cents
+        FROM xero_invoice_lines_cache
+        WHERE tenant_id = $1
+          AND invoice_id = $2
+        ORDER BY line_item_id ASC
+      `, [xeroInvoice.tenant_id, invoiceId])
+
+      const aging = xeroInvoiceAging(xeroInvoice)
+      const subtotal = dollarsFromCents(xeroInvoice.subtotal_cents)
+      const taxAmount = dollarsFromCents(xeroInvoice.tax_cents)
+
+      return {
+        invoice: {
+          id: xeroInvoice.id,
+          invoiceNumber: xeroInvoice.invoice_number,
+          status: portalStatusForXeroInvoice(xeroInvoice),
+          issueDate: xeroInvoice.issue_date,
+          dueDate: xeroInvoice.due_date,
+          paidDate: xeroInvoice.paid_date,
+          subtotal,
+          taxRate: subtotal > 0 ? (taxAmount / subtotal) * 100 : 0,
+          taxAmount,
+          discountAmount: 0,
+          totalAmount: dollarsFromCents(xeroInvoice.total_cents),
+          amountPaid: dollarsFromCents(xeroInvoice.amount_paid_cents),
+          amountDue: dollarsFromCents(xeroInvoice.amount_due_cents),
+          currency: xeroInvoice.currency || 'AUD',
+          paymentTerms: null,
+          notes: xeroInvoice.reference,
+          terms: null,
+          billingName: clientUser.clientName,
+          billingEmail: null,
+          projectId: null,
+          projectName: null,
+          createdAt: xeroInvoice.issue_date,
+          ...aging
+        },
+        lineItems: lineItems.map(lineItem => ({
+          id: lineItem.id,
+          description: lineItem.description,
+          quantity: Number(lineItem.quantity || 0),
+          unitPrice: dollarsFromCents(lineItem.unit_amount_cents),
+          amount: dollarsFromCents(lineItem.line_ex_gst_cents),
+          itemType: 'service',
+          taxable: Number(lineItem.tax_amount_cents || 0) > 0
+        }))
+      }
+    }
+
     const invoice = await queryOne(`
       SELECT
         i.id,
@@ -117,8 +202,8 @@ export default defineEventHandler(async (event) => {
         taxable: li.taxable
       }))
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to fetch invoice:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to fetch invoice' })
   }

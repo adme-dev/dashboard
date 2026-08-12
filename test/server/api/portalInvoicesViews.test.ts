@@ -75,7 +75,7 @@ describe('portal invoice billing views', () => {
     await invoicesHandler({ query: { view: 'current' } })
 
     const sql = String(mockQueryRows.mock.calls[0]?.[0])
-    const summarySql = String(mockQueryOne.mock.calls[0]?.[0])
+    const summarySql = String(mockQueryOne.mock.calls[1]?.[0])
     expect(sql).toContain('i.status IN (\'sent\', \'overdue\')')
     expect(summarySql).toContain('COUNT(CASE WHEN status IN (\'sent\', \'overdue\') THEN 1 END) as current')
     expect(summarySql).toContain('due_next_7_count')
@@ -92,33 +92,35 @@ describe('portal invoice billing views', () => {
   })
 
   it('returns billing history as paid invoices with recent paid sorting', async () => {
-    mockQueryOne.mockResolvedValueOnce({
-      total: '4',
-      paid: '2',
-      sent: '1',
-      overdue: '1',
-      current: '2',
-      history: '2',
-      due_next_7_count: '1',
-      last_paid_date: '2026-05-01',
-      next_due_date: '2026-06-01',
-      aging_current_count: '1',
-      aging_30_count: '1',
-      aging_60_count: '0',
-      aging_90_count: '0',
-      total_billed: '8000',
-      total_paid: '5000',
-      paid_last_90: '4500',
-      avg_paid_invoice: '2500',
-      avg_days_to_pay: '12.6',
-      total_outstanding: '3000',
-      due_next_7_amount: '1000',
-      overdue_amount: '2000',
-      aging_current_amount: '1000',
-      aging_30_amount: '2000',
-      aging_60_amount: '0',
-      aging_90_amount: '0'
-    })
+    mockQueryOne
+      .mockResolvedValueOnce({ xero_contact_id: null, tenant_id: null })
+      .mockResolvedValueOnce({
+        total: '4',
+        paid: '2',
+        sent: '1',
+        overdue: '1',
+        current: '2',
+        history: '2',
+        due_next_7_count: '1',
+        last_paid_date: '2026-05-01',
+        next_due_date: '2026-06-01',
+        aging_current_count: '1',
+        aging_30_count: '1',
+        aging_60_count: '0',
+        aging_90_count: '0',
+        total_billed: '8000',
+        total_paid: '5000',
+        paid_last_90: '4500',
+        avg_paid_invoice: '2500',
+        avg_days_to_pay: '12.6',
+        total_outstanding: '3000',
+        due_next_7_amount: '1000',
+        overdue_amount: '2000',
+        aging_current_amount: '1000',
+        aging_30_amount: '2000',
+        aging_60_amount: '0',
+        aging_90_amount: '0'
+      })
 
     const result = await invoicesHandler({ query: { view: 'history', limit: '25' } })
 
