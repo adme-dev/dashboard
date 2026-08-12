@@ -229,4 +229,30 @@ describe('portal Xero invoice linkage', () => {
       'south-morang-client'
     ])
   })
+
+  it('distinguishes Xero credits from cash paid in invoice detail', async () => {
+    mockQueryOne.mockResolvedValueOnce({
+      id: 'xero-invoice-20399',
+      invoice_number: '20399',
+      status: 'PAID',
+      issue_date: '2025-11-12',
+      due_date: '2025-11-14',
+      paid_date: '2025-11-12',
+      subtotal_cents: '770000',
+      tax_cents: '77000',
+      total_cents: '847000',
+      amount_paid_cents: '0',
+      amount_credited_cents: '847000',
+      amount_due_cents: '0',
+      currency: 'AUD',
+      reference: 'Credit settlement'
+    })
+    mockQueryRows.mockResolvedValueOnce([])
+
+    const result = await getInvoice({ params: { id: 'xero-invoice-20399' } })
+
+    expect(result.invoice.amountPaid).toBe(0)
+    expect(result.invoice.amountCredited).toBe(8470)
+    expect(result.invoice.amountDue).toBe(0)
+  })
 })
