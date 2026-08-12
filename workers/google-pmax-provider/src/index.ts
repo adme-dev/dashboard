@@ -20,6 +20,11 @@ import {
 } from '../../../server/utils/googlePmaxRemediationTaskSync'
 import { buildGooglePmaxRemediationTaskDrafts } from '../../../server/utils/googlePmaxRemediationTasks'
 import { evaluateGooglePmaxInternalFeedEvidence } from '../../../server/utils/googlePmaxInternalFeedEvidence'
+import {
+  createProductionMerchantCatalogReadback,
+  createProductionMerchantCatalogReconciler,
+  MerchantCatalogReconcileError
+} from './merchantCatalogReconciler'
 import type {
   GooglePmaxInventoryLaunchConfig,
   GooglePmaxProviderConnection,
@@ -306,7 +311,7 @@ export function createGooglePmaxProviderWorker() {
 
       if (path === '/v1/decision') {
         const body = object(await request.json().catch(() => null))
-        if (!body || !['normalize', 'parse_config', 'preflight', 'onboarding', 'provider_evidence', 'provider_sections', 'prepare_provider', 'decision_evidence', 'platform_evidence', 'internal_feed_evidence', 'persist_evidence', 'sync_tasks', 'attestation_prepare', 'attestation_parse', 'advise'].includes(String(body.action))) {
+        if (!body || !['normalize', 'parse_config', 'preflight', 'onboarding', 'provider_evidence', 'provider_sections', 'prepare_provider', 'decision_evidence', 'platform_evidence', 'internal_feed_evidence', 'persist_evidence', 'sync_tasks', 'attestation_prepare', 'attestation_parse', 'advise', 'merchant_catalog_reconcile', 'merchant_catalog_readback'].includes(String(body.action))) {
           return json({ ok: false }, 400)
         }
         try {
@@ -346,6 +351,36 @@ export function createGooglePmaxProviderWorker() {
             const input = object(body.input)
             if (!input || !object(input.config) || !Array.isArray(input.feeds)) return json({ ok: false }, 400)
             return json({ ok: true, result: evaluateGooglePmaxInternalFeedEvidence(input as never) })
+          }
+          if (body.action === 'merchant_catalog_reconcile') {
+            const connectionString = env.HYPERDRIVE?.connectionString
+            if (!connectionString || !object(body.input)) return json({ ok: false }, 400)
+            try {
+              const result = await createProductionMerchantCatalogReconciler(connectionString)(body.input)
+              return json({ ok: true, result })
+            } catch (error) {
+              return json({
+                ok: false,
+                errorCode: error instanceof MerchantCatalogReconcileError
+                  ? error.code
+                  : 'MERCHANT_CATALOG_RECONCILE_FAILED'
+              }, 422)
+            }
+          }
+          if (body.action === 'merchant_catalog_readback') {
+            const connectionString = env.HYPERDRIVE?.connectionString
+            if (!connectionString || !object(body.input)) return json({ ok: false }, 400)
+            try {
+              const result = await createProductionMerchantCatalogReadback(connectionString)(body.input)
+              return json({ ok: true, result })
+            } catch (error) {
+              return json({
+                ok: false,
+                errorCode: error instanceof MerchantCatalogReconcileError
+                  ? error.code
+                  : 'MERCHANT_CATALOG_READBACK_FAILED'
+              }, 422)
+            }
           }
           if (body.action === 'persist_evidence') {
             const input = object(body.input)

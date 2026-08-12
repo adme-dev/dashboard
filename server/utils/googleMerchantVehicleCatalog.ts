@@ -57,6 +57,54 @@ export interface GoogleMerchantVehicleProductInput {
   }>
 }
 
+export interface GoogleMerchantVehiclePublication {
+  productId: string
+  offerId: string
+  state: string
+  merchantDataSource?: string
+}
+
+export interface GoogleMerchantVehicleProcessedProduct {
+  name: string
+  offerId: string
+  contentLanguage?: string
+  feedLabel?: string
+  dataSource: string
+  productStatus?: {
+    destinationStatuses: Array<{
+      reportingContext: string
+      approvedCountries: string[]
+      pendingCountries: string[]
+      disapprovedCountries: string[]
+    }>
+    itemLevelIssues: Array<{
+      code: string
+      severity?: string
+      resolution?: string
+      attribute?: string
+      reportingContext?: string
+      description?: string
+      detail?: string
+      documentation?: string
+      applicableCountries: string[]
+    }>
+  }
+}
+
+export interface GoogleMerchantVehicleReconciliationPlan {
+  publish: Array<{
+    productId: string
+    offerId: string
+    productInput: GoogleMerchantVehicleProductInput
+  }>
+  delete: Array<{ productId: string, offerId: string }>
+  excluded: Array<{
+    productId: string
+    offerId: string
+    reason: 'DUPLICATE_VIN' | 'DUPLICATE_OFFER_ID' | 'INELIGIBLE' | 'INCOMPLETE'
+  }>
+}
+
 export class GoogleMerchantVehicleCatalogError extends Error {
   constructor(public readonly code:
     | 'MERCHANT_VEHICLE_CONFIG_INVALID'
@@ -72,6 +120,7 @@ export class GoogleMerchantVehicleCatalogError extends Error {
 const DataSourceSchema = z.object({
   name: z.string().regex(DATA_SOURCE_NAME),
   displayName: z.string().optional(),
+  input: z.enum(['API', 'FILE', 'UI', 'AUTOFEED', 'INPUT_UNSPECIFIED']).optional(),
   primaryProductDataSource: z.object({
     legacyLocal: z.boolean().optional(),
     feedLabel: z.string().optional(),
@@ -79,16 +128,53 @@ const DataSourceSchema = z.object({
     countries: z.array(z.string()).optional(),
     destinations: z.array(z.object({
       destination: z.string(),
-      status: z.string()
+      state: z.string()
     }).passthrough()).optional()
   }).passthrough().optional(),
   fileInput: z.record(z.string(), z.unknown()).optional()
+}).passthrough()
+
+const DataSourceListSchema = z.object({
+  dataSources: z.array(DataSourceSchema).optional(),
+  nextPageToken: z.string().min(1).optional()
 }).passthrough()
 
 const ProductInputResponseSchema = z.object({
   name: z.string().min(1),
   product: z.string().min(1),
   offerId: z.string().min(1)
+}).passthrough()
+
+const ProcessedProductSchema = z.object({
+  name: z.string().min(1),
+  offerId: z.string().min(1),
+  contentLanguage: z.string().optional(),
+  feedLabel: z.string().optional(),
+  dataSource: z.string().regex(DATA_SOURCE_NAME),
+  productStatus: z.object({
+    destinationStatuses: z.array(z.object({
+      reportingContext: z.string(),
+      approvedCountries: z.array(z.string()).optional().default([]),
+      pendingCountries: z.array(z.string()).optional().default([]),
+      disapprovedCountries: z.array(z.string()).optional().default([])
+    }).passthrough()).optional().default([]),
+    itemLevelIssues: z.array(z.object({
+      code: z.string(),
+      severity: z.string().optional(),
+      resolution: z.string().optional(),
+      attribute: z.string().optional(),
+      reportingContext: z.string().optional(),
+      description: z.string().optional(),
+      detail: z.string().optional(),
+      documentation: z.string().optional(),
+      applicableCountries: z.array(z.string()).optional().default([])
+    }).passthrough()).optional().default([])
+  }).passthrough().optional()
+}).passthrough()
+
+const ProcessedProductListSchema = z.object({
+  products: z.array(ProcessedProductSchema).optional(),
+  nextPageToken: z.string().min(1).optional()
 }).passthrough()
 
 function text(value: unknown, max = 5000): string {
@@ -185,7 +271,8 @@ export function buildGoogleMerchantVehicleProductInput(
   const imageLink = text(product.primaryImageUrl, 2000)
   const productName = text(product.name, 150)
   if (
-    !listingCondition || !amount || !offerId || !brand || !model || !color || !vin
+    !listingCondition || !amount || !offerId || !brand || !model || !color
+    || !/^[A-HJ-NPR-Z0-9]{17}$/i.test(vin)
     || !vehicleYear || mileageValue === null || currencyCode !== 'AUD'
     || !productName || !productUrl.startsWith('https://') || !imageLink.startsWith('https://')
   ) throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_PRODUCT_INCOMPLETE')
@@ -231,6 +318,80 @@ export function buildGoogleMerchantVehicleProductInput(
   }
 }
 
+export function planGoogleMerchantVehicleReconciliation(input: {
+  products: GoogleMerchantVehicleProduct[]
+  publications: GoogleMerchantVehiclePublication[]
+  config: GoogleMerchantVehicleConfig
+}): GoogleMerchantVehicleReconciliationPlan {
+  const candidates: Array<{
+    product: GoogleMerchantVehicleProduct
+    productInput: GoogleMerchantVehicleProductInput
+    vin: string
+  }> = []
+  const excluded: GoogleMerchantVehicleReconciliationPlan['excluded'] = []
+  for (const product of input.products) {
+    try {
+      const productInput = buildGoogleMerchantVehicleProductInput(product, input.config)
+      candidates.push({
+        product,
+        productInput,
+        vin: productInput.productAttributes.vin.toUpperCase()
+      })
+    } catch (error) {
+      const code = error instanceof GoogleMerchantVehicleCatalogError ? error.code : ''
+      excluded.push({
+        productId: product.id,
+        offerId: text(product.attributes?.merchant_offer_id, 150),
+        reason: code === 'MERCHANT_VEHICLE_PRODUCT_INELIGIBLE' ? 'INELIGIBLE' : 'INCOMPLETE'
+      })
+    }
+  }
+
+  const vinCounts = new Map<string, number>()
+  const offerIdCounts = new Map<string, number>()
+  for (const candidate of candidates) {
+    vinCounts.set(candidate.vin, (vinCounts.get(candidate.vin) || 0) + 1)
+    offerIdCounts.set(
+      candidate.productInput.offerId.toUpperCase(),
+      (offerIdCounts.get(candidate.productInput.offerId.toUpperCase()) || 0) + 1
+    )
+  }
+  const publish: GoogleMerchantVehicleReconciliationPlan['publish'] = []
+  for (const candidate of candidates) {
+    if (vinCounts.get(candidate.vin) !== 1) {
+      excluded.push({
+        productId: candidate.product.id,
+        offerId: candidate.productInput.offerId,
+        reason: 'DUPLICATE_VIN'
+      })
+      continue
+    }
+    if (offerIdCounts.get(candidate.productInput.offerId.toUpperCase()) !== 1) {
+      excluded.push({
+        productId: candidate.product.id,
+        offerId: candidate.productInput.offerId,
+        reason: 'DUPLICATE_OFFER_ID'
+      })
+      continue
+    }
+    publish.push({
+      productId: candidate.product.id,
+      offerId: candidate.productInput.offerId,
+      productInput: candidate.productInput
+    })
+  }
+
+  const publishIds = new Set(publish.map(item => item.productId))
+  const deleteItems = input.publications
+    .filter(item => item.state !== 'DELETED' && !publishIds.has(item.productId))
+    .map(item => ({ productId: item.productId, offerId: item.offerId }))
+  return {
+    publish: publish.sort((a, b) => a.offerId.localeCompare(b.offerId)),
+    delete: deleteItems.sort((a, b) => a.offerId.localeCompare(b.offerId)),
+    excluded: excluded.sort((a, b) => a.productId.localeCompare(b.productId))
+  }
+}
+
 export function googleMerchantProductInputResourceId(input: {
   contentLanguage: string
   feedLabel: string
@@ -254,7 +415,11 @@ async function parsedResponse(response: Response): Promise<unknown> {
 function dataSourceResult(value: unknown) {
   const parsed = DataSourceSchema.safeParse(value)
   if (!parsed.success) throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_RESPONSE_INVALID')
-  const inputType = parsed.data.fileInput ? 'FILE' as const : 'API' as const
+  const inputType = parsed.data.input === 'FILE' || parsed.data.fileInput
+    ? 'FILE' as const
+    : parsed.data.input === 'UI' || parsed.data.input === 'AUTOFEED'
+      ? parsed.data.input
+      : 'API' as const
   return {
     ...parsed.data,
     inputType,
@@ -278,6 +443,52 @@ export function createGoogleMerchantVehicleClient(input: {
     }
   })
   return {
+    async listProducts(merchantAccountId: string): Promise<GoogleMerchantVehicleProcessedProduct[]> {
+      if (!ACCOUNT_ID.test(merchantAccountId)) {
+        throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_CONFIG_INVALID')
+      }
+      const products: GoogleMerchantVehicleProcessedProduct[] = []
+      let pageToken = ''
+      for (let page = 0; page < 100; page += 1) {
+        const params = new URLSearchParams({ pageSize: '1000' })
+        if (pageToken) params.set('pageToken', pageToken)
+        const response = await request(
+          `${MERCHANT_API_ROOT}/products/v1/accounts/${merchantAccountId}/products?${params}`
+        )
+        const parsed = ProcessedProductListSchema.safeParse(await parsedResponse(response))
+        if (!parsed.success) {
+          throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_RESPONSE_INVALID')
+        }
+        products.push(...(parsed.data.products || []) as GoogleMerchantVehicleProcessedProduct[])
+        pageToken = parsed.data.nextPageToken || ''
+        if (!pageToken) return products
+      }
+      throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_RESPONSE_INVALID')
+    },
+
+    async listDataSources(merchantAccountId: string) {
+      if (!ACCOUNT_ID.test(merchantAccountId)) {
+        throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_CONFIG_INVALID')
+      }
+      const sources: ReturnType<typeof dataSourceResult>[] = []
+      let pageToken = ''
+      for (let page = 0; page < 100; page += 1) {
+        const params = new URLSearchParams({ pageSize: '1000' })
+        if (pageToken) params.set('pageToken', pageToken)
+        const response = await request(
+          `${MERCHANT_API_ROOT}/datasources/v1/accounts/${merchantAccountId}/dataSources?${params}`
+        )
+        const parsed = DataSourceListSchema.safeParse(await parsedResponse(response))
+        if (!parsed.success) {
+          throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_RESPONSE_INVALID')
+        }
+        sources.push(...(parsed.data.dataSources || []).map(dataSourceResult))
+        pageToken = parsed.data.nextPageToken || ''
+        if (!pageToken) return sources
+      }
+      throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_RESPONSE_INVALID')
+    },
+
     async getDataSource(name: string) {
       if (!DATA_SOURCE_NAME.test(name)) throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_CONFIG_INVALID')
       const response = await request(`${MERCHANT_API_ROOT}/datasources/v1/${name}`)
@@ -303,7 +514,7 @@ export function createGoogleMerchantVehicleClient(input: {
           feedLabel: source.feedLabel,
           contentLanguage: source.contentLanguage,
           countries: ['AU'],
-          destinations: [{ destination: 'VEHICLE_ADS', status: 'ENABLED' }]
+          destinations: [{ destination: 'VEHICLE_ADS', state: 'ENABLED' }]
         }
       }
       const response = await request(

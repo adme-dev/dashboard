@@ -49,4 +49,31 @@ describe('platform job lifecycle metadata', () => {
     })
     expect(isReplayableJobType('catalog.sync')).toBe(true)
   })
+
+  it('keeps Merchant reconciliation replay scoped to tenant, client, and source', () => {
+    expect(safeReplayContext(job('merchant.catalog.reconcile', {
+      tenantId: 'tenant-1',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      sourceId: '22222222-2222-4222-8222-222222222222',
+      accessToken: 'must-not-persist'
+    }))).toEqual({
+      tenantId: 'tenant-1',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      sourceId: '22222222-2222-4222-8222-222222222222'
+    })
+    expect(isReplayableJobType('merchant.catalog.reconcile')).toBe(true)
+    expect(safeReplayContext(job('merchant.catalog.readback', {
+      tenantId: 'tenant-1',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      sourceId: '22222222-2222-4222-8222-222222222222',
+      readbackAttempt: 4,
+      accessToken: 'must-not-persist'
+    }))).toEqual({
+      tenantId: 'tenant-1',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      sourceId: '22222222-2222-4222-8222-222222222222',
+      readbackAttempt: 4
+    })
+    expect(isReplayableJobType('merchant.catalog.readback')).toBe(true)
+  })
 })

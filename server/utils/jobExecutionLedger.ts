@@ -6,7 +6,9 @@ const REPLAYABLE_TYPES = new Set([
   'persona.audience.sync',
   'spend.sync.meta.account',
   'spend.sync.google.account',
-  'catalog.sync'
+  'catalog.sync',
+  'merchant.catalog.reconcile',
+  'merchant.catalog.readback'
 ])
 
 export interface JobExecutionMetadata {
@@ -65,10 +67,22 @@ export function safeReplayContext(job: QueueJob): Record<string, string | number
         ...(syncJobId ? { jobId: syncJobId } : {})
       }
     }
-    case 'catalog.sync': {
+    case 'catalog.sync':
+    case 'merchant.catalog.reconcile':
+    case 'merchant.catalog.readback': {
       const clientId = optionalUuid(payload.clientId)
       const sourceId = optionalUuid(payload.sourceId)
-      return clientId && sourceId ? { clientId, sourceId } : {}
+      const tenantId = optionalTenant(payload.tenantId)
+      return clientId && sourceId
+        ? {
+            clientId,
+            sourceId,
+            ...(tenantId ? { tenantId } : {}),
+            ...(job.type === 'merchant.catalog.readback'
+              ? { readbackAttempt: positiveInteger(payload.readbackAttempt, 1, 6) }
+              : {})
+          }
+        : {}
     }
     default:
       return {}

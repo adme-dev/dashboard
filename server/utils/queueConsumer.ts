@@ -110,6 +110,14 @@ export async function processJob(job: QueueConsumerJob, event?: H3Event): Promis
         await processCatalogSync(job.payload, event)
         break
 
+      case 'merchant.catalog.reconcile':
+        await processMerchantCatalogReconcile(job.payload, event)
+        break
+
+      case 'merchant.catalog.readback':
+        await processMerchantCatalogReadback(job.payload, event)
+        break
+
       case 'god-mode.audit-terminal':
         await processGodModeAuditTerminal(job.payload)
         break
@@ -276,6 +284,88 @@ async function processCatalogSync(payload: Record<string, unknown>, event?: H3Ev
   }
   const { synchronizeCatalogSource } = await import('~~/server/utils/crm/catalogSourceService')
   await synchronizeCatalogSource(event, clientId, sourceId, actorEmail)
+  const { queryOneFresh } = await import('~~/server/utils/db')
+  const source = await queryOneFresh<{ connection_config: Record<string, unknown> }>(
+    `SELECT connection_config
+       FROM crm_catalog_sources
+      WHERE id = $1::uuid AND client_id = $2::uuid AND status = 'active'
+      LIMIT 1`,
+    [sourceId, clientId]
+  )
+  const merchant = source?.connection_config?.merchant
+  const merchantConfig = merchant && typeof merchant === 'object' && !Array.isArray(merchant)
+    ? merchant as Record<string, unknown>
+    : null
+  const tenantId = typeof merchantConfig?.tenant_id === 'string' ? merchantConfig.tenant_id : ''
+  if (merchantConfig?.auto_publish === true && tenantId) {
+    const { enqueue } = await import('~~/server/utils/queue')
+    const { runGoogleMerchantCatalogReconciliation } = await import('~~/server/utils/googleMerchantCatalogRemote')
+    await enqueue(event, 'merchant.catalog.reconcile', { tenantId, clientId, sourceId }, async () => {
+      await runGoogleMerchantCatalogReconciliation(event, { tenantId, clientId, sourceId })
+    })
+  }
+}
+
+async function processMerchantCatalogReconcile(payload: Record<string, unknown>, event?: H3Event): Promise<void> {
+  if (!event) throw new Error('Merchant catalog reconciliation requires a request-owned Cloudflare context')
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  const clientId = typeof payload.clientId === 'string' && uuid.test(payload.clientId)
+    ? payload.clientId
+    : null
+  const sourceId = typeof payload.sourceId === 'string' && uuid.test(payload.sourceId)
+    ? payload.sourceId
+    : null
+  const tenantId = typeof payload.tenantId === 'string'
+    && payload.tenantId.trim().length > 0
+    && payload.tenantId.length <= 255
+    ? payload.tenantId.trim()
+    : null
+  if (!clientId || !sourceId || !tenantId) throw new Error('Invalid Merchant catalog reconciliation payload')
+  const { runGoogleMerchantCatalogReconciliation } = await import('~~/server/utils/googleMerchantCatalogRemote')
+  await runGoogleMerchantCatalogReconciliation(event, { tenantId, clientId, sourceId })
+  const { enqueue } = await import('~~/server/utils/queue')
+  const { runGoogleMerchantCatalogReadback } = await import('~~/server/utils/googleMerchantCatalogRemote')
+  await enqueue(
+    event,
+    'merchant.catalog.readback',
+    { tenantId, clientId, sourceId, readbackAttempt: 1 },
+    async () => { await runGoogleMerchantCatalogReadback(event, { tenantId, clientId, sourceId }) },
+    { delaySeconds: 180 }
+  )
+}
+
+async function processMerchantCatalogReadback(payload: Record<string, unknown>, event?: H3Event): Promise<void> {
+  if (!event) throw new Error('Merchant catalog readback requires a request-owned Cloudflare context')
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  const clientId = typeof payload.clientId === 'string' && uuid.test(payload.clientId)
+    ? payload.clientId
+    : null
+  const sourceId = typeof payload.sourceId === 'string' && uuid.test(payload.sourceId)
+    ? payload.sourceId
+    : null
+  const tenantId = typeof payload.tenantId === 'string'
+    && payload.tenantId.trim().length > 0
+    && payload.tenantId.length <= 255
+    ? payload.tenantId.trim()
+    : null
+  const readbackAttempt = Number(payload.readbackAttempt)
+  if (
+    !clientId || !sourceId || !tenantId
+    || !Number.isInteger(readbackAttempt) || readbackAttempt < 1 || readbackAttempt > 6
+  ) throw new Error('Invalid Merchant catalog readback payload')
+  const { runGoogleMerchantCatalogReadback } = await import('~~/server/utils/googleMerchantCatalogRemote')
+  const result = await runGoogleMerchantCatalogReadback(event, { tenantId, clientId, sourceId })
+  const pendingCount = Number(result.pendingCount)
+  if (Number.isInteger(pendingCount) && pendingCount > 0 && readbackAttempt < 6) {
+    const { enqueue } = await import('~~/server/utils/queue')
+    await enqueue(
+      event,
+      'merchant.catalog.readback',
+      { tenantId, clientId, sourceId, readbackAttempt: readbackAttempt + 1 },
+      async () => { await runGoogleMerchantCatalogReadback(event, { tenantId, clientId, sourceId }) },
+      { delaySeconds: 180 }
+    )
+  }
 }
 
 async function processGodModeAuditTerminal(payload: GodModeAuditEventInput): Promise<void> {

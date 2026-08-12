@@ -28,6 +28,8 @@ export type JobType =
   | 'embed.financial.cash'
   | 'site-intelligence.enrich'
   | 'catalog.sync'
+  | 'merchant.catalog.reconcile'
+  | 'merchant.catalog.readback'
 
 export interface QueueJob {
   jobId?: string
@@ -74,7 +76,7 @@ async function runInline(job: QueueJob, fallback: () => Promise<void>) {
 
 /** Minimal Queue interface matching Cloudflare Queue producer */
 interface QueueProducer {
-  send(message: unknown, options?: { contentType?: string }): Promise<void>
+  send(message: unknown, options?: { contentType?: string, delaySeconds?: number }): Promise<void>
 }
 
 /**
@@ -115,7 +117,8 @@ export async function enqueue(
   event: H3Event,
   type: JobType,
   payload: Record<string, unknown>,
-  fallback?: () => Promise<void>
+  fallback?: () => Promise<void>,
+  options?: { delaySeconds?: number }
 ): Promise<boolean> {
   const queue = getQueue(event)
   const job: QueueJob = {
@@ -128,7 +131,10 @@ export async function enqueue(
   if (queue) {
     try {
       await recordQueued(job, 'queue')
-      await queue.send(job, { contentType: 'json' })
+      await queue.send(job, {
+        contentType: 'json',
+        ...(options?.delaySeconds ? { delaySeconds: options.delaySeconds } : {})
+      })
       return true
     } catch (err) {
       console.error(`[Queue] Failed to enqueue ${type}:`, err)

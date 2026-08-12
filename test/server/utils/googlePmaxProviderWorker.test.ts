@@ -71,7 +71,9 @@ describe('Google PMax provider Worker boundary', () => {
     for (const body of [
       { action: 'platform_evidence', input: { identity: {}, collectedAt: new Date().toISOString() } },
       { action: 'persist_evidence', input: { evidence: {} } },
-      { action: 'sync_tasks', input: { preflightChecks: [], onboardingTasks: [] } }
+      { action: 'sync_tasks', input: { preflightChecks: [], onboardingTasks: [] } },
+      { action: 'merchant_catalog_reconcile', input: { clientId: 'client-1' } },
+      { action: 'merchant_catalog_readback', input: { clientId: 'client-1' } }
     ]) {
       const response = await createGooglePmaxProviderWorker().fetch(
         request(body, 'google-pmax-provider-v1', '/v1/decision')

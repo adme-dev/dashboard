@@ -3,7 +3,8 @@ import {
   buildGoogleMerchantVehicleProductInput,
   createGoogleMerchantVehicleClient,
   googleMerchantProductInputResourceId,
-  GoogleMerchantVehicleCatalogError
+  GoogleMerchantVehicleCatalogError,
+  planGoogleMerchantVehicleReconciliation
 } from '~~/server/utils/googleMerchantVehicleCatalog'
 
 const product = {
@@ -104,6 +105,13 @@ describe('Google Merchant vehicle ProductInput contract', () => {
     }, config)).toThrow(GoogleMerchantVehicleCatalogError)
   })
 
+  it('refuses a malformed VIN before any provider write', () => {
+    expect(() => buildGoogleMerchantVehicleProductInput({
+      ...product,
+      attributes: { ...product.attributes, vin: 'NOT-A-VIN' }
+    }, config)).toThrow(GoogleMerchantVehicleCatalogError)
+  })
+
   it('uses the encoded local product-input identifier required for safe delete calls', () => {
     expect(googleMerchantProductInputResourceId({
       contentLanguage: 'en', feedLabel: 'AU', offerId: 'XF/B4873M'
@@ -111,7 +119,154 @@ describe('Google Merchant vehicle ProductInput contract', () => {
   })
 })
 
+describe('Google Merchant vehicle reconciliation plan', () => {
+  it('publishes only unambiguous active VINs and deletes previously submitted vehicles no longer eligible', () => {
+    const second = {
+      ...product,
+      id: '22222222-2222-4222-8222-222222222222',
+      sourceProductId: 'source-2',
+      stockId: 'B4874M',
+      attributes: {
+        ...product.attributes,
+        merchant_offer_id: 'XF-B4874M',
+        vin: 'LGWFF6A50NH123457'
+      }
+    }
+    const duplicate = {
+      ...product,
+      id: '33333333-3333-4333-8333-333333333333',
+      sourceProductId: 'source-3',
+      stockId: 'B4875M',
+      attributes: {
+        ...product.attributes,
+        merchant_offer_id: 'XF-B4875M'
+      }
+    }
+
+    const plan = planGoogleMerchantVehicleReconciliation({
+      products: [product, second, duplicate],
+      publications: [{
+        productId: '44444444-4444-4444-8444-444444444444',
+        offerId: 'XF-SOLD',
+        state: 'SUBMITTED'
+      }],
+      config
+    })
+
+    expect(plan.publish).toEqual([
+      expect.objectContaining({ productId: second.id, offerId: 'XF-B4874M' })
+    ])
+    expect(plan.delete).toEqual([{
+      productId: '44444444-4444-4444-8444-444444444444',
+      offerId: 'XF-SOLD'
+    }])
+    expect(plan.excluded).toEqual(expect.arrayContaining([
+      { productId: product.id, offerId: 'XF-B4873M', reason: 'DUPLICATE_VIN' },
+      { productId: duplicate.id, offerId: 'XF-B4875M', reason: 'DUPLICATE_VIN' }
+    ]))
+  })
+
+  it('plans deletion for a previously submitted duplicate VIN so ambiguity cannot stay advertised', () => {
+    const duplicate = {
+      ...product,
+      id: '33333333-3333-4333-8333-333333333333',
+      attributes: { ...product.attributes, merchant_offer_id: 'XF-B4875M' }
+    }
+    const plan = planGoogleMerchantVehicleReconciliation({
+      products: [product, duplicate],
+      publications: [{ productId: product.id, offerId: 'XF-B4873M', state: 'SUBMITTED' }],
+      config
+    })
+
+    expect(plan.publish).toHaveLength(0)
+    expect(plan.delete).toEqual([{ productId: product.id, offerId: 'XF-B4873M' }])
+  })
+
+  it('excludes every row in a duplicate offer-ID group even when its VINs differ', () => {
+    const duplicateOffer = {
+      ...product,
+      id: '33333333-3333-4333-8333-333333333333',
+      attributes: { ...product.attributes, vin: 'LGWFF6A50NH123457' }
+    }
+    const plan = planGoogleMerchantVehicleReconciliation({
+      products: [product, duplicateOffer],
+      publications: [],
+      config
+    })
+
+    expect(plan.publish).toHaveLength(0)
+    expect(plan.excluded).toEqual(expect.arrayContaining([
+      { productId: product.id, offerId: 'XF-B4873M', reason: 'DUPLICATE_OFFER_ID' },
+      { productId: duplicateOffer.id, offerId: 'XF-B4873M', reason: 'DUPLICATE_OFFER_ID' }
+    ]))
+  })
+})
+
 describe('Google Merchant vehicle HTTP client', () => {
+  it('lists processed products and preserves Vehicle Ads status evidence across pages', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        products: [{
+          name: 'accounts/5817965641/products/local~en~AU~XF-ONE',
+          offerId: 'XF-ONE',
+          contentLanguage: 'en',
+          feedLabel: 'AU',
+          dataSource: 'accounts/5817965641/dataSources/200',
+          productStatus: {
+            destinationStatuses: [{
+              reportingContext: 'VEHICLE_INVENTORY_ADS',
+              approvedCountries: ['AU']
+            }],
+            itemLevelIssues: []
+          }
+        }],
+        nextPageToken: 'next-page'
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ products: [] }), { status: 200 }))
+    const client = createGoogleMerchantVehicleClient({ accessToken: 'token', fetch })
+
+    await expect(client.listProducts('5817965641')).resolves.toEqual([
+      expect.objectContaining({
+        offerId: 'XF-ONE',
+        dataSource: 'accounts/5817965641/dataSources/200',
+        productStatus: expect.objectContaining({
+          destinationStatuses: [expect.objectContaining({
+            reportingContext: 'VEHICLE_INVENTORY_ADS',
+            approvedCountries: ['AU']
+          })]
+        })
+      })
+    ])
+    expect(fetch.mock.calls[1]?.[0]).toContain('pageToken=next-page')
+  })
+
+  it('lists API data sources across pages so a retry can reuse the exact governed source', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        dataSources: [{
+          name: 'accounts/5817965641/dataSources/199',
+          displayName: 'Old file',
+          primaryProductDataSource: { legacyLocal: true },
+          fileInput: { fileName: 'vehicles.xml' }
+        }],
+        nextPageToken: 'page-2'
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        dataSources: [{
+          name: 'accounts/5817965641/dataSources/200',
+          displayName: 'XeroFlow Vehicle Inventory',
+          primaryProductDataSource: { legacyLocal: true }
+        }]
+      }), { status: 200 }))
+    const client = createGoogleMerchantVehicleClient({ accessToken: 'token', fetch })
+
+    await expect(client.listDataSources('5817965641')).resolves.toEqual([
+      expect.objectContaining({ name: 'accounts/5817965641/dataSources/199', inputType: 'FILE' }),
+      expect.objectContaining({ name: 'accounts/5817965641/dataSources/200', writableByApi: true })
+    ])
+    expect(fetch.mock.calls[1]?.[0]).toContain('pageToken=page-2')
+  })
+
   it('classifies an existing file source as non-writable', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       name: config.dataSource,
@@ -152,7 +307,7 @@ describe('Google Merchant vehicle HTTP client', () => {
             feedLabel: 'AU',
             contentLanguage: 'en',
             countries: ['AU'],
-            destinations: [{ destination: 'VEHICLE_ADS', status: 'ENABLED' }]
+            destinations: [{ destination: 'VEHICLE_ADS', state: 'ENABLED' }]
           }
         })
       })
