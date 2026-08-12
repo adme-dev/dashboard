@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import {
   createGoogleMerchantVehicleClient,
-  GoogleMerchantVehicleCatalogError,
   planGoogleMerchantVehicleReconciliation,
   type GoogleMerchantVehicleConfig,
   type GoogleMerchantVehicleProcessedProduct,
@@ -223,7 +222,11 @@ export function createMerchantCatalogReconciler(dependencies: ReconcilerDependen
     try {
       dataSource = await resolveApiSource(client, sourceInput)
     } catch (error) {
-      if (!(error instanceof GoogleMerchantVehicleCatalogError) || error.httpStatus !== 401) throw error
+      const failure = object(error)
+      if (
+        failure?.code !== 'MERCHANT_VEHICLE_REQUEST_FAILED'
+        || failure.httpStatus !== 401
+      ) throw error
       const authorization = await client.inspectAuthorization({
         developerEmail: merchant.developerEmail
       })

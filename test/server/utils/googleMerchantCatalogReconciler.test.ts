@@ -3,7 +3,6 @@ import {
   createMerchantCatalogReadback,
   createMerchantCatalogReconciler
 } from '../../../workers/google-pmax-provider/src/merchantCatalogReconciler'
-import { GoogleMerchantVehicleCatalogError } from '~~/server/utils/googleMerchantVehicleCatalog'
 
 const request = {
   tenantId: 'tenant-1',
@@ -193,9 +192,9 @@ describe('governed Merchant catalog reconciler', () => {
         tokenValid: true, contentScopeGranted: true, developerEmailMatches: true
       }),
       getDataSource: vi.fn()
-        .mockRejectedValueOnce(new GoogleMerchantVehicleCatalogError(
-          'MERCHANT_VEHICLE_REQUEST_FAILED', 401
-        ))
+        .mockRejectedValueOnce({
+          code: 'MERCHANT_VEHICLE_REQUEST_FAILED', httpStatus: 401
+        })
         .mockResolvedValueOnce(apiSource()),
       listDataSources: vi.fn(),
       createVehicleDataSource: vi.fn(),
