@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   createAttempt: vi.fn(),
   consumeAttempt: vi.fn(),
   getGoogleAuthUrl: vi.fn(),
+  getGoogleIdentity: vi.fn(),
   exchangeCode: vi.fn(),
   listAccessibleCustomers: vi.fn(),
   listClientAccounts: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock('~~/server/utils/googleCredentialProfiles', () => ({
 vi.mock('~~/server/utils/googleAdsClient', () => ({
   GOOGLE_ADS_OAUTH_SCOPES: ['https://www.googleapis.com/auth/adwords'],
   getGoogleAuthUrl: (...args: unknown[]) => mocks.getGoogleAuthUrl(...args),
+  getGoogleOAuthIdentity: (...args: unknown[]) => mocks.getGoogleIdentity(...args),
   exchangeGoogleCode: (...args: unknown[]) => mocks.exchangeCode(...args),
   listAccessibleCustomers: (...args: unknown[]) => mocks.listAccessibleCustomers(...args),
   listClientAccounts: (...args: unknown[]) => mocks.listClientAccounts(...args),
@@ -77,6 +79,24 @@ describe('Google multi-profile OAuth routes', () => {
     expect(result).toEqual({ url: 'https://accounts.google.test/oauth', attemptId: 'attempt-1' })
   })
 
+  it('binds an operator-selected Google email to the replay-safe OAuth attempt', async () => {
+    mocks.query = { loginHint: ' Advertising@ADME.net.au ' }
+    const handler = (await import('~~/server/api/agency/social/google/connect.get')).default
+
+    await handler({} as never)
+
+    expect(mocks.createAttempt).toHaveBeenCalledWith('user-1', {
+      purpose: 'google_ads',
+      context: { expectedGoogleEmail: 'advertising@adme.net.au' }
+    })
+    expect(mocks.getGoogleAuthUrl).toHaveBeenCalledWith(
+      'client-id',
+      'https://app.xeroflow.io/api/agency/social/google/callback',
+      'state-1',
+      { loginHint: 'advertising@adme.net.au' }
+    )
+  })
+
   it('rejects invalid or replayed state before exchanging a code', async () => {
     mocks.query = { code: 'authorization-code', state: 'replayed-state' }
     mocks.consumeAttempt.mockResolvedValue(null)
@@ -98,6 +118,7 @@ describe('Google multi-profile OAuth routes', () => {
       expires_in: 3600,
       scope: 'https://www.googleapis.com/auth/adwords'
     })
+    mocks.getGoogleIdentity.mockResolvedValue({ email: 'advertising@adme.net.au' })
     mocks.listAccessibleCustomers.mockResolvedValue(['1111111111', '3333333333'])
     mocks.listClientAccounts
       .mockResolvedValueOnce([{ customerId: '2222222222', name: 'CP Ford', currencyCode: 'AUD' }])
@@ -110,6 +131,7 @@ describe('Google multi-profile OAuth routes', () => {
 
     expect(mocks.storeProfile).toHaveBeenCalledWith(expect.objectContaining({
       userId: 'user-1',
+      identityEmail: 'advertising@adme.net.au',
       accessibleCustomerIds: ['1111111111', '3333333333'],
       accounts: [
         expect.objectContaining({ customerId: '2222222222', managerCustomerId: '1111111111' }),
@@ -119,5 +141,26 @@ describe('Google multi-profile OAuth routes', () => {
     expect(result.location).toContain('success=true')
     expect(result.location).toContain('accounts=2')
     expect(result.location).toContain('profile=profile-1')
+  })
+
+  it('refuses to store a credential when Google returns a different identity than selected', async () => {
+    mocks.query = { code: 'authorization-code', state: 'valid-state' }
+    mocks.consumeAttempt.mockResolvedValue({
+      id: 'attempt-1',
+      context: { expectedGoogleEmail: 'advertising@adme.net.au' }
+    })
+    mocks.exchangeCode.mockResolvedValue({
+      access_token: 'access-secret',
+      refresh_token: 'refresh-secret',
+      expires_in: 3600,
+      scope: 'openid email https://www.googleapis.com/auth/adwords'
+    })
+    mocks.getGoogleIdentity.mockResolvedValue({ email: 'adwords@adme.net.au' })
+    const handler = (await import('~~/server/api/agency/social/google/callback.get')).default
+
+    const result = await handler({} as never)
+
+    expect(mocks.storeProfile).not.toHaveBeenCalled()
+    expect(result.location).toContain('different%20Google%20account')
   })
 })

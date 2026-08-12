@@ -163,8 +163,11 @@ export function useSocialConnections() {
 
   const lastOAuthResult = ref<OAuthResult | null>(null)
 
-  async function connectPlatform(platform: SocialPlatform): Promise<OAuthResult> {
-    const { url } = await apiFetch<{ url: string }>(`/api/agency/social/${platform}/connect`)
+  async function connectPlatform(platform: SocialPlatform, options: { loginHint?: string } = {}): Promise<OAuthResult> {
+    const params = platform === 'google' && options.loginHint
+      ? { loginHint: options.loginHint }
+      : undefined
+    const { url } = await apiFetch<{ url: string }>(`/api/agency/social/${platform}/connect`, { params })
     // Open OAuth popup
     const popup = window.open(url, `${platform}_connect_${Date.now()}`, 'width=600,height=700,scrollbars=yes')
 

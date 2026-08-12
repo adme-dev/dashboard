@@ -270,6 +270,7 @@ export interface GoogleDiscoveredAccount {
 
 interface StoreGoogleCredentialProfileInput {
   userId: string
+  identityEmail?: string | null
   tokens: {
     accessToken: string
     refreshToken: string | null
@@ -338,6 +339,7 @@ export async function storeGoogleCredentialProfile(
         input.tokens.expiresAt,
         input.tokens.scopes,
         JSON.stringify({
+          ...(input.identityEmail ? { googleEmail: input.identityEmail } : {}),
           accessibleCustomerIds: input.accessibleCustomerIds,
           managerCustomerIds: managerIds
         }),

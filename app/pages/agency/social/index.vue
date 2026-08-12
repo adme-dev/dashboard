@@ -8,6 +8,12 @@ const { connections, loading, lastOAuthResult, fetchConnections, connectPlatform
 
 const syncing = ref<string | null>(null)
 const connecting = ref<string | null>(null)
+const googleIdentityModal = ref(false)
+const googleLoginEmail = ref('advertising@adme.net.au')
+const googleLoginEmailError = computed(() => {
+  const value = googleLoginEmail.value.trim()
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? undefined : 'Enter the Google account email used for this connection.'
+})
 
 // Manual token modal state
 const tokenModal = ref(false)
@@ -96,10 +102,18 @@ function getPlatformName(key: string) {
 }
 
 async function handleConnect(platform: string) {
+  if (platform === 'google') {
+    googleIdentityModal.value = true
+    return
+  }
+  await executeConnect(platform)
+}
+
+async function executeConnect(platform: string, loginHint?: string) {
   connecting.value = platform
   clearOAuthResult()
   try {
-    const result = await connectPlatform(platform as any)
+    const result = await connectPlatform(platform as any, { loginHint })
     if (result.success) {
       const name = getPlatformName(platform)
       toast.add({
@@ -124,6 +138,13 @@ async function handleConnect(platform: string) {
   } finally {
     connecting.value = null
   }
+}
+
+async function connectGoogleIdentity() {
+  if (googleLoginEmailError.value) return
+  const email = googleLoginEmail.value.trim().toLowerCase()
+  googleIdentityModal.value = false
+  await executeConnect('google', email)
 }
 
 function handleManualToken(platform: string) {
@@ -327,6 +348,68 @@ const graphExplorerLabel = computed(() => {
         </div>
       </template>
     </div>
+
+    <UModal v-model:open="googleIdentityModal">
+      <template #content>
+        <form class="p-6 space-y-5" @submit.prevent="connectGoogleIdentity">
+          <div class="flex items-start gap-3">
+            <div class="shrink-0 mt-0.5 w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+              <UIcon name="i-lucide-shield-check" class="w-5 h-5 text-red-500" />
+            </div>
+            <div>
+              <h3 class="text-lg font-semibold">Choose the Google identity</h3>
+              <p class="text-sm text-muted mt-1">
+                XeroFlow records the Google-confirmed email and refuses the connection if a different account is selected.
+              </p>
+            </div>
+          </div>
+
+          <UFormField
+            label="Google account email"
+            help="Use an account with administrator access to the required Ads and Merchant Center accounts."
+            :error="googleLoginEmailError"
+          >
+            <UInput
+              v-model="googleLoginEmail"
+              type="email"
+              autocomplete="email"
+              class="w-full"
+              placeholder="advertising@adme.net.au"
+            />
+          </UFormField>
+
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              type="button"
+              size="xs"
+              color="neutral"
+              variant="soft"
+              @click="googleLoginEmail = 'advertising@adme.net.au'"
+            >
+              advertising@adme.net.au
+            </UButton>
+            <UButton
+              type="button"
+              size="xs"
+              color="neutral"
+              variant="soft"
+              @click="googleLoginEmail = 'adwords@adme.net.au'"
+            >
+              adwords@adme.net.au
+            </UButton>
+          </div>
+
+          <div class="flex items-center justify-end gap-2 pt-1">
+            <UButton type="button" variant="ghost" color="neutral" @click="googleIdentityModal = false">
+              Cancel
+            </UButton>
+            <UButton type="submit" icon="i-lucide-external-link" :disabled="Boolean(googleLoginEmailError)">
+              Continue with Google
+            </UButton>
+          </div>
+        </form>
+      </template>
+    </UModal>
 
     <!-- Disconnect Confirmation Modal -->
     <UModal v-model:open="showDisconnectModal">

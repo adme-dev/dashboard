@@ -2,6 +2,7 @@ import { sendRedirect, getRequestURL } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import {
   exchangeGoogleCode,
+  getGoogleOAuthIdentity,
   GOOGLE_ADS_OAUTH_SCOPES,
   listAccessibleCustomers,
   getCustomerInfo,
@@ -64,6 +65,20 @@ export default eventHandler(async (event) => {
       ? new Date(Date.now() + tokens.expires_in * 1000)
       : new Date(Date.now() + 60 * 60 * 1000) // default 1 hour
 
+    const expectedGoogleEmail = String(attempt.context?.expectedGoogleEmail || '').trim().toLowerCase()
+    let identityEmail: string | null = null
+    try {
+      identityEmail = (await getGoogleOAuthIdentity(tokens.access_token)).email
+    } catch (error) {
+      if (expectedGoogleEmail) throw error
+    }
+    if (expectedGoogleEmail && identityEmail !== expectedGoogleEmail) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: `Google returned a different Google account. Sign in as ${expectedGoogleEmail}.`
+      })
+    }
+
     // List accessible customer accounts
     const customerIds = await listAccessibleCustomers(
       tokens.access_token,
@@ -105,6 +120,7 @@ export default eventHandler(async (event) => {
 
     const { profileId, storedCount } = await storeGoogleCredentialProfile({
       userId: user.id,
+      identityEmail,
       tokens: {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || null,
@@ -118,7 +134,7 @@ export default eventHandler(async (event) => {
     return sendRedirect(event, `/auth/oauth-callback?platform=google&success=true&accounts=${storedCount}&profile=${profileId}`, 302)
   } catch (err: any) {
     console.error('[Google Callback] Error:', err.message || err)
-    const msg = err.data?.statusMessage || err.data?.error?.message || err.message || 'Connection failed'
+    const msg = err.statusMessage || err.data?.statusMessage || err.data?.error?.message || err.message || 'Connection failed'
     return sendRedirect(event, `/auth/oauth-callback?platform=google&success=false&error=${encodeURIComponent(msg)}`, 302)
   }
 })

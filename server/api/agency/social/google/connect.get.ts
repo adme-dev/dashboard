@@ -10,6 +10,14 @@ import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
  */
 export default eventHandler(async (event) => {
   const user = await requireAuth(event)
+  const query = getQuery(event)
+  const rawLoginHint = String(query.loginHint || '').trim().toLowerCase()
+  const loginHint = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawLoginHint)
+    ? rawLoginHint
+    : ''
+  if (rawLoginHint && !loginHint) {
+    throw createError({ statusCode: 400, statusMessage: 'Google login email is invalid' })
+  }
 
   const runtimeConfig = useRuntimeConfig()
   const config = resolveGoogleAdsRuntimeConfig(undefined, event)
@@ -19,7 +27,8 @@ export default eventHandler(async (event) => {
 
   // Independent, user-bound attempts support concurrent agency login flows.
   const { attemptId, state } = await createGoogleOAuthAttempt(user.id, {
-    purpose: 'google_ads'
+    purpose: 'google_ads',
+    ...(loginHint ? { context: { expectedGoogleEmail: loginHint } } : {})
   })
 
   // Always derive the redirect URI from the incoming request host so it
@@ -30,7 +39,12 @@ export default eventHandler(async (event) => {
   const callbackPath = configured.startsWith('http') ? new URL(configured).pathname : configured
   const redirectUri = `${reqUrl.protocol}//${reqUrl.host}${callbackPath}`
 
-  const url = getGoogleAuthUrl(config.googleClientId, redirectUri, state)
+  const url = getGoogleAuthUrl(
+    config.googleClientId,
+    redirectUri,
+    state,
+    ...(loginHint ? [{ loginHint }] : [])
+  )
 
   return { url, attemptId }
 })

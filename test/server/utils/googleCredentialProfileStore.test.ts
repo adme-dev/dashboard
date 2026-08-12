@@ -19,6 +19,7 @@ describe('storeGoogleCredentialProfile', () => {
 
     const result = await storeGoogleCredentialProfile({
       userId: 'user-1',
+      identityEmail: 'advertising@adme.net.au',
       tokens: {
         accessToken: 'access-secret',
         refreshToken: 'refresh-secret',
@@ -46,6 +47,10 @@ describe('storeGoogleCredentialProfile', () => {
     expect(queries.find(q => q.sql.includes('INSERT INTO social_connections'))?.sql)
       .toContain('refresh_token = NULL')
     expect(queries.some(q => q.sql.includes('INSERT INTO google_credential_profile_accounts'))).toBe(true)
+    const profileParams = queries.find(q => q.sql.includes('INSERT INTO google_credential_profiles'))?.params
+    expect(JSON.parse(String(profileParams?.[7]))).toMatchObject({
+      googleEmail: 'advertising@adme.net.au'
+    })
     const connectionParams = queries.find(q => q.sql.includes('INSERT INTO social_connections'))?.params
     expect(JSON.parse(String(connectionParams?.[4]))).toMatchObject({
       managerCustomerId: '1111111111',

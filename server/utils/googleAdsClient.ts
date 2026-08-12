@@ -15,6 +15,8 @@ const GOOGLE_OAUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 
 export const GOOGLE_ADS_OAUTH_SCOPES = [
+  'openid',
+  'email',
   'https://www.googleapis.com/auth/adwords',
   'https://www.googleapis.com/auth/content',
   'https://www.googleapis.com/auth/datamanager',
@@ -68,7 +70,12 @@ export interface GoogleTokenResponse {
 /**
  * Build the Google OAuth authorization URL
  */
-export function getGoogleAuthUrl(clientId: string, redirectUri: string, state: string): string {
+export function getGoogleAuthUrl(
+  clientId: string,
+  redirectUri: string,
+  state: string,
+  options: { loginHint?: string } = {}
+): string {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -79,7 +86,19 @@ export function getGoogleAuthUrl(clientId: string, redirectUri: string, state: s
     include_granted_scopes: 'true',
     prompt: 'consent'
   })
+  if (options.loginHint) params.set('login_hint', options.loginHint)
   return `${GOOGLE_OAUTH_BASE}?${params.toString()}`
+}
+
+export async function getGoogleOAuthIdentity(accessToken: string): Promise<{ email: string }> {
+  const identity = await ofetch<{ email?: string }>('https://openidconnect.googleapis.com/v1/userinfo', {
+    headers: { authorization: `Bearer ${accessToken}` }
+  })
+  const email = identity.email?.trim().toLowerCase() || ''
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error('Google OAuth identity email is unavailable')
+  }
+  return { email }
 }
 
 /**
