@@ -284,14 +284,31 @@ describe('Google Merchant vehicle HTTP client', () => {
 
   it('preserves only the safe HTTP status when a Merchant request is rejected', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      error: { code: 403, message: 'sensitive provider detail' }
+      error: { code: 403, status: 'PERMISSION_DENIED', message: 'sensitive provider detail' }
     }), { status: 403 }))
     const client = createGoogleMerchantVehicleClient({ accessToken: 'token', fetch })
 
     await expect(client.getDataSource(config.dataSource)).rejects.toMatchObject({
       code: 'MERCHANT_VEHICLE_REQUEST_FAILED',
       httpStatus: 403,
+      providerReason: 'PERMISSION_DENIED',
       message: 'MERCHANT_VEHICLE_REQUEST_FAILED'
+    })
+  })
+
+  it('classifies the mandatory developer registration prerequisite without retaining account IDs', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: {
+        code: 401,
+        status: 'UNAUTHENTICATED',
+        message: 'GCP project with id secret-project and number 123 is not registered with the merchant account.'
+      }
+    }), { status: 401 }))
+    const client = createGoogleMerchantVehicleClient({ accessToken: 'token', fetch })
+
+    await expect(client.getDataSource(config.dataSource)).rejects.toMatchObject({
+      httpStatus: 401,
+      providerReason: 'GCP_PROJECT_NOT_REGISTERED'
     })
   })
 

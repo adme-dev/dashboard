@@ -112,10 +112,38 @@ export class GoogleMerchantVehicleCatalogError extends Error {
     | 'MERCHANT_VEHICLE_PRODUCT_INCOMPLETE'
     | 'MERCHANT_VEHICLE_REQUEST_FAILED'
     | 'MERCHANT_VEHICLE_RESPONSE_INVALID',
-    public readonly httpStatus: number | null = null) {
+    public readonly httpStatus: number | null = null,
+    public readonly providerReason: string | null = null) {
     super(code)
     this.name = 'GoogleMerchantVehicleCatalogError'
   }
+}
+
+async function merchantRequestError(response: Response) {
+  let body: Record<string, unknown> | null = null
+  try {
+    const value = await response.clone().json()
+    body = value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null
+  } catch {}
+  const error = body?.error && typeof body.error === 'object' && !Array.isArray(body.error)
+    ? body.error as Record<string, unknown>
+    : null
+  const status = typeof error?.status === 'string' && /^[A-Z_]{1,80}$/.test(error.status)
+    ? error.status
+    : null
+  const message = typeof error?.message === 'string' ? error.message.toLowerCase() : ''
+  const reason = message.includes('not registered with the merchant account')
+    ? 'GCP_PROJECT_NOT_REGISTERED'
+    : message.includes('has not been used in project') || message.includes('is disabled')
+      ? 'MERCHANT_API_DISABLED'
+      : message.includes('admin') || message.includes('permission')
+        ? 'MERCHANT_ADMIN_REQUIRED'
+        : status
+  return new GoogleMerchantVehicleCatalogError(
+    'MERCHANT_VEHICLE_REQUEST_FAILED', response.status, reason
+  )
 }
 
 const DataSourceSchema = z.object({
@@ -406,7 +434,7 @@ export function googleMerchantProductInputResourceId(input: {
 
 async function parsedResponse(response: Response): Promise<unknown> {
   if (!response.ok) {
-    throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_REQUEST_FAILED', response.status)
+    throw await merchantRequestError(response)
   }
   try {
     return await response.json()
@@ -544,7 +572,7 @@ export function createGoogleMerchantVehicleClient(input: {
         }
       )
       if (!response.ok) {
-        throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_REQUEST_FAILED', response.status)
+        throw await merchantRequestError(response)
       }
       return { requestId: merchantRequestId(response) }
     },
@@ -584,7 +612,7 @@ export function createGoogleMerchantVehicleClient(input: {
         { method: 'DELETE' }
       )
       if (!response.ok) {
-        throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_REQUEST_FAILED', response.status)
+        throw await merchantRequestError(response)
       }
       return { requestId: merchantRequestId(response) }
     }

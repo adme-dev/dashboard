@@ -135,7 +135,11 @@ function merchantCatalogFailure(error: unknown, fallback: string) {
     && Number(value?.httpStatus) <= 599
     ? Number(value?.httpStatus)
     : null
-  console.error('[MerchantCatalogProvider] request failed', { code, httpStatus })
+  const providerReason = typeof value?.providerReason === 'string'
+    && /^[A-Z0-9_]{1,120}$/.test(value.providerReason)
+    ? value.providerReason
+    : null
+  console.error('[MerchantCatalogProvider] request failed', { code, httpStatus, providerReason })
   return code
 }
 
