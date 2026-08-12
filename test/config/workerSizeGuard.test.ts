@@ -5,7 +5,7 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, expect, it } from 'vitest'
 
-const RAW_RELEASE_BUDGET_BYTES = 25 * 1024 * 1024 - 256 * 1024
+const RAW_RELEASE_BUDGET_BYTES = 25_600_000 - 128 * 1024
 const GZIP_RELEASE_BUDGET_BYTES = 9_750_000
 const execFileAsync = promisify(execFile)
 const temporaryDirectories: string[] = []

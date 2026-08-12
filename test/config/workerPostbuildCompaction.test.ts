@@ -380,7 +380,7 @@ ${repeatedRuntimeSteps}
     await expect(readFile(modulePath, 'utf8')).resolves.toBe(compacted)
   })
 
-  it('drops internal names only for explicitly audited default-only modules', async () => {
+  it('drops internal names from default-only route modules while preserving named-export modules', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'worker-api-route-minify-'))
     temporaryDirectories.push(directory)
     const auditedDirectory = path.join(
@@ -397,7 +397,8 @@ ${repeatedRuntimeSteps}
     await mkdir(auditedPageDirectory, { recursive: true })
     const modulePath = path.join(auditedDirectory, '_token_.get.mjs')
     const auditedPageModulePath = path.join(auditedPageDirectory, 'governance-BRhMTB2H.mjs')
-    const unauditedModulePath = path.join(unauditedDirectory, 'probe.get.mjs')
+    const defaultOnlyModulePath = path.join(unauditedDirectory, 'probe.get.mjs')
+    const namedExportModulePath = path.join(unauditedDirectory, 'named.get.mjs')
     const source = `const handler = async function deliberatelyVerboseCapabilityHandler(event) {
   const deliberatelyVerboseIntermediateValue = event.value
   return deliberatelyVerboseIntermediateValue + 1
@@ -406,18 +407,26 @@ export { handler as default }
 `
     await writeFile(modulePath, source, 'utf8')
     await writeFile(auditedPageModulePath, source, 'utf8')
-    await writeFile(unauditedModulePath, source, 'utf8')
+    await writeFile(defaultOnlyModulePath, source, 'utf8')
+    await writeFile(namedExportModulePath, source.replace(
+      'export { handler as default }',
+      'export { handler as stableRuntimeHandler }'
+    ), 'utf8')
 
     await compactDeployedWorkerModules(directory)
     const compacted = await readFile(modulePath, 'utf8')
     const auditedPageCompacted = await readFile(auditedPageModulePath, 'utf8')
-    const unauditedCompacted = await readFile(unauditedModulePath, 'utf8')
+    const defaultOnlyCompacted = await readFile(defaultOnlyModulePath, 'utf8')
+    const namedExportCompacted = await readFile(namedExportModulePath, 'utf8')
     const imported = await import(`${pathToFileURL(modulePath).href}?v=api-route`)
     const auditedPageImported = await import(
       `${pathToFileURL(auditedPageModulePath).href}?v=audited-page`
     )
-    const unauditedImported = await import(
-      `${pathToFileURL(unauditedModulePath).href}?v=unaudited-api-route`
+    const defaultOnlyImported = await import(
+      `${pathToFileURL(defaultOnlyModulePath).href}?v=default-api-route`
+    )
+    const namedExportImported = await import(
+      `${pathToFileURL(namedExportModulePath).href}?v=named-api-route`
     )
 
     expect(compacted).not.toContain('deliberatelyVerboseCapabilityHandler')
@@ -426,9 +435,14 @@ export { handler as default }
     expect(auditedPageCompacted).not.toContain('deliberatelyVerboseCapabilityHandler')
     expect(auditedPageImported.default.name).not.toBe('deliberatelyVerboseCapabilityHandler')
     await expect(auditedPageImported.default({ value: 4 })).resolves.toBe(5)
-    expect(unauditedCompacted).toContain('deliberatelyVerboseCapabilityHandler')
-    expect(unauditedImported.default.name).toBe('deliberatelyVerboseCapabilityHandler')
-    await expect(unauditedImported.default({ value: 4 })).resolves.toBe(5)
+    expect(defaultOnlyCompacted).not.toContain('deliberatelyVerboseCapabilityHandler')
+    expect(defaultOnlyImported.default.name).not.toBe('deliberatelyVerboseCapabilityHandler')
+    await expect(defaultOnlyImported.default({ value: 4 })).resolves.toBe(5)
+    expect(namedExportCompacted).toContain('deliberatelyVerboseCapabilityHandler')
+    expect(namedExportImported.stableRuntimeHandler.name).toBe(
+      'deliberatelyVerboseCapabilityHandler'
+    )
+    await expect(namedExportImported.stableRuntimeHandler({ value: 4 })).resolves.toBe(5)
   })
 
   it('converges keepNames compaction before writing a deployed module', async () => {

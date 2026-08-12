@@ -457,9 +457,16 @@ function shouldKeepDeployedModuleNames(modulePath, source) {
   const isAuditedModule = NAME_DROPPING_MODULE_AUDIT.some(
     ([moduleSuffix]) => portableModulePath.endsWith(`/${moduleSuffix}`)
   )
-  if (!isAuditedModule) return true
   const exports = parse(source)[1]
-  return exports.some(entry => entry.n !== 'default')
+  // Route handlers and rendered page chunks that export only `default` are
+  // addressed by their module path, never by Function.name. Dropping their
+  // internal names is therefore safe and avoids esbuild's name-restoration
+  // helpers. Named-export framework/runtime boundaries retain names for
+  // introspection. Keep the historical corpus list as an explicit fast path
+  // and as documentation of the modules already covered by SSR smoke tests.
+  const hasNamedExports = exports.some(entry => entry.n !== 'default')
+  if (isAuditedModule && !hasNamedExports) return false
+  return hasNamedExports
 }
 
 export async function compactDeployedWorkerModules(directory) {
