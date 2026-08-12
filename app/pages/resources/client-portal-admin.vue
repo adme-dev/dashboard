@@ -63,7 +63,7 @@
               The Client Portal uses a separate authentication system from your internal staff login. Clients authenticate via cookie-based sessions rather than JWT tokens, and their access is automatically scoped to their own client record -- they can never see another client's data.
             </p>
             <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed">
-              To create a client login, navigate to the client's record in XeroFlow and open the Portal Access section. Enter the client contact's email address and send an invitation. The recipient receives an email with a secure link to set their password and access the portal. You can invite multiple contacts per client, each with their own login credentials and individual permission sets.
+              To create client access, navigate to the client's record in XeroFlow and open the Portal Access section. Enter the contact's email address and send an invitation. The recipient confirms the secure link and enters the portal without setting a password. You can invite multiple contacts per client, each with individual permissions; the same contact can also receive clearly labelled access links for separate client organisations.
             </p>
           </section>
 
@@ -173,10 +173,10 @@
           <section>
             <h2 class="text-[22px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-4">Inviting Clients</h2>
             <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed mb-4">
-              The invitation flow is designed to be frictionless. When you send an invite, the client receives a branded email from your agency with a link to accept the invitation, set a password, and access their portal. Invitations expire after 7 days but can be resent at any time.
+              The invitation flow is designed to be frictionless. When you send an invite, the client receives a branded email with a single-use activation link and opens the portal without credential setup. Invitations expire after 7 days but can be resent at any time.
             </p>
             <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed">
-              You can track invitation status from the client record -- see whether an invite was sent, accepted, or is still pending. If a client user forgets their password, they can reset it through the portal login page without needing to contact your team. Session management uses secure httpOnly cookies, and sessions are scoped to the portal domain to prevent any overlap with staff authentication.
+              You can track invitation status from the client record -- see whether an invite was sent, accepted, or is still pending. Returning clients enter their email on the portal login page and receive a link that expires after 15 minutes and works once. Session management uses secure httpOnly cookies, and client sessions remain separate from staff authentication.
             </p>
           </section>
 

@@ -18,7 +18,8 @@ import {
   buildWorkerDispatcherModule,
   compactPrecomputedManifest,
   compactDeployedWorkerModules,
-  compactWorkerModule
+  compactWorkerModule,
+  resolvePrecomputedManifestPath
 } from './compact-worker-module.mjs'
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -29,7 +30,6 @@ const nitroJs = path.join(distDir, '_nitro.js')
 const nitroJsMap = path.join(distDir, '_nitro.js.map')
 const wsJs = path.join(distDir, '_ws.js')
 const wsSrc = path.join(projectRoot, 'worker-ws', 'index.ts')
-const precomputedManifest = path.join(distDir, 'chunks', 'build', 'client.precomputed.mjs')
 const nitroRuntime = path.join(distDir, 'chunks', 'nitro', 'nitro.mjs')
 const generatedRuntimeModules = [
   ['Nitro runtime', nitroRuntime],
@@ -104,22 +104,21 @@ console.log('[wrap-worker] bundled worker-ws → _ws.js')
 // repetitive and pushes the Pages Function over Cloudflare's 25 MB raw-size
 // limit. Keep the same async module contract while storing the graph as gzip;
 // it is inflated once and cached when an isolate first renders SSR.
-if (await exists(precomputedManifest)) {
-  const source = await fs.readFile(precomputedManifest, 'utf8')
-  if (!source.includes('XEROFLOW_COMPACT_PRECOMPUTED')) {
-    const manifestModule = await import(
-      `${pathToFileURL(precomputedManifest).href}?compact=${Date.now()}`
-    )
-    const manifest = typeof manifestModule.default === 'function'
-      ? await manifestModule.default()
-      : manifestModule.default
-    const compactManifest = compactPrecomputedManifest(manifest)
-    const compactSource = buildCompressedPrecomputedManifestModule(compactManifest)
-    await fs.writeFile(precomputedManifest, compactSource, 'utf8')
-    console.log(
-      `[wrap-worker] compacted Nuxt client manifest ${source.length} → ${compactSource.length} bytes`
-    )
-  }
+const precomputedManifest = await resolvePrecomputedManifestPath(distDir)
+const precomputedSource = await fs.readFile(precomputedManifest, 'utf8')
+if (!precomputedSource.includes('XEROFLOW_COMPACT_PRECOMPUTED')) {
+  const manifestModule = await import(
+    `${pathToFileURL(precomputedManifest).href}?compact=${Date.now()}`
+  )
+  const manifest = typeof manifestModule.default === 'function'
+    ? await manifestModule.default()
+    : manifestModule.default
+  const compactManifest = compactPrecomputedManifest(manifest)
+  const compactSource = buildCompressedPrecomputedManifestModule(compactManifest)
+  await fs.writeFile(precomputedManifest, compactSource, 'utf8')
+  console.log(
+    `[wrap-worker] compacted Nuxt client manifest ${precomputedSource.length} → ${compactSource.length} bytes`
+  )
 }
 
 // These stable generated runtime boundaries are emitted readable. Compact

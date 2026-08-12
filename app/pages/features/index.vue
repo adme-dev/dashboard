@@ -302,7 +302,7 @@ const categories = [
     iconBg: 'bg-pink-50 dark:bg-pink-500/10',
     iconColor: 'text-pink-600',
     features: [
-      { title: 'Dedicated Login', slug: 'dedicated-login', icon: 'i-lucide-lock', description: 'Separate cookie-based auth system. Clients get their own login, scoped to their data.' },
+      { title: 'Passwordless Login', slug: 'dedicated-login', icon: 'i-lucide-lock', description: 'Single-use email links create secure, client-scoped sessions without passwords.' },
       { title: 'Project Visibility', slug: 'project-visibility', icon: 'i-lucide-folder-open', description: 'Clients see their projects, tasks, and progress — no internal data leaks.' },
       { title: 'Approval Workflows', slug: 'approval-workflows', icon: 'i-lucide-check-circle', description: 'Upload deliverables for client review. Approve, revise, or comment — all tracked.' },
       { title: 'Invoice Access', slug: 'invoice-access', icon: 'i-lucide-receipt', description: 'Give clients a clear payment view and separate agency services from media and supplier investment.' },

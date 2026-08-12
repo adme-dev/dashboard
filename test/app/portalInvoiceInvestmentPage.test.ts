@@ -27,4 +27,12 @@ describe('portal invoice investment page', () => {
     expect(source).toContain('Detailed allocation is not available for these invoices yet.')
     expect(source).toContain('Credits applied')
   })
+
+  it('keeps invoice line-item money readable in the constrained detail drawer', () => {
+    expect(source).toContain('invoice-line-item')
+    expect(source).toContain('grid grid-cols-3 gap-3')
+    expect(source).toContain('tabular-nums whitespace-nowrap')
+    expect(source).toContain('formatTaxRate(detailData.invoice.taxRate)')
+    expect(source.match(/<table class="w-full text-sm">/g)).toHaveLength(1)
+  })
 })

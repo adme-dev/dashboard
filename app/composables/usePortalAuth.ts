@@ -42,28 +42,27 @@ interface PortalAuthMeResponse {
   }>
 }
 
-interface PortalLoginResponse {
-  user: ClientUser
-  stats: PortalStats
-}
-
 export function usePortalAuth() {
   const user = useState<ClientUser | null>('portal-user', () => null)
   const stats = useState<PortalStats | null>('portal-stats', () => null)
   const isAuthenticated = computed(() => !!user.value)
   const apiFetch = $fetch as <T = unknown>(
     request: string,
-    options?: { method?: string; body?: unknown }
+    options?: { method?: string, body?: unknown }
   ) => Promise<T>
 
-  async function login(email: string, password: string) {
-    const data = await apiFetch<PortalLoginResponse>('/api/portal/auth/login', {
+  async function requestMagicLink(email: string, redirect?: string) {
+    return apiFetch<{ success: true, message: string }>('/api/portal/auth/magic-link/request', {
       method: 'POST',
-      body: { email, password }
+      body: { email, redirect }
     })
-    user.value = data.user
-    stats.value = data.stats
-    return data
+  }
+
+  async function verifyMagicLink(token: string, redirect?: string) {
+    return apiFetch<{ success: true, redirect: string }>('/api/portal/auth/magic-link/verify', {
+      method: 'POST',
+      body: { token, redirect }
+    })
   }
 
   async function logout() {
@@ -114,5 +113,14 @@ export function usePortalAuth() {
     return user.value?.permissions?.[key] ?? false
   }
 
-  return { user, stats, isAuthenticated, login, logout, fetchUser, hasPermission }
+  return {
+    user,
+    stats,
+    isAuthenticated,
+    requestMagicLink,
+    verifyMagicLink,
+    logout,
+    fetchUser,
+    hasPermission
+  }
 }

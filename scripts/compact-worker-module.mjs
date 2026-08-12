@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { access, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { initSync, parse } from 'es-module-lexer'
@@ -8,6 +8,28 @@ import { transform } from 'esbuild'
 export const WORKER_MODULE_COMPACTION_MARKER = 'XEROFLOW_COMPACT_WORKER_MODULE'
 
 initSync()
+
+const PRECOMPUTED_MANIFEST_PATHS = [
+  ['chunks', 'virtual', 'precomputed.mjs'],
+  ['chunks', 'build', 'client.precomputed.mjs']
+]
+
+export async function resolvePrecomputedManifestPath(workerDirectory) {
+  for (const segments of PRECOMPUTED_MANIFEST_PATHS) {
+    const candidate = path.join(workerDirectory, ...segments)
+    try {
+      await access(candidate)
+      return candidate
+    } catch {
+      // Try the next known Nuxt output location.
+    }
+  }
+
+  throw new Error(
+    '[worker-manifest] Nuxt emitted no recognized precomputed manifest; '
+    + 'update the postbuild compactor before deploying'
+  )
+}
 
 const PRECOMPUTED_RESOURCE_KEYS = [
   'file',

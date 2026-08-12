@@ -640,14 +640,14 @@ definePageMeta({
 
 const authFeatures = [
   {
-    title: 'Dedicated login',
+    title: 'Passwordless login',
     icon: 'i-lucide-log-in',
-    description: 'Clients sign in at /portal/login with their own credentials. Completely separate from staff auth.'
+    description: 'Clients request a short-lived, single-use email link at /portal/login. Client and staff authentication remain completely separate.'
   },
   {
     title: 'Cookie sessions',
     icon: 'i-lucide-cookie',
-    description: 'HttpOnly cookie-based authentication. No tokens in localStorage, no XSS attack surface.'
+    description: 'A verified link creates an HttpOnly cookie session. Raw link credentials are never stored in localStorage or the database.'
   },
   {
     title: 'Permission gating',

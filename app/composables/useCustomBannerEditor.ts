@@ -1,6 +1,5 @@
 import type { CustomTemplateVariable } from '~/types/banner-studio'
 import { buildCustomBannerPreviewHTML } from '~/utils/custom-banner-builder'
-import gsapMinSource from 'gsap/dist/gsap.min.js?raw'
 
 interface InstanceData {
   id: string
@@ -94,7 +93,6 @@ export function useCustomBannerEditor(instanceId: string) {
       externalScripts: externalScripts.value,
       externalStyles: externalStyles.value,
       includeGsap: includeGsap.value,
-      gsapSource: gsapMinSource,
       enableConsoleRelay: enableConsoleRelay.value,
     })
   })

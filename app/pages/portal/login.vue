@@ -1,65 +1,120 @@
+<script setup lang="ts">
+definePageMeta({ layout: false })
+
+const route = useRoute()
+const { requestMagicLink, isAuthenticated } = usePortalAuth()
+const email = ref('')
+const sentTo = ref('')
+const error = ref('')
+const loading = ref(false)
+
+function portalRedirect() {
+  const value = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+  try {
+    const decoded = decodeURIComponent(value)
+    return /^\/portal(?:\/|$)/.test(decoded) && !decoded.includes('\\')
+      ? decoded
+      : '/portal'
+  } catch {
+    return '/portal'
+  }
+}
+
+function errorMessage(caught: unknown) {
+  if (caught && typeof caught === 'object' && 'data' in caught) {
+    return (caught as { data?: { statusMessage?: string } }).data?.statusMessage
+  }
+  return undefined
+}
+
+watchEffect(() => {
+  if (isAuthenticated.value) navigateTo(portalRedirect())
+})
+
+async function handleRequest() {
+  error.value = ''
+  if (!email.value.trim()) {
+    error.value = 'Enter the email address your account manager invited.'
+    return
+  }
+
+  loading.value = true
+  try {
+    await requestMagicLink(email.value, portalRedirect())
+    sentTo.value = email.value.trim()
+  } catch (caught: unknown) {
+    error.value = errorMessage(caught) || 'A sign-in link could not be sent. Try again shortly.'
+  } finally {
+    loading.value = false
+  }
+}
+</script>
+
 <template>
   <div class="min-h-screen bg-white dark:bg-[#0a0b0e] flex flex-col">
-    <!-- Fixed Navigation -->
-    <nav class="fixed top-0 left-0 right-0 z-50 backdrop-blur-lg bg-white/85 dark:bg-[#0a0b0e]/85">
-      <div class="max-w-[1200px] mx-auto px-6 h-[52px] flex items-center justify-between">
+    <nav class="h-[52px] border-b border-[#121317]/[0.04] bg-white/90 backdrop-blur-lg dark:border-white/[0.04] dark:bg-[#0a0b0e]/90">
+      <div class="mx-auto flex h-full max-w-[1200px] items-center justify-between px-6">
         <NuxtLink to="/" class="flex items-center gap-2.5">
-          <div class="w-7 h-7 bg-[#121317] rounded-lg flex items-center justify-center">
-            <span class="text-white text-xs font-semibold tracking-tight">XF</span>
-          </div>
-          <span class="text-[15px] font-medium text-[#121317] dark:text-white tracking-[-0.01em]">XeroFlow</span>
+          <span class="flex size-7 items-center justify-center rounded-lg bg-[#121317] text-xs font-semibold text-white">XF</span>
+          <span class="text-[15px] font-medium tracking-[-0.01em] text-[#121317] dark:text-white">XeroFlow</span>
         </NuxtLink>
-        <NuxtLink
-          to="/"
-          class="inline-flex items-center gap-2 px-4 py-1.5 text-[14.5px] text-[#45474D] dark:text-white/60 hover:text-[#121317] dark:hover:text-white rounded-full transition-colors"
-        >
-          <UIcon name="i-lucide-arrow-left" class="w-3.5 h-3.5" />
+        <NuxtLink to="/" class="flex items-center gap-2 text-sm text-[#45474D] transition-colors hover:text-[#121317] dark:text-white/60 dark:hover:text-white">
+          <UIcon name="i-lucide-arrow-left" class="size-3.5" />
           Back
         </NuxtLink>
       </div>
     </nav>
 
-    <!-- Main Content -->
-    <div class="flex-1 flex items-center justify-center pt-[52px] px-6 py-16">
-      <div class="w-full max-w-[400px]">
-        <!-- Header -->
-        <div class="text-center mb-10">
-          <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#b7bfd9]/[0.09] dark:bg-white/[0.06] mb-6">
-            <UIcon name="i-lucide-building-2" class="w-7 h-7 text-[#121317] dark:text-white" />
+    <main class="flex flex-1 items-center justify-center px-6 py-16">
+      <div class="w-full max-w-[420px]">
+        <div class="mb-9 text-center">
+          <div class="mx-auto mb-5 flex size-14 items-center justify-center rounded-2xl bg-[#b7bfd9]/[0.09] dark:bg-white/[0.06]">
+            <UIcon :name="sentTo ? 'i-lucide-mail-check' : 'i-lucide-building-2'" class="size-7 text-[#121317] dark:text-white" />
           </div>
-          <h1 class="text-[28px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-2">
-            Client Portal
+          <p class="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-[#45474D]/60 dark:text-white/40">
+            Client workspace
+          </p>
+          <h1 class="text-[28px] font-[450] tracking-[-0.02em] text-[#121317] dark:text-white">
+            {{ sentTo ? 'Check your inbox' : 'Sign in securely' }}
           </h1>
-          <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed">
-            Sign in to view your projects and approvals
+          <p class="mt-3 text-[15px] leading-6 text-[#45474D] dark:text-white/60">
+            {{ sentTo
+              ? `If an eligible portal account exists for ${sentTo}, a secure link is on its way.`
+              : 'Enter your work email and we’ll send a one-time link to your client portal.' }}
           </p>
         </div>
 
-        <!-- Login Form -->
-        <form class="space-y-4" @submit.prevent="handleLogin">
-          <div
-            v-if="error"
-            class="flex items-start gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20"
+        <div v-if="sentTo" class="space-y-4">
+          <UAlert
+            title="Link requested"
+            description="The link expires in 15 minutes and can be used once. Check your spam folder if it does not arrive."
+            color="success"
+            icon="i-lucide-shield-check"
+          />
+          <UButton
+            block
+            size="xl"
+            color="neutral"
+            variant="outline"
+            @click="sentTo = ''"
           >
-            <UIcon name="i-lucide-alert-circle" class="w-4.5 h-4.5 text-red-500 flex-shrink-0 mt-0.5" />
-            <div class="flex-1 flex items-center justify-between">
-              <span class="text-[13px] text-red-700 dark:text-red-400">{{ error }}</span>
-              <UButton
-                type="button"
-                icon="i-lucide-x"
-                color="error"
-                variant="ghost"
-                size="xs"
-                aria-label="Dismiss error"
-                @click="error = ''"
-              />
-            </div>
-          </div>
+            Use another email
+          </UButton>
+        </div>
 
-          <UFormField label="Email" name="email">
+        <form v-else class="space-y-4" @submit.prevent="handleRequest">
+          <UAlert
+            v-if="error"
+            :title="error"
+            color="error"
+            icon="i-lucide-alert-circle"
+          />
+
+          <UFormField label="Email" name="email" help="Use the address associated with your client account.">
             <UInput
               v-model="email"
               type="email"
+              autocomplete="email"
               placeholder="you@company.com"
               size="xl"
               class="w-full"
@@ -68,123 +123,52 @@
             />
           </UFormField>
 
-          <UFormField label="Password" name="password">
-            <UInput
-              v-model="password"
-              type="password"
-              placeholder="Enter your password"
-              size="xl"
-              class="w-full"
-              :disabled="loading"
-            />
-          </UFormField>
-
           <UButton
             type="submit"
             block
             size="xl"
             color="neutral"
+            icon="i-lucide-send"
             :loading="loading"
             :disabled="loading"
           >
-            {{ loading ? 'Signing in...' : 'Sign in' }}
+            Email me a sign-in link
           </UButton>
         </form>
 
-        <!-- Divider -->
-        <div class="relative my-8">
-          <div class="absolute inset-0 flex items-center">
-            <div class="w-full border-t border-[#121317]/[0.06] dark:border-white/[0.06]" />
-          </div>
-          <div class="relative flex justify-center">
-            <span class="bg-white dark:bg-[#0a0b0e] px-4 text-[12px] text-[#45474D]/50 dark:text-white/30 uppercase tracking-wider">or</span>
-          </div>
+        <div class="my-8 flex items-center gap-4" aria-hidden="true">
+          <div class="h-px flex-1 bg-[#121317]/[0.06] dark:bg-white/[0.06]" />
+          <span class="text-[11px] uppercase tracking-[0.14em] text-[#45474D]/40 dark:text-white/30">Staff access</span>
+          <div class="h-px flex-1 bg-[#121317]/[0.06] dark:bg-white/[0.06]" />
         </div>
 
-        <!-- Agency Staff Link -->
         <NuxtLink
           to="/auth/login"
-          class="flex items-center justify-between w-full px-5 py-3.5 rounded-xl border border-[#121317]/[0.06] dark:border-white/[0.06] hover:border-[#121317]/15 dark:hover:border-white/15 hover:bg-[#b7bfd9]/[0.03] dark:hover:bg-white/[0.02] transition-all group"
+          class="group flex w-full items-center justify-between rounded-xl border border-[#121317]/[0.06] px-5 py-3.5 transition-all hover:border-[#121317]/15 dark:border-white/[0.06] dark:hover:border-white/15"
         >
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-lg bg-[#b7bfd9]/[0.09] dark:bg-white/[0.06] flex items-center justify-center">
-              <UIcon name="i-lucide-kanban" class="w-4.5 h-4.5 text-[#45474D] dark:text-white/60" />
-            </div>
-            <div class="text-left">
-              <div class="text-[14px] font-medium text-[#121317] dark:text-white">Agency Staff</div>
-              <div class="text-[12px] text-[#45474D]/70 dark:text-white/40">Sign in with magic link</div>
-            </div>
-          </div>
-          <UIcon name="i-lucide-arrow-right" class="w-4 h-4 text-[#45474D]/40 dark:text-white/30 group-hover:text-[#45474D] dark:group-hover:text-white/60 transition-colors" />
+          <span class="flex items-center gap-3">
+            <span class="flex size-9 items-center justify-center rounded-lg bg-[#b7bfd9]/[0.09] dark:bg-white/[0.06]">
+              <UIcon name="i-lucide-kanban" class="size-4.5 text-[#45474D] dark:text-white/60" />
+            </span>
+            <span class="text-left">
+              <span class="block text-sm font-medium text-[#121317] dark:text-white">Agency staff</span>
+              <span class="block text-xs text-[#45474D]/70 dark:text-white/40">Use the staff sign-in</span>
+            </span>
+          </span>
+          <UIcon name="i-lucide-arrow-right" class="size-4 text-[#45474D]/40 transition-transform group-hover:translate-x-0.5 dark:text-white/30" />
         </NuxtLink>
 
-        <!-- Help -->
-        <div class="mt-10 text-center">
-          <p class="text-[13px] text-[#45474D]/60 dark:text-white/40">
-            Need help?
-            <NuxtLink to="/support" class="text-[#121317] dark:text-white hover:underline font-medium">
-              Contact support
-            </NuxtLink>
-          </p>
-        </div>
+        <p class="mt-9 text-center text-[13px] text-[#45474D]/60 dark:text-white/40">
+          Need help?
+          <NuxtLink to="/support" class="font-medium text-[#121317] hover:underline dark:text-white">
+            Contact support
+          </NuxtLink>
+        </p>
       </div>
-    </div>
+    </main>
 
-    <!-- Footer -->
-    <footer class="py-6 border-t border-[#121317]/[0.04] dark:border-white/[0.04]">
-      <div class="max-w-[1200px] mx-auto px-6 flex items-center justify-center">
-        <span class="text-[12px] text-[#45474D]/40 dark:text-white/30">Secure client portal</span>
-      </div>
+    <footer class="border-t border-[#121317]/[0.04] py-6 text-center text-xs text-[#45474D]/40 dark:border-white/[0.04] dark:text-white/30">
+      Single-use links · Secure client sessions
     </footer>
   </div>
 </template>
-
-<script setup lang="ts">
-definePageMeta({ layout: false })
-
-const { login, isAuthenticated } = usePortalAuth()
-const route = useRoute()
-
-const email = ref('')
-const password = ref('')
-const error = ref('')
-const loading = ref(false)
-
-function errorMessage(error: unknown) {
-  if (error && typeof error === 'object') {
-    if ('data' in error) {
-      return (error as { data?: { statusMessage?: string } }).data?.statusMessage
-    }
-    if ('message' in error) {
-      return (error as { message?: string }).message
-    }
-  }
-  return undefined
-}
-
-watchEffect(() => {
-  if (isAuthenticated.value) {
-    const redirect = route.query.redirect as string
-    navigateTo(redirect ? decodeURIComponent(redirect) : '/portal')
-  }
-})
-
-async function handleLogin() {
-  error.value = ''
-  if (!email.value || !password.value) {
-    error.value = 'Please enter email and password'
-    return
-  }
-
-  loading.value = true
-  try {
-    await login(email.value, password.value)
-    const redirect = route.query.redirect as string
-    await navigateTo(redirect ? decodeURIComponent(redirect) : '/portal')
-  } catch (caught: unknown) {
-    error.value = errorMessage(caught) || 'Login failed'
-  } finally {
-    loading.value = false
-  }
-}
-</script>

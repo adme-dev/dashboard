@@ -12,12 +12,17 @@
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { sendClientPortalInviteEmail } from '~~/server/utils/email'
+import {
+  digestPortalSessionToken,
+  generatePortalMagicLinkToken
+} from '~~/server/utils/portalSession'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const body = await readBody(event)
 
-  const { clientId, email, name, permissions = {} } = body
+  const { clientId, name, permissions = {} } = body
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
   const invitationPermissions = {
     ...permissions,
     canNominateCompetitors: permissions.canNominateCompetitors ?? false
@@ -45,8 +50,8 @@ export default defineEventHandler(async (event) => {
 
     // Check if user already exists
     const existingUser = await queryOne(`
-      SELECT id FROM client_users WHERE email = $1
-    `, [email])
+      SELECT id FROM client_users WHERE LOWER(email) = $1 AND client_id = $2
+    `, [email, clientId])
 
     if (existingUser) {
       throw createError({
@@ -56,7 +61,8 @@ export default defineEventHandler(async (event) => {
     }
 
     // Generate invitation token
-    const token = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString('base64url')
+    const token = generatePortalMagicLinkToken()
+    const tokenDigest = await digestPortalSessionToken(token)
     const expiresAt = new Date()
     expiresAt.setDate(expiresAt.getDate() + 7) // 7 day expiry
 
@@ -76,7 +82,7 @@ export default defineEventHandler(async (event) => {
       clientId,
       email,
       name,
-      token,
+      tokenDigest,
       JSON.stringify(invitationPermissions),
       user.id,
       expiresAt.toISOString()
@@ -135,6 +141,7 @@ export default defineEventHandler(async (event) => {
         inviterName: user.name,
         token: token,
         expiresAt,
+        event,
         permissions: {
           canViewProjects: permissions.canViewProjects ?? true,
           canViewInvoices: permissions.canViewInvoices ?? true,
@@ -157,9 +164,7 @@ export default defineEventHandler(async (event) => {
         id: invitation.id,
         email: invitation.email,
         name: invitation.name,
-        token: invitation.token, // In production, this would be sent via email only
-        expiresAt: invitation.expires_at,
-        inviteUrl: `/portal/accept-invite?token=${invitation.token}`
+        expiresAt: invitation.expires_at
       },
       user: {
         id: clientUser.id,
@@ -168,9 +173,14 @@ export default defineEventHandler(async (event) => {
         status: clientUser.status
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to create invitation:', error)
-    if (error.statusCode) throw error
+    if (
+      error
+      && typeof error === 'object'
+      && 'statusCode' in error
+      && typeof error.statusCode === 'number'
+    ) throw error
     throw createError({
       statusCode: 500,
       statusMessage: 'Failed to create invitation'
