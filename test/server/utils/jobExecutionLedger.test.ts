@@ -37,4 +37,16 @@ describe('platform job lifecycle metadata', () => {
       year: 2026
     })
   })
+
+  it('persists only catalog identities for replayable source sync jobs', () => {
+    expect(safeReplayContext(job('catalog.sync', {
+      clientId: '11111111-1111-4111-8111-111111111111',
+      sourceId: '22222222-2222-4222-8222-222222222222',
+      actorEmail: 'advertising@adme.net.au'
+    }))).toEqual({
+      clientId: '11111111-1111-4111-8111-111111111111',
+      sourceId: '22222222-2222-4222-8222-222222222222'
+    })
+    expect(isReplayableJobType('catalog.sync')).toBe(true)
+  })
 })

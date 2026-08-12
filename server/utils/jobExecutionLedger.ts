@@ -5,7 +5,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const REPLAYABLE_TYPES = new Set([
   'persona.audience.sync',
   'spend.sync.meta.account',
-  'spend.sync.google.account'
+  'spend.sync.google.account',
+  'catalog.sync'
 ])
 
 export interface JobExecutionMetadata {
@@ -63,6 +64,11 @@ export function safeReplayContext(job: QueueJob): Record<string, string | number
         year,
         ...(syncJobId ? { jobId: syncJobId } : {})
       }
+    }
+    case 'catalog.sync': {
+      const clientId = optionalUuid(payload.clientId)
+      const sourceId = optionalUuid(payload.sourceId)
+      return clientId && sourceId ? { clientId, sourceId } : {}
     }
     default:
       return {}

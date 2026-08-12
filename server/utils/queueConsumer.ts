@@ -106,6 +106,10 @@ export async function processJob(job: QueueConsumerJob, event?: H3Event): Promis
         await processSiteIntelligenceEnrichment(job.payload, event)
         break
 
+      case 'catalog.sync':
+        await processCatalogSync(job.payload, event)
+        break
+
       case 'god-mode.audit-terminal':
         await processGodModeAuditTerminal(job.payload)
         break
@@ -251,6 +255,27 @@ async function processSiteIntelligenceEnrichment(payload: Record<string, unknown
   if (!event) throw new Error('Site intelligence enrichment requires a request-owned Cloudflare context')
   const { enrichSiteIntelligencePage } = await import('~~/server/utils/siteIntelligence/enrich')
   await enrichSiteIntelligencePage(payload as Parameters<typeof enrichSiteIntelligencePage>[0], event)
+}
+
+async function processCatalogSync(payload: Record<string, unknown>, event?: H3Event): Promise<void> {
+  if (!event) throw new Error('Catalog sync requires a request-owned Cloudflare context')
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  const clientId = typeof payload.clientId === 'string' && uuid.test(payload.clientId)
+    ? payload.clientId
+    : null
+  const sourceId = typeof payload.sourceId === 'string' && uuid.test(payload.sourceId)
+    ? payload.sourceId
+    : null
+  const actorEmail = typeof payload.actorEmail === 'string'
+    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.actorEmail)
+    && payload.actorEmail.length <= 320
+    ? payload.actorEmail
+    : null
+  if (!clientId || !sourceId || !actorEmail) {
+    throw new Error('Invalid catalog sync job payload')
+  }
+  const { synchronizeCatalogSource } = await import('~~/server/utils/crm/catalogSourceService')
+  await synchronizeCatalogSource(event, clientId, sourceId, actorEmail)
 }
 
 async function processGodModeAuditTerminal(payload: GodModeAuditEventInput): Promise<void> {

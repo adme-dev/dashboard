@@ -27,6 +27,7 @@ export type JobType =
   | 'embed.financial.pnl'
   | 'embed.financial.cash'
   | 'site-intelligence.enrich'
+  | 'catalog.sync'
 
 export interface QueueJob {
   jobId?: string
