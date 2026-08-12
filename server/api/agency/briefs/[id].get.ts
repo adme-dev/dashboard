@@ -3,6 +3,7 @@
  */
 
 import { queryOne, queryRows } from '~~/server/utils/db'
+import { reconcileGooglePmaxInventoryBudget } from '~~/server/utils/googleCampaignBudgetReconciliation'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
@@ -85,6 +86,14 @@ export default defineEventHandler(async (event) => {
       WHERE bfv.brief_id = $1
       ORDER BY btf.step_number ASC, btf.sort_order ASC
     `, [id])
+
+    const budgetReconciliation = reconcileGooglePmaxInventoryBudget({
+      templateSlug: brief.template_slug,
+      fieldValues: fieldValues.map(fv => ({
+        fieldKey: fv.field_key,
+        value: fv.value
+      }))
+    })
 
     // Get linked quote (if any)
     let quoteData = null
@@ -226,6 +235,7 @@ export default defineEventHandler(async (event) => {
         estimatedHours: t.estimated_hours ? Number(t.estimated_hours) : null,
         budgetSource: t.budget_source || 'manual',
       })),
+      budgetReconciliation,
       fieldValues: fieldValues.map(fv => ({
         id: fv.id,
         briefId: fv.brief_id,

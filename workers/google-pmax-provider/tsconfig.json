@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "WebWorker"],
+    "types": ["@cloudflare/workers-types/latest", "node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "baseUrl": ".",
+    "paths": {
+      "~~/server/utils/googlePmaxLaunchConfig": ["src/contracts.ts"],
+      "~~/server/utils/googlePmaxPausedExecutor": ["src/contracts.ts"],
+      "~~/server/utils/googlePmaxProviderReadback": ["src/contracts.ts"],
+      "~~/server/utils/googlePmaxPreflight": ["src/contracts.ts"],
+      "~~/server/utils/googlePmaxDecisionEvidence": ["../../server/utils/googlePmaxDecisionEvidence.ts"],
+      "~~/server/utils/googlePmaxOnboarding": ["../../server/utils/googlePmaxOnboarding.ts"],
+      "~~/server/utils/googlePmaxRemediationTasks": ["../../server/utils/googlePmaxRemediationTasks.ts"],
+      "~~/server/utils/feeds/readiness": ["../../server/utils/feeds/readiness.ts"],
+      "~~/server/utils/feeds/types": ["../../server/utils/feeds/types.ts"],
+      "~~/server/utils/socialNewsMondayEvidence": ["../../server/utils/socialNewsMondayEvidence.ts"],
+      "~~/server/utils/googleCampaignBudgetContract": ["../../server/utils/googleCampaignBudgetContract.ts"],
+      "~~/server/utils/googlePmaxLaunchHash": ["../../server/utils/googlePmaxLaunchHash.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

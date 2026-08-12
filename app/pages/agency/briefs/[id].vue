@@ -553,6 +553,11 @@ async function duplicateBrief() {
 
             <!-- Details Tab -->
             <div v-if="activeTab === 'details'" class="space-y-6">
+              <BriefsGoogleCampaignBudgetSummary
+                v-if="brief.budgetReconciliation"
+                :reconciliation="brief.budgetReconciliation"
+              />
+
               <!-- Field Values by Section -->
               <UCard v-for="section in fieldValuesBySection" :key="section.name">
                 <template #header>

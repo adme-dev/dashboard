@@ -8,6 +8,53 @@ import { notifyBriefSubmitted, notifyBriefAssigned } from '~~/server/utils/brief
 import { runBriefGatekeeper } from '~~/server/utils/automation/briefGatekeeperRunner'
 import { normalizeBriefPriority } from '~~/server/utils/briefPriority'
 
+function parseFieldMetadata(value: unknown): Record<string, unknown> | null {
+  if (!value) return null
+  if (typeof value === 'object') return value as Record<string, unknown>
+  if (typeof value !== 'string') return null
+  try {
+    return JSON.parse(value) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+function parseFieldOptions(value: unknown): Array<{ value: unknown }> {
+  if (Array.isArray(value)) return value as Array<{ value: unknown }>
+  if (typeof value !== 'string') return []
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed as Array<{ value: unknown }> : []
+  } catch {
+    return []
+  }
+}
+
+function isEmptyBriefValue(value: unknown): boolean {
+  return value === undefined || value === null || value === ''
+    || (Array.isArray(value) && value.length === 0)
+}
+
+function fieldConditionMatches(
+  condition: Record<string, unknown>,
+  fieldValues: Record<string, unknown>
+): boolean {
+  const target = fieldValues[condition.fieldKey]
+  switch (condition.operator) {
+    case 'equals': return target === condition.value
+    case 'not_equals': return target !== condition.value
+    case 'contains': return Array.isArray(target)
+      ? target.includes(condition.value)
+      : String(target ?? '').includes(String(condition.value ?? ''))
+    case 'not_contains': return Array.isArray(target)
+      ? !target.includes(condition.value)
+      : !String(target ?? '').includes(String(condition.value ?? ''))
+    case 'is_empty': return isEmptyBriefValue(target)
+    case 'is_not_empty': return !isEmptyBriefValue(target)
+    default: return false
+  }
+}
+
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
 
@@ -49,6 +96,7 @@ export default defineEventHandler(async (event) => {
     const template = await queryOne(`
       SELECT
         bt.id,
+        bt.slug,
         bt.name,
         bt.default_priority,
         bt.requires_approval,
@@ -84,17 +132,24 @@ export default defineEventHandler(async (event) => {
     }
 
     // Validate required fields if not a draft
-    if (!isDraft && fieldValues) {
+    if (!isDraft) {
+      const submittedFieldValues = fieldValues && typeof fieldValues === 'object' && !Array.isArray(fieldValues)
+        ? fieldValues
+        : {}
       const fields = await queryRows(`
-        SELECT field_key, field_label, is_required
+        SELECT field_key, field_label, field_type, options, is_required, validation_rules, conditional_logic
         FROM brief_template_fields
-        WHERE template_id = $1 AND is_required = true
+        WHERE template_id = $1
       `, [templateId])
 
-      const missingFields = fields.filter(f => {
-        const value = fieldValues[f.field_key]
-        return value === undefined || value === null || value === '' ||
-               (Array.isArray(value) && value.length === 0)
+      const missingFields = fields.filter((f) => {
+        const condition = parseFieldMetadata(f.conditional_logic)
+        let required = f.is_required
+        if (condition?.action === 'require' && fieldConditionMatches(condition, submittedFieldValues)) required = true
+        if (condition?.action === 'unrequire' && fieldConditionMatches(condition, submittedFieldValues)) required = false
+
+        const value = submittedFieldValues[f.field_key]
+        return required && isEmptyBriefValue(value)
       })
 
       if (missingFields.length > 0) {
@@ -102,6 +157,44 @@ export default defineEventHandler(async (event) => {
           statusCode: 400,
           statusMessage: `Missing required fields: ${missingFields.map(f => f.field_label).join(', ')}`
         })
+      }
+
+      for (const field of fields) {
+        const value = submittedFieldValues[field.field_key]
+        if (isEmptyBriefValue(value)) continue
+
+        if (field.field_type === 'dropdown' || field.field_type === 'radio') {
+          const allowedValues = parseFieldOptions(field.options).map(option => option.value)
+          if (typeof value !== 'string' || !allowedValues.includes(value)) {
+            throw createError({
+              statusCode: 400,
+              statusMessage: `${field.field_label} has an invalid selection`
+            })
+          }
+        }
+
+        const rules = parseFieldMetadata(field.validation_rules)
+        const canBeNumeric = typeof value === 'number'
+          || (typeof value === 'string' && value.trim() !== '')
+        const numericValue = canBeNumeric ? Number(value) : Number.NaN
+        if ((rules?.min !== undefined || rules?.max !== undefined) && !Number.isFinite(numericValue)) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: `${field.field_label} must be a number`
+          })
+        }
+        if (rules?.min !== undefined && Number.isFinite(numericValue) && numericValue < Number(rules.min)) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: `${field.field_label} must be at least ${rules.min}`
+          })
+        }
+        if (rules?.max !== undefined && Number.isFinite(numericValue) && numericValue > Number(rules.max)) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: `${field.field_label} must be at most ${rules.max}`
+          })
+        }
       }
     }
 

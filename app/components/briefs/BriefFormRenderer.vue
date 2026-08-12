@@ -59,6 +59,62 @@ const totalSteps = computed(() => steps.value.length)
 const isMultiStep = computed(() => props.template.isMultiStep && totalSteps.value > 1)
 const currentStepData = computed(() => steps.value.find(s => s.number === currentStep.value))
 
+const googlePmaxBudgetPreview = computed(() => {
+  if (props.template.slug !== 'google-pmax') return null
+  if (formValues.value.pmax_type !== 'inventory') return null
+  if (formValues.value.budget_period !== 'fixed_flight') return null
+
+  const rawAllocatedTotal = formValues.value.allocated_total
+  if (typeof rawAllocatedTotal !== 'number' && typeof rawAllocatedTotal !== 'string') return null
+  const allocatedTotal = Number(rawAllocatedTotal)
+  const currency = String(formValues.value.budget_currency || '').toUpperCase()
+  const startDate = String(formValues.value.start_date || '')
+  const endDate = String(formValues.value.end_date || '')
+  const datePattern = /^(\d{4})-(\d{2})-(\d{2})$/
+  const startMatch = datePattern.exec(startDate)
+  const endMatch = datePattern.exec(endDate)
+
+  if (!Number.isFinite(allocatedTotal) || allocatedTotal <= 0 || !/^[A-Z]{3}$/.test(currency)) return null
+  if (!startMatch || !endMatch) return null
+
+  const start = Date.UTC(Number(startMatch[1]), Number(startMatch[2]) - 1, Number(startMatch[3]))
+  const end = Date.UTC(Number(endMatch[1]), Number(endMatch[2]) - 1, Number(endMatch[3]))
+  const parsedStart = new Date(start)
+  const parsedEnd = new Date(end)
+  if (
+    parsedStart.getUTCFullYear() !== Number(startMatch[1])
+    || parsedStart.getUTCMonth() !== Number(startMatch[2]) - 1
+    || parsedStart.getUTCDate() !== Number(startMatch[3])
+    || parsedEnd.getUTCFullYear() !== Number(endMatch[1])
+    || parsedEnd.getUTCMonth() !== Number(endMatch[2]) - 1
+    || parsedEnd.getUTCDate() !== Number(endMatch[3])
+  ) return null
+  if (end < start) return null
+
+  const campaignDays = Math.floor((end - start) / 86_400_000) + 1
+  const calculatedDailyPace = allocatedTotal / campaignDays
+  const totalAmountMicros = Math.round(allocatedTotal * 1_000_000)
+  if (!Number.isSafeInteger(totalAmountMicros)) return null
+
+  try {
+    const formatter = new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency,
+      currencyDisplay: 'code',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
+    return {
+      allocatedTotal: formatter.format(allocatedTotal),
+      campaignDays,
+      calculatedDailyPace: formatter.format(calculatedDailyPace),
+      totalAmountMicros: String(totalAmountMicros)
+    }
+  } catch {
+    return null
+  }
+})
+
 // Group current step fields by section
 const currentStepSections = computed(() => {
   if (!currentStepData.value) return []
@@ -127,6 +183,24 @@ function isFieldVisible(field: BriefTemplateField): boolean {
   return true
 }
 
+function isFieldRequired(field: BriefTemplateField): boolean {
+  if (!field.conditionalLogic) return field.isRequired
+
+  if (field.conditionalLogic.action === 'require') {
+    return isFieldVisible({
+      ...field,
+      conditionalLogic: { ...field.conditionalLogic, action: 'show' }
+    })
+  }
+  if (field.conditionalLogic.action === 'unrequire') {
+    return !isFieldVisible({
+      ...field,
+      conditionalLogic: { ...field.conditionalLogic, action: 'show' }
+    })
+  }
+  return field.isRequired
+}
+
 // Validate current step
 function validateCurrentStep(): { valid: boolean; errors: string[] } {
   const errors: string[] = []
@@ -137,15 +211,7 @@ function validateCurrentStep(): { valid: boolean; errors: string[] } {
     if (!isFieldVisible(field)) continue
 
     // Check required fields
-    let isRequired = field.isRequired
-
-    // Check conditional requirement
-    if (field.conditionalLogic?.action === 'require') {
-      isRequired = isFieldVisible({ ...field, conditionalLogic: { ...field.conditionalLogic, action: 'show' } })
-    }
-    if (field.conditionalLogic?.action === 'unrequire') {
-      isRequired = !isFieldVisible({ ...field, conditionalLogic: { ...field.conditionalLogic, action: 'show' } })
-    }
+    const isRequired = isFieldRequired(field)
 
     if (isRequired) {
       const value = formValues.value[field.fieldKey]
@@ -346,8 +412,8 @@ function handleCancel() {
             <template v-for="field in section.fields" :key="field.id">
               <BriefsBriefFormField
                 v-if="isFieldVisible(field)"
-                :field="field"
                 v-model="formValues[field.fieldKey]"
+                :field="{ ...field, isRequired: isFieldRequired(field) }"
                 :disabled="disabled || isSubmitting"
                 :class="{
                   'md:col-span-2': field.width === 'full',
@@ -355,6 +421,39 @@ function handleCancel() {
                 }"
               />
             </template>
+
+            <div
+              v-if="section.name === 'Budget' && googlePmaxBudgetPreview"
+              class="md:col-span-2 rounded-lg border border-default bg-elevated/40 p-4"
+              aria-live="polite"
+            >
+              <div class="flex items-start gap-3">
+                <UIcon name="i-lucide-calculator" class="mt-0.5 size-5 shrink-0 text-primary" />
+                <div class="min-w-0 space-y-2">
+                  <div>
+                    <p class="text-sm font-semibold text-highlighted">
+                      Fixed-flight budget equation
+                    </p>
+                    <p class="mt-1 text-sm text-muted">
+                      {{ googlePmaxBudgetPreview.allocatedTotal }} total ÷
+                      {{ googlePmaxBudgetPreview.campaignDays }} inclusive days =
+                      {{ googlePmaxBudgetPreview.calculatedDailyPace }}/day
+                    </p>
+                  </div>
+                  <div class="border-t border-default pt-2">
+                    <p class="text-xs font-medium uppercase tracking-wide text-muted">
+                      Google provider contract
+                    </p>
+                    <p class="mt-1 font-mono text-sm text-highlighted">
+                      CUSTOM_PERIOD · total_amount_micros = {{ googlePmaxBudgetPreview.totalAmountMicros }}
+                    </p>
+                  </div>
+                  <p class="text-xs text-muted">
+                    Preview only. Launch validation checks the selected Google Ads account currency and timezone.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

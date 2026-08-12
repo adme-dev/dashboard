@@ -124,19 +124,19 @@ npx wrangler pages dev -- npm run dev
 
 ### Preview (Staging)
 ```bash
-# Deploy to preview branch
-git push origin feature-branch
-# Or manually:
-npx wrangler pages deploy --env preview
+# Guarded deployment to the immutable agency-dashboard target
+pnpm deploy:check
+pnpm deploy:preview
 ```
 
 ### Production
 ```bash
-# Deploy to production
-git push origin main
-# Or manually:
-npx wrangler pages deploy --env production
+# Guarded deployment to the immutable agency-dashboard target
+pnpm deploy:check
+pnpm deploy:production
 ```
+
+Never invoke `wrangler pages deploy` directly from this repository.
 
 ## Managing Secrets with Wrangler
 
@@ -258,9 +258,20 @@ Keyrings are bounded/versioned and may not reuse CRM search service, confirmatio
 | `XERO_CLIENT_ID` | No | Xero OAuth client ID |
 | `XERO_CLIENT_SECRET` | No | Xero OAuth client secret |
 | `GROQ_API_KEY` | No | AI features API key |
+| `AI_GATEWAY_URL` | No | Exact Cloudflare AI Gateway base URL (`https://gateway.ai.cloudflare.com/v1/<account>/<gateway>`) used for governed advisory calls |
+| `AI_GATEWAY_AUTH_TOKEN` | No | Optional authenticated Cloudflare AI Gateway token; server-only |
 | `MONDAY_API_TOKEN` | No | Monday.com integration |
+| `GOOGLE_PMAX_PROVIDER_WRITES_ENABLED` | No | Hard gate for administrator-approved paused Google PMax creation; exact `true` only |
+| `GOOGLE_PMAX_ACTIVATION_ENABLED` | No | Independent hard gate for approved campaign and asset-group activation; also requires provider writes enabled |
 | `AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET` | No | Machine credential for post-deploy Workflows readiness/status smoke |
 | `AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256` | No | Pages-side verifier hash for the Workflows smoke credential |
 | `R2_*` | No | Cloudflare R2 storage |
 
 *Required for magic link authentication to work
+
+`GOOGLE_PMAX_PROVIDER` is a Cloudflare service binding, not an environment
+variable or secret. It must target the route-less `google-pmax-provider` Worker.
+Google OAuth and developer credentials are resolved inside Pages and passed only over
+that private binding for the duration of one provider operation. The Worker also
+requires its `HYPERDRIVE` binding for tenant-scoped evidence persistence and task sync;
+its Wrangler configuration enables Smart Placement and exposes no public route.

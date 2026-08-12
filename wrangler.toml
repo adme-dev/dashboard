@@ -213,6 +213,11 @@ service = "agency-crm-search-evaluation-runner"
 [[env.production.services]]
 binding = "CRM_SEARCH_ANALYTICS_KEY_MANAGER"
 service = "agency-crm-search-analytics-key-manager"
+# Private provider control plane for governed Google PMax mutations/readback.
+# workers_dev is disabled on the target; production Pages reaches it only through this binding.
+[[env.production.services]]
+binding = "GOOGLE_PMAX_PROVIDER"
+service = "google-pmax-provider"
 
 [[env.production.durable_objects.bindings]]
 name = "CHAT_ROOMS"

@@ -1,0 +1,26 @@
+name = "google-pmax-provider"
+main = "src/index.ts"
+compatibility_date = "2026-08-07"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+[placement]
+mode = "smart"
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "900b4b74ec41462cbbabebd0aa8775aa"
+
+[alias]
+"~~/server/utils/googleCampaignBudgetContract" = "../../server/utils/googleCampaignBudgetContract.ts"
+"~~/server/utils/googlePmaxLaunchHash" = "../../server/utils/googlePmaxLaunchHash.ts"
+"~~/server/utils/googlePmaxDecisionEvidence" = "../../server/utils/googlePmaxDecisionEvidence.ts"
+"~~/server/utils/socialNewsMondayEvidence" = "../../server/utils/socialNewsMondayEvidence.ts"
+"~~/server/utils/feeds/readiness" = "../../server/utils/feeds/readiness.ts"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+# This Worker has no public route. It is reachable from the agency-dashboard
+# Pages project only through the GOOGLE_PMAX_PROVIDER service binding.
