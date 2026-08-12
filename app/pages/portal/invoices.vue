@@ -249,6 +249,10 @@ function formatCurrency(amount: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 2 }).format(amount)
 }
 
+function formatTaxRate(rate: number) {
+  return new Intl.NumberFormat('en-AU', { maximumFractionDigits: 2 }).format(rate)
+}
+
 function daysOverdue(dueDate: string | null, status: string): number {
   if (!dueDate || status === 'paid') return 0
   const due = new Date(dueDate)
@@ -654,71 +658,75 @@ const agingColors: Record<string, string> = {
               <h3 class="font-semibold text-sm mb-3">
                 Line Items
               </h3>
-              <table class="w-full text-sm">
-                <thead>
-                  <tr class="border-b border-default">
-                    <th class="text-left py-2 font-medium text-muted">
-                      Description
-                    </th>
-                    <th class="text-right py-2 font-medium text-muted">
-                      Qty
-                    </th>
-                    <th class="text-right py-2 font-medium text-muted">
-                      Price
-                    </th>
-                    <th class="text-right py-2 font-medium text-muted">
-                      Amount
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="item in detailData.lineItems" :key="item.id" class="border-b border-default/50">
-                    <td class="py-2">
-                      {{ item.description }}
-                    </td>
-                    <td class="py-2 text-right text-muted">
-                      {{ item.quantity }}
-                    </td>
-                    <td class="py-2 text-right text-muted">
-                      {{ formatCurrency(item.unitPrice) }}
-                    </td>
-                    <td class="py-2 text-right font-medium">
-                      {{ formatCurrency(item.amount) }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              <div class="divide-y divide-default border-y border-default">
+                <article
+                  v-for="item in detailData.lineItems"
+                  :key="item.id"
+                  data-testid="invoice-line-item"
+                  class="py-3"
+                >
+                  <p class="text-sm leading-5 break-words">
+                    {{ item.description }}
+                  </p>
+                  <dl class="mt-3 grid grid-cols-3 gap-3">
+                    <div class="min-w-0">
+                      <dt class="text-[11px] font-medium uppercase tracking-wide text-muted">
+                        Qty
+                      </dt>
+                      <dd class="mt-1 tabular-nums whitespace-nowrap">
+                        {{ item.quantity }}
+                      </dd>
+                    </div>
+                    <div class="min-w-0 text-right">
+                      <dt class="text-[11px] font-medium uppercase tracking-wide text-muted">
+                        Unit price
+                      </dt>
+                      <dd class="mt-1 text-muted tabular-nums whitespace-nowrap">
+                        {{ formatCurrency(item.unitPrice) }}
+                      </dd>
+                    </div>
+                    <div class="min-w-0 text-right">
+                      <dt class="text-[11px] font-medium uppercase tracking-wide text-muted">
+                        Amount
+                      </dt>
+                      <dd class="mt-1 font-medium tabular-nums whitespace-nowrap">
+                        {{ formatCurrency(item.amount) }}
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
+              </div>
             </div>
 
             <!-- Totals -->
             <div class="border-t border-default pt-4 space-y-2 text-sm">
-              <div class="flex justify-between">
+              <div class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4">
                 <span class="text-muted">Subtotal</span>
-                <span>{{ formatCurrency(detailData.invoice.subtotal) }}</span>
+                <span class="text-right tabular-nums whitespace-nowrap">{{ formatCurrency(detailData.invoice.subtotal) }}</span>
               </div>
-              <div v-if="detailData.invoice.discountAmount > 0" class="flex justify-between">
+              <div v-if="detailData.invoice.discountAmount > 0" class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4">
                 <span class="text-muted">Discount</span>
-                <span class="text-success">-{{ formatCurrency(detailData.invoice.discountAmount) }}</span>
+                <span class="text-right text-success tabular-nums whitespace-nowrap">-{{ formatCurrency(detailData.invoice.discountAmount) }}</span>
               </div>
-              <div v-if="detailData.invoice.taxAmount > 0" class="flex justify-between">
-                <span class="text-muted">Tax ({{ detailData.invoice.taxRate }}%)</span>
-                <span>{{ formatCurrency(detailData.invoice.taxAmount) }}</span>
+              <div v-if="detailData.invoice.taxAmount > 0" class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4">
+                <span class="text-muted">Tax ({{ formatTaxRate(detailData.invoice.taxRate) }}%)</span>
+                <span class="text-right tabular-nums whitespace-nowrap">{{ formatCurrency(detailData.invoice.taxAmount) }}</span>
               </div>
-              <div class="flex justify-between font-semibold text-base pt-2 border-t border-default">
+              <div class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4 font-semibold text-base pt-2 border-t border-default">
                 <span>Total</span>
-                <span>{{ formatCurrency(detailData.invoice.totalAmount) }}</span>
+                <span class="text-right tabular-nums whitespace-nowrap">{{ formatCurrency(detailData.invoice.totalAmount) }}</span>
               </div>
-              <div v-if="detailData.invoice.amountPaid > 0" class="flex justify-between text-success">
+              <div v-if="detailData.invoice.amountPaid > 0" class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4 text-success">
                 <span>Paid</span>
-                <span>-{{ formatCurrency(detailData.invoice.amountPaid) }}</span>
+                <span class="text-right tabular-nums whitespace-nowrap">-{{ formatCurrency(detailData.invoice.amountPaid) }}</span>
               </div>
-              <div v-if="detailData.invoice.amountCredited > 0" class="flex justify-between text-primary">
+              <div v-if="detailData.invoice.amountCredited > 0" class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4 text-primary">
                 <span>Credits applied</span>
-                <span>-{{ formatCurrency(detailData.invoice.amountCredited) }}</span>
+                <span class="text-right tabular-nums whitespace-nowrap">-{{ formatCurrency(detailData.invoice.amountCredited) }}</span>
               </div>
-              <div v-if="detailData.invoice.amountDue > 0" class="flex justify-between font-semibold text-warning">
+              <div v-if="detailData.invoice.amountDue > 0" class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4 font-semibold text-warning">
                 <span>Amount Due</span>
-                <span>{{ formatCurrency(detailData.invoice.amountDue) }}</span>
+                <span class="text-right tabular-nums whitespace-nowrap">{{ formatCurrency(detailData.invoice.amountDue) }}</span>
               </div>
             </div>
 
