@@ -12,7 +12,8 @@ import {
   compactDeployedWorkerModules,
   compactPrecomputedManifest,
   compactPlatformImports,
-  compactWorkerModule
+  compactWorkerModule,
+  resolvePrecomputedManifestPath
 } from '../../scripts/compact-worker-module.mjs'
 
 const temporaryDirectories: string[] = []
@@ -24,6 +25,35 @@ afterEach(async () => {
 })
 
 describe('Pages Worker postbuild compaction', () => {
+  it('resolves the Nuxt 4.5 precomputed manifest location', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-manifest-path-'))
+    temporaryDirectories.push(directory)
+    const manifestPath = path.join(directory, 'chunks', 'virtual', 'precomputed.mjs')
+    await mkdir(path.dirname(manifestPath), { recursive: true })
+    await writeFile(manifestPath, 'export default {}', 'utf8')
+
+    await expect(resolvePrecomputedManifestPath(directory)).resolves.toBe(manifestPath)
+  })
+
+  it('continues to resolve the legacy Nuxt precomputed manifest location', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-manifest-legacy-path-'))
+    temporaryDirectories.push(directory)
+    const manifestPath = path.join(directory, 'chunks', 'build', 'client.precomputed.mjs')
+    await mkdir(path.dirname(manifestPath), { recursive: true })
+    await writeFile(manifestPath, 'export default {}', 'utf8')
+
+    await expect(resolvePrecomputedManifestPath(directory)).resolves.toBe(manifestPath)
+  })
+
+  it('fails closed when Nuxt emits no recognized precomputed manifest', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-manifest-missing-'))
+    temporaryDirectories.push(directory)
+
+    await expect(resolvePrecomputedManifestPath(directory)).rejects.toThrow(
+      /precomputed manifest/i
+    )
+  })
+
   it('encodes the SSR manifest compactly and reconstructs its exact runtime contract', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'worker-manifest-module-'))
     temporaryDirectories.push(directory)
