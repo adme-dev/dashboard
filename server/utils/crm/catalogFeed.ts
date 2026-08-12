@@ -392,6 +392,16 @@ function rowWithGovernedValues(
       .replaceAll('{name_slug}', nameSlug)
     governed = setPathValue(governed, mapping.product_url || 'product_url', productUrl)
   }
+  if (mappedValue(governed, 'merchant_offer_id', mapping) === undefined) {
+    const stockId = textValue(mappedValue(governed, 'stock_id', mapping), 47)
+    if (stockId) {
+      governed = setPathValue(
+        governed,
+        mapping.merchant_offer_id || 'merchant_offer_id',
+        `XF-${stockId}`
+      )
+    }
+  }
   return governed
 }
 
@@ -440,11 +450,28 @@ export function selectSupabaseCatalogRowsForSource(
   if (!configuredSelection) {
     throw new CatalogFeedError('Supabase catalog selection is not configured', 409)
   }
-  return applySupabaseCatalogSelection(
+  const result = applySupabaseCatalogSelection(
     rows,
     normalizeSupabaseCatalogSelection(configuredSelection),
     source.field_mapping ?? {}
-  ).included
+  )
+  const incomplete = result.excluded.filter(
+    (item): item is SupabaseCatalogExcludedRow & { field: SupabaseCatalogRequiredField } =>
+      item.reason === 'REQUIRED_FIELD_MISSING' && Boolean(item.field)
+  )
+  if (!result.included.length && incomplete.length) {
+    const counts = new Map<SupabaseCatalogRequiredField, number>()
+    for (const item of incomplete) counts.set(item.field, (counts.get(item.field) ?? 0) + 1)
+    const summary = [...counts.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([field, count]) => `${field} (${count})`)
+      .join(', ')
+    throw new CatalogFeedError(
+      `Supabase selection matched products but required fields are incomplete: ${summary}`,
+      409
+    )
+  }
+  return result.included
 }
 
 export function catalogSelectionCanRetireAll(

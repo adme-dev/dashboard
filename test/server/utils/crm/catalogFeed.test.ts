@@ -123,6 +123,30 @@ describe('Supabase catalog selection', () => {
     )
   })
 
+  it('derives a stable XeroFlow Merchant offer ID from the governed stock ID', () => {
+    const selection = normalizeSupabaseCatalogSelection({
+      seller_ids: ['brighton-gwm'],
+      sale_statuses: ['For Sale'],
+      makes: ['GWM'],
+      listing_types: ['New'],
+      required_fields: ['source_product_id', 'stock_id', 'merchant_offer_id']
+    })
+    const { included: [selected] } = applySupabaseCatalogSelection([{
+      id: 'vehicle-1',
+      stock_number: 'K625231',
+      seller_id: 'brighton-gwm',
+      sale_status: 'For Sale',
+      listing_type: 'New',
+      make: 'GWM'
+    }], selection, {
+      source_product_id: 'id',
+      stock_id: 'stock_number',
+      merchant_offer_id: 'merchant_offer_id'
+    })
+
+    expect(selected?.merchant_offer_id).toBe('XF-K625231')
+  })
+
   it('rejects unsafe product URL templates', () => {
     expect(() => normalizeSupabaseCatalogSelection({
       seller_ids: ['brighton-gwm'],
@@ -191,6 +215,40 @@ describe('Supabase catalog selection', () => {
       ...source,
       connection_config: { schema: 'public', table: 'vehicles' }
     }, rows)).toThrowError('Supabase catalog selection is not configured')
+  })
+
+  it('fails closed when eligible stock is rejected by Merchant completeness rules', () => {
+    const source = {
+      id: '11111111-1111-4111-8111-111111111111',
+      client_id: '22222222-2222-4222-8222-222222222222',
+      source_type: 'supabase',
+      status: 'active' as const,
+      feed_url: 'https://example.supabase.co/',
+      feed_format: 'json' as const,
+      item_path: null,
+      field_mapping: { color: 'exterior_colour_name' },
+      connection_config: {
+        selection: normalizeSupabaseCatalogSelection({
+          seller_ids: ['brighton-gwm'],
+          sale_statuses: ['For Sale'],
+          makes: ['GWM'],
+          listing_types: ['New'],
+          required_fields: ['source_product_id', 'stock_id', 'color']
+        })
+      },
+      secret_encrypted: new Uint8Array(),
+      secret_iv: new Uint8Array()
+    }
+
+    expect(() => selectSupabaseCatalogRowsForSource(source, [{
+      id: 'vehicle-1',
+      stock_number: 'K625231',
+      seller_id: 'brighton-gwm',
+      sale_status: 'For Sale',
+      listing_type: 'New',
+      make: 'GWM',
+      exterior_colour_name: null
+    }])).toThrowError('required fields are incomplete: color (1)')
   })
 
   it('retires all prior products only after an authoritative Supabase read returns rows but no eligible stock', () => {
