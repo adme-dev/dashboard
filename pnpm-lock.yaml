@@ -231,6 +231,9 @@ importers:
       eslint:
         specifier: ^9.39.5
         version: 9.39.5(jiti@2.7.0)
+      fflate:
+        specifier: 0.8.3
+        version: 0.8.3
       happy-dom:
         specifier: ^20.10.6
         version: 20.10.6
@@ -18777,8 +18780,7 @@ snapshots:
   fetch-retry@5.0.6:
     optional: true
 
-  fflate@0.8.3:
-    optional: true
+  fflate@0.8.3: {}
 
   figures@6.1.0:
     dependencies:

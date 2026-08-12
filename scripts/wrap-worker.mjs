@@ -118,9 +118,26 @@ if (!precomputedSource.includes('XEROFLOW_COMPACT_PRECOMPUTED')) {
   const compactSource = buildCompressedPrecomputedManifestModule(manifest, {
     contract: exportContract
   })
-  await fs.writeFile(precomputedManifest, compactSource, 'utf8')
+  const bundledManifest = await build({
+    stdin: {
+      contents: compactSource,
+      resolveDir: projectRoot,
+      sourcefile: path.basename(precomputedManifest),
+      loader: 'js'
+    },
+    bundle: true,
+    minify: true,
+    format: 'esm',
+    target: 'esnext',
+    platform: 'browser',
+    write: false,
+    legalComments: 'none',
+    logLevel: 'warning'
+  })
+  const bundledSource = bundledManifest.outputFiles[0].text
+  await fs.writeFile(precomputedManifest, bundledSource, 'utf8')
   console.log(
-    `[wrap-worker] compacted Nuxt client manifest ${precomputedSource.length} → ${compactSource.length} bytes`
+    `[wrap-worker] compacted Nuxt client manifest ${precomputedSource.length} → ${bundledSource.length} bytes`
   )
 }
 
