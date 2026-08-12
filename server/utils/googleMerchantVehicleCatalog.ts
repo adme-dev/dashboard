@@ -474,6 +474,28 @@ export function createGoogleMerchantVehicleClient(input: {
     }
   })
   return {
+    async inspectAuthorization(args: { developerEmail: string }) {
+      const response = await fetcher('https://oauth2.googleapis.com/tokeninfo', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ access_token: input.accessToken }).toString()
+      })
+      if (!response.ok) return {
+        tokenValid: false, contentScopeGranted: false, developerEmailMatches: false
+      }
+      const value = await response.json().catch(() => null)
+      const info = value && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : null
+      const scopes = typeof info?.scope === 'string' ? info.scope.split(/\s+/) : []
+      const email = typeof info?.email === 'string' ? info.email.toLowerCase() : ''
+      return {
+        tokenValid: true,
+        contentScopeGranted: scopes.includes('https://www.googleapis.com/auth/content'),
+        developerEmailMatches: email === args.developerEmail.toLowerCase()
+      }
+    },
+
     async listProducts(merchantAccountId: string): Promise<GoogleMerchantVehicleProcessedProduct[]> {
       if (!ACCOUNT_ID.test(merchantAccountId)) {
         throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_CONFIG_INVALID')

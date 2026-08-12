@@ -224,6 +224,10 @@ export function createMerchantCatalogReconciler(dependencies: ReconcilerDependen
       dataSource = await resolveApiSource(client, sourceInput)
     } catch (error) {
       if (!(error instanceof GoogleMerchantVehicleCatalogError) || error.httpStatus !== 401) throw error
+      const authorization = await client.inspectAuthorization({
+        developerEmail: merchant.developerEmail
+      })
+      console.error('[MerchantCatalogAuthorization] registration prerequisite', authorization)
       await client.registerDeveloper({
         merchantAccountId: merchant.accountId,
         developerEmail: merchant.developerEmail

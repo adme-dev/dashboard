@@ -97,6 +97,7 @@ describe('governed Merchant catalog reconciler', () => {
       finishRun
     }
     const client = {
+      inspectAuthorization: vi.fn(),
       getDataSource: vi.fn().mockResolvedValue(apiSource()),
       listDataSources: vi.fn(),
       createVehicleDataSource: vi.fn(),
@@ -151,6 +152,7 @@ describe('governed Merchant catalog reconciler', () => {
       finishRun: vi.fn()
     }
     const client = {
+      inspectAuthorization: vi.fn(),
       getDataSource: vi.fn().mockResolvedValue({
         ...apiSource(), inputType: 'FILE', writableByApi: false, fileInput: { fileName: 'old.xml' }
       }),
@@ -187,6 +189,9 @@ describe('governed Merchant catalog reconciler', () => {
       finishRun: vi.fn()
     }
     const client = {
+      inspectAuthorization: vi.fn().mockResolvedValue({
+        tokenValid: true, contentScopeGranted: true, developerEmailMatches: true
+      }),
       getDataSource: vi.fn()
         .mockRejectedValueOnce(new GoogleMerchantVehicleCatalogError(
           'MERCHANT_VEHICLE_REQUEST_FAILED', 401
@@ -206,6 +211,9 @@ describe('governed Merchant catalog reconciler', () => {
     await expect(reconcile(request)).resolves.toMatchObject({ publishCount: 0 })
     expect(client.registerDeveloper).toHaveBeenCalledWith({
       merchantAccountId: merchant.account_id,
+      developerEmail: 'advertising@adme.net.au'
+    })
+    expect(client.inspectAuthorization).toHaveBeenCalledWith({
       developerEmail: 'advertising@adme.net.au'
     })
     expect(client.getDataSource).toHaveBeenCalledTimes(2)

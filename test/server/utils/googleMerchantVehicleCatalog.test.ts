@@ -203,6 +203,27 @@ describe('Google Merchant vehicle reconciliation plan', () => {
 })
 
 describe('Google Merchant vehicle HTTP client', () => {
+  it('introspects only the safe authorization flags needed for Merchant onboarding', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      scope: 'https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/content',
+      email: 'advertising@adme.net.au',
+      aud: 'sensitive-oauth-client-id'
+    }), { status: 200 }))
+    const client = createGoogleMerchantVehicleClient({ accessToken: 'token', fetch })
+
+    await expect(client.inspectAuthorization({
+      developerEmail: 'advertising@adme.net.au'
+    })).resolves.toEqual({
+      tokenValid: true,
+      contentScopeGranted: true,
+      developerEmailMatches: true
+    })
+    expect(fetch).toHaveBeenCalledWith(
+      'https://oauth2.googleapis.com/tokeninfo',
+      expect.objectContaining({ method: 'POST' })
+    )
+  })
+
   it('lists processed products and preserves Vehicle Ads status evidence across pages', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
