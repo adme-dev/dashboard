@@ -69,7 +69,8 @@ async function runGoogleMerchantCatalogAction(event: H3Event, action: 'merchant_
     tenantId: input.tenantId,
     clientId: input.clientId,
     connectionId,
-    customerId
+    customerId,
+    forceTokenRefresh: true
   })
   let response: Response
   try {

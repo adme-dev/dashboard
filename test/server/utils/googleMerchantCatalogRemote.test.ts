@@ -59,6 +59,9 @@ describe('private Merchant catalog provider boundary', () => {
       publishCount: 262,
       processingState: 'SUBMITTED_AWAITING_GOOGLE_READBACK'
     })
+    expect(mocks.loadConnection).toHaveBeenCalledWith(expect.objectContaining({
+      forceTokenRefresh: true
+    }))
     const init = fetch.mock.calls[0]?.[1] as RequestInit
     expect(fetch.mock.calls[0]?.[0]).toBe('https://google-pmax-provider.internal/v1/decision')
     expect(JSON.parse(String(init.body))).toMatchObject({

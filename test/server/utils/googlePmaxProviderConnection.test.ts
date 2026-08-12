@@ -51,6 +51,34 @@ describe('Google PMax provider connection loader', () => {
     }), expect.objectContaining({ googleAdsLoginCustomerId: '999-999-9999' }), expect.any(Object))
   })
 
+  it('forces a fresh OAuth token for a Merchant publication boundary', async () => {
+    const resolveAuth = vi.fn().mockResolvedValue({
+      accessToken: 'fresh-merchant-access', loginCustomerId: '9999999999'
+    })
+    await loadGooglePmaxProviderConnection({ ...config, forceTokenRefresh: true } as never, {
+      queryOne: vi.fn().mockResolvedValue({
+        id: config.connectionId, client_id: config.clientId, account_id: config.customerId,
+        status: 'active', metadata: {}, access_token: 'stored', refresh_token: 'refresh',
+        token_expires_at: '2026-08-13T23:00:00.000Z'
+      }),
+      getRuntimeConfig: () => ({
+        googleClientId: 'client', googleClientSecret: 'secret',
+        googleDeveloperToken: 'developer', googleAdsLoginCustomerId: ''
+      }),
+      resolveCredential: vi.fn().mockResolvedValue({
+        accessToken: 'stored', refreshToken: 'refresh',
+        tokenExpiresAt: '2026-08-13T23:00:00.000Z', profileId: null
+      }),
+      resolveAuth
+    })
+
+    expect(resolveAuth.mock.calls[0]?.[0]).toMatchObject({
+      access_token: 'stored',
+      refresh_token: 'refresh',
+      token_expires_at: '1970-01-01T00:00:00.000Z'
+    })
+  })
+
   it('fails closed for missing, inactive, or differently-scoped connections', async () => {
     await expect(loadGooglePmaxProviderConnection(config as never, {
       queryOne: vi.fn().mockResolvedValue(null),

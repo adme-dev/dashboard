@@ -58,7 +58,9 @@ function accountId(value: string): string {
 
 export async function loadGooglePmaxProviderConnection(
   config: Pick<GooglePmaxInventoryLaunchConfig,
-    'tenantId' | 'clientId' | 'connectionId' | 'customerId'>,
+    'tenantId' | 'clientId' | 'connectionId' | 'customerId'> & {
+      forceTokenRefresh?: boolean
+    },
   dependencies: ProviderConnectionDependencies = {}
 ): Promise<GooglePmaxProviderConnection> {
   const queryOne = dependencies.queryOne || defaultQueryOne
@@ -118,7 +120,9 @@ export async function loadGooglePmaxProviderConnection(
       account_id: accountId(row.account_id),
       access_token: credential.accessToken,
       refresh_token: credential.refreshToken,
-      token_expires_at: credential.tokenExpiresAt
+      token_expires_at: config.forceTokenRefresh
+        ? new Date(0).toISOString()
+        : credential.tokenExpiresAt
     }, {
       ...runtime,
       googleAdsLoginCustomerId: configuredManagerId
