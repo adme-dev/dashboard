@@ -147,7 +147,9 @@ describe('Pages Worker postbuild compaction', () => {
     expect(typeof loaded).toBe('object')
     expect(loaded).toEqual(manifest)
     expect(loaded.modules[entryId].isEntry).toBe(true)
-    expect(source).toContain('const manifest = await decodePrecomputedManifest()')
+    expect(source).toContain('const manifest = decodePrecomputedManifest()')
+    expect(source).not.toContain('DecompressionStream')
+    expect(source).not.toContain('await decodePrecomputedManifest()')
   })
 
   it('round-trips numeric zero without treating it as a missing resource field', async () => {

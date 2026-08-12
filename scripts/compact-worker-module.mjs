@@ -110,16 +110,16 @@ export function buildCompressedPrecomputedManifestModule(
   // repeated resource objects effectively, so field-level elision is both
   // unnecessary and unsafe across framework upgrades.
   const compressed = gzipSync(Buffer.from(JSON.stringify(manifest)), { level: 9 })
-  const decoder = `const XEROFLOW_COMPACT_PRECOMPUTED='${compressed.toString('base64')}'
-async function decodePrecomputedManifest() {
+  const decoder = `import { gunzipSync, strFromU8 } from 'fflate'
+const XEROFLOW_COMPACT_PRECOMPUTED='${compressed.toString('base64')}'
+function decodePrecomputedManifest() {
   const bytes = Uint8Array.from(atob(XEROFLOW_COMPACT_PRECOMPUTED), char => char.charCodeAt(0))
-  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
-  return JSON.parse(await new Response(stream).text())
+  return JSON.parse(strFromU8(gunzipSync(bytes)))
 }
 `
 
   if (contract === 'value') {
-    return `${decoder}const manifest = await decodePrecomputedManifest()
+    return `${decoder}const manifest = decodePrecomputedManifest()
 export default manifest
 `
   }
@@ -127,7 +127,7 @@ export default manifest
   return `${decoder}let cache
 export default async function loadPrecomputedManifest() {
   if (cache) return cache
-  cache = await decodePrecomputedManifest()
+  cache = decodePrecomputedManifest()
   return cache
 }
 `
