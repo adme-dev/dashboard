@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   applySupabaseCatalogSelection,
+  buildSupabaseCatalogPageUrl,
+  keepUnambiguousProductIdentifiers,
   catalogSelectionCanRetireAll,
   CatalogFeedError,
   normalizeCatalogItems,
@@ -296,9 +298,57 @@ describe('Supabase catalog selection', () => {
     expect(catalogSelectionCanRetireAll('supabase', 0, 0)).toBe(false)
     expect(catalogSelectionCanRetireAll('feed', 20, 0)).toBe(false)
   })
+
+  it('pushes exact governed selection filters and stable ordering into Supabase pagination', () => {
+    const url = buildSupabaseCatalogPageUrl({
+      id: '11111111-1111-4111-8111-111111111111',
+      client_id: '22222222-2222-4222-8222-222222222222',
+      source_type: 'supabase',
+      status: 'active',
+      feed_url: 'https://example.supabase.co/',
+      feed_format: 'json',
+      item_path: null,
+      field_mapping: {
+        source_product_id: 'id',
+        seller_id: 'seller_id',
+        sale_status: 'sale_status',
+        make: 'make',
+        listing_type: 'listing_type'
+      },
+      connection_config: { table: 'vehicles', schema: 'public', selection: {
+        seller_ids: ['brighton-gwm'],
+        sale_statuses: ['For Sale'],
+        makes: ['GWM'],
+        listing_types: ['New', 'Demo'],
+        required_fields: ['source_product_id']
+      } },
+      secret_encrypted: new Uint8Array(),
+      secret_iv: new Uint8Array()
+    }, 1000, 1000)
+
+    expect(url.pathname).toBe('/rest/v1/vehicles')
+    expect(url.searchParams.get('seller_id')).toBe('eq.brighton-gwm')
+    expect(url.searchParams.get('sale_status')).toBe('eq.For Sale')
+    expect(url.searchParams.get('make')).toBe('eq.GWM')
+    expect(url.searchParams.get('listing_type')).toBe('in.("Demo","New")')
+    expect(url.searchParams.get('order')).toBe('id.asc')
+    expect(url.searchParams.get('offset')).toBe('1000')
+  })
 })
 
 describe('catalog feed parsing', () => {
+  it('omits ambiguous VIN identifiers while retaining unique stock identifiers', () => {
+    expect(keepUnambiguousProductIdentifiers([
+      { product_id: 'one', identifier_type: 'vin', normalized_value: 'duplicate-vin' },
+      { product_id: 'two', identifier_type: 'vin', normalized_value: 'duplicate-vin' },
+      { product_id: 'one', identifier_type: 'stock_id', normalized_value: 'stock-one' },
+      { product_id: 'two', identifier_type: 'stock_id', normalized_value: 'stock-two' }
+    ])).toEqual([
+      { product_id: 'one', identifier_type: 'stock_id', normalized_value: 'stock-one' },
+      { product_id: 'two', identifier_type: 'stock_id', normalized_value: 'stock-two' }
+    ])
+  })
+
   it('extracts a nested JSON vehicle list and normalizes identifiers', () => {
     const rows = parseCatalogFeed(JSON.stringify({
       payload: {

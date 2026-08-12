@@ -264,6 +264,56 @@ export function validateSupabaseProjectUrl(value: unknown): string {
   return `${url.origin}/`
 }
 
+function directSupabaseColumn(
+  mapping: CatalogFieldMapping,
+  field: keyof CatalogFieldMapping
+): string {
+  const column = mapping[field] || FIELD_ALIASES[field][0]
+  if (!column || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(column)) {
+    throw new CatalogFeedError(`Supabase ${field} mapping must be a direct column`)
+  }
+  return column
+}
+
+function postgrestFilter(values: string[]): string {
+  if (values.length === 1) return `eq.${values[0]}`
+  return `in.(${values.map(value => `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`).join(',')})`
+}
+
+export function buildSupabaseCatalogPageUrl(
+  source: CatalogSourceRow,
+  offset: number,
+  limit: number
+): URL {
+  const table = textValue(source.connection_config?.table, 128)
+  if (!table || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) {
+    throw new CatalogFeedError('Supabase table is invalid')
+  }
+  const selection = normalizeSupabaseCatalogSelection(source.connection_config?.selection)
+  const mapping = source.field_mapping ?? {}
+  const url = new URL(`/rest/v1/${encodeURIComponent(table)}`, validateSupabaseProjectUrl(source.feed_url))
+  url.searchParams.set('select', '*')
+  url.searchParams.set(
+    directSupabaseColumn(mapping, 'seller_id'),
+    postgrestFilter(selection.seller_ids)
+  )
+  url.searchParams.set(
+    directSupabaseColumn(mapping, 'sale_status'),
+    postgrestFilter(selection.sale_statuses)
+  )
+  if (selection.makes?.length) {
+    url.searchParams.set(directSupabaseColumn(mapping, 'make'), postgrestFilter(selection.makes))
+  }
+  url.searchParams.set(
+    directSupabaseColumn(mapping, 'listing_type'),
+    postgrestFilter(selection.listing_types)
+  )
+  url.searchParams.set('order', `${directSupabaseColumn(mapping, 'source_product_id')}.asc`)
+  url.searchParams.set('limit', String(limit))
+  url.searchParams.set('offset', String(offset))
+  return url
+}
+
 function parseCsv(text: string): Array<Record<string, string>> {
   const rows: string[][] = []
   let row: string[] = []
@@ -644,20 +694,16 @@ async function fetchSupabaseRows(
   if (!source.feed_url || !source.secret_encrypted || !source.secret_iv) {
     throw new CatalogFeedError('Supabase connection credentials are incomplete', 409)
   }
-  const table = textValue(source.connection_config?.table, 128)
   const schema = textValue(source.connection_config?.schema, 64) || 'public'
-  if (!table || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(table) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(schema)) {
-    throw new CatalogFeedError('Supabase schema or table is invalid')
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(schema)) {
+    throw new CatalogFeedError('Supabase schema is invalid')
   }
   const apiKey = await decryptToken(source.secret_encrypted, source.secret_iv)
   const rows: Array<Record<string, unknown>> = []
   const pageSize = 1000
 
   for (let offset = 0; offset < MAX_ITEMS; offset += pageSize) {
-    const url = new URL(`/rest/v1/${encodeURIComponent(table)}`, validateSupabaseProjectUrl(source.feed_url))
-    url.searchParams.set('select', '*')
-    url.searchParams.set('limit', String(pageSize))
-    url.searchParams.set('offset', String(offset))
+    const url = buildSupabaseCatalogPageUrl(source, offset, pageSize)
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 20_000)
     try {
@@ -679,6 +725,21 @@ async function fetchSupabaseRows(
     }
   }
   return rows.slice(0, MAX_ITEMS)
+}
+
+export function keepUnambiguousProductIdentifiers<T extends {
+  product_id: string
+  identifier_type: ProductIdentifierType
+  normalized_value: string
+}>(identifiers: T[]): T[] {
+  const byIdentity = new Map<string, T | null>()
+  for (const identifier of identifiers) {
+    const key = `${identifier.identifier_type}:${identifier.normalized_value}`
+    const existing = byIdentity.get(key)
+    if (existing === undefined) byIdentity.set(key, identifier)
+    else if (existing && existing.product_id !== identifier.product_id) byIdentity.set(key, null)
+  }
+  return [...byIdentity.values()].filter((identifier): identifier is T => Boolean(identifier))
 }
 
 async function loadSourceRows(
@@ -889,7 +950,8 @@ export async function syncCatalogSource(
           })
         }
       }
-      if (identifiers.length) {
+      const unambiguousIdentifiers = keepUnambiguousProductIdentifiers(identifiers)
+      if (unambiguousIdentifiers.length) {
         await db.query(
           `INSERT INTO crm_product_identifiers (
              client_id, catalog_source_id, product_id, identifier_type, normalized_value
@@ -902,7 +964,7 @@ export async function syncCatalogSource(
              )
            ON CONFLICT (client_id, catalog_source_id, identifier_type, normalized_value)
            DO UPDATE SET product_id = EXCLUDED.product_id`,
-          [clientId, sourceId, JSON.stringify(identifiers)]
+          [clientId, sourceId, JSON.stringify(unambiguousIdentifiers)]
         )
       }
 
