@@ -9,6 +9,7 @@ import {
   normalizeSupabaseCatalogSelection,
   parseCatalogFeed,
   selectSupabaseCatalogRowsForSource,
+  selectSupabaseCatalogRowsWithDiagnostics,
   validateCatalogFeedUrl
 } from '../../../../server/utils/crm/catalogFeed'
 
@@ -248,7 +249,7 @@ describe('Supabase catalog selection', () => {
     }, rows)).toThrowError('Supabase catalog selection is not configured')
   })
 
-  it('fails closed when any eligible stock is rejected by Merchant completeness rules', () => {
+  it('serves complete stock and reports incomplete Merchant exceptions', () => {
     const source = {
       id: '11111111-1111-4111-8111-111111111111',
       client_id: '22222222-2222-4222-8222-222222222222',
@@ -271,7 +272,7 @@ describe('Supabase catalog selection', () => {
       secret_iv: new Uint8Array()
     }
 
-    expect(() => selectSupabaseCatalogRowsForSource(source, [
+    const result = selectSupabaseCatalogRowsWithDiagnostics(source, [
       {
         id: 'vehicle-complete',
         stock_number: 'K625231',
@@ -290,7 +291,19 @@ describe('Supabase catalog selection', () => {
         make: 'GWM',
         exterior_colour_name: null
       }
-    ])).toThrowError('required fields are incomplete: color (1)')
+    ])
+    expect(result.included.map(row => row.id)).toEqual(['vehicle-complete'])
+    expect(result.warning).toBe('Excluded products with incomplete required fields: color (1)')
+
+    expect(() => selectSupabaseCatalogRowsWithDiagnostics(source, [{
+      id: 'only-incomplete',
+      stock_number: 'K625233',
+      seller_id: 'brighton-gwm',
+      sale_status: 'For Sale',
+      listing_type: 'New',
+      make: 'GWM',
+      exterior_colour_name: null
+    }])).toThrowError('required fields are incomplete: color (1)')
   })
 
   it('retires all prior products only after an authoritative Supabase read returns rows but no eligible stock', () => {

@@ -502,6 +502,13 @@ export function selectSupabaseCatalogRowsForSource(
   source: CatalogSourceRow,
   rows: Array<Record<string, unknown>>
 ): Array<Record<string, unknown>> {
+  return selectSupabaseCatalogRowsWithDiagnostics(source, rows).included
+}
+
+export function selectSupabaseCatalogRowsWithDiagnostics(
+  source: CatalogSourceRow,
+  rows: Array<Record<string, unknown>>
+): { included: Array<Record<string, unknown>>, warning: string | null } {
   const configuredSelection = source.connection_config?.selection
   if (!configuredSelection) {
     throw new CatalogFeedError('Supabase catalog selection is not configured', 409)
@@ -515,6 +522,7 @@ export function selectSupabaseCatalogRowsForSource(
     (item): item is SupabaseCatalogExcludedRow & { field: SupabaseCatalogRequiredField } =>
       item.reason === 'REQUIRED_FIELD_MISSING' && Boolean(item.field)
   )
+  let warning: string | null = null
   if (incomplete.length) {
     const counts = new Map<SupabaseCatalogRequiredField, number>()
     for (const item of incomplete) counts.set(item.field, (counts.get(item.field) ?? 0) + 1)
@@ -522,12 +530,15 @@ export function selectSupabaseCatalogRowsForSource(
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([field, count]) => `${field} (${count})`)
       .join(', ')
-    throw new CatalogFeedError(
-      `Supabase selection matched products but required fields are incomplete: ${summary}`,
-      409
-    )
+    warning = `Excluded products with incomplete required fields: ${summary}`
+    if (!result.included.length) {
+      throw new CatalogFeedError(
+        `Supabase selection matched products but required fields are incomplete: ${summary}`,
+        409
+      )
+    }
   }
-  return result.included
+  return { included: result.included, warning }
 }
 
 export function catalogSelectionCanRetireAll(
@@ -745,18 +756,16 @@ export function keepUnambiguousProductIdentifiers<T extends {
 async function loadSourceRows(
   source: CatalogSourceRow,
   deps: CatalogSyncDeps
-): Promise<{ rows: Array<Record<string, unknown>>, rawCount: number }> {
+): Promise<{ rows: Array<Record<string, unknown>>, rawCount: number, warning: string | null }> {
   if (source.source_type === 'dealer_feed') {
     if (!deps.loadRows) throw new CatalogFeedError('Dealer Feed loader is unavailable', 503)
     const rows = await deps.loadRows(source)
-    return { rows, rawCount: rows.length }
+    return { rows, rawCount: rows.length, warning: null }
   }
   if (source.source_type === 'supabase') {
     const rawRows = await fetchSupabaseRows(source, deps.fetch)
-    return {
-      rows: selectSupabaseCatalogRowsForSource(source, rawRows),
-      rawCount: rawRows.length
-    }
+    const selected = selectSupabaseCatalogRowsWithDiagnostics(source, rawRows)
+    return { rows: selected.included, rawCount: rawRows.length, warning: selected.warning }
   }
   if (!source.feed_url) throw new CatalogFeedError('Catalog source has no feed URL')
   const rows = parseCatalogFeed(
@@ -764,7 +773,7 @@ async function loadSourceRows(
     source.feed_format,
     source.item_path
   )
-  return { rows, rawCount: rows.length }
+  return { rows, rawCount: rows.length, warning: null }
 }
 
 async function beginSync(deps: CatalogSyncDeps, source: CatalogSourceRow): Promise<string> {
@@ -986,20 +995,21 @@ export async function syncCatalogSource(
                 fetched_count = $3,
                 upserted_count = $4,
                 removed_count = $5,
+                error_message = $6,
                 completed_at = NOW()
           WHERE client_id = $1 AND id = $2`,
-        [clientId, runId, loaded.rawCount, productBySourceId.size, removed.rows?.length ?? 0]
+        [clientId, runId, loaded.rawCount, productBySourceId.size, removed.rows?.length ?? 0, loaded.warning]
       )
       await db.query(
         `UPDATE crm_catalog_sources
             SET status = 'active',
                 last_synced_at = NOW(),
                 last_sync_status = 'succeeded',
-                last_sync_error = NULL,
+                last_sync_error = $4,
                 last_item_count = $3,
                 updated_at = NOW()
           WHERE client_id = $1 AND id = $2`,
-        [clientId, sourceId, productBySourceId.size]
+        [clientId, sourceId, productBySourceId.size, loaded.warning]
       )
       return {
         upserted: productBySourceId.size,
