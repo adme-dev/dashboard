@@ -6,6 +6,7 @@ const { verifyMagicLink, fetchUser } = usePortalAuth()
 const token = ref('')
 const ready = ref(false)
 const loading = ref(false)
+const completing = ref(false)
 const error = ref('')
 
 onMounted(() => {
@@ -30,10 +31,12 @@ async function handleVerify() {
   try {
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/portal'
     const result = await verifyMagicLink(token.value, redirect)
+    completing.value = true
     token.value = ''
     await fetchUser()
     await navigateTo(result.redirect)
   } catch (caught: unknown) {
+    completing.value = false
     token.value = ''
     error.value = errorMessage(caught) || 'This sign-in link is invalid or has expired.'
   } finally {
@@ -59,8 +62,15 @@ async function handleVerify() {
       </p>
 
       <div class="mt-8 space-y-4 text-left">
-        <div v-if="!ready" class="flex justify-center py-4">
+        <div
+          v-if="!ready || completing"
+          role="status"
+          aria-live="polite"
+          class="flex items-center justify-center gap-2 py-4 text-sm text-muted"
+        >
           <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin text-[#45474D]/50 dark:text-white/40" />
+          <span v-if="completing">Signing you in…</span>
+          <span v-else class="sr-only">Checking sign-in link</span>
         </div>
 
         <UAlert
@@ -86,6 +96,7 @@ async function handleVerify() {
         </UButton>
 
         <UButton
+          v-if="!completing"
           to="/portal/login"
           block
           variant="ghost"

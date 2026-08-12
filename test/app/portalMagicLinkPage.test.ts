@@ -9,7 +9,7 @@ describe('portal magic-link verification page', () => {
     expect(page).toContain('window.location.hash')
     expect(page).toContain('window.history.replaceState')
     expect(page).toContain('const ready = ref(false)')
-    expect(page).toContain('v-if="!ready"')
+    expect(page).toContain('v-if="!ready || completing"')
     expect(page).toContain('ready.value = true')
     expect(page).toContain('Continue to portal')
     expect(page).toContain('@click="handleVerify"')
@@ -24,5 +24,17 @@ describe('portal magic-link verification page', () => {
     expect(composable).toContain('verifyMagicLink')
     expect(composable).not.toContain('\'/api/portal/auth/login\'')
     expect(composable).not.toMatch(/\bpassword\b/i)
+  })
+
+  it('shows a neutral completion state after verification instead of flashing an invalid-link error', () => {
+    expect(page).toContain('const completing = ref(false)')
+    expect(page).toContain('completing.value = true')
+    expect(page).toContain('v-if="!ready || completing"')
+    expect(page).toContain('Signing you in')
+
+    const completionStartsAt = page.indexOf('completing.value = true')
+    const tokenClearsAt = page.indexOf('token.value = \'\'', completionStartsAt)
+    expect(completionStartsAt).toBeGreaterThan(-1)
+    expect(tokenClearsAt).toBeGreaterThan(completionStartsAt)
   })
 })
