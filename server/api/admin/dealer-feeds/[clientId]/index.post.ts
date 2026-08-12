@@ -4,6 +4,7 @@ import { getSocialDashboardClient, isDealerFeedsEnabled } from '~~/server/utils/
 import { getFeedProvider } from '~~/server/utils/feeds/registry'
 import { cloudflareRuntimeEnv, mergedRuntimeEnv } from '~~/server/utils/feeds/serverContext'
 import { normalizeDealerFeedFilters } from '~~/server/utils/feeds/filterInput'
+import { executeGodModeDealerFeedCreation } from '~~/server/utils/feeds/godModeMutations'
 import type { FeedPlatform } from '~~/server/utils/feeds/types'
 
 function parsePlatform(value: unknown): FeedPlatform {
@@ -36,19 +37,28 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 503, statusMessage: 'Social Dashboard feed provider is not configured' })
   }
 
+  const platform = parsePlatform(body.platform)
   const provider = getFeedProvider(link.providerId, { socialDashboardClient })
-  const feed = await provider.createFeed(linkToContext(link, user.email), link, {
-    name,
-    platform: parsePlatform(body.platform),
-    filters: normalizeDealerFeedFilters(body.filters),
-    mappings: bodyObject(body.mappings),
-    platformSettings: bodyObject(body.platformSettings),
-    source: body.source && typeof body.source === 'object' && !Array.isArray(body.source) ? body.source as Record<string, unknown> : undefined,
-    externalKey: typeof body.externalKey === 'string' ? body.externalKey : undefined,
-    externalClientId: typeof body.externalClientId === 'string' ? body.externalClientId : undefined,
-    externalCampaignId: typeof body.externalCampaignId === 'string' ? body.externalCampaignId : undefined,
-    externalFeedId: typeof body.externalFeedId === 'string' ? body.externalFeedId : undefined
-  })
+  const providerContext = linkToContext(link, user.email)
+  const feed = await executeGodModeDealerFeedCreation(
+    event,
+    async () => await provider.createFeed(providerContext, link, {
+      name,
+      platform,
+      filters: normalizeDealerFeedFilters(body.filters),
+      mappings: bodyObject(body.mappings),
+      platformSettings: bodyObject(body.platformSettings),
+      source: body.source && typeof body.source === 'object' && !Array.isArray(body.source) ? body.source as Record<string, unknown> : undefined,
+      externalKey: typeof body.externalKey === 'string' ? body.externalKey : undefined,
+      externalClientId: typeof body.externalClientId === 'string' ? body.externalClientId : undefined,
+      externalCampaignId: typeof body.externalCampaignId === 'string' ? body.externalCampaignId : undefined,
+      externalFeedId: typeof body.externalFeedId === 'string' ? body.externalFeedId : undefined
+    }),
+    async feedId => {
+      await provider.getFeed(providerContext, { providerId: link.providerId, feedId, platform })
+      return { providerId: link.providerId, feedId, platform }
+    }
+  )
 
   return { ok: true, feed }
 })
