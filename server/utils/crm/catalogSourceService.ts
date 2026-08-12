@@ -20,6 +20,10 @@ const MAPPING_FIELDS = new Set([
   'source_updated_at'
 ])
 
+export interface CatalogSourceDb {
+  query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[], rowCount?: number }>
+}
+
 function mappingOf(value: unknown): CatalogFieldMapping {
   const mapping: CatalogFieldMapping = {}
   if (!value || typeof value !== 'object' || Array.isArray(value)) return mapping
@@ -93,7 +97,8 @@ export async function listCatalogSources(clientId: string) {
   }
 }
 
-export async function createCatalogSourceForClient(
+export async function createCatalogSourceForClientWithDb(
+  db: CatalogSourceDb,
   clientId: string,
   actorId: string,
   body: Record<string, unknown>
@@ -102,8 +107,8 @@ export async function createCatalogSourceForClient(
   if (!['dealer_feed', 'supabase', 'feed'].includes(connectorType)) {
     throw createError({ statusCode: 422, statusMessage: 'Unsupported data source type' })
   }
-  const client = await queryOne('SELECT id FROM agency_clients WHERE id = $1', [clientId])
-  if (!client) throw createError({ statusCode: 404, statusMessage: 'Client not found' })
+  const clientResult = await db.query('SELECT id FROM agency_clients WHERE id = $1', [clientId])
+  if (!clientResult.rows[0]) throw createError({ statusCode: 404, statusMessage: 'Client not found' })
 
   const displayName = typeof body.display_name === 'string' && body.display_name.trim()
     ? body.display_name.trim().slice(0, 160)
@@ -155,9 +160,8 @@ export async function createCatalogSourceForClient(
   }
 
   try {
-    return await transaction(async db => {
-      const result = await db.query(
-        `INSERT INTO crm_catalog_sources (
+    const result = await db.query(
+      `INSERT INTO crm_catalog_sources (
            client_id, source_key, source_type, display_name, feed_url, feed_format,
            item_path, field_mapping, connection_config
          )
@@ -173,15 +177,15 @@ export async function createCatalogSourceForClient(
            status = 'active',
            updated_at = NOW()
          RETURNING *`,
-        [
-          clientId, sourceKey, connectorType, displayName, feedUrl, feedFormat,
-          itemPath, JSON.stringify(mappingOf(body.field_mapping)), JSON.stringify(connectionConfig)
-        ]
-      )
-      const saved = result.rows[0]
-      if (encryptedCredential) {
-        await db.query(
-          `INSERT INTO crm_catalog_source_credentials (
+      [
+        clientId, sourceKey, connectorType, displayName, feedUrl, feedFormat,
+        itemPath, JSON.stringify(mappingOf(body.field_mapping)), JSON.stringify(connectionConfig)
+      ]
+    )
+    const saved = result.rows[0] as { id: string } & Record<string, unknown>
+    if (encryptedCredential) {
+      await db.query(
+        `INSERT INTO crm_catalog_source_credentials (
              catalog_source_id, client_id, credential_type, secret_encrypted,
              secret_iv, connected_by
            )
@@ -192,15 +196,29 @@ export async function createCatalogSourceForClient(
              secret_iv = EXCLUDED.secret_iv,
              connected_by = EXCLUDED.connected_by,
              updated_at = NOW()`,
-          [saved.id, clientId, encryptedCredential.ciphertext, encryptedCredential.iv, actorId]
-        )
-      }
-      return saved
-    })
-  } catch (error: any) {
-    if (error?.code === '23505') throw createError({ statusCode: 409, statusMessage: 'Data source already exists' })
+        [saved.id, clientId, encryptedCredential.ciphertext, encryptedCredential.iv, actorId]
+      )
+    }
+    return saved
+  } catch (error: unknown) {
+    if ((error as { code?: string })?.code === '23505') {
+      throw createError({ statusCode: 409, statusMessage: 'Data source already exists' })
+    }
     throw error
   }
+}
+
+export async function createCatalogSourceForClient(
+  clientId: string,
+  actorId: string,
+  body: Record<string, unknown>
+) {
+  return await transaction(async db => await createCatalogSourceForClientWithDb(
+    db as CatalogSourceDb,
+    clientId,
+    actorId,
+    body
+  ))
 }
 
 export async function synchronizeCatalogSource(

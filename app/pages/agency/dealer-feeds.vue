@@ -33,6 +33,15 @@ type DealerFeedLink = {
   updatedAt: string
 }
 
+type CatalogSourceSummary = {
+  id: string
+  source_type: string
+  display_name: string
+  status: string
+  last_synced_at: string | null
+  last_item_count: number
+}
+
 type FeedWorkbookTemplate = {
   id: string
   name: string
@@ -199,8 +208,17 @@ const feedForm = reactive({
 
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+  options?: {
+    method?: string
+    body?: unknown
+    query?: Record<string, unknown>
+    headers?: Record<string, string>
+  }
 ) => Promise<T>
+
+function mutationHeaders() {
+  return { 'Idempotency-Key': crypto.randomUUID() }
+}
 const clientOptionsData = ref<{ items: DealerFeedClientOption[] }>({ items: [] })
 const clientsPending = ref(false)
 const linksData = ref<{ ok: boolean, links: DealerFeedLink[] }>({ ok: false, links: [] })
@@ -208,6 +226,8 @@ const linksPending = ref(false)
 const linksError = ref<any>(null)
 const feedWorkbookTemplatesData = ref<FeedWorkbookTemplatesResponse>({ templates: [] })
 const feedWorkbookPending = ref(false)
+const catalogSources = ref<CatalogSourceSummary[]>([])
+const catalogSourcesPending = ref(false)
 
 async function refreshClientOptions() {
   clientsPending.value = true
@@ -275,6 +295,10 @@ const selectedClient = computed<AgencyClient | null>(() =>
 
 const selectedLink = computed(() =>
   links.value.find(link => link.clientId === selectedClientId.value) || null
+)
+
+const selectedInventoryDatabase = computed(() =>
+  catalogSources.value.find(source => source.source_type === 'supabase') || null
 )
 
 const linkedClientIds = computed(() => new Set(links.value.map(link => link.clientId)))
@@ -866,6 +890,50 @@ async function ensureAgencyClientForSelection(): Promise<string> {
   return client.id
 }
 
+async function loadCatalogSources() {
+  const clientId = selectedClientId.value
+  catalogSources.value = []
+  if (!clientId) return
+
+  catalogSourcesPending.value = true
+  try {
+    const result = await apiFetch<{ sources: CatalogSourceSummary[] }>('/api/crm/data-sources', {
+      query: { client_id: clientId }
+    })
+    if (selectedClientId.value === clientId) catalogSources.value = result.sources || []
+  } catch {
+    if (selectedClientId.value === clientId) catalogSources.value = []
+  } finally {
+    if (selectedClientId.value === clientId) catalogSourcesPending.value = false
+  }
+}
+
+async function openInventoryDatabase() {
+  if (!selectedClientOption.value) {
+    toast.add({ title: 'Select a client first', color: 'error' })
+    return
+  }
+
+  try {
+    const clientId = await ensureAgencyClientForSelection()
+    await navigateTo({
+      path: '/agency/crm',
+      query: {
+        clientId,
+        tab: 'data-sources',
+        connector: 'supabase',
+        open: '1'
+      }
+    })
+  } catch (error: unknown) {
+    toast.add({
+      title: 'Could not open database connection',
+      description: errorMessage(error, 'Please try again'),
+      color: 'error'
+    })
+  }
+}
+
 function feedWorkbookProjectName(clientName: string) {
   return `${clientName} Feed Workbook`
 }
@@ -1254,6 +1322,7 @@ async function saveMapping() {
     const clientId = await ensureAgencyClientForSelection()
     await apiFetch('/api/admin/dealer-feed-links', {
       method: 'POST',
+      headers: mutationHeaders(),
       body: {
         clientId,
         externalOrgId: mappingForm.externalOrgId.trim() || undefined,
@@ -1316,6 +1385,7 @@ async function createFeed() {
   try {
     await apiFetch(`/api/admin/dealer-feeds/${selectedClientId.value}`, {
       method: 'POST',
+      headers: mutationHeaders(),
       body: {
         name: feedForm.name.trim(),
         platform: feedForm.platform,
@@ -1380,7 +1450,7 @@ watch(clientRows, (rows) => {
 
 watch([selectedClientOptionId, links], async () => {
   populateMappingForm()
-  await loadFeeds()
+  await Promise.all([loadFeeds(), loadCatalogSources()])
 }, { immediate: true })
 
 watch([selectedClientOptionId, clientRows], () => {
@@ -1516,6 +1586,49 @@ watch(debouncedDraftPreviewSignature, () => {
                       {{ selectedLink.externalOrgId }}
                     </p>
                   </div>
+                </div>
+              </div>
+
+              <div class="rounded-lg border border-default bg-elevated/40 px-3 py-3">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div class="flex min-w-0 items-start gap-3">
+                    <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                      <UIcon name="i-simple-icons-supabase" class="size-4" />
+                    </div>
+                    <div class="min-w-0">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <p class="text-sm font-medium text-highlighted">
+                          Inventory database
+                        </p>
+                        <UBadge
+                          :color="selectedInventoryDatabase ? 'success' : 'neutral'"
+                          variant="subtle"
+                          size="xs"
+                        >
+                          {{ catalogSourcesPending ? 'Checking' : selectedInventoryDatabase ? 'Connected' : 'Not connected' }}
+                        </UBadge>
+                      </div>
+                      <p class="mt-1 text-sm text-muted">
+                        Connect the dealership's Supabase table directly. The API key is encrypted and never added to a feed URL or environment file.
+                      </p>
+                      <p
+                        v-if="selectedInventoryDatabase"
+                        class="mt-2 text-xs text-muted"
+                      >
+                        {{ selectedInventoryDatabase.display_name }} · {{ selectedInventoryDatabase.last_item_count || 0 }} synced items
+                      </p>
+                    </div>
+                  </div>
+                  <UButton
+                    icon="i-lucide-database-zap"
+                    color="neutral"
+                    variant="outline"
+                    :disabled="!selectedClientOption"
+                    class="shrink-0 justify-center"
+                    @click="openInventoryDatabase"
+                  >
+                    {{ selectedInventoryDatabase ? 'Manage database' : 'Connect database' }}
+                  </UButton>
                 </div>
               </div>
 

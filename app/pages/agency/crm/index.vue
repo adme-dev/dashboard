@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CrmObjectDef } from '~/types/crm'
+
 interface CrmVertical { key: string, name: string, kind: 'code' | 'config', is_core: boolean }
 definePageMeta({ layout: 'agency' })
 useHead({ title: 'CRM — XeroFlow Agency' })
@@ -10,6 +11,7 @@ const apiFetch = $fetch as <T = unknown>(
   options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
 ) => Promise<T>
 const clientsData = ref<{ id: string, name: string }[]>([])
+const route = useRoute()
 
 async function refreshClients() {
   clientsData.value = await apiFetch<{ id: string, name: string }[]>('/api/agency/clients').catch(() => [])
@@ -19,7 +21,11 @@ await refreshClients()
 const clientOptions = computed(() => (clientsData.value ?? []).map(c => ({ label: c.name, value: c.id })))
 
 const clientId = useState<string | null>('crm-active-client', () => null)
-const tab = ref<string>('people')
+const requestedClientId = typeof route.query.clientId === 'string' ? route.query.clientId : ''
+if (requestedClientId && clientsData.value.some(client => client.id === requestedClientId)) {
+  clientId.value = requestedClientId
+}
+const tab = ref<string>(typeof route.query.tab === 'string' ? route.query.tab : 'people')
 const tabItems = [
   { label: 'People', value: 'people', icon: 'i-lucide-users' },
   { label: 'Companies', value: 'companies', icon: 'i-lucide-building-2' },

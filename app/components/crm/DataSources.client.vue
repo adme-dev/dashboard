@@ -11,8 +11,14 @@ const props = withDefaults(defineProps<{
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+  options?: {
+    method?: string
+    body?: unknown
+    query?: Record<string, unknown>
+    headers?: Record<string, string>
+  }
 ) => Promise<T>
+const route = useRoute()
 
 type Source = {
   id: string
@@ -46,9 +52,18 @@ const form = reactive({
   item_path: '',
   project_url: '',
   schema: 'public',
-  table: '',
+  table: 'vehicles',
   api_key: ''
 })
+
+onMounted(() => {
+  if (route.query.connector === 'supabase') connector.value = 'supabase'
+  if (route.query.open === '1') showForm.value = true
+})
+
+function mutationHeaders() {
+  return { 'Idempotency-Key': crypto.randomUUID() }
+}
 
 const sourceIcons: Record<string, string> = {
   dealer_feed: 'i-lucide-car-front',
@@ -76,6 +91,7 @@ async function connectDealerFeed() {
   try {
     const result = await apiFetch<{ source: Source }>(props.apiBase, {
       method: 'POST',
+      headers: mutationHeaders(),
       body: { client_id: props.clientId, connector_type: 'dealer_feed', display_name: 'Dealer Feed' }
     })
     await refresh()
@@ -93,6 +109,7 @@ async function saveConnector() {
   try {
     await apiFetch(props.apiBase, {
       method: 'POST',
+      headers: mutationHeaders(),
       body: connector.value === 'supabase'
         ? {
             client_id: props.clientId,
@@ -208,8 +225,16 @@ async function sync(sourceId: string) {
           <UFormField label="Table or view">
             <UInput v-model="form.table" class="w-full" placeholder="vehicles" />
           </UFormField>
-          <UFormField label="Read-only API key" class="md:col-span-2">
-            <UInput v-model="form.api_key" type="password" class="w-full" autocomplete="new-password" />
+          <UFormField label="Supabase API key" class="md:col-span-2">
+            <UInput
+              v-model="form.api_key"
+              type="password"
+              class="w-full"
+              autocomplete="new-password"
+            />
+            <template #help>
+              Use a key that can read this table. XeroFlow encrypts it before storage and never returns it to the browser.
+            </template>
           </UFormField>
         </template>
       </div>
