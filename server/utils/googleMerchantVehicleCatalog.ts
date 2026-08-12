@@ -111,7 +111,8 @@ export class GoogleMerchantVehicleCatalogError extends Error {
     | 'MERCHANT_VEHICLE_PRODUCT_INELIGIBLE'
     | 'MERCHANT_VEHICLE_PRODUCT_INCOMPLETE'
     | 'MERCHANT_VEHICLE_REQUEST_FAILED'
-    | 'MERCHANT_VEHICLE_RESPONSE_INVALID') {
+    | 'MERCHANT_VEHICLE_RESPONSE_INVALID',
+    public readonly httpStatus: number | null = null) {
     super(code)
     this.name = 'GoogleMerchantVehicleCatalogError'
   }
@@ -404,7 +405,9 @@ export function googleMerchantProductInputResourceId(input: {
 }
 
 async function parsedResponse(response: Response): Promise<unknown> {
-  if (!response.ok) throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_REQUEST_FAILED')
+  if (!response.ok) {
+    throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_REQUEST_FAILED', response.status)
+  }
   try {
     return await response.json()
   } catch {
@@ -558,7 +561,9 @@ export function createGoogleMerchantVehicleClient(input: {
         `${MERCHANT_API_ROOT}/products/v1/accounts/${args.merchantAccountId}/productInputs/${productId}?${params}`,
         { method: 'DELETE' }
       )
-      if (!response.ok) throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_REQUEST_FAILED')
+      if (!response.ok) {
+        throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_REQUEST_FAILED', response.status)
+      }
       return { requestId: merchantRequestId(response) }
     }
   }

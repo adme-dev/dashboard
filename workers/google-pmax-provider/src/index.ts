@@ -22,8 +22,7 @@ import { buildGooglePmaxRemediationTaskDrafts } from '../../../server/utils/goog
 import { evaluateGooglePmaxInternalFeedEvidence } from '../../../server/utils/googlePmaxInternalFeedEvidence'
 import {
   createProductionMerchantCatalogReadback,
-  createProductionMerchantCatalogReconciler,
-  MerchantCatalogReconcileError
+  createProductionMerchantCatalogReconciler
 } from './merchantCatalogReconciler'
 import type {
   GooglePmaxInventoryLaunchConfig,
@@ -125,6 +124,19 @@ function providerSections(input: Record<string, unknown>) {
     },
     onboarding
   }
+}
+
+function merchantCatalogFailure(error: unknown, fallback: string) {
+  const value = object(error)
+  const code = typeof value?.code === 'string' && /^[A-Z0-9_]{1,120}$/.test(value.code)
+    ? value.code
+    : fallback
+  const httpStatus = Number.isInteger(value?.httpStatus) && Number(value?.httpStatus) >= 400
+    && Number(value?.httpStatus) <= 599
+    ? Number(value?.httpStatus)
+    : null
+  console.error('[MerchantCatalogProvider] request failed', { code, httpStatus })
+  return code
 }
 
 const AccountRowsSchema = z.array(z.strictObject({
@@ -361,9 +373,7 @@ export function createGooglePmaxProviderWorker() {
             } catch (error) {
               return json({
                 ok: false,
-                errorCode: error instanceof MerchantCatalogReconcileError
-                  ? error.code
-                  : 'MERCHANT_CATALOG_RECONCILE_FAILED'
+                errorCode: merchantCatalogFailure(error, 'MERCHANT_CATALOG_RECONCILE_FAILED')
               }, 422)
             }
           }
@@ -376,9 +386,7 @@ export function createGooglePmaxProviderWorker() {
             } catch (error) {
               return json({
                 ok: false,
-                errorCode: error instanceof MerchantCatalogReconcileError
-                  ? error.code
-                  : 'MERCHANT_CATALOG_READBACK_FAILED'
+                errorCode: merchantCatalogFailure(error, 'MERCHANT_CATALOG_READBACK_FAILED')
               }, 422)
             }
           }

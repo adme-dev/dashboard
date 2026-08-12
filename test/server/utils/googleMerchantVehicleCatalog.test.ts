@@ -282,6 +282,19 @@ describe('Google Merchant vehicle HTTP client', () => {
     })
   })
 
+  it('preserves only the safe HTTP status when a Merchant request is rejected', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: { code: 403, message: 'sensitive provider detail' }
+    }), { status: 403 }))
+    const client = createGoogleMerchantVehicleClient({ accessToken: 'token', fetch })
+
+    await expect(client.getDataSource(config.dataSource)).rejects.toMatchObject({
+      code: 'MERCHANT_VEHICLE_REQUEST_FAILED',
+      httpStatus: 403,
+      message: 'MERCHANT_VEHICLE_REQUEST_FAILED'
+    })
+  })
+
   it('creates a Vehicle Ads-only local API source using the official data-source contract', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       name: 'accounts/5817965641/dataSources/200',
