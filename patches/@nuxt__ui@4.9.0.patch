@@ -1,0 +1,16 @@
+diff --git a/dist/runtime/plugins/colors.js b/dist/runtime/plugins/colors.js
+index 4f1c7dbe4037c525721ca58eaf305362d4c3ecb3..e8c3ec60094a97921501e7bd10980d3f42f0f32b 100644
+--- a/dist/runtime/plugins/colors.js
++++ b/dist/runtime/plugins/colors.js
+@@ -48,7 +48,10 @@ export default defineNuxtPlugin(() => {
+     style.innerHTML = root.value;
+     style.setAttribute("data-nuxt-ui-colors", "");
+     document.head.appendChild(style);
+-    injectHead().hooks.hookOnce("dom:rendered", removeTemporaryColorsStyle);
++    const unhook = injectHead().hooks.hook("dom:rendered", () => {
++      unhook();
++      removeTemporaryColorsStyle();
++    });
+   }
+   useHead(headData);
+ });
