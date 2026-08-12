@@ -16,7 +16,6 @@ import path from 'node:path'
 import {
   buildCompressedPrecomputedManifestModule,
   buildWorkerDispatcherModule,
-  compactPrecomputedManifest,
   compactDeployedWorkerModules,
   compactWorkerModule,
   resolvePrecomputedManifestPath
@@ -102,19 +101,23 @@ console.log('[wrap-worker] bundled worker-ws → _ws.js')
 // Nuxt's production SSR renderer precomputes the complete client dependency
 // graph into a JavaScript module. In this application that module is highly
 // repetitive and pushes the Pages Function over Cloudflare's 25 MB raw-size
-// limit. Keep the same async module contract while storing the graph as gzip;
-// it is inflated once and cached when an isolate first renders SSR.
+// limit. Preserve the emitted export contract while storing the graph as gzip;
+// it is inflated once when an isolate loads the module.
 const precomputedManifest = await resolvePrecomputedManifestPath(distDir)
 const precomputedSource = await fs.readFile(precomputedManifest, 'utf8')
 if (!precomputedSource.includes('XEROFLOW_COMPACT_PRECOMPUTED')) {
   const manifestModule = await import(
     `${pathToFileURL(precomputedManifest).href}?compact=${Date.now()}`
   )
-  const manifest = typeof manifestModule.default === 'function'
+  const exportContract = typeof manifestModule.default === 'function'
+    ? 'loader'
+    : 'value'
+  const manifest = exportContract === 'loader'
     ? await manifestModule.default()
     : manifestModule.default
-  const compactManifest = compactPrecomputedManifest(manifest)
-  const compactSource = buildCompressedPrecomputedManifestModule(compactManifest)
+  const compactSource = buildCompressedPrecomputedManifestModule(manifest, {
+    contract: exportContract
+  })
   await fs.writeFile(precomputedManifest, compactSource, 'utf8')
   console.log(
     `[wrap-worker] compacted Nuxt client manifest ${precomputedSource.length} → ${compactSource.length} bytes`

@@ -52,7 +52,6 @@ const PRECOMPUTED_KNOWN_RESOURCE_KEYS = [
   'css',
   'assets'
 ]
-const PRECOMPUTED_BUCKET_KEYS = ['scripts', 'styles', 'preload', 'prefetch']
 
 function assertKnownKeys(value, supported, label) {
   const unknown = Object.keys(value || {}).filter(key => !supported.includes(key))
@@ -97,58 +96,38 @@ export function compactPrecomputedManifest(manifest) {
   }
 }
 
-function encodePrecomputedResource(resource) {
-  const values = PRECOMPUTED_RESOURCE_KEYS.map(key => (
-    resource[key] === undefined ? null : resource[key]
-  ))
-  while (values.at(-1) === null) values.pop()
-  return values
-}
-
-function encodePrecomputedBucket(bucket) {
-  return Object.fromEntries(
-    Object.entries(bucket || {}).map(([id, resource]) => [
-      id,
-      encodePrecomputedResource(resource)
-    ])
-  )
-}
-
-export function buildCompressedPrecomputedManifestModule(manifest) {
-  const packed = {
-    d: Object.fromEntries(
-      Object.entries(manifest.dependencies || {}).map(([moduleId, dependency]) => [
-        moduleId,
-        PRECOMPUTED_BUCKET_KEYS.map(key => encodePrecomputedBucket(dependency[key]))
-      ])
-    ),
-    e: manifest.entrypoints || []
+export function buildCompressedPrecomputedManifestModule(
+  manifest,
+  { contract = 'loader' } = {}
+) {
+  if (contract !== 'loader' && contract !== 'value') {
+    throw new Error(`[worker-manifest] Unsupported export contract: ${contract}`)
   }
-  const compressed = gzipSync(Buffer.from(JSON.stringify(packed)), { level: 9 })
 
-  return `const XEROFLOW_COMPACT_PRECOMPUTED='${compressed.toString('base64')}'
-let cache
-const resourceKeys=['file','resourceType','module','mimeType','preload','prefetch']
-const bucketKeys=['scripts','styles','preload','prefetch']
-function decodeBucket(bucket) {
-  return Object.fromEntries(Object.entries(bucket).map(([id, values]) => [id,
-    Object.fromEntries(values
-      .map((value, index) => [resourceKeys[index], value])
-      .filter(([, value]) => value !== null))
-  ]))
-}
-export default async function loadPrecomputedManifest() {
-  if (cache) return cache
+  // Preserve Nuxt's complete data contract. Nuxt 4.5 consumes both
+  // `dependencies` and `modules`, and exports the manifest value directly;
+  // older releases exported an async loader. Gzip already collapses the
+  // repeated resource objects effectively, so field-level elision is both
+  // unnecessary and unsafe across framework upgrades.
+  const compressed = gzipSync(Buffer.from(JSON.stringify(manifest)), { level: 9 })
+  const decoder = `const XEROFLOW_COMPACT_PRECOMPUTED='${compressed.toString('base64')}'
+async function decodePrecomputedManifest() {
   const bytes = Uint8Array.from(atob(XEROFLOW_COMPACT_PRECOMPUTED), char => char.charCodeAt(0))
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
-  const packed = JSON.parse(await new Response(stream).text())
-  cache = {
-    dependencies: Object.fromEntries(Object.entries(packed.d).map(([moduleId, buckets]) => [
-      moduleId,
-      Object.fromEntries(buckets.map((bucket, index) => [bucketKeys[index], decodeBucket(bucket)]))
-    ])),
-    entrypoints: packed.e
+  return JSON.parse(await new Response(stream).text())
+}
+`
+
+  if (contract === 'value') {
+    return `${decoder}const manifest = await decodePrecomputedManifest()
+export default manifest
+`
   }
+
+  return `${decoder}let cache
+export default async function loadPrecomputedManifest() {
+  if (cache) return cache
+  cache = await decodePrecomputedManifest()
   return cache
 }
 `

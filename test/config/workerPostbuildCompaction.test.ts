@@ -95,6 +95,61 @@ describe('Pages Worker postbuild compaction', () => {
     expect(source).not.toContain('"resourceType"')
   })
 
+  it('preserves Nuxt 4.5 modules and its direct-value export contract', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-manifest-value-'))
+    temporaryDirectories.push(directory)
+    const modulePath = path.join(directory, 'precomputed.mjs')
+    const entryId = '../node_modules/nuxt/dist/app/entry.js'
+    const manifest = {
+      dependencies: {
+        [entryId]: {
+          scripts: {
+            [entryId]: {
+              file: 'entry.js',
+              resourceType: 'script',
+              module: true,
+              src: entryId,
+              isEntry: true,
+              imports: ['runtime.js'],
+              dynamicImports: ['pages/portal/login.vue'],
+              css: ['entry.css'],
+              assets: []
+            }
+          },
+          styles: {},
+          preload: {},
+          prefetch: {}
+        }
+      },
+      entrypoints: [entryId],
+      modules: {
+        [entryId]: {
+          file: 'entry.js',
+          resourceType: 'script',
+          module: true,
+          src: entryId,
+          isEntry: true
+        },
+        'pages/portal/login.vue': {
+          file: 'portal-login.js',
+          resourceType: 'script',
+          module: true
+        }
+      }
+    }
+
+    const source = buildCompressedPrecomputedManifestModule(manifest, {
+      contract: 'value'
+    })
+    await writeFile(modulePath, source, 'utf8')
+    const loaded = (await import(`${pathToFileURL(modulePath).href}?v=1`)).default
+
+    expect(typeof loaded).toBe('object')
+    expect(loaded).toEqual(manifest)
+    expect(loaded.modules[entryId].isEntry).toBe(true)
+    expect(source).toContain('const manifest = await decodePrecomputedManifest()')
+  })
+
   it('round-trips numeric zero without treating it as a missing resource field', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'worker-manifest-zero-'))
     temporaryDirectories.push(directory)
