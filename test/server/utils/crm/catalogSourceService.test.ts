@@ -40,12 +40,28 @@ describe('Supabase catalog source storage', () => {
       project_url: 'https://northern.supabase.co',
       schema: 'public',
       table: 'vehicles',
-      api_key: apiKey
+      api_key: apiKey,
+      selection: {
+        seller_ids: ['northern-isuzu-ute'],
+        sale_statuses: ['For Sale'],
+        listing_types: ['New'],
+        required_fields: ['source_product_id', 'stock_id', 'vin', 'color']
+      }
     })
 
     expect(JSON.stringify(source)).not.toContain(apiKey)
     const sourceInsert = calls.find(call => call.sql.includes('INSERT INTO crm_catalog_sources'))
     expect(sourceInsert?.params).not.toContain(apiKey)
+    expect(JSON.parse(String(sourceInsert?.params[8]))).toEqual({
+      schema: 'public',
+      selection: {
+        listing_types: ['New'],
+        required_fields: ['color', 'source_product_id', 'stock_id', 'vin'],
+        sale_statuses: ['For Sale'],
+        seller_ids: ['northern-isuzu-ute']
+      },
+      table: 'vehicles'
+    })
 
     const credentialInsert = calls.find(call => call.sql.includes('INSERT INTO crm_catalog_source_credentials'))
     expect(credentialInsert?.params[2]).toBeInstanceOf(Uint8Array)

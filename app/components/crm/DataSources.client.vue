@@ -45,6 +45,22 @@ const saving = ref(false)
 const syncingId = ref('')
 const connector = ref<'feed' | 'supabase'>('feed')
 const showForm = ref(false)
+const listingTypeOptions = [
+  { label: 'New', value: 'New' },
+  { label: 'Demo', value: 'Demo' },
+  { label: 'Used', value: 'Used' }
+]
+const requiredFieldOptions = [
+  { label: 'Source product ID', value: 'source_product_id' },
+  { label: 'Stock ID', value: 'stock_id' },
+  { label: 'VIN', value: 'vin' },
+  { label: 'Vehicle name', value: 'name' },
+  { label: 'Price', value: 'price' },
+  { label: 'Vehicle URL', value: 'product_url' },
+  { label: 'Primary image', value: 'primary_image_url' },
+  { label: 'Colour', value: 'color' },
+  { label: 'Merchant offer ID', value: 'merchant_offer_id' }
+]
 const form = reactive({
   display_name: '',
   feed_url: '',
@@ -53,6 +69,34 @@ const form = reactive({
   project_url: '',
   schema: 'public',
   table: 'vehicles',
+  seller_ids_text: '',
+  makes_text: '',
+  listing_types: ['New'],
+  product_url_template: '',
+  required_fields: [
+    'source_product_id',
+    'stock_id',
+    'vin',
+    'name',
+    'price',
+    'product_url',
+    'primary_image_url',
+    'color',
+    'merchant_offer_id'
+  ],
+  source_product_id_column: 'id',
+  stock_id_column: 'stock_number',
+  vin_column: 'vin',
+  name_column: 'title',
+  seller_id_column: 'seller_id',
+  sale_status_column: 'sale_status',
+  listing_type_column: 'listing_type',
+  make_column: 'make',
+  price_column: 'price',
+  product_url_column: 'url',
+  primary_image_url_column: 'image_url',
+  color_column: 'colour',
+  merchant_offer_id_column: 'merchant_offer_id',
   api_key: ''
 })
 
@@ -63,6 +107,15 @@ onMounted(() => {
 
 function mutationHeaders() {
   return { 'Idempotency-Key': crypto.randomUUID() }
+}
+
+function parseLines(value: string): string[] {
+  return [...new Set(value.split(/[\n,]/).map(item => item.trim()).filter(Boolean))]
+}
+
+function errorMessage(error: unknown): string | undefined {
+  const candidate = error as { data?: { statusMessage?: string }, message?: string }
+  return candidate?.data?.statusMessage || candidate?.message
 }
 
 const sourceIcons: Record<string, string> = {
@@ -97,8 +150,8 @@ async function connectDealerFeed() {
     await refresh()
     toast.add({ title: 'Dealer Feed connected to CRM', color: 'success' })
     await sync(result.source.id)
-  } catch (error: any) {
-    toast.add({ title: 'Could not connect Dealer Feed', description: error?.data?.statusMessage || error?.message, color: 'error' })
+  } catch (error: unknown) {
+    toast.add({ title: 'Could not connect Dealer Feed', description: errorMessage(error), color: 'error' })
   } finally {
     saving.value = false
   }
@@ -118,6 +171,29 @@ async function saveConnector() {
             project_url: form.project_url,
             schema: form.schema,
             table: form.table,
+            selection: {
+              seller_ids: parseLines(form.seller_ids_text),
+              sale_statuses: ['For Sale'],
+              makes: parseLines(form.makes_text),
+              listing_types: form.listing_types,
+              required_fields: form.required_fields,
+              product_url_template: form.product_url_template || undefined
+            },
+            field_mapping: {
+              source_product_id: form.source_product_id_column,
+              stock_id: form.stock_id_column,
+              vin: form.vin_column,
+              name: form.name_column,
+              seller_id: form.seller_id_column,
+              sale_status: form.sale_status_column,
+              listing_type: form.listing_type_column,
+              make: form.make_column,
+              price: form.price_column,
+              product_url: form.product_url_column,
+              primary_image_url: form.primary_image_url_column,
+              color: form.color_column,
+              merchant_offer_id: form.merchant_offer_id_column
+            },
             api_key: form.api_key
           }
         : {
@@ -133,8 +209,8 @@ async function saveConnector() {
     form.api_key = ''
     await refresh()
     toast.add({ title: 'Data source connected', color: 'success' })
-  } catch (error: any) {
-    toast.add({ title: 'Could not connect data source', description: error?.data?.statusMessage || error?.message, color: 'error' })
+  } catch (error: unknown) {
+    toast.add({ title: 'Could not connect data source', description: errorMessage(error), color: 'error' })
   } finally {
     saving.value = false
   }
@@ -153,9 +229,9 @@ async function sync(sourceId: string) {
       description: `${result.upserted} products updated, ${result.removed} retired.`,
       color: 'success'
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     await refresh()
-    toast.add({ title: 'Sync failed', description: error?.data?.statusMessage || error?.message, color: 'error' })
+    toast.add({ title: 'Sync failed', description: errorMessage(error), color: 'error' })
   } finally {
     syncingId.value = ''
   }
@@ -166,7 +242,9 @@ async function sync(sourceId: string) {
   <div class="space-y-5">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <h2 class="text-lg font-semibold">Data Sources</h2>
+        <h2 class="text-lg font-semibold">
+          Data Sources
+        </h2>
         <p class="mt-1 max-w-2xl text-sm text-muted">
           Connect inventory and product systems once. CRM enquiries then match against VIN, stock ID, SKU, provider ID and listing URL.
         </p>
@@ -185,7 +263,7 @@ async function sync(sourceId: string) {
       description="A primary contact or client administrator can connect and synchronize inventory sources."
     />
 
-    <div v-if="showForm && canManage" class="rounded-xl border border-default bg-elevated/30 p-5">
+    <div v-if="showForm && canManage" class="@container rounded-xl border border-default bg-elevated/30 p-5">
       <div class="mb-5 flex gap-2">
         <UButton
           label="JSON / CSV feed"
@@ -200,12 +278,12 @@ async function sync(sourceId: string) {
           @click="connector = 'supabase'"
         />
       </div>
-      <div class="grid gap-4 md:grid-cols-2">
-        <UFormField label="Connection name" class="md:col-span-2">
+      <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+        <UFormField label="Connection name" class="@lg:col-span-2">
           <UInput v-model="form.display_name" class="w-full" :placeholder="connector === 'supabase' ? 'Vehicle inventory database' : 'Primary product feed'" />
         </UFormField>
         <template v-if="connector === 'feed'">
-          <UFormField label="HTTPS feed URL" class="md:col-span-2">
+          <UFormField label="HTTPS feed URL" class="@lg:col-span-2">
             <UInput v-model="form.feed_url" class="w-full" placeholder="https://example.com/inventory.json" />
           </UFormField>
           <UFormField label="Format">
@@ -216,7 +294,7 @@ async function sync(sourceId: string) {
           </UFormField>
         </template>
         <template v-else>
-          <UFormField label="Project URL" class="md:col-span-2">
+          <UFormField label="Project URL" class="@lg:col-span-2">
             <UInput v-model="form.project_url" class="w-full" placeholder="https://project-ref.supabase.co" />
           </UFormField>
           <UFormField label="Schema">
@@ -225,7 +303,117 @@ async function sync(sourceId: string) {
           <UFormField label="Table or view">
             <UInput v-model="form.table" class="w-full" placeholder="vehicles" />
           </UFormField>
-          <UFormField label="Supabase API key" class="md:col-span-2">
+          <div class="@lg:col-span-2">
+            <h3 class="text-sm font-semibold">
+              Inventory eligibility
+            </h3>
+            <p class="mt-1 text-sm text-muted">
+              Scope this connection to the client inventory represented by this campaign.
+            </p>
+          </div>
+          <UAlert
+            class="@lg:col-span-2"
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-shield-check"
+            title="Only vehicles marked exactly For Sale are eligible"
+            description="Sold, withdrawn and other inventory states are excluded at synchronization and cannot be published to advertising platforms."
+          />
+          <UFormField label="Seller IDs" description="Required. Enter the source seller/dealer IDs for this client, separated by commas or new lines." class="@lg:col-span-2">
+            <UTextarea
+              v-model="form.seller_ids_text"
+              class="w-full"
+              :rows="3"
+              placeholder="northern-isuzu-ute"
+            />
+          </UFormField>
+          <UFormField label="Eligible listing types">
+            <USelectMenu
+              v-model="form.listing_types"
+              class="w-full"
+              :items="listingTypeOptions"
+              value-key="value"
+              label-key="label"
+              multiple
+            />
+          </UFormField>
+          <UFormField label="Makes" description="Optional. Leave blank to include every make for the selected seller.">
+            <UTextarea
+              v-model="form.makes_text"
+              class="w-full"
+              :rows="3"
+              placeholder="Isuzu UTE"
+            />
+          </UFormField>
+          <UFormField label="Required Merchant fields" description="Rows missing any selected field are excluded before publishing." class="@lg:col-span-2">
+            <USelectMenu
+              v-model="form.required_fields"
+              class="w-full"
+              :items="requiredFieldOptions"
+              value-key="value"
+              label-key="label"
+              multiple
+            />
+          </UFormField>
+          <UFormField
+            label="Vehicle URL template"
+            description="Use {stock_id}, {source_product_id} and {name_slug} when the source does not provide a complete landing-page URL."
+            class="@lg:col-span-2"
+          >
+            <UInput
+              v-model="form.product_url_template"
+              class="w-full"
+              placeholder="https://www.example.com.au/vehicle-for-sale/{stock_id}/{name_slug}"
+            />
+          </UFormField>
+          <div class="@lg:col-span-2">
+            <h3 class="text-sm font-semibold">
+              Column mapping
+            </h3>
+            <p class="mt-1 text-sm text-muted">
+              Enter the exact Supabase column name for each governed inventory field.
+            </p>
+          </div>
+          <UFormField label="Source product ID column">
+            <UInput v-model="form.source_product_id_column" class="w-full" placeholder="id" />
+          </UFormField>
+          <UFormField label="Stock ID column">
+            <UInput v-model="form.stock_id_column" class="w-full" placeholder="stock_number" />
+          </UFormField>
+          <UFormField label="VIN column">
+            <UInput v-model="form.vin_column" class="w-full" placeholder="vin" />
+          </UFormField>
+          <UFormField label="Vehicle name column">
+            <UInput v-model="form.name_column" class="w-full" placeholder="title" />
+          </UFormField>
+          <UFormField label="Seller ID column">
+            <UInput v-model="form.seller_id_column" class="w-full" placeholder="seller_id" />
+          </UFormField>
+          <UFormField label="Sale status column">
+            <UInput v-model="form.sale_status_column" class="w-full" placeholder="sale_status" />
+          </UFormField>
+          <UFormField label="Listing type column">
+            <UInput v-model="form.listing_type_column" class="w-full" placeholder="listing_type" />
+          </UFormField>
+          <UFormField label="Make column">
+            <UInput v-model="form.make_column" class="w-full" placeholder="make" />
+          </UFormField>
+          <UFormField label="Price column">
+            <UInput v-model="form.price_column" class="w-full" placeholder="price" />
+          </UFormField>
+          <UFormField label="Vehicle URL column">
+            <UInput v-model="form.product_url_column" class="w-full" placeholder="url" />
+          </UFormField>
+          <UFormField label="Primary image column">
+            <UInput v-model="form.primary_image_url_column" class="w-full" placeholder="image_url" />
+          </UFormField>
+          <UFormField label="Colour column">
+            <UInput v-model="form.color_column" class="w-full" placeholder="colour" />
+          </UFormField>
+          <UFormField label="Merchant offer ID column">
+            <UInput v-model="form.merchant_offer_id_column" class="w-full" placeholder="merchant_offer_id" />
+          </UFormField>
+          <UFormField label="Supabase API key" class="@lg:col-span-2">
             <UInput
               v-model="form.api_key"
               type="password"
@@ -239,8 +427,18 @@ async function sync(sourceId: string) {
         </template>
       </div>
       <div class="mt-5 flex justify-end gap-2">
-        <UButton label="Cancel" color="neutral" variant="ghost" @click="showForm = false" />
-        <UButton label="Connect" icon="i-lucide-plug" :loading="saving" @click="saveConnector" />
+        <UButton
+          label="Cancel"
+          color="neutral"
+          variant="ghost"
+          @click="showForm = false"
+        />
+        <UButton
+          label="Connect"
+          icon="i-lucide-plug"
+          :loading="saving"
+          @click="saveConnector"
+        />
       </div>
     </div>
 
@@ -266,8 +464,12 @@ async function sync(sourceId: string) {
               <UIcon name="i-lucide-car-front" class="size-5" />
             </div>
             <div>
-              <h3 class="font-medium">Dealer Feed</h3>
-              <p class="text-xs text-muted">Campaign vehicle inventory</p>
+              <h3 class="font-medium">
+                Dealer Feed
+              </h3>
+              <p class="text-xs text-muted">
+                Campaign vehicle inventory
+              </p>
             </div>
           </div>
           <UBadge :color="data.dealerFeed.connected ? 'success' : 'neutral'" variant="subtle">
@@ -307,8 +509,12 @@ async function sync(sourceId: string) {
               <UIcon :name="sourceIcons[source.source_type] || 'i-lucide-database'" class="size-5" />
             </div>
             <div class="min-w-0">
-              <h3 class="truncate font-medium">{{ source.display_name }}</h3>
-              <p class="text-xs capitalize text-muted">{{ source.source_type.replace('_', ' ') }}</p>
+              <h3 class="truncate font-medium">
+                {{ source.display_name }}
+              </h3>
+              <p class="text-xs capitalize text-muted">
+                {{ source.source_type.replace('_', ' ') }}
+              </p>
             </div>
           </div>
           <UBadge :color="source.status === 'active' ? 'success' : source.status === 'error' ? 'error' : 'neutral'" variant="subtle">
@@ -317,12 +523,20 @@ async function sync(sourceId: string) {
         </div>
         <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
           <div>
-            <p class="text-xs text-muted">Active products</p>
-            <p class="mt-0.5 font-medium">{{ source.active_product_count || 0 }}</p>
+            <p class="text-xs text-muted">
+              Active products
+            </p>
+            <p class="mt-0.5 font-medium">
+              {{ source.active_product_count || 0 }}
+            </p>
           </div>
           <div>
-            <p class="text-xs text-muted">Last sync</p>
-            <p class="mt-0.5 font-medium">{{ source.last_synced_at ? new Date(source.last_synced_at).toLocaleString() : 'Never' }}</p>
+            <p class="text-xs text-muted">
+              Last sync
+            </p>
+            <p class="mt-0.5 font-medium">
+              {{ source.last_synced_at ? new Date(source.last_synced_at).toLocaleString() : 'Never' }}
+            </p>
           </div>
         </div>
         <p v-if="source.last_sync_error" class="mt-3 line-clamp-2 text-xs text-error">
@@ -341,8 +555,12 @@ async function sync(sourceId: string) {
 
       <article v-if="!loading && !data.sources.length && !data.dealerFeed.connected" class="rounded-xl border border-dashed border-default p-8 text-center xl:col-span-3">
         <UIcon name="i-lucide-database-zap" class="mx-auto size-7 text-muted" />
-        <p class="mt-3 text-sm font-medium">No data sources connected</p>
-        <p class="mt-1 text-xs text-muted">Connect a feed or Supabase database to match enquiries with products.</p>
+        <p class="mt-3 text-sm font-medium">
+          No data sources connected
+        </p>
+        <p class="mt-1 text-xs text-muted">
+          Connect a feed or Supabase database to match enquiries with products.
+        </p>
       </article>
     </div>
   </div>

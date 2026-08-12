@@ -8,6 +8,7 @@ import { getFeedProvider } from '~~/server/utils/feeds/registry'
 import { cloudflareRuntimeEnv, mergedRuntimeEnv } from '~~/server/utils/feeds/serverContext'
 import {
   CatalogFeedError,
+  normalizeSupabaseCatalogSelection,
   syncCatalogSource,
   validateCatalogFeedUrl,
   validateSupabaseProjectUrl,
@@ -17,7 +18,8 @@ import {
 const MAPPING_FIELDS = new Set([
   'source_product_id', 'sku', 'stock_id', 'vin', 'name', 'product_type',
   'availability', 'price', 'currency', 'product_url', 'primary_image_url',
-  'source_updated_at'
+  'source_updated_at', 'seller_id', 'sale_status', 'listing_type', 'make', 'model', 'color',
+  'merchant_offer_id'
 ])
 
 export interface CatalogSourceDb {
@@ -140,7 +142,11 @@ export async function createCatalogSourceForClientWithDb(
         throw new CatalogFeedError('Supabase schema and table are required')
       }
       if (!apiKey) throw new CatalogFeedError('Supabase API key is required')
-      connectionConfig = { schema, table }
+      connectionConfig = {
+        schema,
+        selection: normalizeSupabaseCatalogSelection(body.selection),
+        table
+      }
       encryptedCredential = await encryptToken(apiKey)
     } else {
       feedUrl = validateCatalogFeedUrl(body.feed_url)
