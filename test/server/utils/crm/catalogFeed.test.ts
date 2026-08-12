@@ -191,6 +191,35 @@ describe('Supabase catalog selection', () => {
     })).toThrow(CatalogFeedError)
   })
 
+  it('uses approved canonical aliases when the preferred mapped vehicle field is empty', () => {
+    const selection = normalizeSupabaseCatalogSelection({
+      seller_ids: ['brighton-gwm'],
+      sale_statuses: ['For Sale'],
+      makes: ['GWM'],
+      listing_types: ['Demo'],
+      required_fields: ['source_product_id', 'stock_id', 'price', 'color']
+    })
+    const { included: [selected] } = applySupabaseCatalogSelection([{
+      id: 'vehicle-1',
+      stock_number: 'B73572',
+      seller_id: 'brighton-gwm',
+      sale_status: 'For Sale',
+      listing_type: 'Demo',
+      make: 'GWM',
+      dap_price: null,
+      egc_price: 44990,
+      exterior_colour_name: null,
+      exterior_colour_generic: 'Grey'
+    }], selection, {
+      source_product_id: 'id',
+      stock_id: 'stock_number',
+      price: 'dap_price',
+      color: 'exterior_colour_name'
+    })
+
+    expect(selected).toMatchObject({ egc_price: 44990, exterior_colour_generic: 'Grey' })
+  })
+
   it('enforces the selection stored on the Supabase source and fails closed when absent', () => {
     const rows = [
       { id: 'live', seller_id: 'northern-isuzu-ute', sale_status: 'For Sale', make: 'Isuzu', listing_type: 'New', stock_number: 'N1', vin: 'VIN7', price: 1, url: 'https://example.com/live', image_url: 'https://example.com/live.jpg', color: 'White' },
@@ -217,7 +246,7 @@ describe('Supabase catalog selection', () => {
     }, rows)).toThrowError('Supabase catalog selection is not configured')
   })
 
-  it('fails closed when eligible stock is rejected by Merchant completeness rules', () => {
+  it('fails closed when any eligible stock is rejected by Merchant completeness rules', () => {
     const source = {
       id: '11111111-1111-4111-8111-111111111111',
       client_id: '22222222-2222-4222-8222-222222222222',
@@ -240,15 +269,26 @@ describe('Supabase catalog selection', () => {
       secret_iv: new Uint8Array()
     }
 
-    expect(() => selectSupabaseCatalogRowsForSource(source, [{
-      id: 'vehicle-1',
-      stock_number: 'K625231',
-      seller_id: 'brighton-gwm',
-      sale_status: 'For Sale',
-      listing_type: 'New',
-      make: 'GWM',
-      exterior_colour_name: null
-    }])).toThrowError('required fields are incomplete: color (1)')
+    expect(() => selectSupabaseCatalogRowsForSource(source, [
+      {
+        id: 'vehicle-complete',
+        stock_number: 'K625231',
+        seller_id: 'brighton-gwm',
+        sale_status: 'For Sale',
+        listing_type: 'New',
+        make: 'GWM',
+        exterior_colour_name: 'White'
+      },
+      {
+        id: 'vehicle-incomplete',
+        stock_number: 'K625232',
+        seller_id: 'brighton-gwm',
+        sale_status: 'For Sale',
+        listing_type: 'New',
+        make: 'GWM',
+        exterior_colour_name: null
+      }
+    ])).toThrowError('required fields are incomplete: color (1)')
   })
 
   it('retires all prior products only after an authoritative Supabase read returns rows but no eligible stock', () => {

@@ -108,7 +108,7 @@ const FIELD_ALIASES: Record<keyof CatalogFieldMapping, string[]> = {
   name: ['name', 'title', 'vehicle_name'],
   product_type: ['product_type', 'type', 'category'],
   availability: ['availability', 'status', 'stock_status'],
-  price: ['price', 'drive_away_price', 'sale_price'],
+  price: ['price', 'drive_away_price', 'sale_price', 'dap_price', 'egc_price'],
   currency: ['currency', 'currency_code'],
   product_url: ['product_url', 'url', 'vehicle_url', 'detail_url'],
   primary_image_url: ['primary_image_url', 'image_url', 'image', 'thumbnail_url'],
@@ -118,7 +118,10 @@ const FIELD_ALIASES: Record<keyof CatalogFieldMapping, string[]> = {
   listing_type: ['listing_type', 'listingType', 'condition', 'stock_type', 'stockType'],
   make: ['make', 'manufacturer'],
   model: ['model'],
-  color: ['color', 'colour', 'exterior_color', 'exterior_colour'],
+  color: [
+    'color', 'colour', 'exterior_color', 'exterior_colour',
+    'exterior_colour_name', 'exterior_colour_generic'
+  ],
   merchant_offer_id: ['merchant_offer_id', 'offer_id', 'offerId']
 }
 
@@ -337,7 +340,10 @@ function mappedValue(
   field: keyof CatalogFieldMapping,
   mapping: CatalogFieldMapping
 ): unknown {
-  const paths = mapping[field] ? [mapping[field]!] : FIELD_ALIASES[field]
+  const paths = [...new Set([
+    ...(mapping[field] ? [mapping[field]!] : []),
+    ...FIELD_ALIASES[field]
+  ])]
   for (const path of paths) {
     const value = pathValue(item, path)
     if (value !== undefined && value !== null && value !== '') return value
@@ -459,7 +465,7 @@ export function selectSupabaseCatalogRowsForSource(
     (item): item is SupabaseCatalogExcludedRow & { field: SupabaseCatalogRequiredField } =>
       item.reason === 'REQUIRED_FIELD_MISSING' && Boolean(item.field)
   )
-  if (!result.included.length && incomplete.length) {
+  if (incomplete.length) {
     const counts = new Map<SupabaseCatalogRequiredField, number>()
     for (const item of incomplete) counts.set(item.field, (counts.get(item.field) ?? 0) + 1)
     const summary = [...counts.entries()]
