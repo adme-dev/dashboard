@@ -205,6 +205,9 @@ id = "90228af3e2cc461bbc09accc3b47bd9f"
 binding = "AGENCY_WORKFLOWS"
 service = "agency-workflows"
 [[env.production.services]]
+binding = "TRANSACTIONAL_EMAIL"
+service = "xeroflow-transactional-email"
+[[env.production.services]]
 binding = "CRM_SEARCH_EVALUATION_RUNNER"
 service = "agency-crm-search-evaluation-runner"
 [[env.production.services]]

@@ -3,10 +3,9 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const sessionRoutes = [
-  'server/api/portal/auth/login.post.ts',
+  'server/api/portal/auth/magic-link/verify.post.ts',
   'server/api/portal/auth/logout.post.ts',
   'server/api/agency/client-portal/access.post.ts',
-  'server/api/agency/client-portal/auth/login.post.ts',
   'server/api/agency/client-portal/auth/logout.post.ts',
   'server/api/agency/client-portal/auth/me.get.ts'
 ]
@@ -21,9 +20,8 @@ describe('portal session storage contract', () => {
   })
 
   it.each([
-    'server/api/portal/auth/login.post.ts',
-    'server/utils/clientPortal/access.ts',
-    'server/api/agency/client-portal/auth/login.post.ts'
+    'server/api/portal/auth/magic-link/verify.post.ts',
+    'server/utils/clientPortal/access.ts'
   ])('%s stores an indexed digest for issued sessions', (relativePath) => {
     const source = readFileSync(resolve(process.cwd(), relativePath), 'utf8')
 
@@ -43,15 +41,16 @@ describe('portal invitation activation route', () => {
     expect(readFileSync(
       resolve(process.cwd(), 'server/api/portal/auth/accept-invite.post.ts'),
       'utf8'
-    )).toContain('Accept Client Portal Invitation')
+    )).toContain('Accept a client portal invitation')
 
     const emailSource = readFileSync(resolve(process.cwd(), 'server/utils/email.ts'), 'utf8')
     const inviteSource = readFileSync(
       resolve(process.cwd(), 'server/api/agency/client-portal/invite.post.ts'),
       'utf8'
     )
-    expect(emailSource).toContain('`${appUrl}/portal/accept-invite?token=${data.token}`')
-    expect(inviteSource).toContain('`/portal/accept-invite?token=${invitation.token}`')
+    expect(emailSource).toContain('`${appUrl}/portal/accept-invite#token=${data.token}`')
+    expect(inviteSource).toContain('token: token')
+    expect(inviteSource).toContain('digestPortalSessionToken(token)')
     expect(emailSource).not.toContain('/client-portal/accept')
     expect(inviteSource).not.toContain('/client-portal/accept-invite')
   })

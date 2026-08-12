@@ -1,163 +1,163 @@
 /**
- * Accept Client Portal Invitation
+ * Accept a client portal invitation and create a client session.
  * POST /api/portal/auth/accept-invite
- *
- * Body:
- * - token: Invitation token
- * - password: User's chosen password
  */
 
-import { queryOne, transaction } from '~~/server/utils/db'
-import bcrypt from 'bcryptjs'
+import { transaction } from '~~/server/utils/db'
+import {
+  digestPortalSessionToken,
+  generatePortalMagicLinkToken
+} from '~~/server/utils/portalSession'
+import { z } from 'zod'
+
+const acceptSchema = z.object({
+  token: z.string().min(32).max(100)
+})
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event)
-
-  const { token, password } = body
-
-  if (!token) {
+  const parsed = acceptSchema.safeParse(await readBody(event))
+  if (!parsed.success) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Invitation token is required'
     })
   }
 
-  if (!password || password.length < 8) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Password must be at least 8 characters'
-    })
-  }
+  const rawToken = parsed.data.token
+  const tokenDigest = await digestPortalSessionToken(rawToken)
+  const sessionToken = generatePortalMagicLinkToken()
+  const sessionDigest = await digestPortalSessionToken(sessionToken)
+  const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+  const headers = getHeaders(event)
+  const ipAddress = headers['x-forwarded-for']?.split(',')[0]?.trim()
+    || headers['x-real-ip']
+    || 'unknown'
+  const userAgent = headers['user-agent'] || null
 
-  try {
-    // Find invitation
-    const invitation = await queryOne(`
+  await transaction(async (client) => {
+    const invitationResult = await client.query(`
       SELECT
-        ci.id,
-        ci.client_id,
-        ci.email,
-        ci.name,
-        ci.permissions,
-        ci.status,
-        ci.expires_at,
-        ci.accepted_by_user_id,
-        c.name as client_name
-      FROM client_invitations ci
-      JOIN agency_clients c ON ci.client_id = c.id
-      WHERE ci.token = $1
-    `, [token])
+        invitation.id,
+        invitation.client_id,
+        invitation.email,
+        invitation.name,
+        invitation.permissions,
+        invitation.status,
+        invitation.expires_at,
+        client.name AS client_name
+      FROM client_invitations AS invitation
+      JOIN agency_clients AS client ON client.id = invitation.client_id
+      WHERE invitation.token IN ($1, $2)
+      FOR UPDATE OF invitation
+    `, [tokenDigest, rawToken])
 
+    const invitation = invitationResult.rows[0]
     if (!invitation) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Invalid invitation token'
-      })
+      throw createError({ statusCode: 404, statusMessage: 'Invalid invitation token' })
     }
-
     if (invitation.status === 'accepted') {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'This invitation has already been accepted'
-      })
+      throw createError({ statusCode: 400, statusMessage: 'This invitation has already been accepted' })
     }
-
     if (invitation.status === 'cancelled') {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'This invitation has been cancelled'
-      })
+      throw createError({ statusCode: 400, statusMessage: 'This invitation has been cancelled' })
     }
-
     if (invitation.status === 'expired' || new Date(invitation.expires_at) < new Date()) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'This invitation has expired'
-      })
+      throw createError({ statusCode: 400, statusMessage: 'This invitation has expired' })
     }
 
-    // Hash password
-    const passwordHash = await bcrypt.hash(password, 12)
+    const existingUser = await client.query(`
+      SELECT id
+      FROM client_users
+      WHERE LOWER(email) = LOWER($1) AND client_id = $2
+      FOR UPDATE
+    `, [invitation.email, invitation.client_id])
 
-    let user: any
-    await transaction(async (client) => {
-      // Find or create user
-      const existingUser = await client.query(`
-        SELECT id FROM client_users WHERE email = $1 AND client_id = $2
-      `, [invitation.email, invitation.client_id])
-
-      if (existingUser.rows.length > 0) {
-        // Update existing user
-        const result = await client.query(`
-          UPDATE client_users
-          SET
-            password_hash = $1,
-            status = 'active',
-            email_verified = true,
-            email_verified_at = NOW(),
-            activated_at = NOW(),
-            updated_at = NOW()
-          WHERE id = $2
-          RETURNING *
-        `, [passwordHash, existingUser.rows[0].id])
-        user = result.rows[0]
-      } else {
-        // Create new user (shouldn't happen normally as invite.post.ts creates them)
-        const permissions = invitation.permissions || {}
-        const result = await client.query(`
-          INSERT INTO client_users (
-            client_id, email, name, password_hash, status,
-            email_verified, email_verified_at, activated_at,
-            can_view_projects, can_view_invoices, can_approve_work,
-            can_view_time_entries, can_view_budgets, can_add_comments, can_upload_files
-          ) VALUES ($1, $2, $3, $4, 'active', true, NOW(), NOW(), $5, $6, $7, $8, $9, $10, $11)
-          RETURNING *
-        `, [
-          invitation.client_id,
-          invitation.email,
-          invitation.name,
-          passwordHash,
-          permissions.canViewProjects ?? true,
-          permissions.canViewInvoices ?? true,
-          permissions.canApproveWork ?? false,
-          permissions.canViewTimeEntries ?? false,
-          permissions.canViewBudgets ?? false,
-          permissions.canAddComments ?? true,
-          permissions.canUploadFiles ?? true
-        ])
-        user = result.rows[0]
-      }
-
-      // Mark invitation as accepted
-      await client.query(`
-        UPDATE client_invitations
-        SET status = 'accepted', accepted_at = NOW(), accepted_by_user_id = $1
-        WHERE id = $2
-      `, [user.id, invitation.id])
-
-      // Log activity
-      await client.query(`
-        INSERT INTO client_activity_log (client_user_id, client_id, action, details)
-        VALUES ($1, $2, 'account_activated', $3)
-      `, [user.id, invitation.client_id, JSON.stringify({ invitationId: invitation.id })])
-    })
-
-    return {
-      success: true,
-      message: 'Account activated successfully',
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        clientName: invitation.client_name
-      }
+    let user
+    if (existingUser.rows[0]) {
+      const activated = await client.query(`
+        UPDATE client_users
+        SET
+          status = 'active',
+          email_verified = TRUE,
+          email_verified_at = COALESCE(email_verified_at, NOW()),
+          activated_at = COALESCE(activated_at, NOW()),
+          updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, email
+      `, [existingUser.rows[0].id])
+      user = activated.rows[0]
+    } else {
+      const permissions = invitation.permissions || {}
+      const created = await client.query(`
+        INSERT INTO client_users (
+          client_id, email, name, status,
+          email_verified, email_verified_at, activated_at,
+          can_view_projects, can_view_invoices, can_approve_work,
+          can_view_time_entries, can_view_budgets, can_add_comments, can_upload_files
+        ) VALUES (
+          $1, $2, $3, 'active', TRUE, NOW(), NOW(),
+          $4, $5, $6, $7, $8, $9, $10
+        )
+        RETURNING id, email
+      `, [
+        invitation.client_id,
+        invitation.email,
+        invitation.name,
+        permissions.canViewProjects ?? true,
+        permissions.canViewInvoices ?? true,
+        permissions.canApproveWork ?? false,
+        permissions.canViewTimeEntries ?? false,
+        permissions.canViewBudgets ?? false,
+        permissions.canAddComments ?? true,
+        permissions.canUploadFiles ?? true
+      ])
+      user = created.rows[0]
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
-    console.error('Failed to accept invitation:', error)
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'Failed to accept invitation'
-    })
-  }
+
+    await client.query(`
+      UPDATE client_invitations
+      SET status = 'accepted', accepted_at = NOW(), accepted_by_user_id = $1
+      WHERE id = $2
+    `, [user.id, invitation.id])
+
+    await client.query(`
+      INSERT INTO client_sessions (
+        client_user_id, token_hash, ip_address, user_agent, expires_at
+      ) VALUES ($1, $2, $3, $4, $5)
+    `, [
+      user.id,
+      sessionDigest,
+      ipAddress === 'unknown' ? null : ipAddress,
+      userAgent,
+      sessionExpiresAt.toISOString()
+    ])
+
+    await client.query(`
+      UPDATE client_users
+      SET last_login_at = NOW(), login_count = login_count + 1
+      WHERE id = $1
+    `, [user.id])
+
+    await client.query(`
+      INSERT INTO client_activity_log (
+        client_user_id, client_id, action, details, ip_address, user_agent
+      ) VALUES ($1, $2, 'account_activated', $3, $4, $5)
+    `, [
+      user.id,
+      invitation.client_id,
+      JSON.stringify({ invitationId: invitation.id, authentication: 'email_link' }),
+      ipAddress === 'unknown' ? null : ipAddress,
+      userAgent
+    ])
+  })
+
+  setCookie(event, 'client_session_token', sessionToken, {
+    httpOnly: true,
+    secure: getRequestURL(event).protocol === 'https:',
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 60 * 60,
+    path: '/'
+  })
+
+  return { success: true, redirect: '/portal' }
 })

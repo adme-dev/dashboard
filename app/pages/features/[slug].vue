@@ -1740,22 +1740,26 @@ const features: Record<string, Feature> = {
 
   // ─── Client Portal ────────────────────────────────────────────
   'dedicated-login': {
-    title: 'Dedicated Login',
+    title: 'Passwordless Client Login',
     slug: 'dedicated-login',
     icon: 'i-lucide-lock',
     category: 'Client Portal',
     categoryIcon: 'i-lucide-briefcase',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'Separate cookie-based auth system for clients. They get their own login experience, completely scoped to their data with granular permissions.',
+    description: 'Single-use email links give clients a separate, secure login experience that is completely scoped to their data and permissions.',
     details: [
       {
         title: 'Separate Auth System',
-        content: 'The client portal uses an entirely separate authentication system from the staff dashboard. Clients authenticate with email and password, receiving an httpOnly session cookie (client_session_token) that scopes all their API requests to their own client ID. There is zero chance of a client accidentally seeing another client\'s data — the scoping happens at the API layer, not just the UI layer.'
+        content: 'The client portal uses an entirely separate authentication system from the staff dashboard. Clients request a single-use email link, confirm the browser, and receive an httpOnly client session cookie. Every API request remains scoped to that user\'s client ID at the server layer, not just hidden in the interface.'
       },
       {
         title: 'Invitation-Based Onboarding',
-        content: 'Invite clients to the portal by email. They receive a branded invitation with a link to set their password and complete their profile. The invitation specifies which permissions the client will have — invoice viewing, approval capabilities, comment access — so you control exactly what each client contact can see and do from the moment they first log in.'
+        content: 'Invite clients to the portal by email. The branded invitation activates access directly after the recipient confirms it, with no password setup. The invitation specifies invoice, approval, comment, analytics, CRM, and other permissions so each contact starts with the correct access.'
+      },
+      {
+        title: 'Short-Lived, One-Time Links',
+        content: 'Sign-in links expire after 15 minutes, are stored only as SHA-256 digests, and can be consumed once. The credential stays in the browser URL fragment rather than request logs, and an explicit confirmation prevents ordinary email-security scanners from using it before the client does.'
       },
       {
         title: 'Granular Permissions',

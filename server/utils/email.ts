@@ -7,6 +7,9 @@ import { Resend } from 'resend'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { getCachedCfBinding } from '~~/server/utils/cfBindings'
 import { suppressMemberNotificationEmail } from '~~/server/utils/notificationDelivery'
+import { isCloudflareEmailGatewayAvailable } from '~~/server/utils/cloudflareEmailGateway'
+import { sendPortalAuthTransactionalEmail } from '~~/server/utils/portalAuthEmailTransport'
+import { PORTAL_AUTH_SENDER_ADDRESS } from '~~/server/utils/portalAuthEmailPolicy'
 
 export {
   getCachedCfBinding as getCachedBinding,
@@ -354,6 +357,61 @@ export async function sendMagicLinkEmail(data: MagicLinkEmailData): Promise<void
     console.error('[Email] Failed to send magic link:', error)
     throw error
   }
+}
+
+export interface ClientPortalMagicLinkEmailData {
+  to: string
+  name: string
+  clientName: string
+  magicLinkUrl: string
+  expiresInMinutes: number
+  event?: H3Event
+}
+
+export async function sendClientPortalMagicLinkEmail(
+  data: ClientPortalMagicLinkEmailData
+): Promise<void> {
+  const client = getResendClient(data.event)
+  if (!data.event) throw new Error('Portal email request context unavailable')
+  if (!client && !isCloudflareEmailGatewayAvailable(data.event)) {
+    throw new Error('Email service not configured')
+  }
+
+  const { html, text } = renderEmailTemplate({
+    title: `Sign in to ${escapeHtml(data.clientName)}`,
+    greeting: `Hi ${escapeHtml(data.name)},`,
+    bodyHtml: `
+      <p>Use the secure link below to open your ${escapeHtml(data.clientName)} client portal.</p>
+      <p>This link can be used once and expires in ${data.expiresInMinutes} minutes. If you did not request it, you can ignore this email.</p>
+    `,
+    ctaText: 'Continue to client portal',
+    ctaUrl: data.magicLinkUrl,
+    recipientEmail: data.to
+  })
+
+  const { appName } = getEmailConfig(data.event)
+  const subject = `Your secure ${data.clientName} portal sign-in link`
+  await sendPortalAuthTransactionalEmail({
+    event: data.event,
+    message: {
+      to: data.to,
+      from: { address: PORTAL_AUTH_SENDER_ADDRESS, name: appName },
+      subject,
+      html,
+      text
+    },
+    resendSend: async () => {
+      if (!client) throw new Error('Resend fallback not configured')
+      const response = await client.emails.send({
+        from: getFromHeader(data.event),
+        to: data.to,
+        subject,
+        html,
+        text
+      })
+      if (response.error) throw new Error('Resend fallback failed')
+    }
+  })
 }
 
 // --- Notification email templates ---
@@ -1004,16 +1062,17 @@ export async function sendClientPortalInviteEmail(data: {
   token?: string
   expiresAt?: Date
   permissions?: Record<string, boolean>
+  event?: H3Event
 }): Promise<void> {
-  const client = getResendClient()
-  const { appName, appUrl } = getEmailConfig()
-  if (!client) {
-    console.log('[Email] Client portal invite email (no client) for', data.to)
-    return
+  const client = getResendClient(data.event)
+  const { appName, appUrl } = getEmailConfig(data.event)
+  if (!data.event) throw new Error('Portal email request context unavailable')
+  if (!client && !isCloudflareEmailGatewayAvailable(data.event)) {
+    throw new Error('Email service not configured')
   }
 
   const recipientName = data.name || data.clientUserName || 'there'
-  const portalLink = data.portalUrl || (data.token ? `${appUrl}/portal/accept-invite?token=${data.token}` : `${appUrl}/portal`)
+  const portalLink = data.portalUrl || (data.token ? `${appUrl}/portal/accept-invite#token=${data.token}` : `${appUrl}/portal`)
   const orgName = data.clientName || appName
 
   const { html, text } = renderEmailTemplate({
@@ -1031,18 +1090,28 @@ export async function sendClientPortalInviteEmail(data: {
     ctaUrl: portalLink
   })
 
-  try {
-    await client.emails.send({
-      from: getFromHeader(),
+  const subject = `Access your ${orgName} client portal`
+  await sendPortalAuthTransactionalEmail({
+    event: data.event,
+    message: {
       to: data.to,
-      subject: `Access your ${orgName} client portal`,
+      from: { address: PORTAL_AUTH_SENDER_ADDRESS, name: appName },
+      subject,
       html,
       text
-    })
-    console.log('[Email] Client portal invite email sent to', data.to)
-  } catch (error) {
-    console.error('[Email] Failed to send client portal invite email:', error)
-  }
+    },
+    resendSend: async () => {
+      if (!client) throw new Error('Resend fallback not configured')
+      const response = await client.emails.send({
+        from: getFromHeader(data.event),
+        to: data.to,
+        subject,
+        html,
+        text
+      })
+      if (response.error) throw new Error('Resend fallback failed')
+    }
+  })
 }
 
 export async function sendClientApprovalRequestEmail(data: {
