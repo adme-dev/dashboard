@@ -110,6 +110,7 @@ describe('portal invoice billing views', () => {
         aging_90_count: '0',
         total_billed: '8000',
         total_paid: '5000',
+        financial_year_cash_paid: '4500',
         paid_last_90: '4500',
         avg_paid_invoice: '2500',
         avg_days_to_pay: '12.6',
@@ -147,6 +148,22 @@ describe('portal invoice billing views', () => {
         sixty: { count: 0, amount: 0 },
         ninetyPlus: { count: 0, amount: 0 }
       }
+    })
+    expect(result.paymentStatus).toEqual({
+      outstanding: 3000,
+      openInvoiceCount: 2,
+      overdueAmount: 2000,
+      overdueCount: 1,
+      dueNext7Amount: 1000,
+      dueNext7Count: 1,
+      lastPaymentDate: '2026-05-01',
+      financialYearCashPaid: 4500,
+      financialYearCreditsApplied: 0
+    })
+    expect(result.investment).toMatchObject({
+      period: 'financial-year',
+      totalInvoiced: 0,
+      allocationAvailable: false
     })
   })
 })

@@ -43,6 +43,9 @@ const { default: getInvoice } = await import(
 describe('portal Xero invoice linkage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockRequireClientAuth.mockReset()
+    mockQueryRows.mockReset()
+    mockQueryOne.mockReset()
     mockRequireClientAuth.mockResolvedValue({
       clientId: 'south-morang-client',
       permissions: { canViewInvoices: true }
@@ -71,6 +74,8 @@ describe('portal Xero invoice linkage', () => {
         aging_90_count: '2',
         total_billed_cents: '6989259',
         total_paid_cents: '6446039',
+        financial_year_cash_paid_cents: '4403339',
+        financial_year_credits_cents: '0',
         paid_last_90_cents: '2500000',
         avg_paid_invoice_cents: '306954',
         avg_days_to_pay: '9.6',
@@ -82,21 +87,41 @@ describe('portal Xero invoice linkage', () => {
         aging_60_cents: '0',
         aging_90_cents: '243210'
       })
-    mockQueryRows.mockResolvedValueOnce([{
-      invoice_id: 'xero-invoice-21905',
-      invoice_number: '21905',
-      reference: 'August services',
-      status: 'AUTHORISED',
-      date: '2026-08-07',
-      due_date: '2026-08-07',
-      fully_paid_on_date: null,
-      subtotal_cents: '272727',
-      total_tax_cents: '27273',
-      total_cents: '300000',
-      amount_paid_cents: '0',
-      amount_due_cents: '300000',
-      currency_code: 'AUD'
-    }])
+      .mockResolvedValueOnce({
+        invoice_count: '1',
+        total_invoiced_cents: '300000',
+        gst_cents: '27273'
+      })
+    mockQueryRows
+      .mockResolvedValueOnce([{
+        invoice_id: 'xero-invoice-21905',
+        invoice_number: '21905',
+        reference: 'August services',
+        status: 'AUTHORISED',
+        date: '2026-08-07',
+        due_date: '2026-08-07',
+        fully_paid_on_date: null,
+        subtotal_cents: '272727',
+        total_tax_cents: '27273',
+        total_cents: '300000',
+        amount_paid_cents: '0',
+        amount_due_cents: '300000',
+        currency_code: 'AUD'
+      }])
+      .mockResolvedValueOnce([
+        {
+          account_type: 'DIRECTCOSTS',
+          account_name: 'Direct Costs: Media Other (Reimb Exp)',
+          tracking_media: 'Facebook Ads',
+          line_ex_gst_cents: '200000'
+        },
+        {
+          account_type: 'SALES',
+          account_name: 'Sales - Digital Advertising',
+          tracking_media: 'Facebook Ads',
+          line_ex_gst_cents: '72727'
+        }
+      ])
 
     const result = await listInvoices({ query: { view: 'current', limit: '-1' } })
 
@@ -115,6 +140,26 @@ describe('portal Xero invoice linkage', () => {
       overdueAmount: 5432.1,
       averageDaysToPay: 10
     })
+    expect(result.paymentStatus).toEqual({
+      outstanding: 5432.1,
+      openInvoiceCount: 3,
+      overdueAmount: 5432.1,
+      overdueCount: 3,
+      dueNext7Amount: 0,
+      dueNext7Count: 0,
+      lastPaymentDate: '2026-07-31',
+      financialYearCashPaid: 44033.39,
+      financialYearCreditsApplied: 0
+    })
+    expect(result.investment).toMatchObject({
+      period: 'financial-year',
+      totalInvoiced: 3000,
+      mediaAndSuppliers: 2000,
+      agencyServices: 727.27,
+      gst: 272.73,
+      unclassifiedAndAdjustments: 0,
+      allocationAvailable: true
+    })
 
     const listSql = String(mockQueryRows.mock.calls[0]?.[0])
     expect(listSql).toContain('FROM xero_invoices_cache')
@@ -124,6 +169,12 @@ describe('portal Xero invoice linkage', () => {
       50,
       'current'
     ])
+    const summarySql = String(mockQueryOne.mock.calls[1]?.[0])
+    expect(summarySql).toContain('financial_year_cash_paid_cents')
+    expect(summarySql).toContain('financial_year_credits_cents')
+    const investmentSql = String(mockQueryRows.mock.calls[1]?.[0])
+    expect(investmentSql).toContain('xero_invoice_lines_cache')
+    expect(investmentSql).toContain('xero_accounts_cache')
   })
 
   it('returns a Xero invoice detail only when it belongs to the authenticated client', async () => {
