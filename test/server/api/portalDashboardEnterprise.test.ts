@@ -152,6 +152,35 @@ describe('portal dashboard section budgets', () => {
     expect(result.enterprise.content).toMatchObject({ briefsTotal: 7, deliverablesVisible: 12 })
   })
 
+  it('sources portal dashboard billing from the tenant-scoped Xero invoice cache', async () => {
+    await dashboardHandler({ query: { section: 'operations' } })
+
+    const allSql = [...mockQueryOne.mock.calls, ...mockQueryRows.mock.calls]
+      .map(call => String(call[0]))
+      .join('\n')
+
+    expect(allSql).toContain('FROM xero_invoices_cache')
+    expect(allSql).toContain('FROM agency_clients')
+    expect(allSql).toContain('xero_contact_id')
+    expect(allSql).toContain('tenant_id')
+    expect(allSql).toContain('amount_due_cents')
+    expect(allSql).toContain('NOT EXISTS')
+  })
+
+  it('uses Xero paid and outstanding amounts for enterprise billing health', async () => {
+    await dashboardHandler({ query: { section: 'enterprise' } })
+
+    const billingSql = mockQueryOne.mock.calls
+      .map(call => String(call[0]))
+      .find(sql => sql.includes('outstanding_count'))
+
+    expect(billingSql).toContain('xero_invoices_cache')
+    expect(billingSql).toContain('amount_paid_cents')
+    expect(billingSql).toContain('fully_paid_on_date')
+    expect(billingSql).toContain('amount_due_cents')
+    expect(billingSql).toContain('NOT EXISTS')
+  })
+
   it('loads analytics health in four queries', async () => {
     mockQueryOne.mockImplementation(async (sql: string) => {
       if (sql.includes('COUNT(DISTINCT')) {

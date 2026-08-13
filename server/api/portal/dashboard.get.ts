@@ -16,6 +16,67 @@ const PORTAL_VISIBLE_LEADS_EXISTS = `EXISTS (
     AND d.destination_type = 'portal' AND d.enabled = TRUE
 )`
 
+const PORTAL_BILLING_ROWS_CTE = `
+  WITH xero_source AS (
+    SELECT
+      c.xero_contact_id,
+      (
+        SELECT i.tenant_id
+        FROM xero_invoices_cache i
+        WHERE i.contact_id = c.xero_contact_id
+          AND i.type = 'ACCREC'
+          AND i.status IN ('AUTHORISED', 'PAID')
+        ORDER BY i.synced_at DESC
+        LIMIT 1
+      ) AS tenant_id
+    FROM agency_clients c
+    WHERE c.id = $1
+  ),
+  portal_billing_rows AS (
+    SELECT
+      i.invoice_id::text AS id,
+      i.invoice_number,
+      CASE
+        WHEN i.status = 'PAID' THEN 'paid'
+        WHEN i.amount_due_cents > 0 AND i.due_date < CURRENT_DATE THEN 'overdue'
+        ELSE 'sent'
+      END AS status,
+      i.date AS issue_date,
+      i.due_date,
+      i.fully_paid_on_date AS paid_date,
+      i.total_cents / 100.0 AS total_amount,
+      i.amount_paid_cents / 100.0 AS amount_paid,
+      i.amount_due_cents / 100.0 AS amount_due
+    FROM xero_invoices_cache i
+    JOIN xero_source source
+      ON source.tenant_id = i.tenant_id
+     AND source.xero_contact_id = i.contact_id
+    WHERE i.type = 'ACCREC'
+      AND i.status IN ('AUTHORISED', 'PAID')
+
+    UNION ALL
+
+    SELECT
+      i.id::text AS id,
+      i.invoice_number,
+      i.status,
+      i.issue_date,
+      i.due_date,
+      i.paid_date,
+      i.total_amount,
+      i.amount_paid,
+      i.total_amount - i.amount_paid AS amount_due
+    FROM invoices i
+    WHERE i.client_id = $1
+      AND NOT EXISTS (
+        SELECT 1
+        FROM xero_source source
+        WHERE source.xero_contact_id IS NOT NULL
+          AND source.tenant_id IS NOT NULL
+      )
+  )
+`
+
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
   const clientId = clientUser.clientId
@@ -212,22 +273,24 @@ export default defineEventHandler(async (event) => {
     }
     const invoiceStats = loadOperations && canViewInvoices
       ? await safeQuery('invoiceStats', emptyInvoiceStats, async () => queryOne(`
+      ${PORTAL_BILLING_ROWS_CTE}
       SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid,
-        COUNT(CASE WHEN status IN ('sent', 'overdue') THEN 1 END) as outstanding,
-        COALESCE(SUM(CASE WHEN status = 'paid' THEN total_amount ELSE 0 END), 0) as total_paid,
-        COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') THEN total_amount - amount_paid ELSE 0 END), 0) as total_outstanding
-      FROM invoices
-      WHERE client_id = $1
+        COUNT(CASE WHEN status IN ('sent', 'overdue') AND amount_due > 0 THEN 1 END) as outstanding,
+        COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_paid ELSE 0 END), 0) as total_paid,
+        COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') THEN amount_due ELSE 0 END), 0) as total_outstanding
+      FROM portal_billing_rows
     `, [clientId]))
       : emptyInvoiceStats
 
     const outstandingInvoices = loadOperations && canViewInvoices
       ? await safeQuery<any[]>('outstandingInvoices', [], async () => queryRows(`
-      SELECT id, invoice_number, total_amount, amount_paid, due_date, status
-      FROM invoices
-      WHERE client_id = $1 AND status IN ('sent', 'overdue')
+      ${PORTAL_BILLING_ROWS_CTE}
+      SELECT id, invoice_number, total_amount, amount_paid, amount_due, due_date, status
+      FROM portal_billing_rows
+      WHERE status IN ('sent', 'overdue')
+        AND amount_due > 0
       ORDER BY due_date ASC
       LIMIT 5
     `, [clientId]))
@@ -411,20 +474,17 @@ export default defineEventHandler(async (event) => {
           last_paid_at: null,
           next_due_date: null
         }, async () => queryOne(`
+          ${PORTAL_BILLING_ROWS_CTE}
           SELECT
-            COUNT(*) FILTER (WHERE status IN ('sent', 'overdue')) AS outstanding_count,
-            COUNT(*) FILTER (
-              WHERE status = 'overdue'
-                OR (status = 'sent' AND due_date < CURRENT_DATE)
-            ) AS overdue_count,
-            COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') THEN total_amount - amount_paid ELSE 0 END), 0) AS outstanding_amount,
-            COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '60 days' THEN total_amount - amount_paid ELSE 0 END), 0) AS aged_60_amount,
-            COUNT(*) FILTER (WHERE status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '60 days') AS aged_60_count,
-            COALESCE(SUM(CASE WHEN status = 'paid' AND paid_date >= CURRENT_DATE - INTERVAL '90 days' THEN total_amount ELSE 0 END), 0) AS paid_last_90,
+            COUNT(*) FILTER (WHERE status IN ('sent', 'overdue') AND amount_due > 0) AS outstanding_count,
+            COUNT(*) FILTER (WHERE status = 'overdue' AND amount_due > 0) AS overdue_count,
+            COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') THEN amount_due ELSE 0 END), 0) AS outstanding_amount,
+            COALESCE(SUM(CASE WHEN status = 'overdue' AND due_date < CURRENT_DATE - INTERVAL '60 days' THEN amount_due ELSE 0 END), 0) AS aged_60_amount,
+            COUNT(*) FILTER (WHERE status = 'overdue' AND amount_due > 0 AND due_date < CURRENT_DATE - INTERVAL '60 days') AS aged_60_count,
+            COALESCE(SUM(CASE WHEN status = 'paid' AND paid_date >= CURRENT_DATE - INTERVAL '90 days' THEN amount_paid ELSE 0 END), 0) AS paid_last_90,
             MAX(paid_date) FILTER (WHERE status = 'paid') AS last_paid_at,
-            MIN(due_date) FILTER (WHERE status IN ('sent', 'overdue')) AS next_due_date
-          FROM invoices
-          WHERE client_id = $1
+            MIN(due_date) FILTER (WHERE status = 'sent' AND amount_due > 0 AND due_date >= CURRENT_DATE) AS next_due_date
+          FROM portal_billing_rows
         `, [clientId]))
       : null
 
@@ -690,7 +750,9 @@ export default defineEventHandler(async (event) => {
           invoiceNumber: i.invoice_number,
           totalAmount: Number(i.total_amount || 0),
           amountPaid: Number(i.amount_paid || 0),
-          amountDue: Number(i.total_amount || 0) - Number(i.amount_paid || 0),
+          amountDue: i.amount_due == null
+            ? Number(i.total_amount || 0) - Number(i.amount_paid || 0)
+            : Number(i.amount_due),
           dueDate: i.due_date,
           status: i.status
         }))
