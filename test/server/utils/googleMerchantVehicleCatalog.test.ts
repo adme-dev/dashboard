@@ -98,6 +98,19 @@ describe('Google Merchant vehicle ProductInput contract', () => {
     expect(input.productAttributes.mileage).toEqual({ value: '0', unit: 'KM' })
   })
 
+  it('accepts a numeric Supabase release year', () => {
+    const input = buildGoogleMerchantVehicleProductInput({
+      ...product,
+      attributes: {
+        ...product.attributes,
+        build_year: null,
+        release_year: 2026
+      }
+    }, config)
+
+    expect(input.productAttributes.year).toBe('2026')
+  })
+
   it.each(['Sold', 'Withdrawn', 'Reserved'])('refuses a %s vehicle before any provider write', (saleStatus) => {
     expect(() => buildGoogleMerchantVehicleProductInput({
       ...product,

@@ -256,7 +256,10 @@ function bodyStyle(value: unknown): string | undefined {
 }
 
 function year(attributes: Record<string, unknown>): string {
-  const value = text(attributes.build_year || attributes.release_year || attributes.release_date_year, 4)
+  const raw = attributes.build_year || attributes.release_year || attributes.release_date_year
+  const value = typeof raw === 'number' && Number.isInteger(raw)
+    ? String(raw)
+    : text(raw, 4)
   return /^(19|20)\d{2}$/.test(value) ? value : ''
 }
 
