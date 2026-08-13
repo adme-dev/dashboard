@@ -92,6 +92,9 @@ describe('Pages Worker postbuild compaction', () => {
 
     expect(loaded).toEqual(manifest)
     expect(source).toContain('XEROFLOW_COMPACT_PRECOMPUTED')
+    expect(source).toContain("from 'node:zlib'")
+    expect(source).toContain('brotliDecompressSync')
+    expect(source).not.toContain("from 'fflate'")
     expect(source).not.toContain('"resourceType"')
   })
 
@@ -148,6 +151,8 @@ describe('Pages Worker postbuild compaction', () => {
     expect(loaded).toEqual(manifest)
     expect(loaded.modules[entryId].isEntry).toBe(true)
     expect(source).toContain('const manifest = decodePrecomputedManifest()')
+    expect(source).toContain('brotliDecompressSync')
+    expect(source).not.toContain('gunzipSync')
     expect(source).not.toContain('DecompressionStream')
     expect(source).not.toContain('await decodePrecomputedManifest()')
   })

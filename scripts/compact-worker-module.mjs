@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { access, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { gzipSync } from 'node:zlib'
+import { brotliCompressSync, constants } from 'node:zlib'
 import { initSync, parse } from 'es-module-lexer'
 import { transform } from 'esbuild'
 
@@ -106,15 +106,21 @@ export function buildCompressedPrecomputedManifestModule(
 
   // Preserve Nuxt's complete data contract. Nuxt 4.5 consumes both
   // `dependencies` and `modules`, and exports the manifest value directly;
-  // older releases exported an async loader. Gzip already collapses the
-  // repeated resource objects effectively, so field-level elision is both
-  // unnecessary and unsafe across framework upgrades.
-  const compressed = gzipSync(Buffer.from(JSON.stringify(manifest)), { level: 9 })
-  const decoder = `import { gunzipSync, strFromU8 } from 'fflate'
+  // older releases exported an async loader. Brotli collapses the repeated
+  // resource graph without changing its schema, and Cloudflare exposes the
+  // synchronous node:zlib implementation under the configured nodejs_compat
+  // boundary. This avoids bundling a JavaScript decompressor into Pages.
+  const compressed = brotliCompressSync(Buffer.from(JSON.stringify(manifest)), {
+    params: {
+      [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_TEXT,
+      [constants.BROTLI_PARAM_QUALITY]: 11
+    }
+  })
+  const decoder = `import { brotliDecompressSync } from 'node:zlib'
 const XEROFLOW_COMPACT_PRECOMPUTED='${compressed.toString('base64')}'
 function decodePrecomputedManifest() {
   const bytes = Uint8Array.from(atob(XEROFLOW_COMPACT_PRECOMPUTED), char => char.charCodeAt(0))
-  return JSON.parse(strFromU8(gunzipSync(bytes)))
+  return JSON.parse(new TextDecoder().decode(brotliDecompressSync(bytes)))
 }
 `
 

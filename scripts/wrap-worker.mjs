@@ -130,6 +130,7 @@ if (!precomputedSource.includes('XEROFLOW_COMPACT_PRECOMPUTED')) {
     format: 'esm',
     target: 'esnext',
     platform: 'browser',
+    external: ['node:zlib'],
     write: false,
     legalComments: 'none',
     logLevel: 'warning'
