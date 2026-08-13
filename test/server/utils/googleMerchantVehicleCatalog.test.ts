@@ -75,7 +75,22 @@ describe('Google Merchant vehicle ProductInput contract', () => {
           { name: 'option', value: 'in_store' },
           { name: 'store_code', value: 'BrightonGWM' }
         ]
+      }, {
+        name: 'link_template',
+        value: 'https://www.brightongwm.com.au/vehicle-for-sale/B4873M/gwm-haval-h6?store={store_code}'
       }]
+    })
+  })
+
+  it('adds a store-code link template when the canonical vehicle URL has no store query', () => {
+    const input = buildGoogleMerchantVehicleProductInput({
+      ...product,
+      productUrl: 'https://www.brightongwm.com.au/vehicle-for-sale/B4873M/gwm-haval-h6'
+    }, config)
+
+    expect(input.customAttributes).toContainEqual({
+      name: 'link_template',
+      value: 'https://www.brightongwm.com.au/vehicle-for-sale/B4873M/gwm-haval-h6?store={store_code}'
     })
   })
 

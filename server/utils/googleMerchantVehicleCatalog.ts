@@ -54,6 +54,9 @@ export interface GoogleMerchantVehicleProductInput {
   customAttributes: Array<{
     name: 'vehicle_fulfillment'
     groupValues: Array<{ name: 'option' | 'store_code', value: string }>
+  } | {
+    name: 'link_template'
+    value: string
   }>
 }
 
@@ -278,6 +281,12 @@ function priceType(attributes: Record<string, unknown>, listingCondition: 'NEW' 
     : 'EXCLUDING_GOVERNMENT_CHARGES_PRICE' as const
 }
 
+function linkTemplate(productUrl: string): string {
+  const url = new URL(productUrl)
+  url.searchParams.set('store', '__XEROFLOW_STORE_CODE__')
+  return url.toString().replace('__XEROFLOW_STORE_CODE__', '{store_code}')
+}
+
 export function buildGoogleMerchantVehicleProductInput(
   product: GoogleMerchantVehicleProduct,
   config: GoogleMerchantVehicleConfig
@@ -346,6 +355,9 @@ export function buildGoogleMerchantVehicleProductInput(
         { name: 'option', value: 'in_store' },
         { name: 'store_code', value: config.storeCode }
       ]
+    }, {
+      name: 'link_template',
+      value: linkTemplate(productUrl)
     }]
   }
 }
