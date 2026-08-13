@@ -34,6 +34,17 @@ describe('Meta catalogue platform UI', () => {
     expect(component).not.toMatch(/label="(?:Disconnect|Reconnect)"/)
   })
 
+  it('reserves the OAuth popup during the user gesture before fetching the signed URL', () => {
+    const popupReservation = composable.indexOf('popup = openPopup(\'about:blank\')')
+    const signedUrlFetch = composable.indexOf('await apiFetch<{ url: string }>(endpoint)')
+    const popupNavigation = composable.indexOf('popup.location.replace(url)')
+
+    expect(popupReservation).toBeGreaterThan(-1)
+    expect(signedUrlFetch).toBeGreaterThan(popupReservation)
+    expect(popupNavigation).toBeGreaterThan(signedUrlFetch)
+    expect(composable).toContain('popup.close()')
+  })
+
   it('returns the client mapping needed to select the exact connection', () => {
     expect(accounts).toMatch(/sc\.client_id/)
     expect(accounts).toContain('clientId: a.client_id')

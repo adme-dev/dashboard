@@ -21,6 +21,11 @@ export function useMetaConnect(opts: { onConnected?: () => Promise<void> | void 
   }
 
   async function startConnect(intent: 'connection' | 'catalog_management') {
+    // Reserve the popup synchronously while the browser still considers this
+    // call part of the user's click. Opening it after the API round trip is
+    // blocked or ignored by some browsers, leaving no OAuth callback.
+    popup = openPopup('about:blank')
+
     try {
       state.status = 'loading'
       state.error = ''
@@ -29,13 +34,14 @@ export function useMetaConnect(opts: { onConnected?: () => Promise<void> | void 
         ? '/api/agency/social/meta/connect?intent=catalog_management'
         : '/api/agency/social/meta/connect'
       const { url } = await apiFetch<{ url: string }>(endpoint)
-      popup = openPopup(url)
 
       if (!popup) {
         // Fallback: redirect in same tab
         window.location.href = url
         return
       }
+
+      popup.location.replace(url)
 
       // Poll for popup close — callback redirects to /settings?tab=social&connected=meta
       // which means the popup will eventually land on our app and close or be closeable
@@ -45,7 +51,7 @@ export function useMetaConnect(opts: { onConnected?: () => Promise<void> | void 
           stopPolling()
           // Popup closed — check if accounts were connected
           try {
-            const accounts = await apiFetch<any[]>('/api/agency/social/meta/accounts')
+            const accounts = await apiFetch<unknown[]>('/api/agency/social/meta/accounts')
             if (accounts && accounts.length > 0) {
               state.status = 'completed'
               await onConnected?.()
@@ -57,7 +63,10 @@ export function useMetaConnect(opts: { onConnected?: () => Promise<void> | void 
           }
         }
       }, 500)
-    } catch (err: any) {
+    } catch (error: unknown) {
+      if (popup && !popup.closed) popup.close()
+      popup = null
+      const err = error as { data?: { statusMessage?: string }, message?: string }
       state.status = 'error'
       state.error = err?.data?.statusMessage || err?.message || 'Unable to start Meta connection.'
     }
