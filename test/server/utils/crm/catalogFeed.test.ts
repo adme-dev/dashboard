@@ -150,6 +150,33 @@ describe('Supabase catalog selection', () => {
     expect(selected?.merchant_offer_id).toBe('XF-K625231')
   })
 
+  it('applies an explicit source currency when Supabase rows omit currency', () => {
+    const selection = normalizeSupabaseCatalogSelection({
+      seller_ids: ['northern-isuzu'],
+      sale_statuses: ['For Sale'],
+      makes: ['Isuzu'],
+      listing_types: ['New'],
+      required_fields: ['source_product_id', 'stock_id', 'price'],
+      default_currency: 'AUD'
+    })
+    const { included: [selected] } = applySupabaseCatalogSelection([{
+      id: 'vehicle-1',
+      stock_number: 'N100',
+      seller_id: 'northern-isuzu',
+      sale_status: 'For Sale',
+      listing_type: 'New',
+      make: 'Isuzu',
+      dap_price: 54990
+    }], selection, {
+      source_product_id: 'id',
+      stock_id: 'stock_number',
+      price: 'dap_price'
+    })
+
+    expect(selected?.currency).toBe('AUD')
+    expect(normalizeCatalogItems([selected!])[0]?.currency).toBe('AUD')
+  })
+
   it('rejects unsafe product URL templates', () => {
     expect(() => normalizeSupabaseCatalogSelection({
       seller_ids: ['brighton-gwm'],

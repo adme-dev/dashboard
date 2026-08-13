@@ -20,6 +20,7 @@ export type SupabaseCatalogRequiredField
     | 'vin'
     | 'name'
     | 'price'
+    | 'currency'
     | 'product_url'
     | 'primary_image_url'
     | 'color'
@@ -31,6 +32,7 @@ export interface SupabaseCatalogSelection {
   makes?: string[]
   listing_types: string[]
   required_fields: SupabaseCatalogRequiredField[]
+  default_currency?: string
   color_overrides?: Record<string, string>
   product_url_template?: string
 }
@@ -127,10 +129,10 @@ const FIELD_ALIASES: Record<keyof CatalogFieldMapping, string[]> = {
 
 const SUPABASE_SELECTION_KEYS = new Set([
   'seller_ids', 'sale_statuses', 'makes', 'listing_types', 'required_fields',
-  'color_overrides', 'product_url_template'
+  'default_currency', 'color_overrides', 'product_url_template'
 ])
 const SUPABASE_REQUIRED_FIELDS = new Set<SupabaseCatalogRequiredField>([
-  'source_product_id', 'stock_id', 'vin', 'name', 'price',
+  'source_product_id', 'stock_id', 'vin', 'name', 'price', 'currency',
   'product_url', 'primary_image_url', 'color', 'merchant_offer_id'
 ])
 
@@ -198,6 +200,14 @@ function normalizeProductUrlTemplate(value: unknown): string | undefined {
   return template
 }
 
+function normalizeDefaultCurrency(value: unknown): string | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || !/^[A-Za-z]{3}$/.test(value.trim())) {
+    throw new CatalogFeedError('Supabase selection default_currency must be a three-letter currency code')
+  }
+  return value.trim().toUpperCase()
+}
+
 export function normalizeSupabaseCatalogSelection(value: unknown): SupabaseCatalogSelection {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new CatalogFeedError('Supabase selection is required')
@@ -211,6 +221,7 @@ export function normalizeSupabaseCatalogSelection(value: unknown): SupabaseCatal
     throw new CatalogFeedError('Supabase selection contains an unsupported required field')
   }
   const makes = strictSelectionStrings(input.makes, 'makes', false)
+  const defaultCurrency = normalizeDefaultCurrency(input.default_currency)
   const colorOverrides = normalizeColorOverrides(input.color_overrides)
   const productUrlTemplate = normalizeProductUrlTemplate(input.product_url_template)
   return {
@@ -219,6 +230,7 @@ export function normalizeSupabaseCatalogSelection(value: unknown): SupabaseCatal
     ...(makes.length ? { makes } : {}),
     listing_types: strictSelectionStrings(input.listing_types, 'listing_types', true),
     required_fields: requiredFields as SupabaseCatalogRequiredField[],
+    ...(defaultCurrency ? { default_currency: defaultCurrency } : {}),
     ...(Object.keys(colorOverrides).length ? { color_overrides: colorOverrides } : {}),
     ...(productUrlTemplate ? { product_url_template: productUrlTemplate } : {})
   }
@@ -433,6 +445,9 @@ function rowWithGovernedValues(
   mapping: CatalogFieldMapping
 ): Record<string, unknown> {
   let governed = row
+  if (mappedValue(governed, 'currency', mapping) === undefined && selection.default_currency) {
+    governed = setPathValue(governed, mapping.currency || 'currency', selection.default_currency)
+  }
   if (mappedValue(governed, 'color', mapping) === undefined) {
     const stockId = comparableValue(mappedValue(governed, 'stock_id', mapping))
     const override = stockId ? selection.color_overrides?.[stockId] : undefined
