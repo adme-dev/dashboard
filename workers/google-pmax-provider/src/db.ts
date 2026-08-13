@@ -1,31 +1,16 @@
 import pg from 'pg'
 
-let client: pg.Client | null = null
-let connecting: Promise<pg.Client> | null = null
-
 export async function queryRows(
   connectionString: string,
   sql: string,
   params: unknown[] = []
 ): Promise<unknown[]> {
-  if (!client) {
-    connecting ||= (async () => {
-      const created = new pg.Client({ connectionString })
-      await created.connect()
-      client = created
-      connecting = null
-      return created
-    })()
-    await connecting
-  }
+  const client = new pg.Client({ connectionString })
   try {
-    return (await client!.query(sql, params)).rows
-  } catch (error) {
-    if ((error as { code?: string }).code?.startsWith('08')) {
-      await client?.end().catch(() => {})
-      client = null
-    }
-    throw error
+    await client.connect()
+    return (await client.query(sql, params)).rows
+  } finally {
+    await client.end().catch(() => {})
   }
 }
 
