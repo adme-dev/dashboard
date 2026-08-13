@@ -17,6 +17,9 @@ const RequestSchema = z.strictObject({
   tenantId: z.string().min(1).max(255),
   clientId: z.string().regex(UUID),
   sourceId: z.string().regex(UUID),
+  merchantAccessToken: z.string().min(1),
+  merchantCredentialProfileId: z.string().regex(UUID),
+  merchantRegistrationAccountId: z.string().regex(/^\d{6,20}$/),
   connection: z.strictObject({
     id: z.string().regex(UUID),
     clientId: z.string().regex(UUID),
@@ -116,6 +119,8 @@ function merchantConfig(scope: CatalogScope, request: z.infer<typeof RequestSche
   const contentLanguage = text(merchant?.content_language)
   const storeCode = text(merchant?.store_code)
   const developerEmail = text(merchant?.developer_email)
+  const credentialProfileId = text(merchant?.credential_profile_id)
+  const registrationAccountId = text(merchant?.registration_account_id)
   if (
     scope.source.id !== request.sourceId
     || scope.source.clientId !== request.clientId
@@ -128,9 +133,14 @@ function merchantConfig(scope: CatalogScope, request: z.infer<typeof RequestSche
     || DATA_SOURCE.exec(dataSource)?.[1] !== accountId
     || !displayName || !feedLabel || !contentLanguage || !storeCode
     || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(developerEmail)
+    || credentialProfileId !== request.merchantCredentialProfileId
+    || registrationAccountId !== request.merchantRegistrationAccountId
     || merchant?.auto_publish !== true
   ) throw new MerchantCatalogReconcileError('MERCHANT_CATALOG_CONFIG_INVALID')
-  return { accountId, dataSource, displayName, feedLabel, contentLanguage, storeCode, developerEmail }
+  return {
+    accountId, dataSource, displayName, feedLabel, contentLanguage, storeCode,
+    developerEmail, registrationAccountId
+  }
 }
 
 function compatibleApiSource(source: Awaited<ReturnType<MerchantClient['getDataSource']>>, input: {
@@ -209,7 +219,7 @@ export function createMerchantCatalogReconciler(dependencies: ReconcilerDependen
     const scope = await dependencies.repository.loadScope(request.data)
     const merchant = merchantConfig(scope, request.data)
     const client = (dependencies.createClient || createGoogleMerchantVehicleClient)({
-      accessToken: request.data.connection.accessToken
+      accessToken: request.data.merchantAccessToken
     })
     const sourceInput = {
       accountId: merchant.accountId,
@@ -232,7 +242,7 @@ export function createMerchantCatalogReconciler(dependencies: ReconcilerDependen
       })
       console.error('[MerchantCatalogAuthorization] registration prerequisite', authorization)
       await client.registerDeveloper({
-        merchantAccountId: merchant.accountId,
+        merchantAccountId: merchant.registrationAccountId,
         developerEmail: merchant.developerEmail
       })
       dataSource = await resolveApiSource(client, sourceInput)
@@ -402,7 +412,7 @@ export function createMerchantCatalogReadback(dependencies: ReconcilerDependenci
     const scope = await dependencies.repository.loadScope(request.data)
     const merchant = merchantConfig(scope, request.data)
     const client = (dependencies.createClient || createGoogleMerchantVehicleClient)({
-      accessToken: request.data.connection.accessToken
+      accessToken: request.data.merchantAccessToken
     })
     const products = (await client.listProducts(merchant.accountId))
       .filter(product => product.dataSource === merchant.dataSource)

@@ -15,7 +15,10 @@ const request = {
     customerId: '3437087580',
     accessToken: 'merchant-access-token',
     developerToken: 'developer-token'
-  }
+  },
+  merchantAccessToken: 'merchant-access-token',
+  merchantCredentialProfileId: '99999999-9999-4999-8999-999999999999',
+  merchantRegistrationAccountId: '551257489'
 }
 
 const merchant = {
@@ -28,6 +31,8 @@ const merchant = {
   auto_publish: true,
   api_source_display_name: 'XeroFlow Vehicle Inventory · Brighton GWM',
   developer_email: 'advertising@adme.net.au',
+  credential_profile_id: request.merchantCredentialProfileId,
+  registration_account_id: request.merchantRegistrationAccountId,
   ads_connection_id: request.connection.id,
   ads_customer_id: request.connection.customerId
 }
@@ -109,9 +114,10 @@ describe('governed Merchant catalog reconciler', () => {
       }),
       deleteProduct: vi.fn()
     }
+    const dependenciesCreateClient = vi.fn().mockReturnValue(client)
     const reconcile = createMerchantCatalogReconciler({
       repository,
-      createClient: vi.fn().mockReturnValue(client) as never
+      createClient: dependenciesCreateClient as never
     })
 
     await expect(reconcile(request)).resolves.toMatchObject({
@@ -121,6 +127,9 @@ describe('governed Merchant catalog reconciler', () => {
       exclusionSummary: { DUPLICATE_VIN: 2 },
       failedCount: 0,
       processingState: 'SUBMITTED_AWAITING_GOOGLE_READBACK'
+    })
+    expect(dependenciesCreateClient).toHaveBeenCalledWith({
+      accessToken: 'merchant-access-token'
     })
     expect(client.insertProduct).toHaveBeenCalledTimes(1)
     expect(repository.beginRun).toHaveBeenCalledWith(expect.objectContaining({
@@ -209,7 +218,7 @@ describe('governed Merchant catalog reconciler', () => {
 
     await expect(reconcile(request)).resolves.toMatchObject({ publishCount: 0 })
     expect(client.registerDeveloper).toHaveBeenCalledWith({
-      merchantAccountId: merchant.account_id,
+      merchantAccountId: '551257489',
       developerEmail: 'advertising@adme.net.au'
     })
     expect(client.inspectAuthorization).toHaveBeenCalledWith({

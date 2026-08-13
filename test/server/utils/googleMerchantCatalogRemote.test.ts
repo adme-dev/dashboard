@@ -1,10 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ queryOne: vi.fn(), loadConnection: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  queryOne: vi.fn(),
+  loadConnection: vi.fn(),
+  loadMerchantCredential: vi.fn()
+}))
 
 vi.mock('~~/server/utils/db', () => ({ queryOne: mocks.queryOne }))
 vi.mock('~~/server/utils/googlePmaxProviderConnection', () => ({
   loadGooglePmaxProviderConnection: mocks.loadConnection
+}))
+vi.mock('~~/server/utils/googleMerchantCredentialProfile', () => ({
+  loadGoogleMerchantCredentialProfile: mocks.loadMerchantCredential
 }))
 
 const {
@@ -18,6 +25,7 @@ const input = {
   sourceId: '22222222-2222-4222-8222-222222222222'
 }
 const connectionId = '33333333-3333-4333-8333-333333333333'
+const merchantCredentialProfileId = '55555555-5555-4555-8555-555555555555'
 
 describe('private Merchant catalog provider boundary', () => {
   beforeEach(() => {
@@ -30,7 +38,11 @@ describe('private Merchant catalog provider boundary', () => {
           auto_publish: true,
           tenant_id: input.tenantId,
           ads_connection_id: connectionId,
-          ads_customer_id: '3437087580'
+          ads_customer_id: '3437087580',
+          account_id: '5817965641',
+          developer_email: 'advertising@adme.net.au',
+          credential_profile_id: merchantCredentialProfileId,
+          registration_account_id: '551257489'
         }
       }
     })
@@ -41,6 +53,11 @@ describe('private Merchant catalog provider boundary', () => {
       customerId: '3437087580',
       accessToken: 'secret-access',
       developerToken: 'secret-developer'
+    })
+    mocks.loadMerchantCredential.mockResolvedValue({
+      profileId: merchantCredentialProfileId,
+      accessToken: 'secret-merchant-access',
+      registrationAccountId: '551257489'
     })
   })
 
@@ -62,11 +79,23 @@ describe('private Merchant catalog provider boundary', () => {
     expect(mocks.loadConnection).toHaveBeenCalledWith(expect.objectContaining({
       forceTokenRefresh: true
     }))
+    expect(mocks.loadMerchantCredential).toHaveBeenCalledWith({
+      profileId: merchantCredentialProfileId,
+      merchantAccountId: '5817965641',
+      developerEmail: 'advertising@adme.net.au',
+      forceTokenRefresh: true
+    })
     const init = fetch.mock.calls[0]?.[1] as RequestInit
     expect(fetch.mock.calls[0]?.[0]).toBe('https://google-pmax-provider.internal/v1/decision')
     expect(JSON.parse(String(init.body))).toMatchObject({
       action: 'merchant_catalog_reconcile',
-      input: { ...input, connection: { id: connectionId, accessToken: 'secret-access' } }
+      input: {
+        ...input,
+        merchantAccessToken: 'secret-merchant-access',
+        merchantCredentialProfileId,
+        merchantRegistrationAccountId: '551257489',
+        connection: { id: connectionId, accessToken: 'secret-access' }
+      }
     })
   })
 
@@ -97,7 +126,13 @@ describe('private Merchant catalog provider boundary', () => {
     const init = fetch.mock.calls[0]?.[1] as RequestInit
     expect(JSON.parse(String(init.body))).toMatchObject({
       action: 'merchant_catalog_readback',
-      input: { ...input, connection: { id: connectionId, accessToken: 'secret-access' } }
+      input: {
+        ...input,
+        merchantAccessToken: 'secret-merchant-access',
+        merchantCredentialProfileId,
+        merchantRegistrationAccountId: '551257489',
+        connection: { id: connectionId, accessToken: 'secret-access' }
+      }
     })
   })
 })

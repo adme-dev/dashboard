@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 import { queryOne } from '~~/server/utils/db'
 import { loadGooglePmaxProviderConnection } from '~~/server/utils/googlePmaxProviderConnection'
+import { loadGoogleMerchantCredentialProfile } from '~~/server/utils/googleMerchantCredentialProfile'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -57,21 +58,44 @@ async function runGoogleMerchantCatalogAction(event: H3Event, action: 'merchant_
   const merchant = object(source?.connection_config?.merchant)
   const connectionId = typeof merchant?.ads_connection_id === 'string' ? merchant.ads_connection_id : ''
   const customerId = typeof merchant?.ads_customer_id === 'string' ? merchant.ads_customer_id : ''
+  const merchantAccountId = typeof merchant?.account_id === 'string' ? merchant.account_id : ''
+  const developerEmail = typeof merchant?.developer_email === 'string' ? merchant.developer_email : ''
+  const merchantCredentialProfileId = typeof merchant?.credential_profile_id === 'string'
+    ? merchant.credential_profile_id
+    : ''
+  const merchantRegistrationAccountId = typeof merchant?.registration_account_id === 'string'
+    ? merchant.registration_account_id
+    : ''
   if (
     !source || source.id !== input.sourceId || source.client_id !== input.clientId
     || merchant?.auto_publish !== true
     || merchant?.tenant_id !== input.tenantId
     || !UUID.test(connectionId) || !/^\d{10}$/.test(customerId)
+    || !/^\d{6,20}$/.test(merchantAccountId)
+    || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(developerEmail)
+    || !UUID.test(merchantCredentialProfileId)
+    || !/^\d{6,20}$/.test(merchantRegistrationAccountId)
   ) throw new GoogleMerchantCatalogRemoteError('MERCHANT_CATALOG_SCOPE_INVALID')
   const provider = binding(event)
   if (!provider) throw new GoogleMerchantCatalogRemoteError('MERCHANT_CATALOG_PROVIDER_UNAVAILABLE')
-  const connection = await loadGooglePmaxProviderConnection({
-    tenantId: input.tenantId,
-    clientId: input.clientId,
-    connectionId,
-    customerId,
-    forceTokenRefresh: true
-  })
+  const [connection, merchantCredential] = await Promise.all([
+    loadGooglePmaxProviderConnection({
+      tenantId: input.tenantId,
+      clientId: input.clientId,
+      connectionId,
+      customerId,
+      forceTokenRefresh: true
+    }),
+    loadGoogleMerchantCredentialProfile({
+      profileId: merchantCredentialProfileId,
+      merchantAccountId,
+      developerEmail,
+      forceTokenRefresh: true
+    })
+  ])
+  if (merchantCredential.registrationAccountId !== merchantRegistrationAccountId) {
+    throw new GoogleMerchantCatalogRemoteError('MERCHANT_CATALOG_SCOPE_INVALID')
+  }
   let response: Response
   try {
     response = await provider.fetch('https://google-pmax-provider.internal/v1/decision', {
@@ -82,7 +106,13 @@ async function runGoogleMerchantCatalogAction(event: H3Event, action: 'merchant_
       },
       body: JSON.stringify({
         action,
-        input: { ...input, connection }
+        input: {
+          ...input,
+          connection,
+          merchantAccessToken: merchantCredential.accessToken,
+          merchantCredentialProfileId: merchantCredential.profileId,
+          merchantRegistrationAccountId: merchantCredential.registrationAccountId
+        }
       })
     })
   } catch {
