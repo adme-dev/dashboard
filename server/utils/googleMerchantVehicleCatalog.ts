@@ -30,7 +30,7 @@ export interface GoogleMerchantVehicleProductInput {
   offerId: string
   contentLanguage: string
   feedLabel: string
-  channel: 'LOCAL'
+  legacyLocal: true
   productAttributes: {
     title: string
     description: string
@@ -316,7 +316,7 @@ export function buildGoogleMerchantVehicleProductInput(
     offerId,
     contentLanguage: config.contentLanguage,
     feedLabel: config.feedLabel,
-    channel: 'LOCAL',
+    legacyLocal: true,
     productAttributes: {
       title: productName,
       description: text(attributes.description, 5000) || productName,

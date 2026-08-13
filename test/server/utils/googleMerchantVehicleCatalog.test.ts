@@ -48,7 +48,7 @@ describe('Google Merchant vehicle ProductInput contract', () => {
       offerId: 'XF-B4873M',
       contentLanguage: 'en',
       feedLabel: 'AU',
-      channel: 'LOCAL',
+      legacyLocal: true,
       productAttributes: {
         title: '2024 GWM Haval H6 Ultra',
         description: 'Available now from Brighton GWM.',
