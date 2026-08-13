@@ -10,7 +10,10 @@ export function useMetaConnect(opts: { onConnected?: () => Promise<void> | void 
     const height = 700
     const left = window.screenX + (window.outerWidth - width) / 2
     const top = window.screenY + (window.outerHeight - height) / 2
-    return window.open(url, 'meta-oauth', `width=${width},height=${height},left=${left},top=${top}`)
+    // Always create a fresh browsing context. A static window name can reuse
+    // an old OAuth window from another Chrome profile and lose that profile's
+    // existing Facebook session.
+    return window.open(url, '_blank', `width=${width},height=${height},left=${left},top=${top}`)
   }
 
   function stopPolling() {

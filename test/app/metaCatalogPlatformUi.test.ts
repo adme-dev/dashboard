@@ -45,6 +45,11 @@ describe('Meta catalogue platform UI', () => {
     expect(composable).toContain('popup.close()')
   })
 
+  it('opens a fresh popup in the active Chrome profile instead of reusing a stale named window', () => {
+    expect(composable).toContain('window.open(url, \'_blank\'')
+    expect(composable).not.toContain('window.open(url, \'meta-oauth\'')
+  })
+
   it('returns the client mapping needed to select the exact connection', () => {
     expect(accounts).toMatch(/sc\.client_id/)
     expect(accounts).toContain('clientId: a.client_id')
