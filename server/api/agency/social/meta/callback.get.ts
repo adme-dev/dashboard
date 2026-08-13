@@ -1,11 +1,12 @@
-import { getCookie, deleteCookie, sendRedirect, getRequestURL } from 'h3'
+import { sendRedirect, getRequestURL } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
+import { createMetaCatalogProvider } from '~~/server/utils/metaCatalogProvider'
+import { consumeMetaOAuthAttempt } from '~~/server/utils/metaOAuthAttempts'
 import {
   exchangeMetaCode,
   exchangeForLongLivedToken,
-  getAdAccounts,
-  META_MARKETING_OAUTH_SCOPES
+  getAdAccounts
 } from '~~/server/utils/metaClient'
 
 /**
@@ -22,7 +23,6 @@ export default eventHandler(async (event) => {
     const code = String(query.code || '')
     const state = String(query.state || '')
     const errorParam = String(query.error || '')
-    const expectedState = getCookie(event, 'meta_oauth_state')
 
     // User denied permission or Meta returned an error
     if (errorParam) {
@@ -30,11 +30,10 @@ export default eventHandler(async (event) => {
       return sendRedirect(event, `/auth/oauth-callback?platform=meta&success=false&error=${encodeURIComponent(errorReason)}`, 302)
     }
 
-    if (!code || !state || !expectedState || state !== expectedState) {
+    const attempt = state ? await consumeMetaOAuthAttempt(state, user.id) : null
+    if (!code || !attempt) {
       return sendRedirect(event, '/auth/oauth-callback?platform=meta&success=false&error=' + encodeURIComponent('Invalid OAuth state. Please try again.'), 302)
     }
-
-    deleteCookie(event, 'meta_oauth_state', { path: '/' })
 
     const config = useRuntimeConfig()
     const reqUrl = getRequestURL(event)
@@ -61,6 +60,12 @@ export default eventHandler(async (event) => {
       ? new Date(Date.now() + longToken.expires_in * 1000)
       : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000) // default 60 days
 
+    // Fetch the permissions Meta actually granted. Requested scopes are not
+    // authority; declined permissions must never be stored as active access.
+    const grantedPermissions = await createMetaCatalogProvider({
+      accessToken: longToken.access_token,
+    }).listGrantedPermissions()
+
     // Fetch ad accounts
     const adAccounts = await getAdAccounts(longToken.access_token)
 
@@ -85,7 +90,7 @@ export default eventHandler(async (event) => {
           account.name,
           longToken.access_token,
           expiresAt,
-          META_MARKETING_OAUTH_SCOPES,
+          grantedPermissions,
           'active',
           JSON.stringify({
             actId: account.id,
@@ -98,7 +103,7 @@ export default eventHandler(async (event) => {
       )
     }
 
-    return sendRedirect(event, `/auth/oauth-callback?platform=meta&success=true&accounts=${adAccounts.length}`, 302)
+    return sendRedirect(event, `/auth/oauth-callback?platform=meta&success=true&accounts=${adAccounts.length}&intent=${attempt.intent}`, 302)
   } catch (err: any) {
     console.error('[Meta Callback] Error:', err.message || err)
     const msg = err.data?.statusMessage || err.data?.error?.message || err.message || 'Connection failed'

@@ -1518,6 +1518,11 @@ watch(debouncedDraftPreviewSignature, () => {
           :description="linksError.message"
         />
 
+        <DealerFeedsMetaCatalogPlatformCard
+          :client-id="selectedClientId"
+          :client-name="selectedClient?.name"
+        />
+
         <div class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(480px,0.85fr)_minmax(0,1.35fr)]">
           <section class="rounded-lg border border-default bg-default">
             <div class="border-b border-default px-5 py-4">

@@ -13,6 +13,7 @@ export default eventHandler(async (event) => {
   const accounts = await queryRows(
     `SELECT
        sc.id,
+       sc.client_id,
        sc.account_id,
        sc.account_name,
        sc.status,
@@ -33,6 +34,7 @@ export default eventHandler(async (event) => {
 
   return accounts.map((a: any) => ({
     id: a.id,
+    clientId: a.client_id,
     accountId: a.account_id,
     accountName: a.account_name,
     status: a.status,

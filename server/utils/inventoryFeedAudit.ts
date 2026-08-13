@@ -93,7 +93,7 @@ export function googleMerchantFeedRecommendedAction(status: GoogleMerchantFeedSo
 export function metaCatalogRecommendedAction(status: MetaCatalogResolutionStatus | string): string {
   switch (status) {
     case 'product_set_resolved_catalog_permission_required':
-      return 'Reconnect the Meta ad account in the platform to grant catalog_management, then rerun the audit.'
+      return 'Grant Meta catalogue access in XeroFlow for the existing connection, then rerun the audit.'
     case 'product_set_resolved_catalog_app_capability_required':
       return 'Confirm Meta app advanced access for catalog APIs and the ad account business permissions, then rerun the audit.'
     case 'catalog_resolved':

@@ -125,7 +125,12 @@ export interface CreateAdParams {
 /**
  * Build the Meta OAuth authorization URL
  */
-export function getMetaAuthUrl(appId: string, redirectUri: string, state: string): string {
+export function getMetaAuthUrl(
+  appId: string,
+  redirectUri: string,
+  state: string,
+  options: { intent?: 'connection' | 'catalog_management' } = {},
+): string {
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
@@ -133,6 +138,7 @@ export function getMetaAuthUrl(appId: string, redirectUri: string, state: string
     scope: META_MARKETING_OAUTH_SCOPES.join(','),
     response_type: 'code'
   })
+  if (options.intent === 'catalog_management') params.set('auth_type', 'rerequest')
   return `https://www.facebook.com/v25.0/dialog/oauth?${params.toString()}`
 }
 

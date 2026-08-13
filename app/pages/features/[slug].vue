@@ -2672,6 +2672,34 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'dealer-inventory-feeds': {
+    title: 'Dealer Inventory Feeds',
+    slug: 'dealer-inventory-feeds',
+    icon: 'i-lucide-boxes',
+    category: 'Creative Production',
+    categoryIcon: 'i-lucide-rocket',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Turn client-mapped vehicle inventory into governed Google Merchant and Meta catalogue feeds without leaving XeroFlow.',
+    details: [
+      {
+        title: 'Client-Scoped Inventory',
+        content: 'Map each feed to the exact XeroFlow client and dealership source before it can be delivered. New, demo, and used inventory stay separated, while server-side validation checks the source URL, vehicle counts, client identity, and feed health instead of trusting values copied into a browser form.'
+      },
+      {
+        title: 'Existing Connection, Verified Permissions',
+        content: 'XeroFlow reuses the Meta OAuth connection already mapped to the client and checks the permissions Meta actually granted. Catalogue discovery and delivery become available when Meta grants the required catalogue permissions. If app review or a Business Manager role is missing, the platform identifies that exact gate rather than repeatedly asking the operator to reconnect.'
+      },
+      {
+        title: 'Scheduled Delivery & Readback',
+        content: 'Select an accessible Meta catalogue and a validated inventory source. XeroFlow derives the feed URL on the server, creates or reuses the scheduled product feed, requests an immediate import, and reads the provider state back before recording success. Repeating the operation reuses the matching remote schedule instead of creating duplicates.'
+      },
+      {
+        title: 'Auditable Provider Boundaries',
+        content: 'Every attachment records tenant, client, connection, catalogue, source feed, upload identity, schedule, and sanitized provider-readback evidence. Tokens are never copied into the feed ledger. Meta app approval and business-role requirements remain explicit operator gates, and attaching inventory never claims to activate or spend from an advertising campaign.'
+      }
+    ]
+  },
 
   // ─── Analytics & Reporting ──────────────────────────────────────
   'cross-platform-dashboard': {

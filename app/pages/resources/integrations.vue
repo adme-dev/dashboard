@@ -76,7 +76,7 @@
               </div>
             </div>
             <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed mb-5">
-              Connect Meta (Facebook/Instagram) ad accounts via OAuth to pull daily spend data through the Graph API. XeroFlow syncs campaign-level and ad-set-level spend breakdowns, tracks daily and monthly running totals, and compares actual spend against configured budgets. Multiple ad accounts can be linked to a single client for consolidated reporting.
+              Connect Meta (Facebook/Instagram) ad accounts via OAuth to pull daily spend data through the Graph API. XeroFlow syncs campaign-level and ad-set-level spend breakdowns, tracks daily and monthly running totals, and compares actual spend against configured budgets. Multiple ad accounts can be linked to a single client for consolidated reporting. For vehicle inventory, XeroFlow checks the permissions Meta actually granted, discovers business-owned or shared catalogues, attaches a server-derived scheduled feed, requests an import, and stores provider-readback evidence. Meta app review and business-role requirements remain explicit operator gates.
             </p>
             <div class="flex flex-wrap gap-2">
               <span class="text-[12px] text-[#45474D]/70 dark:text-white/40 px-2.5 py-1 rounded-full bg-[#f4f5f7] dark:bg-white/[0.06]">OAuth connection</span>
@@ -84,6 +84,7 @@
               <span class="text-[12px] text-[#45474D]/70 dark:text-white/40 px-2.5 py-1 rounded-full bg-[#f4f5f7] dark:bg-white/[0.06]">Daily spend sync</span>
               <span class="text-[12px] text-[#45474D]/70 dark:text-white/40 px-2.5 py-1 rounded-full bg-[#f4f5f7] dark:bg-white/[0.06]">Campaign breakdowns</span>
               <span class="text-[12px] text-[#45474D]/70 dark:text-white/40 px-2.5 py-1 rounded-full bg-[#f4f5f7] dark:bg-white/[0.06]">Budget alerts</span>
+              <span class="text-[12px] text-[#45474D]/70 dark:text-white/40 px-2.5 py-1 rounded-full bg-[#f4f5f7] dark:bg-white/[0.06]">Meta catalogue delivery</span>
             </div>
           </section>
 

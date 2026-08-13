@@ -20,12 +20,15 @@ export function useMetaConnect(opts: { onConnected?: () => Promise<void> | void 
     }
   }
 
-  async function connect() {
+  async function startConnect(intent: 'connection' | 'catalog_management') {
     try {
       state.status = 'loading'
       state.error = ''
 
-      const { url } = await apiFetch<{ url: string }>('/api/agency/social/meta/connect')
+      const endpoint = intent === 'catalog_management'
+        ? '/api/agency/social/meta/connect?intent=catalog_management'
+        : '/api/agency/social/meta/connect'
+      const { url } = await apiFetch<{ url: string }>(endpoint)
       popup = openPopup(url)
 
       if (!popup) {
@@ -60,11 +63,19 @@ export function useMetaConnect(opts: { onConnected?: () => Promise<void> | void 
     }
   }
 
+  async function connect() {
+    return startConnect('connection')
+  }
+
+  async function connectWithIntent(intent: 'connection' | 'catalog_management') {
+    return startConnect(intent)
+  }
+
   if (import.meta.client) {
     onBeforeUnmount(() => {
       stopPolling()
     })
   }
 
-  return { state, connect }
+  return { state, connect, connectWithIntent }
 }
