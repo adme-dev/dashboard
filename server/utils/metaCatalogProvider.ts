@@ -97,7 +97,10 @@ export function createMetaCatalogProvider(config: MetaCatalogProviderConfig): Me
         ...(method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {})
       },
       body: method === 'POST' ? new URLSearchParams(options.body || {}) : undefined,
-      redirect: 'error'
+      // Workers rejects `redirect: 'error'` at fetch time. `manual` preserves
+      // the fail-closed policy because every 3xx response is handled as a
+      // provider error without forwarding the bearer token.
+      redirect: 'manual'
     })
     const data = await response.json().catch(() => null)
     if (!response.ok) throw new MetaCatalogGraphError(response.status, data)

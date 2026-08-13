@@ -25,6 +25,19 @@ describe('Meta catalogue Graph provider', () => {
     expect(String(url)).toContain('/me/permissions')
     expect(String(url)).not.toContain('super-secret')
     expect(init.headers.Authorization).toBe('Bearer super-secret')
+    expect(init.redirect).toBe('manual')
+  })
+
+  it('fails closed on Graph redirects without relying on the unsupported Workers error mode', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, {
+      status: 302,
+      headers: { location: 'https://example.invalid/token-capture' }
+    }))
+    const provider = createMetaCatalogProvider({ accessToken: 'secret-token', fetchImpl })
+
+    await expect(provider.listGrantedPermissions()).rejects.toMatchObject({ status: 302 })
+    expect(fetchImpl).toHaveBeenCalledOnce()
+    expect(fetchImpl.mock.calls[0]?.[1]?.redirect).toBe('manual')
   })
 
   it('merges owned and client catalogues without duplicate identities', async () => {
