@@ -10,9 +10,18 @@ export type CatalogFieldMapping = Partial<Record<
   | 'source_product_id' | 'sku' | 'stock_id' | 'vin' | 'name' | 'product_type'
   | 'availability' | 'price' | 'currency' | 'product_url' | 'primary_image_url'
   | 'source_updated_at' | 'seller_id' | 'sale_status' | 'listing_type' | 'make'
-  | 'model' | 'color' | 'merchant_offer_id',
+  | 'model' | 'color' | 'merchant_offer_id' | 'build_year' | 'odometer_reading'
+  | 'odometer_unit' | 'body_style' | 'series' | 'badge' | 'description',
   string
 >>
+
+export interface CatalogFeedGovernance {
+  default_availability?: 'available'
+  default_sale_status?: 'For Sale'
+  default_currency?: string
+  default_odometer_unit?: 'KM' | 'MILES'
+  product_url_template?: string
+}
 
 export type SupabaseCatalogRequiredField
   = | 'source_product_id'
@@ -32,13 +41,15 @@ export interface SupabaseCatalogSelection {
   makes?: string[]
   listing_types: string[]
   required_fields: SupabaseCatalogRequiredField[]
+  excluded_source_product_ids?: string[]
   default_currency?: string
   color_overrides?: Record<string, string>
   product_url_template?: string
 }
 
 export type SupabaseCatalogExclusionReason
-  = | 'SELLER_NOT_SELECTED'
+  = | 'SOURCE_PRODUCT_EXCLUDED'
+    | 'SELLER_NOT_SELECTED'
     | 'SALE_STATUS_NOT_SELECTED'
     | 'MAKE_NOT_SELECTED'
     | 'LISTING_TYPE_NOT_SELECTED'
@@ -124,12 +135,23 @@ const FIELD_ALIASES: Record<keyof CatalogFieldMapping, string[]> = {
     'color', 'colour', 'exterior_color', 'exterior_colour',
     'exterior_colour_name', 'exterior_colour_generic'
   ],
-  merchant_offer_id: ['merchant_offer_id', 'offer_id', 'offerId']
+  merchant_offer_id: ['merchant_offer_id', 'offer_id', 'offerId'],
+  build_year: ['build_year', 'release_year', 'release_date_year', 'year'],
+  odometer_reading: ['odometer_reading', 'mileage', 'kms', 'kilometres'],
+  odometer_unit: ['odometer_unit', 'mileage_unit'],
+  body_style: ['body_style', 'body_type'],
+  series: ['series', 'trim'],
+  badge: ['badge'],
+  description: ['description', 'comments']
 }
 
 const SUPABASE_SELECTION_KEYS = new Set([
   'seller_ids', 'sale_statuses', 'makes', 'listing_types', 'required_fields',
-  'default_currency', 'color_overrides', 'product_url_template'
+  'excluded_source_product_ids', 'default_currency', 'color_overrides', 'product_url_template'
+])
+const CATALOG_GOVERNANCE_KEYS = new Set([
+  'default_availability', 'default_sale_status', 'default_currency',
+  'default_odometer_unit', 'product_url_template'
 ])
 const SUPABASE_REQUIRED_FIELDS = new Set<SupabaseCatalogRequiredField>([
   'source_product_id', 'stock_id', 'vin', 'name', 'price', 'currency',
@@ -208,6 +230,38 @@ function normalizeDefaultCurrency(value: unknown): string | undefined {
   return value.trim().toUpperCase()
 }
 
+function normalizeCatalogFeedGovernance(value: unknown): CatalogFeedGovernance {
+  if (value === undefined || value === null) return {}
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new CatalogFeedError('Catalog feed governance must be an object')
+  }
+  const input = value as Record<string, unknown>
+  if (Object.keys(input).some(key => !CATALOG_GOVERNANCE_KEYS.has(key))) {
+    throw new CatalogFeedError('Catalog feed governance contains an unsupported field')
+  }
+  const defaultAvailability = input.default_availability
+  const defaultSaleStatus = input.default_sale_status
+  const defaultOdometerUnit = input.default_odometer_unit
+  if (defaultAvailability !== undefined && defaultAvailability !== 'available') {
+    throw new CatalogFeedError('Catalog feed default_availability is invalid')
+  }
+  if (defaultSaleStatus !== undefined && defaultSaleStatus !== 'For Sale') {
+    throw new CatalogFeedError('Catalog feed default_sale_status is invalid')
+  }
+  if (defaultOdometerUnit !== undefined && !['KM', 'MILES'].includes(String(defaultOdometerUnit))) {
+    throw new CatalogFeedError('Catalog feed default_odometer_unit is invalid')
+  }
+  const defaultCurrency = normalizeDefaultCurrency(input.default_currency)
+  const productUrlTemplate = normalizeProductUrlTemplate(input.product_url_template)
+  return {
+    ...(defaultAvailability ? { default_availability: defaultAvailability as 'available' } : {}),
+    ...(defaultSaleStatus ? { default_sale_status: defaultSaleStatus as 'For Sale' } : {}),
+    ...(defaultCurrency ? { default_currency: defaultCurrency } : {}),
+    ...(defaultOdometerUnit ? { default_odometer_unit: defaultOdometerUnit as 'KM' | 'MILES' } : {}),
+    ...(productUrlTemplate ? { product_url_template: productUrlTemplate } : {})
+  }
+}
+
 export function normalizeSupabaseCatalogSelection(value: unknown): SupabaseCatalogSelection {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new CatalogFeedError('Supabase selection is required')
@@ -221,6 +275,11 @@ export function normalizeSupabaseCatalogSelection(value: unknown): SupabaseCatal
     throw new CatalogFeedError('Supabase selection contains an unsupported required field')
   }
   const makes = strictSelectionStrings(input.makes, 'makes', false)
+  const excludedSourceProductIds = strictSelectionStrings(
+    input.excluded_source_product_ids,
+    'excluded_source_product_ids',
+    false
+  )
   const defaultCurrency = normalizeDefaultCurrency(input.default_currency)
   const colorOverrides = normalizeColorOverrides(input.color_overrides)
   const productUrlTemplate = normalizeProductUrlTemplate(input.product_url_template)
@@ -230,6 +289,7 @@ export function normalizeSupabaseCatalogSelection(value: unknown): SupabaseCatal
     ...(makes.length ? { makes } : {}),
     listing_types: strictSelectionStrings(input.listing_types, 'listing_types', true),
     required_fields: requiredFields as SupabaseCatalogRequiredField[],
+    ...(excludedSourceProductIds.length ? { excluded_source_product_ids: excludedSourceProductIds } : {}),
     ...(defaultCurrency ? { default_currency: defaultCurrency } : {}),
     ...(Object.keys(colorOverrides).length ? { color_overrides: colorOverrides } : {}),
     ...(productUrlTemplate ? { product_url_template: productUrlTemplate } : {})
@@ -407,7 +467,11 @@ function mappedValue(
     ...FIELD_ALIASES[field]
   ])]
   for (const path of paths) {
-    const value = pathValue(item, path)
+    const rawValue = pathValue(item, path)
+    const value = Array.isArray(rawValue) && rawValue.length === 1
+      && ['string', 'number', 'boolean'].includes(typeof rawValue[0])
+      ? rawValue[0]
+      : rawValue
     if (value !== undefined && value !== null && value !== '') return value
   }
   return undefined
@@ -441,10 +505,16 @@ function slugValue(value: unknown): string {
 
 function rowWithGovernedValues(
   row: Record<string, unknown>,
-  selection: SupabaseCatalogSelection,
+  selection: CatalogFeedGovernance & Pick<SupabaseCatalogSelection, 'color_overrides'>,
   mapping: CatalogFieldMapping
 ): Record<string, unknown> {
   let governed = row
+  if (mappedValue(governed, 'availability', mapping) === undefined && selection.default_availability) {
+    governed = setPathValue(governed, mapping.availability || 'availability', selection.default_availability)
+  }
+  if (mappedValue(governed, 'sale_status', mapping) === undefined && selection.default_sale_status) {
+    governed = setPathValue(governed, mapping.sale_status || 'sale_status', selection.default_sale_status)
+  }
   if (mappedValue(governed, 'currency', mapping) === undefined && selection.default_currency) {
     governed = setPathValue(governed, mapping.currency || 'currency', selection.default_currency)
   }
@@ -473,6 +543,9 @@ function rowWithGovernedValues(
       )
     }
   }
+  if (mappedValue(governed, 'odometer_unit', mapping) === undefined && selection.default_odometer_unit) {
+    governed = setPathValue(governed, mapping.odometer_unit || 'odometer_unit', selection.default_odometer_unit)
+  }
   return governed
 }
 
@@ -485,6 +558,9 @@ export function applySupabaseCatalogSelection(
   const saleStatuses = new Set(selection.sale_statuses.map(value => value.toLowerCase()))
   const makes = new Set((selection.makes ?? []).map(value => value.toLowerCase()))
   const listingTypes = new Set(selection.listing_types.map(value => value.toLowerCase()))
+  const excludedSourceProductIds = new Set(
+    (selection.excluded_source_product_ids ?? []).map(value => value.toLowerCase())
+  )
   const included: Array<Record<string, unknown>> = []
   const excluded: SupabaseCatalogExcludedRow[] = []
 
@@ -492,7 +568,9 @@ export function applySupabaseCatalogSelection(
     const row = rowWithGovernedValues(rawRow, selection, mapping)
     const sourceProductId = textValue(mappedValue(row, 'source_product_id', mapping), 512)
     let reason: SupabaseCatalogExcludedRow | null = null
-    if (!sellers.has(comparableValue(mappedValue(row, 'seller_id', mapping)))) {
+    if (sourceProductId && excludedSourceProductIds.has(sourceProductId.toLowerCase())) {
+      reason = { sourceProductId, reason: 'SOURCE_PRODUCT_EXCLUDED' }
+    } else if (!sellers.has(comparableValue(mappedValue(row, 'seller_id', mapping)))) {
       reason = { sourceProductId, reason: 'SELLER_NOT_SELECTED' }
     } else if (!saleStatuses.has(comparableValue(mappedValue(row, 'sale_status', mapping)))) {
       reason = { sourceProductId, reason: 'SALE_STATUS_NOT_SELECTED' }
@@ -599,27 +677,35 @@ function attributes(
   const output: Record<string, string | number | boolean | null> = {}
   for (const [key, value] of Object.entries(item).slice(0, 64)) {
     if (value === null || typeof value === 'number' || typeof value === 'boolean') {
-      output[key.slice(0, 128)] = value
+      output[key.slice(0, 128)] = value as number | boolean | null
     } else if (typeof value === 'string') {
       output[key.slice(0, 128)] = value.slice(0, 1024)
     }
   }
   for (const field of [
     'merchant_offer_id', 'seller_id', 'sale_status', 'listing_type',
-    'make', 'model', 'color'
+    'make', 'model', 'color', 'build_year', 'odometer_reading',
+    'odometer_unit', 'body_style', 'series', 'badge', 'description'
   ] as const) {
-    const value = textValue(mappedValue(item, field, mapping), 1024)
-    if (value) output[field] = value
+    const mapped = mappedValue(item, field, mapping)
+    if (typeof mapped === 'number' && Number.isFinite(mapped)) output[field] = mapped
+    else {
+      const value = textValue(mapped, 1024)
+      if (value) output[field] = value
+    }
   }
   return output
 }
 
 export function normalizeCatalogItems(
   rows: Array<Record<string, unknown>>,
-  mapping: CatalogFieldMapping = {}
+  mapping: CatalogFieldMapping = {},
+  governanceValue?: unknown
 ): NormalizedCatalogItem[] {
+  const governance = normalizeCatalogFeedGovernance(governanceValue)
   const deduped = new Map<string, NormalizedCatalogItem>()
-  for (const item of rows.slice(0, MAX_ITEMS)) {
+  for (const rawItem of rows.slice(0, MAX_ITEMS)) {
+    const item = rowWithGovernedValues(rawItem, governance, mapping)
     const sourceId = textValue(mappedValue(item, 'source_product_id', mapping), 512)
     if (!sourceId) continue
     const vin = textValue(mappedValue(item, 'vin', mapping), 64)
@@ -888,7 +974,11 @@ export async function syncCatalogSource(
   try {
     const loaded = await loadSourceRows(source, deps)
     const rows = loaded.rows
-    const items = normalizeCatalogItems(rows, source.field_mapping ?? {})
+    const items = normalizeCatalogItems(
+      rows,
+      source.field_mapping ?? {},
+      source.source_type === 'feed' ? source.connection_config?.governance : undefined
+    )
     if (!items.length && !catalogSelectionCanRetireAll(source.source_type, loaded.rawCount, 0)) {
       throw new CatalogFeedError('Feed contained no valid products; existing inventory was preserved')
     }

@@ -250,6 +250,31 @@ describe('Supabase catalog selection', () => {
     expect(selected).toMatchObject({ egc_price: 44990, exterior_colour_generic: 'Grey' })
   })
 
+  it('preserves explicit working-feed exclusions for Supabase vehicle stock', () => {
+    const selection = normalizeSupabaseCatalogSelection({
+      seller_ids: ['d00498d9-f077-780f-5be5-8d0956ce0458'],
+      sale_statuses: ['For Sale'],
+      listing_types: ['Used'],
+      required_fields: ['source_product_id', 'stock_id'],
+      excluded_source_product_ids: ['217394', '217401']
+    })
+    const result = applySupabaseCatalogSelection([
+      {
+        id: 'kept', stock_number: '217400', seller_id: 'd00498d9-f077-780f-5be5-8d0956ce0458',
+        sale_status: 'For Sale', listing_type: 'Used'
+      },
+      {
+        id: '217401', stock_number: '217401', seller_id: 'd00498d9-f077-780f-5be5-8d0956ce0458',
+        sale_status: 'For Sale', listing_type: 'Used'
+      }
+    ], selection)
+
+    expect(result.included.map(row => row.id)).toEqual(['kept'])
+    expect(result.excluded).toEqual([
+      expect.objectContaining({ sourceProductId: '217401', reason: 'SOURCE_PRODUCT_EXCLUDED' })
+    ])
+  })
+
   it('enforces the selection stored on the Supabase source and fails closed when absent', () => {
     const rows = [
       { id: 'live', seller_id: 'northern-isuzu-ute', sale_status: 'For Sale', make: 'Isuzu', listing_type: 'New', stock_number: 'N1', vin: 'VIN7', price: 1, url: 'https://example.com/live', image_url: 'https://example.com/live.jpg', color: 'White' },
@@ -474,6 +499,64 @@ describe('catalog feed parsing', () => {
       make: 'GWM',
       model: 'Cannon',
       color: 'Blue'
+    })
+  })
+
+  it('normalizes the working STORE08 nested payload with governed Merchant defaults', () => {
+    const [item] = normalizeCatalogItems([{
+      id: '121337',
+      stockid: '121337',
+      vin: 'LGWEE6A59PK123456',
+      title: '2026 GWM Haval H6 Ultra',
+      price: '48990',
+      thumb: 'https://inventory.example.com/121337.jpg',
+      condition: { value: ['new'] },
+      make: { value: ['GWM'] },
+      model: { value: ['Haval H6'] },
+      genericolour: 'White',
+      year: { value: ['2026'] },
+      kms: 12,
+      body: { value: ['SUV'] }
+    }], {
+      source_product_id: 'id',
+      stock_id: 'stockid',
+      vin: 'vin',
+      name: 'title',
+      price: 'price',
+      primary_image_url: 'thumb',
+      listing_type: 'condition.value',
+      make: 'make.value',
+      model: 'model.value',
+      color: 'genericolour',
+      build_year: 'year.value',
+      odometer_reading: 'kms',
+      body_style: 'body.value'
+    }, {
+      default_availability: 'available',
+      default_sale_status: 'For Sale',
+      default_currency: 'AUD',
+      default_odometer_unit: 'KM',
+      product_url_template: 'https://geelonggwmhaval.com.au/vehicle-for-sale/{source_product_id}/{name_slug}?store=geelonggwm'
+    })
+
+    expect(item).toMatchObject({
+      source_product_id: '121337',
+      stock_id: '121337',
+      availability: 'available',
+      currency: 'AUD',
+      product_url: 'https://geelonggwmhaval.com.au/vehicle-for-sale/121337/2026-gwm-haval-h6-ultra?store=geelonggwm',
+      attributes: {
+        merchant_offer_id: 'XF-121337',
+        sale_status: 'For Sale',
+        listing_type: 'new',
+        make: 'GWM',
+        model: 'Haval H6',
+        color: 'White',
+        build_year: '2026',
+        odometer_reading: 12,
+        odometer_unit: 'KM',
+        body_style: 'SUV'
+      }
     })
   })
 })

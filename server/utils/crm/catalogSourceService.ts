@@ -19,7 +19,8 @@ const MAPPING_FIELDS = new Set([
   'source_product_id', 'sku', 'stock_id', 'vin', 'name', 'product_type',
   'availability', 'price', 'currency', 'product_url', 'primary_image_url',
   'source_updated_at', 'seller_id', 'sale_status', 'listing_type', 'make', 'model', 'color',
-  'merchant_offer_id'
+  'merchant_offer_id', 'build_year', 'odometer_reading', 'odometer_unit', 'body_style',
+  'series', 'badge', 'description'
 ])
 
 export interface CatalogSourceDb {
