@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { H3Event } from 'h3'
 
 import {
+  isCatalogSourceSyncPath,
   isCatalogSourceUpsertPath,
   registerGodModeCatalogSourceMutationFamily
 } from '../../../../server/utils/crm/catalogSourceGodMode'
@@ -36,6 +37,20 @@ describe('Catalog source God mode mutation boundary', () => {
     expect(isCatalogSourceUpsertPath('/api/crm/data-sources')).toBe(true)
     expect(isCatalogSourceUpsertPath('/api/client-portal/crm/data-sources')).toBe(false)
     expect(isCatalogSourceUpsertPath('/api/crm/data-sources/source-id/sync')).toBe(false)
+  })
+
+  it('admits only exact UUID catalog source sync routes with durable terminal audit coordination', async () => {
+    const path = '/api/crm/data-sources/da931735-9784-44fc-9a2a-d64738925fa4/sync'
+    expect(isCatalogSourceSyncPath(path)).toBe(true)
+    expect(isCatalogSourceSyncPath('/api/crm/data-sources/source-id/sync')).toBe(false)
+    expect(isCatalogSourceSyncPath('/api/client-portal/crm/data-sources/da931735-9784-44fc-9a2a-d64738925fa4/sync')).toBe(false)
+
+    const unregister = registerGodModeCatalogSourceMutationFamily()
+    try {
+      await expect(prepareRegisteredGodModeMutation(event(path))).resolves.toBeUndefined()
+    } finally {
+      unregister()
+    }
   })
 
   it('requires a stable idempotency key before admitting the save', async () => {

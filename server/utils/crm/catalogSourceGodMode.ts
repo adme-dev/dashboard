@@ -16,6 +16,11 @@ import {
 import { digestMcpRequestBody } from '~~/shared/utils/mcpRequestClaim'
 
 const CATALOG_SOURCE_ROUTE = '/api/crm/data-sources'
+const UUID = '[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}'
+const CATALOG_SOURCE_SYNC_ROUTE = new RegExp(
+  `^${CATALOG_SOURCE_ROUTE}/${UUID}/sync$`,
+  'i'
+)
 
 const CATALOG_SOURCE_UPSERT = defineGodModeTransactionOperation({
   routeOrTool: `POST ${CATALOG_SOURCE_ROUTE}`,
@@ -28,12 +33,26 @@ export function isCatalogSourceUpsertPath(path: string): boolean {
   return path === CATALOG_SOURCE_ROUTE
 }
 
+export function isCatalogSourceSyncPath(path: string): boolean {
+  return CATALOG_SOURCE_SYNC_ROUTE.test(path)
+}
+
 async function prepareCatalogSourceUpsert(event: H3Event) {
   return await prepareGodModeTransactionMutation(event, CATALOG_SOURCE_UPSERT, {
     transaction,
     appendAudit: appendGodModeAuditEvent,
     digestRequest: async request => await digestMcpRequestBody(await readBody(request))
   })
+}
+
+async function prepareCatalogSourceSync() {
+  return {
+    strategy: 'task5-execution-ledger' as const,
+    prepared: true as const,
+    persistTerminal: async (terminal: Parameters<typeof appendGodModeAuditEvent>[0]) => {
+      await appendGodModeAuditEvent(terminal)
+    }
+  }
 }
 
 export async function executeGodModeCatalogSourceUpsert<T extends { id: string }>(
@@ -52,10 +71,20 @@ export async function executeGodModeCatalogSourceUpsert<T extends { id: string }
 }
 
 export function registerGodModeCatalogSourceMutationFamily(): () => void {
-  return registerGodModeMutationFamily({
+  const unregisterUpsert = registerGodModeMutationFamily({
     family: 'catalog-source-upsert',
     method: 'POST',
     matchesPath: isCatalogSourceUpsertPath,
     prepare: prepareCatalogSourceUpsert
   })
+  const unregisterSync = registerGodModeMutationFamily({
+    family: 'catalog-source-sync',
+    method: 'POST',
+    matchesPath: isCatalogSourceSyncPath,
+    prepare: prepareCatalogSourceSync
+  })
+  return () => {
+    unregisterSync()
+    unregisterUpsert()
+  }
 }
