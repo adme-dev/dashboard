@@ -56,6 +56,7 @@ function vehicle(id: string, offerId: string, vin: string) {
       model: 'Haval H6',
       build_year: '2026',
       odometer_reading: 10,
+      dap_price: 45000,
       color: 'White',
       vin
     }
@@ -153,7 +154,7 @@ describe('governed Merchant catalog reconciler', () => {
           connectionConfig: { merchant }
         },
         products: [],
-        publications: [],
+        publications: []
       }),
       setDataSource: vi.fn(),
       beginRun: vi.fn().mockResolvedValue('77777777-7777-4777-8777-777777777777'),

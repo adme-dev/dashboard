@@ -30,6 +30,7 @@ const product = {
     odometer_unit: 'KM',
     color: 'Red',
     vin: 'LGWFF6A50NH123456',
+    dap_price: 52952,
     description: 'Available now from Brighton GWM.'
   }
 }
@@ -124,6 +125,48 @@ describe('Google Merchant vehicle ProductInput contract', () => {
     }, config)
 
     expect(input.productAttributes.year).toBe('2026')
+  })
+
+  it('refuses New inventory when the source only declares excluding-government-charges pricing', () => {
+    expect(() => buildGoogleMerchantVehicleProductInput({
+      ...product,
+      attributes: {
+        ...product.attributes,
+        dap_price: null,
+        egc_price: 52952
+      }
+    }, config)).toThrowError(expect.objectContaining({
+      code: 'MERCHANT_VEHICLE_PRODUCT_INCOMPLETE'
+    }))
+  })
+
+  it('accepts an explicit estimated drive-away price for New inventory', () => {
+    const input = buildGoogleMerchantVehicleProductInput({
+      ...product,
+      price: 1,
+      attributes: {
+        ...product.attributes,
+        dap_price: null,
+        estimated_drive_away_price: 52952
+      }
+    }, config)
+
+    expect(input.productAttributes.vehiclePriceType).toBe('ESTIMATED_DRIVE_AWAY_PRICE')
+    expect(input.productAttributes.price.amountMicros).toBe('52952000000')
+  })
+
+  it('keeps excluding-government-charges pricing for Used inventory', () => {
+    const input = buildGoogleMerchantVehicleProductInput({
+      ...product,
+      attributes: {
+        ...product.attributes,
+        listing_type: 'Used',
+        dap_price: null,
+        egc_price: 52952
+      }
+    }, config)
+
+    expect(input.productAttributes.vehiclePriceType).toBe('EXCLUDING_GOVERNMENT_CHARGES_PRICE')
   })
 
   it.each(['Sold', 'Withdrawn', 'Reserved'])('refuses a %s vehicle before any provider write', (saleStatus) => {

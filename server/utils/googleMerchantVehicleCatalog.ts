@@ -49,7 +49,10 @@ export interface GoogleMerchantVehicleProductInput {
     bodyStyle?: string
     year: string
     mileage: { value: string, unit: 'KM' | 'MILES' }
-    vehiclePriceType: 'DRIVE_AWAY_PRICE' | 'EXCLUDING_GOVERNMENT_CHARGES_PRICE'
+    vehiclePriceType:
+      | 'DRIVE_AWAY_PRICE'
+      | 'ESTIMATED_DRIVE_AWAY_PRICE'
+      | 'EXCLUDING_GOVERNMENT_CHARGES_PRICE'
   }
   customAttributes: Array<{
     name: 'vehicle_fulfillment'
@@ -109,14 +112,16 @@ export interface GoogleMerchantVehicleReconciliationPlan {
 }
 
 export class GoogleMerchantVehicleCatalogError extends Error {
-  constructor(public readonly code:
-    | 'MERCHANT_VEHICLE_CONFIG_INVALID'
-    | 'MERCHANT_VEHICLE_PRODUCT_INELIGIBLE'
-    | 'MERCHANT_VEHICLE_PRODUCT_INCOMPLETE'
-    | 'MERCHANT_VEHICLE_REQUEST_FAILED'
-    | 'MERCHANT_VEHICLE_RESPONSE_INVALID',
+  constructor(
+    public readonly code:
+      | 'MERCHANT_VEHICLE_CONFIG_INVALID'
+      | 'MERCHANT_VEHICLE_PRODUCT_INELIGIBLE'
+      | 'MERCHANT_VEHICLE_PRODUCT_INCOMPLETE'
+      | 'MERCHANT_VEHICLE_REQUEST_FAILED'
+      | 'MERCHANT_VEHICLE_RESPONSE_INVALID',
     public readonly httpStatus: number | null = null,
-    public readonly providerReason: string | null = null) {
+    public readonly providerReason: string | null = null
+  ) {
     super(code)
     this.name = 'GoogleMerchantVehicleCatalogError'
   }
@@ -129,7 +134,9 @@ async function merchantRequestError(response: Response) {
     body = value && typeof value === 'object' && !Array.isArray(value)
       ? value as Record<string, unknown>
       : null
-  } catch {}
+  } catch {
+    // Provider error bodies are not guaranteed to be JSON.
+  }
   const error = body?.error && typeof body.error === 'object' && !Array.isArray(body.error)
     ? body.error as Record<string, unknown>
     : null
@@ -273,12 +280,23 @@ function condition(attributes: Record<string, unknown>): 'NEW' | 'USED' | null {
   return null
 }
 
-function priceType(attributes: Record<string, unknown>, listingCondition: 'NEW' | 'USED') {
-  if (positiveNumber(attributes.dap_price)) return 'DRIVE_AWAY_PRICE' as const
-  if (positiveNumber(attributes.egc_price)) return 'EXCLUDING_GOVERNMENT_CHARGES_PRICE' as const
-  return listingCondition === 'NEW'
-    ? 'DRIVE_AWAY_PRICE' as const
-    : 'EXCLUDING_GOVERNMENT_CHARGES_PRICE' as const
+function price(attributes: Record<string, unknown>, listingCondition: 'NEW' | 'USED') {
+  const driveAway = positiveNumber(attributes.dap_price)
+  if (driveAway) return { amount: driveAway, type: 'DRIVE_AWAY_PRICE' as const }
+  const estimatedDriveAway = positiveNumber(attributes.estimated_drive_away_price)
+  if (
+    listingCondition === 'NEW'
+    && estimatedDriveAway
+  ) return { amount: estimatedDriveAway, type: 'ESTIMATED_DRIVE_AWAY_PRICE' as const }
+  const excludingGovernmentCharges = positiveNumber(attributes.egc_price)
+  if (
+    listingCondition === 'USED'
+    && excludingGovernmentCharges
+  ) return {
+    amount: excludingGovernmentCharges,
+    type: 'EXCLUDING_GOVERNMENT_CHARGES_PRICE' as const
+  }
+  throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_PRODUCT_INCOMPLETE')
 }
 
 function linkTemplate(productUrl: string): string {
@@ -299,7 +317,6 @@ export function buildGoogleMerchantVehicleProductInput(
   ) throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_PRODUCT_INELIGIBLE')
 
   const listingCondition = condition(attributes)
-  const amount = positiveNumber(product.price)
   const offerId = text(attributes.merchant_offer_id, 150)
   const brand = text(attributes.make, 70)
   const model = text(attributes.model, 150)
@@ -312,12 +329,13 @@ export function buildGoogleMerchantVehicleProductInput(
   const imageLink = text(product.primaryImageUrl, 2000)
   const productName = text(product.name, 150)
   if (
-    !listingCondition || !amount || !offerId || !brand || !model || !color
+    !listingCondition || !offerId || !brand || !model || !color
     || !/^[A-HJ-NPR-Z0-9]{17}$/i.test(vin)
     || !vehicleYear || mileageValue === null || currencyCode !== 'AUD'
     || !productName || !productUrl.startsWith('https://') || !imageLink.startsWith('https://')
   ) throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_PRODUCT_INCOMPLETE')
 
+  const pricing = price(attributes, listingCondition)
   const trim = text(attributes.series || attributes.trim || attributes.badge, 150)
   const normalizedBodyStyle = bodyStyle(attributes.body_style)
   const mileageUnit = text(attributes.odometer_unit, 20).toUpperCase() === 'MILES' ? 'MILES' : 'KM'
@@ -333,7 +351,7 @@ export function buildGoogleMerchantVehicleProductInput(
       imageLink,
       availability: 'IN_STOCK',
       price: {
-        amountMicros: String(Math.round(amount * 1_000_000)),
+        amountMicros: String(Math.round(pricing.amount * 1_000_000)),
         currencyCode
       },
       condition: listingCondition,
@@ -347,7 +365,7 @@ export function buildGoogleMerchantVehicleProductInput(
       ...(normalizedBodyStyle ? { bodyStyle: normalizedBodyStyle } : {}),
       year: vehicleYear,
       mileage: { value: String(Math.round(mileageValue)), unit: mileageUnit },
-      vehiclePriceType: priceType(attributes, listingCondition)
+      vehiclePriceType: pricing.type
     },
     customAttributes: [{
       name: 'vehicle_fulfillment',
