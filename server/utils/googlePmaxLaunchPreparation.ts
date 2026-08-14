@@ -173,6 +173,7 @@ export function createGooglePmaxLaunchPreparation(dependencies: PreparationDepen
                WHERE tenant_id <> '__default__'
                ORDER BY updated_at DESC
                LIMIT 1
+            )
             ${clientClause}
             AND NOT EXISTS (
               SELECT 1

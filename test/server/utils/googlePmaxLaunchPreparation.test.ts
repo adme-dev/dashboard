@@ -260,5 +260,7 @@ describe('Google PMax launch preparation', () => {
       expect.stringContaining('NOT EXISTS'),
       [ids.tenant, 20, ids.client]
     )
+    const listSql = String(test.queryRows.mock.calls[0]?.[0] || '')
+    expect(listSql).toMatch(/LIMIT 1\s*\)\s*AND b\.client_id = \$3::uuid/)
   })
 })
