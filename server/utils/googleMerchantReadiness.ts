@@ -14,7 +14,7 @@ const ProductLinkRowSchema = z.strictObject({
     merchantCenter: z.strictObject({
       merchantCenterId: z.union([z.string(), z.number()]).transform(String)
     })
-  })
+  }).passthrough()
 })
 
 interface MerchantCredentialBinding {

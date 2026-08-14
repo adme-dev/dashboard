@@ -22,6 +22,7 @@ describe('Google Merchant readiness discovery', () => {
     })
     const queryAds = vi.fn().mockResolvedValue([{
       productLink: {
+        resourceName: 'customers/7979828031/productLinks/123456789',
         type: 'MERCHANT_CENTER',
         productLinkId: '123456789',
         merchantCenter: { merchantCenterId: '5507471616' }
