@@ -284,26 +284,10 @@ async function processCatalogSync(payload: Record<string, unknown>, event?: H3Ev
   }
   const { synchronizeCatalogSource } = await import('~~/server/utils/crm/catalogSourceService')
   await synchronizeCatalogSource(event, clientId, sourceId, actorEmail)
-  const { queryOneFresh } = await import('~~/server/utils/db')
-  const source = await queryOneFresh<{ connection_config: Record<string, unknown> }>(
-    `SELECT connection_config
-       FROM crm_catalog_sources
-      WHERE id = $1::uuid AND client_id = $2::uuid AND status = 'active'
-      LIMIT 1`,
-    [sourceId, clientId]
+  const { enqueueMerchantCatalogReconciliationForSource } = await import(
+    '~~/server/utils/crm/catalogMerchantDispatch'
   )
-  const merchant = source?.connection_config?.merchant
-  const merchantConfig = merchant && typeof merchant === 'object' && !Array.isArray(merchant)
-    ? merchant as Record<string, unknown>
-    : null
-  const tenantId = typeof merchantConfig?.tenant_id === 'string' ? merchantConfig.tenant_id : ''
-  if (merchantConfig?.auto_publish === true && tenantId) {
-    const { enqueue } = await import('~~/server/utils/queue')
-    const { runGoogleMerchantCatalogReconciliation } = await import('~~/server/utils/googleMerchantCatalogRemote')
-    await enqueue(event, 'merchant.catalog.reconcile', { tenantId, clientId, sourceId }, async () => {
-      await runGoogleMerchantCatalogReconciliation(event, { tenantId, clientId, sourceId })
-    })
-  }
+  await enqueueMerchantCatalogReconciliationForSource(event, { clientId, sourceId })
 }
 
 async function processMerchantCatalogReconcile(payload: Record<string, unknown>, event?: H3Event): Promise<void> {

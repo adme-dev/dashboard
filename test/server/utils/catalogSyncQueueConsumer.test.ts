@@ -2,20 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   synchronizeCatalogSource: vi.fn(),
-  queryOneFresh: vi.fn(),
-  enqueue: vi.fn()
+  dispatchMerchant: vi.fn()
 }))
 
 vi.mock('~~/server/utils/crm/catalogSourceService', () => ({
   synchronizeCatalogSource: mocks.synchronizeCatalogSource
 }))
 
-vi.mock('~~/server/utils/db', () => ({
-  queryOneFresh: mocks.queryOneFresh
-}))
-
-vi.mock('~~/server/utils/queue', () => ({
-  enqueue: mocks.enqueue
+vi.mock('~~/server/utils/crm/catalogMerchantDispatch', () => ({
+  enqueueMerchantCatalogReconciliationForSource: mocks.dispatchMerchant
 }))
 
 const { processJob } = await import('../../../server/utils/queueConsumer')
@@ -33,23 +28,17 @@ describe('catalog sync queue consumer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.synchronizeCatalogSource.mockResolvedValue({ fetched: 36, upserted: 36, removed: 149 })
-    mocks.queryOneFresh.mockResolvedValue(null)
-    mocks.enqueue.mockResolvedValue(true)
+    mocks.dispatchMerchant.mockResolvedValue(true)
   })
 
   it('queues governed Merchant publication after a successful opted-in source sync', async () => {
-    mocks.queryOneFresh.mockResolvedValue({
-      connection_config: { merchant: { auto_publish: true, tenant_id: 'tenant-1' } }
-    })
     await processJob({
       type: 'catalog.sync', payload, enqueuedAt: '2026-08-13T00:00:00.000Z'
     }, requestEvent)
 
-    expect(mocks.enqueue).toHaveBeenCalledWith(
+    expect(mocks.dispatchMerchant).toHaveBeenCalledWith(
       requestEvent,
-      'merchant.catalog.reconcile',
-      { tenantId: 'tenant-1', clientId: payload.clientId, sourceId: payload.sourceId },
-      expect.any(Function)
+      { clientId: payload.clientId, sourceId: payload.sourceId }
     )
   })
 

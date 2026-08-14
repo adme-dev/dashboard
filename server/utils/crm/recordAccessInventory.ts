@@ -207,6 +207,7 @@ const CRM_SERVICE_SURFACES = [
   "service:server/utils/crm/audit.ts",
   "service:server/utils/crm/bulk.ts",
   "service:server/utils/crm/catalogFeed.ts",
+  'service:server/utils/crm/catalogMerchantDispatch.ts',
   'service:server/utils/crm/catalogSourceGodMode.ts',
   "service:server/utils/crm/catalogSourceService.ts",
   "service:server/utils/crm/clientCatalogAccess.ts",
