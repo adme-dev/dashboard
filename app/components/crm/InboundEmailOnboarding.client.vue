@@ -215,21 +215,19 @@ onMounted(refresh)
               : 'Create one when you are ready to copy it into the sending system.' }}
           </p>
         </div>
-        <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
-          <UFormField label="Inbox label" help="A private label for this CRM inbox.">
-            <UInput v-model="inboxLabel" class="w-full" maxlength="128" />
-          </UFormField>
-          <div class="flex items-end">
+        <UFormField label="Inbox label" help="A private label for this CRM inbox.">
+          <div class="flex flex-col gap-3 @lg:flex-row @lg:items-center">
+            <UInput v-model="inboxLabel" class="w-full min-w-0 flex-1" maxlength="128" />
             <UButton
               type="submit"
-              class="w-full @lg:w-auto"
+              class="w-full shrink-0 justify-center @lg:w-auto"
               icon="i-lucide-plus"
               :loading="manager.mutationPendingId.value === 'create'"
             >
               Create inbox address
             </UButton>
           </div>
-        </div>
+        </UFormField>
       </form>
 
       <UAlert

@@ -5,6 +5,10 @@ const migrationPath = new URL(
   '../../server/database/migrations/379_google_geelong_merchant_api_catalog.sql',
   import.meta.url
 )
+const usedExclusionCorrectionPath = new URL(
+  '../../server/database/migrations/382_google_geelong_used_vehicle_exclusion.sql',
+  import.meta.url
+)
 
 describe('Geelong GWM Haval Merchant API catalog migration', () => {
   const sql = () => readFileSync(migrationPath, 'utf8')
@@ -45,5 +49,19 @@ describe('Geelong GWM Haval Merchant API catalog migration', () => {
     expect(migration.match(/connection_config = jsonb_set\(/g)).toHaveLength(2)
     expect(migration.match(/\^accounts\/5727572526\/dataSources\/\[0-9\]\+\$/g)).toHaveLength(2)
     expect(migration).not.toMatch(/SUPABASE_VEHICLES_KEY|access_token|refresh_token/i)
+  })
+
+  it('corrects the Used working-feed exclusion to the exact source UUID', () => {
+    const correction = readFileSync(usedExclusionCorrectionPath, 'utf8')
+
+    expect(correction).toContain('56c22734-f966-4f60-bfac-14545016eb11')
+    expect(correction).toContain('ef849136-7368-4650-bf89-853cbfa6a24a')
+    expect(correction).toContain('"source_product_id": "id"')
+    expect(correction).toContain('"stock_id": "stock_number"')
+    expect(correction).toContain('{selection,excluded_source_product_ids}')
+    expect(correction).toContain('["ce6bbb63-3595-4682-8423-443b18bdd114"]')
+    expect(correction).not.toContain('["217394", "217401"]')
+    expect(correction).toContain('last_sync_error = CASE')
+    expect(correction).toContain('Excluded products with incomplete required fields: primary_image_url (2)')
   })
 })
