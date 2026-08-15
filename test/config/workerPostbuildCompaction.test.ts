@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -12,6 +12,7 @@ import {
   compactDeployedWorkerModules,
   compactPrecomputedManifest,
   compactPlatformImports,
+  compactWorkerModuleFilenames,
   compactWorkerModule,
   resolvePrecomputedManifestPath
 } from '../../scripts/compact-worker-module.mjs'
@@ -92,9 +93,9 @@ describe('Pages Worker postbuild compaction', () => {
 
     expect(loaded).toEqual(manifest)
     expect(source).toContain('XEROFLOW_COMPACT_PRECOMPUTED')
-    expect(source).toContain("from 'node:zlib'")
+    expect(source).toContain(`from 'node:zlib'`)
     expect(source).toContain('brotliDecompressSync')
-    expect(source).not.toContain("from 'fflate'")
+    expect(source).not.toContain(`from 'fflate'`)
     expect(source).not.toContain('"resourceType"')
   })
 
@@ -341,6 +342,79 @@ describe('Pages Worker postbuild compaction', () => {
       changedFiles: 0,
       savedBytes: 0
     })
+  })
+
+  it('shortens generated chunk paths without breaking module references', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'worker-module-paths-'))
+    temporaryDirectories.push(directory)
+    const buildDirectory = path.join(directory, 'chunks', 'build')
+    const routeDirectory = path.join(directory, 'chunks', 'routes', 'api', 'agency')
+    const sharedDirectory = path.join(directory, 'chunks', 'shared')
+    const assetDirectory = path.join(directory, 'chunks', 'assets')
+    await Promise.all([
+      mkdir(buildDirectory, { recursive: true }),
+      mkdir(routeDirectory, { recursive: true }),
+      mkdir(sharedDirectory, { recursive: true }),
+      mkdir(assetDirectory, { recursive: true })
+    ])
+
+    const entryPath = path.join(directory, '_nitro.js')
+    const buildPath = path.join(buildDirectory, 'very-long-generated-build-name.mjs')
+    const routePath = path.join(routeDirectory, 'very-long-generated-route-name.get.mjs')
+    const sharedPath = path.join(sharedDirectory, 'very-long-generated-shared-name.mjs')
+    await writeFile(entryPath, [
+      `import { buildValue } from './chunks/build/very-long-generated-build-name.mjs'`,
+      `export { sharedValue } from './chunks/shared/very-long-generated-shared-name.mjs'`,
+      `export const loadRoute = () => import('./chunks/routes/api/agency/very-long-generated-route-name.get.mjs')`,
+      'export default buildValue'
+    ].join('\n'), 'utf8')
+    await writeFile(buildPath, [
+      `import { sharedValue } from '../shared/very-long-generated-shared-name.mjs'`,
+      'export const buildValue = sharedValue + 1'
+    ].join('\n'), 'utf8')
+    await writeFile(routePath, [
+      `import { buildValue } from '../../../build/very-long-generated-build-name.mjs'`,
+      `import { assetValue } from '../../../assets/runtime.js'`,
+      'export default buildValue + assetValue'
+    ].join('\n'), 'utf8')
+    await writeFile(sharedPath, 'export const sharedValue = 40\n', 'utf8')
+    await writeFile(
+      path.join(assetDirectory, 'runtime.js'),
+      'export const assetValue = 1\n',
+      'utf8'
+    )
+
+    const first = await compactWorkerModuleFilenames(directory)
+    const compactDirectory = path.join(directory, 'chunks', 'm')
+    const compactNames = (await readdir(compactDirectory)).sort()
+    const entrySource = await readFile(entryPath, 'utf8')
+    const imported = await import(`${pathToFileURL(entryPath).href}?v=short-paths`)
+
+    expect(first.renamedFiles).toBe(3)
+    expect(first.rewrittenFiles).toBe(3)
+    expect(first.savedSpecifierBytes).toBeGreaterThan(100)
+    expect(compactNames).toEqual(['0.mjs', '1.mjs', '2.mjs'])
+    expect(entrySource).not.toContain('very-long-generated')
+    expect(imported.default).toBe(41)
+    expect(imported.sharedValue).toBe(40)
+    await expect(imported.loadRoute()).resolves.toMatchObject({ default: 42 })
+    await expect(access(buildPath)).rejects.toThrow()
+    await expect(access(routePath)).rejects.toThrow()
+    await expect(access(sharedPath)).rejects.toThrow()
+
+    const beforeSecondRun = await Promise.all([
+      readFile(entryPath, 'utf8'),
+      ...compactNames.map(name => readFile(path.join(compactDirectory, name), 'utf8'))
+    ])
+    await expect(compactWorkerModuleFilenames(directory)).resolves.toEqual({
+      renamedFiles: 0,
+      rewrittenFiles: 0,
+      savedSpecifierBytes: 0
+    })
+    await expect(Promise.all([
+      readFile(entryPath, 'utf8'),
+      ...compactNames.map(name => readFile(path.join(compactDirectory, name), 'utf8'))
+    ])).resolves.toEqual(beforeSecondRun)
   })
 
   it('name-preservingly minifies deployed modules without changing exports', async () => {

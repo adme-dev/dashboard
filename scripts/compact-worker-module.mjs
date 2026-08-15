@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { access, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { brotliCompressSync, constants } from 'node:zlib'
 import { initSync, parse } from 'es-module-lexer'
@@ -510,6 +510,131 @@ export async function compactDeployedWorkerModules(directory) {
   }
 
   return { changedFiles, savedBytes }
+}
+
+async function collectFiles(directory, predicate) {
+  const files = []
+
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const entryPath = path.join(directory, entry.name)
+    if (entry.isDirectory()) {
+      files.push(...await collectFiles(entryPath, predicate))
+    } else if (entry.isFile() && predicate(entryPath)) {
+      files.push(entryPath)
+    }
+  }
+
+  return files
+}
+
+function portableRelativePath(from, to) {
+  const relative = path.relative(path.dirname(from), to).split(path.sep).join('/')
+  return relative.startsWith('.') ? relative : `./${relative}`
+}
+
+function rewriteMappedModuleSpecifiers(source, sourcePath, destinationPath, moduleMap) {
+  const replacements = []
+
+  for (const entry of parse(source)[0]) {
+    if (!entry.n?.startsWith('.')) continue
+    const suffixIndex = entry.n.search(/[?#]/)
+    const moduleSpecifier = suffixIndex === -1
+      ? entry.n
+      : entry.n.slice(0, suffixIndex)
+    const suffix = suffixIndex === -1 ? '' : entry.n.slice(suffixIndex)
+    const currentTarget = path.resolve(path.dirname(sourcePath), moduleSpecifier)
+    const compactTarget = moduleMap.get(currentTarget) || currentTarget
+    if (compactTarget === currentTarget && destinationPath === sourcePath) continue
+
+    const replacement = `${portableRelativePath(destinationPath, compactTarget)}${suffix}`
+    const start = entry.d === -1 ? entry.s : entry.s + 1
+    const end = entry.d === -1 ? entry.e : entry.e - 1
+    replacements.push({ start, end, replacement })
+  }
+
+  let rewritten = source
+  for (const replacement of replacements.sort((left, right) => right.start - left.start)) {
+    rewritten = rewritten.slice(0, replacement.start)
+      + replacement.replacement
+      + rewritten.slice(replacement.end)
+  }
+  return rewritten
+}
+
+export async function compactWorkerModuleFilenames(directory) {
+  const chunksDirectory = path.join(directory, 'chunks')
+  const modulePaths = (await collectFiles(
+    chunksDirectory,
+    filePath => filePath.endsWith('.mjs')
+  )).sort((left, right) => {
+    const leftPath = path.relative(chunksDirectory, left)
+    const rightPath = path.relative(chunksDirectory, right)
+    return leftPath < rightPath ? -1 : leftPath > rightPath ? 1 : 0
+  })
+  if (!modulePaths.length) {
+    return { renamedFiles: 0, rewrittenFiles: 0, savedSpecifierBytes: 0 }
+  }
+
+  const compactDirectory = path.join(chunksDirectory, 'm')
+  const compactNamePattern = /^[0-9a-z]+\.mjs$/
+  const isAlreadyCompact = modulePaths.every(modulePath => (
+    path.dirname(modulePath) === compactDirectory
+    && compactNamePattern.test(path.basename(modulePath))
+  ))
+  if (isAlreadyCompact) {
+    return { renamedFiles: 0, rewrittenFiles: 0, savedSpecifierBytes: 0 }
+  }
+  if (modulePaths.some(modulePath => path.dirname(modulePath) === compactDirectory)) {
+    throw new Error(
+      '[worker-module-paths] Refusing a mixed compact and generated chunk tree'
+    )
+  }
+
+  await mkdir(compactDirectory, { recursive: true })
+  const moduleMap = new Map(modulePaths.map((modulePath, index) => [
+    modulePath,
+    path.join(compactDirectory, `${index.toString(36)}.mjs`)
+  ]))
+  const sourcePaths = (await collectFiles(
+    directory,
+    filePath => filePath.endsWith('.js') || filePath.endsWith('.mjs')
+  )).sort()
+  const rewrittenSources = new Map()
+  let rewrittenFiles = 0
+  let savedSpecifierBytes = 0
+
+  for (const sourcePath of sourcePaths) {
+    const source = await readFile(sourcePath, 'utf8')
+    const destinationPath = moduleMap.get(sourcePath) || sourcePath
+    const rewritten = rewriteMappedModuleSpecifiers(
+      source,
+      sourcePath,
+      destinationPath,
+      moduleMap
+    )
+    rewrittenSources.set(sourcePath, rewritten)
+    if (rewritten !== source) {
+      rewrittenFiles += 1
+      savedSpecifierBytes += Buffer.byteLength(source) - Buffer.byteLength(rewritten)
+    }
+  }
+
+  for (const modulePath of modulePaths) {
+    await atomicWriteFile(moduleMap.get(modulePath), rewrittenSources.get(modulePath))
+  }
+  for (const sourcePath of sourcePaths) {
+    if (moduleMap.has(sourcePath)) continue
+    const source = await readFile(sourcePath, 'utf8')
+    const rewritten = rewrittenSources.get(sourcePath)
+    if (rewritten !== source) await atomicWriteFile(sourcePath, rewritten)
+  }
+  await Promise.all(modulePaths.map(modulePath => rm(modulePath, { force: true })))
+
+  return {
+    renamedFiles: modulePaths.length,
+    rewrittenFiles,
+    savedSpecifierBytes
+  }
 }
 
 async function readOriginalSourceMap(modulePath, source) {

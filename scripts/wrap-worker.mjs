@@ -17,6 +17,7 @@ import {
   buildCompressedPrecomputedManifestModule,
   buildWorkerDispatcherModule,
   compactDeployedWorkerModules,
+  compactWorkerModuleFilenames,
   compactWorkerModule,
   resolvePrecomputedManifestPath
 } from './compact-worker-module.mjs'
@@ -29,6 +30,7 @@ const nitroJs = path.join(distDir, '_nitro.js')
 const nitroJsMap = path.join(distDir, '_nitro.js.map')
 const wsJs = path.join(distDir, '_ws.js')
 const wsSrc = path.join(projectRoot, 'worker-ws', 'index.ts')
+const compactChunksDirectory = path.join(distDir, 'chunks', 'm')
 const nitroRuntime = path.join(distDir, 'chunks', 'nitro', 'nitro.mjs')
 const generatedRuntimeModules = [
   ['Nitro runtime', nitroRuntime],
@@ -98,76 +100,91 @@ await build({
 })
 console.log('[wrap-worker] bundled worker-ws → _ws.js')
 
-// Nuxt's production SSR renderer precomputes the complete client dependency
-// graph into a JavaScript module. In this application that module is highly
-// repetitive and pushes the Pages Function over Cloudflare's 25 MB raw-size
-// limit. Preserve the emitted export contract while storing the graph as gzip;
-// it is inflated once when an isolate loads the module.
-const precomputedManifest = await resolvePrecomputedManifestPath(distDir)
-const precomputedSource = await fs.readFile(precomputedManifest, 'utf8')
-if (!precomputedSource.includes('XEROFLOW_COMPACT_PRECOMPUTED')) {
-  const manifestModule = await import(
-    `${pathToFileURL(precomputedManifest).href}?compact=${Date.now()}`
-  )
-  const exportContract = typeof manifestModule.default === 'function'
-    ? 'loader'
-    : 'value'
-  const manifest = exportContract === 'loader'
-    ? await manifestModule.default()
-    : manifestModule.default
-  const compactSource = buildCompressedPrecomputedManifestModule(manifest, {
-    contract: exportContract
-  })
-  const bundledManifest = await build({
-    stdin: {
-      contents: compactSource,
-      resolveDir: projectRoot,
-      sourcefile: path.basename(precomputedManifest),
-      loader: 'js'
-    },
-    bundle: true,
-    minify: true,
-    format: 'esm',
-    target: 'esnext',
-    platform: 'browser',
-    external: ['node:zlib'],
-    write: false,
-    legalComments: 'none',
-    logLevel: 'warning'
-  })
-  const bundledSource = bundledManifest.outputFiles[0].text
-  await fs.writeFile(precomputedManifest, bundledSource, 'utf8')
-  console.log(
-    `[wrap-worker] compacted Nuxt client manifest ${precomputedSource.length} → ${bundledSource.length} bytes`
-  )
-}
-
-// These stable generated runtime boundaries are emitted readable. Compact
-// them while preserving function names for framework introspection, and mark
-// them so repeated wrapper runs remain byte-stable.
-for (const [label, modulePath] of generatedRuntimeModules) {
-  if (!await exists(modulePath)) continue
-  const compacted = await compactWorkerModule(modulePath)
-  if (compacted.changed) {
-    console.log(
-      `[wrap-worker] compacted ${label} ${compacted.beforeBytes} → ${compacted.afterBytes} bytes`
+if (!await exists(compactChunksDirectory)) {
+  // Nuxt's production SSR renderer precomputes the complete client dependency
+  // graph into a JavaScript module. In this application that module is highly
+  // repetitive and pushes the Pages Function over Cloudflare's 25 MB raw-size
+  // limit. Preserve the emitted export contract while storing the graph as gzip;
+  // it is inflated once when an isolate loads the module.
+  const precomputedManifest = await resolvePrecomputedManifestPath(distDir)
+  const precomputedSource = await fs.readFile(precomputedManifest, 'utf8')
+  if (!precomputedSource.includes('XEROFLOW_COMPACT_PRECOMPUTED')) {
+    const manifestModule = await import(
+      `${pathToFileURL(precomputedManifest).href}?compact=${Date.now()}`
     )
-  } else {
-    console.log(`[wrap-worker] ${label} already compact or smaller as emitted`)
+    const exportContract = typeof manifestModule.default === 'function'
+      ? 'loader'
+      : 'value'
+    const manifest = exportContract === 'loader'
+      ? await manifestModule.default()
+      : manifestModule.default
+    const compactSource = buildCompressedPrecomputedManifestModule(manifest, {
+      contract: exportContract
+    })
+    const bundledManifest = await build({
+      stdin: {
+        contents: compactSource,
+        resolveDir: projectRoot,
+        sourcefile: path.basename(precomputedManifest),
+        loader: 'js'
+      },
+      bundle: true,
+      minify: true,
+      format: 'esm',
+      target: 'esnext',
+      platform: 'browser',
+      external: ['node:zlib'],
+      write: false,
+      legalComments: 'none',
+      logLevel: 'warning'
+    })
+    const bundledSource = bundledManifest.outputFiles[0].text
+    await fs.writeFile(precomputedManifest, bundledSource, 'utf8')
+    console.log(
+      `[wrap-worker] compacted Nuxt client manifest ${precomputedSource.length} → ${bundledSource.length} bytes`
+    )
   }
-}
 
-// Rollup repeats side-effect-only imports for Cloudflare and Node compatibility
-// modules in every split route chunk. Those platform modules are already loaded
-// by the Nitro runtime, and the repeated specifiers count toward Cloudflare's
-// raw Worker limit. Remove only bare platform imports; value-bearing imports are
-// preserved. Source-map references are also omitted from deployed modules
-// because Wrangler does not upload the adjacent generated map files.
-const deployedModuleCompaction = await compactDeployedWorkerModules(distDir)
-console.log(
-  `[wrap-worker] compacted ${deployedModuleCompaction.changedFiles} split modules, `
-  + `saved ${deployedModuleCompaction.savedBytes} bytes`
-)
+  // These stable generated runtime boundaries are emitted readable. Compact
+  // them while preserving function names for framework introspection, and mark
+  // them so repeated wrapper runs remain byte-stable.
+  for (const [label, modulePath] of generatedRuntimeModules) {
+    if (!await exists(modulePath)) continue
+    const compacted = await compactWorkerModule(modulePath)
+    if (compacted.changed) {
+      console.log(
+        `[wrap-worker] compacted ${label} ${compacted.beforeBytes} → ${compacted.afterBytes} bytes`
+      )
+    } else {
+      console.log(`[wrap-worker] ${label} already compact or smaller as emitted`)
+    }
+  }
+
+  // Rollup repeats side-effect-only imports for Cloudflare and Node compatibility
+  // modules in every split route chunk. Those platform modules are already loaded
+  // by the Nitro runtime, and the repeated specifiers count toward Cloudflare's
+  // raw Worker limit. Remove only bare platform imports; value-bearing imports are
+  // preserved. Source-map references are also omitted from deployed modules
+  // because Wrangler does not upload the adjacent generated map files.
+  const deployedModuleCompaction = await compactDeployedWorkerModules(distDir)
+  console.log(
+    `[wrap-worker] compacted ${deployedModuleCompaction.changedFiles} split modules, `
+    + `saved ${deployedModuleCompaction.savedBytes} bytes`
+  )
+
+  // Cloudflare counts every relative module specifier toward the raw upload
+  // limit. Nuxt route chunks use descriptive nested paths that add hundreds of
+  // kilobytes without changing runtime behavior, so flatten generated chunks to
+  // deterministic short names and rewrite their ESM references together.
+  const moduleFilenameCompaction = await compactWorkerModuleFilenames(distDir)
+  console.log(
+    `[wrap-worker] shortened ${moduleFilenameCompaction.renamedFiles} chunk names, `
+    + `rewrote ${moduleFilenameCompaction.rewrittenFiles} modules, `
+    + `saved ${moduleFilenameCompaction.savedSpecifierBytes} specifier bytes`
+  )
+} else {
+  console.log('[wrap-worker] generated chunk names already compact')
+}
 
 // Write the dispatcher entry. Routes WebSocket upgrades on the three known
 // paths to the WS handler; everything else delegates to Nitro unchanged.
