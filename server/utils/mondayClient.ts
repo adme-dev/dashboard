@@ -213,6 +213,32 @@ export class MondayClient {
   }
 
   /**
+   * Update one or more item columns using Monday's parameterized JSON mutation.
+   */
+  async changeMultipleColumnValues(
+    boardId: string,
+    itemId: string,
+    columnValues: Record<string, unknown>
+  ): Promise<{ id: string }> {
+    const data = await this.request<{ change_multiple_column_values: { id: string } }>(`
+      mutation ChangeMultipleColumnValues($boardId: ID!, $itemId: ID!, $columnValues: JSON!) {
+        change_multiple_column_values(
+          board_id: $boardId
+          item_id: $itemId
+          column_values: $columnValues
+        ) {
+          id
+        }
+      }
+    `, {
+      boardId,
+      itemId,
+      columnValues: JSON.stringify(columnValues)
+    })
+    return data.change_multiple_column_values
+  }
+
+  /**
    * Get all boards with optional filters
    */
   async getBoards(options?: {
