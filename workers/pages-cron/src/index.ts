@@ -26,6 +26,8 @@ export const ROUTES: Record<string, string[]> = {
     '/api/cron/anomaly-detection',
     '/api/cron/ga4-sync',
     '/api/cron/budget-slack-digest',
+    '/api/cron/monday-campaign-performance',
+    '/api/cron/ops-autopilot-pacing',
     '/api/cron/spend-auto-action',
     '/api/cron/hr-review-reminders',
     '/api/cron/monday-reconcile',

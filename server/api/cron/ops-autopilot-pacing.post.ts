@@ -7,7 +7,7 @@ import { runPacingWatchdog } from '~~/server/utils/automation/pacingWatchdog'
 
 export default defineEventHandler(async (event) => {
   const cronSecret = getHeader(event, 'x-cron-secret')
-  if (!import.meta.dev && cronSecret !== process.env.CRON_SECRET) {
+  if (!import.meta.dev && (!process.env.CRON_SECRET || cronSecret !== process.env.CRON_SECRET)) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
 
   // 7am-local gate (default Australia/Sydney; reuse the connected org's tz if present).
   const conn = await queryOne<{ timezone: string }>(
-    `SELECT timezone FROM xero_org_connection ORDER BY connected_at DESC LIMIT 1`,
+    `SELECT timezone FROM xero_org_connection ORDER BY connected_at DESC LIMIT 1`
   )
   const tz = conn?.timezone || 'Australia/Sydney'
   let localHour: number

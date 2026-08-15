@@ -59,4 +59,23 @@ describe('MondayClient GraphQL schema compatibility', () => {
     expect(query).not.toMatch(/\n\s+board_id\s*\n/)
     expect(subitems[0]?.board_id).toBe('board-2')
   })
+
+  it('writes text column values through the supported parameterized mutation', async () => {
+    const { MondayClient } = await import('~~/server/utils/mondayClient')
+    const client = new MondayClient('test-token')
+    ofetchMock.mockResolvedValueOnce({ data: { change_multiple_column_values: { id: 'item-1' } } })
+
+    await client.changeMultipleColumnValues('board-1', 'item-1', {
+      text_mm67hxk4: '23659262393'
+    })
+
+    const options = ofetchMock.mock.calls[0]?.[1]
+    expect(options?.body?.query).toMatch(/change_multiple_column_values\s*\(/)
+    expect(options?.body?.query).toMatch(/column_values:\s*\$columnValues/)
+    expect(options?.body?.variables).toEqual({
+      boardId: 'board-1',
+      itemId: 'item-1',
+      columnValues: JSON.stringify({ text_mm67hxk4: '23659262393' })
+    })
+  })
 })
