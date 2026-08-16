@@ -11,7 +11,12 @@ const mocks = vi.hoisted(() => ({
   listGrantedPermissions: vi.fn(),
   queryOne: vi.fn(),
   sendRedirect: vi.fn((_event, location: string, statusCode: number) => ({ location, statusCode })),
-  query: {} as Record<string, unknown>
+  query: {} as Record<string, unknown>,
+  runtimeConfig: {
+    metaAppId: 'app-id',
+    metaAppSecret: 'app-secret',
+    metaRedirectUri: '/api/agency/social/meta/callback'
+  } as Record<string, string>
 }))
 
 vi.mock('h3', () => ({
@@ -37,17 +42,18 @@ vi.mock('~~/server/utils/metaCatalogProvider', () => ({
 const globals = globalThis as unknown as Record<string, unknown>
 globals.eventHandler = (fn: (event: unknown) => unknown) => fn
 globals.getQuery = () => mocks.query
-globals.useRuntimeConfig = () => ({
-  metaAppId: 'app-id',
-  metaAppSecret: 'app-secret',
-  metaRedirectUri: '/api/agency/social/meta/callback'
-})
+globals.useRuntimeConfig = () => mocks.runtimeConfig
 globals.createError = (input: { statusCode: number, statusMessage: string }) => Object.assign(new Error(input.statusMessage), input)
 
 describe('Meta catalogue permission upgrade OAuth', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.query = {}
+    mocks.runtimeConfig = {
+      metaAppId: 'app-id',
+      metaAppSecret: 'app-secret',
+      metaRedirectUri: '/api/agency/social/meta/callback'
+    }
     mocks.requireAuth.mockResolvedValue({ id: 'user-1' })
     mocks.createAttempt.mockResolvedValue({ attemptId: 'attempt-1', state: 'state-1' })
     mocks.getMetaAuthUrl.mockReturnValue('https://facebook.example/oauth')
@@ -74,6 +80,36 @@ describe('Meta catalogue permission upgrade OAuth', () => {
     expect(mocks.createAttempt).toHaveBeenCalledWith('user-1', 'catalog_management')
     expect(mocks.getMetaAuthUrl).toHaveBeenCalledWith(
       'app-id',
+      'https://app.xeroflow.io/api/agency/social/meta/callback',
+      'state-1',
+      { intent: 'catalog_management' }
+    )
+    expect(result).toEqual({ url: 'https://facebook.example/oauth', attemptId: 'attempt-1' })
+  })
+
+  it('uses Cloudflare request bindings when build-time Meta runtime config is empty', async () => {
+    mocks.query = { intent: 'catalog_management' }
+    mocks.runtimeConfig = {
+      metaAppId: '',
+      metaAppSecret: '',
+      metaRedirectUri: '/api/agency/social/meta/callback'
+    }
+    const handler = (await import('~~/server/api/agency/social/meta/connect.get')).default
+
+    const result = await handler({
+      context: {
+        cloudflare: {
+          env: {
+            META_APP_ID: 'binding-app-id',
+            META_APP_SECRET: 'binding-app-secret',
+            META_REDIRECT_URI: '/api/agency/social/meta/callback'
+          }
+        }
+      }
+    } as never)
+
+    expect(mocks.getMetaAuthUrl).toHaveBeenCalledWith(
+      'binding-app-id',
       'https://app.xeroflow.io/api/agency/social/meta/callback',
       'state-1',
       { intent: 'catalog_management' }
@@ -109,5 +145,39 @@ describe('Meta catalogue permission upgrade OAuth', () => {
     const sql = String(mocks.queryOne.mock.calls[0]?.[0])
     expect(sql).not.toContain('client_id = EXCLUDED')
     expect(result.location).toContain('intent=catalog_management')
+  })
+
+  it('uses Cloudflare request bindings to exchange the catalogue permission callback', async () => {
+    mocks.query = { code: 'code', state: 'valid-state' }
+    mocks.runtimeConfig = {
+      metaAppId: '',
+      metaAppSecret: '',
+      metaRedirectUri: '/api/agency/social/meta/callback'
+    }
+    const handler = (await import('~~/server/api/agency/social/meta/callback.get')).default
+
+    await handler({
+      context: {
+        cloudflare: {
+          env: {
+            META_APP_ID: 'binding-app-id',
+            META_APP_SECRET: 'binding-app-secret',
+            META_REDIRECT_URI: '/api/agency/social/meta/callback'
+          }
+        }
+      }
+    } as never)
+
+    expect(mocks.exchangeCode).toHaveBeenCalledWith(
+      'code',
+      'binding-app-id',
+      'binding-app-secret',
+      'https://app.xeroflow.io/api/agency/social/meta/callback'
+    )
+    expect(mocks.exchangeLongToken).toHaveBeenCalledWith(
+      'short-token',
+      'binding-app-id',
+      'binding-app-secret'
+    )
   })
 })
