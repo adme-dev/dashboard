@@ -1,8 +1,12 @@
-import { sendRedirect, getRequestURL } from 'h3'
+import { sendRedirect } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { createMetaCatalogProvider } from '~~/server/utils/metaCatalogProvider'
 import { consumeMetaOAuthAttempt } from '~~/server/utils/metaOAuthAttempts'
+import {
+  buildMetaOAuthRedirectUri,
+  resolveMetaOAuthRuntimeConfig
+} from '~~/server/utils/metaOAuthRuntimeConfig'
 import {
   exchangeMetaCode,
   exchangeForLongLivedToken,
@@ -35,11 +39,8 @@ export default eventHandler(async (event) => {
       return sendRedirect(event, '/auth/oauth-callback?platform=meta&success=false&error=' + encodeURIComponent('Invalid OAuth state. Please try again.'), 302)
     }
 
-    const config = useRuntimeConfig()
-    const reqUrl = getRequestURL(event)
-    const configured = config.metaRedirectUri
-    const callbackPath = configured.startsWith('http') ? new URL(configured).pathname : configured
-    const redirectUri = `${reqUrl.protocol}//${reqUrl.host}${callbackPath}`
+    const config = resolveMetaOAuthRuntimeConfig(event)
+    const redirectUri = buildMetaOAuthRedirectUri(event, config.metaRedirectUri)
 
     // Exchange code for short-lived token
     const shortToken = await exchangeMetaCode(
@@ -63,7 +64,7 @@ export default eventHandler(async (event) => {
     // Fetch the permissions Meta actually granted. Requested scopes are not
     // authority; declined permissions must never be stored as active access.
     const grantedPermissions = await createMetaCatalogProvider({
-      accessToken: longToken.access_token,
+      accessToken: longToken.access_token
     }).listGrantedPermissions()
 
     // Fetch ad accounts
@@ -104,7 +105,11 @@ export default eventHandler(async (event) => {
     }
 
     return sendRedirect(event, `/auth/oauth-callback?platform=meta&success=true&accounts=${adAccounts.length}&intent=${attempt.intent}`, 302)
-  } catch (err: any) {
+  } catch (error: unknown) {
+    const err = error as {
+      message?: string
+      data?: { statusMessage?: string, error?: { message?: string } }
+    }
     console.error('[Meta Callback] Error:', err.message || err)
     const msg = err.data?.statusMessage || err.data?.error?.message || err.message || 'Connection failed'
     return sendRedirect(event, `/auth/oauth-callback?platform=meta&success=false&error=${encodeURIComponent(msg)}`, 302)

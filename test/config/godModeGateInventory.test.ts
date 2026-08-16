@@ -157,15 +157,15 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/api/agency/social/spend/map-account.post.ts\tawait requirePermission(event, \'MEDIA_BUYING\')\tapplication_governance_bypass'
     )
-    expect(inventory.rows).toHaveLength(1425)
+    expect(inventory.rows).toHaveLength(1424)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 100,
       provider_infrastructure_availability: 208,
       application_governance_bypass: 740,
       ordinary_user_behavior: 170,
-      unrelated_configuration: 207
+      unrelated_configuration: 206
     })
-    expect(inventory.digest).toBe('ff7fb8dded2dc05ac640ff39591fe2ef9454f29dffd1c39d4cf8505b1419a102')
+    expect(inventory.digest).toBe('89d9d4ffe2e8f8ba03bea0515d3fcdf692a60933a1dea86d19ab3acbe3fe188e')
     expect(CENTRAL_HELPER_BY_CLASS).toEqual({
       identity_tenant_hard_boundary: 'unchanged independent scope helper',
       provider_infrastructure_availability: 'unchanged provider/configuration check',
