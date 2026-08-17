@@ -8,7 +8,7 @@ export function useSocialPublishing() {
   const base = '/api/agency/social/publishing'
   const apiFetch = $fetch as <T = unknown>(
     request: string,
-    options?: { method?: string, body?: unknown, query?: Record<string, unknown> }
+    options?: { method?: string, body?: unknown, query?: Record<string, unknown>, headers?: Record<string, string> }
   ) => Promise<T>
 
   const listPosts = (clientId: string, opts: { status?: string; limit?: number } = {}) =>
@@ -44,7 +44,10 @@ export function useSocialPublishing() {
     apiFetch<SocialAccount[]>(`${base}/accounts`, { query: { clientId } })
 
   const deleteAccount = (id: string) =>
-    apiFetch<{ ok: true }>(`${base}/accounts/${id}`, { method: 'DELETE' })
+    apiFetch<{ ok: true }>(`${base}/accounts/${id}`, {
+      method: 'DELETE',
+      headers: { 'Idempotency-Key': `social-publishing-account-disconnect:${id}` }
+    })
 
   const listSlots = (clientId: string) =>
     apiFetch<SocialSlot[]>(`${base}/slots`, { query: { clientId } })

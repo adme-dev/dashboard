@@ -4,6 +4,7 @@ import { registerGodModeBannerProjectCreationFamily } from '~~/server/utils/bann
 import { registerGodModeCatalogSourceMutationFamily } from '~~/server/utils/crm/catalogSourceGodMode'
 import { registerGodModeDealerFeedMutationFamilies } from '~~/server/utils/feeds/godModeMutations'
 import { registerGodModeSocialAccountMapMutationFamily } from '~~/server/utils/social/accountMapGodMode'
+import { registerGodModeSocialPublishingAccountMutationFamilies } from '~~/server/utils/social/publishingAccountGodMode'
 import { prepareGodModeBannerRender } from '~~/server/utils/banner/godModeRender'
 import { registerGodModeMutationFamily } from '~~/server/utils/godMode/featureGate'
 
@@ -13,6 +14,7 @@ registerGodModeBannerProjectCreationFamily()
 registerGodModeDealerFeedMutationFamilies()
 registerGodModeCatalogSourceMutationFamily()
 registerGodModeSocialAccountMapMutationFamily()
+registerGodModeSocialPublishingAccountMutationFamilies()
 registerGodModeMutationFamily({
   family: 'banner-render-enqueue',
   method: 'POST',

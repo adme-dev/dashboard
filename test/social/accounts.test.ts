@@ -23,6 +23,18 @@ vi.mock('~~/server/utils/db', () => ({
   queryRows: (...a: unknown[]) => mockQueryRows(...a),
   queryOne: (...a: unknown[]) => mockQueryOne(...a),
   execute: (...a: unknown[]) => mockExecute(...a),
+  transaction: async (callback: (db: { query: (sql: string, params?: unknown[]) => Promise<unknown> }) => Promise<unknown>) => {
+    return await callback({
+      query: async (sql: string, params?: unknown[]) => {
+        if (/^\s*SELECT/i.test(sql)) {
+          const row = await mockQueryOne(sql, params)
+          return { rows: row ? [row] : [], rowCount: row ? 1 : 0 }
+        }
+        const rowCount = await mockExecute(sql, params)
+        return { rows: [], rowCount }
+      }
+    })
+  }
 }))
 vi.mock('~~/server/utils/social/clientAccess', () => ({
   requireSocialClientAccess: (...a: unknown[]) => mockRequireSocialClientAccess(...a),
@@ -83,7 +95,7 @@ describe('publishing accounts API', () => {
   })
 
   it('deletes an account by id after CREATIVE and client-access checks', async () => {
-    mockQueryOne.mockResolvedValueOnce({
+    mockQueryOne.mockResolvedValue({
       client_id: 'C1',
       platform: 'linkedin',
       platform_account_id: 'P1',
@@ -103,7 +115,7 @@ describe('publishing accounts API', () => {
   })
 
   it('best-effort unsubscribes the Meta webhook before deleting a subscribed facebook page', async () => {
-    mockQueryOne.mockResolvedValueOnce({ client_id: 'C1', platform: 'facebook', platform_account_id: 'P1', access_token: 'PT', metadata: { webhook_subscribed: true } })
+    mockQueryOne.mockResolvedValue({ client_id: 'C1', platform: 'facebook', platform_account_id: 'P1', access_token: 'PT', metadata: { webhook_subscribed: true } })
     const fetchSpy = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
     g.fetch = fetchSpy
     await deleteHandler({ params: { id: 'a1' } } as any)
@@ -116,7 +128,7 @@ describe('publishing accounts API', () => {
   })
 
   it('does not call the Graph API when the page was never webhook-subscribed', async () => {
-    mockQueryOne.mockResolvedValueOnce({ client_id: 'C1', platform: 'facebook', platform_account_id: 'P1', access_token: 'PT', metadata: {} })
+    mockQueryOne.mockResolvedValue({ client_id: 'C1', platform: 'facebook', platform_account_id: 'P1', access_token: 'PT', metadata: {} })
     const fetchSpy = vi.fn()
     g.fetch = fetchSpy
     await deleteHandler({ params: { id: 'a1' } } as any)
