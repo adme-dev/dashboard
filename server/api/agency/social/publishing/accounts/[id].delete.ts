@@ -41,7 +41,6 @@ export default defineEventHandler(async (event) => {
     if (!current) throw createError({ statusCode: 404, statusMessage: 'Account not found' })
     await requireSocialClientAccess(event, current.client_id)
 
-    await db.query('DELETE FROM social_accounts WHERE id = $1 AND client_id = $2', [id, current.client_id])
     await recordSocialPublishingAudit({
       clientId: current.client_id,
       socialAccountId: id,
@@ -49,6 +48,9 @@ export default defineEventHandler(async (event) => {
       action: 'account_disconnected',
       metadata: { platform: current.platform, platformAccountId: current.platform_account_id }
     }, async (sql, params) => await db.query(sql, params))
+    // Persist while the account still satisfies the audit table's foreign key. Its ON DELETE SET NULL
+    // action then preserves the immutable event after the publishing credential row is removed.
+    await db.query('DELETE FROM social_accounts WHERE id = $1 AND client_id = $2', [id, current.client_id])
     return { id, row: current }
   }, async (_db, resultReference) => {
     if (resultReference !== id) {

@@ -106,7 +106,14 @@ describe('publishing accounts API', () => {
     expect(res).toEqual({ ok: true })
     expect(mockRequireRole).toHaveBeenCalledWith(expect.anything(), ['owner'])
     expect(mockRequireSocialClientAccess).toHaveBeenCalledWith(expect.anything(), 'C1')
-    expect(mockExecute).toHaveBeenCalledWith('DELETE FROM social_accounts WHERE id = $1 AND client_id = $2', ['a1', 'C1'])
+    const auditCallIndex = mockExecute.mock.calls.findIndex(([sql]) => String(sql).includes('INSERT INTO social_publishing_audit_events'))
+    const deleteCallIndex = mockExecute.mock.calls.findIndex(([sql]) => sql === 'DELETE FROM social_accounts WHERE id = $1 AND client_id = $2')
+    expect(auditCallIndex).toBeGreaterThanOrEqual(0)
+    expect(deleteCallIndex).toBeGreaterThan(auditCallIndex)
+    expect(mockExecute.mock.calls[deleteCallIndex]).toEqual([
+      'DELETE FROM social_accounts WHERE id = $1 AND client_id = $2',
+      ['a1', 'C1']
+    ])
   })
 
   it('404s when deleting a missing account', async () => {
