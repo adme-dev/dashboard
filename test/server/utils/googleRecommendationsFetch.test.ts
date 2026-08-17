@@ -13,7 +13,7 @@ describe('fetchGoogleRecommendations', () => {
         { recommendation: { type: 'CAMPAIGN_BUDGET', resourceName: 'rn1', campaigns: ['customers/9/campaigns/55'], campaignBudgetRecommendation: { recommendedBudgetAmountMicros: '24000000', currentBudgetAmountMicros: '20000000' } } },
       ] }])
       // optimization score searchStream
-      .mockResolvedValueOnce([{ results: [{ customer: { optimizationScore: 0.77, optimizationScoreUrl: 'https://ads.google.com/x' } }] }])
+      .mockResolvedValueOnce([{ results: [{ customer: { optimizationScore: 0.77 }, metrics: { optimizationScoreUrl: 'https://ads.google.com/x' } }] }])
     const r = await fetchGoogleRecommendations('9', 'tok', 'dev', '5250473322')
     expect(r.optimizationScore).toBe(0.77)
     expect(r.recommendations[0].recommendedDailyMajor).toBe(24)
@@ -22,6 +22,8 @@ describe('fetchGoogleRecommendations', () => {
     expect(ofetchMock.mock.calls[0][1].body.query).toContain('recommendation.campaigns')
     expect(ofetchMock.mock.calls[0][1].body.query).not.toContain('recommendation.campaign_budget_recommendation.current_budget_amount_micros')
     expect(ofetchMock.mock.calls[0][1].body.query).not.toContain('recommendation.campaign,')
+    expect(ofetchMock.mock.calls[1][1].body.query).toContain('metrics.optimization_score_url')
+    expect(ofetchMock.mock.calls[1][1].body.query).not.toContain('customer.optimization_score_url')
   })
 
   it('fails safe to an empty result with an error flag when the API throws', async () => {
