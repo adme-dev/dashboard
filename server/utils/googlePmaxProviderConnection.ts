@@ -60,10 +60,27 @@ export async function loadGooglePmaxProviderConnection(
   config: Pick<GooglePmaxInventoryLaunchConfig,
     'tenantId' | 'clientId' | 'connectionId' | 'customerId'> & {
       forceTokenRefresh?: boolean
+      sourceId?: string
     },
   dependencies: ProviderConnectionDependencies = {}
 ): Promise<GooglePmaxProviderConnection> {
   const queryOne = dependencies.queryOne || defaultQueryOne
+  const tenantAuthority = config.sourceId
+    ? `EXISTS (
+          SELECT 1
+            FROM crm_catalog_sources source
+           WHERE source.id = $4::uuid
+             AND source.client_id = sc.client_id
+             AND source.status = 'active'
+             AND source.connection_config #>> '{merchant,tenant_id}' = $3::text
+        )`
+    : `$3::text = (
+          SELECT tenant_id
+            FROM xero_org_connection
+           WHERE tenant_id <> '__default__'
+           ORDER BY updated_at DESC
+           LIMIT 1
+        )`
   const row = await queryOne<ConnectionRow>(
     `SELECT sc.id, sc.client_id, sc.account_id, sc.status, sc.metadata,
             sc.access_token, sc.refresh_token, sc.token_expires_at,
@@ -74,15 +91,9 @@ export async function loadGooglePmaxProviderConnection(
         AND sc.client_id = $2::uuid
         AND sc.platform = 'google'
         AND sc.status = 'active'
-        AND $3::text = (
-          SELECT tenant_id
-            FROM xero_org_connection
-           WHERE tenant_id <> '__default__'
-           ORDER BY updated_at DESC
-           LIMIT 1
-        )
+        AND ${tenantAuthority}
       LIMIT 1`,
-    [config.connectionId, config.clientId, config.tenantId]
+    [config.connectionId, config.clientId, config.tenantId, ...(config.sourceId ? [config.sourceId] : [])]
   )
   if (!row) throw new GooglePmaxProviderConnectionError('PMAX_PROVIDER_CONNECTION_NOT_FOUND')
   if (

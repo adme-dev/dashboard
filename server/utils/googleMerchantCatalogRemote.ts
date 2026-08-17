@@ -84,6 +84,7 @@ async function runGoogleMerchantCatalogAction(event: H3Event, action: 'merchant_
       clientId: input.clientId,
       connectionId,
       customerId,
+      sourceId: input.sourceId,
       forceTokenRefresh: true
     }),
     loadGoogleMerchantCredentialProfile({
