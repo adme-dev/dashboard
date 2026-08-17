@@ -18,6 +18,9 @@ interface Env {
   DATABASE_URL: string
   RESEND_API_KEY: string
   WORKER_ID_PREFIX: string
+  AUTOGATE_LEAD_API_USERNAME?: string
+  AUTOGATE_LEAD_API_PASSWORD?: string
+  AUTOGATE_LEAD_API_VERSION?: string
 }
 
 type QueueMessageBody = {
@@ -37,6 +40,9 @@ export default {
     }
     process.env.DATABASE_URL = env.DATABASE_URL
     process.env.RESEND_API_KEY = env.RESEND_API_KEY
+    process.env.AUTOGATE_LEAD_API_USERNAME = env.AUTOGATE_LEAD_API_USERNAME ?? ''
+    process.env.AUTOGATE_LEAD_API_PASSWORD = env.AUTOGATE_LEAD_API_PASSWORD ?? ''
+    process.env.AUTOGATE_LEAD_API_VERSION = env.AUTOGATE_LEAD_API_VERSION ?? 'v2'
 
     const { handleQueueMessage } = await import('./dispatch')
 

@@ -965,7 +965,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-calculator',
     categoryIconBg: 'bg-emerald-50',
     categoryIconColor: 'text-emerald-600',
-    description: 'One inbox for Google Ads, Meta, Zapier/Make/n8n, CSV imports, and manual entry. Dedicated inbound email securely captures each client\'s CRM conversation, with the address shown only once at creation or rotation.',
+    description: 'One inbox for Google Ads, Meta, Zapier/Make/n8n, CSV imports, and manual entry. Dedicated inbound email captures CRM conversations, while automotive leads can be delivered directly to AutoGate/carsales.',
     details: [
       {
         title: 'Six ways in, one inbox',
@@ -978,6 +978,10 @@ const features: Record<string, Feature> = {
       {
         title: 'Multi-tenant by design',
         content: 'One agency dashboard manages every client\'s lead routing. Each client gets their own webhook URL + secret key, their own form rules, and their own portal view — no Zap duplication, no per-task fees, no separate logins to maintain.'
+      },
+      {
+        title: 'Automotive leads delivered to AutoGate',
+        content: 'Send Meta and other automotive enquiries directly into the dealer\'s AutoGate/carsales lead account using the carsales Lead Service. Prospect, campaign, stock, and vehicle fields are mapped with a stable identifier across retries to prevent duplicates. V2 remains available for established integrations, with a controlled switch to V3 after carsales provisions access.'
       },
       {
         title: 'Client portal inbox built-in',

@@ -13,6 +13,8 @@ compatibility_flags = ["nodejs_compat"]
 "~~/server/utils/notifications" = "./src/notifications.ts"
 "~~/server/utils/googleCredentialProfiles" = "../../server/utils/googleCredentialProfiles.ts"
 "~~/server/utils/tokenCrypto" = "../../server/utils/tokenCrypto.ts"
+"~~/server/utils/crm/recordAccess" = "./src/crm/recordAccess.ts"
+"~~/server/utils/crm/searchContext" = "./src/crm/searchContext.ts"
 "~~/app/types" = "../../app/types/index.ts"
 
 [[hyperdrive]]
@@ -21,6 +23,7 @@ id = "900b4b74ec41462cbbabebd0aa8775aa"
 
 [vars]
 WORKER_ID_PREFIX = "leads-w"
+AUTOGATE_LEAD_API_VERSION = "v2"
 
 # Queue consumer for leads-delivery-queue. The Pages app produces; this Worker
 # consumes. max_retries = 0 because the app manages retries via lead_deliveries
