@@ -77,7 +77,8 @@ describe('private Merchant catalog provider boundary', () => {
       processingState: 'SUBMITTED_AWAITING_GOOGLE_READBACK'
     })
     expect(mocks.loadConnection).toHaveBeenCalledWith(expect.objectContaining({
-      forceTokenRefresh: true
+      forceTokenRefresh: true,
+      sourceId: input.sourceId
     }))
     expect(mocks.loadMerchantCredential).toHaveBeenCalledWith({
       profileId: merchantCredentialProfileId,

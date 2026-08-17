@@ -79,6 +79,42 @@ describe('Google PMax provider connection loader', () => {
     })
   })
 
+  it('authorizes a Merchant publication from the exact active source tenant when Xero is disconnected', async () => {
+    const sourceId = '55555555-5555-4555-8555-555555555555'
+    const queryOne = vi.fn().mockResolvedValue({
+      id: config.connectionId,
+      client_id: config.clientId,
+      account_id: config.customerId,
+      status: 'active',
+      metadata: {},
+      access_token: 'stored',
+      refresh_token: 'refresh',
+      token_expires_at: '2026-08-18T00:00:00.000Z'
+    })
+
+    await loadGooglePmaxProviderConnection({ ...config, sourceId } as never, {
+      queryOne,
+      getRuntimeConfig: () => ({
+        googleClientId: 'client', googleClientSecret: 'secret',
+        googleDeveloperToken: 'developer', googleAdsLoginCustomerId: ''
+      }),
+      resolveCredential: vi.fn().mockResolvedValue({
+        accessToken: 'stored', refreshToken: 'refresh',
+        tokenExpiresAt: '2026-08-18T00:00:00.000Z', profileId: null
+      }),
+      resolveAuth: vi.fn().mockResolvedValue({ accessToken: 'stored' })
+    })
+
+    expect(queryOne.mock.calls[0]?.[0]).toContain('FROM crm_catalog_sources source')
+    expect(queryOne.mock.calls[0]?.[0]).toContain('source.connection_config #>> \'{merchant,tenant_id}\' = $3::text')
+    expect(queryOne.mock.calls[0]?.[1]).toEqual([
+      config.connectionId,
+      config.clientId,
+      config.tenantId,
+      sourceId
+    ])
+  })
+
   it('fails closed for missing, inactive, or differently-scoped connections', async () => {
     await expect(loadGooglePmaxProviderConnection(config as never, {
       queryOne: vi.fn().mockResolvedValue(null),
