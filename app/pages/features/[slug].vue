@@ -965,7 +965,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-calculator',
     categoryIconBg: 'bg-emerald-50',
     categoryIconColor: 'text-emerald-600',
-    description: 'One inbox for Google Ads, Meta, Zapier/Make/n8n, CSV imports, and manual entry. Dedicated inbound email captures CRM conversations, while automotive leads can be delivered directly to AutoGate/carsales.',
+    description: 'One inbox for Google Ads, Meta, Zapier/Make/n8n, CSV imports, and manual entry. Dedicated inbound email securely captures each client\'s CRM conversation, with the address shown only once at creation or rotation. Automotive leads can be delivered directly to AutoGate/carsales.',
     details: [
       {
         title: 'Six ways in, one inbox',
