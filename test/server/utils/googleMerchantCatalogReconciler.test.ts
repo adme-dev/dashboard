@@ -143,6 +143,65 @@ describe('governed Merchant catalog reconciler', () => {
     )
   })
 
+  it('forwards an explicit catalog-price drive-away contract to product publication', async () => {
+    const catalogVehicle = vehicle(
+      '44444444-4444-4444-8444-444444444444',
+      'XF-ONE',
+      'LGWFF6A50NH123456'
+    )
+    catalogVehicle.attributes.dap_price = null
+    catalogVehicle.attributes.egc_price = 44505
+    catalogVehicle.price = 45000
+    const repository = {
+      loadScope: vi.fn().mockResolvedValue({
+        source: {
+          id: request.sourceId,
+          clientId: request.clientId,
+          displayName: 'Geelong GWM Haval · New & Demo',
+          connectionConfig: {
+            merchant: {
+              ...merchant,
+              new_vehicle_price_source: 'CATALOG_PRICE_DRIVE_AWAY'
+            }
+          }
+        },
+        products: [catalogVehicle],
+        publications: []
+      }),
+      setDataSource: vi.fn(),
+      beginRun: vi.fn().mockResolvedValue('77777777-7777-4777-8777-777777777777'),
+      finishRun: vi.fn()
+    }
+    const client = {
+      inspectAuthorization: vi.fn(),
+      getDataSource: vi.fn().mockResolvedValue(apiSource()),
+      listDataSources: vi.fn(),
+      createVehicleDataSource: vi.fn(),
+      registerDeveloper: vi.fn(),
+      insertProduct: vi.fn().mockResolvedValue({
+        name: 'accounts/5817965641/productInputs/one',
+        product: 'accounts/5817965641/products/one',
+        offerId: 'XF-ONE',
+        requestId: 'merchant-request-1'
+      }),
+      deleteProduct: vi.fn()
+    }
+    const reconcile = createMerchantCatalogReconciler({
+      repository,
+      createClient: vi.fn().mockReturnValue(client) as never
+    })
+
+    await expect(reconcile(request)).resolves.toMatchObject({ publishCount: 1, failedCount: 0 })
+    expect(client.insertProduct).toHaveBeenCalledWith(expect.objectContaining({
+      productInput: expect.objectContaining({
+        productAttributes: expect.objectContaining({
+          price: { amountMicros: '45000000000', currencyCode: 'AUD' },
+          vehiclePriceType: 'DRIVE_AWAY_PRICE'
+        })
+      })
+    }))
+  })
+
   it('reuses the one exact API source when the configured source is a legacy file', async () => {
     const replacement = 'accounts/5817965641/dataSources/200'
     const repository = {

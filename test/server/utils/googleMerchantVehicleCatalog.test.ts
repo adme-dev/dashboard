@@ -155,6 +155,25 @@ describe('Google Merchant vehicle ProductInput contract', () => {
     expect(input.productAttributes.price.amountMicros).toBe('52952000000')
   })
 
+  it('uses the catalog price as drive-away only when the source explicitly attests that contract', () => {
+    const input = buildGoogleMerchantVehicleProductInput({
+      ...product,
+      price: 52952,
+      attributes: {
+        ...product.attributes,
+        dap_price: null,
+        estimated_drive_away_price: null,
+        egc_price: 52457
+      }
+    }, {
+      ...config,
+      newVehiclePriceSource: 'CATALOG_PRICE_DRIVE_AWAY'
+    })
+
+    expect(input.productAttributes.vehiclePriceType).toBe('DRIVE_AWAY_PRICE')
+    expect(input.productAttributes.price.amountMicros).toBe('52952000000')
+  })
+
   it('keeps excluding-government-charges pricing for Used inventory', () => {
     const input = buildGoogleMerchantVehicleProductInput({
       ...product,
