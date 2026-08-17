@@ -45,7 +45,10 @@ vi.mock('~~/server/utils/permissions', () => ({ PERMISSIONS: { CREATIVE: ['owner
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...a: unknown[]) => mockQueryRows(...a),
   queryOne: (...a: unknown[]) => mockQueryOne(...a),
-  execute: (...a: unknown[]) => mockExecute(...a)
+  execute: (...a: unknown[]) => mockExecute(...a),
+  transaction: async (callback: (db: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
+    return await callback({ query: vi.fn() })
+  }
 }))
 vi.mock('~~/server/utils/social/clientAccess', () => ({
   requireSocialClientAccess: (...a: unknown[]) => mockRequireSocialClientAccess(...a)

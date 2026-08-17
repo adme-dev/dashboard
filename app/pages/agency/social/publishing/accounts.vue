@@ -23,7 +23,7 @@ const route = useRoute()
 const router = useRouter()
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+  options?: { method?: string, body?: unknown, query?: Record<string, unknown>, headers?: Record<string, string> }
 ) => Promise<T>
 
 const { clientId } = useSocialPublishingClient()
@@ -157,8 +157,11 @@ function togglePage(id: string, on: boolean) {
 async function confirmSelection() {
   selecting.value = true
   try {
+    const socialPublishingCompletionIdempotencyKey = `social-publishing-account-complete:${selectToken.value.slice(-48)}`
     const res = await apiFetch<{ connected: string[], conflicts: string[] }>('/api/agency/social/publishing/accounts/complete', {
-      method: 'POST', body: { token: selectToken.value, pageIds: selectChosen.value }
+      method: 'POST',
+      body: { token: selectToken.value, pageIds: selectChosen.value },
+      headers: { 'Idempotency-Key': socialPublishingCompletionIdempotencyKey }
     })
     selectOpen.value = false
     if (res.connected.length) toast.add({ title: `Connected: ${res.connected.join(', ')}`, color: 'success' })
