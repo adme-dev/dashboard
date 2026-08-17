@@ -18,9 +18,10 @@ export default defineEventHandler(async (event) => {
   if (!import.meta.dev && cronSecret !== process.env.CRON_SECRET) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
-  // Single-tenant prod: resolve tenant the same way the budget digest does.
+  // Single-tenant prod: use the connected Xero tenant when present, otherwise
+  // retain the legacy tenant that owns settings in installations without Xero.
   const conn = await queryOne<{ tenant_id: string }>(`SELECT tenant_id FROM xero_org_connection ORDER BY connected_at DESC LIMIT 1`)
-  const tenantId = conn?.tenant_id || ''
+  const tenantId = conn?.tenant_id || '__default__'
   const policy = await getSpendAutoActionPolicy(tenantId)
   if (!policy.enabled) return { ok: true, skipped: 'disabled' }
 
@@ -31,7 +32,7 @@ export default defineEventHandler(async (event) => {
      FROM media_spend ms LEFT JOIN agency_clients ac ON ac.id = ms.client_id
      WHERE ms.period = $1 AND ms.platform IN ('meta','google_ads')
      ORDER BY ms.actual_spend DESC`,
-    [period],
+    [period]
   )
   const review = buildPacingReview(rows, { now, period })
   const decisions = decideAutoActions(review.items, policy)
@@ -39,7 +40,7 @@ export default defineEventHandler(async (event) => {
 
   // Notify recipients: owner/admin team members (the surface that can act).
   const recipients = await queryRows<{ id: string }>(
-    `SELECT id::text AS id FROM team_members WHERE user_role IN ('owner','admin') AND is_active = true`,
+    `SELECT id::text AS id FROM team_members WHERE user_role IN ('owner','admin') AND is_active = true`
   ).catch(() => [])
 
   const result = await executeAutoActions(decisions, {
@@ -50,7 +51,7 @@ export default defineEventHandler(async (event) => {
          WHERE media_spend_id = $1 AND action_type = 'budget_update'
            AND action_status IN ('planned','approved') AND metadata->>'source' = 'auto_action'
            AND (new_value->>'dailyBudget')::numeric = $2 LIMIT 1`,
-        [mediaSpendId, dailyBudget],
+        [mediaSpendId, dailyBudget]
       )
       return !!existing
     },
@@ -62,10 +63,10 @@ export default defineEventHandler(async (event) => {
           title: `Ad-spend pacing (${item.severity}): ${item.clientName || 'campaign'}`,
           message: item.recommendedAction || `${item.issueType} detected`,
           link: '/agency/social/spend',
-          reason: 'direct',
+          reason: 'direct'
         }).catch(() => {})
       }
-    },
+    }
   })
   return { ok: true, ...result }
 })
