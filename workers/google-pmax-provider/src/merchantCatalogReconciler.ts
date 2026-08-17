@@ -121,6 +121,7 @@ function merchantConfig(scope: CatalogScope, request: z.infer<typeof RequestSche
   const developerEmail = text(merchant?.developer_email)
   const credentialProfileId = text(merchant?.credential_profile_id)
   const registrationAccountId = text(merchant?.registration_account_id)
+  const newVehiclePriceSource = text(merchant?.new_vehicle_price_source)
   if (
     scope.source.id !== request.sourceId
     || scope.source.clientId !== request.clientId
@@ -135,11 +136,15 @@ function merchantConfig(scope: CatalogScope, request: z.infer<typeof RequestSche
     || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(developerEmail)
     || credentialProfileId !== request.merchantCredentialProfileId
     || registrationAccountId !== request.merchantRegistrationAccountId
+    || (newVehiclePriceSource && newVehiclePriceSource !== 'CATALOG_PRICE_DRIVE_AWAY')
     || merchant?.auto_publish !== true
   ) throw new MerchantCatalogReconcileError('MERCHANT_CATALOG_CONFIG_INVALID')
   return {
     accountId, dataSource, displayName, feedLabel, contentLanguage, storeCode,
-    developerEmail, registrationAccountId
+    developerEmail, registrationAccountId,
+    newVehiclePriceSource: newVehiclePriceSource === 'CATALOG_PRICE_DRIVE_AWAY'
+      ? 'CATALOG_PRICE_DRIVE_AWAY' as const
+      : undefined
   }
 }
 
@@ -255,7 +260,10 @@ export function createMerchantCatalogReconciler(dependencies: ReconcilerDependen
       dataSource,
       feedLabel: merchant.feedLabel,
       contentLanguage: merchant.contentLanguage,
-      storeCode: merchant.storeCode
+      storeCode: merchant.storeCode,
+      ...(merchant.newVehiclePriceSource
+        ? { newVehiclePriceSource: merchant.newVehiclePriceSource }
+        : {})
     }
     const plan = planGoogleMerchantVehicleReconciliation({
       products: scope.products,

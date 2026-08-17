@@ -24,6 +24,7 @@ export interface GoogleMerchantVehicleConfig {
   feedLabel: string
   contentLanguage: string
   storeCode: string
+  newVehiclePriceSource?: 'CATALOG_PRICE_DRIVE_AWAY'
 }
 
 export interface GoogleMerchantVehicleProductInput {
@@ -280,7 +281,12 @@ function condition(attributes: Record<string, unknown>): 'NEW' | 'USED' | null {
   return null
 }
 
-function price(attributes: Record<string, unknown>, listingCondition: 'NEW' | 'USED') {
+function price(
+  catalogPrice: unknown,
+  attributes: Record<string, unknown>,
+  listingCondition: 'NEW' | 'USED',
+  config: GoogleMerchantVehicleConfig
+) {
   const driveAway = positiveNumber(attributes.dap_price)
   if (driveAway) return { amount: driveAway, type: 'DRIVE_AWAY_PRICE' as const }
   const estimatedDriveAway = positiveNumber(attributes.estimated_drive_away_price)
@@ -288,6 +294,12 @@ function price(attributes: Record<string, unknown>, listingCondition: 'NEW' | 'U
     listingCondition === 'NEW'
     && estimatedDriveAway
   ) return { amount: estimatedDriveAway, type: 'ESTIMATED_DRIVE_AWAY_PRICE' as const }
+  const governedCatalogPrice = positiveNumber(catalogPrice)
+  if (
+    listingCondition === 'NEW'
+    && config.newVehiclePriceSource === 'CATALOG_PRICE_DRIVE_AWAY'
+    && governedCatalogPrice
+  ) return { amount: governedCatalogPrice, type: 'DRIVE_AWAY_PRICE' as const }
   const excludingGovernmentCharges = positiveNumber(attributes.egc_price)
   if (
     listingCondition === 'USED'
@@ -335,7 +347,7 @@ export function buildGoogleMerchantVehicleProductInput(
     || !productName || !productUrl.startsWith('https://') || !imageLink.startsWith('https://')
   ) throw new GoogleMerchantVehicleCatalogError('MERCHANT_VEHICLE_PRODUCT_INCOMPLETE')
 
-  const pricing = price(attributes, listingCondition)
+  const pricing = price(product.price, attributes, listingCondition, config)
   const trim = text(attributes.series || attributes.trim || attributes.badge, 150)
   const normalizedBodyStyle = bodyStyle(attributes.body_style)
   const mileageUnit = text(attributes.odometer_unit, 20).toUpperCase() === 'MILES' ? 'MILES' : 'KM'
