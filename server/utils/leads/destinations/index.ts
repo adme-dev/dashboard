@@ -6,6 +6,7 @@ import './slack'
 import './email'
 import './sheets'
 import './assignUser'
+import './autogate'
 
 export {
   registeredAdapterTypes as listAdapterTypes,

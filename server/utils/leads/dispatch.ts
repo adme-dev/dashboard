@@ -136,7 +136,7 @@ async function dispatchOne(deliveryId: string, _attempt: number): Promise<void> 
 
   // Failure: retry policy
   const next = claimed.retry_count + 1
-  const final = next >= BACKOFF_MS.length
+  const final = result.final === true || next >= BACKOFF_MS.length
   await markFailed(deliveryId, result.error, next, final)
   if (final) return
   const delaySeconds = Math.ceil((result.retry_after_ms ?? BACKOFF_MS[next]!) / 1000)

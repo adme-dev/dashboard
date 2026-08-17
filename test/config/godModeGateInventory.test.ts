@@ -157,15 +157,24 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/api/agency/social/spend/map-account.post.ts\tawait requirePermission(event, \'MEDIA_BUYING\')\tapplication_governance_bypass'
     )
-    expect(inventory.rows).toHaveLength(1424)
+    expect(inventory.rows).toContain(
+      'server/utils/leads/destinations/autogate.ts\treturn process.env.AUTOGATE_LEAD_API_VERSION?.toLowerCase() === \'v3\' ? \'v3\' : \'v2\'\tunrelated_configuration'
+    )
+    expect(inventory.rows).toContain(
+      'server/utils/leads/destinations/autogate.ts\tconst username = process.env.AUTOGATE_LEAD_API_USERNAME?.trim()\tunrelated_configuration'
+    )
+    expect(inventory.rows).toContain(
+      'server/utils/leads/destinations/autogate.ts\tconst password = process.env.AUTOGATE_LEAD_API_PASSWORD\tunrelated_configuration'
+    )
+    expect(inventory.rows).toHaveLength(1427)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 100,
       provider_infrastructure_availability: 208,
       application_governance_bypass: 740,
       ordinary_user_behavior: 170,
-      unrelated_configuration: 206
+      unrelated_configuration: 209
     })
-    expect(inventory.digest).toBe('89d9d4ffe2e8f8ba03bea0515d3fcdf692a60933a1dea86d19ab3acbe3fe188e')
+    expect(inventory.digest).toBe('2868d4701467291eb6b7cc72fb517762a20a5dc9d3e7af688d48a0636858f5b9')
     expect(CENTRAL_HELPER_BY_CLASS).toEqual({
       identity_tenant_hard_boundary: 'unchanged independent scope helper',
       provider_infrastructure_availability: 'unchanged provider/configuration check',

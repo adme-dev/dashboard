@@ -1797,7 +1797,7 @@ export type LeadDeliveryStatus =
   | 'pending' | 'claimed' | 'delivered' | 'failed' | 'cancelled' | 'skipped'
 export type LeadDestinationType =
   | 'portal' | 'webhook' | 'slack' | 'email' | 'sheets' | 'assign_user'
-  | 'sms' | 'autoresponder_email' | 'autoresponder_sms'
+  | 'sms' | 'autoresponder_email' | 'autoresponder_sms' | 'autogate'
 
 export interface Lead {
   id: string
@@ -1980,7 +1980,7 @@ export interface EmailLeadIngestion {
 
 export type DispatchResult =
   | { status: 'delivered'; response_meta?: any }
-  | { status: 'failed'; error: string; retry_after_ms?: number }
+  | { status: 'failed'; error: string; retry_after_ms?: number; final?: boolean }
 
 export * from './office'
 
