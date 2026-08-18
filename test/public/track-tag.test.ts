@@ -201,6 +201,29 @@ describe('public/track.js transport', () => {
     }
   })
 
+  it('records tel link intent estate-wide, including clicks on nested link content', () => {
+    const link = document.createElement('a')
+    link.href = 'tel:+61395550000'
+    link.innerHTML = '<span>Call Brighton Nissan</span>'
+    document.body.appendChild(link)
+
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    link.querySelector('span')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    const events = requests.flatMap(request => JSON.parse(request.body).events)
+    const phoneClick = events.find(event => event.event_name === 'phone_click')
+    expect(phoneClick).toEqual(expect.objectContaining({
+      event_data: expect.objectContaining({
+        phone_number: '+61395550000',
+        link_text: 'Call Brighton Nissan'
+      })
+    }))
+    expect(parseTrackPayload({ events: [phoneClick] }).ok).toBe(true)
+  })
+
   it('prefers fetch delivery when sendBeacon is available', () => {
     loadTag()
     ;(window as any).xf.init({ writeKey: 'TESTKEY' })

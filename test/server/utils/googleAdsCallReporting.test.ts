@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   buildGoogleCallUpsert,
   buildGoogleCallViewQuery,
+  GOOGLE_CALL_MAPPING_QUERY,
   googleCallSyncWindow,
   mapGoogleCallRow,
   matchGoogleCallClient,
@@ -10,6 +11,13 @@ import {
 } from '~~/server/utils/googleAdsCallReporting'
 
 describe('Google Ads call_view reporting', () => {
+  it('loads every direct client connection as an estate-wide account fallback', () => {
+    expect(GOOGLE_CALL_MAPPING_QUERY).toContain('FROM social_connections connection')
+    expect(GOOGLE_CALL_MAPPING_QUERY).toContain('connection.client_id')
+    expect(GOOGLE_CALL_MAPPING_QUERY).toContain("connection.platform = 'google'")
+    expect(GOOGLE_CALL_MAPPING_QUERY).toContain('ORDER BY priority ASC')
+  })
+
   it('builds a v23-compatible call_view query without incompatible aggregate metrics', () => {
     const query = buildGoogleCallViewQuery('2026-08-01', '2026-08-17')
 

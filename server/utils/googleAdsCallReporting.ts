@@ -345,27 +345,45 @@ async function loadConnections(): Promise<GoogleCallConnection[]> {
   )
 }
 
+export const GOOGLE_CALL_MAPPING_QUERY = `SELECT connection_id,
+        campaign_id,
+        campaign_name_pattern,
+        client_id
+   FROM (
+     SELECT mapping.connection_id,
+            mapping.campaign_id,
+            mapping.campaign_name_pattern,
+            matched_client.id AS client_id,
+            0 AS priority
+       FROM ad_account_client_map mapping
+       LEFT JOIN LATERAL (
+         SELECT client.id
+           FROM agency_clients client
+          WHERE client.name = mapping.xero_client_name
+             OR (client.xero_contact_id IS NOT NULL AND client.xero_contact_id = mapping.xero_client_code)
+          ORDER BY CASE WHEN client.name = mapping.xero_client_name THEN 0 ELSE 1 END
+          LIMIT 1
+       ) matched_client ON TRUE
+     UNION ALL
+     SELECT connection.id AS connection_id,
+            NULL::text AS campaign_id,
+            NULL::text AS campaign_name_pattern,
+            connection.client_id,
+            1 AS priority
+       FROM social_connections connection
+      WHERE connection.platform = 'google'
+        AND connection.status = 'active'
+        AND connection.client_id IS NOT NULL
+   ) mappings
+  ORDER BY priority ASC`
+
 async function loadMappings(): Promise<GoogleCallClientMapping[]> {
   const rows = await queryRows<{
     connection_id: string
     campaign_id: string | null
     campaign_name_pattern: string | null
     client_id: string | null
-  }>(
-    `SELECT mapping.connection_id,
-            mapping.campaign_id,
-            mapping.campaign_name_pattern,
-            matched_client.id AS client_id
-     FROM ad_account_client_map mapping
-     LEFT JOIN LATERAL (
-       SELECT client.id
-       FROM agency_clients client
-       WHERE client.name = mapping.xero_client_name
-          OR (client.xero_contact_id IS NOT NULL AND client.xero_contact_id = mapping.xero_client_code)
-       ORDER BY CASE WHEN client.name = mapping.xero_client_name THEN 0 ELSE 1 END
-       LIMIT 1
-     ) matched_client ON TRUE`
-  )
+  }>(GOOGLE_CALL_MAPPING_QUERY)
   return rows.map(row => ({
     connectionId: row.connection_id,
     campaignId: row.campaign_id,
