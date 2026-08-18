@@ -205,13 +205,14 @@ describe('public/track.js transport', () => {
     const link = document.createElement('a')
     link.href = 'tel:+61395550000'
     link.innerHTML = '<span>Call Brighton Nissan</span>'
+    link.addEventListener('click', event => event.preventDefault())
     document.body.appendChild(link)
 
     loadTag()
     ;(window as any).xf.init({ writeKey: 'TESTKEY' })
     requests = []
 
-    link.querySelector('span')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    link.querySelector('span')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
 
     const events = requests.flatMap(request => JSON.parse(request.body).events)
     const phoneClick = events.find(event => event.event_name === 'phone_click')
