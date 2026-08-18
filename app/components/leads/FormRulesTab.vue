@@ -362,7 +362,7 @@ async function toggleEnabled(item: RuleListItem) {
           Form rules
         </h2>
         <p class="text-xs text-muted">
-          Replace Zapier by routing Google, Meta, webhook, and CSV leads to the right destinations.
+          Route each Google, Meta, webhook, email, or CSV form to AutoGate and other destinations.
         </p>
       </div>
       <div class="flex items-center gap-2">
@@ -551,7 +551,7 @@ async function toggleEnabled(item: RuleListItem) {
                 3. Add destinations
               </p>
               <p class="mt-1 text-xs text-muted">
-                Slack, email, Sheets, portal, or webhook.
+                AutoGate, Slack, email, Sheets, portal, or webhook.
               </p>
             </div>
           </div>

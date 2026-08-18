@@ -19,9 +19,10 @@ import { queryRows } from '~~/server/utils/db'
 import {
   upsertFormMetadata, logIngestionError,
 } from '~~/server/utils/leads/db'
-import { acceptLead, type LeadCaptureMode } from '~~/server/utils/leads/acceptance'
+import { acceptLead } from '~~/server/utils/leads/acceptance'
 import { normalizeMetaPayload } from '~~/server/utils/leads/normalizer'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
+import { resolveMetaLeadClient } from '~~/server/utils/leads/metaLeadClient'
 import { getMetaLeadgen, verifyMetaSignature } from '~~/server/utils/metaClient'
 
 interface MetaLeadgenChange {
@@ -48,9 +49,7 @@ interface MetaWebhookBody {
 
 interface PageTokenRow {
   id: string
-  client_id: string | null
   access_token: string | null
-  lead_capture_mode: LeadCaptureMode | null
 }
 
 export default defineEventHandler(async (event) => {
@@ -89,10 +88,8 @@ export default defineEventHandler(async (event) => {
   // ad-account connections share one OAuth grant per user, so deduping
   // collapses 100+ rows down to typically 1-3 unique tokens.
   const allTokens = await queryRows<PageTokenRow>(
-    `SELECT connection.id, connection.client_id, connection.access_token,
-            client.lead_capture_mode
+    `SELECT connection.id, connection.access_token
        FROM social_connections connection
-       LEFT JOIN agency_clients client ON client.id = connection.client_id
       WHERE connection.platform = 'meta'
         AND connection.status = 'active'
         AND connection.access_token IS NOT NULL`,
@@ -127,12 +124,11 @@ export default defineEventHandler(async (event) => {
 
       let resolved: any = null
       let permissionDenied = false
-      let workingToken: PageTokenRow | null = null
       for (const t of orderedTokens.slice(0, MAX_TOKENS_PER_LEADGEN)) {
         if (!t.access_token) continue
         try {
           resolved = await getMetaLeadgen(leadgenId, t.access_token)
-          if (resolved) { workingToken = t; pageTokenCache.set(pageId, t); break }
+          if (resolved) { pageTokenCache.set(pageId, t); break }
         } catch (e: any) {
           const status = e?.status ?? e?.response?.status
           const msg = String(e?.data?.error?.message ?? e?.message ?? '')
@@ -160,10 +156,8 @@ export default defineEventHandler(async (event) => {
         continue
       }
 
-      // The connection that owns the working token is the one with Page
-      // access — use its client_id. This is more correct than matching
-      // page_id against account_id (different namespaces in Meta).
-      const clientId = workingToken?.client_id ?? null
+      const client = await resolveMetaLeadClient(pageId, resolved.form_id ?? change.value?.form_id)
+      const clientId = client?.client_id ?? null
 
       const norm = normalizeMetaPayload(
         {
@@ -192,7 +186,7 @@ export default defineEventHandler(async (event) => {
         norm.assigned_to = await resolveAssignedAm(clientId)
         const accepted = await acceptLead(event, {
           lead: { ...norm, client_id: clientId },
-          leadCaptureMode: workingToken?.lead_capture_mode ?? 'capture_only',
+          leadCaptureMode: client?.lead_capture_mode ?? 'capture_only',
           consentDecision: 'unknown'
         })
         if (norm.form_id && Object.keys(norm.field_data).length) {

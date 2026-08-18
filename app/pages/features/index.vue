@@ -218,7 +218,7 @@ const categories = [
     iconBg: 'bg-emerald-50 dark:bg-emerald-500/10',
     iconColor: 'text-emerald-600',
     features: [
-      { title: 'Lead Capture & Routing', slug: 'lead-capture-routing', icon: 'i-lucide-inbox', description: 'One inbox for Google Ads, Meta, Zapier/Make/n8n, CSV imports, and manual entry, plus dedicated inbound email that securely captures each client\'s CRM conversation. The address is shown only once at creation or rotation, and automotive leads can be delivered directly to AutoGate/carsales.' },
+      { title: 'Lead Capture & Routing', slug: 'lead-capture-routing', icon: 'i-lucide-inbox', description: 'One inbox for Google Ads, Meta, Zapier/Make/n8n, CSV imports, and manual entry, plus dedicated inbound email that securely captures each client\'s CRM conversation. Route selected automotive leads to AutoGate/carsales by form, campaign, ad, make, model, or stock—not as a blanket client-wide push.' },
       { title: 'Xero Integration', slug: 'xero-integration', icon: 'i-lucide-link', description: 'Two-way sync with Xero for invoices, expenses, contacts, and chart of accounts.' },
       { title: 'EOM Engine', slug: 'eom-engine', icon: 'i-lucide-file-spreadsheet', description: 'End-of-month invoice generation with configurable line items, tax, and auto-upload to Xero.' },
       { title: 'Meta Ads Tracking', slug: 'meta-ads-tracking', icon: 'i-lucide-megaphone', description: 'OAuth-connected Meta Ads spend syncing with daily breakdowns and campaign-level budgets.' },

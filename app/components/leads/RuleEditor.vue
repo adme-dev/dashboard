@@ -36,6 +36,14 @@ const editingDest = ref<LeadRuleDestination | null>(null)
 const showDestModal = ref(false)
 const showTestFire = ref(false)
 
+function openTestFire() {
+  showTestFire.value = true
+}
+
+function closeEditor() {
+  open.value = false
+}
+
 // Confirmation modal for delete (replaces window.confirm — project rule: no native dialogs)
 const showDeleteConfirm = ref(false)
 const pendingDelete = ref<LeadRuleDestination | null>(null)
@@ -81,6 +89,9 @@ function destinationSummary(d: LeadRuleDestination): string {
   if (d.destination_type === 'assign_user') return String(config.user_id || 'Assign user')
   if (d.destination_type === 'sheets') return String(config.spreadsheet_id || 'Google Sheet')
   if (d.destination_type === 'portal') return 'Visible in client portal'
+  if (d.destination_type === 'autogate') {
+    return `AutoGate · ${String(config.leadType || 'General')} · ${String(config.siteOrigin || 'site not set')}`
+  }
   return JSON.stringify(config)
 }
 
@@ -95,7 +106,9 @@ function newDestination(type: LeadDestinationType) {
     id: '',
     rule_id: props.ruleId,
     destination_type: type,
-    config: {},
+    config: type === 'autogate'
+      ? { service: 'ADME', leadType: 'Used', pageSource: 'details', tags: [] }
+      : {},
     filter: null,
     delay_minutes: 0,
     enabled: true,
@@ -142,7 +155,8 @@ const ADD_TYPES: { type: LeadDestinationType, label: string, icon: string }[] = 
   { type: 'slack', label: 'Slack channel', icon: 'i-lucide-message-circle' },
   { type: 'email', label: 'Email staff', icon: 'i-lucide-mail' },
   { type: 'sheets', label: 'Google Sheet append', icon: 'i-lucide-table' },
-  { type: 'assign_user', label: 'Assign to user', icon: 'i-lucide-user' }
+  { type: 'assign_user', label: 'Assign to user', icon: 'i-lucide-user' },
+  { type: 'autogate', label: 'AutoGate CRM', icon: 'i-lucide-car-front' }
 ]
 
 const addMenuItems = computed(() => [
@@ -180,7 +194,7 @@ const addMenuItems = computed(() => [
               variant="ghost"
               size="sm"
               icon="i-lucide-flask-conical"
-              @click="showTestFire = true"
+              @click="openTestFire"
             >
               Test fire
             </UButton>
@@ -189,7 +203,7 @@ const addMenuItems = computed(() => [
               size="sm"
               icon="i-lucide-x"
               aria-label="Close rule editor"
-              @click="open = false"
+              @click="closeEditor"
             />
           </div>
         </header>
@@ -289,7 +303,7 @@ const addMenuItems = computed(() => [
                   :variant="routeDone ? 'soft' : 'ghost'"
                   :color="routeDone ? 'primary' : 'neutral'"
                   icon="i-lucide-flask-conical"
-                  @click="showTestFire = true"
+                  @click="openTestFire"
                 >
                   Test fire
                 </UButton>
@@ -402,7 +416,7 @@ const addMenuItems = computed(() => [
                   No destinations configured.
                 </p>
                 <p class="mt-1 text-muted">
-                  Add Slack, email, webhook, Sheets, portal, or assignment destinations to replace the actions currently handled in Zapier.
+                  Add AutoGate, Slack, email, webhook, Sheets, portal, or assignment destinations to replace the actions currently handled in Zapier.
                 </p>
               </div>
             </ul>

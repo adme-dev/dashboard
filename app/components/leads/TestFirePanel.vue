@@ -12,6 +12,13 @@ const apiFetch = $fetch as <T = unknown>(
   options?: { method?: string, body?: unknown }
 ) => Promise<T>
 const overrides = ref<{ key: string, value: string }[]>([])
+const contextOverrides = reactive({
+  campaign_id: '',
+  campaign_name: '',
+  ad_id: '',
+  ad_name: '',
+  page_id: '',
+})
 const running = ref(false)
 interface TestFireResultItem {
   id: string
@@ -47,6 +54,14 @@ function addOverride() {
   overrides.value.push({ key: '', value: '' })
 }
 
+function removeOverride(index: number) {
+  overrides.value.splice(index, 1)
+}
+
+function closePanel() {
+  open.value = false
+}
+
 async function run() {
   running.value = true
   try {
@@ -56,7 +71,12 @@ async function run() {
     }
     result.value = await apiFetch<TestFireResult>(`/api/leads/rules/${props.ruleId}/test-fire`, {
       method: 'POST',
-      body: { field_data }
+      body: {
+        field_data,
+        ...Object.fromEntries(
+          Object.entries(contextOverrides).map(([key, value]) => [key, value.trim() || null]),
+        ),
+      }
     })
     toast.add({ title: 'Test fired', color: 'success' })
     emit('fired')
@@ -76,15 +96,38 @@ async function run() {
           Test fire — {{ formMeta.form_name || formMeta.form_id }}
         </h3>
         <p class="text-xs text-muted">
-          Sends a synthetic lead through this rule so the team can verify Slack, email, webhooks,
-          Sheets, portal visibility, and assignment before disabling the matching Zap.
+          Sends a synthetic lead through this rule so the team can verify AutoGate, Slack, email,
+          webhooks, Sheets, portal visibility, and assignment before enabling live delivery.
         </p>
         <div class="rounded border border-warning/30 bg-warning/10 p-3 text-xs text-muted">
           Test fire calls destination adapters but does not persist a lead in the inbox.
         </div>
 
-        <div class="space-y-2">
-          <label class="text-xs text-muted">Field overrides (optional)</label>
+        <div class="@container space-y-3">
+          <h4 class="text-xs font-semibold uppercase tracking-wide text-muted">
+            Campaign and ad context (optional)
+          </h4>
+          <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+            <UFormField label="Campaign ID">
+              <UInput v-model="contextOverrides.campaign_id" class="w-full" placeholder="120244032522920320" />
+            </UFormField>
+            <UFormField label="Campaign name">
+              <UInput v-model="contextOverrides.campaign_name" class="w-full" placeholder="Northern EV Centre" />
+            </UFormField>
+            <UFormField label="Ad ID">
+              <UInput v-model="contextOverrides.ad_id" class="w-full" placeholder="Meta ad ID" />
+            </UFormField>
+            <UFormField label="Ad name">
+              <UInput v-model="contextOverrides.ad_name" class="w-full" placeholder="Meta ad name" />
+            </UFormField>
+            <UFormField label="Facebook Page ID" class="@lg:col-span-2">
+              <UInput v-model="contextOverrides.page_id" class="w-full" placeholder="377100258985904" />
+            </UFormField>
+          </div>
+
+          <h4 class="text-xs font-semibold uppercase tracking-wide text-muted">
+            Lead field overrides (optional)
+          </h4>
           <div v-for="(o, i) in overrides" :key="i" class="flex items-center gap-2">
             <UInput v-model="o.key" placeholder="key" class="w-40" />
             <UInput v-model="o.value" placeholder="value" class="flex-1" />
@@ -93,7 +136,7 @@ async function run() {
               variant="ghost"
               size="sm"
               aria-label="Remove override"
-              @click="overrides.splice(i, 1)"
+              @click="removeOverride(i)"
             />
           </div>
           <UButton
@@ -173,7 +216,7 @@ async function run() {
         </div>
 
         <div class="flex justify-end pt-2 border-t border-default">
-          <UButton variant="ghost" @click="open = false">
+          <UButton variant="ghost" @click="closePanel">
             Close
           </UButton>
         </div>
