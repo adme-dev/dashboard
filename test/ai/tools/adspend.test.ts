@@ -11,6 +11,9 @@ function campaign(p: Partial<PacingCampaign>): PacingCampaign {
     budget: 1000,
     pacePct: 50,
     status: 'overpacing',
+    budgetLevel: 'campaign',
+    unattributed: false,
+    lastSyncedAt: '2026-08-18T08:15:00Z',
     ...p,
   }
 }
@@ -41,8 +44,7 @@ describe('get_adspend_pacing', () => {
     const res = await getAdspendPacing({ status: 'all' }, ctx, deps)
     expect(res.ok).toBe(true)
     const c = (res as any).data.campaigns[0]
-    expect(Object.keys(c).sort()).toEqual(['budget', 'client', 'pacePct', 'platform', 'spend', 'status'])
-    expect(c).toEqual({ client: 'Acme', platform: 'google', spend: 1200, budget: 2000, pacePct: 60, status: 'underpacing' })
+    expect(c).toMatchObject({ client: 'Acme', platform: 'google', spend: 1200, budget: 2000, pacePct: 60, status: 'underpacing', budgetLevel: 'campaign' })
   })
 
   it('caps the campaign list at 20 and reports a `more` count', async () => {
@@ -55,6 +57,39 @@ describe('get_adspend_pacing', () => {
     const data = (res as any).data
     expect(data.campaigns).toHaveLength(20)
     expect(data.more).toBe(7)
+    expect(data.total).toBe(27)
+    expect(data.nextCursor).toBeTruthy()
+
+    const page2 = await getAdspendPacing({ status: 'all', cursor: data.nextCursor }, ctx, deps)
+    expect((page2 as any).data.campaigns).toHaveLength(7)
+    expect((page2 as any).data.nextCursor).toBeNull()
+  })
+
+  it('never classifies spend without a budget as underpacing', async () => {
+    const deps: AdspendDeps = {
+      pacing: vi.fn().mockResolvedValue([
+        campaign({ client: 'No Budget Co', spend: 1453.56, budget: null, pacePct: null, status: 'no_budget_set' }),
+      ]),
+    }
+    const res = await getAdspendPacing({ status: 'all' }, ctx, deps)
+    const data = (res as any).data
+    expect(data.campaigns[0]).toMatchObject({ budget: null, pacePct: null, status: 'no_budget_set' })
+    expect(data.dataStatus).toBe('partial')
+    expect(data.coverage).toEqual({ expected: 1, withData: 0 })
+  })
+
+  it('separates unattributed account spend from client pacing rows', async () => {
+    const deps: AdspendDeps = {
+      pacing: vi.fn().mockResolvedValue([
+        campaign({ client: 'Acme', spend: 100 }),
+        campaign({ client: 'Knox GWM', platform: 'google', spend: 1586.53, budget: null, pacePct: null, status: 'no_budget_set', unattributed: true }),
+      ]),
+    }
+    const data = (await getAdspendPacing({ status: 'all' }, ctx, deps) as any).data
+    expect(data.campaigns.map((c: any) => c.client)).toEqual(['Acme'])
+    expect(data.unattributed).toEqual([
+      expect.objectContaining({ accountName: 'Knox GWM', platform: 'google', spend: 1586.53, unattributed: true }),
+    ])
   })
 
   it('applies optional clientName and platform filters', async () => {

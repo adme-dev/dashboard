@@ -35,6 +35,10 @@ import { socialListeningTool } from './socialListening'
 import { socialInboxTool } from './socialInbox'
 import { emailCampaignsTool } from './emailCampaigns'
 import { socialNewsRecommendationsTool } from './socialNewsRecommendations'
+import { capabilitiesTool } from './capabilities'
+import { creativeAssetsTool } from './creativeAssets'
+import { adBreakdownTool } from './adBreakdown'
+import { modelCapabilitiesTool } from './modelCapabilities'
 
 // CRM tools share the same fresh CLIENTS-gated context boundary. Keep them as
 // one registry slice so a newly registered CRM action cannot silently omit it.
@@ -45,6 +49,10 @@ if (crmTools.some(tool => tool.requiredPermission !== 'CLIENTS')) {
 
 /** The assembled tool registry — read tools + create_task + remember (personal memory capture). */
 export const registry: AiTool<any>[] = [
+  capabilitiesTool,
+  creativeAssetsTool,
+  adBreakdownTool,
+  modelCapabilitiesTool,
   financeTool,
   adspendTool,
   campaignBreakdownTool,

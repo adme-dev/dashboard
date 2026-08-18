@@ -118,6 +118,15 @@ export default defineEventHandler(async (event) => {
         WHERE ds.spend_date BETWEEN $1 AND $2
         GROUP BY ds.media_spend_id
       ),
+      lifetime AS (
+        SELECT COALESCE(ms.connection_id::text, 'unlinked') AS connection_key,
+               COALESCE(ms.campaign_id, ms.id::text) AS campaign_key,
+               MIN(ds.spend_date) FILTER (WHERE ds.spend > 0) AS first_served_date,
+               MAX(ds.spend_date) FILTER (WHERE ds.spend > 0) AS last_served_date
+        FROM daily_spend ds
+        JOIN media_spend ms ON ms.id = ds.media_spend_id
+        GROUP BY COALESCE(ms.connection_id::text, 'unlinked'), COALESCE(ms.campaign_id, ms.id::text)
+      ),
       campaigns AS (
         SELECT
           ms.campaign_id,
@@ -149,12 +158,17 @@ export default defineEventHandler(async (event) => {
           (array_agg(ms.period ORDER BY ms.synced_at DESC NULLS LAST))[1] as budget_period,
           COUNT(DISTINCT ms.period)::int as budget_period_count,
           MAX(ms.synced_at) as last_synced,
+          MIN(lifetime.first_served_date) as first_served_date,
+          MAX(lifetime.last_served_date) as last_served_date,
           (array_agg(ms.id ORDER BY ms.synced_at DESC NULLS LAST))[1] as media_spend_id,
           (array_agg(ms.connection_id ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_id,
           (array_agg(sc.account_id ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_account_id,
           (array_agg(sc.metadata::text ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_metadata
         FROM media_spend ms
         JOIN daily d ON d.media_spend_id = ms.id
+        LEFT JOIN lifetime
+          ON lifetime.connection_key = COALESCE(ms.connection_id::text, 'unlinked')
+         AND lifetime.campaign_key = COALESCE(ms.campaign_id, ms.id::text)
         LEFT JOIN agency_clients c ON ms.client_id = c.id
         LEFT JOIN social_connections sc ON ms.connection_id = sc.id
         ${where}
@@ -294,6 +308,9 @@ export default defineEventHandler(async (event) => {
           ? toNum(r.cost_per_result)
           : (r.platform === 'google_ads' && conversions > 0 ? metrics.costPerConversion ?? null : null),
         resultType: r.result_type || (r.platform === 'google_ads' && conversions > 0 ? 'Conversions' : null),
+        frequency: r.frequency == null ? null : Number(r.frequency),
+        firstServedDate: toDateOnly(r.first_served_date),
+        lastServedDate: toDateOnly(r.last_served_date),
         endDate: toDateOnly(r.end_date),
         bidStrategy: r.bid_strategy || null,
         budgetType: r.budget_type || null,

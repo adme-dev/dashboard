@@ -11,6 +11,9 @@ import {
 } from '~~/server/utils/audio/assets'
 import { guardAudioPrompt, loadBlocklist } from '~~/server/utils/audio/musicGuard'
 import { getMusicQueue, musicIdempotencyKey, type MusicJobPayload } from '~~/server/utils/audio/musicJob'
+import { generateImageFromPrompt } from '~~/server/utils/qwenImageGenerator'
+import { uploadBannerAsset } from '~~/server/utils/bannerStorage'
+import { queryOne } from '~~/server/utils/db'
 
 /**
  * MCP Phase 2a — the REAL generation runner (the binding-dependent half of generationTools.ts).
@@ -23,6 +26,7 @@ import { getMusicQueue, musicIdempotencyKey, type MusicJobPayload } from '~~/ser
  */
 
 interface VoiceoverArgs { text: string, lang: string, voice?: string, title?: string, clientId?: string, channels: string[] }
+interface BannerImageArgs { prompt: string, aspectRatio: string, guidanceScale: number, steps: number, seed?: number, randomizeSeed: boolean, promptEnhance: boolean, title?: string }
 interface MusicArgs { prompt: string, isInstrumental: boolean, lyrics?: string, format: 'mp3' | 'wav', title?: string, clientId?: string, channels: string[] }
 interface StatusArgs { jobId: string }
 type JsonKvBinding = { get(key: string, type: 'json'): Promise<unknown> }
@@ -37,6 +41,32 @@ export function isMusicGenerationProviderAvailable(event: ToolContext['event']):
 
 export function buildGenerationRunner(execution?: TrustedSupplementalExecutionServices): GenerationRunner {
   return {
+    generate_banner_image: async (raw, ctx: ToolContext) => {
+      const a = raw as BannerImageArgs
+      const config = useRuntimeConfig()
+      const generated = await generateImageFromPrompt(a.prompt, {
+        aspectRatio: a.aspectRatio,
+        guidanceScale: a.guidanceScale,
+        steps: a.steps,
+        seed: a.seed,
+        randomizeSeed: a.randomizeSeed,
+        promptEnhance: a.promptEnhance,
+        hfToken: config.hfApiToken || undefined,
+      })
+      if (!generated) throw new Error('image generation unavailable')
+
+      const fileName = `ai-generated-${Date.now()}.webp`
+      const uploaded = await uploadBannerAsset(generated.buffer, fileName, 'image/webp', ctx.userId)
+      const asset = await queryOne<{ id: string }>(
+        `INSERT INTO banner_assets (name, mime_type, file_size, r2_key, url, tags, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id`,
+        [a.title?.trim() || 'AI Generated Image', 'image/webp', uploaded.size, uploaded.key, uploaded.url, ['ai-generated', 'mcp'], ctx.userId],
+      )
+      if (!asset) throw new Error('image asset persistence failed')
+      return { assetId: asset.id, kind: 'image', status: 'ready', assetUrl: uploaded.url, seed: generated.seed, aspectRatio: a.aspectRatio }
+    },
+
     // Synchronous: generate the VO and return the ready asset (with a playback URL).
     generate_voiceover: async (raw, ctx: ToolContext) => {
       const a = raw as VoiceoverArgs

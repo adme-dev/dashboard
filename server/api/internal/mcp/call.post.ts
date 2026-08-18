@@ -81,15 +81,24 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const user = await queryOne<{ role: string }>(
-    `SELECT user_role AS role FROM team_members WHERE id = $1 AND is_active = TRUE`,
+  const user = await queryOne<{ role: string, name: string | null, email: string | null }>(
+    `SELECT user_role AS role, name, email FROM team_members WHERE id = $1 AND is_active = TRUE`,
     [userId]
   )
   if (!user) throw createError({ statusCode: 403, statusMessage: 'Unknown or inactive user' })
 
   const args = (body?.args ?? {}) as Record<string, unknown>
   // Whole endpoint is the MCP surface → stamp source='mcp' (write proposals persist with conv_id NULL).
-  const ctx: ToolContext = { userId, userRole: user.role ?? '', event, source: 'mcp' }
+  const grantedScopes = new Set(claim.scope)
+  const ctx: ToolContext = {
+    userId,
+    userRole: user.role ?? '',
+    userName: user.name ?? undefined,
+    userEmail: user.email ?? undefined,
+    mcpScopes: grantedScopes,
+    event,
+    source: 'mcp',
+  }
   const writeEnabled = process.env.MCP_WRITE_TOOLS_ENABLED === 'true'
 
   // Generation tools (Phase 2a) are a separate, explicitly-gated action group — they bill + persist
@@ -142,7 +151,6 @@ export default defineEventHandler(async (event) => {
   // financial) requires mcp:write — so a connector consented as read-only cannot drive writes/money-movers
   // even if the user's ROLE would allow it. Flag OFF (default) → no scope check (non-breaking rollout).
   const requireWriteScope = process.env.MCP_REQUIRE_WRITE_SCOPE === 'true'
-  const grantedScopes = new Set(claim.scope)
 
   let outcome: { ok: boolean, data?: unknown, error?: string, code?: string }
   if (requireWriteScope && isWriteScopeToolName(toolName) && !hasWriteScope(grantedScopes)) {

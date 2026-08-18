@@ -476,10 +476,78 @@ export async function getBreakdownInsights(
 
 export interface MetaCreative {
   creativeId: string
+  adId: string
+  adName: string | null
   type: string
   thumbnailUrl: string | null
   title: string | null
   body: string | null
+}
+
+export interface MetaAdPerformance {
+  adId: string
+  adName: string | null
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+  reach: number | null
+  frequency: number | null
+  firstServedDate: string | null
+  lastServedDate: string | null
+}
+
+/** Fetch range-level ad metrics plus daily rows for true first/last delivery dates. */
+export async function getMetaCampaignAdPerformance(campaignId: string, token: string, since: string, until: string): Promise<MetaAdPerformance[]> {
+  const fetchRows = async (daily: boolean) => {
+    const rows: any[] = []
+    let url: string | null = `${META_GRAPH_BASE}/${campaignId}/insights`
+    let first = true
+    while (url) {
+      const response: any = await ofetch(url, {
+        method: 'GET',
+        query: first ? {
+          level: 'ad',
+          fields: 'ad_id,ad_name,spend,impressions,clicks,reach,frequency,actions,date_start,date_stop',
+          time_range: JSON.stringify({ since, until }),
+          ...(daily ? { time_increment: '1' } : {}),
+          limit: '500',
+          access_token: token,
+        } : undefined,
+      })
+      rows.push(...(response?.data || []))
+      url = response?.paging?.next || null
+      first = false
+    }
+    return rows
+  }
+  const [rangeRows, dailyRows] = await Promise.all([fetchRows(false), fetchRows(true)])
+  const grouped = new Map<string, MetaAdPerformance>()
+  for (const row of rangeRows) {
+    const adId = String(row.ad_id || '')
+    if (!adId) continue
+    grouped.set(adId, {
+      adId,
+      adName: row.ad_name || null,
+      spend: Number(row.spend || 0),
+      impressions: Number(row.impressions || 0),
+      clicks: Number(row.clicks || 0),
+      conversions: extractConversions(row.actions),
+      reach: row.reach == null ? null : Number(row.reach),
+      frequency: row.frequency == null ? null : Number(row.frequency),
+      firstServedDate: null,
+      lastServedDate: null,
+    })
+  }
+  for (const row of dailyRows) {
+    const adId = String(row.ad_id || '')
+    const current = grouped.get(adId)
+    if (!current || Number(row.spend || 0) <= 0) continue
+    const day = String(row.date_start || '') || null
+    if (day && (!current.firstServedDate || day < current.firstServedDate)) current.firstServedDate = day
+    if (day && (!current.lastServedDate || day > current.lastServedDate)) current.lastServedDate = day
+  }
+  return [...grouped.values()]
 }
 
 /**
@@ -519,7 +587,9 @@ export async function getCampaignCreatives(
     const res = await ofetch<{
       data: Array<{
         id: string
+        name?: string
         creative?: {
+          id?: string
           thumbnail_url?: string
           image_url?: string
           video_id?: string
@@ -537,7 +607,7 @@ export async function getCampaignCreatives(
     }>(`${META_GRAPH_BASE}/${campaignId}/ads`, {
       method: 'GET',
       query: {
-        fields: 'id,creative{thumbnail_url,image_url,video_id,asset_feed_spec{videos{video_id}},object_story_spec,title,body,object_type}',
+        fields: 'id,name,creative{id,thumbnail_url,image_url,video_id,asset_feed_spec{videos{video_id}},object_story_spec,title,body,object_type}',
         limit: '5',
         access_token: token
       }
@@ -562,7 +632,9 @@ export async function getCampaignCreatives(
       // 4) last resort: the raw (small) thumbnail
       if (!thumbnailUrl) thumbnailUrl = c?.thumbnail_url || null
       return {
-        creativeId: ad.id,
+        creativeId: c?.id || ad.id,
+        adId: ad.id,
+        adName: ad.name || null,
         type: c?.object_type || (videoId ? 'video' : 'image'),
         thumbnailUrl,
         title: c?.title || null,

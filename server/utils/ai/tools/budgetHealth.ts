@@ -2,12 +2,15 @@ import { z } from 'zod'
 // Use Nitro's global $fetch (auto-imported), NOT raw ofetch — it resolves relative internal routes
 // on the Cloudflare runtime; raw ofetch throws on a relative URL (no origin base). See #129.
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
+import { buildDataHealth, paginateWithCursor } from './responseContract'
 
 const params = z.object({
   clientName: z.string().optional(),
-  status: z.enum(['over_budget', 'critical', 'at_risk', 'underspend', 'healthy', 'all']).default('all'),
+  status: z.enum(['over_budget', 'critical', 'at_risk', 'underspend', 'healthy', 'no_budget_set', 'all']).default('all'),
+  cursor: z.string().optional(),
+  limit: z.number().int().min(1).max(50).default(20),
 })
 type Args = z.infer<typeof params>
 
@@ -22,6 +25,9 @@ export type BudgetHealthClient = {
   /** percentConsumed / month-progress; >1 = ahead of pace, <1 = behind. */
   pacingRatio: number
   healthStatus: string
+  budgetLevel?: 'campaign' | 'client' | 'account'
+  unattributed?: boolean
+  lastSyncedAt?: string | null
 }
 
 export type BudgetHealthData = {
@@ -52,6 +58,10 @@ const defaultDeps: BudgetHealthDeps = {
         percentConsumed: Number(c?.percentConsumed ?? 0),
         pacingRatio: Number(c?.pacingRatio ?? 0),
         healthStatus: String(c?.healthStatus ?? ''),
+        budgetLevel: 'campaign',
+        unattributed: String(c?.clientId ?? '').toLowerCase() === 'unmapped'
+          || String(c?.clientName ?? '').toLowerCase() === 'unmapped',
+        lastSyncedAt: c?.lastSyncedAt ? String(c.lastSyncedAt) : null,
       })),
     }
   },
@@ -62,14 +72,66 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
     const res = await deps.health(ctx)
 
     const nameNeedle = args.clientName?.trim().toLowerCase()
-    const filtered = res.clients.filter((c) => {
+    const normalised = res.clients.map(c => c.budget > 0
+      ? { ...c, budgetLevel: c.budgetLevel ?? 'campaign', unattributed: Boolean(c.unattributed) }
+      : {
+          ...c,
+          budget: null,
+          percentConsumed: null,
+          pacingRatio: null,
+          healthStatus: 'no_budget_set',
+          budgetLevel: c.budgetLevel ?? 'campaign',
+          unattributed: Boolean(c.unattributed),
+        })
+    const attributed = normalised.filter(c => !c.unattributed)
+    const filtered = attributed.filter((c) => {
       if (nameNeedle && !c.clientName.toLowerCase().includes(nameNeedle)) return false
       if (args.status && args.status !== 'all' && c.healthStatus !== args.status) return false
       return true
     })
+    const unattributed = normalised
+      .filter(c => c.unattributed)
+      .filter(c => !nameNeedle || c.clientName.toLowerCase().includes(nameNeedle))
+    const page = paginateWithCursor(filtered, args.cursor, args.limit)
+    const budgeted = attributed.filter(c => c.budget !== null)
+    const totalBudget = budgeted.reduce((sum, c) => sum + Number(c.budget), 0)
+    const totalSpent = budgeted.reduce((sum, c) => sum + c.spend, 0)
+    const trackedSpend = attributed.reduce((sum, c) => sum + c.spend, 0)
+    const unattributedSpend = unattributed.reduce((sum, c) => sum + c.spend, 0)
+    const health = buildDataHealth({
+      configured: res.clients.length > 0,
+      expected: attributed.length,
+      withData: budgeted.length,
+    })
+    if (unattributed.length > 0 && health.dataStatus === 'populated') health.dataStatus = 'partial'
+    const lastSyncedAt = normalised.reduce<string | null>((latest, row) => {
+      if (!row.lastSyncedAt) return latest
+      return !latest || row.lastSyncedAt > latest ? row.lastSyncedAt : latest
+    }, null)
+    const summary = {
+      ...res.summary,
+      totalBudget,
+      totalSpent,
+      trackedSpend,
+      unattributedSpend,
+      overallUtilization: totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 10000) / 100 : 0,
+      clientCount: attributed.length,
+      excludedFromPacingCount: attributed.length - budgeted.length,
+    }
 
-    const { items, more } = capWithMore(filtered, 20)
-    return ok({ period: res.period, summary: res.summary, clients: items, more })
+    return ok({
+      period: res.period,
+      source: 'budget_health',
+      lastSyncedAt,
+      ...health,
+      summary,
+      clients: page.items,
+      unattributed,
+      total: page.total,
+      appliedLimit: args.limit ?? 20,
+      nextCursor: page.nextCursor,
+      more: page.more,
+    })
   } catch {
     return fail('Could not load budget health — the spend sync may be unavailable or no budgets are set for this period.')
   }
@@ -77,11 +139,11 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
 
 export const budgetHealthTool: AiTool<Args> = {
   name: 'get_budget_health',
-  description: 'Budget health for the current month per client/platform — allocated budget, spend, % consumed, '
-    + 'pacing ratio (vs month progress) and a health status (over_budget/critical/at_risk/underspend/healthy). '
+  description: 'Budget health for the current month per client/platform — allocated budget, spend, % consumed, freshness and coverage. '
+    + 'Rows without a configured budget are `no_budget_set` with null budget/pacing values and are excluded from utilization. Unattributed account spend is returned separately. '
     + 'Use for "who is over budget", "which accounts are at risk", or "budget pacing this month". '
     + 'For per-campaign ROAS/CPC use get_campaign_breakdown; for cash use get_finance_snapshot. '
-    + 'Optionally filter by status. Returns a period summary plus a per-client list capped at 20 with a `more` count.',
+    + 'Optionally filter by status and use cursor/limit pagination.',
   parameters: params,
   requiredPermission: 'MEDIA_BUYING',
   handler: (a, c) => getBudgetHealth(a, c),

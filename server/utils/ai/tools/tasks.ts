@@ -1,18 +1,19 @@
 import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, escapeLike, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
 import { PERMISSIONS } from '~~/server/utils/permissions'
+import { paginateWithCursor } from './responseContract'
 
 const params = z.object({
   scope: z.enum(['mine', 'all']).default('mine'),
   status: z.string().optional(),
   overdue: z.boolean().optional(),
   projectOrClientName: z.string().optional(),
+  cursor: z.string().optional(),
+  limit: z.number().int().min(1).max(50).default(20),
 })
 type Args = z.infer<typeof params>
-
-const CAP = 20
 
 /** Roles allowed to read tasks beyond their own — single-sourced from PERMISSIONS.MANAGEMENT. */
 const MANAGER_ROLES = new Set<string>(PERMISSIONS.MANAGEMENT)
@@ -79,8 +80,8 @@ const defaultDeps: TasksDeps = {
     }
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-    // Fetch CAP+1 so the handler can report whether more rows exist.
-    values.push(CAP + 1)
+    // The MCP handler performs cursor pagination over this bounded work set.
+    values.push(1000)
 
     const rows = await queryRows<any>(
       `SELECT
@@ -128,16 +129,19 @@ export async function getTasks(args: Args, ctx: ToolContext, deps: TasksDeps = d
     }
 
     const rows = await deps.fetchTasks(filter)
-    const { items, more } = capWithMore(rows, CAP)
+    const page = paginateWithCursor(rows, args.cursor, args.limit)
     return ok({
-      tasks: items.map(r => ({
+      tasks: page.items.map(r => ({
         title: r.title,
         status: r.status,
         assignee: r.assignee,
         due: r.due,
         project: r.project,
       })),
-      more,
+      total: page.total,
+      appliedLimit: args.limit ?? 20,
+      nextCursor: page.nextCursor,
+      more: page.more,
     })
   } catch {
     return fail('Could not load tasks — the task store may be unavailable.')
@@ -146,7 +150,7 @@ export async function getTasks(args: Args, ctx: ToolContext, deps: TasksDeps = d
 
 export const tasksTool: AiTool<Args> = {
   name: 'get_tasks',
-  description: 'List work-management tasks for the current user (or, for managers, across the agency). Use for "what am I working on / what\'s overdue / show tasks for the Acme project". Non-managers always see only their own assigned tasks. Supports filtering by status name, overdue, and project/client name. Returns a compact list (title, status, assignee, due date, project) capped at 20 with a more count. Do NOT use for ad-spend or finance.',
+  description: 'List work-management tasks for the current user (or, for managers, across the agency). Non-managers always see only their own assigned tasks. Supports status, overdue and project/client filters plus cursor pagination with exact total for the returned work set.',
   parameters: params,
   handler: (a, c) => getTasks(a, c),
 }

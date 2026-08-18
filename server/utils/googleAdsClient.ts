@@ -648,10 +648,67 @@ function normalizeGoogleDevice(val: string | undefined): string {
 
 export interface GoogleAdAsset {
   creativeId: string
+  adId: string
+  adName: string | null
   type: string
   thumbnailUrl: string | null
   title: string | null
   body: string | null
+}
+
+export interface GoogleAdPerformance {
+  adId: string
+  adName: string | null
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+  reach: null
+  frequency: null
+  firstServedDate: string | null
+  lastServedDate: string | null
+}
+
+/** Fetch and aggregate daily ad-level Google delivery. Google Ads does not expose reach/frequency at ad level. */
+export async function getGoogleCampaignAdPerformance(
+  customerId: string,
+  token: string,
+  developerToken: string,
+  campaignId: string,
+  since: string,
+  until: string,
+  loginCustomerId?: string,
+): Promise<GoogleAdPerformance[]> {
+  const cleanCampaignId = String(campaignId).replace(/[^0-9]/g, '')
+  const rows = await gaqlQuery(customerId, token, developerToken, `
+    SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, segments.date,
+           metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions
+      FROM ad_group_ad
+     WHERE campaign.id = '${cleanCampaignId}'
+       AND segments.date BETWEEN '${since}' AND '${until}'
+  `, loginCustomerId)
+  const grouped = new Map<string, GoogleAdPerformance>()
+  for (const row of rows as any[]) {
+    const ad = row.adGroupAd?.ad || {}
+    const adId = String(ad.id || '')
+    if (!adId) continue
+    const spend = Number(row.metrics?.costMicros || 0) / 1_000_000
+    const day = String(row.segments?.date || '') || null
+    const current = grouped.get(adId) || {
+      adId, adName: ad.name || null, spend: 0, impressions: 0, clicks: 0, conversions: 0,
+      reach: null, frequency: null, firstServedDate: null, lastServedDate: null,
+    }
+    current.spend += spend
+    current.impressions += Number(row.metrics?.impressions || 0)
+    current.clicks += Number(row.metrics?.clicks || 0)
+    current.conversions += Number(row.metrics?.conversions || 0)
+    if (spend > 0 && day) {
+      if (!current.firstServedDate || day < current.firstServedDate) current.firstServedDate = day
+      if (!current.lastServedDate || day > current.lastServedDate) current.lastServedDate = day
+    }
+    grouped.set(adId, current)
+  }
+  return [...grouped.values()]
 }
 
 /**
@@ -722,6 +779,8 @@ export async function getCampaignAdAssets(
 
       return {
         creativeId: adId,
+        adId,
+        adName: ad.name || null,
         type: (ad.type || 'UNKNOWN').toLowerCase().replace(/_/g, ' '),
         thumbnailUrl: imageUrl,
         title: headlines[0]?.text || ad.name || null,

@@ -84,6 +84,8 @@ describe('GET /api/agency/analytics/campaigns', () => {
           lead_won_count: '0',
           lead_lost_count: '0',
           cost_per_lead: '250',
+          first_served_date: '2026-06-01',
+          last_served_date: '2026-06-28',
         },
         {
           campaign_id: 'shared-campaign-id',
@@ -126,6 +128,8 @@ describe('GET /api/agency/analytics/campaigns', () => {
           lead_won_count: '0',
           lead_lost_count: '0',
           cost_per_lead: null,
+          first_served_date: '2026-06-02',
+          last_served_date: '2026-06-29',
         },
       ])
       .mockResolvedValueOnce([])
@@ -152,5 +156,11 @@ describe('GET /api/agency/analytics/campaigns', () => {
       'tenant:tenant-1|client:client-2|platform:google_ads|account:123|campaign:shared-campaign-id|period:2026-06',
     ])
     expect(result.campaigns.every((row: any) => row.budgetActionable === true)).toBe(true)
+    expect(result.campaigns[0]).toMatchObject({
+      firstServedDate: '2026-06-01',
+      lastServedDate: '2026-06-28',
+      frequency: 1.2,
+    })
+    expect(String(mockQueryRows.mock.calls[0][0])).toContain('lifetime AS')
   })
 })

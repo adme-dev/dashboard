@@ -31,6 +31,7 @@ describe('isWriteScopeToolName', () => {
       'propose_video_generation',   // video propose
       'create_video_project',       // video project create
       'propose_banner_render',      // banner propose
+      'generate_banner_image',      // billed image generation
       'generate_voiceover',         // billing generation
       'start_music_generation',     // billing generation
       'remember',                   // durable personal-memory write

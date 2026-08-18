@@ -1,10 +1,11 @@
 import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
 import { defaultResolveClient, type ResolveClient } from './clientResolve'
 import { periodSinceISO, type Period } from './period'
+import { cursorForOffset, cursorOffset } from './responseContract'
 
 const params = z.object({
   clientName: z.string().min(1),
@@ -13,6 +14,7 @@ const params = z.object({
   source: z.enum(['meta', 'google', 'manual', 'webhook', 'csv']).optional(),
   period: z.enum(['7d', '30d', '90d']).default('30d'),
   limit: z.number().int().min(1).max(50).default(20),
+  cursor: z.string().optional(),
 })
 type Args = z.infer<typeof params>
 
@@ -20,14 +22,14 @@ export type LeadRow = { id: string, submitted_at: string, source: string, status
 export type LeadCount = { status: string, source: string, count: number }
 export type LeadsDeps = {
   resolveClient: ResolveClient
-  list: (q: { clientId: string, status?: string, source?: string, fromISO: string, limit: number }, ctx: ToolContext) => Promise<{ items: LeadRow[], total: number }>
+  list: (q: { clientId: string, status?: string, source?: string, fromISO: string, limit: number, offset: number }, ctx: ToolContext) => Promise<{ items: LeadRow[], total: number }>
   summary: (clientId: string, fromISO: string) => Promise<LeadCount[]>
 }
 
 const defaultDeps: LeadsDeps = {
   resolveClient: defaultResolveClient,
-  list: ({ clientId, status, source, fromISO, limit }, ctx) =>
-    aiInternalFetch('/api/leads/list', { query: { client_id: clientId, status, source, from: fromISO, page_size: limit } }, ctx),
+  list: ({ clientId, status, source, fromISO, limit, offset }, ctx) =>
+    aiInternalFetch('/api/leads/list', { query: { client_id: clientId, status, source, from: fromISO, page_size: limit, page: Math.floor(offset / limit) + 1 } }, ctx),
   summary: (clientId, fromISO) =>
     queryRows<LeadCount>(
       `SELECT status, source, COUNT(*)::int AS count FROM leads
@@ -50,7 +52,12 @@ export function leadName(fd: Record<string, unknown> | null): string {
 export function maskContact(fd: Record<string, unknown> | null): string | null {
   if (!fd) return null
   const email = ['email', 'email_address'].map(k => fd[k]).find(v => typeof v === 'string' && (v as string).includes('@')) as string | undefined
-  if (email) { const [u, d] = email.split('@'); return `${u.slice(0, 1)}***@${d}` }
+  if (email) {
+    const separator = email.indexOf('@')
+    const user = email.slice(0, separator)
+    const domain = email.slice(separator + 1)
+    return `${user.slice(0, 1)}***@${domain}`
+  }
   const phone = ['phone_number', 'phone', 'mobile'].map(k => fd[k]).find(v => typeof v === 'string' && (v as string).length >= 4) as string | undefined
   if (phone) return `***${phone.slice(-3)}`
   return null
@@ -76,12 +83,17 @@ export async function getLeads(args: Args, ctx: ToolContext, deps: LeadsDeps = d
         bySource: Object.entries(sumBy(rows, 'source')).map(([source, count]) => ({ source, count })),
       })
     }
-    const { items, total } = await deps.list({ clientId: client.id, status: args.status, source: args.source, fromISO, limit: args.limit }, ctx)
-    const { items: capped, more } = capWithMore(items ?? [], args.limit)
+    const offset = cursorOffset(args.cursor)
+    const { items, total } = await deps.list({ clientId: client.id, status: args.status, source: args.source, fromISO, limit: args.limit, offset }, ctx)
+    const capped = (items ?? []).slice(0, args.limit)
+    const nextOffset = offset + capped.length
+    const more = Math.max(0, total - nextOffset)
     return ok({
       client: client.name, period: args.period, total,
+      appliedLimit: args.limit,
       leads: capped.map(l => ({ id: l.id, submittedAt: l.submitted_at, source: l.source, status: l.status, name: leadName(l.field_data), contact: maskContact(l.field_data), campaignName: l.campaign_name ?? null })),
       more,
+      nextCursor: more > 0 ? cursorForOffset(nextOffset) : null,
     })
   } catch {
     return fail('Could not load leads for this client.')

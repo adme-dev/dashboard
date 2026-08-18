@@ -8,6 +8,13 @@ import {
   detectOverspend,
   detectStaleSync,
   detectZeroConversion,
+  detectBudgetUnset,
+  detectPastEndStillDelivering,
+  detectStaleOffer,
+  detectSpendWithoutLeads,
+  detectCplDegrading,
+  detectCreativeFatigue,
+  detectCreativeAge,
 } from '~~/server/utils/anomalyDetection/analysers/adspendHealth'
 
 const ctx = (mediaSpend: any[] | null, now = new Date('2026-04-20T00:00:00Z')) => ({
@@ -30,6 +37,7 @@ function campaignRows(opts: {
   for (let d = 0; d < opts.days; d++) {
     rows.push({
       client_id: opts.msId, client_name: opts.client ?? 'Acme',
+      campaign_id: `campaign-${opts.msId}`, campaign_name: 'Always On',
       platform: opts.platform ?? 'google_ads',
       spend_date: `${period}-${String(d + 1).padStart(2, '0')}`,
       spend: opts.daily,
@@ -38,6 +46,7 @@ function campaignRows(opts: {
       campaign_status: opts.status ?? 'ACTIVE',
       synced_at: opts.syncedAt ?? '2026-04-20T00:00:00Z',
       conversions: opts.conversions ?? 5,
+      lead_count: 1,
     })
   }
   return rows
@@ -239,6 +248,70 @@ describe('detectZeroConversion', () => {
 
   it('does not fire before day 10', () => {
     expect(detectZeroConversion(g(40, 0), new Date('2026-04-08T00:00:00Z'))).toBeNull()
+  })
+})
+
+describe('Godmode campaign governance rules', () => {
+  const now = new Date('2026-04-20T00:00:00Z')
+  const base = {
+    mediaSpendId: 'mg', clientId: 'c1', clientName: 'Acme', platform: 'meta', period: '2026-04',
+    budget: 0, campaignStatus: 'ACTIVE', syncedAt: '2026-04-20T00:00:00Z', endDate: '2026-04-15',
+    days: [
+      { date: '2026-04-14', spend: 80, conversions: 1 },
+      { date: '2026-04-18', spend: 90, conversions: 0 },
+    ],
+  }
+
+  it('warns when spend is real but no budget reference is configured', () => {
+    const anomaly = detectBudgetUnset(base, now)
+    expect(anomaly).not.toBeNull()
+    expect(anomaly!.fingerprint).toBe('adspend:budget-unset-mg-2026-04')
+  })
+
+  it('flags an active campaign that delivered after its recorded end date', () => {
+    const anomaly = detectPastEndStillDelivering(base, now)
+    expect(anomaly).not.toBeNull()
+    expect(anomaly!.severity).toBe('critical')
+    expect(anomaly!.description).toContain('after its end date')
+  })
+
+  it('flags an active campaign whose name carries a closed offer window', () => {
+    const anomaly = detectStaleOffer({ ...base, campaignName: 'EOFY Sale 2026' }, new Date('2026-08-18T00:00:00Z'))
+    expect(anomaly?.severity).toBe('critical')
+    expect(anomaly?.tags).toContain('stale-offer')
+  })
+
+  it('flags seven days of meaningful spend with no matched leads', () => {
+    const days = Array.from({ length: 7 }, (_, index) => ({
+      date: `2026-04-${String(index + 14).padStart(2, '0')}`,
+      spend: 20,
+      conversions: 0,
+      leads: 0,
+    }))
+    const anomaly = detectSpendWithoutLeads({ ...base, days }, now)
+    expect(anomaly?.severity).toBe('critical')
+    expect(anomaly?.metric?.value).toBe(140)
+  })
+
+  it('flags CPL that rises more than 40% over the preceding seven days', () => {
+    const days = [
+      ...Array.from({ length: 7 }, (_, index) => ({ date: `2026-04-${String(index + 7).padStart(2, '0')}`, spend: 10, conversions: 1, leads: index < 2 ? 1 : 0 })),
+      ...Array.from({ length: 7 }, (_, index) => ({ date: `2026-04-${String(index + 14).padStart(2, '0')}`, spend: 30, conversions: 1, leads: index === 0 ? 1 : 0 })),
+    ]
+    const anomaly = detectCplDegrading({ ...base, days }, now)
+    expect(anomaly?.severity).toBe('warning')
+    expect(anomaly?.tags).toContain('cpl-degrading')
+  })
+
+  it('flags high frequency with a CTR drop and old still-spending creative', () => {
+    const signal = {
+      media_spend_id: 'mg', ad_id: 'ad-1', ad_name: 'EOFY Tile', campaign_id: 'campaign-1', campaign_name: 'Always On',
+      client_id: 'c1', client_name: 'Acme', platform: 'meta', range_start: '2026-04-14', range_end: '2026-04-20',
+      spend: 200, impressions: 10_000, clicks: 50, frequency: 4.2, first_served_date: '2026-01-01',
+      previous_spend: 180, previous_impressions: 10_000, previous_clicks: 100, previous_frequency: 3.2,
+    }
+    expect(detectCreativeFatigue(signal)?.tags).toContain('creative-fatigue')
+    expect(detectCreativeAge(signal, now)?.tags).toContain('creative-age')
   })
 })
 

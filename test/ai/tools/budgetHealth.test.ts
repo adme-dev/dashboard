@@ -28,6 +28,39 @@ describe('getBudgetHealth', () => {
     expect(d.summary.overallUtilization).toBe(60)
     expect(d.clients).toHaveLength(2)
     expect(d.more).toBe(0)
+    expect(d.total).toBe(2)
+    expect(d.nextCursor).toBeNull()
+    expect(d.dataStatus).toBe('populated')
+  })
+
+  it('excludes no-budget and unattributed spend from utilization', async () => {
+    const health: BudgetHealthData = {
+      period: '2026-08',
+      summary: {},
+      clients: [
+        { clientName: 'Budgeted', platform: 'meta', budget: 1000, spend: 500, percentConsumed: 50, pacingRatio: 1, healthStatus: 'healthy', budgetLevel: 'campaign', unattributed: false },
+        { clientName: 'No Budget', platform: 'meta', budget: 0, spend: 400, percentConsumed: 0, pacingRatio: 0, healthStatus: 'no_budget', budgetLevel: 'campaign', unattributed: false },
+        { clientName: 'Google account 123', platform: 'google_ads', budget: 0, spend: 300, percentConsumed: 0, pacingRatio: 0, healthStatus: 'no_budget', budgetLevel: 'campaign', unattributed: true },
+      ],
+    }
+    const d = data(await getBudgetHealth({}, ctx, deps({ health: vi.fn().mockResolvedValue(health) })))
+    expect(d.summary).toMatchObject({
+      totalBudget: 1000,
+      totalSpent: 500,
+      trackedSpend: 900,
+      unattributedSpend: 300,
+      overallUtilization: 50,
+      excludedFromPacingCount: 1,
+    })
+    expect(d.clients.find((c: any) => c.clientName === 'No Budget')).toMatchObject({
+      budget: null,
+      percentConsumed: null,
+      pacingRatio: null,
+      healthStatus: 'no_budget_set',
+    })
+    expect(d.clients.some((c: any) => c.clientName === 'Google account 123')).toBe(false)
+    expect(d.unattributed).toEqual([expect.objectContaining({ spend: 300, unattributed: true })])
+    expect(d.dataStatus).toBe('partial')
   })
 
   it('filters by clientName (case-insensitive contains)', async () => {

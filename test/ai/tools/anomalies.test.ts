@@ -29,7 +29,7 @@ describe('get_open_anomalies', () => {
     expect(q.type).toBe('expenses')
   })
 
-  it('returns a compact projection — only type/severity/title/context', async () => {
+  it('returns the rule and evidence needed to explain a detection', async () => {
     const deps: AnomaliesDeps = {
       fetchAnomalies: vi.fn().mockResolvedValue([
         row({ type: 'cashflow', severity: 'critical', title: 'Low runway', description: '12 days of cash left' }),
@@ -41,12 +41,13 @@ describe('get_open_anomalies', () => {
     expect(data.anomalies).toHaveLength(1)
     expect(data.anomalies[0]).toEqual({
       type: 'cashflow',
+      rule: 'cashflow',
       severity: 'critical',
       title: 'Low runway',
       context: '12 days of cash left',
+      recommendation: null,
+      evidence: { metric: null, comparison: null, context: null },
     })
-    // no leaked columns
-    expect(Object.keys(data.anomalies[0]).sort()).toEqual(['context', 'severity', 'title', 'type'])
   })
 
   it('caps at 20 and reports the overflow count in `more`', async () => {
@@ -58,7 +59,19 @@ describe('get_open_anomalies', () => {
     const data = (res as any).data
     expect(data.anomalies).toHaveLength(20)
     expect(data.more).toBe(7)
+    expect(data.total).toBe(27)
+    expect(data.nextCursor).toBeTruthy()
     expect(data.anomalies[0].title).toBe('A0')
+  })
+
+  it('distinguishes an engine that has never detected from a healthy empty result', async () => {
+    const deps: AnomaliesDeps = {
+      fetchAnomalies: vi.fn().mockResolvedValue([]),
+      isConfigured: vi.fn().mockResolvedValue(false),
+    }
+    const data = (await getOpenAnomalies({}, ctx, deps) as any).data
+    expect(data.anomalies).toEqual([])
+    expect(data.dataStatus).toBe('not_configured')
   })
 
   it('reports zero `more` when under the cap', async () => {

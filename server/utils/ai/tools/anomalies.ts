@@ -1,12 +1,15 @@
 import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { queryRows } from '~~/server/utils/db'
 import { getSelectedTenant } from '~~/server/utils/session'
+import { paginateWithCursor } from './responseContract'
 
 const params = z.object({
   type: z.string().optional(),
   severity: z.enum(['critical', 'warning', 'info']).optional(),
+  cursor: z.string().optional(),
+  limit: z.number().int().min(1).max(50).default(20),
 })
 type Args = z.infer<typeof params>
 
@@ -14,7 +17,7 @@ type Args = z.infer<typeof params>
 const CLOSED_STATUSES = ['resolved', 'dismissed'] as const
 
 /** Raw row shape the deps return — only the columns we project. */
-type AnomalyRecord = { type: string, severity: string, title: string, description: string }
+type AnomalyRecord = { fingerprint?: string, type: string, severity: string, title: string, description: string, recommendation?: string | null, metric?: unknown, comparison?: unknown, context?: unknown }
 
 /** What the handler asks the data source for. `excludeStatuses` proves it requests open-only. */
 export type AnomalyQuery = {
@@ -25,6 +28,7 @@ export type AnomalyQuery = {
 
 export type AnomaliesDeps = {
   fetchAnomalies: (q: AnomalyQuery, ctx: ToolContext) => Promise<AnomalyRecord[]>
+  isConfigured?: (ctx: ToolContext) => Promise<boolean>
 }
 
 // Real wiring: read directly from the `anomalies` table (`server/api/ai/anomalies/index.get.ts`
@@ -42,7 +46,7 @@ const defaultDeps: AnomaliesDeps = {
     if (q.severity) { where.push(`severity = $${i++}`); sqlParams.push(q.severity) }
 
     return queryRows<AnomalyRecord>(
-      `SELECT type, severity, title, description FROM anomalies
+      `SELECT fingerprint, type, severity, title, description, recommendation, metric, comparison, context FROM anomalies
        WHERE ${where.join(' AND ')}
        ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 WHEN 'info' THEN 2 ELSE 3 END,
                 first_detected_at DESC
@@ -50,9 +54,13 @@ const defaultDeps: AnomaliesDeps = {
       sqlParams,
     )
   },
+  isConfigured: async (ctx) => {
+    const tenantId = await getSelectedTenant(ctx.event)
+    // Detection rules are code-defined and active for every selected tenant. An empty
+    // anomalies table therefore means "configured and healthy", not "not configured".
+    return Boolean(tenantId)
+  },
 }
-
-const CAP = 20
 
 export async function getOpenAnomalies(args: Args, ctx: ToolContext, deps: AnomaliesDeps = defaultDeps): Promise<ToolResult> {
   try {
@@ -62,12 +70,24 @@ export async function getOpenAnomalies(args: Args, ctx: ToolContext, deps: Anoma
     )
     const compact = rows.map(r => ({
       type: r.type,
+      rule: r.fingerprint ?? r.type,
       severity: r.severity,
       title: r.title,
       context: r.description,
+      recommendation: r.recommendation ?? null,
+      evidence: { metric: r.metric ?? null, comparison: r.comparison ?? null, context: r.context ?? null },
     }))
-    const { items, more } = capWithMore(compact, CAP)
-    return ok({ anomalies: items, more })
+    const page = paginateWithCursor(compact, args.cursor, args.limit)
+    const configured = rows.length > 0 || (deps.isConfigured ? await deps.isConfigured(ctx) : true)
+    return ok({
+      dataStatus: configured ? 'populated' : 'not_configured',
+      coverage: { expected: configured ? rows.length : 0, withData: rows.length },
+      anomalies: page.items,
+      total: page.total,
+      appliedLimit: args.limit ?? 20,
+      nextCursor: page.nextCursor,
+      more: page.more,
+    })
   } catch {
     return fail('Could not load open anomalies — the anomaly data may be unavailable or no organisation is selected.')
   }
@@ -75,7 +95,7 @@ export async function getOpenAnomalies(args: Args, ctx: ToolContext, deps: Anoma
 
 export const anomaliesTool: AiTool<Args> = {
   name: 'get_open_anomalies',
-  description: 'List the agency’s currently OPEN financial/operational anomalies (incidents the detection engine flagged but nobody has resolved or dismissed). Each item is { type, severity, title, context }. Use for "what’s wrong / any alerts / what needs attention / show me critical issues". Filter by type (e.g. expenses, cashflow, adspend) and/or severity (critical|warning|info). Do NOT use for raw cashflow numbers (use get_finance_snapshot) — this returns flagged problems, not metrics.',
+  description: 'List currently open anomaly detections with rule, severity, recommendation and evidence values. An empty result explicitly distinguishes a configured healthy engine from one that has never produced data. Filter by type/severity and paginate with cursor.',
   parameters: params,
   requiredPermission: 'FINANCE',
   returnsUntrusted: true,

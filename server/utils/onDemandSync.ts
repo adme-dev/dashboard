@@ -93,6 +93,11 @@ export interface CreativeResult {
   syncedRows: number
 }
 
+export interface AdPerformanceSyncResult {
+  syncedRows: number
+  available: boolean
+}
+
 /**
  * Sync breakdowns for a single campaign from the platform API.
  * Returns the breakdown data in the same shape as breakdowns.get.ts.
@@ -292,11 +297,11 @@ export async function syncCampaignCreatives(mediaSpendId: string): Promise<Creat
       const creatives = await getCampaignCreatives(campaign.campaign_id, conn.access_token)
       for (const c of creatives) {
         await queryOne(
-          `INSERT INTO campaign_creatives (media_spend_id, creative_id, creative_type, thumbnail_url, title, body, synced_at)
-           VALUES ($1, $2, $3, $4, $5, $6, NOW())
+          `INSERT INTO campaign_creatives (media_spend_id, creative_id, ad_id, ad_name, creative_type, thumbnail_url, title, body, synced_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
            ON CONFLICT (media_spend_id, creative_id)
-           DO UPDATE SET creative_type = $3, thumbnail_url = $4, title = $5, body = $6, synced_at = NOW()`,
-          [mediaSpendId, c.creativeId, c.type, c.thumbnailUrl, c.title, c.body]
+           DO UPDATE SET ad_id = $3, ad_name = $4, creative_type = $5, thumbnail_url = $6, title = $7, body = $8, synced_at = NOW()`,
+          [mediaSpendId, c.creativeId, c.adId, c.adName, c.type, c.thumbnailUrl, c.title, c.body]
         )
         upserted++
       }
@@ -314,11 +319,11 @@ export async function syncCampaignCreatives(mediaSpendId: string): Promise<Creat
       const assets = await getCampaignAdAssets(conn.account_id, conn.access_token, config.googleDeveloperToken, campaign.campaign_id, mccId)
       for (const a of assets) {
         await queryOne(
-          `INSERT INTO campaign_creatives (media_spend_id, creative_id, creative_type, thumbnail_url, title, body, synced_at)
-           VALUES ($1, $2, $3, $4, $5, $6, NOW())
+          `INSERT INTO campaign_creatives (media_spend_id, creative_id, ad_id, ad_name, creative_type, thumbnail_url, title, body, synced_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
            ON CONFLICT (media_spend_id, creative_id)
-           DO UPDATE SET creative_type = $3, thumbnail_url = $4, title = $5, body = $6, synced_at = NOW()`,
-          [mediaSpendId, a.creativeId, a.type, a.thumbnailUrl, a.title, a.body]
+           DO UPDATE SET ad_id = $3, ad_name = $4, creative_type = $5, thumbnail_url = $6, title = $7, body = $8, synced_at = NOW()`,
+          [mediaSpendId, a.creativeId, a.adId, a.adName, a.type, a.thumbnailUrl, a.title, a.body]
         )
         upserted++
       }
@@ -347,6 +352,105 @@ export async function syncCampaignCreatives(mediaSpendId: string): Promise<Creat
     hasCreatives: rows.length > 0,
     syncedRows: upserted,
   }
+}
+
+/** Read-through sync for ad-level fatigue metrics used by the Godmode MCP. */
+export async function syncCampaignAdPerformance(
+  mediaSpendId: string,
+  rangeStart: string,
+  rangeEnd: string,
+): Promise<AdPerformanceSyncResult> {
+  const campaign = await queryOne<{
+    id: string
+    platform: string
+    campaign_id: string
+    connection_id: string
+  }>(
+    `SELECT id, platform, campaign_id, connection_id FROM media_spend WHERE id = $1`,
+    [mediaSpendId],
+  )
+  if (!campaign?.connection_id || !campaign.campaign_id || !BREAKDOWN_PLATFORMS.includes(campaign.platform)) {
+    return { syncedRows: 0, available: false }
+  }
+
+  const conn = await queryOne<GoogleCredentialRow & {
+    access_token: string
+    account_id: string
+    metadata: any
+    refresh_token: string | null
+    token_expires_at: string | null
+  }>(
+    `SELECT sc.id, sc.access_token, sc.account_id, sc.metadata, sc.refresh_token, sc.token_expires_at,
+            ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
+       FROM social_connections sc
+       ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
+      WHERE sc.id = $1`,
+    [campaign.connection_id],
+  )
+  if (!conn) return { syncedRows: 0, available: false }
+
+  let rows: Array<{
+    adId: string
+    adName: string | null
+    spend: number
+    impressions: number
+    clicks: number
+    conversions: number
+    reach: number | null
+    frequency: number | null
+    firstServedDate: string | null
+    lastServedDate: string | null
+  }> = []
+
+  try {
+    if (campaign.platform === 'meta') {
+      const { getMetaCampaignAdPerformance } = await import('~~/server/utils/metaClient')
+      rows = await getMetaCampaignAdPerformance(campaign.campaign_id, conn.access_token, rangeStart, rangeEnd)
+    } else {
+      const credential = await resolveGoogleCredential(conn)
+      conn.access_token = credential.accessToken
+      conn.refresh_token = credential.refreshToken
+      conn.token_expires_at = credential.tokenExpiresAt
+      conn.google_credential_profile_id = credential.profileId
+      const freshToken = await refreshGoogleTokenIfNeeded(conn, campaign.connection_id)
+      if (freshToken) conn.access_token = freshToken
+      const { getGoogleCampaignAdPerformance } = await import('~~/server/utils/googleAdsClient')
+      const config = useRuntimeConfig()
+      const managerId = conn.metadata?.managerCustomerId || config.googleAdsLoginCustomerId || undefined
+      rows = await getGoogleCampaignAdPerformance(
+        conn.account_id,
+        conn.access_token,
+        config.googleDeveloperToken,
+        campaign.campaign_id,
+        rangeStart,
+        rangeEnd,
+        managerId,
+      )
+    }
+  } catch (error: any) {
+    console.warn(`[OnDemandSync] Ad performance fetch failed for ${campaign.platform}:`, error?.message)
+    return { syncedRows: 0, available: false }
+  }
+
+  for (const row of rows) {
+    await execute(
+      `INSERT INTO ad_performance_snapshots (
+         media_spend_id, ad_id, ad_name, range_start, range_end, spend,
+         impressions, clicks, conversions, reach, frequency,
+         first_served_date, last_served_date, synced_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+       ON CONFLICT (media_spend_id, ad_id, range_start, range_end)
+       DO UPDATE SET ad_name=$3, spend=$6, impressions=$7, clicks=$8,
+                     conversions=$9, reach=$10, frequency=$11,
+                     first_served_date=$12, last_served_date=$13, synced_at=NOW()`,
+      [
+        mediaSpendId, row.adId, row.adName, rangeStart, rangeEnd, row.spend,
+        row.impressions, row.clicks, row.conversions, row.reach, row.frequency,
+        row.firstServedDate, row.lastServedDate,
+      ],
+    )
+  }
+  return { syncedRows: rows.length, available: true }
 }
 
 // ─── Meta breakdown fetch (campaign-level) ──────────────

@@ -2,12 +2,21 @@ import { z } from 'zod'
 import { queryRows, queryOne } from '~~/server/utils/db'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
+import { buildDataHealth } from './responseContract'
 
 const params = z.object({ clientName: z.string() })
 type Args = z.infer<typeof params>
 
 /** Minimal client row — only the real `agency_clients` columns we project. */
-type ClientRow = { id: string, name: string, is_active: boolean, billing_type: string | null }
+type ClientRow = {
+  id: string
+  name: string
+  is_active: boolean
+  billing_type: string | null
+  aliases?: string[] | null
+  parent_client_id?: string | null
+  parent_client_name?: string | null
+}
 /** Profitability snapshot, or null when no project-derived figures exist for the client. */
 type MarginSnapshot = { totalRevenue: number, grossProfit: number, grossMargin: number } | null
 
@@ -27,10 +36,14 @@ const defaultDeps: ClientsDeps = {
   findClients: async (name) => {
     const safe = escapeLike(name)
     return (await queryRows(
-      `SELECT id, name, is_active, billing_type
-         FROM agency_clients
-        WHERE name ILIKE $1
-        ORDER BY name
+      `SELECT c.id, c.name, c.is_active, c.billing_type, c.parent_client_id,
+              parent.name AS parent_client_name,
+              ARRAY(SELECT a.alias FROM agency_client_aliases a WHERE a.client_id = c.id ORDER BY a.alias) AS aliases
+         FROM agency_clients c
+         LEFT JOIN agency_clients parent ON parent.id = c.parent_client_id
+        WHERE c.name ILIKE $1
+           OR EXISTS (SELECT 1 FROM agency_client_aliases a WHERE a.client_id = c.id AND a.alias ILIKE $1)
+        ORDER BY c.name
         LIMIT 25`,
       [`%${safe}%`],
     )) as ClientRow[]
@@ -93,11 +106,17 @@ export async function getClientOverview(args: Args, ctx: ToolContext, deps: Clie
     ])
 
     return ok({
+      clientId: c.id,
       name: c.name,
+      alternateNames: c.aliases ?? [],
+      parentClient: c.parent_client_id
+        ? { id: c.parent_client_id, name: c.parent_client_name ?? null }
+        : null,
       active: c.is_active,
       billingType: c.billing_type,
       briefCount,
       marginSnapshot,
+      ...buildDataHealth({ configured: true, expected: 2, withData: marginSnapshot ? 2 : 1 }),
     })
   } catch {
     return fail('Could not load client overview — the client database may be unavailable.')
@@ -106,7 +125,7 @@ export async function getClientOverview(args: Args, ctx: ToolContext, deps: Clie
 
 export const clientOverviewTool: AiTool<Args> = {
   name: 'get_client_overview',
-  description: 'Look up one agency client by (partial) name and return a compact overview: active status, billing type, number of briefs, and a profitability/margin snapshot (revenue, gross profit, gross margin %). Use for "tell me about <client> / is <client> profitable / what billing is <client> on". If the name matches several clients it returns a disambiguation list to choose from; it does NOT return full financials, invoices, or per-project detail.',
+  description: 'Resolve a canonical or alternate client name and return the stable client ID, alternate names, parent dealer group, active status, billing type, brief count, and profitability snapshot. Use this before reconciling client names from monday.com or ad platforms. Multiple matches return a disambiguation list.',
   parameters: params,
   requiredPermission: 'CLIENTS',
   handler: (a, c) => getClientOverview(a, c),

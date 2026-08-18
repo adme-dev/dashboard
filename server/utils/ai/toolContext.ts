@@ -15,6 +15,11 @@ export type ToolContext = {
   permissionGroups?: PermissionGroup[]
   /** Current custom/system role write policy. */
   assistantReadOnly?: boolean
+  /** Authenticated identity fields populated for external MCP calls. */
+  userName?: string
+  userEmail?: string
+  /** OAuth scopes granted to the current MCP connector session. */
+  mcpScopes?: Set<string> | string[]
   /** Optional — only set on client-scoped surfaces (portal); undefined in the agency staff chat. */
   clientScope?: string
   /** Set by the loop; required for write tools that persist a proposal (create_task). */

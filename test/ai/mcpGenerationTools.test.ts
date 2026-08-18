@@ -18,6 +18,7 @@ const ctx = (role: string): ToolContext => ({ userId: 'u1', userRole: role, even
 
 // A runner that records calls and returns a fixed payload per tool.
 const okRunner = (): GenerationRunner => ({
+  generate_banner_image: vi.fn(async () => ({ assetId: 'img1', status: 'ready' })),
   generate_voiceover: vi.fn(async () => ({ assetId: 'a1', status: 'ready' })),
   start_music_generation: vi.fn(async () => ({ jobId: 'j1', status: 'queued' })),
   get_generation_status: vi.fn(async () => ({ status: 'done', assetUrl: 'https://x/y.mp3' }))
@@ -30,7 +31,7 @@ describe('projectGenerationTools', () => {
 
   it('lists all generation tools for a CREATIVE role when enabled', () => {
     const names = projectGenerationTools('admin', true).map(t => t.name)
-    expect(names).toEqual(expect.arrayContaining(['generate_voiceover', 'start_music_generation', 'get_generation_status']))
+    expect(names).toEqual(expect.arrayContaining(['generate_banner_image', 'generate_voiceover', 'start_music_generation', 'get_generation_status']))
     expect(names).toHaveLength(generationTools.length)
   })
 
@@ -99,6 +100,14 @@ describe('executeGenerationTool', () => {
     const res = await executeGenerationTool('start_music_generation', { prompt: 'warm acoustic bed' }, c, { enabled: true, runner })
     expect(res).toEqual({ ok: true, data: { jobId: 'j1', status: 'queued' } })
     expect(runner.start_music_generation).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'warm acoustic bed' }), c)
+  })
+
+  it('validates and runs direct image generation for a brief sample', async () => {
+    const runner = okRunner()
+    const c = ctx('admin')
+    const res = await executeGenerationTool('generate_banner_image', { prompt: 'SUV at dusk', aspectRatio: '16:9' }, c, { enabled: true, runner })
+    expect(res).toEqual({ ok: true, data: { assetId: 'img1', status: 'ready' } })
+    expect(runner.generate_banner_image).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'SUV at dusk', aspectRatio: '16:9' }), c)
   })
 
   it('never throws — a runner that throws becomes a typed handler_error', async () => {

@@ -21,6 +21,7 @@ import { sanitizeSpendSyncFailureReason } from '~~/server/utils/spendSyncFailure
 
 interface MetaConn {
   id: string
+  client_id: string | null
   account_id: string
   account_name: string
   access_token: string
@@ -49,6 +50,12 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
   let totalSpend = 0
 
   const actId = conn.metadata?.actId || `act_${conn.account_id}`
+  const connectionClient = conn.client_id
+    ? await queryOne<{ id: string; media_commission_rate: string | null }>(
+        `SELECT id, media_commission_rate FROM agency_clients WHERE id = $1 LIMIT 1`,
+        [conn.client_id]
+      )
+    : null
 
   let campaigns
   try {
@@ -102,16 +109,18 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
 
     totalSpend += spend
 
-    let clientId: string | null = null
-    let commissionRate = 0
+    let clientId: string | null = connectionClient?.id || conn.client_id || null
+    let commissionRate = parseFloat(connectionClient?.media_commission_rate || '0') || 0
     const mapping = findMapping(mappings, conn.id, campaign.campaign_id, campaign.campaign_name)
     if (mapping) {
       const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
         `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR (xero_contact_id IS NOT NULL AND xero_contact_id = $2) LIMIT 1`,
         [mapping.xero_client_name, mapping.xero_client_code]
       )
-      clientId = client?.id || null
-      commissionRate = parseFloat(client?.media_commission_rate || '0') || 0
+      if (client) {
+        clientId = client.id
+        commissionRate = parseFloat(client.media_commission_rate || '0') || 0
+      }
     }
 
     const conversions = extractConversions(campaign.actions)
@@ -202,7 +211,7 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
 /** Sync one Meta account by connection id — the per-account queue chunk entry point. */
 export async function syncMetaSpendByConnectionId(connectionId: string, month: number, year: number): Promise<SyncResult> {
   const conn = await queryOne<MetaConn>(
-    `SELECT id, account_id, access_token, account_name, metadata
+    `SELECT id, client_id, account_id, access_token, account_name, metadata
      FROM social_connections
      WHERE id = $1 AND platform = 'meta' AND status = 'active'`,
     [connectionId]
@@ -228,7 +237,7 @@ export async function listMetaConnectionIds(): Promise<string[]> {
 
 export async function syncMetaSpend(month: number, year: number): Promise<SyncResult> {
   const connections = await queryRows<MetaConn>(
-    `SELECT id, account_id, access_token, account_name, metadata
+    `SELECT id, client_id, account_id, access_token, account_name, metadata
      FROM social_connections
      WHERE platform = 'meta' AND status = 'active'`
   )
@@ -284,6 +293,7 @@ export function resolveGoogleManagerId(opts: {
 
 interface GoogleConnRow extends GoogleCredentialRow {
   id: string
+  client_id: string | null
   account_id: string
   account_name: string
   access_token: string
@@ -359,6 +369,12 @@ async function processGoogleConnection(
   let totalSpend = 0
   const { config, mccId, month, year, period, mappings } = ctx
   const { refreshGoogleToken, getMonthlySpend, getDailySpend } = deps
+  const connectionClient = conn.client_id
+    ? await queryOne<{ id: string; media_commission_rate: string | null }>(
+        `SELECT id, media_commission_rate FROM agency_clients WHERE id = $1 LIMIT 1`,
+        [conn.client_id]
+      )
+    : null
 
   let accessToken = conn.access_token
   if (conn.refresh_token && conn.token_expires_at) {
@@ -419,16 +435,18 @@ async function processGoogleConnection(
     if (campaign.spend === 0) continue
     totalSpend += campaign.spend
 
-    let clientId: string | null = null
-    let commissionRate = 0
+    let clientId: string | null = connectionClient?.id || conn.client_id || null
+    let commissionRate = parseFloat(connectionClient?.media_commission_rate || '0') || 0
     const mapping = findMapping(mappings, conn.id, campaign.campaignId, campaign.campaignName)
     if (mapping) {
       const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
         `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR (xero_contact_id IS NOT NULL AND xero_contact_id = $2) LIMIT 1`,
         [mapping.xero_client_name, mapping.xero_client_code]
       )
-      clientId = client?.id || null
-      commissionRate = parseFloat(client?.media_commission_rate || '0') || 0
+      if (client) {
+        clientId = client.id
+        commissionRate = parseFloat(client.media_commission_rate || '0') || 0
+      }
     }
 
     const existing = await queryOne<{ id: string }>(
@@ -511,7 +529,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
   const config = resolveGoogleAdsRuntimeConfig()
 
   const rawConnections = await queryRows<GoogleConnRow>(
-    `SELECT sc.id, sc.account_id, sc.account_name, sc.access_token,
+    `SELECT sc.id, sc.client_id, sc.account_id, sc.account_name, sc.access_token,
             sc.refresh_token, sc.token_expires_at, sc.metadata,
             ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
      FROM social_connections sc
@@ -576,7 +594,7 @@ export async function syncGoogleSpendByConnectionId(connectionId: string, month:
   const config = resolveGoogleAdsRuntimeConfig()
 
   const rawConn = await queryOne<GoogleConnRow>(
-    `SELECT sc.id, sc.account_id, sc.account_name, sc.access_token,
+    `SELECT sc.id, sc.client_id, sc.account_id, sc.account_name, sc.access_token,
             sc.refresh_token, sc.token_expires_at, sc.metadata,
             ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
      FROM social_connections sc

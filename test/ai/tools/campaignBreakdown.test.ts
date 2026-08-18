@@ -5,9 +5,9 @@ import type { ToolContext } from '~~/server/utils/ai/toolContext'
 const ctx = { userId: 'u1', userRole: 'media_buyer', conversationId: 'c1', event: {} as any } as ToolContext
 
 const rows: BreakdownCampaign[] = [
-  { campaignName: 'Acme Prospecting', clientName: 'Acme', platform: 'meta', spend: 100, roas: 2.0, cpc: 1.5 },
-  { campaignName: 'Acme Retargeting', clientName: 'Acme', platform: 'meta', spend: 400, roas: 5.0, cpc: 0.8 },
-  { campaignName: 'Globex Search', clientName: 'Globex', platform: 'google', spend: 250, roas: null, cpc: 3.2 },
+  { campaignId: 'c1', campaignName: 'Acme Prospecting', clientName: 'Acme', platform: 'meta', spend: 100, roas: 2.0, cpc: 1.5, campaignStatus: 'ACTIVE', effectiveStatus: 'active', firstServedDate: '2026-08-01', lastServedDate: '2026-08-18', endDate: null, lastSyncedAt: '2026-08-18T08:00:00Z', impressions: 1000, clicks: 67, conversions: 4, leadCount: 3, costPerLead: 33.33, frequency: 1.4 },
+  { campaignId: 'c2', campaignName: 'Acme Retargeting', clientName: 'Acme', platform: 'meta', spend: 400, roas: 5.0, cpc: 0.8, campaignStatus: 'PAUSED', effectiveStatus: 'paused', firstServedDate: '2026-08-02', lastServedDate: '2026-08-14', endDate: null, lastSyncedAt: '2026-08-18T08:00:00Z', impressions: 2000, clicks: 500, conversions: 20, leadCount: 10, costPerLead: 40, frequency: 3.2 },
+  { campaignId: 'c3', campaignName: 'Globex Search', clientName: 'Globex', platform: 'google', spend: 250, roas: null, cpc: 3.2, campaignStatus: 'ENABLED', effectiveStatus: 'active', firstServedDate: '2026-08-03', lastServedDate: '2026-08-18', endDate: '2026-09-30', lastSyncedAt: '2026-08-18T08:30:00Z', impressions: 900, clicks: 78, conversions: 7, leadCount: 5, costPerLead: 50, frequency: null },
 ]
 
 const deps = (over: Partial<CampaignBreakdownDeps> = {}): CampaignBreakdownDeps => ({
@@ -23,6 +23,35 @@ describe('getCampaignBreakdown', () => {
     const d = data(r)
     expect(d.campaigns.map((c: any) => c.campaignName)).toEqual(['Acme Retargeting', 'Globex Search', 'Acme Prospecting'])
     expect(d.more).toBe(0)
+    expect(d.total).toBe(3)
+    expect(d.nextCursor).toBeNull()
+    expect(d.dataStatus).toBe('populated')
+    expect(d.lastSyncedAt).toBe('2026-08-18T08:30:00Z')
+  })
+
+  it('returns delivery status, dates, leads, CPL and frequency without stripping them', async () => {
+    const d = data(await getCampaignBreakdown({ sortBy: 'spend' }, ctx, deps()))
+    expect(d.campaigns[0]).toMatchObject({
+      campaignStatus: 'PAUSED',
+      effectiveStatus: 'paused',
+      firstServedDate: '2026-08-02',
+      lastServedDate: '2026-08-14',
+      leadCount: 10,
+      costPerLead: 40,
+      frequency: 3.2,
+    })
+  })
+
+  it('supports cursor pagination across the complete campaign set', async () => {
+    const many = Array.from({ length: 27 }, (_, i) => ({ ...rows[0]!, campaignId: `c${i}`, campaignName: `Campaign ${i}`, spend: 100 - i }))
+    const d = deps({ breakdown: vi.fn().mockResolvedValue({ campaigns: many, total: many.length }) })
+    const first = data(await getCampaignBreakdown({ sortBy: 'spend', limit: 20 }, ctx, d))
+    expect(first.campaigns).toHaveLength(20)
+    expect(first.total).toBe(27)
+    expect(first.more).toBe(7)
+    const second = data(await getCampaignBreakdown({ sortBy: 'spend', cursor: first.nextCursor, limit: 20 }, ctx, d))
+    expect(second.campaigns).toHaveLength(7)
+    expect(second.nextCursor).toBeNull()
   })
 
   it('filters by clientName (case-insensitive contains)', async () => {
@@ -65,7 +94,25 @@ describe('getCampaignBreakdown', () => {
   it('forwards the platform filter to the data source (server-side narrowing)', async () => {
     const d = deps()
     await getCampaignBreakdown({ platform: 'google', sortBy: 'spend' }, ctx, d)
-    expect((d.breakdown as any).mock.calls[0][1]).toBe('google')
+    expect((d.breakdown as any).mock.calls[0][1]).toMatchObject({ platform: 'google' })
+  })
+
+  it('supports explicit date windows and previous-period comparisons', async () => {
+    const current = [{ ...rows[0]!, spend: 300, leadCount: 6 }]
+    const previous = [{ ...rows[0]!, spend: 200, leadCount: 4 }]
+    const breakdown = vi.fn()
+      .mockResolvedValueOnce({ campaigns: current, total: 1 })
+      .mockResolvedValueOnce({ campaigns: previous, total: 1 })
+    const d = data(await getCampaignBreakdown({
+      sortBy: 'spend',
+      startDate: '2026-08-01',
+      endDate: '2026-08-18',
+      comparePrevious: true,
+    }, ctx, { breakdown }))
+    expect(breakdown.mock.calls[0][1]).toMatchObject({ startDate: '2026-08-01', endDate: '2026-08-18' })
+    expect(breakdown.mock.calls[1][1]).toMatchObject({ startDate: '2026-07-14', endDate: '2026-07-31' })
+    expect(d.previousPeriod).toEqual({ start: '2026-07-14', end: '2026-07-31' })
+    expect(d.campaigns[0].comparison).toMatchObject({ spendDelta: 100, spendDeltaPct: 50, leadDelta: 2 })
   })
 
   it('fails gracefully when the data source throws', async () => {

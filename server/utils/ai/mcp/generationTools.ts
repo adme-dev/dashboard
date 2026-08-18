@@ -29,6 +29,23 @@ const CHANNELS = z.array(z.enum(['radio', 'tiktok', 'meta'])).default([])
 
 export const generationTools: GenerationToolDescriptor[] = [
   {
+    name: 'generate_banner_image',
+    description:
+      'Generate an owned image asset from a text prompt for an assistant brief sample or Banner Studio project. '
+      + 'Returns a ready assetId, URL and reproducible seed. This is a direct, billed generation and is rate-limited.',
+    parameters: z.object({
+      prompt: z.string().min(2).max(1000),
+      aspectRatio: z.enum(['1:1', '16:9', '9:16', '4:3', '3:4']).default('1:1'),
+      guidanceScale: z.number().min(1).max(10).default(3.5),
+      steps: z.number().int().min(1).max(50).default(28),
+      seed: z.number().int().nonnegative().optional(),
+      randomizeSeed: z.boolean().default(true),
+      promptEnhance: z.boolean().default(true),
+      title: z.string().max(120).optional(),
+    }),
+    requiredPermission: 'CREATIVE'
+  },
+  {
     name: 'generate_voiceover',
     description:
       'Generate an owned, licence-clear AI voiceover from text. Synchronous — returns the finished audio asset. '

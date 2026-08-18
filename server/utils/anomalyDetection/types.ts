@@ -54,6 +54,8 @@ export interface SharedData {
   budgetVariance: any | null
   // P2: filled by adspend / clients / transactions analysers in Phase 2
   mediaSpend: any | null
+  /** Latest and preceding persisted ad snapshots used for fatigue/creative-age rules. */
+  adPerformance?: any | null
   clientRevenue: any | null
   invoiceLines: any | null
   // GA4 daily channel rows (last ~31 days) for the ga4 analyser

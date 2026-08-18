@@ -1749,23 +1749,23 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-brain',
     categoryIconBg: 'bg-amber-50',
     categoryIconColor: 'text-amber-600',
-    description: 'Use XeroFlow from inside the AI assistant you already work in — Claude, Cursor, or ChatGPT. Ask about your agency in plain language and get answers from live data, with role-scoped access and a full audit trail; creative roles can also generate owned, licence-clear voiceover and music. Your platform records stay read-only. Built on the open Model Context Protocol (MCP).',
+    description: 'Connect Claude, Cursor, or ChatGPT to a governed Godmode view of XeroFlow. Campaign, ad, budget, lead, capacity and creative-asset answers carry coverage, freshness and attribution; creation workflows choose among eligible text, Banner Studio, video and audio models while consequential actions remain propose-then-confirm.',
     details: [
       {
-        title: 'Your Agency, From Inside Your Assistant',
-        content: 'Add one connector URL to Claude, Cursor, or ChatGPT and XeroFlow\'s tools appear right in the conversation. Ask "what\'s our finance snapshot this month?", "which campaigns are pacing over budget?", or "show me an overview of this client" and the assistant pulls the real numbers from XeroFlow — no copy-pasting, no switching tabs, no exporting spreadsheets. It works the same way your team already works, just with your operations data one question away.'
+        title: 'Campaign and Creative Godmode',
+        content: 'Add one connector URL and ask which campaigns are lagging, which live ads show fatigue, what artwork is attached, when it was delivered, or where the design team has capacity. Campaign and ad views include status, first and last delivery, date-window comparisons, leads and CPL, frequency where the platform supplies it, creative links, and continuation cursors across the full portfolio.'
       },
       {
-        title: 'Your Login, Your Permissions',
-        content: 'The connector signs in with each staff member\'s own XeroFlow account, so an assistant only ever sees what that person is already allowed to see — an account manager and a finance lead get different toolsets, automatically. There are no shared service accounts and no extra access to manage: the same roles and permissions that govern the app govern the assistant. Access is granted through a standard sign-in and consent screen you approve once.'
+        title: 'Numbers That Explain Their Trustworthiness',
+        content: 'Every operational response distinguishes populated, partial, not configured, and unavailable data, with coverage counts, source period, and last sync time. Missing budgets never masquerade as underpacing; unattributed ad-account spend is separated from client totals; an empty anomaly list or a zero-capacity schedule says whether the underlying system was actually configured.'
       },
       {
-        title: 'Safe by Design — No Platform Writes',
-        content: 'Connected assistants read your data — finance, ad spend, tasks, projects, clients, briefs, anomalies, knowledge and more — and creative roles can also generate owned, licence-clear media (voiceover and music), which is rate-limited and audited. What they cannot do is change your platform records: any tool that would create, edit, send, or delete a task, client, brief, or financial record is blocked at the server, for every role. You get the speed of asking an assistant without the risk of it acting on your records.'
+        title: 'Capability-Driven Creative Samples',
+        content: 'The connector can inspect the models and creation suites available to the signed-in user before planning a sample. It chooses by modality, runtime support, status, risk and cost instead of hard-coding one provider — drafting with eligible text models, discovering and rendering Banner Studio projects, proposing video generation, or producing owned voiceover and music. Model fallbacks and generation rate limits are returned in-band.'
       },
       {
-        title: 'Audited, with Actions Behind a Confirmation Step',
-        content: 'Every request an assistant makes is recorded in the AI audit trail — who asked, which tool ran, and when — so external access stays accountable. Connectors work with Claude (Pro, Max, Team, Enterprise) and Cursor today; ChatGPT requires a Team, Business, or Enterprise workspace with Developer Mode. Letting an assistant take a platform action — like creating a task or submitting a brief — is a separate, opt-in capability that always proposes first and runs only after a human confirms, enabled per-agency.'
+        title: 'Self-Describing Access, Human-Controlled Actions',
+        content: 'A capabilities call tells the assistant who is signed in, the OAuth scopes granted, every available tool, and whether it is read-only, proposal-only, confirmation, or direct generation. Agency roles remain the access ceiling, every call is audited, and tasks, financial changes, Banner Studio renders and video jobs keep the proposal and human-confirmation boundary appropriate to their risk.'
       }
     ]
   },

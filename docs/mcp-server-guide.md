@@ -54,7 +54,7 @@ after current owner revalidation. The signed OAuth scope remains transport autho
 |---|---|---|---|
 | Server master switch | `MCP_SERVER_ENABLED` | **on** | Without it every internal endpoint 503s |
 | **Phase 1** reads | (always on when server on) | **on** | Read-only, role-scoped business data |
-| **2a** generation | `MCP_GEN_TOOLS_ENABLED` | **on** | Owned voiceover/music generation |
+| **2a** generation | `MCP_GEN_TOOLS_ENABLED` | **on** | Owned image/voiceover/music generation |
 | **2c** writes | `MCP_WRITE_TOOLS_ENABLED` | off | Non-financial propose→confirm writes |
 | **2b** video reads | `MCP_VIDEO_TOOLS_ENABLED` | **on** | Video discovery + status (no spend) |
 | **2b** video gen | `MCP_VIDEO_GEN_ENABLED` | off | `propose_video_generation` + `create_video_project` |
@@ -75,6 +75,7 @@ Business data, filtered to the caller's role. Representative set:
 Reads can never mutate — the read guard hard-blocks any `mutates` tool.
 
 ### 4.2 2a — generation (`MCP_GEN_TOOLS_ENABLED`, CREATIVE role) · rate-limited 20/10min
+- `generate_banner_image` — synchronous text-to-image; returns a ready Banner Studio asset and seed.
 - `generate_voiceover` — synchronous; returns a finished, licence-clear audio asset.
 - `start_music_generation` — async; returns a `jobId` (poll `get_generation_status`).
 - `get_generation_status(jobId)` — poll an async generation job.

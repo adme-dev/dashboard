@@ -22,7 +22,7 @@ export interface AiModelMapRow {
   provider: string
   modelId: string
   fallback: string | null
-  modality: 'text' | 'vision' | 'audio' | 'video' | 'multimodal'
+  modality: 'text' | 'vision' | 'image' | 'audio' | 'video' | 'multimodal'
   riskTier: AiRiskTier
   sourceFile: string
   status: AiModelStatus
@@ -126,6 +126,15 @@ const MODEL_CATALOG: Record<string, ModelCatalogEntry> = {
     status: 'production'
   },
   '@cf/black-forest-labs/flux-1-schnell': {
+    status: 'production'
+  },
+  'Qwen/Qwen-Image-2512': {
+    status: 'production'
+  },
+  'Qwen/Qwen-Image-Edit-2511': {
+    status: 'production'
+  },
+  'Qwen/Qwen-Image-Layered': {
     status: 'production'
   }
 }
@@ -540,6 +549,39 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     sourceFile: 'server/api/agency/banner-studio/ai/image-suggest.post.ts'
   },
   {
+    featureKey: 'banner_image_generation',
+    label: 'Banner Studio text-to-image generation',
+    surface: '/agency/banner-studio',
+    owner: 'Creative',
+    provider: 'huggingface_space',
+    modelId: 'Qwen/Qwen-Image-2512',
+    modality: 'image',
+    riskTier: 'high',
+    sourceFile: 'server/utils/qwenImageGenerator.ts'
+  },
+  {
+    featureKey: 'banner_image_edit',
+    label: 'Banner Studio image editing',
+    surface: '/agency/banner-studio',
+    owner: 'Creative',
+    provider: 'huggingface_space',
+    modelId: 'Qwen/Qwen-Image-Edit-2511',
+    modality: 'image',
+    riskTier: 'high',
+    sourceFile: 'server/utils/qwenImageEditor.ts'
+  },
+  {
+    featureKey: 'banner_image_layer_decomposition',
+    label: 'Banner Studio image layer decomposition',
+    surface: '/agency/banner-studio',
+    owner: 'Creative',
+    provider: 'huggingface_space',
+    modelId: 'Qwen/Qwen-Image-Layered',
+    modality: 'image',
+    riskTier: 'high',
+    sourceFile: 'server/utils/qwenLayerDecomposer.ts'
+  },
+  {
     featureKey: 'banner_copy_suggest',
     label: 'Banner Studio copy suggestion',
     surface: '/agency/banner-studio',
@@ -944,6 +986,7 @@ export function providerForModel(modelId: string) {
   if (modelId.startsWith('groq/')) return 'groq'
   if (modelId.startsWith('anthropic/')) return 'anthropic'
   if (modelId.startsWith('minimax/')) return 'minimax'
+  if (modelId.startsWith('Qwen/')) return 'huggingface_space'
   if (modelId.includes('claude')) return 'anthropic'
   return 'groq'
 }
