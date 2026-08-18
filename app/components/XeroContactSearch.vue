@@ -9,14 +9,30 @@ const emit = defineEmits<{
 
 const contactFetch = $fetch as <T>(request: string) => Promise<T>
 
+interface XeroStatus {
+  connected: boolean
+  selectedTenantId: string | null
+}
+
 // Fetch Xero contacts
 const xeroData = ref<{ contacts: any[]; count: number }>({ contacts: [], count: 0 })
 const pending = ref(false)
+const connected = ref<boolean | null>(null)
+const connectionMessage = ref('')
 
 onMounted(async () => {
   pending.value = true
   try {
+    const status = await contactFetch<XeroStatus>('/api/xero/status')
+    connected.value = status.connected
+    if (!status.connected) {
+      connectionMessage.value = 'Connect Xero and select an organisation to link this client to a contact.'
+      return
+    }
     xeroData.value = await contactFetch<{ contacts: any[]; count: number }>('/api/xero/contacts')
+  } catch {
+    connected.value = false
+    connectionMessage.value = 'Xero contacts are temporarily unavailable. Try again after checking the Xero connection.'
   } finally {
     pending.value = false
   }
@@ -54,6 +70,7 @@ const handleSelect = (value: string | null) => {
       placeholder="Search Xero contacts..."
       searchable
       :loading="pending"
+      :disabled="connected === false"
       class="w-full"
       size="xl"
       @update:model-value="handleSelect"
@@ -73,8 +90,16 @@ const handleSelect = (value: string | null) => {
       />
     </div>
 
-    <p v-if="!pending && contacts.length === 0" class="text-[12px] text-[var(--ui-text-muted)]">
-      No Xero contacts found. Ensure Xero is connected.
+    <UAlert
+      v-if="!pending && connectionMessage"
+      color="neutral"
+      variant="subtle"
+      icon="i-lucide-info"
+      :description="connectionMessage"
+    />
+
+    <p v-else-if="!pending && connected && contacts.length === 0" class="text-xs text-muted">
+      No Xero contacts were found in the selected organisation.
     </p>
   </div>
 </template>

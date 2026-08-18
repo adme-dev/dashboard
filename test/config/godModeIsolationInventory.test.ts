@@ -11,7 +11,7 @@ const API_INVENTORY = {
   totalRouteFiles: 1980,
   mutationRouteFiles: 1089,
   explicitlyGuardedMutationFiles: 377,
-  guardedMutationFilesWithTransactionCall: 47
+  guardedMutationFilesWithTransactionCall: 45
 } as const
 
 const DEFERRED_MUTATION_FAMILIES = [{
@@ -51,7 +51,7 @@ describe('God mode route isolation inventory', () => {
       totalRouteFiles: 1980,
       mutationRouteFiles: 1089,
       explicitlyGuardedMutationFiles: 377,
-      guardedMutationFilesWithTransactionCall: 47
+      guardedMutationFilesWithTransactionCall: 45
     })
   })
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { format } from 'date-fns'
+import { apiErrorDescription } from '~/utils/apiError'
 
 definePageMeta({
   title: 'Client Details',
@@ -14,7 +15,7 @@ const { isManager, isOwner, canAccessMediaBuying, canWrite } = useAuth()
 const clientId = route.params.id as string
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string; body?: unknown }
+  options?: { method?: string; body?: unknown; headers?: Record<string, string> }
 ) => Promise<T>
 
 type LeadCaptureMode = 'analytics_only' | 'capture_only' | 'lightweight_crm' | 'full_crm' | 'external_crm'
@@ -168,6 +169,18 @@ const openEditModal = () => {
 }
 
 const saving = ref(false)
+type ClientMutationKind = 'client' | 'crm' | 'unlink'
+const mutationAttempts = new Map<ClientMutationKind, { signature: string; key: string }>()
+
+function idempotencyKeyFor(kind: ClientMutationKind, body: unknown): string {
+  const signature = JSON.stringify(body)
+  const current = mutationAttempts.get(kind)
+  if (current?.signature === signature) return current.key
+  const key = `agency-client:${kind}:${crypto.randomUUID()}`
+  mutationAttempts.set(kind, { signature, key })
+  return key
+}
+
 const saveClient = async () => {
   saving.value = true
   try {
@@ -177,39 +190,47 @@ const saveClient = async () => {
       crmExternalStatus,
       ...clientPayload
     } = editForm.value
+    const crmPayload = { leadCaptureMode, crmCoreStatus, crmExternalStatus }
     const requests: Array<Promise<unknown>> = [
       apiFetch(`/api/agency/clients/${clientId}`, {
         method: 'PUT',
+        headers: { 'Idempotency-Key': idempotencyKeyFor('client', clientPayload) },
         body: clientPayload
       })
     ]
     if (isManager.value) {
       requests.push(apiFetch(`/api/agency/clients/${clientId}/crm-settings`, {
         method: 'PUT',
-        body: { leadCaptureMode, crmCoreStatus, crmExternalStatus }
+        headers: { 'Idempotency-Key': idempotencyKeyFor('crm', crmPayload) },
+        body: crmPayload
       }))
     }
     await Promise.all(requests)
     toast.add({ title: 'Client updated', color: 'success' })
+    mutationAttempts.delete('client')
+    mutationAttempts.delete('crm')
     showEditModal.value = false
     await refresh()
   } catch (err: any) {
-    toast.add({ title: 'Failed to update client', description: err.data?.message || err.message, color: 'error' })
+    toast.add({ title: 'Failed to update client', description: apiErrorDescription(err), color: 'error' })
   } finally {
     saving.value = false
   }
 }
 
 const unlinkXero = async () => {
+  const payload = { xeroContactId: null }
   try {
     await apiFetch(`/api/agency/clients/${clientId}`, {
       method: 'PUT',
-      body: { xeroContactId: null }
+      headers: { 'Idempotency-Key': idempotencyKeyFor('unlink', payload) },
+      body: payload
     })
+    mutationAttempts.delete('unlink')
     toast.add({ title: 'Xero contact unlinked', color: 'success' })
     refresh()
   } catch (err: any) {
-    toast.add({ title: 'Failed to unlink', description: err.data?.message || err.message, color: 'error' })
+    toast.add({ title: 'Failed to unlink', description: apiErrorDescription(err), color: 'error' })
   }
 }
 
@@ -958,7 +979,7 @@ async function saveKpiTargets() {
         </h3>
       </template>
       <template #body>
-        <form class="px-1 space-y-6" @submit.prevent="saveClient">
+        <form class="@container px-1 space-y-6" @submit.prevent="saveClient">
           <!-- Section: General -->
           <fieldset class="space-y-5 pb-6 border-b border-default">
             <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
@@ -974,7 +995,7 @@ async function saveKpiTargets() {
               />
             </UFormField>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
               <UFormField label="Billing Type">
                 <USelectMenu
                   v-model="editForm.billingType"
@@ -1077,7 +1098,7 @@ async function saveKpiTargets() {
               Contact
             </legend>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
               <UFormField label="Contact Email">
                 <UInput
                   v-model="editForm.contactEmail"
@@ -1124,7 +1145,7 @@ async function saveKpiTargets() {
               Rates
             </legend>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
               <UFormField label="Hourly Rate">
                 <UInput
                   v-model.number="editForm.hourlyRate"
