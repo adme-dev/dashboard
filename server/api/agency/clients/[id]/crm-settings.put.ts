@@ -1,6 +1,6 @@
-import { transaction } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
+import { executeGodModeAgencyClientCrmSettingsUpdate } from '~~/server/utils/clients/godModeMutations'
 import {
   deriveCrmAccessPolicy,
   type EntitlementStatus,
@@ -45,7 +45,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid CRM entitlement status' })
   }
 
-  await transaction(async (client) => {
+  await executeGodModeAgencyClientCrmSettingsUpdate(event, async (client) => {
     const locked = await client.query(
       `SELECT id FROM agency_clients WHERE id = $1 FOR UPDATE`,
       [clientId]
@@ -74,6 +74,14 @@ export default defineEventHandler(async (event) => {
         [clientId, featureKey, status]
       )
     }
+    return { id: clientId }
+  }, async (client, resultReference) => {
+    const replayed = await client.query(
+      `SELECT id FROM agency_clients WHERE id = $1 AND id = $2`,
+      [clientId, resultReference]
+    )
+    if (!replayed.rows[0]) throw new Error('Replayed client no longer exists')
+    return { id: replayed.rows[0].id as string }
   })
 
   const entitlements = {

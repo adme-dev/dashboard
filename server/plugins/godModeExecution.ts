@@ -1,6 +1,7 @@
 import { registerGodModeChatMutationFamily } from '~~/server/utils/ai/godModeMutationFamily'
 import { registerGodModeBannerAssetUploadFamily } from '~~/server/utils/banner/godModeAssetUpload'
 import { registerGodModeBannerProjectCreationFamily } from '~~/server/utils/banner/godModeProjectCreation'
+import { registerGodModeAgencyClientMutationFamilies } from '~~/server/utils/clients/godModeMutations'
 import { registerGodModeCatalogSourceMutationFamily } from '~~/server/utils/crm/catalogSourceGodMode'
 import { registerGodModeDealerFeedMutationFamilies } from '~~/server/utils/feeds/godModeMutations'
 import { registerGodModeSocialAccountMapMutationFamily } from '~~/server/utils/social/accountMapGodMode'
@@ -15,6 +16,7 @@ registerGodModeDealerFeedMutationFamilies()
 registerGodModeCatalogSourceMutationFamily()
 registerGodModeSocialAccountMapMutationFamily()
 registerGodModeSocialPublishingAccountMutationFamilies()
+registerGodModeAgencyClientMutationFamilies()
 registerGodModeMutationFamily({
   family: 'banner-render-enqueue',
   method: 'POST',

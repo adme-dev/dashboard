@@ -21,6 +21,10 @@ const apiFetch = $fetch as <T = unknown>(
   options?: { method?: string, body?: unknown }
 ) => Promise<T>
 
+function closeEditor() {
+  open.value = false
+}
+
 const DELAY_OPTIONS = [
   { value: 0, label: 'Immediate' },
   { value: 5, label: '+ 5 min' },
@@ -38,6 +42,7 @@ const ConfigComp = computed(() => {
     case 'email': return resolveComponent('LeadsDestinationConfigEmail')
     case 'sheets': return resolveComponent('LeadsDestinationConfigSheets')
     case 'assign_user': return resolveComponent('LeadsDestinationConfigAssignUser')
+    case 'autogate': return resolveComponent('LeadsDestinationConfigAutogate')
     default: return null
   }
 })
@@ -148,16 +153,18 @@ async function save() {
           <span class="text-muted font-normal">— {{ draft.destination_type }}</span>
         </h3>
 
-        <div :class="supportsTemplates ? 'grid grid-cols-[1fr_240px] gap-6' : ''">
+        <div class="@container" :class="supportsTemplates ? 'grid grid-cols-1 gap-6 @3xl:grid-cols-[1fr_240px]' : ''">
           <div class="space-y-4 min-w-0">
             <div v-if="presets.length && isNewAndEmpty" class="bg-elevated/40 border border-default rounded p-3 space-y-2">
               <p class="text-xs font-semibold uppercase text-muted tracking-wide">Quick start</p>
               <div class="space-y-2">
-                <button
+                <UButton
                   v-for="p in presets"
                   :key="p.key"
                   type="button"
-                  class="w-full text-left px-3 py-2 rounded border border-default hover:border-primary-500 hover:bg-primary-500/5 transition-colors"
+                  color="neutral"
+                  variant="outline"
+                  class="w-full justify-start px-3 py-2 text-left"
                   @click="p.apply()"
                 >
                   <div class="flex items-center gap-2">
@@ -165,7 +172,7 @@ async function save() {
                     <span class="text-sm font-medium">{{ p.label }}</span>
                   </div>
                   <p class="text-xs text-muted mt-0.5 ml-5">{{ p.description }}</p>
-                </button>
+                </UButton>
               </div>
             </div>
 
@@ -185,13 +192,17 @@ async function save() {
               <USelectMenu v-model="draft.delay_minutes" :items="DELAY_OPTIONS" value-key="value" class="w-full" />
             </UFormField>
 
-            <div class="flex items-center gap-3">
-              <UCheckbox v-model="draft.enabled" label="Enabled" />
-              <UInput v-model.number="draft.sort_order" type="number" class="w-24" placeholder="Sort" />
+            <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+              <UFormField label="Delivery status">
+                <UCheckbox v-model="draft.enabled" label="Enabled" />
+              </UFormField>
+              <UFormField label="Sort order">
+                <UInput v-model.number="draft.sort_order" type="number" class="w-full" placeholder="0" />
+              </UFormField>
             </div>
           </div>
 
-          <aside v-if="supportsTemplates" class="border-l border-default pl-6 -mr-6 pr-6">
+          <aside v-if="supportsTemplates" class="border-t border-default pt-6 @3xl:border-l @3xl:border-t-0 @3xl:pl-6 @3xl:pt-0 @3xl:-mr-6 @3xl:pr-6">
             <LeadsFieldPicker
               :source="formMeta.source"
               :form-id="formMeta.form_id"
@@ -200,7 +211,7 @@ async function save() {
         </div>
 
         <div class="flex justify-end gap-2 pt-4 mt-4 border-t border-default">
-          <UButton variant="ghost" color="neutral" @click="open = false">Cancel</UButton>
+          <UButton variant="ghost" color="neutral" @click="closeEditor">Cancel</UButton>
           <UButton :loading="saving" color="primary" icon="i-lucide-check" @click="save">Save</UButton>
         </div>
       </div>

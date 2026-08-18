@@ -3,9 +3,9 @@
  * Updates client details
  */
 
-import { transaction } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
+import { executeGodModeAgencyClientUpdate } from '~~/server/utils/clients/godModeMutations'
 
 export default defineEventHandler(async (event) => {
   // Editing billing type, rates, Xero link and active status is a sensitive
@@ -114,7 +114,7 @@ export default defineEventHandler(async (event) => {
       RETURNING *
     `
 
-    const client = await transaction(async (db) => {
+    const client = await executeGodModeAgencyClientUpdate(event, async (db) => {
       const updated = await db.query(sql, values)
       const row = (updated as { rows?: any[] }).rows?.[0] ?? null
 
@@ -130,6 +130,14 @@ export default defineEventHandler(async (event) => {
         `, [id])
       }
 
+      return row
+    }, async (db, resultReference) => {
+      const replayed = await db.query(
+        `SELECT * FROM agency_clients WHERE id = $1 AND id = $2`,
+        [id, resultReference]
+      )
+      const row = (replayed as { rows?: any[] }).rows?.[0] ?? null
+      if (!row) throw new Error('Replayed client no longer exists')
       return row
     })
 

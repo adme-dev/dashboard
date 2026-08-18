@@ -17,13 +17,13 @@ import {
   upsertFormMetadata,
 } from '~~/server/utils/leads/db'
 import {
-  acceptLead,
-  type LeadCaptureMode
+  acceptLead
 } from '~~/server/utils/leads/acceptance'
 import { normalizeMetaPayload } from '~~/server/utils/leads/normalizer'
 import { getMetaLeadgen } from '~~/server/utils/metaClient'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
 import { isInternalCronAuthorized } from '~~/server/utils/leads/internalCronAuth'
+import { resolveMetaLeadClient } from '~~/server/utils/leads/metaLeadClient'
 
 interface ArchiveRow {
   id: string
@@ -32,9 +32,7 @@ interface ArchiveRow {
 }
 
 interface TokenRow {
-  client_id: string | null
   access_token: string | null
-  lead_capture_mode: LeadCaptureMode | null
 }
 
 interface BackfillResult {
@@ -76,9 +74,8 @@ export default defineEventHandler(async (event) => {
   if (!archives.length) return result
 
   const allTokens = await queryRows<TokenRow>(
-    `SELECT connection.client_id, connection.access_token, client.lead_capture_mode
+    `SELECT connection.access_token
        FROM social_connections connection
-       LEFT JOIN agency_clients client ON client.id = connection.client_id
       WHERE connection.platform = 'meta'
         AND connection.status = 'active'
         AND connection.access_token IS NOT NULL`,
@@ -114,13 +111,11 @@ export default defineEventHandler(async (event) => {
 
     let resolved: any = null
     let permissionDenied = false
-    let workingToken: TokenRow | null = null
     for (const t of ordered.slice(0, MAX_TOKENS_PER_LEAD)) {
       if (!t.access_token) continue
       try {
         resolved = await getMetaLeadgen(leadgenId, t.access_token)
         if (resolved) {
-          workingToken = t
           if (pageId) pageTokenCache.set(pageId, t)
           break
         }
@@ -141,8 +136,8 @@ export default defineEventHandler(async (event) => {
       continue
     }
 
-    // Working token's connection owns the Page → its client_id is correct.
-    const clientId = workingToken?.client_id ?? null
+    const client = await resolveMetaLeadClient(pageId, resolved.form_id ?? payload?.form_id)
+    const clientId = client?.client_id ?? null
 
     const norm = normalizeMetaPayload(
       {
@@ -168,7 +163,7 @@ export default defineEventHandler(async (event) => {
       norm.assigned_to = await resolveAssignedAm(clientId)
       const accepted = await acceptLead(event, {
         lead: { ...norm, client_id: clientId },
-        leadCaptureMode: workingToken?.lead_capture_mode ?? 'capture_only',
+        leadCaptureMode: client?.lead_capture_mode ?? 'capture_only',
         consentDecision: 'unknown'
       })
       if (norm.form_id && Object.keys(norm.field_data).length) {

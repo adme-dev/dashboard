@@ -965,7 +965,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-calculator',
     categoryIconBg: 'bg-emerald-50',
     categoryIconColor: 'text-emerald-600',
-    description: 'One inbox for Google Ads, Meta, Zapier/Make/n8n, CSV imports, and manual entry. Dedicated inbound email securely captures each client\'s CRM conversation, with the address shown only once at creation or rotation. Automotive leads can be delivered directly to AutoGate/carsales.',
+    description: 'One inbox for Google Ads, Meta, Zapier/Make/n8n, CSV imports, and manual entry. Dedicated inbound email securely captures each client\'s CRM conversation. Selected automotive leads can be routed to AutoGate/carsales by form, campaign, ad, make, model, or stock.',
     details: [
       {
         title: 'Six ways in, one inbox',
@@ -981,7 +981,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Automotive leads delivered to AutoGate',
-        content: 'Send Meta and other automotive enquiries directly into the dealer\'s AutoGate/carsales lead account using the carsales Lead Service. Prospect, campaign, stock, and vehicle fields are mapped with a stable identifier across retries to prevent duplicates. V2 remains available for established integrations, with a controlled switch to V3 after carsales provisions access.'
+        content: 'Add AutoGate as an outgoing destination on an individual form rule—not as a blanket client-wide push. Configure the dealer seller identifier and lead context in XeroFlow, then filter delivery by campaign ID or name, ad ID or name, Facebook Page, vehicle make, model, retailer item ID, or stock number. Prospect, campaign, stock, and vehicle fields are mapped with a stable unique identifier across retries to prevent duplicates; shared AutoGate credentials remain protected in Cloudflare.'
       },
       {
         title: 'Client portal inbox built-in',
@@ -989,7 +989,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Routing logic that\'s actually useful',
-        content: 'Per-destination filters: "SMS only if budget > $5,000", "Slack only if utm_source = facebook", "Email everyone but skip spam". Optional delays from immediate to 24 hours — common pattern: Slack ping immediately, email the team if no one\'s claimed in 30 minutes. HMAC-signed outbound webhooks with idempotency keys so receivers can safely dedupe our retries.'
+        content: 'Per-destination filters: "AutoGate only for the EV campaign", "AutoGate only when make is Hyundai", "SMS only if budget > $5,000", or "Slack only if utm_source = facebook". Optional delays run from immediate to 24 hours. HMAC-signed outbound webhooks and stable AutoGate identifiers let receivers safely dedupe retries.'
       },
       {
         title: 'Senses test data and treats it differently',

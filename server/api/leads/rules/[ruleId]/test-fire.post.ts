@@ -13,7 +13,14 @@ import type { Lead, LeadDelivery } from '~~/app/types'
 export default defineEventHandler(async (event) => {
   await requireRole(event, PERMISSIONS.MEDIA_BUYING)
   const ruleId = getRouterParam(event, 'ruleId')!
-  const overrides = (await readBody(event)) as { field_data?: Record<string, string> } | null
+  const overrides = (await readBody(event)) as {
+    field_data?: Record<string, string>
+    campaign_id?: string | null
+    campaign_name?: string | null
+    ad_id?: string | null
+    ad_name?: string | null
+    page_id?: string | null
+  } | null
 
   const rule: any = await queryOne(`SELECT * FROM lead_form_rules WHERE id = $1`, [ruleId])
   if (!rule) throw createError({ statusCode: 404, statusMessage: 'not_found' })
@@ -25,15 +32,19 @@ export default defineEventHandler(async (event) => {
   for (const f of (meta?.fields ?? [])) {
     if (f.sample_value) sampleFields[f.key] = f.sample_value
   }
+  const testLeadId = crypto.randomUUID()
   const fakeLead: Lead = {
-    id: 'TEST-LEAD',
+    id: testLeadId,
     client_id: rule.client_id,
     source: rule.source,
-    source_lead_id: 'test-fire',
+    source_lead_id: `test-fire:${testLeadId}`,
     form_id: rule.form_id,
     form_name: rule.form_name,
-    ad_id: null, ad_name: null, campaign_id: null, campaign_name: null,
-    page_id: null,
+    ad_id: overrides?.ad_id ?? null,
+    ad_name: overrides?.ad_name ?? null,
+    campaign_id: overrides?.campaign_id ?? null,
+    campaign_name: overrides?.campaign_name ?? null,
+    page_id: overrides?.page_id ?? null,
     submitted_at: new Date().toISOString(),
     ingested_at: new Date().toISOString(),
     field_data: { ...sampleFields, ...(overrides?.field_data ?? {}) },
@@ -54,7 +65,7 @@ export default defineEventHandler(async (event) => {
     const adapter = getAdapter(d.destination_type)
     if (!adapter) { results.push({ id: d.id, skipped: 'unknown_type' }); continue }
     const fakeDelivery: LeadDelivery = {
-      id: 'TEST-DELIVERY',
+      id: crypto.randomUUID(),
       lead_id: fakeLead.id,
       rule_destination_id: d.id,
       destination_type: d.destination_type,
@@ -66,7 +77,7 @@ export default defineEventHandler(async (event) => {
       last_error: null,
       retry_count: 0,
       response_meta: null,
-      idempotency_key: deliveryIdempotencyKey('TEST-LEAD', d.id),
+      idempotency_key: deliveryIdempotencyKey(testLeadId, d.id),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
