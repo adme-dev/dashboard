@@ -86,6 +86,10 @@ export const ROUTES: Record<string, string[]> = {
   // never hits the function time limit. Replaces the ai-agent-worker path,
   // which ran every platform synchronously and never completed.
   '0 6 * * *': ['/api/cron/sync-spend'],
+  // daily 6:15am UTC — import account-wide Google Ads call_view records after
+  // the main spend sync. Status and duration come from Google and are never
+  // inferred from browser phone-link clicks.
+  '15 6 * * *': ['/api/cron/google-ads-call-reporting'],
   // daily 6:30am UTC — read-only Google Search campaign AI Max readiness.
   // Offset from spend sync to avoid overlapping Google API bursts. Internal
   // notifications remain dormant unless the Pages enable flag is armed.

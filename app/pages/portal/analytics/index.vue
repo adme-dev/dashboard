@@ -454,6 +454,11 @@ await Promise.all([refreshOverview(), refreshTrend()])
       </div>
     </div>
 
+    <AnalyticsGoogleCallsSummary
+      endpoint="/api/portal/analytics/google-calls"
+      :query="{ startDate, endDate }"
+    />
+
     <!-- Main content + Sidebar -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 analytics-report-grid">
       <!-- Left: charts + campaigns (2/3) -->

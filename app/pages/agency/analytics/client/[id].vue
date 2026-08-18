@@ -179,6 +179,15 @@ const loading = computed(() => overviewStatus.value === 'pending')
       :loading="loading"
     />
 
+    <AnalyticsGoogleCallsSummary
+      endpoint="/api/agency/analytics/google-calls"
+      :query="{
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        clientId
+      }"
+    />
+
     <!-- Platform breakdown + Cross-sell -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <!-- Platform Table -->

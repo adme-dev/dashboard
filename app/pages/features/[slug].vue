@@ -1094,7 +1094,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-calculator',
     categoryIconBg: 'bg-emerald-50',
     categoryIconColor: 'text-emerald-600',
-    description: 'Google Ads performance data with spend tracking, budget alerts, and audit trails. Complete visibility into your Google advertising investment.',
+    description: 'Google Ads performance and call reporting with spend tracking, answered and missed calls, provider-reported duration, budget alerts, and audit trails.',
     details: [
       {
         title: 'Google Ads API Integration',
@@ -1102,7 +1102,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Campaign-Level Breakdowns',
-        content: 'View spend data at the campaign, ad group, and keyword level with daily granularity. Compare performance across campaigns to identify top performers and underperformers. The data is presented in the same format as Meta spend, so your team uses a consistent interface for both platforms rather than context-switching between different analytics tools.'
+        content: 'View spend data at the campaign, ad group, and keyword level with daily granularity. Google Ads call records add answered and missed status, campaign attribution, and duration when Google provides it. Browser phone clicks remain a separate intent signal, so XeroFlow never invents call outcomes or duration. Agency and client analytics use the same client-scoped evidence.'
       },
       {
         title: 'Budget Management with Audit Trails',

@@ -19,6 +19,7 @@ crons = [
   "55 3 * * *",   # persona-tier-recompute (hot/warm/cold audience tiers + negative-signal exclusion audience)
   "10 4 * * *",   # feed-post-rules (flag-gated, review-only drafts)
   "0 6 * * *",     # sync-spend (Meta/Google/etc. ad-spend, non-blocking)
+  "15 6 * * *",    # Google Ads call_view status + duration reporting
   "30 6 * * *"     # read-only Google AI Max readiness scan
 ]
 
