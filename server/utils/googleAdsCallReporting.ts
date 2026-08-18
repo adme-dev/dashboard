@@ -20,6 +20,7 @@ import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 export const GOOGLE_CALL_DEFAULT_LOOKBACK_DAYS = 14
 export const GOOGLE_CALL_MAX_LOOKBACK_MONTHS = 37
 export const GOOGLE_CALL_UPSERT_CHUNK = 250
+export const GOOGLE_CALL_CONNECTION_CONCURRENCY = 8
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/
 const GOOGLE_LOCAL_DATE_TIME = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/
@@ -469,12 +470,13 @@ export async function syncGoogleAdsCalls(options: {
   const [connections, mappings] = await Promise.all([deps.loadConnections(), deps.loadMappings()])
   const result: GoogleCallSyncResult = { connectionsSynced: 0, callsUpserted: 0, errors: [] }
 
-  // One account at a time keeps QPS conservative. SearchStream is one daily
-  // operation per request regardless of response batches:
+  // A bounded pool keeps 100+ account estates inside the request window while
+  // holding Google and Neon concurrency to a deliberately small fixed number.
+  // SearchStream is one daily operation per request regardless of batches:
   // https://developers.google.com/google-ads/api/docs/best-practices/quotas#search_requests
-  for (const connection of connections) {
-    await noteSyncAttempt(deps, connection.id)
+  async function syncConnection(connection: GoogleCallConnection): Promise<void> {
     try {
+      await noteSyncAttempt(deps, connection.id)
       const credential = await deps.resolveCredential(connection)
       let accessToken = credential.accessToken
       if (
@@ -551,6 +553,21 @@ export async function syncGoogleAdsCalls(options: {
       await noteSyncFailure(deps, connection.id, message)
     }
   }
+
+  let nextConnection = 0
+  async function runWorker(): Promise<void> {
+    while (nextConnection < connections.length) {
+      const connection = connections[nextConnection++]
+      if (connection) await syncConnection(connection)
+    }
+  }
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(GOOGLE_CALL_CONNECTION_CONCURRENCY, connections.length) },
+      () => runWorker()
+    )
+  )
 
   return result
 }

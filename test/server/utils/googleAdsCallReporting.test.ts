@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   buildGoogleCallUpsert,
   buildGoogleCallViewQuery,
+  GOOGLE_CALL_CONNECTION_CONCURRENCY,
   GOOGLE_CALL_MAPPING_QUERY,
   googleCallSyncWindow,
   mapGoogleCallRow,
@@ -233,5 +234,51 @@ describe('Google Ads call_view reporting', () => {
     expect(result.errors[0]).toBe('Dealer Ads: Google Ads call sync failed (status 500)')
     expect(failureWrite?.[1]?.[1]).toBe(result.errors[0])
     expect(JSON.stringify({ result, failureWrite })).not.toMatch(/secret-value|private|payload|access-token/)
+  })
+
+  it('syncs a large estate with bounded connection concurrency', async () => {
+    let active = 0
+    let peak = 0
+    const connections = Array.from({ length: 20 }, (_, index) => ({
+      id: `connection-${index}`,
+      account_id: String(1000 + index),
+      account_name: `Dealer ${index}`,
+      access_token: 'access-token',
+      refresh_token: null,
+      token_expires_at: null,
+      metadata: {}
+    }))
+
+    const result = await syncGoogleAdsCalls({
+      today: '2026-08-17',
+      runtimeConfig: {
+        googleClientId: 'oauth-client',
+        googleClientSecret: 'oauth-secret',
+        googleDeveloperToken: 'developer-token',
+        googleAdsLoginCustomerId: ''
+      },
+      deps: {
+        loadConnections: async () => connections,
+        loadMappings: async () => [],
+        resolveCredential: async () => ({
+          accessToken: 'access-token', refreshToken: null, tokenExpiresAt: null, profileId: null, source: 'legacy'
+        }),
+        refreshToken: vi.fn(),
+        persistCredentialRefresh: vi.fn(),
+        gaqlQuery: vi.fn(async () => {
+          active++
+          peak = Math.max(peak, active)
+          await new Promise(resolve => setTimeout(resolve, 2))
+          active--
+          return []
+        }),
+        execute: vi.fn(async () => 1)
+      }
+    })
+
+    expect(GOOGLE_CALL_CONNECTION_CONCURRENCY).toBe(8)
+    expect(peak).toBeGreaterThan(1)
+    expect(peak).toBeLessThanOrEqual(GOOGLE_CALL_CONNECTION_CONCURRENCY)
+    expect(result).toEqual({ connectionsSynced: 20, callsUpserted: 0, errors: [] })
   })
 })
