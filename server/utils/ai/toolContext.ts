@@ -44,7 +44,9 @@ export type ToolContext = {
 }
 
 /** Tool results are recoverable: handlers return a typed result, never throw to the loop. */
-export type ToolResult = { ok: true, data: unknown, error?: undefined } | { ok: false, error: string }
+export type ToolResult =
+  | { ok: true, data: unknown, error?: undefined, code?: undefined, details?: undefined }
+  | { ok: false, error: string, code?: string, details?: Record<string, unknown> }
 
 /**
  * Risk tier of a write action, governing how much human gating it needs (spec: Phase-0 WS-B/C +
@@ -57,7 +59,11 @@ export type RiskTier = 'auto' | 'confirm' | 'rich_confirm'
 
 export const ok = (data: unknown): ToolResult => ({ ok: true, data })
 /** error is natural-language + recoverable — the model can read it and adapt. */
-export const fail = (error: string): ToolResult => ({ ok: false, error })
+export const fail = (
+  error: string,
+  code?: string,
+  details?: Record<string, unknown>,
+): ToolResult => ({ ok: false, error, ...(code ? { code } : {}), ...(details ? { details } : {}) })
 
 /**
  * Escape ILIKE wildcards so user/model-supplied filter text matches literally. Escapes `\` FIRST

@@ -11,7 +11,8 @@ import { listSelectableVideoGenerationModels, getVideoGenerationModel } from '~~
 import { selectableVideoModelOptions } from '~~/app/utils/video/modelPresentation'
 import { loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
 import { canUseVideoGenerationProject } from '~~/server/utils/video-generation/timelineStillSource'
-import { getVideoGenerationJob, listVideoGenerationJobsForProject } from '~~/server/utils/video-generation/jobs'
+import { getVideoGenerationJob, listVideoGenerationJobsForProject, listVideoGenerationJobsForProjects } from '~~/server/utils/video-generation/jobs'
+import { listApprovedVideoGenerationSourceAssets } from '~~/server/utils/video-generation/sourceAssetStore'
 import { isTenantModel } from '~~/server/utils/video-generation/surface'
 import { loadVideoGenerationSourceAssets } from '~~/server/utils/video-generation/sourceAssets'
 import { evaluateVideoGenerationCompliance } from '~~/server/utils/video-generation/compliance'
@@ -31,7 +32,8 @@ import { buildCreativeVersionGraph, mapMediaRenderJobToVersionSource } from '~~/
  */
 
 interface ModelsArgs { projectId?: string }
-interface ListArgs { projectId: string }
+interface ListArgs { projectId?: string }
+interface SourceAssetsArgs { projectId: string }
 interface StatusArgs { jobId: string }
 interface TimelineContextArgs { projectId: string }
 
@@ -74,17 +76,42 @@ export function buildVideoReadRunner(): VideoReadRunner {
 
     list_video_generations: async (raw, ctx) => {
       const a = raw as ListArgs
-      const existing = await authorizedProject(a.projectId, ctx)
-      if (!existing) throw new Error('project not usable')
-      const jobs = await listVideoGenerationJobsForProject(a.projectId, 50)
+      let jobs
+      if (a.projectId) {
+        const existing = await authorizedProject(a.projectId, ctx)
+        if (!existing) throw new Error('project not usable')
+        jobs = await listVideoGenerationJobsForProject(a.projectId, 50)
+      } else {
+        const projects = filterUsableAvProjects(await listProjects(), { id: ctx.userId, role: ctx.userRole })
+        jobs = await listVideoGenerationJobsForProjects(projects.map(project => project.id), 50)
+      }
       return jobs.map(j => ({
         jobId: j.id,
+        projectId: j.projectId,
         status: j.status,
         mode: j.mode,
         modelId: j.modelId,
         estimatedCostCents: j.estimatedCostCents,
         actualCostCents: j.actualCostCents,
         createdAt: j.createdAt
+      }))
+    },
+
+    list_video_source_assets: async (raw, ctx) => {
+      const a = raw as SourceAssetsArgs
+      const existing = await authorizedProject(a.projectId, ctx)
+      if (!existing) throw new Error('project not usable')
+      const tenantId = existing.project.clientId ?? 'agency'
+      const assets = await listApprovedVideoGenerationSourceAssets(tenantId)
+      return assets.map(asset => ({
+        assetId: asset.id,
+        filename: asset.original_filename || asset.r2_key.split('/').pop() || null,
+        clientId: asset.client_id,
+        approvalStatus: asset.status,
+        dimensions: asset.width && asset.height ? { width: asset.width, height: asset.height } : null,
+        contentType: asset.content_type ?? null,
+        subjectType: asset.subject_type ?? 'unknown',
+        createdAt: asset.created_at ?? null,
       }))
     },
 

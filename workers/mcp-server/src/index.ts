@@ -137,9 +137,23 @@ export class XeroFlowMcpAgent extends McpAgent<Env, unknown, Props> {
         props,
         req.params.name
       )
-      const outcome = await callRes.json() as { ok: boolean, data?: unknown, error?: string }
+      const outcome = await callRes.json() as {
+        ok: boolean
+        data?: unknown
+        error?: string
+        code?: string
+        details?: Record<string, unknown>
+      }
       if (!outcome.ok) {
-        return { content: [{ type: 'text' as const, text: `Error: ${outcome.error ?? 'tool failed'}` }], isError: true }
+        const details = outcome.details && typeof outcome.details === 'object' ? outcome.details : {}
+        const error = {
+          error: typeof details.error === 'string'
+            ? details.error
+            : typeof outcome.code === 'string' ? outcome.code : 'tool_failed',
+          message: typeof outcome.error === 'string' ? outcome.error : 'Tool failed.',
+          ...details
+        }
+        return { content: [{ type: 'text' as const, text: JSON.stringify(error) }], isError: true }
       }
       return { content: [{ type: 'text' as const, text: JSON.stringify(outcome.data) }] }
     })

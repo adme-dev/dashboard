@@ -20,6 +20,7 @@ describe('get_capabilities', () => {
           { name: 'get_campaign_breakdown', mode: 'read' },
           { name: 'propose_banner_render', mode: 'propose_only' },
           { name: 'confirm_action', mode: 'confirmation' },
+          { name: 'verify_creative_compliance', mode: 'inspection' },
           { name: 'generate_voiceover', mode: 'direct_generation' },
         ],
         suites: { textModels: true, imageGeneration: true, bannerStudio: true, video: true, audio: true },
@@ -42,7 +43,10 @@ describe('get_capabilities', () => {
         { name: 'propose_banner_render', mode: 'propose_only' },
       ]),
       creationSuites: { textModels: true, imageGeneration: true, bannerStudio: true, video: true, audio: true },
-      rateLimits: { generation: { maxCalls: 20, windowMinutes: 10 } },
+      rateLimits: {
+        generation: { maxCalls: 20, windowMinutes: 10 },
+        inspection: { maxCalls: 100, windowMinutes: 10 },
+      },
       directGenerationDecision: {
         enabled: true,
         tools: ['generate_voiceover'],
@@ -54,5 +58,31 @@ describe('get_capabilities', () => {
       },
     })
     expect(deps.inspectActions).toHaveBeenCalledWith(ctx, { clientName: 'Northern Motor Group', limit: 20 })
+  })
+
+  it('retries one transient inspection failure', async () => {
+    const inspect = vi.fn()
+      .mockRejectedValueOnce(new Error('transient'))
+      .mockResolvedValueOnce({
+        tools: [{ name: 'list_creative_models', mode: 'read' }],
+        suites: { textModels: true, imageGeneration: true, bannerStudio: false, video: false, audio: false },
+      })
+    const result = await getCapabilities({}, ctx, { inspect, retryDelay: vi.fn(async () => {}) })
+
+    expect(result.ok).toBe(true)
+    expect(inspect).toHaveBeenCalledTimes(2)
+  })
+
+  it('returns a typed retryable failure after the retry is exhausted', async () => {
+    const result = await getCapabilities({}, ctx, {
+      inspect: vi.fn().mockRejectedValue(new Error('down')),
+      retryDelay: vi.fn(async () => {}),
+    })
+    expect(result).toEqual({
+      ok: false,
+      error: 'Could not inspect MCP capabilities.',
+      code: 'capabilities_unavailable',
+      details: { retryable: true },
+    })
   })
 })

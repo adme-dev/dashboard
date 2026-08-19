@@ -1011,7 +1011,11 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
       operationalError(503, 'God mode audit unavailable')
     }
 
-    const terminateBeforeDispatch = async (code: string, message: string): Promise<ToolResult> => {
+    const terminateBeforeDispatch = async (
+      code: string,
+      message: string,
+      details?: Record<string, unknown>,
+    ): Promise<ToolResult> => {
       try {
         await deps.transaction(async db => {
           await deps.appendAudit(auditEvent(auditIdentity, 'failed', code), db)
@@ -1025,7 +1029,7 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
       } catch {
         operationalError(503, 'God mode audit unavailable')
       }
-      return fail(message)
+      return fail(message, code, details)
     }
 
     const parsed = request.tool.parameters.safeParse(request.args)
@@ -1166,6 +1170,9 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
     } catch {
       if (!dispatched) return await terminateBeforeDispatch('dispatch_not_started', 'God mode action failed.')
       return await markDispatchAmbiguous(capturedIdentity)
+    }
+    if (!result.ok && !dispatched) {
+      return await terminateBeforeDispatch(result.code ?? 'precondition_failed', result.error, result.details)
     }
     if (!dispatched || dispatchCheckpointCalls !== 1) {
       return await terminateBeforeDispatch('dispatch_checkpoint_missing', 'God mode action failed.')

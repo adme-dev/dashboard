@@ -38,7 +38,14 @@ export default defineEventHandler(async (event) => {
   const clientId = project.project.clientId ?? null
   const r2Key = `video-gen-sources/${clientId ?? 'agency'}/${randomUUID()}.${ext}`
   await uploadFile(file.data, r2Key, fileType, { kind: 'i2v-source' })
-  const asset = await createSourceAsset({ clientId, createdBy: user.id, r2Key, contentType: fileType, subjectType })
+  const asset = await createSourceAsset({
+    clientId,
+    createdBy: user.id,
+    r2Key,
+    contentType: fileType,
+    subjectType,
+    originalFilename: file.filename,
+  })
   setResponseStatus(event, 201)
   return { id: asset.id, status: asset.status }
 })

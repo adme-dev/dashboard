@@ -1749,11 +1749,11 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-brain',
     categoryIconBg: 'bg-amber-50',
     categoryIconColor: 'text-amber-600',
-    description: 'Connect Claude, Cursor, or ChatGPT to a governed Godmode view of XeroFlow. Operational answers carry coverage, freshness and attribution; creative workflows choose among source-bound video, non-vehicle static, approved-source transform and audio models, with Qwen vision evidence before review.',
+    description: 'Connect Claude, Cursor, or ChatGPT to a governed Godmode view of XeroFlow. Operational answers carry coverage, fresh/stale/mixed status and attribution; creative workflows can discover approved source assets before choosing source-bound video, static, transform or audio models.',
     details: [
       {
         title: 'Campaign and Creative Godmode',
-        content: 'Add one connector URL and ask which campaigns are lagging, which live ads show fatigue, what artwork is attached, when it was delivered, or where the design team has capacity. Campaign and ad views include status, first and last delivery, date-window comparisons, leads and CPL, frequency where the platform supplies it, creative links, and continuation cursors across the full portfolio.'
+        content: 'Add one connector URL and ask which campaigns are lagging, which live ads show fatigue, what artwork is attached, when it was delivered, or where the design team has capacity. Campaign and ad views include status, first and last delivery, date-window comparisons, attributable leads and CPL, freshness classified as fresh, stale or mixed, creative links, and continuation cursors across the full portfolio.'
       },
       {
         title: 'Numbers That Explain Their Trustworthiness',
@@ -1761,11 +1761,11 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Capability-Driven Creative Samples',
-        content: 'The connector inspects the governed model catalogue before planning a sample. Seedance 2.0 keeps vehicle video tied to an approved start image and can add native audio; Vidu Q3 can land on an approved offer-card end frame; Recraft is restricted to non-vehicle statics; and Pruna upscales only approved source assets. Voiceover and music remain available through their owned-media paths, while model safety classes and Gateway spend readiness are returned in-band.'
+        content: 'The connector inspects the governed model catalogue and lists approved project source assets before planning a sample. Seedance 2.0 keeps vehicle video tied to an approved start image and can add native audio; Vidu Q3 can land on an approved offer-card end frame; Recraft is restricted to non-vehicle statics; and Pruna upscales only approved source assets. Missing-source and unsupported-parameter responses are structured so the assistant can recover instead of guessing.'
       },
       {
         title: 'Vision Evidence Before Human Sign-Off',
-        content: 'Every generated or transformed Banner Studio image can be checked by Qwen 3.6 vision in JSON mode against up to four approved references. The append-only verdict records vehicle and badge match, OCR disclaimer and price, logo distortion, visual artefacts, confidence and notes. Failed checks return review_blocked rather than ready, while the final approval remains with the human reviewer.'
+        content: 'Every generated or transformed Banner Studio image can be checked by Qwen 3.6 vision in JSON mode against up to four approved references. Inspection has its own governance mode and higher read-like rate ceiling, separate from billed asset creation. The append-only verdict records vehicle and badge match, OCR disclaimer and price, logo distortion, visual artefacts, confidence and notes; final approval remains with the human reviewer.'
       }
     ]
   },

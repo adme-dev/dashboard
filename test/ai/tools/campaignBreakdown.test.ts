@@ -43,6 +43,7 @@ describe('getCampaignBreakdown', () => {
     expect(d.oldestSyncedAt).toBe('2026-08-18T08:00:00Z')
     expect(d.staleRowCount).toBe(0)
     expect(d.stalenessThresholdHours).toBe(48)
+    expect(d.freshness).toBe('fresh')
   })
 
   it('returns delivery status, dates, leads, CPL and frequency without stripping them', async () => {

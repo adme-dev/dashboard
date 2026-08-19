@@ -43,7 +43,16 @@ type SyncResult = { synced: number; totalSpend: number; failures: Array<{ accoun
  * errors are returned as failures (never thrown) so the caller can fan-in.
  */
 export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: number, mappings: AccountMapping[]): Promise<SyncResult> {
-  const { getCampaignInsights, getCampaignDailyInsights, getCampaigns, mapMetaCampaignMeta, extractConversions, extractRevenue } = await import('~~/server/utils/metaClient')
+  const {
+    getCampaignInsights,
+    getCampaignInsightsById,
+    getCampaignDailyInsights,
+    getCampaignDailyInsightsById,
+    getCampaigns,
+    mapMetaCampaignMeta,
+    extractConversions,
+    extractRevenue,
+  } = await import('~~/server/utils/metaClient')
   const period = `${year}-${String(month).padStart(2, '0')}`
   const failures: Array<{ account: string; reason: string }> = []
   let totalSynced = 0
@@ -73,21 +82,46 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
     return { synced: 0, totalSpend: 0, failures }
   }
 
-  // Fail loud on the empty-throttle case: if Graph returns no campaigns for an
-  // account that already has prior Meta spend recorded, that's almost certainly an
-  // empty-data block (e.g. Marketing API development_access tier from a datacenter
-  // egress IP — see docs/superpowers/specs/2026-06-15-meta-spend-zero-sync-pacing.md),
-  // NOT a genuine $0. Record a failure so the job surfaces it instead of silently
-  // "completing" with synced_count=0.
+  let usedCampaignNodeFallback = false
+  let knownCampaigns: Array<{ campaign_id: string, campaign_name: string | null }> = []
+
+  // Meta can return HTTP 200 + an empty collection for account-level insights
+  // from datacenter egress under a restricted app access tier while direct
+  // /{campaignId}/insights reads still work. Re-read only campaign IDs already
+  // known for this exact connection/period; never discover or broaden scope here.
   if (!campaigns || campaigns.length === 0) {
-    const prior = await queryOne<{ n: number }>(
-      `SELECT COUNT(*)::int AS n FROM media_spend WHERE connection_id = $1 AND platform = 'meta'`,
-      [conn.id]
+    knownCampaigns = await queryRows<{ campaign_id: string, campaign_name: string | null }>(
+      `SELECT DISTINCT campaign_id, campaign_name
+         FROM media_spend
+        WHERE connection_id = $1
+          AND platform = 'meta'
+          AND period = $2
+          AND campaign_id IS NOT NULL`,
+      [conn.id, period]
     )
-    if (prior && prior.n > 0) {
+    const fallbackInsights = []
+    for (const known of knownCampaigns) {
+      try {
+        const insight = await getCampaignInsightsById(known.campaign_id, conn.access_token, month, year)
+        if (insight) {
+          fallbackInsights.push({
+            ...insight,
+            campaign_id: insight.campaign_id || known.campaign_id,
+            campaign_name: insight.campaign_name || known.campaign_name || undefined,
+          })
+        }
+      } catch (err: any) {
+        console.warn('[MetaSync] Direct campaign fallback failed:', sanitizeSpendSyncFailureReason(err?.message))
+      }
+    }
+    if (fallbackInsights.length > 0) {
+      campaigns = fallbackInsights
+      usedCampaignNodeFallback = true
+      console.warn(`[MetaSync] Account-level insights were empty; refreshed ${fallbackInsights.length} known campaign(s) through bounded campaign-node reads.`)
+    } else if (knownCampaigns.length > 0) {
       failures.push({ account: conn.account_name, reason: 'Empty insights for an account with prior spend — likely access-tier/egress block, not a genuine $0' })
     }
-    return { synced: 0, totalSpend: 0, failures }
+    if (!campaigns || campaigns.length === 0) return { synced: 0, totalSpend: 0, failures }
   }
 
   // Enrich with campaign-level metadata (status, end date, bid strategy, budget type).
@@ -176,7 +210,18 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
 
   // Daily spend pass
   try {
-    const dailyInsights = await getCampaignDailyInsights(actId, conn.access_token, month, year)
+    const dailyInsights = []
+    if (usedCampaignNodeFallback) {
+      for (const known of knownCampaigns) {
+        try {
+          dailyInsights.push(...await getCampaignDailyInsightsById(known.campaign_id, conn.access_token, month, year))
+        } catch (err: any) {
+          console.warn('[MetaSync] Direct daily campaign fallback failed:', sanitizeSpendSyncFailureReason(err?.message))
+        }
+      }
+    } else {
+      dailyInsights.push(...await getCampaignDailyInsights(actId, conn.access_token, month, year))
+    }
     if (dailyInsights.length > 0) {
       const spendRows = await queryRows<{ id: string; campaign_id: string }>(
         `SELECT id, campaign_id FROM media_spend

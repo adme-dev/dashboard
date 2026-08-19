@@ -97,7 +97,15 @@ export const videoReadTools: VideoToolDescriptor[] = [
   },
   {
     name: 'list_video_generations',
-    description: 'List recent video-generation jobs for an AV project (status, mode, model, cost, createdAt).',
+    description: 'List recent video-generation jobs across usable AV projects, or optionally scope to one project.',
+    parameters: z.object({ projectId: UUID.optional() }),
+    requiredPermission: 'CREATIVE'
+  },
+  {
+    name: 'list_video_source_assets',
+    description:
+      'List approved source assets usable for video generation in an AV project. Returns assetId, filename, '
+      + 'approval status, dimensions, content type and subject type; storage keys are never exposed.',
     parameters: z.object({ projectId: UUID }),
     requiredPermission: 'CREATIVE'
   },
@@ -283,7 +291,14 @@ export function resolveVideoProposeAction(name: string): VideoConfirmAction | nu
 
 export type VideoProposeOutcome
   = | { ok: true, data: unknown }
-    | { ok: false, error: string, code: 'disabled' | 'forbidden' | 'bad_args' | 'blocked' | 'handler_error' }
+    | {
+        ok: false
+        error: string
+        code: 'disabled' | 'forbidden' | 'bad_args' | 'handler_error'
+          | 'missing_approved_source_asset' | 'unsupported_model_parameters'
+          | 'source_asset_unavailable' | 'compliance_blocked'
+        details?: Record<string, unknown>
+      }
 
 export interface VideoProposeDeps {
   suiteEnabled: boolean
@@ -377,14 +392,45 @@ export async function executeVideoPropose(
 
     const model = deps.getModel(p.modelId)
     if (!model || !deps.isTenantModel(model)) return { ok: false, error: 'Unknown or unavailable model.', code: 'bad_args' }
-    if (!modelSupports(model, p)) return { ok: false, error: 'Model does not support the requested mode/params.', code: 'bad_args' }
+    if (model.requiresApprovedSourceAsset && p.sourceAssetIds.length === 0) {
+      return {
+        ok: false,
+        error: 'This model requires at least one approved source asset.',
+        code: 'missing_approved_source_asset',
+        details: { error: 'missing_approved_source_asset', requirement: 'requiresApprovedSourceAsset', model: model.id }
+      }
+    }
+    if (!modelSupports(model, p)) {
+      return {
+        ok: false,
+        error: 'Model does not support the requested mode or parameters.',
+        code: 'unsupported_model_parameters',
+        details: {
+          error: 'unsupported_model_parameters',
+          model: model.id,
+          requested: {
+            mode: p.mode,
+            durationSeconds: p.durationSeconds,
+            aspectRatio: p.aspectRatio,
+            resolution: p.resolution ?? null,
+            subjectType: p.subjectType,
+            sourceAssetCount: p.sourceAssetIds.length,
+          }
+        }
+      }
+    }
 
     const tenantId = existing.project.clientId ?? 'agency'
     let sources: VideoGenerationSourceAsset[] = []
     try {
       sources = await deps.loadSources(p.sourceAssetIds, p.mode === 'image-to-video' ? tenantId : undefined, p.mode)
     } catch {
-      return { ok: false, error: 'Source image unavailable.', code: 'bad_args' }
+      return {
+        ok: false,
+        error: 'One or more source assets are unavailable, unapproved, or outside this project tenant.',
+        code: 'source_asset_unavailable',
+        details: { error: 'source_asset_unavailable', sourceAssetIds: p.sourceAssetIds }
+      }
     }
     const policy = await deps.loadPolicy(tenantId)
 
@@ -395,7 +441,14 @@ export async function executeVideoPropose(
       tenantPolicy: policy,
       provenance: { userId: ctx.userId, tenantId, projectId: p.projectId, idempotencyKey: 'mcp-preview' }
     })
-    if (!compliance.allowed) return { ok: false, error: `Blocked: ${compliance.reasons.join('; ') || 'compliance'}`, code: 'blocked' }
+    if (!compliance.allowed) {
+      return {
+        ok: false,
+        error: `Blocked: ${compliance.reasons.join('; ') || 'compliance'}`,
+        code: 'compliance_blocked',
+        details: { error: 'compliance_blocked', reasons: compliance.reasons, classification: compliance.classification }
+      }
+    }
 
     const estimatedCostCents = deps.estimateCost(model, p.durationSeconds)
     const payload = {
@@ -535,7 +588,11 @@ export function resolveVideoMcpExecutions(): McpExecutionDescriptor[] {
         })
         return outcome.ok
           ? { ok: true, data: outcome.data }
-          : { ok: false, error: 'error' in outcome ? outcome.error : 'Video tool failed.' }
+          : {
+              ok: false,
+              error: 'error' in outcome ? outcome.error : 'Video tool failed.',
+              ...('code' in outcome ? { code: outcome.code } : {})
+            }
       }
     }
   }))
@@ -561,7 +618,12 @@ export function resolveVideoMcpExecutions(): McpExecutionDescriptor[] {
       })
       return outcome.ok
         ? { ok: true, data: outcome.data }
-        : { ok: false, error: 'error' in outcome ? outcome.error : 'Video proposal failed.' }
+        : {
+            ok: false,
+            error: 'error' in outcome ? outcome.error : 'Video proposal failed.',
+            ...('code' in outcome ? { code: outcome.code } : {}),
+            ...('details' in outcome && outcome.details ? { details: outcome.details } : {})
+          }
     },
     tool: {
       ...descriptor,
@@ -578,7 +640,12 @@ export function resolveVideoMcpExecutions(): McpExecutionDescriptor[] {
         })
         return outcome.ok
           ? { ok: true, data: outcome.data }
-          : { ok: false, error: 'error' in outcome ? outcome.error : 'Video proposal failed.' }
+          : {
+              ok: false,
+              error: 'error' in outcome ? outcome.error : 'Video proposal failed.',
+              ...('code' in outcome ? { code: outcome.code } : {}),
+              ...('details' in outcome && outcome.details ? { details: outcome.details } : {})
+            }
       }
     }
   }))

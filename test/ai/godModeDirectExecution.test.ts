@@ -318,6 +318,46 @@ describe('God mode direct execution', () => {
     expect(ordered.calls.filter(call => call === 'progress:result_captured')).toHaveLength(1)
   })
 
+  it('preserves a typed supplemental precondition failure before dispatch', async () => {
+    const idempotencyKey = `mcp:${'9'.repeat(64)}`
+    const h = harness({ expectedIdempotencyKey: idempotencyKey })
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    const result = await createTrustedMcpGodModeResolvedMutationExecutor(h.deps)({
+      event: authorityEvent,
+      authenticatedUserId: OWNER_ID,
+      authority,
+      sessionDigest: 'b'.repeat(64),
+      toolName: 'propose_video_generation',
+      args: { prompt: 'Vehicle launch' },
+      idempotencyKey,
+      tool: {
+        name: 'propose_video_generation',
+        description: 'Propose video.',
+        parameters: z.object({ prompt: z.string() }),
+        mutates: true,
+        handler: vi.fn()
+      },
+      executeSupplemental: vi.fn(async () => ({
+        ok: false,
+        error: 'This model requires at least one approved source asset.',
+        code: 'missing_approved_source_asset',
+        details: { error: 'missing_approved_source_asset', requirement: 'requiresApprovedSourceAsset' }
+      }))
+    } as any)
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'This model requires at least one approved source asset.',
+      code: 'missing_approved_source_asset',
+      details: { error: 'missing_approved_source_asset', requirement: 'requiresApprovedSourceAsset' }
+    })
+    expect(h.calls).not.toContain('progress:dispatched')
+    expect(vi.mocked(h.deps.appendAudit).mock.calls.map(([audit]) => audit.phase)).toContain('failed')
+  })
+
   it('fails a supplemental provider preflight before dispatch with no side effect', async () => {
     const idempotencyKey = `mcp:${'1'.repeat(64)}`
     const h = harness({ expectedIdempotencyKey: idempotencyKey })

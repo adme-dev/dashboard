@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockQueryOne = vi.fn()
+const mockQueryRows = vi.fn()
 const mockExecute = vi.fn()
 
 vi.mock('~~/server/utils/db', () => ({
   queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  queryRows: (...args: unknown[]) => mockQueryRows(...args),
   execute: (...args: unknown[]) => mockExecute(...args)
 }))
 

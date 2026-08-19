@@ -16,6 +16,8 @@ describe('get_creative_assets', () => {
     const rows = await fetchMondayCreativeAssets({ clientName: 'Acme', limit: 20 }, load)
 
     expect(String(load.mock.calls[0][0])).toContain('jsonb_array_elements')
+    expect(String(load.mock.calls[0][0])).toContain("source_column->>'text'")
+    expect(String(load.mock.calls[0][0])).toContain('COALESCE(client.name, source_client.name)')
     expect(rows).toEqual([expect.objectContaining({
       assetId: 'monday:asset-1', filename: 'offer-1080x1080.mp4', ratio: '1:1',
       deliveredAt: '2026-08-10T01:02:03Z', deliveredBy: 'Tina Yu', source: 'monday',

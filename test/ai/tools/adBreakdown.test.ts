@@ -16,6 +16,7 @@ describe('get_ad_breakdown', () => {
           { adId: 'ad2', adName: 'Search', campaignId: 'c2', campaignName: 'Search', clientName: 'Acme', platform: 'google', creativeId: null, creativeName: null, spend: 80, impressions: 1000, clicks: 50, conversions: 4, leadCount: 3, reach: null, frequency: null, firstServedDate: '2026-08-01', lastServedDate: '2026-08-18', lastSyncedAt: '2026-08-18T08:10:00Z' },
         ],
       }),
+      leadAttribution: vi.fn().mockResolvedValue({ totalSubmissions: 12, adAttributed: 12 }),
     }
     const data = (await getAdBreakdown({ campaignId: 'c1', sortBy: 'frequency' }, ctx, deps) as any).data
     expect(data.ads[0]).toMatchObject({ adId: 'ad1', frequency: 3.7, leadCount: 9, creativeId: 'cr1', cpc: 0.09, conversions: null })
@@ -28,7 +29,9 @@ describe('get_ad_breakdown', () => {
       oldestSyncedAt: '2026-08-18T08:00:00Z',
       staleRowCount: 0,
       stalenessThresholdHours: 48,
+      freshness: 'fresh',
     })
+    expect(data.leadAttribution).toMatchObject({ coveragePct: 100, fatigueSignalPolicy: 'spend_without_leads_enabled' })
   })
 
   it('reports configured but empty ad data as partial instead of populated', async () => {
@@ -39,5 +42,29 @@ describe('get_ad_breakdown', () => {
     const data = (await getAdBreakdown({ campaignId: 'c1', sortBy: 'frequency' }, ctx, deps) as any).data
     expect(data.dataStatus).toBe('partial')
     expect(data.coverage).toEqual({ expected: 0, withData: 0 })
+  })
+
+  it('suppresses spend_without_leads while lead attribution coverage is unknown', async () => {
+    const deps: AdBreakdownDeps = {
+      now: () => new Date('2026-08-19T12:00:00Z'),
+      fetch: vi.fn().mockResolvedValue({
+        targetCount: 1,
+        available: true,
+        records: [{
+          adId: 'ad1', adName: 'Lead ad', campaignId: 'c1', campaignName: 'Lead campaign', clientName: 'Acme',
+          platform: 'meta', creativeId: 'cr1', creativeName: 'Lead creative', spend: 100, impressions: 1000,
+          clicks: 30, conversions: 0, leadCount: 0, reach: 800, frequency: 1.25, firstServedDate: '2026-08-01',
+          lastServedDate: '2026-08-18', lastSyncedAt: '2026-08-19T08:00:00Z',
+        }],
+      }),
+      leadAttribution: vi.fn().mockResolvedValue({ totalSubmissions: 0, adAttributed: 0 }),
+    }
+
+    const data = (await getAdBreakdown({ campaignId: 'c1', sortBy: 'frequency' }, ctx, deps) as any).data
+    expect(data.ads[0].fatigueSignals).not.toContain('spend_without_leads')
+    expect(data.leadAttribution).toMatchObject({
+      coveragePct: null,
+      fatigueSignalPolicy: 'spend_without_leads_suppressed_until_attribution_coverage_exists',
+    })
   })
 })

@@ -7,8 +7,14 @@
 
 export const MCP_GEN_RATE_WINDOW_MIN = 10
 export const MCP_GEN_RATE_MAX = 20 // generation calls per user per window, over MCP
+export const MCP_INSPECTION_RATE_WINDOW_MIN = 10
+export const MCP_INSPECTION_RATE_MAX = 100
 
 /** True when the actor has hit/exceeded the cap in the window and the next call must be refused. */
 export function isGenerationRateLimited(recentCount: number, max: number = MCP_GEN_RATE_MAX): boolean {
   return recentCount >= max
+}
+
+export function isInspectionRateLimited(recentCount: number): boolean {
+  return recentCount >= MCP_INSPECTION_RATE_MAX
 }

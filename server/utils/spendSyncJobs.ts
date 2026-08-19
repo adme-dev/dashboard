@@ -9,7 +9,7 @@
  * surface per-account failures.
  */
 
-import { queryOne, execute } from './db'
+import { queryOne, queryRows, execute } from './db'
 import {
   sanitizeSpendSyncFailureReason,
   sanitizeSpendSyncFailures,
@@ -52,6 +52,50 @@ async function alertEmptySpendSync(platform: string, jobId: string, totalAccount
   }
 }
 
+/**
+ * Emit one actionable owner alert after a completed platform job when current-
+ * period rows remain outside the 48-hour freshness SLO. This is deliberately
+ * aggregated per job so an account-wide Meta failure cannot create dozens of
+ * duplicate campaign notifications.
+ */
+async function alertStaleSpendSync(platform: string, period: string, jobId: string): Promise<void> {
+  const row = await queryOne<{ stale_rows: number, total_rows: number, oldest_synced_at: string | null }>(
+    `SELECT COUNT(*)::int AS total_rows,
+            COUNT(*) FILTER (WHERE synced_at IS NULL OR synced_at < now() - interval '48 hours')::int AS stale_rows,
+            MIN(synced_at)::text AS oldest_synced_at
+       FROM media_spend
+      WHERE platform = $1 AND period = $2`,
+    [platform === 'google' ? 'google_ads' : platform, period]
+  ).catch(() => null)
+  const staleRows = Number(row?.stale_rows || 0)
+  if (staleRows <= 0) return
+
+  console.error(`[SpendSync] ${platform} job ${jobId} left ${staleRows}/${Number(row?.total_rows || 0)} current-period campaign rows stale.`)
+  const owners = await queryRows<{ id: string }>(
+    `SELECT id FROM team_members WHERE is_active = TRUE AND user_role = 'owner'`
+  ).catch(() => [])
+  try {
+    const { createBulkNotifications } = await import('./notifications')
+    await createBulkNotifications(owners.map(owner => owner.id), {
+      type: 'system',
+      title: `${platform === 'meta' ? 'Meta' : 'Google'} campaign sync is stale`,
+      message: `${staleRows} of ${Number(row?.total_rows || 0)} campaign rows remain older than 48 hours after the latest sync. Do not rely on campaign figures until the provider sync recovers.`,
+      link: '/agency/social',
+      reason: 'direct',
+      metadata: {
+        kind: 'spend_sync_stale',
+        platform,
+        period,
+        jobId,
+        staleRowCount: staleRows,
+        oldestSyncedAt: row?.oldest_synced_at ?? null,
+      },
+    })
+  } catch (error) {
+    console.error('[SpendSync] failed to create stale-sync owner notification:', error)
+  }
+}
+
 export interface SyncFailure {
   account: string
   reason: string
@@ -81,7 +125,7 @@ export async function createSpendSyncJob(
 /** Mark a job completed with its result. Safe to call from inside a waitUntil promise. */
 export async function completeSpendSyncJob(jobId: string, result: SyncJobResult): Promise<void> {
   const failures = sanitizeSpendSyncFailures(result.failures)
-  const row = await queryOne<{ platform: string, total_accounts: number | null }>(
+  const row = await queryOne<{ platform: string, period: string, total_accounts: number | null }>(
     `UPDATE spend_sync_jobs
        SET status = CASE WHEN $2 = 0 AND jsonb_array_length($4::jsonb) > 0
                          THEN 'failed' ELSE 'completed' END,
@@ -93,12 +137,13 @@ export async function completeSpendSyncJob(jobId: string, result: SyncJobResult)
                         ELSE error END,
            finished_at = NOW()
      WHERE id = $1
-     RETURNING platform, total_accounts`,
+     RETURNING platform, period, total_accounts`,
     [jobId, result.synced, result.totalSpend, JSON.stringify(failures)]
   )
   if (row && Number(result.synced) === 0 && Number(row.total_accounts) > 0) {
     await alertEmptySpendSync(row.platform, jobId, Number(row.total_accounts))
   }
+  if (row?.period) await alertStaleSpendSync(row.platform, row.period, jobId)
 }
 
 /** Record how many accounts this job fanned out to (per-account chunking). */
@@ -117,7 +162,7 @@ export async function setSyncJobTotalAccounts(jobId: string, total: number): Pro
  */
 export async function recordSyncJobAccountResult(jobId: string, result: SyncJobResult): Promise<void> {
   const failures = sanitizeSpendSyncFailures(result.failures)
-  const row = await queryOne<{ platform: string, status: string, synced_count: number, total_accounts: number | null }>(
+  const row = await queryOne<{ platform: string, period: string, status: string, synced_count: number, total_accounts: number | null }>(
     `UPDATE spend_sync_jobs
        SET processed_accounts = processed_accounts + 1,
            synced_count = synced_count + $2,
@@ -138,7 +183,7 @@ export async function recordSyncJobAccountResult(jobId: string, result: SyncJobR
            finished_at = CASE WHEN total_accounts IS NOT NULL AND processed_accounts + 1 >= total_accounts
                               THEN NOW() ELSE finished_at END
      WHERE id = $1
-     RETURNING platform, status, synced_count, total_accounts`,
+     RETURNING platform, period, status, synced_count, total_accounts`,
     [jobId, result.synced, result.totalSpend, JSON.stringify(failures)]
   )
   // Fail loud (+ Slack alert when configured): a job that completes with 0 synced
@@ -146,6 +191,7 @@ export async function recordSyncJobAccountResult(jobId: string, result: SyncJobR
   if (row && row.status !== 'running' && Number(row.synced_count) === 0 && Number(row.total_accounts) > 0) {
     await alertEmptySpendSync(row.platform, jobId, Number(row.total_accounts))
   }
+  if (row?.period && row.status !== 'running') await alertStaleSpendSync(row.platform, row.period, jobId)
 }
 
 /** Mark a job failed with an error message. */
