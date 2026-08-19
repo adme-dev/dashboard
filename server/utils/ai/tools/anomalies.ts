@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
-import { queryRows } from '~~/server/utils/db'
+import { queryOne, queryRows } from '~~/server/utils/db'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { buildDataHealth, paginateWithCursor } from './responseContract'
 
@@ -31,12 +31,35 @@ export type AnomaliesDeps = {
   isConfigured?: (ctx: ToolContext) => Promise<boolean>
 }
 
+export async function resolveAnomalyTenant(
+  ctx: ToolContext,
+  selected: typeof getSelectedTenant = getSelectedTenant,
+  load: typeof queryOne = queryOne,
+): Promise<string | undefined> {
+  const tenantId = await selected(ctx.event)
+  if (tenantId) return tenantId
+  if (ctx.source !== 'mcp') return undefined
+
+  // OAuth transport requests do not carry the browser's selected-tenant cookie.
+  // If the Xero connection has since been removed, retain read-only access to
+  // the most recently detected tenant instead of misreporting the code-defined
+  // anomaly engine as unconfigured. Never accept a tenant from model input.
+  const latest = await load<{ tenant_id: string }>(
+    `SELECT tenant_id
+       FROM anomalies
+      WHERE tenant_id <> '__default__'
+      ORDER BY first_detected_at DESC
+      LIMIT 1`,
+  )
+  return latest?.tenant_id
+}
+
 // Real wiring: read directly from the `anomalies` table (`server/api/ai/anomalies/index.get.ts`
 // is the precedent). Tenant scoping comes from the selected Xero org on the event — never from
 // model-supplied input. WHERE status NOT IN ('resolved','dismissed') = the "open incidents" set.
 const defaultDeps: AnomaliesDeps = {
   fetchAnomalies: async (q, ctx) => {
-    const tenantId = await getSelectedTenant(ctx.event)
+    const tenantId = await resolveAnomalyTenant(ctx)
     if (!tenantId) return []
 
     const where: string[] = ['tenant_id = $1', 'status <> ALL($2)']
@@ -55,7 +78,7 @@ const defaultDeps: AnomaliesDeps = {
     )
   },
   isConfigured: async (ctx) => {
-    const tenantId = await getSelectedTenant(ctx.event)
+    const tenantId = await resolveAnomalyTenant(ctx)
     // Detection rules are code-defined and active for every selected tenant. An empty
     // anomalies table therefore means "configured and healthy", not "not configured".
     return Boolean(tenantId)
@@ -95,7 +118,7 @@ export async function getOpenAnomalies(args: Args, ctx: ToolContext, deps: Anoma
 
 export const anomaliesTool: AiTool<Args> = {
   name: 'get_open_anomalies',
-  description: 'List currently open anomaly detections with rule, severity, recommendation and evidence values. An empty result explicitly distinguishes a configured healthy engine from one that has never produced data. Filter by type/severity and paginate with cursor.',
+  description: 'List currently open anomaly detections with rule, severity, recommendation and evidence values. MCP requests resolve the server-held organisation context without relying on a browser cookie; if Xero is disconnected, the latest detected non-default tenant remains available read-only. An empty result explicitly distinguishes a configured healthy engine from one that has never produced data. Filter by type/severity and paginate with cursor.',
   parameters: params,
   requiredPermission: 'FINANCE',
   returnsUntrusted: true,

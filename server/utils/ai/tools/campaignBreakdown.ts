@@ -59,6 +59,7 @@ export type BreakdownCampaign = {
     cpcDelta: number | null
     cpcDeltaPct: number | null
   }
+  comparisonStatus?: 'available' | 'no_baseline'
 }
 
 type BreakdownResult = { campaigns: BreakdownCampaign[], total: number }
@@ -222,11 +223,13 @@ function withComparison(current: BreakdownCampaign[], previous: BreakdownCampaig
   const prior = new Map(previous.map(row => [campaignKey(row), row]))
   return current.map(row => {
     const old = prior.get(campaignKey(row))
-    const priorSpend = old?.spend ?? 0
-    const priorLeads = old?.leadCount ?? 0
+    if (!old) return { ...row, comparisonStatus: 'no_baseline' as const }
+    const priorSpend = old.spend
+    const priorLeads = old.leadCount
     const cpcDelta = row.cpc != null && old?.cpc != null ? round(row.cpc - old.cpc) : null
     return {
       ...row,
+      comparisonStatus: 'available' as const,
       comparison: {
         spendDelta: round(row.spend - priorSpend),
         spendDeltaPct: priorSpend > 0 ? round(((row.spend - priorSpend) / priorSpend) * 100) : null,
@@ -270,7 +273,12 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
     const prior = priorPeriod
       ? await deps.breakdown(ctx, { platform: args.platform, startDate: priorPeriod.start, endDate: priorPeriod.end })
       : null
-    const compared = prior ? withComparison(current.campaigns, prior.campaigns) : current.campaigns
+    const comparisonStatus = prior
+      ? (prior.campaigns.length > 0 ? 'available' : 'no_baseline')
+      : undefined
+    const compared = prior?.campaigns.length
+      ? withComparison(current.campaigns, prior.campaigns)
+      : current.campaigns.map(row => prior ? { ...row, comparisonStatus: 'no_baseline' as const } : row)
     const all = compared.map(row => ({ ...row, conversions: null }))
 
     const nameNeedle = args.clientName?.trim().toLowerCase()
@@ -287,6 +295,7 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
     return ok({
       period,
       ...(priorPeriod ? { previousPeriod: priorPeriod } : {}),
+      ...(comparisonStatus ? { comparisonStatus } : {}),
       source: 'synced_campaign_analytics',
       ...buildSyncFreshness(current.campaigns.map(row => row.lastSyncedAt), { now: deps.now?.() }),
       ...buildDataHealth({ configured: true, expected: current.total, withData: current.campaigns.length }),
@@ -319,7 +328,7 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
 
 export const campaignBreakdownTool: AiTool<Args> = {
   name: 'get_campaign_breakdown',
-  description: 'Campaign delivery and performance for a requested date range across Meta and Google: live/effective status, first and last served dates, end date, spend, ROAS, CPC, frequency, submitted leads and CPL. Provider conversions are explicitly null until historical rows are resynced under non-overlapping outcome semantics; `conversionMetric` explains this. `leadAttribution` reports real non-test submissions and campaign/ad attribution coverage without assigning unattributed leads to campaigns. Summary freshness includes the newest and oldest sync, stale-row count, and 48-hour threshold so partial account stalls are visible. Supports previous-period comparison, status/platform/client filters, multiple ranking metrics, and cursor pagination across the complete result set. Use get_adspend_pacing for budget pacing and get_finance_snapshot for cash.',
+  description: 'Campaign delivery and performance for a requested date range across Meta and Google: live/effective status, first and last served dates, end date, spend, ROAS, CPC, frequency, submitted leads and CPL. Provider conversions are explicitly null until historical rows are resynced under non-overlapping outcome semantics; `conversionMetric` explains this. `leadAttribution` reports real non-test submissions and campaign/ad attribution coverage without assigning unattributed leads to campaigns. Previous-period requests return `comparisonStatus`; a missing prior window is `no_baseline` and never fabricated as zero spend. Summary freshness includes the newest and oldest sync, stale-row count, and 48-hour threshold so partial account stalls are visible. Supports status/platform/client filters, multiple ranking metrics, and cursor pagination across the complete result set. Use get_adspend_pacing for budget pacing and get_finance_snapshot for cash.',
   parameters: params,
   requiredPermission: 'MEDIA_BUYING',
   handler: (a, c) => getCampaignBreakdown(a, c),

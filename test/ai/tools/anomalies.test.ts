@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { getOpenAnomalies, type AnomaliesDeps, type AnomalyQuery } from '~~/server/utils/ai/tools/anomalies'
+import { getOpenAnomalies, resolveAnomalyTenant, type AnomaliesDeps, type AnomalyQuery } from '~~/server/utils/ai/tools/anomalies'
 
 const ctx = { userId: 'u1', userRole: 'owner', event: {} as any }
 
@@ -13,6 +13,18 @@ function row(over: Partial<{ type: string; severity: string; title: string; desc
 }
 
 describe('get_open_anomalies', () => {
+  it('uses latest non-default anomaly tenant for cookie-less MCP reads', async () => {
+    const selected = vi.fn().mockResolvedValue(undefined)
+    const load = vi.fn().mockResolvedValue({ tenant_id: 'tenant-live' })
+    await expect(resolveAnomalyTenant({ ...ctx, source: 'mcp' }, selected, load as any)).resolves.toBe('tenant-live')
+    expect(String(load.mock.calls[0][0])).toContain("tenant_id <> '__default__'")
+  })
+
+  it('does not infer an anomaly tenant for ordinary browser chat', async () => {
+    const load = vi.fn()
+    await expect(resolveAnomalyTenant({ ...ctx, source: 'chat' }, vi.fn().mockResolvedValue(undefined), load as any)).resolves.toBeUndefined()
+    expect(load).not.toHaveBeenCalled()
+  })
   it('requests OPEN-only rows (never resolved/dismissed) and passes filters through', async () => {
     const fetchAnomalies = vi.fn<[AnomalyQuery], Promise<any[]>>().mockResolvedValue([row()])
     const deps: AnomaliesDeps = { fetchAnomalies }

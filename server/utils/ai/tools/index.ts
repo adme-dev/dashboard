@@ -36,7 +36,8 @@ import { socialInboxTool } from './socialInbox'
 import { emailCampaignsTool } from './emailCampaigns'
 import { socialNewsRecommendationsTool } from './socialNewsRecommendations'
 import { capabilitiesTool } from './capabilities'
-import { creativeAssetsTool } from './creativeAssets'
+import { actionLogTool } from './actionLogTool'
+import { creativeAssetsTool } from './creativeAssetsTool'
 import { adBreakdownTool } from './adBreakdown'
 import { modelCapabilitiesTool } from './modelCapabilities'
 
@@ -50,6 +51,7 @@ if (crmTools.some(tool => tool.requiredPermission !== 'CLIENTS')) {
 /** The assembled tool registry — read tools + create_task + remember (personal memory capture). */
 export const registry: AiTool<any>[] = [
   capabilitiesTool,
+  actionLogTool,
   creativeAssetsTool,
   adBreakdownTool,
   modelCapabilitiesTool,

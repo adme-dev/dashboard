@@ -219,7 +219,12 @@ describe('signed internal MCP list/call endpoints', () => {
     })
 
     await expect(toolsHandler(requestEvent)).resolves.toEqual({
-      tools: [{ name: 'get_tasks', description: 'read', inputSchema: {} }]
+      tools: [{ name: 'get_tasks', description: 'read', inputSchema: {} }],
+      catalog: {
+        release: '2026-08-19.1',
+        toolCount: 1,
+        source: 'fresh_server_projection',
+      },
     })
     expect(mocks.consumeClaim).toHaveBeenCalledWith(requestEvent, CLAIM, USER_ID)
     expect(ordering).toEqual(['claim-consumed', 'projected'])
@@ -324,7 +329,12 @@ describe('signed internal MCP list/call endpoints', () => {
       tools: [
         { name: 'get_tasks', description: 'owner read', inputSchema: {} },
         { name: 'create_task', description: 'owner write', inputSchema: {} }
-      ]
+      ],
+      catalog: {
+        release: '2026-08-19.1',
+        toolCount: 2,
+        source: 'fresh_server_projection',
+      },
     })
     expect(mocks.getAuthority).toHaveBeenCalledWith(requestEvent, USER_ID)
     expect(mocks.projectGodMode).toHaveBeenCalledWith(expect.objectContaining({

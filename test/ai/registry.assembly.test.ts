@@ -5,6 +5,7 @@ import { projectReadOnlyTools } from '~~/server/utils/ai/mcp/project'
 
 const READ_TOOLS = [
   'get_capabilities',
+  'get_action_log',
   'get_creative_assets',
   'get_model_capabilities',
   'get_finance_snapshot', 'get_adspend_pacing', 'get_tasks', 'get_project_status',

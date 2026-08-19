@@ -81,8 +81,11 @@ describe('get_capabilities', () => {
 
     expect(result.ok).toBe(true)
     const tools = (result as any).data.tools as Array<{ name: string, mode: string }>
-    expect(tools).toHaveLength(72)
+    expect(tools).toHaveLength(73)
     expect(tools).toContainEqual({ name: 'list_video_source_assets', mode: 'read' })
+    expect((result as any).data.servedCatalog).toEqual({
+      release: '2026-08-19.1', toolCount: 73, projectionAuthority: 'shared_with_tools_list',
+    })
     expect((result as any).data.degraded).toBeUndefined()
   })
 

@@ -91,10 +91,13 @@ export interface MondayAsset {
   id: string
   name: string
   url: string
+  public_url?: string
   file_size: number
   file_extension: string
-  uploaded_at: string
-  uploaded_by: string
+  created_at?: string
+  /** Legacy compatibility for saved/mock payloads created before Monday renamed this field. */
+  uploaded_at?: string
+  uploaded_by?: string | { id: string, name: string }
 }
 
 export interface MondayUser {
@@ -512,16 +515,20 @@ export class MondayClient {
             id
             name
             url
+            public_url
             file_size
             file_extension
-            uploaded_at
-            uploaded_by
+            created_at
+            uploaded_by {
+              id
+              name
+            }
           }
         }
       }
     `
 
-    const data = await this.request<{ items: [{ assets?: MondayAsset[] }] }>(query)
+    const data = await this.request<{ items: Array<{ assets?: MondayAsset[] }> }>(query)
     return data.items.flatMap(item => item.assets || [])
   }
 
