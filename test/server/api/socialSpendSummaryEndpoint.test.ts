@@ -50,6 +50,7 @@ describe('GET /api/agency/social/spend/summary', () => {
           total_clicks: '50',
           total_conversions: '5',
           campaign_count: 2,
+          budgeted_campaign_count: 1,
           last_synced_at: '2026-06-20T00:00:00.000Z',
           spend_ids: ['spend-1'],
           is_rolling: false,
@@ -72,6 +73,7 @@ describe('GET /api/agency/social/spend/summary', () => {
           total_clicks: '120',
           total_conversions: '9',
           campaign_count: 3,
+          budgeted_campaign_count: 3,
           last_synced_at: '2026-06-25T00:00:00.000Z',
           spend_ids: ['spend-2'],
           is_rolling: true,
@@ -87,6 +89,7 @@ describe('GET /api/agency/social/spend/summary', () => {
     const result = await handler({} as any)
 
     expect(mockRequireAuth).toHaveBeenCalled()
+    expect(String(mockQueryRows.mock.calls[0][0])).toContain('budgeted_campaign_count')
     expect(mockQueryRows.mock.calls[0][1]).toEqual(['2026-06', 'tenant-1', 'meta'])
     expect(result.items).toHaveLength(1)
     expect(result.items[0]).toMatchObject({
@@ -95,6 +98,7 @@ describe('GET /api/agency/social/spend/summary', () => {
       budget: 3500,
       spend: 4084.52,
       campaignCount: 5,
+      budgetedCampaignCount: 4,
       spendIds: ['spend-1', 'spend-2'],
     })
     expect(result.totals).toMatchObject({

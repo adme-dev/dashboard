@@ -8,7 +8,7 @@ import { buildDataHealth, paginateWithCursor } from './responseContract'
 
 const params = z.object({
   clientName: z.string().optional(),
-  status: z.enum(['over_budget', 'critical', 'at_risk', 'underspend', 'healthy', 'no_budget_set', 'all']).default('all'),
+  status: z.enum(['over_budget', 'critical', 'at_risk', 'underspend', 'healthy', 'partial_budget_coverage', 'no_budget_set', 'all']).default('all'),
   cursor: z.string().optional(),
   limit: z.number().int().min(1).max(50).default(20),
 })
@@ -21,18 +21,21 @@ export type BudgetHealthClient = {
   budget: number
   spend: number
   /** Spend as a % of allocated budget. */
-  percentConsumed: number
+  percentConsumed: number | null
   /** percentConsumed / month-progress; >1 = ahead of pace, <1 = behind. */
-  pacingRatio: number
+  pacingRatio: number | null
   healthStatus: string
   budgetLevel?: 'campaign' | 'client' | 'account'
   unattributed?: boolean
   lastSyncedAt?: string | null
+  campaignCount?: number
+  budgetedCampaignCount?: number
+  budgetCoverage?: { expectedCampaigns: number, budgetedCampaigns: number }
 }
 
 export type BudgetHealthData = {
   period: string
-  summary: Record<string, number>
+  summary: Record<string, number | null>
   clients: BudgetHealthClient[]
 }
 
@@ -55,13 +58,15 @@ const defaultDeps: BudgetHealthDeps = {
         platform: String(c?.platform ?? ''),
         budget: Number(c?.budget ?? 0),
         spend: Number(c?.spend ?? 0),
-        percentConsumed: Number(c?.percentConsumed ?? 0),
-        pacingRatio: Number(c?.pacingRatio ?? 0),
+        percentConsumed: c?.percentConsumed == null ? null : Number(c.percentConsumed),
+        pacingRatio: c?.pacingRatio == null ? null : Number(c.pacingRatio),
         healthStatus: String(c?.healthStatus ?? ''),
-        budgetLevel: 'campaign',
+        budgetLevel: 'client',
         unattributed: String(c?.clientId ?? '').toLowerCase() === 'unmapped'
           || String(c?.clientName ?? '').toLowerCase() === 'unmapped',
         lastSyncedAt: c?.lastSyncedAt ? String(c.lastSyncedAt) : null,
+        campaignCount: Number.isFinite(Number(c?.campaignCount)) ? Number(c.campaignCount) : undefined,
+        budgetedCampaignCount: Number.isFinite(Number(c?.budgetedCampaignCount)) ? Number(c.budgetedCampaignCount) : undefined,
       })),
     }
   },
@@ -72,17 +77,38 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
     const res = await deps.health(ctx)
 
     const nameNeedle = args.clientName?.trim().toLowerCase()
-    const normalised = res.clients.map(c => c.budget > 0
-      ? { ...c, budgetLevel: c.budgetLevel ?? 'campaign', unattributed: Boolean(c.unattributed) }
+    const normalised = res.clients.map((c) => {
+      const campaignCount = c.campaignCount
+      const budgetedCampaignCount = c.budgetedCampaignCount
+      const hasCoverageCounts = Number.isFinite(campaignCount) && Number.isFinite(budgetedCampaignCount)
+      const hasPartialBudgetCoverage = c.budget > 0
+        && hasCoverageCounts
+        && Number(budgetedCampaignCount) < Number(campaignCount)
+      const budgetCoverage = hasCoverageCounts
+        ? { expectedCampaigns: Number(campaignCount), budgetedCampaigns: Number(budgetedCampaignCount) }
+        : undefined
+
+      return c.budget > 0
+      ? {
+          ...c,
+          budgetLevel: c.budgetLevel ?? 'client',
+          unattributed: Boolean(c.unattributed),
+          budgetCoverage,
+          healthStatus: hasPartialBudgetCoverage ? 'partial_budget_coverage' : c.healthStatus,
+          percentConsumed: hasPartialBudgetCoverage ? null : c.percentConsumed,
+          pacingRatio: hasPartialBudgetCoverage ? null : c.pacingRatio,
+        }
       : {
           ...c,
           budget: null,
           percentConsumed: null,
           pacingRatio: null,
           healthStatus: 'no_budget_set',
-          budgetLevel: c.budgetLevel ?? 'campaign',
+          budgetLevel: c.budgetLevel ?? 'client',
           unattributed: Boolean(c.unattributed),
-        })
+          budgetCoverage,
+        }
+    })
     const attributed = normalised.filter(c => !c.unattributed)
     const filtered = attributed.filter((c) => {
       if (nameNeedle && !c.clientName.toLowerCase().includes(nameNeedle)) return false
@@ -94,6 +120,7 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
       .filter(c => !nameNeedle || c.clientName.toLowerCase().includes(nameNeedle))
     const page = paginateWithCursor(filtered, args.cursor, args.limit)
     const budgeted = attributed.filter(c => c.budget !== null)
+    const pacingEligible = budgeted.filter(c => c.healthStatus !== 'partial_budget_coverage')
     const totalBudget = budgeted.reduce((sum, c) => sum + Number(c.budget), 0)
     const totalSpent = budgeted.reduce((sum, c) => sum + c.spend, 0)
     const trackedSpend = attributed.reduce((sum, c) => sum + c.spend, 0)
@@ -101,9 +128,10 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
     const health = buildDataHealth({
       configured: res.clients.length > 0,
       expected: attributed.length,
-      withData: budgeted.length,
+      withData: pacingEligible.length,
     })
-    if (unattributed.length > 0 && health.dataStatus === 'populated') health.dataStatus = 'partial'
+    const partialBudgetCoverageCount = attributed.filter(c => c.healthStatus === 'partial_budget_coverage').length
+    if ((unattributed.length > 0 || partialBudgetCoverageCount > 0) && health.dataStatus === 'populated') health.dataStatus = 'partial'
     const lastSyncedAt = normalised.reduce<string | null>((latest, row) => {
       if (!row.lastSyncedAt) return latest
       return !latest || row.lastSyncedAt > latest ? row.lastSyncedAt : latest
@@ -112,11 +140,17 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
       ...res.summary,
       totalBudget,
       totalSpent,
+      budgetedSpend: totalSpent,
+      totalRemaining: Math.round((totalBudget - totalSpent) * 100) / 100,
       trackedSpend,
       unattributedSpend,
-      overallUtilization: totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 10000) / 100 : 0,
+      overallUtilization: partialBudgetCoverageCount > 0
+        ? null
+        : totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 10000) / 100 : 0,
       clientCount: attributed.length,
-      excludedFromPacingCount: attributed.length - budgeted.length,
+      excludedFromPacingCount: attributed.length - pacingEligible.length,
+      partialBudgetCoverageCount,
+      overBudgetCount: attributed.filter(c => c.healthStatus === 'over_budget').length,
     }
 
     return ok({
@@ -140,7 +174,7 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
 export const budgetHealthTool: AiTool<Args> = {
   name: 'get_budget_health',
   description: 'Budget health for the current month per client/platform — allocated budget, spend, % consumed, freshness and coverage. '
-    + 'Rows without a configured budget are `no_budget_set` with null budget/pacing values and are excluded from utilization. Unattributed account spend is returned separately. '
+    + 'Rows without a configured budget are `no_budget_set`; rows where only some campaigns have budgets are `partial_budget_coverage`. Both have null pacing values and are excluded from pacing conclusions. Unattributed account spend is returned separately. '
     + 'Use for "who is over budget", "which accounts are at risk", or "budget pacing this month". '
     + 'For per-campaign ROAS/CPC use get_campaign_breakdown; for cash use get_finance_snapshot. '
     + 'Optionally filter by status and use cursor/limit pagination.',

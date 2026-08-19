@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
-import { paginateWithCursor } from './responseContract'
+import { buildDataHealth, paginateWithCursor } from './responseContract'
 
 const params = z.object({
   status: z.enum(['overallocated', 'underutilized', 'all']).default('all'),
@@ -42,11 +42,15 @@ export async function getCapacity(args: Args, ctx: ToolContext, deps: CapacityDe
       loggedHours: Number(r?.summary?.totalLogged ?? 0),
       projectsWithAllocations: Array.isArray(r?.projectAllocations) ? r.projectAllocations.length : 0,
     }
-    const configured = evidence.bookedHours > 0 || evidence.loggedHours > 0 || evidence.projectsWithAllocations > 0
+    const withData = members.filter(m => Number(m?.bookedHours ?? 0) > 0 || Number(m?.loggedHours ?? 0) > 0).length
+    const health = buildDataHealth({
+      configured: evidence.bookedHours > 0 || evidence.loggedHours > 0 || withData > 0,
+      expected: members.length,
+      withData,
+    })
     return ok({
       period: r?.period ?? null,
-      dataStatus: configured ? 'populated' : 'not_configured',
-      coverage: { expected: members.length, withData: members.filter(m => Number(m?.bookedHours ?? 0) > 0 || Number(m?.loggedHours ?? 0) > 0).length },
+      ...health,
       configurationEvidence: evidence,
       summary: r?.summary ?? {},
       teamMembers: page.items,

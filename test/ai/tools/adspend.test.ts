@@ -44,7 +44,7 @@ describe('get_adspend_pacing', () => {
     const res = await getAdspendPacing({ status: 'all' }, ctx, deps)
     expect(res.ok).toBe(true)
     const c = (res as any).data.campaigns[0]
-    expect(c).toMatchObject({ client: 'Acme', platform: 'google', spend: 1200, budget: 2000, pacePct: 60, status: 'underpacing', budgetLevel: 'campaign' })
+    expect(c).toMatchObject({ client: 'Acme', platform: 'google', spend: 1200, budget: 2000, pacePct: 60, status: 'underpacing', budgetLevel: 'client' })
   })
 
   it('caps the campaign list at 20 and reports a `more` count', async () => {
@@ -76,6 +76,28 @@ describe('get_adspend_pacing', () => {
     expect(data.campaigns[0]).toMatchObject({ budget: null, pacePct: null, status: 'no_budget_set' })
     expect(data.dataStatus).toBe('partial')
     expect(data.coverage).toEqual({ expected: 1, withData: 0 })
+  })
+
+  it('does not classify client pacing when only some campaign budgets are configured', async () => {
+    const deps: AdspendDeps = {
+      pacing: vi.fn().mockResolvedValue([
+        campaign({
+          client: 'Northern Motor Group', spend: 1705.22, budget: 510, pacePct: 576,
+          status: 'overpacing', campaignCount: 13, budgetedCampaignCount: 1,
+        }),
+      ]),
+    }
+
+    const data = (await getAdspendPacing({ status: 'all' }, ctx, deps) as any).data
+
+    expect(data.campaigns[0]).toMatchObject({
+      budgetLevel: 'client',
+      status: 'partial_budget_coverage',
+      pacePct: null,
+      budgetCoverage: { expectedCampaigns: 13, budgetedCampaigns: 1 },
+    })
+    expect(data.coverage).toEqual({ expected: 1, withData: 0 })
+    expect(data.excludedFromPacingCount).toBe(1)
   })
 
   it('separates unattributed account spend from client pacing rows', async () => {

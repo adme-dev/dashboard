@@ -63,6 +63,52 @@ describe('getBudgetHealth', () => {
     expect(d.dataStatus).toBe('partial')
   })
 
+  it('recomputes remaining budget from the reconciled budgeted spend total', async () => {
+    const health: BudgetHealthData = {
+      period: '2026-08',
+      summary: { totalRemaining: -23965.19 },
+      clients: [
+        { clientName: 'Budgeted', platform: 'meta', budget: 8810, spend: 9412.04, percentConsumed: 106.83, pacingRatio: 1.2, healthStatus: 'over_budget' },
+        { clientName: 'No Budget', platform: 'meta', budget: 0, spend: 1234, percentConsumed: 0, pacingRatio: 0, healthStatus: 'no_budget' },
+      ],
+    }
+
+    const d = data(await getBudgetHealth({}, ctx, deps({ health: vi.fn().mockResolvedValue(health) })))
+
+    expect(d.summary.totalRemaining).toBe(-602.04)
+    expect(d.summary.budgetedSpend).toBe(9412.04)
+  })
+
+  it('quarantines pacing conclusions when only some campaigns have configured budgets', async () => {
+    const health: BudgetHealthData = {
+      period: '2026-08',
+      summary: {},
+      clients: [
+        {
+          clientName: 'Northern Motor Group', platform: 'meta', budget: 510, spend: 1705.22,
+          percentConsumed: 334.4, pacingRatio: 5.76, healthStatus: 'over_budget',
+          budgetLevel: 'client', campaignCount: 13, budgetedCampaignCount: 1,
+        },
+      ],
+    }
+
+    const d = data(await getBudgetHealth({}, ctx, deps({ health: vi.fn().mockResolvedValue(health) })))
+
+    expect(d.clients[0]).toMatchObject({
+      budget: 510,
+      spend: 1705.22,
+      budgetLevel: 'client',
+      healthStatus: 'partial_budget_coverage',
+      percentConsumed: null,
+      pacingRatio: null,
+      budgetCoverage: { expectedCampaigns: 13, budgetedCampaigns: 1 },
+    })
+    expect(d.summary.overBudgetCount).toBe(0)
+    expect(d.summary.overallUtilization).toBeNull()
+    expect(d.summary.excludedFromPacingCount).toBe(1)
+    expect(d.coverage).toEqual({ expected: 1, withData: 0 })
+  })
+
   it('filters by clientName (case-insensitive contains)', async () => {
     const r = await getBudgetHealth({ clientName: 'glob' }, ctx, deps())
     const d = data(r)

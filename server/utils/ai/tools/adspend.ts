@@ -10,13 +10,13 @@ import { buildDataHealth, paginateWithCursor } from './responseContract'
 const params = z.object({
   clientName: z.string().optional(),
   platform: z.enum(['meta', 'google']).optional(),
-  status: z.enum(['underpacing', 'overpacing', 'on_pace', 'no_budget_set', 'all']).default('all'),
+  status: z.enum(['underpacing', 'overpacing', 'on_pace', 'partial_budget_coverage', 'no_budget_set', 'all']).default('all'),
   cursor: z.string().optional(),
   limit: z.number().int().min(1).max(50).default(20),
 })
 type Args = z.infer<typeof params>
 
-export type PacingStatus = 'underpacing' | 'overpacing' | 'on_pace' | 'no_budget_set'
+export type PacingStatus = 'underpacing' | 'overpacing' | 'on_pace' | 'partial_budget_coverage' | 'no_budget_set'
 
 export type PacingCampaign = {
   client: string
@@ -29,6 +29,9 @@ export type PacingCampaign = {
   budgetLevel: 'campaign' | 'client' | 'account'
   unattributed: boolean
   lastSyncedAt: string | null
+  campaignCount?: number
+  budgetedCampaignCount?: number
+  budgetCoverage?: { expectedCampaigns: number, budgetedCampaigns: number }
 }
 
 export type AdspendDeps = {
@@ -73,9 +76,11 @@ const defaultDeps: AdspendDeps = {
         budget: hasBudget ? budget : null,
         pacePct,
         status: pacePct === null ? 'no_budget_set' : classify(pacePct),
-        budgetLevel: 'campaign',
+        budgetLevel: 'client',
         unattributed: String(it?.groupKey ?? '').includes(':unmapped:'),
         lastSyncedAt: it?.lastSyncedAt ? String(it.lastSyncedAt) : null,
+        campaignCount: Number.isFinite(Number(it?.campaignCount)) ? Number(it.campaignCount) : undefined,
+        budgetedCampaignCount: Number.isFinite(Number(it?.budgetedCampaignCount)) ? Number(it.budgetedCampaignCount) : undefined,
       }
     })
   },
@@ -103,7 +108,22 @@ function latestSync(rows: PacingCampaign[]) {
 
 export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: AdspendDeps = defaultDeps): Promise<ToolResult> {
   try {
-    const all = await deps.pacing(ctx)
+    const sourceRows = await deps.pacing(ctx)
+    const all = sourceRows.map((c) => {
+      const hasCoverageCounts = Number.isFinite(c.campaignCount) && Number.isFinite(c.budgetedCampaignCount)
+      const hasPartialBudgetCoverage = c.budget !== null
+        && hasCoverageCounts
+        && Number(c.budgetedCampaignCount) < Number(c.campaignCount)
+      return {
+        ...c,
+        budgetLevel: 'client' as const,
+        status: hasPartialBudgetCoverage ? 'partial_budget_coverage' as const : c.status,
+        pacePct: hasPartialBudgetCoverage ? null : c.pacePct,
+        budgetCoverage: hasCoverageCounts
+          ? { expectedCampaigns: Number(c.campaignCount), budgetedCampaigns: Number(c.budgetedCampaignCount) }
+          : undefined,
+      }
+    })
 
     const nameNeedle = args.clientName?.trim().toLowerCase()
     const matchesCommonFilters = (c: PacingCampaign) => {
@@ -112,6 +132,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
       if (args.status === 'underpacing' && c.status !== 'underpacing') return false
       if (args.status === 'overpacing' && c.status !== 'overpacing') return false
       if (args.status === 'on_pace' && c.status !== 'on_pace') return false
+      if (args.status === 'partial_budget_coverage' && c.status !== 'partial_budget_coverage') return false
       if (args.status === 'no_budget_set' && c.status !== 'no_budget_set') return false
       return true
     }
@@ -125,7 +146,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
     const health = buildDataHealth({
       configured: all.length > 0,
       expected: attributed.length,
-      withData: attributed.filter(c => c.budget !== null).length,
+      withData: attributed.filter(c => c.budget !== null && c.status !== 'partial_budget_coverage').length,
     })
     if (unattributed.length > 0 && health.dataStatus === 'populated') health.dataStatus = 'partial'
 
@@ -140,7 +161,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
       appliedLimit: args.limit ?? 20,
       nextCursor: page.nextCursor,
       more: page.more,
-      excludedFromPacingCount: attributed.filter(c => c.budget === null).length,
+      excludedFromPacingCount: attributed.filter(c => c.budget === null || c.status === 'partial_budget_coverage').length,
     })
   } catch {
     return fail('Could not load ad-spend pacing — the spend sync may be unavailable or no budgets are set for this period.')
@@ -149,7 +170,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
 
 export const adspendTool: AiTool<Args> = {
   name: 'get_adspend_pacing',
-  description: 'Get per-client ad-spend pacing for the current month across Meta and Google. Returns actual spend, budget level, allocated budget, expected-to-date pace, freshness and explicit data coverage. Spend without a configured budget is `no_budget_set` with null budget/pace — never underpacing. Unattributed account spend is returned separately. Use cursor/limit to paginate. Do NOT use for cash, runway, or accounts-receivable (use get_finance_snapshot).',
+  description: 'Get per-client ad-spend pacing for the current month across Meta and Google. Returns actual spend, budget level, allocated budget, expected-to-date pace, freshness and explicit data coverage. Spend without a configured budget is `no_budget_set`; incomplete campaign budget coverage is `partial_budget_coverage`. Both have null pace and are excluded from pacing conclusions. Unattributed account spend is returned separately. Use cursor/limit to paginate. Do NOT use for cash, runway, or accounts-receivable (use get_finance_snapshot).',
   parameters: params,
   requiredPermission: 'FINANCE',
   handler: (a, c) => getAdspendPacing(a, c),

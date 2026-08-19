@@ -17,6 +17,7 @@ export interface SpendSummaryRow {
   total_clicks: string | number | null
   total_conversions: string | number | null
   campaign_count: string | number | null
+  budgeted_campaign_count?: string | number | null
   last_synced_at: string | null
   spend_ids: Array<string | null> | null
   is_rolling: boolean | null
@@ -38,6 +39,7 @@ export interface SpendSummaryItem {
   clicks: number
   conversions: number
   campaignCount: number
+  budgetedCampaignCount: number
   spendIds: string[]
   rolling: boolean
   commissionRate: number
@@ -59,6 +61,7 @@ interface SummaryAccumulator {
   clicks: number
   conversions: number
   campaignCount: number
+  budgetedCampaignCount: number
   spendIds: string[]
   rolling: boolean
   commissionRate: number
@@ -113,6 +116,7 @@ export function buildSpendSummaryItems(rows: SpendSummaryRow[]): SpendSummaryIte
       clicks: 0,
       conversions: 0,
       campaignCount: 0,
+      budgetedCampaignCount: 0,
       spendIds: [],
       rolling: false,
       commissionRate: 0,
@@ -126,6 +130,7 @@ export function buildSpendSummaryItems(rows: SpendSummaryRow[]): SpendSummaryIte
     acc.clicks += intValue(row.total_clicks)
     acc.conversions += intValue(row.total_conversions)
     acc.campaignCount += intValue(row.campaign_count)
+    acc.budgetedCampaignCount += intValue(row.budgeted_campaign_count)
     acc.rolling = acc.rolling || Boolean(row.is_rolling)
     acc.commissionRate = Math.max(acc.commissionRate, numberValue(row.commission_rate))
     acc.lastSyncedAt = latestTimestamp(acc.lastSyncedAt, row.last_synced_at || null)
@@ -170,6 +175,7 @@ export function buildSpendSummaryItems(rows: SpendSummaryRow[]): SpendSummaryIte
         clicks: acc.clicks,
         conversions: acc.conversions,
         campaignCount: acc.campaignCount,
+        budgetedCampaignCount: acc.budgetedCampaignCount,
         spendIds: acc.spendIds,
         rolling: acc.rolling,
         commissionRate: acc.commissionRate,

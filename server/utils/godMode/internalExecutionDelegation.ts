@@ -116,6 +116,11 @@ const boundedPositiveInteger = (maximum: number) => (value: string) => {
   const parsed = Number(value)
   return Number.isSafeInteger(parsed) && parsed <= maximum
 }
+const boundedNonNegativeInteger = (maximum: number) => (value: string) => {
+  if (!/^(?:0|[1-9][0-9]*)$/.test(value)) return false
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) && parsed <= maximum
+}
 const oneOf = (...allowed: string[]) => (value: string) => allowed.includes(value)
 const isoDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value)
 const isoDateTime = (value: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)
@@ -183,10 +188,13 @@ const allowedReadTargets: ReadTarget[] = [
       startDate: isoDate,
       endDate: isoDate,
       sortBy: oneOf('spend'),
+      sortDir: oneOf('desc'),
+      showInactive: oneOf('true'),
       limit: oneOf('200'),
+      offset: boundedNonNegativeInteger(100_000),
       platform: oneOf('meta', 'google_ads,google')
     },
-    required: ['startDate', 'endDate', 'sortBy', 'limit']
+    required: ['startDate', 'endDate', 'sortBy', 'sortDir', 'showInactive', 'limit', 'offset']
   },
   {
     path: /^\/api\/agency\/social\/listening\/overview$/,

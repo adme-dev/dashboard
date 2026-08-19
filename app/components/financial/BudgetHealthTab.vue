@@ -81,6 +81,7 @@ const getHealthColor = (status: string): 'success' | 'warning' | 'error' | 'neut
     case 'at_risk': return 'warning'
     case 'critical': return 'error'
     case 'over_budget': return 'error'
+    case 'partial_budget_coverage': return 'warning'
     case 'no_budget': return 'neutral'
     default: return 'neutral'
   }
@@ -93,6 +94,7 @@ const getHealthLabel = (status: string): string => {
     case 'at_risk': return 'At Risk'
     case 'critical': return 'Critical'
     case 'over_budget': return 'Over Budget'
+    case 'partial_budget_coverage': return 'Budget Coverage Incomplete'
     case 'no_budget': return 'No Budget'
     default: return status
   }
@@ -234,7 +236,7 @@ const getCampaignStatusColor = (status: string | null): 'success' | 'warning' | 
         <div>
           <p class="font-medium text-sm">No budgets configured for {{ periodLabel }}</p>
           <p class="text-xs text-muted mt-1">
-            {{ clients.length }} client{{ clients.length > 1 ? 's have' : ' has' }} active ad spend ({{ formatCurrency(summary.totalSpent) }} total) but no monthly budgets set.
+            {{ clients.length }} client{{ clients.length > 1 ? 's have' : ' has' }} active ad spend ({{ formatCurrency(summary.trackedSpend ?? summary.totalSpent) }} total) but no monthly budgets set.
             Set budgets in Ad Spend to enable pacing alerts and health tracking.
           </p>
         </div>
@@ -252,7 +254,7 @@ const getCampaignStatusColor = (status: string | null): 'success' | 'warning' | 
             </template>
             <template v-else>
               <p class="text-sm text-muted mb-1">Total Ad Spend</p>
-              <p class="text-2xl font-bold text-blue-500">{{ formatCurrency(summary.totalSpent) }}</p>
+              <p class="text-2xl font-bold text-blue-500">{{ formatCurrency(summary.trackedSpend ?? summary.totalSpent) }}</p>
               <p class="text-xs text-muted">{{ clients.length }} client{{ clients.length !== 1 ? 's' : '' }} active</p>
             </template>
           </div>
@@ -262,9 +264,10 @@ const getCampaignStatusColor = (status: string | null): 'success' | 'warning' | 
         <UCard>
           <div class="text-center">
             <template v-if="hasBudgets">
-              <p class="text-sm text-muted mb-1">Total Spent</p>
+              <p class="text-sm text-muted mb-1">Budgeted Spend</p>
               <p class="text-2xl font-bold text-blue-500">{{ formatCurrency(summary.totalSpent) }}</p>
-              <p class="text-xs text-muted">{{ formatPercent(summary.overallUtilization) }} of budget</p>
+              <p v-if="summary.overallUtilization !== null" class="text-xs text-muted">{{ formatPercent(summary.overallUtilization) }} of budget</p>
+              <p v-else class="text-xs text-amber-600 dark:text-amber-400">Complete campaign budgets to calculate utilization</p>
             </template>
             <template v-else>
               <p class="text-sm text-muted mb-1">Month Progress</p>
@@ -278,11 +281,11 @@ const getCampaignStatusColor = (status: string | null): 'success' | 'warning' | 
         <UCard>
           <div class="text-center">
             <template v-if="hasBudgets">
-              <p class="text-sm text-muted mb-1">Remaining</p>
-              <p class="text-2xl font-bold" :class="summary.totalRemaining >= 0 ? 'text-emerald-500' : 'text-red-500'">
+              <p class="text-sm text-muted mb-1">{{ summary.overallUtilization === null ? 'Known Budget Balance' : 'Remaining' }}</p>
+              <p class="text-2xl font-bold" :class="summary.overallUtilization === null ? 'text-amber-500' : summary.totalRemaining >= 0 ? 'text-emerald-500' : 'text-red-500'">
                 {{ formatCurrency(summary.totalRemaining) }}
               </p>
-              <p class="text-xs text-muted">{{ formatPercent(monthProgress) }} through month</p>
+              <p class="text-xs text-muted">{{ summary.overallUtilization === null ? 'Partial budget coverage' : formatPercent(monthProgress) + ' through month' }}</p>
             </template>
             <template v-else>
               <p class="text-sm text-muted mb-1">Platforms</p>
@@ -510,7 +513,10 @@ const getCampaignStatusColor = (status: string | null): 'success' | 'warning' | 
                       <p class="text-sm font-semibold">
                         {{ formatCurrency(client.spend) }} / {{ formatCurrency(client.budget) }}
                       </p>
-                      <p class="text-xs text-muted">
+                      <p v-if="client.healthStatus === 'partial_budget_coverage'" class="text-xs text-amber-600 dark:text-amber-400">
+                        {{ client.budgetedCampaignCount }} of {{ client.campaignCount }} campaign budgets configured
+                      </p>
+                      <p v-else class="text-xs text-muted">
                         {{ client.remaining >= 0 ? formatCurrency(client.remaining) + ' remaining' : formatCurrency(Math.abs(client.remaining)) + ' over' }}
                       </p>
                     </div>
@@ -526,6 +532,7 @@ const getCampaignStatusColor = (status: string | null): 'success' | 'warning' | 
                     :style="{ width: `${monthProgress}%` }"
                   />
                   <div
+                    v-if="client.percentConsumed !== null"
                     :class="getProgressColor(client.healthStatus)"
                     class="absolute inset-y-0 left-0 rounded-full transition-all"
                     :style="{ width: `${Math.min(client.percentConsumed, 100)}%` }"
@@ -533,7 +540,8 @@ const getCampaignStatusColor = (status: string | null): 'success' | 'warning' | 
                 </div>
                 <div class="flex justify-between mt-1 text-[10px] text-muted">
                   <span>0%</span>
-                  <span>{{ formatPercent(client.percentConsumed) }} spent ({{ client.pacingRatio }}x pacing)</span>
+                  <span v-if="client.percentConsumed !== null">{{ formatPercent(client.percentConsumed) }} spent ({{ client.pacingRatio }}x pacing)</span>
+                  <span v-else>Pacing unavailable until all campaign budgets are configured</span>
                   <span>100%</span>
                 </div>
               </div>

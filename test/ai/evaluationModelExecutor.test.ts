@@ -58,11 +58,11 @@ describe('evaluation model executor', () => {
       const serialized = JSON.parse(input.serializedInput)
 
       expect(descriptor.name).toBe('get_client_overview')
-      expect(descriptor.description).toContain('Look up one agency client')
+      expect(descriptor.description).toContain('Resolve a canonical or alternate client name')
       expect(descriptor.description).not.toContain('Simulation-only descriptor')
       expect(serialized.availableToolDescriptors).toEqual([{
         name: 'get_client_overview',
-        description: expect.stringContaining('Look up one agency client')
+        description: expect.stringContaining('Resolve a canonical or alternate client name')
       }])
 
       return {

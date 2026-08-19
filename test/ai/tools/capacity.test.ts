@@ -20,4 +20,21 @@ describe('get_capacity', () => {
     expect(data.total).toBe(2)
     expect(data.nextCursor).toBeNull()
   })
+
+  it('does not treat placeholder project allocations as populated capacity data', async () => {
+    const fetch = vi.fn().mockResolvedValue({
+      period: { startDate: '2026-08-17', endDate: '2026-09-14' },
+      summary: { totalBooked: 0, totalLogged: 0, teamSize: 2 },
+      teamMembers: [
+        { name: 'Designer', bookedHours: 0, loggedHours: 0, availableHours: 160, allocationPercent: 0, status: 'underutilized' },
+        { name: 'Producer', bookedHours: 0, loggedHours: 0, availableHours: 160, allocationPercent: 0, status: 'underutilized' },
+      ],
+      projectAllocations: [{ projectName: 'Placeholder', allocatedHours: 0 }],
+    })
+
+    const data = (await getCapacity({ status: 'all' }, ctx, { fetch }) as any).data
+
+    expect(data.coverage).toEqual({ expected: 2, withData: 0 })
+    expect(data.dataStatus).toBe('not_configured')
+  })
 })

@@ -24,7 +24,7 @@ export default defineEventHandler(async (event) => {
 
   const emptyResult = {
     period, month, year, monthProgress: 0,
-    summary: { totalBudget: 0, totalSpent: 0, totalRemaining: 0, overallUtilization: 0, clientCount: 0, overBudgetCount: 0, atRiskCount: 0, underspendCount: 0, healthyCount: 0, noBudgetCount: 0 },
+    summary: { totalBudget: 0, totalSpent: 0, budgetedSpend: 0, trackedSpend: 0, totalRemaining: 0, overallUtilization: 0, clientCount: 0, partialBudgetCoverageCount: 0, overBudgetCount: 0, atRiskCount: 0, underspendCount: 0, healthyCount: 0, noBudgetCount: 0 },
     clients: [],
     burnRateTrends: [],
     campaigns: []
@@ -37,10 +37,12 @@ export default defineEventHandler(async (event) => {
         COALESCE(ac.id::text, 'unmapped') as client_id,
         COALESCE(ac.name, 'Unmapped') as client_name,
         ms.platform,
-        SUM(ms.budget_allocated) as total_budget,
-        SUM(ms.actual_spend) as total_spend,
-        SUM(ms.commission_amount) as total_commission,
+        SUM(COALESCE(ms.budget_allocated, 0)) as total_budget,
+        SUM(COALESCE(ms.actual_spend, 0)) as total_spend,
+        SUM(COALESCE(ms.commission_amount, 0)) as total_commission,
         COUNT(*)::int as campaign_count,
+        COUNT(*) FILTER (WHERE COALESCE(ms.budget_allocated, 0) > 0)::int as budgeted_campaign_count,
+        MAX(ms.synced_at)::text as last_synced_at,
         bool_or(COALESCE(ms.budget_rolling, false)) as is_rolling
       FROM media_spend ms
       LEFT JOIN agency_clients ac ON ms.client_id = ac.id
@@ -62,9 +64,13 @@ export default defineEventHandler(async (event) => {
       const remaining = budget - spend
       const percentConsumed = budget > 0 ? (spend / budget) * 100 : 0
       const pacingRatio = monthProgress > 0 && budget > 0 ? (percentConsumed / monthProgress) : 0
+      const campaignCount = Number(r.campaign_count) || 0
+      const budgetedCampaignCount = Number(r.budgeted_campaign_count) || 0
+      const hasPartialBudgetCoverage = budget > 0 && budgetedCampaignCount < campaignCount
 
       let healthStatus: string
       if (budget === 0) healthStatus = 'no_budget'
+      else if (hasPartialBudgetCoverage) healthStatus = 'partial_budget_coverage'
       else if (percentConsumed > 100) healthStatus = 'over_budget'
       else if (pacingRatio > 1.15) healthStatus = 'critical'
       else if (pacingRatio > 1.05) healthStatus = 'at_risk'
@@ -79,9 +85,12 @@ export default defineEventHandler(async (event) => {
         spend,
         commission: parseFloat(r.total_commission) || 0,
         remaining,
-        percentConsumed: Math.round(percentConsumed * 10) / 10,
-        pacingRatio: Math.round(pacingRatio * 100) / 100,
-        campaignCount: r.campaign_count,
+        percentConsumed: hasPartialBudgetCoverage ? null : Math.round(percentConsumed * 10) / 10,
+        pacingRatio: hasPartialBudgetCoverage ? null : Math.round(pacingRatio * 100) / 100,
+        campaignCount,
+        budgetedCampaignCount,
+        budgetCoverageComplete: !hasPartialBudgetCoverage,
+        lastSyncedAt: r.last_synced_at,
         rolling: r.is_rolling || false,
         healthStatus
       }
@@ -89,8 +98,11 @@ export default defineEventHandler(async (event) => {
 
     // Summary calculations
     const withBudget = clients.filter(c => c.budget > 0)
-    const totalBudget = clients.reduce((s, c) => s + c.budget, 0)
-    const totalSpent = clients.reduce((s, c) => s + c.spend, 0)
+    const roundCurrency = (value: number) => Math.round(value * 100) / 100
+    const totalBudget = roundCurrency(withBudget.reduce((s, c) => s + c.budget, 0))
+    const budgetedSpend = roundCurrency(withBudget.reduce((s, c) => s + c.spend, 0))
+    const trackedSpend = roundCurrency(clients.reduce((s, c) => s + c.spend, 0))
+    const partialBudgetCoverageCount = withBudget.filter(c => c.healthStatus === 'partial_budget_coverage').length
 
     // Weekly burn rate from daily_spend
     const dailyTrends = await queryRows<any>(`
@@ -190,10 +202,15 @@ export default defineEventHandler(async (event) => {
       monthProgress: Math.round(monthProgress),
       summary: {
         totalBudget,
-        totalSpent,
-        totalRemaining: totalBudget - totalSpent,
-        overallUtilization: totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0,
+        totalSpent: budgetedSpend,
+        budgetedSpend,
+        trackedSpend,
+        totalRemaining: roundCurrency(totalBudget - budgetedSpend),
+        overallUtilization: partialBudgetCoverageCount > 0
+          ? null
+          : totalBudget > 0 ? Math.round((budgetedSpend / totalBudget) * 100) : 0,
         clientCount: withBudget.length,
+        partialBudgetCoverageCount,
         overBudgetCount: withBudget.filter(c => c.healthStatus === 'over_budget').length,
         atRiskCount: withBudget.filter(c => c.healthStatus === 'at_risk' || c.healthStatus === 'critical').length,
         underspendCount: withBudget.filter(c => c.healthStatus === 'underspend').length,
