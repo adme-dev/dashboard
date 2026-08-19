@@ -760,7 +760,7 @@ describe('God mode direct execution', () => {
     expect(h.calls.filter(call => call === 'executor')).toHaveLength(1)
   })
 
-  it('audits a trusted MCP read with the stable identity but creates no mutation-ledger row', async () => {
+  it('audits a trusted MCP read with a request-local identity but creates no mutation-ledger row', async () => {
     const h = harness()
     const authorityEvent = event()
     const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
@@ -789,11 +789,45 @@ describe('God mode direct execution', () => {
       phase: 'attempt',
       routeOrTool: 'get_tasks',
       clientId: null,
-      correlationId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+      correlationId: CORRELATION_ID
     }))
     expect(h.deps.appendAudit).toHaveBeenNthCalledWith(2, expect.objectContaining({
       channel: 'mcp', phase: 'succeeded', routeOrTool: 'get_tasks', clientId: null
     }))
+  })
+
+  it('allows an MCP host to repeat the same read request ID without colliding in immutable audit', async () => {
+    const h = harness()
+    const secondCorrelationId = '66666666-6666-4666-8666-666666666666'
+    vi.mocked(h.deps.correlationId)
+      .mockReturnValueOnce(CORRELATION_ID)
+      .mockReturnValueOnce(secondCorrelationId)
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    const handler = vi.fn(async () => ok({ count: 1 }))
+    const request = {
+      event: authorityEvent,
+      authenticatedUserId: OWNER_ID,
+      authority,
+      sessionDigest: 'd'.repeat(64),
+      idempotencyKey: `mcp:${'e'.repeat(64)}`,
+      tool: { name: 'get_capabilities', parameters: z.object({}), handler } as any,
+      args: {},
+      ctx: { userId: OWNER_ID, userRole: 'owner', event: authorityEvent, source: 'mcp' as const }
+    }
+    const execute = createTrustedMcpGodModeReadExecutor(h.deps)
+
+    await expect(execute(request)).resolves.toEqual({ ok: true, data: { count: 1 } })
+    await expect(execute(request)).resolves.toEqual({ ok: true, data: { count: 1 } })
+
+    const attempts = vi.mocked(h.deps.appendAudit).mock.calls
+      .map(call => call[0])
+      .filter(event => event.phase === 'attempt')
+    expect(attempts.map(event => event.correlationId)).toEqual([CORRELATION_ID, secondCorrelationId])
+    expect(handler).toHaveBeenCalledTimes(2)
+    expect(h.deps.claimExecution).not.toHaveBeenCalled()
   })
 
   it('returns the actionable selector requirement when a trusted MCP read has invalid input', async () => {

@@ -140,6 +140,7 @@ export function createGodModeMcpCallExecutor(deps: GodModeMcpCallDependencies) {
       mcpScopes: new Set(input.claim.scope),
       permissionGroups: [],
       source: 'mcp',
+      godModeExecutionKey: input.idempotencyKey,
       event: input.event
     }
     return await deps.executeRead({

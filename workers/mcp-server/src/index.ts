@@ -88,7 +88,7 @@ async function appFetch(
 }
 
 export class XeroFlowMcpAgent extends McpAgent<Env, unknown, Props> {
-  server = new McpServer({ name: 'xeroflow', version: '1.0.0' })
+  server = new McpServer({ name: 'xeroflow', version: '1.0.1' })
 
   async init() {
     // props are populated by the OAuth layer; no validated user → expose nothing.
@@ -105,7 +105,12 @@ export class XeroFlowMcpAgent extends McpAgent<Env, unknown, Props> {
     // Serve tools/list + tools/call on the low-level server so our JSON-Schema inputSchema passes
     //    through verbatim (high-level registerTool would require Zod). Pure proxy — no schema parsing here.
     const low = this.server.server
-    low.registerCapabilities({ tools: {} })
+    low.registerCapabilities({ tools: { listChanged: true } })
+    low.oninitialized = () => {
+      // Prompt hosts to discard any connector-side manifest cached before this session. tools/list
+      // remains authoritative and fetches Pages fresh on every request.
+      this.server.sendToolListChanged()
+    }
 
     low.setRequestHandler(ListToolsRequestSchema, async () => {
       // A fresh Pages fetch means a fresh claim and fresh database authority check for every list.
@@ -137,14 +142,26 @@ export class XeroFlowMcpAgent extends McpAgent<Env, unknown, Props> {
         props,
         req.params.name
       )
-      const outcome = await callRes.json() as {
+      const outcome = await callRes.json().catch(() => null) as {
         ok: boolean
         data?: unknown
         error?: string
         code?: string
         details?: Record<string, unknown>
+      } | null
+      if (!callRes.ok) {
+        const retryable = callRes.status >= 500 || callRes.status === 429
+        const error = {
+          error: retryable ? 'mcp_upstream_unavailable' : 'mcp_request_rejected',
+          message: retryable
+            ? 'XeroFlow could not complete the tool call because its application service is temporarily unavailable.'
+            : 'XeroFlow rejected the tool call before execution.',
+          retryable,
+          upstreamStatus: callRes.status,
+        }
+        return { content: [{ type: 'text' as const, text: JSON.stringify(error) }], isError: true }
       }
-      if (!outcome.ok) {
+      if (!outcome?.ok) {
         const details = outcome.details && typeof outcome.details === 'object' ? outcome.details : {}
         const error = {
           error: typeof details.error === 'string'

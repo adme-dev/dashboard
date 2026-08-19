@@ -15,6 +15,13 @@ import {
   sanitizeSpendSyncFailures,
 } from './spendSyncFailureSanitizer'
 
+async function activeOwnerIds(): Promise<string[]> {
+  const owners = await queryRows<{ id: string }>(
+    `SELECT id FROM team_members WHERE is_active = TRUE AND user_role = 'owner'`
+  ).catch(() => [])
+  return owners.map(owner => owner.id)
+}
+
 /**
  * Fail loud when a sync job finishes with 0 synced across N accounts. That is
  * almost never a genuine $0 — it signals an empty-throttle / access-tier /
@@ -71,12 +78,10 @@ async function alertStaleSpendSync(platform: string, period: string, jobId: stri
   if (staleRows <= 0) return
 
   console.error(`[SpendSync] ${platform} job ${jobId} left ${staleRows}/${Number(row?.total_rows || 0)} current-period campaign rows stale.`)
-  const owners = await queryRows<{ id: string }>(
-    `SELECT id FROM team_members WHERE is_active = TRUE AND user_role = 'owner'`
-  ).catch(() => [])
+  const ownerIds = await activeOwnerIds()
   try {
     const { createBulkNotifications } = await import('./notifications')
-    await createBulkNotifications(owners.map(owner => owner.id), {
+    await createBulkNotifications(ownerIds, {
       type: 'system',
       title: `${platform === 'meta' ? 'Meta' : 'Google'} campaign sync is stale`,
       message: `${staleRows} of ${Number(row?.total_rows || 0)} campaign rows remain older than 48 hours after the latest sync. Do not rely on campaign figures until the provider sync recovers.`,
@@ -93,6 +98,62 @@ async function alertStaleSpendSync(platform: string, period: string, jobId: stri
     })
   } catch (error) {
     console.error('[SpendSync] failed to create stale-sync owner notification:', error)
+  }
+}
+
+/**
+ * Compare the just-finished job with the immediately previous successful run. A lower campaign
+ * count is a coverage regression even when every returned row is fresh, so it must not hide behind
+ * the freshness SLO.
+ */
+async function alertSpendSyncCoverageDrop(
+  platform: string,
+  period: string,
+  jobId: string,
+  currentCampaignCount: number
+): Promise<void> {
+  const previous = await queryOne<{ synced_count: number, finished_at: string | null }>(
+    `SELECT synced_count, finished_at::text AS finished_at
+       FROM spend_sync_jobs
+      WHERE id <> $1
+        AND platform = $2
+        AND status = 'completed'
+        AND finished_at IS NOT NULL
+      ORDER BY finished_at DESC
+      LIMIT 1`,
+    [jobId, platform]
+  ).catch(() => null)
+  const previousCampaignCount = Number(previous?.synced_count ?? 0)
+  if (previousCampaignCount <= 0 || currentCampaignCount >= previousCampaignCount) return
+
+  const missingCampaignCount = previousCampaignCount - currentCampaignCount
+  console.error(
+    `[SpendSync] ${platform} job ${jobId} covered ${currentCampaignCount} campaigns, `
+    + `down ${missingCampaignCount} from the previous run (${previousCampaignCount}).`
+  )
+  const ownerIds = await activeOwnerIds()
+  try {
+    const { createBulkNotifications } = await import('./notifications')
+    const platformLabel = platform === 'meta' ? 'Meta' : platform === 'google' ? 'Google' : platform
+    await createBulkNotifications(ownerIds, {
+      type: 'system',
+      title: `${platformLabel} campaign coverage dropped`,
+      message: `The latest ${platformLabel} sync returned ${currentCampaignCount} campaigns, ${missingCampaignCount} fewer than the previous successful run (${previousCampaignCount}). Freshness alone is not sufficient; investigate missing accounts or campaigns before relying on portfolio rankings.`,
+      link: '/agency/social',
+      reason: 'direct',
+      metadata: {
+        kind: 'spend_sync_coverage_drop',
+        platform,
+        period,
+        jobId,
+        previousCampaignCount,
+        currentCampaignCount,
+        missingCampaignCount,
+        previousFinishedAt: previous?.finished_at ?? null,
+      },
+    })
+  } catch (error) {
+    console.error('[SpendSync] failed to create coverage-drop owner notification:', error)
   }
 }
 
@@ -125,7 +186,7 @@ export async function createSpendSyncJob(
 /** Mark a job completed with its result. Safe to call from inside a waitUntil promise. */
 export async function completeSpendSyncJob(jobId: string, result: SyncJobResult): Promise<void> {
   const failures = sanitizeSpendSyncFailures(result.failures)
-  const row = await queryOne<{ platform: string, period: string, total_accounts: number | null }>(
+  const row = await queryOne<{ platform: string, period: string, status: string, synced_count: number, total_accounts: number | null }>(
     `UPDATE spend_sync_jobs
        SET status = CASE WHEN $2 = 0 AND jsonb_array_length($4::jsonb) > 0
                          THEN 'failed' ELSE 'completed' END,
@@ -137,13 +198,16 @@ export async function completeSpendSyncJob(jobId: string, result: SyncJobResult)
                         ELSE error END,
            finished_at = NOW()
      WHERE id = $1
-     RETURNING platform, period, total_accounts`,
+     RETURNING platform, period, status, synced_count, total_accounts`,
     [jobId, result.synced, result.totalSpend, JSON.stringify(failures)]
   )
   if (row && Number(result.synced) === 0 && Number(row.total_accounts) > 0) {
     await alertEmptySpendSync(row.platform, jobId, Number(row.total_accounts))
   }
-  if (row?.period) await alertStaleSpendSync(row.platform, row.period, jobId)
+  if (row?.period) {
+    await alertSpendSyncCoverageDrop(row.platform, row.period, jobId, Number(row.synced_count))
+    await alertStaleSpendSync(row.platform, row.period, jobId)
+  }
 }
 
 /** Record how many accounts this job fanned out to (per-account chunking). */
@@ -191,7 +255,10 @@ export async function recordSyncJobAccountResult(jobId: string, result: SyncJobR
   if (row && row.status !== 'running' && Number(row.synced_count) === 0 && Number(row.total_accounts) > 0) {
     await alertEmptySpendSync(row.platform, jobId, Number(row.total_accounts))
   }
-  if (row?.period && row.status !== 'running') await alertStaleSpendSync(row.platform, row.period, jobId)
+  if (row?.period && row.status !== 'running') {
+    await alertSpendSyncCoverageDrop(row.platform, row.period, jobId, Number(row.synced_count))
+    await alertStaleSpendSync(row.platform, row.period, jobId)
+  }
 }
 
 /** Mark a job failed with an error message. */

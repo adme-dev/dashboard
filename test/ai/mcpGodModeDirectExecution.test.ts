@@ -108,7 +108,8 @@ describe('God mode MCP direct execution adapter', () => {
       ctx: expect.objectContaining({
         userName: 'Paul Giurin',
         userEmail: 'paul@adme.net.au',
-        mcpScopes: new Set(['mcp:read'])
+        mcpScopes: new Set(['mcp:read']),
+        godModeExecutionKey: IDEMPOTENCY_KEY
       })
     }))
     expect(h.executeWrite).not.toHaveBeenCalled()

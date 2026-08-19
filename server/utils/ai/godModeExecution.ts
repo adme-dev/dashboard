@@ -1223,12 +1223,6 @@ interface TrustedReadIdentity extends TrustedExecutionIdentity {
   correlationId: string
 }
 
-function mcpReadCorrelationId(idempotencyKey: string): string {
-  if (!/^mcp:[0-9a-f]{64}$/.test(idempotencyKey)) operationalError(400, 'Invalid MCP execution identity')
-  const hex = idempotencyKey.slice(4, 36)
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`
-}
-
 function readSchemaFailureMessage(error: unknown): string {
   const issues = Array.isArray((error as any)?.issues) ? (error as any).issues : []
   const custom = issues.find((issue: any) => issue?.code === 'custom' && typeof issue?.message === 'string')
@@ -1330,6 +1324,7 @@ export function createTrustedMcpGodModeReadExecutor(deps: GodModeExecutionDepend
     if (
       !isActiveGodModeAuthority(request.authority, request.authenticatedUserId)
       || request.authority.actorUserId !== request.authenticatedUserId
+      || !/^mcp:[0-9a-f]{64}$/.test(request.idempotencyKey)
       || !/^[0-9a-f]{64}$/.test(request.sessionDigest)
     ) operationalError(403, 'Invalid MCP owner execution authority')
 
@@ -1338,7 +1333,9 @@ export function createTrustedMcpGodModeReadExecutor(deps: GodModeExecutionDepend
       authority: request.authority,
       channel: 'mcp',
       sessionDigest: request.sessionDigest,
-      correlationId: mcpReadCorrelationId(request.idempotencyKey)
+      // Some MCP hosts reuse a JSON-RPC request ID when repeating the same read. Read transport
+      // idempotency therefore must not double as the immutable audit event's unique correlation.
+      correlationId: deps.correlationId()
     })
   }
 }
