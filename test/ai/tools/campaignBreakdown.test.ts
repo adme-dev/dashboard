@@ -12,6 +12,7 @@ const rows: BreakdownCampaign[] = [
 
 const deps = (over: Partial<CampaignBreakdownDeps> = {}): CampaignBreakdownDeps => ({
   breakdown: vi.fn().mockResolvedValue({ campaigns: rows, total: rows.length }),
+  now: () => new Date('2026-08-19T12:00:00Z'),
   ...over,
 })
 
@@ -27,6 +28,9 @@ describe('getCampaignBreakdown', () => {
     expect(d.nextCursor).toBeNull()
     expect(d.dataStatus).toBe('populated')
     expect(d.lastSyncedAt).toBe('2026-08-18T08:30:00Z')
+    expect(d.oldestSyncedAt).toBe('2026-08-18T08:00:00Z')
+    expect(d.staleRowCount).toBe(0)
+    expect(d.stalenessThresholdHours).toBe(48)
   })
 
   it('returns delivery status, dates, leads, CPL and frequency without stripping them', async () => {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildDataHealth,
+  buildSyncFreshness,
+  mergeSyncFreshness,
   paginateWithCursor,
 } from '~~/server/utils/ai/tools/responseContract'
 
@@ -13,6 +15,47 @@ describe('MCP response contract helpers', () => {
     expect(buildDataHealth({ configured: true, expected: 22, withData: 4 }).dataStatus).toBe('partial')
     expect(buildDataHealth({ configured: true, expected: 22, withData: 22 }).dataStatus).toBe('populated')
     expect(buildDataHealth({ configured: true, available: false, expected: 22, withData: 0 }).dataStatus).toBe('unavailable')
+  })
+
+  it('never reports configured zero-coverage data as populated', () => {
+    expect(buildDataHealth({ configured: true, expected: 0, withData: 0 })).toEqual({
+      dataStatus: 'partial',
+      coverage: { expected: 0, withData: 0 },
+    })
+    expect(buildDataHealth({ configured: true, expected: 5, withData: 0 }).dataStatus).toBe('partial')
+  })
+
+  it('reports worst-case sync freshness and counts missing timestamps as stale', () => {
+    expect(buildSyncFreshness(
+      ['2026-08-18T08:30:00Z', '2026-08-15T06:00:00Z', null, 'not-a-date'],
+      { now: new Date('2026-08-19T12:00:00Z') },
+    )).toEqual({
+      lastSyncedAt: '2026-08-18T08:30:00Z',
+      oldestSyncedAt: '2026-08-15T06:00:00Z',
+      staleRowCount: 3,
+      stalenessThresholdHours: 48,
+    })
+  })
+
+  it('returns an explicit empty freshness summary when there are no source rows', () => {
+    expect(buildSyncFreshness([], { now: new Date('2026-08-19T12:00:00Z') })).toEqual({
+      lastSyncedAt: null,
+      oldestSyncedAt: null,
+      staleRowCount: 0,
+      stalenessThresholdHours: 48,
+    })
+  })
+
+  it('merges pre-aggregated freshness without hiding stale rows behind a newer sync', () => {
+    expect(mergeSyncFreshness([
+      { lastSyncedAt: '2026-08-18T08:30:00Z', oldestSyncedAt: '2026-08-07T01:00:00Z', staleRowCount: 4 },
+      { lastSyncedAt: '2026-08-18T09:00:00Z', oldestSyncedAt: '2026-08-16T01:00:00Z', staleRowCount: 1 },
+    ])).toEqual({
+      lastSyncedAt: '2026-08-18T09:00:00Z',
+      oldestSyncedAt: '2026-08-07T01:00:00Z',
+      staleRowCount: 5,
+      stalenessThresholdHours: 48,
+    })
   })
 
   it('paginates with an opaque cursor and exact totals', () => {

@@ -3,7 +3,7 @@ import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { queryRows } from '~~/server/utils/db'
 import { getSelectedTenant } from '~~/server/utils/session'
-import { paginateWithCursor } from './responseContract'
+import { buildDataHealth, paginateWithCursor } from './responseContract'
 
 const params = z.object({
   type: z.string().optional(),
@@ -80,8 +80,8 @@ export async function getOpenAnomalies(args: Args, ctx: ToolContext, deps: Anoma
     const page = paginateWithCursor(compact, args.cursor, args.limit)
     const configured = rows.length > 0 || (deps.isConfigured ? await deps.isConfigured(ctx) : true)
     return ok({
-      dataStatus: configured ? 'populated' : 'not_configured',
-      coverage: { expected: configured ? rows.length : 0, withData: rows.length },
+      ...buildDataHealth({ configured, expected: 1, withData: configured ? 1 : 0 }),
+      coverageField: 'anomaly_engine_readiness',
       anomalies: page.items,
       total: page.total,
       appliedLimit: args.limit ?? 20,

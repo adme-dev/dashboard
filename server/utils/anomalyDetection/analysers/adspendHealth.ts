@@ -236,7 +236,6 @@ export function detectOverspend(g: Group, now: Date): DetectedAnomaly | null {
 
 export function detectStaleSync(g: Group, now: Date): DetectedAnomaly | null {
   if (g.period !== periodOf(now)) return null
-  if (g.budget <= 0) return null
 
   const synced = g.syncedAt ? new Date(g.syncedAt) : null
   const ageH = synced ? (now.getTime() - synced.getTime()) / 3_600_000 : Infinity

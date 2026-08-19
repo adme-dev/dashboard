@@ -8,13 +8,14 @@ const sample: BudgetHealthData = {
   period: '2026-06',
   summary: { totalBudget: 1000, totalSpent: 600, overallUtilization: 60, clientCount: 2, overBudgetCount: 0, atRiskCount: 1 },
   clients: [
-    { clientName: 'Acme', platform: 'meta', budget: 600, spend: 500, percentConsumed: 83, pacingRatio: 1.2, healthStatus: 'at_risk' },
-    { clientName: 'Globex', platform: 'google', budget: 400, spend: 100, percentConsumed: 25, pacingRatio: 0.5, healthStatus: 'underspend' },
+    { clientName: 'Acme', platform: 'meta', budget: 600, spend: 500, percentConsumed: 83, pacingRatio: 1.2, healthStatus: 'at_risk', lastSyncedAt: '2026-08-15T08:00:00Z' },
+    { clientName: 'Globex', platform: 'google', budget: 400, spend: 100, percentConsumed: 25, pacingRatio: 0.5, healthStatus: 'underspend', lastSyncedAt: '2026-08-18T08:00:00Z' },
   ],
 }
 
 const deps = (over: Partial<BudgetHealthDeps> = {}): BudgetHealthDeps => ({
   health: vi.fn().mockResolvedValue(sample),
+  now: () => new Date('2026-08-19T12:00:00Z'),
   ...over,
 })
 
@@ -31,6 +32,12 @@ describe('getBudgetHealth', () => {
     expect(d.total).toBe(2)
     expect(d.nextCursor).toBeNull()
     expect(d.dataStatus).toBe('populated')
+    expect(d).toMatchObject({
+      lastSyncedAt: '2026-08-18T08:00:00Z',
+      oldestSyncedAt: '2026-08-15T08:00:00Z',
+      staleRowCount: 1,
+      stalenessThresholdHours: 48,
+    })
   })
 
   it('excludes no-budget and unattributed spend from utilization', async () => {

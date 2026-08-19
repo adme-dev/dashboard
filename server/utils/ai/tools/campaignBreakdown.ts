@@ -4,7 +4,7 @@ import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
-import { buildDataHealth, paginateWithCursor } from './responseContract'
+import { buildDataHealth, buildSyncFreshness, paginateWithCursor } from './responseContract'
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
 const params = z.object({
@@ -69,6 +69,7 @@ export type CampaignBreakdownQuery = {
 
 export type CampaignBreakdownDeps = {
   breakdown: (ctx: ToolContext, query: CampaignBreakdownQuery) => Promise<BreakdownResult>
+  now?: () => Date
 }
 
 const PLATFORM_QUERY: Record<'meta' | 'google', string> = { meta: 'meta', google: 'google_ads,google' }
@@ -236,16 +237,11 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
     const note = (sortBy !== 'spend' && current.total > current.campaigns.length)
       ? `Ranked by ${sortBy} over the ${current.campaigns.length} highest-spend campaigns (of ${current.total}); lower-spend campaigns are not included in this ranking.`
       : undefined
-    const lastSyncedAt = current.campaigns.reduce<string | null>((latest, row) => {
-      if (!row.lastSyncedAt) return latest
-      return !latest || row.lastSyncedAt > latest ? row.lastSyncedAt : latest
-    }, null)
-
     return ok({
       period,
       ...(priorPeriod ? { previousPeriod: priorPeriod } : {}),
       source: 'synced_campaign_analytics',
-      lastSyncedAt,
+      ...buildSyncFreshness(current.campaigns.map(row => row.lastSyncedAt), { now: deps.now?.() }),
       ...buildDataHealth({ configured: true, expected: current.total, withData: current.campaigns.length }),
       campaigns: page.items,
       total: page.total,
@@ -261,7 +257,7 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
 
 export const campaignBreakdownTool: AiTool<Args> = {
   name: 'get_campaign_breakdown',
-  description: 'Campaign delivery and performance for a requested date range across Meta and Google: live/effective status, first and last served dates, end date, freshness, spend, ROAS, CPC, frequency, conversions, leads and CPL. Supports previous-period comparison, status/platform/client filters, multiple ranking metrics, and cursor pagination across the complete result set. Use get_adspend_pacing for budget pacing and get_finance_snapshot for cash.',
+  description: 'Campaign delivery and performance for a requested date range across Meta and Google: live/effective status, first and last served dates, end date, spend, ROAS, CPC, frequency, conversions, leads and CPL. Summary freshness includes the newest and oldest sync, stale-row count, and 48-hour threshold so partial account stalls are visible. Supports previous-period comparison, status/platform/client filters, multiple ranking metrics, and cursor pagination across the complete result set. Use get_adspend_pacing for budget pacing and get_finance_snapshot for cash.',
   parameters: params,
   requiredPermission: 'MEDIA_BUYING',
   handler: (a, c) => getCampaignBreakdown(a, c),

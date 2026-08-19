@@ -19,6 +19,8 @@ export interface SpendSummaryRow {
   campaign_count: string | number | null
   budgeted_campaign_count?: string | number | null
   last_synced_at: string | null
+  oldest_synced_at?: string | null
+  stale_row_count?: string | number | null
   spend_ids: Array<string | null> | null
   is_rolling: boolean | null
   commission_rate: string | number | null
@@ -44,6 +46,8 @@ export interface SpendSummaryItem {
   rolling: boolean
   commissionRate: number
   lastSyncedAt: string | null
+  oldestSyncedAt: string | null
+  staleRowCount: number
 }
 
 interface SummaryAccumulator {
@@ -66,6 +70,8 @@ interface SummaryAccumulator {
   rolling: boolean
   commissionRate: number
   lastSyncedAt: string | null
+  oldestSyncedAt: string | null
+  staleRowCount: number
 }
 
 function numberValue(value: string | number | null | undefined): number {
@@ -81,6 +87,12 @@ function latestTimestamp(a: string | null, b: string | null): string | null {
   if (!a) return b
   if (!b) return a
   return b > a ? b : a
+}
+
+function oldestTimestamp(a: string | null, b: string | null): string | null {
+  if (!a) return b
+  if (!b) return a
+  return b < a ? b : a
 }
 
 function rowGroupKey(row: SpendSummaryRow): string {
@@ -121,6 +133,8 @@ export function buildSpendSummaryItems(rows: SpendSummaryRow[]): SpendSummaryIte
       rolling: false,
       commissionRate: 0,
       lastSyncedAt: null,
+      oldestSyncedAt: null,
+      staleRowCount: 0,
     }
 
     acc.budget += numberValue(row.total_budget)
@@ -134,6 +148,8 @@ export function buildSpendSummaryItems(rows: SpendSummaryRow[]): SpendSummaryIte
     acc.rolling = acc.rolling || Boolean(row.is_rolling)
     acc.commissionRate = Math.max(acc.commissionRate, numberValue(row.commission_rate))
     acc.lastSyncedAt = latestTimestamp(acc.lastSyncedAt, row.last_synced_at || null)
+    acc.oldestSyncedAt = oldestTimestamp(acc.oldestSyncedAt, row.oldest_synced_at || row.last_synced_at || null)
+    acc.staleRowCount += intValue(row.stale_row_count)
 
     if (!acc.owner && row.owner_id) {
       acc.owner = { id: row.owner_id, name: row.owner_name || null }
@@ -180,6 +196,8 @@ export function buildSpendSummaryItems(rows: SpendSummaryRow[]): SpendSummaryIte
         rolling: acc.rolling,
         commissionRate: acc.commissionRate,
         lastSyncedAt: acc.lastSyncedAt,
+        oldestSyncedAt: acc.oldestSyncedAt,
+        staleRowCount: acc.staleRowCount,
       }
     })
     .sort((a, b) => b.spend - a.spend)

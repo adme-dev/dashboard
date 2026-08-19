@@ -3,7 +3,7 @@ import { queryRows } from '~~/server/utils/db'
 import { syncCampaignAdPerformance } from '~~/server/utils/onDemandSync'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
-import { buildDataHealth, paginateWithCursor } from './responseContract'
+import { buildDataHealth, buildSyncFreshness, paginateWithCursor } from './responseContract'
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const params = z.object({
@@ -47,6 +47,7 @@ type RawAdRecord = {
 
 export type AdBreakdownDeps = {
   fetch: (args: Args, ctx: ToolContext) => Promise<{ records: RawAdRecord[], targetCount: number, available: boolean }>
+  now?: () => Date
 }
 
 function period(args: Args) {
@@ -146,7 +147,7 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
       ? await deps.fetch({ ...args, startDate: previousPeriod.start, endDate: previousPeriod.end, comparePrevious: false, refresh: false }, ctx)
       : null
     const priorByAd = new Map((previousResult?.records ?? []).map(row => [row.adId, row]))
-    const today = Date.now()
+    const today = (deps.now?.() ?? new Date()).getTime()
     const ads = result.records.map(row => {
       const ageDays = row.firstServedDate ? Math.max(0, Math.floor((today - Date.parse(`${row.firstServedDate}T00:00:00Z`)) / 86_400_000)) : null
       const ctr = row.impressions > 0 ? row.clicks / row.impressions : null
@@ -174,8 +175,8 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
     const page = paginateWithCursor(ads, args.cursor, args.limit)
     const withFrequency = ads.filter(ad => ad.frequency != null).length
     const health = buildDataHealth({ configured: result.targetCount > 0, available: result.available, expected: ads.length, withData: withFrequency })
-    const lastSyncedAt = ads.reduce<string | null>((latest, ad) => !ad.lastSyncedAt ? latest : (!latest || ad.lastSyncedAt > latest ? ad.lastSyncedAt : latest), null)
-    return ok({ period: currentPeriod, ...(previousPeriod ? { previousPeriod } : {}), source: 'meta_marketing_api/google_ads_api', lastSyncedAt, ...health, coverageField: 'frequency', targetCampaignLimit: 20, ads: page.items, total: page.total, appliedLimit: args.limit ?? 20, nextCursor: page.nextCursor, more: page.more })
+    const freshness = buildSyncFreshness(ads.map(ad => ad.lastSyncedAt), { now: deps.now?.() })
+    return ok({ period: currentPeriod, ...(previousPeriod ? { previousPeriod } : {}), source: 'meta_marketing_api/google_ads_api', ...freshness, ...health, coverageField: 'frequency', targetCampaignLimit: 20, ads: page.items, total: page.total, appliedLimit: args.limit ?? 20, nextCursor: page.nextCursor, more: page.more })
   } catch {
     return fail('Could not load ad-level performance for the requested campaign window.')
   }
@@ -183,7 +184,7 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
 
 export const adBreakdownTool: AiTool<Args> = {
   name: 'get_ad_breakdown',
-  description: 'Ad-level delivery and creative-fatigue metrics for a campaign or client and date window: ad/creative IDs, spend, impressions, frequency where supported, CTR, CPC, leads/CPL, first/last served date, creative age and fatigue signals. Optional previous-period comparison detects high/rising frequency with CTR decline. Performs a read-through platform sync when missing; Google frequency remains explicitly null.',
+  description: 'Ad-level delivery and creative-fatigue metrics for a campaign or client and date window: ad/creative IDs, spend, impressions, frequency where supported, CTR, CPC, leads/CPL, first/last served date, creative age and fatigue signals. Summary freshness includes newest/oldest sync, stale-row count, and threshold. Optional previous-period comparison detects high/rising frequency with CTR decline. Performs a read-through platform sync when missing; Google frequency remains explicitly null.',
   parameters: params,
   requiredPermission: 'MEDIA_BUYING',
   handler: (args, ctx) => getAdBreakdown(args, ctx),

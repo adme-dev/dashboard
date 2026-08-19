@@ -4,7 +4,7 @@ import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
-import { buildDataHealth, paginateWithCursor } from './responseContract'
+import { buildDataHealth, mergeSyncFreshness, paginateWithCursor } from './responseContract'
 
 const params = z.object({
   clientName: z.string().optional(),
@@ -28,6 +28,8 @@ export type BudgetHealthClient = {
   budgetLevel?: 'campaign' | 'client' | 'account'
   unattributed?: boolean
   lastSyncedAt?: string | null
+  oldestSyncedAt?: string | null
+  staleRowCount?: number
   campaignCount?: number
   budgetedCampaignCount?: number
   budgetCoverage?: { expectedCampaigns: number, budgetedCampaigns: number }
@@ -41,6 +43,7 @@ export type BudgetHealthData = {
 
 export type BudgetHealthDeps = {
   health: (ctx: ToolContext) => Promise<BudgetHealthData>
+  now?: () => Date
 }
 
 // Real wiring: the budget-alerts/health endpoint is the same source the Budget Health tab uses;
@@ -65,6 +68,8 @@ const defaultDeps: BudgetHealthDeps = {
         unattributed: String(c?.clientId ?? '').toLowerCase() === 'unmapped'
           || String(c?.clientName ?? '').toLowerCase() === 'unmapped',
         lastSyncedAt: c?.lastSyncedAt ? String(c.lastSyncedAt) : null,
+        oldestSyncedAt: c?.oldestSyncedAt ? String(c.oldestSyncedAt) : null,
+        staleRowCount: Number.isFinite(Number(c?.staleRowCount)) ? Number(c.staleRowCount) : undefined,
         campaignCount: Number.isFinite(Number(c?.campaignCount)) ? Number(c.campaignCount) : undefined,
         budgetedCampaignCount: Number.isFinite(Number(c?.budgetedCampaignCount)) ? Number(c.budgetedCampaignCount) : undefined,
       })),
@@ -132,10 +137,6 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
     })
     const partialBudgetCoverageCount = attributed.filter(c => c.healthStatus === 'partial_budget_coverage').length
     if ((unattributed.length > 0 || partialBudgetCoverageCount > 0) && health.dataStatus === 'populated') health.dataStatus = 'partial'
-    const lastSyncedAt = normalised.reduce<string | null>((latest, row) => {
-      if (!row.lastSyncedAt) return latest
-      return !latest || row.lastSyncedAt > latest ? row.lastSyncedAt : latest
-    }, null)
     const summary = {
       ...res.summary,
       totalBudget,
@@ -156,7 +157,7 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
     return ok({
       period: res.period,
       source: 'budget_health',
-      lastSyncedAt,
+      ...mergeSyncFreshness(normalised, { now: deps.now?.() }),
       ...health,
       summary,
       clients: page.items,
@@ -173,7 +174,7 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
 
 export const budgetHealthTool: AiTool<Args> = {
   name: 'get_budget_health',
-  description: 'Budget health for the current month per client/platform — allocated budget, spend, % consumed, freshness and coverage. '
+  description: 'Budget health for the current month per client/platform — allocated budget, spend, % consumed, coverage, and worst-case freshness (`lastSyncedAt`, `oldestSyncedAt`, `staleRowCount`, `stalenessThresholdHours`). '
     + 'Rows without a configured budget are `no_budget_set`; rows where only some campaigns have budgets are `partial_budget_coverage`. Both have null pacing values and are excluded from pacing conclusions. Unattributed account spend is returned separately. '
     + 'Use for "who is over budget", "which accounts are at risk", or "budget pacing this month". '
     + 'For per-campaign ROAS/CPC use get_campaign_breakdown; for cash use get_finance_snapshot. '

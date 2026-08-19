@@ -52,6 +52,8 @@ describe('GET /api/agency/social/spend/summary', () => {
           campaign_count: 2,
           budgeted_campaign_count: 1,
           last_synced_at: '2026-06-20T00:00:00.000Z',
+          oldest_synced_at: '2026-06-10T00:00:00.000Z',
+          stale_row_count: 1,
           spend_ids: ['spend-1'],
           is_rolling: false,
           commission_rate: '5',
@@ -75,6 +77,8 @@ describe('GET /api/agency/social/spend/summary', () => {
           campaign_count: 3,
           budgeted_campaign_count: 3,
           last_synced_at: '2026-06-25T00:00:00.000Z',
+          oldest_synced_at: '2026-06-22T00:00:00.000Z',
+          stale_row_count: 2,
           spend_ids: ['spend-2'],
           is_rolling: true,
           commission_rate: '5',
@@ -90,6 +94,8 @@ describe('GET /api/agency/social/spend/summary', () => {
 
     expect(mockRequireAuth).toHaveBeenCalled()
     expect(String(mockQueryRows.mock.calls[0][0])).toContain('budgeted_campaign_count')
+    expect(String(mockQueryRows.mock.calls[0][0])).toContain('MIN(ms.synced_at)')
+    expect(String(mockQueryRows.mock.calls[0][0])).toContain("INTERVAL '48 hours'")
     expect(mockQueryRows.mock.calls[0][1]).toEqual(['2026-06', 'tenant-1', 'meta'])
     expect(result.items).toHaveLength(1)
     expect(result.items[0]).toMatchObject({
@@ -100,6 +106,8 @@ describe('GET /api/agency/social/spend/summary', () => {
       campaignCount: 5,
       budgetedCampaignCount: 4,
       spendIds: ['spend-1', 'spend-2'],
+      oldestSyncedAt: '2026-06-10T00:00:00.000Z',
+      staleRowCount: 3,
     })
     expect(result.totals).toMatchObject({
       budget: 3500,

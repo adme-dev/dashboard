@@ -7,6 +7,7 @@ const ctx = { userId: 'u1', userRole: 'owner', event: {} as any } as ToolContext
 describe('get_ad_breakdown', () => {
   it('returns ad fatigue metrics, lead outcomes, creative links and explicit partial coverage', async () => {
     const deps: AdBreakdownDeps = {
+      now: () => new Date('2026-08-19T12:00:00Z'),
       fetch: vi.fn().mockResolvedValue({
         targetCount: 2,
         available: true,
@@ -21,5 +22,21 @@ describe('get_ad_breakdown', () => {
     expect(data.ads[0].fatigueSignals).toContain('high_frequency')
     expect(data.dataStatus).toBe('partial')
     expect(data.coverage).toEqual({ expected: 2, withData: 1 })
+    expect(data).toMatchObject({
+      lastSyncedAt: '2026-08-18T08:10:00Z',
+      oldestSyncedAt: '2026-08-18T08:00:00Z',
+      staleRowCount: 0,
+      stalenessThresholdHours: 48,
+    })
+  })
+
+  it('reports configured but empty ad data as partial instead of populated', async () => {
+    const deps: AdBreakdownDeps = {
+      now: () => new Date('2026-08-19T12:00:00Z'),
+      fetch: vi.fn().mockResolvedValue({ targetCount: 1, available: true, records: [] }),
+    }
+    const data = (await getAdBreakdown({ campaignId: 'c1', sortBy: 'frequency' }, ctx, deps) as any).data
+    expect(data.dataStatus).toBe('partial')
+    expect(data.coverage).toEqual({ expected: 0, withData: 0 })
   })
 })

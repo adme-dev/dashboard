@@ -42,6 +42,8 @@ export default eventHandler(async (event) => {
         COUNT(*)::int as campaign_count,
         COUNT(*) FILTER (WHERE COALESCE(ms.budget_allocated, 0) > 0)::int as budgeted_campaign_count,
         MAX(ms.synced_at) as last_synced_at,
+        MIN(ms.synced_at) as oldest_synced_at,
+        COUNT(*) FILTER (WHERE ms.synced_at IS NULL OR ms.synced_at < NOW() - INTERVAL '48 hours')::int as stale_row_count,
         array_agg(ms.id ORDER BY ms.actual_spend DESC) as spend_ids,
         bool_or(COALESCE(ms.budget_rolling, false)) as is_rolling,
         MAX(ms.commission_rate) as commission_rate

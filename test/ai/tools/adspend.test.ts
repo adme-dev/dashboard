@@ -47,6 +47,24 @@ describe('get_adspend_pacing', () => {
     expect(c).toMatchObject({ client: 'Acme', platform: 'google', spend: 1200, budget: 2000, pacePct: 60, status: 'underpacing', budgetLevel: 'client' })
   })
 
+  it('reports the oldest sync and every stale or missing source row', async () => {
+    const deps: AdspendDeps = {
+      now: () => new Date('2026-08-19T12:00:00Z'),
+      pacing: vi.fn().mockResolvedValue([
+        campaign({ client: 'Fresh', lastSyncedAt: '2026-08-18T08:15:00Z' }),
+        campaign({ client: 'Stale', lastSyncedAt: '2026-08-15T08:15:00Z' }),
+        campaign({ client: 'Missing', lastSyncedAt: null }),
+      ]),
+    }
+    const data = (await getAdspendPacing({ status: 'all' }, ctx, deps) as any).data
+    expect(data).toMatchObject({
+      lastSyncedAt: '2026-08-18T08:15:00Z',
+      oldestSyncedAt: '2026-08-15T08:15:00Z',
+      staleRowCount: 2,
+      stalenessThresholdHours: 48,
+    })
+  })
+
   it('caps the campaign list at 20 and reports a `more` count', async () => {
     const many = Array.from({ length: 27 }, (_, i) =>
       campaign({ client: `C${i}`, status: 'overpacing', pacePct: 120 }),

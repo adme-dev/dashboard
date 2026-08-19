@@ -225,6 +225,14 @@ describe('detectStaleSync', () => {
   it('does not fire when fresh', () => {
     expect(detectStaleSync(g('2026-04-20T00:00:00Z'), now)).toBeNull()
   })
+
+  it('alerts on stale synced campaigns even when no budget is configured', () => {
+    const withoutBudget = { ...g('2026-04-16T00:00:00Z'), budget: 0 }
+    expect(detectStaleSync(withoutBudget, now)).toMatchObject({
+      severity: 'critical',
+      fingerprint: 'adspend:stale-ms-2026-04',
+    })
+  })
 })
 
 describe('detectZeroConversion', () => {

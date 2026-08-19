@@ -83,6 +83,8 @@ describe('GET /api/agency/budget-alerts/health campaign identity', () => {
           budgeted_campaign_count: 1,
           is_rolling: false,
           last_synced_at: '2026-08-18T00:15:00.000Z',
+          oldest_synced_at: '2026-08-07T00:15:00.000Z',
+          stale_row_count: 12,
         },
         {
           client_id: 'client-2',
@@ -95,6 +97,8 @@ describe('GET /api/agency/budget-alerts/health campaign identity', () => {
           budgeted_campaign_count: 0,
           is_rolling: false,
           last_synced_at: '2026-08-18T00:10:00.000Z',
+          oldest_synced_at: '2026-08-08T00:10:00.000Z',
+          stale_row_count: 1,
         },
       ])
       .mockResolvedValueOnce([])
@@ -107,6 +111,8 @@ describe('GET /api/agency/budget-alerts/health campaign identity', () => {
     expect(clientQuery).toContain('SUM(COALESCE(ms.budget_allocated, 0))')
     expect(clientQuery).toContain('budgeted_campaign_count')
     expect(clientQuery).toContain('MAX(ms.synced_at)::text as last_synced_at')
+    expect(clientQuery).toContain('MIN(ms.synced_at)::text as oldest_synced_at')
+    expect(clientQuery).toContain("INTERVAL '48 hours'")
     expect(result.clients[0]).toMatchObject({
       budget: 510,
       spend: 1705.22,
@@ -116,6 +122,8 @@ describe('GET /api/agency/budget-alerts/health campaign identity', () => {
       percentConsumed: null,
       pacingRatio: null,
       lastSyncedAt: '2026-08-18T00:15:00.000Z',
+      oldestSyncedAt: '2026-08-07T00:15:00.000Z',
+      staleRowCount: 12,
     })
     expect(result.summary.overBudgetCount).toBe(0)
     expect(result.summary).toMatchObject({
