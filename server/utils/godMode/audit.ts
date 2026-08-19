@@ -31,6 +31,8 @@ export interface GodModeAuditEventInput {
   bypassedControls: GodModeBypassedControl[]
   outcomeCode: string
   emergencyDisabled: boolean
+  /** Bounded, recursively redacted arguments for MCP action self-audit. Empty for reads. */
+  actionArguments?: Record<string, unknown>
 }
 
 const uuid = z.string().uuid()
@@ -61,8 +63,52 @@ const GodModeAuditEventSchema = z.object({
   entityId: nullableUuid,
   bypassedControls: z.array(BypassedControlSchema).max(24),
   outcomeCode: z.string().min(1).max(64),
-  emergencyDisabled: z.boolean()
+  emergencyDisabled: z.boolean(),
+  actionArguments: z.record(z.string(), z.unknown()).optional().default({})
 }).strict()
+
+const SENSITIVE_ARGUMENT_KEY = /(secret|token|password|authorization|cookie|credential|api[_-]?key|private[_-]?key)/i
+const MAX_ARGUMENT_DEPTH = 4
+const MAX_ARGUMENT_KEYS = 40
+const MAX_ARRAY_ITEMS = 20
+const MAX_STRING_LENGTH = 500
+
+function boundedArgumentValue(value: unknown, depth: number): unknown {
+  if (depth >= MAX_ARGUMENT_DEPTH) return '[TRUNCATED]'
+  if (typeof value === 'string') return value.slice(0, MAX_STRING_LENGTH)
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null) return value
+  if (Array.isArray(value)) {
+    return value.slice(0, MAX_ARRAY_ITEMS).map(item => boundedArgumentValue(item, depth + 1))
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .slice(0, MAX_ARGUMENT_KEYS)
+        .map(([key, item]) => [
+          key.slice(0, 120),
+          SENSITIVE_ARGUMENT_KEY.test(key) ? '[REDACTED]' : boundedArgumentValue(item, depth + 1)
+        ])
+    )
+  }
+  return String(value).slice(0, MAX_STRING_LENGTH)
+}
+
+/** Preserve enough intent for an action audit without ever persisting credentials or unbounded bodies. */
+export function summarizeGodModeActionArguments(args: unknown): Record<string, unknown> {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return {}
+  const bounded = boundedArgumentValue(args, 0) as Record<string, unknown>
+  if (new TextEncoder().encode(JSON.stringify(bounded)).byteLength <= 12_000) return bounded
+
+  const source = args as Record<string, unknown>
+  const preferredKeys = ['clientId', 'client_id', 'title', 'name', 'prompt', 'text', 'proposalId', 'campaignId', 'adId']
+  return {
+    ...Object.fromEntries(preferredKeys
+      .filter(key => key in source)
+      .map(key => [key, SENSITIVE_ARGUMENT_KEY.test(key) ? '[REDACTED]' : boundedArgumentValue(source[key], 1)])),
+    argumentKeys: Object.keys(source).slice(0, MAX_ARGUMENT_KEYS),
+    truncated: true
+  }
+}
 
 type AuditDb = Pick<Pool, 'query'>
 
@@ -89,9 +135,9 @@ export async function appendGodModeAuditEvent(
     `INSERT INTO god_mode_audit_events (
        actor_user_id, correlation_id, session_digest, channel, route_or_tool, phase,
        tenant_id, client_id, entity_type, entity_id, bypassed_controls, outcome_code,
-       emergency_disabled
+       emergency_disabled, action_arguments
      ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
      )
      ${conflictClause}`,
     [
@@ -107,7 +153,8 @@ export async function appendGodModeAuditEvent(
       event.entityId ?? null,
       event.bypassedControls,
       event.outcomeCode,
-      event.emergencyDisabled
+      event.emergencyDisabled,
+      JSON.stringify(event.actionArguments)
     ]
   )
 }

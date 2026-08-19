@@ -9,6 +9,7 @@ import {
 import { registry } from '~~/server/utils/ai/tools'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type { GodModeBypassedControl } from '~~/server/utils/godMode/audit'
+import { queryOneFresh } from '~~/server/utils/db'
 import { resolveGodModeMcpExecution } from './registry'
 import type { McpExecutionDescriptor, McpProjectionContext } from './project'
 import {
@@ -31,6 +32,7 @@ export interface GodModeMcpCallDependencies {
   executeWrite: typeof executeTrustedMcpGodModeTool
   executeRead: typeof executeTrustedMcpGodModeReadTool
   executeResolvedMutation: typeof executeTrustedMcpGodModeResolvedMutation
+  resolveIdentity?: (userId: string) => Promise<{ name: string | null, email: string | null } | null>
 }
 
 const ownerProjectionContext: McpProjectionContext = {
@@ -52,7 +54,23 @@ const defaultDependencies: GodModeMcpCallDependencies = {
   resolveExecution: name => resolveGodModeMcpExecution(ownerProjectionContext, name),
   executeWrite: executeTrustedMcpGodModeTool,
   executeRead: executeTrustedMcpGodModeReadTool,
-  executeResolvedMutation: executeTrustedMcpGodModeResolvedMutation
+  executeResolvedMutation: executeTrustedMcpGodModeResolvedMutation,
+  resolveIdentity: async userId => await queryOneFresh(
+    `SELECT name, email
+       FROM team_members
+      WHERE id = $1 AND is_active = TRUE
+      LIMIT 1`,
+    [userId]
+  )
+}
+
+function targetClientId(args: unknown): string | undefined {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return undefined
+  const values = args as Record<string, unknown>
+  const candidate = values.clientId ?? values.client_id
+  return typeof candidate === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidate)
+    ? candidate
+    : undefined
 }
 
 function forbidden(statusMessage: string): never {
@@ -77,6 +95,7 @@ export function createGodModeMcpCallExecutor(deps: GodModeMcpCallDependencies) {
     const bypassedControls: GodModeBypassedControl[] = execution.tool.mutates
       ? (missingWriteScope ? ['confirmation', 'mcp_scope'] : ['confirmation'])
       : []
+    const clientId = targetClientId(input.args)
 
     if (execution.tool.mutates && execution.kind === 'supplemental') {
       return await deps.executeResolvedMutation({
@@ -86,6 +105,7 @@ export function createGodModeMcpCallExecutor(deps: GodModeMcpCallDependencies) {
         sessionDigest: input.claim.bodyDigest,
         toolName: execution.name,
         args: input.args,
+        clientId,
         idempotencyKey: input.idempotencyKey,
         tool: execution.tool,
         executionClass: execution.executionClass,
@@ -105,14 +125,19 @@ export function createGodModeMcpCallExecutor(deps: GodModeMcpCallDependencies) {
         toolName: execution.canonicalName,
         auditToolName: execution.name,
         args: input.args,
+        clientId,
         idempotencyKey: input.idempotencyKey,
         bypassedControls
       })
     }
 
+    const identity = deps.resolveIdentity ? await deps.resolveIdentity(input.claim.uid) : null
     const ctx: ToolContext = {
       userId: input.claim.uid,
       userRole: 'owner',
+      userName: identity?.name ?? undefined,
+      userEmail: identity?.email ?? undefined,
+      mcpScopes: new Set(input.claim.scope),
       permissionGroups: [],
       source: 'mcp',
       event: input.event
@@ -125,6 +150,7 @@ export function createGodModeMcpCallExecutor(deps: GodModeMcpCallDependencies) {
       idempotencyKey: input.idempotencyKey,
       tool: execution.tool,
       args: input.args,
+      clientId,
       ctx
     })
   }

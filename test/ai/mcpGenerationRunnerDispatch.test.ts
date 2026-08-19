@@ -4,7 +4,10 @@ const mocks = vi.hoisted(() => ({
   createMusicAsset: vi.fn(),
   queueSend: vi.fn(),
   generateVoiceover: vi.fn(),
-  createVoiceAsset: vi.fn()
+  createVoiceAsset: vi.fn(),
+  generateImageFromPrompt: vi.fn(),
+  uploadBannerAsset: vi.fn(),
+  queryOne: vi.fn()
 }))
 
 vi.mock('~~/server/utils/audio/voiceGen', () => ({ generateVoiceover: mocks.generateVoiceover }))
@@ -23,6 +26,9 @@ vi.mock('~~/server/utils/audio/musicJob', () => ({
   getMusicQueue: vi.fn(() => ({ send: mocks.queueSend })),
   musicIdempotencyKey: vi.fn(() => 'idem-1')
 }))
+vi.mock('~~/server/utils/qwenImageGenerator', () => ({ generateImageFromPrompt: mocks.generateImageFromPrompt }))
+vi.mock('~~/server/utils/bannerStorage', () => ({ uploadBannerAsset: mocks.uploadBannerAsset }))
+vi.mock('~~/server/utils/db', () => ({ queryOne: mocks.queryOne }))
 
 import { buildGenerationRunner } from '~~/server/utils/ai/mcp/generationRunner'
 
@@ -38,6 +44,9 @@ describe('real generation runner durability boundaries', () => {
     mocks.queueSend.mockResolvedValue(undefined)
     mocks.generateVoiceover.mockResolvedValue({ sanitizedText: 'Hello', audioBuffer: new Uint8Array(), format: 'mp3', violations: [] })
     mocks.createVoiceAsset.mockResolvedValue({ id: 'voice-1', status: 'ready', streamUrl: null })
+    mocks.generateImageFromPrompt.mockResolvedValue({ buffer: new Uint8Array(), seed: 42 })
+    mocks.uploadBannerAsset.mockResolvedValue({ size: 100, key: 'asset.webp', url: 'https://assets.test/asset.webp' })
+    mocks.queryOne.mockResolvedValue({ id: 'image-1' })
   })
 
   it('does not checkpoint when music preparation fails before queue send', async () => {
@@ -94,5 +103,42 @@ describe('real generation runner durability boundaries', () => {
     const execution = { markDispatched: vi.fn(), captureResult: vi.fn() }
     await expect(buildGenerationRunner(execution).generate_voiceover({ text: 'Hello', lang: 'en', channels: [] }, ctx)).rejects.toThrow('voice generation unavailable')
     expect(execution.markDispatched).not.toHaveBeenCalled()
+  })
+
+  it('checkpoints before billed image generation, persists the client, and captures the asset reference', async () => {
+    const order: string[] = []
+    mocks.generateImageFromPrompt.mockImplementationOnce(async () => {
+      order.push('provider')
+      return { buffer: new Uint8Array(), seed: 42 }
+    })
+    mocks.uploadBannerAsset.mockImplementationOnce(async () => {
+      order.push('upload')
+      return { size: 100, key: 'asset.webp', url: 'https://assets.test/asset.webp' }
+    })
+    mocks.queryOne.mockImplementationOnce(async () => {
+      order.push('persist')
+      return { id: 'image-1' }
+    })
+    const execution = {
+      markDispatched: vi.fn(async () => { order.push('checkpoint') }),
+      captureResult: vi.fn(async () => { order.push('capture') })
+    }
+
+    await buildGenerationRunner(execution).generate_banner_image({
+      prompt: 'Dealer campaign',
+      aspectRatio: '1:1',
+      guidanceScale: 3.5,
+      steps: 28,
+      randomizeSeed: true,
+      promptEnhance: true,
+      clientId: '22222222-2222-4222-8222-222222222222'
+    }, ctx)
+
+    expect(order).toEqual(['checkpoint', 'provider', 'upload', 'persist', 'capture'])
+    expect(mocks.queryOne).toHaveBeenCalledWith(
+      expect.stringContaining('client_id'),
+      expect.arrayContaining(['22222222-2222-4222-8222-222222222222'])
+    )
+    expect(execution.captureResult).toHaveBeenCalledWith({ ok: true, data: expect.objectContaining({ assetId: 'image-1' }) })
   })
 })

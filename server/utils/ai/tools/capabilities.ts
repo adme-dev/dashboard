@@ -4,8 +4,16 @@ import type { ToolContext, ToolResult } from '../toolContext'
 import { ok, fail } from '../toolContext'
 import { MCP_GEN_RATE_MAX, MCP_GEN_RATE_WINDOW_MIN } from '../mcp/rateLimit'
 import { hasWriteScope, isWriteScopeToolName } from '../mcp/scope'
+import { queryRows } from '~~/server/utils/db'
 
-const params = z.object({})
+const actionLogFilter = z.object({
+  clientId: z.string().uuid().optional(),
+  clientName: z.string().trim().min(2).max(120).optional(),
+  toolName: z.string().trim().min(1).max(160).optional(),
+  since: z.string().datetime({ offset: true }).optional(),
+  limit: z.number().int().min(1).max(50).default(20),
+})
+const params = z.object({ actionLog: actionLogFilter.optional() })
 type Args = z.infer<typeof params>
 type ToolMode = 'read' | 'propose_only' | 'confirmation' | 'direct_generation'
 
@@ -22,6 +30,7 @@ export type CapabilityInspection = {
 
 export type CapabilitiesDeps = {
   inspect: (ctx: ToolContext) => Promise<CapabilityInspection>
+  inspectActions?: (ctx: ToolContext, filter: z.infer<typeof actionLogFilter>) => Promise<unknown[]>
 }
 
 const defaultDeps: CapabilitiesDeps = {
@@ -75,11 +84,49 @@ const defaultDeps: CapabilitiesDeps = {
       },
     }
   },
+  inspectActions: async (ctx, filter) => await queryRows(
+    `SELECT event.correlation_id AS "correlationId",
+            event.route_or_tool AS tool,
+            event.action_arguments AS arguments,
+            event.client_id AS "clientId",
+            client.name AS "clientName",
+            event.phase AS outcome,
+            event.outcome_code AS "outcomeCode",
+            event.created_at AS "timestamp",
+            actor.id AS "actorId",
+            actor.name AS "actorName",
+            actor.email AS "actorEmail"
+       FROM god_mode_audit_events event
+       LEFT JOIN agency_clients client ON client.id = event.client_id
+       LEFT JOIN team_members actor ON actor.id = event.actor_user_id
+      WHERE event.channel = 'mcp'
+        AND event.phase IN ('ambiguous', 'succeeded', 'failed')
+        AND cardinality(event.bypassed_controls) > 0
+        AND ($1::uuid IS NULL OR event.client_id = $1::uuid)
+        AND ($2::text IS NULL OR client.name ILIKE '%' || $2 || '%')
+        AND ($3::text IS NULL OR event.route_or_tool = $3)
+        AND ($4::timestamptz IS NULL OR event.created_at >= $4::timestamptz)
+        AND ($6::boolean OR event.actor_user_id = $7::uuid)
+      ORDER BY event.created_at DESC
+      LIMIT $5`,
+    [
+      filter.clientId ?? null,
+      filter.clientName ?? null,
+      filter.toolName ?? null,
+      filter.since ?? null,
+      filter.limit,
+      ctx.userRole === 'owner',
+      ctx.userId,
+    ]
+  ),
 }
 
-export async function getCapabilities(_args: Args, ctx: ToolContext, deps: CapabilitiesDeps = defaultDeps): Promise<ToolResult> {
+export async function getCapabilities(args: Args, ctx: ToolContext, deps: CapabilitiesDeps = defaultDeps): Promise<ToolResult> {
   try {
-    const inspection = await deps.inspect(ctx)
+    const [inspection, actions] = await Promise.all([
+      deps.inspect(ctx),
+      args.actionLog && deps.inspectActions ? deps.inspectActions(ctx, args.actionLog) : Promise.resolve(undefined),
+    ])
     return ok({
       identity: {
         id: ctx.userId,
@@ -95,11 +142,19 @@ export async function getCapabilities(_args: Args, ctx: ToolContext, deps: Capab
         read: 'executes immediately',
         propose_only: 'creates a reviewable proposal without executing it',
         confirmation: 'requires the authenticated user to confirm a proposal',
-        direct_generation: 'may create a billed asset and is rate-limited',
+        direct_generation: 'intentional authenticated-owner carve-out: may create a billed asset immediately, is rate-limited, and every attempt/outcome is immutably audited',
+      },
+      directGenerationDecision: {
+        enabled: inspection.tools.some(tool => tool.mode === 'direct_generation'),
+        intended: true,
+        tools: inspection.tools.filter(tool => tool.mode === 'direct_generation').map(tool => tool.name),
+        compensatingControls: ['authenticated owner authority', 'rate limit', 'immutable action audit'],
+        expansionPolicy: 'no additional direct-generation tools without an explicit review',
       },
       rateLimits: {
         generation: { maxCalls: MCP_GEN_RATE_MAX, windowMinutes: MCP_GEN_RATE_WINDOW_MIN },
       },
+      ...(actions ? { actionLog: { items: actions, count: actions.length } } : {}),
     })
   } catch {
     return fail('Could not inspect MCP capabilities.')
@@ -108,7 +163,7 @@ export async function getCapabilities(_args: Args, ctx: ToolContext, deps: Capab
 
 export const capabilitiesTool: AiTool<Args> = {
   name: 'get_capabilities',
-  description: 'Return the authenticated MCP identity, granted OAuth scopes, exact available tools classified as read/propose-only/confirmation/direct-generation, enabled text/image/Banner Studio/video/audio suites, governance boundaries, and generation rate limits. Call before planning a multi-model or asset-creation workflow.',
+  description: 'Return the authenticated MCP identity, granted OAuth scopes, exact available tools, creation suites, governance boundaries, direct-generation decision, and rate limits. Optionally filter actionLog by client, tool, or time to self-audit who invoked non-read actions, with what redacted arguments, and their outcomes. Call before planning a multi-model or asset-creation workflow.',
   parameters: params,
   handler: (args, ctx) => getCapabilities(args, ctx),
 }

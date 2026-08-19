@@ -42,6 +42,7 @@ export const generationTools: GenerationToolDescriptor[] = [
       randomizeSeed: z.boolean().default(true),
       promptEnhance: z.boolean().default(true),
       title: z.string().max(120).optional(),
+      clientId: z.string().uuid().optional(),
     }),
     requiredPermission: 'CREATIVE'
   },
