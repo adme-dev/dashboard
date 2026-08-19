@@ -188,9 +188,9 @@ describe('authoritative registered MCP suite projection', () => {
     const manifests = projectGodModeTools(ownerContext)
     const executions = resolveGodModeMcpExecutions(ownerContext)
 
-    expect(manifests).toHaveLength(71)
-    expect(executions).toHaveLength(71)
-    expect(new Set(executions.map(execution => execution.name)).size).toBe(71)
+    expect(manifests).toHaveLength(72)
+    expect(executions).toHaveLength(72)
+    expect(new Set(executions.map(execution => execution.name)).size).toBe(72)
     for (const manifest of manifests) {
       expect(resolveGodModeMcpExecution(ownerContext, manifest.name)).toMatchObject({ name: manifest.name })
     }

@@ -34,6 +34,7 @@ describe('MCP response contract helpers', () => {
       oldestSyncedAt: '2026-08-15T06:00:00Z',
       staleRowCount: 3,
       stalenessThresholdHours: 48,
+      freshness: 'mixed',
     })
   })
 
@@ -43,18 +44,20 @@ describe('MCP response contract helpers', () => {
       oldestSyncedAt: null,
       staleRowCount: 0,
       stalenessThresholdHours: 48,
+      freshness: 'stale',
     })
   })
 
   it('merges pre-aggregated freshness without hiding stale rows behind a newer sync', () => {
     expect(mergeSyncFreshness([
-      { lastSyncedAt: '2026-08-18T08:30:00Z', oldestSyncedAt: '2026-08-07T01:00:00Z', staleRowCount: 4 },
-      { lastSyncedAt: '2026-08-18T09:00:00Z', oldestSyncedAt: '2026-08-16T01:00:00Z', staleRowCount: 1 },
+      { lastSyncedAt: '2026-08-18T08:30:00Z', oldestSyncedAt: '2026-08-07T01:00:00Z', staleRowCount: 4, freshness: 'stale' },
+      { lastSyncedAt: '2026-08-18T09:00:00Z', oldestSyncedAt: '2026-08-16T01:00:00Z', staleRowCount: 1, freshness: 'mixed' },
     ])).toEqual({
       lastSyncedAt: '2026-08-18T09:00:00Z',
       oldestSyncedAt: '2026-08-07T01:00:00Z',
       staleRowCount: 5,
       stalenessThresholdHours: 48,
+      freshness: 'mixed',
     })
   })
 

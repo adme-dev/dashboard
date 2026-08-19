@@ -2,7 +2,12 @@ import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import type { ToolContext, ToolResult } from '../toolContext'
 import { ok, fail } from '../toolContext'
-import { MCP_GEN_RATE_MAX, MCP_GEN_RATE_WINDOW_MIN } from '../mcp/rateLimit'
+import {
+  MCP_GEN_RATE_MAX,
+  MCP_GEN_RATE_WINDOW_MIN,
+  MCP_INSPECTION_RATE_MAX,
+  MCP_INSPECTION_RATE_WINDOW_MIN,
+} from '../mcp/rateLimit'
 import { hasWriteScope, isWriteScopeToolName } from '../mcp/scope'
 import { queryRows } from '~~/server/utils/db'
 
@@ -15,7 +20,7 @@ const actionLogFilter = z.object({
 })
 const params = z.object({ actionLog: actionLogFilter.optional() })
 type Args = z.infer<typeof params>
-type ToolMode = 'read' | 'propose_only' | 'confirmation' | 'direct_generation'
+type ToolMode = 'read' | 'inspection' | 'propose_only' | 'confirmation' | 'direct_generation'
 
 export type CapabilityInspection = {
   tools: Array<{ name: string, mode: ToolMode }>
@@ -31,6 +36,7 @@ export type CapabilityInspection = {
 export type CapabilitiesDeps = {
   inspect: (ctx: ToolContext) => Promise<CapabilityInspection>
   inspectActions?: (ctx: ToolContext, filter: z.infer<typeof actionLogFilter>) => Promise<unknown[]>
+  retryDelay?: () => Promise<void>
 }
 
 const defaultDeps: CapabilitiesDeps = {
@@ -62,10 +68,17 @@ const defaultDeps: CapabilitiesDeps = {
     const scopeFiltered = process.env.MCP_REQUIRE_WRITE_SCOPE === 'true' && !hasWriteScope(grantedScopes)
       ? manifests.filter(tool => !isWriteScopeToolName(tool.name))
       : manifests
-    const generationNames = new Set(generationModule.generationTools.map(tool => tool.name).filter(name => name !== 'get_generation_status'))
+    const inspectionNames = new Set(['verify_creative_compliance'])
+    const generationNames = new Set(
+      generationModule.generationTools
+        .map(tool => tool.name)
+        .filter(name => !generationModule.isGenerationReadToolName(name) && !inspectionNames.has(name))
+    )
     const unique = [...new Map(scopeFiltered.map(manifest => {
       const mode: ToolMode = manifest.name === 'confirm_action'
         ? 'confirmation'
+        : inspectionNames.has(manifest.name)
+          ? 'inspection'
         : generationNames.has(manifest.name)
           ? 'direct_generation'
           : manifest.name.startsWith('propose_') || manifest.name === 'create_video_project'
@@ -121,10 +134,19 @@ const defaultDeps: CapabilitiesDeps = {
   ),
 }
 
+async function inspectWithOneRetry(ctx: ToolContext, deps: CapabilitiesDeps): Promise<CapabilityInspection> {
+  try {
+    return await deps.inspect(ctx)
+  } catch {
+    await (deps.retryDelay?.() ?? new Promise(resolve => setTimeout(resolve, 25)))
+    return await deps.inspect(ctx)
+  }
+}
+
 export async function getCapabilities(args: Args, ctx: ToolContext, deps: CapabilitiesDeps = defaultDeps): Promise<ToolResult> {
   try {
     const [inspection, actions] = await Promise.all([
-      deps.inspect(ctx),
+      inspectWithOneRetry(ctx, deps),
       args.actionLog && deps.inspectActions ? deps.inspectActions(ctx, args.actionLog) : Promise.resolve(undefined),
     ])
     return ok({
@@ -140,6 +162,7 @@ export async function getCapabilities(args: Args, ctx: ToolContext, deps: Capabi
       selectionPolicy: 'capability_driven',
       governance: {
         read: 'executes immediately',
+        inspection: 'executes immediately for analysis and evidence capture; does not create a media asset',
         propose_only: 'creates a reviewable proposal without executing it',
         confirmation: 'requires the authenticated user to confirm a proposal',
         direct_generation: 'intentional authenticated-owner carve-out: may create a billed asset immediately, is rate-limited, and every attempt/outcome is immutably audited',
@@ -153,11 +176,12 @@ export async function getCapabilities(args: Args, ctx: ToolContext, deps: Capabi
       },
       rateLimits: {
         generation: { maxCalls: MCP_GEN_RATE_MAX, windowMinutes: MCP_GEN_RATE_WINDOW_MIN },
+        inspection: { maxCalls: MCP_INSPECTION_RATE_MAX, windowMinutes: MCP_INSPECTION_RATE_WINDOW_MIN },
       },
       ...(actions ? { actionLog: { items: actions, count: actions.length } } : {}),
     })
   } catch {
-    return fail('Could not inspect MCP capabilities.')
+    return fail('Could not inspect MCP capabilities.', 'capabilities_unavailable', { retryable: true })
   }
 }
 

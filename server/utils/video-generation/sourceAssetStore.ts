@@ -8,6 +8,10 @@ export interface SourceAssetRow {
   status: string
   content_type?: string
   subject_type?: string
+  original_filename?: string | null
+  width?: number | null
+  height?: number | null
+  created_at?: string
 }
 
 export async function createSourceAsset(input: {
@@ -16,11 +20,18 @@ export async function createSourceAsset(input: {
   r2Key: string
   contentType: string
   subjectType: string
+  originalFilename?: string | null
+  width?: number | null
+  height?: number | null
 }): Promise<{ id: string; status: string }> {
   const row = await queryOne<{ id: string; status: string }>(
-    `INSERT INTO video_gen_source_assets (id, client_id, created_by, r2_key, content_type, subject_type)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, status`,
-    [randomUUID(), input.clientId, input.createdBy, input.r2Key, input.contentType, input.subjectType]
+    `INSERT INTO video_gen_source_assets
+       (id, client_id, created_by, r2_key, content_type, subject_type, original_filename, width, height)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, status`,
+    [
+      randomUUID(), input.clientId, input.createdBy, input.r2Key, input.contentType,
+      input.subjectType, input.originalFilename ?? null, input.width ?? null, input.height ?? null
+    ]
   )
   if (!row) throw new Error('failed to create source asset')
   return { id: row.id, status: row.status }
@@ -29,9 +40,24 @@ export async function createSourceAsset(input: {
 export async function loadSourceAssetsByIds(ids: string[]): Promise<SourceAssetRow[]> {
   if (ids.length === 0) return []
   return queryRows<SourceAssetRow>(
-    `SELECT id, client_id, r2_key, status, content_type, subject_type
+    `SELECT id, client_id, r2_key, status, content_type, subject_type,
+            original_filename, width, height, created_at
      FROM video_gen_source_assets WHERE id = ANY($1::uuid[])`,
     [ids]
+  )
+}
+
+/** Approved sources available to a tenant. Agency-owned rows are shared deliberately. */
+export async function listApprovedVideoGenerationSourceAssets(tenantId: string): Promise<SourceAssetRow[]> {
+  return queryRows<SourceAssetRow>(
+    `SELECT id, client_id, r2_key, status, content_type, subject_type,
+            original_filename, width, height, created_at
+       FROM video_gen_source_assets
+      WHERE status = 'approved'
+        AND (client_id = $1::uuid OR client_id IS NULL)
+      ORDER BY created_at DESC
+      LIMIT 200`,
+    [tenantId === 'agency' ? null : tenantId]
   )
 }
 

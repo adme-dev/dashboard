@@ -186,3 +186,15 @@ export async function listVideoGenerationJobsForProject(projectId: string, limit
   )
   return rows.map(mapVideoGenerationJobRow)
 }
+
+export async function listVideoGenerationJobsForProjects(projectIds: string[], limit = 50): Promise<VideoGenerationJob[]> {
+  if (projectIds.length === 0) return []
+  const rows = await queryRows(
+    `SELECT * FROM video_generation_jobs
+      WHERE project_id = ANY($1::uuid[])
+      ORDER BY created_at DESC
+      LIMIT $2`,
+    [projectIds, limit]
+  )
+  return rows.map(mapVideoGenerationJobRow)
+}

@@ -164,6 +164,49 @@ describe('standalone MCP Worker request authority', () => {
     expect(new Set(keys).size).toBe(3)
   })
 
+  it('returns structured tool failures without stringifying booleans', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => responseJson({
+      ok: false,
+      error: 'This model requires at least one approved source asset.',
+      code: 'missing_approved_source_asset',
+      details: {
+        error: 'missing_approved_source_asset',
+        requirement: 'requiresApprovedSourceAsset',
+        model: 'kling-v2'
+      }
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const agent = new XeroFlowMcpAgent() as any
+    agent.env = env()
+    agent.props = props()
+    await agent.init()
+
+    const call = mocks.handlers.get(mocks.callSchema)!
+    const result = await call({ params: { name: 'propose_video_generation', arguments: {} } }, { requestId: 'rpc-error' })
+
+    expect(result.isError).toBe(true)
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      error: 'missing_approved_source_asset',
+      message: 'This model requires at least one approved source asset.',
+      requirement: 'requiresApprovedSourceAsset',
+      model: 'kling-v2'
+    })
+  })
+
+  it('normalizes a malformed boolean error from Pages', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => responseJson({ ok: false, error: true }))
+    vi.stubGlobal('fetch', fetchMock)
+    const agent = new XeroFlowMcpAgent() as any
+    agent.env = env()
+    agent.props = props()
+    await agent.init()
+
+    const call = mocks.handlers.get(mocks.callSchema)!
+    const result = await call({ params: { name: 'get_capabilities', arguments: {} } }, { requestId: 'rpc-bool-error' })
+
+    expect(JSON.parse(result.content[0].text)).toEqual({ error: 'tool_failed', message: 'Tool failed.' })
+  })
+
   it('rejects unsupported or non-finite SDK request IDs before calling Pages', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)

@@ -81,7 +81,7 @@ export async function fetchMondayCreativeAssets(
     where.push(sql.replace('?', `$${values.length}`))
   }
   if (args.campaignName) add('mim.monday_item_name ILIKE ?', `%${escapeLike(args.campaignName)}%`)
-  if (args.clientName) add('client.name ILIKE ?', `%${escapeLike(args.clientName)}%`)
+  if (args.clientName) add('COALESCE(client.name, source_client.name) ILIKE ?', `%${escapeLike(args.clientName)}%`)
 
   const rows = await load(
     `SELECT mim.monday_item_id, mim.monday_item_name,
@@ -93,11 +93,21 @@ export async function fetchMondayCreativeAssets(
                  ELSE NULL END AS source_created_at,
             creator.monday_creator_name,
             mim.updated_at AS migrated_at,
-            client.name AS client_name
+            COALESCE(client.name, source_client.name) AS client_name
        FROM monday_item_mappings mim
-       JOIN tasks task ON task.id = mim.task_id
-       JOIN projects project ON project.id = task.project_id
+       LEFT JOIN tasks task ON task.id = mim.task_id
+       LEFT JOIN projects project ON project.id = task.project_id
        LEFT JOIN agency_clients client ON client.id = project.client_id
+       LEFT JOIN LATERAL (
+         SELECT NULLIF(TRIM(source_column->>'text'), '') AS name
+           FROM jsonb_array_elements(
+             CASE WHEN jsonb_typeof(mim.source_data->'column_values') = 'array'
+                  THEN mim.source_data->'column_values'
+                  ELSE '[]'::jsonb END
+           ) source_column
+          WHERE source_column->>'id' = 'client'
+          LIMIT 1
+       ) source_client ON TRUE
        CROSS JOIN LATERAL jsonb_array_elements(
          CASE WHEN jsonb_typeof(mim.column_values->'files'->'files') = 'array'
               THEN mim.column_values->'files'->'files'
@@ -226,7 +236,7 @@ export async function getCreativeAssets(args: Args, ctx: ToolContext, deps: Crea
 
 export const creativeAssetsTool: AiTool<Args> = {
   name: 'get_creative_assets',
-  description: 'Resolve running campaign/ad creatives to XeroFlow Banner Studio, migrated Monday, and ad-platform assets with provenance. Monday files retain source item, file creation/creator, and migration timestamp; they are never assigned a campaign ID without an explicit link. Returns explicit partial coverage when a platform creative has no build provenance, and never presents sync time as artwork build time. Filter by campaign ID/name or client and paginate with cursor.',
+  description: 'Resolve running campaign/ad creatives to XeroFlow Banner Studio, migrated Monday, and ad-platform assets with provenance. Monday files retain source item, original client label, file creation/creator, and migration timestamp; they are never assigned a campaign ID without an explicit link. Returns explicit partial coverage when a platform creative has no build provenance, and never presents sync time as artwork build time. Filter by campaign ID/name or client and paginate with cursor.',
   parameters: params,
   requiredPermission: 'MEDIA_BUYING',
   handler: (args, ctx) => getCreativeAssets(args, ctx),

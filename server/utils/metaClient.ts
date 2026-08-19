@@ -286,12 +286,38 @@ export async function getCampaignInsightsById(
     `${META_GRAPH_BASE}/${campaignId}/insights`,
     token,
     {
-      fields: 'campaign_id,spend,impressions,clicks',
+      fields: 'campaign_id,campaign_name,date_start,date_stop,spend,impressions,clicks,actions,action_values',
       time_range: JSON.stringify({ since, until }),
       level: 'campaign'
     }
   )
   return res.data?.[0] ?? null
+}
+
+/**
+ * Daily month-to-date insights for one known campaign node. This is the
+ * bounded fallback for Meta apps whose access tier returns an empty account-
+ * level insights collection from Cloudflare egress while direct campaign
+ * reads remain available.
+ */
+export async function getCampaignDailyInsightsById(
+  campaignId: string,
+  token: string,
+  month: number,
+  year: number
+): Promise<MetaInsight[]> {
+  const { since, until } = getMonthRange(month, year)
+  const response = await metaFetch<{ data: MetaInsight[] }>(
+    `${META_GRAPH_BASE}/${campaignId}/insights`,
+    token,
+    {
+      fields: 'campaign_id,campaign_name,date_start,date_stop,spend,impressions,clicks,actions,action_values',
+      time_range: JSON.stringify({ since, until }),
+      time_increment: '1',
+      level: 'campaign'
+    }
+  )
+  return response.data || []
 }
 
 // ============================================

@@ -166,15 +166,18 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/utils/leads/destinations/autogate.ts\tconst password = process.env.AUTOGATE_LEAD_API_PASSWORD\tunrelated_configuration'
     )
-    expect(inventory.rows).toHaveLength(1440)
+    expect(inventory.rows).toContain(
+      "server/utils/spendSyncJobs.ts\t`SELECT id FROM team_members WHERE is_active = TRUE AND user_role = 'owner'`\tidentity_tenant_hard_boundary"
+    )
+    expect(inventory.rows).toHaveLength(1441)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 100,
+      identity_tenant_hard_boundary: 101,
       provider_infrastructure_availability: 212,
       application_governance_bypass: 747,
       ordinary_user_behavior: 170,
       unrelated_configuration: 211
     })
-    expect(inventory.digest).toBe('a06f086a9e46c8bffb49af91dee401e2ddacf6d6e5852400bbdcc2ccb89b074e')
+    expect(inventory.digest).toBe('2f4d0c29882adeb6dacf9ee6dd56c20b83d5f9c3c33c842a9d7279275d6f2604')
     expect(CENTRAL_HELPER_BY_CLASS).toEqual({
       identity_tenant_hard_boundary: 'unchanged independent scope helper',
       provider_infrastructure_availability: 'unchanged provider/configuration check',

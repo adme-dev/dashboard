@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { queryRows } from '~~/server/utils/db'
+import { queryOne, queryRows } from '~~/server/utils/db'
 import { syncCampaignAdPerformance } from '~~/server/utils/onDemandSync'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
@@ -47,7 +47,49 @@ type RawAdRecord = {
 
 export type AdBreakdownDeps = {
   fetch: (args: Args, ctx: ToolContext) => Promise<{ records: RawAdRecord[], targetCount: number, available: boolean }>
+  leadAttribution?: (args: Args, ctx: ToolContext) => Promise<{ totalSubmissions: number, adAttributed: number }>
   now?: () => Date
+}
+
+export async function getAdLeadAttributionSummary(
+  args: Args,
+  load: typeof queryOne = queryOne,
+): Promise<{ totalSubmissions: number, adAttributed: number }> {
+  const window = period(args)
+  const conditions = [
+    'l.deleted_at IS NULL',
+    'l.is_test = false',
+    'l.submitted_at >= $1::date',
+    "l.submitted_at < $2::date + INTERVAL '1 day'",
+  ]
+  const values: unknown[] = [window.start, window.end]
+  const add = (sql: string, value: unknown) => {
+    values.push(value)
+    conditions.push(sql.replace('?', `$${values.length}`))
+  }
+  if (args.platform) add('l.source = ?', args.platform)
+  if (args.clientName) add('client.name ILIKE ?', `%${escapeLike(args.clientName)}%`)
+  if (args.campaignId) add('l.campaign_id = ?', args.campaignId)
+  if (args.campaignName) add(
+    `EXISTS (
+       SELECT 1 FROM media_spend matched
+        WHERE matched.campaign_id = l.campaign_id
+          AND matched.campaign_name ILIKE ?
+     )`,
+    `%${escapeLike(args.campaignName)}%`,
+  )
+  const row = await load<any>(
+    `SELECT COUNT(*)::int AS total_submissions,
+            COUNT(*) FILTER (WHERE l.ad_id IS NOT NULL)::int AS ad_attributed
+       FROM leads l
+       LEFT JOIN agency_clients client ON client.id = l.client_id
+      WHERE ${conditions.join(' AND ')}`,
+    values,
+  )
+  return {
+    totalSubmissions: Number(row?.total_submissions || 0),
+    adAttributed: Number(row?.ad_attributed || 0),
+  }
 }
 
 function period(args: Args) {
@@ -135,6 +177,7 @@ const defaultDeps: AdBreakdownDeps = {
       })),
     }
   },
+  leadAttribution: async (args) => getAdLeadAttributionSummary(args),
 }
 
 const round = (value: number) => Math.round(value * 100) / 100
@@ -143,6 +186,12 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
   try {
     const result = await deps.fetch(args, ctx)
     const currentPeriod = period(args)
+    const leadCounts = deps.leadAttribution
+      ? await deps.leadAttribution(args, ctx)
+      : { totalSubmissions: 0, adAttributed: 0 }
+    const leadCoveragePct = leadCounts.totalSubmissions > 0
+      ? Math.round((leadCounts.adAttributed / leadCounts.totalSubmissions) * 10_000) / 100
+      : null
     const previousPeriod = args.comparePrevious ? priorPeriod(currentPeriod) : null
     const previousResult = previousPeriod
       ? await deps.fetch({ ...args, startDate: previousPeriod.start, endDate: previousPeriod.end, comparePrevious: false, refresh: false }, ctx)
@@ -161,7 +210,7 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
       const fatigueSignals = [
         ...(row.frequency != null && row.frequency > 3.5 ? ['high_frequency'] : []),
         ...(ageDays != null && ageDays > 60 ? ['creative_older_than_60_days'] : []),
-        ...(row.spend > 0 && row.leadCount === 0 ? ['spend_without_leads'] : []),
+        ...(leadCoveragePct != null && row.spend > 0 && row.leadCount === 0 ? ['spend_without_leads'] : []),
         ...(row.frequency != null && row.frequency > 3.5 && ctrDeltaPct != null && ctrDeltaPct < -25 ? ['frequency_high_ctr_down'] : []),
       ]
       return { ...row, conversions: null, ctr, cpc, costPerLead: cpl, ageDays, fatigueSignals, ...(prior ? { comparison: { frequencyDelta, ctrDeltaPct, spendDelta: round(row.spend - prior.spend), leadDelta: row.leadCount - prior.leadCount } } : {}) }
@@ -189,6 +238,15 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
         definition: 'suppressed_pending_historical_resync',
         note: 'Provider conversion totals are hidden until historical rows are resynced with non-overlapping lead/purchase semantics.',
       },
+      leadAttribution: {
+        ...leadCounts,
+        unattributed: Math.max(0, leadCounts.totalSubmissions - leadCounts.adAttributed),
+        coveragePct: leadCoveragePct,
+        definition: 'submitted_non_test_leads',
+        fatigueSignalPolicy: leadCoveragePct == null
+          ? 'spend_without_leads_suppressed_until_attribution_coverage_exists'
+          : 'spend_without_leads_enabled',
+      },
       targetCampaignLimit: 20,
       ads: page.items,
       total: page.total,
@@ -203,7 +261,7 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
 
 export const adBreakdownTool: AiTool<Args> = {
   name: 'get_ad_breakdown',
-  description: 'Ad-level delivery and creative-fatigue metrics for a campaign or client and date window: ad/creative IDs, spend, impressions, frequency where supported, CTR, CPC, attributed submitted leads/CPL, first/last served date, creative age and fatigue signals. Provider conversions are explicitly null until historical rows are resynced under non-overlapping outcome semantics. Summary freshness includes newest/oldest sync, stale-row count, and threshold. Optional previous-period comparison detects high/rising frequency with CTR decline. Performs a read-through platform sync when missing; Google frequency remains explicitly null.',
+  description: 'Ad-level delivery and creative-fatigue metrics for a campaign or client and date window: ad/creative IDs, spend, impressions, frequency where supported, CTR, CPC, attributed submitted leads/CPL, first/last served date, creative age and fatigue signals. `spend_without_leads` is suppressed until real non-test lead attribution coverage exists. Provider conversions are explicitly null until historical rows are resynced under non-overlapping outcome semantics. Summary freshness includes newest/oldest sync, stale-row count, threshold, and a separate fresh/stale/mixed classification. Optional previous-period comparison detects high/rising frequency with CTR decline. Performs a read-through platform sync when missing; Google frequency remains explicitly null.',
   parameters: params,
   requiredPermission: 'MEDIA_BUYING',
   handler: (args, ctx) => getAdBreakdown(args, ctx),

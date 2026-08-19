@@ -10,10 +10,11 @@ export interface SyncFreshness {
   oldestSyncedAt: string | null
   staleRowCount: number
   stalenessThresholdHours: number
+  freshness: 'fresh' | 'stale' | 'mixed'
 }
 
 export type AggregatedSyncFreshness = Partial<Pick<SyncFreshness,
-  'lastSyncedAt' | 'oldestSyncedAt' | 'staleRowCount'
+  'lastSyncedAt' | 'oldestSyncedAt' | 'staleRowCount' | 'freshness'
 >>
 
 export function buildDataHealth(input: {
@@ -48,7 +49,11 @@ export function buildSyncFreshness(
 
   for (const timestamp of timestamps) {
     const value = timestamp instanceof Date ? timestamp.toISOString() : timestamp
-    const time = value ? Date.parse(value) : Number.NaN
+    if (!value) {
+      staleRowCount += 1
+      continue
+    }
+    const time = Date.parse(value)
     if (!Number.isFinite(time)) {
       staleRowCount += 1
       continue
@@ -63,6 +68,11 @@ export function buildSyncFreshness(
     oldestSyncedAt: oldest?.value ?? null,
     staleRowCount,
     stalenessThresholdHours,
+    freshness: timestamps.length === 0 || staleRowCount >= timestamps.length
+      ? 'stale'
+      : staleRowCount === 0
+        ? 'fresh'
+        : 'mixed',
   }
 }
 
@@ -82,7 +92,16 @@ export function mergeSyncFreshness(
     return sum + buildSyncFreshness([representative], options).staleRowCount
   }, 0)
 
-  return { ...timestampFreshness, staleRowCount }
+  const states = summaries.map(summary => summary.freshness ?? (
+    Number(summary.staleRowCount) > 0 ? 'stale' : 'fresh'
+  ))
+  const freshness = states.length === 0 || states.every(state => state === 'stale')
+    ? 'stale'
+    : states.every(state => state === 'fresh')
+      ? 'fresh'
+      : 'mixed'
+
+  return { ...timestampFreshness, staleRowCount, freshness }
 }
 
 const CURSOR_PREFIX = 'xf1_'

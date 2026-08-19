@@ -20,7 +20,12 @@ import {
   type BannerRenderPendingPayload
 } from '~~/server/utils/ai/mcp/bannerTools'
 import { buildBannerReadRunner, buildBannerProposeDeps, buildBannerConfirmDeps, dispatchBannerConfirm } from '~~/server/utils/ai/mcp/bannerRunner'
-import { isGenerationRateLimited, MCP_GEN_RATE_WINDOW_MIN } from '~~/server/utils/ai/mcp/rateLimit'
+import {
+  isGenerationRateLimited,
+  isInspectionRateLimited,
+  MCP_GEN_RATE_WINDOW_MIN,
+  MCP_INSPECTION_RATE_WINDOW_MIN,
+} from '~~/server/utils/ai/mcp/rateLimit'
 import {
   resolveProposeAction, executeWriteConfirm, MCP_CONFIRM_TOOL, type ClaimedProposal,
   isFinancialAction, MCP_FINANCIAL_ACTIONS, MCP_FINANCIAL_RICH_CONFIRM
@@ -67,6 +72,44 @@ export default defineEventHandler(async (event) => {
     getHeader(event, 'x-mcp-assertion') ?? '',
     userId
   )
+
+  // Count before branching into ordinary vs God-mode execution so owner authority never bypasses
+  // billing/inspection traffic controls. God-mode attempts live in their immutable audit table;
+  // ordinary attempts live in ai_action_audit.
+  const inspectionNames = ['verify_creative_compliance']
+  const generationNames = [
+    ...generationTools.map(t => t.name).filter(n => !['get_generation_status', 'list_creative_models', ...inspectionNames].includes(n)),
+    'propose_video_generation', 'create_video_project', 'propose_banner_render',
+    ...MCP_FINANCIAL_ACTIONS
+  ]
+  const isInspection = inspectionNames.includes(toolName)
+  const isRateLimitedGeneration = generationNames.includes(toolName)
+  if (isInspection || isRateLimitedGeneration) {
+    const names = isInspection ? inspectionNames : generationNames
+    const since = `${isInspection ? MCP_INSPECTION_RATE_WINDOW_MIN : MCP_GEN_RATE_WINDOW_MIN} minutes`
+    const recent = await queryOne<{ n: number }>(
+      `SELECT (
+         SELECT COUNT(*)::int FROM ai_action_audit
+          WHERE user_id = $1 AND payload->>'source' = 'mcp'
+            AND tool_name = ANY($2) AND created_at > now() - $3::interval
+       ) + (
+         SELECT COUNT(*)::int FROM god_mode_audit_events
+          WHERE actor_user_id = $1 AND channel = 'mcp' AND phase = 'attempt'
+            AND route_or_tool = ANY($2) AND created_at > now() - $3::interval
+       ) AS n`,
+      [userId, names, since]
+    ).catch(() => ({ n: 0 }))
+    const limited = isInspection
+      ? isInspectionRateLimited(recent?.n ?? 0)
+      : isGenerationRateLimited(recent?.n ?? 0)
+    if (limited) {
+      return {
+        ok: false,
+        error: `Rate limit: too many ${isInspection ? 'inspection' : 'generation'} requests. Try again in a few minutes.`,
+        code: 'rate_limited'
+      }
+    }
+  }
 
   const authority = getMcpRequestGodModeAuthority(event, userId)
   if (isActiveGodModeAuthority(authority, userId)) {
@@ -121,30 +164,6 @@ export default defineEventHandler(async (event) => {
   // Financial suite (Phase D4): propose_* names routed when MCP_FINANCIAL_TOOLS_ENABLED is on.
   const financialEnabled = process.env.MCP_FINANCIAL_TOOLS_ENABLED === 'true'
   const isFinancialPropose = isFinancialAction(toolName) // propose_budget_change etc.
-
-  // Per-actor rate limit on the billing/state-changing actions (no HITL on the count). Covers audio
-  // generation + video propose/create + banner propose + financial propose_*; cheap polls are exempt.
-  const rateLimited = (isGeneration && toolName !== 'get_generation_status')
-    || toolName === 'propose_video_generation' || toolName === 'create_video_project'
-    || toolName === 'propose_banner_render'
-    || isFinancialPropose
-  if (rateLimited) {
-    const since = `${MCP_GEN_RATE_WINDOW_MIN} minutes`
-    const names = [
-      ...generationTools.map(t => t.name).filter(n => n !== 'get_generation_status'),
-      'propose_video_generation', 'create_video_project', 'propose_banner_render',
-      ...MCP_FINANCIAL_ACTIONS
-    ]
-    const recent = await queryOne<{ n: number }>(
-      `SELECT COUNT(*)::int AS n FROM ai_action_audit
-        WHERE user_id = $1 AND payload->>'source' = 'mcp'
-          AND tool_name = ANY($2) AND created_at > now() - $3::interval`,
-      [userId, names, since]
-    ).catch(() => ({ n: 0 }))
-    if (isGenerationRateLimited(recent?.n ?? 0)) {
-      return { ok: false, error: `Rate limit: too many generation requests. Try again in a few minutes.`, code: 'rate_limited' }
-    }
-  }
 
   // CRITICAL-B: OAuth write-scope enforcement. Scope comes only from the verified signed claim. When
   // MCP_REQUIRE_WRITE_SCOPE is on, any WRITE-class tool (propose_*/confirm_action/generation/banner/

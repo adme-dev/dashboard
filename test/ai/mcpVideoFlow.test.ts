@@ -136,7 +136,7 @@ describe('2b end-to-end flow (propose → persist → claim → confirm → disp
     const store = makeStore()
     const proposed = await executeVideoPropose('video_generation', genArgs, ctx(),
       proposeDeps(store, { evaluateCompliance: () => ({ allowed: false, classification: 'prohibited', reasons: ['vehicle policy'] }) }))
-    expect(proposed).toMatchObject({ ok: false, code: 'blocked' })
+    expect(proposed).toMatchObject({ ok: false, code: 'compliance_blocked' })
     expect(store.rows.size).toBe(0)
   })
 

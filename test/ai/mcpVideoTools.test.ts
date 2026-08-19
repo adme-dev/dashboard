@@ -22,14 +22,14 @@ vi.mock('~~/server/utils/permissions', () => ({
 
 const ctx = (role: string, userId = 'u1'): ToolContext => ({ userId, userRole: role, event: {} as never, source: 'mcp' })
 
-const READ_NAMES = ['list_av_projects', 'list_video_models', 'list_video_generations', 'get_video_generation_status', 'get_timeline_context']
+const READ_NAMES = ['list_av_projects', 'list_video_models', 'list_video_generations', 'list_video_source_assets', 'get_video_generation_status', 'get_timeline_context']
 
 describe('projectVideoReadTools', () => {
   it('returns no tools when the suite flag is off', () => {
     expect(projectVideoReadTools('admin', false)).toEqual([])
   })
 
-  it('returns the 4 read tools for a CREATIVE role when the flag is on', () => {
+  it('returns the read tools for a CREATIVE role when the flag is on', () => {
     expect(projectVideoReadTools('admin', true).map(t => t.name)).toEqual(READ_NAMES)
   })
 
@@ -37,7 +37,7 @@ describe('projectVideoReadTools', () => {
     expect(projectVideoReadTools('viewer', true)).toEqual([])
   })
 
-  it('exposes exactly four read descriptors', () => {
+  it('exposes the expected read descriptors', () => {
     expect(videoReadTools.map(t => t.name)).toEqual(READ_NAMES)
   })
 })
@@ -102,6 +102,17 @@ describe('executeVideoTool guard (never throws)', () => {
       }
     })
     expect(getTimelineContext).toHaveBeenCalledWith({ projectId }, expect.objectContaining({ source: 'mcp' }))
+  })
+
+  it('allows list_video_generations with no project arguments', async () => {
+    const list = vi.fn(async () => [{ jobId: 'job-1', projectId: 'project-1' }])
+    const r = await executeVideoTool('list_video_generations', {}, ctx('admin'), {
+      enabled: true,
+      runner: { list_video_generations: list }
+    })
+
+    expect(r).toEqual({ ok: true, data: [{ jobId: 'job-1', projectId: 'project-1' }] })
+    expect(list).toHaveBeenCalledWith({}, expect.objectContaining({ userId: 'u1' }))
   })
 
   it('handler_error when the runner throws', async () => {
@@ -176,14 +187,30 @@ describe('executeVideoPropose — video_generation', () => {
     const r = await executeVideoPropose('video_generation', genArgs, ctx('admin'), { ...baseProposeDeps(), resolveProject: vi.fn(async () => null) })
     expect(r).toMatchObject({ ok: false, code: 'forbidden' })
   })
-  it('bad_args when the model rejects the params', async () => {
-    const r = await executeVideoPropose('video_generation', { ...genArgs, durationSeconds: 999 }, ctx('admin'), baseProposeDeps())
-    expect(r).toMatchObject({ ok: false, code: 'bad_args' })
+  it('returns structured unsupported parameters when the model rejects the params', async () => {
+    const r = await executeVideoPropose('video_generation', { ...genArgs, durationSeconds: 6 }, ctx('admin'), baseProposeDeps())
+    expect(r).toMatchObject({ ok: false, code: 'unsupported_model_parameters', details: { error: 'unsupported_model_parameters' } })
+  })
+  it('returns a machine-readable approved-source requirement', async () => {
+    const deps = {
+      ...baseProposeDeps(),
+      getModel: () => ({
+        id: 'm1', provider: 'cf', modes: ['text-to-video'], durationsSeconds: [5],
+        aspectRatios: ['16:9'], resolutions: [], allowedSubjectTypes: ['unknown'],
+        requiresApprovedSourceAsset: true, capabilities: { endFrame: false }
+      })
+    }
+    const r = await executeVideoPropose('video_generation', genArgs, ctx('admin'), deps)
+    expect(r).toMatchObject({
+      ok: false,
+      code: 'missing_approved_source_asset',
+      details: { error: 'missing_approved_source_asset', requirement: 'requiresApprovedSourceAsset', model: 'm1' }
+    })
   })
   it('blocked (no proposal persisted) when compliance disallows', async () => {
     const deps = { ...baseProposeDeps(), evaluateCompliance: () => ({ allowed: false, classification: 'prohibited', reasons: ['x'] }) }
     const r = await executeVideoPropose('video_generation', genArgs, ctx('admin'), deps)
-    expect(r).toMatchObject({ ok: false, code: 'blocked' })
+    expect(r).toMatchObject({ ok: false, code: 'compliance_blocked', details: { error: 'compliance_blocked', reasons: ['x'] } })
     expect(deps.persist).not.toHaveBeenCalled()
   })
   it('happy path persists and previews cost + classification', async () => {
