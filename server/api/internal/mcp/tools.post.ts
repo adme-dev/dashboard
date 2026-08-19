@@ -20,6 +20,18 @@ import {
   appendGodModeAuditEvent,
   type GodModeBypassedControl
 } from '~~/server/utils/godMode/audit'
+import { MCP_CATALOG_RELEASE } from '~~/shared/utils/mcpCatalog'
+
+function manifestResponse<T>(tools: T[]) {
+  return {
+    tools,
+    catalog: {
+      release: MCP_CATALOG_RELEASE,
+      toolCount: tools.length,
+      source: 'fresh_server_projection' as const,
+    },
+  }
+}
 
 export default defineEventHandler(async (event) => {
   if (process.env.MCP_SERVER_ENABLED !== 'true') {
@@ -89,7 +101,7 @@ export default defineEventHandler(async (event) => {
       const tools = projectGodModeTools(projectionContext)
       failureOutcome = 'catalog_terminal_audit_failed'
       await appendGodModeAuditEvent({ ...audit, phase: 'succeeded', outcomeCode: 'catalog_projected' })
-      return { tools }
+      return manifestResponse(tools)
     } catch {
       if (attemptWritten) {
         try {
@@ -111,7 +123,5 @@ export default defineEventHandler(async (event) => {
   // The registered suite list is the only assembly authority. For ordinary users its projectors retain
   // the existing per-suite flags, role permissions, and signed-claim write-scope narrowing.
   const role = user.role ?? ''
-  return {
-    tools: projectRegisteredMcpTools({ ...projectionContext, role })
-  }
+  return manifestResponse(projectRegisteredMcpTools({ ...projectionContext, role }))
 })

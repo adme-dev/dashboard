@@ -9,6 +9,7 @@ import {
   MCP_INSPECTION_RATE_WINDOW_MIN,
 } from '../mcp/rateLimit'
 import { queryRows } from '~~/server/utils/db'
+import { MCP_CATALOG_RELEASE } from '~~/shared/utils/mcpCatalog'
 
 const actionLogFilter = z.object({
   clientId: z.string().uuid().optional(),
@@ -36,6 +37,70 @@ export type CapabilitiesDeps = {
   inspect: (ctx: ToolContext) => Promise<CapabilityInspection>
   inspectActions?: (ctx: ToolContext, filter: z.infer<typeof actionLogFilter>) => Promise<unknown[]>
   retryDelay?: () => Promise<void>
+}
+
+export type GodModeActionFilter = {
+  clientId?: string
+  clientName?: string
+  actorId?: string
+  actorEmail?: string
+  toolName?: string
+  since?: string
+  endDate?: string
+  outcome?: 'succeeded' | 'failed' | 'ambiguous'
+  limit?: number
+}
+
+export async function inspectGodModeActions(
+  ctx: ToolContext,
+  filter: GodModeActionFilter,
+  load: typeof queryRows = queryRows,
+): Promise<unknown[]> {
+  return await load(
+    `SELECT event.correlation_id AS "correlationId",
+            event.route_or_tool AS tool,
+            event.action_arguments AS arguments,
+            event.client_id AS "clientId",
+            client.name AS "clientName",
+            event.phase AS outcome,
+            event.outcome_code AS "outcomeCode",
+            event.entity_type AS "entityType",
+            event.entity_id AS "entityId",
+            event.created_at AS "timestamp",
+            actor.id AS "actorId",
+            actor.name AS "actorName",
+            actor.email AS "actorEmail"
+       FROM god_mode_audit_events event
+       LEFT JOIN agency_clients client ON client.id = event.client_id
+       LEFT JOIN team_members actor ON actor.id = event.actor_user_id
+      WHERE event.channel = 'mcp'
+        AND event.phase IN ('ambiguous', 'succeeded', 'failed')
+        AND cardinality(event.bypassed_controls) > 0
+        AND ($1::uuid IS NULL OR event.client_id = $1::uuid)
+        AND ($2::text IS NULL OR client.name ILIKE '%' || $2 || '%')
+        AND ($3::text IS NULL OR event.route_or_tool = $3)
+        AND ($4::timestamptz IS NULL OR event.created_at >= $4::timestamptz)
+        AND ($6::boolean OR event.actor_user_id = $7::uuid)
+        AND ($8::uuid IS NULL OR event.actor_user_id = $8::uuid)
+        AND ($9::text IS NULL OR LOWER(actor.email) = LOWER($9))
+        AND ($10::timestamptz IS NULL OR event.created_at <= $10::timestamptz)
+        AND ($11::text IS NULL OR event.phase = $11)
+      ORDER BY event.created_at DESC
+      LIMIT $5`,
+    [
+      filter.clientId ?? null,
+      filter.clientName ?? null,
+      filter.toolName ?? null,
+      filter.since ?? null,
+      filter.limit ?? 20,
+      ctx.userRole === 'owner',
+      ctx.userId,
+      filter.actorId ?? null,
+      filter.actorEmail ?? null,
+      filter.endDate ?? null,
+      filter.outcome ?? null,
+    ],
+  )
 }
 
 const minimalInspection: CapabilityInspection = {
@@ -118,41 +183,7 @@ const defaultDeps: CapabilitiesDeps = {
       },
     }
   },
-  inspectActions: async (ctx, filter) => await queryRows(
-    `SELECT event.correlation_id AS "correlationId",
-            event.route_or_tool AS tool,
-            event.action_arguments AS arguments,
-            event.client_id AS "clientId",
-            client.name AS "clientName",
-            event.phase AS outcome,
-            event.outcome_code AS "outcomeCode",
-            event.created_at AS "timestamp",
-            actor.id AS "actorId",
-            actor.name AS "actorName",
-            actor.email AS "actorEmail"
-       FROM god_mode_audit_events event
-       LEFT JOIN agency_clients client ON client.id = event.client_id
-       LEFT JOIN team_members actor ON actor.id = event.actor_user_id
-      WHERE event.channel = 'mcp'
-        AND event.phase IN ('ambiguous', 'succeeded', 'failed')
-        AND cardinality(event.bypassed_controls) > 0
-        AND ($1::uuid IS NULL OR event.client_id = $1::uuid)
-        AND ($2::text IS NULL OR client.name ILIKE '%' || $2 || '%')
-        AND ($3::text IS NULL OR event.route_or_tool = $3)
-        AND ($4::timestamptz IS NULL OR event.created_at >= $4::timestamptz)
-        AND ($6::boolean OR event.actor_user_id = $7::uuid)
-      ORDER BY event.created_at DESC
-      LIMIT $5`,
-    [
-      filter.clientId ?? null,
-      filter.clientName ?? null,
-      filter.toolName ?? null,
-      filter.since ?? null,
-      filter.limit,
-      ctx.userRole === 'owner',
-      ctx.userId,
-    ]
-  ),
+  inspectActions: inspectGodModeActions,
 }
 
 async function inspectWithOneRetry(ctx: ToolContext, deps: CapabilitiesDeps): Promise<CapabilityInspection> {
@@ -199,6 +230,11 @@ export async function getCapabilities(args: Args, ctx: ToolContext, deps: Capabi
     },
     scopes: [...(ctx.mcpScopes ?? [])],
     tools: inspection.tools,
+    servedCatalog: {
+      release: MCP_CATALOG_RELEASE,
+      toolCount: inspection.tools.length,
+      projectionAuthority: 'shared_with_tools_list',
+    },
     creationSuites: inspection.suites,
     selectionPolicy: 'capability_driven',
     governance: {

@@ -1749,15 +1749,15 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-brain',
     categoryIconBg: 'bg-amber-50',
     categoryIconColor: 'text-amber-600',
-    description: 'Connect Claude, Cursor, or ChatGPT to a governed Godmode view of XeroFlow. Operational answers carry coverage, fresh/stale/mixed status and attribution; creative workflows can discover approved source assets before choosing source-bound video, static, transform or audio models.',
+    description: 'Connect Claude, Cursor, or ChatGPT to a governed Godmode view of XeroFlow. Operational answers carry coverage, fresh/stale/mixed status and attribution; creative workflows can discover current approved source assets before choosing source-bound video, static, transform or audio models, while owners can query the immutable action ledger directly.',
     details: [
       {
         title: 'Campaign and Creative Godmode',
-        content: 'Add one connector URL and ask which campaigns are lagging, which live ads show fatigue, what artwork is attached, when it was delivered, or where the design team has capacity. Campaign and ad views include status, first and last delivery, date-window comparisons, attributable leads and CPL, freshness classified as fresh, stale or mixed, creative links, and continuation cursors across the full portfolio.'
+        content: 'Add one connector URL and ask which campaigns are lagging, which live ads show fatigue, what artwork is attached, when it was delivered, or where the design team has capacity. Campaign and ad views include status, first and last delivery, honest no-baseline date comparisons, attributable leads and CPL, freshness classified as fresh, stale or mixed, creative links, and continuation cursors across the full portfolio. Current Monday item and update assets are resolved at read time with usable source URLs, screenshot filtering, and deduplicated client IDs.'
       },
       {
         title: 'Numbers That Explain Their Trustworthiness',
-        content: 'Every operational response distinguishes populated, partial, not configured, and unavailable data, with coverage counts, source period, and last sync time. Missing budgets never masquerade as underpacing; unattributed ad-account spend is separated from client totals; an empty anomaly list or a zero-capacity schedule says whether the underlying system was actually configured.'
+        content: 'Every operational response distinguishes populated, partial, not configured, and unavailable data, with coverage counts, source period, and last sync time. Missing budgets never masquerade as underpacing; unattributed ad-account spend is separated from client totals; an empty anomaly list or a zero-capacity schedule says whether the underlying system was actually configured. A standalone action-log tool lets owners filter the immutable Godmode ledger by client, actor, tool, outcome, and date.'
       },
       {
         title: 'Capability-Driven Creative Samples',

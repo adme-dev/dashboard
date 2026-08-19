@@ -29,6 +29,7 @@ import {
   signMcpRequestClaim,
   type McpRequestPath
 } from '../../../shared/utils/mcpRequestClaim'
+import { MCP_CATALOG_RELEASE } from '../../../shared/utils/mcpCatalog'
 
 interface Env {
   APP_BASE_URL: string
@@ -88,7 +89,7 @@ async function appFetch(
 }
 
 export class XeroFlowMcpAgent extends McpAgent<Env, unknown, Props> {
-  server = new McpServer({ name: 'xeroflow', version: '1.0.1' })
+  server = new McpServer({ name: 'xeroflow', version: '1.0.2' })
 
   async init() {
     // props are populated by the OAuth layer; no validated user → expose nothing.
@@ -116,8 +117,21 @@ export class XeroFlowMcpAgent extends McpAgent<Env, unknown, Props> {
       // A fresh Pages fetch means a fresh claim and fresh database authority check for every list.
       const res = await appFetch(this.env, '/api/internal/mcp/tools', { userId }, props)
       if (!res.ok) throw new Error(`manifest fetch failed: ${res.status}`)
-      const { tools } = await res.json() as { tools: ToolManifest[] }
-      return { tools }
+      const { tools, catalog } = await res.json() as {
+        tools: ToolManifest[]
+        catalog?: { release?: string, toolCount?: number, source?: string }
+      }
+      if (catalog?.toolCount != null && catalog.toolCount !== tools.length) {
+        throw new Error('manifest count mismatch')
+      }
+      return {
+        tools,
+        _meta: {
+          catalogRelease: catalog?.release || MCP_CATALOG_RELEASE,
+          toolCount: tools.length,
+          source: catalog?.source || 'fresh_server_projection',
+        },
+      }
     })
 
     low.setRequestHandler(CallToolRequestSchema, async (req, extra) => {

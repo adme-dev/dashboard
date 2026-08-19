@@ -141,7 +141,35 @@ describe('getCampaignBreakdown', () => {
     expect(breakdown.mock.calls[0][1]).toMatchObject({ startDate: '2026-08-01', endDate: '2026-08-18' })
     expect(breakdown.mock.calls[1][1]).toMatchObject({ startDate: '2026-07-14', endDate: '2026-07-31' })
     expect(d.previousPeriod).toEqual({ start: '2026-07-14', end: '2026-07-31' })
+    expect(d.comparisonStatus).toBe('available')
+    expect(d.campaigns[0].comparisonStatus).toBe('available')
     expect(d.campaigns[0].comparison).toMatchObject({ spendDelta: 100, spendDeltaPct: 50, leadDelta: 2 })
+  })
+
+  it('reports no_baseline instead of fabricating a zero-spend previous period', async () => {
+    const breakdown = vi.fn()
+      .mockResolvedValueOnce({ campaigns: [{ ...rows[0]!, spend: 300 }], total: 1 })
+      .mockResolvedValueOnce({ campaigns: [], total: 0 })
+    const d = data(await getCampaignBreakdown({
+      sortBy: 'spend', startDate: '2026-08-01', endDate: '2026-08-18', comparePrevious: true,
+    }, ctx, { breakdown }))
+
+    expect(d.comparisonStatus).toBe('no_baseline')
+    expect(d.campaigns[0].comparisonStatus).toBe('no_baseline')
+    expect(d.campaigns[0].comparison).toBeUndefined()
+  })
+
+  it('marks a new campaign as no_baseline when the prior window has other campaigns', async () => {
+    const breakdown = vi.fn()
+      .mockResolvedValueOnce({ campaigns: [{ ...rows[0]!, campaignId: 'new' }], total: 1 })
+      .mockResolvedValueOnce({ campaigns: [{ ...rows[0]!, campaignId: 'old' }], total: 1 })
+    const d = data(await getCampaignBreakdown({
+      sortBy: 'spend', startDate: '2026-08-01', endDate: '2026-08-18', comparePrevious: true,
+    }, ctx, { breakdown }))
+
+    expect(d.comparisonStatus).toBe('available')
+    expect(d.campaigns[0]).toMatchObject({ comparisonStatus: 'no_baseline' })
+    expect(d.campaigns[0].comparison).toBeUndefined()
   })
 
   it('fails gracefully when the data source throws', async () => {

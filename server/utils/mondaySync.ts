@@ -321,7 +321,7 @@ async function syncMondayFiles(client: MondayClient, itemId: string, taskId: str
            VALUES ($1, $2, $3, $3, $4, $5, COALESCE($6::timestamptz, NOW()))
            RETURNING id`,
           [taskId, check.filename, stored.key, downloaded.contentType, stored.size,
-            validTimestamp(asset.uploaded_at)]
+            validTimestamp(asset.created_at || asset.uploaded_at)]
         )
         await trx.query(
           'UPDATE monday_sync_file_mappings SET attachment_id = $1 WHERE id = $2',

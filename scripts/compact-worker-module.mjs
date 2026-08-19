@@ -460,11 +460,17 @@ const NAME_DROPPING_MODULE_AUDIT = [
 
 function shouldKeepDeployedModuleNames(modulePath, source) {
   const portableModulePath = modulePath.split(path.sep).join('/')
+  // Nuxt's generated SSR build chunks are addressed through ESM bindings, and
+  // Vue components carry explicit __name metadata. Their internal Function.name
+  // values are not a runtime contract. Dropping name-restoration helpers here
+  // saves hundreds of kilobytes while stable framework/runtime boundaries keep
+  // names below (server.mjs is separately compacted and marker-protected).
+  if (portableModulePath.includes('/chunks/build/')) return false
   const isAuditedModule = NAME_DROPPING_MODULE_AUDIT.some(
     ([moduleSuffix]) => portableModulePath.endsWith(`/${moduleSuffix}`)
   )
   const exports = parse(source)[1]
-  // Route handlers and rendered page chunks that export only `default` are
+  // Route handlers that export only `default` are
   // addressed by their module path, never by Function.name. Dropping their
   // internal names is therefore safe and avoids esbuild's name-restoration
   // helpers. Named-export framework/runtime boundaries retain names for

@@ -928,7 +928,7 @@ export class MondayMigrationService {
             `INSERT INTO task_attachments (task_id, file_name, file_url, file_type, file_size, created_at)
              VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING *`,
-            [taskId, filename, fileUrl, contentType, asset.file_size, asset.uploaded_at]
+            [taskId, filename, fileUrl, contentType, asset.file_size, asset.created_at || asset.uploaded_at]
           )
 
           // Create file mapping

@@ -103,8 +103,14 @@ describe('standalone MCP Worker request authority', () => {
     expect(mocks.sendToolListChanged).toHaveBeenCalledOnce()
 
     const list = mocks.handlers.get(mocks.listSchema)!
-    await list({}, { requestId: 1 })
+    const firstList = await list({}, { requestId: 1 })
     await list({}, { requestId: 2 })
+
+    expect(firstList._meta).toEqual({
+      catalogRelease: '2026-08-19.1',
+      toolCount: 1,
+      source: 'fresh_server_projection',
+    })
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     const firstInit = fetchMock.mock.calls[0]![1] as RequestInit
