@@ -17,8 +17,31 @@ describe('video generation model registry', () => {
     // Mock models return fake output URLs, and unsupported/retired providers stay hidden.
     expect(ids).not.toContain('mock/i2v-safe')
     expect(ids).toContain('aigateway/seedance-i2v')
+    expect(ids).toContain('aigateway/seedance-2-i2v')
     expect(ids).toContain('aigateway/wan-i2v')
     expect(ids).toContain('aigateway/hailuo-i2v')
+  })
+
+  it('classifies the full Seedance and Vidu additions without relaxing vehicle source governance', () => {
+    const seedance = getVideoGenerationModel('aigateway/seedance-2-i2v')!
+    expect(seedance).toMatchObject({
+      cfModel: 'bytedance/seedance-2.0',
+      supportsNativeAudio: true,
+      requiresApprovedSourceAsset: true,
+      safetyClass: 'vehicle_i2v_safe',
+      defaultEnabled: true,
+    })
+    expect(seedance.durationsSeconds).toEqual([4, 5, 6, 7, 8, 9, 10, 11, 12])
+    expect(seedance.durationsSeconds).not.toContain(30)
+
+    const vidu = getVideoGenerationModel('aigateway/vidu-i2v')!
+    expect(vidu).toMatchObject({
+      cfModel: 'vidu/q3-pro',
+      requiresApprovedSourceAsset: true,
+      safetyClass: 'vehicle_i2v_safe',
+      defaultEnabled: true,
+    })
+    expect(vidu.capabilities.endFrame).toBe(true)
   })
 
   it('describes image-to-video vehicle-safe capabilities', () => {
@@ -66,16 +89,18 @@ describe('video generation model registry', () => {
     expect(ids).not.toContain('muapi/t2v-wan')
     expect(ids).toEqual([
       'aigateway/seedance-i2v',
+      'aigateway/seedance-2-i2v',
       'aigateway/wan-i2v',
       'aigateway/hailuo-i2v',
+      'aigateway/vidu-i2v',
     ])
   })
 
-  it('defaults every current model to conservative advanced edit capabilities', () => {
+  it('keeps advanced edit capabilities conservative except the verified Vidu end-frame route', () => {
     for (const model of listVideoGenerationModels()) {
       expect(model.capabilities).toEqual({
         extendVideo: false,
-        endFrame: false,
+        endFrame: model.id === 'aigateway/vidu-i2v',
         videoToVideo: false,
       })
     }

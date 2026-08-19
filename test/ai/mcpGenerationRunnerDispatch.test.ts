@@ -5,9 +5,10 @@ const mocks = vi.hoisted(() => ({
   queueSend: vi.fn(),
   generateVoiceover: vi.fn(),
   createVoiceAsset: vi.fn(),
-  generateImageFromPrompt: vi.fn(),
+  generateCreativeImage: vi.fn(),
   uploadBannerAsset: vi.fn(),
-  queryOne: vi.fn()
+  queryOne: vi.fn(),
+  runCreativeComplianceCheck: vi.fn()
 }))
 
 vi.mock('~~/server/utils/audio/voiceGen', () => ({ generateVoiceover: mocks.generateVoiceover }))
@@ -26,13 +27,18 @@ vi.mock('~~/server/utils/audio/musicJob', () => ({
   getMusicQueue: vi.fn(() => ({ send: mocks.queueSend })),
   musicIdempotencyKey: vi.fn(() => 'idem-1')
 }))
-vi.mock('~~/server/utils/qwenImageGenerator', () => ({ generateImageFromPrompt: mocks.generateImageFromPrompt }))
+vi.mock('~~/server/utils/creative-generation/aiGatewayProvider', async (importOriginal) => ({
+  ...await importOriginal<typeof import('~~/server/utils/creative-generation/aiGatewayProvider')>(),
+  generateCreativeImage: mocks.generateCreativeImage
+}))
+vi.mock('~~/server/utils/video-generation/resolveSourceUrls', () => ({ resolveSourceAssetUrls: vi.fn(async () => ['https://assets.test/source.png']) }))
 vi.mock('~~/server/utils/bannerStorage', () => ({ uploadBannerAsset: mocks.uploadBannerAsset }))
 vi.mock('~~/server/utils/db', () => ({ queryOne: mocks.queryOne }))
+vi.mock('~~/server/utils/creativeCompliance', () => ({ runCreativeComplianceCheck: mocks.runCreativeComplianceCheck }))
 
 import { buildGenerationRunner } from '~~/server/utils/ai/mcp/generationRunner'
 
-const ctx = { userId: 'user-1', userRole: 'owner', event: { context: {} } } as any
+const ctx = { userId: 'user-1', userRole: 'owner', event: { context: { cloudflare: { env: { AI: { run: vi.fn() } } } } } } as any
 const musicArgs = {
   prompt: 'Warm acoustic bed', isInstrumental: true, format: 'mp3', channels: []
 }
@@ -44,9 +50,16 @@ describe('real generation runner durability boundaries', () => {
     mocks.queueSend.mockResolvedValue(undefined)
     mocks.generateVoiceover.mockResolvedValue({ sanitizedText: 'Hello', audioBuffer: new Uint8Array(), format: 'mp3', violations: [] })
     mocks.createVoiceAsset.mockResolvedValue({ id: 'voice-1', status: 'ready', streamUrl: null })
-    mocks.generateImageFromPrompt.mockResolvedValue({ buffer: new Uint8Array(), seed: 42 })
+    mocks.generateCreativeImage.mockResolvedValue({
+      buffer: new Uint8Array(),
+      contentType: 'image/webp',
+      modelId: 'aigateway/recraft-offer-card',
+      cfModel: 'recraft/recraftv4-1',
+      safetyClass: 'non_vehicle_generative',
+    })
     mocks.uploadBannerAsset.mockResolvedValue({ size: 100, key: 'asset.webp', url: 'https://assets.test/asset.webp' })
     mocks.queryOne.mockResolvedValue({ id: 'image-1' })
+    mocks.runCreativeComplianceCheck.mockResolvedValue({ checkId: 'check-1', passed: true, verdict: { confidence: 0.95 } })
   })
 
   it('does not checkpoint when music preparation fails before queue send', async () => {
@@ -107,9 +120,13 @@ describe('real generation runner durability boundaries', () => {
 
   it('checkpoints before billed image generation, persists the client, and captures the asset reference', async () => {
     const order: string[] = []
-    mocks.generateImageFromPrompt.mockImplementationOnce(async () => {
+    mocks.generateCreativeImage.mockImplementationOnce(async () => {
       order.push('provider')
-      return { buffer: new Uint8Array(), seed: 42 }
+      return {
+        buffer: new Uint8Array(), contentType: 'image/webp',
+        modelId: 'aigateway/recraft-offer-card', cfModel: 'recraft/recraftv4-1',
+        safetyClass: 'non_vehicle_generative'
+      }
     })
     mocks.uploadBannerAsset.mockImplementationOnce(async () => {
       order.push('upload')
@@ -125,12 +142,15 @@ describe('real generation runner durability boundaries', () => {
     }
 
     await buildGenerationRunner(execution).generate_banner_image({
-      prompt: 'Dealer campaign',
+      prompt: 'EOFY typography campaign',
       aspectRatio: '1:1',
       guidanceScale: 3.5,
       steps: 28,
       randomizeSeed: true,
       promptEnhance: true,
+      modelId: 'aigateway/recraft-offer-card',
+      subjectType: 'non_vehicle',
+      referenceSourceAssetIds: [],
       clientId: '22222222-2222-4222-8222-222222222222'
     }, ctx)
 
@@ -140,5 +160,38 @@ describe('real generation runner durability boundaries', () => {
       expect.arrayContaining(['22222222-2222-4222-8222-222222222222'])
     )
     expect(execution.captureResult).toHaveBeenCalledWith({ ok: true, data: expect.objectContaining({ assetId: 'image-1' }) })
+  })
+
+  it('returns and captures review_blocked when automatic image compliance is unavailable', async () => {
+    mocks.runCreativeComplianceCheck.mockRejectedValueOnce(new Error('vision gateway unavailable'))
+    const execution = { markDispatched: vi.fn(), captureResult: vi.fn() }
+    const result = await buildGenerationRunner(execution).generate_banner_image({
+      prompt: 'Abstract campaign background',
+      aspectRatio: '1:1',
+      modelId: 'aigateway/recraft-offer-card',
+      subjectType: 'non_vehicle',
+      referenceSourceAssetIds: [],
+    }, ctx)
+
+    expect(result).toMatchObject({
+      assetId: 'image-1',
+      status: 'review_blocked',
+      compliance: { passed: false, error: 'vision gateway unavailable' },
+    })
+    expect(execution.captureResult).toHaveBeenCalledWith({ ok: true, data: expect.objectContaining({ status: 'review_blocked' }) })
+  })
+
+  it('rejects policy-invalid image prompts before the billed-provider checkpoint', async () => {
+    const execution = { markDispatched: vi.fn(), captureResult: vi.fn() }
+    await expect(buildGenerationRunner(execution).generate_banner_image({
+      prompt: 'Create a BMW sedan campaign image',
+      aspectRatio: '1:1',
+      modelId: 'aigateway/recraft-offer-card',
+      subjectType: 'non_vehicle',
+      referenceSourceAssetIds: []
+    }, ctx)).rejects.toThrow(/Vehicle generation is blocked/)
+
+    expect(execution.markDispatched).not.toHaveBeenCalled()
+    expect(mocks.generateCreativeImage).not.toHaveBeenCalled()
   })
 })

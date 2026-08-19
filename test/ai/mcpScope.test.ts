@@ -32,6 +32,8 @@ describe('isWriteScopeToolName', () => {
       'create_video_project',       // video project create
       'propose_banner_render',      // banner propose
       'generate_banner_image',      // billed image generation
+      'upscale_banner_image',       // billed approved-source transform
+      'verify_creative_compliance', // billed vision inspection + evidence write
       'generate_voiceover',         // billing generation
       'start_music_generation',     // billing generation
       'remember',                   // durable personal-memory write
@@ -44,6 +46,7 @@ describe('isWriteScopeToolName', () => {
     for (const name of [
       'search_crm',
       'get_generation_status',          // generation poll = read
+      'list_creative_models',           // governed catalog + readiness = read
       'get_video_generation_status',
       'get_banner_render_status',
       'list_banner_projects',

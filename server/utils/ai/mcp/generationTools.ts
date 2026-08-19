@@ -1,6 +1,5 @@
 import { z } from 'zod'
-import { roleHasPermission } from '~~/server/utils/permissions'
-import type { PermissionGroup } from '~~/server/utils/permissions'
+import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
@@ -25,24 +24,80 @@ export interface GenerationToolDescriptor {
   requiredPermission: PermissionGroup
 }
 
+export const GENERATION_READ_TOOL_NAMES = new Set(['get_generation_status', 'list_creative_models'])
+
+export function isGenerationReadToolName(name: string): boolean {
+  return GENERATION_READ_TOOL_NAMES.has(name)
+}
+
 const CHANNELS = z.array(z.enum(['radio', 'tiktok', 'meta'])).default([])
 
 export const generationTools: GenerationToolDescriptor[] = [
   {
+    name: 'list_creative_models',
+    description:
+      'List the governed image-generation, approved-source transform and vision-inspection models available to '
+      + 'XeroFlow assistants, including safety classes and current spend/retention readiness. Read-only.',
+    parameters: z.object({}),
+    requiredPermission: 'CREATIVE'
+  },
+  {
     name: 'generate_banner_image',
     description:
       'Generate an owned image asset from a text prompt for an assistant brief sample or Banner Studio project. '
-      + 'Returns a ready assetId, URL and reproducible seed. This is a direct, billed generation and is rate-limited.',
+      + 'Recraft is restricted to non-vehicle creative. Returns an assetId, URL and automatic Qwen compliance '
+      + 'evidence; failed or unavailable checks return review_blocked. This is billed and rate-limited.',
     parameters: z.object({
       prompt: z.string().min(2).max(1000),
       aspectRatio: z.enum(['1:1', '16:9', '9:16', '4:3', '3:4']).default('1:1'),
-      guidanceScale: z.number().min(1).max(10).default(3.5),
-      steps: z.number().int().min(1).max(50).default(28),
-      seed: z.number().int().nonnegative().optional(),
-      randomizeSeed: z.boolean().default(true),
-      promptEnhance: z.boolean().default(true),
+      modelId: z.literal('aigateway/recraft-offer-card').default('aigateway/recraft-offer-card'),
+      subjectType: z.literal('non_vehicle').default('non_vehicle'),
+      referenceSourceAssetIds: z.array(z.string().uuid()).max(4).default([]),
+      expectedPrice: z.string().max(500).optional(),
+      expectedDisclaimer: z.string().max(2000).optional(),
+      expectedLogo: z.string().max(500).optional(),
       title: z.string().max(120).optional(),
       clientId: z.string().uuid().optional(),
+    }),
+    requiredPermission: 'CREATIVE'
+  },
+  {
+    name: 'upscale_banner_image',
+    description:
+      'Upscale an approved source image through Cloudflare AI Gateway without regenerating its composition. '
+      + 'Vehicle assets are allowed only because sourceAssetId resolves through XeroFlow\'s approval gate. '
+      + 'Returns a new owned Banner Studio asset and immutable model provenance.',
+    parameters: z.object({
+      sourceAssetId: z.string().uuid(),
+      subjectType: z.enum(['vehicle', 'non_vehicle']),
+      clientId: z.string().uuid().optional(),
+      targetMegapixels: z.number().int().min(1).max(128).default(4),
+      outputFormat: z.enum(['webp', 'jpg', 'png']).default('webp'),
+      outputQuality: z.number().int().min(0).max(100).default(90),
+      enhanceDetails: z.boolean().default(false),
+      enhanceRealism: z.boolean().default(false),
+      expectedPrice: z.string().max(500).optional(),
+      expectedDisclaimer: z.string().max(2000).optional(),
+      expectedLogo: z.string().max(500).optional(),
+      title: z.string().max(120).optional(),
+    }),
+    requiredPermission: 'CREATIVE'
+  },
+  {
+    name: 'verify_creative_compliance',
+    description:
+      'Run the Qwen vision pre-flight against an owned Banner Studio image and up to four approved OEM/reference '
+      + 'assets. Checks vehicle/badge match, OCR disclaimer and price, logo distortion and artefacts. Returns a '
+      + 'structured verdict plus an immutable checkId. A failed verdict must not be treated as publishable.',
+    parameters: z.object({
+      assetId: z.string().uuid(),
+      clientId: z.string().uuid().optional(),
+      subjectType: z.enum(['vehicle', 'non_vehicle']),
+      referenceSourceAssetIds: z.array(z.string().uuid()).max(4).default([]),
+      expectedPrice: z.string().max(500).optional(),
+      expectedDisclaimer: z.string().max(2000).optional(),
+      expectedLogo: z.string().max(500).optional(),
+      notes: z.string().max(2000).optional(),
     }),
     requiredPermission: 'CREATIVE'
   },
@@ -115,11 +170,13 @@ export function projectGenerationMcpSuite(context: McpProjectionContext): McpToo
 
 /** Complete executable descriptors for the supplemental generation suite. */
 export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
-  return generationTools.map(descriptor => ({
+  return generationTools.map(descriptor => {
+    const readOnly = isGenerationReadToolName(descriptor.name)
+    return ({
     name: descriptor.name,
     canonicalName: descriptor.name,
     kind: 'supplemental' as const,
-    ...(descriptor.name !== 'get_generation_status'
+    ...(!readOnly
       ? { executionClass: 'external-provider' as const }
       : {}),
     ...(descriptor.name === 'start_music_generation'
@@ -137,7 +194,7 @@ export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
           }
         }
       : {}),
-    ...(descriptor.name !== 'get_generation_status'
+    ...(!readOnly
       ? {
           executeSupplemental: async (
             args: unknown,
@@ -158,7 +215,7 @@ export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
       : {}),
     tool: {
       ...descriptor,
-      mutates: descriptor.name !== 'get_generation_status',
+      mutates: !readOnly,
       handler: async (args: unknown, ctx: ToolContext): Promise<ToolResult> => {
         const { buildGenerationRunner } = await import('./generationRunner')
         const outcome = await executeGenerationTool(descriptor.name, args, ctx, {
@@ -171,7 +228,8 @@ export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
           : { ok: false, error: 'error' in outcome ? outcome.error : 'Generation failed.' }
       }
     }
-  }))
+    })
+  })
 }
 
 export type GenExecuteOutcome

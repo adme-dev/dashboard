@@ -136,6 +136,15 @@ const MODEL_CATALOG: Record<string, ModelCatalogEntry> = {
   },
   'Qwen/Qwen-Image-Layered': {
     status: 'production'
+  },
+  'recraft/recraftv4-1': {
+    status: 'production'
+  },
+  'pruna/p-image-upscale': {
+    status: 'production'
+  },
+  'qwen/qwen3.6-27b': {
+    status: 'production'
   }
 }
 
@@ -553,11 +562,33 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     label: 'Banner Studio text-to-image generation',
     surface: '/agency/banner-studio',
     owner: 'Creative',
-    provider: 'huggingface_space',
-    modelId: 'Qwen/Qwen-Image-2512',
+    provider: 'aigateway',
+    modelId: 'recraft/recraftv4-1',
     modality: 'image',
     riskTier: 'high',
-    sourceFile: 'server/utils/qwenImageGenerator.ts'
+    sourceFile: 'server/utils/creative-generation/aiGatewayProvider.ts'
+  },
+  {
+    featureKey: 'banner_image_upscale',
+    label: 'Banner Studio approved-source image upscale',
+    surface: '/agency/banner-studio + MCP',
+    owner: 'Creative',
+    provider: 'aigateway',
+    modelId: 'pruna/p-image-upscale',
+    modality: 'image',
+    riskTier: 'high',
+    sourceFile: 'server/utils/creative-generation/aiGatewayProvider.ts'
+  },
+  {
+    featureKey: 'creative_compliance_preflight',
+    label: 'Creative vision compliance pre-flight',
+    surface: '/agency/banner-studio + MCP',
+    owner: 'Creative',
+    provider: 'groq',
+    modelId: 'qwen/qwen3.6-27b',
+    modality: 'vision',
+    riskTier: 'high',
+    sourceFile: 'server/utils/creativeCompliance.ts'
   },
   {
     featureKey: 'banner_image_edit',

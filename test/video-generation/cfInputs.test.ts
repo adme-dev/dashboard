@@ -22,6 +22,36 @@ describe('buildCfVideoInputs', () => {
     expect(buildCfVideoInputs('bytedance/seedance-2.0-fast', { ...base, durationSeconds: 20 }).duration).toBe(12)
   })
 
+  it('full Seedance enables native audio and honors the published 12s/4k schema', () => {
+    expect(buildCfVideoInputs('bytedance/seedance-2.0', {
+      ...base,
+      durationSeconds: 30,
+      resolution: '4k',
+    })).toEqual({
+      prompt: base.prompt,
+      image: base.image,
+      duration: 12,
+      aspect_ratio: base.aspectRatio,
+      resolution: '4k',
+      generate_audio: true,
+    })
+  })
+
+  it('Vidu emits an approved second source as the end image', () => {
+    expect(buildCfVideoInputs('vidu/q3-pro', {
+      ...base,
+      endImage: 'https://assets.example/end.png',
+      durationSeconds: 16,
+      resolution: '1080p',
+    })).toEqual({
+      prompt: base.prompt,
+      start_image: base.image,
+      end_image: 'https://assets.example/end.png',
+      duration: 16,
+      resolution: '1080p',
+    })
+  })
+
   it('wan: image + duration + resolution (720P capitalised), no aspect_ratio', () => {
     expect(buildCfVideoInputs('alibaba/wan-2.7-i2v', base)).toEqual({
       prompt: base.prompt, duration: 5, resolution: '720P', image: base.image,

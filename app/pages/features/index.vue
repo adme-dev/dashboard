@@ -294,7 +294,7 @@ const categories = [
       { title: 'AI Training Pipeline', slug: 'ai-training-pipeline', icon: 'i-lucide-graduation-cap', description: 'Extract training data from conversations, upload knowledge entries, and manage training datasets.' },
       { title: 'Knowledge Base', slug: 'knowledge-base', icon: 'i-lucide-book-open', description: 'Curate and approve knowledge entries that enhance AI responses with agency-specific context.' },
       { title: 'LoRA Adapters', slug: 'lora-adapters', icon: 'i-lucide-cpu', description: 'Fine-tune AI models with your agency data. Custom adapters with traffic routing and A/B testing.' },
-      { title: 'AI Assistant Connectors', slug: 'ai-connectors', icon: 'i-lucide-plug', description: 'Give Claude, Cursor, or ChatGPT a governed Godmode view of live agency operations — campaign and ad fatigue, budget truth, creative provenance, capacity, clients and leads — with self-described permissions, freshness, complete pagination, and capability-driven text, banner, video and audio workflows.' },
+      { title: 'AI Assistant Connectors', slug: 'ai-connectors', icon: 'i-lucide-plug', description: 'Give Claude, Cursor, or ChatGPT governed Godmode access to live operations and a mixed creative model fleet — source-bound video, offer-card generation, approved-asset upscaling, audio, and Qwen vision pre-flight evidence.' },
     ]
   },
   {
