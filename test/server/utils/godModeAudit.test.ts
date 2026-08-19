@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { appendGodModeAuditEvent } from '~~/server/utils/godMode/audit'
+import { appendGodModeAuditEvent, summarizeGodModeActionArguments } from '~~/server/utils/godMode/audit'
 
 const validInput = {
   actorUserId: '11111111-1111-4111-8111-111111111111',
@@ -36,9 +36,39 @@ describe('appendGodModeAuditEvent', () => {
         null,
         ['permission', 'confirmation'],
         'started',
-        false
+        false,
+        '{}'
       ]
     )
+  })
+
+  it('keeps bounded action intent while recursively redacting credentials', () => {
+    expect(summarizeGodModeActionArguments({
+      clientId: '11111111-1111-4111-8111-111111111111',
+      prompt: 'Summer retail campaign',
+      nested: { apiKey: 'do-not-store', title: 'Northern Motor Group' },
+      accessToken: 'also-secret'
+    })).toEqual({
+      clientId: '11111111-1111-4111-8111-111111111111',
+      prompt: 'Summer retail campaign',
+      nested: { apiKey: '[REDACTED]', title: 'Northern Motor Group' },
+      accessToken: '[REDACTED]'
+    })
+  })
+
+  it('falls back to key intent when an argument body would exceed the database bound', () => {
+    const summary = summarizeGodModeActionArguments({
+      clientId: '11111111-1111-4111-8111-111111111111',
+      prompt: 'Dealer campaign',
+      ...Object.fromEntries(Array.from({ length: 38 }, (_, index) => [`field${index}`, 'x'.repeat(500)]))
+    })
+
+    expect(summary).toMatchObject({
+      clientId: '11111111-1111-4111-8111-111111111111',
+      prompt: 'Dealer campaign',
+      truncated: true
+    })
+    expect(new TextEncoder().encode(JSON.stringify(summary)).byteLength).toBeLessThan(16_384)
   })
 
   it('normalizes and idempotently inserts a durable pre-execution bypass event', async () => {

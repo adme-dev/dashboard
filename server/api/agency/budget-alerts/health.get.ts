@@ -43,6 +43,8 @@ export default defineEventHandler(async (event) => {
         COUNT(*)::int as campaign_count,
         COUNT(*) FILTER (WHERE COALESCE(ms.budget_allocated, 0) > 0)::int as budgeted_campaign_count,
         MAX(ms.synced_at)::text as last_synced_at,
+        MIN(ms.synced_at)::text as oldest_synced_at,
+        COUNT(*) FILTER (WHERE ms.synced_at IS NULL OR ms.synced_at < NOW() - INTERVAL '48 hours')::int as stale_row_count,
         bool_or(COALESCE(ms.budget_rolling, false)) as is_rolling
       FROM media_spend ms
       LEFT JOIN agency_clients ac ON ms.client_id = ac.id
@@ -91,6 +93,8 @@ export default defineEventHandler(async (event) => {
         budgetedCampaignCount,
         budgetCoverageComplete: !hasPartialBudgetCoverage,
         lastSyncedAt: r.last_synced_at,
+        oldestSyncedAt: r.oldest_synced_at,
+        staleRowCount: Number(r.stale_row_count) || 0,
         rolling: r.is_rolling || false,
         healthStatus
       }

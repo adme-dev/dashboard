@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getMetaAuthUrl, META_MARKETING_OAUTH_SCOPES } from '~~/server/utils/metaClient'
+import { extractConversions, getMetaAuthUrl, META_MARKETING_OAUTH_SCOPES } from '~~/server/utils/metaClient'
 
 describe('metaClient OAuth', () => {
   it('requests catalog permissions required for product set catalog audits', () => {
@@ -26,5 +26,25 @@ describe('metaClient OAuth', () => {
 
     expect(url.searchParams.get('auth_type')).toBe('rerequest')
     expect(url.searchParams.get('scope')).toContain('catalog_management')
+  })
+})
+
+describe('Meta conversion semantics', () => {
+  it('uses one non-overlapping lead or purchase outcome instead of summing aggregate action families', () => {
+    expect(extractConversions([
+      { action_type: 'lead', value: '9' },
+      { action_type: 'offsite_conversion.fb_pixel_lead', value: '9' },
+      { action_type: 'onsite_conversion.lead_grouped', value: '9' },
+      { action_type: 'offsite_conversion', value: '50' },
+      { action_type: 'landing_page_view', value: '100' },
+    ])).toBe(9)
+  })
+
+  it('falls back to a non-overlapping purchase outcome and ignores broad conversion aggregates', () => {
+    expect(extractConversions([
+      { action_type: 'omni_purchase', value: '4' },
+      { action_type: 'offsite_conversion.fb_pixel_purchase', value: '4' },
+      { action_type: 'offsite_conversion', value: '30' },
+    ])).toBe(4)
   })
 })

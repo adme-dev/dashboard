@@ -5,7 +5,7 @@ import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
 import { expectedToDate } from '~~/server/utils/anomalyDetection/adPacingMath'
-import { buildDataHealth, paginateWithCursor } from './responseContract'
+import { buildDataHealth, mergeSyncFreshness, paginateWithCursor } from './responseContract'
 
 const params = z.object({
   clientName: z.string().optional(),
@@ -29,6 +29,8 @@ export type PacingCampaign = {
   budgetLevel: 'campaign' | 'client' | 'account'
   unattributed: boolean
   lastSyncedAt: string | null
+  oldestSyncedAt?: string | null
+  staleRowCount?: number
   campaignCount?: number
   budgetedCampaignCount?: number
   budgetCoverage?: { expectedCampaigns: number, budgetedCampaigns: number }
@@ -36,6 +38,7 @@ export type PacingCampaign = {
 
 export type AdspendDeps = {
   pacing: (ctx: ToolContext) => Promise<PacingCampaign[]>
+  now?: () => Date
 }
 
 // Pace thresholds mirror the adspendHealth detectors: underspend triggers below
@@ -79,6 +82,8 @@ const defaultDeps: AdspendDeps = {
         budgetLevel: 'client',
         unattributed: String(it?.groupKey ?? '').includes(':unmapped:'),
         lastSyncedAt: it?.lastSyncedAt ? String(it.lastSyncedAt) : null,
+        oldestSyncedAt: it?.oldestSyncedAt ? String(it.oldestSyncedAt) : null,
+        staleRowCount: Number.isFinite(Number(it?.staleRowCount)) ? Number(it.staleRowCount) : undefined,
         campaignCount: Number.isFinite(Number(it?.campaignCount)) ? Number(it.campaignCount) : undefined,
         budgetedCampaignCount: Number.isFinite(Number(it?.budgetedCampaignCount)) ? Number(it.budgetedCampaignCount) : undefined,
       }
@@ -97,13 +102,6 @@ function currentPeriod() {
     return `${year}-${month}-${day}`
   }
   return { start: iso(start), end: iso(end) }
-}
-
-function latestSync(rows: PacingCampaign[]) {
-  return rows.reduce<string | null>((latest, row) => {
-    if (!row.lastSyncedAt) return latest
-    return !latest || row.lastSyncedAt > latest ? row.lastSyncedAt : latest
-  }, null)
 }
 
 export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: AdspendDeps = defaultDeps): Promise<ToolResult> {
@@ -153,7 +151,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
     return ok({
       period: currentPeriod(),
       source: 'synced_ad_platform_spend',
-      lastSyncedAt: latestSync(all),
+      ...mergeSyncFreshness(all, { now: deps.now?.() }),
       ...health,
       campaigns: page.items,
       unattributed,
@@ -170,7 +168,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
 
 export const adspendTool: AiTool<Args> = {
   name: 'get_adspend_pacing',
-  description: 'Get per-client ad-spend pacing for the current month across Meta and Google. Returns actual spend, budget level, allocated budget, expected-to-date pace, freshness and explicit data coverage. Spend without a configured budget is `no_budget_set`; incomplete campaign budget coverage is `partial_budget_coverage`. Both have null pace and are excluded from pacing conclusions. Unattributed account spend is returned separately. Use cursor/limit to paginate. Do NOT use for cash, runway, or accounts-receivable (use get_finance_snapshot).',
+  description: 'Get per-client ad-spend pacing for the current month across Meta and Google. Returns actual spend, budget level, allocated budget, expected-to-date pace, explicit data coverage, and worst-case freshness (`lastSyncedAt`, `oldestSyncedAt`, `staleRowCount`, `stalenessThresholdHours`). Spend without a configured budget is `no_budget_set`; incomplete campaign budget coverage is `partial_budget_coverage`. Both have null pace and are excluded from pacing conclusions. Unattributed account spend is returned separately. Use cursor/limit to paginate. Do NOT use for cash, runway, or accounts-receivable (use get_finance_snapshot).',
   parameters: params,
   requiredPermission: 'FINANCE',
   handler: (a, c) => getAdspendPacing(a, c),

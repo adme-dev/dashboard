@@ -5,7 +5,11 @@ import { createError } from 'h3'
 
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOneFresh, transaction } from '~~/server/utils/db'
-import { appendGodModeAuditEvent, type GodModeAuditEventInput } from '~~/server/utils/godMode/audit'
+import {
+  appendGodModeAuditEvent,
+  summarizeGodModeActionArguments,
+  type GodModeAuditEventInput
+} from '~~/server/utils/godMode/audit'
 import type { GodModeChannel } from '~~/server/utils/godMode/audit'
 import {
   isActiveGodModeAuthority,
@@ -138,6 +142,8 @@ export interface GodModeExecutionLedgerRow {
   clientId: string | null
   resultReference: string | null
   resultDigest: string | null
+  /** Request-local only; persisted solely on immutable audit events, never in the execution ledger. */
+  actionArguments?: Record<string, unknown>
 }
 
 interface GodModeClaimedProposal {
@@ -428,7 +434,8 @@ function auditEvent(
     clientId: row.clientId,
     bypassedControls: controls,
     outcomeCode,
-    emergencyDisabled: false
+    emergencyDisabled: false,
+    actionArguments: row.actionArguments ?? {}
   }
 }
 
@@ -476,7 +483,8 @@ function createGodModeExecutionCore(deps: GodModeExecutionDependencies) {
     }
     const row = Object.assign(claim.row, {
       sessionDigest,
-      bypassedControls: request.bypassedControls ?? ['confirmation']
+      bypassedControls: request.bypassedControls ?? ['confirmation'],
+      actionArguments: summarizeGodModeActionArguments(request.args)
     })
     if (!claim.claimed) {
       if (row.routeOrTool !== auditToolName) operationalError(409, 'Execution identity already used')
@@ -861,7 +869,8 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
           })
           const row = Object.assign(claim.row, {
             sessionDigest: request.sessionDigest,
-            bypassedControls: request.bypassedControls ?? ['confirmation']
+            bypassedControls: request.bypassedControls ?? ['confirmation'],
+            actionArguments: summarizeGodModeActionArguments(request.args)
           })
           if (!claim.claimed) {
             if (row.routeOrTool !== request.toolName) return fail('Execution identity already used.')
@@ -977,7 +986,8 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
     }
     const row = Object.assign(claim.row, {
       sessionDigest: request.sessionDigest,
-      bypassedControls: request.bypassedControls ?? ['confirmation']
+      bypassedControls: request.bypassedControls ?? ['confirmation'],
+      actionArguments: summarizeGodModeActionArguments(request.args)
     })
     if (!claim.claimed) {
       if (row.routeOrTool !== request.toolName) operationalError(409, 'Execution identity already used')
@@ -1212,6 +1222,14 @@ function mcpReadCorrelationId(idempotencyKey: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`
 }
 
+function readSchemaFailureMessage(error: unknown): string {
+  const issues = Array.isArray((error as any)?.issues) ? (error as any).issues : []
+  const custom = issues.find((issue: any) => issue?.code === 'custom' && typeof issue?.message === 'string')
+  if (!custom) return 'Invalid tool input.'
+  const message = custom.message.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 240)
+  return message ? `Invalid tool input: ${message}` : 'Invalid tool input.'
+}
+
 /** Reads claim their immutable attempt by correlation, but never enter the mutation execution ledger. */
 async function executeGodModeReadCore(
   deps: GodModeExecutionDependencies,
@@ -1246,7 +1264,7 @@ async function executeGodModeReadCore(
   if (!parsed.success) {
     await deps.appendAudit(auditEvent(auditIdentity, 'failed', 'schema_invalid', []))
       .catch(() => operationalError(503, 'God mode audit unavailable'))
-    return fail('Invalid tool input.')
+    return fail(readSchemaFailureMessage(parsed.error))
   }
   const scope = await deps.validateScope({
     actorUserId: user.id,

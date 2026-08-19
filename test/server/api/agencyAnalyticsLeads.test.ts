@@ -112,6 +112,7 @@ describe('agency analytics lead metrics', () => {
     })
     const sql = String(mockQueryRows.mock.calls[0]?.[0])
     expect(sql).toContain('FROM leads l')
+    expect(sql).toContain('l.is_test = false')
     expect(sql).not.toContain('destination_type = \'portal\'')
     expect(sql).toContain('ORDER BY cost_per_lead DESC')
   })

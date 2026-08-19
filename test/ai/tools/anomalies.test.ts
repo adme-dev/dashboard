@@ -74,6 +74,17 @@ describe('get_open_anomalies', () => {
     expect(data.dataStatus).toBe('not_configured')
   })
 
+  it('uses engine readiness for coverage when a configured engine has no open incidents', async () => {
+    const deps: AnomaliesDeps = {
+      fetchAnomalies: vi.fn().mockResolvedValue([]),
+      isConfigured: vi.fn().mockResolvedValue(true),
+    }
+    const data = (await getOpenAnomalies({}, ctx, deps) as any).data
+    expect(data.dataStatus).toBe('populated')
+    expect(data.coverage).toEqual({ expected: 1, withData: 1 })
+    expect(data.anomalies).toEqual([])
+  })
+
   it('reports zero `more` when under the cap', async () => {
     const deps: AnomaliesDeps = { fetchAnomalies: vi.fn().mockResolvedValue([row(), row()]) }
     const res = await getOpenAnomalies({}, ctx, deps)

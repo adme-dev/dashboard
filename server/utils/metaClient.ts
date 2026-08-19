@@ -393,10 +393,21 @@ export async function getCampaignDailyInsights(
  */
 export function extractConversions(actions?: Array<{ action_type: string; value: string }>): number {
   if (!actions) return 0
-  const conversionTypes = ['offsite_conversion', 'onsite_conversion', 'lead', 'purchase']
-  return actions
-    .filter(a => conversionTypes.some(t => a.action_type.includes(t)))
-    .reduce((sum, a) => sum + parseInt(a.value, 10), 0)
+  // Meta returns overlapping aggregate and leaf action families in the same
+  // payload. Summing them double/triple-counts the same outcome. Select one
+  // primary leaf family and take its maximum attributed count instead.
+  const outcomeFamilies = [
+    ['lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead'],
+    ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'],
+  ]
+  for (const family of outcomeFamilies) {
+    const values = actions
+      .filter(action => family.includes(action.action_type))
+      .map(action => Number.parseFloat(action.value))
+      .filter(Number.isFinite)
+    if (values.length > 0) return Math.max(0, ...values)
+  }
+  return 0
 }
 
 /**
@@ -487,6 +498,7 @@ export interface MetaCreative {
 export interface MetaAdPerformance {
   adId: string
   adName: string | null
+  creativeId: string | null
   spend: number
   impressions: number
   clicks: number
@@ -521,7 +533,26 @@ export async function getMetaCampaignAdPerformance(campaignId: string, token: st
     }
     return rows
   }
-  const [rangeRows, dailyRows] = await Promise.all([fetchRows(false), fetchRows(true)])
+  const fetchCreativeIds = async () => {
+    const creativeIds = new Map<string, string>()
+    let url: string | null = `${META_GRAPH_BASE}/${campaignId}/ads`
+    let first = true
+    while (url) {
+      const response: any = await ofetch(url, {
+        method: 'GET',
+        query: first ? { fields: 'id,creative{id}', limit: '500', access_token: token } : undefined,
+      })
+      for (const ad of response?.data || []) {
+        const adId = String(ad?.id || '')
+        const creativeId = String(ad?.creative?.id || '')
+        if (adId && creativeId) creativeIds.set(adId, creativeId)
+      }
+      url = response?.paging?.next || null
+      first = false
+    }
+    return creativeIds
+  }
+  const [rangeRows, dailyRows, creativeIds] = await Promise.all([fetchRows(false), fetchRows(true), fetchCreativeIds()])
   const grouped = new Map<string, MetaAdPerformance>()
   for (const row of rangeRows) {
     const adId = String(row.ad_id || '')
@@ -529,6 +560,7 @@ export async function getMetaCampaignAdPerformance(campaignId: string, token: st
     grouped.set(adId, {
       adId,
       adName: row.ad_name || null,
+      creativeId: creativeIds.get(adId) ?? null,
       spend: Number(row.spend || 0),
       impressions: Number(row.impressions || 0),
       clicks: Number(row.clicks || 0),

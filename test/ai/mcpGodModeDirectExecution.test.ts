@@ -59,7 +59,8 @@ function harness(mutates: boolean) {
       }) as any),
       executeWrite: executeWrite as any,
       executeRead: executeRead as any,
-      executeResolvedMutation: executeResolvedMutation as any
+      executeResolvedMutation: executeResolvedMutation as any,
+      resolveIdentity: vi.fn(async () => ({ name: 'Paul Giurin', email: 'paul@adme.net.au' }))
     })
   }
 }
@@ -103,6 +104,13 @@ describe('God mode MCP direct execution adapter', () => {
     })
 
     expect(h.executeRead).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: IDEMPOTENCY_KEY }))
+    expect(h.executeRead).toHaveBeenCalledWith(expect.objectContaining({
+      ctx: expect.objectContaining({
+        userName: 'Paul Giurin',
+        userEmail: 'paul@adme.net.au',
+        mcpScopes: new Set(['mcp:read'])
+      })
+    }))
     expect(h.executeWrite).not.toHaveBeenCalled()
   })
 

@@ -24,8 +24,15 @@ describe('get_capabilities', () => {
         ],
         suites: { textModels: true, imageGeneration: true, bannerStudio: true, video: true, audio: true },
       }),
+      inspectActions: vi.fn().mockResolvedValue([{
+        tool: 'generate_voiceover',
+        arguments: { clientId: '22222222-2222-4222-8222-222222222222', title: 'EOFY' },
+        clientName: 'Northern Motor Group',
+        actorName: 'Paul Giurin',
+        outcome: 'succeeded',
+      }]),
     }
-    const result = await getCapabilities({}, ctx, deps)
+    const result = await getCapabilities({ actionLog: { clientName: 'Northern Motor Group', limit: 20 } }, ctx, deps)
     expect(result.ok).toBe(true)
     expect((result as any).data).toMatchObject({
       identity: { id: 'user-1', name: 'Paul Giurin', email: 'paul@adme.net.au', role: 'owner' },
@@ -36,6 +43,16 @@ describe('get_capabilities', () => {
       ]),
       creationSuites: { textModels: true, imageGeneration: true, bannerStudio: true, video: true, audio: true },
       rateLimits: { generation: { maxCalls: 20, windowMinutes: 10 } },
+      directGenerationDecision: {
+        enabled: true,
+        tools: ['generate_voiceover'],
+        compensatingControls: expect.arrayContaining(['immutable action audit']),
+      },
+      actionLog: {
+        count: 1,
+        items: [expect.objectContaining({ tool: 'generate_voiceover', actorName: 'Paul Giurin' })],
+      },
     })
+    expect(deps.inspectActions).toHaveBeenCalledWith(ctx, { clientName: 'Northern Motor Group', limit: 20 })
   })
 })

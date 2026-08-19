@@ -5,6 +5,17 @@ export interface DataHealth {
   coverage: { expected: number, withData: number }
 }
 
+export interface SyncFreshness {
+  lastSyncedAt: string | null
+  oldestSyncedAt: string | null
+  staleRowCount: number
+  stalenessThresholdHours: number
+}
+
+export type AggregatedSyncFreshness = Partial<Pick<SyncFreshness,
+  'lastSyncedAt' | 'oldestSyncedAt' | 'staleRowCount'
+>>
+
 export function buildDataHealth(input: {
   configured: boolean
   available?: boolean
@@ -17,11 +28,61 @@ export function buildDataHealth(input: {
     ? 'unavailable'
     : !input.configured
       ? 'not_configured'
-      : expected > 0 && withData < expected
+      : withData === 0 || withData < expected
         ? 'partial'
         : 'populated'
 
   return { dataStatus, coverage: { expected, withData } }
+}
+
+export function buildSyncFreshness(
+  timestamps: Array<string | Date | null | undefined>,
+  options: { now?: Date, stalenessThresholdHours?: number } = {},
+): SyncFreshness {
+  const nowMs = (options.now ?? new Date()).getTime()
+  const stalenessThresholdHours = Math.max(1, Math.trunc(options.stalenessThresholdHours ?? 48))
+  const staleBefore = nowMs - stalenessThresholdHours * 3_600_000
+  let newest: { value: string, time: number } | null = null
+  let oldest: { value: string, time: number } | null = null
+  let staleRowCount = 0
+
+  for (const timestamp of timestamps) {
+    const value = timestamp instanceof Date ? timestamp.toISOString() : timestamp
+    const time = value ? Date.parse(value) : Number.NaN
+    if (!Number.isFinite(time)) {
+      staleRowCount += 1
+      continue
+    }
+    if (time < staleBefore) staleRowCount += 1
+    if (!newest || time > newest.time) newest = { value, time }
+    if (!oldest || time < oldest.time) oldest = { value, time }
+  }
+
+  return {
+    lastSyncedAt: newest?.value ?? null,
+    oldestSyncedAt: oldest?.value ?? null,
+    staleRowCount,
+    stalenessThresholdHours,
+  }
+}
+
+export function mergeSyncFreshness(
+  summaries: AggregatedSyncFreshness[],
+  options: { now?: Date, stalenessThresholdHours?: number } = {},
+): SyncFreshness {
+  const timestampFreshness = buildSyncFreshness(
+    summaries.flatMap(summary => [summary.lastSyncedAt, summary.oldestSyncedAt]),
+    options,
+  )
+  const staleRowCount = summaries.reduce((sum, summary) => {
+    if (Number.isFinite(summary.staleRowCount)) {
+      return sum + Math.max(0, Math.trunc(Number(summary.staleRowCount)))
+    }
+    const representative = summary.oldestSyncedAt ?? summary.lastSyncedAt
+    return sum + buildSyncFreshness([representative], options).staleRowCount
+  }, 0)
+
+  return { ...timestampFreshness, staleRowCount }
 }
 
 const CURSOR_PREFIX = 'xf1_'
