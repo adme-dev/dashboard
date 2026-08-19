@@ -45,6 +45,8 @@ USER_MEMBER_NOTIFICATIONS_DISABLED = "true"
 # Cloudflare AI Gateway root for server-side Groq SDK calls. The app normalizes
 # Groq requests to /groq and falls back to direct Groq if Gateway auth rejects.
 AI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/a5b299b3ad15c1b5b895dc66f9357b17/default"
+AI_GATEWAY_SPEND_LIMIT_CONFIRMED = "true"
+AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD = "250"
 CRM_SEARCH_PROVIDER_APIS_ENABLED = "false"
 # AI Model Ops orchestrator readiness:
 # - INTERNAL_API_KEY is a secret, set in Cloudflare Pages dashboard or via wrangler secret.
@@ -260,6 +262,8 @@ PERSONA_META_AUDIENCE_WRITES_ENABLED = "true"
 PERSONA_GOOGLE_AUDIENCE_WRITES_ENABLED = "true"
 USER_MEMBER_NOTIFICATIONS_DISABLED = "true"
 AI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/a5b299b3ad15c1b5b895dc66f9357b17/default"
+AI_GATEWAY_SPEND_LIMIT_CONFIRMED = "true"
+AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD = "250"
 CRM_SEARCH_PROVIDER_APIS_ENABLED = "false"
 AGENCY_WORKFLOWS_ENABLED = "true"
 SITE_INTELLIGENCE_ENABLED = "true"
