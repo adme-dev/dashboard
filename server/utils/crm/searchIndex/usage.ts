@@ -13,6 +13,9 @@ export const CRM_SEARCH_VECTORIZE_MAX_VECTORS = 20_000_000 as const
 
 const rateCardRevisionPattern = /^[a-z0-9][a-z0-9._:-]{2,119}$/
 const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+const bigintHundred = BigInt(100)
+const bigintOneMillion = BigInt(1_000_000)
+const bigintOneMillionMinusOne = bigintOneMillion - BigInt(1)
 
 export interface VectorizeUsageInput {
   queryVectors: number
@@ -165,7 +168,9 @@ function requireRate(rate: unknown, label: string): number {
 
 function ceilingMicroUsd(quantity: number, microUsdRatePerMillion: number, label: string): number {
   if (quantity === 0 || microUsdRatePerMillion === 0) return 0
-  const result = (BigInt(quantity) * BigInt(microUsdRatePerMillion) + 999_999n) / 1_000_000n
+  const result = (
+    BigInt(quantity) * BigInt(microUsdRatePerMillion) + bigintOneMillionMinusOne
+  ) / bigintOneMillion
   if (result > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new RangeError(`${label} exceeds safe cost arithmetic`)
   }
@@ -354,7 +359,8 @@ function parseCapacityLimit(value: unknown, label: 'namespaces' | 'vectors'): nu
 
 function belowAdmissionCeiling(total: number, limit: number | null): boolean {
   if (limit === null || limit === 0) return false
-  return BigInt(total) * 100n < BigInt(limit) * BigInt(CRM_SEARCH_CAPACITY_ADMISSION_PERCENT)
+  return BigInt(total) * bigintHundred
+    < BigInt(limit) * BigInt(CRM_SEARCH_CAPACITY_ADMISSION_PERCENT)
 }
 
 export function forecastCrmSearchCapacity(input: CrmSearchCapacityForecastInput): {

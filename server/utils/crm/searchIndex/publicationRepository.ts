@@ -17,7 +17,7 @@ interface PublicationClaimRow extends Record<string, unknown> {
   claim_generation: unknown
 }
 
-export interface CrmSearchOperationPublicationClaim {
+interface CrmSearchOperationPublicationClaim {
   operationId: string
   claimToken: string
   claimGeneration: number
