@@ -164,7 +164,7 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
         ...(row.spend > 0 && row.leadCount === 0 ? ['spend_without_leads'] : []),
         ...(row.frequency != null && row.frequency > 3.5 && ctrDeltaPct != null && ctrDeltaPct < -25 ? ['frequency_high_ctr_down'] : []),
       ]
-      return { ...row, ctr, cpc, costPerLead: cpl, ageDays, fatigueSignals, ...(prior ? { comparison: { frequencyDelta, ctrDeltaPct, spendDelta: round(row.spend - prior.spend), leadDelta: row.leadCount - prior.leadCount } } : {}) }
+      return { ...row, conversions: null, ctr, cpc, costPerLead: cpl, ageDays, fatigueSignals, ...(prior ? { comparison: { frequencyDelta, ctrDeltaPct, spendDelta: round(row.spend - prior.spend), leadDelta: row.leadCount - prior.leadCount } } : {}) }
     })
     const metric = (row: any) => args.sortBy === 'leads' ? row.leadCount : args.sortBy === 'cpl' ? row.costPerLead : args.sortBy === 'age' ? row.ageDays : row[args.sortBy]
     ads.sort((a, b) => {
@@ -177,7 +177,25 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
     const withFrequency = ads.filter(ad => ad.frequency != null).length
     const health = buildDataHealth({ configured: result.targetCount > 0, available: result.available, expected: ads.length, withData: withFrequency })
     const freshness = buildSyncFreshness(ads.map(ad => ad.lastSyncedAt), { now: deps.now?.() })
-    return ok({ period: currentPeriod, ...(previousPeriod ? { previousPeriod } : {}), source: 'meta_marketing_api/google_ads_api', ...freshness, ...health, coverageField: 'frequency', targetCampaignLimit: 20, ads: page.items, total: page.total, appliedLimit: args.limit ?? 20, nextCursor: page.nextCursor, more: page.more })
+    return ok({
+      period: currentPeriod,
+      ...(previousPeriod ? { previousPeriod } : {}),
+      source: 'meta_marketing_api/google_ads_api',
+      ...freshness,
+      ...health,
+      coverageField: 'frequency',
+      conversionMetric: {
+        dataStatus: 'unavailable',
+        definition: 'suppressed_pending_historical_resync',
+        note: 'Provider conversion totals are hidden until historical rows are resynced with non-overlapping lead/purchase semantics.',
+      },
+      targetCampaignLimit: 20,
+      ads: page.items,
+      total: page.total,
+      appliedLimit: args.limit ?? 20,
+      nextCursor: page.nextCursor,
+      more: page.more,
+    })
   } catch {
     return fail('Could not load ad-level performance for the requested campaign window.')
   }
@@ -185,7 +203,7 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
 
 export const adBreakdownTool: AiTool<Args> = {
   name: 'get_ad_breakdown',
-  description: 'Ad-level delivery and creative-fatigue metrics for a campaign or client and date window: ad/creative IDs, spend, impressions, frequency where supported, CTR, CPC, leads/CPL, first/last served date, creative age and fatigue signals. Summary freshness includes newest/oldest sync, stale-row count, and threshold. Optional previous-period comparison detects high/rising frequency with CTR decline. Performs a read-through platform sync when missing; Google frequency remains explicitly null.',
+  description: 'Ad-level delivery and creative-fatigue metrics for a campaign or client and date window: ad/creative IDs, spend, impressions, frequency where supported, CTR, CPC, attributed submitted leads/CPL, first/last served date, creative age and fatigue signals. Provider conversions are explicitly null until historical rows are resynced under non-overlapping outcome semantics. Summary freshness includes newest/oldest sync, stale-row count, and threshold. Optional previous-period comparison detects high/rising frequency with CTR decline. Performs a read-through platform sync when missing; Google frequency remains explicitly null.',
   parameters: params,
   requiredPermission: 'MEDIA_BUYING',
   handler: (args, ctx) => getAdBreakdown(args, ctx),

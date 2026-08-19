@@ -18,10 +18,11 @@ describe('get_ad_breakdown', () => {
       }),
     }
     const data = (await getAdBreakdown({ campaignId: 'c1', sortBy: 'frequency' }, ctx, deps) as any).data
-    expect(data.ads[0]).toMatchObject({ adId: 'ad1', frequency: 3.7, leadCount: 9, creativeId: 'cr1', cpc: 0.09 })
+    expect(data.ads[0]).toMatchObject({ adId: 'ad1', frequency: 3.7, leadCount: 9, creativeId: 'cr1', cpc: 0.09, conversions: null })
     expect(data.ads[0].fatigueSignals).toContain('high_frequency')
     expect(data.dataStatus).toBe('partial')
     expect(data.coverage).toEqual({ expected: 2, withData: 1 })
+    expect(data.conversionMetric).toMatchObject({ dataStatus: 'unavailable', definition: 'suppressed_pending_historical_resync' })
     expect(data).toMatchObject({
       lastSyncedAt: '2026-08-18T08:10:00Z',
       oldestSyncedAt: '2026-08-18T08:00:00Z',

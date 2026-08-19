@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { getCampaignBreakdown, type CampaignBreakdownDeps, type BreakdownCampaign } from '~~/server/utils/ai/tools/campaignBreakdown'
+import { getCampaignBreakdown, getLeadAttributionSummary, type CampaignBreakdownDeps, type BreakdownCampaign } from '~~/server/utils/ai/tools/campaignBreakdown'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
 const ctx = { userId: 'u1', userRole: 'media_buyer', conversationId: 'c1', event: {} as any } as ToolContext
@@ -19,6 +19,18 @@ const deps = (over: Partial<CampaignBreakdownDeps> = {}): CampaignBreakdownDeps 
 const data = (r: any) => { expect(r.ok).toBe(true); return (r as any).data }
 
 describe('getCampaignBreakdown', () => {
+  it('counts only real submitted leads and preserves campaign/ad attribution coverage', async () => {
+    const load = vi.fn().mockResolvedValue({ total_submissions: 63, campaign_attributed: 4, ad_attributed: 3 })
+    const result = await getLeadAttributionSummary({
+      platform: 'meta', clientName: 'South % Morang', startDate: '2026-08-01', endDate: '2026-08-19',
+    }, load)
+
+    expect(result).toEqual({ totalSubmissions: 63, campaignAttributed: 4, adAttributed: 3 })
+    expect(String(load.mock.calls[0][0])).toContain('l.is_test = false')
+    expect(String(load.mock.calls[0][0])).toContain('l.campaign_id IS NOT NULL')
+    expect(load.mock.calls[0][1]).toEqual(['2026-08-01', '2026-08-19', 'meta', '%South \\% Morang%'])
+  })
+
   it('returns campaigns sorted by spend desc (default) capped with a more count', async () => {
     const r = await getCampaignBreakdown({ sortBy: 'spend' }, ctx, deps())
     const d = data(r)
@@ -34,7 +46,9 @@ describe('getCampaignBreakdown', () => {
   })
 
   it('returns delivery status, dates, leads, CPL and frequency without stripping them', async () => {
-    const d = data(await getCampaignBreakdown({ sortBy: 'spend' }, ctx, deps()))
+    const d = data(await getCampaignBreakdown({ sortBy: 'spend' }, ctx, deps({
+      leadAttribution: vi.fn().mockResolvedValue({ totalSubmissions: 63, campaignAttributed: 0, adAttributed: 0 }),
+    })))
     expect(d.campaigns[0]).toMatchObject({
       campaignStatus: 'PAUSED',
       effectiveStatus: 'paused',
@@ -43,6 +57,16 @@ describe('getCampaignBreakdown', () => {
       leadCount: 10,
       costPerLead: 40,
       frequency: 3.2,
+      conversions: null,
+    })
+    expect(d.conversionMetric).toMatchObject({ dataStatus: 'unavailable', definition: 'suppressed_pending_historical_resync' })
+    expect(d.leadAttribution).toEqual({
+      totalSubmissions: 63,
+      campaignAttributed: 0,
+      adAttributed: 0,
+      unattributed: 63,
+      coveragePct: 0,
+      definition: 'submitted_non_test_leads',
     })
   })
 
@@ -67,7 +91,7 @@ describe('getCampaignBreakdown', () => {
 
   it('filters by platform', async () => {
     const r = await getCampaignBreakdown({ platform: 'google', sortBy: 'spend' }, ctx, deps())
-    expect(data(r).campaigns).toEqual([rows[2]])
+    expect(data(r).campaigns).toEqual([{ ...rows[2], conversions: null }])
   })
 
   it('sorts by roas desc with nulls last', async () => {

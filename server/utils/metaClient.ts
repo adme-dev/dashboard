@@ -393,10 +393,21 @@ export async function getCampaignDailyInsights(
  */
 export function extractConversions(actions?: Array<{ action_type: string; value: string }>): number {
   if (!actions) return 0
-  const conversionTypes = ['offsite_conversion', 'onsite_conversion', 'lead', 'purchase']
-  return actions
-    .filter(a => conversionTypes.some(t => a.action_type.includes(t)))
-    .reduce((sum, a) => sum + parseInt(a.value, 10), 0)
+  // Meta returns overlapping aggregate and leaf action families in the same
+  // payload. Summing them double/triple-counts the same outcome. Select one
+  // primary leaf family and take its maximum attributed count instead.
+  const outcomeFamilies = [
+    ['lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead'],
+    ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'],
+  ]
+  for (const family of outcomeFamilies) {
+    const values = actions
+      .filter(action => family.includes(action.action_type))
+      .map(action => Number.parseFloat(action.value))
+      .filter(Number.isFinite)
+    if (values.length > 0) return Math.max(0, ...values)
+  }
+  return 0
 }
 
 /**

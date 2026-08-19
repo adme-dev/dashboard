@@ -196,6 +196,7 @@ export default defineEventHandler(async (event) => {
         SELECT ${PORTAL_LEAD_STATUS_SELECT}
         FROM leads l
         WHERE l.deleted_at IS NULL
+          AND l.is_test = false
           AND l.submitted_at >= $${leadStartIdx}::date
           AND l.submitted_at < ($${leadEndIdx}::date + INTERVAL '1 day')
           AND l.source = ${leadSourceForPlatformSql('c')}

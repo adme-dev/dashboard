@@ -1,8 +1,9 @@
 import { z } from 'zod'
+import { queryOne } from '~~/server/utils/db'
 // Use Nitro's global $fetch (auto-imported), NOT raw ofetch — it resolves relative internal routes
 // on the Cloudflare runtime; raw ofetch throws on a relative URL (no origin base). See #129.
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
 import { buildDataHealth, buildSyncFreshness, paginateWithCursor } from './responseContract'
 
@@ -40,7 +41,7 @@ export type BreakdownCampaign = {
   cpc: number | null
   impressions: number
   clicks: number
-  conversions: number
+  conversions: number | null
   leadCount: number
   costPerLead: number | null
   frequency: number | null
@@ -63,13 +64,56 @@ export type BreakdownCampaign = {
 type BreakdownResult = { campaigns: BreakdownCampaign[], total: number }
 export type CampaignBreakdownQuery = {
   platform?: 'meta' | 'google'
+  clientName?: string
   startDate: string
   endDate: string
 }
 
+export type LeadAttributionSummary = {
+  totalSubmissions: number
+  campaignAttributed: number
+  adAttributed: number
+}
+
 export type CampaignBreakdownDeps = {
   breakdown: (ctx: ToolContext, query: CampaignBreakdownQuery) => Promise<BreakdownResult>
+  leadAttribution?: (ctx: ToolContext, query: CampaignBreakdownQuery) => Promise<LeadAttributionSummary>
   now?: () => Date
+}
+
+export async function getLeadAttributionSummary(
+  request: CampaignBreakdownQuery,
+  load: typeof queryOne = queryOne,
+): Promise<LeadAttributionSummary> {
+  const conditions = [
+    'l.deleted_at IS NULL',
+    'l.is_test = false',
+    'l.submitted_at >= $1::date',
+    "l.submitted_at < $2::date + INTERVAL '1 day'",
+  ]
+  const values: unknown[] = [request.startDate, request.endDate]
+  if (request.platform) {
+    values.push(request.platform)
+    conditions.push(`l.source = $${values.length}`)
+  }
+  if (request.clientName) {
+    values.push(`%${escapeLike(request.clientName)}%`)
+    conditions.push(`client.name ILIKE $${values.length}`)
+  }
+  const row = await load<any>(
+    `SELECT COUNT(*)::int AS total_submissions,
+            COUNT(*) FILTER (WHERE l.campaign_id IS NOT NULL)::int AS campaign_attributed,
+            COUNT(*) FILTER (WHERE l.ad_id IS NOT NULL)::int AS ad_attributed
+       FROM leads l
+       LEFT JOIN agency_clients client ON client.id = l.client_id
+      WHERE ${conditions.join(' AND ')}`,
+    values,
+  )
+  return {
+    totalSubmissions: Number(row?.total_submissions || 0),
+    campaignAttributed: Number(row?.campaign_attributed || 0),
+    adAttributed: Number(row?.ad_attributed || 0),
+  }
 }
 
 const PLATFORM_QUERY: Record<'meta' | 'google', string> = { meta: 'meta', google: 'google_ads,google' }
@@ -97,7 +141,7 @@ function mapCampaign(it: any): BreakdownCampaign {
     cpc: it?.cpc == null ? null : Number(it.cpc),
     impressions: Number(it?.impressions ?? 0),
     clicks: Number(it?.clicks ?? 0),
-    conversions: Number(it?.conversions ?? 0),
+    conversions: null,
     leadCount: Number(it?.leadCount ?? 0),
     costPerLead: it?.costPerLead == null ? null : Number(it.costPerLead),
     frequency: it?.frequency == null ? null : Number(it.frequency),
@@ -140,6 +184,7 @@ const defaultDeps: CampaignBreakdownDeps = {
 
     return { campaigns, total }
   },
+  leadAttribution: async (_ctx, request) => getLeadAttributionSummary(request),
 }
 
 function defaultPeriod() {
@@ -218,13 +263,15 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
     const period = args.startDate && args.endDate
       ? { start: args.startDate, end: args.endDate }
       : defaultPeriod()
-    const request = { platform: args.platform, startDate: period.start, endDate: period.end }
+    const request = { platform: args.platform, clientName: args.clientName, startDate: period.start, endDate: period.end }
     const current = await deps.breakdown(ctx, request)
+    const leadCounts = deps.leadAttribution ? await deps.leadAttribution(ctx, request) : null
     const priorPeriod = args.comparePrevious ? previousPeriod(period.start, period.end) : null
     const prior = priorPeriod
       ? await deps.breakdown(ctx, { platform: args.platform, startDate: priorPeriod.start, endDate: priorPeriod.end })
       : null
-    const all = prior ? withComparison(current.campaigns, prior.campaigns) : current.campaigns
+    const compared = prior ? withComparison(current.campaigns, prior.campaigns) : current.campaigns
+    const all = compared.map(row => ({ ...row, conversions: null }))
 
     const nameNeedle = args.clientName?.trim().toLowerCase()
     const filtered = all.filter((campaign) => {
@@ -243,6 +290,21 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
       source: 'synced_campaign_analytics',
       ...buildSyncFreshness(current.campaigns.map(row => row.lastSyncedAt), { now: deps.now?.() }),
       ...buildDataHealth({ configured: true, expected: current.total, withData: current.campaigns.length }),
+      conversionMetric: {
+        dataStatus: 'unavailable',
+        definition: 'suppressed_pending_historical_resync',
+        note: 'Provider conversion totals are hidden until historical Meta rows are resynced with non-overlapping lead/purchase semantics.',
+      },
+      ...(leadCounts ? {
+        leadAttribution: {
+          ...leadCounts,
+          unattributed: Math.max(0, leadCounts.totalSubmissions - leadCounts.campaignAttributed),
+          coveragePct: leadCounts.totalSubmissions > 0
+            ? Math.round((leadCounts.campaignAttributed / leadCounts.totalSubmissions) * 10_000) / 100
+            : null,
+          definition: 'submitted_non_test_leads',
+        },
+      } : {}),
       campaigns: page.items,
       total: page.total,
       appliedLimit: args.limit ?? 20,
@@ -257,7 +319,7 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
 
 export const campaignBreakdownTool: AiTool<Args> = {
   name: 'get_campaign_breakdown',
-  description: 'Campaign delivery and performance for a requested date range across Meta and Google: live/effective status, first and last served dates, end date, spend, ROAS, CPC, frequency, conversions, leads and CPL. Summary freshness includes the newest and oldest sync, stale-row count, and 48-hour threshold so partial account stalls are visible. Supports previous-period comparison, status/platform/client filters, multiple ranking metrics, and cursor pagination across the complete result set. Use get_adspend_pacing for budget pacing and get_finance_snapshot for cash.',
+  description: 'Campaign delivery and performance for a requested date range across Meta and Google: live/effective status, first and last served dates, end date, spend, ROAS, CPC, frequency, submitted leads and CPL. Provider conversions are explicitly null until historical rows are resynced under non-overlapping outcome semantics; `conversionMetric` explains this. `leadAttribution` reports real non-test submissions and campaign/ad attribution coverage without assigning unattributed leads to campaigns. Summary freshness includes the newest and oldest sync, stale-row count, and 48-hour threshold so partial account stalls are visible. Supports previous-period comparison, status/platform/client filters, multiple ranking metrics, and cursor pagination across the complete result set. Use get_adspend_pacing for budget pacing and get_finance_snapshot for cash.',
   parameters: params,
   requiredPermission: 'MEDIA_BUYING',
   handler: (a, c) => getCampaignBreakdown(a, c),
