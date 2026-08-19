@@ -22,12 +22,16 @@ Generated Recraft images and Pruna transforms run the same check automatically. 
 
 ## AI Gateway spend control
 
-Before treating direct generation as production-ready:
+Live production status (2026-08-19): the Cloudflare `default` gateway has an enabled, global USD $250
+fixed one-month spend rule. The production Pages deployment attests to the same ceiling through
+`AI_GATEWAY_SPEND_LIMIT_CONFIRMED=true` and `AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD=250`.
+
+To verify or reconfigure this production control:
 
 1. Cloudflare dashboard → AI → AI Gateway → `default` → Spend limits.
-2. Add a fixed monthly cost rule for the generation workload. Cloudflare evaluates the real provider cost and blocks over-budget requests with HTTP 429.
+2. Confirm the enabled global rule remains fixed, monthly, and equal to the attested USD amount. Cloudflare evaluates the real provider cost and blocks over-budget requests with HTTP 429.
 3. Add balance alerts/auto-top-up policy appropriate to the account.
-4. Set the Pages production variables only after the Cloudflare rule exists:
+4. Change the Pages production variables only after the Cloudflare rule is updated:
    - `AI_GATEWAY_SPEND_LIMIT_CONFIRMED=true`
    - `AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD=<the exact configured dollar limit>`
 5. Call MCP `list_creative_models` and confirm it returns `spendLimitConfirmed: true` and the same amount.
