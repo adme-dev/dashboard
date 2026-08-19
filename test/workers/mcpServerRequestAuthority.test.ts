@@ -8,6 +8,7 @@ import {
 const mocks = vi.hoisted(() => ({
   handlers: new Map<unknown, (...args: any[]) => Promise<any>>(),
   registerCapabilities: vi.fn(),
+  sendToolListChanged: vi.fn(),
   completeAuthorization: vi.fn(),
   listSchema: { kind: 'tools/list' },
   callSchema: { kind: 'tools/call' }
@@ -25,10 +26,12 @@ vi.mock('@modelcontextprotocol/sdk/server/mcp.js', () => ({
   McpServer: class {
     server = {
       registerCapabilities: mocks.registerCapabilities,
+      oninitialized: undefined as undefined | (() => void),
       setRequestHandler: (schema: unknown, handler: (...args: any[]) => Promise<any>) => {
         mocks.handlers.set(schema, handler)
       }
     }
+    sendToolListChanged = mocks.sendToolListChanged
   }
 }))
 
@@ -94,6 +97,10 @@ describe('standalone MCP Worker request authority', () => {
 
     await agent.init()
     expect(fetchMock).not.toHaveBeenCalled()
+    expect(mocks.registerCapabilities).toHaveBeenCalledWith({ tools: { listChanged: true } })
+
+    agent.server.server.oninitialized?.()
+    expect(mocks.sendToolListChanged).toHaveBeenCalledOnce()
 
     const list = mocks.handlers.get(mocks.listSchema)!
     await list({}, { requestId: 1 })
@@ -205,6 +212,28 @@ describe('standalone MCP Worker request authority', () => {
     const result = await call({ params: { name: 'get_capabilities', arguments: {} } }, { requestId: 'rpc-bool-error' })
 
     expect(JSON.parse(result.content[0].text)).toEqual({ error: 'tool_failed', message: 'Tool failed.' })
+  })
+
+  it('returns a bounded retryable diagnostic when the Pages call endpoint is unavailable', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => responseJson({
+      statusCode: 503,
+      statusMessage: 'God mode audit unavailable',
+    }, 503))
+    vi.stubGlobal('fetch', fetchMock)
+    const agent = new XeroFlowMcpAgent() as any
+    agent.env = env()
+    agent.props = props()
+    await agent.init()
+
+    const call = mocks.handlers.get(mocks.callSchema)!
+    const result = await call({ params: { name: 'get_capabilities', arguments: {} } }, { requestId: 'rpc-upstream-error' })
+
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      error: 'mcp_upstream_unavailable',
+      message: 'XeroFlow could not complete the tool call because its application service is temporarily unavailable.',
+      retryable: true,
+      upstreamStatus: 503,
+    })
   })
 
   it('rejects unsupported or non-finite SDK request IDs before calling Pages', async () => {

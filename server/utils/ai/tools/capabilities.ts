@@ -1,14 +1,13 @@
 import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import type { ToolContext, ToolResult } from '../toolContext'
-import { ok, fail } from '../toolContext'
+import { ok } from '../toolContext'
 import {
   MCP_GEN_RATE_MAX,
   MCP_GEN_RATE_WINDOW_MIN,
   MCP_INSPECTION_RATE_MAX,
   MCP_INSPECTION_RATE_WINDOW_MIN,
 } from '../mcp/rateLimit'
-import { hasWriteScope, isWriteScopeToolName } from '../mcp/scope'
 import { queryRows } from '~~/server/utils/db'
 
 const actionLogFilter = z.object({
@@ -39,42 +38,64 @@ export type CapabilitiesDeps = {
   retryDelay?: () => Promise<void>
 }
 
+const minimalInspection: CapabilityInspection = {
+  tools: [{ name: 'get_capabilities', mode: 'read' }],
+  suites: {
+    textModels: true,
+    imageGeneration: false,
+    bannerStudio: false,
+    video: false,
+    audio: false,
+  },
+}
+
 const defaultDeps: CapabilitiesDeps = {
   inspect: async (ctx) => {
-    const [toolModule, projectModule, generationModule, videoModule, bannerModule, writeModule] = await Promise.all([
+    const [toolModule, registryModule, generationModule] = await Promise.all([
       import('./index'),
-      import('../mcp/project'),
+      import('../mcp/registry'),
       import('../mcp/generationTools'),
-      import('../mcp/videoTools'),
-      import('../mcp/bannerTools'),
-      import('../mcp/writeTools'),
     ])
-    const registryTools = toolModule.registry as AiTool<unknown>[]
-    const genEnabled = process.env.MCP_GEN_TOOLS_ENABLED === 'true'
-    const videoEnabled = process.env.MCP_VIDEO_TOOLS_ENABLED === 'true'
-    const videoGenEnabled = videoEnabled && process.env.MCP_VIDEO_GEN_ENABLED === 'true'
-    const bannerEnabled = process.env.MCP_BANNER_TOOLS_ENABLED === 'true'
+    const generationEnabled = process.env.MCP_GEN_TOOLS_ENABLED === 'true'
     const writeEnabled = process.env.MCP_WRITE_TOOLS_ENABLED === 'true'
     const financialEnabled = process.env.MCP_FINANCIAL_TOOLS_ENABLED === 'true'
-    const manifests = [
-      ...projectModule.projectReadOnlyTools(registryTools, ctx.userRole),
-      ...generationModule.projectGenerationTools(ctx.userRole, genEnabled),
-      ...writeModule.projectWriteTools(registryTools, ctx.userRole, writeEnabled),
-      ...videoModule.projectVideoTools(ctx.userRole, { suite: videoEnabled, gen: videoGenEnabled }),
-      ...bannerModule.projectBannerTools(ctx.userRole, bannerEnabled),
-      ...writeModule.projectFinancialTools(registryTools, ctx.userRole, financialEnabled),
-    ]
-    const grantedScopes = new Set(ctx.mcpScopes ?? [])
-    const scopeFiltered = process.env.MCP_REQUIRE_WRITE_SCOPE === 'true' && !hasWriteScope(grantedScopes)
-      ? manifests.filter(tool => !isWriteScopeToolName(tool.name))
-      : manifests
+    const videoEnabled = process.env.MCP_VIDEO_TOOLS_ENABLED === 'true'
+    const videoGenerationEnabled = process.env.MCP_VIDEO_GEN_ENABLED === 'true'
+    const bannerEnabled = process.env.MCP_BANNER_TOOLS_ENABLED === 'true'
+    const projectionContext = {
+      tools: toolModule.registry,
+      role: ctx.userRole,
+      scopes: [...(ctx.mcpScopes ?? [])],
+      requireWriteScope: process.env.MCP_REQUIRE_WRITE_SCOPE === 'true',
+      suiteFlags: {
+        generation: generationEnabled,
+        writes: writeEnabled,
+        financial: financialEnabled,
+        video: videoEnabled,
+        videoGeneration: videoEnabled && videoGenerationEnabled,
+        banners: bannerEnabled,
+      },
+    }
+    // Capabilities and tools/list share one projection authority. Building the complete God-mode
+    // execution map also asserts that every advertised name has exactly one schema-matched handler.
+    const executableNames = new Set(
+      registryModule.resolveGodModeMcpExecutions(projectionContext).map(execution => execution.name)
+    )
+    const manifests = ctx.godModeExecutionKey
+      ? registryModule.projectGodModeTools(projectionContext)
+      : registryModule.projectRegisteredMcpTools(projectionContext)
+    for (const manifest of manifests) {
+      if (!executableNames.has(manifest.name)) {
+        throw new Error(`Capability has no registered MCP execution: ${manifest.name}`)
+      }
+    }
     const inspectionNames = new Set(['verify_creative_compliance'])
     const generationNames = new Set(
       generationModule.generationTools
         .map(tool => tool.name)
         .filter(name => !generationModule.isGenerationReadToolName(name) && !inspectionNames.has(name))
     )
-    const unique = [...new Map(scopeFiltered.map(manifest => {
+    const unique = [...new Map(manifests.map(manifest => {
       const mode: ToolMode = manifest.name === 'confirm_action'
         ? 'confirmation'
         : inspectionNames.has(manifest.name)
@@ -143,46 +164,73 @@ async function inspectWithOneRetry(ctx: ToolContext, deps: CapabilitiesDeps): Pr
   }
 }
 
-export async function getCapabilities(args: Args, ctx: ToolContext, deps: CapabilitiesDeps = defaultDeps): Promise<ToolResult> {
+async function inspectWithDegradedFallback(
+  ctx: ToolContext,
+  deps: CapabilitiesDeps
+): Promise<{ inspection: CapabilityInspection, degraded: boolean }> {
   try {
-    const [inspection, actions] = await Promise.all([
-      inspectWithOneRetry(ctx, deps),
-      args.actionLog && deps.inspectActions ? deps.inspectActions(ctx, args.actionLog) : Promise.resolve(undefined),
-    ])
-    return ok({
-      identity: {
-        id: ctx.userId,
-        name: ctx.userName ?? null,
-        email: ctx.userEmail ?? null,
-        role: ctx.userRole,
-      },
-      scopes: [...(ctx.mcpScopes ?? [])],
-      tools: inspection.tools,
-      creationSuites: inspection.suites,
-      selectionPolicy: 'capability_driven',
-      governance: {
-        read: 'executes immediately',
-        inspection: 'executes immediately for analysis and evidence capture; does not create a media asset',
-        propose_only: 'creates a reviewable proposal without executing it',
-        confirmation: 'requires the authenticated user to confirm a proposal',
-        direct_generation: 'intentional authenticated-owner carve-out: may create a billed asset immediately, is rate-limited, and every attempt/outcome is immutably audited',
-      },
-      directGenerationDecision: {
-        enabled: inspection.tools.some(tool => tool.mode === 'direct_generation'),
-        intended: true,
-        tools: inspection.tools.filter(tool => tool.mode === 'direct_generation').map(tool => tool.name),
-        compensatingControls: ['authenticated owner authority', 'rate limit', 'immutable action audit'],
-        expansionPolicy: 'no additional direct-generation tools without an explicit review',
-      },
-      rateLimits: {
-        generation: { maxCalls: MCP_GEN_RATE_MAX, windowMinutes: MCP_GEN_RATE_WINDOW_MIN },
-        inspection: { maxCalls: MCP_INSPECTION_RATE_MAX, windowMinutes: MCP_INSPECTION_RATE_WINDOW_MIN },
-      },
-      ...(actions ? { actionLog: { items: actions, count: actions.length } } : {}),
-    })
+    return { inspection: await inspectWithOneRetry(ctx, deps), degraded: false }
   } catch {
-    return fail('Could not inspect MCP capabilities.', 'capabilities_unavailable', { retryable: true })
+    return { inspection: minimalInspection, degraded: true }
   }
+}
+
+export async function getCapabilities(args: Args, ctx: ToolContext, deps: CapabilitiesDeps = defaultDeps): Promise<ToolResult> {
+  const { inspection, degraded } = await inspectWithDegradedFallback(ctx, deps)
+  let actions: unknown[] | undefined
+  let actionLogUnavailable = false
+  if (args.actionLog && deps.inspectActions) {
+    try {
+      actions = await deps.inspectActions(ctx, args.actionLog)
+    } catch {
+      actionLogUnavailable = true
+    }
+  }
+  const unavailableSections = [
+    ...(degraded ? ['tool_catalog'] : []),
+    ...(actionLogUnavailable ? ['action_log'] : []),
+  ]
+  return ok({
+    identity: {
+      id: ctx.userId,
+      name: ctx.userName ?? null,
+      email: ctx.userEmail ?? null,
+      role: ctx.userRole,
+    },
+    scopes: [...(ctx.mcpScopes ?? [])],
+    tools: inspection.tools,
+    creationSuites: inspection.suites,
+    selectionPolicy: 'capability_driven',
+    governance: {
+      read: 'executes immediately',
+      inspection: 'executes immediately for analysis and evidence capture; does not create a media asset',
+      propose_only: 'creates a reviewable proposal without executing it',
+      confirmation: 'requires the authenticated user to confirm a proposal',
+      direct_generation: 'intentional authenticated-owner carve-out: may create a billed asset immediately, is rate-limited, and every attempt/outcome is immutably audited',
+    },
+    directGenerationDecision: {
+      enabled: inspection.tools.some(tool => tool.mode === 'direct_generation'),
+      intended: true,
+      tools: inspection.tools.filter(tool => tool.mode === 'direct_generation').map(tool => tool.name),
+      compensatingControls: ['authenticated owner authority', 'rate limit', 'immutable action audit'],
+      expansionPolicy: 'no additional direct-generation tools without an explicit review',
+    },
+    rateLimits: {
+      generation: { maxCalls: MCP_GEN_RATE_MAX, windowMinutes: MCP_GEN_RATE_WINDOW_MIN },
+      inspection: { maxCalls: MCP_INSPECTION_RATE_MAX, windowMinutes: MCP_INSPECTION_RATE_WINDOW_MIN },
+    },
+    ...(actions ? { actionLog: { items: actions, count: actions.length } } : {}),
+    ...(unavailableSections.length
+      ? {
+          degraded: {
+            active: true,
+            code: 'capabilities_partial',
+            retryable: true,
+            unavailableSections,
+          },
+        }
+      : {}),
+  })
 }
 
 export const capabilitiesTool: AiTool<Args> = {

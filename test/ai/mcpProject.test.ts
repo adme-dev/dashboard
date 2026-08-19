@@ -118,6 +118,7 @@ describe('authoritative registered MCP suite projection', () => {
       'generate_voiceover',
       'propose_create_task',
       'list_av_projects',
+      'list_video_source_assets',
       'propose_video_generation',
       'list_banner_projects',
       'propose_banner_render'
@@ -191,6 +192,11 @@ describe('authoritative registered MCP suite projection', () => {
     expect(manifests).toHaveLength(72)
     expect(executions).toHaveLength(72)
     expect(new Set(executions.map(execution => execution.name)).size).toBe(72)
+    expect(manifests.map(manifest => manifest.name)).toContain('list_video_source_assets')
+    expect(resolveGodModeMcpExecution(ownerContext, 'list_video_source_assets')).toMatchObject({
+      name: 'list_video_source_assets',
+      kind: 'supplemental'
+    })
     for (const manifest of manifests) {
       expect(resolveGodModeMcpExecution(ownerContext, manifest.name)).toMatchObject({ name: manifest.name })
     }

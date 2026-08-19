@@ -73,16 +73,42 @@ describe('get_capabilities', () => {
     expect(inspect).toHaveBeenCalledTimes(2)
   })
 
-  it('returns a typed retryable failure after the retry is exhausted', async () => {
+  it('derives God-mode capabilities from the exact executable MCP registry', async () => {
+    const result = await getCapabilities({}, {
+      ...ctx,
+      godModeExecutionKey: `mcp:${'a'.repeat(64)}`,
+    })
+
+    expect(result.ok).toBe(true)
+    const tools = (result as any).data.tools as Array<{ name: string, mode: string }>
+    expect(tools).toHaveLength(72)
+    expect(tools).toContainEqual({ name: 'list_video_source_assets', mode: 'read' })
+    expect((result as any).data.degraded).toBeUndefined()
+  })
+
+  it('returns a typed degraded capability response after the retry is exhausted', async () => {
     const result = await getCapabilities({}, ctx, {
       inspect: vi.fn().mockRejectedValue(new Error('down')),
       retryDelay: vi.fn(async () => {}),
     })
-    expect(result).toEqual({
-      ok: false,
-      error: 'Could not inspect MCP capabilities.',
-      code: 'capabilities_unavailable',
-      details: { retryable: true },
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        tools: [{ name: 'get_capabilities', mode: 'read' }],
+        creationSuites: {
+          textModels: true,
+          imageGeneration: false,
+          bannerStudio: false,
+          video: false,
+          audio: false,
+        },
+        degraded: {
+          active: true,
+          code: 'capabilities_partial',
+          retryable: true,
+          unavailableSections: ['tool_catalog'],
+        },
+      },
     })
   })
 })
