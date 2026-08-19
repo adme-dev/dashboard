@@ -392,6 +392,7 @@ export async function syncCampaignAdPerformance(
   let rows: Array<{
     adId: string
     adName: string | null
+    creativeId?: string | null
     spend: number
     impressions: number
     clicks: number
@@ -435,16 +436,16 @@ export async function syncCampaignAdPerformance(
   for (const row of rows) {
     await execute(
       `INSERT INTO ad_performance_snapshots (
-         media_spend_id, ad_id, ad_name, range_start, range_end, spend,
+         media_spend_id, ad_id, creative_id, ad_name, range_start, range_end, spend,
          impressions, clicks, conversions, reach, frequency,
          first_served_date, last_served_date, synced_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
        ON CONFLICT (media_spend_id, ad_id, range_start, range_end)
-       DO UPDATE SET ad_name=$3, spend=$6, impressions=$7, clicks=$8,
-                     conversions=$9, reach=$10, frequency=$11,
-                     first_served_date=$12, last_served_date=$13, synced_at=NOW()`,
+       DO UPDATE SET creative_id=$3, ad_name=$4, spend=$7, impressions=$8, clicks=$9,
+                     conversions=$10, reach=$11, frequency=$12,
+                     first_served_date=$13, last_served_date=$14, synced_at=NOW()`,
       [
-        mediaSpendId, row.adId, row.adName, rangeStart, rangeEnd, row.spend,
+        mediaSpendId, row.adId, row.creativeId ?? null, row.adName, rangeStart, rangeEnd, row.spend,
         row.impressions, row.clicks, row.conversions, row.reach, row.frequency,
         row.firstServedDate, row.lastServedDate,
       ],

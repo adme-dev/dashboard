@@ -1212,6 +1212,14 @@ function mcpReadCorrelationId(idempotencyKey: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`
 }
 
+function readSchemaFailureMessage(error: unknown): string {
+  const issues = Array.isArray((error as any)?.issues) ? (error as any).issues : []
+  const custom = issues.find((issue: any) => issue?.code === 'custom' && typeof issue?.message === 'string')
+  if (!custom) return 'Invalid tool input.'
+  const message = custom.message.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 240)
+  return message ? `Invalid tool input: ${message}` : 'Invalid tool input.'
+}
+
 /** Reads claim their immutable attempt by correlation, but never enter the mutation execution ledger. */
 async function executeGodModeReadCore(
   deps: GodModeExecutionDependencies,
@@ -1246,7 +1254,7 @@ async function executeGodModeReadCore(
   if (!parsed.success) {
     await deps.appendAudit(auditEvent(auditIdentity, 'failed', 'schema_invalid', []))
       .catch(() => operationalError(503, 'God mode audit unavailable'))
-    return fail('Invalid tool input.')
+    return fail(readSchemaFailureMessage(parsed.error))
   }
   const scope = await deps.validateScope({
     actorUserId: user.id,

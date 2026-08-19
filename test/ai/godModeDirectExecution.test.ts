@@ -756,6 +756,42 @@ describe('God mode direct execution', () => {
     }))
   })
 
+  it('returns the actionable selector requirement when a trusted MCP read has invalid input', async () => {
+    const h = harness()
+    const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, {
+      queryOneFresh: async () => ({ id: OWNER_ID })
+    })
+    const handler = vi.fn(async () => ok({ count: 1 }))
+    const tool = {
+      name: 'get_ad_breakdown',
+      parameters: z.object({
+        campaignId: z.string().optional(),
+        campaignName: z.string().optional(),
+        clientName: z.string().optional(),
+      }).superRefine((value, issue) => {
+        if (!value.campaignId && !value.campaignName && !value.clientName) {
+          issue.addIssue({ code: 'custom', message: 'Provide campaignId, campaignName, or clientName.' })
+        }
+      }),
+      handler,
+    } as any
+
+    const result = await createTrustedMcpGodModeReadExecutor(h.deps)({
+      event: authorityEvent,
+      authenticatedUserId: OWNER_ID,
+      authority,
+      sessionDigest: 'd'.repeat(64),
+      idempotencyKey: `mcp:${'e'.repeat(64)}`,
+      tool,
+      args: {},
+      ctx: { userId: OWNER_ID, userRole: 'owner', event: authorityEvent, source: 'mcp' },
+    })
+
+    expect(result).toEqual({ ok: false, error: 'Invalid tool input: Provide campaignId, campaignName, or clientName.' })
+    expect(handler).not.toHaveBeenCalled()
+  })
+
   it('rejects a structural clone before an MCP ledger or audit claim', async () => {
     const h = harness({ expectedIdempotencyKey: `mcp:${'c'.repeat(64)}` })
     const authorityEvent = event()

@@ -100,7 +100,8 @@ const defaultDeps: AdBreakdownDeps = {
     }
     const rows = await queryRows<any>(
       `SELECT aps.*, ms.campaign_id, ms.campaign_name, ms.platform,
-              client.name AS client_name, cc.creative_id, COALESCE(cc.title, cc.ad_name) AS creative_name,
+              client.name AS client_name, COALESCE(aps.creative_id, cc.creative_id) AS creative_id,
+              COALESCE(cc.title, cc.ad_name) AS creative_name,
               COALESCE(leads.lead_count, 0)::int AS lead_count
          FROM ad_performance_snapshots aps
          JOIN media_spend ms ON ms.id = aps.media_spend_id

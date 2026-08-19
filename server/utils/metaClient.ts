@@ -487,6 +487,7 @@ export interface MetaCreative {
 export interface MetaAdPerformance {
   adId: string
   adName: string | null
+  creativeId: string | null
   spend: number
   impressions: number
   clicks: number
@@ -521,7 +522,26 @@ export async function getMetaCampaignAdPerformance(campaignId: string, token: st
     }
     return rows
   }
-  const [rangeRows, dailyRows] = await Promise.all([fetchRows(false), fetchRows(true)])
+  const fetchCreativeIds = async () => {
+    const creativeIds = new Map<string, string>()
+    let url: string | null = `${META_GRAPH_BASE}/${campaignId}/ads`
+    let first = true
+    while (url) {
+      const response: any = await ofetch(url, {
+        method: 'GET',
+        query: first ? { fields: 'id,creative{id}', limit: '500', access_token: token } : undefined,
+      })
+      for (const ad of response?.data || []) {
+        const adId = String(ad?.id || '')
+        const creativeId = String(ad?.creative?.id || '')
+        if (adId && creativeId) creativeIds.set(adId, creativeId)
+      }
+      url = response?.paging?.next || null
+      first = false
+    }
+    return creativeIds
+  }
+  const [rangeRows, dailyRows, creativeIds] = await Promise.all([fetchRows(false), fetchRows(true), fetchCreativeIds()])
   const grouped = new Map<string, MetaAdPerformance>()
   for (const row of rangeRows) {
     const adId = String(row.ad_id || '')
@@ -529,6 +549,7 @@ export async function getMetaCampaignAdPerformance(campaignId: string, token: st
     grouped.set(adId, {
       adId,
       adName: row.ad_name || null,
+      creativeId: creativeIds.get(adId) ?? null,
       spend: Number(row.spend || 0),
       impressions: Number(row.impressions || 0),
       clicks: Number(row.clicks || 0),
