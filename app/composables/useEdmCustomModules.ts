@@ -3,8 +3,7 @@
 // Wraps /api/agency/email/modules (list/create/patch/delete). Shared singleton
 // state via useState so the builder's "Save as module" action and the palette's
 // "Custom Modules" category stay in sync without prop drilling.
-import type { EdmDocumentFragment } from '~~/app/utils/edmPresets'
-import type { EdmPreviewTone } from '~~/app/utils/edmPresets'
+import type { EdmDocumentFragment, EdmPreviewTone } from '~~/app/utils/edmPresets'
 
 export interface EdmCustomModule {
   id: string

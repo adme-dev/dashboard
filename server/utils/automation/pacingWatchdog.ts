@@ -1,8 +1,13 @@
 // server/utils/automation/pacingWatchdog.ts
-import type { PacingReviewItem, PacingReviewIssueType } from '~~/server/utils/socialSpendPacingReview'
+import {
+  buildPacingReview,
+  PACING_REVIEW_SELECT_COLUMNS,
+  type PacingReviewItem,
+  type PacingReviewIssueType,
+  type PacingReviewRow
+} from '~~/server/utils/socialSpendPacingReview'
 import type { EscalationInput } from '~~/server/utils/automation/escalations'
 import { queryRows } from '~~/server/utils/db'
-import { buildPacingReview, PACING_REVIEW_SELECT_COLUMNS, type PacingReviewRow } from '~~/server/utils/socialSpendPacingReview'
 import { raiseEscalation } from '~~/server/utils/automation/escalationsStore'
 import { notifyEscalationApprovers } from '~~/server/utils/automation/notifyEscalation'
 

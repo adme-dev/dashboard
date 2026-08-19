@@ -8,9 +8,9 @@ import { queryOneFresh, transaction } from '~~/server/utils/db'
 import {
   appendGodModeAuditEvent,
   summarizeGodModeActionArguments,
-  type GodModeAuditEventInput
+  type GodModeAuditEventInput,
+  type GodModeChannel
 } from '~~/server/utils/godMode/audit'
-import type { GodModeChannel } from '~~/server/utils/godMode/audit'
 import {
   isActiveGodModeAuthority,
   resolveGodModeAuthority,

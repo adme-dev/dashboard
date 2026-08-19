@@ -3,7 +3,7 @@
 // The master clock is engine.currentTime(); an rAF loop mirrors it into currentTime
 // for the playhead (clock rule: the view slaves to the engine, never the reverse).
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
+import type { TimelineState, Track } from '~~/server/utils/audio/timelineSchema'
 import { planTimeline, type ScheduledClip, type TrackBus } from '~~/app/utils/audio/audioSchedulePlanner'
 import { createAudioEngine, type AudioEngine, type AudioEngineDeps, type LoadResult } from '~~/app/composables/useAudioEngine'
 import { createBrowserAudioContext, browserSetTimer, makeR2Resolver } from '~~/app/utils/audio/audioContextFactory'
@@ -23,7 +23,6 @@ import {
   videoSourceRecord,
   type VideoSourceInput,
 } from '~~/app/utils/video/videoSourceRegistry'
-import type { Track } from '~~/server/utils/audio/timelineSchema'
 import type { MediaRenderJob } from '~~/app/types'
 import type { VideoAsset } from '~~/server/utils/video/assets'
 

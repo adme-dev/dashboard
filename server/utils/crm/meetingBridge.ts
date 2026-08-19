@@ -4,10 +4,13 @@
 import { queryRows, execute, transaction } from '~~/server/utils/db'
 import { recordFieldChanges } from './audit'
 import type { TASK_PRIORITIES } from './tasks'
-import type { CrmRecordAccessContext, CrmSearchContext } from '~~/server/utils/crm/searchContext'
 import { requireCrmRecordAccess } from '~~/server/utils/crm/recordAccess'
-import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
-import { resolveTrustedCrmSystemContext } from '~~/server/utils/crm/searchContext'
+import {
+  resolveAgencyCrmSearchContext,
+  resolveTrustedCrmSystemContext,
+  type CrmRecordAccessContext,
+  type CrmSearchContext
+} from '~~/server/utils/crm/searchContext'
 import type { H3Event } from 'h3'
 
 export interface CandidatePerson {

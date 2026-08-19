@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { isListeningAlertsEnabled, parseAlertAllowlist, detectVolumeSpike } from '~~/server/utils/socialListening/alerts'
+import { describe, it, expect, vi } from 'vitest'
+import { dispatchListeningAlerts, isListeningAlertsEnabled, parseAlertAllowlist, detectVolumeSpike } from '~~/server/utils/socialListening/alerts'
 
 describe('isListeningAlertsEnabled', () => {
   it('only true for the exact string "true"', () => {
@@ -31,9 +31,6 @@ describe('detectVolumeSpike', () => {
     expect(detectVolumeSpike(50, [], { minToday: 5, multiplier: 3 }).spiked).toBe(false)
   })
 })
-
-import { dispatchListeningAlerts } from '~~/server/utils/socialListening/alerts'
-import { vi } from 'vitest'
 
 const baseDeps = (env: any, negs: any[] = [], recips: any[] = [{ id: 'u1' }]) => {
   const db = {
