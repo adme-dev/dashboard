@@ -8,8 +8,10 @@ describe('videoGenerationForm', () => {
   it('filters models by mode', () => {
     expect(modelsForMode(selectable, 'image-to-video').map((m) => m.id)).toEqual([
       'aigateway/seedance-i2v',
+      'aigateway/seedance-2-i2v',
       'aigateway/wan-i2v',
       'aigateway/hailuo-i2v',
+      'aigateway/vidu-i2v',
     ])
     const t2v = modelsForMode(selectable, 'text-to-video').map((m) => m.id)
     expect(t2v).toHaveLength(0)

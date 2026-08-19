@@ -17,6 +17,8 @@ export interface CfVideoInputRequest {
   resolution: string | null
   /** Resolved source image (presigned URL, or data URI for base64-only models); null for t2v. */
   image: string | null
+  /** Optional approved end-frame image. Only emitted for models whose schema supports it. */
+  endImage?: string | null
 }
 
 /** pixverse/veo accept only base64 data URIs for the image input; everyone else takes URLs. */
@@ -42,6 +44,7 @@ function resolutionNumber(resolution: string | null): number | null {
 }
 
 function pickResolution(resolution: string | null, allowed: string[], fallback: string): string {
+  if (resolution && allowed.includes(resolution)) return resolution
   const n = resolutionNumber(resolution)
   if (n === null) return fallback
   const match = allowed.find((a) => resolutionNumber(a) === n)
@@ -63,15 +66,17 @@ const RUNWAY_RATIO: Record<string, string> = {
 }
 
 export function buildCfVideoInputs(cfModel: string, req: CfVideoInputRequest): Record<string, unknown> {
-  // bytedance/seedance-2.0[-fast]: prompt, image?, duration 4–12, aspect_ratio, resolution 480p|720p
+  // bytedance/seedance-2.0[-fast]: prompt, image?, duration 4–12 and native audio on the full model.
   if (cfModel.startsWith('bytedance/seedance')) {
+    const fullModel = cfModel === 'bytedance/seedance-2.0'
     const inputs: Record<string, unknown> = {
       prompt: req.prompt,
       duration: clampInt(req.durationSeconds, 4, 12),
       aspect_ratio: pickEnum(req.aspectRatio, ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', '9:21'], '16:9'),
-      resolution: pickResolution(req.resolution, ['480p', '720p'], '720p'),
+      resolution: pickResolution(req.resolution, fullModel ? ['720p', '1080p', '4k'] : ['480p', '720p'], '720p'),
     }
     if (req.image) inputs.image = req.image
+    if (fullModel) inputs.generate_audio = true
     return inputs
   }
 
@@ -120,6 +125,7 @@ export function buildCfVideoInputs(cfModel: string, req: CfVideoInputRequest): R
     }
     if (req.image) inputs.start_image = req.image
     else inputs.aspect_ratio = pickEnum(req.aspectRatio, ['16:9', '9:16', '3:4', '4:3', '1:1'], '16:9')
+    if (req.image && req.endImage) inputs.end_image = req.endImage
     return inputs
   }
 

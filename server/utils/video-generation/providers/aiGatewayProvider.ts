@@ -42,15 +42,20 @@ async function fetchAsDataUri(url: string): Promise<string> {
 
 async function buildInputs(cfModel: string, request: VideoGenerationProviderRequest): Promise<Record<string, unknown>> {
   const sourceUrl = request.mode === 'image-to-video' ? request.sourceAssetUrls[0] ?? null : null
+  const endSourceUrl = request.mode === 'image-to-video' ? request.sourceAssetUrls[1] ?? null : null
   const image = sourceUrl && imageInputEncoding(cfModel) === 'base64'
     ? await fetchAsDataUri(sourceUrl)
     : sourceUrl
+  const endImage = endSourceUrl && imageInputEncoding(cfModel) === 'base64'
+    ? await fetchAsDataUri(endSourceUrl)
+    : endSourceUrl
   return buildCfVideoInputs(cfModel, {
     prompt: request.prompt,
     durationSeconds: request.durationSeconds,
     aspectRatio: request.aspectRatio,
     resolution: request.resolution,
     image,
+    endImage,
   })
 }
 

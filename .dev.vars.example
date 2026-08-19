@@ -74,3 +74,7 @@ MCP_BANNER_TOOLS_ENABLED=false
 R2_ACCOUNT_ID=your_cloudflare_account_id
 R2_ACCESS_KEY_ID=your_r2_access_key_id
 R2_SECRET_ACCESS_KEY=your_r2_secret_access_key
+# Operator attestation only: uncomment after the matching Cloudflare AI Gateway
+# spend rule exists. The Cloudflare rule, not these values, enforces the ceiling.
+# AI_GATEWAY_SPEND_LIMIT_CONFIRMED="false"
+# AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD="250"

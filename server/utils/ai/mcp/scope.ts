@@ -10,7 +10,7 @@
 import { resolveProposeAction, isFinancialAction, MCP_CONFIRM_TOOL } from './writeTools'
 import { resolveVideoProposeAction } from './videoTools'
 import { resolveBannerProposeAction } from './bannerTools'
-import { generationTools } from './generationTools'
+import { generationTools, isGenerationReadToolName } from './generationTools'
 
 export const MCP_READ_SCOPE = 'mcp:read'
 export const MCP_WRITE_SCOPE = 'mcp:write'
@@ -25,7 +25,7 @@ export function hasWriteScope(scopes: Set<string>): boolean {
 }
 
 /** Billing/state-changing generation tools (get_generation_status is a read → excluded). */
-const GEN_WRITE_NAMES = new Set(generationTools.map(t => t.name).filter(n => n !== 'get_generation_status'))
+const GEN_WRITE_NAMES = new Set(generationTools.map(t => t.name).filter(n => !isGenerationReadToolName(n)))
 
 /**
  * Is this tool a WRITE-class tool that requires the mcp:write scope? Covers every non-read MCP surface:

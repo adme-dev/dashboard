@@ -56,6 +56,12 @@ function assertModelSupportsRequest(model: NonNullable<ReturnType<typeof getVide
   if (model.requiresApprovedSourceAsset && body.sourceAssetIds.length === 0) {
     throw createError({ statusCode: 400, statusMessage: 'A source image is required for this model' })
   }
+  if (body.sourceAssetIds.length > 1 && !model.capabilities.endFrame) {
+    throw createError({ statusCode: 400, statusMessage: 'Model does not support an explicit end frame' })
+  }
+  if (body.sourceAssetIds.length > 2) {
+    throw createError({ statusCode: 400, statusMessage: 'At most one approved start frame and one approved end frame are supported' })
+  }
 }
 
 function uuidOrNull(value: string | null | undefined): string | null {

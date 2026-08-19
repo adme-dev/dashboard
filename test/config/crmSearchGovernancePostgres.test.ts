@@ -467,7 +467,7 @@ async function assertEmptyIsolatedTargetPreflight(
     )
     if (relation.rows[0]?.relation) {
       const count = await client.query(`SELECT COUNT(*)::BIGINT AS count FROM public.${sourceTable}`)
-      if (BigInt(count.rows[0].count as string) !== 0n) {
+      if (BigInt(count.rows[0].count as string) !== BigInt(0)) {
         throw new Error(`CRM search test target source ${sourceTable} is not empty`)
       }
     }

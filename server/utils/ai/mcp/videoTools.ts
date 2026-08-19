@@ -1,6 +1,5 @@
 import { z } from 'zod'
-import { roleHasPermission } from '~~/server/utils/permissions'
-import type { PermissionGroup } from '~~/server/utils/permissions'
+import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
@@ -251,7 +250,8 @@ export const videoProposeTools: VideoToolDescriptor[] = [
       'Propose (does NOT spend yet) a video generation into an AV project. Returns a proposalId with the '
       + 'estimated cost + compliance classification + resolved model/params. Call confirm_action(proposalId) '
       + 'to reserve budget and start it. Modes: text-to-video needs no source; image-to-video / video-extension '
-      + '/ lip-sync need source asset ids registered in-app.',
+      + '/ lip-sync need source asset ids registered in-app. For an end-frame-capable model, provide the approved '
+      + 'start frame first and approved offer-card end frame second in sourceAssetIds.',
     parameters: VideoGenParams,
     requiredPermission: 'CREATIVE'
   },
@@ -307,6 +307,8 @@ function modelSupports(model: VideoGenerationModel, p: z.infer<typeof VideoGenPa
   if (p.resolution && !model.resolutions.includes(p.resolution)) return false
   if (p.subjectType !== 'unknown' && !model.allowedSubjectTypes.includes(p.subjectType)) return false
   if (model.requiresApprovedSourceAsset && p.sourceAssetIds.length === 0) return false
+  if (p.sourceAssetIds.length > 1 && !model.capabilities.endFrame) return false
+  if (p.sourceAssetIds.length > 2) return false
   return true
 }
 

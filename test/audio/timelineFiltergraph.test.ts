@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { TimelineStateSchema } from '~~/server/utils/audio/timelineSchema'
-import { buildTimelineFiltergraph, curveToken } from '~~/server/utils/audio/timelineFiltergraph'
+import {
+  buildMasterRenderArgs,
+  buildTimelineFiltergraph,
+  curveToken,
+  duckRatioFromAmountDb,
+  duckThresholdLinear
+} from '~~/server/utils/audio/timelineFiltergraph'
 
 // Build a normalized TimelineState from a partial raw doc (relies on SP0 defaults).
 function tl(raw: any) {
@@ -94,8 +100,6 @@ describe('buildTimelineFiltergraph — per-track bus', () => {
     expect(fc).toContain('[c0][c1]amix=inputs=2:normalize=0:duration=longest,volume=-2dB[t0]')
   })
 })
-
-import { buildMasterRenderArgs, duckRatioFromAmountDb, duckThresholdLinear } from '~~/server/utils/audio/timelineFiltergraph'
 
 describe('duckRatioFromAmountDb', () => {
   it('is a documented monotonic map from attenuation magnitude to sidechain ratio', () => {

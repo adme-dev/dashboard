@@ -1749,7 +1749,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-brain',
     categoryIconBg: 'bg-amber-50',
     categoryIconColor: 'text-amber-600',
-    description: 'Connect Claude, Cursor, or ChatGPT to a governed Godmode view of XeroFlow. Campaign, ad, budget, lead, capacity and creative-asset answers carry coverage, freshness and attribution; creation workflows choose among eligible text, Banner Studio, video and audio models while consequential actions remain propose-then-confirm.',
+    description: 'Connect Claude, Cursor, or ChatGPT to a governed Godmode view of XeroFlow. Operational answers carry coverage, freshness and attribution; creative workflows choose among source-bound video, non-vehicle static, approved-source transform and audio models, with Qwen vision evidence before review.',
     details: [
       {
         title: 'Campaign and Creative Godmode',
@@ -1761,11 +1761,11 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Capability-Driven Creative Samples',
-        content: 'The connector can inspect the models and creation suites available to the signed-in user before planning a sample. It chooses by modality, runtime support, status, risk and cost instead of hard-coding one provider — drafting with eligible text models, discovering and rendering Banner Studio projects, proposing video generation, or producing owned voiceover and music. Model fallbacks and generation rate limits are returned in-band.'
+        content: 'The connector inspects the governed model catalogue before planning a sample. Seedance 2.0 keeps vehicle video tied to an approved start image and can add native audio; Vidu Q3 can land on an approved offer-card end frame; Recraft is restricted to non-vehicle statics; and Pruna upscales only approved source assets. Voiceover and music remain available through their owned-media paths, while model safety classes and Gateway spend readiness are returned in-band.'
       },
       {
-        title: 'Self-Describing Access, Human-Controlled Actions',
-        content: 'A capabilities call tells the assistant who is signed in, the OAuth scopes granted, every available tool, and whether it is read-only, proposal-only, confirmation, or direct generation. Agency roles remain the access ceiling, every call is audited, and tasks, financial changes, Banner Studio renders and video jobs keep the proposal and human-confirmation boundary appropriate to their risk.'
+        title: 'Vision Evidence Before Human Sign-Off',
+        content: 'Every generated or transformed Banner Studio image can be checked by Qwen 3.6 vision in JSON mode against up to four approved references. The append-only verdict records vehicle and badge match, OCR disclaimer and price, logo distortion, visual artefacts, confidence and notes. Failed checks return review_blocked rather than ready, while the final approval remains with the human reviewer.'
       }
     ]
   },

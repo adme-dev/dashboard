@@ -3,8 +3,7 @@
 // generated track → upload master to R2 → (Phase 3) render per-channel variants
 // via the FFmpeg container → flip audio_assets to done/failed.
 // Kept free of CF-only global types so it's unit-testable under vitest.
-import { queryOne, execute } from './db'
-import { dbRecordAiInvocation } from './db'
+import { queryOne, execute, dbRecordAiInvocation } from './db'
 import { renderVariants, type RenderEnv } from './renderVariants'
 
 // MiniMax partner models on Workers AI use the bare `provider/model` id — NOT

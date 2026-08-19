@@ -18,7 +18,10 @@ const ctx = (role: string): ToolContext => ({ userId: 'u1', userRole: role, even
 
 // A runner that records calls and returns a fixed payload per tool.
 const okRunner = (): GenerationRunner => ({
+  list_creative_models: vi.fn(async () => ({ models: [] })),
   generate_banner_image: vi.fn(async () => ({ assetId: 'img1', status: 'ready' })),
+  upscale_banner_image: vi.fn(async () => ({ assetId: 'img2', status: 'ready' })),
+  verify_creative_compliance: vi.fn(async () => ({ checkId: 'check1', passed: true })),
   generate_voiceover: vi.fn(async () => ({ assetId: 'a1', status: 'ready' })),
   start_music_generation: vi.fn(async () => ({ jobId: 'j1', status: 'queued' })),
   get_generation_status: vi.fn(async () => ({ status: 'done', assetUrl: 'https://x/y.mp3' }))
@@ -31,7 +34,7 @@ describe('projectGenerationTools', () => {
 
   it('lists all generation tools for a CREATIVE role when enabled', () => {
     const names = projectGenerationTools('admin', true).map(t => t.name)
-    expect(names).toEqual(expect.arrayContaining(['generate_banner_image', 'generate_voiceover', 'start_music_generation', 'get_generation_status']))
+    expect(names).toEqual(expect.arrayContaining(['list_creative_models', 'generate_banner_image', 'upscale_banner_image', 'verify_creative_compliance', 'generate_voiceover', 'start_music_generation', 'get_generation_status']))
     expect(names).toHaveLength(generationTools.length)
   })
 
@@ -105,9 +108,9 @@ describe('executeGenerationTool', () => {
   it('validates and runs direct image generation for a brief sample', async () => {
     const runner = okRunner()
     const c = ctx('admin')
-    const res = await executeGenerationTool('generate_banner_image', { prompt: 'SUV at dusk', aspectRatio: '16:9' }, c, { enabled: true, runner })
+    const res = await executeGenerationTool('generate_banner_image', { prompt: 'Typography-led offer card at dusk', aspectRatio: '16:9' }, c, { enabled: true, runner })
     expect(res).toEqual({ ok: true, data: { assetId: 'img1', status: 'ready' } })
-    expect(runner.generate_banner_image).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'SUV at dusk', aspectRatio: '16:9' }), c)
+    expect(runner.generate_banner_image).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Typography-led offer card at dusk', aspectRatio: '16:9' }), c)
   })
 
   it('never throws — a runner that throws becomes a typed handler_error', async () => {

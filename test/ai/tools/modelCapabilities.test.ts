@@ -23,6 +23,7 @@ describe('get_model_capabilities', () => {
     const data = (result as any).data
     expect(data.models.map((model: any) => model.featureKey)).toEqual(expect.arrayContaining([
       'banner_image_generation',
+      'banner_image_upscale',
       'banner_image_edit',
       'banner_image_layer_decomposition',
     ]))

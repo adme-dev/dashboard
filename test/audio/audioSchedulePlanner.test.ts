@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { TimelineStateSchema } from '~~/server/utils/audio/timelineSchema'
-import { planTimeline, dbToGain } from '~~/app/utils/audio/audioSchedulePlanner'
+import { planTimeline, dbToGain, windowEvents } from '~~/app/utils/audio/audioSchedulePlanner'
 
 function tl(raw: any) {
   return TimelineStateSchema.parse(raw)
@@ -58,8 +58,6 @@ describe('planTimeline — clips', () => {
     expect(plan.ramps).toEqual([])
   })
 })
-
-import { windowEvents } from '~~/app/utils/audio/audioSchedulePlanner'
 
 describe('planTimeline — ducking ramps', () => {
   it('emits a down ramp at each source-clip start and a restore at its end', () => {
