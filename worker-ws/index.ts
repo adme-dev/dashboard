@@ -11,8 +11,6 @@
  * known WS paths and forwards them directly to the appropriate DO.
  */
 
-import { neon } from '@neondatabase/serverless'
-
 interface Env {
   BOARD_ROOMS: DurableObjectNamespace
   CHAT_ROOMS: DurableObjectNamespace
@@ -35,6 +33,47 @@ interface AuthedUser {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MAX_AUTH_COOKIE_CANDIDATES = 4
 
+/**
+ * Tiny Neon HTTP query adapter for the pre-Nitro WebSocket boundary. Bundling
+ * the full Postgres client into the separate WS entry duplicates ~140 KB that
+ * already exists in Nitro and can push the Pages multipart over its raw limit.
+ * These two lookups only need raw text rows, so use Neon's documented HTTP
+ * protocol directly and keep the edge entry self-contained.
+ */
+async function queryNeon<T extends object>(
+  connectionString: string,
+  query: string,
+  params: unknown[]
+): Promise<T[]> {
+  const connection = new URL(connectionString)
+  const endpointHost = connection.hostname.replace(/^[^.]+\./, 'api.')
+  if (!endpointHost.startsWith('api.')) throw new Error('Unsupported Neon database host')
+  const response = await fetch(`https://${endpointHost}/sql`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'Neon-Connection-String': connectionString,
+      'Neon-Raw-Text-Output': 'true',
+      'Neon-Array-Mode': 'true'
+    },
+    body: JSON.stringify({ query, params })
+  })
+  const payload = await response.json().catch(() => null) as {
+    fields?: Array<{ name?: unknown }>
+    rows?: unknown[][]
+    message?: unknown
+    code?: unknown
+  } | null
+  if (!response.ok || !Array.isArray(payload?.fields) || !Array.isArray(payload?.rows)) {
+    const error = Object.assign(new Error('Neon HTTP query failed'), {
+      code: typeof payload?.code === 'string' ? payload.code : String(response.status)
+    })
+    throw error
+  }
+  const fields = payload.fields.map(field => String(field.name ?? ''))
+  return payload.rows.map(row => Object.fromEntries(fields.map((field, index) => [field, row[index]])) as T)
+}
+
 export async function handleBoardConnect(
   request: Request,
   env: Env,
@@ -46,10 +85,9 @@ export async function handleBoardConnect(
   const user = await authenticate(request, env)
   if (!user) return unauthorized()
 
-  const sql = neon(env.DATABASE_URL)
   const rows = UUID_RE.test(boardIdOrSlug)
-    ? (await sql`SELECT id FROM departments WHERE id = ${boardIdOrSlug}::uuid` as Array<{ id: string }>)
-    : (await sql`SELECT id FROM departments WHERE slug = ${boardIdOrSlug}` as Array<{ id: string }>)
+    ? await queryNeon<{ id: string }>(env.DATABASE_URL, 'SELECT id FROM departments WHERE id = $1::uuid', [boardIdOrSlug])
+    : await queryNeon<{ id: string }>(env.DATABASE_URL, 'SELECT id FROM departments WHERE slug = $1', [boardIdOrSlug])
   const boardId = rows[0]?.id
   if (!boardId) return new Response('Board not found', { status: 404 })
 
@@ -105,13 +143,12 @@ async function authenticate(request: Request, env: Env): Promise<AuthedUser | nu
   }
 
   try {
-    const sql = neon(env.DATABASE_URL)
-    const rows = await sql`
+    const rows = await queryNeon<AuthedUser>(env.DATABASE_URL, `
       SELECT id, name, avatar_url
       FROM team_members
-      WHERE id = ${payload.userId} AND is_active = true
+      WHERE id = $1 AND is_active = true
       LIMIT 1
-    ` as Array<AuthedUser>
+    `, [payload.userId])
     if (!rows[0]) {
       logAuthDenied(request, 'inactive_or_missing_user')
       return null

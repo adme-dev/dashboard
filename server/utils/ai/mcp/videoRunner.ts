@@ -4,14 +4,15 @@ import {
   type VideoReadRunner,
   type VideoConfirmAction,
   type VideoGenerationPendingPayload,
-  type VideoProjectPendingPayload
+  type VideoProjectPendingPayload,
+  type CreativePromotionPendingPayload
 } from './videoTools'
 import { listProjects, getProjectWithCurrentTimeline, createProject, listRenderJobs } from '~~/server/utils/audio/projects'
 import { listSelectableVideoGenerationModels, getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
 import { selectableVideoModelOptions } from '~~/app/utils/video/modelPresentation'
 import { loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
 import { canUseVideoGenerationProject } from '~~/server/utils/video-generation/timelineStillSource'
-import { getVideoGenerationJob, listVideoGenerationJobsForProject, listVideoGenerationJobsForProjects } from '~~/server/utils/video-generation/jobs'
+import { getVideoGenerationJob, listVideoGenerationJobsForProject, listVideoGenerationJobsForProjects, markVideoGenerationJobFailed } from '~~/server/utils/video-generation/jobs'
 import { listApprovedVideoGenerationSourceAssets } from '~~/server/utils/video-generation/sourceAssetStore'
 import { isTenantModel } from '~~/server/utils/video-generation/surface'
 import { loadVideoGenerationSourceAssets } from '~~/server/utils/video-generation/sourceAssets'
@@ -23,6 +24,8 @@ import { resolveSourceAssetUrls } from '~~/server/utils/video-generation/resolve
 import { emptyAvTimeline } from '~~/server/utils/audio/timelineSchema'
 import { proposeAction } from '~~/server/utils/ai/pendingActions'
 import { buildCreativeVersionGraph, mapMediaRenderJobToVersionSource } from '~~/server/utils/creative/versionGraph'
+import { findCreativeAssetById } from '~~/server/utils/ai/tools/creativeAssets'
+import { promoteCreativeAssetToVideoSource } from '~~/server/utils/video-generation/promoteCreativeAsset'
 
 /**
  * MCP Phase 2b — the REAL video runner (the binding-dependent half of videoTools.ts). Wraps the exact
@@ -57,6 +60,7 @@ export function buildVideoReadRunner(): VideoReadRunner {
         id: p.id,
         title: p.title,
         clientId: p.clientId ?? null,
+        isTest: p.isTest ?? false,
         hasTimeline: !!p.currentTimelineId
       }))
     },
@@ -111,6 +115,8 @@ export function buildVideoReadRunner(): VideoReadRunner {
         dimensions: asset.width && asset.height ? { width: asset.width, height: asset.height } : null,
         contentType: asset.content_type ?? null,
         subjectType: asset.subject_type ?? 'unknown',
+        sourceSystem: asset.source_system ?? null,
+        sourceAssetRef: asset.source_asset_ref ?? null,
         createdAt: asset.created_at ?? null,
       }))
     },
@@ -261,6 +267,7 @@ export function buildVideoProposeDeps() {
     loadPolicy: (tenantId: string) => loadTenantVideoGenerationPolicy(tenantId),
     evaluateCompliance: (input: Parameters<typeof evaluateVideoGenerationCompliance>[0]) => evaluateVideoGenerationCompliance(input),
     estimateCost: (model: Parameters<typeof estimateVideoGenerationCostCents>[0], secs: number) => estimateVideoGenerationCostCents(model, secs),
+    resolveCreativeAsset: findCreativeAssetById,
     persist: (ctx: ToolContext, action: VideoConfirmAction, payload: unknown) => proposeAction(ctx, null, action, payload)
   }
 }
@@ -300,13 +307,15 @@ export function buildVideoConfirmDeps() {
         await loadTenantVideoGenerationPolicy(payload.tenantId)
       )
     },
-    enqueue: async (payload: VideoGenerationPendingPayload, jobId: string, ctx: ToolContext) => {
+    prepareEnqueue: async (payload: VideoGenerationPendingPayload) => {
+      return payload.sourceAssetIds.length > 0
+        ? await resolveSourceAssetUrls(payload.sourceAssetIds, payload.tenantId)
+        : []
+    },
+    enqueue: async (payload: VideoGenerationPendingPayload, jobId: string, ctx: ToolContext, prepared?: unknown) => {
       const idempotencyKey = payload.idempotencyKey
       if (!idempotencyKey) throw new Error('missing idempotencyKey at confirm')
-      let sourceAssetUrls: string[] = []
-      if (payload.mode === 'image-to-video') {
-        sourceAssetUrls = await resolveSourceAssetUrls(payload.sourceAssetIds, payload.tenantId)
-      }
+      const sourceAssetUrls = Array.isArray(prepared) ? prepared.map(String) : []
       await enqueueVideoGeneration(ctx.event, {
         jobId,
         tenantId: payload.tenantId,
@@ -323,6 +332,11 @@ export function buildVideoConfirmDeps() {
         initialState: emptyAvTimeline()
       })
       return { projectId: project.id }
+    },
+    promoteCreativeAsset: (payload: CreativePromotionPendingPayload, ctx: ToolContext) =>
+      promoteCreativeAssetToVideoSource(payload, ctx),
+    markJobFailed: async (jobId: string, reason: string) => {
+      await markVideoGenerationJobFailed(jobId, reason)
     }
   }
 }

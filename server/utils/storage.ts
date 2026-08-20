@@ -11,29 +11,38 @@ import { FetchHttpHandler } from '@smithy/fetch-http-handler'
 import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
 import { join, dirname } from 'path'
+import { getCachedCfBinding } from '~~/server/utils/cfBindings'
 
 // Local upload directory for dev without R2
 const LOCAL_UPLOAD_DIR = join(process.cwd(), 'server', 'uploads')
 
-// R2 Configuration
-const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || ''
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || ''
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || ''
-const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || 'agency-files'
-const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || '' // Optional: Custom domain for public files
+// Pages exposes primitive bindings on the request context instead of process.env.
+// Resolve them at call time so a module imported during a cold start does not
+// permanently capture empty credentials before cfEnv middleware runs.
+function r2Config() {
+  const value = (key: string) => getCachedCfBinding(key) || process.env[key] || ''
+  return {
+    accountId: value('R2_ACCOUNT_ID'),
+    accessKeyId: value('R2_ACCESS_KEY_ID'),
+    secretAccessKey: value('R2_SECRET_ACCESS_KEY'),
+    bucketName: value('R2_BUCKET_NAME') || 'agency-files',
+    publicUrl: value('R2_PUBLIC_URL')
+  }
+}
 
 // Create S3 client configured for R2
 function getR2Client(): S3Client {
-  if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY) {
+  const config = r2Config()
+  if (!config.accountId || !config.accessKeyId || !config.secretAccessKey) {
     throw new Error('R2 storage is not configured. Please set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY environment variables.')
   }
 
   return new S3Client({
     region: 'auto',
-    endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
     credentials: {
-      accessKeyId: R2_ACCESS_KEY_ID,
-      secretAccessKey: R2_SECRET_ACCESS_KEY
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: config.secretAccessKey
     },
     // The Cloudflare Workers runtime (Nitro's unenv) does NOT implement
     // node:https.request, so the SDK's default node-http-handler throws
@@ -47,7 +56,7 @@ function getR2Client(): S3Client {
 
 /** Server-only S3 control plane used by Send multipart coordination. */
 export function getR2StorageControlPlane(): { client: S3Client, bucket: string } {
-  return { client: getR2Client(), bucket: R2_BUCKET_NAME }
+  return { client: getR2Client(), bucket: r2Config().bucketName }
 }
 
 // Minimal shape of the Cloudflare native R2 bucket binding (MEDIA_BUCKET).
@@ -76,7 +85,7 @@ export interface R2BucketBinding {
  * only used when config targets that bucket.
  */
 function getNativeBucket(requestBucket?: R2BucketBinding): R2BucketBinding | undefined {
-  if (R2_BUCKET_NAME !== 'agency-files') return undefined
+  if (r2Config().bucketName !== 'agency-files') return undefined
   return requestBucket
 }
 
@@ -213,7 +222,7 @@ export async function uploadFile(
     // Nitro/unenv (dev) and workerd, the fetch handler can mishandle a Node Buffer body
     // (request sent with no body → 200 but nothing persisted), so normalise it.
     await client.send(new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
+      Bucket: r2Config().bucketName,
       Key: key,
       Body: bytes,
       ContentType: contentType,
@@ -224,7 +233,7 @@ export async function uploadFile(
     // without writing the body in some serverless runtimes (UNSIGNED-PAYLOAD means R2 won't
     // reject a missing body), which silently created dead references. Fail loud instead.
     try {
-      const head = await client.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }))
+      const head = await client.send(new HeadObjectCommand({ Bucket: r2Config().bucketName, Key: key }))
       if (!head.ContentLength) throw new Error('zero-length')
     } catch (error: unknown) {
       const detail = error instanceof Error ? error.message : String(error)
@@ -236,8 +245,9 @@ export async function uploadFile(
   }
 
   // Return the public URL if configured, otherwise generate a presigned URL
-  const url = R2_PUBLIC_URL
-    ? `${R2_PUBLIC_URL}/${key}`
+  const publicUrl = r2Config().publicUrl
+  const url = publicUrl
+    ? `${publicUrl}/${key}`
     : await getPresignedDownloadUrl(key, 7 * 24 * 60 * 60) // 7 days
 
   return {
@@ -270,7 +280,7 @@ export async function deleteFile(key: string, requestBucket?: R2BucketBinding): 
   const client = getR2Client()
 
   await client.send(new DeleteObjectCommand({
-    Bucket: R2_BUCKET_NAME,
+    Bucket: r2Config().bucketName,
     Key: key
   }))
 }
@@ -287,7 +297,7 @@ export async function downloadFileBuffer(key: string): Promise<Buffer> {
 
   const client = getR2Client()
   const response = await client.send(new GetObjectCommand({
-    Bucket: R2_BUCKET_NAME,
+    Bucket: r2Config().bucketName,
     Key: key
   }))
 
@@ -318,7 +328,7 @@ export async function fileExists(key: string, requestBucket?: R2BucketBinding): 
 
   try {
     await client.send(new HeadObjectCommand({
-      Bucket: R2_BUCKET_NAME,
+      Bucket: r2Config().bucketName,
       Key: key
     }))
     return true
@@ -338,7 +348,7 @@ export async function getPresignedUploadUrl(
   const client = getR2Client()
 
   const command = new PutObjectCommand({
-    Bucket: R2_BUCKET_NAME,
+    Bucket: r2Config().bucketName,
     Key: key,
     ContentType: contentType
   })
@@ -356,7 +366,7 @@ export async function getPresignedDownloadUrl(
   const client = getR2Client()
 
   const command = new GetObjectCommand({
-    Bucket: R2_BUCKET_NAME,
+    Bucket: r2Config().bucketName,
     Key: key
   })
 
@@ -390,7 +400,7 @@ export async function getFileMetadata(key: string, requestBucket?: R2BucketBindi
 
   try {
     const response = await client.send(new HeadObjectCommand({
-      Bucket: R2_BUCKET_NAME,
+      Bucket: r2Config().bucketName,
       Key: key
     }))
 
@@ -410,13 +420,15 @@ export async function getFileMetadata(key: string, requestBucket?: R2BucketBindi
  * Get public URL for a file (if R2_PUBLIC_URL is configured)
  */
 export function getPublicUrl(key: string): string | null {
-  if (!R2_PUBLIC_URL) return null
-  return `${R2_PUBLIC_URL}/${key}`
+  const publicUrl = r2Config().publicUrl
+  if (!publicUrl) return null
+  return `${publicUrl}/${key}`
 }
 
 /**
  * Check if R2 storage is configured
  */
 export function isStorageConfigured(): boolean {
-  return !!(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY)
+  const config = r2Config()
+  return !!(config.accountId && config.accessKeyId && config.secretAccessKey)
 }

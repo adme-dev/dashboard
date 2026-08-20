@@ -41,6 +41,7 @@ import { executeGodModeMcpCall } from '~~/server/utils/ai/mcp/directExecution'
 import { isActiveGodModeAuthority } from '~~/server/utils/godMode/authority'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import { executeOrdinaryMcpRememberMutation } from '~~/server/utils/ai/tools/remember'
+import { persistMcpProposalResult, replayExecutedMcpProposal } from '~~/server/utils/ai/mcp/proposalReplay'
 
 export default defineEventHandler(async (event) => {
   if (process.env.MCP_SERVER_ENABLED !== 'true') {
@@ -202,6 +203,8 @@ export default defineEventHandler(async (event) => {
           RETURNING tool_name, resolved_payload`,
         [proposalId, uid]
       ).catch(() => null),
+      replay: replayExecutedMcpProposal,
+      persistResult: persistMcpProposalResult,
       // Restore a just-claimed row to 'proposed' when a PRE-execution gate (ack/permission) rejects, so a
       // money-mover proposal isn't burned and the caller can retry with ack:true. Scoped to our own claim.
       revertClaim: async (proposalId, uid) => { await execute(

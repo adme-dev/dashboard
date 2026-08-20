@@ -106,6 +106,17 @@ describe('executeWriteConfirm', () => {
     expect(res).toMatchObject({ ok: false, code: 'expired' })
   })
 
+  it('replays the exact durable proposal result when the single-use claim is already consumed', async () => {
+    const durable = { jobId: 'job-1', status: 'queued' }
+    const replay = vi.fn(async () => ({ ok: true as const, data: durable }))
+    const res = await executeWriteConfirm({ proposalId: 'abcd1234' }, ctx('admin'), deps({
+      claim: async () => null,
+      replay
+    }))
+    expect(res).toEqual({ ok: true, data: durable })
+    expect(replay).toHaveBeenCalledWith('abcd1234', 'u1')
+  })
+
   it('forbids a claimed row whose tool is not in the safe set', async () => {
     const res = await executeWriteConfirm({ proposalId: 'abcd1234' }, ctx('admin'),
       deps({ claim: async () => ({ tool_name: 'propose_quote', resolved_payload: {} }) }))
@@ -130,6 +141,23 @@ describe('executeWriteConfirm', () => {
       deps({ getExecutor: () => exec({ execute }) }))
     expect(res).toEqual({ ok: true, data: { resultRef: 'task9', summary: '✅ Created' } })
     expect(execute).toHaveBeenCalledWith({ v: 1 }, expect.objectContaining({ userId: 'u1' }))
+  })
+
+  it('persists the exact successful result before returning it', async () => {
+    const persistResult = vi.fn(async () => {})
+    const res = await executeWriteConfirm({ proposalId: 'abcd1234' }, ctx('admin'), deps({ persistResult }))
+    expect(res).toEqual({ ok: true, data: { resultRef: 'id1', summary: '✅ done' } })
+    expect(persistResult).toHaveBeenCalledWith('abcd1234', 'u1', { resultRef: 'id1', summary: '✅ done' })
+  })
+
+  it('returns success pending reconciliation when durable result persistence is uncertain', async () => {
+    const res = await executeWriteConfirm({ proposalId: 'abcd1234' }, ctx('admin'), deps({
+      persistResult: async () => { throw new Error('database timeout') }
+    }))
+    expect(res).toEqual({
+      ok: true,
+      data: { resultRef: 'id1', summary: '✅ done', reconciliation: 'pending' }
+    })
   })
 
   it('never throws — an executor that throws becomes handler_error', async () => {

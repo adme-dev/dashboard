@@ -170,6 +170,7 @@ describe('resolveVideoProposeAction', () => {
     expect(resolveVideoProposeAction('propose_video_generation')).toBe('video_generation')
     expect(resolveVideoProposeAction('create_video_project')).toBe('video_project_create')
     expect(resolveVideoProposeAction('propose_timeline_edit')).toBe('video_timeline_edit')
+    expect(resolveVideoProposeAction('propose_promote_creative_asset')).toBe('video_source_promote')
     expect(resolveVideoProposeAction('create_task')).toBeNull()
   })
 })
@@ -216,6 +217,51 @@ describe('executeVideoPropose — video_generation', () => {
   it('happy path persists and previews cost + classification', async () => {
     const r = await executeVideoPropose('video_generation', genArgs, ctx('admin'), baseProposeDeps())
     expect(r).toEqual({ ok: true, data: expect.objectContaining({ proposalId: 'prop-123', estimatedCostCents: 250, complianceClassification: 'clear' }) })
+  })
+})
+
+describe('creative registry promotion', () => {
+  it('proposes a Monday asset promotion with project tenant and provenance frozen', async () => {
+    const deps = baseProposeDeps()
+    deps.resolveCreativeAsset = vi.fn(async () => ({
+      assetId: 'monday:3163988655',
+      source: 'monday' as const,
+      assetUrl: 'https://files.monday.com/example.png',
+      clientIds: ['c1'],
+      filename: 'approved-vehicle.png'
+    }))
+    const r = await executeVideoPropose('video_source_promote', {
+      assetId: 'monday:3163988655',
+      projectId: '11111111-1111-4111-8111-111111111111',
+      subjectType: 'vehicle'
+    }, ctx('admin'), deps)
+
+    expect(r).toMatchObject({ ok: true, data: { proposalId: 'prop-123', kind: 'video_source_promote', sourceSystem: 'monday' } })
+    expect(deps.persist).toHaveBeenCalledWith(expect.anything(), 'video_source_promote', expect.objectContaining({
+      assetId: 'monday:3163988655',
+      expectedSourceAssetRef: 'monday:3163988655',
+      expectedSourceSystem: 'monday',
+      subjectType: 'vehicle'
+    }))
+  })
+
+  it('confirms a promotion and returns the approved source identifier', async () => {
+    const deps = {
+      genEnabled: true,
+      reserve: vi.fn(async () => ({ ok: true, reused: false, job: { id: 'job-1' } })),
+      enqueue: vi.fn(async () => {}),
+      createProject: vi.fn(async () => ({ projectId: 'newproj' })),
+      promoteCreativeAsset: vi.fn(async () => ({
+        sourceAssetId: 'source-1', status: 'approved', sourceSystem: 'monday', sourceAssetRef: 'monday:3163988655'
+      }))
+    }
+    const r = await dispatchVideoConfirm({
+      tool_name: 'video_source_promote',
+      resolved_payload: { assetId: 'monday:3163988655' }
+    }, ctx('admin'), deps)
+    expect(r).toEqual({ ok: true, data: {
+      sourceAssetId: 'source-1', status: 'approved', sourceSystem: 'monday', sourceAssetRef: 'monday:3163988655'
+    } })
   })
 })
 
@@ -382,6 +428,28 @@ describe('dispatchVideoConfirm', () => {
     const r = await dispatchVideoConfirm({ tool_name: 'video_generation', resolved_payload: genPayload }, ctx('admin'), deps)
     expect(r).toMatchObject({ ok: false, code: 'handler_error' })
   })
+
+  it('marks a reserved job failed with a durable reason when queue dispatch rejects', async () => {
+    const markJobFailed = vi.fn(async () => {})
+    const deps = { ...okDeps(), enqueue: vi.fn(async () => { throw new Error('queue unavailable') }), markJobFailed }
+    const r = await dispatchVideoConfirm({ tool_name: 'video_generation', resolved_payload: genPayload }, ctx('admin'), deps)
+    expect(r).toMatchObject({ ok: true, data: { jobId: 'job-1', status: 'failed', error: expect.stringMatching(/queue unavailable/) } })
+    expect(markJobFailed).toHaveBeenCalledWith('job-1', expect.stringMatching(/Dispatch failed.*queue unavailable/))
+  })
+
+  it('fails and releases a reserved job before the dispatch checkpoint when source preparation rejects', async () => {
+    const order: string[] = []
+    const markJobFailed = vi.fn(async () => { order.push('failed') })
+    const deps = {
+      ...okDeps(),
+      prepareEnqueue: vi.fn(async () => { order.push('prepare'); throw new Error('R2 signing unavailable') }),
+      execution: { markDispatched: vi.fn(async () => { order.push('checkpoint') }), captureResult: vi.fn() },
+      markJobFailed
+    }
+    const r = await dispatchVideoConfirm({ tool_name: 'video_generation', resolved_payload: genPayload }, ctx('admin'), deps)
+    expect(r).toMatchObject({ ok: false, code: 'handler_error', error: expect.stringMatching(/R2 signing unavailable/) })
+    expect(order).toEqual(['prepare', 'failed'])
+  })
 })
 
 describe('projectVideoTools flag matrix', () => {
@@ -393,7 +461,7 @@ describe('projectVideoTools flag matrix', () => {
   })
   it('suite + gen on → reads + propose + create + confirm_action', () => {
     expect(projectVideoTools('admin', { suite: true, gen: true }).map(t => t.name)).toEqual([
-      ...READ_NAMES, 'propose_video_generation', 'create_video_project', 'propose_timeline_edit', 'confirm_action'
+      ...READ_NAMES, 'propose_video_generation', 'create_video_project', 'propose_timeline_edit', 'propose_promote_creative_asset', 'confirm_action'
     ])
   })
   it('non-CREATIVE role → no tools even with flags on', () => {

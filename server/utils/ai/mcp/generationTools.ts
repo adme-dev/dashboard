@@ -276,7 +276,11 @@ export async function executeGenerationTool(
   try {
     const data = await run(parsed.data, ctx)
     return { ok: true, data }
-  } catch {
+  } catch (error: unknown) {
+    if (name === 'verify_creative_compliance') {
+      const detail = error instanceof Error ? error.message : 'Compliance inspection unavailable.'
+      return { ok: false, error: `Compliance inspection failed: ${detail.slice(0, 400)}`, code: 'handler_error' }
+    }
     return { ok: false, error: 'Generation failed.', code: 'handler_error' }
   }
 }

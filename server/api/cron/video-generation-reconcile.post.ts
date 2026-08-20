@@ -8,6 +8,7 @@ import { finalizeVideoGenerationJob } from '~~/server/utils/video-generation/fin
 // window is dead (worker died, or the provider never completed) → reap it as failed. Inside
 // the window, poll the provider by request_id and finalize when it completes.
 const RECONCILE_WINDOW = `20 minutes`
+const DISPATCH_WINDOW = `10 minutes`
 
 export default defineEventHandler(async (event) => {
   if (getHeader(event, 'x-cron-secret') !== process.env.CRON_SECRET) {
@@ -15,6 +16,25 @@ export default defineEventHandler(async (event) => {
   }
   if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
     return { ran: false, reason: 'disabled' }
+  }
+
+  // A queued row with no provider evidence beyond this window means the queue
+  // dispatch/consumer path never accepted it. Fail it with a retryable reason
+  // so budget is released instead of remaining reserved forever.
+  const undispatched = await queryRows(
+    `SELECT * FROM video_generation_jobs
+       WHERE status = 'queued' AND provider_request_id IS NULL
+         AND created_at < now() - interval '${DISPATCH_WINDOW}'
+       ORDER BY created_at ASC LIMIT 25`
+  )
+  let dispatchTimedOut = 0
+  for (const row of undispatched) {
+    const job = mapVideoGenerationJobRow(row)
+    await markVideoGenerationJobFailed(
+      job.id,
+      'Dispatch timeout: no queue consumer/provider dispatch was recorded within 10 minutes. Budget was released; retry from a new proposal.'
+    ).catch(() => {})
+    dispatchTimedOut++
   }
 
   // Backstop: reap jobs that blew past the completion window.
@@ -63,5 +83,5 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  return { ran: true, reaped, polled, succeeded, failed, running, aiBinding: !!aiBinding }
+  return { ran: true, dispatchTimedOut, reaped, polled, succeeded, failed, running, aiBinding: !!aiBinding }
 })

@@ -259,6 +259,10 @@ export interface ConfirmDeps {
   financialEnabled?: boolean
   /** Atomic, MCP+user-scoped claim: UPDATE … WHERE id AND user_id AND status='proposed' AND source='mcp' AND not expired RETURNING tool_name, resolved_payload. Returns null if nothing claimable. */
   claim: (proposalId: string, userId: string) => Promise<ClaimedProposal | null>
+  /** Return the durable result of an already-executed proposal. Proposal-level replay is independent of transport/JTI replay. */
+  replay?: (proposalId: string, userId: string) => Promise<WriteConfirmOutcome | null>
+  /** Persist the exact successful response before returning it to the assistant. */
+  persistResult?: (proposalId: string, userId: string, data: unknown) => Promise<void>
   getExecutor: (toolName: string) => ActionExecutor | null
   /** Optional (2b): handle video confirm-tier tool_names; return null to fall through to the next path. */
   videoDispatch?: (row: ClaimedProposal, ctx: ToolContext) => Promise<WriteConfirmOutcome | null>
@@ -285,7 +289,23 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
   if (!parsed.success) return { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
 
   const row = await deps.claim(parsed.data.proposalId, ctx.userId)
-  if (!row) return { ok: false, error: 'Proposal not found, already used, expired, or not yours.', code: 'expired' }
+  if (!row) {
+    const replay = await deps.replay?.(parsed.data.proposalId, ctx.userId).catch(() => null)
+    return replay ?? { ok: false, error: 'Proposal not found, already used, expired, or not yours.', code: 'expired' }
+  }
+
+  const persistSuccess = async (outcome: WriteConfirmOutcome): Promise<WriteConfirmOutcome> => {
+    if (!outcome.ok) return outcome
+    try {
+      await deps.persistResult?.(parsed.data.proposalId, ctx.userId, outcome.data)
+      return outcome
+    } catch {
+      const data = outcome.data && typeof outcome.data === 'object'
+        ? { ...(outcome.data as Record<string, unknown>), reconciliation: 'pending' }
+        : { result: outcome.data, reconciliation: 'pending' }
+      return { ok: true, data }
+    }
+  }
 
   // A pre-execution gate rejected AFTER we atomically claimed the row (which set it to 'executed').
   // Restore it to 'proposed' so the proposal isn't burned and the caller can retry (e.g. with ack:true).
@@ -299,14 +319,14 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
   // It returns null for non-video tool_names, so the financial/2c paths below handle those.
   if (deps.videoDispatch) {
     const vo = await deps.videoDispatch(row, ctx)
-    if (vo) return vo
+    if (vo) return await persistSuccess(vo)
   }
 
   // 2b: banner confirm-tier actions get their own dispatch (returns jobIds).
   // Returns null for non-banner tool_names, so the financial/2c paths below handle those.
   if (deps.bannerDispatch) {
     const bo = await deps.bannerDispatch(row, ctx)
-    if (bo) return bo
+    if (bo) return await persistSuccess(bo)
   }
 
   // D4: financial branch — checked BEFORE the 2c safe-action path. A financial action must NEVER
@@ -329,7 +349,7 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
     try {
       await deps.execution?.markDispatched()
       const res = await ex.execute(row.resolved_payload, ctx)
-      return { ok: true, data: { resultRef: res.resultRef, summary: res.summary } }
+      return await persistSuccess({ ok: true, data: { resultRef: res.resultRef, summary: res.summary } })
     } catch {
       return { ok: false, error: 'Execution failed.', code: 'handler_error' }
     }
@@ -353,7 +373,7 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
   try {
     await deps.execution?.markDispatched()
     const res = await ex.execute(row.resolved_payload, ctx)
-    return { ok: true, data: { resultRef: res.resultRef, summary: res.summary } }
+    return await persistSuccess({ ok: true, data: { resultRef: res.resultRef, summary: res.summary } })
   } catch {
     return { ok: false, error: 'Execution failed.', code: 'handler_error' }
   }

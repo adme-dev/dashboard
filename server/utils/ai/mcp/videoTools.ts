@@ -48,6 +48,15 @@ export interface VideoGenerationPendingPayload {
 /** The resolved payload a `video_project_create` proposal persists. */
 export interface VideoProjectPendingPayload { title: string, clientId: string | null }
 
+export interface CreativePromotionPendingPayload {
+  assetId: string
+  projectId: string
+  tenantId: string
+  subjectType: VideoGenerationSubjectType
+  expectedSourceSystem: 'banner_studio' | 'ad_platform' | 'monday'
+  expectedSourceAssetRef: string
+}
+
 /** The resolved payload a proposal-only timeline edit stores for in-app review. */
 export interface VideoTimelineEditPendingPayload {
   projectId: string
@@ -201,7 +210,7 @@ export async function executeVideoTool(
 // ai_pending_actions.tool_name values + dispatchVideoConfirm routing keys — deliberately NOT in
 // MCP_WRITE_SAFE_ACTIONS and NOT in the executor registry (video has no in-app chat equivalent).
 
-export const VIDEO_CONFIRM_ACTIONS = ['video_generation', 'video_project_create', 'video_timeline_edit'] as const
+export const VIDEO_CONFIRM_ACTIONS = ['video_generation', 'video_project_create', 'video_timeline_edit', 'video_source_promote'] as const
 export type VideoConfirmAction = typeof VIDEO_CONFIRM_ACTIONS[number]
 
 const VideoGenParams = z.object({
@@ -216,6 +225,11 @@ const VideoGenParams = z.object({
   subjectType: z.enum(['vehicle', 'non_vehicle', 'unknown']).default('unknown')
 })
 const VideoProjectParams = z.object({ title: z.string().min(1).max(200), clientId: UUID.nullable().optional() })
+const CreativePromotionParams = z.object({
+  assetId: z.string().min(1).max(200),
+  projectId: UUID,
+  subjectType: z.enum(['vehicle', 'non_vehicle', 'unknown']).default('unknown')
+})
 const TimelineEditOperation = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('insert'),
@@ -278,6 +292,15 @@ export const videoProposeTools: VideoToolDescriptor[] = [
       + 'This does not mutate the timeline directly; it stores an audit-ready proposal for in-app review.',
     parameters: TimelineEditParams,
     requiredPermission: 'CREATIVE'
+  },
+  {
+    name: 'propose_promote_creative_asset',
+    description:
+      'Propose copying an existing governed creative-registry asset (including monday:<assetId>) into owned R2 '
+      + 'and registering it as an approved video source for an AV project. Preserves source provenance. Returns '
+      + 'a proposalId; call confirm_action(proposalId) to perform the copy and registration.',
+    parameters: CreativePromotionParams,
+    requiredPermission: 'CREATIVE'
   }
 ]
 
@@ -286,6 +309,7 @@ export function resolveVideoProposeAction(name: string): VideoConfirmAction | nu
   if (name === 'propose_video_generation') return 'video_generation'
   if (name === 'create_video_project') return 'video_project_create'
   if (name === 'propose_timeline_edit') return 'video_timeline_edit'
+  if (name === 'propose_promote_creative_asset') return 'video_source_promote'
   return null
 }
 
@@ -311,6 +335,13 @@ export interface VideoProposeDeps {
   loadPolicy: (tenantId: string) => Promise<VideoGenerationTenantPolicy>
   evaluateCompliance: (input: EvaluateVideoGenerationComplianceInput) => VideoGenerationComplianceResult
   estimateCost: (model: VideoGenerationModel, durationSeconds: number) => number
+  resolveCreativeAsset?: (assetId: string, ctx: ToolContext) => Promise<{
+    assetId: string
+    source: 'banner_studio' | 'ad_platform' | 'monday'
+    assetUrl?: string | null
+    clientIds: string[]
+    filename: string | null
+  } | null>
   /** Persist an ai_pending_actions row (tool_name = action) and return its id. */
   persist: (ctx: ToolContext, action: VideoConfirmAction, payload: unknown) => Promise<string>
 }
@@ -379,6 +410,46 @@ export async function executeVideoPropose(
       return { ok: true, data: { proposalId, kind: 'video_project_create', title: parsed.data.title } }
     } catch {
       return { ok: false, error: 'Propose failed.', code: 'handler_error' }
+    }
+  }
+
+  if (action === 'video_source_promote') {
+    const parsed = CreativePromotionParams.safeParse(args)
+    if (!parsed.success) return { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
+    try {
+      if (!deps.resolveCreativeAsset) return { ok: false, error: 'Creative registry is unavailable.', code: 'handler_error' }
+      const existing = await deps.resolveProject(parsed.data.projectId, ctx)
+      if (!existing) return { ok: false, error: 'Project not found or not an AV project you can use.', code: 'forbidden' }
+      const asset = await deps.resolveCreativeAsset(parsed.data.assetId, ctx)
+      if (!asset?.assetUrl) {
+        return { ok: false, error: 'Creative registry asset is unavailable or has no reachable file URL.', code: 'source_asset_unavailable' }
+      }
+      const tenantId = existing.project.clientId ?? 'agency'
+      if (asset.clientIds.length > 0 && tenantId !== 'agency' && !asset.clientIds.includes(tenantId)) {
+        return { ok: false, error: 'Creative registry asset is outside the project client scope.', code: 'forbidden' }
+      }
+      const payload: CreativePromotionPendingPayload = {
+        assetId: asset.assetId,
+        projectId: parsed.data.projectId,
+        tenantId,
+        subjectType: parsed.data.subjectType,
+        expectedSourceSystem: asset.source,
+        expectedSourceAssetRef: asset.assetId
+      }
+      const proposalId = await deps.persist(ctx, 'video_source_promote', payload)
+      return {
+        ok: true,
+        data: {
+          proposalId,
+          kind: 'video_source_promote',
+          assetId: asset.assetId,
+          filename: asset.filename,
+          sourceSystem: asset.source,
+          tenantId
+        }
+      }
+    } catch {
+      return { ok: false, error: 'Creative asset promotion proposal failed.', code: 'handler_error' }
     }
   }
 
@@ -489,8 +560,16 @@ export type VideoConfirmOutcome
 export interface VideoConfirmDeps {
   genEnabled: boolean
   reserve: (payload: VideoGenerationPendingPayload, ctx: ToolContext) => Promise<{ ok: boolean, reason?: string, remainingCents?: number, job?: { id: string }, reused?: boolean }>
-  enqueue: (payload: VideoGenerationPendingPayload, jobId: string, ctx: ToolContext) => Promise<void>
+  prepareEnqueue?: (payload: VideoGenerationPendingPayload, ctx: ToolContext) => Promise<unknown>
+  enqueue: (payload: VideoGenerationPendingPayload, jobId: string, ctx: ToolContext, prepared?: unknown) => Promise<void>
   createProject: (payload: VideoProjectPendingPayload, ctx: ToolContext) => Promise<{ projectId: string }>
+  promoteCreativeAsset?: (payload: CreativePromotionPendingPayload, ctx: ToolContext) => Promise<{
+    sourceAssetId: string
+    status: string
+    sourceSystem: string
+    sourceAssetRef: string
+  }>
+  markJobFailed?: (jobId: string, reason: string) => Promise<void>
   execution?: TrustedSupplementalExecutionServices
 }
 
@@ -503,6 +582,12 @@ export async function dispatchVideoConfirm(
   }
   if (!deps.genEnabled) return { ok: false, error: 'Video generation is not enabled over MCP.', code: 'forbidden' }
   try {
+    if (row.tool_name === 'video_source_promote') {
+      if (!deps.promoteCreativeAsset) return { ok: false, error: 'Creative asset promotion is unavailable.', code: 'handler_error' }
+      await deps.execution?.markDispatched()
+      const promoted = await deps.promoteCreativeAsset(row.resolved_payload as CreativePromotionPendingPayload, ctx)
+      return { ok: true, data: promoted }
+    }
     if (row.tool_name === 'video_project_create') {
       await deps.execution?.markDispatched()
       const { projectId } = await deps.createProject(row.resolved_payload as VideoProjectPendingPayload, ctx)
@@ -516,8 +601,27 @@ export async function dispatchVideoConfirm(
     }
     // Lost the race to a concurrent same-key request inside the lock → do not re-enqueue.
     if (!reservation.reused) {
+      let prepared: unknown
+      try {
+        prepared = await deps.prepareEnqueue?.(payload, ctx)
+      } catch (error: unknown) {
+        const detail = error instanceof Error ? error.message : 'source preparation failed'
+        const reason = `Dispatch preparation failed before queue acceptance: ${detail.slice(0, 300)}`
+        await deps.markJobFailed?.(reservation.job.id, reason).catch(() => {})
+        return { ok: false, error: `${reason} Job ${reservation.job.id} was released.`, code: 'handler_error' }
+      }
       await deps.execution?.markDispatched()
-      await deps.enqueue(payload, reservation.job.id, ctx)
+      try {
+        await deps.enqueue(payload, reservation.job.id, ctx, prepared)
+      } catch (error: unknown) {
+        const detail = error instanceof Error ? error.message : 'queue dispatch failed'
+        const reason = `Dispatch failed before queue acceptance: ${detail.slice(0, 300)}`
+        await deps.markJobFailed?.(reservation.job.id, reason).catch(() => {})
+        return {
+          ok: true,
+          data: { jobId: reservation.job.id, status: 'failed', error: reason }
+        }
+      }
     } else {
       await deps.execution?.markDispatched()
     }

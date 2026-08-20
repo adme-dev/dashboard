@@ -18,6 +18,7 @@ import {
   executeWriteConfirm,
   type ClaimedProposal
 } from './writeTools'
+import { persistMcpProposalResult, replayExecutedMcpProposal } from './proposalReplay'
 
 /**
  * Active-owner confirmation over the existing MCP pending-action protocol. The outer resolved-tool
@@ -29,6 +30,9 @@ export async function executeOwnerMcpConfirm(
   ctx: ToolContext,
   execution?: TrustedSupplementalExecutionServices
 ): Promise<ToolResult> {
+  const proposalId = typeof args === 'object' && args && 'proposalId' in args
+    ? String((args as { proposalId?: unknown }).proposalId ?? '')
+    : ''
   const videoConfirmDeps = buildVideoConfirmDeps()
   const outcome = await executeWriteConfirm(args, ctx, {
     enabled: true,
@@ -42,6 +46,8 @@ export async function executeOwnerMcpConfirm(
         RETURNING tool_name, resolved_payload`,
       [proposalId, uid]
     ).catch(() => null),
+    replay: replayExecutedMcpProposal,
+    persistResult: persistMcpProposalResult,
     revertClaim: async (proposalId, uid) => {
       await execute(
         `UPDATE ai_pending_actions SET status='proposed', confirmed_by=NULL, executed_at=NULL
@@ -53,7 +59,7 @@ export async function executeOwnerMcpConfirm(
       const payload = row.tool_name === 'video_generation'
         ? {
             ...(row.resolved_payload as VideoGenerationPendingPayload),
-            idempotencyKey: ctx.godModeExecutionKey
+            idempotencyKey: `mcp:${proposalId}`
           }
         : row.resolved_payload
       return await dispatchVideoConfirm(
