@@ -110,8 +110,7 @@ const marqueePaused = ref(false)
   animation-delay: -10s;
 }
 
-.marquee-track[data-paused='true'],
-.marquee-viewport:focus-within .marquee-track {
+.marquee-track[data-paused='true'] {
   animation-play-state: paused;
 }
 
