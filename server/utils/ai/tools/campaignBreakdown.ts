@@ -33,6 +33,8 @@ export type CampaignEffectiveStatus = 'active' | 'paused' | 'ended' | 'inactive'
 /** One campaign's model-readable delivery and efficiency data for the requested period. */
 export type BreakdownCampaign = {
   campaignId: string | null
+  /** media_spend row UUID (latest-synced row for the campaign) — the id budget-allocation write tools take. */
+  mediaSpendId: string | null
   campaignName: string
   clientName: string
   platform: 'meta' | 'google'
@@ -134,6 +136,7 @@ function mapCampaign(it: any): BreakdownCampaign {
   const endDate = it?.endDate ? String(it.endDate) : null
   return {
     campaignId: it?.campaignId == null ? null : String(it.campaignId),
+    mediaSpendId: it?.mediaSpendId == null ? null : String(it.mediaSpendId),
     campaignName: String(it?.campaignName ?? 'Unknown'),
     clientName: String(it?.clientName ?? 'Unassigned'),
     platform,

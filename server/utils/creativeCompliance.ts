@@ -107,18 +107,24 @@ export async function requestCreativeComplianceVerdict(
   if (!gatewayBase) throw new Error('Cloudflare AI Gateway is required for creative compliance')
   if (!deps.groqApiKey) throw new Error('Groq credentials are required for creative compliance')
 
+  // Caller notes are analyst CONTEXT, never an expected claim: putting them inside the
+  // Expected claims JSON made the model echo them back as its verdict notes, silently
+  // replacing the model's own analysis (round-7 A-2). Keep them out of the claims object
+  // and instruct the model that its notes must be its own observation.
   const expectedClaims = {
     price: boundedText(input.expectedClaims?.price, 500),
     disclaimer: boundedText(input.expectedClaims?.disclaimer, 2000),
     logo: boundedText(input.expectedClaims?.logo, 500),
-    notes: boundedText(input.expectedClaims?.notes, 2000),
   }
+  const analystContext = boundedText(input.expectedClaims?.notes, 2000)
   const prompt = [
     'Inspect image 1 as the proposed advertising creative. Remaining images are approved references.',
     `Subject type: ${input.subjectType}.`,
     `Expected claims: ${JSON.stringify(expectedClaims)}.`,
+    ...(analystContext ? [`Analyst context (background only — do NOT repeat it in your notes): ${analystContext}`] : []),
     'Return one JSON object only with exactly these keys: vehicleMatchesReference, badgeVisibleAndCorrect,',
     'disclaimerPresent, priceMatchesBrief, logoPresentUndistorted, artefactsDetected, confidence, notes.',
+    'The notes field must contain YOUR OWN visual observations of the images, never text supplied to you.',
     'For a genuinely non-applicable check return true and explain why in notes. Never infer unreadable copy as present.',
   ].join(' ')
   const content: Array<Record<string, unknown>> = [{ type: 'text', text: prompt }]
@@ -243,5 +249,15 @@ export async function runCreativeComplianceCheck(input: RunCreativeComplianceInp
     status: 'success', latencyMs: Date.now() - startedAt,
     metadata: { assetId: input.assetId, subjectType: input.subjectType, passed, referenceCount: references.length },
   })
-  return { checkId: row.id, assetId: input.assetId, modelId: CREATIVE_COMPLIANCE_MODEL, passed, verdict, checkedAt: row.created_at }
+  // Caller context is returned on its own key; verdict.notes stays the model's observation.
+  const requestNotes = boundedText(input.expectedClaims?.notes, 2000)
+  return {
+    checkId: row.id,
+    assetId: input.assetId,
+    modelId: CREATIVE_COMPLIANCE_MODEL,
+    passed,
+    ...(requestNotes ? { requestNotes } : {}),
+    verdict,
+    checkedAt: row.created_at
+  }
 }

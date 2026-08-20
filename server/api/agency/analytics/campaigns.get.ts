@@ -281,6 +281,9 @@ export default defineEventHandler(async (event) => {
         budgetIdentityIssues: budgetIdentity.issues,
         budgetPeriod: budgetIdentity.period,
         campaignId: r.campaign_id,
+        // The most-recently-synced media_spend row for this grouped campaign — the
+        // addressable target for budget-allocation writes (MCP round-7 A-1).
+        mediaSpendId: r.media_spend_id ?? null,
         campaignName: r.campaign_name,
         platform: r.platform,
         platformDisplayName: ANALYTICS_PLATFORM_LABELS[r.platform] || r.platform,
