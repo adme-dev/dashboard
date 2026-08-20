@@ -137,7 +137,11 @@ export async function requestCreativeComplianceVerdict(
       messages: [{ role: 'user', content }],
       response_format: { type: 'json_object' },
       temperature: 0,
-      max_completion_tokens: 1200,
+      // qwen3.6-27b is a reasoning model: its thinking tokens count against this
+      // budget, and ~1200 left no room for the JSON verdict (Groq then 400s with
+      // json_validate_failed and an empty failed_generation). Confirmed in the AI
+      // Gateway log for the 2026-08-20 12:35 inspection.
+      max_completion_tokens: 4096,
       stream: false,
     }),
   })
