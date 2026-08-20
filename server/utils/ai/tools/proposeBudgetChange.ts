@@ -5,7 +5,7 @@ import { GROQ_MODELS } from '~~/server/utils/groqClient'
 import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { buildPacingReview, PACING_REVIEW_SELECT_COLUMNS } from '~~/server/utils/socialSpendPacingReview'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, type ToolContext, type ToolResult, isConversationlessProposeContext } from '../toolContext'
 import { proposeAction } from '../pendingActions'
 import { sanityCheckBudgetChange, type SanityResult } from '../budgetSanityCheck'
 
@@ -95,7 +95,7 @@ function pickExactCampaign(cands: PacingCandidate[], name: string): PacingCandid
  */
 export async function proposeBudgetChange(args: Args, ctx: ToolContext, deps: ProposeBudgetChangeDeps = defaultDeps): Promise<ToolResult> {
   if (!roleHasPermission(ctx.userRole, 'MEDIA_BUYING')) return fail('You do not have permission to change budgets.')
-  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare a budget change outside a conversation.')
+  if (!isConversationlessProposeContext(ctx)) return fail('Cannot prepare a budget change outside a conversation.')
   if (!(args.newDailyBudget > 0)) return fail('The new daily budget must be a positive number.')
 
   const matches = pickExactCampaign(await deps.resolveCampaign(args.campaignName, args.clientName, ctx), args.campaignName)

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 import { roleHasPermission } from '~~/server/utils/permissions'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, type ToolContext, type ToolResult, isConversationlessProposeContext } from '../toolContext'
 import { proposeAction } from '../pendingActions'
 import { pickByExactName, type NamedRef } from './createTask'
 
@@ -42,7 +42,7 @@ const defaultDeps: TeamMemoryDeps = {
 export async function proposeTeamMemory(args: Args, ctx: ToolContext, deps: TeamMemoryDeps = defaultDeps): Promise<ToolResult> {
   // Curation gate: only management can promote knowledge to the shared department scope.
   if (!roleHasPermission(ctx.userRole, 'MANAGEMENT')) return fail('Only managers/leads can add to the team\'s shared knowledge.')
-  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare this action outside a conversation.')
+  if (!isConversationlessProposeContext(ctx)) return fail('Cannot prepare this action outside a conversation.')
   const content = args.content.trim()
   if (!content) return fail('What should the team remember?')
 

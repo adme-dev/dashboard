@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 import { roleHasPermission } from '~~/server/utils/permissions'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, type ToolContext, type ToolResult, isConversationlessProposeContext } from '../toolContext'
 import { proposeAction } from '../pendingActions'
 import { pickByExactName, type NamedRef } from './createTask'
 
@@ -46,7 +46,7 @@ export async function proposeBudgetAlert(args: Args, ctx: ToolContext, deps: Bud
   // The endpoint is requireRole(['owner','admin']); mirror it here so we never prepare a proposal the
   // proposer can't confirm. (Belt-and-suspenders: the registry already filters by requiredPermission.)
   if (!roleHasPermission(ctx.userRole, 'ADMIN')) return fail('You do not have permission to create budget alerts.')
-  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare a budget alert outside a conversation.')
+  if (!isConversationlessProposeContext(ctx)) return fail('Cannot prepare a budget alert outside a conversation.')
   const title = args.title?.trim()
   if (!title) return fail('A budget alert needs a title.')
 

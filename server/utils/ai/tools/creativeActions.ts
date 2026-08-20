@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 import { isReadOnlyRole } from '~~/server/utils/permissions'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, escapeLike, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, capWithMore, type ToolContext, type ToolResult, isConversationlessProposeContext } from '../toolContext'
 import { proposeAction } from '../pendingActions'
 import { pickByExactName, type NamedRef } from './createTask'
 
@@ -73,7 +73,7 @@ const proofDeps: ProofStatusDeps = {
 
 export async function proposeProofStatus(args: StatusArgs, ctx: ToolContext, deps: ProofStatusDeps = proofDeps): Promise<ToolResult> {
   if (isReadOnlyRole(ctx.userRole)) return fail('You do not have permission to change a proof\'s status.')
-  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare this action outside a conversation.')
+  if (!isConversationlessProposeContext(ctx)) return fail('Cannot prepare this action outside a conversation.')
   const matches = pickByExactName(await deps.resolveProof(args.proofName), args.proofName)
   if (matches.length === 0) return fail(`No proof matching "${args.proofName}".`)
   if (matches.length > 1) return ok({ disambiguation: { field: 'proofName', options: matches } })

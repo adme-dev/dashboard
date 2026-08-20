@@ -78,3 +78,14 @@ export function escapeLike(s: string): string {
 export function capWithMore<T>(rows: T[], n: number): { items: T[], more: number } {
   return { items: rows.slice(0, n), more: Math.max(0, rows.length - n) }
 }
+
+/**
+ * Propose handlers may run without a conversation on exactly two transports: the ordinary
+ * MCP 2c path (source 'mcp') and the god-mode write coordinator, which re-invokes the
+ * handler with source 'god_mode_preparation' so the hidden preparation binds to its
+ * ledger. Round-7 regression: guards checking only ctx.source !== 'mcp' rejected every
+ * registry propose on the god-mode MCP path with a null conversationId.
+ */
+export function isConversationlessProposeContext(ctx: { conversationId?: string | null, source?: string }): boolean {
+  return Boolean(ctx.conversationId) || ctx.source === 'mcp' || ctx.source === 'god_mode_preparation'
+}

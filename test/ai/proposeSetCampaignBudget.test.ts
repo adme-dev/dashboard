@@ -166,3 +166,24 @@ describe('executors', () => {
     expect(result.resultRef).toHaveLength(36)
   })
 })
+
+describe('god-mode preparation context (round-7 regression)', () => {
+  it('accepts source god_mode_preparation with a null conversationId — the god-mode MCP write path', async () => {
+    const godCtx: ToolContext = { userId: 'u1', userRole: 'owner', source: 'god_mode_preparation', event: {} as never }
+    const res = await proposeSetCampaignBudget(
+      { mediaSpendId: ID_A, budgetAllocated: 3000 }, godCtx,
+      { loadTargets: async () => [row({})], propose: async () => 'prop-god' }
+    )
+    expect(res.ok).toBe(true)
+    expect((res as { data: { proposalId: string } }).data.proposalId).toBe('prop-god')
+  })
+
+  it('still refuses a chat context without a conversation', async () => {
+    const chatCtx: ToolContext = { userId: 'u1', userRole: 'owner', source: 'chat', event: {} as never }
+    const res = await proposeSetCampaignBudget(
+      { mediaSpendId: ID_A, budgetAllocated: 3000 }, chatCtx,
+      { loadTargets: async () => [row({})], propose: async () => 'never' }
+    )
+    expect(res.ok).toBe(false)
+  })
+})

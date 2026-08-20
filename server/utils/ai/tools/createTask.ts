@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 import { isReadOnlyRole } from '~~/server/utils/permissions'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, type ToolContext, type ToolResult, isConversationlessProposeContext } from '../toolContext'
 import { proposeAction } from '../pendingActions'
 
 const params = z.object({
@@ -77,7 +77,7 @@ const defaultDeps: CreateTaskDeps = {
  */
 export async function proposeCreateTask(args: Args, ctx: ToolContext, deps: CreateTaskDeps = defaultDeps): Promise<ToolResult> {
   if (isReadOnlyRole(ctx.userRole)) return fail('You do not have permission to create tasks.')
-  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare a task outside a conversation.')
+  if (!isConversationlessProposeContext(ctx)) return fail('Cannot prepare a task outside a conversation.')
   if (!args.title?.trim()) return fail('A task needs a title.')
 
   // Department/board is REQUIRED to create a task — resolve it or ask. An exact board name wins over

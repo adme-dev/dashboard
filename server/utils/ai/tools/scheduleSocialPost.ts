@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 import { isReadOnlyRole } from '~~/server/utils/permissions'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, type ToolContext, type ToolResult, isConversationlessProposeContext } from '../toolContext'
 import { proposeAction } from '../pendingActions'
 import { pickByExactName, type NamedRef } from './createTask'
 import { productionReadyPublishPlatformsError } from '~~/server/utils/socialPublishing/platformReadiness'
@@ -49,7 +49,7 @@ const defaultDeps: ScheduleSocialPostDeps = {
  */
 export async function proposeScheduleSocialPost(args: Args, ctx: ToolContext, deps: ScheduleSocialPostDeps = defaultDeps): Promise<ToolResult> {
   if (isReadOnlyRole(ctx.userRole)) return fail('You do not have permission to schedule posts.')
-  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare a post outside a conversation.')
+  if (!isConversationlessProposeContext(ctx)) return fail('Cannot prepare a post outside a conversation.')
   const content = args.content?.trim()
   if (!content) return fail('A post needs some content.')
   const platformError = productionReadyPublishPlatformsError(args.platforms ?? [])

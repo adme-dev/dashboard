@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { isReadOnlyRole } from '~~/server/utils/permissions'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, type ToolContext, type ToolResult, isConversationlessProposeContext } from '../toolContext'
 import { proposeAction } from '../pendingActions'
 
 const params = z.object({
@@ -29,7 +29,7 @@ const defaultDeps: KnowledgeArticleDeps = {
  */
 export async function proposeKnowledgeArticle(args: Args, ctx: ToolContext, deps: KnowledgeArticleDeps = defaultDeps): Promise<ToolResult> {
   if (isReadOnlyRole(ctx.userRole)) return fail('You do not have permission to contribute knowledge articles.')
-  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare a knowledge article outside a conversation.')
+  if (!isConversationlessProposeContext(ctx)) return fail('Cannot prepare a knowledge article outside a conversation.')
   const title = args.title?.trim()
   const content = args.content?.trim()
   if (!title) return fail('A knowledge article needs a title.')

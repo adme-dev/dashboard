@@ -3,7 +3,7 @@ import { queryRows } from '~~/server/utils/db'
 import { roleHasPermission } from '~~/server/utils/permissions'
 import { computeCampaignBudgetPacing } from '~~/server/utils/budgetPacing'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, type ToolContext, type ToolResult, isConversationlessProposeContext } from '../toolContext'
 import { proposeAction } from '../pendingActions'
 
 /**
@@ -100,7 +100,7 @@ export async function proposeSetCampaignBudget(
   args: SingleArgs, ctx: ToolContext, deps: SetCampaignBudgetDeps = defaultDeps
 ): Promise<ToolResult> {
   if (!roleHasPermission(ctx.userRole, 'MEDIA_BUYING')) return fail('You do not have permission to set budgets.')
-  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare a budget allocation outside a conversation.')
+  if (!isConversationlessProposeContext(ctx)) return fail('Cannot prepare a budget allocation outside a conversation.')
 
   const [row] = await deps.loadTargets([args.mediaSpendId])
   if (!row) return fail('No campaign spend row matches that mediaSpendId.', 'not_found')
@@ -121,7 +121,7 @@ export async function proposeBulkSetCampaignBudgets(
   args: BulkArgs, ctx: ToolContext, deps: SetCampaignBudgetDeps = defaultDeps
 ): Promise<ToolResult> {
   if (!roleHasPermission(ctx.userRole, 'MEDIA_BUYING')) return fail('You do not have permission to set budgets.')
-  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare a budget allocation outside a conversation.')
+  if (!isConversationlessProposeContext(ctx)) return fail('Cannot prepare a budget allocation outside a conversation.')
 
   const requestedIds = args.allocations.map(a => a.mediaSpendId)
   const duplicateIds = requestedIds.filter((id, index) => requestedIds.indexOf(id) !== index)

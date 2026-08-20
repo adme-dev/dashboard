@@ -87,7 +87,7 @@ describe('get_capabilities', () => {
     expect(tools).toContainEqual({ name: 'propose_set_campaign_budget', mode: 'propose_only' })
     expect(tools).toContainEqual({ name: 'propose_bulk_set_campaign_budgets', mode: 'propose_only' })
     expect((result as any).data.servedCatalog).toEqual({
-      release: '2026-08-20.7', toolCount: 76, projectionAuthority: 'shared_with_tools_list',
+      release: '2026-08-20.8', toolCount: 76, projectionAuthority: 'shared_with_tools_list',
     })
     expect((result as any).data.degraded).toBeUndefined()
   })
