@@ -93,6 +93,10 @@ const allowedTargets: Array<{ method: DelegatedMethod, path: RegExp }> = [
   { method: 'POST', path: new RegExp(`^/api/agency/briefs/${boundedId}/convert$`) },
   { method: 'POST', path: /^\/api\/agency\/social\/publishing\/posts$/ },
   { method: 'POST', path: new RegExp(`^/api/agency/social/spend/${boundedId}/actions/plan$`) },
+  // Budget ALLOCATION writes (media_spend.budget_allocated): the audited PATCH endpoints
+  // the propose_set_campaign_budget / propose_bulk_set_campaign_budgets executors call.
+  { method: 'PATCH', path: new RegExp(`^/api/agency/social/spend/${boundedId}$`) },
+  { method: 'PATCH', path: /^\/api\/agency\/social\/spend\/bulk-budget$/ },
   { method: 'POST', path: /^\/api\/agency\/budget-alerts$/ },
   { method: 'POST', path: new RegExp(`^/api/agency/expenses/${boundedId}/approve$`) },
   { method: 'PUT', path: new RegExp(`^/api/agency/expenses/${boundedId}$`) },

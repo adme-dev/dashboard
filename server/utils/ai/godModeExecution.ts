@@ -573,8 +573,9 @@ function createGodModeExecutionCore(deps: GodModeExecutionDependencies) {
       if (!proposed.ok) return await failBeforeDispatch('proposal_rejected', proposed.error)
       const data = proposed.data as { proposalId?: unknown }
       if (typeof data?.proposalId !== 'string') {
+        const outcome = (data as { dryRun?: unknown })?.dryRun === true ? 'dry_run' : 'no_mutation'
         await deps.transaction(async db => {
-          await deps.appendAudit(auditEvent(auditIdentity, 'succeeded', 'no_mutation'), db)
+          await deps.appendAudit(auditEvent(auditIdentity, 'succeeded', outcome), db)
           await deps.setExecutionState({ actorUserId: user.id, channel, idempotencyKey: request.idempotencyKey, state: 'succeeded' }, db)
         })
         return proposed

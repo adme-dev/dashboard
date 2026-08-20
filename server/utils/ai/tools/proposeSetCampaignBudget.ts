@@ -25,6 +25,7 @@ const singleParams = z.object({
   rolling: z.boolean().optional(),
   commissionRate: z.number().min(0).max(100).optional(),
   note: z.string().max(500).optional(),
+  dryRun: z.boolean().optional(),
 })
 type SingleArgs = z.infer<typeof singleParams>
 
@@ -36,6 +37,7 @@ const bulkParams = z.object({
   rolling: z.boolean().optional(),
   commissionRate: z.number().min(0).max(100).optional(),
   note: z.string().max(500).optional(),
+  dryRun: z.boolean().optional(),
 })
 type BulkArgs = z.infer<typeof bulkParams>
 
@@ -113,6 +115,9 @@ export async function proposeSetCampaignBudget(
     commissionRate: args.commissionRate ?? null,
     note: args.note?.trim() || null,
   }
+  // dryRun: the full reviewable payload, nothing persisted — restores the preview that
+  // owner god-mode (which direct-executes registry writes) otherwise removes.
+  if (args.dryRun) return ok({ dryRun: true as const, ...resolved })
   const proposalId = await deps.propose(ctx, 'propose_set_campaign_budget', resolved)
   return ok({ proposalId, ...resolved })
 }
@@ -151,6 +156,7 @@ export async function proposeBulkSetCampaignBudgets(
     commissionRate: args.commissionRate ?? null,
     note: args.note?.trim() || null,
   }
+  if (args.dryRun) return ok({ dryRun: true as const, ...resolved })
   const proposalId = await deps.propose(ctx, 'propose_bulk_set_campaign_budgets', resolved)
   return ok({ proposalId, ...resolved })
 }
@@ -161,7 +167,8 @@ export const proposeSetCampaignBudgetTool: AiTool<SingleArgs> = {
     + 'denominator), NOT its live platform daily budget (that is propose_budget_change). Returns a proposal showing '
     + 'client, campaign, current vs proposed allocation, MTD spend and the pacing status the campaign would '
     + 'immediately classify as; call confirm_action(proposalId) to apply. An existing allocation is overwritten — '
-    + 'currentBudgetAllocated in the proposal shows what. Never changes anything on the ad platform.',
+    + 'currentBudgetAllocated in the proposal shows what. Pass dryRun:true to preview the full payload with '
+    + 'NO write and NO proposal, regardless of authority. Never changes anything on the ad platform.',
   parameters: singleParams,
   mutates: true,
   riskTier: 'confirm',
@@ -174,7 +181,8 @@ export const proposeBulkSetCampaignBudgetsTool: AiTool<BulkArgs> = {
   description: 'PROPOSE setting MONTHLY ALLOCATED budgets (media_spend.budget_allocated) for up to 100 campaigns in '
     + 'one reviewable proposal, with per-row amounts. Returns the FULL per-row table (client, campaign, current vs '
     + 'proposed, MTD spend, implied pacing status), totals, and which rows overwrite an existing allocation. '
-    + 'All-or-nothing: any unresolvable row refuses the whole proposal. Requires confirm_action with ack:true. '
+    + 'All-or-nothing: any unresolvable row refuses the whole proposal. Pass dryRun:true to preview the full table '
+    + 'with NO write and NO proposal, regardless of authority. Requires confirm_action with ack:true. '
     + 'Never changes anything on the ad platform.',
   parameters: bulkParams,
   mutates: true,

@@ -83,11 +83,25 @@ describe('get_capabilities', () => {
     const tools = (result as any).data.tools as Array<{ name: string, mode: string }>
     expect(tools).toHaveLength(76)
     expect(tools).toContainEqual({ name: 'list_video_source_assets', mode: 'read' })
-    // W-1/W-2: mode derivation is by propose_ prefix — verify, don't assume.
-    expect(tools).toContainEqual({ name: 'propose_set_campaign_budget', mode: 'propose_only' })
-    expect(tools).toContainEqual({ name: 'propose_bulk_set_campaign_budgets', mode: 'propose_only' })
+    // W-1/W-2 + G-1a: mode stays the declared class; effectiveMode tells the god-mode
+    // caller these registry writes will NOT stop at a proposal.
+    expect(tools).toContainEqual(expect.objectContaining({
+      name: 'propose_set_campaign_budget',
+      mode: 'propose_only',
+      effectiveMode: 'direct_execute'
+    }))
+    expect(tools).toContainEqual(expect.objectContaining({
+      name: 'propose_bulk_set_campaign_budgets',
+      mode: 'propose_only',
+      effectiveMode: 'direct_execute'
+    }))
+    // Supplemental video proposes genuinely stop at a proposal — no effectiveMode override.
+    const videoPropose = tools.find(tool => tool.name === 'propose_video_generation') as Record<string, unknown>
+    expect(videoPropose.effectiveMode).toBeUndefined()
+    expect((result as any).data.governance.godModeBypass).toContain('direct-execute')
+    expect((result as any).data.dataSync.adSpend.cron).toBe('0 20 * * *')
     expect((result as any).data.servedCatalog).toEqual({
-      release: '2026-08-20.8', toolCount: 76, projectionAuthority: 'shared_with_tools_list',
+      release: '2026-08-20.9', toolCount: 76, projectionAuthority: 'shared_with_tools_list',
     })
     expect((result as any).data.degraded).toBeUndefined()
   })

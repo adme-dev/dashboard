@@ -133,6 +133,22 @@ export async function inspectGodModeActions(
   )
 }
 
+
+/** G-4: when data next moves. The ad-spend sync runs from the pages-cron Worker. */
+export function describeDataSyncSchedule(now: Date = new Date()) {
+  const cron = '0 20 * * *'
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 20, 0, 0))
+  if (next.getTime() <= now.getTime()) next.setUTCDate(next.getUTCDate() + 1)
+  return {
+    adSpend: {
+      cron,
+      timezone: 'UTC',
+      note: '06:00 Melbourne — moved from 06:00 UTC so the 9am budget check reads same-day data',
+      nextRunAt: next.toISOString()
+    }
+  }
+}
+
 const minimalInspection: CapabilityInspection = {
   tools: [{ name: 'get_capabilities', mode: 'read' }],
   suites: {
@@ -173,9 +189,10 @@ const defaultDeps: CapabilitiesDeps = {
     }
     // Capabilities and tools/list share one projection authority. Building the complete God-mode
     // execution map also asserts that every advertised name has exactly one schema-matched handler.
-    const executableNames = new Set(
-      registryModule.resolveGodModeMcpExecutions(projectionContext).map(execution => execution.name)
+    const executionsByName = new Map(
+      registryModule.resolveGodModeMcpExecutions(projectionContext).map(execution => [execution.name, execution])
     )
+    const executableNames = new Set(executionsByName.keys())
     const manifests = ctx.godModeExecutionKey
       ? registryModule.projectGodModeTools(projectionContext)
       : registryModule.projectRegisteredMcpTools(projectionContext)
@@ -200,7 +217,25 @@ const defaultDeps: CapabilitiesDeps = {
           : manifest.name.startsWith('propose_') || manifest.name === 'create_video_project'
             ? 'propose_only'
             : 'read'
-      return [manifest.name, { name: manifest.name, mode }]
+      // G-1a: report what will ACTUALLY happen for this caller. Under owner god-mode,
+      // catalog-registry writes direct-execute (confirmation is a bypassed control) —
+      // an agent must never read propose_only and get a live write. Supplemental
+      // suites (video/banner) genuinely stop at a proposal and keep their mode.
+      const execution = executionsByName.get(manifest.name)
+      const directExecutes = Boolean(ctx.godModeExecutionKey)
+        && mode === 'propose_only'
+        && execution?.kind === 'catalog'
+        && execution.tool.mutates === true
+      return [manifest.name, {
+        name: manifest.name,
+        mode,
+        ...(directExecutes
+          ? {
+              effectiveMode: 'direct_execute' as const,
+              effectiveModeReason: 'owner god-mode bypasses confirmation for registry writes; pass dryRun:true (where supported) to preview without writing'
+            }
+          : {})
+      }]
     })).values()]
     return {
       tools: unique,
@@ -270,6 +305,9 @@ export async function getCapabilities(args: Args, ctx: ToolContext, deps: Capabi
     creationSuites: inspection.suites,
     selectionPolicy: 'capability_driven',
     governance: {
+      ...(ctx.godModeExecutionKey
+        ? { godModeBypass: 'an owner-authority session direct-executes registry writes; propose_only tools with effectiveMode direct_execute do not stop at a proposal for this identity' }
+        : {}),
       read: 'executes immediately',
       inspection: 'executes immediately for analysis and evidence capture; does not create a media asset',
       propose_only: 'creates a reviewable proposal without executing it',
@@ -288,6 +326,7 @@ export async function getCapabilities(args: Args, ctx: ToolContext, deps: Capabi
       inspection: { maxCalls: MCP_INSPECTION_RATE_MAX, windowMinutes: MCP_INSPECTION_RATE_WINDOW_MIN },
     },
     ...(generationSpend ? { generationSpend } : {}),
+    dataSync: describeDataSyncSchedule(),
     ...(actions ? { actionLog: { items: actions, count: actions.length } } : {}),
     ...(unavailableSections.length
       ? {
