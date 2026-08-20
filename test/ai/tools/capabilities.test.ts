@@ -81,7 +81,7 @@ describe('get_capabilities', () => {
 
     expect(result.ok).toBe(true)
     const tools = (result as any).data.tools as Array<{ name: string, mode: string }>
-    expect(tools).toHaveLength(81)
+    expect(tools).toHaveLength(82)
     expect(tools).toContainEqual({ name: 'list_video_source_assets', mode: 'read' })
     // W-1/W-2 + G-1a: mode stays the declared class; effectiveMode tells the god-mode
     // caller these registry writes will NOT stop at a proposal.
@@ -118,7 +118,7 @@ describe('get_capabilities', () => {
     expect((result as any).data.governance.godModeBypass).toContain('direct-execute')
     expect((result as any).data.dataSync.adSpend.cron).toBe('0 20 * * *')
     expect((result as any).data.servedCatalog).toEqual({
-      release: '2026-08-20.10', toolCount: 81, projectionAuthority: 'shared_with_tools_list',
+      release: '2026-08-20.11', toolCount: 82, projectionAuthority: 'shared_with_tools_list',
     })
     expect((result as any).data.degraded).toBeUndefined()
   })

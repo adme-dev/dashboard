@@ -16,6 +16,7 @@ import {
 } from '~~/server/utils/googleCredentialProfiles'
 import type { H3Event } from 'h3'
 import { sanitizeSpendSyncFailureReason } from '~~/server/utils/spendSyncFailureSanitizer'
+import { applySpendCoverageGate, recordSourceCampaignCount } from '~~/server/utils/spendSyncJobs'
 
 // ─── Meta Spend Sync ────────────────────────────────────────────
 
@@ -34,7 +35,13 @@ interface AccountMapping {
   xero_client_name: string
   xero_client_code: string | null
 }
-type SyncResult = { synced: number; totalSpend: number; failures: Array<{ account: string; reason: string }> }
+type SyncResult = {
+  synced: number
+  totalSpend: number
+  failures: Array<{ account: string; reason: string }>
+  /** G-2: per-source coverage warnings (any decrease vs the previous successful run). */
+  coverageWarnings?: string[]
+}
 
 /**
  * Sync a single Meta ad account. This is the unit of work for the per-account
@@ -122,6 +129,22 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
       failures.push({ account: conn.account_name, reason: 'Empty insights for an account with prior spend — likely access-tier/egress block, not a genuine $0' })
     }
     if (!campaigns || campaigns.length === 0) return { synced: 0, totalSpend: 0, failures }
+  }
+
+  // G-2 coverage gate: compare this source's RETURNED row count with its previous successful run
+  // BEFORE persisting anything. A >5% shrink halts the persist step for this source — the existing
+  // rows stay untouched — and surfaces a structured failure instead of silently narrowing coverage.
+  const coverageWarnings: string[] = []
+  const coverage = await applySpendCoverageGate({
+    platform: 'meta',
+    sourceKey: conn.id,
+    sourceLabel: conn.account_name,
+    currentCount: campaigns.length
+  })
+  if (coverage.warning) coverageWarnings.push(`${conn.account_name}: ${coverage.warning}`)
+  if (coverage.halted) {
+    failures.push({ account: conn.account_name, reason: sanitizeSpendSyncFailureReason(coverage.warning || 'coverage halt') })
+    return { synced: 0, totalSpend: 0, failures, coverageWarnings }
   }
 
   // Enrich with campaign-level metadata (status, end date, bid strategy, budget type).
@@ -250,7 +273,10 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
     )
   }
 
-  return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100, failures }
+  // Persist succeeded (not halted) → this run becomes the next coverage baseline for the source.
+  await recordSourceCampaignCount('meta', conn.id, period, campaigns.length)
+
+  return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100, failures, coverageWarnings }
 }
 
 /** Sync one Meta account by connection id — the per-account queue chunk entry point. */
@@ -476,6 +502,21 @@ async function processGoogleConnection(
     return { synced, totalSpend: Math.round(totalSpend * 100) / 100, failures }
   }
 
+  // G-2 coverage gate: a >5% shrink vs this source's previous successful run halts the persist
+  // step (existing rows untouched); any decrease is surfaced as a warning. See spendSyncJobs.ts.
+  const coverageWarnings: string[] = []
+  const coverage = await applySpendCoverageGate({
+    platform: 'google',
+    sourceKey: conn.id,
+    sourceLabel: conn.account_name,
+    currentCount: campaigns.length
+  })
+  if (coverage.warning) coverageWarnings.push(`${conn.account_name}: ${coverage.warning}`)
+  if (coverage.halted) {
+    failures.push({ account: conn.account_name, reason: coverage.warning || 'coverage halt' })
+    return { synced, totalSpend: Math.round(totalSpend * 100) / 100, failures, coverageWarnings }
+  }
+
   for (const campaign of campaigns) {
     if (campaign.spend === 0) continue
     totalSpend += campaign.spend
@@ -563,7 +604,10 @@ async function processGoogleConnection(
     console.error(`[GoogleSync] Daily spend failed for ${conn.account_name}:`, err.message)
   }
 
-  return { synced, totalSpend: Math.round(totalSpend * 100) / 100, failures }
+  // Persist succeeded (not halted) → this run becomes the next coverage baseline for the source.
+  await recordSourceCampaignCount('google', conn.id, period, campaigns.length)
+
+  return { synced, totalSpend: Math.round(totalSpend * 100) / 100, failures, coverageWarnings }
 }
 
 export async function syncGoogleSpend(month: number, year: number): Promise<{ synced: number; totalSpend: number; failures: Array<{ account: string; reason: string }> }> {

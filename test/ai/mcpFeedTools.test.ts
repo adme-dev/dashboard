@@ -8,6 +8,8 @@ import {
   executeFeedPropose,
   dispatchFeedConfirm,
   shapeByCondition,
+  shapeExcluded,
+  shapeAdProductSetBinding,
   meetsMinimum,
   summarizeProductSetFilter,
   evaluateProductSetFilter,
@@ -39,6 +41,7 @@ const attachPreview = {
   sourceFeedName: 'PDS Facebook',
   proposedScheduleUrl: 'https://x/api/feeds/f/serve',
   currentScheduleUrl: null,
+  proposedSchedule: { interval: 'HOURLY' as const, hour: 0, timezone: 'Australia/Melbourne' },
   feedDisposition: 'created' as const,
   existingProductFeedId: null,
   itemCount: 22
@@ -71,7 +74,7 @@ function deps(overrides: Partial<FeedProposeDeps> = {}): FeedProposeDeps {
 
 describe('feed suite descriptors + projection', () => {
   it('exposes exactly the specified tool names', () => {
-    expect(feedReadTools.map(t => t.name)).toEqual(['get_inventory_feed_health', 'list_product_sets'])
+    expect(feedReadTools.map(t => t.name)).toEqual(['get_inventory_feed_health', 'list_product_sets', 'get_ad_product_set_bindings'])
     expect(feedProposeTools.map(t => t.name)).toEqual([
       'propose_attach_catalog_feed', 'propose_refresh_catalog_feed', 'propose_set_product_set_rules'
     ])
@@ -87,7 +90,7 @@ describe('feed suite descriptors + projection', () => {
   it('projects the 5 feed tools plus confirm_action when enabled', () => {
     const names = projectFeedTools('admin', true).map(t => t.name)
     expect(names).toEqual([
-      'get_inventory_feed_health', 'list_product_sets',
+      'get_inventory_feed_health', 'list_product_sets', 'get_ad_product_set_bindings',
       'propose_attach_catalog_feed', 'propose_refresh_catalog_feed', 'propose_set_product_set_rules',
       'confirm_action'
     ])
@@ -119,6 +122,28 @@ describe('shaping helpers', () => {
     expect(meetsMinimum(1)).toBe(false)
     expect(meetsMinimum(2)).toBe(true)
     expect(meetsMinimum(null)).toBe(false)
+  })
+
+  it('shapes the excluded breakdown from readiness issue groups, with honest nulls when absent', () => {
+    expect(shapeExcluded({
+      invalidTotal: 12,
+      issueGroups: [
+        { key: 'url', count: 11 },
+        { key: 'price', count: 0 },
+        { key: 'condition', count: 1 }
+      ]
+    })).toEqual({ invalidListingUrl: 11, missingPrice: 0, missingImage: 0, other: 1, totalExcluded: 12 })
+    expect(shapeExcluded(null)).toEqual({ invalidListingUrl: null, missingPrice: null, missingImage: null, other: null, totalExcluded: null })
+    expect(shapeExcluded({})).toEqual({ invalidListingUrl: null, missingPrice: null, missingImage: null, other: null, totalExcluded: null })
+  })
+
+  it('shapes ad product-set bindings — creative wins over adset, no set means bindingIntact false', () => {
+    expect(shapeAdProductSetBinding({ id: 'a1', name: 'Base', effective_status: 'ACTIVE', creativeProductSetId: 'ps-1', adsetProductSetId: 'ps-2' }))
+      .toEqual({ adId: 'a1', adName: 'Base', effectiveStatus: 'ACTIVE', productSetId: 'ps-1', bindingIntact: true })
+    expect(shapeAdProductSetBinding({ id: 'a2', name: 'Rmk', effective_status: 'ACTIVE', creativeProductSetId: null, adsetProductSetId: 'ps-2' }))
+      .toMatchObject({ productSetId: 'ps-2', bindingIntact: true })
+    expect(shapeAdProductSetBinding({ id: 'a3', name: 'Detached', effective_status: 'ACTIVE', creativeProductSetId: null, adsetProductSetId: null }))
+      .toMatchObject({ productSetId: null, bindingIntact: false })
   })
 
   it('summarizes a JSON filter string', () => {
@@ -170,6 +195,29 @@ describe('executeFeedPropose — dryRun writes nothing (P-1)', () => {
     expect(res).toMatchObject({ ok: true, data: { dryRun: true, feedDisposition: 'created', proposedScheduleUrl: attachPreview.proposedScheduleUrl, currentScheduleUrl: null, itemCount: 22 } })
     expect(d.persist).not.toHaveBeenCalled()
     expect(d.refresh).not.toHaveBeenCalled()
+  })
+
+  it('attach threads the F-6 schedule to the preview resolver and shows it in the dry run', async () => {
+    const d = deps()
+    const schedule = { interval: 'HOURLY' as const }
+    const res = await executeFeedPropose('propose_attach_catalog_feed', { ...attachArgs, schedule, dryRun: true }, ctx('admin'), d)
+    expect(res).toMatchObject({ ok: true, data: { dryRun: true, proposedSchedule: { interval: 'HOURLY' } } })
+    expect(d.resolveAttachPreview).toHaveBeenCalledWith(expect.objectContaining({ schedule }), expect.anything())
+    expect(d.persist).not.toHaveBeenCalled()
+    // Invalid interval refuses.
+    expect(await executeFeedPropose('propose_attach_catalog_feed', { ...attachArgs, schedule: { interval: 'WEEKLY' } }, ctx('admin'), d))
+      .toMatchObject({ ok: false, code: 'bad_args' })
+  })
+
+  it('set-rules accepts the optional F-7 verifyCampaignId and stores it in the proposal args', async () => {
+    const d = deps()
+    const res = await executeFeedPropose('propose_set_product_set_rules', { ...rulesArgs, verifyCampaignId: '120234010879480224' }, ctx('admin'), d)
+    expect(res).toMatchObject({ ok: true, data: { requiresAck: true } })
+    expect(d.persist).toHaveBeenCalledWith(
+      expect.anything(),
+      'feed_set_product_set_rules',
+      expect.objectContaining({ args: expect.objectContaining({ verifyCampaignId: '120234010879480224' }) })
+    )
   })
 
   it('attach without dryRun persists a proposal and flags requiresAck', async () => {

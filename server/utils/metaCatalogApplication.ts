@@ -11,6 +11,7 @@ import {
   type MetaCatalogConnectionAuthority,
   type MetaCatalogEvidenceInput,
   type MetaCatalogFeedBindingSummary,
+  type MetaCatalogFeedScheduleInput,
   type MetaCatalogProvider
 } from '~~/server/utils/metaCatalogPlatform'
 import { createMetaCatalogProvider } from '~~/server/utils/metaCatalogProvider'
@@ -106,6 +107,7 @@ export async function attachMetaCatalogFeedForClient(
     catalogId: string
     sourceFeedId: string
     actorId: string
+    schedule?: MetaCatalogFeedScheduleInput
   },
   overrides?: MetaCatalogApplicationDeps
 ) {
@@ -126,7 +128,8 @@ export async function attachMetaCatalogFeedForClient(
     sourceFeedName: sourceFeed.name,
     allowedSourceFeedIds: context.sourceFeeds.map(feed => feed.id),
     feedBaseUrl: baseUrl,
-    actorId: input.actorId
+    actorId: input.actorId,
+    schedule: input.schedule
   }, {
     ...deps.createProvider({ accessToken: context.connection.accessToken }),
     persistEvidence: deps.persistEvidence

@@ -157,6 +157,179 @@ async function alertSpendSyncCoverageDrop(
   }
 }
 
+// ─── G-2: coverage-delta gate (pre-persist) ─────────────────────────────────
+// 19 Aug incident: a Meta resync moved campaign coverage 70→88 — 18 campaigns
+// (including the 3 largest spenders) had been silently missing, and nothing
+// flagged because every present row was fresh. The gate compares each source's
+// RETURNED row count against its previous successful run BEFORE persisting:
+// any decrease is a warning; a decrease beyond the halt threshold refuses the
+// persist step entirely so a shrunken result set can never overwrite state.
+
+export const SPEND_SYNC_COVERAGE_HALT_PCT = 5
+
+export interface SpendCoverageGate {
+  previousCount: number | null
+  currentCount: number
+  delta: number | null
+  deltaPct: number | null
+  action: 'proceed' | 'warn' | 'halt'
+}
+
+/** Pure threshold logic. No previous baseline (or a zero one) always proceeds. */
+export function evaluateSpendCoverageGate(previousCount: number | null, currentCount: number): SpendCoverageGate {
+  if (previousCount == null || previousCount <= 0) {
+    return { previousCount: previousCount ?? null, currentCount, delta: null, deltaPct: null, action: 'proceed' }
+  }
+  const delta = currentCount - previousCount
+  const deltaPct = Math.round((delta / previousCount) * 10_000) / 100
+  if (delta >= 0) return { previousCount, currentCount, delta, deltaPct, action: 'proceed' }
+  return {
+    previousCount,
+    currentCount,
+    delta,
+    deltaPct,
+    action: -deltaPct > SPEND_SYNC_COVERAGE_HALT_PCT ? 'halt' : 'warn'
+  }
+}
+
+export async function getLastSourceCampaignCount(platform: string, sourceKey: string): Promise<number | null> {
+  const row = await queryOne<{ campaign_count: number }>(
+    `SELECT campaign_count FROM spend_sync_source_counts WHERE platform = $1 AND source_key = $2`,
+    [platform, sourceKey]
+  ).catch(() => null)
+  return row ? Number(row.campaign_count) : null
+}
+
+export async function recordSourceCampaignCount(
+  platform: string,
+  sourceKey: string,
+  period: string,
+  campaignCount: number
+): Promise<void> {
+  await execute(
+    `INSERT INTO spend_sync_source_counts (platform, source_key, period, campaign_count, recorded_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (platform, source_key)
+     DO UPDATE SET period = $3, campaign_count = $4, recorded_at = NOW()`,
+    [platform, sourceKey, period, campaignCount]
+  ).catch(error => console.error('[SpendSync] failed to record source campaign count:', error))
+}
+
+export interface SpendCoverageGateDeps {
+  loadPrevious?: typeof getLastSourceCampaignCount
+  notifyHalt?: (input: { platform: string, sourceLabel: string, gate: SpendCoverageGate }) => Promise<void>
+}
+
+async function notifyCoverageHalt(input: { platform: string, sourceLabel: string, gate: SpendCoverageGate }): Promise<void> {
+  const ownerIds = await activeOwnerIds()
+  try {
+    const { createBulkNotifications } = await import('./notifications')
+    await createBulkNotifications(ownerIds, {
+      type: 'system',
+      title: `${input.platform} spend sync halted: coverage dropped >${SPEND_SYNC_COVERAGE_HALT_PCT}%`,
+      message: `${input.sourceLabel} returned ${input.gate.currentCount} campaigns against ${input.gate.previousCount} on the previous successful run (${input.gate.deltaPct}%). The persist step was HALTED — no rows were overwritten from the shrunken set. Investigate missing campaigns before re-running.`,
+      link: '/agency/social',
+      reason: 'direct',
+      metadata: {
+        kind: 'spend_sync_coverage_halt',
+        platform: input.platform,
+        source: input.sourceLabel,
+        previousCount: input.gate.previousCount,
+        currentCount: input.gate.currentCount,
+        deltaPct: input.gate.deltaPct,
+      },
+    })
+  } catch (error) {
+    console.error('[SpendSync] failed to create coverage-halt owner notification:', error)
+  }
+}
+
+/**
+ * Evaluate the coverage gate for one source BEFORE its persist step. On halt, records an owner alert
+ * and returns halted:true — the caller must skip persisting and report the structured failure. On
+ * warn/proceed the caller persists as normal and then records the new baseline count.
+ */
+export async function applySpendCoverageGate(
+  input: { platform: string, sourceKey: string, sourceLabel: string, currentCount: number },
+  deps: SpendCoverageGateDeps = {}
+): Promise<{ gate: SpendCoverageGate, halted: boolean, warning: string | null }> {
+  const previous = await (deps.loadPrevious ?? getLastSourceCampaignCount)(input.platform, input.sourceKey)
+  const gate = evaluateSpendCoverageGate(previous, input.currentCount)
+  if (gate.action === 'halt') {
+    console.error(
+      `[SpendSync] HALT: ${input.platform} source ${input.sourceLabel} returned ${gate.currentCount} campaigns `
+      + `vs ${gate.previousCount} previously (${gate.deltaPct}%) — persist step refused.`
+    )
+    await (deps.notifyHalt ?? notifyCoverageHalt)({ platform: input.platform, sourceLabel: input.sourceLabel, gate })
+    return {
+      gate,
+      halted: true,
+      warning: `Coverage halt: returned ${gate.currentCount} campaigns vs ${gate.previousCount} on the previous successful run (${gate.deltaPct}%); persist refused to protect existing rows`
+    }
+  }
+  if (gate.action === 'warn') {
+    const warning = `Coverage decreased: ${gate.currentCount} campaigns vs ${gate.previousCount} previously (${gate.deltaPct}%)`
+    console.warn(`[SpendSync] ${input.platform} source ${input.sourceLabel}: ${warning}`)
+    return { gate, halted: false, warning }
+  }
+  return { gate, halted: false, warning: null }
+}
+
+export interface SpendCoverageDelta {
+  previousCount: number | null
+  currentCount: number | null
+  delta: number | null
+  deltaPct: number | null
+  previousFinishedAt: string | null
+  currentFinishedAt: string | null
+}
+
+/**
+ * Direction-of-travel coverage per platform from the last two completed sync jobs — surfaced as
+ * `coverageDelta` beside `coverage` on the spend read tools. Null-safe: platforms without two
+ * completed runs report null previous values rather than a fabricated zero.
+ */
+export async function getSpendCoverageDeltas(
+  load: typeof queryRows = queryRows
+): Promise<Record<string, SpendCoverageDelta> | null> {
+  const rows = await load<{ platform: string, synced_count: number, finished_at: string | null, rank: number }>(
+    `SELECT platform, synced_count, finished_at::text AS finished_at, rank FROM (
+       SELECT platform, synced_count, finished_at,
+              ROW_NUMBER() OVER (PARTITION BY platform ORDER BY finished_at DESC) AS rank
+         FROM spend_sync_jobs
+        WHERE status = 'completed' AND finished_at IS NOT NULL
+     ) ranked
+     WHERE rank <= 2`,
+    []
+  ).catch(() => null)
+  if (!rows || rows.length === 0) return null
+  const result: Record<string, SpendCoverageDelta> = {}
+  for (const row of rows) {
+    const platform = row.platform
+    const entry = result[platform] ?? {
+      previousCount: null, currentCount: null, delta: null, deltaPct: null,
+      previousFinishedAt: null, currentFinishedAt: null
+    }
+    if (Number(row.rank) === 1) {
+      entry.currentCount = Number(row.synced_count)
+      entry.currentFinishedAt = row.finished_at
+    } else {
+      entry.previousCount = Number(row.synced_count)
+      entry.previousFinishedAt = row.finished_at
+    }
+    result[platform] = entry
+  }
+  for (const entry of Object.values(result)) {
+    if (entry.currentCount != null && entry.previousCount != null) {
+      entry.delta = entry.currentCount - entry.previousCount
+      entry.deltaPct = entry.previousCount > 0
+        ? Math.round(((entry.currentCount - entry.previousCount) / entry.previousCount) * 10_000) / 100
+        : null
+    }
+  }
+  return result
+}
+
 export interface SyncFailure {
   account: string
   reason: string

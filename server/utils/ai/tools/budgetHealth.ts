@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { getSpendCoverageDeltas } from '~~/server/utils/spendSyncJobs'
 // Use Nitro's global $fetch (auto-imported), NOT raw ofetch — it resolves relative internal routes
 // on the Cloudflare runtime; raw ofetch throws on a relative URL (no origin base). See #129.
 import type { AiTool } from '../toolRegistry'
@@ -42,6 +43,8 @@ export type BudgetHealthData = {
 }
 
 export type BudgetHealthDeps = {
+  loadCoverageDeltas?: () => Promise<Record<string, unknown> | null>
+
   health: (ctx: ToolContext) => Promise<BudgetHealthData>
   now?: () => Date
 }
@@ -137,6 +140,7 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
     })
     const partialBudgetCoverageCount = attributed.filter(c => c.healthStatus === 'partial_budget_coverage').length
     if ((unattributed.length > 0 || partialBudgetCoverageCount > 0) && health.dataStatus === 'populated') health.dataStatus = 'partial'
+    const coverageDelta = await (deps.loadCoverageDeltas ?? getSpendCoverageDeltas)().catch(() => null)
     const summary = {
       ...res.summary,
       totalBudget,
@@ -158,6 +162,7 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
       period: res.period,
       source: 'budget_health',
       ...mergeSyncFreshness(normalised, { now: deps.now?.() }),
+      ...(coverageDelta ? { coverageDelta } : {}),
       ...health,
       summary,
       clients: page.items,

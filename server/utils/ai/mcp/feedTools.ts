@@ -29,6 +29,14 @@ export interface FeedToolDescriptor {
 
 const UUID = z.string().uuid()
 const CATALOG_ID = z.string().regex(/^\d{5,30}$/)
+const META_ID = z.string().trim().min(1).max(40)
+
+/** F-6: optional Meta fetch schedule. Omitted → the historical daily-midnight Melbourne default. */
+const ScheduleParams = z.object({
+  interval: z.enum(['HOURLY', 'DAILY']),
+  hour: z.number().int().min(0).max(23).optional(),
+  timezone: z.string().trim().min(1).max(64).optional()
+})
 
 /** Meta rejects ads whose product set holds fewer than 2 items. */
 export const META_PRODUCT_SET_MINIMUM_ITEMS = 2
@@ -50,7 +58,8 @@ export const feedReadTools: FeedToolDescriptor[] = [
     name: 'get_inventory_feed_health',
     description:
       'Per-client vehicle inventory feed health: the XeroFlow-served feed (serve URL, item count, '
-      + 'byCondition breakdown e.g. new/demo/used), the Meta catalog binding (catalogId, productFeedId, '
+      + 'byCondition breakdown e.g. new/demo/used, and an excluded breakdown of items the feed DROPPED '
+      + 'and why: invalidListingUrl / missingPrice / missingImage), the Meta catalog binding (catalogId, productFeedId, '
       + 'scheduled URL and whether it still points at XeroFlow), last upload status, and every product '
       + 'set with its item count and meetsMinimum (Meta requires at least '
       + `${META_PRODUCT_SET_MINIMUM_ITEMS} items). Read-only — call this first for any feed complaint.`,
@@ -66,6 +75,17 @@ export const feedReadTools: FeedToolDescriptor[] = [
       + 'while performance metrics look healthy. Read-only.',
     parameters: z.object({ clientId: UUID, catalogId: CATALOG_ID }),
     requiredPermission: 'MEDIA_BUYING'
+  },
+  {
+    name: 'get_ad_product_set_bindings',
+    description:
+      'Per active ad in a Meta campaign: adId, adName, effectiveStatus, the product set it targets '
+      + '(productSetId/productSetName/itemCount), bindingIntact (false means the ad has silently '
+      + 'detached from any product set), and hasUnpublishedDraft (null when Meta does not expose draft '
+      + 'state). This is the post-change verification a human otherwise performs in Ads Manager after '
+      + 'any catalog or product-set change. Read-only.',
+    parameters: z.object({ campaignId: META_ID }),
+    requiredPermission: 'MEDIA_BUYING'
   }
 ]
 
@@ -74,6 +94,7 @@ const AttachParams = z.object({
   connectionId: UUID,
   catalogId: CATALOG_ID,
   sourceFeedId: UUID,
+  schedule: ScheduleParams.optional(),
   dryRun: z.boolean().optional()
 })
 export type AttachArgs = z.infer<typeof AttachParams>
@@ -91,6 +112,9 @@ const SetRulesParams = z.object({
   connectionId: UUID,
   productSetId: z.string().trim().min(1).max(40),
   filter: z.record(z.string(), z.unknown()),
+  /** F-7 post-condition: after the live write, re-read this campaign's ad → product-set bindings and
+   *  refuse success if any active ad has detached. */
+  verifyCampaignId: META_ID.optional(),
   dryRun: z.boolean().optional()
 })
 export type SetRulesArgs = z.infer<typeof SetRulesParams>
@@ -102,8 +126,10 @@ export const feedProposeTools: FeedToolDescriptor[] = [
       'Propose attaching a client\'s XeroFlow-served inventory feed to a Meta vehicle catalog '
       + '(projects the existing admin flow — same guards, schedule, and readback). Returns the FULL '
       + 'before/after: current vs proposed scheduled URL, whether an existing Meta feed is reused or '
-      + 'created (feedDisposition), catalog and source feed names, and the item count that will be '
-      + 'served. Pass dryRun:true for the same preview with NO write and NO proposal. The live call '
+      + 'created (feedDisposition), catalog and source feed names, the item count that will be served, '
+      + 'and the proposed fetch schedule (optional schedule {interval HOURLY|DAILY, hour, timezone}; '
+      + 'default daily 00:00 Australia/Melbourne — HOURLY suits fast-turning used/demo stock). '
+      + 'Pass dryRun:true for the same preview with NO write and NO proposal. The live call '
       + 'ALWAYS requires confirm_action with ack:true — even under owner god-mode.',
     parameters: AttachParams,
     requiredPermission: 'MEDIA_BUYING'
@@ -125,7 +151,9 @@ export const feedProposeTools: FeedToolDescriptor[] = [
       + 'count the PROPOSED filter would produce against the served feed — e.g. "this change takes the '
       + 'set from 1 item to 22" — alongside the current count. Changing a product set retargets any '
       + 'live campaign using it, so the live call ALWAYS requires confirm_action with ack:true — even '
-      + 'under owner god-mode. Never writes vehicle data; only the set filter.',
+      + 'under owner god-mode. Pass verifyCampaignId to make the live execute re-read that campaign\'s '
+      + 'ad → product-set bindings afterwards and refuse success if any active ad detached. '
+      + 'Never writes vehicle data; only the set filter.',
     parameters: SetRulesParams,
     requiredPermission: 'MEDIA_BUYING'
   }
@@ -145,6 +173,48 @@ export function shapeByCondition(items: Array<{ condition?: string | null }>): R
 
 export function meetsMinimum(itemCount: number | null | undefined): boolean {
   return typeof itemCount === 'number' && itemCount >= META_PRODUCT_SET_MINIMUM_ITEMS
+}
+
+/**
+ * What the serve/preview pipeline DROPPED and why, from the provider's readiness classification
+ * (issueGroups keys 'url'/'price'/'image' are the source of truth — not recomputed here). Honest
+ * nulls when the provider returned no readiness data at all.
+ */
+export function shapeExcluded(
+  readiness: { invalidTotal?: number, issueGroups?: Array<{ key: string, count: number }> } | null | undefined
+): { invalidListingUrl: number | null, missingPrice: number | null, missingImage: number | null, other: number | null, totalExcluded: number | null } {
+  if (!readiness || !Array.isArray(readiness.issueGroups)) {
+    return { invalidListingUrl: null, missingPrice: null, missingImage: null, other: null, totalExcluded: null }
+  }
+  const countFor = (key: string) => readiness.issueGroups!
+    .filter(group => group.key === key)
+    .reduce((sum, group) => sum + (Number.isFinite(group.count) ? group.count : 0), 0)
+  const url = countFor('url')
+  const price = countFor('price')
+  const image = countFor('image')
+  const total = typeof readiness.invalidTotal === 'number' ? readiness.invalidTotal : null
+  const other = readiness.issueGroups!
+    .filter(group => !['url', 'price', 'image'].includes(group.key))
+    .reduce((sum, group) => sum + (Number.isFinite(group.count) ? group.count : 0), 0)
+  return { invalidListingUrl: url, missingPrice: price, missingImage: image, other, totalExcluded: total }
+}
+
+/** F-7: shape one campaign ad's product-set binding. bindingIntact = a set is still attached. */
+export function shapeAdProductSetBinding(ad: {
+  id: string
+  name: string
+  effective_status: string
+  creativeProductSetId: string | null
+  adsetProductSetId: string | null
+}): { adId: string, adName: string, effectiveStatus: string, productSetId: string | null, bindingIntact: boolean } {
+  const productSetId = ad.creativeProductSetId ?? ad.adsetProductSetId ?? null
+  return {
+    adId: ad.id,
+    adName: ad.name,
+    effectiveStatus: ad.effective_status,
+    productSetId,
+    bindingIntact: productSetId !== null
+  }
 }
 
 /** One-line human summary of a Meta product set filter (which arrives as a JSON string). */
@@ -294,6 +364,8 @@ export interface AttachPreview {
   sourceFeedName: string | null
   proposedScheduleUrl: string
   currentScheduleUrl: string | null
+  /** F-6: the fetch schedule the attach would set (defaults resolved). */
+  proposedSchedule: { interval: 'HOURLY' | 'DAILY', hour: number, timezone: string }
   feedDisposition: 'created' | 'reused'
   existingProductFeedId: string | null
   itemCount: number | null

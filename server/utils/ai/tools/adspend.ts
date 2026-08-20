@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { getSpendCoverageDeltas } from '~~/server/utils/spendSyncJobs'
 // Use Nitro's global $fetch (auto-imported), NOT raw ofetch — it resolves relative internal routes
 // on the Cloudflare runtime; raw ofetch throws on a relative URL (no origin base). See #129.
 import type { AiTool } from '../toolRegistry'
@@ -37,6 +38,8 @@ export type PacingCampaign = {
 }
 
 export type AdspendDeps = {
+  loadCoverageDeltas?: () => Promise<Record<string, unknown> | null>
+
   pacing: (ctx: ToolContext) => Promise<PacingCampaign[]>
   now?: () => Date
 }
@@ -140,6 +143,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
     const unattributed = all
       .filter(c => c.unattributed && matchesCommonFilters(c))
       .map(c => ({ ...c, accountName: c.client }))
+    const coverageDelta = await (deps.loadCoverageDeltas ?? getSpendCoverageDeltas)().catch(() => null)
     const page = paginateWithCursor(filtered, args.cursor, args.limit)
     const health = buildDataHealth({
       configured: all.length > 0,
@@ -152,6 +156,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
       period: currentPeriod(),
       source: 'synced_ad_platform_spend',
       ...mergeSyncFreshness(all, { now: deps.now?.() }),
+      ...(coverageDelta ? { coverageDelta } : {}),
       ...health,
       campaigns: page.items,
       unattributed,

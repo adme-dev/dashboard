@@ -6,13 +6,19 @@ import { getSocialDashboardClient, resolveSocialDashboardBaseUrl } from '~~/serv
 import { getFeedProvider } from '~~/server/utils/feeds/registry'
 import type { DealerLink, FeedProvider, FeedSummary, VehicleSummary } from '~~/server/utils/feeds/types'
 import { createMetaCatalogProvider } from '~~/server/utils/metaCatalogProvider'
-import type { MetaCatalogProvider, MetaProductFeedSummary } from '~~/server/utils/metaCatalogPlatform'
+import {
+  resolveMetaCatalogFeedSchedule,
+  type MetaCatalogProvider,
+  type MetaProductFeedSummary
+} from '~~/server/utils/metaCatalogPlatform'
 import { attachMetaCatalogFeedForClient } from '~~/server/utils/metaCatalogApplication'
 import { getMetaCatalogConnectionAuthority, type MetaCatalogConnectionRecord } from '~~/server/utils/metaCatalogRepository'
 import {
   evaluateProductSetFilter,
   meetsMinimum,
+  shapeAdProductSetBinding,
   shapeByCondition,
+  shapeExcluded,
   summarizeProductSetFilter,
   type AttachArgs,
   type AttachPreview,
@@ -71,7 +77,7 @@ async function loadServedItems(
   clientId: string,
   sourceFeedId: string,
   ctx: ToolContext
-): Promise<{ total: number, items: VehicleSummary[], feedName: string | null }> {
+): Promise<{ total: number, items: VehicleSummary[], feedName: string | null, readiness: unknown }> {
   const { link, provider, providerContext } = await loadDealerContext(clientId, ctx)
   const feeds = await provider.listFeeds(providerContext, link)
   const feed = feeds.find(candidate => candidate.id === sourceFeedId) ?? null
@@ -81,7 +87,7 @@ async function loadServedItems(
     { providerId: link.providerId, feedId: sourceFeedId, platform: feed?.platform ?? 'facebook' },
     { limit: FEED_PREVIEW_LIMIT }
   )
-  return { total: preview.total, items: preview.items, feedName: feed?.name ?? null }
+  return { total: preview.total, items: preview.items, feedName: feed?.name ?? null, readiness: preview.readiness ?? null }
 }
 
 async function connectionAuthority(clientId: string, connectionId: string): Promise<MetaCatalogConnectionRecord> {
@@ -128,6 +134,52 @@ async function shapedProductSets(provider: MetaCatalogProvider, catalogId: strin
   }))
 }
 
+/** Resolve the Meta connection for a campaignId via the media_spend mapping (no new schema). */
+async function connectionForCampaign(campaignId: string): Promise<MetaCatalogConnectionRecord> {
+  const rows = await queryRows<{ client_id: string }>(
+    `SELECT DISTINCT client_id::text
+       FROM media_spend
+      WHERE campaign_id = $1 AND platform = 'meta' AND client_id IS NOT NULL
+      LIMIT 1`,
+    [campaignId]
+  )
+  const clientId = rows[0]?.client_id
+  if (!clientId) throw new Error('Campaign is not mapped to a client in media_spend')
+  const bindings = await listBindingsForClient(clientId)
+  const binding = bindings[0]
+  if (!binding) throw new Error('No Meta catalog binding exists for the campaign\'s client')
+  return await connectionAuthority(clientId, binding.connection_id)
+}
+
+/**
+ * F-7: per active ad in the campaign, the product set it targets + whether the binding is intact.
+ * hasUnpublishedDraft is null — Meta's public Graph API exposes no per-ad draft state; never guessed.
+ */
+async function loadAdProductSetBindings(campaignId: string, provider?: MetaCatalogProvider) {
+  const metaCatalogProvider = provider ?? metaProvider(await connectionForCampaign(campaignId))
+  const ads = await metaCatalogProvider.listCampaignAds(campaignId)
+  const setCache = new Map<string, { name: string | null, itemCount: number | null }>()
+  const bindings = []
+  for (const ad of ads) {
+    const shaped = shapeAdProductSetBinding(ad)
+    let productSetName: string | null = null
+    let itemCount: number | null = null
+    if (shaped.productSetId) {
+      let entry = setCache.get(shaped.productSetId)
+      if (!entry) {
+        entry = await metaCatalogProvider.getProductSet(shaped.productSetId)
+          .then(set => ({ name: set.name ?? null, itemCount: set.product_count ?? null }))
+          .catch(() => ({ name: null, itemCount: null }))
+        setCache.set(shaped.productSetId, entry)
+      }
+      productSetName = entry.name
+      itemCount = entry.itemCount
+    }
+    bindings.push({ ...shaped, productSetName, itemCount, hasUnpublishedDraft: null as boolean | null })
+  }
+  return bindings
+}
+
 export function buildFeedReadRunner() {
   return {
     get_inventory_feed_health: async (raw: unknown, ctx: ToolContext) => {
@@ -142,7 +194,7 @@ export function buildFeedReadRunner() {
       for (const binding of bindings) {
         const serveUrl = buildServeUrl(baseUrl, binding.source_feed_id)
         const served = await loadServedItems(clientId, binding.source_feed_id, ctx)
-          .catch((error: unknown) => ({ total: null, items: [] as VehicleSummary[], feedName: null, error: error instanceof Error ? error.message : 'served feed unavailable' }))
+          .catch((error: unknown) => ({ total: null, items: [] as VehicleSummary[], feedName: null, readiness: null, error: error instanceof Error ? error.message : 'served feed unavailable' }))
 
         let catalog: Record<string, unknown> = { catalogId: binding.product_catalog_id, productFeedId: binding.product_feed_id }
         let productSets: unknown[] = []
@@ -173,6 +225,7 @@ export function buildFeedReadRunner() {
           serveUrl,
           itemCount: served.total,
           byCondition: shapeByCondition(served.items),
+          excluded: shapeExcluded(served.readiness as Parameters<typeof shapeExcluded>[0]),
           ...('error' in served && served.error ? { servedFeedError: served.error } : {}),
           catalog,
           productSets,
@@ -189,6 +242,12 @@ export function buildFeedReadRunner() {
         lastSyncedAt: new Date().toISOString(),
         feeds: results
       }
+    },
+
+    get_ad_product_set_bindings: async (raw: unknown, ctx: ToolContext) => {
+      const { campaignId } = raw as { campaignId: string }
+      void ctx
+      return await loadAdProductSetBindings(campaignId)
     },
 
     list_product_sets: async (raw: unknown, ctx: ToolContext) => {
@@ -235,6 +294,7 @@ async function resolveAttachPreview(args: Omit<AttachArgs, 'dryRun'>, ctx: ToolC
     sourceFeedName: sourceFeed.name ?? null,
     proposedScheduleUrl,
     currentScheduleUrl: existing ? scheduleUrl(existing) : null,
+    proposedSchedule: (({ url: _url, ...rest }) => rest)(resolveMetaCatalogFeedSchedule(proposedScheduleUrl, args.schedule)),
     feedDisposition: existing ? 'reused' : 'created',
     existingProductFeedId: existing?.id ?? null,
     itemCount: served?.total ?? null
@@ -312,6 +372,7 @@ export function buildFeedConfirmDeps() {
         connectionId: payload.args.connectionId,
         catalogId: payload.args.catalogId,
         sourceFeedId: payload.args.sourceFeedId,
+        schedule: payload.args.schedule,
         actorId: ctx.userId,
         actorEmail: ctx.userEmail ?? 'mcp@xeroflow'
       })
@@ -331,7 +392,22 @@ export function buildFeedConfirmDeps() {
       if (JSON.stringify(readbackFilter) !== JSON.stringify(payload.args.filter)) {
         throw new Error('Meta product set readback did not match the proposed filter')
       }
+      // F-7 post-condition: after the write, every active ad in the named campaign must still hold
+      // an intact product-set binding — the same discipline as the feed-URL readback.
+      let adBindings: Awaited<ReturnType<typeof loadAdProductSetBindings>> | null = null
+      if (payload.args.verifyCampaignId) {
+        adBindings = await loadAdProductSetBindings(payload.args.verifyCampaignId, provider)
+        const detached = adBindings.filter(binding => binding.effectiveStatus === 'ACTIVE' && !binding.bindingIntact)
+        if (detached.length > 0) {
+          throw new Error(
+            `Product set rules applied, but ${detached.length} active ad(s) in campaign `
+            + `${payload.args.verifyCampaignId} no longer hold an intact product-set binding: `
+            + detached.map(binding => binding.adId).join(', ')
+          )
+        }
+      }
       return {
+        ...(adBindings ? { verifiedCampaignId: payload.args.verifyCampaignId, adBindings } : {}),
         productSetId: payload.args.productSetId,
         appliedFilter: payload.args.filter,
         itemCount: readback.product_count ?? null,

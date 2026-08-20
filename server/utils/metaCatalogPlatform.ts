@@ -34,7 +34,18 @@ export interface MetaProductSetSummary {
   product_count?: number | null
 }
 
+export interface MetaCampaignAdSummary {
+  id: string
+  name: string
+  effective_status: string
+  /** Product set bound via the ad creative (null when the creative carries none). */
+  creativeProductSetId: string | null
+  /** Product set promoted by the parent ad set (null when none). */
+  adsetProductSetId: string | null
+}
+
 export interface MetaCatalogProvider {
+  listCampaignAds(campaignId: string): Promise<MetaCampaignAdSummary[]>
   listGrantedPermissions(): Promise<string[]>
   getAdAccountBusiness(actId: string): Promise<MetaCatalogBusiness | null>
   listBusinessCatalogs(businessId: string): Promise<MetaCatalogSummary[]>
@@ -44,11 +55,11 @@ export interface MetaCatalogProvider {
   updateProductSet(productSetId: string, input: { filter: Record<string, unknown> }): Promise<void>
   createProductFeed(catalogId: string, input: {
     name: string
-    schedule: { interval: 'DAILY', url: string, hour: number, timezone: string }
+    schedule: { interval: 'HOURLY' | 'DAILY', url: string, hour: number, timezone: string }
   }): Promise<{ id: string }>
   updateProductFeed(productFeedId: string, input: {
     name: string
-    schedule: { interval: 'DAILY', url: string, hour: number, timezone: string }
+    schedule: { interval: 'HOURLY' | 'DAILY', url: string, hour: number, timezone: string }
   }): Promise<void>
   createProductFeedUpload(productFeedId: string, url: string): Promise<{ id: string }>
   getProductFeed(productFeedId: string): Promise<MetaProductFeedSummary>
@@ -214,6 +225,12 @@ export async function inspectMetaCatalogReadiness(
   }
 }
 
+export interface MetaCatalogFeedScheduleInput {
+  interval: 'HOURLY' | 'DAILY'
+  hour?: number
+  timezone?: string
+}
+
 export interface EnsureMetaCatalogFeedInput {
   connection: MetaCatalogConnectionAuthority
   clientId: string
@@ -224,6 +241,21 @@ export interface EnsureMetaCatalogFeedInput {
   allowedSourceFeedIds: string[]
   feedBaseUrl: string
   actorId: string
+  /** F-6: optional fetch schedule. Defaults preserve the historical daily-midnight Melbourne behaviour. */
+  schedule?: MetaCatalogFeedScheduleInput
+}
+
+/** Resolve the schedule Meta will be given (used for both the write and the F-6 readback assertion). */
+export function resolveMetaCatalogFeedSchedule(
+  url: string,
+  input?: MetaCatalogFeedScheduleInput
+): { interval: 'HOURLY' | 'DAILY', url: string, hour: number, timezone: string } {
+  return {
+    interval: input?.interval ?? 'DAILY',
+    url,
+    hour: input?.hour ?? 0,
+    timezone: input?.timezone ?? 'Australia/Melbourne'
+  }
 }
 
 function buildFeedUrl(baseUrl: string, feedId: string): string {
@@ -264,12 +296,7 @@ export async function ensureMetaCatalogFeed(
   }
 
   const url = buildFeedUrl(input.feedBaseUrl, input.sourceFeedId)
-  const schedule = {
-    interval: 'DAILY' as const,
-    url,
-    hour: 0,
-    timezone: 'Australia/Melbourne'
-  }
+  const schedule = resolveMetaCatalogFeedSchedule(url, input.schedule)
   const name = safeFeedName(input.clientName, input.sourceFeedName)
   const feeds = await deps.listProductFeeds(input.catalogId)
   const existing = feeds.find(feed => scheduleUrl(feed) === url)
@@ -288,6 +315,18 @@ export async function ensureMetaCatalogFeed(
   const uploadId = clean(upload.id || readback.latest_upload?.id)
   if (!uploadId) throw new Error('Meta did not return a feed upload identity')
   if (scheduleUrl(readback) !== url) throw new Error('Meta feed readback did not match the XeroFlow feed URL')
+  // F-6: the readback must reflect the schedule this call actually set, not just the URL.
+  const readbackSchedule = readback.schedule && typeof readback.schedule === 'object'
+    ? readback.schedule as Record<string, unknown>
+    : {}
+  if (
+    clean(readbackSchedule.interval).toUpperCase() !== schedule.interval
+    // Meta only round-trips a meaningful hour for DAILY fetches.
+    || (schedule.interval === 'DAILY' && Number(readbackSchedule.hour ?? Number.NaN) !== schedule.hour)
+    || clean(readbackSchedule.timezone) !== schedule.timezone
+  ) {
+    throw new Error('Meta feed readback did not match the requested fetch schedule')
+  }
 
   await deps.persistEvidence?.({
     clientId: input.clientId,

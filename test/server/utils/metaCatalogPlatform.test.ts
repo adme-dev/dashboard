@@ -219,6 +219,62 @@ describe('Meta catalogue feed orchestration', () => {
     expect(JSON.stringify(persistEvidence.mock.calls)).not.toContain('secret-token')
   })
 
+  it('F-6: accepts an HOURLY schedule and asserts the readback reflects it', async () => {
+    const expectedUrl = 'https://socials.driveagent.io/api/feeds/source-used/serve'
+    const deps = provider({
+      getProductFeed: vi.fn().mockResolvedValue({
+        id: 'meta-feed-1',
+        name: 'Geelong GWM Haval — Used Vehicles',
+        schedule: { interval: 'HOURLY', url: expectedUrl, timezone: 'Australia/Melbourne' },
+        latest_upload: { id: 'upload-1', status: 'IN_PROGRESS' }
+      })
+    })
+
+    const result = await ensureMetaCatalogFeed({
+      connection,
+      clientId: 'client-1',
+      clientName: 'Geelong GWM Haval',
+      catalogId: 'catalog-1',
+      sourceFeedId: 'source-used',
+      sourceFeedName: 'Used Vehicles',
+      allowedSourceFeedIds: ['source-used'],
+      feedBaseUrl: 'https://socials.driveagent.io',
+      actorId: 'actor-1',
+      schedule: { interval: 'HOURLY' }
+    }, deps)
+
+    expect(deps.createProductFeed).toHaveBeenCalledWith('catalog-1', expect.objectContaining({
+      schedule: { interval: 'HOURLY', url: expectedUrl, hour: 0, timezone: 'Australia/Melbourne' }
+    }))
+    expect(result.state).toBe('READY')
+  })
+
+  it('F-6: fails closed when the readback schedule does not match the requested schedule', async () => {
+    const expectedUrl = 'https://socials.driveagent.io/api/feeds/source-used/serve'
+    const deps = provider({
+      getProductFeed: vi.fn().mockResolvedValue({
+        id: 'meta-feed-1',
+        name: 'Geelong GWM Haval — Used Vehicles',
+        // URL matches, but Meta kept the old DAILY interval.
+        schedule: { interval: 'DAILY', url: expectedUrl, hour: 0, timezone: 'Australia/Melbourne' },
+        latest_upload: { id: 'upload-1', status: 'IN_PROGRESS' }
+      })
+    })
+
+    await expect(ensureMetaCatalogFeed({
+      connection,
+      clientId: 'client-1',
+      clientName: 'Geelong GWM Haval',
+      catalogId: 'catalog-1',
+      sourceFeedId: 'source-used',
+      sourceFeedName: 'Used Vehicles',
+      allowedSourceFeedIds: ['source-used'],
+      feedBaseUrl: 'https://socials.driveagent.io',
+      actorId: 'actor-1',
+      schedule: { interval: 'HOURLY' }
+    }, deps)).rejects.toThrow('Meta feed readback did not match the requested fetch schedule')
+  })
+
   it('reuses a matching remote feed on retry instead of creating a duplicate', async () => {
     const expectedUrl = 'https://socials.driveagent.io/api/feeds/source-used/serve'
     const deps = provider({
