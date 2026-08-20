@@ -84,7 +84,7 @@ describe('get_capabilities', () => {
     expect(tools).toHaveLength(74)
     expect(tools).toContainEqual({ name: 'list_video_source_assets', mode: 'read' })
     expect((result as any).data.servedCatalog).toEqual({
-      release: '2026-08-20.3', toolCount: 74, projectionAuthority: 'shared_with_tools_list',
+      release: '2026-08-20.4', toolCount: 74, projectionAuthority: 'shared_with_tools_list',
     })
     expect((result as any).data.degraded).toBeUndefined()
   })

@@ -209,7 +209,11 @@ export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
             })
             return outcome.ok
               ? { ok: true, data: outcome.data }
-              : { ok: false, error: 'error' in outcome ? outcome.error : 'Generation failed.' }
+              : {
+                  ok: false,
+                  error: 'error' in outcome ? outcome.error : 'Generation failed.',
+                  ...('code' in outcome ? { code: outcome.code } : {})
+                }
           }
         }
       : {}),
@@ -225,7 +229,11 @@ export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
         })
         return outcome.ok
           ? { ok: true, data: outcome.data }
-          : { ok: false, error: 'error' in outcome ? outcome.error : 'Generation failed.' }
+          : {
+              ok: false,
+              error: 'error' in outcome ? outcome.error : 'Generation failed.',
+              ...('code' in outcome ? { code: outcome.code } : {})
+            }
       }
     }
     })
