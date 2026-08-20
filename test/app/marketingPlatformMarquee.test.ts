@@ -49,6 +49,7 @@ describe('MarketingPlatformMarquee', () => {
       expect(host.querySelectorAll('.marquee-track')).toHaveLength(2)
       expect(host.querySelectorAll('.marquee-set')).toHaveLength(4)
       expect(host.querySelectorAll('.marquee-set[aria-hidden="true"]')).toHaveLength(2)
+      expect(host.querySelector('.marquee-motion-control')).not.toBeNull()
 
       const originalLinks = host.querySelectorAll('.marquee-set:not([aria-hidden]) a')
       const duplicateLinks = host.querySelectorAll('.marquee-set[aria-hidden="true"] a')

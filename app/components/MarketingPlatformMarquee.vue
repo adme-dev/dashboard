@@ -3,7 +3,7 @@
     class="relative overflow-hidden border-t border-black/[0.04] py-8 dark:border-white/[0.06]"
     aria-label="XeroFlow platform highlights"
   >
-    <div class="mx-auto mb-3 flex max-w-[1200px] justify-end px-6 motion-reduce:hidden">
+    <div class="marquee-motion-control mx-auto mb-3 flex max-w-[1200px] justify-end px-6">
       <UButton
         color="neutral"
         variant="ghost"
@@ -117,6 +117,10 @@ const marqueePaused = ref(false)
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .marquee-motion-control {
+    display: none;
+  }
+
   .marquee-viewport {
     overflow-x: auto;
     scrollbar-width: none;
