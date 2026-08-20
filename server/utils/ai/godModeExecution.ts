@@ -1205,7 +1205,15 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
       return await terminateBeforeDispatch(result.code ?? 'precondition_failed', result.error, result.details)
     }
     if (!dispatched || dispatchCheckpointCalls !== 1) {
-      return await terminateBeforeDispatch('dispatch_checkpoint_missing', 'God mode action failed.')
+      // Diagnostic detail: which invariant broke. dispatched=false with calls=0 means the
+      // executor never invoked services.markDispatched; calls>1 means a double checkpoint.
+      return await terminateBeforeDispatch('dispatch_checkpoint_missing', 'God mode action failed.', {
+        dispatched,
+        dispatchCheckpointCalls,
+        resultCaptured,
+        resultOk: result.ok,
+        executionClass: request.executionClass ?? 'internal-http'
+      })
     }
     if (!result.ok) return await markDispatchAmbiguous(capturedIdentity)
 
