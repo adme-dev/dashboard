@@ -1,5 +1,6 @@
 <template>
   <section
+    ref="marqueeRoot"
     class="relative overflow-hidden border-t border-black/[0.04] py-8 dark:border-white/[0.06]"
     aria-label="XeroFlow platform highlights"
   >
@@ -23,22 +24,18 @@
         class="marquee-viewport overflow-hidden"
       >
         <div
+          :ref="(element) => setRowRef(element as HTMLElement | null, rowIndex)"
           class="marquee-track flex w-max gap-4"
-          :class="rowIndex === 0 ? 'marquee-row-left' : 'marquee-row-right'"
           :data-paused="marqueePaused ? 'true' : undefined"
         >
           <div
-            v-for="copyIndex in 2"
-            :key="copyIndex"
-            class="marquee-set flex shrink-0 gap-4"
-            :aria-hidden="copyIndex === 2 ? 'true' : undefined"
+            v-for="(card, cardIndex) in row"
+            :key="`${card.to}-${cardIndex}`"
+            class="marquee-item shrink-0"
           >
             <NuxtLink
-              v-for="(card, cardIndex) in row"
-              :key="`${copyIndex}-${card.to}-${cardIndex}`"
               :to="card.to"
-              :tabindex="copyIndex === 2 ? -1 : undefined"
-              class="group w-[250px] shrink-0 overflow-hidden rounded-[22px] transition-all duration-400 hover:-translate-y-1 hover:shadow-2xl sm:w-[280px]"
+              class="group block w-[250px] overflow-hidden rounded-[22px] transition-all duration-400 hover:-translate-y-1 hover:shadow-2xl sm:w-[280px]"
               :class="card.bg"
             >
               <div class="relative flex h-[220px] items-center justify-center">
@@ -70,6 +67,8 @@
 </template>
 
 <script setup lang="ts">
+import type gsapType from 'gsap'
+
 export interface MarketingMarqueeCard {
   title: string
   subtitle: string
@@ -83,35 +82,151 @@ defineProps<{
 }>()
 
 const marqueePaused = ref(false)
+const marqueeRoot = ref<HTMLElement | null>(null)
+const rowRefs: HTMLElement[] = []
+let loops: gsap.core.Timeline[] = []
+let mediaContext: ReturnType<typeof gsapType.matchMedia> | null = null
+let unmounted = false
+
+type Gsap = typeof gsapType
+
+interface HorizontalLoopConfig {
+  paddingRight?: number
+  reversed?: boolean
+  snap?: number | false
+  speed?: number
+}
+
+function setRowRef(element: HTMLElement | null, index: number) {
+  if (element) rowRefs[index] = element
+}
+
+/**
+ * GSAP's official seamless horizontal-loop pattern, trimmed to the continuous
+ * marquee features used here. Items wrap individually and movement is stored
+ * in xPercent so card width changes remain responsive.
+ */
+function horizontalLoop(items: HTMLElement[], config: HorizontalLoopConfig, gsap: Gsap) {
+  const timeline = gsap.timeline({
+    repeat: -1,
+    defaults: { ease: 'none' },
+    onReverseComplete: () => timeline.totalTime(timeline.rawTime() + timeline.duration() * 100)
+  })
+
+  if (!items.length) return timeline
+
+  const widths: number[] = []
+  const xPercents: number[] = []
+  const startX = items[0].offsetLeft
+  const pixelsPerSecond = (config.speed || 1) * 100
+  const snap = config.snap === false
+    ? (value: number) => value
+    : gsap.utils.snap(config.snap || 1)
+
+  gsap.set(items, {
+    xPercent: (index, element) => {
+      const width = widths[index] = Number.parseFloat(String(gsap.getProperty(element, 'width', 'px')))
+      const x = Number.parseFloat(String(gsap.getProperty(element, 'x', 'px')))
+      const xPercent = Number(gsap.getProperty(element, 'xPercent'))
+      return xPercents[index] = snap(x / width * 100 + xPercent)
+    }
+  })
+  gsap.set(items, { x: 0 })
+
+  const lastItem = items.at(-1)!
+  const lastIndex = items.length - 1
+  const lastScaleX = Number(gsap.getProperty(lastItem, 'scaleX'))
+  const totalWidth = lastItem.offsetLeft
+    + xPercents[lastIndex] / 100 * widths[lastIndex]
+    - startX
+    + lastItem.offsetWidth * lastScaleX
+    + (config.paddingRight || 0)
+
+  items.forEach((item, index) => {
+    const width = widths[index]
+    const currentX = xPercents[index] / 100 * width
+    const scaleX = Number(gsap.getProperty(item, 'scaleX'))
+    const distanceToLoop = item.offsetLeft + currentX - startX + width * scaleX
+
+    timeline
+      .to(item, {
+        xPercent: snap((currentX - distanceToLoop) / width * 100),
+        duration: distanceToLoop / pixelsPerSecond
+      }, 0)
+      .fromTo(item, {
+        xPercent: snap((currentX - distanceToLoop + totalWidth) / width * 100)
+      }, {
+        xPercent: xPercents[index],
+        duration: (totalWidth - distanceToLoop) / pixelsPerSecond,
+        immediateRender: false
+      }, distanceToLoop / pixelsPerSecond)
+  })
+
+  timeline.progress(1, true).progress(0, true)
+
+  if (config.reversed) {
+    timeline.totalTime(timeline.rawTime() + timeline.duration() * 100)
+    timeline.reverse()
+  }
+
+  return timeline
+}
+
+function syncPlayback() {
+  loops.forEach((loop) => {
+    if (marqueePaused.value) loop.pause()
+    else loop.resume()
+  })
+}
+
+watch(marqueePaused, syncPlayback)
+
+onMounted(async () => {
+  const { default: gsap } = await import('gsap')
+  await nextTick()
+
+  if (unmounted || !marqueeRoot.value || !window.matchMedia) return
+
+  mediaContext = gsap.matchMedia(marqueeRoot.value)
+  mediaContext.add({
+    desktop: '(min-width: 640px)',
+    mobile: '(max-width: 639px)',
+    reduceMotion: '(prefers-reduced-motion: reduce)'
+  }, (context) => {
+    if (context.conditions?.reduceMotion) return
+
+    loops = rowRefs.map((row, rowIndex) => {
+      const items = gsap.utils.toArray<HTMLElement>(row.children)
+      const loop = horizontalLoop(items, {
+        paddingRight: 16,
+        reversed: rowIndex === 1,
+        snap: false,
+        speed: 0.69
+      }, gsap)
+
+      loop.progress(rowIndex === 0 ? 0.24 : 0.16, true)
+      return loop
+    })
+
+    syncPlayback()
+
+    return () => {
+      loops = []
+    }
+  })
+})
+
+onBeforeUnmount(() => {
+  unmounted = true
+  mediaContext?.revert()
+  mediaContext = null
+  loops = []
+})
 </script>
 
 <style scoped>
-@keyframes marquee-left {
-  from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(calc(-50% - 0.5rem), 0, 0); }
-}
-
-@keyframes marquee-right {
-  from { transform: translate3d(calc(-50% - 0.5rem), 0, 0); }
-  to { transform: translate3d(0, 0, 0); }
-}
-
-.marquee-track {
+.marquee-item {
   will-change: transform;
-}
-
-.marquee-row-left {
-  animation: marquee-left 60s linear infinite;
-  animation-delay: -15s;
-}
-
-.marquee-row-right {
-  animation: marquee-right 47s linear infinite;
-  animation-delay: -10s;
-}
-
-.marquee-track[data-paused='true'] {
-  animation-play-state: paused;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -129,13 +244,12 @@ const marqueePaused = ref(false)
   }
 
   .marquee-track {
-    animation: none;
     transform: none;
-    will-change: auto;
   }
 
-  .marquee-set[aria-hidden='true'] {
-    display: none;
+  .marquee-item {
+    transform: none !important;
+    will-change: auto;
   }
 }
 </style>

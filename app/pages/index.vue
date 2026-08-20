@@ -1145,7 +1145,7 @@ const platformCardsRow2 = [
   { title: 'Rate Cards', subtitle: 'Manage service pricing, fuzzy-match to Xero invoices, and power AI pricing queries.', to: '/features/rate-cards', bg: 'bg-teal-300', image: 'https://images.unsplash.com/photo-1554224154-26032ffc0d07?w=600&h=600&fit=crop&crop=center' }
 ]
 
-// Two marquee rows — the component adds a hidden duplicate for the seamless loop
+// Two marquee rows — GSAP wraps each card individually for the seamless loop
 const marqueeRows = [platformCards, platformCardsRow2]
 
 // Hero floating icons — wide variety covering all platform features
@@ -1175,16 +1175,25 @@ const sizes = ['sm', 'md', 'lg'] as const
 const ICON_COUNT = 28
 const COLS = 7
 const ROWS = Math.ceil(ICON_COUNT / COLS)
+
+function stableUnit(index: number, salt: number) {
+  let value = Math.imul(index + 1, 0x45d9f3b) ^ Math.imul(salt + 1, 0x27d4eb2d)
+  value ^= value >>> 16
+  value = Math.imul(value, 0x45d9f3b)
+  value ^= value >>> 16
+  return (value >>> 0) / 0x100000000
+}
+
 const heroFloatingIcons = Array.from({ length: ICON_COUNT }, (_, i) => ({
   id: i,
-  x: 1 + (i % COLS) * (96 / COLS) + Math.random() * (80 / COLS),
-  y: 3 + Math.floor(i / COLS) * (90 / ROWS) + Math.random() * (70 / ROWS),
+  x: 1 + (i % COLS) * (96 / COLS) + stableUnit(i, 0) * (80 / COLS),
+  y: 3 + Math.floor(i / COLS) * (90 / ROWS) + stableUnit(i, 1) * (70 / ROWS),
   icon: heroIconPool[i % heroIconPool.length],
   size: sizes[i % 3],
-  duration: 8 + Math.random() * 8,
-  delay: Math.random() * -10,
-  colorDelay: Math.random() * -12,
-  opacity: i % 3 === 2 ? 0.7 + Math.random() * 0.3 : 0.5 + Math.random() * 0.35
+  duration: 8 + stableUnit(i, 2) * 8,
+  delay: stableUnit(i, 3) * -10,
+  colorDelay: stableUnit(i, 4) * -12,
+  opacity: i % 3 === 2 ? 0.7 + stableUnit(i, 5) * 0.3 : 0.5 + stableUnit(i, 5) * 0.35
 }))
 
 const integrations = [

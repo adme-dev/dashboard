@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createApp, h, nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue'
+import { createApp, h, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 
 import MarketingPlatformMarquee from '~~/app/components/MarketingPlatformMarquee.vue'
 import MorphBlob from '~~/app/components/MorphBlob.vue'
 
-Object.assign(globalThis, { onBeforeUnmount, onMounted, ref, useId })
+Object.assign(globalThis, { nextTick, onBeforeUnmount, onMounted, ref, useId, watch })
 
 const rows = [
   [
@@ -42,23 +42,19 @@ function mountMarquee() {
 }
 
 describe('MarketingPlatformMarquee', () => {
-  it('renders one accessible card set and one inert duplicate per row', () => {
+  it('renders one accessible card per destination without duplicated content', () => {
     const { app, host } = mountMarquee()
 
     try {
       expect(host.querySelectorAll('.marquee-track')).toHaveLength(2)
-      expect(host.querySelectorAll('.marquee-set')).toHaveLength(4)
-      expect(host.querySelectorAll('.marquee-set[aria-hidden="true"]')).toHaveLength(2)
+      expect(host.querySelectorAll('.marquee-item')).toHaveLength(3)
       expect(host.querySelector('.marquee-motion-control')).not.toBeNull()
 
-      const originalLinks = host.querySelectorAll('.marquee-set:not([aria-hidden]) a')
-      const duplicateLinks = host.querySelectorAll('.marquee-set[aria-hidden="true"] a')
-      expect(originalLinks).toHaveLength(3)
-      expect(duplicateLinks).toHaveLength(3)
-      expect([...originalLinks].every(link => !link.hasAttribute('tabindex'))).toBe(true)
-      expect([...duplicateLinks].every(link => link.getAttribute('tabindex') === '-1')).toBe(true)
+      const links = host.querySelectorAll('.marquee-item a')
+      expect(links).toHaveLength(3)
+      expect([...links].every(link => !link.hasAttribute('tabindex'))).toBe(true)
 
-      expect(host.querySelectorAll('[data-morph-blob][data-animate="true"]')).toHaveLength(6)
+      expect(host.querySelectorAll('[data-morph-blob][data-animate="true"]')).toHaveLength(3)
       expect([...host.querySelectorAll('img')].every(image => image.getAttribute('decoding') === 'async')).toBe(true)
     } finally {
       app.unmount()
