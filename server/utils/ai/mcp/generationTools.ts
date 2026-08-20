@@ -3,6 +3,11 @@ import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permiss
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
+// Static import (not `await import(...)`): with only the zero-arg handler call statically
+// visible, Rollup treated the namespace-mediated `buildGenerationRunner(services)` call as
+// untracked and erased the `execution` parameter to `void 0` in the production bundle —
+// every dispatch checkpoint silently vanished (2026-08-20 dispatch_checkpoint_missing).
+import { buildGenerationRunner } from './generationRunner'
 
 /**
  * MCP Server Phase 2a — owned media-generation tools (spec: ai-copilot-mcp-server-phase2 §4).
@@ -201,7 +206,6 @@ export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
             ctx: ToolContext,
             services: TrustedSupplementalExecutionServices
           ): Promise<ToolResult> => {
-            const { buildGenerationRunner } = await import('./generationRunner')
             const outcome = await executeGenerationTool(descriptor.name, args, ctx, {
               enabled: true,
               bypassPermissions: true,
@@ -209,7 +213,11 @@ export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
             })
             return outcome.ok
               ? { ok: true, data: outcome.data }
-              : { ok: false, error: 'error' in outcome ? outcome.error : 'Generation failed.' }
+              : {
+                  ok: false,
+                  error: 'error' in outcome ? outcome.error : 'Generation failed.',
+                  ...('code' in outcome ? { code: outcome.code } : {})
+                }
           }
         }
       : {}),
@@ -217,7 +225,6 @@ export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
       ...descriptor,
       mutates: !readOnly,
       handler: async (args: unknown, ctx: ToolContext): Promise<ToolResult> => {
-        const { buildGenerationRunner } = await import('./generationRunner')
         const outcome = await executeGenerationTool(descriptor.name, args, ctx, {
           enabled: true,
           bypassPermissions: true,
@@ -225,7 +232,11 @@ export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
         })
         return outcome.ok
           ? { ok: true, data: outcome.data }
-          : { ok: false, error: 'error' in outcome ? outcome.error : 'Generation failed.' }
+          : {
+              ok: false,
+              error: 'error' in outcome ? outcome.error : 'Generation failed.',
+              ...('code' in outcome ? { code: outcome.code } : {})
+            }
       }
     }
     })
@@ -234,7 +245,7 @@ export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
 
 export type GenExecuteOutcome
   = | { ok: true, data: unknown }
-    | { ok: false, error: string, code: 'disabled' | 'not_found' | 'forbidden' | 'bad_args' | 'handler_error' }
+    | { ok: false, error: string, code: 'disabled' | 'not_found' | 'forbidden' | 'bad_args' | 'handler_error' | 'provider_auth_failed' }
 
 /** Injected execution: name → runner. The real runner (internal endpoint) calls the audio engines via ctx.event bindings. */
 export type GenerationRunner = Record<string, (
@@ -279,7 +290,14 @@ export async function executeGenerationTool(
   } catch (error: unknown) {
     if (name === 'verify_creative_compliance') {
       const detail = error instanceof Error ? error.message : 'Compliance inspection unavailable.'
-      return { ok: false, error: `Compliance inspection failed: ${detail.slice(0, 400)}`, code: 'handler_error' }
+      // An upstream 401/403 is our credentials failing, not caller input — tell the
+      // operator to check secrets instead of sending the caller hunting for a bad assetId.
+      const isProviderAuth = error instanceof Error && error.name === 'CreativeComplianceProviderAuthError'
+      return {
+        ok: false,
+        error: `Compliance inspection failed: ${detail.slice(0, 400)}`,
+        code: isProviderAuth ? 'provider_auth_failed' : 'handler_error'
+      }
     }
     return { ok: false, error: 'Generation failed.', code: 'handler_error' }
   }

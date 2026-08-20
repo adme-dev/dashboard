@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 import { roleHasPermission } from '~~/server/utils/permissions'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, type ToolContext, type ToolResult, isConversationlessProposeContext } from '../toolContext'
 import { proposeAction } from '../pendingActions'
 import { pickByExactName, type NamedRef } from './createTask'
 
@@ -62,7 +62,7 @@ type ApprovalArgs = z.infer<typeof approvalParams>
 
 export async function proposeExpenseApproval(args: ApprovalArgs, ctx: ToolContext, deps: FinanceDeps = defaultDeps): Promise<ToolResult> {
   if (!roleHasPermission(ctx.userRole, 'FINANCE')) return fail('You do not have permission to approve expenses.')
-  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare this action outside a conversation.')
+  if (!isConversationlessProposeContext(ctx)) return fail('Cannot prepare this action outside a conversation.')
   if (args.action === 'reject' && !args.reason?.trim()) return fail('A reason is required to reject an expense.')
 
   const matches = pickByExactName(await deps.resolveExpense(args.expense, ctx.userId), args.expense)
@@ -95,7 +95,7 @@ type EomArgs = z.infer<typeof eomParams>
 
 export async function proposeEomGenerate(args: EomArgs, ctx: ToolContext, deps: FinanceDeps = defaultDeps): Promise<ToolResult> {
   if (!roleHasPermission(ctx.userRole, 'ADMIN')) return fail('You do not have permission to generate an EOM invoice run.')
-  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare this action outside a conversation.')
+  if (!isConversationlessProposeContext(ctx)) return fail('Cannot prepare this action outside a conversation.')
   const resolved = { month: args.month, year: args.year }
   return ok({ proposalId: await deps.propose(ctx, 'propose_eom_generate', resolved), resolved })
 }
@@ -122,7 +122,7 @@ type ClassifyArgs = z.infer<typeof classifyParams>
 
 export async function proposeExpenseClassify(args: ClassifyArgs, ctx: ToolContext, deps: FinanceDeps = defaultDeps): Promise<ToolResult> {
   if (!roleHasPermission(ctx.userRole, 'FINANCE')) return fail('You do not have permission to classify expenses.')
-  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare this action outside a conversation.')
+  if (!isConversationlessProposeContext(ctx)) return fail('Cannot prepare this action outside a conversation.')
   if (!args.categoryName && !args.clientName) return fail('Specify a category and/or a client to classify the expense.')
 
   const matches = pickByExactName(await deps.resolveDraftExpense(args.expense), args.expense)

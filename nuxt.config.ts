@@ -25,6 +25,26 @@ const flyhubServerAlias = Object.fromEntries(
   ].map(pkg => [pkg, flyhubStub])
 )
 
+// @aws-sdk/core resolves its "client" submodule via the `browser` export
+// condition in the Workers build, which replaces node-only exports
+// (emitWarningIfUnsupportedVersion, NODE_APP_ID_CONFIG_OPTIONS, …) with
+// Symbol.for("node-only") stubs. @aws-sdk/client-s3 selects its browser
+// runtime via the legacy `browser` FIELD, which Nitro's rollup does not
+// honor — so the bundled node runtimeConfig calls those stubbed symbols
+// and every `new S3Client()` throws "<minified> is not a function".
+// Pin the node ESM build of the submodule so both halves agree.
+const awsSdkNodeBuildAliases = Object.fromEntries([
+  ['@aws-sdk/core', ['client']],
+  ['@aws-sdk/middleware-sdk-s3', ['s3']],
+  ['@smithy/core', ['config', 'retry', 'checksum', 'serde']]
+].flatMap(([pkg, submodules]) => (submodules as string[]).map(submodule => [
+  `${pkg}/${submodule}`,
+  fileURLToPath(new URL(
+    `./dist-es/submodules/${submodule}/index.js`,
+    import.meta.resolve(`${pkg}/package.json`)
+  ))
+])))
+
 const devWatcherIgnored = [
   '**/.claude/worktrees/**',
   '**/.worktrees/**',
@@ -372,7 +392,10 @@ export default defineNuxtConfig({
   nitro: {
     preset: 'cloudflare_pages',
     // Keep @flyhub/* out of the server bundle (client-only editor packages).
-    alias: flyhubServerAlias,
+    alias: {
+      ...flyhubServerAlias,
+      ...awsSdkNodeBuildAliases
+    },
     cloudflare: {
       deployConfig: true,
       nodeCompat: true

@@ -47,6 +47,8 @@ export function mcpProposeName(action: string): string {
  */
 export const MCP_FINANCIAL_ACTIONS = [
   'propose_budget_change',
+  'propose_set_campaign_budget',
+  'propose_bulk_set_campaign_budgets',
   'propose_eom_generate',
   'propose_expense_approval',
   'propose_quote',
@@ -57,6 +59,7 @@ export const MCP_FINANCIAL_ACTIONS = [
 /** Money-movers that require ack:true at the MCP boundary (independent of executor riskTier). */
 export const MCP_FINANCIAL_RICH_CONFIRM = [
   'propose_budget_change',
+  'propose_bulk_set_campaign_budgets',
   'propose_eom_generate',
   'propose_expense_approval',
 ] as const
@@ -268,6 +271,9 @@ export interface ConfirmDeps {
   videoDispatch?: (row: ClaimedProposal, ctx: ToolContext) => Promise<WriteConfirmOutcome | null>
   /** Optional (2b): handle banner confirm-tier tool_names; return null to fall through to the next path. */
   bannerDispatch?: (row: ClaimedProposal, ctx: ToolContext) => Promise<WriteConfirmOutcome | null>
+  /** Optional (feed round): handle feed confirm-tier tool_names; receives the boundary ack so the
+   *  P-2 always-confirm carve-in can refuse without ack:true under ANY authority. Null falls through. */
+  feedDispatch?: (row: ClaimedProposal, ctx: ToolContext, ack: boolean) => Promise<WriteConfirmOutcome | null>
   /** Optional: restore a just-claimed row to 'proposed' when a PRE-execution gate rejects (ack/permission),
    *  so the proposal isn't burned and the user can retry (e.g. with ack:true). Never called after execution. */
   revertClaim?: (proposalId: string, userId: string) => Promise<void>
@@ -291,6 +297,17 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
   const row = await deps.claim(parsed.data.proposalId, ctx.userId)
   if (!row) {
     const replay = await deps.replay?.(parsed.data.proposalId, ctx.userId).catch(() => null)
+    if (replay?.ok) {
+      // Replaying the recorded outcome of an already-confirmed proposal. The original dispatch
+      // (or its recorded failure) already happened; satisfy the god-mode dispatch checkpoint so
+      // the wrapper doesn't discard this as dispatch_checkpoint_missing, and label the response
+      // so the caller can tell "your proposal already ran" from a fresh dispatch.
+      await deps.execution?.markDispatched()
+      const data = replay.data && typeof replay.data === 'object'
+        ? { replay: 'already_confirmed' as const, ...(replay.data as Record<string, unknown>) }
+        : { replay: 'already_confirmed' as const, result: replay.data }
+      return { ok: true, data }
+    }
     return replay ?? { ok: false, error: 'Proposal not found, already used, expired, or not yours.', code: 'expired' }
   }
 
@@ -327,6 +344,16 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
   if (deps.bannerDispatch) {
     const bo = await deps.bannerDispatch(row, ctx)
     if (bo) return await persistSuccess(bo)
+  }
+
+  // Feed round: attach / product-set-rules confirmations. An ack refusal happens BEFORE execution,
+  // so the claim is reverted and the caller can retry with ack:true.
+  if (deps.feedDispatch) {
+    const fo = await deps.feedDispatch(row, ctx, parsed.data.ack === true)
+    if (fo) {
+      if (!fo.ok && fo.code === 'confirm_required') return await rejectAndRevert(fo)
+      return await persistSuccess(fo)
+    }
   }
 
   // D4: financial branch — checked BEFORE the 2c safe-action path. A financial action must NEVER

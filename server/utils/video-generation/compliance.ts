@@ -52,7 +52,21 @@ export function evaluateVideoGenerationCompliance(
     return { allowed: false, classification: 'model_not_allowed', reasons: ['Model is not allowed for this tenant.'] }
   }
 
-  const vehicleSubject = isVehicleSubject(input.requestedSubjectType, input.prompt)
+  // Brand safety only ever widens: the declared subject, the prompt wording, and the
+  // source assets' own registered subjectType each independently make this a vehicle
+  // job. The asset floor means a benign prompt rewrite can never soften the class of
+  // a job that consumes a vehicle asset.
+  const promptVehicle = isVehicleSubject(input.requestedSubjectType, input.prompt)
+  const assetVehicle = input.sourceAssets.some((asset) => asset.subjectType === 'vehicle')
+  const vehicleSubject = promptVehicle || assetVehicle
+  if (vehicleSubject && input.requestedSubjectType !== 'vehicle') {
+    if (assetVehicle) {
+      reasons.push(`Declared subjectType '${input.requestedSubjectType}' upgraded to vehicle: a source asset is registered as a vehicle.`)
+    }
+    if (promptVehicle) {
+      reasons.push(`Declared subjectType '${input.requestedSubjectType}' upgraded to vehicle: prompt matches vehicle policy patterns.`)
+    }
+  }
   if (input.mode === 'text-to-video' && vehicleSubject) {
     reasons.push('Vehicle text-to-video is blocked; use approved-asset image-to-video instead.')
     return { allowed: false, classification: 'blocked_vehicle_t2v', reasons }
@@ -67,12 +81,12 @@ export function evaluateVideoGenerationCompliance(
       reasons.push('Vehicle image-to-video requires an approved source asset.')
       return { allowed: false, classification: 'missing_approved_asset', reasons }
     }
-    return { allowed: true, classification: 'vehicle_i2v', reasons: ['Approved source asset present.'] }
+    return { allowed: true, classification: 'vehicle_i2v', reasons: [...reasons, 'Approved source asset present.'] }
   }
 
   if (input.mode === 'text-to-video') {
-    return { allowed: true, classification: 'non_vehicle_t2v', reasons: ['Non-vehicle text-to-video passed policy.'] }
+    return { allowed: true, classification: 'non_vehicle_t2v', reasons: [...reasons, 'Non-vehicle text-to-video passed policy.'] }
   }
 
-  return { allowed: true, classification: 'other_safe', reasons: ['Generation request passed policy.'] }
+  return { allowed: true, classification: 'other_safe', reasons: [...reasons, 'Generation request passed policy.'] }
 }

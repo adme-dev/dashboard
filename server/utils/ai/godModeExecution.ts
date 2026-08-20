@@ -98,6 +98,18 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value)
 }
 
+
+/** A result body is replayable when it serializes small enough to sit in the execution
+ *  ledger's metadata column without bloating it (proposals and job handles easily fit). */
+function isReplayableResultPayload(data: unknown): boolean {
+  if (data === undefined) return false
+  try {
+    return JSON.stringify(data).length <= 16_384
+  } catch {
+    return false
+  }
+}
+
 export async function claimGodModeToolCall(request: GodModeToolCallClaimRequest): Promise<GodModeToolCallClaim> {
   const argsDigest = createHash('sha256').update(stableJson(request.args)).digest('hex')
   const claimId = randomUUID()
@@ -561,8 +573,9 @@ function createGodModeExecutionCore(deps: GodModeExecutionDependencies) {
       if (!proposed.ok) return await failBeforeDispatch('proposal_rejected', proposed.error)
       const data = proposed.data as { proposalId?: unknown }
       if (typeof data?.proposalId !== 'string') {
+        const outcome = (data as { dryRun?: unknown })?.dryRun === true ? 'dry_run' : 'no_mutation'
         await deps.transaction(async db => {
-          await deps.appendAudit(auditEvent(auditIdentity, 'succeeded', 'no_mutation'), db)
+          await deps.appendAudit(auditEvent(auditIdentity, 'succeeded', outcome), db)
           await deps.setExecutionState({ actorUserId: user.id, channel, idempotencyKey: request.idempotencyKey, state: 'succeeded' }, db)
         })
         return proposed
@@ -995,7 +1008,9 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
       if (row.routeOrTool !== request.toolName) operationalError(409, 'Execution identity already used')
       if (row.state === 'succeeded') {
         const replayPayload = row.executionMetadata?.resultPayload
-        return replayPayload !== undefined ? ok(replayPayload) : ok({ resultRef: row.resultReference, replayed: true })
+        return replayPayload !== undefined && typeof replayPayload === 'object' && replayPayload !== null
+          ? ok({ ...(replayPayload as Record<string, unknown>), replayed: true })
+          : ok({ resultRef: row.resultReference, replayed: true })
       }
       if (row.state === 'failed') return fail('Action previously failed.')
       if (row.state === 'ambiguous') {
@@ -1169,7 +1184,11 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
             supplemental: true,
             executionClass: request.executionClass ?? 'internal-http',
             resultDigest: capturedIdentity.resultDigest,
-            ...(request.toolName === 'confirm_action' && 'data' in result ? { resultPayload: result.data } : {})
+            // Capture the full result body (size-bounded) so an idempotent replay can
+            // re-serve exactly what the first call returned — a caller parsing
+            // proposalId/estimatedCostCents off a fresh proposal must not break on a
+            // replay that only carries a resultRef.
+            ...('data' in result && isReplayableResultPayload(result.data) ? { resultPayload: result.data } : {})
           }
         })
         resultCaptured = true
@@ -1187,7 +1206,15 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
       return await terminateBeforeDispatch(result.code ?? 'precondition_failed', result.error, result.details)
     }
     if (!dispatched || dispatchCheckpointCalls !== 1) {
-      return await terminateBeforeDispatch('dispatch_checkpoint_missing', 'God mode action failed.')
+      // Diagnostic detail: which invariant broke. dispatched=false with calls=0 means the
+      // executor never invoked services.markDispatched; calls>1 means a double checkpoint.
+      return await terminateBeforeDispatch('dispatch_checkpoint_missing', 'God mode action failed.', {
+        dispatched,
+        dispatchCheckpointCalls,
+        resultCaptured,
+        resultOk: result.ok,
+        executionClass: request.executionClass ?? 'internal-http'
+      })
     }
     if (!result.ok) return await markDispatchAmbiguous(capturedIdentity)
 

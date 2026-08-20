@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 import { isReadOnlyRole } from '~~/server/utils/permissions'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, type ToolContext, type ToolResult, isConversationlessProposeContext } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
 import { proposeAction } from '../pendingActions'
 import { pickByExactName, type NamedRef } from './createTask'
@@ -111,7 +111,7 @@ const defaultDeps: CrmDeps = {
 
 function preflight(ctx: ToolContext): ToolResult | null {
   if (isReadOnlyRole(ctx.userRole)) return fail('You do not have permission to make this change.')
-  if (!ctx.conversationId && ctx.source !== 'mcp') return fail('Cannot prepare this action outside a conversation.')
+  if (!isConversationlessProposeContext(ctx)) return fail('Cannot prepare this action outside a conversation.')
   return null
 }
 

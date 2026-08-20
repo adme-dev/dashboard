@@ -36,7 +36,37 @@ export type CapabilityInspection = {
 export type CapabilitiesDeps = {
   inspect: (ctx: ToolContext) => Promise<CapabilityInspection>
   inspectActions?: (ctx: ToolContext, filter: z.infer<typeof actionLogFilter>) => Promise<unknown[]>
+  inspectGenerationSpend?: () => Promise<GenerationSpendStatus | null>
   retryDelay?: () => Promise<void>
+}
+
+export type GenerationSpendStatus = {
+  monthToDateUsd: number
+  basis: 'estimated_reservations'
+  note: string
+  monthlyLimitUsd: number | null
+}
+
+/** Month-to-date generation spend against the gateway cap. Providers on the AI Gateway
+ *  path return no per-call billed figure (Cloudflare unified billing), so this is the
+ *  same reservation SUM the budget gate enforces: actual cost where reported, estimate
+ *  otherwise, over jobs still holding budget this month. */
+async function inspectGenerationSpendStatus(): Promise<GenerationSpendStatus | null> {
+  const rows = await queryRows<{ total: string }>(
+    `SELECT COALESCE(SUM(COALESCE(actual_cost_cents, estimated_cost_cents)), 0) AS total
+       FROM video_generation_jobs
+      WHERE status IN ('queued','running','succeeded')
+        AND created_at >= date_trunc('month', now())`,
+    []
+  )
+  const cents = Number(rows[0]?.total ?? 0)
+  const limitRaw = Number(process.env.AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD)
+  return {
+    monthToDateUsd: Math.round(cents) / 100,
+    basis: 'estimated_reservations',
+    note: 'Gateway providers do not report per-call billed cost; figure is the enforced reservation sum (actual where reported, estimate otherwise).',
+    monthlyLimitUsd: Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : null,
+  }
 }
 
 export type GodModeActionFilter = {
@@ -103,6 +133,22 @@ export async function inspectGodModeActions(
   )
 }
 
+
+/** G-4: when data next moves. The ad-spend sync runs from the pages-cron Worker. */
+export function describeDataSyncSchedule(now: Date = new Date()) {
+  const cron = '0 20 * * *'
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 20, 0, 0))
+  if (next.getTime() <= now.getTime()) next.setUTCDate(next.getUTCDate() + 1)
+  return {
+    adSpend: {
+      cron,
+      timezone: 'UTC',
+      note: '06:00 Melbourne — moved from 06:00 UTC so the 9am budget check reads same-day data',
+      nextRunAt: next.toISOString()
+    }
+  }
+}
+
 const minimalInspection: CapabilityInspection = {
   tools: [{ name: 'get_capabilities', mode: 'read' }],
   suites: {
@@ -116,10 +162,11 @@ const minimalInspection: CapabilityInspection = {
 
 const defaultDeps: CapabilitiesDeps = {
   inspect: async (ctx) => {
-    const [toolModule, registryModule, generationModule] = await Promise.all([
+    const [toolModule, registryModule, generationModule, feedModule] = await Promise.all([
       import('./index'),
       import('../mcp/registry'),
       import('../mcp/generationTools'),
+      import('../mcp/feedTools'),
     ])
     const generationEnabled = process.env.MCP_GEN_TOOLS_ENABLED === 'true'
     const writeEnabled = process.env.MCP_WRITE_TOOLS_ENABLED === 'true'
@@ -127,6 +174,7 @@ const defaultDeps: CapabilitiesDeps = {
     const videoEnabled = process.env.MCP_VIDEO_TOOLS_ENABLED === 'true'
     const videoGenerationEnabled = process.env.MCP_VIDEO_GEN_ENABLED === 'true'
     const bannerEnabled = process.env.MCP_BANNER_TOOLS_ENABLED === 'true'
+    const feedEnabled = process.env.MCP_FEED_TOOLS_ENABLED === 'true'
     const projectionContext = {
       tools: toolModule.registry,
       role: ctx.userRole,
@@ -139,13 +187,15 @@ const defaultDeps: CapabilitiesDeps = {
         video: videoEnabled,
         videoGeneration: videoEnabled && videoGenerationEnabled,
         banners: bannerEnabled,
+        feeds: feedEnabled,
       },
     }
     // Capabilities and tools/list share one projection authority. Building the complete God-mode
     // execution map also asserts that every advertised name has exactly one schema-matched handler.
-    const executableNames = new Set(
-      registryModule.resolveGodModeMcpExecutions(projectionContext).map(execution => execution.name)
+    const executionsByName = new Map(
+      registryModule.resolveGodModeMcpExecutions(projectionContext).map(execution => [execution.name, execution])
     )
+    const executableNames = new Set(executionsByName.keys())
     const manifests = ctx.godModeExecutionKey
       ? registryModule.projectGodModeTools(projectionContext)
       : registryModule.projectRegisteredMcpTools(projectionContext)
@@ -160,6 +210,7 @@ const defaultDeps: CapabilitiesDeps = {
         .map(tool => tool.name)
         .filter(name => !generationModule.isGenerationReadToolName(name) && !inspectionNames.has(name))
     )
+    const alwaysConfirmNames = new Set<string>(feedModule.MCP_FEED_ALWAYS_CONFIRM)
     const unique = [...new Map(manifests.map(manifest => {
       const mode: ToolMode = manifest.name === 'confirm_action'
         ? 'confirmation'
@@ -170,7 +221,33 @@ const defaultDeps: CapabilitiesDeps = {
           : manifest.name.startsWith('propose_') || manifest.name === 'create_video_project'
             ? 'propose_only'
             : 'read'
-      return [manifest.name, { name: manifest.name, mode }]
+      // G-1a: report what will ACTUALLY happen for this caller. Under owner god-mode,
+      // catalog-registry writes direct-execute (confirmation is a bypassed control) —
+      // an agent must never read propose_only and get a live write. Supplemental
+      // suites (video/banner) genuinely stop at a proposal and keep their mode.
+      const execution = executionsByName.get(manifest.name)
+      const directExecutes = Boolean(ctx.godModeExecutionKey)
+        && mode === 'propose_only'
+        && execution?.kind === 'catalog'
+        && execution.tool.mutates === true
+      // P-2 carve-in: feed attach / product-set-rules NEVER direct-execute — confirm_action with
+      // ack:true is required regardless of caller authority, and effectiveMode must say so.
+      const alwaysConfirms = Boolean(ctx.godModeExecutionKey) && alwaysConfirmNames.has(manifest.name)
+      return [manifest.name, {
+        name: manifest.name,
+        mode,
+        ...(alwaysConfirms
+          ? {
+              effectiveMode: 'confirmation_required' as const,
+              effectiveModeReason: 'binds or retargets a client ad account; requires confirm_action with ack:true regardless of caller authority. Pass dryRun:true to preview without writing.'
+            }
+          : directExecutes
+            ? {
+                effectiveMode: 'direct_execute' as const,
+                effectiveModeReason: 'owner god-mode bypasses confirmation for registry writes; pass dryRun:true (where supported) to preview without writing'
+              }
+            : {})
+      }]
     })).values()]
     return {
       tools: unique,
@@ -184,6 +261,7 @@ const defaultDeps: CapabilitiesDeps = {
     }
   },
   inspectActions: inspectGodModeActions,
+  inspectGenerationSpend: inspectGenerationSpendStatus,
 }
 
 async function inspectWithOneRetry(ctx: ToolContext, deps: CapabilitiesDeps): Promise<CapabilityInspection> {
@@ -208,6 +286,7 @@ async function inspectWithDegradedFallback(
 
 export async function getCapabilities(args: Args, ctx: ToolContext, deps: CapabilitiesDeps = defaultDeps): Promise<ToolResult> {
   const { inspection, degraded } = await inspectWithDegradedFallback(ctx, deps)
+  const generationSpend = await deps.inspectGenerationSpend?.().catch(() => null) ?? null
   let actions: unknown[] | undefined
   let actionLogUnavailable = false
   if (args.actionLog && deps.inspectActions) {
@@ -238,11 +317,19 @@ export async function getCapabilities(args: Args, ctx: ToolContext, deps: Capabi
     creationSuites: inspection.suites,
     selectionPolicy: 'capability_driven',
     governance: {
+      ...(ctx.godModeExecutionKey
+        ? { godModeBypass: 'an owner-authority session direct-executes registry writes; propose_only tools with effectiveMode direct_execute do not stop at a proposal for this identity' }
+        : {}),
       read: 'executes immediately',
       inspection: 'executes immediately for analysis and evidence capture; does not create a media asset',
       propose_only: 'creates a reviewable proposal without executing it',
       confirmation: 'requires the authenticated user to confirm a proposal',
       direct_generation: 'intentional authenticated-owner carve-out: may create a billed asset immediately, is rate-limited, and every attempt/outcome is immutably audited',
+    },
+    alwaysRequiresConfirmation: {
+      tools: ['propose_attach_catalog_feed', 'propose_set_product_set_rules'],
+      reason: 'binds or retargets a client ad account; not reversible from the agent side',
+      note: 'requires confirm_action with ack:true regardless of caller authority',
     },
     directGenerationDecision: {
       enabled: inspection.tools.some(tool => tool.mode === 'direct_generation'),
@@ -255,6 +342,8 @@ export async function getCapabilities(args: Args, ctx: ToolContext, deps: Capabi
       generation: { maxCalls: MCP_GEN_RATE_MAX, windowMinutes: MCP_GEN_RATE_WINDOW_MIN },
       inspection: { maxCalls: MCP_INSPECTION_RATE_MAX, windowMinutes: MCP_INSPECTION_RATE_WINDOW_MIN },
     },
+    ...(generationSpend ? { generationSpend } : {}),
+    dataSync: describeDataSyncSchedule(),
     ...(actions ? { actionLog: { items: actions, count: actions.length } } : {}),
     ...(unavailableSections.length
       ? {

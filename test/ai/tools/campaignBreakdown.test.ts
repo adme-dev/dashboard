@@ -5,7 +5,7 @@ import type { ToolContext } from '~~/server/utils/ai/toolContext'
 const ctx = { userId: 'u1', userRole: 'media_buyer', conversationId: 'c1', event: {} as any } as ToolContext
 
 const rows: BreakdownCampaign[] = [
-  { campaignId: 'c1', campaignName: 'Acme Prospecting', clientName: 'Acme', platform: 'meta', spend: 100, roas: 2.0, cpc: 1.5, campaignStatus: 'ACTIVE', effectiveStatus: 'active', firstServedDate: '2026-08-01', lastServedDate: '2026-08-18', endDate: null, lastSyncedAt: '2026-08-18T08:00:00Z', impressions: 1000, clicks: 67, conversions: 4, leadCount: 3, costPerLead: 33.33, frequency: 1.4 },
+  { campaignId: 'c1', mediaSpendId: '00000000-0000-4000-8000-0000000000c1', campaignName: 'Acme Prospecting', clientName: 'Acme', platform: 'meta', spend: 100, roas: 2.0, cpc: 1.5, campaignStatus: 'ACTIVE', effectiveStatus: 'active', firstServedDate: '2026-08-01', lastServedDate: '2026-08-18', endDate: null, lastSyncedAt: '2026-08-18T08:00:00Z', impressions: 1000, clicks: 67, conversions: 4, leadCount: 3, costPerLead: 33.33, frequency: 1.4 },
   { campaignId: 'c2', campaignName: 'Acme Retargeting', clientName: 'Acme', platform: 'meta', spend: 400, roas: 5.0, cpc: 0.8, campaignStatus: 'PAUSED', effectiveStatus: 'paused', firstServedDate: '2026-08-02', lastServedDate: '2026-08-14', endDate: null, lastSyncedAt: '2026-08-18T08:00:00Z', impressions: 2000, clicks: 500, conversions: 20, leadCount: 10, costPerLead: 40, frequency: 3.2 },
   { campaignId: 'c3', campaignName: 'Globex Search', clientName: 'Globex', platform: 'google', spend: 250, roas: null, cpc: 3.2, campaignStatus: 'ENABLED', effectiveStatus: 'active', firstServedDate: '2026-08-03', lastServedDate: '2026-08-18', endDate: '2026-09-30', lastSyncedAt: '2026-08-18T08:30:00Z', impressions: 900, clicks: 78, conversions: 7, leadCount: 5, costPerLead: 50, frequency: null },
 ]
@@ -61,6 +61,10 @@ describe('getCampaignBreakdown', () => {
       conversions: null,
     })
     expect(d.conversionMetric).toMatchObject({ dataStatus: 'unavailable', definition: 'suppressed_pending_historical_resync' })
+    // Round-7 A-1: mediaSpendId must survive to the projected rows so the budget
+    // allocation write tools are addressable from this read alone.
+    const acmeProspecting = d.campaigns.find((row: any) => row.campaignId === 'c1')
+    expect(acmeProspecting?.mediaSpendId).toBe('00000000-0000-4000-8000-0000000000c1')
     expect(d.leadAttribution).toEqual({
       totalSubmissions: 63,
       campaignAttributed: 0,

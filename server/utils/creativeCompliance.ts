@@ -87,6 +87,14 @@ function parseJsonContent(content: unknown): unknown {
   return JSON.parse(text)
 }
 
+/** Upstream vision provider (or the AI Gateway in front of it) rejected our credentials. */
+export class CreativeComplianceProviderAuthError extends Error {
+  constructor(public readonly status: number) {
+    super(`Vision compliance provider rejected credentials (${status}): check GROQ_API_KEY and the AI Gateway auth token in the Pages environment`)
+    this.name = 'CreativeComplianceProviderAuthError'
+  }
+}
+
 export async function requestCreativeComplianceVerdict(
   input: VisionComplianceRequest,
   deps: VisionComplianceDeps,
@@ -99,18 +107,24 @@ export async function requestCreativeComplianceVerdict(
   if (!gatewayBase) throw new Error('Cloudflare AI Gateway is required for creative compliance')
   if (!deps.groqApiKey) throw new Error('Groq credentials are required for creative compliance')
 
+  // Caller notes are analyst CONTEXT, never an expected claim: putting them inside the
+  // Expected claims JSON made the model echo them back as its verdict notes, silently
+  // replacing the model's own analysis (round-7 A-2). Keep them out of the claims object
+  // and instruct the model that its notes must be its own observation.
   const expectedClaims = {
     price: boundedText(input.expectedClaims?.price, 500),
     disclaimer: boundedText(input.expectedClaims?.disclaimer, 2000),
     logo: boundedText(input.expectedClaims?.logo, 500),
-    notes: boundedText(input.expectedClaims?.notes, 2000),
   }
+  const analystContext = boundedText(input.expectedClaims?.notes, 2000)
   const prompt = [
     'Inspect image 1 as the proposed advertising creative. Remaining images are approved references.',
     `Subject type: ${input.subjectType}.`,
     `Expected claims: ${JSON.stringify(expectedClaims)}.`,
+    ...(analystContext ? [`Analyst context (background only — do NOT repeat it in your notes): ${analystContext}`] : []),
     'Return one JSON object only with exactly these keys: vehicleMatchesReference, badgeVisibleAndCorrect,',
     'disclaimerPresent, priceMatchesBrief, logoPresentUndistorted, artefactsDetected, confidence, notes.',
+    'The notes field must contain YOUR OWN visual observations of the images, never text supplied to you.',
     'For a genuinely non-applicable check return true and explain why in notes. Never infer unreadable copy as present.',
   ].join(' ')
   const content: Array<Record<string, unknown>> = [{ type: 'text', text: prompt }]
@@ -129,10 +143,18 @@ export async function requestCreativeComplianceVerdict(
       messages: [{ role: 'user', content }],
       response_format: { type: 'json_object' },
       temperature: 0,
-      max_completion_tokens: 1200,
+      // qwen3.6-27b is a reasoning model: its thinking tokens count against this
+      // budget, and ~1200 left no room for the JSON verdict (Groq then 400s with
+      // json_validate_failed and an empty failed_generation). Confirmed in the AI
+      // Gateway log for the 2026-08-20 12:35 inspection.
+      max_completion_tokens: 4096,
       stream: false,
     }),
   })
+  if (response.status === 401 || response.status === 403) {
+    // Upstream rejected OUR credentials — an operator secrets problem, not caller input.
+    throw new CreativeComplianceProviderAuthError(response.status)
+  }
   if (!response.ok) throw new Error(`Vision compliance provider failed: ${response.status}`)
   const completion = await response.json() as any
   return normalizeCreativeComplianceVerdict(parseJsonContent(completion?.choices?.[0]?.message?.content))
@@ -191,7 +213,17 @@ export async function runCreativeComplianceCheck(input: RunCreativeComplianceInp
   ])
   const config = useRuntimeConfig()
   const gatewayUrl = String(config.aiGatewayUrl || process.env.AI_GATEWAY_URL || '')
-  const gatewayAuthToken = String(config.aiGatewayAuthToken || process.env.AI_GATEWAY_AUTH_TOKEN || '')
+  // Same cf-aig-authorization fallback chain as the shared Groq chat client
+  // (groqClient.ts) — an authenticated AI Gateway 401s the inspection path when
+  // only CF_API_TOKEN is configured and this reads AI_GATEWAY_AUTH_TOKEN alone.
+  const gatewayAuthToken = String(
+    config.aiGatewayAuthToken
+    || process.env.AI_GATEWAY_AUTH_TOKEN
+    || (config as { cfApiToken?: string }).cfApiToken
+    || process.env.CF_API_TOKEN
+    || process.env.CLOUDFLARE_API_TOKEN
+    || ''
+  )
   const groqApiKey = String(config.groqApiKey || process.env.GROQ_API_KEY || process.env.GROQ_API || '')
   await input.beforeDispatch?.()
   const startedAt = Date.now()
@@ -217,5 +249,15 @@ export async function runCreativeComplianceCheck(input: RunCreativeComplianceInp
     status: 'success', latencyMs: Date.now() - startedAt,
     metadata: { assetId: input.assetId, subjectType: input.subjectType, passed, referenceCount: references.length },
   })
-  return { checkId: row.id, assetId: input.assetId, modelId: CREATIVE_COMPLIANCE_MODEL, passed, verdict, checkedAt: row.created_at }
+  // Caller context is returned on its own key; verdict.notes stays the model's observation.
+  const requestNotes = boundedText(input.expectedClaims?.notes, 2000)
+  return {
+    checkId: row.id,
+    assetId: input.assetId,
+    modelId: CREATIVE_COMPLIANCE_MODEL,
+    passed,
+    ...(requestNotes ? { requestNotes } : {}),
+    verdict,
+    checkedAt: row.created_at
+  }
 }

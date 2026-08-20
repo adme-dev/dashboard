@@ -1258,6 +1258,7 @@ describe('executor durability classification', () => {
       'propose_brief_convert',
       'propose_budget_alert',
       'propose_budget_change',
+      'propose_bulk_set_campaign_budgets',
       'propose_eom_generate',
       'propose_expense_approval',
       'propose_expense_classify',
@@ -1265,6 +1266,7 @@ describe('executor durability classification', () => {
       'propose_proof_status',
       'propose_quote',
       'propose_schedule_post',
+      'propose_set_campaign_budget',
       'propose_status_change'
     ])
     expect(Object.entries(classes).filter(([, value]) => value === 'local-transactional').map(([name]) => name).sort()).toEqual([

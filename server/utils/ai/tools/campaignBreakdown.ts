@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { getSpendCoverageDeltas } from '~~/server/utils/spendSyncJobs'
 import { queryOne } from '~~/server/utils/db'
 // Use Nitro's global $fetch (auto-imported), NOT raw ofetch — it resolves relative internal routes
 // on the Cloudflare runtime; raw ofetch throws on a relative URL (no origin base). See #129.
@@ -33,6 +34,8 @@ export type CampaignEffectiveStatus = 'active' | 'paused' | 'ended' | 'inactive'
 /** One campaign's model-readable delivery and efficiency data for the requested period. */
 export type BreakdownCampaign = {
   campaignId: string | null
+  /** media_spend row UUID (latest-synced row for the campaign) — the id budget-allocation write tools take. */
+  mediaSpendId: string | null
   campaignName: string
   clientName: string
   platform: 'meta' | 'google'
@@ -77,6 +80,8 @@ export type LeadAttributionSummary = {
 }
 
 export type CampaignBreakdownDeps = {
+  loadCoverageDeltas?: () => Promise<Record<string, unknown> | null>
+
   breakdown: (ctx: ToolContext, query: CampaignBreakdownQuery) => Promise<BreakdownResult>
   leadAttribution?: (ctx: ToolContext, query: CampaignBreakdownQuery) => Promise<LeadAttributionSummary>
   now?: () => Date
@@ -134,6 +139,7 @@ function mapCampaign(it: any): BreakdownCampaign {
   const endDate = it?.endDate ? String(it.endDate) : null
   return {
     campaignId: it?.campaignId == null ? null : String(it.campaignId),
+    mediaSpendId: it?.mediaSpendId == null ? null : String(it.mediaSpendId),
     campaignName: String(it?.campaignName ?? 'Unknown'),
     clientName: String(it?.clientName ?? 'Unassigned'),
     platform,
@@ -288,6 +294,7 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
       if (args.status && args.status !== 'all' && campaign.effectiveStatus !== args.status) return false
       return true
     })
+    const coverageDelta = await (deps.loadCoverageDeltas ?? getSpendCoverageDeltas)().catch(() => null)
     const page = paginateWithCursor(sortCampaigns(filtered, sortBy), args.cursor, args.limit)
     const note = (sortBy !== 'spend' && current.total > current.campaigns.length)
       ? `Ranked by ${sortBy} over the ${current.campaigns.length} highest-spend campaigns (of ${current.total}); lower-spend campaigns are not included in this ranking.`
@@ -298,6 +305,7 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
       ...(comparisonStatus ? { comparisonStatus } : {}),
       source: 'synced_campaign_analytics',
       ...buildSyncFreshness(current.campaigns.map(row => row.lastSyncedAt), { now: deps.now?.() }),
+      ...(coverageDelta ? { coverageDelta } : {}),
       ...buildDataHealth({ configured: true, expected: current.total, withData: current.campaigns.length }),
       conversionMetric: {
         dataStatus: 'unavailable',

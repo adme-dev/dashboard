@@ -30,7 +30,8 @@ export default defineEventHandler(async (event) => {
       financial: false,
       video: false,
       videoGeneration: false,
-      banners: false
+      banners: false,
+      feeds: false
     }
   }
   const tools = activeGodMode

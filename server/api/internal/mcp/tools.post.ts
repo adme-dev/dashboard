@@ -69,7 +69,8 @@ export default defineEventHandler(async (event) => {
       financial: process.env.MCP_FINANCIAL_TOOLS_ENABLED === 'true',
       video: process.env.MCP_VIDEO_TOOLS_ENABLED === 'true',
       videoGeneration: process.env.MCP_VIDEO_GEN_ENABLED === 'true',
-      banners: process.env.MCP_BANNER_TOOLS_ENABLED === 'true'
+      banners: process.env.MCP_BANNER_TOOLS_ENABLED === 'true',
+      feeds: process.env.MCP_FEED_TOOLS_ENABLED === 'true'
     }
   }
   if (isActiveGodModeAuthority(authority, userId)) {

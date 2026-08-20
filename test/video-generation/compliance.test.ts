@@ -85,6 +85,24 @@ describe('video generation compliance', () => {
     expect(result.classification).toBe('vehicle_i2v')
   })
 
+  it('floors the classification on the asset subjectType: a benign prompt rewrite cannot soften a vehicle job', () => {
+    const model = getVideoGenerationModel('mock/i2v-safe')!
+
+    const result = evaluateVideoGenerationCompliance({
+      mode: 'image-to-video',
+      prompt: 'gentle cinematic parallax over the hero image',
+      model,
+      sourceAssets: [{ id: 'asset-1', approved: true, subjectType: 'vehicle' }],
+      requestedSubjectType: 'unknown',
+      tenantPolicy,
+      provenance,
+    })
+
+    expect(result.allowed).toBe(true)
+    expect(result.classification).toBe('vehicle_i2v')
+    expect(result.reasons.join(' ')).toContain('registered as a vehicle')
+  })
+
   it('blocks vehicle image-to-video without an approved source asset', () => {
     const model = getVideoGenerationModel('mock/i2v-safe')!
 
