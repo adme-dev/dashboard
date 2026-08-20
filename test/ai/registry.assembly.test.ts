@@ -26,7 +26,7 @@ const DELIVERY_READS = ['get_capacity']
 const CRM_WRITES = ['propose_opportunity', 'log_crm_activity', 'propose_quote']
 const CRM_READS = ['draft_followup']
 // Finance / Bookkeeper pack (PRD §7): 3 writes (expense approve, EOM generate rich_confirm, expense classify).
-const FINANCE_WRITES = ['propose_expense_approval', 'propose_eom_generate', 'propose_expense_classify']
+const FINANCE_WRITES = ['propose_set_campaign_budget', 'propose_bulk_set_campaign_budgets', 'propose_expense_approval', 'propose_eom_generate', 'propose_expense_classify']
 // Creative pack (PRD §7): queue read + proof-status write.
 const CREATIVE_READS = ['get_my_creative_queue']
 const CREATIVE_WRITES = ['propose_proof_status']

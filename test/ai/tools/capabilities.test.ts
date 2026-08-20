@@ -81,10 +81,13 @@ describe('get_capabilities', () => {
 
     expect(result.ok).toBe(true)
     const tools = (result as any).data.tools as Array<{ name: string, mode: string }>
-    expect(tools).toHaveLength(74)
+    expect(tools).toHaveLength(76)
     expect(tools).toContainEqual({ name: 'list_video_source_assets', mode: 'read' })
+    // W-1/W-2: mode derivation is by propose_ prefix — verify, don't assume.
+    expect(tools).toContainEqual({ name: 'propose_set_campaign_budget', mode: 'propose_only' })
+    expect(tools).toContainEqual({ name: 'propose_bulk_set_campaign_budgets', mode: 'propose_only' })
     expect((result as any).data.servedCatalog).toEqual({
-      release: '2026-08-20.5', toolCount: 74, projectionAuthority: 'shared_with_tools_list',
+      release: '2026-08-20.6', toolCount: 76, projectionAuthority: 'shared_with_tools_list',
     })
     expect((result as any).data.degraded).toBeUndefined()
   })

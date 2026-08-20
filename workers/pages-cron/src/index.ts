@@ -81,19 +81,19 @@ export const ROUTES: Record<string, string[]> = {
   // daily — create review-only Auto Feed drafts. The endpoint is a no-op until
   // DEALER_FEEDS_ENABLED is set and deduplicates every feed item per rule.
   '10 4 * * *': ['/api/cron/feed-post-rules'],
-  // daily 6am UTC — ad-spend sync. Meta fans out per account via queue; other
+  // daily 20:00 UTC (06:00 AEST) — ad-spend sync, so the 9am Melbourne budget check reads same-day data instead of spend pulled at 4pm the previous day. Meta fans out per account via queue; other
   // platforms run as background syncs. The endpoint returns immediately so this
   // never hits the function time limit. Replaces the ai-agent-worker path,
   // which ran every platform synchronously and never completed.
-  '0 6 * * *': ['/api/cron/sync-spend'],
-  // daily 6:15am UTC — import account-wide Google Ads call_view records after
+  '0 20 * * *': ['/api/cron/sync-spend'],
+  // daily 20:15 UTC (06:15 AEST) — import account-wide Google Ads call_view records after
   // the main spend sync. Status and duration come from Google and are never
   // inferred from browser phone-link clicks.
-  '15 6 * * *': ['/api/cron/google-ads-call-reporting'],
-  // daily 6:30am UTC — read-only Google Search campaign AI Max readiness.
+  '15 20 * * *': ['/api/cron/google-ads-call-reporting'],
+  // daily 20:30 UTC (06:30 AEST) — read-only Google Search campaign AI Max readiness.
   // Offset from spend sync to avoid overlapping Google API bursts. Internal
   // notifications remain dormant unless the Pages enable flag is armed.
-  '30 6 * * *': ['/api/cron/google-ai-max-readiness']
+  '30 20 * * *': ['/api/cron/google-ai-max-readiness']
 }
 
 export default {

@@ -47,6 +47,8 @@ export function mcpProposeName(action: string): string {
  */
 export const MCP_FINANCIAL_ACTIONS = [
   'propose_budget_change',
+  'propose_set_campaign_budget',
+  'propose_bulk_set_campaign_budgets',
   'propose_eom_generate',
   'propose_expense_approval',
   'propose_quote',
@@ -57,6 +59,7 @@ export const MCP_FINANCIAL_ACTIONS = [
 /** Money-movers that require ack:true at the MCP boundary (independent of executor riskTier). */
 export const MCP_FINANCIAL_RICH_CONFIRM = [
   'propose_budget_change',
+  'propose_bulk_set_campaign_budgets',
   'propose_eom_generate',
   'propose_expense_approval',
 ] as const

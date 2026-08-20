@@ -18,6 +18,7 @@ import { createTaskTool } from './createTask'
 import { scheduleSocialPostTool } from './scheduleSocialPost'
 import { budgetAlertTool } from './proposeBudgetAlert'
 import { proposeBudgetChangeTool } from './proposeBudgetChange'
+import { proposeSetCampaignBudgetTool, proposeBulkSetCampaignBudgetsTool } from './proposeSetCampaignBudget'
 import { knowledgeArticleTool } from './proposeKnowledgeArticle'
 import { rememberTool } from './remember'
 import { assignTaskTool, statusChangeTool, briefConvertTool } from './deliveryActions'
@@ -74,6 +75,8 @@ export const registry: AiTool<any>[] = [
   scheduleSocialPostTool,
   budgetAlertTool,
   proposeBudgetChangeTool,
+  proposeSetCampaignBudgetTool,
+  proposeBulkSetCampaignBudgetsTool,
   knowledgeArticleTool,
   rememberTool,
   // Delivery writes (Account Manager / Producer) + capacity read.

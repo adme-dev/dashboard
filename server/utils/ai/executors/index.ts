@@ -3,6 +3,7 @@ import { createTaskExecutor } from './createTask'
 import { scheduleSocialPostExecutor } from './scheduleSocialPost'
 import { budgetAlertExecutor } from './proposeBudgetAlert'
 import { budgetChangeExecutor } from './proposeBudgetChange'
+import { setCampaignBudgetExecutor, bulkSetCampaignBudgetsExecutor } from './setCampaignBudget'
 import { knowledgeArticleExecutor } from './proposeKnowledgeArticle'
 import { assignTaskExecutor, statusChangeExecutor, briefConvertExecutor } from './deliveryActions'
 import { opportunityExecutor, logActivityExecutor, quoteExecutor } from './crmActions'
@@ -21,6 +22,8 @@ export const executors: Record<string, ActionExecutor> = {
   [scheduleSocialPostExecutor.toolName]: scheduleSocialPostExecutor,
   [budgetAlertExecutor.toolName]: budgetAlertExecutor,
   [budgetChangeExecutor.toolName]: budgetChangeExecutor,
+  [setCampaignBudgetExecutor.toolName]: setCampaignBudgetExecutor,
+  [bulkSetCampaignBudgetsExecutor.toolName]: bulkSetCampaignBudgetsExecutor,
   [knowledgeArticleExecutor.toolName]: knowledgeArticleExecutor,
   [assignTaskExecutor.toolName]: assignTaskExecutor,
   [statusChangeExecutor.toolName]: statusChangeExecutor,

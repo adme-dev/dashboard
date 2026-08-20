@@ -258,6 +258,6 @@ describe('financial actions over MCP (#3 / D4)', () => {
   it('isFinancialAction + rich-confirm set are correct', () => {
     expect(isFinancialAction('propose_quote')).toBe(true)
     expect(isFinancialAction('create_task')).toBe(false)
-    expect([...MCP_FINANCIAL_RICH_CONFIRM]).toEqual(['propose_budget_change','propose_eom_generate','propose_expense_approval'])
+    expect([...MCP_FINANCIAL_RICH_CONFIRM]).toEqual(['propose_budget_change','propose_bulk_set_campaign_budgets','propose_eom_generate','propose_expense_approval'])
   })
 })
