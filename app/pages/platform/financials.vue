@@ -228,7 +228,8 @@
     <!-- Dark CTA Section -->
     <section class="py-10 md:py-16">
       <div class="max-w-[1200px] mx-auto px-6">
-        <div class="relative rounded-[2rem] bg-[#0a0b0e] overflow-hidden py-24 md:py-36">
+        <div class="relative isolate rounded-[2rem] bg-[#0a0b0e] overflow-hidden py-24 md:py-36">
+          <MarketingCtaParticles theme="emerald" />
           <!-- Ambient glow -->
           <div class="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
             <div class="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full bg-emerald-500/[0.06] blur-[120px]" />

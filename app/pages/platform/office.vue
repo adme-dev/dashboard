@@ -203,7 +203,8 @@
       </section>
 
       <section class="px-6 pb-24">
-        <div class="mx-auto max-w-[1200px] rounded-[32px] bg-[#0a0b0e] px-6 py-20 text-center md:py-24">
+        <div class="relative isolate mx-auto max-w-[1200px] overflow-hidden rounded-[32px] bg-[#0a0b0e] px-6 py-20 text-center md:py-24">
+          <MarketingCtaParticles theme="emerald" />
           <p class="mb-4 text-[12px] font-semibold uppercase tracking-[0.14em] text-emerald-300">
             XeroFlow Office
           </p>

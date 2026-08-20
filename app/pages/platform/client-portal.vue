@@ -550,63 +550,8 @@
     <!-- Dark CTA with wave particles -->
     <section class="py-10 md:py-16">
       <div class="max-w-[1200px] mx-auto px-6">
-        <div class="relative rounded-[2rem] bg-[#0a0b0e] overflow-hidden py-24 md:py-32">
-          <!-- Animated rose wave particles -->
-          <ClientOnly>
-            <div class="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
-              <!-- Wave layer 1 (slow, large orbit) -->
-              <div class="cta-wave cta-wave-1">
-                <div
-                  v-for="dot in waveParticles1"
-                  :key="'w1-' + dot.id"
-                  class="absolute rounded-full"
-                  :style="{
-                    left: dot.x + '%',
-                    top: dot.y + '%',
-                    width: dot.size + 'px',
-                    height: dot.size + 'px',
-                    backgroundColor: dot.color,
-                    opacity: dot.opacity
-                  }"
-                />
-              </div>
-              <!-- Wave layer 2 (medium, counter-rotate) -->
-              <div class="cta-wave cta-wave-2">
-                <div
-                  v-for="dot in waveParticles2"
-                  :key="'w2-' + dot.id"
-                  class="absolute rounded-full"
-                  :style="{
-                    left: dot.x + '%',
-                    top: dot.y + '%',
-                    width: dot.size + 'px',
-                    height: dot.size + 'px',
-                    backgroundColor: dot.color,
-                    opacity: dot.opacity
-                  }"
-                />
-              </div>
-              <!-- Wave layer 3 (fast, tight swirl) -->
-              <div class="cta-wave cta-wave-3">
-                <div
-                  v-for="dot in waveParticles3"
-                  :key="'w3-' + dot.id"
-                  class="absolute rounded-full"
-                  :style="{
-                    left: dot.x + '%',
-                    top: dot.y + '%',
-                    width: dot.size + 'px',
-                    height: dot.size + 'px',
-                    backgroundColor: dot.color,
-                    opacity: dot.opacity
-                  }"
-                />
-              </div>
-              <!-- Ambient glow -->
-              <div class="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full bg-rose-500/[0.06] blur-[120px] cta-glow-1" />
-              <div class="absolute bottom-1/4 right-1/3 w-[400px] h-[400px] rounded-full bg-rose-400/[0.04] blur-[100px] cta-glow-2" />
-            </div>
-          </ClientOnly>
+        <div class="relative isolate rounded-[2rem] bg-[#0a0b0e] overflow-hidden py-24 md:py-32">
+          <MarketingCtaParticles theme="rose" />
 
           <!-- Content -->
           <div class="relative text-center px-6">
@@ -784,92 +729,9 @@ useSeoMeta({
   ogDescription: 'A client-scoped workspace for relationship management, campaign outcomes, delivery, approvals, shared work, and billing.'
 })
 
-// Rose particle colors for CTA waves
-const roseColors = ['#fb7185', '#f472b6', '#e11d48', '#fda4af', '#be123c']
-
-// CTA wave particles (3 layers for depth)
-const waveParticles1 = Array.from({ length: 35 }, (_, i) => ({
-  id: i,
-  x: 10 + Math.random() * 50,
-  y: 15 + Math.random() * 70,
-  size: 2 + Math.random() * 3.5,
-  color: roseColors[Math.floor(Math.random() * roseColors.length)],
-  opacity: 0.3 + Math.random() * 0.5
-}))
-
-const waveParticles2 = Array.from({ length: 30 }, (_, i) => ({
-  id: i,
-  x: 20 + Math.random() * 60,
-  y: 10 + Math.random() * 80,
-  size: 1.5 + Math.random() * 3,
-  color: roseColors[Math.floor(Math.random() * roseColors.length)],
-  opacity: 0.2 + Math.random() * 0.4
-}))
-
-const waveParticles3 = Array.from({ length: 25 }, (_, i) => ({
-  id: i,
-  x: 15 + Math.random() * 55,
-  y: 20 + Math.random() * 60,
-  size: 1.5 + Math.random() * 2.5,
-  color: roseColors[Math.floor(Math.random() * roseColors.length)],
-  opacity: 0.25 + Math.random() * 0.45
-}))
 </script>
 
 <style scoped>
-/* CTA wave particle animations */
-.cta-wave {
-  position: absolute;
-  inset: 0;
-  transform-origin: 40% 50%;
-}
-.cta-wave-1 {
-  animation: wave-drift-1 20s ease-in-out infinite;
-}
-.cta-wave-2 {
-  animation: wave-drift-2 16s ease-in-out infinite;
-}
-.cta-wave-3 {
-  animation: wave-drift-3 12s ease-in-out infinite;
-}
-
-@keyframes wave-drift-1 {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); }
-  25% { transform: translate(30px, -20px) rotate(8deg); }
-  50% { transform: translate(-10px, 15px) rotate(-4deg); }
-  75% { transform: translate(20px, 10px) rotate(5deg); }
-}
-
-@keyframes wave-drift-2 {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); }
-  25% { transform: translate(-25px, 15px) rotate(-6deg); }
-  50% { transform: translate(20px, -25px) rotate(7deg); }
-  75% { transform: translate(-15px, -10px) rotate(-3deg); }
-}
-
-@keyframes wave-drift-3 {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); }
-  33% { transform: translate(20px, 20px) rotate(10deg); }
-  66% { transform: translate(-20px, -15px) rotate(-8deg); }
-}
-
-.cta-glow-1 {
-  animation: glow-pulse-1 8s ease-in-out infinite;
-}
-.cta-glow-2 {
-  animation: glow-pulse-2 10s ease-in-out infinite;
-}
-
-@keyframes glow-pulse-1 {
-  0%, 100% { opacity: 0.6; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.15); }
-}
-
-@keyframes glow-pulse-2 {
-  0%, 100% { opacity: 0.5; transform: scale(1.1); }
-  50% { opacity: 0.8; transform: scale(0.9); }
-}
-
 /* Feature illustration gradients (from index.vue) */
 .feature-gradient-2 {
   background: linear-gradient(135deg, #d1fae5 0%, #ccfbf1 25%, #dbeafe 50%, #d1fae5 75%, #fef3c7 100%);

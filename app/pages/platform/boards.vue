@@ -395,7 +395,8 @@
     <!-- Dark CTA -->
     <section class="py-10 md:py-16">
       <div class="max-w-[1200px] mx-auto px-6">
-        <div class="rounded-[2rem] bg-[#0a0b0e] py-24 md:py-32 text-center px-6 relative overflow-hidden">
+        <div class="relative isolate overflow-hidden rounded-[2rem] bg-[#0a0b0e] py-24 md:py-32 text-center px-6">
+          <MarketingCtaParticles theme="emerald" />
           <!-- Ambient glow -->
           <div class="absolute top-1/3 left-1/4 w-[400px] h-[400px] rounded-full bg-emerald-500/[0.06] blur-[100px] pointer-events-none" />
           <div class="absolute bottom-1/3 right-1/4 w-[300px] h-[300px] rounded-full bg-blue-500/[0.04] blur-[80px] pointer-events-none" />

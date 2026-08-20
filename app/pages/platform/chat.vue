@@ -299,7 +299,8 @@
     <!-- Dark CTA Section -->
     <section class="pb-24 px-6">
       <div class="max-w-[1200px] mx-auto">
-        <div class="bg-[#0a0b0e] rounded-[2rem] px-8 py-16 sm:px-16 sm:py-20 text-center">
+        <div class="relative isolate overflow-hidden bg-[#0a0b0e] rounded-[2rem] px-8 py-16 sm:px-16 sm:py-20 text-center">
+          <MarketingCtaParticles theme="violet" />
           <h2
             class="font-[450] text-white tracking-[-0.02em] mb-5 leading-[1.12]"
             :style="{ fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)' }"

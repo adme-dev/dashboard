@@ -397,7 +397,8 @@
     <!-- CTA -->
     <section class="py-10 md:py-16">
       <div class="max-w-[1200px] mx-auto px-6">
-        <div class="rounded-[2rem] bg-[#0a0b0e] py-24 md:py-32 text-center px-6 relative overflow-hidden">
+        <div class="relative isolate overflow-hidden rounded-[2rem] bg-[#0a0b0e] py-24 md:py-32 text-center px-6">
+          <MarketingCtaParticles theme="rose" />
           <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-rose-500/10 rounded-full blur-[150px] pointer-events-none" />
           <div class="relative">
             <h2 class="text-[clamp(28px,4vw,48px)] font-[450] text-white leading-[1.15] tracking-[-0.02em] mb-4">

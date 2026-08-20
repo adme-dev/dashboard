@@ -178,7 +178,8 @@
       <!-- Dark CTA Section -->
       <section class="px-6 py-16 sm:py-24">
         <div class="max-w-[800px] mx-auto">
-          <div class="bg-[#121317] rounded-2xl px-8 py-12 sm:px-14 sm:py-16 text-center">
+          <div class="relative isolate overflow-hidden bg-[#121317] rounded-2xl px-8 py-12 sm:px-14 sm:py-16 text-center">
+            <MarketingCtaParticles theme="indigo" />
             <h2
               class="font-[450] text-white tracking-[-0.02em] mb-4"
               style="font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.2"

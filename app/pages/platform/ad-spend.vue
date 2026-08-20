@@ -356,7 +356,8 @@
     <!-- Dark CTA -->
     <section class="py-10 md:py-16">
       <div class="max-w-[1200px] mx-auto px-6">
-        <div class="rounded-[2rem] bg-[#0a0b0e] py-24 md:py-32 text-center px-6">
+        <div class="relative isolate overflow-hidden rounded-[2rem] bg-[#0a0b0e] py-24 md:py-32 text-center px-6">
+          <MarketingCtaParticles theme="blue" />
           <h2 class="text-[clamp(28px,4vw,48px)] font-[450] text-white leading-[1.15] tracking-[-0.02em] mb-10">
             Never miss a budget<br class="hidden sm:block">issue again
           </h2>
