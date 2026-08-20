@@ -1142,7 +1142,7 @@ const platformCardsRow2 = [
   { title: 'Team Culture', subtitle: 'Chat, kudos, and real-time presence to keep teams connected.', to: '/platform/chat', bg: 'bg-violet-300', image: 'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?w=600&h=600&fit=crop&crop=faces' },
   { title: 'Scale', subtitle: 'From boutique to enterprise — infrastructure that grows with you.', to: '/pricing', bg: 'bg-emerald-400', image: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=600&h=600&fit=crop&crop=center' },
   { title: 'AI Training', subtitle: 'Train your AI on your agency data — knowledge extraction, LoRA adapters, and edge inference.', to: '/ai-training', bg: 'bg-amber-300', image: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=600&h=600&fit=crop&crop=center' },
-  { title: 'Rate Cards', subtitle: 'Manage service pricing, fuzzy-match to Xero invoices, and power AI pricing queries.', to: '/features/rate-cards', bg: 'bg-teal-300', image: 'https://images.unsplash.com/photo-1554224155-1696413dd7a1?w=600&h=600&fit=crop&crop=center' }
+  { title: 'Rate Cards', subtitle: 'Manage service pricing, fuzzy-match to Xero invoices, and power AI pricing queries.', to: '/features/rate-cards', bg: 'bg-teal-300', image: 'https://images.unsplash.com/photo-1554224154-26032ffc0d07?w=600&h=600&fit=crop&crop=center' }
 ]
 
 // Two marquee rows — the component adds a hidden duplicate for the seamless loop
