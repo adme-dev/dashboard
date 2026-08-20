@@ -234,7 +234,7 @@ export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
 
 export type GenExecuteOutcome
   = | { ok: true, data: unknown }
-    | { ok: false, error: string, code: 'disabled' | 'not_found' | 'forbidden' | 'bad_args' | 'handler_error' }
+    | { ok: false, error: string, code: 'disabled' | 'not_found' | 'forbidden' | 'bad_args' | 'handler_error' | 'provider_auth_failed' }
 
 /** Injected execution: name → runner. The real runner (internal endpoint) calls the audio engines via ctx.event bindings. */
 export type GenerationRunner = Record<string, (
@@ -279,7 +279,14 @@ export async function executeGenerationTool(
   } catch (error: unknown) {
     if (name === 'verify_creative_compliance') {
       const detail = error instanceof Error ? error.message : 'Compliance inspection unavailable.'
-      return { ok: false, error: `Compliance inspection failed: ${detail.slice(0, 400)}`, code: 'handler_error' }
+      // An upstream 401/403 is our credentials failing, not caller input — tell the
+      // operator to check secrets instead of sending the caller hunting for a bad assetId.
+      const isProviderAuth = error instanceof Error && error.name === 'CreativeComplianceProviderAuthError'
+      return {
+        ok: false,
+        error: `Compliance inspection failed: ${detail.slice(0, 400)}`,
+        code: isProviderAuth ? 'provider_auth_failed' : 'handler_error'
+      }
     }
     return { ok: false, error: 'Generation failed.', code: 'handler_error' }
   }

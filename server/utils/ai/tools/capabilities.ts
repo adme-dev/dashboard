@@ -36,7 +36,37 @@ export type CapabilityInspection = {
 export type CapabilitiesDeps = {
   inspect: (ctx: ToolContext) => Promise<CapabilityInspection>
   inspectActions?: (ctx: ToolContext, filter: z.infer<typeof actionLogFilter>) => Promise<unknown[]>
+  inspectGenerationSpend?: () => Promise<GenerationSpendStatus | null>
   retryDelay?: () => Promise<void>
+}
+
+export type GenerationSpendStatus = {
+  monthToDateUsd: number
+  basis: 'estimated_reservations'
+  note: string
+  monthlyLimitUsd: number | null
+}
+
+/** Month-to-date generation spend against the gateway cap. Providers on the AI Gateway
+ *  path return no per-call billed figure (Cloudflare unified billing), so this is the
+ *  same reservation SUM the budget gate enforces: actual cost where reported, estimate
+ *  otherwise, over jobs still holding budget this month. */
+async function inspectGenerationSpendStatus(): Promise<GenerationSpendStatus | null> {
+  const rows = await queryRows<{ total: string }>(
+    `SELECT COALESCE(SUM(COALESCE(actual_cost_cents, estimated_cost_cents)), 0) AS total
+       FROM video_generation_jobs
+      WHERE status IN ('queued','running','succeeded')
+        AND created_at >= date_trunc('month', now())`,
+    []
+  )
+  const cents = Number(rows[0]?.total ?? 0)
+  const limitRaw = Number(process.env.AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD)
+  return {
+    monthToDateUsd: Math.round(cents) / 100,
+    basis: 'estimated_reservations',
+    note: 'Gateway providers do not report per-call billed cost; figure is the enforced reservation sum (actual where reported, estimate otherwise).',
+    monthlyLimitUsd: Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : null,
+  }
 }
 
 export type GodModeActionFilter = {
@@ -184,6 +214,7 @@ const defaultDeps: CapabilitiesDeps = {
     }
   },
   inspectActions: inspectGodModeActions,
+  inspectGenerationSpend: inspectGenerationSpendStatus,
 }
 
 async function inspectWithOneRetry(ctx: ToolContext, deps: CapabilitiesDeps): Promise<CapabilityInspection> {
@@ -208,6 +239,7 @@ async function inspectWithDegradedFallback(
 
 export async function getCapabilities(args: Args, ctx: ToolContext, deps: CapabilitiesDeps = defaultDeps): Promise<ToolResult> {
   const { inspection, degraded } = await inspectWithDegradedFallback(ctx, deps)
+  const generationSpend = await deps.inspectGenerationSpend?.().catch(() => null) ?? null
   let actions: unknown[] | undefined
   let actionLogUnavailable = false
   if (args.actionLog && deps.inspectActions) {
@@ -255,6 +287,7 @@ export async function getCapabilities(args: Args, ctx: ToolContext, deps: Capabi
       generation: { maxCalls: MCP_GEN_RATE_MAX, windowMinutes: MCP_GEN_RATE_WINDOW_MIN },
       inspection: { maxCalls: MCP_INSPECTION_RATE_MAX, windowMinutes: MCP_INSPECTION_RATE_WINDOW_MIN },
     },
+    ...(generationSpend ? { generationSpend } : {}),
     ...(actions ? { actionLog: { items: actions, count: actions.length } } : {}),
     ...(unavailableSections.length
       ? {

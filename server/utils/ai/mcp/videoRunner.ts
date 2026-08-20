@@ -52,6 +52,15 @@ export async function authorizedProject(projectId: string, ctx: ToolContext) {
   return existing
 }
 
+
+/** Explicit cost-reconciliation state so a null actual cost never reads as "not yet".
+ *  The AI Gateway path bills via Cloudflare unified billing and returns no per-call
+ *  figure, so terminal jobs without a provider-reported cost are labelled as such. */
+function costReconciliation(job: { status: string, actualCostCents: number | null }): string {
+  if (job.actualCostCents != null) return 'provider_reported'
+  return ['succeeded', 'failed', 'blocked'].includes(job.status) ? 'provider_does_not_report' : 'pending'
+}
+
 export function buildVideoReadRunner(): VideoReadRunner {
   return {
     list_av_projects: async (_raw, ctx) => {
@@ -97,6 +106,7 @@ export function buildVideoReadRunner(): VideoReadRunner {
         modelId: j.modelId,
         estimatedCostCents: j.estimatedCostCents,
         actualCostCents: j.actualCostCents,
+        costReconciliation: costReconciliation(j),
         createdAt: j.createdAt
       }))
     },
@@ -135,6 +145,7 @@ export function buildVideoReadRunner(): VideoReadRunner {
         assetUrl: job.providerResultUrl ?? null,
         estimatedCostCents: job.estimatedCostCents,
         actualCostCents: job.actualCostCents,
+        costReconciliation: costReconciliation(job),
         error: job.errorMessage ?? null
       }
     },

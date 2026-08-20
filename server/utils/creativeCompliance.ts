@@ -87,6 +87,14 @@ function parseJsonContent(content: unknown): unknown {
   return JSON.parse(text)
 }
 
+/** Upstream vision provider (or the AI Gateway in front of it) rejected our credentials. */
+export class CreativeComplianceProviderAuthError extends Error {
+  constructor(public readonly status: number) {
+    super(`Vision compliance provider rejected credentials (${status}): check GROQ_API_KEY and the AI Gateway auth token in the Pages environment`)
+    this.name = 'CreativeComplianceProviderAuthError'
+  }
+}
+
 export async function requestCreativeComplianceVerdict(
   input: VisionComplianceRequest,
   deps: VisionComplianceDeps,
@@ -133,6 +141,10 @@ export async function requestCreativeComplianceVerdict(
       stream: false,
     }),
   })
+  if (response.status === 401 || response.status === 403) {
+    // Upstream rejected OUR credentials — an operator secrets problem, not caller input.
+    throw new CreativeComplianceProviderAuthError(response.status)
+  }
   if (!response.ok) throw new Error(`Vision compliance provider failed: ${response.status}`)
   const completion = await response.json() as any
   return normalizeCreativeComplianceVerdict(parseJsonContent(completion?.choices?.[0]?.message?.content))
@@ -191,7 +203,17 @@ export async function runCreativeComplianceCheck(input: RunCreativeComplianceInp
   ])
   const config = useRuntimeConfig()
   const gatewayUrl = String(config.aiGatewayUrl || process.env.AI_GATEWAY_URL || '')
-  const gatewayAuthToken = String(config.aiGatewayAuthToken || process.env.AI_GATEWAY_AUTH_TOKEN || '')
+  // Same cf-aig-authorization fallback chain as the shared Groq chat client
+  // (groqClient.ts) — an authenticated AI Gateway 401s the inspection path when
+  // only CF_API_TOKEN is configured and this reads AI_GATEWAY_AUTH_TOKEN alone.
+  const gatewayAuthToken = String(
+    config.aiGatewayAuthToken
+    || process.env.AI_GATEWAY_AUTH_TOKEN
+    || (config as { cfApiToken?: string }).cfApiToken
+    || process.env.CF_API_TOKEN
+    || process.env.CLOUDFLARE_API_TOKEN
+    || ''
+  )
   const groqApiKey = String(config.groqApiKey || process.env.GROQ_API_KEY || process.env.GROQ_API || '')
   await input.beforeDispatch?.()
   const startedAt = Date.now()

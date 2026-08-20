@@ -119,3 +119,26 @@ describe('executeGenerationTool', () => {
     expect(res).toMatchObject({ ok: false, code: 'handler_error' })
   })
 })
+
+describe('verify_creative_compliance error mapping', () => {
+  const validArgs = {
+    assetId: '00000000-0000-4000-8000-000000000001',
+    subjectType: 'vehicle',
+    referenceSourceAssetIds: ['00000000-0000-4000-8000-000000000002'],
+  }
+
+  it('maps an upstream credential rejection to provider_auth_failed', async () => {
+    const authError = new Error('Vision compliance provider rejected credentials (401): check secrets')
+    authError.name = 'CreativeComplianceProviderAuthError'
+    const runner = { verify_creative_compliance: vi.fn(async () => { throw authError }) }
+    const res = await executeGenerationTool('verify_creative_compliance', validArgs, ctx('admin'), { enabled: true, runner, bypassPermissions: true })
+    expect(res).toMatchObject({ ok: false, code: 'provider_auth_failed' })
+    expect((res as { error: string }).error).toContain('rejected credentials')
+  })
+
+  it('keeps handler_error for non-auth inspection failures', async () => {
+    const runner = { verify_creative_compliance: vi.fn(async () => { throw new Error('Vision compliance provider failed: 500') }) }
+    const res = await executeGenerationTool('verify_creative_compliance', validArgs, ctx('admin'), { enabled: true, runner, bypassPermissions: true })
+    expect(res).toMatchObject({ ok: false, code: 'handler_error' })
+  })
+})

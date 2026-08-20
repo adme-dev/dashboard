@@ -98,6 +98,18 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value)
 }
 
+
+/** A result body is replayable when it serializes small enough to sit in the execution
+ *  ledger's metadata column without bloating it (proposals and job handles easily fit). */
+function isReplayableResultPayload(data: unknown): boolean {
+  if (data === undefined) return false
+  try {
+    return JSON.stringify(data).length <= 16_384
+  } catch {
+    return false
+  }
+}
+
 export async function claimGodModeToolCall(request: GodModeToolCallClaimRequest): Promise<GodModeToolCallClaim> {
   const argsDigest = createHash('sha256').update(stableJson(request.args)).digest('hex')
   const claimId = randomUUID()
@@ -995,7 +1007,9 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
       if (row.routeOrTool !== request.toolName) operationalError(409, 'Execution identity already used')
       if (row.state === 'succeeded') {
         const replayPayload = row.executionMetadata?.resultPayload
-        return replayPayload !== undefined ? ok(replayPayload) : ok({ resultRef: row.resultReference, replayed: true })
+        return replayPayload !== undefined && typeof replayPayload === 'object' && replayPayload !== null
+          ? ok({ ...(replayPayload as Record<string, unknown>), replayed: true })
+          : ok({ resultRef: row.resultReference, replayed: true })
       }
       if (row.state === 'failed') return fail('Action previously failed.')
       if (row.state === 'ambiguous') {
@@ -1169,7 +1183,11 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
             supplemental: true,
             executionClass: request.executionClass ?? 'internal-http',
             resultDigest: capturedIdentity.resultDigest,
-            ...(request.toolName === 'confirm_action' && 'data' in result ? { resultPayload: result.data } : {})
+            // Capture the full result body (size-bounded) so an idempotent replay can
+            // re-serve exactly what the first call returned — a caller parsing
+            // proposalId/estimatedCostCents off a fresh proposal must not break on a
+            // replay that only carries a resultRef.
+            ...('data' in result && isReplayableResultPayload(result.data) ? { resultPayload: result.data } : {})
           }
         })
         resultCaptured = true
