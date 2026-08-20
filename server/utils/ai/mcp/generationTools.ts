@@ -3,6 +3,11 @@ import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permiss
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
+// Static import (not `await import(...)`): with only the zero-arg handler call statically
+// visible, Rollup treated the namespace-mediated `buildGenerationRunner(services)` call as
+// untracked and erased the `execution` parameter to `void 0` in the production bundle —
+// every dispatch checkpoint silently vanished (2026-08-20 dispatch_checkpoint_missing).
+import { buildGenerationRunner } from './generationRunner'
 
 /**
  * MCP Server Phase 2a — owned media-generation tools (spec: ai-copilot-mcp-server-phase2 §4).
@@ -201,7 +206,6 @@ export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
             ctx: ToolContext,
             services: TrustedSupplementalExecutionServices
           ): Promise<ToolResult> => {
-            const { buildGenerationRunner } = await import('./generationRunner')
             const outcome = await executeGenerationTool(descriptor.name, args, ctx, {
               enabled: true,
               bypassPermissions: true,
@@ -221,7 +225,6 @@ export function resolveGenerationMcpExecutions(): McpExecutionDescriptor[] {
       ...descriptor,
       mutates: !readOnly,
       handler: async (args: unknown, ctx: ToolContext): Promise<ToolResult> => {
-        const { buildGenerationRunner } = await import('./generationRunner')
         const outcome = await executeGenerationTool(descriptor.name, args, ctx, {
           enabled: true,
           bypassPermissions: true,

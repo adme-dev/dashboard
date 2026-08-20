@@ -169,8 +169,14 @@ export function assertNoNodeOnlyAwsSdkStubs(workerDirectory, { readDir = readdir
     for (const entry of readDir(directory, { withFileTypes: true })) {
       const entryPath = path.join(directory, entry.name)
       if (entry.isDirectory()) walk(entryPath)
-      else if (/\.(mjs|js)$/.test(entry.name) && readFile(entryPath, 'utf8').includes('Symbol.for("node-only")')) {
-        offenders.push(entryPath)
+      else if (/\.(mjs|js)$/.test(entry.name)) {
+        const source = readFile(entryPath, 'utf8')
+        // Browser-build stubs mixed into the node runtime (see aws-sdk incident).
+        if (source.includes('Symbol.for("node-only")')) offenders.push(`${entryPath}#node-only-stub`)
+        // Rollup parameter erasure: a dispatch checkpoint compiled to a literal undefined
+        // means the god-mode services parameter was tree-shaken out of a runner factory
+        // (2026-08-20 dispatch_checkpoint_missing incident).
+        if (/beforeDispatch:\s*void 0/.test(source)) offenders.push(`${entryPath}#erased-dispatch-checkpoint`)
       }
     }
   }
