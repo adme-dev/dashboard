@@ -19,11 +19,13 @@ const props = withDefaults(defineProps<{
   radius?: number
   seed?: number
   amplitude?: number
+  animate?: boolean
 }>(), {
   points: 12,
   radius: 0.42,
   seed: 0,
-  amplitude: 0.003
+  amplitude: 0.003,
+  animate: true
 })
 
 const clipId = `morph-${useId()}`
@@ -97,18 +99,20 @@ for (let i = 0; i < n; i++) {
 const ELASTICITY = 0.001
 const FRICTION = 0.0085
 
-function fmt(v: number) { return v.toFixed(4) }
+function fmt(v: number) {
+  return v.toFixed(4)
+}
 
 function solve() {
   for (let i = 0; i < n; i++) {
     const l = (i - 1 + n) % n
     const r = (i + 1) % n
-    const acc =
-      (-0.3 * radial[i] +
-        (radial[l] - radial[i]) +
-        (radial[r] - radial[i])) *
-        ELASTICITY -
-      spd[i] * FRICTION
+    const acc
+      = (-0.3 * radial[i]
+        + (radial[l] - radial[i])
+        + (radial[r] - radial[i]))
+      * ELASTICITY
+      - spd[i] * FRICTION
     spd[i] += acc * 2
     radial[i] += spd[i] * 5
   }
@@ -144,6 +148,7 @@ function tick() {
 }
 
 onMounted(() => {
+  if (!props.animate) return
   running = true
   raf = requestAnimationFrame(tick)
 })

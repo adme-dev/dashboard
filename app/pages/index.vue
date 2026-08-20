@@ -67,41 +67,7 @@
     </section>
 
     <!-- Scrolling platform card grid (2 rows, opposite directions) -->
-    <section class="py-8 overflow-hidden border-t border-black/[0.04] dark:border-white/[0.06]">
-      <div class="flex flex-col gap-4">
-        <div
-          v-for="(row, ri) in marqueeRows"
-          :key="ri"
-          class="flex gap-4"
-          :class="ri === 0 ? 'marquee-row-left' : 'marquee-row-right'"
-        >
-          <NuxtLink
-            v-for="(card, ci) in row"
-            :key="ci"
-            :to="card.to"
-            class="flex-shrink-0 w-[250px] sm:w-[280px] rounded-[22px] overflow-hidden group hover:shadow-2xl hover:-translate-y-1 transition-all duration-400"
-            :class="card.bg"
-          >
-            <div class="relative h-[220px] flex items-center justify-center">
-              <MorphBlob
-                :seed="(ci % platformCards.length) + ri * 50"
-                class="w-[80%] aspect-square group-hover:scale-[1.06] transition-transform duration-500"
-              >
-                <img
-                  :src="card.image"
-                  :alt="card.title"
-                  class="w-full h-full object-cover"
-                />
-              </MorphBlob>
-            </div>
-            <div class="px-4 pb-4 pt-3">
-              <div class="text-[15px] font-bold text-black tracking-[-0.01em]">{{ card.title }}</div>
-              <div class="text-[12px] text-black/50 leading-relaxed line-clamp-1">{{ card.subtitle }}</div>
-            </div>
-          </NuxtLink>
-        </div>
-      </div>
-    </section>
+    <MarketingPlatformMarquee :rows="marqueeRows" />
 
     <!-- Features Section -->
     <section id="features" class="py-20 md:py-32">
@@ -1179,10 +1145,8 @@ const platformCardsRow2 = [
   { title: 'Rate Cards', subtitle: 'Manage service pricing, fuzzy-match to Xero invoices, and power AI pricing queries.', to: '/features/rate-cards', bg: 'bg-teal-300', image: 'https://images.unsplash.com/photo-1554224155-1696413dd7a1?w=600&h=600&fit=crop&crop=center' }
 ]
 
-// Two marquee rows — each has its own card set, duplicated for seamless loop
-const marqueeRow1 = [...platformCards, ...platformCards]
-const marqueeRow2 = [...platformCardsRow2, ...platformCardsRow2]
-const marqueeRows = [marqueeRow1, marqueeRow2]
+// Two marquee rows — the component adds a hidden duplicate for the seamless loop
+const marqueeRows = [platformCards, platformCardsRow2]
 
 // Hero floating icons — wide variety covering all platform features
 const heroIconPool = [
@@ -1285,29 +1249,6 @@ function scrollToFeatures() {
 </script>
 
 <style scoped>
-/* Two-row marquee grid — opposite directions, pre-filled via negative delay */
-@keyframes marquee-left {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
-}
-@keyframes marquee-right {
-  0% { transform: translateX(-50%); }
-  100% { transform: translateX(0); }
-}
-
-.marquee-row-left {
-  animation: marquee-left 45s linear infinite;
-  animation-delay: -15s;
-}
-.marquee-row-right {
-  animation: marquee-right 50s linear infinite;
-  animation-delay: -10s;
-}
-.marquee-row-left:hover,
-.marquee-row-right:hover {
-  animation-play-state: paused;
-}
-
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.3s ease;

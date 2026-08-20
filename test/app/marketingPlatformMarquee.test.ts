@@ -1,0 +1,132 @@
+// @vitest-environment happy-dom
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createApp, h, nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue'
+
+import MarketingPlatformMarquee from '~~/app/components/MarketingPlatformMarquee.vue'
+import MorphBlob from '~~/app/components/MorphBlob.vue'
+
+Object.assign(globalThis, { onBeforeUnmount, onMounted, ref, useId })
+
+const rows = [
+  [
+    { title: 'Boards', subtitle: 'Plan the work', to: '/platform/boards', bg: 'bg-pink-300', image: '/boards.jpg' },
+    { title: 'Financials', subtitle: 'Track the money', to: '/platform/financials', bg: 'bg-emerald-300', image: '/financials.jpg' }
+  ],
+  [
+    { title: 'Reporting', subtitle: 'See the results', to: '/platform/ai', bg: 'bg-sky-300', image: '/reporting.jpg' }
+  ]
+]
+
+function mountMarquee() {
+  const host = document.createElement('div')
+  const app = createApp({ render: () => h(MarketingPlatformMarquee, { rows }) })
+
+  app.component('NuxtLink', {
+    inheritAttrs: false,
+    props: ['to'],
+    template: '<a :href="to" v-bind="$attrs"><slot /></a>'
+  })
+  app.component('UButton', {
+    inheritAttrs: false,
+    emits: ['click'],
+    template: '<button type="button" v-bind="$attrs" @click="$emit(\'click\', $event)"><slot /></button>'
+  })
+  app.component('MorphBlob', {
+    inheritAttrs: false,
+    props: ['animate'],
+    template: '<div data-morph-blob :data-animate="String(animate)" v-bind="$attrs"><slot /></div>'
+  })
+
+  app.mount(host)
+  return { app, host }
+}
+
+describe('MarketingPlatformMarquee', () => {
+  it('renders one accessible card set and one inert duplicate per row', () => {
+    const { app, host } = mountMarquee()
+
+    try {
+      expect(host.querySelectorAll('.marquee-track')).toHaveLength(2)
+      expect(host.querySelectorAll('.marquee-set')).toHaveLength(4)
+      expect(host.querySelectorAll('.marquee-set[aria-hidden="true"]')).toHaveLength(2)
+
+      const originalLinks = host.querySelectorAll('.marquee-set:not([aria-hidden]) a')
+      const duplicateLinks = host.querySelectorAll('.marquee-set[aria-hidden="true"] a')
+      expect(originalLinks).toHaveLength(3)
+      expect(duplicateLinks).toHaveLength(3)
+      expect([...originalLinks].every(link => !link.hasAttribute('tabindex'))).toBe(true)
+      expect([...duplicateLinks].every(link => link.getAttribute('tabindex') === '-1')).toBe(true)
+
+      expect(host.querySelectorAll('[data-morph-blob][data-animate="false"]')).toHaveLength(6)
+      expect([...host.querySelectorAll('img')].every(image => image.getAttribute('decoding') === 'async')).toBe(true)
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('lets visitors pause and resume both rows from one control', async () => {
+    const { app, host } = mountMarquee()
+
+    try {
+      const button = host.querySelector('button') as HTMLButtonElement
+      expect(button.getAttribute('aria-label')).toBe('Pause scrolling cards')
+      expect(host.querySelectorAll('.marquee-track[data-paused="true"]')).toHaveLength(0)
+
+      button.click()
+      await nextTick()
+
+      expect(button.getAttribute('aria-label')).toBe('Resume scrolling cards')
+      expect(host.querySelectorAll('.marquee-track[data-paused="true"]')).toHaveLength(2)
+
+      button.click()
+      await nextTick()
+
+      expect(button.getAttribute('aria-label')).toBe('Pause scrolling cards')
+      expect(host.querySelectorAll('.marquee-track[data-paused="true"]')).toHaveLength(0)
+    } finally {
+      app.unmount()
+    }
+  })
+})
+
+describe('MorphBlob animation control', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('does not start a frame loop when animation is disabled', () => {
+    const requestAnimationFrame = vi.fn(() => 1)
+    const cancelAnimationFrame = vi.fn()
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrame)
+    vi.stubGlobal('cancelAnimationFrame', cancelAnimationFrame)
+
+    const host = document.createElement('div')
+    const app = createApp({ render: () => h(MorphBlob, { animate: false }) })
+    app.mount(host)
+
+    try {
+      expect(requestAnimationFrame).not.toHaveBeenCalled()
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('keeps animated blobs as the default outside the marquee', () => {
+    const requestAnimationFrame = vi.fn(() => 1)
+    const cancelAnimationFrame = vi.fn()
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrame)
+    vi.stubGlobal('cancelAnimationFrame', cancelAnimationFrame)
+
+    const host = document.createElement('div')
+    const app = createApp({ render: () => h(MorphBlob) })
+    app.mount(host)
+
+    try {
+      expect(requestAnimationFrame).toHaveBeenCalledOnce()
+    } finally {
+      app.unmount()
+    }
+
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(1)
+  })
+})
