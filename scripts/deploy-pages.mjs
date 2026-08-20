@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { tmpdir } from 'node:os'
@@ -154,6 +154,32 @@ function runSourceCommand(command, args, cwd) {
   }
 }
 
+/**
+ * Fail closed if the server bundle contains @aws-sdk browser-build stubs.
+ * @aws-sdk/core's browser builds replace node-only exports with
+ * Symbol.for("node-only"); when mixed with the node runtimeConfig of
+ * @aws-sdk/client-s3 (2026-08-20 incident: minified "CBt is not a function"),
+ * every S3Client construction throws at runtime while CI still passes.
+ * The nuxt.config alias pins the node build, so a correct bundle contains
+ * zero such stubs.
+ */
+export function assertNoNodeOnlyAwsSdkStubs(workerDirectory, { readDir = readdirSync, readFile = readFileSync } = {}) {
+  const offenders = []
+  const walk = (directory) => {
+    for (const entry of readDir(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name)
+      if (entry.isDirectory()) walk(entryPath)
+      else if (/\.(mjs|js)$/.test(entry.name) && readFile(entryPath, 'utf8').includes('Symbol.for("node-only")')) {
+        offenders.push(entryPath)
+      }
+    }
+  }
+  walk(workerDirectory)
+  if (offenders.length > 0) {
+    throw new Error(`aws_sdk_node_only_stub_in_worker_bundle:${offenders.join(',')}`)
+  }
+}
+
 export function runSourcePagesDeploy({
   branch,
   checkOnly = false,
@@ -173,6 +199,7 @@ export function runSourcePagesDeploy({
   }
 
   execute('pnpm', ['build'], repositoryRoot)
+  assertNoNodeOnlyAwsSdkStubs(path.join(repositoryRoot, 'dist/_worker.js'))
   flattenRedirectedPagesConfig({
     repositoryRoot,
     branch

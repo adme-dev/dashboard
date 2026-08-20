@@ -140,7 +140,8 @@ describe('2b end-to-end flow (propose → persist → claim → confirm → disp
     const first = await confirmAction(proposalId, store, engine)
     const second = await confirmAction(proposalId, store, engine)
     expect(first).toEqual({ ok: true, data: { jobId: 'job-1', status: 'queued' } })
-    expect(second).toEqual(first)
+    // A repeat confirm re-serves the first confirm's outcome, labelled as a replay.
+    expect(second).toEqual({ ok: true, data: { replay: 'already_confirmed', jobId: 'job-1', status: 'queued' } })
     expect(engine.confirmDeps.reserve).toHaveBeenCalledTimes(1)
     expect(engine.enqueued).toEqual(['job-1'])
   })

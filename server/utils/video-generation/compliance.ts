@@ -53,6 +53,12 @@ export function evaluateVideoGenerationCompliance(
   }
 
   const vehicleSubject = isVehicleSubject(input.requestedSubjectType, input.prompt)
+  // Brand safety intentionally widens beyond the declared subject: a prompt that reads
+  // as vehicular is treated as a vehicle job even when subjectType is 'unknown' or
+  // 'non_vehicle'. Surface that inference so the classification is explainable.
+  if (vehicleSubject && input.requestedSubjectType !== 'vehicle') {
+    reasons.push(`Declared subjectType '${input.requestedSubjectType}' upgraded to vehicle: prompt matches vehicle policy patterns.`)
+  }
   if (input.mode === 'text-to-video' && vehicleSubject) {
     reasons.push('Vehicle text-to-video is blocked; use approved-asset image-to-video instead.')
     return { allowed: false, classification: 'blocked_vehicle_t2v', reasons }
@@ -67,12 +73,12 @@ export function evaluateVideoGenerationCompliance(
       reasons.push('Vehicle image-to-video requires an approved source asset.')
       return { allowed: false, classification: 'missing_approved_asset', reasons }
     }
-    return { allowed: true, classification: 'vehicle_i2v', reasons: ['Approved source asset present.'] }
+    return { allowed: true, classification: 'vehicle_i2v', reasons: [...reasons, 'Approved source asset present.'] }
   }
 
   if (input.mode === 'text-to-video') {
-    return { allowed: true, classification: 'non_vehicle_t2v', reasons: ['Non-vehicle text-to-video passed policy.'] }
+    return { allowed: true, classification: 'non_vehicle_t2v', reasons: [...reasons, 'Non-vehicle text-to-video passed policy.'] }
   }
 
-  return { allowed: true, classification: 'other_safe', reasons: ['Generation request passed policy.'] }
+  return { allowed: true, classification: 'other_safe', reasons: [...reasons, 'Generation request passed policy.'] }
 }

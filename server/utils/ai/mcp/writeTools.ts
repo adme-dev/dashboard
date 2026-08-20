@@ -291,6 +291,17 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
   const row = await deps.claim(parsed.data.proposalId, ctx.userId)
   if (!row) {
     const replay = await deps.replay?.(parsed.data.proposalId, ctx.userId).catch(() => null)
+    if (replay?.ok) {
+      // Replaying the recorded outcome of an already-confirmed proposal. The original dispatch
+      // (or its recorded failure) already happened; satisfy the god-mode dispatch checkpoint so
+      // the wrapper doesn't discard this as dispatch_checkpoint_missing, and label the response
+      // so the caller can tell "your proposal already ran" from a fresh dispatch.
+      await deps.execution?.markDispatched()
+      const data = replay.data && typeof replay.data === 'object'
+        ? { replay: 'already_confirmed' as const, ...(replay.data as Record<string, unknown>) }
+        : { replay: 'already_confirmed' as const, result: replay.data }
+      return { ok: true, data }
+    }
     return replay ?? { ok: false, error: 'Proposal not found, already used, expired, or not yours.', code: 'expired' }
   }
 

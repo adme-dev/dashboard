@@ -113,8 +113,19 @@ describe('executeWriteConfirm', () => {
       claim: async () => null,
       replay
     }))
-    expect(res).toEqual({ ok: true, data: durable })
+    expect(res).toEqual({ ok: true, data: { replay: 'already_confirmed', ...durable } })
     expect(replay).toHaveBeenCalledWith('abcd1234', 'u1')
+  })
+
+  it('satisfies the dispatch checkpoint when serving a replayed outcome', async () => {
+    const markDispatched = vi.fn(async () => {})
+    const res = await executeWriteConfirm({ proposalId: 'abcd1234' }, ctx('admin'), deps({
+      claim: async () => null,
+      replay: async () => ({ ok: true as const, data: { jobId: 'job-1', status: 'failed', error: 'released' } }),
+      execution: { markDispatched, captureResult: async () => {} } as never
+    }))
+    expect(markDispatched).toHaveBeenCalledTimes(1)
+    expect(res).toMatchObject({ ok: true, data: { replay: 'already_confirmed', jobId: 'job-1', status: 'failed' } })
   })
 
   it('forbids a claimed row whose tool is not in the safe set', async () => {
