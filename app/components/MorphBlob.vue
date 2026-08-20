@@ -96,23 +96,33 @@ for (let i = 0; i < n; i++) {
   radial[i] += spd[i] * 5
 }
 
+// A low-amplitude deterministic drive prevents the damped spring from
+// converging to a static shape after its initial impulse.
+const drivePhase = Array.from({ length: n }, () => rand() * Math.PI * 2)
+const driveRate = Array.from({ length: n }, () => 0.7 + rand() * 0.6)
+
 const ELASTICITY = 0.001
 const FRICTION = 0.0085
+const CONTINUOUS_DRIVE = 0.00012
 
 function fmt(v: number) {
   return v.toFixed(4)
 }
 
-function solve() {
+function solve(timestamp: number) {
+  const elapsedSeconds = timestamp / 1000
+
   for (let i = 0; i < n; i++) {
     const l = (i - 1 + n) % n
     const r = (i + 1) % n
+    const drive = Math.sin(elapsedSeconds * driveRate[i] + drivePhase[i]) * CONTINUOUS_DRIVE
     const acc
       = (-0.3 * radial[i]
         + (radial[l] - radial[i])
         + (radial[r] - radial[i]))
       * ELASTICITY
       - spd[i] * FRICTION
+      + drive
     spd[i] += acc * 2
     radial[i] += spd[i] * 5
   }
@@ -141,14 +151,14 @@ const pathD = ref(buildPath())
 let raf: number | null = null
 let running = false
 
-function tick() {
-  solve()
+function tick(timestamp: number) {
+  solve(timestamp)
   pathD.value = buildPath()
   if (running) raf = requestAnimationFrame(tick)
 }
 
 onMounted(() => {
-  if (!props.animate) return
+  if (!props.animate || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
   running = true
   raf = requestAnimationFrame(tick)
 })

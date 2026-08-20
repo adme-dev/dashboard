@@ -130,4 +130,39 @@ describe('MorphBlob animation control', () => {
 
     expect(cancelAnimationFrame).toHaveBeenCalledWith(1)
   })
+
+  it('keeps the blob moving after the initial spring motion has settled', async () => {
+    let scheduledFrame: FrameRequestCallback | undefined
+    const requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      scheduledFrame = callback
+      return 1
+    })
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrame)
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+
+    const host = document.createElement('div')
+    const app = createApp({ render: () => h(MorphBlob, { seed: 7 }) })
+    app.mount(host)
+
+    try {
+      for (let frame = 0; frame < 3600; frame++) {
+        const callback = scheduledFrame
+        expect(callback).toBeDefined()
+        callback?.(frame * (1000 / 60))
+      }
+      await nextTick()
+      const settledPath = host.querySelector('path')?.getAttribute('d')
+
+      for (let frame = 3600; frame < 3720; frame++) {
+        const callback = scheduledFrame
+        expect(callback).toBeDefined()
+        callback?.(frame * (1000 / 60))
+      }
+      await nextTick()
+
+      expect(host.querySelector('path')?.getAttribute('d')).not.toBe(settledPath)
+    } finally {
+      app.unmount()
+    }
+  })
 })
