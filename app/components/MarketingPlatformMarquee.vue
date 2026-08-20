@@ -35,14 +35,14 @@
           >
             <NuxtLink
               :to="card.to"
-              class="group block w-[250px] overflow-hidden rounded-[22px] transition-all duration-400 hover:-translate-y-1 hover:shadow-2xl sm:w-[280px]"
+              class="group block w-[250px] overflow-hidden rounded-[22px] transition-shadow duration-300 hover:shadow-2xl sm:w-[280px]"
               :class="card.bg"
             >
               <div class="relative flex h-[220px] items-center justify-center">
                 <MorphBlob
                   :seed="cardIndex + rowIndex * 50"
                   :animate="true"
-                  class="aspect-square w-[80%] transition-transform duration-500 group-hover:scale-[1.06]"
+                  class="aspect-square w-[80%]"
                 >
                   <img
                     :src="card.image"

@@ -84,6 +84,21 @@ describe('MarketingPlatformMarquee', () => {
       app.unmount()
     }
   })
+
+  it('keeps hover feedback off transform layers used by the carousel and blob animation', () => {
+    const { app, host } = mountMarquee()
+
+    try {
+      const card = host.querySelector('.marquee-item a') as HTMLAnchorElement
+      const blob = host.querySelector('[data-morph-blob]') as HTMLElement
+
+      expect(card.className).toContain('hover:shadow-2xl')
+      expect(card.className).not.toContain('hover:-translate-y-1')
+      expect(blob.className).not.toContain('group-hover:scale-[1.06]')
+    } finally {
+      app.unmount()
+    }
+  })
 })
 
 describe('MorphBlob animation control', () => {
