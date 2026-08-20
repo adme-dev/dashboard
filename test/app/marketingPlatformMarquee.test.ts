@@ -58,7 +58,7 @@ describe('MarketingPlatformMarquee', () => {
       expect([...originalLinks].every(link => !link.hasAttribute('tabindex'))).toBe(true)
       expect([...duplicateLinks].every(link => link.getAttribute('tabindex') === '-1')).toBe(true)
 
-      expect(host.querySelectorAll('[data-morph-blob][data-animate="false"]')).toHaveLength(6)
+      expect(host.querySelectorAll('[data-morph-blob][data-animate="true"]')).toHaveLength(6)
       expect([...host.querySelectorAll('img')].every(image => image.getAttribute('decoding') === 'async')).toBe(true)
     } finally {
       app.unmount()

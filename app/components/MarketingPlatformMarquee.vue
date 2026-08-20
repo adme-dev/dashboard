@@ -44,7 +44,7 @@
               <div class="relative flex h-[220px] items-center justify-center">
                 <MorphBlob
                   :seed="cardIndex + rowIndex * 50"
-                  :animate="false"
+                  :animate="true"
                   class="aspect-square w-[80%] transition-transform duration-500 group-hover:scale-[1.06]"
                 >
                   <img
