@@ -15,7 +15,7 @@ export interface GoogleMerchantDatafeedSummary {
   targets: string
 }
 
-export interface MetaProductSetSummary {
+interface AuditMetaProductSetSummary {
   productSetId: string
   productSetName: string
   productCatalogId: string
@@ -154,7 +154,7 @@ export function summariseMetaProductSet(input: {
   productSetName?: unknown
   productCatalogId?: unknown
   productCatalogName?: unknown
-}): MetaProductSetSummary {
+}): AuditMetaProductSetSummary {
   const productSetId = clean(input.productSetId)
   const productSetName = clean(input.productSetName)
   const productCatalogId = clean(input.productCatalogId)

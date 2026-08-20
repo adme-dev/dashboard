@@ -19,7 +19,7 @@ import { expectedToDate } from '~~/server/utils/anomalyDetection/adPacingMath'
  * Gated by MONDAY_BUDGET_SYNC_ENABLED. Never writes to ad platforms.
  */
 
-export const MONDAY_MARKETING_BOARD_ID = '13392458'
+const MONDAY_MARKETING_BOARD_ID = '13392458'
 
 /** Column ids on the Marketing board. Machine-written columns created 2026-08-20. */
 export const MARKETING_BOARD_COLUMNS = {
