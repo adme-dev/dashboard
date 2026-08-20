@@ -111,7 +111,6 @@ const marqueePaused = ref(false)
 }
 
 .marquee-track[data-paused='true'],
-.marquee-viewport:hover .marquee-track,
 .marquee-viewport:focus-within .marquee-track {
   animation-play-state: paused;
 }
