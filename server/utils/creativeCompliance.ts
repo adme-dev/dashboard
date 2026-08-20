@@ -149,23 +149,40 @@ export interface RunCreativeComplianceInput {
 }
 
 export async function runCreativeComplianceCheck(input: RunCreativeComplianceInput) {
-  const target = await queryOne<{ id: string, r2_key: string, client_id: string | null, file_size: number, mime_type: string }>(
+  const bannerTarget = await queryOne<{ id: string, r2_key: string, client_id: string | null, file_size: number, mime_type: string }>(
     `SELECT id, r2_key, client_id, file_size, mime_type FROM banner_assets WHERE id = $1`, [input.assetId],
   )
-  if (!target) throw new Error('Creative asset not found')
+  const sourceTarget = bannerTarget ? null : await queryOne<{
+    id: string, r2_key: string, client_id: string | null, status: string, content_type: string
+  }>(
+    `SELECT id, r2_key, client_id, status, content_type
+       FROM video_gen_source_assets WHERE id = $1`, [input.assetId],
+  )
+  if (!bannerTarget && !sourceTarget) throw new Error('Creative asset not found in Banner Studio or approved video sources')
+  if (sourceTarget?.status !== 'approved') throw new Error('Video source asset is not approved')
+  const target = bannerTarget
+    ? { ...bannerTarget, contentType: bannerTarget.mime_type, size: bannerTarget.file_size }
+    : { ...sourceTarget!, contentType: sourceTarget!.content_type, size: 0 }
   if (target.client_id && target.client_id !== (input.clientId ?? null)) throw new Error('Creative asset is not owned by this client')
-  assertCreativeComplianceImageMetadata({ size: target.file_size, contentType: target.mime_type })
+  const targetMetadata = bannerTarget
+    ? { size: target.size, contentType: target.contentType }
+    : await getFileMetadata(target.r2_key)
+  if (!targetMetadata) throw new Error('Creative asset file is unavailable')
+  assertCreativeComplianceImageMetadata(targetMetadata)
   if (input.referenceSourceAssetIds.length > 4) throw new Error('At most four approved references are supported')
   const tenantId = input.clientId ?? 'agency'
+  const effectiveReferenceIds = sourceTarget && input.subjectType === 'vehicle' && input.referenceSourceAssetIds.length === 0
+    ? [sourceTarget.id]
+    : input.referenceSourceAssetIds
   const referenceRows = assertResolvableSources(
-    await loadSourceAssetsByIds(input.referenceSourceAssetIds),
-    input.referenceSourceAssetIds,
+    await loadSourceAssetsByIds(effectiveReferenceIds),
+    effectiveReferenceIds,
     tenantId,
   )
   const referenceMetadata = await Promise.all(referenceRows.map(row => getFileMetadata(row.r2_key)))
   for (let index = 0; index < referenceRows.length; index++) {
     const metadata = referenceMetadata[index]
-    if (!metadata) throw new Error(`Reference image ${input.referenceSourceAssetIds[index]} is unavailable`)
+    if (!metadata) throw new Error(`Reference image ${effectiveReferenceIds[index]} is unavailable`)
     assertCreativeComplianceImageMetadata(metadata)
   }
   const [targetUrl, ...references] = await Promise.all([
@@ -186,12 +203,12 @@ export async function runCreativeComplianceCheck(input: RunCreativeComplianceInp
   const passed = creativeCompliancePassed(verdict)
   const row = await queryOne<{ id: string, created_at: string }>(
     `INSERT INTO creative_compliance_checks (
-       client_id, asset_id, created_by, model_id, gateway_used, subject_type,
+       client_id, asset_id, source_asset_id, created_by, model_id, gateway_used, subject_type,
        reference_source_asset_ids, expected_claims, verdict, passed, confidence
-     ) VALUES ($1,$2,$3,$4,true,$5,$6,$7,$8,$9,$10)
+     ) VALUES ($1,$2,$3,$4,$5,true,$6,$7,$8,$9,$10,$11)
      RETURNING id, created_at`,
-    [input.clientId ?? null, input.assetId, input.createdBy, CREATIVE_COMPLIANCE_MODEL, input.subjectType,
-      JSON.stringify(input.referenceSourceAssetIds), JSON.stringify(input.expectedClaims ?? {}), JSON.stringify(verdict), passed, verdict.confidence],
+    [input.clientId ?? null, bannerTarget?.id ?? null, sourceTarget?.id ?? null, input.createdBy, CREATIVE_COMPLIANCE_MODEL, input.subjectType,
+      JSON.stringify(effectiveReferenceIds), JSON.stringify(input.expectedClaims ?? {}), JSON.stringify(verdict), passed, verdict.confidence],
   )
   if (!row) throw new Error('Creative compliance evidence was not persisted')
   await recordAiInvocation({

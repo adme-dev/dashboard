@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mockSql = vi.fn()
-
-vi.mock('@neondatabase/serverless', () => ({
-  neon: () => mockSql
-}))
+const mockFetch = vi.fn()
 
 const { handleBannerConnect } = await import('../../worker-ws/index')
 
@@ -12,7 +8,7 @@ const env = {
   BANNER_ROOMS: {} as DurableObjectNamespace,
   BOARD_ROOMS: {} as DurableObjectNamespace,
   CHAT_ROOMS: {} as DurableObjectNamespace,
-  DATABASE_URL: 'postgres://configured',
+  DATABASE_URL: 'postgresql://user:password@ep-test.us-east-1.aws.neon.tech/database',
   JWT_SECRET: 'test-secret'
 }
 
@@ -51,9 +47,17 @@ async function createToken(payload: object) {
 }
 
 beforeEach(() => {
-  mockSql.mockReset()
   vi.restoreAllMocks()
+  mockFetch.mockReset()
+  vi.stubGlobal('fetch', mockFetch)
 })
+
+function databaseRows(rows: unknown[][]) {
+  return new Response(JSON.stringify({
+    fields: [{ name: 'id' }, { name: 'name' }, { name: 'avatar_url' }],
+    rows
+  }), { status: 200, headers: { 'content-type': 'application/json' } })
+}
 
 describe('realtime WebSocket auth observability', () => {
   it('reports a missing cookie without logging credentials', async () => {
@@ -85,7 +89,7 @@ describe('realtime WebSocket auth observability', () => {
 
   it('accepts a valid client token after a stale primary cookie', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    mockSql.mockResolvedValueOnce([{ id: 'user-1', name: 'User', avatar_url: null }])
+    mockFetch.mockResolvedValueOnce(databaseRows([['user-1', 'User', null]]))
     const token = await createToken({ userId: 'user-1', exp: Date.now() + 60_000 })
 
     const response = await handleBannerConnect(
@@ -113,13 +117,13 @@ describe('realtime WebSocket auth observability', () => {
     const response = await handleBannerConnect(request(cookie), env, 'project-1')
 
     expect(response.status).toBe(401)
-    expect(mockSql).not.toHaveBeenCalled()
+    expect(mockFetch).not.toHaveBeenCalled()
     expect(warn).toHaveBeenCalledTimes(1)
   })
 
   it('reports an inactive or missing user without logging identity', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    mockSql.mockResolvedValueOnce([])
+    mockFetch.mockResolvedValueOnce(databaseRows([]))
     const token = await createToken({ userId: 'user-1', exp: Date.now() + 60_000 })
 
     const response = await handleBannerConnect(request(`auth_token_client=${token}`), env, 'project-1')
@@ -135,7 +139,7 @@ describe('realtime WebSocket auth observability', () => {
   it('reports a database lookup failure using safe metadata only', async () => {
     const error = Object.assign(new Error('sensitive connection detail'), { code: '08006' })
     const logError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockSql.mockRejectedValueOnce(error)
+    mockFetch.mockRejectedValueOnce(error)
     const token = await createToken({ userId: 'user-1', exp: Date.now() + 60_000 })
 
     const response = await handleBannerConnect(request(`auth_token_client=${token}`), env, 'project-1')

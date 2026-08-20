@@ -142,6 +142,7 @@ export interface GodModeExecutionLedgerRow {
   clientId: string | null
   resultReference: string | null
   resultDigest: string | null
+  executionMetadata?: Record<string, unknown> | null
   /** Request-local only; persisted solely on immutable audit events, never in the execution ledger. */
   actionArguments?: Record<string, unknown>
 }
@@ -243,7 +244,8 @@ function mapLedger(row: any): GodModeExecutionLedgerRow {
     tenantId: row.tenant_id,
     clientId: row.client_id,
     resultReference: row.result_reference,
-    resultDigest: row.result_digest
+    resultDigest: row.result_digest,
+    executionMetadata: row.execution_metadata ?? null
   }
 }
 
@@ -991,8 +993,17 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
     })
     if (!claim.claimed) {
       if (row.routeOrTool !== request.toolName) operationalError(409, 'Execution identity already used')
-      if (row.state === 'succeeded') return ok({ resultRef: row.resultReference, replayed: true })
+      if (row.state === 'succeeded') {
+        const replayPayload = row.executionMetadata?.resultPayload
+        return replayPayload !== undefined ? ok(replayPayload) : ok({ resultRef: row.resultReference, replayed: true })
+      }
       if (row.state === 'failed') return fail('Action previously failed.')
+      if (row.state === 'ambiguous') {
+        const replayPayload = row.executionMetadata?.resultPayload
+        if (replayPayload !== undefined) {
+          return ok({ ...(replayPayload as Record<string, unknown>), reconciliation: 'pending' })
+        }
+      }
       return fail('Action outcome is pending reconciliation.')
     }
     const auditIdentity = { ...row }
@@ -1157,7 +1168,8 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
           metadata: {
             supplemental: true,
             executionClass: request.executionClass ?? 'internal-http',
-            resultDigest: capturedIdentity.resultDigest
+            resultDigest: capturedIdentity.resultDigest,
+            ...(request.toolName === 'confirm_action' && 'data' in result ? { resultPayload: result.data } : {})
           }
         })
         resultCaptured = true
@@ -1210,6 +1222,12 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
         resultDigest: identity.resultDigest
       }).catch(() => {})
       await deps.enqueueTerminalAudit(request.event, terminal).catch(() => false)
+      if (request.toolName === 'confirm_action') {
+        const data = result.data && typeof result.data === 'object'
+          ? { ...(result.data as Record<string, unknown>), reconciliation: 'pending' }
+          : { result: result.data, reconciliation: 'pending' }
+        return ok(data)
+      }
       return fail('Action outcome is pending reconciliation.')
     }
     return result

@@ -61,7 +61,8 @@ describe('POST /cron/video-generation-reconcile', () => {
 
   it('reaps stale jobs and polls in-flight aigateway jobs, tallying outcomes', async () => {
     mockQueryRows
-      .mockResolvedValueOnce([{ id: 'stale-1' }]) // stale reap query
+      .mockResolvedValueOnce([{ id: 'dispatch-stale-1' }]) // queued dispatch timeout query
+      .mockResolvedValueOnce([{ id: 'stale-1' }]) // running stale reap query
       .mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }, { id: 'c' }]) // in-flight poll query
     mockReconcile
       .mockResolvedValueOnce('succeeded')
@@ -70,19 +71,22 @@ describe('POST /cron/video-generation-reconcile', () => {
 
     const res = await handler(ev(true))
 
+    expect(mockMarkFailed).toHaveBeenCalledWith('dispatch-stale-1', expect.stringMatching(/Dispatch timeout/))
     expect(mockMarkFailed).toHaveBeenCalledWith('stale-1', expect.stringMatching(/timed out/))
     expect(mockMakeProvider).toHaveBeenCalled()
     expect(mockReconcile).toHaveBeenCalledTimes(3)
-    expect(res).toMatchObject({ ran: true, reaped: 1, polled: 3, succeeded: 1, running: 1, failed: 1, aiBinding: true })
+    expect(res).toMatchObject({ ran: true, dispatchTimedOut: 1, reaped: 1, polled: 3, succeeded: 1, running: 1, failed: 1, aiBinding: true })
   })
 
   it('still reaps but skips polling when the AI binding is absent', async () => {
-    mockQueryRows.mockResolvedValueOnce([{ id: 'stale-1' }])
+    mockQueryRows
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'stale-1' }])
 
     const res = await handler(ev(false))
 
-    expect(mockQueryRows).toHaveBeenCalledTimes(1) // only the reap query, no in-flight poll query
+    expect(mockQueryRows).toHaveBeenCalledTimes(2) // dispatch timeout + running reap, no in-flight poll query
     expect(mockReconcile).not.toHaveBeenCalled()
-    expect(res).toMatchObject({ ran: true, reaped: 1, polled: 0, aiBinding: false })
+    expect(res).toMatchObject({ ran: true, dispatchTimedOut: 0, reaped: 1, polled: 0, aiBinding: false })
   })
 })

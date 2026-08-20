@@ -17,7 +17,7 @@ vi.mock('~~/server/utils/permissions', () => ({ roleHasPermission: (role: string
 
 const ctx = (role = 'admin'): ToolContext => ({ userId: 'u1', userRole: role, event: {} as never, source: 'mcp' })
 
-interface PendingRow { id: string, user_id: string, tool_name: string, resolved_payload: unknown, status: string, source: string }
+interface PendingRow { id: string, user_id: string, tool_name: string, resolved_payload: unknown, status: string, source: string, result_payload?: unknown }
 
 // In-memory ai_pending_actions + a claim that mirrors the real atomic single-use SQL
 // (UPDATE … WHERE id AND user_id AND status='proposed' AND source='mcp' RETURNING …).
@@ -36,6 +36,16 @@ function makeStore() {
       if (!row || row.status !== 'proposed' || row.source !== 'mcp' || row.user_id !== userId) return null
       row.status = 'executed'
       return { tool_name: row.tool_name, resolved_payload: row.resolved_payload }
+    },
+    replay: async (proposalId: string, userId: string) => {
+      const row = rows.get(proposalId)
+      return row?.user_id === userId && row.status === 'executed' && row.result_payload !== undefined
+        ? { ok: true as const, data: row.result_payload }
+        : null
+    },
+    persistResult: async (proposalId: string, userId: string, data: unknown) => {
+      const row = rows.get(proposalId)
+      if (row?.user_id === userId) row.result_payload = data
     }
   }
 }
@@ -79,6 +89,8 @@ function confirmAction(proposalId: string, store: Store, engine: Engine, opts: {
     writeEnabled,
     getExecutor: () => null,
     claim: store.claim,
+    replay: store.replay,
+    persistResult: store.persistResult,
     videoDispatch: async (row, vctx) => {
       const payload = row.tool_name === 'video_generation'
         ? { ...(row.resolved_payload as Record<string, unknown>), idempotencyKey: `mcp:${proposalId}` }
@@ -119,15 +131,16 @@ describe('2b end-to-end flow (propose → persist → claim → confirm → disp
     expect(store.rows.get(proposalId)?.status).toBe('executed')
   })
 
-  it('single-use: a second confirm of the same proposal is rejected and does not double-spend', async () => {
+  it('proposal-idempotent: a second confirm returns the identical result and does not double-spend', async () => {
     const store = makeStore()
     const engine = makeEngine()
     const proposed = await executeVideoPropose('video_generation', genArgs, ctx(), proposeDeps(store))
     const proposalId = String(dataOf(proposed).proposalId)
 
-    expect((await confirmAction(proposalId, store, engine)).ok).toBe(true)
+    const first = await confirmAction(proposalId, store, engine)
     const second = await confirmAction(proposalId, store, engine)
-    expect(second).toMatchObject({ ok: false, code: 'expired' })
+    expect(first).toEqual({ ok: true, data: { jobId: 'job-1', status: 'queued' } })
+    expect(second).toEqual(first)
     expect(engine.confirmDeps.reserve).toHaveBeenCalledTimes(1)
     expect(engine.enqueued).toEqual(['job-1'])
   })

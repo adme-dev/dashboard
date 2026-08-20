@@ -15,6 +15,7 @@ export function mapProjectRow(row: any): MediaProject {
     createdBy: row.created_by,
     title: row.title ?? null,
     mediaType: row.media_type,
+    isTest: row.is_test ?? false,
     status: row.status,
     currentTimelineId: row.current_timeline_id ?? null,
     createdAt: row.created_at,

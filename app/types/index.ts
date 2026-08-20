@@ -2635,6 +2635,7 @@ export interface MediaProject {
   createdBy: string
   title: string | null
   mediaType: 'audio' | 'av'
+  isTest?: boolean
   status: MediaProjectStatus
   currentTimelineId: string | null
   createdAt: string

@@ -455,6 +455,14 @@ const defaultDeps: CreativeAssetsDeps = {
   },
 }
 
+/** Resolve a registry identifier through the same governed aggregation used by get_creative_assets. */
+export async function findCreativeAssetById(assetId: string, ctx: ToolContext): Promise<CreativeAssetRecord | null> {
+  const requested = assetId.trim()
+  if (!requested) return null
+  const assets = await defaultDeps.fetch({ limit: 1000 }, ctx)
+  return assets.find(asset => asset.assetId === requested) ?? null
+}
+
 export async function getCreativeAssets(args: CreativeAssetArgs, ctx: ToolContext, deps: CreativeAssetsDeps = defaultDeps): Promise<ToolResult> {
   try {
     const rows = await deps.fetch(args, ctx)
