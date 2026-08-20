@@ -68,6 +68,11 @@ export async function executeOwnerMcpConfirm(
         { genEnabled: true, ...videoConfirmDeps, execution }
       )
     },
+    feedDispatch: async (row, feedCtx, ack) => {
+      const { dispatchFeedConfirm } = await import('./feedTools')
+      const { buildFeedConfirmDeps } = await import('./feedRunner')
+      return await dispatchFeedConfirm(row, ack, feedCtx, { ...buildFeedConfirmDeps(), execution })
+    },
     bannerDispatch: async (row, bannerCtx) => {
       if (row.tool_name !== 'banner_render') return null
       return await dispatchBannerConfirm(

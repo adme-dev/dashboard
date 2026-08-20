@@ -107,7 +107,7 @@ describe('standalone MCP Worker request authority', () => {
     await list({}, { requestId: 2 })
 
     expect(firstList._meta).toEqual({
-      catalogRelease: '2026-08-20.9',
+      catalogRelease: '2026-08-20.10',
       toolCount: 1,
       source: 'fresh_server_projection',
     })

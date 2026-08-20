@@ -221,7 +221,7 @@ describe('signed internal MCP list/call endpoints', () => {
     await expect(toolsHandler(requestEvent)).resolves.toEqual({
       tools: [{ name: 'get_tasks', description: 'read', inputSchema: {} }],
       catalog: {
-        release: '2026-08-20.9',
+        release: '2026-08-20.10',
         toolCount: 1,
         source: 'fresh_server_projection',
       },
@@ -331,7 +331,7 @@ describe('signed internal MCP list/call endpoints', () => {
         { name: 'create_task', description: 'owner write', inputSchema: {} }
       ],
       catalog: {
-        release: '2026-08-20.9',
+        release: '2026-08-20.10',
         toolCount: 2,
         source: 'fresh_server_projection',
       },

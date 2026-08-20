@@ -116,6 +116,12 @@ MCP_BANNER_TOOLS_ENABLED = "true"
 #   (money-movers; require ack:true at confirm), propose_quote, propose_expense_classify,
 #   propose_budget_alert — all gated independently from MCP_WRITE_TOOLS_ENABLED.
 MCP_FINANCIAL_TOOLS_ENABLED = "false"
+# MCP Inventory Feed Round — vehicle inventory feed suite over MCP. DORMANT until sign-off.
+# MCP_FEED_TOOLS_ENABLED → get_inventory_feed_health, list_product_sets (MEDIA_BUYING reads),
+#   propose_refresh_catalog_feed (idempotent re-upload; direct-executes), and the two always-confirm
+#   writes propose_attach_catalog_feed / propose_set_product_set_rules (confirm_action with ack:true
+#   required regardless of authority — P-2 carve-in; god-mode does NOT bypass the ack).
+# MCP_FEED_TOOLS_ENABLED = "true"
 # MCP CRITICAL-B — OAuth write-scope enforcement. When "true", any WRITE-class tool over MCP
 # (propose_*/confirm_action/generation/banner/financial) requires the connector to hold the mcp:write
 # scope (granted via the "Allow read + write" consent button); read-only-consented connectors are limited

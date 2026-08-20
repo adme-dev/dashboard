@@ -81,7 +81,7 @@ describe('get_capabilities', () => {
 
     expect(result.ok).toBe(true)
     const tools = (result as any).data.tools as Array<{ name: string, mode: string }>
-    expect(tools).toHaveLength(76)
+    expect(tools).toHaveLength(81)
     expect(tools).toContainEqual({ name: 'list_video_source_assets', mode: 'read' })
     // W-1/W-2 + G-1a: mode stays the declared class; effectiveMode tells the god-mode
     // caller these registry writes will NOT stop at a proposal.
@@ -98,10 +98,27 @@ describe('get_capabilities', () => {
     // Supplemental video proposes genuinely stop at a proposal — no effectiveMode override.
     const videoPropose = tools.find(tool => tool.name === 'propose_video_generation') as Record<string, unknown>
     expect(videoPropose.effectiveMode).toBeUndefined()
+    // Feed round P-2 carve-in: attach/set-rules read confirmation_required even under god-mode.
+    for (const name of ['propose_attach_catalog_feed', 'propose_set_product_set_rules']) {
+      expect(tools).toContainEqual(expect.objectContaining({
+        name,
+        mode: 'propose_only',
+        effectiveMode: 'confirmation_required'
+      }))
+    }
+    expect(tools).toContainEqual({ name: 'get_inventory_feed_health', mode: 'read' })
+    expect(tools).toContainEqual({ name: 'list_product_sets', mode: 'read' })
+    const refresh = tools.find(tool => tool.name === 'propose_refresh_catalog_feed') as Record<string, unknown>
+    expect(refresh.mode).toBe('propose_only')
+    expect((result as any).data.alwaysRequiresConfirmation).toEqual({
+      tools: ['propose_attach_catalog_feed', 'propose_set_product_set_rules'],
+      reason: 'binds or retargets a client ad account; not reversible from the agent side',
+      note: 'requires confirm_action with ack:true regardless of caller authority',
+    })
     expect((result as any).data.governance.godModeBypass).toContain('direct-execute')
     expect((result as any).data.dataSync.adSpend.cron).toBe('0 20 * * *')
     expect((result as any).data.servedCatalog).toEqual({
-      release: '2026-08-20.9', toolCount: 76, projectionAuthority: 'shared_with_tools_list',
+      release: '2026-08-20.10', toolCount: 81, projectionAuthority: 'shared_with_tools_list',
     })
     expect((result as any).data.degraded).toBeUndefined()
   })

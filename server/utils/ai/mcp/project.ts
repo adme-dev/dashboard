@@ -62,6 +62,7 @@ export interface McpSuiteFlags {
   video: boolean
   videoGeneration: boolean
   banners: boolean
+  feeds: boolean
 }
 
 /**

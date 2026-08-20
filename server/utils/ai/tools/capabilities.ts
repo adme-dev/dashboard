@@ -162,10 +162,11 @@ const minimalInspection: CapabilityInspection = {
 
 const defaultDeps: CapabilitiesDeps = {
   inspect: async (ctx) => {
-    const [toolModule, registryModule, generationModule] = await Promise.all([
+    const [toolModule, registryModule, generationModule, feedModule] = await Promise.all([
       import('./index'),
       import('../mcp/registry'),
       import('../mcp/generationTools'),
+      import('../mcp/feedTools'),
     ])
     const generationEnabled = process.env.MCP_GEN_TOOLS_ENABLED === 'true'
     const writeEnabled = process.env.MCP_WRITE_TOOLS_ENABLED === 'true'
@@ -173,6 +174,7 @@ const defaultDeps: CapabilitiesDeps = {
     const videoEnabled = process.env.MCP_VIDEO_TOOLS_ENABLED === 'true'
     const videoGenerationEnabled = process.env.MCP_VIDEO_GEN_ENABLED === 'true'
     const bannerEnabled = process.env.MCP_BANNER_TOOLS_ENABLED === 'true'
+    const feedEnabled = process.env.MCP_FEED_TOOLS_ENABLED === 'true'
     const projectionContext = {
       tools: toolModule.registry,
       role: ctx.userRole,
@@ -185,6 +187,7 @@ const defaultDeps: CapabilitiesDeps = {
         video: videoEnabled,
         videoGeneration: videoEnabled && videoGenerationEnabled,
         banners: bannerEnabled,
+        feeds: feedEnabled,
       },
     }
     // Capabilities and tools/list share one projection authority. Building the complete God-mode
@@ -207,6 +210,7 @@ const defaultDeps: CapabilitiesDeps = {
         .map(tool => tool.name)
         .filter(name => !generationModule.isGenerationReadToolName(name) && !inspectionNames.has(name))
     )
+    const alwaysConfirmNames = new Set<string>(feedModule.MCP_FEED_ALWAYS_CONFIRM)
     const unique = [...new Map(manifests.map(manifest => {
       const mode: ToolMode = manifest.name === 'confirm_action'
         ? 'confirmation'
@@ -226,15 +230,23 @@ const defaultDeps: CapabilitiesDeps = {
         && mode === 'propose_only'
         && execution?.kind === 'catalog'
         && execution.tool.mutates === true
+      // P-2 carve-in: feed attach / product-set-rules NEVER direct-execute — confirm_action with
+      // ack:true is required regardless of caller authority, and effectiveMode must say so.
+      const alwaysConfirms = Boolean(ctx.godModeExecutionKey) && alwaysConfirmNames.has(manifest.name)
       return [manifest.name, {
         name: manifest.name,
         mode,
-        ...(directExecutes
+        ...(alwaysConfirms
           ? {
-              effectiveMode: 'direct_execute' as const,
-              effectiveModeReason: 'owner god-mode bypasses confirmation for registry writes; pass dryRun:true (where supported) to preview without writing'
+              effectiveMode: 'confirmation_required' as const,
+              effectiveModeReason: 'binds or retargets a client ad account; requires confirm_action with ack:true regardless of caller authority. Pass dryRun:true to preview without writing.'
             }
-          : {})
+          : directExecutes
+            ? {
+                effectiveMode: 'direct_execute' as const,
+                effectiveModeReason: 'owner god-mode bypasses confirmation for registry writes; pass dryRun:true (where supported) to preview without writing'
+              }
+            : {})
       }]
     })).values()]
     return {
@@ -313,6 +325,11 @@ export async function getCapabilities(args: Args, ctx: ToolContext, deps: Capabi
       propose_only: 'creates a reviewable proposal without executing it',
       confirmation: 'requires the authenticated user to confirm a proposal',
       direct_generation: 'intentional authenticated-owner carve-out: may create a billed asset immediately, is rate-limited, and every attempt/outcome is immutably audited',
+    },
+    alwaysRequiresConfirmation: {
+      tools: ['propose_attach_catalog_feed', 'propose_set_product_set_rules'],
+      reason: 'binds or retargets a client ad account; not reversible from the agent side',
+      note: 'requires confirm_action with ack:true regardless of caller authority',
     },
     directGenerationDecision: {
       enabled: inspection.tools.some(tool => tool.mode === 'direct_generation'),

@@ -100,7 +100,8 @@ describe('owner-visible MCP manifest', () => {
         financial: false,
         video: false,
         videoGeneration: false,
-        banners: false
+        banners: false,
+        feeds: false
       }
     }))
     expect(mocks.projectGodMode).not.toHaveBeenCalled()

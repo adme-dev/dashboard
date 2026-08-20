@@ -46,7 +46,8 @@ const ownerProjectionContext: McpProjectionContext = {
     financial: false,
     video: false,
     videoGeneration: false,
-    banners: false
+    banners: false,
+    feeds: false
   }
 }
 

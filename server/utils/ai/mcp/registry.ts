@@ -30,6 +30,7 @@ import {
   resolveVideoMcpExecutions
 } from './videoTools'
 import { projectBannerMcpSuite, projectBannerTools, resolveBannerMcpExecutions } from './bannerTools'
+import { projectFeedMcpSuite, projectFeedTools, resolveFeedMcpExecutions } from './feedTools'
 
 export interface RegisteredMcpSuite {
   key: string
@@ -74,6 +75,12 @@ const suiteDefinitions: RegisteredMcpSuite[] = [
     project: projectBannerMcpSuite,
     executions: resolveBannerMcpExecutions,
     sourceProjectors: [projectBannerTools]
+  },
+  {
+    key: 'inventory-feeds',
+    project: projectFeedMcpSuite,
+    executions: resolveFeedMcpExecutions,
+    sourceProjectors: [projectFeedTools]
   },
   {
     key: 'finance',

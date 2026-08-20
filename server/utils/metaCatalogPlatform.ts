@@ -26,11 +26,22 @@ export interface MetaProductFeedSummary {
   latest_upload?: Record<string, unknown> | null
 }
 
+export interface MetaProductSetSummary {
+  id: string
+  name: string
+  /** Meta returns the set filter as a JSON string; null when the set has no filter. */
+  filter?: string | null
+  product_count?: number | null
+}
+
 export interface MetaCatalogProvider {
   listGrantedPermissions(): Promise<string[]>
   getAdAccountBusiness(actId: string): Promise<MetaCatalogBusiness | null>
   listBusinessCatalogs(businessId: string): Promise<MetaCatalogSummary[]>
   listProductFeeds(catalogId: string): Promise<MetaProductFeedSummary[]>
+  listProductSets(catalogId: string): Promise<MetaProductSetSummary[]>
+  getProductSet(productSetId: string): Promise<MetaProductSetSummary>
+  updateProductSet(productSetId: string, input: { filter: Record<string, unknown> }): Promise<void>
   createProductFeed(catalogId: string, input: {
     name: string
     schedule: { interval: 'DAILY', url: string, hour: number, timezone: string }

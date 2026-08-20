@@ -2,7 +2,8 @@ import { z } from 'zod'
 import type {
   MetaCatalogProvider,
   MetaCatalogSummary,
-  MetaProductFeedSummary
+  MetaProductFeedSummary,
+  MetaProductSetSummary
 } from '~~/server/utils/metaCatalogPlatform'
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v25.0'
@@ -40,6 +41,16 @@ const productFeedSchema = z.object({
 })
 const productFeedPageSchema = z.object({
   data: z.array(productFeedSchema),
+  paging: z.object({ next: z.string().url().optional() }).optional()
+})
+const productSetSchema = z.object({
+  id: z.string().trim().min(1),
+  name: z.string().trim().default(''),
+  filter: z.string().nullable().optional(),
+  product_count: z.number().int().nullable().optional()
+})
+const productSetPageSchema = z.object({
+  data: z.array(productSetSchema),
   paging: z.object({ next: z.string().url().optional() }).optional()
 })
 
@@ -173,6 +184,27 @@ export function createMetaCatalogProvider(config: MetaCatalogProviderConfig): Me
         { fields: 'id,name,schedule,update_schedule,latest_upload', limit: '100' },
         input => productFeedPageSchema.parse(input)
       ) as Promise<MetaProductFeedSummary[]>
+    },
+
+    async listProductSets(catalogId) {
+      return listPages(
+        `${encodeURIComponent(catalogId)}/product_sets`,
+        { fields: 'id,name,filter,product_count', limit: '100' },
+        input => productSetPageSchema.parse(input)
+      ) as Promise<MetaProductSetSummary[]>
+    },
+
+    async getProductSet(productSetId) {
+      return productSetSchema.parse(await request(encodeURIComponent(productSetId), {
+        query: { fields: 'id,name,filter,product_count' }
+      }))
+    },
+
+    async updateProductSet(productSetId, input) {
+      await request(encodeURIComponent(productSetId), {
+        method: 'POST',
+        body: { filter: JSON.stringify(input.filter) }
+      })
     },
 
     async createProductFeed(catalogId, input) {

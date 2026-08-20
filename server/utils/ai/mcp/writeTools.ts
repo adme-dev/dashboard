@@ -271,6 +271,9 @@ export interface ConfirmDeps {
   videoDispatch?: (row: ClaimedProposal, ctx: ToolContext) => Promise<WriteConfirmOutcome | null>
   /** Optional (2b): handle banner confirm-tier tool_names; return null to fall through to the next path. */
   bannerDispatch?: (row: ClaimedProposal, ctx: ToolContext) => Promise<WriteConfirmOutcome | null>
+  /** Optional (feed round): handle feed confirm-tier tool_names; receives the boundary ack so the
+   *  P-2 always-confirm carve-in can refuse without ack:true under ANY authority. Null falls through. */
+  feedDispatch?: (row: ClaimedProposal, ctx: ToolContext, ack: boolean) => Promise<WriteConfirmOutcome | null>
   /** Optional: restore a just-claimed row to 'proposed' when a PRE-execution gate rejects (ack/permission),
    *  so the proposal isn't burned and the user can retry (e.g. with ack:true). Never called after execution. */
   revertClaim?: (proposalId: string, userId: string) => Promise<void>
@@ -341,6 +344,16 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
   if (deps.bannerDispatch) {
     const bo = await deps.bannerDispatch(row, ctx)
     if (bo) return await persistSuccess(bo)
+  }
+
+  // Feed round: attach / product-set-rules confirmations. An ack refusal happens BEFORE execution,
+  // so the claim is reverted and the caller can retry with ack:true.
+  if (deps.feedDispatch) {
+    const fo = await deps.feedDispatch(row, ctx, parsed.data.ack === true)
+    if (fo) {
+      if (!fo.ok && fo.code === 'confirm_required') return await rejectAndRevert(fo)
+      return await persistSuccess(fo)
+    }
   }
 
   // D4: financial branch — checked BEFORE the 2c safe-action path. A financial action must NEVER
