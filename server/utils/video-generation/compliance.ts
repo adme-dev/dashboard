@@ -52,12 +52,20 @@ export function evaluateVideoGenerationCompliance(
     return { allowed: false, classification: 'model_not_allowed', reasons: ['Model is not allowed for this tenant.'] }
   }
 
-  const vehicleSubject = isVehicleSubject(input.requestedSubjectType, input.prompt)
-  // Brand safety intentionally widens beyond the declared subject: a prompt that reads
-  // as vehicular is treated as a vehicle job even when subjectType is 'unknown' or
-  // 'non_vehicle'. Surface that inference so the classification is explainable.
+  // Brand safety only ever widens: the declared subject, the prompt wording, and the
+  // source assets' own registered subjectType each independently make this a vehicle
+  // job. The asset floor means a benign prompt rewrite can never soften the class of
+  // a job that consumes a vehicle asset.
+  const promptVehicle = isVehicleSubject(input.requestedSubjectType, input.prompt)
+  const assetVehicle = input.sourceAssets.some((asset) => asset.subjectType === 'vehicle')
+  const vehicleSubject = promptVehicle || assetVehicle
   if (vehicleSubject && input.requestedSubjectType !== 'vehicle') {
-    reasons.push(`Declared subjectType '${input.requestedSubjectType}' upgraded to vehicle: prompt matches vehicle policy patterns.`)
+    if (assetVehicle) {
+      reasons.push(`Declared subjectType '${input.requestedSubjectType}' upgraded to vehicle: a source asset is registered as a vehicle.`)
+    }
+    if (promptVehicle) {
+      reasons.push(`Declared subjectType '${input.requestedSubjectType}' upgraded to vehicle: prompt matches vehicle policy patterns.`)
+    }
   }
   if (input.mode === 'text-to-video' && vehicleSubject) {
     reasons.push('Vehicle text-to-video is blocked; use approved-asset image-to-video instead.')
