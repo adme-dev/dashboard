@@ -81,6 +81,11 @@ AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY = "false"
 # configured on the standalone MCP Worker.
 MCP_SERVER_ENABLED = "true"
 MCP_WORKER_ORIGIN = "https://mcp-server.adme-dev.workers.dev"
+# monday Client Budget → XeroFlow budget sync (Marketing board 13392458, keyed on Campaign ID)
+# + pacing write-back to the board's machine-written columns. DORMANT until the operator flips it:
+# it writes media_spend.budget_allocated (audited in budget_audit_log) and monday board columns.
+# Cron: POST /api/cron/monday-budget-sync with x-cron-secret. Requires MONDAY_API_TOKEN secret.
+# MONDAY_BUDGET_SYNC_ENABLED = "true"
 # MCP Phase 2a — owned generation tools (generate_banner_image, generate_voiceover, start_music_generation,
 # get_generation_status). ACTIVATED 2026-06-21 (operator sign-off): CREATIVE-gated, audited,
 # no platform-state writes. Per-actor rate limit is a fast-follow.
