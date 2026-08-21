@@ -314,6 +314,7 @@ async function loadKpis(clientIds: ClientScope, range: AudienceRange) {
            ON ($1::uuid[] IS NULL OR c.id = ANY($1::uuid[]))
          LEFT JOIN lead_submission_intents intent
            ON intent.client_id = c.id
+          AND intent.test_run_id IS NULL
           AND intent.occurred_at >= (p.from_date AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))
           AND intent.occurred_at < ((p.to_date + INTERVAL '1 day') AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))
          LEFT JOIN leads lead
@@ -450,6 +451,7 @@ async function loadOpportunityInputs(clientIds: ClientScope, range: AudienceRang
            ON ($1::uuid[] IS NULL OR c.id = ANY($1::uuid[]))
          LEFT JOIN lead_submission_intents intent
            ON intent.client_id = c.id
+          AND intent.test_run_id IS NULL
           AND intent.occurred_at >= (p.from_date AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))
           AND intent.occurred_at < ((p.to_date + INTERVAL '1 day') AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))
         GROUP BY p.period
@@ -472,7 +474,9 @@ async function loadOpportunityInputs(clientIds: ClientScope, range: AudienceRang
                   AND intent.occurred_at < (($5::date + INTERVAL '1 day') AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))
               ) AS previous_confirmed
          FROM agency_clients c
-         LEFT JOIN lead_submission_intents intent ON intent.client_id = c.id
+         LEFT JOIN lead_submission_intents intent
+           ON intent.client_id = c.id
+          AND intent.test_run_id IS NULL
         WHERE ($1::uuid[] IS NULL OR c.id = ANY($1::uuid[]))
         GROUP BY c.id
      ),
@@ -601,6 +605,7 @@ async function loadClientRows(clientIds: ClientScope, range: AudienceRange) {
          FROM selected_clients c
          LEFT JOIN lead_submission_intents intent
            ON intent.client_id = c.id
+          AND intent.test_run_id IS NULL
           AND intent.occurred_at >= ($2::date AT TIME ZONE c.timezone)
           AND intent.occurred_at < (($3::date + INTERVAL '1 day') AT TIME ZONE c.timezone)
          LEFT JOIN leads lead
@@ -780,7 +785,9 @@ export async function getAudienceTimeseries(input: {
          FROM periods p
          JOIN agency_clients c
            ON ($1::uuid[] IS NULL OR c.id = ANY($1::uuid[]))
-         JOIN lead_submission_intents intent ON intent.client_id = c.id
+         JOIN lead_submission_intents intent
+           ON intent.client_id = c.id
+          AND intent.test_run_id IS NULL
         WHERE intent.occurred_at >= (p.from_date AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))
           AND intent.occurred_at < ((p.to_date + INTERVAL '1 day') AT TIME ZONE COALESCE(c.reporting_timezone, 'Australia/Brisbane'))
         GROUP BY p.period, day
@@ -923,6 +930,7 @@ export async function getAudienceBreakdowns(input: {
        LEFT JOIN lead_submission_intents intent
          ON intent.site_id = scoped.site_id
         AND intent.browser_event_id = scoped.event_id
+        AND intent.test_run_id IS NULL
       GROUP BY scoped.key
       ORDER BY COUNT(DISTINCT scoped.anon_id) DESC, scoped.key
       LIMIT 20`,

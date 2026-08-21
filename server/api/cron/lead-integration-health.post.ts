@@ -27,6 +27,12 @@ export default defineEventHandler(async (event) => {
         AND (
           EXISTS (SELECT 1 FROM tracking_sites site WHERE site.client_id = client.id AND site.is_active)
           OR EXISTS (SELECT 1 FROM lead_webhook_endpoints endpoint WHERE endpoint.client_id = client.id AND endpoint.is_active)
+          OR EXISTS (
+            SELECT 1
+              FROM lead_connectors connector
+             WHERE connector.client_id = client.id
+               AND connector.status <> 'disabled'
+          )
         )`
   )
 

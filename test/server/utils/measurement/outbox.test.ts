@@ -204,42 +204,24 @@ describe('canonical conversion outbox', () => {
         if (/FROM conversion_destinations/.test(sql)) return { rows: [{ id: DESTINATION_ID }] }
         if (/INSERT INTO conversion_events/.test(sql)) {
           return { rows: [{
-            id: EVENT_ID,
-            client_id: CLIENT_ID,
-            profile_id: PROFILE_ID,
-            event_name: 'lead_won',
-            source_system: 'zero_crm',
-            source_entity_type: 'crm_opportunity',
-            source_entity_id: OPPORTUNITY_ID,
-            source_event_id: input().sourceEventId,
-            occurred_at: new Date(input().occurredAt),
-            idempotency_key: 'v1:test',
-            config_version: 4,
-            consent_mode: 'consent_gated',
-            attribution: input().attribution,
-            value: '15000.50',
-            currency_code: 'AUD',
-            outbox_status: 'pending',
-            last_error_class: null
+            id: EVENT_ID, client_id: CLIENT_ID, profile_id: PROFILE_ID,
+            event_name: 'lead_won', enquiry_type: null, source_system: 'zero_crm',
+            source_entity_type: 'crm_opportunity', source_entity_id: OPPORTUNITY_ID,
+            source_event_id: input().sourceEventId, occurred_at: new Date(input().occurredAt),
+            idempotency_key: 'v1:test', config_version: 4, consent_mode: 'consent_gated',
+            attribution: input().attribution, value: '15000.50', currency_code: 'AUD',
+            outbox_status: 'pending', last_error_class: null
           }] }
         }
         return { rows: [] }
       })
     }
 
-    const result = await appendCanonicalConversionEvent(db, {
-      ...input(),
-      eventName: 'lead_won',
-      value: 15000.5
-    })
-
-    expect(result).toMatchObject({
-      status: 'created',
-      event: { eventId: EVENT_ID, value: 15000.5, currencyCode: 'AUD' }
-    })
+    const result = await appendCanonicalConversionEvent(db, { ...input(), eventName: 'lead_won', value: 15000.5 })
+    expect(result).toMatchObject({ status: 'created', event: { eventId: EVENT_ID, value: 15000.5, currencyCode: 'AUD' } })
     const insertStatement = statements.find(statement => /INSERT INTO conversion_events/.test(statement.sql))
-    expect(insertStatement?.params?.[12]).toBe(15000.5)
-    expect(insertStatement?.params?.[13]).toBe('AUD')
+    expect(insertStatement?.params?.[13]).toBe(15000.5)
+    expect(insertStatement?.params?.[14]).toBe('AUD')
   })
 
   it('derives a null currency when no conversion value is supplied', async () => {
@@ -251,23 +233,13 @@ describe('canonical conversion outbox', () => {
         if (/FROM conversion_destinations/.test(sql)) return { rows: [{ id: DESTINATION_ID }] }
         if (/INSERT INTO conversion_events/.test(sql)) {
           return { rows: [{
-            id: EVENT_ID,
-            client_id: CLIENT_ID,
-            profile_id: PROFILE_ID,
-            event_name: 'lead_qualified',
-            source_system: 'zero_crm',
-            source_entity_type: 'crm_opportunity',
-            source_entity_id: OPPORTUNITY_ID,
-            source_event_id: input().sourceEventId,
-            occurred_at: new Date(input().occurredAt),
-            idempotency_key: 'v1:test',
-            config_version: 4,
-            consent_mode: 'consent_gated',
-            attribution: input().attribution,
-            value: null,
-            currency_code: null,
-            outbox_status: 'pending',
-            last_error_class: null
+            id: EVENT_ID, client_id: CLIENT_ID, profile_id: PROFILE_ID,
+            event_name: 'lead_qualified', enquiry_type: null, source_system: 'zero_crm',
+            source_entity_type: 'crm_opportunity', source_entity_id: OPPORTUNITY_ID,
+            source_event_id: input().sourceEventId, occurred_at: new Date(input().occurredAt),
+            idempotency_key: 'v1:test', config_version: 4, consent_mode: 'consent_gated',
+            attribution: input().attribution, value: null, currency_code: null,
+            outbox_status: 'pending', last_error_class: null
           }] }
         }
         return { rows: [] }
@@ -275,13 +247,76 @@ describe('canonical conversion outbox', () => {
     }
 
     const result = await appendCanonicalConversionEvent(db, input())
+    expect(result).toMatchObject({ status: 'created', event: { value: null, currencyCode: null } })
+    const insertStatement = statements.find(statement => /INSERT INTO conversion_events/.test(statement.sql))
+    expect(insertStatement?.params?.[13]).toBeNull()
+    expect(insertStatement?.params?.[14]).toBeNull()
+  })
 
+  it('selects an exact typed web-conversion mapping without aggregate fallback', async () => {
+    const statements: Array<{ sql: string, params: unknown[] }> = []
+    const db = {
+      query: vi.fn(async (sql: string, params: unknown[] = []) => {
+        statements.push({ sql, params })
+        if (/FROM client_measurement_profiles/.test(sql)) return { rows: [profile()] }
+        if (/FROM conversion_destinations/.test(sql)) return { rows: [{ id: DESTINATION_ID }] }
+        if (/INSERT INTO conversion_events/.test(sql)) {
+          return { rows: [{
+            id: EVENT_ID, client_id: CLIENT_ID, profile_id: PROFILE_ID,
+            event_name: 'web_conversion', enquiry_type: 'finance', source_system: 'zero_lead',
+            source_entity_type: 'lead', source_entity_id: OPPORTUNITY_ID,
+            source_event_id: 'receipt-finance-1', occurred_at: new Date(input().occurredAt),
+            idempotency_key: 'v1:typed', config_version: 4, consent_mode: 'consent_gated',
+            attribution: input().attribution, value: null, currency_code: null,
+            outbox_status: 'pending', last_error_class: null
+          }] }
+        }
+        return { rows: [] }
+      })
+    }
+
+    const result = await appendCanonicalConversionEvent(db, {
+      ...input(), eventName: 'web_conversion', enquiryType: 'finance', sourceSystem: 'zero_lead',
+      sourceEntityType: 'lead', sourceEventId: 'receipt-finance-1'
+    })
+    expect(result).toMatchObject({ status: 'created', event: { eventName: 'web_conversion', enquiryType: 'finance' }, deliveryCount: 1 })
+    expect(statements[1]?.params).toEqual([CLIENT_ID, PROFILE_ID, 'web_conversion', 'finance'])
+    expect(statements[1]?.sql).toMatch(/m\.enquiry_type = \$4/)
+    expect(statements[1]?.sql).not.toMatch(/NOT EXISTS/)
+  })
+
+  it('pauses an untyped browser conversion when several aggregate actions match', async () => {
+    const secondDestinationId = '66666666-6666-4666-8666-666666666666'
+    const statements: string[] = []
+    const db = {
+      query: vi.fn(async (sql: string) => {
+        statements.push(sql)
+        if (/FROM client_measurement_profiles/.test(sql)) return { rows: [profile()] }
+        if (/FROM conversion_destinations/.test(sql)) return { rows: [{ id: DESTINATION_ID }, { id: secondDestinationId }] }
+        if (/INSERT INTO conversion_events/.test(sql)) {
+          return { rows: [{
+            id: EVENT_ID, client_id: CLIENT_ID, profile_id: PROFILE_ID,
+            event_name: 'web_conversion', enquiry_type: null, source_system: 'browser',
+            source_entity_type: 'tracking_event', source_entity_id: OPPORTUNITY_ID,
+            source_event_id: 'browser-lead-1', occurred_at: new Date(input().occurredAt),
+            idempotency_key: 'v1:ambiguous', config_version: 4, consent_mode: 'consent_gated',
+            attribution: input().attribution, value: null, currency_code: null,
+            outbox_status: 'paused', last_error_class: 'ambiguous_aggregate_web_conversion'
+          }] }
+        }
+        return { rows: [] }
+      })
+    }
+
+    const result = await appendCanonicalConversionEvent(db, {
+      ...input(), eventName: 'web_conversion', sourceSystem: 'browser',
+      sourceEntityType: 'tracking_event', sourceEventId: 'browser-lead-1'
+    })
     expect(result).toMatchObject({
       status: 'created',
-      event: { value: null, currencyCode: null }
+      event: { outboxStatus: 'paused', policyReason: 'ambiguous_aggregate_web_conversion' },
+      deliveryCount: 0
     })
-    const insertStatement = statements.find(statement => /INSERT INTO conversion_events/.test(statement.sql))
-    expect(insertStatement?.params?.[12]).toBeNull()
-    expect(insertStatement?.params?.[13]).toBeNull()
+    expect(statements.some(sql => /INSERT INTO conversion_deliveries/.test(sql))).toBe(false)
   })
 })

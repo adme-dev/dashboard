@@ -45,6 +45,7 @@ const publicRoutes = [
   // (resolveSiteByWriteKey) + soft Origin allowlist inside the handler.
   '/api/public/track',
   '/api/public/lead-intent',
+  '/api/public/lead-capture-test/',
   '/api/xero/callback',
   '/api/_nuxt_icon',
   '/_nuxt',

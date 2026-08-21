@@ -63,6 +63,7 @@ interface MappingRow {
   id: string
   destination_id: string
   canonical_event_name: string
+  enquiry_type: string | null
   provider_event_name: string
   is_active: boolean
   config_version: number | string
@@ -114,7 +115,7 @@ const CAPABILITY_COLUMNS = `
 `
 
 const MAPPING_COLUMNS = `
-  id, destination_id, canonical_event_name, provider_event_name,
+  id, destination_id, canonical_event_name, enquiry_type, provider_event_name,
   is_active, config_version, created_at, updated_at
 `
 
@@ -148,6 +149,7 @@ function mapMapping(row: MappingRow): ConversionEventMappingState {
     id: row.id,
     destinationId: row.destination_id,
     canonicalEventName: row.canonical_event_name,
+    enquiryType: row.enquiry_type,
     providerEventName: row.provider_event_name,
     isActive: row.is_active,
     configVersion: Number(row.config_version),
@@ -290,7 +292,7 @@ export function createPostgresMeasurementDestinationRepository(
            FROM conversion_event_mappings
           WHERE client_id = $1
             AND destination_id = ANY($2::uuid[])
-          ORDER BY canonical_event_name ASC`,
+          ORDER BY canonical_event_name ASC, enquiry_type NULLS FIRST`,
         [input.clientId, destinationIds]
       )
 
@@ -427,14 +429,15 @@ export function createPostgresMeasurementDestinationRepository(
             const mappingResult = await db.query(
               `INSERT INTO conversion_event_mappings (
                  client_id, destination_id, canonical_event_name,
-                 provider_event_name, is_active, config_version,
+                 enquiry_type, provider_event_name, is_active, config_version,
                  created_by, updated_by
-               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
                RETURNING ${MAPPING_COLUMNS}`,
               [
                 input.clientId,
                 destinationRow.id,
                 mapping.canonicalEventName,
+                mapping.enquiryType,
                 mapping.providerEventName,
                 mapping.isActive,
                 configVersion,
@@ -520,7 +523,7 @@ export function createPostgresMeasurementDestinationRepository(
                FROM conversion_event_mappings
               WHERE client_id = $1
                 AND destination_id = $2
-              ORDER BY canonical_event_name ASC`,
+              ORDER BY canonical_event_name ASC, enquiry_type NULLS FIRST`,
             [input.clientId, input.destinationId]
           )
           const currentCapabilities = (currentCapabilityResult.rows as CapabilityRow[]).map(mapCapability)
@@ -544,6 +547,7 @@ export function createPostgresMeasurementDestinationRepository(
           }))
           const mappings = input.patch.mappings ?? currentMappings.map(mapping => ({
             canonicalEventName: mapping.canonicalEventName,
+            enquiryType: mapping.enquiryType ?? null,
             providerEventName: mapping.providerEventName,
             isActive: mapping.isActive
           }))
@@ -694,14 +698,15 @@ export function createPostgresMeasurementDestinationRepository(
             const mappingResult = await db.query(
               `INSERT INTO conversion_event_mappings (
                  client_id, destination_id, canonical_event_name,
-                 provider_event_name, is_active, config_version,
+                 enquiry_type, provider_event_name, is_active, config_version,
                  created_by, updated_by
-               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
                RETURNING ${MAPPING_COLUMNS}`,
               [
                 input.clientId,
                 input.destinationId,
                 mapping.canonicalEventName,
+                mapping.enquiryType,
                 mapping.providerEventName,
                 mapping.isActive,
                 configVersion,
