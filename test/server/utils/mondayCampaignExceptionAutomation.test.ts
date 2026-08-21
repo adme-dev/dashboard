@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   hasOpenCampaignDataHalt,
@@ -33,6 +34,14 @@ const safe = {
 } as const
 
 describe('Monday Campaign Exceptions automation', () => {
+  it('derives campaign lifetime from daily spend instead of a nonexistent media_spend column', () => {
+    const source = readFileSync('server/utils/mondayCampaignExceptionAutomation.ts', 'utf8')
+
+    expect(source).not.toContain('ms.first_served_date')
+    expect(source).toContain('MIN(lifetime_spend.spend_date)::text')
+    expect(source).toContain('lifetime_campaign.connection_id IS NOT DISTINCT FROM ms.connection_id')
+  })
+
   it('parses the real board recommendation wording', () => {
     expect(parseRecommendedDailyBudget('Raise the daily to about A$76.71/day against a current run rate near A$33/day.')).toBe(76.71)
     expect(parseRecommendedDailyBudget('Split this between two campaigns.')).toBeNull()

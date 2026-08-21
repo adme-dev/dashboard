@@ -244,7 +244,16 @@ async function loadBudgetTarget(item: MondayItem, period: string): Promise<Budge
   if (!campaignId || !platform) return null
   return await queryOne<BudgetTargetRow>(
     `SELECT ${PACING_REVIEW_SELECT_COLUMNS},
-            ms.first_served_date::text,
+            (SELECT MIN(lifetime_spend.spend_date)::text
+               FROM daily_spend lifetime_spend
+               JOIN media_spend lifetime_campaign
+                 ON lifetime_campaign.id = lifetime_spend.media_spend_id
+              WHERE lifetime_spend.spend > 0
+                AND lifetime_campaign.platform = ms.platform
+                AND lifetime_campaign.campaign_id = ms.campaign_id
+                AND lifetime_campaign.client_id IS NOT DISTINCT FROM ms.client_id
+                AND lifetime_campaign.connection_id IS NOT DISTINCT FROM ms.connection_id
+            ) AS first_served_date,
             ms.connection_id::text,
             sc.account_id
        FROM media_spend ms
