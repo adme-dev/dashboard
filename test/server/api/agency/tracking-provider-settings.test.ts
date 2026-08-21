@@ -7,11 +7,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   queryOne,
+  executeGodModeTrackingSiteCreate,
   requireClientTrackingAccess,
   requireSiteTrackingAccess,
   invalidateSiteCache
 } = vi.hoisted(() => ({
   queryOne: vi.fn(),
+  executeGodModeTrackingSiteCreate: vi.fn(),
   requireClientTrackingAccess: vi.fn(),
   requireSiteTrackingAccess: vi.fn(),
   invalidateSiteCache: vi.fn()
@@ -24,6 +26,9 @@ vi.mock('~~/server/utils/tracking/analytics-access', () => ({
 }))
 vi.mock('~~/server/utils/tracking/write-key', () => ({
   generateWriteKey: vi.fn(() => 'trk_test_key')
+}))
+vi.mock('~~/server/utils/tracking/godModeMutations', () => ({
+  executeGodModeTrackingSiteCreate: (...args: unknown[]) => executeGodModeTrackingSiteCreate(...args)
 }))
 vi.mock('~~/server/utils/tracking/site-config', () => ({ invalidateSiteCache }))
 
@@ -41,7 +46,12 @@ const SETTINGS = {
 }
 
 describe('tracking provider settings API', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    executeGodModeTrackingSiteCreate.mockImplementation(async (_event, mutate) => await mutate({
+      query: (...args: unknown[]) => queryOne(...args).then(row => ({ rows: row ? [row] : [] }))
+    }))
+  })
 
   it('stores strict per-site provider settings when a site is created', async () => {
     queryOne.mockResolvedValueOnce({ id: 'site-1', provider_tracking: SETTINGS })

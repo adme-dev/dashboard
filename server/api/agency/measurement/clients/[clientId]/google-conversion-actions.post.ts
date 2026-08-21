@@ -15,6 +15,7 @@ import {
   googleConversionActionProvisioner
 } from '~~/server/utils/googleConversionActions'
 import { requireMeasurementClientAccess } from '~~/server/utils/measurement/access'
+import { executeGodModeGoogleConversionActionProvision } from '~~/server/utils/measurement/googleConversionActionGodMode'
 import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 
 const BodySchema = z.strictObject({
@@ -110,13 +111,15 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    return await googleConversionActionProvisioner.ensure({
-      accountId: connection.account_id.replaceAll('-', ''),
-      accessToken,
-      developerToken: config.googleDeveloperToken,
-      loginCustomerId: loginCustomerId(connection.metadata),
-      name: parsedBody.data.name
-    })
+    return await executeGodModeGoogleConversionActionProvision(event, async () => (
+      await googleConversionActionProvisioner.ensure({
+        accountId: connection.account_id.replaceAll('-', ''),
+        accessToken,
+        developerToken: config.googleDeveloperToken,
+        loginCustomerId: loginCustomerId(connection.metadata),
+        name: parsedBody.data.name
+      })
+    ))
   } catch (error) {
     if (error instanceof GoogleConversionActionDiscoveryError) {
       if (error.code === 'GOOGLE_CONVERSION_ACTION_INPUT_INVALID') {

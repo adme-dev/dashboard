@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
   persistRefresh: vi.fn(),
   refreshToken: vi.fn(),
   resolveConfig: vi.fn(),
-  ensure: vi.fn()
+  ensure: vi.fn(),
+  executeGodMode: vi.fn()
 }))
 
 let body: Record<string, unknown> = {}
@@ -32,6 +33,9 @@ vi.mock('~~/server/utils/googleAdsClient', () => ({
 }))
 vi.mock('~~/server/utils/spendSync', () => ({
   resolveGoogleAdsRuntimeConfig: (...args: unknown[]) => mocks.resolveConfig(...args)
+}))
+vi.mock('~~/server/utils/measurement/googleConversionActionGodMode', () => ({
+  executeGodModeGoogleConversionActionProvision: (...args: unknown[]) => mocks.executeGodMode(...args)
 }))
 vi.mock('~~/server/utils/googleConversionActions', async () => {
   const { z } = await import('zod')
@@ -104,6 +108,7 @@ describe('POST client Google conversion action', () => {
         deliveryMode: 'offline_click'
       }
     })
+    mocks.executeGodMode.mockImplementation(async (_event, provision) => await provision())
   })
 
   it('scopes the mutation to the authorised client connection and returns no credentials', async () => {
@@ -123,6 +128,7 @@ describe('POST client Google conversion action', () => {
       loginCustomerId: '5250473322',
       name: 'Stock Enquiry'
     })
+    expect(mocks.executeGodMode).toHaveBeenCalledWith(expect.anything(), expect.any(Function))
     expect(result).toMatchObject({ created: true, item: { name: 'Stock Enquiry' } })
     expect(JSON.stringify(result)).not.toMatch(/secret|accessToken|refreshToken|developerToken/i)
   })
