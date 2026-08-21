@@ -6,7 +6,7 @@ import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
 import { expectedToDate } from '~~/server/utils/anomalyDetection/adPacingMath'
-import { buildDataHealth, mergeSyncFreshness, paginateWithCursor } from './responseContract'
+import { buildDataHealth, mergeSyncFreshness, paginateWithCursor, evaluateHalt, PACING_HALT_HOURS } from './responseContract'
 
 const params = z.object({
   clientName: z.string().optional(),
@@ -31,6 +31,7 @@ export type PacingCampaign = {
   unattributed: boolean
   lastSyncedAt: string | null
   oldestSyncedAt?: string | null
+  spendAsOf?: string | null
   staleRowCount?: number
   campaignCount?: number
   budgetedCampaignCount?: number
@@ -70,7 +71,11 @@ const defaultDeps: AdspendDeps = {
       const budget = Number(it?.budget ?? 0)
       const spend = Number(it?.spend ?? 0)
       const hasBudget = Number.isFinite(budget) && budget > 0
-      const expected = hasBudget ? expectedToDate(budget, now) : 0
+      const spendAsOf = it?.spendAsOf ? String(it.spendAsOf) : null
+      const pacingClock = spendAsOf && /^\d{4}-\d{2}-\d{2}$/.test(spendAsOf)
+        ? new Date(`${spendAsOf}T12:00:00Z`)
+        : now
+      const expected = hasBudget ? expectedToDate(budget, pacingClock) : 0
       const pacePct = expected > 0 ? Math.round((spend / expected) * 100) : null
       // summary.get.ts stores Google as 'google_ads'; normalise to the tool's enum.
       const rawPlatform = String(it?.platform ?? '')
@@ -86,6 +91,7 @@ const defaultDeps: AdspendDeps = {
         unattributed: String(it?.groupKey ?? '').includes(':unmapped:'),
         lastSyncedAt: it?.lastSyncedAt ? String(it.lastSyncedAt) : null,
         oldestSyncedAt: it?.oldestSyncedAt ? String(it.oldestSyncedAt) : null,
+        spendAsOf,
         staleRowCount: Number.isFinite(Number(it?.staleRowCount)) ? Number(it.staleRowCount) : undefined,
         campaignCount: Number.isFinite(Number(it?.campaignCount)) ? Number(it.campaignCount) : undefined,
         budgetedCampaignCount: Number.isFinite(Number(it?.budgetedCampaignCount)) ? Number(it.budgetedCampaignCount) : undefined,
@@ -152,10 +158,44 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
     })
     if (unattributed.length > 0 && health.dataStatus === 'populated') health.dataStatus = 'partial'
 
+    const freshness = mergeSyncFreshness(all, { now: deps.now?.() })
+    // P-02: when the data cannot be trusted the tool says so and returns no figures. The coverage
+    // universe stays visible so a consumer can still see what is NOT being assessed (P-13).
+    const halt = evaluateHalt(freshness, {
+      haltAfterHours: PACING_HALT_HOURS,
+      now: deps.now?.(),
+      coverageDelta: coverageDelta as Record<string, { deltaPct?: number | null }> | null,
+    })
+    if (halt.halted) {
+      return ok({
+        period: currentPeriod(),
+        source: 'synced_ad_platform_spend',
+        halted: true,
+        haltReason: halt.haltReason,
+        haltDetail: halt.haltDetail,
+        asOf: halt.asOf,
+        ...(coverageDelta ? { coverageDelta } : {}),
+        ...health,
+        campaigns: [],
+        unattributed: [],
+        total: 0,
+        appliedLimit: args.limit ?? 20,
+        nextCursor: null,
+        more: 0,
+        truncatedAtSource: false,
+        excludedFromPacingCount: attributed.length,
+      })
+    }
+
     return ok({
       period: currentPeriod(),
       source: 'synced_ad_platform_spend',
-      ...mergeSyncFreshness(all, { now: deps.now?.() }),
+      halted: false,
+      basis: {
+        pacePct: `spend ÷ expected-to-date × 100, where expected-to-date = budget × (elapsed days ÷ days in month); underpacing < ${UNDERPACE_PCT}, overpacing > ${OVERPACE_PCT}`,
+        budget: 'media_spend.budget_allocated at the stated budgetLevel; null when no budget is configured',
+      },
+      ...freshness,
       ...(coverageDelta ? { coverageDelta } : {}),
       ...health,
       campaigns: page.items,
@@ -164,6 +204,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
       appliedLimit: args.limit ?? 20,
       nextCursor: page.nextCursor,
       more: page.more,
+      truncatedAtSource: page.truncatedAtSource,
       excludedFromPacingCount: attributed.filter(c => c.budget === null || c.status === 'partial_budget_coverage').length,
     })
   } catch {
@@ -173,7 +214,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
 
 export const adspendTool: AiTool<Args> = {
   name: 'get_adspend_pacing',
-  description: 'Get per-client ad-spend pacing for the current month across Meta and Google. Returns actual spend, budget level, allocated budget, expected-to-date pace, explicit data coverage, and worst-case freshness (`lastSyncedAt`, `oldestSyncedAt`, `staleRowCount`, `stalenessThresholdHours`). Spend without a configured budget is `no_budget_set`; incomplete campaign budget coverage is `partial_budget_coverage`. Both have null pace and are excluded from pacing conclusions. Unattributed account spend is returned separately. Use cursor/limit to paginate. Do NOT use for cash, runway, or accounts-receivable (use get_finance_snapshot).',
+  description: 'Get per-client ad-spend pacing for the current month across Meta and Google. Returns actual spend, spendAsOf, budget level, allocated budget, expected-to-date pace, explicit data coverage, and worst-case freshness (`lastSyncedAt`, `oldestSyncedAt`, `staleRowCount`, `stalenessThresholdHours`). Spend without a configured budget is `no_budget_set`; incomplete campaign budget coverage is `partial_budget_coverage`. Both have null pace and are excluded from pacing conclusions. Unattributed account spend is returned separately. Before data reaches 24 hours old, when a sync record is missing, or when campaign coverage dropped >5% on the last sync, the tool HALTS: `halted: true` with `haltReason`/`haltDetail`/`asOf` and NO figures — do not advise on pacing from a halted response. Use cursor/limit to paginate. Do NOT use for cash, runway, or accounts-receivable (use get_finance_snapshot).',
   parameters: params,
   requiredPermission: 'FINANCE',
   handler: (a, c) => getAdspendPacing(a, c),

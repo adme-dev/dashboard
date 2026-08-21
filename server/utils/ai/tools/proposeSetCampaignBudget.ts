@@ -52,6 +52,7 @@ export interface AllocationTargetRow {
   budget_allocated: string | null
   end_date: string | null
   mtd_spend: string | null
+  spend_as_of: string | null
 }
 
 export type SetCampaignBudgetDeps = {
@@ -64,7 +65,9 @@ const defaultDeps: SetCampaignBudgetDeps = {
     `SELECT ms.id::text, ms.period, ms.platform, ms.client_id::text, ac.name AS client_name,
             ms.campaign_id, ms.campaign_name, ms.budget_allocated::text, ms.end_date::text,
             (SELECT SUM(ds.spend) FROM daily_spend ds WHERE ds.media_spend_id = ms.id
-              AND ds.spend_date >= date_trunc('month', now())::date)::text AS mtd_spend
+              AND ds.spend_date >= date_trunc('month', now())::date)::text AS mtd_spend,
+            (SELECT MAX(ds.spend_date)::text FROM daily_spend ds WHERE ds.media_spend_id = ms.id
+              AND ds.spend_date >= date_trunc('month', now())::date) AS spend_as_of
        FROM media_spend ms
        LEFT JOIN agency_clients ac ON ac.id = ms.client_id
       WHERE ms.id = ANY($1::uuid[])`,
@@ -83,6 +86,7 @@ function shapeAllocationRow(row: AllocationTargetRow, proposedBudget: number) {
     monthlyBudget: proposedBudget,
     mtdSpend,
     endDate: row.end_date,
+    spendAsOf: row.spend_as_of,
   })
   return {
     mediaSpendId: row.id,
@@ -94,6 +98,7 @@ function shapeAllocationRow(row: AllocationTargetRow, proposedBudget: number) {
     currentBudgetAllocated: currentBudget != null && currentBudget > 0 ? currentBudget : null,
     proposedBudgetAllocated: proposedBudget,
     mtdSpend,
+    spendAsOf: pacing.spendAsOf,
     impliedPacingStatus: pacing.pacingStatus,
   }
 }

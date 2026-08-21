@@ -30,15 +30,19 @@ const queueDeps: CreativeQueueDeps = {
          JOIN proof_approvers pa ON pa.proof_id = p.id
         WHERE pa.team_member_id = $1 AND pa.status = 'pending'
         ORDER BY p.is_urgent DESC, p.due_date ASC NULLS LAST
-        LIMIT 50`,
+        LIMIT ${QUEUE_FETCH_CAP + 1}`,
       [userId]),
 }
+
+/** Source-side cap; one extra row is fetched so truncation is declared (P-03). */
+const QUEUE_FETCH_CAP = 50
 
 export async function getMyCreativeQueue(_args: Record<string, never>, ctx: ToolContext, deps: CreativeQueueDeps = queueDeps): Promise<ToolResult> {
   try {
     const rows = await deps.fetchQueue(ctx.userId)
-    const { items, more } = capWithMore(rows, 25)
-    return ok({ proofs: items, more })
+    const truncatedAtSource = rows.length > QUEUE_FETCH_CAP
+    const { items, more } = capWithMore(truncatedAtSource ? rows.slice(0, QUEUE_FETCH_CAP) : rows, 25)
+    return ok({ proofs: items, limit: 25, more, truncatedAtSource, sourceCap: QUEUE_FETCH_CAP })
   } catch {
     return fail('Could not load your creative queue right now.')
   }

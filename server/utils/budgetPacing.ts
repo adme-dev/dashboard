@@ -12,6 +12,8 @@ export interface CampaignBudgetPacingInput {
   mtdSpend: number
   period: string
   now?: Date
+  /** Last calendar day included in mtdSpend. Pacing uses this clock, not request time. */
+  spendAsOf?: string | Date | null
   campaignStatus?: string | null
   endDate?: string | Date | null
 }
@@ -29,6 +31,7 @@ export interface CampaignBudgetPacingResult {
   elapsedDays: number
   remainingDays: number
   daysInMonth: number
+  spendAsOf: string | null
 }
 
 const roundMoney = (value: number): number => Math.round(value * 100) / 100
@@ -59,16 +62,37 @@ function isCampaignEnded(endDate: string | Date | null | undefined, now: Date): 
   return end.getTime() < today.getTime()
 }
 
-function monthWindow(period: string, now: Date): { daysInMonth: number, elapsedDays: number, remainingDays: number } {
+function dateOnly(value: Date): string {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
+}
+
+function monthWindow(
+  period: string,
+  now: Date,
+  spendAsOfInput?: string | Date | null,
+): { daysInMonth: number, elapsedDays: number, remainingDays: number, spendAsOf: string | null } {
   const { year, month } = parsePeriod(period)
   const daysInMonth = new Date(year, month, 0).getDate()
   const currentMonth = now.getFullYear() === year && now.getMonth() + 1 === month
   const pastMonth = year < now.getFullYear() || (year === now.getFullYear() && month < now.getMonth() + 1)
-  const elapsedDays = currentMonth ? now.getDate() : pastMonth ? daysInMonth : 0
+  const suppliedCoverage = toDateOnly(spendAsOfInput)
+  const coverageInPeriod = suppliedCoverage
+    && suppliedCoverage.getFullYear() === year
+    && suppliedCoverage.getMonth() + 1 === month
+    ? suppliedCoverage
+    : null
+  const elapsedDays = currentMonth
+    ? Math.min(coverageInPeriod?.getDate() ?? now.getDate(), now.getDate(), daysInMonth)
+    : pastMonth ? daysInMonth : 0
   return {
     daysInMonth,
     elapsedDays,
     remainingDays: Math.max(daysInMonth - elapsedDays, 0),
+    spendAsOf: coverageInPeriod
+      ? dateOnly(coverageInPeriod)
+      : pastMonth
+        ? `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`
+        : null,
   }
 }
 
@@ -89,7 +113,7 @@ export function computeCampaignBudgetPacing(input: CampaignBudgetPacingInput): C
   const monthlyBudget = Number.isFinite(input.monthlyBudget) ? input.monthlyBudget : 0
   const mtdSpend = Number.isFinite(input.mtdSpend) ? input.mtdSpend : 0
   const mtdDifference = monthlyBudget - mtdSpend
-  const { daysInMonth, elapsedDays, remainingDays } = monthWindow(input.period, now)
+  const { daysInMonth, elapsedDays, remainingDays, spendAsOf } = monthWindow(input.period, now, input.spendAsOf)
 
   const currentDailyBudget = elapsedDays > 0 ? mtdSpend / elapsedDays : 0
   const newDailyBudget = remainingDays > 0 ? mtdDifference / remainingDays : 0
@@ -119,5 +143,6 @@ export function computeCampaignBudgetPacing(input: CampaignBudgetPacingInput): C
     elapsedDays,
     remainingDays,
     daysInMonth,
+    spendAsOf,
   }
 }

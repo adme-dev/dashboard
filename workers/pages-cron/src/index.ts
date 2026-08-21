@@ -46,6 +46,7 @@ export const ROUTES: Record<string, string[]> = {
     '/api/cron/office-assistant',
     '/api/cron/video-generation-reconcile',
     '/api/cron/monday-webhooks',
+    '/api/cron/monday-campaign-exceptions',
     '/api/cron/measurement-outbox-repair',
     '/api/cron/god-mode-reconciliation',
     '/api/cron/memory-index-outbox',
@@ -86,6 +87,11 @@ export const ROUTES: Record<string, string[]> = {
   // never hits the function time limit. Replaces the ai-agent-worker path,
   // which ran every platform synchronously and never completed.
   '0 20 * * *': ['/api/cron/sync-spend'],
+  // daily 21:45 UTC (07:45 Melbourne) — pre-morning refresh so the 08:36
+  // pacing check normally starts from same-morning provider data.
+  '45 21 * * *': ['/api/cron/sync-spend'],
+  // 90 minutes after the pre-morning slot — page if provider rows did not move.
+  '15 23 * * *': ['/api/cron/spend-sync-monitor'],
   // daily 20:15 UTC (06:15 AEST) — import account-wide Google Ads call_view records after
   // the main spend sync. Status and duration come from Google and are never
   // inferred from browser phone-link clicks.

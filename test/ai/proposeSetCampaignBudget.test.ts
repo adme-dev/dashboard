@@ -35,6 +35,7 @@ const row = (over: Partial<AllocationTargetRow>): AllocationTargetRow => ({
   budget_allocated: null,
   end_date: null,
   mtd_spend: '1730.62',
+  spend_as_of: '2026-08-19',
   ...over
 })
 
@@ -67,6 +68,21 @@ describe('propose_set_campaign_budget (W-1)', () => {
       { loadTargets: async () => [row({ budget_allocated: '2000' })], propose: async () => 'prop-2' }
     )
     expect((res as { data: { currentBudgetAllocated: number } }).data.currentBudgetAllocated).toBe(2000)
+  })
+
+  it('dryRun returns the complete preview without creating a proposal', async () => {
+    const propose = vi.fn(async () => 'must-not-exist')
+    const res = await proposeSetCampaignBudget(
+      { mediaSpendId: ID_A, budgetAllocated: 2500, dryRun: true }, ctx('owner'),
+      { loadTargets: async () => [row({ budget_allocated: '2000' })], propose }
+    )
+    expect(res).toMatchObject({ ok: true, data: {
+      dryRun: true,
+      currentBudgetAllocated: 2000,
+      proposedBudgetAllocated: 2500,
+      spendAsOf: '2026-08-19'
+    } })
+    expect(propose).not.toHaveBeenCalled()
   })
 
   it('refuses without MEDIA_BUYING and on an unknown row', async () => {
@@ -129,6 +145,21 @@ describe('propose_bulk_set_campaign_budgets (W-2)', () => {
       { loadTargets: async () => [row({})], propose: async () => 'never' }
     )
     expect(res).toMatchObject({ ok: false, code: 'bad_args' })
+  })
+
+  it('bulk dryRun returns every row and never creates an action', async () => {
+    const propose = vi.fn(async () => 'must-not-exist')
+    const res = await proposeBulkSetCampaignBudgets(
+      { allocations: [
+        { mediaSpendId: ID_A, budgetAllocated: 3000 },
+        { mediaSpendId: ID_B, budgetAllocated: 2100 }
+      ], dryRun: true },
+      ctx('owner'),
+      { loadTargets: async () => [row({}), row({ id: ID_B })], propose }
+    )
+    expect(res).toMatchObject({ ok: true, data: { dryRun: true, rowCount: 2 } })
+    expect(((res as any).data.allocations as unknown[])).toHaveLength(2)
+    expect(propose).not.toHaveBeenCalled()
   })
 })
 

@@ -185,7 +185,9 @@ describe('buildBannerReadRunner — render status', () => {
         url: '/api/agency/banner-studio/export-video/jobs/11111111-1111-4111-8111-111111111111/download',
         fileSize: 71546,
         error: null
-      }]
+      }],
+      limit: 20,
+      ignoredJobIds: 0
     })
   })
 })

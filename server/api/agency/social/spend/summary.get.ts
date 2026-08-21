@@ -1,5 +1,6 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
+import { STALENESS_THRESHOLD_HOURS } from '~~/server/utils/ai/tools/responseContract'
 import { cachedFetch } from '~~/server/utils/kv'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { buildSpendSummaryItems, buildSpendSummaryTotals, type SpendSummaryRow } from '~~/server/utils/socialSpendSummary'
@@ -43,18 +44,24 @@ export default eventHandler(async (event) => {
         COUNT(*) FILTER (WHERE COALESCE(ms.budget_allocated, 0) > 0)::int as budgeted_campaign_count,
         MAX(ms.synced_at) as last_synced_at,
         MIN(ms.synced_at) as oldest_synced_at,
-        COUNT(*) FILTER (WHERE ms.synced_at IS NULL OR ms.synced_at < NOW() - INTERVAL '48 hours')::int as stale_row_count,
+        MIN(COALESCE(coverage.spend_as_of, ms.synced_at::date))::text as spend_as_of,
+        COUNT(*) FILTER (WHERE ms.synced_at IS NULL OR ms.synced_at < NOW() - MAKE_INTERVAL(hours => $3))::int as stale_row_count,
         array_agg(ms.id ORDER BY ms.actual_spend DESC) as spend_ids,
         bool_or(COALESCE(ms.budget_rolling, false)) as is_rolling,
         MAX(ms.commission_rate) as commission_rate
       FROM media_spend ms
       LEFT JOIN agency_clients ac ON ms.client_id = ac.id
       LEFT JOIN social_connections sc ON sc.id = ms.connection_id
+      LEFT JOIN LATERAL (
+        SELECT MAX(ds.spend_date) AS spend_as_of
+        FROM daily_spend ds
+        WHERE ds.media_spend_id = ms.id
+      ) coverage ON TRUE
       LEFT JOIN customer_finance cf ON cf.contact_id = ac.xero_contact_id AND cf.tenant_id = $2
       LEFT JOIN team_members tm ON tm.id = cf.account_manager_id
       WHERE ms.period = $1
     `
-    const params: any[] = [period, tenantId]
+    const params: any[] = [period, tenantId, STALENESS_THRESHOLD_HOURS]
 
     if (platform && platform !== 'all') {
       sql += ` AND ms.platform = $${params.length + 1}`

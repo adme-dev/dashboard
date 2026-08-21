@@ -12,7 +12,7 @@ describe('agency client editor', () => {
   })
 
   it('supplies stable idempotency keys to both coordinated save requests', () => {
-    expect(page).toContain("headers: { 'Idempotency-Key': idempotencyKeyFor('client', clientPayload) }")
+    expect(page).toContain("headers: { 'Idempotency-Key': idempotencyKeyFor('client', normalizedClientPayload) }")
     expect(page).toContain("headers: { 'Idempotency-Key': idempotencyKeyFor('crm', crmPayload) }")
   })
 

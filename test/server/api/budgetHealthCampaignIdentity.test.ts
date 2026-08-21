@@ -112,7 +112,8 @@ describe('GET /api/agency/budget-alerts/health campaign identity', () => {
     expect(clientQuery).toContain('budgeted_campaign_count')
     expect(clientQuery).toContain('MAX(ms.synced_at)::text as last_synced_at')
     expect(clientQuery).toContain('MIN(ms.synced_at)::text as oldest_synced_at')
-    expect(clientQuery).toContain("INTERVAL '48 hours'")
+    expect(clientQuery).toContain('MAKE_INTERVAL(hours => $2)')
+    expect(mockQueryRows.mock.calls[0][1]).toEqual([expect.any(String), 48])
     expect(result.clients[0]).toMatchObject({
       budget: 510,
       spend: 1705.22,

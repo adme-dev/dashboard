@@ -391,6 +391,11 @@ export default defineNuxtConfig({
 
   nitro: {
     preset: 'cloudflare_pages',
+    // Cloudflare Workers supports BigInt. Target ES2020 so esbuild does not
+    // downlevel BigInt-backed range/cost arithmetic as an ES2019 compatibility warning.
+    esbuild: {
+      options: { target: 'es2020' }
+    },
     // Keep @flyhub/* out of the server bundle (client-only editor packages).
     alias: {
       ...flyhubServerAlias,
@@ -422,6 +427,7 @@ export default defineNuxtConfig({
 
   vite: {
     build: {
+      target: 'es2020',
       // The app has several intentionally lazy, feature-heavy route chunks. Keep
       // the warning threshold aligned with the current route-level split while
       // still flagging unusually large future chunks.

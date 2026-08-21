@@ -23,13 +23,27 @@ import {
 } from '~~/server/utils/googleCredentialProfiles'
 
 export default eventHandler(async (event) => {
-  const user = await requireRole(event, ['owner', 'admin'])
+  const requestHeader = (name: string): string | null => {
+    const webHeaders = (event as any)?.headers
+    const webValue = typeof webHeaders?.get === 'function' ? webHeaders.get(name) : webHeaders?.[name]
+    const nodeValue = (event as any)?.node?.req?.headers?.[name]
+    const value = webValue ?? nodeValue
+    return Array.isArray(value) ? String(value[0] ?? '') : value == null ? null : String(value)
+  }
+  const mondayItemId = requestHeader('x-xeroflow-monday-item')
+  const cronAuthorized = Boolean(
+    !import.meta.dev
+    && process.env.CRON_SECRET
+    && requestHeader('x-cron-secret') === process.env.CRON_SECRET
+    && mondayItemId
+  )
+  const user = cronAuthorized ? null : await requireRole(event, ['owner', 'admin'])
   const id = getRouterParam(event, 'id')
   const actionId = getRouterParam(event, 'actionId')
   if (!id || !actionId) throw createError({ statusCode: 400, statusMessage: 'id and actionId required' })
 
   const body = await readBody(event).catch(() => ({})) as { override?: boolean }
-  const override = body?.override === true
+  const requestedOverride = cronAuthorized ? false : body?.override === true
 
   // Load the approved action joined to its media_spend row.
   const row = await queryOne<GoogleCredentialRow & {
@@ -48,6 +62,7 @@ export default eventHandler(async (event) => {
     period: string | null
     synced_at: string | null
     applied_today: boolean
+    action_metadata: Record<string, unknown> | null
   }>(
     `SELECT cal.platform,
             ms.connection_id::text,
@@ -64,6 +79,7 @@ export default eventHandler(async (event) => {
             ms.budget_type,
             ms.period,
             ms.synced_at::text AS synced_at,
+            cal.metadata AS action_metadata,
             EXISTS (
               SELECT 1 FROM campaign_action_log x
               WHERE x.media_spend_id = cal.media_spend_id
@@ -93,6 +109,21 @@ export default eventHandler(async (event) => {
     }
     throw createError({ statusCode: 404, statusMessage: 'Approved action not found' })
   }
+
+  // The cron credential is not general write authority. It can execute only an
+  // already-approved action minted by the Campaign Exceptions poller for this
+  // exact Monday item. Raw caller headers cannot widen that scope.
+  if (cronAuthorized && (
+    row.action_metadata?.source !== 'monday_campaign_exception'
+    || row.action_metadata?.mondayItemId !== mondayItemId
+  )) {
+    throw createError({ statusCode: 403, statusMessage: 'Monday automation action scope mismatch' })
+  }
+  const isMondayRollback = cronAuthorized && row.action_metadata?.operation === 'rollback'
+  // A rollback must restore the exact read-back value captured by the preceding
+  // Monday action. It bypasses relative clamps and the same-day apply limit, but
+  // still retains platform minimums, write flags, scoping and read-back checks.
+  const override = isMondayRollback ? true : requestedOverride
 
   if (isCampaignTotalBudgetType(row.budget_type)) {
     return { status: 'blocked', reason: 'custom_period_budget', clampReasons: [] }
@@ -193,7 +224,7 @@ export default eventHandler(async (event) => {
     mtdSpend: Number(row.actual_spend),
     monthDaysRemaining,
     monthlyMarginPct: cfg.monthlyMarginPct,
-    alreadyAppliedToday: row.applied_today,
+    alreadyAppliedToday: isMondayRollback ? false : row.applied_today,
     override,
   })
 
@@ -266,7 +297,7 @@ export default eventHandler(async (event) => {
           allApplied ? 'applied' : 'failed',
           JSON.stringify({ totalDailyBudget: decision.finalDaily, currentDailyTotal, splits: splitResults }),
           allApplied ? null : `ABO split incomplete: ${appliedCount} applied, ${failedIds.length} failed (${failedIds.join(',')}), ${notAttempted} not attempted — campaign left in mixed state`,
-          JSON.stringify({ clamped: decision.clamped, clampReasons: decision.clampReasons, override, appliedBy: user.id }),
+          JSON.stringify({ clamped: decision.clamped, clampReasons: decision.clampReasons, override, appliedBy: user?.id ?? 'monday_campaign_exception' }),
         ]
       )
 
@@ -334,7 +365,7 @@ export default eventHandler(async (event) => {
         verified ? 'applied' : 'failed',
         JSON.stringify({ appliedDailyBudget: decision.finalDaily, readBackDailyBudget: readBack }),
         verified ? null : `Read-back mismatch: expected ${decision.finalDaily}, got ${readBack}`,
-        JSON.stringify({ clamped: decision.clamped, clampReasons: decision.clampReasons, override, appliedBy: user.id }),
+        JSON.stringify({ clamped: decision.clamped, clampReasons: decision.clampReasons, override, appliedBy: user?.id ?? 'monday_campaign_exception' }),
       ]
     )
 

@@ -136,6 +136,27 @@ describe('computeCampaignBudgetPacing', () => {
     expect(future.remainingDays).toBe(31)
     expect(future.pacingStatus).toBe('on_track')
   })
+
+  it.each([
+    ['14h', '2026-08-19', 19],
+    ['38h', '2026-08-18', 18],
+    ['62h', '2026-08-17', 17],
+  ])('keeps perfect pacing at 1.00 with %s of sync lag', (_lag, spendAsOf, elapsedDays) => {
+    const monthlyBudget = 3100
+    const result = computeCampaignBudgetPacing({
+      monthlyBudget,
+      mtdSpend: monthlyBudget * (elapsedDays / 31),
+      period: '2026-08',
+      now: new Date('2026-08-20T09:00:00+10:00'),
+      spendAsOf,
+      campaignStatus: 'ACTIVE',
+      endDate: null,
+    })
+
+    expect(result.elapsedDays).toBe(elapsedDays)
+    expect(result.spendAsOf).toBe(spendAsOf)
+    expect(result.pacingRatio).toBeCloseTo(1, 2)
+  })
 })
 
 describe('statusSeverityRank', () => {

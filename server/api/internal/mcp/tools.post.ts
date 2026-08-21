@@ -20,15 +20,20 @@ import {
   appendGodModeAuditEvent,
   type GodModeBypassedControl
 } from '~~/server/utils/godMode/audit'
-import { MCP_CATALOG_RELEASE } from '~~/shared/utils/mcpCatalog'
+import { MCP_CATALOG_RELEASE, MCP_PREVIOUS_CATALOG_RELEASE, assertMcpCatalogNotRegressed } from '~~/shared/utils/mcpCatalog'
 
-function manifestResponse<T>(tools: T[]) {
+function manifestResponse<T>(tools: T[], assertOwnerFloor = false) {
+  if (assertOwnerFloor && process.env.NODE_ENV !== 'test') {
+    assertMcpCatalogNotRegressed(MCP_CATALOG_RELEASE, tools.length)
+  }
   return {
     tools,
     catalog: {
       release: MCP_CATALOG_RELEASE,
+      previousRelease: MCP_PREVIOUS_CATALOG_RELEASE,
       toolCount: tools.length,
       source: 'fresh_server_projection' as const,
+      fullOwnerProjection: assertOwnerFloor,
     },
   }
 }
@@ -102,7 +107,7 @@ export default defineEventHandler(async (event) => {
       const tools = projectGodModeTools(projectionContext)
       failureOutcome = 'catalog_terminal_audit_failed'
       await appendGodModeAuditEvent({ ...audit, phase: 'succeeded', outcomeCode: 'catalog_projected' })
-      return manifestResponse(tools)
+      return manifestResponse(tools, true)
     } catch {
       if (attemptWritten) {
         try {

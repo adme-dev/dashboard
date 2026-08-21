@@ -70,4 +70,18 @@ describe('describeFetchFailure', () => {
     expect(describeFetchFailure(null)).toBe('unknown error')
     expect(describeFetchFailure('plain string')).toBe('plain string')
   })
+
+  it('carries the as-of and basis for cash and receivables (P-01/P-04) and declares the AR cap', async () => {
+    const asOf = { cachedAt: '2026-08-20T11:40:00.000Z', servedStale: false, source: 'cache_fresh', ttlSeconds: 300 }
+    const deps: FinanceSnapshotDeps = {
+      cashPosition: vi.fn().mockResolvedValue({ balance: 1, creditCard: 0, net: 1, runwayDays: 3, risk: 'critical', asOf }),
+      outstanding: vi.fn().mockResolvedValue({ total: 10, top: [], asOf: { ...asOf, servedStale: true, source: 'cache_stale_if_error' } }),
+    }
+    const data = ((await getFinanceSnapshot({}, { userId: 'u1', userRole: 'owner', event: {} as any }, deps)) as any).data
+    expect(data.cash.asOf).toEqual(asOf)
+    expect(data.cash.basis).toMatch(/bank-account/)
+    expect(data.receivables.asOf.servedStale).toBe(true)
+    expect(data.receivables.limit).toBe(5)
+    expect(data.receivables.basis).toMatch(/ACCREC/)
+  })
 })

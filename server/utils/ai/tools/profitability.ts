@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { H3Event } from 'h3'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
-import { fetchClientEconomics, resolveByName, type ClientEconomicsRow, type EconomicsPeriod } from './economics'
+import { fetchClientEconomics, fetchEconomicsAsOf, resolveByName, type ClientEconomicsRow, type EconomicsAsOf, type EconomicsPeriod } from './economics'
 
 const params = z.object({
   clientName: z.string().optional(),
@@ -12,8 +12,16 @@ type Args = z.infer<typeof params>
 
 export type ProfitabilityDeps = {
   fetchEconomics: (event: H3Event, period: EconomicsPeriod) => Promise<ClientEconomicsRow[]>
+  fetchAsOf?: (event: any, options?: { now?: Date }) => Promise<EconomicsAsOf>
+  now?: () => Date
 }
-const defaultDeps: ProfitabilityDeps = { fetchEconomics: fetchClientEconomics }
+const defaultDeps: ProfitabilityDeps = { fetchEconomics: fetchClientEconomics, fetchAsOf: fetchEconomicsAsOf }
+
+const MARGIN_LIST_LIMIT = 5
+const BASIS = {
+  marginPct: 'delivery_margin = (revenue − passthrough − labor) / revenue, from Xero ACCREC invoices dated in-period, media_spend actual_spend, and time_entries hours × hourly_rate',
+  sharePct: 'client revenue / total in-period revenue across all clients',
+} as const
 
 const round1 = (n: number) => Math.round(n * 10) / 10
 
@@ -37,7 +45,8 @@ function compute(r: ClientEconomicsRow): Computed {
 export async function getClientProfitability(args: Args, ctx: ToolContext, deps: ProfitabilityDeps = defaultDeps): Promise<ToolResult> {
   try {
     const rows = await deps.fetchEconomics(ctx.event, args.period)
-    if (rows.length === 0) return ok({ period: args.period, note: 'No client financial data available — Xero may be disconnected or the invoice cache is empty.' })
+    const asOf = deps.fetchAsOf ? await deps.fetchAsOf(ctx.event, { now: deps.now?.() }).catch(() => null) : null
+    if (rows.length === 0) return ok({ period: args.period, ...(asOf ? { asOf } : {}), note: 'No client financial data available — Xero may be disconnected or the invoice cache is empty.' })
 
     const totalRev = rows.reduce((s, r) => s + r.revenueCents, 0)
 
@@ -49,7 +58,7 @@ export async function getClientProfitability(args: Args, ctx: ToolContext, deps:
       }
       const c = compute(match)
       const sharePct = totalRev > 0 ? round1((match.revenueCents / totalRev) * 100) : 0
-      return ok({ period: args.period, ...c, sharePct })
+      return ok({ period: args.period, ...(asOf ? { asOf } : {}), ...c, sharePct, basis: BASIS })
     }
 
     const computed = rows.map(compute)
@@ -63,18 +72,22 @@ export async function getClientProfitability(args: Args, ctx: ToolContext, deps:
     // Loss-making clients (AGI <= 0 → margin undefined) are the WORST; order most-negative AGI first.
     const lossMaking = active.filter(c => c.deliveryMarginPct == null).sort((a, b) => a.agi - b.agi)
 
-    const topByMargin = [...withMargin].sort((a, b) => b.deliveryMarginPct! - a.deliveryMarginPct!).slice(0, 5)
+    const topByMargin = [...withMargin].sort((a, b) => b.deliveryMarginPct! - a.deliveryMarginPct!).slice(0, MARGIN_LIST_LIMIT)
     const worstFirst = [...lossMaking, ...[...withMargin].sort((a, b) => a.deliveryMarginPct! - b.deliveryMarginPct!)]
-    const bottomByMargin = worstFirst.slice(0, 5)
+    const bottomByMargin = worstFirst.slice(0, MARGIN_LIST_LIMIT)
     const shown = new Set<string>([...topByMargin, ...bottomByMargin].map(c => c.client))
 
     const project = (c: Computed) => ({ client: c.client, revenue: c.revenue, agi: c.agi, marginPct: c.deliveryMarginPct })
     return ok({
       period: args.period,
+      ...(asOf ? { asOf } : {}),
       topByMargin: topByMargin.map(project),
       bottomByMargin: bottomByMargin.map(project),
-      agencyConcentration: { top5Pct: shareOfTop(5), top10Pct: shareOfTop(10) },
+      limit: MARGIN_LIST_LIMIT,
+      agencyConcentration: { top5Pct: shareOfTop(5), top10Pct: shareOfTop(10), basis: 'share of total in-period revenue held by the top-N clients by revenue' },
+      rankedClientCount: active.length,
       more: Math.max(0, active.length - shown.size),
+      basis: BASIS,
     })
   } catch {
     return fail('Could not compute client profitability — the financial data may be unavailable.')

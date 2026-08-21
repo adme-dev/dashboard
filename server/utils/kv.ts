@@ -176,6 +176,28 @@ function memoryDeleteByPrefix(prefix: string): number {
 interface CacheEntry<T> {
   v: T
   exp: number
+  /** ms since epoch when `v` was fetched from the source. Absent on entries written before P-01. */
+  at?: number
+}
+
+/**
+ * Provenance for a cached value (promise P-01 — every figure carries its as-of).
+ * `cachedAt` is when the source was last actually read; null only for legacy entries written
+ * before the field existed. `servedStale` is true whenever the value is older than its logical TTL
+ * or was served because the live fetch failed.
+ */
+export interface CacheAsOf {
+  cachedAt: string | null
+  servedStale: boolean
+  source: 'live' | 'cache_fresh' | 'cache_stale_revalidating' | 'cache_stale_if_error' | 'cache_legacy'
+  ttlSeconds: number
+}
+
+function asOfFor<T>(entry: CachedValue<T>, source: CacheAsOf['source'], ttlSeconds: number): CacheAsOf {
+  const at = isCacheEntry(entry) && typeof entry.at === 'number'
+    ? new Date(entry.at).toISOString()
+    : isCacheEntry(entry) ? new Date(entry.exp - ttlSeconds * 1000).toISOString() : null
+  return { cachedAt: at, servedStale: source !== 'live' && source !== 'cache_fresh', source, ttlSeconds }
 }
 
 type CachedValue<T> = CacheEntry<T> | T | null | undefined
@@ -233,7 +255,7 @@ function scheduleRefresh<T>(
   const task = (async () => {
     try {
       const data = await fetcher()
-      const entry: CacheEntry<T> = { v: data, exp: Date.now() + ttlSeconds * 1000 }
+      const entry: CacheEntry<T> = { v: data, exp: Date.now() + ttlSeconds * 1000, at: Date.now() }
       if (kv) {
         await kv.put(key, JSON.stringify(entry), { expirationTtl: Math.max(60, ttlSeconds * 4) })
       }
@@ -272,6 +294,16 @@ export async function cachedFetch<T>(
   ttlSeconds: number,
   fetcher: () => Promise<T>,
 ): Promise<T> {
+  return (await cachedFetchWithMeta(event, key, ttlSeconds, fetcher)).value
+}
+
+/** Same as cachedFetch but also returns the value's provenance (see CacheAsOf). */
+export async function cachedFetchWithMeta<T>(
+  event: H3Event,
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>,
+): Promise<{ value: T, asOf: CacheAsOf }> {
   // Honour an explicit cache-bust flag (?bust=1 or ?refresh=1) so a
   // user-clicked "Refresh" button always rebuilds from live Xero
   // instead of serving the cached value.
@@ -281,9 +313,9 @@ export async function cachedFetch<T>(
   if (busted) {
     try {
       const data = await fetcher()
-      const entry: CacheEntry<T> = { v: data, exp: Date.now() + ttlSeconds * 1000 }
+      const entry: CacheEntry<T> = { v: data, exp: Date.now() + ttlSeconds * 1000, at: Date.now() }
       kvPut(event, key, entry, Math.max(60, ttlSeconds * 4))
-      return data
+      return { value: data, asOf: asOfFor(entry, 'live', ttlSeconds) }
     } catch (err) {
       // Stale-if-error: a forced refresh that hits Xero's rate limit (429)
       // or a transient upstream failure should degrade to the last known
@@ -294,7 +326,7 @@ export async function cachedFetch<T>(
       const fallback = extractCachedValue(cached)
       if (fallback !== null && isTransientCacheError(err)) {
         console.warn(`[cachedFetch] bust fetch failed for "${key}" — serving stale:`, (err as any)?.message ?? err)
-        return fallback
+        return { value: fallback, asOf: asOfFor(cached, 'cache_stale_if_error', ttlSeconds) }
       }
       throw err
     }
@@ -308,27 +340,27 @@ export async function cachedFetch<T>(
     const entry = cached as CacheEntry<T>
     if (now < entry.exp) {
       // Fresh.
-      return entry.v
+      return { value: entry.v, asOf: asOfFor(entry, 'cache_fresh', ttlSeconds) }
     }
     // Stale — serve it and refresh in the background.
     scheduleRefresh(event, key, ttlSeconds, fetcher)
-    return entry.v
+    return { value: entry.v, asOf: asOfFor(entry, 'cache_stale_revalidating', ttlSeconds) }
   }
 
   if (cached !== null && cached !== undefined) {
     // Legacy plain-value entry — treat as fresh once, then rewrite in
     // the new format via background refresh.
     scheduleRefresh(event, key, ttlSeconds, fetcher)
-    return cached as T
+    return { value: cached as T, asOf: asOfFor(cached, 'cache_legacy', ttlSeconds) }
   }
 
   // Cold cache — synchronously fetch.
   try {
     const data = await fetcher()
-    const entry: CacheEntry<T> = { v: data, exp: now + ttlMs }
+    const entry: CacheEntry<T> = { v: data, exp: now + ttlMs, at: now }
     // KV TTL > logical TTL so expired-but-usable data sticks around.
     kvPut(event, key, entry, Math.max(60, ttlSeconds * 4))
-    return data
+    return { value: data, asOf: asOfFor(entry, 'live', ttlSeconds) }
   } catch (err) {
     // No usable in-memory value, but a different request may have populated a
     // cache entry very recently. Re-check KV to avoid a hard error cascade.
@@ -336,7 +368,7 @@ export async function cachedFetch<T>(
     const fallback = extractCachedValue(latestCached)
     if (fallback !== null && isTransientCacheError(err)) {
       console.warn(`[cachedFetch] fetch failed for "${key}" — serving stale value:`, (err as any)?.message ?? err)
-      return fallback
+      return { value: fallback, asOf: asOfFor(latestCached, 'cache_stale_if_error', ttlSeconds) }
     }
     throw err
   }

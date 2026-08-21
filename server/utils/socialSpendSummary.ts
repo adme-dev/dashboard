@@ -20,6 +20,7 @@ export interface SpendSummaryRow {
   budgeted_campaign_count?: string | number | null
   last_synced_at: string | null
   oldest_synced_at?: string | null
+  spend_as_of?: string | null
   stale_row_count?: string | number | null
   spend_ids: Array<string | null> | null
   is_rolling: boolean | null
@@ -47,6 +48,7 @@ export interface SpendSummaryItem {
   commissionRate: number
   lastSyncedAt: string | null
   oldestSyncedAt: string | null
+  spendAsOf: string | null
   staleRowCount: number
 }
 
@@ -71,6 +73,7 @@ interface SummaryAccumulator {
   commissionRate: number
   lastSyncedAt: string | null
   oldestSyncedAt: string | null
+  spendAsOf: string | null
   staleRowCount: number
 }
 
@@ -134,6 +137,7 @@ export function buildSpendSummaryItems(rows: SpendSummaryRow[]): SpendSummaryIte
       commissionRate: 0,
       lastSyncedAt: null,
       oldestSyncedAt: null,
+      spendAsOf: null,
       staleRowCount: 0,
     }
 
@@ -149,6 +153,7 @@ export function buildSpendSummaryItems(rows: SpendSummaryRow[]): SpendSummaryIte
     acc.commissionRate = Math.max(acc.commissionRate, numberValue(row.commission_rate))
     acc.lastSyncedAt = latestTimestamp(acc.lastSyncedAt, row.last_synced_at || null)
     acc.oldestSyncedAt = oldestTimestamp(acc.oldestSyncedAt, row.oldest_synced_at || row.last_synced_at || null)
+    acc.spendAsOf = oldestTimestamp(acc.spendAsOf, row.spend_as_of || null)
     acc.staleRowCount += intValue(row.stale_row_count)
 
     if (!acc.owner && row.owner_id) {
@@ -197,6 +202,7 @@ export function buildSpendSummaryItems(rows: SpendSummaryRow[]): SpendSummaryIte
         commissionRate: acc.commissionRate,
         lastSyncedAt: acc.lastSyncedAt,
         oldestSyncedAt: acc.oldestSyncedAt,
+        spendAsOf: acc.spendAsOf,
         staleRowCount: acc.staleRowCount,
       }
     })

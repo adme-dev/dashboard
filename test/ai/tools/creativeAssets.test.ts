@@ -75,4 +75,21 @@ describe('get_creative_assets', () => {
     expect(data.coverage).toEqual({ expected: 3, withData: 2 })
     expect(data.assets[2]).toMatchObject({ source: 'monday', deliveredBy: 'Tina Yu', linkedCampaignIds: [] })
   })
+
+  it('declares per-source truncation and carries the ad-platform as-of (P-01/P-03)', async () => {
+    const fetch = vi.fn().mockResolvedValue({
+      assets: [{ assetId: 'a1', filename: null, ratio: null, deliveredAt: null, deliveredBy: null, source: 'ad_platform', linkedAdIds: [], linkedCampaignIds: [], clientName: null, clientIds: [], clientNames: [], campaignName: null, syncedAt: '2026-08-19T08:17:00Z' }],
+      sources: {
+        adPlatform: { cap: 1000, truncated: true },
+        mondayStored: { cap: 1000, truncated: false },
+        mondayLive: { itemCap: 25, truncated: null },
+      },
+    })
+    const res = await getCreativeAssets({ limit: 20 } as any, { userId: 'u1', userRole: 'owner', event: {} as any } as any, { fetch })
+    const d = (res as any).data
+    expect(d.truncatedAtSource).toBe(true)
+    expect(d.sources.adPlatform.truncated).toBe(true)
+    expect(d.lastSyncedAt).toBe('2026-08-19T08:17:00Z')
+    expect(d.assets[0].syncedAt).toBe('2026-08-19T08:17:00Z')
+  })
 })

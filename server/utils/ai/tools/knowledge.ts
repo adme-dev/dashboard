@@ -152,7 +152,7 @@ export async function searchKnowledge(args: Args, ctx: ToolContext, deps: Knowle
       snippet: snippetOf(d.metadata || {}),
       score: Number(d.score ?? 0),
     }))
-    return ok({ items, more: Math.max(0, visible.length - items.length) })
+    return ok({ items, limit, more: Math.max(0, visible.length - items.length), bodyMaxChars: 300 })
   } catch {
     return fail('Could not search the knowledge base — semantic search may be unavailable.')
   }

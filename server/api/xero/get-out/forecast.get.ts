@@ -20,7 +20,7 @@ import { queryOne } from '~~/server/utils/db'
 import { xeroFetch } from '~~/server/utils/xeroClient'
 import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
-import { cachedFetch } from '~~/server/utils/kv'
+import { cachedFetchWithMeta } from '~~/server/utils/kv'
 import { loadGetOutConfig, summariseConfig } from '~~/server/utils/getOutConfig'
 
 // Probability weights used to size the "Probable" forecast layer.
@@ -71,7 +71,8 @@ export default defineEventHandler(async (event) => {
   const tenantId = tenantIdRaw
   const accessToken = token.access_token!
 
-  return cachedFetch(event, `xero-get-out:${tenantId}:forecast`, 300, async () => {
+  // P-01: every figure carries its as-of — the cache provenance rides along as `asOf`.
+  const { value, asOf } = await cachedFetchWithMeta(event, `xero-get-out:${tenantId}:forecast`, 300, async () => {
     const today = new Date()
     const year = today.getFullYear()
     const month = today.getMonth() + 1
@@ -248,4 +249,5 @@ export default defineEventHandler(async (event) => {
       computedAt: new Date().toISOString(),
     }
   })
+  return { ...value, asOf }
 })

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { periodBounds, resolveByName } from '~~/server/utils/ai/tools/economics'
 
 describe('periodBounds', () => {
@@ -35,5 +35,19 @@ describe('resolveByName', () => {
   })
   it('no match → empty', () => {
     expect(resolveByName(rows, 'zzz')).toEqual({ candidates: [] })
+  })
+})
+
+describe('fetchEconomicsAsOf (P-01)', () => {
+  it('returns the Xero-cache and media_spend as-of with a freshness classification and its basis', async () => {
+    const { fetchEconomicsAsOf } = await import('~~/server/utils/ai/tools/economics')
+    const load = vi.fn(async (sql: string) => sql.includes('FROM media_spend')
+      ? [{ last_synced: '2026-08-19T08:13:47Z' }]
+      : [{ last_synced: '2026-08-19T03:20:00Z' }])
+    const asOf = await fetchEconomicsAsOf({ context: {} } as any, { now: new Date('2026-08-20T12:00:00Z'), load })
+    expect(asOf.mediaSpendSyncedAt).toBe('2026-08-19T08:13:47Z')
+    expect(asOf.lastSyncedAt).toBe('2026-08-19T08:13:47Z')
+    expect(asOf.basis).toBe('xero_invoice_cache+media_spend_sync')
+    expect(['fresh', 'mixed', 'stale']).toContain(asOf.freshness)
   })
 })

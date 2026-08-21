@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { H3Event } from 'h3'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
-import { fetchClientEconomics, fetchRetainerCaps, resolveByName, type ClientEconomicsRow, type RetainerRow } from './economics'
+import { fetchClientEconomics, fetchEconomicsAsOf, fetchRetainerCaps, resolveByName, type ClientEconomicsRow, type EconomicsAsOf, type RetainerRow } from './economics'
 
 const params = z.object({
   clientName: z.string().optional(),
@@ -15,6 +15,8 @@ export type RetainerBurnDeps = {
   fetchEconomics: (event: H3Event, period: 'mtd') => Promise<ClientEconomicsRow[]>
   /** Fraction of the current month elapsed (0..1) — injected for deterministic projection. */
   elapsedFraction: () => number
+  fetchAsOf?: (event: any, options?: { now?: Date }) => Promise<EconomicsAsOf>
+  now?: () => Date
 }
 
 function monthElapsedFraction(now: Date = new Date()): number {
@@ -26,6 +28,7 @@ function monthElapsedFraction(now: Date = new Date()): number {
 const defaultDeps: RetainerBurnDeps = {
   fetchRetainers: fetchRetainerCaps,
   fetchEconomics: (event, period) => fetchClientEconomics(event, period),
+  fetchAsOf: fetchEconomicsAsOf,
   elapsedFraction: () => monthElapsedFraction(),
 }
 
@@ -40,8 +43,14 @@ function paceOf(burnPct: number, elapsedPct: number): Pace {
 
 export async function monitorRetainerBurn(args: Args, ctx: ToolContext, deps: RetainerBurnDeps = defaultDeps): Promise<ToolResult> {
   try {
-    const [retainers, econ] = await Promise.all([deps.fetchRetainers(), deps.fetchEconomics(ctx.event, 'mtd')])
+    const [retainers, econ, asOf] = await Promise.all([
+      deps.fetchRetainers(),
+      deps.fetchEconomics(ctx.event, 'mtd'),
+      deps.fetchAsOf ? deps.fetchAsOf(ctx.event, { now: deps.now?.() }).catch(() => null) : Promise.resolve(null),
+    ])
     if (retainers.length === 0) return ok({ note: 'No clients on a retainer/hybrid plan with a cap on record.' })
+    const BURN_BASIS = 'burnPct = labor logged this month (time_entries hours × hourly_rate) / retainer cap; pace compares burnPct with elapsed share of the month'
+    const WATCHLIST_LIMIT = 10
 
     const consumedByClient = new Map(econ.map(e => [e.clientId, { consumed: e.laborCents / 100, hours: e.hours }]))
     const elapsed = deps.elapsedFraction()
@@ -67,16 +76,19 @@ export async function monitorRetainerBurn(args: Args, ctx: ToolContext, deps: Re
         if (candidates.length > 1) return ok({ disambiguation: candidates.map(c => c.name) })
         return ok({ note: `No active retainer on record for "${args.clientName}".` })
       }
-      return ok(rows.find(x => x.client === match.name))
+      return ok({ ...(asOf ? { asOf } : {}), ...rows.find(x => x.client === match.name), basis: BURN_BASIS })
     }
 
     const atRisk = rows.filter(x => x.pace === 'over').sort((a, b) => b.burnPct - a.burnPct)
     return ok({
       period: 'mtd',
+      ...(asOf ? { asOf } : {}),
       elapsedPct,
       summary: { count: rows.length, overCount: atRisk.length },
-      atRisk: atRisk.slice(0, 10).map(({ client, burnPct, pace }) => ({ client, burnPct, pace })),
-      more: Math.max(0, atRisk.length - 10),
+      atRisk: atRisk.slice(0, WATCHLIST_LIMIT).map(({ client, burnPct, pace }) => ({ client, burnPct, pace })),
+      limit: WATCHLIST_LIMIT,
+      more: Math.max(0, atRisk.length - WATCHLIST_LIMIT),
+      basis: BURN_BASIS,
     })
   } catch {
     return fail('Could not compute retainer burn — retainer or time-tracking data may be unavailable.')

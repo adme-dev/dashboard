@@ -6,7 +6,7 @@ import { queryOne } from '~~/server/utils/db'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
-import { buildDataHealth, buildSyncFreshness, paginateWithCursor } from './responseContract'
+import { buildDataHealth, buildSyncFreshness, paginateWithCursor, evaluateHalt, PACING_HALT_HOURS } from './responseContract'
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
 const params = z.object({
@@ -299,14 +299,41 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
     const note = (sortBy !== 'spend' && current.total > current.campaigns.length)
       ? `Ranked by ${sortBy} over the ${current.campaigns.length} highest-spend campaigns (of ${current.total}); lower-spend campaigns are not included in this ranking.`
       : undefined
+    const freshness = buildSyncFreshness(current.campaigns.map(row => row.lastSyncedAt), { now: deps.now?.() })
+    const health = buildDataHealth({ configured: true, expected: current.total, withData: current.campaigns.length })
+    // P-02: untrusted data ⇒ say so and return no figures; keep the coverage universe visible (P-13).
+    const halt = evaluateHalt(freshness, {
+      haltAfterHours: PACING_HALT_HOURS,
+      now: deps.now?.(),
+      coverageDelta: coverageDelta as Record<string, { deltaPct?: number | null }> | null,
+    })
+    if (halt.halted) {
+      return ok({
+        period,
+        source: 'synced_campaign_analytics',
+        halted: true,
+        haltReason: halt.haltReason,
+        haltDetail: halt.haltDetail,
+        asOf: halt.asOf,
+        ...(coverageDelta ? { coverageDelta } : {}),
+        ...health,
+        campaigns: [],
+        total: 0,
+        appliedLimit: args.limit ?? 20,
+        nextCursor: null,
+        more: 0,
+        truncatedAtSource: false,
+      })
+    }
     return ok({
       period,
       ...(priorPeriod ? { previousPeriod: priorPeriod } : {}),
       ...(comparisonStatus ? { comparisonStatus } : {}),
       source: 'synced_campaign_analytics',
-      ...buildSyncFreshness(current.campaigns.map(row => row.lastSyncedAt), { now: deps.now?.() }),
+      halted: false,
+      ...freshness,
       ...(coverageDelta ? { coverageDelta } : {}),
-      ...buildDataHealth({ configured: true, expected: current.total, withData: current.campaigns.length }),
+      ...health,
       conversionMetric: {
         dataStatus: 'unavailable',
         definition: 'suppressed_pending_historical_resync',
@@ -327,6 +354,7 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
       appliedLimit: args.limit ?? 20,
       nextCursor: page.nextCursor,
       more: page.more,
+      truncatedAtSource: page.truncatedAtSource || current.total > current.campaigns.length,
       ...(note ? { note } : {}),
     })
   } catch {

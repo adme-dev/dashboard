@@ -189,9 +189,9 @@ describe('authoritative registered MCP suite projection', () => {
     const manifests = projectGodModeTools(ownerContext)
     const executions = resolveGodModeMcpExecutions(ownerContext)
 
-    expect(manifests).toHaveLength(82)
-    expect(executions).toHaveLength(82)
-    expect(new Set(executions.map(execution => execution.name)).size).toBe(82)
+    expect(manifests).toHaveLength(85)
+    expect(executions).toHaveLength(85)
+    expect(new Set(executions.map(execution => execution.name)).size).toBe(85)
     expect(manifests.map(manifest => manifest.name)).toContain('list_video_source_assets')
     expect(manifests.map(manifest => manifest.name)).toContain('propose_promote_creative_asset')
     expect(resolveGodModeMcpExecution(ownerContext, 'list_video_source_assets')).toMatchObject({

@@ -1,4 +1,5 @@
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
+import { buildSyncFreshness } from '~~/server/utils/ai/tools/responseContract'
 import { queryRows } from '~~/server/utils/db'
 import { proposeAction } from '~~/server/utils/ai/pendingActions'
 import { getDealerLink, linkToContext } from '~~/server/utils/feeds/dealerLinks'
@@ -224,6 +225,9 @@ export function buildFeedReadRunner() {
           feedName: served.feedName,
           serveUrl,
           itemCount: served.total,
+          // P-03: byCondition/excluded are shaped from a bounded preview, never silently.
+          previewLimit: FEED_PREVIEW_LIMIT,
+          previewTruncated: (served.total ?? served.items.length) > served.items.length,
           byCondition: shapeByCondition(served.items),
           excluded: shapeExcluded(served.readiness as Parameters<typeof shapeExcluded>[0]),
           ...('error' in served && served.error ? { servedFeedError: served.error } : {}),
@@ -239,7 +243,15 @@ export function buildFeedReadRunner() {
         dealerLinkId: link.clientId,
         providerId: link.providerId,
         dataStatus: bindings.length ? 'bound' as const : 'no_catalog_binding' as const,
-        lastSyncedAt: new Date().toISOString(),
+        // P-01: the as-of is when XeroFlow last VERIFIED a binding and when Meta last ingested the
+        // feed — never the request time.
+        ...buildSyncFreshness(bindings.map(b => b.last_verified_at)),
+        metaLastUploadAt: results
+          .map(r => (r.catalog as { lastUploadAt?: string | null } | null)?.lastUploadAt ?? null)
+          .filter((v): v is string => Boolean(v))
+          .sort()
+          .at(-1) ?? null,
+        asOfBasis: 'lastSyncedAt = newest meta_catalog_feed_bindings.last_verified_at; metaLastUploadAt = newest latest_upload.end_time from the live Meta readback',
         feeds: results
       }
     },

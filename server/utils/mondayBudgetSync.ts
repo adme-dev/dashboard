@@ -94,8 +94,11 @@ export function classifyPacingStatus(input: {
   spendMtd: number
   spendLast24h: number
   now?: Date
+  spendAsOf?: string | null
 }): { status: PacingStatusLabel, pacePct: number | null } {
-  const now = input.now ?? new Date()
+  const requestNow = input.now ?? new Date()
+  const coverageDate = input.spendAsOf ? new Date(`${input.spendAsOf}T23:59:59Z`) : requestNow
+  const now = Number.isNaN(coverageDate.getTime()) ? requestNow : coverageDate
   if (!input.budget || input.budget <= 0) return { status: 'No Budget Set', pacePct: null }
   const expected = expectedToDate(input.budget, now)
   const pacePct = expected > 0 ? Math.round((input.spendMtd / expected) * 1000) / 10 : null
@@ -216,7 +219,8 @@ export async function runMondayBudgetSync(options: { writeBackToMonday?: boolean
       const { status, pacePct } = classifyPacingStatus({
         budget,
         spendMtd: snapshot.spendMtd,
-        spendLast24h: snapshot.spendLast24h
+        spendLast24h: snapshot.spendLast24h,
+        spendAsOf: snapshot.lastSpendDate
       })
       try {
         await client.changeMultipleColumnValues(MONDAY_MARKETING_BOARD_ID, row.itemId, {

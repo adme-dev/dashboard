@@ -57,6 +57,12 @@ export async function resolveAnomalyTenant(
 // Real wiring: read directly from the `anomalies` table (`server/api/ai/anomalies/index.get.ts`
 // is the precedent). Tenant scoping comes from the selected Xero org on the event — never from
 // model-supplied input. WHERE status NOT IN ('resolved','dismissed') = the "open incidents" set.
+/**
+ * Source-side cap. We fetch one extra row so the tool can DECLARE truncation (P-03) instead of
+ * reporting the cap as the total.
+ */
+export const ANOMALY_FETCH_CAP = 100
+
 const defaultDeps: AnomaliesDeps = {
   fetchAnomalies: async (q, ctx) => {
     const tenantId = await resolveAnomalyTenant(ctx)
@@ -73,7 +79,7 @@ const defaultDeps: AnomaliesDeps = {
        WHERE ${where.join(' AND ')}
        ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 WHEN 'info' THEN 2 ELSE 3 END,
                 first_detected_at DESC
-       LIMIT 100`,
+       LIMIT ${ANOMALY_FETCH_CAP + 1}`,
       sqlParams,
     )
   },
@@ -91,7 +97,9 @@ export async function getOpenAnomalies(args: Args, ctx: ToolContext, deps: Anoma
       { excludeStatuses: CLOSED_STATUSES, type: args.type, severity: args.severity },
       ctx,
     )
-    const compact = rows.map(r => ({
+    const truncatedAtSource = rows.length > ANOMALY_FETCH_CAP
+    const bounded = truncatedAtSource ? rows.slice(0, ANOMALY_FETCH_CAP) : rows
+    const compact = bounded.map(r => ({
       type: r.type,
       rule: r.fingerprint ?? r.type,
       severity: r.severity,
@@ -100,7 +108,7 @@ export async function getOpenAnomalies(args: Args, ctx: ToolContext, deps: Anoma
       recommendation: r.recommendation ?? null,
       evidence: { metric: r.metric ?? null, comparison: r.comparison ?? null, context: r.context ?? null },
     }))
-    const page = paginateWithCursor(compact, args.cursor, args.limit)
+    const page = paginateWithCursor(compact, args.cursor, args.limit, { truncatedAtSource })
     const configured = rows.length > 0 || (deps.isConfigured ? await deps.isConfigured(ctx) : true)
     return ok({
       ...buildDataHealth({ configured, expected: 1, withData: configured ? 1 : 0 }),
@@ -110,6 +118,8 @@ export async function getOpenAnomalies(args: Args, ctx: ToolContext, deps: Anoma
       appliedLimit: args.limit ?? 20,
       nextCursor: page.nextCursor,
       more: page.more,
+      truncatedAtSource: page.truncatedAtSource,
+      sourceCap: ANOMALY_FETCH_CAP,
     })
   } catch {
     return fail('Could not load open anomalies — the anomaly data may be unavailable or no organisation is selected.')

@@ -141,10 +141,14 @@ export async function createBannerProjectDraft(
   }
 }
 
+/** P-03: list/status caps are declared in the response, never silent. */
+export const BANNER_PROJECT_LIST_CAP = 50
+export const BANNER_JOB_STATUS_CAP = 20
+
 function defaultLoaders(): BannerProjectLoaders {
   return {
     loadProjectsRows: () => queryRows<LoadProjectsRow>(
-      `SELECT id, name, canvas_data, updated_at FROM banner_projects ORDER BY updated_at DESC LIMIT 50`, []),
+      `SELECT id, name, canvas_data, updated_at FROM banner_projects ORDER BY updated_at DESC LIMIT ${BANNER_PROJECT_LIST_CAP + 1}`, []),
     loadProjectRow: (nameOrId: string) => queryOne<LoadProjectRow>(
       `SELECT id, name, canvas_data FROM banner_projects WHERE id::text = $1 OR name ILIKE $2 ORDER BY (id::text = $1) DESC, name ASC LIMIT 1`,
       [nameOrId, `%${escapeLike(nameOrId)}%`]),
@@ -163,8 +167,12 @@ export function buildBannerReadRunner(loaders?: BannerProjectLoaders): BannerRea
   const l = loaders ?? defaultLoaders()
   return {
     list_banner_projects: async () => {
-      const rows = await l.loadProjectsRows()
+      const all = await l.loadProjectsRows()
+      const truncatedAtSource = all.length > BANNER_PROJECT_LIST_CAP
+      const rows = truncatedAtSource ? all.slice(0, BANNER_PROJECT_LIST_CAP) : all
       return {
+        limit: BANNER_PROJECT_LIST_CAP,
+        truncatedAtSource,
         projects: rows.map(r => ({
           id: r.id,
           name: r.name,
@@ -174,12 +182,13 @@ export function buildBannerReadRunner(loaders?: BannerProjectLoaders): BannerRea
       }
     },
     get_banner_render_status: async (raw) => {
-      const ids = ((raw as { jobIds?: string[] }).jobIds ?? []).slice(0, 20)
-      if (!ids.length) return { jobs: [] }
+      const requested = (raw as { jobIds?: string[] }).jobIds ?? []
+      const ids = requested.slice(0, BANNER_JOB_STATUS_CAP)
+      if (!ids.length) return { jobs: [], limit: BANNER_JOB_STATUS_CAP, ignoredJobIds: 0 }
       const rows = await queryRows<BannerJobRow>(
         `SELECT id, project_id, format_key, width, height, fps, crf, quality, source_r2_key, status, url, file_size, error
            FROM banner_render_jobs WHERE id = ANY($1)`, [ids])
-      return { jobs: projectJobStatus(rows) }
+      return { jobs: projectJobStatus(rows), limit: BANNER_JOB_STATUS_CAP, ignoredJobIds: Math.max(0, requested.length - ids.length) }
     },
   }
 }

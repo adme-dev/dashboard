@@ -1815,7 +1815,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Scoped Project Views',
-        content: 'Clients see only their own projects and tasks — automatically scoped by client ID at the API layer. Each project shows a progress overview, active tasks, upcoming deadlines, and recent activity. The information displayed is curated to show meaningful progress indicators rather than every internal detail, maintaining professionalism while providing real transparency.'
+        content: 'Clients see only their own projects and tasks — automatically scoped by client ID at the API layer. Agency staff can link one XeroFlow board to the client profile, giving portal users a dedicated read-only board view whose task query still requires both the linked board and the authenticated client. Each project shows meaningful progress without exposing another client or internal-only board data.'
       },
       {
         title: 'Task Progress Tracking',

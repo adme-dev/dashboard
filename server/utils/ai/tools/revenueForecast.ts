@@ -33,6 +33,8 @@ export async function forecastRevenue(args: Args, ctx: ToolContext, deps: Foreca
       const c = await deps.fetchCoverage(ctx)
       return ok({
         horizon: 'quarter',
+        asOf: c?.asOf ?? null,
+        basis: 'coverage = open pipeline (face / probability-weighted) ÷ quarterly Get-Out target',
         quarterlyTarget: num(c?.quarterlyTarget),
         pipelineOpen: num(c?.pipeline?.totalWeighted),
         coverageFace: c?.coverage?.face ?? null,
@@ -43,6 +45,8 @@ export async function forecastRevenue(args: Args, ctx: ToolContext, deps: Foreca
     const f = await deps.fetchForecast(ctx)
     return ok({
       horizon: 'month',
+      asOf: f?.asOf ?? null,
+      basis: 'projected = invoiced + collectible AR + recurring schedules + probability-weighted quotes − leakage; gap/surplus vs the monthly Get-Out target',
       target: num(f?.target),
       invoiced: num(f?.layers?.invoiced),
       arCollectible: num(f?.layers?.arCollectible),
@@ -61,7 +65,7 @@ export async function forecastRevenue(args: Args, ctx: ToolContext, deps: Foreca
 
 export const revenueForecastTool: AiTool<Args> = {
   name: 'forecast_revenue',
-  description: 'Where revenue is heading. horizon="month" projects month-end landing (invoiced + collectible AR + recurring + weighted quotes, minus leakage) vs the Get-Out target. horizon="quarter" gives 90-day pipeline coverage (open pipeline / quarterly target + a health band). Use for "are we going to hit target / what\'s our pipeline coverage / month-end revenue forecast". Returns compact numbers only.',
+  description: 'Where revenue is heading. horizon="month" projects month-end landing (invoiced + collectible AR + recurring + weighted quotes, minus leakage) vs the Get-Out target. horizon="quarter" gives 90-day pipeline coverage (open pipeline / quarterly target + a health band). Use for "are we going to hit target / what\'s our pipeline coverage / month-end revenue forecast". Carries `asOf` (`cachedAt`, `servedStale`) for the underlying Xero read and a `basis` line. Returns compact numbers only.',
   parameters: params,
   requiredPermission: 'FINANCE',
   returnsUntrusted: false,

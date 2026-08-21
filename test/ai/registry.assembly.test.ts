@@ -17,6 +17,7 @@ const SLICE2_TOOLS = [
 ]
 // Phase-1 media-buyer read skill-pack (MEDIA_BUYING-gated).
 const MEDIA_BUYER_TOOLS = ['get_campaign_breakdown', 'get_budget_health', 'get_ad_breakdown']
+const MEDIA_BUYER_OPERATIONS = ['run_adspend_sync', 'get_sync_status', 'get_ad_creative_text']
 // Phase-2/3 write tools (propose→confirm→audit).
 const WRITE_TOOLS = ['create_task', 'propose_schedule_post', 'propose_budget_alert', 'propose_budget_change', 'propose_knowledge_article']
 // Per-department packs (PRD §7): delivery writes (Account/Producer) + capacity read.
@@ -37,7 +38,7 @@ const OPS_AUTOPILOT_READS = ['check_pacing', 'check_brief_completeness']
 // Read-coverage expansion (sub-project 1): CRM/leads/listening/inbox/EDM reads — auto-projected over MCP.
 const READ_COVERAGE_TOOLS = ['search_crm', 'get_crm_pipeline', 'get_leads', 'get_social_listening', 'get_social_inbox', 'get_email_campaign_performance', 'recommend_social_news']
 // remember = immediate personal-memory mutation; MCP coordinates it transactionally without confirmation.
-const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, ...CRM_WRITES, ...CRM_READS, ...FINANCE_WRITES, ...CREATIVE_READS, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES, ...OPS_AUTOPILOT_READS, ...READ_COVERAGE_TOOLS, 'remember']
+const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...MEDIA_BUYER_OPERATIONS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, ...CRM_WRITES, ...CRM_READS, ...FINANCE_WRITES, ...CREATIVE_READS, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES, ...OPS_AUTOPILOT_READS, ...READ_COVERAGE_TOOLS, 'remember']
 
 describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2 writes)', () => {
   it('contains the 15 read tools + the write tools + remember', () => {

@@ -4,6 +4,9 @@ import type { AiTool } from '../toolRegistry'
 import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
 import { buildDataHealth } from './responseContract'
 
+/** Disambiguation cap; one extra row is fetched so truncation is declared (P-03). */
+export const CLIENT_MATCH_CAP = 25
+
 const params = z.object({ clientName: z.string() })
 type Args = z.infer<typeof params>
 
@@ -44,7 +47,7 @@ const defaultDeps: ClientsDeps = {
         WHERE c.name ILIKE $1
            OR EXISTS (SELECT 1 FROM agency_client_aliases a WHERE a.client_id = c.id AND a.alias ILIKE $1)
         ORDER BY c.name
-        LIMIT 25`,
+        LIMIT ${CLIENT_MATCH_CAP + 1}`,
       [`%${safe}%`],
     )) as ClientRow[]
   },
@@ -96,7 +99,13 @@ export async function getClientOverview(args: Args, ctx: ToolContext, deps: Clie
     }
     if (matches.length > 1) {
       // Don't guess — let the model (or user) pick. Compact id+name only.
-      return ok({ disambiguation: matches.map(c => ({ id: c.id, name: c.name })) })
+      const truncated = matches.length > CLIENT_MATCH_CAP
+      return ok({
+        disambiguation: matches.slice(0, CLIENT_MATCH_CAP).map(c => ({ id: c.id, name: c.name })),
+        limit: CLIENT_MATCH_CAP,
+        truncatedAtSource: truncated,
+        ...(truncated ? { note: `More than ${CLIENT_MATCH_CAP} clients match — narrow the name.` } : {}),
+      })
     }
 
     const c = matches[0]!

@@ -29,6 +29,7 @@ function row(overrides: Partial<PacingReviewRow> = {}): PacingReviewRow {
     budget_type: 'daily',
     period: '2026-06',
     synced_at: '2026-06-12T00:00:00.000Z',
+    spend_as_of: '2026-06-12',
     end_date: null,
     ...overrides
   }
@@ -49,6 +50,7 @@ describe('buildPacingReview', () => {
       severity: 'info',
       recommendedAction: 'No pacing issue detected. Review performance, tracking, and platform insights before making an adjustment.'
     })
+    expect(review.campaigns[0]?.spendAsOf).toBe('2026-06-12')
   })
 
   it('returns one primary review record per campaign without changing exception counts', () => {

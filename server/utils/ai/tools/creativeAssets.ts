@@ -1,6 +1,6 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
-import { buildDataHealth, paginateWithCursor } from './responseContract'
+import { buildDataHealth, buildSyncFreshness, paginateWithCursor } from './responseContract'
 
 export type CreativeAssetArgs = {
   campaignId?: string
@@ -26,6 +26,8 @@ export type CreativeAssetRecord = {
   assetUrl?: string | null
   creativeType?: string | null
   firstSeenAt?: string | null
+  /** When the ad platform last confirmed this creative (campaign_creatives.synced_at) — the row's as-of (P-01). */
+  syncedAt?: string | null
   sourceItemName?: string | null
   provenance?: {
     sourceSystem: 'monday'
@@ -38,8 +40,27 @@ export type CreativeAssetRecord = {
   }
 }
 
+/** Per-source caps so a three-way merge can declare truncation honestly (P-03). */
+export const CREATIVE_DB_FETCH_CAP = 1000
+export const CREATIVE_MONDAY_STORED_FETCH_CAP = 1000
+export const CREATIVE_MONDAY_LIVE_ITEM_CAP = 25
+
+export type CreativeAssetSourceInfo = {
+  adPlatform: { cap: number, truncated: boolean }
+  mondayStored: { cap: number, truncated: boolean }
+  mondayLive: { itemCap: number, truncated: boolean | null }
+}
+
+/** Arrays produced by a capped source fetch are tagged here so the merge can declare truncation. */
+const truncatedSourceArrays = new WeakSet<object>()
+export function wasSourceTruncated(rows: object): boolean { return truncatedSourceArrays.has(rows) }
+
+export type CreativeAssetFetchResult =
+  | CreativeAssetRecord[]
+  | { assets: CreativeAssetRecord[], sources: CreativeAssetSourceInfo }
+
 export type CreativeAssetsDeps = {
-  fetch: (args: CreativeAssetArgs, ctx: ToolContext) => Promise<CreativeAssetRecord[]>
+  fetch: (args: CreativeAssetArgs, ctx: ToolContext) => Promise<CreativeAssetFetchResult>
 }
 
 function ratioFor(width: unknown, height: unknown) {
@@ -188,11 +209,12 @@ export async function fetchMondayCreativeAssets(
        LEFT JOIN task_attachments attachment ON attachment.id = live_file.attachment_id
       WHERE ${where.join(' AND ')}
       ORDER BY source_created_at DESC NULLS LAST, mim.updated_at DESC
-      LIMIT 1000`,
+      LIMIT ${CREATIVE_MONDAY_STORED_FETCH_CAP + 1}`,
     values,
   )
-
-  return rows.filter(row => !isScreenshotAsset(row.monday_file_name)).map((row): CreativeAssetRecord => {
+  const truncated = rows.length > CREATIVE_MONDAY_STORED_FETCH_CAP
+  const bounded = truncated ? rows.slice(0, CREATIVE_MONDAY_STORED_FETCH_CAP) : rows
+  const mapped = bounded.filter(row => !isScreenshotAsset(row.monday_file_name)).map((row): CreativeAssetRecord => {
     const filename = row.monday_file_name ? String(row.monday_file_name) : null
     const sourceCreatedAt = row.source_created_at ? String(row.source_created_at) : null
     const creatorId = row.monday_creator_id ? String(row.monday_creator_id) : null
@@ -227,6 +249,8 @@ export async function fetchMondayCreativeAssets(
       },
     }
   })
+  if (truncated) truncatedSourceArrays.add(mapped)
+  return mapped
 }
 
 type LiveMondayCandidate = {
@@ -419,13 +443,21 @@ const defaultDeps: CreativeAssetsDeps = {
          LEFT JOIN team_members member ON member.id = bap.published_by
          ${clause}
         ORDER BY COALESCE(bap.published_at, cc.first_seen_at) DESC
-        LIMIT 1000`,
+        LIMIT ${CREATIVE_DB_FETCH_CAP + 1}`,
       values,
       ),
       fetchMondayCreativeAssets(args),
-      fetchLiveMondayCreativeAssets(args).catch(() => []),
+      fetchLiveMondayCreativeAssets(args).then(rows => ({ rows, ok: true })).catch(() => ({ rows: [] as CreativeAssetRecord[], ok: false })),
     ])
-    const platformAssets = rows.map((row): CreativeAssetRecord => ({
+    const dbTruncated = rows.length > CREATIVE_DB_FETCH_CAP
+    const boundedRows = dbTruncated ? rows.slice(0, CREATIVE_DB_FETCH_CAP) : rows
+    const sources: CreativeAssetSourceInfo = {
+      adPlatform: { cap: CREATIVE_DB_FETCH_CAP, truncated: dbTruncated },
+      mondayStored: { cap: CREATIVE_MONDAY_STORED_FETCH_CAP, truncated: wasSourceTruncated(mondayAssets) },
+      // The live Monday lookup is bounded by item candidates, not files; null = lookup failed/unavailable.
+      mondayLive: { itemCap: CREATIVE_MONDAY_LIVE_ITEM_CAP, truncated: liveMondayAssets.ok ? false : null },
+    }
+    const platformAssets = boundedRows.map((row): CreativeAssetRecord => ({
       assetId: String(row.publish_id || row.id),
       filename: row.project_name && row.format_key ? `${row.project_name}-${row.format_key}` : null,
       ratio: ratioFor(row.width, row.height),
@@ -441,39 +473,49 @@ const defaultDeps: CreativeAssetsDeps = {
       assetUrl: row.asset_url || row.thumbnail_url || null,
       creativeType: row.creative_type || null,
       firstSeenAt: row.first_seen_at ? String(row.first_seen_at) : null,
+      syncedAt: row.synced_at ? String(row.synced_at) : null,
     }))
     const byId = new Map<string, CreativeAssetRecord>()
-    for (const asset of [...platformAssets, ...mondayAssets, ...liveMondayAssets]) {
+    for (const asset of [...platformAssets, ...mondayAssets, ...liveMondayAssets.rows]) {
       const existing = byId.get(asset.assetId)
       if (!existing || (!existing.assetUrl && asset.assetUrl)) byId.set(asset.assetId, asset)
     }
-    return [...byId.values()].sort((a, b) => {
+    const assets = [...byId.values()].sort((a, b) => {
       const aTime = Date.parse(a.deliveredAt || a.firstSeenAt || '') || 0
       const bTime = Date.parse(b.deliveredAt || b.firstSeenAt || '') || 0
       return bTime - aTime
     })
+    return { assets, sources }
   },
+}
+
+function normaliseFetchResult(result: CreativeAssetFetchResult): { assets: CreativeAssetRecord[], sources: CreativeAssetSourceInfo | null } {
+  return Array.isArray(result) ? { assets: result, sources: null } : result
 }
 
 /** Resolve a registry identifier through the same governed aggregation used by get_creative_assets. */
 export async function findCreativeAssetById(assetId: string, ctx: ToolContext): Promise<CreativeAssetRecord | null> {
   const requested = assetId.trim()
   if (!requested) return null
-  const assets = await defaultDeps.fetch({ limit: 1000 }, ctx)
+  const { assets } = normaliseFetchResult(await defaultDeps.fetch({ limit: 1000 }, ctx))
   return assets.find(asset => asset.assetId === requested) ?? null
 }
 
 export async function getCreativeAssets(args: CreativeAssetArgs, ctx: ToolContext, deps: CreativeAssetsDeps = defaultDeps): Promise<ToolResult> {
   try {
-    const rows = await deps.fetch(args, ctx)
-    const page = paginateWithCursor(rows, args.cursor, args.limit)
+    const { assets: rows, sources } = normaliseFetchResult(await deps.fetch(args, ctx))
+    const truncatedAtSource = Boolean(sources && (sources.adPlatform.truncated || sources.mondayStored.truncated || sources.mondayLive.truncated))
+    const page = paginateWithCursor(rows, args.cursor, args.limit, { truncatedAtSource })
     return ok({
       ...buildDataHealth({ configured: rows.length > 0, expected: rows.length, withData: rows.filter(row => row.deliveredAt && row.deliveredBy).length }),
+      ...buildSyncFreshness(rows.filter(row => row.source === 'ad_platform').map(row => row.syncedAt)),
       assets: page.items,
       total: page.total,
       appliedLimit: args.limit ?? 20,
       nextCursor: page.nextCursor,
       more: page.more,
+      truncatedAtSource: page.truncatedAtSource,
+      ...(sources ? { sources } : {}),
       provenanceNote: 'Banner Studio rows use publish time/designer. Monday rows combine stored provenance with a bounded read-only live source lookup, exclude screenshot-like files, expose resolved client IDs/names as arrays, and keep linkedCampaignIds empty unless an explicit ad-platform link exists. Platform firstSeenAt is observation time, not artwork build time.',
     })
   } catch {

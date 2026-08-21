@@ -150,7 +150,8 @@ describe('getSpendCoverageDeltas (coverageDelta shaping for the read tools)', ()
         delta: 18,
         deltaPct: 25.71,
         previousFinishedAt: '2026-08-18T10:00:00Z',
-        currentFinishedAt: '2026-08-19T10:00:00Z'
+        currentFinishedAt: '2026-08-19T10:00:00Z',
+        staleBaseline: false
       },
       google: {
         previousCount: null,
@@ -158,7 +159,8 @@ describe('getSpendCoverageDeltas (coverageDelta shaping for the read tools)', ()
         delta: null,
         deltaPct: null,
         previousFinishedAt: null,
-        currentFinishedAt: '2026-08-19T09:00:00Z'
+        currentFinishedAt: '2026-08-19T09:00:00Z',
+        staleBaseline: true
       }
     })
   })

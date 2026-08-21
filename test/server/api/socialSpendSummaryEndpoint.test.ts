@@ -95,8 +95,8 @@ describe('GET /api/agency/social/spend/summary', () => {
     expect(mockRequireAuth).toHaveBeenCalled()
     expect(String(mockQueryRows.mock.calls[0][0])).toContain('budgeted_campaign_count')
     expect(String(mockQueryRows.mock.calls[0][0])).toContain('MIN(ms.synced_at)')
-    expect(String(mockQueryRows.mock.calls[0][0])).toContain("INTERVAL '48 hours'")
-    expect(mockQueryRows.mock.calls[0][1]).toEqual(['2026-06', 'tenant-1', 'meta'])
+    expect(String(mockQueryRows.mock.calls[0][0])).toContain('MAKE_INTERVAL(hours => $3)')
+    expect(mockQueryRows.mock.calls[0][1]).toEqual(['2026-06', 'tenant-1', 48, 'meta'])
     expect(result.items).toHaveLength(1)
     expect(result.items[0]).toMatchObject({
       groupKey: 'meta:client:client-1',

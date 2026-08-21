@@ -81,7 +81,10 @@ describe('get_capabilities', () => {
 
     expect(result.ok).toBe(true)
     const tools = (result as any).data.tools as Array<{ name: string, mode: string }>
-    expect(tools).toHaveLength(82)
+    expect(tools).toHaveLength(85)
+    expect(tools).toContainEqual({ name: 'run_adspend_sync', mode: 'inspection' })
+    expect(tools).toContainEqual({ name: 'get_sync_status', mode: 'inspection' })
+    expect(tools).toContainEqual({ name: 'get_ad_creative_text', mode: 'read' })
     expect(tools).toContainEqual({ name: 'list_video_source_assets', mode: 'read' })
     // W-1/W-2 + G-1a: mode stays the declared class; effectiveMode tells the god-mode
     // caller these registry writes will NOT stop at a proposal.
@@ -117,11 +120,13 @@ describe('get_capabilities', () => {
     })
     expect((result as any).data.governance.godModeBypass).toContain('direct-execute')
     expect((result as any).data.dataSync.adSpend.cron).toBe('0 20 * * *')
+    expect((result as any).data.dataSync.adSpend).toHaveProperty('lastRunAt')
+    expect((result as any).data.dataSync.adSpend).toHaveProperty('coverageBaselinePresent')
     expect((result as any).data.servedCatalog).toEqual({
-      release: '2026-08-20.11', toolCount: 82, projectionAuthority: 'shared_with_tools_list',
+      release: '2026-08-21.12', previousRelease: '2026-08-20.11', toolCount: 85, projectionAuthority: 'shared_with_tools_list',
     })
     expect((result as any).data.degraded).toBeUndefined()
-  })
+  }, 15_000)
 
   it('returns a typed degraded capability response after the retry is exhausted', async () => {
     const result = await getCapabilities({}, ctx, {
@@ -147,5 +152,19 @@ describe('get_capabilities', () => {
         },
       },
     })
+  })
+
+  it('reports the last sync run per platform and whether the G-2 baseline exists (P-01)', async () => {
+    const { inspectDataSyncRunStatus } = await import('~~/server/utils/ai/tools/capabilities')
+    const load = vi.fn(async (sql: string) => sql.includes('spend_sync_source_counts')
+      ? [{ n: 0 }]
+      : [
+          { platform: 'google', status: 'completed', started_at: '2026-08-19 08:13:47+00', finished_at: '2026-08-19 08:17:55+00', synced_count: 54, failure_count: 23 },
+          { platform: 'meta', status: 'failed', started_at: '2026-08-19 08:13:37+00', finished_at: '2026-08-19 08:16:30+00', synced_count: 0, failure_count: 46 },
+        ])
+    const status = await inspectDataSyncRunStatus(load as any)
+    expect(status?.lastRunOutcome).toBe('completed')
+    expect(status?.byPlatform.find(p => p.platform === 'meta')?.failureCount).toBe(46)
+    expect(status?.coverageBaselinePresent).toBe(false)
   })
 })

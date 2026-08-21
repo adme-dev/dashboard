@@ -49,4 +49,14 @@ describe('forecast_revenue', () => {
     expect(res.ok).toBe(false)
     expect((res as any).error).toMatch(/forecast/i)
   })
+
+  it('passes the Xero read as-of through and declares the basis (P-01/P-04)', async () => {
+    const asOf = { cachedAt: '2026-08-20T11:40:00.000Z', servedStale: true, source: 'cache_stale_revalidating', ttlSeconds: 300 }
+    const month = ((await forecastRevenue({ horizon: 'month' }, ctx, deps({ fetchForecast: vi.fn().mockResolvedValue({ ...forecastResp, asOf }) }))) as any).data
+    expect(month.asOf).toEqual(asOf)
+    expect(month.basis).toMatch(/leakage/)
+    const quarter = ((await forecastRevenue({ horizon: 'quarter' }, ctx, deps({ fetchCoverage: vi.fn().mockResolvedValue({ ...coverageResp, asOf }) }))) as any).data
+    expect(quarter.asOf).toEqual(asOf)
+    expect(quarter.basis).toMatch(/pipeline/)
+  })
 })

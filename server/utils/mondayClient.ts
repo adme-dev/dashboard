@@ -241,6 +241,41 @@ export class MondayClient {
     return data.change_multiple_column_values
   }
 
+  /** Add a machine-authored audit update without changing human-owned board columns. */
+  async createUpdate(itemId: string, body: string): Promise<{ id: string }> {
+    const data = await this.request<{ create_update: { id: string } }>(`
+      mutation CreateUpdate($itemId: ID!, $body: String!) {
+        create_update(item_id: $itemId, body: $body) { id }
+      }
+    `, { itemId, body })
+    return data.create_update
+  }
+
+  /** Create a board item with parameterized JSON column values. */
+  async createItem(
+    boardId: string,
+    itemName: string,
+    columnValues: Record<string, unknown>,
+    options: { createLabelsIfMissing?: boolean } = {}
+  ): Promise<{ id: string }> {
+    const data = await this.request<{ create_item: { id: string } }>(`
+      mutation CreateItem($boardId: ID!, $itemName: String!, $columnValues: JSON!, $createLabels: Boolean!) {
+        create_item(
+          board_id: $boardId
+          item_name: $itemName
+          column_values: $columnValues
+          create_labels_if_missing: $createLabels
+        ) { id }
+      }
+    `, {
+      boardId,
+      itemName,
+      columnValues: JSON.stringify(columnValues),
+      createLabels: options.createLabelsIfMissing === true,
+    })
+    return data.create_item
+  }
+
   /**
    * Get all boards with optional filters
    */

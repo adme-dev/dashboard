@@ -24,7 +24,10 @@ export default defineEventHandler(async (event) => {
   try {
     // Get client details
     const client = await queryOne(`
-      SELECT * FROM agency_clients WHERE id = $1
+      SELECT c.*, d.name AS portal_board_name
+      FROM agency_clients c
+      LEFT JOIN departments d ON d.id = c.portal_board_id AND d.is_active = TRUE
+      WHERE c.id = $1
     `, [id])
 
     if (!client) {
@@ -124,6 +127,8 @@ export default defineEventHandler(async (event) => {
         address: client.address,
         reportingTimezone: client.reporting_timezone,
         leadCaptureMode: client.lead_capture_mode || 'capture_only',
+        portalBoardId: client.portal_board_id,
+        portalBoardName: client.portal_board_name,
         createdAt: client.created_at,
         updatedAt: client.updated_at
       },

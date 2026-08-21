@@ -320,7 +320,6 @@ export default defineEventHandler(async (event) => {
         budgetType: r.budget_type || null,
         health,
         lastSynced: r.last_synced,
-        mediaSpendId: r.media_spend_id,
         deepLinkUrl
       }
     })

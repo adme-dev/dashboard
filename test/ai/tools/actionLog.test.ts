@@ -21,7 +21,7 @@ describe('get_action_log', () => {
     expect(result.data.actions[0]).toMatchObject({ toolName: 'generate_banner_image', clientName: 'Acme' })
     expect(inspect).toHaveBeenCalledWith(owner, expect.objectContaining({
       clientName: 'Acme', actorEmail: 'paul@example.com', toolName: 'generate_banner_image',
-      outcome: 'succeeded', limit: 1000,
+      outcome: 'succeeded', limit: 1001,
     }))
   })
 
@@ -29,6 +29,17 @@ describe('get_action_log', () => {
     const inspect = vi.fn().mockResolvedValue([])
     const admin = { ...owner, userRole: 'admin' }
     await getActionLog({ limit: 20 }, admin, { inspect })
-    expect(inspect).toHaveBeenCalledWith(admin, expect.objectContaining({ limit: 1000 }))
+    expect(inspect).toHaveBeenCalledWith(admin, expect.objectContaining({ limit: 1001 }))
+  })
+
+  it('declares source truncation instead of reporting the cap as the total (P-03)', async () => {
+    const rows = Array.from({ length: 1001 }, (_, i) => ({ tool: `t${i}`, outcome: 'succeeded' }))
+    const inspect = vi.fn().mockResolvedValue(rows)
+    const res = await getActionLog({ limit: 20 }, { userId: 'u1', userRole: 'owner', event: {} as any } as any, { inspect })
+    const d = (res as any).data
+    expect(d.truncatedAtSource).toBe(true)
+    expect(d.sourceCap).toBe(1000)
+    expect(d.total).toBe(1000)
+    expect(d.actions).toHaveLength(20)
   })
 })

@@ -9,7 +9,13 @@ import { aiInternalFetch } from '../internalFetch'
 const params = z.object({})
 type Args = z.infer<typeof params>
 
+/** Provenance of a route-mediated Xero figure (mirrors CacheAsOf in server/utils/kv.ts). */
+export type FinanceAsOf = { cachedAt: string | null, servedStale: boolean, source: string, ttlSeconds?: number }
+
+const AR_TOP_LIMIT = 5
+
 type CashPosition = {
+  asOf?: FinanceAsOf | null
   /** Liquid cash — bank accounts only, credit cards excluded. */
   balance: number
   /** Credit-card balances, negative when drawn down. */
@@ -20,7 +26,7 @@ type CashPosition = {
   risk: string
 }
 type Overdue = { number: string, client: string, amount: number, overdueDays: number }
-type Receivables = { total: number, top: Overdue[] }
+type Receivables = { total: number, top: Overdue[], asOf?: FinanceAsOf | null }
 
 export type FinanceSnapshotDeps = {
   cashPosition: (ctx: ToolContext) => Promise<CashPosition>
@@ -33,6 +39,7 @@ const defaultDeps: FinanceSnapshotDeps = {
   cashPosition: async (ctx) => {
     const r: any = await aiInternalFetch('/api/xero/get-out/cash-position', {}, ctx)
     return {
+      asOf: r?.asOf ?? null,
       balance: Number(r?.cashOnHand ?? 0),
       creditCard: Number(r?.creditCardBalance ?? 0),
       net: Number(r?.netPosition ?? r?.cashOnHand ?? 0),
@@ -49,7 +56,7 @@ const defaultDeps: FinanceSnapshotDeps = {
       overdueDays: Number(inv?.daysOverdue ?? 0),
     })).sort((a: Overdue, b: Overdue) => b.amount - a.amount)
     const total = Number(r?.outstandingTotal ?? overdue.reduce((s, o) => s + o.amount, 0))
-    return { total, top: overdue }
+    return { total, top: overdue, asOf: r?.asOf ?? null }
   },
 }
 
@@ -88,13 +95,24 @@ export async function getFinanceSnapshot(args: Args, ctx: ToolContext, deps: Fin
   }
 
   return ok({
-    ...(cashRes.status === 'fulfilled' ? { cash: cashRes.value } : {}),
+    ...(cashRes.status === 'fulfilled'
+      ? {
+          cash: {
+            ...cashRes.value,
+            asOf: cashRes.value.asOf ?? null,
+            basis: 'balance = sum of Xero bank-account balances; creditCard = sum of Xero credit-card balances; net = balance + creditCard; runwayDays = balance / trailing average daily burn',
+          },
+        }
+      : {}),
     ...(arRes.status === 'fulfilled'
       ? {
           receivables: {
             total: arRes.value.total,
-            top: arRes.value.top.slice(0, 5),
-            more: Math.max(0, arRes.value.top.length - 5)
+            asOf: arRes.value.asOf ?? null,
+            top: arRes.value.top.slice(0, AR_TOP_LIMIT),
+            limit: AR_TOP_LIMIT,
+            more: Math.max(0, arRes.value.top.length - AR_TOP_LIMIT),
+            basis: 'outstanding ACCREC invoices from the Xero invoice report, ranked by amount due',
           }
         }
       : {}),
@@ -104,7 +122,7 @@ export async function getFinanceSnapshot(args: Args, ctx: ToolContext, deps: Fin
 
 export const financeTool: AiTool<Args> = {
   name: 'get_finance_snapshot',
-  description: 'Get the agency’s current cash position and accounts-receivable summary (total outstanding + top overdue invoices). Use for "what’s our cash runway / who owes us money / how’s cashflow". Cash is returned as three figures: `balance` is liquid cash in bank accounts, `creditCard` is credit-card debt (negative when drawn down), and `net` is the two combined — quote `balance` as the cash position and mention `creditCard` separately rather than leading with `net`. Do NOT use for ad spend (use get_adspend_pacing) or per-client P&L. Returns compact numbers only. If an `unavailable` array is present, those sources failed to load — tell the user that lookup failed and why, and never state or imply the figure cannot be determined when the other fields did return.',
+  description: 'Get the agency’s current cash position and accounts-receivable summary (total outstanding + top overdue invoices). Use for "what’s our cash runway / who owes us money / how’s cashflow". Cash is returned as three figures: `balance` is liquid cash in bank accounts, `creditCard` is credit-card debt (negative when drawn down), and `net` is the two combined — quote `balance` as the cash position and mention `creditCard` separately rather than leading with `net`. Do NOT use for ad spend (use get_adspend_pacing) or per-client P&L. Each block carries `asOf` (`cachedAt`, `servedStale`, `source`) — quote the as-of time with any figure and say so when `servedStale` is true. Returns compact numbers only. If an `unavailable` array is present, those sources failed to load — tell the user that lookup failed and why, and never state or imply the figure cannot be determined when the other fields did return.',
   parameters: params,
   requiredPermission: 'FINANCE',
   handler: (a, c) => getFinanceSnapshot(a, c),

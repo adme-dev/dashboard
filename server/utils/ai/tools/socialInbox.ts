@@ -40,9 +40,11 @@ export async function getSocialInbox(args: Args, ctx: ToolContext, deps: SocialI
   try {
     const ov = await deps.overview(client.id, days, ctx)
     let urgent: { platform: string, channel: string, participant: string | null, lastPreview: string | null, slaDueAt: string | null }[] = []
+    let urgentTotal = 0
     if (args.includeUrgent) {
       try {
         const open = await deps.openConversations(client.id, 25, ctx)
+        urgentTotal = (open ?? []).length
         urgent = rankUrgent(open ?? []).slice(0, 5).map(c => ({
           platform: c.platform, channel: c.channel_type, participant: c.participant_name ?? null,
           lastPreview: (c.last_message_preview || '').slice(0, 160) || null, slaDueAt: c.sla_due_at ?? null,
@@ -53,6 +55,7 @@ export async function getSocialInbox(args: Args, ctx: ToolContext, deps: SocialI
       client: client.name, period: args.period, total: ov.total, open: ov.open, responded: ov.responded,
       avgFirstResponseMinutes: ov.avgFirstResponseMinutes, slaBreaches: ov.breaches, withinSlaPct: ov.withinSlaPct,
       automationRatePct: ov.automationRatePct, urgent,
+      urgentLimit: 5, urgentMore: Math.max(0, urgentTotal - urgent.length), urgentScannedCap: 25,
     })
   } catch {
     return fail('Could not load the social inbox — the client may have no connected conversations.')

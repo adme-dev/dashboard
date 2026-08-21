@@ -66,6 +66,8 @@ describe('get_client_overview', () => {
         { id: 'c1', name: 'Acme Corp' },
         { id: 'c2', name: 'Acme Studios' },
       ],
+      limit: 25,
+      truncatedAtSource: false,
     })
     // No detail lookups when ambiguous.
     expect(deps.briefCount).not.toHaveBeenCalled()

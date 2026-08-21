@@ -41,6 +41,8 @@ import { actionLogTool } from './actionLogTool'
 import { creativeAssetsTool } from './creativeAssetsTool'
 import { adBreakdownTool } from './adBreakdown'
 import { modelCapabilitiesTool } from './modelCapabilities'
+import { runAdspendSyncTool, getAdspendSyncStatusTool } from './adspendSync'
+import { adCreativeTextTool } from './adCreativeText'
 
 // CRM tools share the same fresh CLIENTS-gated context boundary. Keep them as
 // one registry slice so a newly registered CRM action cannot silently omit it.
@@ -56,6 +58,9 @@ export const registry: AiTool<any>[] = [
   creativeAssetsTool,
   adBreakdownTool,
   modelCapabilitiesTool,
+  runAdspendSyncTool,
+  getAdspendSyncStatusTool,
+  adCreativeTextTool,
   financeTool,
   adspendTool,
   campaignBreakdownTool,

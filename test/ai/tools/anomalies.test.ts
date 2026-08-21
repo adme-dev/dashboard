@@ -113,4 +113,14 @@ describe('get_open_anomalies', () => {
     expect(res.ok).toBe(false)
     expect((res as any).error).toMatch(/anomal/i)
   })
+
+  it('declares source truncation when the fetch cap is hit (P-03)', async () => {
+    const { ANOMALY_FETCH_CAP } = await import('~~/server/utils/ai/tools/anomalies')
+    const rows = Array.from({ length: ANOMALY_FETCH_CAP + 1 }, (_, i) => ({ fingerprint: `f${i}`, type: 'low_cash', severity: 'warning', title: 't', description: 'd' }))
+    const res = await getOpenAnomalies({ limit: 5 } as any, ctx, { fetchAnomalies: vi.fn().mockResolvedValue(rows), isConfigured: async () => true } as any)
+    const d = (res as any).data
+    expect(d.truncatedAtSource).toBe(true)
+    expect(d.total).toBe(ANOMALY_FETCH_CAP)
+    expect(d.sourceCap).toBe(ANOMALY_FETCH_CAP)
+  })
 })

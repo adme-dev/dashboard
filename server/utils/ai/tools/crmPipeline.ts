@@ -29,7 +29,10 @@ export async function getCrmPipeline(args: Args, ctx: ToolContext, deps: CrmPipe
     const stages = Object.entries(pipe.byStage ?? {})
       .map(([id, v]) => ({ stage: nameById.get(id) ?? 'Unknown', count: v.count, total: v.total, weighted: v.weighted }))
       .sort((a, b) => b.total - a.total)
-    return ok({ client: client.name, openTotal: pipe.openTotal, weightedTotal: pipe.weightedTotal, stages })
+    return ok({
+      client: client.name, openTotal: pipe.openTotal, weightedTotal: pipe.weightedTotal, stages,
+      basis: 'openTotal = sum of open opportunity values; weightedTotal = sum of value × stage probability',
+    })
   } catch {
     return fail('Could not load the CRM pipeline — the client may have no opportunities yet.')
   }

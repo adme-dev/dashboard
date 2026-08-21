@@ -40,6 +40,7 @@ export interface PacingReviewRow {
   budget_type: string | null
   period: string
   synced_at: string | null
+  spend_as_of?: string | null
   end_date: string | null
   social_feedback_count?: number | string | null
   social_negative_feedback_count?: number | string | null
@@ -75,6 +76,10 @@ export const PACING_REVIEW_SELECT_COLUMNS = `
   ms.budget_type,
   ms.period,
   ms.synced_at,
+  COALESCE(
+    (SELECT MAX(ds.spend_date)::text FROM daily_spend ds WHERE ds.media_spend_id = ms.id),
+    ms.synced_at::date::text
+  ) AS spend_as_of,
   ms.end_date`
 
 export interface PacingReviewPerformance {
@@ -112,6 +117,8 @@ export interface PacingReviewItem {
   pacingRatio: number
   performance: PacingReviewPerformance
   syncedAt: string | null
+  /** Last calendar day included in the MTD numerator. */
+  spendAsOf: string | null
   recommendedAction: string
   dailyBudgetActionSupported: boolean
   canApplyAutomatically: false
@@ -164,33 +171,6 @@ function normalizePlatform(platform: string): PacingReviewPlatform | null {
   return null
 }
 
-function parsePeriod(period: string): { year: number, month: number } {
-  const match = /^(\d{4})-(\d{2})$/.exec(period)
-  if (!match) return { year: new Date().getFullYear(), month: new Date().getMonth() + 1 }
-  return { year: Number(match[1]), month: Number(match[2]) }
-}
-
-function daysInPeriod(period: string): number {
-  const { year, month } = parsePeriod(period)
-  return new Date(year, month, 0).getDate()
-}
-
-function elapsedDaysForPeriod(period: string, now: Date): number {
-  const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  if (period === currentPeriod) return now.getDate()
-  return daysInPeriod(period)
-}
-
-function expectedToDate(budget: number, period: string, now: Date): number {
-  const elapsed = elapsedDaysForPeriod(period, now)
-  return money(budget * (elapsed / daysInPeriod(period)))
-}
-
-function projectedMonthEnd(spend: number, period: string, now: Date): number {
-  const elapsed = elapsedDaysForPeriod(period, now)
-  return elapsed > 0 ? money(spend * (daysInPeriod(period) / elapsed)) : 0
-}
-
 function isPausedStatus(status: string | null): boolean {
   const normalized = (status ?? '').toLowerCase()
   return PAUSED_STATUS_TOKENS.some(token => normalized.includes(token))
@@ -238,6 +218,7 @@ function baseItem(row: PacingReviewRow, issueType: PacingReviewIssueType, severi
     mtdSpend: spend,
     period: row.period,
     now,
+    spendAsOf: row.spend_as_of ?? row.synced_at,
     campaignStatus: row.campaign_status,
     endDate: row.end_date
   })
@@ -252,13 +233,18 @@ function baseItem(row: PacingReviewRow, issueType: PacingReviewIssueType, severi
     severity,
     budget,
     mtdSpend: spend,
-    expectedToDate: expectedToDate(budget, row.period, now),
-    projectedMonthEnd: projectedMonthEnd(spend, row.period, now),
+    expectedToDate: pacing.daysInMonth > 0
+      ? money(budget * (pacing.elapsedDays / pacing.daysInMonth))
+      : 0,
+    projectedMonthEnd: pacing.elapsedDays > 0
+      ? money(spend * (pacing.daysInMonth / pacing.elapsedDays))
+      : 0,
     currentDailyBudget: pacing.currentDailyBudget,
     recommendedDailyBudget: pacing.newDailyBudget,
     pacingRatio: pacing.pacingRatio,
     performance: performanceFromRow(row, spend),
     syncedAt: row.synced_at,
+    spendAsOf: pacing.spendAsOf,
     recommendedAction: '',
     dailyBudgetActionSupported: isDailyBudgetActionSupported(row.budget_type),
     canApplyAutomatically: false,
@@ -313,6 +299,7 @@ export function buildPacingReview(rows: PacingReviewRow[], opts: { now?: Date, p
       mtdSpend: spend,
       period: row.period,
       now,
+      spendAsOf: row.spend_as_of ?? row.synced_at,
       campaignStatus: row.campaign_status,
       endDate: row.end_date
     })

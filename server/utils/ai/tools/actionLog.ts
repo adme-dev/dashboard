@@ -19,6 +19,9 @@ export type ActionLogDeps = {
   inspect: (ctx: ToolContext, filter: GodModeActionFilter) => Promise<any[]>
 }
 
+/** Source-side cap; one extra row is fetched so truncation is declared, never silent (P-03). */
+export const ACTION_LOG_FETCH_CAP = 1000
+
 const defaultDeps: ActionLogDeps = { inspect: inspectGodModeActions }
 
 export async function getActionLog(args: ActionLogArgs, ctx: ToolContext, deps: ActionLogDeps = defaultDeps): Promise<ToolResult> {
@@ -32,9 +35,11 @@ export async function getActionLog(args: ActionLogArgs, ctx: ToolContext, deps: 
       since: args.startDate,
       endDate: args.endDate,
       outcome: args.outcome,
-      limit: 1000,
+      limit: ACTION_LOG_FETCH_CAP + 1,
     })).map(row => ({ ...row, toolName: row.toolName || row.tool }))
-    const page = paginateWithCursor(rows, args.cursor, args.limit)
+    const truncatedAtSource = rows.length > ACTION_LOG_FETCH_CAP
+    const bounded = truncatedAtSource ? rows.slice(0, ACTION_LOG_FETCH_CAP) : rows
+    const page = paginateWithCursor(bounded, args.cursor, args.limit, { truncatedAtSource })
     return ok({
       immutable: true,
       source: 'god_mode_audit_events',
@@ -43,6 +48,8 @@ export async function getActionLog(args: ActionLogArgs, ctx: ToolContext, deps: 
       appliedLimit: args.limit ?? 20,
       nextCursor: page.nextCursor,
       more: page.more,
+      truncatedAtSource: page.truncatedAtSource,
+      sourceCap: ACTION_LOG_FETCH_CAP,
     })
   } catch {
     return fail('Could not load the MCP action log.')

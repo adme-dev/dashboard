@@ -322,6 +322,7 @@ export async function syncMetaSpend(month: number, year: number): Promise<SyncRe
   let totalSynced = 0
   let totalSpend = 0
   const failures: Array<{ account: string; reason: string }> = []
+  const coverageWarnings: string[] = []
 
   for (const conn of connections) {
     const connMappings = mappings.filter(m => m.connection_id === conn.id)
@@ -329,9 +330,10 @@ export async function syncMetaSpend(month: number, year: number): Promise<SyncRe
     totalSynced += r.synced
     totalSpend += r.totalSpend
     failures.push(...r.failures)
+    coverageWarnings.push(...(r.coverageWarnings || []))
   }
 
-  return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100, failures }
+  return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100, failures, coverageWarnings }
 }
 
 // ─── Google Spend Sync ──────────────────────────────────────────
@@ -434,7 +436,7 @@ async function processGoogleConnection(
   conn: GoogleConnRow,
   ctx: GoogleSyncCtx,
   deps: { refreshGoogleToken: any; getMonthlySpend: any; getDailySpend: any }
-): Promise<{ synced: number; totalSpend: number; failures: Array<{ account: string; reason: string }> }> {
+): Promise<SyncResult> {
   const failures: Array<{ account: string; reason: string }> = []
   let synced = 0
   let totalSpend = 0
@@ -610,7 +612,7 @@ async function processGoogleConnection(
   return { synced, totalSpend: Math.round(totalSpend * 100) / 100, failures, coverageWarnings }
 }
 
-export async function syncGoogleSpend(month: number, year: number): Promise<{ synced: number; totalSpend: number; failures: Array<{ account: string; reason: string }> }> {
+export async function syncGoogleSpend(month: number, year: number): Promise<SyncResult> {
   const { getMonthlySpend, getDailySpend, refreshGoogleToken, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
   const failures: Array<{ account: string; reason: string }> = []
 
@@ -657,6 +659,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
 
   let totalSynced = 0
   let totalSpend = 0
+  const coverageWarnings: string[] = []
 
   const deps = { refreshGoogleToken, getMonthlySpend, getDailySpend }
   const ctx: GoogleSyncCtx = { month, year, period, mccId, mappings, config }
@@ -665,11 +668,12 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
     totalSynced += r.synced
     totalSpend += r.totalSpend
     failures.push(...r.failures)
+    coverageWarnings.push(...(r.coverageWarnings || []))
   }
 
   // Breakdowns + creatives are now fetched on-demand (see onDemandSync.ts)
 
-  return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100, failures }
+  return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100, failures, coverageWarnings }
 }
 
 /**
@@ -677,7 +681,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
  * syncMetaSpendByConnectionId. Catches per-account errors into `failures` so the
  * queue fan-in stays exactly-once (rarely throws).
  */
-export async function syncGoogleSpendByConnectionId(connectionId: string, month: number, year: number): Promise<{ synced: number; totalSpend: number; failures: Array<{ account: string; reason: string }> }> {
+export async function syncGoogleSpendByConnectionId(connectionId: string, month: number, year: number): Promise<SyncResult> {
   const { refreshGoogleToken, getMonthlySpend, getDailySpend, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
   const period = `${year}-${String(month).padStart(2, '0')}`
   const config = resolveGoogleAdsRuntimeConfig()
@@ -1920,11 +1924,11 @@ export async function syncCreatives(platform: string, connectionId: string, mont
         const assets = await getCampaignAdAssets(conn.account_id, conn.access_token, config.googleDeveloperToken, row.campaign_id, mccId)
         for (const a of assets) {
           await queryOne(
-            `INSERT INTO campaign_creatives (media_spend_id, creative_id, creative_type, thumbnail_url, title, body, synced_at)
-             VALUES ($1, $2, $3, $4, $5, $6, NOW())
+            `INSERT INTO campaign_creatives (media_spend_id, creative_id, ad_id, ad_name, creative_type, thumbnail_url, title, body, synced_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
              ON CONFLICT (media_spend_id, creative_id)
-             DO UPDATE SET creative_type = $3, thumbnail_url = $4, title = $5, body = $6, synced_at = NOW()`,
-            [row.id, a.creativeId, a.type, a.thumbnailUrl, a.title, a.body]
+             DO UPDATE SET ad_id = $3, ad_name = $4, creative_type = $5, thumbnail_url = $6, title = $7, body = $8, synced_at = NOW()`,
+            [row.id, a.creativeId, a.adId, a.adName, a.type, a.thumbnailUrl, a.title, a.body]
           )
           upserted++
         }
