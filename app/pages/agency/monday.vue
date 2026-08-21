@@ -81,8 +81,8 @@
     <UAlert
       v-if="connectionStatus === 'connected'"
       class="mb-6"
-      title="Campaign Exceptions automation needs Monday write consent"
-      description="Use Reconnect for automation once to grant boards:write and updates:write. XeroFlow remains restricted to the Campaign Exceptions board and its machine-owned columns."
+      title="Reconnect Monday for least-privilege automation"
+      description="Use Reconnect for automation once to grant boards:write and updates:write. Until then, Campaign Exceptions uses the existing protected service credential and remains restricted to its machine-owned board columns."
       icon="i-lucide-shield-check"
       color="primary"
       variant="soft"

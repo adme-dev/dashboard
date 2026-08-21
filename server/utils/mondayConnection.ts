@@ -1,5 +1,6 @@
 import { queryOne } from '~~/server/utils/db'
 import { createMondayClient } from '~~/server/utils/mondayClient'
+import { MONDAY_AUTOMATION_WRITE_SCOPES } from '~~/server/utils/mondayOAuth'
 
 export type MondayConnection = {
   accessToken: string
@@ -32,4 +33,33 @@ export async function resolveMondayConnection(): Promise<MondayConnection | null
     const account = await (await createMondayClient(token)).testConnection()
     return { accessToken: token, accountId: account.id, accountName: account.name, source: 'environment', authMethod: 'token', grantedScopes: [] }
   } catch { return null }
+}
+
+/**
+ * Resolve a credential that can perform the narrowly scoped Campaign Exceptions
+ * mutations. Prefer the least-privilege OAuth grant once re-consented; until
+ * then use the existing encrypted service token rather than broadening the
+ * read/webhook OAuth token implicitly.
+ */
+export async function resolveMondayWriteConnection(): Promise<MondayConnection | null> {
+  const preferred = await resolveMondayConnection()
+  const preferredCanWrite = preferred?.authMethod === 'token'
+    || MONDAY_AUTOMATION_WRITE_SCOPES.every(scope => preferred?.grantedScopes.includes(scope))
+  if (preferred && preferredCanWrite) return preferred
+
+  const serviceToken = process.env.MONDAY_API_TOKEN
+  if (!serviceToken) return preferred
+  try {
+    const account = await (await createMondayClient(serviceToken)).testConnection()
+    return {
+      accessToken: serviceToken,
+      accountId: account.id,
+      accountName: account.name,
+      source: 'environment',
+      authMethod: 'token',
+      grantedScopes: [],
+    }
+  } catch {
+    return preferred
+  }
 }
