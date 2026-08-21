@@ -1,6 +1,6 @@
-# Universal Lead Gateway and Knox Activation Design
+# Universal Lead Gateway and Knox Activations Design
 
-**Status:** approved by the user on 2026-08-21
+**Status:** approved by the user on 2026-08-21; Knox LDV addendum approved on 2026-08-21
 
 ## Problem
 
@@ -25,6 +25,14 @@ own advertising tags can fire from its private success callback while XeroFlow
 receives no canonical lead. Knox's Meta instant forms are a separate native
 platform source and also require a Meta Lead Ads delivery connection.
 
+Knox LDV is a separate client and activation, not another origin for Knox GWM
+Haval. Its Dealer Studio website needs the same trusted-receipt foundation plus
+five distinct server-side Google conversion routes: Stock Enquiry, Finance
+Enquiry, Test Drive Enquiry, Contact Us, and Model Variant Enquiry. The current
+measurement model maps destinations by canonical event only. Treating all five
+as `web_conversion` would send every accepted enquiry to every Google action and
+corrupt conversion counts and bidding signals.
+
 ## Evidence and constraints
 
 The 90-day production comparison captured on 2026-08-21 was:
@@ -33,6 +41,19 @@ The 90-day production comparison captured on 2026-08-21 was:
 |---|---:|---:|---:|---:|
 | Knox GWM Haval | 149 | 4 | 0 | 0 |
 | South Morang Motor Group | 496 | 11 | 100 | 0 |
+
+The read-only Knox LDV readiness audit on 2026-08-21 established that:
+
+- no `agency_clients` or `tracking_sites` row exists for Knox LDV;
+- Google Ads customer `389-217-6492` is not connected to a XeroFlow client;
+- no Knox conversion destination or mapping exists;
+- `https://www.knoxldv.com.au` is a Dealer Studio Next.js/Vercel site using GTM
+  container `GTM-NNPZDBQB`;
+- the public page currently loads Google Analytics and Meta tags but not the
+  XeroFlow `track.js` tag;
+- Dealer Studio renders application-managed forms without stable form IDs or
+  form actions, so a generic DOM submit is candidate evidence, not a reliable
+  conversion receipt.
 
 South Morang's 100 canonical leads were delivered separately from browser
 tracking: 99 through its authenticated website webhook and one through email.
@@ -148,6 +169,29 @@ provider-specific adapters. Google explicitly requires webhook-key validation,
 status codes:
 https://developers.google.com/google-ads/webhook/docs/implementation
 
+### 6. Route confirmed website conversions by normalised enquiry type
+
+Canonical website leads may carry one bounded `enquiryType` value:
+
+- `stock`
+- `finance`
+- `test_drive`
+- `contact`
+- `model_variant`
+
+The trusted connector adapter derives this value from an approved provider form
+ID/type or first-party endpoint contract. Page paths, button text, and DOM form
+submits may propose a candidate type but cannot authoritatively select a live
+conversion destination.
+
+Measurement mappings may optionally constrain `web_conversion` by
+`enquiryType`. A typed event creates a delivery only for an exact typed mapping.
+An unknown or missing type pauses typed delivery with
+`unmapped_enquiry_type`; it never fans out to every typed destination. Existing
+untyped mappings remain valid for clients that intentionally use one aggregate
+web-conversion action, so this extension does not silently change established
+delivery behaviour.
+
 ## Architecture
 
 ```text
@@ -179,7 +223,8 @@ interface LeadSubmittedV1 {
   provider: string
   source: 'webhook' | 'meta' | 'google' | 'email' | 'manual' | 'csv'
   clientReference?: string
-  form?: { id?: string, name?: string }
+  enquiryType?: 'stock' | 'finance' | 'test_drive' | 'contact' | 'model_variant'
+  form?: { id?: string, name?: string, providerType?: string }
   customer?: {
     firstName?: string
     lastName?: string
@@ -242,6 +287,26 @@ A client connector record describes:
 Google, Meta, generic website, and future Dealer Studio adapters use this common
 health representation even when their authentication mechanisms differ.
 
+### Typed measurement routing
+
+The confirmed `enquiryType` is retained as bounded canonical conversion context,
+not inferred later from mutable page URLs. A destination mapping consists of the
+canonical event plus an optional enquiry type. For Knox LDV the required mapping
+is exact:
+
+| Canonical event | Enquiry type | Google conversion action |
+|---|---|---|
+| `web_conversion` | `stock` | Stock Enquiry |
+| `web_conversion` | `finance` | Finance Enquiry |
+| `web_conversion` | `test_drive` | Test Drive Enquiry |
+| `web_conversion` | `contact` | Contact Us |
+| `web_conversion` | `model_variant` | Model Variant Enquiry |
+
+Each accepted lead produces at most one initial-enquiry delivery for this mapping
+set. The existing browser event ID remains the transaction/deduplication identity.
+The Google account connection, conversion-action discovery, and destination IDs
+remain configuration, never hard-coded application constants.
+
 ### First-party relay mode
 
 For dealer sites whose form backend can be changed, the website posts to a
@@ -283,11 +348,13 @@ Test evidence is append-only. Test leads carry both `is_test=true` and
 staff, do not execute normal routing, and do not promote into CRM. Provider test
 deliveries use provider-supported test or validate-only modes where available.
 
-## Knox activation
+## Knox activations
 
-Knox activation is the first rollout and acceptance case.
+Knox GWM Haval remains the first universal-gateway rollout and acceptance case.
+Knox LDV is a separate sibling activation that reuses the same gateway and adds
+typed Google conversion routing.
 
-### Website leads
+### Knox GWM Haval website leads
 
 1. Preserve and verify the current Knox tracking-site installation and allowed
    origins.
@@ -305,7 +372,7 @@ Knox activation is the first rollout and acceptance case.
 6. Run one authorised live production enquiry only after the synthetic test
    passes, then verify inbox, attribution, routing, and conversion evidence.
 
-### Meta instant forms
+### Knox GWM Haval Meta instant forms
 
 1. Confirm the Knox Facebook Page, ad account, forms, and XeroFlow client mapping.
 2. Subscribe the approved Meta app/Page to the `leadgen` webhook when
@@ -319,6 +386,47 @@ Knox activation is the first rollout and acceptance case.
 Meta instant forms never depend on the website tag because the customer does not
 visit the dealer website.
 
+### Knox LDV website pixel and lead capture
+
+1. Create a distinct active `Knox LDV` client and tracking site for
+   `https://knoxldv.com.au` and `https://www.knoxldv.com.au`; do not add these
+   origins to Knox GWM Haval.
+2. Configure the site as an SPA and install the generated XeroFlow snippet in
+   Dealer Studio GTM container `GTM-NNPZDBQB` on all pages. The exact production
+   script origin and write key come from the tracking-site API and are never
+   copied from another dealer.
+3. Verify page views, route changes, first-/last-touch attribution, `gclid`,
+   `gbraid`, and `wbraid` capture before enabling conversion delivery.
+4. Provision a Knox LDV trusted website connector with its own rotatable secret
+   and use the strongest Dealer Studio path in the same webhook, poll, relay,
+   then candidate-only priority order.
+5. Map Dealer Studio's confirmed form/provider types to the five approved
+   `enquiryType` values. Contact-page category choices must not cause a generic
+   contact submission to be misclassified as finance or another type.
+6. Call `captureLeadContext()` only at the real provider-success boundary and
+   forward the non-PII `zeroflow_*` correlation values through the trusted
+   receipt.
+
+### Knox LDV Google conversion delivery
+
+1. Connect Google Ads customer `389-217-6492` to the Knox LDV client through the
+   existing Google OAuth flow and verify the customer/manager relationship before
+   creating destinations.
+2. Discover existing eligible conversion actions first; create only missing
+   actions for Stock Enquiry, Finance Enquiry, Test Drive Enquiry, Contact Us,
+   and Model Variant Enquiry.
+3. Create five exact typed mappings. No aggregate or wildcard
+   `web_conversion` mapping may be enabled for Knox LDV at the same time.
+4. Keep the measurement profile and destinations in test/disabled state until
+   all five routes pass provider-supported `validateOnly` checks with redacted
+   evidence.
+5. Run signed synthetic capture tests for every enquiry type. Synthetic leads
+   never enqueue normal conversion delivery.
+6. After explicit operator authorisation, verify one production receipt for each
+   form type as it naturally occurs or through a clearly identified approved
+   live test. Confirm exactly one matching Google delivery and zero deliveries
+   to the other four actions.
+
 ## Reliability and failure handling
 
 - Canonical ingestion is idempotent on provider plus provider lead ID, or the
@@ -329,6 +437,9 @@ visit the dealer website.
   transaction where existing boundaries permit it.
 - Destination delivery remains asynchronous, retryable, and observable. A
   downstream CRM outage cannot reject an already accepted XeroFlow lead.
+- Typed destination routing is fail-closed. A missing, unknown, or conflicting
+  enquiry type pauses the conversion with a redacted diagnostic and cannot
+  create multiple initial-enquiry deliveries.
 - Browser APIs are fail-safe and never prevent the website's own submission.
 - Request bodies are size limited and validated with Zod. Unknown fields cannot
   select clients, bypass authentication, or change test status.
@@ -351,6 +462,7 @@ The portal health view must show, per connector and selected period:
 - duplicate/replayed receipts;
 - test-run results;
 - delivery and CRM-promotion status;
+- enquiry-type classification coverage and unmapped/conflicting type counts;
 - explicit remediation guidance.
 
 The hourly health cron alerts only on transitions or sustained breaches. A
@@ -405,13 +517,19 @@ and navigation are updated in the same implementation.
 - polling cursor retry and stale-health transitions;
 - traditional form, application-managed success API, and candidate-only browser
   fallback behaviour.
+- Dealer Studio form/provider fixtures for all five Knox LDV enquiry types,
+  including unknown, missing, and conflicting type failures.
+- destination selection tests proving each Knox LDV type creates one delivery
+  for its matching action and none for the other four actions.
 
 ### End-to-end tests
 
 - signed token lifecycle and origin binding;
 - stage evidence transitions and timeouts;
-- Knox safe Dealer Studio test;
-- one authorised Knox production enquiry after test completion;
+- Knox GWM Haval safe Dealer Studio test;
+- one authorised Knox GWM Haval production enquiry after test completion;
+- Knox LDV pixel verification, five signed typed capture tests, five Google
+  `validateOnly` results, and exact-one destination routing assertions;
 - monitoring alert when candidates continue but receipts stop.
 
 The repository's committed baseline currently has 36 unrelated failures while
@@ -422,24 +540,34 @@ tests plus a full-suite comparison that introduces no new failures.
 
 1. Land and reconcile the active session's existing tracker, lead-intent,
    acceptance, reconciliation, and health work.
-2. Activate Knox's website endpoint and strongest available Dealer Studio path.
-3. Activate and backfill Knox Meta instant forms.
+2. Activate Knox GWM Haval's website endpoint and strongest available Dealer
+   Studio path.
+3. Activate and backfill Knox GWM Haval Meta instant forms.
 4. Add the connector registry/security profile and signed self-test behind a
    feature flag.
-5. Pilot the universal view and self-test on Knox and South Morang.
-6. Enable connector health alerts after baseline/backfill so existing gaps do
+5. Provision Knox LDV and install its pixel through `GTM-NNPZDBQB` so click-ID
+   and journey evidence begins accumulating independently of Google delivery.
+6. Add typed conversion routing, connect Google Ads customer `389-217-6492`,
+   validate all five destinations, then activate Knox LDV's trusted receipt path.
+7. Pilot the universal view and self-test on both Knox clients and South Morang.
+8. Enable connector health alerts after baseline/backfill so existing gaps do
    not create a notification flood.
-7. Roll out client by client, preferring trusted receipts and retaining browser
+9. Roll out client by client, preferring trusted receipts and retaining browser
    heuristics only as candidate evidence.
 
 ## Success criteria
 
-- Knox website test produces one canonical `is_test` lead linked to the same
-  browser event, with no normal routing or notifications.
-- An authorised production Knox enquiry lands once in the XeroFlow inbox with
-  first-/last-touch attribution and expected routing.
-- Knox Meta instant forms ingest in near real time and recent recoverable leads
-  are backfilled without duplicates.
+- Knox GWM Haval website test produces one canonical `is_test` lead linked to
+  the same browser event, with no normal routing or notifications.
+- An authorised production Knox GWM Haval enquiry lands once in the XeroFlow
+  inbox with first-/last-touch attribution and expected routing.
+- Knox GWM Haval Meta instant forms ingest in near real time and recent
+  recoverable leads are backfilled without duplicates.
+- Knox LDV exists as a separate client and tracking site, and its public pages
+  load exactly one XeroFlow tag from the generated configuration.
+- Knox LDV's five trusted enquiry types each route to exactly one matching Google
+  conversion action in customer `389-217-6492`; an unmapped type routes nowhere
+  and is visible as a health failure.
 - The portal identifies the exact failed stage within five minutes of a broken
   test and alerts on a sustained receipt outage.
 - Sites without a trusted receipt path remain visible as candidate-only and can
@@ -453,7 +581,9 @@ tests plus a full-suite comparison that introduces no new failures.
 - Scraping raw PII from arbitrary `fetch`/XHR bodies in the public tracker.
 - Installing a cross-origin service worker from the XeroFlow tag.
 - Requiring an external CRM before XeroFlow can store a lead.
-- Replacing Dealer Studio's customer-facing form UI during the Knox activation.
+- Replacing Dealer Studio's customer-facing form UI during either Knox activation.
+- Merging Knox LDV into Knox GWM Haval or reusing another dealer's write key,
+  connector secret, Google credential, conversion action, or destination.
 - Combining Bendigo Kia's Google Ads OAuth/spend connection with this lead-
   capture architecture; that remains a separate operational integration task.
 
@@ -462,7 +592,8 @@ tests plus a full-suite comparison that introduces no new failures.
 The active primary workspace contains substantial uncommitted work, including
 the emerging `captureLeadContext`, submission-intent, canonical acceptance,
 reconciliation, and health components. Those files are not copied into this
-isolated design branch. Before implementation planning is finalised:
+isolated design branch. Before the Knox LDV plan addendum is finalised or any
+implementation starts:
 
 1. the owning session must commit or hand off its changes;
 2. this branch must rebase onto that committed state;
