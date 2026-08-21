@@ -1,10 +1,10 @@
-# Universal Lead Gateway and Knox Activation Implementation Plan
+# Universal Lead Gateway and Knox Activations Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make Knox website and Meta instant-form leads arrive reliably in XeroFlow, then productise the same provider-neutral capture, reconciliation, health, and end-to-end testing model for every client.
+**Goal:** Make Knox GWM Haval and Knox LDV website leads arrive reliably in XeroFlow, route Knox LDV's five enquiry types to five exact Google conversion actions, activate Knox GWM Haval Meta instant forms, then productise the same provider-neutral capture, reconciliation, health, and end-to-end testing model for every client.
 
-**Architecture:** Browser activity remains PII-minimised candidate evidence. Only an authenticated server receipt, provider API result, native ad-platform delivery, or controlled import creates a canonical lead. Existing intake, submission-intent reconciliation, routing, CRM promotion, measurement outbox, and tracking analytics are extended behind a connector registry; no second lead pipeline is created.
+**Architecture:** Browser activity remains PII-minimised candidate evidence. Only an authenticated server receipt, provider API result, native ad-platform delivery, or controlled import creates a canonical lead. Existing intake, submission-intent reconciliation, routing, CRM promotion, measurement outbox, and tracking analytics are extended behind a connector registry; no second lead pipeline is created. Confirmed website leads may carry one bounded enquiry type, and typed Google destinations match that type exactly instead of treating one aggregate `web_conversion` as five conversions.
 
 **Tech Stack:** Nuxt 4, Vue 3, Nuxt UI v4, Nitro/H3, Zod, Neon Postgres, Cloudflare Pages/Workers/Queues, Meta Graph API, Google Ads webhooks, Vitest.
 
@@ -17,10 +17,12 @@
 - Reuse `acceptLead()`, `leadIntakeService`, `lead_submission_intents`, `deriveLeadHealthIssues()`, the existing measurement outbox, and the existing tracking analytics surface after they land. Do not create parallel versions.
 - A browser candidate never creates a canonical lead, notification, route, CRM opportunity, or confirmed conversion.
 - A canonical test lead must carry `is_test = true` and `test_run_id`; it must be excluded from normal side effects and default reporting.
+- Knox LDV is a separate client from Knox GWM Haval. Never reuse a write key, connector secret, Google credential, conversion action, or destination between them.
+- Typed conversion routing is fail-closed: a typed event matches only the exact typed mapping; an untyped event matches only an untyped mapping; missing, unknown, or conflicting Knox LDV types create no Google delivery and surface `unmapped_enquiry_type`.
 - All public endpoints are origin-enforced, rate-limited, size-bounded, fail-safe where appropriate, and PII-minimised. Canonical PII enters only through authenticated server paths.
 - New UI must use Nuxt UI v4. Before modifying any form, load the project-mandated `frontend-design` skill; if its configured path is unavailable, stop that UI task and resolve the skill path instead of silently skipping it.
 - Use `~~/server/...` imports from Nitro code. Add runtime types to `app/types/index.ts`, not only `index.d.ts`.
-- Allocate the migration filename only after Task 0 by selecting the next collision-free project number. The placeholder `<NEXT_MIGRATION>` below is an explicit execution-time allocation step, not permission to guess.
+- Allocate migration filenames only after Task 0 by selecting the next collision-free project numbers. The placeholders `<NEXT_MIGRATION>` and `<NEXT_TYPED_ROUTING_MIGRATION>` below are explicit execution-time allocation steps, not permission to guess.
 - Every task uses TDD: add a focused failing test, observe the expected failure, implement the smallest complete change, rerun the focused test, then commit atomically.
 - Before each commit, reread every changed file, run `git diff --check`, scan for secrets, and apply the AGENTS.md deep-dive checklist.
 - Do not deploy until migrations, focused tests, full-suite comparison, and `pnpm deploy:check` pass. Production deployment must use `pnpm deploy:production` only.
@@ -38,6 +40,10 @@
 - Inspect: `server/utils/leads/submissionIntent.ts`
 - Inspect: `server/utils/leads/leadHealth.ts`
 - Inspect: `server/utils/leads/dealerLeadAdapter.ts`
+- Inspect: `server/utils/measurement/contracts.ts`
+- Inspect: `server/utils/measurement/outbox.ts`
+- Inspect: `server/utils/measurement/destinationRepository.ts`
+- Inspect: `workers/measurement-delivery/src/repository.ts`
 - Inspect: `app/components/portal/TrackingAnalyticsSection.client.vue`
 - Inspect: `server/database/migrations/283_client_lead_capture_mode.sql`
 - Inspect: `server/database/migrations/284_lead_reconciliation_and_alerts.sql`
@@ -94,6 +100,7 @@
   | Connector registry | Build | New durable registry/repository/API |
   | Signed capture test | Build | New run/evidence/token service |
   | Standard Webhooks endpoint | Build | New endpoint; retain legacy generic endpoint |
+  | Typed website conversion routing | Build/extend | Add bounded enquiry type to canonical intake, measurement events, and destination mappings; retain untyped compatibility |
 
 - [ ] **Step 5: Establish the reconciled test baseline**
 
@@ -106,7 +113,10 @@
     test/server/utils/leads/intake.test.ts \
     test/server/utils/leads/leadCaptureContract.test.ts \
     test/server/utils/leads/submissionIntent.test.ts \
-    test/server/utils/leads/leadHealth.test.ts
+    test/server/utils/leads/leadHealth.test.ts \
+    test/server/utils/measurement/outbox.test.ts \
+    test/server/utils/measurement/destinationRepository.test.ts \
+    test/workers/measurementDeliveryRepository.test.ts
   ```
 
   Expected: all focused tests pass. Record any reconciled full-suite baseline separately; the earlier observed baseline was 6,363 passing, 36 failing, 4 skipped and must not be assumed after rebase.
@@ -130,7 +140,7 @@
 
 - [ ] **Step 1: Write failing contract tests**
 
-  Add fixtures for `lead.submitted.v1` covering customer, vehicle, bounded custom fields, attribution, consent, and the discriminated test object:
+  Add fixtures for `lead.submitted.v1` covering customer, vehicle, bounded custom fields, attribution, consent, the optional bounded `enquiryType`, and the discriminated test object:
 
   ```ts
   test: { isTest: true, runId: crypto.randomUUID() }
@@ -140,17 +150,30 @@
 
   Assert that caller-supplied client IDs, capture modes, routing flags, and unsigned test status are rejected/ignored. Assert that legacy `schema_version: 1` generic payloads remain valid.
 
+  Add explicit valid values:
+
+  ```ts
+  type CanonicalEnquiryType =
+    | 'stock'
+    | 'finance'
+    | 'test_drive'
+    | 'contact'
+    | 'model_variant'
+  ```
+
+  Reject unknown values. Preserve a trusted provider's original form ID/type separately from the normalised enquiry type.
+
 - [ ] **Step 2: Run the tests to verify the red state**
 
   ```bash
   pnpm vitest run test/server/utils/leads/dealerLeadAdapter.test.ts test/server/utils/leads/leadCaptureContract.test.ts
   ```
 
-  Expected: failures show the versioned event/type and `test.runId` are not yet supported.
+  Expected: failures show the versioned event/type, `enquiryType`, and `test.runId` are not yet supported.
 
 - [ ] **Step 3: Implement one internal normalised contract**
 
-  In `dealerLeadAdapter.ts`, export `LeadSubmittedV1Schema`, `LeadSubmittedV1`, and a normaliser that maps both the new envelope and the legacy generic body to the existing `InsertLeadInput` shape. Keep provider-specific external schemas at their ingress adapters. Preserve bounded unknown provider fields under `fields`; do not spread arbitrary keys into trusted metadata.
+  In `dealerLeadAdapter.ts`, export `CanonicalEnquiryTypeSchema`, `CanonicalEnquiryType`, `LeadSubmittedV1Schema`, `LeadSubmittedV1`, and a normaliser that maps both the new envelope and the legacy generic body to the existing `InsertLeadInput` shape. Keep provider-specific external schemas at their ingress adapters. Preserve bounded unknown provider fields under `fields`; do not spread arbitrary keys into trusted metadata. Treat browser-proposed type as candidate metadata only; only authenticated adapters may set the canonical enquiry type used by measurement routing.
 
   Keep persistence changes out of this task. Task 2 adds `test_run_id` to the database and runtime types only after the migration exists.
 
@@ -514,7 +537,71 @@
 
 ---
 
-## Task 8: Add Per-Connector Health and Sustained Alerts
+## Task 8: Add Exact Enquiry-Type Conversion Routing
+
+**Files:**
+
+- Create: `server/database/migrations/<NEXT_TYPED_ROUTING_MIGRATION>_typed_website_conversion_routing.sql`
+- Modify: `server/utils/leads/dealerLeadAdapter.ts`
+- Modify: `server/utils/leads/acceptance.ts`
+- Modify: `server/utils/measurement/contracts.ts`
+- Modify: `server/utils/measurement/publisher.ts`
+- Modify: `server/utils/measurement/outbox.ts`
+- Modify: `server/utils/measurement/destinationRepository.ts`
+- Modify: `server/api/agency/measurement/clients/[clientId]/destinations/index.post.ts`
+- Create: `server/api/agency/measurement/clients/[clientId]/destinations/[destinationId].patch.ts`
+- Modify: `workers/measurement-delivery/src/repository.ts`
+- Modify: `app/components/clients/ClientMeasurementDestinationEditor.vue`
+- Modify: `app/components/clients/ClientMeasurementPanel.vue`
+- Modify: `app/types/index.ts`
+- Modify: `test/server/utils/measurement/contracts.test.ts`
+- Modify: `test/server/utils/measurement/outbox.test.ts`
+- Modify: `test/server/utils/measurement/destinationRepository.test.ts`
+- Modify: `test/workers/measurementDeliveryRepository.test.ts`
+- Modify: `test/app/clientMeasurementDestinationEditor.test.ts`
+- Create: `test/config/typedWebsiteConversionRoutingMigration.test.ts`
+
+**Required skill before UI action:** project-mandated `frontend-design` skill for the destination form.
+
+- [ ] **Step 1: Write the failing migration and routing tests**
+
+  Require a nullable, bounded `enquiry_type` on canonical leads, conversion events, and event mappings. The only allowed values are `stock`, `finance`, `test_drive`, `contact`, and `model_variant`. Assert exact matching in both directions: a typed event matches only the same typed mapping, and an untyped event matches only a null mapping. A missing, unknown, or conflicting type must create zero delivery rows and surface `unmapped_enquiry_type`; there is no wildcard fallback.
+
+  Add compatibility tests proving existing untyped clients still emit their existing v1 idempotency keys and route only to existing untyped mappings. A repeated idempotency key with a conflicting enquiry type must be rejected instead of silently changing identity.
+
+- [ ] **Step 2: Verify the red state**
+
+  ```bash
+  pnpm vitest run test/config/typedWebsiteConversionRoutingMigration.test.ts test/server/utils/measurement/contracts.test.ts test/server/utils/measurement/outbox.test.ts test/server/utils/measurement/destinationRepository.test.ts test/workers/measurementDeliveryRepository.test.ts
+  ```
+
+- [ ] **Step 3: Add the bounded persistence model and apply it**
+
+  Add nullable columns plus database `CHECK` constraints and indexes. Preserve all existing rows as untyped. Use the next free migration number after the Task 0 rebase, replace the placeholder in this plan with that exact number, then automatically apply the migration to the configured Neon database as required by the project runbook.
+
+- [ ] **Step 4: Propagate only trusted canonical type**
+
+  Carry `CanonicalEnquiryType | null` from the authenticated provider adapter through `acceptLead()` and the measurement publisher into the conversion event. Browser-proposed form/type values remain candidate evidence and cannot select a live destination. Keep the provider's original form name/ID as separate diagnostic metadata.
+
+- [ ] **Step 5: Make mapping expansion exact and fail-closed**
+
+  Extend destination mapping create/update contracts and the outbox expansion query with exact nullable equality. Store `unmapped_enquiry_type` as redacted operational evidence when a typed accepted lead has no exact mapping. Do not change the Google Data Manager provider payload or delivery retry semantics.
+
+- [ ] **Step 6: Update the destination editor**
+
+  Load `frontend-design`, then add an optional enquiry-type selector using `UFormField` and `USelectMenu`. Prevent an aggregate and typed mapping for the same destination/event combination from coexisting. Keep untyped as the default for existing clients.
+
+- [ ] **Step 7: Run focused tests and commit**
+
+  ```bash
+  pnpm vitest run test/config/typedWebsiteConversionRoutingMigration.test.ts test/server/utils/measurement/contracts.test.ts test/server/utils/measurement/outbox.test.ts test/server/utils/measurement/destinationRepository.test.ts test/workers/measurementDeliveryRepository.test.ts test/app/clientMeasurementDestinationEditor.test.ts
+  git add server/database/migrations/<EXACT_MIGRATION>_typed_website_conversion_routing.sql server/utils/leads/dealerLeadAdapter.ts server/utils/leads/acceptance.ts server/utils/measurement/contracts.ts server/utils/measurement/publisher.ts server/utils/measurement/outbox.ts server/utils/measurement/destinationRepository.ts server/api/agency/measurement/clients/'[clientId]'/destinations/index.post.ts server/api/agency/measurement/clients/'[clientId]'/destinations/'[destinationId]'.patch.ts workers/measurement-delivery/src/repository.ts app/components/clients/ClientMeasurementDestinationEditor.vue app/components/clients/ClientMeasurementPanel.vue app/types/index.ts test/config/typedWebsiteConversionRoutingMigration.test.ts test/server/utils/measurement/contracts.test.ts test/server/utils/measurement/outbox.test.ts test/server/utils/measurement/destinationRepository.test.ts test/workers/measurementDeliveryRepository.test.ts test/app/clientMeasurementDestinationEditor.test.ts
+  git commit -m "feat: route typed website conversions exactly"
+  ```
+
+---
+
+## Task 9: Add Per-Connector Health and Sustained Alerts
 
 **Files:**
 
@@ -558,7 +645,7 @@
 
 ---
 
-## Task 9: Build Connector Cards and the End-to-End Test UI
+## Task 10: Build Connector Cards and the End-to-End Test UI
 
 **Required skill before action:** project-mandated `frontend-design` skill for all form work.
 
@@ -609,7 +696,7 @@
 
 ---
 
-## Task 10: Activate Knox Website Lead Delivery
+## Task 11: Activate Knox GWM Haval Website Lead Delivery
 
 **Files:**
 
@@ -661,7 +748,7 @@
 
 ---
 
-## Task 11: Activate and Backfill Knox Meta Instant Forms
+## Task 12: Activate and Backfill Knox GWM Haval Meta Instant Forms
 
 **Files:**
 
@@ -704,7 +791,100 @@
 
 ---
 
-## Task 12: Update Product Documentation and Marketing Pages
+## Task 13: Activate Knox LDV Pixel and Trusted Website Capture
+
+**Files:**
+
+- Create: `docs/integrations/knox-ldv-lead-capture.md`
+- Modify only if required by the observed Dealer Studio receipt: a scoped adapter under `server/utils/leads/providers/`
+- Add the exact provider fixture/test path only if a new adapter is required
+
+- [ ] **Step 1: Create a separate Knox LDV tenant configuration**
+
+  Through authenticated XeroFlow APIs, create or resolve the distinct `Knox LDV` client, then create its own tracking site for `https://www.knoxldv.com.au` with both canonical and `www` origins as observed, SPA navigation enabled, and a newly generated write key. Confirm no Knox GWM Haval key, connector, destination, or credential is reused.
+
+- [ ] **Step 2: Install the existing XeroFlow tracker through the existing GTM container**
+
+  In authenticated Google Tag Manager container `GTM-NNPZDBQB`, add one All Pages XeroFlow tracker tag using the Knox LDV write key. Preview first and inspect the final container/workspace/tag before publishing. Verify on desktop and mobile that exactly one tracker instance loads, page views and SPA routes are not duplicated, click IDs are captured with consent, and no form PII enters browser tracking events.
+
+- [ ] **Step 3: Establish the trusted Dealer Studio receipt**
+
+  Inspect the authenticated Dealer Studio integration surface and use this priority: confirmed-lead webhook, fixed-host authenticated polling with cursor/deduplication, XeroFlow-first relay, then success callback/data-layer bridge as candidate evidence only. Provision a Knox-LDV-only rotatable connector secret. Map each observed provider form identifier to exactly one canonical enquiry type; do not infer type from arbitrary free text.
+
+- [ ] **Step 4: Attach browser attribution at provider success**
+
+  Call `window.xf.captureLeadContext()` only at the confirmed success boundary, carry the browser event ID and first/last-touch fields through the trusted receipt, and emit the PII-free `xf_lead_confirmed` event. Ensure failed/abandoned submissions never create canonical leads or conversions.
+
+- [ ] **Step 5: Run five contained synthetic journeys**
+
+  Run one signed test for Stock, Finance, Test Drive, Contact Us, and Model Variant. Require one candidate, one trusted receipt, one canonical `is_test` lead, correct exact enquiry type, and zero normal routing/notification/CRM/conversion side effects. Correct any form-specific mapping before Google activation.
+
+- [ ] **Step 6: Document and commit**
+
+  Record redacted client/site/connector/tag IDs, origin rules, GTM publish version, provider mapping, rotation and rollback steps, and evidence timestamps.
+
+  ```bash
+  git add docs/integrations/knox-ldv-lead-capture.md
+  git commit -m "docs: activate Knox LDV website tracking"
+  ```
+
+---
+
+## Task 14: Connect Knox LDV Google Ads and Activate Five Exact Conversions
+
+**Files:**
+
+- Modify: `server/utils/googleConversionActions.ts`
+- Create: `server/api/agency/measurement/clients/[clientId]/google-conversion-actions.post.ts`
+- Modify: `test/server/utils/googleConversionActions.test.ts`
+- Create: `test/server/api/googleMeasurementConversionActionCreate.test.ts`
+- Update: `docs/integrations/knox-ldv-lead-capture.md`
+
+- [ ] **Step 1: Connect and verify the exact Google Ads customer**
+
+  Use the existing OAuth flow and its `adwords` plus `datamanager` scopes. Connect customer `389-217-6492` to the Knox LDV client, using its observed manager/login customer ID when applicable. Verify account name, currency, timezone, scopes, tenant mapping, and active refresh grant before any mutation.
+
+- [ ] **Step 2: Discover actions before creating anything**
+
+  Use the existing conversion-action discovery API to list enabled `UPLOAD_CLICKS`/`WEBPAGE` actions. Match names exactly after normalising whitespace only. Reuse an exact existing action and never create a duplicate by name.
+
+- [ ] **Step 3: Add an idempotent, tenant-scoped creation path for missing actions**
+
+  Write failing tests, then add a configure-authorised POST endpoint backed by Google Ads API v23 `conversionActions:mutate`. Accept only the five approved names, create a compatible lead conversion action with explicit category/origin/count/value settings, and return only redacted IDs/status. Re-query after mutation and fail closed on ambiguous or duplicate results. Do not expose refresh/access tokens.
+
+  Approved names and mappings:
+
+  | Enquiry type | Google conversion action |
+  |---|---|
+  | `stock` | `Stock Enquiry` |
+  | `finance` | `Finance Enquiry` |
+  | `test_drive` | `Test Drive Enquiry` |
+  | `contact` | `Contact Us` |
+  | `model_variant` | `Model Variant Enquiry` |
+
+- [ ] **Step 4: Create five exact XeroFlow destination mappings**
+
+  Create one Google Data Manager destination/mapping per action and enquiry type. Do not create an untyped Knox LDV `web_conversion` mapping. Assert database uniqueness and inspect the final client, connection, action ID, type, consent mode, and management origin before activation.
+
+- [ ] **Step 5: Validate without recording conversions**
+
+  Run the existing provider test service with `validateOnly=true` against all five actions. Also prove an unknown type, a missing type, and each of the four non-matching types produce zero delivery for a selected action. Record only redacted request/diagnostic IDs.
+
+- [ ] **Step 6: Activate and verify one production journey per type**
+
+  After the trusted receipt and validate-only matrix pass, activate the destinations. A real production form submission is an external side effect: inspect the final form and payload and use only an operator-approved test identity. Verify each accepted lead creates exactly one outbox delivery to its matching action and zero deliveries to the other four.
+
+- [ ] **Step 7: Run tests and commit code/runbook**
+
+  ```bash
+  pnpm vitest run test/server/utils/googleConversionActions.test.ts test/server/api/googleMeasurementConversionActionCreate.test.ts test/server/utils/measurement/providerTestService.test.ts
+  git add server/utils/googleConversionActions.ts server/api/agency/measurement/clients/'[clientId]'/google-conversion-actions.post.ts test/server/utils/googleConversionActions.test.ts test/server/api/googleMeasurementConversionActionCreate.test.ts docs/integrations/knox-ldv-lead-capture.md
+  git commit -m "feat: activate Knox LDV Google conversions"
+  ```
+
+---
+
+## Task 15: Update Product Documentation and Marketing Pages
 
 **Files:**
 
@@ -743,12 +923,13 @@
 
 ---
 
-## Task 13: Battle-Test, Deploy, and Verify Production
+## Task 16: Battle-Test, Deploy, and Verify Production
 
 **Files:**
 
-- Review: every file changed by Tasks 1–12
+- Review: every file changed by Tasks 1–15
 - Update if required: `docs/integrations/knox-gwm-haval-lead-capture.md`
+- Update if required: `docs/integrations/knox-ldv-lead-capture.md`
 
 - [ ] **Step 1: Reread and battle-test all changes**
 
@@ -762,7 +943,14 @@
     test/server/utils/leads \
     test/server/api/leads \
     test/server/api/publicLeadCaptureTest.test.ts \
+    test/server/utils/measurement/contracts.test.ts \
+    test/server/utils/measurement/outbox.test.ts \
+    test/server/utils/measurement/destinationRepository.test.ts \
     test/server/utils/measurement/providerTestService.test.ts \
+    test/server/utils/googleConversionActions.test.ts \
+    test/server/api/googleMeasurementConversionActionCreate.test.ts \
+    test/workers/measurementDeliveryRepository.test.ts \
+    test/app/clientMeasurementDestinationEditor.test.ts \
     test/app/leadConnectorPanel.test.ts \
     test/app/leadCaptureTestSlideover.test.ts \
     test/app/universalLeadGatewayMarketing.test.ts
@@ -784,7 +972,7 @@
 
 - [ ] **Step 4: Verify migration state and production safety**
 
-  Query the database for connector/test tables, constraints, indexes, and Knox records. Confirm current migration was applied once. Confirm no secrets or raw test PII appear in commits/logs.
+  Query the database for connector/test tables, typed conversion constraints/indexes, and separate Knox GWM Haval/Knox LDV records. Confirm every migration was applied once. Confirm no secrets or raw test PII appear in commits/logs.
 
 - [ ] **Step 5: Run the deployment guard and deploy**
 
@@ -795,17 +983,17 @@
 
   Expected: immutable project target is `agency-dashboard`; deployment succeeds through the guarded script.
 
-- [ ] **Step 6: Verify Knox in production**
+- [ ] **Step 6: Verify both Knox clients in production**
 
-  Run a fresh signed synthetic website test and verify all required stages. Verify Meta health/subscription or an explicit gated state. Confirm the default inbox and analytics exclude test leads. Check the hourly health endpoint reports the correct status without notification flooding.
+  Run a fresh signed synthetic website test for each client and verify all required stages. For Knox GWM Haval, verify Meta health/subscription or an explicit gated state. For Knox LDV, verify the GTM tag, five exact typed mappings, five validate-only Google results, and no cross-client or cross-type fan-out. Confirm the default inbox and analytics exclude test leads. Check the hourly health endpoint reports the correct status without notification flooding.
 
 - [ ] **Step 7: Commit final verification evidence**
 
-  Update the redacted Knox runbook with deployed revision, timestamps, connector statuses, counts, rollback points, and known external gates.
+  Update both redacted Knox runbooks with deployed revision, timestamps, connector/destination statuses, counts, rollback points, and known external gates.
 
   ```bash
-  git add docs/integrations/knox-gwm-haval-lead-capture.md
-  git commit -m "docs: record Knox lead capture verification"
+  git add docs/integrations/knox-gwm-haval-lead-capture.md docs/integrations/knox-ldv-lead-capture.md
+  git commit -m "docs: record Knox activation verification"
   ```
 
 ---
@@ -816,10 +1004,13 @@ Bendigo Kia's Google Ads OAuth/spend connection is deliberately outside this lea
 
 ## Completion Criteria
 
-- Knox website has a trusted canonical receipt path, not merely browser heuristics.
-- A signed Knox website test produces one reconciled canonical test lead with no production side effects.
-- One authorised production Knox enquiry lands exactly once with expected attribution, routing, and measurement evidence.
-- Knox Meta instant forms are subscribed and backfilled without duplicates, or the UI truthfully exposes the outstanding Meta permission gate and interim import path.
+- Knox GWM Haval and Knox LDV each have their own trusted canonical receipt path, not merely browser heuristics.
+- A signed website test for each client produces one reconciled canonical test lead with no production side effects.
+- One authorised production enquiry per activated path lands exactly once with expected attribution, routing, and measurement evidence.
+- Knox GWM Haval Meta instant forms are subscribed and backfilled without duplicates, or the UI truthfully exposes the outstanding Meta permission gate and interim import path.
+- Knox LDV loads one XeroFlow tracker through `GTM-NNPZDBQB` with no duplicate page/route tracking and no form PII in browser events.
+- Google Ads customer `389-217-6492` is connected to Knox LDV with the required OAuth scopes and tenant isolation.
+- Stock, Finance, Test Drive, Contact Us, and Model Variant each route to exactly one matching Google conversion action; missing/unknown types and all non-matching actions create zero deliveries.
 - Every lead source is represented by the connector registry and common health model.
 - A new provider can be added through an adapter/capability declaration without changing canonical intake or downstream consumers.
 - Focused tests, build, migration verification, deployment guard, and production smoke tests pass with no regression beyond the reconciled baseline.
