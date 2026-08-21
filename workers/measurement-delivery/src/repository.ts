@@ -220,11 +220,20 @@ export function createMeasurementDeliveryRepository(deps: RepositoryDeps) {
              JOIN conversion_destinations dest
                ON dest.client_id = d.client_id
               AND dest.id = d.destination_id
-             LEFT JOIN conversion_event_mappings m
-               ON m.client_id = d.client_id
-              AND m.destination_id = d.destination_id
-              AND m.canonical_event_name = e.event_name
-              AND m.is_active = TRUE
+             LEFT JOIN LATERAL (
+               SELECT mapping.provider_event_name
+                 FROM conversion_event_mappings mapping
+                WHERE mapping.client_id = d.client_id
+                  AND mapping.destination_id = d.destination_id
+                  AND mapping.canonical_event_name = e.event_name
+                  AND mapping.is_active = TRUE
+                  AND (
+                    (e.enquiry_type IS NULL AND mapping.enquiry_type IS NULL)
+                    OR mapping.enquiry_type = e.enquiry_type
+                  )
+                ORDER BY (mapping.enquiry_type = e.enquiry_type) DESC
+                LIMIT 1
+             ) m ON TRUE
              LEFT JOIN LATERAL (
                SELECT ARRAY_AGG(c.mode ORDER BY c.mode) AS capability_modes
                  FROM conversion_destination_capabilities c

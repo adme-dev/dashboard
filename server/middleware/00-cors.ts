@@ -40,6 +40,7 @@ export default defineEventHandler((event) => {
   // origin, but never pair that with allow-credentials.
   const isPublicTrackingEndpoint = pathname === '/api/public/track'
     || pathname === '/api/public/lead-intent'
+    || pathname.startsWith('/api/public/lead-capture-test/')
   if (isPublicTrackingEndpoint) {
     setHeader(event, 'access-control-allow-origin', origin)
     setHeader(event, 'vary', 'Origin')

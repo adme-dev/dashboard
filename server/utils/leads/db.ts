@@ -29,6 +29,7 @@ export interface InsertLeadInput {
   assigned_to: string | null
   created_by: string | null
   is_test?: boolean
+  test_run_id?: string | null
 }
 
 export interface LeadTransactionClient {
@@ -63,7 +64,7 @@ export async function insertLeadWithDedup(
   db?: LeadTransactionClient,
   emailEvidenceGuard?: EmailEvidenceGuard
 ): Promise<string | null | GuardedLeadInsertResult> {
-  const params = [
+  const baseParams = [
     input.client_id, input.source, input.source_lead_id, input.form_id, input.form_name,
     input.ad_id, input.ad_name, input.campaign_id, input.campaign_name, input.page_id,
     input.submitted_at,
@@ -108,7 +109,7 @@ export async function insertLeadWithDedup(
       LIMIT 1
     `
     const row = (await db.query(guardedSql, [
-      ...params,
+      ...baseParams,
       emailEvidenceGuard.ingestionId,
       emailEvidenceGuard.leaseToken
     ])).rows?.[0] as { id: string | null, outcome: GuardedLeadInsertResult['status'] } | undefined
@@ -119,14 +120,18 @@ export async function insertLeadWithDedup(
     INSERT INTO leads (
       client_id, source, source_lead_id, form_id, form_name,
       ad_id, ad_name, campaign_id, campaign_name, page_id,
-      submitted_at, field_data, attribution, assigned_to, created_by, is_test
+      submitted_at, field_data, attribution, assigned_to, created_by, is_test, test_run_id
     ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15, $16
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15, $16, $17
     )
     ON CONFLICT (source, source_lead_id) WHERE deleted_at IS NULL
     DO NOTHING
     RETURNING id
   `
+  const params = [
+    ...baseParams,
+    input.test_run_id ?? null
+  ]
   const row = db
     ? (await db.query(sql, params)).rows?.[0] as { id: string } | undefined
     : await queryOne<{ id: string }>(sql, params)

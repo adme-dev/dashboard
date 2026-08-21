@@ -60,6 +60,16 @@ export interface LeadHealthSnapshot {
     errorClass: string | null
     updatedAt: string
   }>
+  connectors?: Array<{
+    id: string
+    provider: string
+    type: string
+    status: string
+    authority: string
+    lastReceiptAt: string | null
+    lastAttemptAt: string | null
+    lastErrorClass: string | null
+  }>
 }
 
 const numberValue = (value: string | number | null | undefined) => Number(value) || 0
@@ -70,6 +80,16 @@ export function deriveLeadHealthIssues(
 ): LeadHealthIssue[] {
   const issues: LeadHealthIssue[] = []
   const usesInternalCrm = mode === 'lightweight_crm' || mode === 'full_crm'
+  const failedConnectors = (snapshot.connectors ?? []).filter(connector => (
+    connector.authority === 'canonical' && ['error', 'stale'].includes(connector.status)
+  ))
+  for (const connector of failedConnectors) {
+    issues.push({
+      code: `connector_${connector.id}_${connector.status}`,
+      message: `${connector.provider} ${connector.type.replace(/_/g, ' ')} connector is ${connector.status}${connector.lastErrorClass ? ` (${connector.lastErrorClass})` : ''}.`,
+      severity: connector.status === 'error' ? 'critical' : 'warning'
+    })
+  }
   if (snapshot.formSubmits > 0 && snapshot.confirmedLeads === 0) {
     issues.push({
       code: 'submits_without_confirmed_leads',
@@ -142,8 +162,9 @@ export async function getLeadHealthSnapshot(
               intent.page_url,
               intent.match_status,
               intent.matched_lead_id
-         FROM lead_submission_intents intent
+        FROM lead_submission_intents intent
         WHERE intent.client_id = $1
+          AND intent.test_run_id IS NULL
           AND intent.occurred_at >= $2::date
           AND intent.occurred_at < ($3::date + INTERVAL '1 day')
      )
@@ -220,13 +241,14 @@ export async function getLeadHealthSnapshot(
     [clientId, fromDate, toDate]
   )
 
-  const [unmatched, failedPromotions] = await Promise.all([
+  const [unmatched, failedPromotions, connectors] = await Promise.all([
     queryRows<{ event_id: string, occurred_at: string, page_url: string | null }>(
       `SELECT intent.browser_event_id AS event_id,
               intent.occurred_at,
               intent.page_url
-         FROM lead_submission_intents intent
+        FROM lead_submission_intents intent
         WHERE intent.client_id = $1
+          AND intent.test_run_id IS NULL
           AND intent.occurred_at >= $2::date
           AND intent.occurred_at < ($3::date + INTERVAL '1 day')
           AND intent.occurred_at < NOW() - INTERVAL '15 minutes'
@@ -260,6 +282,23 @@ export async function getLeadHealthSnapshot(
         ORDER BY state.updated_at DESC
         LIMIT 10`,
       [clientId, fromDate, toDate]
+    ),
+    queryRows<{
+      id: string
+      provider: string
+      type: string
+      status: string
+      authority: string
+      last_receipt_at: string | null
+      last_attempt_at: string | null
+      last_error_class: string | null
+    }>(
+      `SELECT id, provider, type, status, authority,
+              last_receipt_at, last_attempt_at, last_error_class
+         FROM lead_connectors
+        WHERE client_id = $1 AND status <> 'disabled'
+        ORDER BY created_at`,
+      [clientId]
     )
   ])
 
@@ -297,6 +336,16 @@ export async function getLeadHealthSnapshot(
       outcome: row.outcome,
       errorClass: row.last_error_class,
       updatedAt: row.updated_at
+    })),
+    connectors: connectors.map(row => ({
+      id: row.id,
+      provider: row.provider,
+      type: row.type,
+      status: row.status,
+      authority: row.authority,
+      lastReceiptAt: row.last_receipt_at,
+      lastAttemptAt: row.last_attempt_at,
+      lastErrorClass: row.last_error_class
     }))
   }
 }

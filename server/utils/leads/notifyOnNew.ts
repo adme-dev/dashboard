@@ -11,9 +11,10 @@ import { bridgeLeadToCrm } from '~~/server/utils/leads/crmBridge'
 import type { Lead } from '~~/app/types'
 
 type MinimalLead = Pick<Lead,
-  'id' | 'client_id' | 'source' | 'form_id' | 'form_name' | 'assigned_to' | 'field_data' | 'submitted_at'>
+  'id' | 'client_id' | 'source' | 'form_id' | 'form_name' | 'assigned_to' | 'field_data' | 'submitted_at' | 'is_test'>
 
 export async function notifyOnNewLead(lead: MinimalLead): Promise<void> {
+  if (lead.is_test) return
   // CRM timeline bridge first — independent of notification recipients, and a
   // no-op (gated + self-guarding) until the operator enables CRM_COMMS_BRIDGE_ENABLED.
   await bridgeLeadToCrm(lead)

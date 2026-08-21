@@ -317,6 +317,8 @@ watch(endpointItems, (items) => {
           </div>
         </UCard>
 
+        <LeadsConnectorPanel :client-items="clientItems" />
+
         <UAccordion :items="sections" multiple>
           <template #quickstart>
             <div class="space-y-3 text-sm leading-relaxed">

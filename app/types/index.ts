@@ -1819,6 +1819,7 @@ export interface Lead {
   score_reasons: any | null
   status: LeadStatus
   is_test?: boolean
+  test_run_id?: string | null
   spam_reasons: any | null
   assigned_to: string | null
   contacted_at: string | null

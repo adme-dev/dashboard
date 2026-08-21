@@ -632,7 +632,7 @@ const featuresCol2 = [
   { title: 'AI Max Readiness', subtitle: 'Read-only Google migration evidence', icon: 'i-lucide-scan-search', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/features/google-ai-max-readiness' },
   { title: 'Governed PMax Launches', subtitle: 'Evidence-bound Vehicle Ads rollout', icon: 'i-lucide-shield-check', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/features/governed-google-pmax-launches' },
   { title: 'EOM Engine', subtitle: 'Automated invoice generation', icon: 'i-lucide-receipt', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/financials' },
-  { title: 'Lead Capture & Routing', subtitle: 'Webhooks, inbound email, CSV, and manual leads', icon: 'i-lucide-inbox', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/features/lead-capture-routing' }
+  { title: 'Lead Capture & Routing', subtitle: 'Signed, tested, provider-neutral capture', icon: 'i-lucide-inbox', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/features/lead-capture-routing' }
 ]
 
 const featuresCol3a = [

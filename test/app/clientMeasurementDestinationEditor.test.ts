@@ -15,23 +15,36 @@ const stubs = {
     props: ['name'],
     template: '<i :data-icon="name" />'
   },
-  USelect: {
-    props: ['modelValue', 'items', 'valueKey'],
-    emits: ['update:modelValue'],
-    template: `
-      <select :value="modelValue" @change="$emit('update:modelValue', $event.target.value)">
-        <option v-for="item in items" :key="item[valueKey || 'value']" :value="item[valueKey || 'value']">{{ item.label }}</option>
-      </select>
-    `
-  },
   UFormField: {
     props: ['label', 'help', 'required'],
     template: '<label><span>{{ label }}</span><slot /><span v-if="help">{{ help }}</span></label>'
   },
+  USelect: {
+    inheritAttrs: false,
+    props: ['modelValue', 'items', 'disabled', 'placeholder', 'valueKey'],
+    emits: ['update:modelValue'],
+    template: `<select v-bind="$attrs" :value="modelValue" :disabled="disabled" @change="$emit('update:modelValue', $event.target.value)">
+      <option v-if="placeholder" value="">{{ placeholder }}</option>
+      <option v-for="item in items" :key="item[valueKey || 'value']" :value="item[valueKey || 'value']">{{ item.label }}</option>
+    </select>`
+  },
   UInput: {
+    inheritAttrs: false,
     props: ['modelValue'],
     emits: ['update:modelValue'],
-    template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)">'
+    template: '<input v-bind="$attrs" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)">'
+  },
+  UCheckbox: {
+    inheritAttrs: false,
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<input v-bind="$attrs" type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)">'
+  },
+  UTextarea: {
+    inheritAttrs: false,
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<textarea v-bind="$attrs" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
   }
 }
 
@@ -138,6 +151,7 @@ describe('ClientMeasurementDestinationEditor', () => {
             }],
             mappings: [{
               canonicalEventName: 'lead_qualified',
+              enquiryType: null,
               providerEventName: 'QualifiedLead',
               isActive: true
             }]

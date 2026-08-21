@@ -24,7 +24,11 @@ export const SubmissionIntentSchema = z.strictObject({
   vehicle_reference: z.string().trim().max(128).nullable().optional(),
   identity: IdentitySchema,
   attribution: AttributionSchema.default({}),
-  consent: z.string().max(4096).nullable().optional()
+  consent: z.string().max(4096).nullable().optional(),
+  test_context: z.strictObject({
+    run_id: z.string().uuid(),
+    evidence_token: z.string().min(32).max(512)
+  }).optional()
 })
 
 export type SubmissionIntentPayload = z.infer<typeof SubmissionIntentSchema>
@@ -123,6 +127,7 @@ export async function storeSubmissionIntent(input: {
   site: Pick<TrackingSite, 'id' | 'clientId'>
   payload: SubmissionIntentPayload
   identityFingerprintSecret?: string
+  testRunId?: string | null
 }): Promise<boolean> {
   const identity = fingerprintLeadIdentity(
     input.payload.identity,
@@ -134,11 +139,11 @@ export async function storeSubmissionIntent(input: {
     `INSERT INTO lead_submission_intents (
        client_id, site_id, browser_event_id,
        email_fingerprint, phone_fingerprint,
-       form_id, page_url, vehicle_reference, attribution, occurred_at, expires_at
+       form_id, page_url, vehicle_reference, attribution, occurred_at, expires_at, test_run_id
      ) VALUES (
        $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb,
        TO_TIMESTAMP($10::double precision / 1000.0),
-       TO_TIMESTAMP($10::double precision / 1000.0) + INTERVAL '7 days'
+       TO_TIMESTAMP($10::double precision / 1000.0) + INTERVAL '7 days', $11
      )
      ON CONFLICT (site_id, browser_event_id) DO NOTHING
      RETURNING id`,
@@ -152,7 +157,8 @@ export async function storeSubmissionIntent(input: {
       input.payload.page_url,
       input.payload.vehicle_reference ?? null,
       JSON.stringify(input.payload.attribution),
-      input.payload.occurred_at
+      input.payload.occurred_at,
+      input.testRunId ?? null
     ]
   )
   return Boolean(row)
@@ -238,6 +244,7 @@ export async function reserveSubmissionIntentForLead(input: {
   submittedAt: string
   formId: string | null
   identityFingerprintSecret?: string
+  testRunId?: string | null
 }): Promise<IntentReservation | null> {
   const email = fieldValue(input.fieldData, ['email', 'email_address', 'work_email'])
   const phone = fieldValue(input.fieldData, [
@@ -257,6 +264,10 @@ export async function reserveSubmissionIntentForLead(input: {
             form_id, vehicle_reference, attribution, occurred_at
        FROM lead_submission_intents
       WHERE client_id = $1
+        AND (
+          ($5::uuid IS NULL AND test_run_id IS NULL)
+          OR test_run_id = $5
+        )
         AND matched_lead_id IS NULL
         AND expires_at > NOW()
         AND (
@@ -275,7 +286,8 @@ export async function reserveSubmissionIntentForLead(input: {
       input.clientId,
       identity.emailFingerprint,
       identity.phoneFingerprint,
-      input.submittedAt
+      input.submittedAt,
+      input.testRunId ?? null
     ]
   )
 
