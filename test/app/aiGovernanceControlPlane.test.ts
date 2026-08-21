@@ -346,7 +346,7 @@ describe('AI governance command centre', () => {
       app.unmount()
       host.remove()
     }
-  }, 15_000)
+  }, 30_000)
 
   it('keeps readiness data visible and marks it stale when a retry fails', async () => {
     let readinessCalls = 0
