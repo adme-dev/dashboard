@@ -3,7 +3,7 @@ import { ofetch } from 'ofetch'
 import { query } from '~~/server/utils/db'
 import { requireHrAdmin } from '~~/server/utils/hr/authorization'
 import { validateMondayToken } from '~~/server/utils/mondayClient'
-import { getMondayOAuthValue, MONDAY_OAUTH_CALLBACK_PATH, MONDAY_OAUTH_STATE_COOKIE } from '~~/server/utils/mondayOAuth'
+import { getMondayOAuthValue, MONDAY_OAUTH_CALLBACK_PATH, MONDAY_OAUTH_SCOPES, MONDAY_OAUTH_STATE_COOKIE } from '~~/server/utils/mondayOAuth'
 
 /** Monday OAuth callback. Secrets are server-only; tokens are never returned to the browser. */
 export default eventHandler(async (event) => {
@@ -46,7 +46,7 @@ export default eventHandler(async (event) => {
       connected_by = EXCLUDED.connected_by,
       connected_at = EXCLUDED.connected_at,
       settings = COALESCE(integration_configs.settings, '{}'::jsonb) || EXCLUDED.settings
-  `, [token, validation.account.id, validation.account.name, user.id, JSON.stringify({ authMethod: 'oauth' })])
+  `, [token, validation.account.id, validation.account.name, user.id, JSON.stringify({ authMethod: 'oauth', scopes: [...MONDAY_OAUTH_SCOPES] })])
 
   return sendRedirect(event, '/agency/monday?connected=oauth', 302)
 })

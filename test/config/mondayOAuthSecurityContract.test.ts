@@ -23,11 +23,13 @@ describe('Monday OAuth security contract', () => {
     expect(callback).not.toContain('process.env.MONDAY_OAUTH_STATE')
   })
 
-  it('requests only the operational read and webhook scopes', () => {
+  it('requests read, webhook, and explicit Campaign Exceptions write scopes', () => {
     expect(config).toContain("'boards:read'")
     expect(config).toContain("'updates:read'")
     expect(config).toContain("'assets:read'")
     expect(config).toContain("'webhooks:write'")
-    expect(config).not.toContain("'boards:write'")
+    expect(config).toContain("'boards:write'")
+    expect(config).toContain("'updates:write'")
+    expect(callback).toContain('scopes: [...MONDAY_OAUTH_SCOPES]')
   })
 })

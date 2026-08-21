@@ -6,6 +6,7 @@ import { buildCampaignBudgetIdentity } from '~~/server/utils/campaignBudgetIdent
 import { recordCampaignAction } from '~~/server/utils/campaignActionLog'
 
 export const CAMPAIGN_EXCEPTIONS_BOARD_ID = '18427394520'
+export const MONDAY_AUTOMATION_WRITE_SCOPES = ['boards:write', 'updates:write'] as const
 export const CAMPAIGN_EXCEPTION_COLUMNS = Object.freeze({
   exceptionType: 'color_mm6d6ghw',
   severity: 'color_mm6dpcve',
@@ -25,6 +26,19 @@ export const CAMPAIGN_EXCEPTION_COLUMNS = Object.freeze({
 })
 
 type AutomationOperation = 'apply' | 'rollback'
+
+export class MondayAutomationWriteScopeRequiredError extends Error {
+  code = 'MONDAY_WRITE_SCOPE_REQUIRED' as const
+
+  constructor() {
+    super('Reconnect Monday to grant boards:write and updates:write before Campaign Exceptions automation can run.')
+    this.name = 'MondayAutomationWriteScopeRequiredError'
+  }
+}
+
+export function hasMondayAutomationWriteScopes(input: { authMethod: 'oauth' | 'token', grantedScopes: string[] }): boolean {
+  return input.authMethod === 'token' || MONDAY_AUTOMATION_WRITE_SCOPES.every(scope => input.grantedScopes.includes(scope))
+}
 
 export interface CampaignExceptionClaim {
   id: string
@@ -596,7 +610,9 @@ async function createOfferExpiredExceptions(
       `INSERT INTO monday_offer_expiry_detections
          (platform, campaign_id, creative_id, expires_on, status)
        VALUES ($1, $2, $3, $4::date, 'detected')
-       ON CONFLICT (platform, campaign_id, creative_id, expires_on) DO NOTHING
+       ON CONFLICT (platform, campaign_id, creative_id, expires_on) DO UPDATE
+         SET status = 'detected', failure_reason = NULL, updated_at = NOW()
+       WHERE monday_offer_expiry_detections.status = 'failed'
        RETURNING id::text`,
       [row.platform, row.campaign_id, row.creative_id, expiresOn]
     )
@@ -657,6 +673,7 @@ export async function runMondayCampaignExceptionAutomation(input: {
 }): Promise<{ checked: number, requested: number, rollbacks: number, confidenceUpdated: number, offerExpiredCreated: number, applied: number, rolledBack: number, failed: number, globalHalt: boolean }> {
   const connection = await resolveMondayConnection()
   if (!connection) throw new Error('Monday connection is not configured')
+  if (!hasMondayAutomationWriteScopes(connection)) throw new MondayAutomationWriteScopeRequiredError()
   const monday = await createMondayClient(connection.accessToken)
   const now = input.now ?? new Date()
   const offerExpiredCreated = await createOfferExpiredExceptions(monday, now)
