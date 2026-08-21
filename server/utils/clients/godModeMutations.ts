@@ -14,6 +14,7 @@ import {
 import { digestMcpRequestBody } from '~~/shared/utils/mcpRequestClaim'
 
 const UUID = '[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}'
+const CLIENT_CREATE_ROUTE = '/api/agency/clients'
 const CLIENT_UPDATE_ROUTE = new RegExp(`^/api/agency/clients/${UUID}$`, 'i')
 const CLIENT_CRM_SETTINGS_UPDATE_ROUTE = new RegExp(
   `^/api/agency/clients/${UUID}/crm-settings$`,
@@ -21,7 +22,7 @@ const CLIENT_CRM_SETTINGS_UPDATE_ROUTE = new RegExp(
 )
 const operationsKey = Symbol('agencyClientGodModeOperations')
 
-type AgencyClientMutationKind = 'client' | 'crm-settings'
+type AgencyClientMutationKind = 'create' | 'client' | 'crm-settings'
 type AgencyClientOperations = Partial<Record<AgencyClientMutationKind, GodModeTransactionOperation>>
 
 function operations(event: H3Event): AgencyClientOperations {
@@ -38,9 +39,13 @@ function operationFor(event: H3Event, kind: AgencyClientMutationKind): GodModeTr
   const existing = store[kind]
   if (existing) return existing
 
-  const mutationName = kind === 'client' ? 'client update' : 'client CRM settings update'
+  const mutationName = kind === 'create'
+    ? 'client creation'
+    : kind === 'client'
+      ? 'client update'
+      : 'client CRM settings update'
   const operation = defineGodModeTransactionOperation({
-    routeOrTool: `PUT ${getRequestURL(event).pathname}`,
+    routeOrTool: `${kind === 'create' ? 'POST' : 'PUT'} ${getRequestURL(event).pathname}`,
     mutationName,
     missingResultMessage: `God mode ${mutationName} did not produce a durable result`,
     retryableInProgress: true
@@ -81,6 +86,10 @@ export function isAgencyClientUpdatePath(path: string): boolean {
   return CLIENT_UPDATE_ROUTE.test(path)
 }
 
+export function isAgencyClientCreatePath(path: string): boolean {
+  return path === CLIENT_CREATE_ROUTE
+}
+
 export function isAgencyClientCrmSettingsUpdatePath(path: string): boolean {
   return CLIENT_CRM_SETTINGS_UPDATE_ROUTE.test(path)
 }
@@ -93,6 +102,14 @@ export async function executeGodModeAgencyClientUpdate<T extends { id: string }>
   return await execute(event, 'client', mutate, replay)
 }
 
+export async function executeGodModeAgencyClientCreate<T extends { id: string }>(
+  event: H3Event,
+  mutate: (db: GodModeTransactionDb) => Promise<T>,
+  replay: (db: GodModeTransactionDb, resultReference: string) => Promise<T>
+): Promise<T> {
+  return await execute(event, 'create', mutate, replay)
+}
+
 export async function executeGodModeAgencyClientCrmSettingsUpdate<T extends { id: string }>(
   event: H3Event,
   mutate: (db: GodModeTransactionDb) => Promise<T>,
@@ -102,6 +119,12 @@ export async function executeGodModeAgencyClientCrmSettingsUpdate<T extends { id
 }
 
 export function registerGodModeAgencyClientMutationFamilies(): () => void {
+  const unregisterCreate = registerGodModeMutationFamily({
+    family: 'agency-client-create',
+    method: 'POST',
+    matchesPath: isAgencyClientCreatePath,
+    prepare: event => prepare(event, 'create')
+  })
   const unregisterClient = registerGodModeMutationFamily({
     family: 'agency-client-update',
     method: 'PUT',
@@ -117,5 +140,6 @@ export function registerGodModeAgencyClientMutationFamilies(): () => void {
   return () => {
     unregisterCrm()
     unregisterClient()
+    unregisterCreate()
   }
 }

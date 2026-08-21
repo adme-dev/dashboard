@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { H3Event } from 'h3'
 
 import {
+  isAgencyClientCreatePath,
   isAgencyClientCrmSettingsUpdatePath,
   isAgencyClientUpdatePath,
   registerGodModeAgencyClientMutationFamilies
@@ -17,9 +18,9 @@ const CLIENT_ROUTE = `/api/agency/clients/${CLIENT_ID}`
 const CRM_ROUTE = `${CLIENT_ROUTE}/crm-settings`
 const ACTOR_ID = '11111111-1111-4111-8111-111111111111'
 
-function event(path: string): H3Event {
+function event(path: string, method = 'PUT'): H3Event {
   const request = {
-    method: 'PUT',
+    method,
     body: { name: 'Northern Motor Group' },
     context: { user: { id: ACTOR_ID } },
     node: {
@@ -35,14 +36,16 @@ function event(path: string): H3Event {
     actorUserId: ACTOR_ID,
     correlationId: '22222222-2222-4222-8222-222222222222',
     sessionDigest: 'a'.repeat(64),
-    routeOrTool: `PUT ${path}`,
+    routeOrTool: `${method} ${path}`,
     emergencyDisabled: false
   })
   return request
 }
 
 describe('agency client God mode mutation boundary', () => {
-  it('matches only the two exact client settings mutations', () => {
+  it('matches only the exact client create and settings mutations', () => {
+    expect(isAgencyClientCreatePath('/api/agency/clients')).toBe(true)
+    expect(isAgencyClientCreatePath(`${CLIENT_ROUTE}/extra`)).toBe(false)
     expect(isAgencyClientUpdatePath(CLIENT_ROUTE)).toBe(true)
     expect(isAgencyClientUpdatePath(CRM_ROUTE)).toBe(false)
     expect(isAgencyClientCrmSettingsUpdatePath(CRM_ROUTE)).toBe(true)
@@ -51,12 +54,13 @@ describe('agency client God mode mutation boundary', () => {
   })
 
   it.each([
-    [CLIENT_ROUTE, 'client update'],
-    [CRM_ROUTE, 'client CRM settings update']
-  ])('requires a stable idempotency key before admitting %s', async (path, mutationName) => {
+    ['/api/agency/clients', 'POST', 'client creation'],
+    [CLIENT_ROUTE, 'PUT', 'client update'],
+    [CRM_ROUTE, 'PUT', 'client CRM settings update']
+  ])('requires a stable idempotency key before admitting %s', async (path, method, mutationName) => {
     const unregister = registerGodModeAgencyClientMutationFamilies()
     try {
-      await expect(prepareRegisteredGodModeMutation(event(path))).rejects.toMatchObject({
+      await expect(prepareRegisteredGodModeMutation(event(path, method))).rejects.toMatchObject({
         statusCode: 428,
         statusMessage: `A stable Idempotency-Key header is required for God mode ${mutationName}`
       })
@@ -65,11 +69,13 @@ describe('agency client God mode mutation boundary', () => {
     }
   })
 
-  it('routes both handlers through the transaction-bound coordinator and registers the families', () => {
+  it('routes all handlers through the transaction-bound coordinator and registers the families', () => {
+    const createRoute = readFileSync('server/api/agency/clients/index.post.ts', 'utf8')
     const clientRoute = readFileSync('server/api/agency/clients/[id].put.ts', 'utf8')
     const crmRoute = readFileSync('server/api/agency/clients/[id]/crm-settings.put.ts', 'utf8')
     const plugin = readFileSync('server/plugins/godModeExecution.ts', 'utf8')
 
+    expect(createRoute).toContain('executeGodModeAgencyClientCreate')
     expect(clientRoute).toContain('executeGodModeAgencyClientUpdate')
     expect(crmRoute).toContain('executeGodModeAgencyClientCrmSettingsUpdate')
     expect(plugin).toContain('registerGodModeAgencyClientMutationFamilies()')

@@ -3,8 +3,8 @@
  * POST /api/agency/clients
  */
 
-import { queryOne } from '~~/server/utils/db'
 import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { executeGodModeAgencyClientCreate } from '~~/server/utils/clients/godModeMutations'
 
 interface CreateClientBody {
   name: string
@@ -54,39 +54,46 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check for duplicate name
-    const existing = await queryOne(
-      `SELECT id FROM agency_clients WHERE LOWER(name) = LOWER($1)`,
-      [body.name.trim()]
-    )
-
-    if (existing) {
-      throw createError({
-        statusCode: 409,
-        statusMessage: 'A client with this name already exists'
-      })
-    }
-
-    const client = await queryOne(`
-      INSERT INTO agency_clients (
-        name, billing_type, retainer_amount, payment_terms,
-        hourly_rate, media_commission_rate, notes,
-        contact_email, contact_phone, address, reporting_timezone, is_active
+    const client = await executeGodModeAgencyClientCreate(event, async (db) => {
+      const existing = await db.query(
+        `SELECT id FROM agency_clients WHERE LOWER(name) = LOWER($1)`,
+        [body.name.trim()]
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
-      RETURNING *
-    `, [
-      body.name.trim(),
-      body.billingType || 'project',
-      body.retainerAmount || null,
-      body.paymentTerms || 30,
-      body.hourlyRate || null,
-      body.mediaCommissionRate || null,
-      body.notes?.trim() || null,
-      body.contactEmail?.trim() || null,
-      body.contactPhone?.trim() || null,
-      body.address?.trim() || null,
-      body.reportingTimezone || 'Australia/Brisbane'
-    ])
+      if (existing.rows[0]) {
+        throw createError({
+          statusCode: 409,
+          statusMessage: 'A client with this name already exists'
+        })
+      }
+
+      const inserted = await db.query(`
+        INSERT INTO agency_clients (
+          name, billing_type, retainer_amount, payment_terms,
+          hourly_rate, media_commission_rate, notes,
+          contact_email, contact_phone, address, reporting_timezone, is_active
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
+        RETURNING *
+      `, [
+        body.name.trim(),
+        body.billingType || 'project',
+        body.retainerAmount || null,
+        body.paymentTerms || 30,
+        body.hourlyRate || null,
+        body.mediaCommissionRate || null,
+        body.notes?.trim() || null,
+        body.contactEmail?.trim() || null,
+        body.contactPhone?.trim() || null,
+        body.address?.trim() || null,
+        body.reportingTimezone || 'Australia/Brisbane'
+      ])
+      return inserted.rows[0]
+    }, async (db, resultReference) => {
+      const replayed = await db.query(`SELECT * FROM agency_clients WHERE id = $1`, [resultReference])
+      const row = replayed.rows[0]
+      if (!row) throw new Error('Replayed client no longer exists')
+      return row
+    })
 
     return {
       id: client.id,
