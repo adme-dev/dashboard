@@ -6,6 +6,7 @@ import { registerGodModeCatalogSourceMutationFamily } from '~~/server/utils/crm/
 import { registerGodModeGoogleConversionActionMutationFamily } from '~~/server/utils/measurement/googleConversionActionGodMode'
 import { registerGodModeDealerFeedMutationFamilies } from '~~/server/utils/feeds/godModeMutations'
 import { registerGodModeSocialAccountMapMutationFamily } from '~~/server/utils/social/accountMapGodMode'
+import { registerGodModeGoogleProfileAccountDiscoveryMutationFamily } from '~~/server/utils/social/googleProfileAccountDiscoveryGodMode'
 import { registerGodModeSocialPublishingAccountMutationFamilies } from '~~/server/utils/social/publishingAccountGodMode'
 import { registerGodModeTrackingSiteMutationFamily } from '~~/server/utils/tracking/godModeMutations'
 import { prepareGodModeBannerRender } from '~~/server/utils/banner/godModeRender'
@@ -21,6 +22,7 @@ registerGodModeSocialPublishingAccountMutationFamilies()
 registerGodModeAgencyClientMutationFamilies()
 registerGodModeTrackingSiteMutationFamily()
 registerGodModeGoogleConversionActionMutationFamily()
+registerGodModeGoogleProfileAccountDiscoveryMutationFamily()
 registerGodModeMutationFamily({
   family: 'banner-render-enqueue',
   method: 'POST',

@@ -1,4 +1,10 @@
 import { execute, queryOne, transaction } from '~~/server/utils/db'
+import {
+  getCustomerInfo,
+  listAccessibleCustomers,
+  listClientAccounts,
+  type GoogleAdsCustomer
+} from '~~/server/utils/googleAdsClient'
 import { decryptToken, encryptToken } from '~~/server/utils/tokenCrypto'
 
 const OAUTH_ATTEMPT_TTL_MS = 10 * 60 * 1000
@@ -266,6 +272,156 @@ export interface GoogleDiscoveredAccount {
   currencyCode: string
   descriptiveName?: string | null
   managerCustomerId: string | null
+}
+
+interface FindGoogleProfileAccountInput {
+  accessToken: string
+  developerToken: string
+  targetCustomerId: string
+  profileMetadata: unknown
+}
+
+interface FindGoogleProfileAccountDeps {
+  listAccessibleCustomers?: typeof listAccessibleCustomers
+  listClientAccounts?: typeof listClientAccounts
+  getCustomerInfo?: typeof getCustomerInfo
+}
+
+function normalizedCustomerId(value: unknown): string | null {
+  const digits = String(value ?? '').replace(/\D/g, '')
+  return /^\d{10}$/.test(digits) ? digits : null
+}
+
+function metadataManagerIds(metadata: unknown): string[] {
+  if (!metadata || typeof metadata !== 'object') return []
+  const values = (metadata as { managerCustomerIds?: unknown }).managerCustomerIds
+  if (!Array.isArray(values)) return []
+  return Array.from(new Set(values.map(normalizedCustomerId).filter((id): id is string => Boolean(id))))
+}
+
+export async function findGoogleProfileAccount(
+  input: FindGoogleProfileAccountInput,
+  deps: FindGoogleProfileAccountDeps = {}
+): Promise<GoogleDiscoveredAccount | null> {
+  const targetCustomerId = normalizedCustomerId(input.targetCustomerId)
+  if (!targetCustomerId) throw new Error('Google Ads customer ID is invalid')
+
+  const loadAccessibleCustomers = deps.listAccessibleCustomers || listAccessibleCustomers
+  const loadClientAccounts = deps.listClientAccounts || listClientAccounts
+  const loadCustomerInfo = deps.getCustomerInfo || getCustomerInfo
+  const accessibleCustomerIds = (await loadAccessibleCustomers(
+    input.accessToken,
+    input.developerToken
+  )).map(normalizedCustomerId).filter((id): id is string => Boolean(id))
+
+  for (const managerCustomerId of metadataManagerIds(input.profileMetadata)) {
+    let children: GoogleAdsCustomer[]
+    try {
+      children = await loadClientAccounts(
+        managerCustomerId,
+        input.accessToken,
+        input.developerToken
+      )
+    } catch {
+      continue
+    }
+    const match = children.find(account => normalizedCustomerId(account.customerId) === targetCustomerId)
+    if (match) return { ...match, customerId: targetCustomerId, managerCustomerId }
+  }
+
+  if (!accessibleCustomerIds.includes(targetCustomerId)) return null
+  const direct = await loadCustomerInfo(
+    targetCustomerId,
+    input.accessToken,
+    input.developerToken
+  )
+  return direct
+    ? { ...direct, customerId: targetCustomerId, managerCustomerId: null }
+    : null
+}
+
+interface LinkGoogleCredentialProfileAccountInput {
+  profileId: string
+  userId: string
+  tokenExpiresAt: Date
+  scopes: string[]
+  account: GoogleDiscoveredAccount
+}
+
+interface LinkGoogleCredentialProfileAccountDeps {
+  runTransaction?: GoogleProfileTransactionRunner
+}
+
+export async function linkGoogleCredentialProfileAccount(
+  input: LinkGoogleCredentialProfileAccountInput,
+  deps: LinkGoogleCredentialProfileAccountDeps = {}
+): Promise<{
+  connectionId: string
+  accountId: string
+  accountName: string
+  managerCustomerId: string | null
+}> {
+  const runTransaction = deps.runTransaction || transaction as unknown as GoogleProfileTransactionRunner
+  return await runTransaction(async (db) => {
+    const connectionResult = await db.query(
+      `INSERT INTO social_connections (
+         platform, account_id, account_name, access_token, refresh_token,
+         token_expires_at, scopes, status, metadata, connected_by,
+         google_credential_profile_id
+       )
+       VALUES ('google', $1, $2, NULL, NULL, $3, $4, 'active', $5, $6, $7)
+       ON CONFLICT (platform, account_id)
+       DO UPDATE SET
+         account_name = EXCLUDED.account_name,
+         access_token = NULL,
+         refresh_token = NULL,
+         token_expires_at = EXCLUDED.token_expires_at,
+         scopes = EXCLUDED.scopes,
+         status = 'active',
+         metadata = COALESCE(social_connections.metadata, '{}'::jsonb) || EXCLUDED.metadata,
+         connected_by = EXCLUDED.connected_by,
+         google_credential_profile_id = EXCLUDED.google_credential_profile_id,
+         updated_at = NOW()
+       WHERE social_connections.google_credential_profile_id IS NULL
+          OR social_connections.google_credential_profile_id = EXCLUDED.google_credential_profile_id
+       RETURNING id`,
+      [
+        input.account.customerId,
+        input.account.name,
+        input.tokenExpiresAt,
+        input.scopes,
+        JSON.stringify({
+          currencyCode: input.account.currencyCode,
+          descriptiveName: input.account.descriptiveName || null,
+          managerCustomerId: input.account.managerCustomerId,
+          google_login_customer_id: input.account.managerCustomerId
+        }),
+        input.userId,
+        input.profileId
+      ]
+    )
+    const connectionId = connectionResult.rows[0]?.id as string | undefined
+    if (!connectionId) throw new Error('Unable to link Google Ads account')
+
+    await db.query(
+      `INSERT INTO google_credential_profile_accounts (
+         profile_id, connection_id, manager_customer_id
+       )
+       VALUES ($1, $2, $3)
+       ON CONFLICT (profile_id, connection_id)
+       DO UPDATE SET
+         manager_customer_id = EXCLUDED.manager_customer_id,
+         discovered_at = NOW()`,
+      [input.profileId, connectionId, input.account.managerCustomerId]
+    )
+
+    return {
+      connectionId,
+      accountId: input.account.customerId,
+      accountName: input.account.name,
+      managerCustomerId: input.account.managerCustomerId
+    }
+  })
 }
 
 interface StoreGoogleCredentialProfileInput {
