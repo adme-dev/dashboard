@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { storeGoogleCredentialProfile } from '~~/server/utils/googleCredentialProfiles'
+import {
+  linkGoogleCredentialProfileAccount,
+  storeGoogleCredentialProfile
+} from '~~/server/utils/googleCredentialProfiles'
 
 describe('storeGoogleCredentialProfile', () => {
   it('encrypts tokens once and preserves existing connection identity while linking profile membership', async () => {
@@ -58,5 +61,55 @@ describe('storeGoogleCredentialProfile', () => {
     })
     expect(JSON.stringify(queries)).not.toContain('access-secret')
     expect(JSON.stringify(queries)).not.toContain('refresh-secret')
+  })
+})
+
+describe('linkGoogleCredentialProfileAccount', () => {
+  it('adds a newly discovered customer to an existing profile without replacing its client mapping', async () => {
+    const queries: Array<{ sql: string, params: unknown[] }> = []
+    const db = {
+      query: vi.fn(async (sql: string, params: unknown[]) => {
+        queries.push({ sql, params })
+        if (sql.includes('INSERT INTO social_connections')) {
+          return { rows: [{ id: 'connection-knox' }] }
+        }
+        return { rows: [] }
+      })
+    }
+    const runTransaction = vi.fn(async (callback: (client: typeof db) => Promise<unknown>) => callback(db))
+
+    await expect(linkGoogleCredentialProfileAccount({
+      profileId: 'profile-1',
+      userId: 'user-1',
+      tokenExpiresAt: new Date('2026-08-22T00:00:00.000Z'),
+      scopes: ['https://www.googleapis.com/auth/adwords'],
+      account: {
+        customerId: '3892176492',
+        name: 'Knox LDV',
+        currencyCode: 'AUD',
+        descriptiveName: 'Knox LDV',
+        managerCustomerId: '5250473322'
+      }
+    }, { runTransaction })).resolves.toEqual({
+      connectionId: 'connection-knox',
+      accountId: '3892176492',
+      accountName: 'Knox LDV',
+      managerCustomerId: '5250473322'
+    })
+
+    const connection = queries.find(query => query.sql.includes('INSERT INTO social_connections'))
+    expect(connection?.sql).toContain('ON CONFLICT (platform, account_id)')
+    expect(connection?.sql).not.toContain('client_id = EXCLUDED.client_id')
+    expect(connection?.sql).toContain(
+      'social_connections.google_credential_profile_id = EXCLUDED.google_credential_profile_id'
+    )
+    expect(connection?.params.slice(0, 2)).toEqual(['3892176492', 'Knox LDV'])
+    expect(JSON.parse(String(connection?.params[4]))).toEqual({
+      currencyCode: 'AUD',
+      descriptiveName: 'Knox LDV',
+      managerCustomerId: '5250473322',
+      google_login_customer_id: '5250473322'
+    })
+    expect(queries.some(query => query.sql.includes('INSERT INTO google_credential_profile_accounts'))).toBe(true)
   })
 })
