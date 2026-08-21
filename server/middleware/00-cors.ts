@@ -34,6 +34,7 @@ export default defineEventHandler((event) => {
   const origins = allowedOrigins()
   const isPublicTrackingEndpoint = pathname === '/api/public/track'
     || pathname === '/api/public/lead-intent'
+    || pathname.startsWith('/api/public/lead-capture-test/')
   const isAllowed = isPublicTrackingEndpoint || origins.has(origin)
 
   if (!isAllowed) return

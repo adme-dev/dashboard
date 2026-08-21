@@ -43,6 +43,10 @@ export interface IngestLeadInput {
     intentId: string
     reservationToken: string
   }
+  publishConversion?: boolean
+  publishBrowserConfirmation?: boolean
+  conversionEventName?: 'lead_created' | 'web_conversion'
+  enquiryType?: 'stock' | 'finance' | 'test_drive' | 'contact' | 'model_variant' | null
 }
 
 export type IngestLeadResult
@@ -50,7 +54,7 @@ export type IngestLeadResult
     | {
       status: 'created'
       leadId: string
-      outbox: AppendCanonicalConversionEventResult
+      outbox: AppendCanonicalConversionEventResult | null
       browserConfirmationStored: boolean
     }
 
@@ -69,6 +73,12 @@ function optionalAttribution(
 ): string | null {
   const candidate = value?.[key]?.trim()
   return candidate && candidate.length <= max ? candidate : null
+}
+
+function canonicalEnquiryType(value: string | undefined) {
+  return ['stock', 'finance', 'test_drive', 'contact', 'model_variant'].includes(value ?? '')
+    ? value as 'stock' | 'finance' | 'test_drive' | 'contact' | 'model_variant'
+    : null
 }
 
 function canonicalAttribution(lead: InsertLeadInput) {
@@ -190,25 +200,34 @@ export function createLeadIntakeService(
           })
         }
 
-        const outbox = await deps.appendOutbox(db, {
-          clientId: input.lead.client_id,
-          eventName: 'lead_created',
-          sourceSystem: 'zero_lead',
-          sourceEntityType: 'lead',
-          sourceEntityId: leadId,
-          sourceEventId: await sourceEventId(input.lead),
-          occurredAt: input.lead.submitted_at,
-          consentDecision: input.consentDecision,
-          attribution: canonicalAttribution(input.lead)
-        })
+        const enquiryType = input.enquiryType
+          ?? (input.conversionEventName === 'web_conversion'
+            ? canonicalEnquiryType(input.lead.field_data.enquiry_type)
+            : null)
+        const outbox = input.publishConversion === false
+          ? null
+          : await deps.appendOutbox(db, {
+              clientId: input.lead.client_id,
+              eventName: input.conversionEventName ?? 'lead_created',
+              ...(enquiryType ? { enquiryType } : {}),
+              sourceSystem: 'zero_lead',
+              sourceEntityType: 'lead',
+              sourceEntityId: leadId,
+              sourceEventId: await sourceEventId(input.lead),
+              occurredAt: input.lead.submitted_at,
+              consentDecision: input.consentDecision,
+              attribution: canonicalAttribution(input.lead)
+            })
 
-        const browserConfirmationStored = await deps.appendBrowserConfirmation(db, {
-          clientId: input.lead.client_id,
-          leadId,
-          browserEventId: optionalAttribution(input.lead.attribution, 'browserEventId', 128),
-          source: input.lead.source,
-          occurredAt: input.lead.submitted_at
-        })
+        const browserConfirmationStored = input.publishBrowserConfirmation === false
+          ? false
+          : await deps.appendBrowserConfirmation(db, {
+              clientId: input.lead.client_id,
+              leadId,
+              browserEventId: optionalAttribution(input.lead.attribution, 'browserEventId', 128),
+              source: input.lead.source,
+              occurredAt: input.lead.submitted_at
+            })
 
         return {
           status: 'created' as const,

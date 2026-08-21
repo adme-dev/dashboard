@@ -37,6 +37,55 @@ const Vehicle = z.object({
   url: z.string().trim().url().max(2048).optional()
 }).optional()
 
+export const CanonicalEnquiryTypeSchema = z.enum([
+  'stock', 'finance', 'test_drive', 'contact', 'model_variant'
+])
+
+export type CanonicalEnquiryType = z.infer<typeof CanonicalEnquiryTypeSchema>
+
+export const LeadSubmittedV1Schema = z.object({
+  type: z.literal('lead.submitted.v1'),
+  id: z.string().trim().min(1).max(255),
+  occurredAt: z.string().datetime({ offset: true }),
+  provider: z.string().trim().min(1).max(100)
+    .regex(/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/),
+  source: z.enum(['webhook', 'meta', 'google', 'email', 'manual', 'csv']),
+  clientReference: z.string().trim().min(1).max(255).optional(),
+  enquiryType: CanonicalEnquiryTypeSchema.optional(),
+  form: z.object({
+    id: z.string().trim().min(1).max(255).optional(),
+    name: z.string().trim().min(1).max(500).optional(),
+    providerType: z.string().trim().min(1).max(255).optional()
+  }).optional(),
+  customer: z.object({
+    firstName: z.string().trim().min(1).max(200).optional(),
+    lastName: z.string().trim().min(1).max(200).optional(),
+    fullName: z.string().trim().min(1).max(500).optional(),
+    email: z.string().trim().email().max(320).optional(),
+    phone: z.string().trim().min(3).max(64).optional()
+  }).optional(),
+  vehicle: z.object({
+    stockNumber: z.string().trim().min(1).max(128).optional(),
+    vin: z.string().trim().min(1).max(64).optional(),
+    year: z.union([z.string().trim().max(8), z.number().int().min(1886).max(2200)]).optional(),
+    make: z.string().trim().min(1).max(128).optional(),
+    model: z.string().trim().min(1).max(128).optional(),
+    variant: z.string().trim().min(1).max(256).optional(),
+    condition: z.string().trim().min(1).max(64).optional(),
+    price: z.union([z.string().trim().max(64), z.number().finite().nonnegative()]).optional(),
+    url: z.string().trim().url().max(2048).optional()
+  }).optional(),
+  fields: FieldMap.default({}),
+  attribution: AttributionMap.optional(),
+  consentDecision: z.enum(['granted', 'denied', 'unknown']).default('unknown'),
+  test: z.discriminatedUnion('isTest', [
+    z.object({ isTest: z.literal(true), runId: z.string().uuid() }),
+    z.object({ isTest: z.literal(false) })
+  ]).default({ isTest: false })
+})
+
+export type LeadSubmittedV1 = z.infer<typeof LeadSubmittedV1Schema>
+
 /**
  * Versioned, provider-neutral envelope accepted by the authenticated website
  * webhook. Existing fields-only callers remain valid; new integrations should
@@ -262,5 +311,56 @@ export function normalizeDealerLeadWebhookBody(
     promoteToCrm: input.promote_to_crm,
     submittedKey: input.key,
     requestedSource: input.source
+  }
+}
+
+export function normalizeLeadSubmittedV1(input: LeadSubmittedV1): NormalizedDealerLeadWebhookBody & {
+  enquiryType: CanonicalEnquiryType | null
+  testRunId: string | null
+} {
+  return {
+    ...normalizeDealerLeadWebhookBody({
+      key: 'standard-webhook',
+      schema_version: 1,
+      provider: input.provider,
+      lead_id: input.clientReference ?? input.id,
+      form_id: input.form?.id,
+      form_name: input.form?.name,
+      source: input.source === 'email' ? 'webhook' : input.source,
+      customer: input.customer
+        ? {
+            first_name: input.customer.firstName,
+            last_name: input.customer.lastName,
+            full_name: input.customer.fullName,
+            email: input.customer.email,
+            phone: input.customer.phone
+          }
+        : undefined,
+      vehicle: input.vehicle
+        ? {
+            stock_number: input.vehicle.stockNumber,
+            vin: input.vehicle.vin,
+            year: input.vehicle.year,
+            make: input.vehicle.make,
+            model: input.vehicle.model,
+            variant: input.vehicle.variant,
+            condition: input.vehicle.condition,
+            price: input.vehicle.price,
+            url: input.vehicle.url
+          }
+        : undefined,
+      fields: {
+        ...input.fields,
+        ...(input.form?.providerType ? { provider_form_type: input.form.providerType } : {}),
+        ...(input.enquiryType ? { enquiry_type: input.enquiryType } : {})
+      },
+      attribution: input.attribution,
+      consent_decision: input.consentDecision,
+      submitted_at: input.occurredAt,
+      is_test: input.test.isTest,
+      promote_to_crm: true
+    }),
+    enquiryType: input.enquiryType ?? null,
+    testRunId: input.test.isTest ? input.test.runId : null
   }
 }

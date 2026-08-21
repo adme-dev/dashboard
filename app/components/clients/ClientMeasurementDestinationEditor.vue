@@ -75,6 +75,7 @@ const selectedCapabilities = reactive<Record<string, boolean>>({})
 const capabilityOrigins = reactive<Record<string, ManagementOrigin>>({})
 const activeMappings = reactive<Record<string, boolean>>({})
 const providerEventNames = reactive<Record<string, string>>({})
+const mappingEnquiryTypes = reactive<Record<string, string>>({})
 const reason = ref('')
 const accounts = ref<Record<Platform, ConnectedAccount[]>>({ meta: [], google_data_manager: [] })
 const accountsPending = ref(true)
@@ -92,6 +93,25 @@ const apiFetch = $fetch as <T>(
   options?: { method?: 'POST', body?: unknown }
 ) => Promise<T>
 
+const platformItems = [
+  { label: 'Meta', value: 'meta' },
+  { label: 'Google Data Manager', value: 'google_data_manager' }
+]
+const capabilityOriginItems = [
+  { label: 'Zero', value: 'zero' },
+  { label: 'Google Tag Manager', value: 'gtm' },
+  { label: 'Partner', value: 'partner' },
+  { label: 'External/client', value: 'external' }
+]
+const enquiryTypeItems = [
+  { label: 'Aggregate (all website enquiries)', value: 'aggregate' },
+  { label: 'Stock enquiry', value: 'stock' },
+  { label: 'Finance application', value: 'finance' },
+  { label: 'Test drive', value: 'test_drive' },
+  { label: 'Contact enquiry', value: 'contact' },
+  { label: 'Model / variant enquiry', value: 'model_variant' }
+]
+
 const currentCapabilities = computed(() => capabilityDefinitions[platform.value])
 const currentAccounts = computed(() => accounts.value[platform.value].filter(account => (
   ['connected', 'active', 'healthy'].includes(account.status.toLowerCase())
@@ -101,6 +121,14 @@ const selectedMappingRows = computed(() => mappingDefinitions.filter(definition 
 const requiresConnection = computed(() => selectedCapabilityRows.value.some(definition => capabilityOrigins[definition.mode] === 'zero'))
 const mappingsComplete = computed(() => selectedMappingRows.value.every(definition => providerEventNames[definition.name]?.trim()))
 const selectedGoogleAction = computed(() => googleActions.value.find(action => action.id === externalDestinationId.value) ?? null)
+const connectedAccountItems = computed(() => currentAccounts.value.map(account => ({
+  label: `${account.accountName} · ${account.accountId}`,
+  value: account.id
+})))
+const googleActionItems = computed(() => googleActions.value.map(action => ({
+  label: `${action.name} · ID ${action.id} · ${action.deliveryMode === 'offline_click' ? 'Offline click' : 'Website tag'}${action.isPrimary ? ' · Primary' : ' · Secondary'}`,
+  value: action.id
+})))
 // Data Manager supports both offline-click actions and WEBPAGE actions used as
 // an additional source. Only the enhanced-leads capability requires UPLOAD_CLICKS.
 const needsOfflineClickAction = computed(() => selectedCapabilityRows.value.some(definition => (
@@ -146,6 +174,7 @@ function resetPlatformState() {
   for (const mapping of mappingDefinitions) {
     activeMappings[mapping.name] = false
     providerEventNames[mapping.name] = ''
+    mappingEnquiryTypes[mapping.name] = 'aggregate'
   }
 }
 
@@ -249,6 +278,9 @@ async function saveDestination() {
           })),
           mappings: selectedMappingRows.value.map(definition => ({
             canonicalEventName: definition.name,
+            enquiryType: definition.name === 'web_conversion' && mappingEnquiryTypes[definition.name] !== 'aggregate'
+              ? mappingEnquiryTypes[definition.name]
+              : null,
             providerEventName: providerEventNames[definition.name].trim(),
             isActive: true
           }))
@@ -287,61 +319,46 @@ void loadAccounts('meta')
     </div>
 
     <div class="mt-5 grid gap-5 md:grid-cols-2">
-      <label class="space-y-1.5 text-sm">
-        <span class="font-medium text-highlighted">Provider</span>
-        <select v-model="platform" class="w-full rounded-md border border-default bg-default px-3 py-2 text-sm">
-          <option value="meta">Meta</option>
-          <option value="google_data_manager">Google Data Manager</option>
-        </select>
-      </label>
+      <UFormField label="Provider">
+        <USelect v-model="platform" :items="platformItems" value-key="value" class="w-full" />
+      </UFormField>
 
-      <label class="space-y-1.5 text-sm">
-        <span class="font-medium text-highlighted">Connected credential source</span>
-        <select
+      <UFormField label="Connected credential source">
+        <USelect
           v-model="socialConnectionId"
           data-testid="measurement-connection"
-          class="w-full rounded-md border border-default bg-default px-3 py-2 text-sm"
+          :items="connectedAccountItems"
+          value-key="value"
+          placeholder="Select connected account"
+          class="w-full"
           :disabled="accountsPending"
-        >
-          <option value="">{{ accountsPending ? 'Loading connected accounts…' : 'Select connected account' }}</option>
-          <option v-for="account in currentAccounts" :key="account.id" :value="account.id">
-            {{ account.accountName }} · {{ account.accountId }}
-          </option>
-        </select>
+        />
         <span v-if="accountError" role="alert" class="flex items-center gap-2 text-xs text-error">
           {{ accountError }}
-          <button type="button" class="font-medium underline" @click="loadAccounts()">
-            Retry
-          </button>
+          <UButton label="Retry" size="xs" variant="link" @click="loadAccounts()" />
         </span>
         <span v-else-if="!accountsPending && !currentAccounts.length" class="text-xs text-warning">No connected account is available for this provider.</span>
-      </label>
+      </UFormField>
 
-      <label class="space-y-1.5 text-sm md:col-span-2">
-        <span class="font-medium text-highlighted">{{ platform === 'meta' ? 'Dataset ID' : 'Conversion Action ID' }}</span>
-        <input
+      <UFormField :label="platform === 'meta' ? 'Dataset ID' : 'Conversion Action ID'" class="md:col-span-2">
+        <UInput
           v-if="platform === 'meta'"
           v-model="externalDestinationId"
           data-testid="measurement-destination-id"
-          type="text"
           maxlength="255"
           placeholder="e.g. 573284833843027"
-          class="w-full rounded-md border border-default bg-default px-3 py-2 font-mono text-sm"
-        >
-        <select
+          class="w-full font-mono"
+        />
+        <USelect
           v-else
           v-model="externalDestinationId"
           data-testid="measurement-destination-id"
-          class="w-full rounded-md border border-default bg-default px-3 py-2 text-sm"
+          :items="googleActionItems"
+          value-key="value"
+          placeholder="Select an enabled conversion action"
+          class="w-full"
           :disabled="!socialConnectionId || googleActionsPending"
-        >
-          <option value="">
-            {{ googleActionsPending ? 'Loading eligible conversion actions…' : 'Select an enabled conversion action' }}
-          </option>
-          <option v-for="action in googleActions" :key="action.id" :value="action.id">
-            {{ action.name }} · ID {{ action.id }} · {{ action.deliveryMode === 'offline_click' ? 'Offline click' : 'Website tag' }}{{ action.isPrimary ? ' · Primary' : ' · Secondary' }}
-          </option>
-        </select>
+        />
         <span v-if="googleActionError" role="alert" class="block text-xs text-error">{{ googleActionError }}</span>
         <span v-else-if="platform === 'google_data_manager' && socialConnectionId && !googleActionsPending && !googleActions.length" class="block text-xs text-warning">
           No enabled WEBPAGE or UPLOAD_CLICKS conversion action is available in this account.
@@ -350,7 +367,7 @@ void loadAccounts('meta')
         <span v-if="platform === 'google_data_manager' && selectedGoogleAction && !googleActionCompatible" class="block text-xs text-error">
           The selected action type does not match the capability owner. Zero-managed delivery requires an Offline click action; GTM-owned tag delivery requires a Website tag action.
         </span>
-      </label>
+      </UFormField>
     </div>
 
     <div class="mt-6 border-t border-default pt-5">
@@ -366,27 +383,20 @@ void loadAccounts('meta')
           :key="capability.mode"
           class="grid gap-3 rounded-lg border border-default bg-elevated/35 p-4 md:grid-cols-[minmax(0,1fr)_14rem] md:items-center"
         >
-          <label class="flex cursor-pointer items-start gap-3">
-            <input
+          <div class="flex items-start gap-3">
+            <UCheckbox
               v-model="selectedCapabilities[capability.mode]"
               :data-testid="`capability-${capability.mode}`"
-              type="checkbox"
-              class="mt-1 size-4 rounded border-default"
-            >
+              class="mt-0.5"
+            />
             <span>
               <span class="block text-sm font-medium text-highlighted">{{ capability.label }}</span>
               <span class="mt-0.5 block text-xs leading-5 text-muted">{{ capability.description }}</span>
             </span>
-          </label>
-          <label v-if="selectedCapabilities[capability.mode]" class="space-y-1 text-xs">
-            <span class="font-medium text-muted">Implementation owner</span>
-            <select v-model="capabilityOrigins[capability.mode]" class="w-full rounded-md border border-default bg-default px-3 py-2 text-sm">
-              <option value="zero">Zero</option>
-              <option value="gtm">Google Tag Manager</option>
-              <option value="partner">Partner</option>
-              <option value="external">External/client</option>
-            </select>
-          </label>
+          </div>
+          <UFormField v-if="selectedCapabilities[capability.mode]" label="Implementation owner">
+            <USelect v-model="capabilityOrigins[capability.mode]" :items="capabilityOriginItems" value-key="value" class="w-full" />
+          </UFormField>
         </div>
       </div>
       <p v-if="requiresConnection && !socialConnectionId" class="mt-3 text-sm text-warning">
@@ -403,25 +413,32 @@ void loadAccounts('meta')
       </p>
       <div class="mt-4 grid gap-3 lg:grid-cols-2">
         <div v-for="mapping in mappingDefinitions" :key="mapping.name" class="rounded-lg border border-default p-3">
-          <label class="flex cursor-pointer items-center gap-3 text-sm font-medium text-highlighted">
-            <input
+          <div class="flex items-center gap-3 text-sm font-medium text-highlighted">
+            <UCheckbox
               v-model="activeMappings[mapping.name]"
               :data-testid="`mapping-${mapping.name}`"
-              type="checkbox"
-              class="size-4 rounded border-default"
-            >
+            />
             {{ mapping.label }}
             <code class="ml-auto text-xs font-normal text-muted">{{ mapping.name }}</code>
-          </label>
-          <input
-            v-if="activeMappings[mapping.name]"
-            v-model="providerEventNames[mapping.name]"
-            :data-testid="`provider-event-${mapping.name}`"
-            type="text"
-            maxlength="255"
-            placeholder="Provider event name"
-            class="mt-3 w-full rounded-md border border-default bg-default px-3 py-2 font-mono text-sm"
-          >
+          </div>
+          <div v-if="activeMappings[mapping.name]" class="mt-3 grid grid-cols-1 gap-3">
+            <UFormField label="Provider event name">
+              <UInput
+                v-model="providerEventNames[mapping.name]"
+                :data-testid="`provider-event-${mapping.name}`"
+                maxlength="255"
+                placeholder="Provider event name"
+                class="w-full font-mono"
+              />
+            </UFormField>
+            <UFormField
+              v-if="mapping.name === 'web_conversion'"
+              label="Enquiry type"
+              help="Choose an exact type when this destination represents one specific website action."
+            >
+              <USelect v-model="mappingEnquiryTypes[mapping.name]" :items="enquiryTypeItems" value-key="value" class="w-full" />
+            </UFormField>
+          </div>
         </div>
       </div>
     </div>
@@ -431,17 +448,16 @@ void loadAccounts('meta')
         <span class="font-medium text-highlighted">Destination delivery remains dormant.</span>
         Saving configuration does not enable sending; validation, privacy approval, live approval, and explicit activation remain separate gates.
       </div>
-      <label class="mt-4 block space-y-1.5 text-sm">
-        <span class="font-medium text-highlighted">Change reason</span>
-        <textarea
+      <UFormField label="Change reason" class="mt-4">
+        <UTextarea
           v-model="reason"
           data-testid="measurement-destination-reason"
-          rows="2"
+          :rows="2"
           maxlength="1000"
           placeholder="Describe the approved destination, evidence source, and intended test"
-          class="w-full resize-y rounded-md border border-default bg-default px-3 py-2 text-sm"
+          class="w-full"
         />
-      </label>
+      </UFormField>
       <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p role="alert" class="text-sm text-error">
           {{ saveError }}

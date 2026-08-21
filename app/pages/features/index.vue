@@ -194,7 +194,7 @@ const categories = [
     iconBg: 'bg-emerald-50 dark:bg-emerald-500/10',
     iconColor: 'text-emerald-600',
     features: [
-      { title: 'Lead Capture & Routing', slug: 'lead-capture-routing', icon: 'i-lucide-inbox', description: 'Real-time inbox for Google Ads, Meta, Zapier/Make/n8n, CSV imports, and manual entry. Per-form rules fan leads out to Slack, email, your CRM, Sheets, and the client portal.' },
+      { title: 'Lead Capture & Routing', slug: 'lead-capture-routing', icon: 'i-lucide-inbox', description: 'Signed first-party and provider gateways, native ad-form ingestion, safe end-to-end tests, and exact routing into one real-time inbox.' },
       { title: 'Xero Integration', slug: 'xero-integration', icon: 'i-lucide-link', description: 'Two-way sync with Xero for invoices, expenses, contacts, and chart of accounts.' },
       { title: 'EOM Engine', slug: 'eom-engine', icon: 'i-lucide-file-spreadsheet', description: 'End-of-month invoice generation with configurable line items, tax, and auto-upload to Xero.' },
       { title: 'Meta Ads Tracking', slug: 'meta-ads-tracking', icon: 'i-lucide-megaphone', description: 'OAuth-connected Meta Ads spend syncing with daily breakdowns and campaign-level budgets.' },

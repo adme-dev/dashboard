@@ -15,6 +15,7 @@ import {
   releaseSubmissionIntentReservation,
   reserveSubmissionIntentForLead
 } from '~~/server/utils/leads/submissionIntent'
+import { leadCaptureTestRepository } from '~~/server/utils/leads/captureTestRepository'
 
 export type LeadCaptureMode = 'analytics_only' | 'capture_only' | 'full_crm'
 
@@ -36,9 +37,31 @@ export async function acceptLead(event: H3Event, input: {
   leadCaptureMode: LeadCaptureMode
   consentDecision?: CanonicalConsentDecision
   runRules?: boolean
+  trustedConnectorId?: string
+  testRunId?: string | null
 }): Promise<AcceptLeadResult> {
   if (input.leadCaptureMode === 'analytics_only') {
     return { status: 'mode_skipped' }
+  }
+
+  const testRunId = input.testRunId ?? input.lead.test_run_id ?? null
+  const isSynthetic = Boolean(input.lead.is_test || testRunId)
+  if (testRunId) {
+    if (!input.trustedConnectorId || !await leadCaptureTestRepository.authorizeCanonicalTest(
+      testRunId,
+      input.trustedConnectorId,
+      input.lead.client_id
+    )) {
+      throw createError({ statusCode: 403, statusMessage: 'Lead capture test is invalid or expired' })
+    }
+    await leadCaptureTestRepository.appendServerEvent({
+      runId: testRunId,
+      connectorId: input.trustedConnectorId,
+      clientId: input.lead.client_id,
+      stage: 'trusted_receipt_accepted',
+      outcome: 'passed',
+      evidenceKey: input.lead.source_lead_id
+    })
   }
 
   const shouldReconcile = input.lead.source !== 'meta'
@@ -46,15 +69,21 @@ export async function acceptLead(event: H3Event, input: {
     && !input.lead.attribution?.browserEventId
   const reservation = shouldReconcile
     ? await reserveSubmissionIntentForLead({
-        clientId: input.lead.client_id,
-        fieldData: input.lead.field_data,
-        submittedAt: input.lead.submitted_at,
-        formId: input.lead.form_id
-      })
+      clientId: input.lead.client_id,
+      fieldData: input.lead.field_data,
+      submittedAt: input.lead.submitted_at,
+      formId: input.lead.form_id,
+      testRunId
+    })
     : null
+  const baseLead = {
+    ...input.lead,
+    is_test: isSynthetic,
+    test_run_id: testRunId
+  }
   const lead = reservation
     ? {
-        ...input.lead,
+        ...baseLead,
         attribution: {
           ...reservation.attribution,
           ...(input.lead.attribution ?? {}),
@@ -63,7 +92,7 @@ export async function acceptLead(event: H3Event, input: {
           reconciliation_confidence: String(reservation.confidence)
         }
       }
-    : input.lead
+    : baseLead
 
   let intake
   try {
@@ -75,7 +104,13 @@ export async function acceptLead(event: H3Event, input: {
             intentId: reservation.intentId,
             reservationToken: reservation.reservationToken
           }
-        : undefined
+        : undefined,
+      publishConversion: !isSynthetic,
+      publishBrowserConfirmation: !isSynthetic,
+      conversionEventName: input.trustedConnectorId ? 'web_conversion' : 'lead_created',
+      enquiryType: input.trustedConnectorId
+        ? canonicalEnquiryType(lead.field_data.enquiry_type)
+        : null
     })
   } catch (error) {
     if (reservation) await releaseSubmissionIntentReservation(reservation)
@@ -86,8 +121,42 @@ export async function acceptLead(event: H3Event, input: {
     return intake
   }
 
+
+  if (testRunId && input.trustedConnectorId) {
+    if (reservation) {
+      await leadCaptureTestRepository.appendServerEvent({
+        runId: testRunId,
+        connectorId: input.trustedConnectorId,
+        clientId: lead.client_id,
+        stage: 'candidate_reconciled',
+        outcome: 'passed',
+        evidenceKey: reservation.intentId
+      })
+    }
+    await leadCaptureTestRepository.appendServerEvent({
+      runId: testRunId,
+      connectorId: input.trustedConnectorId,
+      clientId: lead.client_id,
+      stage: 'canonical_test_lead_stored',
+      outcome: 'passed',
+      evidenceKey: intake.leadId
+    })
+    await leadCaptureTestRepository.appendServerEvent({
+      runId: testRunId,
+      connectorId: input.trustedConnectorId,
+      clientId: lead.client_id,
+      stage: 'destinations_validated',
+      outcome: 'skipped',
+      evidenceKey: 'normal-side-effects-contained',
+      diagnostic: 'Synthetic lead stored; normal routing, CRM, notification, and conversion delivery skipped.'
+    })
+  }
+
+  if (isSynthetic) return { status: 'created', leadId: intake.leadId }
+
   if (
-    intake.outbox.status !== 'profile_not_found'
+    intake.outbox
+    && intake.outbox.status !== 'profile_not_found'
     && intake.outbox.event.outboxStatus === 'pending'
   ) {
     try {
@@ -120,4 +189,10 @@ export async function acceptLead(event: H3Event, input: {
   if (fresh) await notifyOnNewLead(fresh)
 
   return { status: 'created', leadId: intake.leadId }
+}
+
+function canonicalEnquiryType(value: string | undefined) {
+  return ['stock', 'finance', 'test_drive', 'contact', 'model_variant'].includes(value ?? '')
+    ? value as 'stock' | 'finance' | 'test_drive' | 'contact' | 'model_variant'
+    : null
 }

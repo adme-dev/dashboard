@@ -9,6 +9,8 @@ import {
   storeSubmissionIntent,
   SubmissionIntentSchema
 } from '~~/server/utils/leads/submissionIntent'
+import { leadCaptureTestService } from '~~/server/utils/leads/captureTestService'
+import { leadCaptureTestRepository } from '~~/server/utils/leads/captureTestRepository'
 
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
@@ -90,7 +92,41 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    const stored = await storeSubmissionIntent({ site, payload: parsed.data })
+    let testRun = null
+    if (parsed.data.test_context) {
+      if (parsed.data.test_context.run_id.length > 36) {
+        setResponseStatus(event, 422)
+        return { ok: false }
+      }
+      testRun = await leadCaptureTestService.resolveEvidenceContext(
+        parsed.data.test_context.evidence_token,
+        requestOrigin
+      )
+      if (
+        !testRun
+        || testRun.id !== parsed.data.test_context.run_id
+        || testRun.client_id !== site.clientId
+        || (testRun.site_id && testRun.site_id !== site.id)
+      ) {
+        setResponseStatus(event, 403)
+        return { ok: false }
+      }
+    }
+
+    const stored = await storeSubmissionIntent({
+      site,
+      payload: parsed.data,
+      testRunId: testRun?.id ?? null
+    })
+    if (stored && testRun) {
+      await leadCaptureTestRepository.appendEvent({
+        run: testRun,
+        stage: 'candidate_created',
+        outcome: 'passed',
+        evidenceKey: parsed.data.browser_event_id,
+        diagnostic: 'PII-minimised browser submission intent stored.'
+      })
+    }
     setResponseStatus(event, 202)
     return { ok: true, stored }
   } catch (error) {

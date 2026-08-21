@@ -41,6 +41,8 @@ export async function handleQueueMessage(msg: QueueMessage): Promise<void> {
     return
   }
   if (msg.type === 'rules.evaluate' && msg.payload.lead_id) {
+    const lead = await loadLead(msg.payload.lead_id)
+    if (!lead || lead.is_test) return
     const result = await evaluateLead(msg.payload.lead_id)
     // Each insertDelivery already wrote a row; chain a delivery.dispatch per planned id.
     const { enqueueLeadJob } = await import('./queue')
@@ -90,6 +92,10 @@ async function dispatchOne(deliveryId: string, _attempt: number): Promise<void> 
   const lead = await loadLead(claimed.lead_id)
   if (!lead || lead.deleted_at || lead.status === 'spam_suspected') {
     await markSkipped(deliveryId, 'lead_invalid')
+    return
+  }
+  if (lead.is_test) {
+    await markSkipped(deliveryId, 'synthetic_lead')
     return
   }
   const dest = claimed.rule_destination_id

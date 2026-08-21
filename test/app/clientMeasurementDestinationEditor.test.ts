@@ -14,6 +14,37 @@ const stubs = {
   UIcon: {
     props: ['name'],
     template: '<i :data-icon="name" />'
+  },
+  UFormField: {
+    props: ['label', 'help'],
+    template: '<label><span>{{ label }}</span><slot /><small v-if="help">{{ help }}</small></label>'
+  },
+  USelect: {
+    inheritAttrs: false,
+    props: ['modelValue', 'items', 'disabled', 'placeholder'],
+    emits: ['update:modelValue'],
+    template: `<select v-bind="$attrs" :value="modelValue" :disabled="disabled" @change="$emit('update:modelValue', $event.target.value)">
+      <option v-if="placeholder" value="">{{ placeholder }}</option>
+      <option v-for="item in items" :key="item.value" :value="item.value">{{ item.label }}</option>
+    </select>`
+  },
+  UInput: {
+    inheritAttrs: false,
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<input v-bind="$attrs" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)">'
+  },
+  UCheckbox: {
+    inheritAttrs: false,
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<input v-bind="$attrs" type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)">'
+  },
+  UTextarea: {
+    inheritAttrs: false,
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<textarea v-bind="$attrs" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
   }
 }
 
@@ -118,6 +149,7 @@ describe('ClientMeasurementDestinationEditor', () => {
             }],
             mappings: [{
               canonicalEventName: 'lead_qualified',
+              enquiryType: null,
               providerEventName: 'QualifiedLead',
               isActive: true
             }]

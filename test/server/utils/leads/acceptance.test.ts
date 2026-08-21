@@ -9,7 +9,9 @@ const mocks = vi.hoisted(() => ({
   markCrmPromotionFailure: vi.fn(),
   reserveSubmissionIntentForLead: vi.fn(),
   releaseSubmissionIntentReservation: vi.fn(),
-  loadLead: vi.fn()
+  loadLead: vi.fn(),
+  authorizeCanonicalTest: vi.fn(),
+  appendServerEvent: vi.fn()
 }))
 
 vi.mock('~~/server/utils/db', () => ({
@@ -44,6 +46,13 @@ vi.mock('~~/server/utils/leads/crmPromotionState', () => ({
 vi.mock('~~/server/utils/leads/submissionIntent', () => ({
   reserveSubmissionIntentForLead: mocks.reserveSubmissionIntentForLead,
   releaseSubmissionIntentReservation: mocks.releaseSubmissionIntentReservation
+}))
+
+vi.mock('~~/server/utils/leads/captureTestRepository', () => ({
+  leadCaptureTestRepository: {
+    authorizeCanonicalTest: mocks.authorizeCanonicalTest,
+    appendServerEvent: mocks.appendServerEvent
+  }
 }))
 
 const { acceptLead } = await import('../../../../server/utils/leads/acceptance')
@@ -135,6 +144,26 @@ describe('canonical lead acceptance side effects', () => {
       status: 'duplicate'
     })
 
+    expect(mocks.publishEvent).not.toHaveBeenCalled()
+    expect(mocks.enqueueLeadJob).not.toHaveBeenCalled()
+    expect(mocks.notifyOnNewLead).not.toHaveBeenCalled()
+    expect(mocks.markCrmPromotionQueued).not.toHaveBeenCalled()
+  })
+
+  it('stores a synthetic lead but suppresses every normal downstream side effect', async () => {
+    const synthetic = input('full_crm')
+    synthetic.lead.is_test = true
+
+    await expect(acceptLead({} as any, synthetic)).resolves.toEqual({
+      status: 'created',
+      leadId: 'lead-1'
+    })
+
+    expect(mocks.ingest).toHaveBeenCalledWith(expect.objectContaining({
+      publishConversion: false,
+      publishBrowserConfirmation: false,
+      lead: expect.objectContaining({ is_test: true })
+    }))
     expect(mocks.publishEvent).not.toHaveBeenCalled()
     expect(mocks.enqueueLeadJob).not.toHaveBeenCalled()
     expect(mocks.notifyOnNewLead).not.toHaveBeenCalled()

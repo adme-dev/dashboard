@@ -31,6 +31,12 @@ export default defineEventHandler(async (event) => {
               FROM lead_webhook_endpoints endpoint
              WHERE endpoint.client_id = client.id
           )
+          OR EXISTS (
+            SELECT 1
+              FROM lead_connectors connector
+             WHERE connector.client_id = client.id
+               AND connector.status <> 'disabled'
+          )
         )`
   )
 

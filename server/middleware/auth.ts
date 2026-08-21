@@ -30,6 +30,8 @@ const publicRoutes = [
   // sites have no session cookie; tenancy is enforced by the embedded write key
   // (resolveSiteByWriteKey) + soft Origin allowlist inside the handler.
   '/api/public/track',
+  '/api/public/lead-intent',
+  '/api/public/lead-capture-test/',
   '/api/xero/callback',
   '/api/_nuxt_icon',
   '/_nuxt',

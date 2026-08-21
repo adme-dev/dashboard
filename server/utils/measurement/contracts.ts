@@ -26,6 +26,9 @@ export const CanonicalEventNameSchema = z.enum([
   'purchase',
   'web_conversion'
 ])
+export const MeasurementEnquiryTypeSchema = z.enum([
+  'stock', 'finance', 'test_drive', 'contact', 'model_variant'
+])
 
 export const MeasurementPlatformSchema = z.enum(['meta', 'google_data_manager'])
 export const CapabilityModeSchema = z.enum([
@@ -282,6 +285,7 @@ export const DestinationCapabilityConfigurationSchema = z.strictObject({
 
 export const ConversionEventMappingConfigurationSchema = z.strictObject({
   canonicalEventName: CanonicalEventNameSchema,
+  enquiryType: MeasurementEnquiryTypeSchema.nullable().optional(),
   providerEventName: z.string().trim().min(1).max(255),
   isActive: z.boolean().default(false)
 })
@@ -295,7 +299,7 @@ const DestinationConfigurationInputSchema = z.strictObject({
     .min(1)
     .max(CapabilityModeSchema.options.length),
   mappings: z.array(ConversionEventMappingConfigurationSchema)
-    .max(CanonicalEventNameSchema.options.length)
+    .max(CanonicalEventNameSchema.options.length * 6)
     .default([])
 }).superRefine((destination, ctx) => {
   const capabilityModes = new Set<string>()
@@ -338,14 +342,15 @@ const DestinationConfigurationInputSchema = z.strictObject({
 
   const canonicalNames = new Set<string>()
   destination.mappings.forEach((mapping, index) => {
-    if (canonicalNames.has(mapping.canonicalEventName)) {
+    const key = `${mapping.canonicalEventName}:${mapping.enquiryType ?? '__aggregate__'}`
+    if (canonicalNames.has(key)) {
       ctx.addIssue({
         code: 'custom',
         path: ['mappings', index, 'canonicalEventName'],
         message: 'Canonical event mappings must be unique within a destination'
       })
     }
-    canonicalNames.add(mapping.canonicalEventName)
+    canonicalNames.add(key)
   })
 })
 
@@ -366,7 +371,7 @@ const DestinationConfigurationPatchSchema = z.strictObject({
     .max(CapabilityModeSchema.options.length)
     .optional(),
   mappings: z.array(ConversionEventMappingConfigurationSchema)
-    .max(CanonicalEventNameSchema.options.length)
+    .max(CanonicalEventNameSchema.options.length * 6)
     .optional()
 }).superRefine((patch, ctx) => {
   if (Object.keys(patch).length === 0) {
@@ -390,14 +395,15 @@ const DestinationConfigurationPatchSchema = z.strictObject({
 
   const canonicalNames = new Set<string>()
   patch.mappings?.forEach((mapping, index) => {
-    if (canonicalNames.has(mapping.canonicalEventName)) {
+    const key = `${mapping.canonicalEventName}:${mapping.enquiryType ?? '__aggregate__'}`
+    if (canonicalNames.has(key)) {
       ctx.addIssue({
         code: 'custom',
         path: ['mappings', index, 'canonicalEventName'],
         message: 'Canonical event mappings must be unique within a destination'
       })
     }
-    canonicalNames.add(mapping.canonicalEventName)
+    canonicalNames.add(key)
   })
 })
 
@@ -554,6 +560,7 @@ export const ConversionEventMappingStateSchema = z.strictObject({
   id: z.string().uuid(),
   destinationId: z.string().uuid(),
   canonicalEventName: CanonicalEventNameSchema,
+  enquiryType: MeasurementEnquiryTypeSchema.nullable().optional(),
   providerEventName: z.string().trim().min(1).max(255),
   isActive: z.boolean(),
   configVersion: z.number().int().positive(),
@@ -729,6 +736,7 @@ export const CanonicalConversionEventSchema = z.strictObject({
   eventId: z.string().uuid(),
   clientId: z.string().uuid(),
   eventName: CanonicalEventNameSchema,
+  enquiryType: MeasurementEnquiryTypeSchema.nullable().optional(),
   sourceSystem: CanonicalEventSourceSystemSchema,
   sourceEntityType: CanonicalEventSourceEntitySchema,
   sourceEntityId: z.string().trim().min(1).max(255),
@@ -753,6 +761,7 @@ export const CanonicalOutboxStatusSchema = z.enum([
 export const AppendCanonicalConversionEventSchema = z.strictObject({
   clientId: z.string().uuid(),
   eventName: CanonicalEventNameSchema,
+  enquiryType: MeasurementEnquiryTypeSchema.nullable().optional(),
   sourceSystem: CanonicalEventSourceSystemSchema,
   sourceEntityType: CanonicalEventSourceEntitySchema,
   sourceEntityId: z.string().trim().min(1).max(255),

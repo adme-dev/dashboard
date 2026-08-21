@@ -27,6 +27,7 @@ interface ConversionEventRow {
   client_id: string
   profile_id: string
   event_name: string
+  enquiry_type: string | null
   source_system: string
   source_entity_type: string
   source_entity_id: string
@@ -54,6 +55,7 @@ function mapEvent(row: ConversionEventRow): CanonicalConversionOutboxEvent {
     clientId: row.client_id,
     profileId: row.profile_id,
     eventName: row.event_name,
+    enquiryType: row.enquiry_type,
     sourceSystem: row.source_system,
     sourceEntityType: row.source_entity_type,
     sourceEntityId: row.source_entity_id,
@@ -84,7 +86,8 @@ export async function buildCanonicalEventIdempotencyKey(
     input.sourceEntityType,
     input.sourceEntityId,
     input.sourceEventId,
-    input.eventName
+    input.eventName,
+    input.enquiryType
   ])
   const digest = await globalThis.crypto.subtle.digest(
     'SHA-256',
@@ -115,7 +118,7 @@ function deliveryPolicy(
 }
 
 const EVENT_COLUMNS = `
-  id, client_id, profile_id, event_name, source_system, source_entity_type,
+  id, client_id, profile_id, event_name, enquiry_type, source_system, source_entity_type,
   source_entity_id, source_event_id, occurred_at, idempotency_key,
   config_version, consent_mode, attribution, outbox_status, last_error_class
 `
@@ -154,29 +157,54 @@ export async function appendCanonicalConversionEvent(
           AND m.destination_id = d.id
           AND m.canonical_event_name = $3
           AND m.is_active = TRUE
+          AND (
+            ($4::text IS NULL AND m.enquiry_type IS NULL)
+            OR m.enquiry_type = $4
+          )
         WHERE d.client_id = $1
           AND d.profile_id = $2
           AND d.enabled = TRUE
           AND d.environment = 'live'
           AND d.health_status IN ('ready', 'degraded')
         ORDER BY d.id`,
-      [input.clientId, profile.id, input.eventName]
+      [input.clientId, profile.id, input.eventName, input.enquiryType]
     )
     destinationIds = (destinationResult.rows ?? [])
       .map(row => (row as { id: string }).id)
-    if (destinationIds.length === 0) {
+    if (
+      input.eventName === 'web_conversion'
+      && !input.enquiryType
+      && input.sourceSystem !== 'browser'
+    ) {
+      destinationIds = []
       policy.status = 'paused'
-      policy.reason = 'no_active_destination_mapping'
+      policy.reason = 'unmapped_enquiry_type'
+    } else if (
+      input.eventName === 'web_conversion'
+      && !input.enquiryType
+      && destinationIds.length > 1
+    ) {
+      // Preserve the established single aggregate browser conversion used by
+      // sites such as South Morang, but never let one browser event count as
+      // several enquiry actions.
+      destinationIds = []
+      policy.status = 'paused'
+      policy.reason = 'ambiguous_aggregate_web_conversion'
+    } else if (destinationIds.length === 0) {
+      policy.status = 'paused'
+      policy.reason = input.enquiryType || input.eventName === 'web_conversion'
+        ? 'unmapped_enquiry_type'
+        : 'no_active_destination_mapping'
     }
   }
 
   const insertedResult = await db.query(
     `INSERT INTO conversion_events (
-       client_id, profile_id, event_name, source_system, source_entity_type,
+       client_id, profile_id, event_name, enquiry_type, source_system, source_entity_type,
        source_entity_id, source_event_id, occurred_at, idempotency_key,
        config_version, consent_mode, attribution, outbox_status, last_error_class
      ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15
      )
      ON CONFLICT DO NOTHING
      RETURNING ${EVENT_COLUMNS}`,
@@ -184,6 +212,7 @@ export async function appendCanonicalConversionEvent(
       input.clientId,
       profile.id,
       input.eventName,
+      input.enquiryType,
       input.sourceSystem,
       input.sourceEntityType,
       input.sourceEntityId,
@@ -211,6 +240,7 @@ export async function appendCanonicalConversionEvent(
     if (!eventRow) throw new Error('Canonical event conflict could not be resolved')
     if (
       eventRow.event_name !== input.eventName
+      || (eventRow.enquiry_type ?? null) !== (input.enquiryType ?? null)
       || eventRow.source_entity_type !== input.sourceEntityType
       || eventRow.source_entity_id !== input.sourceEntityId
     ) {

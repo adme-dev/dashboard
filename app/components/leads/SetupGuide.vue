@@ -160,7 +160,7 @@ watch(endpointItems, (items) => {
               How to capture, route, and follow up on Meta + Google ad inquiries.
             </p>
           </div>
-          <UButton variant="ghost" icon="i-lucide-x" @click="open = false" />
+          <UButton variant="ghost" icon="i-lucide-x" @click="() => { open = false }" />
         </div>
 
         <!-- Live webhook credentials — the single place to get a client's URL + key -->
@@ -243,7 +243,7 @@ watch(endpointItems, (items) => {
                       size="sm"
                       variant="ghost"
                       :aria-label="revealed ? 'Hide key' : 'Reveal key'"
-                      @click="revealed = !revealed"
+                      @click="() => { revealed = !revealed }"
                     />
                     <UButton
                       icon="i-lucide-copy"
@@ -258,7 +258,7 @@ watch(endpointItems, (items) => {
                       variant="ghost"
                       color="warning"
                       aria-label="Rotate webhook key"
-                      @click="confirmingRotate = true"
+                      @click="() => { confirmingRotate = true }"
                     />
                   </div>
                 </UFormField>
@@ -273,7 +273,7 @@ watch(endpointItems, (items) => {
                     stops — update {{ selectedEndpoint.client_name }}'s form tool before then.
                   </p>
                   <div class="flex justify-end gap-2">
-                    <UButton size="xs" variant="ghost" label="Cancel" @click="confirmingRotate = false" />
+                    <UButton size="xs" variant="ghost" label="Cancel" @click="() => { confirmingRotate = false }" />
                     <UButton size="xs" color="warning" label="Rotate key" :loading="rotating" @click="confirmRotate" />
                   </div>
                 </div>
@@ -290,6 +290,8 @@ watch(endpointItems, (items) => {
             </template>
           </div>
         </UCard>
+
+        <LeadsConnectorPanel :client-items="clientItems" />
 
         <UAccordion :items="sections" multiple>
           <template #quickstart>

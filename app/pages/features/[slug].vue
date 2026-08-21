@@ -925,11 +925,23 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-calculator',
     categoryIconBg: 'bg-emerald-50',
     categoryIconColor: 'text-emerald-600',
-    description: 'Real-time inbox for Google Ads, Meta, Zapier/Make/n8n, CSV imports, and manual entry. Per-form rules fan leads out to Slack, email, your CRM, Sheets, and the client portal.',
+    description: 'Signed first-party and provider gateways, native ad-form ingestion, safe end-to-end tests, and exact routing into one real-time inbox.',
     details: [
       {
         title: 'Five ways in, one inbox',
         content: "Google Ads native webhooks (per-client URL + key, paste into the lead form's webhook integration). Meta lead form CRM integration (live verify endpoint; Webhooks API ingestion activates the moment Meta App Review approves leads_retrieval). A generic webhook endpoint that Zapier, Make, n8n, partner CRMs, embedded forms, and mobile apps can POST to — same auth model as Google. CSV importer for Meta Lead Center exports with column auto-mapping. Manual entry for walk-ins and phone calls.",
+      },
+      {
+        title: 'A universal signed gateway — CRM optional',
+        content: 'Websites and form providers can send a versioned lead.submitted.v1 receipt directly to XeroFlow using replay-protected HMAC signatures and copy-once rotating secrets. XeroFlow stores and routes confirmed leads in capture-only mode, so an external CRM is an optional downstream destination rather than a prerequisite.',
+      },
+      {
+        title: 'Contained end-to-end testing',
+        content: 'Start a 15-minute, origin-bound test from the setup guide and follow append-only evidence from tracker load through browser correlation to the trusted receipt. Synthetic leads are hidden from default reporting and cannot notify staff, route to live destinations, promote into CRM, or publish normal conversion events.',
+      },
+      {
+        title: 'Exact enquiry-to-conversion mapping',
+        content: 'Stock, finance, test-drive, contact, and model/variant enquiries can map to separate provider conversion actions. Typed destinations use exact matching; an unknown type pauses for configuration instead of sending one enquiry to every action.',
       },
       {
         title: 'Real-time, not polled',
@@ -949,7 +961,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: "Senses test data and treats it differently",
-        content: 'Google\'s "Send test data" button (`is_test=true` flag) flows through ingestion but the lead is hidden from the default inbox view — toggle "Show test leads" to see them. No more weeding through synthetic submissions during setup, and no accidental Slack notifications when QA pokes a form.',
+        content: 'Google\'s test data and XeroFlow signed test runs are stored as synthetic evidence but excluded from normal side effects. Toggle "Show test leads" when an authorised operator needs to inspect one; staff notifications, routing, CRM promotion, and conversion fan-out remain suppressed.',
       },
       {
         title: 'Marketer-friendly setup',

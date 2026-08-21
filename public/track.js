@@ -35,6 +35,7 @@
   var _gtmReady = false
   var _pendingDataLayerPushes = []
   var _scriptOrigin = ''
+  var _leadCaptureTest = null
 
   // Events that should push to dataLayer (ad platform value)
   var DATALAYER_EVENTS = {
@@ -904,6 +905,12 @@
       attribution: intentAttribution(getAttributionTouches()),
       consent: getCookie(CONSENT_COOKIE_NAME) || null,
     }
+    if (_leadCaptureTest) {
+      payload.test_context = {
+        run_id: _leadCaptureTest.runId,
+        evidence_token: _leadCaptureTest.evidenceToken,
+      }
+    }
     var url = (_scriptOrigin || '') + '/api/public/lead-intent?k=' + encodeURIComponent(WRITE_KEY)
     var body = JSON.stringify(payload)
 
@@ -928,6 +935,115 @@
     } else {
       beaconFallback()
     }
+  }
+
+  function sendLeadCaptureTestEvidence(stage, outcome, evidenceKey, diagnostic) {
+    if (!_leadCaptureTest || !_scriptOrigin || typeof fetch !== 'function') return
+    try {
+      fetch(_scriptOrigin + '/api/public/lead-capture-test/evidence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: _leadCaptureTest.evidenceToken,
+          stage: stage,
+          outcome: outcome,
+          evidenceKey: String(evidenceKey || '').slice(0, 255),
+          diagnostic: diagnostic ? String(diagnostic).slice(0, 1000) : null,
+        }),
+        keepalive: true,
+        mode: 'cors',
+      }).catch(function () {})
+    } catch (e) {
+      // Self-test telemetry must never affect the dealer form.
+    }
+  }
+
+  function activateLeadCaptureTest() {
+    if (!_scriptOrigin || typeof fetch !== 'function') return
+    var bootstrapToken = ''
+    try {
+      var testUrl = new URL(window.location.href)
+      bootstrapToken = testUrl.searchParams.get('xf_test_token') || ''
+      if (bootstrapToken) {
+        testUrl.searchParams.delete('xf_test_token')
+        window.history.replaceState(
+          window.history.state,
+          '',
+          testUrl.pathname + testUrl.search + testUrl.hash
+        )
+      }
+    } catch (e) {
+      return
+    }
+    if (!bootstrapToken || bootstrapToken.length > 512) return
+    try {
+      fetch(_scriptOrigin + '/api/public/lead-capture-test/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: bootstrapToken }),
+        mode: 'cors',
+      })
+        .then(function (response) {
+          if (!response.ok) throw new Error('test verification failed')
+          return response.json()
+        })
+        .then(function (result) {
+          if (!result || !result.runId || !result.evidenceToken) return
+          _leadCaptureTest = {
+            runId: result.runId,
+            evidenceToken: result.evidenceToken,
+            expiresAt: result.expiresAt,
+          }
+          sendLeadCaptureTestEvidence(
+            'tracker_loaded',
+            'passed',
+            'track-js',
+            'XeroFlow tracking tag loaded and verified the origin-bound test token.'
+          )
+        })
+        .catch(function () {})
+    } catch (e) {
+      // Invalid or unavailable tests leave normal tracking untouched.
+    }
+  }
+
+  function captureLeadContext(options) {
+    options = options || {}
+    var touches = getAttributionTouches()
+    return {
+      browser_event_id: resolveEventId(options),
+      anon_id: getClientId(),
+      session_id: getSessionId(),
+      page_url: window.location.href,
+      attribution: intentAttribution(touches),
+      detection_method: String(options.detectionMethod || 'explicit_provider_success').slice(0, 100),
+      test_run_id: _leadCaptureTest ? _leadCaptureTest.runId : null,
+    }
+  }
+
+  function confirmLead(options) {
+    options = options || {}
+    var context = captureLeadContext(options)
+    window.dataLayer = window.dataLayer || []
+    window.dataLayer.push({
+      event: 'xf_lead_confirmed',
+      event_id: context.browser_event_id,
+      form_id: options.formId ? String(options.formId).slice(0, 255) : undefined,
+      enquiry_type_candidate: options.enquiryType
+        ? String(options.enquiryType).slice(0, 64)
+        : undefined,
+      detection_method: context.detection_method,
+      test_run_id: context.test_run_id,
+    })
+    if (_leadCaptureTest) {
+      sendLeadCaptureTestEvidence(
+        'provider_success_observed',
+        'passed',
+        context.browser_event_id,
+        'Explicit provider success signal observed; awaiting trusted server receipt.'
+      )
+    }
+    return context
   }
 
   function setupFormTracking() {
@@ -1330,6 +1446,8 @@
       }
     }
 
+    activateLeadCaptureTest()
+
     // GTM auto-injection bridge is OFF by default in Slice 1 (we do not serve
     // /api/tracking/config; dealers install this tag VIA GTM, not vice-versa).
     // Opt in with init({ gtmBridge: true }) only if a config endpoint exists.
@@ -1449,6 +1567,8 @@
     linkSession: linkSession,
     getClientId: getClientId,
     getSessionId: getSessionId,
+    captureLeadContext: captureLeadContext,
+    confirmLead: confirmLead,
   }
 
   // Auto-init from the script tag's data attributes. document.currentScript is

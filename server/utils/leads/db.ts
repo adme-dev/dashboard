@@ -29,6 +29,7 @@ export interface InsertLeadInput {
   assigned_to: string | null
   created_by: string | null
   is_test?: boolean
+  test_run_id?: string | null
 }
 
 export interface LeadTransactionClient {
@@ -44,9 +45,9 @@ export async function insertLeadWithDedup(
     INSERT INTO leads (
       client_id, source, source_lead_id, form_id, form_name,
       ad_id, ad_name, campaign_id, campaign_name, page_id,
-      submitted_at, field_data, attribution, assigned_to, created_by, is_test
+      submitted_at, field_data, attribution, assigned_to, created_by, is_test, test_run_id
     ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15, $16
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15, $16, $17
     )
     ON CONFLICT (source, source_lead_id) WHERE deleted_at IS NULL
     DO NOTHING
@@ -58,7 +59,7 @@ export async function insertLeadWithDedup(
     input.submitted_at,
     JSON.stringify(input.field_data),
     input.attribution ? JSON.stringify(input.attribution) : null,
-    input.assigned_to, input.created_by, Boolean(input.is_test)
+    input.assigned_to, input.created_by, Boolean(input.is_test), input.test_run_id ?? null
   ]
   const row = db
     ? (await db.query(sql, params)).rows?.[0] as { id: string } | undefined
