@@ -67,17 +67,26 @@
             Test Connection
           </UButton>
           <UButton
-            v-if="connectionStatus !== 'connected'"
             color="primary"
             icon="i-lucide-key-round"
             to="/api/agency/monday/oauth/start"
             external
           >
-            Connect with Monday
+            {{ connectionStatus === 'connected' ? 'Reconnect for automation' : 'Connect with Monday' }}
           </UButton>
         </div>
       </div>
     </UCard>
+
+    <UAlert
+      v-if="connectionStatus === 'connected'"
+      class="mb-6"
+      title="Campaign Exceptions automation needs Monday write consent"
+      description="Use Reconnect for automation once to grant boards:write and updates:write. XeroFlow remains restricted to the Campaign Exceptions board and its machine-owned columns."
+      icon="i-lucide-shield-check"
+      color="primary"
+      variant="soft"
+    />
 
     <UCard class="mb-6">
       <template #header><div class="flex flex-wrap items-center justify-between gap-3"><h3 class="font-semibold text-gray-900 dark:text-white">Webhook queue</h3><div class="flex gap-2"><UButton size="sm" color="primary" variant="soft" icon="i-lucide-webhook" :loading="registeringWebhooks" @click="registerWebhooks">Register approved boards</UButton><UButton size="sm" color="neutral" variant="outline" icon="i-lucide-refresh-cw" :loading="loadingWebhookStatus" @click="fetchWebhookStatus">Refresh queue</UButton></div></div></template>

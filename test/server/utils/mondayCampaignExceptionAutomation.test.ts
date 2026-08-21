@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   hasOpenCampaignDataHalt,
   findExpiredOfferDate,
+  hasMondayAutomationWriteScopes,
   parseRecommendedDailyBudget,
   validateSafeBudgetRebase,
   CAMPAIGN_EXCEPTION_COLUMNS,
@@ -65,5 +66,11 @@ describe('Monday Campaign Exceptions automation', () => {
     expect(findExpiredOfferDate('Offer valid until September 30', now)).toBeNull()
     expect(findExpiredOfferDate('Model year 2025 — enquire now', now)).toBeNull()
     expect(findExpiredOfferDate('Offer valid until 30 September 2026. Artwork updated 31 July 2026.', now)).toBeNull()
+  })
+
+  it('blocks legacy OAuth grants until both write scopes are re-consented', () => {
+    expect(hasMondayAutomationWriteScopes({ authMethod: 'oauth', grantedScopes: ['boards:read'] })).toBe(false)
+    expect(hasMondayAutomationWriteScopes({ authMethod: 'oauth', grantedScopes: ['boards:write', 'updates:write'] })).toBe(true)
+    expect(hasMondayAutomationWriteScopes({ authMethod: 'token', grantedScopes: [] })).toBe(true)
   })
 })

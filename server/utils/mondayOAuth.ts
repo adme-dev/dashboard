@@ -8,7 +8,9 @@ export const MONDAY_OAUTH_SCOPES = [
   'workspaces:read',
   'users:read',
   'updates:read',
+  'updates:write',
   'assets:read',
+  'boards:write',
   'webhooks:read',
   'webhooks:write',
 ] as const
