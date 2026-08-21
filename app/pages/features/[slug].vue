@@ -965,7 +965,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-calculator',
     categoryIconBg: 'bg-emerald-50',
     categoryIconColor: 'text-emerald-600',
-    description: 'Signed first-party and provider gateways, native ad-form and inbound-email ingestion, safe end-to-end tests, and exact routing into one real-time inbox.',
+    description: 'Signed first-party and provider gateways, native ad-form and dedicated inbound email ingestion, safe end-to-end tests, and exact routing into one real-time inbox.',
     details: [
       {
         title: 'Six ways in, one inbox',

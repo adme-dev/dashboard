@@ -1548,39 +1548,27 @@
     }
   }
 
-  function captureLeadContext(options) {
-    options = options || {}
-    var touches = getAttributionTouches()
-    return {
-      browser_event_id: resolveEventId(options),
-      anon_id: getClientId(),
-      session_id: getSessionId(),
-      page_url: window.location.href,
-      attribution: intentAttribution(touches),
-      detection_method: String(options.detectionMethod || 'explicit_provider_success').slice(0, 100),
-      test_run_id: _leadCaptureTest ? _leadCaptureTest.runId : null,
-    }
-  }
-
   function confirmLead(options) {
     options = options || {}
     var context = captureLeadContext(options)
+    if (!context) return null
+    var detectionMethod = String(options.detectionMethod || 'explicit_provider_success').slice(0, 100)
     window.dataLayer = window.dataLayer || []
     window.dataLayer.push({
       event: 'xf_lead_confirmed',
-      event_id: context.browser_event_id,
+      event_id: context.browserEventId,
       form_id: options.formId ? String(options.formId).slice(0, 255) : undefined,
       enquiry_type_candidate: options.enquiryType
         ? String(options.enquiryType).slice(0, 64)
         : undefined,
-      detection_method: context.detection_method,
-      test_run_id: context.test_run_id,
+      detection_method: detectionMethod,
+      test_run_id: _leadCaptureTest ? _leadCaptureTest.runId : null,
     })
     if (_leadCaptureTest) {
       sendLeadCaptureTestEvidence(
         'provider_success_observed',
         'passed',
-        context.browser_event_id,
+        context.browserEventId,
         'Explicit provider success signal observed; awaiting trusted server receipt.'
       )
     }
@@ -2217,7 +2205,6 @@
     linkSession: linkSession,
     getClientId: getClientId,
     getSessionId: getSessionId,
-    captureLeadContext: captureLeadContext,
     confirmLead: confirmLead,
   }
 
