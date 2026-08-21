@@ -1,6 +1,6 @@
 # Universal Lead Gateway and Knox Activation Design
 
-**Status:** approved in principle on 2026-08-21; written specification pending user review
+**Status:** approved by the user on 2026-08-21
 
 ## Problem
 
