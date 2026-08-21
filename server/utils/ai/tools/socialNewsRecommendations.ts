@@ -94,6 +94,8 @@ export async function getSocialNewsRecommendations(args: Args, ctx: ToolContext,
         summary: item.summary,
       })),
       pendingEvidenceCount: data.governance.evidence.pendingCount,
+      candidatesLimit: args.limit,
+      candidatesMore: Math.max(0, data.stories.length - args.limit),
       candidates: data.stories.slice(0, args.limit).map(story => ({
         storyId: story.id,
         title: story.title,

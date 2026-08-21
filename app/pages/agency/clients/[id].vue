@@ -25,6 +25,10 @@ interface CrmSettings {
   crmCoreStatus: EntitlementStatus
   crmExternalStatus: EntitlementStatus
 }
+interface BoardOption {
+  label: string
+  value: string
+}
 
 // Fetch client data
 const clientData = ref<any>(null)
@@ -35,17 +39,23 @@ const crmSettingsData = ref<CrmSettings>({
 })
 const pending = ref(false)
 const error = ref<any>(null)
+const portalBoardOptions = ref<BoardOption[]>([{ label: 'No portal board', value: '__none__' }])
 
 async function refresh() {
   pending.value = true
   error.value = null
   try {
-    const [clientResponse, crmResponse] = await Promise.all([
+    const [clientResponse, crmResponse, boardsResponse] = await Promise.all([
       apiFetch(`/api/agency/clients/${clientId}`),
-      apiFetch<CrmSettings>(`/api/agency/clients/${clientId}/crm-settings`).catch(() => null)
+      apiFetch<CrmSettings>(`/api/agency/clients/${clientId}/crm-settings`).catch(() => null),
+      apiFetch<{ boards: Array<{ id: string, name: string }> }>('/api/agency/boards').catch(() => ({ boards: [] }))
     ])
     clientData.value = clientResponse
     if (crmResponse) crmSettingsData.value = crmResponse
+    portalBoardOptions.value = [
+      { label: 'No portal board', value: '__none__' },
+      ...boardsResponse.boards.map(board => ({ label: board.name, value: board.id }))
+    ]
   } catch (err) {
     clientData.value = null
     error.value = err
@@ -140,6 +150,7 @@ const editForm = ref({
   address: '',
   notes: '',
   isActive: true,
+  portalBoardId: '__none__',
   leadCaptureMode: 'capture_only' as LeadCaptureMode,
   crmCoreStatus: 'suspended' as EntitlementStatus,
   crmExternalStatus: 'suspended' as EntitlementStatus
@@ -160,6 +171,7 @@ const openEditModal = () => {
       address: client.value.address || '',
       notes: client.value.notes || '',
       isActive: client.value.isActive,
+      portalBoardId: client.value.portalBoardId || '__none__',
       leadCaptureMode: crmSettingsData.value.leadCaptureMode,
       crmCoreStatus: crmSettingsData.value.crmCoreStatus,
       crmExternalStatus: crmSettingsData.value.crmExternalStatus
@@ -191,11 +203,15 @@ const saveClient = async () => {
       ...clientPayload
     } = editForm.value
     const crmPayload = { leadCaptureMode, crmCoreStatus, crmExternalStatus }
+    const normalizedClientPayload = {
+      ...clientPayload,
+      portalBoardId: clientPayload.portalBoardId === '__none__' ? null : clientPayload.portalBoardId
+    }
     const requests: Array<Promise<unknown>> = [
       apiFetch(`/api/agency/clients/${clientId}`, {
         method: 'PUT',
-        headers: { 'Idempotency-Key': idempotencyKeyFor('client', clientPayload) },
-        body: clientPayload
+        headers: { 'Idempotency-Key': idempotencyKeyFor('client', normalizedClientPayload) },
+        body: normalizedClientPayload
       })
     ]
     if (isManager.value) {
@@ -1021,6 +1037,33 @@ async function saveKpiTargets() {
                 </UInput>
               </UFormField>
             </div>
+          </fieldset>
+
+          <fieldset class="space-y-5 pb-6 border-b border-default">
+            <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
+              Client portal
+            </legend>
+
+            <UFormField
+              label="Linked board"
+              help="Portal users see a read-only view containing only work attached to this client's projects."
+            >
+              <USelectMenu
+                v-model="editForm.portalBoardId"
+                :items="portalBoardOptions"
+                value-key="value"
+                size="xl"
+                class="w-full"
+              />
+            </UFormField>
+
+            <UAlert
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-shield-check"
+              title="Client-scoped visibility"
+              description="Other clients' tasks and internal board items without a matching client project are never exposed."
+            />
           </fieldset>
 
           <fieldset class="space-y-5 pb-6 border-b border-default">

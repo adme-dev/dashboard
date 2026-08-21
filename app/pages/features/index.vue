@@ -305,7 +305,7 @@ const categories = [
     iconColor: 'text-pink-600',
     features: [
       { title: 'Passwordless Login', slug: 'dedicated-login', icon: 'i-lucide-lock', description: 'Single-use email links create secure, client-scoped sessions without passwords.' },
-      { title: 'Project Visibility', slug: 'project-visibility', icon: 'i-lucide-folder-open', description: 'Clients see their projects, tasks, and progress — no internal data leaks.' },
+      { title: 'Project Visibility', slug: 'project-visibility', icon: 'i-lucide-folder-open', description: 'Clients see their projects, progress, and a deliberately linked client board — no internal data leaks.' },
       { title: 'Approval Workflows', slug: 'approval-workflows', icon: 'i-lucide-check-circle', description: 'Upload deliverables for client review. Approve, revise, or comment — all tracked.' },
       { title: 'Invoice Access', slug: 'invoice-access', icon: 'i-lucide-receipt', description: 'Give clients a clear payment view and separate agency services from media and supplier investment.' },
       { title: 'Creative Gallery', slug: 'creative-gallery', icon: 'i-lucide-image', description: 'Browse all delivered assets in a visual gallery with download and preview.' },

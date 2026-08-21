@@ -45,6 +45,15 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (
+    body.portalBoardId !== undefined
+    && body.portalBoardId !== null
+    && (typeof body.portalBoardId !== 'string'
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.portalBoardId))
+  ) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid portal board' })
+  }
+
   const leadCaptureModes = new Set([
     'analytics_only',
     'capture_only',
@@ -78,7 +87,8 @@ export default defineEventHandler(async (event) => {
     address: 'address',
     isActive: 'is_active',
     reportingTimezone: 'reporting_timezone',
-    leadCaptureMode: 'lead_capture_mode'
+    leadCaptureMode: 'lead_capture_mode',
+    portalBoardId: 'portal_board_id'
   }
 
   const updates: string[] = []
@@ -166,6 +176,7 @@ export default defineEventHandler(async (event) => {
         address: client.address,
         reportingTimezone: client.reporting_timezone,
         leadCaptureMode: client.lead_capture_mode || 'capture_only',
+        portalBoardId: client.portal_board_id,
         createdAt: client.created_at,
         updatedAt: client.updated_at
       }

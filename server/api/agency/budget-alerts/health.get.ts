@@ -7,6 +7,7 @@
  */
 
 import { queryRows } from '~~/server/utils/db'
+import { STALENESS_THRESHOLD_HOURS } from '~~/server/utils/ai/tools/responseContract'
 import { requireAuth } from '~~/server/utils/auth'
 import { computeCampaignBudgetPacing, statusSeverityRank } from '~~/server/utils/budgetPacing'
 import { getSelectedTenant } from '~~/server/utils/session'
@@ -44,28 +45,36 @@ export default defineEventHandler(async (event) => {
         COUNT(*) FILTER (WHERE COALESCE(ms.budget_allocated, 0) > 0)::int as budgeted_campaign_count,
         MAX(ms.synced_at)::text as last_synced_at,
         MIN(ms.synced_at)::text as oldest_synced_at,
-        COUNT(*) FILTER (WHERE ms.synced_at IS NULL OR ms.synced_at < NOW() - INTERVAL '48 hours')::int as stale_row_count,
+        MAX(COALESCE(coverage.spend_as_of, ms.synced_at::date))::text as spend_as_of,
+        COUNT(*) FILTER (WHERE ms.synced_at IS NULL OR ms.synced_at < NOW() - MAKE_INTERVAL(hours => $2))::int as stale_row_count,
         bool_or(COALESCE(ms.budget_rolling, false)) as is_rolling
       FROM media_spend ms
       LEFT JOIN agency_clients ac ON ms.client_id = ac.id
+      LEFT JOIN LATERAL (
+        SELECT MAX(ds.spend_date) AS spend_as_of
+        FROM daily_spend ds
+        WHERE ds.media_spend_id = ms.id
+      ) coverage ON TRUE
       WHERE ms.period = $1
       GROUP BY ac.id, ac.name, ms.platform
       ORDER BY total_spend DESC
-    `, [period])
+    `, [period, STALENESS_THRESHOLD_HOURS])
 
     // Calculate month progress for pacing
     const daysInMonth = new Date(year, month, 0).getDate()
-    const isCurrentMonth = now.getFullYear() === year && (now.getMonth() + 1) === month
-    const isPastMonth = year < now.getFullYear() || (year === now.getFullYear() && month < (now.getMonth() + 1))
-    const currentDay = isCurrentMonth ? now.getDate() : isPastMonth ? daysInMonth : 0
-    const monthProgress = daysInMonth > 0 ? (currentDay / daysInMonth) * 100 : 0
-
     const clients = rows.map((r: any) => {
       const budget = parseFloat(r.total_budget) || 0
       const spend = parseFloat(r.total_spend) || 0
       const remaining = budget - spend
       const percentConsumed = budget > 0 ? (spend / budget) * 100 : 0
-      const pacingRatio = monthProgress > 0 && budget > 0 ? (percentConsumed / monthProgress) : 0
+      const pacing = computeCampaignBudgetPacing({
+        monthlyBudget: budget,
+        mtdSpend: spend,
+        period,
+        now,
+        spendAsOf: r.spend_as_of,
+      })
+      const pacingRatio = pacing.pacingRatio
       const campaignCount = Number(r.campaign_count) || 0
       const budgetedCampaignCount = Number(r.budgeted_campaign_count) || 0
       const hasPartialBudgetCoverage = budget > 0 && budgetedCampaignCount < campaignCount
@@ -76,7 +85,7 @@ export default defineEventHandler(async (event) => {
       else if (percentConsumed > 100) healthStatus = 'over_budget'
       else if (pacingRatio > 1.15) healthStatus = 'critical'
       else if (pacingRatio > 1.05) healthStatus = 'at_risk'
-      else if (pacingRatio < 0.8 && currentDay > 7) healthStatus = 'underspend'
+      else if (pacingRatio < 0.8 && pacing.elapsedDays > 7) healthStatus = 'underspend'
       else healthStatus = 'healthy'
 
       return {
@@ -95,10 +104,24 @@ export default defineEventHandler(async (event) => {
         lastSyncedAt: r.last_synced_at,
         oldestSyncedAt: r.oldest_synced_at,
         staleRowCount: Number(r.stale_row_count) || 0,
+        spendAsOf: pacing.spendAsOf,
         rolling: r.is_rolling || false,
         healthStatus
       }
     })
+
+    // Portfolio rollups use the oldest contributing coverage date. Individual client rows retain
+    // their own spendAsOf, so no pacing numerator is ever presented against request-time progress.
+    const portfolioSpendAsOf = clients
+      .map(client => client.spendAsOf)
+      .filter((value): value is string => Boolean(value))
+      .sort()[0] ?? null
+    const isCurrentMonth = now.getFullYear() === year && (now.getMonth() + 1) === month
+    const isPastMonth = year < now.getFullYear() || (year === now.getFullYear() && month < (now.getMonth() + 1))
+    const portfolioElapsedDay = isCurrentMonth && portfolioSpendAsOf?.startsWith(period)
+      ? Number(portfolioSpendAsOf.slice(8, 10))
+      : isPastMonth ? daysInMonth : 0
+    const monthProgress = daysInMonth > 0 ? (portfolioElapsedDay / daysInMonth) * 100 : 0
 
     // Summary calculations
     const withBudget = clients.filter(c => c.budget > 0)
@@ -141,6 +164,7 @@ export default defineEventHandler(async (event) => {
         COALESCE(SUM(ds.impressions), 0) as impressions,
         COALESCE(SUM(ds.clicks), 0) as clicks,
         COALESCE(SUM(ds.conversions), 0) as conversions,
+        MAX(ds.spend_date)::text as spend_as_of,
         MAX(ms.synced_at)::text as last_synced_at
       FROM media_spend ms
       LEFT JOIN agency_clients ac ON ms.client_id = ac.id
@@ -158,6 +182,7 @@ export default defineEventHandler(async (event) => {
         mtdSpend,
         period,
         now,
+        spendAsOf: r.spend_as_of ?? r.last_synced_at,
         campaignStatus: r.campaign_status,
         endDate: r.end_date
       })
@@ -204,6 +229,7 @@ export default defineEventHandler(async (event) => {
       month,
       year,
       monthProgress: Math.round(monthProgress),
+      spendAsOf: portfolioSpendAsOf,
       summary: {
         totalBudget,
         totalSpent: budgetedSpend,

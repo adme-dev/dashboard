@@ -86,7 +86,8 @@ describe('spendSyncJobs', () => {
       'job-1',
       0,
       0,
-      JSON.stringify([{ account: 'A', reason: 'Token refresh failed' }])
+      JSON.stringify([{ account: 'A', reason: 'Token refresh failed' }]),
+      false
     ])
   })
 
@@ -107,7 +108,8 @@ describe('spendSyncJobs', () => {
       'job-1',
       0,
       0,
-      JSON.stringify([{ account: 'A', reason: 'Token refresh failed' }])
+      JSON.stringify([{ account: 'A', reason: 'Token refresh failed' }]),
+      false
     ])
   })
 

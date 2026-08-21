@@ -29,12 +29,37 @@ import {
   signMcpRequestClaim,
   type McpRequestPath
 } from '../../../shared/utils/mcpRequestClaim'
-import { MCP_CATALOG_RELEASE } from '../../../shared/utils/mcpCatalog'
+import { MCP_CATALOG_RELEASE, MCP_PREVIOUS_CATALOG_RELEASE, assertMcpCatalogNotRegressed, compareMcpCatalogReleases } from '../../../shared/utils/mcpCatalog'
+
+async function pageCatalogRegression(env: Env, detail: string): Promise<void> {
+  console.error('mcp.catalog_regression', { detail })
+  try {
+    const page = await fetch(`${env.APP_BASE_URL}/api/internal/mcp/catalog-regression`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-mcp-secret': env.MCP_INTERNAL_SECRET },
+      body: JSON.stringify({ detail })
+    })
+    if (!page.ok) throw new Error(`Pages alert endpoint returned ${page.status}`)
+  } catch (error) {
+    console.error('mcp.catalog_regression_page_failed', { error: String(error) })
+  }
+  if (!env.MCP_CATALOG_ALERT_WEBHOOK) return
+  try {
+    await fetch(env.MCP_CATALOG_ALERT_WEBHOOK, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: `:rotating_light: *XeroFlow MCP catalog regression*\n${detail}` })
+    })
+  } catch (error) {
+    console.error('mcp.catalog_regression_webhook_failed', { error: String(error) })
+  }
+}
 
 interface Env {
   APP_BASE_URL: string
   MCP_INTERNAL_SECRET: string
   MCP_REQUEST_SIGNING_SECRET: string
+  /** Optional incident webhook; catalog regressions are sent here before tools/list refuses. */
+  MCP_CATALOG_ALERT_WEBHOOK?: string
   MCP_OBJECT: DurableObjectNamespace
   OAUTH_KV: KVNamespace
   OAUTH_PROVIDER: OAuthHelpers
@@ -119,15 +144,31 @@ export class XeroFlowMcpAgent extends McpAgent<Env, unknown, Props> {
       if (!res.ok) throw new Error(`manifest fetch failed: ${res.status}`)
       const { tools, catalog } = await res.json() as {
         tools: ToolManifest[]
-        catalog?: { release?: string, toolCount?: number, source?: string }
+        catalog?: { release?: string, previousRelease?: string, toolCount?: number, source?: string, fullOwnerProjection?: boolean }
       }
       if (catalog?.toolCount != null && catalog.toolCount !== tools.length) {
         throw new Error('manifest count mismatch')
+      }
+      if (props.godMode === true) {
+        const servedRelease = catalog?.release || MCP_CATALOG_RELEASE
+        if (compareMcpCatalogReleases(servedRelease, MCP_CATALOG_RELEASE) < 0) {
+          await pageCatalogRegression(this.env, `Expected at least ${MCP_CATALOG_RELEASE}; Pages served ${servedRelease}.`)
+          throw new Error('manifest release regressed')
+        }
+        if (catalog?.fullOwnerProjection === true) {
+          try {
+            assertMcpCatalogNotRegressed(servedRelease, tools.length)
+          } catch (error) {
+            await pageCatalogRegression(this.env, error instanceof Error ? error.message : String(error))
+            throw error
+          }
+        }
       }
       return {
         tools,
         _meta: {
           catalogRelease: catalog?.release || MCP_CATALOG_RELEASE,
+          previousCatalogRelease: catalog?.previousRelease || MCP_PREVIOUS_CATALOG_RELEASE,
           toolCount: tools.length,
           source: catalog?.source || 'fresh_server_projection',
         },

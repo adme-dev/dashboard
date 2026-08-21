@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 import { queryRows } from '~~/server/utils/db'
 import { getSelectedTenant } from '~~/server/utils/session'
+import { buildSyncFreshness, type SyncFreshness } from './responseContract'
 
 export type EconomicsPeriod = 'mtd' | 'ytd'
 
@@ -110,6 +111,50 @@ export async function fetchClientEconomics(event: H3Event, period: EconomicsPeri
     laborCents: laborMap.get(r.client_id)?.cents ?? 0,
     hours: laborMap.get(r.client_id)?.hours ?? 0,
   }))
+}
+
+/**
+ * As-of for every figure the economics tools derive (promise P-01). Revenue comes from the
+ * Xero invoice cache (windowed, synced by xero-customer-sync), pass-through from media_spend
+ * (synced by sync-spend); labor is first-party and has no sync. The GREATEST() over both Xero
+ * caches mirrors the delta-sync window in xeroCustomerSync.ts so "as of" means the same thing
+ * in both places.
+ */
+export interface EconomicsAsOf extends SyncFreshness {
+  xeroCacheSyncedAt: string | null
+  mediaSpendSyncedAt: string | null
+  basis: 'xero_invoice_cache+media_spend_sync'
+}
+
+export async function fetchEconomicsAsOf(
+  event: H3Event,
+  options: { now?: Date, load?: typeof queryRows } = {},
+): Promise<EconomicsAsOf> {
+  const load = options.load ?? queryRows
+  const tenantId = await getSelectedTenant(event).catch(() => null)
+  const [xero, media] = await Promise.all([
+    tenantId
+      ? load<{ last_synced: string | null }>(
+          `SELECT GREATEST(
+             (SELECT MAX(synced_at) FROM xero_contacts_cache WHERE tenant_id = $1),
+             (SELECT MAX(synced_at) FROM xero_invoices_cache WHERE tenant_id = $1)
+           )::text AS last_synced`,
+          [tenantId],
+        ).catch(() => [])
+      : Promise.resolve([]),
+    load<{ last_synced: string | null }>(
+      `SELECT MAX(synced_at)::text AS last_synced FROM media_spend`,
+      [],
+    ).catch(() => []),
+  ])
+  const xeroCacheSyncedAt = xero[0]?.last_synced ?? null
+  const mediaSpendSyncedAt = media[0]?.last_synced ?? null
+  return {
+    ...buildSyncFreshness([xeroCacheSyncedAt, mediaSpendSyncedAt], { now: options.now }),
+    xeroCacheSyncedAt,
+    mediaSpendSyncedAt,
+    basis: 'xero_invoice_cache+media_spend_sync',
+  }
 }
 
 export interface RetainerRow { clientId: string, name: string, capDollars: number, billingType: string }

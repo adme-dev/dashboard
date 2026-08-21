@@ -126,8 +126,8 @@
                 <span class="text-[12px] text-[#121317]/70 dark:text-white/60">Projects List</span>
               </div>
               <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/50 dark:bg-white/[0.05]">
-                <UIcon name="i-lucide-file-text" class="w-3.5 h-3.5 text-violet-500/60 dark:text-violet-400/60" />
-                <span class="text-[12px] text-[#121317]/70 dark:text-white/60">Project Detail</span>
+                <UIcon name="i-lucide-columns-3" class="w-3.5 h-3.5 text-violet-500/60 dark:text-violet-400/60" />
+                <span class="text-[12px] text-[#121317]/70 dark:text-white/60">Linked Client Board</span>
               </div>
             </div>
           </div>

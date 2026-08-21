@@ -2,7 +2,7 @@ import { createError } from 'h3'
 import { xeroFetch } from '../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
-import { cachedFetch } from '../../utils/kv'
+import { cachedFetchWithMeta } from '../../utils/kv'
 import { dedupedXeroCall } from '../../utils/xeroRateLimit'
 import { ensureDateString, toXeroDateTime } from '../../utils/xeroDataFetcher'
 import { queryRows } from '../../utils/db'
@@ -16,7 +16,8 @@ export default eventHandler(async (event) => {
 
   const cacheKey = `xero-report:${tenantId}:invoices`
 
-  return cachedFetch(event, cacheKey, 300, async () => {
+  // P-01: every figure carries its as-of — the cache provenance rides along as `asOf`.
+  const { value, asOf } = await cachedFetchWithMeta(event, cacheKey, 300, async () => {
     const dateKey = ensureDateString(new Date())
 
     // Page through Xero until we get a partial page (last page) or hit
@@ -586,4 +587,5 @@ export default eventHandler(async (event) => {
       all: allAnnotated
     }
   })
+  return { ...value, asOf }
 })

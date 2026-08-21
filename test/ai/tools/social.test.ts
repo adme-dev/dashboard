@@ -101,7 +101,7 @@ describe('get_social_performance', () => {
     expect(data.topContent).toHaveLength(5)
     expect(data.more).toBe(3)
     const item = data.topContent[0]
-    expect(Object.keys(item).sort()).toEqual(['caption', 'engagementRate', 'engagements', 'permalink', 'postId', 'reach'])
+    expect(Object.keys(item).sort()).toEqual(['caption', 'captionTruncated', 'engagementRate', 'engagements', 'permalink', 'postId', 'reach'])
     expect(item.postId).toBe('p0')
     expect(item.caption).toContain('Caption 0')
   })

@@ -3,6 +3,9 @@ import { queryRows, queryOne } from '~~/server/utils/db'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
 
+/** Disambiguation cap; one extra row is fetched so truncation is declared (P-03). */
+export const PROJECT_MATCH_CAP = 20
+
 const params = z.object({
   projectName: z.string().optional(),
   clientName: z.string().optional(),
@@ -44,7 +47,7 @@ const defaultDeps: ProjectsDeps = {
        LEFT JOIN agency_clients c ON p.client_id = c.id
        ${whereSql}
        ORDER BY p.start_date DESC NULLS LAST
-       LIMIT 20`,
+       LIMIT ${PROJECT_MATCH_CAP + 1}`,
       sqlParams,
     )
     return rows.map(r => ({
@@ -74,8 +77,12 @@ export async function getProjectStatus(args: Args, ctx: ToolContext, deps: Proje
 
     // Ambiguous: let the model pick rather than guessing.
     if (matches.length > 1) {
+      const truncated = matches.length > PROJECT_MATCH_CAP
       return ok({
-        disambiguation: matches.slice(0, 20).map(m => ({ id: m.id, name: m.name, client: m.client })),
+        disambiguation: matches.slice(0, PROJECT_MATCH_CAP).map(m => ({ id: m.id, name: m.name, client: m.client })),
+        limit: PROJECT_MATCH_CAP,
+        truncatedAtSource: truncated,
+        ...(truncated ? { note: `More than ${PROJECT_MATCH_CAP} projects match — narrow the project or client name.` } : {}),
       })
     }
 

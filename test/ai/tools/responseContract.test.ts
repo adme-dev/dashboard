@@ -4,6 +4,9 @@ import {
   buildSyncFreshness,
   mergeSyncFreshness,
   paginateWithCursor,
+  evaluateHalt,
+  PACING_HALT_HOURS,
+  STALENESS_THRESHOLD_HOURS,
 } from '~~/server/utils/ai/tools/responseContract'
 
 describe('MCP response contract helpers', () => {
@@ -78,5 +81,82 @@ describe('MCP response contract helpers', () => {
 
   it('rejects malformed cursors instead of silently restarting at page one', () => {
     expect(() => paginateWithCursor(['a'], 'not-a-cursor', 20)).toThrow(/cursor/i)
+  })
+
+  it('declares source-side truncation and prefers the true source total over the capped array', () => {
+    const rows = Array.from({ length: 100 }, (_, i) => `row-${i}`)
+    const plain = paginateWithCursor(rows, undefined, 20)
+    expect(plain.truncatedAtSource).toBe(false)
+    expect(plain.total).toBe(100)
+
+    const capped = paginateWithCursor(rows, undefined, 20, { truncatedAtSource: true })
+    expect(capped.truncatedAtSource).toBe(true)
+    expect(capped.total).toBe(100)
+
+    const counted = paginateWithCursor(rows, undefined, 20, { sourceTotal: 4_212, truncatedAtSource: true })
+    expect(counted.total).toBe(4_212)
+    expect(counted.more).toBe(4_192)
+    expect(counted.truncatedAtSource).toBe(true)
+  })
+
+  it('exports the staleness constants that SQL and tools share', () => {
+    expect(STALENESS_THRESHOLD_HOURS).toBe(48)
+    expect(PACING_HALT_HOURS).toBe(23.5)
+    expect(buildSyncFreshness([], {}).stalenessThresholdHours).toBe(STALENESS_THRESHOLD_HOURS)
+  })
+
+  describe('evaluateHalt', () => {
+    const now = new Date('2026-08-20T12:00:00Z')
+    const fresh = (lastSyncedAt: string | null) => buildSyncFreshness([lastSyncedAt], { now })
+
+    it('does not halt when the newest sync is inside the halt window', () => {
+      expect(evaluateHalt(fresh('2026-08-19T13:00:00Z'), { haltAfterHours: PACING_HALT_HOURS, now }))
+        .toEqual({ halted: false })
+    })
+
+    it('halts with stale_sync one minute past the window, carrying the as-of', () => {
+      const freshness = fresh('2026-08-19T12:29:00Z')
+      expect(evaluateHalt(freshness, { haltAfterHours: PACING_HALT_HOURS, now })).toEqual({
+        halted: true,
+        haltReason: 'stale_sync',
+        haltDetail: 'Newest sync 2026-08-19T12:29:00Z is older than 23.5h; figures withheld until a sync lands.',
+        asOf: freshness,
+      })
+    })
+
+    it('halts with no_sync_record when there is no timestamp at all', () => {
+      const result = evaluateHalt(fresh(null), { haltAfterHours: PACING_HALT_HOURS, now })
+      expect(result.halted).toBe(true)
+      expect(result.halted && result.haltReason).toBe('no_sync_record')
+    })
+
+    it('halts on a coverage drop beyond the threshold even when the sync is fresh', () => {
+      const result = evaluateHalt(fresh('2026-08-20T11:00:00Z'), {
+        haltAfterHours: PACING_HALT_HOURS,
+        now,
+        coverageDelta: { meta: { deltaPct: -12.5 }, google: { deltaPct: 0.4 } },
+      })
+      expect(result.halted).toBe(true)
+      expect(result.halted && result.haltReason).toBe('coverage_drop')
+      expect(result.halted && result.haltDetail).toContain('meta')
+    })
+
+    it('ignores a coverage delta inside the tolerance', () => {
+      expect(evaluateHalt(fresh('2026-08-20T11:00:00Z'), {
+        haltAfterHours: PACING_HALT_HOURS,
+        now,
+        coverageDelta: { meta: { deltaPct: -4.9 } },
+      })).toEqual({ halted: false })
+    })
+
+    it('halts when the previous coverage baseline is stale', () => {
+      const result = evaluateHalt(fresh('2026-08-20T11:00:00Z'), {
+        haltAfterHours: PACING_HALT_HOURS,
+        now,
+        coverageDelta: { meta: { deltaPct: 0, staleBaseline: true } },
+      })
+      expect(result.halted).toBe(true)
+      expect(result.halted && result.haltReason).toBe('stale_coverage_baseline')
+    })
   })
 })

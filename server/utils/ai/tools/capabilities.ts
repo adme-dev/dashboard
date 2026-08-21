@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import type { ToolContext, ToolResult } from '../toolContext'
-import { ok } from '../toolContext'
+import { ok, escapeLike } from '../toolContext'
 import {
   MCP_GEN_RATE_MAX,
   MCP_GEN_RATE_WINDOW_MIN,
@@ -9,7 +9,7 @@ import {
   MCP_INSPECTION_RATE_WINDOW_MIN,
 } from '../mcp/rateLimit'
 import { queryRows } from '~~/server/utils/db'
-import { MCP_CATALOG_RELEASE } from '~~/shared/utils/mcpCatalog'
+import { MCP_CATALOG_RELEASE, MCP_PREVIOUS_CATALOG_RELEASE } from '~~/shared/utils/mcpCatalog'
 
 const actionLogFilter = z.object({
   clientId: z.string().uuid().optional(),
@@ -37,7 +37,57 @@ export type CapabilitiesDeps = {
   inspect: (ctx: ToolContext) => Promise<CapabilityInspection>
   inspectActions?: (ctx: ToolContext, filter: z.infer<typeof actionLogFilter>) => Promise<unknown[]>
   inspectGenerationSpend?: () => Promise<GenerationSpendStatus | null>
+  inspectDataSyncRuns?: () => Promise<DataSyncRunStatus | null>
   retryDelay?: () => Promise<void>
+}
+
+/** P-01: what the scheduled sync actually did last, not just when it is next due. */
+export type DataSyncRunStatus = {
+  lastRunAt: string | null
+  lastRunOutcome: 'completed' | 'failed' | 'running' | 'none'
+  byPlatform: Array<{ platform: string, status: string, startedAt: string, finishedAt: string | null, syncedCount: number, failureCount: number }>
+  coverageBaselinePresent: boolean
+}
+
+const DATA_SYNC_INSPECT_TIMEOUT_MS = 1500
+
+export async function inspectDataSyncRunStatus(load: typeof queryRows = queryRows): Promise<DataSyncRunStatus | null> {
+  // Never let a slow/unavailable DB stall get_capabilities — a null here renders as "unknown".
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), DATA_SYNC_INSPECT_TIMEOUT_MS) })
+  try {
+    return await Promise.race([inspectDataSyncRunStatusUnbounded(load), timeout])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+async function inspectDataSyncRunStatusUnbounded(load: typeof queryRows): Promise<DataSyncRunStatus | null> {
+  const [runs, baseline] = await Promise.all([
+    load<{ platform: string, status: string, started_at: string, finished_at: string | null, synced_count: number, failure_count: number }>(
+      `SELECT platform, status, started_at::text, finished_at::text, synced_count,
+              jsonb_array_length(COALESCE(failures, '[]'::jsonb)) AS failure_count
+         FROM (
+           SELECT *, ROW_NUMBER() OVER (PARTITION BY platform ORDER BY started_at DESC) AS rn
+             FROM spend_sync_jobs
+         ) ranked
+        WHERE rn = 1
+        ORDER BY started_at DESC`,
+      [],
+    ).catch(() => null),
+    load<{ n: number }>(`SELECT COUNT(*)::int AS n FROM spend_sync_source_counts`, []).catch(() => null),
+  ])
+  if (!runs) return null
+  const newest = runs[0]
+  return {
+    lastRunAt: newest?.started_at ?? null,
+    lastRunOutcome: !newest ? 'none' : newest.status === 'completed' ? 'completed' : newest.status === 'running' ? 'running' : 'failed',
+    byPlatform: runs.map(r => ({
+      platform: r.platform, status: r.status, startedAt: r.started_at, finishedAt: r.finished_at,
+      syncedCount: Number(r.synced_count), failureCount: Number(r.failure_count),
+    })),
+    coverageBaselinePresent: Number(baseline?.[0]?.n ?? 0) > 0,
+  }
 }
 
 export type GenerationSpendStatus = {
@@ -107,7 +157,7 @@ export async function inspectGodModeActions(
         AND event.phase IN ('ambiguous', 'succeeded', 'failed')
         AND cardinality(event.bypassed_controls) > 0
         AND ($1::uuid IS NULL OR event.client_id = $1::uuid)
-        AND ($2::text IS NULL OR client.name ILIKE '%' || $2 || '%')
+        AND ($2::text IS NULL OR client.name ILIKE '%' || $2 || '%' ESCAPE '\\')
         AND ($3::text IS NULL OR event.route_or_tool = $3)
         AND ($4::timestamptz IS NULL OR event.created_at >= $4::timestamptz)
         AND ($6::boolean OR event.actor_user_id = $7::uuid)
@@ -119,7 +169,7 @@ export async function inspectGodModeActions(
       LIMIT $5`,
     [
       filter.clientId ?? null,
-      filter.clientName ?? null,
+      filter.clientName ? escapeLike(filter.clientName) : null,
       filter.toolName ?? null,
       filter.since ?? null,
       filter.limit ?? 20,
@@ -135,7 +185,7 @@ export async function inspectGodModeActions(
 
 
 /** G-4: when data next moves. The ad-spend sync runs from the pages-cron Worker. */
-export function describeDataSyncSchedule(now: Date = new Date()) {
+export function describeDataSyncSchedule(now: Date = new Date(), runs: DataSyncRunStatus | null = null) {
   const cron = '0 20 * * *'
   const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 20, 0, 0))
   if (next.getTime() <= now.getTime()) next.setUTCDate(next.getUTCDate() + 1)
@@ -144,7 +194,14 @@ export function describeDataSyncSchedule(now: Date = new Date()) {
       cron,
       timezone: 'UTC',
       note: '06:00 Melbourne — moved from 06:00 UTC so the 9am budget check reads same-day data',
-      nextRunAt: next.toISOString()
+      nextRunAt: next.toISOString(),
+      nextRunBasis: 'computed from the cron expression, not a scheduler record',
+      // P-01: the as-of of the sync itself. null = the job table could not be read.
+      lastRunAt: runs?.lastRunAt ?? null,
+      lastRunOutcome: runs?.lastRunOutcome ?? null,
+      byPlatform: runs?.byPlatform ?? null,
+      coverageBaselinePresent: runs?.coverageBaselinePresent ?? null,
+      coverageHaltNote: 'G-2 halts the persist step when a source\'s campaign count drops >5% vs the baseline in spend_sync_source_counts; coverageBaselinePresent=false means that gate cannot fire yet',
     }
   }
 }
@@ -204,7 +261,7 @@ const defaultDeps: CapabilitiesDeps = {
         throw new Error(`Capability has no registered MCP execution: ${manifest.name}`)
       }
     }
-    const inspectionNames = new Set(['verify_creative_compliance'])
+    const inspectionNames = new Set(['verify_creative_compliance', 'run_adspend_sync', 'get_sync_status'])
     const generationNames = new Set(
       generationModule.generationTools
         .map(tool => tool.name)
@@ -262,6 +319,7 @@ const defaultDeps: CapabilitiesDeps = {
   },
   inspectActions: inspectGodModeActions,
   inspectGenerationSpend: inspectGenerationSpendStatus,
+  inspectDataSyncRuns: inspectDataSyncRunStatus,
 }
 
 async function inspectWithOneRetry(ctx: ToolContext, deps: CapabilitiesDeps): Promise<CapabilityInspection> {
@@ -287,6 +345,7 @@ async function inspectWithDegradedFallback(
 export async function getCapabilities(args: Args, ctx: ToolContext, deps: CapabilitiesDeps = defaultDeps): Promise<ToolResult> {
   const { inspection, degraded } = await inspectWithDegradedFallback(ctx, deps)
   const generationSpend = await deps.inspectGenerationSpend?.().catch(() => null) ?? null
+  const dataSyncRuns = await deps.inspectDataSyncRuns?.().catch(() => null) ?? null
   let actions: unknown[] | undefined
   let actionLogUnavailable = false
   if (args.actionLog && deps.inspectActions) {
@@ -311,6 +370,7 @@ export async function getCapabilities(args: Args, ctx: ToolContext, deps: Capabi
     tools: inspection.tools,
     servedCatalog: {
       release: MCP_CATALOG_RELEASE,
+      previousRelease: MCP_PREVIOUS_CATALOG_RELEASE,
       toolCount: inspection.tools.length,
       projectionAuthority: 'shared_with_tools_list',
     },
@@ -343,7 +403,7 @@ export async function getCapabilities(args: Args, ctx: ToolContext, deps: Capabi
       inspection: { maxCalls: MCP_INSPECTION_RATE_MAX, windowMinutes: MCP_INSPECTION_RATE_WINDOW_MIN },
     },
     ...(generationSpend ? { generationSpend } : {}),
-    dataSync: describeDataSyncSchedule(),
+    dataSync: describeDataSyncSchedule(new Date(), dataSyncRuns),
     ...(actions ? { actionLog: { items: actions, count: actions.length } } : {}),
     ...(unavailableSections.length
       ? {

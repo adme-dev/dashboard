@@ -3,7 +3,8 @@ import { queryOne, queryRows } from '~~/server/utils/db'
 import { syncCampaignAdPerformance } from '~~/server/utils/onDemandSync'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
-import { buildDataHealth, buildSyncFreshness, paginateWithCursor } from './responseContract'
+import { buildDataHealth, buildSyncFreshness, paginateWithCursor, evaluateHalt, PACING_HALT_HOURS } from './responseContract'
+import { getSpendCoverageDeltas } from '~~/server/utils/spendSyncJobs'
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const params = z.object({
@@ -48,6 +49,7 @@ type RawAdRecord = {
 export type AdBreakdownDeps = {
   fetch: (args: Args, ctx: ToolContext) => Promise<{ records: RawAdRecord[], targetCount: number, available: boolean }>
   leadAttribution?: (args: Args, ctx: ToolContext) => Promise<{ totalSubmissions: number, adAttributed: number }>
+  loadCoverageDeltas?: () => Promise<Record<string, unknown> | null>
   now?: () => Date
 }
 
@@ -226,11 +228,40 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
     const withFrequency = ads.filter(ad => ad.frequency != null).length
     const health = buildDataHealth({ configured: result.targetCount > 0, available: result.available, expected: ads.length, withData: withFrequency })
     const freshness = buildSyncFreshness(ads.map(ad => ad.lastSyncedAt), { now: deps.now?.() })
+    const coverageDelta = await (deps.loadCoverageDeltas ?? getSpendCoverageDeltas)().catch(() => null)
+    // P-02: untrusted data ⇒ say so and return no figures; keep the coverage universe visible (P-13).
+    const halt = evaluateHalt(freshness, {
+      haltAfterHours: PACING_HALT_HOURS,
+      now: deps.now?.(),
+      coverageDelta: coverageDelta as Record<string, { deltaPct?: number | null }> | null,
+    })
+    if (halt.halted) {
+      return ok({
+        period: currentPeriod,
+        source: 'meta_marketing_api/google_ads_api',
+        halted: true,
+        haltReason: halt.haltReason,
+        haltDetail: halt.haltDetail,
+        asOf: halt.asOf,
+        ...(coverageDelta ? { coverageDelta } : {}),
+        ...health,
+        coverageField: 'frequency',
+        targetCampaignLimit: 20,
+        ads: [],
+        total: 0,
+        appliedLimit: args.limit ?? 20,
+        nextCursor: null,
+        more: 0,
+        truncatedAtSource: false,
+      })
+    }
     return ok({
       period: currentPeriod,
       ...(previousPeriod ? { previousPeriod } : {}),
       source: 'meta_marketing_api/google_ads_api',
+      halted: false,
       ...freshness,
+      ...(coverageDelta ? { coverageDelta } : {}),
       ...health,
       coverageField: 'frequency',
       conversionMetric: {
@@ -253,6 +284,7 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
       appliedLimit: args.limit ?? 20,
       nextCursor: page.nextCursor,
       more: page.more,
+      truncatedAtSource: page.truncatedAtSource,
     })
   } catch {
     return fail('Could not load ad-level performance for the requested campaign window.')

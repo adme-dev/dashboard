@@ -3,7 +3,7 @@ import type { H3Event } from 'h3'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import {
-  fetchClientEconomics, fetchRetainerCaps, fetchClientProjectLabor, resolveByName,
+  fetchClientEconomics, fetchEconomicsAsOf, fetchRetainerCaps, fetchClientProjectLabor, resolveByName, type EconomicsAsOf,
   type ClientEconomicsRow, type RetainerRow, type ProjectLaborRow, type EconomicsPeriod,
 } from './economics'
 
@@ -17,11 +17,14 @@ export type OverServicingDeps = {
   fetchRetainers: () => Promise<RetainerRow[]>
   fetchEconomics: (event: H3Event, period: EconomicsPeriod) => Promise<ClientEconomicsRow[]>
   fetchProjectLabor: (clientId: string, period: EconomicsPeriod) => Promise<ProjectLaborRow[]>
+  fetchAsOf?: (event: any, options?: { now?: Date }) => Promise<EconomicsAsOf>
+  now?: () => Date
 }
 const defaultDeps: OverServicingDeps = {
   fetchRetainers: fetchRetainerCaps,
   fetchEconomics: fetchClientEconomics,
   fetchProjectLabor: fetchClientProjectLabor,
+  fetchAsOf: fetchEconomicsAsOf,
 }
 
 const round = (n: number) => Math.round(n * 100) / 100
@@ -29,8 +32,15 @@ const round = (n: number) => Math.round(n * 100) / 100
 export async function flagOverServicing(rawArgs: Args, ctx: ToolContext, deps: OverServicingDeps = defaultDeps): Promise<ToolResult> {
   try {
     const args = params.parse(rawArgs)
-    const [retainers, econ] = await Promise.all([deps.fetchRetainers(), deps.fetchEconomics(ctx.event, 'mtd')])
+    const [retainers, econ, asOf] = await Promise.all([
+      deps.fetchRetainers(),
+      deps.fetchEconomics(ctx.event, 'mtd'),
+      deps.fetchAsOf ? deps.fetchAsOf(ctx.event, { now: deps.now?.() }).catch(() => null) : Promise.resolve(null),
+    ])
     if (retainers.length === 0) return ok({ note: 'No clients with a scope baseline (retainer cap) on record.' })
+    const OVER_BASIS = 'overByPct = (delivered labor value − retainer cap) / retainer cap; delivered = time_entries hours × hourly_rate this month'
+    const TOP_PROJECTS_LIMIT = 5
+    const WATCHLIST_LIMIT = 10
 
     const deliveredByClient = new Map(econ.map(e => [e.clientId, e.laborCents / 100]))
     const computed = retainers.map((r) => {
@@ -56,7 +66,7 @@ export async function flagOverServicing(rawArgs: Args, ctx: ToolContext, deps: O
       const c = computed.find(x => x.clientId === match.clientId)!
       const topProjects = await deps.fetchProjectLabor(match.clientId, 'mtd')
       const { clientId, ...rest } = c
-      return ok({ ...rest, topProjects: topProjects.slice(0, 5) })
+      return ok({ ...(asOf ? { asOf } : {}), ...rest, topProjects: topProjects.slice(0, TOP_PROJECTS_LIMIT), topProjectsLimit: TOP_PROJECTS_LIMIT, topProjectsMore: Math.max(0, topProjects.length - TOP_PROJECTS_LIMIT), basis: OVER_BASIS })
     }
 
     const flagged = computed
@@ -64,8 +74,11 @@ export async function flagOverServicing(rawArgs: Args, ctx: ToolContext, deps: O
       .sort((a, b) => b.overByPct - a.overByPct)
     return ok({
       threshold: args.thresholdPct,
-      flagged: flagged.slice(0, 10).map(({ client, overByPct, deliveredValue, scopeValue }) => ({ client, overByPct, deliveredValue, scopeValue })),
-      more: Math.max(0, flagged.length - 10),
+      ...(asOf ? { asOf } : {}),
+      flagged: flagged.slice(0, WATCHLIST_LIMIT).map(({ client, overByPct, deliveredValue, scopeValue }) => ({ client, overByPct, deliveredValue, scopeValue })),
+      limit: WATCHLIST_LIMIT,
+      more: Math.max(0, flagged.length - WATCHLIST_LIMIT),
+      basis: OVER_BASIS,
     })
   } catch {
     return fail('Could not assess over-servicing — time-tracking or retainer data may be unavailable.')

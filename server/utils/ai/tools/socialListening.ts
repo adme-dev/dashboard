@@ -44,6 +44,8 @@ export async function getSocialListening(args: Args, ctx: ToolContext, deps: Soc
       client: client.name, period: args.period, total: ov.total, sentiment: ov.sentiment,
       shareOfVoice: ov.shareOfVoice ?? [], topTopics: ov.topTopics ?? [], topSources: ov.topSources ?? [],
       notableMentions: notable,
+      notableMentionsLimit: 5,
+      excerptMaxChars: 200,
     })
   } catch {
     return fail('Could not load social listening — the client may have no listening queries configured.')

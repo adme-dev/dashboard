@@ -716,13 +716,23 @@ export async function getGoogleCampaignAdPerformance(
  * Step 1: Fetch ads with headlines/descriptions via ad_group_ad.
  * Step 2: Resolve image URLs via ad_group_ad_asset_view (asset.image_asset.full_size.url).
  */
+/**
+ * Per-campaign cap for the ad-asset pull (X-1a). searchStream returns every batch, so this is a
+ * self-imposed bound for payload size, not an API page. We fetch one extra row so a campaign with
+ * more ads than the cap is DECLARED truncated (`truncated` on the returned array) instead of silently
+ * returning a subset — the old hard `LIMIT 5` did exactly that.
+ */
+export const GOOGLE_AD_ASSETS_CAP = 200
+
+export type GoogleAdAssetList = GoogleAdAsset[] & { truncated: boolean, cap: number, total: number }
+
 export async function getCampaignAdAssets(
   customerId: string,
   token: string,
   developerToken: string,
   campaignId: string,
   loginCustomerId?: string
-): Promise<GoogleAdAsset[]> {
+): Promise<GoogleAdAssetList> {
   const cleanCampaignId = String(campaignId).replace(/[^0-9]/g, '')
   try {
     // Step 1: Get ads with text content
@@ -738,9 +748,14 @@ export async function getCampaignAdAssets(
         ad_group_ad.ad.responsive_search_ad.descriptions
       FROM ad_group_ad
       WHERE campaign.id = '${cleanCampaignId}'
-      LIMIT 5
     `
-    const adResults = await gaqlQuery(customerId, token, developerToken, adQuery, loginCustomerId)
+    const allAdResults = await gaqlQuery(customerId, token, developerToken, adQuery, loginCustomerId)
+    const total = allAdResults.length
+    const truncated = allAdResults.length > GOOGLE_AD_ASSETS_CAP
+    const adResults = truncated ? allAdResults.slice(0, GOOGLE_AD_ASSETS_CAP) : allAdResults
+    if (truncated) {
+      console.warn(`[GoogleAds] campaign ${cleanCampaignId} has more than ${GOOGLE_AD_ASSETS_CAP} ads; creative registry is truncated`)
+    }
 
     // Step 2: Resolve image asset URLs for this campaign
     const imageMap = new Map<string, string>() // adId → imageUrl
@@ -752,7 +767,7 @@ export async function getCampaignAdAssets(
         FROM ad_group_ad_asset_view
         WHERE campaign.id = '${cleanCampaignId}'
           AND asset.type = 'IMAGE'
-        LIMIT 10
+        LIMIT ${GOOGLE_AD_ASSETS_CAP * 2}
       `
       const assetResults = await gaqlQuery(customerId, token, developerToken, assetQuery, loginCustomerId)
       for (const r of assetResults) {
@@ -766,7 +781,7 @@ export async function getCampaignAdAssets(
       // Asset view query may fail for some campaign types — continue without images
     }
 
-    return adResults.map((r: any) => {
+    const assets = adResults.map((r: any) => {
       const ad = r.adGroupAd?.ad || {}
       const rda = ad.responsiveDisplayAd || {}
       const rsa = ad.responsiveSearchAd || {}
@@ -787,9 +802,12 @@ export async function getCampaignAdAssets(
         body: descriptions[0]?.text || null,
       }
     })
+    return Object.assign(assets, { truncated, cap: GOOGLE_AD_ASSETS_CAP, total })
   } catch (err: any) {
+    // Rethrow: "the API failed" must never look like "this campaign has no creatives". Both callers
+    // (onDemandSync, spendSync) already catch + log per campaign and skip the upsert.
     console.warn(`[GoogleAds] Failed to fetch ad assets for campaign ${campaignId}:`, err.message)
-    return []
+    throw err
   }
 }
 

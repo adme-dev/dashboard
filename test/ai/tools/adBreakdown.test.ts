@@ -7,7 +7,8 @@ const ctx = { userId: 'u1', userRole: 'owner', event: {} as any } as ToolContext
 describe('get_ad_breakdown', () => {
   it('returns ad fatigue metrics, lead outcomes, creative links and explicit partial coverage', async () => {
     const deps: AdBreakdownDeps = {
-      now: () => new Date('2026-08-19T12:00:00Z'),
+      now: () => new Date('2026-08-19T06:00:00Z'),
+  loadCoverageDeltas: async () => null,
       fetch: vi.fn().mockResolvedValue({
         targetCount: 2,
         available: true,
@@ -36,7 +37,8 @@ describe('get_ad_breakdown', () => {
 
   it('reports configured but empty ad data as partial instead of populated', async () => {
     const deps: AdBreakdownDeps = {
-      now: () => new Date('2026-08-19T12:00:00Z'),
+      now: () => new Date('2026-08-19T06:00:00Z'),
+  loadCoverageDeltas: async () => null,
       fetch: vi.fn().mockResolvedValue({ targetCount: 1, available: true, records: [] }),
     }
     const data = (await getAdBreakdown({ campaignId: 'c1', sortBy: 'frequency' }, ctx, deps) as any).data
@@ -46,7 +48,8 @@ describe('get_ad_breakdown', () => {
 
   it('suppresses spend_without_leads while lead attribution coverage is unknown', async () => {
     const deps: AdBreakdownDeps = {
-      now: () => new Date('2026-08-19T12:00:00Z'),
+      now: () => new Date('2026-08-19T06:00:00Z'),
+  loadCoverageDeltas: async () => null,
       fetch: vi.fn().mockResolvedValue({
         targetCount: 1,
         available: true,
@@ -65,6 +68,30 @@ describe('get_ad_breakdown', () => {
     expect(data.leadAttribution).toMatchObject({
       coveragePct: null,
       fatigueSignalPolicy: 'spend_without_leads_suppressed_until_attribution_coverage_exists',
+    })
+  })
+
+  describe('P-02 halt', () => {
+    it('halts with no figures before the newest sync reaches 24h old', async () => {
+      const deps: AdBreakdownDeps = {
+        now: () => new Date('2026-08-19T10:11:00Z'),
+        loadCoverageDeltas: async () => null,
+        fetch: vi.fn().mockResolvedValue({
+          targetCount: 1,
+          available: true,
+          records: [
+            { adId: 'ad1', adName: 'EOFY', campaignId: 'c1', campaignName: 'Campaign', clientName: 'Acme', platform: 'meta', creativeId: 'cr1', creativeName: 'EOFY tile', spend: 121.59, impressions: 48210, clicks: 1430, conversions: 12, leadCount: 9, reach: 13029, frequency: 3.7, firstServedDate: '2026-06-05', lastServedDate: '2026-08-18', lastSyncedAt: '2026-08-18T08:10:00Z' },
+          ],
+        }),
+        leadAttribution: vi.fn().mockResolvedValue({ totalSubmissions: 0, adAttributed: 0 }),
+      }
+      const res = await getAdBreakdown({ sortBy: 'spend', refresh: false, comparePrevious: false, limit: 20, clientName: 'Acme' } as any, ctx, deps)
+      expect(res.ok).toBe(true)
+      const d = (res as any).data
+      expect(d.halted).toBe(true)
+      expect(d.haltReason).toBe('stale_sync')
+      expect(d.ads).toEqual([])
+      expect(JSON.stringify(d)).not.toContain('121.59')
     })
   })
 })

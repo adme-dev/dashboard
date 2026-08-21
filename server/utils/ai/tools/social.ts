@@ -86,11 +86,13 @@ export async function getSocialPerformance(
       topContent: best.slice(0, 5).map(c => ({
         postId: c.postId,
         caption: (c.content || '').slice(0, 140),
+        captionTruncated: (c.content || '').length > 140,
         permalink: c.permalink ?? null,
         engagements: c.engagements,
         reach: c.reach,
         engagementRate: c.engagementRate,
       })),
+      limit: 5,
       more: Math.max(0, best.length - 5),
     })
   } catch {

@@ -33,6 +33,8 @@ async function checkBriefCompleteness(args: Args, _ctx: ToolContext): Promise<To
       requiredComplete: decision.requiredComplete,
       missingRequired: decision.missingRequired,
       recommendations: decision.recommendations.slice(0, 8),
+      recommendationsLimit: 8,
+      recommendationsMore: Math.max(0, decision.recommendations.length - 8),
       summary: decision.message,
     })
   } catch {

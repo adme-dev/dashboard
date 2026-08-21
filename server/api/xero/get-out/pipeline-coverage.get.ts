@@ -13,7 +13,7 @@ import { requireAuth } from '~~/server/utils/auth'
 import { xeroFetch } from '~~/server/utils/xeroClient'
 import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
-import { cachedFetch } from '~~/server/utils/kv'
+import { cachedFetchWithMeta } from '~~/server/utils/kv'
 import { queryOne } from '~~/server/utils/db'
 import { loadGetOutConfig, summariseConfig } from '~~/server/utils/getOutConfig'
 import { quotePipelineDateFrom } from '~~/server/utils/quotePipeline'
@@ -38,7 +38,8 @@ export default defineEventHandler(async (event) => {
   if (!token) throw createError({ statusCode: 401, statusMessage: 'Not authenticated with Xero' })
   const tenantId = tenantIdRaw
 
-  return cachedFetch(event, `xero-get-out:${tenantId}:pipeline-coverage`, 600, async () => {
+  // P-01: every figure carries its as-of — the cache provenance rides along as `asOf`.
+  const { value, asOf } = await cachedFetchWithMeta(event, `xero-get-out:${tenantId}:pipeline-coverage`, 600, async () => {
     const today = new Date()
     const horizon = new Date(today.getTime() + 90 * 86400_000)
     const horizonStr = horizon.toISOString().slice(0, 10)
@@ -186,4 +187,5 @@ export default defineEventHandler(async (event) => {
       coverage: { face: coverageFace, weighted: coverageWeighted, band },
     }
   })
+  return { ...value, asOf }
 })

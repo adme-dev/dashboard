@@ -25,6 +25,9 @@ export type BriefsDeps = {
 // Real wiring mirrors server/api/agency/briefs/index.get.ts: briefs JOIN brief_templates
 // JOIN brief_categories, LEFT JOIN agency_clients for the client name. We only select the
 // three projected columns + id (for stable ordering) and cap to 21 to compute `more`.
+/** Source-side cap; one extra row is fetched so truncation is declared, never silent (P-03). */
+export const BRIEFS_FETCH_CAP = 1000
+
 const defaultDeps: BriefsDeps = {
   query: async (q) => {
     let whereClause = 'WHERE 1=1'
@@ -49,7 +52,7 @@ const defaultDeps: BriefsDeps = {
       LEFT JOIN agency_clients c ON b.client_id = c.id
       ${whereClause}
       ORDER BY b.created_at DESC
-      LIMIT 1000
+      LIMIT ${BRIEFS_FETCH_CAP + 1}
     `, sqlParams)
     return rows as BriefRow[]
   },
@@ -62,13 +65,15 @@ export async function getBriefs(args: Args, ctx: ToolContext, deps: BriefsDeps =
       // pre-escape here so both the default SQL dep AND test assertions see literal-safe input
       clientName: args.clientName ? escapeLike(args.clientName) : undefined,
     }, ctx)
-    const page = paginateWithCursor(rows, args.cursor, args.limit)
+    const truncatedAtSource = rows.length > BRIEFS_FETCH_CAP
+    const bounded = truncatedAtSource ? rows.slice(0, BRIEFS_FETCH_CAP) : rows
+    const page = paginateWithCursor(bounded, args.cursor, args.limit, { truncatedAtSource })
     const briefs = page.items.map(r => ({
       title: r.title ?? '—',
       status: r.status ?? 'unknown',
       client: r.client ?? null,
     }))
-    return ok({ briefs, total: page.total, appliedLimit: args.limit ?? 20, nextCursor: page.nextCursor, more: page.more })
+    return ok({ briefs, total: page.total, appliedLimit: args.limit ?? 20, nextCursor: page.nextCursor, more: page.more, truncatedAtSource: page.truncatedAtSource, sourceCap: BRIEFS_FETCH_CAP })
   } catch {
     return fail('Could not load briefs — the briefs data source may be unavailable.')
   }

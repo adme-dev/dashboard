@@ -12,7 +12,8 @@ const rows: BreakdownCampaign[] = [
 
 const deps = (over: Partial<CampaignBreakdownDeps> = {}): CampaignBreakdownDeps => ({
   breakdown: vi.fn().mockResolvedValue({ campaigns: rows, total: rows.length }),
-  now: () => new Date('2026-08-19T12:00:00Z'),
+  now: () => new Date('2026-08-19T06:00:00Z'),
+  loadCoverageDeltas: async () => null,
   ...over,
 })
 
@@ -141,7 +142,7 @@ describe('getCampaignBreakdown', () => {
       startDate: '2026-08-01',
       endDate: '2026-08-18',
       comparePrevious: true,
-    }, ctx, { breakdown }))
+    }, ctx, deps({ breakdown })))
     expect(breakdown.mock.calls[0][1]).toMatchObject({ startDate: '2026-08-01', endDate: '2026-08-18' })
     expect(breakdown.mock.calls[1][1]).toMatchObject({ startDate: '2026-07-14', endDate: '2026-07-31' })
     expect(d.previousPeriod).toEqual({ start: '2026-07-14', end: '2026-07-31' })
@@ -156,7 +157,7 @@ describe('getCampaignBreakdown', () => {
       .mockResolvedValueOnce({ campaigns: [], total: 0 })
     const d = data(await getCampaignBreakdown({
       sortBy: 'spend', startDate: '2026-08-01', endDate: '2026-08-18', comparePrevious: true,
-    }, ctx, { breakdown }))
+    }, ctx, deps({ breakdown })))
 
     expect(d.comparisonStatus).toBe('no_baseline')
     expect(d.campaigns[0].comparisonStatus).toBe('no_baseline')
@@ -169,7 +170,7 @@ describe('getCampaignBreakdown', () => {
       .mockResolvedValueOnce({ campaigns: [{ ...rows[0]!, campaignId: 'old' }], total: 1 })
     const d = data(await getCampaignBreakdown({
       sortBy: 'spend', startDate: '2026-08-01', endDate: '2026-08-18', comparePrevious: true,
-    }, ctx, { breakdown }))
+    }, ctx, deps({ breakdown })))
 
     expect(d.comparisonStatus).toBe('available')
     expect(d.campaigns[0]).toMatchObject({ comparisonStatus: 'no_baseline' })
@@ -179,5 +180,26 @@ describe('getCampaignBreakdown', () => {
   it('fails gracefully when the data source throws', async () => {
     const r = await getCampaignBreakdown({ sortBy: 'spend' }, ctx, deps({ breakdown: vi.fn().mockRejectedValue(new Error('down')) }))
     expect(r.ok).toBe(false)
+  })
+
+  describe('P-02 halt', () => {
+    it('halts with no figures before the newest sync reaches 24h old', async () => {
+      const d = data(await getCampaignBreakdown({}, ctx, deps({ now: () => new Date('2026-08-19T10:31:00Z') })))
+      expect(d.halted).toBe(true)
+      expect(d.haltReason).toBe('stale_sync')
+      expect(d.asOf.lastSyncedAt).toBe('2026-08-18T08:30:00Z')
+      expect(d.campaigns).toEqual([])
+      expect(d.total).toBe(0)
+      expect(JSON.stringify(d)).not.toContain('"spend"')
+      expect(d.coverage.expected).toBe(3)
+    })
+
+    it('reports halted:false and declares a truncated source window', async () => {
+      const d = data(await getCampaignBreakdown({}, ctx, deps({
+        breakdown: vi.fn().mockResolvedValue({ campaigns: rows, total: 250 }),
+      })))
+      expect(d.halted).toBe(false)
+      expect(d.truncatedAtSource).toBe(true)
+    })
   })
 })

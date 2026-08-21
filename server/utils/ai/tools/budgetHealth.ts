@@ -5,7 +5,7 @@ import { getSpendCoverageDeltas } from '~~/server/utils/spendSyncJobs'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
-import { buildDataHealth, mergeSyncFreshness, paginateWithCursor } from './responseContract'
+import { buildDataHealth, mergeSyncFreshness, paginateWithCursor, evaluateHalt, PACING_HALT_HOURS } from './responseContract'
 
 const params = z.object({
   clientName: z.string().optional(),
@@ -30,6 +30,7 @@ export type BudgetHealthClient = {
   unattributed?: boolean
   lastSyncedAt?: string | null
   oldestSyncedAt?: string | null
+  spendAsOf?: string | null
   staleRowCount?: number
   campaignCount?: number
   budgetedCampaignCount?: number
@@ -72,6 +73,7 @@ const defaultDeps: BudgetHealthDeps = {
           || String(c?.clientName ?? '').toLowerCase() === 'unmapped',
         lastSyncedAt: c?.lastSyncedAt ? String(c.lastSyncedAt) : null,
         oldestSyncedAt: c?.oldestSyncedAt ? String(c.oldestSyncedAt) : null,
+        spendAsOf: c?.spendAsOf ? String(c.spendAsOf) : null,
         staleRowCount: Number.isFinite(Number(c?.staleRowCount)) ? Number(c.staleRowCount) : undefined,
         campaignCount: Number.isFinite(Number(c?.campaignCount)) ? Number(c.campaignCount) : undefined,
         budgetedCampaignCount: Number.isFinite(Number(c?.budgetedCampaignCount)) ? Number(c.budgetedCampaignCount) : undefined,
@@ -158,10 +160,44 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
       overBudgetCount: attributed.filter(c => c.healthStatus === 'over_budget').length,
     }
 
+    const freshness = mergeSyncFreshness(normalised, { now: deps.now?.() })
+    // P-02: untrusted data ⇒ say so and return no figures; keep the coverage universe visible (P-13).
+    const halt = evaluateHalt(freshness, {
+      haltAfterHours: PACING_HALT_HOURS,
+      now: deps.now?.(),
+      coverageDelta: coverageDelta as Record<string, { deltaPct?: number | null }> | null,
+    })
+    if (halt.halted) {
+      return ok({
+        period: res.period,
+        source: 'budget_health',
+        halted: true,
+        haltReason: halt.haltReason,
+        haltDetail: halt.haltDetail,
+        asOf: halt.asOf,
+        ...(coverageDelta ? { coverageDelta } : {}),
+        ...health,
+        summary: { clientCount: attributed.length, excludedFromPacingCount: attributed.length },
+        clients: [],
+        unattributed: [],
+        total: 0,
+        appliedLimit: args.limit ?? 20,
+        nextCursor: null,
+        more: 0,
+        truncatedAtSource: false,
+      })
+    }
+
     return ok({
       period: res.period,
       source: 'budget_health',
-      ...mergeSyncFreshness(normalised, { now: deps.now?.() }),
+      halted: false,
+      basis: {
+        percentConsumed: 'spend ÷ allocated budget × 100 for the period',
+        pacingRatio: 'percentConsumed ÷ month progress %; >1 ahead of pace, <1 behind; null when budget coverage is partial',
+        overallUtilization: 'total spend ÷ total allocated budget across budgeted rows; null when any row has partial budget coverage',
+      },
+      ...freshness,
       ...(coverageDelta ? { coverageDelta } : {}),
       ...health,
       summary,
@@ -171,6 +207,7 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
       appliedLimit: args.limit ?? 20,
       nextCursor: page.nextCursor,
       more: page.more,
+      truncatedAtSource: page.truncatedAtSource,
     })
   } catch {
     return fail('Could not load budget health — the spend sync may be unavailable or no budgets are set for this period.')
@@ -181,6 +218,7 @@ export const budgetHealthTool: AiTool<Args> = {
   name: 'get_budget_health',
   description: 'Budget health for the current month per client/platform — allocated budget, spend, % consumed, coverage, and worst-case freshness (`lastSyncedAt`, `oldestSyncedAt`, `staleRowCount`, `stalenessThresholdHours`). '
     + 'Rows without a configured budget are `no_budget_set`; rows where only some campaigns have budgets are `partial_budget_coverage`. Both have null pacing values and are excluded from pacing conclusions. Unattributed account spend is returned separately. '
+    + 'Every pacing row includes spendAsOf. Before data reaches 24 hours old, when no sync record exists, or when coverage dropped >5% on the last sync the tool HALTS (`halted: true`, `haltReason`, `haltDetail`, `asOf`) and returns no figures. '
     + 'Use for "who is over budget", "which accounts are at risk", or "budget pacing this month". '
     + 'For per-campaign ROAS/CPC use get_campaign_breakdown; for cash use get_finance_snapshot. '
     + 'Optionally filter by status and use cursor/limit pagination.',

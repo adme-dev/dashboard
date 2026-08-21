@@ -12,7 +12,7 @@ import { defineEventHandler, createError } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
-import { cachedFetch } from '~~/server/utils/kv'
+import { cachedFetchWithMeta } from '~~/server/utils/kv'
 import {
   fetchBankBalances,
   fetchRecentPaidExpenses,
@@ -32,7 +32,8 @@ export default defineEventHandler(async (event) => {
   const tenantId = tenantIdRaw
   const accessToken = token.access_token!
 
-  return cachedFetch(event, `xero-get-out:${tenantId}:cash-position`, 300, async () => {
+  // P-01: every figure carries its as-of — the cache provenance rides along as `asOf`.
+  const { value, asOf } = await cachedFetchWithMeta(event, `xero-get-out:${tenantId}:cash-position`, 300, async () => {
     const [balances, expenses] = await Promise.all([
       fetchBankBalances(accessToken, tenantId),
       fetchRecentPaidExpenses(accessToken, tenantId),
@@ -104,4 +105,5 @@ export default defineEventHandler(async (event) => {
       computedAt: new Date().toISOString(),
     }
   })
+  return { ...value, asOf }
 })

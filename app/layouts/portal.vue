@@ -37,6 +37,14 @@ const mainNav = computed(() => ([
         onSelect: close
       }] as NavigationMenuItem[])
     : []),
+  ...(user.value?.permissions?.canViewProjects
+    ? ([{
+        label: 'Board',
+        icon: 'i-lucide-panels-top-left',
+        to: '/portal/board',
+        onSelect: close
+      }] as NavigationMenuItem[])
+    : []),
   ...(user.value?.permissions?.canApproveWork
     ? ([{
         label: 'Approvals',

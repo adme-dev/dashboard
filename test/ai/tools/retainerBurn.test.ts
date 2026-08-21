@@ -50,4 +50,14 @@ describe('monitor_retainer_burn', () => {
     expect(res.ok).toBe(false)
     expect((res as any).error).toMatch(/retainer/i)
   })
+
+  it('carries an as-of for every figure and declares the basis + list cap (P-01/P-03/P-04)', async () => {
+    const asOf = { lastSyncedAt: '2026-08-19T08:13:47Z', oldestSyncedAt: '2026-08-19T03:20:00Z', staleRowCount: 0, stalenessThresholdHours: 48, freshness: 'fresh', xeroCacheSyncedAt: '2026-08-19T03:20:00Z', mediaSpendSyncedAt: '2026-08-19T08:13:47Z', basis: 'xero_invoice_cache+media_spend_sync' } as any
+    const res = await monitorRetainerBurn({}, ctx, deps({ fetchAsOf: vi.fn().mockResolvedValue(asOf) }))
+    expect(res.ok).toBe(true)
+    const d = (res as any).data
+    expect(d.asOf).toEqual(asOf)
+    expect(d.basis).toMatch(/burnPct/)
+    expect(d.limit).toBe(10)
+  })
 })

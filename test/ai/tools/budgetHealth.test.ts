@@ -15,7 +15,8 @@ const sample: BudgetHealthData = {
 
 const deps = (over: Partial<BudgetHealthDeps> = {}): BudgetHealthDeps => ({
   health: vi.fn().mockResolvedValue(sample),
-  now: () => new Date('2026-08-19T12:00:00Z'),
+  now: () => new Date('2026-08-19T06:00:00Z'),
+  loadCoverageDeltas: async () => null,
   ...over,
 })
 
@@ -45,9 +46,9 @@ describe('getBudgetHealth', () => {
       period: '2026-08',
       summary: {},
       clients: [
-        { clientName: 'Budgeted', platform: 'meta', budget: 1000, spend: 500, percentConsumed: 50, pacingRatio: 1, healthStatus: 'healthy', budgetLevel: 'campaign', unattributed: false },
-        { clientName: 'No Budget', platform: 'meta', budget: 0, spend: 400, percentConsumed: 0, pacingRatio: 0, healthStatus: 'no_budget', budgetLevel: 'campaign', unattributed: false },
-        { clientName: 'Google account 123', platform: 'google_ads', budget: 0, spend: 300, percentConsumed: 0, pacingRatio: 0, healthStatus: 'no_budget', budgetLevel: 'campaign', unattributed: true },
+        { clientName: 'Budgeted', platform: 'meta', budget: 1000, spend: 500, percentConsumed: 50, pacingRatio: 1, healthStatus: 'healthy', budgetLevel: 'campaign', unattributed: false, lastSyncedAt: '2026-08-18T08:00:00Z' },
+        { clientName: 'No Budget', platform: 'meta', budget: 0, spend: 400, percentConsumed: 0, pacingRatio: 0, healthStatus: 'no_budget', budgetLevel: 'campaign', unattributed: false, lastSyncedAt: '2026-08-18T08:00:00Z' },
+        { clientName: 'Google account 123', platform: 'google_ads', budget: 0, spend: 300, percentConsumed: 0, pacingRatio: 0, healthStatus: 'no_budget', budgetLevel: 'campaign', unattributed: true, lastSyncedAt: '2026-08-18T08:00:00Z' },
       ],
     }
     const d = data(await getBudgetHealth({}, ctx, deps({ health: vi.fn().mockResolvedValue(health) })))
@@ -75,8 +76,8 @@ describe('getBudgetHealth', () => {
       period: '2026-08',
       summary: { totalRemaining: -23965.19 },
       clients: [
-        { clientName: 'Budgeted', platform: 'meta', budget: 8810, spend: 9412.04, percentConsumed: 106.83, pacingRatio: 1.2, healthStatus: 'over_budget' },
-        { clientName: 'No Budget', platform: 'meta', budget: 0, spend: 1234, percentConsumed: 0, pacingRatio: 0, healthStatus: 'no_budget' },
+        { clientName: 'Budgeted', platform: 'meta', budget: 8810, spend: 9412.04, percentConsumed: 106.83, pacingRatio: 1.2, healthStatus: 'over_budget', lastSyncedAt: '2026-08-18T08:00:00Z' },
+        { clientName: 'No Budget', platform: 'meta', budget: 0, spend: 1234, percentConsumed: 0, pacingRatio: 0, healthStatus: 'no_budget', lastSyncedAt: '2026-08-18T08:00:00Z' },
       ],
     }
 
@@ -94,7 +95,7 @@ describe('getBudgetHealth', () => {
         {
           clientName: 'Northern Motor Group', platform: 'meta', budget: 510, spend: 1705.22,
           percentConsumed: 334.4, pacingRatio: 5.76, healthStatus: 'over_budget',
-          budgetLevel: 'client', campaignCount: 13, budgetedCampaignCount: 1,
+          budgetLevel: 'client', campaignCount: 13, budgetedCampaignCount: 1, lastSyncedAt: '2026-08-18T08:00:00Z',
         },
       ],
     }
@@ -133,5 +134,28 @@ describe('getBudgetHealth', () => {
   it('fails gracefully when the data source throws', async () => {
     const r = await getBudgetHealth({}, ctx, deps({ health: vi.fn().mockRejectedValue(new Error('down')) }))
     expect(r.ok).toBe(false)
+  })
+
+  describe('P-02 halt', () => {
+    it('halts with no figures before the newest sync reaches 24h old', async () => {
+      const r = await getBudgetHealth({}, ctx, deps({ now: () => new Date('2026-08-19T10:01:00Z') }))
+      const d = data(r)
+      expect(d.halted).toBe(true)
+      expect(d.haltReason).toBe('stale_sync')
+      expect(d.asOf.lastSyncedAt).toBe('2026-08-18T08:00:00Z')
+      expect(d.clients).toEqual([])
+      expect(d.summary.totalSpent).toBeUndefined()
+      expect(JSON.stringify(d)).not.toContain('600')
+      expect(d.coverage.expected).toBe(2)
+    })
+
+    it('halts on a coverage drop and reports halted:false otherwise', async () => {
+      const dropped = data(await getBudgetHealth({}, ctx, deps({ loadCoverageDeltas: async () => ({ google: { deltaPct: -9 } }) })))
+      expect(dropped.halted).toBe(true)
+      expect(dropped.haltReason).toBe('coverage_drop')
+      const normal = data(await getBudgetHealth({}, ctx, deps()))
+      expect(normal.halted).toBe(false)
+      expect(normal.truncatedAtSource).toBe(false)
+    })
   })
 })

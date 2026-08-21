@@ -58,6 +58,7 @@ describe('AI internal fetch inventory', () => {
       'GET /api/xero/get-out/forecast',
       'GET /api/xero/get-out/pipeline-coverage',
       'GET /api/xero/invoices',
+      'POST /api/agency/social/${}/sync-spend',
       'POST /api/crm/ai/draft-followup'
     ].sort())
   })

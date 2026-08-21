@@ -282,6 +282,8 @@ export interface SpendCoverageDelta {
   deltaPct: number | null
   previousFinishedAt: string | null
   currentFinishedAt: string | null
+  /** True when the comparison run is too old to validate the current campaign universe. */
+  staleBaseline: boolean
 }
 
 /**
@@ -308,7 +310,8 @@ export async function getSpendCoverageDeltas(
     const platform = row.platform
     const entry = result[platform] ?? {
       previousCount: null, currentCount: null, delta: null, deltaPct: null,
-      previousFinishedAt: null, currentFinishedAt: null
+      previousFinishedAt: null, currentFinishedAt: null,
+      staleBaseline: false
     }
     if (Number(row.rank) === 1) {
       entry.currentCount = Number(row.synced_count)
@@ -326,6 +329,11 @@ export async function getSpendCoverageDeltas(
         ? Math.round(((entry.currentCount - entry.previousCount) / entry.previousCount) * 10_000) / 100
         : null
     }
+    const currentMs = entry.currentFinishedAt ? Date.parse(entry.currentFinishedAt) : Number.NaN
+    const previousMs = entry.previousFinishedAt ? Date.parse(entry.previousFinishedAt) : Number.NaN
+    entry.staleBaseline = !Number.isFinite(previousMs)
+      || !Number.isFinite(currentMs)
+      || currentMs - previousMs > 48 * 3_600_000
   }
   return result
 }
@@ -339,6 +347,10 @@ export interface SyncJobResult {
   synced: number
   totalSpend: number
   failures?: SyncFailure[]
+}
+
+function hasCoverageFailure(failures: SyncFailure[]): boolean {
+  return failures.some(failure => /coverage\s+(?:halt|failed|drop)/i.test(failure.reason))
 }
 
 /** Create a 'running' job row and return its id. Call synchronously before kicking off the background sync. */
@@ -359,20 +371,26 @@ export async function createSpendSyncJob(
 /** Mark a job completed with its result. Safe to call from inside a waitUntil promise. */
 export async function completeSpendSyncJob(jobId: string, result: SyncJobResult): Promise<void> {
   const failures = sanitizeSpendSyncFailures(result.failures)
+  const coverageFailed = hasCoverageFailure(failures)
   const row = await queryOne<{ platform: string, period: string, status: string, synced_count: number, total_accounts: number | null }>(
     `UPDATE spend_sync_jobs
-       SET status = CASE WHEN $2 = 0 AND jsonb_array_length($4::jsonb) > 0
+       SET status = CASE WHEN $5
+                         THEN 'failed'
+                         WHEN $2 = 0 AND jsonb_array_length($4::jsonb) > 0
                          THEN 'failed' ELSE 'completed' END,
            synced_count = $2,
            total_spend = $3,
            failures = $4::jsonb,
-           error = CASE WHEN $2 = 0 AND jsonb_array_length($4::jsonb) > 0
+           coverage_failed = $5,
+           error = CASE WHEN $5
+                        THEN 'Sync coverage verification failed; results must not be treated as complete'
+                        WHEN $2 = 0 AND jsonb_array_length($4::jsonb) > 0
                         THEN 'Sync finished with account failures and no campaigns updated'
                         ELSE error END,
            finished_at = NOW()
      WHERE id = $1
      RETURNING platform, period, status, synced_count, total_accounts`,
-    [jobId, result.synced, result.totalSpend, JSON.stringify(failures)]
+    [jobId, result.synced, result.totalSpend, JSON.stringify(failures), coverageFailed]
   )
   if (row && Number(result.synced) === 0 && Number(row.total_accounts) > 0) {
     await alertEmptySpendSync(row.platform, jobId, Number(row.total_accounts))
@@ -399,13 +417,18 @@ export async function setSyncJobTotalAccounts(jobId: string, total: number): Pro
  */
 export async function recordSyncJobAccountResult(jobId: string, result: SyncJobResult): Promise<void> {
   const failures = sanitizeSpendSyncFailures(result.failures)
+  const coverageFailed = hasCoverageFailure(failures)
   const row = await queryOne<{ platform: string, period: string, status: string, synced_count: number, total_accounts: number | null }>(
     `UPDATE spend_sync_jobs
        SET processed_accounts = processed_accounts + 1,
            synced_count = synced_count + $2,
            total_spend = total_spend + $3,
            failures = failures || $4::jsonb,
+           coverage_failed = coverage_failed OR $5,
            status = CASE WHEN total_accounts IS NOT NULL AND processed_accounts + 1 >= total_accounts
+                              AND (coverage_failed OR $5)
+                         THEN 'failed'
+                         WHEN total_accounts IS NOT NULL AND processed_accounts + 1 >= total_accounts
                               AND synced_count + $2 = 0
                               AND jsonb_array_length(failures || $4::jsonb) > 0
                          THEN 'failed'
@@ -413,6 +436,9 @@ export async function recordSyncJobAccountResult(jobId: string, result: SyncJobR
                          THEN 'completed'
                          ELSE status END,
            error = CASE WHEN total_accounts IS NOT NULL AND processed_accounts + 1 >= total_accounts
+                             AND (coverage_failed OR $5)
+                        THEN 'Sync coverage verification failed; results must not be treated as complete'
+                        WHEN total_accounts IS NOT NULL AND processed_accounts + 1 >= total_accounts
                              AND synced_count + $2 = 0
                              AND jsonb_array_length(failures || $4::jsonb) > 0
                         THEN 'Sync finished with account failures and no campaigns updated'
@@ -421,7 +447,7 @@ export async function recordSyncJobAccountResult(jobId: string, result: SyncJobR
                               THEN NOW() ELSE finished_at END
      WHERE id = $1
      RETURNING platform, period, status, synced_count, total_accounts`,
-    [jobId, result.synced, result.totalSpend, JSON.stringify(failures)]
+    [jobId, result.synced, result.totalSpend, JSON.stringify(failures), coverageFailed]
   )
   // Fail loud (+ Slack alert when configured): a job that completes with 0 synced
   // across N accounts is almost never a genuine $0 — see alertEmptySpendSync.
