@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   notifyOnNewLead: vi.fn(),
   publishEvent: vi.fn(),
   markCrmPromotionQueued: vi.fn(),
+  markCrmPromotionSkipped: vi.fn(),
   markCrmPromotionFailure: vi.fn(),
   reserveSubmissionIntentForLead: vi.fn(),
   releaseSubmissionIntentReservation: vi.fn(),
@@ -15,7 +16,8 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('~~/server/utils/db', () => ({
-  queryOne: vi.fn()
+  queryOne: vi.fn(),
+  queryRows: vi.fn().mockResolvedValue([{ feature_key: 'crm.core', status: 'active' }])
 }))
 
 vi.mock('~~/server/utils/leads/db', () => ({
@@ -40,6 +42,7 @@ vi.mock('~~/server/utils/measurement/publisher', () => ({
 
 vi.mock('~~/server/utils/leads/crmPromotionState', () => ({
   markCrmPromotionQueued: mocks.markCrmPromotionQueued,
+  markCrmPromotionSkipped: mocks.markCrmPromotionSkipped,
   markCrmPromotionFailure: mocks.markCrmPromotionFailure
 }))
 

@@ -483,6 +483,7 @@ describe('ClientMeasurementDestinationEditor', () => {
             }],
             mappings: [{
               canonicalEventName: 'web_conversion',
+              enquiryType: null,
               providerEventName: 'purchase',
               isActive: true
             }]
