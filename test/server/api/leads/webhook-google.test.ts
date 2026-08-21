@@ -43,8 +43,8 @@ vi.mock('../../../../server/utils/leads/db', async () => {
   }
 })
 
-vi.mock('../../../../server/utils/leads/queue', () => ({
-  enqueueLeadJob: vi.fn(),
+vi.mock('~~/server/utils/leads/acceptance', () => ({
+  acceptLead: vi.fn().mockResolvedValue({ status: 'created', leadId: 'LEAD-1' })
 }))
 
 vi.mock('../../../../server/utils/leads/autoAssign', () => ({
@@ -59,9 +59,8 @@ vi.mock('../../../../server/utils/leads/rateLimit', () => ({
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
-import * as leadsDb from '../../../../server/utils/leads/db'
 import { queryOne } from '~~/server/utils/db'
-import { enqueueLeadJob } from '../../../../server/utils/leads/queue'
+import { acceptLead } from '~~/server/utils/leads/acceptance'
 
 const handler = (
   await import('../../../../server/api/leads/webhook/google/[token].post')
@@ -87,7 +86,10 @@ function fakeEvent(token: string, body: any, headers: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/leads/webhook/google/[token]', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(acceptLead as any).mockResolvedValue({ status: 'created', leadId: 'LEAD-1' })
+  })
 
   it('404 if no token row', async () => {
     ;(queryOne as any).mockResolvedValueOnce(null)
@@ -99,15 +101,17 @@ describe('POST /api/leads/webhook/google/[token]', () => {
     ;(queryOne as any).mockResolvedValueOnce({
       id: 'EP1', client_id: 'C1', secret_key: 'real',
       secret_key_previous: null, secret_key_grace_until: null,
+      lead_capture_mode: 'capture_only',
     })
     await expect(handler(fakeEvent('t1', { google_key: 'wrong' })))
       .rejects.toMatchObject({ statusCode: 401 })
   })
 
-  it('200 + enqueue on valid', async () => {
+  it('200 + canonical acceptance on valid', async () => {
     ;(queryOne as any).mockResolvedValueOnce({
       id: 'EP1', client_id: 'C1', secret_key: 'real',
       secret_key_previous: null, secret_key_grace_until: null,
+      lead_capture_mode: 'capture_only',
     })
     const body = {
       google_key: 'real',
@@ -118,21 +122,27 @@ describe('POST /api/leads/webhook/google/[token]', () => {
     }
     const r = await handler(fakeEvent('t1', body))
     expect(r).toMatchObject({ ok: true })
-    expect(leadsDb.insertLeadWithDedup).toHaveBeenCalled()
-    expect(enqueueLeadJob).toHaveBeenCalledWith(expect.objectContaining({ type: 'rules.evaluate' }))
+    expect(acceptLead).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      leadCaptureMode: 'capture_only',
+      lead: expect.objectContaining({
+        client_id: 'C1',
+        source_lead_id: 'g1'
+      })
+    }))
   })
 
   it('200 with skipped:true on dedup', async () => {
     ;(queryOne as any).mockResolvedValueOnce({
       id: 'EP1', client_id: 'C1', secret_key: 'real',
       secret_key_previous: null, secret_key_grace_until: null,
+      lead_capture_mode: 'capture_only',
     })
-    ;(leadsDb.insertLeadWithDedup as any).mockResolvedValueOnce(null)
+    ;(acceptLead as any).mockResolvedValueOnce({ status: 'duplicate' })
     const r = await handler(fakeEvent('t1', {
       google_key: 'real', lead_id: 'g1', form_id: 'F1',
       user_column_data: [],
     }))
     expect(r).toMatchObject({ ok: true, skipped: true })
-    expect(enqueueLeadJob).not.toHaveBeenCalled()
+    expect(acceptLead).toHaveBeenCalledTimes(1)
   })
 })

@@ -29,19 +29,27 @@ export default defineEventHandler((event) => {
   if (!pathname.startsWith('/api/')) return
 
   const origin = getHeader(event, 'origin')
-  if (!origin || !allowedOrigins().has(origin)) return
+  if (!origin || origin === 'null') return
+
+  const origins = allowedOrigins()
+  const isPublicTrackingEndpoint = pathname === '/api/public/track'
+    || pathname === '/api/public/lead-intent'
+  const isAllowed = isPublicTrackingEndpoint || origins.has(origin)
+
+  if (!isAllowed) return
 
   setHeader(event, 'access-control-allow-origin', origin)
   setHeader(event, 'access-control-allow-credentials', 'true')
   setHeader(event, 'vary', 'Origin')
+  setHeader(event, 'access-control-allow-methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
+  setHeader(
+    event,
+    'access-control-allow-headers',
+    getHeader(event, 'access-control-request-headers') || 'authorization,content-type'
+  )
 
   if (event.method === 'OPTIONS') {
-    setHeader(event, 'access-control-allow-methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
-    setHeader(
-      event,
-      'access-control-allow-headers',
-      getHeader(event, 'access-control-request-headers') || 'authorization,content-type'
-    )
+    setHeader(event, 'access-control-max-age', '86400')
     setResponseStatus(event, 204)
     return ''
   }

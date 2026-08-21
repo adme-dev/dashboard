@@ -28,13 +28,11 @@ vi.mock('~~/server/utils/leads/db', () => ({
   loadLead: vi.fn(async () => null)
 }))
 
-const { enqueueLeadJob, ingest, publishEvent } = vi.hoisted(() => ({
-  enqueueLeadJob: vi.fn(),
-  ingest: vi.fn(),
-  publishEvent: vi.fn()
+const { acceptLead } = vi.hoisted(() => ({
+  acceptLead: vi.fn()
 }))
-vi.mock('~~/server/utils/leads/intake', () => ({
-  leadIntakeService: { ingest }
+vi.mock('~~/server/utils/leads/acceptance', () => ({
+  acceptLead
 }))
 
 vi.mock('~~/server/utils/leads/autoAssign', () => ({
@@ -43,33 +41,14 @@ vi.mock('~~/server/utils/leads/autoAssign', () => ({
 vi.mock('~~/server/utils/leads/rateLimit', () => ({
   allowRequest: vi.fn(() => ({ allowed: true }))
 }))
-vi.mock('~~/server/utils/leads/queue', () => ({
-  enqueueLeadJob
-}))
-vi.mock('~~/server/utils/leads/notifyOnNew', () => ({
-  notifyOnNewLead: vi.fn()
-}))
-
-vi.mock('~~/server/utils/measurement/publisher', () => ({
-  conversionOutboxPublisher: { publishEvent }
-}))
-
 const handler = (await import('../../../../server/api/leads/webhook/generic/[token].post')).default
 
 describe('generic lead webhook measurement handoff', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ingest.mockResolvedValue({
+    acceptLead.mockResolvedValue({
       status: 'created',
-      leadId: '22222222-2222-4222-8222-222222222222',
-      outbox: {
-        status: 'created',
-        event: {
-          eventId: '33333333-3333-4333-8333-333333333333',
-          outboxStatus: 'pending'
-        },
-        deliveryCount: 1
-      }
+      leadId: '22222222-2222-4222-8222-222222222222'
     })
   })
 
@@ -92,17 +71,14 @@ describe('generic lead webhook measurement handoff', () => {
       }
     } as any)
 
-    expect(ingest).toHaveBeenCalledWith(expect.objectContaining({
+    expect(acceptLead).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       consentDecision: 'granted',
+      leadCaptureMode: 'full_crm',
       lead: expect.objectContaining({
         source_lead_id: 'big-garage:submission-1',
         attribution: { browserEventId: 'browser-event-1', gclid: 'gclid-1' }
       })
     }))
-    expect(publishEvent).toHaveBeenCalledWith(
-      expect.anything(),
-      '33333333-3333-4333-8333-333333333333'
-    )
     expect(result).toEqual({
       ok: true,
       lead_id: '22222222-2222-4222-8222-222222222222'
@@ -121,7 +97,7 @@ describe('generic lead webhook measurement handoff', () => {
       }
     } as any)
 
-    expect(ingest).toHaveBeenCalledWith(expect.objectContaining({
+    expect(acceptLead).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       lead: expect.objectContaining({ source: 'webhook' })
     }))
   })
@@ -149,7 +125,7 @@ describe('generic lead webhook measurement handoff', () => {
       }
     } as any)
 
-    const receivedLead = ingest.mock.calls[0][0].lead
+    const receivedLead = acceptLead.mock.calls[0][1].lead
     expect(receivedLead.field_data).toMatchObject({
       first_name: 'Jane',
       last_name: 'Citizen',
@@ -176,9 +152,7 @@ describe('generic lead webhook measurement handoff', () => {
     )
   })
 
-  it('queues CRM promotion only when the server rollout flag and request both allow it', async () => {
-    process.env.CRM_LEAD_PROMOTION_ENABLED = 'true'
-
+  it('queues CRM promotion when the authenticated endpoint request allows it', async () => {
     await handler({
       context: { params: { token: 'token-1' } },
       body: {
@@ -188,16 +162,11 @@ describe('generic lead webhook measurement handoff', () => {
       }
     } as any)
 
-    expect(enqueueLeadJob).toHaveBeenNthCalledWith(1, {
-      type: 'rules.evaluate',
-      payload: { lead_id: '22222222-2222-4222-8222-222222222222' }
-    })
-    expect(enqueueLeadJob).toHaveBeenNthCalledWith(2, {
-      type: 'crm.promote',
-      payload: { lead_id: '22222222-2222-4222-8222-222222222222' }
-    })
+    expect(acceptLead).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
+      leadCaptureMode: 'full_crm'
+    }))
 
-    enqueueLeadJob.mockClear()
+    acceptLead.mockClear()
     await handler({
       context: { params: { token: 'token-1' } },
       body: {
@@ -207,8 +176,9 @@ describe('generic lead webhook measurement handoff', () => {
       }
     } as any)
 
-    expect(enqueueLeadJob).toHaveBeenCalledTimes(1)
-    expect(enqueueLeadJob).toHaveBeenCalledWith(expect.objectContaining({ type: 'rules.evaluate' }))
+    expect(acceptLead).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      leadCaptureMode: 'capture_only'
+    }))
   })
 
   it('redacts credentials and customer identity from rejected-payload diagnostics', async () => {
@@ -241,7 +211,7 @@ describe('generic lead webhook measurement handoff', () => {
       body: { key: 'secret', provider: 'dealer_studio' }
     } as any)
 
-    expect(ingest).not.toHaveBeenCalled()
+    expect(acceptLead).not.toHaveBeenCalled()
     expect(logIngestionError).toHaveBeenCalledWith(
       'webhook',
       expect.objectContaining({ provider: 'dealer_studio' }),

@@ -15,6 +15,9 @@ import type {
 import type {
   CanonicalConsentDecision
 } from '~~/server/utils/measurement/contracts'
+import {
+  completeSubmissionIntentMatch as defaultCompleteIntentMatch
+} from '~~/server/utils/leads/submissionIntent'
 
 type Transaction = <T>(
   callback: (db: LeadTransactionClient) => Promise<T>
@@ -29,11 +32,17 @@ export interface LeadIntakeServiceDeps {
   transaction: Transaction
   insertLead: InsertLead
   appendOutbox: typeof defaultAppendOutbox
+  appendBrowserConfirmation: typeof appendConfirmedBrowserLeadEvent
+  completeIntentMatch: typeof defaultCompleteIntentMatch
 }
 
 export interface IngestLeadInput {
   lead: InsertLeadInput & { client_id: string }
   consentDecision: CanonicalConsentDecision
+  reconciliation?: {
+    intentId: string
+    reservationToken: string
+  }
 }
 
 export type IngestLeadResult
@@ -42,12 +51,15 @@ export type IngestLeadResult
       status: 'created'
       leadId: string
       outbox: AppendCanonicalConversionEventResult
+      browserConfirmationStored: boolean
     }
 
 const defaultDeps: LeadIntakeServiceDeps = {
   transaction: defaultTransaction as unknown as Transaction,
   insertLead: defaultInsertLead,
-  appendOutbox: defaultAppendOutbox
+  appendOutbox: defaultAppendOutbox,
+  appendBrowserConfirmation: appendConfirmedBrowserLeadEvent,
+  completeIntentMatch: defaultCompleteIntentMatch
 }
 
 function optionalAttribution(
@@ -91,6 +103,77 @@ async function sourceEventId(lead: InsertLeadInput): Promise<string> {
   return `lead-created:v1:${hex}`
 }
 
+export async function appendConfirmedBrowserLeadEvent(
+  db: LeadTransactionClient,
+  input: {
+    clientId: string
+    leadId: string
+    browserEventId: string | null
+    source: string
+    occurredAt: string
+  }
+): Promise<boolean> {
+  if (!input.browserEventId) return false
+
+  const result = await db.query(
+    `INSERT INTO tracking_events (
+       site_id, client_id, event_id, anon_id, session_id, event_name, page_url, referrer,
+       utm_source, utm_medium, utm_campaign, utm_term, utm_content,
+       gclid, gbraid, wbraid, fbclid, fbc, fbp, ttclid, msclkid, li_fat_id,
+       event_data, consent, ua, ip_hash, origin, occurred_at
+     )
+     SELECT source_event.site_id,
+            source_event.client_id,
+            'confirmed-lead:' || $2,
+            source_event.anon_id,
+            source_event.session_id,
+            'generate_lead',
+            source_event.page_url,
+            source_event.referrer,
+            source_event.utm_source,
+            source_event.utm_medium,
+            source_event.utm_campaign,
+            source_event.utm_term,
+            source_event.utm_content,
+            source_event.gclid,
+            source_event.gbraid,
+            source_event.wbraid,
+            source_event.fbclid,
+            source_event.fbc,
+            source_event.fbp,
+            source_event.ttclid,
+            source_event.msclkid,
+            source_event.li_fat_id,
+            COALESCE(source_event.event_data, '{}'::jsonb)
+              || jsonb_build_object(
+                   'canonical_lead_id', $2::text,
+                   'confirmation_source', $4::text,
+                   'browser_event_id', $3::text
+                 ),
+            source_event.consent,
+            source_event.ua,
+            source_event.ip_hash,
+            source_event.origin,
+            $5::timestamptz
+       FROM tracking_events source_event
+      WHERE source_event.client_id = $1
+        AND source_event.event_id = $3
+        AND source_event.event_name = 'form_submit'
+      ORDER BY source_event.occurred_at DESC, source_event.id DESC
+      LIMIT 1
+     ON CONFLICT (site_id, event_id) DO NOTHING
+     RETURNING event_id`,
+    [
+      input.clientId,
+      input.leadId,
+      input.browserEventId,
+      input.source,
+      input.occurredAt
+    ]
+  )
+  return Boolean(result.rows?.length)
+}
+
 export function createLeadIntakeService(
   deps: LeadIntakeServiceDeps = defaultDeps
 ) {
@@ -99,6 +182,13 @@ export function createLeadIntakeService(
       return deps.transaction(async (db) => {
         const leadId = await deps.insertLead(input.lead, db)
         if (!leadId) return { status: 'duplicate' as const }
+
+        if (input.reconciliation) {
+          await deps.completeIntentMatch(db, {
+            ...input.reconciliation,
+            leadId
+          })
+        }
 
         const outbox = await deps.appendOutbox(db, {
           clientId: input.lead.client_id,
@@ -112,7 +202,20 @@ export function createLeadIntakeService(
           attribution: canonicalAttribution(input.lead)
         })
 
-        return { status: 'created' as const, leadId, outbox }
+        const browserConfirmationStored = await deps.appendBrowserConfirmation(db, {
+          clientId: input.lead.client_id,
+          leadId,
+          browserEventId: optionalAttribution(input.lead.attribution, 'browserEventId', 128),
+          source: input.lead.source,
+          occurredAt: input.lead.submitted_at
+        })
+
+        return {
+          status: 'created' as const,
+          leadId,
+          outbox,
+          browserConfirmationStored
+        }
       })
     }
   }

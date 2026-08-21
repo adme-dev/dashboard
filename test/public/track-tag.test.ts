@@ -12,6 +12,7 @@ import { parseTrackPayload } from '../../server/utils/tracking/track-schema'
 const TAG_SRC = readFileSync(resolve(__dirname, '../../public/track.js'), 'utf8')
 
 function loadTag() {
+  ;(window as any).xf?.destroy?.()
   // Fresh eval each time so module-level state (WRITE_KEY) resets.
   // eslint-disable-next-line no-new-func
   new Function('window', 'document', 'navigator', TAG_SRC)(window, document, navigator)
@@ -47,7 +48,9 @@ describe('public/track.js transport', () => {
       return Promise.resolve({ ok: true })
     })
     vi.stubGlobal('fetch', fetchSpy)
-    document.cookie = ''
+    document.cookie = '_xf_consent=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+    localStorage.clear()
+    sessionStorage.clear()
   })
 
   it('exposes window.xf (not engagrTrack)', () => {
@@ -243,5 +246,42 @@ describe('public/track.js transport', () => {
     expect(payload.consent).toBe(cookie)
     // and the server schema accepts it
     expect(parseTrackPayload(payload).ok).toBe(true)
+  })
+
+  it('sends only submission identity and attribution to the reconciliation endpoint', () => {
+    document.cookie = '_xf_consent=' + encodeURIComponent(JSON.stringify({
+      tracking: true,
+      analytics: true,
+      marketing: true,
+      updatedAt: '2026-07-24T00:00:00Z'
+    })) + '; path=/'
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    requests = []
+
+    const form = document.createElement('form')
+    form.id = 'vehicle-enquiry'
+    form.innerHTML = `
+      <input type="email" name="email" value="person@example.com">
+      <input type="tel" name="mobile" value="0400123456">
+      <input type="hidden" name="stock_number" value="S1234">
+      <textarea name="message">Private free-text message</textarea>
+    `
+    document.body.appendChild(form)
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+
+    const intent = requests.find(request => request.url.includes('/api/public/lead-intent'))
+    const tracking = requests.find(request => request.url.includes('/api/public/track'))
+    expect(intent).toBeTruthy()
+    expect(tracking).toBeTruthy()
+
+    const payload = JSON.parse(intent!.body)
+    expect(payload.identity).toEqual({
+      email: 'person@example.com',
+      phone: '0400123456'
+    })
+    expect(payload.vehicle_reference).toBe('S1234')
+    expect(payload.browser_event_id).toBe(JSON.parse(tracking!.body).events[0].event_id)
+    expect(intent!.body).not.toContain('Private free-text message')
   })
 })

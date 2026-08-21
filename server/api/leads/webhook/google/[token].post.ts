@@ -1,13 +1,12 @@
 // server/api/leads/webhook/google/[token].post.ts
 import { queryOne } from '~~/server/utils/db'
 import {
-  insertLeadWithDedup, upsertFormMetadata, logIngestionError, loadLead,
+  upsertFormMetadata, logIngestionError,
 } from '~~/server/utils/leads/db'
+import { acceptLead, type LeadCaptureMode } from '~~/server/utils/leads/acceptance'
 import { normalizeGooglePayload } from '~~/server/utils/leads/normalizer'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
 import { allowRequest } from '~~/server/utils/leads/rateLimit'
-import { enqueueLeadJob } from '~~/server/utils/leads/queue'
-import { notifyOnNewLead } from '~~/server/utils/leads/notifyOnNew'
 import { timingSafeEqual } from 'node:crypto'
 
 function safeEqual(a: string, b: string): boolean {
@@ -33,9 +32,14 @@ export default defineEventHandler(async (event) => {
     secret_key: string
     secret_key_previous: string | null
     secret_key_grace_until: string | null
+    lead_capture_mode: LeadCaptureMode
   }>(
-    `SELECT id, client_id, secret_key, secret_key_previous, secret_key_grace_until
-     FROM lead_webhook_endpoints WHERE url_token = $1`,
+    `SELECT endpoint.id, endpoint.client_id, endpoint.secret_key,
+            endpoint.secret_key_previous, endpoint.secret_key_grace_until,
+            client.lead_capture_mode
+       FROM lead_webhook_endpoints endpoint
+       JOIN agency_clients client ON client.id = endpoint.client_id
+      WHERE endpoint.url_token = $1`,
     [token],
   )
   if (!ep) throw createError({ statusCode: 404, statusMessage: 'unknown_token' })
@@ -59,15 +63,18 @@ export default defineEventHandler(async (event) => {
   try {
     const norm = normalizeGooglePayload(body, ep.client_id)
     norm.assigned_to = await resolveAssignedAm(ep.client_id)
-    const leadId = await insertLeadWithDedup(norm)
+    const accepted = await acceptLead(event, {
+      lead: { ...norm, client_id: ep.client_id },
+      leadCaptureMode: ep.lead_capture_mode,
+      consentDecision: 'unknown'
+    })
     if (norm.form_id) {
       await upsertFormMetadata('google', norm.form_id, norm.form_name, norm.field_data)
     }
-    if (!leadId) return { ok: true, skipped: true }
-    await enqueueLeadJob({ type: 'rules.evaluate', payload: { lead_id: leadId } })
-    const fresh = await loadLead(leadId)
-    if (fresh) await notifyOnNewLead(fresh)
-    return { ok: true, lead_id: leadId }
+    if (accepted.status !== 'created') {
+      return { ok: true, skipped: true, reason: accepted.status }
+    }
+    return { ok: true, lead_id: accepted.leadId }
   } catch (e: any) {
     await logIngestionError('google', body, getRequestHeaders(event), e?.message ?? String(e))
     return { ok: true }

@@ -3,10 +3,12 @@
 
 import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
-import { insertLeadWithDedup, loadLead } from '~~/server/utils/leads/db'
 import { normalizeManualPayload } from '~~/server/utils/leads/normalizer'
+import {
+  acceptLead,
+  resolveLeadCaptureMode
+} from '~~/server/utils/leads/acceptance'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
-import { notifyOnNewLead } from '~~/server/utils/leads/notifyOnNew'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -29,10 +31,15 @@ export default defineEventHandler(async (event) => {
     created_by: user.id,
   })
   norm.assigned_to = await resolveAssignedAm(parsed.data.client_id)
-  const id = await insertLeadWithDedup(norm)
-  if (id) {
-    const fresh = await loadLead(id)
-    if (fresh) await notifyOnNewLead(fresh)
+  const accepted = await acceptLead(event, {
+    lead: { ...norm, client_id: parsed.data.client_id },
+    leadCaptureMode: await resolveLeadCaptureMode(parsed.data.client_id),
+    consentDecision: 'unknown',
+    runRules: parsed.data.run_rules
+  })
+  return {
+    ok: true,
+    lead_id: accepted.status === 'created' ? accepted.leadId : null,
+    skipped: accepted.status !== 'created' ? accepted.status : undefined
   }
-  return { ok: true, lead_id: id }
 })

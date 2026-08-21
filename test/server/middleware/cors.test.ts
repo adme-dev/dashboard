@@ -82,4 +82,29 @@ describe('API CORS middleware', () => {
 
     expect(event.responseHeaders['access-control-allow-origin']).toBe('https://app.example.com')
   })
+
+  it('allows dealer-origin preflights only for public tracking endpoints', () => {
+    const leadIntentEvent = fakeEvent({
+      method: 'OPTIONS',
+      url: 'https://app.example.com/api/public/lead-intent?k=write-key',
+      headers: {
+        origin: 'https://www.knoxgwmhaval.com.au',
+        'access-control-request-headers': 'content-type'
+      }
+    })
+
+    expect(handler(leadIntentEvent)).toBe('')
+    expect(leadIntentEvent.status).toBe(204)
+    expect(leadIntentEvent.responseHeaders['access-control-allow-origin'])
+      .toBe('https://www.knoxgwmhaval.com.au')
+
+    const privateApiEvent = fakeEvent({
+      method: 'OPTIONS',
+      url: 'https://app.example.com/api/agency/clients',
+      headers: { origin: 'https://www.knoxgwmhaval.com.au' }
+    })
+
+    expect(handler(privateApiEvent)).toBeUndefined()
+    expect(privateApiEvent.responseHeaders['access-control-allow-origin']).toBeUndefined()
+  })
 })

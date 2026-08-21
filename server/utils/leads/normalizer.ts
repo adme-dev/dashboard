@@ -15,7 +15,13 @@ export interface GooglePayload {
   api_version?: string
   form_id?: string
   campaign_id?: string
+  adgroup_id?: string
+  creative_id?: string
+  asset_group_id?: string
   gcl_id?: string
+  lead_stage?: string
+  lead_source?: string
+  lead_submit_time?: string
   user_column_data: GoogleColumn[]
   google_key?: string
   is_test?: boolean
@@ -51,8 +57,9 @@ function normalizeKey(s: string): string {
 
 function googleColumnKey(c: GoogleColumn): string {
   // Prefer stable column_id when it's one we recognize.
-  if (c.column_id && GOOGLE_COLUMN_ID_MAP[c.column_id]) {
-    return GOOGLE_COLUMN_ID_MAP[c.column_id]
+  const mappedColumn = c.column_id ? GOOGLE_COLUMN_ID_MAP[c.column_id] : undefined
+  if (mappedColumn) {
+    return mappedColumn
   }
   // Fallback: humanized column_name (advertiser-set label).
   if (c.column_name) {
@@ -71,20 +78,32 @@ export function normalizeGooglePayload(p: GooglePayload, clientId: string | null
     const k = googleColumnKey(c)
     if (k) fields[k] = c.string_value
   }
+  const attribution: Record<string, string> = {}
+  if (p.gcl_id) attribution.gclid = p.gcl_id
+  if (p.campaign_id) attribution.campaign_id = String(p.campaign_id)
+  if (p.adgroup_id) attribution.ad_group_id = String(p.adgroup_id)
+  if (p.creative_id) attribution.creative_id = String(p.creative_id)
+  if (p.asset_group_id) attribution.asset_group_id = String(p.asset_group_id)
+  if (p.lead_stage) attribution.lead_stage = p.lead_stage
+  if (p.lead_source) attribution.lead_source = p.lead_source
+  attribution.provider = 'google_lead_form'
+
   return {
     client_id: clientId,
     source: 'google',
     source_lead_id: String(p.lead_id),
     form_id: p.form_id ?? null,
     form_name: null,
-    ad_id: null,
+    ad_id: p.creative_id ? String(p.creative_id) : null,
     ad_name: null,
     campaign_id: p.campaign_id ?? null,
     campaign_name: null,
     page_id: null,
-    submitted_at: new Date().toISOString(),
+    submitted_at: p.lead_submit_time
+      ? new Date(p.lead_submit_time).toISOString()
+      : new Date().toISOString(),
     field_data: fields,
-    attribution: p.gcl_id ? { gclid: p.gcl_id } : null,
+    attribution,
     assigned_to: null,
     created_by: null,
     is_test: Boolean(p.is_test),
@@ -171,7 +190,12 @@ export function normalizeMetaPayload(
     page_id: pageId,
     submitted_at: resolved.created_time ?? new Date().toISOString(),
     field_data: fields,
-    attribution: null,
+    attribution: {
+      provider: 'meta_lead_ads',
+      ...(resolved.campaign_id ? { campaign_id: resolved.campaign_id } : {}),
+      ...(resolved.ad_id ? { ad_id: resolved.ad_id } : {}),
+      ...(pageId ? { page_id: pageId } : {})
+    },
     assigned_to: null,
     created_by: null,
     is_test: false,
