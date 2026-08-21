@@ -14,6 +14,7 @@ import { createMeasurementOutcomeEndpointService } from '~~/server/utils/measure
 import { createMeasurementProfileCachePublisher } from '~~/server/utils/measurement/profileCache'
 import { createPostgresMeasurementProfileRepository } from '~~/server/utils/measurement/profileRepository'
 import { createMeasurementProfileService } from '~~/server/utils/measurement/profileService'
+import type { GodModeTransactionDb } from '~~/server/utils/godMode/transactionCoordinator'
 import { createPostgresMeasurementProviderTestRepository } from '~~/server/utils/measurement/providerTestRepository'
 import { createMeasurementProviderTestService } from '~~/server/utils/measurement/providerTestService'
 import { createPostgresMeasurementReadRepository } from '~~/server/utils/measurement/readRepository'
@@ -40,17 +41,44 @@ function createMeasurementRuntimeCache(event: H3Event) {
       }
 }
 
-export function createMeasurementProfileRuntime(event: H3Event) {
+function transactionBoundRepositoryDeps(db: GodModeTransactionDb) {
+  const query = async <T = any>(sql: string, params?: any[]): Promise<T[]> => {
+    const result = await db.query(sql, params)
+    return (result.rows ?? []) as T[]
+  }
+  const queryOne = async <T = any>(sql: string, params?: any[]): Promise<T | null> => {
+    const rows = await query<T>(sql, params)
+    return rows[0] ?? null
+  }
+  const execute = async (sql: string, params?: any[]): Promise<number> => {
+    const result = await db.query(sql, params)
+    return result.rowCount ?? 0
+  }
+  const transaction = async <T>(callback: (transactionDb: any) => Promise<T>): Promise<T> => (
+    await callback(db)
+  )
+  return { query, queryOne, execute, transaction }
+}
+
+export function createMeasurementProfileRuntime(event: H3Event, db?: GodModeTransactionDb) {
+  const repository = db
+    ? createPostgresMeasurementProfileRepository(transactionBoundRepositoryDeps(db) as any)
+    : createPostgresMeasurementProfileRepository()
   return createMeasurementProfileService({
-    repository: createPostgresMeasurementProfileRepository(),
+    repository,
     cache: createMeasurementRuntimeCache(event)
   })
 }
 
-export function createMeasurementDestinationRuntime(event: H3Event) {
-  const profileRepository = createPostgresMeasurementProfileRepository()
+export function createMeasurementDestinationRuntime(event: H3Event, db?: GodModeTransactionDb) {
+  const deps = db ? transactionBoundRepositoryDeps(db) : null
+  const profileRepository = deps
+    ? createPostgresMeasurementProfileRepository(deps as any)
+    : createPostgresMeasurementProfileRepository()
   return createMeasurementDestinationService({
-    repository: createPostgresMeasurementDestinationRepository(),
+    repository: deps
+      ? createPostgresMeasurementDestinationRepository(deps as any)
+      : createPostgresMeasurementDestinationRepository(),
     profileRepository,
     cache: createMeasurementRuntimeCache(event)
   })

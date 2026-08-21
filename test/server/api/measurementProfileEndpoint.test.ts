@@ -15,6 +15,13 @@ vi.mock('~~/server/utils/measurement/runtime', () => ({
   createMeasurementProfileRuntime: (...args: unknown[]) => mockRuntime(...args)
 }))
 
+vi.mock('~~/server/utils/measurement/configurationGodMode', () => ({
+  executeGodModeMeasurementProfileUpdate: (
+    _event: unknown,
+    mutate: (db: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>
+  ) => mutate({ query: vi.fn() })
+}))
+
 vi.mock('h3', () => ({
   defineEventHandler: (handler: unknown) => handler,
   getRouterParam: () => '11111111-1111-4111-8111-111111111111',
