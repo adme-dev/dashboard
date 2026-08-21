@@ -15,6 +15,8 @@ export const MONDAY_OAUTH_SCOPES = [
   'webhooks:write',
 ] as const
 
+export const MONDAY_AUTOMATION_WRITE_SCOPES = ['boards:write', 'updates:write'] as const
+
 export function getMondayOAuthValue(event: H3Event, key: string): string {
   const binding = (event.context as any).cloudflare?.env?.[key]
   return String(binding || process.env[key] || '').trim()

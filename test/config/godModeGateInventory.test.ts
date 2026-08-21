@@ -169,15 +169,18 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       "server/utils/spendSyncJobs.ts\t`SELECT id FROM team_members WHERE is_active = TRUE AND user_role = 'owner'`\tidentity_tenant_hard_boundary"
     )
-    expect(inventory.rows).toHaveLength(1466)
+    expect(inventory.rows).toContain(
+      'server/utils/mondayConnection.ts\tconst serviceToken = process.env.MONDAY_API_TOKEN\tprovider_infrastructure_availability'
+    )
+    expect(inventory.rows).toHaveLength(1467)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 104,
-      provider_infrastructure_availability: 217,
+      provider_infrastructure_availability: 218,
       application_governance_bypass: 762,
       ordinary_user_behavior: 170,
       unrelated_configuration: 213
     })
-    expect(inventory.digest).toBe('c3f3b530e6640d7744819469e9b2da2c6c1751860490652617b22f578d8efe57')
+    expect(inventory.digest).toBe('6e2efcbc2e333148eb77e58135b2ed85b600ef4072ae2ddde0406b1ecbcc0a31')
     expect(CENTRAL_HELPER_BY_CLASS).toEqual({
       identity_tenant_hard_boundary: 'unchanged independent scope helper',
       provider_infrastructure_availability: 'unchanged provider/configuration check',

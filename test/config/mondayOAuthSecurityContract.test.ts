@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 const start = readFileSync('server/api/agency/monday/oauth/start.get.ts', 'utf8')
 const callback = readFileSync('server/api/agency/monday/oauth/callback.get.ts', 'utf8')
 const config = readFileSync('server/utils/mondayOAuth.ts', 'utf8')
+const connection = readFileSync('server/utils/mondayConnection.ts', 'utf8')
 
 describe('Monday OAuth security contract', () => {
   it('starts only for HR administrators with a short-lived secure state cookie', () => {
@@ -31,5 +32,12 @@ describe('Monday OAuth security contract', () => {
     expect(config).toContain("'boards:write'")
     expect(config).toContain("'updates:write'")
     expect(callback).toContain('scopes: [...MONDAY_OAUTH_SCOPES]')
+  })
+
+  it('uses the protected service token only when the OAuth grant cannot write', () => {
+    expect(connection).toContain('resolveMondayWriteConnection')
+    expect(connection).toContain('const serviceToken = process.env.MONDAY_API_TOKEN')
+    expect(connection).toContain("source: 'environment'")
+    expect(connection).toContain("authMethod: 'token'")
   })
 })

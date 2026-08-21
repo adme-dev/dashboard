@@ -1,12 +1,12 @@
 import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { createMondayClient, type MondayColumnValue, type MondayItem } from '~~/server/utils/mondayClient'
-import { resolveMondayConnection } from '~~/server/utils/mondayConnection'
+import { resolveMondayWriteConnection } from '~~/server/utils/mondayConnection'
+import { MONDAY_AUTOMATION_WRITE_SCOPES } from '~~/server/utils/mondayOAuth'
 import { buildPacingReview, PACING_REVIEW_SELECT_COLUMNS, type PacingReviewRow } from '~~/server/utils/socialSpendPacingReview'
 import { buildCampaignBudgetIdentity } from '~~/server/utils/campaignBudgetIdentity'
 import { recordCampaignAction } from '~~/server/utils/campaignActionLog'
 
 export const CAMPAIGN_EXCEPTIONS_BOARD_ID = '18427394520'
-export const MONDAY_AUTOMATION_WRITE_SCOPES = ['boards:write', 'updates:write'] as const
 export const CAMPAIGN_EXCEPTION_COLUMNS = Object.freeze({
   exceptionType: 'color_mm6d6ghw',
   severity: 'color_mm6dpcve',
@@ -671,7 +671,7 @@ export async function runMondayCampaignExceptionAutomation(input: {
   cronSecret: string
   now?: Date
 }): Promise<{ checked: number, requested: number, rollbacks: number, confidenceUpdated: number, offerExpiredCreated: number, applied: number, rolledBack: number, failed: number, globalHalt: boolean }> {
-  const connection = await resolveMondayConnection()
+  const connection = await resolveMondayWriteConnection()
   if (!connection) throw new Error('Monday connection is not configured')
   if (!hasMondayAutomationWriteScopes(connection)) throw new MondayAutomationWriteScopeRequiredError()
   const monday = await createMondayClient(connection.accessToken)
