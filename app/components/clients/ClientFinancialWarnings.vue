@@ -40,11 +40,32 @@ const warningActions: Partial<Record<FinancialSourceWarning['code'], string>> = 
   activity_truncated: 'Narrow the reporting period to review all time entries.',
 }
 
+const currency = new Intl.NumberFormat('en-AU', {
+  style: 'currency',
+  currency: 'AUD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+function warningSeverity(warning: FinancialSourceWarning): 'Warning' | 'Error' {
+  return warning.code === 'reconciliation_failed' ? 'Error' : 'Warning'
+}
+
+function warningColor(warning: FinancialSourceWarning): 'warning' | 'error' {
+  return warning.code === 'reconciliation_failed' ? 'error' : 'warning'
+}
+
+function formatDifference(cents: number): string {
+  if (!Number.isFinite(cents)) return 'an unavailable amount'
+  const dollars = cents / 100
+  return `${dollars > 0 ? '+' : ''}${currency.format(dollars)}`
+}
+
 const reconciliationAlerts = computed(() => props.reconciliation
   .filter(item => Math.abs(item.differenceCents) > 1)
   .map(item => ({
-    title: `Financial reconciliation: ${item.source.replaceAll('_', ' ')}`,
-    description: `Source totals differ by ${(Math.abs(item.differenceCents) / 100).toFixed(2)}. Review allocations before relying on coverage.`,
+    title: `Error: Financial reconciliation: ${item.source.replaceAll('_', ' ')}`,
+    description: `Source totals differ by ${formatDifference(item.differenceCents)}. Review allocations before relying on coverage.`,
   })))
 </script>
 
@@ -54,9 +75,9 @@ const reconciliationAlerts = computed(() => props.reconciliation
     <UAlert
       v-for="warning in warnings"
       :key="`${warning.code}-${warning.source}-${warning.sourceId || ''}-${warning.projectId || ''}`"
-      :title="`${sourceLabels[warning.source]}: ${warningTitles[warning.code]}`"
+      :title="`${warningSeverity(warning)}: ${sourceLabels[warning.source]}: ${warningTitles[warning.code]}`"
       :description="`${warning.message} ${warningActions[warning.code] || ''}`.trim()"
-      :color="warning.code === 'reconciliation_failed' ? 'error' : 'warning'"
+      :color="warningColor(warning)"
       variant="subtle"
       icon="i-lucide-triangle-alert"
     />

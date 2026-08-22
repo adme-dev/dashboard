@@ -26,6 +26,14 @@ function formatCurrency(value: number | null): string {
   return value !== null && Number.isFinite(value) ? currency.format(value) : '—'
 }
 
+function hasFinitePercentage(value: number | null): value is number {
+  return value !== null && Number.isFinite(value)
+}
+
+function formatPercentage(value: number | null): string | null {
+  return hasFinitePercentage(value) ? `${value.toFixed(1)}%` : null
+}
+
 function hasSource(row: ClientProjectFinancialRow, source: FinancialAllocatableSourceType): boolean {
   return row.coverage.sourceTypes.includes(source)
 }
@@ -35,11 +43,17 @@ function mappedCurrency(row: ClientProjectFinancialRow, source: FinancialAllocat
 }
 
 function marginLabel(row: ClientProjectFinancialRow): string {
-  if (row.deliveryMarginPct !== null) return `${row.deliveryMarginPct.toFixed(1)}%`
+  const percentage = formatPercentage(row.deliveryMarginPct)
+  if (percentage) return percentage
+  if (row.deliveryMarginPct !== null) return '— Margin unavailable'
   if (row.marginReason === 'no_agi') return '— No AGI'
   if (row.marginReason === 'negative_agi') return '— Negative AGI'
   if (row.marginReason === 'source_conflict') return '— Source conflict'
   return '—'
+}
+
+function isNegativePercentage(value: number | null): boolean {
+  return hasFinitePercentage(value) && value < 0
 }
 
 function coverageLabel(row: ClientProjectFinancialRow): string {
@@ -78,7 +92,10 @@ function coverageLabel(row: ClientProjectFinancialRow): string {
           </span>
         </template>
         <template #deliveryMarginPct-cell="{ row }">
-          <span class="tabular-nums" :class="row.original.deliveryMarginPct !== null && row.original.deliveryMarginPct < 0 ? 'text-error' : 'text-success'">
+          <span
+            class="tabular-nums"
+            :class="hasFinitePercentage(row.original.deliveryMarginPct) ? isNegativePercentage(row.original.deliveryMarginPct) ? 'text-error' : 'text-success' : undefined"
+          >
             {{ marginLabel(row.original) }}
           </span>
         </template>

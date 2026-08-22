@@ -30,6 +30,10 @@ function formatHours(value: number): string {
   return Number.isFinite(value) ? `${value.toFixed(1)}h` : 'Not available'
 }
 
+function formatPercentage(value: number | null): string | null {
+  return value !== null && Number.isFinite(value) ? `${value.toFixed(1)}%` : null
+}
+
 function sourceValue(value: number, source: FinancialDataSource): string {
   const state = freshnessBySource.value.get(source)?.status
   return state === 'unavailable' || state === 'not_connected' ? 'Not available' : formatCurrency(value)
@@ -77,9 +81,15 @@ const metrics = computed(() => [
   },
   {
     label: 'Delivery margin',
-    value: props.summary.deliveryMarginPct === null ? '—' : `${props.summary.deliveryMarginPct.toFixed(1)}%`,
-    context: props.summary.deliveryMarginPct === null ? marginReason() : 'Delivery profit as a share of AGI',
-    tone: props.summary.deliveryMarginPct !== null && props.summary.deliveryMarginPct < 0 ? 'text-error' : 'text-success',
+    value: formatPercentage(props.summary.deliveryMarginPct) || '—',
+    context: props.summary.deliveryMarginPct === null
+      ? marginReason()
+      : Number.isFinite(props.summary.deliveryMarginPct)
+        ? 'Delivery profit as a share of AGI'
+        : 'Margin unavailable',
+    tone: Number.isFinite(props.summary.deliveryMarginPct)
+      ? props.summary.deliveryMarginPct < 0 ? 'text-error' : 'text-success'
+      : undefined,
   },
   {
     label: 'Hours',
@@ -92,10 +102,12 @@ const metrics = computed(() => [
     label: 'Allocation coverage',
     value: props.allocationCoverage.overall.percentage === null
       ? 'No allocatable sources'
-      : `${props.allocationCoverage.overall.percentage.toFixed(1)}%`,
+      : formatPercentage(props.allocationCoverage.overall.percentage) || '—',
     context: props.allocationCoverage.overall.percentage === null
       ? 'No Xero or media sources in this period'
-      : `${props.allocationCoverage.overall.allocatedItemCount} of ${props.allocationCoverage.overall.totalItemCount} sources mapped`,
+      : Number.isFinite(props.allocationCoverage.overall.percentage)
+        ? `${props.allocationCoverage.overall.allocatedItemCount} of ${props.allocationCoverage.overall.totalItemCount} sources mapped`
+        : 'Coverage unavailable',
   },
   {
     label: 'Active projects',
@@ -106,7 +118,7 @@ const metrics = computed(() => [
 </script>
 
 <template>
-  <section aria-label="Financial summary" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+  <section aria-label="Financial summary" class="grid auto-rows-fr grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
     <UCard v-for="metric in metrics" :key="metric.label" class="h-full">
       <dl class="flex min-h-36 h-full flex-col justify-between gap-3">
         <dt class="text-sm font-medium text-muted">{{ metric.label }}</dt>

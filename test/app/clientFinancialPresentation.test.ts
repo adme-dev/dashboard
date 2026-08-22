@@ -23,15 +23,7 @@ const stubs = {
     template: `
       <div data-table>
         <template v-for="item in data" :key="item.projectId">
-          <slot name="projectName-cell" :row="{ original: item }" />
-          <slot name="status-cell" :row="{ original: item }" />
-          <slot name="projectBudget-cell" :row="{ original: item }" />
-          <slot name="xeroRevenue-cell" :row="{ original: item }" />
-          <slot name="mediaSpend-cell" :row="{ original: item }" />
-          <slot name="deliveryCost-cell" :row="{ original: item }" />
-          <slot name="deliveryProfit-cell" :row="{ original: item }" />
-          <slot name="deliveryMarginPct-cell" :row="{ original: item }" />
-          <slot name="coverage-cell" :row="{ original: item }" />
+          <slot v-for="column in columns" :key="column.accessorKey" :name="column.accessorKey + '-cell'" :row="{ original: item }" />
         </template>
       </div>
     `,
@@ -108,6 +100,7 @@ describe('Client financial presentation', () => {
         'Active projects',
       ])
       expect(host.querySelectorAll('dd')).toHaveLength(9)
+      expect(host.firstElementChild?.className).toContain('auto-rows-fr')
       expect(host.textContent).toContain('$0')
       expect(host.textContent).toContain('—')
       expect(host.textContent).toContain('Negative AGI')
@@ -133,6 +126,33 @@ describe('Client financial presentation', () => {
       expect(host.textContent).toContain('Not available')
       expect(host.textContent).toContain('No allocatable sources')
       expect(host.textContent).not.toContain('$NaN')
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('renders non-finite summary percentages as unavailable instead of NaN or Infinity', () => {
+    const nonFiniteSummary: ClientFinancialSummaryContract = {
+      ...summary,
+      deliveryMarginPct: Number.NaN,
+      marginReason: null,
+    }
+    const nonFiniteCoverage: FinancialAllocationCoverage = {
+      ...coverage,
+      overall: { ...coverage.overall, percentage: Number.POSITIVE_INFINITY },
+    }
+    const { app, host } = mount(ClientFinancialSummary, {
+      summary: nonFiniteSummary,
+      allocationCoverage: nonFiniteCoverage,
+      freshness,
+    })
+    try {
+      const values = [...host.querySelectorAll('dd')].map(item => item.textContent?.trim())
+      expect(values[5]).toBe('—')
+      expect(values[7]).toBe('—')
+      expect(host.textContent).toContain('Margin unavailable')
+      expect(host.textContent).toContain('Coverage unavailable')
+      expect(host.textContent).not.toMatch(/NaN%|Infinity%/)
     } finally {
       app.unmount()
     }
@@ -167,6 +187,20 @@ describe('Client financial presentation', () => {
     }
   })
 
+  it('renders a non-finite project margin as unavailable instead of NaN or Infinity', () => {
+    const nonFiniteProject: ClientProjectFinancialRow = {
+      ...project,
+      deliveryMarginPct: Number.POSITIVE_INFINITY,
+    }
+    const { app, host } = mount(ClientProjectFinancialTable, { projects: [nonFiniteProject] })
+    try {
+      expect(host.textContent).toContain('— Margin unavailable')
+      expect(host.textContent).not.toMatch(/NaN%|Infinity%/)
+    } finally {
+      app.unmount()
+    }
+  })
+
   it('shows source-specific alerts without suppressing successful metrics', () => {
     const warnings: FinancialSourceWarning[] = [
       { code: 'media_partial', source: 'media_spend', message: 'Daily media detail is not complete.' },
@@ -178,14 +212,28 @@ describe('Client financial presentation', () => {
     const warningView = mount(ClientFinancialWarnings, { warnings, reconciliation })
     const summaryView = mount(ClientFinancialSummary, { summary, allocationCoverage: coverage, freshness })
     try {
-      expect(warningView.host.textContent).toContain('Media spend: Partial data')
-      expect(warningView.host.textContent).toContain('Xero revenue: Line data unavailable')
+      expect(warningView.host.textContent).toContain('Warning: Media spend: Partial data')
+      expect(warningView.host.textContent).toContain('Warning: Xero revenue: Line data unavailable')
       expect(warningView.host.textContent).toContain('Daily media detail is not complete.')
       expect(summaryView.host.textContent).toContain('$0')
       expect(summaryView.host.textContent).toContain('$375')
     } finally {
       warningView.app.unmount()
       summaryView.app.unmount()
+    }
+  })
+
+  it('renders visible severity and signed AUD reconciliation differences above one cent', () => {
+    const reconciliation: FinancialReconciliation[] = [
+      { source: 'media_spend', total: 1200, allocated: 1212.34, unallocated: 0, differenceCents: -1234 },
+    ]
+    const { app, host } = mount(ClientFinancialWarnings, { warnings: [], reconciliation })
+    try {
+      expect(host.textContent).toContain('Error: Financial reconciliation: media spend')
+      expect(host.textContent).toContain('Source totals differ by -$12.34')
+      expect(host.textContent).not.toContain('1234')
+    } finally {
+      app.unmount()
     }
   })
 })
