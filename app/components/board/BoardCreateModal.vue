@@ -100,7 +100,7 @@
     </template>
   </UModal>
 
-  <WorkspaceTemplateSelector v-model="showTemplateSelector" @select="onTemplateSelect" />
+  <BoardTemplateChooser v-model:open="showTemplateSelector" @apply="onTemplateSelect" />
 </template>
 
 <script setup lang="ts">
@@ -113,6 +113,8 @@ const props = defineProps<{
   workspaceId?: string | null
   /** Pass the caller's already-loaded workspaces to skip the fetch. */
   workspaces?: WorkspaceOption[] | null
+  /** Template to pre-select when the modal opens (e.g. chosen from a library picker). */
+  initialTemplate?: { id: string, name: string } | null
 }>()
 
 const emit = defineEmits<{
@@ -172,10 +174,11 @@ watch(isOpen, (open) => {
   if (!open) return
   nameError.value = undefined
   form.value.workspaceId = props.workspaceId || NO_WORKSPACE
+  form.value.template = props.initialTemplate ? { ...props.initialTemplate } : null
   ensureWorkspaces()
 })
 
-function onTemplateSelect(template: { id: string, name: string }) {
+function onTemplateSelect(_templateId: string, template: { id: string, name: string }) {
   form.value.template = { id: template.id, name: template.name }
   showTemplateSelector.value = false
 }

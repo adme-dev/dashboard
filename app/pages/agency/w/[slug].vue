@@ -36,7 +36,7 @@
           >
             Invite / {{ members?.length || 0 }}
           </UButton>
-          <UButton color="primary" icon="i-lucide-plus" @click="showNewBoard = true">
+          <UButton color="primary" icon="i-lucide-plus" @click="openNewBoard()">
             New Board
           </UButton>
         </div>
@@ -124,7 +124,7 @@
             <UIcon name="i-lucide-clock" class="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-neutral-600" />
             <h3 class="font-medium">No boards yet</h3>
             <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Create your first board to get started.</p>
-            <UButton color="primary" icon="i-lucide-plus" class="mt-4" @click="showNewBoard = true">
+            <UButton color="primary" icon="i-lucide-plus" class="mt-4" @click="openNewBoard()">
               New Board
             </UButton>
           </div>
@@ -177,7 +177,7 @@
               <!-- Add new board -->
               <button
                 class="group flex flex-col items-center p-8 rounded-xl border-2 border-dashed border-gray-200 dark:border-neutral-700 hover:border-primary hover:bg-primary/5 transition-all text-center"
-                @click="showNewBoard = true"
+                @click="openNewBoard()"
               >
                 <div class="w-16 h-16 rounded-xl border-2 border-dashed border-gray-300 dark:border-neutral-600 group-hover:border-primary flex items-center justify-center mb-4 transition-colors">
                   <UIcon name="i-lucide-plus" class="w-8 h-8 text-gray-400 dark:text-neutral-500 group-hover:text-primary transition-colors" />
@@ -321,13 +321,14 @@
       v-model="showNewBoard"
       :workspace-id="workspace?.id"
       :workspaces="workspacesData.workspaces"
+      :initial-template="pendingTemplate"
       @created="refreshWorkspaces"
     />
 
     <!-- Template Selector -->
-    <WorkspaceTemplateSelector
-      v-model="showTemplateSelector"
-      @select="onTemplateSelect"
+    <BoardTemplateChooser
+      v-model:open="showTemplateSelector"
+      @apply="onTemplateSelect"
     />
 
     <!-- Invite Modal -->
@@ -500,6 +501,12 @@ watch(activeTab, async (tab) => {
 
 // New board modal
 const showNewBoard = ref(false)
+const pendingTemplate = ref<{ id: string, name: string } | null>(null)
+
+function openNewBoard(template: { id: string, name: string } | null = null) {
+  pendingTemplate.value = template
+  showNewBoard.value = true
+}
 
 // Template selector
 const showTemplateSelector = ref(false)
@@ -507,8 +514,8 @@ const showTemplateSelector = ref(false)
 // Invite modal
 const showInviteModal = ref(false)
 
-function onTemplateSelect(template: any) {
-  showNewBoard.value = true
+function onTemplateSelect(_templateId: string, template: { id: string, name: string }) {
+  openNewBoard(template)
 }
 
 function startWithAI() {
