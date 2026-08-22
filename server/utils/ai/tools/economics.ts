@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 import { queryRows } from '~~/server/utils/db'
 import { getSelectedTenant } from '~~/server/utils/session'
+import { buildSyncFreshness, type SyncFreshness } from './responseContract'
 
 export type EconomicsPeriod = 'mtd' | 'ytd'
 
@@ -43,6 +44,43 @@ export function resolveByName<T extends { name: string | null }>(rows: T[], quer
   const contains = rows.filter(r => (r.name ?? '').toLowerCase().includes(q))
   if (contains.length === 1) return { match: contains[0], candidates: contains }
   return { candidates: contains }
+}
+
+export interface EconomicsAsOf extends SyncFreshness {
+  xeroCacheSyncedAt: string | null
+  mediaSpendSyncedAt: string | null
+  basis: 'xero_invoice_cache+media_spend_sync'
+}
+
+export async function fetchEconomicsAsOf(
+  event: H3Event,
+  options: { now?: Date, load?: typeof queryRows } = {},
+): Promise<EconomicsAsOf> {
+  const load = options.load ?? queryRows
+  const tenantId = await getSelectedTenant(event).catch(() => null)
+  const [xero, media] = await Promise.all([
+    tenantId
+      ? load<{ last_synced: string | null }>(
+          `SELECT GREATEST(
+             (SELECT MAX(synced_at) FROM xero_contacts_cache WHERE tenant_id = $1),
+             (SELECT MAX(synced_at) FROM xero_invoices_cache WHERE tenant_id = $1)
+           )::text AS last_synced`,
+          [tenantId],
+        ).catch(() => [])
+      : Promise.resolve([]),
+    load<{ last_synced: string | null }>(
+      `SELECT MAX(synced_at)::text AS last_synced FROM media_spend`,
+      [],
+    ).catch(() => []),
+  ])
+  const xeroCacheSyncedAt = xero[0]?.last_synced ?? null
+  const mediaSpendSyncedAt = media[0]?.last_synced ?? null
+  return {
+    ...buildSyncFreshness([xeroCacheSyncedAt, mediaSpendSyncedAt], { now: options.now }),
+    xeroCacheSyncedAt,
+    mediaSpendSyncedAt,
+    basis: 'xero_invoice_cache+media_spend_sync',
+  }
 }
 
 // ── Postgres data functions (default-deps source; covered via tool tests with mock deps) ──
