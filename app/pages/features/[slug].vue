@@ -1033,8 +1033,8 @@ const features: Record<string, Feature> = {
         content: 'Track invoices from draft to paid without leaving XeroFlow. See payment status, due dates, overdue amounts, and aging reports alongside your project data. When a client\'s invoice is overdue, the information surfaces on their client card and in the AI anomaly detection system, so your account managers can follow up proactively instead of waiting for month-end surprises.'
       },
       {
-        title: 'Expense Tracking',
-        content: 'Sync expense claims and bills from Xero to track costs against projects and clients. XeroFlow maps expenses to the right client and project using tracking categories, giving you a real-time view of profitability that combines revenue (invoices) with costs (expenses and ad spend) in a single dashboard. No more reconciling spreadsheets across three systems.'
+        title: 'Project Allocations & Reconciliation',
+        content: 'Project allocations map Xero revenue lines and Xero supplier lines to projects, while synced Meta and Google Ads spend is treated as pass-through for Agency Gross Income (AGI). Unallocated values remain visible until assigned, with a clear unallocated-source reconciliation: each client total equals project totals plus unallocated amounts. Finance-gated, audited allocation changes keep every adjustment reviewable.'
       },
       {
         title: 'Chart of Accounts Mapping',
