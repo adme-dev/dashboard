@@ -4,7 +4,7 @@ import {
   getAdspendSyncStatus,
   runAdspendSync,
   type AdspendSyncDeps,
-  type SpendSyncJobRow,
+  type SpendSyncJobRow
 } from '../../../server/utils/ai/tools/adspendSync'
 
 const META_ID = '11111111-1111-4111-8111-111111111111'
@@ -18,11 +18,11 @@ function deps(overrides: Partial<AdspendSyncDeps> = {}): AdspendSyncDeps {
     startPlatform: vi.fn(async platform => ({
       jobId: platform === 'meta' ? META_ID : GOOGLE_ID,
       status: 'started',
-      startedAt: '2026-08-21T01:00:00.000Z',
+      startedAt: '2026-08-21T01:00:00.000Z'
     })),
     loadJobs: vi.fn().mockResolvedValue([]),
     now: () => new Date('2026-08-21T01:00:00.000Z'),
-    ...overrides,
+    ...overrides
   }
 }
 
@@ -40,7 +40,7 @@ function row(overrides: Partial<SpendSyncJobRow>): SpendSyncJobRow {
     total_accounts: 4,
     processed_accounts: 4,
     coverage_failed: false,
-    ...overrides,
+    ...overrides
   }
 }
 
@@ -52,14 +52,14 @@ describe('MCP ad-spend sync controls', () => {
     expect((result as any).data).toMatchObject({
       accepted: true,
       asynchronous: true,
-      handle: `adspend-sync-v1:${META_ID},${GOOGLE_ID}`,
+      handle: `adspend-sync-v1:${META_ID},${GOOGLE_ID}`
     })
     expect(d.startPlatform).toHaveBeenCalledTimes(2)
   })
 
   it('refuses a repeat invocation during the atomic cooldown', async () => {
     const d = deps({
-      reserveCooldown: vi.fn().mockResolvedValue({ accepted: false, nextAllowedAt: '2026-08-21T01:20:00.000Z' }),
+      reserveCooldown: vi.fn().mockResolvedValue({ accepted: false, nextAllowedAt: '2026-08-21T01:20:00.000Z' })
     })
     const result = await runAdspendSync({ platform: 'meta' }, ctx, d)
     expect((result as any).data).toMatchObject({ accepted: false, reason: 'cooldown', cooldownRemainingSeconds: 1200 })
@@ -99,14 +99,14 @@ describe('MCP ad-spend sync controls', () => {
       startPlatform: vi.fn(async (platform) => {
         if (platform === 'google') throw Object.assign(new Error('boom'), { statusCode: 500 })
         return { jobId: META_ID, status: 'started', startedAt: '2026-08-21T01:00:00.000Z' }
-      }),
+      })
     })
     const result = await runAdspendSync({ platform: 'all' }, ctx, d)
     expect(result.ok).toBe(true)
     expect((result as any).data).toMatchObject({
       accepted: true,
       handle: `adspend-sync-v1:${META_ID}`,
-      failedPlatforms: [{ platform: 'google', reason: expect.stringMatching(/500.*boom/) }],
+      failedPlatforms: [{ platform: 'google', reason: expect.stringMatching(/500.*boom/) }]
     })
     expect(d.releaseCooldown).not.toHaveBeenCalled()
   })
@@ -125,5 +125,18 @@ describe('MCP ad-spend sync controls', () => {
     const result = await getAdspendSyncStatus({ handle: `adspend-sync-v1:${META_ID}` }, ctx, d)
     expect(result).toMatchObject({ ok: false, code: 'SYNC_STATUS_FAILED' })
     expect((result as any).error).toMatch(/text = uuid/)
+  })
+
+  it('BF-1: starts the sync with the originating request event (queue bindings present), not an internal HTTP hop', async () => {
+    const startSpendSyncPlatform = vi.fn(async () => ({ status: 'started', startedAt: '2026-08-22T11:00:00.000Z', jobId: GOOGLE_ID, queued: true, accounts: 110, reapedJobIds: ['ghost'] }))
+    vi.doMock('~~/server/utils/spendSyncKickoff', () => ({ startSpendSyncPlatform }))
+    const { runAdspendSync: run } = await import('../../../server/utils/ai/tools/adspendSync')
+    const event = { context: { cloudflare: { env: { JOBS_QUEUE: {} } } } }
+    const d = deps({ startPlatform: undefined as any })
+    const { startPlatform: _drop, ...rest } = d
+    const result = await run({ platform: 'google' }, { ...ctx, event } as any, { ...rest, startPlatform: (await import('../../../server/utils/ai/tools/adspendSync')).__startPlatformForTest } as any)
+    expect(startSpendSyncPlatform).toHaveBeenCalledWith(event, 'google', expect.any(Number), expect.any(Number), ctx.userId)
+    expect((result as any).data.jobs[0]).toMatchObject({ queued: true, accounts: 110, reapedJobIds: ['ghost'] })
+    vi.doUnmock('~~/server/utils/spendSyncKickoff')
   })
 })
