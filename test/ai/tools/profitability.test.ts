@@ -1,14 +1,50 @@
 import { describe, it, expect, vi } from 'vitest'
-import { getClientProfitability, type ProfitabilityDeps } from '~~/server/utils/ai/tools/profitability'
+import { getClientProfitability, profitabilityTool, type ProfitabilityDeps } from '~~/server/utils/ai/tools/profitability'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import type { ClientEconomicsRow } from '~~/server/utils/ai/tools/economics'
 
 const ctx: ToolContext = { userId: 'u1', userRole: 'owner', event: {} as any }
 
 const rows: ClientEconomicsRow[] = [
-  { clientId: 'a', name: 'Acme', revenueCents: 10000_00, passthroughCents: 2000_00, laborCents: 3000_00, hours: 100 },
-  { clientId: 'b', name: 'Globex', revenueCents: 5000_00, passthroughCents: 0, laborCents: 4500_00, hours: 120 },
-  { clientId: 'c', name: 'Initech', revenueCents: 0, passthroughCents: 0, laborCents: 0, hours: 0 },
+  {
+    clientId: 'a',
+    name: 'Acme',
+    revenueCents: 602000,
+    passthroughCents: 259282,
+    agiCents: 342718,
+    laborCents: 30000,
+    projectExpenseCents: 25000,
+    xeroSupplierCostCents: 35000,
+    deliveryCostCents: 90000,
+    deliveryMarginPct: 73.73,
+    hours: 100,
+  },
+  {
+    clientId: 'b',
+    name: 'Globex',
+    revenueCents: 5000_00,
+    passthroughCents: 0,
+    agiCents: 5000_00,
+    laborCents: 4000_00,
+    projectExpenseCents: 250_00,
+    xeroSupplierCostCents: 250_00,
+    deliveryCostCents: 4500_00,
+    deliveryMarginPct: 10,
+    hours: 120,
+  },
+  {
+    clientId: 'c',
+    name: 'Initech',
+    revenueCents: 0,
+    passthroughCents: 0,
+    agiCents: 0,
+    laborCents: 0,
+    projectExpenseCents: 0,
+    xeroSupplierCostCents: 0,
+    deliveryCostCents: 0,
+    deliveryMarginPct: null,
+    hours: 0,
+  },
 ]
 const deps = (over: Partial<ProfitabilityDeps> = {}): ProfitabilityDeps => ({
   fetchEconomics: vi.fn().mockResolvedValue(rows),
@@ -20,20 +56,24 @@ describe('get_client_profitability', () => {
     const res = await getClientProfitability({ period: 'mtd' }, ctx, deps())
     expect(res.ok).toBe(true)
     const d = (res as any).data
-    // Acme AGI=8000, margin=(8000-3000)/8000=62.5 ; Globex AGI=5000, margin=(5000-4500)/5000=10
+    // Acme AGI=$3,427.18, margin=($3,427.18-$900)/$3,427.18=73.7%; Globex=10%.
     expect(d.topByMargin[0].client).toBe('Acme')
-    expect(d.topByMargin[0].marginPct).toBe(62.5)
+    expect(d.topByMargin[0].marginPct).toBe(73.7)
+    expect(d.topByMargin[0].deliveryCost).toBe(900)
     expect(d.bottomByMargin[0].client).toBe('Globex')
     expect(d.agencyConcentration.top5Pct).toBe(100) // 3 clients → all share
   })
 
-  it('deep-dive: a named client returns its margin breakdown', async () => {
+  it('deep-dive: a named client returns canonical AGI and total delivery-cost detail', async () => {
     const res = await getClientProfitability({ clientName: 'acme', period: 'mtd' }, ctx, deps())
     const d = (res as any).data
     expect(d.client).toBe('Acme')
-    expect(d.revenue).toBe(10000)
-    expect(d.agi).toBe(8000)
-    expect(d.deliveryMarginPct).toBe(62.5)
+    expect(d.revenue).toBe(6020)
+    expect(d.passthrough).toBe(2592.82)
+    expect(d.agi).toBe(3427.18)
+    expect(d.laborCost).toBe(300)
+    expect(d.deliveryCost).toBe(900)
+    expect(d.deliveryMarginPct).toBe(73.7)
   })
 
   it('ambiguous name → disambiguation list, no numbers leaked', async () => {
@@ -64,18 +104,44 @@ describe('get_client_profitability', () => {
     expect((res as any).error).toMatch(/profitab/i)
   })
 
+  it('rejects non-finite economics instead of returning NaN', async () => {
+    const invalid: ClientEconomicsRow[] = [{
+      ...rows[0]!,
+      deliveryCostCents: Number.NaN,
+    }]
+    const res = await getClientProfitability({}, ctx, deps({ fetchEconomics: vi.fn().mockResolvedValue(invalid) }))
+
+    expect(res.ok).toBe(false)
+    expect(JSON.stringify(res)).not.toContain('NaN')
+  })
+
+  it('describes the complete canonical delivery-cost model', () => {
+    expect(profitabilityTool.description).toContain('labor, project expenses, and allocated Xero supplier costs')
+  })
+
   it('loss-making clients (AGI <= 0) appear in bottomByMargin as the worst, with marginPct null', async () => {
     const lossRows: ClientEconomicsRow[] = [
-      { clientId: 'a', name: 'Acme', revenueCents: 10000_00, passthroughCents: 2000_00, laborCents: 3000_00, hours: 100 }, // agi 8000, margin 62.5
-      { clientId: 'b', name: 'Globex', revenueCents: 5000_00, passthroughCents: 0, laborCents: 4500_00, hours: 120 },        // agi 5000, margin 10
-      { clientId: 'l', name: 'LossCo', revenueCents: 5000_00, passthroughCents: 8000_00, laborCents: 1000_00, hours: 40 },   // agi -3000, margin null
+      rows[0]!,
+      rows[1]!,
+      {
+        clientId: 'l', name: 'LossCo', revenueCents: 5000_00, passthroughCents: 8000_00,
+        agiCents: -3000_00, laborCents: 1000_00, projectExpenseCents: 100_00,
+        xeroSupplierCostCents: 0, deliveryCostCents: 1100_00, deliveryMarginPct: null, hours: 40,
+      },
+      {
+        clientId: 'z', name: 'ZeroAgiCo', revenueCents: 2000_00, passthroughCents: 2000_00,
+        agiCents: 0, laborCents: 100_00, projectExpenseCents: 0,
+        xeroSupplierCostCents: 0, deliveryCostCents: 100_00, deliveryMarginPct: null, hours: 2,
+      },
     ]
     const res = await getClientProfitability({ period: 'mtd' }, ctx, deps({ fetchEconomics: vi.fn().mockResolvedValue(lossRows) }))
     const d = (res as any).data
     expect(d.bottomByMargin[0].client).toBe('LossCo')   // loss-maker is the worst
     expect(d.bottomByMargin[0].marginPct).toBeNull()
     expect(d.bottomByMargin[0].agi).toBe(-3000)
+    expect(d.bottomByMargin[1]).toMatchObject({ client: 'ZeroAgiCo', agi: 0, marginPct: null })
     expect(d.topByMargin.map((c: any) => c.client)).not.toContain('LossCo') // never shown as "top"
+    expect(d.topByMargin.map((c: any) => c.client)).not.toContain('ZeroAgiCo')
   })
 
   it('more counts only active clients shown in neither list (not a raw length - 5)', async () => {
