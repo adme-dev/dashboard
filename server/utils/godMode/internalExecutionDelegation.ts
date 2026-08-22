@@ -227,8 +227,6 @@ function isExactDraftFollowupBody(body: unknown): boolean {
     && uuidPattern.test(record.opportunity_id)
 }
 
-/** Operational spend-sync kickoffs used by run_adspend_sync. Empty body only: the period is always "now". */
-const spendSyncKickoffPath = /^\/api\/agency\/social\/(?:meta|google)\/sync-spend$/
 
 function isEmptyObjectBody(body: unknown): boolean {
   return !!body && typeof body === 'object' && !Array.isArray(body) && Object.keys(body as object).length === 0
@@ -275,9 +273,13 @@ function isAllowedReadTarget(path: string): boolean {
   })
 }
 
+/** Operational spend-sync kickoffs used by run_adspend_sync. Empty body only: the period is always "now". */
+const spendSyncKickoffPath = /^\/api\/agency\/social\/(?:meta|google)\/sync-spend$/
+
 export function isAllowedGodModeInternalExecutionTarget(method: string, path: string): boolean {
   if (method === 'GET') return isAllowedReadTarget(path)
   if (method === 'POST' && path === exactDraftFollowupPath) return true
+  if (method === 'POST' && spendSyncKickoffPath.test(path)) return true
   return allowedTargets.some(target => target.method === method && target.path.test(path))
 }
 
