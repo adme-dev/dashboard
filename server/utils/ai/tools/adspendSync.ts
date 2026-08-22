@@ -16,6 +16,7 @@ type StartedJob = {
   startedAt: string
   queued?: boolean
   accounts?: number
+  reapedJobIds?: string[]
 }
 
 export type SpendSyncJobRow = {
@@ -73,6 +74,15 @@ async function releaseCooldown(userId: string): Promise<void> {
 }
 
 async function startPlatform(platform: JobPlatform, ctx: ToolContext): Promise<StartedJob> {
+  // Kick off with the ORIGINATING request event so the JOBS_QUEUE binding is present. An internal
+  // HTTP hop (aiInternalFetch → Nitro $fetch) builds a fresh event without Cloudflare bindings, the
+  // endpoint falls to the inline waitUntil path, and Cloudflare cuts it off at ~100 accounts,
+  // leaving the job 'running' forever (observed in prod 2026-08-22).
+  if (ctx.event) {
+    const { startSpendSyncPlatform } = await import('~~/server/utils/spendSyncKickoff')
+    const now = new Date()
+    return await startSpendSyncPlatform(ctx.event, platform, now.getMonth() + 1, now.getFullYear(), ctx.userId)
+  }
   return await aiInternalFetch<StartedJob>(`/api/agency/social/${platform}/sync-spend`, { method: 'POST', body: {} }, ctx)
 }
 
@@ -89,6 +99,8 @@ async function loadJobs(ids: string[], userId: string): Promise<SpendSyncJobRow[
 }
 
 const defaultDeps: AdspendSyncDeps = { reserveCooldown, releaseCooldown, startPlatform, loadJobs, now: () => new Date() }
+/** Test seam: the real startPlatform (event-bound kickoff), injectable alongside mocked DB deps. */
+export const __startPlatformForTest = startPlatform
 
 /** Turns a thrown fetch/H3 error into a one-line operator-readable reason (status + message + provider body when present). */
 function describeError(err: unknown): string {
@@ -160,8 +172,8 @@ export async function runAdspendSync(
       asynchronous: true,
       handle: encodeHandle(started.map(o => o.job.jobId)),
       nextAllowedAt: reservation.nextAllowedAt,
-      jobs: started.map(o => ({ platform: o.platform, status: o.job.status, queued: o.job.queued ?? null, accounts: o.job.accounts ?? null })),
-      failedPlatforms,
+      jobs: started.map(o => ({ platform: o.platform, status: o.job.status, queued: o.job.queued ?? null, accounts: o.job.accounts ?? null, reapedJobIds: o.job.reapedJobIds ?? [] })),
+      failedPlatforms
     })
   } catch (err) {
     const reason = describeError(err)
@@ -189,7 +201,7 @@ function summariseFailures(failures: SpendSyncJobRow['failures']): { groups: Arr
   const sorted = [...groups.entries()].sort((a, b) => b[1].accounts - a[1].accounts)
   return {
     groups: sorted.slice(0, FAILURE_REASON_GROUP_CAP).map(([reason, g]) => ({ reason, accounts: g.accounts, examples: g.examples })),
-    more: Math.max(0, sorted.length - FAILURE_REASON_GROUP_CAP),
+    more: Math.max(0, sorted.length - FAILURE_REASON_GROUP_CAP)
   }
 }
 
@@ -228,8 +240,8 @@ export async function getAdspendSyncStatus(
         failureReasons: summariseFailures(job.failures),
         error: job.error,
         startedAt: job.started_at,
-        finishedAt: job.finished_at,
-      })),
+        finishedAt: job.finished_at
+      }))
     })
   } catch (err) {
     const reason = describeError(err)
@@ -243,7 +255,7 @@ export const runAdspendSyncTool: AiTool<RunArgs> = {
   description: 'Start an asynchronous Meta, Google, or combined ad-spend sync and return an opaque job handle immediately. Use when current spend data is stale or an operator explicitly requests a refresh; poll get_sync_status with the returned handle rather than waiting in this call. A global atomic 30-minute cooldown prevents repeated provider fan-out. This operational tool writes only sync telemetry and provider spend snapshots; it never changes campaign settings or budgets.',
   parameters: runParams,
   requiredPermission: 'MEDIA_BUYING',
-  handler: (args, ctx) => runAdspendSync(args, ctx),
+  handler: (args, ctx) => runAdspendSync(args, ctx)
 }
 
 export const getAdspendSyncStatusTool: AiTool<StatusArgs> = {
@@ -251,6 +263,5 @@ export const getAdspendSyncStatusTool: AiTool<StatusArgs> = {
   description: 'Poll an opaque handle returned by run_adspend_sync. Returns running, completed, or failed plus rows written, account progress, timestamps, and an explicit coverageVerified flag. Completed is reported only after every provider job is terminal and its campaign-coverage gate passed. Read-only.',
   parameters: statusParams,
   requiredPermission: 'MEDIA_BUYING',
-  handler: (args, ctx) => getAdspendSyncStatus(args, ctx),
+  handler: (args, ctx) => getAdspendSyncStatus(args, ctx)
 }
-

@@ -12,7 +12,7 @@
 import { queryOne, queryRows, execute } from './db'
 import {
   sanitizeSpendSyncFailureReason,
-  sanitizeSpendSyncFailures,
+  sanitizeSpendSyncFailures
 } from './spendSyncFailureSanitizer'
 
 async function activeOwnerIds(): Promise<string[]> {
@@ -93,8 +93,8 @@ async function alertStaleSpendSync(platform: string, period: string, jobId: stri
         period,
         jobId,
         staleRowCount: staleRows,
-        oldestSyncedAt: row?.oldest_synced_at ?? null,
-      },
+        oldestSyncedAt: row?.oldest_synced_at ?? null
+      }
     })
   } catch (error) {
     console.error('[SpendSync] failed to create stale-sync owner notification:', error)
@@ -149,8 +149,8 @@ async function alertSpendSyncCoverageDrop(
         previousCampaignCount,
         currentCampaignCount,
         missingCampaignCount,
-        previousFinishedAt: previous?.finished_at ?? null,
-      },
+        previousFinishedAt: previous?.finished_at ?? null
+      }
     })
   } catch (error) {
     console.error('[SpendSync] failed to create coverage-drop owner notification:', error)
@@ -236,8 +236,8 @@ async function notifyCoverageHalt(input: { platform: string, sourceLabel: string
         source: input.sourceLabel,
         previousCount: input.gate.previousCount,
         currentCount: input.gate.currentCount,
-        deltaPct: input.gate.deltaPct,
-      },
+        deltaPct: input.gate.deltaPct
+      }
     })
   } catch (error) {
     console.error('[SpendSync] failed to create coverage-halt owner notification:', error)
@@ -461,6 +461,28 @@ export async function recordSyncJobAccountResult(jobId: string, result: SyncJobR
 }
 
 /** Mark a job failed with an error message. */
+/**
+ * Terminalise jobs that have been `running` with no progress for longer than `maxAgeHours`.
+ * A queue message lost, a worker killed, or an inline waitUntil cut off by Cloudflare's time
+ * budget all leave a job `running` forever; get_sync_status would report it as in-flight
+ * indefinitely. Called by the starter so a fresh run never sits behind a ghost. Returns the
+ * ids it reaped.
+ */
+export async function reapOrphanedSpendSyncJobs(platform: string, maxAgeHours = 2, run: typeof queryRows = queryRows): Promise<string[]> {
+  const rows = await run<{ id: string }>(
+    `UPDATE spend_sync_jobs
+        SET status = 'failed',
+            error = 'Orphaned: no terminal update within ' || $2::text || 'h of start (worker killed, queue message lost, or inline sync cut off)',
+            finished_at = NOW()
+      WHERE platform = $1
+        AND status = 'running'
+        AND started_at < NOW() - ($2 * interval '1 hour')
+      RETURNING id`,
+    [platform, maxAgeHours]
+  )
+  return rows.map(r => r.id)
+}
+
 export async function failSpendSyncJob(jobId: string, error: string): Promise<void> {
   await execute(
     `UPDATE spend_sync_jobs

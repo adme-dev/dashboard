@@ -20,12 +20,16 @@ vi.mock('~~/server/utils/spendSyncJobs', () => ({
   createSpendSyncJob: (...args: unknown[]) => mockCreateSpendSyncJob(...args),
   setSyncJobTotalAccounts: (...args: unknown[]) => mockSetSyncJobTotalAccounts(...args),
   completeSpendSyncJob: (...args: unknown[]) => mockCompleteSpendSyncJob(...args),
-  failSpendSyncJob: (...args: unknown[]) => mockFailSpendSyncJob(...args)
+  failSpendSyncJob: (...args: unknown[]) => mockFailSpendSyncJob(...args),
+  reapOrphanedSpendSyncJobs: async () => []
 }))
 
 vi.mock('~~/server/utils/spendSync', () => ({
   listGoogleConnectionIds: (...args: unknown[]) => mockListGoogleConnectionIds(...args),
-  syncGoogleSpend: (...args: unknown[]) => mockSyncGoogleSpend(...args)
+  syncGoogleSpend: (...args: unknown[]) => mockSyncGoogleSpend(...args),
+  listMetaConnectionIds: vi.fn(), syncMetaSpend: vi.fn(), syncMicrosoftSpend: vi.fn(),
+  syncPinterestSpend: vi.fn(), syncTikTokSpend: vi.fn(), syncLinkedinSpend: vi.fn(),
+  syncSnapchatSpend: vi.fn(), syncTwitterSpend: vi.fn()
 }))
 
 vi.mock('~~/server/utils/asyncBackground', () => ({
@@ -78,6 +82,7 @@ describe('POST /api/agency/social/google/sync-spend', () => {
 
     expect(mockQueueSend).not.toHaveBeenCalled()
     expect(mockRunSpendSyncInBackground).toHaveBeenCalledOnce()
-    expect(result).toEqual({ status: 'started', startedAt: 'fallback', jobId: 'job-1' })
+    // The inline path is declared, not hidden: queued:false tells the caller no fan-out happened.
+    expect(result).toMatchObject({ status: 'started', jobId: 'job-1', queued: false, accounts: 0, reapedJobIds: [] })
   })
 })
