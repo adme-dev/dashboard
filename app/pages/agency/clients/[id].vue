@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CalendarDate, getLocalTimeZone, today } from '@internationalized/date'
 import { format } from 'date-fns'
+import { apiErrorDescription } from '~/utils/apiError'
 import type {
   ClientFinancialMediaCampaign,
   ClientFinancialsResponse,
@@ -21,19 +22,47 @@ const { isManager, isOwner, canAccessMediaBuying, canWrite } = useAuth()
 const clientId = route.params.id as string
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string; body?: unknown }
+  options?: { method?: string; body?: unknown; headers?: Record<string, string> }
 ) => Promise<T>
+
+type LeadCaptureMode = 'analytics_only' | 'capture_only' | 'lightweight_crm' | 'full_crm' | 'external_crm'
+type EntitlementStatus = 'trial' | 'active' | 'grace' | 'capped' | 'overdue' | 'suspended' | 'cancelled'
+interface CrmSettings {
+  leadCaptureMode: LeadCaptureMode
+  crmCoreStatus: EntitlementStatus
+  crmExternalStatus: EntitlementStatus
+}
+interface BoardOption {
+  label: string
+  value: string
+}
 
 // Fetch client data
 const clientData = ref<any>(null)
+const crmSettingsData = ref<CrmSettings>({
+  leadCaptureMode: 'capture_only',
+  crmCoreStatus: 'suspended',
+  crmExternalStatus: 'suspended'
+})
 const pending = ref(false)
 const error = ref<any>(null)
+const portalBoardOptions = ref<BoardOption[]>([{ label: 'No portal board', value: '__none__' }])
 
 async function refresh() {
   pending.value = true
   error.value = null
   try {
-    clientData.value = await apiFetch(`/api/agency/clients/${clientId}`)
+    const [clientResponse, crmResponse, boardsResponse] = await Promise.all([
+      apiFetch(`/api/agency/clients/${clientId}`),
+      apiFetch<CrmSettings>(`/api/agency/clients/${clientId}/crm-settings`).catch(() => null),
+      apiFetch<{ boards: Array<{ id: string, name: string }> }>('/api/agency/boards').catch(() => ({ boards: [] }))
+    ])
+    clientData.value = clientResponse
+    if (crmResponse) crmSettingsData.value = crmResponse
+    portalBoardOptions.value = [
+      { label: 'No portal board', value: '__none__' },
+      ...boardsResponse.boards.map(board => ({ label: board.name, value: board.id }))
+    ]
   } catch (err) {
     clientData.value = null
     error.value = err
@@ -285,7 +314,11 @@ const editForm = ref({
   contactPhone: '',
   address: '',
   notes: '',
-  isActive: true
+  isActive: true,
+  portalBoardId: '__none__',
+  leadCaptureMode: 'capture_only' as LeadCaptureMode,
+  crmCoreStatus: 'suspended' as EntitlementStatus,
+  crmExternalStatus: 'suspended' as EntitlementStatus
 })
 
 const openEditModal = () => {
@@ -302,42 +335,85 @@ const openEditModal = () => {
       contactPhone: client.value.contactPhone || '',
       address: client.value.address || '',
       notes: client.value.notes || '',
-      isActive: client.value.isActive
+      isActive: client.value.isActive,
+      portalBoardId: client.value.portalBoardId || '__none__',
+      leadCaptureMode: crmSettingsData.value.leadCaptureMode,
+      crmCoreStatus: crmSettingsData.value.crmCoreStatus,
+      crmExternalStatus: crmSettingsData.value.crmExternalStatus
     }
     showEditModal.value = true
   }
 }
 
 const saving = ref(false)
+type ClientMutationKind = 'client' | 'crm' | 'unlink'
+const mutationAttempts = new Map<ClientMutationKind, { signature: string; key: string }>()
+
+function idempotencyKeyFor(kind: ClientMutationKind, body: unknown): string {
+  const signature = JSON.stringify(body)
+  const current = mutationAttempts.get(kind)
+  if (current?.signature === signature) return current.key
+  const key = `agency-client:${kind}:${crypto.randomUUID()}`
+  mutationAttempts.set(kind, { signature, key })
+  return key
+}
+
 const saveClient = async () => {
   saving.value = true
   try {
-    await apiFetch(`/api/agency/clients/${clientId}`, {
-      method: 'PUT',
-      body: editForm.value
-    })
+    const {
+      leadCaptureMode,
+      crmCoreStatus,
+      crmExternalStatus,
+      ...clientPayload
+    } = editForm.value
+    const crmPayload = { leadCaptureMode, crmCoreStatus, crmExternalStatus }
+    const normalizedClientPayload = {
+      ...clientPayload,
+      portalBoardId: clientPayload.portalBoardId === '__none__' ? null : clientPayload.portalBoardId
+    }
+    const requests: Array<Promise<unknown>> = [
+      apiFetch(`/api/agency/clients/${clientId}`, {
+        method: 'PUT',
+        headers: { 'Idempotency-Key': idempotencyKeyFor('client', normalizedClientPayload) },
+        body: normalizedClientPayload
+      })
+    ]
+    if (isManager.value) {
+      requests.push(apiFetch(`/api/agency/clients/${clientId}/crm-settings`, {
+        method: 'PUT',
+        headers: { 'Idempotency-Key': idempotencyKeyFor('crm', crmPayload) },
+        body: crmPayload
+      }))
+    }
+    await Promise.all(requests)
     toast.add({ title: 'Client updated', color: 'success' })
+    mutationAttempts.delete('client')
+    mutationAttempts.delete('crm')
     showEditModal.value = false
     await refresh()
     await refreshFinancials()
   } catch (err: any) {
-    toast.add({ title: 'Failed to update client', description: err.data?.message || err.message, color: 'error' })
+    toast.add({ title: 'Failed to update client', description: apiErrorDescription(err), color: 'error' })
   } finally {
     saving.value = false
   }
 }
 
 const unlinkXero = async () => {
+  const payload = { xeroContactId: null }
   try {
     await apiFetch(`/api/agency/clients/${clientId}`, {
       method: 'PUT',
-      body: { xeroContactId: null }
+      headers: { 'Idempotency-Key': idempotencyKeyFor('unlink', payload) },
+      body: payload
     })
+    mutationAttempts.delete('unlink')
     toast.add({ title: 'Xero contact unlinked', color: 'success' })
     await refresh()
     await refreshFinancials()
   } catch (err: any) {
-    toast.add({ title: 'Failed to unlink', description: err.data?.message || err.message, color: 'error' })
+    toast.add({ title: 'Failed to unlink', description: apiErrorDescription(err), color: 'error' })
   }
 }
 
@@ -349,6 +425,33 @@ const billingTypeOptions = [
   { label: 'Project-Based', value: 'project' },
   { label: 'Hybrid', value: 'hybrid' }
 ]
+
+const crmModeOptions = [
+  { label: 'Analytics only', value: 'analytics_only' },
+  { label: 'Capture leads', value: 'capture_only' },
+  { label: 'Lightweight CRM', value: 'lightweight_crm' },
+  { label: 'Full CRM', value: 'full_crm' },
+  { label: 'External CRM', value: 'external_crm' }
+]
+
+const crmModeDescriptions: Record<LeadCaptureMode, string> = {
+  analytics_only: 'Measure website and campaign activity without creating canonical lead records.',
+  capture_only: 'Capture, reconcile and attribute leads without creating CRM opportunities.',
+  lightweight_crm: 'Create contacts and opportunities in the streamlined XeroFlow CRM workspace.',
+  full_crm: 'Enable the complete XeroFlow CRM lifecycle, automation and future AI features.',
+  external_crm: 'Capture leads in XeroFlow and deliver them to the client’s connected CRM.'
+}
+
+const entitlementStatusOptions = [
+  { label: 'Trial', value: 'trial' },
+  { label: 'Active', value: 'active' },
+  { label: 'Grace period', value: 'grace' },
+  { label: 'Usage capped', value: 'capped' },
+  { label: 'Overdue', value: 'overdue' },
+  { label: 'Suspended', value: 'suspended' },
+  { label: 'Cancelled', value: 'cancelled' }
+]
+
 
 // Time entry columns
 const timeColumns = [
@@ -1109,7 +1212,7 @@ async function saveKpiTargets() {
         </h3>
       </template>
       <template #body>
-        <form class="px-1 space-y-6" @submit.prevent="saveClient">
+        <form class="@container px-1 space-y-6" @submit.prevent="saveClient">
           <!-- Section: General -->
           <fieldset class="space-y-5 pb-6 border-b border-default">
             <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
@@ -1125,7 +1228,7 @@ async function saveKpiTargets() {
               />
             </UFormField>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
               <UFormField label="Billing Type">
                 <USelectMenu
                   v-model="editForm.billingType"
@@ -1153,13 +1256,109 @@ async function saveKpiTargets() {
             </div>
           </fieldset>
 
+          <fieldset class="space-y-5 pb-6 border-b border-default">
+            <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
+              Client portal
+            </legend>
+
+            <UFormField
+              label="Linked board"
+              help="Portal users see a read-only view containing only work attached to this client's projects."
+            >
+              <USelectMenu
+                v-model="editForm.portalBoardId"
+                :items="portalBoardOptions"
+                value-key="value"
+                size="xl"
+                class="w-full"
+              />
+            </UFormField>
+
+            <UAlert
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-shield-check"
+              title="Client-scoped visibility"
+              description="Other clients' tasks and internal board items without a matching client project are never exposed."
+            />
+          </fieldset>
+
+          <fieldset class="space-y-5 pb-6 border-b border-default">
+            <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
+              Lead capture & CRM
+            </legend>
+
+            <UFormField label="Operating mode">
+              <USelectMenu
+                v-model="editForm.leadCaptureMode"
+                :items="crmModeOptions"
+                value-key="value"
+                size="xl"
+                class="w-full"
+                :disabled="!isManager"
+              />
+              <template #hint>
+                <span class="text-xs text-muted">
+                  {{ crmModeDescriptions[editForm.leadCaptureMode] }}
+                </span>
+              </template>
+            </UFormField>
+
+            <UFormField
+              v-if="['lightweight_crm', 'full_crm'].includes(editForm.leadCaptureMode)"
+              label="XeroFlow CRM access"
+            >
+              <USelectMenu
+                v-model="editForm.crmCoreStatus"
+                :items="entitlementStatusOptions"
+                value-key="value"
+                size="xl"
+                class="w-full"
+                :disabled="!isManager"
+              />
+              <template #hint>
+                <span class="text-xs text-muted">
+                  Trial, active and grace-period access can promote captured leads into CRM.
+                </span>
+              </template>
+            </UFormField>
+
+            <UFormField
+              v-if="editForm.leadCaptureMode === 'external_crm'"
+              label="External CRM delivery"
+            >
+              <USelectMenu
+                v-model="editForm.crmExternalStatus"
+                :items="entitlementStatusOptions"
+                value-key="value"
+                size="xl"
+                class="w-full"
+                :disabled="!isManager"
+              />
+              <template #hint>
+                <span class="text-xs text-muted">
+                  Suspending delivery never stops canonical lead capture or attribution.
+                </span>
+              </template>
+            </UFormField>
+
+            <UAlert
+              v-if="!isManager"
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-lock"
+              title="Management access required"
+              description="Only management users can change lead capture and CRM entitlement settings."
+            />
+          </fieldset>
+
           <!-- Section: Contact -->
           <fieldset class="space-y-5 pb-6 border-b border-default">
             <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
               Contact
             </legend>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
               <UFormField label="Contact Email">
                 <UInput
                   v-model="editForm.contactEmail"
@@ -1206,7 +1405,7 @@ async function saveKpiTargets() {
               Rates
             </legend>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
               <UFormField label="Hourly Rate">
                 <UInput
                   v-model.number="editForm.hourlyRate"
