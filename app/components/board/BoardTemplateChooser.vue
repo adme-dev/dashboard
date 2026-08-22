@@ -6,7 +6,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  apply: [templateId: string]
+  apply: [templateId: string, template: { id: string, name: string }]
   saved: [template: { id: string; name: string }]
 }>()
 
@@ -85,7 +85,8 @@ watch(isOpen, (val) => {
 async function applyTemplate(templateId: string) {
   isApplying.value = true
   try {
-    emit('apply', templateId)
+    const tpl = templates.value.find((t: { id: string }) => t.id === templateId)
+    emit('apply', templateId, { id: templateId, name: tpl?.name || 'Template' })
     isOpen.value = false
   } finally {
     isApplying.value = false

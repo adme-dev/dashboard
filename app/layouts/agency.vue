@@ -77,14 +77,30 @@ interface AgencyWorkspacesResponse {
 
 const workspaces = ref<AgencyWorkspace[]>([])
 
-onMounted(async () => {
+async function loadWorkspaces() {
   try {
     const data = await layoutFetch<AgencyWorkspacesResponse>('/api/agency/workspaces')
     workspaces.value = data.workspaces || []
   } catch {
     workspaces.value = []
   }
+}
+onMounted(loadWorkspaces)
+
+// Refetch whenever a board is created from any BoardCreateModal instance
+const workspacesVersion = useState<number>('agency-workspaces-version', () => 0)
+watch(workspacesVersion, loadWorkspaces)
+
+// New board modal (sidebar entry point)
+const showCreateBoard = ref(false)
+const createBoardWorkspaceId = computed<string | null>(() => {
+  const slug = route.path.startsWith('/agency/w/') ? String(route.params.slug || '') : ''
+  return workspaces.value.find(w => w.slug === slug)?.id || null
 })
+function openCreateBoard() {
+  close()
+  showCreateBoard.value = true
+}
 
 // Build navigation from workspaces
 const workspaceNav = computed<NavigationMenuItem[]>(() => {
@@ -543,6 +559,7 @@ watch([() => route.path, () => mainNav.value.length], () => {
             variant="soft"
             icon="i-lucide-plus"
             class="w-full justify-center"
+            @click="openCreateBoard"
           >
             New Board
           </UButton>
@@ -583,6 +600,12 @@ watch([() => route.path, () => mainNav.value.length], () => {
     </UDashboardSidebar>
 
     <UDashboardSearch :groups="groups" />
+
+    <BoardCreateModal
+      v-model="showCreateBoard"
+      :workspace-id="createBoardWorkspaceId"
+      :workspaces="workspaces"
+    />
 
     <div
       :class="[
