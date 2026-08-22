@@ -63,6 +63,11 @@ export interface ClientEconomicsRow {
   deliveryCostCents?: number
   /** Present on the canonical portfolio adapter; optional for rollout compatibility with older callers. */
   deliveryMarginPct?: number | null
+  /** Required-source completeness; optional only for compatibility with pre-facade callers. */
+  revenueAvailable?: boolean
+  mediaAvailable?: boolean
+  supplierTrackingAvailable?: boolean
+  profitabilityAvailable?: boolean
   hours: number
 }
 
@@ -72,6 +77,10 @@ export interface PortfolioClientEconomicsRow extends ClientEconomicsRow {
   xeroSupplierCostCents: number
   deliveryCostCents: number
   deliveryMarginPct: number | null
+  revenueAvailable: boolean
+  mediaAvailable: boolean
+  supplierTrackingAvailable: boolean
+  profitabilityAvailable: boolean
 }
 
 const num = (v: unknown): number => {
@@ -109,39 +118,9 @@ interface ExpenseSourceRow {
 
 interface SupplierSourceRow {
   client_id: string
-  line_item_id: string
-  invoice_id: string
-  invoice_type: string
-  invoice_date: string | Date
-  account_code: string | null
-  description: string | null
-  amount_cents: string
-  source_fingerprint: string
-}
-
-function sourceDate(value: string | Date, label: string): string {
-  if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) throw new Error(`${label} must be a valid date`)
-    return value.toISOString().slice(0, 10)
-  }
-  const normalized = String(value).slice(0, 10)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) throw new Error(`${label} must use YYYY-MM-DD format`)
-  return normalized
-}
-
-async function supplierFingerprint(tenantId: string, row: SupplierSourceRow, amountCents: number): Promise<string> {
-  const source = [
-    tenantId,
-    row.line_item_id,
-    row.invoice_id,
-    row.invoice_type,
-    sourceDate(row.invoice_date, `Xero line ${row.line_item_id} date`),
-    row.account_code ?? '',
-    amountCents,
-    row.description ?? '',
-  ].join('|')
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(source))
-  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('')
+  invoice_id: string | null
+  amount_cents: string | null
+  supplier_tracking_available: boolean
 }
 
 /**
@@ -149,8 +128,8 @@ async function supplierFingerprint(tenantId: string, row: SupplierSourceRow, amo
  *
  * Each source is loaded once for the whole portfolio. Revenue and agency-paid
  * media remain client-level totals regardless of project allocation. Xero
- * supplier costs require a current, valid project allocation and a
- * DIRECTCOSTS account, matching the client financial facade's project model.
+ * supplier costs likewise remain in the client total when unallocated; only
+ * eligible client-tracked DIRECTCOSTS lines are included.
  */
 export async function fetchPortfolioClientEconomics(
   event: H3Event,
@@ -166,14 +145,25 @@ export async function fetchPortfolioClientEconomics(
   const mediaPeriods = bounds.mediaPeriods
 
   const [revenue, passthrough, labor, projectExpenses, supplierCosts] = await Promise.all([
-    queryRows<{ client_id: string, name: string, revenue_cents: string }>(
+    queryRows<{ client_id: string, name: string, revenue_cents: string, revenue_available: boolean }>(
       `SELECT ac.id AS client_id, ac.name AS name,
-              COALESCE(SUM(line.line_ex_gst_cents), 0)::bigint::text AS revenue_cents
+              COALESCE(SUM(line.line_ex_gst_cents), 0)::bigint::text AS revenue_cents,
+              (
+                ac.xero_contact_id IS NOT NULL
+                AND (
+                  COUNT(invoice.invoice_id) FILTER (
+                    WHERE UPPER(invoice.type) = 'ACCREC'
+                      AND UPPER(invoice.status) NOT IN ('DRAFT', 'VOIDED', 'DELETED')
+                  ) = 0
+                  OR COUNT(line.line_item_id) > 0
+                )
+              ) AS revenue_available
          FROM agency_clients ac
          LEFT JOIN xero_invoices_cache invoice
            ON invoice.tenant_id = $1
           AND ac.xero_contact_id IS NOT NULL
           AND invoice.contact_id = ac.xero_contact_id
+          AND invoice.date BETWEEN $2::date AND $3::date
          LEFT JOIN xero_invoice_lines_cache line
            ON line.tenant_id = invoice.tenant_id
           AND line.invoice_id = invoice.invoice_id
@@ -183,15 +173,27 @@ export async function fetchPortfolioClientEconomics(
         GROUP BY ac.id, ac.name`,
       [tenantId, start, end],
     ),
-    queryRows<{ client_id: string, passthrough_cents: string }>(
-      `SELECT spend.client_id,
+    queryRows<{ client_id: string, passthrough_cents: string, media_available: boolean }>(
+      `SELECT client.id AS client_id,
               COALESCE(ROUND(SUM(
                 CASE
                   WHEN daily.row_count > 0 THEN daily.total_spend
                   ELSE COALESCE(spend.actual_spend, 0)
                 END
-              ) * 100), 0)::bigint::text AS passthrough_cents
-         FROM media_spend spend
+              ) * 100), 0)::bigint::text AS passthrough_cents,
+              (
+                EXISTS (
+                  SELECT 1
+                    FROM social_connections connection
+                   WHERE connection.client_id = client.id
+                     AND connection.status = 'active'
+                )
+                OR COUNT(spend.id) FILTER (WHERE spend.connection_id IS NULL) > 0
+              ) AS media_available
+         FROM agency_clients client
+         LEFT JOIN media_spend spend
+           ON spend.client_id = client.id
+          AND spend.period = ANY($1::text[])
          LEFT JOIN LATERAL (
            SELECT COALESCE(SUM(day.spend), 0) AS total_spend,
                   COUNT(*) AS row_count
@@ -199,8 +201,7 @@ export async function fetchPortfolioClientEconomics(
             WHERE day.media_spend_id = spend.id
               AND day.spend_date BETWEEN $2::date AND $3::date
          ) daily ON TRUE
-        WHERE spend.period = ANY($1::text[])
-        GROUP BY spend.client_id`,
+        GROUP BY client.id`,
       [mediaPeriods, start, end],
     ),
     queryRows<{ client_id: string, labor_cents: string, hours: string }>(
@@ -225,58 +226,54 @@ export async function fetchPortfolioClientEconomics(
       [start, end],
     ),
     queryRows<SupplierSourceRow>(
-      `SELECT mapping.client_id,
-              line.line_item_id,
+      `SELECT client.id AS client_id,
               line.invoice_id,
-              line.invoice_type,
-              line.invoice_date,
-              line.account_code,
-              line.description,
-              line.line_ex_gst_cents::bigint::text AS amount_cents,
+              CASE
+                WHEN account.code IS NOT NULL THEN line.line_ex_gst_cents::bigint::text
+                ELSE NULL
+              END AS amount_cents,
+              (mapping.client_id IS NOT NULL) AS supplier_tracking_available,
+              allocation.project_id AS allocation_project_id,
+              project.client_id AS allocation_project_client_id,
               allocation.source_fingerprint
-         FROM agency_client_xero_tracking_mappings mapping
-         JOIN agency_clients client
-           ON client.id = mapping.client_id
-         JOIN xero_invoice_lines_cache line
+         FROM agency_clients client
+         LEFT JOIN agency_client_xero_tracking_mappings mapping
+           ON mapping.tenant_id = $1
+          AND mapping.client_id = client.id
+         LEFT JOIN xero_invoice_lines_cache line
            ON line.tenant_id = mapping.tenant_id
           AND UPPER(line.invoice_type) = 'ACCPAY'
           AND UPPER(line.invoice_status) NOT IN ('DRAFT', 'VOIDED', 'DELETED')
           AND LOWER(line.tracking_client) = LOWER(mapping.tracking_option_name)
-         JOIN xero_accounts_cache account
+          AND line.invoice_date BETWEEN $2::date AND $3::date
+         LEFT JOIN xero_accounts_cache account
            ON account.tenant_id = line.tenant_id
           AND account.code = line.account_code
           AND UPPER(account.type) = 'DIRECTCOSTS'
-         JOIN xero_project_allocations allocation
+         LEFT JOIN xero_project_allocations allocation
            ON allocation.tenant_id = line.tenant_id
           AND allocation.line_item_id = line.line_item_id
-          AND allocation.client_id = mapping.client_id
-          AND allocation.invoice_id = line.invoice_id
-          AND UPPER(allocation.source_invoice_type) = UPPER(line.invoice_type)
-          AND allocation.source_invoice_date = line.invoice_date
-          AND allocation.source_account_code IS NOT DISTINCT FROM line.account_code
-          AND allocation.source_description IS NOT DISTINCT FROM line.description
-          AND allocation.source_ex_gst_cents = line.line_ex_gst_cents
-         JOIN projects project
+         LEFT JOIN projects project
            ON project.id = allocation.project_id
-          AND project.client_id = mapping.client_id
-        WHERE mapping.tenant_id = $1
-          AND line.invoice_date BETWEEN $2::date AND $3::date`,
+        `,
       [tenantId, start, end],
     ),
   ])
-  const ptMap = new Map(passthrough.map(r => [r.client_id, cents(r.passthrough_cents, `Client ${r.client_id} pass-through`)]))
+  const ptMap = new Map(passthrough.map(r => [r.client_id, {
+    cents: cents(r.passthrough_cents, `Client ${r.client_id} pass-through`),
+    available: r.media_available,
+  }]))
   const laborMap = new Map(labor.map(r => [r.client_id, {
     cents: cents(r.labor_cents, `Client ${r.client_id} labour`),
     hours: num(r.hours),
   }]))
   const representedSupplierInvoices = new Map<string, Set<string>>()
   const supplierMap = new Map<string, number>()
-  const currentSupplierCosts = (await Promise.all(supplierCosts.map(async (row) => {
+  const supplierTrackingMap = new Map<string, boolean>()
+  for (const row of supplierCosts) {
+    supplierTrackingMap.set(row.client_id, row.supplier_tracking_available)
+    if (row.amount_cents === null) continue
     const amountCents = cents(row.amount_cents, `Client ${row.client_id} Xero supplier cost`)
-    const currentFingerprint = await supplierFingerprint(tenantId, row, amountCents)
-    return { row, amountCents, isCurrent: currentFingerprint === row.source_fingerprint }
-  }))).filter(source => source.isCurrent)
-  for (const { row, amountCents } of currentSupplierCosts) {
     supplierMap.set(
       row.client_id,
       addCents(
@@ -307,10 +304,14 @@ export async function fetchPortfolioClientEconomics(
 
   return revenue.map((row) => {
     const revenueCents = cents(row.revenue_cents, `Client ${row.client_id} revenue`)
-    const passthroughCents = ptMap.get(row.client_id) ?? 0
+    const passthroughCents = ptMap.get(row.client_id)?.cents ?? 0
     const laborCents = laborMap.get(row.client_id)?.cents ?? 0
     const projectExpenseCents = expenseMap.get(row.client_id) ?? 0
     const xeroSupplierCostCents = supplierMap.get(row.client_id) ?? 0
+    const revenueAvailable = row.revenue_available
+    const mediaAvailable = ptMap.get(row.client_id)?.available ?? false
+    const supplierTrackingAvailable = supplierTrackingMap.get(row.client_id) ?? false
+    const profitabilityAvailable = revenueAvailable && mediaAvailable && supplierTrackingAvailable
     const agiCents = subtractCents(revenueCents, passthroughCents, `Client ${row.client_id} AGI`)
     const deliveryCostCents = addCents(
       addCents(laborCents, projectExpenseCents, `Client ${row.client_id} delivery cost`),
@@ -328,9 +329,13 @@ export async function fetchPortfolioClientEconomics(
       projectExpenseCents,
       xeroSupplierCostCents,
       deliveryCostCents,
-      deliveryMarginPct: agiCents > 0
+      deliveryMarginPct: profitabilityAvailable && agiCents > 0
         ? Math.round((deliveryProfitCents / agiCents) * 10_000) / 100
         : null,
+      revenueAvailable,
+      mediaAvailable,
+      supplierTrackingAvailable,
+      profitabilityAvailable,
       hours: laborMap.get(row.client_id)?.hours ?? 0,
     }
   })

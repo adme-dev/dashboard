@@ -365,6 +365,72 @@ describe('applyClientFinancialAllocation', () => {
     expect(callsContaining('INSERT INTO financial_allocation_audit')).toHaveLength(1)
   })
 
+  it('clears a saved Xero allocation from its locked snapshot when the live line is unavailable or changed', async () => {
+    dbMocks.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('DELETE FROM xero_project_allocations')) return writeResult()
+      if (sql.includes('FROM xero_project_allocations')) {
+        return result([{
+          clientId: CLIENT_ID,
+          projectId: PROJECT_ID,
+          invoiceId: 'invoice-1',
+          sourceFingerprint: 'historical-fingerprint',
+        }])
+      }
+      if (sql.includes('INSERT INTO financial_allocation_audit')) {
+        return result([{ changedAt: CHANGED_AT }])
+      }
+      if (sql.includes('FROM xero_invoice_lines_cache')) {
+        throw new Error('A saved allocation clear must not depend on the live Xero cache')
+      }
+      throw new Error(`Unexpected query: ${sql}`)
+    })
+
+    await expect(invoke({
+      sourceType: 'xero_line', sourceId: 'invoice-1:0', projectId: null,
+    })).resolves.toEqual({
+      sourceType: 'xero_line',
+      sourceId: 'invoice-1:0',
+      previousProjectId: PROJECT_ID,
+      projectId: null,
+      changedAt: CHANGED_AT,
+    })
+
+    expect(firstCallIndex('FROM xero_project_allocations'))
+      .toBeLessThan(firstCallIndex('DELETE FROM xero_project_allocations'))
+    expect(callsContaining('FROM xero_invoice_lines_cache')).toHaveLength(0)
+    expect(callsContaining('DELETE FROM xero_project_allocations')[0]?.[1])
+      .toEqual([TENANT_ID, 'invoice-1:0', CLIENT_ID])
+    const auditMetadata = JSON.parse(
+      String((callsContaining('INSERT INTO financial_allocation_audit')[0]?.[1] as unknown[])[7]),
+    )
+    expect(auditMetadata).toEqual(expect.objectContaining({
+      invoiceId: 'invoice-1',
+      sourceFingerprint: 'historical-fingerprint',
+      clearedFrom: 'saved_allocation_snapshot',
+    }))
+  })
+
+  it('does not let one client clear another client saved Xero allocation', async () => {
+    dbMocks.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM xero_project_allocations')) {
+        return result([{
+          clientId: OTHER_CLIENT_ID,
+          projectId: OTHER_PROJECT_ID,
+          invoiceId: 'invoice-1',
+          sourceFingerprint: 'foreign-fingerprint',
+        }])
+      }
+      throw new Error(`Mutation query must not run: ${sql}`)
+    })
+
+    await expect(invoke({
+      sourceType: 'xero_line', sourceId: 'invoice-1:0', projectId: null,
+    })).rejects.toMatchObject({ code: 'invalid_assignment' })
+    expect(callsContaining('FROM xero_invoice_lines_cache')).toHaveLength(0)
+    expect(callsContaining('DELETE FROM xero_project_allocations')).toHaveLength(0)
+    expect(callsContaining('INSERT INTO financial_allocation_audit')).toHaveLength(0)
+  })
+
   it('does not audit when an expected Xero delete affects zero rows', async () => {
     const line = xeroLine()
     const currentFingerprint = await fingerprint(line)

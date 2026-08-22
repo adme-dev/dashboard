@@ -116,7 +116,78 @@ describe('get_client_profitability', () => {
   })
 
   it('describes the complete canonical delivery-cost model', () => {
-    expect(profitabilityTool.description).toContain('labor, project expenses, and allocated Xero supplier costs')
+    expect(profitabilityTool.description).toContain('labor, project expenses, and client-tracked Xero supplier costs')
+    expect(profitabilityTool.description).toContain('excluded from margin rankings')
+  })
+
+  it('reports missing required sources as unavailable and excludes them from margin rankings', async () => {
+    const incomplete: ClientEconomicsRow[] = [
+      rows[0]!,
+      {
+        ...rows[1]!,
+        clientId: 'unlinked',
+        name: 'Unlinked Xero',
+        revenueCents: 0,
+        agiCents: 0,
+        revenueAvailable: false,
+        mediaAvailable: true,
+        supplierTrackingAvailable: true,
+        profitabilityAvailable: false,
+        deliveryMarginPct: null,
+      },
+      {
+        ...rows[1]!,
+        clientId: 'unmapped',
+        name: 'Missing Tracking',
+        supplierTrackingAvailable: false,
+        profitabilityAvailable: false,
+        deliveryMarginPct: null,
+      },
+      {
+        ...rows[1]!,
+        clientId: 'no-media',
+        name: 'No Media Source',
+        mediaAvailable: false,
+        profitabilityAvailable: false,
+        deliveryMarginPct: null,
+      },
+    ]
+    const unavailableDeps = deps({ fetchEconomics: vi.fn().mockResolvedValue(incomplete) })
+
+    const portfolio = (await getClientProfitability({ period: 'mtd' }, ctx, unavailableDeps) as any).data
+    expect(portfolio.topByMargin.map((client: any) => client.client)).toEqual(['Acme'])
+    expect(portfolio.bottomByMargin.map((client: any) => client.client)).toEqual(['Acme'])
+    expect(portfolio.unavailable).toEqual([
+      { client: 'Unlinked Xero', unavailableSources: ['revenue'] },
+      { client: 'Missing Tracking', unavailableSources: ['supplier_tracking'] },
+      { client: 'No Media Source', unavailableSources: ['media'] },
+    ])
+
+    const unlinked = (await getClientProfitability(
+      { clientName: 'Unlinked Xero', period: 'mtd' },
+      ctx,
+      unavailableDeps,
+    ) as any).data
+    expect(unlinked).toMatchObject({
+      profitabilityAvailable: false,
+      unavailableSources: ['revenue'],
+      revenue: null,
+      agi: null,
+      deliveryMarginPct: null,
+      sharePct: null,
+    })
+
+    const unmapped = (await getClientProfitability(
+      { clientName: 'Missing Tracking', period: 'mtd' },
+      ctx,
+      unavailableDeps,
+    ) as any).data
+    expect(unmapped).toMatchObject({
+      profitabilityAvailable: false,
+      unavailableSources: ['supplier_tracking'],
+      deliveryCost: null,
+      deliveryMarginPct: null,
+    })
   })
 
   it('loss-making clients (AGI <= 0) appear in bottomByMargin as the worst, with marginPct null', async () => {

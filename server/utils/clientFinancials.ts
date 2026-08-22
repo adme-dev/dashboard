@@ -233,6 +233,23 @@ export async function getClientFinancials(
     includeSources: input.includeSources,
   })
   const warnings: FinancialSourceWarning[] = []
+  const sourceFailures = dataset.sourceFailures ?? []
+  const hasDataFailure = (source: FinancialDataSource): boolean => sourceFailures.some(failure => (
+    failure.source === source && failure.kind === 'data'
+  ))
+  const hasPartialFailure = (source: FinancialDataSource): boolean => sourceFailures.some(failure => (
+    failure.source === source && failure.kind === 'partial'
+  ))
+  const hasFreshnessFailure = (source: FinancialDataSource): boolean => sourceFailures.some(failure => (
+    failure.source === source && failure.kind === 'freshness'
+  ))
+  for (const failure of sourceFailures.filter(item => item.kind !== 'freshness')) {
+    pushWarning(warnings, {
+      code: 'source_unavailable',
+      source: failure.source,
+      message: failure.message,
+    })
+  }
   const projectIds = new Set(dataset.projects.map(project => project.id))
   const projectNames = new Map(dataset.projects.map(project => [project.id, project.name]))
 
@@ -334,6 +351,14 @@ export async function getClientFinancials(
   ))
   const deliverySupplierLines = supplierLines.filter(line => line.accountType?.toUpperCase() === 'DIRECTCOSTS')
 
+  if (input.tenantId && trackingName === null && !hasDataFailure('xero_supplier_cost')) {
+    pushWarning(warnings, {
+      code: 'source_unavailable',
+      source: 'xero_supplier_cost',
+      message: 'Supplier costs are unavailable until this client is linked to its Xero Client tracking option.',
+    })
+  }
+
   const hasEligibleAccrecHeader = dataset.invoices.some(invoice => (
     invoice.type.toUpperCase() === 'ACCREC'
     && !['DRAFT', 'VOIDED', 'DELETED'].includes(invoice.status.toUpperCase())
@@ -345,6 +370,13 @@ export async function getClientFinancials(
       message: 'Xero invoice headers are available, but invoice line details are unavailable for this period.',
     })
   }
+  const xeroLinesUnavailable = warnings.some(warning => warning.code === 'xero_lines_unavailable')
+  const revenueAvailable = xeroAvailable
+    && !xeroLinesUnavailable
+    && !hasDataFailure('xero_revenue')
+  const supplierCostAvailable = input.tenantId !== null
+    && trackingName !== null
+    && !hasDataFailure('xero_supplier_cost')
 
   const normalizedMedia: NormalizedMediaSpend[] = dataset.mediaSpend.map((spend) => {
     let amountCents = 0
@@ -398,6 +430,10 @@ export async function getClientFinancials(
       message: 'No active media account or manual media row is connected to this client.',
     })
   }
+  const mediaIsPartial = warnings.some(warning => warning.code === 'media_partial')
+  const mediaAvailable = mediaConnected
+    && !mediaIsPartial
+    && !hasDataFailure('media_spend')
 
   const normalizedTimeEntries = dataset.timeEntries.map((entry) => {
     const hours = databaseNumber(entry.hours, `Time entry ${entry.id} hours`)
@@ -467,6 +503,45 @@ export async function getClientFinancials(
     })),
     warnings,
   })
+  const labourAvailable = !hasDataFailure('time_entries')
+  const projectExpensesAvailable = !hasDataFailure('project_expenses')
+  const agiAvailable = revenueAvailable && mediaAvailable
+  const deliveryCostAvailable = labourAvailable && projectExpensesAvailable && supplierCostAvailable
+  const profitabilityAvailable = agiAvailable && deliveryCostAvailable
+  const summary = {
+    ...calculation.summary,
+    agi: agiAvailable ? calculation.summary.agi : null,
+    xeroSupplierCost: supplierCostAvailable ? calculation.summary.xeroSupplierCost : null,
+    deliveryCost: deliveryCostAvailable ? calculation.summary.deliveryCost : null,
+    deliveryProfit: profitabilityAvailable ? calculation.summary.deliveryProfit : null,
+    deliveryMarginPct: profitabilityAvailable ? calculation.summary.deliveryMarginPct : null,
+    marginReason: profitabilityAvailable ? calculation.summary.marginReason : 'source_unavailable' as const,
+  }
+  const staleSourcesByProject = new Map<string, Set<FinancialDataSource>>()
+  for (const warning of calculation.warnings) {
+    if (warning.code !== 'stale_allocation' || !warning.projectId || !projectIds.has(warning.projectId)) continue
+    const sources = staleSourcesByProject.get(warning.projectId) ?? new Set<FinancialDataSource>()
+    sources.add(warning.source)
+    staleSourcesByProject.set(warning.projectId, sources)
+  }
+  const projectFinancials = calculation.projects.map((project) => {
+    const staleSources = staleSourcesByProject.get(project.projectId)
+    const projectAgiAvailable = agiAvailable
+      && !staleSources?.has('xero_revenue')
+      && !staleSources?.has('media_spend')
+    const projectDeliveryCostAvailable = deliveryCostAvailable
+      && !staleSources?.has('xero_supplier_cost')
+    const projectProfitabilityAvailable = projectAgiAvailable && projectDeliveryCostAvailable
+    return {
+      ...project,
+      agi: projectAgiAvailable ? project.agi : null,
+      xeroSupplierCost: projectDeliveryCostAvailable ? project.xeroSupplierCost : null,
+      deliveryCost: projectDeliveryCostAvailable ? project.deliveryCost : null,
+      deliveryProfit: projectProfitabilityAvailable ? project.deliveryProfit : null,
+      deliveryMarginPct: projectProfitabilityAvailable ? project.deliveryMarginPct : null,
+      marginReason: projectProfitabilityAvailable ? project.marginReason : 'source_unavailable' as const,
+    }
+  })
 
   const invoices: ClientXeroInvoiceRow[] = dataset.invoices
     .filter(invoice => ['ACCREC', 'ACCPAY'].includes(invoice.type.toUpperCase()))
@@ -505,38 +580,62 @@ export async function getClientFinancials(
     sourceState: mediaConnected ? spend.sourceState : 'not_connected',
   }))
 
-  const mediaIsPartial = calculation.warnings.some(warning => warning.code === 'media_partial')
-  const xeroLinesUnavailable = calculation.warnings.some(warning => warning.code === 'xero_lines_unavailable')
   const freshness: FinancialSourceFreshness[] = [
     freshnessEntry(
       'xero_invoices',
       dataset.freshness.xeroInvoices,
-      xeroAvailable ? 'fresh' : 'unavailable',
-      xeroAvailable ? 'No Xero invoices in this period' : 'Xero tenant or contact unavailable',
+      !xeroAvailable || hasDataFailure('xero_invoices')
+        ? 'unavailable'
+        : hasFreshnessFailure('xero_invoices') ? 'stale' : 'fresh',
+      !xeroAvailable || hasDataFailure('xero_invoices')
+        ? 'Xero invoice source unavailable'
+        : hasFreshnessFailure('xero_invoices') ? 'Freshness metadata unavailable' : 'No Xero invoices in this period',
     ),
     freshnessEntry(
       'xero_revenue',
       dataset.freshness.xeroLines,
-      !xeroAvailable || xeroLinesUnavailable ? 'unavailable' : 'fresh',
-      !xeroAvailable || xeroLinesUnavailable ? 'Xero line cache unavailable' : 'No eligible Xero lines in this period',
+      !revenueAvailable
+        ? 'unavailable'
+        : hasPartialFailure('xero_revenue') || hasFreshnessFailure('xero_revenue') ? 'partial' : 'fresh',
+      !revenueAvailable
+        ? 'Xero line cache unavailable'
+        : hasPartialFailure('xero_revenue') || hasFreshnessFailure('xero_revenue')
+          ? 'Some Xero allocation or freshness data is unavailable'
+          : 'No eligible Xero lines in this period',
+    ),
+    freshnessEntry(
+      'xero_supplier_cost',
+      dataset.freshness.xeroLines,
+      !supplierCostAvailable
+        ? 'unavailable'
+        : hasPartialFailure('xero_supplier_cost') || hasFreshnessFailure('xero_supplier_cost') ? 'partial' : 'fresh',
+      !supplierCostAvailable
+        ? 'Xero Client tracking or supplier line data unavailable'
+        : hasPartialFailure('xero_supplier_cost') || hasFreshnessFailure('xero_supplier_cost')
+          ? 'Some supplier allocation or freshness data is unavailable'
+          : 'No eligible supplier costs in this period',
     ),
     freshnessEntry(
       'media_spend',
       dataset.freshness.media ?? dataset.activeMediaConnection.updatedAt,
-      !mediaConnected ? 'not_connected' : mediaIsPartial ? 'partial' : 'fresh',
-      !mediaConnected ? 'Media not connected' : mediaIsPartial ? 'Partial daily media data' : 'Connected with no spend in this period',
+      hasDataFailure('media_spend')
+        ? 'unavailable'
+        : !mediaConnected ? 'not_connected' : mediaIsPartial || hasPartialFailure('media_spend') || hasFreshnessFailure('media_spend') ? 'partial' : 'fresh',
+      hasDataFailure('media_spend')
+        ? 'Media spend source unavailable'
+        : !mediaConnected ? 'Media not connected' : mediaIsPartial || hasPartialFailure('media_spend') || hasFreshnessFailure('media_spend') ? 'Partial media data' : 'Connected with no spend in this period',
     ),
     freshnessEntry(
       'time_entries',
       dataset.freshness.timeEntries,
-      'fresh',
-      'Live operational time data',
+      hasDataFailure('time_entries') ? 'unavailable' : hasFreshnessFailure('time_entries') ? 'stale' : 'fresh',
+      hasDataFailure('time_entries') ? 'Time totals unavailable' : hasFreshnessFailure('time_entries') ? 'Freshness metadata unavailable' : 'Live operational time data',
     ),
     freshnessEntry(
       'project_expenses',
       dataset.freshness.projectExpenses,
-      'fresh',
-      'Live operational expense data',
+      hasDataFailure('project_expenses') ? 'unavailable' : hasFreshnessFailure('project_expenses') ? 'stale' : 'fresh',
+      hasDataFailure('project_expenses') ? 'Project expenses unavailable' : hasFreshnessFailure('project_expenses') ? 'Freshness metadata unavailable' : 'Live operational expense data',
     ),
   ]
 
@@ -548,8 +647,8 @@ export async function getClientFinancials(
       media: 'agency_paid_passthrough',
       projectBudget: 'lifetime_plan',
     },
-    summary: calculation.summary,
-    projects: calculation.projects,
+    summary,
+    projects: projectFinancials,
     activity: {
       timeEntries,
       invoices,

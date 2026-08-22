@@ -49,6 +49,7 @@ function marginLabel(row: ClientProjectFinancialRow): string {
   if (row.marginReason === 'no_agi') return '— No AGI'
   if (row.marginReason === 'negative_agi') return '— Negative AGI'
   if (row.marginReason === 'source_conflict') return '— Source conflict'
+  if (row.marginReason === 'source_unavailable') return '— Source unavailable'
   return '—'
 }
 
@@ -87,7 +88,10 @@ function coverageLabel(row: ClientProjectFinancialRow): string {
           <span class="tabular-nums">{{ formatCurrency(row.original.deliveryCost) }}</span>
         </template>
         <template #deliveryProfit-cell="{ row }">
-          <span class="tabular-nums" :class="row.original.deliveryProfit < 0 ? 'text-error' : 'text-success'">
+          <span
+            class="tabular-nums"
+            :class="row.original.deliveryProfit === null ? undefined : row.original.deliveryProfit < 0 ? 'text-error' : 'text-success'"
+          >
             {{ formatCurrency(row.original.deliveryProfit) }}
           </span>
         </template>

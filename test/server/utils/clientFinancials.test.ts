@@ -382,6 +382,12 @@ describe('getClientFinancials', () => {
     expect(fullMonthResult.summary.mediaSpend).toBe(1200.55)
     expect(currentMtdResult.summary.mediaSpend).toBe(2592.82)
     expect(unsupportedPartialResult.summary.mediaSpend).toBe(0)
+    expect(unsupportedPartialResult.summary.agi).toBeNull()
+    expect(unsupportedPartialResult.summary.deliveryProfit).toBeNull()
+    expect(unsupportedPartialResult.summary.deliveryMarginPct).toBeNull()
+    expect(unsupportedPartialResult.summary.marginReason).toBe('source_unavailable')
+    expect(unsupportedPartialResult.freshness.find(item => item.source === 'media_spend')?.status)
+      .toBe('partial')
     expect(unsupportedPartialResult.activity.mediaCampaigns[0]).toMatchObject({
       actualSpend: 0,
       sourceState: 'partial',
@@ -461,6 +467,7 @@ describe('getClientFinancials', () => {
     expect(result.freshness.map(item => [item.source, item.updatedAt])).toEqual([
       ['xero_invoices', '2026-08-21T01:00:00.000Z'],
       ['xero_revenue', '2026-08-20T02:00:00.000Z'],
+      ['xero_supplier_cost', '2026-08-20T02:00:00.000Z'],
       ['media_spend', '2026-08-19T03:00:00.000Z'],
       ['time_entries', '2026-08-18T04:00:00.000Z'],
       ['project_expenses', '2026-08-17T05:00:00.000Z'],
@@ -490,6 +497,9 @@ describe('getClientFinancials', () => {
     })))
 
     expect(result.summary).toMatchObject({ mediaSpend: 100, labourCost: 200, hours: 2 })
+    expect(result.summary.agi).toBeNull()
+    expect(result.summary.deliveryProfit).toBeNull()
+    expect(result.summary.deliveryMarginPct).toBeNull()
     expect(result.projects[0]).toMatchObject({ mediaSpend: 100, labourCost: 200, hours: 2 })
     expect(result.warnings).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'xero_not_linked' }),
@@ -583,6 +593,88 @@ describe('getClientFinancials', () => {
     expect(result.tracking).toEqual({
       selected: null,
       options: [{ id: 'option-unused', name: 'Unused New Client', isActive: true }],
+    })
+  })
+
+  it('marks supplier-dependent profitability unavailable until Client tracking is confirmed', async () => {
+    const result = await getClientFinancials({
+      tenantId: 'tenant-1', clientId: 'client-astoria',
+      from: '2026-08-01', to: '2026-08-22', includeSources: false, canAllocate: false,
+    }, deps(makeDataset({
+      trackingMapping: null,
+      xeroLines: [makeXeroLine()],
+      activeMediaConnection: { exists: true, updatedAt: '2026-08-22T00:00:00.000Z' },
+    })))
+
+    expect(result.summary.xeroRevenue).toBe(6020)
+    expect(result.summary.agi).toBe(6020)
+    expect(result.summary.labourCost).toBe(0)
+    expect(result.summary.xeroSupplierCost).toBeNull()
+    expect(result.summary.deliveryCost).toBeNull()
+    expect(result.summary.deliveryProfit).toBeNull()
+    expect(result.summary.deliveryMarginPct).toBeNull()
+    expect(result.summary.marginReason).toBe('source_unavailable')
+    expect(result.freshness.find(item => item.source === 'xero_supplier_cost')?.status)
+      .toBe('unavailable')
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'source_unavailable', source: 'xero_supplier_cost' }),
+    ]))
+  })
+
+  it('invalidates an affected project margin when a supplier allocation is stale', async () => {
+    const validRevenue = makeXeroLine()
+    const changedSupplier = makeXeroLine({
+      lineItemId: 'line-cost-stale',
+      invoiceId: 'bill-stale',
+      invoiceType: 'ACCPAY',
+      accountCode: '310',
+      accountType: 'DIRECTCOSTS',
+      description: 'Supplier cost changed upstream',
+      lineExGstCents: '45000',
+      trackingClient: 'Astoria Motors',
+      contactId: null,
+    })
+    const result = await getClientFinancials({
+      tenantId: 'tenant-1', clientId: 'client-astoria',
+      from: '2026-08-01', to: '2026-08-22', includeSources: true, canAllocate: true,
+    }, deps(makeDataset({
+      xeroLines: [validRevenue, changedSupplier],
+      activeMediaConnection: { exists: true, updatedAt: '2026-08-22T00:00:00.000Z' },
+      savedXeroAllocations: [
+        {
+          lineItemId: validRevenue.lineItemId,
+          invoiceId: validRevenue.invoiceId,
+          projectId: 'project-web',
+          sourceFingerprint: await fingerprint('tenant-1', validRevenue),
+          sourceInvoiceType: validRevenue.invoiceType,
+          sourceInvoiceDate: validRevenue.invoiceDate,
+          sourceAccountCode: validRevenue.accountCode,
+          sourceDescription: validRevenue.description,
+          sourceExGstCents: validRevenue.lineExGstCents,
+        },
+        {
+          lineItemId: changedSupplier.lineItemId,
+          invoiceId: changedSupplier.invoiceId,
+          projectId: 'project-web',
+          sourceFingerprint: 'fingerprint-before-supplier-change',
+          sourceInvoiceType: changedSupplier.invoiceType,
+          sourceInvoiceDate: changedSupplier.invoiceDate,
+          sourceAccountCode: changedSupplier.accountCode,
+          sourceDescription: changedSupplier.description,
+          sourceExGstCents: '30000',
+        },
+      ],
+    })))
+
+    expect(result.summary.deliveryProfit).toBe(5570)
+    expect(result.projects[0]).toMatchObject({
+      xeroRevenue: 6020,
+      agi: 6020,
+      xeroSupplierCost: null,
+      deliveryCost: null,
+      deliveryProfit: null,
+      deliveryMarginPct: null,
+      marginReason: 'source_unavailable',
     })
   })
 })
@@ -683,5 +775,29 @@ describe('loadClientFinancialDataset query ownership', () => {
     expect(result.trackingOptions).toEqual([
       { tenantId: 'tenant-1', id: 'option-unused', name: 'Unused New Client', isActive: true },
     ])
+  })
+
+  it('isolates an independent source query failure instead of rejecting the facade dataset', async () => {
+    const baseQueryRows = dbMocks.queryRows.getMockImplementation()!
+    dbMocks.queryRows.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('FROM media_spend spend')) throw new Error('media cache unavailable')
+      return baseQueryRows(sql, params)
+    })
+
+    const result = await loadClientFinancialDataset({
+      tenantId: 'tenant-1',
+      clientId: 'client-astoria',
+      from: '2026-08-01',
+      to: '2026-08-22',
+      includeSources: true,
+    })
+
+    expect(result.xeroLines).toEqual([
+      expect.objectContaining({ lineItemId: 'line-cost-no-header' }),
+    ])
+    expect(result.mediaSpend).toEqual([])
+    expect(result.sourceFailures).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'media_spend', kind: 'data' }),
+    ]))
   })
 })

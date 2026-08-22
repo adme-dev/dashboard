@@ -9,6 +9,7 @@
  */
 import { requireAuth } from '~~/server/utils/auth'
 import { fetchDbTrackingCategories, TRACKING_CATEGORIES } from '~~/server/utils/invoicing/tracking-categories'
+import { getSelectedTenant } from '~~/server/utils/session'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
@@ -37,9 +38,13 @@ export default defineEventHandler(async (event) => {
     }))
     dataSource = 'static'
   } else {
-    // Try DB first, fall back to static
+    // DB rows are owned by the selected Xero tenant. A missing/invalid
+    // selection must never broaden this read to legacy or foreign rows.
     try {
-      const dbCategories = await fetchDbTrackingCategories()
+      const selectedTenant = await getSelectedTenant(event)
+      const dbCategories = selectedTenant
+        ? await fetchDbTrackingCategories(selectedTenant)
+        : []
       if (dbCategories.length > 0) {
         categories = dbCategories.map(t => ({
           name: t.name,

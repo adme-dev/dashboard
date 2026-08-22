@@ -1,4 +1,5 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
+import type { FinancialDataSource } from '~~/shared/types/clientFinancials'
 
 export type ClientFinancialDatabaseNumber = string | number
 export type ClientFinancialDatabaseTimestamp = string | Date | null
@@ -141,6 +142,13 @@ export interface ClientFinancialDataset {
     timeEntries: ClientFinancialDatabaseTimestamp
     projectExpenses: ClientFinancialDatabaseTimestamp
   }
+  sourceFailures?: ClientFinancialSourceFailure[]
+}
+
+export interface ClientFinancialSourceFailure {
+  source: FinancialDataSource
+  kind: 'data' | 'partial' | 'freshness'
+  message: string
 }
 
 export type ClientFinancialRepositoryErrorCode = 'client_not_found'
@@ -164,6 +172,30 @@ interface RawConnectionState {
 }
 
 type RawFreshness = ClientFinancialDataset['freshness']
+
+interface SafeLoadResult<T> {
+  value: T
+  failures: ClientFinancialSourceFailure[]
+}
+
+async function safeLoad<T>(
+  loader: () => Promise<T>,
+  fallback: T,
+  failures: Omit<ClientFinancialSourceFailure, 'message'>[],
+  label: string,
+): Promise<SafeLoadResult<T>> {
+  try {
+    return { value: await loader(), failures: [] }
+  } catch {
+    return {
+      value: fallback,
+      failures: failures.map(failure => ({
+        ...failure,
+        message: `${label} could not be loaded for this request.`,
+      })),
+    }
+  }
+}
 
 async function loadProjects(clientId: string): Promise<ClientFinancialRawProject[]> {
   return queryRows<ClientFinancialRawProject>(
@@ -576,6 +608,11 @@ export async function loadClientFinancialDataset(input: {
   )
   if (!client) throw new ClientFinancialRepositoryError('client_not_found')
 
+  // Projects define the ownership boundary for every allocation. If this core
+  // lookup fails, returning a partial facade would risk attributing money to the
+  // wrong client, so it intentionally remains a hard failure.
+  const projects = await loadProjects(client.id)
+
   const sourceInput = {
     tenantId: input.tenantId,
     clientId: client.id,
@@ -583,50 +620,144 @@ export async function loadClientFinancialDataset(input: {
     from: input.from,
     to: input.to,
   }
+  const emptyFreshness: RawFreshness = {
+    xeroInvoices: null,
+    xeroLines: null,
+    media: null,
+    timeEntries: null,
+    projectExpenses: null,
+  }
   const [
-    projects,
-    xeroLines,
-    savedXeroAllocations,
-    mediaSpend,
-    activeMediaConnection,
-    timeEntries,
-    timeSummaries,
-    totalTimeEntries,
-    projectExpenses,
-    invoices,
-    trackingMapping,
-    trackingOptions,
-    freshness,
+    xeroLinesResult,
+    savedXeroAllocationsResult,
+    mediaSpendResult,
+    activeMediaConnectionResult,
+    timeEntriesResult,
+    timeSummariesResult,
+    totalTimeEntriesResult,
+    projectExpensesResult,
+    invoicesResult,
+    trackingMappingResult,
+    trackingOptionsResult,
+    freshnessResult,
   ] = await Promise.all([
-    loadProjects(client.id),
-    loadXeroLines(sourceInput),
-    loadSavedXeroAllocations(sourceInput),
-    loadMediaSpend(sourceInput),
-    loadActiveMediaConnection(client.id),
-    loadTimeEntries(sourceInput),
-    loadTimeSummaries(sourceInput),
-    countTimeEntries(sourceInput),
-    loadProjectExpenses(sourceInput),
-    loadInvoices(sourceInput),
-    loadTrackingMapping(input.tenantId, client.id),
-    loadTrackingOptions(input.tenantId, input.includeSources),
-    loadFreshness(sourceInput),
+    safeLoad(
+      () => loadXeroLines(sourceInput),
+      [],
+      [
+        { source: 'xero_revenue', kind: 'data' },
+        { source: 'xero_supplier_cost', kind: 'data' },
+      ],
+      'Xero line data',
+    ),
+    safeLoad(
+      () => loadSavedXeroAllocations(sourceInput),
+      [],
+      [
+        { source: 'xero_revenue', kind: 'partial' },
+        { source: 'xero_supplier_cost', kind: 'partial' },
+      ],
+      'Saved Xero allocations',
+    ),
+    safeLoad(
+      () => loadMediaSpend(sourceInput),
+      [],
+      [{ source: 'media_spend', kind: 'data' }],
+      'Media spend data',
+    ),
+    safeLoad(
+      () => loadActiveMediaConnection(client.id),
+      { exists: false, updatedAt: null },
+      [{ source: 'media_spend', kind: 'partial' }],
+      'Media connection state',
+    ),
+    safeLoad(
+      () => loadTimeEntries(sourceInput),
+      [],
+      [{ source: 'activity', kind: 'partial' }],
+      'Time-entry activity',
+    ),
+    safeLoad(
+      () => loadTimeSummaries(sourceInput),
+      [],
+      [{ source: 'time_entries', kind: 'data' }],
+      'Time-entry totals',
+    ),
+    safeLoad(
+      () => countTimeEntries(sourceInput),
+      0,
+      [{ source: 'activity', kind: 'partial' }],
+      'Time-entry count',
+    ),
+    safeLoad(
+      () => loadProjectExpenses(sourceInput),
+      [],
+      [{ source: 'project_expenses', kind: 'data' }],
+      'Project expenses',
+    ),
+    safeLoad(
+      () => loadInvoices(sourceInput),
+      [],
+      [{ source: 'xero_invoices', kind: 'data' }],
+      'Xero invoice activity',
+    ),
+    safeLoad(
+      () => loadTrackingMapping(input.tenantId, client.id),
+      null,
+      [{ source: 'xero_supplier_cost', kind: 'data' }],
+      'Client tracking mapping',
+    ),
+    safeLoad(
+      () => loadTrackingOptions(input.tenantId, input.includeSources),
+      [],
+      [{ source: 'xero_supplier_cost', kind: 'partial' }],
+      'Client tracking options',
+    ),
+    safeLoad(
+      () => loadFreshness(sourceInput),
+      emptyFreshness,
+      [
+        { source: 'xero_invoices', kind: 'freshness' },
+        { source: 'xero_revenue', kind: 'freshness' },
+        { source: 'xero_supplier_cost', kind: 'freshness' },
+        { source: 'media_spend', kind: 'freshness' },
+        { source: 'time_entries', kind: 'freshness' },
+        { source: 'project_expenses', kind: 'freshness' },
+      ],
+      'Source freshness metadata',
+    ),
   ])
+
+  const results = [
+    xeroLinesResult,
+    savedXeroAllocationsResult,
+    mediaSpendResult,
+    activeMediaConnectionResult,
+    timeEntriesResult,
+    timeSummariesResult,
+    totalTimeEntriesResult,
+    projectExpensesResult,
+    invoicesResult,
+    trackingMappingResult,
+    trackingOptionsResult,
+    freshnessResult,
+  ]
 
   return {
     client,
     projects,
-    xeroLines,
-    savedXeroAllocations,
-    mediaSpend,
-    activeMediaConnection,
-    timeEntries,
-    timeSummaries,
-    totalTimeEntries,
-    projectExpenses,
-    invoices,
-    trackingMapping,
-    trackingOptions,
-    freshness,
+    xeroLines: xeroLinesResult.value,
+    savedXeroAllocations: savedXeroAllocationsResult.value,
+    mediaSpend: mediaSpendResult.value,
+    activeMediaConnection: activeMediaConnectionResult.value,
+    timeEntries: timeEntriesResult.value,
+    timeSummaries: timeSummariesResult.value,
+    totalTimeEntries: totalTimeEntriesResult.value,
+    projectExpenses: projectExpensesResult.value,
+    invoices: invoicesResult.value,
+    trackingMapping: trackingMappingResult.value,
+    trackingOptions: trackingOptionsResult.value,
+    freshness: freshnessResult.value,
+    sourceFailures: results.flatMap(result => result.failures),
   }
 }

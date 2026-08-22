@@ -27,6 +27,7 @@ const warningTitles: Record<FinancialSourceWarning['code'], string> = {
   possible_duplicate: 'Possible duplicate',
   reconciliation_failed: 'Reconciliation needs attention',
   activity_truncated: 'Activity limited',
+  source_unavailable: 'Source unavailable',
 }
 
 const warningActions: Partial<Record<FinancialSourceWarning['code'], string>> = {
@@ -38,6 +39,7 @@ const warningActions: Partial<Record<FinancialSourceWarning['code'], string>> = 
   possible_duplicate: 'Review the linked project expense before using the margin.',
   reconciliation_failed: 'Review source allocations before relying on coverage.',
   activity_truncated: 'Narrow the reporting period to review all time entries.',
+  source_unavailable: 'Retry the source sync or complete its required mapping before relying on profitability.',
 }
 
 const currency = new Intl.NumberFormat('en-AU', {

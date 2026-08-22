@@ -362,7 +362,7 @@ describe('ClientFinancialAllocationSlideover', () => {
     test.host.remove()
   })
 
-  it('keeps the selected surface open and reports the server message when allocation fails', async () => {
+  it('keeps the selected surface open, restores the authoritative selection, and reports the server message when allocation fails', async () => {
     const error = Object.assign(new Error('raw transport secret must not be exposed'), {
       data: { statusMessage: 'Financial allocation source changed; refresh and try again' },
     })
@@ -374,7 +374,7 @@ describe('ClientFinancialAllocationSlideover', () => {
 
     expect(test.host.querySelector('[data-slideover]')).toBeTruthy()
     expect(test.host.querySelector<HTMLSelectElement>('[data-testid="project-select-44444444-4444-4444-8444-444444444444"]')?.value)
-      .toBe(PROJECT_A_ID)
+      .toBe('__unassigned__')
     expect(test.allocated).not.toHaveBeenCalled()
     expect(test.toast.add).toHaveBeenCalledWith(expect.objectContaining({
       title: 'Could not update financial allocation',
@@ -382,6 +382,34 @@ describe('ClientFinancialAllocationSlideover', () => {
       color: 'error',
     }))
     expect(test.host.textContent).not.toContain('raw transport secret')
+
+    test.app.unmount()
+    test.host.remove()
+  })
+
+  it('restores the latest authoritative selection when source props reconcile before a failed request settles', async () => {
+    let rejectRequest: ((reason?: unknown) => void) | undefined
+    const test = mountSlideover({
+      fetchMock: vi.fn(() => new Promise<void>((_resolve, reject) => { rejectRequest = reject })),
+    })
+    await flushUi()
+
+    selectValue(test.host, 'project-select-44444444-4444-4444-8444-444444444444', PROJECT_A_ID)
+    await nextTick()
+    test.setSources(sources.map(source => source.sourceId === '44444444-4444-4444-8444-444444444444'
+      ? { ...source, projectId: PROJECT_B_ID, projectName: 'Brand refresh' }
+      : source))
+    await flushUi()
+
+    const selector = test.host.querySelector<HTMLSelectElement>('[data-testid="project-select-44444444-4444-4444-8444-444444444444"]')!
+    expect(selector.value).toBe(PROJECT_A_ID)
+
+    rejectRequest?.(new Error('request failed'))
+    await flushUi()
+
+    expect(selector.value).toBe(PROJECT_B_ID)
+    expect(test.allocated).not.toHaveBeenCalled()
+    expect(test.toast.add).toHaveBeenCalledWith(expect.objectContaining({ color: 'error' }))
 
     test.app.unmount()
     test.host.remove()
@@ -439,7 +467,7 @@ describe('ClientFinancialAllocationSlideover', () => {
 
     rejectRevenue?.(new Error('transport secret'))
     await flushUi()
-    expect(revenueSelector.value).toBe(PROJECT_B_ID)
+    expect(revenueSelector.value).toBe('__unassigned__')
     expect(test.toast.add).toHaveBeenCalledWith(expect.objectContaining({
       description: 'The server could not update this financial allocation',
       color: 'error',

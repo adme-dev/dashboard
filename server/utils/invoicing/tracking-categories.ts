@@ -33,7 +33,11 @@ export interface TrackingCategory {
  * Fetches media tracking options from the local DB.
  * Returns enriched options (with COA/GST) from xero_tracking_options.
  */
-export async function fetchDbTrackingCategories(): Promise<TrackingCategory[]> {
+export async function fetchDbTrackingCategories(tenantId: string): Promise<TrackingCategory[]> {
+  // Legacy rows can have NULL ownership until a selected-tenant sync claims
+  // them. Never treat those rows (or another tenant's rows) as global data.
+  if (!tenantId.trim()) return []
+
   const rows = await queryRows<{
     name: string
     coa_code: string | null
@@ -45,9 +49,11 @@ export async function fetchDbTrackingCategories(): Promise<TrackingCategory[]> {
     SELECT o.name, o.coa_code, o.gst_type, o.description, o.vendors, o.xero_option_id
     FROM xero_tracking_options o
     JOIN xero_tracking_categories c ON o.category_id = c.id
-    WHERE c.name = 'Media' AND o.status = 'ACTIVE'
+    WHERE c.tenant_id = $1
+      AND c.name = 'Media'
+      AND o.status = 'ACTIVE'
     ORDER BY o.name ASC
-  `)
+  `, [tenantId])
 
   return rows.map(r => ({
     name: r.name,

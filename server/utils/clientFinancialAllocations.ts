@@ -46,6 +46,7 @@ interface XeroLineRow {
 interface XeroAllocationRow {
   clientId: string
   projectId: string
+  invoiceId: string
   sourceFingerprint: string
 }
 
@@ -290,6 +291,7 @@ async function lockCurrentXeroAllocation(
     `SELECT
        allocation.client_id AS "clientId",
        allocation.project_id AS "projectId",
+       allocation.invoice_id AS "invoiceId",
        allocation.source_fingerprint AS "sourceFingerprint"
      FROM xero_project_allocations allocation
      WHERE allocation.tenant_id = $1
@@ -297,6 +299,50 @@ async function lockCurrentXeroAllocation(
      FOR UPDATE`,
     [tenantId, sourceId],
   ))
+}
+
+async function clearSavedXeroAllocation(
+  db: TransactionDb,
+  input: {
+    tenantId: string
+    clientId: string
+    actorId: string
+    sourceId: string
+    existing: XeroAllocationRow
+  },
+): Promise<FinancialAllocationResult> {
+  if (input.existing.clientId !== input.clientId) allocationError('invalid_assignment')
+
+  const deleteResult = await db.query(
+    `DELETE FROM xero_project_allocations
+     WHERE tenant_id = $1
+       AND line_item_id = $2
+       AND client_id = $3`,
+    [input.tenantId, input.sourceId, input.clientId],
+  )
+  assertAffectedRows(deleteResult, 1, 'Xero allocation delete')
+
+  const changedAt = await appendAudit(db, {
+    sourceType: 'xero_line',
+    tenantId: input.tenantId,
+    sourceKey: input.sourceId,
+    clientId: input.clientId,
+    previousProjectId: input.existing.projectId,
+    projectId: null,
+    actorId: input.actorId,
+    metadata: {
+      invoiceId: input.existing.invoiceId,
+      sourceFingerprint: input.existing.sourceFingerprint,
+      clearedFrom: 'saved_allocation_snapshot',
+    },
+  })
+  return {
+    sourceType: 'xero_line',
+    sourceId: input.sourceId,
+    previousProjectId: input.existing.projectId,
+    projectId: null,
+    changedAt,
+  }
 }
 
 async function lockClient(
@@ -383,8 +429,27 @@ async function applyXeroAllocation(
     mutation: Extract<FinancialAllocationMutation, { sourceType: 'xero_line' }>
   },
 ): Promise<FinancialAllocationResult> {
+  if (input.mutation.projectId === null) {
+    const savedAllocation = await lockCurrentXeroAllocation(
+      db,
+      input.tenantId,
+      input.mutation.sourceId,
+    )
+    if (savedAllocation) {
+      return clearSavedXeroAllocation(db, {
+        tenantId: input.tenantId,
+        clientId: input.clientId,
+        actorId: input.actorId,
+        sourceId: input.mutation.sourceId,
+        existing: savedAllocation,
+      })
+    }
+  }
+
   const source = await lockXeroLine(db, input.tenantId, input.mutation.sourceId)
-  const existing = await lockCurrentXeroAllocation(db, input.tenantId, source.lineItemId)
+  const existing = input.mutation.projectId === null
+    ? null
+    : await lockCurrentXeroAllocation(db, input.tenantId, source.lineItemId)
   await resolveProject(db, input.mutation.projectId, input.clientId)
   const client = await lockClient(db, input.clientId)
 

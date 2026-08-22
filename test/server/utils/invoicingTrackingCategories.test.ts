@@ -1,6 +1,9 @@
 import type { H3Event } from 'h3'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { syncXeroTrackingCategories } from '~~/server/utils/invoicing/tracking-categories'
+import {
+  fetchDbTrackingCategories,
+  syncXeroTrackingCategories,
+} from '~~/server/utils/invoicing/tracking-categories'
 
 const mocks = vi.hoisted(() => ({
   createXeroClient: vi.fn(),
@@ -91,5 +94,42 @@ describe('syncXeroTrackingCategories', () => {
     expect(String(optionWrite?.[0])).toContain('SET xero_option_id = $1, status = $2, synced_at = NOW()')
     expect(String(optionWrite?.[0])).not.toMatch(/coa_code|gst_type|description|vendors/)
     expect(result).toEqual({ synced: 1, added: 0, categories: ['Client'] })
+  })
+})
+
+describe('fetchDbTrackingCategories', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('reads only active Media options owned by the selected Xero tenant', async () => {
+    mocks.queryRows.mockResolvedValue([{
+      name: 'Google Ads',
+      coa_code: '330',
+      gst_type: 'GST on Expenses',
+      description: 'Google media',
+      vendors: null,
+      xero_option_id: 'option-1',
+    }])
+
+    await expect(fetchDbTrackingCategories('tenant-1')).resolves.toEqual([{
+      name: 'Google Ads',
+      coaCode: '330',
+      gstType: 'GST on Expenses',
+      description: 'Google media',
+      vendors: undefined,
+      xeroOptionId: 'option-1',
+    }])
+
+    const [sql, params] = mocks.queryRows.mock.calls[0]!
+    expect(String(sql)).toContain('c.tenant_id = $1')
+    expect(String(sql)).toContain("c.name = 'Media'")
+    expect(String(sql)).toContain("o.status = 'ACTIVE'")
+    expect(params).toEqual(['tenant-1'])
+  })
+
+  it('fails closed without querying when no selected tenant is supplied', async () => {
+    await expect(fetchDbTrackingCategories('')).resolves.toEqual([])
+    expect(mocks.queryRows).not.toHaveBeenCalled()
   })
 })

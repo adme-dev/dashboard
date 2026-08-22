@@ -105,6 +105,7 @@ describe('Client financial presentation', () => {
       expect(host.textContent).toContain('—')
       expect(host.textContent).toContain('Negative AGI')
       expect(host.textContent).toContain('Partial daily media data')
+      expect(host.querySelectorAll('dd')[1]?.textContent?.trim()).toBe('Partial data')
       expect(host.querySelectorAll('dd')[5]?.textContent?.trim()).toBe('—')
       expect(host.textContent).not.toContain('$NaN')
     } finally {

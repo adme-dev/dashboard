@@ -1,4 +1,4 @@
-export type FinancialMarginReason = 'no_agi' | 'negative_agi' | 'source_conflict' | null
+export type FinancialMarginReason = 'no_agi' | 'negative_agi' | 'source_conflict' | 'source_unavailable' | null
 
 export type FinancialWarningCode =
   | 'xero_not_linked'
@@ -9,6 +9,7 @@ export type FinancialWarningCode =
   | 'possible_duplicate'
   | 'reconciliation_failed'
   | 'activity_truncated'
+  | 'source_unavailable'
 
 export type FinancialDataSource =
   | 'xero_invoices'
@@ -38,12 +39,12 @@ export interface FinancialAllocationResult {
 export interface ClientFinancialSummary {
   xeroRevenue: number
   mediaSpend: number
-  agi: number
+  agi: number | null
   labourCost: number
   projectExpenseCost: number
-  xeroSupplierCost: number
-  deliveryCost: number
-  deliveryProfit: number
+  xeroSupplierCost: number | null
+  deliveryCost: number | null
+  deliveryProfit: number | null
   deliveryMarginPct: number | null
   marginReason: FinancialMarginReason
   hours: number
@@ -62,12 +63,12 @@ export interface ClientProjectFinancialRow {
   projectBudget: number | null
   xeroRevenue: number
   mediaSpend: number
-  agi: number
+  agi: number | null
   labourCost: number
   projectExpenseCost: number
-  xeroSupplierCost: number
-  deliveryCost: number
-  deliveryProfit: number
+  xeroSupplierCost: number | null
+  deliveryCost: number | null
+  deliveryProfit: number | null
   deliveryMarginPct: number | null
   marginReason: FinancialMarginReason
   hours: number

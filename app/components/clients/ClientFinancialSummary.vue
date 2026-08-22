@@ -22,8 +22,8 @@ const currency = new Intl.NumberFormat('en-AU', {
 
 const freshnessBySource = computed(() => new Map(props.freshness.map(item => [item.source, item])))
 
-function formatCurrency(value: number): string {
-  return Number.isFinite(value) ? currency.format(value) : 'Not available'
+function formatCurrency(value: number | null): string {
+  return value !== null && Number.isFinite(value) ? currency.format(value) : 'Not available'
 }
 
 function formatHours(value: number): string {
@@ -36,7 +36,9 @@ function formatPercentage(value: number | null): string | null {
 
 function sourceValue(value: number, source: FinancialDataSource): string {
   const state = freshnessBySource.value.get(source)?.status
-  return state === 'unavailable' || state === 'not_connected' ? 'Not available' : formatCurrency(value)
+  if (state === 'unavailable' || state === 'not_connected') return 'Not available'
+  if (state === 'partial' || state === 'stale') return 'Partial data'
+  return formatCurrency(value)
 }
 
 function sourceContext(source: FinancialDataSource, fallback: string): string {
@@ -48,6 +50,7 @@ function marginReason(): string {
     case 'no_agi': return 'No AGI'
     case 'negative_agi': return 'Negative AGI'
     case 'source_conflict': return 'Source conflict'
+    case 'source_unavailable': return 'Source unavailable'
     default: return 'Margin unavailable'
   }
 }
@@ -77,7 +80,9 @@ const metrics = computed(() => [
     label: 'Delivery profit',
     value: formatCurrency(props.summary.deliveryProfit),
     context: 'Agency Gross Income less delivery cost',
-    tone: props.summary.deliveryProfit < 0 ? 'text-error' : 'text-success',
+    tone: props.summary.deliveryProfit === null
+      ? undefined
+      : props.summary.deliveryProfit < 0 ? 'text-error' : 'text-success',
   },
   {
     label: 'Delivery margin',

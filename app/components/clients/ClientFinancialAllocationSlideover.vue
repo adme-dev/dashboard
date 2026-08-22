@@ -30,7 +30,9 @@ const toast = useToast()
 const search = ref('')
 const sourceFilter = ref<SourceFilter>('all')
 const sourceSelections = ref<Record<string, string>>({})
+const authoritativeSourceSelections = ref<Record<string, string>>({})
 const pendingSourceKeys = ref<Record<string, boolean>>({})
+const sourceRequestVersions = ref<Record<string, number>>({})
 const selectedTrackingOptionId = ref<string>(SELECT_TRACKING)
 const confirmedTrackingOption = ref<{ id: string; name: string } | null>(null)
 const trackingPending = ref(false)
@@ -116,6 +118,10 @@ const sections: Array<{ sourceType: FinancialAllocatableSourceType; title: strin
 watch(
   () => props.sources,
   (sources) => {
+    authoritativeSourceSelections.value = Object.fromEntries((sources ?? []).map(source => [
+      sourceKey(source),
+      source.projectId ?? UNASSIGNED,
+    ]))
     sourceSelections.value = Object.fromEntries((sources ?? []).map((source) => {
       const key = sourceKey(source)
       const pendingSelection = sourceSelections.value[key]
@@ -195,6 +201,8 @@ async function updateSourceAllocation(source: FinancialAllocationSource, nextSel
   if (nextSelection !== UNASSIGNED && !projectOptions.value.some(option => option.value === nextSelection)) return
   if (nextSelection === selectionFor(source)) return
 
+  const requestVersion = (sourceRequestVersions.value[key] ?? 0) + 1
+  sourceRequestVersions.value = { ...sourceRequestVersions.value, [key]: requestVersion }
   sourceSelections.value = { ...sourceSelections.value, [key]: nextSelection }
   pendingSourceKeys.value = { ...pendingSourceKeys.value, [key]: true }
 
@@ -210,13 +218,21 @@ async function updateSourceAllocation(source: FinancialAllocationSource, nextSel
     })
     emit('allocated')
   } catch (error: unknown) {
+    if (sourceRequestVersions.value[key] === requestVersion) {
+      sourceSelections.value = {
+        ...sourceSelections.value,
+        [key]: authoritativeSourceSelections.value[key] ?? source.projectId ?? UNASSIGNED,
+      }
+    }
     toast.add({
       title: 'Could not update financial allocation',
       description: errorMessage(error),
       color: 'error',
     })
   } finally {
-    pendingSourceKeys.value = { ...pendingSourceKeys.value, [key]: false }
+    if (sourceRequestVersions.value[key] === requestVersion) {
+      pendingSourceKeys.value = { ...pendingSourceKeys.value, [key]: false }
+    }
   }
 }
 
