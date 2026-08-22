@@ -27,7 +27,7 @@ export interface ClientFinancialRawXeroLine {
   description: string | null
   lineExGstCents: ClientFinancialDatabaseNumber
   trackingClient: string | null
-  contactId: string
+  contactId: string | null
   syncedAt: ClientFinancialDatabaseTimestamp
   allocationProjectId?: string | null
   allocationFingerprint?: string | null
@@ -110,6 +110,7 @@ export interface ClientFinancialRawTrackingMapping {
 }
 
 export interface ClientFinancialRawTrackingOption {
+  tenantId: string
   id: string | null
   name: string
   isActive: boolean
@@ -127,7 +128,7 @@ export interface ClientFinancialDataset {
   }
   timeEntries: ClientFinancialRawTimeEntry[]
   /** Full-period project aggregates used for calculation when detail is capped. */
-  timeSummaries?: ClientFinancialRawTimeSummary[]
+  timeSummaries: ClientFinancialRawTimeSummary[]
   totalTimeEntries: number
   projectExpenses: ClientFinancialRawProjectExpense[]
   invoices: ClientFinancialRawInvoice[]
@@ -220,7 +221,7 @@ async function loadXeroLines(input: {
        allocation.project_id AS "allocationProjectId",
        allocation.source_fingerprint AS "allocationFingerprint"
      FROM xero_invoice_lines_cache l
-     JOIN xero_invoices_cache i
+     LEFT JOIN xero_invoices_cache i
        ON i.tenant_id = l.tenant_id
       AND i.invoice_id = l.invoice_id
      LEFT JOIN xero_accounts_cache account
@@ -232,7 +233,7 @@ async function loadXeroLines(input: {
       AND allocation.client_id = $2
      WHERE l.tenant_id = $1
        AND l.invoice_date BETWEEN $3::date AND $4::date
-       AND UPPER(COALESCE(l.invoice_status, i.status)) NOT IN ('DRAFT', 'VOIDED', 'DELETED')
+       AND UPPER(l.invoice_status) NOT IN ('DRAFT', 'VOIDED', 'DELETED')
        AND (
          (
            UPPER(l.invoice_type) = 'ACCREC'
@@ -457,10 +458,14 @@ async function loadInvoices(input: {
   )
 }
 
-async function loadTrackingOptions(includeSources: boolean): Promise<ClientFinancialRawTrackingOption[]> {
-  if (!includeSources) return []
+async function loadTrackingOptions(
+  tenantId: string | null,
+  includeSources: boolean,
+): Promise<ClientFinancialRawTrackingOption[]> {
+  if (!includeSources || !tenantId) return []
   return queryRows<ClientFinancialRawTrackingOption>(
     `SELECT
+       $1::text AS "tenantId",
        COALESCE(option.xero_option_id, option.id::text) AS id,
        option.name,
        TRUE AS "isActive"
@@ -469,7 +474,14 @@ async function loadTrackingOptions(includeSources: boolean): Promise<ClientFinan
      WHERE LOWER(category.name) = LOWER('Client')
        AND UPPER(COALESCE(category.status, 'ACTIVE')) = 'ACTIVE'
        AND UPPER(COALESCE(option.status, 'ACTIVE')) = 'ACTIVE'
+       AND EXISTS (
+         SELECT 1
+         FROM xero_invoice_lines_cache line
+         WHERE line.tenant_id = $1
+           AND LOWER(line.tracking_client) = LOWER(option.name)
+       )
      ORDER BY LOWER(option.name), option.id`,
+    [tenantId],
   )
 }
 
@@ -493,12 +505,12 @@ async function loadFreshness(input: {
        (
          SELECT MAX(line.synced_at)
          FROM xero_invoice_lines_cache line
-         JOIN xero_invoices_cache invoice
+         LEFT JOIN xero_invoices_cache invoice
            ON invoice.tenant_id = line.tenant_id
           AND invoice.invoice_id = line.invoice_id
          WHERE line.tenant_id = $1
            AND line.invoice_date BETWEEN $4::date AND $5::date
-           AND UPPER(COALESCE(line.invoice_status, invoice.status)) NOT IN ('DRAFT', 'VOIDED', 'DELETED')
+           AND UPPER(line.invoice_status) NOT IN ('DRAFT', 'VOIDED', 'DELETED')
            AND (
              (UPPER(line.invoice_type) = 'ACCREC' AND $2::text IS NOT NULL AND invoice.contact_id = $2)
              OR (
@@ -602,7 +614,7 @@ export async function loadClientFinancialDataset(input: {
     loadProjectExpenses(sourceInput),
     loadInvoices(sourceInput),
     loadTrackingMapping(input.tenantId, client.id),
-    loadTrackingOptions(input.includeSources),
+    loadTrackingOptions(input.tenantId, input.includeSources),
     loadFreshness(sourceInput),
   ])
 

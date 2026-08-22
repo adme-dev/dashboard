@@ -1,6 +1,17 @@
-import { describe, expect, it } from 'vitest'
-import type { ClientFinancialDataset, ClientFinancialRawXeroLine } from '~~/server/utils/clientFinancialRepository'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  loadClientFinancialDataset,
+  type ClientFinancialDataset,
+  type ClientFinancialRawXeroLine,
+} from '~~/server/utils/clientFinancialRepository'
 import { getClientFinancials } from '~~/server/utils/clientFinancials'
+
+const dbMocks = vi.hoisted(() => ({
+  queryOne: vi.fn(),
+  queryRows: vi.fn(),
+}))
+
+vi.mock('~~/server/utils/db', () => dbMocks)
 
 const NOW = new Date('2026-08-22T00:00:00.000Z')
 
@@ -26,6 +37,7 @@ function makeDataset(
     mediaSpend: [],
     activeMediaConnection: { exists: false, updatedAt: null },
     timeEntries: [],
+    timeSummaries: [],
     totalTimeEntries: 0,
     projectExpenses: [],
     invoices: [],
@@ -34,7 +46,7 @@ function makeDataset(
       trackingOptionName: 'Astoria Motors',
     },
     trackingOptions: [
-      { id: 'tracking-astoria', name: 'Astoria Motors', isActive: true },
+      { tenantId: 'tenant-1', id: 'tracking-astoria', name: 'Astoria Motors', isActive: true },
     ],
     freshness: {
       xeroInvoices: '2026-08-22T00:00:00.000Z',
@@ -93,6 +105,25 @@ function deps(dataset: ClientFinancialDataset) {
 }
 
 describe('getClientFinancials', () => {
+  it('does not substitute capped detail when uncapped time summaries are missing', async () => {
+    const invalidDataset = {
+      ...makeDataset({
+        timeEntries: [{
+          id: 'time-1', projectId: 'project-web', projectName: 'Astoria website',
+          date: '2026-08-10', userName: 'Alex', description: null,
+          hours: '1.00', hourlyRate: '100.00', createdAt: '2026-08-10T01:00:00.000Z',
+        }],
+        totalTimeEntries: 520,
+      }),
+      timeSummaries: undefined,
+    } as unknown as ClientFinancialDataset
+
+    await expect(getClientFinancials({
+      tenantId: 'tenant-1', clientId: 'client-astoria',
+      from: '2026-08-01', to: '2026-08-22', includeSources: false, canAllocate: false,
+    }, deps(invalidDataset))).rejects.toThrow()
+  })
+
   it('keeps contact-scoped ACCREC in client totals while project rows use only valid allocations', async () => {
     const allocatedRevenue = makeXeroLine()
     const unallocatedRevenue = makeXeroLine({
@@ -228,6 +259,44 @@ describe('getClientFinancials', () => {
       .toEqual(['line-deleted', 'line-revenue-1'])
   })
 
+  it('marks a joined allocation stale when its old snapshot date falls outside the range', async () => {
+    const movedLine = makeXeroLine({
+      invoiceDate: '2026-08-05',
+      lineExGstCents: '700000',
+      allocationProjectId: 'project-web',
+      allocationFingerprint: 'fingerprint-from-july-snapshot',
+    })
+    const result = await getClientFinancials({
+      tenantId: 'tenant-1',
+      clientId: 'client-astoria',
+      from: '2026-08-01',
+      to: '2026-08-22',
+      includeSources: true,
+      canAllocate: true,
+    }, deps(makeDataset({
+      xeroLines: [movedLine],
+      // The date-filtered allocation lookup cannot see the old July snapshot.
+      savedXeroAllocations: [],
+    })))
+
+    expect(result.summary.xeroRevenue).toBe(7000)
+    expect(result.projects[0]?.xeroRevenue).toBe(0)
+    expect(result.sources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        sourceId: 'line-revenue-1',
+        projectId: 'project-web',
+        isStale: true,
+      }),
+    ]))
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'stale_allocation',
+        sourceId: 'line-revenue-1',
+        projectId: 'project-web',
+      }),
+    ]))
+  })
+
   it('uses daily spend as the authoritative amount for an arbitrary partial range', async () => {
     const result = await getClientFinancials({
       tenantId: 'tenant-1',
@@ -323,7 +392,7 @@ describe('getClientFinancials', () => {
   })
 
   it('caps time activity at 500 rows while preserving the independently counted total', async () => {
-    const timeEntries = Array.from({ length: 520 }, (_, index) => ({
+    const timeEntries = Array.from({ length: 500 }, (_, index) => ({
       id: `time-${index}`,
       projectId: 'project-web',
       projectName: 'Astoria website',
@@ -337,12 +406,17 @@ describe('getClientFinancials', () => {
     const result = await getClientFinancials({
       tenantId: 'tenant-1', clientId: 'client-astoria',
       from: '2026-08-01', to: '2026-08-22', includeSources: false, canAllocate: false,
-    }, deps(makeDataset({ timeEntries, totalTimeEntries: 620 })))
+    }, deps(makeDataset({
+      timeEntries,
+      timeSummaries: [{ projectId: 'project-web', hours: '520.00', labourCost: '52000.00' }],
+      totalTimeEntries: 520,
+    })))
 
     expect(result.activity.timeEntries).toHaveLength(500)
-    expect(result.activity.totalTimeEntries).toBe(620)
+    expect(result.activity.totalTimeEntries).toBe(520)
     expect(result.activity.truncated).toBe(true)
     expect(result.summary.hours).toBe(520)
+    expect(result.summary.labourCost).toBe(52000)
     expect(result.warnings).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'activity_truncated', source: 'activity' }),
     ]))
@@ -411,6 +485,7 @@ describe('getClientFinancials', () => {
         date: '2026-08-10', userName: 'Alex', description: null,
         hours: '2.00', hourlyRate: '100.00', createdAt: '2026-08-10T01:00:00.000Z',
       }],
+      timeSummaries: [{ projectId: 'project-web', hours: '2.00', labourCost: '200.00' }],
       totalTimeEntries: 1,
     })))
 
@@ -443,6 +518,32 @@ describe('getClientFinancials', () => {
     ]))
   })
 
+  it('does not report line-cache absence when invoice activity contains only excluded headers', async () => {
+    const result = await getClientFinancials({
+      tenantId: 'tenant-1', clientId: 'client-astoria',
+      from: '2026-08-01', to: '2026-08-22', includeSources: false, canAllocate: false,
+    }, deps(makeDataset({
+      xeroLines: [],
+      invoices: [
+        {
+          id: 'invoice-draft', invoiceNumber: 'DRAFT-1', type: 'ACCREC', status: 'DRAFT',
+          date: '2026-08-05', dueDate: null, totalCents: '10000', amountPaidCents: '0',
+          amountDueCents: '10000', currencyCode: 'AUD', syncedAt: '2026-08-22T00:00:00.000Z',
+        },
+        {
+          id: 'invoice-voided', invoiceNumber: 'VOID-1', type: 'ACCREC', status: 'VOIDED',
+          date: '2026-08-06', dueDate: null, totalCents: '20000', amountPaidCents: '0',
+          amountDueCents: '0', currencyCode: 'AUD', syncedAt: '2026-08-22T00:00:00.000Z',
+        },
+      ],
+    })))
+
+    expect(result.activity.invoices).toHaveLength(2)
+    expect(result.warnings).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'xero_lines_unavailable' }),
+    ]))
+  })
+
   it('distinguishes a connected confirmed zero from media not connected', async () => {
     const connected = await getClientFinancials({
       tenantId: 'tenant-1', clientId: 'client-astoria',
@@ -465,5 +566,102 @@ describe('getClientFinancials', () => {
     ]))
     expect(notConnected.freshness.find(item => item.source === 'media_spend')?.status)
       .toBe('not_connected')
+  })
+})
+
+describe('loadClientFinancialDataset query ownership', () => {
+  beforeEach(() => {
+    dbMocks.queryOne.mockReset()
+    dbMocks.queryRows.mockReset()
+    dbMocks.queryOne.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM agency_clients client')) {
+        return { id: 'client-astoria', name: 'Astoria Motors', xeroContactId: 'contact-astoria' }
+      }
+      if (sql.includes('FROM social_connections connection')) {
+        return { exists: false, updatedAt: null }
+      }
+      if (sql.includes('SELECT COUNT(*) AS count')) return { count: '0' }
+      if (sql.includes('FROM agency_client_xero_tracking_mappings m')) return null
+      if (sql.includes('AS "xeroInvoices"')) {
+        return {
+          xeroInvoices: null,
+          xeroLines: null,
+          media: null,
+          timeEntries: null,
+          projectExpenses: null,
+        }
+      }
+      throw new Error(`Unexpected queryOne SQL: ${sql}`)
+    })
+    dbMocks.queryRows.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM xero_tracking_categories category')) {
+        return [{ tenantId: 'tenant-1', id: 'option-1', name: 'Astoria Motors', isActive: true }]
+      }
+      if (sql.includes('FROM xero_invoice_lines_cache l')) {
+        return [{
+          lineItemId: 'line-cost-no-header',
+          invoiceId: 'bill-no-header',
+          invoiceNumber: null,
+          invoiceType: 'ACCPAY',
+          invoiceDate: '2026-08-10',
+          accountCode: '310',
+          accountType: 'DIRECTCOSTS',
+          description: 'Mapped supplier line',
+          lineExGstCents: '30000',
+          trackingClient: 'Astoria Motors',
+          contactId: null,
+          syncedAt: '2026-08-22T00:00:00.000Z',
+          allocationProjectId: null,
+          allocationFingerprint: null,
+        }]
+      }
+      return []
+    })
+  })
+
+  it('keeps mapped ACCPAY line-cache rows independent of invoice headers', async () => {
+    const result = await loadClientFinancialDataset({
+      tenantId: 'tenant-1',
+      clientId: 'client-astoria',
+      from: '2026-08-01',
+      to: '2026-08-22',
+      includeSources: true,
+    })
+
+    const xeroCall = dbMocks.queryRows.mock.calls.find(([sql]) => (
+      String(sql).includes('FROM xero_invoice_lines_cache l')
+    ))
+    const freshnessCall = dbMocks.queryOne.mock.calls.find(([sql]) => (
+      String(sql).includes('AS "xeroLines"')
+    ))
+    expect(result.xeroLines).toEqual([
+      expect.objectContaining({ lineItemId: 'line-cost-no-header', contactId: null }),
+    ])
+    expect(String(xeroCall?.[0])).toContain('LEFT JOIN xero_invoices_cache i')
+    expect(String(xeroCall?.[0])).toContain('UPPER(l.invoice_status)')
+    expect(xeroCall?.[1]).toEqual([
+      'tenant-1', 'client-astoria', '2026-08-01', '2026-08-22', 'contact-astoria',
+    ])
+    expect(String(freshnessCall?.[0])).toContain('LEFT JOIN xero_invoices_cache invoice')
+    expect(String(freshnessCall?.[0])).toContain('UPPER(line.invoice_status)')
+  })
+
+  it('scopes active Client tracking options to the selected tenant', async () => {
+    const result = await loadClientFinancialDataset({
+      tenantId: 'tenant-1',
+      clientId: 'client-astoria',
+      from: '2026-08-01',
+      to: '2026-08-22',
+      includeSources: true,
+    })
+
+    const trackingCall = dbMocks.queryRows.mock.calls.find(([sql]) => (
+      String(sql).includes('FROM xero_tracking_categories category')
+    ))
+    expect(String(trackingCall?.[0])).toContain('line.tenant_id = $1')
+    expect(trackingCall?.[1]).toEqual(['tenant-1'])
+    expect(result.trackingOptions).toEqual([
+      { tenantId: 'tenant-1', id: 'option-1', name: 'Astoria Motors', isActive: true },
+    ])
   })
 })

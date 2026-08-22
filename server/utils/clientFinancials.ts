@@ -46,6 +46,7 @@ interface NormalizedMediaSpend {
   projectName: string | null
   platform: string
   campaignName: string
+  period: string
   budgetCents: number | null
   amountCents: number
   sourceState: ClientFinancialMediaCampaign['sourceState']
@@ -181,15 +182,20 @@ function freshnessEntry(
   }
 }
 
-function normalizeTracking(dataset: Awaited<ReturnType<typeof loadClientFinancialDataset>>): {
+function normalizeTracking(
+  dataset: Awaited<ReturnType<typeof loadClientFinancialDataset>>,
+  tenantId: string | null,
+): {
   selected: FinancialTrackingOption | null
   options: FinancialTrackingOption[]
 } {
-  const options = dataset.trackingOptions.map(option => ({
-    id: option.id,
-    name: option.name,
-    isActive: option.isActive,
-  }))
+  const options = dataset.trackingOptions
+    .filter(option => option.tenantId === tenantId)
+    .map(option => ({
+      id: option.id,
+      name: option.name,
+      isActive: option.isActive,
+    }))
   if (!dataset.trackingMapping) return { selected: null, options }
   const matchingOption = options.find(option => (
     (dataset.trackingMapping!.trackingOptionId !== null
@@ -261,6 +267,24 @@ export async function getClientFinancials(
   )
   const currentXeroLines = new Map(normalizedXeroLines.map(line => [line.lineItemId, line]))
   const allocations = new Map(dataset.savedXeroAllocations.map(allocation => [allocation.lineItemId, allocation]))
+  for (const line of normalizedXeroLines) {
+    if (
+      allocations.has(line.lineItemId)
+      || !line.allocationProjectId
+      || !line.allocationFingerprint
+    ) continue
+    allocations.set(line.lineItemId, {
+      lineItemId: line.lineItemId,
+      invoiceId: line.invoiceId,
+      projectId: line.allocationProjectId,
+      sourceFingerprint: line.allocationFingerprint,
+      sourceInvoiceType: line.invoiceType,
+      sourceInvoiceDate: line.invoiceDateIso,
+      sourceAccountCode: line.accountCode,
+      sourceDescription: line.description,
+      sourceExGstCents: line.lineExGstCentsNormalized,
+    })
+  }
   const allocationStates = new Map<string, AllocationState>()
   for (const line of normalizedXeroLines) {
     const allocation = allocations.get(line.lineItemId) ?? null
@@ -274,7 +298,7 @@ export async function getClientFinancials(
       projectIdForCalculation: allocation && !isStale ? allocation.projectId : null,
     })
   }
-  for (const allocation of dataset.savedXeroAllocations) {
+  for (const allocation of allocations.values()) {
     const currentLine = currentXeroLines.get(allocation.lineItemId)
     const state = currentLine
       ? allocationStates.get(allocation.lineItemId)!
@@ -310,8 +334,11 @@ export async function getClientFinancials(
   ))
   const deliverySupplierLines = supplierLines.filter(line => line.accountType?.toUpperCase() === 'DIRECTCOSTS')
 
-  const hasAccrecHeader = dataset.invoices.some(invoice => invoice.type.toUpperCase() === 'ACCREC')
-  if (xeroContactId && hasAccrecHeader && revenueLines.length === 0) {
+  const hasEligibleAccrecHeader = dataset.invoices.some(invoice => (
+    invoice.type.toUpperCase() === 'ACCREC'
+    && !['DRAFT', 'VOIDED', 'DELETED'].includes(invoice.status.toUpperCase())
+  ))
+  if (xeroContactId && hasEligibleAccrecHeader && revenueLines.length === 0) {
     pushWarning(warnings, {
       code: 'xero_lines_unavailable',
       source: 'xero_revenue',
@@ -352,6 +379,7 @@ export async function getClientFinancials(
       projectName: spend.projectId ? projectNames.get(spend.projectId) ?? null : null,
       platform: spend.platform,
       campaignName: spend.campaignName,
+      period: spend.period,
       budgetCents: spend.budgetAllocated === null
         ? null
         : dollarsToCents(spend.budgetAllocated, `Media spend ${spend.id} budget`),
@@ -384,19 +412,12 @@ export async function getClientFinancials(
       date: isoDate(entry.date, `Time entry ${entry.id} date`),
     }
   })
-  const labour: ClientFinancialCalculationInput['labour'] = dataset.timeSummaries === undefined
-    ? normalizedTimeEntries.map(entry => ({
-        id: entry.raw.id,
-        projectId: entry.raw.projectId,
-        hours: entry.hours,
-        costCents: entry.costCents,
-      }))
-    : dataset.timeSummaries.map(summary => ({
-        id: `time-summary:${summary.projectId}`,
-        projectId: summary.projectId,
-        hours: databaseNumber(summary.hours, `Project ${summary.projectId} hours`),
-        costCents: dollarsToCents(summary.labourCost, `Project ${summary.projectId} labour cost`),
-      }))
+  const labour: ClientFinancialCalculationInput['labour'] = dataset.timeSummaries.map(summary => ({
+    id: `time-summary:${summary.projectId}`,
+    projectId: summary.projectId,
+    hours: databaseNumber(summary.hours, `Project ${summary.projectId} hours`),
+    costCents: dollarsToCents(summary.labourCost, `Project ${summary.projectId} labour cost`),
+  }))
   const totalTimeEntries = Number.isSafeInteger(dataset.totalTimeEntries) && dataset.totalTimeEntries >= 0
     ? dataset.totalTimeEntries
     : 0
@@ -593,7 +614,7 @@ export async function getClientFinancials(
       sourceId: spend.id,
       projectId: spend.projectId,
       projectName: spend.projectName,
-      date: monthBounds(dataset.mediaSpend.find(row => row.id === spend.id)!.period)?.first ?? null,
+      date: monthBounds(spend.period)?.first ?? null,
       label: spend.campaignName,
       description: spend.sourceState === 'partial' ? 'Monthly total excluded for the selected partial range.' : null,
       platformVendor: spend.platform,
@@ -601,7 +622,7 @@ export async function getClientFinancials(
       isStale: spend.isStale,
     }))
     response.sources = [...xeroSources, ...missingXeroSources, ...mediaSources]
-    response.tracking = normalizeTracking(dataset)
+    response.tracking = normalizeTracking(dataset, input.tenantId)
   }
 
   return response
