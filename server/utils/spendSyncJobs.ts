@@ -291,8 +291,12 @@ export interface SpendCoverageDelta {
  * `coverageDelta` beside `coverage` on the spend read tools. Null-safe: platforms without two
  * completed runs report null previous values rather than a fabricated zero.
  */
+/** Same 48h window the read tools use for row freshness (responseContract.STALENESS_THRESHOLD_HOURS). */
+export const COVERAGE_BASELINE_STALE_HOURS = 48
+
 export async function getSpendCoverageDeltas(
-  load: typeof queryRows = queryRows
+  load: typeof queryRows = queryRows,
+  now: Date = new Date()
 ): Promise<Record<string, SpendCoverageDelta> | null> {
   const rows = await load<{ platform: string, synced_count: number, finished_at: string | null, rank: number }>(
     `SELECT platform, synced_count, finished_at::text AS finished_at, rank FROM (
@@ -329,11 +333,13 @@ export async function getSpendCoverageDeltas(
         ? Math.round(((entry.currentCount - entry.previousCount) / entry.previousCount) * 10_000) / 100
         : null
     }
+    // Stale = the newest COMPLETED run is older than the staleness window relative to now (or absent).
+    // Measured against now, not against the previous run: one fresh run after a months-old run is a
+    // valid baseline (delta still compares against that old run and is reported honestly). The old
+    // run-to-run gap rule meant a platform could never recover from an outage without two runs.
     const currentMs = entry.currentFinishedAt ? Date.parse(entry.currentFinishedAt) : Number.NaN
-    const previousMs = entry.previousFinishedAt ? Date.parse(entry.previousFinishedAt) : Number.NaN
-    entry.staleBaseline = !Number.isFinite(previousMs)
-      || !Number.isFinite(currentMs)
-      || currentMs - previousMs > 48 * 3_600_000
+    entry.staleBaseline = !Number.isFinite(currentMs)
+      || now.getTime() - currentMs > COVERAGE_BASELINE_STALE_HOURS * 3_600_000
   }
   return result
 }

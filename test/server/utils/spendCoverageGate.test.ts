@@ -142,7 +142,7 @@ describe('getSpendCoverageDeltas (coverageDelta shaping for the read tools)', ()
       { platform: 'meta', synced_count: 70, finished_at: '2026-08-18T10:00:00Z', rank: 2 },
       { platform: 'google', synced_count: 40, finished_at: '2026-08-19T09:00:00Z', rank: 1 }
     ])
-    const deltas = await getSpendCoverageDeltas(load as never)
+    const deltas = await getSpendCoverageDeltas(load as never, new Date('2026-08-19T12:00:00Z'))
     expect(deltas).toEqual({
       meta: {
         previousCount: 70,
@@ -160,9 +160,32 @@ describe('getSpendCoverageDeltas (coverageDelta shaping for the read tools)', ()
         deltaPct: null,
         previousFinishedAt: null,
         currentFinishedAt: '2026-08-19T09:00:00Z',
-        staleBaseline: true
+        // A single fresh run is a usable baseline: delta is null (no comparison) but not stale.
+        staleBaseline: false
       }
     })
+  })
+
+  it('BF-2 follow-up: staleness is measured against now, so one fresh run after a June-vintage run clears the halt', async () => {
+    const now = new Date('2026-08-22T12:00:00Z')
+    const juneOnly = vi.fn(async () => [
+      { platform: 'meta', synced_count: 100, finished_at: '2026-06-29T11:22:21Z', rank: 1 },
+      { platform: 'meta', synced_count: 99, finished_at: '2026-06-25T01:55:14Z', rank: 2 }
+    ])
+    expect((await getSpendCoverageDeltas(juneOnly as never, now))!.meta.staleBaseline).toBe(true)
+
+    const freshAfterJune = vi.fn(async () => [
+      { platform: 'meta', synced_count: 90, finished_at: '2026-08-22T10:57:48Z', rank: 1 },
+      { platform: 'meta', synced_count: 100, finished_at: '2026-06-29T11:22:21Z', rank: 2 }
+    ])
+    const meta = (await getSpendCoverageDeltas(freshAfterJune as never, now))!.meta
+    expect(meta.staleBaseline).toBe(false)
+    expect(meta.deltaPct).toBe(-10)
+
+    const fortyNineHoursOld = vi.fn(async () => [
+      { platform: 'meta', synced_count: 90, finished_at: '2026-08-20T10:59:00Z', rank: 1 }
+    ])
+    expect((await getSpendCoverageDeltas(fortyNineHoursOld as never, now))!.meta.staleBaseline).toBe(true)
   })
 
   it('returns null (omitting coverageDelta) when the job table is unavailable', async () => {
