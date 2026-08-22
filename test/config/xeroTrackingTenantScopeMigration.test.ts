@@ -15,11 +15,10 @@ describe('Xero tracking tenant-scope migration', () => {
     expect(compactSql).not.toContain('tenant_id TEXT NOT NULL')
   })
 
-  it('backfills only one unambiguous non-placeholder Xero tenant', () => {
-    expect(compactSql).toContain('FROM xero_org_connection')
-    expect(compactSql).toContain("WHERE tenant_id <> '__default__'")
-    expect(compactSql).toContain('HAVING COUNT(DISTINCT tenant_id) = 1')
-    expect(compactSql).toContain('WHERE category.tenant_id IS NULL')
+  it('leaves all legacy ownership unclassified for authenticated sync to claim', () => {
+    expect(compactSql).not.toContain('UPDATE xero_tracking_categories')
+    expect(compactSql).not.toContain('FROM xero_org_connection')
+    expect(compactSql).toContain('Existing NULL ownership remains unclassified until an authenticated selected-tenant Xero sync claims it.')
     expect(compactSql).toContain('NULL is legacy/unclassified and must fail closed')
   })
 })
