@@ -317,22 +317,12 @@
     </div>
 
     <!-- New Board Modal -->
-    <UModal v-model:open="showNewBoard" title="Create New Board">
-      <template #body>
-        <div class="space-y-4">
-          <UFormField label="Board Name">
-            <UInput v-model="newBoard.name" placeholder="e.g., Q1 Marketing Campaign" class="w-full" />
-          </UFormField>
-          <UFormField label="Description">
-            <UTextarea v-model="newBoard.description" placeholder="What is this board for?" :rows="3" class="w-full" />
-          </UFormField>
-        </div>
-      </template>
-      <template #footer>
-        <UButton variant="ghost" color="neutral" @click="showNewBoard = false">Cancel</UButton>
-        <UButton color="primary" @click="createBoard">Create Board</UButton>
-      </template>
-    </UModal>
+    <BoardCreateModal
+      v-model="showNewBoard"
+      :workspace-id="workspace?.id"
+      :workspaces="workspacesData.workspaces"
+      @created="refreshWorkspaces"
+    />
 
     <!-- Template Selector -->
     <WorkspaceTemplateSelector
@@ -510,18 +500,12 @@ watch(activeTab, async (tab) => {
 
 // New board modal
 const showNewBoard = ref(false)
-const newBoard = ref({ name: '', description: '' })
 
 // Template selector
 const showTemplateSelector = ref(false)
 
 // Invite modal
 const showInviteModal = ref(false)
-
-function createBoard() {
-  showNewBoard.value = false
-  newBoard.value = { name: '', description: '' }
-}
 
 function onTemplateSelect(template: any) {
   showNewBoard.value = true
