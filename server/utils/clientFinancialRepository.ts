@@ -465,21 +465,16 @@ async function loadTrackingOptions(
   if (!includeSources || !tenantId) return []
   return queryRows<ClientFinancialRawTrackingOption>(
     `SELECT
-       $1::text AS "tenantId",
+       category.tenant_id AS "tenantId",
        COALESCE(option.xero_option_id, option.id::text) AS id,
        option.name,
        TRUE AS "isActive"
      FROM xero_tracking_categories category
      JOIN xero_tracking_options option ON option.category_id = category.id
-     WHERE LOWER(category.name) = LOWER('Client')
+     WHERE category.tenant_id = $1
+       AND LOWER(category.name) = LOWER('Client')
        AND UPPER(COALESCE(category.status, 'ACTIVE')) = 'ACTIVE'
        AND UPPER(COALESCE(option.status, 'ACTIVE')) = 'ACTIVE'
-       AND EXISTS (
-         SELECT 1
-         FROM xero_invoice_lines_cache line
-         WHERE line.tenant_id = $1
-           AND LOWER(line.tracking_client) = LOWER(option.name)
-       )
      ORDER BY LOWER(option.name), option.id`,
     [tenantId],
   )

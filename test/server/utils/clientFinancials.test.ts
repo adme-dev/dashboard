@@ -567,6 +567,24 @@ describe('getClientFinancials', () => {
     expect(notConnected.freshness.find(item => item.source === 'media_spend')?.status)
       .toBe('not_connected')
   })
+
+  it('exposes unused owned tracking options but excludes foreign tenant options', async () => {
+    const result = await getClientFinancials({
+      tenantId: 'tenant-1', clientId: 'client-astoria',
+      from: '2026-08-01', to: '2026-08-22', includeSources: true, canAllocate: false,
+    }, deps(makeDataset({
+      trackingMapping: null,
+      trackingOptions: [
+        { tenantId: 'tenant-1', id: 'option-unused', name: 'Unused New Client', isActive: true },
+        { tenantId: 'tenant-2', id: 'option-foreign', name: 'Foreign Client', isActive: true },
+      ],
+    })))
+
+    expect(result.tracking).toEqual({
+      selected: null,
+      options: [{ id: 'option-unused', name: 'Unused New Client', isActive: true }],
+    })
+  })
 })
 
 describe('loadClientFinancialDataset query ownership', () => {
@@ -595,7 +613,7 @@ describe('loadClientFinancialDataset query ownership', () => {
     })
     dbMocks.queryRows.mockImplementation(async (sql: string) => {
       if (sql.includes('FROM xero_tracking_categories category')) {
-        return [{ tenantId: 'tenant-1', id: 'option-1', name: 'Astoria Motors', isActive: true }]
+        return [{ tenantId: 'tenant-1', id: 'option-unused', name: 'Unused New Client', isActive: true }]
       }
       if (sql.includes('FROM xero_invoice_lines_cache l')) {
         return [{
@@ -646,7 +664,7 @@ describe('loadClientFinancialDataset query ownership', () => {
     expect(String(freshnessCall?.[0])).toContain('UPPER(line.invoice_status)')
   })
 
-  it('scopes active Client tracking options to the selected tenant', async () => {
+  it('returns all active Client options owned by the selected tenant, including unused options', async () => {
     const result = await loadClientFinancialDataset({
       tenantId: 'tenant-1',
       clientId: 'client-astoria',
@@ -658,10 +676,12 @@ describe('loadClientFinancialDataset query ownership', () => {
     const trackingCall = dbMocks.queryRows.mock.calls.find(([sql]) => (
       String(sql).includes('FROM xero_tracking_categories category')
     ))
-    expect(String(trackingCall?.[0])).toContain('line.tenant_id = $1')
+    expect(String(trackingCall?.[0])).toContain('category.tenant_id = $1')
+    expect(String(trackingCall?.[0])).toContain('category.tenant_id AS "tenantId"')
+    expect(String(trackingCall?.[0])).not.toContain('xero_invoice_lines_cache')
     expect(trackingCall?.[1]).toEqual(['tenant-1'])
     expect(result.trackingOptions).toEqual([
-      { tenantId: 'tenant-1', id: 'option-1', name: 'Astoria Motors', isActive: true },
+      { tenantId: 'tenant-1', id: 'option-unused', name: 'Unused New Client', isActive: true },
     ])
   })
 })

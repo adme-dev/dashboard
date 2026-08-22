@@ -66,11 +66,11 @@ export async function fetchDbTrackingCategories(): Promise<TrackingCategory[]> {
  * Returns the "Media" category options. Does NOT include ADME enrichment
  * (COA/GST) — that comes from DB or static fallback.
  */
-export async function fetchXeroTrackingCategories(event: H3Event): Promise<{
+export async function fetchXeroTrackingCategories(event: H3Event, selectedTenantId?: string): Promise<{
   categories: Array<{ name: string; trackingCategoryId: string; options: Array<{ name: string; trackingOptionId: string; status: string }> }>
 }> {
   const token = await getActiveTokenForSession(event)
-  const tenantId = await getSelectedTenant(event)
+  const tenantId = selectedTenantId ?? await getSelectedTenant(event)
 
   if (!tenantId) {
     throw new Error('No Xero organization selected')
@@ -105,7 +105,12 @@ export async function syncXeroTrackingCategories(event: H3Event): Promise<{
   added: number
   categories: string[]
 }> {
-  const { categories } = await fetchXeroTrackingCategories(event)
+  const tenantId = await getSelectedTenant(event)
+  if (!tenantId) {
+    throw new Error('No Xero organization selected')
+  }
+
+  const { categories } = await fetchXeroTrackingCategories(event, tenantId)
   let totalSynced = 0
   let totalAdded = 0
   const categoryNames: string[] = []
@@ -115,17 +120,24 @@ export async function syncXeroTrackingCategories(event: H3Event): Promise<{
 
     // Upsert the top-level category
     await execute(`
-      INSERT INTO xero_tracking_categories (xero_category_id, name, status, synced_at)
-      VALUES ($1, $2, 'ACTIVE', NOW())
+      INSERT INTO xero_tracking_categories (tenant_id, xero_category_id, name, status, synced_at)
+      VALUES ($1, $2, $3, 'ACTIVE', NOW())
       ON CONFLICT (xero_category_id) DO UPDATE SET
+        tenant_id = COALESCE(xero_tracking_categories.tenant_id, EXCLUDED.tenant_id),
         name = EXCLUDED.name,
+        status = EXCLUDED.status,
         synced_at = NOW()
-    `, [cat.trackingCategoryId, cat.name])
+      WHERE xero_tracking_categories.tenant_id IS NULL
+         OR xero_tracking_categories.tenant_id = EXCLUDED.tenant_id
+    `, [tenantId, cat.trackingCategoryId, cat.name])
 
     // Get the category row ID
     const catRows = await queryRows<{ id: string }>(`
-      SELECT id FROM xero_tracking_categories WHERE xero_category_id = $1
-    `, [cat.trackingCategoryId])
+      SELECT id
+      FROM xero_tracking_categories
+      WHERE xero_category_id = $1
+        AND tenant_id = $2
+    `, [cat.trackingCategoryId, tenantId])
     const catId = catRows[0]?.id
     if (!catId) continue
 
