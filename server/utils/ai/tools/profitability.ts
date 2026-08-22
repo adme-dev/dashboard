@@ -12,8 +12,15 @@ type Args = z.infer<typeof params>
 
 export type ProfitabilityDeps = {
   fetchEconomics: (event: H3Event, period: EconomicsPeriod) => Promise<ClientEconomicsRow[]>
+  fetchAsOf?: (event: H3Event, options?: { now?: Date }) => Promise<unknown>
+  now?: () => Date
 }
 const defaultDeps: ProfitabilityDeps = { fetchEconomics: fetchClientEconomics }
+
+const BASIS = {
+  marginPct: 'delivery margin = (revenue − passthrough − delivery cost) / revenue, from reconciled client financial sources',
+  sharePct: 'client revenue / total in-period revenue across all clients',
+} as const
 
 const round1 = (n: number) => Math.round(n * 10) / 10
 const dollars = (cents: number) => Math.round(cents) / 100
@@ -83,7 +90,8 @@ function compute(r: ClientEconomicsRow): Computed {
 export async function getClientProfitability(args: Args, ctx: ToolContext, deps: ProfitabilityDeps = defaultDeps): Promise<ToolResult> {
   try {
     const rows = await deps.fetchEconomics(ctx.event, args.period)
-    if (rows.length === 0) return ok({ period: args.period, note: 'No client financial data available — Xero may be disconnected or the invoice cache is empty.' })
+    const asOf = deps.fetchAsOf ? await deps.fetchAsOf(ctx.event, { now: deps.now?.() }).catch(() => null) : null
+    if (rows.length === 0) return ok({ period: args.period, ...(asOf ? { asOf } : {}), note: 'No client financial data available — Xero may be disconnected or the invoice cache is empty.' })
 
     const revenueRows = rows.filter(row => row.revenueAvailable ?? true)
     const totalRev = revenueRows.reduce(
@@ -99,7 +107,7 @@ export async function getClientProfitability(args: Args, ctx: ToolContext, deps:
       }
       const c = compute(match)
       const sharePct = c.revenue !== null && totalRev > 0 ? round1((match.revenueCents / totalRev) * 100) : null
-      return ok({ period: args.period, ...c, sharePct })
+      return ok({ period: args.period, ...(asOf ? { asOf } : {}), ...c, sharePct, basis: BASIS })
     }
 
     const computed = rows.map(compute)
@@ -141,12 +149,16 @@ export async function getClientProfitability(args: Args, ctx: ToolContext, deps:
     })
     return ok({
       period: args.period,
+      ...(asOf ? { asOf } : {}),
       topByMargin: topByMargin.map(project),
       bottomByMargin: bottomByMargin.map(project),
       unavailable: computed
         .filter(client => !client.profitabilityAvailable)
         .map(client => ({ client: client.client, unavailableSources: client.unavailableSources })),
       agencyConcentration: { top5Pct: shareOfTop(5), top10Pct: shareOfTop(10) },
+      limit: 5,
+      rankedClientCount: active.length,
+      basis: BASIS,
       more: Math.max(0, active.length - shown.size),
     })
   } catch {

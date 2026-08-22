@@ -219,7 +219,7 @@ const categories = [
     iconColor: 'text-emerald-600',
     features: [
       { title: 'Lead Capture & Routing', slug: 'lead-capture-routing', icon: 'i-lucide-inbox', description: 'Signed gateways, native ad forms, and dedicated inbound email that securely captures each client\'s CRM conversation — with safe tests and exact automotive routing into one real-time inbox.' },
-      { title: 'Xero Integration', slug: 'xero-integration', icon: 'i-lucide-link', description: 'Two-way sync with Xero for invoices, expenses, contacts, and chart of accounts.' },
+      { title: 'Xero Integration', slug: 'xero-integration', icon: 'i-lucide-link', description: 'Two-way sync with Xero for invoices, expenses, contacts, project allocations, and chart of accounts. Reconcile Agency Gross Income and unallocated-source reconciliation in one place.' },
       { title: 'EOM Engine', slug: 'eom-engine', icon: 'i-lucide-file-spreadsheet', description: 'End-of-month invoice generation with configurable line items, tax, and auto-upload to Xero.' },
       { title: 'Meta Ads Tracking', slug: 'meta-ads-tracking', icon: 'i-lucide-megaphone', description: 'OAuth-connected Meta Ads spend syncing with daily breakdowns and campaign-level budgets.' },
       { title: 'Google Ads Tracking', slug: 'google-ads-tracking', icon: 'i-lucide-bar-chart-3', description: 'Agency-wide Google Ads spend and call reporting across secure login and manager-account connections, including answered, missed, and provider-reported duration data.' },
