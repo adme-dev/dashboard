@@ -227,9 +227,19 @@ function isExactDraftFollowupBody(body: unknown): boolean {
     && uuidPattern.test(record.opportunity_id)
 }
 
+/** Operational spend-sync kickoffs used by run_adspend_sync. Empty body only: the period is always "now". */
+const spendSyncKickoffPath = /^\/api\/agency\/social\/(?:meta|google)\/sync-spend$/
+
+function isEmptyObjectBody(body: unknown): boolean {
+  return !!body && typeof body === 'object' && !Array.isArray(body) && Object.keys(body as object).length === 0
+}
+
 export function isAllowedGodModeAiReadBridgeRequest(method: string, path: string, body: unknown): boolean {
   if (method === 'GET') return (body === null || body === undefined) && isAllowedReadTarget(path)
-  return method === 'POST' && path === exactDraftFollowupPath && isExactDraftFollowupBody(body)
+  if (method !== 'POST') return false
+  if (path === exactDraftFollowupPath) return isExactDraftFollowupBody(body)
+  if (spendSyncKickoffPath.test(path)) return isEmptyObjectBody(body)
+  return false
 }
 
 function isAllowedReadTarget(path: string): boolean {

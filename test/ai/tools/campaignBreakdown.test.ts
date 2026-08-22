@@ -183,6 +183,18 @@ describe('getCampaignBreakdown', () => {
   })
 
   describe('P-02 halt', () => {
+    it('BF-2: a google-scoped breakdown returns rows while meta\'s baseline is stale; unscoped still halts naming meta', async () => {
+      const coverage = { meta: { deltaPct: 0, staleBaseline: true }, google: { deltaPct: 0, staleBaseline: false } }
+      const googleOnly = data(await getCampaignBreakdown({ platform: 'google' }, ctx, deps({ loadCoverageDeltas: async () => coverage as any })))
+      expect(googleOnly.halted).toBe(false)
+      expect(googleOnly.campaigns.map((c: any) => c.campaignId)).toEqual(['c3'])
+      const unscoped = data(await getCampaignBreakdown({}, ctx, deps({ loadCoverageDeltas: async () => coverage as any })))
+      expect(unscoped.halted).toBe(true)
+      expect(unscoped.haltReason).toBe('stale_coverage_baseline')
+      expect(unscoped.haltDetail).toMatch(/meta/)
+      expect(unscoped.campaigns).toEqual([])
+    })
+
     it('halts with no figures before the newest sync reaches 24h old', async () => {
       const d = data(await getCampaignBreakdown({}, ctx, deps({ now: () => new Date('2026-08-19T10:31:00Z') })))
       expect(d.halted).toBe(true)

@@ -171,6 +171,13 @@ export type HaltVerdict =
  * figures. Pure — callers inject `now` for deterministic tests. `coverageDelta` is the
  * getSpendCoverageDeltas() map; any platform whose count fell by more than COVERAGE_DROP_HALT_PCT halts.
  */
+/** `google_ads` (summary route) and `google` (sync jobs / tool enums) are the same platform. */
+function normalizeHaltPlatform(value: string | null | undefined): string | null {
+  const v = String(value ?? '').trim().toLowerCase()
+  if (!v || v === 'all') return null
+  return v === 'google_ads' ? 'google' : v
+}
+
 export function evaluateHalt(
   freshness: SyncFreshness,
   options: {
@@ -178,6 +185,12 @@ export function evaluateHalt(
     now?: Date
     coverageDelta?: Record<string, { deltaPct?: number | null, staleBaseline?: boolean } | null | undefined> | null
     coverageDropHaltPct?: number
+    /**
+     * Platform the read is scoped to (`meta` | `google` | `google_ads`). When set, only that
+     * platform's coverage baseline/drop can halt the read — one broken platform must not darken a
+     * healthy one. Omit / `'all'` for portfolio reads, which gate on every platform and name the culprit.
+     */
+    platform?: string | null
   },
 ): HaltVerdict {
   const nowMs = (options.now ?? new Date()).getTime()
@@ -200,7 +213,10 @@ export function evaluateHalt(
     }
   }
   const dropPct = options.coverageDropHaltPct ?? COVERAGE_DROP_HALT_PCT
-  const staleBaselines = Object.entries(options.coverageDelta ?? {})
+  const scope = normalizeHaltPlatform(options.platform)
+  const coverageEntries = Object.entries(options.coverageDelta ?? {})
+    .filter(([platform]) => scope === null || normalizeHaltPlatform(platform) === scope)
+  const staleBaselines = coverageEntries
     .filter(([, delta]) => delta?.staleBaseline === true)
     .map(([platform]) => platform)
   if (staleBaselines.length > 0) {
@@ -211,7 +227,7 @@ export function evaluateHalt(
       asOf: freshness,
     }
   }
-  const dropped = Object.entries(options.coverageDelta ?? {})
+  const dropped = coverageEntries
     .filter(([, delta]) => typeof delta?.deltaPct === 'number' && (delta.deltaPct as number) < -dropPct)
     .map(([platform, delta]) => `${platform} ${delta?.deltaPct}%`)
   if (dropped.length > 0) {

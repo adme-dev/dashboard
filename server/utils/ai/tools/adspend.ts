@@ -164,7 +164,8 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
     const halt = evaluateHalt(freshness, {
       haltAfterHours: PACING_HALT_HOURS,
       now: deps.now?.(),
-      coverageDelta: coverageDelta as Record<string, { deltaPct?: number | null }> | null,
+      coverageDelta: coverageDelta as Record<string, { deltaPct?: number | null, staleBaseline?: boolean }> | null,
+      platform: args.platform ?? null,
     })
     if (halt.halted) {
       return ok({

@@ -387,4 +387,13 @@ describe('God mode internal execution delegation', () => {
     expect(isAllowedGodModeAiReadBridgeRequest('POST', '/api/crm/ai/draft-followup', { ...body, client_id: 'not-a-uuid' })).toBe(false)
     expect(isAllowedGodModeAiReadBridgeRequest('POST', '/api/crm/opportunities', body)).toBe(false)
   })
+
+  it('allows the empty-body ad-spend sync-spend POSTs used by run_adspend_sync, and nothing wider', () => {
+    expect(isAllowedGodModeAiReadBridgeRequest('POST', '/api/agency/social/meta/sync-spend', {})).toBe(true)
+    expect(isAllowedGodModeAiReadBridgeRequest('POST', '/api/agency/social/google/sync-spend', {})).toBe(true)
+    expect(isAllowedGodModeAiReadBridgeRequest('POST', '/api/agency/social/meta/sync-spend', { month: 8 })).toBe(false)
+    expect(isAllowedGodModeAiReadBridgeRequest('POST', '/api/agency/social/meta/sync-spend', null)).toBe(false)
+    expect(isAllowedGodModeAiReadBridgeRequest('POST', '/api/agency/social/tiktok/sync-spend', {})).toBe(false)
+    expect(isAllowedGodModeAiReadBridgeRequest('POST', '/api/agency/social/meta/sync-spend?x=1', {})).toBe(false)
+  })
 })
