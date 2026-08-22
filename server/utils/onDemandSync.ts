@@ -91,6 +91,8 @@ export interface CreativeResult {
   creatives: Array<{ id: string; type: string; thumbnailUrl: string | null; title: string | null; body: string | null }>
   hasCreatives: boolean
   syncedRows: number
+  /** Provider fetch error, when the upstream call failed (rows may still be served from cache). */
+  error?: string | null
 }
 
 export interface AdPerformanceSyncResult {
@@ -290,6 +292,7 @@ export async function syncCampaignCreatives(mediaSpendId: string): Promise<Creat
   }
 
   let upserted = 0
+  let fetchError: string | null = null
 
   try {
     if (campaign.platform === 'meta') {
@@ -309,12 +312,17 @@ export async function syncCampaignCreatives(mediaSpendId: string): Promise<Creat
       const { getCampaignAdAssets, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
       const config = useRuntimeConfig()
 
-      let mccId: string | undefined
-      try {
-        const accessibleIds = await listAccessibleCustomers(conn.access_token, config.googleDeveloperToken)
-        const cleanAccountId = conn.account_id.replace(/-/g, '')
-        mccId = accessibleIds.find((id: string) => id !== cleanAccountId) || undefined
-      } catch { /* ignore */ }
+      // Prefer the configured manager id (same resolution as syncCampaignAdPerformance); only guess via
+      // listAccessibleCustomers when nothing is configured. Without login-customer-id, GAQL against a
+      // manager-linked account fails and Google creatives silently never populate.
+      let mccId: string | undefined = conn.metadata?.managerCustomerId || config.googleAdsLoginCustomerId || undefined
+      if (!mccId) {
+        try {
+          const accessibleIds = await listAccessibleCustomers(conn.access_token, config.googleDeveloperToken)
+          const cleanAccountId = conn.account_id.replace(/-/g, '')
+          mccId = accessibleIds.find((id: string) => id !== cleanAccountId) || undefined
+        } catch { /* ignore */ }
+      }
 
       const assets = await getCampaignAdAssets(conn.account_id, conn.access_token, config.googleDeveloperToken, campaign.campaign_id, mccId)
       for (const a of assets) {
@@ -329,7 +337,8 @@ export async function syncCampaignCreatives(mediaSpendId: string): Promise<Creat
       }
     }
   } catch (err: any) {
-    console.error(`[OnDemandSync] Creative fetch failed for ${campaign.platform}:`, err.message)
+    fetchError = err?.message || String(err)
+    console.error(`[OnDemandSync] Creative fetch failed for ${campaign.platform}:`, fetchError)
   }
 
   // Read back from DB to return. Upgrade legacy stored 64x64 emg-wrapper URLs to
@@ -351,6 +360,7 @@ export async function syncCampaignCreatives(mediaSpendId: string): Promise<Creat
     })),
     hasCreatives: rows.length > 0,
     syncedRows: upserted,
+    error: fetchError,
   }
 }
 

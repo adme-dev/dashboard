@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { getAdspendPacing, type AdspendDeps, type PacingCampaign } from '~~/server/utils/ai/tools/adspend'
+import { getAdspendPacing, projectPacingCampaign, type AdspendDeps, type PacingCampaign } from '~~/server/utils/ai/tools/adspend'
 
 const ctx = { userId: 'u1', userRole: 'owner', event: {} as any }
 // Fixtures sync at 2026-08-18T08:15Z; pin the clock so the P-02 halt never trips by accident.
@@ -224,6 +224,35 @@ describe('get_adspend_pacing', () => {
       const data = ((await getAdspendPacing({ status: 'all' }, ctx, deps)) as any).data
       expect(data.halted).toBe(false)
       expect(data.campaigns).toHaveLength(1)
+    })
+  })
+
+  describe('R-3 two-clock pacing (BF-5)', () => {
+    // Wall clock: 22 Aug 02:00Z. Data clock: spendAsOf = 21 Aug (provider reported through yesterday, ~14h lag).
+    // An on-plan $31,000 August budget has spent $21,000 by the 21st => 21/31 of budget => ratio 1.00.
+    const wallClock = new Date('2026-08-22T02:00:00Z')
+
+    it('measures expected-to-date at spendAsOf, so an on-plan campaign at 14h lag reads 100 ± 1', () => {
+      const row = projectPacingCampaign({ clientName: 'Acme', platform: 'meta', budget: 31000, spend: 21000, spendAsOf: '2026-08-21' }, wallClock)
+      expect(row.spendAsOf).toBe('2026-08-21')
+      expect(row.elapsedDays).toBe(21)
+      expect(row.pacePct).toBeGreaterThanOrEqual(99)
+      expect(row.pacePct).toBeLessThanOrEqual(101)
+      expect(row.status).toBe('on_pace')
+    })
+
+    it('falls back to the wall clock only when no spendAsOf exists', () => {
+      const row = projectPacingCampaign({ clientName: 'Acme', platform: 'meta', budget: 31000, spend: 21000, spendAsOf: null }, wallClock)
+      expect(row.spendAsOf).toBeNull()
+      expect(row.elapsedDays).toBe(22)
+      expect(row.pacePct).toBe(95)
+    })
+
+    it('declares the two clocks in the response basis', async () => {
+      const deps: AdspendDeps = { now: NOW, loadCoverageDeltas: async () => null, pacing: vi.fn().mockResolvedValue([campaign({})]) }
+      const res = await getAdspendPacing({ status: 'all' }, ctx, deps)
+      expect((res as any).data.basis.clocks).toMatch(/spendAsOf/)
+      expect((res as any).data.basis.pacePct).toMatch(/elapsedDays/)
     })
   })
 })

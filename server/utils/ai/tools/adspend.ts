@@ -5,7 +5,7 @@ import { getSpendCoverageDeltas } from '~~/server/utils/spendSyncJobs'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
-import { expectedToDate } from '~~/server/utils/anomalyDetection/adPacingMath'
+import { dayOfMonth, expectedToDate } from '~~/server/utils/anomalyDetection/adPacingMath'
 import { buildDataHealth, mergeSyncFreshness, paginateWithCursor, evaluateHalt, PACING_HALT_HOURS } from './responseContract'
 
 const params = z.object({
@@ -32,6 +32,8 @@ export type PacingCampaign = {
   lastSyncedAt: string | null
   oldestSyncedAt?: string | null
   spendAsOf?: string | null
+  /** Data-clock day of month used for expected-to-date (from spendAsOf; wall-clock when absent). */
+  elapsedDays?: number
   staleRowCount?: number
   campaignCount?: number
   budgetedCampaignCount?: number
@@ -62,41 +64,49 @@ function classify(pacePct: number): PacingStatus {
 // tenant/session resolves, mirroring finance.ts. The summary returns one row per
 // client+platform with budget + actual spend for the current period; we derive
 // pace against the expected-to-date budget burn.
+/**
+ * R-3 two-clock pacing, per row. The *data clock* is `spendAsOf` (the newest daily_spend date the
+ * provider has reported); expected-to-date is measured at that date, not at wall-clock `now`, so a
+ * campaign whose sync lags by hours is not misread as underpacing. `elapsedDays` is the data-clock day.
+ */
+export function projectPacingCampaign(it: any, now: Date): PacingCampaign {
+    const budget = Number(it?.budget ?? 0)
+    const spend = Number(it?.spend ?? 0)
+    const hasBudget = Number.isFinite(budget) && budget > 0
+    const spendAsOf = it?.spendAsOf ? String(it.spendAsOf) : null
+    const pacingClock = spendAsOf && /^\d{4}-\d{2}-\d{2}$/.test(spendAsOf)
+      ? new Date(`${spendAsOf}T12:00:00Z`)
+      : now
+    const expected = hasBudget ? expectedToDate(budget, pacingClock) : 0
+    const pacePct = expected > 0 ? Math.round((spend / expected) * 100) : null
+    // summary.get.ts stores Google as 'google_ads'; normalise to the tool's enum.
+    const rawPlatform = String(it?.platform ?? '')
+    const platform: 'meta' | 'google' = rawPlatform.startsWith('google') ? 'google' : 'meta'
+    return {
+      client: String(it?.clientName ?? 'Unknown'),
+      platform,
+      spend,
+      budget: hasBudget ? budget : null,
+      pacePct,
+      status: pacePct === null ? 'no_budget_set' : classify(pacePct),
+      budgetLevel: 'client',
+      unattributed: String(it?.groupKey ?? '').includes(':unmapped:'),
+      lastSyncedAt: it?.lastSyncedAt ? String(it.lastSyncedAt) : null,
+      oldestSyncedAt: it?.oldestSyncedAt ? String(it.oldestSyncedAt) : null,
+      spendAsOf,
+      elapsedDays: hasBudget ? dayOfMonth(pacingClock) : undefined,
+      staleRowCount: Number.isFinite(Number(it?.staleRowCount)) ? Number(it.staleRowCount) : undefined,
+      campaignCount: Number.isFinite(Number(it?.campaignCount)) ? Number(it.campaignCount) : undefined,
+      budgetedCampaignCount: Number.isFinite(Number(it?.budgetedCampaignCount)) ? Number(it.budgetedCampaignCount) : undefined,
+    }
+}
+
 const defaultDeps: AdspendDeps = {
   pacing: async (ctx) => {
     const r: any = await aiInternalFetch('/api/agency/social/spend/summary', {}, ctx)
     const now = new Date()
     const items: any[] = Array.isArray(r?.items) ? r.items : []
-    return items.map((it): PacingCampaign => {
-      const budget = Number(it?.budget ?? 0)
-      const spend = Number(it?.spend ?? 0)
-      const hasBudget = Number.isFinite(budget) && budget > 0
-      const spendAsOf = it?.spendAsOf ? String(it.spendAsOf) : null
-      const pacingClock = spendAsOf && /^\d{4}-\d{2}-\d{2}$/.test(spendAsOf)
-        ? new Date(`${spendAsOf}T12:00:00Z`)
-        : now
-      const expected = hasBudget ? expectedToDate(budget, pacingClock) : 0
-      const pacePct = expected > 0 ? Math.round((spend / expected) * 100) : null
-      // summary.get.ts stores Google as 'google_ads'; normalise to the tool's enum.
-      const rawPlatform = String(it?.platform ?? '')
-      const platform: 'meta' | 'google' = rawPlatform.startsWith('google') ? 'google' : 'meta'
-      return {
-        client: String(it?.clientName ?? 'Unknown'),
-        platform,
-        spend,
-        budget: hasBudget ? budget : null,
-        pacePct,
-        status: pacePct === null ? 'no_budget_set' : classify(pacePct),
-        budgetLevel: 'client',
-        unattributed: String(it?.groupKey ?? '').includes(':unmapped:'),
-        lastSyncedAt: it?.lastSyncedAt ? String(it.lastSyncedAt) : null,
-        oldestSyncedAt: it?.oldestSyncedAt ? String(it.oldestSyncedAt) : null,
-        spendAsOf,
-        staleRowCount: Number.isFinite(Number(it?.staleRowCount)) ? Number(it.staleRowCount) : undefined,
-        campaignCount: Number.isFinite(Number(it?.campaignCount)) ? Number(it.campaignCount) : undefined,
-        budgetedCampaignCount: Number.isFinite(Number(it?.budgetedCampaignCount)) ? Number(it.budgetedCampaignCount) : undefined,
-      }
-    })
+    return items.map(it => projectPacingCampaign(it, now))
   },
 }
 
@@ -193,7 +203,8 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
       source: 'synced_ad_platform_spend',
       halted: false,
       basis: {
-        pacePct: `spend ÷ expected-to-date × 100, where expected-to-date = budget × (elapsed days ÷ days in month); underpacing < ${UNDERPACE_PCT}, overpacing > ${OVERPACE_PCT}`,
+        pacePct: `spend ÷ expected-to-date × 100, where expected-to-date = budget × (elapsedDays ÷ days in month); underpacing < ${UNDERPACE_PCT}, overpacing > ${OVERPACE_PCT}`,
+        clocks: 'two-clock: elapsedDays is taken from each row\'s spendAsOf (the data clock — newest provider-reported spend date), not from wall-clock now; a row synced 14h ago that is on plan reads 100, not under. spendAsOf is null only when no daily spend row exists.',
         budget: 'media_spend.budget_allocated at the stated budgetLevel; null when no budget is configured',
       },
       ...freshness,
