@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue'
 import { CalendarDate, today, getLocalTimeZone } from '@internationalized/date'
 import { startOfWeek, endOfWeek, addWeeks, format, getWeek, startOfMonth, endOfMonth, eachWeekOfInterval, isSameMonth } from 'date-fns'
 
@@ -17,6 +18,8 @@ const props = defineProps<{
     finishedAt?: string | null
   }>
   syncing?: boolean
+  /** Set false when a parent owns data freshness and sync actions. */
+  showSync?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -311,7 +314,7 @@ const syncButtonLabel = computed(() => props.syncing ? 'Syncing' : 'Sync now')
     <div class="flex-1" />
 
     <!-- Last synced + Sync button -->
-    <div class="flex items-center gap-2">
+    <div v-if="showSync !== false" class="flex items-center gap-2">
       <div class="text-xs text-muted text-right hidden sm:block">
         <div v-if="latestFailedSyncLabel" class="text-warning" :title="latestFailedSyncLabel.title">
           Latest sync failed
