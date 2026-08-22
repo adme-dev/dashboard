@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createError as createH3Error } from 'h3'
 import { ClientFinancialRepositoryError } from '~~/server/utils/clientFinancialRepository'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 
@@ -146,6 +147,43 @@ describe('GET /api/agency/clients/:id/financials', () => {
     await expect(handler(event as never)).rejects.toMatchObject({
       statusCode: 404,
       statusMessage: 'Client not found',
+    })
+  })
+
+  it('returns a generic 500 when selected tenant resolution fails', async () => {
+    mockGetSelectedTenant.mockRejectedValue(new Error('KV session lookup failed: tenant-secret'))
+    const { default: handler } = await import('~~/server/api/agency/clients/[id]/financials.get')
+
+    await expect(handler(event as never)).rejects.toMatchObject({
+      statusCode: 500,
+      statusMessage: 'Failed to load client financials',
+    })
+    expect(mockGetClientFinancials).not.toHaveBeenCalled()
+  })
+
+  it('preserves trusted H3 400 errors from the financial service', async () => {
+    mockGetClientFinancials.mockRejectedValue(createH3Error({
+      statusCode: 400,
+      statusMessage: 'Known financial input error',
+    }))
+    const { default: handler } = await import('~~/server/api/agency/clients/[id]/financials.get')
+
+    await expect(handler(event as never)).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'Known financial input error',
+    })
+  })
+
+  it('does not trust a status-shaped repository failure with a sensitive message', async () => {
+    mockGetClientFinancials.mockRejectedValue({
+      statusCode: 404,
+      statusMessage: 'SELECT tenant_token FROM secret_xero_connections',
+    })
+    const { default: handler } = await import('~~/server/api/agency/clients/[id]/financials.get')
+
+    await expect(handler(event as never)).rejects.toMatchObject({
+      statusCode: 500,
+      statusMessage: 'Failed to load client financials',
     })
   })
 

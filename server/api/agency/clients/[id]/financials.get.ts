@@ -1,16 +1,10 @@
+import { isError } from 'h3'
 import { requireRole } from '~~/server/utils/auth'
 import { getClientFinancials } from '~~/server/utils/clientFinancials'
 import { parseClientFinancialRange } from '~~/server/utils/clientFinancialCalculations'
 import { ClientFinancialRepositoryError } from '~~/server/utils/clientFinancialRepository'
 import { isReadOnlyRole, PERMISSIONS, roleHasPermission } from '~~/server/utils/permissions'
 import { getSelectedTenant } from '~~/server/utils/session'
-
-function isTypedHttpError(error: unknown): error is { statusCode: number } {
-  return typeof error === 'object'
-    && error !== null
-    && 'statusCode' in error
-    && typeof error.statusCode === 'number'
-}
 
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.CLIENTS)
@@ -32,9 +26,9 @@ export default defineEventHandler(async (event) => {
   const canAllocate = canViewSources
     && !isReadOnlyRole(user.role)
     && user.isCustomReadOnly !== true
-  const tenantId = await getSelectedTenant(event)
 
   try {
+    const tenantId = await getSelectedTenant(event)
     return await getClientFinancials({
       tenantId: tenantId ?? null,
       clientId,
@@ -47,7 +41,7 @@ export default defineEventHandler(async (event) => {
     if (error instanceof ClientFinancialRepositoryError && error.code === 'client_not_found') {
       throw createError({ statusCode: 404, statusMessage: 'Client not found' })
     }
-    if (isTypedHttpError(error) && (error.statusCode === 400 || error.statusCode === 404)) {
+    if (isError(error) && (error.statusCode === 400 || error.statusCode === 404)) {
       throw error
     }
     throw createError({ statusCode: 500, statusMessage: 'Failed to load client financials' })
