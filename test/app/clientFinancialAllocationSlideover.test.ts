@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest'
-import { createApp, h, nextTick } from 'vue'
+import { createApp, h, nextTick, ref } from 'vue'
 import ClientFinancialAllocationSlideover from '~~/app/components/clients/ClientFinancialAllocationSlideover.vue'
 import type {
   ClientFinancialsResponse,
@@ -103,7 +103,7 @@ const stubs = {
   USlideover: {
     props: ['open', 'title', 'description'],
     emits: ['update:open'],
-    template: '<aside v-if="open" data-slideover><slot /></aside>',
+    template: '<div data-slideover-root><div v-if="!open" data-slideover-trigger><slot /></div><aside v-else data-slideover><slot name="body" /></aside></div>',
   },
   UFormField: {
     props: ['label', 'help'],
@@ -140,11 +140,13 @@ function mountSlideover(input: {
   fetchMock?: ReturnType<typeof vi.fn>
   sourceRows?: FinancialAllocationSource[]
   trackingOptions?: ClientFinancialsResponse['tracking']
+  open?: boolean
 } = {}) {
   const fetchMock = input.fetchMock ?? vi.fn(async () => ({}))
   const toast = { add: vi.fn() }
   const allocated = vi.fn()
   const openUpdates = vi.fn()
+  const sourceRows = ref(input.sourceRows ?? sources)
   Object.assign(globalThis, {
     $fetch: fetchMock,
     useToast: () => toast,
@@ -154,10 +156,10 @@ function mountSlideover(input: {
   document.body.appendChild(host)
   const app = createApp({
     render: () => h(ClientFinancialAllocationSlideover, {
-      open: true,
+      open: input.open ?? true,
       clientId: CLIENT_ID,
       projects,
-      sources: input.sourceRows ?? sources,
+      sources: sourceRows.value,
       tracking: 'trackingOptions' in input ? input.trackingOptions : tracking,
       onAllocated: allocated,
       'onUpdate:open': openUpdates,
@@ -165,7 +167,15 @@ function mountSlideover(input: {
   })
   Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
   app.mount(host)
-  return { app, host, fetchMock, toast, allocated, openUpdates }
+  return {
+    app,
+    host,
+    fetchMock,
+    toast,
+    allocated,
+    openUpdates,
+    setSources: (nextSources: FinancialAllocationSource[]) => { sourceRows.value = nextSources },
+  }
 }
 
 function selectValue(host: HTMLElement, testId: string, value: string) {
@@ -176,6 +186,24 @@ function selectValue(host: HTMLElement, testId: string, value: string) {
 }
 
 describe('ClientFinancialAllocationSlideover', () => {
+  it('renders its allocation panel in the slideover body, never as a closed-state trigger', async () => {
+    const closed = mountSlideover({ open: false })
+    await flushUi()
+
+    expect(closed.host.querySelector('[data-slideover]')).toBeNull()
+    expect(closed.host.querySelector('[data-slideover-trigger]')?.textContent?.trim()).toBe('')
+    closed.app.unmount()
+    closed.host.remove()
+
+    const open = mountSlideover()
+    await flushUi()
+
+    expect(open.host.querySelector('[data-slideover]')?.textContent).toContain('Project allocation')
+    expect(open.host.querySelector('[data-slideover-trigger]')).toBeNull()
+    open.app.unmount()
+    open.host.remove()
+  })
+
   it('groups finance sources with their truthful details and labelled full-width selectors', async () => {
     const test = mountSlideover()
     await flushUi()
@@ -214,6 +242,16 @@ describe('ClientFinancialAllocationSlideover', () => {
     await flushUi()
 
     const search = test.host.querySelector<HTMLInputElement>('[data-testid="financial-allocation-search"]')!
+    search.value = '$1,250.50'
+    search.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushUi()
+    expect(test.host.querySelectorAll('[data-testid^="source-row-"]')).toHaveLength(1)
+
+    search.value = '1,250'
+    search.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushUi()
+    expect(test.host.querySelectorAll('[data-testid^="source-row-"]')).toHaveLength(1)
+
     search.value = 'google'
     search.dispatchEvent(new Event('input', { bubbles: true }))
     await flushUi()
@@ -325,7 +363,7 @@ describe('ClientFinancialAllocationSlideover', () => {
   })
 
   it('keeps the selected surface open and reports the server message when allocation fails', async () => {
-    const error = Object.assign(new Error('fallback'), {
+    const error = Object.assign(new Error('raw transport secret must not be exposed'), {
       data: { statusMessage: 'Financial allocation source changed; refresh and try again' },
     })
     const test = mountSlideover({ fetchMock: vi.fn(async () => { throw error }) })
@@ -343,6 +381,7 @@ describe('ClientFinancialAllocationSlideover', () => {
       description: 'Financial allocation source changed; refresh and try again',
       color: 'error',
     }))
+    expect(test.host.textContent).not.toContain('raw transport secret')
 
     test.app.unmount()
     test.host.remove()
@@ -370,12 +409,72 @@ describe('ClientFinancialAllocationSlideover', () => {
     test.host.remove()
   })
 
+  it('preserves another pending source selection while a successful refetch reconciles sources', async () => {
+    let resolveMedia: (() => void) | undefined
+    let rejectRevenue: ((reason?: unknown) => void) | undefined
+    const test = mountSlideover({
+      fetchMock: vi.fn((_url: string, options: { body: { sourceId: string } }) => {
+        if (options.body.sourceId === '44444444-4444-4444-8444-444444444444') {
+          return new Promise<void>((resolve) => { resolveMedia = resolve })
+        }
+        return new Promise<void>((_resolve, reject) => { rejectRevenue = reject })
+      }),
+    })
+    await flushUi()
+
+    selectValue(test.host, 'project-select-44444444-4444-4444-8444-444444444444', PROJECT_A_ID)
+    await nextTick()
+    selectValue(test.host, 'project-select-ACCREC-42:0', PROJECT_B_ID)
+    await nextTick()
+
+    resolveMedia?.()
+    await flushUi()
+    test.setSources(sources.map(source => source.sourceId === '44444444-4444-4444-8444-444444444444'
+      ? { ...source, projectId: PROJECT_A_ID, projectName: 'Search launch' }
+      : source))
+    await flushUi()
+
+    const revenueSelector = test.host.querySelector<HTMLSelectElement>('[data-testid="project-select-ACCREC-42:0"]')!
+    expect(revenueSelector.value).toBe(PROJECT_B_ID)
+
+    rejectRevenue?.(new Error('transport secret'))
+    await flushUi()
+    expect(revenueSelector.value).toBe(PROJECT_B_ID)
+    expect(test.toast.add).toHaveBeenCalledWith(expect.objectContaining({
+      description: 'The server could not update this financial allocation',
+      color: 'error',
+    }))
+
+    test.app.unmount()
+    test.host.remove()
+  })
+
+  it('gives recovery guidance instead of an impossible Client tracking instruction when no active options exist', async () => {
+    const test = mountSlideover({
+      trackingOptions: {
+        selected: null,
+        options: [{ id: 'client-archived', name: 'Archived Motors', isActive: false }],
+      },
+    })
+    await flushUi()
+
+    expect(test.host.textContent).toContain('No active Client tracking options')
+    expect(test.host.textContent).toContain('An Xero administrator needs to add or activate a Client tracking option')
+    expect(test.host.querySelector('[data-testid="client-tracking-select"]')).toBeNull()
+    expect(test.host.querySelector('[data-testid="confirm-client-tracking"]')).toBeNull()
+    expect(test.host.querySelector<HTMLSelectElement>('[data-testid="project-select-ACCPAY-9:0"]')?.disabled).toBe(true)
+
+    test.app.unmount()
+    test.host.remove()
+  })
+
   it('renders a safe empty state when finance-only source data is unavailable', async () => {
     const test = mountSlideover({ sourceRows: [], trackingOptions: undefined })
     await flushUi()
 
     expect(test.host.textContent).toContain('No matching financial sources')
-    expect(test.host.querySelector('[data-testid="client-tracking-select"]')).toBeTruthy()
+    expect(test.host.textContent).toContain('No active Client tracking options')
+    expect(test.host.querySelector('[data-testid="client-tracking-select"]')).toBeNull()
     expect(test.host.querySelectorAll('[data-testid^="source-row-"]')).toHaveLength(0)
     expect(test.fetchMock).not.toHaveBeenCalled()
 

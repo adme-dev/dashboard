@@ -13,7 +13,7 @@ const props = defineProps<{
   clientId: string
   projects: ClientProjectFinancialRow[]
   sources: FinancialAllocationSource[]
-  tracking: ClientFinancialsResponse['tracking']
+  tracking?: ClientFinancialsResponse['tracking']
 }>()
 
 const emit = defineEmits<{
@@ -69,6 +69,10 @@ const trackingOptions = computed(() => [
     .map(option => ({ label: option.name, value: option.id! })),
 ])
 
+const hasActiveTrackingOptions = computed(() => (
+  trackingOptions.value.some(option => option.value !== SELECT_TRACKING)
+))
+
 const confirmedClientTracking = computed(() => {
   const selected = props.tracking?.selected
   if (selected?.id && selected.isActive) return { id: selected.id, name: selected.name }
@@ -82,7 +86,10 @@ const visibleSources = computed(() => {
   return (props.sources ?? []).filter((source) => {
     if (sourceFilter.value !== 'all' && source.sourceType !== sourceFilter.value) return false
     if (!normalizedSearch) return true
-    return [source.label, source.description, source.platformVendor, String(source.amount)]
+    const amountTerms = Number.isFinite(source.amount)
+      ? [formatAmount(source.amount), String(source.amount)]
+      : [formatAmount(source.amount)]
+    return [source.label, source.description, source.platformVendor, ...amountTerms]
       .filter((value): value is string => Boolean(value))
       .some(value => value.toLocaleLowerCase().includes(normalizedSearch))
   })
@@ -109,10 +116,16 @@ const sections: Array<{ sourceType: FinancialAllocatableSourceType; title: strin
 watch(
   () => props.sources,
   (sources) => {
-    sourceSelections.value = Object.fromEntries((sources ?? []).map(source => [
-      sourceKey(source),
-      source.projectId ?? UNASSIGNED,
-    ]))
+    sourceSelections.value = Object.fromEntries((sources ?? []).map((source) => {
+      const key = sourceKey(source)
+      const pendingSelection = sourceSelections.value[key]
+      return [
+        key,
+        pendingSourceKeys.value[key] && pendingSelection !== undefined
+          ? pendingSelection
+          : source.projectId ?? UNASSIGNED,
+      ]
+    }))
   },
   { immediate: true },
 )
@@ -156,15 +169,13 @@ function formatDate(value: string | null): string {
 
 function errorMessage(error: unknown): string {
   const candidate = error as {
-    data?: { statusMessage?: string; error?: { message?: string } }
-    statusMessage?: string
-    message?: string
+    data?: { statusMessage?: unknown }
+    statusMessage?: unknown
   } | null
-  return candidate?.data?.error?.message
-    || candidate?.data?.statusMessage
-    || candidate?.statusMessage
-    || candidate?.message
-    || 'The server could not update this financial allocation'
+  const statusMessage = candidate?.data?.statusMessage ?? candidate?.statusMessage
+  return typeof statusMessage === 'string' && statusMessage.trim()
+    ? statusMessage
+    : 'The server could not update this financial allocation'
 }
 
 function mutationFor(source: FinancialAllocationSource, projectId: string | null): FinancialAllocationMutation {
@@ -250,7 +261,8 @@ async function confirmClientTracking() {
     :ui="{ content: 'w-full max-w-xl' }"
     @update:open="emit('update:open', $event)"
   >
-    <div class="@container flex min-h-0 flex-1 flex-col gap-5 p-4 sm:p-6">
+    <template #body>
+      <div class="@container flex min-h-0 flex-1 flex-col gap-5 p-4 sm:p-6">
       <div class="space-y-1">
         <p class="text-sm font-medium text-highlighted">Project allocation</p>
         <p class="text-sm leading-5 text-muted">
@@ -287,32 +299,43 @@ async function confirmClientTracking() {
           </p>
         </div>
         <UAlert
+          v-if="hasActiveTrackingOptions"
           title="Client tracking is required for Xero costs"
           description="Choose the Client option that represents this agency client, then confirm it before allocating ACCPAY lines."
           color="warning"
           variant="subtle"
           icon="i-lucide-triangle-alert"
         />
-        <UFormField label="Client tracking option">
-          <USelectMenu
-            v-model="selectedTrackingOptionId"
-            :items="trackingOptions"
-            value-key="value"
-            :disabled="trackingPending"
-            class="w-full"
-            data-testid="client-tracking-select"
-          />
-        </UFormField>
-        <div class="flex justify-end">
-          <UButton
-            label="Confirm Client mapping"
-            color="primary"
-            :loading="trackingPending"
-            :disabled="selectedTrackingOptionId === SELECT_TRACKING || trackingPending"
-            data-testid="confirm-client-tracking"
-            @click="confirmClientTracking"
-          />
-        </div>
+        <UAlert
+          v-else
+          title="No active Client tracking options"
+          description="An Xero administrator needs to add or activate a Client tracking option for the selected tenant, then refresh this view."
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-circle-alert"
+        />
+        <template v-if="hasActiveTrackingOptions">
+          <UFormField label="Client tracking option">
+            <USelectMenu
+              v-model="selectedTrackingOptionId"
+              :items="trackingOptions"
+              value-key="value"
+              :disabled="trackingPending"
+              class="w-full"
+              data-testid="client-tracking-select"
+            />
+          </UFormField>
+          <div class="flex justify-end">
+            <UButton
+              label="Confirm Client mapping"
+              color="primary"
+              :loading="trackingPending"
+              :disabled="selectedTrackingOptionId === SELECT_TRACKING || trackingPending"
+              data-testid="confirm-client-tracking"
+              @click="confirmClientTracking"
+            />
+          </div>
+        </template>
       </section>
 
       <div v-else class="flex items-center gap-2 rounded-lg border border-default bg-elevated/50 px-3 py-2 text-sm">
@@ -392,6 +415,7 @@ async function confirmClientTracking() {
           </article>
         </section>
       </div>
-    </div>
+      </div>
+    </template>
   </USlideover>
 </template>
