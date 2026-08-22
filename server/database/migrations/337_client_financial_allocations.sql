@@ -60,4 +60,33 @@ CREATE TABLE IF NOT EXISTS financial_allocation_audit (
 CREATE INDEX IF NOT EXISTS idx_faa_client_changed
   ON financial_allocation_audit (tenant_id, client_id, changed_at DESC);
 
+-- Audit history is append-only. Protect it at the database boundary so every
+-- caller, not only the application service, preserves allocation history.
+CREATE OR REPLACE FUNCTION prevent_financial_allocation_audit_mutation()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    RETURN NEW;
+  END IF;
+
+  RAISE EXCEPTION 'financial_allocation_audit is append-only';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS financial_allocation_audit_append_only
+  ON financial_allocation_audit;
+CREATE TRIGGER financial_allocation_audit_append_only
+  BEFORE UPDATE OR DELETE ON financial_allocation_audit
+  FOR EACH ROW
+  EXECUTE FUNCTION prevent_financial_allocation_audit_mutation();
+
+DROP TRIGGER IF EXISTS financial_allocation_audit_append_only_truncate
+  ON financial_allocation_audit;
+CREATE TRIGGER financial_allocation_audit_append_only_truncate
+  BEFORE TRUNCATE ON financial_allocation_audit
+  FOR EACH STATEMENT
+  EXECUTE FUNCTION prevent_financial_allocation_audit_mutation();
+
 COMMIT;
