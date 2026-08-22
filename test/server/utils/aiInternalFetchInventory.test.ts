@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
-import { isAllowedGodModeAiReadBridgeRequest } from '~~/server/utils/godMode/internalExecutionDelegation'
+import { isAllowedGodModeAiReadBridgeRequest, isAllowedGodModeInternalExecutionTarget } from '~~/server/utils/godMode/internalExecutionDelegation'
 
 function firstArgumentShape(call: ts.CallExpression): string {
   const argument = call.arguments[0]
@@ -102,6 +102,10 @@ describe('AI internal fetch inventory', () => {
       expect(examples, `${shape} is called by an AI tool but has no representative request in this test — add one and register the route in isAllowedGodModeAiReadBridgeRequest`).toBeDefined()
       for (const example of examples ?? []) {
         expect(isAllowedGodModeAiReadBridgeRequest('POST', example.path, example.body), `${shape} → ${example.path} is refused by the MCP bridge allowlist (would 403 as SYNC_START_FAILED-style at runtime)`).toBe(true)
+        // The bridge mints a signed execution claim whose parseClaim() re-checks the target against
+        // isAllowedGodModeInternalExecutionTarget — a second, independent list. Both must agree or the
+        // call fails at signing with 'Invalid God mode internal execution claim' (seen in prod 2026-08-22).
+        expect(isAllowedGodModeInternalExecutionTarget('POST', example.path), `${shape} → ${example.path} passes the bridge allowlist but not the execution-claim target list; the signed claim cannot be minted`).toBe(true)
       }
     }
   })
