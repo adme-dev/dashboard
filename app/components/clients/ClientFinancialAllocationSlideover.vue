@@ -13,7 +13,7 @@ const props = defineProps<{
   clientId: string
   projects: ClientProjectFinancialRow[]
   sources: FinancialAllocationSource[]
-  tracking?: ClientFinancialsResponse['tracking']
+  tracking: ClientFinancialsResponse['tracking']
 }>()
 
 const emit = defineEmits<{
