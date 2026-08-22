@@ -396,6 +396,11 @@ export async function transactionWithoutRetry<T>(callback: (db: Pool) => Promise
   return await runTransactionOnce(callback)
 }
 
+// Explicit non-retrying boundary for append-only financial allocation writes.
+export async function transactionOnce<T>(callback: (db: Pool) => Promise<T>): Promise<T> {
+  return transactionWithoutRetry(callback)
+}
+
 // --- Legacy getDb() — returns a Pool-like object backed by the active driver ---
 export function getDb() {
   return {
