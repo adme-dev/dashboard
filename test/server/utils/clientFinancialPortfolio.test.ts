@@ -117,7 +117,7 @@ describe('fetchPortfolioClientEconomics', () => {
         projectExpenseCents: 25000,
         xeroSupplierCostCents: 35000,
         deliveryCostCents: 90000,
-        deliveryMarginPct: 73.73,
+        deliveryMarginPct: 73.74,
         hours: 12.5,
       },
       {

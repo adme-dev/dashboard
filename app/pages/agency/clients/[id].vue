@@ -489,7 +489,7 @@ async function saveKpiTargets() {
                   label="Allocate costs"
                   icon="i-lucide-split"
                   variant="outline"
-                  @click="showFinancialAllocation = true"
+                  @click="() => { showFinancialAllocation = true }"
                 />
               </div>
             </div>
@@ -1293,7 +1293,7 @@ async function saveKpiTargets() {
             color="neutral"
             label="Cancel"
             size="lg"
-            @click="showEditModal = false"
+            @click="() => { showEditModal = false }"
           />
           <UButton
             color="primary"

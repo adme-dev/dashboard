@@ -148,13 +148,14 @@ export async function syncXeroTrackingCategories(event: H3Event): Promise<{
         WHERE category_id = $1 AND name = $2
       `, [catId, opt.name])
 
-      if (existing.length > 0) {
+      const existingOption = existing[0]
+      if (existingOption) {
         // Update Xero ID and status, preserve ADME enrichment
         await execute(`
           UPDATE xero_tracking_options
           SET xero_option_id = $1, status = $2, synced_at = NOW()
           WHERE id = $3
-        `, [opt.trackingOptionId, opt.status, existing[0].id])
+        `, [opt.trackingOptionId, opt.status, existingOption.id])
         totalSynced++
       } else {
         // New option from Xero — insert without ADME enrichment
