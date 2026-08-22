@@ -1,6 +1,12 @@
 <script setup lang="ts">
+import { CalendarDate, getLocalTimeZone, today } from '@internationalized/date'
 import { format } from 'date-fns'
-import { apiErrorDescription } from '~/utils/apiError'
+import type {
+  ClientFinancialMediaCampaign,
+  ClientFinancialsResponse,
+  FinancialDataSource,
+  FinancialSourceFreshness,
+} from '~/types'
 
 definePageMeta({
   title: 'Client Details',
@@ -15,47 +21,19 @@ const { isManager, isOwner, canAccessMediaBuying, canWrite } = useAuth()
 const clientId = route.params.id as string
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string; body?: unknown; headers?: Record<string, string> }
+  options?: { method?: string; body?: unknown }
 ) => Promise<T>
-
-type LeadCaptureMode = 'analytics_only' | 'capture_only' | 'lightweight_crm' | 'full_crm' | 'external_crm'
-type EntitlementStatus = 'trial' | 'active' | 'grace' | 'capped' | 'overdue' | 'suspended' | 'cancelled'
-interface CrmSettings {
-  leadCaptureMode: LeadCaptureMode
-  crmCoreStatus: EntitlementStatus
-  crmExternalStatus: EntitlementStatus
-}
-interface BoardOption {
-  label: string
-  value: string
-}
 
 // Fetch client data
 const clientData = ref<any>(null)
-const crmSettingsData = ref<CrmSettings>({
-  leadCaptureMode: 'capture_only',
-  crmCoreStatus: 'suspended',
-  crmExternalStatus: 'suspended'
-})
 const pending = ref(false)
 const error = ref<any>(null)
-const portalBoardOptions = ref<BoardOption[]>([{ label: 'No portal board', value: '__none__' }])
 
 async function refresh() {
   pending.value = true
   error.value = null
   try {
-    const [clientResponse, crmResponse, boardsResponse] = await Promise.all([
-      apiFetch(`/api/agency/clients/${clientId}`),
-      apiFetch<CrmSettings>(`/api/agency/clients/${clientId}/crm-settings`).catch(() => null),
-      apiFetch<{ boards: Array<{ id: string, name: string }> }>('/api/agency/boards').catch(() => ({ boards: [] }))
-    ])
-    clientData.value = clientResponse
-    if (crmResponse) crmSettingsData.value = crmResponse
-    portalBoardOptions.value = [
-      { label: 'No portal board', value: '__none__' },
-      ...boardsResponse.boards.map(board => ({ label: board.name, value: board.id }))
-    ]
+    clientData.value = await apiFetch(`/api/agency/clients/${clientId}`)
   } catch (err) {
     clientData.value = null
     error.value = err
@@ -69,60 +47,218 @@ await refresh()
 const isNotFound = computed(() => ((error.value as any)?.statusCode ?? (error.value as any)?.status) === 404)
 
 const client = computed(() => (clientData.value as any)?.client || null)
-const projects = computed(() => ((clientData.value as any)?.projects || []) as any[])
-const recentTimeEntries = computed(() => ((clientData.value as any)?.recentTimeEntries || []) as any[])
-const invoices = computed(() => ((clientData.value as any)?.invoices || []) as any[])
-const mediaSpend = computed(() => ((clientData.value as any)?.mediaSpend || []) as any[])
-const summary = computed(() => (clientData.value as any)?.summary || {
-  totalRevenue: 0, totalCost: 0, grossProfit: 0, grossMargin: 0,
-  totalHours: 0, totalProjects: 0, activeProjects: 0, completedProjects: 0,
-  totalInvoiced: 0, totalMediaSpend: 0, totalMediaCommission: 0, retainerAmount: 0
+
+// One reporting period owns every financial surface on this route. CalendarDate
+// keeps the inclusive ISO range independent of browser/server UTC conversion.
+const calendarToday = today(getLocalTimeZone())
+const financialMonth = ref(calendarToday.month)
+const financialYear = ref(calendarToday.year)
+const financialWeekFilter = ref<{ start: string; end: string } | null>(null)
+
+const financialRange = computed(() => {
+  const monthStart = new CalendarDate(financialYear.value, financialMonth.value, 1)
+  const monthEnd = monthStart.add({ months: 1 }).subtract({ days: 1 })
+  const requestedFrom = financialWeekFilter.value?.start ?? monthStart.toString()
+  const requestedTo = financialWeekFilter.value?.end ?? monthEnd.toString()
+  const isCurrentMonth = financialMonth.value === calendarToday.month
+    && financialYear.value === calendarToday.year
+  const to = isCurrentMonth && requestedTo > calendarToday.toString()
+    ? calendarToday.toString()
+    : requestedTo
+
+  return {
+    // Future week pills in the current month collapse to today's valid boundary.
+    from: requestedFrom > to ? to : requestedFrom,
+    to,
+  }
 })
+
+const financialQuery = computed(() => ({
+  from: financialRange.value.from,
+  to: financialRange.value.to,
+}))
+
+const {
+  data: financialData,
+  status: financialStatus,
+  error: financialError,
+  refresh: refreshFinancials,
+} = await useFetch<ClientFinancialsResponse>(
+  `/api/agency/clients/${clientId}/financials`,
+  { query: financialQuery },
+)
+
+// Nuxt retains prior data while a reactive query changes. Only render a response
+// whose inclusive server period matches the currently selected range.
+const currentFinancialData = computed(() => {
+  if (financialStatus.value !== 'success') return null
+  const response = financialData.value
+  if (!response) return null
+  return response.period.from === financialRange.value.from
+    && response.period.to === financialRange.value.to
+    ? response
+    : null
+})
+
+const financialPending = computed(() => financialStatus.value === 'idle'
+  || financialStatus.value === 'pending'
+  || (financialStatus.value === 'success' && !currentFinancialData.value))
+const financialFailed = computed(() => financialStatus.value === 'error' && financialError.value !== null)
+const financialProjects = computed(() => currentFinancialData.value?.projects ?? [])
+const financialActivity = computed(() => currentFinancialData.value?.activity ?? null)
+const summaryWarnings = computed(() => (currentFinancialData.value?.warnings ?? [])
+  .filter(warning => warning.code !== 'activity_truncated'))
+
+function freshnessFor(source: FinancialDataSource): FinancialSourceFreshness | undefined {
+  return currentFinancialData.value?.freshness.find(entry => entry.source === source)
+}
+
+const timeFreshness = computed(() => freshnessFor('time_entries'))
+const invoiceFreshness = computed(() => freshnessFor('xero_invoices'))
+const mediaFreshness = computed(() => freshnessFor('media_spend'))
+
+function isSourceUnavailable(source: FinancialSourceFreshness | undefined): boolean {
+  return source?.status === 'unavailable' || source?.status === 'not_connected'
+}
+
+function isSourcePartial(source: FinancialSourceFreshness | undefined): boolean {
+  return source?.status === 'partial' || source?.status === 'stale'
+}
+
+const financialPeriodEmpty = computed(() => {
+  const data = currentFinancialData.value
+  if (!data || data.freshness.some(source => isSourceUnavailable(source))) return false
+  return data.summary.xeroRevenue === 0
+    && data.summary.mediaSpend === 0
+    && data.summary.deliveryCost === 0
+    && data.summary.hours === 0
+    && data.activity.timeEntries.length === 0
+    && data.activity.invoices.length === 0
+    && data.activity.mediaCampaigns.length === 0
+})
+
+const mediaConfirmedZero = computed(() => mediaFreshness.value?.status === 'fresh'
+  && financialActivity.value?.mediaCampaigns.length === 0
+  && currentFinancialData.value?.summary.mediaSpend === 0)
 
 // Active tab
 const activeTab = ref('overview')
+const showFinancialAllocation = ref(false)
+
+const tabItems = computed(() => [
+  { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard' },
+  {
+    label: 'Projects',
+    value: 'projects',
+    icon: 'i-lucide-folder',
+    badge: currentFinancialData.value ? String(financialProjects.value.length) : undefined,
+  },
+  {
+    label: 'Time Entries',
+    value: 'time',
+    icon: 'i-lucide-clock',
+    badge: currentFinancialData.value && financialActivity.value
+      ? String(financialActivity.value.totalTimeEntries)
+      : undefined,
+  },
+  {
+    label: 'Invoices',
+    value: 'invoices',
+    icon: 'i-lucide-receipt',
+    badge: currentFinancialData.value && financialActivity.value
+      ? String(financialActivity.value.invoices.length)
+      : undefined,
+  },
+  {
+    label: 'Media Spend',
+    value: 'media',
+    icon: 'i-lucide-megaphone',
+    badge: currentFinancialData.value && financialActivity.value
+      ? String(financialActivity.value.mediaCampaigns.length)
+      : undefined,
+  },
+  { label: 'Website', value: 'website', icon: 'i-lucide-radio' },
+  ...(canAccessMediaBuying.value
+    ? [{ label: 'Measurement', value: 'measurement', icon: 'i-lucide-activity' }]
+    : []),
+])
 
 // Format helpers
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('en-AU', {
-    style: 'currency',
-    currency: 'AUD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(value)
+const currencyFormatters = new Map<string, Intl.NumberFormat>()
+
+const formatCurrency = (value: unknown, currency = 'AUD') => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'Not available'
+  const safeCurrency = /^[A-Z]{3}$/.test(currency) ? currency : 'AUD'
+  let formatter = currencyFormatters.get(safeCurrency)
+  if (!formatter) {
+    formatter = new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency: safeCurrency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    })
+    currencyFormatters.set(safeCurrency, formatter)
+  }
+  return formatter.format(value)
 }
 
-const formatPercent = (value: number | null | undefined) => `${(value ?? 0).toFixed(1)}%`
+const formatHours = (value: unknown) => typeof value === 'number' && Number.isFinite(value)
+  ? `${value.toFixed(1)}h`
+  : 'Not available'
 
 const formatDate = (date: string) => {
   if (!date) return '—'
-  return format(new Date(date), 'MMM d, yyyy')
-}
-
-// Status colors
-const getProjectStatusColor = (status: string): 'success' | 'warning' | 'error' | 'neutral' | 'info' => {
-  switch (status) {
-    case 'active': return 'success'
-    case 'completed': return 'info'
-    case 'on_hold': return 'warning'
-    case 'cancelled': return 'error'
-    default: return 'neutral'
-  }
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(date)
+    ? new Date(`${date}T12:00:00`)
+    : new Date(date)
+  return Number.isNaN(parsed.getTime()) ? 'Not available' : format(parsed, 'MMM d, yyyy')
 }
 
 const getInvoiceStatusColor = (status: string): 'success' | 'warning' | 'error' | 'neutral' => {
-  switch (status) {
-    case 'paid': return 'success'
-    case 'sent': return 'warning'
-    case 'overdue': return 'error'
+  switch (status.toUpperCase()) {
+    case 'PAID': return 'success'
+    case 'AUTHORISED':
+    case 'AUTHORIZED':
+    case 'SUBMITTED': return 'warning'
+    case 'VOIDED':
+    case 'DELETED': return 'error'
     default: return 'neutral'
   }
 }
 
-const getMarginColor = (margin: number): 'success' | 'warning' | 'error' => {
-  if (margin >= 30) return 'success'
-  if (margin >= 15) return 'warning'
-  return 'error'
+const getMediaSourceColor = (state: ClientFinancialMediaCampaign['sourceState']): 'success' | 'warning' | 'error' | 'neutral' => {
+  if (state === 'available') return 'success'
+  if (state === 'partial') return 'warning'
+  if (state === 'unavailable') return 'error'
+  return 'neutral'
+}
+
+const getMediaSourceLabel = (state: ClientFinancialMediaCampaign['sourceState']) => {
+  if (state === 'available') return 'Available'
+  if (state === 'partial') return 'Partial'
+  if (state === 'unavailable') return 'Unavailable'
+  return 'Not connected'
+}
+
+const formatStatusLabel = (value: string | null) => {
+  if (!value) return 'Not supplied'
+  const normalized = value.replaceAll('_', ' ').trim()
+  return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : 'Not supplied'
+}
+
+const formatCampaignSpend = (campaign: ClientFinancialMediaCampaign) => {
+  if (campaign.sourceState === 'not_connected') return 'Not connected'
+  if (campaign.sourceState === 'unavailable') return 'Not available'
+  if (campaign.sourceState === 'partial') return 'Partial period unavailable'
+  return formatCurrency(campaign.actualSpend)
+}
+
+async function retryFinancials() {
+  await refreshFinancials()
+}
+
+async function handleFinancialAllocated() {
+  await refreshFinancials()
 }
 
 // Billing type labels
@@ -149,11 +285,7 @@ const editForm = ref({
   contactPhone: '',
   address: '',
   notes: '',
-  isActive: true,
-  portalBoardId: '__none__',
-  leadCaptureMode: 'capture_only' as LeadCaptureMode,
-  crmCoreStatus: 'suspended' as EntitlementStatus,
-  crmExternalStatus: 'suspended' as EntitlementStatus
+  isActive: true
 })
 
 const openEditModal = () => {
@@ -170,83 +302,42 @@ const openEditModal = () => {
       contactPhone: client.value.contactPhone || '',
       address: client.value.address || '',
       notes: client.value.notes || '',
-      isActive: client.value.isActive,
-      portalBoardId: client.value.portalBoardId || '__none__',
-      leadCaptureMode: crmSettingsData.value.leadCaptureMode,
-      crmCoreStatus: crmSettingsData.value.crmCoreStatus,
-      crmExternalStatus: crmSettingsData.value.crmExternalStatus
+      isActive: client.value.isActive
     }
     showEditModal.value = true
   }
 }
 
 const saving = ref(false)
-type ClientMutationKind = 'client' | 'crm' | 'unlink'
-const mutationAttempts = new Map<ClientMutationKind, { signature: string; key: string }>()
-
-function idempotencyKeyFor(kind: ClientMutationKind, body: unknown): string {
-  const signature = JSON.stringify(body)
-  const current = mutationAttempts.get(kind)
-  if (current?.signature === signature) return current.key
-  const key = `agency-client:${kind}:${crypto.randomUUID()}`
-  mutationAttempts.set(kind, { signature, key })
-  return key
-}
-
 const saveClient = async () => {
   saving.value = true
   try {
-    const {
-      leadCaptureMode,
-      crmCoreStatus,
-      crmExternalStatus,
-      ...clientPayload
-    } = editForm.value
-    const crmPayload = { leadCaptureMode, crmCoreStatus, crmExternalStatus }
-    const normalizedClientPayload = {
-      ...clientPayload,
-      portalBoardId: clientPayload.portalBoardId === '__none__' ? null : clientPayload.portalBoardId
-    }
-    const requests: Array<Promise<unknown>> = [
-      apiFetch(`/api/agency/clients/${clientId}`, {
-        method: 'PUT',
-        headers: { 'Idempotency-Key': idempotencyKeyFor('client', normalizedClientPayload) },
-        body: normalizedClientPayload
-      })
-    ]
-    if (isManager.value) {
-      requests.push(apiFetch(`/api/agency/clients/${clientId}/crm-settings`, {
-        method: 'PUT',
-        headers: { 'Idempotency-Key': idempotencyKeyFor('crm', crmPayload) },
-        body: crmPayload
-      }))
-    }
-    await Promise.all(requests)
+    await apiFetch(`/api/agency/clients/${clientId}`, {
+      method: 'PUT',
+      body: editForm.value
+    })
     toast.add({ title: 'Client updated', color: 'success' })
-    mutationAttempts.delete('client')
-    mutationAttempts.delete('crm')
     showEditModal.value = false
     await refresh()
+    await refreshFinancials()
   } catch (err: any) {
-    toast.add({ title: 'Failed to update client', description: apiErrorDescription(err), color: 'error' })
+    toast.add({ title: 'Failed to update client', description: err.data?.message || err.message, color: 'error' })
   } finally {
     saving.value = false
   }
 }
 
 const unlinkXero = async () => {
-  const payload = { xeroContactId: null }
   try {
     await apiFetch(`/api/agency/clients/${clientId}`, {
       method: 'PUT',
-      headers: { 'Idempotency-Key': idempotencyKeyFor('unlink', payload) },
-      body: payload
+      body: { xeroContactId: null }
     })
-    mutationAttempts.delete('unlink')
     toast.add({ title: 'Xero contact unlinked', color: 'success' })
-    refresh()
+    await refresh()
+    await refreshFinancials()
   } catch (err: any) {
-    toast.add({ title: 'Failed to unlink', description: apiErrorDescription(err), color: 'error' })
+    toast.add({ title: 'Failed to unlink', description: err.data?.message || err.message, color: 'error' })
   }
 }
 
@@ -259,56 +350,33 @@ const billingTypeOptions = [
   { label: 'Hybrid', value: 'hybrid' }
 ]
 
-const crmModeOptions = [
-  { label: 'Analytics only', value: 'analytics_only' },
-  { label: 'Capture leads', value: 'capture_only' },
-  { label: 'Lightweight CRM', value: 'lightweight_crm' },
-  { label: 'Full CRM', value: 'full_crm' },
-  { label: 'External CRM', value: 'external_crm' }
-]
-
-const crmModeDescriptions: Record<LeadCaptureMode, string> = {
-  analytics_only: 'Measure website and campaign activity without creating canonical lead records.',
-  capture_only: 'Capture, reconcile and attribute leads without creating CRM opportunities.',
-  lightweight_crm: 'Create contacts and opportunities in the streamlined XeroFlow CRM workspace.',
-  full_crm: 'Enable the complete XeroFlow CRM lifecycle, automation and future AI features.',
-  external_crm: 'Capture leads in XeroFlow and deliver them to the client’s connected CRM.'
-}
-
-const entitlementStatusOptions = [
-  { label: 'Trial', value: 'trial' },
-  { label: 'Active', value: 'active' },
-  { label: 'Grace period', value: 'grace' },
-  { label: 'Usage capped', value: 'capped' },
-  { label: 'Overdue', value: 'overdue' },
-  { label: 'Suspended', value: 'suspended' },
-  { label: 'Cancelled', value: 'cancelled' }
-]
-
-// Project columns
-const projectColumns = [
-  { accessorKey: 'name', header: 'Project' },
-  { accessorKey: 'status', header: 'Status' },
-  { accessorKey: 'budget', header: 'Budget' },
-  { accessorKey: 'spent', header: 'Spent' },
-  { accessorKey: 'margin', header: 'Margin' }
-]
-
 // Time entry columns
 const timeColumns = [
   { accessorKey: 'date', header: 'Date' },
-  { accessorKey: 'project', header: 'Project' },
-  { accessorKey: 'user', header: 'Team Member' },
+  { accessorKey: 'projectName', header: 'Project' },
+  { accessorKey: 'userName', header: 'Team member' },
+  { accessorKey: 'description', header: 'Description' },
   { accessorKey: 'hours', header: 'Hours' },
-  { accessorKey: 'amount', header: 'Amount' }
+  { accessorKey: 'labourCost', header: 'Labour cost' },
 ]
 
 // Invoice columns
 const invoiceColumns = [
-  { accessorKey: 'number', header: 'Invoice #' },
+  { accessorKey: 'invoiceNumber', header: 'Invoice #' },
   { accessorKey: 'date', header: 'Date' },
   { accessorKey: 'total', header: 'Total' },
-  { accessorKey: 'status', header: 'Status' }
+  { accessorKey: 'amountDue', header: 'Amount due' },
+  { accessorKey: 'status', header: 'Status' },
+]
+
+const mediaColumns = [
+  { accessorKey: 'campaignName', header: 'Campaign' },
+  { accessorKey: 'platform', header: 'Platform' },
+  { accessorKey: 'projectName', header: 'Project' },
+  { accessorKey: 'budget', header: 'Budget' },
+  { accessorKey: 'actualSpend', header: 'Actual spend' },
+  { accessorKey: 'pacingStatus', header: 'Pacing' },
+  { accessorKey: 'sourceState', header: 'Source' },
 ]
 
 // KPI Targets
@@ -393,136 +461,102 @@ async function saveKpiTargets() {
         </div>
 
         <template v-else-if="client">
-          <!-- Summary Cards -->
-          <!-- Revenue is surfaced by source (project budgets / retainer / commission /
-               invoiced) rather than blended, keeping the headline figure consistent
-               with the clients list + analytics, which both define revenue as project budgets. -->
-          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-3 mb-6">
-            <UCard>
-              <div class="text-center">
-                <p class="text-sm text-muted">
-                  Project Revenue
-                </p>
-                <p class="text-xl font-bold">
-                  {{ formatCurrency(summary.totalRevenue) }}
+          <section aria-labelledby="client-financial-heading" class="mb-6 space-y-4">
+            <div class="flex flex-col gap-4 border-b border-default pb-4 xl:flex-row xl:items-end xl:justify-between">
+              <div class="space-y-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <h2 id="client-financial-heading" class="text-lg font-semibold text-highlighted">
+                    Financial performance
+                  </h2>
+                  <UBadge v-if="currentFinancialData" color="neutral" variant="subtle">
+                    Inclusive period
+                  </UBadge>
+                </div>
+                <p class="max-w-2xl text-sm text-muted">
+                  Reconciled Xero revenue, agency-paid media and delivery cost for one reporting period.
                 </p>
               </div>
-            </UCard>
 
-            <UCard>
-              <div class="text-center">
-                <p class="text-sm text-muted">
-                  Retainer
-                </p>
-                <p class="text-xl font-bold">
-                  <template v-if="summary.retainerAmount > 0">
-                    {{ formatCurrency(summary.retainerAmount) }}<span class="text-sm font-normal text-muted">/mo</span>
-                  </template>
-                  <template v-else>
-                    —
-                  </template>
-                </p>
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between xl:justify-end">
+                <SocialSpendPeriodPicker
+                  v-model:month="financialMonth"
+                  v-model:year="financialYear"
+                  v-model:week-filter="financialWeekFilter"
+                  :show-sync="false"
+                />
+                <UButton
+                  v-if="currentFinancialData?.permissions.canAllocate"
+                  label="Allocate costs"
+                  icon="i-lucide-split"
+                  variant="outline"
+                  @click="showFinancialAllocation = true"
+                />
               </div>
-            </UCard>
+            </div>
 
-            <UCard>
-              <div class="text-center">
-                <p class="text-sm text-muted">
-                  Media Commission
-                </p>
-                <p class="text-xl font-bold">
-                  {{ formatCurrency(summary.totalMediaCommission) }}
-                </p>
-              </div>
-            </UCard>
+            <div
+              v-if="financialPending"
+              class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+              aria-busy="true"
+              aria-label="Loading client financials"
+            >
+              <USkeleton v-for="index in 9" :key="index" class="h-36 w-full rounded-lg" />
+            </div>
 
-            <UCard>
-              <div class="text-center">
-                <p class="text-sm text-muted">
-                  Invoiced
-                </p>
-                <p class="text-xl font-bold">
-                  {{ formatCurrency(summary.totalInvoiced) }}
-                </p>
-              </div>
-            </UCard>
+            <UAlert
+              v-else-if="financialFailed"
+              title="Financial reporting could not be refreshed"
+              description="Retry the reconciled financial read. Website and Measurement remain available while this source is unavailable."
+              color="error"
+              variant="subtle"
+              icon="i-lucide-circle-alert"
+            >
+              <template #actions>
+                <UButton
+                  label="Retry financials"
+                  color="error"
+                  variant="soft"
+                  size="sm"
+                  icon="i-lucide-refresh-cw"
+                  @click="retryFinancials"
+                />
+              </template>
+            </UAlert>
 
-            <UCard>
-              <div class="text-center">
-                <p class="text-sm text-muted">
-                  Total Cost
-                </p>
-                <p class="text-xl font-bold">
-                  {{ formatCurrency(summary.totalCost) }}
-                </p>
-              </div>
-            </UCard>
+            <template v-else-if="currentFinancialData">
+              <ClientsClientFinancialSummary
+                :summary="currentFinancialData.summary"
+                :allocation-coverage="currentFinancialData.allocationCoverage"
+                :freshness="currentFinancialData.freshness"
+              />
 
-            <UCard>
-              <div class="text-center">
-                <p class="text-sm text-muted">
-                  Gross Profit
-                </p>
-                <p class="text-xl font-bold" :class="summary.grossProfit >= 0 ? 'text-emerald-500' : 'text-red-500'">
-                  {{ formatCurrency(summary.grossProfit) }}
-                </p>
-              </div>
-            </UCard>
+              <UAlert
+                v-if="financialPeriodEmpty"
+                title="No financial activity in this period"
+                description="The connected sources returned a confirmed empty result for the inclusive reporting period."
+                color="neutral"
+                variant="subtle"
+                icon="i-lucide-calendar-x"
+              />
 
-            <UCard>
-              <div class="text-center">
-                <p class="text-sm text-muted">
-                  Margin
-                </p>
-                <UBadge :color="getMarginColor(summary.grossMargin)" size="lg">
-                  {{ formatPercent(summary.grossMargin) }}
-                </UBadge>
-              </div>
-            </UCard>
-
-            <UCard>
-              <div class="text-center">
-                <p class="text-sm text-muted">
-                  Total Hours
-                </p>
-                <p class="text-xl font-bold">
-                  {{ (summary.totalHours ?? 0).toFixed(1) }}h
-                </p>
-              </div>
-            </UCard>
-
-            <UCard>
-              <div class="text-center">
-                <p class="text-sm text-muted">
-                  Projects
-                </p>
-                <p class="text-xl font-bold">
-                  <span class="text-emerald-500">{{ summary.activeProjects }}</span>
-                  <span class="text-dimmed"> / {{ summary.totalProjects }}</span>
-                </p>
-              </div>
-            </UCard>
-          </div>
+              <ClientsClientFinancialWarnings
+                :warnings="summaryWarnings"
+                :reconciliation="currentFinancialData.reconciliation"
+              />
+            </template>
+          </section>
 
           <!-- Tabs -->
           <UTabs
             v-model="activeTab"
-            :items="[
-              { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard' },
-              { label: 'Projects', value: 'projects', icon: 'i-lucide-folder', badge: projects.length.toString() },
-              { label: 'Time Entries', value: 'time', icon: 'i-lucide-clock' },
-              { label: 'Invoices', value: 'invoices', icon: 'i-lucide-receipt' },
-              { label: 'Media Spend', value: 'media', icon: 'i-lucide-megaphone' },
-              { label: 'Website', value: 'website', icon: 'i-lucide-radio' },
-              ...(canAccessMediaBuying ? [{ label: 'Measurement', value: 'measurement', icon: 'i-lucide-activity' }] : [])
-            ]"
+            :items="tabItems"
             class="mb-6"
           />
 
           <!-- Overview Tab -->
           <div v-if="activeTab === 'overview'" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <!-- Client Info -->
-            <UCard>
+            <UCard class="lg:col-span-2">
               <template #header>
                 <h3 class="font-semibold">
                   Client Information
@@ -602,50 +636,6 @@ async function saveKpiTargets() {
                   </dd>
                 </div>
               </dl>
-            </UCard>
-
-            <!-- Recent Projects -->
-            <UCard class="lg:col-span-2">
-              <template #header>
-                <div class="flex items-center justify-between">
-                  <h3 class="font-semibold">
-                    Active Projects
-                  </h3>
-                  <UButton
-                    variant="ghost"
-                    size="xs"
-                    label="View All"
-                    @click="activeTab = 'projects'"
-                  />
-                </div>
-              </template>
-              <div class="space-y-3">
-                <div
-                  v-for="project in projects.filter(p => p.status === 'active').slice(0, 5)"
-                  :key="project.id"
-                  class="flex items-center justify-between p-3 rounded-lg bg-elevated"
-                >
-                  <div>
-                    <NuxtLink :to="`/agency/projects/${project.id}`" class="font-medium hover:text-primary-500">
-                      {{ project.name }}
-                    </NuxtLink>
-                    <p class="text-sm text-muted">
-                      {{ formatCurrency(project.budgetAmount) }} budget
-                    </p>
-                  </div>
-                  <div class="text-right">
-                    <p class="font-medium">
-                      {{ formatCurrency(project.totalCost) }} spent
-                    </p>
-                    <UBadge :color="getMarginColor(project.margin)" variant="subtle" size="xs">
-                      {{ formatPercent(project.margin) }} margin
-                    </UBadge>
-                  </div>
-                </div>
-                <div v-if="projects.filter(p => p.status === 'active').length === 0" class="text-center text-muted py-4">
-                  No active projects
-                </div>
-              </div>
             </UCard>
 
             <!-- Account Team -->
@@ -793,156 +783,280 @@ async function saveKpiTargets() {
           </div>
 
           <!-- Projects Tab -->
-          <div v-if="activeTab === 'projects'">
-            <UCard>
-              <UTable :data="projects" :columns="projectColumns">
-                <template #name-cell="{ row: r }">
-                  <NuxtLink :to="`/agency/projects/${(r as any).id}`" class="font-medium hover:text-primary-500">
-                    {{ (r as any).name }}
-                  </NuxtLink>
-                </template>
-
-                <template #status-cell="{ row: r }">
-                  <UBadge :color="getProjectStatusColor((r as any).status)" variant="subtle">
-                    {{ (r as any).status }}
-                  </UBadge>
-                </template>
-
-                <template #budget-cell="{ row: r }">
-                  {{ formatCurrency((r as any).budgetAmount) }}
-                </template>
-
-                <template #spent-cell="{ row: r }">
-                  {{ formatCurrency((r as any).totalCost) }}
-                </template>
-
-                <template #margin-cell="{ row: r }">
-                  <UBadge :color="getMarginColor((r as any).margin)" variant="subtle">
-                    {{ formatPercent((r as any).margin) }}
-                  </UBadge>
-                </template>
-              </UTable>
-
-              <div v-if="projects.length === 0" class="text-center text-muted py-8">
-                No projects yet
-              </div>
-            </UCard>
-          </div>
+          <section v-if="activeTab === 'projects'" aria-label="Project financials" class="space-y-4">
+            <ClientsClientProjectFinancialTable
+              v-if="financialPending"
+              :projects="[]"
+              pending
+            />
+            <UAlert
+              v-else-if="financialFailed"
+              title="Project financials are unavailable"
+              description="Retry the financial façade above to load reconciled project results."
+              color="error"
+              variant="subtle"
+              icon="i-lucide-folder-x"
+            />
+            <template v-else-if="currentFinancialData">
+              <ClientsClientProjectFinancialTable :projects="financialProjects" />
+              <UAlert
+                v-if="financialProjects.length === 0"
+                title="No projects to report"
+                description="This client has no project rows in the selected reporting context."
+                color="neutral"
+                variant="subtle"
+                icon="i-lucide-folder-open"
+              />
+            </template>
+          </section>
 
           <!-- Time Entries Tab -->
-          <div v-if="activeTab === 'time'">
-            <UCard>
-              <UTable :data="recentTimeEntries" :columns="timeColumns">
-                <template #date-cell="{ row: r }">
-                  {{ formatDate((r as any).date) }}
-                </template>
+          <section v-if="activeTab === 'time'" aria-labelledby="time-entries-heading" class="space-y-4">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 id="time-entries-heading" class="text-base font-semibold text-highlighted">Time entries</h3>
+              <UBadge v-if="financialActivity" color="neutral" variant="subtle">
+                {{ financialActivity.totalTimeEntries }} in period
+              </UBadge>
+            </div>
 
-                <template #project-cell="{ row: r }">
-                  {{ (r as any).projectName }}
-                </template>
+            <USkeleton v-if="financialPending" class="h-72 w-full rounded-lg" aria-label="Loading time entries" />
+            <UAlert
+              v-else-if="financialFailed"
+              title="Time entries are unavailable"
+              description="Retry the financial façade above to load selected-period activity."
+              color="error"
+              variant="subtle"
+              icon="i-lucide-clock-alert"
+            />
+            <template v-else-if="currentFinancialData && financialActivity">
+              <UAlert
+                v-if="isSourceUnavailable(timeFreshness)"
+                title="Time-entry source unavailable"
+                :description="timeFreshness?.label || 'The time-entry source could not confirm this period.'"
+                color="error"
+                variant="subtle"
+                icon="i-lucide-clock-alert"
+              />
+              <UAlert
+                v-else-if="isSourcePartial(timeFreshness)"
+                title="Time-entry activity is partial"
+                :description="timeFreshness?.label || 'Only part of the selected period is available.'"
+                color="warning"
+                variant="subtle"
+                icon="i-lucide-triangle-alert"
+              />
+              <UAlert
+                v-if="financialActivity.truncated"
+                title="Time-entry activity is truncated"
+                :description="`Showing ${financialActivity.timeEntries.length} of ${financialActivity.totalTimeEntries} entries. Narrow the reporting period to review all activity.`"
+                color="warning"
+                variant="subtle"
+                icon="i-lucide-list-end"
+              />
 
-                <template #user-cell="{ row: r }">
-                  {{ (r as any).userName }}
-                </template>
+              <UCard v-if="!isSourceUnavailable(timeFreshness)">
+                <UTable :data="financialActivity.timeEntries" :columns="timeColumns">
+                  <template #date-cell="{ row }">
+                    {{ formatDate(row.original.date) }}
+                  </template>
+                  <template #projectName-cell="{ row }">
+                    <span class="font-medium text-highlighted">{{ row.original.projectName }}</span>
+                  </template>
+                  <template #userName-cell="{ row }">
+                    {{ row.original.userName || 'Unassigned' }}
+                  </template>
+                  <template #description-cell="{ row }">
+                    <span class="text-muted">{{ row.original.description || '—' }}</span>
+                  </template>
+                  <template #hours-cell="{ row }">
+                    <span class="tabular-nums">{{ formatHours(row.original.hours) }}</span>
+                  </template>
+                  <template #labourCost-cell="{ row }">
+                    <span class="tabular-nums">{{ formatCurrency(row.original.labourCost) }}</span>
+                  </template>
+                </UTable>
 
-                <template #hours-cell="{ row: r }">
-                  {{ (r as any).hours }}h
-                </template>
-
-                <template #amount-cell="{ row: r }">
-                  {{ formatCurrency((r as any).amount) }}
-                </template>
-              </UTable>
-
-              <div v-if="recentTimeEntries.length === 0" class="text-center text-muted py-8">
-                No time entries yet
-              </div>
-            </UCard>
-          </div>
+                <div
+                  v-if="financialActivity.timeEntries.length === 0"
+                  role="status"
+                  class="py-8 text-center text-sm text-muted"
+                >
+                  No time entries in the selected period
+                </div>
+              </UCard>
+            </template>
+          </section>
 
           <!-- Invoices Tab -->
-          <div v-if="activeTab === 'invoices'">
-            <UCard>
-              <UTable :data="invoices" :columns="invoiceColumns">
-                <template #number-cell="{ row: r }">
-                  <span class="font-medium">{{ (r as any).invoiceNumber }}</span>
-                </template>
+          <section v-if="activeTab === 'invoices'" aria-labelledby="invoices-heading" class="space-y-4">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 id="invoices-heading" class="text-base font-semibold text-highlighted">Xero invoice headers</h3>
+              <UBadge v-if="financialActivity" color="neutral" variant="subtle">
+                {{ financialActivity.invoices.length }} in period
+              </UBadge>
+            </div>
 
-                <template #date-cell="{ row: r }">
-                  {{ formatDate((r as any).issueDate) }}
-                </template>
+            <USkeleton v-if="financialPending" class="h-72 w-full rounded-lg" aria-label="Loading Xero invoices" />
+            <UAlert
+              v-else-if="financialFailed"
+              title="Xero invoice headers are unavailable"
+              description="Retry the financial façade above to load invoice activity."
+              color="error"
+              variant="subtle"
+              icon="i-lucide-receipt-text"
+            />
+            <template v-else-if="currentFinancialData && financialActivity">
+              <UAlert
+                v-if="isSourceUnavailable(invoiceFreshness)"
+                title="Xero invoice source unavailable"
+                :description="invoiceFreshness?.label || 'Xero could not confirm invoice headers for this period.'"
+                color="error"
+                variant="subtle"
+                icon="i-lucide-unplug"
+              />
+              <UAlert
+                v-else-if="isSourcePartial(invoiceFreshness)"
+                title="Xero invoice activity is partial"
+                :description="invoiceFreshness?.label || 'Only part of the selected period is available.'"
+                color="warning"
+                variant="subtle"
+                icon="i-lucide-triangle-alert"
+              />
 
-                <template #total-cell="{ row: r }">
-                  {{ formatCurrency((r as any).total) }}
-                </template>
+              <UCard v-if="!isSourceUnavailable(invoiceFreshness)">
+                <UTable :data="financialActivity.invoices" :columns="invoiceColumns">
+                  <template #invoiceNumber-cell="{ row }">
+                    <span class="font-medium text-highlighted">{{ row.original.invoiceNumber }}</span>
+                  </template>
+                  <template #date-cell="{ row }">
+                    {{ formatDate(row.original.date) }}
+                  </template>
+                  <template #total-cell="{ row }">
+                    <span class="tabular-nums">{{ formatCurrency(row.original.total, row.original.currency) }}</span>
+                  </template>
+                  <template #amountDue-cell="{ row }">
+                    <span class="tabular-nums">{{ formatCurrency(row.original.amountDue, row.original.currency) }}</span>
+                  </template>
+                  <template #status-cell="{ row }">
+                    <UBadge :color="getInvoiceStatusColor(row.original.status)" variant="subtle">
+                      {{ row.original.status }}
+                    </UBadge>
+                  </template>
+                </UTable>
 
-                <template #status-cell="{ row: r }">
-                  <UBadge :color="getInvoiceStatusColor((r as any).status)" variant="subtle">
-                    {{ (r as any).status }}
-                  </UBadge>
-                </template>
-              </UTable>
-
-              <div v-if="invoices.length === 0" class="text-center text-muted py-8">
-                No invoices yet
-              </div>
-            </UCard>
-          </div>
+                <div
+                  v-if="financialActivity.invoices.length === 0"
+                  role="status"
+                  class="py-8 text-center text-sm text-muted"
+                >
+                  No Xero invoice headers in the selected period
+                </div>
+              </UCard>
+            </template>
+          </section>
 
           <!-- Media Spend Tab -->
-          <div v-if="activeTab === 'media'">
-            <UCard>
-              <div class="mb-4 p-4 bg-elevated rounded-lg">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <p class="text-sm text-muted">
-                      Total Media Spend
-                    </p>
-                    <p class="text-2xl font-bold">
-                      {{ formatCurrency(summary.totalMediaSpend) }}
-                    </p>
-                  </div>
-                  <div v-if="summary.totalMediaCommission > 0">
-                    <p class="text-sm text-muted">
-                      Est. Commission
-                    </p>
-                    <p class="text-2xl font-bold text-emerald-500">
-                      {{ formatCurrency(summary.totalMediaCommission) }}
-                    </p>
-                  </div>
-                </div>
-              </div>
+          <section v-if="activeTab === 'media'" aria-labelledby="media-spend-heading" class="space-y-4">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 id="media-spend-heading" class="text-base font-semibold text-highlighted">Campaign media spend</h3>
+              <UBadge
+                v-if="mediaFreshness"
+                :color="mediaFreshness.status === 'fresh' ? 'success' : mediaFreshness.status === 'partial' ? 'warning' : 'neutral'"
+                variant="subtle"
+              >
+                {{ mediaFreshness.label }}
+              </UBadge>
+            </div>
 
-              <div class="space-y-3">
-                <div
-                  v-for="spend in mediaSpend"
-                  :key="spend.id"
-                  class="flex items-center justify-between p-3 rounded-lg border border-default"
-                >
-                  <div>
-                    <p class="font-medium">
-                      {{ spend.platform }}
-                    </p>
-                    <p class="text-sm text-muted">
-                      {{ spend.period }}
-                    </p>
-                  </div>
-                  <div class="text-right">
-                    <p class="font-medium">
-                      {{ formatCurrency(spend.actualSpend) }}
-                    </p>
-                    <p class="text-sm text-emerald-500">
-                      +{{ formatCurrency(spend.commission) }} commission
-                    </p>
-                  </div>
-                </div>
-              </div>
+            <USkeleton v-if="financialPending" class="h-72 w-full rounded-lg" aria-label="Loading media spend" />
+            <UAlert
+              v-else-if="financialFailed"
+              title="Media spend is unavailable"
+              description="Retry the financial façade above to load campaign activity."
+              color="error"
+              variant="subtle"
+              icon="i-lucide-megaphone-off"
+            />
+            <template v-else-if="currentFinancialData && financialActivity">
+              <UAlert
+                v-if="mediaFreshness?.status === 'not_connected'"
+                title="No media account connected"
+                description="Connect a media account or add confirmed manual media data before relying on campaign spend."
+                color="neutral"
+                variant="subtle"
+                icon="i-lucide-unplug"
+              />
+              <UAlert
+                v-else-if="mediaFreshness?.status === 'unavailable'"
+                title="Media source unavailable"
+                :description="mediaFreshness.label || 'Campaign spend could not be confirmed for this period.'"
+                color="error"
+                variant="subtle"
+                icon="i-lucide-circle-alert"
+              />
+              <UAlert
+                v-else-if="mediaFreshness?.status === 'partial' || mediaFreshness?.status === 'stale'"
+                title="Media spend is partial"
+                :description="mediaFreshness.label || 'Only part of the selected period is available.'"
+                color="warning"
+                variant="subtle"
+                icon="i-lucide-triangle-alert"
+              />
 
-              <div v-if="mediaSpend.length === 0" class="text-center text-muted py-8">
-                No media spend tracked
-              </div>
-            </UCard>
-          </div>
+              <UAlert
+                v-if="mediaConfirmedZero"
+                title="Connected with confirmed zero spend"
+                description="The connected media source returned $0 and no campaign activity for this reporting period."
+                color="success"
+                variant="subtle"
+                icon="i-lucide-badge-check"
+              />
+              <UAlert
+                v-else-if="financialActivity.mediaCampaigns.length === 0 && !isSourceUnavailable(mediaFreshness)"
+                title="No campaign rows in this period"
+                description="The media source returned no campaign-level activity for the selected inclusive dates."
+                color="neutral"
+                variant="subtle"
+                icon="i-lucide-megaphone-off"
+              />
+
+              <UCard v-if="financialActivity.mediaCampaigns.length > 0">
+                <div class="overflow-x-auto">
+                  <UTable :data="financialActivity.mediaCampaigns" :columns="mediaColumns" class="min-w-[820px]">
+                    <template #campaignName-cell="{ row }">
+                      <span class="font-medium text-highlighted">{{ row.original.campaignName }}</span>
+                    </template>
+                    <template #platform-cell="{ row }">
+                      {{ row.original.platform }}
+                    </template>
+                    <template #projectName-cell="{ row }">
+                      <span :class="row.original.projectName ? 'text-default' : 'text-muted'">
+                        {{ row.original.projectName || 'Unallocated' }}
+                      </span>
+                    </template>
+                    <template #budget-cell="{ row }">
+                      <span class="tabular-nums">
+                        {{ row.original.budget === null ? 'Not set' : formatCurrency(row.original.budget) }}
+                      </span>
+                    </template>
+                    <template #actualSpend-cell="{ row }">
+                      <span class="tabular-nums">{{ formatCampaignSpend(row.original) }}</span>
+                    </template>
+                    <template #pacingStatus-cell="{ row }">
+                      <span :class="row.original.pacingStatus ? 'text-default' : 'text-muted'">
+                        {{ formatStatusLabel(row.original.pacingStatus) }}
+                      </span>
+                    </template>
+                    <template #sourceState-cell="{ row }">
+                      <UBadge :color="getMediaSourceColor(row.original.sourceState)" variant="subtle">
+                        {{ getMediaSourceLabel(row.original.sourceState) }}
+                      </UBadge>
+                    </template>
+                  </UTable>
+                </div>
+              </UCard>
+            </template>
+          </section>
 
           <!-- Website analytics Tab -->
           <div v-if="activeTab === 'website'">
@@ -995,7 +1109,7 @@ async function saveKpiTargets() {
         </h3>
       </template>
       <template #body>
-        <form class="@container px-1 space-y-6" @submit.prevent="saveClient">
+        <form class="px-1 space-y-6" @submit.prevent="saveClient">
           <!-- Section: General -->
           <fieldset class="space-y-5 pb-6 border-b border-default">
             <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
@@ -1011,7 +1125,7 @@ async function saveKpiTargets() {
               />
             </UFormField>
 
-            <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+            <div class="grid grid-cols-2 gap-4">
               <UFormField label="Billing Type">
                 <USelectMenu
                   v-model="editForm.billingType"
@@ -1039,109 +1153,13 @@ async function saveKpiTargets() {
             </div>
           </fieldset>
 
-          <fieldset class="space-y-5 pb-6 border-b border-default">
-            <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
-              Client portal
-            </legend>
-
-            <UFormField
-              label="Linked board"
-              help="Portal users see a read-only view containing only work attached to this client's projects."
-            >
-              <USelectMenu
-                v-model="editForm.portalBoardId"
-                :items="portalBoardOptions"
-                value-key="value"
-                size="xl"
-                class="w-full"
-              />
-            </UFormField>
-
-            <UAlert
-              color="neutral"
-              variant="subtle"
-              icon="i-lucide-shield-check"
-              title="Client-scoped visibility"
-              description="Other clients' tasks and internal board items without a matching client project are never exposed."
-            />
-          </fieldset>
-
-          <fieldset class="space-y-5 pb-6 border-b border-default">
-            <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
-              Lead capture & CRM
-            </legend>
-
-            <UFormField label="Operating mode">
-              <USelectMenu
-                v-model="editForm.leadCaptureMode"
-                :items="crmModeOptions"
-                value-key="value"
-                size="xl"
-                class="w-full"
-                :disabled="!isManager"
-              />
-              <template #hint>
-                <span class="text-xs text-muted">
-                  {{ crmModeDescriptions[editForm.leadCaptureMode] }}
-                </span>
-              </template>
-            </UFormField>
-
-            <UFormField
-              v-if="['lightweight_crm', 'full_crm'].includes(editForm.leadCaptureMode)"
-              label="XeroFlow CRM access"
-            >
-              <USelectMenu
-                v-model="editForm.crmCoreStatus"
-                :items="entitlementStatusOptions"
-                value-key="value"
-                size="xl"
-                class="w-full"
-                :disabled="!isManager"
-              />
-              <template #hint>
-                <span class="text-xs text-muted">
-                  Trial, active and grace-period access can promote captured leads into CRM.
-                </span>
-              </template>
-            </UFormField>
-
-            <UFormField
-              v-if="editForm.leadCaptureMode === 'external_crm'"
-              label="External CRM delivery"
-            >
-              <USelectMenu
-                v-model="editForm.crmExternalStatus"
-                :items="entitlementStatusOptions"
-                value-key="value"
-                size="xl"
-                class="w-full"
-                :disabled="!isManager"
-              />
-              <template #hint>
-                <span class="text-xs text-muted">
-                  Suspending delivery never stops canonical lead capture or attribution.
-                </span>
-              </template>
-            </UFormField>
-
-            <UAlert
-              v-if="!isManager"
-              color="neutral"
-              variant="subtle"
-              icon="i-lucide-lock"
-              title="Management access required"
-              description="Only management users can change lead capture and CRM entitlement settings."
-            />
-          </fieldset>
-
           <!-- Section: Contact -->
           <fieldset class="space-y-5 pb-6 border-b border-default">
             <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
               Contact
             </legend>
 
-            <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+            <div class="grid grid-cols-2 gap-4">
               <UFormField label="Contact Email">
                 <UInput
                   v-model="editForm.contactEmail"
@@ -1188,7 +1206,7 @@ async function saveKpiTargets() {
               Rates
             </legend>
 
-            <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+            <div class="grid grid-cols-2 gap-4">
               <UFormField label="Hourly Rate">
                 <UInput
                   v-model.number="editForm.hourlyRate"
@@ -1287,5 +1305,15 @@ async function saveKpiTargets() {
         </div>
       </template>
     </USlideover>
+
+    <ClientsClientFinancialAllocationSlideover
+      v-if="currentFinancialData?.permissions.canAllocate"
+      v-model:open="showFinancialAllocation"
+      :client-id="clientId"
+      :sources="currentFinancialData.sources ?? []"
+      :tracking="currentFinancialData.tracking"
+      :projects="currentFinancialData.projects"
+      @allocated="handleFinancialAllocated"
+    />
   </div>
 </template>
