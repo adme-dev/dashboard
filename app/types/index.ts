@@ -1,6 +1,30 @@
 import type { AvatarProps } from '@nuxt/ui'
 import type { EmailSafeEvidence } from '../../shared/leads/email/contracts'
 
+export type {
+  ClientFinancialMediaCampaign,
+  ClientFinancialSummary,
+  ClientFinancialTimeEntry,
+  ClientFinancialsResponse,
+  ClientProjectFinancialRow,
+  ClientXeroInvoiceRow,
+  FinancialAllocatableSourceType,
+  FinancialAllocationCoverage,
+  FinancialAllocationCoverageEntry,
+  FinancialAllocationMutation,
+  FinancialAllocationResult,
+  FinancialAllocationSource,
+  FinancialDataSource,
+  FinancialMarginReason,
+  FinancialProjectCoverage,
+  FinancialReconciliation,
+  FinancialSourceFreshness,
+  FinancialSourceWarning,
+  FinancialTrackingOption,
+  FinancialUnallocatedSummary,
+  FinancialWarningCode,
+} from '~~/shared/types/clientFinancials'
+
 // ============================================
 // User Types
 // ============================================
