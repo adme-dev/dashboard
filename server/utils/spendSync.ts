@@ -1765,7 +1765,7 @@ export async function syncBreakdowns(platform: string, connectionId: string, mon
       const segments = ['age', 'gender', 'device', 'geo'] as const
 
       // Detect MCC for login-customer-id
-      let mccId: string | undefined = conn.metadata?.managerCustomerId || undefined
+      let mccId: string | undefined = conn.metadata?.managerCustomerId || config.googleAdsLoginCustomerId || undefined // metadata → configured MCC → discovery
       try {
         if (!mccId) {
           const { listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
@@ -1909,7 +1909,7 @@ export async function syncCreatives(platform: string, connectionId: string, mont
     const { getCampaignAdAssets } = await import('~~/server/utils/googleAdsClient')
     const config = useRuntimeConfig()
 
-    let mccId: string | undefined = conn.metadata?.managerCustomerId || undefined
+    let mccId: string | undefined = conn.metadata?.managerCustomerId || config.googleAdsLoginCustomerId || undefined // metadata → configured MCC → discovery
     try {
       if (!mccId) {
         const { listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')

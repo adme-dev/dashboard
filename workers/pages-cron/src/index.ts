@@ -92,6 +92,10 @@ export const ROUTES: Record<string, string[]> = {
   '45 21 * * *': ['/api/cron/sync-spend'],
   // 90 minutes after the pre-morning slot — page if provider rows did not move.
   '15 23 * * *': ['/api/cron/spend-sync-monitor'],
+  // daily 22:15 UTC (08:15 Melbourne) — ad creative text (headlines/descriptions) into
+  // campaign_creatives after the pre-morning spend sync, so get_ad_creative_text and the
+  // offer-expiry sweep read scheduled data instead of relying on per-call read-through.
+  '15 22 * * *': ['/api/cron/sync-ad-creatives'],
   // daily 20:15 UTC (06:15 AEST) — import account-wide Google Ads call_view records after
   // the main spend sync. Status and duration come from Google and are never
   // inferred from browser phone-link clicks.
