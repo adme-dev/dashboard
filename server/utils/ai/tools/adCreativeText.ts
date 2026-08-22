@@ -33,19 +33,51 @@ export type AdCreativeTextRow = {
 
 export type AdCreativeTextDeps = {
   load: (args: Args) => Promise<AdCreativeTextRow[]>
+  /** media_spend ids in scope that have no campaign_creatives rows yet (bounded by CREATIVE_SYNC_TARGET_CAP). */
+  findUnsynced: (args: Args) => Promise<string[]>
+  /** Read-through provider fetch for one media_spend row. */
+  syncCreatives: (mediaSpendId: string) => Promise<{ syncedRows: number, error: string | null }>
+}
+
+/** Read-through sync fan-out cap per call; declared in the `sync` block of the response. */
+export const CREATIVE_SYNC_TARGET_CAP = 20
+
+function scopeConditions(args: Args): { conditions: string[], values: unknown[] } {
+  const conditions = [`ms.platform = $1`]
+  const values: unknown[] = [args.platform === 'google' ? 'google_ads' : 'meta']
+  const add = (condition: string, value: unknown) => {
+    values.push(value)
+    conditions.push(condition.replace('?', `$${values.length}`))
+  }
+  if (args.clientId) add('ms.client_id = ?::uuid', args.clientId)
+  if (args.campaignId) add('ms.campaign_id = ?', args.campaignId)
+  if (args.campaignName) add(`ms.campaign_name ILIKE ? ESCAPE '\\'`, `%${escapeLike(args.campaignName)}%`)
+  return { conditions, values }
 }
 
 const defaultDeps: AdCreativeTextDeps = {
+  findUnsynced: async (args) => {
+    const { conditions, values } = scopeConditions(args)
+    values.push(CREATIVE_SYNC_TARGET_CAP)
+    const rows = await queryRows<{ id: string }>(
+      `SELECT ms.id
+         FROM media_spend ms
+        WHERE ${conditions.join(' AND ')}
+          AND ms.connection_id IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM campaign_creatives cc WHERE cc.media_spend_id = ms.id)
+        ORDER BY ms.synced_at DESC NULLS LAST
+        LIMIT $${values.length}`,
+      values
+    )
+    return rows.map(r => r.id)
+  },
+  syncCreatives: async (mediaSpendId) => {
+    const { syncCampaignCreatives } = await import('~~/server/utils/onDemandSync')
+    const result = await syncCampaignCreatives(mediaSpendId)
+    return { syncedRows: result.syncedRows, error: result.error ?? null }
+  },
   load: async (args) => {
-    const conditions = [`ms.platform = $1`]
-    const values: unknown[] = [args.platform === 'google' ? 'google_ads' : 'meta']
-    const add = (condition: string, value: unknown) => {
-      values.push(value)
-      conditions.push(condition.replace('?', `$${values.length}`))
-    }
-    if (args.clientId) add('ms.client_id = ?::uuid', args.clientId)
-    if (args.campaignId) add('ms.campaign_id = ?', args.campaignId)
-    if (args.campaignName) add(`ms.campaign_name ILIKE ? ESCAPE '\\'`, `%${escapeLike(args.campaignName)}%`)
+    const { conditions, values } = scopeConditions(args)
     values.push(AD_CREATIVE_TEXT_CAP + 1)
     return await queryRows<AdCreativeTextRow>(
       `SELECT DISTINCT ON (COALESCE(cc.ad_id, cc.creative_id), ms.campaign_id)
@@ -73,6 +105,24 @@ const defaultDeps: AdCreativeTextDeps = {
 
 export async function getAdCreativeText(args: Args, _ctx: ToolContext, deps: AdCreativeTextDeps = defaultDeps): Promise<ToolResult> {
   try {
+    // Read-through (mirrors get_ad_breakdown): nothing populates campaign_creatives on a schedule, so
+    // campaigns in scope with no stored creatives are fetched from the provider before we answer.
+    const unsynced = await deps.findUnsynced(args).catch(() => [] as string[])
+    const syncResults = await Promise.all(unsynced.map(async (id) => {
+      try {
+        return await deps.syncCreatives(id)
+      } catch (err) {
+        return { syncedRows: 0, error: err instanceof Error ? err.message : String(err) }
+      }
+    }))
+    const syncErrors = [...new Set(syncResults.map(r => r.error).filter((e): e is string => !!e))]
+    const sync = {
+      attempted: unsynced.length,
+      succeeded: syncResults.filter(r => r.syncedRows > 0).length,
+      failed: syncResults.filter(r => r.syncedRows === 0).length,
+      targetCap: CREATIVE_SYNC_TARGET_CAP,
+      errors: syncErrors.slice(0, 3),
+    }
     const rows = await deps.load(args)
     const truncated = rows.length > AD_CREATIVE_TEXT_CAP
     const visible = truncated ? rows.slice(0, AD_CREATIVE_TEXT_CAP) : rows
@@ -99,9 +149,12 @@ export async function getAdCreativeText(args: Args, _ctx: ToolContext, deps: AdC
       limit: AD_CREATIVE_TEXT_CAP,
       moreAtLeast: truncated ? 1 : 0,
       truncated,
+      sync,
       coverageNote: truncated
         ? 'The source cap was reached; narrow by campaignId before running an offer-expiry sweep.'
-        : 'All creative rows currently synced for the selected scope are included.',
+        : sync.failed > 0
+          ? `Creatives for ${sync.failed} campaign(s) in scope could not be fetched from the provider${syncErrors.length ? ` (${syncErrors.slice(0, 3).join('; ')})` : ''}; rows for those campaigns are absent, not empty.`
+          : 'All creative rows currently synced for the selected scope are included.',
     })
   } catch {
     return fail('Could not load live ad creative text.', 'AD_CREATIVE_TEXT_FAILED')

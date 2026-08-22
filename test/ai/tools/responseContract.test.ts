@@ -158,5 +158,28 @@ describe('MCP response contract helpers', () => {
       expect(result.halted).toBe(true)
       expect(result.halted && result.haltReason).toBe('stale_coverage_baseline')
     })
+
+    it('BF-2: a platform-scoped read ignores another platform\'s stale baseline', () => {
+      const coverageDelta = {
+        meta: { deltaPct: 0, staleBaseline: true },
+        google: { deltaPct: 0, staleBaseline: false },
+      }
+      const scoped = evaluateHalt(fresh('2026-08-20T11:00:00Z'), { haltAfterHours: PACING_HALT_HOURS, now, coverageDelta, platform: 'google' })
+      expect(scoped.halted).toBe(false)
+      const metaScoped = evaluateHalt(fresh('2026-08-20T11:00:00Z'), { haltAfterHours: PACING_HALT_HOURS, now, coverageDelta, platform: 'meta' })
+      expect(metaScoped.halted && metaScoped.haltReason).toBe('stale_coverage_baseline')
+      const unscoped = evaluateHalt(fresh('2026-08-20T11:00:00Z'), { haltAfterHours: PACING_HALT_HOURS, now, coverageDelta })
+      expect(unscoped.halted).toBe(true)
+      expect(unscoped.halted && unscoped.haltDetail).toMatch(/for meta;/)
+      expect(unscoped.halted && unscoped.haltDetail).not.toMatch(/google/)
+    })
+
+    it('BF-2: platform scoping also applies to coverage drops and tolerates the google_ads alias', () => {
+      const coverageDelta = { meta: { deltaPct: -80, staleBaseline: false }, google: { deltaPct: 1, staleBaseline: false } }
+      const scoped = evaluateHalt(fresh('2026-08-20T11:00:00Z'), { haltAfterHours: PACING_HALT_HOURS, now, coverageDelta, platform: 'google_ads' })
+      expect(scoped.halted).toBe(false)
+      const all = evaluateHalt(fresh('2026-08-20T11:00:00Z'), { haltAfterHours: PACING_HALT_HOURS, now, coverageDelta, platform: 'all' })
+      expect(all.halted && all.haltReason).toBe('coverage_drop')
+    })
   })
 })

@@ -35,6 +35,8 @@ export type SpendSyncJobRow = {
 
 export type AdspendSyncDeps = {
   reserveCooldown: (platform: Platform, userId: string) => Promise<{ accepted: boolean, nextAllowedAt: string }>
+  /** Releases a reservation whose start never produced a job, so a failed start does not burn the cooldown. */
+  releaseCooldown: (userId: string) => Promise<void>
   startPlatform: (platform: JobPlatform, ctx: ToolContext) => Promise<StartedJob>
   loadJobs: (ids: string[], userId: string) => Promise<SpendSyncJobRow[]>
   now: () => Date
@@ -61,6 +63,15 @@ async function reserveCooldown(platform: Platform, userId: string) {
   return { accepted: false, nextAllowedAt: existing?.next_allowed_at ?? new Date().toISOString() }
 }
 
+async function releaseCooldown(userId: string): Promise<void> {
+  await queryOne(
+    `UPDATE mcp_adspend_sync_cooldown
+        SET next_allowed_at = NOW(), updated_at = NOW()
+      WHERE key = $1 AND started_by = $2::uuid AND next_allowed_at > NOW()`,
+    [COOLDOWN_KEY, userId]
+  )
+}
+
 async function startPlatform(platform: JobPlatform, ctx: ToolContext): Promise<StartedJob> {
   return await aiInternalFetch<StartedJob>(`/api/agency/social/${platform}/sync-spend`, { method: 'POST', body: {} }, ctx)
 }
@@ -71,13 +82,31 @@ async function loadJobs(ids: string[], userId: string): Promise<SpendSyncJobRow[
             started_at::text, finished_at::text, total_accounts, processed_accounts,
             coverage_failed
        FROM spend_sync_jobs
-      WHERE id = ANY($1::uuid[]) AND started_by = $2::uuid
+      WHERE id = ANY($1::uuid[]) AND started_by = $2
       ORDER BY started_at`,
     [ids, userId]
   )
 }
 
-const defaultDeps: AdspendSyncDeps = { reserveCooldown, startPlatform, loadJobs, now: () => new Date() }
+const defaultDeps: AdspendSyncDeps = { reserveCooldown, releaseCooldown, startPlatform, loadJobs, now: () => new Date() }
+
+/** Turns a thrown fetch/H3 error into a one-line operator-readable reason (status + message + provider body when present). */
+function describeError(err: unknown): string {
+  if (!err || typeof err !== 'object') return String(err ?? 'Unknown error')
+  const e = err as { statusCode?: number, status?: number, statusMessage?: string, message?: string, data?: unknown }
+  const status = e.statusCode ?? e.status
+  const parts: string[] = []
+  if (status) parts.push(`HTTP ${status}`)
+  const detail = typeof e.data === 'object' && e.data && 'statusMessage' in (e.data as object)
+    ? String((e.data as { statusMessage?: unknown }).statusMessage)
+    : typeof e.data === 'object' && e.data && 'message' in (e.data as object)
+      ? String((e.data as { message?: unknown }).message)
+      : null
+  const message = e.statusMessage || e.message || null
+  if (message) parts.push(message)
+  if (detail && detail !== message) parts.push(detail)
+  return parts.join(': ') || 'Unknown error'
+}
 
 function encodeHandle(ids: string[]): string {
   return `adspend-sync-v1:${ids.join(',')}`
@@ -107,16 +136,60 @@ export async function runAdspendSync(
       return ok({ accepted: false, reason: 'cooldown', cooldownMinutes: ADSPEND_SYNC_COOLDOWN_MINUTES, cooldownRemainingSeconds: remaining, nextAllowedAt: reservation.nextAllowedAt })
     }
     const platforms: JobPlatform[] = args.platform === 'all' ? ['meta', 'google'] : [args.platform]
-    const jobs = await Promise.all(platforms.map(async platform => ({ platform, ...(await deps.startPlatform(platform, ctx)) })))
+    const outcomes = await Promise.all(platforms.map(async (platform) => {
+      try {
+        return { platform, job: await deps.startPlatform(platform, ctx), reason: null as string | null }
+      } catch (err) {
+        const reason = describeError(err)
+        console.error(`[run_adspend_sync] ${platform} start failed: ${reason}`)
+        return { platform, job: null as StartedJob | null, reason }
+      }
+    }))
+    const started = outcomes.filter((o): o is { platform: JobPlatform, job: StartedJob, reason: null } => o.job !== null)
+    const failedPlatforms = outcomes.filter(o => o.job === null).map(o => ({ platform: o.platform, reason: o.reason as string }))
+
+    if (started.length === 0) {
+      // Nothing was enqueued: give the 30-minute slot back so the operator can retry once the cause is fixed.
+      await deps.releaseCooldown(ctx.userId).catch(() => {})
+      const summary = failedPlatforms.map(f => `${f.platform}: ${f.reason}`).join('; ')
+      return fail(`Could not start the ad-spend sync — ${summary}`, 'SYNC_START_FAILED', { failedPlatforms })
+    }
+
     return ok({
       accepted: true,
       asynchronous: true,
-      handle: encodeHandle(jobs.map(job => job.jobId)),
+      handle: encodeHandle(started.map(o => o.job.jobId)),
       nextAllowedAt: reservation.nextAllowedAt,
-      jobs: jobs.map(job => ({ platform: job.platform, status: job.status, queued: job.queued ?? null, accounts: job.accounts ?? null })),
+      jobs: started.map(o => ({ platform: o.platform, status: o.job.status, queued: o.job.queued ?? null, accounts: o.job.accounts ?? null })),
+      failedPlatforms,
     })
-  } catch {
-    return fail('Could not start the ad-spend sync.', 'SYNC_START_FAILED')
+  } catch (err) {
+    const reason = describeError(err)
+    console.error(`[run_adspend_sync] start failed before fan-out: ${reason}`)
+    return fail(`Could not start the ad-spend sync — ${reason}`, 'SYNC_START_FAILED')
+  }
+}
+
+const FAILURE_REASON_GROUP_CAP = 5
+
+/**
+ * Groups per-account failures by reason so a systemic outage (same reason × N accounts) is visible at a
+ * glance. Bounded to the FAILURE_REASON_GROUP_CAP most common reasons; `more` says how many were dropped.
+ */
+function summariseFailures(failures: SpendSyncJobRow['failures']): { groups: Array<{ reason: string, accounts: number, examples: string[] }>, more: number } {
+  if (!Array.isArray(failures) || failures.length === 0) return { groups: [], more: 0 }
+  const groups = new Map<string, { accounts: number, examples: string[] }>()
+  for (const f of failures) {
+    const reason = String(f?.reason || 'Unknown error')
+    const g = groups.get(reason) ?? { accounts: 0, examples: [] }
+    g.accounts++
+    if (g.examples.length < 3 && f?.account) g.examples.push(String(f.account))
+    groups.set(reason, g)
+  }
+  const sorted = [...groups.entries()].sort((a, b) => b[1].accounts - a[1].accounts)
+  return {
+    groups: sorted.slice(0, FAILURE_REASON_GROUP_CAP).map(([reason, g]) => ({ reason, accounts: g.accounts, examples: g.examples })),
+    more: Math.max(0, sorted.length - FAILURE_REASON_GROUP_CAP),
   }
 }
 
@@ -152,13 +225,16 @@ export async function getAdspendSyncStatus(
         totalAccounts: job.total_accounts == null ? null : Number(job.total_accounts),
         coverageVerified: !job.coverage_failed,
         failureCount: Array.isArray(job.failures) ? job.failures.length : 0,
+        failureReasons: summariseFailures(job.failures),
         error: job.error,
         startedAt: job.started_at,
         finishedAt: job.finished_at,
       })),
     })
-  } catch {
-    return fail('Could not load the ad-spend sync status.', 'SYNC_STATUS_FAILED')
+  } catch (err) {
+    const reason = describeError(err)
+    console.error(`[get_sync_status] load failed: ${reason}`)
+    return fail(`Could not load the ad-spend sync status — ${reason}`, 'SYNC_STATUS_FAILED')
   }
 }
 

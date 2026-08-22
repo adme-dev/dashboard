@@ -165,7 +165,8 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
     const halt = evaluateHalt(freshness, {
       haltAfterHours: PACING_HALT_HOURS,
       now: deps.now?.(),
-      coverageDelta: coverageDelta as Record<string, { deltaPct?: number | null }> | null,
+      coverageDelta: coverageDelta as Record<string, { deltaPct?: number | null, staleBaseline?: boolean }> | null,
+      platform: null, // portfolio tool: gates on every platform and names the culprit
     })
     if (halt.halted) {
       return ok({
