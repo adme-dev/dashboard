@@ -22,6 +22,7 @@ crons = [
   "15 20 * * *",    # Google Ads call_view status + duration reporting
   "30 20 * * *",    # read-only Google AI Max readiness scan
   "45 21 * * *",    # pre-morning ad-spend refresh (07:45 Melbourne)
+  "15 22 * * *",    # sync-ad-creatives (creative text into campaign_creatives, 08:15 Melbourne)
   "15 23 * * *"     # alert if the pre-morning sync has not moved data within 90 minutes
 ]
 
