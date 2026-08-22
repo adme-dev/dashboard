@@ -282,8 +282,10 @@ export interface SpendCoverageDelta {
   deltaPct: number | null
   previousFinishedAt: string | null
   currentFinishedAt: string | null
-  /** True when the comparison run is too old to validate the current campaign universe. */
+  /** True when the newest completed run is older than the staleness window (vs now) or absent. */
   staleBaseline: boolean
+  /** False when the previous run is older than the staleness window relative to the current one — the delta then reflects churn, not lost coverage, and deltaPct is withheld so it cannot halt reads. */
+  previousComparable: boolean
 }
 
 /**
@@ -315,7 +317,8 @@ export async function getSpendCoverageDeltas(
     const entry = result[platform] ?? {
       previousCount: null, currentCount: null, delta: null, deltaPct: null,
       previousFinishedAt: null, currentFinishedAt: null,
-      staleBaseline: false
+      staleBaseline: false,
+      previousComparable: false
     }
     if (Number(row.rank) === 1) {
       entry.currentCount = Number(row.synced_count)
@@ -327,9 +330,15 @@ export async function getSpendCoverageDeltas(
     result[platform] = entry
   }
   for (const entry of Object.values(result)) {
+    const currentRunMs = entry.currentFinishedAt ? Date.parse(entry.currentFinishedAt) : Number.NaN
+    const previousRunMs = entry.previousFinishedAt ? Date.parse(entry.previousFinishedAt) : Number.NaN
+    entry.previousComparable = Number.isFinite(currentRunMs) && Number.isFinite(previousRunMs)
+      && currentRunMs - previousRunMs <= COVERAGE_BASELINE_STALE_HOURS * 3_600_000
     if (entry.currentCount != null && entry.previousCount != null) {
       entry.delta = entry.currentCount - entry.previousCount
-      entry.deltaPct = entry.previousCount > 0
+      // Only a recent previous run can evidence a coverage DROP; against a weeks-old run the
+      // percentage is campaign churn and must not trip the read-side halt.
+      entry.deltaPct = entry.previousComparable && entry.previousCount > 0
         ? Math.round(((entry.currentCount - entry.previousCount) / entry.previousCount) * 10_000) / 100
         : null
     }
