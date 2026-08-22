@@ -71,7 +71,7 @@ describe('PATCH /api/agency/clients/:id/financial-allocations', () => {
     } satisfies FinancialAllocationResult)
   })
 
-  it('requires FINANCE and write access, then passes only server-resolved authority to the service', async () => {
+  it('requires FINANCE and write access without resolving a Xero tenant for media', async () => {
     const { default: handler } = await import(
       '~~/server/api/agency/clients/[id]/financial-allocations.patch'
     )
@@ -83,9 +83,9 @@ describe('PATCH /api/agency/clients/:id/financial-allocations', () => {
 
     expect(mocks.requirePermission).toHaveBeenCalledWith(request, 'FINANCE')
     expect(mocks.requireWriteAccess).toHaveBeenCalledWith(request)
-    expect(mocks.getSelectedTenant).toHaveBeenCalledWith(request)
+    expect(mocks.getSelectedTenant).not.toHaveBeenCalled()
     expect(mocks.applyAllocation).toHaveBeenCalledWith({
-      tenantId: 'tenant-selected',
+      tenantId: null,
       clientId: CLIENT_ID,
       actorId: ACTOR_ID,
       mutation: { sourceType: 'media_spend', sourceId: MEDIA_ID, projectId: PROJECT_ID },
@@ -153,6 +153,7 @@ describe('PATCH /api/agency/clients/:id/financial-allocations', () => {
     await expect(handler(event({
       sourceType: 'media_spend', sourceId: MEDIA_ID, projectId: null,
     }) as never)).resolves.toMatchObject({ sourceType: 'media_spend' })
+    expect(mocks.getSelectedTenant).not.toHaveBeenCalled()
     expect(mocks.applyAllocation).toHaveBeenCalledWith(expect.objectContaining({ tenantId: null }))
   })
 
@@ -208,7 +209,7 @@ describe('PATCH /api/agency/clients/:id/financial-allocations', () => {
     })
   })
 
-  it('does not leak a selected-tenant session lookup failure', async () => {
+  it('does not let a selected-tenant session lookup failure affect media allocation', async () => {
     mocks.getSelectedTenant.mockRejectedValue(new Error('KV token payload'))
     const { default: handler } = await import(
       '~~/server/api/agency/clients/[id]/financial-allocations.patch'
@@ -216,6 +217,19 @@ describe('PATCH /api/agency/clients/:id/financial-allocations', () => {
 
     await expect(handler(event({
       sourceType: 'media_spend', sourceId: MEDIA_ID, projectId: PROJECT_ID,
+    }) as never)).resolves.toMatchObject({ sourceType: 'media_spend' })
+    expect(mocks.getSelectedTenant).not.toHaveBeenCalled()
+    expect(mocks.applyAllocation).toHaveBeenCalledWith(expect.objectContaining({ tenantId: null }))
+  })
+
+  it('does not leak a selected-tenant session lookup failure for Xero allocation', async () => {
+    mocks.getSelectedTenant.mockRejectedValue(new Error('KV token payload'))
+    const { default: handler } = await import(
+      '~~/server/api/agency/clients/[id]/financial-allocations.patch'
+    )
+
+    await expect(handler(event({
+      sourceType: 'xero_line', sourceId: 'invoice-1:0', projectId: PROJECT_ID,
     }) as never)).rejects.toMatchObject({
       statusCode: 500,
       statusMessage: 'Failed to update client financial allocation',

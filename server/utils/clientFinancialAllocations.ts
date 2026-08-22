@@ -2,7 +2,7 @@ import type {
   FinancialAllocationMutation,
   FinancialAllocationResult,
 } from '~~/shared/types/clientFinancials'
-import { transaction } from '~~/server/utils/db'
+import { transactionOnce } from '~~/server/utils/db'
 
 export type ClientFinancialAllocationErrorCode =
   | 'source_not_found'
@@ -16,7 +16,7 @@ export class ClientFinancialAllocationError extends Error {
   }
 }
 
-type TransactionDb = Parameters<Parameters<typeof transaction>[0]>[0]
+type TransactionDb = Parameters<Parameters<typeof transactionOnce>[0]>[0]
 
 interface ProjectRow {
   id: string
@@ -68,12 +68,26 @@ interface ChangedAtRow {
   changedAt: string | Date
 }
 
+interface MutationResult {
+  rowCount?: number | null
+}
+
 function allocationError(code: ClientFinancialAllocationErrorCode): never {
   throw new ClientFinancialAllocationError(code)
 }
 
 function firstRow<T>(result: { rows?: T[] }): T | null {
   return result.rows?.[0] ?? null
+}
+
+function assertAffectedRows(
+  result: MutationResult,
+  expected: number,
+  operation: string,
+): void {
+  if (result.rowCount !== expected) {
+    throw new Error(`${operation} affected an unexpected number of rows`)
+  }
 }
 
 function isoDate(value: string | Date): string {
@@ -100,11 +114,6 @@ function isoTimestamp(value: string | Date): string {
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) throw new Error('Invalid allocation audit timestamp')
   return parsed.toISOString()
-}
-
-function equalText(left: string | null, right: string | null): boolean {
-  return left !== null && right !== null
-    && left.trim().toLocaleLowerCase('en-AU') === right.trim().toLocaleLowerCase('en-AU')
 }
 
 async function sourceFingerprint(tenantId: string, line: XeroLineRow): Promise<string> {
@@ -156,7 +165,7 @@ async function appendAudit(
     metadata: Record<string, unknown>
   },
 ): Promise<string> {
-  const audit = firstRow(await db.query<ChangedAtRow>(
+  const auditResult = await db.query<ChangedAtRow>(
     `INSERT INTO financial_allocation_audit (
        source_type,
        tenant_id,
@@ -179,15 +188,18 @@ async function appendAudit(
       input.actorId,
       JSON.stringify(input.metadata),
     ],
-  ))
-  if (!audit) throw new Error('Allocation audit insert returned no row')
+  )
+  assertAffectedRows(auditResult, 1, 'Allocation audit insert')
+  if (auditResult.rows.length !== 1) {
+    throw new Error('Allocation audit insert returned an unexpected number of rows')
+  }
+  const audit = auditResult.rows[0]!
   return isoTimestamp(audit.changedAt)
 }
 
 async function applyMediaAllocation(
   db: TransactionDb,
   input: {
-    tenantId: string | null
     clientId: string
     actorId: string
     mutation: Extract<FinancialAllocationMutation, { sourceType: 'media_spend' }>
@@ -211,17 +223,18 @@ async function applyMediaAllocation(
     allocationError('invalid_assignment')
   }
 
-  await db.query(
+  const updateResult = await db.query(
     `UPDATE media_spend
      SET project_id = $2,
          updated_at = NOW()
      WHERE id = $1`,
     [source.id, input.mutation.projectId],
   )
+  assertAffectedRows(updateResult, 1, 'Media allocation update')
 
   const changedAt = await appendAudit(db, {
     sourceType: 'media_spend',
-    tenantId: input.tenantId,
+    tenantId: null,
     sourceKey: source.id,
     clientId: input.clientId,
     previousProjectId: source.projectId,
@@ -320,6 +333,25 @@ async function lockTrackingMapping(
   ))
 }
 
+async function lockEligibleTrackingMapping(
+  db: TransactionDb,
+  tenantId: string,
+  clientId: string,
+  sourceTrackingClient: string | null,
+): Promise<TrackingMappingRow | null> {
+  return firstRow(await db.query<TrackingMappingRow>(
+    `SELECT
+       mapping.tracking_option_id AS "trackingOptionId",
+       mapping.tracking_option_name AS "trackingOptionName"
+     FROM agency_client_xero_tracking_mappings mapping
+     WHERE mapping.tenant_id = $1
+       AND mapping.client_id = $2
+       AND LOWER($3::text) = LOWER(mapping.tracking_option_name)
+     FOR UPDATE`,
+    [tenantId, clientId, sourceTrackingClient],
+  ))
+}
+
 function assertEligibleXeroSource(
   source: XeroLineRow,
   client: ClientRow,
@@ -336,9 +368,7 @@ function assertEligibleXeroSource(
     return
   }
   if (type === 'ACCPAY') {
-    if (!trackingMapping || !equalText(source.trackingClient, trackingMapping.trackingOptionName)) {
-      allocationError('invalid_assignment')
-    }
+    if (!trackingMapping) allocationError('invalid_assignment')
     return
   }
   allocationError('invalid_assignment')
@@ -363,20 +393,26 @@ async function applyXeroAllocation(
   if (existing && existing.sourceFingerprint !== fingerprint) allocationError('stale_source')
 
   const trackingMapping = source.invoiceType.toUpperCase() === 'ACCPAY'
-    ? await lockTrackingMapping(db, input.tenantId, input.clientId)
+    ? await lockEligibleTrackingMapping(
+        db,
+        input.tenantId,
+        input.clientId,
+        source.trackingClient,
+      )
     : null
   assertEligibleXeroSource(source, client, trackingMapping)
 
   if (input.mutation.projectId === null) {
-    await db.query(
+    const deleteResult = await db.query(
       `DELETE FROM xero_project_allocations
        WHERE tenant_id = $1
          AND line_item_id = $2
          AND client_id = $3`,
       [input.tenantId, source.lineItemId, input.clientId],
     )
+    assertAffectedRows(deleteResult, existing ? 1 : 0, 'Xero allocation delete')
   } else {
-    await db.query(
+    const upsertResult = await db.query(
       `INSERT INTO xero_project_allocations (
          tenant_id,
          line_item_id,
@@ -419,6 +455,7 @@ async function applyXeroAllocation(
         input.actorId,
       ],
     )
+    assertAffectedRows(upsertResult, 1, 'Xero allocation upsert')
   }
 
   const previousProjectId = existing?.projectId ?? null
@@ -482,19 +519,20 @@ async function applyTrackingAllocation(
 
   let selected: TrackingOptionRow | null = null
   if (input.mutation.trackingOptionId === null) {
-    await db.query(
+    const deleteResult = await db.query(
       `DELETE FROM agency_client_xero_tracking_mappings
        WHERE tenant_id = $1
          AND client_id = $2`,
       [input.tenantId, input.clientId],
     )
+    assertAffectedRows(deleteResult, existing ? 1 : 0, 'Client tracking allocation delete')
   } else {
     selected = await lockActiveTrackingOption(db, {
       tenantId: input.tenantId,
       trackingOptionId: input.mutation.trackingOptionId,
       trackingOptionName: input.mutation.trackingOptionName,
     })
-    await db.query(
+    const upsertResult = await db.query(
       `INSERT INTO agency_client_xero_tracking_mappings (
          tenant_id,
          client_id,
@@ -510,6 +548,7 @@ async function applyTrackingAllocation(
          updated_at = NOW()`,
       [input.tenantId, input.clientId, selected.optionId, selected.optionName, input.actorId],
     )
+    assertAffectedRows(upsertResult, 1, 'Client tracking allocation upsert')
   }
 
   const changedAt = await appendAudit(db, {
@@ -542,10 +581,14 @@ export async function applyClientFinancialAllocation(input: {
   actorId: string
   mutation: FinancialAllocationMutation
 }): Promise<FinancialAllocationResult> {
-  return transaction(async (db) => {
+  return transactionOnce(async (db) => {
     switch (input.mutation.sourceType) {
       case 'media_spend':
-        return applyMediaAllocation(db, { ...input, mutation: input.mutation })
+        return applyMediaAllocation(db, {
+          clientId: input.clientId,
+          actorId: input.actorId,
+          mutation: input.mutation,
+        })
       case 'xero_line':
         if (!input.tenantId) allocationError('invalid_assignment')
         return applyXeroAllocation(db, { ...input, tenantId: input.tenantId, mutation: input.mutation })

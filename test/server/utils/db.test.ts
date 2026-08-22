@@ -16,7 +16,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createError } from 'h3'
 
 // --- neon() HTTP driver: shared query mock + transaction Pool stubs ---
 const mockNeonQuery = vi.fn()
@@ -58,8 +57,7 @@ import {
   queryCount,
   execute,
   transaction,
-  transactionWithoutRetry,
-  getTransactionFailureStage,
+  transactionOnce,
   getDb,
   db
 } from '../../../server/utils/db'
@@ -191,42 +189,25 @@ describe('database utility', () => {
       expect(mockPoolEnd).toHaveBeenCalledTimes(1)
     })
 
-    it('offers a one-shot transaction that never retries an ambiguous commit', async () => {
-      const commitError = new Error('fetch failed after commit dispatch')
+    it('transactionOnce never replays the callback after a retryable commit failure', async () => {
+      let callbackCalls = 0
       mockClientQuery.mockImplementation(async (sql: string) => {
-        if (sql === 'COMMIT') throw commitError
+        if (sql === 'COMMIT') throw new Error('ECONNRESET during COMMIT')
         return { rows: [], rowCount: 0 }
       })
-      const callback = vi.fn().mockResolvedValue('ok')
 
-      let rejection: unknown
-      try {
-        await transactionWithoutRetry(callback)
-      } catch (error) {
-        rejection = error
-      }
+      await expect(transactionOnce(async () => {
+        callbackCalls++
+        return 'written'
+      })).rejects.toThrow('ECONNRESET during COMMIT')
 
-      expect(rejection).toBe(commitError)
-      expect(getTransactionFailureStage(rejection)).toBe('ambiguous_commit')
-      expect(callback).toHaveBeenCalledTimes(1)
+      expect(callbackCalls).toBe(1)
       expect(mockPoolConnect).toHaveBeenCalledTimes(1)
-    })
-
-    it('classifies callback rejection as definite rollback while preserving the H3 error', async () => {
-      const callbackError = createError({ statusCode: 409, statusMessage: 'request conflict' })
-      let rejection: unknown
-
-      try {
-        await transactionWithoutRetry(async () => {
-          throw callbackError
-        })
-      } catch (error) {
-        rejection = error
-      }
-
-      expect(rejection).toBe(callbackError)
-      expect(getTransactionFailureStage(rejection)).toBe('definite_rollback')
-      expect(mockClientQuery.mock.calls.map(call => call[0])).toContain('ROLLBACK')
+      expect(mockClientQuery.mock.calls.map(call => call[0])).toEqual([
+        'BEGIN', 'COMMIT', 'ROLLBACK',
+      ])
+      expect(mockClientRelease).toHaveBeenCalledTimes(1)
+      expect(mockPoolEnd).toHaveBeenCalledTimes(1)
     })
   })
 

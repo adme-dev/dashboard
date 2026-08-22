@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FinancialAllocationMutation } from '~~/shared/types/clientFinancials'
 
 const dbMocks = vi.hoisted(() => ({
+  transactionOnce: vi.fn(),
   transaction: vi.fn(),
   query: vi.fn(),
 }))
 
 vi.mock('~~/server/utils/db', () => ({
+  transactionOnce: (...args: unknown[]) => dbMocks.transactionOnce(...args),
   transaction: (...args: unknown[]) => dbMocks.transaction(...args),
 }))
 
@@ -28,8 +30,12 @@ interface FakeRow {
   [key: string]: unknown
 }
 
-function result(rows: FakeRow[] = []) {
-  return { rows, rowCount: rows.length }
+function result(rows: FakeRow[] = [], rowCount = rows.length) {
+  return { rows, rowCount }
+}
+
+function writeResult(rowCount = 1) {
+  return result([], rowCount)
 }
 
 function sqlOf(call: unknown[]): string {
@@ -38,6 +44,10 @@ function sqlOf(call: unknown[]): string {
 
 function callsContaining(fragment: string): unknown[][] {
   return dbMocks.query.mock.calls.filter(call => sqlOf(call).includes(fragment))
+}
+
+function firstCallIndex(fragment: string): number {
+  return dbMocks.query.mock.calls.findIndex(call => sqlOf(call).includes(fragment))
 }
 
 function mediaSource(overrides: FakeRow = {}): FakeRow {
@@ -94,6 +104,9 @@ function invoke(mutation: FinancialAllocationMutation) {
 describe('applyClientFinancialAllocation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    dbMocks.transactionOnce.mockImplementation(async (callback: (db: { query: typeof dbMocks.query }) => unknown) => (
+      callback({ query: dbMocks.query })
+    ))
     dbMocks.transaction.mockImplementation(async (callback: (db: { query: typeof dbMocks.query }) => unknown) => (
       callback({ query: dbMocks.query })
     ))
@@ -103,15 +116,20 @@ describe('applyClientFinancialAllocation', () => {
     dbMocks.query.mockImplementation(async (sql: string) => {
       if (sql.includes('FROM media_spend')) return result([mediaSource()])
       if (sql.includes('FROM projects')) return result([{ id: PROJECT_ID, clientId: CLIENT_ID }])
-      if (sql.includes('UPDATE media_spend')) return result()
+      if (sql.includes('UPDATE media_spend')) return writeResult()
       if (sql.includes('INSERT INTO financial_allocation_audit')) return result([{ changedAt: CHANGED_AT }])
       throw new Error(`Unexpected query: ${sql}`)
     })
 
-    await expect(invoke({
-      sourceType: 'media_spend',
-      sourceId: MEDIA_ID,
-      projectId: PROJECT_ID,
+    await expect(applyClientFinancialAllocation({
+      tenantId: TENANT_ID,
+      clientId: CLIENT_ID,
+      actorId: ACTOR_ID,
+      mutation: {
+        sourceType: 'media_spend',
+        sourceId: MEDIA_ID,
+        projectId: PROJECT_ID,
+      },
     })).resolves.toEqual({
       sourceType: 'media_spend',
       sourceId: MEDIA_ID,
@@ -120,7 +138,8 @@ describe('applyClientFinancialAllocation', () => {
       changedAt: CHANGED_AT,
     })
 
-    expect(dbMocks.transaction).toHaveBeenCalledOnce()
+    expect(dbMocks.transactionOnce).toHaveBeenCalledOnce()
+    expect(dbMocks.transaction).not.toHaveBeenCalled()
     expect(sqlOf(callsContaining('FROM media_spend')[0]!)).toContain('FOR UPDATE')
     expect(sqlOf(callsContaining('FROM projects')[0]!)).toContain('FOR UPDATE')
     expect(callsContaining('UPDATE media_spend')[0]?.[1]).toEqual([MEDIA_ID, PROJECT_ID])
@@ -129,6 +148,56 @@ describe('applyClientFinancialAllocation', () => {
     expect(audits[0]?.[1]).toEqual(expect.arrayContaining([
       'media_spend', null, MEDIA_ID, CLIENT_ID, null, PROJECT_ID, ACTOR_ID,
     ]))
+  })
+
+  it('rolls back and does not audit when a locked media update affects zero rows', async () => {
+    dbMocks.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM media_spend')) return result([mediaSource()])
+      if (sql.includes('FROM projects')) return result([{ id: PROJECT_ID, clientId: CLIENT_ID }])
+      if (sql.includes('UPDATE media_spend')) return writeResult(0)
+      if (sql.includes('INSERT INTO financial_allocation_audit')) {
+        return result([{ changedAt: CHANGED_AT }])
+      }
+      throw new Error(`Unexpected query: ${sql}`)
+    })
+
+    await expect(invoke({
+      sourceType: 'media_spend', sourceId: MEDIA_ID, projectId: PROJECT_ID,
+    })).rejects.toThrow(/media allocation update/i)
+    expect(callsContaining('INSERT INTO financial_allocation_audit')).toHaveLength(0)
+  })
+
+  it('rolls back the media update when the audit insert affects zero rows', async () => {
+    const committed = { projectId: null as string | null, audits: 0 }
+    dbMocks.transactionOnce.mockImplementation(async (callback: (db: { query: Function }) => Promise<unknown>) => {
+      const pending = { ...committed }
+      const transactionalDb = {
+        query: async (sql: string) => {
+          if (sql.includes('FROM media_spend')) {
+            return result([mediaSource({ projectId: pending.projectId })])
+          }
+          if (sql.includes('FROM projects')) {
+            return result([{ id: PROJECT_ID, clientId: CLIENT_ID }])
+          }
+          if (sql.includes('UPDATE media_spend')) {
+            pending.projectId = PROJECT_ID
+            return writeResult()
+          }
+          if (sql.includes('INSERT INTO financial_allocation_audit')) {
+            return result([{ changedAt: CHANGED_AT }], 0)
+          }
+          throw new Error(`Unexpected query: ${sql}`)
+        },
+      }
+      const value = await callback(transactionalDb)
+      Object.assign(committed, pending)
+      return value
+    })
+
+    await expect(invoke({
+      sourceType: 'media_spend', sourceId: MEDIA_ID, projectId: PROJECT_ID,
+    })).rejects.toThrow(/audit insert/i)
+    expect(committed).toEqual({ projectId: null, audits: 0 })
   })
 
   it('rejects a cross-client media project before updating the source', async () => {
@@ -176,7 +245,7 @@ describe('applyClientFinancialAllocation', () => {
       if (sql.includes('FROM xero_project_allocations')) return result()
       if (sql.includes('FROM projects')) return result([{ id: PROJECT_ID, clientId: CLIENT_ID }])
       if (sql.includes('FROM agency_clients')) return result([{ id: CLIENT_ID, xeroContactId: 'contact-1' }])
-      if (sql.includes('INSERT INTO xero_project_allocations')) return result()
+      if (sql.includes('INSERT INTO xero_project_allocations')) return writeResult()
       if (sql.includes('INSERT INTO financial_allocation_audit')) return result([{ changedAt: CHANGED_AT }])
       throw new Error(`Unexpected query: ${sql} ${JSON.stringify(params)}`)
     })
@@ -194,6 +263,21 @@ describe('applyClientFinancialAllocation', () => {
 
     expect(sqlOf(callsContaining('FROM xero_invoice_lines_cache')[0]!)).toContain('FOR UPDATE')
     expect(sqlOf(callsContaining('FROM xero_project_allocations')[0]!)).toContain('FOR UPDATE')
+    expect(callsContaining('FROM xero_invoice_lines_cache')[0]?.[1]).toEqual([
+      TENANT_ID, 'invoice-1:0',
+    ])
+    expect(callsContaining('FROM xero_project_allocations')[0]?.[1]).toEqual([
+      TENANT_ID, 'invoice-1:0',
+    ])
+    expect(firstCallIndex('FROM xero_invoice_lines_cache'))
+      .toBeLessThan(firstCallIndex('FROM xero_project_allocations'))
+    expect(firstCallIndex('FROM xero_project_allocations'))
+      .toBeLessThan(firstCallIndex('FROM projects'))
+    expect(firstCallIndex('FROM projects')).toBeLessThan(firstCallIndex('FROM agency_clients'))
+    expect(firstCallIndex('FROM agency_clients'))
+      .toBeLessThan(firstCallIndex('INSERT INTO xero_project_allocations'))
+    expect(firstCallIndex('INSERT INTO xero_project_allocations'))
+      .toBeLessThan(firstCallIndex('INSERT INTO financial_allocation_audit'))
     const upsertParams = callsContaining('INSERT INTO xero_project_allocations')[0]?.[1] as unknown[]
     expect(upsertParams).toEqual([
       TENANT_ID,
@@ -222,7 +306,7 @@ describe('applyClientFinancialAllocation', () => {
       }
       if (sql.includes('FROM projects')) return result([{ id: PROJECT_ID, clientId: CLIENT_ID }])
       if (sql.includes('FROM agency_clients')) return result([{ id: CLIENT_ID, xeroContactId: 'contact-1' }])
-      if (sql.includes('INSERT INTO xero_project_allocations')) return result()
+      if (sql.includes('INSERT INTO xero_project_allocations')) return writeResult()
       if (sql.includes('INSERT INTO financial_allocation_audit')) return result([{ changedAt: CHANGED_AT }])
       throw new Error(`Unexpected query: ${sql}`)
     })
@@ -237,16 +321,38 @@ describe('applyClientFinancialAllocation', () => {
     ]))
   })
 
+  it('does not audit when a Xero allocation upsert affects zero rows', async () => {
+    const line = xeroLine()
+    dbMocks.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM xero_invoice_lines_cache')) return result([line])
+      if (sql.includes('FROM xero_project_allocations')) return result()
+      if (sql.includes('FROM projects')) return result([{ id: PROJECT_ID, clientId: CLIENT_ID }])
+      if (sql.includes('FROM agency_clients')) {
+        return result([{ id: CLIENT_ID, xeroContactId: 'contact-1' }])
+      }
+      if (sql.includes('INSERT INTO xero_project_allocations')) return writeResult(0)
+      if (sql.includes('INSERT INTO financial_allocation_audit')) {
+        return result([{ changedAt: CHANGED_AT }])
+      }
+      throw new Error(`Unexpected query: ${sql}`)
+    })
+
+    await expect(invoke({
+      sourceType: 'xero_line', sourceId: 'invoice-1:0', projectId: PROJECT_ID,
+    })).rejects.toThrow(/Xero allocation upsert/i)
+    expect(callsContaining('INSERT INTO financial_allocation_audit')).toHaveLength(0)
+  })
+
   it('deletes an eligible Xero mapping on explicit unassignment and audits its previous project', async () => {
     const line = xeroLine()
     const currentFingerprint = await fingerprint(line)
     dbMocks.query.mockImplementation(async (sql: string) => {
       if (sql.includes('FROM xero_invoice_lines_cache')) return result([line])
+      if (sql.includes('DELETE FROM xero_project_allocations')) return writeResult()
       if (sql.includes('FROM xero_project_allocations')) {
         return result([{ clientId: CLIENT_ID, projectId: PROJECT_ID, sourceFingerprint: currentFingerprint }])
       }
       if (sql.includes('FROM agency_clients')) return result([{ id: CLIENT_ID, xeroContactId: 'contact-1' }])
-      if (sql.includes('DELETE FROM xero_project_allocations')) return result()
       if (sql.includes('INSERT INTO financial_allocation_audit')) return result([{ changedAt: CHANGED_AT }])
       throw new Error(`Unexpected query: ${sql}`)
     })
@@ -254,6 +360,53 @@ describe('applyClientFinancialAllocation', () => {
     await expect(invoke({
       sourceType: 'xero_line', sourceId: 'invoice-1:0', projectId: null,
     })).resolves.toMatchObject({ previousProjectId: PROJECT_ID, projectId: null })
+    expect(callsContaining('DELETE FROM xero_project_allocations')[0]?.[1])
+      .toEqual([TENANT_ID, 'invoice-1:0', CLIENT_ID])
+    expect(callsContaining('INSERT INTO financial_allocation_audit')).toHaveLength(1)
+  })
+
+  it('does not audit when an expected Xero delete affects zero rows', async () => {
+    const line = xeroLine()
+    const currentFingerprint = await fingerprint(line)
+    dbMocks.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM xero_invoice_lines_cache')) return result([line])
+      if (sql.includes('DELETE FROM xero_project_allocations')) return writeResult(0)
+      if (sql.includes('FROM xero_project_allocations')) {
+        return result([{ clientId: CLIENT_ID, projectId: PROJECT_ID, sourceFingerprint: currentFingerprint }])
+      }
+      if (sql.includes('FROM agency_clients')) {
+        return result([{ id: CLIENT_ID, xeroContactId: 'contact-1' }])
+      }
+      if (sql.includes('INSERT INTO financial_allocation_audit')) {
+        return result([{ changedAt: CHANGED_AT }])
+      }
+      throw new Error(`Unexpected query: ${sql}`)
+    })
+
+    await expect(invoke({
+      sourceType: 'xero_line', sourceId: 'invoice-1:0', projectId: null,
+    })).rejects.toThrow(/Xero allocation delete/i)
+    expect(callsContaining('INSERT INTO financial_allocation_audit')).toHaveLength(0)
+  })
+
+  it('allows a zero-row Xero delete when the locked mapping did not exist', async () => {
+    const line = xeroLine()
+    dbMocks.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM xero_invoice_lines_cache')) return result([line])
+      if (sql.includes('DELETE FROM xero_project_allocations')) return writeResult(0)
+      if (sql.includes('FROM xero_project_allocations')) return result()
+      if (sql.includes('FROM agency_clients')) {
+        return result([{ id: CLIENT_ID, xeroContactId: 'contact-1' }])
+      }
+      if (sql.includes('INSERT INTO financial_allocation_audit')) {
+        return result([{ changedAt: CHANGED_AT }])
+      }
+      throw new Error(`Unexpected query: ${sql}`)
+    })
+
+    await expect(invoke({
+      sourceType: 'xero_line', sourceId: 'invoice-1:0', projectId: null,
+    })).resolves.toMatchObject({ previousProjectId: null, projectId: null })
     expect(callsContaining('DELETE FROM xero_project_allocations')[0]?.[1])
       .toEqual([TENANT_ID, 'invoice-1:0', CLIENT_ID])
     expect(callsContaining('INSERT INTO financial_allocation_audit')).toHaveLength(1)
@@ -336,7 +489,9 @@ describe('applyClientFinancialAllocation', () => {
         return result([{ id: CLIENT_ID, xeroContactId: 'contact-1' }])
       }
       if (sql.includes('FROM agency_client_xero_tracking_mappings')) {
-        return result([{ trackingOptionId: 'other', trackingOptionName: 'Other client' }])
+        return sql.includes('LOWER($3::text) = LOWER(mapping.tracking_option_name)')
+          ? result()
+          : result([{ trackingOptionId: 'other', trackingOptionName: 'Other client' }])
       }
       throw new Error(`Mutation query must not run: ${sql}`)
     })
@@ -344,6 +499,41 @@ describe('applyClientFinancialAllocation', () => {
     await expect(invoke({
       sourceType: 'xero_line', sourceId: 'invoice-1:0', projectId: PROJECT_ID,
     })).rejects.toMatchObject({ code: 'invalid_assignment' })
+    expect(callsContaining('INSERT INTO xero_project_allocations')).toHaveLength(0)
+    expect(callsContaining('INSERT INTO financial_allocation_audit')).toHaveLength(0)
+  })
+
+  it('does not trim ACCPAY tracking values beyond Task 3 SQL equality semantics', async () => {
+    const line = xeroLine({
+      invoiceType: 'ACCPAY',
+      invoiceContactId: 'supplier-contact',
+      trackingClient: ' Astoria Motors ',
+    })
+    dbMocks.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM xero_invoice_lines_cache')) return result([line])
+      if (sql.includes('FROM xero_project_allocations')) return result()
+      if (sql.includes('FROM projects')) return result([{ id: PROJECT_ID, clientId: CLIENT_ID }])
+      if (sql.includes('FROM agency_clients')) {
+        return result([{ id: CLIENT_ID, xeroContactId: 'contact-1' }])
+      }
+      if (sql.includes('FROM agency_client_xero_tracking_mappings')) {
+        return sql.includes('LOWER($3::text) = LOWER(mapping.tracking_option_name)')
+          ? result()
+          : result([{ trackingOptionId: 'tracking-astoria', trackingOptionName: 'Astoria Motors' }])
+      }
+      if (sql.includes('INSERT INTO xero_project_allocations')) return writeResult()
+      if (sql.includes('INSERT INTO financial_allocation_audit')) {
+        return result([{ changedAt: CHANGED_AT }])
+      }
+      throw new Error(`Unexpected query: ${sql}`)
+    })
+
+    await expect(invoke({
+      sourceType: 'xero_line', sourceId: 'invoice-1:0', projectId: PROJECT_ID,
+    })).rejects.toMatchObject({ code: 'invalid_assignment' })
+    const mappingCall = callsContaining('FROM agency_client_xero_tracking_mappings')[0]!
+    expect(sqlOf(mappingCall)).toContain('LOWER($3::text) = LOWER(mapping.tracking_option_name)')
+    expect(mappingCall[1]).toEqual([TENANT_ID, CLIENT_ID, ' Astoria Motors '])
     expect(callsContaining('INSERT INTO xero_project_allocations')).toHaveLength(0)
     expect(callsContaining('INSERT INTO financial_allocation_audit')).toHaveLength(0)
   })
@@ -375,7 +565,7 @@ describe('applyClientFinancialAllocation', () => {
       if (sql.includes('FROM xero_tracking_categories')) {
         return result([{ optionId: 'tracking-astoria', optionName: 'Astoria Motors' }])
       }
-      if (sql.includes('INSERT INTO agency_client_xero_tracking_mappings')) return result()
+      if (sql.includes('INSERT INTO agency_client_xero_tracking_mappings')) return writeResult()
       if (sql.includes('INSERT INTO financial_allocation_audit')) return result([{ changedAt: CHANGED_AT }])
       throw new Error(`Unexpected query: ${sql}`)
     })
@@ -400,6 +590,40 @@ describe('applyClientFinancialAllocation', () => {
     expect(callsContaining('INSERT INTO agency_client_xero_tracking_mappings')[0]?.[1]).toEqual([
       TENANT_ID, CLIENT_ID, 'tracking-astoria', 'Astoria Motors', ACTOR_ID,
     ])
+    expect(callsContaining('FROM agency_client_xero_tracking_mappings')[0]?.[1])
+      .toEqual([TENANT_ID, CLIENT_ID])
+    expect(callsContaining('FROM xero_tracking_categories')[0]?.[1])
+      .toEqual([TENANT_ID, 'tracking-astoria', 'Astoria Motors'])
+    expect(firstCallIndex('FROM agency_clients'))
+      .toBeLessThan(firstCallIndex('FROM agency_client_xero_tracking_mappings'))
+    expect(firstCallIndex('FROM agency_client_xero_tracking_mappings'))
+      .toBeLessThan(firstCallIndex('FROM xero_tracking_categories'))
+    expect(firstCallIndex('FROM xero_tracking_categories'))
+      .toBeLessThan(firstCallIndex('INSERT INTO agency_client_xero_tracking_mappings'))
+    expect(firstCallIndex('INSERT INTO agency_client_xero_tracking_mappings'))
+      .toBeLessThan(firstCallIndex('INSERT INTO financial_allocation_audit'))
+  })
+
+  it('does not audit when a client tracking allocation upsert affects zero rows', async () => {
+    dbMocks.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM agency_clients')) return result([{ id: CLIENT_ID }])
+      if (sql.includes('FROM agency_client_xero_tracking_mappings')) return result()
+      if (sql.includes('FROM xero_tracking_categories')) {
+        return result([{ optionId: 'tracking-astoria', optionName: 'Astoria Motors' }])
+      }
+      if (sql.includes('INSERT INTO agency_client_xero_tracking_mappings')) return writeResult(0)
+      if (sql.includes('INSERT INTO financial_allocation_audit')) {
+        return result([{ changedAt: CHANGED_AT }])
+      }
+      throw new Error(`Unexpected query: ${sql}`)
+    })
+
+    await expect(invoke({
+      sourceType: 'client_tracking',
+      trackingOptionId: 'tracking-astoria',
+      trackingOptionName: 'Astoria Motors',
+    })).rejects.toThrow(/Client tracking allocation upsert/i)
+    expect(callsContaining('INSERT INTO financial_allocation_audit')).toHaveLength(0)
   })
 
   it('rejects a foreign or inactive tracking option before replacing the mapping', async () => {
@@ -422,10 +646,10 @@ describe('applyClientFinancialAllocation', () => {
   it('deletes a client tracking mapping on explicit null and audits authoritative previous values', async () => {
     dbMocks.query.mockImplementation(async (sql: string) => {
       if (sql.includes('FROM agency_clients')) return result([{ id: CLIENT_ID }])
+      if (sql.includes('DELETE FROM agency_client_xero_tracking_mappings')) return writeResult()
       if (sql.includes('FROM agency_client_xero_tracking_mappings')) {
         return result([{ trackingOptionId: 'tracking-old', trackingOptionName: 'Old client' }])
       }
-      if (sql.includes('DELETE FROM agency_client_xero_tracking_mappings')) return result()
       if (sql.includes('INSERT INTO financial_allocation_audit')) return result([{ changedAt: CHANGED_AT }])
       throw new Error(`Unexpected query: ${sql}`)
     })
@@ -449,9 +673,30 @@ describe('applyClientFinancialAllocation', () => {
     })
   })
 
+  it('allows a zero-row client tracking delete when the locked mapping did not exist', async () => {
+    dbMocks.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM agency_clients')) return result([{ id: CLIENT_ID }])
+      if (sql.includes('DELETE FROM agency_client_xero_tracking_mappings')) return writeResult(0)
+      if (sql.includes('FROM agency_client_xero_tracking_mappings')) return result()
+      if (sql.includes('INSERT INTO financial_allocation_audit')) {
+        return result([{ changedAt: CHANGED_AT }])
+      }
+      throw new Error(`Unexpected query: ${sql}`)
+    })
+
+    await expect(invoke({
+      sourceType: 'client_tracking',
+      trackingOptionId: null,
+      trackingOptionName: 'ignored browser snapshot',
+    })).resolves.toMatchObject({ sourceId: CLIENT_ID, projectId: null })
+    expect(callsContaining('DELETE FROM agency_client_xero_tracking_mappings')[0]?.[1])
+      .toEqual([TENANT_ID, CLIENT_ID])
+    expect(callsContaining('INSERT INTO financial_allocation_audit')).toHaveLength(1)
+  })
+
   it('rolls back the source update when the append-only audit insert fails', async () => {
     const committed = { projectId: null as string | null, audits: 0 }
-    dbMocks.transaction.mockImplementation(async (callback: (db: { query: Function }) => Promise<unknown>) => {
+    dbMocks.transactionOnce.mockImplementation(async (callback: (db: { query: Function }) => Promise<unknown>) => {
       const pending = { ...committed }
       const transactionalDb = {
         query: async (sql: string) => {
@@ -459,7 +704,7 @@ describe('applyClientFinancialAllocation', () => {
           if (sql.includes('FROM projects')) return result([{ id: PROJECT_ID, clientId: CLIENT_ID }])
           if (sql.includes('UPDATE media_spend')) {
             pending.projectId = PROJECT_ID
-            return result()
+            return writeResult()
           }
           if (sql.includes('INSERT INTO financial_allocation_audit')) throw new Error('audit unavailable')
           throw new Error(`Unexpected query: ${sql}`)

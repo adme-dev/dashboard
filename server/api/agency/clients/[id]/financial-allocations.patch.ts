@@ -56,18 +56,20 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid financial allocation request' })
   }
 
-  let tenantId: string | null
-  try {
-    const selectedTenant = await getSelectedTenant(event)
-    tenantId = selectedTenant?.trim() || null
-  } catch {
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'Failed to update client financial allocation',
-    })
-  }
-  if (parsed.data.sourceType !== 'media_spend' && !tenantId) {
-    throw createError({ statusCode: 400, statusMessage: 'A selected Xero tenant is required' })
+  let tenantId: string | null = null
+  if (parsed.data.sourceType !== 'media_spend') {
+    try {
+      const selectedTenant = await getSelectedTenant(event)
+      tenantId = selectedTenant?.trim() || null
+    } catch {
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Failed to update client financial allocation',
+      })
+    }
+    if (!tenantId) {
+      throw createError({ statusCode: 400, statusMessage: 'A selected Xero tenant is required' })
+    }
   }
 
   try {
