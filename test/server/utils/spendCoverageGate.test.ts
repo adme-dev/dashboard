@@ -151,7 +151,8 @@ describe('getSpendCoverageDeltas (coverageDelta shaping for the read tools)', ()
         deltaPct: 25.71,
         previousFinishedAt: '2026-08-18T10:00:00Z',
         currentFinishedAt: '2026-08-19T10:00:00Z',
-        staleBaseline: false
+        staleBaseline: false,
+        previousComparable: true
       },
       google: {
         previousCount: null,
@@ -161,7 +162,8 @@ describe('getSpendCoverageDeltas (coverageDelta shaping for the read tools)', ()
         previousFinishedAt: null,
         currentFinishedAt: '2026-08-19T09:00:00Z',
         // A single fresh run is a usable baseline: delta is null (no comparison) but not stale.
-        staleBaseline: false
+        staleBaseline: false,
+        previousComparable: false
       }
     })
   })
@@ -180,7 +182,19 @@ describe('getSpendCoverageDeltas (coverageDelta shaping for the read tools)', ()
     ])
     const meta = (await getSpendCoverageDeltas(freshAfterJune as never, now))!.meta
     expect(meta.staleBaseline).toBe(false)
-    expect(meta.deltaPct).toBe(-10)
+    // The previous run is eight weeks old: the raw delta is reported, but deltaPct is null so the
+    // coverage-drop halt does not fire on what is really campaign churn, not lost coverage.
+    expect(meta.delta).toBe(-10)
+    expect(meta.deltaPct).toBeNull()
+    expect(meta.previousComparable).toBe(false)
+
+    const consecutive = vi.fn(async () => [
+      { platform: 'meta', synced_count: 90, finished_at: '2026-08-22T10:57:48Z', rank: 1 },
+      { platform: 'meta', synced_count: 100, finished_at: '2026-08-21T10:57:48Z', rank: 2 }
+    ])
+    const consecutiveMeta = (await getSpendCoverageDeltas(consecutive as never, now))!.meta
+    expect(consecutiveMeta.deltaPct).toBe(-10)
+    expect(consecutiveMeta.previousComparable).toBe(true)
 
     const fortyNineHoursOld = vi.fn(async () => [
       { platform: 'meta', synced_count: 90, finished_at: '2026-08-20T10:59:00Z', rank: 1 }
