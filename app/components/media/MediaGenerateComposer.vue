@@ -7,7 +7,7 @@ import { modelsForMode, validateGenerationForm, costPreviewCents, draftFromGener
 import { videoModelPresentation, type VideoModelOption } from '~~/app/utils/video/modelPresentation'
 import { VIDEO_GENERATION_TEMPLATES, type VideoGenerationTemplate } from '~~/app/utils/video/generationTemplates'
 import { videoGenerationJobTimelinePayload, type VideoLibraryTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
-import { apiErrorDescription, apiErrorReasons } from '~~/app/utils/apiError'
+import { apiErrorDescription, apiErrorReasons, isPossiblyAppliedFailure } from '~~/app/utils/apiError'
 import type { VideoGenerationMode } from '~~/server/utils/video-generation/types'
 import type { VideoGenerationJobView } from '~~/app/composables/useVideoGenerationJobs'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
@@ -321,6 +321,17 @@ async function submit() {
     emit('submitted', res.job.id)
     emit('close')
   } catch (e: unknown) {
+    if (isPossiblyAppliedFailure(e)) {
+      // The job may already be queued (and billed). Don't invite a duplicate.
+      toast.add({
+        title: 'Generation may already be queued',
+        description: `${apiErrorDescription(e, 'No response from the server')}. Check Recent generations before submitting again — a second request would start (and charge for) another job.`,
+        color: 'warning',
+        icon: 'i-lucide-clock-alert'
+      })
+      emit('submitted', '')
+      return
+    }
     const reasons = apiErrorReasons(e)
     toast.add({ title: 'Could not start generation', description: reasons?.join(' ') ?? apiErrorDescription(e), color: 'error' })
   } finally {
