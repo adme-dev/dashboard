@@ -9,7 +9,7 @@ import { planTimeline, type ScheduledClip, type TrackBus } from '~~/app/utils/au
 import { createAudioEngine, type AudioEngine, type AudioEngineDeps, type LoadResult } from '~~/app/composables/useAudioEngine'
 import { createBrowserAudioContext, browserSetTimer, makeR2Resolver } from '~~/app/utils/audio/audioContextFactory'
 import { createUndoStack } from '~~/app/composables/useTimelineUndo'
-import { apiErrorDescription, apiErrorStatus } from '~~/app/utils/apiError'
+import { apiErrorDescription, apiErrorStatus, isPossiblyAppliedFailure } from '~~/app/utils/apiError'
 import { resolveClipStartSec } from '~~/app/utils/video/timelinePlacement'
 import {
   cloneState,
@@ -443,7 +443,7 @@ export function useMediaProjectEditor(projectId: string) {
   }
 
   /** Enqueue a composite-video render. Returns false (with a flag-off signal) on 404. */
-  async function renderVideoAction(formats?: string[]): Promise<{ ok: boolean; flagOff?: boolean }> {
+  async function renderVideoAction(formats?: string[]): Promise<{ ok: boolean; flagOff?: boolean; maybeQueued?: boolean; reason?: string }> {
     if (rendering.value) return { ok: false }
     rendering.value = true
     try {
@@ -458,7 +458,14 @@ export function useMediaProjectEditor(projectId: string) {
       return { ok: true }
     } catch (e: unknown) {
       if (apiErrorStatus(e) === 404) return { ok: false, flagOff: true }
-      return { ok: false }
+      if (isPossiblyAppliedFailure(e)) {
+        // The request may have reached the queue before the failure. Show what
+        // actually exists rather than inviting a duplicate render.
+        await refreshRenderJobs().catch(() => {})
+        scheduleJobPoll()
+        return { ok: false, maybeQueued: true, reason: apiErrorDescription(e, 'No response from the server') }
+      }
+      return { ok: false, reason: apiErrorDescription(e, 'Unknown error') }
     } finally {
       rendering.value = false
     }

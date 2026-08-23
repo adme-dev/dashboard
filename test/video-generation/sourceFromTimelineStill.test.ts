@@ -61,13 +61,15 @@ describe('POST /agency/video/generation/source-assets/from-timeline-still', () =
     const res = await handler({ body: { projectId, clipId: 'clip-still', subjectType: 'vehicle' } } as any)
 
     expect(mockGetProject).toHaveBeenCalledWith(projectId)
-    expect(mockCreateSourceAsset).toHaveBeenCalledWith({
+    expect(mockCreateSourceAsset).toHaveBeenCalledWith(expect.objectContaining({
+      // The route passes the God-mode reserved id; staff requests get a fresh uuid.
+      id: expect.stringMatching(/^[0-9a-f-]{36}$/),
       clientId: 'dealer-1',
       createdBy: 'user-1',
       r2Key: 'media/p/still.webp',
       contentType: 'image/webp',
       subjectType: 'vehicle',
-    })
+    }))
     expect(res).toEqual({ id: 'src-1', status: 'approved' })
     expect(g.setResponseStatus).toHaveBeenCalledWith(expect.anything(), 201)
   })

@@ -77,11 +77,13 @@ export interface CreateVoiceAssetInput {
   audio: ArrayBuffer | Uint8Array
   format: string // e.g. 'mp3'
   durationSec?: number | null
+  /** Pre-reserved id (God mode ledger); minted when omitted. */
+  id?: string
 }
 
 /** Insert a ready voiceover asset and upload its master to R2. */
 export async function createVoiceAsset(input: CreateVoiceAssetInput): Promise<AudioAsset> {
-  const id = randomUUID()
+  const id = input.id ?? randomUUID()
   const key = buildMasterKey(input.clientId, id, input.format)
   const buffer = Buffer.from(input.audio instanceof ArrayBuffer ? new Uint8Array(input.audio) : input.audio)
 

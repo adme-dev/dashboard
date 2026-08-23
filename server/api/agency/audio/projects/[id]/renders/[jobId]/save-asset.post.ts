@@ -8,7 +8,7 @@ import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 const BodySchema = z.object({ format: z.string().min(1), title: z.string().max(200).nullish() })
 
 // Owners (God mode) run this under the execution ledger; staff run it directly.
-export default defineEventHandler(event => withGodModeLedger(event, 'renderSaveAsset', async () => {
+export default defineEventHandler(event => withGodModeLedger(event, 'renderSaveAsset', async ({ reservedId }) => {
   if (process.env.VIDEO_STUDIO_ENABLED !== 'true') throw createError({ statusCode: 404, statusMessage: 'Not found' })
   const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')!
@@ -26,6 +26,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'renderSaveA
 
   const profile = videoFormatFor(format)
   const asset = await createVideoAsset({
+    id: reservedId,
     clientId, createdBy: user.id, title: title ?? null, sourceProjectId: id, sourceJobId: jobId,
     r2Key: key, format, width: profile?.width ?? null, height: profile?.height ?? null, durationSec: null
   })

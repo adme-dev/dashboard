@@ -663,7 +663,13 @@ async function onRenderVideo(formats?: VideoRenderFormatId[]) {
   const res = await editor.renderVideoAction(formats)
   if (res.ok) toast.add({ title: 'Render queued', description: 'Your video is rendering.', color: 'success' })
   else if (res.flagOff) toast.add({ title: 'Video rendering is disabled', description: 'Ask an admin to enable VIDEO_STUDIO_ENABLED.', color: 'warning' })
-  else toast.add({ title: 'Failed to queue render', color: 'error' })
+  else if (res.maybeQueued) toast.add({
+    title: 'Render may already be running',
+    description: `${res.reason}. Check the render queue before rendering again — a second request would start a duplicate job.`,
+    color: 'warning',
+    icon: 'i-lucide-clock-alert'
+  })
+  else toast.add({ title: 'Failed to queue render', description: res.reason, color: 'error' })
 }
 
 async function onRetryRender() {

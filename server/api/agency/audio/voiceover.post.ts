@@ -14,7 +14,7 @@ const BodySchema = z.object({
 })
 
 // Owners (God mode) run this under the execution ledger; staff run it directly.
-export default defineEventHandler(event => withGodModeLedger(event, 'voiceover', async () => {
+export default defineEventHandler(event => withGodModeLedger(event, 'voiceover', async ({ reservedId }) => {
   const user = await requireWriteAccess(event)
   const body = BodySchema.parse(await readBody(event))
 
@@ -24,6 +24,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'voiceover',
   }
 
   const asset = await createVoiceAsset({
+    id: reservedId,
     createdBy: user.id,
     clientId: body.clientId ?? null,
     title: body.title ?? null,

@@ -69,13 +69,15 @@ describe('POST /agency/video/generation/source-assets/from-asset', () => {
       expect.stringContaining('(va.created_by = $2 OR mp.created_by = $2)'),
       [assetId, 'user-1'],
     )
-    expect(mockCreateSourceAsset).toHaveBeenCalledWith({
+    expect(mockCreateSourceAsset).toHaveBeenCalledWith(expect.objectContaining({
+      // The route passes the God-mode reserved id; staff requests get a fresh uuid.
+      id: expect.stringMatching(/^[0-9a-f-]{36}$/),
       clientId: 'dealer-1',
       createdBy: 'user-1',
       r2Key: 'media/dealer-1/car.png',
       contentType: 'image/png',
       subjectType: 'vehicle',
-    })
+    }))
     expect(res).toEqual({ id: 'src-1', status: 'approved' })
     expect(g.setResponseStatus).toHaveBeenCalledWith(expect.anything(), 201)
   })

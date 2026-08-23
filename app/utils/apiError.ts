@@ -36,3 +36,13 @@ export function apiErrorStatus(error: unknown): number | null {
 export function isAmbiguousApiFailure(error: unknown): boolean {
   return apiErrorStatus(error) === null
 }
+
+/**
+ * True when the server could not prove the request did NOT take effect: no HTTP
+ * response at all, or the God-mode ledger refusing to replay a dispatched attempt.
+ * Callers should tell the user to check the queue rather than retry blindly.
+ */
+export function isPossiblyAppliedFailure(error: unknown): boolean {
+  if (isAmbiguousApiFailure(error)) return true
+  return apiErrorStatus(error) === 409 && /not safely replayable|still in progress/i.test(apiErrorDescription(error, ''))
+}
