@@ -25,6 +25,23 @@ const H = computed(() => props.timeline.height ?? 1920)
 const aspect = computed(() => `${W.value} / ${H.value}`)
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
+const frameRef = ref<HTMLDivElement | null>(null)
+
+// ─── Render parity for overlays ─────────────────────────────────────────────
+// The server captures overlay HTML in a viewport the size of the OUTPUT frame
+// (e.g. 1080×1920) and composites it at 0,0 unscaled. Mirror that: lay the
+// iframe out at full output size and scale it down to the displayed box, so a
+// 300×600 banner covers the same fraction of the frame as it will in the render.
+const displayedWidth = ref(0)
+let frameObserver: ResizeObserver | null = null
+const overlayScale = computed(() => displayedWidth.value > 0 ? displayedWidth.value / W.value : 1)
+const overlayFrameStyle = computed(() => ({
+  width: `${W.value}px`,
+  height: `${H.value}px`,
+  transform: `scale(${overlayScale.value})`,
+  transformOrigin: 'top left',
+  colorScheme: 'dark light',
+}))
 
 const videoEls = new Map<string, HTMLVideoElement>()
 const imgEls = new Map<string, HTMLImageElement>()
@@ -114,6 +131,26 @@ function getNoisePattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
   return noisePattern
 }
 
+/** Never leave the frame silently black: name the clip and say what's happening. */
+function drawPlaceholder(ctx: CanvasRenderingContext2D, clip: any, status: string) {
+  const label = String(clip.label ?? clip.title ?? (clip.r2_key ?? '').split('/').pop()?.replace(/\.[^.]+$/, '') ?? 'clip')
+  ctx.save()
+  ctx.fillStyle = '#111'
+  ctx.fillRect(0, 0, W.value, H.value)
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)'
+  ctx.lineWidth = Math.max(2, W.value / 400)
+  ctx.strokeRect(W.value * 0.08, H.value * 0.08, W.value * 0.84, H.value * 0.84)
+  ctx.fillStyle = 'rgba(255,255,255,0.85)'
+  ctx.textAlign = 'center'
+  const px = Math.max(28, Math.round(Math.min(W.value, H.value) / 14))
+  ctx.font = `600 ${px}px system-ui, sans-serif`
+  ctx.fillText(label.slice(0, 48), W.value / 2, H.value / 2 - px * 0.4, W.value * 0.8)
+  ctx.fillStyle = 'rgba(255,255,255,0.55)'
+  ctx.font = `${Math.round(px * 0.75)}px system-ui, sans-serif`
+  ctx.fillText(status, W.value / 2, H.value / 2 + px * 0.9, W.value * 0.8)
+  ctx.restore()
+}
+
 function draw() {
   const canvas = canvasRef.value
   if (!canvas) return
@@ -140,6 +177,7 @@ function draw() {
     const img = getImgEl(active)
     if (!img || !img.complete || img.naturalWidth === 0) {
       ctx.restore()
+      drawPlaceholder(ctx, active, mediaStatus.value[active.id] === 'error' ? 'Still could not be decoded' : 'Loading still…')
       return
     }
     const kb = active.kenburns ?? { zoom_from: 1, zoom_to: 1.1, pan_from: [0, 0], pan_to: [0, 0] }
@@ -153,6 +191,7 @@ function draw() {
     const v = getVideoEl(active)
     if (!v || v.readyState < 2 || v.videoWidth === 0) {
       ctx.restore()
+      drawPlaceholder(ctx, active, mediaStatus.value[active.id] === 'error' ? 'Footage could not be decoded' : 'Loading footage…')
       return
     }
     const r = fitRect(v.videoWidth, v.videoHeight, W.value, H.value)
@@ -213,7 +252,12 @@ async function buildOverlayHtmlFor(clip: any) {
     const fmtKey = clip.gsap_format_key || Object.keys(proj.canvasData ?? {})[0]
     if (!fmtKey) return
     const layers = extractBannerLayers(proj.canvasData, fmtKey) as any
-    overlayHtml.value = { ...overlayHtml.value, [clip.id]: buildBannerHTML(fmtKey, layers, { includeAnimations: true }) }
+    // An iframe is only composited transparently when its color-scheme matches
+    // the embedder's; the app runs dark, so a light-scheme srcdoc paints an opaque
+    // black backdrop over the preview canvas. Pin both sides to the same scheme.
+    const html = buildBannerHTML(fmtKey, layers, { includeAnimations: true })
+      .replace(/<head>/i, '<head><meta name="color-scheme" content="dark light"><style>html,body{background:transparent!important}</style>')
+    overlayHtml.value = { ...overlayHtml.value, [clip.id]: html }
   } catch { /* overlay just won't preview */ }
 }
 
@@ -244,8 +288,16 @@ function onOverlayLoad(clip: any) {
   if (tl) { try { tl.pause(); tl.seek(Math.max(0, props.currentTime - clip.timeline_start_sec)) } catch { /* noop */ } }
 }
 
-onMounted(() => { draw() })
+onMounted(() => {
+  draw()
+  if (frameRef.value && typeof ResizeObserver !== 'undefined') {
+    frameObserver = new ResizeObserver(([entry]) => { displayedWidth.value = entry?.contentRect.width ?? 0 })
+    frameObserver.observe(frameRef.value)
+  }
+  displayedWidth.value = frameRef.value?.clientWidth ?? 0
+})
 onBeforeUnmount(() => {
+  frameObserver?.disconnect()
   for (const el of videoEls.values()) { try { el.pause(); el.removeAttribute('src'); el.load() } catch { /* noop */ } }
   videoEls.clear(); imgEls.clear()
 })
@@ -253,6 +305,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div
+    ref="frameRef"
     class="relative mx-auto h-[min(72vh,780px)] min-h-[520px] max-w-full overflow-hidden rounded-lg border border-default bg-black"
     :style="{ aspectRatio: aspect, width: 'auto' }"
   >
@@ -268,8 +321,8 @@ onBeforeUnmount(() => {
         v-show="overlayActive(clip)"
         :ref="(el) => { overlayRefs[clip.id] = el as HTMLIFrameElement | null }"
         :srcdoc="overlayHtml[clip.id]"
-        :style="{ opacity: clip.opacity ?? 1 }"
-        class="absolute inset-0 h-full w-full border-0 pointer-events-none"
+        :style="{ ...overlayFrameStyle, opacity: clip.opacity ?? 1 }"
+        class="absolute left-0 top-0 border-0 pointer-events-none"
         sandbox="allow-scripts allow-same-origin"
         @load="onOverlayLoad(clip)"
       />

@@ -7,6 +7,7 @@ import type { MediaRenderJob } from '~~/app/types'
 
 const stubs = {
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' },
+  UProgress: { name: 'UProgress', props: ['modelValue', 'max'], template: '<progress :value="modelValue" :max="max" />' },
   UBadge: { name: 'UBadge', props: ['label'], template: '<span>{{ label }}</span>' },
   UButton: {
     name: 'UButton',

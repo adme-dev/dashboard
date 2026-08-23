@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import type { AudioAsset } from '~~/app/types'
 import { apiErrorDescription } from '~~/app/utils/apiError'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 const props = defineProps<{
   initialAsset?: Partial<AudioAsset> | null
@@ -18,7 +19,9 @@ const emit = defineEmits<{
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string, body?: unknown }
+  options?: { method?: string, body?: unknown
+    headers?: Record<string, string>
+  }
 ) => Promise<T>
 const title = ref('Video voiceover')
 const script = ref('')
@@ -56,6 +59,7 @@ async function generateVoiceover() {
   try {
     const res = await apiFetch<{ asset: AudioAsset; violations: string[] }>('/api/agency/audio/voiceover', {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('voiceover') },
       body: {
         text,
         title: title.value.trim() || null,

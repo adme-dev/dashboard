@@ -6,7 +6,8 @@
 // before enqueuing, so the worker has pre-built HTML to pass to the container.
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { getProjectWithCurrentTimeline, createRenderJob, markRenderJobFailed } from '~~/server/utils/audio/projects'
+import { getProjectWithCurrentTimeline, createRenderJob, getRenderJob, markRenderJobFailed } from '~~/server/utils/audio/projects'
+import { executeGodModeMediaRender } from '~~/server/utils/audio/godModeExternalMutations'
 import { enqueueVideoRender } from '~~/server/utils/audio/renderQueue'
 import { resolveOverlayFormatKey, loadBannerLayers } from '~~/server/utils/audio/bannerOverlay'
 import { buildBannerHTML } from '~~/server/utils/banner/htmlBuilder'
@@ -59,60 +60,73 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // Snapshot + create the job row (same createRenderJob as audio — channels unused for
-  // video but the row records who triggered it and acts as the durable anchor).
-  const job = await createRenderJob({ projectId: id, requestedBy: user.id, channels: [] })
-
-  // Resolve each overlay per requested output format: load banner layers, build HTML,
-  // upload to R2. This avoids reusing portrait overlay HTML for square/landscape
-  // exports when the clip does not pin a specific Banner Studio format.
-  // Any error here is a user/config error → 400 (project or format not found).
-  const resolvedOverlaysByFormat: Record<string, { clipId: string; htmlKey: string; timeline_start_sec: number; duration_sec: number }[]> = {}
-  try {
-    for (const format of formats) {
-      const profile = videoFormatFor(format)
-      const profileW = profile?.width ?? 1080
-      const profileH = profile?.height ?? 1920
-      const resolvedForFormat: { clipId: string; htmlKey: string; timeline_start_sec: number; duration_sec: number }[] = []
-
-      for (const clip of overlayClips) {
-        const fmtKey: string = clip.gsap_format_key ?? resolveOverlayFormatKey(profileW, profileH)
-        const { layers, width, height } = await loadBannerLayers(clip.gsap_project_id, fmtKey)
-        const baseUrl = process.env.NUXT_PUBLIC_APP_URL ?? ''
-        const html = buildBannerHTML(fmtKey, layers, { baseUrl })
-        const findings = lintBannerRenderFormat({ key: fmtKey, html, width, height }, { fps: 30, crf: 23, quality: 1 })
-        if (hasRenderLintErrors(findings)) {
-          const firstError = findings.find(finding => finding.severity === 'error')
-          throw new Error(`overlay ${clip.id}: ${firstError?.message ?? 'invalid banner overlay'}`)
-        }
-        const htmlKey = `media/${id}/${job.id}/${format}/overlay-${clip.id}.html`
-        await uploadFile(Buffer.from(html, 'utf8'), htmlKey, 'text/html')
-        resolvedForFormat.push({
-          clipId: clip.id,
-          htmlKey,
-          timeline_start_sec: clip.timeline_start_sec,
-          duration_sec: clip.duration_sec,
-        })
-      }
-
-      if (resolvedForFormat.length > 0) {
-        resolvedOverlaysByFormat[format] = resolvedForFormat
-      }
+  // Owners (God mode) run this under the execution ledger: the job id is reserved
+  // before any side effect so a retried request replays the same job instead of
+  // enqueueing a second render. Staff requests run straight through.
+  const job = await executeGodModeMediaRender(event, async (run) => {
+    if (run.replay) {
+      const replayed = await getRenderJob(run.ids[0]!)
+      if (!replayed) throw createError({ statusCode: 409, statusMessage: 'Replayed render job no longer exists' })
+      return replayed
     }
-  } catch (e: any) {
-    await markRenderJobFailed(job.id, `overlay resolution failed: ${e?.message ?? String(e)}`)
-    throw createError({ statusCode: 400, statusMessage: `Overlay resolution failed: ${e?.message ?? String(e)}` })
-  }
+    // Snapshot + create the job row (same createRenderJob as audio — channels unused for
+    // video but the row records who triggered it and acts as the durable anchor).
+    const job = await createRenderJob({ projectId: id, requestedBy: user.id, channels: [], jobId: run.ids[0]! })
 
-  try {
-    await enqueueVideoRender(event, {
-      jobId: job.id, projectId: id, timelineId: job.timelineId, formats,
-      ...(Object.keys(resolvedOverlaysByFormat).length > 0 ? { resolvedOverlaysByFormat } : {})
-    })
-  } catch (e: any) {
-    await markRenderJobFailed(job.id, `enqueue failed: ${e?.message ?? String(e)}`)
-    throw createError({ statusCode: 502, statusMessage: 'Failed to enqueue video render' })
-  }
+    // Resolve each overlay per requested output format: load banner layers, build HTML,
+    // upload to R2. This avoids reusing portrait overlay HTML for square/landscape
+    // exports when the clip does not pin a specific Banner Studio format.
+    // Any error here is a user/config error → 400 (project or format not found).
+    const resolvedOverlaysByFormat: Record<string, { clipId: string; htmlKey: string; timeline_start_sec: number; duration_sec: number }[]> = {}
+    try {
+      for (const format of formats) {
+        const profile = videoFormatFor(format)
+        const profileW = profile?.width ?? 1080
+        const profileH = profile?.height ?? 1920
+        const resolvedForFormat: { clipId: string; htmlKey: string; timeline_start_sec: number; duration_sec: number }[] = []
+
+        for (const clip of overlayClips) {
+          const fmtKey: string = clip.gsap_format_key ?? resolveOverlayFormatKey(profileW, profileH)
+          const { layers, width, height } = await loadBannerLayers(clip.gsap_project_id, fmtKey)
+          const baseUrl = process.env.NUXT_PUBLIC_APP_URL ?? ''
+          const html = buildBannerHTML(fmtKey, layers, { baseUrl })
+          const findings = lintBannerRenderFormat({ key: fmtKey, html, width, height }, { fps: 30, crf: 23, quality: 1 })
+          if (hasRenderLintErrors(findings)) {
+            const firstError = findings.find(finding => finding.severity === 'error')
+            throw new Error(`overlay ${clip.id}: ${firstError?.message ?? 'invalid banner overlay'}`)
+          }
+          const htmlKey = `media/${id}/${job.id}/${format}/overlay-${clip.id}.html`
+          await uploadFile(Buffer.from(html, 'utf8'), htmlKey, 'text/html')
+          resolvedForFormat.push({
+            clipId: clip.id,
+            htmlKey,
+            timeline_start_sec: clip.timeline_start_sec,
+            duration_sec: clip.duration_sec,
+          })
+        }
+
+        if (resolvedForFormat.length > 0) {
+          resolvedOverlaysByFormat[format] = resolvedForFormat
+        }
+      }
+    } catch (e: any) {
+      await markRenderJobFailed(job.id, `overlay resolution failed: ${e?.message ?? String(e)}`)
+      throw createError({ statusCode: 400, statusMessage: `Overlay resolution failed: ${e?.message ?? String(e)}` })
+    }
+
+    try {
+      await enqueueVideoRender(event, {
+        jobId: job.id, projectId: id, timelineId: job.timelineId, formats,
+        ...(Object.keys(resolvedOverlaysByFormat).length > 0 ? { resolvedOverlaysByFormat } : {})
+      })
+      await run.markDispatched()
+    } catch (e: any) {
+      await markRenderJobFailed(job.id, `enqueue failed: ${e?.message ?? String(e)}`)
+      throw createError({ statusCode: 502, statusMessage: 'Failed to enqueue video render' })
+    }
+
+    return job
+  })
 
   setResponseStatus(event, 202)
   return { job }

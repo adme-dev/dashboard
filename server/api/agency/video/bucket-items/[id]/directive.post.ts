@@ -2,13 +2,15 @@ import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { requireVideoProjectWriteAccess } from '~~/server/utils/video-asset-intelligence/access'
 import { createOrUpdateBucketItemDirective, getBucketItemProjectRelationship } from '~~/server/utils/video-asset-intelligence/db'
+import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 
 const BodySchema = z.object({
   role: z.string().max(120).nullable().optional(),
   directive: z.record(z.string(), z.unknown()).default({}),
 })
 
-export default defineEventHandler(async (event) => {
+// Owners (God mode) run this under the execution ledger; staff run it directly.
+export default defineEventHandler(event => withGodModeLedger(event, 'bucketItemDirective', async () => {
   const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'Bucket item id is required' })
@@ -17,4 +19,4 @@ export default defineEventHandler(async (event) => {
   if (!bucketItem) throw createError({ statusCode: 404, statusMessage: 'Bucket item not found' })
   await requireVideoProjectWriteAccess(user, bucketItem.projectId, 'Bucket item directive requires an AV project')
   return { item: await createOrUpdateBucketItemDirective(id, body) }
-})
+}))

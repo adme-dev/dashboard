@@ -24,9 +24,12 @@ const props = withDefaults(defineProps<{
   pxPerSec?: number
   /** presigned URLs keyed by r2_key — for wavesurfer waveform render */
   sources?: Record<string, string>
+  /** library titles keyed by r2_key (or overlay project id) — for clip labels */
+  titles?: Record<string, string | undefined>
 }>(), {
   pxPerSec: 60,
-  sources: () => ({})
+  sources: () => ({}),
+  titles: () => ({})
 })
 
 const emit = defineEmits<{
@@ -42,7 +45,21 @@ const emit = defineEmits<{
   (e: 'slice', payload: { clipId: string; timeSec: number }): void
   /** Clip deleted */
   (e: 'delete-clip', payload: { clipId: string }): void
+  /** Empty-lane affordance: the user wants to add media to this track */
+  (e: 'add-to-track', payload: { trackId: string; kind: string }): void
 }>()
+
+const EMPTY_LANE_LABEL: Record<string, string> = {
+  video: 'Add footage',
+  overlay: 'Add overlay',
+  caption: 'Add captions',
+  voiceover: 'Add voiceover',
+  music: 'Add music',
+  audio: 'Add audio',
+}
+function emptyLaneLabel(lane: { kind: string; name: string }) {
+  return EMPTY_LANE_LABEL[lane.kind] ?? EMPTY_LANE_LABEL[lane.name.toLowerCase()] ?? 'Add clip'
+}
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 
@@ -106,7 +123,7 @@ function fmtDur(clip: DisplayClip) {
 
 // ─── Lanes (one per track) ────────────────────────────────────────────────────
 
-const lanes = computed(() => toDisplayLanes(props.timeline, props.clips))
+const lanes = computed(() => toDisplayLanes(props.timeline, props.clips, props.titles))
 
 /** Flat list of every display clip across all lanes — for interaction handlers. */
 const allDisplayClips = computed<DisplayClip[]>(() => lanes.value.flatMap(l => l.clips))
@@ -206,16 +223,46 @@ function onClipPointerDown(event: PointerEvent, clip: DisplayClip, laneIdx: numb
   }
 }
 
+/** Timeline second the drag would snap to right now, or null when free. Drives the snap guide. */
+const snapGuideSec = ref<number | null>(null)
+
 function onPointerMove(event: PointerEvent) {
   if (!drag.value) return
   const d = drag.value
   const dx = event.screenX - d.startScreenX
   const laneIdx = laneIndexAt(event.clientY)
-  d.previewDx = dx
+  const pps = internalPxPerSec.value
+  // Preview the snap so the user sees where the edge will land before releasing.
+  const clip = allDisplayClips.value.find(c => c.clipId === d.clipId)
+  let edgeSec: number | null = null
+  if (clip) {
+    if (d.mode === 'move') edgeSec = d.origStartSec + dx / pps
+    else if (d.mode === 'trim-start') edgeSec = clip.timelineStartSec + dx / pps
+    else edgeSec = clip.timelineStartSec + (clip.durationSec ?? Math.max(0, props.duration - clip.timelineStartSec)) + dx / pps
+  }
+  if (edgeSec !== null) {
+    const snapped = snapTime(edgeSec, getSnapTargets(d.clipId), pps, SNAP_THRESHOLD_PX)
+    snapGuideSec.value = snapped !== edgeSec ? snapped : null
+    if (d.mode === 'move') d.previewDx = (snapped - d.origStartSec) * pps
+    else d.previewDx = dx
+  } else {
+    d.previewDx = dx
+  }
   d.previewLaneOffset = laneIdx - d.sourceLaneIdx
   // trigger reactivity
   drag.value = { ...d }
 }
+
+// ⌘/Ctrl + wheel zooms around the cursor; plain wheel keeps scrolling the page/dock.
+function onWheel(event: WheelEvent) {
+  if (!(event.metaKey || event.ctrlKey)) return
+  event.preventDefault()
+  if (event.deltaY < 0) zoomIn()
+  else if (event.deltaY > 0) zoomOut()
+}
+
+/** Pointer travel below this is a click, not a drag — selection only, no edit. */
+const DRAG_THRESHOLD_PX = 3
 
 function onPointerUp(event: PointerEvent) {
   if (!drag.value) return
@@ -223,6 +270,14 @@ function onPointerUp(event: PointerEvent) {
 
   const dx = event.screenX - d.startScreenX
   const pps = internalPxPerSec.value
+  const laneMoved = d.mode === 'move' && laneIndexAt(event.clientY) !== d.sourceLaneIdx
+  if (Math.abs(dx) < DRAG_THRESHOLD_PX && !laneMoved) {
+    // A click: the clip is already selected from pointerdown. Emitting a
+    // zero-distance move would push a no-op undo step and trigger an autosave.
+    drag.value = null
+    snapGuideSec.value = null
+    return
+  }
 
   if (d.mode === 'move') {
     const rawTimeSec = d.origStartSec + dx / pps
@@ -254,6 +309,7 @@ function onPointerUp(event: PointerEvent) {
     }
   }
   drag.value = null
+  snapGuideSec.value = null
 }
 
 /** Get the live CSS style object for a clip block during drag */
@@ -475,6 +531,7 @@ onUnmounted(() => {
         <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">-</kbd><span class="text-muted">Zoom out</span>
         <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">0</kbd><span class="text-muted">Fit timeline</span>
         <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">S</kbd><span class="text-muted">Split selected audio at playhead</span>
+        <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">⌘ + scroll</kbd><span class="text-muted">Zoom timeline</span>
         <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">Del</kbd><span class="text-muted">Delete selected clip</span>
         <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">?</kbd><span class="text-muted">Show or hide shortcuts</span>
       </div>
@@ -514,6 +571,7 @@ onUnmounted(() => {
     class="relative overflow-x-auto rounded-lg border border-default bg-elevated select-none"
     @pointermove="onPointerMove"
     @pointerup="onPointerUp"
+    @wheel="onWheel"
     @pointercancel="() => (drag = null)"
   >
     <div
@@ -561,6 +619,18 @@ onUnmounted(() => {
             :class="lane.muted ? 'text-muted' : 'text-highlighted'"
           >{{ lane.name }}</span>
         </div>
+
+        <!-- Empty lane: invite, don't just leave a blank strip -->
+        <button
+          v-if="!lane.clips.length"
+          type="button"
+          class="absolute top-2 flex items-center gap-1.5 rounded-md border border-dashed border-default px-2.5 text-xs text-muted transition hover:border-primary/60 hover:text-highlighted"
+          :style="{ left: `${LABEL_WIDTH + 8}px`, height: `${LANE_HEIGHT - 16}px` }"
+          @click.stop="emit('add-to-track', { trackId: lane.id, kind: lane.kind })"
+        >
+          <UIcon name="i-lucide-plus" class="size-3.5" />
+          {{ emptyLaneLabel(lane) }}
+        </button>
 
         <!-- Clips -->
         <div
@@ -631,6 +701,15 @@ onUnmounted(() => {
             <div class="h-5 w-0.5 rounded-full bg-white/80 shadow" />
           </div>
         </div>
+      </div>
+
+      <!-- Snap guide: shows where a dragged edge will land -->
+      <div
+        v-if="snapGuideSec !== null"
+        class="pointer-events-none absolute z-20 w-px border-l border-dashed border-white/80"
+        :style="{ left: `${LABEL_WIDTH + playheadX(snapGuideSec, internalPxPerSec)}px`, top: `${RULER_HEIGHT}px`, height: `${lanes.length * LANE_HEIGHT}px` }"
+      >
+        <span class="absolute -top-5 left-1 rounded bg-white/90 px-1 text-[10px] font-medium tabular-nums text-black">{{ snapGuideSec.toFixed(2) }}s</span>
       </div>
 
       <!-- Playhead -->

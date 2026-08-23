@@ -4,6 +4,7 @@
 // for the playhead (clock rule: the view slaves to the engine, never the reverse).
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import type { TimelineState, Track } from '~~/server/utils/audio/timelineSchema'
+import type { MediaProject } from '~~/app/types'
 import { planTimeline, type ScheduledClip, type TrackBus } from '~~/app/utils/audio/audioSchedulePlanner'
 import { createAudioEngine, type AudioEngine, type AudioEngineDeps, type LoadResult } from '~~/app/composables/useAudioEngine'
 import { createBrowserAudioContext, browserSetTimer, makeR2Resolver } from '~~/app/utils/audio/audioContextFactory'
@@ -25,6 +26,7 @@ import {
 } from '~~/app/utils/video/videoSourceRegistry'
 import type { MediaRenderJob } from '~~/app/types'
 import type { VideoAsset } from '~~/server/utils/video/assets'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 export type EditorStatus = 'idle' | 'loading' | 'ready' | 'error'
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -137,7 +139,7 @@ function readVideoDuration(file: File): Promise<number> {
 export function useMediaProjectEditor(projectId: string) {
   const apiFetch = $fetch as <T = unknown>(
     request: string,
-    options?: { method?: string; body?: unknown }
+    options?: { method?: string; body?: unknown; headers?: Record<string, string> }
   ) => Promise<T>
   const timeline = ref<TimelineState | null>(null)
   const clips = ref<ScheduledClip[]>([])
@@ -150,6 +152,17 @@ export function useMediaProjectEditor(projectId: string) {
   const canUndo = ref(false)
   const canRedo = ref(false)
   const saveStatus = ref<SaveStatus>('idle')
+  /** Human-readable reason for the last failed save (null when the last save succeeded). */
+  const saveError = ref<string | null>(null)
+  /** True from the first edit until the next successful save — drives the leave-page guard. */
+  const dirty = ref(false)
+  /** Project metadata (title, client, status). Loaded with the timeline. */
+  const project = ref<MediaProject | null>(null)
+  // Each save attempt gets its own Idempotency-Key. A retried payload is a new
+  // attempt with a new key — timeline saves are idempotent UPDATEs, so a
+  // response-less attempt that did commit is harmlessly re-applied.
+  let saveSequence = 0
+  const idempotencyKey = (scope: string) => `media-${scope}:${projectId}:${Date.now().toString(36)}:${++saveSequence}`
   // Clip ids whose audio source couldn't be resolved (deleted/404). Non-fatal: the
   // project still loads (status 'ready'); the page shows a warning so the user can
   // remove or replace them. Kept in sync on every engine reload via commitMissing.
@@ -176,21 +189,38 @@ export function useMediaProjectEditor(projectId: string) {
   async function doSave(): Promise<boolean> {
     if (!timeline.value) return false
     saveStatus.value = 'saving'
+    const snapshot = timeline.value
     try {
       await apiFetch(`/api/agency/audio/projects/${projectId}/timeline`, {
         method: 'PUT',
+        headers: { 'Idempotency-Key': idempotencyKey('timeline') },
         body: { state: timeline.value }
       })
       saveStatus.value = 'saved'
+      saveError.value = null
+      // Only clean if nothing was edited while the request was in flight.
+      if (timeline.value === snapshot) dirty.value = false
       return true
-    } catch {
+    } catch (e: unknown) {
       saveStatus.value = 'error'
+      saveError.value = apiErrorDescription(e, 'Unknown error')
       return false
     }
   }
 
   const saver = makeDebouncedSaver(async () => { await doSave() }, 1500)
-  function scheduleAutosave() { saver.trigger() }
+  function scheduleAutosave() { dirty.value = true; saver.trigger() }
+
+  /** Rename / re-home the project. Resolves with the updated project row. */
+  async function updateProject(patch: { title?: string | null; clientId?: string | null }): Promise<MediaProject> {
+    const res = await apiFetch<{ project: MediaProject }>(`/api/agency/audio/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: { 'Idempotency-Key': idempotencyKey('project') },
+      body: patch
+    })
+    project.value = res.project
+    return res.project
+  }
   async function saveNow() {
     const saved = await doSave()
     if (!saved) throw new Error('Could not save timeline')
@@ -343,7 +373,11 @@ export function useMediaProjectEditor(projectId: string) {
     const fd = new FormData()
     fd.append('file', file)
     fd.append('kind', kind)
-    const res = await apiFetch<{ r2_key: string; url: string }>(`/api/agency/audio/projects/${projectId}/upload-media`, { method: 'POST', body: fd })
+    const res = await apiFetch<{ r2_key: string; url: string }>(`/api/agency/audio/projects/${projectId}/upload-media`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('upload') },
+      body: fd
+    })
     mergeSource(res.r2_key, res.url, { durationSec })
     return { r2Key: res.r2_key, url: res.url, durationSec }
   }
@@ -414,7 +448,11 @@ export function useMediaProjectEditor(projectId: string) {
     rendering.value = true
     try {
       if (!await doSave()) return { ok: false }
-      await apiFetch(`/api/agency/audio/projects/${projectId}/render-video`, { method: 'POST', body: formats?.length ? { formats } : {} })
+      await apiFetch(`/api/agency/audio/projects/${projectId}/render-video`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey('render') },
+        body: formats?.length ? { formats } : {}
+      })
       await refreshRenderJobs()
       scheduleJobPoll()
       return { ok: true }
@@ -429,26 +467,35 @@ export function useMediaProjectEditor(projectId: string) {
   /** Draft a social post from a rendered variant. Returns { postId, clientId } or throws (page toasts). */
   async function publishToSocial(jobId: string, format: string): Promise<{ postId: string; clientId: string }> {
     return await apiFetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/publish-social`, {
-      method: 'POST', body: { format }
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('render-publish') },
+      body: { format }
     })
   }
 
   /** Draft a social post from a saved/generated video asset. */
   async function publishVideoAssetToSocial(assetId: string): Promise<{ postId: string; clientId: string }> {
-    return await apiFetch(`/api/agency/video/assets/${assetId}/publish-social`, { method: 'POST' })
+    return await apiFetch(`/api/agency/video/assets/${assetId}/publish-social`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('asset-publish') }
+    })
   }
 
   /** Send a rendered variant to the client portal for review. Returns the created review or throws. */
   async function sendToPortal(jobId: string, format: string): Promise<{ review: unknown }> {
     return await apiFetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/send-to-portal`, {
-      method: 'POST', body: { format }
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('render-portal') },
+      body: { format }
     })
   }
 
   /** Save a rendered variant to the reusable video library. */
   async function saveAsset(jobId: string, format: string, title?: string | null): Promise<{ asset: VideoAsset }> {
     return await apiFetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/save-asset`, {
-      method: 'POST', body: { format, title: title ?? null }
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('render-save-asset') },
+      body: { format, title: title ?? null }
     })
   }
 
@@ -495,6 +542,7 @@ export function useMediaProjectEditor(projectId: string) {
     await saveNow()
     return apiFetch(`/api/agency/audio/projects/${projectId}/versions`, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('version') },
       body: { label }
     })
   }
@@ -522,12 +570,13 @@ export function useMediaProjectEditor(projectId: string) {
       // The SP0 project GET returns the MediaTimeline WRAPPER; the TimelineState lives
       // in `.state` (validated on write — cast rather than re-import the Zod value client-side).
       const [proj, src] = await Promise.all([
-        apiFetch<{ project: unknown; timeline: { state: unknown } | null }>(`/api/agency/audio/projects/${projectId}`),
+        apiFetch<{ project: MediaProject; timeline: { state: unknown } | null }>(`/api/agency/audio/projects/${projectId}`),
         apiFetch<{ sources: Record<string, string> }>(`/api/agency/audio/projects/${projectId}/clip-sources`)
       ])
       const state = proj.timeline?.state as TimelineState | undefined
       if (!state) { status.value = 'error'; error.value = 'This project has no timeline yet.'; return }
       timeline.value = state
+      project.value = proj.project
       // Populate the live sources map from the initial presigned URLs
       for (const [k, v] of Object.entries(src.sources)) mergeSource(k, v)
       const plan = planTimeline(state)
@@ -602,7 +651,8 @@ export function useMediaProjectEditor(projectId: string) {
     // State
     timeline, clips, tracks, status, error,
     isPlaying, currentTime, duration,
-    canUndo, canRedo, saveStatus, saveNow,
+    canUndo, canRedo, saveStatus, saveError, dirty, saveNow,
+    project, updateProject,
     /** Clip ids whose source couldn't be loaded (deleted/404). Non-fatal warning. */
     missingClipIds,
     mediaType,

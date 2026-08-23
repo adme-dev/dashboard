@@ -4,6 +4,7 @@ import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 import { createSourceAsset } from '~~/server/utils/video-generation/sourceAssetStore'
 import { imageContentTypeForR2Key } from '~~/server/utils/video-generation/sourceContentTypes'
 import { canUseTimelineStillProject, findTimelineStillSource } from '~~/server/utils/video-generation/timelineStillSource'
+import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 
 const BodySchema = z.object({
   projectId: z.string().uuid(),
@@ -11,7 +12,8 @@ const BodySchema = z.object({
   subjectType: z.enum(['vehicle', 'non_vehicle', 'unknown']).default('unknown'),
 })
 
-export default defineEventHandler(async (event) => {
+// Owners (God mode) run this under the execution ledger; staff run it directly.
+export default defineEventHandler(event => withGodModeLedger(event, 'sourceAssetFromStill', async () => {
   if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
@@ -44,4 +46,4 @@ export default defineEventHandler(async (event) => {
 
   setResponseStatus(event, 201)
   return { id: source.id, status: source.status }
-})
+}))

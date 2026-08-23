@@ -48,6 +48,7 @@ export default {
           await runVideoCompositeJob(msg.body as any, {
             loadTimelineState: db.dbLoadTimelineState,
             markRendering: db.dbMarkRenderRendering,
+            markProgress: db.dbMarkRenderProgress,
             markDone: db.dbMarkRenderDone,
             markFailed: db.dbMarkRenderFailed,
             renderOne: ({ projectId, jobId, state, formatKey, resolvedOverlays }) => {
@@ -106,6 +107,7 @@ export default {
           await runTimelineRenderJob(msg.body as any, {
             loadTimelineState: db.dbLoadTimelineState,
             markRendering: db.dbMarkRenderRendering,
+            markProgress: db.dbMarkRenderProgress,
             markDone: db.dbMarkRenderDone,
             markFailed: db.dbMarkRenderFailed,
             renderMaster: ({ projectId, jobId, state }) =>

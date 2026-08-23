@@ -96,6 +96,31 @@ const aspectOptions = computed(() => {
   return [{ label: 'All aspect ratios', value: 'all' }, ...aspects.map(value => ({ label: value, value }))]
 })
 
+/** Non-default secondary filters — drives the badge on the Filters button. */
+const activeFilterCount = computed(() => [
+  source.value !== 'all',
+  statusBucket.value !== 'all',
+  model.value !== 'all',
+  aspect.value !== 'all',
+  bucketId.value !== 'all',
+].filter(Boolean).length)
+
+function resetFilters() {
+  source.value = 'all'
+  statusBucket.value = 'all'
+  model.value = 'all'
+  aspect.value = 'all'
+  bucketId.value = 'all'
+}
+
+// Failed AI jobs pile up in the rail with no server-side delete. Hide them
+// per browser; they stay visible under the explicit "Failed" status filter.
+const hiddenFailedJobIds = useLocalStorage<string[]>('video-studio-library-hidden-failed', [])
+const failedJobs = computed(() => props.assets.filter(asset => asset.type === 'job' && asset.status === 'failed' && !hiddenFailedJobIds.value.includes(asset.rawId)))
+function hideFailedJobs() {
+  hiddenFailedJobIds.value = Array.from(new Set([...hiddenFailedJobIds.value, ...failedJobs.value.map(asset => asset.rawId)]))
+}
+
 const filters = computed<VideoStudioAssetFilters>(() => ({
   search: search.value,
   source: source.value === 'upload' ? 'all' : source.value,
@@ -109,6 +134,7 @@ const filteredAssets = computed(() => {
     .filter(asset => matchesSource(asset))
     .filter(asset => matchesStatusBucket(asset))
     .filter(asset => aspect.value === 'all' || asset.format === aspect.value)
+    .filter(asset => statusBucket.value === 'failed' || asset.type !== 'job' || asset.status !== 'failed' || !hiddenFailedJobIds.value.includes(asset.rawId))
 
   return [...base].sort((a, b) => {
     if (sort.value === 'oldest') return timeValue(a) - timeValue(b)
@@ -300,62 +326,88 @@ function sourceLabel(value: VideoStudioAssetSource) {
       />
     </div>
 
+    <div class="grid grid-cols-3 gap-1">
+      <button
+        v-for="option in CATEGORY_FILTERS"
+        :key="option.value"
+        type="button"
+        class="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border px-1.5 transition"
+        :class="category === option.value
+          ? 'border-primary bg-primary text-inverted'
+          : 'border-default bg-default/40 text-muted hover:border-primary/50 hover:bg-elevated hover:text-highlighted'"
+        :aria-pressed="category === option.value"
+        @click="category = option.value"
+      >
+        <UIcon :name="option.icon" class="size-3.5 shrink-0" />
+        <span class="min-w-0 truncate text-[11px] font-medium leading-none">{{ option.label }}</span>
+      </button>
+    </div>
+
+    <div class="flex items-center gap-1.5">
+      <UPopover>
+        <UButton
+          icon="i-lucide-list-filter"
+          size="xs"
+          :variant="activeFilterCount ? 'soft' : 'ghost'"
+          :color="activeFilterCount ? 'primary' : 'neutral'"
+          :label="activeFilterCount ? `Filters · ${activeFilterCount}` : 'Filters'"
+          aria-label="Asset filters"
+        />
+        <template #content>
+          <div class="w-72 space-y-3 p-3">
+            <div class="flex items-center justify-between">
+              <p class="text-xs font-medium uppercase text-muted">Source</p>
+              <UButton v-if="activeFilterCount" size="xs" variant="ghost" color="neutral" label="Reset" @click="resetFilters" />
+            </div>
+            <div class="grid grid-cols-2 gap-1">
+              <UButton
+                v-for="option in SOURCE_FILTERS"
+                :key="option.value"
+                :label="option.label"
+                :icon="option.icon"
+                size="xs"
+                :variant="source === option.value ? 'solid' : 'ghost'"
+                :color="source === option.value ? 'primary' : 'neutral'"
+                class="min-w-0 justify-start"
+                @click="source = option.value"
+              />
+            </div>
+            <p class="text-xs font-medium uppercase text-muted">Status</p>
+            <div class="grid grid-cols-2 gap-1">
+              <UButton
+                v-for="option in STATUS_FILTERS"
+                :key="option.value"
+                :label="option.label"
+                :icon="option.icon"
+                size="xs"
+                :variant="statusBucket === option.value ? 'solid' : 'ghost'"
+                :color="statusBucket === option.value ? 'primary' : 'neutral'"
+                class="min-w-0 justify-start"
+                @click="statusBucket = option.value"
+              />
+            </div>
+            <div class="grid grid-cols-1 gap-2">
+              <USelect v-model="model" :items="modelOptions" value-key="value" size="xs" aria-label="Filter model" />
+              <USelect v-model="aspect" :items="aspectOptions" value-key="value" size="xs" aria-label="Filter aspect ratio" />
+              <USelect v-if="bucketOptions.length > 1" v-model="bucketId" :items="bucketOptions" value-key="value" size="xs" aria-label="Filter bucket" />
+            </div>
+          </div>
+        </template>
+      </UPopover>
+      <USelect v-model="sort" :items="SORT_OPTIONS" value-key="value" size="xs" aria-label="Sort assets" class="min-w-0 flex-1" />
+      <UButton
+        v-if="failedJobs.length"
+        icon="i-lucide-eye-off"
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        :label="`Hide ${failedJobs.length} failed`"
+        :title="`Hide ${failedJobs.length} failed AI ${failedJobs.length === 1 ? 'job' : 'jobs'} from this list (still shown under the Failed filter)`"
+        @click="hideFailedJobs"
+      />
+    </div>
+
     <div class="space-y-2">
-      <div class="grid grid-cols-5 gap-1.5 2xl:grid-cols-6">
-        <button
-          v-for="option in CATEGORY_FILTERS"
-          :key="option.value"
-          type="button"
-          class="flex h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md border px-1 text-center transition"
-          :class="category === option.value
-            ? 'border-primary bg-primary text-inverted'
-            : 'border-default bg-default/40 text-muted hover:border-primary/50 hover:bg-elevated hover:text-highlighted'"
-          @click="category = option.value"
-        >
-          <UIcon :name="option.icon" class="size-4 shrink-0" />
-          <span class="max-w-full truncate text-[9px] font-medium leading-none">{{ option.label }}</span>
-        </button>
-      </div>
-
-      <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-        <UButton
-          v-for="option in SOURCE_FILTERS"
-          :key="option.value"
-          :label="option.label"
-          :icon="option.icon"
-          size="xs"
-          :variant="source === option.value ? 'solid' : 'ghost'"
-          :color="source === option.value ? 'primary' : 'neutral'"
-          class="min-w-0 justify-start rounded-md border"
-          :class="source === option.value ? 'border-primary' : 'border-transparent hover:border-default'"
-          @click="source = option.value"
-        />
-      </div>
-
-      <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-        <UButton
-          v-for="option in STATUS_FILTERS"
-          :key="option.value"
-          :label="option.label"
-          :icon="option.icon"
-          size="xs"
-          :variant="statusBucket === option.value ? 'solid' : 'ghost'"
-          :color="statusBucket === option.value ? 'primary' : 'neutral'"
-          class="min-w-0 justify-start rounded-md border"
-          :class="statusBucket === option.value ? 'border-primary' : 'border-transparent hover:border-default'"
-          @click="statusBucket = option.value"
-        />
-      </div>
-    </div>
-
-    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      <USelect v-model="model" :items="modelOptions" value-key="value" size="xs" aria-label="Filter model" />
-      <USelect v-model="aspect" :items="aspectOptions" value-key="value" size="xs" aria-label="Filter aspect ratio" />
-      <USelect v-if="bucketOptions.length > 1" v-model="bucketId" :items="bucketOptions" value-key="value" size="xs" aria-label="Filter bucket" />
-      <USelect v-model="sort" :items="SORT_OPTIONS" value-key="value" size="xs" aria-label="Sort assets" />
-    </div>
-
-    <div class="max-h-[34rem] space-y-2 overflow-y-auto pr-1">
       <div v-if="props.loading && !props.assets.length" class="space-y-2">
         <USkeleton v-for="n in 5" :key="n" class="h-20 w-full rounded-md" />
       </div>

@@ -65,4 +65,22 @@ describe('runVideoCompositeJob', () => {
     // resolvedOverlays should be undefined (not a filled array) when not in the message
     expect(d.renderOne.mock.calls[0][0].resolvedOverlays).toBeUndefined()
   })
+
+  it('reports per-format progress before each render and a final done stage', async () => {
+    const markProgress = vi.fn().mockResolvedValue(undefined)
+    const d = deps({ markProgress })
+    await runVideoCompositeJob({ jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16', 'square_1x1'] }, d as any)
+    expect(markProgress.mock.calls.map(([, p]: any[]) => [p.stage, p.formatKey, p.done, p.total])).toEqual([
+      ['rendering', 'reels_9x16', 0, 2],
+      ['rendering', 'square_1x1', 1, 2],
+      ['done', null, 2, 2],
+    ])
+  })
+
+  it('never fails a render because progress reporting failed', async () => {
+    const d = deps({ markProgress: vi.fn().mockRejectedValue(new Error('db hiccup')) })
+    await expect(runVideoCompositeJob({ jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16'] }, d as any)).resolves.toBeUndefined()
+    expect(d.markDone).toHaveBeenCalledOnce()
+    expect(d.markFailed).not.toHaveBeenCalled()
+  })
 })

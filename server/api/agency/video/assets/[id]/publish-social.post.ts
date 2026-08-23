@@ -6,8 +6,10 @@ import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { buildVideoStudioSocialDraft } from '~~/server/utils/socialVideoDraft'
 import { videoAssetPublicUrl } from '~~/server/utils/video/assetLinks'
 import { getAccessibleVideoAsset } from '~~/server/utils/video/assets'
+import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 
-export default defineEventHandler(async (event) => {
+// Owners (God mode) run this under the execution ledger; staff run it directly.
+export default defineEventHandler(event => withGodModeLedger(event, 'assetPublishSocial', async () => {
   if (process.env.VIDEO_STUDIO_ENABLED !== 'true') throw createError({ statusCode: 404, statusMessage: 'Not found' })
   const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')!
@@ -71,4 +73,4 @@ export default defineEventHandler(async (event) => {
   )
   if (!post) throw new Error('failed to create social post draft')
   return { postId: post.id, clientId }
-})
+}))

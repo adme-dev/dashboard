@@ -34,7 +34,7 @@ function defaultTimelineState(): TimelineState {
 
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string; body?: unknown }
+  options?: { method?: string; body?: unknown; headers?: Record<string, string> }
 ) => Promise<T>
 const data = ref<{ projects: MediaProject[] } | null>(null)
 const pending = ref(false)
@@ -120,6 +120,7 @@ async function duplicateProject(project: MediaProject) {
     const initialState = src.timeline?.state ?? defaultTimelineState()
     const res = await apiFetch<{ project: MediaProject }>('/api/agency/audio/projects', {
       method: 'POST',
+      headers: { 'Idempotency-Key': `media-duplicate:${project.id}:${Date.now().toString(36)}` },
       body: { title: `${project.title ?? 'Untitled'} (copy)`, initialState }
     })
     toast.add({ title: 'Project duplicated', color: 'success' })
@@ -148,7 +149,10 @@ async function confirmDelete() {
   deleting.value = true
   const id = projectToDelete.value.id
   try {
-    await apiFetch(`/api/agency/audio/projects/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/audio/projects/${id}`, {
+      method: 'DELETE',
+      headers: { 'Idempotency-Key': `media-delete:${id}` }
+    })
     toast.add({ title: 'Project deleted', color: 'success' })
     deleteConfirmOpen.value = false
     projectToDelete.value = null
@@ -183,7 +187,11 @@ async function createProject() {
     const body: Record<string, unknown> = { title: newTitle.value.trim() || null, mediaType: newKind.value }
     // Audio seeds two empty lanes; AV is auto-seeded server-side via emptyAvTimeline().
     if (newKind.value === 'audio') body.initialState = defaultTimelineState()
-    const res = await apiFetch<{ project: MediaProject }>('/api/agency/audio/projects', { method: 'POST', body })
+    const res = await apiFetch<{ project: MediaProject }>('/api/agency/audio/projects', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': `media-create:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}` },
+      body
+    })
     toast.add({ title: 'Project created', color: 'success' })
     createOpen.value = false
     newTitle.value = ''

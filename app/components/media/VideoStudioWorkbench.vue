@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+// Video Studio workbench — a fixed-height, three-column workspace:
+//   [ Assets rail | Edit (preview + selection) | Inspector ]
+// Each column scrolls on its own; the page never scrolls. Below lg the three
+// columns collapse to one and the mode tabs switch between them.
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   DEFAULT_VIDEO_RENDER_FORMATS,
   VIDEO_RENDER_FORMATS,
@@ -11,8 +15,6 @@ type StudioMode = 'assets' | 'edit' | 'produce' | 'review'
 
 const props = withDefaults(defineProps<{
   mode?: StudioMode
-  currentTimeSec: number
-  durationSec: number
   assetCount?: number
   generationJobCount?: number
   renderJobCount?: number
@@ -44,7 +46,6 @@ const emit = defineEmits<{
 }>()
 
 const localMode = ref<StudioMode>(props.mode)
-
 const activeMode = computed({
   get: () => localMode.value,
   set: (value: StudioMode) => {
@@ -53,60 +54,64 @@ const activeMode = computed({
   },
 })
 
-const modeItems = computed(() => [
-  {
-    label: 'Assets',
-    icon: 'i-lucide-library',
-    value: 'assets',
-    badge: props.assetCount ? String(props.assetCount) : undefined,
-  },
-  {
-    label: 'Edit',
-    icon: 'i-lucide-monitor-play',
-    value: 'edit',
-    badge: props.generationJobCount ? String(props.generationJobCount) : undefined,
-  },
-  {
-    label: 'Produce',
-    icon: 'i-lucide-wand-sparkles',
-    value: 'produce',
-  },
-  {
-    label: 'Review',
-    icon: 'i-lucide-list-checks',
-    value: 'review',
-    badge: props.renderJobCount ? String(props.renderJobCount) : undefined,
-  },
+// Below lg the inspector hosts both Produce and Review, so the mobile switcher
+// only needs three stops. 'review' still maps onto the inspector panel.
+const mobilePanel = computed({
+  get: () => (activeMode.value === 'produce' || activeMode.value === 'review') ? 'produce' : activeMode.value,
+  set: (value: string) => { activeMode.value = value as StudioMode },
+})
+const mobileItems = computed(() => [
+  { label: 'Assets', icon: 'i-lucide-library', value: 'assets', badge: props.assetCount ? String(props.assetCount) : undefined },
+  { label: 'Edit', icon: 'i-lucide-monitor-play', value: 'edit' },
+  { label: 'Inspector', icon: 'i-lucide-panel-right', value: 'produce', badge: props.renderJobCount ? String(props.renderJobCount) : undefined },
 ])
 
-const statusItems = computed(() => [
-  {
-    icon: 'i-lucide-sliders-horizontal',
-    label: selectedFormatCount.value === 1 ? '1 format' : `${selectedFormatCount.value} formats`,
-  },
-  {
-    icon: props.generationEnabled ? 'i-lucide-sparkles' : 'i-lucide-sparkles',
-    label: generationStatusLabel.value,
-    tone: props.generationEnabled ? 'text-primary' : 'text-warning',
-  },
-  {
-    icon: 'i-lucide-clapperboard',
-    label: props.renderJobCount === 1 ? '1 render' : `${props.renderJobCount} renders`,
-  },
-  {
-    icon: 'i-lucide-timer',
-    label: `${fmt(props.currentTimeSec)} / ${fmt(props.durationSec)}`,
-  },
-])
-
-const generationStatusLabel = computed(() => props.generationStatusLabel || (props.generationEnabled ? 'AI ready' : 'AI unavailable'))
 const generationStatusDetail = computed(() => props.generationStatusDetail || (props.generationEnabled
   ? 'Cloudflare AI Gateway video models are available for this project.'
   : 'Video generation is disabled by account policy or no runnable models are configured.'))
 
+// ─── Column widths: drag the dividers; remembered per browser ───────────────
+const COLUMNS_KEY = 'video-studio:columns'
+const LIBRARY_RANGE = [220, 520] as const
+const INSPECTOR_RANGE = [280, 640] as const
+const libraryWidth = ref(300)
+const inspectorWidth = ref(360)
+let columnDrag: { side: 'library' | 'inspector'; startX: number; startWidth: number } | null = null
+
+function clamp(value: number, [min, max]: readonly [number, number]) {
+  return Math.min(max, Math.max(min, value))
+}
+function onColumnDragStart(side: 'library' | 'inspector', event: PointerEvent) {
+  columnDrag = { side, startX: event.clientX, startWidth: side === 'library' ? libraryWidth.value : inspectorWidth.value }
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+}
+function onColumnDragMove(event: PointerEvent) {
+  if (!columnDrag) return
+  const delta = event.clientX - columnDrag.startX
+  if (columnDrag.side === 'library') libraryWidth.value = clamp(columnDrag.startWidth + delta, LIBRARY_RANGE)
+  else inspectorWidth.value = clamp(columnDrag.startWidth - delta, INSPECTOR_RANGE)
+}
+function onColumnDragEnd() {
+  if (!columnDrag) return
+  columnDrag = null
+  try { localStorage.setItem(COLUMNS_KEY, JSON.stringify({ library: libraryWidth.value, inspector: inspectorWidth.value })) } catch { /* private mode */ }
+}
+onMounted(() => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(COLUMNS_KEY) ?? 'null') as { library?: number; inspector?: number } | null
+    if (stored?.library) libraryWidth.value = clamp(stored.library, LIBRARY_RANGE)
+    if (stored?.inspector) inspectorWidth.value = clamp(stored.inspector, INSPECTOR_RANGE)
+  } catch { /* ignore */ }
+})
+
+// Below lg the grid is a single column; the widths only apply from lg up (via CSS var + class).
+const workspaceStyle = computed(() => ({
+  '--vs-library': `${libraryWidth.value}px`,
+  '--vs-inspector': `${inspectorWidth.value}px`,
+}))
 const workspaceGridClass = computed(() => props.producerCollapsed
-  ? 'grid min-h-0 divide-y divide-default lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)] lg:divide-x lg:divide-y-0'
-  : 'grid min-h-0 divide-y divide-default lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)] lg:divide-x lg:divide-y-0 2xl:grid-cols-[minmax(340px,420px)_minmax(0,1fr)_minmax(360px,420px)]')
+  ? 'lg:grid-cols-[var(--vs-library)_6px_minmax(0,1fr)]'
+  : 'lg:grid-cols-[var(--vs-library)_6px_minmax(0,1fr)_6px_var(--vs-inspector)]')
 
 const selectedFormats = ref<VideoRenderFormatId[]>([...DEFAULT_VIDEO_RENDER_FORMATS])
 const selectedFormatCount = computed(() => selectedFormats.value.length)
@@ -122,72 +127,67 @@ function renderSelectedFormats() {
   emit('render', normalizeVideoRenderFormats(selectedFormats.value))
 }
 
-function modePanelClass(mode: StudioMode) {
-  return activeMode.value === mode ? 'block' : 'hidden lg:block'
-}
-
-function fmt(sec: number) {
-  const safe = Math.max(0, Math.floor(sec))
-  const min = Math.floor(safe / 60)
-  return `${min}:${String(safe % 60).padStart(2, '0')}`
+function panelClass(panel: 'assets' | 'edit' | 'produce') {
+  return mobilePanel.value === panel ? 'flex' : 'hidden lg:flex'
 }
 
 watch(activeMode, (mode) => {
-  if (mode === 'produce' && props.producerCollapsed) {
+  if ((mode === 'produce' || mode === 'review') && props.producerCollapsed) {
     emit('update:producer-collapsed', false)
   }
 })
 
-watch(() => props.mode, (mode) => {
-  localMode.value = mode
-})
+watch(() => props.mode, (mode) => { localMode.value = mode })
 </script>
 
 <template>
-  <section class="overflow-hidden rounded-lg border border-default bg-elevated">
-    <header class="flex flex-wrap items-center justify-between gap-3 border-b border-default px-4 py-3">
-      <div class="min-w-0">
-        <div class="flex flex-wrap items-center gap-2">
-          <h2 class="text-sm font-semibold text-highlighted">Video Studio</h2>
-          <UBadge :label="`${props.assetCount} assets`" size="xs" variant="subtle" color="neutral" />
-          <UBadge
-            v-if="props.generationJobCount"
-            :label="`${props.generationJobCount} AI jobs`"
-            size="xs"
-            variant="subtle"
-            color="primary"
-          />
-          <UBadge
-            v-if="props.renderJobCount"
-            :label="`${props.renderJobCount} ${props.renderJobCount === 1 ? 'render' : 'renders'}`"
-            size="xs"
-            variant="subtle"
-            color="neutral"
-          />
-        </div>
-        <p class="mt-0.5 text-xs text-muted">
-          {{ fmt(props.currentTimeSec) }} / {{ fmt(props.durationSec) }}
-        </p>
+  <section class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-default bg-elevated">
+    <!-- Command bar: sources on the left, output on the right. -->
+    <header class="flex shrink-0 flex-wrap items-center gap-2 border-b border-default px-3 py-2">
+      <div class="flex flex-wrap items-center gap-1 rounded-md border border-default bg-default/50 p-1">
+        <UButton icon="i-lucide-film" size="xs" variant="ghost" color="neutral" label="Footage" @click="emit('add-footage')" />
+        <UButton icon="i-lucide-shapes" size="xs" variant="ghost" color="neutral" label="Overlay" @click="emit('add-overlay')" />
+        <UButton
+          icon="i-lucide-sparkles"
+          size="xs"
+          variant="ghost"
+          color="neutral"
+          label="Generate"
+          :disabled="!props.generationEnabled"
+          :title="generationStatusDetail"
+          @click="emit('generate')"
+        />
+        <UButton icon="i-lucide-library" size="xs" variant="ghost" color="neutral" label="Library" @click="emit('open-library')" />
       </div>
 
-      <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-        <div class="flex max-w-full flex-wrap items-center gap-1 rounded-md border border-default bg-default/50 p-1">
-          <UButton icon="i-lucide-film" size="xs" variant="ghost" color="neutral" label="Footage" @click="emit('add-footage')" />
-          <UButton icon="i-lucide-shapes" size="xs" variant="ghost" color="neutral" label="Overlay" @click="emit('add-overlay')" />
-          <UButton
-            icon="i-lucide-sparkles"
-            size="xs"
-            variant="ghost"
-            color="neutral"
-            label="Generate"
-            :disabled="!props.generationEnabled"
-            :title="generationStatusDetail"
-            @click="emit('generate')"
-          />
-          <UButton icon="i-lucide-library" size="xs" variant="ghost" color="neutral" label="Library" @click="emit('open-library')" />
-        </div>
+      <UTabs
+        v-model="mobilePanel"
+        :items="mobileItems"
+        :content="false"
+        size="xs"
+        variant="link"
+        color="primary"
+        class="min-w-0 lg:hidden"
+        aria-label="Video Studio panel"
+      />
 
-        <div class="flex max-w-full flex-wrap items-center gap-1 rounded-md border border-default bg-default/50 p-1">
+      <div class="ml-auto flex flex-wrap items-center gap-2">
+        <UBadge
+          v-if="props.generationJobCount"
+          :label="`${props.generationJobCount} AI ${props.generationJobCount === 1 ? 'job' : 'jobs'} running`"
+          size="xs"
+          variant="subtle"
+          color="primary"
+        />
+        <span
+          class="hidden items-center gap-1 text-[11px] sm:inline-flex"
+          :class="props.generationEnabled ? 'text-muted' : 'text-warning'"
+          :title="generationStatusDetail"
+        >
+          <UIcon name="i-lucide-sparkles" class="size-3.5" />
+          {{ props.generationStatusLabel || (props.generationEnabled ? 'AI ready' : 'AI unavailable') }}
+        </span>
+        <div class="flex items-center gap-1 rounded-md border border-default bg-default/50 p-1">
           <UPopover :content="{ align: 'end' }">
             <UButton
               icon="i-lucide-sliders-horizontal"
@@ -229,7 +229,7 @@ watch(() => props.mode, (mode) => {
             size="xs"
             variant="soft"
             color="primary"
-            :label="selectedFormatCount === 1 ? 'Render 1 format' : `Render ${selectedFormatCount} formats`"
+            :label="selectedFormatCount === 1 ? 'Render' : `Render ${selectedFormatCount} formats`"
             :disabled="selectedFormatCount === 0"
             :loading="props.rendering"
             @click="renderSelectedFormats"
@@ -238,114 +238,69 @@ watch(() => props.mode, (mode) => {
       </div>
     </header>
 
-    <div class="border-b border-default px-4 py-2">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <UTabs
-          v-model="activeMode"
-          :items="modeItems"
-          :content="false"
-          size="sm"
-          variant="link"
-          color="primary"
-          class="min-w-0"
-          aria-label="Video Studio workspace"
-        />
-        <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
-          <span
-            v-for="item in statusItems"
-            :key="item.label"
-            class="inline-flex min-w-0 items-center gap-1"
-            :class="item.tone"
-          >
-            <UIcon :name="item.icon" class="size-3.5 shrink-0" />
-            <span class="truncate">{{ item.label }}</span>
-          </span>
-        </div>
-      </div>
-    </div>
-
-    <div :class="workspaceGridClass">
-      <aside :class="['min-h-0 min-w-[18rem] resize-x overflow-auto p-3 lg:max-w-[32rem]', modePanelClass('assets')]">
-        <div class="mb-3 flex items-center gap-2">
-          <UIcon name="i-lucide-sliders-horizontal" class="size-4 text-muted" />
+    <div :class="['grid min-h-0 flex-1 grid-cols-1', workspaceGridClass]" :style="workspaceStyle">
+      <aside :class="['min-h-0 min-w-0 flex-col overflow-hidden', panelClass('assets')]">
+        <div class="flex shrink-0 items-center gap-2 border-b border-default px-3 py-2">
+          <UIcon name="i-lucide-library" class="size-4 text-muted" />
           <h3 class="text-xs font-medium uppercase text-muted">Assets</h3>
+          <UBadge v-if="props.assetCount" :label="String(props.assetCount)" size="xs" variant="subtle" color="neutral" />
         </div>
-        <slot name="library" />
+        <div class="min-h-0 flex-1 overflow-y-auto p-3">
+          <slot name="library" />
+        </div>
       </aside>
+      <div
+        class="group hidden cursor-col-resize touch-none items-stretch justify-center lg:flex"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize assets column"
+        @pointerdown="onColumnDragStart('library', $event)"
+        @pointermove="onColumnDragMove"
+        @pointerup="onColumnDragEnd"
+        @pointercancel="onColumnDragEnd"
+      >
+        <span class="w-px bg-default transition group-hover:w-0.5 group-hover:bg-primary" />
+      </div>
 
-      <main :class="['min-h-0 min-w-0 overflow-x-hidden overflow-y-auto p-3', modePanelClass('edit')]">
-        <div class="mb-3 flex items-center gap-2">
-          <UIcon name="i-lucide-monitor-play" class="size-4 text-muted" />
-          <h3 class="text-xs font-medium uppercase text-muted">Edit</h3>
+      <main :class="['min-h-0 min-w-0 flex-col overflow-hidden', panelClass('edit')]">
+        <div class="min-h-0 flex-1 overflow-y-auto p-3">
+          <slot name="preview" />
         </div>
-        <slot name="preview" />
       </main>
 
-      <aside v-if="!props.producerCollapsed" :class="['min-h-0 min-w-0 overflow-x-hidden overflow-y-auto p-3', modePanelClass('produce')]">
-        <div class="mb-3 flex items-center gap-2">
-          <UIcon name="i-lucide-wand-sparkles" class="size-4 text-muted" />
-          <h3 class="text-xs font-medium uppercase text-muted">Producer</h3>
-          <UButton
-            icon="i-lucide-panel-right-close"
-            size="xs"
-            variant="ghost"
-            color="neutral"
-            class="ml-auto"
-            aria-label="Collapse producer rail"
-            @click="emit('update:producer-collapsed', true)"
-          />
+      <div
+        v-if="!props.producerCollapsed"
+        class="group hidden cursor-col-resize touch-none items-stretch justify-center lg:flex"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize inspector column"
+        @pointerdown="onColumnDragStart('inspector', $event)"
+        @pointermove="onColumnDragMove"
+        @pointerup="onColumnDragEnd"
+        @pointercancel="onColumnDragEnd"
+      >
+        <span class="w-px bg-default transition group-hover:w-0.5 group-hover:bg-primary" />
+      </div>
+      <aside
+        v-if="!props.producerCollapsed"
+        :class="['min-h-0 min-w-0 flex-col overflow-hidden', panelClass('produce')]"
+      >
+        <div class="min-h-0 flex-1 overflow-y-auto p-3">
+          <slot name="producer" />
         </div>
-        <slot name="producer" />
       </aside>
-
-      <section :class="['min-h-0 min-w-0 overflow-x-hidden overflow-y-auto p-3', activeMode === 'review' ? 'block lg:hidden' : 'hidden']">
-        <div class="mb-3 flex items-center gap-2">
-          <UIcon name="i-lucide-list-checks" class="size-4 text-muted" />
-          <h3 class="text-xs font-medium uppercase text-muted">Review</h3>
-        </div>
-        <slot name="review">
-          <div class="rounded-md border border-default bg-default/30 p-3">
-            <div class="grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <p class="text-[11px] uppercase text-muted">Render queue</p>
-                <p class="mt-0.5 font-medium text-highlighted">{{ props.renderJobCount }} {{ props.renderJobCount === 1 ? 'job' : 'jobs' }}</p>
-              </div>
-              <div>
-                <p class="text-[11px] uppercase text-muted">Formats</p>
-                <p class="mt-0.5 font-medium text-highlighted">{{ selectedFormatCount }}</p>
-              </div>
-              <div>
-                <p class="text-[11px] uppercase text-muted">AI state</p>
-                <p class="mt-0.5 font-medium text-highlighted">{{ generationStatusLabel }}</p>
-                <p class="mt-0.5 text-[11px] leading-snug text-muted">{{ generationStatusDetail }}</p>
-              </div>
-              <div>
-                <p class="text-[11px] uppercase text-muted">Sequence</p>
-                <p class="mt-0.5 font-medium text-highlighted">{{ fmt(props.durationSec) }}</p>
-              </div>
-            </div>
-          </div>
-        </slot>
-      </section>
     </div>
 
-    <div v-if="props.producerCollapsed" class="flex items-center justify-between gap-3 border-t border-default px-4 py-2">
-      <div class="flex min-w-0 items-center gap-2">
-        <UIcon name="i-lucide-wand-sparkles" class="size-4 text-muted" />
-        <span class="truncate text-xs font-medium text-muted">Producer rail collapsed</span>
-      </div>
+    <div v-if="props.producerCollapsed" class="flex shrink-0 items-center justify-between gap-3 border-t border-default px-3 py-1.5">
+      <span class="truncate text-xs text-muted">Inspector hidden</span>
       <UButton
         icon="i-lucide-panel-right-open"
         size="xs"
-        variant="soft"
+        variant="ghost"
         color="neutral"
-        label="Producer"
+        label="Show inspector"
         @click="emit('update:producer-collapsed', false)"
       />
-    </div>
-
-    <div v-if="$slots.details" class="border-t border-default p-3">
-      <slot name="details" />
     </div>
   </section>
 </template>

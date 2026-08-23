@@ -4,11 +4,13 @@ import { uploadFile, validateFileType, validateFileSize, getMaxFileSize } from '
 import { createSourceAsset } from '~~/server/utils/video-generation/sourceAssetStore'
 import { canUseVideoGenerationProject } from '~~/server/utils/video-generation/timelineStillSource'
 import { randomUUID } from 'node:crypto'
+import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 
 const SUBJECT_TYPES = new Set(['vehicle', 'non_vehicle', 'unknown'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export default defineEventHandler(async (event) => {
+// Owners (God mode) run this under the execution ledger; staff run it directly.
+export default defineEventHandler(event => withGodModeLedger(event, 'sourceAssetUpload', async () => {
   if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
@@ -48,4 +50,4 @@ export default defineEventHandler(async (event) => {
   })
   setResponseStatus(event, 201)
   return { id: asset.id, status: asset.status }
-})
+}))

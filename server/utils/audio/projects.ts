@@ -5,6 +5,7 @@
 import { randomUUID } from 'crypto'
 import type { MediaProject, MediaTimeline, MediaRenderJob } from '~~/app/types'
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
+import type { GodModeTransactionDb as Db } from '~~/server/utils/godMode/transactionCoordinator'
 import { computeDuration, type TimelineState } from '~~/server/utils/audio/timelineSchema'
 
 /** Pure: DB row (snake_case) → MediaProject (camelCase). */
@@ -51,13 +52,21 @@ export interface CreateProjectInput {
 export async function createProject(
   input: CreateProjectInput
 ): Promise<{ project: MediaProject; timeline: MediaTimeline }> {
+  return transaction(db => createProjectIn(db, input))
+}
+
+/** Transaction-scoped core of createProject — run under a caller-owned db. */
+export async function createProjectIn(
+  db: Db,
+  input: CreateProjectInput
+): Promise<{ project: MediaProject; timeline: MediaTimeline }> {
   const projectId = randomUUID()
   const timelineId = randomUUID()
   const state = { ...input.initialState, duration_sec: computeDuration(input.initialState) }
   const mediaType = input.mediaType ?? 'audio'
   const schemaVersion = input.initialState.schema_version
 
-  return transaction(async (db) => {
+  {
     const projRes = await db.query(
       `INSERT INTO media_projects (id, client_id, created_by, title, media_type, status)
        VALUES ($1, $2, $3, $4, $5, 'draft') RETURNING *`,
@@ -77,7 +86,38 @@ export async function createProject(
       project: mapProjectRow(updRes.rows[0]),
       timeline: mapTimelineRow(tlRes.rows[0])
     }
-  })
+  }
+}
+
+/** Rename / re-home a project. Returns null when the project does not exist.
+ * `undefined` fields are left untouched; `null` clears them. */
+export async function updateProjectIn(
+  db: Db,
+  id: string,
+  patch: { title?: string | null; clientId?: string | null }
+): Promise<MediaProject | null> {
+  const sets: string[] = ['updated_at = now()']
+  const params: unknown[] = [id]
+  if (patch.title !== undefined) { params.push(patch.title === '' ? null : patch.title); sets.push(`title = $${params.length}`) }
+  if (patch.clientId !== undefined) { params.push(patch.clientId); sets.push(`client_id = $${params.length}`) }
+  const row = (await db.query(`UPDATE media_projects SET ${sets.join(', ')} WHERE id = $1 RETURNING *`, params)).rows[0]
+  return row ? mapProjectRow(row) : null
+}
+
+/** Read back a project + its current timeline by id (used for God mode replay). */
+export async function getProjectWithCurrentTimelineIn(
+  db: Db,
+  id: string
+): Promise<{ project: MediaProject; timeline: MediaTimeline | null } | null> {
+  const projectRow = (await db.query(`SELECT * FROM media_projects WHERE id = $1`, [id])).rows[0]
+  if (!projectRow) return null
+  const project = mapProjectRow(projectRow)
+  let timeline: MediaTimeline | null = null
+  if (project.currentTimelineId) {
+    const tlRow = (await db.query(`SELECT * FROM media_timelines WHERE id = $1`, [project.currentTimelineId])).rows[0]
+    timeline = tlRow ? mapTimelineRow(tlRow) : null
+  }
+  return { project, timeline }
 }
 
 /** Project + its current timeline (the draft pointer). null if no such project. */
@@ -101,7 +141,12 @@ export async function getProjectWithCurrentTimeline(
  * so the render jobs must be removed first (by project_id) or the timeline
  * delete is blocked. Returns false if the project did not exist. */
 export async function deleteProject(id: string): Promise<boolean> {
-  return transaction(async (db) => {
+  return transaction(db => deleteProjectIn(db, id))
+}
+
+/** Transaction-scoped core of deleteProject. */
+export async function deleteProjectIn(db: Db, id: string): Promise<boolean> {
+  {
     const exists = await db.query(`SELECT id FROM media_projects WHERE id = $1`, [id])
     if (!exists.rows[0]) return false
     // Render jobs first (no cascade on timeline_id FK).
@@ -109,7 +154,7 @@ export async function deleteProject(id: string): Promise<boolean> {
     // Deleting the project cascades its media_timelines rows.
     await db.query(`DELETE FROM media_projects WHERE id = $1`, [id])
     return true
-  })
+  }
 }
 
 /** List projects, optionally filtered by client. */
@@ -128,13 +173,24 @@ export async function listProjects(clientId?: string): Promise<MediaProject[]> {
  * duration_sec into the persisted state. The caller (endpoint) is responsible
  * for confirming the project is still in 'draft' status. */
 export async function saveDraftTimeline(timelineId: string, state: TimelineState): Promise<MediaTimeline> {
+  return transaction(db => saveDraftTimelineIn(db, timelineId, state))
+}
+
+/** Transaction-scoped core of saveDraftTimeline. */
+export async function saveDraftTimelineIn(db: Db, timelineId: string, state: TimelineState): Promise<MediaTimeline> {
   const persisted = { ...state, duration_sec: computeDuration(state) }
-  const row = await queryOne(
+  const row = (await db.query(
     `UPDATE media_timelines SET state = $1 WHERE id = $2 RETURNING *`,
     [JSON.stringify(persisted), timelineId]
-  )
+  )).rows[0]
   if (!row) throw new Error(`timeline ${timelineId} not found`)
   return mapTimelineRow(row)
+}
+
+/** Read a single timeline row by id (God mode replay). */
+export async function getTimelineIn(db: Db, timelineId: string): Promise<MediaTimeline | null> {
+  const row = (await db.query(`SELECT * FROM media_timelines WHERE id = $1`, [timelineId])).rows[0]
+  return row ? mapTimelineRow(row) : null
 }
 
 export interface CreateVersionInput {
@@ -147,8 +203,13 @@ export interface CreateVersionInput {
  * version (max+1) and repoint current_timeline_id at it. The new row becomes the
  * editable draft; the prior row is frozen history. */
 export async function createVersion(input: CreateVersionInput): Promise<MediaTimeline> {
+  return transaction(db => createVersionIn(db, input))
+}
+
+/** Transaction-scoped core of createVersion. */
+export async function createVersionIn(db: Db, input: CreateVersionInput): Promise<MediaTimeline> {
   const newId = randomUUID()
-  return transaction(async (db) => {
+  {
     const cur = await db.query(
       `SELECT t.state AS state,
               (SELECT MAX(version) FROM media_timelines WHERE project_id = $1) AS max_version
@@ -170,7 +231,7 @@ export async function createVersion(input: CreateVersionInput): Promise<MediaTim
       [newId, input.projectId]
     )
     return mapTimelineRow(ins.rows[0])
-  })
+  }
 }
 
 /** Version history for a project, newest-first. */
@@ -191,6 +252,7 @@ export function mapRenderJobRow(row: any): MediaRenderJob {
     channels: row.channels ?? [],
     status: row.status,
     variants: row.variants ?? {},
+    progress: row.progress ?? null,
     costCents: row.cost_cents ?? null,
     error: row.error ?? null,
     requestedBy: row.requested_by,
@@ -203,6 +265,8 @@ export interface CreateRenderJobInput {
   projectId: string
   requestedBy: string
   channels: string[]
+  /** Pre-reserved id (God mode ledger); minted when omitted. */
+  jobId?: string
 }
 
 /** Snapshot the current draft into a new immutable version (SP0 §6), then insert a
@@ -210,7 +274,7 @@ export interface CreateRenderJobInput {
  * job never references a half-written version. */
 export async function createRenderJob(input: CreateRenderJobInput): Promise<MediaRenderJob> {
   const newTimelineId = randomUUID()
-  const jobId = randomUUID()
+  const jobId = input.jobId ?? randomUUID()
   return transaction(async (db) => {
     const cur = await db.query(
       `SELECT t.state AS state, t.schema_version AS schema_version,

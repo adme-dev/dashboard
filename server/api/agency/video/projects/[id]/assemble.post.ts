@@ -6,6 +6,7 @@ import { buildAssemblyPrompt, parseAssemblyAiResponse, planFromAiAssembly, usabl
 import { ensureDefaultBuckets, listBucketItemsForProject } from '~~/server/utils/video-asset-intelligence/db'
 import { GROQ_MODELS } from '~~/server/utils/groqClient'
 import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
+import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 
 const BodySchema = z.object({
   brief: z.string().min(1).max(4000),
@@ -20,7 +21,8 @@ const BodySchema = z.object({
   }).optional().nullable(),
 })
 
-export default defineEventHandler(async (event) => {
+// Owners (God mode) run this under the execution ledger; staff run it directly.
+export default defineEventHandler(event => withGodModeLedger(event, 'projectAssemble', async () => {
   const user = await requireWriteAccess(event)
   const projectId = getRouterParam(event, 'id')
   if (!projectId) throw createError({ statusCode: 400, statusMessage: 'Project id is required' })
@@ -68,4 +70,4 @@ export default defineEventHandler(async (event) => {
 
   const plan = buildReviewableAssemblyPlan({ projectId, brief: body.brief, targetFormat: body.targetFormat, bucketItems })
   return { plan: withProducerLaneSteps(plan, { brief: body.brief, items: bucketItems, selectedAsset: body.selectedAsset }) }
-})
+}))

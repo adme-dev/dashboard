@@ -5,6 +5,13 @@ import { createGeneratedVideoAsset } from '~~/server/utils/video-generation/crea
 import { markVideoGenerationJobSucceeded } from '~~/server/utils/video-generation/jobs'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 
+/** Human title for a generated asset: the prompt's first clause, never a bare UUID. */
+export function generatedVideoTitle(prompt: string | null | undefined, jobId: string): string {
+  const clause = (prompt ?? '').replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s|,\s/)[0] ?? ''
+  const short = clause.length > 60 ? `${clause.slice(0, 57).trimEnd()}…` : clause
+  return short ? `AI · ${short}` : `Generated video ${jobId.slice(0, 8)}`
+}
+
 export interface FinalizeDeps {
   fetchImpl: typeof fetch
   uploadFile: typeof uploadFile
@@ -45,7 +52,7 @@ export async function finalizeVideoGenerationJob(
   const asset = await deps.createVideoAsset({
     clientId: job.tenantId === 'agency' ? null : job.tenantId,
     createdBy: job.createdBy,
-    title: `Generated video ${job.id}`,
+    title: generatedVideoTitle(job.prompt, job.id),
     sourceProjectId: job.projectId,
     sourceJobId: job.id,
     r2Key,

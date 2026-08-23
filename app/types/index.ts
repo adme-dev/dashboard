@@ -2683,6 +2683,14 @@ export interface MediaTimeline {
 
 export type MediaRenderJobStatus = 'queued' | 'rendering' | 'done' | 'failed'
 
+export interface MediaRenderJobProgress {
+  stage: 'rendering' | 'uploading' | 'done'
+  formatKey: string | null
+  done: number
+  total: number
+  updatedAt: string
+}
+
 export interface MediaRenderJob {
   id: string
   timelineId: string
@@ -2690,6 +2698,8 @@ export interface MediaRenderJob {
   channels: string[]
   status: MediaRenderJobStatus
   variants: Record<string, string>
+  /** Worker-reported stage; null for legacy jobs. */
+  progress?: MediaRenderJobProgress | null
   costCents: number | null
   error: string | null
   requestedBy: string

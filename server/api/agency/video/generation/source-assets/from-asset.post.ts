@@ -3,6 +3,7 @@ import { requireWriteAccess } from '~~/server/utils/auth'
 import { createSourceAsset } from '~~/server/utils/video-generation/sourceAssetStore'
 import { getAccessibleVideoAsset } from '~~/server/utils/video/assets'
 import { imageContentTypeForR2Key } from '~~/server/utils/video-generation/sourceContentTypes'
+import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 
 // Register an existing project video_asset (a still already on the timeline / in the
 // library) as an approved i2v source — so users animate stills they already uploaded
@@ -12,7 +13,8 @@ const BodySchema = z.object({
   subjectType: z.enum(['vehicle', 'non_vehicle', 'unknown']).default('unknown'),
 })
 
-export default defineEventHandler(async (event) => {
+// Owners (God mode) run this under the execution ledger; staff run it directly.
+export default defineEventHandler(event => withGodModeLedger(event, 'sourceAssetFromAsset', async () => {
   if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
@@ -35,4 +37,4 @@ export default defineEventHandler(async (event) => {
   })
   setResponseStatus(event, 201)
   return { id: source.id, status: source.status }
-})
+}))

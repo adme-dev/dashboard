@@ -135,10 +135,11 @@ describe('saveDraftTimeline', () => {
           source_out_sec: 8, gain_db: 0, fade_in_sec: 0, fade_out_sec: 0, fade_curve: 'linear' }] }],
       ducking: []
     }
-    queryOneMock.mockResolvedValueOnce({ ...timelineRow, state: { ...state, duration_sec: 8 } })
+    const dbQuery = vi.fn().mockResolvedValueOnce({ rows: [{ ...timelineRow, state: { ...state, duration_sec: 8 } }] })
+    transactionMock.mockImplementation(async (cb: any) => cb({ query: dbQuery }))
     const saved = await saveDraftTimeline('t1', state)
     // duration was recomputed to 8 and embedded in the persisted state arg
-    const persistedState = JSON.parse(queryOneMock.mock.calls[0][1][0])
+    const persistedState = JSON.parse(dbQuery.mock.calls[0][1][0])
     expect(persistedState.duration_sec).toBe(8)
     expect((saved.state as any).duration_sec).toBe(8)
   })
@@ -151,7 +152,7 @@ describe('saveDraftTimeline', () => {
           source_out_sec: 8, gain_db: 0, fade_in_sec: 0, fade_out_sec: 0, fade_curve: 'linear' }] }],
       ducking: []
     }
-    queryOneMock.mockResolvedValueOnce(null)
+    transactionMock.mockImplementation(async (cb: any) => cb({ query: vi.fn().mockResolvedValueOnce({ rows: [] }) }))
     await expect(saveDraftTimeline('missing', state)).rejects.toThrow()
   })
 })

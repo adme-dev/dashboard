@@ -89,6 +89,9 @@ export async function dbRecordAiInvocation(input: WorkerAiInvocationInput): Prom
 export async function dbMarkRenderRendering(jobId: string): Promise<void> {
   await execute(`UPDATE media_render_jobs SET status='rendering', updated_at=now() WHERE id=$1`, [jobId])
 }
+export async function dbMarkRenderProgress(jobId: string, progress: Record<string, unknown>): Promise<void> {
+  await execute(`UPDATE media_render_jobs SET progress=$1::jsonb, updated_at=now() WHERE id=$2`, [JSON.stringify(progress), jobId])
+}
 export async function dbMarkRenderDone(jobId: string, variants: Record<string, string>, costCents: number | null): Promise<void> {
   await execute(
     `UPDATE media_render_jobs SET status='done', variants=$1::jsonb, cost_cents=$2, updated_at=now() WHERE id=$3`,

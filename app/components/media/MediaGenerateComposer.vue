@@ -10,6 +10,7 @@ import { videoGenerationJobTimelinePayload, type VideoLibraryTimelinePayload } f
 import { apiErrorDescription, apiErrorReasons } from '~~/app/utils/apiError'
 import type { VideoGenerationMode } from '~~/server/utils/video-generation/types'
 import type { VideoGenerationJobView } from '~~/app/composables/useVideoGenerationJobs'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 const props = defineProps<{
   active?: boolean
@@ -36,6 +37,7 @@ const apiFetch = $fetch as <T = unknown>(
     method?: string
     body?: unknown
     query?: Record<string, unknown>
+    headers?: Record<string, string>
   }
 ) => Promise<T>
 const modelData = ref<{ models: VideoModelOption[] }>({ models: [] })
@@ -215,6 +217,7 @@ async function applyInitialSourceAsset() {
   try {
     const res = await apiFetch<{ id: string }>('/api/agency/video/generation/source-assets/from-asset', {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('source-asset-from-asset') },
       body: { assetId: source.assetId, subjectType: subjectType.value },
     })
     registeredInitialSource.value = { assetId: source.assetId, sourceId: res.id }
@@ -241,6 +244,7 @@ async function onExistingStillSelected(clipId: string | null) {
     await props.prepareTimelineStillSource?.()
     const res = await apiFetch<{ id: string }>('/api/agency/video/generation/source-assets/from-timeline-still', {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('source-asset-from-still') },
       body: { projectId: props.projectId, clipId, subjectType: subjectType.value },
     })
     sourceAssetId.value = res.id
@@ -267,6 +271,7 @@ async function onFileSelected(event: Event) {
 
     const res = await apiFetch<{ id: string }>('/api/agency/video/generation/source-assets', {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('source-asset-upload') },
       body: formData,
     })
 
@@ -284,12 +289,22 @@ async function onFileSelected(event: Event) {
   }
 }
 
+// Validation only speaks once the user has typed or tried to generate — an
+// untouched form should read as an invitation, not an error.
+const touched = ref(false)
+watch(prompt, (value) => { if (value.trim()) touched.value = true })
+const showValidation = computed(() => touched.value && !validation.value.valid)
+
 async function submit() {
+  touched.value = true
   if (!validation.value.valid || !model.value) return
   submitting.value = true
+  // One key for both the body (tenant-level dedupe) and the header (God mode ledger).
+  const idempotencyKey = `video-gen:${crypto.randomUUID()}`
   try {
     const res = await apiFetch<{ job: { id: string } }>(`/api/agency/video/generation/jobs`, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
       body: {
         projectId: props.projectId,
         mode: mode.value,
@@ -299,7 +314,7 @@ async function submit() {
         durationSeconds: durationSeconds.value,
         aspectRatio: props.defaultAspect,
         subjectType: subjectType.value,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey,
       },
     })
     toast.add({ title: 'Generation queued', description: 'Your clip will appear in the Library when ready.', color: 'success' })
@@ -527,9 +542,9 @@ async function submit() {
           </div>
 
           <!-- Validation warning -->
-          <UAlert v-if="!validation.valid" color="warning" variant="subtle" icon="i-lucide-info" :title="validation.errors[0]" />
+          <UAlert v-if="showValidation" color="warning" variant="subtle" icon="i-lucide-info" :title="validation.errors[0]" />
 
-          <UButton block color="primary" icon="i-lucide-sparkles" :loading="submitting" :disabled="!validation.valid" label="Generate" @click="submit" />
+          <UButton block color="primary" icon="i-lucide-sparkles" :loading="submitting" :disabled="touched && !validation.valid" label="Generate" @click="submit" />
         </template>
   </div>
 </template>

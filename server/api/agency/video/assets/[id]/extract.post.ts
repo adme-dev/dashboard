@@ -6,6 +6,7 @@ import { createBlockedExtractionJob, createQueuedExtractionJob, getAssetProjectR
 import { enqueueAssetIntelligence, getAssetIntelligenceQueue } from '~~/server/utils/video-asset-intelligence/enqueue'
 import type { AssetIntelligenceActionId } from '~~/server/utils/video-asset-intelligence/registry'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
+import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 
 const QUEUE_SUPPORTED_ACTIONS = new Set<AssetIntelligenceActionId>([
   'asset-analysis',
@@ -61,7 +62,8 @@ const BodySchema = z.object({
   modelId: z.string().max(200).nullable().optional(),
 })
 
-export default defineEventHandler(async (event) => {
+// Owners (God mode) run this under the execution ledger; staff run it directly.
+export default defineEventHandler(event => withGodModeLedger(event, 'assetExtract', async () => {
   const user = await requireWriteAccess(event)
   const sourceAssetId = getRouterParam(event, 'id')
   if (!sourceAssetId) throw createError({ statusCode: 400, statusMessage: 'Asset id is required' })
@@ -173,4 +175,4 @@ export default defineEventHandler(async (event) => {
   })
   setResponseStatus(event, 202)
   return { job }
-})
+}))

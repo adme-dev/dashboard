@@ -640,6 +640,35 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  // ─── Video Studio ────────────────────────────────────────────
+  'video-studio': {
+    title: 'Video Studio',
+    slug: 'video-studio',
+    icon: 'i-lucide-clapperboard',
+    category: 'Creative Production',
+    categoryIcon: 'i-lucide-rocket',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'A single-screen video editor for social: footage, stills, Banner Studio overlays, AI-generated clips, voiceover and music on one docked timeline, rendered to every format your media plan needs.',
+    details: [
+      {
+        title: 'One Screen, Every Source',
+        content: 'Assets on the left, preview and selected-clip controls in the centre, the inspector on the right, and the timeline docked along the bottom — nothing scrolls away. Drop in uploaded footage and stills, pull overlays straight from Banner Studio, add voiceover and music from Audio Studio, or generate B-roll and image-to-video clips with AI — all from the same command bar.'
+      },
+      {
+        title: 'A Real Editing Timeline',
+        content: 'Five colour-coded lanes — video, overlay, captions, voiceover, music — with drag-to-move, edge trimming, split at the playhead, snapping to neighbours and the grid, and waveforms on audio clips. Space plays, arrows nudge, ⌘Z undoes, and the dock resizes to fit the job. Every edit autosaves; named version snapshots let you checkpoint a cut and restore it later.'
+      },
+      {
+        title: 'Per-Clip Look Controls',
+        content: 'Select any video clip to set its framing (fit, fill or crop) and stack effect presets — film grain, motion blur, VHS, shake, bloom, fisheye — with the preview approximating what it can and flagging what is render-only. Generated clips carry their prompt and model with them, so you can copy the prompt, duplicate the clip, or publish it directly.'
+      },
+      {
+        title: 'Render Once, Ship Everywhere',
+        content: 'Pick Reels 9:16, Square 1:1 and YouTube 16:9 in one render. Finished variants can be downloaded, saved back to the library as reusable assets, sent to the client portal for approval, or handed to Social Publishing to schedule — without leaving the editor. Failed renders explain why and retry in place.'
+      }
+    ]
+  },
   // ─── Media Studio Editor ─────────────────────────────────────
   'media-studio-editor': {
     title: 'Media Studio Editor',
