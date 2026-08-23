@@ -6,6 +6,7 @@ import {
   isMediaProjectCreatePath,
   isMediaProjectDeletePath,
   isMediaProjectTimelineSavePath,
+  isMediaProjectUpdatePath,
   isMediaProjectVersionCreatePath,
   registerGodModeMediaProjectMutationFamilies
 } from '../../../server/utils/audio/godModeMutations'
@@ -39,11 +40,12 @@ function event(path: string, method: string): H3Event {
 }
 
 describe('media project (Audio/Video Studio) God mode mutation boundary', () => {
-  it('matches only the four DB-bound editing routes', () => {
+  it('matches only the five DB-bound editing routes', () => {
     expect(isMediaProjectCreatePath('/api/agency/audio/projects')).toBe(true)
     expect(isMediaProjectCreatePath(PROJECT_ROUTE)).toBe(false)
     expect(isMediaProjectDeletePath(PROJECT_ROUTE)).toBe(true)
     expect(isMediaProjectDeletePath(`${PROJECT_ROUTE}/timeline`)).toBe(false)
+    expect(isMediaProjectUpdatePath(PROJECT_ROUTE)).toBe(true)
     expect(isMediaProjectTimelineSavePath(`${PROJECT_ROUTE}/timeline`)).toBe(true)
     expect(isMediaProjectTimelineSavePath(`${PROJECT_ROUTE}/timeline/x`)).toBe(false)
     expect(isMediaProjectVersionCreatePath(`${PROJECT_ROUTE}/versions`)).toBe(true)
@@ -54,6 +56,7 @@ describe('media project (Audio/Video Studio) God mode mutation boundary', () => 
   it.each([
     ['/api/agency/audio/projects', 'POST', 'media project creation'],
     [PROJECT_ROUTE, 'DELETE', 'media project deletion'],
+    [PROJECT_ROUTE, 'PATCH', 'media project update'],
     [`${PROJECT_ROUTE}/timeline`, 'PUT', 'media timeline save'],
     [`${PROJECT_ROUTE}/versions`, 'POST', 'media timeline version snapshot']
   ])('requires a stable idempotency key before admitting %s %s', async (path, method, mutationName) => {
@@ -78,9 +81,10 @@ describe('media project (Audio/Video Studio) God mode mutation boundary', () => 
     }
   })
 
-  it('routes all four handlers through the coordinator and registers the families', () => {
+  it('routes all five handlers through the coordinator and registers the families', () => {
     expect(readFileSync('server/api/agency/audio/projects/index.post.ts', 'utf8')).toContain('executeGodModeMediaProjectCreate')
     expect(readFileSync('server/api/agency/audio/projects/[id]/index.delete.ts', 'utf8')).toContain('executeGodModeMediaProjectDelete')
+    expect(readFileSync('server/api/agency/audio/projects/[id]/index.patch.ts', 'utf8')).toContain('executeGodModeMediaProjectUpdate')
     expect(readFileSync('server/api/agency/audio/projects/[id]/timeline.put.ts', 'utf8')).toContain('executeGodModeMediaTimelineSave')
     expect(readFileSync('server/api/agency/audio/projects/[id]/versions.post.ts', 'utf8')).toContain('executeGodModeMediaVersionCreate')
     expect(readFileSync('server/plugins/godModeExecution.ts', 'utf8')).toContain('registerGodModeMediaProjectMutationFamilies()')
@@ -91,6 +95,7 @@ describe('media project (Audio/Video Studio) God mode mutation boundary', () => 
     const list = readFileSync('app/pages/agency/audio/projects/index.vue', 'utf8')
     expect(editor).toMatch(/timeline`,\s*\{[\s\S]*?'Idempotency-Key'/)
     expect(editor).toMatch(/versions`,\s*\{[\s\S]*?'Idempotency-Key'/)
+    expect(editor).toMatch(/method: 'PATCH'[\s\S]*?'Idempotency-Key'/)
     expect(list).toMatch(/method: 'DELETE'[\s\S]*?'Idempotency-Key'/)
     expect(list).toMatch(/method: 'POST'[\s\S]*?'Idempotency-Key'/)
   })

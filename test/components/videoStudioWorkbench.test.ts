@@ -75,10 +75,8 @@ function buttonByText(host: HTMLElement, text: string) {
 }
 
 describe('VideoStudioWorkbench', () => {
-  it('renders the core studio regions and supplied slots', async () => {
+  it('renders the three studio columns, each scrolling on its own', async () => {
     const html = await render({
-      currentTimeSec: 7,
-      durationSec: 32,
       assetCount: 5,
       generationJobCount: 2,
       renderJobCount: 1,
@@ -87,30 +85,21 @@ describe('VideoStudioWorkbench', () => {
     }, {
       library: () => h('p', 'Library filters'),
       preview: () => h('p', 'Preview canvas'),
-      producer: () => h('p', 'Producer rail'),
-      details: () => h('p', 'AI Producer details')
+      producer: () => h('p', 'Producer rail')
     })
 
-    expect(html).toContain('Video Studio')
-    // (dropped a brittle exact responsive-height class assertion — the studio
-    // layout was refactored in #144/#145/#147; overflow-y-auto below still pins
-    // the scrollable region's behaviour.)
-    expect(html).toContain('overflow-y-auto')
     expect(html).toContain('Library filters')
     expect(html).toContain('Preview canvas')
     expect(html).toContain('Producer rail')
-    expect(html).toContain('AI Producer details')
-    expect(html).toContain('5 assets')
-    expect(html).toContain('2 AI jobs')
-    expect(html).toContain('1 render')
+    expect(html).toContain('2 AI jobs running')
+    expect(html).toContain('AI ready')
+    // Three column scroll regions + the outer section never scrolls the page.
+    expect(html.match(/overflow-y-auto/g)?.length).toBe(3)
+    expect(html).toContain('overflow-hidden')
   })
 
-  it('can collapse the producer rail while keeping library and preview visible', async () => {
-    const html = await render({
-      currentTimeSec: 0,
-      durationSec: 12,
-      producerCollapsed: true
-    }, {
+  it('can collapse the inspector while keeping library and preview visible', async () => {
+    const html = await render({ producerCollapsed: true }, {
       library: () => h('p', 'Library rail'),
       preview: () => h('p', 'Preview panel'),
       producer: () => h('p', 'Producer content')
@@ -118,17 +107,16 @@ describe('VideoStudioWorkbench', () => {
 
     expect(html).toContain('Library rail')
     expect(html).toContain('Preview panel')
-    expect(html).toContain('Producer rail collapsed')
+    expect(html).toContain('Show inspector')
     expect(html).not.toContain('Producer content')
+    expect(html.match(/overflow-y-auto/g)?.length).toBe(2)
   })
 
-  it('emits toolbar actions, producer collapse, and selected render formats', async () => {
+  it('emits toolbar actions and the selected render formats', async () => {
     const { app, host, events } = await mount({
-      currentTimeSec: 4,
-      durationSec: 16,
       generationEnabled: true,
       rendering: false,
-      producerCollapsed: false,
+      producerCollapsed: true,
     }, {
       library: () => h('p', 'Library rail'),
       preview: () => h('p', 'Preview panel'),
@@ -141,7 +129,7 @@ describe('VideoStudioWorkbench', () => {
       buttonByText(host, 'Generate').click()
       buttonByText(host, 'Library').click()
       buttonByText(host, 'Render 3 formats').click()
-      ;(host.querySelector('button[aria-label="Collapse producer rail"]') as HTMLButtonElement).click()
+      buttonByText(host, 'Show inspector').click()
       await nextTick()
 
       expect(events.map(event => event.name)).toEqual([
@@ -153,21 +141,17 @@ describe('VideoStudioWorkbench', () => {
         'update:producer-collapsed',
       ])
       expect(events.find(event => event.name === 'render')?.payload).toEqual(['reels_9x16', 'square_1x1', 'youtube_16x9'])
-      expect(events.find(event => event.name === 'update:producer-collapsed')?.payload).toBe(true)
+      expect(events.find(event => event.name === 'update:producer-collapsed')?.payload).toBe(false)
     } finally {
       app.unmount()
     }
   })
 
-  it('exposes final mode navigation, compact status, and expands producer for produce mode', async () => {
+  it('switches panels below lg and expands the inspector for produce/review modes', async () => {
     const { app, host, events } = await mount({
-      currentTimeSec: 4,
-      durationSec: 16,
       assetCount: 12,
-      generationJobCount: 1,
       renderJobCount: 2,
       generationEnabled: true,
-      rendering: false,
       producerCollapsed: true,
     }, {
       library: () => h('p', 'Library rail'),
@@ -177,14 +161,10 @@ describe('VideoStudioWorkbench', () => {
 
     try {
       expect(host.textContent).toContain('Assets 12')
-      expect(host.textContent).toContain('Edit 1')
-      expect(host.textContent).toContain('Produce')
-      expect(host.textContent).toContain('Review 2')
+      expect(host.textContent).toContain('Inspector 2')
       expect(host.textContent).toContain('3 formats')
-      expect(host.textContent).toContain('AI ready')
-      expect(host.textContent).toContain('2 renders')
 
-      buttonByText(host, 'Produce').click()
+      buttonByText(host, 'Inspector').click()
       await nextTick()
 
       expect(events).toContainEqual({ name: 'update:mode', payload: 'produce' })
@@ -194,25 +174,20 @@ describe('VideoStudioWorkbench', () => {
     }
   })
 
-  it('can render directly in review mode for the mobile review fallback', async () => {
+  it('maps review mode onto the inspector panel', async () => {
     const html = await render({
       mode: 'review',
-      currentTimeSec: 0,
-      durationSec: 24,
       renderJobCount: 3,
       generationEnabled: false,
       generationStatusLabel: 'AI disabled by policy',
-      generationStatusDetail: 'Video generation is disabled for this workspace.',
     }, {
       library: () => h('p', 'Library rail'),
       preview: () => h('p', 'Preview panel'),
       producer: () => h('p', 'Producer content'),
-      review: () => h('p', 'Review fallback content'),
     })
 
-    expect(html).toContain('Review 3')
-    expect(html).toContain('Review fallback content')
+    expect(html).toContain('Inspector 3')
+    expect(html).toContain('Producer content')
     expect(html).toContain('AI disabled by policy')
-    expect(html).toContain('Video generation is disabled for this workspace.')
   })
 })

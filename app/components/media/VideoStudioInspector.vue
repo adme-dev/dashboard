@@ -74,22 +74,20 @@ watch(() => props.tab, (tab) => {
 
 <template>
   <section class="space-y-3">
-    <div class="flex items-start justify-between gap-3">
-      <div class="min-w-0">
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-panel-right" class="size-4 text-muted" />
-          <h3 class="text-xs font-medium uppercase text-muted">Inspector</h3>
-        </div>
-        <p class="mt-0.5 text-[11px] leading-snug text-muted">
-          Context controls for selected media, production, and review.
-        </p>
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex min-w-0 items-center gap-2">
+        <UIcon name="i-lucide-panel-right" class="size-4 text-muted" />
+        <h3 class="text-xs font-medium uppercase text-muted">Inspector</h3>
       </div>
-      <UBadge
-        :label="modelStatusLabel"
-        :color="props.modelReady ? 'primary' : 'warning'"
-        size="xs"
-        variant="subtle"
-      />
+      <div class="flex items-center gap-1">
+        <UBadge
+          :label="modelStatusLabel"
+          :color="props.modelReady ? 'primary' : 'warning'"
+          size="xs"
+          variant="subtle"
+        />
+        <slot name="actions" />
+      </div>
     </div>
     <div
       v-if="!props.modelReady"

@@ -4,7 +4,7 @@
 // non-GET /api route that has no registered mutation family. Without this file
 // an owner cannot autosave, snapshot, create or delete a studio project.
 //
-// Only the four DB-bound editing routes are registered. Render, upload and AI
+// Only the five DB-bound editing routes are registered. Render, upload and AI
 // generation routes fan out to Queues / R2 / AI Gateway and are not
 // transaction-bound, so they stay unregistered (the UI explains why).
 import type { H3Event } from 'h3'
@@ -29,16 +29,17 @@ const TIMELINE_ROUTE = new RegExp(`^/api/agency/audio/projects/${UUID}/timeline$
 const VERSIONS_ROUTE = new RegExp(`^/api/agency/audio/projects/${UUID}/versions$`, 'i')
 const operationsKey = Symbol('mediaProjectGodModeOperations')
 
-type Kind = 'create' | 'delete' | 'timeline' | 'version'
+type Kind = 'create' | 'delete' | 'update' | 'timeline' | 'version'
 type Operations = Partial<Record<Kind, GodModeTransactionOperation>>
 
 const MUTATION_NAME: Record<Kind, string> = {
   create: 'media project creation',
   delete: 'media project deletion',
+  update: 'media project update',
   timeline: 'media timeline save',
   version: 'media timeline version snapshot'
 }
-const METHOD: Record<Kind, string> = { create: 'POST', delete: 'DELETE', timeline: 'PUT', version: 'POST' }
+const METHOD: Record<Kind, string> = { create: 'POST', delete: 'DELETE', update: 'PATCH', timeline: 'PUT', version: 'POST' }
 
 function operations(event: H3Event): Operations {
   const context = event.context as Record<PropertyKey, unknown>
@@ -91,6 +92,7 @@ async function execute<T extends { id: string }>(
 
 export function isMediaProjectCreatePath(path: string): boolean { return path === CREATE_ROUTE }
 export function isMediaProjectDeletePath(path: string): boolean { return DELETE_ROUTE.test(path) }
+export function isMediaProjectUpdatePath(path: string): boolean { return DELETE_ROUTE.test(path) }
 export function isMediaProjectTimelineSavePath(path: string): boolean { return TIMELINE_ROUTE.test(path) }
 export function isMediaProjectVersionCreatePath(path: string): boolean { return VERSIONS_ROUTE.test(path) }
 
@@ -101,6 +103,8 @@ export const executeGodModeMediaProjectCreate = <T extends { id: string }>(event
   execute(event, 'create', mutate, replay)
 export const executeGodModeMediaProjectDelete = <T extends { id: string }>(event: H3Event, mutate: Mutate<T>, replay: Replay<T>) =>
   execute(event, 'delete', mutate, replay)
+export const executeGodModeMediaProjectUpdate = <T extends { id: string }>(event: H3Event, mutate: Mutate<T>, replay: Replay<T>) =>
+  execute(event, 'update', mutate, replay)
 export const executeGodModeMediaTimelineSave = <T extends { id: string }>(event: H3Event, mutate: Mutate<T>, replay: Replay<T>) =>
   execute(event, 'timeline', mutate, replay)
 export const executeGodModeMediaVersionCreate = <T extends { id: string }>(event: H3Event, mutate: Mutate<T>, replay: Replay<T>) =>
@@ -119,6 +123,12 @@ export function registerGodModeMediaProjectMutationFamilies(): () => void {
       method: 'DELETE',
       matchesPath: isMediaProjectDeletePath,
       prepare: event => prepare(event, 'delete')
+    }),
+    registerGodModeMutationFamily({
+      family: 'media-project-update',
+      method: 'PATCH',
+      matchesPath: isMediaProjectUpdatePath,
+      prepare: event => prepare(event, 'update')
     }),
     registerGodModeMutationFamily({
       family: 'media-timeline-save',

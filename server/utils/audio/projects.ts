@@ -89,6 +89,21 @@ export async function createProjectIn(
   }
 }
 
+/** Rename / re-home a project. Returns null when the project does not exist.
+ * `undefined` fields are left untouched; `null` clears them. */
+export async function updateProjectIn(
+  db: Db,
+  id: string,
+  patch: { title?: string | null; clientId?: string | null }
+): Promise<MediaProject | null> {
+  const sets: string[] = ['updated_at = now()']
+  const params: unknown[] = [id]
+  if (patch.title !== undefined) { params.push(patch.title === '' ? null : patch.title); sets.push(`title = $${params.length}`) }
+  if (patch.clientId !== undefined) { params.push(patch.clientId); sets.push(`client_id = $${params.length}`) }
+  const row = (await db.query(`UPDATE media_projects SET ${sets.join(', ')} WHERE id = $1 RETURNING *`, params)).rows[0]
+  return row ? mapProjectRow(row) : null
+}
+
 /** Read back a project + its current timeline by id (used for God mode replay). */
 export async function getProjectWithCurrentTimelineIn(
   db: Db,

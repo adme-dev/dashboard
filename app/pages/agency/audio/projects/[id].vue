@@ -2,8 +2,8 @@
 // SP2c full multitrack editor. Extends the SP2b read-only preview by wiring every
 // MediaTimeline emit to the composable actions, adding an edit toolbar (undo/redo,
 // split, add-clip, save-version), and passing the reactive sources map for waveforms.
-import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { useMediaProjectEditor } from '~~/app/composables/useMediaProjectEditor'
 import type { PickedAsset } from '~~/app/components/media/MediaAssetPicker.vue'
 import VideoStudioClipInspector from '~~/app/components/media/VideoStudioClipInspector.vue'
@@ -780,8 +780,27 @@ function fmtVersionDate(iso: string) {
 // S and Delete are handled inside MediaTimeline (window listener).
 // Cmd/Ctrl+Z → undo, Cmd/Ctrl+Shift+Z → redo.
 
+// ─── Keyboard shortcuts ──────────────────────────────────────────────────────
+// Split (S) and Delete are handled inside MediaTimeline when it has focus.
+
+const SHORTCUTS = [
+  { keys: 'Space', label: 'Play / pause' },
+  { keys: 'Home', label: 'Go to start' },
+  { keys: '← →', label: 'Nudge 1 s  (⇧ 5 s)' },
+  { keys: '⌘Z', label: 'Undo' },
+  { keys: '⌘⇧Z', label: 'Redo' },
+  { keys: '⌘S', label: 'Save now' },
+  { keys: 'S', label: 'Split selected clip' },
+  { keys: '⌫', label: 'Delete selected clip' },
+] as const
+
+function togglePlayback() {
+  if (editor.isPlaying.value) editor.pause()
+  else editor.play()
+}
+
 function onKeyDown(event: KeyboardEvent) {
-  if ((event.target as HTMLElement)?.closest('input, textarea, [contenteditable]')) return
+  if ((event.target as HTMLElement)?.closest('input, textarea, select, [contenteditable], [role="dialog"]')) return
   const isMeta = event.metaKey || event.ctrlKey
   if (isMeta && event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
     event.preventDefault()
@@ -789,26 +808,101 @@ function onKeyDown(event: KeyboardEvent) {
   } else if (isMeta && (event.key === 'z' || event.key === 'Z')) {
     event.preventDefault()
     editor.undoAction()
+  } else if (isMeta && (event.key === 's' || event.key === 'S')) {
+    event.preventDefault()
+    void retrySave()
+  } else if (!isMeta && event.key === ' ') {
+    event.preventDefault()
+    togglePlayback()
+  } else if (!isMeta && event.key === 'Home') {
+    event.preventDefault()
+    editor.seek(0)
+  } else if (!isMeta && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+    event.preventDefault()
+    const step = (event.shiftKey ? 5 : 1) * (event.key === 'ArrowLeft' ? -1 : 1)
+    editor.seek(Math.min(editor.duration.value, Math.max(0, editor.currentTime.value + step)))
   }
 }
 
+// ─── Dock height (resizable, remembered per browser) ─────────────────────────
+
+const DOCK_MIN = 220
+const DOCK_MAX = 640
+const DOCK_KEY = 'video-studio:dock-height'
+const dockHeight = ref(360)
+let dockDrag: { startY: number; startHeight: number } | null = null
+
+function onDockDragStart(event: PointerEvent) {
+  dockDrag = { startY: event.clientY, startHeight: dockHeight.value }
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+}
+function onDockDragMove(event: PointerEvent) {
+  if (!dockDrag) return
+  // Dragging up grows the dock.
+  dockHeight.value = Math.min(DOCK_MAX, Math.max(DOCK_MIN, dockDrag.startHeight + (dockDrag.startY - event.clientY)))
+}
+function onDockDragEnd() {
+  if (!dockDrag) return
+  dockDrag = null
+  try { localStorage.setItem(DOCK_KEY, String(dockHeight.value)) } catch { /* private mode */ }
+}
+
+// ─── Unsaved-changes guard ───────────────────────────────────────────────────
+// Autosave is debounced (1.5 s) and can fail; never let the user walk away
+// from edits that haven't reached the server.
+
+function onBeforeUnload(event: BeforeUnloadEvent) {
+  if (!editor.dirty.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+
+onBeforeRouteLeave(async () => {
+  if (!editor.dirty.value) return true
+  // Try to flush first — most of the time this just succeeds and nobody is asked.
+  try {
+    await editor.saveNow()
+    return true
+  } catch {
+    return await confirmDiscard()
+  }
+})
+
+const discardConfirmOpen = ref(false)
+let resolveDiscard: ((ok: boolean) => void) | null = null
+function confirmDiscard(): Promise<boolean> {
+  discardConfirmOpen.value = true
+  return new Promise(resolve => { resolveDiscard = resolve })
+}
+function answerDiscard(ok: boolean) {
+  discardConfirmOpen.value = false
+  resolveDiscard?.(ok)
+  resolveDiscard = null
+}
+
 onMounted(() => {
+  try {
+    const stored = Number(localStorage.getItem(DOCK_KEY))
+    if (Number.isFinite(stored) && stored >= DOCK_MIN && stored <= DOCK_MAX) dockHeight.value = stored
+  } catch { /* private mode */ }
   window.addEventListener('keydown', onKeyDown)
+  window.addEventListener('beforeunload', onBeforeUnload)
   if (videoGenerationEnabled.value) void genJobs.start()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
+  window.removeEventListener('beforeunload', onBeforeUnload)
   genJobs.stop()
 })
 
-// ─── Save status label ────────────────────────────────────────────────────────
+// ─── Save status ─────────────────────────────────────────────────────────────
 
 const saveStatusLabel = computed(() => {
   switch (editor.saveStatus.value) {
     case 'saving': return 'Saving…'
     case 'saved': return 'Saved'
-    case 'error': return 'Save failed'
-    default: return null
+    case 'error': return 'Not saved'
+    default: return editor.dirty.value ? 'Unsaved changes' : null
   }
 })
 
@@ -821,101 +915,173 @@ const saveStatusColor = computed(() => {
   }
 })
 
-const pageTitle = computed(() => isAv.value ? 'Video Studio' : 'Timeline editor')
-const pageDescription = computed(() => isAv.value
-  ? 'Create and render social video from footage, stills, overlays, voiceover and music.'
-  : 'Multitrack editor — drag, trim, slice, and layer your clips.'
-)
+const saveStatusIcon = computed(() => {
+  switch (editor.saveStatus.value) {
+    case 'saving': return 'i-lucide-loader-circle'
+    case 'saved': return 'i-lucide-cloud-check'
+    case 'error': return 'i-lucide-cloud-off'
+    default: return 'i-lucide-cloud'
+  }
+})
+
+// Translate the server's reason into something a producer can act on.
+const saveErrorDescription = computed(() => {
+  const reason = editor.saveError.value ?? 'Unknown error'
+  if (/God mode/i.test(reason)) {
+    return `${reason}. This route isn't registered for owner (God mode) sessions yet — ask an engineer to add it to the mutation registry.`
+  }
+  if (/not editable|duplicate to a new version/i.test(reason)) {
+    return 'This version is frozen. Use "Save version" to start a new editable draft.'
+  }
+  return `${reason}. Your edits are kept in this tab — retry, or copy anything important before leaving.`
+})
+
+let saveErrorToastShown = false
+watch(() => editor.saveStatus.value, (status) => {
+  if (status === 'error' && !saveErrorToastShown) {
+    saveErrorToastShown = true
+    toast.add({ title: 'Changes aren\'t being saved', description: editor.saveError.value ?? undefined, color: 'error', icon: 'i-lucide-cloud-off' })
+  } else if (status === 'saved') {
+    saveErrorToastShown = false
+  }
+})
+
+async function retrySave() {
+  try {
+    await editor.saveNow()
+    toast.add({ title: 'Saved', color: 'success' })
+  } catch {
+    // saveStatus/saveError already reflect the failure; the alert stays up.
+  }
+}
+
+// ─── Project identity ────────────────────────────────────────────────────────
+
+const projectTitle = computed(() => editor.project.value?.title?.trim() || 'Untitled project')
+
+const { data: clientsData } = useFetch<Array<{ id: string; name: string }>>('/api/agency/clients', { default: () => [] })
+const projectClientName = computed(() => {
+  const clientId = editor.project.value?.clientId
+  if (!clientId) return null
+  return clientsData.value?.find(client => client.id === clientId)?.name ?? null
+})
+
+const renaming = ref(false)
+const renameDraft = ref('')
+const renameSaving = ref(false)
+const renameInputRef = ref<{ inputRef?: HTMLInputElement } | null>(null)
+
+function startRename() {
+  renameDraft.value = editor.project.value?.title ?? ''
+  renaming.value = true
+  void nextTick(() => renameInputRef.value?.inputRef?.select())
+}
+function cancelRename() {
+  renaming.value = false
+}
+async function commitRename() {
+  if (!renaming.value || renameSaving.value) return
+  const next = renameDraft.value.trim()
+  const current = editor.project.value?.title ?? ''
+  // Close the input first so the blur that follows Enter can't commit twice.
+  renaming.value = false
+  if (next === current.trim()) return
+  renameSaving.value = true
+  try {
+    await editor.updateProject({ title: next || null })
+    toast.add({ title: 'Project renamed', color: 'success' })
+  } catch (e: unknown) {
+    renameDraft.value = next
+    toast.add({ title: 'Could not rename project', description: apiErrorDescription(e, ''), color: 'error' })
+  } finally {
+    renameSaving.value = false
+  }
+}
+
 const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av' : '/agency/audio/projects')
 </script>
 
 <template>
-  <div class="flex-1 min-h-0 overflow-y-auto">
-    <div
-      class="mx-auto w-full space-y-4 p-6"
-      :class="isAv ? 'max-w-none' : 'max-w-5xl'"
-    >
+  <!-- AV projects run as a fixed-height editor (columns + docked timeline);
+       audio projects keep the simpler scrolling page. -->
+  <div :class="isAv ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'flex-1 min-h-0 overflow-y-auto'">
+    <div :class="isAv ? 'flex min-h-0 flex-1 flex-col gap-3 p-3' : 'mx-auto w-full max-w-5xl space-y-4 p-6'">
 
-      <!-- Header -->
-      <header class="flex items-center gap-2">
+      <!-- Command bar: identity on the left, history on the right. One row. -->
+      <header class="flex shrink-0 flex-wrap items-center gap-2">
         <UButton
           icon="i-lucide-arrow-left"
           variant="ghost"
           color="neutral"
+          size="sm"
           :to="backTo"
           aria-label="Back to projects"
         />
-        <div class="space-y-0.5 flex-1">
-          <h1 class="text-2xl font-semibold tracking-tight">{{ pageTitle }}</h1>
-          <p class="text-sm text-muted">{{ pageDescription }}</p>
+        <div class="flex min-w-0 flex-1 items-center gap-2">
+          <template v-if="renaming">
+            <UInput
+              ref="renameInputRef"
+              v-model="renameDraft"
+              size="sm"
+              class="w-full max-w-md"
+              placeholder="Project title"
+              aria-label="Project title"
+              :loading="renameSaving"
+              @keydown.enter.prevent="commitRename"
+              @keydown.esc.prevent="cancelRename"
+              @blur="commitRename"
+            />
+          </template>
+          <button
+            v-else
+            type="button"
+            class="group flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left hover:bg-elevated"
+            title="Rename project"
+            @click="startRename"
+          >
+            <h1 class="truncate text-lg font-semibold tracking-tight text-highlighted">{{ projectTitle }}</h1>
+            <UIcon name="i-lucide-pencil" class="size-3.5 shrink-0 text-muted opacity-0 transition group-hover:opacity-100" />
+          </button>
+          <UBadge :label="isAv ? 'Video' : 'Audio'" size="xs" variant="subtle" color="neutral" class="shrink-0" />
+          <UBadge v-if="projectClientName" :label="projectClientName" size="xs" variant="outline" color="neutral" class="hidden shrink-0 sm:inline-flex" />
         </div>
-        <!-- Save status pill -->
-        <span
-          v-if="saveStatusLabel"
-          class="text-xs font-medium tabular-nums"
-          :class="saveStatusColor"
-        >{{ saveStatusLabel }}</span>
+
+        <!-- Save status: always visible, never decorative. -->
+        <UTooltip :text="editor.saveError.value ?? ''" :disabled="!editor.saveError.value">
+          <span
+            v-if="saveStatusLabel"
+            class="inline-flex items-center gap-1 text-xs font-medium tabular-nums"
+            :class="saveStatusColor"
+          >
+            <UIcon :name="saveStatusIcon" class="size-3.5" :class="editor.saveStatus.value === 'saving' ? 'animate-spin' : ''" />
+            {{ saveStatusLabel }}
+          </span>
+        </UTooltip>
+
+        <div v-if="editor.status.value === 'ready'" class="flex items-center gap-1 rounded-md border border-default bg-elevated p-1">
+          <UButton icon="i-lucide-undo-2" size="xs" variant="ghost" color="neutral" :disabled="!editor.canUndo.value" aria-label="Undo (⌘Z)" title="Undo (⌘Z)" @click="editor.undoAction()" />
+          <UButton icon="i-lucide-redo-2" size="xs" variant="ghost" color="neutral" :disabled="!editor.canRedo.value" aria-label="Redo (⌘⇧Z)" title="Redo (⌘⇧Z)" @click="editor.redoAction()" />
+          <div class="mx-0.5 h-4 w-px bg-default" />
+          <UButton v-if="!isAv" icon="i-lucide-plus-circle" size="xs" variant="soft" color="primary" label="Add clip" @click="pickerOpen = true" />
+          <UButton icon="i-lucide-bookmark" size="xs" variant="ghost" color="neutral" label="Save version" title="Snapshot the timeline" @click="saveVersionOpen = true" />
+          <UButton icon="i-lucide-history" size="xs" variant="ghost" color="neutral" label="Versions" @click="openVersions" />
+        </div>
       </header>
 
-      <!-- Edit toolbar -->
-      <div
-        v-if="editor.status.value === 'ready'"
-        class="flex flex-wrap items-center gap-2 rounded-lg border border-default bg-elevated px-3 py-2"
-      >
-        <!-- Undo / Redo -->
-        <UButton
-          icon="i-lucide-undo-2"
-          size="sm"
-          variant="ghost"
-          color="neutral"
-          label="Undo"
-          :disabled="!editor.canUndo.value"
-          aria-label="Undo (⌘Z)"
-          @click="editor.undoAction()"
-        />
-        <UButton
-          icon="i-lucide-redo-2"
-          size="sm"
-          variant="ghost"
-          color="neutral"
-          label="Redo"
-          :disabled="!editor.canRedo.value"
-          aria-label="Redo (⌘⇧Z)"
-          @click="editor.redoAction()"
-        />
-
-        <div class="h-5 w-px bg-default mx-1" />
-
-        <!-- Add clips in audio mode. AV project creation actions live inside Video Studio. -->
-        <UButton
-          v-if="!isAv"
-          icon="i-lucide-plus-circle" size="sm" variant="soft" color="primary" label="Add clip"
-          @click="pickerOpen = true"
-        />
-
-        <!-- Save version -->
-        <UButton
-          icon="i-lucide-bookmark"
-          size="sm"
-          variant="ghost"
-          color="neutral"
-          label="Save version"
-          @click="saveVersionOpen = true"
-        />
-
-        <!-- Versions history -->
-        <UButton
-          icon="i-lucide-history"
-          size="sm"
-          variant="ghost"
-          color="neutral"
-          label="Versions"
-          @click="openVersions"
-        />
-      </div>
+      <!-- Save failures block editing confidence: say what happened and offer retry. -->
+      <UAlert
+        v-if="editor.saveStatus.value === 'error'"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-cloud-off"
+        class="shrink-0"
+        title="Changes aren't being saved"
+        :description="saveErrorDescription"
+        :actions="[{ label: 'Retry save', icon: 'i-lucide-refresh-cw', color: 'error', variant: 'soft', onClick: retrySave }]"
+      />
 
       <!-- Loading / error states -->
-      <USkeleton v-if="editor.status.value === 'loading'" class="h-48 w-full" />
+      <USkeleton v-if="editor.status.value === 'loading'" class="h-48 w-full shrink-0" />
 
       <UAlert
         v-else-if="editor.status.value === 'error'"
@@ -927,23 +1093,19 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
       />
 
       <template v-else-if="editor.status.value === 'ready' && editor.timeline.value">
-        <!-- Missing-source warning — non-fatal. The project still loads so the user
-             can remove or replace clips whose audio files are gone (deleted/404). -->
         <UAlert
           v-if="editor.missingClipIds.value.length"
           color="warning"
           variant="subtle"
           icon="i-lucide-triangle-alert"
-          :title="`${editor.missingClipIds.value.length} ${editor.missingClipIds.value.length === 1 ? 'clip is' : 'clips are'} missing audio`"
-          description="Their source files couldn't be loaded — they may have been deleted. These clips appear on the timeline but produce no sound. Remove or replace them, then save."
+          class="shrink-0"
+          :title="`${editor.missingClipIds.value.length} ${editor.missingClipIds.value.length === 1 ? 'clip is' : 'clips are'} missing audio — the source file is gone. Remove or replace the clip.`"
         />
 
         <VideoStudioWorkbench
           v-if="isAv"
           v-model:mode="videoStudioMode"
           v-model:producer-collapsed="producerRailCollapsed"
-          :current-time-sec="editor.currentTime.value"
-          :duration-sec="editor.duration.value"
           :asset-count="videoStudioAssetCount"
           :generation-job-count="activeGenerationJobCount"
           :render-job-count="editor.renderJobs.value.length"
@@ -971,63 +1133,10 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           </template>
 
           <template #preview>
-              <VideoStudioClipInspector
-                v-if="selectedClipInspector"
-                :clip="selectedClipInspector"
-                :can-split="selectedClipInspector.kind === 'audio'"
-                @split="splitSelectedClip"
-                @delete="deleteSelectedClip"
-                @set-caption-style="setSelectedCaptionStyle"
-              />
-              <VideoStudioSelectedAssetPanel
-                v-else
-                :asset="selectedStudioAsset"
-                :activity="selectedStudioAssetActivity"
-                :caption-generating="captionGeneratingAssetId === selectedStudioAsset?.id"
-                :can-replace-selected-clip="canReplaceSelectedClipWithAsset"
-                @add-to-timeline="onStudioAssetAdd"
-                @replace-selected-clip="replaceSelectedClipWithAsset"
-                @add-captions-to-timeline="onStudioAssetAddCaptions"
-                @generate-from-asset="onStudioAssetGenerate"
-                @generate-captions="onGenerateCaptions"
-              />
-              <div v-if="videoGenerationEnabled" class="mt-3 rounded-md border border-default bg-elevated p-3">
-                <div class="mb-3 flex items-center justify-between gap-3">
-                  <div class="flex min-w-0 items-center gap-2">
-                    <UIcon name="i-lucide-sparkles" class="size-4 text-muted" />
-                    <div class="min-w-0">
-                      <h4 class="text-xs font-medium uppercase text-muted">AI generation</h4>
-                      <p class="truncate text-[11px] text-muted">Cloudflare AI Gateway models only.</p>
-                    </div>
-                  </div>
-                  <UBadge
-                    v-if="activeGenerationJobCount"
-                    :label="`${activeGenerationJobCount} active`"
-                    size="xs"
-                    variant="subtle"
-                    color="primary"
-                  />
-                </div>
-                <MediaGenerateComposer
-                  active
-                  :project-id="projectId"
-                  :timeline-stills="timelineStills"
-                  :default-aspect="projectAspect"
-                  :initial-prompt="generationDraftPrompt"
-                  :initial-source-asset="selectedGenerationSourceAsset"
-                  :recent-jobs="genJobs.jobs.value"
-                  :prepare-timeline-still-source="editor.saveNow"
-                  @submitted="onGenerationSubmitted"
-                  @add-to-timeline="onLibraryAddToTimeline"
-                  @close="generationDraftPrompt = null"
-                />
-              </div>
-              <div class="mt-3 mb-2 flex items-center gap-2">
+              <div class="mb-2 flex items-center gap-2">
                 <UIcon name="i-lucide-monitor-play" class="size-4 text-muted" />
-                <div class="min-w-0">
-                  <h4 class="text-xs font-medium uppercase text-muted">Assembly preview</h4>
-                  <p class="text-[11px] text-muted">Server render remains the source of truth.</p>
-                </div>
+                <h4 class="text-xs font-medium uppercase text-muted">Preview</h4>
+                <span class="text-[11px] text-muted">Approximate — the server render is the source of truth.</span>
               </div>
               <MediaAvPreview
                 :timeline="editor.timeline.value"
@@ -1035,6 +1144,165 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 :is-playing="editor.isPlaying.value"
                 :sources="editor.sources.value"
               />
+
+              <div class="mt-3 space-y-3">
+              <!-- Per-clip effects drawer — shows for any selected video clip -->
+              <div v-if="isAv && selectedVideoClip" class="rounded-lg border border-default bg-elevated p-3">
+                <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-xs font-medium uppercase text-muted">
+                      Effects — {{ selectedVideoClip.label }} @ {{ Math.round(selectedVideoClip.startSec) }}s
+                    </p>
+                    <p class="mt-0.5 text-[11px] text-muted">
+                      {{ selectedVideoClip.effects.length ? selectedVideoEffectLabels.join(', ') : 'No effects selected' }}
+                    </p>
+                  </div>
+                  <UButton
+                    v-if="selectedVideoClip.effects.length"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    label="Clear all"
+                    @click="editor.setClipEffectsAction(selectedVideoClip.clipId, [])"
+                  />
+                </div>
+                <div class="mb-3 flex flex-wrap gap-1.5">
+                  <UBadge
+                    :label="`${selectedVideoEffectPlan.approximated.length} previewed`"
+                    size="xs"
+                    variant="subtle"
+                    color="primary"
+                  />
+                  <UBadge
+                    v-if="selectedVideoEffectPlan.unpreviewable.length"
+                    :label="`${selectedVideoEffectPlan.unpreviewable.length} render-only`"
+                    size="xs"
+                    variant="subtle"
+                    color="warning"
+                  />
+                  <UBadge
+                    v-if="selectedVideoEffectPlan.shake"
+                    label="Motion preview"
+                    size="xs"
+                    variant="subtle"
+                    color="neutral"
+                  />
+                </div>
+                <div class="mb-4">
+                  <div class="mb-2 flex items-center justify-between gap-3">
+                    <p class="text-xs font-medium uppercase text-muted">Framing</p>
+                    <p class="text-[11px] text-muted">
+                      {{ CLIP_FIT_OPTIONS.find(option => option.id === selectedVideoClip.fit)?.hint }}
+                    </p>
+                  </div>
+                  <div class="grid grid-cols-3 gap-2">
+                    <button
+                      v-for="option in CLIP_FIT_OPTIONS"
+                      :key="option.id"
+                      type="button"
+                      role="switch"
+                      :aria-checked="selectedVideoClip.fit === option.id"
+                      class="flex min-h-16 items-center gap-2 rounded-lg border px-3 py-2 text-left transition"
+                      :class="selectedVideoClip.fit === option.id
+                        ? 'border-primary bg-primary/10 text-highlighted'
+                        : 'border-default bg-default/30 text-default hover:border-primary/40 hover:bg-primary/5'"
+                      :title="option.hint"
+                      @click="editor.setClipFitAction(selectedVideoClip.clipId, option.id)"
+                    >
+                      <UIcon :name="option.icon" class="size-4 shrink-0" :class="selectedVideoClip.fit === option.id ? 'text-primary' : 'text-muted'" />
+                      <span class="min-w-0">
+                        <span class="block text-xs font-semibold leading-tight">{{ option.label }}</span>
+                        <span class="block truncate text-[11px] text-muted">{{ option.id }}</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+                  <button
+                    v-for="preset in CLIP_EFFECT_PRESET_UI"
+                    :key="preset.id"
+                    type="button"
+                    role="switch"
+                    :aria-checked="selectedVideoClip.effects.includes(preset.id)"
+                    class="flex min-h-24 flex-col items-start gap-2 rounded-lg border p-2.5 text-left transition"
+                    :class="selectedVideoClip.effects.includes(preset.id)
+                      ? 'border-primary bg-primary/10 text-highlighted'
+                      : 'border-default bg-default/30 text-default hover:border-primary/40 hover:bg-primary/5'"
+                    :title="preset.hint"
+                    @click="toggleClipEffect(preset.id)"
+                  >
+                    <span class="flex w-full items-center gap-2">
+                      <UIcon :name="preset.icon" class="size-4" :class="selectedVideoClip.effects.includes(preset.id) ? 'text-primary' : 'text-muted'" />
+                      <UIcon
+                        :name="selectedVideoClip.effects.includes(preset.id) ? 'i-lucide-check-circle-2' : 'i-lucide-circle'"
+                        class="ml-auto size-3.5"
+                        :class="selectedVideoClip.effects.includes(preset.id) ? 'text-primary' : 'text-muted'"
+                      />
+                    </span>
+                    <span class="text-xs font-semibold leading-tight">{{ preset.label }}</span>
+                    <span class="line-clamp-2 text-[11px] leading-snug text-muted">{{ preset.hint }}</span>
+                  </button>
+                </div>
+                <p class="mt-3 text-[11px] text-muted">
+                  Preview approximates {{ selectedVideoEffectPlan.approximated.length || 'no' }} selected effects; {{ selectedVideoEffectPlan.unpreviewable.length || 'no' }} selected effects are render-only.
+                </p>
+              </div>
+
+              <div v-if="isAv && selectedGeneratedClip.kind === 'generated-video'" class="rounded-lg border border-default bg-elevated p-3">
+                <div class="flex items-start gap-3">
+                  <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                    <UIcon name="i-lucide-sparkles" class="size-4 text-primary" />
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <p class="truncate text-sm font-medium text-highlighted">{{ selectedGeneratedClip.title }}</p>
+                      <UBadge v-if="selectedGeneratedClip.format" :label="selectedGeneratedClip.format" size="xs" variant="subtle" color="neutral" />
+                      <UBadge v-if="selectedGeneratedClip.durationSec" :label="`${selectedGeneratedClip.durationSec}s`" size="xs" variant="subtle" color="neutral" />
+                    </div>
+                    <p class="mt-1 text-xs text-muted">Model: {{ selectedGeneratedClip.modelLabel }}</p>
+                    <p v-if="selectedGeneratedClip.prompt" class="mt-1 line-clamp-2 text-xs text-muted">{{ selectedGeneratedClip.prompt }}</p>
+                    <p v-if="selectedGeneratedClip.sourceJobId" class="mt-1 text-[11px] text-muted">Job {{ selectedGeneratedClip.sourceJobId }}</p>
+                  </div>
+                  <div class="flex flex-wrap justify-end gap-2">
+                    <UButton
+                      v-if="selectedGeneratedClip.prompt"
+                      icon="i-lucide-copy"
+                      size="xs"
+                      variant="ghost"
+                      color="neutral"
+                      label="Copy prompt"
+                      @click="copySelectedPrompt"
+                    />
+                    <UButton
+                      icon="i-lucide-copy-plus"
+                      size="xs"
+                      variant="ghost"
+                      color="neutral"
+                      label="Duplicate"
+                      @click="duplicateSelectedGeneratedClip"
+                    />
+                    <UButton
+                      icon="i-lucide-share-2"
+                      size="xs"
+                      variant="soft"
+                      color="primary"
+                      label="Publish"
+                      @click="publishSelectedGeneratedClip"
+                    />
+                    <UButton
+                      icon="i-lucide-trash-2"
+                      size="xs"
+                      variant="ghost"
+                      color="error"
+                      label="Remove"
+                      @click="editor.deleteClipAction(selectedGeneratedClip.clipId)"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              
+              </div>
           </template>
 
           <template #producer>
@@ -1048,6 +1316,17 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 :model-status-label="videoGenerationStatusLabel"
                 :model-status-detail="videoGenerationStatusDetail"
               >
+                <template #actions>
+                  <UButton
+                    icon="i-lucide-panel-right-close"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    aria-label="Collapse producer rail"
+                    @click="producerRailCollapsed = true"
+                  />
+                </template>
+
                 <template #details>
                   <VideoStudioClipInspector
                     v-if="selectedClipInspector"
@@ -1072,6 +1351,26 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 </template>
 
                 <template #produce>
+                  <div v-if="videoGenerationEnabled" class="space-y-2">
+                    <div class="flex items-center gap-2">
+                      <UIcon name="i-lucide-sparkles" class="size-4 text-muted" />
+                      <h4 class="text-xs font-medium uppercase text-muted">AI generation</h4>
+                      <UBadge v-if="activeGenerationJobCount" :label="`${activeGenerationJobCount} active`" size="xs" variant="subtle" color="primary" class="ml-auto" />
+                    </div>
+                    <MediaGenerateComposer
+                    active
+                    :project-id="projectId"
+                    :timeline-stills="timelineStills"
+                    :default-aspect="projectAspect"
+                    :initial-prompt="generationDraftPrompt"
+                    :initial-source-asset="selectedGenerationSourceAsset"
+                    :recent-jobs="genJobs.jobs.value"
+                    :prepare-timeline-still-source="editor.saveNow"
+                    @submitted="onGenerationSubmitted"
+                    @add-to-timeline="onLibraryAddToTimeline"
+                    @close="generationDraftPrompt = null"
+                />
+                  </div>
                   <VideoStudioVoiceComposer
                     :producer-brief="producerBrief"
                     :existing-voiceover-count="existingVoiceoverClipIds.length"
@@ -1117,10 +1416,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                     @add-to-timeline="onHarnessAddToTimeline"
                     @brief-change="producerBrief = $event"
                   />
-                  <div class="grid grid-cols-2 gap-2">
-                    <UButton icon="i-lucide-music" size="xs" variant="ghost" color="neutral" label="Audio" @click="pickerOpen = true" />
-                    <UButton icon="i-lucide-clapperboard" size="xs" variant="ghost" color="primary" label="Render" :loading="editor.rendering.value" @click="() => onRenderVideo()" />
-                  </div>
+                  <UButton icon="i-lucide-music" size="xs" variant="soft" color="neutral" label="Add audio clip" block @click="pickerOpen = true" />
                 </template>
 
                 <template #review>
@@ -1144,8 +1440,29 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           </template>
         </VideoStudioWorkbench>
 
-        <!-- Timeline with full SP2c interaction layer -->
-        <VideoStudioRenderStatusStrip
+        <!-- Dock: transport + timeline, pinned to the bottom for AV projects. -->
+        <section
+          :class="isAv ? 'relative flex shrink-0 flex-col gap-2' : 'space-y-4'"
+          :style="isAv ? { height: `${dockHeight}px` } : undefined"
+        >
+          <!-- Drag handle: grows the dock upward. -->
+          <div
+            v-if="isAv"
+            class="group absolute inset-x-0 -top-2 z-10 flex h-3 cursor-row-resize items-center justify-center touch-none"
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize timeline"
+            :aria-valuenow="dockHeight"
+            :aria-valuemin="DOCK_MIN"
+            :aria-valuemax="DOCK_MAX"
+            @pointerdown="onDockDragStart"
+            @pointermove="onDockDragMove"
+            @pointerup="onDockDragEnd"
+            @pointercancel="onDockDragEnd"
+          >
+            <span class="h-1 w-12 rounded-full bg-accented transition group-hover:bg-primary" />
+          </div>
+          <VideoStudioRenderStatusStrip
           v-if="isAv"
           :project-id="projectId"
           :jobs="editor.renderJobs.value"
@@ -1156,7 +1473,43 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           @save-asset="onSaveAsset"
         />
 
-        <MediaTimeline
+          <div class="flex shrink-0 items-center gap-3 rounded-lg border border-default bg-elevated px-3 py-2">
+            <UButton
+              :icon="editor.isPlaying.value ? 'i-lucide-pause' : 'i-lucide-play'"
+              color="primary"
+              size="sm"
+              :aria-label="editor.isPlaying.value ? 'Pause (Space)' : 'Play (Space)'"
+              :title="editor.isPlaying.value ? 'Pause (Space)' : 'Play (Space)'"
+              @click="togglePlayback"
+            />
+            <UButton icon="i-lucide-skip-back" size="sm" variant="ghost" color="neutral" aria-label="Go to start (Home)" title="Go to start (Home)" @click="editor.seek(0)" />
+            <span class="w-24 shrink-0 text-sm tabular-nums text-muted">
+              {{ fmt(editor.currentTime.value) }} / {{ fmt(editor.duration.value) }}
+            </span>
+            <USlider
+              class="flex-1"
+              :min="0"
+              :max="Math.max(editor.duration.value, 0.001)"
+              :step="0.01"
+              :model-value="editor.currentTime.value"
+              aria-label="Playhead"
+              @update:model-value="(v: number | number[]) => editor.seek(Array.isArray(v) ? v[0]! : v)"
+            />
+            <UPopover v-if="isAv">
+              <UButton icon="i-lucide-keyboard" size="sm" variant="ghost" color="neutral" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" />
+              <template #content>
+                <dl class="grid w-64 grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 p-3 text-xs">
+                  <template v-for="shortcut in SHORTCUTS" :key="shortcut.keys">
+                    <dt><UKbd size="sm">{{ shortcut.keys }}</UKbd></dt>
+                    <dd class="text-muted">{{ shortcut.label }}</dd>
+                  </template>
+                </dl>
+              </template>
+            </UPopover>
+          </div>
+
+          <div :class="isAv ? 'min-h-0 flex-1 overflow-y-auto' : ''">
+            <MediaTimeline
           :timeline="editor.timeline.value"
           :clips="editor.clips.value"
           :tracks="editor.tracks.value"
@@ -1170,182 +1523,8 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           @slice="(p) => editor.sliceAction(p.clipId, p.timeSec)"
           @delete-clip="(p) => { editor.deleteClipAction(p.clipId); if (selectedClipId === p.clipId) selectedClipId = null }"
         />
-
-        <!-- Per-clip effects drawer — shows for any selected video clip -->
-        <div v-if="isAv && selectedVideoClip" class="rounded-lg border border-default bg-elevated p-3">
-          <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
-            <div class="min-w-0">
-              <p class="text-xs font-medium uppercase text-muted">
-                Effects — {{ selectedVideoClip.label }} @ {{ Math.round(selectedVideoClip.startSec) }}s
-              </p>
-              <p class="mt-0.5 text-[11px] text-muted">
-                {{ selectedVideoClip.effects.length ? selectedVideoEffectLabels.join(', ') : 'No effects selected' }}
-              </p>
-            </div>
-            <UButton
-              v-if="selectedVideoClip.effects.length"
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              label="Clear all"
-              @click="editor.setClipEffectsAction(selectedVideoClip.clipId, [])"
-            />
           </div>
-          <div class="mb-3 flex flex-wrap gap-1.5">
-            <UBadge
-              :label="`${selectedVideoEffectPlan.approximated.length} previewed`"
-              size="xs"
-              variant="subtle"
-              color="primary"
-            />
-            <UBadge
-              v-if="selectedVideoEffectPlan.unpreviewable.length"
-              :label="`${selectedVideoEffectPlan.unpreviewable.length} render-only`"
-              size="xs"
-              variant="subtle"
-              color="warning"
-            />
-            <UBadge
-              v-if="selectedVideoEffectPlan.shake"
-              label="Motion preview"
-              size="xs"
-              variant="subtle"
-              color="neutral"
-            />
-          </div>
-          <div class="mb-4">
-            <div class="mb-2 flex items-center justify-between gap-3">
-              <p class="text-xs font-medium uppercase text-muted">Framing</p>
-              <p class="text-[11px] text-muted">
-                {{ CLIP_FIT_OPTIONS.find(option => option.id === selectedVideoClip.fit)?.hint }}
-              </p>
-            </div>
-            <div class="grid grid-cols-3 gap-2">
-              <button
-                v-for="option in CLIP_FIT_OPTIONS"
-                :key="option.id"
-                type="button"
-                role="switch"
-                :aria-checked="selectedVideoClip.fit === option.id"
-                class="flex min-h-16 items-center gap-2 rounded-lg border px-3 py-2 text-left transition"
-                :class="selectedVideoClip.fit === option.id
-                  ? 'border-primary bg-primary/10 text-highlighted'
-                  : 'border-default bg-default/30 text-default hover:border-primary/40 hover:bg-primary/5'"
-                :title="option.hint"
-                @click="editor.setClipFitAction(selectedVideoClip.clipId, option.id)"
-              >
-                <UIcon :name="option.icon" class="size-4 shrink-0" :class="selectedVideoClip.fit === option.id ? 'text-primary' : 'text-muted'" />
-                <span class="min-w-0">
-                  <span class="block text-xs font-semibold leading-tight">{{ option.label }}</span>
-                  <span class="block truncate text-[11px] text-muted">{{ option.id }}</span>
-                </span>
-              </button>
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-            <button
-              v-for="preset in CLIP_EFFECT_PRESET_UI"
-              :key="preset.id"
-              type="button"
-              role="switch"
-              :aria-checked="selectedVideoClip.effects.includes(preset.id)"
-              class="flex min-h-24 flex-col items-start gap-2 rounded-lg border p-2.5 text-left transition"
-              :class="selectedVideoClip.effects.includes(preset.id)
-                ? 'border-primary bg-primary/10 text-highlighted'
-                : 'border-default bg-default/30 text-default hover:border-primary/40 hover:bg-primary/5'"
-              :title="preset.hint"
-              @click="toggleClipEffect(preset.id)"
-            >
-              <span class="flex w-full items-center gap-2">
-                <UIcon :name="preset.icon" class="size-4" :class="selectedVideoClip.effects.includes(preset.id) ? 'text-primary' : 'text-muted'" />
-                <UIcon
-                  :name="selectedVideoClip.effects.includes(preset.id) ? 'i-lucide-check-circle-2' : 'i-lucide-circle'"
-                  class="ml-auto size-3.5"
-                  :class="selectedVideoClip.effects.includes(preset.id) ? 'text-primary' : 'text-muted'"
-                />
-              </span>
-              <span class="text-xs font-semibold leading-tight">{{ preset.label }}</span>
-              <span class="line-clamp-2 text-[11px] leading-snug text-muted">{{ preset.hint }}</span>
-            </button>
-          </div>
-          <p class="mt-3 text-[11px] text-muted">
-            Preview approximates {{ selectedVideoEffectPlan.approximated.length || 'no' }} selected effects; {{ selectedVideoEffectPlan.unpreviewable.length || 'no' }} selected effects are render-only.
-          </p>
-        </div>
-
-        <div v-if="isAv && selectedGeneratedClip.kind === 'generated-video'" class="rounded-lg border border-default bg-elevated p-3">
-          <div class="flex items-start gap-3">
-            <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
-              <UIcon name="i-lucide-sparkles" class="size-4 text-primary" />
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <p class="truncate text-sm font-medium text-highlighted">{{ selectedGeneratedClip.title }}</p>
-                <UBadge v-if="selectedGeneratedClip.format" :label="selectedGeneratedClip.format" size="xs" variant="subtle" color="neutral" />
-                <UBadge v-if="selectedGeneratedClip.durationSec" :label="`${selectedGeneratedClip.durationSec}s`" size="xs" variant="subtle" color="neutral" />
-              </div>
-              <p class="mt-1 text-xs text-muted">Model: {{ selectedGeneratedClip.modelLabel }}</p>
-              <p v-if="selectedGeneratedClip.prompt" class="mt-1 line-clamp-2 text-xs text-muted">{{ selectedGeneratedClip.prompt }}</p>
-              <p v-if="selectedGeneratedClip.sourceJobId" class="mt-1 text-[11px] text-muted">Job {{ selectedGeneratedClip.sourceJobId }}</p>
-            </div>
-            <div class="flex flex-wrap justify-end gap-2">
-              <UButton
-                v-if="selectedGeneratedClip.prompt"
-                icon="i-lucide-copy"
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                label="Copy prompt"
-                @click="copySelectedPrompt"
-              />
-              <UButton
-                icon="i-lucide-copy-plus"
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                label="Duplicate"
-                @click="duplicateSelectedGeneratedClip"
-              />
-              <UButton
-                icon="i-lucide-share-2"
-                size="xs"
-                variant="soft"
-                color="primary"
-                label="Publish"
-                @click="publishSelectedGeneratedClip"
-              />
-              <UButton
-                icon="i-lucide-trash-2"
-                size="xs"
-                variant="ghost"
-                color="error"
-                label="Remove"
-                @click="editor.deleteClipAction(selectedGeneratedClip.clipId)"
-              />
-            </div>
-          </div>
-        </div>
-
-        <!-- Transport bar -->
-        <div class="flex items-center gap-4 rounded-lg border border-default bg-elevated p-3">
-          <UButton
-            :icon="editor.isPlaying.value ? 'i-lucide-pause' : 'i-lucide-play'"
-            color="primary"
-            :aria-label="editor.isPlaying.value ? 'Pause' : 'Play'"
-            @click="editor.isPlaying.value ? editor.pause() : editor.play()"
-          />
-          <span class="w-20 shrink-0 tabular-nums text-sm text-muted">
-            {{ fmt(editor.currentTime.value) }} / {{ fmt(editor.duration.value) }}
-          </span>
-          <USlider
-            class="flex-1"
-            :min="0"
-            :max="Math.max(editor.duration.value, 0.001)"
-            :step="0.01"
-            :model-value="editor.currentTime.value"
-            @update:model-value="(v: number | number[]) => editor.seek(Array.isArray(v) ? v[0]! : v)"
-          />
-        </div>
+        </section>
       </template>
     </div>
   </div>
@@ -1459,6 +1638,21 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
             :loading="savingVersion"
             @click="doSaveVersion"
           />
+        </div>
+      </div>
+    </template>
+  </UModal>
+
+  <!-- Leave-page guard when a save is failing -->
+  <UModal v-model:open="discardConfirmOpen" title="Leave without saving?">
+    <template #content>
+      <div class="space-y-4 p-4">
+        <p class="text-sm text-muted">
+          Your latest edits couldn't be saved to the server. If you leave now they'll be lost.
+        </p>
+        <div class="flex justify-end gap-2">
+          <UButton variant="ghost" color="neutral" label="Stay and retry" @click="answerDiscard(false)" />
+          <UButton color="error" label="Leave and discard" @click="answerDiscard(true)" />
         </div>
       </div>
     </template>

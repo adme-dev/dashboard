@@ -217,12 +217,22 @@ function onPointerMove(event: PointerEvent) {
   drag.value = { ...d }
 }
 
+/** Pointer travel below this is a click, not a drag — selection only, no edit. */
+const DRAG_THRESHOLD_PX = 3
+
 function onPointerUp(event: PointerEvent) {
   if (!drag.value) return
   const d = drag.value
 
   const dx = event.screenX - d.startScreenX
   const pps = internalPxPerSec.value
+  const laneMoved = d.mode === 'move' && laneIndexAt(event.clientY) !== d.sourceLaneIdx
+  if (Math.abs(dx) < DRAG_THRESHOLD_PX && !laneMoved) {
+    // A click: the clip is already selected from pointerdown. Emitting a
+    // zero-distance move would push a no-op undo step and trigger an autosave.
+    drag.value = null
+    return
+  }
 
   if (d.mode === 'move') {
     const rawTimeSec = d.origStartSec + dx / pps

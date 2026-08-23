@@ -4,6 +4,7 @@
 // for the playhead (clock rule: the view slaves to the engine, never the reverse).
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import type { TimelineState, Track } from '~~/server/utils/audio/timelineSchema'
+import type { MediaProject } from '~~/app/types'
 import { planTimeline, type ScheduledClip, type TrackBus } from '~~/app/utils/audio/audioSchedulePlanner'
 import { createAudioEngine, type AudioEngine, type AudioEngineDeps, type LoadResult } from '~~/app/composables/useAudioEngine'
 import { createBrowserAudioContext, browserSetTimer, makeR2Resolver } from '~~/app/utils/audio/audioContextFactory'
@@ -152,6 +153,10 @@ export function useMediaProjectEditor(projectId: string) {
   const saveStatus = ref<SaveStatus>('idle')
   /** Human-readable reason for the last failed save (null when the last save succeeded). */
   const saveError = ref<string | null>(null)
+  /** True from the first edit until the next successful save — drives the leave-page guard. */
+  const dirty = ref(false)
+  /** Project metadata (title, client, status). Loaded with the timeline. */
+  const project = ref<MediaProject | null>(null)
   // Each save attempt gets its own Idempotency-Key. A retried payload is a new
   // attempt with a new key — timeline saves are idempotent UPDATEs, so a
   // response-less attempt that did commit is harmlessly re-applied.
@@ -183,6 +188,7 @@ export function useMediaProjectEditor(projectId: string) {
   async function doSave(): Promise<boolean> {
     if (!timeline.value) return false
     saveStatus.value = 'saving'
+    const snapshot = timeline.value
     try {
       await apiFetch(`/api/agency/audio/projects/${projectId}/timeline`, {
         method: 'PUT',
@@ -191,6 +197,8 @@ export function useMediaProjectEditor(projectId: string) {
       })
       saveStatus.value = 'saved'
       saveError.value = null
+      // Only clean if nothing was edited while the request was in flight.
+      if (timeline.value === snapshot) dirty.value = false
       return true
     } catch (e: unknown) {
       saveStatus.value = 'error'
@@ -200,7 +208,18 @@ export function useMediaProjectEditor(projectId: string) {
   }
 
   const saver = makeDebouncedSaver(async () => { await doSave() }, 1500)
-  function scheduleAutosave() { saver.trigger() }
+  function scheduleAutosave() { dirty.value = true; saver.trigger() }
+
+  /** Rename / re-home the project. Resolves with the updated project row. */
+  async function updateProject(patch: { title?: string | null; clientId?: string | null }): Promise<MediaProject> {
+    const res = await apiFetch<{ project: MediaProject }>(`/api/agency/audio/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: { 'Idempotency-Key': idempotencyKey('project') },
+      body: patch
+    })
+    project.value = res.project
+    return res.project
+  }
   async function saveNow() {
     const saved = await doSave()
     if (!saved) throw new Error('Could not save timeline')
@@ -533,12 +552,13 @@ export function useMediaProjectEditor(projectId: string) {
       // The SP0 project GET returns the MediaTimeline WRAPPER; the TimelineState lives
       // in `.state` (validated on write — cast rather than re-import the Zod value client-side).
       const [proj, src] = await Promise.all([
-        apiFetch<{ project: unknown; timeline: { state: unknown } | null }>(`/api/agency/audio/projects/${projectId}`),
+        apiFetch<{ project: MediaProject; timeline: { state: unknown } | null }>(`/api/agency/audio/projects/${projectId}`),
         apiFetch<{ sources: Record<string, string> }>(`/api/agency/audio/projects/${projectId}/clip-sources`)
       ])
       const state = proj.timeline?.state as TimelineState | undefined
       if (!state) { status.value = 'error'; error.value = 'This project has no timeline yet.'; return }
       timeline.value = state
+      project.value = proj.project
       // Populate the live sources map from the initial presigned URLs
       for (const [k, v] of Object.entries(src.sources)) mergeSource(k, v)
       const plan = planTimeline(state)
@@ -613,7 +633,8 @@ export function useMediaProjectEditor(projectId: string) {
     // State
     timeline, clips, tracks, status, error,
     isPlaying, currentTime, duration,
-    canUndo, canRedo, saveStatus, saveError, saveNow,
+    canUndo, canRedo, saveStatus, saveError, dirty, saveNow,
+    project, updateProject,
     /** Clip ids whose source couldn't be loaded (deleted/404). Non-fatal warning. */
     missingClipIds,
     mediaType,
