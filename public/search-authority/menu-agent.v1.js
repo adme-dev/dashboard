@@ -12,8 +12,10 @@
     reconcileTimer: null,
     config: null,
     configUrl: null,
-    observed: false
+    observed: false,
+    generation: 0
   }
+  if (typeof state.generation !== 'number') state.generation = 0
   global.XeroFlowSearchAuthorityMenuState = state
 
   function removeInserted() {
@@ -124,12 +126,13 @@
     }, OBSERVER_WINDOW_MS)
   }
 
-  async function loadConfig(observeRerenders) {
-    if (!state.configUrl) return
+  async function loadConfig(observeRerenders, generation) {
+    if (!state.configUrl || generation !== state.generation) return
     try {
       var response = await fetch(state.configUrl, { mode: 'cors', cache: 'no-store' })
       if (!response.ok) throw new Error('Configuration unavailable')
       var next = await response.json()
+      if (generation !== state.generation) return
       if (!validConfig(next)) throw new Error('Configuration rejected')
       state.config = next
       if (!next.enabled) {
@@ -140,6 +143,7 @@
       if (observeRerenders) startObserver()
       reconcile()
     } catch (_error) {
+      if (generation !== state.generation) return
       state.config = null
       removeInserted()
     }
@@ -154,14 +158,18 @@
       return
     }
     if (url.protocol !== 'https:' || url.username || url.password) return
+    state.generation += 1
+    var generation = state.generation
     state.configUrl = url.href.replace(/\/$/, '')
     state.observed = false
-    await loadConfig(true)
+    await loadConfig(true, generation)
+    if (generation !== state.generation) return
     if (state.refreshTimer) clearInterval(state.refreshTimer)
-    state.refreshTimer = setInterval(function () { loadConfig(false) }, REFRESH_MS)
+    state.refreshTimer = setInterval(function () { loadConfig(false, generation) }, REFRESH_MS)
   }
 
   function destroy() {
+    state.generation += 1
     if (state.observer) state.observer.disconnect()
     if (state.observerTimer) clearTimeout(state.observerTimer)
     if (state.refreshTimer) clearInterval(state.refreshTimer)

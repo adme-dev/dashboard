@@ -92,4 +92,26 @@ describe('versioned Search Authority Menu Agent', () => {
     await runtime().init({ configUrl })
     expect(document.querySelectorAll('[data-xeroflow-search-authority-menu]')).toHaveLength(0)
   })
+
+  it('does not resume deferred DOM work after destroy', async () => {
+    vi.useFakeTimers()
+    let resolveConfig!: (value: { ok: boolean, json: () => Promise<Record<string, unknown>> }) => void
+    const pendingConfig = new Promise<{ ok: boolean, json: () => Promise<Record<string, unknown>> }>((resolve) => {
+      resolveConfig = resolve
+    })
+    vi.stubGlobal('fetch', vi.fn(() => pendingConfig))
+
+    try {
+      const pendingInit = runtime().init({ configUrl })
+      await Promise.resolve()
+      runtime().destroy()
+      resolveConfig({ ok: true, json: async () => config })
+      await pendingInit
+
+      expect(document.querySelectorAll('[data-xeroflow-search-authority-menu]')).toHaveLength(0)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
