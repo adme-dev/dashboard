@@ -10,6 +10,7 @@ import { buildBannerHTML } from '~~/app/utils/banner-html-builder'
 import { fitRect, kenBurnsTransformAt, activeVisualClipAt, extractBannerLayers } from '~~/app/utils/video/composite'
 import { isSamePreviewSourceUrl, resolveVideoPreviewState, type VideoPreviewMediaStatus } from '~~/app/utils/video/videoPreviewState'
 import { effectPreviewPlan, shakeOffsetAt } from '~~/app/utils/video/effectPreview'
+import { applyOverlayPlacement } from '~~/shared/utils/overlayPlacement'
 
 const props = defineProps<{
   timeline: TimelineState
@@ -243,10 +244,22 @@ watch(() => props.isPlaying, (playing) => {
 })
 
 const overlayHtml = ref<Record<string, string>>({})
+
+/** Native banner size for a format key; falls back to parsing "300x600"-style keys. */
+function bannerFormatSize(canvasData: Record<string, any> | undefined, fmtKey: string): { width: number; height: number } {
+  const fmt = canvasData?.[fmtKey]
+  const w = Number(fmt?.width ?? fmt?.w), h = Number(fmt?.height ?? fmt?.h)
+  if (w > 0 && h > 0) return { width: w, height: h }
+  const m = /(\d+)x(\d+)/.exec(fmtKey)
+  return m ? { width: Number(m[1]), height: Number(m[2]) } : { width: 300, height: 600 }
+}
 const overlayRefs = ref<Record<string, HTMLIFrameElement | null>>({})
 
+const overlayHtmlKey = ref<Record<string, string>>({})
 async function buildOverlayHtmlFor(clip: any) {
-  if (overlayHtml.value[clip.id]) return
+  const key = JSON.stringify(clip.placement ?? null)
+  if (overlayHtml.value[clip.id] && overlayHtmlKey.value[clip.id] === key) return
+  overlayHtmlKey.value = { ...overlayHtmlKey.value, [clip.id]: key }
   try {
     const proj = await apiFetch<{ canvasData: Record<string, { layers?: unknown[] }> }>(`/api/agency/banner-studio/projects/${clip.gsap_project_id}`)
     const fmtKey = clip.gsap_format_key || Object.keys(proj.canvasData ?? {})[0]
@@ -255,7 +268,13 @@ async function buildOverlayHtmlFor(clip: any) {
     // An iframe is only composited transparently when its color-scheme matches
     // the embedder's; the app runs dark, so a light-scheme srcdoc paints an opaque
     // black backdrop over the preview canvas. Pin both sides to the same scheme.
-    const html = buildBannerHTML(fmtKey, layers, { includeAnimations: true })
+    const bannerSize = bannerFormatSize(proj.canvasData, fmtKey)
+    const html = applyOverlayPlacement(
+      buildBannerHTML(fmtKey, layers, { includeAnimations: true }),
+      clip.placement ?? null,
+      { width: W.value, height: H.value },
+      bannerSize
+    )
       .replace(/<head>/i, '<head><meta name="color-scheme" content="dark light"><style>html,body{background:transparent!important}</style>')
     overlayHtml.value = { ...overlayHtml.value, [clip.id]: html }
   } catch { /* overlay just won't preview */ }

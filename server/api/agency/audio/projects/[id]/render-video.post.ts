@@ -14,6 +14,7 @@ import { buildBannerHTML } from '~~/server/utils/banner/htmlBuilder'
 import { uploadFile } from '~~/server/utils/storage'
 import { videoFormatFor } from '~~/server/utils/audio/videoProfiles'
 import { hasRenderLintErrors, lintBannerRenderFormat } from '~~/server/utils/banner/renderLinter'
+import { applyOverlayPlacement } from '~~/shared/utils/overlayPlacement'
 
 const ALL_FORMATS = ['reels_9x16', 'square_1x1', 'youtube_16x9'] as const
 type VideoFormatKey = typeof ALL_FORMATS[number]
@@ -89,7 +90,14 @@ export default defineEventHandler(async (event) => {
           const fmtKey: string = clip.gsap_format_key ?? resolveOverlayFormatKey(profileW, profileH)
           const { layers, width, height } = await loadBannerLayers(clip.gsap_project_id, fmtKey)
           const baseUrl = process.env.NUXT_PUBLIC_APP_URL ?? ''
-          const html = buildBannerHTML(fmtKey, layers, { baseUrl })
+          // Placement is baked into the HTML so the Chromium capture (output-size
+          // viewport) lands the banner exactly where the editor preview shows it.
+          const html = applyOverlayPlacement(
+            buildBannerHTML(fmtKey, layers, { baseUrl }),
+            clip.placement ?? null,
+            { width: profileW, height: profileH },
+            { width, height }
+          )
           const findings = lintBannerRenderFormat({ key: fmtKey, html, width, height }, { fps: 30, crf: 23, quality: 1 })
           if (hasRenderLintErrors(findings)) {
             const firstError = findings.find(finding => finding.severity === 'error')

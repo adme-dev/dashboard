@@ -1479,6 +1479,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                     @delete="deleteSelectedClip"
                     @set-caption-style="setSelectedCaptionStyle"
                     @set-timing="setSelectedTiming"
+                    @set-placement="(p) => selectedClipInspector && editor.setOverlayPlacementAction(selectedClipInspector.clipId, p)"
                   />
                   <VideoStudioSelectedAssetPanel
                     v-if="!selectedStudioAsset && !selectedClipInspector"

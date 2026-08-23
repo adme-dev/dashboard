@@ -57,7 +57,13 @@ export const OverlayClipSchema = z.object({
   duration_sec: z.number(),
   gsap_project_id: z.string().min(1),
   gsap_format_key: z.string().nullable().default(null),
-  opacity: z.number().default(1)
+  opacity: z.number().default(1),
+  /** Where/how large the banner sits in the output frame. Absent = native size at top-left (legacy). */
+  placement: z.object({
+    anchor: z.enum(['top-left', 'top-center', 'top-right', 'center-left', 'center', 'center-right', 'bottom-left', 'bottom-center', 'bottom-right']),
+    scale: z.number().min(0.1).max(3),
+    margin_pct: z.number().min(0).max(40)
+  }).optional()
 })
 
 // ── Caption clip ──────────────────────────────────────────────────────────────
