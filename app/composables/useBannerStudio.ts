@@ -48,6 +48,8 @@ const state = reactive({
   // Keyframe editing (Phase 4b)
   expandedKeyframeLayers: new Set<number>() as Set<number>,
   selectedKeyframe: null as { layerId: number; property: string; index: number } | null,
+  // Motion path tween selection (shared by timeline lane, canvas waypoints and inspector)
+  selectedTween: null as { layerId: number; tweenIndex: number } | null,
   // Motion path solo preview — plays only the path tween at full opacity
   soloMotionPath: false,
 })
@@ -719,11 +721,19 @@ export function useBannerStudio() {
     const tweens = [...getMotionPathTweens(layer)]
     const last = tweens[tweens.length - 1]
     const end = layer.endTime || ((layer.startTime || 0) + 3)
-    // Place new tween after the last one, take remaining path
-    const newStart = Math.min(last.endTime + 0.1, end)
-    const newEnd = Math.min(newStart + 1, end)
-    if (newEnd <= newStart) return // no room
-    tweens.push({ startTime: newStart, endTime: newEnd, pathStart: last.pathEnd, pathEnd: 1, ease: 'power2.inOut' })
+    const gap = end - last.endTime
+    if (gap >= 0.2) {
+      // Free time after the last tween: append there, covering the remaining path
+      const newEnd = Math.min(last.endTime + 1, end)
+      tweens.push({ startTime: last.endTime, endTime: newEnd, pathStart: last.pathEnd, pathEnd: 1, ease: 'power2.inOut' })
+    } else {
+      // No room: split the last tween in half (time + path), like inserting a keyframe mid-tween
+      const midTime = Math.round((last.startTime + last.endTime) / 2 * 20) / 20
+      const midPath = (last.pathStart + last.pathEnd) / 2
+      if (midTime - last.startTime < 0.05) return
+      tweens[tweens.length - 1] = { ...last, endTime: midTime, pathEnd: midPath }
+      tweens.push({ startTime: midTime, endTime: last.endTime, pathStart: midPath, pathEnd: last.pathEnd, ease: last.ease || 'power2.inOut' })
+    }
     updateLayer(layerId, { motionPathTweens: tweens } as any)
   }
 

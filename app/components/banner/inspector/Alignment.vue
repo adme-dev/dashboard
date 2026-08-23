@@ -12,18 +12,23 @@ const alignButtons = [
 </script>
 
 <template>
-  <div v-if="selectedLayer" class="space-y-2">
-    <div class="text-[10px] font-bold uppercase tracking-wider text-(--ui-text-muted) mb-1">Align to Artboard</div>
-    <div class="flex gap-0.5 flex-wrap">
+  <details v-if="selectedLayer" open class="bs-section group">
+    <summary>
+      <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-[#555] transition-transform duration-150 group-open:rotate-90" />
+      <span class="text-[10px] font-semibold uppercase tracking-wider text-[#888]">Align</span>
+    </summary>
+    <div class="pt-1 grid grid-cols-6 gap-0.5 rounded-md bg-white/[0.03] p-0.5">
       <UButton
         v-for="btn in alignButtons"
         :key="btn.dir"
         :icon="btn.icon"
         variant="ghost"
         size="xs"
+        color="neutral"
+        class="justify-center"
         :title="btn.label"
         @click="alignLayers(btn.dir)"
       />
     </div>
-  </div>
+  </details>
 </template>

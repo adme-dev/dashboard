@@ -2,7 +2,7 @@
 import type { Layer } from '~/types/banner-studio'
 import { FORMATS } from '~/utils/banner-constants'
 import { computeClipPath } from '~/utils/banner-mask'
-import { catmullRomToSvgPath, motionPathToAbsolute } from '~/utils/banner-motion-path'
+import { catmullRomToSvgPath, motionPathToAbsolute, motionPathPositionAt, motionPathSliceSvg, tweenIndexForWaypoint } from '~/utils/banner-motion-path'
 import { SAFE_ZONE_MAP, FORMAT_SAFE_ZONE_MAP } from '~/utils/banner-safe-zones'
 
 const props = defineProps<{
@@ -10,7 +10,7 @@ const props = defineProps<{
   isActive: boolean
 }>()
 
-const { state, selectLayer, activeLayers, updatePathPoint, addPathPoint } = useBannerStudio()
+const { state, selectLayer, activeLayers, updatePathPoint, addPathPoint, getMotionPathTweens } = useBannerStudio()
 const { remoteLocks } = useBannerRealtime()
 const artboardEl = ref<HTMLElement | null>(null)
 const { dragState, guides, onLayerMouseDown, onResizeHandleMouseDown } = useBannerDrag(artboardEl)
@@ -76,6 +76,40 @@ const motionPathSvg = computed(() => {
   return { d, points: absPoints }
 })
 
+// Tween boundaries → ghost previews (onion skin) + highlighted segment for the selected tween
+const motionPathTweenOverlay = computed(() => {
+  const layer = selectedLayerObj.value
+  if (!layer || !motionPathSvg.value || motionPathSvg.value.points.length < 2) return null
+  const pts = motionPathSvg.value.points
+  const curv = layer.motionPathCurviness ?? 1
+  const tweens = getMotionPathTweens(layer)
+  const selIdx = state.selectedTween?.layerId === layer.id ? state.selectedTween.tweenIndex : -1
+  const sel = tweens[selIdx]
+  const fractions = [...new Set(tweens.flatMap(t => [t.pathStart, t.pathEnd]))]
+  const ghosts = fractions
+    .map(f => ({ f, pos: motionPathPositionAt(pts, curv, f) }))
+    .filter(g => g.pos)
+    .map(g => ({
+      f: g.f,
+      x: g.pos!.x,
+      y: g.pos!.y,
+      w: layer.w,
+      h: layer.h,
+      angle: layer.motionPathAutoRotate ? g.pos!.angle : 0,
+      active: !!sel && (Math.abs(g.f - sel.pathStart) < 1e-6 || Math.abs(g.f - sel.pathEnd) < 1e-6),
+    }))
+  const selectedD = sel ? motionPathSliceSvg(pts, curv, sel.pathStart, sel.pathEnd) : ''
+  return { ghosts, selectedD }
+})
+
+function onWaypointClick(pointIndex: number) {
+  const layer = selectedLayerObj.value
+  if (!layer?.motionPath) return
+  const tweens = getMotionPathTweens(layer)
+  const idx = tweenIndexForWaypoint(pointIndex, layer.motionPath.length, tweens)
+  state.selectedTween = { layerId: layer.id, tweenIndex: idx }
+}
+
 // Path point drag state
 const pathPointDrag = ref<{
   pointIndex: number
@@ -111,7 +145,11 @@ function onPathPointDragMove(e: MouseEvent) {
   updatePathPoint(selectedLayerObj.value.id, d.pointIndex, Math.round(d.origX + dx), Math.round(d.origY + dy))
 }
 
-function onPathPointDragEnd() {
+function onPathPointDragEnd(e?: MouseEvent) {
+  const d = pathPointDrag.value
+  if (d && e && Math.abs(e.clientX - d.startX) < 3 && Math.abs(e.clientY - d.startY) < 3) {
+    onWaypointClick(d.pointIndex)
+  }
   pathPointDrag.value = null
   window.removeEventListener('mousemove', onPathPointDragMove)
   window.removeEventListener('mouseup', onPathPointDragEnd)
@@ -220,6 +258,43 @@ defineExpose({ artboardEl })
         stroke-dasharray="6 3"
         opacity="0.8"
       />
+      <!-- Selected tween's segment -->
+      <path
+        v-if="motionPathTweenOverlay?.selectedD"
+        :d="motionPathTweenOverlay.selectedD"
+        fill="none"
+        stroke="#4af0a2"
+        stroke-width="3.5"
+        stroke-linecap="round"
+        opacity="0.95"
+      />
+      <!-- Onion-skin ghosts at tween boundaries -->
+      <g
+        v-for="(g, gi) in motionPathTweenOverlay?.ghosts || []"
+        :key="`ghost-${gi}`"
+        :transform="`translate(${g.x} ${g.y}) rotate(${g.angle})`"
+      >
+        <rect
+          :width="g.w"
+          :height="g.h"
+          fill="#4af0a2"
+          :fill-opacity="g.active ? 0.12 : 0.05"
+          stroke="#4af0a2"
+          :stroke-opacity="g.active ? 0.9 : 0.35"
+          stroke-width="1"
+          stroke-dasharray="3 2"
+          rx="2"
+        />
+        <text
+          :x="g.w / 2"
+          :y="-3"
+          text-anchor="middle"
+          fill="#4af0a2"
+          :fill-opacity="g.active ? 1 : 0.5"
+          font-size="8"
+          font-family="monospace"
+        >{{ Math.round(g.f * 100) }}%</text>
+      </g>
       <circle
         v-for="(pt, i) in motionPathSvg.points"
         :key="i"
