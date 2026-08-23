@@ -36,6 +36,7 @@ const apiFetch = $fetch as <T = unknown>(
     method?: string
     body?: unknown
     query?: Record<string, unknown>
+    headers?: Record<string, string>
   }
 ) => Promise<T>
 const modelData = ref<{ models: VideoModelOption[] }>({ models: [] })
@@ -294,9 +295,12 @@ async function submit() {
   touched.value = true
   if (!validation.value.valid || !model.value) return
   submitting.value = true
+  // One key for both the body (tenant-level dedupe) and the header (God mode ledger).
+  const idempotencyKey = `video-gen:${crypto.randomUUID()}`
   try {
     const res = await apiFetch<{ job: { id: string } }>(`/api/agency/video/generation/jobs`, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
       body: {
         projectId: props.projectId,
         mode: mode.value,
@@ -306,7 +310,7 @@ async function submit() {
         durationSeconds: durationSeconds.value,
         aspectRatio: props.defaultAspect,
         subjectType: subjectType.value,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey,
       },
     })
     toast.add({ title: 'Generation queued', description: 'Your clip will appear in the Library when ready.', color: 'success' })

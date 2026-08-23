@@ -74,6 +74,8 @@ export interface CreateVideoGenerationJobInput {
   complianceReasons: string[]
   estimatedCostCents: number
   idempotencyKey: string
+  /** Pre-reserved id (God mode ledger); minted when omitted. */
+  id?: string
 }
 
 export async function createVideoGenerationJob(input: CreateVideoGenerationJobInput): Promise<VideoGenerationJob> {
@@ -87,7 +89,7 @@ export async function createVideoGenerationJob(input: CreateVideoGenerationJobIn
      ON CONFLICT (tenant_id, idempotency_key) DO UPDATE SET updated_at = video_generation_jobs.updated_at
      RETURNING *`,
     [
-      randomUUID(),
+      input.id ?? randomUUID(),
       input.tenantId,
       input.projectId,
       input.timelineId,

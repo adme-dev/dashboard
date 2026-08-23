@@ -115,11 +115,12 @@ beforeEach(() => {
     && model.surface === 'tenant'
     && model.defaultEnabled
     && model.safetyClass !== 'disabled')
-  mockCreateJob.mockImplementation(async (input) => ({ id: 'job-1', ...input, status: input.status ?? 'queued' }))
+  // The route now passes a reserved `id` (God mode ledger); the fixture's id must still win.
+  mockCreateJob.mockImplementation(async (input) => ({ ...input, id: 'job-1', status: input.status ?? 'queued' }))
   mockReserve.mockImplementation(async (input) => ({
     ok: true,
     reused: false,
-    job: { id: 'job-1', ...input, status: input.status ?? 'queued' },
+    job: { ...input, id: 'job-1', status: input.status ?? 'queued' },
   }))
   mockResolveSourceAssetUrls.mockResolvedValue(['https://r2.example/asset-1?sig=abc'])
   mockMarkJobFailed.mockResolvedValue(undefined)

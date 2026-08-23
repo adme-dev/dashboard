@@ -372,7 +372,11 @@ export function useMediaProjectEditor(projectId: string) {
     const fd = new FormData()
     fd.append('file', file)
     fd.append('kind', kind)
-    const res = await apiFetch<{ r2_key: string; url: string }>(`/api/agency/audio/projects/${projectId}/upload-media`, { method: 'POST', body: fd })
+    const res = await apiFetch<{ r2_key: string; url: string }>(`/api/agency/audio/projects/${projectId}/upload-media`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('upload') },
+      body: fd
+    })
     mergeSource(res.r2_key, res.url, { durationSec })
     return { r2Key: res.r2_key, url: res.url, durationSec }
   }
@@ -443,7 +447,11 @@ export function useMediaProjectEditor(projectId: string) {
     rendering.value = true
     try {
       if (!await doSave()) return { ok: false }
-      await apiFetch(`/api/agency/audio/projects/${projectId}/render-video`, { method: 'POST', body: formats?.length ? { formats } : {} })
+      await apiFetch(`/api/agency/audio/projects/${projectId}/render-video`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey('render') },
+        body: formats?.length ? { formats } : {}
+      })
       await refreshRenderJobs()
       scheduleJobPoll()
       return { ok: true }

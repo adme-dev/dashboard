@@ -1,3 +1,4 @@
+import { registerGodModeMediaExternalMutationFamilies } from '~~/server/utils/audio/godModeExternalMutations'
 import { registerGodModeMediaProjectMutationFamilies } from '~~/server/utils/audio/godModeMutations'
 import { registerGodModeChatMutationFamily } from '~~/server/utils/ai/godModeMutationFamily'
 import { registerGodModeBannerAssetUploadFamily } from '~~/server/utils/banner/godModeAssetUpload'
@@ -16,6 +17,7 @@ import { registerGodModeMutationFamily } from '~~/server/utils/godMode/featureGa
 
 registerGodModeChatMutationFamily()
 registerGodModeMediaProjectMutationFamilies()
+registerGodModeMediaExternalMutationFamilies()
 registerGodModeBannerAssetUploadFamily()
 registerGodModeBannerProjectCreationFamily()
 registerGodModeDealerFeedMutationFamilies()

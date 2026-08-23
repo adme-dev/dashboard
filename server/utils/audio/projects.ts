@@ -264,6 +264,8 @@ export interface CreateRenderJobInput {
   projectId: string
   requestedBy: string
   channels: string[]
+  /** Pre-reserved id (God mode ledger); minted when omitted. */
+  jobId?: string
 }
 
 /** Snapshot the current draft into a new immutable version (SP0 §6), then insert a
@@ -271,7 +273,7 @@ export interface CreateRenderJobInput {
  * job never references a half-written version. */
 export async function createRenderJob(input: CreateRenderJobInput): Promise<MediaRenderJob> {
   const newTimelineId = randomUUID()
-  const jobId = randomUUID()
+  const jobId = input.jobId ?? randomUUID()
   return transaction(async (db) => {
     const cur = await db.query(
       `SELECT t.state AS state, t.schema_version AS schema_version,
