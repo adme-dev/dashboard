@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { isCustomEase, cubicEaseString, EASE_PRESET_CURVES } from '~/utils/banner-ease'
+
 const { state, selectedLayer, toggleMotionPath, addPathPoint, updatePathPoint, removePathPoint, updateLayer, getMotionPathTweens, addMotionPathTween, updateMotionPathTween, removeMotionPathTween } = useBannerStudio()
 
 const PATHABLE_TYPES = new Set(['text', 'image', 'video', 'button', 'rect'])
@@ -8,6 +10,19 @@ const canHavePath = computed(() => {
 })
 
 const hasPath = computed(() => (selectedLayer.value?.motionPath?.length ?? 0) >= 2)
+
+const CUSTOM_EASE = '__custom__'
+function isTweenSelected(i: number) {
+  return state.selectedTween?.layerId === selectedLayer.value?.id && state.selectedTween?.tweenIndex === i
+}
+function selectTween(i: number) {
+  if (!selectedLayer.value) return
+  state.selectedTween = { layerId: selectedLayer.value.id, tweenIndex: i }
+}
+/** Value shown in the ease dropdown — custom curves collapse to the sentinel */
+function easeSelectValue(ease?: string) {
+  return isCustomEase(ease) ? CUSTOM_EASE : (ease || 'power2.inOut')
+}
 
 function onToggle() {
   if (!selectedLayer.value) return
@@ -64,6 +79,7 @@ const EASE_OPTIONS = [
   { label: 'Bounce', value: 'bounce.out' },
   { label: 'Back', value: 'back.inOut(1.7)' },
   { label: 'Slow Mo', value: 'slow(0.7, 0.7, false)' },
+  { label: 'Custom curve…', value: '__custom__' },
 ]
 
 function onTweenFieldChange(index: number, field: 'pathStart' | 'pathEnd', val: string | number) {
@@ -72,8 +88,21 @@ function onTweenFieldChange(index: number, field: 'pathStart' | 'pathEnd', val: 
   updateMotionPathTween(selectedLayer.value.id, index, { [field]: num })
 }
 
+function onTweenTimeChange(index: number, field: 'startTime' | 'endTime', val: string | number) {
+  if (!selectedLayer.value) return
+  const num = Math.max(0, Number(val) || 0)
+  updateMotionPathTween(selectedLayer.value.id, index, { [field]: num })
+}
+
 function onTweenEaseChange(index: number, val: string) {
   if (!selectedLayer.value) return
+  if (val === CUSTOM_EASE) {
+    // Seed the curve from the current preset so switching to Custom doesn't jump
+    const current = getMotionPathTweens(selectedLayer.value)[index]?.ease || 'power2.inOut'
+    const seed = EASE_PRESET_CURVES[current] || EASE_PRESET_CURVES['power2.inOut']
+    updateMotionPathTween(selectedLayer.value.id, index, { ease: cubicEaseString(seed) })
+    return
+  }
   updateMotionPathTween(selectedLayer.value.id, index, { ease: val })
 }
 
@@ -97,53 +126,52 @@ function onRemoveTween(index: number) {
         <span class="text-[10px] font-semibold uppercase tracking-wider text-[#888]">Motion Path</span>
       </summary>
       <div class="pt-1.5 space-y-3">
-        <!-- Enable toggle -->
-        <div class="flex items-center gap-2">
-          <UCheckbox
-            :model-value="hasPath"
-            @update:model-value="onToggle"
-          />
-          <label class="text-[11px] text-(--ui-text-muted)">Enable Motion Path</label>
-        </div>
+        <!-- Enable + options -->
+        <label class="bs-inline-label gap-2 text-[11px] text-(--ui-text) cursor-pointer">
+          <UCheckbox :model-value="hasPath" @update:model-value="onToggle" />
+          Enable motion path
+        </label>
 
         <template v-if="hasPath">
           <!-- Curviness slider -->
           <div>
-            <label class="text-[10px] text-(--ui-text-muted) block mb-1">
-              Curviness
-              <span class="ml-1 font-mono text-[9px]">{{ (selectedLayer.motionPathCurviness ?? 1).toFixed(1) }}</span>
-            </label>
+            <div class="flex items-center justify-between mb-1">
+              <label class="mb-0">Curviness</label>
+              <span class="font-mono text-[9px] text-(--ui-text-dimmed)">{{ (selectedLayer.motionPathCurviness ?? 1).toFixed(1) }}</span>
+            </div>
             <input
               type="range"
-              min="0" max="2" step="0.1"
+              min="0"
+              max="2"
+              step="0.1"
               :value="selectedLayer.motionPathCurviness ?? 1"
-              class="w-full"
               @input="onCurvinessChange"
             >
+            <p v-if="(selectedLayer.motionPath?.length ?? 0) < 3" class="text-[10px] leading-snug text-(--ui-text-dimmed) mt-0.5">
+              Two points make a straight line — add a third to bend it.
+            </p>
           </div>
 
-          <!-- Auto-rotate toggle -->
-          <div class="flex items-center gap-2">
-            <UCheckbox
-              :model-value="!!selectedLayer.motionPathAutoRotate"
-              @update:model-value="onAutoRotateChange"
-            />
-            <label class="text-[11px] text-(--ui-text-muted)">Auto-Rotate</label>
-          </div>
-
-          <!-- Solo preview toggle -->
-          <div class="flex items-center gap-2">
-            <UCheckbox
-              :model-value="state.soloMotionPath"
-              @update:model-value="v => state.soloMotionPath = v === true"
-            />
-            <label class="text-[11px] text-(--ui-text-muted)">Solo Preview</label>
-            <span class="text-[9px] text-(--ui-text-dimmed)">(path only, no entrance/exit)</span>
+          <!-- Options row -->
+          <div class="flex items-center gap-4">
+            <label class="bs-inline-label gap-1.5 text-[11px] text-(--ui-text) cursor-pointer">
+              <UCheckbox :model-value="!!selectedLayer.motionPathAutoRotate" @update:model-value="onAutoRotateChange" />
+              Auto-rotate
+            </label>
+            <label class="bs-inline-label gap-1.5 text-[11px] text-(--ui-text) cursor-pointer" title="Play the path only — no entrance/exit animation">
+              <UCheckbox :model-value="state.soloMotionPath" @update:model-value="v => state.soloMotionPath = v === true" />
+              Solo preview
+            </label>
           </div>
 
           <!-- Waypoints list -->
           <div>
-            <label class="text-[10px] text-(--ui-text-muted) block mb-1">Waypoints</label>
+            <label>Waypoints</label>
+            <div class="grid grid-cols-[1rem_4rem_4rem] gap-1 mb-0.5">
+              <span />
+              <span class="text-[9px] font-mono text-(--ui-text-dimmed) pl-1.5">x</span>
+              <span class="text-[9px] font-mono text-(--ui-text-dimmed) pl-1.5">y</span>
+            </div>
             <div class="space-y-1 max-h-48 overflow-y-auto">
               <div
                 v-for="(pt, i) in selectedLayer.motionPath"
@@ -191,12 +219,14 @@ function onRemoveTween(index: number) {
 
           <!-- Tweens list -->
           <div>
-            <label class="text-[10px] text-(--ui-text-muted) block mb-1">Tweens</label>
+            <label>Tweens</label>
             <div class="space-y-1.5 max-h-48 overflow-y-auto">
               <div
                 v-for="(tw, i) in tweens"
                 :key="i"
-                class="flex items-center gap-1 bg-white/[0.03] rounded px-1.5 py-1"
+                class="flex items-center gap-1 rounded px-1.5 py-1 cursor-pointer transition-colors"
+                :class="isTweenSelected(i) ? 'bg-[#4af0a2]/10 ring-1 ring-[#4af0a2]/60' : 'bg-white/[0.03] hover:bg-white/[0.05]'"
+                @click="selectTween(i)"
               >
                 <span class="text-[8px] text-[#4af0a2] font-mono shrink-0 w-3">{{ i + 1 }}</span>
                 <div class="flex-1 space-y-1">
@@ -223,9 +253,32 @@ function onRemoveTween(index: number) {
                     />
                   </div>
                   <div class="flex items-center gap-1">
+                    <span class="text-[8px] text-(--ui-text-dimmed) w-8">Time</span>
+                    <UInput
+                      type="number"
+                      :model-value="tw.startTime"
+                      size="xs"
+                      class="w-14"
+                      step="0.1"
+                      min="0"
+                      @update:model-value="v => onTweenTimeChange(i, 'startTime', v)"
+                    />
+                    <span class="text-[8px] text-(--ui-text-dimmed)">→</span>
+                    <UInput
+                      type="number"
+                      :model-value="tw.endTime"
+                      size="xs"
+                      class="w-14"
+                      step="0.1"
+                      min="0"
+                      @update:model-value="v => onTweenTimeChange(i, 'endTime', v)"
+                    />
+                    <span class="text-[8px] text-(--ui-text-dimmed)">s</span>
+                  </div>
+                  <div class="flex items-center gap-1">
                     <span class="text-[8px] text-(--ui-text-dimmed) w-8">Ease</span>
                     <USelect
-                      :model-value="tw.ease || 'power2.inOut'"
+                      :model-value="easeSelectValue(tw.ease)"
                       :items="EASE_OPTIONS"
                       value-key="value"
                       size="xs"
@@ -233,6 +286,11 @@ function onRemoveTween(index: number) {
                       @update:model-value="v => onTweenEaseChange(i, v)"
                     />
                   </div>
+                  <BannerEasingCurveEditor
+                    v-if="isCustomEase(tw.ease)"
+                    :model-value="tw.ease"
+                    @update:model-value="v => onTweenEaseChange(i, v)"
+                  />
                 </div>
                 <UButton
                   icon="i-lucide-x"

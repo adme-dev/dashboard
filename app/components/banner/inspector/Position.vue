@@ -46,19 +46,18 @@ function set(key: string, val: string | number) {
     </div>
 
     <div>
-      <label class="text-[10px] text-(--ui-text-muted)">Opacity</label>
-      <div class="flex items-center gap-2">
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.05"
-          :value="selectedLayer.opacity"
-          class="flex-1 h-1 accent-(--ui-primary)"
-          @input="(e: Event) => set('opacity', (e.target as HTMLInputElement).value)"
-        />
-        <span class="text-[10px] text-(--ui-text-muted) w-8 text-right tabular-nums">{{ (selectedLayer.opacity * 100).toFixed(0) }}%</span>
-      </div>
+      <div class="flex items-center justify-between mb-1">
+              <label class="mb-0">Opacity</label>
+              <span class="font-mono text-[9px] text-(--ui-text-dimmed) tabular-nums">{{ (selectedLayer.opacity * 100).toFixed(0) }}%</span>
+            </div>
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.05"
+        :value="selectedLayer.opacity"
+        @input="(e: Event) => set('opacity', (e.target as HTMLInputElement).value)"
+      >
     </div>
       </div>
     </details>

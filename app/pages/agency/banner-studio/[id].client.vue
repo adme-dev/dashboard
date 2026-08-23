@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FORMAT_SAFE_ZONE_MAP } from '~/utils/banner-safe-zones'
+import { FORMAT_SAFE_ZONE_MAP, SAFE_ZONE_MAP } from '~/utils/banner-safe-zones'
 import { isAmbiguousApiFailure } from '~/utils/apiError'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
@@ -40,7 +40,7 @@ const {
 } = useBannerStudio()
 
 // Timeline integration
-const { togglePlay, restartTimeline, buildTimeline } = useBannerTimeline()
+const { togglePlay, restartTimeline, stopTimeline, buildTimeline } = useBannerTimeline()
 const canvasRef = ref<any>(null)
 
 // Realtime collaboration
@@ -103,9 +103,12 @@ function rebuildTimeline() {
   }, 50)
 }
 
-// Rebuild timeline when active artboard or layers change (shallow watch + length trigger)
+// Rebuild timeline when active artboard or layers change. Deep watch is required:
+// updateLayer() mutates layers in place (Object.assign), so nested edits like
+// motionPath / motionPathTweens / keyframes never fire a shallow watch and play
+// would run a stale timeline. rebuildTimeline() is debounced and skipped while playing.
 watch(() => state.activeKey, rebuildTimeline)
-watch(() => [activeLayers.value, activeLayers.value.length], rebuildTimeline)
+watch(activeLayers, rebuildTimeline, { deep: true })
 watch(() => state.soloMotionPath, rebuildTimeline)
 onMounted(() => nextTick(rebuildTimeline))
 
@@ -251,6 +254,7 @@ const REVIEW_STATUS_LABELS: Record<string, string> = {
 }
 
 async function handleSave() {
+  if (state.isSaving) return // ignore double-clicks while a save is in flight
   try {
     // Auto-create project on first save when route is "new"
     if (!state.project?.id) {
@@ -310,13 +314,28 @@ function zoomOut() {
 function zoomFit() {
   const fmt = activeFormat.value
   if (!fmt) { state.wsScale = 0.22; return }
-  const availW = Math.max(400, window.innerWidth - 64 - 256 - 40 - 288)
-  const availH = Math.max(300, window.innerHeight - 64 - 40 - 200)
-  const scale = Math.min(availW / fmt.w, availH / fmt.h) * 0.85
-  state.wsScale = Math.max(0.1, Math.min(2.0, scale))
+  // Measure the actual scrollable canvas area (panels can be resized/collapsed),
+  // falling back to a window-based estimate before the canvas has mounted.
+  const canvasEl = (canvasRef.value as any)?.$el as HTMLElement | undefined
+  const pad = 64 // canvas p-8 on both sides
+  const availW = canvasEl ? canvasEl.clientWidth - pad : Math.max(400, window.innerWidth - 64 - 256 - 40 - 288)
+  const availH = canvasEl ? canvasEl.clientHeight - pad - 40 /* artboard label */ : Math.max(300, window.innerHeight - 64 - 40 - 200)
+  const scale = Math.min(availW / fmt.w, availH / fmt.h) * 0.92
+  state.wsScale = Math.max(0.1, Math.min(4, Math.round(scale * 100) / 100))
 }
 
 const zoomPercent = computed(() => Math.round(state.wsScale * 100))
+
+// Secondary actions live in an overflow menu so the toolbar stays scannable
+const moreMenuItems = computed(() => [[
+  { label: 'Save version', icon: 'i-lucide-bookmark-plus', onSelect: () => { showSaveVersion.value = true } },
+  { label: 'Save as template', icon: 'i-lucide-bookmark', onSelect: () => { showSaveTemplate.value = true } },
+], [
+  { label: 'Analytics', icon: 'i-lucide-bar-chart-3', onSelect: () => { showAnalytics.value = true } },
+  { label: 'A/B tests', icon: 'i-lucide-split', onSelect: () => { showABTests.value = true } },
+], [
+  { label: 'Play all formats', icon: 'i-lucide-layout-grid', onSelect: () => { showPlayAll.value = true } },
+]])
 
 // File size estimation
 const { activeSize } = useBannerFileSize()
@@ -327,9 +346,10 @@ const { activeSize } = useBannerFileSize()
     <!-- Top Toolbar -->
     <div class="flex items-center gap-2 px-3 py-1.5 border-b border-[#3a3a3f] bg-[#2d2d32] shrink-0">
       <!-- Project name -->
-      <div class="flex items-center gap-2 min-w-0">
+      <div class="flex items-center gap-2 shrink-0">
         <UIcon name="i-lucide-palette" class="text-(--ui-text-muted) shrink-0" />
-        <span class="text-sm font-semibold truncate">{{ state.project?.name || 'New Banner' }}</span>
+        <!-- Name is decorative on narrow viewports — the tab title carries it; keep the save pill -->
+        <span class="hidden 2xl:inline text-sm font-semibold truncate max-w-[12rem]" :title="state.project?.name">{{ state.project?.name || 'New Banner' }}</span>
         <UBadge :color="state.isDirty ? 'warning' : 'success'" variant="subtle" size="xs">
           {{ saveStatus }}
         </UBadge>
@@ -350,8 +370,12 @@ const { activeSize } = useBannerFileSize()
 
       <!-- Undo / Redo -->
       <div class="flex gap-0.5">
-        <UButton icon="i-lucide-undo-2" variant="ghost" size="xs" :disabled="!canUndo" @click="undo" />
-        <UButton icon="i-lucide-redo-2" variant="ghost" size="xs" :disabled="!canRedo" @click="redo" />
+        <UTooltip text="Undo" :kbds="['meta', 'Z']">
+          <UButton icon="i-lucide-undo-2" variant="ghost" size="xs" :disabled="!canUndo" @click="undo" />
+        </UTooltip>
+        <UTooltip text="Redo" :kbds="['meta', 'shift', 'Z']">
+          <UButton icon="i-lucide-redo-2" variant="ghost" size="xs" :disabled="!canRedo" @click="redo" />
+        </UTooltip>
       </div>
 
       <div class="h-4 w-px bg-[#3a3a3f]" />
@@ -389,28 +413,30 @@ const { activeSize } = useBannerFileSize()
       </UButton>
 
       <!-- File size indicator -->
-      <BannerFileSizeMeter :total="activeSize.total" class="w-24" />
+      <BannerFileSizeMeter :total="activeSize.total" class="w-24 hidden 2xl:block" />
 
       <div class="h-4 w-px bg-[#3a3a3f]" />
 
       <!-- Grid / Snap -->
       <div class="flex items-center gap-0.5">
-        <UButton
-          icon="i-lucide-grid-3x3"
-          variant="ghost"
-          size="xs"
-          :class="state.showGrid ? 'text-(--ui-primary)' : ''"
-          title="Toggle grid"
-          @click="state.showGrid = !state.showGrid"
-        />
-        <UButton
-          icon="i-lucide-magnet"
-          variant="ghost"
-          size="xs"
-          :class="state.snapToGrid ? 'text-(--ui-primary)' : ''"
-          title="Snap to grid"
-          @click="state.snapToGrid = !state.snapToGrid"
-        />
+        <UTooltip text="Show grid">
+          <UButton
+            icon="i-lucide-grid-3x3"
+            variant="ghost"
+            size="xs"
+            :class="state.showGrid ? 'text-(--ui-primary)' : ''"
+            @click="state.showGrid = !state.showGrid"
+          />
+        </UTooltip>
+        <UTooltip text="Snap to grid">
+          <UButton
+            icon="i-lucide-magnet"
+            variant="ghost"
+            size="xs"
+            :class="state.snapToGrid ? 'text-(--ui-primary)' : ''"
+            @click="state.snapToGrid = !state.snapToGrid"
+          />
+        </UTooltip>
         <UPopover v-if="safeZoneKeys.length > 1">
           <UButton
             icon="i-lucide-shield"
@@ -423,58 +449,82 @@ const { activeSize } = useBannerFileSize()
             <BannerSafeZoneSelector :zone-keys="safeZoneKeys" />
           </template>
         </UPopover>
-        <UButton
-          v-else
-          icon="i-lucide-shield"
-          variant="ghost"
-          size="xs"
-          :class="state.showSafeZones && safeZoneKeys.includes(state.activeSafeZone) ? 'text-(--ui-primary)' : ''"
-          :disabled="safeZoneKeys.length === 0"
-          :title="safeZoneKeys.length === 0 ? 'No safe zones for this format' : 'Toggle safe zone'"
-          @click="toggleSafeZone"
-        />
+        <UTooltip v-else-if="safeZoneKeys.length === 1" :text="`Safe zone — ${SAFE_ZONE_MAP[safeZoneKeys[0]]?.label || 'platform overlay'}`">
+          <UButton
+            icon="i-lucide-shield"
+            variant="ghost"
+            size="xs"
+            :class="state.showSafeZones && safeZoneKeys.includes(state.activeSafeZone) ? 'text-(--ui-primary)' : ''"
+            @click="toggleSafeZone"
+          />
+        </UTooltip>
+        <!-- Formats with no safe-zone data: hide rather than show a permanently disabled icon -->
       </div>
 
       <!-- Zoom -->
       <div class="flex items-center gap-1">
-        <UButton icon="i-lucide-zoom-out" variant="ghost" size="xs" @click="zoomOut" />
+        <UTooltip text="Zoom out"><UButton icon="i-lucide-zoom-out" variant="ghost" size="xs" @click="zoomOut" /></UTooltip>
         <span class="text-[11px] font-mono tabular-nums text-[#888] w-12 text-center">{{ zoomPercent }}%</span>
-        <UButton icon="i-lucide-zoom-in" variant="ghost" size="xs" @click="zoomIn" />
-        <UButton icon="i-lucide-scan" variant="ghost" size="xs" @click="zoomFit" />
+        <UTooltip text="Zoom in"><UButton icon="i-lucide-zoom-in" variant="ghost" size="xs" @click="zoomIn" /></UTooltip>
+        <UTooltip text="Fit to view"><UButton icon="i-lucide-scan" variant="ghost" size="xs" @click="zoomFit" /></UTooltip>
       </div>
 
       <div class="h-4 w-px bg-[#3a3a3f]" />
 
       <!-- Timeline controls -->
       <div class="flex gap-0.5">
-        <UButton
-          :icon="state.isPlaying ? 'i-lucide-pause' : 'i-lucide-play'"
-          :variant="state.isPlaying ? 'solid' : 'ghost'"
-          size="xs"
-          @click="togglePlay"
-        />
-        <UButton icon="i-lucide-rotate-ccw" variant="ghost" size="xs" @click="restartTimeline" />
-        <UButton
-          icon="i-lucide-layout-grid"
-          variant="ghost"
-          size="xs"
-          @click="showPlayAll = true"
-        />
+        <UTooltip :text="state.isPlaying ? 'Pause' : 'Play'" :kbds="['space']">
+          <UButton
+            :icon="state.isPlaying ? 'i-lucide-pause' : 'i-lucide-play'"
+            :variant="state.isPlaying ? 'solid' : 'ghost'"
+            size="xs"
+            @click="togglePlay"
+          />
+        </UTooltip>
+        <UTooltip text="Stop — rewind and reset the canvas">
+          <UButton icon="i-lucide-square" variant="ghost" size="xs" @click="stopTimeline" />
+        </UTooltip>
+        <UTooltip text="Restart from the beginning">
+          <UButton icon="i-lucide-rotate-ccw" variant="ghost" size="xs" @click="restartTimeline" />
+        </UTooltip>
       </div>
 
       <div class="h-4 w-px bg-[#3a3a3f]" />
 
-      <!-- Actions -->
-      <UButton icon="i-lucide-save" variant="ghost" size="xs" @click="handleSave" />
-      <UButton icon="i-lucide-bookmark-plus" variant="ghost" size="xs" title="Save Version" @click="showSaveVersion = true" />
-      <UButton icon="i-lucide-bookmark" variant="ghost" size="xs" title="Save as Template" @click="showSaveTemplate = true" />
-      <UButton icon="i-lucide-bar-chart-3" variant="ghost" size="xs" title="Analytics" @click="showAnalytics = true" />
-      <UButton icon="i-lucide-split" variant="ghost" size="xs" title="A/B Tests" @click="showABTests = true" />
-      <UButton icon="i-lucide-eye" variant="ghost" size="xs" title="Ad Preview" @click="showPreview = true" />
-      <UButton icon="i-lucide-megaphone" variant="ghost" size="xs" title="Publish to Ad Platforms" @click="showAdPublish = true" />
-      <UButton label="Publish" icon="i-lucide-globe" variant="soft" size="xs" @click="showPublishModal = true" />
+      <!-- Actions: primary (Save · Preview · Ad tags · Publish · Export) + overflow -->
+      <div class="ml-auto flex items-center gap-1 shrink-0">
+      <UTooltip :text="state.isDirty ? 'Save — unsaved changes' : 'Save'" :kbds="['meta', 'S']">
+        <UButton
+          icon="i-lucide-save"
+          variant="ghost"
+          size="xs"
+          class="relative"
+          :loading="state.isSaving"
+          @click="handleSave"
+        >
+          <span
+            v-if="state.isDirty && !state.isSaving"
+            class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-warning ring-2 ring-[#2d2d32]"
+          />
+        </UButton>
+      </UTooltip>
+      <UTooltip text="Preview in ad placements">
+        <UButton icon="i-lucide-eye" variant="ghost" size="xs" @click="showPreview = true" />
+      </UTooltip>
+      <UTooltip text="Ad tags — click-through URL, pixels and embed code">
+        <UButton label="Ad tags" icon="i-lucide-code" variant="soft" size="xs" @click="showPublishModal = true" />
+      </UTooltip>
+      <UTooltip text="Publish to Meta Ads">
+        <UButton label="Publish" icon="i-lucide-megaphone" variant="soft" size="xs" @click="showAdPublish = true" />
+      </UTooltip>
       <UButton v-if="hasFeedBindings" label="DCO" icon="i-lucide-layers" variant="soft" color="warning" size="xs" @click="showDCOModal = true" />
       <UButton label="Export" icon="i-lucide-download" size="xs" @click="showExportModal = true" />
+      <UDropdownMenu :items="moreMenuItems" :content="{ align: 'end' }">
+        <UTooltip text="More — versions, templates, analytics, A/B tests">
+          <UButton icon="i-lucide-ellipsis" variant="ghost" size="xs" />
+        </UTooltip>
+      </UDropdownMenu>
+      </div>
     </div>
 
     <!-- Main Content -->
@@ -544,7 +594,7 @@ const { activeSize } = useBannerFileSize()
     </div>
 
     <!-- Modals -->
-    <BannerSizePicker v-model:open="showSizePicker" />
+    <BannerSizePicker v-if="showSizePicker" v-model:open="showSizePicker" />
     <BannerExportModal v-if="showExportModal" v-model:open="showExportModal" />
     <BannerPlayAll v-if="showPlayAll" v-model:open="showPlayAll" />
     <BannerGenerateFromUrl v-if="showGenerateUrl" v-model:open="showGenerateUrl" />
@@ -560,7 +610,7 @@ const { activeSize } = useBannerFileSize()
     <BannerAdPublishModal v-if="showAdPublish" v-model:open="showAdPublish" :project-id="projectId" />
 
     <!-- Ad Preview Slideover -->
-    <USlideover v-model:open="showPreview" side="right" :ui="{ content: 'max-w-5xl' }">
+    <USlideover v-if="showPreview" v-model:open="showPreview" side="right" :ui="{ content: 'max-w-5xl' }">
       <template #content>
         <div class="p-5 h-full overflow-y-auto bg-[#111114]">
           <div class="flex items-center justify-between mb-5">
@@ -629,7 +679,7 @@ const { activeSize } = useBannerFileSize()
     <BannerAiGenerateSlideover />
 
     <!-- Save Version Modal -->
-    <UModal v-model:open="showSaveVersion">
+    <UModal v-if="showSaveVersion" v-model:open="showSaveVersion">
       <template #content>
         <div class="p-5">
           <div class="flex items-center justify-between mb-4">
@@ -660,7 +710,7 @@ const { activeSize } = useBannerFileSize()
     </UModal>
 
     <!-- Analytics Modal -->
-    <UModal v-model:open="showAnalytics" :ui="{ content: 'max-w-3xl' }">
+    <UModal v-if="showAnalytics" v-model:open="showAnalytics" :ui="{ content: 'max-w-3xl' }">
       <template #content>
         <div class="p-5">
           <div class="flex items-center justify-between mb-4">

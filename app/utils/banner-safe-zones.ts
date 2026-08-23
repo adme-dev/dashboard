@@ -107,6 +107,32 @@ export const SAFE_ZONES: SafeZone[] = [
   },
 ]
 
+// ── Google Display ──
+// Google display ads have no platform chrome overlay, but two things do sit on top of
+// the creative: the AdChoices badge (≈19×15 px, top-right, padded) and the mandatory
+// 1 px border / edge padding. Insets are absolute pixels, so each size gets its own
+// zone with native dimensions equal to the format (no scaling).
+const GOOGLE_DISPLAY_SIZES: { key: string; label: string; w: number; h: number }[] = [
+  { key: 'mrec',      label: 'MRec 300×250',        w: 300, h: 250 },
+  { key: 'leader',    label: 'Leaderboard 728×90',  w: 728, h: 90 },
+  { key: 'half',      label: 'Half Page 300×600',   w: 300, h: 600 },
+  { key: 'wsky',      label: 'Wide Sky 160×600',    w: 160, h: 600 },
+  { key: 'billboard', label: 'Billboard 970×250',   w: 970, h: 250 },
+  { key: 'mob_ban',   label: 'Mobile 320×50',       w: 320, h: 50 },
+  { key: 'mob_lg',    label: 'Mobile 320×100',      w: 320, h: 100 },
+]
+for (const g of GOOGLE_DISPLAY_SIZES) {
+  const badge = g.h <= 60 ? 14 : 20 // AdChoices badge footprint incl. margin
+  SAFE_ZONES.push({
+    key: `google_${g.key}`,
+    label: `Google Display · ${g.label}`,
+    platform: 'Google Display',
+    nativeWidth: g.w,
+    nativeHeight: g.h,
+    insets: { top: badge, right: badge + 4, bottom: 4, left: 4 },
+  })
+}
+
 /** Lookup map: safe zone key → SafeZone object */
 export const SAFE_ZONE_MAP: Record<string, SafeZone> = Object.fromEntries(
   SAFE_ZONES.map(z => [z.key, z]),
@@ -118,6 +144,14 @@ export const SAFE_ZONE_MAP: Record<string, SafeZone> = Object.fromEntries(
  * Formats with no applicable zones are omitted.
  */
 export const FORMAT_SAFE_ZONE_MAP: Record<string, string[]> = {
+  // Google Display (AdChoices badge + border padding)
+  mrec: ['google_mrec'],
+  leader: ['google_leader'],
+  half: ['google_half'],
+  wsky: ['google_wsky'],
+  billboard: ['google_billboard'],
+  mob_ban: ['google_mob_ban'],
+  mob_lg: ['google_mob_lg'],
   // Facebook
   fb_feed:  ['fb_feed_16_9'],
   fb_sq:    ['fb_ig_feed_1_1'],

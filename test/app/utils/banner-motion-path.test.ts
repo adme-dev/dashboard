@@ -40,18 +40,28 @@ describe('catmullRomToSvgPath', () => {
     expect(result).toBe('M 0 0 L 100 50')
   })
 
+  // The path is now produced by GSAP's MotionPathPlugin (pointsToSegment +
+  // rawPathToString) so the editor overlay matches playback exactly. Assert on
+  // geometry (parsed numbers), not on GSAP's serialisation format.
+  function parse(d: string) {
+    const m = /^M\s*(-?[\d.]+)[ ,](-?[\d.]+)/.exec(d)
+    const nums = d.replace(/^M[^C]*/, '').split(/[\s,C]+/).filter(Boolean).map(Number)
+    return { start: m ? [Number(m[1]), Number(m[2])] : null, cubics: nums.length / 6, end: nums.slice(-2), nums }
+  }
+
   it('returns cubic bezier curves for 3+ points', () => {
     const result = catmullRomToSvgPath([
       { x: 0, y: 0 },
       { x: 50, y: -30 },
       { x: 100, y: 0 },
     ])
-    expect(result).toMatch(/^M 0 0 C/)
-    // Should have 2 cubic bezier segments (3 points → 2 segments)
-    const cCount = (result.match(/C /g) || []).length
-    expect(cCount).toBe(2)
-    // Should end at the last point
-    expect(result).toMatch(/100\.0 0\.0$/)
+    const p = parse(result)
+    expect(result.startsWith('M')).toBe(true)
+    expect(result).toContain('C')
+    expect(p.start).toEqual([0, 0])
+    // 3 points → 2 cubic segments, ending at the last point
+    expect(p.cubics).toBe(2)
+    expect(p.end).toEqual([100, 0])
   })
 
   it('generates more segments for more points', () => {
@@ -64,37 +74,31 @@ describe('catmullRomToSvgPath', () => {
     ]
     const result = catmullRomToSvgPath(points)
     // 5 points → 4 segments
-    const cCount = (result.match(/C /g) || []).length
-    expect(cCount).toBe(4)
+    expect(parse(result).cubics).toBe(4)
   })
 
-  it('curviness 0 produces sharper curves (control points closer to data points)', () => {
+  it('curviness changes the curve shape', () => {
     const points = [
       { x: 0, y: 0 },
       { x: 50, y: -50 },
       { x: 100, y: 0 },
     ]
-    const sharp = catmullRomToSvgPath(points, 0)
+    const gentle = catmullRomToSvgPath(points, 0.5)
     const smooth = catmullRomToSvgPath(points, 2)
-    // With curviness 0, control points should equal data points
-    // (since t = 0/6 = 0, all control points collapse onto data points)
-    // This means the curve is effectively linear
-    expect(sharp).not.toBe(smooth)
-    // Sharp path should contain the data points as control points
-    expect(sharp).toContain('50.0 -50.0')
+    expect(gentle).not.toBe(smooth)
+    // Both pass through the middle waypoint
+    expect(parse(gentle).nums).toEqual(expect.arrayContaining([50, -50]))
+    expect(parse(smooth).nums).toEqual(expect.arrayContaining([50, -50]))
   })
 
-  it('curviness 0 makes straight-line control points', () => {
+  it('curviness 0 produces straight segments between waypoints', () => {
     const points = [
       { x: 0, y: 0 },
       { x: 100, y: 100 },
       { x: 200, y: 0 },
     ]
     const result = catmullRomToSvgPath(points, 0)
-    // With curviness 0, CP1 = P1 and CP2 = P2 (no offset)
-    // First segment: M 0 0 C 0.0 0.0 100.0 100.0 100.0 100.0
-    // Both control points should be at the data points
-    expect(result).toMatch(/C 0\.0 0\.0 100\.0 100\.0 100\.0 100\.0/)
+    expect(result).toBe('M 0 0 L 100 100 L 200 0')
   })
 
   it('handles negative coordinates', () => {
@@ -103,8 +107,8 @@ describe('catmullRomToSvgPath', () => {
       { x: 0, y: 0 },
       { x: 50, y: 50 },
     ]
-    const result = catmullRomToSvgPath(points)
-    expect(result).toMatch(/^M -50 -50 C/)
-    expect(result).toMatch(/50\.0 50\.0$/)
+    const p = parse(catmullRomToSvgPath(points))
+    expect(p.start).toEqual([-50, -50])
+    expect(p.end).toEqual([50, 50])
   })
 })

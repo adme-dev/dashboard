@@ -64,15 +64,16 @@ function setStrokePreset(v: string) {
       </summary>
       <div class="pt-1.5 space-y-3">
     <div>
-      <label class="text-[10px] text-(--ui-text-muted)">Label</label>
-      <UInput size="xs" :model-value="selectedLayer.text ?? ''" @update:model-value="v => set('text', v)" />
+      <label>Label</label>
+      <UInput size="xs" class="w-full" :model-value="selectedLayer.text ?? ''" @update:model-value="v => set('text', v)" />
     </div>
 
     <div class="grid grid-cols-2 gap-1.5">
       <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Font</label>
+        <label>Font</label>
         <USelectMenu
           size="xs"
+          class="w-full"
           :model-value="selectedLayer.fontFamily ?? 'Barlow Condensed'"
           :items="FONT_FAMILIES.map(f => ({ label: f, value: f }))"
           value-key="value"
@@ -80,9 +81,10 @@ function setStrokePreset(v: string) {
         />
       </div>
       <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Weight</label>
+        <label>Weight</label>
         <USelectMenu
           size="xs"
+          class="w-full"
           :model-value="String(selectedLayer.fontWeight ?? 700)"
           :items="FONT_WEIGHTS.map(w => ({ label: w.label, value: String(w.value) }))"
           value-key="value"
@@ -93,46 +95,46 @@ function setStrokePreset(v: string) {
 
     <div class="grid grid-cols-2 gap-1.5">
       <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Size</label>
+        <label>Size</label>
         <UInput type="number" size="xs" :model-value="selectedLayer.fontSize ?? 14" @update:model-value="v => setNum('fontSize', v)" />
       </div>
       <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Radius</label>
+        <label>Radius</label>
         <UInput type="number" size="xs" :model-value="selectedLayer.borderRadius ?? 2" @update:model-value="v => setNum('borderRadius', v)" />
-      </div>
-    </div>
-
-    <div>
-      <label class="text-[10px] text-(--ui-text-muted)">Background</label>
-      <div class="flex items-center gap-1.5">
-        <input
-          type="color"
-          :value="selectedLayer.bgColor ?? '#e8c84a'"
-          class="w-6 h-6 rounded cursor-pointer border border-(--ui-border)"
-          @input="(e: Event) => set('bgColor', (e.target as HTMLInputElement).value)"
-        />
-        <UInput size="xs" class="flex-1" :model-value="selectedLayer.bgColor ?? '#e8c84a'" @update:model-value="v => set('bgColor', v)" />
-      </div>
-    </div>
-
-    <div>
-      <label class="text-[10px] text-(--ui-text-muted)">Text Color</label>
-      <div class="flex items-center gap-1.5">
-        <input
-          type="color"
-          :value="selectedLayer.textColor ?? '#000000'"
-          class="w-6 h-6 rounded cursor-pointer border border-(--ui-border)"
-          @input="(e: Event) => set('textColor', (e.target as HTMLInputElement).value)"
-        />
-        <UInput size="xs" class="flex-1" :model-value="selectedLayer.textColor ?? '#000000'" @update:model-value="v => set('textColor', v)" />
       </div>
     </div>
 
     <div class="grid grid-cols-2 gap-1.5">
       <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Transform</label>
+        <label>Background</label>
+        <div class="flex items-center gap-1.5">
+          <input
+            type="color"
+            :value="selectedLayer.bgColor ?? '#e8c84a'"
+            @input="(e: Event) => set('bgColor', (e.target as HTMLInputElement).value)"
+          >
+          <UInput size="xs" class="flex-1 min-w-0" :model-value="selectedLayer.bgColor ?? '#e8c84a'" @update:model-value="v => set('bgColor', v)" />
+        </div>
+      </div>
+      <div>
+        <label>Text</label>
+        <div class="flex items-center gap-1.5">
+          <input
+            type="color"
+            :value="selectedLayer.textColor ?? '#000000'"
+            @input="(e: Event) => set('textColor', (e.target as HTMLInputElement).value)"
+          >
+          <UInput size="xs" class="flex-1 min-w-0" :model-value="selectedLayer.textColor ?? '#000000'" @update:model-value="v => set('textColor', v)" />
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-1.5">
+      <div>
+        <label>Transform</label>
         <USelectMenu
           size="xs"
+          class="w-full"
           :model-value="selectedLayer.textTransform ?? 'uppercase'"
           :items="textTransformOptions"
           value-key="value"
@@ -140,7 +142,7 @@ function setStrokePreset(v: string) {
         />
       </div>
       <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Spacing</label>
+        <label>Spacing</label>
         <UInput size="xs" :model-value="selectedLayer.letterSpacing ?? '0.1em'" @update:model-value="v => set('letterSpacing', v)" />
       </div>
     </div>
@@ -155,54 +157,54 @@ function setStrokePreset(v: string) {
         <span class="text-[10px] font-semibold uppercase tracking-wider text-[#888]">Effects</span>
       </summary>
       <div class="pt-1.5 space-y-3">
-    <!-- Italic toggle -->
-    <div>
-      <label class="text-[10px] text-(--ui-text-muted)">Style</label>
-      <div class="flex gap-0.5">
+    <!-- Style + Shadow + Stroke on one rhythm: toggle | preset | preset -->
+    <div class="grid grid-cols-[auto_1fr_1fr] gap-1.5 items-end">
+      <div>
+        <label>Style</label>
         <UButton
           size="xs"
           icon="i-lucide-italic"
-          :variant="selectedLayer.fontStyle === 'italic' ? 'solid' : 'ghost'"
+          color="neutral"
+          :variant="selectedLayer.fontStyle === 'italic' ? 'solid' : 'subtle'"
+          title="Italic"
           @click="set('fontStyle', selectedLayer.fontStyle === 'italic' ? 'normal' : 'italic')"
         />
       </div>
+      <div>
+        <label>Shadow</label>
+        <USelectMenu
+          size="xs"
+          class="w-full"
+          :model-value="shadowPresetValue"
+          :items="TEXT_SHADOW_PRESETS.map(p => ({ label: p.label, value: p.value }))"
+          value-key="value"
+          @update:model-value="setShadowPreset"
+        />
+      </div>
+      <div>
+        <label>Stroke</label>
+        <USelectMenu
+          size="xs"
+          class="w-full"
+          :model-value="strokePresetValue"
+          :items="TEXT_STROKE_PRESETS.map(p => ({ label: p.label, value: p.value }))"
+          value-key="value"
+          @update:model-value="setStrokePreset"
+        />
+      </div>
     </div>
-
-    <!-- Text Shadow -->
-    <div>
-      <label class="text-[10px] text-(--ui-text-muted)">Shadow</label>
-      <USelectMenu
-        size="xs"
-        :model-value="shadowPresetValue"
-        :items="TEXT_SHADOW_PRESETS.map(p => ({ label: p.label, value: p.value }))"
-        value-key="value"
-        @update:model-value="setShadowPreset"
-      />
+    <div v-if="shadowPresetValue === '__custom__' || strokePresetValue === '__custom__'" class="space-y-1.5">
       <UInput
         v-if="shadowPresetValue === '__custom__'"
         size="xs"
-        class="mt-1"
-        placeholder="2px 2px 4px rgba(0,0,0,0.5)"
+        placeholder="Shadow: 2px 2px 4px rgba(0,0,0,0.5)"
         :model-value="selectedLayer.textShadow ?? ''"
         @update:model-value="v => set('textShadow', v || undefined)"
-      />
-    </div>
-
-    <!-- Text Stroke -->
-    <div>
-      <label class="text-[10px] text-(--ui-text-muted)">Stroke</label>
-      <USelectMenu
-        size="xs"
-        :model-value="strokePresetValue"
-        :items="TEXT_STROKE_PRESETS.map(p => ({ label: p.label, value: p.value }))"
-        value-key="value"
-        @update:model-value="setStrokePreset"
       />
       <UInput
         v-if="strokePresetValue === '__custom__'"
         size="xs"
-        class="mt-1"
-        placeholder="1px #000"
+        placeholder="Stroke: 1px #000"
         :model-value="selectedLayer.textStroke ?? ''"
         @update:model-value="v => set('textStroke', v || undefined)"
       />

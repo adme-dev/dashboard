@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ANIM_IN, ANIM_OUT, EASES, EASE_GROUPS, easeSvgPath } from '~/utils/banner-constants'
+import { parseCubicEase } from '~/utils/banner-ease'
 import type { AnimInType, AnimOutType, KeyframeProperty } from '~/types/banner-studio'
 import { hasKeyframes, presetToKeyframes } from '~/composables/useBannerTimeline'
 
@@ -13,6 +14,24 @@ function set(key: string, val: any) {
 
 function setNum(key: string, val: string | number) {
   set(key, Number(val))
+}
+
+const CATEGORY_LABEL: Record<string, string> = { out: 'Ease out', in: 'Ease in', inOut: 'Ease in/out', special: '' }
+const POWER_LABEL: Record<string, string> = { P1: 'Power 1', P2: 'Power 2', P3: 'Power 3' }
+/** Readable name for the trigger button — the grid tiles use short labels like "P1" */
+function easeDisplayName(id: string | undefined) {
+  if (!id) return 'Default'
+  if (/^cubic(?:-bezier)?\(/.test(id)) return 'Custom curve'
+  const e = findEase(id)
+  if (!e) return id
+  const base = POWER_LABEL[e.label] || e.label
+  const cat = CATEGORY_LABEL[e.category]
+  return cat ? `${base} · ${cat}` : base
+}
+
+/** Control points for the trigger's mini curve — presets or a custom cubic */
+function easeCp(id: string | undefined, fallback: [number, number, number, number]) {
+  return parseCubicEase(id) || findEase(id || '')?.cp || fallback
 }
 
 // Find ease entry by id
@@ -214,15 +233,15 @@ function deleteSelectedKeyframe() {
             <label class="text-[10px] text-(--ui-text-muted)">Easing (to next)</label>
             <div class="flex gap-1">
               <!-- Visual easing picker -->
-              <UPopover v-model:open="easeKfOpen">
-                <button class="flex-1 flex items-center gap-1.5 px-2 py-1 rounded border border-[#3a3a3f] hover:border-[#555] bg-[#1e1e22] transition-colors text-left min-w-0">
+              <UPopover v-model:open="easeKfOpen" class="flex-1 min-w-0">
+                <button class="w-full flex items-center gap-1.5 px-2 py-1 rounded border border-[#3a3a3f] hover:border-[#555] bg-[#1e1e22] transition-colors text-left min-w-0">
                   <svg viewBox="-1 -2 34 24" class="w-6 h-4 shrink-0">
                     <path
-                      :d="easeSvgPath(findEase(selectedKf.easing ?? 'power2.out')?.cp || [0, 0, 0.58, 1])"
+                      :d="easeSvgPath(easeCp(selectedKf.easing ?? 'power2.out', [0, 0, 0.58, 1]))"
                       fill="none" stroke="#4a8fe8" stroke-width="1.5" stroke-linecap="round"
                     />
                   </svg>
-                  <span class="text-[10px] text-[#ccc] truncate">{{ findEase(selectedKf.easing ?? 'power2.out')?.label || selectedKf.easing }}</span>
+                  <span class="text-[10px] text-[#ccc] truncate">{{ easeDisplayName(selectedKf.easing ?? 'power2.out') }}</span>
                   <UIcon name="i-lucide-chevron-down" class="w-3 h-3 text-[#555] shrink-0 ml-auto" />
                 </button>
                 <template #content>
@@ -339,15 +358,15 @@ function deleteSelectedKeyframe() {
           <div>
             <label class="text-[10px] text-(--ui-text-muted) mb-1 block">Ease</label>
             <div class="flex gap-1">
-              <UPopover v-model:open="easeInOpen">
-                <button class="flex-1 flex items-center gap-1.5 px-2 py-1 rounded border border-[#3a3a3f] hover:border-[#555] bg-[#1e1e22] transition-colors text-left min-w-0">
+              <UPopover v-model:open="easeInOpen" class="flex-1 min-w-0">
+                <button class="w-full flex items-center gap-1.5 px-2 py-1 rounded border border-[#3a3a3f] hover:border-[#555] bg-[#1e1e22] transition-colors text-left min-w-0">
                   <svg viewBox="-1 -2 34 24" class="w-6 h-4 shrink-0">
                     <path
-                      :d="easeSvgPath(findEase(selectedLayer.ease ?? 'power2.out')?.cp || [0, 0, 0.58, 1])"
+                      :d="easeSvgPath(easeCp(selectedLayer.ease ?? 'power2.out', [0, 0, 0.58, 1]))"
                       fill="none" stroke="#4a8fe8" stroke-width="1.5" stroke-linecap="round"
                     />
                   </svg>
-                  <span class="text-[10px] text-[#ccc] truncate">{{ findEase(selectedLayer.ease ?? 'power2.out')?.label || selectedLayer.ease }}</span>
+                  <span class="text-[10px] text-[#ccc] truncate">{{ easeDisplayName(selectedLayer.ease ?? 'power2.out') }}</span>
                   <UIcon name="i-lucide-chevron-down" class="w-3 h-3 text-[#555] shrink-0 ml-auto" />
                 </button>
                 <template #content>
@@ -404,7 +423,7 @@ function deleteSelectedKeyframe() {
           <!-- Type badge grid -->
           <div>
             <label class="text-[10px] text-(--ui-text-muted) mb-1 block">Type</label>
-            <div class="grid grid-cols-3 gap-1">
+            <div class="grid grid-cols-4 gap-1">
               <button
                 v-for="anim in ANIM_OUT" :key="anim.id"
                 class="flex flex-col items-center gap-0.5 py-1.5 px-0.5 rounded border transition-all"
@@ -435,15 +454,15 @@ function deleteSelectedKeyframe() {
           <div>
             <label class="text-[10px] text-(--ui-text-muted) mb-1 block">Ease Out</label>
             <div class="flex gap-1">
-              <UPopover v-model:open="easeOutOpen">
-                <button class="flex-1 flex items-center gap-1.5 px-2 py-1 rounded border border-[#3a3a3f] hover:border-[#555] bg-[#1e1e22] transition-colors text-left min-w-0">
+              <UPopover v-model:open="easeOutOpen" class="flex-1 min-w-0">
+                <button class="w-full flex items-center gap-1.5 px-2 py-1 rounded border border-[#3a3a3f] hover:border-[#555] bg-[#1e1e22] transition-colors text-left min-w-0">
                   <svg viewBox="-1 -2 34 24" class="w-6 h-4 shrink-0">
                     <path
-                      :d="easeSvgPath(findEase(selectedLayer.animOutEase ?? 'power1.in')?.cp || [0.42, 0, 1, 1])"
+                      :d="easeSvgPath(easeCp(selectedLayer.animOutEase ?? 'power1.in', [0.42, 0, 1, 1]))"
                       fill="none" stroke="#4a8fe8" stroke-width="1.5" stroke-linecap="round"
                     />
                   </svg>
-                  <span class="text-[10px] text-[#ccc] truncate">{{ findEase(selectedLayer.animOutEase ?? 'power1.in')?.label || selectedLayer.animOutEase }}</span>
+                  <span class="text-[10px] text-[#ccc] truncate">{{ easeDisplayName(selectedLayer.animOutEase ?? 'power1.in') }}</span>
                   <UIcon name="i-lucide-chevron-down" class="w-3 h-3 text-[#555] shrink-0 ml-auto" />
                 </button>
                 <template #content>
