@@ -27,8 +27,11 @@ async function fetchAiCopy() {
       method: 'POST',
       body: {
         text: selectedLayer.value.text,
+        projectId: state.project?.id,
         context: {
           projectName: state.project?.name,
+          clientName: state.project?.clientName,
+          clientId: state.project?.clientId || undefined,
           format: fmt ? `${fmt.w}x${fmt.h}` : undefined,
         },
       },

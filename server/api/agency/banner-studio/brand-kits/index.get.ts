@@ -1,35 +1,26 @@
 import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { BRAND_KIT_SELECT, normaliseKitRow } from '~~/server/utils/banner/brandKits'
 
+/**
+ * GET /api/agency/banner-studio/brand-kits?clientId=…
+ * With clientId: that client's kits plus agency-wide (unassigned) kits, client-specific first.
+ */
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const { clientId } = getQuery(event)
-
-  const conditions = []
   const params: any[] = []
-
-  if (clientId) {
+  let where = ''
+  if (typeof clientId === 'string' && clientId) {
     params.push(clientId)
-    conditions.push(`bk.client_id = $${params.length}`)
+    where = `WHERE bk.client_id = $1 OR bk.client_id IS NULL`
   }
-
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-
   const rows = await queryRows(`
-    SELECT
-      bk.id, bk.name,
-      bk.client_id AS "clientId",
-      ac.name AS "clientName",
-      bk.colors, bk.fonts, bk.logos,
-      bk.guidelines,
-      bk.created_by AS "createdBy",
-      bk.created_at AS "createdAt",
-      bk.updated_at AS "updatedAt"
+    SELECT ${BRAND_KIT_SELECT}
     FROM brand_kits bk
     LEFT JOIN agency_clients ac ON ac.id = bk.client_id
     ${where}
-    ORDER BY bk.updated_at DESC
+    ORDER BY bk.is_default DESC, (bk.client_id IS NOT NULL) DESC, bk.updated_at DESC
   `, params)
-
-  return rows
+  return rows.map(r => normaliseKitRow(r as any))
 })

@@ -6,6 +6,7 @@
  */
 
 import { requireAuth } from '~~/server/utils/auth'
+import { brandContextForRequest } from '~~/server/utils/banner/brandKits'
 import { edgeGenerate } from '~~/server/utils/edgeAi'
 import { generateGroqInsight, GROQ_MODELS, type GroqModel } from '~~/server/utils/groqClient'
 import { groqModelIdFromAssignment, resolveAiModelAssignment } from '~~/server/utils/ai/modelAssignments'
@@ -20,11 +21,14 @@ export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
 
   const body = await readBody(event)
-  const { text, context } = body as {
+  const { text, context, projectId, brandKitId } = body as {
     text: string
+    projectId?: string
+    brandKitId?: string
     context?: {
       projectName?: string
       clientName?: string
+      clientId?: string
       format?: string // e.g. "300x250"
       purpose?: string // e.g. "brand awareness", "lead gen"
     }
@@ -42,6 +46,9 @@ export default defineEventHandler(async (event) => {
     context?.purpose ? `Campaign goal: ${context.purpose}` : '',
   ].filter(Boolean).join('\n')
 
+  // Brand kit (client default or explicit) — tone/guidelines steer the copy
+  const brandBlock = await brandContextForRequest({ brandKitId, projectId, clientId: context?.clientId })
+
   const prompt = `You are an advertising copywriter. Given this banner text and context, suggest 5 alternative versions.
 
 Current text: "${text}"
@@ -54,7 +61,7 @@ Requirements:
 - Vary between: punchy, professional, playful, urgent, benefit-focused
 - Return ONLY valid JSON array, no markdown
 
-Format: [{"text":"...","tone":"punchy"},{"text":"...","tone":"professional"},...] (exactly 5 items)`
+Format: [{"text":"...","tone":"punchy"},{"text":"...","tone":"professional"},...] (exactly 5 items)${brandBlock}`
 
   const systemPrompt = 'You are an expert advertising copywriter. Return only valid JSON arrays, no markdown code blocks.'
   const assignment = await resolveAiModelAssignment({

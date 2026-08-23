@@ -148,12 +148,17 @@ export async function uploadBannerAsset(
   mimeType: string,
   userId: string,
   precomputedKey = createBannerAssetStorageKey(fileName, userId),
-  nativeUpload?: NativeBannerAssetUpload
+  nativeUpload?: NativeBannerAssetUpload,
+  /** Non-native (S3 API) uploads: serve through this signed delivery URL instead of a public bucket URL */
+  deliveryUrl?: string
 ): Promise<{ key: string, url: string, size: number }> {
   if (!isExpectedBannerAssetStorageKey(precomputedKey, fileName, userId)) {
     throw new Error('Invalid precomputed banner asset storage key')
   }
-  if (!nativeUpload) return uploadFile(buffer, precomputedKey, mimeType)
+  if (!nativeUpload) {
+    const stored = await uploadFile(buffer, precomputedKey, mimeType)
+    return deliveryUrl ? { ...stored, url: deliveryUrl } : stored
+  }
   if (!isBannerAssetDeliveryKey(precomputedKey, userId)) {
     throw new Error('Invalid native banner asset storage scope')
   }

@@ -1,66 +1,52 @@
-import { queryOne } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { transaction } from '~~/server/utils/db'
+import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
+import { brandKitInputSchema, getBrandKit, setDefaultBrandKit, snapshotBrandKitVersion } from '~~/server/utils/banner/brandKits'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
-  const id = getRouterParam(event, 'id')
-  const body = await readBody(event)
+  const user = await requireRole(event, PERMISSIONS.CREATIVE)
+  const id = getRouterParam(event, 'id')!
+  const existing = await getBrandKit(id)
+  if (!existing) throw createError({ statusCode: 404, statusMessage: 'Brand kit not found' })
 
-  const sets: string[] = []
-  const params: any[] = []
+  const parsed = brandKitInputSchema.partial().safeParse(await readBody(event))
+  if (!parsed.success) {
+    throw createError({ statusCode: 400, statusMessage: parsed.error.issues[0]?.message || 'Invalid brand kit' })
+  }
+  const input = parsed.data
+  const contentChanged = ['name', 'colors', 'fonts', 'logos', 'guidelines'].some(k => k in input)
 
-  if (body.name !== undefined) {
-    if (!body.name?.trim()) {
-      throw createError({ statusCode: 400, statusMessage: 'Brand kit name cannot be empty' })
-    }
-    params.push(body.name.trim())
-    sets.push(`name = $${params.length}`)
-  }
-  if (body.clientId !== undefined) {
-    params.push(body.clientId || null)
-    sets.push(`client_id = $${params.length}`)
-  }
-  if (body.colors !== undefined) {
-    params.push(JSON.stringify(body.colors))
-    sets.push(`colors = $${params.length}`)
-  }
-  if (body.fonts !== undefined) {
-    params.push(JSON.stringify(body.fonts))
-    sets.push(`fonts = $${params.length}`)
-  }
-  if (body.logos !== undefined) {
-    params.push(JSON.stringify(body.logos))
-    sets.push(`logos = $${params.length}`)
-  }
-  if (body.guidelines !== undefined) {
-    params.push(body.guidelines || null)
-    sets.push(`guidelines = $${params.length}`)
-  }
+  await transaction(async (db) => {
+    // Snapshot before changing content so every edit is recoverable
+    if (contentChanged) await snapshotBrandKitVersion(db, id, user.id)
+    await db.query(`
+      UPDATE brand_kits SET
+        name = COALESCE($2, name),
+        client_id = CASE WHEN $3::boolean THEN $4::uuid ELSE client_id END,
+        colors = COALESCE($5::jsonb, colors),
+        fonts = COALESCE($6::jsonb, fonts),
+        logos = COALESCE($7::jsonb, logos),
+        guidelines = CASE WHEN $8::boolean THEN $9 ELSE guidelines END,
+        source_url = CASE WHEN $10::boolean THEN $11 ELSE source_url END,
+        updated_at = NOW()
+      WHERE id = $1
+    `, [
+      id,
+      input.name ?? null,
+      'clientId' in input, input.clientId ?? null,
+      input.colors ? JSON.stringify(input.colors) : null,
+      input.fonts ? JSON.stringify(input.fonts) : null,
+      input.logos ? JSON.stringify(input.logos) : null,
+      'guidelines' in input, input.guidelines ?? null,
+      'sourceUrl' in input, input.sourceUrl ?? null
+    ])
+  })
 
-  if (sets.length === 0) {
-    throw createError({ statusCode: 400, statusMessage: 'No fields to update' })
-  }
-
-  sets.push('updated_at = NOW()')
-  params.push(id)
-
-  const row = await queryOne(`
-    UPDATE brand_kits
-    SET ${sets.join(', ')}
-    WHERE id = $${params.length}
-    RETURNING
-      id, name,
-      client_id AS "clientId",
-      colors, fonts, logos,
-      guidelines,
-      created_by AS "createdBy",
-      created_at AS "createdAt",
-      updated_at AS "updatedAt"
-  `, params)
-
-  if (!row) {
-    throw createError({ statusCode: 404, statusMessage: 'Brand kit not found' })
+  if (input.isDefault === true) {
+    await setDefaultBrandKit(id, 'clientId' in input ? (input.clientId ?? null) : existing.clientId)
+  } else if (input.isDefault === false && existing.isDefault) {
+    await transaction(db => db.query(`UPDATE brand_kits SET is_default = false WHERE id = $1`, [id]))
   }
 
-  return row
+  return await getBrandKit(id)
 })

@@ -6,6 +6,7 @@
  */
 
 import { requireAuth } from '~~/server/utils/auth'
+import { brandContextForRequest } from '~~/server/utils/banner/brandKits'
 import { edgeGenerate } from '~~/server/utils/edgeAi'
 import { generateGroqInsight, GROQ_MODELS, type GroqModel } from '~~/server/utils/groqClient'
 import { groqModelIdFromAssignment, resolveAiModelAssignment } from '~~/server/utils/ai/modelAssignments'
@@ -42,7 +43,11 @@ export default defineEventHandler(async (event) => {
     width, height,
     prompt, history,
     action, templateName, templateCategory, variables,
+    projectId, clientId, brandKitId,
   } = body as {
+    projectId?: string
+    clientId?: string
+    brandKitId?: string
     html?: string
     css?: string
     js?: string
@@ -91,7 +96,8 @@ export default defineEventHandler(async (event) => {
     ? `\n\n[Action type: ${action}]`
     : ''
 
-  const userPrompt = `${prompt}${actionHint}${contextBlock}`
+  const brandBlock = await brandContextForRequest({ brandKitId, projectId, clientId })
+  const userPrompt = `${prompt}${actionHint}${contextBlock}${brandBlock}`
 
   // Build conversation history for multi-turn (last 6 messages max)
   const recentHistory = (history || []).slice(-6)

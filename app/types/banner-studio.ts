@@ -93,6 +93,8 @@ export interface Layer {
   src?: string
   srcType?: 'image' | 'video' // default 'image'
   fit?: 'cover' | 'contain' | 'fill'
+  /** Marks an image layer as the brand logo so brand kits can swap it */
+  isLogo?: boolean
   focalX?: number // 0-100, default 50 (center)
   focalY?: number // 0-100, default 50 (center)
   // Button
@@ -188,7 +190,18 @@ export interface BannerExportRecord {
 }
 
 // Brand Kit
+export type BrandColorRole = 'primary' | 'secondary' | 'accent' | 'background' | 'text' | 'extra'
+export type BrandFontRole = 'heading' | 'body' | 'extra'
+
+export interface BrandKitColor {
+  role: BrandColorRole
+  hex: string
+  /** Optional human name, e.g. "Leapmotor Green" */
+  label?: string
+}
+
 export interface BrandKitFont {
+  role: BrandFontRole
   family: string
   weights: number[]
 }
@@ -197,20 +210,44 @@ export interface BrandKitLogo {
   name: string
   url: string
   r2Key: string
+  /** Which backgrounds this mark is designed for */
+  variant?: 'light' | 'dark' | 'any'
 }
 
 export interface BannerBrandKit {
   id: string
   clientId: string | null
   clientName?: string
+  clientLogoUrl?: string | null
   name: string
-  colors: string[]
+  colors: BrandKitColor[]
   fonts: BrandKitFont[]
   logos: BrandKitLogo[]
   guidelines: string | null
+  isDefault: boolean
+  sourceUrl?: string | null
   createdBy: string
   createdAt: string
   updatedAt: string
+}
+
+export interface BrandKitVersion {
+  id: string
+  brandKitId: string
+  version: number
+  note: string | null
+  createdBy: string | null
+  createdAt: string
+  snapshot: Pick<BannerBrandKit, 'name' | 'colors' | 'fonts' | 'logos' | 'guidelines'>
+}
+
+/** What "Extract from website" returns before the user confirms */
+export interface BrandKitExtraction {
+  name: string
+  sourceUrl: string
+  colors: BrandKitColor[]
+  fonts: BrandKitFont[]
+  logos: BrandKitLogo[]
 }
 
 // Image Export

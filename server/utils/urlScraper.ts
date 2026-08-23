@@ -16,6 +16,10 @@ export interface ScrapedPage {
   brandName?: string
   themeColor?: string
   primaryColors: string[]
+  /** Font families referenced via Google Fonts links, @font-face or font-family declarations */
+  fontFamilies: string[]
+  /** Likely logo images: <img> with logo/brand in src/alt/class, apple-touch-icon, SVG in header */
+  logoCandidates: string[]
 }
 
 export async function scrapeUrl(url: string): Promise<ScrapedPage> {
@@ -79,6 +83,8 @@ function emptyResult(url: string): ScrapedPage {
     ctaTexts: [],
     images: [],
     primaryColors: [],
+    fontFamilies: [],
+    logoCandidates: [],
   }
 }
 
@@ -89,6 +95,8 @@ function parseHtml(html: string, url: string): ScrapedPage {
     ctaTexts: [],
     images: [],
     primaryColors: [],
+    fontFamilies: [],
+    logoCandidates: [],
   }
 
   // OG / meta tags
@@ -160,6 +168,45 @@ function parseHtml(html: string, url: string): ScrapedPage {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([c]) => c)
+
+  // Fonts: Google Fonts <link>s, @font-face names, then the most common font-family declarations
+  const fonts = new Map<string, number>()
+  const bump = (name: string, weight = 1) => {
+    const clean = name.replace(/["']/g, '').trim()
+    if (!clean || /^(inherit|initial|sans-serif|serif|monospace|system-ui|-apple-system|BlinkMacSystemFont|Segoe UI|Roboto|Helvetica( Neue)?|Arial|Times New Roman|cursive|fantasy|ui-sans-serif|ui-serif)$/i.test(clean)) return
+    fonts.set(clean, (fonts.get(clean) || 0) + weight)
+  }
+  const gfRegex = /fonts\.googleapis\.com\/css2?\?([^"']+)/gi
+  let gf: RegExpExecArray | null
+  while ((gf = gfRegex.exec(html)) !== null) {
+    const famRe = /family=([^&]+)/g
+    let fp: RegExpExecArray | null
+    while ((fp = famRe.exec(gf[1])) !== null) {
+      for (const fam of decodeURIComponent(fp[1]).split('|')) bump(fam.split(':')[0].replace(/\+/g, ' '), 5)
+    }
+  }
+  const ffRegex = /@font-face\s*{[^}]*font-family\s*:\s*([^;}]+)/gi
+  let ff: RegExpExecArray | null
+  while ((ff = ffRegex.exec(html)) !== null) bump(ff[1], 4)
+  const famRegex = /font-family\s*:\s*([^;}"']+)/gi
+  let fm: RegExpExecArray | null
+  while ((fm = famRegex.exec(html)) !== null) bump(fm[1].split(',')[0], 1)
+  result.fontFamilies = [...fonts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([f]) => f)
+
+  // Logo candidates (ordered by confidence)
+  const logos: string[] = []
+  const pushLogo = (u?: string | null) => { if (u) { const r = resolveUrl(u, url); if (!r.startsWith('data:') && !logos.includes(r)) logos.push(r) } }
+  const logoImg = /<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>/gi
+  let li: RegExpExecArray | null
+  while ((li = logoImg.exec(html)) !== null && logos.length < 6) {
+    const tag = li[0]
+    if (/logo|brand|wordmark/i.test(tag)) pushLogo(li[1])
+  }
+  const touchIcon = html.match(/<link[^>]*rel=["']apple-touch-icon[^"']*["'][^>]*href=["']([^"']+)["']/i)
+  pushLogo(touchIcon?.[1])
+  const svgLogo = html.match(/<a[^>]*class=["'][^"']*(?:logo|brand)[^"']*["'][^>]*>[\s\S]{0,400}?<img[^>]+src=["']([^"']+)["']/i)
+  pushLogo(svgLogo?.[1])
+  result.logoCandidates = logos
 
   return result
 }

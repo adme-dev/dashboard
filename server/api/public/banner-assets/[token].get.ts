@@ -1,4 +1,5 @@
 import { createError, getRouterParam } from 'h3'
+import { getDevR2BucketAdapter } from '~~/server/utils/storage'
 
 import { queryOne } from '~~/server/utils/db'
 import {
@@ -165,8 +166,10 @@ export default defineEventHandler(async (event) => {
   const cloudflareEnv = (event.context as {
     cloudflare?: { env?: Record<string, unknown> }
   }).cloudflare?.env
-  const secret = cloudflareEnv?.RENDER_LINK_SECRET
-  const bucket = cloudflareEnv?.MEDIA_BUCKET as NativeR2Bucket | undefined
+  // Production: the R2 binding + secret come from the Cloudflare env.
+  // Local dev (no binding): same signed links, served via the S3 API with the secret from runtime config.
+  const secret = cloudflareEnv?.RENDER_LINK_SECRET ?? (cloudflareEnv ? undefined : useRuntimeConfig().renderLinkSecret)
+  const bucket = (cloudflareEnv?.MEDIA_BUCKET as NativeR2Bucket | undefined) ?? (cloudflareEnv ? undefined : getDevR2BucketAdapter() as NativeR2Bucket | null ?? undefined)
   if (typeof secret !== 'string'
     || new TextEncoder().encode(secret).byteLength < 32
     || !bucket

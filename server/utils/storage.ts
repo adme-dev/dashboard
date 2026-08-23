@@ -432,3 +432,59 @@ export function isStorageConfigured(): boolean {
   const config = r2Config()
   return !!(config.accountId && config.accessKeyId && config.secretAccessKey)
 }
+
+/**
+ * Local-dev stand-in for the Cloudflare R2 binding (`MEDIA_BUCKET`), backed by the S3 API.
+ * Lets the signed banner-asset delivery route work without `wrangler dev`, so dev uses the
+ * same signed URLs as production instead of a public bucket domain.
+ * Returns null when R2 credentials aren't configured.
+ */
+export function getDevR2BucketAdapter(): {
+  head: (key: string) => Promise<any | null>
+  get: (key: string, options?: { range?: { offset?: number, length?: number, suffix?: number } }) => Promise<any | null>
+} | null {
+  if (!isStorageConfigured()) return null
+  const client = getR2Client()
+  const bucket = r2Config().bucketName
+  const toObject = (meta: { ContentLength?: number, ETag?: string, LastModified?: Date, ContentType?: string, CacheControl?: string }, body?: ReadableStream, range?: { offset: number, length: number }) => ({
+    size: Number(meta.ContentLength ?? 0),
+    httpEtag: meta.ETag || '"0"',
+    uploaded: meta.LastModified,
+    range,
+    body,
+    writeHttpMetadata(headers: Headers) {
+      if (meta.ContentType) headers.set('content-type', meta.ContentType)
+      if (meta.CacheControl) headers.set('cache-control', meta.CacheControl)
+    }
+  })
+  const notFound = (e: any) => e?.$metadata?.httpStatusCode === 404 || e?.name === 'NotFound' || e?.name === 'NoSuchKey'
+  return {
+    async head(key) {
+      try {
+        const meta = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
+        return toObject(meta)
+      } catch (e) {
+        if (notFound(e)) return null
+        throw e
+      }
+    },
+    async get(key, options) {
+      const r = options?.range
+      let rangeHeader: string | undefined
+      if (r?.suffix != null) rangeHeader = `bytes=-${r.suffix}`
+      else if (r?.offset != null) rangeHeader = r.length != null ? `bytes=${r.offset}-${r.offset + r.length - 1}` : `bytes=${r.offset}-`
+      try {
+        const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key, Range: rangeHeader }))
+        const body = (res.Body as any)?.transformToWebStream?.() as ReadableStream | undefined
+        const total = res.ContentRange ? Number(res.ContentRange.split('/')[1]) : Number(res.ContentLength ?? 0)
+        const rangeOut = res.ContentRange
+          ? (() => { const m = /bytes (\d+)-(\d+)\//.exec(res.ContentRange!); return m ? { offset: Number(m[1]), length: Number(m[2]) - Number(m[1]) + 1 } : undefined })()
+          : undefined
+        return toObject({ ...res, ContentLength: total }, body, rangeOut)
+      } catch (e) {
+        if (notFound(e)) return null
+        throw e
+      }
+    }
+  }
+}

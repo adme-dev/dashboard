@@ -167,7 +167,7 @@ const categories = [
       { title: 'Static & GIF Export', slug: 'banner-export', icon: 'i-lucide-image', description: 'Export to PNG/JPG at 1x/2x via headless Chromium, or animated GIF with configurable FPS.' },
       { title: 'Video Export', slug: 'video-export', icon: 'i-lucide-film', description: 'MP4 video export with frame-by-frame GSAP capture and ffmpeg encoding.' },
       { title: 'Ad Tags & Publishing', slug: 'ad-tags', icon: 'i-lucide-code', description: 'Publish with stable CDN URLs. Generate iframe, JavaScript, and AMPHTML tags with tracking pixels.' },
-      { title: 'Brand Kits', slug: 'brand-kits', icon: 'i-lucide-swatch-book', description: 'Define brand colours, fonts, and logos. Apply across projects with one click and undo support.' },
+      { title: 'Brand Kits', slug: 'brand-kits', icon: 'i-lucide-swatch-book', description: 'Colour roles, heading/body fonts, light & dark logos and guidelines per client. Extract from a website, apply in one click, enforce at export.' },
       { title: 'Template Marketplace', slug: 'template-marketplace', icon: 'i-lucide-store', description: 'Save designs as templates. Browse a categorised gallery with search, tags, and usage tracking.' },
       { title: 'Data Feeds & DCO', slug: 'data-feeds-dco', icon: 'i-lucide-database', description: 'Upload CSV/JSON feeds, bind columns to layers, and auto-generate per-row banner variants at scale.' },
       { title: 'Design Precision', slug: 'design-precision', icon: 'i-lucide-grid-3x3', description: 'Google Fonts, custom font upload, pixel grid, snap-to-grid, smart guides, and layer alignment tools.' },

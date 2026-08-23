@@ -1,139 +1,138 @@
 <script setup lang="ts">
+/**
+ * Studio side panel: the brand kits relevant to this project (client's kits + agency-wide),
+ * each with a live mini-preview and one-click apply. Management happens in the full manager.
+ */
 import type { BannerBrandKit } from '~/types/banner-studio'
 
 const { state, applyBrandKit } = useBannerStudio()
 const toast = useToast()
-const apiFetch = $fetch as <T = unknown>(
-  request: string,
-  options?: { query?: Record<string, unknown> },
-) => Promise<T>
 
 const showManagerModal = ref(false)
-
-// Fetch brand kits, optionally filtered by project's client
 const clientId = computed(() => state.project?.clientId || undefined)
 const brandKits = ref<BannerBrandKit[]>([])
+const loading = ref(false)
 
 async function refresh() {
-  brandKits.value = await apiFetch<BannerBrandKit[]>('/api/agency/banner-studio/brand-kits', {
-    query: { clientId: clientId.value },
-  })
+  loading.value = true
+  try {
+    brandKits.value = await $fetch<BannerBrandKit[]>('/api/agency/banner-studio/brand-kits', {
+      query: clientId.value ? { clientId: clientId.value } : undefined
+    })
+  } finally {
+    loading.value = false
+  }
 }
-
-watch(clientId, () => {
-  refresh()
-}, { immediate: true })
+watch(clientId, refresh, { immediate: true })
 
 function handleApply(kit: BannerBrandKit) {
   applyBrandKit(kit)
-  toast.add({ title: 'Brand applied', description: `"${kit.name}" colors & fonts applied to all artboards`, color: 'success' })
+  toast.add({ title: 'Brand applied', description: `"${kit.name}" on every artboard — ⌘Z to undo`, color: 'success' })
 }
 
+const recommended = computed(() => brandKits.value.find(k => k.isDefault && (!clientId.value || k.clientId === clientId.value)) || brandKits.value.find(k => k.isDefault))
 </script>
 
 <template>
   <div class="p-3 space-y-3">
     <div class="flex items-center justify-between">
-      <h4 class="text-xs font-bold uppercase tracking-wider text-(--ui-text-muted)">Brand Kits</h4>
-      <UButton
-        icon="i-lucide-settings"
-        variant="ghost"
-        size="xs"
-        title="Manage brand kits"
-        @click="showManagerModal = true"
-      />
+      <h4 class="text-xs font-bold uppercase tracking-wider text-(--ui-text-muted)">
+        Brand kits
+      </h4>
+      <UTooltip text="Manage brand kits">
+        <UButton
+          icon="i-lucide-settings-2"
+          variant="ghost"
+          size="xs"
+          @click="showManagerModal = true"
+        />
+      </UTooltip>
     </div>
 
-    <!-- Empty state -->
-    <div v-if="!brandKits?.length" class="text-center py-6">
-      <UIcon name="i-lucide-palette" class="w-8 h-8 text-(--ui-text-muted) mx-auto mb-1.5" />
-      <p class="text-xs text-(--ui-text-muted)">No brand kits available</p>
+    <p v-if="state.project?.clientName" class="text-[11px] text-(--ui-text-dimmed)">
+      Showing kits for <span class="text-(--ui-text)">{{ state.project.clientName }}</span> and agency-wide kits.
+    </p>
+    <p v-else class="text-[11px] text-(--ui-text-dimmed)">
+      Link this project to a client (click the project name in the toolbar) to see its kits first.
+    </p>
+
+    <!-- Empty -->
+    <div v-if="!loading && !brandKits.length" class="rounded-lg border border-dashed border-(--ui-border) p-4 text-center space-y-2">
+      <UIcon name="i-lucide-swatch-book" class="w-7 h-7 text-(--ui-text-muted) mx-auto" />
+      <p class="text-xs text-(--ui-text-muted)">
+        No brand kits yet. Extract one from the client’s website in under a minute.
+      </p>
       <UButton
-        label="Create One"
+        label="Create a kit"
         variant="soft"
         size="xs"
-        class="mt-2"
         @click="showManagerModal = true"
       />
     </div>
 
-    <!-- Brand kit list -->
+    <!-- Kit list -->
     <div v-else class="space-y-2">
       <div
         v-for="kit in brandKits"
         :key="kit.id"
-        class="rounded-lg border border-(--ui-border) overflow-hidden hover:ring-1 hover:ring-(--ui-primary)/30 transition-all"
+        class="rounded-lg border overflow-hidden transition-all"
+        :class="kit === recommended ? 'border-(--ui-primary)/50 ring-1 ring-(--ui-primary)/20' : 'border-(--ui-border) hover:ring-1 hover:ring-(--ui-primary)/30'"
       >
-        <!-- Color bar -->
-        <div class="flex h-2">
-          <div
-            v-for="(color, ci) in kit.colors.slice(0, 8)"
-            :key="ci"
-            class="flex-1"
-            :style="{ backgroundColor: color }"
+        <div class="p-1.5 pb-0">
+          <BannerBrandKitPreview
+            :kit="kit"
+            :ratio="3"
+            compact
+            cta="CTA"
           />
-          <div v-if="!kit.colors.length" class="flex-1 bg-(--ui-bg)" />
         </div>
-
-        <div class="p-2 space-y-1.5">
-          <div class="flex items-center justify-between gap-1">
-            <div class="min-w-0">
-              <div class="text-xs font-semibold truncate text-(--ui-text)">{{ kit.name }}</div>
-              <div v-if="kit.clientName" class="text-[10px] text-(--ui-text-muted) truncate">{{ kit.clientName }}</div>
+        <div class="p-2 flex items-center gap-2">
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1 min-w-0">
+              <span class="text-xs font-semibold truncate">{{ kit.name }}</span>
+              <UIcon v-if="kit.isDefault" name="i-lucide-star" class="w-3 h-3 text-warning shrink-0" />
             </div>
-            <UButton
-              icon="i-lucide-paintbrush"
-              label="Apply"
-              variant="soft"
-              size="xs"
-              @click="handleApply(kit)"
-            />
-          </div>
-
-          <!-- Font preview -->
-          <div v-if="kit.fonts.length" class="text-[10px] text-(--ui-text-muted) truncate">
-            {{ kit.fonts.map(f => f.family).join(', ') }}
-          </div>
-
-          <!-- Logo thumbnails -->
-          <div v-if="kit.logos.length" class="flex gap-1">
-            <div
-              v-for="(logo, li) in kit.logos.slice(0, 4)"
-              :key="li"
-              class="w-6 h-6 rounded border border-(--ui-border) bg-(--ui-bg) overflow-hidden"
-            >
-              <img :src="logo.url" :alt="logo.name" class="w-full h-full object-contain" />
+            <div class="text-[10px] text-(--ui-text-muted) truncate">
+              {{ kit.clientName || 'Agency-wide' }}<span v-if="kit.fonts.length"> · {{ kit.fonts[0].family }}</span>
             </div>
-            <span v-if="kit.logos.length > 4" class="text-[10px] text-(--ui-text-muted) self-center">
-              +{{ kit.logos.length - 4 }}
-            </span>
           </div>
+          <UButton
+            icon="i-lucide-paintbrush"
+            label="Apply"
+            variant="soft"
+            size="xs"
+            @click="handleApply(kit)"
+          />
         </div>
       </div>
     </div>
 
-    <!-- Manage kits link -->
-    <div class="pt-1">
-      <UButton
-        label="Manage All Kits"
-        icon="i-lucide-external-link"
-        variant="ghost"
-        size="xs"
-        to="/agency/banner-studio/brand-kits"
-        target="_blank"
-        class="w-full"
-      />
-    </div>
+    <UButton
+      label="Open brand kit manager"
+      icon="i-lucide-external-link"
+      variant="ghost"
+      size="xs"
+      to="/agency/banner-studio/brand-kits"
+      target="_blank"
+      class="w-full"
+    />
 
-    <!-- Full manager modal -->
-    <UModal v-model:open="showManagerModal" :ui="{ content: 'max-w-2xl' }">
+    <!-- Full manager -->
+    <UModal v-model:open="showManagerModal" :ui="{ content: 'max-w-4xl' }">
       <template #content>
-        <div class="p-4 max-h-[80vh] overflow-y-auto">
+        <div class="p-5 max-h-[85vh] overflow-y-auto">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-bold">Brand Kit Manager</h3>
-            <UButton icon="i-lucide-x" variant="ghost" size="sm" @click="showManagerModal = false" />
+            <h3 class="text-lg font-bold">
+              Brand kits
+            </h3>
+            <UButton
+              icon="i-lucide-x"
+              variant="ghost"
+              size="sm"
+              @click="showManagerModal = false"
+            />
           </div>
-          <BannerBrandKitManager compact @apply="handleApply" />
+          <BannerBrandKitManager :client-id="clientId" @apply="(k) => { handleApply(k); showManagerModal = false; refresh() }" />
         </div>
       </template>
     </UModal>

@@ -1,5 +1,6 @@
 import type { Layer, ArtboardState, BannerProject, UndoAction, BannerBrandKit, AnimInType, AnimOutType, MotionPathPoint, MotionPathTween } from '~/types/banner-studio'
 import { FORMATS, TEMPLATES, migrateLayer, DEFAULT_BG } from '~/utils/banner-constants'
+import { brandColor, brandFont, isLogoLayer, isDarkColor } from '~/utils/banner-brand-kit'
 
 // Module-scope singleton state
 let _uid = 1
@@ -574,51 +575,99 @@ export function useBannerStudio() {
   }
 
   // ── Brand Kit application ─────────────
-  function applyBrandKit(kit: BannerBrandKit) {
-    // Save snapshot for undo
+  /**
+   * Apply a brand kit across every artboard. Role-based:
+   *   primary   → headline text colour (largest text layer per artboard)
+   *   secondary → other text layers
+   *   accent    → button backgrounds; button text flips to background/text for contrast
+   *   background→ artboard + bg layers
+   *   heading font → headlines + buttons; body font → other text
+   *   logo      → replaces image layers flagged/named as logo; inserts one top-left if none
+   * Fully undoable as a single step.
+   */
+  function applyBrandKit(kit: BannerBrandKit, opts: { insertLogo?: boolean } = {}) {
     const before = JSON.parse(JSON.stringify(state.sets))
     const beforeAccent = state.accentColor
     const beforeBg = state.bgColor
 
-    // Update accent and background colors from kit palette
-    if (kit.colors.length > 0) state.accentColor = kit.colors[0]
-    if (kit.colors.length > 1) state.bgColor = kit.colors[1]
+    const primary = brandColor(kit, 'primary')
+    const secondary = brandColor(kit, 'secondary')
+    const accent = brandColor(kit, 'accent')
+    const background = brandColor(kit, 'background')
+    const text = brandColor(kit, 'text')
+    const headingFont = brandFont(kit, 'heading')
+    const bodyFont = brandFont(kit, 'body')
+    const logo = kit.logos.find(l => (isDarkColor(background) ? l.variant !== 'light' : l.variant !== 'dark')) || kit.logos[0]
 
-    const primaryFont = kit.fonts[0]?.family
+    if (accent) state.accentColor = accent
+    if (background) state.bgColor = background
 
-    // Apply across all artboards
-    state.setKeys.forEach(key => {
+    state.setKeys.forEach((key) => {
       const artboard = state.sets[key]
       if (!artboard) return
+      if (background) artboard.bgColor = background
 
-      // Update per-artboard background color
-      if (kit.colors.length > 1) {
-        artboard.bgColor = kit.colors[1]
-      }
+      const textLayers = artboard.layers.filter(l => l.type === 'text')
+      const headline = textLayers.length
+        ? textLayers.reduce((a, b) => ((b.fontSize || 0) > (a.fontSize || 0) ? b : a))
+        : null
 
-      artboard.layers.forEach(layer => {
-        // Update bg layer background color
-        if (layer.type === 'bg' && kit.colors.length > 1) {
-          layer.bgColor = kit.colors[1]
+      let logoApplied = false
+      artboard.layers.forEach((layer) => {
+        if (layer.type === 'bg' && background) layer.bgColor = background
+        if (layer.type === 'text') {
+          const isHeadline = layer === headline
+          if (isHeadline && primary) layer.color = primary
+          else if (!isHeadline && (secondary || text)) layer.color = (secondary || text)!
+          const f = isHeadline ? headingFont : bodyFont
+          if (f) layer.fontFamily = f.family
         }
-        // Update text layers with primary font
-        if (layer.type === 'text' && primaryFont) {
-          layer.fontFamily = primaryFont
-        }
-        // Update button layers with accent + font
         if (layer.type === 'button') {
-          if (kit.colors.length > 0) layer.bgColor = kit.colors[0]
-          if (primaryFont) layer.fontFamily = primaryFont
+          if (accent) {
+            layer.bgColor = accent
+            // keep the label legible against the new accent
+            layer.textColor = isDarkColor(accent) ? (background && !isDarkColor(background) ? background : '#ffffff') : (text && isDarkColor(text) ? text : '#111111')
+          }
+          if (headingFont) layer.fontFamily = headingFont.family
+        }
+        if (logo && isLogoLayer(layer)) {
+          layer.src = logo.url
+          layer.isLogo = true
+          layer.fit = layer.fit || 'contain'
+          logoApplied = true
         }
       })
+
+      if (logo && !logoApplied && opts.insertLogo !== false) {
+        const fmt = FORMATS[key]
+        const w = fmt ? Math.round(Math.min(fmt.w * 0.3, 160)) : 120
+        const h = Math.round(w * 0.4)
+        const top = Math.max(...artboard.layers.map(l => l.zIndex), 0) + 1
+        artboard.layers.push(migrateLayer({
+          id: nextId(),
+          type: 'image',
+          name: `${kit.name} logo`,
+          isLogo: true,
+          src: logo.url,
+          fit: 'contain',
+          x: 12, y: 12, w, h,
+          zIndex: top, opacity: 1,
+        } as Partial<Layer>))
+      }
     })
 
-    // Push undo for the entire brand application
+    state.isDirty = true
     pushUndo({
       type: 'applyBrandKit',
       before: { sets: before, accentColor: beforeAccent, bgColor: beforeBg },
       after: { sets: JSON.parse(JSON.stringify(state.sets)), accentColor: state.accentColor, bgColor: state.bgColor },
     })
+
+    // Make sure the kit's fonts are actually loaded so the canvas re-renders with them
+    try {
+      const { loadFont } = useBannerFonts()
+      for (const f of [headingFont, bodyFont]) if (f) loadFont(f.family, f.weights)
+    } catch {}
   }
 
   // ── Mask operations ─────────────────
