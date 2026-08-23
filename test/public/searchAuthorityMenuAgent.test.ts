@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { readFileSync } from 'node:fs'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface MenuRuntime {
   init: (options: { configUrl: string }) => Promise<void>
@@ -37,6 +37,10 @@ describe('versioned Search Authority Menu Agent', () => {
       json: async () => url.endsWith('/observed') ? { ok: true } : config
     })))
     window.eval(script)
+  })
+
+  afterEach(() => {
+    runtime().destroy()
   })
 
   it('adds one accessible link per configured menu and stays idempotent on duplicate loads', async () => {

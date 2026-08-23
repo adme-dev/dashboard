@@ -167,6 +167,9 @@
     if (state.refreshTimer) clearInterval(state.refreshTimer)
     if (state.reconcileTimer) clearTimeout(state.reconcileTimer)
     state.observer = null
+    state.observerTimer = null
+    state.refreshTimer = null
+    state.reconcileTimer = null
     state.config = null
     removeInserted()
   }
