@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { getProjectWithCurrentTimeline, saveDraftTimeline } from '~~/server/utils/audio/projects'
+import { executeGodModeMediaTimelineSave } from '~~/server/utils/audio/godModeMutations'
+import { getProjectWithCurrentTimeline, getTimelineIn, saveDraftTimelineIn } from '~~/server/utils/audio/projects'
 import { TimelineStateSchema, validateTimeline } from '~~/server/utils/audio/timelineSchema'
 
 const BodySchema = z.object({ state: z.unknown() })
@@ -16,7 +17,8 @@ export default defineEventHandler(async (event) => {
   if (existing.project.status !== 'draft') {
     throw createError({ statusCode: 409, statusMessage: 'Project is not editable — duplicate to a new version first' })
   }
-  if (!existing.project.currentTimelineId) {
+  const timelineId = existing.project.currentTimelineId
+  if (!timelineId) {
     throw createError({ statusCode: 409, statusMessage: 'Project has no draft timeline' })
   }
 
@@ -29,6 +31,16 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid timeline', data: { errors: check.errors } })
   }
 
-  const timeline = await saveDraftTimeline(existing.project.currentTimelineId, parsed.data)
+  // Owners (always God mode) run this under the execution-ledger coordinator;
+  // ordinary staff hit the same transaction boundary without a ledger claim.
+  const timeline = await executeGodModeMediaTimelineSave(
+    event,
+    db => saveDraftTimelineIn(db, timelineId, parsed.data),
+    async (db, resultReference) => {
+      const replayed = await getTimelineIn(db, resultReference)
+      if (!replayed) throw createError({ statusCode: 409, statusMessage: 'Saved timeline no longer exists' })
+      return replayed
+    }
+  )
   return { timeline }
 })

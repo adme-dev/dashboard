@@ -23,12 +23,28 @@ const mockGetProject = vi.fn()
 const mockSaveDraft = vi.fn()
 const mockCreateVersion = vi.fn()
 const mockListVersions = vi.fn()
+// The handlers now run their DB core under the God mode coordinator, which for
+// ordinary staff is a plain transaction(). Mock the coordinator to hand the
+// mutate callback a stub db, and mock the `…In(db, …)` cores to drop the db arg
+// so the assertions below stay on the domain inputs.
+const stubDb = { query: vi.fn() }
+vi.mock('~~/server/utils/audio/godModeMutations', () => {
+  const passthrough = async (_event: unknown, mutate: (db: unknown) => Promise<unknown>) => mutate(stubDb)
+  return {
+    executeGodModeMediaProjectCreate: passthrough,
+    executeGodModeMediaProjectDelete: passthrough,
+    executeGodModeMediaTimelineSave: passthrough,
+    executeGodModeMediaVersionCreate: passthrough
+  }
+})
 vi.mock('~~/server/utils/audio/projects', () => ({
   listProjects: (...a: unknown[]) => mockListProjects(...a),
-  createProject: (...a: unknown[]) => mockCreateProject(...a),
+  createProjectIn: (_db: unknown, ...a: unknown[]) => mockCreateProject(...a),
   getProjectWithCurrentTimeline: (...a: unknown[]) => mockGetProject(...a),
-  saveDraftTimeline: (...a: unknown[]) => mockSaveDraft(...a),
-  createVersion: (...a: unknown[]) => mockCreateVersion(...a),
+  getProjectWithCurrentTimelineIn: vi.fn(),
+  getTimelineIn: vi.fn(),
+  saveDraftTimelineIn: (_db: unknown, ...a: unknown[]) => mockSaveDraft(...a),
+  createVersionIn: (_db: unknown, ...a: unknown[]) => mockCreateVersion(...a),
   listVersions: (...a: unknown[]) => mockListVersions(...a)
 }))
 

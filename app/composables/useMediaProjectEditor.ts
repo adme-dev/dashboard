@@ -137,7 +137,7 @@ function readVideoDuration(file: File): Promise<number> {
 export function useMediaProjectEditor(projectId: string) {
   const apiFetch = $fetch as <T = unknown>(
     request: string,
-    options?: { method?: string; body?: unknown }
+    options?: { method?: string; body?: unknown; headers?: Record<string, string> }
   ) => Promise<T>
   const timeline = ref<TimelineState | null>(null)
   const clips = ref<ScheduledClip[]>([])
@@ -150,6 +150,13 @@ export function useMediaProjectEditor(projectId: string) {
   const canUndo = ref(false)
   const canRedo = ref(false)
   const saveStatus = ref<SaveStatus>('idle')
+  /** Human-readable reason for the last failed save (null when the last save succeeded). */
+  const saveError = ref<string | null>(null)
+  // Each save attempt gets its own Idempotency-Key. A retried payload is a new
+  // attempt with a new key — timeline saves are idempotent UPDATEs, so a
+  // response-less attempt that did commit is harmlessly re-applied.
+  let saveSequence = 0
+  const idempotencyKey = (scope: string) => `media-${scope}:${projectId}:${Date.now().toString(36)}:${++saveSequence}`
   // Clip ids whose audio source couldn't be resolved (deleted/404). Non-fatal: the
   // project still loads (status 'ready'); the page shows a warning so the user can
   // remove or replace them. Kept in sync on every engine reload via commitMissing.
@@ -179,12 +186,15 @@ export function useMediaProjectEditor(projectId: string) {
     try {
       await apiFetch(`/api/agency/audio/projects/${projectId}/timeline`, {
         method: 'PUT',
+        headers: { 'Idempotency-Key': idempotencyKey('timeline') },
         body: { state: timeline.value }
       })
       saveStatus.value = 'saved'
+      saveError.value = null
       return true
-    } catch {
+    } catch (e: unknown) {
       saveStatus.value = 'error'
+      saveError.value = apiErrorDescription(e, 'Unknown error')
       return false
     }
   }
@@ -495,6 +505,7 @@ export function useMediaProjectEditor(projectId: string) {
     await saveNow()
     return apiFetch(`/api/agency/audio/projects/${projectId}/versions`, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('version') },
       body: { label }
     })
   }
@@ -602,7 +613,7 @@ export function useMediaProjectEditor(projectId: string) {
     // State
     timeline, clips, tracks, status, error,
     isPlaying, currentTime, duration,
-    canUndo, canRedo, saveStatus, saveNow,
+    canUndo, canRedo, saveStatus, saveError, saveNow,
     /** Clip ids whose source couldn't be loaded (deleted/404). Non-fatal warning. */
     missingClipIds,
     mediaType,

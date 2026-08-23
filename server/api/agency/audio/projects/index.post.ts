@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { createProject } from '~~/server/utils/audio/projects'
+import { executeGodModeMediaProjectCreate } from '~~/server/utils/audio/godModeMutations'
+import { createProjectIn, getProjectWithCurrentTimelineIn } from '~~/server/utils/audio/projects'
 import { TimelineStateSchema, validateTimeline, emptyAvTimeline } from '~~/server/utils/audio/timelineSchema'
 
 const BodySchema = z.object({
@@ -30,13 +31,24 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid timeline', data: { errors: check.errors } })
   }
 
-  const { project, timeline } = await createProject({
-    createdBy: user.id,
-    clientId: body.clientId ?? null,
-    title: body.title ?? null,
-    mediaType: body.mediaType,
-    initialState: parsed.data
-  })
+  const { project, timeline } = await executeGodModeMediaProjectCreate(
+    event,
+    async (db) => {
+      const created = await createProjectIn(db, {
+        createdBy: user.id,
+        clientId: body.clientId ?? null,
+        title: body.title ?? null,
+        mediaType: body.mediaType,
+        initialState: parsed.data
+      })
+      return { id: created.project.id, ...created }
+    },
+    async (db, resultReference) => {
+      const replayed = await getProjectWithCurrentTimelineIn(db, resultReference)
+      if (!replayed) throw createError({ statusCode: 409, statusMessage: 'Created project no longer exists' })
+      return { id: replayed.project.id, project: replayed.project, timeline: replayed.timeline! }
+    }
+  )
 
   setResponseStatus(event, 201)
   return { project, timeline }
