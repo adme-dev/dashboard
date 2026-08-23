@@ -7,6 +7,7 @@ import {
   createBannerAssetId,
   createBannerAssetStorageKey,
   deleteBannerFile,
+  resolveBannerAssetDelivery,
   uploadBannerAsset
 } from '~~/server/utils/bannerStorage'
 import {
@@ -18,7 +19,6 @@ import {
   type StoredBannerAssetUpload
 } from '~~/server/utils/banner/godModeAssetUpload'
 import { getGodModeRouteAuditState } from '~~/server/utils/godMode/featureGate'
-import type { R2BucketBinding } from '~~/server/utils/storage'
 
 const ROUTE = 'POST /api/agency/banner-studio/assets/upload'
 
@@ -69,30 +69,7 @@ export default defineEventHandler(async (event) => {
     const assetId = createBannerAssetId()
     const r2Key = createBannerAssetStorageKey(validated.fileName, user.id)
     const createdAt = new Date().toISOString()
-    const cloudflare = (event.context as {
-      cloudflare?: { env?: Record<string, unknown> }
-    }).cloudflare
-    const cloudflareEnv = cloudflare?.env
-    let nativeUpload: { bucket: R2BucketBinding, signingSecret: string } | undefined
-    if (cloudflare) {
-      const requestBucket = cloudflareEnv?.MEDIA_BUCKET as R2BucketBinding | undefined
-      const signingSecret = cloudflareEnv?.RENDER_LINK_SECRET
-      if (!requestBucket
-        || typeof requestBucket.put !== 'function'
-        || typeof requestBucket.head !== 'function'
-        || typeof requestBucket.delete !== 'function'
-        || typeof signingSecret !== 'string'
-        || new TextEncoder().encode(signingSecret).byteLength < 32) {
-        throw createError({
-          statusCode: 503,
-          statusMessage: 'Banner asset storage is unavailable'
-        })
-      }
-      nativeUpload = {
-        bucket: requestBucket,
-        signingSecret
-      }
-    }
+    const { nativeUpload, signingSecret } = resolveBannerAssetDelivery(event)
     return await executeGodModeBannerAssetUpload(event, {
       assetId,
       r2Key,
@@ -109,29 +86,15 @@ export default defineEventHandler(async (event) => {
         createdAt
       }),
       deleteFile: async key => await deleteBannerFile(key, nativeUpload?.bucket),
-      uploadFile: async (key, effectiveAssetId = assetId) => nativeUpload
-        ? await uploadBannerAsset(
-            validated.buffer,
-            validated.fileName,
-            validated.mimeType,
-            user.id,
-            key,
-            {
-              bucket: nativeUpload.bucket,
-              assetUrl: await bannerAssetDeliveryUrl(
-                effectiveAssetId,
-                getAppUrl(event),
-                nativeUpload.signingSecret
-              )
-            }
-          )
-        : await uploadBannerAsset(
-            validated.buffer,
-            validated.fileName,
-            validated.mimeType,
-            user.id,
-            key
-          ),
+      uploadFile: async (key, effectiveAssetId = assetId) => {
+        // Signed delivery URL in both modes; only the storage transport differs (binding vs S3 API)
+        const delivery = signingSecret
+          ? await bannerAssetDeliveryUrl(effectiveAssetId, getAppUrl(event), signingSecret)
+          : undefined
+        return nativeUpload
+          ? await uploadBannerAsset(validated.buffer, validated.fileName, validated.mimeType, user.id, key, { bucket: nativeUpload.bucket, assetUrl: delivery! })
+          : await uploadBannerAsset(validated.buffer, validated.fileName, validated.mimeType, user.id, key, undefined, delivery)
+      },
       insertAsset: async (db, stored: StoredBannerAssetUpload, result) => {
         if (!result) throw new Error('Banner asset insert identity is unavailable')
         const sql = `INSERT INTO banner_assets (id, name, mime_type, file_size, r2_key, url, uploaded_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, name, mime_type AS "mimeType", file_size AS "fileSize", r2_key AS "r2Key", url, thumbnail_url AS "thumbnailUrl", tags, uploaded_by AS "uploadedBy", created_at AS "createdAt"`

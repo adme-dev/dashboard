@@ -1,3 +1,4 @@
+import { createError } from 'h3'
 import { uploadFile, deleteFile } from '~~/server/utils/storage'
 import type { R2BucketBinding } from '~~/server/utils/storage'
 
@@ -148,12 +149,17 @@ export async function uploadBannerAsset(
   mimeType: string,
   userId: string,
   precomputedKey = createBannerAssetStorageKey(fileName, userId),
-  nativeUpload?: NativeBannerAssetUpload
+  nativeUpload?: NativeBannerAssetUpload,
+  /** Non-native (S3 API) uploads: serve through this signed delivery URL instead of a public bucket URL */
+  deliveryUrl?: string
 ): Promise<{ key: string, url: string, size: number }> {
   if (!isExpectedBannerAssetStorageKey(precomputedKey, fileName, userId)) {
     throw new Error('Invalid precomputed banner asset storage key')
   }
-  if (!nativeUpload) return uploadFile(buffer, precomputedKey, mimeType)
+  if (!nativeUpload) {
+    const stored = await uploadFile(buffer, precomputedKey, mimeType)
+    return deliveryUrl ? { ...stored, url: deliveryUrl } : stored
+  }
   if (!isBannerAssetDeliveryKey(precomputedKey, userId)) {
     throw new Error('Invalid native banner asset storage scope')
   }
@@ -199,4 +205,30 @@ export async function uploadBannerThumbnail(
 
 export async function deleteBannerFile(r2Key: string, requestBucket?: R2BucketBinding): Promise<void> {
   return deleteFile(r2Key, requestBucket)
+}
+
+/**
+ * How should this request store + serve banner assets?
+ * - On Cloudflare: the R2 binding + RENDER_LINK_SECRET from the worker env (native path).
+ * - Local dev: S3 API + RENDER_LINK_SECRET from runtime config → identical signed links,
+ *   served by /api/public/banner-assets via the dev adapter. No public bucket domain needed.
+ * Throws 503 when on Cloudflare without a usable binding (misconfiguration, never silent).
+ */
+export function resolveBannerAssetDelivery(event: any): {
+  nativeUpload?: { bucket: R2BucketBinding, signingSecret: string }
+  signingSecret: string | null
+} {
+  const cloudflare = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare
+  if (cloudflare) {
+    const bucket = cloudflare.env?.MEDIA_BUCKET as R2BucketBinding | undefined
+    const signingSecret = cloudflare.env?.RENDER_LINK_SECRET
+    if (!bucket || typeof bucket.put !== 'function' || typeof bucket.head !== 'function' || typeof bucket.delete !== 'function'
+      || typeof signingSecret !== 'string' || new TextEncoder().encode(signingSecret).byteLength < 32) {
+      throw createError({ statusCode: 503, statusMessage: 'Banner asset storage is unavailable' })
+    }
+    return { nativeUpload: { bucket, signingSecret }, signingSecret }
+  }
+  const secret = useRuntimeConfig().renderLinkSecret
+  const ok = typeof secret === 'string' && new TextEncoder().encode(secret).byteLength >= 32
+  return { signingSecret: ok ? secret : null }
 }

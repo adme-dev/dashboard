@@ -8,21 +8,8 @@ import { PERMISSIONS } from '~~/server/utils/permissions'
 import { scrapeUrl } from '~~/server/utils/urlScraper'
 import { queryOne } from '~~/server/utils/db'
 import { getAppUrl } from '~~/server/utils/appUrl'
-import { uploadBannerAsset, createBannerAssetStorageKey, createBannerAssetId, bannerAssetDeliveryUrl, deleteBannerFile } from '~~/server/utils/bannerStorage'
+import { uploadBannerAsset, createBannerAssetStorageKey, createBannerAssetId, bannerAssetDeliveryUrl, deleteBannerFile, resolveBannerAssetDelivery } from '~~/server/utils/bannerStorage'
 import { executeGodModeBannerAssetUpload } from '~~/server/utils/banner/godModeAssetUpload'
-import type { R2BucketBinding } from '~~/server/utils/storage'
-
-/** Same native-R2 resolution as assets/upload.post.ts — on Cloudflare the bucket binding must be used. */
-function resolveNativeUpload(event: any): { bucket: R2BucketBinding, signingSecret: string } | undefined {
-  const cloudflare = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare
-  if (!cloudflare) return undefined
-  const bucket = cloudflare.env?.MEDIA_BUCKET as R2BucketBinding | undefined
-  const signingSecret = cloudflare.env?.RENDER_LINK_SECRET
-  if (!bucket || typeof bucket.put !== 'function' || typeof signingSecret !== 'string' || new TextEncoder().encode(signingSecret).byteLength < 32) {
-    throw createError({ statusCode: 503, statusMessage: 'Banner asset storage is unavailable' })
-  }
-  return { bucket, signingSecret }
-}
 
 function toHex6(c: string): string | null {
   const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c.trim())
@@ -73,7 +60,7 @@ export default defineEventHandler(async (event) => {
 
   // Mirror up to 2 logo candidates through the normal asset pipeline (R2 + signed delivery URL + banner_assets row)
   const logos: { name: string, url: string, r2Key: string }[] = []
-  const nativeUpload = resolveNativeUpload(event)
+  const { nativeUpload, signingSecret } = resolveBannerAssetDelivery(event)
   const host = new URL(url).hostname.replace(/^www\./, '')
   for (const cand of page.logoCandidates.slice(0, 3)) {
     if (logos.length >= 2) break
@@ -99,12 +86,12 @@ export default defineEventHandler(async (event) => {
           url: st.url, thumbnailUrl: null, tags: ['logo', 'brand-kit'], uploadedBy: user.id, createdAt
         }),
         deleteFile: async key => await deleteBannerFile(key, nativeUpload?.bucket),
-        uploadFile: async (key, effectiveAssetId = assetId) => nativeUpload
-          ? await uploadBannerAsset(buffer, fileName, type, user.id, key, {
-              bucket: nativeUpload.bucket,
-              assetUrl: await bannerAssetDeliveryUrl(effectiveAssetId, getAppUrl(event), nativeUpload.signingSecret)
-            })
-          : await uploadBannerAsset(buffer, fileName, type, user.id, key),
+        uploadFile: async (key, effectiveAssetId = assetId) => {
+          const delivery = signingSecret ? await bannerAssetDeliveryUrl(effectiveAssetId, getAppUrl(event), signingSecret) : undefined
+          return nativeUpload
+            ? await uploadBannerAsset(buffer, fileName, type, user.id, key, { bucket: nativeUpload.bucket, assetUrl: delivery! })
+            : await uploadBannerAsset(buffer, fileName, type, user.id, key, undefined, delivery)
+        },
         insertAsset: async (db, st, result) => {
           if (!result) throw new Error('Banner asset insert identity is unavailable')
           const sql = `INSERT INTO banner_assets (id, name, mime_type, file_size, r2_key, url, tags, uploaded_by, created_at)
