@@ -171,6 +171,12 @@ const KF_PROPERTIES: { key: KeyframeProperty; label: string; icon: string }[] = 
   { key: 'rotation', label: 'Rotation', icon: 'R' },
 ]
 
+/** Unique tween boundary times for a layer's motion path (keyframe diamonds) */
+function tweenBoundaryTimes(layer: any): number[] {
+  const tws = getMotionPathTweens(layer)
+  return [...new Set(tws.flatMap(t => [t.startTime, t.endTime]))]
+}
+
 /** Get visible KF properties for a layer — hides x/y when motion path is active */
 function getVisibleKfProperties(layer: { motionPath?: any[] }) {
   if (layer.motionPath?.length >= 2) {
@@ -639,7 +645,11 @@ const tweenDrag = ref<{
   barEl: HTMLElement | null
 } | null>(null)
 
-const selectedTween = ref<{ layerId: number; tweenIndex: number } | null>(null)
+// Tween selection lives in shared state so the canvas waypoints + inspector stay in sync
+const selectedTween = computed({
+  get: () => state.selectedTween,
+  set: (v) => { state.selectedTween = v },
+})
 
 function onTweenDragStart(e: MouseEvent, layerId: number, tweenIndex: number, mode: 'start' | 'end' | 'move') {
   e.stopPropagation()
@@ -1074,6 +1084,13 @@ onUnmounted(() => {
                     @mousedown="onTweenDragStart($event, layer.id, ti, 'end')"
                   />
                 </div>
+                <!-- Keyframe diamonds at tween boundaries (Flash-style) -->
+                <div
+                  v-for="(t, di) in tweenBoundaryTimes(layer)"
+                  :key="`twkf-${di}`"
+                  class="absolute w-[8px] h-[8px] rotate-45 bg-[#4af0a2] border border-[#0a0b0e] pointer-events-none"
+                  :style="{ left: `${t * pxPerSec - 4}px`, top: `${KF_TRACK_H / 2 - 4}px`, zIndex: 11 }"
+                />
                 <!-- Add tween button (shown at end of last tween) -->
                 <div
                   v-if="getMotionPathTweens(layer).length > 0"

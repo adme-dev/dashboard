@@ -3,6 +3,18 @@ import type { Layer, KeyframeProperty, Keyframe } from '~~/app/types/banner-stud
 import { buildEngagrFrameRuntimeScript, buildVisibleElementManifest, estimateBannerDuration } from '~~/app/utils/banner-render-runtime'
 import { computeClipPathPx } from './mask'
 
+/** Ease → JS expression for the exported timeline. `cubic(x1,y1,x2,y2)` becomes an inline CustomEase. */
+function easeToExportExpr(ease?: string): string {
+  const m = ease && /^cubic(?:-bezier)?\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)$/.exec(ease.trim())
+  if (m) return `CustomEase.create('', 'M0,0 C${m[1]},${m[2]} ${m[3]},${m[4]} 1,1')`
+  return `'${ease || 'power2.inOut'}'`
+}
+function usesCustomEase(layers: any[]): boolean {
+  // Any ease string anywhere in the layer tree (entrance/exit/tweens/keyframes/masks)
+  return /"cubic(?:-bezier)?\(/.test(JSON.stringify(layers))
+}
+
+
 const SYSTEM_FONTS = new Set(['Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'Impact'])
 
 /** Custom font data for HTML export */
@@ -113,7 +125,7 @@ function buildKeyframeAnimLines(l: Layer): string[] {
       const dur = to.time - from.time
       if (dur <= 0) continue
       const ease = from.easing || 'power2.out'
-      lines.push(`  tl.to(${sel}, { ${gProp}: ${to.value}, duration: ${dur.toFixed(3)}, ease: '${ease}' }, ${from.time});`)
+      lines.push(`  tl.to(${sel}, { ${gProp}: ${to.value}, duration: ${dur.toFixed(3)}, ease: ${easeToExportExpr(ease)} }, ${from.time});`)
     }
   }
 
@@ -133,7 +145,7 @@ function buildKeyframeAnimLines(l: Layer): string[] {
       const startEnd = tw.pathStart !== 0 || tw.pathEnd !== 1
         ? `, start: ${tw.pathStart}, end: ${tw.pathEnd}`
         : ''
-      lines.push(`  tl.to(${sel}, { motionPath: { path: ${pathJson}, curviness: ${curviness}${autoRotate}${startEnd} }, duration: ${dur.toFixed(3)}, ease: '${tw.ease || 'power2.inOut'}' }, ${tw.startTime});`)
+      lines.push(`  tl.to(${sel}, { motionPath: { path: ${pathJson}, curviness: ${curviness}${autoRotate}${startEnd} }, duration: ${dur.toFixed(3)}, ease: ${easeToExportExpr(tw.ease)} }, ${tw.startTime});`)
     }
   }
 
@@ -302,9 +314,9 @@ export function buildBannerHTML(
         if (fromEntries.length > 0) {
           const fromProps = fromEntries.map(([k, v]) => `${k}: ${v}`).join(', ')
           if (isBg) {
-            lines.push(`  tl.from(${sel}, { ${fromProps}, autoAlpha: 0, duration: ${animDur}, ease: '${ease}' }, ${startTime});`)
+            lines.push(`  tl.from(${sel}, { ${fromProps}, autoAlpha: 0, duration: ${animDur}, ease: ${easeToExportExpr(ease)} }, ${startTime});`)
           } else {
-            lines.push(`  tl.from(${sel}, { ${fromProps}, duration: ${animDur}, ease: '${ease}' }, ${startTime});`)
+            lines.push(`  tl.from(${sel}, { ${fromProps}, duration: ${animDur}, ease: ${easeToExportExpr(ease)} }, ${startTime});`)
           }
         } else {
           // Preset only had x/y (e.g. slideL) — do simple opacity reveal
@@ -337,7 +349,7 @@ export function buildBannerHTML(
               return `${k}: ${v}`
             })
             .join(', ')
-          lines.push(`  tl.to(${sel}, { ${toEntries}, duration: ${outDur}, ease: '${outEase}' }, ${outStart});`)
+          lines.push(`  tl.to(${sel}, { ${toEntries}, duration: ${outDur}, ease: ${easeToExportExpr(outEase)} }, ${outStart});`)
         }
       }
 
@@ -361,7 +373,7 @@ export function buildBannerHTML(
           const startEnd = tw.pathStart !== 0 || tw.pathEnd !== 1
             ? `, start: ${tw.pathStart}, end: ${tw.pathEnd}`
             : ''
-          lines.push(`  tl.to(${sel}, { motionPath: { path: ${pathJson}, curviness: ${curviness}${autoRotate}${startEnd} }, duration: ${dur.toFixed(3)}, ease: '${tw.ease || 'power2.inOut'}' }, ${tw.startTime});`)
+          lines.push(`  tl.to(${sel}, { motionPath: { path: ${pathJson}, curviness: ${curviness}${autoRotate}${startEnd} }, duration: ${dur.toFixed(3)}, ease: ${easeToExportExpr(tw.ease)} }, ${tw.startTime});`)
         }
       }
 
@@ -406,7 +418,7 @@ export function buildBannerHTML(
           : `var tp=Math.max(0,m.y-t.y), rt=Math.max(0,t.w-(m.x-t.x+m.w)), bt=Math.max(0,t.h-(m.y-t.y+m.h)), lt=Math.max(0,m.x-t.x); return 'inset('+tp+'px '+rt+'px '+bt+'px '+lt+'px)';`}
     }
     function upd() { sels.forEach(function(s, i) { var el=document.querySelector(s); if(el) el.style.clipPath=clip(mask, tData[i]); }); }
-    tl.to(mask, { x: ${mask.x}, y: ${mask.y}, w: ${mask.w}, h: ${mask.h}, duration: ${animDur}, ease: '${ease}', onUpdate: upd }, ${startTime});
+    tl.to(mask, { x: ${mask.x}, y: ${mask.y}, w: ${mask.w}, h: ${mask.h}, duration: ${animDur}, ease: ${easeToExportExpr(ease)}, onUpdate: upd }, ${startTime});
   })();`)
     })
 
@@ -422,7 +434,14 @@ export function buildBannerHTML(
     ? `<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/MotionPathPlugin.min.js"><\/script>`
     : ''
 
-  const registerMotionPath = needsMotionPath ? '\n  gsap.registerPlugin(MotionPathPlugin);' : ''
+  const needsCustomEase = includeAnimations && usesCustomEase(layers)
+  const customEaseScript = needsCustomEase
+    ? `<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/CustomEase.min.js"><\/script>`
+    : ''
+
+  const registerMotionPath = [needsMotionPath && 'MotionPathPlugin', needsCustomEase && 'CustomEase'].filter(Boolean).length
+    ? `\n  gsap.registerPlugin(${[needsMotionPath && 'MotionPathPlugin', needsCustomEase && 'CustomEase'].filter(Boolean).join(', ')});`
+    : ''
   const animScript =
     includeAnimations && animLines
       ? `<script>${registerMotionPath}\n  const tl = gsap.timeline();\n  window.__engagrTimeline = tl;\n${animLines}\n<\/script>`
@@ -471,7 +490,7 @@ export function buildBannerHTML(
 <meta charset="utf-8">
 <meta name="ad.size" content="width=${fmt.w},height=${fmt.h}">
 ${gsapScript}
-${motionPathScript}
+${motionPathScript}${customEaseScript}
 ${buildFontLink(layers, customFontFamilies)}
 <style>
 ${buildCustomFontFaces(layers, customFonts)}

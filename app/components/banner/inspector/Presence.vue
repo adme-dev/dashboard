@@ -44,14 +44,14 @@ const presencePercent = computed(() => {
             :max="state.duration"
             step="0.1"
             :value="selectedLayer.startTime"
-            class="flex-1 h-1 accent-(--ui-primary)"
+            class="flex-1 min-w-0"
             @input="(e: Event) => setNum('startTime', (e.target as HTMLInputElement).value)"
           />
           <UInput
             type="number"
             size="xs"
             step="0.1"
-            class="w-14"
+            class="w-16 shrink-0"
             :model-value="selectedLayer.startTime"
             @update:model-value="v => setNum('startTime', v)"
           />
@@ -66,14 +66,14 @@ const presencePercent = computed(() => {
             :max="state.duration"
             step="0.1"
             :value="selectedLayer.endTime"
-            class="flex-1 h-1 accent-(--ui-primary)"
+            class="flex-1 min-w-0"
             @input="(e: Event) => setNum('endTime', (e.target as HTMLInputElement).value)"
           />
           <UInput
             type="number"
             size="xs"
             step="0.1"
-            class="w-14"
+            class="w-16 shrink-0"
             :model-value="selectedLayer.endTime"
             @update:model-value="v => setNum('endTime', v)"
           />

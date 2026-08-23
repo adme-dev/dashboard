@@ -1,10 +1,19 @@
 import gsap from 'gsap'
 import { MotionPathPlugin } from 'gsap/MotionPathPlugin'
+import { CustomEase } from 'gsap/CustomEase'
+import { parseCubicEase, cubicEaseToSvg } from '~/utils/banner-ease'
 import type { Layer, Keyframe, KeyframeProperty } from '~/types/banner-studio'
 import { ANIM_IN, ANIM_OUT } from '~/utils/banner-constants'
 import { computeClipPathPx } from '~/utils/banner-mask'
 
-gsap.registerPlugin(MotionPathPlugin)
+gsap.registerPlugin(MotionPathPlugin, CustomEase)
+
+/** Resolve a stored ease string (GSAP name or `cubic(x1,y1,x2,y2)`) to something gsap accepts */
+function resolveEase(ease?: string): string | ((p: number) => number) {
+  const p = parseCubicEase(ease)
+  if (p) return CustomEase.create('', cubicEaseToSvg(p))
+  return ease || 'power2.inOut'
+}
 
 let masterTl: gsap.core.Timeline | null = null
 let lastArtboardEl: HTMLElement | null = null
@@ -193,7 +202,7 @@ function addKeyframeTrack(
     tl.to(el, {
       [gsapProp]: to.value,
       duration,
-      ease: from.easing || 'power2.out',
+      ease: resolveEase(from.easing || 'power2.out'),
       immediateRender: false,
     }, from.time)
   }
@@ -238,7 +247,7 @@ function buildPresetLayer(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
   const startTime = layer.startTime || 0
   const endTime = layer.endTime || (startTime + 3)
   const animDur = layer.animInDur || 0.6
-  const ease = layer.ease || 'power2.out'
+  const ease = resolveEase(layer.ease || 'power2.out')
   const outDur = layer.outDur || (isBg ? 0.5 : 0.25)
   const opKey = isBg ? 'autoAlpha' : 'opacity'
 
@@ -283,7 +292,7 @@ function buildPresetLayer(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
   const outStart = Math.max(startTime + animDur, endTime - outDur)
   if (outStart < endTime) {
     const outPreset = ANIM_OUT.find(a => a.id === layer.animOut) || ANIM_OUT.find(a => a.id === 'fadeOut')!
-    const outEase = layer.animOutEase || 'power1.in'
+    const outEase = resolveEase(layer.animOutEase || 'power1.in')
 
     if (outPreset.id === 'none' || !Object.keys(outPreset.to).length) {
       tl.to(el, { [opKey]: 0, duration: 0.05 }, endTime - 0.05)
@@ -445,7 +454,7 @@ function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Laye
           end: tw.pathEnd,
         },
         duration: dur,
-        ease: tw.ease || 'power2.inOut',
+        ease: resolveEase(tw.ease),
         immediateRender: false,
       }, tw.startTime)
     }
@@ -625,6 +634,15 @@ export function useBannerTimeline() {
     seekTo(time)
   }
 
+  /** Stop: pause, rewind to 0 and return the canvas to its editable (un-animated) state */
+  function stopTimeline() {
+    stopTimePoller()
+    state.isPlaying = false
+    state.currentTime = 0
+    if (masterTl) masterTl.pause(0)
+    if (lastArtboardEl) clearGsap(lastArtboardEl, lastLayers)
+  }
+
   function restartTimeline() {
     if (!masterTl) return
     masterTl.restart()
@@ -660,6 +678,7 @@ export function useBannerTimeline() {
     seekTo,
     scrubTo,
     restartTimeline,
+    stopTimeline,
     buildTimelineForKey,
     get masterTl() { return masterTl },
   }
