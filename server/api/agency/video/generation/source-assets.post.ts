@@ -10,7 +10,7 @@ const SUBJECT_TYPES = new Set(['vehicle', 'non_vehicle', 'unknown'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // Owners (God mode) run this under the execution ledger; staff run it directly.
-export default defineEventHandler(event => withGodModeLedger(event, 'sourceAssetUpload', async () => {
+export default defineEventHandler(event => withGodModeLedger(event, 'sourceAssetUpload', async ({ reservedId }) => {
   if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
@@ -41,6 +41,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'sourceAsset
   const r2Key = `video-gen-sources/${clientId ?? 'agency'}/${randomUUID()}.${ext}`
   await uploadFile(file.data, r2Key, fileType, { kind: 'i2v-source' })
   const asset = await createSourceAsset({
+    id: reservedId,
     clientId,
     createdBy: user.id,
     r2Key,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { apiErrorDescription, apiErrorReasons, apiErrorStatus, isAmbiguousApiFailure } from '~~/app/utils/apiError'
+import { apiErrorDescription, apiErrorReasons, apiErrorStatus, isAmbiguousApiFailure, isPossiblyAppliedFailure } from '~~/app/utils/apiError'
 
 describe('apiError helpers', () => {
   it('reads common Nitro/ofetch error shapes', () => {
@@ -28,5 +28,13 @@ describe('apiError helpers', () => {
     expect(isAmbiguousApiFailure(new TypeError('Failed to fetch'))).toBe(true)
     expect(isAmbiguousApiFailure({ response: { status: 500 } })).toBe(false)
     expect(isAmbiguousApiFailure({ statusCode: 409 })).toBe(false)
+  })
+
+  it('flags failures the server could not prove were not applied', () => {
+    expect(isPossiblyAppliedFailure(new TypeError('Failed to fetch'))).toBe(true)
+    expect(isPossiblyAppliedFailure({ statusCode: 409, data: { statusMessage: 'God mode video render is not safely replayable' } })).toBe(true)
+    expect(isPossiblyAppliedFailure({ statusCode: 409, data: { statusMessage: 'God mode video render is still in progress' } })).toBe(true)
+    expect(isPossiblyAppliedFailure({ statusCode: 409, data: { statusMessage: 'Idempotency key belongs to another operation' } })).toBe(false)
+    expect(isPossiblyAppliedFailure({ statusCode: 500, data: { statusMessage: 'boom' } })).toBe(false)
   })
 })

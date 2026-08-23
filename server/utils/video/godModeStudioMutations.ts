@@ -50,10 +50,16 @@ export type StudioFamilyKey = keyof typeof STUDIO_FAMILIES
  * body directly; owner requests claim the ledger, store the body's JSON result
  * and replay it for a repeated Idempotency-Key without re-running side effects.
  */
-export function withGodModeLedger<T>(event: H3Event, key: StudioFamilyKey, body: () => Promise<T>): Promise<T> {
+export function withGodModeLedger<T>(
+  event: H3Event,
+  key: StudioFamilyKey,
+  body: (ctx: { reservedId: string; markDispatched: () => Promise<void> }) => Promise<T>
+): Promise<T> {
   return executeGodModeExternalMutation<T>(event, STUDIO_FAMILIES[key], 1, async (run) => {
     if (run.replay && run.replayResult !== null) return run.replayResult
-    return await body()
+    // Routes that mint a row should use reservedId so a crash after the insert
+    // still leaves the ledger able to find (and replay) the row.
+    return await body({ reservedId: run.ids[0]!, markDispatched: run.markDispatched })
   })
 }
 

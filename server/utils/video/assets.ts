@@ -50,11 +50,13 @@ export async function createVideoAsset(input: {
   clientId: string | null; createdBy: string; title: string | null
   sourceProjectId: string | null; sourceJobId: string | null
   r2Key: string; format: string; width: number | null; height: number | null; durationSec: number | null
+  /** Pre-reserved id (God mode ledger); DB default when omitted. */
+  id?: string
 }): Promise<VideoAsset> {
   const row = await queryOne(
-    `INSERT INTO video_assets (client_id, created_by, title, source_project_id, source_job_id, r2_key, format, width, height, duration_sec)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-    [input.clientId, input.createdBy, input.title, input.sourceProjectId, input.sourceJobId, input.r2Key, input.format, input.width, input.height, input.durationSec]
+    `INSERT INTO video_assets (id, client_id, created_by, title, source_project_id, source_job_id, r2_key, format, width, height, duration_sec)
+     VALUES (COALESCE($11::uuid, gen_random_uuid()),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [input.clientId, input.createdBy, input.title, input.sourceProjectId, input.sourceJobId, input.r2Key, input.format, input.width, input.height, input.durationSec, input.id ?? null]
   )
   return mapVideoAssetRow(row)
 }

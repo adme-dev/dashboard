@@ -13,7 +13,7 @@ const BodySchema = z.object({
 })
 
 // Owners (God mode) run this under the execution ledger; staff run it directly.
-export default defineEventHandler(event => withGodModeLedger(event, 'sourceAssetFromStill', async () => {
+export default defineEventHandler(event => withGodModeLedger(event, 'sourceAssetFromStill', async ({ reservedId }) => {
   if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
@@ -37,6 +37,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'sourceAsset
   if (!contentType) throw createError({ statusCode: 400, statusMessage: 'Timeline source must be an image' })
 
   const source = await createSourceAsset({
+    id: reservedId,
     clientId: project.project.clientId ?? null,
     createdBy: user.id,
     r2Key: still.r2Key,

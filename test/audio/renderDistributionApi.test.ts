@@ -99,7 +99,9 @@ describe('render distribution endpoints', () => {
 
     const res = await saveAssetHandler(event({ format: 'reels_9x16', title: 'Launch render' }))
 
-    expect(mockCreateVideoAsset).toHaveBeenCalledWith({
+    expect(mockCreateVideoAsset).toHaveBeenCalledWith(expect.objectContaining({
+      // The route passes the God-mode reserved id; staff requests get a fresh uuid.
+      id: expect.stringMatching(/^[0-9a-f-]{36}$/),
       clientId: 'client-1',
       createdBy: 'user-1',
       title: 'Launch render',
@@ -110,7 +112,7 @@ describe('render distribution endpoints', () => {
       width: 1080,
       height: 1920,
       durationSec: null,
-    })
+    }))
     expect(res).toEqual({ asset: { id: 'asset-1' } })
   })
 

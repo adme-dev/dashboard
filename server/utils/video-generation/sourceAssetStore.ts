@@ -29,6 +29,8 @@ export async function createSourceAsset(input: {
   sourceSystem?: string | null
   sourceAssetRef?: string | null
   sourceMetadata?: Record<string, unknown>
+  /** Pre-reserved id (God mode ledger); minted when omitted. */
+  id?: string
 }): Promise<{ id: string; status: string }> {
   const row = await queryOne<{ id: string; status: string }>(
     `INSERT INTO video_gen_source_assets
@@ -38,7 +40,7 @@ export async function createSourceAsset(input: {
      ON CONFLICT DO NOTHING
      RETURNING id, status`,
     [
-      randomUUID(), input.clientId, input.createdBy, input.r2Key, input.contentType,
+      input.id ?? randomUUID(), input.clientId, input.createdBy, input.r2Key, input.contentType,
       input.subjectType, input.originalFilename ?? null, input.width ?? null, input.height ?? null,
       input.sourceSystem ?? null, input.sourceAssetRef ?? null, JSON.stringify(input.sourceMetadata ?? {})
     ]
