@@ -24,10 +24,42 @@ export interface DisplayLane {
   clips: DisplayClip[]
 }
 
+/** Optional r2_key → human title map (library asset titles). */
+export type ClipTitleMap = Record<string, string | undefined>
+
+// timestamp prefix · trailing uuid · trailing 32-hex · trailing 8-hex short id
+const STORAGE_KEY_NOISE = /^\d{10,}-|-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$|-[0-9a-f]{32}$|-[0-9a-f]{8}$/gi
+
+/**
+ * Label a clip for the timeline: library title when known, else a cleaned file
+ * name ("1781834121263-video-studio-qa-source-cd6bbaad.png" → "video studio qa source"),
+ * else the kind. Never a raw UUID.
+ */
+export function clipDisplayLabel(
+  kind: DisplayClip['kind'],
+  r2Key: string | null | undefined,
+  titles?: ClipTitleMap,
+  fallback?: string
+): string {
+  const title = r2Key ? titles?.[r2Key]?.trim() : ''
+  if (title) return title
+  const file = (r2Key ?? '').split('/').pop() ?? ''
+  const rawStem = file.replace(/\.[^.]+$/, '')
+  // A stem that is itself a uuid / hash carries no meaning — fall through to the kind.
+  if (/^[0-9a-f-]{32,36}$/i.test(rawStem)) return fallback ?? kindLabel(kind)
+  const stem = rawStem.replace(STORAGE_KEY_NOISE, '').replace(/[-_]+/g, ' ').trim()
+  if (stem) return stem
+  return fallback ?? kindLabel(kind)
+}
+
+function kindLabel(kind: DisplayClip['kind']): string {
+  return kind === 'audio' ? 'Audio' : kind === 'video' ? 'Footage' : kind === 'overlay' ? 'Overlay' : 'Captions'
+}
+
 /** Map a timeline + its audio ScheduledClips into per-lane DisplayClips.
  * Audio lanes (voiceover/music/sfx) read ScheduledClips (preserving the waveform path);
  * video/overlay lanes read the raw timeline clips. */
-export function toDisplayLanes(timeline: TimelineState, scheduled: ScheduledClip[]): DisplayLane[] {
+export function toDisplayLanes(timeline: TimelineState, scheduled: ScheduledClip[], titles?: ClipTitleMap): DisplayLane[] {
   const byTrack = new Map<string, ScheduledClip[]>()
   for (const sc of scheduled) {
     const list = byTrack.get(sc.trackId) ?? []
@@ -50,8 +82,8 @@ export function toDisplayLanes(timeline: TimelineState, scheduled: ScheduledClip
         r2_key: c.r2_key,
         baseSource: c.base_source,
         label: isVideo
-          ? (c.base_source === 'still_kenburns' ? 'Still' : 'Footage')
-          : isOverlay ? 'Overlay' : 'Captions'
+          ? clipDisplayLabel('video', c.r2_key, titles, c.base_source === 'still_kenburns' ? 'Still' : 'Footage')
+          : isOverlay ? (c.label || titles?.[c.gsap_project_id] || 'Overlay') : 'Captions'
       }))
     } else {
       clips = (byTrack.get(t.id) ?? []).map((sc): DisplayClip => ({
@@ -61,7 +93,7 @@ export function toDisplayLanes(timeline: TimelineState, scheduled: ScheduledClip
         durationSec: sc.durationSec,
         kind: 'audio',
         r2_key: sc.r2_key,
-        label: sc.clipId
+        label: clipDisplayLabel('audio', sc.r2_key, titles, t.kind === 'voiceover' ? 'Voiceover' : t.kind === 'music' ? 'Music' : 'Audio')
       }))
     }
     return { id: t.id, name: t.name, kind: t.kind, muted: t.muted, clips }

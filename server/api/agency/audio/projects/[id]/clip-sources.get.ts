@@ -2,14 +2,12 @@ import { requireAuth } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 import { collectClipKeys } from '~~/server/utils/audio/clipSources'
 import { TimelineStateSchema } from '~~/server/utils/audio/timelineSchema'
-import { getPresignedDownloadUrl, isStorageConfigured } from '~~/server/utils/storage'
+import { isStorageConfigured } from '~~/server/utils/storage'
 
-const PRESIGN_TTL = 60 * 60 // 1 hour, matches asset playback URLs
-
-// Mint short-lived GET URLs for exactly the r2_keys in THIS project's current
-// timeline (org-scoped via the gateway). Never presigns an arbitrary key → no
-// IDOR/SSRF. A single bad key is omitted (the client treats a missing buffer as a
-// hard load error — a partial mix would be wrong).
+// Resolve a playable URL for exactly the r2_keys in THIS project's current
+// timeline. URLs are same-origin (media.get.ts proxies R2) because presigned
+// R2 URLs carry no CORS headers and cannot be drawn into the preview canvas.
+// The proxy re-validates key membership on every request → no IDOR/SSRF.
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const id = getRouterParam(event, 'id')!
@@ -26,12 +24,9 @@ export default defineEventHandler(async (event) => {
   if (!parsed.success) return { sources }
 
   for (const key of collectClipKeys(parsed.data)) {
-    if (!isStorageConfigured()) { sources[key] = `/api/_uploads/${key}`; continue }
-    try {
-      sources[key] = await getPresignedDownloadUrl(key, PRESIGN_TTL)
-    } catch {
-      // omit a bad/missing key — never sink the whole response
-    }
+    sources[key] = isStorageConfigured()
+      ? `/api/agency/audio/projects/${encodeURIComponent(id)}/media?key=${encodeURIComponent(key)}`
+      : `/api/_uploads/${key}`
   }
   return { sources }
 })

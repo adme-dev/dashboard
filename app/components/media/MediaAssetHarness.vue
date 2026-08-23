@@ -5,6 +5,7 @@ import VideoStudioAssetActivityPanel from '~~/app/components/media/VideoStudioAs
 import VideoStudioPrepareAssetPanel from '~~/app/components/media/VideoStudioPrepareAssetPanel.vue'
 import { assemblyPlanToTimelinePayloads, type AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import { derivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 const props = withDefaults(defineProps<{
   projectId: string
@@ -86,6 +87,7 @@ const apiFetch = $fetch as <T = unknown>(
     method?: string
     body?: unknown
     query?: Record<string, unknown>
+    headers?: Record<string, string>
   }
 ) => Promise<T>
 const loading = ref(false)
@@ -268,6 +270,7 @@ async function uploadMask(): Promise<string | null> {
     form.append('file', blob, 'brush-mask.png')
     const res = await apiFetch<{ maskKey: string; url: string; size: number }>(`/api/agency/video/assets/${item.assetId}/masks`, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('asset-masks') },
       body: form,
     })
     brushMaskKey.value = res.maskKey
@@ -364,6 +367,7 @@ async function saveDirective(item: BucketItem) {
     }
     const res = await apiFetch<{ item: BucketItem }>(`/api/agency/video/bucket-items/${item.id}/directive`, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('bucket-item-directive') },
       body: { role: item.role ?? 'editor-selected', directive },
     })
     const index = items.value.findIndex(candidate => candidate.id === item.id)
@@ -386,6 +390,7 @@ async function runExtraction() {
     if (maskToolEnabled.value && hasMaskStroke.value && !uploadedMaskKey) return
     const res = await apiFetch<{ job: { id: string; status: string; errorMessage?: string | null } }>(`/api/agency/video/assets/${item.assetId}/extract`, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('asset-extract') },
       body: {
         projectId: props.projectId,
         bucketItemId: item.id,
@@ -413,6 +418,7 @@ async function assemblePlan() {
   try {
     const res = await apiFetch<{ plan: any }>(`/api/agency/video/projects/${props.projectId}/assemble`, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('project-assemble') },
       body: { brief: brief.value, targetFormat: targetFormat.value },
     })
     assemblyPlan.value = res.plan
@@ -433,6 +439,7 @@ async function addDerivativeToBucket(derivative: AssetDerivative) {
   try {
     await apiFetch(`/api/agency/video/derivatives/${encodeURIComponent(derivative.id)}/add-to-bucket`, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('derivative-add-to-bucket') },
       body: {
         bucketKind: 'generated',
         role: `derivative-${derivative.kind}`,

@@ -3,6 +3,7 @@ import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 import { DEFAULT_VIDEO_BUCKETS, type VideoBucketKind } from '~~/server/utils/video-asset-intelligence/buckets'
 import { addDerivativeToProjectBucket, getAssetDerivative } from '~~/server/utils/video-asset-intelligence/db'
+import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 
 const VIDEO_BUCKET_KINDS = DEFAULT_VIDEO_BUCKETS.map(bucket => bucket.kind) as [VideoBucketKind, ...VideoBucketKind[]]
 
@@ -13,7 +14,8 @@ const BodySchema = z.object({
   directive: z.record(z.string(), z.unknown()).default({}),
 })
 
-export default defineEventHandler(async (event) => {
+// Owners (God mode) run this under the execution ledger; staff run it directly.
+export default defineEventHandler(event => withGodModeLedger(event, 'derivativeAddToBucket', async () => {
   const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'Derivative id is required' })
@@ -38,4 +40,4 @@ export default defineEventHandler(async (event) => {
   })
   setResponseStatus(event, 201)
   return { item, derivative }
-})
+}))

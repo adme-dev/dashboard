@@ -5,10 +5,12 @@ import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline, getRenderJob } from '~~/server/utils/audio/projects'
 import { createVideoReview } from '~~/server/utils/video/reviews'
+import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 
 const BodySchema = z.object({ format: z.string().min(1), title: z.string().max(200).nullish() })
 
-export default defineEventHandler(async (event) => {
+// Owners (God mode) run this under the execution ledger; staff run it directly.
+export default defineEventHandler(event => withGodModeLedger(event, 'renderSendToPortal', async () => {
   if (process.env.VIDEO_STUDIO_ENABLED !== 'true') throw createError({ statusCode: 404, statusMessage: 'Not found' })
   const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')!
@@ -27,4 +29,4 @@ export default defineEventHandler(async (event) => {
 
   const review = await createVideoReview({ clientId, mediaProjectId: id, jobId, format, r2Key: key, title: title ?? null, createdBy: user.id })
   return { review }
-})
+}))

@@ -3,7 +3,7 @@
 //   [ Assets rail | Edit (preview + selection) | Inspector ]
 // Each column scrolls on its own; the page never scrolls. Below lg the three
 // columns collapse to one and the mode tabs switch between them.
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   DEFAULT_VIDEO_RENDER_FORMATS,
   VIDEO_RENDER_FORMATS,
@@ -70,9 +70,48 @@ const generationStatusDetail = computed(() => props.generationStatusDetail || (p
   ? 'Cloudflare AI Gateway video models are available for this project.'
   : 'Video generation is disabled by account policy or no runnable models are configured.'))
 
+// ─── Column widths: drag the dividers; remembered per browser ───────────────
+const COLUMNS_KEY = 'video-studio:columns'
+const LIBRARY_RANGE = [220, 520] as const
+const INSPECTOR_RANGE = [280, 640] as const
+const libraryWidth = ref(300)
+const inspectorWidth = ref(360)
+let columnDrag: { side: 'library' | 'inspector'; startX: number; startWidth: number } | null = null
+
+function clamp(value: number, [min, max]: readonly [number, number]) {
+  return Math.min(max, Math.max(min, value))
+}
+function onColumnDragStart(side: 'library' | 'inspector', event: PointerEvent) {
+  columnDrag = { side, startX: event.clientX, startWidth: side === 'library' ? libraryWidth.value : inspectorWidth.value }
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+}
+function onColumnDragMove(event: PointerEvent) {
+  if (!columnDrag) return
+  const delta = event.clientX - columnDrag.startX
+  if (columnDrag.side === 'library') libraryWidth.value = clamp(columnDrag.startWidth + delta, LIBRARY_RANGE)
+  else inspectorWidth.value = clamp(columnDrag.startWidth - delta, INSPECTOR_RANGE)
+}
+function onColumnDragEnd() {
+  if (!columnDrag) return
+  columnDrag = null
+  try { localStorage.setItem(COLUMNS_KEY, JSON.stringify({ library: libraryWidth.value, inspector: inspectorWidth.value })) } catch { /* private mode */ }
+}
+onMounted(() => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(COLUMNS_KEY) ?? 'null') as { library?: number; inspector?: number } | null
+    if (stored?.library) libraryWidth.value = clamp(stored.library, LIBRARY_RANGE)
+    if (stored?.inspector) inspectorWidth.value = clamp(stored.inspector, INSPECTOR_RANGE)
+  } catch { /* ignore */ }
+})
+
+// Below lg the grid is a single column; the widths only apply from lg up (via CSS var + class).
+const workspaceStyle = computed(() => ({
+  '--vs-library': `${libraryWidth.value}px`,
+  '--vs-inspector': `${inspectorWidth.value}px`,
+}))
 const workspaceGridClass = computed(() => props.producerCollapsed
-  ? 'lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]'
-  : 'lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)_minmax(320px,380px)]')
+  ? 'lg:grid-cols-[var(--vs-library)_6px_minmax(0,1fr)]'
+  : 'lg:grid-cols-[var(--vs-library)_6px_minmax(0,1fr)_6px_var(--vs-inspector)]')
 
 const selectedFormats = ref<VideoRenderFormatId[]>([...DEFAULT_VIDEO_RENDER_FORMATS])
 const selectedFormatCount = computed(() => selectedFormats.value.length)
@@ -199,7 +238,7 @@ watch(() => props.mode, (mode) => { localMode.value = mode })
       </div>
     </header>
 
-    <div :class="['grid min-h-0 flex-1 grid-cols-1 lg:divide-x lg:divide-default', workspaceGridClass]">
+    <div :class="['grid min-h-0 flex-1 grid-cols-1', workspaceGridClass]" :style="workspaceStyle">
       <aside :class="['min-h-0 min-w-0 flex-col overflow-hidden', panelClass('assets')]">
         <div class="flex shrink-0 items-center gap-2 border-b border-default px-3 py-2">
           <UIcon name="i-lucide-library" class="size-4 text-muted" />
@@ -210,6 +249,18 @@ watch(() => props.mode, (mode) => { localMode.value = mode })
           <slot name="library" />
         </div>
       </aside>
+      <div
+        class="group hidden cursor-col-resize touch-none items-stretch justify-center lg:flex"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize assets column"
+        @pointerdown="onColumnDragStart('library', $event)"
+        @pointermove="onColumnDragMove"
+        @pointerup="onColumnDragEnd"
+        @pointercancel="onColumnDragEnd"
+      >
+        <span class="w-px bg-default transition group-hover:w-0.5 group-hover:bg-primary" />
+      </div>
 
       <main :class="['min-h-0 min-w-0 flex-col overflow-hidden', panelClass('edit')]">
         <div class="min-h-0 flex-1 overflow-y-auto p-3">
@@ -217,6 +268,19 @@ watch(() => props.mode, (mode) => { localMode.value = mode })
         </div>
       </main>
 
+      <div
+        v-if="!props.producerCollapsed"
+        class="group hidden cursor-col-resize touch-none items-stretch justify-center lg:flex"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize inspector column"
+        @pointerdown="onColumnDragStart('inspector', $event)"
+        @pointermove="onColumnDragMove"
+        @pointerup="onColumnDragEnd"
+        @pointercancel="onColumnDragEnd"
+      >
+        <span class="w-px bg-default transition group-hover:w-0.5 group-hover:bg-primary" />
+      </div>
       <aside
         v-if="!props.producerCollapsed"
         :class="['min-h-0 min-w-0 flex-col overflow-hidden', panelClass('produce')]"

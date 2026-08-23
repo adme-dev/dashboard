@@ -10,6 +10,7 @@ import { videoGenerationJobTimelinePayload, type VideoLibraryTimelinePayload } f
 import { apiErrorDescription, apiErrorReasons } from '~~/app/utils/apiError'
 import type { VideoGenerationMode } from '~~/server/utils/video-generation/types'
 import type { VideoGenerationJobView } from '~~/app/composables/useVideoGenerationJobs'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 const props = defineProps<{
   active?: boolean
@@ -216,6 +217,7 @@ async function applyInitialSourceAsset() {
   try {
     const res = await apiFetch<{ id: string }>('/api/agency/video/generation/source-assets/from-asset', {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('source-asset-from-asset') },
       body: { assetId: source.assetId, subjectType: subjectType.value },
     })
     registeredInitialSource.value = { assetId: source.assetId, sourceId: res.id }
@@ -242,6 +244,7 @@ async function onExistingStillSelected(clipId: string | null) {
     await props.prepareTimelineStillSource?.()
     const res = await apiFetch<{ id: string }>('/api/agency/video/generation/source-assets/from-timeline-still', {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('source-asset-from-still') },
       body: { projectId: props.projectId, clipId, subjectType: subjectType.value },
     })
     sourceAssetId.value = res.id
@@ -268,6 +271,7 @@ async function onFileSelected(event: Event) {
 
     const res = await apiFetch<{ id: string }>('/api/agency/video/generation/source-assets', {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('source-asset-upload') },
       body: formData,
     })
 

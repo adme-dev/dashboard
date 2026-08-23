@@ -8,10 +8,12 @@ import { queryOne } from '~~/server/utils/db'
 import { buildVideoStudioSocialDraft } from '~~/server/utils/socialVideoDraft'
 import { GROQ_MODELS } from '~~/server/utils/groqClient'
 import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
+import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 
 const BodySchema = z.object({ format: z.string().min(1) })
 
-export default defineEventHandler(async (event) => {
+// Owners (God mode) run this under the execution ledger; staff run it directly.
+export default defineEventHandler(event => withGodModeLedger(event, 'renderPublishSocial', async () => {
   if (process.env.VIDEO_STUDIO_ENABLED !== 'true') throw createError({ statusCode: 404, statusMessage: 'Not found' })
   const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')!
@@ -72,4 +74,4 @@ export default defineEventHandler(async (event) => {
     [clientId, user.id, draft.content, draft.mediaUrls, draft.platforms, draft.tags, JSON.stringify(draft.metadata)]
   )
   return { postId: (row as { id: string }).id, clientId }
-})
+}))

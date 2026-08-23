@@ -33,6 +33,7 @@ import type { AudioAsset, MediaRenderJob } from '~~/app/types'
 import { videoStudioAssetImageSource, type VideoStudioAsset } from '~~/app/utils/video/videoStudioAssets'
 import type { VideoClip } from '~~/server/utils/audio/timelineSchema'
 import type { VideoAsset } from '~~/server/utils/video/assets'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
@@ -41,7 +42,7 @@ const projectId = computed(() => String(route.params.id))
 const editor = useMediaProjectEditor(projectId.value)
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string; query?: Record<string, unknown> }
+  options?: { method?: string; query?: Record<string, unknown>; headers?: Record<string, string> }
 ) => Promise<T>
 type VideoClipFit = 'fit' | 'fill' | 'crop'
 type VideoStudioMode = 'assets' | 'edit' | 'produce' | 'review'
@@ -156,10 +157,8 @@ const selectedStudioAssetModel = computed({
   get: () => selectedStudioAssetId.value,
   set: (assetId: string | null) => {
     selectedStudioAssetId.value = assetId
-    if (assetId) {
-      selectedClipId.value = null
-      videoStudioMode.value = 'edit'
-    }
+    // Keep the clip selection: "Replace selected clip" needs both an asset and a clip.
+    if (assetId) videoStudioMode.value = 'edit'
   },
 })
 
@@ -223,6 +222,15 @@ const { assets: studioAssets } = useVideoStudioAssets(computed(() => ({
   generationJobs: genJobs.jobs.value,
 })))
 const videoStudioAssetCount = computed(() => studioAssets.value.length)
+/** r2_key → library title, so timeline clips read as names rather than ids. */
+const clipTitles = computed<Record<string, string | undefined>>(() => {
+  const map: Record<string, string | undefined> = {}
+  for (const asset of studioAssets.value) {
+    if (asset.r2Key && !map[asset.r2Key]) map[asset.r2Key] = asset.title
+  }
+  for (const project of studioBannerProjects.value ?? []) map[project.id] = project.name
+  return map
+})
 const selectedStudioAsset = computed(() => studioAssets.value.find(asset => asset.id === selectedStudioAssetId.value) ?? null)
 const existingVoiceoverClipIds = computed(() => {
   const timeline = editor.timeline.value
@@ -436,7 +444,10 @@ async function onGenerateCaptions(asset: VideoStudioAsset) {
   if (!asset.libraryAssetId || captionGeneratingAssetId.value) return
   captionGeneratingAssetId.value = asset.id
   try {
-    await apiFetch(`/api/agency/video/assets/${encodeURIComponent(asset.libraryAssetId)}/captions`, { method: 'POST' })
+    await apiFetch(`/api/agency/video/assets/${encodeURIComponent(asset.libraryAssetId)}/captions`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('asset-captions') }
+    })
     await refreshVideoAssets()
     toast.add({ title: 'Captions generated', description: 'A VTT caption track is attached to the selected asset.', color: 'success' })
   } catch (e: unknown) {
@@ -757,12 +768,20 @@ function openVersions() {
   void loadVersions()
 }
 
-function restore(version: VersionRow) {
+async function restore(version: VersionRow) {
+  if (restoringId.value) return
   restoringId.value = version.id
+  const name = version.label ?? `v${version.version}`
   try {
+    // Never overwrite the working draft silently: checkpoint it first so the
+    // restore itself is undoable from the version list.
+    if (editor.dirty.value || editor.saveStatus.value !== 'saved') await editor.saveNow()
+    await editor.saveVersion(`Before restoring ${name}`)
     editor.restoreVersion(version.state)
-    toast.add({ title: `Restored ${version.label ?? `v${version.version}`}`, color: 'success' })
+    toast.add({ title: `Restored ${name}`, description: 'Your previous draft was saved as a version first.', color: 'success' })
     versionsOpen.value = false
+  } catch (e: unknown) {
+    toast.add({ title: 'Could not restore version', description: apiErrorDescription(e, 'The current draft could not be checkpointed.'), color: 'error' })
   } finally {
     restoringId.value = null
   }
@@ -821,6 +840,33 @@ function onKeyDown(event: KeyboardEvent) {
     event.preventDefault()
     const step = (event.shiftKey ? 5 : 1) * (event.key === 'ArrowLeft' ? -1 : 1)
     editor.seek(Math.min(editor.duration.value, Math.max(0, editor.currentTime.value + step)))
+  }
+}
+
+// ─── Missing-source clips ────────────────────────────────────────────────────
+
+function missingClipLabel(clipId: string): string {
+  const lane = editor.timeline.value?.tracks.find(track => track.clips.some(clip => clip.id === clipId))
+  return lane?.name ?? 'clip'
+}
+function selectMissingClip(clipId: string) {
+  selectTimelineClip(clipId)
+  // The replacement comes from the assets rail; make sure it's on screen below lg.
+  videoStudioMode.value = 'assets'
+  toast.add({ title: 'Clip selected', description: 'Pick a replacement asset in the rail and use "Replace selected clip".', color: 'neutral' })
+}
+
+// ─── Numeric timing edits from the inspector ─────────────────────────────────
+
+function setSelectedTiming(payload: { field: 'start' | 'duration' | 'end'; seconds: number }) {
+  const clip = selectedClipInspector.value
+  if (!clip) return
+  if (payload.field === 'start') {
+    editor.moveClipAction(clip.clipId, clip.trackId, payload.seconds)
+  } else if (payload.field === 'duration') {
+    editor.trimClipAction(clip.clipId, 'end', clip.startSec + payload.seconds)
+  } else {
+    editor.trimClipAction(clip.clipId, 'end', payload.seconds)
   }
 }
 
@@ -1043,10 +1089,10 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
 </script>
 
 <template>
-  <!-- AV projects run as a fixed-height editor (columns + docked timeline);
-       audio projects keep the simpler scrolling page. -->
-  <div :class="isAv ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'flex-1 min-h-0 overflow-y-auto'">
-    <div :class="isAv ? 'flex min-h-0 flex-1 flex-col gap-3 p-3' : 'mx-auto w-full max-w-5xl space-y-4 p-6'">
+  <!-- Both project kinds run as a fixed-height editor with the timeline docked
+       at the bottom; AV adds the three-column workbench above it. -->
+  <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div class="flex min-h-0 flex-1 flex-col gap-3 p-3">
 
       <!-- Command bar: identity on the left, history on the right. One row. -->
       <header class="flex shrink-0 flex-wrap items-center gap-2">
@@ -1169,8 +1215,16 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           variant="subtle"
           icon="i-lucide-triangle-alert"
           class="shrink-0"
-          :title="`${editor.missingClipIds.value.length} ${editor.missingClipIds.value.length === 1 ? 'clip is' : 'clips are'} missing audio — the source file is gone. Remove or replace the clip.`"
-        />
+          :title="`${editor.missingClipIds.value.length} ${editor.missingClipIds.value.length === 1 ? 'clip is' : 'clips are'} missing its source file`"
+          description="Select a clip, then pick a replacement from the assets rail — or remove it."
+        >
+          <template #actions>
+            <template v-for="clipId in editor.missingClipIds.value" :key="clipId">
+              <UButton size="xs" variant="soft" color="warning" icon="i-lucide-mouse-pointer-click" :label="`Select ${missingClipLabel(clipId)}`" @click="selectMissingClip(clipId)" />
+              <UButton size="xs" variant="ghost" color="error" icon="i-lucide-trash-2" label="Remove" @click="editor.deleteClipAction(clipId)" />
+            </template>
+          </template>
+        </UAlert>
 
         <VideoStudioWorkbench
           v-if="isAv"
@@ -1398,20 +1452,34 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 </template>
 
                 <template #details>
+                  <VideoStudioSelectedAssetPanel
+                    v-if="selectedStudioAsset"
+                    :asset="selectedStudioAsset"
+                    :activity="selectedStudioAssetActivity"
+                    :caption-generating="captionGeneratingAssetId === selectedStudioAsset?.id"
+                    :can-replace-selected-clip="canReplaceSelectedClipWithAsset"
+                    @add-to-timeline="onStudioAssetAdd"
+                    @replace-selected-clip="replaceSelectedClipWithAsset"
+                    @add-captions-to-timeline="onStudioAssetAddCaptions"
+                    @generate-from-asset="onStudioAssetGenerate"
+                    @generate-captions="onGenerateCaptions"
+                  />
                   <VideoStudioClipInspector
                     v-if="selectedClipInspector"
+                    :class="selectedStudioAsset ? 'mt-3' : ''"
                     :clip="selectedClipInspector"
                     :can-split="selectedClipInspector.kind === 'audio'"
                     @split="splitSelectedClip"
                     @delete="deleteSelectedClip"
                     @set-caption-style="setSelectedCaptionStyle"
+                    @set-timing="setSelectedTiming"
                   />
                   <VideoStudioSelectedAssetPanel
-                    v-else
-                    :asset="selectedStudioAsset"
+                    v-if="!selectedStudioAsset && !selectedClipInspector"
+                    :asset="null"
                     :activity="selectedStudioAssetActivity"
-                    :caption-generating="captionGeneratingAssetId === selectedStudioAsset?.id"
-                    :can-replace-selected-clip="canReplaceSelectedClipWithAsset"
+                    :caption-generating="false"
+                    :can-replace-selected-clip="false"
                     @add-to-timeline="onStudioAssetAdd"
                     @replace-selected-clip="replaceSelectedClipWithAsset"
                     @add-captions-to-timeline="onStudioAssetAddCaptions"
@@ -1511,8 +1579,9 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
         </VideoStudioWorkbench>
 
         <!-- Dock: transport + timeline, pinned to the bottom for AV projects. -->
+        <!-- Audio projects have no workbench: the dock takes the whole height. -->
         <section
-          :class="isAv ? 'relative flex shrink-0 flex-col gap-2' : 'space-y-4'"
+          :class="['relative flex flex-col gap-2', isAv ? 'shrink-0' : 'min-h-0 flex-1']"
           :style="isAv ? { height: `${dockHeight}px` } : undefined"
         >
           <!-- Drag handle: grows the dock upward. -->
@@ -1565,7 +1634,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               aria-label="Playhead"
               @update:model-value="(v: number | number[]) => editor.seek(Array.isArray(v) ? v[0]! : v)"
             />
-            <UPopover v-if="isAv">
+            <UPopover>
               <UButton icon="i-lucide-keyboard" size="sm" variant="ghost" color="neutral" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" />
               <template #content>
                 <dl class="grid w-64 grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 p-3 text-xs">
@@ -1578,7 +1647,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
             </UPopover>
           </div>
 
-          <div :class="isAv ? 'min-h-0 flex-1 overflow-y-auto' : ''">
+          <div class="min-h-0 flex-1 overflow-y-auto">
             <MediaTimeline
           :timeline="editor.timeline.value"
           :clips="editor.clips.value"
@@ -1586,6 +1655,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           :current-time="editor.currentTime.value"
           :duration="editor.duration.value"
           :sources="editor.sources.value"
+          :titles="clipTitles"
           @select="(p) => selectTimelineClip(p.clipId)"
           @seek="(sec) => editor.seek(sec)"
           @move-clip="(p) => editor.moveClipAction(p.clipId, p.toTrackId, p.newStartSec)"

@@ -44,10 +44,12 @@ export interface GodModeExternalLedgerDependencies {
   randomUUID: () => string
 }
 
+// Deps are called through lazily so that importing this module under a partial
+// `~~/server/utils/db` mock (common in route tests) never touches them.
 export const defaultExternalLedgerDependencies: GodModeExternalLedgerDependencies = {
-  queryOneFresh,
-  transaction: transactionWithoutRetry,
-  appendAudit: appendGodModeAuditEvent,
+  queryOneFresh: (...args) => queryOneFresh(...args),
+  transaction: (...args) => transactionWithoutRetry(...args),
+  appendAudit: (...args) => appendGodModeAuditEvent(...args),
   digestRequest: async event => digestMcpRequestBody((await readBody(event).catch(() => null)) ?? {}),
   randomUUID
 }
@@ -167,7 +169,7 @@ export async function prepareGodModeExternalMutation(
     deps: dependencies,
     mutation
   }
-  ;(event.context as Record<PropertyKey, unknown>)[mutation.coordinationKey] = current
+  ;((event.context ??= {} as typeof event.context) as Record<PropertyKey, unknown>)[mutation.coordinationKey] = current
   return {
     strategy: 'task5-execution-ledger',
     prepared: true,
@@ -196,7 +198,7 @@ export async function executeGodModeExternalMutation<T>(
   idCount: number,
   work: (run: GodModeExternalRun<T>) => Promise<T>
 ): Promise<T> {
-  const current = ((event.context as Record<PropertyKey, unknown>)[mutation.coordinationKey] as Coordination | undefined) ?? null
+  const current = ((event.context as Record<PropertyKey, unknown> | undefined)?.[mutation.coordinationKey] as Coordination | undefined) ?? null
   if (!Number.isInteger(idCount) || idCount < 1 || idCount > MAX_IDS) {
     throw new Error(`God mode ${mutation.label} id count out of range`)
   }

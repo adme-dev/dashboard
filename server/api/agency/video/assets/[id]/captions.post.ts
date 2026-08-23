@@ -7,10 +7,12 @@ import { transcriptToSingleCueVtt } from '~~/server/utils/video/captions'
 import { getAccessibleVideoAsset, mapVideoAssetRow } from '~~/server/utils/video/assets'
 import { requireVideoProjectWriteAccess } from '~~/server/utils/video-asset-intelligence/access'
 import { getAssetProjectRelationship } from '~~/server/utils/video-asset-intelligence/db'
+import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 
 const MAX_TRANSCRIBE_BYTES = 100 * 1024 * 1024
 
-export default defineEventHandler(async (event) => {
+// Owners (God mode) run this under the execution ledger; staff run it directly.
+export default defineEventHandler(event => withGodModeLedger(event, 'assetCaptions', async () => {
   const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'Asset id is required' })
@@ -78,4 +80,4 @@ export default defineEventHandler(async (event) => {
     downloadUrl: url,
     transcript: stt.text,
   }
-})
+}))

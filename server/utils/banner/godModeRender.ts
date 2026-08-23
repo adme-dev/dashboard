@@ -46,7 +46,7 @@ export async function executeGodModeBannerRender(
   formatCount: number,
   render: (genId: () => string, markDispatched: () => Promise<void>) => Promise<{ jobIds: string[] }>
 ): Promise<{ jobIds: string[] }> {
-  const coordinated = Boolean((event.context as Record<PropertyKey, unknown>)[BANNER_RENDER_MUTATION.coordinationKey])
+  const coordinated = Boolean((event.context as Record<PropertyKey, unknown> | undefined)?.[BANNER_RENDER_MUTATION.coordinationKey])
   if (coordinated) {
     if (!Number.isInteger(formatCount) || formatCount < 1) throw new BannerRenderError('formats array is required')
     if (formatCount > 10) throw new BannerRenderError('Max 10 formats per export')

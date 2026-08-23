@@ -252,6 +252,7 @@ export function mapRenderJobRow(row: any): MediaRenderJob {
     channels: row.channels ?? [],
     status: row.status,
     variants: row.variants ?? {},
+    progress: row.progress ?? null,
     costCents: row.cost_cents ?? null,
     error: row.error ?? null,
     requestedBy: row.requested_by,

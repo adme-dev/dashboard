@@ -41,3 +41,15 @@ describe('toDisplayLanes', () => {
     expect(lanes.find(l => l.id === 'vo')!.clips[0].kind).toBe('audio')
   })
 })
+
+describe('clipDisplayLabel', () => {
+  it('prefers the library title, then a cleaned file stem, never a uuid', async () => {
+    const { clipDisplayLabel } = await import('~~/app/utils/audio/timelineDisplay')
+    const key = 'media/p/still/1781834121263-video-studio-qa-source-cd6bbaad.png'
+    expect(clipDisplayLabel('video', key, { [key]: 'Hero still' })).toBe('Hero still')
+    expect(clipDisplayLabel('video', key)).toBe('video studio qa source')
+    expect(clipDisplayLabel('audio', 'audio/79c3edd2-c27d-4b2c-b0bc-f70d2efbfa8c.mp3', undefined, 'Voiceover')).toBe('Voiceover')
+    expect(clipDisplayLabel('audio', 'audio/1700000000000-robo-s-got-no-cash-9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c.mp3')).toBe('robo s got no cash')
+    expect(clipDisplayLabel('overlay', null)).toBe('Overlay')
+  })
+})

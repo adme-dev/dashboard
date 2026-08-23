@@ -52,22 +52,22 @@ describe('GET /agency/audio/projects/:id/clip-sources', () => {
     await expect(handler({ params: { id: 'p1' } } as any)).rejects.toMatchObject({ statusCode: 404 })
   })
 
-  it('presigns ONLY the non-muted timeline keys, never an arbitrary key', async () => {
+  it('maps ONLY the non-muted timeline keys to same-origin proxy URLs (never presigned, never arbitrary)', async () => {
     mockGetProject.mockResolvedValue({ project: { id: 'p1' }, timeline })
     const res = await handler({ params: { id: 'p1' } } as any)
-    expect(res).toEqual({ sources: { 'k/a': 'https://signed/k/a', 'k/b': 'https://signed/k/b' } })
-    const presignedKeys = mockPresign.mock.calls.map((c) => c[0]).sort()
-    expect(presignedKeys).toEqual(['k/a', 'k/b'])   // NOT 'k/x' (muted)
+    expect(res).toEqual({ sources: {
+      'k/a': '/api/agency/audio/projects/p1/media?key=k%2Fa',
+      'k/b': '/api/agency/audio/projects/p1/media?key=k%2Fb'
+    } })   // NOT 'k/x' (muted)
+    // Presigned R2 URLs have no CORS headers and cannot be drawn into the preview canvas.
+    expect(mockPresign).not.toHaveBeenCalled()
   })
 
-  it('omits a key whose presign throws (rest still returned)', async () => {
+  it('falls back to the local uploads route when storage is not configured', async () => {
+    mockIsConfigured.mockReturnValue(false)
     mockGetProject.mockResolvedValue({ project: { id: 'p1' }, timeline })
-    mockPresign.mockImplementation(async (key: string) => {
-      if (key === 'k/b') throw new Error('presign boom')
-      return `https://signed/${key}`
-    })
     const res = await handler({ params: { id: 'p1' } } as any)
-    expect(res).toEqual({ sources: { 'k/a': 'https://signed/k/a' } })
+    expect(res).toEqual({ sources: { 'k/a': '/api/_uploads/k/a', 'k/b': '/api/_uploads/k/b' } })
   })
 
   it('returns empty sources when the project has no current timeline', async () => {

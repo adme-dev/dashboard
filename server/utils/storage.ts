@@ -61,6 +61,13 @@ export function getR2StorageControlPlane(): { client: S3Client, bucket: string }
 
 // Minimal shape of the Cloudflare native R2 bucket binding (MEDIA_BUCKET).
 export interface R2BucketBinding {
+  get?: (key: string, options?: { range?: { offset: number; length?: number } }) => Promise<{
+    body: ReadableStream
+    size: number
+    httpEtag: string
+    httpMetadata?: { contentType?: string }
+    range?: { offset: number; length: number }
+  } | null>
   put: (key: string, value: Uint8Array, options?: {
     httpMetadata?: { contentType?: string }
     customMetadata?: Record<string, string>
@@ -315,6 +322,83 @@ export async function downloadFileBuffer(key: string): Promise<Buffer> {
   }
 
   throw new Error('Stored file response body is not readable')
+}
+
+export interface StoredObjectRange {
+  /** Web stream of the (possibly partial) body. */
+  body: ReadableStream
+  contentType: string
+  /** Full object size. */
+  size: number
+  /** Byte range actually served, inclusive, or null for the whole object. */
+  range: { start: number; end: number } | null
+  etag: string | null
+}
+
+/**
+ * Read an object (or a byte range of it) as a stream — for same-origin media
+ * proxying. Uses the native R2 binding on Pages (fast, no SDK), the S3 client
+ * elsewhere, and the local uploads dir when storage is not configured.
+ */
+export async function readStoredObject(
+  key: string,
+  options: { range?: { start: number; end?: number }; requestBucket?: R2BucketBinding } = {}
+): Promise<StoredObjectRange | null> {
+  const { range, requestBucket } = options
+  if (!isStorageConfigured()) {
+    const filePath = join(LOCAL_UPLOAD_DIR, key)
+    let data: Buffer
+    try { data = await fs.readFile(filePath) } catch { return null }
+    const start = range?.start ?? 0
+    const end = Math.min(range?.end ?? data.length - 1, data.length - 1)
+    const slice = range ? data.subarray(start, end + 1) : data
+    return {
+      body: new Blob([slice]).stream(),
+      contentType: 'application/octet-stream',
+      size: data.length,
+      range: range ? { start, end } : null,
+      etag: null
+    }
+  }
+
+  const bucket = getNativeBucket(requestBucket)
+  if (bucket?.get) {
+    const object = await bucket.get(key, range
+      ? { range: { offset: range.start, length: range.end != null ? range.end - range.start + 1 : undefined } }
+      : undefined)
+    if (!object) return null
+    const served = object.range ? { start: object.range.offset, end: object.range.offset + object.range.length - 1 } : null
+    return {
+      body: object.body,
+      contentType: object.httpMetadata?.contentType ?? 'application/octet-stream',
+      size: object.size,
+      range: served,
+      etag: object.httpEtag ?? null
+    }
+  }
+
+  const client = getR2Client()
+  let response
+  try {
+    response = await client.send(new GetObjectCommand({
+      Bucket: r2Config().bucketName,
+      Key: key,
+      ...(range ? { Range: `bytes=${range.start}-${range.end ?? ''}` } : {})
+    }))
+  } catch (error) {
+    if ((error as { name?: string })?.name === 'NoSuchKey') return null
+    throw error
+  }
+  const body = response.Body as { transformToWebStream?: () => ReadableStream } | undefined
+  if (!body?.transformToWebStream) throw new Error('Stored file response body is not streamable')
+  const contentRange = /bytes (\d+)-(\d+)\/(\d+)/.exec(response.ContentRange ?? '')
+  return {
+    body: body.transformToWebStream(),
+    contentType: response.ContentType ?? 'application/octet-stream',
+    size: contentRange ? Number(contentRange[3]) : Number(response.ContentLength ?? 0),
+    range: contentRange ? { start: Number(contentRange[1]), end: Number(contentRange[2]) } : null,
+    etag: response.ETag ?? null
+  }
 }
 
 /**

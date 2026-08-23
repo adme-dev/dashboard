@@ -26,6 +26,7 @@ import {
 } from '~~/app/utils/video/videoSourceRegistry'
 import type { MediaRenderJob } from '~~/app/types'
 import type { VideoAsset } from '~~/server/utils/video/assets'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 export type EditorStatus = 'idle' | 'loading' | 'ready' | 'error'
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -466,26 +467,35 @@ export function useMediaProjectEditor(projectId: string) {
   /** Draft a social post from a rendered variant. Returns { postId, clientId } or throws (page toasts). */
   async function publishToSocial(jobId: string, format: string): Promise<{ postId: string; clientId: string }> {
     return await apiFetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/publish-social`, {
-      method: 'POST', body: { format }
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('render-publish') },
+      body: { format }
     })
   }
 
   /** Draft a social post from a saved/generated video asset. */
   async function publishVideoAssetToSocial(assetId: string): Promise<{ postId: string; clientId: string }> {
-    return await apiFetch(`/api/agency/video/assets/${assetId}/publish-social`, { method: 'POST' })
+    return await apiFetch(`/api/agency/video/assets/${assetId}/publish-social`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('asset-publish') }
+    })
   }
 
   /** Send a rendered variant to the client portal for review. Returns the created review or throws. */
   async function sendToPortal(jobId: string, format: string): Promise<{ review: unknown }> {
     return await apiFetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/send-to-portal`, {
-      method: 'POST', body: { format }
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('render-portal') },
+      body: { format }
     })
   }
 
   /** Save a rendered variant to the reusable video library. */
   async function saveAsset(jobId: string, format: string, title?: string | null): Promise<{ asset: VideoAsset }> {
     return await apiFetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/save-asset`, {
-      method: 'POST', body: { format, title: title ?? null }
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('render-save-asset') },
+      body: { format, title: title ?? null }
     })
   }
 

@@ -3,10 +3,12 @@ import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline, getRenderJob } from '~~/server/utils/audio/projects'
 import { createVideoAsset } from '~~/server/utils/video/assets'
 import { videoFormatFor } from '~~/server/utils/audio/videoProfiles'
+import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 
 const BodySchema = z.object({ format: z.string().min(1), title: z.string().max(200).nullish() })
 
-export default defineEventHandler(async (event) => {
+// Owners (God mode) run this under the execution ledger; staff run it directly.
+export default defineEventHandler(event => withGodModeLedger(event, 'renderSaveAsset', async () => {
   if (process.env.VIDEO_STUDIO_ENABLED !== 'true') throw createError({ statusCode: 404, statusMessage: 'Not found' })
   const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')!
@@ -28,4 +30,4 @@ export default defineEventHandler(async (event) => {
     r2Key: key, format, width: profile?.width ?? null, height: profile?.height ?? null, durationSec: null
   })
   return { asset }
-})
+}))

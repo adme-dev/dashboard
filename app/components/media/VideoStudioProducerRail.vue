@@ -14,6 +14,7 @@ import {
 } from '~~/app/utils/video/producerRecipes'
 import type { VideoGenerationJobView } from '~~/app/composables/useVideoGenerationJobs'
 import type { VideoStudioAsset } from '~~/app/utils/video/videoStudioAssets'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 const props = withDefaults(defineProps<{
   projectId: string
@@ -40,7 +41,9 @@ const emit = defineEmits<{
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string, body?: unknown }
+  options?: { method?: string, body?: unknown
+    headers?: Record<string, string>
+  }
 ) => Promise<T>
 const selectedRecipeId = ref(VIDEO_PRODUCER_RECIPES[0]?.id ?? null)
 const brief = ref('Create a punchy vertical social edit using the strongest project assets.')
@@ -148,6 +151,7 @@ async function assemblePlan() {
   try {
     const res = await apiFetch<{ plan: AiAssemblyPlan }>(`/api/agency/video/projects/${props.projectId}/assemble`, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('project-assemble') },
       body: {
         brief: brief.value,
         targetFormat: targetFormat.value,

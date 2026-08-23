@@ -6,6 +6,13 @@ import VideoStudioClipInspector from '~~/app/components/media/VideoStudioClipIns
 
 const stubs = {
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' },
+  UFormField: { name: 'UFormField', props: ['label'], template: '<label><span>{{ label }}</span><slot /></label>' },
+  UInput: {
+    name: 'UInput',
+    props: ['modelValue', 'disabled', 'ariaLabel'],
+    emits: ['update:modelValue', 'blur', 'keydown'],
+    template: '<input :value="modelValue" :disabled="disabled" :aria-label="ariaLabel" @input="$emit(\'update:modelValue\', $event.target.value)" @blur="$emit(\'blur\', $event)" @keydown="$emit(\'keydown\', $event)" />'
+  },
   UButton: {
     name: 'UButton',
     props: ['icon', 'label'],
@@ -50,6 +57,7 @@ async function mount(clip: any, canSplit = true) {
       onSplit: () => events.push({ name: 'split', payload: null }),
       onDelete: () => events.push({ name: 'delete', payload: null }),
       onSetCaptionStyle: (style: string) => events.push({ name: 'set-caption-style', payload: style }),
+      onSetTiming: (payload: unknown) => events.push({ name: 'set-timing', payload }),
     })
   })
   Object.entries(stubs).forEach(([name, comp]) => app.component(name, comp))
@@ -122,6 +130,45 @@ describe('VideoStudioClipInspector', () => {
         { name: 'delete', payload: null },
         { name: 'set-caption-style', payload: 'bold_social' },
       ])
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('lets the user type precise timing and emits one field per commit', async () => {
+    const { app, host, events } = await mount({
+      clipId: 'v1',
+      kind: 'video',
+      trackId: 'video',
+      trackName: 'Video',
+      trackKind: 'video',
+      label: 'Footage clip',
+      sourceLabel: 'media/x.mp4',
+      startSec: 5,
+      durationSec: 5,
+      endSec: 10,
+      details: [{ label: 'Start', value: '5s' }, { label: 'Duration', value: '5s' }, { label: 'Source', value: 'Footage' }],
+    })
+
+    try {
+      const start = host.querySelector('input[aria-label="Start (seconds)"]') as HTMLInputElement
+      const duration = host.querySelector('input[aria-label="Duration (seconds)"]') as HTMLInputElement
+      expect(start.value).toBe('5')
+      expect(duration.value).toBe('5')
+      // Start / Duration / End tiles are replaced by the inputs; other facts stay.
+      expect(host.textContent).toContain('Source')
+      expect(host.querySelectorAll('dt').length).toBe(1)
+
+      start.value = '7.25'
+      start.dispatchEvent(new Event('input', { bubbles: true }))
+      start.dispatchEvent(new Event('blur'))
+      await nextTick()
+      duration.value = '5'   // unchanged → no emit
+      duration.dispatchEvent(new Event('input', { bubbles: true }))
+      duration.dispatchEvent(new Event('blur'))
+      await nextTick()
+
+      expect(events).toEqual([{ name: 'set-timing', payload: { field: 'start', seconds: 7.25 } }])
     } finally {
       app.unmount()
     }

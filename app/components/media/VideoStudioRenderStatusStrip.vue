@@ -94,6 +94,14 @@ const latestFailure = computed(() => latestFailed.value ? parseRenderFailure(lat
         <div class="flex flex-wrap items-center gap-1.5">
           <p class="text-xs font-medium text-highlighted">Render queue</p>
           <UBadge :label="statusLabel" size="xs" variant="subtle" :color="statusColor(status)" />
+          <UProgress
+            v-if="summary.active && activeJob?.progress?.total"
+            :model-value="activeJob.progress.done"
+            :max="activeJob.progress.total"
+            size="xs"
+            class="w-24"
+            :aria-label="`${activeJob.progress.done} of ${activeJob.progress.total} formats rendered`"
+          />
           <UBadge
             v-if="summary.failed"
             :label="`${summary.failed} failed`"
@@ -103,7 +111,10 @@ const latestFailure = computed(() => latestFailed.value ? parseRenderFailure(lat
           />
         </div>
         <p class="truncate text-[11px] text-muted">
-          <span v-if="summary.active">Rendering now — started {{ dateLabel(activeJob?.createdAt) }}. This usually takes a few minutes; you can keep editing.</span>
+          <span v-if="summary.active && activeJob?.progress?.formatKey">
+            Rendering {{ activeJob.progress.formatKey }} · {{ activeJob.progress.done + 1 }} of {{ activeJob.progress.total }} — you can keep editing.
+          </span>
+          <span v-else-if="summary.active">Rendering now — started {{ dateLabel(activeJob?.createdAt) }}. This usually takes a few minutes; you can keep editing.</span>
           <span v-else-if="summary.latest">Latest {{ summary.latest.status }} · {{ dateLabel(summary.latest.createdAt) }}</span>
           <span v-else>Render the timeline to create downloadable variants.</span>
         </p>

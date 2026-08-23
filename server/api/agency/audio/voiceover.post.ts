@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { generateVoiceover } from '~~/server/utils/audio/voiceGen'
 import { createVoiceAsset } from '~~/server/utils/audio/assets'
+import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 
 const BodySchema = z.object({
   text: z.string().min(2).max(2000),
@@ -12,7 +13,8 @@ const BodySchema = z.object({
   channels: z.array(z.enum(['radio', 'tiktok', 'meta'])).default([])
 })
 
-export default defineEventHandler(async (event) => {
+// Owners (God mode) run this under the execution ledger; staff run it directly.
+export default defineEventHandler(event => withGodModeLedger(event, 'voiceover', async () => {
   const user = await requireWriteAccess(event)
   const body = BodySchema.parse(await readBody(event))
 
@@ -34,4 +36,4 @@ export default defineEventHandler(async (event) => {
   })
 
   return { asset, violations: generated.violations }
-})
+}))

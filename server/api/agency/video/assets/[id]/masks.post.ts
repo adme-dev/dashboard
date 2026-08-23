@@ -4,6 +4,7 @@ import { requireWriteAccess } from '~~/server/utils/auth'
 import { getPresignedDownloadUrl, getPublicUrl, isStorageConfigured, uploadFile } from '~~/server/utils/storage'
 import { requireVideoProjectWriteAccess } from '~~/server/utils/video-asset-intelligence/access'
 import { getAssetProjectRelationship } from '~~/server/utils/video-asset-intelligence/db'
+import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 
 const ProjectIdSchema = z.string().uuid()
 const MAX_MASK_BYTES = 10 * 1024 * 1024
@@ -13,7 +14,8 @@ function decodeField(data: Buffer | Uint8Array | undefined): string {
   return new TextDecoder().decode(data).trim()
 }
 
-export default defineEventHandler(async (event) => {
+// Owners (God mode) run this under the execution ledger; staff run it directly.
+export default defineEventHandler(event => withGodModeLedger(event, 'assetMasks', async () => {
   const user = await requireWriteAccess(event)
   const sourceAssetId = getRouterParam(event, 'id')
   if (!sourceAssetId) throw createError({ statusCode: 400, statusMessage: 'Asset id is required' })
@@ -52,4 +54,4 @@ export default defineEventHandler(async (event) => {
 
   setResponseStatus(event, 201)
   return { maskKey: key, url, size: uploaded.size }
-})
+}))
