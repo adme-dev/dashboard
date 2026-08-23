@@ -8,7 +8,8 @@ import { PERMISSIONS } from '~~/server/utils/permissions'
 import { scrapeUrl } from '~~/server/utils/urlScraper'
 import { queryOne } from '~~/server/utils/db'
 import { getAppUrl } from '~~/server/utils/appUrl'
-import { uploadBannerAsset, createBannerAssetStorageKey, createBannerAssetId, bannerAssetDeliveryUrl, deleteBannerFile, resolveBannerAssetDelivery } from '~~/server/utils/bannerStorage'
+import { uploadBannerAsset, createBannerAssetStorageKey, createBannerAssetId, bannerAssetDeliveryUrl, deleteBannerFile } from '~~/server/utils/bannerStorage'
+import { resolveBannerAssetDelivery } from '~~/server/utils/banner/assetDelivery'
 import { executeGodModeBannerAssetUpload } from '~~/server/utils/banner/godModeAssetUpload'
 
 function toHex6(c: string): string | null {
@@ -90,7 +91,9 @@ export default defineEventHandler(async (event) => {
           const delivery = signingSecret ? await bannerAssetDeliveryUrl(effectiveAssetId, getAppUrl(event), signingSecret) : undefined
           return nativeUpload
             ? await uploadBannerAsset(buffer, fileName, type, user.id, key, { bucket: nativeUpload.bucket, assetUrl: delivery! })
-            : await uploadBannerAsset(buffer, fileName, type, user.id, key, undefined, delivery)
+            : delivery
+              ? await uploadBannerAsset(buffer, fileName, type, user.id, key, undefined, delivery)
+              : await uploadBannerAsset(buffer, fileName, type, user.id, key)
         },
         insertAsset: async (db, st, result) => {
           if (!result) throw new Error('Banner asset insert identity is unavailable')

@@ -81,12 +81,16 @@ export default defineEventHandler(async (event) => {
     }
     // Brand palette as prompt guidance for image models — short, colour-focused (guidelines are for copy)
     let brandPrompt = ''
-    if (body.useBrandContext !== false) {
-      const kit = body.brandKitId
-        ? await getBrandKit(body.brandKitId)
-        : await getDefaultBrandKitForClient(body.clientId || (body.projectId ? ((await queryOne(`SELECT client_id FROM banner_projects WHERE id = $1`, [body.projectId]) as any)?.client_id) : null))
-      if (kit?.colors?.length) {
-        brandPrompt = ` Brand palette: ${kit.colors.slice(0, 4).map((c: any) => `${c.role} ${c.hex}`).join(', ')}.`
+    if (body.useBrandContext !== false && (body.brandKitId || body.clientId || body.projectId)) {
+      try {
+        const kit = body.brandKitId
+          ? await getBrandKit(body.brandKitId)
+          : await getDefaultBrandKitForClient(body.clientId || (body.projectId ? ((await queryOne(`SELECT client_id FROM banner_projects WHERE id = $1`, [body.projectId]) as any)?.client_id) : null))
+        if (kit?.colors?.length) {
+          brandPrompt = ` Brand palette: ${kit.colors.slice(0, 4).map((c: any) => `${c.role} ${c.hex}`).join(', ')}.`
+        }
+      } catch {
+        // brand palette is optional guidance
       }
     }
     const generationInput = {

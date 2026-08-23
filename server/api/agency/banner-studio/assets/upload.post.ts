@@ -7,9 +7,9 @@ import {
   createBannerAssetId,
   createBannerAssetStorageKey,
   deleteBannerFile,
-  resolveBannerAssetDelivery,
   uploadBannerAsset
 } from '~~/server/utils/bannerStorage'
+import { resolveBannerAssetDelivery } from '~~/server/utils/banner/assetDelivery'
 import {
   validateBannerAssetUpload,
   type ValidatedBannerAssetUpload
@@ -93,7 +93,9 @@ export default defineEventHandler(async (event) => {
           : undefined
         return nativeUpload
           ? await uploadBannerAsset(validated.buffer, validated.fileName, validated.mimeType, user.id, key, { bucket: nativeUpload.bucket, assetUrl: delivery! })
-          : await uploadBannerAsset(validated.buffer, validated.fileName, validated.mimeType, user.id, key, undefined, delivery)
+          : delivery
+            ? await uploadBannerAsset(validated.buffer, validated.fileName, validated.mimeType, user.id, key, undefined, delivery)
+            : await uploadBannerAsset(validated.buffer, validated.fileName, validated.mimeType, user.id, key)
       },
       insertAsset: async (db, stored: StoredBannerAssetUpload, result) => {
         if (!result) throw new Error('Banner asset insert identity is unavailable')

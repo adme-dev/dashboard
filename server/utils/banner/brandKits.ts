@@ -138,15 +138,21 @@ export function brandContextBlock(kit: { name: string, colors: any[], fonts: any
 
 /** Resolve brand context for an AI call from either an explicit kit or a project's client. */
 export async function brandContextForRequest(opts: { brandKitId?: string | null, projectId?: string | null, clientId?: string | null }): Promise<string> {
-  if (opts.brandKitId) {
-    const kit = await getBrandKit(opts.brandKitId)
-    return brandContextBlock(kit)
+  // No identifiers → no brand. Anonymous AI calls must not hit the DB (and must not inherit the agency default).
+  if (!opts.brandKitId && !opts.projectId && !opts.clientId) return ''
+  try {
+    if (opts.brandKitId) {
+      return brandContextBlock(await getBrandKit(opts.brandKitId))
+    }
+    let clientId = opts.clientId || null
+    if (!clientId && opts.projectId) {
+      const p = await queryOne(`SELECT client_id FROM banner_projects WHERE id = $1`, [opts.projectId]) as any
+      clientId = p?.client_id || null
+    }
+    return brandContextBlock(await getDefaultBrandKitForClient(clientId))
+  } catch (error) {
+    // Brand context is an enhancement — never fail the AI request because of it
+    console.warn('[brandKits] brand context unavailable', error instanceof Error ? error.message : error)
+    return ''
   }
-  let clientId = opts.clientId || null
-  if (!clientId && opts.projectId) {
-    const p = await queryOne(`SELECT client_id FROM banner_projects WHERE id = $1`, [opts.projectId]) as any
-    clientId = p?.client_id || null
-  }
-  const kit = await getDefaultBrandKitForClient(clientId)
-  return brandContextBlock(kit)
 }

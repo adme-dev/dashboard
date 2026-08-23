@@ -7,6 +7,7 @@
 import type { BannerBrandKit, BrandKitColor, BrandKitFont, BrandKitLogo, BrandKitVersion, BrandKitExtraction, BrandColorRole, BrandFontRole } from '~/types/banner-studio'
 import { BRAND_COLOR_ROLES, BRAND_FONT_ROLES, normaliseHex } from '~/utils/banner-brand-kit'
 import { FONT_FAMILIES } from '~/utils/banner-constants'
+import { createBannerUploadSession } from '~/utils/bannerUpload'
 
 const props = defineProps<{
   /** Compact list for the studio side panel */
@@ -190,23 +191,34 @@ function toggleWeight(f: BrandKitFont, w: number) {
 // ── Logos ──────────────────────────────────────────────────────────────
 const logoInput = ref<HTMLInputElement | null>(null)
 const uploadingLogo = ref(false)
-async function onLogoFiles(e: Event) {
-  const input = e.target as HTMLInputElement
-  const files = input.files ? Array.from(input.files) : []
-  input.value = ''
+/** Uploads go through the shared session: content-hash idempotency keys + serialised requests */
+const uploadSession = createBannerUploadSession()
+async function uploadLogo(files: FileList | File[]) {
   if (!files.length) return
   uploadingLogo.value = true
-  for (const file of files) {
-    const fd = new FormData()
-    fd.append('file', file)
-    try {
-      const r = await $fetch<{ url: string, r2Key: string }>('/api/agency/banner-studio/assets/upload', { method: 'POST', body: fd })
-      form.logos.push({ name: file.name.replace(/\.[^.]+$/, ''), url: r.url, r2Key: r.r2Key, variant: 'any' })
-    } catch {
-      toast.add({ title: 'Upload failed', description: file.name, color: 'error' })
-    }
+  try {
+    const outcomes = await uploadSession.attemptFiles(files, async (request) => {
+      return await api<{ url: string, r2Key: string }>('/api/agency/banner-studio/assets/upload', { method: 'POST', ...request })
+    })
+    outcomes.forEach((outcome, i) => {
+      const file = files[i]
+      if (outcome?.ok) {
+        form.logos.push({ name: file.name.replace(/\.[^.]+$/, ''), url: outcome.value.url, r2Key: outcome.value.r2Key, variant: 'any' })
+      } else {
+        toast.add({ title: 'Upload failed', description: file.name, color: 'error' })
+      }
+    })
+  } finally {
+    uploadingLogo.value = false
   }
-  uploadingLogo.value = false
+}
+async function onLogoFileSelect(e: Event) {
+  const input = e.target as HTMLInputElement
+  try {
+    if (input.files?.length) await uploadLogo(input.files)
+  } finally {
+    input.value = ''
+  }
 }
 function cycleVariant(l: BrandKitLogo) {
   l.variant = l.variant === 'any' || !l.variant ? 'dark' : l.variant === 'dark' ? 'light' : 'any'
@@ -744,7 +756,7 @@ function kitMenu(kit: BannerBrandKit) {
                     accept="image/*"
                     multiple
                     class="hidden"
-                    @change="onLogoFiles"
+                    @change="onLogoFileSelect"
                   >
                 </div>
               </section>
