@@ -3,6 +3,7 @@
 // AV editor. Calls the injected `uploader` (the composable's uploadMedia) and emits
 // uploaded({ r2Key, durationSec, baseSource }) so the page can add the clip at the playhead.
 import { ref } from 'vue'
+import { isPossiblyAppliedFailure } from '~~/app/utils/apiError'
 
 const props = defineProps<{
   open: boolean
@@ -41,6 +42,11 @@ async function onFile(e: Event) {
   } catch (e: any) {
     console.error('[MediaMediaPicker] upload failed', e)
     error.value = e?.data?.statusMessage ?? e?.message ?? 'Upload failed'
+    if (isPossiblyAppliedFailure(e)) {
+      // The file may have reached storage. Refreshing the assets rail shows it if so.
+      toast.add({ title: 'Upload may have completed', description: `${error.value}. Refresh the assets rail before uploading again.`, color: 'warning', icon: 'i-lucide-clock-alert' })
+      return
+    }
     toast.add({ title: 'Upload failed', description: error.value ?? '', color: 'error' })
     uploading.value = false
     return
