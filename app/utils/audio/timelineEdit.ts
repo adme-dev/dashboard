@@ -217,6 +217,21 @@ export function setClipFit(state: TimelineState, { clipId, fit }: { clipId: stri
   return next
 }
 
+/** Set where/how large an overlay clip renders. No-op for non-overlay clips. */
+export function setOverlayPlacement(
+  state: TimelineState,
+  { clipId, placement }: { clipId: string; placement: { anchor: string; scale: number; margin_pct: number } }
+): TimelineState {
+  const found = findClip(state, clipId)
+  if (!found || (found.clip as { type?: string }).type !== 'overlay') return state
+  const next = cloneState(state)
+  for (const track of next.tracks) {
+    const clip = track.clips.find(c => c.id === clipId)
+    if (clip) (clip as { placement?: typeof placement }).placement = { ...placement }
+  }
+  return next
+}
+
 /** Replace the caption burn-in style preset on a caption clip. No-op (original
  * reference) for unknown clips, non-caption clips, or unsupported styles. */
 export function setCaptionStyle(state: TimelineState, { clipId, style }: { clipId: string, style: CaptionStylePreset }): TimelineState {

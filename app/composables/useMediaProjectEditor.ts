@@ -16,8 +16,7 @@ import {
   addClip, addTrack, deleteClip, moveClip, trimClip, sliceClipAt,
   addVideoClip, addOverlayClip, addCaptionClip, trimVisualClip, setClipEffects, setClipFit, setCaptionStyle,
   type CaptionStylePreset,
-  type VideoClipFit
-} from '~~/app/utils/audio/timelineEdit'
+  type VideoClipFit, setOverlayPlacement } from '~~/app/utils/audio/timelineEdit'
 import {
   createVideoSourceRegistry,
   mergeVideoSource,
@@ -271,6 +270,12 @@ export function useMediaProjectEditor(projectId: string) {
   }
 
   /** Replace the framing mode on a video clip. One undo step; no-op for non-video clips. */
+  function setOverlayPlacementAction(clipId: string, placement: { anchor: string; scale: number; margin_pct: number }) {
+    if (!timeline.value) return
+    const next = setOverlayPlacement(timeline.value, { clipId, placement })
+    if (next !== timeline.value) applyEdit(next)
+  }
+
   function setClipFitAction(clipId: string, fit: VideoClipFit) {
     if (!timeline.value) return
     const next = setClipFit(timeline.value, { clipId, fit })
@@ -668,7 +673,7 @@ export function useMediaProjectEditor(projectId: string) {
     // Transport
     play, pause, seek,
     // Edit actions
-    moveClipAction, trimClipAction, sliceAction, setClipEffectsAction, setClipFitAction, setCaptionStyleAction,
+    moveClipAction, trimClipAction, sliceAction, setClipEffectsAction, setClipFitAction, setOverlayPlacementAction, setCaptionStyleAction,
     addClipAction, addTrackAction, addClipToKindTrackAction, deleteClipAction,
     undoAction, redoAction,
     // AV actions

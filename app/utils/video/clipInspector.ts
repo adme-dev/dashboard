@@ -13,6 +13,7 @@ export interface VideoStudioClipInspectorSummary {
   durationSec: number | null
   endSec: number | null
   captionStyle?: CaptionStylePreset
+  placement?: { anchor: string; scale: number; margin_pct: number } | null
   details: Array<{ label: string; value: string }>
 }
 
@@ -89,6 +90,7 @@ export function resolveVideoStudioClipInspector(input: {
       durationSec,
       endSec,
       captionStyle: kind === 'caption' ? (c.style ?? 'platform_default') : undefined,
+      placement: kind === 'overlay' ? (c.placement ?? null) : undefined,
       details,
     }
   }

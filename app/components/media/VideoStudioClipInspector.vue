@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import type { VideoStudioClipInspectorSummary } from '~~/app/utils/video/clipInspector'
 import type { CaptionStylePreset } from '~~/app/utils/audio/timelineEdit'
+import { OVERLAY_ANCHORS, normalizeOverlayPlacement, type OverlayAnchor, type OverlayPlacement } from '~~/shared/utils/overlayPlacement'
 
 const props = withDefaults(defineProps<{
   clip: VideoStudioClipInspectorSummary
@@ -16,7 +17,19 @@ const emit = defineEmits<{
   (event: 'set-caption-style', style: CaptionStylePreset): void
   /** Numeric timing edit — exactly one field per emit, in timeline seconds. */
   (event: 'set-timing', payload: { field: 'start' | 'duration' | 'end'; seconds: number }): void
+  (event: 'set-placement', placement: OverlayPlacement): void
 }>()
+
+// ─── Overlay placement (anchor grid + scale + margin) ────────────────────────
+const placement = computed(() => normalizeOverlayPlacement(props.clip.placement ?? null))
+const ANCHOR_LABEL: Record<OverlayAnchor, string> = {
+  'top-left': 'Top left', 'top-center': 'Top', 'top-right': 'Top right',
+  'center-left': 'Left', 'center': 'Centre', 'center-right': 'Right',
+  'bottom-left': 'Bottom left', 'bottom-center': 'Bottom', 'bottom-right': 'Bottom right',
+}
+function setAnchor(anchor: OverlayAnchor) { emit('set-placement', { ...placement.value, anchor }) }
+function setScale(value: number | number[]) { emit('set-placement', { ...placement.value, scale: Array.isArray(value) ? value[0]! : value }) }
+function setMargin(value: number | number[]) { emit('set-placement', { ...placement.value, margin_pct: Array.isArray(value) ? value[0]! : value }) }
 
 // ─── Numeric timing (precise placement without pixel-dragging) ───────────────
 const TIMING_FIELDS = ['start', 'duration', 'end'] as const
@@ -119,6 +132,39 @@ const kindIcon = computed(() => {
         <dd class="truncate text-xs font-medium text-highlighted">{{ detail.value }}</dd>
       </div>
     </dl>
+
+    <div v-if="props.clip.kind === 'overlay'" class="mt-3 border-t border-default pt-3">
+      <div class="mb-2 flex items-center justify-between gap-3">
+        <p class="text-xs font-medium uppercase text-muted">Placement</p>
+        <p class="text-[11px] text-muted">{{ ANCHOR_LABEL[placement.anchor] }} · {{ Math.round(placement.scale * 100) }}% · {{ placement.margin_pct }}% inset</p>
+      </div>
+      <div class="flex items-start gap-3">
+        <div class="grid shrink-0 grid-cols-3 gap-1" role="radiogroup" aria-label="Overlay anchor">
+          <button
+            v-for="anchor in OVERLAY_ANCHORS"
+            :key="anchor"
+            type="button"
+            role="radio"
+            :aria-checked="placement.anchor === anchor"
+            :aria-label="ANCHOR_LABEL[anchor]"
+            :title="ANCHOR_LABEL[anchor]"
+            class="size-7 rounded border transition"
+            :class="placement.anchor === anchor ? 'border-primary bg-primary/20' : 'border-default bg-default/30 hover:border-primary/40'"
+            @click="setAnchor(anchor)"
+          >
+            <span class="mx-auto block size-2 rounded-sm" :class="placement.anchor === anchor ? 'bg-primary' : 'bg-muted'" />
+          </button>
+        </div>
+        <div class="min-w-0 flex-1 space-y-2">
+          <UFormField label="Size" size="xs" :ui="{ label: 'text-[10px] uppercase text-muted' }">
+            <USlider :model-value="placement.scale" :min="0.1" :max="3" :step="0.05" size="xs" aria-label="Overlay size" @update:model-value="setScale" />
+          </UFormField>
+          <UFormField label="Inset" size="xs" :ui="{ label: 'text-[10px] uppercase text-muted' }">
+            <USlider :model-value="placement.margin_pct" :min="0" :max="40" :step="1" size="xs" aria-label="Overlay inset" @update:model-value="setMargin" />
+          </UFormField>
+        </div>
+      </div>
+    </div>
 
     <div v-if="props.clip.kind === 'caption'" class="mt-3 border-t border-default pt-3">
       <div class="mb-2 flex items-center justify-between gap-3">
