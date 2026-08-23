@@ -25,6 +25,23 @@ const H = computed(() => props.timeline.height ?? 1920)
 const aspect = computed(() => `${W.value} / ${H.value}`)
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
+const frameRef = ref<HTMLDivElement | null>(null)
+
+// ─── Render parity for overlays ─────────────────────────────────────────────
+// The server captures overlay HTML in a viewport the size of the OUTPUT frame
+// (e.g. 1080×1920) and composites it at 0,0 unscaled. Mirror that: lay the
+// iframe out at full output size and scale it down to the displayed box, so a
+// 300×600 banner covers the same fraction of the frame as it will in the render.
+const displayedWidth = ref(0)
+let frameObserver: ResizeObserver | null = null
+const overlayScale = computed(() => displayedWidth.value > 0 ? displayedWidth.value / W.value : 1)
+const overlayFrameStyle = computed(() => ({
+  width: `${W.value}px`,
+  height: `${H.value}px`,
+  transform: `scale(${overlayScale.value})`,
+  transformOrigin: 'top left',
+  colorScheme: 'dark light',
+}))
 
 const videoEls = new Map<string, HTMLVideoElement>()
 const imgEls = new Map<string, HTMLImageElement>()
@@ -271,8 +288,16 @@ function onOverlayLoad(clip: any) {
   if (tl) { try { tl.pause(); tl.seek(Math.max(0, props.currentTime - clip.timeline_start_sec)) } catch { /* noop */ } }
 }
 
-onMounted(() => { draw() })
+onMounted(() => {
+  draw()
+  if (frameRef.value && typeof ResizeObserver !== 'undefined') {
+    frameObserver = new ResizeObserver(([entry]) => { displayedWidth.value = entry?.contentRect.width ?? 0 })
+    frameObserver.observe(frameRef.value)
+  }
+  displayedWidth.value = frameRef.value?.clientWidth ?? 0
+})
 onBeforeUnmount(() => {
+  frameObserver?.disconnect()
   for (const el of videoEls.values()) { try { el.pause(); el.removeAttribute('src'); el.load() } catch { /* noop */ } }
   videoEls.clear(); imgEls.clear()
 })
@@ -280,6 +305,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div
+    ref="frameRef"
     class="relative mx-auto h-[min(72vh,780px)] min-h-[520px] max-w-full overflow-hidden rounded-lg border border-default bg-black"
     :style="{ aspectRatio: aspect, width: 'auto' }"
   >
@@ -295,9 +321,8 @@ onBeforeUnmount(() => {
         v-show="overlayActive(clip)"
         :ref="(el) => { overlayRefs[clip.id] = el as HTMLIFrameElement | null }"
         :srcdoc="overlayHtml[clip.id]"
-        :style="{ opacity: clip.opacity ?? 1 }"
-        class="absolute inset-0 h-full w-full border-0 pointer-events-none"
-        style="color-scheme: dark light"
+        :style="{ ...overlayFrameStyle, opacity: clip.opacity ?? 1 }"
+        class="absolute left-0 top-0 border-0 pointer-events-none"
         sandbox="allow-scripts allow-same-origin"
         @load="onOverlayLoad(clip)"
       />
