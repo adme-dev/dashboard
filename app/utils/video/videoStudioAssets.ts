@@ -157,6 +157,20 @@ function videoAssetSource(asset: VideoAssetInput): VideoStudioAssetSource {
   return 'library'
 }
 
+const UUID_TITLE = /^Generated video [0-9a-f]{8}-[0-9a-f-]{27}$/i
+
+/** Older generated assets were titled with the raw job UUID — show the prompt instead. */
+export function displayVideoAssetTitle(asset: { title?: string | null; r2Key?: string | null; generationPrompt?: string | null }): string {
+  const title = asset.title?.trim() ?? ''
+  if (title && !UUID_TITLE.test(title)) return title
+  const prompt = asset.generationPrompt?.replace(/\s+/g, ' ').trim() ?? ''
+  if (prompt) {
+    const clause = prompt.split(/(?<=[.!?])\s|,\s/)[0] ?? prompt
+    return `AI · ${clause.length > 60 ? `${clause.slice(0, 57).trimEnd()}…` : clause}`
+  }
+  return title || asset.r2Key || 'Untitled video'
+}
+
 export function videoStudioAssetImageSource(asset: VideoStudioAsset | null | undefined): { assetId: string; title: string } | null {
   if (!asset?.libraryAssetId || !imageR2Key(asset.r2Key)) return null
   return { assetId: asset.libraryAssetId, title: asset.title }
@@ -199,7 +213,7 @@ export function normalizeVideoStudioAssets(input: NormalizeVideoStudioAssetsInpu
       libraryAssetId: asset.id,
       type: 'video',
       source: videoAssetSource(asset),
-      title: asset.title || asset.r2Key || 'Untitled video',
+      title: displayVideoAssetTitle(asset),
       subtitle: asset.format ?? null,
       status: 'ready',
       modelId: asset.generationModelId ?? null,

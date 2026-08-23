@@ -284,7 +284,14 @@ async function onFileSelected(event: Event) {
   }
 }
 
+// Validation only speaks once the user has typed or tried to generate — an
+// untouched form should read as an invitation, not an error.
+const touched = ref(false)
+watch(prompt, (value) => { if (value.trim()) touched.value = true })
+const showValidation = computed(() => touched.value && !validation.value.valid)
+
 async function submit() {
+  touched.value = true
   if (!validation.value.valid || !model.value) return
   submitting.value = true
   try {
@@ -527,9 +534,9 @@ async function submit() {
           </div>
 
           <!-- Validation warning -->
-          <UAlert v-if="!validation.valid" color="warning" variant="subtle" icon="i-lucide-info" :title="validation.errors[0]" />
+          <UAlert v-if="showValidation" color="warning" variant="subtle" icon="i-lucide-info" :title="validation.errors[0]" />
 
-          <UButton block color="primary" icon="i-lucide-sparkles" :loading="submitting" :disabled="!validation.valid" label="Generate" @click="submit" />
+          <UButton block color="primary" icon="i-lucide-sparkles" :loading="submitting" :disabled="touched && !validation.valid" label="Generate" @click="submit" />
         </template>
   </div>
 </template>

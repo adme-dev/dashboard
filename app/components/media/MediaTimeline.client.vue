@@ -42,7 +42,21 @@ const emit = defineEmits<{
   (e: 'slice', payload: { clipId: string; timeSec: number }): void
   /** Clip deleted */
   (e: 'delete-clip', payload: { clipId: string }): void
+  /** Empty-lane affordance: the user wants to add media to this track */
+  (e: 'add-to-track', payload: { trackId: string; kind: string }): void
 }>()
+
+const EMPTY_LANE_LABEL: Record<string, string> = {
+  video: 'Add footage',
+  overlay: 'Add overlay',
+  caption: 'Add captions',
+  voiceover: 'Add voiceover',
+  music: 'Add music',
+  audio: 'Add audio',
+}
+function emptyLaneLabel(lane: { kind: string; name: string }) {
+  return EMPTY_LANE_LABEL[lane.kind] ?? EMPTY_LANE_LABEL[lane.name.toLowerCase()] ?? 'Add clip'
+}
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 
@@ -571,6 +585,18 @@ onUnmounted(() => {
             :class="lane.muted ? 'text-muted' : 'text-highlighted'"
           >{{ lane.name }}</span>
         </div>
+
+        <!-- Empty lane: invite, don't just leave a blank strip -->
+        <button
+          v-if="!lane.clips.length"
+          type="button"
+          class="absolute top-2 flex items-center gap-1.5 rounded-md border border-dashed border-default px-2.5 text-xs text-muted transition hover:border-primary/60 hover:text-highlighted"
+          :style="{ left: `${LABEL_WIDTH + 8}px`, height: `${LANE_HEIGHT - 16}px` }"
+          @click.stop="emit('add-to-track', { trackId: lane.id, kind: lane.kind })"
+        >
+          <UIcon name="i-lucide-plus" class="size-3.5" />
+          {{ emptyLaneLabel(lane) }}
+        </button>
 
         <!-- Clips -->
         <div

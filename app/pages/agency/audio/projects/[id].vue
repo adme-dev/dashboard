@@ -824,6 +824,19 @@ function onKeyDown(event: KeyboardEvent) {
   }
 }
 
+// ─── Empty-lane "Add …" affordance → the matching picker ─────────────────────
+
+function onAddToTrack(payload: { trackId: string; kind: string }) {
+  const kind = payload.kind === 'audio' ? 'audio' : payload.kind
+  if (kind === 'video') mediaPickerOpen.value = true
+  else if (kind === 'overlay') overlayPickerOpen.value = true
+  else if (kind === 'caption' || kind === 'voiceover') {
+    // Captions and voiceover are produced, not picked.
+    videoStudioMode.value = 'produce'
+    producerRailCollapsed.value = false
+  } else pickerOpen.value = true
+}
+
 // ─── Dock height (resizable, remembered per browser) ─────────────────────────
 
 const DOCK_MIN = 220
@@ -966,6 +979,34 @@ const projectClientName = computed(() => {
   return clientsData.value?.find(client => client.id === clientId)?.name ?? null
 })
 
+// Client assignment — USelectMenu never gets an empty-string value; 'none' is the sentinel.
+const NO_CLIENT = 'none'
+const clientPopoverOpen = ref(false)
+const clientDraft = ref<string>(NO_CLIENT)
+const clientSaving = ref(false)
+const clientOptions = computed(() => [
+  { label: 'No client', value: NO_CLIENT },
+  ...(clientsData.value ?? []).map(client => ({ label: client.name, value: client.id })),
+])
+watch(clientPopoverOpen, (open) => {
+  if (open) clientDraft.value = editor.project.value?.clientId ?? NO_CLIENT
+})
+async function commitClient() {
+  if (clientSaving.value) return
+  const next = clientDraft.value === NO_CLIENT ? null : clientDraft.value
+  if (next === (editor.project.value?.clientId ?? null)) { clientPopoverOpen.value = false; return }
+  clientSaving.value = true
+  try {
+    await editor.updateProject({ clientId: next })
+    clientPopoverOpen.value = false
+    toast.add({ title: next ? 'Client assigned' : 'Client removed', color: 'success' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Could not update client', description: apiErrorDescription(e, ''), color: 'error' })
+  } finally {
+    clientSaving.value = false
+  }
+}
+
 const renaming = ref(false)
 const renameDraft = ref('')
 const renameSaving = ref(false)
@@ -1043,7 +1084,36 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
             <UIcon name="i-lucide-pencil" class="size-3.5 shrink-0 text-muted opacity-0 transition group-hover:opacity-100" />
           </button>
           <UBadge :label="isAv ? 'Video' : 'Audio'" size="xs" variant="subtle" color="neutral" class="shrink-0" />
-          <UBadge v-if="projectClientName" :label="projectClientName" size="xs" variant="outline" color="neutral" class="hidden shrink-0 sm:inline-flex" />
+          <UPopover v-model:open="clientPopoverOpen">
+            <UButton
+              :icon="projectClientName ? 'i-lucide-building-2' : 'i-lucide-building-2'"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              class="hidden shrink-0 sm:inline-flex"
+              :label="projectClientName ?? 'No client'"
+              :title="projectClientName ? 'Change client' : 'Assign a client'"
+            />
+            <template #content>
+              <div class="w-72 space-y-3 p-3">
+                <UFormField label="Client" help="Portal hand-off and social publishing use this client.">
+                  <USelectMenu
+                    v-model="clientDraft"
+                    :items="clientOptions"
+                    value-key="value"
+                    size="sm"
+                    class="w-full"
+                    placeholder="Choose a client"
+                    :search-input="{ placeholder: 'Search clients' }"
+                  />
+                </UFormField>
+                <div class="flex justify-end gap-2">
+                  <UButton size="xs" variant="ghost" color="neutral" label="Cancel" @click="clientPopoverOpen = false" />
+                  <UButton size="xs" color="primary" label="Save client" :loading="clientSaving" @click="commitClient" />
+                </div>
+              </div>
+            </template>
+          </UPopover>
         </div>
 
         <!-- Save status: always visible, never decorative. -->
@@ -1522,6 +1592,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           @trim-clip="(p) => editor.trimClipAction(p.clipId, p.edge, p.newTimeSec)"
           @slice="(p) => editor.sliceAction(p.clipId, p.timeSec)"
           @delete-clip="(p) => { editor.deleteClipAction(p.clipId); if (selectedClipId === p.clipId) selectedClipId = null }"
+          @add-to-track="onAddToTrack"
         />
           </div>
         </section>

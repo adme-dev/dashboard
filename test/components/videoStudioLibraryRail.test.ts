@@ -14,6 +14,7 @@ const stubs = {
     template: '<button :data-icon="icon" :disabled="disabled" @click="$emit(\'click\', $event)"><slot />{{ label }}</button>'
   },
   UBadge: { name: 'UBadge', props: ['label'], template: '<span>{{ label }}</span>' },
+  UPopover: { name: 'UPopover', template: '<div><slot /><slot name="content" /></div>' },
   UInput: {
     name: 'UInput',
     props: ['modelValue', 'placeholder'],
@@ -280,6 +281,35 @@ describe('VideoStudioLibraryRail', () => {
       expect(second.host.textContent).not.toContain('Ready generated video')
     } finally {
       second.app.unmount()
+    }
+  })
+
+  it('hides failed AI jobs on request and keeps them reachable via the Failed filter', async () => {
+    const { app, host } = await mount({
+      assets: [
+        asset({ id: 'video:ok', rawId: 'ok', title: 'Ready clip' }),
+        asset({ id: 'job:bad-1', rawId: 'bad-1', type: 'job', source: 'generation', title: 'Broken push-in', status: 'failed', timelineReady: false, r2Key: null, previewUrl: null }),
+        asset({ id: 'job:bad-2', rawId: 'bad-2', type: 'job', source: 'generation', title: 'Broken orbit', status: 'failed', timelineReady: false, r2Key: null, previewUrl: null }),
+      ],
+      selectedId: null,
+      loading: false,
+    })
+
+    try {
+      expect(host.textContent).toContain('Broken push-in')
+      buttonByText(host, 'Hide 2 failed').click()
+      await nextTick()
+      expect(host.textContent).not.toContain('Broken push-in')
+      expect(host.textContent).not.toContain('Broken orbit')
+      expect(host.textContent).toContain('Ready clip')
+      expect([...host.querySelectorAll('button')].some(el => el.textContent?.includes('Hide 2 failed'))).toBe(false)
+
+      buttonByText(host, 'Failed').click()
+      await nextTick()
+      expect(host.textContent).toContain('Broken push-in')
+      expect(host.textContent).not.toContain('Ready clip')
+    } finally {
+      app.unmount()
     }
   })
 })

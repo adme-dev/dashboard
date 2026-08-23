@@ -27,6 +27,7 @@ const emit = defineEmits<{
 const summary = computed(() => summarizeVideoRenderJobs(props.jobs))
 const latestCompleted = computed(() => latestJob(job => job.status === 'done' && renderVariantFormats(job).length > 0))
 const latestFailed = computed(() => latestJob(job => job.status === 'failed'))
+const activeJob = computed(() => latestJob(job => job.status === 'queued' || job.status === 'rendering'))
 const completedFormats = computed(() => renderVariantFormats(latestCompleted.value))
 
 function latestJob(predicate: (job: MediaRenderJob) => boolean) {
@@ -84,7 +85,11 @@ const latestFailure = computed(() => latestFailed.value ? parseRenderFailure(lat
 <template>
   <section class="flex flex-wrap items-center gap-2 rounded-lg border border-default bg-elevated px-3 py-2">
     <div class="flex min-w-0 items-center gap-2">
-      <UIcon name="i-lucide-clapperboard" class="size-4 shrink-0 text-muted" />
+      <UIcon
+        :name="summary.active || props.rendering ? 'i-lucide-loader-circle' : 'i-lucide-clapperboard'"
+        class="size-4 shrink-0"
+        :class="summary.active || props.rendering ? 'animate-spin text-primary' : 'text-muted'"
+      />
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-1.5">
           <p class="text-xs font-medium text-highlighted">Render queue</p>
@@ -98,7 +103,8 @@ const latestFailure = computed(() => latestFailed.value ? parseRenderFailure(lat
           />
         </div>
         <p class="truncate text-[11px] text-muted">
-          <span v-if="summary.latest">Latest {{ summary.latest.status }} · {{ dateLabel(summary.latest.createdAt) }}</span>
+          <span v-if="summary.active">Rendering now — started {{ dateLabel(activeJob?.createdAt) }}. This usually takes a few minutes; you can keep editing.</span>
+          <span v-else-if="summary.latest">Latest {{ summary.latest.status }} · {{ dateLabel(summary.latest.createdAt) }}</span>
           <span v-else>Render the timeline to create downloadable variants.</span>
         </p>
       </div>
