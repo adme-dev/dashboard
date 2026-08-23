@@ -58,6 +58,29 @@ export interface GodModeExternalMutation {
   label: string
   /** Per-family context slot so two families on one event never collide. */
   coordinationKey: symbol
+  /** Optional exact wording overrides (kept for families with pre-existing contracts). */
+  messages?: Partial<GodModeExternalMessages>
+}
+
+export interface GodModeExternalMessages {
+  keyRequired: string
+  notReplayable: string
+  claimUnavailable: string
+  claimChanged: string
+  reservationUnavailable: string
+  checkpointUnavailable: string
+}
+
+function messages(mutation: GodModeExternalMutation): GodModeExternalMessages {
+  return {
+    keyRequired: `A valid Idempotency-Key header is required for God mode ${mutation.label}`,
+    notReplayable: `God mode ${mutation.label} is not safely replayable`,
+    claimUnavailable: `God mode ${mutation.label} claim unavailable`,
+    claimChanged: `God mode ${mutation.label} claim ownership changed`,
+    reservationUnavailable: `God mode ${mutation.label} reservation unavailable`,
+    checkpointUnavailable: `God mode ${mutation.label} dispatch checkpoint unavailable`,
+    ...mutation.messages
+  }
 }
 
 interface Coordination {
@@ -107,7 +130,7 @@ async function persistTerminal(current: Coordination, terminal: GodModeAuditEven
         JSON.stringify(succeeded ? (current.result ?? null) : null)
       ]
     )
-    if (!updated.rows[0]) throw new Error(`God mode ${current.mutation.label} claim ownership changed`)
+    if (!updated.rows[0]) throw new Error(messages(current.mutation).claimChanged)
     await current.deps.appendAudit(audit, db)
   })
 }
@@ -121,19 +144,19 @@ export async function prepareGodModeExternalMutation(
   if (!state) throw new Error('God mode route attempt is unavailable')
   const suppliedKey = getHeader(event, 'idempotency-key')?.trim() || ''
   if (!IDEMPOTENCY_KEY.test(suppliedKey)) {
-    throw httpError(428, `A valid Idempotency-Key header is required for God mode ${mutation.label}`)
+    throw httpError(428, messages(mutation).keyRequired)
   }
   const requestDigest = await dependencies.digestRequest(event)
   const row = await dependencies.queryOneFresh<ExecutionRow & { claimed: boolean }>(
     `WITH claimed AS(INSERT INTO ${LEDGER}(actor_user_id,channel,idempotency_key,state,correlation_id,route_or_tool,executor_class,session_digest,execution_phase,execution_metadata)VALUES($1,'application',$2,'in_progress',$3,$4,'external-provider',$5,'claimed',jsonb_build_object('requestDigest',$6::TEXT))ON CONFLICT(actor_user_id,channel,idempotency_key)DO NOTHING RETURNING state,route_or_tool,execution_metadata->>'requestDigest' request_digest,execution_metadata->'ids' ids,execution_metadata->'result' result,TRUE claimed)SELECT * FROM claimed UNION ALL SELECT state,route_or_tool,execution_metadata->>'requestDigest',execution_metadata->'ids',execution_metadata->'result',FALSE FROM ${LEDGER} WHERE ${ATTEMPT} AND NOT EXISTS(SELECT 1 FROM claimed)LIMIT 1`,
     [state.actorUserId, suppliedKey, state.correlationId, state.routeOrTool, state.sessionDigest, requestDigest]
   )
-  if (!row) throw new Error(`God mode ${mutation.label} claim unavailable`)
+  if (!row) throw new Error(messages(mutation).claimUnavailable)
   if (row.route_or_tool !== state.routeOrTool) throw httpError(409, 'Idempotency key belongs to another operation')
   if (row.request_digest !== requestDigest) throw httpError(409, 'Idempotency key request does not match')
   const replayIds = parseIds(row.ids)
   const replay = !row.claimed && row.state === 'succeeded' && !!replayIds
-  if (!row.claimed && !replay) throw httpError(409, `God mode ${mutation.label} is not safely replayable`)
+  if (!row.claimed && !replay) throw httpError(409, messages(mutation).notReplayable)
   const current: Coordination = {
     actor: state.actorUserId,
     correlation: state.correlationId,
@@ -194,7 +217,7 @@ export async function executeGodModeExternalMutation<T>(
     [current.actor, current.key, current.correlation, JSON.stringify(candidates)]
   )
   current.ids = parseIds(reserved?.ids) ?? []
-  if (current.ids.length !== idCount) throw new Error(`God mode ${mutation.label} reservation unavailable`)
+  if (current.ids.length !== idCount) throw new Error(messages(mutation).reservationUnavailable)
 
   const result = await work({
     ids: current.ids,
@@ -206,7 +229,7 @@ export async function executeGodModeExternalMutation<T>(
         `UPDATE ${LEDGER} SET execution_phase='dispatched',updated_at=NOW() WHERE ${OWNED} AND execution_phase='claimed' RETURNING state`,
         [current.actor, current.key, current.correlation]
       )
-      if (!checkpoint) throw new Error(`God mode ${mutation.label} dispatch checkpoint unavailable`)
+      if (!checkpoint) throw new Error(messages(mutation).checkpointUnavailable)
       current.stage = 1
     }
   })

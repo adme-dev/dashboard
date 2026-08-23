@@ -56,7 +56,7 @@ function harness(order?: string[]) {
     route_or_tool: string
     execution_phase: string
     request_digest: string
-    job_ids: string[] | null
+    ids: string[] | null
   } | null = null
   const audits: Array<Record<string, unknown>> = []
   const query = vi.fn(async (sql: string, params: unknown[] = []) => {
@@ -69,17 +69,17 @@ function harness(order?: string[]) {
           route_or_tool: String(params[3]),
           execution_phase: 'claimed',
           request_digest: String(params[5]),
-          job_ids: null
+          ids: null
         }
       }
       return { ...ledger, claimed }
     }
-    if (sql.includes('jsonb_build_object(\'jobIds\'')) {
-      if (!ledger || ledger.state !== 'in_progress' || ledger.execution_phase !== 'claimed' || ledger.job_ids) return null
-      ledger.job_ids = JSON.parse(String(params[3]))
-      return { job_ids: ledger.job_ids }
+    if (sql.includes('jsonb_build_object(\'ids\'')) {
+      if (!ledger || ledger.state !== 'in_progress' || ledger.execution_phase !== 'claimed' || ledger.ids) return null
+      ledger.ids = JSON.parse(String(params[3]))
+      return { ids: ledger.ids }
     }
-    if (sql.includes('SET execution_phase = \'dispatched\'')) {
+    if (sql.includes('execution_phase=\'dispatched\'')) {
       if (!ledger || ledger.execution_phase !== 'claimed') return null
       ledger.execution_phase = 'dispatched'
       order?.push('checkpoint')
