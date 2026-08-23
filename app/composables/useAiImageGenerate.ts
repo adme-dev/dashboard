@@ -15,7 +15,7 @@ const _generateSeedInput = ref(0)
 const _lastGenerateSeed = ref<number | null>(null)
 
 export function useAiImageGenerate() {
-  const { addLayer, nextId } = useBannerStudio()
+  const { addLayer, nextId, state } = useBannerStudio()
   const toast = useToast()
   const apiFetch = $fetch as <T = unknown>(
     request: string,
@@ -48,6 +48,8 @@ export function useAiImageGenerate() {
         method: 'POST',
         body: {
           prompt: _generatePrompt.value.trim(),
+          projectId: state.project?.id,
+          clientId: state.project?.clientId || undefined,
           aspectRatio: _generateAspectRatio.value,
           guidanceScale: _generateGuidance.value,
           steps: _generateSteps.value,

@@ -5,6 +5,7 @@ import { isAmbiguousApiFailure } from '~/utils/apiError'
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const route = useRoute()
+const router = useRouter()
 const toast = useToast()
 const projectId = computed(() => route.params.id as string)
 const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
@@ -12,6 +13,7 @@ let createProjectIdempotencyKey = crypto.randomUUID()
 
 const {
   state,
+  applyBrandKit,
   activeLayers,
   activeFormat,
   selectedLayer,
@@ -201,6 +203,25 @@ onMounted(() => {
     initDefault()
   } else {
     loadProject(projectData.value as any)
+    // Queued from the Brand Kits page ("Apply to project") — apply once, then drop the query param
+    const applyKitId = route.query.applyKit
+    if (typeof applyKitId === 'string' && applyKitId) {
+      nextTick(async () => {
+        try {
+          const kit = await ($fetch as any)(`/api/agency/banner-studio/brand-kits/${applyKitId}`)
+          applyBrandKit(kit)
+          toast.add({ title: 'Brand applied', description: `"${kit.name}" applied — ⌘Z to undo, then Save`, color: 'success' })
+        } catch {
+          toast.add({ title: 'Brand kit not found', color: 'error' })
+        }
+        router.replace({ query: { ...route.query, applyKit: undefined } })
+      })
+    } else {
+      // Freshly created client project (never saved since creation): offer the client's default kit
+      const pd = projectData.value as any
+      const fresh = pd?.createdAt && pd?.updatedAt && Math.abs(new Date(pd.updatedAt).getTime() - new Date(pd.createdAt).getTime()) < 60_000
+      if (pd?.clientId && fresh) offerDefaultBrandKit(pd.clientId)
+    }
   }
 
   // Connect realtime collaboration for existing projects
@@ -212,6 +233,58 @@ onMounted(() => {
 onBeforeUnmount(() => {
   disconnectRealtime()
 })
+
+// ── Project settings (name + client) ─────────────────────────────────
+const showProjectSettings = ref(false)
+const settingsName = ref('')
+const settingsClientId = ref<string>('none')
+const settingsSaving = ref(false)
+const { data: clientsForSettings } = await useFetch<Array<{ id: string; name: string }>>('/api/agency/clients', { default: () => [] })
+const clientSelectItems = computed(() => [
+  { label: 'No client', value: 'none' },
+  ...(clientsForSettings.value || []).map(c => ({ label: c.name, value: c.id })),
+])
+watch(showProjectSettings, (open) => {
+  if (!open) return
+  settingsName.value = state.project?.name || ''
+  settingsClientId.value = state.project?.clientId || 'none'
+})
+async function saveProjectSettings() {
+  if (!state.project?.id) { state.project = { ...(state.project as any), name: settingsName.value }; showProjectSettings.value = false; return }
+  settingsSaving.value = true
+  const prevClient = state.project.clientId
+  try {
+    const nextClient = settingsClientId.value === 'none' ? null : settingsClientId.value
+    const updated = await $fetch(`/api/agency/banner-studio/projects/${state.project.id}`, {
+      method: 'PATCH',
+      body: { name: settingsName.value.trim() || state.project.name, clientId: nextClient },
+    }) as any
+    state.project = { ...state.project, name: updated?.name ?? settingsName.value, clientId: nextClient, clientName: clientsForSettings.value?.find(c => c.id === nextClient)?.name }
+    showProjectSettings.value = false
+    if (nextClient && nextClient !== prevClient) offerDefaultBrandKit(nextClient)
+  } catch {
+    toast.add({ title: 'Error', description: 'Failed to update project', color: 'error' })
+  } finally {
+    settingsSaving.value = false
+  }
+}
+
+/** If the client has a default brand kit, offer to apply it (one click, undoable). */
+
+async function offerDefaultBrandKit(clientId: string) {
+  try {
+    const kits = await $fetch<any[]>('/api/agency/banner-studio/brand-kits', { query: { clientId } })
+    const kit = kits.find(k => k.isDefault && k.clientId === clientId) || kits.find(k => k.isDefault)
+    if (!kit) return
+    toast.add({
+      title: `Apply "${kit.name}"?`,
+      description: 'This client has a default brand kit. Colours, fonts and logo will be applied to every artboard (undoable).',
+      color: 'info',
+      duration: 12000,
+      actions: [{ label: 'Apply brand kit', color: 'primary', variant: 'solid', onClick: () => { applyBrandKit(kit); toast.add({ title: 'Brand applied', description: `"${kit.name}" applied — ⌘Z to undo`, color: 'success' }) } }],
+    })
+  } catch {}
+}
 
 // Auto-save indicator
 const saveStatus = computed(() => {
@@ -348,8 +421,30 @@ const { activeSize } = useBannerFileSize()
       <!-- Project name -->
       <div class="flex items-center gap-2 shrink-0">
         <UIcon name="i-lucide-palette" class="text-(--ui-text-muted) shrink-0" />
-        <!-- Name is decorative on narrow viewports — the tab title carries it; keep the save pill -->
-        <span class="hidden 2xl:inline text-sm font-semibold truncate max-w-[12rem]" :title="state.project?.name">{{ state.project?.name || 'New Banner' }}</span>
+        <!-- Project settings: name + client. Name text hidden on narrow viewports (tab title carries it) -->
+        <UPopover v-model:open="showProjectSettings">
+          <UTooltip text="Project settings — name & client">
+            <button class="flex items-center gap-1.5 rounded px-1 -mx-1 hover:bg-white/[0.05] transition-colors min-w-0">
+              <span class="hidden 2xl:inline text-sm font-semibold truncate max-w-[12rem]">{{ state.project?.name || 'New Banner' }}</span>
+              <UBadge v-if="state.project?.clientName" variant="subtle" color="neutral" size="xs" class="hidden xl:inline-flex max-w-[9rem] truncate">{{ state.project.clientName }}</UBadge>
+              <UIcon name="i-lucide-chevron-down" class="w-3 h-3 text-(--ui-text-dimmed) shrink-0" />
+            </button>
+          </UTooltip>
+          <template #content>
+            <div class="p-4 w-80 space-y-4">
+              <UFormField label="Project name">
+                <UInput v-model="settingsName" class="w-full" @keydown.enter="saveProjectSettings" />
+              </UFormField>
+              <UFormField label="Client" help="Sets which brand kit, feeds and billing this banner belongs to.">
+                <USelectMenu v-model="settingsClientId" :items="clientSelectItems" value-key="value" class="w-full" searchable />
+              </UFormField>
+              <div class="flex justify-end gap-2">
+                <UButton label="Cancel" variant="ghost" size="sm" @click="showProjectSettings = false" />
+                <UButton label="Save" size="sm" :loading="settingsSaving" @click="saveProjectSettings" />
+              </div>
+            </div>
+          </template>
+        </UPopover>
         <UBadge :color="state.isDirty ? 'warning' : 'success'" variant="subtle" size="xs">
           {{ saveStatus }}
         </UBadge>

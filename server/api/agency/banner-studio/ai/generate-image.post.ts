@@ -1,5 +1,6 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
+import { getBrandKit, getDefaultBrandKitForClient } from '~~/server/utils/banner/brandKits'
 import { uploadBannerAsset } from '~~/server/utils/bannerStorage'
 import { buildCreativeGenerationInputs, generateCreativeImage, type CreativeAiBinding } from '~~/server/utils/creative-generation/aiGatewayProvider'
 import { getCreativeGenerationModel } from '~~/server/utils/creative-generation/modelRegistry'
@@ -29,6 +30,10 @@ export default defineEventHandler(async (event) => {
     subjectType?: 'vehicle' | 'non_vehicle'
     sourceAssetId?: string
     clientId?: string
+    projectId?: string
+    brandKitId?: string
+    /** Prepend the client's brand palette to the prompt (default true when a kit exists) */
+    useBrandContext?: boolean
     targetMegapixels?: number
     outputFormat?: 'webp' | 'jpg' | 'png'
     outputQuality?: number
@@ -74,10 +79,20 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 422, statusMessage: error?.message || 'Approved source asset is unavailable' })
       }
     }
+    // Brand palette as prompt guidance for image models — short, colour-focused (guidelines are for copy)
+    let brandPrompt = ''
+    if (body.useBrandContext !== false) {
+      const kit = body.brandKitId
+        ? await getBrandKit(body.brandKitId)
+        : await getDefaultBrandKitForClient(body.clientId || (body.projectId ? ((await queryOne(`SELECT client_id FROM banner_projects WHERE id = $1`, [body.projectId]) as any)?.client_id) : null))
+      if (kit?.colors?.length) {
+        brandPrompt = ` Brand palette: ${kit.colors.slice(0, 4).map((c: any) => `${c.role} ${c.hex}`).join(', ')}.`
+      }
+    }
     const generationInput = {
       modelId,
       subjectType,
-      prompt: body.prompt?.trim(),
+      prompt: body.prompt ? `${body.prompt.trim()}${brandPrompt}` : body.prompt,
       aspectRatio: body.aspectRatio as any,
       sourceUrl,
       targetMegapixels: body.targetMegapixels,

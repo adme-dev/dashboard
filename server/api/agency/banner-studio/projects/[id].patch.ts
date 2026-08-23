@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readBody(event)
-  const { name, canvasData, status, thumbnailUrl, tags } = body
+  const { name, canvasData, status, thumbnailUrl, tags, clientId } = body
 
   try {
     // Auto-snapshot: save current canvas_data as a version before overwriting
@@ -61,6 +61,15 @@ export default defineEventHandler(async (event) => {
     if (name !== undefined) {
       sets.push(`name = $${paramIndex}`)
       params.push(name.trim())
+      paramIndex++
+    }
+
+    if (clientId !== undefined) {
+      if (clientId !== null && !/^[0-9a-f-]{36}$/i.test(String(clientId))) {
+        throw createError({ statusCode: 400, statusMessage: 'Invalid clientId' })
+      }
+      sets.push(`client_id = $${paramIndex}`)
+      params.push(clientId)
       paramIndex++
     }
 

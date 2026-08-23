@@ -66,6 +66,7 @@ export default defineEventHandler(async (event) => {
       hourlyRate: c.hourly_rate ? Number(c.hourly_rate) : undefined,
       mediaCommissionRate: c.media_commission_rate ? Number(c.media_commission_rate) : undefined,
       isActive: c.is_active,
+      logoUrl: c.logo_url || null,
       notes: c.notes,
       createdAt: c.created_at,
       updatedAt: c.updated_at,

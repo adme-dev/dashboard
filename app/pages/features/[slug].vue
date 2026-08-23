@@ -2426,23 +2426,31 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'Define brand colours, fonts, and logos. Apply across banner projects with one click and full undo support.',
+    description: 'Per-client brand kits with colour roles, heading and body fonts, light/dark logos and written guidelines — extracted from a website in a minute, applied with one undoable click, enforced at export.',
     details: [
       {
-        title: 'Brand Definition',
-        content: 'Create brand kits with primary, secondary, and accent colours, plus typography settings for headings and body text. Upload logos and brand marks that can be applied to any banner project. Each brand kit lives at the organisation level so it is available across all projects and team members.'
+        title: 'Colours With Roles, Not Just Swatches',
+        content: 'Every colour in a kit has a job — primary, secondary, accent, background, text — plus as many extras as the brand needs. Roles are what make one-click apply predictable: the primary lands on headlines, the accent on call-to-action buttons (with button text flipped for contrast), the background on every artboard. Add a label like "Leapmotor Green" so the team talks about colours the way the client does.'
       },
       {
-        title: 'One-Click Apply',
-        content: 'Select a brand kit and apply it to the current project. Colour tokens are mapped to layer properties — primary colour goes to headings and buttons, secondary to body text, accent to highlights. Font families are swapped across all text layers. The mapping is intelligent — it identifies which layers serve which purpose based on their names and properties.'
+        title: 'Heading & Body Typography',
+        content: 'Pick a heading face and a body face from the studio font library or your uploaded brand fonts, with the weights the brand is licensed for. Applying a kit sets headlines and buttons in the heading face and subheads and body copy in the body face, and loads the fonts so the canvas renders correctly straight away.'
       },
       {
-        title: 'Undo Support',
-        content: 'Applying a brand kit captures the previous state of all affected layers. A single undo action reverts every change, restoring the exact colours, fonts, and styles that were in place before. This makes it safe to experiment with different brand kits without fear of losing your current design.'
+        title: 'Logos For Light and Dark',
+        content: 'Upload the marks the client actually uses and tag each one for light or dark backgrounds. When a kit is applied the right variant replaces any layer flagged as a logo — or is placed top-left if the banner has none — so the artwork is on-brand before anyone touches a layer.'
       },
       {
-        title: 'CRUD Management',
-        content: 'Full create, read, update, and delete operations for brand kits via the Brand Kit Manager UI. Edit colours with a colour picker, swap fonts from the font library, and update logos by uploading new assets. Changes to a brand kit do not retroactively update projects that already applied it — each application is a snapshot, not a live link.'
+        title: 'Extract From a Website',
+        content: 'Paste the client\'s homepage and the studio pulls the palette, the fonts it loads, and the logo into a draft kit for you to confirm. Or start from a client record and their saved logo comes with it. Either way a brand kit takes a minute, not an afternoon of eyedroppering.'
+      },
+      {
+        title: 'Default Kit Per Client',
+        content: 'Mark one kit as the client\'s default and every new project linked to that client is offered it on open. Duplicate a kit for a sub-brand or campaign look, and every save keeps a version so you can restore an earlier palette with one click. Applying a kit is a single undo step in the editor.'
+      },
+      {
+        title: 'Guidelines the AI Reads',
+        content: 'Written guidelines — tone of voice, legal lines, do\'s and don\'ts — are fed to the AI copy and image assistants whenever a project is linked to the client, so suggestions arrive on-brand. The export compliance check flags colours and fonts that drift from the client\'s kit before a banner ships.'
       }
     ]
   },
