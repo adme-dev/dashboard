@@ -9,6 +9,14 @@ import type {
   RawGoogleAdGroupRow,
   RawGoogleCampaignRow
 } from '~~/server/utils/googleAiMax'
+import {
+  normalizeGoogleApprovalStatus,
+  normalizeGooglePolicyIssues,
+  normalizeGoogleServingReasons,
+  sanitizeDiagnosticError,
+  sanitizeDiagnosticText,
+  type PolicyIssue,
+} from '~~/server/utils/adDiagnostics'
 
 const GOOGLE_ADS_BASE = 'https://googleads.googleapis.com/v23'
 const GOOGLE_OAUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth'
@@ -667,6 +675,12 @@ export interface GoogleAdPerformance {
   frequency: null
   firstServedDate: string | null
   lastServedDate: string | null
+  approvalStatus: string | null
+  providerApprovalStatus: string | null
+  approvalReviewStatus: string | null
+  policyIssues: PolicyIssue[] | null
+  approvalSyncedAt: string | null
+  approvalUnavailableReason: string | null
 }
 
 /** Fetch and aggregate daily ad-level Google delivery. Google Ads does not expose reach/frequency at ad level. */
@@ -680,13 +694,30 @@ export async function getGoogleCampaignAdPerformance(
   loginCustomerId?: string,
 ): Promise<GoogleAdPerformance[]> {
   const cleanCampaignId = String(campaignId).replace(/[^0-9]/g, '')
-  const rows = await gaqlQuery(customerId, token, developerToken, `
-    SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, segments.date,
-           metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions
-      FROM ad_group_ad
-     WHERE campaign.id = '${cleanCampaignId}'
-       AND segments.date BETWEEN '${since}' AND '${until}'
-  `, loginCustomerId)
+  const [performanceResult, policyResult] = await Promise.allSettled([
+    gaqlQuery(customerId, token, developerToken, `
+      SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, segments.date,
+             metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions
+        FROM ad_group_ad
+       WHERE campaign.id = '${cleanCampaignId}'
+         AND segments.date BETWEEN '${since}' AND '${until}'
+    `, loginCustomerId),
+    gaqlQuery(customerId, token, developerToken, `
+      SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group_ad.status,
+             ad_group_ad.policy_summary.approval_status,
+             ad_group_ad.policy_summary.review_status,
+             ad_group_ad.policy_summary.policy_topic_entries
+        FROM ad_group_ad
+       WHERE campaign.id = '${cleanCampaignId}'
+    `, loginCustomerId),
+  ])
+  if (performanceResult.status === 'rejected') throw performanceResult.reason
+  const rows = performanceResult.value
+  const policyRows = policyResult.status === 'fulfilled' ? policyResult.value : []
+  const approvalSyncedAt = policyResult.status === 'fulfilled' ? new Date().toISOString() : null
+  const approvalUnavailableReason = policyResult.status === 'rejected'
+    ? sanitizeDiagnosticError(policyResult.reason)
+    : null
   const grouped = new Map<string, GoogleAdPerformance>()
   for (const row of rows as any[]) {
     const ad = row.adGroupAd?.ad || {}
@@ -697,6 +728,8 @@ export async function getGoogleCampaignAdPerformance(
     const current = grouped.get(adId) || {
       adId, adName: ad.name || null, spend: 0, impressions: 0, clicks: 0, conversions: 0,
       reach: null, frequency: null, firstServedDate: null, lastServedDate: null,
+      approvalStatus: null, providerApprovalStatus: null, approvalReviewStatus: null,
+      policyIssues: null, approvalSyncedAt, approvalUnavailableReason,
     }
     current.spend += spend
     current.impressions += Number(row.metrics?.impressions || 0)
@@ -708,7 +741,198 @@ export async function getGoogleCampaignAdPerformance(
     }
     grouped.set(adId, current)
   }
+  for (const row of policyRows as any[]) {
+    const adGroupAd = row.adGroupAd || {}
+    const ad = adGroupAd.ad || {}
+    const adId = String(ad.id || '')
+    if (!adId) continue
+    const summary = adGroupAd.policySummary || {}
+    const providerApprovalStatus = sanitizeDiagnosticText(summary.approvalStatus, 80)?.toUpperCase() || null
+    const current = grouped.get(adId) || {
+      adId, adName: ad.name || null, spend: 0, impressions: 0, clicks: 0, conversions: 0,
+      reach: null, frequency: null, firstServedDate: null, lastServedDate: null,
+      approvalStatus: null, providerApprovalStatus: null, approvalReviewStatus: null,
+      policyIssues: null, approvalSyncedAt, approvalUnavailableReason,
+    }
+    current.adName = current.adName || ad.name || null
+    current.providerApprovalStatus = providerApprovalStatus
+    current.approvalStatus = normalizeGoogleApprovalStatus(providerApprovalStatus)
+    current.approvalReviewStatus = sanitizeDiagnosticText(summary.reviewStatus, 80)?.toUpperCase() || null
+    current.policyIssues = normalizeGooglePolicyIssues(summary.policyTopicEntries)
+    current.approvalSyncedAt = approvalSyncedAt
+    current.approvalUnavailableReason = null
+    grouped.set(adId, current)
+  }
+  if (policyResult.status === 'fulfilled') {
+    const policyIds = new Set((policyRows as any[]).map(row => String(row.adGroupAd?.ad?.id || '')).filter(Boolean))
+    for (const row of grouped.values()) {
+      if (policyIds.has(row.adId)) continue
+      row.approvalSyncedAt = null
+      row.approvalUnavailableReason = 'No Google Ads policy row returned for this ad.'
+    }
+  }
   return [...grouped.values()]
+}
+
+export interface GoogleCampaignDiagnostic {
+  campaignId: string
+  channelType: string | null
+  servingStatus: string | null
+  servingStatusReasons: string[]
+  providerServingStatusReasons: string[]
+  servingSyncedAt: string | null
+  servingUnavailableReason: string | null
+  impressionShare: number | null
+  lostImpressionShareBudget: number | null
+  lostImpressionShareRank: number | null
+  impressionShareSyncedAt: string | null
+  impressionShareUnavailableReason: string | null
+}
+
+/** Campaign delivery metadata and Search impression share are separate failure domains. */
+export async function getGoogleCampaignDiagnostics(
+  customerId: string,
+  token: string,
+  developerToken: string,
+  since: string,
+  until: string,
+  campaignId?: string,
+  loginCustomerId?: string,
+): Promise<GoogleCampaignDiagnostic[]> {
+  const cleanCampaignId = campaignId ? String(campaignId).replace(/[^0-9]/g, '') : null
+  const campaignFilter = cleanCampaignId ? ` AND campaign.id = ${cleanCampaignId}` : ''
+  const [servingResult, impressionShareResult] = await Promise.allSettled([
+    gaqlQuery(customerId, token, developerToken, `
+      SELECT campaign.id, campaign.advertising_channel_type,
+             campaign.primary_status, campaign.primary_status_reasons
+        FROM campaign
+       WHERE campaign.status != 'REMOVED'${campaignFilter}
+    `, loginCustomerId),
+    gaqlQuery(customerId, token, developerToken, `
+      SELECT campaign.id, campaign.advertising_channel_type,
+             metrics.search_impression_share,
+             metrics.search_budget_lost_impression_share,
+             metrics.search_rank_lost_impression_share
+        FROM campaign
+       WHERE campaign.status != 'REMOVED'
+         AND segments.date BETWEEN '${since}' AND '${until}'${campaignFilter}
+    `, loginCustomerId),
+  ])
+  if (servingResult.status === 'rejected' && impressionShareResult.status === 'rejected') {
+    throw new Error(`Google campaign diagnostics failed: ${sanitizeDiagnosticError(servingResult.reason)}`)
+  }
+  const servingError = servingResult.status === 'rejected' ? sanitizeDiagnosticError(servingResult.reason) : null
+  const impressionShareError = impressionShareResult.status === 'rejected'
+    ? sanitizeDiagnosticError(impressionShareResult.reason)
+    : null
+  const servingSyncedAt = servingResult.status === 'fulfilled' ? new Date().toISOString() : null
+  const impressionShareSyncedAt = impressionShareResult.status === 'fulfilled' ? new Date().toISOString() : null
+  const byCampaign = new Map<string, GoogleCampaignDiagnostic>()
+  const empty = (id: string): GoogleCampaignDiagnostic => ({
+    campaignId: id,
+    channelType: null,
+    servingStatus: null,
+    servingStatusReasons: [],
+    providerServingStatusReasons: [],
+    servingSyncedAt,
+    servingUnavailableReason: servingError,
+    impressionShare: null,
+    lostImpressionShareBudget: null,
+    lostImpressionShareRank: null,
+    impressionShareSyncedAt,
+    impressionShareUnavailableReason: impressionShareError,
+  })
+  if (servingResult.status === 'fulfilled') {
+    for (const row of servingResult.value as any[]) {
+      const campaign = row.campaign || {}
+      const id = String(campaign.id || '')
+      if (!id) continue
+      const reasons = normalizeGoogleServingReasons(campaign.primaryStatusReasons)
+      byCampaign.set(id, {
+        ...empty(id),
+        channelType: sanitizeDiagnosticText(campaign.advertisingChannelType, 80)?.toUpperCase() || null,
+        servingStatus: sanitizeDiagnosticText(campaign.primaryStatus, 80)?.toUpperCase() || null,
+        servingStatusReasons: reasons.normalized,
+        providerServingStatusReasons: reasons.provider,
+        servingUnavailableReason: null,
+      })
+    }
+  }
+  if (impressionShareResult.status === 'fulfilled') {
+    for (const row of impressionShareResult.value as any[]) {
+      const campaign = row.campaign || {}
+      const id = String(campaign.id || '')
+      if (!id) continue
+      const metrics = row.metrics || {}
+      const current = byCampaign.get(id) || empty(id)
+      current.channelType = current.channelType
+        || sanitizeDiagnosticText(campaign.advertisingChannelType, 80)?.toUpperCase()
+        || null
+      current.impressionShare = metrics.searchImpressionShare == null ? null : Number(metrics.searchImpressionShare)
+      current.lostImpressionShareBudget = metrics.searchBudgetLostImpressionShare == null
+        ? null
+        : Number(metrics.searchBudgetLostImpressionShare)
+      current.lostImpressionShareRank = metrics.searchRankLostImpressionShare == null
+        ? null
+        : Number(metrics.searchRankLostImpressionShare)
+      current.impressionShareUnavailableReason = null
+      byCampaign.set(id, current)
+    }
+  }
+  return [...byCampaign.values()]
+}
+
+export interface GoogleSearchTerm {
+  searchTerm: string
+  matchType: string | null
+  targetingStatus: string | null
+  impressions: number
+  clicks: number
+  cost: number
+}
+
+/** Fetch all searchStream batches, aggregate duplicate rows, and return highest-cost terms first. */
+export async function getGoogleCampaignSearchTerms(
+  customerId: string,
+  token: string,
+  developerToken: string,
+  campaignId: string,
+  since: string,
+  until: string,
+  loginCustomerId?: string,
+): Promise<GoogleSearchTerm[]> {
+  const cleanCampaignId = String(campaignId).replace(/[^0-9]/g, '')
+  const rows = await gaqlQuery(customerId, token, developerToken, `
+    SELECT campaign_search_term_view.search_term,
+           segments.search_term_match_type,
+           metrics.cost_micros, metrics.impressions, metrics.clicks
+      FROM campaign_search_term_view
+     WHERE campaign.id = ${cleanCampaignId}
+       AND segments.date BETWEEN '${since}' AND '${until}'
+  `, loginCustomerId)
+  const grouped = new Map<string, GoogleSearchTerm>()
+  for (const row of rows as any[]) {
+    const view = row.campaignSearchTermView || {}
+    const searchTerm = sanitizeDiagnosticText(view.searchTerm, 500)
+    if (!searchTerm) continue
+    const matchType = sanitizeDiagnosticText(row.segments?.searchTermMatchType, 80)?.toUpperCase() || null
+    const key = `${searchTerm}\u0000${matchType || ''}`
+    const current = grouped.get(key) || {
+      searchTerm,
+      matchType,
+      // campaign_search_term_view has no status field in Google Ads v23. Keep this
+      // explicitly unknown instead of borrowing a criterion status from another scope.
+      targetingStatus: null,
+      impressions: 0,
+      clicks: 0,
+      cost: 0,
+    }
+    current.impressions += Number(row.metrics?.impressions || 0)
+    current.clicks += Number(row.metrics?.clicks || 0)
+    current.cost += Number(row.metrics?.costMicros || 0) / 1_000_000
+    grouped.set(key, current)
+  }
+  return [...grouped.values()].sort((a, b) => b.cost - a.cost || b.clicks - a.clicks)
 }
 
 /**

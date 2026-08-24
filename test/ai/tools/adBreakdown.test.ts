@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getAdBreakdown, type AdBreakdownDeps } from '~~/server/utils/ai/tools/adBreakdown'
+import { adBreakdownTool, getAdBreakdown, type AdBreakdownDeps } from '~~/server/utils/ai/tools/adBreakdown'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
 const ctx = { userId: 'u1', userRole: 'owner', event: {} as any } as ToolContext
 
 describe('get_ad_breakdown', () => {
+  it('marks provider-authored policy text as untrusted', () => {
+    expect(adBreakdownTool.returnsUntrusted).toBe(true)
+  })
+
   it('returns ad fatigue metrics, lead outcomes, creative links and explicit partial coverage', async () => {
     const deps: AdBreakdownDeps = {
       now: () => new Date('2026-08-19T06:00:00Z'),
@@ -44,6 +48,42 @@ describe('get_ad_breakdown', () => {
     const data = (await getAdBreakdown({ campaignId: 'c1', sortBy: 'frequency' }, ctx, deps) as any).data
     expect(data.dataStatus).toBe('partial')
     expect(data.coverage).toEqual({ expected: 0, withData: 0 })
+  })
+
+  it('projects independent approval, learning, and Meta ad-set metric evidence', async () => {
+    const deps: AdBreakdownDeps = {
+      now: () => new Date('2026-08-24T12:00:00Z'),
+      loadCoverageDeltas: async () => null,
+      fetch: vi.fn().mockResolvedValue({
+        targetCount: 1,
+        available: true,
+        records: [{
+          adId: 'ad1', adName: 'Offer', campaignId: 'c1', campaignName: 'Campaign', clientName: 'Acme', platform: 'meta',
+          creativeId: 'cr1', creativeName: 'Offer', spend: 100, impressions: 1000, clicks: 20, conversions: 1, leadCount: 2,
+          reach: 400, frequency: 4.2, cpm: 100, firstServedDate: '2026-08-01', lastServedDate: '2026-08-24',
+          lastSyncedAt: '2026-08-24T10:00:00Z', adSetId: 'set1', adSetName: 'Retargeting',
+          adSetMetricsAsOf: '2026-08-24T09:00:00Z', adSetMetricsUnavailableReason: null,
+          approvalStatus: 'DISAPPROVED', providerApprovalStatus: 'DISAPPROVED', approvalReviewStatus: null,
+          policyIssues: [{ code: '1487007', topic: 'POLICY', summary: 'Vehicle pricing claim', message: null, type: 'POLICY', level: 'AD' }],
+          approvalAsOf: '2026-08-24T08:00:00Z', approvalUnavailableReason: null,
+          learningStage: 'LEARNING_LIMITED', providerLearningStage: 'LEARNING_LIMITED',
+          learningStageAsOf: '2026-08-24T07:00:00Z', learningStageUnavailableReason: null,
+        }],
+      }),
+      leadAttribution: vi.fn().mockResolvedValue({ totalSubmissions: 2, adAttributed: 2 }),
+    }
+    const data = (await getAdBreakdown({ campaignId: 'c1', sortBy: 'frequency' }, ctx, deps) as any).data
+    expect(data.ads[0]).toMatchObject({
+      approvalStatus: 'DISAPPROVED',
+      approvalDataStatus: 'fresh',
+      learningStage: 'LEARNING_LIMITED',
+      learningStageDataStatus: 'fresh',
+      frequency: 4.2,
+      cpm: 100,
+      adSetMetricsDataStatus: 'fresh',
+      metricsAsOf: '2026-08-24T10:00:00Z',
+    })
+    expect(data.ads[0].policyIssues[0].summary).toBe('Vehicle pricing claim')
   })
 
   it('suppresses spend_without_leads while lead attribution coverage is unknown', async () => {

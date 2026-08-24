@@ -7,6 +7,7 @@ import type { AiTool } from '../toolRegistry'
 import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
 import { buildDataHealth, buildSyncFreshness, paginateWithCursor, evaluateHalt, PACING_HALT_HOURS } from './responseContract'
+import { diagnosticDataStatus, sanitizeDiagnosticError } from '~~/server/utils/adDiagnostics'
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
 const params = z.object({
@@ -17,6 +18,7 @@ const params = z.object({
   startDate: isoDate.optional(),
   endDate: isoDate.optional(),
   comparePrevious: z.boolean().default(false),
+  refresh: z.boolean().default(false),
   cursor: z.string().optional(),
   limit: z.number().int().min(1).max(50).default(20),
 }).superRefine((value, issue) => {
@@ -37,6 +39,7 @@ export type BreakdownCampaign = {
   /** media_spend row UUID (latest-synced row for the campaign) — the id budget-allocation write tools take. */
   mediaSpendId: string | null
   campaignName: string
+  campaignType?: string | null
   clientName: string
   platform: 'meta' | 'google'
   spend: number
@@ -54,6 +57,14 @@ export type BreakdownCampaign = {
   lastServedDate: string | null
   endDate: string | null
   lastSyncedAt: string | null
+  servingStatus?: string | null
+  servingStatusReasons?: string[]
+  providerServingStatusReasons?: string[]
+  servingStatusAsOf?: string | null
+  servingStatusUnavailableReason?: string | null
+  impressionShare?: { share: number | null, lostBudget: number | null, lostRank: number | null, asOf: string } | null
+  impressionShareAsOf?: string | null
+  impressionShareUnavailableReason?: string | null
   comparison?: {
     spendDelta: number
     spendDeltaPct: number | null
@@ -84,6 +95,7 @@ export type CampaignBreakdownDeps = {
 
   breakdown: (ctx: ToolContext, query: CampaignBreakdownQuery) => Promise<BreakdownResult>
   leadAttribution?: (ctx: ToolContext, query: CampaignBreakdownQuery) => Promise<LeadAttributionSummary>
+  refreshDiagnostics?: (mediaSpendIds: string[]) => Promise<Array<{ available: boolean, error: string | null }>>
   now?: () => Date
 }
 
@@ -137,10 +149,14 @@ function mapCampaign(it: any): BreakdownCampaign {
   const rawPlatform = String(it?.platform ?? '')
   const platform: 'meta' | 'google' = rawPlatform.startsWith('google') ? 'google' : 'meta'
   const endDate = it?.endDate ? String(it.endDate) : null
+  const impressionShareAsOf = it?.impressionShareAsOf ? String(it.impressionShareAsOf) : null
+  const impressionValues = [it?.impressionShare, it?.lostImpressionShareBudget, it?.lostImpressionShareRank]
+  const hasImpressionShare = impressionValues.some(value => value != null)
   return {
     campaignId: it?.campaignId == null ? null : String(it.campaignId),
     mediaSpendId: it?.mediaSpendId == null ? null : String(it.mediaSpendId),
     campaignName: String(it?.campaignName ?? 'Unknown'),
+    campaignType: it?.campaignType == null ? null : String(it.campaignType).toUpperCase(),
     clientName: String(it?.clientName ?? 'Unassigned'),
     platform,
     spend: Number(it?.spend ?? 0),
@@ -158,6 +174,19 @@ function mapCampaign(it: any): BreakdownCampaign {
     lastServedDate: it?.lastServedDate ? String(it.lastServedDate) : null,
     endDate,
     lastSyncedAt: it?.lastSynced ? String(it.lastSynced) : null,
+    servingStatus: it?.servingStatus == null ? null : String(it.servingStatus),
+    servingStatusReasons: Array.isArray(it?.servingStatusReasons) ? it.servingStatusReasons.map(String) : [],
+    providerServingStatusReasons: Array.isArray(it?.providerServingStatusReasons) ? it.providerServingStatusReasons.map(String) : [],
+    servingStatusAsOf: it?.servingStatusAsOf ? String(it.servingStatusAsOf) : null,
+    servingStatusUnavailableReason: it?.servingStatusUnavailableReason == null ? null : String(it.servingStatusUnavailableReason),
+    impressionShare: hasImpressionShare && impressionShareAsOf ? {
+      share: it?.impressionShare == null ? null : Number(it.impressionShare),
+      lostBudget: it?.lostImpressionShareBudget == null ? null : Number(it.lostImpressionShareBudget),
+      lostRank: it?.lostImpressionShareRank == null ? null : Number(it.lostImpressionShareRank),
+      asOf: impressionShareAsOf,
+    } : null,
+    impressionShareAsOf,
+    impressionShareUnavailableReason: it?.impressionShareUnavailableReason == null ? null : String(it.impressionShareUnavailableReason),
   }
 }
 
@@ -192,6 +221,13 @@ const defaultDeps: CampaignBreakdownDeps = {
     return { campaigns, total }
   },
   leadAttribution: async (_ctx, request) => getLeadAttributionSummary(request),
+  refreshDiagnostics: async (mediaSpendIds) => {
+    const { syncCampaignDeliveryDiagnostics } = await import('~~/server/utils/onDemandSync')
+    return await Promise.all(mediaSpendIds.map(async (id) => {
+      const result = await syncCampaignDeliveryDiagnostics(id)
+      return { available: result.available, error: result.error }
+    }))
+  },
 }
 
 function defaultPeriod() {
@@ -273,7 +309,24 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
       ? { start: args.startDate, end: args.endDate }
       : defaultPeriod()
     const request = { platform: args.platform, clientName: args.clientName, startDate: period.start, endDate: period.end }
-    const current = await deps.breakdown(ctx, request)
+    let current = await deps.breakdown(ctx, request)
+    const requestedClient = args.clientName?.trim().toLowerCase()
+    const refreshTargets = current.campaigns
+      .filter(row => {
+        if (!row.mediaSpendId) return false
+        if (args.platform && row.platform !== args.platform) return false
+        if (requestedClient && !row.clientName.toLowerCase().includes(requestedClient)) return false
+        if (args.status && args.status !== 'all' && row.effectiveStatus !== args.status) return false
+        return args.refresh
+          || row.servingStatusAsOf == null
+          || (row.platform === 'google' && row.impressionShareAsOf == null)
+      })
+      .slice(0, 20)
+      .map(row => row.mediaSpendId as string)
+    const diagnosticRefreshResults = deps.refreshDiagnostics && refreshTargets.length
+      ? await deps.refreshDiagnostics(refreshTargets)
+      : []
+    if (diagnosticRefreshResults.length) current = await deps.breakdown(ctx, request)
     const leadCounts = deps.leadAttribution ? await deps.leadAttribution(ctx, request) : null
     const priorPeriod = args.comparePrevious ? previousPeriod(period.start, period.end) : null
     const prior = priorPeriod
@@ -285,7 +338,37 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
     const compared = prior?.campaigns.length
       ? withComparison(current.campaigns, prior.campaigns)
       : current.campaigns.map(row => prior ? { ...row, comparisonStatus: 'no_baseline' as const } : row)
-    const all = compared.map(row => ({ ...row, conversions: null }))
+    const all = compared.map((row) => {
+      const servingUnavailableReason = row.servingStatusUnavailableReason
+        || (!row.servingStatusAsOf ? 'Serving diagnostics have not been collected for this campaign.' : null)
+      const servingStatusDataStatus = row.servingStatus == null
+        ? 'unavailable' as const
+        : diagnosticDataStatus({ supported: true, asOf: row.servingStatusAsOf ?? null, unavailableReason: servingUnavailableReason, now: deps.now?.() })
+      const impressionShareSupported = row.platform === 'google' && ['SEARCH', 'SHOPPING'].includes(row.campaignType || '')
+      const impressionShareUnavailableReason = row.impressionShareUnavailableReason
+        || (!impressionShareSupported
+          ? 'Search impression share is not supported for this platform or campaign type.'
+          : !row.impressionShareAsOf
+            ? 'Google impression-share diagnostics have not been collected for this campaign.'
+            : !row.impressionShare ? 'Google Ads returned no impression-share figures for this campaign window.' : null)
+      const impressionShareDataStatus = !impressionShareSupported
+        ? 'unsupported' as const
+        : !row.impressionShare
+          ? 'unavailable' as const
+          : diagnosticDataStatus({ supported: true, asOf: row.impressionShareAsOf ?? null, unavailableReason: impressionShareUnavailableReason, now: deps.now?.() })
+      return {
+        ...row,
+        conversions: null,
+        // Some Google campaign resources can return metric-shaped values outside
+        // the campaign types whose impression-share contract we support. Keep the
+        // block absent for those types rather than implying comparable evidence.
+        impressionShare: impressionShareSupported ? row.impressionShare : null,
+        servingStatusDataStatus,
+        servingStatusUnavailableReason: servingUnavailableReason,
+        impressionShareDataStatus,
+        impressionShareUnavailableReason,
+      }
+    })
 
     const nameNeedle = args.clientName?.trim().toLowerCase()
     const filtered = all.filter((campaign) => {
@@ -335,6 +418,13 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
       ...freshness,
       ...(coverageDelta ? { coverageDelta } : {}),
       ...health,
+      diagnosticRefresh: {
+        attempted: refreshTargets.length,
+        succeeded: diagnosticRefreshResults.filter(result => result.available).length,
+        failed: diagnosticRefreshResults.filter(result => !result.available).length,
+        targetCap: 20,
+        errors: [...new Set(diagnosticRefreshResults.map(result => result.error).filter(Boolean))].slice(0, 3),
+      },
       conversionMetric: {
         dataStatus: 'unavailable',
         definition: 'suppressed_pending_historical_resync',
@@ -358,14 +448,15 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
       truncatedAtSource: page.truncatedAtSource || current.total > current.campaigns.length,
       ...(note ? { note } : {}),
     })
-  } catch {
+  } catch (error) {
+    console.error('[CampaignBreakdown] Failed to load campaign evidence:', sanitizeDiagnosticError(error))
     return fail('Could not load campaign breakdown — the spend sync may be unavailable or the requested date window is invalid.')
   }
 }
 
 export const campaignBreakdownTool: AiTool<Args> = {
   name: 'get_campaign_breakdown',
-  description: 'Campaign delivery and performance for a requested date range across Meta and Google: live/effective status, first and last served dates, end date, spend, ROAS, CPC, frequency, submitted leads and CPL. Provider conversions are explicitly null until historical rows are resynced under non-overlapping outcome semantics; `conversionMetric` explains this. `leadAttribution` reports real non-test submissions and campaign/ad attribution coverage without assigning unattributed leads to campaigns. Previous-period requests return `comparisonStatus`; a missing prior window is `no_baseline` and never fabricated as zero spend. Summary freshness includes the newest and oldest sync, stale-row count, and 48-hour threshold so partial account stalls are visible. Supports status/platform/client filters, multiple ranking metrics, and cursor pagination across the complete result set. Use get_adspend_pacing for budget pacing and get_finance_snapshot for cash.',
+  description: 'Campaign delivery and performance for a requested date range across Meta and Google: live/effective and provider serving status, normalized plus exact limitation reasons, Google Search impression-share/budget-loss/rank-loss evidence, delivery dates, spend, ROAS, CPC, frequency, submitted leads and CPL. Serving and impression-share families each include their own asOf/dataStatus/unavailableReason, and unsupported campaign types are absent rather than zero-filled. A bounded read-through refreshes missing diagnostics for up to 20 returned campaigns. Provider conversions remain null pending historical resync; pagination, comparison, lead-attribution coverage, and platform-scoped freshness halts retain their existing contracts.',
   parameters: params,
   requiredPermission: 'MEDIA_BUYING',
   handler: (a, c) => getCampaignBreakdown(a, c),

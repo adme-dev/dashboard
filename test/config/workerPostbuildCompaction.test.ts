@@ -12,6 +12,7 @@ import {
   compactDeployedWorkerModules,
   compactPrecomputedManifest,
   compactPlatformImports,
+  compactSqlLiterals,
   compactWorkerModuleFilenames,
   compactWorkerModule,
   resolvePrecomputedManifestPath
@@ -307,6 +308,22 @@ describe('Pages Worker postbuild compaction', () => {
 
     const documentationSnippet = 'const example = `platform setup:\nimport "node:crypto";\n`;\n'
     expect(compactPlatformImports!(documentationSnippet)).toBe(documentationSnippet)
+  })
+
+  it('compacts static SQL whitespace without changing quoted values or commented queries', () => {
+    const source = [
+      "const query = `\n  SELECT id,\n         name\n    FROM accounts\n   WHERE note = 'keep   this'\n     AND label = \"Keep  Case\"\n`",
+      'const dollarQuoted = `SELECT $$keep   this$$ AS body\n  FROM messages`',
+      'const commented = `SELECT id -- the newline terminates this comment\n  FROM accounts`',
+      'const ordinary = `line one   line two`'
+    ].join('\n')
+
+    expect(compactSqlLiterals(source)).toBe([
+      "const query = \"SELECT id, name FROM accounts WHERE note = 'keep   this' AND label = \\\"Keep  Case\\\"\"",
+      'const dollarQuoted = "SELECT $$keep   this$$ AS body FROM messages"',
+      'const commented = `SELECT id -- the newline terminates this comment\n  FROM accounts`',
+      'const ordinary = `line one   line two`'
+    ].join('\n'))
   })
 
   it('compacts every generated module recursively and is idempotent', async () => {
