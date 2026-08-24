@@ -8,13 +8,12 @@ import { leadIntakeService } from '~~/server/utils/leads/intake'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
 import { allowRequest } from '~~/server/utils/leads/rateLimit'
 import { enqueueLeadJob } from '~~/server/utils/leads/queue'
-import { notifyOnNewLead } from '~~/server/utils/leads/notifyOnNew'
 import {
   normalizePodiumWebhookEvent,
   verifyPodiumWebhookSignature
 } from '~~/server/utils/leads/providers/podium'
-import { conversionOutboxPublisher } from '~~/server/utils/measurement/publisher'
-import { runAfterResponse } from '~~/server/utils/asyncBackground'
+import { runPodiumPostCommit } from '~~/server/utils/leads/podiumPostCommit'
+import { enqueue } from '~~/server/utils/queue'
 
 interface PodiumEndpointRow {
   id: string
@@ -197,18 +196,22 @@ export default defineEventHandler(async (event) => {
     }
 
     // Podium times webhook responses out after five seconds. Conversion
-    // publishing and notifications are post-commit side effects, so keep them
-    // alive with the Cloudflare execution context without delaying the ack.
-    runAfterResponse(event, (async () => {
-      if (
-        intake.outbox.status !== 'profile_not_found'
-        && intake.outbox.event.outboxStatus === 'pending'
-      ) {
-        await conversionOutboxPublisher.publishEvent(event, intake.outbox.event.eventId)
-      }
-      const fresh = await loadLead(intake.leadId)
-      if (fresh) await notifyOnNewLead(fresh)
-    })(), 'podium-lead-post-commit')
+    // publishing and notifications are post-commit side effects, dispatched
+    // via the durable job queue (retried by workers/jobs-consumer) so they
+    // survive past the ack instead of being silently dropped by a deferred
+    // waitUntil on the Pages runtime. Local dev without a queue binding runs
+    // the same work inline as a fallback.
+    const outboxEventId = (
+      intake.outbox.status !== 'profile_not_found'
+      && intake.outbox.event.outboxStatus === 'pending'
+    ) ? intake.outbox.event.eventId : null
+    const postCommitPayload = { leadId: intake.leadId, outboxEventId }
+    await enqueue(
+      event,
+      'lead.podium.post-commit',
+      postCommitPayload,
+      () => runPodiumPostCommit(event, postCommitPayload)
+    )
 
     return { ok: true, lead_id: intake.leadId }
   } catch (error) {
