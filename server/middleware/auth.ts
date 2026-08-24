@@ -44,6 +44,10 @@ const publicRoutes = [
   // sites have no session cookie; tenancy is enforced by the embedded write key
   // (resolveSiteByWriteKey) + soft Origin allowlist inside the handler.
   '/api/public/track',
+  // Public QR redirect (GET /q/:code proxies to /api/q/:code) — anonymous
+  // scanners have no session cookie; tenancy is enforced inside the handler
+  // by resolving the code itself, not by auth.
+  '/api/q/',
   '/api/public/lead-intent',
   '/api/public/lead-capture-test/',
   '/api/xero/callback',

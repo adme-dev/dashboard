@@ -173,6 +173,7 @@ const mediaConfirmedZero = computed(() => mediaFreshness.value?.status === 'fres
 // Active tab
 const activeTab = ref('overview')
 const showFinancialAllocation = ref(false)
+const qrGrid = ref<{ refresh: () => void, openNew: () => void }>()
 
 const tabItems = computed(() => [
   { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard' },
@@ -207,6 +208,7 @@ const tabItems = computed(() => [
       : undefined,
   },
   { label: 'Website', value: 'website', icon: 'i-lucide-radio' },
+  { label: 'QR Codes', value: 'qr', icon: 'i-lucide-qr-code' },
   ...(canAccessMediaBuying.value
     ? [{ label: 'Measurement', value: 'measurement', icon: 'i-lucide-activity' }]
     : []),
@@ -1164,6 +1166,11 @@ async function saveKpiTargets() {
           <!-- Website analytics Tab -->
           <div v-if="activeTab === 'website'">
             <TrackingAnalyticsContainer :client-id="clientId" />
+          </div>
+
+          <div v-if="activeTab === 'qr'" class="space-y-4">
+            <div class="flex justify-end"><UButton icon="i-lucide-plus" @click="qrGrid?.openNew()">New QR code</UButton></div>
+            <QrGrid ref="qrGrid" :client-id="clientId" />
           </div>
 
           <div v-if="activeTab === 'measurement' && canAccessMediaBuying">

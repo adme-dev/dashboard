@@ -235,6 +235,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Analytics', icon: 'i-lucide-bar-chart-4', to: '/agency/analytics', onSelect: close },
       { label: 'Budget Health', icon: 'i-lucide-gauge', to: '/agency/budget-health', onSelect: close },
       { label: 'Site Tracking', icon: 'i-lucide-radio', to: '/agency/tracking', onSelect: close },
+      { label: 'QR Codes', icon: 'i-lucide-qr-code', to: '/agency/qr-codes', onSelect: close },
       ...searchAuthorityNavItems(
         Boolean(runtimeConfig.public.searchAuthorityEnabled),
         route.path,

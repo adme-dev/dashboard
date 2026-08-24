@@ -2972,6 +2972,35 @@ const features: Record<string, Feature> = {
     ]
   },
 
+  'qr-codes': {
+    title: 'Dynamic QR Codes',
+    slug: 'qr-codes',
+    icon: 'i-lucide-qr-code',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'Print-ready SVG QR codes with editable destinations and per-scan analytics — change the link, never reprint.',
+    details: [
+      {
+        title: 'Print once, redirect forever',
+        content: 'Every code encodes a short XeroFlow link rather than the destination itself. Change where it points from the dashboard and the update takes effect instantly — no reprinting a poster, a menu, or a vehicle wrap because a landing page moved. A full change history records every destination it has ever pointed to and who changed it.'
+      },
+      {
+        title: 'Designed to match the brand',
+        content: 'Pick pattern and corner styles, colours, ready-made templates, and an optional centre logo, then export a crisp SVG for print or a high-resolution PNG for digital use. The code looks intentional on the page it appears on, not like a generic black-and-white square dropped in as an afterthought.'
+      },
+      {
+        title: 'Every scan counted',
+        content: 'Each code tracks a daily scan series, a unique-visitor estimate, and country, device, operating system, and browser breakdowns — enough to know a code is working without collecting cookies or storing anything personally identifying about the person who scanned it.'
+      },
+      {
+        title: 'Organised by client',
+        content: 'Codes live in folders per client, with a QR tab on every client record so a whole client\'s codes are one click away. Role-scoped access keeps each account manager looking only at the clients they work on.'
+      }
+    ]
+  },
+
   'website-audience-intelligence': {
     title: 'Website Audience Intelligence',
     slug: 'website-audience-intelligence',

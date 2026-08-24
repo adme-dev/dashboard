@@ -655,6 +655,7 @@ const featuresCol3b = [
   { title: 'Audio Studio', subtitle: 'Owned AI voiceover & music for every channel', icon: 'i-lucide-mic', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/audio-studio' },
   { title: 'AI Video Generation', subtitle: 'Brand-safe image-to-video & B-roll clips', icon: 'i-lucide-video', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/ai-video-generation' },
   { title: 'Video Studio', subtitle: 'Multitrack social video editor & multi-format render', icon: 'i-lucide-clapperboard', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/video-studio' },
+  { title: 'Dynamic QR Codes', subtitle: 'Editable destinations & per-scan analytics', icon: 'i-lucide-qr-code', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/qr-codes' },
 ]
 
 const featuresCol4 = [
