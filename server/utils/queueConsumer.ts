@@ -126,6 +126,14 @@ export async function processJob(job: QueueConsumerJob, event?: H3Event): Promis
         await processHrMondayMigrate(job.payload, event)
         break
 
+      case 'embed.social.client':
+        await processEmbedSocialClient(job.payload, event)
+        break
+
+      case 'campaign.detail.refresh':
+        await processCampaignDetailRefresh(job.payload, event)
+        break
+
       case 'god-mode.audit-terminal':
         await processGodModeAuditTerminal(job.payload)
         break
@@ -370,6 +378,17 @@ async function processHrMondayMigrate(payload: Record<string, unknown>, event?: 
   if (!event) throw new Error('HR Monday migration requires a request-owned Cloudflare context')
   const { runHrMondayMigration } = await import('~~/server/utils/hr/mondayMigrationJob')
   await runHrMondayMigration(event, payload as any)
+}
+
+async function processEmbedSocialClient(payload: Record<string, unknown>, event?: H3Event): Promise<void> {
+  if (!event) throw new Error('Social client re-embed requires a request-owned Cloudflare context')
+  const { embedSocialClientKnowledge } = await import('~~/server/utils/aiEntityEmbedder')
+  await embedSocialClientKnowledge(event, payload.clientId as string)
+}
+
+async function processCampaignDetailRefresh(payload: Record<string, unknown>, event?: H3Event): Promise<void> {
+  const { runCampaignDetailRefreshJob } = await import('~~/server/utils/campaignDetailCache')
+  await runCampaignDetailRefreshJob(event as H3Event, payload as any)
 }
 
 async function processGodModeAuditTerminal(payload: GodModeAuditEventInput): Promise<void> {

@@ -6,6 +6,7 @@ import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 import { normalizeSocialNewsClientProfile } from '~~/server/utils/socialNewsProfile'
 import { embedSocialClientKnowledge } from '~~/server/utils/aiEntityEmbedder'
 import { runAfterResponse } from '~~/server/utils/asyncBackground'
+import { enqueue } from '~~/server/utils/queue'
 
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.ADMIN)
@@ -41,6 +42,9 @@ export default defineEventHandler(async (event) => {
       profile.brandVoice || null, profile.defaultTone, profile.aiInstructions || null,
       profile.preferredPlatforms, profile.timezone, profile.defaultWorkflow, user.id],
   )
-  runAfterResponse(event, embedSocialClientKnowledge(event, clientId), 'social-news-client-knowledge-index')
+  await enqueue(event, 'embed.social.client', { clientId }, () => {
+    runAfterResponse(event, embedSocialClientKnowledge(event, clientId), 'social-news-client-knowledge-index')
+    return Promise.resolve()
+  })
   return normalizeSocialNewsClientProfile({ ...(row || {}), client_id: clientId })
 })

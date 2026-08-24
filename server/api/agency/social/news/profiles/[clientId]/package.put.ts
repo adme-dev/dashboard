@@ -5,6 +5,7 @@ import { requireSocialClientAccess, isSocialClientId } from '~~/server/utils/soc
 import { mergeSocialPackageProfile } from '~~/server/utils/socialNewsGovernance'
 import { embedSocialClientKnowledge } from '~~/server/utils/aiEntityEmbedder'
 import { runAfterResponse } from '~~/server/utils/asyncBackground'
+import { enqueue } from '~~/server/utils/queue'
 
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.ADMIN)
@@ -81,6 +82,9 @@ export default defineEventHandler(async (event) => {
       body.budgetAllocationId || null, JSON.stringify(profileSnapshot), JSON.stringify(version.commercial_scope || {}),
       startsOn, endsOn, user.id],
   )
-  runAfterResponse(event, embedSocialClientKnowledge(event, clientId), 'social-package-client-knowledge-index')
+  await enqueue(event, 'embed.social.client', { clientId }, () => {
+    runAfterResponse(event, embedSocialClientKnowledge(event, clientId), 'social-package-client-knowledge-index')
+    return Promise.resolve()
+  })
   return row
 })
