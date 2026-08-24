@@ -99,3 +99,30 @@ export function runSpendSyncInBackground<R = unknown>(
   runAfterResponse(event, work, options.label)
   return { status: 'started', startedAt: new Date().toISOString(), ...(options.extra || {}) }
 }
+
+/**
+ * Await best-effort side-effect work IN-REQUEST, capped so it can never stall
+ * the response. Errors are swallowed + logged; a late failure after the cap
+ * still logs (and never becomes an unhandled rejection). Use for small DB
+ * writes that were previously deferred via runAfterResponse and silently lost
+ * on the Pages runtime (see qr/scans.ts history).
+ */
+export async function runCappedBeforeResponse(
+  promise: Promise<unknown>,
+  label: string,
+  timeoutMs = 1500
+): Promise<void> {
+  try {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), timeoutMs) })
+    const guarded = Promise.resolve(promise).then(() => 'ok' as const)
+    const result = await Promise.race([guarded, timeout])
+    clearTimeout(timer)
+    if (result === 'timeout') {
+      console.error(`[${label}] exceeded ${timeoutMs}ms cap; response not delayed further`)
+      guarded.catch(err => console.error(`[${label}] late failure`, err))
+    }
+  } catch (err) {
+    console.error(`[${label}]`, err)
+  }
+}

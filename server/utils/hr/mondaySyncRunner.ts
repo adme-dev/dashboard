@@ -2,6 +2,7 @@ import type { H3Event } from 'h3'
 import { createError } from 'h3'
 import { execute, queryOne } from '~~/server/utils/db'
 import { runAfterResponse } from '~~/server/utils/asyncBackground'
+import { enqueue } from '~~/server/utils/queue'
 import { createMondayClient } from '~~/server/utils/mondayClient'
 import { resolveMondayConnection } from '~~/server/utils/mondayConnection'
 import { createMigrationSession, MondayMigrationService, type MigrationConfig } from '~~/server/utils/mondayMigration'
@@ -81,7 +82,16 @@ export async function startGovernedMondaySync(
       await reconcileMondaySyncSession(scope.id, scope.board_ids, sessionId).catch(() => undefined)
       await refreshMondayEvidenceExtracts(scope).catch(() => undefined)
     })
-  runAfterResponse(event, work, `HR Monday ${trigger} sync ${sessionId}`)
+
+  // Dispatched via the durable job queue (retried by workers/jobs-consumer)
+  // so a stuck-'running' migration survives a dropped Pages waitUntil; local
+  // dev without a queue binding falls back to today's fire-and-forget behavior.
+  await enqueue(
+    event,
+    'hr.monday.migrate',
+    { sessionId, scopeId: scope.id, trigger, config },
+    () => runAfterResponse(event, work, `HR Monday ${trigger} sync ${sessionId}`) as unknown as Promise<void>
+  )
 
   await recordHrAuditEvent({
     actorId,

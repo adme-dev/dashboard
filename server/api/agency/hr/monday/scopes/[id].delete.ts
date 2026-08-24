@@ -3,7 +3,7 @@ import { transaction } from '~~/server/utils/db'
 import { requireHrAdmin } from '~~/server/utils/hr/authorization'
 import { recordHrAuditEvent } from '~~/server/utils/hr/audit'
 import { deleteVector } from '~~/server/utils/aiVectorize'
-import { runAfterResponse } from '~~/server/utils/asyncBackground'
+import { runCappedBeforeResponse } from '~~/server/utils/asyncBackground'
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'private, no-store')
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
     return { scope: result.rows[0], vectorIds: vectors.rows.map((row: { vector_id: string | null }) => row.vector_id).filter(Boolean) as string[] }
   })
   if (result.vectorIds.length) {
-    runAfterResponse(event, Promise.all(result.vectorIds.map(vectorId => deleteVector(event, vectorId))), `Revoke HR Monday vectors ${id}`)
+    await runCappedBeforeResponse(Promise.all(result.vectorIds.map(vectorId => deleteVector(event, vectorId))), `Revoke HR Monday vectors ${id}`, 4000)
   }
   return { ok: true, scope: result.scope, revokedKnowledgeRecords: result.vectorIds.length }
 })

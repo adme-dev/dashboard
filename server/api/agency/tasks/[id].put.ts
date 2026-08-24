@@ -9,7 +9,7 @@ import { evaluateAutomations } from '~~/server/utils/automationEngine'
 import { enqueue } from '~~/server/utils/queue'
 import { postBoardEventToChat } from '~~/server/utils/boardChatBridge'
 import { notifyTaskAssigneeChanged } from '~~/server/utils/notifications'
-import { runAfterResponse } from '~~/server/utils/asyncBackground'
+import { runCappedBeforeResponse } from '~~/server/utils/asyncBackground'
 
 interface UpdateTaskBody {
   title?: string
@@ -294,8 +294,8 @@ export default defineEventHandler(async (event) => {
       // Evaluate board automations (queued with retry, fallback to fire-and-forget)
       enqueue(event, 'board.automate', boardEvent, () => evaluateAutomations(currentTask.department_id, boardEvent))
 
-      // Post to linked chat channels (fire-and-forget, survives past response)
-      runAfterResponse(event, postBoardEventToChat({
+      // Post to linked chat channels (in-request, capped so it can't stall the response)
+      await runCappedBeforeResponse(postBoardEventToChat({
         ...boardEvent,
         taskTitle: currentTask.title,
       }), 'postBoardEventToChat')
@@ -303,10 +303,10 @@ export default defineEventHandler(async (event) => {
 
     // Notify the new assignee directly (in-app + email).
     // The helper handles unchanged/unassign/self-assignment skips.
-    // Wrapped in runAfterResponse so the work survives past the HTTP response
-    // on Cloudflare Workers — bare .catch() fire-and-forget would be killed.
+    // Capped in-request so the write can't be silently lost on Cloudflare
+    // Workers (bare .catch() fire-and-forget / waitUntil would be killed).
     if (body.assigneeId !== undefined) {
-      runAfterResponse(event, notifyTaskAssigneeChanged({
+      await runCappedBeforeResponse(notifyTaskAssigneeChanged({
         taskId: id,
         taskTitle: currentTask.title,
         oldAssigneeId: currentTask.assignee_id,

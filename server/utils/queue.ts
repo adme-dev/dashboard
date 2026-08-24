@@ -30,6 +30,8 @@ export type JobType =
   | 'catalog.sync'
   | 'merchant.catalog.reconcile'
   | 'merchant.catalog.readback'
+  | 'lead.podium.post-commit'
+  | 'hr.monday.migrate'
 
 export interface QueueJob {
   jobId?: string

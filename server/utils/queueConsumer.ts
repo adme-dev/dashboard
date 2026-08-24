@@ -118,6 +118,14 @@ export async function processJob(job: QueueConsumerJob, event?: H3Event): Promis
         await processMerchantCatalogReadback(job.payload, event)
         break
 
+      case 'lead.podium.post-commit':
+        await processPodiumPostCommit(job.payload, event)
+        break
+
+      case 'hr.monday.migrate':
+        await processHrMondayMigrate(job.payload, event)
+        break
+
       case 'god-mode.audit-terminal':
         await processGodModeAuditTerminal(job.payload)
         break
@@ -350,6 +358,18 @@ async function processMerchantCatalogReadback(payload: Record<string, unknown>, 
       { delaySeconds: 180 }
     )
   }
+}
+
+async function processPodiumPostCommit(payload: Record<string, unknown>, event?: H3Event): Promise<void> {
+  if (!event) throw new Error('Podium post-commit requires a request-owned Cloudflare context')
+  const { runPodiumPostCommit } = await import('~~/server/utils/leads/podiumPostCommit')
+  await runPodiumPostCommit(event, payload as { leadId: string, outboxEventId: string | null })
+}
+
+async function processHrMondayMigrate(payload: Record<string, unknown>, event?: H3Event): Promise<void> {
+  if (!event) throw new Error('HR Monday migration requires a request-owned Cloudflare context')
+  const { runHrMondayMigration } = await import('~~/server/utils/hr/mondayMigrationJob')
+  await runHrMondayMigration(event, payload as any)
 }
 
 async function processGodModeAuditTerminal(payload: GodModeAuditEventInput): Promise<void> {

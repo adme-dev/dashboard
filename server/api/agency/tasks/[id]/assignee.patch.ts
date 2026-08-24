@@ -4,7 +4,7 @@
 
 import { queryOne, transaction } from '~~/server/utils/db'
 import { notifyTaskAssigneeChanged } from '~~/server/utils/notifications'
-import { runAfterResponse } from '~~/server/utils/asyncBackground'
+import { runCappedBeforeResponse } from '~~/server/utils/asyncBackground'
 
 interface UpdateAssigneeBody {
   assigneeId: string | null
@@ -94,9 +94,9 @@ export default defineEventHandler(async (event) => {
     `, [id])
 
     // Send notification (helper handles unchanged/unassign/self-assignment skips).
-    // runAfterResponse keeps the work alive past the HTTP response on
-    // Cloudflare Workers (bare .catch() fire-and-forget would be killed).
-    runAfterResponse(event, notifyTaskAssigneeChanged({
+    // Capped in-request so the write can't be silently lost on Cloudflare
+    // Workers (bare .catch() fire-and-forget / waitUntil would be killed).
+    await runCappedBeforeResponse(notifyTaskAssigneeChanged({
       taskId: id,
       taskTitle: currentTask.title,
       oldAssigneeId: currentTask.assignee_id,
