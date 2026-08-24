@@ -153,7 +153,11 @@ export function buildSpendSummaryItems(rows: SpendSummaryRow[]): SpendSummaryIte
     acc.commissionRate = Math.max(acc.commissionRate, numberValue(row.commission_rate))
     acc.lastSyncedAt = latestTimestamp(acc.lastSyncedAt, row.last_synced_at || null)
     acc.oldestSyncedAt = oldestTimestamp(acc.oldestSyncedAt, row.oldest_synced_at || row.last_synced_at || null)
-    acc.spendAsOf = oldestTimestamp(acc.spendAsOf, row.spend_as_of || null)
+    // Newest provider-reported spend date across the group. MUST match budget-alerts/health.get.ts's
+    // MAX() semantics: taking the oldest here let a single dormant campaign drag a client's pacing
+    // data-clock back weeks, so get_adspend_pacing called current data "overpacing" while
+    // get_budget_health called the same row healthy (2026-08-25 daily-check incident).
+    acc.spendAsOf = latestTimestamp(acc.spendAsOf, row.spend_as_of || null)
     acc.staleRowCount += intValue(row.stale_row_count)
 
     if (!acc.owner && row.owner_id) {
