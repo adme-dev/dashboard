@@ -14,27 +14,41 @@ import {
   type GoogleCredentialRow,
 } from '~~/server/utils/googleCredentialProfiles'
 import type { PolicyIssue } from '~~/server/utils/adDiagnostics'
+import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 
 const BREAKDOWN_PLATFORMS = ['meta', 'google_ads']
 
 /**
  * Refresh Google OAuth token if expired or about to expire (within 5 min).
- * Updates the DB and returns the new access token, or null if no refresh needed.
+ * Updates the DB when needed, returns a usable access token, and never falls back to an expired token.
  */
-async function refreshGoogleTokenIfNeeded(
+type GoogleAccessTokenRefreshDeps = {
+  now?: () => number
+  resolveConfig?: typeof resolveGoogleAdsRuntimeConfig
+  refreshToken?: typeof import('~~/server/utils/googleAdsClient').refreshGoogleToken
+  persistRefresh?: typeof persistGoogleCredentialRefresh
+}
+
+export async function refreshGoogleAccessTokenIfNeeded(
   conn: { access_token: string; refresh_token: string | null; token_expires_at: string | null; google_credential_profile_id?: string | null },
-  connectionId: string
-): Promise<string | null> {
-  if (!conn.refresh_token || !conn.token_expires_at) return null
+  connectionId: string,
+  deps: GoogleAccessTokenRefreshDeps = {},
+): Promise<string> {
+  if (!conn.token_expires_at) return conn.access_token
   const expiresAt = new Date(conn.token_expires_at)
-  if (expiresAt.getTime() >= Date.now() + 5 * 60 * 1000) return null // still valid
+  const now = deps.now?.() ?? Date.now()
+  if (expiresAt.getTime() >= now + 5 * 60 * 1000) return conn.access_token
+  if (!conn.refresh_token) throw new Error('Google token refresh failed: no refresh token is available; reconnect Google Ads.')
 
   try {
-    const { refreshGoogleToken } = await import('~~/server/utils/googleAdsClient')
-    const config = useRuntimeConfig()
-    const refreshed = await refreshGoogleToken(conn.refresh_token, config.googleClientId, config.googleClientSecret)
-    const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000)
-    await persistGoogleCredentialRefresh({
+    const refreshToken = deps.refreshToken || (await import('~~/server/utils/googleAdsClient')).refreshGoogleToken
+    const config = (deps.resolveConfig || resolveGoogleAdsRuntimeConfig)()
+    if (!config.googleClientId || !config.googleClientSecret) {
+      throw new Error('Google OAuth client credentials are unavailable in this runtime')
+    }
+    const refreshed = await refreshToken(conn.refresh_token, config.googleClientId, config.googleClientSecret)
+    const newExpiry = new Date(now + refreshed.expires_in * 1000)
+    await (deps.persistRefresh || persistGoogleCredentialRefresh)({
       connectionId,
       profileId: conn.google_credential_profile_id || null,
       accessToken: refreshed.access_token,
@@ -43,7 +57,7 @@ async function refreshGoogleTokenIfNeeded(
     return refreshed.access_token
   } catch (err: any) {
     console.error(`[OnDemandSync] Failed to refresh Google token for connection ${connectionId}:`, err.message)
-    return null
+    throw new Error(`Google token refresh failed: ${err?.message || 'unknown error'}`)
   }
 }
 
@@ -157,8 +171,7 @@ export async function syncCampaignBreakdowns(mediaSpendId: string): Promise<Brea
     conn.refresh_token = credential.refreshToken
     conn.token_expires_at = credential.tokenExpiresAt
     conn.google_credential_profile_id = credential.profileId
-    const freshToken = await refreshGoogleTokenIfNeeded(conn, campaign.connection_id)
-    if (freshToken) conn.access_token = freshToken
+    conn.access_token = await refreshGoogleAccessTokenIfNeeded(conn, campaign.connection_id)
   }
 
   const [yearStr, monthStr] = campaign.period.split('-')
@@ -296,8 +309,7 @@ export async function syncCampaignCreatives(mediaSpendId: string): Promise<Creat
     conn.refresh_token = credential.refreshToken
     conn.token_expires_at = credential.tokenExpiresAt
     conn.google_credential_profile_id = credential.profileId
-    const freshToken = await refreshGoogleTokenIfNeeded(conn, campaign.connection_id)
-    if (freshToken) conn.access_token = freshToken
+    conn.access_token = await refreshGoogleAccessTokenIfNeeded(conn, campaign.connection_id)
   }
 
   let upserted = 0
@@ -319,7 +331,7 @@ export async function syncCampaignCreatives(mediaSpendId: string): Promise<Creat
       }
     } else if (campaign.platform === 'google_ads') {
       const { getCampaignAdAssets, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
-      const config = useRuntimeConfig()
+      const config = resolveGoogleAdsRuntimeConfig()
 
       // Prefer the configured manager id (same resolution as syncCampaignAdPerformance); only guess via
       // listAccessibleCustomers when nothing is configured. Without login-customer-id, GAQL against a
@@ -447,10 +459,9 @@ export async function syncCampaignAdPerformance(
       conn.refresh_token = credential.refreshToken
       conn.token_expires_at = credential.tokenExpiresAt
       conn.google_credential_profile_id = credential.profileId
-      const freshToken = await refreshGoogleTokenIfNeeded(conn, campaign.connection_id)
-      if (freshToken) conn.access_token = freshToken
+      conn.access_token = await refreshGoogleAccessTokenIfNeeded(conn, campaign.connection_id)
       const { getGoogleCampaignAdPerformance } = await import('~~/server/utils/googleAdsClient')
-      const config = useRuntimeConfig()
+      const config = resolveGoogleAdsRuntimeConfig()
       const managerId = conn.metadata?.managerCustomerId || config.googleAdsLoginCustomerId || undefined
       rows = await getGoogleCampaignAdPerformance(
         conn.account_id,
@@ -580,9 +591,8 @@ export async function syncCampaignDeliveryDiagnostics(mediaSpendId: string): Pro
     conn.refresh_token = credential.refreshToken
     conn.token_expires_at = credential.tokenExpiresAt
     conn.google_credential_profile_id = credential.profileId
-    const freshToken = await refreshGoogleTokenIfNeeded(conn, campaign.connection_id)
-    if (freshToken) conn.access_token = freshToken
-    const config = useRuntimeConfig()
+    conn.access_token = await refreshGoogleAccessTokenIfNeeded(conn, campaign.connection_id)
+    const config = resolveGoogleAdsRuntimeConfig()
     const managerId = conn.metadata?.managerCustomerId || config.googleAdsLoginCustomerId || undefined
     const parsedYear = Number(campaign.period.split('-')[0])
     const parsedMonth = Number(campaign.period.split('-')[1])
@@ -722,7 +732,7 @@ async function fetchGoogleBreakdowns(
 ) {
   const { gaqlQuery, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
   const { getMonthRange } = await import('~~/server/utils/metaClient')
-  const config = useRuntimeConfig()
+  const config = resolveGoogleAdsRuntimeConfig()
   const { since, until } = getMonthRange(month, year)
 
   let mccId: string | undefined
@@ -1120,7 +1130,7 @@ async function fetchGoogleScalarMetrics(
 ) {
   const { gaqlQuery, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
   const { getMonthRange } = await import('~~/server/utils/metaClient')
-  const config = useRuntimeConfig()
+  const config = resolveGoogleAdsRuntimeConfig()
   const { since, until } = getMonthRange(month, year)
   const cleanCampaignId = String(campaignId).replace(/[^0-9]/g, '')
 

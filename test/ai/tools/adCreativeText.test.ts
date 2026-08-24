@@ -1,11 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getAdCreativeText } from '../../../server/utils/ai/tools/adCreativeText'
+import { campaignNameLikePattern, getAdCreativeText } from '../../../server/utils/ai/tools/adCreativeText'
 import type { ToolContext } from '../../../server/utils/ai/toolContext'
 
 const ctx = { userId: 'user-1', userRole: 'owner' } as ToolContext
 const noSync = { findUnsynced: vi.fn().mockResolvedValue([]), syncCreatives: vi.fn() }
 
 describe('get_ad_creative_text', () => {
+  it('matches human campaign phrases across provider naming delimiters', () => {
+    expect(campaignNameLikePattern('July Drive Away')).toBe('%July%Drive%Away%')
+    expect(campaignNameLikePattern('100% Drive_Away')).toBe('%100\\%%Drive\\_Away%')
+  })
+
   it('projects Meta headline and body into explicit creative-copy fields', async () => {
     const result = await getAdCreativeText({ platform: 'meta', campaignId: 'campaign-1' }, ctx, {
       ...noSync,

@@ -17,6 +17,12 @@ const params = z.object({
 })
 type Args = z.infer<typeof params>
 
+/** Match natural-language campaign phrases against provider names that commonly use `_`/`-` separators. */
+export function campaignNameLikePattern(value: string): string {
+  const tokens = value.trim().split(/\s+/).filter(Boolean).map(escapeLike)
+  return `%${tokens.join('%')}%`
+}
+
 export type AdCreativeTextRow = {
   ad_id: string | null
   ad_name: string | null
@@ -51,7 +57,7 @@ function scopeConditions(args: Args): { conditions: string[], values: unknown[] 
   }
   if (args.clientId) add('ms.client_id = ?::uuid', args.clientId)
   if (args.campaignId) add('ms.campaign_id = ?', args.campaignId)
-  if (args.campaignName) add(`ms.campaign_name ILIKE ? ESCAPE '\\'`, `%${escapeLike(args.campaignName)}%`)
+  if (args.campaignName) add(`ms.campaign_name ILIKE ? ESCAPE '\\'`, campaignNameLikePattern(args.campaignName))
   return { conditions, values }
 }
 

@@ -29,7 +29,7 @@ import {
   signMcpRequestClaim,
   type McpRequestPath
 } from '../../../shared/utils/mcpRequestClaim'
-import { MCP_CATALOG_RELEASE, MCP_PREVIOUS_CATALOG_RELEASE, assertMcpCatalogNotRegressed, compareMcpCatalogReleases } from '../../../shared/utils/mcpCatalog'
+import { MCP_CATALOG_RELEASE, MCP_PREVIOUS_CATALOG_RELEASE, MCP_SERVER_VERSION, assertMcpCatalogNotRegressed, compareMcpCatalogReleases } from '../../../shared/utils/mcpCatalog'
 
 async function pageCatalogRegression(env: Env, detail: string): Promise<void> {
   console.error('mcp.catalog_regression', { detail })
@@ -114,7 +114,7 @@ async function appFetch(
 }
 
 export class XeroFlowMcpAgent extends McpAgent<Env, unknown, Props> {
-  server = new McpServer({ name: 'xeroflow', version: '1.0.2' })
+  server = new McpServer({ name: 'xeroflow', version: MCP_SERVER_VERSION })
 
   async init() {
     // props are populated by the OAuth layer; no validated user → expose nothing.

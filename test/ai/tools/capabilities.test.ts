@@ -123,7 +123,7 @@ describe('get_capabilities', () => {
     expect((result as any).data.dataSync.adSpend).toHaveProperty('lastRunAt')
     expect((result as any).data.dataSync.adSpend).toHaveProperty('coverageBaselinePresent')
     expect((result as any).data.servedCatalog).toEqual({
-      release: '2026-08-21.12', previousRelease: '2026-08-20.11', toolCount: 86, projectionAuthority: 'shared_with_tools_list',
+      release: '2026-08-24.13', previousRelease: '2026-08-21.12', toolCount: 86, projectionAuthority: 'shared_with_tools_list',
     })
     expect((result as any).data.degraded).toBeUndefined()
   }, 15_000)
