@@ -32,6 +32,8 @@ export type JobType =
   | 'merchant.catalog.readback'
   | 'lead.podium.post-commit'
   | 'hr.monday.migrate'
+  | 'embed.social.client'
+  | 'campaign.detail.refresh'
 
 export interface QueueJob {
   jobId?: string

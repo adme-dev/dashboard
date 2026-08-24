@@ -4,6 +4,7 @@ import { queryOne } from '~~/server/utils/db'
 import { requireSocialClientAccess, isSocialClientId } from '~~/server/utils/social/clientAccess'
 import { embedSocialClientKnowledge } from '~~/server/utils/aiEntityEmbedder'
 import { runAfterResponse } from '~~/server/utils/asyncBackground'
+import { enqueue } from '~~/server/utils/queue'
 
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.ADMIN)
@@ -25,6 +26,9 @@ export default defineEventHandler(async (event) => {
     [evidenceId, clientId, body.reviewStatus, summary, user.id],
   )
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Evidence not found' })
-  runAfterResponse(event, embedSocialClientKnowledge(event, clientId), 'social-evidence-review-client-knowledge-index')
+  await enqueue(event, 'embed.social.client', { clientId }, () => {
+    runAfterResponse(event, embedSocialClientKnowledge(event, clientId), 'social-evidence-review-client-knowledge-index')
+    return Promise.resolve()
+  })
   return row
 })

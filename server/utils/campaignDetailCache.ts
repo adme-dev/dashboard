@@ -2,6 +2,7 @@ import type { H3Event } from 'h3'
 import { queryOne } from '~~/server/utils/db'
 import { runAfterResponse } from '~~/server/utils/asyncBackground'
 import { syncCampaignBreakdowns, syncCampaignCreatives } from '~~/server/utils/onDemandSync'
+import { enqueue } from '~~/server/utils/queue'
 
 export type CampaignDetailDataset = 'breakdowns' | 'creatives'
 
@@ -254,10 +255,18 @@ export async function requestCampaignDetailRefresh(
 
   if (!acquired) return getCampaignRefreshMeta(mediaSpendId, dataset)
 
-  runAfterResponse(
+  await enqueue(
     event,
-    performRefresh(mediaSpendId, dataset, leaseToken, ttlMs),
-    `campaign-${dataset}-refresh`
+    'campaign.detail.refresh',
+    { mediaSpendId, dataset, leaseToken, ttlMs },
+    () => {
+      runAfterResponse(
+        event,
+        performRefresh(mediaSpendId, dataset, leaseToken, ttlMs),
+        `campaign-${dataset}-refresh`
+      )
+      return Promise.resolve()
+    }
   )
 
   return {
@@ -268,4 +277,16 @@ export async function requestCampaignDetailRefresh(
     lastAttemptAt: new Date().toISOString(),
     lastError: null,
   }
+}
+
+/**
+ * Runs a previously-claimed campaign detail refresh from the durable job queue. The payload carries
+ * everything `performRefresh` needs (mediaSpendId/dataset/leaseToken/ttlMs) — `performRefresh` itself
+ * already re-checks the lease token on write, so a stale/expired lease is a safe no-op.
+ */
+export async function runCampaignDetailRefreshJob(
+  _event: H3Event,
+  payload: { mediaSpendId: string, dataset: CampaignDetailDataset, leaseToken: string, ttlMs: number }
+): Promise<void> {
+  await performRefresh(payload.mediaSpendId, payload.dataset, payload.leaseToken, payload.ttlMs)
 }

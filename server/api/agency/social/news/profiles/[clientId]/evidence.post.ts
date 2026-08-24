@@ -5,6 +5,7 @@ import { requireSocialClientAccess, isSocialClientId } from '~~/server/utils/soc
 import { normalizeClientEvidenceInput } from '~~/server/utils/socialNewsGovernance'
 import { embedSocialClientKnowledge } from '~~/server/utils/aiEntityEmbedder'
 import { runAfterResponse } from '~~/server/utils/asyncBackground'
+import { enqueue } from '~~/server/utils/queue'
 
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.ADMIN)
@@ -39,7 +40,10 @@ export default defineEventHandler(async (event) => {
       input.occurredAt, input.reviewStatus, user.id],
   )
   if (row?.review_status === 'approved') {
-    runAfterResponse(event, embedSocialClientKnowledge(event, clientId), 'social-evidence-client-knowledge-index')
+    await enqueue(event, 'embed.social.client', { clientId }, () => {
+      runAfterResponse(event, embedSocialClientKnowledge(event, clientId), 'social-evidence-client-knowledge-index')
+      return Promise.resolve()
+    })
   }
   return row
 })
