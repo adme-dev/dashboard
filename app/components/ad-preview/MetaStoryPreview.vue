@@ -3,6 +3,9 @@ import PreviewFrame from './PreviewFrame.vue'
 
 defineProps<{
   image?: string
+  html?: string
+  htmlWidth?: number
+  htmlHeight?: number
   pageName?: string
   primaryText?: string
   headline?: string
@@ -13,18 +16,16 @@ defineProps<{
 
 const { ctaLabel } = useAdPreview()
 
-const placeholderImg = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="700" fill="%23222"><rect width="400" height="700"/><text x="50%" y="50%" text-anchor="middle" fill="%23555" font-size="20" dy=".3em">Story Creative</text></svg>')
 </script>
 
 <template>
   <PreviewFrame type="phone" label="Meta Story / Reel">
     <div class="relative w-full h-full">
       <!-- Background image -->
-      <img
-        :src="image || placeholderImg"
-        alt="Story creative"
-        class="absolute inset-0 w-full h-full object-cover"
-      >
+      <AdPreviewCreativeMedia
+        :html="html" :html-width="htmlWidth" :html-height="htmlHeight"
+        :image="image" label="Story Creative" placeholder-bg="#222" placeholder-fg="#555"
+      />
 
       <!-- Gradient overlays -->
       <div class="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/60 to-transparent" />

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 defineProps<{
   image?: string
+  html?: string
+  htmlWidth?: number
+  htmlHeight?: number
   pageName?: string
   primaryText?: string
   headline?: string
@@ -9,19 +12,18 @@ defineProps<{
   linkUrl?: string
 }>()
 
-const placeholderImg = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" fill="%23f0e6e6"><rect width="400" height="600"/><text x="50%" y="50%" text-anchor="middle" fill="%23c88" font-size="20" dy=".3em">Pin Creative</text></svg>')
 </script>
 
 <template>
   <div class="rounded-2xl overflow-hidden shadow-lg bg-white" style="width: 260px;">
     <!-- Pin image -->
     <div class="relative">
-      <img
-        :src="image || placeholderImg"
-        alt="Pin creative"
-        class="w-full object-cover"
-        style="aspect-ratio: 2/3;"
-      >
+      <div class="relative w-full" style="aspect-ratio: 2/3;">
+        <AdPreviewCreativeMedia
+          :html="html" :html-width="htmlWidth" :html-height="htmlHeight"
+          :image="image" label="Pin Creative" placeholder-bg="#f0e6e6" placeholder-fg="#c88"
+        />
+      </div>
       <!-- Promoted badge -->
       <div class="absolute top-2.5 left-2.5 bg-black/60 text-white text-[10px] font-medium px-2 py-0.5 rounded-full backdrop-blur-sm">
         Promoted

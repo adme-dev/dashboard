@@ -1,6 +1,9 @@
 <script setup lang="ts">
 defineProps<{
   image?: string
+  html?: string
+  htmlWidth?: number
+  htmlHeight?: number
   pageName?: string
   primaryText?: string
   headline?: string
@@ -11,7 +14,6 @@ defineProps<{
 
 const { ctaLabel } = useAdPreview()
 
-const placeholderImg = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" fill="%23333"><rect width="600" height="600"/><text x="50%" y="50%" text-anchor="middle" fill="%23666" font-size="24" dy=".3em">Ad Creative</text></svg>')
 </script>
 
 <template>
@@ -37,12 +39,12 @@ const placeholderImg = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="h
 
     <!-- Ad creative -->
     <div class="relative bg-gray-100">
-      <img
-        :src="image || placeholderImg"
-        alt="Ad creative"
-        class="w-full object-cover"
-        style="aspect-ratio: 1/1;"
-      >
+      <div class="relative w-full" style="aspect-ratio: 1/1;">
+        <AdPreviewCreativeMedia
+          :html="html" :html-width="htmlWidth" :html-height="htmlHeight"
+          :image="image" label="Ad Creative" placeholder-bg="#333" placeholder-fg="#666"
+        />
+      </div>
     </div>
 
     <!-- Link / CTA bar -->

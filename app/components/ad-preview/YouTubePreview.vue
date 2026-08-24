@@ -3,6 +3,9 @@ import PreviewFrame from './PreviewFrame.vue'
 
 defineProps<{
   image?: string
+  html?: string
+  htmlWidth?: number
+  htmlHeight?: number
   pageName?: string
   primaryText?: string
   headline?: string
@@ -13,7 +16,6 @@ defineProps<{
 
 const { ctaLabel } = useAdPreview()
 
-const placeholderImg = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" fill="%23111"><rect width="640" height="360"/><text x="50%" y="50%" text-anchor="middle" fill="%23444" font-size="20" dy=".3em">Video Ad Creative</text></svg>')
 </script>
 
 <template>
@@ -21,11 +23,10 @@ const placeholderImg = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="h
     <div class="w-full">
       <!-- Video player area -->
       <div class="relative bg-black" style="aspect-ratio: 16/9;">
-        <img
-          :src="image || placeholderImg"
-          alt="YouTube creative"
-          class="absolute inset-0 w-full h-full object-cover"
-        >
+        <AdPreviewCreativeMedia
+          :html="html" :html-width="htmlWidth" :html-height="htmlHeight"
+          :image="image" label="Video Ad Creative" placeholder-bg="#111" placeholder-fg="#444"
+        />
 
         <!-- Ad badge -->
         <div class="absolute top-3 left-3 bg-yellow-400 text-black text-[10px] font-bold px-1.5 py-0.5 rounded-sm">

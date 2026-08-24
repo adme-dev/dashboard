@@ -3,6 +3,9 @@ import PreviewFrame from './PreviewFrame.vue'
 
 defineProps<{
   image?: string
+  html?: string
+  htmlWidth?: number
+  htmlHeight?: number
   pageName?: string
   primaryText?: string
   headline?: string
@@ -13,18 +16,16 @@ defineProps<{
 
 const { ctaLabel } = useAdPreview()
 
-const placeholderImg = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="700" fill="%23111"><rect width="400" height="700"/><text x="50%" y="50%" text-anchor="middle" fill="%23444" font-size="20" dy=".3em">TikTok Creative</text></svg>')
 </script>
 
 <template>
   <PreviewFrame type="phone" label="TikTok">
     <div class="relative w-full h-full bg-black">
       <!-- Background creative -->
-      <img
-        :src="image || placeholderImg"
-        alt="TikTok creative"
-        class="absolute inset-0 w-full h-full object-cover"
-      >
+      <AdPreviewCreativeMedia
+        :html="html" :html-width="htmlWidth" :html-height="htmlHeight"
+        :image="image" label="TikTok Creative" placeholder-bg="#111" placeholder-fg="#444"
+      />
 
       <!-- Gradient bottom -->
       <div class="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-black/80 to-transparent" />
