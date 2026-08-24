@@ -6,6 +6,7 @@ import { createMondayClient } from '~~/server/utils/mondayClient'
 import { resolveMondayConnection } from '~~/server/utils/mondayConnection'
 import { createMigrationSession, MondayMigrationService, type MigrationConfig } from '~~/server/utils/mondayMigration'
 import { runAfterResponse } from '~~/server/utils/asyncBackground'
+import { enqueue } from '~~/server/utils/queue'
 
 /** Start a governed, board-scoped Monday sync for HR evidence preparation. */
 export default defineEventHandler(async (event) => {
@@ -32,7 +33,15 @@ export default defineEventHandler(async (event) => {
   const client = await createMondayClient(connection.accessToken)
   const sessionId = await createMigrationSession(user.id, connection.accountId || 'monday', connection.accountName || 'Monday', config)
   const service = new MondayMigrationService(client, sessionId, config)
-  runAfterResponse(event, service.migrate(), `HR Monday import ${sessionId}`)
+  // Dispatched via the durable job queue (retried by workers/jobs-consumer)
+  // so a stuck-'running' migration survives a dropped Pages waitUntil; local
+  // dev without a queue binding falls back to today's fire-and-forget behavior.
+  await enqueue(
+    event,
+    'hr.monday.migrate',
+    { sessionId, scopeId: scope.id, trigger: 'manual-import', config },
+    () => runAfterResponse(event, service.migrate(), `HR Monday import ${sessionId}`) as unknown as Promise<void>
+  )
   await recordHrAuditEvent({ actorId: user.id, action: 'monday_evidence.import.started', targetType: 'monday_migration_session', targetId: sessionId, metadata: { scopeId: scope.id, boardCount: scope.board_ids.length, importUpdates: config.importUpdates, importFiles: config.importFiles } })
   return { ok: true, sessionId, scopeId: scope.id, status: 'running', boardCount: scope.board_ids.length }
 })
