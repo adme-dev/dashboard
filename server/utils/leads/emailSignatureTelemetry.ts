@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { H3Event } from 'h3'
 
-import { runAfterResponse } from '~~/server/utils/asyncBackground'
+import { runCappedBeforeResponse } from '~~/server/utils/asyncBackground'
 import { recordEmailTransportEventBatch } from '~~/server/utils/leads/emailHealth'
 import {
   rateCheck,
@@ -76,7 +76,7 @@ export async function verifyEmailIngestSignatureWithTelemetry(
       // RATE_LIMITER DO is the production gate. One write per minute per
       // isolate plus the deterministic DB key is only the local/dev fallback.
       if (await shouldScheduleFailure(event, batchId)) {
-        runAfterResponse(event, recordEmailTransportEventBatch({
+        await runCappedBeforeResponse(recordEmailTransportEventBatch({
           batchId,
           events: [{ eventClass: 'signature_failure' }]
         }), 'email-signature-telemetry')

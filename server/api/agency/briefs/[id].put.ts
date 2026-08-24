@@ -8,7 +8,7 @@
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { notifyBriefAssigneeChanged } from '~~/server/utils/briefNotifications'
-import { runAfterResponse } from '~~/server/utils/asyncBackground'
+import { runCappedBeforeResponse } from '~~/server/utils/asyncBackground'
 import { maybeAcknowledgeBrief } from '~~/server/utils/automation/actionedConfirmationRunner'
 import { normalizeBriefPriority } from '~~/server/utils/briefPriority'
 
@@ -187,9 +187,9 @@ export default defineEventHandler(async (event) => {
     })
 
     // Notify the new assignee (helper handles unchanged/unassign/self skips).
-    // runAfterResponse keeps the work alive past the HTTP response on CF.
+    // Capped in-request so the write can't be silently lost on CF.
     if (body.assignedTo !== undefined) {
-      runAfterResponse(event, notifyBriefAssigneeChanged({
+      await runCappedBeforeResponse(notifyBriefAssigneeChanged({
         briefId: briefId!,
         briefTitle: brief.title,
         referenceNumber: brief.reference_number,
