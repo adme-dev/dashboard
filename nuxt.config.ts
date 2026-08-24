@@ -317,6 +317,11 @@ export default defineNuxtConfig({
     // Keep `/` dynamic so host-aware server middleware can route
     // `app.xeroflow.io` to the admin surface while `xeroflow.io` continues
     // to serve the public website.
+
+    // Public QR redirect: /q/<code> proxies to the Nitro API route so scanned
+    // codes get a short, print-friendly URL instead of /api/q/<code>.
+    '/q/**': { proxy: '/api/q/**' },
+
     '/pricing': { prerender: true },
     '/features': { prerender: true },
     '/features/**': { prerender: true },
