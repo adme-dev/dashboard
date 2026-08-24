@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   dbQuery: vi.fn(),
   getGoogleCampaignSearchTerms: vi.fn(),
   resolveGoogleCredential: vi.fn(),
+  resolveGoogleAdsRuntimeConfig: vi.fn(),
+  refreshGoogleAccessTokenIfNeeded: vi.fn(),
 }))
 
 vi.mock('~~/server/utils/db', () => ({
@@ -23,6 +25,12 @@ vi.mock('~~/server/utils/googleCredentialProfiles', () => ({
 vi.mock('~~/server/utils/googleAdsClient', () => ({
   getGoogleCampaignSearchTerms: (...args: unknown[]) => mocks.getGoogleCampaignSearchTerms(...args),
   refreshGoogleToken: vi.fn(),
+}))
+vi.mock('~~/server/utils/spendSync', () => ({
+  resolveGoogleAdsRuntimeConfig: (...args: unknown[]) => mocks.resolveGoogleAdsRuntimeConfig(...args),
+}))
+vi.mock('~~/server/utils/onDemandSync', () => ({
+  refreshGoogleAccessTokenIfNeeded: (...args: unknown[]) => mocks.refreshGoogleAccessTokenIfNeeded(...args),
 }))
 
 import {
@@ -52,6 +60,13 @@ describe('campaign search-term storage', () => {
     mocks.resolveGoogleCredential.mockResolvedValue({
       accessToken: 'token', refreshToken: null, tokenExpiresAt: null, profileId: null,
     })
+    mocks.resolveGoogleAdsRuntimeConfig.mockReturnValue({
+      googleClientId: 'cloudflare-client',
+      googleClientSecret: 'cloudflare-secret',
+      googleDeveloperToken: 'cloudflare-developer-token',
+      googleAdsLoginCustomerId: 'cloudflare-manager',
+    })
+    mocks.refreshGoogleAccessTokenIfNeeded.mockResolvedValue('fresh-token')
   })
 
   it('narrows target resolution to the authenticated assigned-client scope', async () => {
@@ -92,6 +107,49 @@ describe('campaign search-term storage', () => {
     })
     expect(String(mocks.queryOne.mock.calls[1]?.[0])).toContain('campaign_search_term_syncs.synced_at IS NULL')
     expect(mocks.dbQuery).not.toHaveBeenCalledWith(expect.stringMatching(/^DELETE/i), expect.anything())
+  })
+
+  it('uses the Cloudflare-aware config and shared token refresh path for provider requests', async () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({}))
+    mocks.queryOne
+      .mockResolvedValueOnce({
+        id: 'conn-1', access_token: 'expired-token', refresh_token: 'refresh-token',
+        token_expires_at: '2026-08-24T03:20:18.409Z', account_id: '1',
+        metadata: { managerCustomerId: 'metadata-manager' }, google_credential_profile_id: 'profile-1',
+      })
+      .mockResolvedValueOnce({
+        id: 'sync-1', coverage: 'full', coverage_reason: 'Search coverage',
+        synced_at: '2026-08-24T05:00:00Z', last_attempted_at: '2026-08-24T05:00:00Z',
+        last_error: null, source_total: 1, truncated_at_source: false,
+      })
+    mocks.dbQuery
+      .mockResolvedValueOnce({ rows: [{ id: 'sync-1' }] })
+      .mockResolvedValue({ rows: [] })
+    mocks.queryRows.mockResolvedValue([{
+      search_term: 'mornington nissan', match_type: 'EXACT', targeting_status: null,
+      impressions: 10, clicks: 2, cost: 5,
+    }])
+    mocks.getGoogleCampaignSearchTerms.mockResolvedValue([{
+      searchTerm: 'mornington nissan', matchType: 'EXACT', targetingStatus: null,
+      impressions: 10, clicks: 2, cost: 5,
+    }])
+
+    const result = await syncCampaignSearchTerms(target, '2026-08-01', '2026-08-24')
+
+    expect(result.lastError).toBeNull()
+    expect(mocks.refreshGoogleAccessTokenIfNeeded).toHaveBeenCalledWith(
+      expect.objectContaining({ account_id: '1', google_credential_profile_id: null }),
+      'conn-1',
+    )
+    expect(mocks.getGoogleCampaignSearchTerms).toHaveBeenCalledWith(
+      '1',
+      'fresh-token',
+      'cloudflare-developer-token',
+      '123',
+      '2026-08-01',
+      '2026-08-24',
+      'metadata-manager',
+    )
   })
 
   it('persists unsupported platform state without calling a provider', async () => {
