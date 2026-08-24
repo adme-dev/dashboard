@@ -1107,15 +1107,15 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-calculator',
     categoryIconBg: 'bg-emerald-50',
     categoryIconColor: 'text-emerald-600',
-    description: 'OAuth-connected Meta Ads spend syncing with daily breakdowns and campaign-level budgets. Know exactly what you are spending across every client account.',
+    description: 'OAuth-connected Meta Ads spend and delivery diagnostics with policy issues, ad-set learning state, frequency, CPM, daily breakdowns, and campaign budgets.',
     details: [
       {
         title: 'OAuth-Connected Accounts',
         content: 'Connect your Meta Business accounts through a secure OAuth flow. XeroFlow pulls ad account data, campaign structures, and spend metrics directly from the Meta Graph API. Multiple ad accounts can be mapped to the correct XeroFlow clients, so agencies managing dozens of client accounts see all their spend in one consolidated view without switching between Business Manager tabs.'
       },
       {
-        title: 'Daily Spend Syncing',
-        content: 'Ad spend data syncs daily with campaign-level granularity. See exactly how much was spent on each campaign, ad set, and ad — broken down by day. Historical data is retained so you can compare spend patterns over weeks and months. The sync runs automatically on a schedule, with manual refresh available when you need up-to-the-minute numbers before a client call.'
+        title: 'Delivery and Saturation Evidence',
+        content: 'Daily and on-demand reads keep campaign, ad-set, and ad delivery evidence together. See approval issues, exact Meta effective status, learning or learning-limited state, ad-set frequency, CPM, spend, clicks, and delivery dates. Every diagnostic family carries its own collection time and unavailable reason, so missing platform evidence is never presented as a healthy result.'
       },
       {
         title: 'Budget Monitoring and Alerts',
@@ -1135,15 +1135,15 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-calculator',
     categoryIconBg: 'bg-emerald-50',
     categoryIconColor: 'text-emerald-600',
-    description: 'Google Ads performance and call reporting with spend tracking, answered and missed calls, provider-reported duration, budget alerts, and audit trails.',
+    description: 'Google Ads performance and call reporting with approval and serving diagnostics, impression share, search-term and creative-copy evidence, spend tracking, budget alerts, and audit trails.',
     details: [
       {
         title: 'Google Ads API Integration',
         content: 'Connect multiple Google login identities and manager accounts via OAuth. Each secure credential profile discovers its own manager and child accounts, while overlapping customer access preserves the existing XeroFlow client mapping. XeroFlow syncs campaign data, spend metrics, and performance indicators through the Google Ads REST API, giving your media buying team one source of truth across every client and Google account structure in the agency.'
       },
       {
-        title: 'Campaign-Level Breakdowns',
-        content: 'View spend data at the campaign, ad group, and keyword level with daily granularity. Google Ads call records add answered and missed status, campaign attribution, and duration when Google provides it. Browser phone clicks remain a separate intent signal, so XeroFlow never invents call outcomes or duration. Agency and client analytics use the same client-scoped evidence.'
+        title: 'Delivery Diagnostics and Search Evidence',
+        content: 'See each ad’s approval and policy topics, the campaign’s exact serving limitations, and Search impression share split between budget and rank loss. Campaign-scoped search terms show clicks, cost and CPC; Performance Max is labelled as limited coverage rather than pretending to match Search. Synced headlines and descriptions make offer-expiry and claim reviews possible from the same client-scoped evidence.'
       },
       {
         title: 'Budget Management with Audit Trails',

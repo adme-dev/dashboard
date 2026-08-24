@@ -70,9 +70,18 @@ must never reach the Worker, a client, logs, `[vars]`, or source.
 Business data, filtered to the caller's role. Representative set:
 `get_tasks`, `get_briefs`, `get_project_status`, `get_client_overview`, `get_client_profitability`,
 `get_finance_snapshot`, `get_budget_health`, `get_campaign_breakdown`, `get_adspend_pacing`,
+`get_ad_breakdown`, `get_ad_creative_text`, `get_search_terms`,
 `get_social_performance`, `get_capacity`, `get_my_creative_queue`, `get_open_anomalies`,
 `monitor_retainer_burn`, `flag_over_servicing`, `forecast_revenue`, `search_knowledge`.
 Reads can never mutate — the read guard hard-blocks any `mutates` tool.
+
+**Paid-media diagnostics (`MEDIA_BUYING`):** `get_campaign_breakdown` adds provider serving status/reasons and a
+Google Search impression-share block. `get_ad_breakdown` adds Google/Meta approval and policy issues plus Meta ad-set
+learning state, frequency, and CPM. `get_search_terms` returns campaign-scoped Google queries sorted by cost or clicks;
+Search/Shopping coverage is full, Performance Max is explicitly limited, and other platforms/types are unsupported.
+`get_ad_creative_text` returns synced Google headlines/descriptions and Meta primary text. Every diagnostic family has
+its own `asOf`, `dataStatus`, and unavailable reason. Provider errors remain platform-scoped; results are read-only,
+cursor-paginated where applicable, and source caps/truncation are declared.
 
 ### 4.2 2a — generation (`MCP_GEN_TOOLS_ENABLED`, CREATIVE role) · rate-limited 20/10min
 - `generate_banner_image` — synchronous text-to-image; returns a ready Banner Studio asset and seed.

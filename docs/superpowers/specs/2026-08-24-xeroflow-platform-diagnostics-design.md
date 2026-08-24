@@ -73,6 +73,8 @@ Migration `398_ad_delivery_diagnostics.sql` is additive and idempotent.
 Add nullable diagnostic fields:
 
 - `ad_set_id`, `ad_set_name` — Meta ad-set identity attached to ad rows;
+- `cpm`, `ad_set_metrics_synced_at`, `ad_set_metrics_unavailable_reason` — Meta ad-set saturation evidence and its
+  independent collection state;
 - `approval_status`, `provider_approval_status`, `approval_review_status`;
 - `policy_issues JSONB` — compact normalized issues, never the raw provider payload;
 - `approval_synced_at`, `approval_unavailable_reason`;
@@ -104,18 +106,17 @@ numeric source of truth. The new clock and reason distinguish collected zero-lik
 failed collection. Meta campaign status may populate serving status, but ad-set learning remains on ad rows because
 that is the actionable platform level.
 
-### 3.3 `campaign_search_term_snapshots`
+### 3.3 `campaign_search_term_syncs` and `campaign_search_term_snapshots`
 
-Create a typed table keyed to `media_spend` with:
+Create a parent sync-state table keyed to `media_spend` and date range with `coverage`, `coverage_reason`, `synced_at`,
+`last_attempted_at`, `last_error`, provider row count, and source-truncation state. This parent makes a successful empty,
+unsupported, or failed collection representable without inventing a search-term row. Child snapshot rows carry term,
+match type, targeting status, impressions, clicks, and cost.
 
-- campaign/range identity: `media_spend_id`, `range_start`, `range_end`;
-- term evidence: `search_term`, `match_type`, `targeting_status`;
-- metrics: `impressions`, `clicks`, `cost`;
-- collection contract: `coverage`, `synced_at`, `unavailable_reason`.
-
-The unique key covers campaign, date range, term, and match type; useful campaign/range/cost indexes support the
-daily-check read pattern. Refresh replaces one campaign/range snapshot transactionally, so a partial provider page
-cannot masquerade as a complete result.
+The child unique key covers sync, term, and match type; useful campaign/range/cost indexes support the daily-check read
+pattern. A successful refresh replaces one campaign/range's child snapshot transactionally, so a partial provider
+page cannot masquerade as a complete result. A failed refresh updates only attempt/error evidence and preserves the
+previous successful timestamp and terms.
 
 The migration is applied automatically to the configured Neon database after local verification, per repository
 policy.
