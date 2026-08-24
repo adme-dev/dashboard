@@ -17,7 +17,7 @@ vi.mock('~~/server/utils/leads/emailHealth', () => ({
   recordEmailTransportEventBatch: mocks.record
 }))
 vi.mock('~~/server/utils/asyncBackground', () => ({
-  runAfterResponse: mocks.after
+  runCappedBeforeResponse: mocks.after
 }))
 
 const { verifyEmailIngestSignatureWithTelemetry } = await import(
@@ -37,6 +37,7 @@ describe('email signature telemetry gate', () => {
     delete process.env.EMAIL_INGEST_HMAC_SECRET
     mocks.verify.mockRejectedValue(authError)
     mocks.record.mockResolvedValue(1)
+    mocks.after.mockResolvedValue(undefined)
   })
 
   it('uses the Cloudflare runtime signing secret ahead of a stale process fallback', async () => {
