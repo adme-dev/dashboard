@@ -1,4 +1,4 @@
-/** Public QR redirect. GET /q/:code → 302 destination. Scan logged after the response. */
+/** Public QR redirect. GET /q/:code → 302 destination. Scan logged in-request (timeout-capped). */
 import { isValidSlug } from '~~/shared/qr/slug'
 import { resolveQrCode } from '~~/server/utils/qr/resolve'
 import { recordScan } from '~~/server/utils/qr/scans'
@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
   let qr
   try { qr = await resolveQrCode(event, code) } catch (err) { console.error('[qr:resolve]', err); qr = null }
   if (!qr || !qr.active) return notFound(event)
-  recordScan(event, qr)
+  await recordScan(event, qr) // never throws; capped at SCAN_WRITE_TIMEOUT_MS
   setResponseHeaders(event, { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer-when-downgrade' })
   return sendRedirect(event, qr.url, 302)
 })
