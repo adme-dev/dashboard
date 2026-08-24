@@ -2,12 +2,13 @@ import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import {
   GOOGLE_CREDENTIAL_PROFILE_JOIN,
   GOOGLE_CREDENTIAL_PROFILE_SELECT,
-  persistGoogleCredentialRefresh,
   resolveGoogleCredential,
   type GoogleCredentialRow,
 } from '~~/server/utils/googleCredentialProfiles'
 import { sanitizeDiagnosticError } from '~~/server/utils/adDiagnostics'
 import { escapeLike, type ToolContext } from '~~/server/utils/ai/toolContext'
+import { refreshGoogleAccessTokenIfNeeded } from '~~/server/utils/onDemandSync'
+import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
 
 export const SEARCH_TERM_SOURCE_CAP = 5_000
 
@@ -246,18 +247,9 @@ export async function syncCampaignSearchTerms(
     conn.refresh_token = credential.refreshToken
     conn.token_expires_at = credential.tokenExpiresAt
     conn.google_credential_profile_id = credential.profileId
-    const config = useRuntimeConfig()
-    if (conn.refresh_token && conn.token_expires_at && new Date(conn.token_expires_at).getTime() < Date.now() + 300_000) {
-      const { refreshGoogleToken } = await import('~~/server/utils/googleAdsClient')
-      const refreshed = await refreshGoogleToken(conn.refresh_token, config.googleClientId, config.googleClientSecret)
-      conn.access_token = refreshed.access_token
-      await persistGoogleCredentialRefresh({
-        connectionId: conn.id,
-        profileId: conn.google_credential_profile_id || null,
-        accessToken: conn.access_token,
-        expiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
-      })
-    }
+    const config = resolveGoogleAdsRuntimeConfig()
+    conn.access_token = await refreshGoogleAccessTokenIfNeeded(conn, conn.id)
+    if (!config.googleDeveloperToken) throw new Error('Google Ads developer token is unavailable in this runtime.')
     const { getGoogleCampaignSearchTerms } = await import('~~/server/utils/googleAdsClient')
     const managerId = conn.metadata?.managerCustomerId || config.googleAdsLoginCustomerId || undefined
     const providerRows = await getGoogleCampaignSearchTerms(
