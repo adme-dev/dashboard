@@ -13,6 +13,7 @@ import {
   resolveGoogleCredential,
   type GoogleCredentialRow,
 } from '~~/server/utils/googleCredentialProfiles'
+import type { PolicyIssue } from '~~/server/utils/adDiagnostics'
 
 const BREAKDOWN_PLATFORMS = ['meta', 'google_ads']
 
@@ -98,6 +99,14 @@ export interface CreativeResult {
 export interface AdPerformanceSyncResult {
   syncedRows: number
   available: boolean
+}
+
+export interface DeliveryDiagnosticSyncResult {
+  available: boolean
+  platform: 'meta' | 'google' | null
+  servingSynced: boolean
+  impressionShareSynced: boolean
+  error: string | null
 }
 
 /**
@@ -411,6 +420,21 @@ export async function syncCampaignAdPerformance(
     frequency: number | null
     firstServedDate: string | null
     lastServedDate: string | null
+    adSetId?: string | null
+    adSetName?: string | null
+    cpm?: number | null
+    adSetMetricsSyncedAt?: string | null
+    adSetMetricsUnavailableReason?: string | null
+    approvalStatus?: string | null
+    providerApprovalStatus?: string | null
+    approvalReviewStatus?: string | null
+    policyIssues?: PolicyIssue[] | null
+    approvalSyncedAt?: string | null
+    approvalUnavailableReason?: string | null
+    learningStage?: string | null
+    providerLearningStage?: string | null
+    learningStageSyncedAt?: string | null
+    learningStageUnavailableReason?: string | null
   }> = []
 
   try {
@@ -448,20 +472,182 @@ export async function syncCampaignAdPerformance(
       `INSERT INTO ad_performance_snapshots (
          media_spend_id, ad_id, creative_id, ad_name, range_start, range_end, spend,
          impressions, clicks, conversions, reach, frequency,
-         first_served_date, last_served_date, synced_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+         first_served_date, last_served_date, synced_at,
+         ad_set_id, ad_set_name, cpm, ad_set_metrics_synced_at, ad_set_metrics_unavailable_reason,
+         approval_status, provider_approval_status, approval_review_status, policy_issues,
+         approval_synced_at, approval_unavailable_reason,
+         learning_stage, provider_learning_stage, learning_stage_synced_at, learning_stage_unavailable_reason
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),
+                 $15,$16,$17,$18::timestamptz,$19,$20,$21,$22,$23::jsonb,$24::timestamptz,$25,
+                 $26,$27,$28::timestamptz,$29)
        ON CONFLICT (media_spend_id, ad_id, range_start, range_end)
        DO UPDATE SET creative_id=$3, ad_name=$4, spend=$7, impressions=$8, clicks=$9,
-                     conversions=$10, reach=$11, frequency=$12,
-                     first_served_date=$13, last_served_date=$14, synced_at=NOW()`,
+                     conversions=$10, reach=$11,
+                     frequency=CASE WHEN $18::timestamptz IS NOT NULL OR $15 IS NULL THEN $12 ELSE ad_performance_snapshots.frequency END,
+                     first_served_date=$13, last_served_date=$14,
+                     ad_set_id=COALESCE($15, ad_performance_snapshots.ad_set_id),
+                     ad_set_name=COALESCE($16, ad_performance_snapshots.ad_set_name),
+                     cpm=CASE WHEN $18::timestamptz IS NOT NULL THEN $17 ELSE ad_performance_snapshots.cpm END,
+                     ad_set_metrics_synced_at=COALESCE($18::timestamptz, ad_performance_snapshots.ad_set_metrics_synced_at),
+                     ad_set_metrics_unavailable_reason=$19,
+                     approval_status=CASE WHEN $24::timestamptz IS NOT NULL THEN $20 ELSE ad_performance_snapshots.approval_status END,
+                     provider_approval_status=CASE WHEN $24::timestamptz IS NOT NULL THEN $21 ELSE ad_performance_snapshots.provider_approval_status END,
+                     approval_review_status=CASE WHEN $24::timestamptz IS NOT NULL THEN $22 ELSE ad_performance_snapshots.approval_review_status END,
+                     policy_issues=CASE WHEN $24::timestamptz IS NOT NULL THEN $23::jsonb ELSE ad_performance_snapshots.policy_issues END,
+                     approval_synced_at=COALESCE($24::timestamptz, ad_performance_snapshots.approval_synced_at),
+                     approval_unavailable_reason=$25,
+                     learning_stage=CASE WHEN $28::timestamptz IS NOT NULL THEN $26 ELSE ad_performance_snapshots.learning_stage END,
+                     provider_learning_stage=CASE WHEN $28::timestamptz IS NOT NULL THEN $27 ELSE ad_performance_snapshots.provider_learning_stage END,
+                     learning_stage_synced_at=COALESCE($28::timestamptz, ad_performance_snapshots.learning_stage_synced_at),
+                     learning_stage_unavailable_reason=$29,
+                     synced_at=NOW()`,
       [
         mediaSpendId, row.adId, row.creativeId ?? null, row.adName, rangeStart, rangeEnd, row.spend,
         row.impressions, row.clicks, row.conversions, row.reach, row.frequency,
         row.firstServedDate, row.lastServedDate,
+        row.adSetId ?? null, row.adSetName ?? null, row.cpm ?? null,
+        row.adSetMetricsSyncedAt ?? null, row.adSetMetricsUnavailableReason ?? null,
+        row.approvalStatus ?? null, row.providerApprovalStatus ?? null, row.approvalReviewStatus ?? null,
+        row.policyIssues == null ? null : JSON.stringify(row.policyIssues),
+        row.approvalSyncedAt ?? null, row.approvalUnavailableReason ?? null,
+        row.learningStage ?? null, row.providerLearningStage ?? null,
+        row.learningStageSyncedAt ?? null, row.learningStageUnavailableReason ?? null,
       ],
     )
   }
   return { syncedRows: rows.length, available: true }
+}
+
+/** Refresh only provider delivery diagnostics for one persisted campaign; never mutates provider state. */
+export async function syncCampaignDeliveryDiagnostics(mediaSpendId: string): Promise<DeliveryDiagnosticSyncResult> {
+  const campaign = await queryOne<{
+    id: string
+    platform: string
+    campaign_id: string
+    connection_id: string
+    period: string
+  }>(
+    `SELECT id, platform, campaign_id, connection_id, period
+       FROM media_spend
+      WHERE id = $1`,
+    [mediaSpendId],
+  )
+  const platform = campaign?.platform === 'meta' ? 'meta' : campaign?.platform === 'google_ads' ? 'google' : null
+  if (!campaign?.connection_id || !campaign.campaign_id || !platform) {
+    return { available: false, platform, servingSynced: false, impressionShareSynced: false, error: 'Campaign diagnostics are not supported for this row.' }
+  }
+  const conn = await queryOne<GoogleCredentialRow & {
+    access_token: string
+    account_id: string
+    metadata: any
+    refresh_token: string | null
+    token_expires_at: string | null
+  }>(
+    `SELECT sc.id, sc.access_token, sc.account_id, sc.metadata, sc.refresh_token, sc.token_expires_at,
+            ${GOOGLE_CREDENTIAL_PROFILE_SELECT}
+       FROM social_connections sc
+       ${GOOGLE_CREDENTIAL_PROFILE_JOIN}
+      WHERE sc.id = $1`,
+    [campaign.connection_id],
+  )
+  if (!conn) return { available: false, platform, servingSynced: false, impressionShareSynced: false, error: 'Advertising connection not found.' }
+
+  try {
+    if (platform === 'meta') {
+      const { getMetaCampaignDiagnostic } = await import('~~/server/utils/metaClient')
+      const diagnostic = await getMetaCampaignDiagnostic(campaign.campaign_id, conn.access_token)
+      await execute(
+        `UPDATE media_spend SET
+           serving_status = $2,
+           serving_status_reasons = $3::text[],
+           provider_serving_status_reasons = $4::text[],
+           serving_status_synced_at = $5::timestamptz,
+           serving_status_unavailable_reason = NULL
+         WHERE id = $1`,
+        [
+          mediaSpendId,
+          diagnostic.servingStatus,
+          diagnostic.servingStatusReasons,
+          diagnostic.providerServingStatusReasons,
+          diagnostic.servingSyncedAt,
+        ],
+      )
+      return { available: true, platform, servingSynced: true, impressionShareSynced: false, error: null }
+    }
+
+    const credential = await resolveGoogleCredential(conn)
+    conn.access_token = credential.accessToken
+    conn.refresh_token = credential.refreshToken
+    conn.token_expires_at = credential.tokenExpiresAt
+    conn.google_credential_profile_id = credential.profileId
+    const freshToken = await refreshGoogleTokenIfNeeded(conn, campaign.connection_id)
+    if (freshToken) conn.access_token = freshToken
+    const config = useRuntimeConfig()
+    const managerId = conn.metadata?.managerCustomerId || config.googleAdsLoginCustomerId || undefined
+    const parsedYear = Number(campaign.period.split('-')[0])
+    const parsedMonth = Number(campaign.period.split('-')[1])
+    const safeYear = Number.isFinite(parsedYear) ? parsedYear : new Date().getFullYear()
+    const safeMonth = Number.isFinite(parsedMonth) ? parsedMonth : new Date().getMonth() + 1
+    const since = `${safeYear}-${String(safeMonth).padStart(2, '0')}-01`
+    const until = `${safeYear}-${String(safeMonth).padStart(2, '0')}-${String(new Date(safeYear, safeMonth, 0).getDate()).padStart(2, '0')}`
+    const { getGoogleCampaignDiagnostics } = await import('~~/server/utils/googleAdsClient')
+    const diagnostic = (await getGoogleCampaignDiagnostics(
+      conn.account_id,
+      conn.access_token,
+      config.googleDeveloperToken,
+      since,
+      until,
+      campaign.campaign_id,
+      managerId,
+    ))[0]
+    if (!diagnostic) throw new Error('No Google diagnostic row returned for this campaign.')
+    const percent = (value: number | null) => value == null ? null : value * 100
+    await execute(
+      `UPDATE media_spend SET
+         serving_status = CASE WHEN $5::timestamptz IS NOT NULL THEN $2 ELSE serving_status END,
+         serving_status_reasons = CASE WHEN $5::timestamptz IS NOT NULL THEN $3::text[] ELSE serving_status_reasons END,
+         provider_serving_status_reasons = CASE WHEN $5::timestamptz IS NOT NULL THEN $4::text[] ELSE provider_serving_status_reasons END,
+         serving_status_synced_at = COALESCE($5::timestamptz, serving_status_synced_at),
+         serving_status_unavailable_reason = $6,
+         impression_share = CASE WHEN $10::timestamptz IS NOT NULL THEN $7 ELSE impression_share END,
+         lost_impression_share_budget = CASE WHEN $10::timestamptz IS NOT NULL THEN $8 ELSE lost_impression_share_budget END,
+         lost_impression_share_rank = CASE WHEN $10::timestamptz IS NOT NULL THEN $9 ELSE lost_impression_share_rank END,
+         impression_share_synced_at = COALESCE($10::timestamptz, impression_share_synced_at),
+         impression_share_unavailable_reason = $11
+       WHERE id = $1`,
+      [
+        mediaSpendId,
+        diagnostic.servingStatus,
+        diagnostic.servingStatusReasons,
+        diagnostic.providerServingStatusReasons,
+        diagnostic.servingSyncedAt,
+        diagnostic.servingUnavailableReason,
+        percent(diagnostic.impressionShare),
+        percent(diagnostic.lostImpressionShareBudget),
+        percent(diagnostic.lostImpressionShareRank),
+        diagnostic.impressionShareSyncedAt,
+        diagnostic.impressionShareUnavailableReason,
+      ],
+    )
+    return {
+      available: true,
+      platform,
+      servingSynced: diagnostic.servingSyncedAt != null,
+      impressionShareSynced: diagnostic.impressionShareSyncedAt != null,
+      error: diagnostic.servingUnavailableReason || diagnostic.impressionShareUnavailableReason,
+    }
+  } catch (error) {
+    const { sanitizeDiagnosticError } = await import('~~/server/utils/adDiagnostics')
+    const reason = sanitizeDiagnosticError(error)
+    await execute(
+      `UPDATE media_spend SET
+         serving_status_unavailable_reason = $2,
+         impression_share_unavailable_reason = CASE WHEN platform = 'google_ads' THEN $2 ELSE impression_share_unavailable_reason END
+       WHERE id = $1`,
+      [mediaSpendId, reason],
+    ).catch(() => undefined)
+    return { available: false, platform, servingSynced: false, impressionShareSynced: false, error: reason }
+  }
 }
 
 // ─── Meta breakdown fetch (campaign-level) ──────────────

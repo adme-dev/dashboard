@@ -5,6 +5,7 @@ import type { AiTool } from '../toolRegistry'
 import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
 import { buildDataHealth, buildSyncFreshness, paginateWithCursor, evaluateHalt, PACING_HALT_HOURS } from './responseContract'
 import { getSpendCoverageDeltas } from '~~/server/utils/spendSyncJobs'
+import { diagnosticDataStatus, type PolicyIssue } from '~~/server/utils/adDiagnostics'
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const params = z.object({
@@ -41,9 +42,24 @@ type RawAdRecord = {
   leadCount: number
   reach: number | null
   frequency: number | null
+  cpm: number | null
   firstServedDate: string | null
   lastServedDate: string | null
   lastSyncedAt: string | null
+  adSetId: string | null
+  adSetName: string | null
+  adSetMetricsAsOf: string | null
+  adSetMetricsUnavailableReason: string | null
+  approvalStatus: string | null
+  providerApprovalStatus: string | null
+  approvalReviewStatus: string | null
+  policyIssues: PolicyIssue[] | null
+  approvalAsOf: string | null
+  approvalUnavailableReason: string | null
+  learningStage: string | null
+  providerLearningStage: string | null
+  learningStageAsOf: string | null
+  learningStageUnavailableReason: string | null
 }
 
 export type AdBreakdownDeps = {
@@ -111,6 +127,18 @@ function priorPeriod(window: { start: string, end: string }) {
   return { start: priorStart.toISOString().slice(0, 10), end: priorEnd.toISOString().slice(0, 10) }
 }
 
+function parsePolicyIssues(value: unknown): PolicyIssue[] | null {
+  if (value == null) return null
+  if (Array.isArray(value)) return value as PolicyIssue[]
+  if (typeof value !== 'string') return null
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed as PolicyIssue[] : null
+  } catch {
+    return null
+  }
+}
+
 const defaultDeps: AdBreakdownDeps = {
   fetch: async (args) => {
     const window = period(args)
@@ -132,13 +160,29 @@ const defaultDeps: AdBreakdownDeps = {
     )
     const targetIds = targets.map(target => target.id)
     if (!targetIds.length) return { records: [], targetCount: 0, available: true }
-    const existing = await queryRows<{ n: number }>(
-      `SELECT COUNT(DISTINCT media_spend_id)::int AS n FROM ad_performance_snapshots
-        WHERE media_spend_id = ANY($1) AND range_start = $2 AND range_end = $3`,
+    const existing = await queryRows<{ n: number, diagnostic_n: number }>(
+      `SELECT COUNT(DISTINCT aps.media_spend_id)::int AS n,
+              COUNT(DISTINCT aps.media_spend_id) FILTER (
+                WHERE aps.approval_synced_at >= NOW() - INTERVAL '24 hours'
+                  AND (
+                    ms.platform = 'google_ads'
+                    OR (
+                      aps.learning_stage_synced_at >= NOW() - INTERVAL '24 hours'
+                      AND aps.ad_set_metrics_synced_at >= NOW() - INTERVAL '24 hours'
+                    )
+                  )
+              )::int AS diagnostic_n
+         FROM ad_performance_snapshots aps
+         JOIN media_spend ms ON ms.id = aps.media_spend_id
+        WHERE aps.media_spend_id = ANY($1) AND aps.range_start = $2 AND aps.range_end = $3`,
       [targetIds, window.start, window.end],
     )
     let available = true
-    if (args.refresh || Number(existing[0]?.n || 0) < targetIds.length) {
+    if (
+      args.refresh
+      || Number(existing[0]?.n || 0) < targetIds.length
+      || Number(existing[0]?.diagnostic_n || 0) < targetIds.length
+    ) {
       const syncs = await Promise.all(targetIds.map(id => syncCampaignAdPerformance(id, window.start, window.end)))
       available = syncs.some(sync => sync.available)
     }
@@ -176,6 +220,15 @@ const defaultDeps: AdBreakdownDeps = {
         conversions: Number(row.conversions || 0), leadCount: Number(row.lead_count || 0), reach: row.reach == null ? null : Number(row.reach),
         frequency: row.frequency == null ? null : Number(row.frequency), firstServedDate: row.first_served_date || null,
         lastServedDate: row.last_served_date || null, lastSyncedAt: row.synced_at || null,
+        cpm: row.cpm == null ? null : Number(row.cpm), adSetId: row.ad_set_id || null, adSetName: row.ad_set_name || null,
+        adSetMetricsAsOf: row.ad_set_metrics_synced_at || null,
+        adSetMetricsUnavailableReason: row.ad_set_metrics_unavailable_reason || null,
+        approvalStatus: row.approval_status || null, providerApprovalStatus: row.provider_approval_status || null,
+        approvalReviewStatus: row.approval_review_status || null, policyIssues: parsePolicyIssues(row.policy_issues),
+        approvalAsOf: row.approval_synced_at || null, approvalUnavailableReason: row.approval_unavailable_reason || null,
+        learningStage: row.learning_stage || null, providerLearningStage: row.provider_learning_stage || null,
+        learningStageAsOf: row.learning_stage_synced_at || null,
+        learningStageUnavailableReason: row.learning_stage_unavailable_reason || null,
       })),
     }
   },
@@ -215,7 +268,40 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
         ...(leadCoveragePct != null && row.spend > 0 && row.leadCount === 0 ? ['spend_without_leads'] : []),
         ...(row.frequency != null && row.frequency > 3.5 && ctrDeltaPct != null && ctrDeltaPct < -25 ? ['frequency_high_ctr_down'] : []),
       ]
-      return { ...row, conversions: null, ctr, cpc, costPerLead: cpl, ageDays, fatigueSignals, ...(prior ? { comparison: { frequencyDelta, ctrDeltaPct, spendDelta: round(row.spend - prior.spend), leadDelta: row.leadCount - prior.leadCount } } : {}) }
+      const approvalUnavailableReason = row.approvalUnavailableReason
+        || (!row.approvalAsOf
+          ? 'Approval metadata has not been collected for this ad.'
+          : !row.approvalStatus ? 'The provider returned no approval status for this ad.' : null)
+      const learningSupported = row.platform === 'meta' && row.adSetId != null
+      const learningStageUnavailableReason = row.learningStageUnavailableReason
+        || (row.platform === 'google'
+          ? 'Google Ads does not expose Meta ad-set learning stages.'
+          : !row.adSetId
+            ? 'No Meta ad-set identity was collected for this ad.'
+            : !row.learningStageAsOf ? 'Learning-stage metadata has not been collected for this ad set.' : null)
+      const adSetMetricsUnavailableReason = row.adSetMetricsUnavailableReason
+        || (row.platform === 'google'
+          ? 'Google Ads does not expose Meta ad-set frequency and CPM.'
+          : !row.adSetMetricsAsOf ? 'Meta ad-set frequency and CPM have not been collected.' : null)
+      return {
+        ...row,
+        conversions: null,
+        ctr,
+        cpc,
+        costPerLead: cpl,
+        ageDays,
+        fatigueSignals,
+        metricsAsOf: row.lastSyncedAt,
+        approvalDataStatus: row.approvalStatus == null
+          ? 'unavailable'
+          : diagnosticDataStatus({ supported: true, asOf: row.approvalAsOf, unavailableReason: approvalUnavailableReason, now: deps.now?.() }),
+        approvalUnavailableReason,
+        learningStageDataStatus: diagnosticDataStatus({ supported: learningSupported, asOf: row.learningStageAsOf, unavailableReason: learningStageUnavailableReason, now: deps.now?.() }),
+        learningStageUnavailableReason,
+        adSetMetricsDataStatus: diagnosticDataStatus({ supported: row.platform === 'meta', asOf: row.adSetMetricsAsOf, unavailableReason: adSetMetricsUnavailableReason, now: deps.now?.() }),
+        adSetMetricsUnavailableReason,
+        ...(prior ? { comparison: { frequencyDelta, ctrDeltaPct, spendDelta: round(row.spend - prior.spend), leadDelta: row.leadCount - prior.leadCount } } : {}),
+      }
     })
     const metric = (row: any) => args.sortBy === 'leads' ? row.leadCount : args.sortBy === 'cpl' ? row.costPerLead : args.sortBy === 'age' ? row.ageDays : row[args.sortBy]
     ads.sort((a, b) => {
@@ -294,8 +380,9 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
 
 export const adBreakdownTool: AiTool<Args> = {
   name: 'get_ad_breakdown',
-  description: 'Ad-level delivery and creative-fatigue metrics for a campaign or client and date window: ad/creative IDs, spend, impressions, frequency where supported, CTR, CPC, attributed submitted leads/CPL, first/last served date, creative age and fatigue signals. `spend_without_leads` is suppressed until real non-test lead attribution coverage exists. Provider conversions are explicitly null until historical rows are resynced under non-overlapping outcome semantics. Summary freshness includes newest/oldest sync, stale-row count, threshold, and a separate fresh/stale/mixed classification. Optional previous-period comparison detects high/rising frequency with CTR decline. Performs a read-through platform sync when missing; Google frequency remains explicitly null.',
+  description: 'Ad-level delivery, approval/policy, and creative-fatigue evidence for a campaign or client and date window: ad/creative/ad-set IDs, spend, impressions, Meta ad-set frequency/CPM and learning state, Google/Meta approval status and policy issues, CTR, CPC, attributed submitted leads/CPL, delivery dates, creative age, and fatigue signals. Each diagnostic family has its own asOf/dataStatus/unavailableReason; absent never means healthy. `spend_without_leads` is suppressed until real non-test lead attribution coverage exists, and provider conversions remain null pending historical resync. Supports cursor pagination and performs a bounded read-through platform sync when rows are missing.',
   parameters: params,
   requiredPermission: 'MEDIA_BUYING',
+  returnsUntrusted: true,
   handler: (args, ctx) => getAdBreakdown(args, ctx),
 }

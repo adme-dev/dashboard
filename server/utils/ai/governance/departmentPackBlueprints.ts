@@ -182,7 +182,10 @@ export const DEPARTMENT_PACK_BLUEPRINTS: DepartmentPackBlueprint[] = [
       capability('pacing_diagnostics', 'Pacing diagnostics', 'Inspect pacing, budget health, and campaign-level delivery.', 'MEDIA_BUYING', [
         { toolName: 'check_pacing', accessMode: 'read' },
         { toolName: 'get_budget_health', accessMode: 'read' },
-        { toolName: 'get_campaign_breakdown', accessMode: 'read' }
+        { toolName: 'get_campaign_breakdown', accessMode: 'read' },
+        { toolName: 'get_ad_breakdown', accessMode: 'read' },
+        { toolName: 'get_ad_creative_text', accessMode: 'read' },
+        { toolName: 'get_search_terms', accessMode: 'read' }
       ], { riskClass: 'medium', dataClass: 'confidential' })
     ], ['Live budget proposals remain disabled until the rich-confirm action gate passes.']),
   pack('marketing', ['marketing', 'social', 'email marketing'], 'Marketing',

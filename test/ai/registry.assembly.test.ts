@@ -16,7 +16,7 @@ const SLICE2_TOOLS = [
   'get_client_profitability', 'monitor_retainer_burn', 'flag_over_servicing', 'forecast_revenue',
 ]
 // Phase-1 media-buyer read skill-pack (MEDIA_BUYING-gated).
-const MEDIA_BUYER_TOOLS = ['get_campaign_breakdown', 'get_budget_health', 'get_ad_breakdown']
+const MEDIA_BUYER_TOOLS = ['get_campaign_breakdown', 'get_budget_health', 'get_ad_breakdown', 'get_search_terms']
 const MEDIA_BUYER_OPERATIONS = ['run_adspend_sync', 'get_sync_status', 'get_ad_creative_text']
 // Phase-2/3 write tools (propose→confirm→audit).
 const WRITE_TOOLS = ['create_task', 'propose_schedule_post', 'propose_budget_alert', 'propose_budget_change', 'propose_knowledge_article']
@@ -78,7 +78,7 @@ describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2
 
   it('the media-buyer reads are MEDIA_BUYING-gated read tools (not mutating)', () => {
     const mb = registry.filter(t => MEDIA_BUYER_TOOLS.includes(t.name))
-    expect(mb).toHaveLength(3)
+    expect(mb).toHaveLength(4)
     for (const t of mb) {
       expect(t.requiredPermission).toBe('MEDIA_BUYING')
       expect(t.mutates).toBeFalsy()

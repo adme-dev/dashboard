@@ -17,6 +17,7 @@ import {
 import type { H3Event } from 'h3'
 import { sanitizeSpendSyncFailureReason } from '~~/server/utils/spendSyncFailureSanitizer'
 import { applySpendCoverageGate, recordSourceCampaignCount } from '~~/server/utils/spendSyncJobs'
+import { sanitizeDiagnosticError } from '~~/server/utils/adDiagnostics'
 
 // ─── Meta Spend Sync ────────────────────────────────────────────
 
@@ -150,13 +151,15 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
   // Enrich with campaign-level metadata (status, end date, bid strategy, budget type).
   // One call per account; non-fatal on failure.
   const campaignMetaById = new Map<string, ReturnType<typeof mapMetaCampaignMeta>>()
+  let campaignMetadataFailure: string | null = null
   try {
     const campObjs = await getCampaigns(actId, conn.access_token)
     for (const c of campObjs) campaignMetaById.set(c.id, mapMetaCampaignMeta(c))
   } catch (err: any) {
+    campaignMetadataFailure = sanitizeDiagnosticError(err)
     console.warn(
       `[MetaSync] Campaign metadata fetch failed for ${conn.account_name}:`,
-      sanitizeSpendSyncFailureReason(err?.message)
+      campaignMetadataFailure
     )
   }
 
@@ -186,6 +189,9 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
     const clicks = parseInt(campaign.clicks || '0', 10)
 
     const cmeta = campaign.campaign_id ? (campaignMetaById.get(campaign.campaign_id) || null) : null
+    const servingSyncedAt = cmeta ? new Date().toISOString() : null
+    const servingUnavailableReason = campaignMetadataFailure
+      || (!cmeta ? 'No Meta campaign diagnostic row returned for this campaign.' : null)
 
     const existing = await queryOne<{ id: string }>(
       `SELECT id FROM media_spend
@@ -204,10 +210,16 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
            end_date = COALESCE($11, media_spend.end_date),
            bid_strategy = COALESCE($12, media_spend.bid_strategy),
            budget_type = COALESCE($13, media_spend.budget_type),
+           serving_status = CASE WHEN $14::timestamptz IS NOT NULL THEN $10 ELSE media_spend.serving_status END,
+           serving_status_reasons = CASE WHEN $14::timestamptz IS NOT NULL THEN ARRAY[]::text[] ELSE media_spend.serving_status_reasons END,
+           provider_serving_status_reasons = CASE WHEN $14::timestamptz IS NOT NULL THEN ARRAY[]::text[] ELSE media_spend.provider_serving_status_reasons END,
+           serving_status_synced_at = COALESCE($14::timestamptz, media_spend.serving_status_synced_at),
+           serving_status_unavailable_reason = $15,
            synced_at = NOW(), updated_at = NOW()
          WHERE id = $7`,
         [spend, campaign.campaign_name || null, impressions, clicks, conversions, clientId, existing.id, commissionRate, revenue,
-         cmeta?.status || null, cmeta?.endDate || null, cmeta?.bidStrategy || null, cmeta?.budgetType || null]
+         cmeta?.status || null, cmeta?.endDate || null, cmeta?.bidStrategy || null, cmeta?.budgetType || null,
+         servingSyncedAt, servingUnavailableReason]
       )
     } else {
       // Check for rolling budget from previous month
@@ -220,11 +232,15 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
            client_id, platform, period, budget_allocated, actual_spend,
            commission_rate, connection_id, campaign_id, campaign_name,
            impressions, clicks, conversions, budget_rolling, revenue,
-           campaign_status, end_date, bid_strategy, budget_type, synced_at
-         ) VALUES ($1, 'meta', $2, $11, $3, $4, $5, $6, $7, $8, $9, $10, $12, $13, $14, $15, $16, $17, NOW())
+           campaign_status, end_date, bid_strategy, budget_type, synced_at,
+           serving_status, serving_status_reasons, provider_serving_status_reasons,
+           serving_status_synced_at, serving_status_unavailable_reason
+         ) VALUES ($1, 'meta', $2, $11, $3, $4, $5, $6, $7, $8, $9, $10, $12, $13, $14, $15, $16, $17, NOW(),
+                   $18, ARRAY[]::text[], ARRAY[]::text[], $19::timestamptz, $20)
          RETURNING id`,
         [clientId, period, spend, commissionRate, conn.id, campaign.campaign_id || null, campaign.campaign_name || null, impressions, clicks, conversions, budgetVal, rollingVal, revenue,
-         cmeta?.status || null, cmeta?.endDate || null, cmeta?.bidStrategy || null, cmeta?.budgetType || null]
+         cmeta?.status || null, cmeta?.endDate || null, cmeta?.bidStrategy || null, cmeta?.budgetType || null,
+         cmeta?.status || null, servingSyncedAt, servingUnavailableReason]
       )
     }
 
@@ -435,13 +451,13 @@ export function resolveGoogleAdsRuntimeConfig(runtimeConfig?: Partial<GoogleAdsR
 async function processGoogleConnection(
   conn: GoogleConnRow,
   ctx: GoogleSyncCtx,
-  deps: { refreshGoogleToken: any; getMonthlySpend: any; getDailySpend: any }
+  deps: { refreshGoogleToken: any; getMonthlySpend: any; getDailySpend: any; getGoogleCampaignDiagnostics: any }
 ): Promise<SyncResult> {
   const failures: Array<{ account: string; reason: string }> = []
   let synced = 0
   let totalSpend = 0
   const { config, mccId, month, year, period, mappings } = ctx
-  const { refreshGoogleToken, getMonthlySpend, getDailySpend } = deps
+  const { refreshGoogleToken, getMonthlySpend, getDailySpend, getGoogleCampaignDiagnostics } = deps
   const connectionClient = conn.client_id
     ? await queryOne<{ id: string; media_commission_rate: string | null }>(
         `SELECT id, media_commission_rate FROM agency_clients WHERE id = $1 LIMIT 1`,
@@ -519,6 +535,28 @@ async function processGoogleConnection(
     return { synced, totalSpend: Math.round(totalSpend * 100) / 100, failures, coverageWarnings }
   }
 
+  const since = `${year}-${String(month).padStart(2, '0')}-01`
+  const until = `${year}-${String(month).padStart(2, '0')}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`
+  const campaignDiagnostics = new Map<string, any>()
+  let diagnosticsFailure: string | null = null
+  try {
+    const rows = await getGoogleCampaignDiagnostics(
+      conn.account_id,
+      accessToken,
+      config.googleDeveloperToken,
+      since,
+      until,
+      undefined,
+      effectiveMccId,
+    )
+    for (const row of rows) campaignDiagnostics.set(String(row.campaignId), row)
+  } catch (error) {
+    diagnosticsFailure = sanitizeDiagnosticError(error)
+    console.warn(`[GoogleSync] Campaign diagnostics failed for ${conn.account_name}:`, diagnosticsFailure)
+  }
+
+  const ratioPercent = (value: unknown) => value == null || !Number.isFinite(Number(value)) ? null : Number(value) * 100
+
   for (const campaign of campaigns) {
     if (campaign.spend === 0) continue
     totalSpend += campaign.spend
@@ -542,6 +580,10 @@ async function processGoogleConnection(
        WHERE connection_id = $1 AND platform = 'google_ads' AND period = $2 AND campaign_id = $3`,
       [conn.id, period, campaign.campaignId]
     )
+    const diagnostic = campaignDiagnostics.get(String(campaign.campaignId)) || null
+    const missingDiagnosticReason = diagnosticsFailure || (!diagnostic ? 'No Google diagnostic row returned for this campaign.' : null)
+    const servingError = diagnostic?.servingUnavailableReason || missingDiagnosticReason
+    const impressionShareError = diagnostic?.impressionShareUnavailableReason || missingDiagnosticReason
 
     if (existing) {
       await queryOne(
@@ -554,9 +596,29 @@ async function processGoogleConnection(
            end_date = COALESCE($12, media_spend.end_date),
            bid_strategy = COALESCE($13, media_spend.bid_strategy),
            budget_type = COALESCE($14, media_spend.budget_type),
+           serving_status = CASE WHEN $18::timestamptz IS NOT NULL THEN $15 ELSE media_spend.serving_status END,
+           serving_status_reasons = CASE WHEN $18::timestamptz IS NOT NULL THEN $16::text[] ELSE media_spend.serving_status_reasons END,
+           provider_serving_status_reasons = CASE WHEN $18::timestamptz IS NOT NULL THEN $17::text[] ELSE media_spend.provider_serving_status_reasons END,
+           serving_status_synced_at = COALESCE($18::timestamptz, media_spend.serving_status_synced_at),
+           serving_status_unavailable_reason = $19,
+           impression_share = CASE WHEN $23::timestamptz IS NOT NULL THEN $20 ELSE media_spend.impression_share END,
+           lost_impression_share_budget = CASE WHEN $23::timestamptz IS NOT NULL THEN $21 ELSE media_spend.lost_impression_share_budget END,
+           lost_impression_share_rank = CASE WHEN $23::timestamptz IS NOT NULL THEN $22 ELSE media_spend.lost_impression_share_rank END,
+           impression_share_synced_at = COALESCE($23::timestamptz, media_spend.impression_share_synced_at),
+           impression_share_unavailable_reason = $24,
            synced_at = NOW(), updated_at = NOW()
          WHERE id = $9`,
-        [campaign.spend, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, clientId, campaign.channelType || null, campaign.status || null, existing.id, commissionRate, campaign.conversionsValue || 0, campaign.endDate || null, campaign.bidStrategy || null, campaign.budgetType || null]
+        [
+          campaign.spend, campaign.campaignName || null, campaign.impressions, campaign.clicks,
+          campaign.conversions, clientId, campaign.channelType || null, campaign.status || null,
+          existing.id, commissionRate, campaign.conversionsValue || 0, campaign.endDate || null,
+          campaign.bidStrategy || null, campaign.budgetType || null,
+          diagnostic?.servingStatus || null, diagnostic?.servingStatusReasons || [],
+          diagnostic?.providerServingStatusReasons || [], diagnostic?.servingSyncedAt || null, servingError,
+          ratioPercent(diagnostic?.impressionShare), ratioPercent(diagnostic?.lostImpressionShareBudget),
+          ratioPercent(diagnostic?.lostImpressionShareRank), diagnostic?.impressionShareSyncedAt || null,
+          impressionShareError,
+        ]
       )
     } else {
       // Check for rolling budget from previous month
@@ -569,9 +631,24 @@ async function processGoogleConnection(
            client_id, platform, period, budget_allocated, actual_spend,
            commission_rate, connection_id, campaign_id, campaign_name,
            impressions, clicks, conversions, campaign_type, campaign_status, budget_rolling, revenue, end_date, bid_strategy, budget_type, synced_at
-         ) VALUES ($1, 'google_ads', $2, $13, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $14, $15, $16, $17, $18, NOW())
+           , serving_status, serving_status_reasons, provider_serving_status_reasons,
+           serving_status_synced_at, serving_status_unavailable_reason,
+           impression_share, lost_impression_share_budget, lost_impression_share_rank,
+           impression_share_synced_at, impression_share_unavailable_reason
+         ) VALUES ($1, 'google_ads', $2, $13, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $14, $15, $16, $17, $18, NOW(),
+                   $19, $20::text[], $21::text[], $22::timestamptz, $23, $24, $25, $26, $27::timestamptz, $28)
          RETURNING id`,
-        [clientId, period, campaign.spend, commissionRate, conn.id, campaign.campaignId || null, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, campaign.channelType || null, campaign.status || null, budgetVal, rollingVal, campaign.conversionsValue || 0, campaign.endDate || null, campaign.bidStrategy || null, campaign.budgetType || null]
+        [
+          clientId, period, campaign.spend, commissionRate, conn.id, campaign.campaignId || null,
+          campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions,
+          campaign.channelType || null, campaign.status || null, budgetVal, rollingVal,
+          campaign.conversionsValue || 0, campaign.endDate || null, campaign.bidStrategy || null,
+          campaign.budgetType || null, diagnostic?.servingStatus || null,
+          diagnostic?.servingStatusReasons || [], diagnostic?.providerServingStatusReasons || [],
+          diagnostic?.servingSyncedAt || null, servingError, ratioPercent(diagnostic?.impressionShare),
+          ratioPercent(diagnostic?.lostImpressionShareBudget), ratioPercent(diagnostic?.lostImpressionShareRank),
+          diagnostic?.impressionShareSyncedAt || null, impressionShareError,
+        ]
       )
     }
 
@@ -613,7 +690,7 @@ async function processGoogleConnection(
 }
 
 export async function syncGoogleSpend(month: number, year: number): Promise<SyncResult> {
-  const { getMonthlySpend, getDailySpend, refreshGoogleToken, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
+  const { getMonthlySpend, getDailySpend, refreshGoogleToken, listAccessibleCustomers, getGoogleCampaignDiagnostics } = await import('~~/server/utils/googleAdsClient')
   const failures: Array<{ account: string; reason: string }> = []
 
   const period = `${year}-${String(month).padStart(2, '0')}`
@@ -661,7 +738,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<Sync
   let totalSpend = 0
   const coverageWarnings: string[] = []
 
-  const deps = { refreshGoogleToken, getMonthlySpend, getDailySpend }
+  const deps = { refreshGoogleToken, getMonthlySpend, getDailySpend, getGoogleCampaignDiagnostics }
   const ctx: GoogleSyncCtx = { month, year, period, mccId, mappings, config }
   for (const conn of connections) {
     const r = await processGoogleConnection(conn, ctx, deps)
@@ -682,7 +759,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<Sync
  * queue fan-in stays exactly-once (rarely throws).
  */
 export async function syncGoogleSpendByConnectionId(connectionId: string, month: number, year: number): Promise<SyncResult> {
-  const { refreshGoogleToken, getMonthlySpend, getDailySpend, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
+  const { refreshGoogleToken, getMonthlySpend, getDailySpend, listAccessibleCustomers, getGoogleCampaignDiagnostics } = await import('~~/server/utils/googleAdsClient')
   const period = `${year}-${String(month).padStart(2, '0')}`
   const config = resolveGoogleAdsRuntimeConfig()
 
@@ -723,7 +800,7 @@ export async function syncGoogleSpendByConnectionId(connectionId: string, month:
   }
 
   const ctx: GoogleSyncCtx = { month, year, period, mccId, mappings, config }
-  return processGoogleConnection(conn, ctx, { refreshGoogleToken, getMonthlySpend, getDailySpend })
+  return processGoogleConnection(conn, ctx, { refreshGoogleToken, getMonthlySpend, getDailySpend, getGoogleCampaignDiagnostics })
 }
 
 /** Active Google connection ids — mirror of listMetaConnectionIds. */

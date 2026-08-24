@@ -6,6 +6,14 @@
 
 import { ofetch } from 'ofetch'
 import { unwrapMetaImageUrl } from '~~/server/utils/metaImage'
+import {
+  normalizeMetaApprovalStatus,
+  normalizeMetaLearningStage,
+  normalizeMetaPolicyIssues,
+  sanitizeDiagnosticError,
+  sanitizeDiagnosticText,
+  type PolicyIssue,
+} from '~~/server/utils/adDiagnostics'
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v25.0'
 
@@ -533,6 +541,20 @@ export interface MetaAdPerformance {
   frequency: number | null
   firstServedDate: string | null
   lastServedDate: string | null
+  adSetId: string | null
+  adSetName: string | null
+  cpm: number | null
+  adSetMetricsSyncedAt: string | null
+  adSetMetricsUnavailableReason: string | null
+  approvalStatus: string | null
+  providerApprovalStatus: string | null
+  policyIssues: PolicyIssue[] | null
+  approvalSyncedAt: string | null
+  approvalUnavailableReason: string | null
+  learningStage: string | null
+  providerLearningStage: string | null
+  learningStageSyncedAt: string | null
+  learningStageUnavailableReason: string | null
 }
 
 /** Fetch range-level ad metrics plus daily rows for true first/last delivery dates. */
@@ -546,7 +568,7 @@ export async function getMetaCampaignAdPerformance(campaignId: string, token: st
         method: 'GET',
         query: first ? {
           level: 'ad',
-          fields: 'ad_id,ad_name,spend,impressions,clicks,reach,frequency,actions,date_start,date_stop',
+          fields: 'ad_id,ad_name,adset_id,adset_name,spend,impressions,clicks,reach,frequency,actions,date_start,date_stop',
           time_range: JSON.stringify({ since, until }),
           ...(daily ? { time_increment: '1' } : {}),
           limit: '500',
@@ -559,42 +581,172 @@ export async function getMetaCampaignAdPerformance(campaignId: string, token: st
     }
     return rows
   }
-  const fetchCreativeIds = async () => {
-    const creativeIds = new Map<string, string>()
+  const fetchAds = async () => {
+    const ads = new Map<string, any>()
     let url: string | null = `${META_GRAPH_BASE}/${campaignId}/ads`
     let first = true
     while (url) {
       const response: any = await ofetch(url, {
         method: 'GET',
-        query: first ? { fields: 'id,creative{id}', limit: '500', access_token: token } : undefined,
+        query: first ? {
+          fields: 'id,name,adset_id,effective_status,issues_info,creative{id}',
+          limit: '500',
+          access_token: token,
+        } : undefined,
       })
       for (const ad of response?.data || []) {
         const adId = String(ad?.id || '')
-        const creativeId = String(ad?.creative?.id || '')
-        if (adId && creativeId) creativeIds.set(adId, creativeId)
+        if (adId) ads.set(adId, ad)
       }
       url = response?.paging?.next || null
       first = false
     }
-    return creativeIds
+    return ads
   }
-  const [rangeRows, dailyRows, creativeIds] = await Promise.all([fetchRows(false), fetchRows(true), fetchCreativeIds()])
+  const fetchAdSets = async () => {
+    const adSets = new Map<string, any>()
+    let url: string | null = `${META_GRAPH_BASE}/${campaignId}/adsets`
+    let first = true
+    while (url) {
+      const response: any = await ofetch(url, {
+        method: 'GET',
+        query: first ? {
+          fields: 'id,name,effective_status,learning_stage_info',
+          limit: '500',
+          access_token: token,
+        } : undefined,
+      })
+      for (const adSet of response?.data || []) {
+        const adSetId = String(adSet?.id || '')
+        if (adSetId) adSets.set(adSetId, adSet)
+      }
+      url = response?.paging?.next || null
+      first = false
+    }
+    return adSets
+  }
+  const fetchAdSetInsights = async () => {
+    const insights = new Map<string, any>()
+    let url: string | null = `${META_GRAPH_BASE}/${campaignId}/insights`
+    let first = true
+    while (url) {
+      const response: any = await ofetch(url, {
+        method: 'GET',
+        query: first ? {
+          level: 'adset',
+          fields: 'adset_id,adset_name,spend,impressions,frequency,cpm',
+          time_range: JSON.stringify({ since, until }),
+          limit: '500',
+          access_token: token,
+        } : undefined,
+      })
+      for (const row of response?.data || []) {
+        const adSetId = String(row?.adset_id || '')
+        if (adSetId) insights.set(adSetId, row)
+      }
+      url = response?.paging?.next || null
+      first = false
+    }
+    return insights
+  }
+  const [rangeRows, dailyRows] = await Promise.all([fetchRows(false), fetchRows(true)])
+  const [adsResult, adSetsResult, adSetInsightsResult] = await Promise.allSettled([
+    fetchAds(),
+    fetchAdSets(),
+    fetchAdSetInsights(),
+  ])
+  const ads = adsResult.status === 'fulfilled' ? adsResult.value : new Map<string, any>()
+  const adSets = adSetsResult.status === 'fulfilled' ? adSetsResult.value : new Map<string, any>()
+  const adSetInsights = adSetInsightsResult.status === 'fulfilled' ? adSetInsightsResult.value : new Map<string, any>()
+  const approvalSyncedAt = adsResult.status === 'fulfilled' ? new Date().toISOString() : null
+  const approvalUnavailableReason = adsResult.status === 'rejected' ? sanitizeDiagnosticError(adsResult.reason) : null
+  const learningStageSyncedAt = adSetsResult.status === 'fulfilled' ? new Date().toISOString() : null
+  const learningStageUnavailableReason = adSetsResult.status === 'rejected' ? sanitizeDiagnosticError(adSetsResult.reason) : null
+  const adSetMetricsSyncedAt = adSetInsightsResult.status === 'fulfilled' ? new Date().toISOString() : null
+  const adSetMetricsUnavailableReason = adSetInsightsResult.status === 'rejected'
+    ? sanitizeDiagnosticError(adSetInsightsResult.reason)
+    : null
   const grouped = new Map<string, MetaAdPerformance>()
   for (const row of rangeRows) {
     const adId = String(row.ad_id || '')
     if (!adId) continue
+    const ad = ads.get(adId) || null
+    const adSetId = String(ad?.adset_id || row.adset_id || '') || null
+    const adSet = adSetId ? adSets.get(adSetId) : null
+    const adSetMetric = adSetId ? adSetInsights.get(adSetId) : null
+    const providerApprovalStatus = sanitizeDiagnosticText(ad?.effective_status, 80)?.toUpperCase() || null
+    const providerLearningStage = sanitizeDiagnosticText(adSet?.learning_stage_info?.status, 80)?.toUpperCase() || null
+    const rowApprovalAsOf = ad ? approvalSyncedAt : null
+    const rowApprovalError = approvalUnavailableReason || (!ad ? 'No Meta ad metadata row returned for this ad.' : null)
+    const rowLearningAsOf = adSet ? learningStageSyncedAt : null
+    const rowLearningError = learningStageUnavailableReason || (!adSet ? 'No Meta ad-set metadata row returned for this ad.' : null)
+    const rowAdSetMetricsAsOf = adSetMetric ? adSetMetricsSyncedAt : null
+    const rowAdSetMetricsError = adSetMetricsUnavailableReason || (!adSetMetric ? 'No Meta ad-set insight row returned for this ad set.' : null)
     grouped.set(adId, {
       adId,
-      adName: row.ad_name || null,
-      creativeId: creativeIds.get(adId) ?? null,
+      adName: sanitizeDiagnosticText(ad?.name || row.ad_name, 300),
+      creativeId: String(ad?.creative?.id || '') || null,
       spend: Number(row.spend || 0),
       impressions: Number(row.impressions || 0),
       clicks: Number(row.clicks || 0),
       conversions: extractConversions(row.actions),
       reach: row.reach == null ? null : Number(row.reach),
-      frequency: row.frequency == null ? null : Number(row.frequency),
+      frequency: adSetMetric?.frequency == null ? null : Number(adSetMetric.frequency),
       firstServedDate: null,
       lastServedDate: null,
+      adSetId,
+      adSetName: sanitizeDiagnosticText(adSet?.name || adSetMetric?.adset_name || row.adset_name, 300),
+      cpm: adSetMetric?.cpm == null ? null : Number(adSetMetric.cpm),
+      adSetMetricsSyncedAt: rowAdSetMetricsAsOf,
+      adSetMetricsUnavailableReason: rowAdSetMetricsError,
+      approvalStatus: normalizeMetaApprovalStatus(providerApprovalStatus),
+      providerApprovalStatus,
+      policyIssues: adsResult.status === 'fulfilled' ? normalizeMetaPolicyIssues(ad?.issues_info) : null,
+      approvalSyncedAt: rowApprovalAsOf,
+      approvalUnavailableReason: rowApprovalError,
+      learningStage: providerLearningStage ? normalizeMetaLearningStage(providerLearningStage) : adSet ? 'NOT_APPLICABLE' : null,
+      providerLearningStage,
+      learningStageSyncedAt: rowLearningAsOf,
+      learningStageUnavailableReason: rowLearningError,
+    })
+  }
+  for (const [adId, ad] of ads) {
+    if (grouped.has(adId)) continue
+    const adSetId = String(ad?.adset_id || '') || null
+    const adSet = adSetId ? adSets.get(adSetId) : null
+    const adSetMetric = adSetId ? adSetInsights.get(adSetId) : null
+    const providerApprovalStatus = sanitizeDiagnosticText(ad?.effective_status, 80)?.toUpperCase() || null
+    const providerLearningStage = sanitizeDiagnosticText(adSet?.learning_stage_info?.status, 80)?.toUpperCase() || null
+    const rowLearningAsOf = adSet ? learningStageSyncedAt : null
+    const rowLearningError = learningStageUnavailableReason || (!adSet ? 'No Meta ad-set metadata row returned for this ad.' : null)
+    const rowAdSetMetricsAsOf = adSetMetric ? adSetMetricsSyncedAt : null
+    const rowAdSetMetricsError = adSetMetricsUnavailableReason || (!adSetMetric ? 'No Meta ad-set insight row returned for this ad set.' : null)
+    grouped.set(adId, {
+      adId,
+      adName: sanitizeDiagnosticText(ad?.name, 300),
+      creativeId: String(ad?.creative?.id || '') || null,
+      spend: 0,
+      impressions: 0,
+      clicks: 0,
+      conversions: 0,
+      reach: null,
+      frequency: adSetMetric?.frequency == null ? null : Number(adSetMetric.frequency),
+      firstServedDate: null,
+      lastServedDate: null,
+      adSetId,
+      adSetName: sanitizeDiagnosticText(adSet?.name || adSetMetric?.adset_name, 300),
+      cpm: adSetMetric?.cpm == null ? null : Number(adSetMetric.cpm),
+      adSetMetricsSyncedAt: rowAdSetMetricsAsOf,
+      adSetMetricsUnavailableReason: rowAdSetMetricsError,
+      approvalStatus: normalizeMetaApprovalStatus(providerApprovalStatus),
+      providerApprovalStatus,
+      policyIssues: normalizeMetaPolicyIssues(ad?.issues_info),
+      approvalSyncedAt,
+      approvalUnavailableReason: null,
+      learningStage: providerLearningStage ? normalizeMetaLearningStage(providerLearningStage) : adSet ? 'NOT_APPLICABLE' : null,
+      providerLearningStage,
+      learningStageSyncedAt: rowLearningAsOf,
+      learningStageUnavailableReason: rowLearningError,
     })
   }
   for (const row of dailyRows) {
@@ -606,6 +758,27 @@ export async function getMetaCampaignAdPerformance(campaignId: string, token: st
     if (day && (!current.lastServedDate || day > current.lastServedDate)) current.lastServedDate = day
   }
   return [...grouped.values()]
+}
+
+export interface MetaCampaignDiagnostic {
+  servingStatus: string | null
+  servingStatusReasons: string[]
+  providerServingStatusReasons: string[]
+  servingSyncedAt: string
+}
+
+export async function getMetaCampaignDiagnostic(campaignId: string, token: string): Promise<MetaCampaignDiagnostic> {
+  const response = await metaFetch<{ effective_status?: string }>(
+    `${META_GRAPH_BASE}/${campaignId}`,
+    token,
+    { fields: 'effective_status' },
+  )
+  return {
+    servingStatus: sanitizeDiagnosticText(response.effective_status, 80)?.toUpperCase() || null,
+    servingStatusReasons: [],
+    providerServingStatusReasons: [],
+    servingSyncedAt: new Date().toISOString(),
+  }
 }
 
 /**

@@ -97,7 +97,90 @@ describe('getCampaignBreakdown', () => {
 
   it('filters by platform', async () => {
     const r = await getCampaignBreakdown({ platform: 'google', sortBy: 'spend' }, ctx, deps())
-    expect(data(r).campaigns).toEqual([{ ...rows[2], conversions: null }])
+    expect(data(r).campaigns).toEqual([expect.objectContaining({ ...rows[2], conversions: null })])
+  })
+
+  it('projects provider serving reasons and Search impression-share evidence with separate clocks', async () => {
+    const diagnostic = {
+      ...rows[2]!,
+      campaignType: 'SEARCH',
+      servingStatus: 'LIMITED',
+      servingStatusReasons: ['LIMITED_BY_BUDGET'],
+      providerServingStatusReasons: ['BUDGET_CONSTRAINED'],
+      servingStatusAsOf: '2026-08-19T05:00:00Z',
+      servingStatusUnavailableReason: null,
+      impressionShare: { share: 0.4, lostBudget: 0.2, lostRank: 0.4, asOf: '2026-08-19T04:00:00Z' },
+      impressionShareAsOf: '2026-08-19T04:00:00Z',
+      impressionShareUnavailableReason: null,
+    }
+    const d = data(await getCampaignBreakdown({ platform: 'google' }, ctx, deps({
+      breakdown: vi.fn().mockResolvedValue({ campaigns: [diagnostic], total: 1 }),
+    })))
+    expect(d.campaigns[0]).toMatchObject({
+      servingStatus: 'LIMITED',
+      servingStatusReasons: ['LIMITED_BY_BUDGET'],
+      providerServingStatusReasons: ['BUDGET_CONSTRAINED'],
+      servingStatusDataStatus: 'fresh',
+      impressionShare: { share: 0.4, lostBudget: 0.2, lostRank: 0.4 },
+      impressionShareDataStatus: 'fresh',
+    })
+  })
+
+  it('does not project an impression-share block for unsupported campaign types', async () => {
+    const pmax = {
+      ...rows[2]!,
+      campaignType: 'PERFORMANCE_MAX',
+      impressionShare: { share: 0.7, lostBudget: 0.1, lostRank: 0.2, asOf: '2026-08-19T04:00:00Z' },
+      impressionShareAsOf: '2026-08-19T04:00:00Z',
+    }
+    const d = data(await getCampaignBreakdown({ platform: 'google' }, ctx, deps({
+      breakdown: vi.fn().mockResolvedValue({ campaigns: [pmax], total: 1 }),
+    })))
+
+    expect(d.campaigns[0].impressionShare).toBeNull()
+    expect(d.campaigns[0].impressionShareDataStatus).toBe('unsupported')
+  })
+
+  it('read-through refreshes missing campaign diagnostics once and reloads the projection', async () => {
+    const mediaSpendId = '00000000-0000-4000-8000-0000000000c3'
+    const refreshed = {
+      ...rows[2]!,
+      mediaSpendId,
+      campaignType: 'SEARCH',
+      servingStatus: 'LIMITED',
+      servingStatusReasons: ['LIMITED_BY_BUDGET'],
+      providerServingStatusReasons: ['BUDGET_CONSTRAINED'],
+      servingStatusAsOf: '2026-08-19T05:00:00Z',
+      impressionShare: { share: 0.5, lostBudget: 0.1, lostRank: 0.4, asOf: '2026-08-19T05:00:00Z' },
+      impressionShareAsOf: '2026-08-19T05:00:00Z',
+    }
+    const breakdown = vi.fn()
+      .mockResolvedValueOnce({ campaigns: [{ ...rows[2]!, mediaSpendId, campaignType: 'SEARCH' }], total: 1 })
+      .mockResolvedValueOnce({ campaigns: [refreshed], total: 1 })
+    const refreshDiagnostics = vi.fn().mockResolvedValue([{ available: true, error: null }])
+    const d = data(await getCampaignBreakdown({ platform: 'google' }, ctx, deps({ breakdown, refreshDiagnostics })))
+    expect(refreshDiagnostics).toHaveBeenCalledWith([mediaSpendId])
+    expect(breakdown).toHaveBeenCalledTimes(2)
+    expect(d.diagnosticRefresh).toMatchObject({ attempted: 1, succeeded: 1, failed: 0, targetCap: 20 })
+    expect(d.campaigns[0]).toMatchObject({ servingStatus: 'LIMITED', impressionShareDataStatus: 'fresh' })
+  })
+
+  it('applies client scope before selecting the bounded diagnostic refresh targets', async () => {
+    const acmeId = '00000000-0000-4000-8000-0000000000a1'
+    const globexId = '00000000-0000-4000-8000-0000000000b1'
+    const candidates = [
+      { ...rows[2]!, campaignId: 'acme-google', mediaSpendId: acmeId, clientName: 'Acme' },
+      { ...rows[2]!, campaignId: 'globex-google', mediaSpendId: globexId, clientName: 'Globex' },
+    ]
+    const breakdown = vi.fn().mockResolvedValue({ campaigns: candidates, total: candidates.length })
+    const refreshDiagnostics = vi.fn().mockResolvedValue([{ available: true, error: null }])
+
+    await getCampaignBreakdown({ platform: 'google', clientName: 'Globex', refresh: true }, ctx, deps({
+      breakdown,
+      refreshDiagnostics,
+    }))
+
+    expect(refreshDiagnostics).toHaveBeenCalledWith([globexId])
   })
 
   it('sorts by roas desc with nulls last', async () => {

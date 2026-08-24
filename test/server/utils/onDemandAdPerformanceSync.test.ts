@@ -28,6 +28,13 @@ describe('syncCampaignAdPerformance', () => {
       adId: 'ad-1', adName: 'EOFY tile', creativeId: 'creative-1', spend: 121.59,
       impressions: 48210, clicks: 1430, conversions: 9, reach: 13029, frequency: 3.7,
       firstServedDate: '2026-08-04', lastServedDate: '2026-08-19',
+      adSetId: 'set-1', adSetName: 'Retargeting', cpm: 2.52,
+      adSetMetricsSyncedAt: '2026-08-24T09:00:00Z', adSetMetricsUnavailableReason: null,
+      approvalStatus: 'DISAPPROVED', providerApprovalStatus: 'DISAPPROVED', approvalReviewStatus: null,
+      policyIssues: [{ code: '1487007', topic: 'POLICY', summary: 'Vehicle pricing claim', message: null, type: 'POLICY', level: 'AD' }],
+      approvalSyncedAt: '2026-08-24T08:00:00Z', approvalUnavailableReason: null,
+      learningStage: 'LEARNING_LIMITED', providerLearningStage: 'LEARNING_LIMITED',
+      learningStageSyncedAt: '2026-08-24T07:00:00Z', learningStageUnavailableReason: null,
     }])
   })
 
@@ -36,8 +43,11 @@ describe('syncCampaignAdPerformance', () => {
 
     expect(result).toEqual({ syncedRows: 1, available: true })
     expect(String(mocks.execute.mock.calls[0]?.[0])).toContain('creative_id')
+    expect(String(mocks.execute.mock.calls[0]?.[0])).toContain('policy_issues')
+    expect(String(mocks.execute.mock.calls[0]?.[0])).toContain('learning_stage_synced_at')
     expect(mocks.execute.mock.calls[0]?.[1]).toEqual(expect.arrayContaining([
-      'spend-1', 'ad-1', 'creative-1', 121.59, 48210, 1430, 3.7,
+      'spend-1', 'ad-1', 'creative-1', 121.59, 48210, 1430, 3.7, 'set-1', 2.52,
+      'DISAPPROVED', 'LEARNING_LIMITED',
     ]))
   })
 })

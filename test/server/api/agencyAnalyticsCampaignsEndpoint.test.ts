@@ -109,7 +109,16 @@ describe('GET /api/agency/analytics/campaigns', () => {
           quality_ranking: null,
           engagement_rate_ranking: null,
           conversion_rate_ranking: null,
-          impression_share: null,
+          serving_status: 'LIMITED',
+          serving_status_reasons: ['LIMITED_BY_BUDGET'],
+          provider_serving_status_reasons: ['BUDGET_CONSTRAINED'],
+          serving_status_synced_at: '2026-06-29T01:00:00.000Z',
+          serving_status_unavailable_reason: null,
+          impression_share: '40',
+          lost_impression_share_budget: '20',
+          lost_impression_share_rank: '40',
+          impression_share_synced_at: '2026-06-29T01:05:00.000Z',
+          impression_share_unavailable_reason: null,
           end_date: null,
           bid_strategy: null,
           budget_type: null,
@@ -161,6 +170,17 @@ describe('GET /api/agency/analytics/campaigns', () => {
       lastServedDate: '2026-06-28',
       frequency: 1.2,
     })
+    expect(result.campaigns[1]).toMatchObject({
+      servingStatus: 'LIMITED',
+      servingStatusReasons: ['LIMITED_BY_BUDGET'],
+      providerServingStatusReasons: ['BUDGET_CONSTRAINED'],
+      servingStatusAsOf: '2026-06-29T01:00:00.000Z',
+      impressionShare: 0.4,
+      lostImpressionShareBudget: 0.2,
+      lostImpressionShareRank: 0.4,
+      impressionShareAsOf: '2026-06-29T01:05:00.000Z',
+    })
     expect(String(mockQueryRows.mock.calls[0][0])).toContain('lifetime AS')
+    expect(String(mockQueryRows.mock.calls[0][0])).toContain('ORDER BY ms.impression_share_synced_at DESC NULLS LAST')
   })
 })
