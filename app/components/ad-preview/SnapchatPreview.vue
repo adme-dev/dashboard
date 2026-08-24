@@ -3,6 +3,9 @@ import PreviewFrame from './PreviewFrame.vue'
 
 defineProps<{
   image?: string
+  html?: string
+  htmlWidth?: number
+  htmlHeight?: number
   pageName?: string
   primaryText?: string
   headline?: string
@@ -13,18 +16,16 @@ defineProps<{
 
 const { ctaLabel } = useAdPreview()
 
-const placeholderImg = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="700" fill="%23181818"><rect width="400" height="700"/><text x="50%" y="50%" text-anchor="middle" fill="%23666" font-size="18" dy=".3em">Snap Creative</text></svg>')
 </script>
 
 <template>
   <PreviewFrame type="phone" label="Snapchat">
     <div class="relative w-full bg-black" style="aspect-ratio: 9/16;">
       <!-- Background -->
-      <img
-        :src="image || placeholderImg"
-        alt="Snapchat creative"
-        class="absolute inset-0 w-full h-full object-cover"
-      >
+      <AdPreviewCreativeMedia
+        :html="html" :html-width="htmlWidth" :html-height="htmlHeight"
+        :image="image" label="Snap Creative" placeholder-bg="#181818" placeholder-fg="#666"
+      />
 
       <!-- Gradient overlays -->
       <div class="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/50 to-transparent" />

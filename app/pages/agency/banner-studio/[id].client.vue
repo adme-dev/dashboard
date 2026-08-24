@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { FORMAT_SAFE_ZONE_MAP, SAFE_ZONE_MAP } from '~/utils/banner-safe-zones'
+import { FORMATS } from '~/utils/banner-constants'
+import { buildBannerHTML } from '~/utils/banner-html-builder'
 import { isAmbiguousApiFailure } from '~/utils/apiError'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
@@ -118,7 +120,7 @@ onMounted(() => nextTick(rebuildTimeline))
 const { feedsState } = useBannerFeeds()
 
 // Load fonts used in the project (including custom uploads)
-const { loadUsedFonts, fetchCustomFonts } = useBannerFonts()
+const { loadUsedFonts, fetchCustomFonts, getExportCustomFonts } = useBannerFonts()
 fetchCustomFonts()
 watch(() => activeLayers.value, (layers) => {
   if (layers.length) loadUsedFonts(layers)
@@ -149,6 +151,17 @@ const showAnalytics = ref(false)
 const showABTests = ref(false)
 const showAdPublish = ref(false)
 const showPreview = ref(false)
+const previewFmt = computed(() => FORMATS[state.activeKey])
+const previewHtml = computed(() => {
+  if (!showPreview.value) return ''
+  const layers = state.sets[state.activeKey]?.layers
+  if (!layers?.length) return ''
+  return buildBannerHTML(state.activeKey, layers, {
+    includeAnimations: true,
+    bgColor: state.sets[state.activeKey]?.bgColor || state.bgColor || '#0a0a10',
+    customFonts: getExportCustomFonts(layers),
+  })
+})
 const showSaveVersion = ref(false)
 const versionLabel = ref('')
 const isSavingVersion = ref(false)
@@ -722,36 +735,43 @@ const { activeSize } = useBannerFileSize()
               <div class="text-xs text-[#888] mb-2 font-medium">Meta Feed</div>
               <AdPreviewMetaFeedPreview
                 :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+              :html="previewHtml" :html-width="previewFmt?.w" :html-height="previewFmt?.h"
                 :page-name="state.project?.name"
               />
             </div>
             <AdPreviewMetaStoryPreview
               :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+              :html="previewHtml" :html-width="previewFmt?.w" :html-height="previewFmt?.h"
               :page-name="state.project?.name"
             />
             <AdPreviewTikTokPreview
               :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+              :html="previewHtml" :html-width="previewFmt?.w" :html-height="previewFmt?.h"
               :page-name="state.project?.name"
             />
             <AdPreviewYouTubePreview
               :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+              :html="previewHtml" :html-width="previewFmt?.w" :html-height="previewFmt?.h"
               :page-name="state.project?.name"
             />
             <div class="flex flex-col items-center">
               <div class="text-xs text-[#888] mb-2 font-medium">LinkedIn</div>
               <AdPreviewLinkedInPreview
                 :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+              :html="previewHtml" :html-width="previewFmt?.w" :html-height="previewFmt?.h"
                 :page-name="state.project?.name"
               />
             </div>
             <AdPreviewSnapchatPreview
               :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+              :html="previewHtml" :html-width="previewFmt?.w" :html-height="previewFmt?.h"
               :page-name="state.project?.name"
             />
             <div class="flex flex-col items-center">
               <div class="text-xs text-[#888] mb-2 font-medium">Pinterest</div>
               <AdPreviewPinterestPreview
                 :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+              :html="previewHtml" :html-width="previewFmt?.w" :html-height="previewFmt?.h"
                 :page-name="state.project?.name"
               />
             </div>
@@ -759,6 +779,7 @@ const { activeSize } = useBannerFileSize()
               <div class="text-xs text-[#888] mb-2 font-medium">X (Twitter)</div>
               <AdPreviewXPreview
                 :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+              :html="previewHtml" :html-width="previewFmt?.w" :html-height="previewFmt?.h"
                 :page-name="state.project?.name"
               />
             </div>

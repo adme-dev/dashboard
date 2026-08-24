@@ -1,6 +1,9 @@
 <script setup lang="ts">
 defineProps<{
   image?: string
+  html?: string
+  htmlWidth?: number
+  htmlHeight?: number
   pageName?: string
   primaryText?: string
   headline?: string
@@ -11,7 +14,6 @@ defineProps<{
 
 const { ctaLabel } = useAdPreview()
 
-const placeholderImg = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="340" fill="%23222"><rect width="600" height="340"/><text x="50%" y="50%" text-anchor="middle" fill="%23555" font-size="20" dy=".3em">Ad Creative</text></svg>')
 </script>
 
 <template>
@@ -41,12 +43,12 @@ const placeholderImg = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="h
 
     <!-- Media card -->
     <div class="mx-3 mb-2 ml-[3.75rem] rounded-xl overflow-hidden border border-[#2f3336]">
-      <img
-        :src="image || placeholderImg"
-        alt="Ad creative"
-        class="w-full object-cover"
-        style="aspect-ratio: 16/9;"
-      >
+      <div class="relative w-full" style="aspect-ratio: 16/9;">
+        <AdPreviewCreativeMedia
+          :html="html" :html-width="htmlWidth" :html-height="htmlHeight"
+          :image="image" label="Ad Creative" placeholder-bg="#222" placeholder-fg="#555"
+        />
+      </div>
       <div class="bg-[#16181c] px-3 py-2.5 border-t border-[#2f3336]">
         <div class="text-xs text-gray-500 truncate">{{ linkUrl?.replace(/https?:\/\//, '').split('/')[0] || 'example.com' }}</div>
         <div class="text-sm font-medium text-white truncate leading-tight mt-0.5">{{ headline || 'Amazing Product' }}</div>
