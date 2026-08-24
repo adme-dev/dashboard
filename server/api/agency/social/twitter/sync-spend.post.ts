@@ -1,32 +1,23 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { syncTwitterSpend } from '~~/server/utils/spendSync'
-import { runSpendSyncInBackground } from '~~/server/utils/asyncBackground'
+import { startSecondarySpendSyncPlatform } from '~~/server/utils/spendSyncKickoff'
 
 /**
  * POST /api/agency/social/twitter/sync-spend
  *
- * Kicks off X (Twitter) Ads spend sync in the background via waitUntil and
- * returns immediately. See meta/sync-spend.post.ts for the rationale.
+ * Kicks off twitter spend sync through the durable queue and returns immediately (falls
+ * back to the previous waitUntil-backed inline sync only when no JOBS_QUEUE binding is
+ * available, e.g. local dev). See spendSyncKickoff.ts#startSecondarySpendSyncPlatform.
  *
  * Body: { month?: number, year?: number }
  */
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
+  const startedBy = typeof user === 'object' && user !== null && 'id' in user ? String(user.id) : null
 
   const body = await readBody(event).catch(() => null)
   const now = new Date()
-  const month = body?.month || now.getMonth() + 1
-  const year = body?.year || now.getFullYear()
-  const period = `${year}-${String(month).padStart(2, '0')}`
+  const month = Number(body?.month) || now.getMonth() + 1
+  const year = Number(body?.year) || now.getFullYear()
 
-  return runSpendSyncInBackground(event, {
-    label: `twitter sync-spend ${period}`,
-    sync: () => syncTwitterSpend(month, year),
-    kvKeys: [
-      `spend:summary:${period}:all`,
-      `spend:summary:${period}:twitter`,
-      `spend:twitter:accounts:${period}`,
-      `spend:daily:twitter:${period}`,
-    ],
-  })
+  return await startSecondarySpendSyncPlatform(event, 'twitter', month, year, startedBy)
 })

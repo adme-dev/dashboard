@@ -145,6 +145,26 @@ export async function finishGoogleAiMaxScanRun(input: {
   ])
 }
 
+/**
+ * Terminalize scan runs stuck in 'queued'/'running' past a staleness window before a scheduled
+ * scan attempts to (re-)claim per-tenant runs. `claimGoogleAiMaxScanRun` has a partial unique
+ * index on tenant_id WHERE status IN ('queued','running'), so a run left stuck by a crashed or
+ * killed worker (the exact failure mode this queue conversion fixes) would otherwise permanently
+ * block that tenant from ever being claimed again — including on a queue retry of this same job.
+ * Mirrors reapOrphanedSpendSyncJobs in spendSyncJobs.ts.
+ */
+export async function reapStaleGoogleAiMaxScanRuns(maxAgeHours = 2, run: typeof execute = execute): Promise<number> {
+  return run(`
+    UPDATE google_ai_max_scan_runs
+       SET status = 'failed',
+           finished_at = NOW(),
+           failures = failures || '[{"connectionId":"__run__","error":"Orphaned: no terminal update within ' || $1::text || 'h of claim (worker killed or queue message lost)"}]'::jsonb,
+           updated_at = NOW()
+     WHERE status IN ('queued', 'running')
+       AND created_at < NOW() - ($1 * interval '1 hour')
+  `, [maxAgeHours])
+}
+
 export async function getActiveGoogleAiMaxScanRun(
   tenantId: string
 ): Promise<GoogleAiMaxScanRunRef | null> {
