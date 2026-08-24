@@ -4,6 +4,7 @@ import path from 'node:path'
 import { brotliCompressSync, constants } from 'node:zlib'
 import { initSync, parse } from 'es-module-lexer'
 import { transform } from 'esbuild'
+import ts from 'typescript'
 
 export const WORKER_MODULE_COMPACTION_MARKER = 'XEROFLOW_COMPACT_WORKER_MODULE'
 
@@ -195,8 +196,122 @@ export function compactPlatformImports(source) {
   return compacted
 }
 
+const SQL_LITERAL_START = /^\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH|ALTER|CREATE|DROP)\b/i
+
+function compactSqlWhitespace(value) {
+  let result = ''
+  let quote = null
+  let dollarQuote = null
+  let pendingSpace = false
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]
+
+    if (dollarQuote) {
+      if (value.startsWith(dollarQuote, index)) {
+        result += dollarQuote
+        index += dollarQuote.length - 1
+        dollarQuote = null
+      } else {
+        result += character
+      }
+      continue
+    }
+
+    if (quote) {
+      result += character
+      if (character === '\\' && index + 1 < value.length) {
+        result += value[index + 1]
+        index += 1
+      } else if (character === quote) {
+        if (value[index + 1] === quote) {
+          result += value[index + 1]
+          index += 1
+        } else {
+          quote = null
+        }
+      }
+      continue
+    }
+
+    // A line comment needs its newline and a block comment may contain
+    // significant formatting. Leave the whole query untouched rather than
+    // risk extending or changing a comment while compacting whitespace.
+    if ((character === '-' && value[index + 1] === '-')
+      || (character === '/' && value[index + 1] === '*')) return value
+
+    if (character === "'" || character === '"') {
+      if (pendingSpace && result) result += ' '
+      pendingSpace = false
+      quote = character
+      result += character
+      continue
+    }
+
+    if (character === '$') {
+      const match = value.slice(index).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/)
+      if (match) {
+        if (pendingSpace && result) result += ' '
+        pendingSpace = false
+        dollarQuote = match[0]
+        result += dollarQuote
+        index += dollarQuote.length - 1
+        continue
+      }
+    }
+
+    if (/\s/.test(character)) {
+      pendingSpace = true
+      continue
+    }
+
+    if (pendingSpace && result) result += ' '
+    pendingSpace = false
+    result += character
+  }
+
+  return result.trim()
+}
+
+export function compactSqlLiterals(source) {
+  const sourceFile = ts.createSourceFile(
+    'worker-module.mjs',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS
+  )
+  const replacements = []
+
+  function visit(node) {
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+      if (SQL_LITERAL_START.test(node.text)) {
+        const compacted = compactSqlWhitespace(node.text)
+        if (compacted !== node.text) {
+          replacements.push({
+            start: node.getStart(sourceFile),
+            end: node.getEnd(),
+            value: JSON.stringify(compacted)
+          })
+        }
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+
+  return replacements
+    .sort((left, right) => right.start - left.start)
+    .reduce(
+      (result, replacement) => result.slice(0, replacement.start)
+        + replacement.value
+        + result.slice(replacement.end),
+      source
+    )
+}
+
 function compactDeployedModuleSource(source) {
-  return compactPlatformImports(source).replace(
+  return compactSqlLiterals(compactPlatformImports(source)).replace(
     /\/\/[#@]\s*sourceMappingURL=[^\s]+\s*$/gm,
     ''
   )
