@@ -1,7 +1,8 @@
 /** Release marker returned by the exact Pages projection and forwarded by the MCP transport. */
-export const MCP_CATALOG_RELEASE = '2026-08-21.12'
-export const MCP_PREVIOUS_CATALOG_RELEASE = '2026-08-20.11'
-export const MCP_MIN_TOOL_COUNT = 76
+export const MCP_CATALOG_RELEASE = '2026-08-24.13'
+export const MCP_PREVIOUS_CATALOG_RELEASE = '2026-08-21.12'
+export const MCP_MIN_TOOL_COUNT = 86
+export const MCP_SERVER_VERSION = '1.0.3'
 
 export function compareMcpCatalogReleases(left: string, right: string): number {
   const parse = (value: string) => {
@@ -19,7 +20,7 @@ export function compareMcpCatalogReleases(left: string, right: string): number {
 }
 
 export function assertMcpCatalogNotRegressed(release: string, toolCount: number): void {
-  if (compareMcpCatalogReleases(release, MCP_PREVIOUS_CATALOG_RELEASE) < 0 || toolCount < MCP_MIN_TOOL_COUNT) {
+  if (compareMcpCatalogReleases(release, MCP_CATALOG_RELEASE) < 0 || toolCount < MCP_MIN_TOOL_COUNT) {
     throw new Error(`MCP catalog regression: ${release} with ${toolCount} tools`)
   }
 }
