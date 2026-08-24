@@ -34,6 +34,9 @@ export type JobType =
   | 'hr.monday.migrate'
   | 'embed.social.client'
   | 'campaign.detail.refresh'
+  | 'google.aimax.readiness'
+  | 'creatives.sync'
+  | 'spend.sync.platform'
 
 export interface QueueJob {
   jobId?: string

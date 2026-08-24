@@ -12,18 +12,19 @@ import {
   syncTwitterSpend
 } from '~~/server/utils/spendSync'
 import { runSpendSyncInBackground } from '~~/server/utils/asyncBackground'
-import { getQueue } from '~~/server/utils/queue'
+import { enqueue, getQueue } from '~~/server/utils/queue'
 import { completeSpendSyncJob, createSpendSyncJob, failSpendSyncJob, reapOrphanedSpendSyncJobs, setSyncJobTotalAccounts } from '~~/server/utils/spendSyncJobs'
 
-interface PlatformDef {
+export interface PlatformDef {
   platform: string
   short: string
-  fn: (month: number, year: number) => Promise<unknown>
+  fn: (month: number, year: number) => Promise<{ synced: number, totalSpend: number }>
 }
 
-// Every non-Meta platform syncs in a single background loop (the same path the
-// manual UI endpoints use). `short` matches the KV cache key namespace each
-// platform's spend reads from, so the cache is busted on completion.
+// Every non-Meta/Google platform shares this exact shape (single call, no per-account fan-out),
+// so they're dispatched through one generic 'spend.sync.platform' queue job rather than six
+// near-identical JobTypes — see waituntil-round2b-report.md for why. `short` matches the KV cache
+// key namespace each platform's spend reads from, so the cache is busted on completion.
 const SECONDARY_PLATFORMS: PlatformDef[] = [
   { platform: 'microsoft_ads', short: 'microsoft_ads', fn: syncMicrosoftSpend },
   { platform: 'pinterest', short: 'pinterest', fn: syncPinterestSpend },
@@ -32,6 +33,19 @@ const SECONDARY_PLATFORMS: PlatformDef[] = [
   { platform: 'snapchat', short: 'snapchat', fn: syncSnapchatSpend },
   { platform: 'twitter', short: 'twitter', fn: syncTwitterSpend }
 ]
+
+export function getSecondarySpendSyncPlatform(platform: string): PlatformDef | undefined {
+  return SECONDARY_PLATFORMS.find(p => p.platform === platform)
+}
+
+export function spendSyncKvKeys(def: PlatformDef, period: string): string[] {
+  return [
+    `spend:summary:${period}:all`,
+    `spend:summary:${period}:${def.platform}`,
+    `spend:${def.short}:accounts:${period}`,
+    `spend:daily:${def.short}:${period}`
+  ]
+}
 
 export type SpendSyncKickoffPlatform = 'meta' | 'google'
 
@@ -205,16 +219,7 @@ export async function startSpendSyncAllPlatforms(
   const secondary: string[] = []
   for (const p of SECONDARY_PLATFORMS) {
     try {
-      runSpendSyncInBackground(event, {
-        label: `cron ${p.platform} sync-spend ${period}`,
-        sync: () => p.fn(month, year),
-        kvKeys: [
-          `spend:summary:${period}:all`,
-          `spend:summary:${period}:${p.platform}`,
-          `spend:${p.short}:accounts:${period}`,
-          `spend:daily:${p.short}:${period}`
-        ]
-      })
+      await startSecondarySpendSyncPlatform(event, p.platform, month, year, null)
       secondary.push(p.platform)
     } catch (err) {
       console.error(`[cron sync-spend] ${p.platform} kickoff failed:`, err)
@@ -222,4 +227,41 @@ export async function startSpendSyncAllPlatforms(
   }
 
   return { period, meta, google, secondary }
+}
+
+/**
+ * Start one of the six secondary (single-call, no per-account fan-out) platforms' spend sync for
+ * a period. Shared by each platform's manual UI endpoint and the cron fan-out above. Dispatches
+ * through the durable 'spend.sync.platform' queue job, falling back to the previous
+ * waitUntil-backed inline sync only when no JOBS_QUEUE binding is available (local dev). Each
+ * platform gets its own spend_sync_jobs row so job-status polling keeps working exactly as it did
+ * before this queue conversion.
+ */
+export async function startSecondarySpendSyncPlatform(
+  event: H3Event,
+  platform: string,
+  month: number,
+  year: number,
+  startedBy: string | null
+): Promise<SpendSyncPlatformStart> {
+  const def = getSecondarySpendSyncPlatform(platform)
+  if (!def) throw new Error(`Unknown secondary spend-sync platform: ${platform}`)
+
+  const period = `${year}-${String(month).padStart(2, '0')}`
+  const reapedJobIds = await reapOrphanedSpendSyncJobs(platform).catch(() => [] as string[])
+  const jobId = await createSpendSyncJob(platform, period, startedBy)
+  const startedAt = new Date().toISOString()
+
+  const queued = await enqueue(event, 'spend.sync.platform', { platform: def.platform, month, year, jobId }, () => {
+    runSpendSyncInBackground(event, {
+      label: `${def.platform} sync-spend ${period}`,
+      sync: () => def.fn(month, year),
+      kvKeys: spendSyncKvKeys(def, period),
+      onComplete: result => completeSpendSyncJob(jobId, result),
+      onError: err => failSpendSyncJob(jobId, err instanceof Error ? err.message : String(err))
+    })
+    return Promise.resolve()
+  })
+
+  return { status: 'started', startedAt, jobId, queued, accounts: 0, reapedJobIds }
 }

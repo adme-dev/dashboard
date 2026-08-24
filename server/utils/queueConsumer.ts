@@ -134,6 +134,18 @@ export async function processJob(job: QueueConsumerJob, event?: H3Event): Promis
         await processCampaignDetailRefresh(job.payload, event)
         break
 
+      case 'google.aimax.readiness':
+        await processGoogleAiMaxReadiness(job.payload, event)
+        break
+
+      case 'creatives.sync':
+        await processCreativesSync(job.payload)
+        break
+
+      case 'spend.sync.platform':
+        await processSecondarySpendSync(job.payload, event)
+        break
+
       case 'god-mode.audit-terminal':
         await processGodModeAuditTerminal(job.payload)
         break
@@ -389,6 +401,58 @@ async function processEmbedSocialClient(payload: Record<string, unknown>, event?
 async function processCampaignDetailRefresh(payload: Record<string, unknown>, event?: H3Event): Promise<void> {
   const { runCampaignDetailRefreshJob } = await import('~~/server/utils/campaignDetailCache')
   await runCampaignDetailRefreshJob(event as H3Event, payload as any)
+}
+
+async function processGoogleAiMaxReadiness(payload: Record<string, unknown>, event?: H3Event): Promise<void> {
+  if (!event) throw new Error('Google AI Max readiness scan requires a request-owned Cloudflare context')
+  const { reapStaleGoogleAiMaxScanRuns } = await import('~~/server/utils/googleAiMaxRepository')
+  // Free up any tenant claims left stuck 'queued'/'running' by a killed worker (including a
+  // previous, failed attempt of this same queue job) before trying to claim them again.
+  await reapStaleGoogleAiMaxScanRuns()
+
+  const { runGoogleAiMaxScheduledScans } = await import('~~/server/utils/googleAiMaxScheduler')
+  const { captureGoogleAiMaxCacheInvalidator } = await import('~~/server/utils/googleAiMaxCache')
+  const observedAt = typeof payload.observedAt === 'string' ? payload.observedAt : new Date().toISOString()
+
+  const invalidateCache = captureGoogleAiMaxCacheInvalidator(event)
+  const result = await runGoogleAiMaxScheduledScans({ observedAt })
+  const tenants = new Set(result.results.filter(item => item.runId).map(item => item.tenantId))
+  await Promise.all(Array.from(tenants, tenantId => invalidateCache(tenantId)))
+}
+
+async function processCreativesSync(payload: Record<string, unknown>): Promise<void> {
+  const { syncAllCampaignCreatives } = await import('~~/server/utils/adCreativeSync')
+  const month = Number(payload.month)
+  const year = Number(payload.year)
+  const platforms = Array.isArray(payload.platforms) && payload.platforms.length > 0
+    ? payload.platforms as Array<'meta' | 'google_ads'>
+    : (['google_ads', 'meta'] as Array<'meta' | 'google_ads'>)
+  const summary = await syncAllCampaignCreatives(month, year, platforms)
+  console.log(`[creatives.sync] attempted=${summary.connections} written=${summary.synced}`)
+}
+
+async function processSecondarySpendSync(payload: Record<string, unknown>, event?: H3Event): Promise<void> {
+  const { getSecondarySpendSyncPlatform, spendSyncKvKeys } = await import('~~/server/utils/spendSyncKickoff')
+  const { completeSpendSyncJob, failSpendSyncJob } = await import('~~/server/utils/spendSyncJobs')
+  const platform = String(payload.platform || '')
+  const month = Number(payload.month)
+  const year = Number(payload.year)
+  const jobId = typeof payload.jobId === 'string' ? payload.jobId : undefined
+  const def = getSecondarySpendSyncPlatform(platform)
+  if (!def) throw new Error(`Unknown secondary spend-sync platform: ${platform}`)
+
+  try {
+    const result = await def.fn(month, year)
+    const cache = event ? (event.context as any).cloudflare?.env?.CACHE : undefined
+    if (cache) {
+      const period = `${year}-${String(month).padStart(2, '0')}`
+      await Promise.all(spendSyncKvKeys(def, period).map((k: string) => cache.delete(k).catch(() => {})))
+    }
+    if (jobId) await completeSpendSyncJob(jobId, result as { synced: number, totalSpend: number })
+  } catch (err) {
+    if (jobId) await failSpendSyncJob(jobId, err instanceof Error ? err.message : String(err))
+    throw err // let the queue retry
+  }
 }
 
 async function processGodModeAuditTerminal(payload: GodModeAuditEventInput): Promise<void> {
