@@ -1,10 +1,10 @@
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireQrCodeAccess } from '~~/server/utils/qr/access'
-import { parseRange, fillDays } from '~~/server/utils/qr/analytics'
+import { parseQrRange, fillDays } from '~~/server/utils/qr/analytics'
 
 export default defineEventHandler(async (event) => {
   const { row } = await requireQrCodeAccess(event, getRouterParam(event, 'id'))
-  const { from, to } = parseRange(getQuery(event) as Record<string, unknown>)
+  const { from, to } = parseQrRange(getQuery(event) as Record<string, unknown>)
   const p = [row.id, from, to]
   const where = `qr_code_id = $1 AND scanned_at >= $2::date AND scanned_at < ($3::date + 1)`
   const breakdown = (col: string) => queryRows<{ key: string, scans: number }>(

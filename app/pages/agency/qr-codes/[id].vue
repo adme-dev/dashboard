@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CalendarDate, getLocalTimeZone, today } from '@internationalized/date'
-import { validateDestinationUrl } from '~~/shared/qr/destination'
+import { validateDestinationUrl, isDestinationInvalid } from '~~/shared/qr/destination'
 
 definePageMeta({ layout: 'agency' })
 
@@ -12,7 +12,9 @@ const id = route.params.id as string
 const { data, refresh } = await useFetch(`/api/agency/qr-codes/${id}`)
 useHead({ title: () => data.value?.code?.name ?? 'QR code' })
 
-const range = ref({ start: today(getLocalTimeZone()).subtract({ days: 29 }), end: today(getLocalTimeZone()) })
+// shallowRef avoids Vue deep-reactivating the CalendarDate class instances (which strips their
+// prototype/type identity and breaks TS narrowing against @internationalized/date's CalendarDate).
+const range = shallowRef({ start: today(getLocalTimeZone()).subtract({ days: 29 }), end: today(getLocalTimeZone()) })
 const rangeOpen = ref(false)
 const fmt = (d: CalendarDate) => d.toString()
 const { data: analytics } = await useFetch(`/api/agency/qr-codes/${id}/analytics`, {
@@ -21,7 +23,12 @@ const { data: analytics } = await useFetch(`/api/agency/qr-codes/${id}/analytics
 
 const editingUrl = ref(false)
 const urlDraft = ref('')
-const urlError = computed(() => urlDraft.value ? (validateDestinationUrl(urlDraft.value).ok ? '' : validateDestinationUrl(urlDraft.value).reason) : '')
+const urlError = computed(() => {
+  if (!urlDraft.value) return ''
+  const d = validateDestinationUrl(urlDraft.value)
+  if (isDestinationInvalid(d)) return d.reason
+  return ''
+})
 function startEdit() {
   urlDraft.value = data.value?.code?.destination_url ?? ''
   editingUrl.value = true
@@ -56,11 +63,11 @@ async function copy() {
           <UButton :to="api.exportUrl(id)" external icon="i-lucide-download" block>
             SVG
           </UButton>
-          <UButton icon="i-lucide-image" variant="soft" block @click="api.downloadPng(data.code)">
+          <UButton icon="i-lucide-image" variant="soft" block @click="() => api.downloadPng(data.code)">
             PNG
           </UButton>
         </div>
-        <UButton icon="i-lucide-palette" variant="ghost" color="neutral" block @click="editorOpen = true">
+        <UButton icon="i-lucide-palette" variant="ghost" color="neutral" block @click="() => { editorOpen = true }">
           Edit design
         </UButton>
       </aside>
@@ -100,7 +107,7 @@ async function copy() {
                   <UButton size="sm" :disabled="!!urlError || !urlDraft" @click="saveUrl">
                     Save
                   </UButton>
-                  <UButton size="sm" variant="ghost" color="neutral" @click="editingUrl = false">
+                  <UButton size="sm" variant="ghost" color="neutral" @click="() => { editingUrl = false }">
                     Cancel
                   </UButton>
                 </div>
@@ -141,6 +148,6 @@ async function copy() {
         </UCard>
       </section>
     </div>
-    <QrEditor v-model:open="editorOpen" :code="data.code" @saved="refresh" />
+    <QrEditor v-model:open="editorOpen" :code="data.code" @saved="() => refresh()" />
   </div>
 </template>

@@ -4,7 +4,7 @@ import { requireClientTrackingAccess } from '~~/server/utils/client-access'
 import { CreateQrSchema } from '~~/server/utils/qr/schemas'
 import { shortUrl } from '~~/server/utils/qr/access'
 import { generateSlug } from '~~/shared/qr/slug'
-import { validateDestinationUrl } from '~~/shared/qr/destination'
+import { validateDestinationUrl, isDestinationInvalid } from '~~/shared/qr/destination'
 
 export default defineEventHandler(async (event) => {
   const parsed = CreateQrSchema.safeParse(await readBody(event))
@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const body = parsed.data
   const user = await requireClientTrackingAccess(event, body.clientId)
   const dest = validateDestinationUrl(body.destinationUrl)
-  if (!dest.ok) throw createError({ statusCode: 400, statusMessage: dest.reason })
+  if (isDestinationInvalid(dest)) throw createError({ statusCode: 400, statusMessage: dest.reason })
   if (body.folderId) {
     const f = await queryOne(`SELECT 1 FROM qr_folders WHERE id = $1 AND client_id = $2`, [body.folderId, body.clientId])
     if (!f) throw createError({ statusCode: 400, statusMessage: 'Folder does not belong to this client' })

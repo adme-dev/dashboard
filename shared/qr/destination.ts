@@ -1,5 +1,10 @@
 export type DestinationResult = { ok: true, url: string } | { ok: false, reason: string }
 
+/** Explicit type guard — more robust than `!result.ok` narrowing across project boundaries in vue-tsc's build mode. */
+export function isDestinationInvalid(result: DestinationResult): result is { ok: false, reason: string } {
+  return result.ok === false
+}
+
 const PRIVATE_V4 = [/^10\./, /^127\./, /^169\.254\./, /^192\.168\./, /^172\.(1[6-9]|2\d|3[01])\./, /^0\.0\.0\.0$/]
 
 export function validateDestinationUrl(input: string): DestinationResult {

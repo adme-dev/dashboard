@@ -1,7 +1,7 @@
 export type DeviceType = 'mobile' | 'tablet' | 'desktop' | 'bot' | 'unknown'
-export interface UaInfo { deviceType: DeviceType, os: string, browser: string }
+export interface QrUaInfo { deviceType: DeviceType, os: string, browser: string }
 
-export function classifyUserAgent(ua: string | null | undefined): UaInfo {
+export function classifyQrUserAgent(ua: string | null | undefined): QrUaInfo {
   if (!ua) return { deviceType: 'unknown', os: 'Other', browser: 'Other' }
   const s = ua
   if (/bot|crawler|spider|slurp|facebookexternalhit|preview/i.test(s)) return { deviceType: 'bot', os: 'Other', browser: 'Other' }

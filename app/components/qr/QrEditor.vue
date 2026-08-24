@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { DEFAULT_STYLE, type QrStyle } from '~~/shared/qr/style'
-import { validateDestinationUrl } from '~~/shared/qr/destination'
+import { validateDestinationUrl, isDestinationInvalid } from '~~/shared/qr/destination'
 import type { QrCode, QrFolder } from '~/composables/useQrCodes'
 
 const props = defineProps<{ clientId?: string, folderId?: string | null, code?: QrCode | null }>()
@@ -21,7 +21,12 @@ const form = reactive({
 })
 const folders = ref<QrFolder[]>([])
 const saving = ref(false)
-const urlError = computed(() => (form.destinationUrl ? (validateDestinationUrl(form.destinationUrl).ok ? '' : validateDestinationUrl(form.destinationUrl).reason) : ''))
+const urlError = computed(() => {
+  if (!form.destinationUrl) return ''
+  const d = validateDestinationUrl(form.destinationUrl)
+  if (isDestinationInvalid(d)) return d.reason
+  return ''
+})
 const folderItems = computed(() => [{ label: 'No folder', value: 'none' }, ...folders.value.map(f => ({ label: f.name, value: f.id }))])
 const folderModel = computed({
   get: () => form.folderId ?? 'none',
@@ -91,7 +96,7 @@ async function save() {
     </template>
     <template #footer>
       <div class="flex justify-end gap-2 w-full">
-        <UButton variant="ghost" color="neutral" @click="open = false">Cancel</UButton>
+        <UButton variant="ghost" color="neutral" @click="() => { open = false }">Cancel</UButton>
         <UButton :loading="saving" :disabled="!form.name.trim() || !form.clientId || !!urlError || !form.destinationUrl" @click="save">{{ code ? 'Save changes' : 'Create QR code' }}</UButton>
       </div>
     </template>

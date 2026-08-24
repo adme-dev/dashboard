@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fillDays, parseRange } from '../../server/utils/qr/analytics'
+import { fillDays, parseQrRange } from '../../server/utils/qr/analytics'
 
 describe('qr analytics helpers', () => {
   it('fills missing days with zero', () => {
@@ -8,8 +8,8 @@ describe('qr analytics helpers', () => {
     ])
   })
   it('defaults range to the last 30 days and rejects >366 days', () => {
-    const r = parseRange({}, new Date('2026-08-24T00:00:00Z'))
+    const r = parseQrRange({}, new Date('2026-08-24T00:00:00Z'))
     expect(r).toEqual({ from: '2026-07-26', to: '2026-08-24' })
-    expect(() => parseRange({ from: '2024-01-01', to: '2026-08-24' }, new Date('2026-08-24'))).toThrow()
+    expect(() => parseQrRange({ from: '2024-01-01', to: '2026-08-24' }, new Date('2026-08-24'))).toThrow()
   })
 })

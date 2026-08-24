@@ -2,7 +2,7 @@ import { queryOne } from '~~/server/utils/db'
 import { requireQrCodeAccess, shortUrl } from '~~/server/utils/qr/access'
 import { UpdateQrSchema } from '~~/server/utils/qr/schemas'
 import { invalidateQrCache } from '~~/server/utils/qr/resolve'
-import { validateDestinationUrl } from '~~/shared/qr/destination'
+import { validateDestinationUrl, isDestinationInvalid } from '~~/shared/qr/destination'
 
 export default defineEventHandler(async (event) => {
   const { user, row } = await requireQrCodeAccess(event, getRouterParam(event, 'id'))
@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
   let newUrl: string | null = null
   if (b.destinationUrl !== undefined) {
     const d = validateDestinationUrl(b.destinationUrl)
-    if (!d.ok) throw createError({ statusCode: 400, statusMessage: d.reason })
+    if (isDestinationInvalid(d)) throw createError({ statusCode: 400, statusMessage: d.reason })
     if (d.url !== row.destination_url) { newUrl = d.url; set('destination_url', d.url) }
   }
   if (!sets.length) return { code: row, shortUrl: shortUrl(row.code) }

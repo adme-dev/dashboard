@@ -3,7 +3,7 @@ import { execute } from '~~/server/utils/db'
 import { sha256Hex } from '~~/server/utils/exportTokens'
 import { resolveClientIp } from '~~/server/utils/tracking/client-ip'
 import { runAfterResponse } from '~~/server/utils/asyncBackground'
-import { classifyUserAgent } from './ua'
+import { classifyQrUserAgent } from './ua'
 import type { ResolvedQr } from './resolve'
 
 /** Insert a qr_scans row and bump counters AFTER the redirect is sent. Never throws. */
@@ -14,7 +14,7 @@ export function recordScan(event: H3Event, qr: ResolvedQr): void {
   const ip = resolveClientIp(getHeader(event, 'cf-connecting-ip'), getRequestIP(event, { xForwardedFor: true }))
   const day = new Date().toISOString().slice(0, 10)
   const salt = process.env.TRACKING_IP_SALT || ''
-  const info = classifyUserAgent(ua)
+  const info = classifyQrUserAgent(ua)
 
   runAfterResponse(event, (async () => {
     const ipHash = ip ? await sha256Hex(`${ip}:${salt}:${day}`) : null

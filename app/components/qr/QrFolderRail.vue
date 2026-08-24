@@ -34,17 +34,17 @@ async function remove(f: QrFolder) {
 
 <template>
   <nav class="space-y-1">
-    <UButton block variant="ghost" color="neutral" :class="folderId === null ? 'bg-elevated' : ''" icon="i-lucide-layers" class="justify-start" @click="folderId = null">All codes</UButton>
+    <UButton block variant="ghost" color="neutral" :class="folderId === null ? 'bg-elevated' : ''" icon="i-lucide-layers" class="justify-start" @click="() => { folderId = null }">All codes</UButton>
     <div v-for="f in folders" :key="f.id" class="group flex items-center">
-      <UButton block variant="ghost" color="neutral" :class="folderId === f.id ? 'bg-elevated' : ''" icon="i-lucide-folder" class="justify-start flex-1" @click="folderId = f.id">
+      <UButton block variant="ghost" color="neutral" :class="folderId === f.id ? 'bg-elevated' : ''" icon="i-lucide-folder" class="justify-start flex-1" @click="() => { folderId = f.id }">
         <span class="truncate">{{ f.name }}</span><span class="ml-auto text-xs text-muted tabular-nums">{{ f.code_count }}</span>
       </UButton>
       <UButton icon="i-lucide-x" variant="ghost" color="neutral" size="xs" class="opacity-0 group-hover:opacity-100" @click="remove(f)" />
     </div>
-    <UButton block variant="soft" size="sm" icon="i-lucide-folder-plus" class="mt-2" @click="newOpen = true">New folder</UButton>
+    <UButton block variant="soft" size="sm" icon="i-lucide-folder-plus" class="mt-2" @click="() => { newOpen = true }">New folder</UButton>
     <UModal v-model:open="newOpen" title="New folder">
       <template #body><UFormField label="Folder name"><UInput v-model="newName" autofocus @keydown.enter="create" /></UFormField></template>
-      <template #footer><div class="flex justify-end gap-2 w-full"><UButton variant="ghost" color="neutral" @click="newOpen = false">Cancel</UButton><UButton :disabled="!newName.trim()" @click="create">Create</UButton></div></template>
+      <template #footer><div class="flex justify-end gap-2 w-full"><UButton variant="ghost" color="neutral" @click="() => { newOpen = false }">Cancel</UButton><UButton :disabled="!newName.trim()" @click="create">Create</UButton></div></template>
     </UModal>
   </nav>
 </template>

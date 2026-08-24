@@ -46,7 +46,7 @@ function onLogo(e: Event) {
           type="button"
           class="rounded-lg ring-1 p-1.5 text-center"
           :class="model.pattern === p ? 'ring-2 ring-primary' : 'ring-default hover:ring-accented'"
-          @click="model = { ...model, pattern: p }"
+          @click="() => { model = { ...model, pattern: p } }"
         >
           <QrPreview :text="SAMPLE" :style="{ ...model, pattern: p, logo: undefined }" :size="56" />
           <span class="block mt-1 text-[11px] text-muted">{{ patternLabel[p] }}</span>
@@ -63,7 +63,7 @@ function onLogo(e: Event) {
           type="button"
           class="rounded-lg ring-1 p-1.5 text-center"
           :class="model.eye === e ? 'ring-2 ring-primary' : 'ring-default hover:ring-accented'"
-          @click="model = { ...model, eye: e }"
+          @click="() => { model = { ...model, eye: e } }"
         >
           <QrPreview :text="SAMPLE" :style="{ ...model, eye: e, logo: undefined }" :size="56" />
           <span class="block mt-1 text-[11px] text-muted">{{ eyeLabel[e] }}</span>
@@ -84,7 +84,7 @@ function onLogo(e: Event) {
       <div class="flex items-center gap-3">
         <input ref="logoInput" type="file" accept="image/png,image/svg+xml" class="hidden" @change="onLogo">
         <UButton size="sm" variant="soft" icon="i-lucide-image-plus" @click="logoInput?.click()">{{ model.logo ? 'Replace logo' : 'Add logo' }}</UButton>
-        <UButton v-if="model.logo" size="sm" variant="ghost" color="neutral" icon="i-lucide-x" @click="model = { ...model, logo: undefined }">Remove</UButton>
+        <UButton v-if="model.logo" size="sm" variant="ghost" color="neutral" icon="i-lucide-x" @click="() => { model = { ...model, logo: undefined } }">Remove</UButton>
       </div>
       <UFormField v-if="model.logo" label="Logo size" class="mt-3 max-w-xs">
         <USlider :model-value="model.logo.sizePct" :min="10" :max="25" :step="1" @update:model-value="(v: number) => model = { ...model, logo: { ...model.logo!, sizePct: v } }" />
