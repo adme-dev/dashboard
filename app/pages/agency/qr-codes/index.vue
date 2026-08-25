@@ -84,6 +84,15 @@ function onLoaded(codes: QrCode[]) {
             />
           </template>
         </UInput>
+        <QrClientSettings v-if="clientId" :client-id="clientId" />
+        <UButton
+          to="/agency/qr-codes/campaigns"
+          icon="i-lucide-layers"
+          variant="soft"
+          color="neutral"
+        >
+          Campaigns
+        </UButton>
         <UButton
           to="/agency/qr-codes/campaigns"
           icon="i-lucide-layers"

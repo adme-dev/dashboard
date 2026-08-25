@@ -127,7 +127,10 @@ function canonicalAttribution(lead: InsertLeadInput) {
     gclid: optionalAttribution(lead.attribution, 'gclid', 512),
     gbraid: optionalAttribution(lead.attribution, 'gbraid', 512),
     wbraid: optionalAttribution(lead.attribution, 'wbraid', 512),
-    gaClientId: null,
+    gaClientId: (() => {
+      const v = optionalAttribution(lead.attribution, 'ga_client_id', 128)
+      return v && /^\d+\.\d+$/.test(v) ? v : null
+    })(),
     ...(lead.source === 'email'
       ? boundedEmailAttribution(lead.attribution)
       : {})
