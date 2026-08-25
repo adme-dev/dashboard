@@ -44,7 +44,7 @@ export default eventHandler(async (event) => {
         COUNT(*) FILTER (WHERE COALESCE(ms.budget_allocated, 0) > 0)::int as budgeted_campaign_count,
         MAX(ms.synced_at) as last_synced_at,
         MIN(ms.synced_at) as oldest_synced_at,
-        MIN(COALESCE(coverage.spend_as_of, ms.synced_at::date))::text as spend_as_of,
+        MAX(COALESCE(coverage.spend_as_of, ms.synced_at::date))::text as spend_as_of,
         COUNT(*) FILTER (WHERE ms.synced_at IS NULL OR ms.synced_at < NOW() - MAKE_INTERVAL(hours => $3))::int as stale_row_count,
         array_agg(ms.id ORDER BY ms.actual_spend DESC) as spend_ids,
         bool_or(COALESCE(ms.budget_rolling, false)) as is_rolling,
