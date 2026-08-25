@@ -3,10 +3,11 @@ import { execute } from '~~/server/utils/db'
 import { sha256Hex } from '~~/server/utils/exportTokens'
 import { resolveClientIp } from '~~/server/utils/tracking/client-ip'
 import { classifyQrUserAgent } from './ua'
+import { resolveQrScanGeo } from './geo'
 import type { ResolvedQr } from './resolve'
 
-const INSERT_SQL = `INSERT INTO qr_scans (qr_code_id, client_id, country, device_type, os, browser, ip_hash, referrer, ua)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`
+const INSERT_SQL = `INSERT INTO qr_scans (qr_code_id, client_id, country, device_type, os, browser, ip_hash, referrer, ua, city, region, postcode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`
 const COUNTER_SQL = `UPDATE qr_codes SET scan_count = scan_count + 1, last_scanned_at = NOW() WHERE id = $1`
 
 /** Cap on how long a scan write may delay the redirect. */
@@ -26,7 +27,7 @@ export const SCAN_WRITE_TIMEOUT_MS = 1500
 export async function recordScan(event: H3Event, qr: ResolvedQr): Promise<void> {
   try {
     const ua = getHeader(event, 'user-agent') || null
-    const country = getHeader(event, 'cf-ipcountry') || null
+    const geo = resolveQrScanGeo(event)
     const referrer = getHeader(event, 'referer') || null
     const ip = resolveClientIp(getHeader(event, 'cf-connecting-ip'), getRequestIP(event, { xForwardedFor: true }))
     const day = new Date().toISOString().slice(0, 10)
@@ -35,7 +36,7 @@ export async function recordScan(event: H3Event, qr: ResolvedQr): Promise<void> 
     const ipHash = ip ? await sha256Hex(`${ip}:${salt}:${day}`) : null
 
     const write = (async () => {
-      await execute(INSERT_SQL, [qr.id, qr.clientId, country, info.deviceType, info.os, info.browser, ipHash, referrer, ua?.slice(0, 512) ?? null])
+      await execute(INSERT_SQL, [qr.id, qr.clientId, geo.country, info.deviceType, info.os, info.browser, ipHash, referrer, ua?.slice(0, 512) ?? null, geo.city, geo.region, geo.postcode])
       await execute(COUNTER_SQL, [qr.id])
     })()
 
