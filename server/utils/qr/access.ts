@@ -3,8 +3,8 @@ import { queryOne } from '~~/server/utils/db'
 import { requireClientTrackingAccess, isUuid } from '~~/server/utils/client-access'
 
 export interface QrCodeRow {
-  id: string, client_id: string, folder_id: string | null, code: string, domain: string | null,
-  name: string, destination_url: string, style: Record<string, unknown>, is_active: boolean,
+  id: string, client_id: string, folder_id: string | null, code: string, domain: string | null
+  name: string, destination_url: string, style: Record<string, unknown>, is_active: boolean
   scan_count: number, last_scanned_at: string | null, created_by: string | null, created_at: string, updated_at: string
 }
 

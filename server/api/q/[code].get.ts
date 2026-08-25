@@ -3,6 +3,7 @@ import { isValidSlug } from '~~/shared/qr/slug'
 import { resolveQrCode } from '~~/server/utils/qr/resolve'
 import { recordScan } from '~~/server/utils/qr/scans'
 import { qrNotFoundPage } from '~~/server/utils/qr/not-found-page'
+import { buildTrackedUrl } from '~~/shared/qr/tracking'
 
 function notFound(event: any) {
   setResponseStatus(event, 404)
@@ -18,5 +19,6 @@ export default defineEventHandler(async (event) => {
   if (!qr || !qr.active) return notFound(event)
   await recordScan(event, qr) // never throws; capped at SCAN_WRITE_TIMEOUT_MS
   setResponseHeaders(event, { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer-when-downgrade' })
-  return sendRedirect(event, qr.url, 302)
+  const target = buildTrackedUrl(qr.url, { code: qr.code ?? code!, enabled: qr.utmEnabled ?? true, medium: qr.utmMedium, campaign: qr.campaign })
+  return sendRedirect(event, target, 302)
 })

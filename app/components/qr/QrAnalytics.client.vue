@@ -4,7 +4,7 @@ import { formatTimeAgo } from '@vueuse/core'
 import { format } from 'date-fns'
 
 const props = defineProps<{
-  data: { totals: any, daily: { day: string, scans: number, unique: number }[], countries: any[], devices: any[], os: any[], browsers: any[], cities?: any[], postcodes?: any[], points?: { lat: number, lng: number, scans: number, city: string | null, postcode: string | null }[] }
+  data: { totals: any, daily: { day: string, scans: number, unique: number }[], countries: any[], devices: any[], os: any[], browsers: any[], cities?: any[], postcodes?: any[], points?: { lat: number, lng: number, scans: number, city: string | null, postcode: string | null }[], leads?: { total: number, withPostcode: number, postcodes: any[], points: { lat: number, lng: number, scans: number, city: string | null, postcode: string | null }[] } }
   rangeLabel?: string
 }>()
 
@@ -133,6 +133,43 @@ const kpis = computed(() => [
         </p>
         <p class="mt-1 text-xs text-muted">
           Locations are captured for new scans.
+        </p>
+      </div>
+    </UCard>
+
+    <UCard v-if="data.leads">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-1.5">
+            <span class="text-sm font-medium">Where leads live</span>
+            <UTooltip text="Postcode given by the lead on the form — actual home area, unlike scan location">
+              <UIcon name="i-lucide-info" class="size-3.5 text-muted" />
+            </UTooltip>
+          </div>
+          <span class="text-xs text-muted tabular-nums">{{ data.leads.total }} {{ data.leads.total === 1 ? 'lead' : 'leads' }}<template v-if="data.leads.total"> · {{ data.leads.withPostcode }} with postcode</template></span>
+        </div>
+      </template>
+      <div v-if="data.leads.points.length" class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+        <QrScanMap :points="data.leads.points" noun="lead" />
+        <ul class="space-y-2.5">
+          <li v-for="r in data.leads.postcodes" :key="r.key" class="text-sm">
+            <div class="flex justify-between gap-3">
+              <span class="truncate">{{ r.key }}</span>
+              <span class="shrink-0 tabular-nums text-muted">{{ r.scans }}</span>
+            </div>
+            <div class="mt-1 h-1.5 rounded bg-elevated">
+              <div class="h-full rounded bg-primary" :style="{ width: Math.round((r.scans / Math.max(1, data.leads.withPostcode)) * 100) + '%' }" />
+            </div>
+          </li>
+        </ul>
+      </div>
+      <div v-else class="py-10 text-center">
+        <UIcon name="i-lucide-users" class="mx-auto mb-2 size-6 text-muted" />
+        <p class="text-sm text-muted">
+          {{ data.leads.total ? 'Leads matched, but none included a postcode.' : 'No leads matched to this code in this range.' }}
+        </p>
+        <p class="mt-1 text-xs text-muted">
+          Leads match when their form carries the xf_qr click id or the utm tags from the scan.
         </p>
       </div>
     </UCard>

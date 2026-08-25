@@ -131,6 +131,7 @@ const CAMPAIGN_QUERY_KEYS = [
   'msclkid',
   'ttclid',
   'li_fat_id',
+  'xf_qr',
   'campaign_id',
   'adgroup_id',
   'ad_group_id',
@@ -217,7 +218,8 @@ function enrichAttribution(
   for (const key of CAMPAIGN_QUERY_KEYS) {
     const lastValue = result[`last_${key}`]
     const firstValue = result[`first_${key}`]
-    if (!result[key] && (lastValue || firstValue)) result[key] = lastValue || firstValue
+    const touchValue = lastValue || firstValue
+    if (!result[key] && touchValue) result[key] = touchValue
   }
 
   return Object.keys(result).length ? result : null

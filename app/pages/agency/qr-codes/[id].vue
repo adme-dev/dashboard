@@ -276,6 +276,14 @@ const full = (d: string) => format(new Date(d), 'd MMM yyyy, h:mm a')
           </dl>
         </UCard>
 
+        <QrConnectCard
+          v-if="analytics"
+          :code="data.code"
+          :tracker-installed="!!analytics.trackerInstalled"
+          :visits="analytics.visits ?? { sessions: 0, visitors: 0 }"
+          :leads="analytics.leads?.total ?? 0"
+        />
+
         <div class="flex flex-wrap items-center justify-between gap-3">
           <h2 class="font-semibold">
             Scans

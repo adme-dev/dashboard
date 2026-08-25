@@ -63,6 +63,9 @@ export function buildEventRows(
     if (attr.email_click_id && !eventData.email_click_id) {
       eventData.email_click_id = attr.email_click_id
     }
+    if (attr.xf_qr && !eventData.xf_qr) {
+      eventData.xf_qr = attr.xf_qr
+    }
     return {
       site_id: site.id,
       client_id: site.clientId,

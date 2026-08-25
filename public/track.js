@@ -500,7 +500,8 @@
         key === 'gbraid' ||
         key === 'wbraid' ||
         key === 'li_fat_id' ||
-        key === 'email_click_id'
+        key === 'email_click_id' ||
+        key === 'xf_qr' // XeroFlow QR code click id
       ) {
         params[key] = decodeURIComponent(pair[1] || '')
       }
@@ -513,7 +514,7 @@
   var TOUCH_ATTRIBUTION_KEYS = [
     'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
     'utm_id', 'gclid', 'gbraid', 'wbraid', 'fbclid', 'msclkid', 'ttclid',
-    'li_fat_id', 'email_click_id', 'campaign_id', 'adgroup_id', 'ad_group_id', 'asset_group_id',
+    'li_fat_id', 'email_click_id', 'xf_qr', 'campaign_id', 'adgroup_id', 'ad_group_id', 'asset_group_id',
     'adset_id', 'ad_set_id', 'ad_id', 'creative_id'
   ]
   var _memoryFirstTouch = null
