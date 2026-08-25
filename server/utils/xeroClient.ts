@@ -1,5 +1,10 @@
 import { createError } from 'h3'
-import { XeroClient } from 'xero-node'
+// Deep import on purpose: `xero-node`'s index eagerly instantiates every API
+// (payroll AU/NZ/UK, finance, files, assets, projects, bank feeds, app store)
+// and drags ~7 MB of generated models plus openid-client into the Pages
+// Worker, which sits at the immutable 25 MiB raw budget. We only ever use the
+// Accounting API, and all OAuth/tenant calls are fetch-based below.
+import { AccountingApi } from 'xero-node/dist/gen/api/accountingApi'
 import type { TokenSet } from 'xero-node'
 import type { H3Event } from 'h3'
 import { getAppUrl } from '~~/server/utils/appUrl'
@@ -402,41 +407,33 @@ export async function fetchXeroTenants(accessToken: string): Promise<Array<{ ten
 }
 
 /**
- * Create a XeroClient instance for API calls (invoices, contacts, etc.).
- * Uses fetch-based OIDC init instead of openid-client's Node.js HTTP.
- * The accountingApi uses axios internally which works on CF Workers.
+ * Create a minimal Xero client exposing the Accounting API.
+ *
+ * This deliberately returns `{ accountingApi }` rather than a full `XeroClient`
+ * — every caller only reads `client.accountingApi`, and consent/callback/refresh/
+ * tenant calls are the fetch-based helpers in this file. `AccountingApi` uses
+ * axios internally, which works on CF Workers.
  */
-export async function createXeroClient(options: CreateClientOptions = {}) {
+export async function createXeroClient(options: CreateClientOptions = {}): Promise<{ accountingApi: AccountingApi }> {
   const config = resolveXeroOAuthConfig(options.event)
   const clientId = config.clientId
   const clientSecret = config.clientSecret
   const redirectUri = resolveRedirectUri(config, options.event)
-  const httpTimeout = config.httpTimeout
 
   if (!clientId || !clientSecret || !redirectUri) {
     throw createError({ statusCode: 500, statusMessage: 'Xero OAuth not configured' })
   }
 
-  const client = new XeroClient({
-    clientId,
-    clientSecret,
-    redirectUris: [redirectUri],
-    scopes: DEFAULT_SCOPES,
-    state: options.state,
-    httpTimeout
-  })
-
-  // Skip openid-client initialization entirely — we use fetch-based auth instead.
-  // Just set the tokenSet so accountingApi calls work.
+  const accountingApi = new AccountingApi()
   if (options.tokenSet) {
-    client.setTokenSet(toTokenSet(options.tokenSet))
+    const accessToken = toTokenSet(options.tokenSet).access_token
+    if (!accessToken) {
+      throw createError({ statusCode: 500, statusMessage: 'Xero token set has no access_token' })
+    }
+    accountingApi.accessToken = accessToken
   }
 
-  if (options.state && client.config) {
-    client.config.state = options.state
-  }
-
-  return client
+  return { accountingApi }
 }
 
 export function toStoredTokenSet(token: TokenSet): XeroTokenSet {
