@@ -22,6 +22,8 @@ export interface QrTrackingInput {
   campaign?: string | null
   /** Overrides the default 'qr' source, e.g. 'tv' or 'instagram'. */
   source?: string | null
+  /** A/B arm the scan was sent to; rides along as xf_qr_variant. */
+  variant?: 'A' | 'B' | null
 }
 
 export function slugifyCampaign(value: string | null | undefined): string {
@@ -49,5 +51,6 @@ export function buildTrackedUrl(destination: string, t: QrTrackingInput): string
   setIfMissing('utm_campaign', slugifyCampaign(t.campaign) || t.code)
   setIfMissing('utm_content', t.code)
   setIfMissing(QR_CLICK_ID, t.code)
+  if (t.variant) setIfMissing('xf_qr_variant', t.variant)
   return url.toString()
 }

@@ -132,6 +132,7 @@ const CAMPAIGN_QUERY_KEYS = [
   'ttclid',
   'li_fat_id',
   'xf_qr',
+  'xf_qr_variant',
   'campaign_id',
   'adgroup_id',
   'ad_group_id',

@@ -66,6 +66,9 @@ export function buildEventRows(
     if (attr.xf_qr && !eventData.xf_qr) {
       eventData.xf_qr = attr.xf_qr
     }
+    if (attr.xf_qr_variant && !eventData.xf_qr_variant) {
+      eventData.xf_qr_variant = attr.xf_qr_variant
+    }
     return {
       site_id: site.id,
       client_id: site.clientId,

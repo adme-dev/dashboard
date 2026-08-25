@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { resolve, record } = vi.hoisted(() => ({ resolve: vi.fn(), record: vi.fn() }))
 vi.mock('~~/server/utils/qr/resolve', () => ({ resolveQrCode: resolve }))
-vi.mock('~~/server/utils/qr/scans', () => ({ recordScan: record }))
+vi.mock('~~/server/utils/qr/scans', () => ({ recordScan: record, scanIpHash: vi.fn().mockResolvedValue('seed') }))
 const { loadPage } = vi.hoisted(() => ({ loadPage: vi.fn() }))
 vi.mock('~~/server/utils/qr/pages', () => ({ loadPublicQrPage: loadPage }))
 vi.mock('~~/server/utils/qr/landing/render', () => ({ renderQrLandingPage: (i: any) => `<html>${i.config.headline}${i.preview ? ' PREVIEW' : ''}</html>` }))
@@ -62,6 +62,25 @@ describe('GET /q/:code', () => {
     expect(loc.searchParams.get('xf_qr')).toBe('AbC1234') // legacy cache entry (no code/utm fields) → tagging still on
   })
 
+  it('sends the whole split to variant B and tags the arm', async () => {
+    resolve.mockResolvedValue({ id: '1', clientId: 'c', url: 'https://dest.example/a', active: true, code: 'AbC1234', ab: { enabled: true, variantBUrl: 'https://dest.example/b', splitPct: 100 } })
+    const handler = (await import('../../server/api/q/[code].get')).default
+    const event = makeEvent('AbC1234')
+    await handler(event)
+    const loc = new URL((globalThis as any).__h3.headers.location)
+    expect(loc.origin + loc.pathname).toBe('https://dest.example/b')
+    expect(loc.searchParams.get('xf_qr_variant')).toBe('B')
+    expect(record).toHaveBeenCalledWith(expect.anything(), expect.anything(), { variant: 'B' })
+  })
+  it('keeps the primary URL for a 0% split and records arm A', async () => {
+    resolve.mockResolvedValue({ id: '1', clientId: 'c', url: 'https://dest.example/a', active: true, code: 'AbC1234', ab: { enabled: true, variantBUrl: 'https://dest.example/b', splitPct: 0 } })
+    const handler = (await import('../../server/api/q/[code].get')).default
+    const event = makeEvent('AbC1234')
+    await handler(event)
+    const loc = new URL((globalThis as any).__h3.headers.location)
+    expect(loc.origin + loc.pathname).toBe('https://dest.example/a')
+    expect(loc.searchParams.get('xf_qr_variant')).toBe('A')
+  })
   it('redirects to the bare destination when tagging is disabled', async () => {
     resolve.mockResolvedValue({ id: '1', clientId: 'c', url: 'https://dest.example/x?keep=1', active: true, code: 'AbC1234', utmEnabled: false })
     const handler = (await import('../../server/api/q/[code].get')).default

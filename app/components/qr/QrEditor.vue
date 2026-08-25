@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { DEFAULT_STYLE, type QrStyle } from '~~/shared/qr/style'
+import { DEFAULT_AB, QrAbSchema, type QrAb } from '~~/shared/qr/ab'
 import { DEFAULT_FRAME, QR_FRAME_STYLES, QR_FRAME_STYLE_LABELS, QR_FRAME_LABEL_MAX, QrFrameSchema, defaultFrameLabel, type QrFrame } from '~~/shared/qr/frame'
 import { QR_UTM_MEDIUMS, buildTrackedUrl, type QrUtmMedium } from '~~/shared/qr/tracking'
 import { validateDestinationUrl, isDestinationInvalid } from '~~/shared/qr/destination'
@@ -21,6 +22,7 @@ const form = reactive({
   destinationUrl: '',
   style: { ...DEFAULT_STYLE } as QrStyle,
   frame: { ...DEFAULT_FRAME } as QrFrame,
+  ab: { ...DEFAULT_AB } as QrAb,
   utmEnabled: true,
   utmMedium: 'print' as QrUtmMedium,
   utmSource: ''
@@ -56,6 +58,7 @@ watch(() => open.value, (o) => {
   form.destinationUrl = c?.destination_url ?? ''
   form.style = { ...DEFAULT_STYLE, ...(c?.style ?? {}) }
   form.frame = QrFrameSchema.parse(c?.frame ?? {})
+  form.ab = QrAbSchema.parse(c?.ab ?? {})
   form.utmEnabled = c?.utm_enabled ?? true
   form.utmMedium = (c?.utm_medium as QrUtmMedium) ?? 'print'
   form.utmSource = c?.utm_source ?? ''
@@ -74,6 +77,11 @@ async function onLogo(file: File) {
   }
 }
 
+const abUrlError = computed(() => {
+  if (!form.ab.enabled || !form.ab.variant_b_url) return ''
+  const d = validateDestinationUrl(form.ab.variant_b_url)
+  return isDestinationInvalid(d) ? d.reason : ''
+})
 const frameStyleItems = QR_FRAME_STYLES.map(value => ({ label: QR_FRAME_STYLE_LABELS[value], value }))
 const frameLabelPlaceholder = computed(() => defaultFrameLabel(null))
 const frameColorModel = computed({
@@ -86,7 +94,7 @@ async function save() {
   saving.value = true
   try {
     const res = props.code
-      ? await api.update(props.code.id, { name: form.name, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style, frame: form.frame, utmEnabled: form.utmEnabled, utmMedium: form.utmMedium, utmSource: form.utmSource.trim() || null })
+      ? await api.update(props.code.id, { name: form.name, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style, frame: form.frame, ab: form.ab, utmEnabled: form.utmEnabled, utmMedium: form.utmMedium, utmSource: form.utmSource.trim() || null })
       : await api.create({ name: form.name, clientId: form.clientId, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style, frame: form.frame, utmEnabled: form.utmEnabled, utmMedium: form.utmMedium, utmSource: form.utmSource.trim() || null })
     toast.add({ title: props.code ? 'QR code updated' : 'QR code created', description: props.code ? undefined : 'Download it from the card or open it for scan tracking.', color: 'success' })
     emit('saved', res.code)
@@ -180,6 +188,36 @@ async function save() {
             <p v-if="trackedPreview" class="break-all rounded-md bg-elevated/60 px-3 py-2 font-mono text-[11px] text-muted">
               {{ trackedPreview }}
             </p>
+          </section>
+          <USeparator />
+          <section class="space-y-3">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-muted">
+              A/B destinations
+            </h4>
+            <p class="text-xs text-muted">
+              Send a share of scans to a second URL. Each person sees one arm for the day; leads carry the arm so you can see which page converts.
+            </p>
+            <UFormField label="Split test">
+              <USwitch v-model="form.ab.enabled" :label="form.ab.enabled ? 'On' : 'Off'" />
+            </UFormField>
+            <template v-if="form.ab.enabled">
+              <UFormField
+                label="Variant B URL"
+                required
+                :error="abUrlError || undefined"
+                help="Variant A is the destination URL above."
+              >
+                <UInput v-model="form.ab.variant_b_url" placeholder="https://" class="w-full" />
+              </UFormField>
+              <UFormField :label="`Share to B · ${form.ab.split_pct}%`" class="max-w-xs">
+                <USlider
+                  v-model="form.ab.split_pct"
+                  :min="0"
+                  :max="100"
+                  :step="5"
+                />
+              </UFormField>
+            </template>
           </section>
           <USeparator />
           <section class="space-y-3">
