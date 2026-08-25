@@ -6,7 +6,7 @@
  *   utm_source=qr · utm_medium=<medium> · utm_campaign=<slug of folder|name> · utm_content=<code>
  *   xf_qr=<code>  (click id — survives even when the client overrides the utm_* on their forms)
  */
-export const QR_UTM_MEDIUMS = ['print', 'signage', 'vehicle', 'packaging', 'event', 'tv', 'other'] as const
+export const QR_UTM_MEDIUMS = ['print', 'signage', 'vehicle', 'packaging', 'event', 'tv', 'social', 'other'] as const
 export type QrUtmMedium = typeof QR_UTM_MEDIUMS[number]
 export const QR_CLICK_ID = 'xf_qr'
 
