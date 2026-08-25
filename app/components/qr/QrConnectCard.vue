@@ -10,6 +10,7 @@ const trackedUrl = computed(() => buildTrackedUrl(props.code.destination_url, {
   code: props.code.code,
   enabled: props.code.utm_enabled ?? true,
   medium: props.code.utm_medium,
+  source: props.code.utm_source,
   campaign: props.code.folder_name || props.code.name
 }))
 const enabled = computed(() => props.code.utm_enabled ?? true)

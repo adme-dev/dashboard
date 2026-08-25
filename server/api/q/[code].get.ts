@@ -19,6 +19,6 @@ export default defineEventHandler(async (event) => {
   if (!qr || !qr.active) return notFound(event)
   await recordScan(event, qr) // never throws; capped at SCAN_WRITE_TIMEOUT_MS
   setResponseHeaders(event, { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer-when-downgrade' })
-  const target = buildTrackedUrl(qr.url, { code: qr.code ?? code!, enabled: qr.utmEnabled ?? true, medium: qr.utmMedium, campaign: qr.campaign })
+  const target = buildTrackedUrl(qr.url, { code: qr.code ?? code!, enabled: qr.utmEnabled ?? true, medium: qr.utmMedium, source: qr.utmSource, campaign: qr.campaign })
   return sendRedirect(event, target, 302)
 })

@@ -9,11 +9,11 @@ export default defineEventHandler(async (event) => {
   const where = `qr_code_id = $1 AND scanned_at >= $2::date AND scanned_at < ($3::date + 1)`
   const breakdown = (col: string) => queryRows<{ key: string, scans: number }>(
     `SELECT COALESCE(${col}, 'Unknown') AS key, COUNT(*)::int AS scans FROM qr_scans WHERE ${where} GROUP BY 1 ORDER BY 2 DESC LIMIT 10`, p)
-  // Leads attributed to this code: the xf_qr click id, or utm_source=qr + utm_content=<code> (either survives
+  // Leads attributed to this code: the xf_qr click id, or utm_content=<code> (7-char slug; either survives
   // whichever path the lead took — track.js intent, generic webhook, CSV). Range-scoped by submitted_at.
   const leadWhere = `l.client_id = $1 AND l.deleted_at IS NULL AND l.is_test = FALSE
     AND l.submitted_at >= $3::date AND l.submitted_at < ($4::date + 1)
-    AND (l.attribution->>'xf_qr' = $2 OR (l.attribution->>'utm_source' = 'qr' AND l.attribution->>'utm_content' = $2))`
+    AND (l.attribution->>'xf_qr' = $2 OR l.attribution->>'utm_content' = $2)`
   const lp = [row.client_id, row.code, from, to]
   const leadPostcode = `NULLIF(regexp_replace(COALESCE(l.field_data->>'postcode', l.field_data->>'post_code', l.field_data->>'postal_code', l.field_data->>'zip', ''), '\\D', '', 'g'), '')`
   const [totals, daily, countries, devices, os, browsers, cities, postcodes, points, leadTotals, leadPostcodes, leadPoints, visits, trackerSite] = await Promise.all([
@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
     queryOne<{ sessions: number, visitors: number }>(
       `SELECT COUNT(DISTINCT COALESCE(session_id, anon_id))::int AS sessions, COUNT(DISTINCT anon_id)::int AS visitors
        FROM tracking_events WHERE client_id = $1 AND received_at >= $3::date AND received_at < ($4::date + 1)
-         AND (event_data->>'xf_qr' = $2 OR (utm_source = 'qr' AND utm_content = $2))`, lp),
+         AND (event_data->>'xf_qr' = $2 OR utm_content = $2)`, lp),
     queryOne<{ id: string }>(`SELECT id FROM tracking_sites WHERE client_id = $1 LIMIT 1`, [row.client_id])
   ])
   return {

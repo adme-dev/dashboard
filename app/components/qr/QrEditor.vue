@@ -20,7 +20,8 @@ const form = reactive({
   destinationUrl: '',
   style: { ...DEFAULT_STYLE } as QrStyle,
   utmEnabled: true,
-  utmMedium: 'print' as QrUtmMedium
+  utmMedium: 'print' as QrUtmMedium,
+  utmSource: ''
 })
 const folders = ref<QrFolder[]>([])
 const saving = ref(false)
@@ -40,7 +41,7 @@ const mediumItems = QR_UTM_MEDIUMS.map(m => ({ label: m.charAt(0).toUpperCase() 
 const folderName = computed(() => folders.value.find(f => f.id === form.folderId)?.name ?? null)
 const trackedPreview = computed(() => {
   if (!form.destinationUrl || urlError.value) return ''
-  return buildTrackedUrl(form.destinationUrl, { code: props.code?.code ?? 'AbC1234', enabled: form.utmEnabled, medium: form.utmMedium, campaign: folderName.value || form.name })
+  return buildTrackedUrl(form.destinationUrl, { code: props.code?.code ?? 'AbC1234', enabled: form.utmEnabled, medium: form.utmMedium, source: form.utmSource, campaign: folderName.value || form.name })
 })
 const canSave = computed(() => !!form.name.trim() && !!form.clientId && !!form.destinationUrl && !urlError.value)
 
@@ -54,6 +55,7 @@ watch(() => open.value, (o) => {
   form.style = { ...DEFAULT_STYLE, ...(c?.style ?? {}) }
   form.utmEnabled = c?.utm_enabled ?? true
   form.utmMedium = (c?.utm_medium as QrUtmMedium) ?? 'print'
+  form.utmSource = c?.utm_source ?? ''
 }, { immediate: true })
 
 watch(() => form.clientId, async (id) => {
@@ -74,8 +76,8 @@ async function save() {
   saving.value = true
   try {
     const res = props.code
-      ? await api.update(props.code.id, { name: form.name, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style, utmEnabled: form.utmEnabled, utmMedium: form.utmMedium })
-      : await api.create({ name: form.name, clientId: form.clientId, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style, utmEnabled: form.utmEnabled, utmMedium: form.utmMedium })
+      ? await api.update(props.code.id, { name: form.name, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style, utmEnabled: form.utmEnabled, utmMedium: form.utmMedium, utmSource: form.utmSource.trim() || null })
+      : await api.create({ name: form.name, clientId: form.clientId, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style, utmEnabled: form.utmEnabled, utmMedium: form.utmMedium, utmSource: form.utmSource.trim() || null })
     toast.add({ title: props.code ? 'QR code updated' : 'QR code created', description: props.code ? undefined : 'Download it from the card or open it for scan tracking.', color: 'success' })
     emit('saved', res.code)
     open.value = false
@@ -143,9 +145,17 @@ async function save() {
             <h4 class="text-xs font-semibold uppercase tracking-wider text-muted">
               Analytics tagging
             </h4>
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <UFormField label="Tag the destination" help="Adds utm_source=qr and a click id so the client's GA4 / Meta / XeroFlow tracking attributes visits to this code.">
                 <USwitch v-model="form.utmEnabled" :label="form.utmEnabled ? 'On' : 'Off'" />
+              </UFormField>
+              <UFormField label="Source (utm_source)" help="Blank = qr. Use tv or instagram when the code sits inside another channel.">
+                <UInput
+                  v-model="form.utmSource"
+                  placeholder="qr"
+                  :disabled="!form.utmEnabled"
+                  class="w-full"
+                />
               </UFormField>
               <UFormField label="Placement (utm_medium)">
                 <USelectMenu

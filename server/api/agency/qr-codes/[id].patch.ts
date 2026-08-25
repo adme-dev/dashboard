@@ -17,6 +17,7 @@ export default defineEventHandler(async (event) => {
   if (b.style !== undefined) set('style', JSON.stringify(b.style))
   if (b.utmEnabled !== undefined) set('utm_enabled', b.utmEnabled)
   if (b.utmMedium !== undefined) set('utm_medium', b.utmMedium)
+  if (b.utmSource !== undefined) set('utm_source', b.utmSource || null)
   if (b.folderId !== undefined) {
     if (b.folderId) {
       const f = await queryOne(`SELECT 1 FROM qr_folders WHERE id = $1 AND client_id = $2`, [b.folderId, row.client_id])
@@ -36,6 +37,6 @@ export default defineEventHandler(async (event) => {
   const updated = await queryOne<any>(`UPDATE qr_codes SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${params.length} RETURNING *`, params)
   if (newUrl) await queryOne(`INSERT INTO qr_destination_history (qr_code_id, old_url, new_url, changed_by) VALUES ($1,$2,$3,$4) RETURNING id`, [row.id, row.destination_url, newUrl, user.id])
   // Anything that changes the redirect target or tagging must drop the KV copy.
-  if (newUrl || b.isActive !== undefined || b.name !== undefined || b.folderId !== undefined || b.utmEnabled !== undefined || b.utmMedium !== undefined) await invalidateQrCache(event, row.code)
+  if (newUrl || b.isActive !== undefined || b.name !== undefined || b.folderId !== undefined || b.utmEnabled !== undefined || b.utmMedium !== undefined || b.utmSource !== undefined) await invalidateQrCache(event, row.code)
   return { code: updated, shortUrl: shortUrl(row.code) }
 })

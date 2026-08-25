@@ -10,7 +10,8 @@ export const CreateQrSchema = z.object({
   destinationUrl: z.string().trim().min(1).max(2048),
   style: QrStyleSchema.default(() => QrStyleSchema.parse({})),
   utmEnabled: z.boolean().default(true),
-  utmMedium: z.enum(QR_UTM_MEDIUMS).default('print')
+  utmMedium: z.enum(QR_UTM_MEDIUMS).default('print'),
+  utmSource: z.string().trim().max(64).nullable().optional()
 }).strict()
 
 export const UpdateQrSchema = z.object({
@@ -20,7 +21,8 @@ export const UpdateQrSchema = z.object({
   style: QrStyleSchema.optional(),
   isActive: z.boolean().optional(),
   utmEnabled: z.boolean().optional(),
-  utmMedium: z.enum(QR_UTM_MEDIUMS).optional()
+  utmMedium: z.enum(QR_UTM_MEDIUMS).optional(),
+  utmSource: z.string().trim().max(64).nullable().optional()
 }).strict()
 
 export const FolderSchema = z.object({ clientId: uuid, name: z.string().trim().min(1).max(80) }).strict()

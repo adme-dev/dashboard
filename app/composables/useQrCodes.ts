@@ -20,6 +20,7 @@ export interface QrCode {
   sparkline?: number[]
   utm_enabled?: boolean
   utm_medium?: string
+  utm_source?: string | null
 }
 
 export interface QrFolder {
@@ -86,9 +87,9 @@ export function useQrCodes() {
     list: (params: { clientId?: string, folderId?: string, search?: string }) =>
       $fetch<{ codes: QrCode[] }>(base, { params }),
     get: (id: string) => $fetch<{ code: QrCode, shortUrl: string, history: any[] }>(`${base}/${id}`),
-    create: (body: { name: string, clientId: string, folderId?: string | null, destinationUrl: string, style: QrStyle, utmEnabled?: boolean, utmMedium?: string }) =>
+    create: (body: { name: string, clientId: string, folderId?: string | null, destinationUrl: string, style: QrStyle, utmEnabled?: boolean, utmMedium?: string, utmSource?: string | null }) =>
       $fetch<{ code: QrCode, shortUrl: string }>(base, { method: 'POST', body }),
-    update: (id: string, body: Partial<{ name: string, folderId: string | null, destinationUrl: string, style: QrStyle, isActive: boolean, utmEnabled: boolean, utmMedium: string }>) =>
+    update: (id: string, body: Partial<{ name: string, folderId: string | null, destinationUrl: string, style: QrStyle, isActive: boolean, utmEnabled: boolean, utmMedium: string, utmSource: string | null }>) =>
       $fetch<{ code: QrCode }>(`${base}/${id}`, { method: 'PATCH', body }),
     remove: (id: string) => $fetch(`${base}/${id}`, { method: 'DELETE' }),
     folders: (clientId: string) => $fetch<{ folders: QrFolder[] }>(`${base}/folders`, { params: { clientId } }),

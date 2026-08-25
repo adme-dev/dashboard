@@ -9,12 +9,19 @@
 export const QR_UTM_MEDIUMS = ['print', 'signage', 'vehicle', 'packaging', 'event', 'tv', 'social', 'other'] as const
 export type QrUtmMedium = typeof QR_UTM_MEDIUMS[number]
 export const QR_CLICK_ID = 'xf_qr'
+export const QR_DEFAULT_SOURCE = 'qr'
+/** utm_source values are lowercase slugs so GA4 groups them cleanly. */
+export function normaliseUtmSource(value: string | null | undefined): string {
+  return slugifyCampaign(value) || QR_DEFAULT_SOURCE
+}
 
 export interface QrTrackingInput {
   code: string
   enabled: boolean
   medium?: string | null
   campaign?: string | null
+  /** Overrides the default 'qr' source, e.g. 'tv' or 'instagram'. */
+  source?: string | null
 }
 
 export function slugifyCampaign(value: string | null | undefined): string {
@@ -37,7 +44,7 @@ export function buildTrackedUrl(destination: string, t: QrTrackingInput): string
   }
   const p = url.searchParams
   const setIfMissing = (k: string, v: string) => { if (v && !p.has(k)) p.set(k, v) }
-  setIfMissing('utm_source', 'qr')
+  setIfMissing('utm_source', normaliseUtmSource(t.source))
   setIfMissing('utm_medium', (t.medium || 'print').trim().toLowerCase())
   setIfMissing('utm_campaign', slugifyCampaign(t.campaign) || t.code)
   setIfMissing('utm_content', t.code)

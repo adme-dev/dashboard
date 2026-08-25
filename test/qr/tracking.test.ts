@@ -28,6 +28,12 @@ describe('buildTrackedUrl', () => {
     expect(buildTrackedUrl('https://c.com/p?x=1', { code: 'Q', enabled: false })).toBe('https://c.com/p?x=1')
     expect(buildTrackedUrl('not a url', { code: 'Q', enabled: true })).toBe('not a url')
   })
+  it('uses the per-code source override, normalised to a slug', () => {
+    const u = new URL(buildTrackedUrl('https://c.com/p', { code: 'Q1', enabled: true, source: ' TV Spot ' }))
+    expect(u.searchParams.get('utm_source')).toBe('tv-spot')
+    expect(u.searchParams.get('xf_qr')).toBe('Q1')
+    expect(new URL(buildTrackedUrl('https://c.com/p', { code: 'Q1', enabled: true, source: '' })).searchParams.get('utm_source')).toBe('qr')
+  })
   it('preserves hash fragments', () => {
     expect(buildTrackedUrl('https://c.com/p#book', { code: 'Q', enabled: true })).toMatch(/\?utm_source=qr.*#book$/)
   })

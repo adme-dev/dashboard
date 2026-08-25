@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+import { resolveQrCode, invalidateQrCache } from '../../server/utils/qr/resolve'
+
 const { kv, db } = vi.hoisted(() => ({
   kv: { get: vi.fn(), put: vi.fn(), delete: vi.fn() },
-  db: { queryOne: vi.fn() },
+  db: { queryOne: vi.fn() }
 }))
 vi.mock('~~/server/utils/kv', () => ({ kvGet: kv.get, kvPut: kv.put, kvDelete: kv.delete }))
 vi.mock('~~/server/utils/db', () => ({ queryOne: db.queryOne, execute: vi.fn() }))
-
-import { resolveQrCode, invalidateQrCache } from '../../server/utils/qr/resolve'
 
 const event = {} as any
 beforeEach(() => { vi.clearAllMocks() })
@@ -21,9 +21,9 @@ describe('resolveQrCode', () => {
   })
   it('falls back to DB and caches for 24h', async () => {
     kv.get.mockResolvedValue(null)
-    db.queryOne.mockResolvedValue({ id: '1', client_id: 'c', destination_url: 'https://b', is_active: true, utm_enabled: true, utm_medium: 'signage', name: 'Window', folder_name: 'Spring' })
+    db.queryOne.mockResolvedValue({ id: '1', client_id: 'c', destination_url: 'https://b', is_active: true, utm_enabled: true, utm_medium: 'signage', utm_source: null, name: 'Window', folder_name: 'Spring' })
     const r = await resolveQrCode(event, 'AbC1234')
-    expect(r).toEqual({ id: '1', clientId: 'c', url: 'https://b', active: true, code: 'AbC1234', utmEnabled: true, utmMedium: 'signage', campaign: 'Spring' })
+    expect(r).toEqual({ id: '1', clientId: 'c', url: 'https://b', active: true, code: 'AbC1234', utmEnabled: true, utmMedium: 'signage', utmSource: null, campaign: 'Spring' })
     expect(kv.put).toHaveBeenCalledWith(event, 'qr:AbC1234', r, 86400)
   })
   it('returns null for unknown codes and does not cache', async () => {
