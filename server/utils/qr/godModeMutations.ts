@@ -27,7 +27,7 @@ const BASE = '/api/agency/qr-codes'
 const COMP = '/api/agency/qr-competitions'
 
 export type QrMutationKind
-  = 'code-create' | 'code-update' | 'code-delete'
+  = 'code-create' | 'code-update' | 'code-delete' | 'bulk-create'
     | 'folder-create' | 'folder-update' | 'folder-delete'
     | 'logo-upload'
     | 'page-save' | 'page-publish' | 'page-asset-upload'
@@ -37,6 +37,7 @@ interface FamilyDef { kind: QrMutationKind, method: 'POST' | 'PUT' | 'PATCH' | '
 
 const FAMILIES: FamilyDef[] = [
   { kind: 'code-create', method: 'POST', matches: p => p === BASE, name: 'QR code creation' },
+  { kind: 'bulk-create', method: 'POST', matches: p => p === `${BASE}/bulk`, name: 'QR bulk code creation' },
   { kind: 'code-update', method: 'PATCH', matches: p => new RegExp(`^${BASE}/${UUID}$`, 'i').test(p), name: 'QR code update' },
   { kind: 'code-delete', method: 'DELETE', matches: p => new RegExp(`^${BASE}/${UUID}$`, 'i').test(p), name: 'QR code deletion' },
   { kind: 'folder-create', method: 'POST', matches: p => p === `${BASE}/folders`, name: 'QR folder creation' },

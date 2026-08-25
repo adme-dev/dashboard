@@ -1,6 +1,7 @@
 import type { QrStyle } from '~~/shared/qr/style'
 import { renderQrSvg } from '~~/shared/qr/render-svg'
 import { framedDimensions, wrapQrSvgWithFrame, type QrFrame } from '~~/shared/qr/frame'
+import type { BulkQrInput } from '~~/shared/qr/bulk'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 import type { QrPageConfig, QrPageTemplate } from '~~/shared/qr/page'
 
@@ -15,6 +16,8 @@ export interface QrCode {
   destination_url: string
   style: QrStyle
   frame?: Partial<QrFrame> | null
+  campaign_id?: string | null
+  campaign_name?: string | null
   is_active: boolean
   scan_count: number
   last_scanned_at: string | null
@@ -57,12 +60,17 @@ export const qrExportUrl = (id: string) => `/api/agency/qr-codes/${id}/export.sv
  * Renders a QR code's SVG client-side, rasterizes it through a canvas, and triggers
  * a PNG download. Used in place of a server-side export.png endpoint (not implemented).
  */
-export async function downloadQrPng(code: { id: string, code: string, name: string, style: QrStyle, frame?: Partial<QrFrame> | null }, size = 2048) {
-  const svg = wrapQrSvgWithFrame({ inner: renderQrSvg({ text: qrShortUrl(code.code), style: code.style }), frame: code.frame, fg: code.style.fg, size })
+/** Framed SVG markup for a code at a given width (used by both exports). */
+export function renderQrSvgForExport(code: { code: string, style: QrStyle, frame?: Partial<QrFrame> | null }, size?: number) {
+  return wrapQrSvgWithFrame({ inner: renderQrSvg({ text: qrShortUrl(code.code), style: code.style }), frame: code.frame, fg: code.style.fg, size })
+}
+
+/** Rasterises a code (with its frame) through a canvas and returns a PNG blob. */
+export async function renderQrPngBlob(code: { code: string, style: QrStyle, frame?: Partial<QrFrame> | null }, size = 2048): Promise<Blob> {
+  const svg = renderQrSvgForExport(code, size)
   const { width, height } = framedDimensions(svg, size)
   const svgBlob = new Blob([svg], { type: 'image/svg+xml' })
   const svgUrl = URL.createObjectURL(svgBlob)
-
   try {
     const img = new Image()
     img.width = width
@@ -72,28 +80,37 @@ export async function downloadQrPng(code: { id: string, code: string, name: stri
       img.onerror = () => reject(new Error('Could not rasterize QR code'))
       img.src = svgUrl
     })
-
     const canvas = document.createElement('canvas')
     canvas.width = width
     canvas.height = height
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('Canvas not supported')
     ctx.drawImage(img, 0, 0, width, height)
-
     const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
     if (!blob) throw new Error('Could not encode PNG')
-
-    const pngUrl = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = pngUrl
-    a.download = `${code.name || code.code}.png`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(pngUrl)
+    return blob
   } finally {
     URL.revokeObjectURL(svgUrl)
   }
+}
+
+export function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * Renders a QR code's SVG client-side, rasterizes it through a canvas, and triggers
+ * a PNG download. Used in place of a server-side export.png endpoint (not implemented).
+ */
+export async function downloadQrPng(code: { id: string, code: string, name: string, style: QrStyle, frame?: Partial<QrFrame> | null }, size = 2048) {
+  triggerDownload(await renderQrPngBlob(code, size), `${code.name || code.code}.png`)
 }
 
 export function useQrCodes() {
@@ -104,13 +121,16 @@ export function useQrCodes() {
     shortUrl: qrShortUrl,
     exportUrl: qrExportUrl,
     downloadPng: downloadQrPng,
-    list: (params: { clientId?: string, folderId?: string, search?: string }) =>
+    list: (params: { clientId?: string, folderId?: string, campaignId?: string, search?: string }) =>
       $fetch<{ codes: QrCode[] }>(base, { params }),
     get: (id: string) => $fetch<{ code: QrCode, shortUrl: string, history: any[] }>(`${base}/${id}`),
     create: (body: { name: string, clientId: string, folderId?: string | null, destinationUrl: string, style: QrStyle, frame?: QrFrame, utmEnabled?: boolean, utmMedium?: string, utmSource?: string | null }) =>
       $fetch<{ code: QrCode, shortUrl: string }>(base, { method: 'POST', body, headers: idem('create') }),
     update: (id: string, body: Partial<{ name: string, folderId: string | null, destinationUrl: string, style: QrStyle, frame: QrFrame, isActive: boolean, utmEnabled: boolean, utmMedium: string, utmSource: string | null }>) =>
       $fetch<{ code: QrCode }>(`${base}/${id}`, { method: 'PATCH', body, headers: idem(`update:${id}`) }),
+    bulkCreate: (body: BulkQrInput) => $fetch<{ campaignId: string, codes: QrCode[] }>(`${base}/bulk`, { method: 'POST', body, headers: idem('bulk-create') }),
+    campaigns: (clientId?: string) => $fetch<{ campaigns: any[] }>('/api/agency/qr-campaigns', { params: clientId ? { clientId } : {} }),
+    campaign: (id: string) => $fetch<{ campaign: any, codes: QrCode[], totals: { scans: number, visitors: number, leads: number } }>(`/api/agency/qr-campaigns/${id}`),
     remove: (id: string) => $fetch(`${base}/${id}`, { method: 'DELETE', headers: idem(`delete:${id}`) }),
     folders: (clientId: string) => $fetch<{ folders: QrFolder[] }>(`${base}/folders`, { params: { clientId } }),
     createFolder: (body: { clientId: string, name: string }) => $fetch<{ folder: QrFolder }>(`${base}/folders`, { method: 'POST', body, headers: idem('folder-create') }),

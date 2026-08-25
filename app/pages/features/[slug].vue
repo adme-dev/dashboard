@@ -2995,6 +2995,10 @@ const features: Record<string, Feature> = {
         content: 'Each code tracks a daily scan series, a unique-visitor estimate, and suburb, postcode, country, device, operating system, and browser breakdowns (location is network-derived and approximate) — enough to know a code is working without collecting cookies or storing anything personally identifying about the person who scanned it.'
       },
       {
+        title: 'Variants in bulk',
+        content: 'Need one code per table, window, flyer or dealer? Paste a list of variants (or pick a count) and every code is created in one go under a campaign, sharing the same style, frame and destination. The campaign view rolls up scans and leads per code and downloads every SVG and PNG in a single ZIP.'
+      },
+      {
         title: 'Organised by client',
         content: 'Codes live in folders per client, with a QR tab on every client record so a whole client\'s codes are one click away. Role-scoped access keeps each account manager looking only at the clients they work on.'
       }
