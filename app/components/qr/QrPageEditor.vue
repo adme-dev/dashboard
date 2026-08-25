@@ -17,6 +17,14 @@ const saving = ref(false)
 const publishing = ref(false)
 const dirty = ref(false)
 const previewNonce = ref(0)
+const competitionId = ref<string | null>(null)
+const competitions = ref<{ label: string, value: string }[]>([])
+watch(template, async (t) => {
+  if (t === 'competition' && !competitions.value.length) {
+    const res = await api.competitions(props.code.client_id).catch(() => ({ competitions: [] }))
+    competitions.value = res.competitions.map((c: any) => ({ label: `${c.name} (${c.status})`, value: c.id }))
+  }
+})
 const heroInput = ref<HTMLInputElement>()
 const logoInput = ref<HTMLInputElement>()
 
@@ -43,6 +51,8 @@ async function load() {
       page.value = res.page
       template.value = res.page.template
       config.value = QrPageConfigSchema.parse(res.page.config)
+      competitionId.value = res.page.competition_id ?? null
+      if (res.page.template === 'competition') template.value = 'competition'
     } else if (res.draft) {
       page.value = null
       template.value = res.draft.template
@@ -89,7 +99,7 @@ async function save(opts: { silent?: boolean } = {}) {
   }
   saving.value = true
   try {
-    const res = await api.savePage(props.code.id, { template: template.value, config: config.value })
+    const res = await api.savePage(props.code.id, { template: template.value, config: config.value, competitionId: template.value === 'competition' ? competitionId.value : null })
     page.value = res.page
     dirty.value = false
     previewNonce.value++
@@ -182,6 +192,20 @@ async function upload(kind: 'hero' | 'logo', e: Event) {
             </div>
           </section>
 
+          <section v-if="template === 'competition'" class="space-y-2">
+            <UFormField label="Competition" required help="Entries are recorded against this competition with the accepted terms version.">
+              <USelectMenu
+                v-model="competitionId"
+                :items="competitions"
+                value-key="value"
+                class="w-full"
+                placeholder="Select a competition"
+              />
+            </UFormField>
+            <p class="text-xs text-muted">
+              Manage prizes, permits, terms and the draw under <NuxtLink to="/agency/qr-codes/competitions" class="text-primary">Competitions</NuxtLink>.
+            </p>
+          </section>
           <section class="space-y-4">
             <h4 class="text-xs font-semibold uppercase tracking-wider text-muted">
               Copy

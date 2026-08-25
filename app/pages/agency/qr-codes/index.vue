@@ -83,6 +83,14 @@ function onLoaded(codes: QrCode[]) {
             />
           </template>
         </UInput>
+        <UButton
+          to="/agency/qr-codes/competitions"
+          icon="i-lucide-trophy"
+          variant="soft"
+          color="neutral"
+        >
+          Competitions
+        </UButton>
         <UButton icon="i-lucide-plus" @click="grid?.openNew()">
           New QR code
         </UButton>
