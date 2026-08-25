@@ -380,7 +380,6 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Upload Banners', icon: 'i-lucide-upload', to: '/agency/banner-studio/upload', onSelect: close },
       { label: 'Audio Studio', icon: 'i-lucide-mic', to: '/agency/audio', onSelect: close },
       { label: 'Video Studio', icon: 'i-lucide-video', to: '/agency/audio/projects?mediaType=av', onSelect: close },
-      { label: 'QR Codes', icon: 'i-lucide-qr-code', to: '/agency/tools/qr', onSelect: close },
       { label: 'Audio Projects', icon: 'i-lucide-film', to: '/agency/audio/projects', onSelect: close },
       { label: 'Ad Preview', icon: 'i-lucide-monitor-play', to: '/agency/ad-preview', onSelect: close },
       { label: 'Bulk Ad Launch', icon: 'i-lucide-rocket', to: '/agency/ad-publish', onSelect: close }
