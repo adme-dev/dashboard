@@ -9,6 +9,8 @@ import { renderQrLandingPage } from '~~/server/utils/qr/landing/render'
 import { isTurnstileEnabled } from '~~/server/utils/turnstile'
 import { snapshotConsent } from '~~/server/utils/tracking/consent'
 import { requireAuth } from '~~/server/utils/auth'
+import { queryOne } from '~~/server/utils/db'
+import { competitionIsOpen, parseCompetitionRow } from '~~/server/utils/qr/competitions'
 
 function notFound(event: any) {
   setResponseStatus(event, 404)
@@ -43,8 +45,17 @@ export default defineEventHandler(async (event) => {
     if (hosted) {
       const consent = snapshotConsent({ consentCookieValue: getCookie(event, '_xf_consent'), cfIpCountry: getHeader(event, 'cf-ipcountry') })
       setResponseHeaders(event, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow', 'Referrer-Policy': 'strict-origin-when-cross-origin' })
+      let competition: { termsUrl: string | null, skillQuestion: string | null, closedReason: string | null } | null = null
+      if (hosted.page.competition_id) {
+        const crow = await queryOne<any>(`SELECT * FROM qr_competitions WHERE id = $1`, [hosted.page.competition_id])
+        if (crow) {
+          const comp = parseCompetitionRow(crow)
+          const win = competitionIsOpen(comp)
+          competition = { termsUrl: `/q/${code}/terms`, skillQuestion: comp.type === 'skill' ? comp.details.skill_question : null, closedReason: win.open || preview ? null : win.reason }
+        }
+      }
       return renderQrLandingPage({
-        code: code!, config: hosted.page.config, assets: hosted.assets,
+        code: code!, config: hosted.page.config, assets: hosted.assets, competition,
         submitPath: `/q/${code}/submit`, preview,
         turnstileSiteKey: isTurnstileEnabled() ? (useRuntimeConfig().public as any).turnstileSiteKey || null : null,
         allowPixels: !preview && consent.tracking === 'granted'

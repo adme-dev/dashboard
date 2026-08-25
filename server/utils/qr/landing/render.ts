@@ -18,6 +18,8 @@ export interface RenderLandingInput {
   /** Server-rendered success state (non-JS form post). */
   submitted?: boolean
   error?: string | null
+  /** Competition entry extras: T&Cs link + acceptance checkbox, optional skill question, closed notice. */
+  competition?: { termsUrl: string | null, skillQuestion: string | null, closedReason: string | null } | null
 }
 
 function field(f: QrPageField): string {
@@ -75,6 +77,8 @@ export function renderQrLandingPage(input: RenderLandingInput): string {
 <form id="qrf" method="post" action="${escapeQrHtml(input.submitPath)}" novalidate${input.preview ? ' data-preview="1"' : ''}>
   ${c.fields.map(field).join('')}
   <div class="hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+  ${input.competition?.skillQuestion ? `<div class="fld"><label for="f_answer">${escapeQrHtml(input.competition.skillQuestion)}</label><textarea id="f_answer" name="answer" rows="3" maxlength="1000" required></textarea></div>` : ''}
+  ${input.competition ? `<div class="fld chk"><label><input type="checkbox" name="accept_terms" value="yes" required> I have read and accept the ${input.competition.termsUrl ? `<a href="${escapeQrHtml(input.competition.termsUrl)}" rel="noopener" target="_blank">terms and conditions</a>` : 'terms and conditions'}</label></div>` : ''}
   ${c.marketing_consent ? `<div class="fld chk"><label><input type="checkbox" name="marketing_consent" value="yes"> ${escapeQrHtml(c.marketing_consent_label)}</label></div>` : ''}
   ${input.turnstileSiteKey ? `<div class="cf-turnstile" data-sitekey="${escapeQrHtml(input.turnstileSiteKey)}" data-theme="${dark ? 'dark' : 'light'}"></div>` : ''}
   <p class="consent">${escapeQrHtml(c.consent_text)}${c.footer.privacy_url ? ` <a href="${escapeQrHtml(c.footer.privacy_url)}" rel="noopener">Privacy policy</a>` : ''}</p>
@@ -122,7 +126,7 @@ ${input.assets.hero ? `<img class="hero" src="${escapeQrHtml(input.assets.hero)}
 <h1>${title}</h1>
 ${c.subheadline ? `<p class="sub">${escapeQrHtml(c.subheadline)}</p>` : ''}
 ${c.body_md ? `<div class="body">${renderMarkdownLite(c.body_md)}</div>` : ''}
-<div id="formwrap"${success ? ' hidden' : ''}>${formHtml}</div>
+${input.competition?.closedReason ? `<div class="ok"><h2>${escapeQrHtml(input.competition.closedReason)}</h2></div>` : `<div id="formwrap"${success ? ' hidden' : ''}>${formHtml}</div>`}
 ${successHtml}
 <footer>${c.footer.promoter_name ? `${escapeQrHtml(c.footer.promoter_name)} · ` : ''}${c.footer.terms_url ? `<a href="${escapeQrHtml(c.footer.terms_url)}" rel="noopener">Terms</a> · ` : ''}${c.footer.privacy_url ? `<a href="${escapeQrHtml(c.footer.privacy_url)}" rel="noopener">Privacy</a>` : ''}</footer>
 </main>

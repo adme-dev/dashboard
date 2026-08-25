@@ -114,7 +114,7 @@ export function useQrCodes() {
     renameFolder: (id: string, name: string) => $fetch(`${base}/folders/${id}`, { method: 'PATCH', body: { name }, headers: idem(`folder-update:${id}`) }),
     deleteFolder: (id: string) => $fetch(`${base}/folders/${id}`, { method: 'DELETE', headers: idem(`folder-delete:${id}`) }),
     page: (id: string) => $fetch<{ page: QrPage | null, draft?: { template: QrPageTemplate, config: QrPageConfig } }>(`${base}/${id}/page`),
-    savePage: (id: string, body: { template: QrPageTemplate, config: QrPageConfig, destinationMode?: 'url' | 'page' }) =>
+    savePage: (id: string, body: { template: QrPageTemplate, config: QrPageConfig, destinationMode?: 'url' | 'page', competitionId?: string | null }) =>
       $fetch<{ page: QrPage }>(`${base}/${id}/page`, { method: 'PUT', body, headers: idem(`page-save:${id}`) }),
     publishPage: (id: string, published: boolean) =>
       $fetch<{ page: QrPage }>(`${base}/${id}/page/publish`, { method: 'POST', body: { published }, headers: idem(`page-publish:${id}`) }),
@@ -125,6 +125,21 @@ export function useQrCodes() {
       return $fetch<{ asset: { id: string, kind: string, url: string } }>(`${base}/${id}/page/assets`, { method: 'POST', body: fd, headers: idem(`page-asset:${id}`) })
     },
     previewPageUrl: (code: string) => `/q/${code}?xf_preview=1`,
+    competitions: (clientId?: string) => $fetch<{ competitions: any[] }>('/api/agency/qr-competitions', { params: clientId ? { clientId } : {} }),
+    competition: (id: string): Promise<any> => $fetch(`/api/agency/qr-competitions/${id}` as string),
+    createCompetition: (body: Record<string, unknown>) => $fetch<{ competition: any }>('/api/agency/qr-competitions', { method: 'POST', body, headers: idem('comp-create') }),
+    updateCompetition: (id: string, body: Record<string, unknown>) => $fetch<{ competition: any }>(`/api/agency/qr-competitions/${id}`, { method: 'PATCH', body, headers: idem(`comp-update:${id}`) }),
+    competitionEntries: (id: string) => $fetch<{ entries: any[] }>(`/api/agency/qr-competitions/${id}/entries`),
+    drawCompetition: (id: string, body: { winners?: number, reserves?: number, note?: string }) => $fetch<{ draw: any }>(`/api/agency/qr-competitions/${id}/draw`, { method: 'POST', body, headers: idem(`comp-draw:${id}`) }),
+    uploadCompetitionDocument: (id: string, file: File, kind: string, title: string, state?: string) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('kind', kind)
+      fd.append('title', title)
+      if (state) fd.append('state', state)
+      return $fetch<{ document: any }>(`/api/agency/qr-competitions/${id}/documents`, { method: 'POST', body: fd, headers: idem(`comp-doc:${id}`) })
+    },
+    deleteCompetitionDocument: (id: string, docId: string, reason: string) => $fetch(`/api/agency/qr-competitions/${id}/documents/${docId}`, { method: 'DELETE', body: { reason }, headers: idem(`comp-doc-del:${docId}`) }),
     uploadLogo: (file: File) => {
       const fd = new FormData()
       fd.append('file', file)

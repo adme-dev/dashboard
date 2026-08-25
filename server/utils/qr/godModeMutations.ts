@@ -24,12 +24,14 @@ import { digestMcpRequestBody } from '~~/shared/utils/mcpRequestClaim'
 
 const UUID = '[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}'
 const BASE = '/api/agency/qr-codes'
+const COMP = '/api/agency/qr-competitions'
 
 export type QrMutationKind
   = 'code-create' | 'code-update' | 'code-delete'
     | 'folder-create' | 'folder-update' | 'folder-delete'
     | 'logo-upload'
     | 'page-save' | 'page-publish' | 'page-asset-upload'
+    | 'competition-create' | 'competition-update' | 'competition-draw' | 'competition-document-upload' | 'competition-document-delete'
 
 interface FamilyDef { kind: QrMutationKind, method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', matches: (path: string) => boolean, name: string, multipart?: boolean }
 
@@ -43,7 +45,12 @@ const FAMILIES: FamilyDef[] = [
   { kind: 'logo-upload', method: 'POST', matches: p => p === `${BASE}/logo`, name: 'QR logo upload', multipart: true },
   { kind: 'page-save', method: 'PUT', matches: p => new RegExp(`^${BASE}/${UUID}/page$`, 'i').test(p), name: 'QR page save' },
   { kind: 'page-publish', method: 'POST', matches: p => new RegExp(`^${BASE}/${UUID}/page/publish$`, 'i').test(p), name: 'QR page publish' },
-  { kind: 'page-asset-upload', method: 'POST', matches: p => new RegExp(`^${BASE}/${UUID}/page/assets$`, 'i').test(p), name: 'QR page asset upload', multipart: true }
+  { kind: 'page-asset-upload', method: 'POST', matches: p => new RegExp(`^${BASE}/${UUID}/page/assets$`, 'i').test(p), name: 'QR page asset upload', multipart: true },
+  { kind: 'competition-create', method: 'POST', matches: p => p === COMP, name: 'competition creation' },
+  { kind: 'competition-update', method: 'PATCH', matches: p => new RegExp(`^${COMP}/${UUID}$`, 'i').test(p), name: 'competition update' },
+  { kind: 'competition-draw', method: 'POST', matches: p => new RegExp(`^${COMP}/${UUID}/draw$`, 'i').test(p), name: 'competition draw' },
+  { kind: 'competition-document-upload', method: 'POST', matches: p => new RegExp(`^${COMP}/${UUID}/documents$`, 'i').test(p), name: 'competition document upload', multipart: true },
+  { kind: 'competition-document-delete', method: 'DELETE', matches: p => new RegExp(`^${COMP}/${UUID}/documents/${UUID}$`, 'i').test(p), name: 'competition document removal' }
 ]
 
 const operationsKey = Symbol('qrGodModeOperations')
