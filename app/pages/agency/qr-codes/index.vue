@@ -24,6 +24,7 @@ watch(clientModel, (v) => {
 })
 
 const folderId = ref<string | null>(null)
+const bulkOpen = ref(false)
 const searchInput = ref('')
 const search = refDebounced(searchInput, 250)
 const grid = ref<{ refresh: () => void, openNew: () => void }>()
@@ -84,12 +85,23 @@ function onLoaded(codes: QrCode[]) {
           </template>
         </UInput>
         <UButton
+          to="/agency/qr-codes/campaigns"
+          icon="i-lucide-layers"
+          variant="soft"
+          color="neutral"
+        >
+          Campaigns
+        </UButton>
+        <UButton
           to="/agency/qr-codes/competitions"
           icon="i-lucide-trophy"
           variant="soft"
           color="neutral"
         >
           Competitions
+        </UButton>
+        <UButton icon="i-lucide-copy-plus" variant="soft" @click="() => { bulkOpen = true }">
+          Create variants
         </UButton>
         <UButton icon="i-lucide-plus" @click="grid?.openNew()">
           New QR code
@@ -103,6 +115,11 @@ function onLoaded(codes: QrCode[]) {
         v-model:folder-id="folderId"
         :client-id="clientId"
         :total-count="railTotal"
+      />
+      <QrBulkDialog
+        v-model:open="bulkOpen"
+        :client-id="clientId"
+        :folder-id="folderId"
       />
       <QrGrid
         ref="grid"
