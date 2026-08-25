@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
     queryRows(
       `SELECT h.old_url, h.new_url, h.changed_at, u.name AS changed_by_name
        FROM qr_destination_history h LEFT JOIN team_members u ON u.id = h.changed_by
-       WHERE h.qr_code_id = $1 ORDER BY h.changed_at DESC LIMIT 50`, [row.id]),
+       WHERE h.qr_code_id = $1 ORDER BY h.changed_at DESC LIMIT 50`, [row.id])
   ])
   return { code: { ...row, client_name: names?.client_name ?? null, folder_name: names?.folder_name ?? null }, shortUrl: shortUrl(row.code), history }
 })

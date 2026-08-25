@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
   setResponseHeaders(event, {
     'Content-Type': 'image/svg+xml; charset=utf-8',
     'Cache-Control': 'private, no-store',
-    'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${exportFileBase(row.name, row.code)}.svg"`,
+    'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${exportFileBase(row.name, row.code)}.svg"`
   })
   return svg
 })

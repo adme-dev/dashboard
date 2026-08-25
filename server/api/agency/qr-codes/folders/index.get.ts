@@ -1,5 +1,6 @@
 import { queryRows } from '~~/server/utils/db'
 import { requireClientTrackingAccess } from '~~/server/utils/client-access'
+
 export default defineEventHandler(async (event) => {
   const clientId = getQuery(event).clientId as string | undefined
   await requireClientTrackingAccess(event, clientId)
