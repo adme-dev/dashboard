@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { DEFAULT_STYLE, type QrStyle } from '~~/shared/qr/style'
+import { QR_UTM_MEDIUMS, buildTrackedUrl, type QrUtmMedium } from '~~/shared/qr/tracking'
 import { validateDestinationUrl, isDestinationInvalid } from '~~/shared/qr/destination'
 import type { QrCode, QrFolder } from '~/composables/useQrCodes'
 
@@ -17,7 +18,10 @@ const form = reactive({
   clientId: props.clientId ?? '',
   folderId: (props.folderId ?? null) as string | null,
   destinationUrl: '',
-  style: { ...DEFAULT_STYLE } as QrStyle
+  style: { ...DEFAULT_STYLE } as QrStyle,
+  utmEnabled: true,
+  utmMedium: 'print' as QrUtmMedium,
+  utmSource: ''
 })
 const folders = ref<QrFolder[]>([])
 const saving = ref(false)
@@ -33,6 +37,12 @@ const folderModel = computed({
   set: (v: string) => { form.folderId = v === 'none' ? null : v }
 })
 const previewText = computed(() => (props.code ? api.shortUrl(props.code.code) : 'https://app.xeroflow.io/q/AbC1234'))
+const mediumItems = QR_UTM_MEDIUMS.map(m => ({ label: m.charAt(0).toUpperCase() + m.slice(1), value: m }))
+const folderName = computed(() => folders.value.find(f => f.id === form.folderId)?.name ?? null)
+const trackedPreview = computed(() => {
+  if (!form.destinationUrl || urlError.value) return ''
+  return buildTrackedUrl(form.destinationUrl, { code: props.code?.code ?? 'AbC1234', enabled: form.utmEnabled, medium: form.utmMedium, source: form.utmSource, campaign: folderName.value || form.name })
+})
 const canSave = computed(() => !!form.name.trim() && !!form.clientId && !!form.destinationUrl && !urlError.value)
 
 watch(() => open.value, (o) => {
@@ -43,6 +53,9 @@ watch(() => open.value, (o) => {
   form.folderId = c?.folder_id ?? props.folderId ?? null
   form.destinationUrl = c?.destination_url ?? ''
   form.style = { ...DEFAULT_STYLE, ...(c?.style ?? {}) }
+  form.utmEnabled = c?.utm_enabled ?? true
+  form.utmMedium = (c?.utm_medium as QrUtmMedium) ?? 'print'
+  form.utmSource = c?.utm_source ?? ''
 }, { immediate: true })
 
 watch(() => form.clientId, async (id) => {
@@ -63,8 +76,8 @@ async function save() {
   saving.value = true
   try {
     const res = props.code
-      ? await api.update(props.code.id, { name: form.name, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style })
-      : await api.create({ name: form.name, clientId: form.clientId, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style })
+      ? await api.update(props.code.id, { name: form.name, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style, utmEnabled: form.utmEnabled, utmMedium: form.utmMedium, utmSource: form.utmSource.trim() || null })
+      : await api.create({ name: form.name, clientId: form.clientId, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style, utmEnabled: form.utmEnabled, utmMedium: form.utmMedium, utmSource: form.utmSource.trim() || null })
     toast.add({ title: props.code ? 'QR code updated' : 'QR code created', description: props.code ? undefined : 'Download it from the card or open it for scan tracking.', color: 'success' })
     emit('saved', res.code)
     open.value = false
@@ -128,6 +141,36 @@ async function save() {
               class="w-full"
             />
           </UFormField>
+          <section class="space-y-3">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-muted">
+              Analytics tagging
+            </h4>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <UFormField label="Tag the destination" help="Adds utm_source=qr and a click id so the client's GA4 / Meta / XeroFlow tracking attributes visits to this code.">
+                <USwitch v-model="form.utmEnabled" :label="form.utmEnabled ? 'On' : 'Off'" />
+              </UFormField>
+              <UFormField label="Source (utm_source)" help="Blank = qr. Use tv or instagram when the code sits inside another channel.">
+                <UInput
+                  v-model="form.utmSource"
+                  placeholder="qr"
+                  :disabled="!form.utmEnabled"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Placement (utm_medium)">
+                <USelectMenu
+                  v-model="form.utmMedium"
+                  :items="mediumItems"
+                  value-key="value"
+                  :disabled="!form.utmEnabled"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
+            <p v-if="trackedPreview" class="break-all rounded-md bg-elevated/60 px-3 py-2 font-mono text-[11px] text-muted">
+              {{ trackedPreview }}
+            </p>
+          </section>
           <USeparator />
           <QrStylePicker v-model="form.style" @upload-logo="onLogo" />
         </div>

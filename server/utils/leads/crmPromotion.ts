@@ -254,7 +254,7 @@ function opportunityFields(lead: PromotionLeadRow, provider: string): Record<str
   for (const [key, value] of Object.entries(fields)) {
     if (key.startsWith('vehicle_') && value) result[key] = value
   }
-  for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content']) {
+  for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'xf_qr']) {
     const value = lead.attribution?.[key]?.trim()
     if (value) result[key] = value
   }

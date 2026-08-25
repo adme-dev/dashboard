@@ -43,6 +43,18 @@ describe('GET /q/:code', () => {
     await handler(event)
     expect(event.node.res.statusCode).toBe(302)
     expect(record).toHaveBeenCalledOnce()
+    const loc = new URL((globalThis as any).__h3.headers.location)
+    expect(loc.origin + loc.pathname).toBe('https://dest.example/x')
+    expect(loc.searchParams.get('utm_source')).toBe('qr')
+    expect(loc.searchParams.get('xf_qr')).toBe('AbC1234') // legacy cache entry (no code/utm fields) → tagging still on
+  })
+
+  it('redirects to the bare destination when tagging is disabled', async () => {
+    resolve.mockResolvedValue({ id: '1', clientId: 'c', url: 'https://dest.example/x?keep=1', active: true, code: 'AbC1234', utmEnabled: false })
+    const handler = (await import('../../server/api/q/[code].get')).default
+    const event = makeEvent('AbC1234')
+    await handler(event)
+    expect((globalThis as any).__h3.headers.location).toBe('https://dest.example/x?keep=1')
   })
   it('404s for inactive codes without recording', async () => {
     resolve.mockResolvedValue({ id: '1', clientId: 'c', url: 'https://dest.example/x', active: false })

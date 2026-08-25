@@ -21,9 +21,9 @@ export default defineEventHandler(async (event) => {
     const code = generateSlug()
     try {
       const row = await queryOne<any>(
-        `INSERT INTO qr_codes (client_id, folder_id, code, name, destination_url, style, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [body.clientId, body.folderId ?? null, code, body.name, dest.url, JSON.stringify(body.style), user.id])
+        `INSERT INTO qr_codes (client_id, folder_id, code, name, destination_url, style, created_by, utm_enabled, utm_medium, utm_source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [body.clientId, body.folderId ?? null, code, body.name, dest.url, JSON.stringify(body.style), user.id, body.utmEnabled, body.utmMedium, body.utmSource || null])
       await queryOne(`INSERT INTO qr_destination_history (qr_code_id, old_url, new_url, changed_by) VALUES ($1, NULL, $2, $3) RETURNING id`, [row.id, dest.url, user.id])
       return { code: row, shortUrl: shortUrl(code) }
     } catch (err: any) {

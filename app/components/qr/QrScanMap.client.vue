@@ -10,7 +10,7 @@ import Supercluster from 'supercluster'
 export interface QrScanPoint { lat: number, lng: number, scans: number, city: string | null, postcode: string | null }
 interface Props { scans: number, city: string | null, postcode: string | null }
 
-const props = defineProps<{ points: QrScanPoint[] }>()
+const props = withDefaults(defineProps<{ points: QrScanPoint[], noun?: string }>(), { noun: 'scan' })
 const colorMode = useColorMode()
 const el = ref<HTMLElement>()
 let map: L.Map | null = null
@@ -85,10 +85,10 @@ function draw() {
       })
       const names = index.getLeaves(clusterId, 3).map(l => l.properties.city).filter(Boolean) as string[]
       const more = Number(fp.point_count) - names.length
-      m.bindTooltip(`${scans.toLocaleString()} scans · ${escapeHtml(names.join(', '))}${more > 0 ? ` +${more} more` : ''}`, { direction: 'top', offset: [0, -12] })
+      m.bindTooltip(`${scans.toLocaleString()} ${props.noun}s · ${escapeHtml(names.join(', '))}${more > 0 ? ` +${more} more` : ''}`, { direction: 'top', offset: [0, -12] })
     } else {
       const label = [f.properties.city, f.properties.postcode].filter(Boolean).join(' ') || 'Unknown area'
-      m.bindPopup(`<strong>${escapeHtml(label)}</strong><br>${scans.toLocaleString()} ${scans === 1 ? 'scan' : 'scans'}`, { closeButton: false })
+      m.bindPopup(`<strong>${escapeHtml(label)}</strong><br>${scans.toLocaleString()} ${scans === 1 ? props.noun : props.noun + 's'}`, { closeButton: false })
     }
     layer.addLayer(m)
   }
@@ -133,7 +133,7 @@ onBeforeUnmount(() => {
   <div class="relative">
     <div ref="el" class="qr-map h-80 w-full rounded-lg" />
     <div class="pointer-events-none absolute left-3 top-3 z-[400] rounded-md bg-default/90 px-2 py-1 text-xs text-muted shadow-sm ring-1 ring-default">
-      {{ total.toLocaleString() }} {{ total === 1 ? 'scan' : 'scans' }} · {{ places }} {{ places === 1 ? 'area' : 'areas' }}
+      {{ total.toLocaleString() }} {{ total === 1 ? noun : noun + 's' }} · {{ places }} {{ places === 1 ? 'area' : 'areas' }}
     </div>
   </div>
 </template>
