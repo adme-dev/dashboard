@@ -94,6 +94,14 @@ function onLoaded(codes: QrCode[]) {
           Campaigns
         </UButton>
         <UButton
+          to="/agency/qr-codes/campaigns"
+          icon="i-lucide-layers"
+          variant="soft"
+          color="neutral"
+        >
+          Campaigns
+        </UButton>
+        <UButton
           to="/agency/qr-codes/competitions"
           icon="i-lucide-trophy"
           variant="soft"
