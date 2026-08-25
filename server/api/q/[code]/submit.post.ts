@@ -17,6 +17,7 @@ import { resolveClientIp } from '~~/server/utils/tracking/client-ip'
 import { snapshotConsent } from '~~/server/utils/tracking/consent'
 import { sha256Hex } from '~~/server/utils/exportTokens'
 import { execute, queryOne } from '~~/server/utils/db'
+import { requireAuth } from '~~/server/utils/auth'
 import { competitionIsOpen, entrantKey, parseCompetitionRow } from '~~/server/utils/qr/competitions'
 
 const MAX_BODY = 16 * 1024
@@ -26,7 +27,7 @@ function fail(event: any, status: number, message: string) {
   return { ok: false, message }
 }
 
-export default defineEventHandler(async (event) => {
+async function handleSubmit(event: any) {
   setResponseHeaders(event, { 'Cache-Control': 'no-store' })
   const code = getRouterParam(event, 'code')
   if (!isValidSlug(code)) return fail(event, 404, 'Unknown code')
@@ -143,4 +144,24 @@ export default defineEventHandler(async (event) => {
     }
   }
   return { ok: true, redirect: cfg.success_redirect_url }
+}
+
+export default defineEventHandler(async (event) => {
+  try {
+    return await handleSubmit(event)
+  } catch (err: any) {
+    // Never leak internals to scanners; staff sessions get the message so prod failures are diagnosable
+    // (Pages' tail does not surface request exceptions reliably).
+    console.error('[qr:submit] failed', err?.message, err?.stack)
+    if (typeof err?.statusCode === 'number' && err.statusCode < 500) throw err
+    let staff = false
+    try {
+      await requireAuth(event)
+      staff = true
+    } catch {
+      // not a staff session
+    }
+    setResponseStatus(event, 500)
+    return { ok: false, message: staff ? `Submit failed: ${err?.message ?? err}` : 'Something went wrong — please try again.' }
+  }
 })
