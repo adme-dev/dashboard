@@ -1,6 +1,7 @@
 import type { QrStyle } from '~~/shared/qr/style'
 import { renderQrSvg } from '~~/shared/qr/render-svg'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
+import type { QrPageConfig, QrPageTemplate } from '~~/shared/qr/page'
 
 export interface QrCode {
   id: string
@@ -22,6 +23,19 @@ export interface QrCode {
   utm_enabled?: boolean
   utm_medium?: string
   utm_source?: string | null
+  destination_mode?: 'url' | 'page'
+}
+
+export interface QrPage {
+  id: string
+  qr_code_id: string
+  template: QrPageTemplate
+  config: QrPageConfig
+  competition_id: string | null
+  is_published: boolean
+  published_at: string | null
+  submissions_count: number
+  updated_at: string
 }
 
 export interface QrFolder {
@@ -99,6 +113,18 @@ export function useQrCodes() {
     createFolder: (body: { clientId: string, name: string }) => $fetch<{ folder: QrFolder }>(`${base}/folders`, { method: 'POST', body, headers: idem('folder-create') }),
     renameFolder: (id: string, name: string) => $fetch(`${base}/folders/${id}`, { method: 'PATCH', body: { name }, headers: idem(`folder-update:${id}`) }),
     deleteFolder: (id: string) => $fetch(`${base}/folders/${id}`, { method: 'DELETE', headers: idem(`folder-delete:${id}`) }),
+    page: (id: string) => $fetch<{ page: QrPage | null, draft?: { template: QrPageTemplate, config: QrPageConfig } }>(`${base}/${id}/page`),
+    savePage: (id: string, body: { template: QrPageTemplate, config: QrPageConfig, destinationMode?: 'url' | 'page' }) =>
+      $fetch<{ page: QrPage }>(`${base}/${id}/page`, { method: 'PUT', body, headers: idem(`page-save:${id}`) }),
+    publishPage: (id: string, published: boolean) =>
+      $fetch<{ page: QrPage }>(`${base}/${id}/page/publish`, { method: 'POST', body: { published }, headers: idem(`page-publish:${id}`) }),
+    uploadPageAsset: (id: string, file: File, kind: 'hero' | 'logo') => {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('kind', kind)
+      return $fetch<{ asset: { id: string, kind: string, url: string } }>(`${base}/${id}/page/assets`, { method: 'POST', body: fd, headers: idem(`page-asset:${id}`) })
+    },
+    previewPageUrl: (code: string) => `/q/${code}?xf_preview=1`,
     uploadLogo: (file: File) => {
       const fd = new FormData()
       fd.append('file', file)

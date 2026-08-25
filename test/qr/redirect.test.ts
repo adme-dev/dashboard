@@ -3,6 +3,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const { resolve, record } = vi.hoisted(() => ({ resolve: vi.fn(), record: vi.fn() }))
 vi.mock('~~/server/utils/qr/resolve', () => ({ resolveQrCode: resolve }))
 vi.mock('~~/server/utils/qr/scans', () => ({ recordScan: record }))
+const { loadPage } = vi.hoisted(() => ({ loadPage: vi.fn() }))
+vi.mock('~~/server/utils/qr/pages', () => ({ loadPublicQrPage: loadPage }))
+vi.mock('~~/server/utils/qr/landing/render', () => ({ renderQrLandingPage: (i: any) => `<html>${i.config.headline}${i.preview ? ' PREVIEW' : ''}</html>` }))
+vi.mock('~~/server/utils/turnstile', () => ({ isTurnstileEnabled: () => false }))
+vi.mock('~~/server/utils/tracking/consent', () => ({ snapshotConsent: () => ({ tracking: 'granted' }) }))
+vi.mock('~~/server/utils/auth', () => ({ requireAuth: vi.fn().mockResolvedValue({ id: 'u1' }) }))
 
 const testGlobal = globalThis as unknown as {
   defineEventHandler: <T>(fn: T) => T
@@ -13,6 +19,10 @@ const testGlobal = globalThis as unknown as {
 }
 
 testGlobal.defineEventHandler = fn => fn
+;(globalThis as any).getQuery = (event: any) => event.query ?? {}
+;(globalThis as any).getCookie = () => undefined
+;(globalThis as any).getHeader = () => null
+;(globalThis as any).useRuntimeConfig = () => ({ public: {} })
 testGlobal.getRouterParam = (event, key) => event.context?.params?.[key]
 testGlobal.setResponseStatus = (event, status) => { event.node.res.statusCode = status }
 testGlobal.setResponseHeaders = (event, headers) => {
@@ -28,12 +38,15 @@ function makeEvent(code: string) {
   const event: any = {
     context: { params: { code } },
     node: { res: { setHeader: (k: string, v: string) => { headers[k.toLowerCase()] = v }, statusCode: 200 } },
-    method: 'GET',
+    method: 'GET'
   }
   ;(globalThis as any).__h3 = { event, headers, get status() { return event.node.res.statusCode } }
   return event
 }
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+  vi.clearAllMocks()
+  loadPage.mockResolvedValue(null)
+})
 
 describe('GET /q/:code', () => {
   it('302s to the destination and records a scan', async () => {
@@ -71,5 +84,36 @@ describe('GET /q/:code', () => {
     await handler(event)
     expect(resolve).not.toHaveBeenCalled()
     expect(event.node.res.statusCode).toBe(404)
+  })
+
+  it('renders the hosted page in page mode and still records the scan', async () => {
+    resolve.mockResolvedValue({ id: '1', clientId: 'c', url: 'https://dest.example/x', active: true, code: 'AbC1234', mode: 'page' })
+    loadPage.mockResolvedValue({ clientId: 'c', clientName: 'X', assets: {}, page: { id: 'p', config: { headline: 'Enter to win' } } })
+    const handler = (await import('../../server/api/q/[code].get')).default
+    const event = makeEvent('AbC1234')
+    const html = await handler(event)
+    expect(html).toContain('Enter to win')
+    expect(record).toHaveBeenCalledOnce()
+    expect(event.node.res.statusCode).toBe(200)
+  })
+
+  it('page mode with nothing published 404s rather than redirecting somewhere stale', async () => {
+    resolve.mockResolvedValue({ id: '1', clientId: 'c', url: 'https://dest.example/x', active: true, code: 'AbC1234', mode: 'page' })
+    const handler = (await import('../../server/api/q/[code].get')).default
+    const event = makeEvent('AbC1234')
+    await handler(event)
+    expect(event.node.res.statusCode).toBe(404)
+  })
+
+  it('preview renders drafts for staff without recording a scan', async () => {
+    resolve.mockResolvedValue({ id: '1', clientId: 'c', url: 'https://dest.example/x', active: true, code: 'AbC1234', mode: 'url' })
+    loadPage.mockResolvedValue({ clientId: 'c', clientName: 'X', assets: {}, page: { id: 'p', config: { headline: 'Draft' } } })
+    const handler = (await import('../../server/api/q/[code].get')).default
+    const event = makeEvent('AbC1234')
+    event.query = { xf_preview: '1' }
+    const html = await handler(event)
+    expect(html).toContain('Draft PREVIEW')
+    expect(record).not.toHaveBeenCalled()
+    expect(loadPage).toHaveBeenCalledWith(event, 'AbC1234', { includeDraft: true })
   })
 })

@@ -37,6 +37,7 @@ const destinationHost = computed(() => {
 const menu = computed(() => [[
   { label: 'Open', icon: 'i-lucide-arrow-up-right', to: detail.value },
   { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => emit('edit') },
+  { label: props.code.destination_mode === 'page' ? 'Edit hosted page' : 'Add hosted page', icon: 'i-lucide-layout-template', to: `${detail.value}?page=1` },
   { label: 'Copy short link', icon: 'i-lucide-copy', onSelect: copy }
 ], [
   { label: 'Download SVG', icon: 'i-lucide-download', to: api.exportUrl(props.code.id), external: true },
@@ -64,6 +65,9 @@ const menu = computed(() => [[
             <NuxtLink :to="detail" class="block truncate font-medium hover:underline">
               {{ code.name }}
             </NuxtLink>
+            <p v-if="code.destination_mode === 'page'" class="truncate text-[11px] font-medium text-primary">
+              Hosted page
+            </p>
             <p v-if="showClient" class="truncate text-xs text-muted">
               {{ code.client_name }}<span v-if="code.folder_name"> · {{ code.folder_name }}</span>
             </p>
