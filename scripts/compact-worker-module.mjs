@@ -270,7 +270,13 @@ function compactSqlWhitespace(value) {
     result += character
   }
 
-  return result.trim()
+  // Boundary whitespace is significant: the minifier lowers
+  // `\`… = $1 ${cond}\`` to `"… = $1 " + cond`, so trimming the literal's
+  // trailing space glues the placeholder to the next token ("$1AND" — Postgres
+  // "trailing junk after parameter"). Keep one space at each edge that had any.
+  const leading = /^\s/.test(value) ? ' ' : ''
+  const trailing = /\s$/.test(value) ? ' ' : ''
+  return leading + result.trim() + trailing
 }
 
 export function compactSqlLiterals(source) {
