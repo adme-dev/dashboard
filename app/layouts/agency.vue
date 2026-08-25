@@ -235,7 +235,6 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Analytics', icon: 'i-lucide-bar-chart-4', to: '/agency/analytics', onSelect: close },
       { label: 'Budget Health', icon: 'i-lucide-gauge', to: '/agency/budget-health', onSelect: close },
       { label: 'Site Tracking', icon: 'i-lucide-radio', to: '/agency/tracking', onSelect: close },
-      { label: 'QR Codes', icon: 'i-lucide-qr-code', to: '/agency/qr-codes', onSelect: close },
       ...searchAuthorityNavItems(
         Boolean(runtimeConfig.public.searchAuthorityEnabled),
         route.path,
@@ -352,6 +351,11 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     { label: 'AI Reports', icon: 'i-lucide-file-bar-chart', to: '/agency/ai/reports', onSelect: close },
     { label: 'Connect AI Assistants', icon: 'i-lucide-plug', to: '/agency/ai/connectors', onSelect: close }
   )
+  // QR Codes lives under Tools (it's a utility, not budget tracking) but keeps
+  // the media-buying gate its page enforces.
+  if (canAccessMediaBuying.value) {
+    items.push({ label: 'QR Codes', icon: 'i-lucide-qr-code', to: '/agency/qr-codes', onSelect: close })
+  }
   if (canAccessAdmin.value) {
     items.push(
       { label: 'AI Settings', icon: 'i-lucide-settings-2', to: '/agency/ai/settings', onSelect: close },
