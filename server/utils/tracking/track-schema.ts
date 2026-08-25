@@ -54,7 +54,8 @@ const AttributionSchema = z.object({
   li_fat_id: z.string().max(512).nullable().optional(),
   ga_client_id: z.string().max(512).nullable().optional(),
   email_click_id: z.string().max(128).nullable().optional(),
-  xf_qr: z.string().max(32).nullable().optional()
+  xf_qr: z.string().max(32).nullable().optional(),
+  xf_qr_variant: z.string().max(1).nullable().optional()
 })
 
 const TrackEventSchema = z.object({

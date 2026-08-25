@@ -7,6 +7,8 @@ const props = defineProps<{
   data: { totals: any, daily: { day: string, scans: number, unique: number }[], countries: any[], devices: any[], os: any[], browsers: any[], cities?: any[], postcodes?: any[], points?: { lat: number, lng: number, scans: number, city: string | null, postcode: string | null }[], leads?: { total: number, withPostcode: number, postcodes: any[], points: { lat: number, lng: number, scans: number, city: string | null, postcode: string | null }[] } }
   rangeLabel?: string
 }>()
+const ab = computed(() => (props.data as any).ab as null | { enabled: boolean, urls: { A: string, B: string | null }, splitPct: number, arms: Record<'A' | 'B', { scans: number, leads: number }>, test: { rateA: number, rateB: number, lift: number | null, p: number | null, significant: boolean, winner: 'A' | 'B' | null, note: string | null } })
+const pctFmt = (r: number) => `${(r * 100).toFixed(1)}%`
 
 const series = computed(() => props.data.daily.map((d, i) => ({ x: i, ...d })))
 const x = (d: any) => d.x
@@ -135,6 +137,52 @@ const kpis = computed(() => [
           Locations are captured for new scans.
         </p>
       </div>
+    </UCard>
+
+    <UCard v-if="ab">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-1.5">
+            <span class="text-sm font-medium">A/B destinations</span>
+            <UTooltip text="Lead rate per scan on each arm, two-proportion z-test at 95% confidence">
+              <UIcon name="i-lucide-info" class="size-3.5 text-muted" />
+            </UTooltip>
+          </div>
+          <UBadge
+            v-if="ab.test.winner"
+            color="success"
+            variant="subtle"
+            size="sm"
+          >
+            {{ ab.test.winner }} wins · p {{ ab.test.p!.toFixed(3) }}
+          </UBadge>
+          <span v-else class="text-xs text-muted">{{ ab.test.note }}</span>
+        </div>
+      </template>
+      <div class="grid grid-cols-2 gap-3">
+        <div
+          v-for="arm in (['A', 'B'] as const)"
+          :key="arm"
+          class="rounded-xl bg-elevated/60 p-4"
+          :class="ab.test.winner === arm ? 'ring-2 ring-success' : ''"
+        >
+          <p class="text-xs font-semibold uppercase tracking-wider text-muted">
+            Variant {{ arm }} · {{ arm === 'B' ? ab.splitPct : 100 - ab.splitPct }}%
+          </p>
+          <p class="mt-1 truncate font-mono text-[11px] text-muted">
+            {{ ab.urls[arm] }}
+          </p>
+          <p class="mt-2 text-2xl font-semibold tabular-nums">
+            {{ pctFmt(arm === 'A' ? ab.test.rateA : ab.test.rateB) }}
+          </p>
+          <p class="text-xs text-muted tabular-nums">
+            {{ ab.arms[arm].leads }} {{ ab.arms[arm].leads === 1 ? 'lead' : 'leads' }} from {{ ab.arms[arm].scans }} {{ ab.arms[arm].scans === 1 ? 'scan' : 'scans' }}
+          </p>
+        </div>
+      </div>
+      <p v-if="ab.test.lift !== null" class="mt-3 text-xs text-muted">
+        B converts {{ ab.test.lift >= 0 ? '+' : '' }}{{ (ab.test.lift * 100).toFixed(0) }}% relative to A.
+      </p>
     </UCard>
 
     <UCard v-if="data.leads">

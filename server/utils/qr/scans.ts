@@ -6,8 +6,8 @@ import { classifyQrUserAgent } from './ua'
 import { resolveQrScanGeo } from './geo'
 import type { ResolvedQr } from './resolve'
 
-const INSERT_SQL = `INSERT INTO qr_scans (qr_code_id, client_id, country, device_type, os, browser, ip_hash, referrer, ua, city, region, postcode, lat, lng)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`
+const INSERT_SQL = `INSERT INTO qr_scans (qr_code_id, client_id, country, device_type, os, browser, ip_hash, referrer, ua, city, region, postcode, lat, lng, variant)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`
 const COUNTER_SQL = `UPDATE qr_codes SET scan_count = scan_count + 1, last_scanned_at = NOW() WHERE id = $1`
 
 /** Cap on how long a scan write may delay the redirect. */
@@ -24,19 +24,25 @@ export const SCAN_WRITE_TIMEOUT_MS = 1500
  * other endpoint; the timeout caps the scanner-facing cost, and errors are
  * swallowed so analytics problems can never break a redirect.
  */
-export async function recordScan(event: H3Event, qr: ResolvedQr): Promise<void> {
+/** Salted, day-scoped IP hash — the scan's identity for unique counts and A/B arm assignment. */
+export async function scanIpHash(event: H3Event): Promise<string | null> {
+  const ip = resolveClientIp(getHeader(event, 'cf-connecting-ip'), getRequestIP(event, { xForwardedFor: true }))
+  if (!ip) return null
+  const day = new Date().toISOString().slice(0, 10)
+  const salt = process.env.TRACKING_IP_SALT || ''
+  return await sha256Hex(`${ip}:${salt}:${day}`)
+}
+
+export async function recordScan(event: H3Event, qr: ResolvedQr, opts: { variant?: 'A' | 'B' | null } = {}): Promise<void> {
   try {
     const ua = getHeader(event, 'user-agent') || null
     const geo = resolveQrScanGeo(event)
     const referrer = getHeader(event, 'referer') || null
-    const ip = resolveClientIp(getHeader(event, 'cf-connecting-ip'), getRequestIP(event, { xForwardedFor: true }))
-    const day = new Date().toISOString().slice(0, 10)
-    const salt = process.env.TRACKING_IP_SALT || ''
     const info = classifyQrUserAgent(ua)
-    const ipHash = ip ? await sha256Hex(`${ip}:${salt}:${day}`) : null
+    const ipHash = await scanIpHash(event)
 
     const write = (async () => {
-      await execute(INSERT_SQL, [qr.id, qr.clientId, geo.country, info.deviceType, info.os, info.browser, ipHash, referrer, ua?.slice(0, 512) ?? null, geo.city, geo.region, geo.postcode, geo.lat, geo.lng])
+      await execute(INSERT_SQL, [qr.id, qr.clientId, geo.country, info.deviceType, info.os, info.browser, ipHash, referrer, ua?.slice(0, 512) ?? null, geo.city, geo.region, geo.postcode, geo.lat, geo.lng, opts.variant ?? null])
       await execute(COUNTER_SQL, [qr.id])
     })()
 

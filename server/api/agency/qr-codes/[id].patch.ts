@@ -21,6 +21,15 @@ export default defineEventHandler(async (event) => {
   if (b.isActive !== undefined) set('is_active', b.isActive)
   if (b.style !== undefined) set('style', JSON.stringify(b.style))
   if (b.frame !== undefined) set('frame', JSON.stringify(b.frame))
+  if (b.ab !== undefined) {
+    if (b.ab.enabled) {
+      if (!b.ab.variant_b_url) throw createError({ statusCode: 400, statusMessage: 'Variant B needs a destination URL' })
+      const d = validateDestinationUrl(b.ab.variant_b_url)
+      if (isDestinationInvalid(d)) throw createError({ statusCode: 400, statusMessage: `Variant B: ${d.reason}` })
+      b.ab.variant_b_url = d.url
+    }
+    set('ab', JSON.stringify(b.ab))
+  }
   if (b.utmEnabled !== undefined) set('utm_enabled', b.utmEnabled)
   if (b.utmMedium !== undefined) set('utm_medium', b.utmMedium)
   if (b.utmSource !== undefined) set('utm_source', b.utmSource || null)
@@ -53,6 +62,6 @@ export default defineEventHandler(async (event) => {
     return r.rows[0]
   })
   // Anything that changes the redirect target or tagging must drop the KV copy.
-  if (newUrl || b.isActive !== undefined || b.name !== undefined || b.folderId !== undefined || b.utmEnabled !== undefined || b.utmMedium !== undefined || b.utmSource !== undefined) await invalidateQrCache(event, row.code)
+  if (newUrl || b.isActive !== undefined || b.name !== undefined || b.folderId !== undefined || b.utmEnabled !== undefined || b.utmMedium !== undefined || b.utmSource !== undefined || b.ab !== undefined) await invalidateQrCache(event, row.code)
   return { code: updated, shortUrl: shortUrl(row.code) }
 })

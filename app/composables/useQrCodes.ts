@@ -2,6 +2,7 @@ import type { QrStyle } from '~~/shared/qr/style'
 import { renderQrSvg } from '~~/shared/qr/render-svg'
 import { framedDimensions, wrapQrSvgWithFrame, type QrFrame } from '~~/shared/qr/frame'
 import type { BulkQrInput } from '~~/shared/qr/bulk'
+import type { QrAb } from '~~/shared/qr/ab'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 import type { QrPageConfig, QrPageTemplate } from '~~/shared/qr/page'
 
@@ -16,6 +17,7 @@ export interface QrCode {
   destination_url: string
   style: QrStyle
   frame?: Partial<QrFrame> | null
+  ab?: Partial<QrAb> | null
   campaign_id?: string | null
   campaign_name?: string | null
   is_active: boolean
@@ -126,7 +128,7 @@ export function useQrCodes() {
     get: (id: string) => $fetch<{ code: QrCode, shortUrl: string, history: any[] }>(`${base}/${id}`),
     create: (body: { name: string, clientId: string, folderId?: string | null, destinationUrl: string, style: QrStyle, frame?: QrFrame, utmEnabled?: boolean, utmMedium?: string, utmSource?: string | null }) =>
       $fetch<{ code: QrCode, shortUrl: string }>(base, { method: 'POST', body, headers: idem('create') }),
-    update: (id: string, body: Partial<{ name: string, folderId: string | null, destinationUrl: string, style: QrStyle, frame: QrFrame, isActive: boolean, utmEnabled: boolean, utmMedium: string, utmSource: string | null }>) =>
+    update: (id: string, body: Partial<{ name: string, folderId: string | null, destinationUrl: string, style: QrStyle, frame: QrFrame, ab: QrAb, isActive: boolean, utmEnabled: boolean, utmMedium: string, utmSource: string | null }>) =>
       $fetch<{ code: QrCode }>(`${base}/${id}`, { method: 'PATCH', body, headers: idem(`update:${id}`) }),
     bulkCreate: (body: BulkQrInput) => $fetch<{ campaignId: string, codes: QrCode[] }>(`${base}/bulk`, { method: 'POST', body, headers: idem('bulk-create') }),
     campaigns: (clientId?: string) => $fetch<{ campaigns: any[] }>('/api/agency/qr-campaigns', { params: clientId ? { clientId } : {} }),

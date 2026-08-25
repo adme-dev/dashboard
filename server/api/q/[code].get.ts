@@ -1,7 +1,8 @@
 /** Public QR redirect. GET /q/:code → 302 destination. Scan logged in-request (timeout-capped). */
 import { isValidSlug } from '~~/shared/qr/slug'
 import { resolveQrCode } from '~~/server/utils/qr/resolve'
-import { recordScan } from '~~/server/utils/qr/scans'
+import { recordScan, scanIpHash } from '~~/server/utils/qr/scans'
+import { pickVariant } from '~~/shared/qr/ab'
 import { qrNotFoundPage } from '~~/server/utils/qr/not-found-page'
 import { buildTrackedUrl } from '~~/shared/qr/tracking'
 import { loadPublicQrPage } from '~~/server/utils/qr/pages'
@@ -38,9 +39,12 @@ export default defineEventHandler(async (event) => {
     } catch {
       return notFound(event)
     }
-  } else {
-    await recordScan(event, qr) // never throws; capped at SCAN_WRITE_TIMEOUT_MS
   }
+  // A/B arm: only for URL redirects (hosted pages have one destination). Same person → same arm all day.
+  const variant = !preview && qr.ab?.enabled && qr.ab.variantBUrl && (qr.mode ?? 'url') === 'url'
+    ? pickVariant(await scanIpHash(event), qr.ab.splitPct)
+    : null
+  if (!preview) await recordScan(event, qr, { variant }) // never throws; capped at SCAN_WRITE_TIMEOUT_MS
   if (qr.mode === 'page' || preview) {
     const hosted = await loadPublicQrPage(event, code!, { includeDraft: preview })
     if (hosted) {
@@ -70,6 +74,7 @@ export default defineEventHandler(async (event) => {
     if (qr.mode === 'page') return notFound(event) // page mode but nothing published yet
   }
   setResponseHeaders(event, { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer-when-downgrade' })
-  const target = buildTrackedUrl(qr.url, { code: qr.code ?? code!, enabled: qr.utmEnabled ?? true, medium: qr.utmMedium, source: qr.utmSource, campaign: qr.campaign })
+  const destination = variant === 'B' && qr.ab?.variantBUrl ? qr.ab.variantBUrl : qr.url
+  const target = buildTrackedUrl(destination, { code: qr.code ?? code!, enabled: qr.utmEnabled ?? true, medium: qr.utmMedium, source: qr.utmSource, campaign: qr.campaign, variant })
   return sendRedirect(event, target, 302)
 })

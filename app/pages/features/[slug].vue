@@ -2995,6 +2995,10 @@ const features: Record<string, Feature> = {
         content: 'Each code tracks a daily scan series, a unique-visitor estimate, and suburb, postcode, country, device, operating system, and browser breakdowns (location is network-derived and approximate) — enough to know a code is working without collecting cookies or storing anything personally identifying about the person who scanned it.'
       },
       {
+        title: 'Test two destinations from one print run',
+        content: 'Turn on a split test and a share of scans goes to a second URL. The same person sees one arm all day, every lead carries the arm it came from, and the code’s analytics show lead rate per arm with a plain-English verdict once there is enough data — no reprint, no second code.'
+      },
+      {
         title: 'Launches and subscriber offers',
         content: 'Register-interest pages take registrations until the launch date, then switch themselves to the launched message and send people on to the product. Subscribe pages add the email to one of your marketing lists (double opt-in respected) and reveal an offer code the moment they sign up.'
       },
