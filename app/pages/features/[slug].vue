@@ -2988,7 +2988,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Designed to match the brand',
-        content: 'Pick pattern and corner styles, colours, ready-made templates, and an optional centre logo, then export a crisp SVG for print or a high-resolution PNG for digital use. The code looks intentional on the page it appears on, not like a generic black-and-white square dropped in as an afterthought.'
+        content: 'Pick pattern and corner styles, colours, ready-made templates, and an optional centre logo, add a call-to-action frame (“Scan to enter”, “Scan to book”) in the brand colour, then export a crisp SVG for print or a high-resolution PNG for digital use. The code looks intentional on the page it appears on, not like a generic black-and-white square dropped in as an afterthought.'
       },
       {
         title: 'Every scan counted',

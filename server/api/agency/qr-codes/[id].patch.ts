@@ -20,6 +20,7 @@ export default defineEventHandler(async (event) => {
   if (b.name !== undefined) set('name', b.name)
   if (b.isActive !== undefined) set('is_active', b.isActive)
   if (b.style !== undefined) set('style', JSON.stringify(b.style))
+  if (b.frame !== undefined) set('frame', JSON.stringify(b.frame))
   if (b.utmEnabled !== undefined) set('utm_enabled', b.utmEnabled)
   if (b.utmMedium !== undefined) set('utm_medium', b.utmMedium)
   if (b.utmSource !== undefined) set('utm_source', b.utmSource || null)
