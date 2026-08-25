@@ -21,9 +21,9 @@ describe('resolveQrCode', () => {
   })
   it('falls back to DB and caches for 24h', async () => {
     kv.get.mockResolvedValue(null)
-    db.queryOne.mockResolvedValue({ id: '1', client_id: 'c', destination_url: 'https://b', is_active: true, utm_enabled: true, utm_medium: 'signage', utm_source: null, name: 'Window', folder_name: 'Spring' })
+    db.queryOne.mockResolvedValue({ id: '1', client_id: 'c', destination_url: 'https://b', is_active: true, utm_enabled: true, utm_medium: 'signage', utm_source: null, destination_mode: 'url', name: 'Window', folder_name: 'Spring' })
     const r = await resolveQrCode(event, 'AbC1234')
-    expect(r).toEqual({ id: '1', clientId: 'c', url: 'https://b', active: true, code: 'AbC1234', utmEnabled: true, utmMedium: 'signage', utmSource: null, campaign: 'Spring' })
+    expect(r).toEqual({ id: '1', clientId: 'c', url: 'https://b', active: true, code: 'AbC1234', utmEnabled: true, utmMedium: 'signage', utmSource: null, campaign: 'Spring', mode: 'url' })
     expect(kv.put).toHaveBeenCalledWith(event, 'qr:AbC1234', r, 86400)
   })
   it('returns null for unknown codes and does not cache', async () => {

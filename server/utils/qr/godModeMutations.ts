@@ -29,8 +29,9 @@ export type QrMutationKind
   = 'code-create' | 'code-update' | 'code-delete'
     | 'folder-create' | 'folder-update' | 'folder-delete'
     | 'logo-upload'
+    | 'page-save' | 'page-publish' | 'page-asset-upload'
 
-interface FamilyDef { kind: QrMutationKind, method: 'POST' | 'PATCH' | 'DELETE', matches: (path: string) => boolean, name: string, multipart?: boolean }
+interface FamilyDef { kind: QrMutationKind, method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', matches: (path: string) => boolean, name: string, multipart?: boolean }
 
 const FAMILIES: FamilyDef[] = [
   { kind: 'code-create', method: 'POST', matches: p => p === BASE, name: 'QR code creation' },
@@ -39,7 +40,10 @@ const FAMILIES: FamilyDef[] = [
   { kind: 'folder-create', method: 'POST', matches: p => p === `${BASE}/folders`, name: 'QR folder creation' },
   { kind: 'folder-update', method: 'PATCH', matches: p => new RegExp(`^${BASE}/folders/${UUID}$`, 'i').test(p), name: 'QR folder rename' },
   { kind: 'folder-delete', method: 'DELETE', matches: p => new RegExp(`^${BASE}/folders/${UUID}$`, 'i').test(p), name: 'QR folder deletion' },
-  { kind: 'logo-upload', method: 'POST', matches: p => p === `${BASE}/logo`, name: 'QR logo upload', multipart: true }
+  { kind: 'logo-upload', method: 'POST', matches: p => p === `${BASE}/logo`, name: 'QR logo upload', multipart: true },
+  { kind: 'page-save', method: 'PUT', matches: p => new RegExp(`^${BASE}/${UUID}/page$`, 'i').test(p), name: 'QR page save' },
+  { kind: 'page-publish', method: 'POST', matches: p => new RegExp(`^${BASE}/${UUID}/page/publish$`, 'i').test(p), name: 'QR page publish' },
+  { kind: 'page-asset-upload', method: 'POST', matches: p => new RegExp(`^${BASE}/${UUID}/page/assets$`, 'i').test(p), name: 'QR page asset upload', multipart: true }
 ]
 
 const operationsKey = Symbol('qrGodModeOperations')

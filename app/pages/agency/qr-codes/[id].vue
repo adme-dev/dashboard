@@ -89,6 +89,8 @@ async function toggleActive() {
 }
 
 const editorOpen = ref(false)
+const pageEditorOpen = ref(route.query.page === '1')
+const hosted = computed(() => data.value?.code?.destination_mode === 'page')
 async function copy() {
   await navigator.clipboard.writeText(data.value!.shortUrl)
   toast.add({ title: 'Short link copied', color: 'success' })
@@ -135,6 +137,15 @@ const full = (d: string) => format(new Date(d), 'd MMM yyyy, h:mm a')
           <UBadge :color="data.code.is_active ? 'success' : 'neutral'" variant="subtle" size="sm">
             {{ data.code.is_active ? 'Active' : 'Inactive' }}
           </UBadge>
+          <UBadge
+            v-if="hosted"
+            color="primary"
+            variant="subtle"
+            size="sm"
+            icon="i-lucide-layout-template"
+          >
+            Hosted page
+          </UBadge>
         </div>
         <p class="mt-0.5 text-sm text-muted">
           {{ data.code.client_name ?? '' }}<span v-if="data.code.folder_name"> · {{ data.code.folder_name }}</span>
@@ -142,6 +153,14 @@ const full = (d: string) => format(new Date(d), 'd MMM yyyy, h:mm a')
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
+        <UButton
+          icon="i-lucide-layout-template"
+          :variant="hosted ? 'soft' : 'outline'"
+          :color="hosted ? 'primary' : 'neutral'"
+          @click="() => { pageEditorOpen = true }"
+        >
+          {{ hosted ? 'Edit page' : 'Hosted page' }}
+        </UButton>
         <UButton
           icon="i-lucide-palette"
           variant="soft"
@@ -350,5 +369,6 @@ const full = (d: string) => format(new Date(d), 'd MMM yyyy, h:mm a')
       </section>
     </div>
     <QrEditor v-model:open="editorOpen" :code="data.code" @saved="() => refresh()" />
+    <QrPageEditor v-model:open="pageEditorOpen" :code="data.code" @saved="() => refresh()" />
   </div>
 </template>
