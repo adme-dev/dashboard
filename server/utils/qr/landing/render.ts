@@ -20,6 +20,10 @@ export interface RenderLandingInput {
   error?: string | null
   /** Competition entry extras: T&Cs link + acceptance checkbox, optional skill question, closed notice. */
   competition?: { termsUrl: string | null, skillQuestion: string | null, closedReason: string | null } | null
+  /** Register-interest preset after the launch date: replaces the form with the launched copy. */
+  launched?: { headline: string, body: string, redirectUrl: string | null } | null
+  /** Subscribe preset: offer code revealed in the success state. */
+  offer?: { code: string, note: string } | null
 }
 
 function field(f: QrPageField): string {
@@ -91,8 +95,13 @@ export function renderQrLandingPage(input: RenderLandingInput): string {
   <div class="tick" aria-hidden="true">✓</div>
   <h2>${escapeQrHtml(c.success_headline)}</h2>
   <p>${escapeQrHtml(c.success_body)}</p>
+  ${input.offer?.code ? `<p class="offer" aria-label="Offer code">${escapeQrHtml(input.offer.code)}</p>${input.offer.note ? `<p class="note">${escapeQrHtml(input.offer.note)}</p>` : ''}` : ''}
   ${successRedirect ? `<a class="btnlink" href="${successRedirect}">Continue</a>` : ''}
 </div>`
+
+  const launchedHtml = input.launched
+    ? `<div class="ok"><h2>${escapeQrHtml(input.launched.headline)}</h2>${input.launched.body ? `<p>${escapeQrHtml(input.launched.body)}</p>` : ''}${input.launched.redirectUrl ? `<a class="btnlink" href="${escapeQrHtml(input.launched.redirectUrl)}">Continue</a>` : ''}</div>`
+    : ''
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow"><title>${title}</title>
 <style>
@@ -117,6 +126,7 @@ button,.btnlink{display:block;width:100%;font:inherit;font-size:17px;font-weight
 button[disabled]{opacity:.6;cursor:not-allowed}button:focus-visible,.btnlink:focus-visible{outline:3px solid color-mix(in srgb,var(--ac) 50%,#fff)}
 .ok{text-align:center;padding:28px 18px;background:var(--sf);border:1px solid var(--ln);border-radius:16px}.ok h2{margin:12px 0 6px;font-size:24px}.ok p{margin:0 0 18px;color:var(--mu)}
 .tick{width:56px;height:56px;margin:0 auto;border-radius:50%;background:var(--ac);color:#fff;font-size:30px;line-height:56px;font-weight:700}
+.offer{display:inline-block;margin:0 0 8px;padding:10px 18px;border:2px dashed var(--ac);border-radius:12px;font:700 22px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;color:var(--fg)}.note{margin:0 0 18px;font-size:13px;color:var(--mu)}
 footer{margin-top:24px;font-size:12px;color:var(--mu);text-align:center}footer a{color:var(--mu)}
 @media (prefers-reduced-motion:no-preference){.ok{animation:in .35s ease-out}@keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}
 </style>${input.allowPixels ? pixels(c) : ''}${input.turnstileSiteKey ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''}</head>
@@ -126,7 +136,7 @@ ${input.assets.hero ? `<img class="hero" src="${escapeQrHtml(input.assets.hero)}
 <h1>${title}</h1>
 ${c.subheadline ? `<p class="sub">${escapeQrHtml(c.subheadline)}</p>` : ''}
 ${c.body_md ? `<div class="body">${renderMarkdownLite(c.body_md)}</div>` : ''}
-${input.competition?.closedReason ? `<div class="ok"><h2>${escapeQrHtml(input.competition.closedReason)}</h2></div>` : `<div id="formwrap"${success ? ' hidden' : ''}>${formHtml}</div>`}
+${launchedHtml || (input.competition?.closedReason ? `<div class="ok"><h2>${escapeQrHtml(input.competition.closedReason)}</h2></div>` : `<div id="formwrap"${success ? ' hidden' : ''}>${formHtml}</div>`)}
 ${successHtml}
 <footer>${c.footer.promoter_name ? `${escapeQrHtml(c.footer.promoter_name)} · ` : ''}${c.footer.terms_url ? `<a href="${escapeQrHtml(c.footer.terms_url)}" rel="noopener">Terms</a> · ` : ''}${c.footer.privacy_url ? `<a href="${escapeQrHtml(c.footer.privacy_url)}" rel="noopener">Privacy</a>` : ''}</footer>
 </main>

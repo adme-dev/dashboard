@@ -46,7 +46,7 @@ describe('POST /q/:code/submit', () => {
     const handler = (await import('../../server/api/q/[code]/submit.post')).default
     const e = ev({ full_name: ' Jo ', phone: '0412 345 678', postcode: 'VIC 3199', marketing_consent: 'yes', landing_page: 'https://app.xeroflow.io/q/AbC1234' })
     const res = await handler(e)
-    expect(res).toEqual({ ok: true, redirect: null })
+    expect(res).toEqual({ ok: true, redirect: null, offer_code: null })
     const lead = accept.mock.calls[0][1].lead
     expect(lead.source).toBe('qr')
     expect(lead.source_lead_id).toMatch(/^AbC1234:/)

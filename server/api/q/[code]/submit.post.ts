@@ -5,7 +5,9 @@
  */
 import { randomUUID } from 'node:crypto'
 import { isValidSlug } from '~~/shared/qr/slug'
-import { normalisePostcode } from '~~/shared/qr/page'
+import { launchState, normalisePostcode } from '~~/shared/qr/page'
+import { addToList, upsertSubscriber } from '~~/server/utils/email-marketing/db'
+import { recordConsentEvent } from '~~/server/utils/email-marketing/audit'
 import { resolveQrCode } from '~~/server/utils/qr/resolve'
 import { loadPublicQrPage } from '~~/server/utils/qr/pages'
 import { buildTrackedUrl } from '~~/shared/qr/tracking'
@@ -55,6 +57,7 @@ async function handleSubmit(event: any) {
   }
 
   const cfg = hosted.page.config
+  if (hosted.page.template === 'interest' && launchState(cfg).launched) return fail(event, 409, 'Registrations have closed — this has launched')
   const fieldData: Record<string, string> = {}
   for (const f of cfg.fields) {
     const v = raw[f.key]
@@ -134,6 +137,16 @@ async function handleSubmit(event: any) {
   })
   if (result.status === 'created') {
     await execute(`UPDATE qr_pages SET submissions_count = submissions_count + 1 WHERE id = $1`, [hosted.page.id]).catch(() => {})
+    // Subscribe preset: the email joins the configured marketing list (double opt-in honoured by addToList).
+    if (hosted.page.template === 'subscribe' && cfg.subscribe.list_id && fieldData.email) {
+      try {
+        const subscriberId = await upsertSubscriber({ email: fieldData.email.toLowerCase(), name: fieldData.full_name || null, attribs: { xf_qr: code, qr_page_id: hosted.page.id }, client_id: hosted.clientId })
+        await addToList(subscriberId, cfg.subscribe.list_id, 'form')
+        await recordConsentEvent({ subscriberId, email: fieldData.email.toLowerCase(), listId: cfg.subscribe.list_id, eventType: 'form_submitted', source: 'form', actorUserId: null, metadata: { xf_qr: code, ip_hash: ipHash } } as any)
+      } catch (err: any) {
+        console.error('[qr:submit] subscribe list add failed', err?.message)
+      }
+    }
     if (competition && entrant) {
       const st = fieldData.postcode ? await queryOne<{ state: string }>(`SELECT state FROM geo_au_postcodes WHERE postcode = $1`, [fieldData.postcode]) : null
       await execute(
@@ -143,7 +156,7 @@ async function handleSubmit(event: any) {
           typeof raw.answer === 'string' ? raw.answer.trim().slice(0, 1000) : null, fieldData.postcode ?? null, st?.state ?? null, ipHash, (getHeader(event, 'user-agent') || '').slice(0, 512) || null])
     }
   }
-  return { ok: true, redirect: cfg.success_redirect_url }
+  return { ok: true, redirect: cfg.success_redirect_url, offer_code: hosted.page.template === 'subscribe' && cfg.subscribe.offer_code ? cfg.subscribe.offer_code : null }
 }
 
 export default defineEventHandler(async (event) => {

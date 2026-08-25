@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { QR_PAGE_TEMPLATES, QR_FIELD_TYPES, QrPageConfigSchema, defaultPageConfig, type QrPageConfig, type QrPageTemplate, type QrPageField } from '~~/shared/qr/page'
 import type { QrCode, QrPage } from '~/composables/useQrCodes'
+import { CalendarDate, getLocalTimeZone, type DateValue } from '@internationalized/date'
 
 const props = defineProps<{ code: QrCode }>()
 const open = defineModel<boolean>('open', { default: false })
@@ -26,6 +27,33 @@ watch(template, async (t) => {
   }
 })
 const heroInput = ref<HTMLInputElement>()
+
+// Subscribe preset: marketing lists in the client's scope (or agency-wide lists with no client).
+const lists = ref<{ label: string, value: string }[]>([])
+watch(template, async (t) => {
+  if (t === 'subscribe' && !lists.value.length) {
+    const res = await $fetch<{ items: any[] }>('/api/email/lists').catch(() => ({ items: [] }))
+    lists.value = res.items.filter(l => !l.client_id || l.client_id === props.code.client_id).map(l => ({ label: `${l.name} (${l.subscriber_count})`, value: l.id }))
+  }
+}, { immediate: true })
+const listModel = computed({
+  get: () => config.value.subscribe.list_id ?? 'none',
+  set: (v: string) => { config.value.subscribe.list_id = v === 'none' ? null : v }
+})
+const listItems = computed(() => [{ label: 'Don\'t add to a list', value: 'none' }, ...lists.value])
+
+// Register-interest preset: launch date picked as a calendar day, stored as local midnight ISO.
+const launchDate = computed<DateValue | null>({
+  get: () => {
+    const iso = config.value.launch.launch_at
+    if (!iso) return null
+    const d = new Date(iso)
+    return Number.isNaN(d.getTime()) ? null : new CalendarDate(d.getFullYear(), d.getMonth() + 1, d.getDate())
+  },
+  set: (v) => { config.value.launch.launch_at = v ? v.toDate(getLocalTimeZone()).toISOString() : null }
+})
+const launchLabel = computed(() => launchDate.value ? new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }).format(launchDate.value.toDate(getLocalTimeZone())) : 'Pick a date')
+const launched = computed(() => !!config.value.launch.launch_at && new Date(config.value.launch.launch_at).getTime() <= Date.now())
 const logoInput = ref<HTMLInputElement>()
 
 const templateItems = [
@@ -205,6 +233,79 @@ async function upload(kind: 'hero' | 'logo', e: Event) {
             <p class="text-xs text-muted">
               Manage prizes, permits, terms and the draw under <NuxtLink to="/agency/qr-codes/competitions" class="text-primary">Competitions</NuxtLink>.
             </p>
+          </section>
+          <section v-if="template === 'interest'" class="space-y-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-muted">
+              Launch
+            </h4>
+            <p class="text-xs text-muted">
+              From the launch date the page stops taking registrations and shows the launched copy instead.
+            </p>
+            <div class="grid grid-cols-2 gap-4">
+              <UFormField label="Launch date" :help="launched ? 'Already launched — the page shows the launched copy.' : undefined">
+                <UPopover>
+                  <UButton
+                    variant="outline"
+                    color="neutral"
+                    icon="i-lucide-calendar"
+                    class="w-full justify-start"
+                  >
+                    {{ launchLabel }}
+                  </UButton>
+                  <template #content>
+                    <UCalendar v-model="launchDate" class="p-2" />
+                    <div class="border-t border-default p-2">
+                      <UButton
+                        size="xs"
+                        variant="ghost"
+                        color="neutral"
+                        :disabled="!launchDate"
+                        @click="launchDate = null"
+                      >
+                        Clear
+                      </UButton>
+                    </div>
+                  </template>
+                </UPopover>
+              </UFormField>
+              <UFormField label="After launch, send people to">
+                <UInput v-model="config.launch.launched_redirect_url" placeholder="https://" class="w-full" />
+              </UFormField>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <UFormField label="Launched headline">
+                <UInput v-model="config.launch.launched_headline" maxlength="120" class="w-full" />
+              </UFormField>
+              <UFormField label="Launched message">
+                <UInput v-model="config.launch.launched_body" maxlength="1000" class="w-full" />
+              </UFormField>
+            </div>
+          </section>
+          <section v-if="template === 'subscribe'" class="space-y-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-muted">
+              List &amp; offer
+            </h4>
+            <div class="grid grid-cols-2 gap-4">
+              <UFormField label="Add to list" help="Double opt-in lists send a confirmation first.">
+                <USelectMenu
+                  v-model="listModel"
+                  :items="listItems"
+                  value-key="value"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Offer code" help="Shown after they subscribe.">
+                <UInput
+                  v-model="config.subscribe.offer_code"
+                  maxlength="40"
+                  placeholder="WELCOME10"
+                  class="w-full font-mono uppercase"
+                />
+              </UFormField>
+            </div>
+            <UFormField label="Offer note">
+              <UInput v-model="config.subscribe.offer_note" maxlength="200" class="w-full" />
+            </UFormField>
           </section>
           <section class="space-y-4">
             <h4 class="text-xs font-semibold uppercase tracking-wider text-muted">

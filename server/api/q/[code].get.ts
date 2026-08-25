@@ -11,6 +11,7 @@ import { snapshotConsent } from '~~/server/utils/tracking/consent'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { competitionIsOpen, parseCompetitionRow } from '~~/server/utils/qr/competitions'
+import { launchState } from '~~/shared/qr/page'
 
 function notFound(event: any) {
   setResponseStatus(event, 404)
@@ -54,8 +55,13 @@ export default defineEventHandler(async (event) => {
           competition = { termsUrl: `/q/${code}/terms`, skillQuestion: comp.type === 'skill' ? comp.details.skill_question : null, closedReason: win.open || preview ? null : win.reason }
         }
       }
+      const cfg = hosted.page.config
+      const launched = hosted.page.template === 'interest' && !preview && launchState(cfg).launched
+        ? { headline: cfg.launch.launched_headline, body: cfg.launch.launched_body, redirectUrl: cfg.launch.launched_redirect_url }
+        : null
+      const offer = hosted.page.template === 'subscribe' && cfg.subscribe.offer_code ? { code: cfg.subscribe.offer_code, note: cfg.subscribe.offer_note } : null
       return renderQrLandingPage({
-        code: code!, config: hosted.page.config, assets: hosted.assets, competition,
+        code: code!, config: hosted.page.config, assets: hosted.assets, competition, launched, offer,
         submitPath: `/q/${code}/submit`, preview,
         turnstileSiteKey: isTurnstileEnabled() ? (useRuntimeConfig().public as any).turnstileSiteKey || null : null,
         allowPixels: !preview && consent.tracking === 'granted'
