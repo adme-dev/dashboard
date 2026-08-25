@@ -54,7 +54,20 @@ export const QrPageConfigSchema = z.object({
     terms_url: HTTP_URL.nullable().default(null)
   }).default({ promoter_name: '', privacy_url: null, terms_url: null }),
   hero_asset_id: z.string().uuid().nullable().default(null),
-  logo_asset_id: z.string().uuid().nullable().default(null)
+  logo_asset_id: z.string().uuid().nullable().default(null),
+  /** Register-interest preset: after `launch_at` the page swaps to the launched copy and stops taking registrations. */
+  launch: z.object({
+    launch_at: z.string().datetime({ offset: true }).nullable().default(null),
+    launched_headline: z.string().trim().min(1).max(120).default('It\'s here'),
+    launched_body: z.string().trim().max(1000).default('Registrations have closed — see what launched.'),
+    launched_redirect_url: HTTP_URL.nullable().default(null)
+  }).default({ launch_at: null, launched_headline: 'It\'s here', launched_body: 'Registrations have closed — see what launched.', launched_redirect_url: null }),
+  /** Subscribe preset: add the email to a marketing list and show an offer code on success. */
+  subscribe: z.object({
+    list_id: z.string().uuid().nullable().default(null),
+    offer_code: z.string().trim().max(40).default(''),
+    offer_note: z.string().trim().max(200).default('Show this code in store or use it at checkout.')
+  }).default({ list_id: null, offer_code: '', offer_note: 'Show this code in store or use it at checkout.' })
 }).strict()
 export type QrPageConfig = z.infer<typeof QrPageConfigSchema>
 
@@ -91,6 +104,13 @@ export function defaultPageConfig(template: QrPageTemplate, seed: { name?: strin
     marketing_consent: template !== 'lead',
     footer: { promoter_name: seed.clientName ?? '' }
   })
+}
+
+/** Register-interest launch gate. `launched` is true once `launch_at` has passed. */
+export function launchState(config: Pick<QrPageConfig, 'launch'>, now: Date = new Date()): { launched: boolean, launchAt: Date | null } {
+  const at = config.launch?.launch_at ? new Date(config.launch.launch_at) : null
+  if (!at || Number.isNaN(at.getTime())) return { launched: false, launchAt: null }
+  return { launched: now.getTime() >= at.getTime(), launchAt: at }
 }
 
 /** Australian postcodes are 4 digits; strip anything else. */
