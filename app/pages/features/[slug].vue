@@ -640,31 +640,6 @@ const features: Record<string, Feature> = {
       }
     ]
   },
-  // ─── QR Codes ────────────────────────────────────────────────
-  'qr-codes': {
-    title: 'QR Codes',
-    slug: 'qr-codes',
-    icon: 'i-lucide-qr-code',
-    category: 'Creative Production',
-    categoryIcon: 'i-lucide-rocket',
-    categoryIconBg: 'bg-rose-50',
-    categoryIconColor: 'text-rose-600',
-    description: 'Turn any link or text into a print-safe QR code — generated locally in the browser, styled to brand, exported as PNG or SVG.',
-    details: [
-      {
-        title: 'Private By Construction',
-        content: 'Encoding happens entirely in the browser — the content never touches a server, a third-party generator, or an analytics pixel. Paste a portal invite, a proof review link or a campaign URL and the code exists only on your screen until you export it.'
-      },
-      {
-        title: 'Print-Safe Output',
-        content: 'Choose the error-correction level (L through H) for the medium — H survives logos, laminate glare and print damage. Export as a crisp SVG for large-format print or PNG up to 2048px, with brand foreground and background colours.'
-      },
-      {
-        title: 'Client Self-Serve, When You Allow It',
-        content: 'The same generator can be switched on per deployment for the client portal, so clients create their own codes for menus, signage and campaigns without asking the agency — or stays agency-only with a single flag.'
-      }
-    ]
-  },
   // ─── Video Studio ────────────────────────────────────────────
   'video-studio': {
     title: 'Video Studio',
