@@ -2,6 +2,7 @@ import { queryOne } from '~~/server/utils/db'
 import { requireQrCodeAccess, shortUrl } from '~~/server/utils/qr/access'
 import { UpdateQrSchema } from '~~/server/utils/qr/schemas'
 import { invalidateQrCache } from '~~/server/utils/qr/resolve'
+import { executeQrMutation } from '~~/server/utils/qr/godModeMutations'
 import { validateDestinationUrl, isDestinationInvalid } from '~~/shared/qr/destination'
 
 export default defineEventHandler(async (event) => {
@@ -9,8 +10,12 @@ export default defineEventHandler(async (event) => {
   const parsed = UpdateQrSchema.safeParse(await readBody(event))
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.issues[0]?.message || 'Invalid body' })
   const b = parsed.data
-  const sets: string[] = []; const params: unknown[] = []
-  const set = (col: string, v: unknown) => { params.push(v); sets.push(`${col} = $${params.length}`) }
+  const sets: string[] = []
+  const params: unknown[] = []
+  const set = (col: string, v: unknown) => {
+    params.push(v)
+    sets.push(`${col} = $${params.length}`)
+  }
 
   if (b.name !== undefined) set('name', b.name)
   if (b.isActive !== undefined) set('is_active', b.isActive)
@@ -29,13 +34,23 @@ export default defineEventHandler(async (event) => {
   if (b.destinationUrl !== undefined) {
     const d = validateDestinationUrl(b.destinationUrl)
     if (isDestinationInvalid(d)) throw createError({ statusCode: 400, statusMessage: d.reason })
-    if (d.url !== row.destination_url) { newUrl = d.url; set('destination_url', d.url) }
+    if (d.url !== row.destination_url) {
+      newUrl = d.url
+      set('destination_url', d.url)
+    }
   }
   if (!sets.length) return { code: row, shortUrl: shortUrl(row.code) }
 
   params.push(row.id)
-  const updated = await queryOne<any>(`UPDATE qr_codes SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${params.length} RETURNING *`, params)
-  if (newUrl) await queryOne(`INSERT INTO qr_destination_history (qr_code_id, old_url, new_url, changed_by) VALUES ($1,$2,$3,$4) RETURNING id`, [row.id, row.destination_url, newUrl, user.id])
+  const updated = await executeQrMutation(event, 'code-update', async (db) => {
+    const r = await db.query(`UPDATE qr_codes SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${params.length} RETURNING *`, params)
+    if (newUrl) await db.query(`INSERT INTO qr_destination_history (qr_code_id, old_url, new_url, changed_by) VALUES ($1,$2,$3,$4)`, [row.id, row.destination_url, newUrl, user.id])
+    return r.rows[0]
+  }, async (db, id) => {
+    const r = await db.query(`SELECT * FROM qr_codes WHERE id = $1`, [id])
+    if (!r.rows[0]) throw new Error('Replayed QR code no longer exists')
+    return r.rows[0]
+  })
   // Anything that changes the redirect target or tagging must drop the KV copy.
   if (newUrl || b.isActive !== undefined || b.name !== undefined || b.folderId !== undefined || b.utmEnabled !== undefined || b.utmMedium !== undefined || b.utmSource !== undefined) await invalidateQrCache(event, row.code)
   return { code: updated, shortUrl: shortUrl(row.code) }

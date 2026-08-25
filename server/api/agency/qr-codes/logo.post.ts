@@ -1,6 +1,8 @@
 /** Upload a centre logo; returns a data URI to embed in style.logo. POST multipart field "file". */
 import { requireAuth, requireRole } from '~~/server/utils/auth'
 import { ANALYTICS_ROLES } from '~~/server/utils/client-access'
+import { executeQrMutation } from '~~/server/utils/qr/godModeMutations'
+import { sha256Hex } from '~~/server/utils/exportTokens'
 
 const MAX = 256 * 1024
 export default defineEventHandler(async (event) => {
@@ -14,5 +16,9 @@ export default defineEventHandler(async (event) => {
   if (type === 'image/svg+xml' && /<script|on\w+=|<foreignObject/i.test(file.data.toString('utf8'))) {
     throw createError({ statusCode: 400, statusMessage: 'SVG logos may not contain scripts' })
   }
-  return { dataUri: `data:${type};base64,${file.data.toString('base64')}` }
+  const dataUri = `data:${type};base64,${file.data.toString('base64')}`
+  // No DB write, but owners' POSTs run under the execution ledger — record the attempt with the content hash as its id.
+  const id = await sha256Hex(dataUri)
+  await executeQrMutation(event, 'logo-upload', async () => ({ id }), async (_db, ref) => ({ id: ref }))
+  return { dataUri }
 })

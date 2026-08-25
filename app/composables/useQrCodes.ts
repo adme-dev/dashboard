@@ -1,5 +1,6 @@
 import type { QrStyle } from '~~/shared/qr/style'
 import { renderQrSvg } from '~~/shared/qr/render-svg'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 export interface QrCode {
   id: string
@@ -80,6 +81,8 @@ export async function downloadQrPng(code: { id: string, code: string, name: stri
 
 export function useQrCodes() {
   const base = '/api/agency/qr-codes'
+  // Owners' writes run under the God-mode execution ledger, which needs a stable Idempotency-Key per attempt.
+  const idem = (scope: string) => ({ 'Idempotency-Key': idempotencyKey(`qr-${scope}`) })
   return {
     shortUrl: qrShortUrl,
     exportUrl: qrExportUrl,
@@ -88,18 +91,18 @@ export function useQrCodes() {
       $fetch<{ codes: QrCode[] }>(base, { params }),
     get: (id: string) => $fetch<{ code: QrCode, shortUrl: string, history: any[] }>(`${base}/${id}`),
     create: (body: { name: string, clientId: string, folderId?: string | null, destinationUrl: string, style: QrStyle, utmEnabled?: boolean, utmMedium?: string, utmSource?: string | null }) =>
-      $fetch<{ code: QrCode, shortUrl: string }>(base, { method: 'POST', body }),
+      $fetch<{ code: QrCode, shortUrl: string }>(base, { method: 'POST', body, headers: idem('create') }),
     update: (id: string, body: Partial<{ name: string, folderId: string | null, destinationUrl: string, style: QrStyle, isActive: boolean, utmEnabled: boolean, utmMedium: string, utmSource: string | null }>) =>
-      $fetch<{ code: QrCode }>(`${base}/${id}`, { method: 'PATCH', body }),
-    remove: (id: string) => $fetch(`${base}/${id}`, { method: 'DELETE' }),
+      $fetch<{ code: QrCode }>(`${base}/${id}`, { method: 'PATCH', body, headers: idem(`update:${id}`) }),
+    remove: (id: string) => $fetch(`${base}/${id}`, { method: 'DELETE', headers: idem(`delete:${id}`) }),
     folders: (clientId: string) => $fetch<{ folders: QrFolder[] }>(`${base}/folders`, { params: { clientId } }),
-    createFolder: (body: { clientId: string, name: string }) => $fetch<{ folder: QrFolder }>(`${base}/folders`, { method: 'POST', body }),
-    renameFolder: (id: string, name: string) => $fetch(`${base}/folders/${id}`, { method: 'PATCH', body: { name } }),
-    deleteFolder: (id: string) => $fetch(`${base}/folders/${id}`, { method: 'DELETE' }),
+    createFolder: (body: { clientId: string, name: string }) => $fetch<{ folder: QrFolder }>(`${base}/folders`, { method: 'POST', body, headers: idem('folder-create') }),
+    renameFolder: (id: string, name: string) => $fetch(`${base}/folders/${id}`, { method: 'PATCH', body: { name }, headers: idem(`folder-update:${id}`) }),
+    deleteFolder: (id: string) => $fetch(`${base}/folders/${id}`, { method: 'DELETE', headers: idem(`folder-delete:${id}`) }),
     uploadLogo: (file: File) => {
       const fd = new FormData()
       fd.append('file', file)
-      return $fetch<{ dataUri: string }>(`${base}/logo`, { method: 'POST', body: fd })
-    },
+      return $fetch<{ dataUri: string }>(`${base}/logo`, { method: 'POST', body: fd, headers: idem('logo') })
+    }
   }
 }
