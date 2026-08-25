@@ -32,7 +32,9 @@ export const TRACK_EVENT_NAMES = [
   'return_to_vehicle', 'competitive_referrer', 'generate_lead',
   // Phase B funnel & intent signals — fire only when the tag's opt-in
   // `funnelSignals` mode is enabled (see public/track.js).
-  'vehicle_comparison', 'exit_intent', 'cta_visible'
+  'vehicle_comparison', 'exit_intent', 'cta_visible',
+  // QR client-360 mirror (server-emitted; see server/utils/qr/export360.ts)
+  'qr_scan', 'qr_landing_view', 'qr_lead'
 ] as const
 
 export const TrackEventNameSchema = z.enum(TRACK_EVENT_NAMES)

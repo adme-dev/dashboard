@@ -5,6 +5,7 @@ import { resolveClientIp } from '~~/server/utils/tracking/client-ip'
 import { classifyQrUserAgent } from './ua'
 import { resolveQrScanGeo } from './geo'
 import type { ResolvedQr } from './resolve'
+import { emitQr360Event } from './export360'
 
 const INSERT_SQL = `INSERT INTO qr_scans (qr_code_id, client_id, country, device_type, os, browser, ip_hash, referrer, ua, city, region, postcode, lat, lng, variant)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`
@@ -44,6 +45,7 @@ export async function recordScan(event: H3Event, qr: ResolvedQr, opts: { variant
     const write = (async () => {
       await execute(INSERT_SQL, [qr.id, qr.clientId, geo.country, info.deviceType, info.os, info.browser, ipHash, referrer, ua?.slice(0, 512) ?? null, geo.city, geo.region, geo.postcode, geo.lat, geo.lng, opts.variant ?? null])
       await execute(COUNTER_SQL, [qr.id])
+      await emitQr360Event(event, { clientId: qr.clientId, eventName: 'qr_scan', code: qr.code ?? '', variant: opts.variant ?? null, ipHash, ua, referrer, utm: { medium: qr.utmMedium, campaign: qr.campaign } })
     })()
 
     let timer: ReturnType<typeof setTimeout> | undefined

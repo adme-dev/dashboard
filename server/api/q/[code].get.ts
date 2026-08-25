@@ -13,6 +13,7 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { competitionIsOpen, parseCompetitionRow } from '~~/server/utils/qr/competitions'
 import { launchState } from '~~/shared/qr/page'
+import { emitQr360Event } from '~~/server/utils/qr/export360'
 
 function notFound(event: any) {
   setResponseStatus(event, 404)
@@ -60,6 +61,7 @@ export default defineEventHandler(async (event) => {
         }
       }
       const cfg = hosted.page.config
+      if (!preview) await emitQr360Event(event, { clientId: hosted.clientId, eventName: 'qr_landing_view', code: code!, ipHash: await scanIpHash(event), ua: getHeader(event, 'user-agent') || null, pageUrl: `/q/${code}`, consent: { tracking: consent.tracking } })
       const launched = hosted.page.template === 'interest' && !preview && launchState(cfg).launched
         ? { headline: cfg.launch.launched_headline, body: cfg.launch.launched_body, redirectUrl: cfg.launch.launched_redirect_url }
         : null

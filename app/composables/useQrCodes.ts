@@ -130,6 +130,8 @@ export function useQrCodes() {
       $fetch<{ code: QrCode, shortUrl: string }>(base, { method: 'POST', body, headers: idem('create') }),
     update: (id: string, body: Partial<{ name: string, folderId: string | null, destinationUrl: string, style: QrStyle, frame: QrFrame, ab: QrAb, isActive: boolean, utmEnabled: boolean, utmMedium: string, utmSource: string | null }>) =>
       $fetch<{ code: QrCode }>(`${base}/${id}`, { method: 'PATCH', body, headers: idem(`update:${id}`) }),
+    settings: (clientId: string) => $fetch<{ settings: { export360: boolean, updatedAt: string | null }, trackerInstalled: boolean }>(`${base}/settings`, { params: { clientId } }),
+    updateSettings: (body: { clientId: string, export360: boolean }) => $fetch<{ settings: { export360: boolean, updatedAt: string | null } }>(`${base}/settings`, { method: 'PATCH', body, headers: idem(`settings:${body.clientId}`) }),
     bulkCreate: (body: BulkQrInput) => $fetch<{ campaignId: string, codes: QrCode[] }>(`${base}/bulk`, { method: 'POST', body, headers: idem('bulk-create') }),
     campaigns: (clientId?: string) => $fetch<{ campaigns: any[] }>('/api/agency/qr-campaigns', { params: clientId ? { clientId } : {} }),
     campaign: (id: string) => $fetch<{ campaign: any, codes: QrCode[], totals: { scans: number, visitors: number, leads: number } }>(`/api/agency/qr-campaigns/${id}`),

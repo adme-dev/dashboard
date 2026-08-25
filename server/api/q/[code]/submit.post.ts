@@ -8,6 +8,8 @@ import { isValidSlug } from '~~/shared/qr/slug'
 import { launchState, normalisePostcode } from '~~/shared/qr/page'
 import { addToList, upsertSubscriber } from '~~/server/utils/email-marketing/db'
 import { recordConsentEvent } from '~~/server/utils/email-marketing/audit'
+import { emitQr360Event } from '~~/server/utils/qr/export360'
+import { parseGaClientId } from '~~/shared/qr/export360'
 import { resolveQrCode } from '~~/server/utils/qr/resolve'
 import { loadPublicQrPage } from '~~/server/utils/qr/pages'
 import { buildTrackedUrl } from '~~/shared/qr/tracking'
@@ -114,6 +116,9 @@ async function handleSubmit(event: any) {
     if (v) attribution[k] = v
   }
   if (landing) attribution.landing_page = landing
+  // GA4 client id only exists here when the client's own GA4 tag on the hosted page set the _ga cookie.
+  const gaClientId = parseGaClientId(getCookie(event, '_ga'))
+  if (gaClientId) attribution.ga_client_id = gaClientId
 
   const consent = snapshotConsent({ consentCookieValue: getCookie(event, '_xf_consent'), cfIpCountry: getHeader(event, 'cf-ipcountry') })
   const result = await acceptLead(event, {
@@ -137,6 +142,7 @@ async function handleSubmit(event: any) {
   })
   if (result.status === 'created') {
     await execute(`UPDATE qr_pages SET submissions_count = submissions_count + 1 WHERE id = $1`, [hosted.page.id]).catch(() => {})
+    await emitQr360Event(event, { clientId: hosted.clientId, eventName: 'qr_lead', code: code!, ipHash, ua: getHeader(event, 'user-agent') || null, pageUrl: `/q/${code}`, gaClientId, leadId: result.leadId, consent: { tracking: consent.tracking } })
     // Subscribe preset: the email joins the configured marketing list (double opt-in honoured by addToList).
     if (hosted.page.template === 'subscribe' && cfg.subscribe.list_id && fieldData.email) {
       try {
