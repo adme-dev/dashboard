@@ -186,6 +186,7 @@ const full = (d: string) => format(new Date(d), 'd MMM yyyy, h:mm a')
         <QrPreview
           :text="data.shortUrl"
           :style="data.code.style"
+          :frame="data.code.frame"
           :size="300"
           fluid
         />

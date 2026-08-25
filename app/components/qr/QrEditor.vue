@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { DEFAULT_STYLE, type QrStyle } from '~~/shared/qr/style'
+import { DEFAULT_FRAME, QR_FRAME_STYLES, QR_FRAME_STYLE_LABELS, QR_FRAME_LABEL_MAX, QrFrameSchema, defaultFrameLabel, type QrFrame } from '~~/shared/qr/frame'
 import { QR_UTM_MEDIUMS, buildTrackedUrl, type QrUtmMedium } from '~~/shared/qr/tracking'
 import { validateDestinationUrl, isDestinationInvalid } from '~~/shared/qr/destination'
 import type { QrCode, QrFolder } from '~/composables/useQrCodes'
@@ -19,6 +20,7 @@ const form = reactive({
   folderId: (props.folderId ?? null) as string | null,
   destinationUrl: '',
   style: { ...DEFAULT_STYLE } as QrStyle,
+  frame: { ...DEFAULT_FRAME } as QrFrame,
   utmEnabled: true,
   utmMedium: 'print' as QrUtmMedium,
   utmSource: ''
@@ -53,6 +55,7 @@ watch(() => open.value, (o) => {
   form.folderId = c?.folder_id ?? props.folderId ?? null
   form.destinationUrl = c?.destination_url ?? ''
   form.style = { ...DEFAULT_STYLE, ...(c?.style ?? {}) }
+  form.frame = QrFrameSchema.parse(c?.frame ?? {})
   form.utmEnabled = c?.utm_enabled ?? true
   form.utmMedium = (c?.utm_medium as QrUtmMedium) ?? 'print'
   form.utmSource = c?.utm_source ?? ''
@@ -71,13 +74,20 @@ async function onLogo(file: File) {
   }
 }
 
+const frameStyleItems = QR_FRAME_STYLES.map(value => ({ label: QR_FRAME_STYLE_LABELS[value], value }))
+const frameLabelPlaceholder = computed(() => defaultFrameLabel(null))
+const frameColorModel = computed({
+  get: () => form.frame.color ?? form.style.fg,
+  set: (v: string) => { form.frame = { ...form.frame, color: v } }
+})
+
 async function save() {
   if (!canSave.value) return
   saving.value = true
   try {
     const res = props.code
-      ? await api.update(props.code.id, { name: form.name, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style, utmEnabled: form.utmEnabled, utmMedium: form.utmMedium, utmSource: form.utmSource.trim() || null })
-      : await api.create({ name: form.name, clientId: form.clientId, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style, utmEnabled: form.utmEnabled, utmMedium: form.utmMedium, utmSource: form.utmSource.trim() || null })
+      ? await api.update(props.code.id, { name: form.name, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style, frame: form.frame, utmEnabled: form.utmEnabled, utmMedium: form.utmMedium, utmSource: form.utmSource.trim() || null })
+      : await api.create({ name: form.name, clientId: form.clientId, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style, frame: form.frame, utmEnabled: form.utmEnabled, utmMedium: form.utmMedium, utmSource: form.utmSource.trim() || null })
     toast.add({ title: props.code ? 'QR code updated' : 'QR code created', description: props.code ? undefined : 'Download it from the card or open it for scan tracking.', color: 'success' })
     emit('saved', res.code)
     open.value = false
@@ -172,6 +182,45 @@ async function save() {
             </p>
           </section>
           <USeparator />
+          <section class="space-y-3">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-muted">
+              Frame &amp; call to action
+            </h4>
+            <p class="text-xs text-muted">
+              Wraps the export in a coloured border with a prompt like “Scan to enter”, so print files are ready without a designer pass.
+            </p>
+            <div class="grid grid-cols-2 gap-4">
+              <UFormField label="Frame">
+                <USelectMenu
+                  v-model="form.frame.style"
+                  :items="frameStyleItems"
+                  value-key="value"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField v-if="form.frame.style !== 'none'" :label="`Label · ${form.frame.label.length}/${QR_FRAME_LABEL_MAX}`" help="Leave blank for a plain border.">
+                <UInput
+                  v-model="form.frame.label"
+                  :maxlength="QR_FRAME_LABEL_MAX"
+                  :placeholder="frameLabelPlaceholder"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
+            <div v-if="form.frame.style !== 'none'" class="grid grid-cols-2 gap-4">
+              <QrColorField v-model="frameColorModel" label="Frame colour" />
+              <QrColorField :model-value="form.frame.textColor" label="Label colour" @update:model-value="(v: string) => form.frame = { ...form.frame, textColor: v }" />
+            </div>
+            <UFormField v-if="form.frame.style !== 'none'" :label="`Corner radius · ${form.frame.radius}%`" class="max-w-xs">
+              <USlider
+                v-model="form.frame.radius"
+                :min="0"
+                :max="12"
+                :step="1"
+              />
+            </UFormField>
+          </section>
+          <USeparator />
           <QrStylePicker v-model="form.style" @upload-logo="onLogo" />
         </div>
         <aside class="min-w-0 lg:sticky lg:top-0 lg:self-start">
@@ -182,6 +231,7 @@ async function save() {
             <QrPreview
               :text="previewText"
               :style="form.style"
+              :frame="form.frame"
               :size="260"
               fluid
             />

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { QrStyleSchema } from '~~/shared/qr/style'
+import { QrFrameSchema } from '~~/shared/qr/frame'
 import { QR_UTM_MEDIUMS } from '~~/shared/qr/tracking'
 
 const uuid = z.string().uuid()
@@ -9,6 +10,7 @@ export const CreateQrSchema = z.object({
   folderId: uuid.nullable().optional(),
   destinationUrl: z.string().trim().min(1).max(2048),
   style: QrStyleSchema.default(() => QrStyleSchema.parse({})),
+  frame: QrFrameSchema.default(() => QrFrameSchema.parse({})),
   utmEnabled: z.boolean().default(true),
   utmMedium: z.enum(QR_UTM_MEDIUMS).default('print'),
   utmSource: z.string().trim().max(64).nullable().optional()
@@ -19,6 +21,7 @@ export const UpdateQrSchema = z.object({
   folderId: uuid.nullable().optional(),
   destinationUrl: z.string().trim().min(1).max(2048).optional(),
   style: QrStyleSchema.optional(),
+  frame: QrFrameSchema.optional(),
   isActive: z.boolean().optional(),
   utmEnabled: z.boolean().optional(),
   utmMedium: z.enum(QR_UTM_MEDIUMS).optional(),

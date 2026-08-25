@@ -1,23 +1,33 @@
 <script setup lang="ts">
 import { renderQrSvg } from '~~/shared/qr/render-svg'
 import { QrStyleSchema, type QrStyle } from '~~/shared/qr/style'
+import { svgViewBox, wrapQrSvgWithFrame, type QrFrame } from '~~/shared/qr/frame'
 
 /**
  * `size` is the render size in px. With `fluid`, the tile fills its container width
  * (capped at `size`) and keeps a 1:1 aspect — use it wherever the column can be narrower
  * than the nominal size (editor slideover, detail sidebar on small screens).
  */
-const props = withDefaults(defineProps<{ text: string, style?: Partial<QrStyle>, size?: number, fluid?: boolean }>(), { size: 240, fluid: false })
+const props = withDefaults(defineProps<{ text: string, style?: Partial<QrStyle>, frame?: Partial<QrFrame> | null, size?: number, fluid?: boolean }>(), { size: 240, fluid: false })
 const svg = computed(() => {
   try {
-    return renderQrSvg({ text: props.text, style: QrStyleSchema.parse(props.style ?? {}), size: props.size })
+    const style = QrStyleSchema.parse(props.style ?? {})
+    return wrapQrSvgWithFrame({ inner: renderQrSvg({ text: props.text, style }), frame: props.frame, fg: style.fg, size: props.size })
   } catch {
     return ''
   }
 })
+const ratio = computed(() => {
+  try {
+    const vb = svgViewBox(svg.value)
+    return vb.h / vb.w
+  } catch {
+    return 1
+  }
+})
 const box = computed(() => props.fluid
-  ? { width: '100%', maxWidth: `${props.size}px`, aspectRatio: '1 / 1' }
-  : { width: `${props.size}px`, height: `${props.size}px` })
+  ? { width: '100%', maxWidth: `${props.size}px`, aspectRatio: `1 / ${ratio.value}` }
+  : { width: `${props.size}px`, height: `${Math.round(props.size * ratio.value)}px` })
 </script>
 
 <template>

@@ -52,7 +52,7 @@ const menu = computed(() => [[
   <UCard class="transition hover:ring-accented" :class="!code.is_active ? 'opacity-70' : ''" :ui="{ body: 'p-4' }">
     <div class="flex gap-4">
       <NuxtLink :to="detail" class="relative shrink-0" :aria-label="`Open ${code.name}`">
-        <QrPreview :text="short" :style="code.style" :size="112" />
+        <QrPreview :text="short" :style="code.style" :frame="code.frame" :size="112" />
         <span
           v-if="!code.is_active"
           class="absolute inset-0 flex items-center justify-center rounded-xl bg-default/70 text-[11px] font-semibold uppercase tracking-wider text-muted"

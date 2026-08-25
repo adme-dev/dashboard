@@ -1,5 +1,6 @@
 import type { QrStyle } from '~~/shared/qr/style'
 import { renderQrSvg } from '~~/shared/qr/render-svg'
+import { framedDimensions, wrapQrSvgWithFrame, type QrFrame } from '~~/shared/qr/frame'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 import type { QrPageConfig, QrPageTemplate } from '~~/shared/qr/page'
 
@@ -13,6 +14,7 @@ export interface QrCode {
   name: string
   destination_url: string
   style: QrStyle
+  frame?: Partial<QrFrame> | null
   is_active: boolean
   scan_count: number
   last_scanned_at: string | null
@@ -55,15 +57,16 @@ export const qrExportUrl = (id: string) => `/api/agency/qr-codes/${id}/export.sv
  * Renders a QR code's SVG client-side, rasterizes it through a canvas, and triggers
  * a PNG download. Used in place of a server-side export.png endpoint (not implemented).
  */
-export async function downloadQrPng(code: { id: string, code: string, name: string, style: QrStyle }, size = 2048) {
-  const svg = renderQrSvg({ text: qrShortUrl(code.code), style: code.style, size })
+export async function downloadQrPng(code: { id: string, code: string, name: string, style: QrStyle, frame?: Partial<QrFrame> | null }, size = 2048) {
+  const svg = wrapQrSvgWithFrame({ inner: renderQrSvg({ text: qrShortUrl(code.code), style: code.style }), frame: code.frame, fg: code.style.fg, size })
+  const { width, height } = framedDimensions(svg, size)
   const svgBlob = new Blob([svg], { type: 'image/svg+xml' })
   const svgUrl = URL.createObjectURL(svgBlob)
 
   try {
     const img = new Image()
-    img.width = size
-    img.height = size
+    img.width = width
+    img.height = height
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve()
       img.onerror = () => reject(new Error('Could not rasterize QR code'))
@@ -71,11 +74,11 @@ export async function downloadQrPng(code: { id: string, code: string, name: stri
     })
 
     const canvas = document.createElement('canvas')
-    canvas.width = size
-    canvas.height = size
+    canvas.width = width
+    canvas.height = height
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('Canvas not supported')
-    ctx.drawImage(img, 0, 0, size, size)
+    ctx.drawImage(img, 0, 0, width, height)
 
     const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
     if (!blob) throw new Error('Could not encode PNG')
@@ -104,9 +107,9 @@ export function useQrCodes() {
     list: (params: { clientId?: string, folderId?: string, search?: string }) =>
       $fetch<{ codes: QrCode[] }>(base, { params }),
     get: (id: string) => $fetch<{ code: QrCode, shortUrl: string, history: any[] }>(`${base}/${id}`),
-    create: (body: { name: string, clientId: string, folderId?: string | null, destinationUrl: string, style: QrStyle, utmEnabled?: boolean, utmMedium?: string, utmSource?: string | null }) =>
+    create: (body: { name: string, clientId: string, folderId?: string | null, destinationUrl: string, style: QrStyle, frame?: QrFrame, utmEnabled?: boolean, utmMedium?: string, utmSource?: string | null }) =>
       $fetch<{ code: QrCode, shortUrl: string }>(base, { method: 'POST', body, headers: idem('create') }),
-    update: (id: string, body: Partial<{ name: string, folderId: string | null, destinationUrl: string, style: QrStyle, isActive: boolean, utmEnabled: boolean, utmMedium: string, utmSource: string | null }>) =>
+    update: (id: string, body: Partial<{ name: string, folderId: string | null, destinationUrl: string, style: QrStyle, frame: QrFrame, isActive: boolean, utmEnabled: boolean, utmMedium: string, utmSource: string | null }>) =>
       $fetch<{ code: QrCode }>(`${base}/${id}`, { method: 'PATCH', body, headers: idem(`update:${id}`) }),
     remove: (id: string) => $fetch(`${base}/${id}`, { method: 'DELETE', headers: idem(`delete:${id}`) }),
     folders: (clientId: string) => $fetch<{ folders: QrFolder[] }>(`${base}/folders`, { params: { clientId } }),
