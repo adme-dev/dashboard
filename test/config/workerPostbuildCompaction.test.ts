@@ -319,11 +319,23 @@ describe('Pages Worker postbuild compaction', () => {
     ].join('\n')
 
     expect(compactSqlLiterals(source)).toBe([
-      "const query = \"SELECT id, name FROM accounts WHERE note = 'keep   this' AND label = \\\"Keep  Case\\\"\"",
+      "const query = \" SELECT id, name FROM accounts WHERE note = 'keep   this' AND label = \\\"Keep  Case\\\" \"",
       'const dollarQuoted = "SELECT $$keep   this$$ AS body FROM messages"',
       'const commented = `SELECT id -- the newline terminates this comment\n  FROM accounts`',
       'const ordinary = `line one   line two`'
     ].join('\n'))
+  })
+
+  it('keeps a boundary space so concatenated fragments do not glue placeholders to keywords', () => {
+    // Nitro/esbuild lowers `\`WHERE c.code = $1 ${cond}\`` to `"WHERE c.code = $1 " + cond`.
+    const source = [
+      'const a = "SELECT p.* FROM qr_pages p\\n     WHERE c.code = $1 " + (draft ? "" : "AND p.is_published = TRUE")',
+      'const b = "SELECT 1 FROM t\\n  WHERE tenant_id = $1 " + filter + "\\n  ORDER BY 1"'
+    ].join('\n')
+    const out = compactSqlLiterals(source)
+    expect(out).toContain('"SELECT p.* FROM qr_pages p WHERE c.code = $1 " + (draft')
+    expect(out).toContain('"SELECT 1 FROM t WHERE tenant_id = $1 " + filter')
+    expect(out).not.toMatch(/\$1"\s*\+/)
   })
 
   it('compacts every generated module recursively and is idempotent', async () => {
