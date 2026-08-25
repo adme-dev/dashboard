@@ -43,7 +43,7 @@ function onLoaded(codes: QrCode[]) {
 </script>
 
 <template>
-  <div class="p-6 space-y-6">
+  <div class="h-full overflow-y-auto p-6 space-y-6">
     <header class="flex flex-wrap items-start gap-4">
       <div class="min-w-0">
         <h1 class="text-2xl font-semibold tracking-tight">

@@ -25,16 +25,16 @@ describe('recordScan (in-request)', () => {
     expect(executeMock.mock.calls[0][1][0]).toBe('qr1')
     expect(executeMock.mock.calls[0][1][3]).toBe('mobile') // classified device
     expect(executeMock.mock.calls[0][1][2]).toBe('AU') // header fallback when request.cf is absent
-    expect(executeMock.mock.calls[0][1].slice(9)).toEqual([null, null, null])
+    expect(executeMock.mock.calls[0][1].slice(9)).toEqual([null, null, null, null, null])
     expect(executeMock.mock.calls[1][0]).toContain('scan_count + 1')
   })
 
   it('records city / region / postcode from Cloudflare request.cf when present', async () => {
-    const cfEvent = { context: { cloudflare: { request: { cf: { country: 'AU', city: 'Frankston', region: 'Victoria', postalCode: '3199' } } } } } as any
+    const cfEvent = { context: { cloudflare: { request: { cf: { country: 'AU', city: 'Frankston', region: 'Victoria', postalCode: '3199', latitude: '-38.1440', longitude: '145.1230' } } } } } as any
     await recordScan(cfEvent, qr)
     const params = executeMock.mock.calls[0][1]
     expect(params[2]).toBe('AU')
-    expect(params.slice(9)).toEqual(['Frankston', 'Victoria', '3199'])
+    expect(params.slice(9)).toEqual(['Frankston', 'Victoria', '3199', -38.144, 145.123])
   })
 
   it('swallows DB errors so the redirect is never broken', async () => {

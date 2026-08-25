@@ -160,6 +160,9 @@ importers:
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
+      leaflet:
+        specifier: ^1.9.4
+        version: 1.9.4
       marked:
         specifier: ^17.0.6
         version: 17.0.6
@@ -190,6 +193,9 @@ importers:
       standardized-audio-context:
         specifier: ^25.3.77
         version: 25.3.77
+      supercluster:
+        specifier: ^9.0.0
+        version: 9.0.0
       svix:
         specifier: ^1.96.1
         version: 1.96.1
@@ -215,6 +221,9 @@ importers:
       '@types/dompurify':
         specifier: ^3.2.0
         version: 3.2.0
+      '@types/leaflet':
+        specifier: ^1.9.22
+        version: 1.9.22
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.0
@@ -227,6 +236,9 @@ importers:
       '@types/sortablejs':
         specifier: ^1.15.9
         version: 1.15.9
+      '@types/supercluster':
+        specifier: ^7.1.3
+        version: 7.1.3
       '@vitejs/plugin-vue':
         specifier: ^6.0.7
         version: 6.0.7(vite@8.2.1(@types/node@26.1.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.0)(yaml@2.9.0))(vue@3.5.41(typescript@5.9.3))
@@ -4373,6 +4385,9 @@ packages:
   '@types/leaflet@1.7.6':
     resolution: {integrity: sha512-Emkz3V08QnlelSbpT46OEAx+TBZYTOX2r1yM7W+hWg5+djHtQ1GbEXBDRLaqQDOYcDI51Ss0ayoqoKD4CtLUDA==}
 
+  '@types/leaflet@1.9.22':
+    resolution: {integrity: sha512-h3lhECYEKDasG7LFHu+GiHqAvsgLuQvlJvVZzJDGONo3sEL+wUOqSFLnwkZlK0qVxnxbuGFW8iBlJNYs5wgndA==}
+
   '@types/mapbox__point-geometry@0.1.4':
     resolution: {integrity: sha512-mUWlSxAmYLfwnRBmgYV86tgYmMIICX4kza8YnE/eIlywGe2XoOxlpVnXWwir92xRLjwyarqwpu2EJKD2pk0IUA==}
 
@@ -4429,6 +4444,9 @@ packages:
 
   '@types/supercluster@5.0.3':
     resolution: {integrity: sha512-XMSqQEr7YDuNtFwSgaHHOjsbi0ZGL62V9Js4CW45RBuRYlNWSW/KDqN+RFFE7HdHcGhJPtN0klKvw06r9Kg7rg==}
+
+  '@types/supercluster@7.1.3':
+    resolution: {integrity: sha512-Z0pOY34GDFl3Q6hUFYf3HkTwKEE02e7QgtJppBt+beEAxnyOpJua+voGFvxINBHa06GwLFFym7gRPY2SiKIfIA==}
 
   '@types/three@0.135.0':
     resolution: {integrity: sha512-l7WLhIHjhHMtlpyTSltPPAKLpiMwgMD1hXHj59AVUpYRoZP7Fd9NNOSRSvZBCPLpTHPYojgQvSJCoza9zoL7bg==}
@@ -7785,6 +7803,9 @@ packages:
   kdbush@3.0.0:
     resolution: {integrity: sha512-hRkd6/XW4HTsA9vjVpY9tuXJYLSlelnkTmVFu4M9/7MIYQtFcHpbugAU7UbOfjOiVSVYl2fqgBuJ32JUmRo5Ew==}
 
+  kdbush@4.1.0:
+    resolution: {integrity: sha512-e9vurzrXJQrFX6ckpHP3bvj5l+9CnYzkxDNnNQ1h2QTqdWsUAJgXiKdGNcOa1EY85dU8KbQ+z/FdQdB7P+9yfQ==}
+
   keyv-file@5.3.5:
     resolution: {integrity: sha512-0JFTTi55d1HdhIrSOnPngUw0fyHLn3BHqoLJ8TyGKM/fQfuZsz8HkcFxpl6YzU2mj1ZfRF/6BXlSqOpyfXYAmw==}
 
@@ -7829,6 +7850,9 @@ packages:
 
   leaflet@1.7.1:
     resolution: {integrity: sha512-/xwPEBidtg69Q3HlqPdU3DnrXQOvQU/CCHA1tcDQVzOwm91YMYaILjNp7L4Eaw5Z4sOYdbBz6koWyibppd8Zqw==}
+
+  leaflet@1.9.4:
+    resolution: {integrity: sha512-nxS1ynzJOmOlHp+iL3FyWqK89GtNL8U8rvlMOsQdTTssxZwCXh8N2NB3GDQOL+YR3XnWyZAxwQixURb+FA74PA==}
 
   levn@0.4.1:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
@@ -10213,6 +10237,9 @@ packages:
 
   supercluster@7.1.5:
     resolution: {integrity: sha512-EulshI3pGUM66o6ZdH3ReiFcvHpM3vAigyK+vcxdjpJyEbIIrtbmBdY23mGgnI24uXiGFvrGq9Gkum/8U7vJWg==}
+
+  supercluster@9.0.0:
+    resolution: {integrity: sha512-SaU8dQaxagTXr8+a1f67Pxg5CiRcZsq+LPQsZoV2r+FD8EF3Wpg5v7Zl8STPhml3oWHF1CQ8YaJGf8Uo8zS5qg==}
 
   supports-color@10.2.2:
     resolution: {integrity: sha512-SS+jx45GF1QjgEXQx4NJZV9ImqmO2NPz5FNsIHrsDjh2YsHnawpan7SNQ1o8NuhrbHZy9AZhIoCUiCeaW/C80g==}
@@ -16074,6 +16101,10 @@ snapshots:
     dependencies:
       '@types/geojson': 7946.0.16
 
+  '@types/leaflet@1.9.22':
+    dependencies:
+      '@types/geojson': 7946.0.16
+
   '@types/mapbox__point-geometry@0.1.4': {}
 
   '@types/mapbox__vector-tile@1.3.4':
@@ -16137,6 +16168,10 @@ snapshots:
   '@types/sortablejs@1.15.9': {}
 
   '@types/supercluster@5.0.3':
+    dependencies:
+      '@types/geojson': 7946.0.16
+
+  '@types/supercluster@7.1.3':
     dependencies:
       '@types/geojson': 7946.0.16
 
@@ -19854,6 +19889,8 @@ snapshots:
 
   kdbush@3.0.0: {}
 
+  kdbush@4.1.0: {}
+
   keyv-file@5.3.5:
     dependencies:
       '@keyv/serialize': 1.1.1
@@ -19897,6 +19934,8 @@ snapshots:
       readable-stream: 2.3.8
 
   leaflet@1.7.1: {}
+
+  leaflet@1.9.4: {}
 
   levn@0.4.1:
     dependencies:
@@ -23027,6 +23066,10 @@ snapshots:
   supercluster@7.1.5:
     dependencies:
       kdbush: 3.0.0
+
+  supercluster@9.0.0:
+    dependencies:
+      kdbush: 4.1.0
 
   supports-color@10.2.2: {}
 

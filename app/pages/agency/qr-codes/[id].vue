@@ -105,7 +105,7 @@ const full = (d: string) => format(new Date(d), 'd MMM yyyy, h:mm a')
 </script>
 
 <template>
-  <div v-if="error" class="p-6">
+  <div v-if="error" class="h-full overflow-y-auto p-6">
     <UAlert
       color="error"
       variant="subtle"
@@ -115,7 +115,7 @@ const full = (d: string) => format(new Date(d), 'd MMM yyyy, h:mm a')
       :actions="[{ label: 'All QR codes', to: '/agency/qr-codes', variant: 'soft', color: 'error' }]"
     />
   </div>
-  <div v-else-if="data" class="p-6 space-y-6">
+  <div v-else-if="data" class="h-full overflow-y-auto p-6 space-y-6">
     <UButton
       to="/agency/qr-codes"
       variant="link"

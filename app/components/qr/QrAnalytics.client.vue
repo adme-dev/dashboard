@@ -4,7 +4,7 @@ import { formatTimeAgo } from '@vueuse/core'
 import { format } from 'date-fns'
 
 const props = defineProps<{
-  data: { totals: any, daily: { day: string, scans: number, unique: number }[], countries: any[], devices: any[], os: any[], browsers: any[], cities?: any[], postcodes?: any[] }
+  data: { totals: any, daily: { day: string, scans: number, unique: number }[], countries: any[], devices: any[], os: any[], browsers: any[], cities?: any[], postcodes?: any[], points?: { lat: number, lng: number, scans: number, city: string | null, postcode: string | null }[] }
   rangeLabel?: string
 }>()
 
@@ -110,6 +110,29 @@ const kpis = computed(() => [
         </p>
         <p v-if="data.totals.scans" class="mt-1 text-xs text-muted">
           Widen the range to see earlier activity.
+        </p>
+      </div>
+    </UCard>
+
+    <UCard>
+      <template #header>
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-1.5">
+            <span class="text-sm font-medium">Where it's scanned</span>
+            <UTooltip text="Approximate — each point is the network's city centroid, not the scanner's exact position">
+              <UIcon name="i-lucide-info" class="size-3.5 text-muted" />
+            </UTooltip>
+          </div>
+        </div>
+      </template>
+      <QrScanMap v-if="data.points?.length" :points="data.points" />
+      <div v-else class="py-10 text-center">
+        <UIcon name="i-lucide-map-pin-off" class="mx-auto mb-2 size-6 text-muted" />
+        <p class="text-sm text-muted">
+          No mapped scans in this range.
+        </p>
+        <p class="mt-1 text-xs text-muted">
+          Locations are captured for new scans.
         </p>
       </div>
     </UCard>
