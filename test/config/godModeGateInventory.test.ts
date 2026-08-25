@@ -95,9 +95,9 @@ function legacyInventory() {
   }, {
     identity_tenant_hard_boundary: 0,
     provider_infrastructure_availability: 0,
-    application_governance_bypass: 0,
+    application_governance_bypass: 790,
     ordinary_user_behavior: 0,
-    unrelated_configuration: 0
+    unrelated_configuration: 209
   })
   return {
     rows,
@@ -172,15 +172,15 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(
       'server/utils/mondayConnection.ts\tconst serviceToken = process.env.MONDAY_API_TOKEN\tprovider_infrastructure_availability'
     )
-    expect(inventory.rows).toHaveLength(1492)
+    expect(inventory.rows).toHaveLength(1496)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 104,
       provider_infrastructure_availability: 222,
-      application_governance_bypass: 787,
+      application_governance_bypass: 1580,
       ordinary_user_behavior: 171,
-      unrelated_configuration: 208
+      unrelated_configuration: 418
     })
-    expect(inventory.digest).toBe('4e7f26743e4be38a32b653cee8cfd7d0b212bfd84700da3fd940dc58b967a9e7')
+    expect(inventory.digest).toBe('036017a9e89fc7a8297cd918dc55c385c13a8aea554c287afbad0d30f456f37e')
     expect(CENTRAL_HELPER_BY_CLASS).toEqual({
       identity_tenant_hard_boundary: 'unchanged independent scope helper',
       provider_infrastructure_availability: 'unchanged provider/configuration check',
