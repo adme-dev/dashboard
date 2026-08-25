@@ -17,7 +17,7 @@ const form = reactive({
   clientId: props.clientId ?? '',
   folderId: (props.folderId ?? null) as string | null,
   destinationUrl: '',
-  style: { ...DEFAULT_STYLE } as QrStyle,
+  style: { ...DEFAULT_STYLE } as QrStyle
 })
 const folders = ref<QrFolder[]>([])
 const saving = ref(false)
@@ -30,9 +30,10 @@ const urlError = computed(() => {
 const folderItems = computed(() => [{ label: 'No folder', value: 'none' }, ...folders.value.map(f => ({ label: f.name, value: f.id }))])
 const folderModel = computed({
   get: () => form.folderId ?? 'none',
-  set: (v: string) => { form.folderId = v === 'none' ? null : v },
+  set: (v: string) => { form.folderId = v === 'none' ? null : v }
 })
 const previewText = computed(() => (props.code ? api.shortUrl(props.code.code) : 'https://app.xeroflow.io/q/AbC1234'))
+const canSave = computed(() => !!form.name.trim() && !!form.clientId && !!form.destinationUrl && !urlError.value)
 
 watch(() => open.value, (o) => {
   if (!o) return
@@ -44,7 +45,9 @@ watch(() => open.value, (o) => {
   form.style = { ...DEFAULT_STYLE, ...(c?.style ?? {}) }
 }, { immediate: true })
 
-watch(() => form.clientId, async (id) => { folders.value = id ? (await api.folders(id)).folders : [] }, { immediate: true })
+watch(() => form.clientId, async (id) => {
+  folders.value = id ? (await api.folders(id)).folders : []
+}, { immediate: true })
 
 async function onLogo(file: File) {
   try {
@@ -56,13 +59,13 @@ async function onLogo(file: File) {
 }
 
 async function save() {
-  if (!form.name.trim() || !form.clientId || urlError.value) return
+  if (!canSave.value) return
   saving.value = true
   try {
     const res = props.code
       ? await api.update(props.code.id, { name: form.name, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style })
       : await api.create({ name: form.name, clientId: form.clientId, folderId: form.folderId, destinationUrl: form.destinationUrl, style: form.style })
-    toast.add({ title: props.code ? 'QR code updated' : 'QR code created', color: 'success' })
+    toast.add({ title: props.code ? 'QR code updated' : 'QR code created', description: props.code ? undefined : 'Download it from the card or open it for scan tracking.', color: 'success' })
     emit('saved', res.code)
     open.value = false
   } catch (e: any) {
@@ -74,30 +77,89 @@ async function save() {
 </script>
 
 <template>
-  <USlideover v-model:open="open" :title="code ? 'Edit QR code' : 'New QR code'" :ui="{ content: 'max-w-3xl' }">
+  <USlideover
+    v-model:open="open"
+    :title="code ? 'Edit QR code' : 'New QR code'"
+    :description="code ? 'Design changes apply to future downloads only — already-printed codes keep working.' : 'The short link is fixed once created; everything else can change later.'"
+    :ui="{ content: 'max-w-4xl' }"
+  >
     <template #body>
-      <div class="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-8">
-        <div class="space-y-6">
-          <UFormField label="Name" required><UInput v-model="form.name" placeholder="Front window decal" /></UFormField>
-          <div class="grid grid-cols-2 gap-4">
-            <UFormField label="Client" required><USelectMenu v-model="form.clientId" :items="clients" value-key="value" :disabled="!!code" placeholder="Select client" /></UFormField>
-            <UFormField label="Folder"><USelectMenu v-model="folderModel" :items="folderItems" value-key="value" /></UFormField>
-          </div>
-          <UFormField label="Destination URL" required :error="urlError" help="Change this any time — printed codes keep working.">
-            <UInput v-model="form.destinationUrl" placeholder="https://client.com.au/landing" icon="i-lucide-link" />
+      <div class="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_260px]">
+        <div class="space-y-6 min-w-0">
+          <UFormField label="Name" required help="Where it lives — e.g. front window decal, flyer, table tent.">
+            <UInput
+              v-model="form.name"
+              placeholder="Front window decal"
+              class="w-full"
+              autofocus
+            />
           </UFormField>
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="Client" required>
+              <USelectMenu
+                v-model="form.clientId"
+                :items="clients"
+                value-key="value"
+                :disabled="!!code"
+                placeholder="Select client"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Folder">
+              <USelectMenu
+                v-model="folderModel"
+                :items="folderItems"
+                value-key="value"
+                :disabled="!form.clientId"
+                class="w-full"
+              />
+            </UFormField>
+          </div>
+          <UFormField
+            label="Destination URL"
+            required
+            :error="urlError || undefined"
+            help="Change this any time — printed codes keep working."
+          >
+            <UInput
+              v-model="form.destinationUrl"
+              placeholder="https://client.com.au/landing"
+              icon="i-lucide-link"
+              class="w-full"
+            />
+          </UFormField>
+          <USeparator />
           <QrStylePicker v-model="form.style" @upload-logo="onLogo" />
         </div>
-        <aside class="lg:sticky lg:top-0 space-y-3">
-          <QrPreview :text="previewText" :style="form.style" :size="280" />
-          <p class="text-xs text-muted break-all">{{ previewText }}</p>
+        <aside class="min-w-0 lg:sticky lg:top-0 lg:self-start">
+          <div class="rounded-xl bg-elevated/60 p-4 space-y-3">
+            <p class="text-xs font-semibold uppercase tracking-wider text-muted">
+              Preview
+            </p>
+            <QrPreview
+              :text="previewText"
+              :style="form.style"
+              :size="260"
+              fluid
+            />
+            <p class="font-mono text-[11px] text-muted break-all">
+              {{ previewText.replace('https://', '') }}
+            </p>
+            <p v-if="!code" class="text-xs text-muted">
+              Sample link — the real one is generated on create.
+            </p>
+          </div>
         </aside>
       </div>
     </template>
     <template #footer>
-      <div class="flex justify-end gap-2 w-full">
-        <UButton variant="ghost" color="neutral" @click="() => { open = false }">Cancel</UButton>
-        <UButton :loading="saving" :disabled="!form.name.trim() || !form.clientId || !!urlError || !form.destinationUrl" @click="save">{{ code ? 'Save changes' : 'Create QR code' }}</UButton>
+      <div class="flex w-full items-center justify-end gap-2">
+        <UButton variant="ghost" color="neutral" @click="() => { open = false }">
+          Cancel
+        </UButton>
+        <UButton :loading="saving" :disabled="!canSave" @click="save">
+          {{ code ? 'Save changes' : 'Create QR code' }}
+        </UButton>
       </div>
     </template>
   </USlideover>

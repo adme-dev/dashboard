@@ -2992,7 +2992,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Every scan counted',
-        content: 'Each code tracks a daily scan series, a unique-visitor estimate, and country, device, operating system, and browser breakdowns — enough to know a code is working without collecting cookies or storing anything personally identifying about the person who scanned it.'
+        content: 'Each code tracks a daily scan series, a unique-visitor estimate, and suburb, postcode, country, device, operating system, and browser breakdowns (location is network-derived and approximate) — enough to know a code is working without collecting cookies or storing anything personally identifying about the person who scanned it.'
       },
       {
         title: 'Organised by client',
