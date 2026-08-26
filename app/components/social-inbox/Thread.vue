@@ -57,7 +57,8 @@ function accountFor(conversation: SocialConversation | null | undefined) {
   if (!conversation) return null
   return getSocialInboxAccountContextDisplay({
     accountName: conversation.social_account_name,
-    platformAccountId: conversation.social_account_platform_id
+    platformAccountId: conversation.social_account_platform_id,
+    clientName: conversation.client_name
   })
 }
 function isPlatformSyncedReply(message: SocialMessage) {

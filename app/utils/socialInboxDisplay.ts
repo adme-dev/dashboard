@@ -7,6 +7,7 @@ export interface SocialInboxIdentityInput {
 export interface SocialInboxAccountContextInput {
   accountName?: string | null
   platformAccountId?: string | null
+  clientName?: string | null
 }
 
 export interface SocialInboxIdentityDisplay {
@@ -25,16 +26,8 @@ export function getSocialInboxIdentityDisplay(input: SocialInboxIdentityInput): 
 
   const platform = input.platform?.trim().toLowerCase() || ''
   if (META_PLATFORMS.has(platform)) {
-    const network = platform === 'instagram' ? 'Instagram' : 'Facebook'
-    const role = input.channelType === 'review'
-      ? 'reviewer'
-      : input.channelType === 'comment'
-        ? 'commenter'
-        : input.channelType === 'dm'
-          ? 'contact'
-          : 'user'
     return {
-      label: `${network} ${role} — name unavailable`,
+      label: 'Name unavailable',
       unavailable: true,
       reason: platform === 'facebook'
         ? 'Meta did not return this profile name. Some identities are withheld for privacy, and Page user-content access requires an approved permission.'
@@ -59,8 +52,12 @@ export function getSocialInboxIdentityDisplay(input: SocialInboxIdentityInput): 
 
 export function getSocialInboxAccountContextDisplay(input: SocialInboxAccountContextInput): string | null {
   const accountName = input.accountName?.trim()
-  if (accountName) return accountName
-
   const platformAccountId = input.platformAccountId?.trim()
-  return platformAccountId || null
+  const account = accountName || platformAccountId || null
+  const clientName = input.clientName?.trim()
+  if (!clientName) return account
+  if (!account || account.localeCompare(clientName, undefined, { sensitivity: 'accent' }) === 0) {
+    return account || clientName
+  }
+  return `${account} · ${clientName}`
 }

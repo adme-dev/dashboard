@@ -9,7 +9,8 @@ describe('buildSocialInboxConversationListQuery', () => {
     expect(q.sql).toMatch(/a\.account_name AS social_account_name/)
     expect(q.sql).toMatch(/a\.platform_account_id AS social_account_platform_id/)
     expect(q.sql).toMatch(/LEFT JOIN social_accounts a ON a\.id = c\.social_account_id/)
-    expect(q.sql).toMatch(/c\.client_id = \$1/)
+    expect(q.sql).toMatch(/client\.id = a\.client_id/)
+    expect(q.sql).toMatch(/a\.client_id = \$1/)
     expect(q.sql).toMatch(/c\.status = \$2/)
     expect(q.sql).toMatch(/LIMIT \$3/)
     expect(q.sql).toMatch(/OFFSET \$4/)
@@ -20,7 +21,7 @@ describe('buildSocialInboxConversationListQuery', () => {
 
     expect(q.params).toEqual(['open', 25, 0])
     expect(q.sql).toMatch(/a\.is_active = TRUE/)
-    expect(q.sql).not.toMatch(/c\.client_id = \$/)
+    expect(q.sql).not.toMatch(/a\.client_id = \$/)
     expect(q.sql).toMatch(/c\.status = \$1/)
     expect(q.sql).toMatch(/LIMIT \$2/)
     expect(q.sql).toMatch(/OFFSET \$3/)

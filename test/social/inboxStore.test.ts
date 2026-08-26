@@ -140,6 +140,23 @@ describe('recordInbound', () => {
     expect(sql).toMatch(/participant_id = COALESCE\(EXCLUDED\.participant_id, social_conversations\.participant_id\)/)
   })
 
+  it('moves an existing conversation to the connected account client during sync', async () => {
+    let sql = ''
+    const db: DbRunner = {
+      async queryOne<T = unknown>(statement: string) {
+        sql = statement
+        return { id: 'conv-1' } as T
+      },
+      async execute() {
+        return 0
+      }
+    }
+
+    await recordInbound(db, 'current-client', 'acct-1', ev)
+
+    expect(sql).toMatch(/client_id = EXCLUDED\.client_id/)
+  })
+
   it('persists optional campaign identity fields on inbound conversations', async () => {
     const params: unknown[][] = []
     let sql = ''

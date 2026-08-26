@@ -15,7 +15,7 @@ describe('getSocialInboxIdentityDisplay', () => {
 
   it('describes the interaction role when Facebook withholds a participant name', () => {
     expect(getSocialInboxIdentityDisplay({ platform: 'facebook', channelType: 'review', name: null })).toEqual({
-      label: 'Facebook reviewer — name unavailable',
+      label: 'Name unavailable',
       unavailable: true,
       reason: 'Meta did not return this profile name. Some identities are withheld for privacy, and Page user-content access requires an approved permission.'
     })
@@ -47,5 +47,19 @@ describe('getSocialInboxIdentityDisplay', () => {
       accountName: ' ',
       platformAccountId: '12345'
     })).toBe('12345')
+  })
+
+  it('does not repeat the client when it is the connected account', () => {
+    expect(getSocialInboxAccountContextDisplay({
+      accountName: 'Mornington Nissan',
+      clientName: 'Mornington Nissan'
+    })).toBe('Mornington Nissan')
+  })
+
+  it('shows a distinct parent client after the connected account', () => {
+    expect(getSocialInboxAccountContextDisplay({
+      accountName: 'GWS Peninsula Honda',
+      clientName: 'Garry and Warren Smith'
+    })).toBe('GWS Peninsula Honda · Garry and Warren Smith')
   })
 })

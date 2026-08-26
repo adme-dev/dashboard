@@ -81,7 +81,8 @@ function identityFor(c: SocialConversation) {
 function accountFor(c: SocialConversation) {
   return getSocialInboxAccountContextDisplay({
     accountName: c.social_account_name,
-    platformAccountId: c.social_account_platform_id
+    platformAccountId: c.social_account_platform_id,
+    clientName: c.client_name
   })
 }
 </script>
@@ -146,7 +147,6 @@ function accountFor(c: SocialConversation) {
           <UIcon name="i-lucide-panels-top-left" class="size-3 shrink-0" />
           <span class="truncate">
             {{ accountFor(c) ? `via ${accountFor(c)}` : 'Account not linked' }}
-            <template v-if="c.client_name"> · {{ c.client_name }}</template>
           </span>
         </div>
         <div class="flex items-center gap-1 mt-1.5">

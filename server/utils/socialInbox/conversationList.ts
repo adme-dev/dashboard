@@ -43,7 +43,7 @@ export function buildSocialInboxConversationListQuery(input: SocialInboxConversa
       a.platform_account_id AS social_account_platform_id
     FROM social_conversations c
     LEFT JOIN social_accounts a ON a.id = c.social_account_id
-    LEFT JOIN agency_clients client ON client.id = c.client_id
+    LEFT JOIN agency_clients client ON client.id = a.client_id
     LEFT JOIN LATERAL (
       SELECT author_name
       FROM social_messages m
@@ -57,7 +57,7 @@ export function buildSocialInboxConversationListQuery(input: SocialInboxConversa
 
   if (input.clientId) {
     params.push(input.clientId)
-    sql += ` AND c.client_id = $${params.length}`
+    sql += ` AND a.client_id = $${params.length}`
   }
 
   for (const [col, value] of [

@@ -102,6 +102,7 @@ async function ensureConversation(db: DbRunner, clientId: string, accountId: str
        CASE WHEN $12::text IS NOT NULL OR $13::uuid IS NOT NULL OR $14::text IS NOT NULL OR $15::text IS NOT NULL THEN NOW() ELSE NULL END,
        NOW())
      ON CONFLICT (social_account_id, channel_type, platform_conversation_id) DO UPDATE SET
+       client_id = EXCLUDED.client_id,
        participant_id = COALESCE(EXCLUDED.participant_id, social_conversations.participant_id),
        participant_name = COALESCE(EXCLUDED.participant_name, social_conversations.participant_name),
        participant_handle = COALESCE(EXCLUDED.participant_handle, social_conversations.participant_handle),
