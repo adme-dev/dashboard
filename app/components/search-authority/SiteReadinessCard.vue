@@ -48,14 +48,35 @@ const publishingModeOptions = [
   { label: 'Client subdomain (default) — e.g. learn.client.com.au', value: 'subdomain' },
   { label: 'Same host — client.com.au/guides via a rewrite on their website', value: 'same_host' }
 ]
-const rewriteSnippet = computed(() => selectedSite.value?.publicId
-  ? `async rewrites() {
+const rewritePlatform = ref<'nextjs' | 'netlify'>('nextjs')
+const rewritePlatformOptions = [
+  { label: 'Next.js / Vercel (next.config.js) — e.g. Dealer Studio', value: 'nextjs' },
+  { label: 'Netlify (netlify.toml) — e.g. iMotor', value: 'netlify' }
+]
+const rewriteSnippet = computed(() => {
+  const publicId = selectedSite.value?.publicId
+  if (!publicId) return ''
+  const base = `https://publish.xeroflowpages.com/s/${publicId}/guides`
+  if (rewritePlatform.value === 'netlify') {
+    return `[[redirects]]
+  from = "/guides"
+  to = "${base}"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/guides/*"
+  to = "${base}/:splat"
+  status = 200
+  force = true`
+  }
+  return `async rewrites() {
   return [
-    { source: '/guides', destination: 'https://publish.xeroflowpages.com/s/${selectedSite.value.publicId}/guides' },
-    { source: '/guides/:path*', destination: 'https://publish.xeroflowpages.com/s/${selectedSite.value.publicId}/guides/:path*' }
+    { source: '/guides', destination: '${base}' },
+    { source: '/guides/:path*', destination: '${base}/:path*' }
   ]
 }`
-  : '')
+})
 
 const clientOptions = computed(() => props.clients.map(client => ({
   label: client.name,
@@ -265,7 +286,7 @@ async function configureSite() {
                 Rewrite for the client's website
               </h3>
               <p class="mt-1 text-xs text-muted">
-                Their developer adds this to <code>next.config.js</code> (or the platform's proxy-path setting). Guides are then served at
+                Their developer adds this proxy rewrite to the website platform. Guides are then served at
                 <code>https://{{ canonicalHostname || 'www.client.com.au' }}/guides/…</code> and indexed there.
               </p>
             </div>
@@ -277,6 +298,14 @@ async function configureSite() {
               @click="copyRewrite"
             />
           </div>
+          <UFormField label="Website platform" class="mt-3">
+            <USelect
+              v-model="rewritePlatform"
+              :items="rewritePlatformOptions"
+              value-key="value"
+              class="w-full"
+            />
+          </UFormField>
           <pre class="mt-3 overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-default p-3 text-xs text-highlighted"><code>{{ rewriteSnippet }}</code></pre>
           <div class="mt-3 flex flex-wrap items-center gap-3">
             <UButton

@@ -106,6 +106,17 @@ host (`www.client.com.au/guides/…`) and are indexed there. In Connections set
 { source: '/guides/:path*', destination: 'https://publish.xeroflowpages.com/s/<public_id>/guides/:path*' }
 ```
 
+Netlify-hosted platforms (e.g. iMotor) use a proxy redirect instead — the card
+offers it under *Website platform → Netlify*:
+
+```toml
+[[redirects]]
+  from = "/guides/*"
+  to = "https://publish.xeroflowpages.com/s/<public_id>/guides/:splat"
+  status = 200
+  force = true
+```
+
 Click **Verify rewrite**: it fetches `https://<canonical>/guides/healthz` and
 requires the publisher's `x-xeroflow-publisher: <public_id>` header. Until that
 passes, nothing is published on the client host. No custom hostname, Worker route
