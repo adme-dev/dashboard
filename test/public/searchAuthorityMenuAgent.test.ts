@@ -23,7 +23,7 @@ async function settle() {
 
 describe('versioned Search Authority Menu Agent', () => {
   beforeEach(() => {
-    document.documentElement.innerHTML = '<head></head><body><nav id="desktop"><ul><li>Home</li><li>Contact</li></ul></nav><nav id="mobile"><ul><li>Home</li></ul></nav></body>'
+    document.documentElement.innerHTML = '<head></head><body><nav id="desktop"><ul><li>Home</li><li>Contact</li></ul></nav><nav id="mobile"><ul><li>Home</li></ul></nav><main><section id="hero"><h1>Welcome</h1></section></main></body>'
     config = {
       enabled: true,
       label: 'Buying Guides',
@@ -113,5 +113,45 @@ describe('versioned Search Authority Menu Agent', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('renders one bounded feature block of guide cards and removes it with the kill switch', async () => {
+    config.feature = {
+      enabled: true,
+      selector: '#hero',
+      position: 'after',
+      heading: 'Latest buying guides',
+      items: [
+        { title: 'Cannon Alpha towing guide', excerpt: 'Towing guidance.', href: 'https://learn.knoxgwmhaval.com.au/guides/cannon-alpha-towing-guide', publishedAt: '2026-08-03T02:00:00.000Z' },
+        { title: 'H6 hybrid guide', excerpt: '<b>not html</b>', href: 'https://learn.knoxgwmhaval.com.au/guides/h6-hybrid-guide', publishedAt: '2026-08-02T02:00:00.000Z' }
+      ]
+    }
+    await runtime().init({ configUrl })
+    await runtime().init({ configUrl })
+
+    const blocks = document.querySelectorAll('section[data-xeroflow-search-authority-feature="v1"]')
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0]?.previousElementSibling?.id).toBe('#hero'.slice(1))
+    expect(blocks[0]?.querySelector('h2')?.textContent).toBe('Latest buying guides')
+    const cards = blocks[0]!.querySelectorAll('a')
+    expect(cards).toHaveLength(2)
+    expect(cards[1]?.querySelector('span')?.textContent).toBe('<b>not html</b>')
+    expect(blocks[0]!.querySelector('b')).toBeNull()
+    expect(document.getElementById('xeroflow-search-authority-feature-style')).not.toBeNull()
+
+    config.enabled = false
+    await runtime().init({ configUrl })
+    expect(document.querySelectorAll('[data-xeroflow-search-authority-feature="v1"]')).toHaveLength(0)
+  })
+
+  it('rejects feature payloads with untrusted selectors or links without touching the page', async () => {
+    config.feature = { enabled: true, selector: 'div:has(a)', position: 'append', heading: 'x', items: [] }
+    await runtime().init({ configUrl })
+    expect(document.querySelectorAll('[data-xeroflow-search-authority-menu="v1"]')).toHaveLength(0)
+    expect(document.querySelectorAll('[data-xeroflow-search-authority-feature="v1"]')).toHaveLength(0)
+
+    config.feature = { enabled: true, selector: '#hero', position: 'append', heading: 'x', items: [{ title: 't', excerpt: '', href: 'http://insecure.example/guides/a', publishedAt: '' }] }
+    await runtime().init({ configUrl })
+    expect(document.querySelectorAll('[data-xeroflow-search-authority-feature="v1"]')).toHaveLength(0)
   })
 })

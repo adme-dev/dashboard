@@ -7,7 +7,8 @@ import { SEARCH_AUTHORITY_FEATURE } from '~~/server/utils/searchAuthority/featur
 const Body = z.object({
   clientId: z.string().uuid(),
   canonicalHostname: z.string().trim().min(1).max(253),
-  contentHostname: z.string().trim().min(1).max(253).nullable().optional()
+  contentHostname: z.string().trim().min(1).max(253).nullable().optional(),
+  publishingMode: z.enum(['subdomain', 'same_host']).optional()
 })
 
 function normalizePublicRootHostname(value: string): string {
@@ -62,9 +63,13 @@ export default eventHandler(async (event) => {
   const canonicalHostname = normalizePublicRootHostname(
     parsed.data.canonicalHostname
   )
-  const contentHostname = parsed.data.contentHostname
-    ? normalizePublicRootHostname(parsed.data.contentHostname)
-    : null
+  const publishingMode = parsed.data.publishingMode ?? 'subdomain'
+  // Same-host mode serves guides on the client's own website root via a `/guides/*` rewrite.
+  const contentHostname = publishingMode === 'same_host'
+    ? canonicalHostname
+    : parsed.data.contentHostname
+      ? normalizePublicRootHostname(parsed.data.contentHostname)
+      : null
 
   const site = await executeSearchAuthorityMutation(event, 'site-configure', async (db) => {
     const siteResult = await db.query<{
@@ -73,20 +78,23 @@ export default eventHandler(async (event) => {
       canonical_hostname: string
       content_hostname: string | null
       status: string
+      public_id: string
+      publishing_mode: 'subdomain' | 'same_host'
     }>(
       `INSERT INTO search_authority_sites (
-         client_id, canonical_hostname, content_hostname, status, created_by
+         client_id, canonical_hostname, content_hostname, publishing_mode, status, created_by
        )
-       VALUES ($1, $2, $3, 'active', $4)
+       VALUES ($1, $2, $3, $4, 'active', $5)
        ON CONFLICT (client_id)
        DO UPDATE SET
          canonical_hostname = EXCLUDED.canonical_hostname,
          content_hostname = EXCLUDED.content_hostname,
+         publishing_mode = EXCLUDED.publishing_mode,
          status = 'active',
          updated_at = NOW()
        RETURNING
-         id, client_id, canonical_hostname, content_hostname, status`,
-      [parsed.data.clientId, canonicalHostname, contentHostname, user.id]
+         id, client_id, canonical_hostname, content_hostname, status, public_id, publishing_mode`,
+      [parsed.data.clientId, canonicalHostname, contentHostname, publishingMode, user.id]
     )
 
     await db.query(
@@ -119,7 +127,9 @@ export default eventHandler(async (event) => {
       canonical_hostname: string
       content_hostname: string | null
       status: string
-    }>(`SELECT id, client_id, canonical_hostname, content_hostname, status
+      public_id: string
+      publishing_mode: 'subdomain' | 'same_host'
+    }>(`SELECT id, client_id, canonical_hostname, content_hostname, status, public_id, publishing_mode
         FROM search_authority_sites WHERE id = $1 AND client_id = $2`, [id, parsed.data.clientId])
     const row = result.rows[0]
     if (!row) throw new Error('Replayed Search Authority site no longer exists')
@@ -132,7 +142,9 @@ export default eventHandler(async (event) => {
       clientId: site.client_id,
       canonicalHostname: site.canonical_hostname,
       contentHostname: site.content_hostname,
-      status: site.status
+      status: site.status,
+      publicId: site.public_id,
+      publishingMode: site.publishing_mode
     }
   }
 })

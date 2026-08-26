@@ -83,6 +83,31 @@ write route is registered as a mutation family in
 on any Search Authority write means a new route was added without a family —
 register it there before shipping.
 
+### Same-host mode (optional, per site)
+
+Where a client's web platform can rewrite one path, guides can live on their own
+host (`www.client.com.au/guides/…`) and are indexed there. In Connections set
+**Publishing mode → Same host**; the card shows the rewrite for their developer:
+
+```js
+// next.config.js (or the platform's proxy-path setting)
+{ source: '/guides',        destination: 'https://publish.xeroflowpages.com/s/<public_id>/guides' },
+{ source: '/guides/:path*', destination: 'https://publish.xeroflowpages.com/s/<public_id>/guides/:path*' }
+```
+
+Click **Verify rewrite**: it fetches `https://<canonical>/guides/healthz` and
+requires the publisher's `x-xeroflow-publisher: <public_id>` header. Until that
+passes, nothing is published on the client host. No custom hostname, Worker route
+or DNS change is needed in same-host mode. The sitemap is served at
+`/guides/sitemap.xml`; register it against the client's Search Console domain
+property. Their own `robots.txt` and `sitemap.xml` are never touched.
+
+### Guides hub and multiple guides
+
+Every publish carries the host's other guides forward, so a site can hold many.
+`/guides` is the server-rendered hub (subdomain root redirects to it; on a client
+host `/` stays theirs). `/sitemap.xml` and `/guides/sitemap.xml` list all guides.
+
 ## Gate 4 — create and approve content
 
 1. Record the consented Sales Manager interview and source summary.
@@ -128,6 +153,15 @@ never removes or mutates an origin-owned node.
 Disable the XeroFlow menu config and confirm only Agent-owned links disappear.
 A heartbeat means the script requested config; it is not DOM or visibility
 proof.
+
+### Front-page feature posts (optional)
+
+The same GTM tag can insert one bounded block of cards linking to the newest
+published guides. In the Menu Agent card enable **Front-page feature posts**, set
+the heading, count (1–3), placement and a bounded target selector on the client's
+home page. The block uses `textContent` only, shares the menu kill switch, and is
+removed when disabled. Google treats the cards as ordinary internal links — they
+are teasers, not indexable pages, and must not be sold as such.
 
 ## Gate 7 — verify measurement
 

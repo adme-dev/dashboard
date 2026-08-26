@@ -17,10 +17,17 @@ export default eventHandler(async (event) => {
     desktop_selector: string
     mobile_selector: string
     insertion: 'append' | 'before-last'
+    feature_enabled: boolean
+    feature_selector: string
+    feature_position: 'prepend' | 'append' | 'before' | 'after'
+    feature_max_items: number
+    feature_heading: string
     last_observed_at: string | null
     updated_at: string
   }>(`SELECT config.public_id, config.enabled, config.label, config.href,
       config.desktop_selector, config.mobile_selector, config.insertion,
+      config.feature_enabled, config.feature_selector, config.feature_position,
+      config.feature_max_items, config.feature_heading,
       config.last_observed_at, config.updated_at
     FROM search_authority_menu_configs config
     WHERE config.client_id = $1 AND config.site_id = $2`, [parsed.data.clientId, parsed.data.siteId])
@@ -36,6 +43,11 @@ function mapRow(row: {
   desktop_selector: string
   mobile_selector: string
   insertion: 'append' | 'before-last'
+  feature_enabled: boolean
+  feature_selector: string
+  feature_position: 'prepend' | 'append' | 'before' | 'after'
+  feature_max_items: number
+  feature_heading: string
   last_observed_at: string | null
   updated_at: string
 }) {
@@ -47,6 +59,11 @@ function mapRow(row: {
     desktopSelector: row.desktop_selector,
     mobileSelector: row.mobile_selector,
     insertion: row.insertion,
+    featureEnabled: row.feature_enabled,
+    featureSelector: row.feature_selector,
+    featurePosition: row.feature_position,
+    featureMaxItems: row.feature_max_items,
+    featureHeading: row.feature_heading,
     lastObservedAt: row.last_observed_at,
     updatedAt: row.updated_at
   }

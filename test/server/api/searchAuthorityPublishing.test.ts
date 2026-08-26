@@ -48,12 +48,22 @@ describe('Search Authority publication activation', () => {
       publicationId: '33333333-3333-4333-8333-333333333333',
       slug: 'cannon-alpha-towing-guide',
       rendered,
-      activatedAt: '2026-08-03T02:00:00.000Z'
+      activatedAt: '2026-08-03T02:00:00.000Z',
+      publicId: '44444444-4444-4444-8444-444444444444',
+      mode: 'subdomain',
+      brandName: 'Knox GWM Haval',
+      dealershipUrl: 'https://www.knoxgwmhaval.com.au/',
+      guide: { slug: 'cannon-alpha-towing-guide', title: 'Cannon Alpha towing guide', excerpt: 'Towing guidance.', publishedAt: '2026-08-03T02:00:00.000Z' }
     })
 
     expect(bucket.puts.at(-1)).toBe('hosts/learn.knoxgwmhaval.com.au/manifests/current.json')
     expect(bucket.puts).toContain(`hosts/learn.knoxgwmhaval.com.au/manifests/${result.manifestVersion}.json`)
     expect(bucket.puts).toContain('hosts/learn.knoxgwmhaval.com.au/versions/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/index.html')
+    expect(bucket.puts).toContain('hosts/learn.knoxgwmhaval.com.au/versions/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/hub.html')
+    expect(bucket.puts).toContain('aliases/44444444-4444-4444-8444-444444444444.json')
+    expect(Object.keys(result.manifest.routes)).toEqual(expect.arrayContaining(['/guides', '/guides/sitemap.xml', '/sitemap.xml', '/robots.txt', '/guides/cannon-alpha-towing-guide']))
+    expect(result.manifest.redirects).toEqual({ '/': '/guides' })
+    expect(result.manifest.guides?.map(guide => guide.slug)).toEqual(['cannon-alpha-towing-guide'])
     expect(result.previousManifestVersion).toBeNull()
   })
 
@@ -66,7 +76,12 @@ describe('Search Authority publication activation', () => {
       publicationId: '33333333-3333-4333-8333-333333333333',
       slug: 'cannon-alpha-towing-guide',
       rendered,
-      activatedAt: '2026-08-03T02:00:00.000Z'
+      activatedAt: '2026-08-03T02:00:00.000Z',
+      publicId: '44444444-4444-4444-8444-444444444444',
+      mode: 'subdomain',
+      brandName: 'Knox GWM Haval',
+      dealershipUrl: 'https://www.knoxgwmhaval.com.au/',
+      guide: { slug: 'cannon-alpha-towing-guide', title: 'Cannon Alpha towing guide', excerpt: 'Towing guidance.', publishedAt: '2026-08-03T02:00:00.000Z' }
     })
     const contentPuts = bucket.puts.filter(key => key.includes('/versions/')).length
 
@@ -97,7 +112,12 @@ describe('Search Authority publication activation', () => {
       publicationId: '33333333-3333-4333-8333-333333333333',
       slug: 'cannon-alpha-towing-guide',
       rendered,
-      activatedAt: '2026-08-03T02:00:00.000Z'
+      activatedAt: '2026-08-03T02:00:00.000Z',
+      publicId: '44444444-4444-4444-8444-444444444444',
+      mode: 'subdomain',
+      brandName: 'Knox GWM Haval',
+      dealershipUrl: 'https://www.knoxgwmhaval.com.au/',
+      guide: { slug: 'cannon-alpha-towing-guide', title: 'Cannon Alpha towing guide', excerpt: 'Towing guidance.', publishedAt: '2026-08-03T02:00:00.000Z' }
     })).rejects.toThrow('could not be verified')
   })
 })

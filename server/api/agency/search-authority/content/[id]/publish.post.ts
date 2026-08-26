@@ -21,6 +21,8 @@ interface PublishRow {
   current_version_id: string
   content_hostname: string | null
   canonical_hostname: string
+  site_public_id: string
+  publishing_mode: 'subdomain' | 'same_host'
   client_name: string
   body_markdown: string
   excerpt: string
@@ -39,6 +41,7 @@ export default eventHandler(async (event) => {
   const asset = await queryOne<PublishRow>(`
     SELECT asset.id, asset.client_id, asset.title, asset.slug, asset.status,
       asset.current_version_id, site.content_hostname, site.canonical_hostname,
+      site.public_id AS site_public_id, site.publishing_mode,
       client.name AS client_name,
       version.body_markdown, version.excerpt, version.disclaimer,
       version.schema_type, version.created_at
@@ -62,6 +65,7 @@ export default eventHandler(async (event) => {
   if (!bucket) throw createError({ statusCode: 503, statusMessage: 'Publication storage is unavailable' })
   // Narrowed once here; the closure below would otherwise see `string | null`.
   const contentHostname = asset.content_hostname
+  const dealershipUrl = `https://${asset.canonical_hostname}/`
 
   type PublishResult = { ok: true, publicationId: string, versionId: string, manifestVersion: string, publicUrl: string }
   return executeSearchAuthorityExternalMutation<PublishResult>(event, 'publish', async (run) => {
@@ -116,7 +120,7 @@ export default eventHandler(async (event) => {
         sourceType: claim.source_type,
         sourceReference: claim.source_reference
       })),
-      dealershipUrl: `https://${asset.canonical_hostname}/`,
+      dealershipUrl,
       brandName: asset.client_name,
       publicationId: publication.id,
       tracking: tracking
@@ -133,7 +137,12 @@ export default eventHandler(async (event) => {
         publicationId: publication.id,
         slug: asset.slug,
         rendered,
-        activatedAt
+        activatedAt,
+        publicId: asset.site_public_id,
+        mode: asset.publishing_mode,
+        brandName: asset.client_name,
+        dealershipUrl,
+        guide: { slug: asset.slug, title: asset.title, excerpt: asset.excerpt, publishedAt: activatedAt }
       })
     } catch (error: unknown) {
       await execute(`UPDATE search_authority_publications SET status = 'failed' WHERE id = $1 AND client_id = $2`, [
