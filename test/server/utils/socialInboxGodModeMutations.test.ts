@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { H3Event } from 'h3'
 
 import {
+  compactSocialInboxSyncResult,
   matchesSocialInboxExternalFamily,
   matchesSocialInboxTransactionFamily,
   registerGodModeSocialInboxMutationFamilies
@@ -114,5 +115,23 @@ describe('Social inbox God mode mutation families', () => {
       unregister()
     }
     expect(listRegisteredGodModeMutationFamilies().length).toBe(before)
+  })
+
+  it('stores only a compact sync summary so the 4 KB ledger metadata CHECK holds', () => {
+    const channels = Array.from({ length: 60 }, (_, i) => ({
+      accountId: `acct-${i}`,
+      accountName: `Some fairly long account name number ${i} for a dealership`,
+      platform: 'meta',
+      channelType: 'comment',
+      status: i % 3 === 0 ? 'error' : 'success',
+      synced: i,
+      error: i % 3 === 0 ? 'Meta insights unavailable for this account (dev tier) — retry later' : undefined
+    }))
+    const full = { synced: 12, automated: 2, breaches: 1, skipped: 3, timedOut: false, channels }
+    expect(JSON.stringify(full).length).toBeGreaterThan(4096)
+    const compact = compactSocialInboxSyncResult(full)
+    expect(compact).toEqual({ synced: 12, automated: 2, breaches: 1, skipped: 3, timedOut: false, channelCount: 60, errorCount: 20, replayed: true })
+    expect(JSON.stringify(compact).length).toBeLessThan(200)
+    expect(compactSocialInboxSyncResult(null)).toEqual({ synced: 0, channelCount: 0, errorCount: 0, replayed: true })
   })
 })
