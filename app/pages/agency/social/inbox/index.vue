@@ -14,6 +14,7 @@ import type {
 } from '~/types'
 import { getSocialInboxCapabilities } from '~/utils/socialInboxCapabilities'
 import { formatSocialInboxSyncSummary, getSocialInboxSyncIssueCount } from '~/utils/socialInboxSync'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
@@ -31,7 +32,7 @@ function fetchErrorDescription(error: unknown) {
 
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown>; headers?: Record<string, string> }
 ) => Promise<T>
 const clientsData = ref<AgencyClientsResponse>([])
 
@@ -155,7 +156,8 @@ async function onRequestClientApproval(content: string) {
   try {
     await apiFetch(`/api/agency/social/inbox/conversations/${selectedId.value}/client-approval`, {
       method: 'POST',
-      body: { content }
+      body: { content },
+      headers: { 'Idempotency-Key': idempotencyKey('social-inbox-client-approval') }
     })
     thread.value = await open(selectedId.value)
     await loadTimeline(selectedId.value)
@@ -170,7 +172,7 @@ async function onRequestClientApproval(content: string) {
 
 async function patchSelectedConversation(body: Record<string, unknown>) {
   if (!selectedId.value) return
-  await apiFetch(`/api/agency/social/inbox/conversations/${selectedId.value}`, { method: 'PATCH', body })
+  await apiFetch(`/api/agency/social/inbox/conversations/${selectedId.value}`, { method: 'PATCH', body, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-patch') } })
   thread.value = await open(selectedId.value)
   await loadTimeline(selectedId.value)
   await reload()
@@ -214,7 +216,7 @@ async function onTriage(patch: { priority?: SocialInboxPriority | null, tags?: s
 async function onNativeLinks(patch: { linked_task_id?: string | null, linked_client_request_id?: string | null }) {
   if (!selectedId.value) return
   try {
-    await apiFetch(`/api/agency/social/inbox/conversations/${selectedId.value}/native-links`, { method: 'PATCH', body: patch })
+    await apiFetch(`/api/agency/social/inbox/conversations/${selectedId.value}/native-links`, { method: 'PATCH', body: patch, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-native-links') } })
     thread.value = await open(selectedId.value)
     await loadTimeline(selectedId.value)
     await reload()
@@ -231,7 +233,7 @@ async function onAiTriage() {
   try {
     const data = await apiFetch<{ triage: SocialInboxAiTriageResult }>(
       `/api/agency/social/inbox/conversations/${selectedId.value}/ai-triage`,
-      { method: 'POST' }
+      { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey('social-inbox-ai-triage') } }
     )
     aiTriage.value = data.triage
   } catch (e: unknown) {
@@ -256,7 +258,7 @@ async function onAiProposeAction(payload: { actionKey: string, input: SocialInbo
   try {
     const data = await apiFetch<{ proposal: SocialInboxAiActionProposal }>(
       `/api/agency/social/inbox/conversations/${selectedId.value}/ai-actions/propose`,
-      { method: 'POST', body: payload.input }
+      { method: 'POST', body: payload.input, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-ai-propose') } }
     )
     aiActionProposals.value = { ...aiActionProposals.value, [payload.actionKey]: data.proposal }
     toast.add({ title: 'AI action staged', color: 'success' })
@@ -273,7 +275,8 @@ async function onAiConfirmAction(payload: { actionKey: string, proposal: SocialI
   try {
     await apiFetch(`/api/agency/social/inbox/conversations/${selectedId.value}/ai-actions/confirm`, {
       method: 'POST',
-      body: { proposalId: payload.proposal.proposalId }
+      body: { proposalId: payload.proposal.proposalId },
+      headers: { 'Idempotency-Key': idempotencyKey('social-inbox-ai-confirm') }
     })
     aiActionProposals.value = Object.fromEntries(
       Object.entries(aiActionProposals.value).filter(([key]) => key !== payload.actionKey)

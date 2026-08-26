@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SocialResponseQueueItem } from '~/types'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
@@ -17,7 +18,7 @@ function fetchErrorDescription(error: unknown) {
 
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown>; headers?: Record<string, string> }
 ) => Promise<T>
 const clientsData = ref<AgencyClientsResponse>([])
 
@@ -83,7 +84,7 @@ function sendLabel(it: SocialResponseQueueItem) {
 async function approve(it: SocialResponseQueueItem) {
   busy.value = it.id
   try {
-    await apiFetch(`/api/agency/social/inbox/response-queue/${it.id}/approve`, { method: 'POST', body: { clientId: clientId.value, content: bodyFor(it) } })
+    await apiFetch(`/api/agency/social/inbox/response-queue/${it.id}/approve`, { method: 'POST', body: { clientId: clientId.value, content: bodyFor(it) }, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-approve') } })
     Reflect.deleteProperty(edits, it.id)
     toast.add({ title: 'Sent', color: 'success' })
     await refresh()
@@ -96,7 +97,7 @@ async function approve(it: SocialResponseQueueItem) {
 async function reject(it: SocialResponseQueueItem) {
   busy.value = it.id
   try {
-    await apiFetch(`/api/agency/social/inbox/response-queue/${it.id}/reject`, { method: 'POST', body: { clientId: clientId.value } })
+    await apiFetch(`/api/agency/social/inbox/response-queue/${it.id}/reject`, { method: 'POST', body: { clientId: clientId.value }, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-reject') } })
     Reflect.deleteProperty(edits, it.id)
     await refresh()
   } catch (e: unknown) {

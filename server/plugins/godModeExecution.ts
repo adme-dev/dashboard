@@ -12,6 +12,7 @@ import { registerGodModeDealerFeedMutationFamilies } from '~~/server/utils/feeds
 import { registerGodModeSocialAccountMapMutationFamily } from '~~/server/utils/social/accountMapGodMode'
 import { registerGodModeGoogleProfileAccountDiscoveryMutationFamily } from '~~/server/utils/social/googleProfileAccountDiscoveryGodMode'
 import { registerGodModeSocialPublishingAccountMutationFamilies } from '~~/server/utils/social/publishingAccountGodMode'
+import { registerGodModeSocialInboxMutationFamilies } from '~~/server/utils/socialInbox/godModeMutations'
 import { registerGodModeTrackingSiteMutationFamily } from '~~/server/utils/tracking/godModeMutations'
 import { registerGodModeQrMutationFamilies } from '~~/server/utils/qr/godModeMutations'
 import { registerGodModeSearchAuthorityMutationFamilies } from '~~/server/utils/searchAuthority/godModeMutations'
@@ -28,6 +29,7 @@ registerGodModeDealerFeedMutationFamilies()
 registerGodModeCatalogSourceMutationFamily()
 registerGodModeSocialAccountMapMutationFamily()
 registerGodModeSocialPublishingAccountMutationFamilies()
+registerGodModeSocialInboxMutationFamilies()
 registerGodModeAgencyClientMutationFamilies()
 registerGodModeTrackingSiteMutationFamily()
 registerGodModeQrMutationFamilies()

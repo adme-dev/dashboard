@@ -1,5 +1,5 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { queryOne } from '~~/server/utils/db'
+import { executeSocialInboxMutation } from '~~/server/utils/socialInbox/godModeMutations'
 
 /** POST /api/agency/social/inbox/sla-policies  body { client_id, channel_type?, target_minutes, enabled? } */
 export default defineEventHandler(async (event) => {
@@ -14,11 +14,17 @@ export default defineEventHandler(async (event) => {
   const conflict = channel === null
     ? `ON CONFLICT (client_id) WHERE channel_type IS NULL`
     : `ON CONFLICT (client_id, channel_type)`
-  return await queryOne(
-    `INSERT INTO social_sla_policies (client_id, channel_type, target_minutes, enabled)
-     VALUES ($1,$2,$3,$4)
-     ${conflict} DO UPDATE SET
-       target_minutes = EXCLUDED.target_minutes, enabled = EXCLUDED.enabled, updated_at = NOW()
-     RETURNING *`,
-    [b.client_id, channel, minutes, enabled])
+  return await executeSocialInboxMutation<any>(event, 'sla-policy-create', async (db) => {
+    const { rows } = await db.query(
+      `INSERT INTO social_sla_policies (client_id, channel_type, target_minutes, enabled)
+       VALUES ($1,$2,$3,$4)
+       ${conflict} DO UPDATE SET
+         target_minutes = EXCLUDED.target_minutes, enabled = EXCLUDED.enabled, updated_at = NOW()
+       RETURNING *`,
+      [b.client_id, channel, minutes, enabled])
+    return rows[0]
+  }, async (db, ref) => {
+    const { rows } = await db.query(`SELECT * FROM social_sla_policies WHERE id = $1`, [ref])
+    return rows[0] ?? { id: ref }
+  })
 })

@@ -3,13 +3,14 @@
 // explicit clientId) and exposes the conversation list + thread loader + mutations.
 import type { Ref } from 'vue'
 import type { SocialConversation, SocialInboxSyncResult, SocialMessage } from '~/types'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 const PAGE_LIMIT = 100
 
 export function useSocialInbox(clientId: Ref<string | null>) {
   const apiFetch = $fetch as <T = unknown>(
     request: string,
-    options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+    options?: { method?: string; body?: unknown; query?: Record<string, unknown>; headers?: Record<string, string> }
   ) => Promise<T>
   const conversations = ref<SocialConversation[]>([])
   const loading = ref(false)
@@ -56,22 +57,23 @@ export function useSocialInbox(clientId: Ref<string | null>) {
   async function reply(id: string, content: string) {
     return await apiFetch<{ ok: boolean, platformMessageId: string }>(
       `/api/agency/social/inbox/conversations/${id}/reply`,
-      { method: 'POST', body: { content } }
+      { method: 'POST', body: { content }, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-reply') } }
     )
   }
 
   async function setStatus(id: string, status: 'open' | 'snoozed' | 'closed') {
-    return await apiFetch(`/api/agency/social/inbox/conversations/${id}`, { method: 'PATCH', body: { status } })
+    return await apiFetch(`/api/agency/social/inbox/conversations/${id}`, { method: 'PATCH', body: { status }, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-status') } })
   }
 
   async function markRead(id: string) {
-    return await apiFetch(`/api/agency/social/inbox/conversations/${id}`, { method: 'PATCH', body: { markRead: true } })
+    return await apiFetch(`/api/agency/social/inbox/conversations/${id}`, { method: 'PATCH', body: { markRead: true }, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-read') } })
   }
 
   async function refresh() {
     return await apiFetch<SocialInboxSyncResult>('/api/agency/social/inbox/accounts/sync', {
       method: 'POST',
-      body: { clientId: clientId.value }
+      body: { clientId: clientId.value },
+      headers: { 'Idempotency-Key': idempotencyKey('social-inbox-sync') }
     })
   }
 

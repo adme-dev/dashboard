@@ -1,10 +1,13 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { execute } from '~~/server/utils/db'
+import { executeSocialInboxMutation } from '~~/server/utils/socialInbox/godModeMutations'
 
 /** DELETE /api/agency/social/inbox/sla-policies/:id */
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const id = getRouterParam(event, 'id')!
-  await execute(`DELETE FROM social_sla_policies WHERE id = $1`, [id])
-  return { ok: true }
+  const result = await executeSocialInboxMutation(event, 'sla-policy-delete', async (db) => {
+    await db.query(`DELETE FROM social_sla_policies WHERE id = $1`, [id])
+    return { id, ok: true }
+  }, async (_db, ref) => ({ id: ref, ok: true }))
+  return { ok: result.ok }
 })
