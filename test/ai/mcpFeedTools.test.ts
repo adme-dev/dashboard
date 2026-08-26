@@ -219,7 +219,7 @@ describe('executeFeedPropose — dryRun writes nothing (P-1)', () => {
         existingProductFeedId: '638660590098129',
         existingProductFeedName: 'Frankston Nissan',
         currentScheduleUrl: 'https://legacy.example/frankston.xml',
-        willCreateProductFeed: false,
+        willCreateProductFeed: false
       }))
     })
     const args = { ...attachArgs, productFeedId: '638660590098129', dryRun: true }
@@ -231,12 +231,12 @@ describe('executeFeedPropose — dryRun writes nothing (P-1)', () => {
         dryRun: true,
         existingProductFeedId: '638660590098129',
         existingProductFeedName: 'Frankston Nissan',
-        willCreateProductFeed: false,
-      },
+        willCreateProductFeed: false
+      }
     })
     expect(d.resolveAttachPreview).toHaveBeenCalledWith(
       expect.objectContaining({ productFeedId: '638660590098129' }),
-      expect.anything(),
+      expect.anything()
     )
   })
 

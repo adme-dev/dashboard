@@ -270,7 +270,7 @@ function scheduleUrl(feed: MetaProductFeedSummary): string {
 export function selectMetaCatalogFeed(
   feeds: MetaProductFeedSummary[],
   sourceFeedUrl: string,
-  requestedProductFeedId?: string,
+  requestedProductFeedId?: string
 ): MetaProductFeedSummary | null {
   const requested = clean(requestedProductFeedId)
   if (requested) {
