@@ -16,11 +16,13 @@ export function searchAuthorityNavItems(
     defaultOpen: currentPath === SEARCH_AUTHORITY_PATH
       || currentPath.startsWith(`${SEARCH_AUTHORITY_PATH}/`),
     children: [{
-      label: 'Overview',
+      label: 'Guides & Menu Agent',
+      description: 'Evidence, governed guides, publishing and the GTM menu/feature block',
       to: SEARCH_AUTHORITY_PATH,
       onSelect: close
     }, {
-      label: 'Connections',
+      label: 'Site & publishing setup',
+      description: 'Client site, publishing mode, Search Console connection',
       to: `${SEARCH_AUTHORITY_PATH}/connections`,
       onSelect: close
     }]

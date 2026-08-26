@@ -317,12 +317,14 @@ describe('Search Authority onboarding workspace', () => {
         defaultOpen: true,
         children: [
           expect.objectContaining({
-            label: 'Overview',
+            label: 'Guides & Menu Agent',
+            description: 'Evidence, governed guides, publishing and the GTM menu/feature block',
             to: '/agency/search-authority',
             onSelect: close
           }),
           expect.objectContaining({
-            label: 'Connections',
+            label: 'Site & publishing setup',
+            description: 'Client site, publishing mode, Search Console connection',
             to: '/agency/search-authority/connections',
             onSelect: close
           })
