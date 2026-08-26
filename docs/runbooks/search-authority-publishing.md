@@ -19,7 +19,8 @@ surface; GTM is discovery only.
   `pnpm deploy:search-authority-publisher`.
 - R2 bucket: `agency-search-authority-publications`, private.
 - Knox canonical host: `www.knoxgwmhaval.com.au`.
-- Knox proposed content host: `learn.knoxgwmhaval.com.au`.
+- Knox proposed content host: `learn.knoxgwmhaval.com.au` (CNAME → `publish.xeroflowpages.com`).
+- SaaS publishing zone: `xeroflowpages.com` (never `xeroflow.io`).
 - Menu bootstrap: `https://app.xeroflow.io/search-authority/menu-agent.v1.js`.
 
 The publisher deploy wrapper rejects alternate Worker names, entrypoints or R2
@@ -54,15 +55,25 @@ POST any path → 405 with Allow: GET, HEAD
 Only the approved custom hostname may route to this Worker. Validate the custom
 hostname mapping before putting a content hostname into the XeroFlow site row.
 
-Cloudflare for SaaS on the `xeroflow.io` zone uses `publish.xeroflow.io` (a
-proxied placeholder A record) as the fallback origin, with the Worker route
-`publish.xeroflow.io/*` bound to the publisher. **Worker routes match the
-request hostname, not the fallback origin**, so every client content hostname
-also needs its own route on the `xeroflow.io` zone, e.g.
-`learn.knoxgwmhaval.com.au/*` → `search-authority-publisher`. Without it
-Cloudflare forwards the request to the placeholder origin and the client sees a
-522. Add the route in the same step as the custom hostname (verified on
-`learn.adme.net.au`, 2026-08-26).
+Client content is served through the dedicated **`xeroflowpages.com`** zone
+(registered 2026-08-26), not `xeroflow.io`. The app zone carries a
+`noindex,nofollow` meta and Cloudflare AI-crawler blocking that must not leak
+onto client guides, so the SaaS plumbing lives on its own clean zone. On
+`xeroflowpages.com`:
+
+- `publish.xeroflowpages.com` — proxied placeholder A record (192.0.2.1) and the
+  Cloudflare for SaaS fallback origin;
+- Worker route `publish.xeroflowpages.com/*` → `search-authority-publisher`;
+- one custom hostname per client (HTTP DCV) **and** one Worker route per client
+  hostname, e.g. `learn.knoxgwmhaval.com.au/*` → `search-authority-publisher`.
+  Worker routes match the request hostname, not the fallback origin; without the
+  per-client route Cloudflare forwards to the placeholder origin and the client
+  sees a 522.
+- Managed robots.txt and AI Crawl Control blocking stay **off** on this zone.
+
+The client's CNAME target is `publish.xeroflowpages.com` (DNS-only). Verified on
+`learn.adme.net.au` on 2026-08-26 (guide 200, clean robots.txt, Google-issued
+certificate).
 
 ## Gate 3 — configure DNS and the site
 
