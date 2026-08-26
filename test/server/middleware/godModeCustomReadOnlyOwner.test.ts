@@ -82,16 +82,14 @@ describe('active owner with a custom read-only role', () => {
     appendGodModeAuditEvent.mockResolvedValue(undefined)
   })
 
-  it('preserves custom read-only state and denies an unregistered POST before its handler', async () => {
+  it('preserves custom read-only state without classifying the ordinary POST as God mode', async () => {
     const request = event()
 
     await authMiddleware(request)
     expect(request.context.user.isCustomReadOnly).toBe(true)
+    expect(request.context.user.permissionGroups).toEqual(['CLIENTS'])
 
-    await expect(handleGodModeRequest(request)).rejects.toMatchObject({
-      statusCode: 503,
-      statusMessage: 'God mode mutation coordination required'
-    })
-    expect(appendGodModeAuditEvent).toHaveBeenCalledOnce()
+    await expect(handleGodModeRequest(request)).resolves.toBeUndefined()
+    expect(appendGodModeAuditEvent).not.toHaveBeenCalled()
   })
 })

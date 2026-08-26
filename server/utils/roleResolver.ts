@@ -1,16 +1,13 @@
 import type { H3Event } from 'h3'
 import { kvGet, kvPut, kvDelete } from './kv'
 import { queryOne } from './db'
-import { PERMISSION_GROUPS, SYSTEM_ROLE_PERMISSIONS, type PermissionGroup } from './permissions'
-import { resolveGodModeAuthority } from './godMode/authority'
+import { SYSTEM_ROLE_PERMISSIONS, type PermissionGroup } from './permissions'
 
 export interface ResolvedPermissions {
   groups: PermissionGroup[]
   customRoleId: string | null
   roleName: string
   isReadOnly: boolean
-  /** Request-local authority result; callers must never place these expanded groups in shared/session caches. */
-  godModeElevated?: true
 }
 
 /**
@@ -42,7 +39,7 @@ export async function resolveUserPermissions(
          LEFT JOIN role_permission_groups rpg ON rpg.role_id = cr.id
          WHERE cr.id = $1
          GROUP BY cr.id`
-      : `SELECT cr.name, cr.is_read_only,
+        : `SELECT cr.name, cr.is_read_only,
            COALESCE(
              array_agg(rpg.permission_group) FILTER (WHERE rpg.permission_group IS NOT NULL),
              '{}'
@@ -53,7 +50,7 @@ export async function resolveUserPermissions(
          GROUP BY cr.id`
 
       const param = customRoleId || userRole
-      const role = await queryOne<{ name: string; is_read_only: boolean; permission_groups: string[] }>(query, [param])
+      const role = await queryOne<{ name: string, is_read_only: boolean, permission_groups: string[] }>(query, [param])
 
       if (role) {
         resolved = {
@@ -69,20 +66,8 @@ export async function resolveUserPermissions(
       resolved = staticFallback(userRole)
     }
 
-    // Cache ordinary role policy only. Any owner elevation below is request-local.
+    // Cache only configured role policy. God mode elevation happens later at an actual denied control.
     kvPut(event, cacheKey, resolved, 300)
-  }
-
-  if (event?.context) {
-    const authority = await resolveGodModeAuthority(event, userId)
-    if (authority.active) {
-      return {
-        ...resolved,
-        groups: [...PERMISSION_GROUPS],
-        isReadOnly: resolved.isReadOnly,
-        godModeElevated: true
-      }
-    }
   }
 
   return resolved

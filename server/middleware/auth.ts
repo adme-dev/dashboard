@@ -251,9 +251,9 @@ export default defineEventHandler(async (event) => {
     user.permissionGroups = resolved.groups
     ;(user as MiddlewareUser).isCustomReadOnly = resolved.isReadOnly && !isReadOnlyRole(user.role)
 
-    // Cache ordinary permissions only. God-mode expansion is request-local so an
-    // emergency disable or owner downgrade cannot inherit five minutes of stale authority.
-    if (user.role.toLowerCase() !== 'owner' && !resolved.godModeElevated) {
+    // Owner identities are revalidated on every request; configured permission groups themselves
+    // remain ordinary policy until a centralized God mode bypass is actually requested.
+    if (user.role.toLowerCase() !== 'owner') {
       kvPut(event, cacheKey, user, 300)
     }
 

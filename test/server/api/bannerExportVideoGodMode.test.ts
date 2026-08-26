@@ -25,7 +25,8 @@ const ROUTE = 'POST /api/agency/banner-studio/export-video'
 
 function event(
   correlationId: string,
-  headers: Record<string, string> = { 'idempotency-key': 'banner-render:attempt-1' }
+  headers: Record<string, string> = { 'idempotency-key': 'banner-render:attempt-1' },
+  seedAuditState = true
 ): H3Event {
   const request = {
     method: 'POST',
@@ -39,13 +40,15 @@ function event(
       res: { statusCode: 200, statusMessage: 'OK' }
     }
   } as unknown as H3Event
-  seedGodModeRouteAuditState(request, {
-    actorUserId: ACTOR_ID,
-    correlationId,
-    sessionDigest: 'b'.repeat(64),
-    routeOrTool: ROUTE,
-    emergencyDisabled: false
-  })
+  if (seedAuditState) {
+    seedGodModeRouteAuditState(request, {
+      actorUserId: ACTOR_ID,
+      correlationId,
+      sessionDigest: 'b'.repeat(64),
+      routeOrTool: ROUTE,
+      emergencyDisabled: false
+    })
+  }
   return request
 }
 
@@ -299,7 +302,7 @@ describe('banner video God mode coordination', () => {
     expect(send).not.toHaveBeenCalled()
   })
 
-  it('eager plugin wiring admits the route before its request handler executes', async () => {
+  it('plugin wiring does not activate an ordinary matching request before a bypass is requested', async () => {
     vi.resetModules()
     const featureGate = await import('../../../server/utils/godMode/featureGate')
     const prepare = vi.fn(async () => ({
@@ -316,28 +319,13 @@ describe('banner video God mode coordination', () => {
 
     await import('../../../server/plugins/godModeExecution')
     const { handleGodModeRequest } = await import('../../../server/middleware/godMode')
-    const request = event(FIRST_CORRELATION)
+    const request = event(FIRST_CORRELATION, { 'idempotency-key': 'banner-render:attempt-1' }, false)
     ;(request.context as Record<string, unknown>).user = { id: ACTOR_ID }
-    const appendAttempt = vi.fn().mockResolvedValue(undefined)
 
-    await expect(handleGodModeRequest(request, {
-      resolveGodModeAuthority: vi.fn().mockResolvedValue({
-        active: true,
-        actorUserId: ACTOR_ID,
-        reason: 'active_owner',
-        emergencyDisabled: false
-      }),
-      appendGodModeAuditEvent: appendAttempt,
-      getSessionToken: () => 'session-token',
-      randomUUID: () => FIRST_CORRELATION
-    } as never)).resolves.toBeUndefined()
+    await expect(handleGodModeRequest(request)).resolves.toBeUndefined()
 
-    expect(prepare).toHaveBeenCalledOnce()
-    expect(appendAttempt).toHaveBeenCalledOnce()
-    expect(featureGate.getGodModeRouteAuditState(request)?.mutationCoordination).toMatchObject({
-      strategy: 'task5-execution-ledger',
-      route: '/api/agency/banner-studio/export-video'
-    })
+    expect(prepare).not.toHaveBeenCalled()
+    expect(featureGate.getGodModeRouteAuditState(request)).toBeNull()
     vi.doUnmock('~~/server/utils/banner/godModeRender')
     vi.doUnmock('~~/server/utils/ai/godModeMutationFamily')
     vi.doUnmock('~~/server/utils/banner/godModeAssetUpload')
