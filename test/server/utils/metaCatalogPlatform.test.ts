@@ -275,6 +275,66 @@ describe('Meta catalogue feed orchestration', () => {
     }, deps)).rejects.toThrow('Meta feed readback did not match the requested fetch schedule')
   })
 
+  it('reuses an explicitly selected product feed even when its current URL is legacy', async () => {
+    const expectedUrl = 'https://socials.driveagent.io/api/feeds/source-used/serve'
+    const deps = provider({
+      listProductFeeds: vi.fn().mockResolvedValue([{
+        id: '638660590098129',
+        name: 'Frankston Nissan',
+        schedule: { interval: 'HOURLY', url: 'https://legacy.example/frankston.xml', timezone: 'Australia/Sydney' }
+      }]),
+      getProductFeed: vi.fn().mockResolvedValue({
+        id: '638660590098129',
+        name: 'Frankston Motor Group — Frankston Nissan',
+        schedule: { interval: 'HOURLY', url: expectedUrl, timezone: 'Australia/Sydney' },
+        latest_upload: { id: 'upload-existing', status: 'IN_PROGRESS' }
+      }),
+      createProductFeedUpload: vi.fn().mockResolvedValue({ id: 'upload-existing' })
+    })
+
+    const result = await ensureMetaCatalogFeed({
+      connection,
+      clientId: 'client-1',
+      clientName: 'Frankston Motor Group',
+      catalogId: 'catalog-1',
+      productFeedId: '638660590098129',
+      sourceFeedId: 'source-used',
+      sourceFeedName: 'Frankston Nissan',
+      allowedSourceFeedIds: ['source-used'],
+      feedBaseUrl: 'https://socials.driveagent.io',
+      actorId: 'actor-1',
+      schedule: { interval: 'HOURLY', timezone: 'Australia/Sydney' }
+    }, deps)
+
+    expect(deps.createProductFeed).not.toHaveBeenCalled()
+    expect(deps.updateProductFeed).toHaveBeenCalledWith('638660590098129', expect.anything())
+    expect(deps.createProductFeedUpload).toHaveBeenCalledWith('638660590098129', expectedUrl)
+    expect(result).toMatchObject({ productFeedId: '638660590098129', feedDisposition: 'reused' })
+  })
+
+  it('fails closed when an explicit product feed is not in the selected catalogue', async () => {
+    const deps = provider({
+      listProductFeeds: vi.fn().mockResolvedValue([{ id: 'other-feed', name: 'Other', schedule: null }])
+    })
+
+    await expect(ensureMetaCatalogFeed({
+      connection,
+      clientId: 'client-1',
+      clientName: 'Frankston Motor Group',
+      catalogId: 'catalog-1',
+      productFeedId: '638660590098129',
+      sourceFeedId: 'source-used',
+      sourceFeedName: 'Frankston Nissan',
+      allowedSourceFeedIds: ['source-used'],
+      feedBaseUrl: 'https://socials.driveagent.io',
+      actorId: 'actor-1'
+    }, deps)).rejects.toThrow('requested Meta product feed is not accessible in this catalogue')
+
+    expect(deps.createProductFeed).not.toHaveBeenCalled()
+    expect(deps.updateProductFeed).not.toHaveBeenCalled()
+    expect(deps.createProductFeedUpload).not.toHaveBeenCalled()
+  })
+
   it('reuses a matching remote feed on retry instead of creating a duplicate', async () => {
     const expectedUrl = 'https://socials.driveagent.io/api/feeds/source-used/serve'
     const deps = provider({
