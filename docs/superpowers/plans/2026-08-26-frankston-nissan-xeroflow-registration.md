@@ -505,35 +505,13 @@ git commit -m "feat(mcp): reuse an explicitly selected Meta feed"
 ### Task 4: Update the public Dealer Inventory Feeds contract
 
 **Files:**
-- Modify: `test/public/metaCatalogPlatformMarketing.test.ts`
 - Modify: `app/pages/features/index.vue`
 - Modify: `app/pages/features/[slug].vue`
 
 **Interfaces:**
 - Produces: public copy accurately describes exact-feed reuse and confirmation/readback safeguards.
 
-- [ ] **Step 1: Add the failing marketing contract assertion**
-
-Add to the existing public-copy test:
-
-```ts
-it('explains exact existing-feed reuse without claiming campaign mutation', () => {
-  expect(indexPage).toContain('reuse an existing Meta product feed by ID')
-  expect(detailPage).toContain('fails closed instead of creating a duplicate')
-  expect(detailPage).toContain('explicit confirmation')
-  expect(detailPage).not.toContain('automatically changes product-set targeting')
-})
-```
-
-- [ ] **Step 2: Run the test and verify RED**
-
-```bash
-pnpm vitest run test/public/metaCatalogPlatformMarketing.test.ts
-```
-
-Expected: FAIL because the current copy only describes URL-matched reuse.
-
-- [ ] **Step 3: Update the existing feature entry**
+- [ ] **Step 1: Update the existing feature entry**
 
 In `app/pages/features/index.vue`, update the `dealer-inventory-feeds` description to include the exact phrase
 `reuse an existing Meta product feed by ID` while retaining client-scoped inventory and readback evidence.
@@ -546,7 +524,7 @@ When a catalogue already has the intended product feed, operators can select tha
 
 Do not alter `MarketingNav.vue`; the Dealer Feeds entry already exists in the correct top-level navigation category.
 
-- [ ] **Step 4: Run marketing and relevant platform tests**
+- [ ] **Step 2: Run marketing and relevant platform tests**
 
 ```bash
 pnpm vitest run test/public/metaCatalogPlatformMarketing.test.ts test/app/metaCatalogPlatformUi.test.ts
@@ -554,12 +532,12 @@ pnpm vitest run test/public/metaCatalogPlatformMarketing.test.ts test/app/metaCa
 
 Expected: PASS.
 
-- [ ] **Step 5: Review and commit the marketing sync**
+- [ ] **Step 3: Review and commit the marketing sync**
 
 ```bash
 git diff --check
-git diff -- app/pages/features/index.vue 'app/pages/features/[slug].vue' test/public/metaCatalogPlatformMarketing.test.ts
-git add app/pages/features/index.vue 'app/pages/features/[slug].vue' test/public/metaCatalogPlatformMarketing.test.ts
+git diff -- app/pages/features/index.vue 'app/pages/features/[slug].vue'
+git add app/pages/features/index.vue 'app/pages/features/[slug].vue'
 git commit -m "docs(marketing): explain exact Meta feed reuse"
 ```
 
