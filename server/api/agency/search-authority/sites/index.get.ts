@@ -21,6 +21,8 @@ export default eventHandler(async (event) => {
     canonical_hostname: string
     content_hostname: string | null
     status: string
+    public_id: string
+    publishing_mode: 'subdomain' | 'same_host'
   }>(
     `SELECT
        site.id,
@@ -28,7 +30,9 @@ export default eventHandler(async (event) => {
        client.name AS client_name,
        site.canonical_hostname,
        site.content_hostname,
-       site.status
+       site.status,
+       site.public_id,
+       site.publishing_mode
      FROM search_authority_sites site
      JOIN agency_clients client ON client.id = site.client_id
      WHERE site.client_id = ANY($1::uuid[])
@@ -43,7 +47,9 @@ export default eventHandler(async (event) => {
       clientName: site.client_name,
       canonicalHostname: site.canonical_hostname,
       contentHostname: site.content_hostname,
-      status: site.status
+      status: site.status,
+      publicId: site.public_id,
+      publishingMode: site.publishing_mode
     }))
   }
 })

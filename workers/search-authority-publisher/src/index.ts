@@ -1,6 +1,10 @@
-import type { SearchAuthorityPublicationManifest, SearchAuthorityPublicationRoute } from '../../../shared/searchAuthorityPublication'
+import type { SearchAuthorityHostAlias, SearchAuthorityPublicationManifest, SearchAuthorityPublicationRoute, SearchAuthorityPublishedGuide } from '../../../shared/searchAuthorityPublication'
 
 const MAX_MANIFEST_BYTES = 64 * 1024
+const MAX_ALIAS_BYTES = 1024
+const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/
+/** Same-host clients rewrite `/guides/*` to `https://publish.<zone>/s/<publicId>/guides/*`. */
+const SAME_HOST_PREFIX = /^\/s\/([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})(\/.*)?$/i
 const HOSTNAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/
 const CONTENT_TYPES = new Set([
   'text/html; charset=utf-8',
@@ -35,7 +39,29 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   if (url.pathname === '/healthz') {
     return response(request.method === 'HEAD' ? null : JSON.stringify({ ok: true }), 200, 'application/json; charset=utf-8')
   }
-  const hostname = url.hostname.toLowerCase()
+  let hostname = url.hostname.toLowerCase()
+  let pathname = url.pathname
+  let publicId: string | null = null
+
+  // Same-host mode: the client's platform rewrites `/guides/*` here with a per-site prefix.
+  const sameHost = SAME_HOST_PREFIX.exec(pathname)
+  if (sameHost) {
+    publicId = sameHost[1]!.toLowerCase()
+    const aliasObject = await env.PUBLICATIONS.get(`aliases/${publicId}.json`)
+    if (!aliasObject) return notFound(request.method)
+    if ('size' in aliasObject && typeof aliasObject.size === 'number' && aliasObject.size > MAX_ALIAS_BYTES) {
+      throw new Error('Host alias exceeds the bounded size')
+    }
+    const alias = validateAlias(JSON.parse(await aliasObject.text()))
+    if (!alias) return notFound(request.method)
+    hostname = alias.hostname
+    pathname = sameHost[2] || '/'
+    if (pathname === '/guides/healthz') {
+      const result = response(request.method === 'HEAD' ? null : JSON.stringify({ ok: true, publicId }), 200, 'application/json; charset=utf-8')
+      result.headers.set('x-xeroflow-publisher', publicId)
+      return result
+    }
+  }
   if (!HOSTNAME.test(hostname)) return notFound(request.method)
   const manifestObject = await env.PUBLICATIONS.get(`hosts/${hostname}/manifests/current.json`)
   if (!manifestObject) return notFound(request.method)
@@ -46,7 +72,8 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   const manifest = validateManifest(parsed, hostname)
   if (!manifest) return notFound(request.method)
 
-  const redirect = manifest.redirects[url.pathname]
+  if (manifest.publicId && publicId && manifest.publicId !== publicId) return notFound(request.method)
+  const redirect = manifest.redirects[pathname]
   if (redirect) {
     if (!isPublicPath(redirect) || !manifest.routes[redirect]) return notFound(request.method)
     const result = new Response(null, { status: 302, headers: { location: `https://${hostname}${redirect}` } })
@@ -54,7 +81,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     result.headers.set('cache-control', 'public, max-age=60, s-maxage=60')
     return result
   }
-  const route = manifest.routes[url.pathname]
+  const route = manifest.routes[pathname]
   if (!route) return notFound(request.method)
   const object = request.method === 'HEAD'
     ? await env.PUBLICATIONS.head(route.key)
@@ -65,9 +92,11 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   if (request.headers.get('if-none-match') === etag) {
     const result = new Response(null, { status: 304, headers: { etag } })
     applySecurityHeaders(result.headers)
+    if (manifest.publicId) result.headers.set('x-xeroflow-publisher', manifest.publicId)
     return result
   }
   const headers = new Headers()
+  if (manifest.publicId) headers.set('x-xeroflow-publisher', manifest.publicId)
   object.writeHttpMetadata(headers)
   headers.set('content-type', route.contentType)
   headers.set('etag', etag)
@@ -114,7 +143,7 @@ function validateManifest(value: unknown, hostname: string): SearchAuthorityPubl
     if (!isPublicPath(from) || typeof to !== 'string' || !isPublicPath(to)) return null
     redirects[from] = to
   }
-  return {
+  const manifest: SearchAuthorityPublicationManifest = {
     schemaVersion: 1,
     hostname,
     manifestVersion: record.manifestVersion,
@@ -124,11 +153,38 @@ function validateManifest(value: unknown, hostname: string): SearchAuthorityPubl
     routes,
     redirects
   }
+  if (typeof record.publicId === 'string') {
+    if (!UUID.test(record.publicId)) return null
+    manifest.publicId = record.publicId.toLowerCase()
+  }
+  if (record.mode === 'subdomain' || record.mode === 'same_host') manifest.mode = record.mode
+  if (Array.isArray(record.guides)) {
+    const guides: SearchAuthorityPublishedGuide[] = []
+    for (const item of record.guides as unknown[]) {
+      if (!item || typeof item !== 'object') return null
+      const guide = item as Record<string, unknown>
+      if (typeof guide.slug !== 'string' || typeof guide.title !== 'string'
+        || typeof guide.excerpt !== 'string' || typeof guide.publishedAt !== 'string') return null
+      guides.push({ slug: guide.slug, title: guide.title, excerpt: guide.excerpt, publishedAt: guide.publishedAt })
+    }
+    manifest.guides = guides
+  }
+  return manifest
+}
+
+function validateAlias(value: unknown): SearchAuthorityHostAlias | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  if (typeof record.hostname !== 'string' || !HOSTNAME.test(record.hostname.toLowerCase())) return null
+  if (record.mode !== 'subdomain' && record.mode !== 'same_host') return null
+  return { hostname: record.hostname.toLowerCase(), mode: record.mode }
 }
 
 function isPublicPath(path: string): boolean {
   return path === '/'
+    || path === '/guides'
     || path === '/sitemap.xml'
+    || path === '/guides/sitemap.xml'
     || path === '/robots.txt'
     || /^\/guides\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path)
 }

@@ -166,7 +166,8 @@ describe('Search Authority onboarding workspace', () => {
         body: {
           clientId: CLIENT_ID,
           canonicalHostname: 'https://www.knoxgwmhaval.com.au/',
-          contentHostname: 'content.knoxgwmhaval.com.au'
+          contentHostname: 'content.knoxgwmhaval.com.au',
+          publishingMode: 'subdomain'
         }
       })
       expect(configured).toHaveLength(1)

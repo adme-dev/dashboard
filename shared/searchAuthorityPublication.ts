@@ -4,6 +4,16 @@ export interface SearchAuthorityPublicationRoute {
   etag: string
 }
 
+export type SearchAuthorityPublishingMode = 'subdomain' | 'same_host'
+
+/** One published guide as listed on the hub, sitemap and GTM feature block. */
+export interface SearchAuthorityPublishedGuide {
+  slug: string
+  title: string
+  excerpt: string
+  publishedAt: string
+}
+
 export interface SearchAuthorityPublicationManifest {
   schemaVersion: 1
   hostname: string
@@ -14,4 +24,15 @@ export interface SearchAuthorityPublicationManifest {
   routes: Record<string, SearchAuthorityPublicationRoute>
   redirects: Record<string, string>
   rolledBackAt?: string
+  /** Site public id — lets the publisher serve `/s/<publicId>/guides/*` for same-host rewrites. */
+  publicId?: string
+  mode?: SearchAuthorityPublishingMode
+  /** Every guide currently routable on this host, newest first. */
+  guides?: SearchAuthorityPublishedGuide[]
+}
+
+/** Stored at `aliases/<publicId>.json` so the publisher can resolve a same-host path to its hostname. */
+export interface SearchAuthorityHostAlias {
+  hostname: string
+  mode: SearchAuthorityPublishingMode
 }

@@ -2,7 +2,10 @@
   'use strict'
 
   var MARKER = 'data-xeroflow-search-authority-menu'
+  var FEATURE_MARKER = 'data-xeroflow-search-authority-feature'
   var VERSION = 'v1'
+  var FEATURE_STYLE_ID = 'xeroflow-search-authority-feature-style'
+  var FEATURE_STYLES = '.xf-sa-feature{margin:1.5rem 0;padding:1rem;border:1px solid var(--xf-sa-border,#e5e7eb);border-radius:var(--xf-sa-radius,12px);background:var(--xf-sa-bg,transparent);font-family:inherit}.xf-sa-feature h2{margin:0 0 .75rem;font-size:1.125rem;color:var(--xf-sa-heading,inherit)}.xf-sa-feature ul{list-style:none;margin:0;padding:0;display:grid;gap:.75rem;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr))}.xf-sa-feature a{display:block;padding:.75rem;border-radius:8px;text-decoration:none;color:inherit;background:var(--xf-sa-card,rgba(0,0,0,.03))}.xf-sa-feature a strong{display:block;margin-bottom:.25rem;color:var(--xf-sa-link,inherit)}.xf-sa-feature a span{display:block;font-size:.875rem;opacity:.8}'
   var OBSERVER_WINDOW_MS = 30000
   var REFRESH_MS = 60000
   var state = global.XeroFlowSearchAuthorityMenuState || {
@@ -22,6 +25,13 @@
     document.querySelectorAll('[' + MARKER + '="' + VERSION + '"]').forEach(function (node) {
       node.remove()
     })
+    removeFeature()
+  }
+
+  function removeFeature() {
+    document.querySelectorAll('[' + FEATURE_MARKER + '="' + VERSION + '"]').forEach(function (node) {
+      node.remove()
+    })
   }
 
   function validSelector(value) {
@@ -32,8 +42,34 @@
       && /^[a-zA-Z0-9_#.\-[\]="' >+~]+$/.test(value)
   }
 
+  function validHref(value) {
+    try {
+      var url = new URL(value)
+      return url.protocol === 'https:' && !url.username && !url.password
+    } catch (_error) {
+      return false
+    }
+  }
+
+  function validFeature(value) {
+    if (value === undefined || value === null) return true
+    if (typeof value !== 'object' || typeof value.enabled !== 'boolean') return false
+    if (!value.enabled) return true
+    if (!validSelector(value.selector)) return false
+    if (['prepend', 'append', 'before', 'after'].indexOf(value.position) === -1) return false
+    if (typeof value.heading !== 'string' || value.heading.length < 1 || value.heading.length > 80 || /[<>]/.test(value.heading)) return false
+    if (!Array.isArray(value.items) || value.items.length > 3) return false
+    return value.items.every(function (item) {
+      return item && typeof item === 'object'
+        && typeof item.title === 'string' && item.title.length > 0 && item.title.length <= 300
+        && typeof item.excerpt === 'string' && item.excerpt.length <= 200
+        && typeof item.href === 'string' && validHref(item.href)
+    })
+  }
+
   function validConfig(value) {
     if (!value || typeof value !== 'object' || typeof value.enabled !== 'boolean') return false
+    if (!validFeature(value.feature)) return false
     if (!value.enabled) return true
     if (typeof value.label !== 'string' || value.label.length < 1 || value.label.length > 60 || /[<>]/.test(value.label)) return false
     if (!validSelector(value.desktopSelector) || !validSelector(value.mobileSelector)) return false
@@ -65,12 +101,88 @@
     }
   }
 
+  function ensureFeatureStyles() {
+    if (document.getElementById(FEATURE_STYLE_ID)) return
+    var style = document.createElement('style')
+    style.id = FEATURE_STYLE_ID
+    style.setAttribute(FEATURE_MARKER, VERSION)
+    style.textContent = FEATURE_STYLES
+    document.head.appendChild(style)
+  }
+
+  function createFeatureBlock(feature) {
+    var section = document.createElement('section')
+    section.className = 'xf-sa-feature'
+    section.setAttribute(FEATURE_MARKER, VERSION)
+    section.setAttribute('data-xeroflow-search-authority-target', 'feature')
+    var heading = document.createElement('h2')
+    heading.textContent = feature.heading
+    section.appendChild(heading)
+    var list = document.createElement('ul')
+    feature.items.forEach(function (item) {
+      var li = document.createElement('li')
+      var anchor = document.createElement('a')
+      anchor.href = item.href
+      anchor.setAttribute('data-xeroflow-search-authority-link', VERSION)
+      var title = document.createElement('strong')
+      title.textContent = item.title
+      anchor.appendChild(title)
+      if (item.excerpt) {
+        var excerpt = document.createElement('span')
+        excerpt.textContent = item.excerpt
+        anchor.appendChild(excerpt)
+      }
+      li.appendChild(anchor)
+      list.appendChild(li)
+    })
+    section.appendChild(list)
+    return section
+  }
+
+  function reconcileFeature(config) {
+    var feature = config && config.feature
+    var existing = document.querySelectorAll('section[' + FEATURE_MARKER + '="' + VERSION + '"]')
+    if (!feature || !feature.enabled || feature.items.length === 0) {
+      existing.forEach(function (node) { node.remove() })
+      return false
+    }
+    var target
+    try {
+      target = document.querySelector(feature.selector)
+    } catch (_error) {
+      return false
+    }
+    if (!target) {
+      existing.forEach(function (node) { node.remove() })
+      return false
+    }
+    var keep = null
+    existing.forEach(function (node) {
+      var attached = feature.position === 'prepend' || feature.position === 'append'
+        ? node.parentElement === target
+        : node.parentElement === target.parentElement
+      if (!keep && attached) keep = node
+      else node.remove()
+    })
+    if (keep) return true
+    ensureFeatureStyles()
+    var block = createFeatureBlock(feature)
+    if (feature.position === 'prepend') target.insertBefore(block, target.firstChild)
+    else if (feature.position === 'append') target.appendChild(block)
+    else if (feature.position === 'before' && target.parentElement) target.parentElement.insertBefore(block, target)
+    else if (feature.position === 'after' && target.parentElement) target.parentElement.insertBefore(block, target.nextSibling)
+    else return false
+    return true
+  }
+
   function reconcile() {
     var config = state.config
     if (!config || !config.enabled) {
+      // The menu switch is the master kill switch; the feature block never outlives it.
       removeInserted()
       return
     }
+    var featureActive = reconcileFeature(config)
     var targets = [
       ['desktop', config.desktopSelector],
       ['mobile', config.mobileSelector]
@@ -101,7 +213,7 @@
     document.querySelectorAll('[' + MARKER + '="' + VERSION + '"]').forEach(function (node) {
       if (!active[node.getAttribute('data-xeroflow-search-authority-target')]) node.remove()
     })
-    if (!state.observed && Object.keys(active).length > 0 && state.configUrl) {
+    if (!state.observed && (Object.keys(active).length > 0 || featureActive) && state.configUrl) {
       state.observed = true
       fetch(state.configUrl + '/observed', { method: 'POST', mode: 'cors', keepalive: true }).catch(function () {})
     }

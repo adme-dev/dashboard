@@ -14,6 +14,16 @@ interface SearchAuthoritySite {
   canonicalHostname: string
   contentHostname: string | null
   status: string
+  publicId?: string
+  publishingMode?: 'subdomain' | 'same_host'
+}
+
+interface VerifyResult {
+  ok: boolean
+  status: number | null
+  reason: string | null
+  rewriteTarget: string
+  checkedAt: string
 }
 
 const props = defineProps<{
@@ -30,7 +40,22 @@ const toast = useToast()
 const selectedClientId = ref<string | null>(null)
 const canonicalHostname = ref('')
 const contentHostname = ref('')
+const publishingMode = ref<'subdomain' | 'same_host'>('subdomain')
 const saving = ref(false)
+const verifying = ref(false)
+const verifyResult = ref<VerifyResult | null>(null)
+const publishingModeOptions = [
+  { label: 'Client subdomain (default) — e.g. learn.client.com.au', value: 'subdomain' },
+  { label: 'Same host — client.com.au/guides via a rewrite on their website', value: 'same_host' }
+]
+const rewriteSnippet = computed(() => selectedSite.value?.publicId
+  ? `async rewrites() {
+  return [
+    { source: '/guides', destination: 'https://publish.xeroflowpages.com/s/${selectedSite.value.publicId}/guides' },
+    { source: '/guides/:path*', destination: 'https://publish.xeroflowpages.com/s/${selectedSite.value.publicId}/guides/:path*' }
+  ]
+}`
+  : '')
 
 const clientOptions = computed(() => props.clients.map(client => ({
   label: client.name,
@@ -48,7 +73,28 @@ const canConfigure = computed(() => (
 watch(selectedClientId, () => {
   canonicalHostname.value = selectedSite.value?.canonicalHostname || ''
   contentHostname.value = selectedSite.value?.contentHostname || ''
+  publishingMode.value = selectedSite.value?.publishingMode || 'subdomain'
+  verifyResult.value = null
 })
+
+async function verifySameHost() {
+  if (!selectedSite.value || !selectedClientId.value) return
+  verifying.value = true
+  try {
+    const query = new URLSearchParams({ clientId: selectedClientId.value, siteId: selectedSite.value.id })
+    verifyResult.value = await $fetch<VerifyResult>(`/api/agency/search-authority/sites/verify?${query}`)
+  } catch (error: unknown) {
+    toast.add({ title: 'Verification failed', description: errorMessage(error), color: 'error' })
+  } finally {
+    verifying.value = false
+  }
+}
+
+async function copyRewrite() {
+  if (!rewriteSnippet.value) return
+  await navigator.clipboard.writeText(rewriteSnippet.value)
+  toast.add({ title: 'Rewrite snippet copied', color: 'success' })
+}
 
 function errorMessage(error: unknown): string {
   const candidate = error as {
@@ -75,13 +121,15 @@ async function configureSite() {
         body: {
           clientId: selectedClientId.value,
           canonicalHostname: canonicalHostname.value.trim(),
-          contentHostname: contentHostname.value.trim() || null
+          contentHostname: publishingMode.value === 'same_host' ? null : (contentHostname.value.trim() || null),
+          publishingMode: publishingMode.value
         }
       }
     )
     emit('configured', response.site)
     canonicalHostname.value = response.site.canonicalHostname
     contentHostname.value = response.site.contentHostname || ''
+    publishingMode.value = response.site.publishingMode || 'subdomain'
     toast.add({
       title: 'Site ready',
       description: 'Search Authority access is ready for Search Console connection.',
@@ -180,6 +228,20 @@ async function configureSite() {
         </UFormField>
 
         <UFormField
+          label="Publishing mode"
+          help="Subdomain needs one DNS record from the client. Same host needs a /guides rewrite inside their website platform."
+        >
+          <USelect
+            v-model="publishingMode"
+            :items="publishingModeOptions"
+            value-key="value"
+            class="w-full"
+            data-testid="search-authority-publishing-mode"
+          />
+        </UFormField>
+
+        <UFormField
+          v-if="publishingMode === 'subdomain'"
           label="XeroFlow content hostname"
           help="Optional. Add the separate XeroFlow-owned hostname if publishing will run beside the dealer CMS."
         >
@@ -191,6 +253,48 @@ async function configureSite() {
             data-testid="search-authority-content-hostname"
           />
         </UFormField>
+
+        <div
+          v-if="publishingMode === 'same_host' && selectedSite?.publicId"
+          class="rounded-lg border border-default bg-elevated p-4"
+          data-testid="search-authority-same-host-panel"
+        >
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 class="text-sm font-medium text-highlighted">
+                Rewrite for the client's website
+              </h3>
+              <p class="mt-1 text-xs text-muted">
+                Their developer adds this to <code>next.config.js</code> (or the platform's proxy-path setting). Guides are then served at
+                <code>https://{{ canonicalHostname || 'www.client.com.au' }}/guides/…</code> and indexed there.
+              </p>
+            </div>
+            <UButton
+              label="Copy rewrite"
+              icon="i-lucide-copy"
+              color="neutral"
+              variant="soft"
+              @click="copyRewrite"
+            />
+          </div>
+          <pre class="mt-3 overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-default p-3 text-xs text-highlighted"><code>{{ rewriteSnippet }}</code></pre>
+          <div class="mt-3 flex flex-wrap items-center gap-3">
+            <UButton
+              label="Verify rewrite"
+              icon="i-lucide-radar"
+              color="neutral"
+              variant="outline"
+              :loading="verifying"
+              @click="verifySameHost"
+            />
+            <UBadge
+              v-if="verifyResult"
+              :label="verifyResult.ok ? 'Publisher reachable on the client host' : (verifyResult.reason || 'Not verified')"
+              :color="verifyResult.ok ? 'success' : 'warning'"
+              variant="subtle"
+            />
+          </div>
+        </div>
       </div>
 
       <div class="flex justify-end">

@@ -12,7 +12,13 @@ export const menuAgentConfigInput = z.object({
   href: z.string().trim().url().max(2048),
   desktopSelector: selector,
   mobileSelector: selector,
-  insertion: z.enum(['append', 'before-last'])
+  insertion: z.enum(['append', 'before-last']),
+  /** Front-page feature block: bounded cards for the newest published guides. */
+  featureEnabled: z.boolean().default(false),
+  featureSelector: z.union([z.literal(''), selector]).default(''),
+  featurePosition: z.enum(['prepend', 'append', 'before', 'after']).default('append'),
+  featureMaxItems: z.number().int().min(1).max(3).default(3),
+  featureHeading: z.string().trim().min(1).max(80).refine(value => !/[<>]/.test(value), 'Heading must be plain text').default('Latest buying guides')
 })
 
 export type MenuAgentConfigInput = z.infer<typeof menuAgentConfigInput>
@@ -35,5 +41,32 @@ export function normalizeMenuAgentConfig(
       statusMessage: 'Menu links must use the configured content hostname and an approved guide path'
     })
   }
+  if (input.featureEnabled && !input.featureSelector) {
+    throw createError({ statusCode: 400, statusMessage: 'A feature block selector is required when the block is enabled' })
+  }
   return { ...input, href: url.href }
+}
+
+export interface MenuAgentFeatureItem {
+  title: string
+  excerpt: string
+  href: string
+  publishedAt: string
+}
+
+/** Public payload shape served to the GTM agent. */
+export interface MenuAgentPublicConfig {
+  enabled: boolean
+  label: string
+  href: string
+  desktopSelector: string
+  mobileSelector: string
+  insertion: 'append' | 'before-last'
+  feature: {
+    enabled: boolean
+    selector: string
+    position: 'prepend' | 'append' | 'before' | 'after'
+    heading: string
+    items: MenuAgentFeatureItem[]
+  }
 }

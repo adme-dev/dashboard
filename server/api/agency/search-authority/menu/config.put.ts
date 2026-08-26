@@ -26,8 +26,9 @@ export default eventHandler(async (event) => {
     const result = await db.query<{ public_id: string, last_observed_at: string | null, updated_at: string }>(`
       INSERT INTO search_authority_menu_configs (
         client_id, site_id, enabled, label, href, desktop_selector,
-        mobile_selector, insertion, updated_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        mobile_selector, insertion, feature_enabled, feature_selector,
+        feature_position, feature_max_items, feature_heading, updated_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       ON CONFLICT (client_id, site_id) DO UPDATE SET
         enabled = EXCLUDED.enabled,
         label = EXCLUDED.label,
@@ -35,16 +36,23 @@ export default eventHandler(async (event) => {
         desktop_selector = EXCLUDED.desktop_selector,
         mobile_selector = EXCLUDED.mobile_selector,
         insertion = EXCLUDED.insertion,
+        feature_enabled = EXCLUDED.feature_enabled,
+        feature_selector = EXCLUDED.feature_selector,
+        feature_position = EXCLUDED.feature_position,
+        feature_max_items = EXCLUDED.feature_max_items,
+        feature_heading = EXCLUDED.feature_heading,
         updated_by = EXCLUDED.updated_by,
         updated_at = NOW()
       RETURNING public_id, last_observed_at, updated_at
     `, [parsed.data.clientId, parsed.data.siteId, config.enabled, config.label,
-      config.href, config.desktopSelector, config.mobileSelector, config.insertion, user.id])
+      config.href, config.desktopSelector, config.mobileSelector, config.insertion,
+      config.featureEnabled, config.featureSelector, config.featurePosition,
+      config.featureMaxItems, config.featureHeading, user.id])
     await db.query(`INSERT INTO search_authority_site_audit_events (
       client_id, site_id, actor_id, event_type, details
     ) VALUES ($1, $2, $3, 'menu.configured', $4::jsonb)`, [
       parsed.data.clientId, parsed.data.siteId, user.id,
-      JSON.stringify({ enabled: config.enabled, href: config.href, insertion: config.insertion })
+      JSON.stringify({ enabled: config.enabled, href: config.href, insertion: config.insertion, featureEnabled: config.featureEnabled, featurePosition: config.featurePosition })
     ])
     const saved = result.rows[0]
     if (!saved) throw new Error('Menu configuration could not be stored')

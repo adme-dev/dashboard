@@ -42,7 +42,9 @@ describe('Search Authority site readiness API', () => {
                 client_id: mocks.body.clientId,
                 canonical_hostname: 'www.knoxgwmhaval.com.au',
                 content_hostname: 'knox-content.xeroflow.app',
-                status: 'active'
+                status: 'active',
+                public_id: '44444444-4444-4444-8444-444444444444',
+                publishing_mode: 'subdomain'
               }]
             }
           : { rows: [] }
@@ -60,7 +62,9 @@ describe('Search Authority site readiness API', () => {
         clientId: '11111111-1111-4111-8111-111111111111',
         canonicalHostname: 'www.knoxgwmhaval.com.au',
         contentHostname: 'knox-content.xeroflow.app',
-        status: 'active'
+        status: 'active',
+        publicId: '44444444-4444-4444-8444-444444444444',
+        publishingMode: 'subdomain'
       }
     })
     expect(mocks.requireAccess).toHaveBeenCalledWith(
@@ -72,6 +76,7 @@ describe('Search Authority site readiness API', () => {
       '11111111-1111-4111-8111-111111111111',
       'www.knoxgwmhaval.com.au',
       'knox-content.xeroflow.app',
+      'subdomain',
       '22222222-2222-4222-8222-222222222222'
     ])
     expect(calls[1]?.sql).toContain('client_feature_entitlements')

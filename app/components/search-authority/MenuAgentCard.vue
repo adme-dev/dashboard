@@ -9,6 +9,11 @@ interface MenuConfig {
   desktopSelector: string
   mobileSelector: string
   insertion: 'append' | 'before-last'
+  featureEnabled: boolean
+  featureSelector: string
+  featurePosition: 'prepend' | 'append' | 'before' | 'after'
+  featureMaxItems: number
+  featureHeading: string
   lastObservedAt: string | null
   updatedAt: string | null
 }
@@ -25,9 +30,25 @@ const config = reactive<MenuConfig>({
   desktopSelector: '',
   mobileSelector: '',
   insertion: 'append',
+  featureEnabled: false,
+  featureSelector: '',
+  featurePosition: 'append',
+  featureMaxItems: 3,
+  featureHeading: 'Latest buying guides',
   lastObservedAt: null,
   updatedAt: null
 })
+const featurePositionOptions = [
+  { label: 'Prepend inside the target', value: 'prepend' },
+  { label: 'Append inside the target', value: 'append' },
+  { label: 'Before the target', value: 'before' },
+  { label: 'After the target', value: 'after' }
+]
+const featureCountOptions = [
+  { label: '1 guide', value: 1 },
+  { label: '2 guides', value: 2 },
+  { label: '3 guides', value: 3 }
+]
 const insertionOptions = [
   { label: 'Append to menu', value: 'append' },
   { label: 'Before the last item', value: 'before-last' }
@@ -35,6 +56,7 @@ const insertionOptions = [
 const canSave = computed(() => Boolean(
   props.clientId && props.siteId && config.label.trim() && config.href.trim()
   && config.desktopSelector.trim() && config.mobileSelector.trim()
+  && (!config.featureEnabled || (config.featureSelector.trim() && config.featureHeading.trim()))
 ))
 const bootstrap = computed(() => config.publicId
   ? `<script src="https://app.xeroflow.io/search-authority/menu-agent.v1.js" data-config-url="https://app.xeroflow.io/api/public/search-authority/menu/${config.publicId}" async><${'/'}script>`
@@ -49,6 +71,11 @@ function reset() {
     desktopSelector: '',
     mobileSelector: '',
     insertion: 'append',
+    featureEnabled: false,
+    featureSelector: '',
+    featurePosition: 'append',
+    featureMaxItems: 3,
+    featureHeading: 'Latest buying guides',
     lastObservedAt: null,
     updatedAt: null
   })
@@ -91,7 +118,12 @@ async function save() {
         href: config.href,
         desktopSelector: config.desktopSelector,
         mobileSelector: config.mobileSelector,
-        insertion: config.insertion
+        insertion: config.insertion,
+        featureEnabled: config.featureEnabled,
+        featureSelector: config.featureSelector,
+        featurePosition: config.featurePosition,
+        featureMaxItems: config.featureMaxItems,
+        featureHeading: config.featureHeading
       }
     })
     Object.assign(config, result.config)
@@ -183,6 +215,50 @@ watch([() => props.clientId, () => props.siteId], () => void load(), { immediate
         <UFormField label="Mobile menu selector">
           <UInput v-model="config.mobileSelector" class="w-full" placeholder="[data-testid=&quot;mobile-nav&quot;] ul" />
         </UFormField>
+      </div>
+
+      <div class="rounded-lg border border-default p-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <h3 class="text-sm font-medium text-highlighted">
+            Front-page feature posts
+          </h3>
+          <UBadge
+            :label="config.featureEnabled ? 'Enabled' : 'Off'"
+            :color="config.featureEnabled ? 'success' : 'neutral'"
+            variant="subtle"
+            size="sm"
+          />
+        </div>
+        <p class="mt-1 text-xs text-muted">
+          Inserts one bounded block of cards linking to the newest published guides. Google treats them as ordinary internal links; they are teasers, not indexable pages.
+        </p>
+        <div class="mt-4 grid grid-cols-1 gap-4 @lg:grid-cols-2">
+          <UFormField label="Feature block enabled" help="Uses the same remote kill switch as the menu link.">
+            <UCheckbox v-model="config.featureEnabled" label="Show latest guides on the target page" />
+          </UFormField>
+          <UFormField label="Number of guides">
+            <USelect
+              v-model="config.featureMaxItems"
+              :items="featureCountOptions"
+              value-key="value"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField label="Block heading">
+            <UInput v-model="config.featureHeading" class="w-full" maxlength="80" />
+          </UFormField>
+          <UFormField label="Placement">
+            <USelect
+              v-model="config.featurePosition"
+              :items="featurePositionOptions"
+              value-key="value"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField label="Target selector" help="Bounded ID, class or attribute selector on the home page.">
+            <UInput v-model="config.featureSelector" class="w-full" placeholder="main .hero-section" />
+          </UFormField>
+        </div>
       </div>
 
       <div class="flex justify-end">

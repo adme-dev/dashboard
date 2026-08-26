@@ -111,9 +111,66 @@ export function renderSearchAuthorityPublication(
   }
 }
 
-export function renderPublicationSitemap(canonicalUrl: string): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${escapeXml(canonicalUrl)}</loc></url></urlset>`
+export function renderPublicationSitemap(canonicalUrl: string | string[]): string {
+  const urls = Array.isArray(canonicalUrl) ? canonicalUrl : [canonicalUrl]
+  const entries = urls.map(url => `<url><loc>${escapeXml(url)}</loc></url>`).join('')
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${entries}</urlset>`
 }
+
+export interface PublicationHubInput {
+  hostname: string
+  brandName: string
+  dealershipUrl: string
+  guides: Array<{ slug: string, title: string, excerpt: string, publishedAt: string }>
+}
+
+/** Server-rendered guides hub: lists every routable guide so discovery never depends on the sitemap alone. */
+export function renderPublicationHub(input: PublicationHubInput): { html: string, etag: string } {
+  const brandName = input.brandName.trim()
+  if (!brandName) throw new Error('Publication brand name is required')
+  const hostname = input.hostname.toLowerCase()
+  const canonicalUrl = `https://${hostname}/guides`
+  const items = input.guides.map(guide => `
+      <li class="guide">
+        <a href="/guides/${escapeAttribute(guide.slug)}">${escapeHtml(guide.title)}</a>
+        <p>${escapeHtml(guide.excerpt)}</p>
+        <time datetime="${escapeAttribute(guide.publishedAt)}">${escapeHtml(guide.publishedAt.slice(0, 10))}</time>
+      </li>`).join('')
+  const html = `<!doctype html>
+<html lang="en-AU">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buying guides | ${escapeHtml(brandName)}</title>
+  <meta name="description" content="${escapeAttribute(`Source-backed buying guides from ${brandName}.`)}">
+  <link rel="canonical" href="${escapeAttribute(canonicalUrl)}">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="${escapeAttribute(`Buying guides | ${brandName}`)}">
+  <meta property="og:url" content="${escapeAttribute(canonicalUrl)}">
+  <script type="application/ld+json">${safeJson({
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    'name': `Buying guides | ${brandName}`,
+    'url': canonicalUrl,
+    'publisher': { '@type': 'Organization', 'name': brandName, 'url': input.dealershipUrl },
+    'hasPart': input.guides.map(guide => ({ '@type': 'Article', 'headline': guide.title, 'url': `https://${hostname}/guides/${guide.slug}` }))
+  })}</script>
+  <style>${HUB_STYLES}</style>
+</head>
+<body>
+  <header class="masthead"><a href="${escapeAttribute(input.dealershipUrl)}">${escapeHtml(brandName)}</a><span>Buying guides</span></header>
+  <main>
+    <h1>Buying guides</h1>
+    <ul class="guides">${items}
+    </ul>
+  </main>
+</body>
+</html>
+`
+  return { html, etag: createHash('sha256').update(html, 'utf8').digest('hex') }
+}
+
+const HUB_STYLES = 'body{margin:0;font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#1c1f24;background:#fff}.masthead{display:flex;gap:1rem;align-items:baseline;padding:1rem 1.25rem;border-bottom:1px solid #e5e7eb}.masthead a{font-weight:600;color:inherit;text-decoration:none}.masthead span{color:#6b7280;font-size:.875rem}main{max-width:44rem;margin:0 auto;padding:2rem 1.25rem}.guides{list-style:none;padding:0;margin:0}.guide{padding:1rem 0;border-bottom:1px solid #e5e7eb}.guide a{font-size:1.125rem;font-weight:600;color:#1d4ed8}.guide p{margin:.25rem 0}.guide time{color:#6b7280;font-size:.8125rem}'
 
 export function renderPublicationRobots(hostname: string): string {
   return `User-agent: *\nAllow: /\nSitemap: https://${hostname}/sitemap.xml\n`
