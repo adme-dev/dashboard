@@ -15,7 +15,16 @@ const props = defineProps<{ conversation: SocialConversation | null, messages: S
 const threadItems = computed(() => groupSocialInboxMessages(props.messages))
 const sourcePost = computed(() => getSocialInboxSourcePost(props.messages))
 const sourcePostImage = computed(() => getSocialInboxSourcePostImage(sourcePost.value))
+const sourcePostImageFailed = ref(false)
+const sourcePostImageUrl = computed(() => {
+  if (!props.conversation?.id || !sourcePostImage.value || sourcePostImageFailed.value) return null
+  return `/api/agency/social/inbox/conversations/${encodeURIComponent(props.conversation.id)}/source-post-image`
+})
 const sourcePostTitle = computed(() => getSocialInboxSourcePostTitle(sourcePost.value))
+watch(
+  () => [props.conversation?.id, sourcePostImage.value],
+  () => { sourcePostImageFailed.value = false }
+)
 const sourcePostText = computed(() => {
   const text = sourcePost.value?.text?.trim()
   if (!text) return null
@@ -164,13 +173,14 @@ function messageTime(message: SocialMessage) {
       >
         <div class="flex gap-3 p-3">
           <img
-            v-if="sourcePostImage"
-            :src="sourcePostImage"
+            v-if="sourcePostImageUrl"
+            :src="sourcePostImageUrl"
             :alt="sourcePostTitle || 'Original post image'"
             class="size-20 shrink-0 rounded object-cover sm:size-24"
             loading="eager"
             fetchpriority="high"
             referrerpolicy="no-referrer"
+            @error="sourcePostImageFailed = true"
           >
           <div
             v-else
