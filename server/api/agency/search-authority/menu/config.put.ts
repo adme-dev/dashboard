@@ -1,7 +1,8 @@
 import { readBody } from 'h3'
 import { z } from 'zod'
-import { queryOne, transaction } from '~~/server/utils/db'
+import { queryOne } from '~~/server/utils/db'
 import { requireAgencySearchAuthorityAccess } from '~~/server/utils/searchAuthority/access'
+import { executeSearchAuthorityMutation } from '~~/server/utils/searchAuthority/godModeMutations'
 import { menuAgentConfigInput, normalizeMenuAgentConfig } from '~~/server/utils/searchAuthority/menuAgent'
 
 const Body = menuAgentConfigInput.extend({
@@ -21,7 +22,7 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 409, statusMessage: 'Configure the content hostname before the menu link' })
   }
   const config = normalizeMenuAgentConfig(parsed.data, site.content_hostname)
-  const row = await transaction(async (db) => {
+  const row = await executeSearchAuthorityMutation(event, 'menu-config', async (db) => {
     const result = await db.query<{ public_id: string, last_observed_at: string | null, updated_at: string }>(`
       INSERT INTO search_authority_menu_configs (
         client_id, site_id, enabled, label, href, desktop_selector,
@@ -47,7 +48,15 @@ export default eventHandler(async (event) => {
     ])
     const saved = result.rows[0]
     if (!saved) throw new Error('Menu configuration could not be stored')
-    return saved
+    return { id: saved.public_id, ...saved }
+  }, async (db, publicId) => {
+    const result = await db.query<{ public_id: string, last_observed_at: string | null, updated_at: string }>(`
+      SELECT public_id, last_observed_at, updated_at FROM search_authority_menu_configs
+      WHERE public_id = $1 AND client_id = $2 AND site_id = $3
+    `, [publicId, parsed.data.clientId, parsed.data.siteId])
+    const saved = result.rows[0]
+    if (!saved) throw new Error('Replayed menu configuration no longer exists')
+    return { id: saved.public_id, ...saved }
   })
   return {
     config: {

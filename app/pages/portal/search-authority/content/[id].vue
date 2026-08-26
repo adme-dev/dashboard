@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
+
 definePageMeta({ layout: 'portal' })
 
 interface ReviewResponse {
@@ -51,6 +53,7 @@ async function saveDecision() {
   try {
     await $fetch(`/api/portal/search-authority/content/${data.value.asset.id}/decision`, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('search-authority-portal-decision') },
       body: {
         decision: decision.value,
         versionId: data.value.version.id,

@@ -162,6 +162,7 @@ describe('Search Authority onboarding workspace', () => {
 
       expect(fetchMock).toHaveBeenCalledWith('/api/agency/search-authority/sites', {
         method: 'POST',
+        headers: { 'Idempotency-Key': expect.stringMatching(/^search-authority-site:/) },
         body: {
           clientId: CLIENT_ID,
           canonicalHostname: 'https://www.knoxgwmhaval.com.au/',
@@ -244,6 +245,7 @@ describe('Search Authority onboarding workspace', () => {
 
       expect(fetchMock).toHaveBeenCalledWith('/api/agency/search-authority/google/map', {
         method: 'POST',
+        headers: { 'Idempotency-Key': expect.stringMatching(/^search-authority-google:/) },
         body: {
           clientId: CLIENT_ID,
           connectionId: CONNECTION_ID,

@@ -1,9 +1,10 @@
 import { getRouterParam } from 'h3'
 import { z } from 'zod'
-import { queryOne, transaction } from '~~/server/utils/db'
+import { queryOne } from '~~/server/utils/db'
 import { requireAgencySearchAuthorityAccess } from '~~/server/utils/searchAuthority/access'
 import { contentDecisionInputSchema } from '~~/server/utils/searchAuthority/contentContracts'
 import { approveContentVersion } from '~~/server/utils/searchAuthority/contentRepository'
+import { executeSearchAuthorityMutation } from '~~/server/utils/searchAuthority/godModeMutations'
 
 const Body = contentDecisionInputSchema.extend({ clientId: z.string().uuid() })
 export default eventHandler(async (event) => {
@@ -13,6 +14,9 @@ export default eventHandler(async (event) => {
   const user = await requireAgencySearchAuthorityAccess(event, parsed.data.clientId)
   const asset = await queryOne<{ id: string }>(`SELECT id FROM search_authority_content_assets WHERE id = $1 AND client_id = $2`, [assetId.data, parsed.data.clientId])
   if (!asset) throw createError({ statusCode: 404, statusMessage: 'Content asset not found' })
-  await transaction(db => approveContentVersion(db, { ...parsed.data, assetId: assetId.data, actorId: user.id }))
-  return { ok: true, status: 'approved' }
+  const result = await executeSearchAuthorityMutation(event, 'version-approve', async (db) => {
+    await approveContentVersion(db, { ...parsed.data, assetId: assetId.data, actorId: user.id })
+    return { id: parsed.data.versionId, ok: true, status: 'approved' as const }
+  }, async (_db, id) => ({ id, ok: true, status: 'approved' as const }))
+  return { ok: result.ok, status: result.status }
 })

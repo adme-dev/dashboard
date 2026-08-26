@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 import { parseDate, type DateValue } from '@internationalized/date'
 import type {
   SearchAuthorityLifecycleStatus,
@@ -314,6 +315,7 @@ async function transitionOpportunity(
       `/api/agency/search-authority/opportunities/${opportunity.id}`,
       {
         method: 'PATCH',
+        headers: { 'Idempotency-Key': idempotencyKey('search-authority-workspace') },
         body: { clientId: selectedClientId.value, status }
       }
     )
@@ -398,6 +400,7 @@ async function linkTask(
       `/api/agency/search-authority/opportunities/${opportunityId}/task-link`,
       {
         method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey('search-authority-workspace') },
         body: { taskId: task.id }
       }
     )
@@ -439,6 +442,7 @@ async function linkTrustTask(findingId: string, task: { id: string, title: strin
   try {
     await $fetch(`/api/agency/search-authority/trust/findings/${findingId}/task-link`, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('search-authority-workspace') },
       body: { taskId: task.id }
     })
     pendingTaskLink.value = null
@@ -465,7 +469,7 @@ async function refreshPerformance() {
   try {
     const result = await $fetch<{ stored: number, unavailable: number }>(
       '/api/agency/search-authority/trust/refresh',
-      { method: 'POST', body: { clientId: selectedClientId.value, pageLimit: 3 } }
+      { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey('search-authority-workspace') }, body: { clientId: selectedClientId.value, pageLimit: 3 } }
     )
     toast.add({
       title: 'Mobile evidence refreshed',

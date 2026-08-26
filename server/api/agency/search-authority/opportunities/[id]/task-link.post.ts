@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
 import { execute, queryOne } from '~~/server/utils/db'
 import { requireAgencySearchAuthorityAccess } from '~~/server/utils/searchAuthority/access'
+import { executeSearchAuthorityExternalMutation } from '~~/server/utils/searchAuthority/godModeMutations'
 
 const Body = z.object({
   taskId: z.string().uuid()
@@ -58,8 +59,11 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Task not found' })
   }
 
-  const updated = await execute(
-    `UPDATE search_authority_opportunities
+  type LinkResult = { ok: true, opportunityId: string, task: { id: string, title: string }, status: 'task_created' }
+  return executeSearchAuthorityExternalMutation<LinkResult>(event, 'opportunity-task-link', async (run) => {
+    if (run.replay && run.replayResult) return run.replayResult
+    const updated = await execute(
+      `UPDATE search_authority_opportunities
      SET task_id = $3,
          lifecycle_status = 'task_created',
          updated_at = NOW()
@@ -67,19 +71,21 @@ export default eventHandler(async (event) => {
        AND client_id = $2
        AND lifecycle_status = 'accepted'
        AND task_id IS NULL`,
-    [opportunityId, opportunity.client_id, task.id]
-  )
-  if (updated !== 1) {
-    throw createError({
-      statusCode: 409,
-      statusMessage: 'The opportunity changed before the task could be linked'
-    })
-  }
+      [opportunityId, opportunity.client_id, task.id]
+    )
+    if (updated !== 1) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'The opportunity changed before the task could be linked'
+      })
+    }
 
-  return {
-    ok: true,
-    opportunityId,
-    task,
-    status: 'task_created'
-  }
+    await run.markDispatched()
+    return {
+      ok: true,
+      opportunityId,
+      task,
+      status: 'task_created'
+    }
+  })
 })

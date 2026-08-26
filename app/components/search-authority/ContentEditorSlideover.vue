@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 import { CalendarDate, getLocalTimeZone, today } from '@internationalized/date'
 
 interface ClaimDraft {
@@ -144,6 +145,7 @@ async function save() {
         '/api/agency/search-authority/content',
         {
           method: 'POST',
+          headers: { 'Idempotency-Key': idempotencyKey('search-authority-content') },
           body: {
             clientId: props.clientId,
             siteId: props.siteId,
@@ -167,6 +169,7 @@ async function save() {
     if (!assetId || !endpoint) throw new Error('Content version route is unavailable')
     await $fetch(endpoint, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('search-authority-content') },
       body: {
         clientId: props.clientId,
         bodyMarkdown: form.bodyMarkdown,

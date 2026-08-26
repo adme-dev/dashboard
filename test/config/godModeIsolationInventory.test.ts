@@ -11,13 +11,13 @@ const API_INVENTORY = {
   totalRouteFiles: 2043,
   mutationRouteFiles: 1128,
   explicitlyGuardedMutationFiles: 392,
-  guardedMutationFilesWithTransactionCall: 47
+  guardedMutationFilesWithTransactionCall: 46
 } as const
 
 const DEFERRED_MUTATION_FAMILIES = [{
   route: '/api/agency/briefs/templates/:id/mapping',
   file: 'server/api/agency/briefs/templates/[id]/mapping.put.ts',
-  normalGate: "requireRole(event, ['admin', 'project_manager'])",
+  normalGate: 'requireRole(event, [\'admin\', \'project_manager\'])',
   independentScope: 'template lookup by route id; no tenant-bound predicate',
   auditStrategy: 'uncoordinated: no transaction-bound audit dependency or Task 5 ledger/outbox',
   decision: 'deny God-mode-only mutation bypass'
@@ -51,7 +51,7 @@ describe('God mode route isolation inventory', () => {
       totalRouteFiles: 2043,
       mutationRouteFiles: 1128,
       explicitlyGuardedMutationFiles: 392,
-      guardedMutationFilesWithTransactionCall: 47
+      guardedMutationFilesWithTransactionCall: 46
     })
   })
 
@@ -78,7 +78,7 @@ describe('God mode route isolation inventory', () => {
     ])
 
     const [permissionRoute, featureRoute] = listReviewedGodModeReadRoutes()
-    expect(readFileSync(permissionRoute!.file, 'utf8')).toContain("requirePermission(event, 'ADMIN')")
+    expect(readFileSync(permissionRoute!.file, 'utf8')).toContain('requirePermission(event, \'ADMIN\')')
     expect(readFileSync(featureRoute!.file, 'utf8')).toContain('isApplicationCapabilityEnabled(event, isCrmAiEnabled)')
   })
 
@@ -103,7 +103,7 @@ describe('God mode route isolation inventory', () => {
 
   it('pins the concrete uncoordinated mutation evidence', () => {
     const source = readFileSync(DEFERRED_MUTATION_FAMILIES[0].file, 'utf8')
-    expect(source).toContain("requireRole(event, ['admin', 'project_manager'])")
+    expect(source).toContain('requireRole(event, [\'admin\', \'project_manager\'])')
     expect(source).not.toMatch(/\btransaction\s*\(/)
     expect(source).not.toMatch(/godModeMutation|executionLedger|outbox/i)
   })

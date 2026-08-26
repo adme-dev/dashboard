@@ -14,6 +14,7 @@ import { registerGodModeGoogleProfileAccountDiscoveryMutationFamily } from '~~/s
 import { registerGodModeSocialPublishingAccountMutationFamilies } from '~~/server/utils/social/publishingAccountGodMode'
 import { registerGodModeTrackingSiteMutationFamily } from '~~/server/utils/tracking/godModeMutations'
 import { registerGodModeQrMutationFamilies } from '~~/server/utils/qr/godModeMutations'
+import { registerGodModeSearchAuthorityMutationFamilies } from '~~/server/utils/searchAuthority/godModeMutations'
 import { prepareGodModeBannerRender } from '~~/server/utils/banner/godModeRender'
 import { registerGodModeMutationFamily } from '~~/server/utils/godMode/featureGate'
 
@@ -30,6 +31,7 @@ registerGodModeSocialPublishingAccountMutationFamilies()
 registerGodModeAgencyClientMutationFamilies()
 registerGodModeTrackingSiteMutationFamily()
 registerGodModeQrMutationFamilies()
+registerGodModeSearchAuthorityMutationFamilies()
 registerGodModeGoogleConversionActionMutationFamily()
 registerGodModeMeasurementConfigurationMutationFamilies()
 registerGodModeGoogleProfileAccountDiscoveryMutationFamily()

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
+
 interface ContentAsset {
   id: string
   slug: string
@@ -67,7 +69,7 @@ async function publishAsset(asset: ContentAsset) {
   try {
     const result = await $fetch<{ publicUrl: string }>(
       `/api/agency/search-authority/content/${asset.id}/publish`,
-      { method: 'POST', body: { clientId: props.clientId } }
+      { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey('search-authority-publish') }, body: { clientId: props.clientId } }
     )
     toast.add({
       title: 'Approved guide published',

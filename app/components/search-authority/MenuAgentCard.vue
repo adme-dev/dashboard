@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
+
 interface MenuConfig {
   publicId: string | null
   enabled: boolean
@@ -80,6 +82,7 @@ async function save() {
   try {
     const result = await $fetch<{ config: MenuConfig }>('/api/agency/search-authority/menu/config', {
       method: 'PUT',
+      headers: { 'Idempotency-Key': idempotencyKey('search-authority-menu') },
       body: {
         clientId: props.clientId,
         siteId: props.siteId,

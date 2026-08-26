@@ -2,6 +2,7 @@ import { getRouterParam, readBody } from 'h3'
 import { z } from 'zod'
 import { execute, queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { requireAgencySearchAuthorityAccess } from '~~/server/utils/searchAuthority/access'
+import { executeSearchAuthorityExternalMutation } from '~~/server/utils/searchAuthority/godModeMutations'
 import { renderSearchAuthorityPublication } from '~~/server/utils/searchAuthority/publicationRenderer'
 import {
   activateSearchAuthorityPublication,
@@ -55,9 +56,14 @@ export default eventHandler(async (event) => {
   }
   const bucket = resolveSearchAuthorityPublicationBucket(event)
   if (!bucket) throw createError({ statusCode: 503, statusMessage: 'Publication storage is unavailable' })
+  // Narrowed once here; the closure below would otherwise see `string | null`.
+  const contentHostname = asset.content_hostname
 
-  const [sources, claims, tracking] = await Promise.all([
-    queryRows<{ name: string, role: string }>(`
+  type PublishResult = { ok: true, publicationId: string, versionId: string, manifestVersion: string, publicUrl: string }
+  return executeSearchAuthorityExternalMutation<PublishResult>(event, 'publish', async (run) => {
+    if (run.replay && run.replayResult) return run.replayResult
+    const [sources, claims, tracking] = await Promise.all([
+      queryRows<{ name: string, role: string }>(`
       SELECT interviewee_name AS name, interviewee_role AS role
       FROM search_authority_source_interviews interview
       JOIN search_authority_content_versions version
@@ -66,105 +72,108 @@ export default eventHandler(async (event) => {
         AND interview.id = ANY(version.source_interview_ids)
       ORDER BY occurred_at DESC
     `, [asset.client_id, asset.id, asset.current_version_id]),
-    queryRows<{ claim: string, source_type: string, source_reference: string }>(`
+      queryRows<{ claim: string, source_type: string, source_reference: string }>(`
       SELECT claim, source_type, source_reference
       FROM search_authority_version_claims
       WHERE client_id = $1 AND version_id = $2
       ORDER BY created_at
     `, [asset.client_id, asset.current_version_id]),
-    queryOne<{ write_key: string }>(`
+      queryOne<{ write_key: string }>(`
       SELECT write_key FROM tracking_sites
       WHERE client_id = $1 AND is_active = TRUE
         AND (cardinality(allowed_origins) = 0 OR $2 = ANY(allowed_origins))
       ORDER BY updated_at DESC
       LIMIT 1
-    `, [asset.client_id, `https://${asset.content_hostname}`])
-  ])
-  const activatedAt = new Date().toISOString()
-  const publication = await transaction(async (db) => {
-    const result = await db.query(`INSERT INTO search_authority_publications (
-      client_id, asset_id, version_id, status, measurement_enabled
-    ) VALUES ($1, $2, $3, 'pending', $4) RETURNING id`, [
-      asset.client_id, asset.id, asset.current_version_id, Boolean(tracking)
+    `, [asset.client_id, `https://${contentHostname}`])
     ])
-    return result.rows[0] as { id: string }
-  })
-  const rendered = renderSearchAuthorityPublication({
-    hostname: asset.content_hostname,
-    slug: asset.slug,
-    title: asset.title,
-    excerpt: asset.excerpt,
-    bodyMarkdown: asset.body_markdown,
-    disclaimer: asset.disclaimer,
-    schemaType: asset.schema_type,
-    versionId: asset.current_version_id,
-    publishedAt: activatedAt,
-    sourceLabels: sources,
-    claims: claims.map(claim => ({
-      claim: claim.claim,
-      sourceType: claim.source_type,
-      sourceReference: claim.source_reference
-    })),
-    dealershipUrl: `https://${asset.canonical_hostname}/`,
-    publicationId: publication.id,
-    tracking: tracking
-      ? { origin: 'https://app.xeroflow.io', writeKey: tracking.write_key }
-      : null
-  })
-
-  let activation: Awaited<ReturnType<typeof activateSearchAuthorityPublication>>
-  try {
-    activation = await activateSearchAuthorityPublication(bucket, {
-      hostname: asset.content_hostname,
-      assetId: asset.id,
-      versionId: asset.current_version_id,
-      publicationId: publication.id,
-      slug: asset.slug,
-      rendered,
-      activatedAt
+    const activatedAt = new Date().toISOString()
+    const publication = await transaction(async (db) => {
+    // The reserved id keeps an owner replay pointing at the same publication row.
+      const result = await db.query(`INSERT INTO search_authority_publications (
+      id, client_id, asset_id, version_id, status, measurement_enabled
+    ) VALUES ($1, $2, $3, $4, 'pending', $5) RETURNING id`, [
+        run.ids[0], asset.client_id, asset.id, asset.current_version_id, Boolean(tracking)
+      ])
+      return result.rows[0] as { id: string }
     })
-  } catch (error: unknown) {
-    await execute(`UPDATE search_authority_publications SET status = 'failed' WHERE id = $1 AND client_id = $2`, [
-      publication.id, asset.client_id
-    ])
-    throw error
-  }
+    const rendered = renderSearchAuthorityPublication({
+      hostname: contentHostname,
+      slug: asset.slug,
+      title: asset.title,
+      excerpt: asset.excerpt,
+      bodyMarkdown: asset.body_markdown,
+      disclaimer: asset.disclaimer,
+      schemaType: asset.schema_type,
+      versionId: asset.current_version_id,
+      publishedAt: activatedAt,
+      sourceLabels: sources,
+      claims: claims.map(claim => ({
+        claim: claim.claim,
+        sourceType: claim.source_type,
+        sourceReference: claim.source_reference
+      })),
+      dealershipUrl: `https://${asset.canonical_hostname}/`,
+      publicationId: publication.id,
+      tracking: tracking
+        ? { origin: 'https://app.xeroflow.io', writeKey: tracking.write_key }
+        : null
+    })
 
-  try {
-    await transaction(async (db) => {
-      await db.query(`UPDATE search_authority_publications SET
+    let activation: Awaited<ReturnType<typeof activateSearchAuthorityPublication>>
+    try {
+      activation = await activateSearchAuthorityPublication(bucket, {
+        hostname: contentHostname,
+        assetId: asset.id,
+        versionId: asset.current_version_id,
+        publicationId: publication.id,
+        slug: asset.slug,
+        rendered,
+        activatedAt
+      })
+    } catch (error: unknown) {
+      await execute(`UPDATE search_authority_publications SET status = 'failed' WHERE id = $1 AND client_id = $2`, [
+        publication.id, asset.client_id
+      ])
+      throw error
+    }
+    await run.markDispatched()
+
+    try {
+      await transaction(async (db) => {
+        await db.query(`UPDATE search_authority_publications SET
         status = 'published', public_url = $3, manifest_version = $4,
         published_by = $5, published_at = $6
         WHERE id = $1 AND client_id = $2`, [publication.id, asset.client_id,
-        rendered.canonicalUrl, activation.manifestVersion, user.id, activatedAt])
-      await db.query(`UPDATE search_authority_content_assets SET
+          rendered.canonicalUrl, activation.manifestVersion, user.id, activatedAt])
+        await db.query(`UPDATE search_authority_content_assets SET
         status = 'published', updated_at = NOW()
         WHERE id = $1 AND client_id = $2 AND current_version_id = $3`, [
-        asset.id, asset.client_id, asset.current_version_id
-      ])
-      await db.query(`INSERT INTO search_authority_content_audit_events (
+          asset.id, asset.client_id, asset.current_version_id
+        ])
+        await db.query(`INSERT INTO search_authority_content_audit_events (
         client_id, asset_id, version_id, actor_id, actor_type, event_type, details
       ) VALUES ($1, $2, $3, $4, 'agency', 'publication.published', $5::jsonb)`, [
-        asset.client_id, asset.id, asset.current_version_id, user.id,
-        JSON.stringify({ publicationId: publication.id, manifestVersion: activation.manifestVersion, publicUrl: rendered.canonicalUrl })
+          asset.client_id, asset.id, asset.current_version_id, user.id,
+          JSON.stringify({ publicationId: publication.id, manifestVersion: activation.manifestVersion, publicUrl: rendered.canonicalUrl })
+        ])
+      })
+    } catch (error: unknown) {
+      await restoreSearchAuthorityPublicationPointer(bucket, {
+        hostname: contentHostname,
+        targetManifestVersion: activation.previousManifestVersion,
+        restoredAt: new Date().toISOString()
+      })
+      await execute(`UPDATE search_authority_publications SET status = 'failed' WHERE id = $1 AND client_id = $2`, [
+        publication.id, asset.client_id
       ])
-    })
-  } catch (error: unknown) {
-    await restoreSearchAuthorityPublicationPointer(bucket, {
-      hostname: asset.content_hostname,
-      targetManifestVersion: activation.previousManifestVersion,
-      restoredAt: new Date().toISOString()
-    })
-    await execute(`UPDATE search_authority_publications SET status = 'failed' WHERE id = $1 AND client_id = $2`, [
-      publication.id, asset.client_id
-    ])
-    throw error
-  }
-  return {
-    ok: true,
-    publicationId: publication.id,
-    versionId: asset.current_version_id,
-    manifestVersion: activation.manifestVersion,
-    publicUrl: rendered.canonicalUrl
-  }
+      throw error
+    }
+    return {
+      ok: true,
+      publicationId: publication.id,
+      versionId: asset.current_version_id,
+      manifestVersion: activation.manifestVersion,
+      publicUrl: rendered.canonicalUrl
+    }
+  })
 })

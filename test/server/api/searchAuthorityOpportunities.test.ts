@@ -21,7 +21,15 @@ vi.mock('~~/server/utils/searchAuthority/access', () => ({
 vi.mock('~~/server/utils/db', () => ({
   queryRows: mocks.queryRows,
   queryOne: mocks.queryOne,
-  execute: mocks.execute
+  execute: mocks.execute,
+  // The transition route runs inside executeSearchAuthorityMutation → transaction(db). The
+  // fake db.query reports the UPDATE's RETURNING rows from the same execute mock the tests drive.
+  transaction: async (callback: (db: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> }) => Promise<unknown>) => callback({
+    query: async (sql: string, params?: unknown[]) => {
+      const affected = Number(await mocks.execute(sql, params))
+      return { rows: affected > 0 ? [{ id: params?.[0], lifecycle_status: params?.[2] }] : [] }
+    }
+  })
 }))
 vi.stubGlobal('eventHandler', (handler: unknown) => handler)
 vi.stubGlobal('readBody', async () => mocks.body)

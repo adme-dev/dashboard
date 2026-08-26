@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { runSpendSyncInBackground } from '~~/server/utils/asyncBackground'
 import { requireAgencySearchAuthorityAccess } from '~~/server/utils/searchAuthority/access'
+import { executeSearchAuthorityExternalMutation } from '~~/server/utils/searchAuthority/godModeMutations'
 import { searchConsoleSyncWindow } from '~~/server/utils/searchAuthority/dates'
 import { syncSearchConsoleClient } from '~~/server/utils/searchAuthority/sync'
 
@@ -41,17 +42,22 @@ export default eventHandler(async (event) => {
       })()
     : null
 
-  return runSpendSyncInBackground(event, {
-    label: window
-      ? `search-authority sync ${parsed.data.clientId} ${window.startDate}..${window.endDate}`
-      : `search-authority sync ${parsed.data.clientId} automatic-window`,
-    sync: () => syncSearchConsoleClient({
-      clientId: parsed.data.clientId,
-      startDate: window?.startDate,
-      endDate: window?.endDate,
-      triggerType: 'manual'
-    }),
-    kvKeys: [],
-    extra: { clientId: parsed.data.clientId }
+  return executeSearchAuthorityExternalMutation(event, 'sync', async (run) => {
+    if (run.replay && run.replayResult) return run.replayResult
+    const result = await runSpendSyncInBackground(event, {
+      label: window
+        ? `search-authority sync ${parsed.data.clientId} ${window.startDate}..${window.endDate}`
+        : `search-authority sync ${parsed.data.clientId} automatic-window`,
+      sync: () => syncSearchConsoleClient({
+        clientId: parsed.data.clientId,
+        startDate: window?.startDate,
+        endDate: window?.endDate,
+        triggerType: 'manual'
+      }),
+      kvKeys: [],
+      extra: { clientId: parsed.data.clientId }
+    })
+    await run.markDispatched()
+    return result
   })
 })

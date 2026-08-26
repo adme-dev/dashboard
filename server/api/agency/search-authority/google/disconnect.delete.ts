@@ -1,6 +1,6 @@
 import { getQuery } from 'h3'
 import { z } from 'zod'
-import { transaction } from '~~/server/utils/db'
+import { executeSearchAuthorityMutation } from '~~/server/utils/searchAuthority/godModeMutations'
 import { requireAgencySearchAuthorityAccess } from '~~/server/utils/searchAuthority/access'
 
 const Query = z.object({
@@ -18,7 +18,7 @@ export default eventHandler(async (event) => {
   }
   await requireAgencySearchAuthorityAccess(event, parsed.data.clientId)
 
-  await transaction(async (db) => {
+  await executeSearchAuthorityMutation(event, 'google-disconnect', async (db) => {
     const connection = await db.query<{
       google_credential_profile_id: string
     }>(
@@ -54,7 +54,8 @@ export default eventHandler(async (event) => {
          AND metadata->>'purpose' = 'search_console'`,
       [profileId]
     )
-  })
+    return { id: parsed.data.connectionId }
+  }, async (_db, id) => ({ id }))
 
   return { ok: true }
 })
