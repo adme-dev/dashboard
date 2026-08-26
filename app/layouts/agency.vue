@@ -42,15 +42,15 @@ const close = () => {
 // normal staff role (members, real media buyers — none of which are read-only)
 // is unaffected; this matches only the read-only spend-reviewer profile.
 const isSpendOnlyReviewer = computed(() =>
-  isReadOnly.value &&
-  canAccessMediaBuying.value &&
-  !canAccessClients.value &&
-  !canAccessFinance.value &&
-  !canAccessInvoices.value &&
-  !canAccessSales.value &&
-  !canAccessCreative.value &&
-  !canAccessReports.value &&
-  !canAccessAdmin.value
+  isReadOnly.value
+  && canAccessMediaBuying.value
+  && !canAccessClients.value
+  && !canAccessFinance.value
+  && !canAccessInvoices.value
+  && !canAccessSales.value
+  && !canAccessCreative.value
+  && !canAccessReports.value
+  && !canAccessAdmin.value
 )
 
 // Fetch workspaces
@@ -222,9 +222,9 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'HR Benchmark Registry', icon: 'i-lucide-scale', to: '/agency/hr/benchmarks', onSelect: close },
       { label: 'HR Contract Vault', icon: 'i-lucide-file-lock-2', to: '/agency/hr/contracts', onSelect: close },
       { label: 'HR Launch Governance', icon: 'i-lucide-shield-check', to: '/agency/hr/governance', onSelect: close },
-      { label: 'Monday Evidence Scope', icon: 'i-lucide-database-zap', to: '/agency/hr/monday', onSelect: close }
-      ,{ label: 'Monday Evidence Preview', icon: 'i-lucide-eye', to: '/agency/hr/monday/evidence', onSelect: close }
-      ,{ label: 'Monday Governed Import', icon: 'i-lucide-cloud-download', to: '/agency/hr/monday/import', onSelect: close }
+      { label: 'Monday Evidence Scope', icon: 'i-lucide-database-zap', to: '/agency/hr/monday', onSelect: close },
+      { label: 'Monday Evidence Preview', icon: 'i-lucide-eye', to: '/agency/hr/monday/evidence', onSelect: close },
+      { label: 'Monday Governed Import', icon: 'i-lucide-cloud-download', to: '/agency/hr/monday/import', onSelect: close }
     )
   }
 
@@ -234,12 +234,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { type: 'label', label: 'Budget Tracker' },
       { label: 'Analytics', icon: 'i-lucide-bar-chart-4', to: '/agency/analytics', onSelect: close },
       { label: 'Budget Health', icon: 'i-lucide-gauge', to: '/agency/budget-health', onSelect: close },
-      { label: 'Site Tracking', icon: 'i-lucide-radio', to: '/agency/tracking', onSelect: close },
-      ...searchAuthorityNavItems(
-        Boolean(runtimeConfig.public.searchAuthorityEnabled),
-        route.path,
-        close
-      )
+      { label: 'Site Tracking', icon: 'i-lucide-radio', to: '/agency/tracking', onSelect: close }
     )
   }
 
@@ -256,6 +251,18 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     items.push(
       { type: 'label', label: 'Social' },
       ...socialItems
+    )
+  }
+
+  // Search & Content — organic search evidence, governed guides and the client-site
+  // publishing/menu setup. Sits beside Social as a marketing surface, not budget tracking.
+  const searchItems = canAccessMediaBuying.value
+    ? searchAuthorityNavItems(Boolean(runtimeConfig.public.searchAuthorityEnabled), route.path, close)
+    : []
+  if (searchItems.length) {
+    items.push(
+      { type: 'label', label: 'Search & Content' },
+      ...searchItems
     )
   }
 
