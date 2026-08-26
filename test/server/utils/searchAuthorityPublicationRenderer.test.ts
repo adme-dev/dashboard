@@ -17,6 +17,7 @@ const input = {
     sourceType: 'sales_interview',
     sourceReference: 'Sales Manager interview 2026-08-03'
   }],
+  brandName: 'Knox GWM Haval',
   dealershipUrl: 'https://www.knoxgwmhaval.com.au/',
   publicationId: '33333333-3333-4333-8333-333333333333',
   tracking: { origin: 'https://app.xeroflow.io', writeKey: 'xf_public_example' }
@@ -56,5 +57,14 @@ describe('Search Authority publication renderer', () => {
     expect(supported.html).toContain('How much can it tow?')
     expect(unsupported.html).toContain('"@type":"Article"')
     expect(unsupported.html).not.toContain('"@type":"FAQPage"')
+  })
+
+  it('brands the page from the client name instead of a hardcoded dealership', () => {
+    const rendered = renderSearchAuthorityPublication({ ...input, brandName: 'ADME Advertising' })
+    expect(rendered.html).toContain(`<title>${input.title} | ADME Advertising</title>`)
+    expect(rendered.html).toContain('Confirm current details with ADME Advertising')
+    expect(rendered.html).toMatch(/"publisher":\s*\{\s*"@type":\s*"Organization",\s*"name":\s*"ADME Advertising"/)
+    expect(rendered.html).not.toContain('Knox GWM Haval</a>')
+    expect(() => renderSearchAuthorityPublication({ ...input, brandName: '  ' })).toThrow('brand name')
   })
 })

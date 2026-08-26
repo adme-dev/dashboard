@@ -21,6 +21,7 @@ interface PublishRow {
   current_version_id: string
   content_hostname: string | null
   canonical_hostname: string
+  client_name: string
   body_markdown: string
   excerpt: string
   disclaimer: string
@@ -38,11 +39,14 @@ export default eventHandler(async (event) => {
   const asset = await queryOne<PublishRow>(`
     SELECT asset.id, asset.client_id, asset.title, asset.slug, asset.status,
       asset.current_version_id, site.content_hostname, site.canonical_hostname,
+      client.name AS client_name,
       version.body_markdown, version.excerpt, version.disclaimer,
       version.schema_type, version.created_at
     FROM search_authority_content_assets asset
     JOIN search_authority_sites site
       ON site.client_id = asset.client_id AND site.id = asset.site_id
+    JOIN agency_clients client
+      ON client.id = asset.client_id
     JOIN search_authority_content_versions version
       ON version.client_id = asset.client_id AND version.id = asset.current_version_id
     WHERE asset.id = $1 AND asset.client_id = $2
@@ -113,6 +117,7 @@ export default eventHandler(async (event) => {
         sourceReference: claim.source_reference
       })),
       dealershipUrl: `https://${asset.canonical_hostname}/`,
+      brandName: asset.client_name,
       publicationId: publication.id,
       tracking: tracking
         ? { origin: 'https://app.xeroflow.io', writeKey: tracking.write_key }

@@ -13,6 +13,8 @@ export interface SearchAuthorityPublicationRenderInput {
   sourceLabels: Array<{ name: string, role: string }>
   claims: Array<{ claim: string, sourceType: string, sourceReference: string }>
   dealershipUrl: string
+  /** Client display name used for the title suffix, masthead, CTA and JSON-LD publisher. */
+  brandName: string
   publicationId: string
   tracking?: { origin: string, writeKey: string } | null
 }
@@ -35,6 +37,8 @@ export function renderSearchAuthorityPublication(
   const hostname = input.hostname.trim().toLowerCase()
   if (!HOSTNAME.test(hostname)) throw new Error('A valid publication hostname is required')
   if (!SLUG.test(input.slug)) throw new Error('A valid publication slug is required')
+  const brandName = input.brandName.trim()
+  if (!brandName) throw new Error('Publication brand name is required')
   const dealershipUrl = new URL(input.dealershipUrl)
   if (dealershipUrl.protocol !== 'https:' || dealershipUrl.username || dealershipUrl.password) {
     throw new Error('The dealership URL must be public HTTPS without credentials')
@@ -71,7 +75,7 @@ export function renderSearchAuthorityPublication(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${escapeHtml(input.title)} | Knox GWM</title>
+  <title>${escapeHtml(input.title)} | ${escapeHtml(brandName)}</title>
   <meta name="description" content="${escapeAttribute(input.excerpt)}">
   <link rel="canonical" href="${canonicalUrl}">
   <meta property="og:type" content="article">
@@ -82,7 +86,7 @@ export function renderSearchAuthorityPublication(
   <style>${publicationCss()}</style>
 </head>
 <body>
-  <header class="masthead"><a href="${escapeAttribute(dealershipUrl.href)}">Knox GWM Haval</a><span>Buying guides</span></header>
+  <header class="masthead"><a href="${escapeAttribute(dealershipUrl.href)}">${escapeHtml(brandName)}</a><span>Buying guides</span></header>
   <main>
     <article>
       <p class="eyebrow">Source-backed dealership guidance</p>
@@ -91,7 +95,7 @@ export function renderSearchAuthorityPublication(
       <div class="guide-body">${visibleBody}</div>
       <aside class="disclaimer"><h2>Important information</h2><p>${escapeHtml(input.disclaimer)}</p></aside>
       <section class="evidence"><h2>Sources reviewed</h2><ul>${sourceLabels}</ul><h2>Claims checked</h2><ul>${claimLabels}</ul></section>
-      <a class="cta" data-track="search-authority-cta" href="${escapeAttribute(trackedDealershipUrl.href)}">Confirm current details with Knox GWM</a>
+      <a class="cta" data-track="search-authority-cta" href="${escapeAttribute(trackedDealershipUrl.href)}">Confirm current details with ${escapeHtml(brandName)}</a>
     </article>
   </main>
   <footer>Publication version ${escapeHtml(input.versionId)}</footer>
@@ -210,7 +214,7 @@ function articleSchema(input: SearchAuthorityPublicationRenderInput, canonicalUr
     'dateModified': input.publishedAt,
     'mainEntityOfPage': canonicalUrl,
     'author': input.sourceLabels.map(source => ({ '@type': 'Person', 'name': source.name, 'jobTitle': source.role })),
-    'publisher': { '@type': 'Organization', 'name': 'Knox GWM Haval', 'url': input.dealershipUrl }
+    'publisher': { '@type': 'Organization', 'name': input.brandName.trim(), 'url': input.dealershipUrl }
   }
 }
 
