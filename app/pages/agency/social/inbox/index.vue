@@ -47,8 +47,11 @@ const clients = computed<AgencyClientOption[]>(() => {
   const d = clientsData.value
   return Array.isArray(d) ? d : (d?.clients ?? [])
 })
-const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
-const clientId = ref<string | null>(clients.value[0]?.id ?? null)
+const clientOptions = computed(() => [
+  { label: 'All connected clients', value: 'all' },
+  ...clients.value.map(c => ({ label: c.name, value: c.id }))
+])
+const clientId = ref<string>('all')
 const route = useRoute()
 const { user, fetchUser } = useAuth()
 if (!user.value) await fetchUser()
@@ -58,7 +61,7 @@ const accountHealth = ref<SocialInboxAccountHealth[]>([])
 
 async function refreshAccountHealth() {
   accountHealth.value = await apiFetch<SocialInboxAccountHealth[]>('/api/agency/social/inbox/accounts/health', {
-    query: { clientId: clientId.value },
+    query: { clientId: clientId.value === 'all' ? undefined : clientId.value }
   }).catch(() => [])
 }
 
@@ -378,7 +381,7 @@ function handleTypingEvent(e: { conversationId?: string, actorId?: string, actor
 
 // Live updates: refresh the list on any event for this client, and the open thread if it's the
 // affected conversation. Degrades to polling when SSE/the DO are unavailable.
-const sseEndpoint = computed(() => clientId.value ? `/api/agency/social/inbox/events?clientId=${clientId.value}` : null)
+const sseEndpoint = computed(() => clientId.value !== 'all' ? `/api/agency/social/inbox/events?clientId=${clientId.value}` : null)
 useSocialInboxRealtime(sseEndpoint, {
   onRefresh: () => { reload() },
   onEvent: async (e) => {
@@ -390,7 +393,8 @@ useSocialInboxRealtime(sseEndpoint, {
       thread.value = await open(selectedId.value)
     }
   },
-  shouldRefresh: e => e.type !== 'reply.typing'
+  shouldRefresh: e => e.type !== 'reply.typing',
+  pollWithoutEndpoint: true
 })
 </script>
 
@@ -400,16 +404,15 @@ useSocialInboxRealtime(sseEndpoint, {
       <h1 class="text-lg font-semibold">
         Engagement Inbox
       </h1>
-      <div class="flex min-w-0 items-center gap-2">
-        <span class="text-xs font-medium text-muted">Inbox client</span>
+      <UFormField label="Inbox scope" class="min-w-0">
         <USelectMenu
           v-model="clientId"
           :items="clientOptions"
           value-key="value"
-          placeholder="Inbox client"
+          placeholder="All connected clients"
           class="w-56 max-w-full"
         />
-      </div>
+      </UFormField>
       <UButton
         to="/agency/social/inbox/reviews"
         label="Reviews"

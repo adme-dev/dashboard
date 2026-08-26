@@ -140,7 +140,10 @@ function accountFor(c: SocialConversation) {
         </p>
         <div class="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted">
           <UIcon name="i-lucide-panels-top-left" class="size-3 shrink-0" />
-          <span class="truncate">{{ accountFor(c) ? `via ${accountFor(c)}` : 'Account not linked' }}</span>
+          <span class="truncate">
+            {{ accountFor(c) ? `via ${accountFor(c)}` : 'Account not linked' }}
+            <template v-if="c.client_name"> · {{ c.client_name }}</template>
+          </span>
         </div>
         <div class="flex items-center gap-1 mt-1.5">
           <UBadge :color="(PLATFORM_COLOR[c.platform] || 'neutral') as any" variant="subtle" size="xs">

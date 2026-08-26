@@ -5,7 +5,7 @@ import {
   googleBusinessProvider,
   mapGoogleReviews
 } from '~~/server/utils/social-providers/google-business'
-import { mapFacebookFeedComments, mapFacebookRatings } from '~~/server/utils/social-providers/facebook'
+import { facebookProvider, mapFacebookConversations, mapFacebookFeedComments, mapFacebookRatings } from '~~/server/utils/social-providers/facebook'
 import { mapInstagramMediaComments } from '~~/server/utils/social-providers/instagram'
 import { mapLinkedInComments } from '~~/server/utils/social-providers/linkedin'
 import { mapTikTokComments } from '~~/server/utils/social-providers/tiktok'
@@ -128,6 +128,98 @@ describe('mapFacebookRatings', () => {
   })
 })
 
+describe('mapFacebookConversations', () => {
+  const graphResponse = {
+    data: [{
+      id: 't_thread_1',
+      link: '/327999007569038/inbox/psid_customer/?section=messages',
+      updated_time: '2026-08-26T04:00:00+0000',
+      participants: {
+        data: [
+          { id: '327999007569038', name: 'Blood Hyundai Geelong' },
+          { id: 'psid_customer', name: 'Taylor Customer' }
+        ]
+      },
+      messages: {
+        data: [
+          {
+            id: 'mid_newest',
+            created_time: '2026-08-26T04:00:00+0000',
+            from: { id: '327999007569038', name: 'Blood Hyundai Geelong' },
+            to: { data: [{ id: 'psid_customer', name: 'Taylor Customer' }] },
+            message: 'We can book that for Friday.'
+          },
+          {
+            id: 'mid_oldest',
+            created_time: '2026-08-26T03:55:00+0000',
+            from: { id: 'psid_customer', name: 'Taylor Customer' },
+            to: { data: [{ id: '327999007569038', name: 'Blood Hyundai Geelong' }] },
+            message: 'Can I book a test drive?'
+          }
+        ]
+      }
+    }],
+    paging: { cursors: { after: 'NEXT_PAGE' } }
+  }
+
+  it('maps existing Messenger history to the same participant-keyed conversations as webhooks', () => {
+    const result = mapFacebookConversations(graphResponse, { accountId: '327999007569038' })
+
+    expect(result.nextCursor).toBe('NEXT_PAGE')
+    expect(result.items).toHaveLength(2)
+    expect(result.items[0]).toMatchObject({
+      channelType: 'dm',
+      platformConversationId: 'psid_customer',
+      platformMessageId: 'mid_oldest',
+      direction: 'in',
+      participant: { id: 'psid_customer', name: 'Taylor Customer' },
+      content: 'Can I book a test drive?'
+    })
+    expect(result.items[1]).toMatchObject({
+      platformConversationId: 'psid_customer',
+      platformMessageId: 'mid_newest',
+      direction: 'out',
+      content: 'We can book that for Friday.'
+    })
+  })
+
+  it('polls the Page conversations edge when the DM channel is requested', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(graphResponse), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }))
+
+    const result = await facebookProvider.fetchInbox!({
+      accountId: '327999007569038',
+      accessToken: 'PAGE_TOKEN',
+      channelType: 'dm',
+      cursor: 'AFTER_THIS'
+    })
+
+    const url = new URL(String(fetchSpy.mock.calls[0]![0]))
+    expect(url.pathname).toBe('/v25.0/327999007569038/conversations')
+    expect(url.searchParams.get('after')).toBe('AFTER_THIS')
+    expect(url.searchParams.get('access_token')).toBe('PAGE_TOKEN')
+    expect(url.searchParams.get('fields')).toContain('messages')
+    expect(result.items).toHaveLength(2)
+  })
+
+  it('includes the Meta error message when a conversation poll is rejected', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      error: { message: '(#10) This endpoint requires the pages_messaging permission.' }
+    }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' }
+    }))
+
+    await expect(facebookProvider.fetchInbox!({
+      accountId: '327999007569038',
+      accessToken: 'PAGE_TOKEN',
+      channelType: 'dm'
+    })).rejects.toThrow('pages_messaging permission')
+  })
+})
+
 describe('mapFacebookFeedComments', () => {
   it('maps page feed comments to InboxItems threaded by post id', () => {
     const api = {
@@ -151,7 +243,7 @@ describe('mapFacebookFeedComments', () => {
       paging: { cursors: { after: 'POST_AFTER' } }
     }
     const { items, nextCursor } = mapFacebookFeedComments(api)
-    expect(nextCursor).toBeNull()
+    expect(nextCursor).toBe('POST_AFTER')
     expect(items[0]).toMatchObject({
       channelType: 'comment',
       platformConversationId: 'page_1_post_1',
@@ -173,6 +265,27 @@ describe('mapFacebookFeedComments', () => {
         replyCount: 1
       }
     })
+  })
+
+  it('uses the stored feed cursor to continue backfilling older post comments', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: [],
+      paging: { cursors: { after: 'OLDER_POSTS' } }
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }))
+
+    const result = await facebookProvider.fetchInbox!({
+      accountId: '327999007569038',
+      accessToken: 'PAGE_TOKEN',
+      channelType: 'comment',
+      cursor: 'CURRENT_POST_PAGE'
+    })
+
+    const url = new URL(String(fetchSpy.mock.calls[0]![0]))
+    expect(url.searchParams.get('after')).toBe('CURRENT_POST_PAGE')
+    expect(result.nextCursor).toBe('OLDER_POSTS')
   })
 
   it('maps Facebook page replies as outbound child messages under the source comment', () => {

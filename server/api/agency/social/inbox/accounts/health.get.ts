@@ -4,11 +4,12 @@ import { queryRows } from '~~/server/utils/db'
 /**
  * GET /api/agency/social/inbox/accounts/health?clientId=...
  * Read-only sync/permission diagnostics for the engagement inbox. Tokens are never returned.
+ * Omit clientId for all active connected accounts.
  */
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
-  const clientId = getQuery(event).clientId as string
-  if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  const rawClientId = getQuery(event).clientId
+  const clientId = typeof rawClientId === 'string' && rawClientId.trim() ? rawClientId : null
 
   return await queryRows(
     `SELECT
@@ -55,8 +56,8 @@ export default defineEventHandler(async (event) => {
          FROM social_conversations c
          WHERE c.social_account_id = a.id
        ) conv_stats ON TRUE
-      WHERE a.client_id = $1
+      WHERE ${clientId ? 'a.client_id = $1' : 'a.is_active = TRUE'}
       ORDER BY a.platform, a.account_name NULLS LAST`,
-    [clientId]
+    clientId ? [clientId] : []
   )
 })

@@ -1,5 +1,5 @@
 export interface SocialInboxConversationListInput {
-  clientId: string
+  clientId?: string | null
   channel?: string | null
   platform?: string | null
   status?: string | null
@@ -33,15 +33,17 @@ function clampOffset(offset: number | undefined) {
 }
 
 export function buildSocialInboxConversationListQuery(input: SocialInboxConversationListInput): SocialInboxConversationListQuery {
-  const params: unknown[] = [input.clientId]
+  const params: unknown[] = []
   let sql = `
     SELECT
       c.*,
       COALESCE(c.participant_name, latest_in.author_name) AS participant_name,
+      client.name AS client_name,
       a.account_name AS social_account_name,
       a.platform_account_id AS social_account_platform_id
     FROM social_conversations c
     LEFT JOIN social_accounts a ON a.id = c.social_account_id
+    LEFT JOIN agency_clients client ON client.id = c.client_id
     LEFT JOIN LATERAL (
       SELECT author_name
       FROM social_messages m
@@ -51,7 +53,12 @@ export function buildSocialInboxConversationListQuery(input: SocialInboxConversa
       ORDER BY m.platform_timestamp DESC NULLS LAST, m.created_at DESC
       LIMIT 1
     ) latest_in ON TRUE
-    WHERE c.client_id = $1`
+    WHERE a.is_active = TRUE`
+
+  if (input.clientId) {
+    params.push(input.clientId)
+    sql += ` AND c.client_id = $${params.length}`
+  }
 
   for (const [col, value] of [
     ['channel_type', input.channel],

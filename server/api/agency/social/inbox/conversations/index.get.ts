@@ -4,13 +4,13 @@ import { buildSocialInboxConversationListQuery } from '~~/server/utils/socialInb
 
 /**
  * GET /api/agency/social/inbox/conversations?clientId=&channel=&platform=&status=&limit=
- * List a client's engagement conversations, newest activity first.
+ * List engagement conversations from active connected accounts, newest activity first.
+ * Omit clientId for the agency-wide inbox; provide it to drill down to one client.
  */
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const q = getQuery(event)
-  const clientId = q.clientId as string
-  if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  const clientId = typeof q.clientId === 'string' && q.clientId.trim() ? q.clientId : null
 
   const { sql, params } = buildSocialInboxConversationListQuery({
     clientId,

@@ -15,6 +15,17 @@ describe('buildSocialInboxConversationListQuery', () => {
     expect(q.sql).toMatch(/OFFSET \$4/)
   })
 
+  it('lists conversations across every active connected account when no client is selected', () => {
+    const q = buildSocialInboxConversationListQuery({ clientId: null, status: 'open', limit: 25, offset: 0 })
+
+    expect(q.params).toEqual(['open', 25, 0])
+    expect(q.sql).toMatch(/a\.is_active = TRUE/)
+    expect(q.sql).not.toMatch(/c\.client_id = \$/)
+    expect(q.sql).toMatch(/c\.status = \$1/)
+    expect(q.sql).toMatch(/LIMIT \$2/)
+    expect(q.sql).toMatch(/OFFSET \$3/)
+  })
+
   it('adds server-side search over participant, preview, and message content', () => {
     const q = buildSocialInboxConversationListQuery({ clientId: 'client-1', search: ' policy  ' })
 

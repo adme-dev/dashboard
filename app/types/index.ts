@@ -2212,6 +2212,7 @@ export interface SocialConversation {
   id: string
   client_id: string
   social_account_id: string | null
+  client_name?: string | null
   social_account_name?: string | null
   social_account_platform_id?: string | null
   platform: string

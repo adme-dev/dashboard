@@ -71,6 +71,38 @@ interface FacebookRatingsResponse {
 
 interface FacebookFeedResponse {
   data?: FacebookFeedPost[]
+  paging?: { cursors?: { after?: string | null } }
+}
+
+interface FacebookMessageAttachment {
+  mime_type?: unknown
+  name?: unknown
+  file_url?: unknown
+  image_data?: { url?: unknown, preview_url?: unknown }
+  video_data?: { url?: unknown, preview_url?: unknown }
+  audio_data?: { url?: unknown }
+}
+
+interface FacebookMessageNode {
+  id?: unknown
+  created_time?: unknown
+  from?: FacebookActor
+  to?: { data?: FacebookActor[] }
+  message?: unknown
+  attachments?: { data?: FacebookMessageAttachment[] }
+}
+
+interface FacebookConversationNode {
+  id?: unknown
+  link?: unknown
+  updated_time?: unknown
+  participants?: { data?: FacebookActor[] }
+  messages?: { data?: FacebookMessageNode[] }
+}
+
+interface FacebookConversationsResponse {
+  data?: FacebookConversationNode[]
+  paging?: { cursors?: { after?: string | null } }
 }
 
 // ── Error helpers ──────────────────────────────────────────────
@@ -238,6 +270,29 @@ function facebookCommentMetadata(raw: FacebookCommentNode, sourcePost: SourcePos
   if (likeCount != null) metadata.likeCount = likeCount
   if (replyCount != null) metadata.replyCount = replyCount
   return withSourcePost(Object.keys(metadata).length ? metadata : undefined, sourcePost)
+}
+
+function facebookMessageAttachments(message: FacebookMessageNode): Array<{ url: string, type: string }> | undefined {
+  const attachments = (message.attachments?.data ?? []).flatMap((attachment) => {
+    const url = readText(attachment.file_url)
+      ?? readText(attachment.image_data?.url)
+      ?? readText(attachment.image_data?.preview_url)
+      ?? readText(attachment.video_data?.url)
+      ?? readText(attachment.video_data?.preview_url)
+      ?? readText(attachment.audio_data?.url)
+    if (!url) return []
+    const mimeType = readText(attachment.mime_type)
+    const type = mimeType?.split('/')[0]
+      ?? (attachment.image_data ? 'image' : attachment.video_data ? 'video' : attachment.audio_data ? 'audio' : 'file')
+    return [{ url, type }]
+  })
+  return attachments.length ? attachments : undefined
+}
+
+async function throwFacebookInboxError(res: Response, surface: string): Promise<never> {
+  const payload = await res.json().catch(() => ({})) as GraphAPIError
+  const detail = readText(payload.error?.message)
+  throw new Error(`facebook ${surface} fetchInbox ${res.status}${detail ? `: ${detail}` : ''}`)
 }
 
 // ── Provider implementation ────────────────────────────────────
@@ -459,9 +514,50 @@ export function mapFacebookFeedComments(api: unknown, opts: { accountId?: string
       }
     }
   }
-  // The feed cursor paginates posts, not comments. Keep comment polling anchored to the newest
-  // posts and let social_messages idempotency absorb duplicates between cron/manual syncs.
-  return { items, nextCursor: null }
+  // This cursor paginates Page posts. Advancing it lets the sync backfill comments attached to
+  // older posts instead of rereading the same newest 25 posts forever.
+  return { items, nextCursor: payload?.paging?.cursors?.after ?? null }
+}
+
+/** Pure: map the Messenger Conversations API projection to participant-keyed inbox messages. */
+export function mapFacebookConversations(api: unknown, opts: { accountId: string }): FetchInboxResult {
+  const payload = api as FacebookConversationsResponse | undefined
+  const items: InboxItem[] = []
+
+  for (const conversation of payload?.data ?? []) {
+    const participants = conversation.participants?.data ?? []
+    const participant = participants.find(actor => readText(actor.id) !== opts.accountId)
+    const participantId = readText(participant?.id)
+    if (!participantId) continue
+    const participantName = readText(participant?.name)
+    const link = readText(conversation.link)
+    const permalink = link ? (link.startsWith('http') ? link : `https://www.facebook.com${link}`) : undefined
+
+    for (const message of conversation.messages?.data ?? []) {
+      const platformMessageId = readText(message.id)
+      const authorId = readText(message.from?.id)
+      const content = readText(message.message) ?? ''
+      const attachments = facebookMessageAttachments(message)
+      if (!platformMessageId || (!content && !attachments?.length)) continue
+      items.push({
+        channelType: 'dm',
+        platformConversationId: participantId,
+        permalink,
+        participant: { id: participantId, name: participantName },
+        platformMessageId,
+        direction: authorId === opts.accountId ? 'out' : 'in',
+        authorId,
+        authorName: readText(message.from?.name),
+        content,
+        attachments,
+        messageType: attachments?.[0]?.type ?? 'text',
+        platformTimestamp: readText(message.created_time)
+      })
+    }
+  }
+
+  items.sort((a, b) => (a.platformTimestamp ?? '').localeCompare(b.platformTimestamp ?? ''))
+  return { items, nextCursor: payload?.paging?.cursors?.after ?? null }
 }
 
 facebookProvider.fetchInbox = async ({ accountId, accessToken, cursor, channelType }: FetchInboxParams): Promise<FetchInboxResult> => {
@@ -470,9 +566,21 @@ facebookProvider.fetchInbox = async ({ accountId, accessToken, cursor, channelTy
     url.searchParams.set('fields', 'id,message,permalink_url,full_picture,attachments{media,type,title,description,url},comments.limit(50){id,message,from{id,name,picture},created_time,permalink_url,like_count,comment_count,comments.limit(50){id,message,from{id,name,picture},created_time,permalink_url,like_count,comment_count}}')
     url.searchParams.set('access_token', accessToken)
     url.searchParams.set('limit', '25')
+    if (cursor) url.searchParams.set('after', cursor)
     const res = await fetchWithTimeout(url, { timeoutMs: INBOX_FETCH_TIMEOUT_MS })
-    if (!res.ok) throw new Error(`facebook comments fetchInbox ${res.status}`)
+    if (!res.ok) return throwFacebookInboxError(res, 'comments')
     return mapFacebookFeedComments(await res.json(), { accountId })
+  }
+
+  if (channelType === 'dm') {
+    const url = new URL(`${GRAPH_API_BASE}/${accountId}/conversations`)
+    url.searchParams.set('fields', 'id,link,updated_time,participants,messages.limit(20){id,created_time,from,to,message,attachments}')
+    url.searchParams.set('access_token', accessToken)
+    url.searchParams.set('limit', '50')
+    if (cursor) url.searchParams.set('after', cursor)
+    const res = await fetchWithTimeout(url, { timeoutMs: INBOX_FETCH_TIMEOUT_MS })
+    if (!res.ok) return throwFacebookInboxError(res, 'conversations')
+    return mapFacebookConversations(await res.json(), { accountId })
   }
 
   // Reviews (recommendations). Page comments also have a polling fallback above because webhooks
@@ -483,7 +591,7 @@ facebookProvider.fetchInbox = async ({ accountId, accessToken, cursor, channelTy
   url.searchParams.set('limit', '50')
   if (cursor) url.searchParams.set('after', cursor)
   const res = await fetchWithTimeout(url, { timeoutMs: INBOX_FETCH_TIMEOUT_MS })
-  if (!res.ok) throw new Error(`facebook fetchInbox ${res.status}`)
+  if (!res.ok) return throwFacebookInboxError(res, 'reviews')
   return mapFacebookRatings(await res.json())
 }
 

@@ -21,6 +21,7 @@ import {
   withSyncTimeout
 } from '~~/server/utils/socialInbox/syncBudget'
 import { createNotification } from '~~/server/utils/notifications'
+import { isSocialDmEnabled } from '~~/server/utils/socialOAuth/meta'
 
 /**
  * POST /api/cron/sync-social-inbox
@@ -82,7 +83,7 @@ export default defineEventHandler(async (event) => {
     const provider = getProvider(acct.platform)
     const fetchInbox = provider?.fetchInbox
     if (!fetchInbox) continue
-    for (const channel of getSocialInboxPollChannels(acct.platform)) {
+    for (const channel of getSocialInboxPollChannels(acct.platform, { messagingEnabled: isSocialDmEnabled() })) {
       const channelRun: SocialInboxSyncChannelRun = {
         accountId: acct.id,
         accountName: acct.account_name ?? null,

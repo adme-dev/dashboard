@@ -17,16 +17,11 @@ export function useSocialInbox(clientId: Ref<string | null>) {
   const hasMore = ref(false)
 
   async function load(filters: Record<string, string> = {}, options: { append?: boolean } = {}) {
-    if (!clientId.value) {
-      conversations.value = []
-      hasMore.value = false
-      return
-    }
     loading.value = true
     try {
       const rows = await apiFetch<SocialConversation[]>('/api/agency/social/inbox/conversations', {
         query: {
-          clientId: clientId.value,
+          clientId: clientId.value && clientId.value !== 'all' ? clientId.value : undefined,
           ...filters,
           limit: PAGE_LIMIT,
           offset: options.append ? conversations.value.length : 0
@@ -72,7 +67,7 @@ export function useSocialInbox(clientId: Ref<string | null>) {
   async function refresh() {
     return await apiFetch<SocialInboxSyncResult>('/api/agency/social/inbox/accounts/sync', {
       method: 'POST',
-      body: { clientId: clientId.value },
+      body: { clientId: clientId.value && clientId.value !== 'all' ? clientId.value : null },
       headers: { 'Idempotency-Key': idempotencyKey('social-inbox-sync') }
     })
   }

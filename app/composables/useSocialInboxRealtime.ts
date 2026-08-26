@@ -19,11 +19,19 @@ interface Options {
   shouldRefresh?: (e: InboxRealtimeEvent) => boolean
   pollInterval?: number
   autoConnect?: boolean
+  pollWithoutEndpoint?: boolean
 }
 
 /** `endpoint` is the SSE URL without lastEventId, or null to stay disconnected. */
 export function useSocialInboxRealtime(endpoint: Ref<string | null>, options: Options = {}) {
-  const { onRefresh, onEvent, shouldRefresh = () => true, pollInterval = 15000, autoConnect = true } = options
+  const {
+    onRefresh,
+    onEvent,
+    shouldRefresh = () => true,
+    pollInterval = 15000,
+    autoConnect = true,
+    pollWithoutEndpoint = false
+  } = options
 
   const connected = ref(false)
   const connectionType = ref<'sse' | 'polling'>('polling')
@@ -100,7 +108,11 @@ export function useSocialInboxRealtime(endpoint: Ref<string | null>, options: Op
   }
 
   function connect() {
-    if (import.meta.server || !endpoint.value) return
+    if (import.meta.server) return
+    if (!endpoint.value) {
+      if (pollWithoutEndpoint) startPolling()
+      return
+    }
     sseErrorCount = 0
     connectSSE()
   }

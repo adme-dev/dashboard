@@ -1,4 +1,4 @@
-export type SocialInboxPollChannel = 'comment' | 'review'
+export type SocialInboxPollChannel = 'comment' | 'dm' | 'review'
 
 const POLL_CHANNELS: Record<string, SocialInboxPollChannel[]> = {
   'facebook': ['comment', 'review'],
@@ -9,6 +9,13 @@ const POLL_CHANNELS: Record<string, SocialInboxPollChannel[]> = {
   'google-business': ['review']
 }
 
-export function getSocialInboxPollChannels(platform: string | null | undefined): SocialInboxPollChannel[] {
-  return [...(POLL_CHANNELS[(platform || '').toLowerCase()] ?? [])]
+export function getSocialInboxPollChannels(
+  platform: string | null | undefined,
+  options: { messagingEnabled?: boolean } = {}
+): SocialInboxPollChannel[] {
+  const channels = [...(POLL_CHANNELS[(platform || '').toLowerCase()] ?? [])]
+  if ((platform || '').toLowerCase() === 'facebook' && options.messagingEnabled) {
+    channels.splice(1, 0, 'dm')
+  }
+  return channels
 }
