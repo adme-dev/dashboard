@@ -44,6 +44,8 @@ const attachPreview = {
   proposedSchedule: { interval: 'HOURLY' as const, hour: 0, timezone: 'Australia/Melbourne' },
   feedDisposition: 'created' as const,
   existingProductFeedId: null,
+  existingProductFeedName: null,
+  willCreateProductFeed: true,
   itemCount: 22
 }
 
@@ -209,6 +211,35 @@ describe('executeFeedPropose — dryRun writes nothing (P-1)', () => {
       .toMatchObject({ ok: false, code: 'bad_args' })
   })
 
+  it('attach threads an explicit existing product feed through preview and proposal args', async () => {
+    const d = deps({
+      resolveAttachPreview: vi.fn(async () => ({
+        ...attachPreview,
+        feedDisposition: 'reused' as const,
+        existingProductFeedId: '638660590098129',
+        existingProductFeedName: 'Frankston Nissan',
+        currentScheduleUrl: 'https://legacy.example/frankston.xml',
+        willCreateProductFeed: false,
+      }))
+    })
+    const args = { ...attachArgs, productFeedId: '638660590098129', dryRun: true }
+    const result = await executeFeedPropose('propose_attach_catalog_feed', args, ctx('admin'), d)
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        dryRun: true,
+        existingProductFeedId: '638660590098129',
+        existingProductFeedName: 'Frankston Nissan',
+        willCreateProductFeed: false,
+      },
+    })
+    expect(d.resolveAttachPreview).toHaveBeenCalledWith(
+      expect.objectContaining({ productFeedId: '638660590098129' }),
+      expect.anything(),
+    )
+  })
+
   it('set-rules accepts the optional F-7 verifyCampaignId and stores it in the proposal args', async () => {
     const d = deps()
     const res = await executeFeedPropose('propose_set_product_set_rules', { ...rulesArgs, verifyCampaignId: '120234010879480224' }, ctx('admin'), d)
@@ -222,9 +253,14 @@ describe('executeFeedPropose — dryRun writes nothing (P-1)', () => {
 
   it('attach without dryRun persists a proposal and flags requiresAck', async () => {
     const d = deps()
-    const res = await executeFeedPropose('propose_attach_catalog_feed', attachArgs, ctx('admin'), d)
+    const args = { ...attachArgs, productFeedId: '638660590098129' }
+    const res = await executeFeedPropose('propose_attach_catalog_feed', args, ctx('admin'), d)
     expect(res).toMatchObject({ ok: true, data: { proposalId: 'prop-1', requiresAck: true, kind: 'feed_attach_catalog' } })
-    expect(d.persist).toHaveBeenCalledWith(expect.anything(), 'feed_attach_catalog', expect.objectContaining({ kind: 'feed_attach_catalog', args: attachArgs }))
+    expect(d.persist).toHaveBeenCalledWith(
+      expect.anything(),
+      'feed_attach_catalog',
+      expect.objectContaining({ kind: 'feed_attach_catalog', args: expect.objectContaining({ productFeedId: '638660590098129' }) })
+    )
   })
 
   it('set-rules dryRun returns the proposed item count and persists nothing', async () => {

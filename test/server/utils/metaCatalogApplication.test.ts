@@ -101,6 +101,41 @@ describe('Meta catalogue application service', () => {
     }))
   })
 
+  it('threads an explicit existing product-feed identity into the platform service', async () => {
+    const d = deps()
+    const graphProvider = d.createProvider({ accessToken: 'test-only' })
+    vi.mocked(graphProvider.listProductFeeds).mockResolvedValue([{
+      id: '638660590098129',
+      name: 'Frankston Nissan',
+      schedule: { interval: 'HOURLY', url: 'https://legacy.example/frankston.xml' }
+    }])
+    vi.mocked(graphProvider.getProductFeed).mockResolvedValue({
+      id: '638660590098129',
+      name: 'Geelong GWM Haval — Used Vehicles',
+      schedule: {
+        interval: 'DAILY',
+        url: 'https://socials.driveagent.io/api/feeds/source-used/serve',
+        hour: 0,
+        timezone: 'Australia/Melbourne'
+      },
+      latest_upload: { id: 'upload-1', status: 'IN_PROGRESS' }
+    })
+
+    const result = await attachMetaCatalogFeedForClient({
+      clientId: 'client-1',
+      connectionId: 'connection-1',
+      catalogId: 'catalog-1',
+      productFeedId: '638660590098129',
+      sourceFeedId: 'source-used',
+      actorId: 'actor-1',
+      actorEmail: 'paul@adme.net.au'
+    }, d)
+
+    expect(graphProvider.createProductFeed).not.toHaveBeenCalled()
+    expect(graphProvider.updateProductFeed).toHaveBeenCalledWith('638660590098129', expect.anything())
+    expect(result).toMatchObject({ productFeedId: '638660590098129', feedDisposition: 'reused' })
+  })
+
   it('fails closed when the client or active connection mapping is absent', async () => {
     const d = deps({ getConnectionAuthority: vi.fn().mockResolvedValue(null) })
 

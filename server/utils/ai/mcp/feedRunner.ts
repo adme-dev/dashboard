@@ -9,6 +9,7 @@ import type { DealerLink, FeedProvider, FeedSummary, VehicleSummary } from '~~/s
 import { createMetaCatalogProvider } from '~~/server/utils/metaCatalogProvider'
 import {
   resolveMetaCatalogFeedSchedule,
+  selectMetaCatalogFeed,
   type MetaCatalogProvider,
   type MetaProductFeedSummary
 } from '~~/server/utils/metaCatalogPlatform'
@@ -295,7 +296,7 @@ async function resolveAttachPreview(args: Omit<AttachArgs, 'dryRun'>, ctx: ToolC
   }
 
   const feeds = await provider.listProductFeeds(args.catalogId)
-  const existing = feeds.find(feed => scheduleUrl(feed) === proposedScheduleUrl) ?? null
+  const existing = selectMetaCatalogFeed(feeds, proposedScheduleUrl, args.productFeedId)
 
   const served = await loadServedItems(args.clientId, args.sourceFeedId, ctx).catch(() => null)
 
@@ -309,6 +310,8 @@ async function resolveAttachPreview(args: Omit<AttachArgs, 'dryRun'>, ctx: ToolC
     proposedSchedule: (({ url: _url, ...rest }) => rest)(resolveMetaCatalogFeedSchedule(proposedScheduleUrl, args.schedule)),
     feedDisposition: existing ? 'reused' : 'created',
     existingProductFeedId: existing?.id ?? null,
+    existingProductFeedName: existing?.name ?? null,
+    willCreateProductFeed: existing === null,
     itemCount: served?.total ?? null
   }
 }
@@ -383,6 +386,7 @@ export function buildFeedConfirmDeps() {
         clientId: payload.args.clientId,
         connectionId: payload.args.connectionId,
         catalogId: payload.args.catalogId,
+        productFeedId: payload.args.productFeedId,
         sourceFeedId: payload.args.sourceFeedId,
         schedule: payload.args.schedule,
         actorId: ctx.userId,
