@@ -23,14 +23,30 @@ export const META_MESSAGING_SCOPES = [
   'pages_messaging', 'instagram_manage_messages',
 ]
 
+// Page posts, comments, ratings, and their user identity fields require Advanced Access for a
+// multi-tenant production app. Keep this independent from messaging so either Meta review can be
+// approved and released without coupling the other consent surface.
+export const META_USER_CONTENT_SCOPES = ['pages_read_user_content']
+
 /** True only when the operator has explicitly enabled the App-Review-gated DM/mention channels. */
 export function isSocialDmEnabled(): boolean {
   return process.env.SOCIAL_DM_ENABLED === 'true'
 }
 
+export function isSocialUserContentEnabled(): boolean {
+  return process.env.SOCIAL_USER_CONTENT_ENABLED === 'true'
+}
+
 /** Scopes to request at connect: the base set, plus messaging only when DM channels are enabled. */
-export function metaScopeSet(includeMessaging = false): string {
-  return (includeMessaging ? [...META_D2_SCOPES, ...META_MESSAGING_SCOPES] : META_D2_SCOPES).join(',')
+export function metaScopeSet(
+  includeMessaging = false,
+  includeUserContent = isSocialUserContentEnabled()
+): string {
+  return [
+    ...META_D2_SCOPES,
+    ...(includeUserContent ? META_USER_CONTENT_SCOPES : []),
+    ...(includeMessaging ? META_MESSAGING_SCOPES : [])
+  ].join(',')
 }
 
 /** Webhook fields to subscribe a Page to: comments always; mentions + DMs only when enabled. */
@@ -38,9 +54,19 @@ export function metaSubscribedFields(includeMessaging = false): string {
   return includeMessaging ? 'feed,mention,messages' : 'feed'
 }
 
-export function buildMetaAuthUrl(appId: string, redirectUri: string, state: string, includeMessaging = false): string {
+export function buildMetaAuthUrl(
+  appId: string,
+  redirectUri: string,
+  state: string,
+  includeMessaging = false,
+  includeUserContent = isSocialUserContentEnabled()
+): string {
   const params = new URLSearchParams({
-    client_id: appId, redirect_uri: redirectUri, state, scope: metaScopeSet(includeMessaging), response_type: 'code',
+    client_id: appId,
+    redirect_uri: redirectUri,
+    state,
+    scope: metaScopeSet(includeMessaging, includeUserContent),
+    response_type: 'code'
   })
   return `https://www.facebook.com/v25.0/dialog/oauth?${params.toString()}`
 }

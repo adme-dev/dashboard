@@ -46,8 +46,12 @@ function fmtShort(iso: string | null) {
   }
   return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 }
-function identityLabel(platform: string | null | undefined, name: string | null | undefined) {
-  return getSocialInboxIdentityDisplay({ platform, name })
+function identityLabel(
+  platform: string | null | undefined,
+  name: string | null | undefined,
+  channelType: string | null | undefined = props.conversation?.channel_type
+) {
+  return getSocialInboxIdentityDisplay({ platform, channelType, name })
 }
 function accountFor(conversation: SocialConversation | null | undefined) {
   if (!conversation) return null

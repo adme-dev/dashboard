@@ -80,7 +80,11 @@ Current implementation:
 - Callback: `/api/agency/social/publishing/accounts/callback/meta`
 - Storage table: `social_accounts`
 - A connected Facebook Page can also create an Instagram account row when the Page has a linked Instagram Business account.
-- Page webhook subscription currently uses `feed` by default for comments. Messaging scopes are gated behind `SOCIAL_DM_ENABLED=true` after Meta App Review.
+- Page webhook subscription currently uses `feed` by default for comments.
+- Messenger scopes are gated behind `SOCIAL_DM_ENABLED=true` after Meta App Review.
+- Page user-generated content (`pages_read_user_content`) is gated independently behind
+  `SOCIAL_USER_CONTENT_ENABLED=true`. This permission is required to reliably read Page posts,
+  comments, ratings, and the user identity fields Meta makes available for them.
 
 Production prerequisites:
 
@@ -105,6 +109,16 @@ Production prerequisites:
 4. The Facebook user used in OAuth must have access to the Page being connected.
 5. For Instagram publishing, the Page must be linked to an Instagram Business account.
 
+Advanced-access activation order:
+
+1. Request `pages_read_user_content` in Meta App Review and demonstrate a connected Page comment
+   being displayed in the XeroFlow engagement inbox.
+2. After Meta approves the permission, set `SOCIAL_USER_CONTENT_ENABLED=true` in the production
+   Cloudflare Pages environment and deploy.
+3. Reconnect every Meta account so its new Page access token grants the approved permission.
+4. Run inbox refreshes until the account-health cursor timestamps show every connection has been
+   revisited. Previously stored conversations are idempotently enriched when Meta now returns a
+   participant name; names Meta withholds for privacy remain labelled as unavailable.
 Connection flow:
 
 1. Go to `/agency/social/publishing/accounts`.

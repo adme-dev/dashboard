@@ -1,5 +1,6 @@
 export interface SocialInboxIdentityInput {
   platform: string | null | undefined
+  channelType?: string | null
   name: string | null | undefined
 }
 
@@ -25,10 +26,19 @@ export function getSocialInboxIdentityDisplay(input: SocialInboxIdentityInput): 
   const platform = input.platform?.trim().toLowerCase() || ''
   if (META_PLATFORMS.has(platform)) {
     const network = platform === 'instagram' ? 'Instagram' : 'Facebook'
+    const role = input.channelType === 'review'
+      ? 'reviewer'
+      : input.channelType === 'comment'
+        ? 'commenter'
+        : input.channelType === 'dm'
+          ? 'contact'
+          : 'user'
     return {
-      label: `Unidentified ${network} user`,
+      label: `${network} ${role} — name unavailable`,
       unavailable: true,
-      reason: 'Meta did not provide this user profile for the interaction.'
+      reason: platform === 'facebook'
+        ? 'Meta did not return this profile name. Some identities are withheld for privacy, and Page user-content access requires an approved permission.'
+        : 'Meta did not return this profile name. Some identities are withheld for privacy.'
     }
   }
 

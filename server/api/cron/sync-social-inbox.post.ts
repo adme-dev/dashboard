@@ -22,6 +22,7 @@ import {
 } from '~~/server/utils/socialInbox/syncBudget'
 import { createNotification } from '~~/server/utils/notifications'
 import { isSocialDmEnabled } from '~~/server/utils/socialOAuth/meta'
+import { buildSocialInboxAccountsQuery } from '~~/server/utils/socialInbox/syncAccounts'
 
 /**
  * POST /api/cron/sync-social-inbox
@@ -39,8 +40,6 @@ interface SocialInboxSyncChannelRun {
   synced: number
   error?: string
 }
-
-type SqlParam = string | number | boolean | null
 
 interface SocialInboxAccountRow {
   id: string
@@ -65,14 +64,7 @@ export default defineEventHandler(async (event) => {
 
   const body: { clientId?: string | null, maxMs?: number | null } = await readBody<{ clientId?: string | null, maxMs?: number | null }>(event).catch(() => ({}))
   const budget = createSyncBudget(normaliseSyncMaxMs(body?.maxMs, DEFAULT_SYNC_RUN_TIMEOUT_MS))
-  const params: SqlParam[] = []
-  let sql = `SELECT id, client_id, platform, platform_account_id, account_name, access_token, refresh_token, token_expires_at
-       FROM social_accounts WHERE is_active = TRUE AND access_token IS NOT NULL`
-  if (body?.clientId) {
-    params.push(body.clientId)
-    sql += ` AND client_id = $${params.length}`
-  }
-
+  const { sql, params } = buildSocialInboxAccountsQuery(body?.clientId)
   const accounts = await queryRows<SocialInboxAccountRow>(sql, params)
 
   let synced = 0

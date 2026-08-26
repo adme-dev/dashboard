@@ -72,7 +72,11 @@ function relative(iso: string | null) {
   return iso ? new Date(iso).toLocaleDateString() : ''
 }
 function identityFor(c: SocialConversation) {
-  return getSocialInboxIdentityDisplay({ platform: c.platform, name: c.participant_name })
+  return getSocialInboxIdentityDisplay({
+    platform: c.platform,
+    channelType: c.channel_type,
+    name: c.participant_name
+  })
 }
 function accountFor(c: SocialConversation) {
   return getSocialInboxAccountContextDisplay({

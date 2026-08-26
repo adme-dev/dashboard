@@ -13,11 +13,11 @@ describe('getSocialInboxIdentityDisplay', () => {
     })
   })
 
-  it('explains unavailable Facebook identities instead of showing a generic unknown user', () => {
-    expect(getSocialInboxIdentityDisplay({ platform: 'facebook', name: null })).toEqual({
-      label: 'Unidentified Facebook user',
+  it('describes the interaction role when Facebook withholds a participant name', () => {
+    expect(getSocialInboxIdentityDisplay({ platform: 'facebook', channelType: 'review', name: null })).toEqual({
+      label: 'Facebook reviewer — name unavailable',
       unavailable: true,
-      reason: 'Meta did not provide this user profile for the interaction.'
+      reason: 'Meta did not return this profile name. Some identities are withheld for privacy, and Page user-content access requires an approved permission.'
     })
   })
 
