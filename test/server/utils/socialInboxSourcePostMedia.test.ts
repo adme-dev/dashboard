@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   fetchMetaSourcePostImage,
+  fetchMetaSourcePostImageUrl,
   isAllowedMetaImageUrl
 } from '~~/server/utils/socialInbox/sourcePostMedia'
 
@@ -38,6 +39,22 @@ describe('social inbox source post media', () => {
     expect(isAllowedMetaImageUrl('https://scontent.cdninstagram.com/photo.jpg')).toBe(true)
     expect(isAllowedMetaImageUrl('https://example.com/photo.jpg')).toBe(false)
     expect(isAllowedMetaImageUrl('http://scontent.xx.fbcdn.net/photo.jpg')).toBe(false)
+  })
+
+  it('returns a fresh allowlisted Facebook image URL without downloading it', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      full_picture: 'https://scontent-syd2-1.xx.fbcdn.net/fresh/post.jpg'
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    const imageUrl = await fetchMetaSourcePostImageUrl({
+      platform: 'facebook',
+      sourcePostId: 'page_post',
+      accessToken: 'page-token',
+      fetcher
+    })
+
+    expect(imageUrl).toBe('https://scontent-syd2-1.xx.fbcdn.net/fresh/post.jpg')
+    expect(fetcher).toHaveBeenCalledTimes(1)
   })
 
   it('does not download a URL from an untrusted Graph response', async () => {

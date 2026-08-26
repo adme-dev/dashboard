@@ -1,6 +1,6 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
-import { fetchMetaSourcePostImage } from '~~/server/utils/socialInbox/sourcePostMedia'
+import { fetchMetaSourcePostImageUrl } from '~~/server/utils/socialInbox/sourcePostMedia'
 
 interface SourcePostRecord {
   platform: string
@@ -23,20 +23,21 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Source post image not available' })
   }
 
-  const image = await fetchMetaSourcePostImage({
+  const imageUrl = await fetchMetaSourcePostImageUrl({
     platform: source.platform,
     sourcePostId: source.source_post_id,
     accessToken: source.access_token
   })
-  if (!image) {
+  if (!imageUrl) {
     throw createError({ statusCode: 404, statusMessage: 'Source post image not available' })
   }
 
-  return new Response(image.body, {
+  return new Response(null, {
+    status: 302,
     headers: {
-      'Cache-Control': 'private, max-age=3600',
-      'Content-Length': String(image.body.byteLength),
-      'Content-Type': image.contentType,
+      'Cache-Control': 'private, no-store',
+      'Location': imageUrl,
+      'Referrer-Policy': 'no-referrer',
       'X-Content-Type-Options': 'nosniff'
     }
   })

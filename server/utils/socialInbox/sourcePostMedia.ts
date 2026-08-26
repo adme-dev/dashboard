@@ -54,7 +54,7 @@ export function isAllowedMetaImageUrl(rawUrl: string): boolean {
   }
 }
 
-export async function fetchMetaSourcePostImage(input: MetaSourcePostImageInput): Promise<MetaSourcePostImage | null> {
+export async function fetchMetaSourcePostImageUrl(input: MetaSourcePostImageInput): Promise<string | null> {
   const platform = input.platform.trim().toLowerCase()
   if (!['facebook', 'instagram'].includes(platform) || !input.sourcePostId || !input.accessToken) return null
 
@@ -77,7 +77,18 @@ export async function fetchMetaSourcePostImage(input: MetaSourcePostImageInput):
     const imageUrl = platform === 'facebook'
       ? facebookImageUrl(payload)
       : instagramImageUrl(payload)
-    if (!imageUrl || !isAllowedMetaImageUrl(imageUrl)) return null
+    return imageUrl && isAllowedMetaImageUrl(imageUrl) ? imageUrl : null
+  } catch {
+    return null
+  }
+}
+
+export async function fetchMetaSourcePostImage(input: MetaSourcePostImageInput): Promise<MetaSourcePostImage | null> {
+  const fetcher = input.fetcher ?? fetch
+
+  try {
+    const imageUrl = await fetchMetaSourcePostImageUrl(input)
+    if (!imageUrl) return null
 
     const imageResponse = await fetcher(imageUrl, {
       headers: { accept: 'image/*' },
