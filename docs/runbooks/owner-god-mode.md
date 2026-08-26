@@ -2,9 +2,9 @@
 
 ## Operating contract
 
-God mode is always on for every authenticated team member whose current database row has `is_active = TRUE` and exact `user_role = 'owner'`. It is not granted by email address, pilot membership, a browser claim, a session toggle or a request parameter.
+God mode eligibility is always current for every authenticated team member whose database row has `is_active = TRUE` and exact `user_role = 'owner'`. Eligibility is not the same as execution: an ordinary owner UI request keeps its configured role policy and does not initialize the God mode audit or mutation coordinator merely because the user is an owner. The shell's `God mode active` label means the account is eligible for governed execution, not that every request is elevated.
 
-God mode makes every registered application and MCP capability available. It does not bypass authentication or session validation, fresh active-owner authority, tenant/client/entity isolation, mandatory immutable audit, the infrastructure emergency control, provider bindings or secrets, database constraints, or SSRF protection. Ordinary employees remain governed by release, evaluation, permission, budget and confirmation controls.
+God mode activates only when a trusted MCP/delegated execution claim reaches its exact target, a dedicated God mode executor runs, or centralized application code is actually about to bypass a denied control. A registered mutation family is a safety prerequisite after activation; registration alone is not an activation signal. Activated execution makes registered application and MCP capabilities available, but does not bypass authentication or session validation, fresh active-owner authority, tenant/client/entity isolation, mandatory immutable audit, the infrastructure emergency control, provider bindings or secrets, database constraints, or SSRF protection. Ordinary UI traffic and ordinary employees remain governed by normal release, evaluation, permission, budget and confirmation controls.
 
 ## Production rollout record — 2026-08-05
 
@@ -35,7 +35,7 @@ Treat a malformed `GOD_MODE_DISABLED` value as disabled. Do not change owner rol
 
 ## Audit verification
 
-For each representative application and MCP call, locate the bounded `god_mode_audit_events` records by correlation ID. Confirm an immutable `attempt` exists before execution and one terminal `succeeded` or `failed` outcome exists. Verify actor, channel, route/tool, tenant/client/entity scope, bypass-control classes and emergency state are present without prompts, message bodies, provider responses, tokens, credentials or signed claims.
+For each representative activated application bypass and MCP call, locate the bounded `god_mode_audit_events` records by correlation ID. Confirm an immutable `attempt` exists before execution and one terminal `succeeded` or `failed` outcome exists. Verify actor, channel, route/tool, tenant/client/entity scope, bypass-control classes and emergency state are present without prompts, message bodies, provider responses, tokens, credentials or signed claims. An ordinary owner UI request that never asks to bypass a denied control must produce no God mode route state and must not depend on audit-store or mutation-coordinator availability.
 
 An `ambiguous` event is non-terminal reconciliation evidence, never proof that execution completed. Require a later `succeeded` or `failed` terminal event before closing the verification. If no terminal event can yet be established, keep the case as an actively tracked unresolved reconciliation with an alert and named owner until reconciliation produces the terminal evidence.
 
@@ -74,4 +74,5 @@ These emails are lookup targets for deployment verification only; they never gra
 - Paul's safe Finance MCP read succeeded after Pages deployment `e553592e-8a74-4a60-9037-02ad3d1d530b`, returning `isError=false`. Immutable audit progressed from `started` to terminal `succeeded` / `read_completed` at 2026-08-05 08:27 UTC.
 - Still execute one disposable/reversible write through both application and MCP paths before declaring the write smoke complete; never use an irreversible finance or publishing action.
 - Confirm cross-client and cross-tenant targets remain denied and audited.
+- Confirm an ordinary owner UI read and POST complete under configured role policy without a God mode attempt, coordinator, or mandatory `Idempotency-Key`.
 - Confirm an active non-owner control account never sees the status and retains governed releases, permissions and confirmations.

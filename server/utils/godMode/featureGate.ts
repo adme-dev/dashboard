@@ -1,5 +1,6 @@
+import { createHash, randomUUID } from 'node:crypto'
 import type { H3Event } from 'h3'
-import { createError, getRequestURL } from 'h3'
+import { createError, getCookie, getHeader, getRequestURL, isError } from 'h3'
 
 import {
   appendGodModeAuditEvent,
@@ -15,6 +16,7 @@ import { getTrustedTask5DelegatedExecution } from '~~/server/utils/godMode/inter
 const READ_ONLY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const requestAuditStateKey = Symbol('godModeRouteAuditState')
 const requestAuditInternalsKey = Symbol('godModeRouteAuditInternals')
+const requestActivationKey = Symbol('godModeRouteActivation')
 const mutationCoordinationKey = Symbol('godModeMutationCoordination')
 const TRUSTED_BYPASS_CONTROLS = new Set<GodModeBypassedControl>([
   'permission',
@@ -178,9 +180,70 @@ export function markGodModeRouteFailure(event: H3Event): void {
   if (state) state.handlerFailed = true
 }
 
+function requestSessionToken(event: H3Event): string | null {
+  const cookieToken = getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client')
+  const authorization = getHeader(event, 'authorization')
+  return cookieToken || (authorization?.startsWith('Bearer ') ? authorization.slice(7) : null)
+}
+
+async function activateGodModeApplicationRequest(
+  event: H3Event,
+  actorUserId: string
+): Promise<GodModeRouteAuditState> {
+  const existing = getGodModeRouteAuditState(event)
+  if (existing) return existing
+
+  const pending = context(event)[requestActivationKey] as Promise<GodModeRouteAuditState> | undefined
+  if (pending) return await pending
+
+  const activation = (async () => {
+    const sessionToken = requestSessionToken(event)
+    if (!sessionToken) {
+      throw createError({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
+    }
+
+    const method = requestMethod(event)
+    const path = requestPath(event)
+    const seed: GodModeRouteAuditSeed = {
+      actorUserId,
+      correlationId: randomUUID(),
+      sessionDigest: createHash('sha256').update(sessionToken).digest('hex'),
+      routeOrTool: `${method} ${path}`,
+      emergencyDisabled: false
+    }
+
+    try {
+      await defaultRouteAuditDependencies.appendGodModeAuditEvent({
+        ...seed,
+        channel: 'application',
+        phase: 'attempt',
+        bypassedControls: [],
+        outcomeCode: 'started'
+      })
+    } catch {
+      throw createError({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
+    }
+
+    const state = seedGodModeRouteAuditState(event, seed)
+    try {
+      await prepareRegisteredGodModeMutation(event)
+    } catch (error) {
+      if (error instanceof GodModeMutationCoordinationError && error.reason === 'required') {
+        throw createError({ statusCode: 503, statusMessage: 'God mode mutation coordination required' })
+      }
+      if (isError(error) && error.statusCode >= 400 && error.statusCode < 500) throw error
+      throw createError({ statusCode: 503, statusMessage: 'God mode mutation coordination unavailable' })
+    }
+    return state
+  })()
+  context(event)[requestActivationKey] = activation
+  return await activation
+}
+
 /**
  * Persist server-classified bypasses as immutable pre-execution evidence, then add them to the
- * request terminal summary. The state exists only after Task 3 durably wrote the attempt event.
+ * request terminal summary. The state exists only after lazy application activation durably wrote
+ * the attempt event.
  * Missing, mismatched, late, or failed persistence stops the bypassed operation; client data is
  * never accepted at this boundary.
  */
@@ -188,11 +251,12 @@ export async function recordGodModeBypassedControls(
   event: H3Event,
   controls: readonly GodModeBypassedControl[]
 ): Promise<void> {
-  const actorUserId = (event.context as any).user?.id
+  // Task 5 owns the attempt, bypass evidence, and terminal for its runtime-branded exact request.
+  if (await getTrustedTask5DelegatedExecution(event)) return
+
+  const actorUserId = (context(event).user as { id?: unknown } | undefined)?.id
   const method = requestMethod(event)
   const path = requestPath(event)
-  const state = getGodModeRouteAuditState(event)
-  const internals = context(event)[requestAuditInternalsKey] as GodModeRouteAuditInternals | undefined
   const authority = typeof actorUserId === 'string'
     ? await resolveGodModeAuthority(event, actorUserId)
     : null
@@ -200,8 +264,17 @@ export async function recordGodModeBypassedControls(
   if (
     typeof actorUserId !== 'string'
     || !isActiveGodModeAuthority(authority, actorUserId)
-    || !state
-    || !internals
+    || controls.length === 0
+    || controls.some(control => !TRUSTED_BYPASS_CONTROLS.has(control))
+  ) {
+    throw createError({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
+  }
+
+  const state = await activateGodModeApplicationRequest(event, actorUserId)
+  const internals = context(event)[requestAuditInternalsKey] as GodModeRouteAuditInternals | undefined
+
+  if (
+    !internals
     || state.actorUserId !== actorUserId
     || internals.seed.actorUserId !== actorUserId
     || state.correlationId !== internals.seed.correlationId
@@ -210,8 +283,6 @@ export async function recordGodModeBypassedControls(
     || internals.seed.routeOrTool !== `${method} ${path}`
     || state.emergencyDisabled !== internals.seed.emergencyDisabled
     || state.terminalPromise
-    || controls.length === 0
-    || controls.some(control => !TRUSTED_BYPASS_CONTROLS.has(control))
   ) {
     throw createError({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
   }
@@ -325,20 +396,19 @@ export async function canBypassApplicationControl(
   event: H3Event,
   control: GodModeBypassedControl
 ): Promise<boolean> {
-  const userId = (event.context as any).user?.id
+  const userId = (context(event).user as { id?: unknown } | undefined)?.id
   if (typeof userId !== 'string') return false
 
   // A valid runtime marker proves Task 5 already persisted the sole MCP attempt and owns its terminal.
-  // Do not create Task 3 route state or another terminal; allow only the exact 14-target event to pass
+  // Do not create application route state or another terminal; allow only the exact 14-target event to pass
   // centralized application permission/feature controls while all independent handler validation runs.
   if (await getTrustedTask5DelegatedExecution(event)) return true
 
   const authority = await resolveGodModeAuthority(event, userId)
-  // This Task 3 path accepts only the direct result of the resolver call above; no authority data
+  // This application path accepts only the direct result of the resolver call above; no authority data
   // enters through a caller-facing parameter here.
-  if (!authority.active) return false
+  if (!isActiveGodModeAuthority(authority, userId)) return false
 
-  const state = getGodModeRouteAuditState(event)
   if (!isGodModeMutationRequest(event)) {
     const method = requestMethod(event)
     const path = requestPath(event)
@@ -347,16 +417,17 @@ export async function canBypassApplicationControl(
       && route.path === path
       && route.bypassedGate === control
     ))
-    if (!reviewed || !state || state.routeOrTool !== `${method} ${path}`) return false
-    state.bypassedControls.add(control)
+    if (!reviewed) return false
+    const state = await activateGodModeApplicationRequest(event, userId)
+    if (state.routeOrTool !== `${method} ${path}`) return false
+    await recordGodModeBypassedControls(event, [control])
     return true
   }
 
-  if (!state) return false
+  await activateGodModeApplicationRequest(event, userId)
   const coordination = exactMutationCoordination(event)
   if (!coordination) return false
-  state.bypassedControls.add(control)
-  state.mutationCoordination = coordination
+  await recordGodModeBypassedControls(event, [control])
   return true
 }
 

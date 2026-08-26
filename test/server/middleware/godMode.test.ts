@@ -4,7 +4,6 @@ import {
   getGodModeRouteAuditState,
   registerGodModeMutationFamily
 } from '../../../server/utils/godMode/featureGate'
-import { registerGodModeBannerAssetUploadFamily } from '../../../server/utils/banner/godModeAssetUpload'
 
 const { resolveGodModeAuthority, appendGodModeAuditEvent } = vi.hoisted(() => ({
   resolveGodModeAuthority: vi.fn(),
@@ -22,7 +21,6 @@ testGlobal.defineEventHandler = handler => handler
 const { handleGodModeRequest } = await import('../../../server/middleware/godMode')
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111'
-const CORRELATION_ID = '22222222-2222-4222-8222-222222222222'
 
 type TestEvent = H3Event & {
   headers: Record<string, string>
@@ -55,13 +53,6 @@ function event(path = '/api/agency/clients', method = 'GET', requestHeaders: Rec
   } as unknown as TestEvent
 }
 
-const dependencies = {
-  resolveGodModeAuthority,
-  appendGodModeAuditEvent,
-  getSessionToken: (request: H3Event) => (request as TestEvent).headers.authorization!.slice(7),
-  randomUUID: () => CORRELATION_ID
-}
-
 describe('God mode request middleware', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -74,78 +65,56 @@ describe('God mode request middleware', () => {
     appendGodModeAuditEvent.mockResolvedValue(undefined)
   })
 
-  it('persists one bounded attempt for every authenticated active-owner staff API request', async () => {
+  it('does not activate God mode for an ordinary active-owner read request', async () => {
     const request = event()
 
-    await handleGodModeRequest(request, dependencies)
+    await handleGodModeRequest(request)
 
-    expect(resolveGodModeAuthority).toHaveBeenCalledWith(request, OWNER_ID)
-    expect(appendGodModeAuditEvent).toHaveBeenCalledTimes(1)
-    expect(appendGodModeAuditEvent).toHaveBeenCalledWith({
-      actorUserId: OWNER_ID,
-      correlationId: CORRELATION_ID,
-      sessionDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
-      channel: 'application',
-      routeOrTool: 'GET /api/agency/clients',
-      phase: 'attempt',
-      bypassedControls: [],
-      outcomeCode: 'started',
-      emergencyDisabled: false
-    })
-    expect(appendGodModeAuditEvent.mock.calls[0][0].sessionDigest).not.toContain('session-secret')
+    expect(resolveGodModeAuthority).not.toHaveBeenCalled()
+    expect(appendGodModeAuditEvent).not.toHaveBeenCalled()
+    expect(getGodModeRouteAuditState(request)).toBeNull()
   })
 
-  it('blocks the route when attempt persistence fails', async () => {
+  it('does not make ordinary UI availability depend on the God mode audit store', async () => {
     appendGodModeAuditEvent.mockRejectedValue(new Error('database unavailable'))
 
-    await expect(handleGodModeRequest(event(), dependencies)).rejects.toMatchObject({
-      statusCode: 503,
-      statusMessage: 'God mode audit unavailable'
-    })
+    await expect(handleGodModeRequest(event())).resolves.toBeUndefined()
   })
 
-  it('fails closed before an active-owner mutation handler when no exact coordinator family is registered', async () => {
-    await expect(handleGodModeRequest(event('/api/agency/clients', 'POST'), dependencies)).rejects.toMatchObject({
-      statusCode: 503,
-      statusMessage: 'God mode mutation coordination required'
-    })
-    expect(appendGodModeAuditEvent).toHaveBeenCalledOnce()
+  it.each([
+    '/api/ai/action-plan',
+    '/api/agency/ai/chat/conversations'
+  ])('does not classify the ordinary active-owner UI POST %s as a God mode mutation', async (path) => {
+    const request = event(path, 'POST')
+
+    await expect(handleGodModeRequest(request)).resolves.toBeUndefined()
+    expect(resolveGodModeAuthority).not.toHaveBeenCalled()
+    expect(appendGodModeAuditEvent).not.toHaveBeenCalled()
+    expect(getGodModeRouteAuditState(request)).toBeNull()
   })
 
-  it('admits the registered client portal access mutation for an active owner', async () => {
+  it('does not eagerly prepare even a registered family before code requests a bypass', async () => {
+    const prepare = vi.fn(async () => ({
+      strategy: 'transaction-bound' as const,
+      prepared: true as const,
+      persistTerminal: vi.fn()
+    }))
     const unregister = registerGodModeMutationFamily({
       family: 'client-portal-access-test',
       method: 'POST',
       matchesPath: path => path === '/api/agency/client-portal/access',
-      prepare: async () => ({
-        strategy: 'transaction-bound',
-        prepared: true,
-        persistTerminal: vi.fn()
-      })
+      prepare
     })
     try {
       await expect(handleGodModeRequest(
         event('/api/agency/client-portal/access', 'POST', {
           'idempotency-key': 'portal-access-11111111-1111-4111-8111-111111111111'
-        }),
-        dependencies
+        })
       )).resolves.toBeUndefined()
+      expect(prepare).not.toHaveBeenCalled()
     } finally {
       unregister()
     }
-  })
-
-  it('does nothing for authenticated users without active owner authority', async () => {
-    resolveGodModeAuthority.mockResolvedValue({
-      active: false,
-      actorUserId: OWNER_ID,
-      reason: 'emergency_disabled',
-      emergencyDisabled: true
-    })
-
-    await handleGodModeRequest(event(), dependencies)
-
-    expect(appendGodModeAuditEvent).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -156,129 +125,14 @@ describe('God mode request middleware', () => {
     '/_nuxt/app.js',
     '/features'
   ])('excludes %s before resolving authority', async (path) => {
-    await handleGodModeRequest(event(path), dependencies)
+    await handleGodModeRequest(event(path))
     expect(resolveGodModeAuthority).not.toHaveBeenCalled()
     expect(appendGodModeAuditEvent).not.toHaveBeenCalled()
   })
 
   it('uses canonical pathname so query strings do not defeat an exact exclusion', async () => {
-    await handleGodModeRequest(event('/api/health?probe=1'), dependencies)
+    await handleGodModeRequest(event('/api/health?probe=1'))
     expect(resolveGodModeAuthority).not.toHaveBeenCalled()
     expect(appendGodModeAuditEvent).not.toHaveBeenCalled()
-  })
-
-  it('does not exclude a prefix-collision route', async () => {
-    await handleGodModeRequest(event('/api/webhooks-admin'), dependencies)
-    expect(resolveGodModeAuthority).toHaveBeenCalledOnce()
-    expect(appendGodModeAuditEvent).toHaveBeenCalledOnce()
-  })
-
-  it('matches a registered mutation family against canonical pathname without its query string', async () => {
-    const prepare = vi.fn().mockResolvedValue({
-      strategy: 'task5-execution-ledger',
-      prepared: true,
-      persistTerminal: vi.fn()
-    })
-    const unregister = registerGodModeMutationFamily({
-      family: 'query-canonicalization',
-      method: 'POST',
-      matchesPath: path => path === '/api/agency/clients',
-      prepare
-    })
-    const request = event('/api/agency/clients?retry=1', 'POST')
-
-    await handleGodModeRequest(request, dependencies)
-
-    expect(prepare).toHaveBeenCalledOnce()
-    expect(getGodModeRouteAuditState(request)?.mutationCoordination?.route).toBe('/api/agency/clients')
-    unregister()
-  })
-
-  it('preserves a trusted 428 from the real asset-upload coordinator', async () => {
-    const transaction = vi.fn()
-    const unregister = registerGodModeBannerAssetUploadFamily({
-      transaction,
-      appendAudit: vi.fn(),
-      deleteBannerFile: vi.fn(),
-      queryOneFresh: vi.fn()
-    } as never)
-    try {
-      await expect(handleGodModeRequest(
-        event('/api/agency/banner-studio/assets/upload', 'POST'),
-        dependencies as never
-      )).rejects.toMatchObject({
-        statusCode: 428,
-        statusMessage: 'A stable Idempotency-Key header is required for God mode banner asset uploads'
-      })
-      expect(transaction).not.toHaveBeenCalled()
-    } finally {
-      unregister()
-    }
-  })
-
-  it('preserves a trusted 409 conflict from the real asset-upload coordinator', async () => {
-    const query = vi.fn(async (sql: string) => {
-      if (sql.includes('INSERT INTO god_mode_execution_ledger')) return { rows: [] }
-      return {
-        rows: [{
-          state: 'succeeded',
-          result_reference: '33333333-3333-4333-8333-333333333333',
-          route_or_tool: 'POST /api/agency/banner-studio/assets/upload',
-          request_digest: 'c'.repeat(64)
-        }]
-      }
-    })
-    const transaction = vi.fn(async (callback: (db: { query: typeof query }) => Promise<unknown>) => callback({ query }))
-    const unregister = registerGodModeBannerAssetUploadFamily({
-      transaction,
-      appendAudit: vi.fn(),
-      deleteBannerFile: vi.fn(),
-      queryOneFresh: vi.fn()
-    } as never)
-    try {
-      await expect(handleGodModeRequest(event(
-        '/api/agency/banner-studio/assets/upload',
-        'POST',
-        {
-          'idempotency-key': 'banner-upload-12345678',
-          'x-banner-upload-digest': 'b'.repeat(64)
-        }
-      ), dependencies as never)).rejects.toMatchObject({
-        statusCode: 409,
-        statusMessage: 'Idempotency key request does not match'
-      })
-    } finally {
-      unregister()
-    }
-  })
-
-  it('does not expose an arbitrary status-shaped coordinator error', async () => {
-    const unregister = registerGodModeMutationFamily({
-      family: 'untrusted-status-shape',
-      method: 'POST',
-      matchesPath: path => path === '/api/agency/clients',
-      prepare: async () => {
-        throw { statusCode: 409, statusMessage: 'internal conflict detail' }
-      }
-    })
-    try {
-      await expect(handleGodModeRequest(event('/api/agency/clients', 'POST'), dependencies as never))
-        .rejects.toMatchObject({
-          statusCode: 503,
-          statusMessage: 'God mode mutation coordination unavailable'
-        })
-    } finally {
-      unregister()
-    }
-  })
-
-  it('resolves authority only from event.context.user.id', async () => {
-    const request = event()
-    request.headers['x-god-mode-user'] = '33333333-3333-4333-8333-333333333333'
-    request.context.godMode = { active: true, actorUserId: '44444444-4444-4444-8444-444444444444' }
-
-    await handleGodModeRequest(request, dependencies)
-
-    expect(resolveGodModeAuthority).toHaveBeenCalledWith(request, OWNER_ID)
   })
 })

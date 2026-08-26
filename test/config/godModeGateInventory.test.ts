@@ -3,9 +3,22 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mockResolveGodModeAuthority = vi.fn()
+const { mockAppendGodModeAuditEvent, mockResolveGodModeAuthority } = vi.hoisted(() => ({
+  mockAppendGodModeAuditEvent: vi.fn(),
+  mockResolveGodModeAuthority: vi.fn()
+}))
+vi.mock('../../server/utils/godMode/audit', () => ({
+  appendGodModeAuditEvent: mockAppendGodModeAuditEvent
+}))
 vi.mock('../../server/utils/godMode/authority', () => ({
-  resolveGodModeAuthority: (...args: any[]) => mockResolveGodModeAuthority(...args)
+  resolveGodModeAuthority: (...args: any[]) => mockResolveGodModeAuthority(...args),
+  isActiveGodModeAuthority: (authority: unknown, actorUserId: string) => {
+    const candidate = authority as Record<string, unknown> | null
+    return candidate?.active === true
+      && candidate.actorUserId === actorUserId
+      && candidate.reason === 'active_owner'
+      && candidate.emergencyDisabled === false
+  }
 }))
 
 import {
@@ -37,10 +50,9 @@ const CENTRAL_HELPER_BY_CLASS = {
 
 const TASK_3_GATE_ROUTING = [
   ['server/utils/auth.ts', 'requireRole / requirePermission / requireWriteAccess', 'application_governance_bypass', 'canBypassApplicationControl'],
-  ['server/utils/roleResolver.ts', 'permissionGroups', 'application_governance_bypass', 'resolveGodModeAuthority'],
+  ['server/utils/roleResolver.ts', 'permissionGroups', 'ordinary_user_behavior', 'configured role policy'],
   ['server/middleware/rbac.ts', 'isReadOnlyRole', 'application_governance_bypass', 'canBypassApplicationControl'],
   ['server/utils/godMode/featureGate.ts', 'feature flag adapter', 'application_governance_bypass', 'isApplicationCapabilityEnabled'],
-  ['server/middleware/godMode.ts', 'authenticated actor id', 'identity_tenant_hard_boundary', 'resolveGodModeAuthority'],
   ['server/plugins/godModeAudit.ts', 'terminal persistence', 'ordinary_user_behavior', 'trusted request audit state']
 ] as const
 
@@ -114,7 +126,10 @@ describe('God mode gate inventory', () => {
     node: {
       req: {
         originalUrl: path,
-        headers: { host: 'app.xeroflow.test' },
+        headers: {
+          host: 'app.xeroflow.test',
+          authorization: 'Bearer owner-session-secret'
+        },
         connection: {}
       },
       res: { statusCode: 200, statusMessage: 'OK' }
@@ -123,6 +138,7 @@ describe('God mode gate inventory', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockAppendGodModeAuditEvent.mockResolvedValue(undefined)
     mockResolveGodModeAuthority.mockResolvedValue({
       active: false,
       actorUserId: '22222222-2222-4222-8222-222222222222',
@@ -188,7 +204,7 @@ describe('God mode gate inventory', () => {
       ordinary_user_behavior: 'unchanged presentation/ordinary decision',
       unrelated_configuration: 'unchanged runtime configuration'
     })
-    expect(TASK_3_GATE_ROUTING).toHaveLength(6)
+    expect(TASK_3_GATE_ROUTING).toHaveLength(5)
   })
 
   it('preserves the normal application gate for non-owners', async () => {
@@ -242,7 +258,7 @@ describe('God mode gate inventory', () => {
     await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(false)
   })
 
-  it('does not enable an uncoordinated mutation gate', async () => {
+  it('fails closed when code requests an uncoordinated mutation bypass', async () => {
     const ownerId = '11111111-1111-4111-8111-111111111111'
     mockResolveGodModeAuthority.mockResolvedValue({
       active: true,
@@ -251,7 +267,10 @@ describe('God mode gate inventory', () => {
       emergencyDisabled: false
     })
     const event = request('/api/agency/clients', 'POST', ownerId)
-    await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(false)
+    await expect(isApplicationCapabilityEnabled(event, false)).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: 'God mode mutation coordination required'
+    })
   })
 
   it('admits only an exact-route mutation with a prepared durable coordinator', async () => {
@@ -311,7 +330,7 @@ describe('God mode gate inventory', () => {
     await expect(prepareRegisteredGodModeMutation(event))
       .rejects.toThrow('God mode route attempt required')
 
-    await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(false)
+    await expect(isApplicationCapabilityEnabled(event, false)).resolves.toBe(true)
     unregister()
   })
 })

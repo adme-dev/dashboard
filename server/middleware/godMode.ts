@@ -1,15 +1,7 @@
-import { createHash, randomUUID } from 'node:crypto'
 import type { H3Event } from 'h3'
-import { createError, getCookie, getHeader, getRequestURL, isError } from 'h3'
+import { getRequestURL } from 'h3'
 
-import { appendGodModeAuditEvent } from '~~/server/utils/godMode/audit'
-import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
 import { getTrustedTask5DelegatedExecution } from '~~/server/utils/godMode/internalExecutionDelegation'
-import {
-  GodModeMutationCoordinationError,
-  prepareRegisteredGodModeMutation,
-  seedGodModeRouteAuditState
-} from '~~/server/utils/godMode/featureGate'
 
 const EXCLUDED_PREFIXES = [
   '/api/portal/',
@@ -41,24 +33,6 @@ const EXCLUDED_EXACT = new Set([
   '/api/health'
 ])
 
-interface GodModeMiddlewareDependencies {
-  resolveGodModeAuthority: typeof resolveGodModeAuthority
-  appendGodModeAuditEvent: typeof appendGodModeAuditEvent
-  getSessionToken: (event: H3Event) => string | null
-  randomUUID: () => string
-}
-
-const defaultDependencies: GodModeMiddlewareDependencies = {
-  resolveGodModeAuthority,
-  appendGodModeAuditEvent,
-  getSessionToken: (event) => {
-    const cookieToken = getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client')
-    const authorization = getHeader(event, 'authorization')
-    return cookieToken || (authorization?.startsWith('Bearer ') ? authorization.slice(7) : null)
-  },
-  randomUUID
-}
-
 function isExcluded(path: string): boolean {
   return !path.startsWith('/api/')
     || EXCLUDED_EXACT.has(path)
@@ -69,67 +43,16 @@ function isExcluded(path: string): boolean {
 }
 
 export async function handleGodModeRequest(
-  event: H3Event,
-  dependencies: GodModeMiddlewareDependencies = defaultDependencies
+  event: H3Event
 ): Promise<void> {
   const path = getRequestURL(event).pathname
   if (isExcluded(path)) return
 
-  // Task 5 already durably coordinates delegated MCP mutations. Its runtime-branded exact-request
-  // marker suppresses this application-session route attempt and mutation-family admission only for
-  // the verified downstream event; raw headers and cloned/mismatched markers cannot reach this branch.
-  if (await getTrustedTask5DelegatedExecution(event)) return
-
-  const actorUserId = (event.context as { user?: { id?: unknown } }).user?.id
-  if (typeof actorUserId !== 'string') return
-
-  const authority = await dependencies.resolveGodModeAuthority(event, actorUserId)
-  if (!authority.active) return
-
-  const sessionToken = dependencies.getSessionToken(event)
-  if (!sessionToken) {
-    throw createError({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
-  }
-
-  const routeOrTool = `${String(event.method || 'GET').toUpperCase()} ${path}`
-  const correlationId = dependencies.randomUUID()
-  const sessionDigest = createHash('sha256').update(sessionToken).digest('hex')
-
-  try {
-    await dependencies.appendGodModeAuditEvent({
-      actorUserId,
-      correlationId,
-      sessionDigest,
-      channel: 'application',
-      routeOrTool,
-      phase: 'attempt',
-      bypassedControls: [],
-      outcomeCode: 'started',
-      emergencyDisabled: false
-    })
-  } catch {
-    throw createError({ statusCode: 503, statusMessage: 'God mode audit unavailable' })
-  }
-
-  seedGodModeRouteAuditState(event, {
-    actorUserId,
-    correlationId,
-    sessionDigest,
-    routeOrTool,
-    emergencyDisabled: false
-  }, {
-    appendGodModeAuditEvent: dependencies.appendGodModeAuditEvent
-  })
-
-  try {
-    await prepareRegisteredGodModeMutation(event)
-  } catch (error) {
-    if (error instanceof GodModeMutationCoordinationError && error.reason === 'required') {
-      throw createError({ statusCode: 503, statusMessage: 'God mode mutation coordination required' })
-    }
-    if (isError(error) && error.statusCode >= 400 && error.statusCode < 500) throw error
-    throw createError({ statusCode: 503, statusMessage: 'God mode mutation coordination unavailable' })
-  }
+  // Ordinary owner traffic remains ordinary. God mode is activated lazily by the centralized
+  // bypass helpers only when application code is actually about to bypass a denied control.
+  // Task 5 delegated MCP requests are already branded and durably coordinated by the auth chain;
+  // validating an existing marker here preserves the exact-request boundary without duplicating it.
+  await getTrustedTask5DelegatedExecution(event)
 }
 
 export default defineEventHandler(handleGodModeRequest)

@@ -87,12 +87,14 @@ not publication proof.
 
 ### Owner accounts
 
-Owners always run under the God mode execution ledger. Every Search Authority
-write route is registered as a mutation family in
+Ordinary owner UI writes run under configured role policy and do not activate
+God mode merely because the actor is an owner. When a trusted autonomous
+execution or an actual application-control bypass activates God mode, every
+Search Authority write route is registered as a mutation family in
 `server/utils/searchAuthority/godModeMutations.ts` and the UI sends an
 `Idempotency-Key` per attempt. A 503 "God mode mutation coordination required"
-on any Search Authority write means a new route was added without a family —
-register it there before shipping.
+therefore means code attempted a real bypass on a route without a family; it no
+longer means every newly added ordinary UI POST must be registered.
 
 ### Same-host mode (optional, per site)
 

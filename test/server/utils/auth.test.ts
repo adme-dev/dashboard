@@ -47,7 +47,14 @@ vi.mock('../../../server/utils/roleResolver', () => ({
 
 const mockResolveGodModeAuthority = vi.fn()
 vi.mock('../../../server/utils/godMode/authority', () => ({
-  resolveGodModeAuthority: (...args: any[]) => mockResolveGodModeAuthority(...args)
+  resolveGodModeAuthority: (...args: any[]) => mockResolveGodModeAuthority(...args),
+  isActiveGodModeAuthority: (authority: unknown, actorUserId: string) => {
+    const candidate = authority as Record<string, unknown> | null
+    return candidate?.active === true
+      && candidate.actorUserId === actorUserId
+      && candidate.reason === 'active_owner'
+      && candidate.emergencyDisabled === false
+  }
 }))
 
 // auth.ts uses Nuxt auto-imports (bare getHeader/getCookie/createError) — provide
@@ -106,6 +113,25 @@ function auditedGodModeReadEvent(user: any) {
     emergencyDisabled: false
   })
   return event
+}
+
+function ordinaryMutationEvent(user: any, path = '/api/agency/example') {
+  return {
+    method: 'POST',
+    path,
+    context: { user },
+    node: {
+      req: {
+        originalUrl: path,
+        headers: {
+          host: 'app.xeroflow.test',
+          authorization: 'Bearer owner-session-secret'
+        },
+        connection: {}
+      },
+      res: { statusCode: 200, statusMessage: 'OK' }
+    }
+  } as any
 }
 
 beforeEach(() => {
@@ -488,7 +514,7 @@ describe('auth utility', () => {
       await expect(requireWriteAccess(auditedGodModeReadEvent(user))).resolves.toBe(user)
     })
 
-    it('does not make an uncoordinated mutation newly reachable', async () => {
+    it('fails closed when code requests an uncoordinated mutation bypass', async () => {
       const user = {
         id: '11111111-1111-4111-8111-111111111111',
         role: 'viewer',
@@ -501,9 +527,9 @@ describe('auth utility', () => {
         emergencyDisabled: false
       })
 
-      await expect(requireWriteAccess({ method: 'POST', context: { user } } as any)).rejects.toMatchObject({
-        statusCode: 403,
-        statusMessage: 'Forbidden - Read-only access'
+      await expect(requireWriteAccess(ordinaryMutationEvent(user))).rejects.toMatchObject({
+        statusCode: 503,
+        statusMessage: 'God mode mutation coordination required'
       })
     })
   })

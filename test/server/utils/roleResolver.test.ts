@@ -32,7 +32,14 @@ vi.mock('../../../server/utils/kv', () => ({
 
 const mockResolveGodModeAuthority = vi.fn()
 vi.mock('../../../server/utils/godMode/authority', () => ({
-  resolveGodModeAuthority: (...args: any[]) => mockResolveGodModeAuthority(...args)
+  resolveGodModeAuthority: (...args: any[]) => mockResolveGodModeAuthority(...args),
+  isActiveGodModeAuthority: (authority: unknown, actorUserId: string) => {
+    const candidate = authority as Record<string, unknown> | null
+    return candidate?.active === true
+      && candidate.actorUserId === actorUserId
+      && candidate.reason === 'active_owner'
+      && candidate.emergencyDisabled === false
+  }
 }))
 
 // Mock Nuxt/h3 globals
@@ -95,7 +102,7 @@ describe('roleResolver', () => {
       expect(mockQueryOne).not.toHaveBeenCalled() // No DB query needed
     })
 
-    it('preserves custom-role read-only policy while expanding active-owner permission groups', async () => {
+    it('keeps ordinary active-owner requests on their configured role policy', async () => {
       const ownerId = '11111111-1111-4111-8111-111111111111'
       mockResolveGodModeAuthority.mockResolvedValue({
         active: true,
@@ -112,9 +119,9 @@ describe('roleResolver', () => {
 
       const result = await resolveUserPermissions({ context: {} } as any, ownerId, 'owner', 'restricted-owner-role')
 
-      expect(result.groups).toEqual([...PERMISSION_GROUPS])
+      expect(result.groups).toEqual(['CLIENTS'])
       expect(result.isReadOnly).toBe(true)
-      expect(result.godModeElevated).toBe(true)
+      expect(mockResolveGodModeAuthority).not.toHaveBeenCalled()
       expect(mockQueryOne).toHaveBeenCalledWith(expect.stringContaining('WHERE cr.id = $1'), ['restricted-owner-role'])
     })
 
