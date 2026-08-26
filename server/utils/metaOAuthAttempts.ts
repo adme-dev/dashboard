@@ -24,10 +24,12 @@ export async function createMetaOAuthAttempt(
   userId: string,
   intent: MetaOAuthIntent,
   deps: {
+    targetConnectionId?: string
     randomState?: () => string
     insertAttempt?: (input: {
       userId: string
       intent: MetaOAuthIntent
+      targetConnectionId: string | null
       stateDigest: string
       expiresAt: Date
     }) => Promise<{ id: string } | null>
@@ -38,11 +40,17 @@ export async function createMetaOAuthAttempt(
   const stateDigest = await hashMetaOAuthState(state)
   const expiresAt = new Date(Date.now() + OAUTH_ATTEMPT_TTL_MS)
   const insertAttempt = deps.insertAttempt || (async input => dbQueryOne<{ id: string }>(`
-    INSERT INTO meta_oauth_attempts (state_digest, initiated_by, intent, expires_at)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO meta_oauth_attempts (state_digest, initiated_by, intent, target_connection_id, expires_at)
+    VALUES ($1, $2, $3, $4, $5)
     RETURNING id
-  `, [input.stateDigest, input.userId, input.intent, input.expiresAt]))
-  const attempt = await insertAttempt({ userId, intent, stateDigest, expiresAt })
+  `, [input.stateDigest, input.userId, input.intent, input.targetConnectionId, input.expiresAt]))
+  const attempt = await insertAttempt({
+    userId,
+    intent,
+    targetConnectionId: deps.targetConnectionId || null,
+    stateDigest,
+    expiresAt
+  })
   if (!attempt) throw new Error('Unable to create Meta OAuth attempt')
   return { attemptId: attempt.id, state }
 }
@@ -54,14 +62,17 @@ export async function consumeMetaOAuthAttempt(
     consumeAttempt?: (input: { userId: string, stateDigest: string }) => Promise<{
       id: string
       intent: MetaOAuthIntent
+      targetConnectionId?: string | null
+      target_connection_id?: string | null
     } | null>
   } = {}
-): Promise<{ id: string, intent: MetaOAuthIntent } | null> {
+): Promise<{ id: string, intent: MetaOAuthIntent, targetConnectionId: string | null } | null> {
   if (!STATE_PATTERN.test(state)) return null
   const stateDigest = await hashMetaOAuthState(state)
   const consumeAttempt = deps.consumeAttempt || (async input => dbQueryOne<{
     id: string
     intent: MetaOAuthIntent
+    target_connection_id?: string | null
   }>(`
     UPDATE meta_oauth_attempts
     SET consumed_at = NOW()
@@ -69,7 +80,13 @@ export async function consumeMetaOAuthAttempt(
       AND initiated_by = $2
       AND consumed_at IS NULL
       AND expires_at > NOW()
-    RETURNING id, intent
+    RETURNING id, intent, target_connection_id
   `, [input.stateDigest, input.userId]))
-  return consumeAttempt({ userId, stateDigest })
+  const attempt = await consumeAttempt({ userId, stateDigest })
+  if (!attempt) return null
+  return {
+    id: attempt.id,
+    intent: attempt.intent,
+    targetConnectionId: attempt.targetConnectionId ?? attempt.target_connection_id ?? null
+  }
 }

@@ -19,6 +19,7 @@ describe('Meta OAuth attempts', () => {
     expect(insertAttempt).toHaveBeenCalledWith(expect.objectContaining({
       userId: 'user-1',
       intent: 'catalog_management',
+      targetConnectionId: null,
       stateDigest: await hashMetaOAuthState(rawState)
     }))
     expect(JSON.stringify(insertAttempt.mock.calls)).not.toContain(rawState)
@@ -29,7 +30,7 @@ describe('Meta OAuth attempts', () => {
     const state = 'abcdefghijklmnopqrstuvwxyzABCDEFG_1234567890-xyz'
 
     await expect(consumeMetaOAuthAttempt(state, 'user-1', { consumeAttempt }))
-      .resolves.toEqual({ id: 'attempt-1', intent: 'connection' })
+      .resolves.toEqual({ id: 'attempt-1', intent: 'connection', targetConnectionId: null })
     expect(consumeAttempt).toHaveBeenCalledWith({
       userId: 'user-1',
       stateDigest: await hashMetaOAuthState(state)
@@ -40,5 +41,27 @@ describe('Meta OAuth attempts', () => {
     const consumeAttempt = vi.fn()
     await expect(consumeMetaOAuthAttempt('bad', 'user-1', { consumeAttempt })).resolves.toBeNull()
     expect(consumeAttempt).not.toHaveBeenCalled()
+  })
+
+  it('persists and returns the exact target connection for a catalogue upgrade', async () => {
+    const insertAttempt = vi.fn().mockResolvedValue({ id: 'attempt-1' })
+    const consumeAttempt = vi.fn().mockResolvedValue({
+      id: 'attempt-1',
+      intent: 'catalog_management',
+      target_connection_id: 'connection-1'
+    })
+    const state = 'abcdefghijklmnopqrstuvwxyzABCDEFG_1234567890-xyz'
+
+    await createMetaOAuthAttempt('user-1', 'catalog_management', {
+      targetConnectionId: 'connection-1',
+      randomState: () => state,
+      insertAttempt
+    })
+    await expect(consumeMetaOAuthAttempt(state, 'user-1', { consumeAttempt })).resolves.toEqual({
+      id: 'attempt-1',
+      intent: 'catalog_management',
+      targetConnectionId: 'connection-1'
+    })
+    expect(insertAttempt).toHaveBeenCalledWith(expect.objectContaining({ targetConnectionId: 'connection-1' }))
   })
 })

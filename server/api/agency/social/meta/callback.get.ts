@@ -1,6 +1,6 @@
 import { sendRedirect } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
-import { queryOne } from '~~/server/utils/db'
+import { execute, queryOne } from '~~/server/utils/db'
 import { createMetaCatalogProvider } from '~~/server/utils/metaCatalogProvider'
 import { consumeMetaOAuthAttempt } from '~~/server/utils/metaOAuthAttempts'
 import {
@@ -70,6 +70,48 @@ export default eventHandler(async (event) => {
     // Fetch ad accounts
     const adAccounts = await getAdAccounts(longToken.access_token)
 
+    // Meta's catalogue-management rerequest can legitimately return no ad accounts even though it
+    // issued a fresh user token with the requested business/catalogue grants. Do not discard that
+    // token, but never fan it out across unrelated connections: refresh only the exact active Meta
+    // connection bound into the one-time OAuth attempt. Client mapping and metadata stay untouched.
+    let refreshedConnections = 0
+    if (adAccounts.length === 0 && attempt.intent === 'catalog_management') {
+      if (!grantedPermissions.includes('catalog_management')) {
+        return sendRedirect(
+          event,
+          '/auth/oauth-callback?platform=meta&success=false&error=' + encodeURIComponent('Meta did not grant catalogue management permission.'),
+          302
+        )
+      }
+      if (!attempt.targetConnectionId) {
+        return sendRedirect(
+          event,
+          '/auth/oauth-callback?platform=meta&success=false&error=' + encodeURIComponent('A target Meta connection is required for catalogue permission upgrades.'),
+          302
+        )
+      }
+      refreshedConnections = await execute(
+        `UPDATE social_connections
+            SET access_token = $1,
+                token_expires_at = $2,
+                scopes = $3,
+                status = 'active',
+                updated_at = NOW()
+          WHERE platform = 'meta'
+            AND status = 'active'
+            AND id = $4
+            AND connected_by = $5`,
+        [longToken.access_token, expiresAt, grantedPermissions, attempt.targetConnectionId, user.id]
+      )
+      if (refreshedConnections !== 1) {
+        return sendRedirect(
+          event,
+          '/auth/oauth-callback?platform=meta&success=false&error=' + encodeURIComponent('The target Meta connection could not be refreshed.'),
+          302
+        )
+      }
+    }
+
     // Store each ad account as a social_connection
     for (const account of adAccounts) {
       await queryOne(
@@ -104,7 +146,11 @@ export default eventHandler(async (event) => {
       )
     }
 
-    return sendRedirect(event, `/auth/oauth-callback?platform=meta&success=true&accounts=${adAccounts.length}&intent=${attempt.intent}`, 302)
+    return sendRedirect(
+      event,
+      `/auth/oauth-callback?platform=meta&success=true&accounts=${adAccounts.length}&refreshed=${refreshedConnections}&intent=${attempt.intent}`,
+      302
+    )
   } catch (error: unknown) {
     const err = error as {
       message?: string
