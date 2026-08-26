@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 interface SearchAuthoritySite {
@@ -227,6 +228,7 @@ async function mapProperty() {
   try {
     await $fetch('/api/agency/search-authority/google/map', {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('search-authority-google') },
       body: {
         clientId: selectedClientId.value,
         connectionId: property.connectionId,

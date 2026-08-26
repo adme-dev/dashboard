@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 import { computed, ref, watch } from 'vue'
 
 interface ClientOption {
@@ -70,6 +71,7 @@ async function configureSite() {
       '/api/agency/search-authority/sites',
       {
         method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey('search-authority-site') },
         body: {
           clientId: selectedClientId.value,
           canonicalHostname: canonicalHostname.value.trim(),

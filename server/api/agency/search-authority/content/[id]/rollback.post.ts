@@ -2,6 +2,7 @@ import { getRouterParam, readBody } from 'h3'
 import { z } from 'zod'
 import { queryOne, transaction } from '~~/server/utils/db'
 import { requireAgencySearchAuthorityAccess } from '~~/server/utils/searchAuthority/access'
+import { executeSearchAuthorityExternalMutation } from '~~/server/utils/searchAuthority/godModeMutations'
 import {
   getCurrentSearchAuthorityManifest,
   resolveSearchAuthorityPublicationBucket,
@@ -46,53 +47,61 @@ export default eventHandler(async (event) => {
   }
   const bucket = resolveSearchAuthorityPublicationBucket(event)
   if (!bucket) throw createError({ statusCode: 503, statusMessage: 'Publication storage is unavailable' })
-  const previous = await getCurrentSearchAuthorityManifest(bucket, target.content_hostname)
-  const rolledBackAt = new Date().toISOString()
-  await rollbackSearchAuthorityPublication(bucket, {
-    hostname: target.content_hostname,
-    targetManifestVersion: target.manifest_version,
-    rolledBackAt
-  })
-  let activationPublicationId: string
-  try {
-    activationPublicationId = await transaction(async (db) => {
-      await db.query(`UPDATE search_authority_publications SET status = 'rolled_back'
+  const hostname = target.content_hostname
+  const manifestVersion = target.manifest_version
+
+  type RollbackResult = { ok: true, publicationId: string, targetPublicationId: string, versionId: string, manifestVersion: string, publicUrl: string | null }
+  return executeSearchAuthorityExternalMutation<RollbackResult>(event, 'rollback', async (run) => {
+    if (run.replay && run.replayResult) return run.replayResult
+    const previous = await getCurrentSearchAuthorityManifest(bucket, hostname)
+    const rolledBackAt = new Date().toISOString()
+    await rollbackSearchAuthorityPublication(bucket, {
+      hostname,
+      targetManifestVersion: manifestVersion,
+      rolledBackAt
+    })
+    await run.markDispatched()
+    let activationPublicationId: string
+    try {
+      activationPublicationId = await transaction(async (db) => {
+        await db.query(`UPDATE search_authority_publications SET status = 'rolled_back'
         WHERE client_id = $1 AND asset_id = $2 AND status = 'published'`, [target.client_id, assetId.data])
-      const activation = await db.query<{ id: string }>(`INSERT INTO search_authority_publications (
-        client_id, asset_id, version_id, status, public_url, manifest_version,
+        const activation = await db.query<{ id: string }>(`INSERT INTO search_authority_publications (
+        id, client_id, asset_id, version_id, status, public_url, manifest_version,
         measurement_enabled, published_by, published_at
-      ) VALUES ($1, $2, $3, 'published', $4, $5, $6, $7, $8)
-      RETURNING id`, [target.client_id, assetId.data, target.version_id,
-        target.public_url, target.manifest_version, target.measurement_enabled, user.id, rolledBackAt])
-      const active = activation.rows[0]
-      if (!active) throw new Error('Rollback activation could not be recorded')
-      await db.query(`UPDATE search_authority_content_assets SET
+      ) VALUES ($1, $2, $3, $4, 'published', $5, $6, $7, $8, $9)
+      RETURNING id`, [run.ids[0], target.client_id, assetId.data, target.version_id,
+          target.public_url, manifestVersion, target.measurement_enabled, user.id, rolledBackAt])
+        const active = activation.rows[0]
+        if (!active) throw new Error('Rollback activation could not be recorded')
+        await db.query(`UPDATE search_authority_content_assets SET
         status = 'published', current_version_id = $3, updated_at = NOW()
         WHERE id = $1 AND client_id = $2`, [assetId.data, target.client_id, target.version_id])
-      await db.query(`INSERT INTO search_authority_content_audit_events (
+        await db.query(`INSERT INTO search_authority_content_audit_events (
         client_id, asset_id, version_id, actor_id, actor_type, event_type, details
       ) VALUES ($1, $2, $3, $4, 'agency', 'publication.rolled_back', $5::jsonb)`, [
-        target.client_id, assetId.data, target.version_id, user.id,
-        JSON.stringify({ targetPublicationId: body.data.targetPublicationId, activationPublicationId: active.id, manifestVersion: target.manifest_version, rationale: body.data.rationale })
-      ])
-      return active.id
-    })
-  } catch (error: unknown) {
-    if (previous) {
-      await rollbackSearchAuthorityPublication(bucket, {
-        hostname: target.content_hostname,
-        targetManifestVersion: previous.manifestVersion,
-        rolledBackAt: new Date().toISOString()
+          target.client_id, assetId.data, target.version_id, user.id,
+          JSON.stringify({ targetPublicationId: body.data.targetPublicationId, activationPublicationId: active.id, manifestVersion, rationale: body.data.rationale })
+        ])
+        return active.id
       })
+    } catch (error: unknown) {
+      if (previous) {
+        await rollbackSearchAuthorityPublication(bucket, {
+          hostname,
+          targetManifestVersion: previous.manifestVersion,
+          rolledBackAt: new Date().toISOString()
+        })
+      }
+      throw error
     }
-    throw error
-  }
-  return {
-    ok: true,
-    publicationId: activationPublicationId,
-    targetPublicationId: body.data.targetPublicationId,
-    versionId: target.version_id,
-    manifestVersion: target.manifest_version,
-    publicUrl: target.public_url
-  }
+    return {
+      ok: true,
+      publicationId: activationPublicationId,
+      targetPublicationId: body.data.targetPublicationId,
+      versionId: target.version_id,
+      manifestVersion,
+      publicUrl: target.public_url
+    }
+  })
 })

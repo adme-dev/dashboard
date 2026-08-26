@@ -1,7 +1,8 @@
 import { getRouterParam } from 'h3'
 import { z } from 'zod'
-import { execute, queryOne } from '~~/server/utils/db'
+import { queryOne } from '~~/server/utils/db'
 import { requireAgencySearchAuthorityAccess } from '~~/server/utils/searchAuthority/access'
+import { executeSearchAuthorityMutation } from '~~/server/utils/searchAuthority/godModeMutations'
 
 const Status = z.enum([
   'new',
@@ -73,27 +74,37 @@ export default eventHandler(async (event) => {
     })
   }
   const isTerminal = terminal.has(parsed.data.status)
-  const updated = await execute(
-    `UPDATE search_authority_opportunities
+  const result = await executeSearchAuthorityMutation(event, 'opportunity-transition', async (db) => {
+    const updated = await db.query(
+      `UPDATE search_authority_opportunities
      SET lifecycle_status = $3,
          resolved_at = CASE WHEN $4 THEN NOW() ELSE NULL END,
          updated_at = NOW()
      WHERE id = $1
        AND client_id = $2
-       AND lifecycle_status = $5`,
-    [
-      opportunityId,
-      parsed.data.clientId,
-      parsed.data.status,
-      isTerminal,
-      opportunity.lifecycle_status
-    ]
-  )
-  if (updated !== 1) {
-    throw createError({
-      statusCode: 409,
-      statusMessage: 'The opportunity changed before the transition completed'
-    })
-  }
-  return { ok: true, status: parsed.data.status }
+       AND lifecycle_status = $5
+     RETURNING id, lifecycle_status`,
+      [
+        opportunityId,
+        parsed.data.clientId,
+        parsed.data.status,
+        isTerminal,
+        opportunity.lifecycle_status
+      ]
+    )
+    const row = updated.rows[0] as { id: string, lifecycle_status: Status } | undefined
+    if (!row) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'The opportunity changed before the transition completed'
+      })
+    }
+    return { id: row.id, status: row.lifecycle_status }
+  }, async (db, id) => {
+    const row = await db.query(`SELECT id, lifecycle_status FROM search_authority_opportunities WHERE id = $1 AND client_id = $2`, [id, parsed.data.clientId])
+    const current = row.rows[0] as { id: string, lifecycle_status: Status } | undefined
+    if (!current) throw new Error('Replayed opportunity no longer exists')
+    return { id: current.id, status: current.lifecycle_status }
+  })
+  return { ok: true, status: result.status }
 })

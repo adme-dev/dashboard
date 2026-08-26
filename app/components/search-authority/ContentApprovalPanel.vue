@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
+
 const props = defineProps<{
   clientId: string
   assetId: string
@@ -31,6 +33,7 @@ async function submitForReview() {
   try {
     await $fetch(`/api/agency/search-authority/content/${props.assetId}/submit`, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('search-authority-decision') },
       body: { clientId: props.clientId, versionId: props.versionId }
     })
     toast.add({ title: 'Submitted for review', color: 'success' })
@@ -58,6 +61,7 @@ async function saveDecision() {
   try {
     await $fetch(`/api/agency/search-authority/content/${props.assetId}/${decision.value === 'approved' ? 'approve' : 'reject'}`, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('search-authority-decision') },
       body: {
         clientId: props.clientId,
         versionId: props.versionId,

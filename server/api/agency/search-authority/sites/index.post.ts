@@ -1,6 +1,6 @@
 import { isIP } from 'node:net'
 import { z } from 'zod'
-import { transaction } from '~~/server/utils/db'
+import { executeSearchAuthorityMutation } from '~~/server/utils/searchAuthority/godModeMutations'
 import { requireAgencySearchAuthorityAccess } from '~~/server/utils/searchAuthority/access'
 import { SEARCH_AUTHORITY_FEATURE } from '~~/server/utils/searchAuthority/feature'
 
@@ -66,7 +66,7 @@ export default eventHandler(async (event) => {
     ? normalizePublicRootHostname(parsed.data.contentHostname)
     : null
 
-  const site = await transaction(async (db) => {
+  const site = await executeSearchAuthorityMutation(event, 'site-configure', async (db) => {
     const siteResult = await db.query<{
       id: string
       client_id: string
@@ -111,6 +111,18 @@ export default eventHandler(async (event) => {
 
     const row = siteResult.rows[0]
     if (!row) throw new Error('Unable to configure Search Authority site')
+    return row
+  }, async (db, id) => {
+    const result = await db.query<{
+      id: string
+      client_id: string
+      canonical_hostname: string
+      content_hostname: string | null
+      status: string
+    }>(`SELECT id, client_id, canonical_hostname, content_hostname, status
+        FROM search_authority_sites WHERE id = $1 AND client_id = $2`, [id, parsed.data.clientId])
+    const row = result.rows[0]
+    if (!row) throw new Error('Replayed Search Authority site no longer exists')
     return row
   })
 

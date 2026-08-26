@@ -11,12 +11,22 @@ describe('Search Authority content workflow routes', () => {
     ]) expect(read(path)).toContain('requireAgencySearchAuthorityAccess')
   })
 
-  it('keeps mutations thin and transactional', () => {
-    expect(read('index.post.ts')).toContain('transaction(db => createContentAsset')
-    expect(read('[id]/versions.post.ts')).toContain('transaction(db => createContentVersion')
-    expect(read('[id]/submit.post.ts')).toContain('transaction(db => submitContentVersion')
-    expect(read('[id]/approve.post.ts')).toContain('transaction(db => approveContentVersion')
-    expect(read('[id]/reject.post.ts')).toContain('transaction(db => rejectContentVersion')
+  it('keeps mutations thin and runs them through the God-mode-aware transaction boundary', () => {
+    // Owners run under the execution ledger; executeSearchAuthorityMutation falls back to a plain
+    // transaction for staff. A bare transaction() here would 503 for owners.
+    expect(read('index.post.ts')).toContain('executeSearchAuthorityMutation(event, \'asset-create\'')
+    expect(read('index.post.ts')).toContain('db => createContentAsset')
+    expect(read('[id]/versions.post.ts')).toContain('executeSearchAuthorityMutation(event, \'version-create\'')
+    expect(read('[id]/versions.post.ts')).toContain('db => createContentVersion')
+    expect(read('[id]/submit.post.ts')).toContain('executeSearchAuthorityMutation(event, \'version-submit\'')
+    expect(read('[id]/submit.post.ts')).toContain('await submitContentVersion(db')
+    expect(read('[id]/approve.post.ts')).toContain('executeSearchAuthorityMutation(event, \'version-approve\'')
+    expect(read('[id]/approve.post.ts')).toContain('await approveContentVersion(db')
+    expect(read('[id]/reject.post.ts')).toContain('executeSearchAuthorityMutation(event, \'version-reject\'')
+    expect(read('[id]/reject.post.ts')).toContain('await rejectContentVersion(db')
+    for (const path of ['index.post.ts', '[id]/versions.post.ts', '[id]/submit.post.ts', '[id]/approve.post.ts', '[id]/reject.post.ts']) {
+      expect(read(path)).not.toMatch(/\btransaction\s*\(/)
+    }
   })
 
   it('authorizes the supplied tenant before reading a content asset', () => {

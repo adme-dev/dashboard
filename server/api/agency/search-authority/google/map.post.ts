@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { queryOne, transaction } from '~~/server/utils/db'
 import { requireAgencySearchAuthorityAccess } from '~~/server/utils/searchAuthority/access'
+import { executeSearchAuthorityExternalMutation } from '~~/server/utils/searchAuthority/godModeMutations'
 import { resolveSearchConsoleCredential } from '~~/server/utils/searchAuthority/credentials'
 import { listSearchConsoleProperties } from '~~/server/utils/searchAuthority/googleClient'
 
@@ -49,44 +50,47 @@ export default eventHandler(async (event) => {
     })
   }
 
-  const credential = await resolveSearchConsoleCredential(input.connectionId)
-  if (credential.clientId !== input.clientId) {
-    throw createError({
-      statusCode: 404,
-      statusMessage: 'Search Console connection not found'
-    })
-  }
-  const properties = await listSearchConsoleProperties(credential.accessToken)
-  const property = properties.find(item => item.propertyUri === input.propertyUri)
-  if (!property || property.permissionLevel !== input.permissionLevel) {
-    throw createError({
-      statusCode: 409,
-      statusMessage: 'Search Console property permissions changed'
-    })
-  }
-  if (property.permissionLevel === 'siteUnverifiedUser') {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'The Search Console property is not verified'
-    })
-  }
+  return executeSearchAuthorityExternalMutation<{ ok: true }>(event, 'google-map', async (run) => {
+    if (run.replay && run.replayResult) return run.replayResult
+    const credential = await resolveSearchConsoleCredential(input.connectionId)
+    if (credential.clientId !== input.clientId) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'Search Console connection not found'
+      })
+    }
+    const properties = await listSearchConsoleProperties(credential.accessToken)
+    await run.markDispatched()
+    const property = properties.find(item => item.propertyUri === input.propertyUri)
+    if (!property || property.permissionLevel !== input.permissionLevel) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'Search Console property permissions changed'
+      })
+    }
+    if (property.permissionLevel === 'siteUnverifiedUser') {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'The Search Console property is not verified'
+      })
+    }
 
-  const status = property.permissionLevel === 'siteRestrictedUser'
-    ? 'restricted'
-    : 'active'
-  await transaction(async (db) => {
-    await db.query(
-      `UPDATE search_console_property_maps
+    const status = property.permissionLevel === 'siteRestrictedUser'
+      ? 'restricted'
+      : 'active'
+    await transaction(async (db) => {
+      await db.query(
+        `UPDATE search_console_property_maps
        SET status = 'disconnected',
            updated_at = NOW()
        WHERE client_id = $1
          AND site_id = $2
          AND status IN ('active', 'restricted')
          AND property_uri <> $3`,
-      [input.clientId, ownership.site_id, property.propertyUri]
-    )
-    await db.query(
-      `INSERT INTO search_console_property_maps (
+        [input.clientId, ownership.site_id, property.propertyUri]
+      )
+      await db.query(
+        `INSERT INTO search_console_property_maps (
          client_id, site_id, connection_id, property_uri,
          permission_level, property_type, status
        )
@@ -99,17 +103,18 @@ export default eventHandler(async (event) => {
          property_type = EXCLUDED.property_type,
          status = EXCLUDED.status,
          updated_at = NOW()`,
-      [
-        input.clientId,
-        ownership.site_id,
-        input.connectionId,
-        property.propertyUri,
-        property.permissionLevel,
-        property.propertyType,
-        status
-      ]
-    )
-  })
+        [
+          input.clientId,
+          ownership.site_id,
+          input.connectionId,
+          property.propertyUri,
+          property.permissionLevel,
+          property.propertyType,
+          status
+        ]
+      )
+    })
 
-  return { ok: true }
+    return { ok: true }
+  })
 })

@@ -54,6 +54,16 @@ POST any path → 405 with Allow: GET, HEAD
 Only the approved custom hostname may route to this Worker. Validate the custom
 hostname mapping before putting a content hostname into the XeroFlow site row.
 
+Cloudflare for SaaS on the `xeroflow.io` zone uses `publish.xeroflow.io` (a
+proxied placeholder A record) as the fallback origin, with the Worker route
+`publish.xeroflow.io/*` bound to the publisher. **Worker routes match the
+request hostname, not the fallback origin**, so every client content hostname
+also needs its own route on the `xeroflow.io` zone, e.g.
+`learn.knoxgwmhaval.com.au/*` → `search-authority-publisher`. Without it
+Cloudflare forwards the request to the placeholder origin and the client sees a
+522. Add the route in the same step as the custom hostname (verified on
+`learn.adme.net.au`, 2026-08-26).
+
 ## Gate 3 — configure DNS and the site
 
 The authorised Knox DNS operator creates only the issued `learn` record. Verify
@@ -63,6 +73,15 @@ publisher Worker. Do not proxy the apex or main dealership origin.
 In Agency → Search Authority → Connections, set the content hostname to
 `learn.knoxgwmhaval.com.au` only after routing is verified. A configured value is
 not publication proof.
+
+### Owner accounts
+
+Owners always run under the God mode execution ledger. Every Search Authority
+write route is registered as a mutation family in
+`server/utils/searchAuthority/godModeMutations.ts` and the UI sends an
+`Idempotency-Key` per attempt. A 503 "God mode mutation coordination required"
+on any Search Authority write means a new route was added without a family —
+register it there before shipping.
 
 ## Gate 4 — create and approve content
 
