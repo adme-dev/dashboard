@@ -22,7 +22,7 @@ const apiFetch = $fetch as <T = unknown>(
 ) => Promise<T>
 const clientsData = ref<AgencyClientsResponse>([])
 
-clientsData.value = await apiFetch<AgencyClientsResponse>('/api/agency/clients', {
+clientsData.value = await apiFetch<AgencyClientsResponse>('/api/agency/social/inbox/clients', {
   query: { limit: 200 },
 }).catch(() => [])
 const clients = computed<AgencyClientOption[]>(() => {

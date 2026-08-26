@@ -20,7 +20,7 @@ const clientsPending = ref(false)
 async function refreshClients() {
   clientsPending.value = true
   try {
-    clientsData.value = await apiFetch<AgencyClientsResponse>('/api/agency/clients', {
+    clientsData.value = await apiFetch<AgencyClientsResponse>('/api/agency/social/inbox/clients', {
       query: { limit: 200 },
     })
   } catch {

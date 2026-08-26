@@ -11,7 +11,7 @@ const apiFetch = $fetch as <T = unknown>(
 const clientsData = ref<any>([])
 
 async function refreshClients() {
-  clientsData.value = await apiFetch('/api/agency/clients', {
+  clientsData.value = await apiFetch('/api/agency/social/inbox/clients', {
     query: { limit: 200 },
   }).catch(() => [])
 }
