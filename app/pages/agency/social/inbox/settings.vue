@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { SocialAccount, SocialSavedReply, SocialSlaPolicy } from '~/types'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
+
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const toast = useToast()
@@ -128,7 +130,8 @@ async function syncGoogleBusinessReviews() {
   try {
     const result = await apiFetch<{ synced?: number; skipped?: number; timedOut?: boolean }>('/api/agency/social/inbox/accounts/sync', {
       method: 'POST',
-      body: { clientId: clientId.value }
+      body: { clientId: clientId.value },
+      headers: { 'Idempotency-Key': idempotencyKey('social-inbox-sync') }
     })
     await refreshGoogleBusinessAccounts()
     toast.add({
@@ -249,7 +252,7 @@ async function addReply() {
   if (!newReply.name.trim() || !newReply.content.trim()) return
   savingReply.value = true
   try {
-    await apiFetch('/api/agency/social/inbox/saved-replies', { method: 'POST', body: { ...newReply, client_id: clientId.value } })
+    await apiFetch('/api/agency/social/inbox/saved-replies', { method: 'POST', body: { ...newReply, client_id: clientId.value }, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-saved-reply') } })
     newReply.name = ''; newReply.content = ''; newReply.category = ''
     await refreshReplies(); toast.add({ title: 'Saved reply added', color: 'success' })
   } catch (e: any) {
@@ -261,7 +264,7 @@ async function addReply() {
 async function delReply(id: string) {
   deletingReply.value = id
   try {
-    await apiFetch(`/api/agency/social/inbox/saved-replies/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/social/inbox/saved-replies/${id}`, { method: 'DELETE', headers: { 'Idempotency-Key': idempotencyKey('social-inbox-saved-reply-delete') } })
     await refreshReplies()
   } catch (e: any) {
     toast.add({ title: 'Delete failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
@@ -277,7 +280,7 @@ async function savePolicy() {
   if (!clientId.value || !newPolicy.target_minutes || newPolicy.target_minutes < 1) return
   savingPolicy.value = true
   try {
-    await apiFetch('/api/agency/social/inbox/sla-policies', { method: 'POST', body: { client_id: clientId.value, channel_type: newPolicy.channel_type === ALL_CHANNELS ? null : newPolicy.channel_type, target_minutes: newPolicy.target_minutes } })
+    await apiFetch('/api/agency/social/inbox/sla-policies', { method: 'POST', body: { client_id: clientId.value, channel_type: newPolicy.channel_type === ALL_CHANNELS ? null : newPolicy.channel_type, target_minutes: newPolicy.target_minutes }, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-sla') } })
     await refreshPolicies(); toast.add({ title: 'SLA policy saved', color: 'success' })
   } catch (e: any) {
     toast.add({ title: 'SLA policy failed', description: e?.data?.statusMessage || e?.message, color: 'error' })
@@ -288,7 +291,7 @@ async function savePolicy() {
 async function delPolicy(id: string) {
   deletingPolicy.value = id
   try {
-    await apiFetch(`/api/agency/social/inbox/sla-policies/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/agency/social/inbox/sla-policies/${id}`, { method: 'DELETE', headers: { 'Idempotency-Key': idempotencyKey('social-inbox-sla-delete') } })
     await refreshPolicies()
   } catch (e: any) {
     toast.add({ title: 'Delete failed', description: e?.data?.statusMessage || e?.message, color: 'error' })

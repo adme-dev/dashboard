@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import type { SocialAutomationRule } from '~/types'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string; body?: unknown; query?: Record<string, unknown> }
+  options?: { method?: string; body?: unknown; query?: Record<string, unknown>; headers?: Record<string, string> }
 ) => Promise<T>
 const clientsData = ref<any>([])
 
@@ -99,8 +100,8 @@ async function save() {
     channel_type: e.channel_type === '__all__' ? null : e.channel_type,
   }
   try {
-    if (e.id) await apiFetch(`/api/agency/social/inbox/automation-rules/${e.id}`, { method: 'PATCH', body: payload })
-    else await apiFetch('/api/agency/social/inbox/automation-rules', { method: 'POST', body: payload })
+    if (e.id) await apiFetch(`/api/agency/social/inbox/automation-rules/${e.id}`, { method: 'PATCH', body: payload, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-rule') } })
+    else await apiFetch('/api/agency/social/inbox/automation-rules', { method: 'POST', body: payload, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-rule') } })
     editorOpen.value = false
     await refresh()
     toast.add({ title: 'Saved', color: 'success' })
@@ -109,11 +110,11 @@ async function save() {
   }
 }
 async function toggleEnabled(r: SocialAutomationRule) {
-  await apiFetch(`/api/agency/social/inbox/automation-rules/${r.id}`, { method: 'PATCH', body: { client_id: r.client_id, enabled: !r.enabled } })
+  await apiFetch(`/api/agency/social/inbox/automation-rules/${r.id}`, { method: 'PATCH', body: { client_id: r.client_id, enabled: !r.enabled }, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-rule-toggle') } })
   await refresh()
 }
 async function remove(r: SocialAutomationRule) {
-  await apiFetch(`/api/agency/social/inbox/automation-rules/${r.id}`, { method: 'DELETE', query: { clientId: r.client_id } })
+  await apiFetch(`/api/agency/social/inbox/automation-rules/${r.id}`, { method: 'DELETE', query: { clientId: r.client_id }, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-rule-delete') } })
   await refresh()
 }
 const modeColor = (m: string) => (({ off: 'neutral', suggest: 'info', approval: 'warning', autopilot: 'success' } as Record<string, string>)[m] || 'neutral')

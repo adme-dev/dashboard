@@ -8,6 +8,7 @@ import type {
   SocialInboxPriority
 } from '~/types'
 import { getSocialInboxCapabilities } from '~/utils/socialInboxCapabilities'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 const props = defineProps<{
   conversation: SocialConversation | null
@@ -65,7 +66,7 @@ watch(status, (s) => {
 
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string, body?: unknown }
+  options?: { method?: string, body?: unknown, headers?: Record<string, string> }
 ) => Promise<T>
 const teamData = ref<{ members: TeamMember[] }>({ members: [] })
 try {
@@ -148,7 +149,7 @@ const toast = useToast()
 async function addNote() {
   if (!noteText.value.trim() || !props.conversation?.id) return
   try {
-    await apiFetch(`/api/agency/social/inbox/conversations/${props.conversation.id}/note`, { method: 'POST', body: { content: noteText.value.trim() } })
+    await apiFetch(`/api/agency/social/inbox/conversations/${props.conversation.id}/note`, { method: 'POST', body: { content: noteText.value.trim() }, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-note') } })
     noteText.value = ''
     emit('changed')
     toast.add({ title: 'Note added', color: 'success' })

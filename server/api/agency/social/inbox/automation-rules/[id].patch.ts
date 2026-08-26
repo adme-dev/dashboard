@@ -1,5 +1,5 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { queryOne } from '~~/server/utils/db'
+import { executeSocialInboxMutation } from '~~/server/utils/socialInbox/godModeMutations'
 
 /** PATCH /api/agency/social/inbox/automation-rules/:id  body: partial rule */
 export default defineEventHandler(async (event) => {
@@ -31,7 +31,15 @@ export default defineEventHandler(async (event) => {
   params.push(id)
   const idIdx = params.length
   params.push(b.client_id)
-  return await queryOne(
-    `UPDATE social_automation_rules SET ${sets.join(', ')}, updated_at = NOW()
-       WHERE id = $${idIdx} AND client_id = $${params.length} RETURNING *`, params)
+  return await executeSocialInboxMutation<any>(event, 'automation-rule-update', async (db) => {
+    const { rows } = await db.query(
+      `UPDATE social_automation_rules SET ${sets.join(', ')}, updated_at = NOW()
+         WHERE id = $${idIdx} AND client_id = $${params.length} RETURNING *`, params)
+    const row = rows[0]
+    if (!row) throw createError({ statusCode: 404, statusMessage: 'Not found' })
+    return row
+  }, async (db, ref) => {
+    const { rows } = await db.query(`SELECT * FROM social_automation_rules WHERE id = $1`, [ref])
+    return rows[0] ?? { id: ref }
+  })
 })

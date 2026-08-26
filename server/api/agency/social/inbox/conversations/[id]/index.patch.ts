@@ -1,7 +1,7 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { queryOne } from '~~/server/utils/db'
 import { buildConversationPatchUpdate } from '~~/server/utils/socialInbox/conversationPatch'
 import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
+import { executeSocialInboxMutation } from '~~/server/utils/socialInbox/godModeMutations'
 
 /**
  * PATCH /api/agency/social/inbox/conversations/:id
@@ -16,13 +16,16 @@ export default defineEventHandler(async (event) => {
   if (!sets.length) throw createError({ statusCode: 400, statusMessage: 'nothing to update' })
 
   params.push(id)
-  const row = await queryOne<{ client_id: string }>(
-    `UPDATE social_conversations SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${params.length} RETURNING client_id`, params)
+  const result = await executeSocialInboxMutation(event, 'conversation-update', async (db) => {
+    const { rows } = await db.query(
+      `UPDATE social_conversations SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${params.length} RETURNING client_id`, params)
+    return { id, clientId: (rows[0]?.client_id as string | undefined) ?? null, replayed: false }
+  }, async (_db, ref) => ({ id: ref, clientId: null, replayed: true }))
 
   // Broadcast assignment/status/snooze changes (not a pure mark-read, which is per-viewer state
   // and would otherwise trigger needless refreshes / loops on other clients).
-  if (row && broadcastWorthy) {
-    emitInboxEvent({ clientId: row.client_id, type: 'conversation.changed', conversationId: id }, event)
+  if (result.clientId && broadcastWorthy && !result.replayed) {
+    emitInboxEvent({ clientId: result.clientId, type: 'conversation.changed', conversationId: id }, event)
   }
   return { ok: true }
 })

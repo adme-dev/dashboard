@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { insertAtCaret } from '~/utils/insertAtCaret'
+import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 interface SavedReply {
   id: string
@@ -35,7 +36,7 @@ let typingTimer: ReturnType<typeof setTimeout> | null = null
 
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string, body?: unknown }
+  options?: { method?: string, body?: unknown, headers?: Record<string, string> }
 ) => Promise<T>
 const savedReplies = ref<SavedReply[]>([])
 try {
@@ -53,7 +54,7 @@ function replyTextarea(): HTMLTextAreaElement | null {
 
 function insertReply(r: SavedReply) {
   draft.value = draft.value ? `${draft.value}\n${r.content}` : r.content
-  apiFetch(`/api/agency/social/inbox/saved-replies/${r.id}`, { method: 'PATCH', body: { incrementUsage: true } }).catch(() => {})
+  apiFetch(`/api/agency/social/inbox/saved-replies/${r.id}`, { method: 'PATCH', body: { incrementUsage: true }, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-reply-usage') } }).catch(() => {})
 }
 
 function insertEmoji(emoji: string) {
@@ -82,7 +83,8 @@ async function sendTypingState(conversationId: string, active: boolean) {
   try {
     await apiFetch(`/api/agency/social/inbox/conversations/${conversationId}/typing`, {
       method: 'POST',
-      body: { active }
+      body: { active },
+      headers: { 'Idempotency-Key': idempotencyKey('social-inbox-typing') }
     })
   } catch {
     // Typing state is advisory only; failed presence should never block a reply.
@@ -152,7 +154,7 @@ async function aiDraft() {
   aiDrafting.value = true
   try {
     const res = await apiFetch<{ reply: string, confidence: number, risk: boolean }>(
-      `/api/agency/social/inbox/conversations/${props.conversationId}/ai-draft`, { method: 'POST', body: {} })
+      `/api/agency/social/inbox/conversations/${props.conversationId}/ai-draft`, { method: 'POST', body: {}, headers: { 'Idempotency-Key': idempotencyKey('social-inbox-ai-draft') } })
     if (!res.reply) {
       toast.add({ title: 'No draft', description: 'This one needs a human — the model flagged it.', color: 'warning' })
     } else {
