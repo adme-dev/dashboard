@@ -93,6 +93,7 @@ const AttachParams = z.object({
   clientId: UUID,
   connectionId: UUID,
   catalogId: CATALOG_ID,
+  productFeedId: META_ID.optional(),
   sourceFeedId: UUID,
   schedule: ScheduleParams.optional(),
   dryRun: z.boolean().optional()
@@ -127,7 +128,9 @@ export const feedProposeTools: FeedToolDescriptor[] = [
       + '(projects the existing admin flow — same guards, schedule, and readback). Returns the FULL '
       + 'before/after: current vs proposed scheduled URL, whether an existing Meta feed is reused or '
       + 'created (feedDisposition), catalog and source feed names, the item count that will be served, '
-      + 'and the proposed fetch schedule (optional schedule {interval HOURLY|DAILY, hour, timezone}; '
+      + 'and the proposed fetch schedule. An optional productFeedId must belong to the selected '
+      + 'catalogue and never falls back to creating a different feed. The optional schedule accepts '
+      + '{interval HOURLY|DAILY, hour, timezone}; '
       + 'default daily 00:00 Australia/Melbourne — HOURLY suits fast-turning used/demo stock). '
       + 'Pass dryRun:true for the same preview with NO write and NO proposal. The live call '
       + 'ALWAYS requires confirm_action with ack:true — even under owner god-mode.',
@@ -368,6 +371,8 @@ export interface AttachPreview {
   proposedSchedule: { interval: 'HOURLY' | 'DAILY', hour: number, timezone: string }
   feedDisposition: 'created' | 'reused'
   existingProductFeedId: string | null
+  existingProductFeedName: string | null
+  willCreateProductFeed: boolean
   itemCount: number | null
 }
 

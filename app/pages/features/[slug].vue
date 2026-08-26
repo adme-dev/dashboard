@@ -2745,7 +2745,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Scheduled Delivery & Readback',
-        content: 'Select an accessible Meta catalogue and a validated inventory source. XeroFlow derives the feed URL on the server, creates or reuses the scheduled product feed, requests an immediate import, and reads the provider state back before recording success. Repeating the operation reuses the matching remote schedule instead of creating duplicates.'
+        content: 'When a catalogue already has the intended product feed, operators can select that exact feed by ID. XeroFlow verifies it belongs to the chosen catalogue and fails closed instead of creating a duplicate. The schedule change still requires explicit confirmation, followed by an immediate import and provider readback.'
       },
       {
         title: 'Auditable Provider Boundaries',

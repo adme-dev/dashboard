@@ -236,6 +236,7 @@ export interface EnsureMetaCatalogFeedInput {
   clientId: string
   clientName: string
   catalogId: string
+  productFeedId?: string
   sourceFeedId: string
   sourceFeedName: string
   allowedSourceFeedIds: string[]
@@ -264,6 +265,20 @@ function buildFeedUrl(baseUrl: string, feedId: string): string {
 
 function scheduleUrl(feed: MetaProductFeedSummary): string {
   return clean(feed.schedule?.url)
+}
+
+export function selectMetaCatalogFeed(
+  feeds: MetaProductFeedSummary[],
+  sourceFeedUrl: string,
+  requestedProductFeedId?: string
+): MetaProductFeedSummary | null {
+  const requested = clean(requestedProductFeedId)
+  if (requested) {
+    const selected = feeds.find(feed => clean(feed.id) === requested) ?? null
+    if (!selected) throw new Error('requested Meta product feed is not accessible in this catalogue')
+    return selected
+  }
+  return feeds.find(feed => scheduleUrl(feed) === sourceFeedUrl) ?? null
 }
 
 function safeFeedName(clientName: string, sourceFeedName: string): string {
@@ -299,7 +314,7 @@ export async function ensureMetaCatalogFeed(
   const schedule = resolveMetaCatalogFeedSchedule(url, input.schedule)
   const name = safeFeedName(input.clientName, input.sourceFeedName)
   const feeds = await deps.listProductFeeds(input.catalogId)
-  const existing = feeds.find(feed => scheduleUrl(feed) === url)
+  const existing = selectMetaCatalogFeed(feeds, url, input.productFeedId)
   const feedDisposition = existing ? 'reused' as const : 'created' as const
 
   let productFeedId: string
@@ -312,6 +327,9 @@ export async function ensureMetaCatalogFeed(
 
   const upload = await deps.createProductFeedUpload(productFeedId, url)
   const readback = await deps.getProductFeed(productFeedId)
+  if (clean(readback.id) !== productFeedId) {
+    throw new Error('Meta feed readback identity did not match the selected product feed')
+  }
   const uploadId = clean(upload.id || readback.latest_upload?.id)
   if (!uploadId) throw new Error('Meta did not return a feed upload identity')
   if (scheduleUrl(readback) !== url) throw new Error('Meta feed readback did not match the XeroFlow feed URL')

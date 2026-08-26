@@ -105,6 +105,7 @@ export async function getMetaCatalogReadinessForClient(
 export async function attachMetaCatalogFeedForClient(
   input: BaseInput & {
     catalogId: string
+    productFeedId?: string
     sourceFeedId: string
     actorId: string
     schedule?: MetaCatalogFeedScheduleInput
@@ -124,6 +125,7 @@ export async function attachMetaCatalogFeedForClient(
     clientId: input.clientId,
     clientName: context.connection.clientName,
     catalogId: input.catalogId,
+    productFeedId: input.productFeedId,
     sourceFeedId: sourceFeed.id,
     sourceFeedName: sourceFeed.name,
     allowedSourceFeedIds: context.sourceFeeds.map(feed => feed.id),
