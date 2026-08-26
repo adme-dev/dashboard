@@ -1,5 +1,5 @@
-import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { executeGodModeChatConversationCreate } from '~~/server/utils/ai/godModeMutationFamily'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -7,11 +7,24 @@ export default defineEventHandler(async (event) => {
 
   const title = body.title || null
 
-  const row = await queryOne(`
-    INSERT INTO ai_conversations (user_id, title)
-    VALUES ($1, $2)
-    RETURNING *
-  `, [user.id, title])
+  const row = await executeGodModeChatConversationCreate(event, async (db) => {
+    const inserted = await db.query(`
+      INSERT INTO ai_conversations (user_id, title)
+      VALUES ($1, $2)
+      RETURNING *
+    `, [user.id, title])
+    return inserted.rows[0]
+  }, async (db, resultReference) => {
+    const replayed = await db.query(
+      `SELECT * FROM ai_conversations WHERE id = $1 AND user_id = $2`,
+      [resultReference, user.id]
+    )
+    const existing = replayed.rows[0]
+    if (!existing) {
+      throw createError({ statusCode: 409, statusMessage: 'Conversation replay is unavailable' })
+    }
+    return existing
+  })
 
   if (!row) {
     throw createError({ statusCode: 500, statusMessage: 'Failed to create conversation' })
@@ -29,6 +42,6 @@ export default defineEventHandler(async (event) => {
     isPinned: row.is_pinned || false,
     pinnedAt: row.pinned_at || null,
     createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    updatedAt: row.updated_at
   }
 })

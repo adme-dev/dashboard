@@ -1279,9 +1279,10 @@ describe('executor durability classification', () => {
 })
 
 describe('God mode chat mutation family', () => {
-  it('activates only the persisted conversation messages route family', () => {
+  it('activates the conversation create and persisted messages route families', () => {
     const unregister = registerGodModeChatMutationFamily()
     expect(listRegisteredGodModeMutationFamilies()).toEqual([
+      { family: 'ai-chat-conversation-create', method: 'POST' },
       { family: 'ai-chat-direct-execution', method: 'POST' }
     ])
     unregister()

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { createAiChatSubmissionBody, postAiChatSubmission } from '~/utils/aiChatTransport'
+import { idempotencyKey } from '~/utils/idempotencyKey'
 /**
  * Office co-pilot dock (virtual-office Mode A). Embeds the agency co-pilot in the office, room-scoped:
  * each turn passes the current `room` (officeId + who's present) to /api/agency/ai/chat so the engine
@@ -26,7 +27,7 @@ const messages = ref<ChatMsg[]>([])
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string, body?: unknown }
+  options?: { method?: string, body?: unknown, headers?: Record<string, string> }
 ) => Promise<T>
 
 const suggestions = [
@@ -37,7 +38,11 @@ const suggestions = [
 
 async function ensureConversation(): Promise<string> {
   if (conversationId.value) return conversationId.value
-  const conv = await apiFetch<{ id: string }>('/api/agency/ai/chat/conversations', { method: 'POST', body: { title: 'Office assistant' } })
+  const conv = await apiFetch<{ id: string }>('/api/agency/ai/chat/conversations', {
+    method: 'POST',
+    body: { title: 'Office assistant' },
+    headers: { 'Idempotency-Key': idempotencyKey('ai-conversation-create') }
+  })
   conversationId.value = conv.id
   return conv.id
 }

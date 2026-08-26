@@ -1,5 +1,6 @@
 import type { AiConversation, AiMessage, AiContextSource } from '~/types'
 import { createAiChatSubmissionBody, postAiChatSubmission } from '~/utils/aiChatTransport'
+import { idempotencyKey } from '~/utils/idempotencyKey'
 
 interface ConversationListResponse {
   conversations: AiConversation[]
@@ -38,7 +39,7 @@ export function useAiChat() {
   const totalConversations = ref(0)
   const apiFetch = $fetch as <T = unknown>(
     request: string,
-    options?: { method?: string, body?: unknown, params?: Record<string, unknown> }
+    options?: { method?: string, body?: unknown, params?: Record<string, unknown>, headers?: Record<string, string> }
   ) => Promise<T>
 
   async function fetchConversations(reset = true) {
@@ -71,6 +72,7 @@ export function useAiChat() {
     const conv = await apiFetch<AiConversation>('/api/agency/ai/chat/conversations', {
       method: 'POST',
       body: { title: title || null },
+      headers: { 'Idempotency-Key': idempotencyKey('ai-conversation-create') }
     })
     conversations.value.unshift(conv)
     activeConversation.value = conv

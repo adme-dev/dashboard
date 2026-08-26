@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { createAiChatSubmissionBody, postAiChatSubmission } from '~/utils/aiChatTransport'
+import { idempotencyKey } from '~/utils/idempotencyKey'
+
 definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 const { user } = useAuth()
 const toast = useToast()
 const isAdmin = computed(() => user.value?.role === 'owner' || user.value?.role === 'admin')
-const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
+const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown, headers?: Record<string, string> }) => Promise<T>
 
 const {
   conversations, activeConversation, messages,
@@ -227,6 +229,7 @@ async function runAdvisor(prompt: string) {
         _advisorConvCreating = apiFetch<any>('/api/agency/ai/chat/conversations', {
           method: 'POST',
           body: { title: 'Financial Advisor' },
+          headers: { 'Idempotency-Key': idempotencyKey('ai-conversation-create') }
         }).then(c => c.id)
       }
       advisorConvId.value = await _advisorConvCreating
