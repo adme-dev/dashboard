@@ -195,6 +195,43 @@ export function executeSocialInboxExternalMutation<T>(
   return executeGodModeExternalMutation(event, def.mutation, 1, work)
 }
 
+/**
+ * The ledger stores the external-family result in `execution_metadata`, which carries a
+ * 4096-byte CHECK. The account-sync result includes a per-channel array that can exceed that, so
+ * only this compact summary is stored for replay; the live caller still receives the full result.
+ */
+export interface SocialInboxSyncReplaySummary {
+  synced: number
+  automated?: number
+  breaches?: number
+  skipped?: number
+  timedOut?: boolean
+  channelCount: number
+  errorCount: number
+  replayed: true
+}
+
+export function compactSocialInboxSyncResult(result: {
+  synced?: number
+  automated?: number
+  breaches?: number
+  skipped?: number
+  timedOut?: boolean
+  channels?: Array<{ status?: string }>
+} | null | undefined): SocialInboxSyncReplaySummary {
+  const channels = Array.isArray(result?.channels) ? result.channels : []
+  return {
+    synced: Number(result?.synced ?? 0),
+    ...(result?.automated != null ? { automated: Number(result.automated) } : {}),
+    ...(result?.breaches != null ? { breaches: Number(result.breaches) } : {}),
+    ...(result?.skipped != null ? { skipped: Number(result.skipped) } : {}),
+    ...(result?.timedOut != null ? { timedOut: Boolean(result.timedOut) } : {}),
+    channelCount: channels.length,
+    errorCount: channels.filter(c => c?.status === 'error').length,
+    replayed: true
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Path matchers (exported for tests)
 // ---------------------------------------------------------------------------
