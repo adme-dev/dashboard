@@ -63,18 +63,24 @@ export default eventHandler(async (event) => {
       redirectUri
     )
 
-    // Exchange for long-lived token (~60 days)
-    const longToken = await exchangeForLongLivedToken(
-      shortToken.access_token,
-      config.metaAppId,
-      config.metaAppSecret
-    )
+    // Facebook Login for Business returns the token bound to config_id. A
+    // second legacy exchange strips that Business configuration context, so
+    // catalog intent retains the configured token returned by the code
+    // exchange. Baseline Marketing API connections keep their existing
+    // long-lived exchange.
+    const activeToken = intent === 'catalog'
+      ? shortToken
+      : await exchangeForLongLivedToken(
+          shortToken.access_token,
+          config.metaAppId,
+          config.metaAppSecret,
+        )
 
-    const expiresAt = longToken.expires_in
-      ? new Date(Date.now() + longToken.expires_in * 1000)
+    const expiresAt = activeToken.expires_in
+      ? new Date(Date.now() + activeToken.expires_in * 1000)
       : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000) // default 60 days
 
-    const permissionEvidence = await getEffectiveMetaPermissionEvidence(longToken.access_token, intent)
+    const permissionEvidence = await getEffectiveMetaPermissionEvidence(activeToken.access_token, intent)
     const grantedScopes = permissionEvidence.scopes
     const missingRequiredScope = ['business_management', 'ads_management']
       .find(scope => !grantedScopes.includes(scope))
@@ -109,7 +115,7 @@ export default eventHandler(async (event) => {
           'meta',
           account.account_id,
           account.name,
-          longToken.access_token,
+          activeToken.access_token,
           expiresAt,
           grantedScopes,
           'active',
@@ -149,7 +155,7 @@ export default eventHandler(async (event) => {
           'meta',
           `business_${business.id}`,
           `${business.name} (Meta Business)`,
-          longToken.access_token,
+          activeToken.access_token,
           expiresAt,
           grantedScopes,
           'active',

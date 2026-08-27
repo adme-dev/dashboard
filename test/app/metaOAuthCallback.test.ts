@@ -5,6 +5,12 @@ const source = readFileSync('app/pages/auth/oauth-callback.vue', 'utf8')
 const callback = readFileSync('server/api/agency/social/meta/callback.get.ts', 'utf8')
 
 describe('Meta OAuth catalog callback', () => {
+  it('retains the configured Business Login token for catalog intent', () => {
+    expect(callback).toContain("const activeToken = intent === 'catalog'")
+    expect(callback).toContain('? shortToken')
+    expect(callback).toContain('getEffectiveMetaPermissionEvidence(activeToken.access_token, intent)')
+  })
+
   it('persists a Business connection when Business Login returns no ad accounts', () => {
     expect(callback).toContain('if (adAccounts.length === 0)')
     expect(callback).toContain('const business = permissionEvidence.businesses[0]')
