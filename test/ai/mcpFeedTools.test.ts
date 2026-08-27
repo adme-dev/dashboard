@@ -135,6 +135,13 @@ describe('shaping helpers', () => {
         { key: 'condition', count: 1 }
       ]
     })).toEqual({ invalidListingUrl: 11, missingPrice: 0, missingImage: 0, other: 1, totalExcluded: 12 })
+    expect(shapeExcluded({
+      invalidTotal: 13,
+      issueGroups: [
+        { key: 'price', count: 4 },
+        { key: 'image', count: 2 }
+      ]
+    })).toEqual({ invalidListingUrl: 0, missingPrice: 4, missingImage: 2, other: 7, totalExcluded: 13 })
     expect(shapeExcluded(null)).toEqual({ invalidListingUrl: null, missingPrice: null, missingImage: null, other: null, totalExcluded: null })
     expect(shapeExcluded({})).toEqual({ invalidListingUrl: null, missingPrice: null, missingImage: null, other: null, totalExcluded: null })
   })

@@ -196,9 +196,12 @@ export function shapeExcluded(
   const price = countFor('price')
   const image = countFor('image')
   const total = typeof readiness.invalidTotal === 'number' ? readiness.invalidTotal : null
-  const other = readiness.issueGroups!
+  const groupedOther = readiness.issueGroups!
     .filter(group => !['url', 'price', 'image'].includes(group.key))
     .reduce((sum, group) => sum + (Number.isFinite(group.count) ? group.count : 0), 0)
+  const other = total === null
+    ? groupedOther
+    : Math.max(groupedOther, total - url - price - image, 0)
   return { invalidListingUrl: url, missingPrice: price, missingImage: image, other, totalExcluded: total }
 }
 

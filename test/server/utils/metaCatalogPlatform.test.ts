@@ -312,6 +312,53 @@ describe('Meta catalogue feed orchestration', () => {
     expect(result).toMatchObject({ productFeedId: '638660590098129', feedDisposition: 'reused' })
   })
 
+  it('adopts an explicitly selected feed that already matches without another Meta write', async () => {
+    const expectedUrl = 'https://socials.driveagent.io/api/feeds/source-used/serve'
+    const matchingFeed = {
+      id: '638660590098129',
+      name: 'Frankston Nissan',
+      schedule: {
+        interval: 'HOURLY',
+        url: expectedUrl,
+        timezone: 'Australia/Sydney'
+      },
+      latest_upload: { id: 'browser-upload', status: 'FINISHED' }
+    }
+    const persistEvidence = vi.fn().mockResolvedValue(undefined)
+    const deps = provider({
+      listProductFeeds: vi.fn().mockResolvedValue([matchingFeed]),
+      getProductFeed: vi.fn().mockResolvedValue(matchingFeed)
+    })
+
+    const result = await ensureMetaCatalogFeed({
+      connection,
+      clientId: 'client-1',
+      clientName: 'Frankston Motor Group',
+      catalogId: 'catalog-1',
+      productFeedId: '638660590098129',
+      sourceFeedId: 'source-used',
+      sourceFeedName: 'Frankston Nissan',
+      allowedSourceFeedIds: ['source-used'],
+      feedBaseUrl: 'https://socials.driveagent.io',
+      actorId: 'actor-1',
+      schedule: { interval: 'HOURLY', timezone: 'Australia/Sydney' }
+    }, { ...deps, persistEvidence })
+
+    expect(deps.updateProductFeed).not.toHaveBeenCalled()
+    expect(deps.createProductFeedUpload).not.toHaveBeenCalled()
+    expect(persistEvidence).toHaveBeenCalledWith(expect.objectContaining({
+      productFeedId: '638660590098129',
+      uploadId: 'browser-upload',
+      feedDisposition: 'reused'
+    }))
+    expect(result).toMatchObject({
+      state: 'READY',
+      productFeedId: '638660590098129',
+      uploadId: 'browser-upload',
+      feedDisposition: 'reused'
+    })
+  })
+
   it('fails closed when an explicit product feed is not in the selected catalogue', async () => {
     const deps = provider({
       listProductFeeds: vi.fn().mockResolvedValue([{ id: 'other-feed', name: 'Other', schedule: null }])

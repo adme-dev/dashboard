@@ -267,6 +267,21 @@ function scheduleUrl(feed: MetaProductFeedSummary): string {
   return clean(feed.schedule?.url)
 }
 
+function scheduleMatches(
+  feed: MetaProductFeedSummary,
+  url: string,
+  schedule: ReturnType<typeof resolveMetaCatalogFeedSchedule>
+): boolean {
+  const current = feed.schedule && typeof feed.schedule === 'object'
+    ? feed.schedule as Record<string, unknown>
+    : {}
+  return scheduleUrl(feed) === url
+    && clean(current.interval).toUpperCase() === schedule.interval
+    // Meta only round-trips a meaningful hour for DAILY fetches.
+    && (schedule.interval !== 'DAILY' || Number(current.hour ?? Number.NaN) === schedule.hour)
+    && clean(current.timezone) === schedule.timezone
+}
+
 export function selectMetaCatalogFeed(
   feeds: MetaProductFeedSummary[],
   sourceFeedUrl: string,
@@ -318,31 +333,33 @@ export async function ensureMetaCatalogFeed(
   const feedDisposition = existing ? 'reused' as const : 'created' as const
 
   let productFeedId: string
+  let upload: { id: string } | null = null
+  let readback: MetaProductFeedSummary
   if (existing) {
     productFeedId = existing.id
-    await deps.updateProductFeed(productFeedId, { name, schedule })
+    if (scheduleMatches(existing, url, schedule)) {
+      // A privileged operator may already have applied the exact approved schedule in Commerce
+      // Manager. Adopt that verified remote state without requiring another provider mutation.
+      readback = await deps.getProductFeed(productFeedId)
+    } else {
+      await deps.updateProductFeed(productFeedId, { name, schedule })
+      upload = await deps.createProductFeedUpload(productFeedId, url)
+      readback = await deps.getProductFeed(productFeedId)
+    }
   } else {
     productFeedId = (await deps.createProductFeed(input.catalogId, { name, schedule })).id
+    upload = await deps.createProductFeedUpload(productFeedId, url)
+    readback = await deps.getProductFeed(productFeedId)
   }
 
-  const upload = await deps.createProductFeedUpload(productFeedId, url)
-  const readback = await deps.getProductFeed(productFeedId)
   if (clean(readback.id) !== productFeedId) {
     throw new Error('Meta feed readback identity did not match the selected product feed')
   }
-  const uploadId = clean(upload.id || readback.latest_upload?.id)
+  const uploadId = clean(upload?.id || readback.latest_upload?.id)
   if (!uploadId) throw new Error('Meta did not return a feed upload identity')
-  if (scheduleUrl(readback) !== url) throw new Error('Meta feed readback did not match the XeroFlow feed URL')
-  // F-6: the readback must reflect the schedule this call actually set, not just the URL.
-  const readbackSchedule = readback.schedule && typeof readback.schedule === 'object'
-    ? readback.schedule as Record<string, unknown>
-    : {}
-  if (
-    clean(readbackSchedule.interval).toUpperCase() !== schedule.interval
-    // Meta only round-trips a meaningful hour for DAILY fetches.
-    || (schedule.interval === 'DAILY' && Number(readbackSchedule.hour ?? Number.NaN) !== schedule.hour)
-    || clean(readbackSchedule.timezone) !== schedule.timezone
-  ) {
+  // F-6: whether written here or adopted from an independently approved provider change, the
+  // readback must reflect the exact requested URL and schedule before evidence is persisted.
+  if (!scheduleMatches(readback, url, schedule)) {
     throw new Error('Meta feed readback did not match the requested fetch schedule')
   }
 
