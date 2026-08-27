@@ -40,6 +40,40 @@ describe('Meta catalog client', () => {
     })
   })
 
+  it('resolves a system-user token Business from the selected Page', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({
+        data: [
+          { id: 'page-1', business: { id: 'business-2', name: 'Knox GWM Haval' } },
+          { id: 'page-2', business: { id: 'business-2', name: 'Knox GWM Haval' } },
+          { id: 'page-3' },
+        ],
+        paging: { next: 'https://graph.facebook.com/page-businesses-2?after=cursor&access_token=provider-token' },
+      })
+      .mockResolvedValueOnce({
+        data: [{ id: 'page-4', business: { id: 'business-1', name: 'ADME' } }],
+      })
+
+    await expect(listMetaBusinesses('secret-token', fetchImpl)).resolves.toEqual([
+      { id: 'business-1', name: 'ADME' },
+      { id: 'business-2', name: 'Knox GWM Haval' },
+    ])
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      'https://graph.facebook.com/v25.0/me/accounts',
+      {
+        headers: { Authorization: 'Bearer secret-token' },
+        query: { fields: 'business{id,name}', limit: 100 },
+      },
+    )
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      3,
+      'https://graph.facebook.com/page-businesses-2?after=cursor',
+      { headers: { Authorization: 'Bearer secret-token' } },
+    )
+  })
+
   it('does not send the bearer token to a non-Meta pagination host', async () => {
     const fetchImpl = vi.fn().mockResolvedValueOnce({
       data: [{ id: '1', name: 'Dealer Group' }],

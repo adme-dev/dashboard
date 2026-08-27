@@ -168,7 +168,44 @@ export async function listMetaBusinesses(
     options = undefined
   }
 
-  return businesses.sort(stableNameSort)
+  if (businesses.length > 0) return businesses.sort(stableNameSort)
+
+  // Facebook Login for Business system-user tokens do not expose the
+  // customer portfolio through /me/businesses. Meta instead returns the
+  // selected Page through /me/accounts, with its owning Business embedded on
+  // the Page. Resolve that signed-in selection so catalog access can remain
+  // server-authoritative without trusting a client-supplied Business ID.
+  let pageUrl: string | undefined = `${META_GRAPH_BASE}/me/accounts`
+  const visitedPageUrls = new Set<string>()
+  let pageOptions: Record<string, unknown> | undefined = {
+    query: { fields: 'business{id,name}', limit: 100 },
+  }
+  const pageBusinesses = new Map<string, MetaBusiness>()
+
+  while (pageUrl) {
+    if (visitedPageUrls.has(pageUrl) || visitedPageUrls.size >= 100) {
+      throw new MetaCatalogProviderError(new Error('Meta returned an invalid Page pagination sequence.'))
+    }
+    visitedPageUrls.add(pageUrl)
+    const response: MetaPage<{ business?: { id?: string, name?: string } }> = await metaRequest(
+      pageUrl,
+      token,
+      fetchImpl,
+      pageOptions,
+    )
+    for (const row of response.data || []) {
+      if (!row.business?.id) continue
+      const id = String(row.business.id)
+      pageBusinesses.set(id, {
+        id,
+        name: String(row.business.name || id),
+      })
+    }
+    pageUrl = response.paging?.next ? normalizeMetaGraphPageUrl(response.paging.next) : undefined
+    pageOptions = undefined
+  }
+
+  return [...pageBusinesses.values()].sort(stableNameSort)
 }
 
 export async function getMetaBusiness(
