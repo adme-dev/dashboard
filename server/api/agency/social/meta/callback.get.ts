@@ -4,7 +4,6 @@ import { queryOne } from '~~/server/utils/db'
 import {
   exchangeMetaCode,
   exchangeForLongLivedToken,
-  getMetaProfile,
 } from '~~/server/utils/metaClient'
 import { normalizeMetaOAuthIntent } from '~~/server/utils/metaPermissions'
 import { getEffectiveMetaPermissionEvidence } from '~~/server/utils/metaPermissionEvidence'
@@ -126,7 +125,13 @@ export default eventHandler(async (event) => {
     }
 
     if (adAccounts.length === 0) {
-      const profile = await getMetaProfile(longToken.access_token)
+      const business = permissionEvidence.businesses[0]
+      if (!business) {
+        throw createError({
+          statusCode: 403,
+          statusMessage: 'Meta did not return an accessible ad account or Business for this connection.',
+        })
+      }
       await queryOne(
         `INSERT INTO social_connections (platform, account_id, account_name, access_token, token_expires_at, scopes, status, metadata, connected_by)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -142,15 +147,15 @@ export default eventHandler(async (event) => {
          RETURNING id`,
         [
           'meta',
-          profile.id,
-          profile.name,
+          `business_${business.id}`,
+          `${business.name} (Meta Business)`,
           longToken.access_token,
           expiresAt,
           grantedScopes,
           'active',
           JSON.stringify({
-            userId: profile.id,
-            userName: profile.name,
+            businessId: business.id,
+            businessName: business.name,
             catalogConnection: intent === 'catalog',
           }),
           user.id,
