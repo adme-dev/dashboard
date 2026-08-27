@@ -1,10 +1,9 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import {
-  exchangeForLongLivedToken,
-  getAdAccounts
+  exchangeForLongLivedToken
 } from '~~/server/utils/metaClient'
-import { getGrantedMetaPermissions } from '~~/server/utils/metaPermissions'
+import { getEffectiveMetaPermissionEvidence } from '~~/server/utils/metaPermissionEvidence'
 import { resolveMetaOAuthRuntimeConfig } from '~~/server/utils/metaOAuthRuntimeConfig'
 import { ofetch } from 'ofetch'
 
@@ -53,15 +52,11 @@ export default eventHandler(async (event) => {
     }
   }
 
-  const grantedScopes = await getGrantedMetaPermissions(longLivedToken)
-
-  // Fetch ad accounts
-  let adAccounts: any[] = []
-  try {
-    adAccounts = await getAdAccounts(longLivedToken)
-  } catch (err: any) {
+  const permissionEvidence = await getEffectiveMetaPermissionEvidence(longLivedToken, 'catalog')
+  const grantedScopes = permissionEvidence.scopes
+  const adAccounts = permissionEvidence.adAccounts
+  if (!permissionEvidence.evidence.adsManagement) {
     console.warn('[Meta ConnectToken] Could not fetch ad accounts; storing the verified Meta profile connection.')
-    // Still store the connection with the user's account info
   }
 
   if (adAccounts.length === 0) {

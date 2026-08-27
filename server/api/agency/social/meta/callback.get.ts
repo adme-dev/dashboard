@@ -3,10 +3,10 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import {
   exchangeMetaCode,
-  exchangeForLongLivedToken,
-  getAdAccounts
+  exchangeForLongLivedToken
 } from '~~/server/utils/metaClient'
-import { getGrantedMetaPermissions, normalizeMetaOAuthIntent } from '~~/server/utils/metaPermissions'
+import { normalizeMetaOAuthIntent } from '~~/server/utils/metaPermissions'
+import { getEffectiveMetaPermissionEvidence } from '~~/server/utils/metaPermissionEvidence'
 import { buildMetaOAuthRedirectUri, resolveMetaOAuthRuntimeConfig } from '~~/server/utils/metaOAuthRuntimeConfig'
 
 function safeMetaCallbackMessage(value: unknown): string {
@@ -74,7 +74,8 @@ export default eventHandler(async (event) => {
       ? new Date(Date.now() + longToken.expires_in * 1000)
       : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000) // default 60 days
 
-    const grantedScopes = await getGrantedMetaPermissions(longToken.access_token)
+    const permissionEvidence = await getEffectiveMetaPermissionEvidence(longToken.access_token, intent)
+    const grantedScopes = permissionEvidence.scopes
     const missingRequiredScope = ['business_management', 'ads_management']
       .find(scope => !grantedScopes.includes(scope))
     if (missingRequiredScope) {
@@ -87,8 +88,7 @@ export default eventHandler(async (event) => {
       })
     }
 
-    // Fetch ad accounts
-    const adAccounts = await getAdAccounts(longToken.access_token)
+    const adAccounts = permissionEvidence.adAccounts
 
     // Store each ad account as a social_connection
     for (const account of adAccounts) {

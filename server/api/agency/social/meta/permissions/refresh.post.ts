@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { requirePermission } from '~~/server/utils/auth'
 import { execute, queryOne } from '~~/server/utils/db'
-import { getGrantedMetaPermissions } from '~~/server/utils/metaPermissions'
+import { getEffectiveMetaPermissionEvidence } from '~~/server/utils/metaPermissionEvidence'
 
 const bodySchema = z.object({
   connectionId: z.string().uuid(),
@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'The Meta access token has expired. Reconnect Meta to continue.' })
   }
 
-  const scopes = await getGrantedMetaPermissions(connection.access_token)
+  const { scopes } = await getEffectiveMetaPermissionEvidence(connection.access_token, 'catalog')
   await execute(
     `UPDATE social_connections
      SET scopes = $1, updated_at = NOW()
