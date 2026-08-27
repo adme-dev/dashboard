@@ -1,7 +1,7 @@
 # Meta Catalog Management and Review Readiness — Design Spec
 
 - **Date:** 2026-08-27
-- **Status:** Approved in chat on 2026-08-27; written-spec review pending
+- **Status:** Approved in chat and approved for implementation on 2026-08-27
 - **Owner:** XeroFlow Agency
 - **Primary surface:** `/agency/dealer-feeds`
 
