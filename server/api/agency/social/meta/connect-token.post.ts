@@ -2,9 +2,9 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import {
   exchangeForLongLivedToken,
-  getAdAccounts,
-  META_MARKETING_OAUTH_SCOPES
+  getAdAccounts
 } from '~~/server/utils/metaClient'
+import { getGrantedMetaPermissions } from '~~/server/utils/metaPermissions'
 import { ofetch } from 'ofetch'
 
 /**
@@ -26,7 +26,8 @@ export default eventHandler(async (event) => {
   let me: { id: string; name: string }
   try {
     me = await ofetch('https://graph.facebook.com/v25.0/me', {
-      query: { access_token: token, fields: 'id,name' }
+      headers: { Authorization: `Bearer ${token}` },
+      query: { fields: 'id,name' }
     })
   } catch (err: any) {
     const fbError = err.data?.error?.message || err.message || 'Invalid token'
@@ -46,17 +47,19 @@ export default eventHandler(async (event) => {
         ? new Date(Date.now() + longToken.expires_in * 1000)
         : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000) // 60 days
     } catch (err: any) {
-      console.warn('[Meta ConnectToken] Could not exchange for long-lived token:', err.message)
+      console.warn('[Meta ConnectToken] Could not exchange for a long-lived token; continuing with the supplied token.')
       // Continue with the short-lived token
     }
   }
+
+  const grantedScopes = await getGrantedMetaPermissions(longLivedToken)
 
   // Fetch ad accounts
   let adAccounts: any[] = []
   try {
     adAccounts = await getAdAccounts(longLivedToken)
   } catch (err: any) {
-    console.warn('[Meta ConnectToken] Could not fetch ad accounts:', err.message)
+    console.warn('[Meta ConnectToken] Could not fetch ad accounts; storing the verified Meta profile connection.')
     // Still store the connection with the user's account info
   }
 
@@ -69,6 +72,7 @@ export default eventHandler(async (event) => {
        DO UPDATE SET
          access_token = EXCLUDED.access_token,
          token_expires_at = EXCLUDED.token_expires_at,
+         scopes = EXCLUDED.scopes,
          status = 'active',
          metadata = EXCLUDED.metadata,
          connected_by = EXCLUDED.connected_by,
@@ -80,7 +84,7 @@ export default eventHandler(async (event) => {
         me.name,
         longLivedToken,
         expiresAt,
-        META_MARKETING_OAUTH_SCOPES,
+        grantedScopes,
         'active',
         JSON.stringify({ userId: me.id, userName: me.name, manualToken: true }),
         user.id
@@ -110,7 +114,7 @@ export default eventHandler(async (event) => {
         account.name,
         longLivedToken,
         expiresAt,
-        META_MARKETING_OAUTH_SCOPES,
+        grantedScopes,
         'active',
         JSON.stringify({
           actId: account.id,

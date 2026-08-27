@@ -4,9 +4,19 @@ import { queryOne } from '~~/server/utils/db'
 import {
   exchangeMetaCode,
   exchangeForLongLivedToken,
-  getAdAccounts,
-  META_MARKETING_OAUTH_SCOPES
+  getAdAccounts
 } from '~~/server/utils/metaClient'
+import { getGrantedMetaPermissions, normalizeMetaOAuthIntent } from '~~/server/utils/metaPermissions'
+
+function safeMetaCallbackMessage(value: unknown): string {
+  if (typeof value !== 'string') return 'Connection failed'
+  return value
+    .replace(/https?:\/\/\S+/gi, '[redacted-url]')
+    .replace(/access_token\s*[=:]\s*[^\s&,]+/gi, 'access_token=[redacted]')
+    .replace(/bearer\s+[^\s,]+/gi, 'Bearer [redacted]')
+    .slice(0, 500)
+    .trim() || 'Connection failed'
+}
 
 /**
  * GET /api/agency/social/meta/callback
@@ -23,10 +33,11 @@ export default eventHandler(async (event) => {
     const state = String(query.state || '')
     const errorParam = String(query.error || '')
     const expectedState = getCookie(event, 'meta_oauth_state')
+    const intent = normalizeMetaOAuthIntent(getCookie(event, 'meta_oauth_intent'))
 
     // User denied permission or Meta returned an error
     if (errorParam) {
-      const errorReason = String(query.error_reason || query.error_description || errorParam)
+      const errorReason = safeMetaCallbackMessage(String(query.error_reason || query.error_description || errorParam))
       return sendRedirect(event, `/auth/oauth-callback?platform=meta&success=false&error=${encodeURIComponent(errorReason)}`, 302)
     }
 
@@ -35,6 +46,7 @@ export default eventHandler(async (event) => {
     }
 
     deleteCookie(event, 'meta_oauth_state', { path: '/' })
+    deleteCookie(event, 'meta_oauth_intent', { path: '/' })
 
     const config = useRuntimeConfig()
     const reqUrl = getRequestURL(event)
@@ -61,6 +73,16 @@ export default eventHandler(async (event) => {
       ? new Date(Date.now() + longToken.expires_in * 1000)
       : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000) // default 60 days
 
+    const grantedScopes = await getGrantedMetaPermissions(longToken.access_token)
+    const missingRequiredScope = ['business_management', 'ads_management']
+      .find(scope => !grantedScopes.includes(scope))
+    if (missingRequiredScope) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: `Meta did not grant the required ${missingRequiredScope} permission. Reconnect and approve the requested access.`,
+      })
+    }
+
     // Fetch ad accounts
     const adAccounts = await getAdAccounts(longToken.access_token)
 
@@ -85,7 +107,7 @@ export default eventHandler(async (event) => {
           account.name,
           longToken.access_token,
           expiresAt,
-          META_MARKETING_OAUTH_SCOPES,
+          grantedScopes,
           'active',
           JSON.stringify({
             actId: account.id,
@@ -98,10 +120,12 @@ export default eventHandler(async (event) => {
       )
     }
 
-    return sendRedirect(event, `/auth/oauth-callback?platform=meta&success=true&accounts=${adAccounts.length}`, 302)
+    return sendRedirect(event, `/auth/oauth-callback?platform=meta&success=true&accounts=${adAccounts.length}&intent=${intent}`, 302)
   } catch (err: any) {
-    console.error('[Meta Callback] Error:', err.message || err)
-    const msg = err.data?.statusMessage || err.data?.error?.message || err.message || 'Connection failed'
+    const msg = safeMetaCallbackMessage(
+      err.statusMessage || err.data?.statusMessage || err.data?.error?.message || err.message,
+    )
+    console.error('[Meta Callback] Error:', msg)
     return sendRedirect(event, `/auth/oauth-callback?platform=meta&success=false&error=${encodeURIComponent(msg)}`, 302)
   }
 })

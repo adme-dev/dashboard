@@ -197,7 +197,7 @@ const categories = [
       { title: 'Lead Capture & Routing', slug: 'lead-capture-routing', icon: 'i-lucide-inbox', description: 'Real-time inbox for Google Ads, Meta, Zapier/Make/n8n, CSV imports, and manual entry. Per-form rules fan leads out to Slack, email, your CRM, Sheets, and the client portal.' },
       { title: 'Xero Integration', slug: 'xero-integration', icon: 'i-lucide-link', description: 'Two-way sync with Xero for invoices, expenses, contacts, and chart of accounts.' },
       { title: 'EOM Engine', slug: 'eom-engine', icon: 'i-lucide-file-spreadsheet', description: 'End-of-month invoice generation with configurable line items, tax, and auto-upload to Xero.' },
-      { title: 'Meta Ads Tracking', slug: 'meta-ads-tracking', icon: 'i-lucide-megaphone', description: 'OAuth-connected Meta Ads spend syncing with daily breakdowns and campaign-level budgets.' },
+      { title: 'Meta Ads Tracking', slug: 'meta-ads-tracking', icon: 'i-lucide-megaphone', description: 'OAuth-connected Meta spend syncing, campaign budgets, and guarded Business-scoped catalog management for vehicle inventory.' },
       { title: 'Google Ads Tracking', slug: 'google-ads-tracking', icon: 'i-lucide-bar-chart-3', description: 'Agency-wide Google Ads performance across multiple secure login and manager-account connections, with spend tracking, budget alerts, and audit trails.' },
       { title: 'Profit & Loss', slug: 'profit-loss', icon: 'i-lucide-trending-up', description: 'Real-time P&L dashboards with revenue, expenses, and margin analysis per client.' },
       { title: 'Budget Management', slug: 'budget-management', icon: 'i-lucide-wallet', description: 'Set monthly budgets per client and campaign. Get alerts when spend approaches limits.' },
