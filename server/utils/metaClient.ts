@@ -125,14 +125,19 @@ export function getMetaAuthUrl(
   redirectUri: string,
   state: string,
   intent: MetaOAuthIntent = 'baseline',
+  loginConfigId = '',
 ): string {
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
     state,
-    scope: getMetaOAuthScopes(intent).join(','),
     response_type: 'code'
   })
+  if (intent === 'catalog' && loginConfigId) {
+    params.set('config_id', loginConfigId)
+  } else {
+    params.set('scope', getMetaOAuthScopes(intent).join(','))
+  }
   return `https://www.facebook.com/v25.0/dialog/oauth?${params.toString()}`
 }
 

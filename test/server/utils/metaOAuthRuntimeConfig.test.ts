@@ -14,6 +14,7 @@ describe('Meta OAuth runtime config', () => {
             META_APP_ID: 'cloudflare-app-id',
             META_APP_SECRET: 'cloudflare-app-secret',
             META_REDIRECT_URI: 'https://app.xeroflow.io/api/agency/social/meta/callback',
+            META_LOGIN_CONFIG_ID: 'business-login-config-id',
           },
         },
       },
@@ -23,10 +24,12 @@ describe('Meta OAuth runtime config', () => {
       metaAppId: '',
       metaAppSecret: '',
       metaRedirectUri: '',
+      metaLoginConfigId: '',
     })).toEqual({
       metaAppId: 'cloudflare-app-id',
       metaAppSecret: 'cloudflare-app-secret',
       metaRedirectUri: 'https://app.xeroflow.io/api/agency/social/meta/callback',
+      metaLoginConfigId: 'business-login-config-id',
     })
   })
 

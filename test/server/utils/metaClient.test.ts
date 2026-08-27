@@ -15,6 +15,7 @@ describe('metaClient OAuth', () => {
       'https://example.com/api/agency/social/meta/callback',
       'state-token',
       'catalog',
+      'business-login-config-id',
     ))
 
     expect(baselineUrl.searchParams.get('scope')).toBe(META_MARKETING_OAUTH_SCOPES.join(','))
@@ -22,9 +23,7 @@ describe('metaClient OAuth', () => {
     expect(META_MARKETING_OAUTH_SCOPES).toContain('business_management')
     expect(META_MARKETING_OAUTH_SCOPES).not.toContain('ads_read')
     expect(META_MARKETING_OAUTH_SCOPES).not.toContain('catalog_management')
-    expect(catalogUrl.searchParams.get('scope')?.split(',')).toEqual([
-      ...META_MARKETING_OAUTH_SCOPES,
-      'catalog_management',
-    ])
+    expect(catalogUrl.searchParams.get('config_id')).toBe('business-login-config-id')
+    expect(catalogUrl.searchParams.has('scope')).toBe(false)
   })
 })

@@ -41,7 +41,13 @@ export default eventHandler(async (event) => {
   // env var happens to be an absolute URL, only its pathname is kept.
   const redirectUri = buildMetaOAuthRedirectUri(event, config.metaRedirectUri)
 
-  const url = getMetaAuthUrl(config.metaAppId, redirectUri, state, intent)
+  const url = getMetaAuthUrl(
+    config.metaAppId,
+    redirectUri,
+    state,
+    intent,
+    intent === 'catalog' ? config.metaLoginConfigId : '',
+  )
 
   return { url }
 })

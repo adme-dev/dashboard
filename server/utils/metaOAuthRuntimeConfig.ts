@@ -12,6 +12,7 @@ export interface MetaOAuthRuntimeConfig {
   metaAppId: string
   metaAppSecret: string
   metaRedirectUri: string
+  metaLoginConfigId: string
 }
 
 function eventBinding(event: H3Event | undefined, key: string): string | undefined {
@@ -54,6 +55,7 @@ export function resolveMetaOAuthRuntimeConfig(
       'META_REDIRECT_URI',
       META_OAUTH_CALLBACK_PATH,
     ),
+    metaLoginConfigId: readConfigValue(event, config, 'metaLoginConfigId', 'META_LOGIN_CONFIG_ID'),
   }
 }
 
