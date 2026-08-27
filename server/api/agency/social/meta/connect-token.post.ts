@@ -5,6 +5,7 @@ import {
   getAdAccounts
 } from '~~/server/utils/metaClient'
 import { getGrantedMetaPermissions } from '~~/server/utils/metaPermissions'
+import { resolveMetaOAuthRuntimeConfig } from '~~/server/utils/metaOAuthRuntimeConfig'
 import { ofetch } from 'ofetch'
 
 /**
@@ -35,7 +36,7 @@ export default eventHandler(async (event) => {
   }
 
   // Try to exchange for a long-lived token
-  const config = useRuntimeConfig()
+  const config = resolveMetaOAuthRuntimeConfig(event)
   let longLivedToken = token
   let expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000) // default 2 hours
 

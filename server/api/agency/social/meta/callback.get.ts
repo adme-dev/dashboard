@@ -1,4 +1,4 @@
-import { getCookie, deleteCookie, sendRedirect, getRequestURL } from 'h3'
+import { getCookie, deleteCookie, sendRedirect } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import {
@@ -7,6 +7,7 @@ import {
   getAdAccounts
 } from '~~/server/utils/metaClient'
 import { getGrantedMetaPermissions, normalizeMetaOAuthIntent } from '~~/server/utils/metaPermissions'
+import { buildMetaOAuthRedirectUri, resolveMetaOAuthRuntimeConfig } from '~~/server/utils/metaOAuthRuntimeConfig'
 
 function safeMetaCallbackMessage(value: unknown): string {
   if (typeof value !== 'string') return 'Connection failed'
@@ -48,11 +49,11 @@ export default eventHandler(async (event) => {
     deleteCookie(event, 'meta_oauth_state', { path: '/' })
     deleteCookie(event, 'meta_oauth_intent', { path: '/' })
 
-    const config = useRuntimeConfig()
-    const reqUrl = getRequestURL(event)
-    const configured = config.metaRedirectUri
-    const callbackPath = configured.startsWith('http') ? new URL(configured).pathname : configured
-    const redirectUri = `${reqUrl.protocol}//${reqUrl.host}${callbackPath}`
+    const config = resolveMetaOAuthRuntimeConfig(event)
+    if (!config.metaAppId || !config.metaAppSecret) {
+      throw createError({ statusCode: 500, statusMessage: 'Meta app credentials not configured' })
+    }
+    const redirectUri = buildMetaOAuthRedirectUri(event, config.metaRedirectUri)
 
     // Exchange code for short-lived token
     const shortToken = await exchangeMetaCode(
