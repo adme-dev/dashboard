@@ -82,7 +82,12 @@ export async function consumeMetaOAuthAttempt(
       AND expires_at > NOW()
     RETURNING id, intent, target_connection_id
   `, [input.stateDigest, input.userId]))
-  const attempt = await consumeAttempt({ userId, stateDigest })
+  const attempt = await consumeAttempt({ userId, stateDigest }) as {
+    id: string
+    intent: MetaOAuthIntent
+    targetConnectionId?: string | null
+    target_connection_id?: string | null
+  } | null
   if (!attempt) return null
   return {
     id: attempt.id,

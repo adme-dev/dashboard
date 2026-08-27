@@ -23,7 +23,7 @@ export function useMetaConnect(opts: { onConnected?: () => Promise<void> | void 
     }
   }
 
-  async function startConnect(intent: 'connection' | 'catalog_management') {
+  async function connect(intent: 'baseline' | 'catalog' = 'baseline', connectionId?: string) {
     // Reserve the popup synchronously while the browser still considers this
     // call part of the user's click. Opening it after the API round trip is
     // blocked or ignored by some browsers, leaving no OAuth callback.
@@ -33,9 +33,9 @@ export function useMetaConnect(opts: { onConnected?: () => Promise<void> | void 
       state.status = 'loading'
       state.error = ''
 
-      const endpoint = intent === 'catalog_management'
-        ? '/api/agency/social/meta/connect?intent=catalog_management'
-        : '/api/agency/social/meta/connect'
+      const query = new URLSearchParams({ intent })
+      if (intent === 'catalog' && connectionId) query.set('connectionId', connectionId)
+      const endpoint = `/api/agency/social/meta/connect?${query.toString()}`
       const { url } = await apiFetch<{ url: string }>(endpoint)
 
       if (!popup) {
@@ -75,12 +75,11 @@ export function useMetaConnect(opts: { onConnected?: () => Promise<void> | void 
     }
   }
 
-  async function connect() {
-    return startConnect('connection')
-  }
-
-  async function connectWithIntent(intent: 'connection' | 'catalog_management') {
-    return startConnect(intent)
+  async function connectWithIntent(
+    intent: 'connection' | 'catalog_management',
+    connectionId?: string,
+  ) {
+    return connect(intent === 'catalog_management' ? 'catalog' : 'baseline', connectionId)
   }
 
   if (import.meta.client) {

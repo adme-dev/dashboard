@@ -1,19 +1,28 @@
-import { describe, expect, it } from 'vitest'
-import { extractConversions, getMetaAuthUrl, META_MARKETING_OAUTH_SCOPES } from '~~/server/utils/metaClient'
+import { describe, expect, it, vi } from 'vitest'
+import { extractConversions, getAdAccounts, getMetaAuthUrl, META_MARKETING_OAUTH_SCOPES } from '~~/server/utils/metaClient'
 
 describe('metaClient OAuth', () => {
-  it('requests catalog permissions required for product set catalog audits', () => {
-    const url = new URL(getMetaAuthUrl(
+  it('keeps routine consent minimal and adds catalog access only for catalog intent', () => {
+    const baselineUrl = new URL(getMetaAuthUrl(
       'meta-app-id',
       'https://example.com/api/agency/social/meta/callback',
       'state-token',
     ))
+    const catalogUrl = new URL(getMetaAuthUrl(
+      'meta-app-id',
+      'https://example.com/api/agency/social/meta/callback',
+      'state-token',
+      'catalog',
+      'business-login-config-id',
+    ))
 
-    expect(url.searchParams.get('scope')).toBe(META_MARKETING_OAUTH_SCOPES.join(','))
+    expect(baselineUrl.searchParams.get('scope')).toBe(META_MARKETING_OAUTH_SCOPES.join(','))
     expect(META_MARKETING_OAUTH_SCOPES).toContain('ads_management')
-    expect(META_MARKETING_OAUTH_SCOPES).toContain('ads_read')
     expect(META_MARKETING_OAUTH_SCOPES).toContain('business_management')
-    expect(META_MARKETING_OAUTH_SCOPES).toContain('catalog_management')
+    expect(META_MARKETING_OAUTH_SCOPES).not.toContain('ads_read')
+    expect(META_MARKETING_OAUTH_SCOPES).not.toContain('catalog_management')
+    expect(catalogUrl.searchParams.get('config_id')).toBe('business-login-config-id')
+    expect(catalogUrl.searchParams.has('scope')).toBe(false)
   })
 
   it('uses Meta rerequest for the one-time catalogue permission upgrade', () => {
@@ -26,6 +35,31 @@ describe('metaClient OAuth', () => {
 
     expect(url.searchParams.get('auth_type')).toBe('rerequest')
     expect(url.searchParams.get('scope')).toContain('catalog_management')
+  })
+})
+
+describe('Meta ad-account pagination', () => {
+  it('keeps tokens in authorization headers and rejects untrusted paging hosts', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce({
+        data: [{ account_id: '1', id: 'act_1', name: 'One', currency: 'AUD', account_status: 1 }],
+        paging: { next: 'https://graph.facebook.com/v25.0/me/adaccounts?after=next&access_token=secret-token' },
+      })
+      .mockResolvedValueOnce({ data: [] })
+
+    await expect(getAdAccounts('secret-token', fetchImpl)).resolves.toHaveLength(1)
+
+    expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({
+      headers: { Authorization: 'Bearer secret-token' },
+    })
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe('https://graph.facebook.com/v25.0/me/adaccounts?after=next')
+    expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
+      headers: { Authorization: 'Bearer secret-token' },
+    })
+    await expect(getAdAccounts('secret-token', vi.fn().mockResolvedValue({
+      data: [],
+      paging: { next: 'https://attacker.example/steal?access_token=secret-token' },
+    }))).rejects.toThrow('invalid pagination URL')
   })
 })
 

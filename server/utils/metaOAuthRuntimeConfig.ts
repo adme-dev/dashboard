@@ -1,7 +1,8 @@
 import { getRequestURL, type H3Event } from 'h3'
 import { getCachedBinding } from '~~/server/utils/email'
 
-export const META_CALLBACK_PATH = '/api/agency/social/meta/callback'
+export const META_OAUTH_CALLBACK_PATH = '/api/agency/social/meta/callback'
+export const META_CALLBACK_PATH = META_OAUTH_CALLBACK_PATH
 
 type CloudflareContext = {
   cloudflare?: {
@@ -9,10 +10,11 @@ type CloudflareContext = {
   }
 }
 
-interface MetaOAuthRuntimeConfig {
+export interface MetaOAuthRuntimeConfig {
   metaAppId: string
   metaAppSecret: string
   metaRedirectUri: string
+  metaLoginConfigId: string
 }
 
 function eventBinding(event: H3Event | undefined, key: string): string | undefined {
@@ -21,7 +23,7 @@ function eventBinding(event: H3Event | undefined, key: string): string | undefin
   return typeof value === 'string' ? value : undefined
 }
 
-function firstConfigured(values: Array<unknown>): string {
+function firstConfigured(values: unknown[]): string {
   return values.map(value => String(value || '').trim()).find(Boolean) || ''
 }
 
@@ -30,20 +32,20 @@ function readConfigValue(
   runtimeConfig: Partial<MetaOAuthRuntimeConfig>,
   runtimeKey: keyof MetaOAuthRuntimeConfig,
   envKey: string,
-  fallback = ''
+  fallback = '',
 ): string {
   return firstConfigured([
     eventBinding(event, envKey),
     getCachedBinding(envKey),
     process.env[envKey],
     runtimeConfig[runtimeKey],
-    fallback
+    fallback,
   ])
 }
 
 export function resolveMetaOAuthRuntimeConfig(
   event?: H3Event,
-  runtimeConfig?: Partial<MetaOAuthRuntimeConfig>
+  runtimeConfig?: Partial<MetaOAuthRuntimeConfig>,
 ): MetaOAuthRuntimeConfig {
   const config = runtimeConfig ?? (useRuntimeConfig() as Partial<MetaOAuthRuntimeConfig>)
   return {
@@ -54,14 +56,18 @@ export function resolveMetaOAuthRuntimeConfig(
       config,
       'metaRedirectUri',
       'META_REDIRECT_URI',
-      META_CALLBACK_PATH
-    )
+      META_OAUTH_CALLBACK_PATH,
+    ),
+    metaLoginConfigId: readConfigValue(event, config, 'metaLoginConfigId', 'META_LOGIN_CONFIG_ID'),
   }
 }
 
+export function metaOAuthCallbackPath(configuredRedirectUri: string): string {
+  const configured = firstConfigured([configuredRedirectUri, META_OAUTH_CALLBACK_PATH])
+  return configured.startsWith('http') ? new URL(configured).pathname : configured
+}
+
 export function buildMetaOAuthRedirectUri(event: H3Event, configuredRedirectUri: string): string {
-  const configured = firstConfigured([configuredRedirectUri, META_CALLBACK_PATH])
-  const callbackPath = configured.startsWith('http') ? new URL(configured).pathname : configured
-  const requestUrl = getRequestURL(event)
-  return `${requestUrl.protocol}//${requestUrl.host}${callbackPath}`
+  const reqUrl = getRequestURL(event)
+  return `${reqUrl.protocol}//${reqUrl.host}${metaOAuthCallbackPath(configuredRedirectUri)}`
 }

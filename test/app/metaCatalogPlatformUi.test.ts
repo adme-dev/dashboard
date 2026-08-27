@@ -29,8 +29,11 @@ describe('Meta catalogue platform UI', () => {
   })
 
   it('upgrades the existing Meta connection rather than requiring disconnect/reconnect', () => {
-    expect(composable).toContain('connectWithIntent(intent: \'connection\' | \'catalog_management\')')
-    expect(composable).toContain('intent=catalog_management')
+    expect(composable).toContain("connect(intent: 'baseline' | 'catalog' = 'baseline', connectionId?: string)")
+    expect(composable).toContain('connectWithIntent(')
+    expect(composable).toContain("intent: 'connection' | 'catalog_management'")
+    expect(composable).toContain('new URLSearchParams({ intent })')
+    expect(composable).toContain("query.set('connectionId', connectionId)")
     expect(component).not.toMatch(/label="(?:Disconnect|Reconnect)"/)
   })
 

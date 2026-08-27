@@ -13,6 +13,7 @@ compatibility_flags = ["nodejs_compat", "no_handle_cross_request_promise_resolut
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
 AI_GOVERNED_CATALOG_MODE = "legacy"
+META_LOGIN_CONFIG_ID = "1740422843746070"
 EMAIL_FROM = "notification@adme.net.au"
 # Search Authority is globally armed for the Knox design-client pilot. The
 # server still fails closed unless the requesting client has an active

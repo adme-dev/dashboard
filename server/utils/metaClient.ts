@@ -6,6 +6,7 @@
 
 import { ofetch } from 'ofetch'
 import { unwrapMetaImageUrl } from '~~/server/utils/metaImage'
+import { normalizeMetaGraphPageUrl } from '~~/server/utils/metaGraphUrl'
 import {
   normalizeMetaApprovalStatus,
   normalizeMetaLearningStage,
@@ -14,20 +15,16 @@ import {
   sanitizeDiagnosticText,
   type PolicyIssue,
 } from '~~/server/utils/adDiagnostics'
+import {
+  getMetaOAuthScopes,
+  META_BASELINE_OAUTH_SCOPES,
+  type MetaPermissionOAuthIntent,
+} from '~~/server/utils/metaPermissions'
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v25.0'
+type MetaClientFetch = <T>(url: string, options?: Record<string, unknown>) => Promise<T>
 
-export const META_MARKETING_OAUTH_SCOPES = [
-  'ads_management',
-  'ads_read',
-  'pages_show_list',
-  'pages_read_engagement',
-  'pages_manage_ads',
-  'pages_manage_metadata',
-  'leads_retrieval',
-  'business_management',
-  'catalog_management',
-]
+export const META_MARKETING_OAUTH_SCOPES = [...META_BASELINE_OAUTH_SCOPES]
 
 // ============================================
 // Types
@@ -137,16 +134,30 @@ export function getMetaAuthUrl(
   appId: string,
   redirectUri: string,
   state: string,
-  options: { intent?: 'connection' | 'catalog_management' } = {},
+  intentOrOptions: MetaPermissionOAuthIntent | {
+    intent?: 'connection' | 'catalog_management'
+    loginConfigId?: string
+  } = 'baseline',
+  loginConfigId = '',
 ): string {
+  const intent: MetaPermissionOAuthIntent = typeof intentOrOptions === 'string'
+    ? intentOrOptions
+    : intentOrOptions.intent === 'catalog_management' ? 'catalog' : 'baseline'
+  const effectiveLoginConfigId = typeof intentOrOptions === 'string'
+    ? loginConfigId
+    : intentOrOptions.loginConfigId || ''
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
     state,
-    scope: META_MARKETING_OAUTH_SCOPES.join(','),
     response_type: 'code'
   })
-  if (options.intent === 'catalog_management') params.set('auth_type', 'rerequest')
+  if (intent === 'catalog' && effectiveLoginConfigId) {
+    params.set('config_id', effectiveLoginConfigId)
+  } else {
+    params.set('scope', getMetaOAuthScopes(intent).join(','))
+    if (intent === 'catalog') params.set('auth_type', 'rerequest')
+  }
   return `https://www.facebook.com/v25.0/dialog/oauth?${params.toString()}`
 }
 
@@ -196,23 +207,29 @@ export async function exchangeForLongLivedToken(
 /**
  * Get all ad accounts accessible by the token
  */
-export async function getAdAccounts(token: string): Promise<MetaAdAccount[]> {
+export async function getAdAccounts(
+  token: string,
+  fetchImpl: MetaClientFetch = ofetch as MetaClientFetch,
+): Promise<MetaAdAccount[]> {
   const accounts: MetaAdAccount[] = []
   let url: string | null = `${META_GRAPH_BASE}/me/adaccounts`
-  const query: Record<string, string> = {
-    fields: 'account_id,name,currency,account_status,business_name',
-    access_token: token,
-    limit: '100'
+  let options: Record<string, unknown> | undefined = {
+    headers: { Authorization: `Bearer ${token}` },
+    query: {
+      fields: 'account_id,name,currency,account_status,business_name',
+      limit: '100',
+    },
   }
 
   // Paginate through all accounts
   while (url) {
-    const res: { data: MetaAdAccount[]; paging?: { next?: string } } = await ofetch(url, {
+    const res: { data: MetaAdAccount[]; paging?: { next?: string } } = await fetchImpl(url, {
       method: 'GET',
-      query: url.includes('?') ? undefined : query
+      ...options,
     })
     accounts.push(...(res.data || []))
-    url = res.paging?.next || null
+    url = res.paging?.next ? normalizeMetaGraphPageUrl(res.paging.next) : null
+    options = { headers: { Authorization: `Bearer ${token}` } }
   }
 
   return accounts

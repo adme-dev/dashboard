@@ -1,119 +1,118 @@
 import { sendRedirect } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
-import { execute, queryOne } from '~~/server/utils/db'
-import { createMetaCatalogProvider } from '~~/server/utils/metaCatalogProvider'
+import { queryOne } from '~~/server/utils/db'
+import {
+  exchangeForLongLivedToken,
+  exchangeMetaCode,
+} from '~~/server/utils/metaClient'
 import { consumeMetaOAuthAttempt } from '~~/server/utils/metaOAuthAttempts'
 import {
   buildMetaOAuthRedirectUri,
-  resolveMetaOAuthRuntimeConfig
+  resolveMetaOAuthRuntimeConfig,
 } from '~~/server/utils/metaOAuthRuntimeConfig'
-import {
-  exchangeMetaCode,
-  exchangeForLongLivedToken,
-  getAdAccounts
-} from '~~/server/utils/metaClient'
+import { getEffectiveMetaPermissionEvidence } from '~~/server/utils/metaPermissionEvidence'
+import { debugMetaAccessToken, getMetaGranularTargetIds } from '~~/server/utils/metaTokenDebug'
+
+function safeMetaCallbackMessage(value: unknown): string {
+  if (typeof value !== 'string') return 'Connection failed'
+  return value
+    .replace(/https?:\/\/\S+/gi, '[redacted-url]')
+    .replace(/access_token\s*[=:]\s*[^\s&,]+/gi, 'access_token=[redacted]')
+    .replace(/bearer\s+[^\s,]+/gi, 'Bearer [redacted]')
+    .slice(0, 500)
+    .trim() || 'Connection failed'
+}
 
 /**
  * GET /api/agency/social/meta/callback
- * OAuth callback — exchanges code for long-lived token, stores ad accounts.
- * IMPORTANT: Every code path must redirect to /auth/oauth-callback so the
- * popup can communicate the result back to the opener window.
+ * Exchanges Meta OAuth codes and persists only capabilities proven by Meta.
  */
 export default eventHandler(async (event) => {
   try {
     const user = await requireAuth(event)
     const query = getQuery(event)
-
     const code = String(query.code || '')
     const state = String(query.state || '')
     const errorParam = String(query.error || '')
 
-    // User denied permission or Meta returned an error
     if (errorParam) {
-      const errorReason = String(query.error_reason || query.error_description || errorParam)
-      return sendRedirect(event, `/auth/oauth-callback?platform=meta&success=false&error=${encodeURIComponent(errorReason)}`, 302)
+      const errorReason = safeMetaCallbackMessage(
+        String(query.error_reason || query.error_description || errorParam),
+      )
+      return sendRedirect(
+        event,
+        `/auth/oauth-callback?platform=meta&success=false&error=${encodeURIComponent(errorReason)}`,
+        302,
+      )
     }
 
     const attempt = state ? await consumeMetaOAuthAttempt(state, user.id) : null
     if (!code || !attempt) {
-      return sendRedirect(event, '/auth/oauth-callback?platform=meta&success=false&error=' + encodeURIComponent('Invalid OAuth state. Please try again.'), 302)
+      return sendRedirect(
+        event,
+        `/auth/oauth-callback?platform=meta&success=false&error=${encodeURIComponent('Invalid OAuth state. Please try again.')}`,
+        302,
+      )
     }
+    const intent = attempt.intent === 'catalog_management' ? 'catalog' : 'baseline'
 
     const config = resolveMetaOAuthRuntimeConfig(event)
+    if (!config.metaAppId || !config.metaAppSecret) {
+      throw createError({ statusCode: 500, statusMessage: 'Meta app credentials not configured' })
+    }
     const redirectUri = buildMetaOAuthRedirectUri(event, config.metaRedirectUri)
-
-    // Exchange code for short-lived token
     const shortToken = await exchangeMetaCode(
       code,
       config.metaAppId,
       config.metaAppSecret,
-      redirectUri
+      redirectUri,
     )
 
-    // Exchange for long-lived token (~60 days)
-    const longToken = await exchangeForLongLivedToken(
-      shortToken.access_token,
-      config.metaAppId,
-      config.metaAppSecret
-    )
-
-    const expiresAt = longToken.expires_in
-      ? new Date(Date.now() + longToken.expires_in * 1000)
-      : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000) // default 60 days
-
-    // Fetch the permissions Meta actually granted. Requested scopes are not
-    // authority; declined permissions must never be stored as active access.
-    const grantedPermissions = await createMetaCatalogProvider({
-      accessToken: longToken.access_token
-    }).listGrantedPermissions()
-
-    // Fetch ad accounts
-    const adAccounts = await getAdAccounts(longToken.access_token)
-
-    // Meta's catalogue-management rerequest can legitimately return no ad accounts even though it
-    // issued a fresh user token with the requested business/catalogue grants. Do not discard that
-    // token, but never fan it out across unrelated connections: refresh only the exact active Meta
-    // connection bound into the one-time OAuth attempt. Client mapping and metadata stay untouched.
-    let refreshedConnections = 0
-    if (adAccounts.length === 0 && attempt.intent === 'catalog_management') {
-      if (!grantedPermissions.includes('catalog_management')) {
-        return sendRedirect(
-          event,
-          '/auth/oauth-callback?platform=meta&success=false&error=' + encodeURIComponent('Meta did not grant catalogue management permission.'),
-          302
+    // Facebook Login for Business binds the code-exchange token to config_id.
+    // Exchanging it again through the legacy long-lived-token endpoint strips
+    // that Business configuration, so catalogue upgrades retain this token.
+    const activeToken = intent === 'catalog'
+      ? shortToken
+      : await exchangeForLongLivedToken(
+          shortToken.access_token,
+          config.metaAppId,
+          config.metaAppSecret,
         )
-      }
-      if (!attempt.targetConnectionId) {
-        return sendRedirect(
-          event,
-          '/auth/oauth-callback?platform=meta&success=false&error=' + encodeURIComponent('A target Meta connection is required for catalogue permission upgrades.'),
-          302
-        )
-      }
-      refreshedConnections = await execute(
-        `UPDATE social_connections
-            SET access_token = $1,
-                token_expires_at = $2,
-                scopes = $3,
-                status = 'active',
-                updated_at = NOW()
-          WHERE platform = 'meta'
-            AND status = 'active'
-            AND id = $4
-            AND connected_by = $5`,
-        [longToken.access_token, expiresAt, grantedPermissions, attempt.targetConnectionId, user.id]
+    const expiresAt = activeToken.expires_in
+      ? new Date(Date.now() + activeToken.expires_in * 1000)
+      : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)
+
+    let businessTargetIds: string[] = []
+    try {
+      const debugData = await debugMetaAccessToken(
+        activeToken.access_token,
+        config.metaAppId,
+        config.metaAppSecret,
       )
-      if (refreshedConnections !== 1) {
-        return sendRedirect(
-          event,
-          '/auth/oauth-callback?platform=meta&success=false&error=' + encodeURIComponent('The target Meta connection could not be refreshed.'),
-          302
-        )
-      }
+      businessTargetIds = getMetaGranularTargetIds(debugData, 'business_management')
+    } catch {
+      // Protected API probes remain authoritative if token debugging is unavailable.
     }
 
-    // Store each ad account as a social_connection
-    for (const account of adAccounts) {
+    const permissionEvidence = await getEffectiveMetaPermissionEvidence(
+      activeToken.access_token,
+      intent,
+      { businessTargetIds },
+    )
+    const grantedScopes = permissionEvidence.scopes
+    const requiredScopes = intent === 'catalog'
+      ? ['business_management', 'ads_management', 'catalog_management']
+      : ['business_management', 'ads_management']
+    const missingRequiredScope = requiredScopes.find(scope => !grantedScopes.includes(scope))
+    if (missingRequiredScope) {
+      const reportedPermissions = grantedScopes.length > 0 ? grantedScopes.join(', ') : 'none'
+      throw createError({
+        statusCode: 403,
+        statusMessage: `Meta did not grant the required ${missingRequiredScope} permission. Meta reported these granted permissions: ${reportedPermissions}. Reconnect and approve the requested access.`,
+      })
+    }
+
+    for (const account of permissionEvidence.adAccounts) {
       await queryOne(
         `INSERT INTO social_connections (platform, account_id, account_name, access_token, token_expires_at, scopes, status, metadata, connected_by)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -131,33 +130,82 @@ export default eventHandler(async (event) => {
           'meta',
           account.account_id,
           account.name,
-          longToken.access_token,
+          activeToken.access_token,
           expiresAt,
-          grantedPermissions,
+          grantedScopes,
           'active',
           JSON.stringify({
             actId: account.id,
             currency: account.currency,
             accountStatus: account.account_status,
-            businessName: account.business_name || null
+            businessName: account.business_name || null,
+            businesses: permissionEvidence.businesses,
           }),
-          user.id
-        ]
+          user.id,
+        ],
+      )
+    }
+
+    if (permissionEvidence.adAccounts.length === 0) {
+      const business = permissionEvidence.businesses[0]
+      if (!business) {
+        throw createError({
+          statusCode: 403,
+          statusMessage: 'Meta did not return an accessible ad account or Business for this connection.',
+        })
+      }
+      await queryOne(
+        `INSERT INTO social_connections (platform, account_id, account_name, access_token, token_expires_at, scopes, status, metadata, connected_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (platform, account_id)
+         DO UPDATE SET
+           access_token = EXCLUDED.access_token,
+           token_expires_at = EXCLUDED.token_expires_at,
+           scopes = EXCLUDED.scopes,
+           status = 'active',
+           metadata = EXCLUDED.metadata,
+           connected_by = EXCLUDED.connected_by,
+           updated_at = NOW()
+         RETURNING id`,
+        [
+          'meta',
+          `business_${business.id}`,
+          `${business.name} (Meta Business)`,
+          activeToken.access_token,
+          expiresAt,
+          grantedScopes,
+          'active',
+          JSON.stringify({
+            businessId: business.id,
+            businessName: business.name,
+            businesses: permissionEvidence.businesses,
+            catalogConnection: intent === 'catalog',
+            upgradedFromConnectionId: attempt.targetConnectionId,
+          }),
+          user.id,
+        ],
       )
     }
 
     return sendRedirect(
       event,
-      `/auth/oauth-callback?platform=meta&success=true&accounts=${adAccounts.length}&refreshed=${refreshedConnections}&intent=${attempt.intent}`,
-      302
+      `/auth/oauth-callback?platform=meta&success=true&accounts=${permissionEvidence.adAccounts.length}&intent=${intent}`,
+      302,
     )
   } catch (error: unknown) {
     const err = error as {
+      statusMessage?: string
       message?: string
       data?: { statusMessage?: string, error?: { message?: string } }
     }
-    console.error('[Meta Callback] Error:', err.message || err)
-    const msg = err.data?.statusMessage || err.data?.error?.message || err.message || 'Connection failed'
-    return sendRedirect(event, `/auth/oauth-callback?platform=meta&success=false&error=${encodeURIComponent(msg)}`, 302)
+    const msg = safeMetaCallbackMessage(
+      err.statusMessage || err.data?.statusMessage || err.data?.error?.message || err.message,
+    )
+    console.error('[Meta Callback] Error:', msg)
+    return sendRedirect(
+      event,
+      `/auth/oauth-callback?platform=meta&success=false&error=${encodeURIComponent(msg)}`,
+      302,
+    )
   }
 })

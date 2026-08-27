@@ -1110,8 +1110,8 @@ const features: Record<string, Feature> = {
     description: 'OAuth-connected Meta Ads spend and delivery diagnostics with policy issues, ad-set learning state, frequency, CPM, daily breakdowns, and campaign budgets.',
     details: [
       {
-        title: 'OAuth-Connected Accounts',
-        content: 'Connect your Meta Business accounts through a secure OAuth flow. XeroFlow pulls ad account data, campaign structures, and spend metrics directly from the Meta Graph API. Multiple ad accounts can be mapped to the correct XeroFlow clients, so agencies managing dozens of client accounts see all their spend in one consolidated view without switching between Business Manager tabs.'
+        title: 'OAuth Accounts and Business Catalogs',
+        content: 'Connect Meta through OAuth and store only the permissions Meta confirms were granted. Standard spend and lead access stays separate from optional catalog consent. When catalog access is approved, authorised operators can choose an accessible Meta Business, create vehicle or commerce catalogs, rename them, and delete disposable catalogs with an exact-name confirmation safeguard.'
       },
       {
         title: 'Delivery and Saturation Evidence',
