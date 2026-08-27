@@ -1,5 +1,4 @@
 import { getRequestURL, type H3Event } from 'h3'
-import { getCachedBinding } from '~~/server/utils/cfEnvBindings'
 
 export const META_OAUTH_CALLBACK_PATH = '/api/agency/social/meta/callback'
 
@@ -34,7 +33,6 @@ function readConfigValue(
 ): string {
   return firstConfigured([
     eventBinding(event, envKey),
-    getCachedBinding(envKey),
     process.env[envKey],
     runtimeConfig[runtimeKey],
     fallback,
