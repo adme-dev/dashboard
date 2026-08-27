@@ -3,7 +3,8 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import {
   exchangeMetaCode,
-  exchangeForLongLivedToken
+  exchangeForLongLivedToken,
+  getMetaProfile,
 } from '~~/server/utils/metaClient'
 import { normalizeMetaOAuthIntent } from '~~/server/utils/metaPermissions'
 import { getEffectiveMetaPermissionEvidence } from '~~/server/utils/metaPermissionEvidence'
@@ -121,6 +122,39 @@ export default eventHandler(async (event) => {
           }),
           user.id
         ]
+      )
+    }
+
+    if (adAccounts.length === 0) {
+      const profile = await getMetaProfile(longToken.access_token)
+      await queryOne(
+        `INSERT INTO social_connections (platform, account_id, account_name, access_token, token_expires_at, scopes, status, metadata, connected_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (platform, account_id)
+         DO UPDATE SET
+           access_token = EXCLUDED.access_token,
+           token_expires_at = EXCLUDED.token_expires_at,
+           scopes = EXCLUDED.scopes,
+           status = 'active',
+           metadata = EXCLUDED.metadata,
+           connected_by = EXCLUDED.connected_by,
+           updated_at = NOW()
+         RETURNING id`,
+        [
+          'meta',
+          profile.id,
+          profile.name,
+          longToken.access_token,
+          expiresAt,
+          grantedScopes,
+          'active',
+          JSON.stringify({
+            userId: profile.id,
+            userName: profile.name,
+            catalogConnection: intent === 'catalog',
+          }),
+          user.id,
+        ],
       )
     }
 

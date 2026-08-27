@@ -53,6 +53,11 @@ export interface MetaTokenResponse {
   expires_in?: number
 }
 
+export interface MetaProfile {
+  id: string
+  name: string
+}
+
 export interface MetaCampaign {
   id: string
   name: string
@@ -172,6 +177,13 @@ export async function exchangeForLongLivedToken(
       client_secret: appSecret,
       fb_exchange_token: shortToken
     }
+  })
+}
+
+export async function getMetaProfile(token: string): Promise<MetaProfile> {
+  return ofetch<MetaProfile>(`${META_GRAPH_BASE}/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+    query: { fields: 'id,name' },
   })
 }
 
