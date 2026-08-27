@@ -8,6 +8,7 @@ import {
 import { normalizeMetaOAuthIntent } from '~~/server/utils/metaPermissions'
 import { getEffectiveMetaPermissionEvidence } from '~~/server/utils/metaPermissionEvidence'
 import { buildMetaOAuthRedirectUri, resolveMetaOAuthRuntimeConfig } from '~~/server/utils/metaOAuthRuntimeConfig'
+import { debugMetaAccessToken, getMetaGranularTargetIds } from '~~/server/utils/metaTokenDebug'
 
 function safeMetaCallbackMessage(value: unknown): string {
   if (typeof value !== 'string') return 'Connection failed'
@@ -80,7 +81,21 @@ export default eventHandler(async (event) => {
       ? new Date(Date.now() + activeToken.expires_in * 1000)
       : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000) // default 60 days
 
-    const permissionEvidence = await getEffectiveMetaPermissionEvidence(activeToken.access_token, intent)
+    let businessTargetIds: string[] = []
+    try {
+      const debugData = await debugMetaAccessToken(
+        activeToken.access_token,
+        config.metaAppId,
+        config.metaAppSecret,
+      )
+      businessTargetIds = getMetaGranularTargetIds(debugData, 'business_management')
+    } catch {
+      // Protected API probes remain authoritative if token debugging is unavailable.
+    }
+
+    const permissionEvidence = await getEffectiveMetaPermissionEvidence(activeToken.access_token, intent, {
+      businessTargetIds,
+    })
     const grantedScopes = permissionEvidence.scopes
     const missingRequiredScope = ['business_management', 'ads_management']
       .find(scope => !grantedScopes.includes(scope))
@@ -123,7 +138,8 @@ export default eventHandler(async (event) => {
             actId: account.id,
             currency: account.currency,
             accountStatus: account.account_status,
-            businessName: account.business_name || null
+            businessName: account.business_name || null,
+            businesses: permissionEvidence.businesses,
           }),
           user.id
         ]
@@ -162,6 +178,7 @@ export default eventHandler(async (event) => {
           JSON.stringify({
             businessId: business.id,
             businessName: business.name,
+            businesses: permissionEvidence.businesses,
             catalogConnection: intent === 'catalog',
           }),
           user.id,

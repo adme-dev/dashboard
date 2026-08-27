@@ -8,7 +8,8 @@ describe('Meta OAuth catalog callback', () => {
   it('retains the configured Business Login token for catalog intent', () => {
     expect(callback).toContain("const activeToken = intent === 'catalog'")
     expect(callback).toContain('? shortToken')
-    expect(callback).toContain('getEffectiveMetaPermissionEvidence(activeToken.access_token, intent)')
+    expect(callback).toContain('getEffectiveMetaPermissionEvidence(activeToken.access_token, intent, {')
+    expect(callback).toContain('businessTargetIds,')
   })
 
   it('persists a Business connection when Business Login returns no ad accounts', () => {

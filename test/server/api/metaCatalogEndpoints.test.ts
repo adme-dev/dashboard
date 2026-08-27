@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   loadConnection: vi.fn(),
   requireScope: vi.fn(),
   requireOwnedCatalog: vi.fn(),
+  listAccessibleBusinesses: vi.fn(),
   listBusinesses: vi.fn(),
   listCatalogs: vi.fn(),
   createCatalog: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock('~~/server/utils/metaCatalogAccess', () => ({
   loadMetaCatalogConnection: mocks.loadConnection,
   requireMetaCatalogScope: mocks.requireScope,
   requireOwnedMetaCatalog: mocks.requireOwnedCatalog,
+  listAccessibleMetaBusinesses: mocks.listAccessibleBusinesses,
 }))
 
 vi.mock('~~/server/utils/metaCatalogClient', () => ({
@@ -89,6 +91,7 @@ beforeEach(() => {
   })
   mocks.requireOwnedCatalog.mockResolvedValue({ ...catalog })
   mocks.listBusinesses.mockResolvedValue([{ id: 'biz-1', name: 'Dealer Group' }])
+  mocks.listAccessibleBusinesses.mockResolvedValue([{ id: 'biz-1', name: 'Dealer Group' }])
   mocks.listCatalogs.mockResolvedValue([{ ...catalog }])
   mocks.createCatalog.mockResolvedValue({ ...catalog })
   mocks.updateCatalog.mockResolvedValue({ ...catalog, name: 'Renamed Catalog' })
@@ -102,7 +105,7 @@ describe('Meta catalog admin routes', () => {
     await expect(getContext({ query: { connectionId } } as never)).rejects.toMatchObject({ statusCode: 403 })
 
     expect(mocks.loadConnection).not.toHaveBeenCalled()
-    expect(mocks.listBusinesses).not.toHaveBeenCalled()
+    expect(mocks.listAccessibleBusinesses).not.toHaveBeenCalled()
   })
 
   it('returns consent state without calling catalog edges when scope is absent', async () => {
@@ -119,7 +122,7 @@ describe('Meta catalog admin routes', () => {
       selectedBusinessId: null,
       catalogs: [],
     })
-    expect(mocks.listBusinesses).not.toHaveBeenCalled()
+    expect(mocks.listAccessibleBusinesses).not.toHaveBeenCalled()
     expect(mocks.listCatalogs).not.toHaveBeenCalled()
   })
 

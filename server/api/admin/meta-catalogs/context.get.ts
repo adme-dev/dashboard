@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { requireRole } from '~~/server/utils/auth'
-import { loadMetaCatalogConnection } from '~~/server/utils/metaCatalogAccess'
-import { listMetaBusinesses, listMetaProductCatalogs } from '~~/server/utils/metaCatalogClient'
+import { listAccessibleMetaBusinesses, loadMetaCatalogConnection } from '~~/server/utils/metaCatalogAccess'
+import { listMetaProductCatalogs } from '~~/server/utils/metaCatalogClient'
 import { throwMetaCatalogHttpError } from '~~/server/utils/metaCatalogHttp'
 
 const querySchema = z.object({
@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const businesses = await listMetaBusinesses(connection.accessToken)
+    const businesses = await listAccessibleMetaBusinesses(connection)
     const requestedBusinessId = parsed.data.businessId
     if (requestedBusinessId && !businesses.some(business => business.id === requestedBusinessId)) {
       throw createError({ statusCode: 403, statusMessage: 'The selected Meta Business is not accessible with this connection.' })

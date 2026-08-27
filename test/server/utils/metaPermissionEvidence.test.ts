@@ -68,4 +68,25 @@ describe('Meta permission capability evidence', () => {
     expect(evidence.scopes).toContain('catalog_management')
     expect(evidence.scopes).toContain('pages_show_list')
   })
+
+  it('resolves Business Login granular-scope targets when /me/businesses is empty', async () => {
+    const getBusiness = vi.fn()
+      .mockResolvedValueOnce({ id: 'business-1', name: 'ADME Advertising' })
+      .mockRejectedValueOnce(new Error('not accessible'))
+
+    const evidence = await getEffectiveMetaPermissionEvidence('token', 'catalog', {
+      getReportedPermissions: vi.fn().mockResolvedValue([]),
+      getAdAccounts: vi.fn().mockResolvedValue([]),
+      listBusinesses: vi.fn().mockResolvedValue([]),
+      getBusiness,
+      businessTargetIds: ['business-1', 'business-other'],
+      listCatalogs: vi.fn().mockResolvedValue([]),
+    })
+
+    expect(getBusiness).toHaveBeenCalledWith('business-1', 'token')
+    expect(getBusiness).toHaveBeenCalledWith('business-other', 'token')
+    expect(evidence.businesses).toEqual([{ id: 'business-1', name: 'ADME Advertising' }])
+    expect(evidence.scopes).toContain('business_management')
+    expect(evidence.scopes).toContain('catalog_management')
+  })
 })

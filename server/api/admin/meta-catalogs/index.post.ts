@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { requireRole } from '~~/server/utils/auth'
-import { loadMetaCatalogConnection, requireMetaCatalogScope } from '~~/server/utils/metaCatalogAccess'
-import { createMetaProductCatalog, listMetaBusinesses } from '~~/server/utils/metaCatalogClient'
+import { listAccessibleMetaBusinesses, loadMetaCatalogConnection, requireMetaCatalogScope } from '~~/server/utils/metaCatalogAccess'
+import { createMetaProductCatalog } from '~~/server/utils/metaCatalogClient'
 import { throwMetaCatalogHttpError } from '~~/server/utils/metaCatalogHttp'
 
 const bodySchema = z.object({
@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
   requireMetaCatalogScope(connection)
 
   try {
-    const businesses = await listMetaBusinesses(connection.accessToken)
+    const businesses = await listAccessibleMetaBusinesses(connection)
     if (!businesses.some(business => business.id === parsed.data.businessId)) {
       throw createError({ statusCode: 403, statusMessage: 'The selected Meta Business is not accessible with this connection.' })
     }

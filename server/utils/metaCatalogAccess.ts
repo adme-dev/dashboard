@@ -3,6 +3,7 @@ import { queryOne } from '~~/server/utils/db'
 import {
   getMetaProductCatalog,
   listMetaBusinesses,
+  type MetaBusiness,
   type MetaProductCatalog,
 } from '~~/server/utils/metaCatalogClient'
 
@@ -13,6 +14,7 @@ export interface MetaCatalogConnection {
   accessToken: string
   tokenExpiresAt: string | null
   scopes: string[]
+  businesses: MetaBusiness[]
 }
 
 function normalizeScopes(value: unknown): string[] {
@@ -38,8 +40,9 @@ export async function loadMetaCatalogConnection(connectionId: string): Promise<M
     access_token: string
     token_expires_at: string | Date | null
     scopes: unknown
+    metadata: unknown
   }>(
-    `SELECT id, account_id, account_name, access_token, token_expires_at, scopes
+    `SELECT id, account_id, account_name, access_token, token_expires_at, scopes, metadata
      FROM social_connections
      WHERE id = $1 AND platform = 'meta' AND status = 'active'`,
     [connectionId],
@@ -61,7 +64,42 @@ export async function loadMetaCatalogConnection(connectionId: string): Promise<M
     accessToken: row.access_token,
     tokenExpiresAt: expiresAt?.toISOString() || null,
     scopes: normalizeScopes(row.scopes),
+    businesses: normalizeBusinesses(row.metadata),
   }
+}
+
+function normalizeBusinesses(metadata: unknown): MetaBusiness[] {
+  let value = metadata
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value)
+    } catch {
+      return []
+    }
+  }
+  if (!value || typeof value !== 'object') return []
+  const businesses = (value as { businesses?: unknown }).businesses
+  if (!Array.isArray(businesses)) return []
+  return businesses
+    .filter((business): business is { id: unknown, name?: unknown } => Boolean(
+      business && typeof business === 'object' && (business as { id?: unknown }).id,
+    ))
+    .map(business => ({
+      id: String(business.id),
+      name: String(business.name || business.id),
+    }))
+}
+
+export async function listAccessibleMetaBusinesses(
+  connection: MetaCatalogConnection,
+): Promise<MetaBusiness[]> {
+  const liveBusinesses = await listMetaBusinesses(connection.accessToken)
+  const businesses = new Map<string, MetaBusiness>()
+  for (const business of [...connection.businesses, ...liveBusinesses]) {
+    businesses.set(business.id, business)
+  }
+  return [...businesses.values()]
+    .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id))
 }
 
 export function requireMetaCatalogScope(connection: MetaCatalogConnection): void {
@@ -82,7 +120,7 @@ export async function requireOwnedMetaCatalog(
   requireMetaCatalogScope(connection)
   const [catalog, businesses] = await Promise.all([
     getMetaProductCatalog(catalogId, connection.accessToken),
-    listMetaBusinesses(connection.accessToken),
+    listAccessibleMetaBusinesses(connection),
   ])
   if (!catalog.businessId || !businesses.some(business => business.id === catalog.businessId)) {
     throw createError({ statusCode: 403, statusMessage: 'This catalog is not owned by an accessible Meta Business.' })

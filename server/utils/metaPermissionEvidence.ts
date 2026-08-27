@@ -1,5 +1,6 @@
 import { getAdAccounts, type MetaAdAccount } from '~~/server/utils/metaClient'
 import {
+  getMetaBusiness,
   listMetaBusinesses,
   listMetaProductCatalogs,
   type MetaBusiness,
@@ -13,6 +14,8 @@ type MetaPermissionEvidenceDependencies = {
   getReportedPermissions: (token: string) => Promise<string[]>
   getAdAccounts: (token: string) => Promise<MetaAdAccount[]>
   listBusinesses: (token: string) => Promise<MetaBusiness[]>
+  getBusiness: (businessId: string, token: string) => Promise<MetaBusiness>
+  businessTargetIds: string[]
   listCatalogs: (businessId: string, token: string) => Promise<unknown[]>
 }
 
@@ -32,6 +35,8 @@ const defaultDependencies: MetaPermissionEvidenceDependencies = {
   getReportedPermissions: getGrantedMetaPermissions,
   getAdAccounts,
   listBusinesses: listMetaBusinesses,
+  getBusiness: getMetaBusiness,
+  businessTargetIds: [],
   listCatalogs: listMetaProductCatalogs,
 }
 
@@ -78,6 +83,23 @@ export async function getEffectiveMetaPermissionEvidence(
     businessManagement = true
   } catch {
     // The caller validates required capabilities after all probes complete.
+  }
+
+  if (businesses.length === 0 && deps.businessTargetIds.length > 0) {
+    const targetedBusinesses = await Promise.all(
+      deps.businessTargetIds.map(async businessId => {
+        try {
+          return await deps.getBusiness(businessId, token)
+        } catch {
+          return null
+        }
+      }),
+    )
+    businesses = targetedBusinesses.filter((business): business is MetaBusiness => Boolean(business))
+    if (businesses.length > 0) {
+      scopes.add('business_management')
+      businessManagement = true
+    }
   }
 
   if (intent === 'catalog' && businesses.length > 0) {

@@ -171,6 +171,26 @@ export async function listMetaBusinesses(
   return businesses.sort(stableNameSort)
 }
 
+export async function getMetaBusiness(
+  businessId: string,
+  token: string,
+  fetchImpl: MetaFetch = ofetch as MetaFetch,
+): Promise<MetaBusiness> {
+  const response = await metaRequest<{ id?: string, name?: string }>(
+    `${META_GRAPH_BASE}/${encodeURIComponent(businessId)}`,
+    token,
+    fetchImpl,
+    { query: { fields: 'id,name' } },
+  )
+  if (!response.id) {
+    throw new MetaCatalogProviderError(new Error('Meta did not return the selected Business.'))
+  }
+  return {
+    id: String(response.id),
+    name: String(response.name || response.id),
+  }
+}
+
 export async function listMetaProductCatalogs(
   businessId: string,
   token: string,

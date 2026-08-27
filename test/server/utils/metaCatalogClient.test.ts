@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  getMetaBusiness,
   MetaCatalogProviderError,
   createMetaProductCatalog,
   deleteMetaProductCatalog,
@@ -7,6 +8,22 @@ import {
   listMetaProductCatalogs,
   updateMetaProductCatalog,
 } from '~~/server/utils/metaCatalogClient'
+
+it('resolves a selected Business directly by its signed target ID', async () => {
+  const fetchImpl = vi.fn().mockResolvedValue({ id: 'biz-1', name: 'Dealer Group' })
+
+  await expect(getMetaBusiness('biz-1', 'secret-token', fetchImpl)).resolves.toEqual({
+    id: 'biz-1',
+    name: 'Dealer Group',
+  })
+  expect(fetchImpl).toHaveBeenCalledWith(
+    'https://graph.facebook.com/v25.0/biz-1',
+    expect.objectContaining({
+      headers: { Authorization: 'Bearer secret-token' },
+      query: { fields: 'id,name' },
+    }),
+  )
+})
 
 describe('Meta catalog client', () => {
   it('paginates and stably sorts accessible Businesses', async () => {
