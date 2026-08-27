@@ -78,9 +78,12 @@ export default eventHandler(async (event) => {
     const missingRequiredScope = ['business_management', 'ads_management']
       .find(scope => !grantedScopes.includes(scope))
     if (missingRequiredScope) {
+      const reportedPermissions = grantedScopes.length > 0
+        ? grantedScopes.join(', ')
+        : 'none'
       throw createError({
         statusCode: 403,
-        statusMessage: `Meta did not grant the required ${missingRequiredScope} permission. Reconnect and approve the requested access.`,
+        statusMessage: `Meta did not grant the required ${missingRequiredScope} permission. Meta reported these granted permissions: ${reportedPermissions}. Reconnect and approve the requested access.`,
       })
     }
 
