@@ -1,5 +1,4 @@
 import { ofetch } from 'ofetch'
-import { extractMetaProviderDiagnostic } from '~~/server/utils/metaClient'
 import { normalizeMetaGraphPageUrl } from '~~/server/utils/metaGraphUrl'
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v25.0'
@@ -74,6 +73,33 @@ function sanitizeProviderMessage(value: unknown, token?: string): string {
   return sanitized || 'Meta could not complete the catalog request.'
 }
 
+function extractCatalogProviderDiagnostic(error: unknown): {
+  httpStatus?: number
+  code?: number
+  subcode?: number
+  type?: string
+  traceId?: string
+} {
+  const source = error as any
+  const graphError = source?.data?.error
+    || source?._data?.error
+    || source?.response?._data?.error
+    || source?.response?.data?.error
+    || source?.cause?.data?.error
+    || {}
+  const httpStatus = Number(source?.statusCode ?? source?.status ?? source?.response?.status)
+  const code = Number(graphError.code)
+  const subcode = Number(graphError.error_subcode)
+
+  return {
+    ...(Number.isFinite(httpStatus) && httpStatus > 0 ? { httpStatus } : {}),
+    ...(Number.isFinite(code) && code > 0 ? { code } : {}),
+    ...(Number.isFinite(subcode) && subcode > 0 ? { subcode } : {}),
+    ...(typeof graphError.type === 'string' && graphError.type ? { type: graphError.type } : {}),
+    ...(typeof graphError.fbtrace_id === 'string' && graphError.fbtrace_id ? { traceId: graphError.fbtrace_id } : {}),
+  }
+}
+
 export class MetaCatalogProviderError extends Error {
   httpStatus?: number
   code?: number
@@ -91,7 +117,7 @@ export class MetaCatalogProviderError extends Error {
       token,
     ))
     this.name = 'MetaCatalogProviderError'
-    const diagnostic = extractMetaProviderDiagnostic(error)
+    const diagnostic = extractCatalogProviderDiagnostic(error)
     this.httpStatus = diagnostic.httpStatus
     this.code = diagnostic.code
     this.subcode = diagnostic.subcode
