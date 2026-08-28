@@ -32,6 +32,8 @@ const adminSections = [
   { label: 'Security', to: '/admin/security/auth', icon: 'i-lucide-shield', description: 'Authentication and audit logs' },
   { label: 'Billing', to: '/admin/billing/plans', icon: 'i-lucide-credit-card', description: 'Plans and invoices' },
   { label: 'Roles & Permissions', to: '/admin/permissions', icon: 'i-lucide-shield-check', description: 'Create custom roles and manage permission groups' },
+  { label: 'Integrations', to: '/admin/connections/integrations', icon: 'i-lucide-plug-zap', description: 'Manage provider connections, health and client bindings' },
+  { label: 'AI & MCP', to: '/admin/ai/mcp', icon: 'i-lucide-cpu', description: 'Inspect assistant gateway health and registered capability suites' },
   { label: 'AI Model Ops', to: '/admin/ai/model-ops', icon: 'i-lucide-brain-circuit', description: 'Review model routing, pricing coverage and AI surface risk' }
 ]
 </script>

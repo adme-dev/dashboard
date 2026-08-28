@@ -1235,7 +1235,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Rollback and Quota Protection',
-        content: 'Every managed install retains the previously live container version so an authorised operator can restore it quickly. A shared pacing guard keeps account discovery, drafting, publishing, verification, and rollback within Google Tag Manager API limits while preserving progress and useful errors for support.'
+        content: 'Every managed install retains the previously live container version so an authorised operator can restore it quickly. A shared pacing guard keeps provider calls within Google Tag Manager API limits. The Admin control room shows OAuth health, token expiry, client bindings, live verification and recent failures. Active owners can also discover, bind, draft, publish, verify and roll back through the registered MCP suite and its dedicated execution ledger; ordinary administrators continue to use the independent browser manager.'
       }
     ]
   },
@@ -1571,7 +1571,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Every Registered Capability',
-        content: 'Active owners can discover and execute registered capabilities across Finance, Marketing, Banners, publishing, media generation, administration and MCP integrations without application rollout, permission, budget or confirmation gates. Banner capabilities include creating an editable, unpublished 300×250 draft directly through MCP with transaction-bound idempotency and audit. Missing providers, bindings, secrets or unimplemented tools remain real operational failures.'
+        content: 'Active owners can discover and execute registered capabilities across Finance, Marketing, Banners, publishing, media generation, administration and MCP integrations without application rollout, permission, budget or confirmation gates. Registered operations include creating editable Banner Studio drafts and staged Google Tag Manager binding, drafting, publishing, verification and rollback through dedicated execution ledgers. Missing providers, bindings, secrets or unimplemented tools remain real operational failures.'
       },
       {
         title: 'Security Boundaries Stay Enforced',

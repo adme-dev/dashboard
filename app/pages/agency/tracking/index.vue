@@ -38,7 +38,10 @@ interface ClientOption {
 type ClientsResponse = ClientOption[] | { clients?: ClientOption[] }
 
 // Client filter — drives the ?clientId= query reactively.
-const selectedClient = ref<string>('all')
+const route = useRoute()
+const router = useRouter()
+const requestedClientId = typeof route.query.clientId === 'string' ? route.query.clientId : null
+const selectedClient = ref<string>(requestedClientId || 'all')
 const apiFetch = $fetch as <T = unknown>(request: string, options?: { query?: Record<string, unknown> }) => Promise<T>
 const clientsData = ref<ClientsResponse>(
   await apiFetch<ClientsResponse>('/api/agency/clients').catch(() => [])
@@ -67,8 +70,12 @@ async function refresh() {
   }
 }
 
-watch(selectedClient, () => {
+watch(selectedClient, (clientId) => {
   refresh()
+  const nextQuery = { ...route.query }
+  if (clientId === 'all') delete nextQuery.clientId
+  else nextQuery.clientId = clientId
+  void router.replace({ query: nextQuery })
 }, { immediate: true })
 const sites = computed(() => data.value?.sites ?? [])
 const siteRow = (row: unknown): TrackingSiteRow => ((row as { original?: TrackingSiteRow }).original ?? row) as TrackingSiteRow
@@ -85,10 +92,25 @@ function openCreate() {
   showCreate.value = true
 }
 
-function openInstall(id: string) {
+function openInstall(id: string, syncQuery = true) {
   installSiteId.value = id
   showInstall.value = true
+  if (syncQuery && route.query.siteId !== id) {
+    void router.replace({ query: { ...route.query, siteId: id } })
+  }
 }
+
+watch([sites, () => route.query.siteId], ([availableSites, requestedSiteId]) => {
+  if (typeof requestedSiteId !== 'string') return
+  if (availableSites.some(site => site.id === requestedSiteId)) openInstall(requestedSiteId, false)
+}, { immediate: true })
+
+watch(showInstall, (open) => {
+  if (open || typeof route.query.siteId !== 'string') return
+  const nextQuery = { ...route.query }
+  delete nextQuery.siteId
+  void router.replace({ query: nextQuery })
+})
 
 function openProviders(site: TrackingSiteRow) {
   providerSite.value = site
@@ -249,8 +271,8 @@ const columns = [
             size="xs"
             color="neutral"
             variant="soft"
-            icon="i-lucide-code"
-            label="Install"
+            icon="i-lucide-container"
+            label="Install / GTM"
             @click="openInstall(siteRow(row).id)"
           />
         </div>

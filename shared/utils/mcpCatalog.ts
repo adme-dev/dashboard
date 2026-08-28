@@ -1,8 +1,8 @@
 /** Release marker returned by the exact Pages projection and forwarded by the MCP transport. */
-export const MCP_CATALOG_RELEASE = '2026-08-24.13'
-export const MCP_PREVIOUS_CATALOG_RELEASE = '2026-08-21.12'
-export const MCP_MIN_TOOL_COUNT = 86
-export const MCP_SERVER_VERSION = '1.0.3'
+export const MCP_CATALOG_RELEASE = '2026-08-28.14'
+export const MCP_PREVIOUS_CATALOG_RELEASE = '2026-08-24.13'
+export const MCP_MIN_TOOL_COUNT = 95
+export const MCP_SERVER_VERSION = '1.0.4'
 
 export function compareMcpCatalogReleases(left: string, right: string): number {
   const parse = (value: string) => {

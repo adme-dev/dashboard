@@ -110,6 +110,16 @@ const adminNavItems = [
     to: '/admin/permissions'
   },
   {
+    label: 'Integrations',
+    icon: 'i-lucide-plug-zap',
+    to: '/admin/connections/integrations'
+  },
+  {
+    label: 'AI & MCP',
+    icon: 'i-lucide-brain-circuit',
+    to: '/admin/ai/mcp'
+  },
+  {
     label: 'Settings',
     icon: 'i-lucide-settings',
     to: '/admin/settings'
