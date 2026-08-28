@@ -26,6 +26,7 @@ const platformNames: Record<string, string> = {
   snapchat: 'Snapchat Ads',
   twitter: 'X (Twitter) Ads',
   microsoft_ads: 'Microsoft Ads',
+  gtm: 'Google Tag Manager',
 }
 
 const platformName = computed(() => platformNames[result.value.platform] || result.value.platform)
@@ -56,6 +57,9 @@ onMounted(() => {
         </p>
         <p v-if="isMetaCatalogConnection" class="text-sm text-muted">
           Business catalog access is ready. {{ result.accounts }} ad account{{ result.accounts !== 1 ? 's' : '' }} linked.
+        </p>
+        <p v-else-if="result.platform === 'gtm'" class="text-sm text-muted">
+          XeroFlow can now discover and manage the Tag Manager containers this account can access.
         </p>
         <p v-else class="text-sm text-muted">
           {{ result.accounts }} ad account{{ result.accounts !== 1 ? 's' : '' }} linked successfully.
