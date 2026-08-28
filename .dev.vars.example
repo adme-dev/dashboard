@@ -26,6 +26,11 @@ SESSION_SECRET=your-session-secret-here
 XERO_CLIENT_ID=your-xero-client-id
 XERO_CLIENT_SECRET=your-xero-client-secret
 
+# Google Tag Manager Management API OAuth
+GTM_GOOGLE_CLIENT_ID=your-gtm-google-client-id
+GTM_GOOGLE_CLIENT_SECRET=your-gtm-google-client-secret
+GTM_GOOGLE_REDIRECT_URI=http://localhost:3000/api/agency/tracking/gtm/callback
+
 # ============================================
 # Email (Resend - Required for magic links)
 # ============================================

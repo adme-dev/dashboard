@@ -310,6 +310,8 @@ const guideItems = [
           Custom patterns configured for this site: <code class="text-[0.7rem]">{{ data.vehiclePagePatterns.join(', ') }}</code>
         </p>
       </div>
+      <!-- Managed Google Tag Manager installation -->
+      <TrackingGtmManager :site-id="siteId" />
 
       <!-- Send to a developer / third party -->
       <div class="space-y-2 rounded-lg border border-default p-3">

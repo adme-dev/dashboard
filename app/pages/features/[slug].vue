@@ -1211,6 +1211,34 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'google-tag-manager': {
+    title: 'Google Tag Manager Management',
+    slug: 'google-tag-manager',
+    icon: 'i-lucide-container',
+    category: 'Financial Operations',
+    categoryIcon: 'i-lucide-calculator',
+    categoryIconBg: 'bg-emerald-50',
+    categoryIconColor: 'text-emerald-600',
+    description: 'Install and govern client tracking through Google Tag Manager without leaving XeroFlow.',
+    details: [
+      {
+        title: 'Secure OAuth Container Discovery',
+        content: 'Connect a Google identity that already has access to the client’s Tag Manager account. XeroFlow discovers only the accounts and web containers Google authorises, stores refresh credentials encrypted, and binds one exact container to the client tracking site. No Google Ads connection is guessed or reused implicitly.'
+      },
+      {
+        title: 'Isolated Drafts and Duplicate Detection',
+        content: 'XeroFlow reads the live container before making a change. If the first-party tracking tag is already present, the operation finishes without creating a duplicate. Otherwise it creates a dedicated workspace, adds a clearly named Window Loaded trigger and XeroFlow tag, checks workspace conflicts, and compiles a preview before producing a container version.'
+      },
+      {
+        title: 'Explicit Publishing with Live Verification',
+        content: 'Publishing is a deliberate owner or administrator action against the exact linked container. XeroFlow records the previous live version, publishes with Google’s version fingerprint, reads the live container back, and only reports success when the expected tracking marker is present. The operation has its own audit trail and does not depend on generic AI or MCP mutation coordination.'
+      },
+      {
+        title: 'Rollback and Quota Protection',
+        content: 'Every managed install retains the previously live container version so an authorised operator can restore it quickly. A shared pacing guard keeps account discovery, drafting, publishing, verification, and rollback within Google Tag Manager API limits while preserving progress and useful errors for support.'
+      }
+    ]
+  },
   'profit-loss': {
     title: 'Profit & Loss',
     slug: 'profit-loss',

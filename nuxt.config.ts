@@ -194,6 +194,11 @@ export default defineNuxtConfig({
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || '/api/agency/social/google/callback',
     ga4RedirectUri: process.env.GA4_REDIRECT_URI || '/api/agency/social/ga4/callback',
+    // Dedicated GTM Management API OAuth app. Credentials fall back to the
+    // generic Google client only when these values are intentionally omitted.
+    gtmGoogleClientId: process.env.GTM_GOOGLE_CLIENT_ID || '',
+    gtmGoogleClientSecret: process.env.GTM_GOOGLE_CLIENT_SECRET || '',
+    gtmGoogleRedirectUri: process.env.GTM_GOOGLE_REDIRECT_URI || '/api/agency/tracking/gtm/callback',
     searchConsoleRedirectUri: process.env.SEARCH_CONSOLE_REDIRECT_URI
       || '/api/agency/search-authority/google/callback',
     googleDeveloperToken: process.env.GOOGLE_DEVELOPER_TOKEN || '',
@@ -396,6 +401,9 @@ export default defineNuxtConfig({
 
   nitro: {
     preset: 'cloudflare_pages',
+    // Cloudflare Pages enforces a 25 MiB uncompressed Function limit. Server
+    // source maps add substantial upload weight and are not required at runtime.
+    sourceMap: false,
     // Cloudflare Workers supports BigInt. Target ES2020 so esbuild does not
     // downlevel BigInt-backed range/cost arithmetic as an ES2019 compatibility warning.
     esbuild: {
@@ -458,6 +466,17 @@ export default defineNuxtConfig({
   // Environment variable validation helper
   // This ensures required vars are set in production
   hooks: {
+    'build:manifest'(manifest) {
+      // Route chunks are already discovered and loaded by the client entry.
+      // Repeating every non-entry script throughout Nuxt's server-side preload
+      // graph adds about 1 MiB to the Cloudflare Function without changing
+      // correctness. Keep entry scripts and CSS preload metadata intact.
+      for (const resource of Object.values(manifest)) {
+        if (resource.resourceType === 'script' && !resource.isEntry) {
+          resource.preload = false
+        }
+      }
+    },
     'nitro:config'() {
       // Runtime secrets are injected by Cloudflare Pages and are often absent
       // during local production builds. Enable this in CI/release validation with

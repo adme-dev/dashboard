@@ -25,6 +25,7 @@ const platformNames: Record<string, string> = {
   snapchat: 'Snapchat Ads',
   twitter: 'X (Twitter) Ads',
   microsoft_ads: 'Microsoft Ads',
+  gtm: 'Google Tag Manager',
 }
 
 const platformName = computed(() => platformNames[result.value.platform] || result.value.platform)
@@ -48,7 +49,10 @@ onMounted(() => {
           <UIcon name="i-lucide-check" class="w-7 h-7 text-success" />
         </div>
         <p class="text-base font-semibold">{{ platformName }} connected</p>
-        <p class="text-sm text-muted">
+        <p v-if="result.platform === 'gtm'" class="text-sm text-muted">
+          XeroFlow can now discover and manage the Tag Manager containers this account can access.
+        </p>
+        <p v-else class="text-sm text-muted">
           {{ result.accounts }} ad account{{ result.accounts !== 1 ? 's' : '' }} linked successfully.
         </p>
         <p v-if="hasOpener" class="text-xs text-muted">This window will close automatically...</p>
