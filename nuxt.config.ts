@@ -401,6 +401,9 @@ export default defineNuxtConfig({
 
   nitro: {
     preset: 'cloudflare_pages',
+    // Cloudflare Pages enforces a 25 MiB uncompressed Function limit. Server
+    // source maps add substantial upload weight and are not required at runtime.
+    sourceMap: false,
     // Cloudflare Workers supports BigInt. Target ES2020 so esbuild does not
     // downlevel BigInt-backed range/cost arithmetic as an ES2019 compatibility warning.
     esbuild: {
