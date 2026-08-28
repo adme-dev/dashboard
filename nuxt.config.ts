@@ -194,6 +194,11 @@ export default defineNuxtConfig({
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || '/api/agency/social/google/callback',
     ga4RedirectUri: process.env.GA4_REDIRECT_URI || '/api/agency/social/ga4/callback',
+    // Dedicated GTM Management API OAuth app. Credentials fall back to the
+    // generic Google client only when these values are intentionally omitted.
+    gtmGoogleClientId: process.env.GTM_GOOGLE_CLIENT_ID || '',
+    gtmGoogleClientSecret: process.env.GTM_GOOGLE_CLIENT_SECRET || '',
+    gtmGoogleRedirectUri: process.env.GTM_GOOGLE_REDIRECT_URI || '/api/agency/tracking/gtm/callback',
     searchConsoleRedirectUri: process.env.SEARCH_CONSOLE_REDIRECT_URI
       || '/api/agency/search-authority/google/callback',
     googleDeveloperToken: process.env.GOOGLE_DEVELOPER_TOKEN || '',
