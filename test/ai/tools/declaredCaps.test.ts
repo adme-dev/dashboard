@@ -32,6 +32,7 @@ const ALLOWLIST: Record<string, string> = {
   'server/utils/ai/mcp/feedTools.ts': 'truncates an unparseable filter string for display',
   'server/utils/ai/mcp/generationRunner.ts': 'truncates an error message',
   'server/utils/ai/mcp/generationTools.ts': 'truncates an error message',
+  'server/utils/ai/mcp/gtmRunner.ts': 'truncates an error message',
   'server/utils/ai/mcp/videoTools.ts': 'truncates an error message',
 }
 

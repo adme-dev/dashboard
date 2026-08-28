@@ -8,9 +8,9 @@ import {
 } from '../../server/utils/godMode/featureGate'
 
 const API_INVENTORY = {
-  totalRouteFiles: 2056,
-  mutationRouteFiles: 1132,
-  explicitlyGuardedMutationFiles: 396,
+  totalRouteFiles: 2059,
+  mutationRouteFiles: 1133,
+  explicitlyGuardedMutationFiles: 397,
   guardedMutationFilesWithTransactionCall: 46
 } as const
 
@@ -48,9 +48,9 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2056,
-      mutationRouteFiles: 1132,
-      explicitlyGuardedMutationFiles: 396,
+      totalRouteFiles: 2059,
+      mutationRouteFiles: 1133,
+      explicitlyGuardedMutationFiles: 397,
       guardedMutationFilesWithTransactionCall: 46
     })
   })

@@ -121,7 +121,9 @@ describe('authoritative registered MCP suite projection', () => {
       'list_video_source_assets',
       'propose_video_generation',
       'list_banner_projects',
-      'propose_banner_render'
+      'propose_banner_render',
+      'list_gtm_connections',
+      'publish_gtm_change_set'
     ]))
   })
 
@@ -189,9 +191,9 @@ describe('authoritative registered MCP suite projection', () => {
     const manifests = projectGodModeTools(ownerContext)
     const executions = resolveGodModeMcpExecutions(ownerContext)
 
-    expect(manifests).toHaveLength(86)
-    expect(executions).toHaveLength(86)
-    expect(new Set(executions.map(execution => execution.name)).size).toBe(86)
+    expect(manifests).toHaveLength(95)
+    expect(executions).toHaveLength(95)
+    expect(new Set(executions.map(execution => execution.name)).size).toBe(95)
     expect(manifests.map(manifest => manifest.name)).toContain('list_video_source_assets')
     expect(manifests.map(manifest => manifest.name)).toContain('propose_promote_creative_asset')
     expect(resolveGodModeMcpExecution(ownerContext, 'list_video_source_assets')).toMatchObject({

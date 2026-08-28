@@ -244,6 +244,27 @@ export async function getGtmSiteStatus(event: H3Event, siteId: string): Promise<
   }
 }
 
+/** Stored GTM state for dashboards and MCP diagnostics. This never calls Google or updates verification. */
+export async function getStoredGtmSiteStatus(siteId: string): Promise<{
+  binding: GtmSiteBindingSummary | null
+  changes: unknown[]
+}> {
+  const binding = await loadBindingForSite(siteId)
+  const changes = binding
+    ? await queryRows(
+        `SELECT id, action_type, status, requested_at, approved_at, executed_at,
+                workspace_path, created_version_path, previous_live_version_path,
+                error_code, error_message
+           FROM gtm_change_sets
+          WHERE binding_id = $1
+          ORDER BY created_at DESC
+          LIMIT 10`,
+        [binding.binding_id]
+      )
+    : []
+  return { binding: binding ? toBindingSummary(binding) : null, changes }
+}
+
 export async function installXeroFlowViaGtm(event: H3Event, input: {
   siteId: string
   userId: string
@@ -315,11 +336,11 @@ export async function installXeroFlowViaGtm(event: H3Event, input: {
   }
   if (!changeSet) throw new Error('Unable to create GTM change set')
 
-  // Remaining calls: workspace, trigger, tag, status, quick preview, version,
-  // and optionally publish + live read-back.
-  await reserveGtmApiQuota(input.publish ? 8 : 6)
-
   try {
+    // Remaining calls: workspace, trigger, tag, status, quick preview, version,
+    // and optionally publish + live read-back. Reserve after the change-set row exists so a
+    // pacing failure is recorded instead of leaving an executing operation behind.
+    await reserveGtmApiQuota(input.publish ? 8 : 6)
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     const workspace = await createGtmWorkspace(credential.token, binding.container_path, {
       name: `XeroFlow - ${binding.site_name} - ${stamp}`.slice(0, 200),
@@ -460,9 +481,9 @@ export async function publishGtmChangeSet(event: H3Event, input: {
   )
   if (!change) throw createError({ statusCode: 409, statusMessage: 'This GTM change set is not ready to publish' })
 
-  const credential = await resolveGtmAccessToken(event, binding.connection_id)
-  await reserveGtmApiQuota(2)
   try {
+    const credential = await resolveGtmAccessToken(event, binding.connection_id)
+    await reserveGtmApiQuota(2)
     const response = await publishGtmVersion(
       credential.token,
       change.created_version_path,
@@ -536,9 +557,9 @@ export async function rollbackGtmChangeSet(event: H3Event, input: {
   )
   if (!rollback) throw new Error('Unable to create GTM rollback record')
 
-  const credential = await resolveGtmAccessToken(event, binding.connection_id)
-  await reserveGtmApiQuota(2)
   try {
+    const credential = await resolveGtmAccessToken(event, binding.connection_id)
+    await reserveGtmApiQuota(2)
     const published = await publishGtmVersion(
       credential.token,
       source.previous_live_version_path,

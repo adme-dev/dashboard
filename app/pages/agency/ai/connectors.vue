@@ -6,6 +6,7 @@ interface MyToolsResponse {
   enabled: boolean
   workerOrigin: string
   role: string
+  authority?: 'god_mode'
   tools: McpTool[]
 }
 
@@ -27,6 +28,7 @@ await refreshTools()
 const enabled = computed(() => data.value?.enabled ?? false)
 const role = computed(() => data.value?.role ?? '')
 const tools = computed(() => data.value?.tools ?? [])
+const isGodMode = computed(() => data.value?.authority === 'god_mode')
 
 const connectorUrl = computed(() => {
   const origin = (data.value?.workerOrigin || 'https://mcp-server.adme-dev.workers.dev').replace(/\/$/, '')
@@ -100,13 +102,20 @@ const steps: Record<string, string[]> = {
             </h1>
             <p class="text-sm text-[var(--ui-text-muted)] leading-relaxed">
               Connect your AI assistant to XeroFlow and ask it about your work in plain language —
-              finance, ad spend, tasks, clients, briefs and more. It sees only the data your role
-              already lets you see. Beyond looking things up, creative roles can also
-              <span class="font-medium text-[var(--ui-text)]">generate owned, licence-clear media</span>
-              (voiceover, music) and browse video projects. It can’t edit, send, or delete your
-              platform records — those writing actions aren’t exposed.
+              finance, ad spend, tasks, clients, briefs and more. Ordinary connections see only the
+              role-scoped tools available to that user. Owners with active God mode also receive the
+              registered write-capable suites, including audited Google Tag Manager operations.
             </p>
           </div>
+
+          <UAlert
+            v-if="isGodMode"
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-shield-alert"
+            title="Owner God mode is active"
+            description="This connector includes audited mutation tools. Live Google Tag Manager publishing and rollback use exact resource IDs, provider read-back, idempotency and the dedicated God-mode execution ledger."
+          />
 
           <UAlert
             v-if="!enabled"
@@ -196,9 +205,16 @@ const steps: Record<string, string[]> = {
 
             <div class="space-y-3">
               <p class="text-sm text-[var(--ui-text-muted)]">
-                These are the exact tools available to your role. Most look up your data; creative
-                roles also get owned-media generation (voiceover, music) and video discovery. None of
-                them edit, send, or delete your platform records (tasks, clients, finances).
+                These are the exact tools available to this connection.
+                <template v-if="isGodMode">
+                  Owner God mode exposes the complete registered catalog, including separately
+                  audited write suites. Google Tag Manager changes still follow draft, publish,
+                  verify and rollback boundaries.
+                </template>
+                <template v-else>
+                  Most look up your data; creative roles also get owned-media generation and video
+                  discovery. Platform mutation suites are not exposed.
+                </template>
               </p>
 
               <div v-if="pending" class="text-sm text-[var(--ui-text-dimmed)]">Loading your tools…</div>
@@ -237,7 +253,8 @@ const steps: Record<string, string[]> = {
               </li>
               <li class="flex gap-2.5">
                 <UIcon name="i-lucide-eye" class="w-4 h-4 mt-0.5 text-[var(--ui-text-muted)] shrink-0" />
-                <span><span class="font-medium">No platform writes.</span> It looks things up and (for creative roles) can generate owned, licence-clear media — but it can’t create, edit, send, or delete your tasks, clients, or finances. Generation is rate-limited and audited.</span>
+                <span v-if="isGodMode"><span class="font-medium">Writes cross a dedicated boundary.</span> Owner mutations run through the trusted God-mode coordinator and its external-provider dispatch ledger; ordinary browser GTM controls do not depend on this MCP path.</span>
+                <span v-else><span class="font-medium">No platform writes.</span> It looks things up and can generate permitted owned media, but registered mutation suites are not exposed.</span>
               </li>
               <li class="flex gap-2.5">
                 <UIcon name="i-lucide-scroll-text" class="w-4 h-4 mt-0.5 text-[var(--ui-text-muted)] shrink-0" />
@@ -245,7 +262,7 @@ const steps: Record<string, string[]> = {
               </li>
               <li class="flex gap-2.5">
                 <UIcon name="i-lucide-clock" class="w-4 h-4 mt-0.5 text-[var(--ui-text-muted)] shrink-0" />
-                <span><span class="font-medium">Actions are coming later.</span> Letting an assistant take actions (like submitting a brief) is a separate, opt-in step with extra confirmation.</span>
+                <span><span class="font-medium">Access is explicit.</span> Tool availability is projected from the signed-in identity, current role, suite flags and active owner authority on every connection.</span>
               </li>
             </ul>
           </UCard>

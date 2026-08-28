@@ -432,6 +432,15 @@ void refreshMeasurement()
           </div>
 
           <div v-if="profile" class="flex flex-wrap items-center gap-2">
+            <UButton
+              v-if="canConfigure"
+              :to="`/agency/tracking?clientId=${clientId}`"
+              size="sm"
+              color="neutral"
+              variant="soft"
+              icon="i-lucide-container"
+              label="Site tracking & GTM"
+            />
             <UBadge :color="profile.enabled ? 'success' : 'neutral'" variant="subtle">
               {{ profileState }}
             </UBadge>

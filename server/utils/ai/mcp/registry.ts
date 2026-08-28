@@ -31,6 +31,7 @@ import {
 } from './videoTools'
 import { projectBannerMcpSuite, projectBannerTools, resolveBannerMcpExecutions } from './bannerTools'
 import { projectFeedMcpSuite, projectFeedTools, resolveFeedMcpExecutions } from './feedTools'
+import { projectGtmMcpSuite, projectGtmTools, resolveGtmMcpExecutions } from './gtmTools'
 
 export interface RegisteredMcpSuite {
   key: string
@@ -87,6 +88,12 @@ const suiteDefinitions: RegisteredMcpSuite[] = [
     project: projectFinancialMcpSuite,
     executions: resolveFinancialMcpExecutions,
     sourceProjectors: [projectFinancialTools]
+  },
+  {
+    key: 'google-tag-manager',
+    project: projectGtmMcpSuite,
+    executions: resolveGtmMcpExecutions,
+    sourceProjectors: [projectGtmTools]
   }
 ]
 

@@ -434,7 +434,9 @@ const footerNav = computed<NavigationMenuItem[]>(() => {
       children: [
         { label: 'User Management', icon: 'i-lucide-users', to: '/admin/users', onSelect: close },
         { label: 'Teams', icon: 'i-lucide-users-round', to: '/admin/teams', onSelect: close },
-        { label: 'Roles & Permissions', icon: 'i-lucide-shield-check', to: '/admin/permissions', onSelect: close }
+        { label: 'Roles & Permissions', icon: 'i-lucide-shield-check', to: '/admin/permissions', onSelect: close },
+        { label: 'Integrations', icon: 'i-lucide-plug-zap', to: '/admin/connections/integrations', onSelect: close },
+        { label: 'AI & MCP', icon: 'i-lucide-cpu', to: '/admin/ai/mcp', onSelect: close }
       ]
     })
   }
