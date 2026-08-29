@@ -13,6 +13,7 @@
 
 import { xeroFetch, camelCaseKeysDeep } from './xeroClient'
 import { execute, query } from './db'
+import { findCommitmentMatches, applyMatch } from './commitmentMatcher'
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -29,6 +30,8 @@ export interface XeroSyncResult {
   rollupsRecomputed: number
   mrrContacts: number
   insightsRecomputed: number
+  /** Forecast commitments auto-matched to real bills this run. */
+  commitmentsMatched: number
   durationMs: number
   errors: string[]
 }
@@ -248,14 +251,14 @@ const INVOICES_MAX_PAGES = 50  // 50 × 100 = 5000 invoices safety cap
 export async function syncXeroInvoicesCache(opts: SyncOpts): Promise<number> {
   const { tenantId, accessToken, modifiedAfter } = opts
   let upserted = 0
+  // Invoices already upserted this run (delta pass) — the open-document
+  // sweep below skips them rather than re-landing and re-writing.
+  const upsertedIds = new Set<string>()
 
-  // Sync both ACCREC (sales) and ACCPAY (purchases). Customers UI only
-  // reads ACCREC but ACCPAY is cheap to grab and unlocks the supplier view
-  // later for free.
-  for (const type of ['ACCREC', 'ACCPAY'] as const) {
+  const pageThrough = async (type: 'ACCREC' | 'ACCPAY', where: string, useDelta: boolean) => {
     for (let page = 1; page <= INVOICES_MAX_PAGES; page++) {
       const params = new URLSearchParams({
-        where: `Type=="${type}"`,
+        where,
         order: 'Date DESC',
         page: String(page),
         pageSize: '100',
@@ -267,7 +270,7 @@ export async function syncXeroInvoicesCache(opts: SyncOpts): Promise<number> {
         path: `Invoices?${params.toString()}`,
         // Delta path: server-side If-Modified-Since filter — an unchanged org
         // costs one call per type instead of a full page-through.
-        headers: buildModifiedAfterHeader(modifiedAfter),
+        headers: useDelta ? buildModifiedAfterHeader(modifiedAfter) : undefined,
         // Raw so the landing layer stores the payload exactly as sent
         // (ADR-007); camelCase per record below for processing.
         raw: true,
@@ -278,10 +281,11 @@ export async function syncXeroInvoicesCache(opts: SyncOpts): Promise<number> {
 
       for (const rawInv of rawInvoices) {
         const inv = camelCaseKeysDeep(rawInv)
+        if (inv.invoiceID && upsertedIds.has(inv.invoiceID)) continue
         // Land BEFORE the cache-side skips: the audit layer keeps everything
         // Xero sends, including DELETED records the cache ignores.
         await landRaw('invoice', tenantId, inv.invoiceID, inv.updatedDateUTC, rawInv)
-        if (modifiedAfter && inv.updatedDateUTC) {
+        if (useDelta && modifiedAfter && inv.updatedDateUTC) {
           const updated = new Date(inv.updatedDateUTC)
           if (updated < modifiedAfter) continue
         }
@@ -343,11 +347,29 @@ export async function syncXeroInvoicesCache(opts: SyncOpts): Promise<number> {
             inv.updatedDateUTC ? new Date(inv.updatedDateUTC) : null,
           ],
         )
+        if (inv.invoiceID) upsertedIds.add(inv.invoiceID)
         upserted++
       }
 
       if (rawInvoices.length < 100) break
     }
+  }
+
+  // Delta pass: both directions, cheap once the cache is warm.
+  for (const type of ['ACCREC', 'ACCPAY'] as const) {
+    await pageThrough(type, `Type=="${type}"`, true)
+  }
+
+  // Open-document sweep: every unpaid/draft document regardless of invoice
+  // date. The delta pass windows on modified time, so an open bill entered
+  // (or dated) before the cache was first warmed would otherwise never land —
+  // the Treasury forecast and commitment matcher both read this cache, and
+  // "absent from cache" must mean "absent from Xero" for open payables.
+  // Open documents number in the dozens, so this costs ~1 call per type per
+  // run — negligible against the 5,000/day quota (see PR #381).
+  const OPEN_WHERE = '(Status=="AUTHORISED" OR Status=="SUBMITTED" OR Status=="DRAFT")'
+  for (const type of ['ACCREC', 'ACCPAY'] as const) {
+    await pageThrough(type, `Type=="${type}" AND ${OPEN_WHERE}`, false)
   }
 
   return upserted
@@ -935,6 +957,22 @@ export async function fullCustomerSync(opts: {
     errors.push(`invoices: ${e?.statusMessage ?? e?.message ?? String(e)}`)
   }
 
+  // Auto-match forecast commitments against freshly-synced bills: a real
+  // accounting document supersedes an estimate (see commitmentMatcher.ts).
+  // Only 'auto' confidence is applied unattended; 'suggested' waits for a
+  // human via POST /api/cashflow/commitments/match.
+  let commitmentsMatched = 0
+  try {
+    const matches = await findCommitmentMatches(tenantId)
+    for (const m of matches) {
+      if (m.confidence !== 'auto') continue
+      await applyMatch(tenantId, m.commitmentId, m.invoiceId)
+      commitmentsMatched++
+    }
+  } catch (e: any) {
+    errors.push(`commitment-match: ${e?.statusMessage ?? e?.message ?? String(e)}`)
+  }
+
   let mrrMap = new Map<string, number>()
   try {
     mrrMap = await syncRepeatingInvoiceMRR({ tenantId, accessToken })
@@ -975,6 +1013,7 @@ export async function fullCustomerSync(opts: {
     rollupsRecomputed,
     mrrContacts,
     insightsRecomputed,
+    commitmentsMatched,
     durationMs: Date.now() - start,
     errors,
   }
