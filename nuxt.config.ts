@@ -401,6 +401,12 @@ export default defineNuxtConfig({
 
   nitro: {
     preset: 'cloudflare_pages',
+    // Database helpers resolve Cloudflare bindings from Nitro's active request.
+    // Without async context, useEvent() throws and Hyperdrive silently falls
+    // through to the local-only DATABASE_URL path.
+    experimental: {
+      asyncContext: true
+    },
     // Cloudflare Pages enforces a 25 MiB uncompressed Function limit. Server
     // source maps add substantial upload weight and are not required at runtime.
     sourceMap: false,

@@ -69,6 +69,14 @@ describe('Cloudflare Hyperdrive production binding', () => {
     expect(dbUtil).toContain('const sqlFn = getSql()')
   })
 
+  it('enables Nitro request context before database helpers resolve Hyperdrive with useEvent', () => {
+    const nuxtConfig = readFileSync('nuxt.config.ts', 'utf8')
+    const dbUtil = readFileSync('server/utils/db.ts', 'utf8')
+
+    expect(dbUtil).toContain('const event = useEvent()')
+    expect(nuxtConfig).toContain('asyncContext: true')
+  })
+
   it('documents Hyperdrive as active production infrastructure, not pending setup', () => {
     const optimizationPlan = readFileSync('docs/cloudflare-optimization-plan.md', 'utf8')
 
