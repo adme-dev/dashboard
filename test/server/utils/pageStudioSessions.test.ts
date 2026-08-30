@@ -1,5 +1,5 @@
 import { generateKeyPairSync } from 'node:crypto'
-import { importSPKI, jwtVerify } from 'jose'
+import { importPKCS8, importSPKI, jwtVerify, SignJWT } from 'jose'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -8,6 +8,7 @@ import {
   PAGE_STUDIO_SESSION_AUDIENCE,
   PAGE_STUDIO_SESSION_TOKEN_TYPE,
   signPageStudioSessionToken,
+  verifyPageStudioSessionToken,
   type PageStudioSessionError,
   type PageStudioSessionClaims,
   type PageStudioSessionQueryClient
@@ -84,6 +85,27 @@ describe('Page Studio editor sessions', () => {
       code: 'SESSION_CLAIMS_INVALID',
       statusCode: 500
     })
+  })
+
+  it('projects a correctly signed token with invalid scoped claims as a 401', async () => {
+    const keys = signingKeys()
+    const invalidClaims = claims({ expiresAt: 1_901 })
+    const token = await new SignJWT(invalidClaims)
+      .setProtectedHeader({ alg: 'ES256', typ: PAGE_STUDIO_SESSION_TOKEN_TYPE })
+      .setIssuer(ISSUER)
+      .setAudience(PAGE_STUDIO_SESSION_AUDIENCE)
+      .setSubject(invalidClaims.userId)
+      .setJti(invalidClaims.nonce)
+      .setIssuedAt(invalidClaims.issuedAt)
+      .setExpirationTime(invalidClaims.expiresAt)
+      .sign(await importPKCS8(keys.privateKey, 'ES256'))
+
+    await expect(verifyPageStudioSessionToken(
+      token,
+      keys.publicKey,
+      ISSUER,
+      new Date(1_001_000)
+    )).rejects.toMatchObject({ code: 'SESSION_TOKEN_INVALID', statusCode: 401 })
   })
 
   it('issues an agency session with raw source editing and appends no token to the database', async () => {

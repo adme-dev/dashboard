@@ -57,6 +57,7 @@ Implemented routes:
 - `GET /internal/page-studio/checkpoints/latest`
 - `POST /internal/page-studio/versions`
 - `POST /internal/page-studio/audit-events`
+- `POST /internal/page-studio/delivery/previews/authorize`
 
 Implemented behavior:
 
@@ -67,6 +68,7 @@ Implemented behavior:
 - editor-session responses are private/no-store and use the exact `XEROFLOW-PAGE-STUDIO-SESSION` ES256 contract with a maximum 15-minute lifetime;
 - agency sessions require `PAGE_STUDIO_EDIT` and may receive `source:edit`; client sessions derive tenant scope from the exact authenticated client/site/editor membership and never receive `source:edit` in the first release;
 - session issuance locks the site and entitlement, rechecks site state plus the entitlement status/effective window, records only scoped claims and revocation state, and appends `session.issued` audit evidence atomically;
+- preview authorization verifies the exact ES256 session contract, requires `workspace:preview`, matches every scoped claim against the unrevoked nonce ledger, rechecks the current site and entitlement, and resolves only the exact active preview hostname and succeeded immutable build;
 - only the current draft can enter review;
 - only the current submitted version can be approved, rejected, or returned to draft;
 - reviews record the locked digest and append audit evidence atomically.
@@ -81,11 +83,11 @@ Checkpoint registration validates the exact tenant/client/site R2 key, treats an
 
 ### Service-binding gateway
 
-`workers/page-studio-control` implements the service-only gateway expected by Page Studio's `CONTROL_PLANE` bindings. It has no `workers.dev` hostname or public route, accepts only `GET`/`POST` requests under `/internal/page-studio/`, strips caller authorization, cookies, forwarding headers, and non-allowlisted headers, then injects `PAGE_STUDIO_CONTROL_SECRET` for the Dashboard hop. The Dashboard origin is restricted to the reviewed production or preview Pages hostname, redirects are rejected to prevent credential forwarding, upstream bodies remain streamed, and response headers are projected through an allowlist.
+`workers/page-studio-control` implements the service-only gateway expected by Page Studio's `CONTROL_PLANE` bindings. It has no `workers.dev` hostname or public route, accepts only `GET`/`POST` requests under `/internal/page-studio/`, strips caller authorization, cookies, forwarding headers, and non-allowlisted headers, then injects `PAGE_STUDIO_CONTROL_SECRET` for the Dashboard hop. The raw user preview credential is forwarded in `x-xeroflow-preview-token` only for the exact `POST /internal/page-studio/delivery/previews/authorize` route, so it cannot overwrite machine authentication or bleed into another endpoint. The Dashboard origin is restricted to the reviewed production or preview Pages hostname, redirects are rejected to prevent credential forwarding, upstream bodies remain streamed, and response headers are projected through an allowlist.
 
-The Wrangler configuration declares separate production and staging origins, the required encrypted secret, generated binding types, current compatibility settings, and logs/traces. Five gateway tests, strict Worker typecheck, and the staging Wrangler dry run pass. The deployed bundle is 4.60 KiB uploaded and 1.58 KiB gzip.
+The Wrangler configuration declares separate production and staging origins, the required encrypted secret, generated binding types, current compatibility settings, and logs/traces. Six gateway tests, strict Worker typecheck, and the staging Wrangler dry run pass. The currently deployed bundle is 4.60 KiB uploaded and 1.58 KiB gzip.
 
-On 2026-08-30, Dashboard commit `7bb9dcabf` was deployed through the guarded `pnpm deploy:preview` path to immutable Pages deployment `e863e5f6.agency-dashboard-6cm.pages.dev` and the stable `preview.agency-dashboard-6cm.pages.dev` alias. Both returned 200, while the internal checkpoint route returned the expected `MACHINE_AUTH_REQUIRED` 401 without a bearer credential. The shared credential was installed as encrypted preview/staging secrets without logging its value, and all plaintext temporary files were removed. The private `xeroflow-page-studio-control-staging` Worker is active at 100% on version `2a7aa0fd-7a0f-4115-87ec-25711f49c75e`, with no public target. End-to-end service-binding verification remains gated on a Page Studio staging consumer.
+On 2026-08-30, Dashboard commit `962ffa6af` was deployed through the guarded `pnpm deploy:preview` path to immutable Pages deployment `f2b7ef73.agency-dashboard-6cm.pages.dev` and the stable `preview.agency-dashboard-6cm.pages.dev` alias. Both returned 200, while both editor-session routes returned the expected unauthenticated 401 instead of a server error. The machine secret, exact issuer, and private signing key were installed as encrypted preview bindings. The matching public verification key is installed in Dashboard preview and the private staging Sandbox; all plaintext temporary key files were removed. The private `xeroflow-page-studio-sandbox-staging` Worker is active on version `7ca0b557-dc25-4f7c-8fe1-03fc27bcce8c` with no public target and its container application is provisioned. The private control Worker remains active on version `2a7aa0fd-7a0f-4115-87ec-25711f49c75e` until the dedicated preview-header gateway update is deployed.
 
 ## Verification evidence
 
@@ -97,21 +99,21 @@ On 2026-08-30, Dashboard commit `7bb9dcabf` was deployed through the guarded `pn
 - Regression coverage proves a Page Studio-only custom role cannot inherit legacy `ADMIN` authority.
 - 28 machine-auth, transaction, error-contract, and internal-route tests pass for the new control boundary.
 - The disposable PostgreSQL test applies migration 402 twice and passes real checkpoint create/replay, latest-pointer, version create/replay, and typed audit create/replay flows; the temporary container was removed after the run.
-- Nine focused session tests prove ES256 interoperability with the Page Studio verifier contract, lifetime enforcement, agency/client capability separation, effective-entitlement and membership denial, no token persistence, authenticated endpoint scope, UUID validation, and private/no-store responses.
-- The full focused Page Studio gate passes 69 tests with one disposable-PostgreSQL harness test environment-skipped; the complete Page Studio lint scope is clean. Full Nuxt typecheck still exits on the repository's existing unrelated error inventory and reports no Page Studio diagnostics.
+- Ten focused session and issuer-endpoint tests prove ES256 interoperability with the Page Studio verifier contract, lifetime enforcement, malformed signed-claim projection, agency/client capability separation, effective-entitlement and membership denial, no token persistence, authenticated endpoint scope, UUID validation, and private/no-store responses.
+- The full focused Page Studio gate passes 75 tests with one disposable-PostgreSQL harness test environment-skipped; the complete Page Studio lint scope is clean. Full Nuxt typecheck still exits on the repository's existing unrelated error inventory and reports no Page Studio diagnostics.
 - `pnpm audit --prod --audit-level high` reports 17 existing high-severity transitive advisories in Zero, Nuxt/tooling, and Cloudflare Think dependency chains. None involve the newly added direct `jose` dependency; remediation and reachability review remain a separate production-risk gate.
 
 ## Remaining release gates
 
-- [ ] Complete the machine-authenticated internal build, release, lead, analytics, host-resolution, and preview-authorization APIs. Checkpoint, latest-pointer, version registration, and audit ingestion are implemented.
-- [ ] Complete editor-session rollout. ES256 issuance, minimal role/entitlement capabilities, the Dashboard nonce ledger, and private/no-store responses are implemented; key installation, cross-service revocation, and secure preview-cookie exchange remain.
+- [ ] Complete the machine-authenticated internal build, release, lead, analytics, and public host-resolution APIs. Checkpoint, latest-pointer, version registration, audit ingestion, and preview authorization are implemented.
+- [ ] Complete editor-session rollout. ES256 issuance, minimal role/entitlement capabilities, encrypted key installation, the Dashboard nonce ledger, preview revocation checks, and private/no-store responses are implemented; explicit revocation mutations and secure preview-cookie exchange remain.
 - [ ] Implement site detail/update and version-history APIs.
 - [ ] Implement atomic activation and rollback transactions with optimistic pointer checks and append-only release audit.
 - [ ] Implement domain, DNS verification, asset, lead-routing, and analytics control endpoints.
 - [ ] Build agency and portal Nuxt UI v4 entry points and run browser accessibility/responsive checks.
 - [ ] Update public feature, navigation, and pricing surfaces when the UI is ready for release.
 - [x] Provision and deploy the service-binding-only staging control Worker with the matching Dashboard Pages preview secret and no public target.
-- [ ] Complete staging provisioning. Isolated R2 buckets and the private Build Worker are live; the session key pair, Sandbox/container application, remaining Workers, routes, and staging hostnames remain.
+- [ ] Complete staging provisioning. Isolated R2 buckets, the private Build Worker, asymmetric session keys, and the private Sandbox/container application are live; Delivery, Web, routes, and staging hostnames remain.
 - [ ] Verify Cloudflare for SaaS custom-hostname entitlement before enabling customer domains.
 - [ ] Run staging security, rollback, capacity, form, analytics, and custom-host smoke gates.
 - [ ] Run `pnpm deploy:check`, deploy through the guarded scripts only, and verify production health before enabling users.

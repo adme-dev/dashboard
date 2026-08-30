@@ -1,4 +1,4 @@
-import { importPKCS8, SignJWT } from 'jose'
+import { importPKCS8, importSPKI, jwtVerify, SignJWT } from 'jose'
 import type { H3Event } from 'h3'
 import { z } from 'zod'
 
@@ -26,7 +26,7 @@ const ScopedIdSchema = z.string()
   .max(128)
   .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
 
-const PageStudioSessionClaimsSchema = z.object({
+export const PageStudioSessionClaimsSchema = z.object({
   capabilities: z.array(PageStudioSessionCapabilitySchema).min(1).max(16),
   clientId: ScopedIdSchema,
   expiresAt: z.number().int().positive(),
@@ -47,6 +47,8 @@ export class PageStudioSessionError extends Error {
       | 'PORTAL_EDITOR_REQUIRED'
       | 'SESSION_CLAIMS_INVALID'
       | 'SESSION_ISSUER_UNAVAILABLE'
+      | 'SESSION_TOKEN_EXPIRED'
+      | 'SESSION_TOKEN_INVALID'
       | 'SITE_NOT_FOUND'
       | 'SITE_UNAVAILABLE',
     readonly statusCode: number,
@@ -209,6 +211,64 @@ export async function signPageStudioSessionToken(
       'SESSION_ISSUER_UNAVAILABLE',
       503,
       'Page Studio session issuance is not configured',
+      { cause: error }
+    )
+  }
+}
+
+export async function verifyPageStudioSessionToken(
+  token: string,
+  publicKeyPem: string,
+  issuer: string,
+  currentDate: Date = new Date()
+): Promise<PageStudioSessionClaims> {
+  if (!(token.length > 0 && token.length <= 8192)
+    || publicKeyPem.length < 128
+    || publicKeyPem.length > 16_384
+    || !publicKeyPem.includes('BEGIN PUBLIC KEY')
+    || !issuerIsValid(issuer)) {
+    throw new PageStudioSessionError(
+      'SESSION_TOKEN_INVALID',
+      401,
+      'Page Studio session token is invalid'
+    )
+  }
+  try {
+    const publicKey = await importSPKI(publicKeyPem, 'ES256')
+    const verified = await jwtVerify(token, publicKey, {
+      algorithms: ['ES256'],
+      audience: PAGE_STUDIO_SESSION_AUDIENCE,
+      currentDate,
+      issuer,
+      maxTokenAge: MAX_PAGE_STUDIO_SESSION_LIFETIME_SECONDS,
+      requiredClaims: ['exp', 'iat', 'jti', 'sub'],
+      typ: PAGE_STUDIO_SESSION_TOKEN_TYPE
+    })
+    const claims = validatedClaims(verified.payload as PageStudioSessionClaims)
+    if (verified.payload.exp !== claims.expiresAt
+      || verified.payload.iat !== claims.issuedAt
+      || verified.payload.jti !== claims.nonce
+      || verified.payload.sub !== claims.userId) {
+      throw new PageStudioSessionError(
+        'SESSION_TOKEN_INVALID',
+        401,
+        'Page Studio session token is invalid'
+      )
+    }
+    return claims
+  } catch (error) {
+    if (error instanceof PageStudioSessionError
+      && ['SESSION_TOKEN_EXPIRED', 'SESSION_TOKEN_INVALID'].includes(error.code)) {
+      throw error
+    }
+    const expired = typeof error === 'object'
+      && error !== null
+      && 'code' in error
+      && error.code === 'ERR_JWT_EXPIRED'
+    throw new PageStudioSessionError(
+      expired ? 'SESSION_TOKEN_EXPIRED' : 'SESSION_TOKEN_INVALID',
+      401,
+      expired ? 'Page Studio session token has expired' : 'Page Studio session token is invalid',
       { cause: error }
     )
   }

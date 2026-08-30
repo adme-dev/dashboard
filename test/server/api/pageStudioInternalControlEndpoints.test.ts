@@ -1,11 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+  authorizePageStudioPreview: vi.fn(),
   getLatestPageStudioCheckpoint: vi.fn(),
   recordPageStudioAuditEvent: vi.fn(),
   recordPageStudioCheckpoint: vi.fn(),
   registerPageStudioVersion: vi.fn(),
   requirePageStudioMachineAuth: vi.fn()
+}))
+
+vi.mock('~~/server/utils/pageStudio/delivery', async importOriginal => ({
+  ...await importOriginal<typeof import('~~/server/utils/pageStudio/delivery')>(),
+  authorizePageStudioPreview: (...args: unknown[]) => mocks.authorizePageStudioPreview(...args)
 }))
 
 vi.mock('~~/server/utils/pageStudio/machineAuth', () => ({
@@ -78,6 +84,10 @@ describe('Page Studio internal control endpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requirePageStudioMachineAuth.mockReturnValue({ service: 'page-studio' })
+    mocks.authorizePageStudioPreview.mockResolvedValue({
+      hostname: 'site.preview.staging.pages.xeroflow.com',
+      release: { environment: 'preview', releaseId: '55555555-5555-4555-8555-555555555555' }
+    })
     mocks.recordPageStudioCheckpoint.mockResolvedValue({ acknowledged: true })
     mocks.getLatestPageStudioCheckpoint.mockResolvedValue({
       checkpointId, digest, objectKey: checkpoint.objectKey
@@ -209,5 +219,39 @@ describe('Page Studio internal control endpoints', () => {
       error: { code: 'INVALID_INPUT', message: 'Invalid audit event' }
     })
     expect(mocks.recordPageStudioAuditEvent).toHaveBeenCalledTimes(1)
+  })
+
+  it('machine-authenticates preview authorization and reads the user token only from its dedicated header', async () => {
+    const { default: handler } = await import(
+      '~~/server/routes/internal/page-studio/delivery/previews/authorize.post'
+    )
+    const event: TestEvent = {
+      body: { hostname: 'site.preview.staging.pages.xeroflow.com' },
+      context: {},
+      headers: {
+        'authorization': 'Bearer machine-secret',
+        'x-xeroflow-preview-token': 'signed-preview-token'
+      }
+    }
+
+    await expect(handler(event as never)).resolves.toMatchObject({
+      hostname: 'site.preview.staging.pages.xeroflow.com',
+      release: { environment: 'preview' }
+    })
+    expect(mocks.requirePageStudioMachineAuth).toHaveBeenCalledWith(event)
+    expect(mocks.authorizePageStudioPreview).toHaveBeenCalledWith({
+      hostname: 'site.preview.staging.pages.xeroflow.com',
+      token: 'signed-preview-token'
+    }, { event })
+
+    const missingToken: TestEvent = {
+      body: { hostname: 'site.preview.staging.pages.xeroflow.com' },
+      context: {},
+      headers: { authorization: 'Bearer machine-secret' }
+    }
+    await expect(handler(missingToken as never)).resolves.toEqual({
+      error: { code: 'INVALID_INPUT', message: 'Invalid preview authorization request' }
+    })
+    expect(missingToken.responseStatus).toBe(400)
   })
 })

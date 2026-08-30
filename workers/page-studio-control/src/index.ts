@@ -15,6 +15,8 @@ const ALLOWED_RESPONSE_HEADERS = [
 ] as const
 const MAX_SECRET_BYTES = 256
 const MIN_SECRET_BYTES = 32
+const PREVIEW_AUTHORIZATION_PATH = '/internal/page-studio/delivery/previews/authorize'
+const PREVIEW_TOKEN_HEADER = 'x-xeroflow-preview-token'
 const encoder = new TextEncoder()
 
 interface GatewayConfiguration {
@@ -62,6 +64,10 @@ function forwardedRequest(request: Request, config: GatewayConfiguration): Reque
   for (const name of ALLOWED_REQUEST_HEADERS) {
     const value = request.headers.get(name)
     if (value !== null) headers.set(name, value)
+  }
+  if (request.method === 'POST' && incomingUrl.pathname === PREVIEW_AUTHORIZATION_PATH) {
+    const previewToken = request.headers.get(PREVIEW_TOKEN_HEADER)
+    if (previewToken !== null) headers.set(PREVIEW_TOKEN_HEADER, previewToken)
   }
   headers.set('authorization', `Bearer ${config.secret}`)
   headers.set('x-xeroflow-service', 'page-studio')

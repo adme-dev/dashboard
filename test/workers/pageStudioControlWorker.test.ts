@@ -104,6 +104,30 @@ describe('Page Studio control gateway Worker', () => {
     await expect(forwarded.json()).resolves.toEqual({ checkpointId: 'checkpoint_01' })
   })
 
+  it('forwards a preview credential only to the exact preview authorization route', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ acknowledged: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await worker.fetch(request('/internal/page-studio/delivery/previews/authorize', {
+      method: 'POST',
+      headers: { 'x-xeroflow-preview-token': 'signed-preview-token' },
+      body: JSON.stringify({ hostname: 'site.preview.example.com' })
+    }), environment(), {} as never)
+
+    const previewRequest = fetchMock.mock.calls[0]?.[0]
+    expect(previewRequest.headers.get('authorization')).toBe(`Bearer ${secret}`)
+    expect(previewRequest.headers.get('x-xeroflow-preview-token')).toBe('signed-preview-token')
+
+    await worker.fetch(request('/internal/page-studio/checkpoints', {
+      method: 'POST',
+      headers: { 'x-xeroflow-preview-token': 'must-not-pass' },
+      body: '{}'
+    }), environment(), {} as never)
+
+    const checkpointRequest = fetchMock.mock.calls[1]?.[0]
+    expect(checkpointRequest.headers.get('x-xeroflow-preview-token')).toBeNull()
+  })
+
   it('fails closed for unapproved origins and weak or oversized credentials', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
