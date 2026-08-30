@@ -1,0 +1,35 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "xeroflow-page-studio-control",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "vars": {
+    "DASHBOARD_ORIGIN": "https://app.xeroflow.io"
+  },
+  "secrets": {
+    "required": ["PAGE_STUDIO_CONTROL_SECRET"]
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.1
+    }
+  },
+  "env": {
+    "staging": {
+      "vars": {
+        "DASHBOARD_ORIGIN": "https://preview.agency-dashboard-6cm.pages.dev"
+      },
+      "secrets": {
+        "required": ["PAGE_STUDIO_CONTROL_SECRET"]
+      }
+    }
+  }
+}

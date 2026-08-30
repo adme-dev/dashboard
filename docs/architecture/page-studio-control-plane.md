@@ -70,9 +70,15 @@ Implemented behavior:
 
 The implemented internal routes require an exact `Authorization: Bearer` credential backed by `PAGE_STUDIO_CONTROL_SECRET`. The value is read from the Cloudflare runtime binding, with `process.env` used for local development. Missing or oversized server configuration fails with 503; missing/malformed credentials fail with 401; incorrect or oversized credentials fail with 403. Both sides are capped at 256 UTF-8 bytes and compared as fixed-length SHA-256 digests with `timingSafeEqual`.
 
-`x-xeroflow-service: page-studio` remains diagnostic metadata only and never authenticates a request. The planned service-binding-only control Worker will inject the bearer credential when forwarding to Dashboard Pages; Page Studio browser code never receives it.
+`x-xeroflow-service: page-studio` remains diagnostic metadata only and never authenticates a request. The implemented, not-yet-deployed service-binding-only control Worker injects the bearer credential when forwarding to Dashboard Pages; Page Studio browser code never receives it.
 
 Checkpoint registration validates the exact tenant/client/site R2 key, treats an exact replay as success without moving a newer pointer backward, returns 409 for conflicting immutable content, and advances `current_checkpoint_id` only after insertion. Version registration requires the same-scope durable checkpoint and exact digest, returns the original row for an exact idempotency replay, creates every new version as a fresh draft, and atomically advances `current_version_id`. Checkpoint and version mutations append safe audit metadata in the same transaction. Typed audit ingestion rejects arbitrary fields and stores no caller-controlled metadata.
+
+### Service-binding gateway
+
+`workers/page-studio-control` implements the service-only gateway expected by Page Studio's `CONTROL_PLANE` bindings. It has no `workers.dev` hostname or public route, accepts only `GET`/`POST` requests under `/internal/page-studio/`, strips caller authorization, cookies, forwarding headers, and non-allowlisted headers, then injects `PAGE_STUDIO_CONTROL_SECRET` for the Dashboard hop. The Dashboard origin is restricted to the reviewed production or preview Pages hostname, redirects are rejected to prevent credential forwarding, upstream bodies remain streamed, and response headers are projected through an allowlist.
+
+The Wrangler configuration declares separate production and staging origins, the required encrypted secret, generated binding types, current compatibility settings, and logs/traces. Five gateway tests, strict Worker typecheck, and the staging Wrangler dry run pass. The staging bundle is 4.41 KiB uploaded and 1.56 KiB gzip. The Worker has not been provisioned or deployed; its secret must be installed interactively only after the matching Dashboard Pages preview is live.
 
 ## Verification evidence
 
@@ -94,7 +100,7 @@ Checkpoint registration validates the exact tenant/client/site R2 key, treats an
 - [ ] Implement domain, DNS verification, asset, lead-routing, and analytics control endpoints.
 - [ ] Build agency and portal Nuxt UI v4 entry points and run browser accessibility/responsive checks.
 - [ ] Update public feature, navigation, and pricing surfaces when the UI is ready for release.
-- [ ] Provision the Cloudflare service-binding control Worker, R2 buckets, container application, Worker secrets, routes, and staging hostnames.
+- [ ] Provision and deploy the implemented Cloudflare service-binding control Worker, then provision R2 buckets, the container application, Worker secrets, routes, and staging hostnames.
 - [ ] Verify Cloudflare for SaaS custom-hostname entitlement before enabling customer domains.
 - [ ] Run staging security, rollback, capacity, form, analytics, and custom-host smoke gates.
 - [ ] Run `pnpm deploy:check`, deploy through the guarded scripts only, and verify production health before enabling users.
