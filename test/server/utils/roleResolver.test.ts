@@ -68,7 +68,7 @@ vi.mock('#imports', () => ({
 
 // Import after mocks
 import { resolveUserPermissions, invalidateUserPermissionCache, hasPermissionGroup, hasAnyPermissionGroup } from '../../../server/utils/roleResolver'
-import { permissionGroupForRoles, permissionGroupsForRoles, isReadOnlyRole, PERMISSIONS, SYSTEM_ROLE_PERMISSIONS, PERMISSION_GROUPS } from '../../../server/utils/permissions'
+import { permissionGroupForRoles, permissionGroupsForRoles, isReadOnlyRole, roleHasPermission, PERMISSIONS, SYSTEM_ROLE_PERMISSIONS, PERMISSION_GROUPS } from '../../../server/utils/permissions'
 import { hasRole, requireWriteAccess } from '../../../server/utils/auth'
 import type { User } from '../../../server/utils/auth'
 
@@ -346,7 +346,7 @@ describe('permissionGroupForRoles (singular — first match)', () => {
 
 describe('permissionGroupsForRoles (plural — all matches)', () => {
   it('should return all matching groups for shared role arrays', () => {
-    // MANAGEMENT, TIME_APPROVALS, AUTOMATION all share ['owner','admin','lead','project_manager']
+    // MANAGEMENT, TIME_APPROVALS, and AUTOMATION share the same legacy role array.
     const groups = permissionGroupsForRoles(PERMISSIONS.MANAGEMENT)
     expect(groups).toContain('MANAGEMENT')
     expect(groups).toContain('TIME_APPROVALS')
@@ -354,7 +354,7 @@ describe('permissionGroupsForRoles (plural — all matches)', () => {
     expect(groups).toHaveLength(3)
   })
 
-  it('should return single-element array for unique role arrays', () => {
+  it('should return single-element arrays for unique legacy role arrays', () => {
     expect(permissionGroupsForRoles(PERMISSIONS.ADMIN)).toEqual(['ADMIN'])
     expect(permissionGroupsForRoles(PERMISSIONS.FINANCE)).toEqual(['FINANCE'])
     expect(permissionGroupsForRoles(PERMISSIONS.CREATIVE)).toEqual(['CREATIVE'])
@@ -391,16 +391,49 @@ describe('isReadOnlyRole', () => {
   })
 })
 
+describe('roleHasPermission static pre-check', () => {
+  it('fails closed for explicit Page Studio groups that require request-time resolution', () => {
+    expect(roleHasPermission('owner', 'PAGE_STUDIO_VIEW')).toBe(false)
+    expect(roleHasPermission('admin', 'PAGE_STUDIO_DOMAINS')).toBe(false)
+  })
+})
+
 describe('SYSTEM_ROLE_PERMISSIONS static map', () => {
-  it('should give owner all 11 permission groups', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS['owner']).toHaveLength(11)
+  it('should give owner every permission group, including Page Studio administration', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS['owner']).toHaveLength(PERMISSION_GROUPS.length)
     for (const group of PERMISSION_GROUPS) {
       expect(SYSTEM_ROLE_PERMISSIONS['owner']).toContain(group)
     }
   })
 
-  it('should give admin all 10 permission groups', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS['admin']).toHaveLength(10)
+  it('should give admin every group except owner-only HR administration', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS['admin']).toHaveLength(PERMISSION_GROUPS.length - 1)
+    expect(SYSTEM_ROLE_PERMISSIONS['admin']).not.toContain('HR_ADMIN')
+    expect(SYSTEM_ROLE_PERMISSIONS['admin']).toEqual(expect.arrayContaining([
+      'PAGE_STUDIO_VIEW',
+      'PAGE_STUDIO_EDIT',
+      'PAGE_STUDIO_APPROVE',
+      'PAGE_STUDIO_PUBLISH',
+      'PAGE_STUDIO_DOMAINS',
+      'PAGE_STUDIO_SUBSCRIPTIONS'
+    ]))
+  })
+
+  it('limits Page Studio authority by system role', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS['project_manager']).toEqual(expect.arrayContaining([
+      'PAGE_STUDIO_VIEW',
+      'PAGE_STUDIO_EDIT',
+      'PAGE_STUDIO_APPROVE',
+      'PAGE_STUDIO_PUBLISH'
+    ]))
+    expect(SYSTEM_ROLE_PERMISSIONS['project_manager']).not.toContain('PAGE_STUDIO_DOMAINS')
+    expect(SYSTEM_ROLE_PERMISSIONS['project_manager']).not.toContain('PAGE_STUDIO_SUBSCRIPTIONS')
+    expect(SYSTEM_ROLE_PERMISSIONS['account_manager']).toEqual(expect.arrayContaining([
+      'PAGE_STUDIO_VIEW',
+      'PAGE_STUDIO_EDIT'
+    ]))
+    expect(SYSTEM_ROLE_PERMISSIONS['account_manager']).not.toContain('PAGE_STUDIO_APPROVE')
+    expect(SYSTEM_ROLE_PERMISSIONS['viewer']).not.toContain('PAGE_STUDIO_VIEW')
   })
 
   it('should give viewer zero permission groups', () => {
@@ -415,8 +448,12 @@ describe('SYSTEM_ROLE_PERMISSIONS static map', () => {
     expect(SYSTEM_ROLE_PERMISSIONS['member']).toHaveLength(0)
   })
 
-  it('should give creative only CREATIVE', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS['creative']).toEqual(['CREATIVE'])
+  it('should give creative its discipline and Page Studio editing groups', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS['creative']).toEqual([
+      'CREATIVE',
+      'PAGE_STUDIO_VIEW',
+      'PAGE_STUDIO_EDIT'
+    ])
   })
 
   it('should give media_buyer only MEDIA_BUYING', () => {
@@ -431,8 +468,14 @@ describe('SYSTEM_ROLE_PERMISSIONS static map', () => {
     expect(SYSTEM_ROLE_PERMISSIONS['sales']).toEqual(['SALES', 'CLIENTS'])
   })
 
-  it('should give account_manager CLIENTS, MEDIA_BUYING, and INVOICE_OWN_CLIENTS', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS['account_manager']).toEqual(['CLIENTS', 'MEDIA_BUYING', 'INVOICE_OWN_CLIENTS'])
+  it('should give account_manager client operations and Page Studio editing access', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS['account_manager']).toEqual([
+      'CLIENTS',
+      'MEDIA_BUYING',
+      'INVOICE_OWN_CLIENTS',
+      'PAGE_STUDIO_VIEW',
+      'PAGE_STUDIO_EDIT'
+    ])
   })
 })
 
@@ -466,6 +509,15 @@ describe('hasRole (legacy + permission group)', () => {
       permissionGroups: ['FINANCE']
     }
     expect(hasRole(user, PERMISSIONS.FINANCE)).toBe(true)
+    expect(hasRole(user, PERMISSIONS.ADMIN)).toBe(false)
+  })
+
+  it('does not let a Page Studio-only custom role inherit legacy ADMIN authority', () => {
+    const user: User = {
+      id: '3', email: 'page-studio@b.com', name: 'Page Studio Operator', role: 'member', is_active: true,
+      custom_role_id: 'page-studio-custom',
+      permissionGroups: ['PAGE_STUDIO_DOMAINS']
+    }
     expect(hasRole(user, PERMISSIONS.ADMIN)).toBe(false)
   })
 
