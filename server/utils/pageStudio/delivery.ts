@@ -27,17 +27,27 @@ interface PreviewVerificationEnvironment {
   publicKey: string
 }
 
-interface PreviewReleaseRow {
+interface ReleaseRowBase {
   artifact_prefix: string
   build_id: string
-  environment: 'preview'
   manifest_digest: string
   manifest_key: string
   release_id: string
   version_digest: string
 }
 
-export type PageStudioDeliveryQueryOne = <T = PreviewReleaseRow>(
+interface PreviewReleaseRow extends ReleaseRowBase {
+  environment: 'preview'
+}
+
+interface PublicReleaseRow extends ReleaseRowBase {
+  client_id: string
+  environment: 'staging' | 'production'
+  site_id: string
+  tenant_id: string
+}
+
+export type PageStudioDeliveryQueryOne = <T = PreviewReleaseRow | PublicReleaseRow>(
   sql: string,
   params?: unknown[]
 ) => Promise<T | null>
@@ -47,7 +57,8 @@ export class PageStudioDeliveryError extends Error {
     readonly code:
       | 'PREVIEW_FORBIDDEN'
       | 'PREVIEW_TOKEN_INVALID'
-      | 'PREVIEW_VERIFIER_UNAVAILABLE',
+      | 'PREVIEW_VERIFIER_UNAVAILABLE'
+      | 'PUBLIC_HOST_INVALID',
     readonly statusCode: number,
     message: string,
     options?: ErrorOptions
@@ -115,6 +126,100 @@ export interface AuthorizedPageStudioPreview {
     releaseId: string
     scope: { clientId: string, siteId: string, tenantId: string }
     versionDigest: string
+  }
+}
+
+export interface ResolvedPageStudioRelease {
+  hostname: string
+  release: {
+    artifactPrefix: string
+    buildId: string
+    environment: 'staging' | 'production'
+    manifestDigest: string
+    manifestKey: string
+    releaseId: string
+    scope: { clientId: string, siteId: string, tenantId: string }
+    versionDigest: string
+  }
+}
+
+interface ResolvePageStudioReleaseHostDependencies {
+  queryOne?: PageStudioDeliveryQueryOne
+}
+
+export async function resolvePageStudioReleaseHost(
+  hostnameInput: string,
+  dependencies: ResolvePageStudioReleaseHostDependencies = {}
+): Promise<ResolvedPageStudioRelease | null> {
+  const hostname = PageStudioHostnameSchema.safeParse(hostnameInput)
+  if (!hostname.success) {
+    throw new PageStudioDeliveryError(
+      'PUBLIC_HOST_INVALID',
+      400,
+      'Page Studio public hostname is invalid'
+    )
+  }
+
+  const findOne = dependencies.queryOne ?? queryOne as PageStudioDeliveryQueryOne
+  const row = await findOne<PublicReleaseRow>(
+    `SELECT build.artifact_prefix,
+            build.id AS build_id,
+            pointer.client_id,
+            pointer.environment,
+            build.release_manifest_digest AS manifest_digest,
+            build.release_manifest_key AS manifest_key,
+            release.id AS release_id,
+            pointer.site_id,
+            pointer.tenant_id,
+            build.version_digest
+     FROM page_studio_release_pointers pointer
+     JOIN page_studio_sites site
+       ON site.tenant_id = pointer.tenant_id
+      AND site.client_id = pointer.client_id
+      AND site.id = pointer.site_id
+     JOIN page_studio_entitlements entitlement
+       ON entitlement.tenant_id = site.tenant_id
+      AND entitlement.client_id = site.client_id
+      AND entitlement.id = site.entitlement_id
+     JOIN page_studio_releases release
+       ON release.tenant_id = pointer.tenant_id
+      AND release.client_id = pointer.client_id
+      AND release.site_id = pointer.site_id
+      AND release.id = pointer.active_release_id
+      AND release.environment = pointer.environment
+      AND release.normalized_hostname = pointer.normalized_hostname
+     JOIN page_studio_builds build
+       ON build.tenant_id = release.tenant_id
+      AND build.client_id = release.client_id
+      AND build.site_id = release.site_id
+      AND build.id = release.build_id
+      AND build.state = 'succeeded'
+     WHERE pointer.normalized_hostname = $1
+       AND pointer.environment IN ('staging', 'production')
+       AND site.status = 'active'
+       AND entitlement.status IN ('trial', 'active')
+       AND entitlement.effective_from <= NOW()
+       AND (entitlement.effective_until IS NULL OR entitlement.effective_until > NOW())`,
+    [hostname.data]
+  )
+  if (!row) return null
+
+  return {
+    hostname: hostname.data,
+    release: {
+      artifactPrefix: row.artifact_prefix,
+      buildId: row.build_id,
+      environment: row.environment,
+      manifestDigest: row.manifest_digest,
+      manifestKey: row.manifest_key,
+      releaseId: row.release_id,
+      scope: {
+        clientId: row.client_id,
+        siteId: row.site_id,
+        tenantId: row.tenant_id
+      },
+      versionDigest: row.version_digest
+    }
   }
 }
 

@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   authorizePageStudioPreview,
-  type PageStudioDeliveryQueryOne
+  type PageStudioDeliveryQueryOne,
+  resolvePageStudioReleaseHost
 } from '~~/server/utils/pageStudio/delivery'
 import {
   signPageStudioSessionToken,
@@ -51,6 +52,58 @@ const releaseRow = {
   release_id: '55555555-5555-4555-8555-555555555555',
   version_digest: 'a'.repeat(64)
 }
+
+const publicReleaseRow = {
+  ...releaseRow,
+  client_id: SCOPE.clientId,
+  environment: 'production' as const,
+  release_id: '66666666-6666-4666-8666-666666666666',
+  site_id: SCOPE.siteId,
+  tenant_id: SCOPE.tenantId
+}
+
+describe('Page Studio public host resolution', () => {
+  it('resolves an exact active public hostname to its succeeded immutable build', async () => {
+    const queryOne = vi.fn(async () => publicReleaseRow) as PageStudioDeliveryQueryOne
+
+    await expect(resolvePageStudioReleaseHost(`  ${HOSTNAME.toUpperCase()}  `, {
+      queryOne
+    })).resolves.toEqual({
+      hostname: HOSTNAME,
+      release: {
+        artifactPrefix: publicReleaseRow.artifact_prefix,
+        buildId: publicReleaseRow.build_id,
+        environment: 'production',
+        manifestDigest: publicReleaseRow.manifest_digest,
+        manifestKey: publicReleaseRow.manifest_key,
+        releaseId: publicReleaseRow.release_id,
+        scope: SCOPE,
+        versionDigest: publicReleaseRow.version_digest
+      }
+    })
+
+    expect(queryOne).toHaveBeenCalledOnce()
+    const [sql, params] = queryOne.mock.calls[0]!
+    expect(sql).toContain('pointer.environment IN (\'staging\', \'production\')')
+    expect(sql).toContain('site.status = \'active\'')
+    expect(sql).toContain('build.state = \'succeeded\'')
+    expect(params).toEqual([HOSTNAME])
+  })
+
+  it('returns no release for an unknown, inactive, or preview-only hostname', async () => {
+    const queryOne = vi.fn(async () => null) as PageStudioDeliveryQueryOne
+
+    await expect(resolvePageStudioReleaseHost(HOSTNAME, { queryOne })).resolves.toBeNull()
+  })
+
+  it('rejects malformed hostnames before querying', async () => {
+    const queryOne = vi.fn(async () => publicReleaseRow) as PageStudioDeliveryQueryOne
+
+    await expect(resolvePageStudioReleaseHost('localhost', { queryOne }))
+      .rejects.toMatchObject({ code: 'PUBLIC_HOST_INVALID', statusCode: 400 })
+    expect(queryOne).not.toHaveBeenCalled()
+  })
+})
 
 describe('Page Studio preview authorization', () => {
   it('verifies the signed session, its ledger row, and the exact active preview hostname', async () => {

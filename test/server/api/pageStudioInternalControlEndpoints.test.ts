@@ -6,12 +6,14 @@ const mocks = vi.hoisted(() => ({
   recordPageStudioAuditEvent: vi.fn(),
   recordPageStudioCheckpoint: vi.fn(),
   registerPageStudioVersion: vi.fn(),
-  requirePageStudioMachineAuth: vi.fn()
+  requirePageStudioMachineAuth: vi.fn(),
+  resolvePageStudioReleaseHost: vi.fn()
 }))
 
 vi.mock('~~/server/utils/pageStudio/delivery', async importOriginal => ({
   ...await importOriginal<typeof import('~~/server/utils/pageStudio/delivery')>(),
-  authorizePageStudioPreview: (...args: unknown[]) => mocks.authorizePageStudioPreview(...args)
+  authorizePageStudioPreview: (...args: unknown[]) => mocks.authorizePageStudioPreview(...args),
+  resolvePageStudioReleaseHost: (...args: unknown[]) => mocks.resolvePageStudioReleaseHost(...args)
 }))
 
 vi.mock('~~/server/utils/pageStudio/machineAuth', () => ({
@@ -87,6 +89,10 @@ describe('Page Studio internal control endpoints', () => {
     mocks.authorizePageStudioPreview.mockResolvedValue({
       hostname: 'site.preview.staging.pages.xeroflow.com',
       release: { environment: 'preview', releaseId: '55555555-5555-4555-8555-555555555555' }
+    })
+    mocks.resolvePageStudioReleaseHost.mockResolvedValue({
+      hostname: 'site.staging.pages.xeroflow.com',
+      release: { environment: 'staging', releaseId: '66666666-6666-4666-8666-666666666666' }
     })
     mocks.recordPageStudioCheckpoint.mockResolvedValue({ acknowledged: true })
     mocks.getLatestPageStudioCheckpoint.mockResolvedValue({
@@ -253,5 +259,47 @@ describe('Page Studio internal control endpoints', () => {
       error: { code: 'INVALID_INPUT', message: 'Invalid preview authorization request' }
     })
     expect(missingToken.responseStatus).toBe(400)
+  })
+
+  it('machine-authenticates and resolves only a validated exact public hostname', async () => {
+    const { default: handler } = await import(
+      '~~/server/routes/internal/page-studio/delivery/hosts/resolve.get'
+    )
+    const event: TestEvent = {
+      context: {},
+      headers: { authorization: 'Bearer machine-secret' },
+      query: { hostname: 'site.staging.pages.xeroflow.com' }
+    }
+
+    await expect(handler(event as never)).resolves.toMatchObject({
+      hostname: 'site.staging.pages.xeroflow.com',
+      release: { environment: 'staging' }
+    })
+    expect(mocks.requirePageStudioMachineAuth).toHaveBeenCalledWith(event)
+    expect(mocks.resolvePageStudioReleaseHost).toHaveBeenCalledWith(
+      'site.staging.pages.xeroflow.com'
+    )
+
+    const invalidEvent: TestEvent = { context: {}, query: { hostname: 'localhost' } }
+    await expect(handler(invalidEvent as never)).resolves.toEqual({
+      error: { code: 'INVALID_INPUT', message: 'Invalid public hostname request' }
+    })
+    expect(invalidEvent.responseStatus).toBe(400)
+  })
+
+  it('returns 404 when an authenticated public hostname has no active release', async () => {
+    mocks.resolvePageStudioReleaseHost.mockResolvedValueOnce(null)
+    const { default: handler } = await import(
+      '~~/server/routes/internal/page-studio/delivery/hosts/resolve.get'
+    )
+    const event: TestEvent = {
+      context: {},
+      query: { hostname: 'unknown.staging.pages.xeroflow.com' }
+    }
+
+    await expect(handler(event as never)).resolves.toEqual({
+      error: { code: 'PUBLIC_HOST_NOT_FOUND', message: 'Public release not found' }
+    })
+    expect(event.responseStatus).toBe(404)
   })
 })
