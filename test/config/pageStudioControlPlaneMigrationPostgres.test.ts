@@ -1,6 +1,13 @@
 import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import { describe, expect, it } from 'vitest'
+import {
+  getLatestPageStudioCheckpoint,
+  recordPageStudioAuditEvent,
+  recordPageStudioCheckpoint,
+  registerPageStudioVersion,
+  type PageStudioControlQueryClient
+} from '~~/server/utils/pageStudio/controlStore'
 
 const databaseUrl = process.env.PAGE_STUDIO_DATABASE_TEST_URL
 const migrationSql = readFileSync(
@@ -103,6 +110,107 @@ describe.runIf(Boolean(databaseUrl))('Page Studio migration on disposable Postgr
            ) VALUES ($1, $2, $3, 'Duplicate', 'campaign', 'automotive-campaign-v1', $4)`,
         [tenantId, clientId, entitlement.rows[0].id, teamId]
       )).rejects.toMatchObject({ code: '23505' })
+
+      const runTransaction = async <T>(
+        callback: (db: PageStudioControlQueryClient) => Promise<T>
+      ): Promise<T> => {
+        await client.query('BEGIN')
+        try {
+          const result = await callback(client as unknown as PageStudioControlQueryClient)
+          await client.query('COMMIT')
+          return result
+        } catch (error) {
+          await client.query('ROLLBACK')
+          throw error
+        }
+      }
+      const controlScope = { tenantId, clientId, siteId }
+      const controlCheckpointId = 'checkpoint_control_01'
+      const controlDigest = 'c'.repeat(64)
+      const controlObjectKey = `tenants/${tenantId}/clients/${clientId}/sites/${siteId}/checkpoints/${controlCheckpointId}.json`
+      const checkpointInput = {
+        checkpointId: controlCheckpointId,
+        createdAt: '2026-08-30T01:00:00.000Z',
+        digest: controlDigest,
+        etag: 'etag-control-1',
+        objectKey: controlObjectKey,
+        scope: controlScope,
+        userId: portalId
+      }
+
+      await expect(recordPageStudioCheckpoint(checkpointInput, { runTransaction }))
+        .resolves.toEqual({ acknowledged: true })
+      await expect(recordPageStudioCheckpoint(checkpointInput, { runTransaction }))
+        .resolves.toEqual({ acknowledged: true })
+      await expect(getLatestPageStudioCheckpoint(controlScope, {
+        queryOne: async <T>(sql: string, params?: unknown[]) => {
+          const result = await client.query(sql, params as never[] | undefined)
+          return (result.rows[0] as T | undefined) ?? null
+        }
+      })).resolves.toEqual({
+        checkpointId: controlCheckpointId,
+        digest: controlDigest,
+        objectKey: controlObjectKey
+      })
+
+      const registeredVersion = await registerPageStudioVersion({
+        authorRole: 'client',
+        checkpointId: controlCheckpointId,
+        digest: controlDigest,
+        idempotencyKey: 'version-control-request-01',
+        scope: controlScope,
+        summary: 'Disposable PostgreSQL control path',
+        userId: portalId
+      }, { runTransaction })
+      await expect(registerPageStudioVersion({
+        authorRole: 'client',
+        checkpointId: controlCheckpointId,
+        digest: controlDigest,
+        idempotencyKey: 'version-control-request-01',
+        scope: controlScope,
+        summary: 'Disposable PostgreSQL control path',
+        userId: portalId
+      }, { runTransaction })).resolves.toEqual(registeredVersion)
+      expect(registeredVersion).toMatchObject({
+        authorRole: 'client',
+        checkpointId: controlCheckpointId,
+        digest: controlDigest,
+        siteId,
+        status: 'draft'
+      })
+
+      const auditInput = {
+        action: 'workspace.previewed' as const,
+        actorId: portalId,
+        actorRole: 'client' as const,
+        idempotencyKey: 'workspace.previewed:workspace_control_01:2026-08-30T03:00:00.000Z',
+        occurredAt: '2026-08-30T03:00:00.000Z',
+        resourceId: 'workspace_control_01',
+        resourceType: 'workspace' as const,
+        scope: controlScope
+      }
+      await expect(recordPageStudioAuditEvent(auditInput, { runTransaction }))
+        .resolves.toEqual({ acknowledged: true })
+      await expect(recordPageStudioAuditEvent(auditInput, { runTransaction }))
+        .resolves.toEqual({ acknowledged: true })
+
+      const controlState = await client.query(
+        `SELECT site.current_checkpoint_id, site.current_version_id,
+                COUNT(audit.id)::integer AS audit_count
+         FROM page_studio_sites site
+         LEFT JOIN page_studio_audit_events audit
+           ON audit.tenant_id = site.tenant_id
+          AND audit.client_id = site.client_id
+          AND audit.site_id = site.id
+         WHERE site.tenant_id = $1 AND site.client_id = $2 AND site.id = $3
+         GROUP BY site.id`,
+        [tenantId, clientId, siteId]
+      )
+      expect(controlState.rows[0]).toMatchObject({
+        current_checkpoint_id: controlCheckpointId,
+        current_version_id: registeredVersion.id,
+        audit_count: 3
+      })
 
       await client.query(
         `INSERT INTO page_studio_checkpoints (

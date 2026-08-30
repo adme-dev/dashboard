@@ -51,6 +51,10 @@ Implemented routes:
 - `GET /api/portal/page-studio/sites`
 - `POST /api/portal/page-studio/sites`
 - `POST /api/portal/page-studio/sites/:siteId/versions/:versionId/submissions`
+- `POST /internal/page-studio/checkpoints`
+- `GET /internal/page-studio/checkpoints/latest`
+- `POST /internal/page-studio/versions`
+- `POST /internal/page-studio/audit-events`
 
 Implemented behavior:
 
@@ -62,6 +66,14 @@ Implemented behavior:
 - only the current submitted version can be approved, rejected, or returned to draft;
 - reviews record the locked digest and append audit evidence atomically.
 
+### Internal machine boundary
+
+The implemented internal routes require an exact `Authorization: Bearer` credential backed by `PAGE_STUDIO_CONTROL_SECRET`. The value is read from the Cloudflare runtime binding, with `process.env` used for local development. Missing or oversized server configuration fails with 503; missing/malformed credentials fail with 401; incorrect or oversized credentials fail with 403. Both sides are capped at 256 UTF-8 bytes and compared as fixed-length SHA-256 digests with `timingSafeEqual`.
+
+`x-xeroflow-service: page-studio` remains diagnostic metadata only and never authenticates a request. The planned service-binding-only control Worker will inject the bearer credential when forwarding to Dashboard Pages; Page Studio browser code never receives it.
+
+Checkpoint registration validates the exact tenant/client/site R2 key, treats an exact replay as success without moving a newer pointer backward, returns 409 for conflicting immutable content, and advances `current_checkpoint_id` only after insertion. Version registration requires the same-scope durable checkpoint and exact digest, returns the original row for an exact idempotency replay, creates every new version as a fresh draft, and atomically advances `current_version_id`. Checkpoint and version mutations append safe audit metadata in the same transaction. Typed audit ingestion rejects arbitrary fields and stores no caller-controlled metadata.
+
 ## Verification evidence
 
 - Clean `origin/main` baseline established before implementation.
@@ -70,11 +82,12 @@ Implemented behavior:
 - Changed Page Studio server/test files pass ESLint.
 - Nuxt typecheck still fails on the repository's existing unrelated error inventory; a filtered run produced no diagnostics for Page Studio paths after the permission indexing fix.
 - Regression coverage proves a Page Studio-only custom role cannot inherit legacy `ADMIN` authority.
+- 28 machine-auth, transaction, error-contract, and internal-route tests pass for the new control boundary.
+- The disposable PostgreSQL test applies migration 402 twice and passes real checkpoint create/replay, latest-pointer, version create/replay, and typed audit create/replay flows; the temporary container was removed after the run.
 
 ## Remaining release gates
 
-- [ ] Implement machine-authenticated internal checkpoint, version, audit, build, release, lead, analytics, host-resolution, and preview-authorization APIs.
-- [ ] Implement checkpoint idempotency and current-version registration called by the Page Studio control client.
+- [ ] Complete the machine-authenticated internal build, release, lead, analytics, host-resolution, and preview-authorization APIs. Checkpoint, latest-pointer, version registration, and audit ingestion are implemented.
 - [ ] Implement ES256 editor-session issuance, minimal capabilities, nonce revocation, and secure preview-cookie exchange.
 - [ ] Implement site detail/update and version-history APIs.
 - [ ] Implement atomic activation and rollback transactions with optimistic pointer checks and append-only release audit.
