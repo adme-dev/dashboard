@@ -3,6 +3,7 @@ import { setResponseStatus, type H3Event } from 'h3'
 import { PageStudioSiteError } from '~~/server/utils/pageStudio/sites'
 import { PageStudioVersionError } from '~~/server/utils/pageStudio/versions'
 import { PageStudioControlError } from '~~/server/utils/pageStudio/controlStore'
+import { PageStudioSessionError } from '~~/server/utils/pageStudio/sessions'
 
 interface StablePageStudioError {
   error: { code: string, message: string }
@@ -27,6 +28,7 @@ export function projectPageStudioInternalError(error: unknown): {
   body: StablePageStudioError
 } {
   if (error instanceof PageStudioControlError
+    || error instanceof PageStudioSessionError
     || error instanceof PageStudioSiteError
     || error instanceof PageStudioVersionError) {
     return {
@@ -67,6 +69,7 @@ export function pageStudioInternalHttpError(
 
 export function pageStudioHttpError(error: unknown): never {
   if (error instanceof PageStudioControlError
+    || error instanceof PageStudioSessionError
     || error instanceof PageStudioSiteError
     || error instanceof PageStudioVersionError) {
     throw createError({

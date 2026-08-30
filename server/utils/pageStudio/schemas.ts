@@ -2,6 +2,8 @@ import { z } from 'zod'
 
 export const PAGE_STUDIO_STARTERS = ['automotive-campaign-v1'] as const
 
+export const PageStudioSiteId = z.string().uuid()
+
 export const PageStudioSiteBody = z.object({
   clientId: z.string().uuid().optional(),
   name: z.string().trim().min(1).max(160),
