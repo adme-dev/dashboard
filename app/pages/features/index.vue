@@ -200,6 +200,7 @@ const categories = [
     iconBg: 'bg-rose-50 dark:bg-rose-500/10',
     iconColor: 'text-rose-600',
     features: [
+      { title: 'Page Studio', slug: 'page-studio', icon: 'i-lucide-panels-top-left', description: 'A governed website workspace for agency teams and clients, with scoped access, staged releases, previews, publishing, and domains.' },
       { title: 'Bulk Ad Launch', slug: 'bulk-ad-launch', icon: 'i-lucide-rocket', description: 'Select creatives from Banner Studio and launch dozens of ads to Meta in one click.' },
       { title: 'Ad Platform Export', slug: 'ad-platform-export', icon: 'i-lucide-download', description: 'Export HTML5 banners for 14 ad platforms with automatic clickTag injection and compliance validation.' },
       { title: 'Ad Previews', slug: 'ad-previews', icon: 'i-lucide-monitor-smartphone', description: 'Preview banners in 8 platform mockups — Meta Feed, Stories, Reels, LinkedIn, and more.' },
@@ -317,7 +318,8 @@ const categories = [
       { title: 'Campaign Analytics', slug: 'portal-campaign-analytics', icon: 'i-lucide-chart-no-axes-combined', description: 'Share permission-gated campaign performance, spend, platform trends, leads, outcomes, and exports without exposing internal agency data.' },
       { title: 'Measurement Health', slug: 'portal-measurement', icon: 'i-lucide-activity', description: 'Show clients how browser events, server delivery, and CRM outcomes contribute to measurement — with ownership and evidence kept distinct.' },
       { title: 'Meetings & Video Reviews', slug: 'portal-meetings-reviews', icon: 'i-lucide-video', description: 'Share upcoming meetings, recordings, and review-ready video so decisions and feedback stay attached to the client relationship.' },
-      { title: 'Briefs & Social Workspace', slug: 'portal-briefs-social', icon: 'i-lucide-panels-top-left', description: 'Let clients submit structured briefs and access approved social inbox, listening, reporting, and news workflows from the same portal.' }
+      { title: 'Briefs & Social Workspace', slug: 'portal-briefs-social', icon: 'i-lucide-panels-top-left', description: 'Let clients submit structured briefs and access approved social inbox, listening, reporting, and news workflows from the same portal.' },
+      { title: 'Page Studio Workspace', slug: 'page-studio', icon: 'i-lucide-panels-top-left', description: 'Give each client a scoped view of only the websites assigned to their portal account, with release status and agency-managed governance.' }
     ]
   },
   {

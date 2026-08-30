@@ -2907,3 +2907,14 @@ export interface PortalAnalyticsPrintReport {
   campaigns: PortalAnalyticsCampaignsResponse
   sections: PortalAnalyticsPrintSections
 }
+
+export interface PageStudioSiteSummary {
+  id: string
+  clientId: string
+  name: string
+  route: string
+  starterVersion: string
+  status: string
+  createdAt: string
+  updatedAt: string
+}

@@ -73,6 +73,18 @@ Implemented behavior:
 - only the current submitted version can be approved, rejected, or returned to draft;
 - reviews record the locked digest and append audit evidence atomically.
 
+### Agency and client workspaces
+
+Page Studio is a first-class `Websites` workspace in the agency sidebar for users with the exact `PAGE_STUDIO_VIEW` permission. The agency page lists every site available to that tenant through the agency-scoped API. The client portal probes the portal-scoped site list and only adds Page Studio navigation when the signed-in user has at least one assigned site; the page then uses the same membership- and client-scoped API for its content.
+
+Both surfaces share a Nuxt UI v4 site workspace with explicit loading, error, empty, status, refresh, and pagination states. The first UI slice is deliberately read-only while the editor and publishing rollout is still staged. It does not expose agency provisioning, domain, or release controls to portal users, and it does not add links to unfinished editor routes. The public feature catalogue, feature detail page, and marketing mega menu describe the capability and its staged governance model.
+
+### Isolated staging database
+
+Dashboard preview is connected to the schema-only Neon branch `staging/page-studio` (`br-long-mountain-a4f73v10`) through the dedicated, cache-disabled Hyperdrive configuration `xeroflow-page-studio-control-staging-db` (`3865ea5568234fc7b0e9e3e595a30286`). Both `HYPERDRIVE` and `HYPERDRIVE_FRESH` point to that one isolated staging resource; neither preview binding aliases the two production Hyperdrive IDs, and preview does not receive production `DATABASE_URL`.
+
+The Neon branch initially returned without its expected table definitions. A schema-only restore populated the broader table set but was interrupted before every unrelated constraint completed, so the 13 Page Studio tables were explicitly dropped and recreated with migrations 402/403. A final read-only comparison proved those 13 tables have the same constraint and index counts as production, while `page_studio_sites` and `team_members` both remain empty. This is sufficient for the current machine-path smoke tests, but it is not treated as a fully seeded preview application database; authenticated workspace UAT still requires synthetic tenant, client, and user fixtures. A staging role credential exposed during diagnostic parsing was immediately rotated, the old credential invalidated, and Hyperdrive updated with the replacement without printing it.
+
 ### Internal machine boundary
 
 The implemented internal routes require an exact `Authorization: Bearer` credential backed by `PAGE_STUDIO_CONTROL_SECRET`. The value is read from the Cloudflare runtime binding, with `process.env` used for local development. Missing or oversized server configuration fails with 503; missing/malformed credentials fail with 401; incorrect or oversized credentials fail with 403. Both sides are capped at 256 UTF-8 bytes and compared as fixed-length SHA-256 digests with `timingSafeEqual`.
@@ -87,7 +99,7 @@ Checkpoint registration validates the exact tenant/client/site R2 key, treats an
 
 The Wrangler configuration declares separate production and staging origins, the required encrypted secret, generated binding types, current compatibility settings, and logs/traces. Six gateway tests, strict Worker typecheck, and the staging Wrangler dry run pass. The deployed bundle is 4.97 KiB uploaded and 1.69 KiB gzip.
 
-On 2026-08-30, Dashboard commit `28660b028` was deployed through the guarded `pnpm deploy:preview` path to immutable Pages deployment `86c25d60.agency-dashboard-6cm.pages.dev` and the stable `preview.agency-dashboard-6cm.pages.dev` alias. Both roots returned 200; the preview-authorizer and both editor-session routes returned the expected unauthenticated 401 instead of a server error. The worker-size guard passed at 24,972,676 raw bytes with 496,252 bytes remaining. The machine secret, exact issuer, private signing key, and public verification key are present as encrypted preview bindings. The matching public verification key is installed in the private staging Sandbox, and all plaintext temporary key files were removed. The private Sandbox/container, control gateway version `0c851bc4-b1b6-4ff4-bd02-215d7c28e6f8`, and Delivery version `656037c8-c26d-4a27-86fd-b68f8186eada` are deployed with no public targets. A temporary remote-binding harness proved that Delivery returns 401 without a preview credential and that an invalid credential crosses Delivery → control gateway → Dashboard and fails safely as 404. Unknown public-host lookup currently fails closed as 503 because the Dashboard host-resolution endpoint remains unimplemented.
+On 2026-08-30, Dashboard commit `784ac2547` was deployed through the guarded `pnpm deploy:preview` path to immutable Pages deployment `917e5781.agency-dashboard-6cm.pages.dev` and the stable `preview.agency-dashboard-6cm.pages.dev` alias. Both roots returned 200 and the new machine-authenticated host resolver returned the expected 401 when called directly without its control credential. The worker-size guard passed at 24,975,323 raw bytes with 493,605 bytes remaining. The machine secret, exact issuer, private signing key, and public verification key are present as encrypted preview bindings. The matching public verification key is installed in the private staging Sandbox, and all plaintext temporary key files were removed. The private Build, Sandbox/container, control gateway, and Delivery Workers are deployed with no public targets. A temporary remote-binding harness proved that Delivery returns 401 without a preview credential and that an invalid credential crosses Delivery → control gateway → Dashboard and fails safely as 404. The host-resolution route is now implemented and deployed, but the Delivery → control → Dashboard unknown-host smoke still fails closed as 503 instead of the expected 404; that integration mismatch remains a staging release blocker.
 
 ## Verification evidence
 
@@ -100,7 +112,9 @@ On 2026-08-30, Dashboard commit `28660b028` was deployed through the guarded `pn
 - 28 machine-auth, transaction, error-contract, and internal-route tests pass for the new control boundary.
 - The disposable PostgreSQL test applies migration 402 twice and passes real checkpoint create/replay, latest-pointer, version create/replay, and typed audit create/replay flows; the temporary container was removed after the run.
 - Ten focused session and issuer-endpoint tests prove ES256 interoperability with the Page Studio verifier contract, lifetime enforcement, malformed signed-claim projection, agency/client capability separation, effective-entitlement and membership denial, no token persistence, authenticated endpoint scope, UUID validation, and private/no-store responses.
-- The full focused Page Studio gate passes 75 tests with one disposable-PostgreSQL harness test environment-skipped; the complete Page Studio lint scope is clean. Full Nuxt typecheck still exits on the repository's existing unrelated error inventory and reports no Page Studio diagnostics.
+- The expanded focused Page Studio gate passes 98 tests with one disposable-PostgreSQL harness test environment-skipped; the complete Page Studio lint scope is clean. Full Nuxt typecheck still exits on the repository's existing unrelated error inventory and reports no Page Studio diagnostics.
+- The agency/client navigation and shared workspace source contract passes five tests, including permission/membership visibility, scoped API usage, explicit UI states, Nuxt UI-only controls, and marketing-surface synchronization.
+- Preview binding tests prove the Page Studio staging Hyperdrive ID is explicit, cache-disabled, and distinct from both production Hyperdrive configurations. The schema-only Neon branch contains no production site or team-member rows.
 - `pnpm audit --prod --audit-level high` reports 17 existing high-severity transitive advisories in Zero, Nuxt/tooling, and Cloudflare Think dependency chains. None involve the newly added direct `jose` dependency; remediation and reachability review remain a separate production-risk gate.
 
 ## Remaining release gates
@@ -110,10 +124,11 @@ On 2026-08-30, Dashboard commit `28660b028` was deployed through the guarded `pn
 - [ ] Implement site detail/update and version-history APIs.
 - [ ] Implement atomic activation and rollback transactions with optimistic pointer checks and append-only release audit.
 - [ ] Implement domain, DNS verification, asset, lead-routing, and analytics control endpoints.
-- [ ] Build agency and portal Nuxt UI v4 entry points and run browser accessibility/responsive checks.
-- [ ] Update public feature, navigation, and pricing surfaces when the UI is ready for release.
+- [x] Build the first agency and portal Nuxt UI v4 entry points with permission- and membership-scoped navigation.
+- [ ] Run authenticated browser accessibility and responsive checks for both new workspaces.
+- [x] Update the public feature catalogue, detail page, and marketing navigation for Page Studio. Pricing remains unchanged until the subscription packaging is finalized.
 - [x] Provision and deploy the service-binding-only staging control Worker with the matching Dashboard Pages preview secret and no public target.
-- [ ] Complete staging provisioning. Isolated R2 buckets, the private Build Worker, asymmetric session keys, and the private Sandbox/container application are live; Delivery, Web, routes, and staging hostnames remain.
+- [ ] Complete staging provisioning. Isolated R2 buckets, the private Build, Sandbox/container, control, and Delivery Workers plus asymmetric session keys are live; Web, routes, staging hostnames, and the host-resolution integration fix remain.
 - [ ] Verify Cloudflare for SaaS custom-hostname entitlement before enabling customer domains.
 - [ ] Run staging security, rollback, capacity, form, analytics, and custom-host smoke gates.
 - [ ] Run `pnpm deploy:check`, deploy through the guarded scripts only, and verify production health before enabling users.

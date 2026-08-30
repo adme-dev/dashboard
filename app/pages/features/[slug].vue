@@ -140,6 +140,34 @@ interface Feature {
 }
 
 const features: Record<string, Feature> = {
+  'page-studio': {
+    title: 'Page Studio',
+    slug: 'page-studio',
+    icon: 'i-lucide-panels-top-left',
+    category: 'Creative Production',
+    categoryIcon: 'i-lucide-rocket',
+    categoryIconBg: 'bg-rose-50 dark:bg-rose-500/10',
+    categoryIconColor: 'text-rose-600 dark:text-rose-400',
+    description: 'Plan, build, review, and release client websites through one governed workspace shared by the agency and client portal.',
+    details: [
+      {
+        title: 'One Website Workspace, Two Deliberate Views',
+        content: 'Agency staff work from a portfolio view protected by explicit Page Studio permissions. Client users see Page Studio inside their existing portal only when a website is assigned to them, and every request remains scoped to that client and membership. Internal provisioning and release controls never leak into the client experience.'
+      },
+      {
+        title: 'From Landing Pages to Complete Websites',
+        content: 'Page Studio is designed for more than one-off promotional pages. The same project can grow into a multi-page website with reusable sections, responsive layouts, brand assets, structured content, and release history, while the agency keeps the implementation maintainable as client needs evolve.'
+      },
+      {
+        title: 'Governed Preview and Publishing',
+        content: 'Drafts, editor sessions, checkpoints, review submissions, approvals, and immutable releases are separated so editing does not silently become production. Preview credentials are short-lived and scoped, service-to-service calls remain private, and the release path is designed for auditable promotion and rollback.'
+      },
+      {
+        title: 'Cloudflare Delivery and Domains',
+        content: 'The delivery architecture uses Cloudflare Workers and Pages for private build, sandbox, control, and delivery services. Domain registration and custom-domain workflows can be layered into the governed release process as the staged rollout advances, without handing clients unrestricted infrastructure access.'
+      }
+    ]
+  },
   'search-authority-ai-trust': {
     title: 'Search Authority & AI Trust',
     slug: 'search-authority-ai-trust',

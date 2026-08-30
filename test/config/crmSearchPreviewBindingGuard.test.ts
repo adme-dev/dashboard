@@ -31,12 +31,10 @@ const previewIntegrationReadbacks = () => externalIntegrationNames.map(name => (
   name, enabled: name === 'database', targetIdentity: name === 'database' ? 'preview:database' : null,
   verifiedAt: '2026-08-11T00:00:00.000Z', source: 'cloudflare_api' as const
 }))
-const disabledPreviewIntegrationReadbacks = () => externalIntegrationNames.map(name => ({
-  name, enabled: false, targetIdentity: null,
-  verifiedAt: '2026-08-11T00:00:00.000Z', source: 'cloudflare_api' as const
-}))
 const previewIntegrations = () => externalIntegrationNames.map(name => ({
-  name, state: 'disabled' as const, targetIdentityDigest: null,
+  name,
+  state: name === 'database' ? 'enabled' as const : 'disabled' as const,
+  targetIdentityDigest: name === 'database' ? targetDigest('preview:database') : null,
   verifiedAt: '2026-08-11T00:00:00.000Z'
 }))
 const enabledIntegrationReadbacks = (environment: string) => externalIntegrationNames.map(name => ({
@@ -60,7 +58,7 @@ const productionIntegrationReadbacks = () => externalIntegrationNames.map((name)
   }
 })
 const previewResources = buildCrmSearchEnvironmentResources(
-  'preview', disabledPreviewIntegrationReadbacks()
+  'preview', previewIntegrationReadbacks()
 )
 const productionResources = buildCrmSearchEnvironmentResources(
   'production', productionIntegrationReadbacks()
@@ -409,6 +407,11 @@ describe('CRM search preview binding isolation', () => {
     )
     expect(previewBindings).toContain('queue = "agency-crm-search-index-preview"')
     expect(previewBindings).toContain('index_name = "agency-crm-search-preview"')
-    expect(previewBindings).not.toMatch(/agency-files|HYPERDRIVE|services|durable_objects/u)
+    expect(previewBindings).toContain('binding = "HYPERDRIVE"')
+    expect(previewBindings).toContain('binding = "HYPERDRIVE_FRESH"')
+    expect(previewBindings).toContain('id = "3865ea5568234fc7b0e9e3e595a30286"')
+    expect(previewBindings).not.toContain('900b4b74ec41462cbbabebd0aa8775aa')
+    expect(previewBindings).not.toContain('90228af3e2cc461bbc09accc3b47bd9f')
+    expect(previewBindings).not.toMatch(/agency-files|services|durable_objects/u)
   })
 })

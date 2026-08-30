@@ -305,6 +305,17 @@ binding = "AI"
 binding = "CRM_SEARCH_VECTORIZE"
 index_name = "agency-crm-search-preview"
 
+# Page Studio staging uses a schema-only Neon branch through this dedicated,
+# cache-disabled Hyperdrive configuration. Both names intentionally resolve to
+# the same isolated resource so reads and consistency-sensitive writes never
+# fall back to production DATABASE_URL or production Hyperdrive bindings.
+[[env.preview.hyperdrive]]
+binding = "HYPERDRIVE"
+id = "3865ea5568234fc7b0e9e3e595a30286"
+[[env.preview.hyperdrive]]
+binding = "HYPERDRIVE_FRESH"
+id = "3865ea5568234fc7b0e9e3e595a30286"
+
 [env.preview.vars]
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "24"
