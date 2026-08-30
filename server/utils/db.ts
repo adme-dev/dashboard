@@ -93,7 +93,14 @@ async function getHyperdriveClient(
       await client.connect()
       return client
     })
-  } catch {
+  } catch (error) {
+    const candidate = error as { code?: unknown, message?: unknown, name?: unknown }
+    console.error('[database] Hyperdrive connection failed', {
+      code: typeof candidate.code === 'string' ? candidate.code : undefined,
+      freshness,
+      message: typeof candidate.message === 'string' ? candidate.message : undefined,
+      name: typeof candidate.name === 'string' ? candidate.name : undefined
+    })
     return null
   }
 }

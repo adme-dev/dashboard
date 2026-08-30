@@ -65,6 +65,14 @@ export function pageStudioInternalHttpError(
   error: unknown
 ): StablePageStudioError {
   const projected = projectPageStudioInternalError(error)
+  if (projected.statusCode >= 500) {
+    const candidate = error as { code?: unknown, message?: unknown, name?: unknown }
+    console.error('[page-studio-internal] request failed', {
+      code: typeof candidate?.code === 'string' ? candidate.code : undefined,
+      message: typeof candidate?.message === 'string' ? candidate.message : undefined,
+      name: typeof candidate?.name === 'string' ? candidate.name : undefined
+    })
+  }
   setResponseStatus(event, projected.statusCode)
   return projected.body
 }
