@@ -2,9 +2,9 @@
 
 ## Status
 
-In progress as of 2026-08-31. The database, first authenticated workflow slices, and read-only agency/client workspaces are deployed to isolated preview infrastructure, but Page Studio traffic has not been switched on and the feature is not production-ready.
+In progress as of 2026-08-31. The database, authenticated workflow foundation, and read-only agency/client workspaces are deployed in the production Dashboard. The separate editor/build/delivery runtime remains staging-only, no customer Page Studio hostname receives production traffic, and the complete website builder is not yet production-ready.
 
-Implementation branch: `feature/page-studio-control-plane`
+Dashboard release commit: `0a7c8a1b9`
 
 ## Decision
 
@@ -101,6 +101,8 @@ The Wrangler configuration declares separate production and staging origins, the
 
 On 2026-08-31, Dashboard commits `528f82fa2`, `f069a76bd`, and `299fdf47d` were deployed through the guarded `pnpm deploy:preview` path to immutable Pages deployment `2d7f1661.agency-dashboard-6cm.pages.dev` and the stable `preview.agency-dashboard-6cm.pages.dev` alias. The root and public Page Studio feature page return 200, while the machine-authenticated host resolver returns 401 when called directly without its control credential. The worker-size guard passes at 24,991,283 raw bytes with 477,645 bytes remaining. The machine secret, exact issuer, private signing key, and public verification key are present as encrypted preview bindings. The matching public verification key is installed in the private staging Sandbox, and all plaintext temporary key files were removed. The private Build, Sandbox/container, control gateway, and Delivery Workers are deployed with no public targets.
 
+On 2026-08-31, the Page Studio Dashboard release was fast-forwarded to `main` and deployed through the guarded `pnpm deploy:production` path as Cloudflare Pages deployment `5170d2cb-dc27-4ee6-8839-c14fbf52efb0` (`5170d2cb.agency-dashboard-6cm.pages.dev`). The stable production alias, root page, and public Page Studio feature page return 200; the agency Page Studio API returns 401 without authentication. Migrations 402 and 403 were reapplied to production with `ON_ERROR_STOP` and completed idempotently. This deployment exposes the governed Dashboard control-plane surfaces only; it does not provision or enable standalone production Page Studio Workers or customer website traffic.
+
 The first database-backed remote smoke exposed a runtime integration fault: `server/utils/db.ts` resolved Cloudflare bindings through Nitro `useEvent()`, but Nitro async request context was disabled. The caught exception caused a fallback to the intentionally absent preview `DATABASE_URL`, producing a generic 500 and downstream 503. Sanitized server diagnostics identified the exact failure, a regression test reproduced the missing configuration, and `nitro.experimental.asyncContext` was enabled. A direct Hyperdrive probe then confirmed the isolated database and Page Studio tables were reachable. The final Delivery → control → Dashboard smoke now returns control health 200, unknown public host 404 `PUBLIC_HOST_NOT_FOUND`, missing checkpoint 404 `CHECKPOINT_NOT_FOUND`, and unknown Delivery site 404 instead of 503.
 
 ## Verification evidence
@@ -118,6 +120,7 @@ The first database-backed remote smoke exposed a runtime integration fault: `ser
 - The agency/client navigation and shared workspace source contract passes five tests, including permission/membership visibility, scoped API usage, explicit UI states, Nuxt UI-only controls, and marketing-surface synchronization.
 - Preview binding tests prove the Page Studio staging Hyperdrive ID is explicit, cache-disabled, and distinct from both production Hyperdrive configurations. The schema-only Neon branch contains no production site or team-member rows.
 - Browser verification confirms the public Page Studio feature page has the expected content hierarchy in desktop and mobile layouts with no console warnings or errors. Authenticated agency and portal workspace UAT remains gated on synthetic staging identities.
+- The pre-production full repository gate passed 1,931 test files with six skipped and 12,354 tests with 27 skipped. The guarded production build passed the Worker-size check at 24,991,289 raw bytes with 477,639 bytes remaining.
 - `pnpm audit --prod --audit-level high` reports 17 existing high-severity transitive advisories in Zero, Nuxt/tooling, and Cloudflare Think dependency chains. None involve the newly added direct `jose` dependency; remediation and reachability review remain a separate production-risk gate.
 
 ## Remaining release gates
@@ -125,6 +128,9 @@ The first database-backed remote smoke exposed a runtime integration fault: `ser
 - [ ] Complete the machine-authenticated internal build, release, lead, analytics, and public host-resolution APIs. Checkpoint, latest-pointer, version registration, audit ingestion, and preview authorization are implemented.
 - [ ] Complete editor-session rollout. ES256 issuance, minimal role/entitlement capabilities, encrypted key installation, the Dashboard nonce ledger, preview revocation checks, and private/no-store responses are implemented; explicit revocation mutations and secure preview-cookie exchange remain.
 - [ ] Implement site detail/update and version-history APIs.
+- [ ] Design and implement the multi-page website model: page hierarchy, stable routes, page metadata/SEO, draft/review state, navigation visibility, and whole-site atomic publishing.
+- [ ] Design and implement reusable site-wide headers and footers with shared branding/content plus explicit per-page visibility overrides.
+- [ ] Design and implement responsive website navigation, including desktop menus, accessible mobile navigation, nested-page behavior, active states, keyboard/focus handling, and preview coverage at supported breakpoints.
 - [ ] Implement atomic activation and rollback transactions with optimistic pointer checks and append-only release audit.
 - [ ] Implement domain, DNS verification, asset, lead-routing, and analytics control endpoints.
 - [x] Build the first agency and portal Nuxt UI v4 entry points with permission- and membership-scoped navigation.
@@ -134,8 +140,9 @@ The first database-backed remote smoke exposed a runtime integration fault: `ser
 - [ ] Complete staging provisioning. Isolated R2 buckets, the private Build, Sandbox/container, control, and Delivery Workers plus asymmetric session keys are live; Web, routes, and staging hostnames remain.
 - [ ] Verify Cloudflare for SaaS custom-hostname entitlement before enabling customer domains.
 - [ ] Run staging security, rollback, capacity, form, analytics, and custom-host smoke gates.
-- [ ] Run `pnpm deploy:check`, deploy through the guarded scripts only, and verify production health before enabling users.
+- [x] Run `pnpm deploy:check`, deploy the Dashboard control-plane surfaces through the guarded production script, and verify public production health.
+- [ ] Provision and verify the standalone production Page Studio runtime before enabling editor, publishing, or customer hostname traffic.
 
 ## Deployment safety
 
-The database migration is additive; no existing tables or rows were removed. No Cloudflare Page Studio production resources or hostname mappings have been created from the Dashboard branch yet, and no production traffic has been changed. Dashboard deployment must use `pnpm deploy:preview` or `pnpm deploy:production`; direct Wrangler Pages deployment is prohibited by the repository guardrail.
+The database migration is additive; no existing tables or rows were removed. The Dashboard control-plane surfaces are deployed to production, but no standalone Cloudflare Page Studio production Workers or customer hostname mappings have been created and no customer website traffic has been switched. Dashboard deployment must use `pnpm deploy:preview` or `pnpm deploy:production`; direct Wrangler Pages deployment is prohibited by the repository guardrail.
