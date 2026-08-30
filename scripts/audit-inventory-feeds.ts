@@ -3,10 +3,10 @@
  * inventory campaigns.
  *
  * Sources:
- * - Google Ads v23 `product_link.merchant_center.merchant_center_id`
- *   https://developers.google.com/google-ads/api/fields/v23/product_link
- * - Google Ads v23 `asset_group_listing_group_filter`
- *   https://developers.google.com/google-ads/api/fields/v23/asset_group_listing_group_filter
+ * - Google Ads v25 `product_link.merchant_center.merchant_center_id`
+ *   https://developers.google.com/google-ads/api/fields/v25/product_link
+ * - Google Ads v25 `asset_group_listing_group_filter`
+ *   https://developers.google.com/google-ads/api/fields/v25/asset_group_listing_group_filter
  * - Merchant feed/data-source details require Merchant/Content API scope
  *   https://developers.google.com/shopping-content/reference/rest/v2.1/datafeeds/list
  */
@@ -25,8 +25,9 @@ import {
   summariseGoogleListingFilter,
   summariseMetaProductSet,
 } from '../server/utils/inventoryFeedAudit'
+import { GOOGLE_ADS_BASE_URL } from '../server/utils/googleAds/version'
 
-const GOOGLE_ADS_BASE = 'https://googleads.googleapis.com/v23'
+const GOOGLE_ADS_BASE = GOOGLE_ADS_BASE_URL
 const GOOGLE_CONTENT_BASE = 'https://shoppingcontent.googleapis.com/content/v2.1'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const META_GRAPH_BASE = 'https://graph.facebook.com/v25.0'

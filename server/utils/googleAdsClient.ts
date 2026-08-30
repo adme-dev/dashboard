@@ -1,7 +1,7 @@
 /**
  * Google Ads API Client
  * Lightweight client using ofetch (matches metaClient.ts pattern)
- * API v23 — https://developers.google.com/google-ads/api/rest/reference/rest/v23
+ * API v25 — https://developers.google.com/google-ads/api/rest/reference/rest/v25
  */
 
 import { ofetch } from 'ofetch'
@@ -17,8 +17,9 @@ import {
   sanitizeDiagnosticText,
   type PolicyIssue,
 } from '~~/server/utils/adDiagnostics'
+import { GOOGLE_ADS_BASE_URL } from '~~/server/utils/googleAds/version'
 
-const GOOGLE_ADS_BASE = 'https://googleads.googleapis.com/v23'
+const GOOGLE_ADS_BASE = GOOGLE_ADS_BASE_URL
 const GOOGLE_OAUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 
@@ -575,7 +576,7 @@ export interface GoogleBreakdownRow {
 
 /**
  * Get breakdown data for campaigns by a specific segment.
- * v23: age/gender use dedicated view resources; device/geo use campaign resource.
+ * v25: age/gender use dedicated view resources; device/geo use campaign resource.
  */
 export async function getBreakdownData(
   customerId: string,
