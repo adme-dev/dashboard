@@ -1,7 +1,8 @@
 import { PageStudioSiteError } from '~~/server/utils/pageStudio/sites'
+import { PageStudioVersionError } from '~~/server/utils/pageStudio/versions'
 
 export function pageStudioHttpError(error: unknown): never {
-  if (error instanceof PageStudioSiteError) {
+  if (error instanceof PageStudioSiteError || error instanceof PageStudioVersionError) {
     throw createError({
       statusCode: error.statusCode,
       statusMessage: error.message,
