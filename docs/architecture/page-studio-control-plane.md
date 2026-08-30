@@ -27,7 +27,7 @@ Portal routes never accept tenant or client identifiers as authority. They deriv
 
 ### Database
 
-Migration `402_page_studio_control_plane.sql` creates the twelve additive control-plane tables for entitlements, sites, memberships, checkpoints, versions, reviews, builds, releases, release pointers, audit events, domains, and assets.
+Migration `402_page_studio_control_plane.sql` creates the twelve additive control-plane tables for entitlements, sites, memberships, checkpoints, versions, reviews, builds, releases, release pointers, audit events, domains, and assets. Migration `403_page_studio_sessions.sql` adds the short-lived editor-session nonce ledger without storing bearer tokens or signing keys.
 
 Important invariants include:
 
@@ -39,7 +39,7 @@ Important invariants include:
 - exact normalized-hostname release pointers;
 - system-role Page Studio group backfill without viewer access.
 
-The migration was applied successfully to the configured Neon `neondb` on 2026-08-30. Read-only verification returned 12 Page Studio tables and 26 Page Studio system-role assignments.
+Both migrations were applied successfully to the configured Neon `neondb` on 2026-08-30. Migration 403 was applied twice to prove idempotency; the new session table was empty before launch. Read-only verification returned the expected Page Studio tables and 26 Page Studio system-role assignments.
 
 ### APIs and workflow
 
@@ -47,9 +47,11 @@ Implemented routes:
 
 - `GET /api/agency/page-studio/sites`
 - `POST /api/agency/page-studio/sites`
+- `POST /api/agency/page-studio/sites/:siteId/editor-sessions`
 - `POST /api/agency/page-studio/sites/:siteId/versions/:versionId/reviews`
 - `GET /api/portal/page-studio/sites`
 - `POST /api/portal/page-studio/sites`
+- `POST /api/portal/page-studio/sites/:siteId/editor-sessions`
 - `POST /api/portal/page-studio/sites/:siteId/versions/:versionId/submissions`
 - `POST /internal/page-studio/checkpoints`
 - `GET /internal/page-studio/checkpoints/latest`
@@ -62,6 +64,9 @@ Implemented behavior:
 - site creation, membership creation, capacity enforcement, and audit insertion share one transaction;
 - portal viewers cannot create or submit;
 - portal site access is membership- and authenticated-client-scoped;
+- editor-session responses are private/no-store and use the exact `XEROFLOW-PAGE-STUDIO-SESSION` ES256 contract with a maximum 15-minute lifetime;
+- agency sessions require `PAGE_STUDIO_EDIT` and may receive `source:edit`; client sessions derive tenant scope from the exact authenticated client/site/editor membership and never receive `source:edit` in the first release;
+- session issuance locks the site and entitlement, rechecks site state plus the entitlement status/effective window, records only scoped claims and revocation state, and appends `session.issued` audit evidence atomically;
 - only the current draft can enter review;
 - only the current submitted version can be approved, rejected, or returned to draft;
 - reviews record the locked digest and append audit evidence atomically.
@@ -92,18 +97,21 @@ On 2026-08-30, Dashboard commit `7bb9dcabf` was deployed through the guarded `pn
 - Regression coverage proves a Page Studio-only custom role cannot inherit legacy `ADMIN` authority.
 - 28 machine-auth, transaction, error-contract, and internal-route tests pass for the new control boundary.
 - The disposable PostgreSQL test applies migration 402 twice and passes real checkpoint create/replay, latest-pointer, version create/replay, and typed audit create/replay flows; the temporary container was removed after the run.
+- Nine focused session tests prove ES256 interoperability with the Page Studio verifier contract, lifetime enforcement, agency/client capability separation, effective-entitlement and membership denial, no token persistence, authenticated endpoint scope, UUID validation, and private/no-store responses.
+- The full focused Page Studio gate passes 69 tests with one disposable-PostgreSQL harness test environment-skipped; the complete Page Studio lint scope is clean. Full Nuxt typecheck still exits on the repository's existing unrelated error inventory and reports no Page Studio diagnostics.
+- `pnpm audit --prod --audit-level high` reports 17 existing high-severity transitive advisories in Zero, Nuxt/tooling, and Cloudflare Think dependency chains. None involve the newly added direct `jose` dependency; remediation and reachability review remain a separate production-risk gate.
 
 ## Remaining release gates
 
 - [ ] Complete the machine-authenticated internal build, release, lead, analytics, host-resolution, and preview-authorization APIs. Checkpoint, latest-pointer, version registration, and audit ingestion are implemented.
-- [ ] Implement ES256 editor-session issuance, minimal capabilities, nonce revocation, and secure preview-cookie exchange.
+- [ ] Complete editor-session rollout. ES256 issuance, minimal role/entitlement capabilities, the Dashboard nonce ledger, and private/no-store responses are implemented; key installation, cross-service revocation, and secure preview-cookie exchange remain.
 - [ ] Implement site detail/update and version-history APIs.
 - [ ] Implement atomic activation and rollback transactions with optimistic pointer checks and append-only release audit.
 - [ ] Implement domain, DNS verification, asset, lead-routing, and analytics control endpoints.
 - [ ] Build agency and portal Nuxt UI v4 entry points and run browser accessibility/responsive checks.
 - [ ] Update public feature, navigation, and pricing surfaces when the UI is ready for release.
 - [x] Provision and deploy the service-binding-only staging control Worker with the matching Dashboard Pages preview secret and no public target.
-- [ ] Provision staging R2 buckets, the container application, Page Studio Worker secrets, routes, and staging hostnames.
+- [ ] Complete staging provisioning. Isolated R2 buckets and the private Build Worker are live; the session key pair, Sandbox/container application, remaining Workers, routes, and staging hostnames remain.
 - [ ] Verify Cloudflare for SaaS custom-hostname entitlement before enabling customer domains.
 - [ ] Run staging security, rollback, capacity, form, analytics, and custom-host smoke gates.
 - [ ] Run `pnpm deploy:check`, deploy through the guarded scripts only, and verify production health before enabling users.
