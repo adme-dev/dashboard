@@ -31,6 +31,12 @@ const CriterionSchema = z.object({
   matchType: z.enum(['EXACT', 'PHRASE', 'BROAD']),
   negative: z.literal(true)
 })
+const PositiveCriterionSchema = z.object({
+  text: z.string(),
+  matchType: z.enum(['EXACT', 'PHRASE', 'BROAD']),
+  negative: z.literal(false),
+  status: z.enum(['ENABLED', 'PAUSED'])
+})
 const BudgetStateSchema = z.object({
   resourceName: z.string(),
   name: z.string(),
@@ -495,6 +501,67 @@ WHERE ${prefix}.${parent} = '${args.parentResourceName}'
   }
 }
 
+function normalizedPositiveCriteria(rows: unknown[]) {
+  const criteria: Array<z.infer<typeof PositiveCriterionSchema>> = []
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue
+    const criterion = (row as Record<string, unknown>).adGroupCriterion
+    const parsed = z.object({
+      negative: z.literal(false),
+      status: z.enum(['ENABLED', 'PAUSED']),
+      keyword: z.object({
+        text: z.string(),
+        matchType: z.enum(['EXACT', 'PHRASE', 'BROAD'])
+      })
+    }).safeParse(criterion)
+    if (parsed.success) {
+      const normalized = PositiveCriterionSchema.parse({
+        ...parsed.data.keyword,
+        negative: false,
+        status: parsed.data.status
+      })
+      criteria.push(normalized)
+    }
+  }
+  return criteria.sort((left, right) => {
+    const leftKey = `${left.matchType}:${left.text.toLocaleLowerCase('en-AU')}`
+    const rightKey = `${right.matchType}:${right.text.toLocaleLowerCase('en-AU')}`
+    return leftKey.localeCompare(rightKey)
+  })
+}
+
+async function loadPositiveKeywords(
+  customerId: string,
+  adGroupResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<{
+  adGroupResourceName: string
+  criteria: Array<z.infer<typeof PositiveCriterionSchema>>
+}> {
+  await loadCreateAdCurrentState(customerId, adGroupResourceName, auth, dependencies)
+  const [adGroupId] = resourceIds(adGroupResourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 10_000,
+    query: `SELECT ad_group_criterion.status,
+  ad_group_criterion.negative,
+  ad_group_criterion.keyword.text,
+  ad_group_criterion.keyword.match_type
+FROM ad_group_criterion
+WHERE ad_group.id = ${adGroupId}
+  AND ad_group_criterion.type = 'KEYWORD'
+  AND ad_group_criterion.negative = FALSE
+  AND ad_group_criterion.status != 'REMOVED'`
+  })
+  if (result.more > 0) throw new Error('Google Ads positive keyword state exceeds the safe read limit')
+  return {
+    adGroupResourceName,
+    criteria: normalizedPositiveCriteria(result.rows)
+  }
+}
+
 export async function loadSearchGoogleAdsCurrentState(
   context: Omit<BuildGoogleAdsActionContext, 'currentState'>,
   auth: GoogleAdsAuth,
@@ -554,6 +621,20 @@ export async function loadSearchGoogleAdsCurrentState(
       context.input.arguments
     ))
     return loadCreateAdCurrentState(
+      context.customerId,
+      args.adGroupResourceName,
+      auth,
+      resolved
+    )
+  }
+  if (context.input.operation === 'add_keywords') {
+    const args = z.object({
+      adGroupResourceName: z.string()
+    }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation,
+      context.input.arguments
+    ))
+    return loadPositiveKeywords(
       context.customerId,
       args.adGroupResourceName,
       auth,
@@ -637,6 +718,15 @@ export async function loadSearchGoogleAdsPlanState(
     return loadCreateAdCurrentState(
       plan.customerId,
       desired.adGroup,
+      auth,
+      resolved
+    )
+  }
+  if (plan.operation === 'add_keywords') {
+    const desired = z.object({ adGroupResourceName: z.string() }).parse(plan.desiredState)
+    return loadPositiveKeywords(
+      plan.customerId,
+      desired.adGroupResourceName,
       auth,
       resolved
     )

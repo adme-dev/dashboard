@@ -132,6 +132,31 @@ function parseCurrentCriteria(value: unknown): Array<{ text: string, matchType: 
   return criteria
 }
 
+function parseCurrentPositiveCriteria(value: unknown): Array<{
+  text: string
+  matchType: 'EXACT' | 'PHRASE' | 'BROAD'
+  negative: false
+  status: 'ENABLED' | 'PAUSED'
+}> {
+  if (!value || typeof value !== 'object' || !('criteria' in value) || !Array.isArray(value.criteria)) return []
+  const criteria: Array<{
+    text: string
+    matchType: 'EXACT' | 'PHRASE' | 'BROAD'
+    negative: false
+    status: 'ENABLED' | 'PAUSED'
+  }> = []
+  for (const item of value.criteria) {
+    const parsed = z.object({
+      text: z.string(),
+      matchType: z.enum(['EXACT', 'PHRASE', 'BROAD']),
+      negative: z.literal(false),
+      status: z.enum(['ENABLED', 'PAUSED'])
+    }).safeParse(item)
+    if (parsed.success) criteria.push(parsed.data)
+  }
+  return criteria
+}
+
 export function parseSearchGoogleAdsArguments(
   operation: GoogleAdsOperationType,
   argumentsValue: unknown
@@ -329,7 +354,8 @@ function buildPositiveKeywordAction(context: BuildGoogleAdsActionContext): Built
   if (context.input.resourceType !== 'keyword') throw new Error('Keyword creation requires resource type keyword')
   const args = PositiveKeywordArgumentsSchema.parse(context.input.arguments)
   assertResourceName(args.adGroupResourceName, context.customerId, 'adGroups')
-  const seen = new Set<string>()
+  const existing = parseCurrentPositiveCriteria(context.currentState)
+  const seen = new Set(existing.map(keywordKey))
   const additions = args.keywords.flatMap((keyword) => {
     const normalized = { text: normalizeKeywordText(keyword.text), matchType: keyword.matchType }
     const key = keywordKey(normalized)
@@ -337,10 +363,20 @@ function buildPositiveKeywordAction(context: BuildGoogleAdsActionContext): Built
     seen.add(key)
     return [normalized]
   })
+  if (additions.length === 0) throw new Error('No new positive keywords remain after deduplication')
+  const desiredCriteria = [
+    ...existing,
+    ...additions.map(keyword => ({
+      ...keyword,
+      negative: false as const,
+      status: 'PAUSED' as const
+    }))
+  ].sort((left, right) => keywordKey(left).localeCompare(keywordKey(right)))
   return {
     resourceName: args.adGroupResourceName,
     desiredState: {
-      criteria: additions.map(keyword => ({ ...keyword, negative: false, status: 'PAUSED' }))
+      adGroupResourceName: args.adGroupResourceName,
+      criteria: desiredCriteria
     },
     providerOperations: [{
       service: 'adGroupCriteria',

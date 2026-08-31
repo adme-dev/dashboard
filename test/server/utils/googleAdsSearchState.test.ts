@@ -183,6 +183,42 @@ describe('Search Google Ads current-state loader', () => {
     })
     expect(query.mock.calls[0]?.[0].query).toContain('ad_group.id = 70')
   })
+
+  it('loads and normalizes existing positive keywords from a live ad group', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{ adGroup: { resourceName: 'customers/1234567890/adGroups/70' } }],
+        more: 0
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          { adGroupCriterion: {
+            negative: false,
+            status: 'ENABLED',
+            keyword: { text: 'GAC dealer', matchType: 'PHRASE' }
+          } },
+          { adGroupCriterion: {
+            negative: false,
+            status: 'PAUSED',
+            keyword: { text: 'Northern GAC', matchType: 'EXACT' }
+          } }
+        ],
+        more: 0
+      })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('add_keywords', {
+      adGroupResourceName: 'customers/1234567890/adGroups/70',
+      keywords: [{ text: 'new vehicles', matchType: 'BROAD' }]
+    }), auth, { query })).resolves.toEqual({
+      adGroupResourceName: 'customers/1234567890/adGroups/70',
+      criteria: [
+        { text: 'Northern GAC', matchType: 'EXACT', negative: false, status: 'PAUSED' },
+        { text: 'GAC dealer', matchType: 'PHRASE', negative: false, status: 'ENABLED' }
+      ]
+    })
+    expect(query.mock.calls[1]?.[0]).toMatchObject({ maxRows: 10_000 })
+    expect(query.mock.calls[1]?.[0].query).toContain('ad_group_criterion.negative = FALSE')
+  })
 })
 
 describe('Search Google Ads readback verification', () => {
@@ -451,5 +487,45 @@ describe('Search Google Ads persisted-plan state loading', () => {
     })
     expect(query.mock.calls[0]?.[0].query).toContain('ad_group.id = 70')
     expect(query.mock.calls[0]?.[0].query).toContain('ad_group_ad.ad.id = 80')
+  })
+
+  it('re-queries the complete positive keyword set after mutation', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{ adGroup: { resourceName: 'customers/1234567890/adGroups/70' } }],
+        more: 0
+      })
+      .mockResolvedValueOnce({
+        rows: [{ adGroupCriterion: {
+          negative: false,
+          status: 'PAUSED',
+          keyword: { text: 'new vehicles', matchType: 'PHRASE' }
+        } }],
+        more: 0
+      })
+    const plan = {
+      operation: 'add_keywords',
+      resourceType: 'keyword',
+      resourceName: 'customers/1234567890/adGroups/70',
+      customerId: '1234567890',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      connectionId: '22222222-2222-4222-8222-222222222222',
+      actorId: '33333333-3333-4333-8333-333333333333',
+      source: 'mcp',
+      executionMode: 'proposal',
+      idempotencyKey: 'keywords-1',
+      desiredState: {
+        adGroupResourceName: 'customers/1234567890/adGroups/70',
+        criteria: [
+          { text: 'new vehicles', matchType: 'PHRASE', negative: false, status: 'PAUSED' }
+        ]
+      },
+      providerOperations: [{ service: 'adGroupCriteria' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [{ resourceName: 'customers/1234567890/adGroupCriteria/70~90' }]
+    })).resolves.toEqual(plan.desiredState)
+    expect(query).toHaveBeenCalledTimes(2)
   })
 })

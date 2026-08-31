@@ -257,6 +257,41 @@ describe('Search Google Ads construction operations', () => {
     } })
   })
 
+  it('deduplicates positive keywords against the current provider state', () => {
+    const adGroup = 'customers/1234567890/adGroups/20'
+    const built = buildSearchGoogleAdsAction(context(
+      'add_keywords',
+      'keyword',
+      {
+        adGroupResourceName: adGroup,
+        keywords: [
+          { text: ' northern   gac ', matchType: 'EXACT' },
+          { text: 'new vehicles', matchType: 'PHRASE' }
+        ]
+      },
+      {
+        adGroupResourceName: adGroup,
+        criteria: [
+          { text: 'Northern GAC', matchType: 'EXACT', negative: false, status: 'ENABLED' }
+        ]
+      }
+    ))
+
+    expect(built.providerOperations[0]?.operations).toEqual([{ create: {
+      adGroup,
+      status: 'PAUSED',
+      negative: false,
+      keyword: { text: 'new vehicles', matchType: 'PHRASE' }
+    } }])
+    expect(built.desiredState).toEqual({
+      adGroupResourceName: adGroup,
+      criteria: [
+        { text: 'Northern GAC', matchType: 'EXACT', negative: false, status: 'ENABLED' },
+        { text: 'new vehicles', matchType: 'PHRASE', negative: false, status: 'PAUSED' }
+      ]
+    })
+  })
+
   it('creates responsive search ads paused with typed text assets', () => {
     const adGroup = 'customers/1234567890/adGroups/20'
     const built = buildSearchGoogleAdsAction(context(
