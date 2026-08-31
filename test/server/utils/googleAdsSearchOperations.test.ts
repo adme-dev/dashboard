@@ -718,6 +718,95 @@ describe('Search Google Ads construction operations', () => {
     })
   })
 
+  it('updates only explicitly requested mutable conversion-action fields', () => {
+    const resourceName = 'customers/1234567890/conversionActions/9001'
+    const built = buildSearchGoogleAdsAction(context(
+      'update_conversion_action',
+      'conversion_action',
+      {
+        resourceName,
+        name: 'Finance lead',
+        category: 'QUALIFIED_LEAD',
+        status: 'HIDDEN',
+        countingType: 'ONE_PER_CLICK',
+        clickThroughLookbackWindowDays: 60
+      },
+      {
+        resourceName,
+        name: 'Finance enquiry',
+        status: 'ENABLED',
+        type: 'WEBPAGE',
+        category: 'SUBMIT_LEAD_FORM',
+        origin: 'WEBSITE',
+        primaryForGoal: false,
+        includeInConversionsMetric: false,
+        countingType: 'MANY_PER_CLICK',
+        clickThroughLookbackWindowDays: '30',
+        viewThroughLookbackWindowDays: '1'
+      }
+    ))
+
+    expect(built).toEqual({
+      resourceName,
+      desiredState: {
+        resourceName,
+        name: 'Finance lead',
+        category: 'QUALIFIED_LEAD',
+        status: 'HIDDEN',
+        countingType: 'ONE_PER_CLICK',
+        clickThroughLookbackWindowDays: '60'
+      },
+      providerOperations: [{
+        service: 'conversionActions',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{
+          update: {
+            resourceName,
+            name: 'Finance lead',
+            category: 'QUALIFIED_LEAD',
+            status: 'HIDDEN',
+            countingType: 'ONE_PER_CLICK',
+            clickThroughLookbackWindowDays: '60'
+          },
+          updateMask: 'name,category,status,counting_type,click_through_lookback_window_days'
+        }]
+      }]
+    })
+  })
+
+  it('rejects empty, unchanged, and type-incompatible conversion-action updates', () => {
+    const resourceName = 'customers/1234567890/conversionActions/9001'
+    const current = {
+      resourceName,
+      name: 'Offline sale',
+      status: 'ENABLED',
+      type: 'UPLOAD_CLICKS',
+      category: 'PURCHASE',
+      origin: 'WEBSITE',
+      primaryForGoal: false,
+      includeInConversionsMetric: false,
+      countingType: 'ONE_PER_CLICK',
+      clickThroughLookbackWindowDays: '30'
+    }
+
+    expect(() => parseSearchGoogleAdsArguments('update_conversion_action', { resourceName })).toThrow(
+      'At least one mutable conversion-action field is required'
+    )
+    expect(() => buildSearchGoogleAdsAction(context(
+      'update_conversion_action',
+      'conversion_action',
+      { resourceName, name: current.name },
+      current
+    ))).toThrow('Conversion action already matches the requested values')
+    expect(() => buildSearchGoogleAdsAction(context(
+      'update_conversion_action',
+      'conversion_action',
+      { resourceName, viewThroughLookbackWindowDays: 7 },
+      current
+    ))).toThrow('View-through windows are supported only for WEBPAGE conversion actions')
+  })
+
   it('rejects unsafe URLs and campaigns that attempt to start enabled', () => {
     expect(() => buildSearchGoogleAdsAction(context(
       'create_ad',

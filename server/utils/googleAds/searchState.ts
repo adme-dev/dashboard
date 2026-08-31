@@ -1212,6 +1212,12 @@ export async function loadSearchGoogleAdsCurrentState(
     ))
     return loadConversionAction(context.customerId, args.resourceName, auth, resolved)
   }
+  if (context.input.operation === 'update_conversion_action') {
+    const args = z.object({ resourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation, context.input.arguments
+    ))
+    return loadConversionAction(context.customerId, args.resourceName, auth, resolved)
+  }
   if (context.input.operation === 'create_conversion_action') {
     const args = z.object({ name: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation, context.input.arguments
@@ -1379,6 +1385,10 @@ export async function loadSearchGoogleAdsPlanState(
     return loadCampaignConversionGoals(plan.customerId, desired.campaignResourceName, auth, resolved)
   }
   if (plan.operation === 'set_conversion_primary_state') {
+    if (!plan.resourceName) throw new Error('Conversion action plan has no resource name')
+    return loadConversionAction(plan.customerId, plan.resourceName, auth, resolved)
+  }
+  if (plan.operation === 'update_conversion_action') {
     if (!plan.resourceName) throw new Error('Conversion action plan has no resource name')
     return loadConversionAction(plan.customerId, plan.resourceName, auth, resolved)
   }

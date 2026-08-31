@@ -35,7 +35,8 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_set_devices',
       'google_ads_plan_set_campaign_conversion_goals',
       'google_ads_plan_set_conversion_primary_state',
-      'google_ads_plan_create_conversion_action'
+      'google_ads_plan_create_conversion_action',
+      'google_ads_plan_update_conversion_action'
     ])
     const serialized = JSON.stringify(googleAdsSearchPlanningTools)
     expect(serialized).not.toMatch(/"(?:query|operations|url|accessToken|developerToken)"/)
@@ -322,6 +323,23 @@ describe('Google Ads Search MCP planning descriptors', () => {
         clickThroughLookbackWindowDays: 30,
         viewThroughLookbackWindowDays: 1
       }
+    },
+    {
+      tool: 'google_ads_plan_update_conversion_action',
+      args: {
+        resourceName: 'customers/1234567890/conversionActions/9001',
+        name: 'Finance lead',
+        category: 'QUALIFIED_LEAD',
+        status: 'HIDDEN'
+      },
+      operation: 'update_conversion_action',
+      resourceType: 'conversion_action',
+      expectedArguments: {
+        resourceName: 'customers/1234567890/conversionActions/9001',
+        name: 'Finance lead',
+        category: 'QUALIFIED_LEAD',
+        status: 'HIDDEN'
+      }
     }
   ])('maps $tool to a typed proposal-only plan', async ({
     tool,
@@ -382,6 +400,24 @@ describe('Google Ads Search MCP planning descriptors', () => {
           { dayOfWeek: 'MONDAY', startHour: 9, startMinute: 0, endHour: 12, endMinute: 0 },
           { dayOfWeek: 'MONDAY', startHour: 11, startMinute: 45, endHour: 13, endMinute: 0 }
         ]
+      },
+      context,
+      flags,
+      true,
+      { plan }
+    )).resolves.toMatchObject({ ok: false, code: 'bad_args' })
+    expect(plan).not.toHaveBeenCalled()
+  })
+
+  it('rejects a conversion-action update without mutable fields before creating a plan', async () => {
+    const plan = vi.fn()
+    await expect(executeGoogleAdsSearchPlanningTool(
+      'google_ads_plan_update_conversion_action',
+      {
+        clientId: '33333333-3333-4333-8333-333333333333',
+        connectionId: '44444444-4444-4444-8444-444444444444',
+        idempotencyKey: 'empty-conversion-update',
+        resourceName: 'customers/1234567890/conversionActions/9001'
       },
       context,
       flags,

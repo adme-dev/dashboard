@@ -26,6 +26,7 @@ export const GOOGLE_ADS_PLAN_SET_DEVICES_TOOL = 'google_ads_plan_set_devices'
 export const GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL = 'google_ads_plan_set_campaign_conversion_goals'
 export const GOOGLE_ADS_PLAN_SET_CONVERSION_PRIMARY_STATE_TOOL = 'google_ads_plan_set_conversion_primary_state'
 export const GOOGLE_ADS_PLAN_CREATE_CONVERSION_ACTION_TOOL = 'google_ads_plan_create_conversion_action'
+export const GOOGLE_ADS_PLAN_UPDATE_CONVERSION_ACTION_TOOL = 'google_ads_plan_update_conversion_action'
 
 const CommonSchema = {
   clientId: z.string().uuid(),
@@ -224,6 +225,27 @@ const CreateConversionActionSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'View-through windows are supported only for WEBPAGE conversion actions' })
   }
 })
+const UpdateConversionActionSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(255).optional(),
+  category: ConversionCategorySchema.optional(),
+  status: z.enum(['ENABLED', 'HIDDEN']).optional(),
+  countingType: z.enum(['ONE_PER_CLICK', 'MANY_PER_CLICK']).optional(),
+  clickThroughLookbackWindowDays: z.number().int().min(1).max(90).optional(),
+  viewThroughLookbackWindowDays: z.number().int().min(1).max(30).optional()
+}).superRefine((value, refinement) => {
+  if (
+    value.name === undefined
+    && value.category === undefined
+    && value.status === undefined
+    && value.countingType === undefined
+    && value.clickThroughLookbackWindowDays === undefined
+    && value.viewThroughLookbackWindowDays === undefined
+  ) {
+    refinement.addIssue({ code: 'custom', message: 'At least one mutable conversion-action field is required' })
+  }
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -323,6 +345,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_CREATE_CONVERSION_ACTION_TOOL,
     'Plan a typed Google Ads conversion action. Google creates actions primary by default; use the primary-state tool after creation to make one secondary.',
     CreateConversionActionSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_UPDATE_CONVERSION_ACTION_TOOL,
+    'Plan an update to mutable conversion-action fields. Type is immutable and removal is intentionally not exposed by this tool.',
+    UpdateConversionActionSchema
   )
 ]
 
@@ -669,6 +696,31 @@ export async function executeGoogleAdsSearchPlanningTool(
           category: args.category,
           countingType: args.countingType,
           clickThroughLookbackWindowDays: args.clickThroughLookbackWindowDays,
+          ...(args.viewThroughLookbackWindowDays === undefined
+            ? {}
+            : { viewThroughLookbackWindowDays: args.viewThroughLookbackWindowDays })
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_UPDATE_CONVERSION_ACTION_TOOL) {
+      const args = UpdateConversionActionSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'update_conversion_action',
+        resourceType: 'conversion_action',
+        arguments: {
+          resourceName: args.resourceName,
+          ...(args.name === undefined ? {} : { name: args.name }),
+          ...(args.category === undefined ? {} : { category: args.category }),
+          ...(args.status === undefined ? {} : { status: args.status }),
+          ...(args.countingType === undefined ? {} : { countingType: args.countingType }),
+          ...(args.clickThroughLookbackWindowDays === undefined
+            ? {}
+            : { clickThroughLookbackWindowDays: args.clickThroughLookbackWindowDays }),
           ...(args.viewThroughLookbackWindowDays === undefined
             ? {}
             : { viewThroughLookbackWindowDays: args.viewThroughLookbackWindowDays })

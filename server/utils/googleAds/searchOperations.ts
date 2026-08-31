@@ -194,6 +194,39 @@ const CreateConversionActionArgumentsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'View-through windows are supported only for WEBPAGE conversion actions' })
   }
 })
+const UpdateConversionActionArgumentsSchema = z.strictObject({
+  resourceName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(255).optional(),
+  category: ConversionCategorySchema.optional(),
+  status: z.enum(['ENABLED', 'HIDDEN']).optional(),
+  countingType: z.enum(['ONE_PER_CLICK', 'MANY_PER_CLICK']).optional(),
+  clickThroughLookbackWindowDays: z.number().int().min(1).max(90).optional(),
+  viewThroughLookbackWindowDays: z.number().int().min(1).max(30).optional()
+}).superRefine((value, refinement) => {
+  if (
+    value.name === undefined
+    && value.category === undefined
+    && value.status === undefined
+    && value.countingType === undefined
+    && value.clickThroughLookbackWindowDays === undefined
+    && value.viewThroughLookbackWindowDays === undefined
+  ) {
+    refinement.addIssue({ code: 'custom', message: 'At least one mutable conversion-action field is required' })
+  }
+})
+const MutableConversionActionStateSchema = z.object({
+  resourceName: z.string(),
+  name: z.string(),
+  status: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  type: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  category: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  origin: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  primaryForGoal: z.boolean(),
+  includeInConversionsMetric: z.boolean(),
+  countingType: z.string().regex(/^[A-Z][A-Z0-9_]*$/).optional(),
+  clickThroughLookbackWindowDays: z.string().optional(),
+  viewThroughLookbackWindowDays: z.string().optional()
+})
 
 const STATUS_OPERATIONS = {
   pause_campaign: { resourceType: 'campaign', segment: 'campaigns', service: 'campaigns', status: 'PAUSED' },
@@ -236,7 +269,8 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'set_devices',
       'set_campaign_conversion_goals',
       'set_conversion_primary_state',
-      'create_conversion_action'
+      'create_conversion_action',
+      'update_conversion_action'
     ].includes(operation)
 }
 
@@ -322,6 +356,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_primary_state') return SetConversionPrimaryStateArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_conversion_action') return CreateConversionActionArgumentsSchema.parse(argumentsValue)
+  if (operation === 'update_conversion_action') return UpdateConversionActionArgumentsSchema.parse(argumentsValue)
   throw new Error(`Unsupported Search Google Ads operation: ${operation}`)
 }
 
@@ -862,16 +897,8 @@ function buildConversionPrimaryStateAction(context: BuildGoogleAdsActionContext)
   }
   const args = SetConversionPrimaryStateArgumentsSchema.parse(context.input.arguments)
   assertResourceName(args.resourceName, context.customerId, 'conversionActions')
-  const current = z.object({
-    resourceName: z.literal(args.resourceName),
-    name: z.string(),
-    status: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
-    type: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
-    category: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
-    origin: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
-    primaryForGoal: z.boolean(),
-    includeInConversionsMetric: z.boolean()
-  }).parse(context.currentState)
+  const current = MutableConversionActionStateSchema.parse(context.currentState)
+  if (current.resourceName !== args.resourceName) throw new Error('Conversion action state does not match the selected resource')
   if (current.primaryForGoal === args.primaryForGoal) {
     throw new Error('Conversion action primary state already matches the requested value')
   }
@@ -922,6 +949,49 @@ function buildCreateConversionAction(context: BuildGoogleAdsActionContext): Buil
   }
 }
 
+function buildUpdateConversionAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'conversion_action') {
+    throw new Error('Conversion action update requires resource type conversion_action')
+  }
+  const args = UpdateConversionActionArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.resourceName, context.customerId, 'conversionActions')
+  const current = MutableConversionActionStateSchema.parse(context.currentState)
+  if (current.resourceName !== args.resourceName) throw new Error('Conversion action state does not match the selected resource')
+  if (args.viewThroughLookbackWindowDays !== undefined && current.type !== 'WEBPAGE') {
+    throw new Error('View-through windows are supported only for WEBPAGE conversion actions')
+  }
+  const update: Record<string, unknown> = { resourceName: args.resourceName }
+  const desiredState: Record<string, unknown> = { resourceName: args.resourceName }
+  const masks: string[] = []
+  const add = (field: string, mask: string, value: unknown, currentValue: unknown) => {
+    if (value === undefined || value === currentValue) return
+    update[field] = value
+    desiredState[field] = value
+    masks.push(mask)
+  }
+  add('name', 'name', args.name, current.name)
+  add('category', 'category', args.category, current.category)
+  add('status', 'status', args.status, current.status)
+  add('countingType', 'counting_type', args.countingType, current.countingType)
+  add('clickThroughLookbackWindowDays', 'click_through_lookback_window_days',
+    args.clickThroughLookbackWindowDays === undefined ? undefined : String(args.clickThroughLookbackWindowDays),
+    current.clickThroughLookbackWindowDays)
+  add('viewThroughLookbackWindowDays', 'view_through_lookback_window_days',
+    args.viewThroughLookbackWindowDays === undefined ? undefined : String(args.viewThroughLookbackWindowDays),
+    current.viewThroughLookbackWindowDays)
+  if (masks.length === 0) throw new Error('Conversion action already matches the requested values')
+  return {
+    resourceName: args.resourceName,
+    desiredState,
+    providerOperations: [{
+      service: 'conversionActions',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ update, updateMask: masks.join(',') }]
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -944,5 +1014,6 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'set_campaign_conversion_goals') return buildCampaignConversionGoalAction(context)
   if (context.input.operation === 'set_conversion_primary_state') return buildConversionPrimaryStateAction(context)
   if (context.input.operation === 'create_conversion_action') return buildCreateConversionAction(context)
+  if (context.input.operation === 'update_conversion_action') return buildUpdateConversionAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }
