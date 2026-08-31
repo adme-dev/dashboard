@@ -16,10 +16,18 @@ import {
   type WriteConfirmOutcome
 } from './writeTools'
 import { GoogleAdsRecommendationTypeSchema } from '~~/server/utils/googleAds/recommendations'
+import type { GoogleAdsInventoryKind } from '~~/server/utils/googleAds/inventory'
 
 export const GOOGLE_ADS_VALIDATE_PLAN_TOOL = 'google_ads_validate_action_plan'
 export const GOOGLE_ADS_GET_STATUS_TOOL = 'google_ads_get_action_status'
 export const GOOGLE_ADS_LIST_RECOMMENDATIONS_TOOL = 'google_ads_list_recommendations'
+export const GOOGLE_ADS_LIST_CAMPAIGNS_TOOL = 'google_ads_list_campaigns'
+export const GOOGLE_ADS_LIST_AD_GROUPS_TOOL = 'google_ads_list_ad_groups'
+export const GOOGLE_ADS_LIST_ADS_TOOL = 'google_ads_list_ads'
+export const GOOGLE_ADS_LIST_KEYWORDS_TOOL = 'google_ads_list_keywords'
+export const GOOGLE_ADS_LIST_TARGETING_TOOL = 'google_ads_list_targeting'
+export const GOOGLE_ADS_LIST_ASSETS_TOOL = 'google_ads_list_assets'
+export const GOOGLE_ADS_LIST_CONVERSION_ACTIONS_TOOL = 'google_ads_list_conversion_actions'
 export const GOOGLE_ADS_PROPOSE_ACTION_TOOL = 'propose_google_ads_action'
 export const GOOGLE_ADS_PENDING_ACTION = 'google_ads_action'
 
@@ -34,6 +42,90 @@ const ListRecommendationsParams = z.strictObject({
   includeDismissed: z.boolean().default(false)
 })
 export type ListGoogleAdsRecommendationsToolInput = z.infer<typeof ListRecommendationsParams>
+const InventoryCommon = {
+  clientId: z.string().uuid(),
+  connectionId: z.string().uuid(),
+  maxResults: z.number().int().min(1).max(500).default(100)
+}
+const EntityStatusSchema = z.enum(['ALL', 'ENABLED', 'PAUSED', 'REMOVED']).default('ALL')
+const ConversionStatusSchema = z.enum(['ALL', 'ENABLED', 'HIDDEN', 'REMOVED']).default('ALL')
+const CampaignResourceNameSchema = z.string().regex(/^customers\/\d{1,20}\/campaigns\/\d{1,20}$/)
+const AdGroupResourceNameSchema = z.string().regex(/^customers\/\d{1,20}\/adGroups\/\d{1,20}$/)
+const CampaignInventoryParams = z.strictObject({
+  ...InventoryCommon,
+  status: EntityStatusSchema
+})
+const AdGroupInventoryParams = z.strictObject({
+  ...InventoryCommon,
+  status: EntityStatusSchema,
+  campaignResourceName: CampaignResourceNameSchema.optional()
+})
+const ChildInventoryParams = z.strictObject({
+  ...InventoryCommon,
+  status: EntityStatusSchema,
+  campaignResourceName: CampaignResourceNameSchema.optional(),
+  adGroupResourceName: AdGroupResourceNameSchema.optional()
+})
+const KeywordInventoryParams = ChildInventoryParams.extend({
+  includeNegative: z.boolean().default(true)
+})
+const TargetingInventoryParams = z.strictObject({
+  ...InventoryCommon,
+  campaignResourceName: CampaignResourceNameSchema.optional(),
+  adGroupResourceName: AdGroupResourceNameSchema.optional(),
+  scope: z.enum(['CAMPAIGN', 'AD_GROUP', 'BOTH']).default('BOTH')
+})
+const AssetInventoryParams = z.strictObject(InventoryCommon)
+const ConversionActionInventoryParams = z.strictObject({
+  ...InventoryCommon,
+  status: ConversionStatusSchema
+})
+
+export interface GoogleAdsInventoryToolInput {
+  clientId: string
+  connectionId: string
+  maxResults: number
+  status?: 'ALL' | 'ENABLED' | 'PAUSED' | 'REMOVED' | 'HIDDEN'
+  campaignResourceName?: string
+  adGroupResourceName?: string
+  includeNegative?: boolean
+  scope?: 'CAMPAIGN' | 'AD_GROUP' | 'BOTH'
+}
+
+const inventoryTools: Record<string, {
+  kind: GoogleAdsInventoryKind
+  schema: z.ZodType<GoogleAdsInventoryToolInput>
+  description: string
+}> = {
+  [GOOGLE_ADS_LIST_CAMPAIGNS_TOOL]: {
+    kind: 'campaign', schema: CampaignInventoryParams,
+    description: 'List a bounded typed campaign inventory with status, channel, dates, budget, and bidding strategy. No raw GAQL is accepted.'
+  },
+  [GOOGLE_ADS_LIST_AD_GROUPS_TOOL]: {
+    kind: 'ad_group', schema: AdGroupInventoryParams,
+    description: 'List bounded typed ad groups, optionally within one validated campaign resource.'
+  },
+  [GOOGLE_ADS_LIST_ADS_TOOL]: {
+    kind: 'ad', schema: ChildInventoryParams,
+    description: 'List bounded typed ads with hierarchy, serving status, final URLs, and policy approval state.'
+  },
+  [GOOGLE_ADS_LIST_KEYWORDS_TOOL]: {
+    kind: 'keyword', schema: KeywordInventoryParams,
+    description: 'List bounded typed positive and negative keywords with match type, status, hierarchy, and quality score.'
+  },
+  [GOOGLE_ADS_LIST_TARGETING_TOOL]: {
+    kind: 'targeting', schema: TargetingInventoryParams,
+    description: 'List bounded typed campaign and ad-group targeting criteria, including location, language, schedule, device, audience, placement, and demographic criteria.'
+  },
+  [GOOGLE_ADS_LIST_ASSETS_TOOL]: {
+    kind: 'asset', schema: AssetInventoryParams,
+    description: 'List a bounded typed Google Ads asset inventory with asset type and source.'
+  },
+  [GOOGLE_ADS_LIST_CONVERSION_ACTIONS_TOOL]: {
+    kind: 'conversion_action', schema: ConversionActionInventoryParams,
+    description: 'List bounded typed conversion actions with primary or secondary bidding state, category, origin, owner, and status.'
+  }
+}
 
 function descriptor(name: string, description: string, schema: z.ZodType = ActionPlanParams): McpToolManifest {
   return {
@@ -44,6 +136,11 @@ function descriptor(name: string, description: string, schema: z.ZodType = Actio
 }
 
 export const googleAdsReadTools: McpToolManifest[] = [
+  ...Object.entries(inventoryTools).map(([name, config]) => descriptor(
+    name,
+    config.description,
+    config.schema
+  )),
   descriptor(
     GOOGLE_ADS_LIST_RECOMMENDATIONS_TOOL,
     'List a bounded, typed Google Ads recommendation inventory with optimization score. Optional type filters are enum-like values; no raw GAQL is accepted.',
@@ -106,6 +203,11 @@ export function projectGoogleAdsTools(role: string, flags: GoogleAdsMcpFlags): M
 }
 
 export interface GoogleAdsMcpToolDependencies {
+  listInventory(
+    kind: GoogleAdsInventoryKind,
+    input: GoogleAdsInventoryToolInput,
+    context: ToolContext
+  ): Promise<unknown>
   listRecommendations(
     input: ListGoogleAdsRecommendationsToolInput,
     context: ToolContext
@@ -151,6 +253,20 @@ export async function executeGoogleAdsTool(
   }
   if (!isWrite && !flags.read) {
     return { ok: false, error: 'Google Ads read tools are not enabled over MCP.', code: 'disabled' }
+  }
+
+  const inventory = inventoryTools[name]
+  if (inventory) {
+    const inventoryArgs = inventory.schema.safeParse(args)
+    if (!inventoryArgs.success) return { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
+    try {
+      return {
+        ok: true,
+        data: await dependencies.listInventory(inventory.kind, inventoryArgs.data, context)
+      }
+    } catch {
+      return { ok: false, error: 'Google Ads inventory read failed.', code: 'handler_error' }
+    }
   }
 
   if (name === GOOGLE_ADS_LIST_RECOMMENDATIONS_TOOL) {

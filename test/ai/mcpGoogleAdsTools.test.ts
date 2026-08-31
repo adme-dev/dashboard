@@ -70,6 +70,7 @@ function dependencies(plan = actionPlan()) {
     validatePlan: vi.fn().mockResolvedValue({ valid: true, diffs: [] }),
     recordValidation: vi.fn().mockResolvedValue(undefined),
     listRecommendations: vi.fn().mockResolvedValue({ recommendations: [] }),
+    listInventory: vi.fn().mockResolvedValue({ items: [] }),
     proposePlan: vi.fn().mockResolvedValue({ proposalId: 'proposal-12345' }),
     executeAutomatic: vi.fn().mockResolvedValue({ ok: true, status: 'verified' })
   }
@@ -115,6 +116,49 @@ describe('Google Ads MCP tool projection', () => {
       types: ['CAMPAIGN_BUDGET'],
       includeDismissed: false
     }), context)
+  })
+
+  it('projects and dispatches every typed Google Ads QA inventory', async () => {
+    const expected = [
+      'google_ads_list_campaigns',
+      'google_ads_list_ad_groups',
+      'google_ads_list_ads',
+      'google_ads_list_keywords',
+      'google_ads_list_targeting',
+      'google_ads_list_assets',
+      'google_ads_list_conversion_actions'
+    ]
+    expect(googleAdsReadTools.map(tool => tool.name)).toEqual(expect.arrayContaining(expected))
+
+    const deps = dependencies()
+    await expect(executeGoogleAdsTool('google_ads_list_campaigns', {
+      clientId: CLIENT_ID,
+      connectionId: CONNECTION_ID,
+      maxResults: 25,
+      status: 'ENABLED'
+    }, context, { ...off, read: true }, deps)).resolves.toMatchObject({
+      ok: true,
+      data: { items: [] }
+    })
+    expect(deps.listInventory).toHaveBeenCalledWith('campaign', {
+      clientId: CLIENT_ID,
+      connectionId: CONNECTION_ID,
+      maxResults: 25,
+      status: 'ENABLED'
+    }, context)
+  })
+
+  it('rejects cross-customer-shaped parent filters at the typed MCP boundary', async () => {
+    const deps = dependencies()
+    await expect(executeGoogleAdsTool('google_ads_list_keywords', {
+      clientId: CLIENT_ID,
+      connectionId: CONNECTION_ID,
+      campaignResourceName: 'customers/not-a-number/campaigns/60'
+    }, context, { ...off, read: true }, deps)).resolves.toMatchObject({
+      ok: false,
+      code: 'bad_args'
+    })
+    expect(deps.listInventory).not.toHaveBeenCalled()
   })
 
   it('projects read tools only for MEDIA_BUYING roles when read is enabled', () => {

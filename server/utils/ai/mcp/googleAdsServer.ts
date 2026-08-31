@@ -10,6 +10,10 @@ import type { GoogleAdsActionPlan } from '~~/server/utils/googleAds/contracts'
 import { resolveGoogleAdsControlSession } from '~~/server/utils/googleAds/controlSession'
 import { listGoogleAdsRecommendations } from '~~/server/utils/googleAds/recommendations'
 import {
+  listGoogleAdsInventory,
+  type ListGoogleAdsInventoryInput
+} from '~~/server/utils/googleAds/inventory'
+import {
   executeSearchGoogleAdsControlAction,
   isExecutableSearchGoogleAdsPlan,
   validateSearchGoogleAdsControlPlan
@@ -133,6 +137,25 @@ export function buildGoogleAdsMcpToolDependencies(
   flags: GoogleAdsMcpFlags = googleAdsMcpFlagsFromEnv()
 ): GoogleAdsMcpToolDependencies {
   return {
+    listInventory: async (kind, input) => {
+      const session = await resolveGoogleAdsControlSession({
+        clientId: input.clientId,
+        connectionId: input.connectionId
+      })
+      return listGoogleAdsInventory({
+        kind,
+        customerId: session.connection.customerId,
+        auth: session.auth,
+        maxResults: input.maxResults,
+        ...(input.status ? { status: input.status } : {}),
+        ...(input.campaignResourceName
+          ? { campaignResourceName: input.campaignResourceName }
+          : {}),
+        ...(input.adGroupResourceName ? { adGroupResourceName: input.adGroupResourceName } : {}),
+        ...(input.includeNegative === undefined ? {} : { includeNegative: input.includeNegative }),
+        ...(input.scope ? { scope: input.scope } : {})
+      } as ListGoogleAdsInventoryInput)
+    },
     listRecommendations: async (input) => {
       const session = await resolveGoogleAdsControlSession({
         clientId: input.clientId,
