@@ -64,6 +64,7 @@ const RICH_CONFIRM_OPERATIONS = new Set<GoogleAdsOperationType>([
   'set_pmax_signals',
   'set_search_themes',
   'create_asset',
+  'attach_asset',
   'set_conversion_goal',
   'set_customer_goal_biddability'
 ])
@@ -87,7 +88,7 @@ const AUTOMATIC_ACTION_CLASSES: Partial<Record<GoogleAdsOperationType, GoogleAds
   pause_ad: 'pause',
   pause_keyword: 'pause',
   dismiss_recommendation: 'recommendation_dismissal',
-  detach_asset: 'asset_detachment',
+  archive_asset_link: 'asset_detachment',
   run_search_term_policy: 'negative_keywords',
   run_pause_policy: 'pause'
 }

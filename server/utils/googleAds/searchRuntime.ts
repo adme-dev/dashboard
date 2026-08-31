@@ -167,6 +167,14 @@ const PauseAutomationConditionsSchema = z.strictObject({
   resourceNames: z.array(z.string().min(1).max(1_000)).min(1).max(1_000).optional()
 })
 const PauseAutomationArgumentsSchema = z.object({ resourceName: z.string() })
+const AssetDetachmentConditionsSchema = z.strictObject({
+  allowedScopes: z.array(z.enum(['customer', 'campaign', 'ad_group'])).min(1).max(3).optional(),
+  resourceNames: z.array(z.string().min(1).max(1_000)).min(1).max(1_000).optional()
+})
+const AssetDetachmentArgumentsSchema = z.object({
+  scope: z.enum(['customer', 'campaign', 'ad_group']),
+  resourceName: z.string()
+})
 
 function automationConditionsAllow(
   input: PlanGoogleAdsActionInput,
@@ -192,6 +200,14 @@ function automationConditionsAllow(
     if (!conditions.success || !args.success) return false
     if (conditions.data.allowedResourceTypes
       && !conditions.data.allowedResourceTypes.includes(input.resourceType as never)) return false
+    if (conditions.data.resourceNames && !conditions.data.resourceNames.includes(args.data.resourceName)) return false
+    return true
+  }
+  if (grant.actionClass === 'asset_detachment') {
+    const conditions = AssetDetachmentConditionsSchema.safeParse(grant.conditions)
+    const args = AssetDetachmentArgumentsSchema.safeParse(input.arguments)
+    if (!conditions.success || !args.success) return false
+    if (conditions.data.allowedScopes && !conditions.data.allowedScopes.includes(args.data.scope)) return false
     if (conditions.data.resourceNames && !conditions.data.resourceNames.includes(args.data.resourceName)) return false
     return true
   }
@@ -333,7 +349,10 @@ const EXECUTABLE_SEARCH_SERVICES = {
   create_custom_conversion_goal: ['customConversionGoals'],
   update_custom_conversion_goal: ['customConversionGoals'],
   archive_custom_conversion_goal: ['customConversionGoals'],
-  create_asset: ['assets']
+  create_asset: ['assets'],
+  attach_asset: ['customerAssets', 'campaignAssets', 'adGroupAssets'],
+  archive_asset_link: ['customerAssets', 'campaignAssets', 'adGroupAssets'],
+  detach_asset: ['customerAssets', 'campaignAssets', 'adGroupAssets']
 } as const
 
 export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): boolean {
@@ -343,6 +362,18 @@ export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): bool
   ] as readonly string[] | undefined
   if (!services) return false
   const requested = plan.providerOperations.map(mutation => mutation.service)
+  if (plan.operation === 'attach_asset'
+    || plan.operation === 'archive_asset_link'
+    || plan.operation === 'detach_asset') {
+    const desired = z.object({ scope: z.enum(['customer', 'campaign', 'ad_group']) }).safeParse(plan.desiredState)
+    if (!desired.success || requested.length !== 1) return false
+    const expectedService = {
+      customer: 'customerAssets',
+      campaign: 'campaignAssets',
+      ad_group: 'adGroupAssets'
+    }[desired.data.scope]
+    return requested[0] === expectedService
+  }
   if (plan.operation === 'set_audience_associations') {
     return requested.length === 1
       ? services.includes(requested[0] ?? '')

@@ -337,6 +337,27 @@ const CreateAssetArgumentsSchema = z.discriminatedUnion('type', [
     refinement.addIssue({ code: 'custom', message: 'Structured-snippet values must be unique' })
   }
 })
+const AssetLinkScopeSchema = z.enum(['customer', 'campaign', 'ad_group'])
+const AssetExtensionFieldTypeSchema = z.enum(['CALL', 'SITELINK', 'CALLOUT', 'STRUCTURED_SNIPPET'])
+const AttachAssetArgumentsSchema = z.strictObject({
+  scope: AssetLinkScopeSchema,
+  parentResourceName: z.string().trim().min(1).max(1_000),
+  assetResourceName: z.string().trim().min(1).max(1_000),
+  fieldType: AssetExtensionFieldTypeSchema
+})
+const AssetLinkDispositionArgumentsSchema = z.strictObject({
+  scope: AssetLinkScopeSchema,
+  resourceName: z.string().trim().min(1).max(1_000)
+})
+const AssetLinkStateSchema = z.object({
+  resourceName: z.string(),
+  scope: AssetLinkScopeSchema,
+  parentResourceName: z.string(),
+  assetResourceName: z.string(),
+  fieldType: AssetExtensionFieldTypeSchema,
+  assetType: AssetExtensionFieldTypeSchema.optional(),
+  status: z.enum(['ABSENT', 'ENABLED', 'PAUSED', 'REMOVED'])
+})
 const ConversionCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -529,6 +550,9 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'set_pmax_signals',
       'set_search_themes',
       'create_asset',
+      'attach_asset',
+      'archive_asset_link',
+      'detach_asset',
       'set_campaign_conversion_goals',
       'set_conversion_goal',
       'set_customer_goal_biddability',
@@ -632,6 +656,10 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_pmax_signals') return SetPmaxSignalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_search_themes') return SetSearchThemesArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_asset') return CreateAssetArgumentsSchema.parse(argumentsValue)
+  if (operation === 'attach_asset') return AttachAssetArgumentsSchema.parse(argumentsValue)
+  if (operation === 'archive_asset_link' || operation === 'detach_asset') {
+    return AssetLinkDispositionArgumentsSchema.parse(argumentsValue)
+  }
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_goal') return SetCampaignGoalConfigArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_customer_goal_biddability') return SetCustomerGoalBiddabilityArgumentsSchema.parse(argumentsValue)
@@ -2009,6 +2037,169 @@ function buildCreateAssetAction(context: BuildGoogleAdsActionContext): BuiltGoog
   }
 }
 
+const ASSET_LINK_SCOPES = {
+  customer: {
+    service: 'customerAssets',
+    segment: 'customerAssets',
+    parentSegment: null,
+    parentField: null
+  },
+  campaign: {
+    service: 'campaignAssets',
+    segment: 'campaignAssets',
+    parentSegment: 'campaigns',
+    parentField: 'campaign'
+  },
+  ad_group: {
+    service: 'adGroupAssets',
+    segment: 'adGroupAssets',
+    parentSegment: 'adGroups',
+    parentField: 'adGroup'
+  }
+} as const
+
+type AssetLinkScope = keyof typeof ASSET_LINK_SCOPES
+
+function numericResourceId(resourceName: string): string {
+  const id = resourceName.slice(resourceName.lastIndexOf('/') + 1)
+  if (!/^\d+$/.test(id)) throw new Error('Invalid Google Ads resource name')
+  return id
+}
+
+function expectedAssetLinkResourceName(
+  customerId: string,
+  scope: AssetLinkScope,
+  parentResourceName: string,
+  assetResourceName: string,
+  fieldType: z.infer<typeof AssetExtensionFieldTypeSchema>
+): string {
+  const config = ASSET_LINK_SCOPES[scope]
+  const assetId = numericResourceId(assetResourceName)
+  const leaf = scope === 'customer'
+    ? `${assetId}~${fieldType}`
+    : `${numericResourceId(parentResourceName)}~${assetId}~${fieldType}`
+  return `customers/${customerId}/${config.segment}/${leaf}`
+}
+
+function assertAssetLinkResourceName(
+  resourceName: string,
+  customerId: string,
+  scope: AssetLinkScope
+): void {
+  const segment = ASSET_LINK_SCOPES[scope].segment
+  const leaf = scope === 'customer'
+    ? '\\d+~(?:CALL|SITELINK|CALLOUT|STRUCTURED_SNIPPET)'
+    : '\\d+~\\d+~(?:CALL|SITELINK|CALLOUT|STRUCTURED_SNIPPET)'
+  if (!new RegExp(`^customers/${customerId}/${segment}/${leaf}$`).test(resourceName)) {
+    throw new Error('Resource does not belong to the selected Google Ads customer')
+  }
+}
+
+function buildAttachAssetAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'asset_link') {
+    throw new Error('Asset attachment requires resource type asset_link')
+  }
+  const args = AttachAssetArgumentsSchema.parse(context.input.arguments)
+  const config = ASSET_LINK_SCOPES[args.scope]
+  assertResourceName(args.assetResourceName, context.customerId, 'assets')
+  if (args.scope === 'customer') {
+    if (args.parentResourceName !== `customers/${context.customerId}`) {
+      throw new Error('Resource does not belong to the selected Google Ads customer')
+    }
+  } else {
+    const parentSegment = args.scope === 'campaign' ? 'campaigns' : 'adGroups'
+    assertResourceName(args.parentResourceName, context.customerId, parentSegment)
+  }
+  const resourceName = expectedAssetLinkResourceName(
+    context.customerId, args.scope, args.parentResourceName, args.assetResourceName, args.fieldType
+  )
+  const current = AssetLinkStateSchema.parse(context.currentState)
+  if (current.resourceName !== resourceName
+    || current.scope !== args.scope
+    || current.parentResourceName !== args.parentResourceName
+    || current.assetResourceName !== args.assetResourceName
+    || current.fieldType !== args.fieldType) {
+    throw new Error('Asset-link state does not match the requested association')
+  }
+  if (current.assetType !== args.fieldType) {
+    throw new Error('Asset type does not match the requested field type')
+  }
+  if (current.status === 'ENABLED') throw new Error('Asset is already attached and enabled')
+
+  const desiredState = {
+    resourceName,
+    scope: args.scope,
+    parentResourceName: args.parentResourceName,
+    assetResourceName: args.assetResourceName,
+    fieldType: args.fieldType,
+    status: 'ENABLED' as const
+  }
+  const operation = current.status === 'PAUSED'
+    ? { update: { resourceName, status: 'ENABLED' }, updateMask: 'status' }
+    : {
+        create: {
+          ...(config.parentField ? { [config.parentField]: args.parentResourceName } : {}),
+          asset: args.assetResourceName,
+          fieldType: args.fieldType,
+          status: 'ENABLED'
+        }
+      }
+  return {
+    resourceName,
+    desiredState,
+    providerOperations: [{
+      service: config.service,
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [operation]
+    }]
+  }
+}
+
+function buildAssetLinkDispositionAction(
+  context: BuildGoogleAdsActionContext,
+  disposition: 'archive' | 'detach'
+): BuiltGoogleAdsAction {
+  // v25 link operations support status updates and removal independently of the immutable Asset.
+  // Source: https://developers.google.com/google-ads/api/reference/rpc/v25/CustomerAssetOperation
+  if (context.input.resourceType !== 'asset_link') {
+    throw new Error('Asset-link disposition requires resource type asset_link')
+  }
+  const args = AssetLinkDispositionArgumentsSchema.parse(context.input.arguments)
+  assertAssetLinkResourceName(args.resourceName, context.customerId, args.scope)
+  const current = AssetLinkStateSchema.parse(context.currentState)
+  if (current.resourceName !== args.resourceName || current.scope !== args.scope) {
+    throw new Error('Asset-link state does not match the requested association')
+  }
+  if (current.status === 'ABSENT' || current.status === 'REMOVED') {
+    throw new Error('Asset link is already detached')
+  }
+  if (disposition === 'archive' && current.status === 'PAUSED') {
+    throw new Error('Asset link is already archived')
+  }
+  const status = disposition === 'archive' ? 'PAUSED' : 'REMOVED'
+  const desiredState = {
+    resourceName: current.resourceName,
+    scope: current.scope,
+    parentResourceName: current.parentResourceName,
+    assetResourceName: current.assetResourceName,
+    fieldType: current.fieldType,
+    status
+  }
+  return {
+    resourceName: args.resourceName,
+    desiredState,
+    providerOperations: [{
+      service: ASSET_LINK_SCOPES[args.scope].service,
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [disposition === 'archive'
+        ? { update: { resourceName: args.resourceName, status }, updateMask: 'status' }
+        : { remove: args.resourceName }]
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -2048,5 +2239,8 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'set_pmax_signals') return buildPmaxAudienceSignalsAction(context)
   if (context.input.operation === 'set_search_themes') return buildPmaxSearchThemesAction(context)
   if (context.input.operation === 'create_asset') return buildCreateAssetAction(context)
+  if (context.input.operation === 'attach_asset') return buildAttachAssetAction(context)
+  if (context.input.operation === 'archive_asset_link') return buildAssetLinkDispositionAction(context, 'archive')
+  if (context.input.operation === 'detach_asset') return buildAssetLinkDispositionAction(context, 'detach')
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }

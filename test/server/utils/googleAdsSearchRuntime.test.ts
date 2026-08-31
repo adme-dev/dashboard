@@ -201,6 +201,63 @@ describe('Search Google Ads governed planning runtime', () => {
       policyDecision: { allowed: false }
     })
   })
+
+  it('bounds automatic asset-link archive by scope and resource allowlists', async () => {
+    const resourceName = 'customers/1234567890/campaignAssets/60~9201~CALL'
+    const deps = dependencies({
+      loadCurrent: vi.fn().mockResolvedValue({
+        resourceName,
+        scope: 'campaign',
+        parentResourceName: 'customers/1234567890/campaigns/60',
+        assetResourceName: 'customers/1234567890/assets/9201',
+        fieldType: 'CALL',
+        status: 'ENABLED'
+      }),
+      loadAutomationPolicy: vi.fn().mockResolvedValue({
+        id: '55555555-5555-4555-8555-555555555555',
+        actionClass: 'asset_detachment',
+        policyVersion: 'asset-archive-v1',
+        enabled: true,
+        conditions: { allowedScopes: ['campaign'], resourceNames: [resourceName] },
+        maxDailyActions: 10,
+        actionsToday: 1
+      })
+    })
+    const input = {
+      clientId: CLIENT_ID,
+      connectionId: CONNECTION_ID,
+      actorId: ACTOR_ID,
+      source: 'automation' as const,
+      operation: 'archive_asset_link' as const,
+      resourceType: 'asset_link' as const,
+      requestedMode: 'automatic' as const,
+      arguments: { scope: 'campaign', resourceName },
+      idempotencyKey: 'archive-campaign-call-link'
+    }
+    await expect(planSearchGoogleAdsControlAction(input, authority, flags, deps)).resolves.toMatchObject({
+      grantId: '55555555-5555-4555-8555-555555555555',
+      riskTier: 'automatic',
+      executionMode: 'automatic',
+      status: 'planned'
+    })
+
+    deps.loadAutomationPolicy.mockResolvedValueOnce({
+      id: '55555555-5555-4555-8555-555555555555',
+      actionClass: 'asset_detachment',
+      policyVersion: 'asset-archive-v1',
+      enabled: true,
+      conditions: { allowedScopes: ['ad_group'], resourceNames: [resourceName] },
+      maxDailyActions: 10,
+      actionsToday: 1
+    })
+    await expect(planSearchGoogleAdsControlAction({
+      ...input,
+      idempotencyKey: 'blocked-archive-campaign-call-link'
+    }, authority, flags, deps)).resolves.toMatchObject({
+      status: 'cancelled',
+      policyDecision: { allowed: false }
+    })
+  })
 })
 
 describe('Search Google Ads governed execution runtime', () => {
@@ -246,6 +303,25 @@ describe('Search Google Ads governed execution runtime', () => {
       operation: 'set_audience_associations',
       providerOperations: [{ service: 'adGroups' }, { service: 'adGroupCriteria' }]
     } as GoogleAdsActionPlan)).toBe(true)
+  })
+
+  it.each([
+    ['customer', 'customerAssets'],
+    ['campaign', 'campaignAssets'],
+    ['ad_group', 'adGroupAssets']
+  ] as const)('binds %s asset-link plans to the matching provider service', (scope, service) => {
+    for (const operation of ['attach_asset', 'archive_asset_link', 'detach_asset'] as const) {
+      expect(isExecutableSearchGoogleAdsPlan({
+        operation,
+        desiredState: { scope },
+        providerOperations: [{ service }]
+      } as GoogleAdsActionPlan)).toBe(true)
+      expect(isExecutableSearchGoogleAdsPlan({
+        operation,
+        desiredState: { scope },
+        providerOperations: [{ service: scope === 'campaign' ? 'customerAssets' : 'campaignAssets' }]
+      } as GoogleAdsActionPlan)).toBe(false)
+    }
   })
 
   it('rejects a persisted Search plan whose provider service does not match its typed operation', () => {

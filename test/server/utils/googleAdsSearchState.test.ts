@@ -112,6 +112,43 @@ describe('Search Google Ads current-state loader', () => {
     expect(query).not.toHaveBeenCalled()
   })
 
+  it('prevalidates an asset, campaign, and existing link before attachment', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{ asset: {
+          resourceName: 'customers/1234567890/assets/9201',
+          type: 'CALL',
+          source: 'ADVERTISER',
+          finalUrls: [],
+          finalMobileUrls: [],
+          callAsset: { countryCode: 'AU', phoneNumber: '(03) 9999 0000' }
+        } }],
+        more: 0
+      })
+      .mockResolvedValueOnce({
+        rows: [{ campaign: { resourceName: 'customers/1234567890/campaigns/60' } }],
+        more: 0
+      })
+      .mockResolvedValueOnce({ rows: [], more: 0 })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('attach_asset', {
+      scope: 'campaign',
+      parentResourceName: 'customers/1234567890/campaigns/60',
+      assetResourceName: 'customers/1234567890/assets/9201',
+      fieldType: 'CALL'
+    }), auth, { query })).resolves.toEqual({
+      resourceName: 'customers/1234567890/campaignAssets/60~9201~CALL',
+      scope: 'campaign',
+      parentResourceName: 'customers/1234567890/campaigns/60',
+      assetResourceName: 'customers/1234567890/assets/9201',
+      fieldType: 'CALL',
+      assetType: 'CALL',
+      status: 'ABSENT'
+    })
+    expect(query).toHaveBeenCalledTimes(3)
+    expect(query.mock.calls[2]?.[0].query).toContain('campaign_asset.resource_name')
+  })
+
   it('refuses to plan a duplicate named budget', async () => {
     await expect(loadSearchGoogleAdsCurrentState(context('create_budget', {
       name: 'Northern Search Budget',
@@ -1356,6 +1393,47 @@ describe('Search Google Ads persisted-plan state loading', () => {
       callAsset: { countryCode: 'AU', phoneNumber: '(03) 9999 0000' }
     })
     expect(query.mock.calls[0]?.[0].query).toContain('asset.id = 9201')
+  })
+
+  it('reads back reversible asset-link archive and explicit detachment states', async () => {
+    const resourceName = 'customers/1234567890/campaignAssets/60~9201~CALL'
+    const common = {
+      resourceName,
+      scope: 'campaign',
+      parentResourceName: 'customers/1234567890/campaigns/60',
+      assetResourceName: 'customers/1234567890/assets/9201',
+      fieldType: 'CALL'
+    }
+    const archivedPlan = {
+      operation: 'archive_asset_link',
+      resourceType: 'asset_link',
+      resourceName,
+      customerId: '1234567890',
+      desiredState: { ...common, status: 'PAUSED' },
+      providerOperations: [{ service: 'campaignAssets' }]
+    } as GoogleAdsActionPlan
+    await expect(loadSearchGoogleAdsPlanState(archivedPlan, auth, {
+      query: vi.fn().mockResolvedValue({
+        rows: [{ campaignAsset: {
+          resourceName,
+          campaign: common.parentResourceName,
+          asset: common.assetResourceName,
+          fieldType: 'CALL',
+          status: 'PAUSED',
+          source: 'ADVERTISER'
+        } }],
+        more: 0
+      })
+    })).resolves.toMatchObject({ ...common, status: 'PAUSED' })
+
+    const detachedPlan = {
+      ...archivedPlan,
+      operation: 'detach_asset',
+      desiredState: { ...common, status: 'REMOVED' }
+    } as GoogleAdsActionPlan
+    await expect(loadSearchGoogleAdsPlanState(detachedPlan, auth, {
+      query: vi.fn().mockResolvedValue({ rows: [], more: 0 })
+    })).resolves.toEqual({ ...common, status: 'REMOVED' })
   })
 
   it('uses a nested provider result to read back a created custom audience', async () => {

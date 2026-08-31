@@ -39,6 +39,9 @@ export const GOOGLE_ADS_PLAN_CREATE_CUSTOM_CONVERSION_GOAL_TOOL = 'google_ads_pl
 export const GOOGLE_ADS_PLAN_UPDATE_CUSTOM_CONVERSION_GOAL_TOOL = 'google_ads_plan_update_custom_conversion_goal'
 export const GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_CONVERSION_GOAL_TOOL = 'google_ads_plan_archive_custom_conversion_goal'
 export const GOOGLE_ADS_PLAN_CREATE_ASSET_TOOL = 'google_ads_plan_create_asset'
+export const GOOGLE_ADS_PLAN_ATTACH_ASSET_TOOL = 'google_ads_plan_attach_asset'
+export const GOOGLE_ADS_PLAN_ARCHIVE_ASSET_LINK_TOOL = 'google_ads_plan_archive_asset_link'
+export const GOOGLE_ADS_PLAN_DETACH_ASSET_TOOL = 'google_ads_plan_detach_asset'
 export const GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_create_custom_audience'
 export const GOOGLE_ADS_PLAN_UPDATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_update_custom_audience'
 export const GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_archive_custom_audience'
@@ -501,6 +504,26 @@ const CreateAssetSchema = z.discriminatedUnion('type', [
     refinement.addIssue({ code: 'custom', message: 'Structured-snippet values must be unique' })
   }
 })
+const AssetLinkScopeSchema = z.enum(['customer', 'campaign', 'ad_group'])
+const AssetExtensionFieldTypeSchema = z.enum(['CALL', 'SITELINK', 'CALLOUT', 'STRUCTURED_SNIPPET'])
+const AttachAssetSchema = z.strictObject({
+  ...CommonSchema,
+  scope: AssetLinkScopeSchema,
+  parentResourceName: z.string().trim().min(1).max(1_000),
+  assetResourceName: z.string().trim().min(1).max(1_000),
+  fieldType: AssetExtensionFieldTypeSchema
+})
+const ArchiveAssetLinkSchema = z.strictObject({
+  ...CommonSchema,
+  scope: AssetLinkScopeSchema,
+  resourceName: z.string().trim().min(1).max(1_000),
+  requestedMode: z.enum(['proposal', 'automatic']).default('proposal')
+})
+const DetachAssetSchema = z.strictObject({
+  ...CommonSchema,
+  scope: AssetLinkScopeSchema,
+  resourceName: z.string().trim().min(1).max(1_000)
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -665,6 +688,21 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_CREATE_ASSET_TOOL,
     'Plan an immutable typed call, sitelink, callout, or Australian-English structured-snippet asset. Creation does not make the asset serve; attach it separately after approval.',
     CreateAssetSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_ATTACH_ASSET_TOOL,
+    'Plan attaching or resuming an approved extension asset at account, campaign, or ad-group level. Attachment enables serving and requires elevated approval.',
+    AttachAssetSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_ARCHIVE_ASSET_LINK_TOOL,
+    'Plan the safe reversible retirement of an asset link by setting it to PAUSED. Automatic mode requires a bounded asset-detachment policy.',
+    ArchiveAssetLinkSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_DETACH_ASSET_TOOL,
+    'Plan explicit removal of an account, campaign, or ad-group asset association. The underlying immutable asset is retained and can be reattached.',
+    DetachAssetSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL,
@@ -1273,6 +1311,50 @@ export async function executeGoogleAdsSearchPlanningTool(
             values: args.values
           }
         }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_ATTACH_ASSET_TOOL) {
+      const args = AttachAssetSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'attach_asset',
+        resourceType: 'asset_link',
+        arguments: {
+          scope: args.scope,
+          parentResourceName: args.parentResourceName,
+          assetResourceName: args.assetResourceName,
+          fieldType: args.fieldType
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_ARCHIVE_ASSET_LINK_TOOL) {
+      const args = ArchiveAssetLinkSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: args.requestedMode,
+        operation: 'archive_asset_link',
+        resourceType: 'asset_link',
+        arguments: { scope: args.scope, resourceName: args.resourceName }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_DETACH_ASSET_TOOL) {
+      const args = DetachAssetSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'detach_asset',
+        resourceType: 'asset_link',
+        arguments: { scope: args.scope, resourceName: args.resourceName }
       }
     } else if (name === GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL) {
       const args = CreateCustomAudienceSchema.parse(rawArgs)

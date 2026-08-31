@@ -1566,4 +1566,108 @@ describe('Search Google Ads construction operations', () => {
       type: 'CALL', countryCode: 'AUS', phoneNumber: '03 9999 0000'
     })).toThrow()
   })
+
+  it('attaches or resumes a typed campaign asset link', () => {
+    const parentResourceName = 'customers/1234567890/campaigns/60'
+    const assetResourceName = 'customers/1234567890/assets/9201'
+    const resourceName = 'customers/1234567890/campaignAssets/60~9201~CALL'
+    const input = {
+      scope: 'campaign', parentResourceName, assetResourceName, fieldType: 'CALL'
+    } as const
+    expect(buildSearchGoogleAdsAction(context('attach_asset', 'asset_link', input, {
+      resourceName,
+      scope: 'campaign',
+      parentResourceName,
+      assetResourceName,
+      fieldType: 'CALL',
+      assetType: 'CALL',
+      status: 'ABSENT'
+    }))).toEqual({
+      resourceName,
+      desiredState: {
+        resourceName,
+        scope: 'campaign',
+        parentResourceName,
+        assetResourceName,
+        fieldType: 'CALL',
+        status: 'ENABLED'
+      },
+      providerOperations: [{
+        service: 'campaignAssets',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ create: {
+          campaign: parentResourceName,
+          asset: assetResourceName,
+          fieldType: 'CALL',
+          status: 'ENABLED'
+        } }]
+      }]
+    })
+
+    expect(buildSearchGoogleAdsAction(context('attach_asset', 'asset_link', input, {
+      resourceName,
+      scope: 'campaign',
+      parentResourceName,
+      assetResourceName,
+      fieldType: 'CALL',
+      assetType: 'CALL',
+      status: 'PAUSED'
+    })).providerOperations[0]?.operations).toEqual([{
+      update: { resourceName, status: 'ENABLED' },
+      updateMask: 'status'
+    }])
+  })
+
+  it('archives asset links reversibly and detaches only when explicit', () => {
+    const resourceName = 'customers/1234567890/campaignAssets/60~9201~CALL'
+    const current = {
+      resourceName,
+      scope: 'campaign',
+      parentResourceName: 'customers/1234567890/campaigns/60',
+      assetResourceName: 'customers/1234567890/assets/9201',
+      fieldType: 'CALL',
+      status: 'ENABLED'
+    }
+    expect(buildSearchGoogleAdsAction(context(
+      'archive_asset_link', 'asset_link', { scope: 'campaign', resourceName }, current
+    )).providerOperations[0]?.operations).toEqual([{
+      update: { resourceName, status: 'PAUSED' },
+      updateMask: 'status'
+    }])
+    expect(buildSearchGoogleAdsAction(context(
+      'detach_asset', 'asset_link', { scope: 'campaign', resourceName }, current
+    )).providerOperations[0]?.operations).toEqual([{ remove: resourceName }])
+  })
+
+  it('rejects cross-customer and field-type mismatched asset links', () => {
+    expect(() => buildSearchGoogleAdsAction(context('attach_asset', 'asset_link', {
+      scope: 'campaign',
+      parentResourceName: 'customers/1234567890/campaigns/60',
+      assetResourceName: 'customers/9999999999/assets/9201',
+      fieldType: 'CALL'
+    }, {
+      resourceName: 'customers/1234567890/campaignAssets/60~9201~CALL',
+      scope: 'campaign',
+      parentResourceName: 'customers/1234567890/campaigns/60',
+      assetResourceName: 'customers/1234567890/assets/9201',
+      fieldType: 'CALL',
+      assetType: 'CALL',
+      status: 'ABSENT'
+    }))).toThrow('selected Google Ads customer')
+    expect(() => buildSearchGoogleAdsAction(context('attach_asset', 'asset_link', {
+      scope: 'campaign',
+      parentResourceName: 'customers/1234567890/campaigns/60',
+      assetResourceName: 'customers/1234567890/assets/9201',
+      fieldType: 'SITELINK'
+    }, {
+      resourceName: 'customers/1234567890/campaignAssets/60~9201~SITELINK',
+      scope: 'campaign',
+      parentResourceName: 'customers/1234567890/campaigns/60',
+      assetResourceName: 'customers/1234567890/assets/9201',
+      fieldType: 'SITELINK',
+      assetType: 'CALL',
+      status: 'ABSENT'
+    }))).toThrow('does not match')
+  })
 })

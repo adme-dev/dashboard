@@ -49,6 +49,9 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_update_custom_conversion_goal',
       'google_ads_plan_archive_custom_conversion_goal',
       'google_ads_plan_create_asset',
+      'google_ads_plan_attach_asset',
+      'google_ads_plan_archive_asset_link',
+      'google_ads_plan_detach_asset',
       'google_ads_plan_create_custom_audience',
       'google_ads_plan_update_custom_audience',
       'google_ads_plan_archive_custom_audience',
@@ -520,6 +523,50 @@ describe('Google Ads Search MCP planning descriptors', () => {
         name: 'Northern GAC calls',
         countryCode: 'au',
         phoneNumber: '(03) 9999 0000'
+      }
+    },
+    {
+      tool: 'google_ads_plan_attach_asset',
+      args: {
+        scope: 'campaign',
+        parentResourceName: 'customers/1234567890/campaigns/60',
+        assetResourceName: 'customers/1234567890/assets/9201',
+        fieldType: 'CALL'
+      },
+      operation: 'attach_asset',
+      resourceType: 'asset_link',
+      expectedArguments: {
+        scope: 'campaign',
+        parentResourceName: 'customers/1234567890/campaigns/60',
+        assetResourceName: 'customers/1234567890/assets/9201',
+        fieldType: 'CALL'
+      }
+    },
+    {
+      tool: 'google_ads_plan_archive_asset_link',
+      args: {
+        scope: 'campaign',
+        resourceName: 'customers/1234567890/campaignAssets/60~9201~CALL',
+        requestedMode: 'proposal'
+      },
+      operation: 'archive_asset_link',
+      resourceType: 'asset_link',
+      expectedArguments: {
+        scope: 'campaign',
+        resourceName: 'customers/1234567890/campaignAssets/60~9201~CALL'
+      }
+    },
+    {
+      tool: 'google_ads_plan_detach_asset',
+      args: {
+        scope: 'campaign',
+        resourceName: 'customers/1234567890/campaignAssets/60~9201~CALL'
+      },
+      operation: 'detach_asset',
+      resourceType: 'asset_link',
+      expectedArguments: {
+        scope: 'campaign',
+        resourceName: 'customers/1234567890/campaignAssets/60~9201~CALL'
       }
     },
     {

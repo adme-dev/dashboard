@@ -80,6 +80,7 @@ describe('resolveGoogleAdsPolicy', () => {
     ['update_custom_conversion_goal', 'rich_confirm'],
     ['archive_conversion_action', 'rich_confirm'],
     ['create_asset', 'rich_confirm'],
+    ['attach_asset', 'rich_confirm'],
     ['remove_campaign', 'destructive_confirm'],
     ['remove_conversion_action', 'destructive_confirm'],
     ['archive_custom_conversion_goal', 'destructive_confirm'],
@@ -99,6 +100,20 @@ describe('resolveGoogleAdsPolicy', () => {
       actorRole: 'media_buyer',
       hasElevatedPermission: false,
       accountPolicy: { enabled: true, actionClass: 'negative_keywords' }
+    })).toEqual({
+      allowed: true,
+      riskTier: 'automatic',
+      executionMode: 'automatic'
+    })
+  })
+
+  it('allows reversible asset-link archive automation only under its matching policy', () => {
+    expect(resolveGoogleAdsPolicy({
+      ...base,
+      operation: 'archive_asset_link',
+      actorRole: 'media_buyer',
+      hasElevatedPermission: false,
+      accountPolicy: { enabled: true, actionClass: 'asset_detachment' }
     })).toEqual({
       allowed: true,
       riskTier: 'automatic',

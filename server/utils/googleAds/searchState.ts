@@ -99,6 +99,26 @@ const AssetStateSchema = z.object({
   calloutAsset: z.object({ calloutText: z.string() }).optional(),
   structuredSnippetAsset: z.object({ header: z.string(), values: z.array(z.string()) }).optional()
 })
+const AssetLinkScopeSchema = z.enum(['customer', 'campaign', 'ad_group'])
+const AssetLinkFieldTypeSchema = z.enum(['CALL', 'SITELINK', 'CALLOUT', 'STRUCTURED_SNIPPET'])
+const AssetLinkStateSchema = z.object({
+  resourceName: z.string(),
+  scope: AssetLinkScopeSchema,
+  parentResourceName: z.string(),
+  assetResourceName: z.string(),
+  fieldType: AssetLinkFieldTypeSchema,
+  assetType: AssetLinkFieldTypeSchema.optional(),
+  status: z.enum(['ABSENT', 'ENABLED', 'PAUSED', 'REMOVED'])
+})
+const ProviderAssetLinkSchema = z.object({
+  resourceName: z.string(),
+  campaign: z.string().optional(),
+  adGroup: z.string().optional(),
+  asset: z.string(),
+  fieldType: AssetLinkFieldTypeSchema,
+  status: z.enum(['ENABLED', 'PAUSED', 'REMOVED']),
+  source: z.string().optional()
+})
 const AdScheduleStateSchema = z.object({
   dayOfWeek: z.enum([
     'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'
@@ -630,6 +650,137 @@ WHERE asset.id = ${assetId}`
   const parsed = AssetStateSchema.parse(asset)
   assertCustomerResourceName(parsed.resourceName, customerId, 'assets')
   return parsed
+}
+
+const ASSET_LINK_READS = {
+  customer: {
+    from: 'customer_asset',
+    key: 'customerAsset',
+    segment: 'customerAssets',
+    select: 'customer_asset.resource_name, customer_asset.asset, customer_asset.field_type, customer_asset.status, customer_asset.source'
+  },
+  campaign: {
+    from: 'campaign_asset',
+    key: 'campaignAsset',
+    segment: 'campaignAssets',
+    select: 'campaign_asset.resource_name, campaign_asset.campaign, campaign_asset.asset, campaign_asset.field_type, campaign_asset.status, campaign_asset.source'
+  },
+  ad_group: {
+    from: 'ad_group_asset',
+    key: 'adGroupAsset',
+    segment: 'adGroupAssets',
+    select: 'ad_group_asset.resource_name, ad_group_asset.ad_group, ad_group_asset.asset, ad_group_asset.field_type, ad_group_asset.status, ad_group_asset.source'
+  }
+} as const
+
+type AssetLinkScope = keyof typeof ASSET_LINK_READS
+
+function assetLinkResourceName(
+  customerId: string,
+  scope: AssetLinkScope,
+  parentResourceName: string,
+  assetResourceName: string,
+  fieldType: z.infer<typeof AssetLinkFieldTypeSchema>
+): string {
+  assertCustomerResourceName(assetResourceName, customerId, 'assets')
+  const [assetId] = resourceIds(assetResourceName)
+  const leaf = scope === 'customer'
+    ? `${assetId}~${fieldType}`
+    : `${resourceIds(parentResourceName)[0]}~${assetId}~${fieldType}`
+  return `customers/${customerId}/${ASSET_LINK_READS[scope].segment}/${leaf}`
+}
+
+function assertAssetLinkResourceName(
+  resourceName: string,
+  customerId: string,
+  scope: AssetLinkScope
+): void {
+  const leaf = scope === 'customer'
+    ? '\\d+~(?:CALL|SITELINK|CALLOUT|STRUCTURED_SNIPPET)'
+    : '\\d+~\\d+~(?:CALL|SITELINK|CALLOUT|STRUCTURED_SNIPPET)'
+  if (!new RegExp(`^customers/${customerId}/${ASSET_LINK_READS[scope].segment}/${leaf}$`).test(resourceName)) {
+    throw new Error('Google Ads returned a resource outside the selected customer')
+  }
+}
+
+async function loadAssetLinkByResourceName(
+  customerId: string,
+  scope: AssetLinkScope,
+  resourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies,
+  missingState?: z.infer<typeof AssetLinkStateSchema>
+): Promise<z.infer<typeof AssetLinkStateSchema>> {
+  assertAssetLinkResourceName(resourceName, customerId, scope)
+  const config = ASSET_LINK_READS[scope]
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT ${config.select}
+FROM ${config.from}
+WHERE ${config.from}.resource_name = '${escapeGaqlString(resourceName)}'`
+  })
+  const first = result.rows[0]
+  const raw = first && typeof first === 'object'
+    ? (first as Record<string, unknown>)[config.key]
+    : undefined
+  if (!raw) {
+    if (missingState) return missingState
+    throw new Error('Google Ads asset link was not found')
+  }
+  const link = ProviderAssetLinkSchema.parse(raw)
+  assertAssetLinkResourceName(link.resourceName, customerId, scope)
+  assertCustomerResourceName(link.asset, customerId, 'assets')
+  const parentResourceName = scope === 'customer'
+    ? `customers/${customerId}`
+    : scope === 'campaign'
+      ? link.campaign
+      : link.adGroup
+  if (!parentResourceName) throw new Error('Google Ads returned an asset link without its parent')
+  const expectedParentSegment = scope === 'campaign' ? 'campaigns' : 'adGroups'
+  if (scope !== 'customer') assertCustomerResourceName(parentResourceName, customerId, expectedParentSegment)
+  return AssetLinkStateSchema.parse({
+    resourceName: link.resourceName,
+    scope,
+    parentResourceName,
+    assetResourceName: link.asset,
+    fieldType: link.fieldType,
+    status: link.status
+  })
+}
+
+async function assertAssetLinkParentExists(
+  customerId: string,
+  scope: AssetLinkScope,
+  parentResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<void> {
+  if (scope === 'customer') {
+    if (parentResourceName !== `customers/${customerId}`) {
+      throw new Error('Asset-link parent is outside the selected customer')
+    }
+    return
+  }
+  const isCampaign = scope === 'campaign'
+  const segment = isCampaign ? 'campaigns' : 'adGroups'
+  const from = isCampaign ? 'campaign' : 'ad_group'
+  const key = isCampaign ? 'campaign' : 'adGroup'
+  assertCustomerResourceName(parentResourceName, customerId, segment)
+  const [id] = resourceIds(parentResourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT ${from}.resource_name FROM ${from} WHERE ${from}.id = ${id}`
+  })
+  const first = result.rows[0]
+  const raw = first && typeof first === 'object' ? (first as Record<string, unknown>)[key] : undefined
+  const parsed = z.object({ resourceName: z.string() }).safeParse(raw)
+  if (!parsed.success || parsed.data.resourceName !== parentResourceName) {
+    throw new Error('Google Ads asset-link parent was not found')
+  }
 }
 
 function statusWhere(from: string, ids: number[]): string {
@@ -1712,6 +1863,42 @@ export async function loadSearchGoogleAdsCurrentState(
     parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments)
     return { exists: false }
   }
+  if (context.input.operation === 'attach_asset') {
+    const args = z.object({
+      scope: AssetLinkScopeSchema,
+      parentResourceName: z.string(),
+      assetResourceName: z.string(),
+      fieldType: AssetLinkFieldTypeSchema
+    }).parse(parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments))
+    const asset = await loadAsset(context.customerId, args.assetResourceName, auth, resolved)
+    await assertAssetLinkParentExists(
+      context.customerId, args.scope, args.parentResourceName, auth, resolved
+    )
+    const resourceName = assetLinkResourceName(
+      context.customerId, args.scope, args.parentResourceName, args.assetResourceName, args.fieldType
+    )
+    const absentState = AssetLinkStateSchema.parse({
+      resourceName,
+      scope: args.scope,
+      parentResourceName: args.parentResourceName,
+      assetResourceName: args.assetResourceName,
+      fieldType: args.fieldType,
+      assetType: asset.type,
+      status: 'ABSENT'
+    })
+    const current = await loadAssetLinkByResourceName(
+      context.customerId, args.scope, resourceName, auth, resolved, absentState
+    )
+    return { ...current, assetType: asset.type }
+  }
+  if (context.input.operation === 'archive_asset_link' || context.input.operation === 'detach_asset') {
+    const args = z.object({ scope: AssetLinkScopeSchema, resourceName: z.string() }).parse(
+      parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments)
+    )
+    return loadAssetLinkByResourceName(
+      context.customerId, args.scope, args.resourceName, auth, resolved
+    )
+  }
   if (context.input.operation === 'update_budget') {
     const args = z.object({ resourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation,
@@ -1994,6 +2181,13 @@ export async function loadSearchGoogleAdsPlanState(
       mutationResourceName(mutation, 'assets'),
       auth,
       resolved
+    )
+  }
+  if (plan.operation === 'attach_asset' || plan.operation === 'archive_asset_link' || plan.operation === 'detach_asset') {
+    const desired = AssetLinkStateSchema.parse(plan.desiredState)
+    const missing = plan.operation === 'detach_asset' ? desired : undefined
+    return loadAssetLinkByResourceName(
+      plan.customerId, desired.scope, desired.resourceName, auth, resolved, missing
     )
   }
   if (plan.operation === 'manage_custom_audience') {
