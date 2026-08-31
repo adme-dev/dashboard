@@ -27,7 +27,8 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_create_search_campaign',
       'google_ads_plan_create_ad_group',
       'google_ads_plan_create_responsive_search_ad',
-      'google_ads_plan_add_keywords'
+      'google_ads_plan_add_keywords',
+      'google_ads_plan_set_locations'
     ])
     const serialized = JSON.stringify(googleAdsSearchPlanningTools)
     expect(serialized).not.toMatch(/"(?:query|operations|url|accessToken|developerToken)"/)
@@ -185,6 +186,19 @@ describe('Google Ads Search MCP planning descriptors', () => {
       expectedArguments: {
         adGroupResourceName: 'customers/1234567890/adGroups/70',
         keywords: [{ text: 'new vehicles', matchType: 'PHRASE' }]
+      }
+    },
+    {
+      tool: 'google_ads_plan_set_locations',
+      args: {
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        geoTargetConstantIds: ['1014044', '1014045']
+      },
+      operation: 'set_locations',
+      resourceType: 'location',
+      expectedArguments: {
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        geoTargetConstantIds: ['1014044', '1014045']
       }
     }
   ])('maps $tool to a typed proposal-only plan', async ({

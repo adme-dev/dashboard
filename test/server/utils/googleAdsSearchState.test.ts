@@ -241,6 +241,43 @@ describe('Search Google Ads current-state loader', () => {
     expect(query.mock.calls[1]?.[0]).toMatchObject({ maxRows: 10_000 })
     expect(query.mock.calls[1]?.[0].query).toContain('ad_group_criterion.negative = FALSE')
   })
+
+  it('loads a bounded sorted campaign location set after validating its parent', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{ campaign: { resourceName: 'customers/1234567890/campaigns/60' } }],
+        more: 0
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          { campaignCriterion: {
+            resourceName: 'customers/1234567890/campaignCriteria/60~2',
+            negative: false,
+            location: { geoTargetConstant: 'geoTargetConstants/200' }
+          } },
+          { campaignCriterion: {
+            resourceName: 'customers/1234567890/campaignCriteria/60~1',
+            negative: false,
+            location: { geoTargetConstant: 'geoTargetConstants/100' }
+          } }
+        ],
+        more: 0
+      })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('set_locations', {
+      campaignResourceName: 'customers/1234567890/campaigns/60',
+      geoTargetConstantIds: ['200', '300']
+    }), auth, { query })).resolves.toEqual({
+      campaignResourceName: 'customers/1234567890/campaigns/60',
+      locationIds: ['100', '200'],
+      criteria: {
+        100: 'customers/1234567890/campaignCriteria/60~1',
+        200: 'customers/1234567890/campaignCriteria/60~2'
+      }
+    })
+    expect(query.mock.calls[1]?.[0]).toMatchObject({ maxRows: 10_000 })
+    expect(query.mock.calls[1]?.[0].query).toContain('campaign_criterion.type = \'LOCATION\'')
+  })
 })
 
 describe('Search Google Ads readback verification', () => {

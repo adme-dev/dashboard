@@ -360,6 +360,47 @@ describe('Search Google Ads construction operations', () => {
     })
   })
 
+  it('replaces campaign locations atomically without an empty-first mutation', () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const built = buildSearchGoogleAdsAction(context(
+      'set_locations',
+      'location',
+      {
+        campaignResourceName: campaign,
+        geoTargetConstantIds: ['200', '300']
+      },
+      {
+        campaignResourceName: campaign,
+        locationIds: ['100', '200'],
+        criteria: {
+          100: 'customers/1234567890/campaignCriteria/60~1',
+          200: 'customers/1234567890/campaignCriteria/60~2'
+        }
+      }
+    ))
+
+    expect(built.desiredState).toEqual({
+      campaignResourceName: campaign,
+      locationIds: ['200', '300'],
+      criteria: {
+        200: 'customers/1234567890/campaignCriteria/60~2'
+      }
+    })
+    expect(built.providerOperations).toEqual([{
+      service: 'campaignCriteria',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        { create: {
+          campaign,
+          negative: false,
+          location: { geoTargetConstant: 'geoTargetConstants/300' }
+        } },
+        { remove: 'customers/1234567890/campaignCriteria/60~1' }
+      ]
+    }])
+  })
+
   it('rejects unsafe URLs and campaigns that attempt to start enabled', () => {
     expect(() => buildSearchGoogleAdsAction(context(
       'create_ad',

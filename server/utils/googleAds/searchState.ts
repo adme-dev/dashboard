@@ -562,6 +562,73 @@ WHERE ad_group.id = ${adGroupId}
   }
 }
 
+async function loadCampaignLocations(
+  customerId: string,
+  campaignResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<{
+  campaignResourceName: string
+  locationIds: string[]
+  criteria: Record<string, string>
+}> {
+  assertCustomerResourceName(campaignResourceName, customerId, 'campaigns')
+  const [campaignId] = resourceIds(campaignResourceName)
+  const parent = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT campaign.resource_name
+FROM campaign
+WHERE campaign.id = ${campaignId}`
+  })
+  const parentRow = parent.rows[0]
+  const campaign = parentRow && typeof parentRow === 'object'
+    ? (parentRow as Record<string, unknown>).campaign
+    : undefined
+  const parsedCampaign = z.object({ resourceName: z.string() }).safeParse(campaign)
+  if (!parsedCampaign.success || parsedCampaign.data.resourceName !== campaignResourceName) {
+    throw new Error('The referenced campaign was not found')
+  }
+
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 10_000,
+    query: `SELECT campaign_criterion.resource_name,
+  campaign_criterion.negative,
+  campaign_criterion.location.geo_target_constant
+FROM campaign_criterion
+WHERE campaign.id = ${campaignId}
+  AND campaign_criterion.type = 'LOCATION'
+  AND campaign_criterion.negative = FALSE`
+  })
+  if (result.more > 0) throw new Error('Google Ads campaign location state exceeds the safe read limit')
+
+  const criteria: Record<string, string> = {}
+  for (const row of result.rows) {
+    if (!row || typeof row !== 'object') continue
+    const parsed = z.object({
+      resourceName: z.string(),
+      negative: z.literal(false),
+      location: z.object({
+        geoTargetConstant: z.string().regex(/^geoTargetConstants\/\d{1,20}$/)
+      })
+    }).safeParse((row as Record<string, unknown>).campaignCriterion)
+    if (!parsed.success) throw new Error('Google Ads returned invalid campaign location state')
+    assertCustomerResourceName(parsed.data.resourceName, customerId, 'campaignCriteria', true)
+    const [criterionCampaignId] = resourceIds(parsed.data.resourceName)
+    if (criterionCampaignId !== campaignId) {
+      throw new Error('Google Ads returned a location outside the selected campaign')
+    }
+    const id = parsed.data.location.geoTargetConstant.slice('geoTargetConstants/'.length)
+    criteria[id] = parsed.data.resourceName
+  }
+  const locationIds = Object.keys(criteria)
+    .sort((left, right) => left.localeCompare(right, 'en', { numeric: true }))
+  return { campaignResourceName, locationIds, criteria }
+}
+
 export async function loadSearchGoogleAdsCurrentState(
   context: Omit<BuildGoogleAdsActionContext, 'currentState'>,
   auth: GoogleAdsAuth,
@@ -649,6 +716,18 @@ export async function loadSearchGoogleAdsCurrentState(
     return loadPositiveKeywords(
       context.customerId,
       args.adGroupResourceName,
+      auth,
+      resolved
+    )
+  }
+  if (context.input.operation === 'set_locations') {
+    const args = z.object({ campaignResourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation,
+      context.input.arguments
+    ))
+    return loadCampaignLocations(
+      context.customerId,
+      args.campaignResourceName,
       auth,
       resolved
     )
@@ -748,6 +827,15 @@ export async function loadSearchGoogleAdsPlanState(
     return loadPositiveKeywords(
       plan.customerId,
       desired.adGroupResourceName,
+      auth,
+      resolved
+    )
+  }
+  if (plan.operation === 'set_locations') {
+    const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)
+    return loadCampaignLocations(
+      plan.customerId,
+      desired.campaignResourceName,
       auth,
       resolved
     )

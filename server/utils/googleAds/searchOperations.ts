@@ -59,6 +59,10 @@ const CreateResponsiveSearchAdArgumentsSchema = z.strictObject({
     context.addIssue({ code: 'custom', message: 'Responsive search ad descriptions must be unique' })
   }
 })
+const SetLocationsArgumentsSchema = z.strictObject({
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  geoTargetConstantIds: z.array(z.string().regex(/^\d{1,20}$/)).min(1).max(1_000)
+})
 
 const STATUS_OPERATIONS = {
   pause_campaign: { resourceType: 'campaign', segment: 'campaigns', service: 'campaigns', status: 'PAUSED' },
@@ -93,12 +97,15 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'create_campaign',
       'create_ad_group',
       'create_ad',
-      'add_keywords'
+      'add_keywords',
+      'set_locations'
     ].includes(operation)
 }
 
 function resourcePattern(customerId: string, segment: string): RegExp {
-  const suffix = segment === 'adGroupAds' || segment === 'adGroupCriteria'
+  const suffix = segment === 'adGroupAds'
+    || segment === 'adGroupCriteria'
+    || segment === 'campaignCriteria'
     ? '\\d+~\\d+'
     : '\\d+'
   return new RegExp(`^customers/${customerId}/${segment}/${suffix}$`)
@@ -169,6 +176,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'create_ad_group') return CreateAdGroupArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_ad') return CreateResponsiveSearchAdArgumentsSchema.parse(argumentsValue)
   if (operation === 'add_keywords') return PositiveKeywordArgumentsSchema.parse(argumentsValue)
+  if (operation === 'set_locations') return SetLocationsArgumentsSchema.parse(argumentsValue)
   throw new Error(`Unsupported Search Google Ads operation: ${operation}`)
 }
 
@@ -392,6 +400,63 @@ function buildPositiveKeywordAction(context: BuildGoogleAdsActionContext): Built
   }
 }
 
+function buildLocationAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'location') throw new Error('Location targeting requires resource type location')
+  const args = SetLocationsArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.campaignResourceName, context.customerId, 'campaigns')
+  const current = z.object({
+    campaignResourceName: z.literal(args.campaignResourceName),
+    locationIds: z.array(z.string().regex(/^\d{1,20}$/)),
+    criteria: z.record(z.string().regex(/^\d{1,20}$/), z.string())
+  }).parse(context.currentState)
+  const desiredIds = [...new Set(args.geoTargetConstantIds)]
+    .sort((left, right) => left.localeCompare(right, 'en', { numeric: true }))
+  const desiredSet = new Set(desiredIds)
+  const currentSet = new Set(current.locationIds)
+  const additions = desiredIds.filter(id => !currentSet.has(id))
+  const removals = current.locationIds.filter(id => !desiredSet.has(id))
+  if (additions.length === 0 && removals.length === 0) {
+    throw new Error('Campaign location targeting already matches the requested set')
+  }
+
+  const campaignId = args.campaignResourceName.slice(args.campaignResourceName.lastIndexOf('/') + 1)
+  const retainedCriteria: Record<string, string> = {}
+  for (const id of desiredIds) {
+    const resourceName = current.criteria[id]
+    if (resourceName) retainedCriteria[id] = resourceName
+  }
+  const removeOperations = removals.map((id) => {
+    const resourceName = current.criteria[id]
+    if (!resourceName) throw new Error('Current campaign location criterion has no provider resource')
+    assertResourceName(resourceName, context.customerId, 'campaignCriteria')
+    if (!resourceName.includes(`/campaignCriteria/${campaignId}~`)) {
+      throw new Error('Campaign location criterion does not belong to the selected campaign')
+    }
+    return { remove: resourceName } as const
+  })
+  return {
+    resourceName: args.campaignResourceName,
+    desiredState: {
+      campaignResourceName: args.campaignResourceName,
+      locationIds: desiredIds,
+      criteria: retainedCriteria
+    },
+    providerOperations: [{
+      service: 'campaignCriteria',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        ...additions.map(id => ({ create: {
+          campaign: args.campaignResourceName,
+          negative: false,
+          location: { geoTargetConstant: `geoTargetConstants/${id}` }
+        } })),
+        ...removeOperations
+      ]
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -406,5 +471,6 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'create_ad_group') return buildCreateAdGroupAction(context)
   if (context.input.operation === 'create_ad') return buildCreateResponsiveSearchAdAction(context)
   if (context.input.operation === 'add_keywords') return buildPositiveKeywordAction(context)
+  if (context.input.operation === 'set_locations') return buildLocationAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }

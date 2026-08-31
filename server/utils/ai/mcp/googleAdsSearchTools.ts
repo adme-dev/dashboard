@@ -18,6 +18,7 @@ export const GOOGLE_ADS_PLAN_CREATE_SEARCH_CAMPAIGN_TOOL = 'google_ads_plan_crea
 export const GOOGLE_ADS_PLAN_CREATE_AD_GROUP_TOOL = 'google_ads_plan_create_ad_group'
 export const GOOGLE_ADS_PLAN_CREATE_RSA_TOOL = 'google_ads_plan_create_responsive_search_ad'
 export const GOOGLE_ADS_PLAN_ADD_KEYWORDS_TOOL = 'google_ads_plan_add_keywords'
+export const GOOGLE_ADS_PLAN_SET_LOCATIONS_TOOL = 'google_ads_plan_set_locations'
 
 const CommonSchema = {
   clientId: z.string().uuid(),
@@ -101,6 +102,11 @@ const AddKeywordsSchema = z.strictObject({
   adGroupResourceName: z.string().trim().min(1).max(1_000),
   keywords: z.array(KeywordSchema).min(1).max(100)
 })
+const SetLocationsSchema = z.strictObject({
+  ...CommonSchema,
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  geoTargetConstantIds: z.array(z.string().regex(/^\d{1,20}$/)).min(1).max(1_000)
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -160,6 +166,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_ADD_KEYWORDS_TOOL,
     'Plan typed positive keywords for an existing ad group. Existing terms are deduplicated and new keywords are always created paused.',
     AddKeywordsSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_SET_LOCATIONS_TOOL,
+    'Plan an atomic replacement of positive campaign locations using Google geo-target constant IDs. The campaign is never cleared before replacements validate.',
+    SetLocationsSchema
   )
 ]
 
@@ -381,6 +392,22 @@ export async function executeGoogleAdsSearchPlanningTool(
         arguments: {
           adGroupResourceName: args.adGroupResourceName,
           keywords: args.keywords
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_SET_LOCATIONS_TOOL) {
+      const args = SetLocationsSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'set_locations',
+        resourceType: 'location',
+        arguments: {
+          campaignResourceName: args.campaignResourceName,
+          geoTargetConstantIds: args.geoTargetConstantIds
         }
       }
     } else {
