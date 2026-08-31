@@ -123,6 +123,16 @@ const DeviceCriterionStateSchema = z.object({
     type: z.enum(['MOBILE', 'DESKTOP', 'TABLET', 'CONNECTED_TV', 'OTHER'])
   })
 })
+const ConversionActionStateSchema = z.object({
+  resourceName: z.string(),
+  name: z.string().trim().min(1).max(255),
+  status: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  type: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  category: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  origin: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  primaryForGoal: z.boolean(),
+  includeInConversionsMetric: z.boolean()
+})
 
 function normalizeAdSchedule(value: z.infer<typeof AdScheduleStateSchema>): NormalizedAdSchedule {
   return {
@@ -978,6 +988,40 @@ WHERE campaign.id = ${campaignId}`
   return { campaignResourceName, goals }
 }
 
+async function loadConversionAction(
+  customerId: string,
+  resourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<z.infer<typeof ConversionActionStateSchema>> {
+  assertCustomerResourceName(resourceName, customerId, 'conversionActions')
+  const [conversionActionId] = resourceIds(resourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT conversion_action.resource_name,
+  conversion_action.name,
+  conversion_action.status,
+  conversion_action.type,
+  conversion_action.category,
+  conversion_action.origin,
+  conversion_action.primary_for_goal,
+  conversion_action.include_in_conversions_metric
+FROM conversion_action
+WHERE conversion_action.id = ${conversionActionId}`
+  })
+  const first = result.rows[0]
+  const conversionAction = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).conversionAction
+    : undefined
+  const parsed = ConversionActionStateSchema.safeParse(conversionAction)
+  if (!parsed.success || parsed.data.resourceName !== resourceName) {
+    throw new Error('Google Ads conversion action was not found')
+  }
+  return parsed.data
+}
+
 export async function loadSearchGoogleAdsCurrentState(
   context: Omit<BuildGoogleAdsActionContext, 'currentState'>,
   auth: GoogleAdsAuth,
@@ -1135,6 +1179,12 @@ export async function loadSearchGoogleAdsCurrentState(
     ))
     return loadCampaignConversionGoals(context.customerId, args.campaignResourceName, auth, resolved)
   }
+  if (context.input.operation === 'set_conversion_primary_state') {
+    const args = z.object({ resourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation, context.input.arguments
+    ))
+    return loadConversionAction(context.customerId, args.resourceName, auth, resolved)
+  }
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }
 
@@ -1282,6 +1332,10 @@ export async function loadSearchGoogleAdsPlanState(
   if (plan.operation === 'set_campaign_conversion_goals') {
     const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)
     return loadCampaignConversionGoals(plan.customerId, desired.campaignResourceName, auth, resolved)
+  }
+  if (plan.operation === 'set_conversion_primary_state') {
+    if (!plan.resourceName) throw new Error('Conversion action plan has no resource name')
+    return loadConversionAction(plan.customerId, plan.resourceName, auth, resolved)
   }
   if (!plan.resourceName) throw new Error('Search Google Ads plan has no resource name')
   const negative = plan.operation === 'add_negative_keywords'

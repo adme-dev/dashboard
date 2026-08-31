@@ -447,6 +447,35 @@ describe('Search Google Ads current-state loader', () => {
     expect(query.mock.calls[1]?.[0]).toMatchObject({ maxRows: 1_000 })
     expect(query.mock.calls[1]?.[0].query).toContain('campaign_conversion_goal.campaign')
   })
+
+  it('loads a tenant-bound conversion action for primary-state changes', async () => {
+    const resourceName = 'customers/1234567890/conversionActions/9001'
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ conversionAction: {
+        resourceName,
+        name: 'Stock enquiry',
+        status: 'ENABLED',
+        type: 'WEBPAGE',
+        category: 'SUBMIT_LEAD_FORM',
+        origin: 'WEBSITE',
+        primaryForGoal: true,
+        includeInConversionsMetric: true
+      } }],
+      more: 0
+    })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('set_conversion_primary_state', {
+      resourceName,
+      primaryForGoal: false
+    }), auth, { query })).resolves.toMatchObject({
+      resourceName,
+      primaryForGoal: true
+    })
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({
+      maxRows: 1,
+      query: expect.stringContaining('conversion_action.id = 9001')
+    }))
+  })
 })
 
 describe('Search Google Ads readback verification', () => {

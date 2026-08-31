@@ -24,6 +24,7 @@ export const GOOGLE_ADS_PLAN_SET_LANGUAGES_TOOL = 'google_ads_plan_set_languages
 export const GOOGLE_ADS_PLAN_SET_AD_SCHEDULE_TOOL = 'google_ads_plan_set_ad_schedule'
 export const GOOGLE_ADS_PLAN_SET_DEVICES_TOOL = 'google_ads_plan_set_devices'
 export const GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL = 'google_ads_plan_set_campaign_conversion_goals'
+export const GOOGLE_ADS_PLAN_SET_CONVERSION_PRIMARY_STATE_TOOL = 'google_ads_plan_set_conversion_primary_state'
 
 const CommonSchema = {
   clientId: z.string().uuid(),
@@ -204,6 +205,11 @@ const SetCampaignConversionGoalsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Each campaign conversion goal may be specified only once' })
   }
 })
+const SetConversionPrimaryStateSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000),
+  primaryForGoal: z.boolean()
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -293,6 +299,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL,
     'Plan campaign conversion-goal biddability by typed conversion category and origin. Explicit false values prevent campaign bidding on that goal.',
     SetCampaignConversionGoalsSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_SET_CONVERSION_PRIMARY_STATE_TOOL,
+    'Plan whether one conversion action is primary or secondary for bidding. False makes it secondary and non-biddable outside custom goals.',
+    SetConversionPrimaryStateSchema
   )
 ]
 
@@ -608,6 +619,19 @@ export async function executeGoogleAdsSearchPlanningTool(
         operation: 'set_campaign_conversion_goals',
         resourceType: 'conversion_goal',
         arguments: { campaignResourceName: args.campaignResourceName, goals: args.goals }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_SET_CONVERSION_PRIMARY_STATE_TOOL) {
+      const args = SetConversionPrimaryStateSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'set_conversion_primary_state',
+        resourceType: 'conversion_action',
+        arguments: { resourceName: args.resourceName, primaryForGoal: args.primaryForGoal }
       }
     } else {
       throw new Error('Unsupported Google Ads Search planning tool')

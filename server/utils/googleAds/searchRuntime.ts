@@ -313,7 +313,8 @@ const EXECUTABLE_SEARCH_SERVICES = {
   set_languages: ['campaignCriteria'],
   set_ad_schedule: ['campaignCriteria'],
   set_devices: ['campaignCriteria'],
-  set_campaign_conversion_goals: ['campaignConversionGoals']
+  set_campaign_conversion_goals: ['campaignConversionGoals'],
+  set_conversion_primary_state: ['conversionActions']
 } as const
 
 export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): boolean {

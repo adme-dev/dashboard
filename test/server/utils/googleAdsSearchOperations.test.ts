@@ -638,6 +638,43 @@ describe('Search Google Ads construction operations', () => {
     }])
   })
 
+  it('sets a conversion action to secondary with an exact update mask', () => {
+    const resourceName = 'customers/1234567890/conversionActions/9001'
+    const current = {
+      resourceName,
+      name: 'Stock enquiry',
+      status: 'ENABLED',
+      type: 'WEBPAGE',
+      category: 'SUBMIT_LEAD_FORM',
+      origin: 'WEBSITE',
+      primaryForGoal: true,
+      includeInConversionsMetric: true
+    }
+    const built = buildSearchGoogleAdsAction(context(
+      'set_conversion_primary_state',
+      'conversion_action',
+      { resourceName, primaryForGoal: false },
+      current
+    ))
+
+    expect(built).toEqual({
+      resourceName,
+      desiredState: {
+        resourceName,
+        primaryForGoal: false
+      },
+      providerOperations: [{
+        service: 'conversionActions',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{
+          update: { resourceName, primaryForGoal: false },
+          updateMask: 'primary_for_goal'
+        }]
+      }]
+    })
+  })
+
   it('rejects unsafe URLs and campaigns that attempt to start enabled', () => {
     expect(() => buildSearchGoogleAdsAction(context(
       'create_ad',

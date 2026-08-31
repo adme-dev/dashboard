@@ -33,7 +33,8 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_set_languages',
       'google_ads_plan_set_ad_schedule',
       'google_ads_plan_set_devices',
-      'google_ads_plan_set_campaign_conversion_goals'
+      'google_ads_plan_set_campaign_conversion_goals',
+      'google_ads_plan_set_conversion_primary_state'
     ])
     const serialized = JSON.stringify(googleAdsSearchPlanningTools)
     expect(serialized).not.toMatch(/"(?:query|operations|url|accessToken|developerToken)"/)
@@ -285,6 +286,19 @@ describe('Google Ads Search MCP planning descriptors', () => {
           { category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: true },
           { category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: false }
         ]
+      }
+    },
+    {
+      tool: 'google_ads_plan_set_conversion_primary_state',
+      args: {
+        resourceName: 'customers/1234567890/conversionActions/9001',
+        primaryForGoal: false
+      },
+      operation: 'set_conversion_primary_state',
+      resourceType: 'conversion_action',
+      expectedArguments: {
+        resourceName: 'customers/1234567890/conversionActions/9001',
+        primaryForGoal: false
       }
     }
   ])('maps $tool to a typed proposal-only plan', async ({

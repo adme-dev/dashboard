@@ -178,6 +178,10 @@ const SetCampaignConversionGoalsArgumentsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Each campaign conversion goal may be specified only once' })
   }
 })
+const SetConversionPrimaryStateArgumentsSchema = z.strictObject({
+  resourceName: z.string().trim().min(1).max(1_000),
+  primaryForGoal: z.boolean()
+})
 
 const STATUS_OPERATIONS = {
   pause_campaign: { resourceType: 'campaign', segment: 'campaigns', service: 'campaigns', status: 'PAUSED' },
@@ -218,7 +222,8 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'set_languages',
       'set_ad_schedule',
       'set_devices',
-      'set_campaign_conversion_goals'
+      'set_campaign_conversion_goals',
+      'set_conversion_primary_state'
     ].includes(operation)
 }
 
@@ -302,6 +307,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_ad_schedule') return SetAdScheduleArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_devices') return SetDevicesArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
+  if (operation === 'set_conversion_primary_state') return SetConversionPrimaryStateArgumentsSchema.parse(argumentsValue)
   throw new Error(`Unsupported Search Google Ads operation: ${operation}`)
 }
 
@@ -836,6 +842,40 @@ function buildCampaignConversionGoalAction(context: BuildGoogleAdsActionContext)
   }
 }
 
+function buildConversionPrimaryStateAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'conversion_action') {
+    throw new Error('Conversion primary state requires resource type conversion_action')
+  }
+  const args = SetConversionPrimaryStateArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.resourceName, context.customerId, 'conversionActions')
+  const current = z.object({
+    resourceName: z.literal(args.resourceName),
+    name: z.string(),
+    status: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+    type: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+    category: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+    origin: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+    primaryForGoal: z.boolean(),
+    includeInConversionsMetric: z.boolean()
+  }).parse(context.currentState)
+  if (current.primaryForGoal === args.primaryForGoal) {
+    throw new Error('Conversion action primary state already matches the requested value')
+  }
+  return {
+    resourceName: args.resourceName,
+    desiredState: { resourceName: args.resourceName, primaryForGoal: args.primaryForGoal },
+    providerOperations: [{
+      service: 'conversionActions',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{
+        update: { resourceName: args.resourceName, primaryForGoal: args.primaryForGoal },
+        updateMask: 'primary_for_goal'
+      }]
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -856,5 +896,6 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'set_ad_schedule') return buildAdScheduleAction(context)
   if (context.input.operation === 'set_devices') return buildDeviceAction(context)
   if (context.input.operation === 'set_campaign_conversion_goals') return buildCampaignConversionGoalAction(context)
+  if (context.input.operation === 'set_conversion_primary_state') return buildConversionPrimaryStateAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }
