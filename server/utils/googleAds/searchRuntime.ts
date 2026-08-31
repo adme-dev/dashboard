@@ -347,6 +347,7 @@ const EXECUTABLE_SEARCH_SERVICES = {
   remove_keyword: ['adGroupCriteria'],
   add_negative_keywords: ['campaignCriteria', 'adGroupCriteria'],
   remove_negative_keyword: ['campaignCriteria', 'adGroupCriteria'],
+  manage_shared_negative_set: ['googleAds'],
   create_budget: ['campaignBudgets'],
   update_budget: ['campaignBudgets'],
   create_campaign: ['campaigns'],
@@ -941,6 +942,163 @@ function isTypedNegativeKeywordRemoval(plan: GoogleAdsActionPlan): boolean {
     && equalJson(mutation.operations[0], { remove: plan.resourceName }))
 }
 
+const RuntimeSharedNegativeKeywordSchema = z.strictObject({
+  text: z.string().trim().min(1).max(80),
+  matchType: z.enum(['EXACT', 'PHRASE', 'BROAD'])
+})
+const RuntimeSharedNegativeSetResourceSchema = z.strictObject({
+  resourceName: z.string(),
+  name: z.string().trim().min(1).max(255),
+  type: z.literal('NEGATIVE_KEYWORDS'),
+  status: z.literal('ENABLED')
+})
+const RuntimeSharedNegativeSetStateSchema = z.strictObject({
+  sharedSet: RuntimeSharedNegativeSetResourceSchema,
+  keywords: z.array(RuntimeSharedNegativeKeywordSchema).max(1_000),
+  campaignResourceNames: z.array(z.string()).max(1_000),
+  criterionResources: z.record(z.string(), z.string()),
+  campaignLinkResources: z.record(z.string(), z.string())
+})
+const RuntimeSharedNegativeSetCreateSchema = z.strictObject({
+  sharedSet: z.strictObject({
+    name: z.string().trim().min(1).max(255),
+    type: z.literal('NEGATIVE_KEYWORDS')
+  }),
+  keywords: z.array(RuntimeSharedNegativeKeywordSchema).min(1).max(1_000),
+  campaignResourceNames: z.array(z.string()).max(1_000),
+  criterionResources: z.record(z.string(), z.string()),
+  campaignLinkResources: z.record(z.string(), z.string())
+})
+
+function runtimeSharedKeywordKey(keyword: z.infer<typeof RuntimeSharedNegativeKeywordSchema>): string {
+  return `${keyword.matchType}:${keyword.text.toLocaleLowerCase('en-AU')}`
+}
+
+function hasValidSharedNegativeSetState(
+  customerId: string,
+  state: z.infer<typeof RuntimeSharedNegativeSetStateSchema>,
+  requireCompleteResourceMaps: boolean
+): boolean {
+  const setPattern = new RegExp(`^customers/${customerId}/sharedSets/\\d+$`)
+  const criterionPattern = new RegExp(`^customers/${customerId}/sharedCriteria/\\d+~\\d+$`)
+  const campaignPattern = new RegExp(`^customers/${customerId}/campaigns/\\d+$`)
+  const linkPattern = new RegExp(`^customers/${customerId}/campaignSharedSets/\\d+~\\d+$`)
+  const keywordKeys = state.keywords.map(runtimeSharedKeywordKey)
+  if (!setPattern.test(state.sharedSet.resourceName)
+    || new Set(keywordKeys).size !== keywordKeys.length
+    || !equalJson(state.keywords, [...state.keywords].sort((left, right) => (
+      left.text.toLocaleLowerCase('en-AU').localeCompare(right.text.toLocaleLowerCase('en-AU'))
+      || left.matchType.localeCompare(right.matchType)
+    )))
+    || !equalJson(state.campaignResourceNames, [...state.campaignResourceNames].sort())
+    || new Set(state.campaignResourceNames).size !== state.campaignResourceNames.length
+    || state.campaignResourceNames.some(resource => !campaignPattern.test(resource))) return false
+  const criterionResourceKeys = Object.keys(state.criterionResources)
+  const campaignLinkKeys = Object.keys(state.campaignLinkResources)
+  if ((requireCompleteResourceMaps
+    ? !equalJson(criterionResourceKeys.sort(), [...keywordKeys].sort())
+    : criterionResourceKeys.some(key => !keywordKeys.includes(key)))
+  || Object.values(state.criterionResources).some(resource => !criterionPattern.test(resource))) return false
+  return (requireCompleteResourceMaps
+    ? equalJson(campaignLinkKeys.sort(), [...state.campaignResourceNames].sort())
+    : campaignLinkKeys.every(campaign => state.campaignResourceNames.includes(campaign)))
+  && Object.values(state.campaignLinkResources).every(resource => linkPattern.test(resource))
+}
+
+function isTypedSharedNegativeSetMutation(plan: GoogleAdsActionPlan): boolean {
+  if (plan.providerOperations.length !== 1) return false
+  const mutation = plan.providerOperations[0]
+  if (!mutation || mutation.service !== 'googleAds'
+    || mutation.atomicity !== 'interdependent'
+    || mutation.partialFailure !== false
+    || mutation.operations.length > 1_000) return false
+  const campaignPattern = new RegExp(`^customers/${plan.customerId}/campaigns/\\d+$`)
+  const temporarySet = `customers/${plan.customerId}/sharedSets/-1`
+  if (plan.resourceName === null) {
+    const desired = RuntimeSharedNegativeSetCreateSchema.safeParse(plan.desiredState)
+    if (!desired.success || !equalJson(plan.currentState, { exists: false })
+      || Object.keys(desired.data.criterionResources).length > 0
+      || Object.keys(desired.data.campaignLinkResources).length > 0
+      || desired.data.campaignResourceNames.some(resource => !campaignPattern.test(resource))) return false
+    const keywordKeys = desired.data.keywords.map(runtimeSharedKeywordKey)
+    if (new Set(keywordKeys).size !== keywordKeys.length
+      || !equalJson(desired.data.keywords, [...desired.data.keywords].sort((left, right) => (
+        left.text.toLocaleLowerCase('en-AU').localeCompare(right.text.toLocaleLowerCase('en-AU'))
+        || left.matchType.localeCompare(right.matchType)
+      )))
+      || !equalJson(desired.data.campaignResourceNames, [...desired.data.campaignResourceNames].sort())
+      || new Set(desired.data.campaignResourceNames).size !== desired.data.campaignResourceNames.length) return false
+    const expected = [
+      { mutate: { sharedSetOperation: { create: {
+        resourceName: temporarySet,
+        ...desired.data.sharedSet
+      } } } },
+      ...desired.data.keywords.map(keyword => ({ mutate: { sharedCriterionOperation: { create: {
+        sharedSet: temporarySet,
+        negative: true,
+        keyword
+      } } } })),
+      ...desired.data.campaignResourceNames.map(campaign => ({
+        mutate: { campaignSharedSetOperation: { create: { campaign, sharedSet: temporarySet } } }
+      }))
+    ]
+    return equalJson(mutation.operations, expected)
+  }
+
+  const current = RuntimeSharedNegativeSetStateSchema.safeParse(plan.currentState)
+  const desired = RuntimeSharedNegativeSetStateSchema.safeParse(plan.desiredState)
+  if (!current.success || !desired.success
+    || desired.data.keywords.length === 0
+    || current.data.sharedSet.resourceName !== plan.resourceName
+    || desired.data.sharedSet.resourceName !== plan.resourceName
+    || !hasValidSharedNegativeSetState(plan.customerId, current.data, true)
+    || !hasValidSharedNegativeSetState(plan.customerId, desired.data, false)) return false
+  const desiredKeywordKeys = new Set(desired.data.keywords.map(runtimeSharedKeywordKey))
+  const currentKeywordKeys = new Set(current.data.keywords.map(runtimeSharedKeywordKey))
+  const desiredCampaigns = new Set(desired.data.campaignResourceNames)
+  const currentCampaigns = new Set(current.data.campaignResourceNames)
+  const expected: Array<Record<string, unknown>> = []
+  if (desired.data.sharedSet.name !== current.data.sharedSet.name) {
+    expected.push({ mutate: { sharedSetOperation: {
+      update: { resourceName: plan.resourceName, name: desired.data.sharedSet.name },
+      updateMask: 'name'
+    } } })
+  }
+  for (const key of [...currentKeywordKeys].filter(key => !desiredKeywordKeys.has(key)).sort()) {
+    expected.push({ mutate: { sharedCriterionOperation: {
+      remove: current.data.criterionResources[key]
+    } } })
+  }
+  for (const keyword of desired.data.keywords.filter(item => !currentKeywordKeys.has(runtimeSharedKeywordKey(item)))) {
+    expected.push({ mutate: { sharedCriterionOperation: { create: {
+      sharedSet: plan.resourceName,
+      negative: true,
+      keyword
+    } } } })
+  }
+  for (const campaign of [...currentCampaigns].filter(item => !desiredCampaigns.has(item)).sort()) {
+    expected.push({ mutate: { campaignSharedSetOperation: {
+      remove: current.data.campaignLinkResources[campaign]
+    } } })
+  }
+  for (const campaign of desired.data.campaignResourceNames.filter(item => !currentCampaigns.has(item))) {
+    expected.push({ mutate: { campaignSharedSetOperation: { create: {
+      campaign,
+      sharedSet: plan.resourceName
+    } } } })
+  }
+  const expectedCriterionResources = Object.fromEntries(
+    Object.entries(current.data.criterionResources).filter(([key]) => desiredKeywordKeys.has(key))
+  )
+  const expectedCampaignLinkResources = Object.fromEntries(
+    Object.entries(current.data.campaignLinkResources).filter(([campaign]) => desiredCampaigns.has(campaign))
+  )
+  return expected.length > 0
+    && equalJson(desired.data.criterionResources, expectedCriterionResources)
+    && equalJson(desired.data.campaignLinkResources, expectedCampaignLinkResources)
+    && equalJson(mutation.operations, expected)
+}
+
 export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): boolean {
   if (!isSearchGoogleAdsOperation(plan.operation) || plan.providerOperations.length === 0) return false
   const services = EXECUTABLE_SEARCH_SERVICES[
@@ -961,6 +1119,7 @@ export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): bool
     || plan.operation === 'update_ad_group'
     || plan.operation === 'update_keyword') return isTypedMutableEntityUpdate(plan)
   if (plan.operation === 'remove_negative_keyword') return isTypedNegativeKeywordRemoval(plan)
+  if (plan.operation === 'manage_shared_negative_set') return isTypedSharedNegativeSetMutation(plan)
   if (plan.operation === 'attach_asset'
     || plan.operation === 'archive_asset_link'
     || plan.operation === 'detach_asset') {

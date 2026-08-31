@@ -137,6 +137,170 @@ describe('Search Google Ads governed planning runtime', () => {
     } as GoogleAdsActionPlan)).toBe(false)
   })
 
+  it('allows only a typed atomic shared negative-set creation bundle', () => {
+    const campaign = 'customers/1234567890/campaigns/10'
+    const temporarySet = 'customers/1234567890/sharedSets/-1'
+    const desiredState = {
+      sharedSet: { name: 'National exclusions', type: 'NEGATIVE_KEYWORDS' },
+      keywords: [{ text: 'free', matchType: 'BROAD' }],
+      campaignResourceNames: [campaign],
+      criterionResources: {},
+      campaignLinkResources: {}
+    }
+    const plan = {
+      customerId: '1234567890',
+      operation: 'manage_shared_negative_set',
+      resourceName: null,
+      currentState: { exists: false },
+      desiredState,
+      providerOperations: [{
+        service: 'googleAds',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [
+          { mutate: { sharedSetOperation: { create: {
+            resourceName: temporarySet,
+            name: 'National exclusions',
+            type: 'NEGATIVE_KEYWORDS'
+          } } } },
+          { mutate: { sharedCriterionOperation: { create: {
+            sharedSet: temporarySet,
+            negative: true,
+            keyword: { text: 'free', matchType: 'BROAD' }
+          } } } },
+          { mutate: { campaignSharedSetOperation: { create: {
+            campaign,
+            sharedSet: temporarySet
+          } } } }
+        ]
+      }]
+    } as GoogleAdsActionPlan
+
+    expect(isExecutableSearchGoogleAdsPlan(plan)).toBe(true)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      providerOperations: [{
+        ...plan.providerOperations[0],
+        operations: [{ mutate: { sharedSetOperation: { remove: temporarySet } } }]
+      }]
+    } as GoogleAdsActionPlan)).toBe(false)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      desiredState: { ...desiredState, campaignResourceNames: ['customers/9999999999/campaigns/10'] }
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
+  it('reconstructs the exact shared negative-set replacement before execution', () => {
+    const resourceName = 'customers/1234567890/sharedSets/90'
+    const campaign10 = 'customers/1234567890/campaigns/10'
+    const campaign11 = 'customers/1234567890/campaigns/11'
+    const campaign12 = 'customers/1234567890/campaigns/12'
+    const currentState = {
+      sharedSet: { resourceName, name: 'Old exclusions', type: 'NEGATIVE_KEYWORDS', status: 'ENABLED' },
+      keywords: [
+        { text: 'free', matchType: 'BROAD' },
+        { text: 'jobs', matchType: 'PHRASE' }
+      ],
+      campaignResourceNames: [campaign10, campaign11],
+      criterionResources: {
+        'BROAD:free': 'customers/1234567890/sharedCriteria/90~1',
+        'PHRASE:jobs': 'customers/1234567890/sharedCriteria/90~2'
+      },
+      campaignLinkResources: {
+        [campaign10]: 'customers/1234567890/campaignSharedSets/10~90',
+        [campaign11]: 'customers/1234567890/campaignSharedSets/11~90'
+      }
+    }
+    const desiredState = {
+      sharedSet: { ...currentState.sharedSet, name: 'National exclusions' },
+      keywords: [
+        { text: 'careers', matchType: 'EXACT' },
+        { text: 'free', matchType: 'BROAD' }
+      ],
+      campaignResourceNames: [campaign10, campaign12],
+      criterionResources: { 'BROAD:free': 'customers/1234567890/sharedCriteria/90~1' },
+      campaignLinkResources: { [campaign10]: 'customers/1234567890/campaignSharedSets/10~90' }
+    }
+    const operations = [
+      { mutate: { sharedSetOperation: { update: {
+        resourceName, name: 'National exclusions'
+      }, updateMask: 'name' } } },
+      { mutate: { sharedCriterionOperation: {
+        remove: 'customers/1234567890/sharedCriteria/90~2'
+      } } },
+      { mutate: { sharedCriterionOperation: { create: {
+        sharedSet: resourceName,
+        negative: true,
+        keyword: { text: 'careers', matchType: 'EXACT' }
+      } } } },
+      { mutate: { campaignSharedSetOperation: {
+        remove: 'customers/1234567890/campaignSharedSets/11~90'
+      } } },
+      { mutate: { campaignSharedSetOperation: { create: {
+        campaign: campaign12,
+        sharedSet: resourceName
+      } } } }
+    ]
+    const plan = {
+      customerId: '1234567890',
+      operation: 'manage_shared_negative_set',
+      resourceName,
+      currentState,
+      desiredState,
+      providerOperations: [{
+        service: 'googleAds',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations
+      }]
+    } as GoogleAdsActionPlan
+
+    expect(isExecutableSearchGoogleAdsPlan(plan)).toBe(true)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      providerOperations: [{ ...plan.providerOperations[0], operations: operations.slice(1) }]
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
+  it('allows an existing empty shared set to receive its first negative keyword', () => {
+    const resourceName = 'customers/1234567890/sharedSets/90'
+    const sharedSet = {
+      resourceName,
+      name: 'National exclusions',
+      type: 'NEGATIVE_KEYWORDS',
+      status: 'ENABLED'
+    }
+    expect(isExecutableSearchGoogleAdsPlan({
+      customerId: '1234567890',
+      operation: 'manage_shared_negative_set',
+      resourceName,
+      currentState: {
+        sharedSet,
+        keywords: [],
+        campaignResourceNames: [],
+        criterionResources: {},
+        campaignLinkResources: {}
+      },
+      desiredState: {
+        sharedSet,
+        keywords: [{ text: 'free', matchType: 'BROAD' }],
+        campaignResourceNames: [],
+        criterionResources: {},
+        campaignLinkResources: {}
+      },
+      providerOperations: [{
+        service: 'googleAds',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ mutate: { sharedCriterionOperation: { create: {
+          sharedSet: resourceName,
+          negative: true,
+          keyword: { text: 'free', matchType: 'BROAD' }
+        } } } }]
+      }]
+    } as GoogleAdsActionPlan)).toBe(true)
+  })
+
   it('allows only the typed mutable campaign fields through campaign updates', () => {
     const resourceName = 'customers/1234567890/campaigns/10'
     const basePlan = {
