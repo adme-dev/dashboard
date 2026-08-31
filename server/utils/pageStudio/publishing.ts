@@ -38,6 +38,16 @@ export interface PageStudioActivateReleaseInput {
   scope: PageStudioPublishingScope
 }
 
+export interface PageStudioRollbackReleaseInput {
+  actorId: string
+  environment: 'staging' | 'production'
+  expectedActiveReleaseId: string
+  hostname: string
+  idempotencyKey: string
+  scope: PageStudioPublishingScope
+  targetReleaseId: string
+}
+
 interface BuildPointerRow {
   artifact_prefix: string
   build_id: string
@@ -62,6 +72,23 @@ interface PublishableBuildRow extends BuildPointerRow {
   version_status: 'approved' | 'published' | 'draft' | 'in_review' | 'rejected'
 }
 
+interface ExistingRollbackRow extends ReleasePointerRow {
+  actor_id: string
+  normalized_hostname: string
+  previous_release_id: string
+}
+
+interface RollbackTargetRow extends ReleasePointerRow {
+  normalized_hostname: string
+}
+
+interface LockedPointerRow {
+  active_release_id: string
+  client_id: string
+  site_id: string
+  tenant_id: string
+}
+
 const defaultRunTransaction: RunTransaction = callback =>
   transaction(async db => callback(db as unknown as PageStudioPublishingQueryClient))
 
@@ -72,7 +99,8 @@ export class PageStudioPublishingError extends Error {
       | 'CONTROL_SCOPE_NOT_FOUND'
       | 'RELEASE_IDEMPOTENCY_CONFLICT'
       | 'RELEASE_POINTER_CONFLICT'
-      | 'RELEASE_RECORD_INVALID',
+      | 'RELEASE_RECORD_INVALID'
+      | 'ROLLBACK_TARGET_INVALID',
     readonly statusCode: number,
     message: string
   ) {
@@ -155,6 +183,48 @@ async function requireScopedSiteForPublishing(
       'Page Studio site scope not found'
     )
   }
+}
+
+async function lockReleasePointer(
+  db: PageStudioPublishingQueryClient,
+  input: {
+    environment: 'staging' | 'production'
+    hostname: string
+    scope: PageStudioPublishingScope
+  }
+): Promise<LockedPointerRow | undefined> {
+  await db.query(
+    'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+    [`page-studio-release:${input.environment}:${input.hostname}`]
+  )
+  const current = await db.query<LockedPointerRow>(
+    `SELECT tenant_id, client_id::text, site_id::text, active_release_id
+     FROM page_studio_release_pointers
+     WHERE environment = $1
+       AND normalized_hostname = $2
+     FOR UPDATE`,
+    [input.environment, input.hostname]
+  )
+  const pointer = current.rows[0]
+  if (pointer && (
+    pointer.tenant_id !== input.scope.tenantId
+    || pointer.client_id !== input.scope.clientId
+    || pointer.site_id !== input.scope.siteId
+  )) {
+    throw publishingError(
+      'RELEASE_POINTER_CONFLICT',
+      409,
+      'The release hostname belongs to another Page Studio scope'
+    )
+  }
+  return pointer
+}
+
+function nullableActorUuid(actorId: string): string | null {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    .test(actorId)
+    ? actorId
+    : null
 }
 
 async function findExistingActivation(
@@ -323,35 +393,7 @@ export async function activatePageStudioRelease(
       return mapReleasePointer(input.scope, existing)
     }
 
-    await db.query(
-      'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-      [`page-studio-release:${input.environment}:${input.hostname}`]
-    )
-    const current = await db.query<{
-      active_release_id: string
-      client_id: string
-      site_id: string
-      tenant_id: string
-    }>(
-      `SELECT tenant_id, client_id::text, site_id::text, active_release_id
-       FROM page_studio_release_pointers
-       WHERE environment = $1
-         AND normalized_hostname = $2
-       FOR UPDATE`,
-      [input.environment, input.hostname]
-    )
-    const currentPointer = current.rows[0]
-    if (currentPointer && (
-      currentPointer.tenant_id !== input.scope.tenantId
-      || currentPointer.client_id !== input.scope.clientId
-      || currentPointer.site_id !== input.scope.siteId
-    )) {
-      throw publishingError(
-        'RELEASE_POINTER_CONFLICT',
-        409,
-        'The release hostname belongs to another Page Studio scope'
-      )
-    }
+    const currentPointer = await lockReleasePointer(db, input)
     const activeReleaseId = currentPointer?.active_release_id ?? null
     if (activeReleaseId !== input.expectedActiveReleaseId) {
       throw publishingError(
@@ -362,10 +404,7 @@ export async function activatePageStudioRelease(
     }
 
     const build = await loadPublishableBuild(db, input)
-    const actorUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-      .test(input.actorId)
-      ? input.actorId
-      : null
+    const actorUuid = nullableActorUuid(input.actorId)
     const created = await db.query<{ release_id: string }>(
       `INSERT INTO page_studio_releases (
          tenant_id, client_id, site_id, build_id, environment,
@@ -466,5 +505,189 @@ export async function activatePageStudioRelease(
       environment: input.environment,
       release_id: releaseId
     })
+  })
+}
+
+function rollbackMatches(row: ExistingRollbackRow, input: PageStudioRollbackReleaseInput) {
+  return row.actor_id === input.actorId
+    && row.environment === input.environment
+    && row.normalized_hostname === input.hostname
+    && row.previous_release_id === input.expectedActiveReleaseId
+    && row.release_id === input.targetReleaseId
+}
+
+async function findExistingRollback(
+  db: PageStudioPublishingQueryClient,
+  input: PageStudioRollbackReleaseInput
+): Promise<ExistingRollbackRow | undefined> {
+  const existing = await db.query<ExistingRollbackRow>(
+    `SELECT target.id AS release_id,
+            target.environment,
+            target.normalized_hostname,
+            audit.actor_id,
+            audit.metadata->>'previousReleaseId' AS previous_release_id,
+            build.id AS build_id,
+            build.version_digest,
+            build.artifact_prefix,
+            build.release_manifest_key AS manifest_key,
+            build.release_manifest_digest AS manifest_digest
+     FROM page_studio_audit_events audit
+     JOIN page_studio_releases target
+       ON target.tenant_id = audit.tenant_id
+      AND target.client_id = audit.client_id
+      AND target.site_id = audit.site_id
+      AND target.id::text = audit.resource_id
+     JOIN page_studio_builds build
+       ON build.tenant_id = target.tenant_id
+      AND build.client_id = target.client_id
+      AND build.site_id = target.site_id
+      AND build.id = target.build_id
+     WHERE audit.tenant_id = $1
+       AND audit.client_id = $2
+       AND audit.site_id = $3
+       AND audit.action = 'release.rolled_back'
+       AND audit.idempotency_key = $4
+     FOR SHARE`,
+    [
+      input.scope.tenantId,
+      input.scope.clientId,
+      input.scope.siteId,
+      `release:rollback:${input.idempotencyKey}`
+    ]
+  )
+  return existing.rows[0]
+}
+
+async function loadRollbackTarget(
+  db: PageStudioPublishingQueryClient,
+  input: PageStudioRollbackReleaseInput
+): Promise<RollbackTargetRow> {
+  const result = await db.query<RollbackTargetRow>(
+    `SELECT target.id AS release_id,
+            target.environment,
+            target.normalized_hostname,
+            build.id AS build_id,
+            build.version_digest,
+            build.artifact_prefix,
+            build.release_manifest_key AS manifest_key,
+            build.release_manifest_digest AS manifest_digest
+     FROM page_studio_releases target
+     JOIN page_studio_builds build
+       ON build.tenant_id = target.tenant_id
+      AND build.client_id = target.client_id
+      AND build.site_id = target.site_id
+      AND build.id = target.build_id
+      AND build.state = 'succeeded'
+     WHERE target.tenant_id = $1
+       AND target.client_id = $2
+       AND target.site_id = $3
+       AND target.id = $4
+     FOR SHARE OF target, build`,
+    [input.scope.tenantId, input.scope.clientId, input.scope.siteId, input.targetReleaseId]
+  )
+  const target = result.rows[0]
+  if (
+    !target
+    || target.environment !== input.environment
+    || target.normalized_hostname !== input.hostname
+  ) {
+    throw publishingError(
+      'ROLLBACK_TARGET_INVALID',
+      422,
+      'The Page Studio rollback target is not valid for this release pointer'
+    )
+  }
+  mapReleasePointer(input.scope, target)
+  return target
+}
+
+export async function rollbackPageStudioRelease(
+  input: PageStudioRollbackReleaseInput,
+  dependencies: { runTransaction?: RunTransaction } = {}
+): Promise<PageStudioReleasePointer> {
+  if (input.targetReleaseId === input.expectedActiveReleaseId) {
+    throw publishingError(
+      'ROLLBACK_TARGET_INVALID',
+      422,
+      'The rollback target must differ from the active release'
+    )
+  }
+
+  const runTransaction = dependencies.runTransaction ?? defaultRunTransaction
+  return runTransaction(async (db) => {
+    await requireScopedSiteForPublishing(db, input.scope)
+
+    const existing = await findExistingRollback(db, input)
+    if (existing) {
+      if (!rollbackMatches(existing, input)) {
+        throw publishingError(
+          'RELEASE_IDEMPOTENCY_CONFLICT',
+          409,
+          'Release idempotency key already represents a different rollback'
+        )
+      }
+      return mapReleasePointer(input.scope, existing)
+    }
+
+    const currentPointer = await lockReleasePointer(db, input)
+    if (currentPointer?.active_release_id !== input.expectedActiveReleaseId) {
+      throw publishingError(
+        'RELEASE_POINTER_CONFLICT',
+        409,
+        'The active Page Studio release changed before rollback'
+      )
+    }
+
+    const target = await loadRollbackTarget(db, input)
+    const actorUuid = nullableActorUuid(input.actorId)
+    await db.query(
+      `UPDATE page_studio_release_pointers
+       SET active_release_id = $6,
+           pointer_version = pointer_version + 1,
+           updated_by = $7::uuid,
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND client_id = $2
+         AND site_id = $3
+         AND environment = $4
+         AND normalized_hostname = $5`,
+      [
+        input.scope.tenantId,
+        input.scope.clientId,
+        input.scope.siteId,
+        input.environment,
+        input.hostname,
+        input.targetReleaseId,
+        actorUuid
+      ]
+    )
+    await db.query(
+      `UPDATE page_studio_sites
+       SET current_release_id = $4, updated_at = NOW()
+       WHERE tenant_id = $1 AND client_id = $2 AND id = $3`,
+      [input.scope.tenantId, input.scope.clientId, input.scope.siteId, input.targetReleaseId]
+    )
+    await db.query(
+      `INSERT INTO page_studio_audit_events (
+         tenant_id, client_id, site_id, actor_id, actor_role, action,
+         resource_type, resource_id, idempotency_key, metadata
+       ) VALUES ($1, $2, $3, $4, 'service', 'release.rolled_back',
+         'release', $5, $6, $7::jsonb)`,
+      [
+        input.scope.tenantId,
+        input.scope.clientId,
+        input.scope.siteId,
+        input.actorId,
+        input.targetReleaseId,
+        `release:rollback:${input.idempotencyKey}`,
+        JSON.stringify({
+          environment: input.environment,
+          hostname: input.hostname,
+          previousReleaseId: input.expectedActiveReleaseId
+        })
+      ]
+    )
+
+    return mapReleasePointer(input.scope, target)
   })
 }

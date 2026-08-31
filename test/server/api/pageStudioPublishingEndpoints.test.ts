@@ -4,13 +4,15 @@ const mocks = vi.hoisted(() => ({
   activatePageStudioRelease: vi.fn(),
   getPageStudioBuildPointer: vi.fn(),
   getPageStudioReleasePointer: vi.fn(),
-  requirePageStudioMachineAuth: vi.fn()
+  requirePageStudioMachineAuth: vi.fn(),
+  rollbackPageStudioRelease: vi.fn()
 }))
 
 vi.mock('~~/server/utils/pageStudio/publishing', () => ({
   activatePageStudioRelease: (...args: unknown[]) => mocks.activatePageStudioRelease(...args),
   getPageStudioBuildPointer: (...args: unknown[]) => mocks.getPageStudioBuildPointer(...args),
   getPageStudioReleasePointer: (...args: unknown[]) => mocks.getPageStudioReleasePointer(...args),
+  rollbackPageStudioRelease: (...args: unknown[]) => mocks.rollbackPageStudioRelease(...args),
   PageStudioPublishingError: class PageStudioPublishingError extends Error {}
 }))
 vi.mock('~~/server/utils/pageStudio/machineAuth', () => ({
@@ -85,6 +87,11 @@ describe('Page Studio publishing catalog endpoints', () => {
     })
     mocks.getPageStudioBuildPointer.mockResolvedValue(pointer)
     mocks.getPageStudioReleasePointer.mockResolvedValue({
+      ...pointer,
+      environment: 'staging',
+      releaseId
+    })
+    mocks.rollbackPageStudioRelease.mockResolvedValue({
       ...pointer,
       environment: 'staging',
       releaseId
@@ -190,5 +197,56 @@ describe('Page Studio publishing catalog endpoints', () => {
     })
     expect(event.responseStatus).toBe(400)
     expect(mocks.activatePageStudioRelease).not.toHaveBeenCalled()
+  })
+
+  it('machine-authenticates and validates a pointer-only rollback request', async () => {
+    const { default: handler } = await import(
+      '~~/server/routes/internal/page-studio/releases/rollback.post'
+    )
+    const body = {
+      actorId: 'user_publisher',
+      environment: 'staging',
+      expectedActiveReleaseId: '66666666-6666-4666-8666-666666666666',
+      hostname: 'SITE.STAGING.PAGES.XEROFLOW.COM',
+      scope,
+      targetReleaseId: releaseId
+    }
+    const event: TestEvent = {
+      body,
+      context: {},
+      headers: { 'idempotency-key': 'rollback_01HXYZ' }
+    }
+
+    await expect(handler(event as never)).resolves.toMatchObject({ releaseId })
+    expect(mocks.requirePageStudioMachineAuth).toHaveBeenCalledWith(event)
+    expect(mocks.rollbackPageStudioRelease).toHaveBeenCalledWith({
+      ...body,
+      hostname: body.hostname.toLowerCase(),
+      idempotencyKey: 'rollback_01HXYZ'
+    })
+  })
+
+  it('rejects an invalid rollback before opening the publishing transaction', async () => {
+    const { default: handler } = await import(
+      '~~/server/routes/internal/page-studio/releases/rollback.post'
+    )
+    const event: TestEvent = {
+      body: {
+        actorId: 'user_publisher',
+        environment: 'preview',
+        expectedActiveReleaseId: releaseId,
+        hostname: 'localhost',
+        scope,
+        targetReleaseId: releaseId
+      },
+      context: {},
+      headers: { 'idempotency-key': '' }
+    }
+
+    await expect(handler(event as never)).resolves.toEqual({
+      error: { code: 'INVALID_INPUT', message: 'Invalid release rollback' }
+    })
+    expect(event.responseStatus).toBe(400)
+    expect(mocks.rollbackPageStudioRelease).not.toHaveBeenCalled()
   })
 })

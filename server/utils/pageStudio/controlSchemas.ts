@@ -81,3 +81,12 @@ export const PageStudioReleaseActivationSchema = z.object({
   hostname: PageStudioHostnameSchema,
   scope: PageStudioControlScopeSchema
 }).strict()
+
+export const PageStudioReleaseRollbackSchema = z.object({
+  actorId: ScopedId,
+  environment: z.enum(['staging', 'production']),
+  expectedActiveReleaseId: ScopedId,
+  hostname: PageStudioHostnameSchema,
+  scope: PageStudioControlScopeSchema,
+  targetReleaseId: ScopedId
+}).strict()

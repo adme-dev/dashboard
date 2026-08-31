@@ -4,6 +4,7 @@ import {
   activatePageStudioRelease,
   getPageStudioBuildPointer,
   getPageStudioReleasePointer,
+  rollbackPageStudioRelease,
   type PageStudioPublishingQueryClient
 } from '~~/server/utils/pageStudio/publishing'
 
@@ -46,6 +47,19 @@ function activation(overrides: Record<string, unknown> = {}) {
     hostname,
     idempotencyKey: 'publish_01HXYZ',
     scope,
+    ...overrides
+  }
+}
+
+function rollback(overrides: Record<string, unknown> = {}) {
+  return {
+    actorId,
+    environment: 'staging' as const,
+    expectedActiveReleaseId: '66666666-6666-4666-8666-666666666666',
+    hostname,
+    idempotencyKey: 'rollback_01HXYZ',
+    scope,
+    targetReleaseId: releaseId,
     ...overrides
   }
 }
@@ -266,6 +280,149 @@ describe('Page Studio atomic release activation', () => {
     })
 
     await expect(activatePageStudioRelease(activation(), {
+      runTransaction: db.runTransaction
+    })).rejects.toMatchObject({ code: 'RELEASE_IDEMPOTENCY_CONFLICT', statusCode: 409 })
+  })
+})
+
+describe('Page Studio atomic release rollback', () => {
+  it('moves the pointer to an existing verified release and audits without building or inserting a release', async () => {
+    const db = database((sql) => {
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('action = \'release.rolled_back\'')) return []
+      if (sql.includes('FROM page_studio_release_pointers')) {
+        return [{
+          active_release_id: rollback().expectedActiveReleaseId,
+          client_id: scope.clientId,
+          site_id: scope.siteId,
+          tenant_id: scope.tenantId
+        }]
+      }
+      if (sql.includes('FROM page_studio_releases') && sql.includes('build.state')) {
+        return [{
+          ...buildRow,
+          environment: 'staging',
+          normalized_hostname: hostname,
+          release_id: releaseId
+        }]
+      }
+      return []
+    })
+
+    await expect(rollbackPageStudioRelease(rollback(), {
+      runTransaction: db.runTransaction
+    })).resolves.toMatchObject({ environment: 'staging', releaseId })
+
+    expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO page_studio_releases')))
+      .toBe(false)
+    expect(db.query.mock.calls.some(([sql]) => String(sql).includes('page_studio_builds') && String(sql).startsWith('INSERT')))
+      .toBe(false)
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('\'release.rolled_back\''),
+      expect.arrayContaining([scope.tenantId, scope.clientId, scope.siteId, actorId, releaseId])
+    )
+  })
+
+  it('rejects a stale current pointer before loading the rollback target', async () => {
+    const db = database((sql) => {
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('action = \'release.rolled_back\'')) return []
+      if (sql.includes('FROM page_studio_release_pointers')) {
+        return [{
+          active_release_id: '77777777-7777-4777-8777-777777777777',
+          client_id: scope.clientId,
+          site_id: scope.siteId,
+          tenant_id: scope.tenantId
+        }]
+      }
+      return []
+    })
+
+    await expect(rollbackPageStudioRelease(rollback(), {
+      runTransaction: db.runTransaction
+    })).rejects.toMatchObject({ code: 'RELEASE_POINTER_CONFLICT', statusCode: 409 })
+    expect(db.query.mock.calls.some(([sql]) => String(sql).includes('build.state'))).toBe(false)
+  })
+
+  it('rejects the current release and releases from another environment or hostname as rollback targets', async () => {
+    await expect(rollbackPageStudioRelease(rollback({
+      targetReleaseId: rollback().expectedActiveReleaseId
+    }), { runTransaction: database(() => []).runTransaction })).rejects.toMatchObject({
+      code: 'ROLLBACK_TARGET_INVALID',
+      statusCode: 422
+    })
+
+    for (const targetRows of [[], [{
+      ...buildRow,
+      environment: 'production',
+      normalized_hostname: hostname,
+      release_id: releaseId
+    }], [{
+      ...buildRow,
+      environment: 'staging',
+      normalized_hostname: 'other.staging.pages.xeroflow.com',
+      release_id: releaseId
+    }]]) {
+      const db = database((sql) => {
+        if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+        if (sql.includes('action = \'release.rolled_back\'')) return []
+        if (sql.includes('FROM page_studio_release_pointers')) {
+          return [{
+            active_release_id: rollback().expectedActiveReleaseId,
+            client_id: scope.clientId,
+            site_id: scope.siteId,
+            tenant_id: scope.tenantId
+          }]
+        }
+        if (sql.includes('FROM page_studio_releases') && sql.includes('build.state')) return targetRows
+        return []
+      })
+      await expect(rollbackPageStudioRelease(rollback(), {
+        runTransaction: db.runTransaction
+      })).rejects.toMatchObject({ code: 'ROLLBACK_TARGET_INVALID', statusCode: 422 })
+    }
+  })
+
+  it('returns the original target for an exact rollback replay without moving the pointer again', async () => {
+    const db = database((sql) => {
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('action = \'release.rolled_back\'')) {
+        return [{
+          ...buildRow,
+          actor_id: actorId,
+          environment: 'staging',
+          normalized_hostname: hostname,
+          previous_release_id: rollback().expectedActiveReleaseId,
+          release_id: releaseId
+        }]
+      }
+      return []
+    })
+
+    await expect(rollbackPageStudioRelease(rollback(), {
+      runTransaction: db.runTransaction
+    })).resolves.toMatchObject({ releaseId })
+    expect(db.query.mock.calls.some(([sql]) => String(sql).includes('FROM page_studio_release_pointers')))
+      .toBe(false)
+  })
+
+  it('conflicts when a rollback idempotency key is replayed with changed input', async () => {
+    const db = database((sql) => {
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('action = \'release.rolled_back\'')) {
+        return [{
+          ...buildRow,
+          actor_id: actorId,
+          environment: 'production',
+          normalized_hostname: hostname,
+          previous_release_id: rollback().expectedActiveReleaseId,
+          release_id: releaseId
+        }]
+      }
+      return []
+    })
+
+    await expect(rollbackPageStudioRelease(rollback(), {
       runTransaction: db.runTransaction
     })).rejects.toMatchObject({ code: 'RELEASE_IDEMPOTENCY_CONFLICT', statusCode: 409 })
   })
