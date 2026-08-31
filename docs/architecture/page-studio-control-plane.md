@@ -6,7 +6,7 @@ In progress as of 2026-08-31. The database, authenticated workflow foundation, r
 
 Dashboard release commit: `0a7c8a1b9`
 
-Staged build/release control branch: `feature/page-studio-control-plane` through `f0caa8a88` (preview deployment pending at this documentation checkpoint).
+Staged build/release control branch: `feature/page-studio-control-plane` through `d6f28cb13`.
 
 ## Decision
 
@@ -122,6 +122,8 @@ The first database-backed remote smoke exposed a runtime integration fault: `ser
 
 The staged Dashboard branch declares preview-only `PAGE_STUDIO_BUILD` and `PAGE_STUDIO_DELIVERY` service bindings to `xeroflow-page-studio-build-staging` and `xeroflow-page-studio-delivery-staging`. `PAGE_STUDIO_RELEASE_ENVIRONMENT=staging` prevents that binding from accepting a production release action. No matching production bindings are declared; production therefore fails closed until standalone production Workers, domain readiness, and customer-routing acceptance are complete.
 
+On 2026-08-31, the staged build/release branch was deployed through the guarded `pnpm deploy:preview` path as immutable Pages deployment `4f093441.agency-dashboard-6cm.pages.dev`, with the stable `preview.agency-dashboard-6cm.pages.dev` alias. The immutable root and public Page Studio feature page return 200. Direct anonymous requests to both an agency release-catalog endpoint and an internal build endpoint return 401, confirming that the new publication surfaces are not publicly accessible. This preview contains the staging-only Build and Delivery service bindings; production remains unbound and unchanged.
+
 ## Verification evidence
 
 - Clean `origin/main` baseline established before implementation.
@@ -140,6 +142,7 @@ The staged Dashboard branch declares preview-only `PAGE_STUDIO_BUILD` and `PAGE_
 - The pre-production full repository gate passed 1,931 test files with six skipped and 12,354 tests with 27 skipped. The guarded production build passed the Worker-size check at 24,991,289 raw bytes with 477,639 bytes remaining.
 - `pnpm audit --prod --audit-level high` reports 17 existing high-severity transitive advisories in Zero, Nuxt/tooling, and Cloudflare Think dependency chains. None involve the newly added direct `jose` dependency; remediation and reachability review remain a separate production-risk gate.
 - 34 focused build, catalog, activation, rollback, binding, route, stable-error, and replay tests pass for the staged publication chain. Targeted ESLint and `pnpm deploy:check` pass. Full Nuxt typecheck still exits on the existing unrelated inventory and reports no Page Studio diagnostics.
+- The complete repository test gate passed 1,935 files and 12,384 tests after the publication changes. One unrelated MCP project test exceeded its five-second timeout under the full-load run, then passed all 27 assertions in 3.02 seconds when retried in isolation.
 
 ## Remaining release gates
 
@@ -155,7 +158,7 @@ The staged Dashboard branch declares preview-only `PAGE_STUDIO_BUILD` and `PAGE_
 - [ ] Run authenticated browser accessibility and responsive checks for both new workspaces.
 - [x] Update the public feature catalogue, detail page, and marketing navigation for Page Studio. Pricing remains unchanged until the subscription packaging is finalized.
 - [x] Provision and deploy the service-binding-only staging control Worker with the matching Dashboard Pages preview secret and no public target.
-- [ ] Complete staging provisioning. Isolated R2 buckets, private Build/Sandbox/control/Delivery Workers, asymmetric session keys, and preview service-binding configuration are live or implemented; the Dashboard preview deployment, synthetic fixture, Web routes, DNS/TLS, and staging host acceptance remain.
+- [ ] Complete staging provisioning. Isolated R2 buckets, private Build/Sandbox/control/Delivery Workers, asymmetric session keys, preview service-binding configuration, and the guarded Dashboard preview deployment are live; the synthetic fixture, Web routes, DNS/TLS, and staging host acceptance remain.
 - [ ] Verify Cloudflare for SaaS custom-hostname entitlement before enabling customer domains.
 - [ ] Run staging security, rollback, capacity, form, analytics, and custom-host smoke gates.
 - [x] Run `pnpm deploy:check`, deploy the Dashboard control-plane surfaces through the guarded production script, and verify public production health.
