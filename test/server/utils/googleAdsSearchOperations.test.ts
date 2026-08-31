@@ -736,6 +736,45 @@ describe('Search Google Ads construction operations', () => {
     }])
   })
 
+  it('sets grouped audience associations and observation mode', () => {
+    const adGroup = 'customers/1234567890/adGroups/20'
+    const oldAudience = 'customers/1234567890/audiences/700'
+    const newAudience = 'customers/1234567890/audiences/701'
+    const oldCriterion = 'customers/1234567890/adGroupCriteria/20~600'
+    const built = buildSearchGoogleAdsAction(context(
+      'set_audience_associations', 'audience',
+      { adGroupResourceName: adGroup, audienceResourceNames: [newAudience], mode: 'OBSERVATION' },
+      {
+        adGroupResourceName: adGroup,
+        audienceGrouped: true,
+        targetRestrictions: [
+          { targetingDimension: 'AGE_RANGE', bidOnly: false },
+          { targetingDimension: 'AUDIENCE', bidOnly: false }
+        ],
+        associations: [{ resourceName: oldCriterion, audienceResourceName: oldAudience }]
+      }
+    ))
+    expect(built.providerOperations).toEqual([
+      {
+        service: 'adGroups', atomicity: 'interdependent', partialFailure: false,
+        operations: [{
+          update: { resourceName: adGroup, targetingSetting: { targetRestrictions: [
+            { targetingDimension: 'AGE_RANGE', bidOnly: false },
+            { targetingDimension: 'AUDIENCE', bidOnly: true }
+          ] } },
+          updateMask: 'targeting_setting.target_restrictions'
+        }]
+      },
+      {
+        service: 'adGroupCriteria', atomicity: 'interdependent', partialFailure: false,
+        operations: [
+          { create: { adGroup, negative: false, status: 'ENABLED', audience: { audience: newAudience } } },
+          { remove: oldCriterion }
+        ]
+      }
+    ])
+  })
+
   it('sets a conversion action to secondary with an exact update mask', () => {
     const resourceName = 'customers/1234567890/conversionActions/9001'
     const current = {

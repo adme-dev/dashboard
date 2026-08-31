@@ -204,6 +204,8 @@ describe('Search Google Ads governed execution runtime', () => {
     ['set_placements', 'campaignCriteria'],
     ['set_placements', 'adGroupCriteria'],
     ['set_content_exclusions', 'campaignCriteria'],
+    ['set_audience_associations', 'adGroups'],
+    ['set_audience_associations', 'adGroupCriteria'],
     ['set_campaign_conversion_goals', 'campaignConversionGoals'],
     ['set_customer_goal_biddability', 'customerConversionGoals'],
     ['set_conversion_primary_state', 'conversionActions'],
@@ -213,6 +215,13 @@ describe('Search Google Ads governed execution runtime', () => {
     expect(isExecutableSearchGoogleAdsPlan({
       operation,
       providerOperations: [{ service }]
+    } as GoogleAdsActionPlan)).toBe(true)
+  })
+
+  it('activates an ordered multi-service audience plan', () => {
+    expect(isExecutableSearchGoogleAdsPlan({
+      operation: 'set_audience_associations',
+      providerOperations: [{ service: 'adGroups' }, { service: 'adGroupCriteria' }]
     } as GoogleAdsActionPlan)).toBe(true)
   })
 
@@ -392,6 +401,83 @@ describe('Search Google Ads governed execution runtime', () => {
     expect(mutate).toHaveBeenNthCalledWith(2, expect.objectContaining({ validateOnly: false }))
     expect(mutate).toHaveBeenCalledTimes(2)
     expect(complete).toHaveBeenCalledWith(expect.objectContaining({ status: 'verified' }))
+  })
+
+  it('validates every audience service before starting ordered live writes', async () => {
+    const currentState = {
+      adGroupResourceName: 'customers/1234567890/adGroups/20',
+      audienceGrouped: true,
+      targetRestrictions: [{ targetingDimension: 'AUDIENCE', bidOnly: false }],
+      associations: []
+    }
+    const desiredState = {
+      ...currentState,
+      targetRestrictions: [{ targetingDimension: 'AUDIENCE', bidOnly: true }],
+      associations: [{ audienceResourceName: 'customers/1234567890/audiences/701' }]
+    }
+    const plan = {
+      id: '44444444-4444-4444-8444-444444444444',
+      clientId: CLIENT_ID,
+      connectionId: CONNECTION_ID,
+      customerId: '1234567890',
+      actorId: ACTOR_ID,
+      source: 'mcp',
+      toolName: 'google_ads.set_audience_associations',
+      resourceType: 'audience',
+      resourceName: currentState.adGroupResourceName,
+      operation: 'set_audience_associations',
+      currentState,
+      desiredState,
+      currentStateFingerprint: hashGoogleAdsValue(currentState),
+      diff: [],
+      providerOperations: [
+        {
+          service: 'adGroups', atomicity: 'interdependent', partialFailure: false,
+          operations: [{ update: { resourceName: currentState.adGroupResourceName }, updateMask: 'targeting_setting.target_restrictions' }]
+        },
+        {
+          service: 'adGroupCriteria', atomicity: 'interdependent', partialFailure: false,
+          operations: [{ create: { adGroup: currentState.adGroupResourceName } }]
+        }
+      ],
+      riskTier: 'rich_confirm',
+      executionMode: 'proposal',
+      policyVersion: 'google-ads-v1',
+      policyDecision: { allowed: true, riskTier: 'rich_confirm', executionMode: 'proposal' },
+      requestHash: 'b'.repeat(64),
+      idempotencyKey: 'audience-20',
+      status: 'approved',
+      expiresAt: '2026-09-01T00:00:00.000Z',
+      createdAt: '2026-08-31T00:00:00.000Z'
+    } as GoogleAdsActionPlan
+    const mutate = vi.fn()
+      .mockResolvedValueOnce({ results: [], requestId: 'validate-ad-group' })
+      .mockResolvedValueOnce({ results: [], requestId: 'validate-criteria' })
+      .mockResolvedValueOnce({ results: [{}], requestId: 'live-ad-group' })
+      .mockResolvedValueOnce({ results: [{}], requestId: 'live-criteria' })
+    const loadPlanState = vi.fn().mockResolvedValueOnce(currentState).mockResolvedValueOnce(desiredState)
+
+    await expect(executeSearchGoogleAdsControlAction(plan, {
+      actorRole: 'admin', hasWriteScope: true
+    }, flags, {
+      resolveSession: vi.fn().mockResolvedValue({
+        connection: { clientId: CLIENT_ID, connectionId: CONNECTION_ID, customerId: '1234567890', platform: 'google', status: 'active' },
+        auth: { accessToken: 'access', developerToken: 'developer' }
+      }),
+      loadPlan: vi.fn().mockResolvedValue(plan),
+      loadPlanState,
+      loadAutomationPolicy: vi.fn().mockResolvedValue(null),
+      mutate,
+      claim: vi.fn().mockResolvedValue(plan),
+      event: vi.fn().mockResolvedValue(undefined),
+      complete: vi.fn().mockResolvedValue(plan)
+    })).resolves.toMatchObject({ ok: true, status: 'verified' })
+    expect(mutate.mock.calls.map(call => [call[0].service, call[0].validateOnly])).toEqual([
+      ['adGroups', true],
+      ['adGroupCriteria', true],
+      ['adGroups', false],
+      ['adGroupCriteria', false]
+    ])
   })
 
   it('runs provider validation without claiming or applying the plan', async () => {

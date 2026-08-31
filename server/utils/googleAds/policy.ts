@@ -56,6 +56,7 @@ const RICH_CONFIRM_OPERATIONS = new Set<GoogleAdsOperationType>([
   'update_conversion_action',
   'set_conversion_primary_state',
   'set_campaign_conversion_goals',
+  'set_audience_associations',
   'set_conversion_goal',
   'set_customer_goal_biddability'
 ])

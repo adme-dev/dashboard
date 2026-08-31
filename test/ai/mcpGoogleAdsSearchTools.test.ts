@@ -36,6 +36,7 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_set_demographics',
       'google_ads_plan_set_placements',
       'google_ads_plan_set_content_exclusions',
+      'google_ads_plan_set_audience_associations',
       'google_ads_plan_set_campaign_conversion_goals',
       'google_ads_plan_set_customer_goal_biddability',
       'google_ads_plan_set_conversion_primary_state',
@@ -320,6 +321,21 @@ describe('Google Ads Search MCP planning descriptors', () => {
       expectedArguments: {
         campaignResourceName: 'customers/1234567890/campaigns/60',
         labels: ['PROFANITY', 'TRAGEDY']
+      }
+    },
+    {
+      tool: 'google_ads_plan_set_audience_associations',
+      args: {
+        adGroupResourceName: 'customers/1234567890/adGroups/20',
+        audienceResourceNames: ['customers/1234567890/audiences/701'],
+        mode: 'OBSERVATION'
+      },
+      operation: 'set_audience_associations',
+      resourceType: 'audience',
+      expectedArguments: {
+        adGroupResourceName: 'customers/1234567890/adGroups/20',
+        audienceResourceNames: ['customers/1234567890/audiences/701'],
+        mode: 'OBSERVATION'
       }
     },
     {

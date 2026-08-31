@@ -26,6 +26,7 @@ export const GOOGLE_ADS_PLAN_SET_DEVICES_TOOL = 'google_ads_plan_set_devices'
 export const GOOGLE_ADS_PLAN_SET_DEMOGRAPHICS_TOOL = 'google_ads_plan_set_demographics'
 export const GOOGLE_ADS_PLAN_SET_PLACEMENTS_TOOL = 'google_ads_plan_set_placements'
 export const GOOGLE_ADS_PLAN_SET_CONTENT_EXCLUSIONS_TOOL = 'google_ads_plan_set_content_exclusions'
+export const GOOGLE_ADS_PLAN_SET_AUDIENCE_ASSOCIATIONS_TOOL = 'google_ads_plan_set_audience_associations'
 export const GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL = 'google_ads_plan_set_campaign_conversion_goals'
 export const GOOGLE_ADS_PLAN_SET_CUSTOMER_GOAL_BIDDABILITY_TOOL = 'google_ads_plan_set_customer_goal_biddability'
 export const GOOGLE_ADS_PLAN_SET_CONVERSION_PRIMARY_STATE_TOOL = 'google_ads_plan_set_conversion_primary_state'
@@ -237,6 +238,16 @@ const SetContentExclusionsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Content-exclusion labels must be unique' })
   }
 })
+const SetAudienceAssociationsSchema = z.strictObject({
+  ...CommonSchema,
+  adGroupResourceName: z.string().trim().min(1).max(1_000),
+  audienceResourceNames: z.array(z.string().trim().min(1).max(1_000)).max(1_000),
+  mode: z.enum(['TARGETING', 'OBSERVATION'])
+}).superRefine((value, refinement) => {
+  if (new Set(value.audienceResourceNames).size !== value.audienceResourceNames.length) {
+    refinement.addIssue({ code: 'custom', message: 'Audience resource names must be unique' })
+  }
+})
 const ConversionCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -404,6 +415,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_SET_CONTENT_EXCLUSIONS_TOOL,
     'Plan an atomic replacement of campaign-level Google Ads v25 content-label exclusions.',
     SetContentExclusionsSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_SET_AUDIENCE_ASSOCIATIONS_TOOL,
+    'Plan grouped ad-group Audience associations together with TARGETING or OBSERVATION mode. Multi-service writes are fully prevalidated and read-back verified.',
+    SetAudienceAssociationsSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL,
@@ -770,6 +786,23 @@ export async function executeGoogleAdsSearchPlanningTool(
         operation: 'set_content_exclusions',
         resourceType: 'content_exclusion',
         arguments: { campaignResourceName: args.campaignResourceName, labels: args.labels }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_SET_AUDIENCE_ASSOCIATIONS_TOOL) {
+      const args = SetAudienceAssociationsSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'set_audience_associations',
+        resourceType: 'audience',
+        arguments: {
+          adGroupResourceName: args.adGroupResourceName,
+          audienceResourceNames: args.audienceResourceNames,
+          mode: args.mode
+        }
       }
     } else if (name === GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL) {
       const args = SetCampaignConversionGoalsSchema.parse(rawArgs)

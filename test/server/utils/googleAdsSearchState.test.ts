@@ -546,6 +546,31 @@ describe('Search Google Ads current-state loader', () => {
     })
   })
 
+  it('loads grouped audience associations and target mode', async () => {
+    const adGroup = 'customers/1234567890/adGroups/20'
+    const audience = 'customers/1234567890/audiences/701'
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ adGroup: {
+        resourceName: adGroup,
+        audienceSetting: { useAudienceGrouped: true },
+        targetingSetting: { targetRestrictions: [{ targetingDimension: 'AUDIENCE', bidOnly: true }] }
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ adGroupCriterion: {
+        resourceName: 'customers/1234567890/adGroupCriteria/20~600',
+        adGroup,
+        negative: false,
+        audience: { audience }
+      } }], more: 0 })
+    await expect(loadSearchGoogleAdsCurrentState(context('set_audience_associations', {
+      adGroupResourceName: adGroup, audienceResourceNames: [], mode: 'TARGETING'
+    }), auth, { query })).resolves.toMatchObject({
+      adGroupResourceName: adGroup,
+      audienceGrouped: true,
+      targetRestrictions: [{ targetingDimension: 'AUDIENCE', bidOnly: true }],
+      associations: [{ audienceResourceName: audience }]
+    })
+  })
+
   it('loads a tenant-bound conversion action for primary-state changes', async () => {
     const resourceName = 'customers/1234567890/conversionActions/9001'
     const query = vi.fn().mockResolvedValue({

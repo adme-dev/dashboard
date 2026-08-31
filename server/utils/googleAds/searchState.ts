@@ -1057,12 +1057,13 @@ WHERE ${resource}.id = ${parentId}
   if (result.more > 0) throw new Error('Google Ads placement state exceeds the safe read limit')
   const placements = result.rows.map((row) => {
     const raw = row && typeof row === 'object' ? (row as Record<string, unknown>)[responseKey] : undefined
+    const parentValue = raw && typeof raw === 'object' ? (raw as Record<string, unknown>)[parentKey] : undefined
     const parsed = z.object({
       resourceName: z.string(),
-      [parentKey]: z.literal(parentResourceName),
       negative: z.literal(true),
       placement: z.object({ url: z.string().trim().min(1).max(250) })
     }).parse(raw)
+    if (parentValue !== parentResourceName) throw new Error('Google Ads returned a placement outside the selected parent')
     assertCustomerResourceName(parsed.resourceName, customerId, criterionSegment, true)
     const [criterionParentId] = resourceIds(parsed.resourceName)
     if (criterionParentId !== parentId) throw new Error('Google Ads returned a placement outside the selected parent')
@@ -1113,6 +1114,68 @@ WHERE campaign.id = ${campaignId}
     return { resourceName: parsed.resourceName, type: parsed.contentLabel.type }
   }).sort((left, right) => left.type.localeCompare(right.type))
   return { campaignResourceName, labels }
+}
+
+async function loadAdGroupAudienceAssociations(
+  customerId: string,
+  adGroupResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<Record<string, unknown>> {
+  assertCustomerResourceName(adGroupResourceName, customerId, 'adGroups')
+  const [adGroupId] = resourceIds(adGroupResourceName)
+  const parent = await dependencies.query({
+    customerId, auth, maxRows: 1,
+    query: `SELECT ad_group.resource_name,
+  ad_group.audience_setting.use_audience_grouped,
+  ad_group.targeting_setting.target_restrictions
+FROM ad_group
+WHERE ad_group.id = ${adGroupId}`
+  })
+  const rawAdGroup = parent.rows[0] && typeof parent.rows[0] === 'object'
+    ? (parent.rows[0] as Record<string, unknown>).adGroup
+    : undefined
+  const adGroup = z.object({
+    resourceName: z.literal(adGroupResourceName),
+    audienceSetting: z.object({ useAudienceGrouped: z.boolean() }),
+    targetingSetting: z.object({
+      targetRestrictions: z.array(z.object({
+        targetingDimension: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+        bidOnly: z.boolean()
+      }))
+    }).optional()
+  }).safeParse(rawAdGroup)
+  if (!adGroup.success) throw new Error('The referenced ad group or its audience settings were not found')
+  const result = await dependencies.query({
+    customerId, auth, maxRows: 1_000,
+    query: `SELECT ad_group_criterion.resource_name,
+  ad_group_criterion.ad_group,
+  ad_group_criterion.negative,
+  ad_group_criterion.audience.audience
+FROM ad_group_criterion
+WHERE ad_group.id = ${adGroupId}
+  AND ad_group_criterion.type = 'AUDIENCE'
+  AND ad_group_criterion.negative = FALSE`
+  })
+  if (result.more > 0) throw new Error('Google Ads audience-association state exceeds the safe read limit')
+  const associations = result.rows.map((row) => {
+    const raw = row && typeof row === 'object' ? (row as Record<string, unknown>).adGroupCriterion : undefined
+    const parsed = z.object({
+      resourceName: z.string(), adGroup: z.literal(adGroupResourceName), negative: z.literal(false),
+      audience: z.object({ audience: z.string() })
+    }).parse(raw)
+    assertCustomerResourceName(parsed.resourceName, customerId, 'adGroupCriteria', true)
+    assertCustomerResourceName(parsed.audience.audience, customerId, 'audiences')
+    const [criterionAdGroupId] = resourceIds(parsed.resourceName)
+    if (criterionAdGroupId !== adGroupId) throw new Error('Google Ads returned an audience outside the selected ad group')
+    return { resourceName: parsed.resourceName, audienceResourceName: parsed.audience.audience }
+  }).sort((left, right) => left.audienceResourceName.localeCompare(right.audienceResourceName))
+  return {
+    adGroupResourceName,
+    audienceGrouped: adGroup.data.audienceSetting.useAudienceGrouped,
+    targetRestrictions: adGroup.data.targetingSetting?.targetRestrictions ?? [],
+    associations
+  }
 }
 
 async function loadCampaignConversionGoals(
@@ -1418,6 +1481,12 @@ export async function loadSearchGoogleAdsCurrentState(
     ))
     return loadCampaignContentExclusions(context.customerId, args.campaignResourceName, auth, resolved)
   }
+  if (context.input.operation === 'set_audience_associations') {
+    const args = z.object({ adGroupResourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation, context.input.arguments
+    ))
+    return loadAdGroupAudienceAssociations(context.customerId, args.adGroupResourceName, auth, resolved)
+  }
   if (context.input.operation === 'set_campaign_conversion_goals') {
     const args = z.object({ campaignResourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation, context.input.arguments
@@ -1618,6 +1687,10 @@ export async function loadSearchGoogleAdsPlanState(
   if (plan.operation === 'set_content_exclusions') {
     const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)
     return loadCampaignContentExclusions(plan.customerId, desired.campaignResourceName, auth, resolved)
+  }
+  if (plan.operation === 'set_audience_associations') {
+    const desired = z.object({ adGroupResourceName: z.string() }).parse(plan.desiredState)
+    return loadAdGroupAudienceAssociations(plan.customerId, desired.adGroupResourceName, auth, resolved)
   }
   if (plan.operation === 'set_campaign_conversion_goals') {
     const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)

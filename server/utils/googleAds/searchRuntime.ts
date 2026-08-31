@@ -40,6 +40,7 @@ import {
   mutateGoogleAds,
   type MutateGoogleAdsInput
 } from '~~/server/utils/googleAds/mutate'
+import { GoogleAdsActionError, normalizeGoogleAdsError } from '~~/server/utils/googleAds/errors'
 
 export interface GoogleAdsControlAuthority {
   actorRole: string
@@ -316,6 +317,7 @@ const EXECUTABLE_SEARCH_SERVICES = {
   set_demographics: ['adGroupCriteria'],
   set_placements: ['campaignCriteria', 'adGroupCriteria'],
   set_content_exclusions: ['campaignCriteria'],
+  set_audience_associations: ['adGroups', 'adGroupCriteria'],
   set_campaign_conversion_goals: ['campaignConversionGoals'],
   set_customer_goal_biddability: ['customerConversionGoals'],
   set_conversion_primary_state: ['conversionActions'],
@@ -324,11 +326,60 @@ const EXECUTABLE_SEARCH_SERVICES = {
 } as const
 
 export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): boolean {
-  if (!isSearchGoogleAdsOperation(plan.operation) || plan.providerOperations.length !== 1) return false
+  if (!isSearchGoogleAdsOperation(plan.operation) || plan.providerOperations.length === 0) return false
   const services = EXECUTABLE_SEARCH_SERVICES[
     plan.operation as keyof typeof EXECUTABLE_SEARCH_SERVICES
   ] as readonly string[] | undefined
-  return services?.includes(plan.providerOperations[0]?.service ?? '') ?? false
+  if (!services) return false
+  const requested = plan.providerOperations.map(mutation => mutation.service)
+  if (plan.operation === 'set_audience_associations') {
+    return requested.length === 1
+      ? services.includes(requested[0] ?? '')
+      : requested.length === 2 && requested[0] === 'adGroups' && requested[1] === 'adGroupCriteria'
+  }
+  return requested.length === 1 && services.includes(requested[0] ?? '')
+}
+
+async function runSearchGoogleAdsMutations(
+  plan: GoogleAdsActionPlan,
+  auth: Parameters<typeof mutateGoogleAds>[0]['auth'],
+  mutate: SearchGoogleAdsExecutionDependencies['mutate'],
+  validateOnly: boolean
+): Promise<Awaited<ReturnType<typeof mutateGoogleAds>>> {
+  const results: unknown[] = []
+  const requestIds: string[] = []
+  for (let index = 0; index < plan.providerOperations.length; index += 1) {
+    const mutation = plan.providerOperations[index]!
+    try {
+      const result = await mutate({
+        customerId: plan.customerId,
+        auth,
+        service: mutation.service,
+        operations: mutation.operations,
+        validateOnly,
+        atomicity: mutation.atomicity,
+        partialFailure: mutation.partialFailure
+      })
+      results.push(...result.results)
+      if (result.requestId) requestIds.push(result.requestId)
+      if (result.partialFailureError !== undefined) {
+        return { results, requestId: requestIds.join(',') || undefined, partialFailureError: result.partialFailureError }
+      }
+    } catch (error) {
+      if (!validateOnly && index > 0) {
+        const normalized = normalizeGoogleAdsError(error)
+        throw new GoogleAdsActionError({
+          code: 'PARTIAL_MULTI_SERVICE_WRITE',
+          category: 'provider',
+          retryable: true,
+          requestId: normalized.requestId ?? requestIds.at(-1),
+          safeMessage: 'A multi-service Google Ads write requires reconciliation.'
+        })
+      }
+      throw error
+    }
+  }
+  return { results, requestId: requestIds.join(',') || undefined }
 }
 
 export async function validateSearchGoogleAdsControlPlan(
@@ -351,17 +402,7 @@ export async function validateSearchGoogleAdsControlPlan(
   if (hashGoogleAdsValue(current) !== plan.currentStateFingerprint) {
     return { actionPlanId: plan.id, valid: false, code: 'stale_plan' }
   }
-  const mutation = plan.providerOperations[0]
-  if (!mutation) return { actionPlanId: plan.id, valid: false, code: 'missing_mutation' }
-  const result = await dependencies.mutate({
-    customerId: plan.customerId,
-    auth: session.auth,
-    service: mutation.service,
-    operations: mutation.operations,
-    validateOnly: true,
-    atomicity: mutation.atomicity,
-    partialFailure: mutation.partialFailure
-  })
+  const result = await runSearchGoogleAdsMutations(plan, session.auth, dependencies.mutate, true)
   return {
     actionPlanId: plan.id,
     valid: result.partialFailureError === undefined,
@@ -403,17 +444,12 @@ export async function executeSearchGoogleAdsControlAction(
     && grant.id === plan.grantId
     && grant.policyVersion === plan.policyVersion
 
-  const mutation = plan.providerOperations[0]
-  if (!mutation) return { ok: false, status: 'blocked', message: 'Google Ads mutation is missing.' }
-  const runMutation = (validateOnly: boolean) => dependencies.mutate({
-    customerId: plan.customerId,
-    auth: session.auth,
-    service: mutation.service,
-    operations: mutation.operations,
-    validateOnly,
-    atomicity: mutation.atomicity,
-    partialFailure: mutation.partialFailure
-  })
+  if (plan.providerOperations.length === 0) {
+    return { ok: false, status: 'blocked', message: 'Google Ads mutation is missing.' }
+  }
+  const runMutation = (validateOnly: boolean) => runSearchGoogleAdsMutations(
+    plan, session.auth, dependencies.mutate, validateOnly
+  )
 
   return executeGoogleAdsAction(plan.id, {
     clientId: plan.clientId,

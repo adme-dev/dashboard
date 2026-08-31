@@ -202,6 +202,15 @@ const SetContentExclusionsArgumentsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Content-exclusion labels must be unique' })
   }
 })
+const SetAudienceAssociationsArgumentsSchema = z.strictObject({
+  adGroupResourceName: z.string().trim().min(1).max(1_000),
+  audienceResourceNames: z.array(z.string().trim().min(1).max(1_000)).max(1_000),
+  mode: z.enum(['TARGETING', 'OBSERVATION'])
+}).superRefine((value, refinement) => {
+  if (new Set(value.audienceResourceNames).size !== value.audienceResourceNames.length) {
+    refinement.addIssue({ code: 'custom', message: 'Audience resource names must be unique' })
+  }
+})
 const ConversionCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -321,6 +330,7 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'set_demographics',
       'set_placements',
       'set_content_exclusions',
+      'set_audience_associations',
       'set_campaign_conversion_goals',
       'set_customer_goal_biddability',
       'set_conversion_primary_state',
@@ -411,6 +421,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_demographics') return SetDemographicsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_placements') return SetPlacementsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_content_exclusions') return SetContentExclusionsArgumentsSchema.parse(argumentsValue)
+  if (operation === 'set_audience_associations') return SetAudienceAssociationsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_customer_goal_biddability') return SetCustomerGoalBiddabilityArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_primary_state') return SetConversionPrimaryStateArgumentsSchema.parse(argumentsValue)
@@ -1061,6 +1072,84 @@ function buildContentExclusionAction(context: BuildGoogleAdsActionContext): Buil
   }
 }
 
+function buildAudienceAssociationAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'audience') throw new Error('Audience associations require resource type audience')
+  const args = SetAudienceAssociationsArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.adGroupResourceName, context.customerId, 'adGroups')
+  for (const resourceName of args.audienceResourceNames) {
+    assertResourceName(resourceName, context.customerId, 'audiences')
+  }
+  const Restriction = z.object({
+    targetingDimension: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+    bidOnly: z.boolean()
+  })
+  const current = z.object({
+    adGroupResourceName: z.literal(args.adGroupResourceName),
+    audienceGrouped: z.literal(true),
+    targetRestrictions: z.array(Restriction),
+    associations: z.array(z.object({ resourceName: z.string(), audienceResourceName: z.string() }))
+  }).parse(context.currentState)
+  const desiredAudienceNames = [...args.audienceResourceNames].sort((left, right) => left.localeCompare(right))
+  const desiredAudienceSet = new Set(desiredAudienceNames)
+  const currentByAudience = new Map(current.associations.map(item => [item.audienceResourceName, item]))
+  const additions = desiredAudienceNames.filter(resourceName => !currentByAudience.has(resourceName))
+  const removals = current.associations.filter(item => !desiredAudienceSet.has(item.audienceResourceName))
+  const desiredBidOnly = args.mode === 'OBSERVATION'
+  const existingAudienceRestriction = current.targetRestrictions.find(item => item.targetingDimension === 'AUDIENCE')
+  const desiredRestrictions = [
+    ...current.targetRestrictions.filter(item => item.targetingDimension !== 'AUDIENCE'),
+    { targetingDimension: 'AUDIENCE', bidOnly: desiredBidOnly }
+  ]
+  const providerOperations: BuiltGoogleAdsAction['providerOperations'] = []
+  if (!existingAudienceRestriction || existingAudienceRestriction.bidOnly !== desiredBidOnly) {
+    providerOperations.push({
+      service: 'adGroups', atomicity: 'interdependent', partialFailure: false,
+      operations: [{
+        update: {
+          resourceName: args.adGroupResourceName,
+          targetingSetting: { targetRestrictions: desiredRestrictions }
+        },
+        updateMask: 'targeting_setting.target_restrictions'
+      }]
+    })
+  }
+  if (additions.length > 0 || removals.length > 0) {
+    const adGroupId = args.adGroupResourceName.slice(args.adGroupResourceName.lastIndexOf('/') + 1)
+    const removalOperations = removals.map((association) => {
+      assertResourceName(association.resourceName, context.customerId, 'adGroupCriteria')
+      if (!association.resourceName.includes(`/adGroupCriteria/${adGroupId}~`)) {
+        throw new Error('Audience criterion does not belong to the selected ad group')
+      }
+      return { remove: association.resourceName } as const
+    })
+    providerOperations.push({
+      service: 'adGroupCriteria', atomicity: 'interdependent', partialFailure: false,
+      operations: [
+        ...additions.map(audience => ({ create: {
+          adGroup: args.adGroupResourceName,
+          negative: false,
+          status: 'ENABLED',
+          audience: { audience }
+        } })),
+        ...removalOperations
+      ]
+    })
+  }
+  if (providerOperations.length === 0) throw new Error('Audience associations already match the requested mode and set')
+  return {
+    resourceName: args.adGroupResourceName,
+    desiredState: {
+      adGroupResourceName: args.adGroupResourceName,
+      audienceGrouped: true,
+      targetRestrictions: desiredRestrictions,
+      associations: desiredAudienceNames.map(audienceResourceName => (
+        currentByAudience.get(audienceResourceName) ?? { audienceResourceName }
+      ))
+    },
+    providerOperations
+  }
+}
+
 function buildCampaignConversionGoalAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (context.input.resourceType !== 'conversion_goal') throw new Error('Campaign goals require resource type conversion_goal')
   const args = SetCampaignConversionGoalsArgumentsSchema.parse(context.input.arguments)
@@ -1262,6 +1351,7 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'set_demographics') return buildDemographicAction(context)
   if (context.input.operation === 'set_placements') return buildPlacementAction(context)
   if (context.input.operation === 'set_content_exclusions') return buildContentExclusionAction(context)
+  if (context.input.operation === 'set_audience_associations') return buildAudienceAssociationAction(context)
   if (context.input.operation === 'set_campaign_conversion_goals') return buildCampaignConversionGoalAction(context)
   if (context.input.operation === 'set_customer_goal_biddability') return buildCustomerGoalBiddabilityAction(context)
   if (context.input.operation === 'set_conversion_primary_state') return buildConversionPrimaryStateAction(context)
