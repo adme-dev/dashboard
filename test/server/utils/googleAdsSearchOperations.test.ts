@@ -553,6 +553,47 @@ describe('Search Google Ads construction operations', () => {
     })).toThrow()
   })
 
+  it('updates existing campaign device bid modifiers without raw criteria mutation', () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const mobile = 'customers/1234567890/campaignCriteria/60~30'
+    const desktop = 'customers/1234567890/campaignCriteria/60~31'
+    const built = buildSearchGoogleAdsAction(context(
+      'set_devices',
+      'device',
+      {
+        campaignResourceName: campaign,
+        devices: [
+          { type: 'MOBILE', bidModifier: 0 },
+          { type: 'DESKTOP', bidModifier: 1.2 }
+        ]
+      },
+      {
+        campaignResourceName: campaign,
+        devices: [
+          { resourceName: mobile, type: 'MOBILE', bidModifier: 1 },
+          { resourceName: desktop, type: 'DESKTOP', bidModifier: 1 }
+        ]
+      }
+    ))
+
+    expect(built.desiredState).toEqual({
+      campaignResourceName: campaign,
+      devices: [
+        { resourceName: desktop, type: 'DESKTOP', bidModifier: 1.2 },
+        { resourceName: mobile, type: 'MOBILE', bidModifier: 0 }
+      ]
+    })
+    expect(built.providerOperations).toEqual([{
+      service: 'campaignCriteria',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        { update: { resourceName: mobile, bidModifier: 0 }, updateMask: 'bid_modifier' },
+        { update: { resourceName: desktop, bidModifier: 1.2 }, updateMask: 'bid_modifier' }
+      ]
+    }])
+  })
+
   it('rejects unsafe URLs and campaigns that attempt to start enabled', () => {
     expect(() => buildSearchGoogleAdsAction(context(
       'create_ad',

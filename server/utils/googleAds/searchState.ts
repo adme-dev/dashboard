@@ -116,6 +116,13 @@ const AD_SCHEDULE_MINUTES = {
   THIRTY: 30,
   FORTY_FIVE: 45
 } as const
+const DeviceCriterionStateSchema = z.object({
+  resourceName: z.string(),
+  bidModifier: z.union([z.string(), z.number()]).transform(Number).pipe(z.number().finite()),
+  device: z.object({
+    type: z.enum(['MOBILE', 'DESKTOP', 'TABLET', 'CONNECTED_TV', 'OTHER'])
+  })
+})
 
 function normalizeAdSchedule(value: z.infer<typeof AdScheduleStateSchema>): NormalizedAdSchedule {
   return {
@@ -853,6 +860,76 @@ WHERE campaign.id = ${campaignId}
   return { campaignResourceName, schedules, criteria }
 }
 
+async function loadCampaignDevices(
+  customerId: string,
+  campaignResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<{
+  campaignResourceName: string
+  devices: Array<{
+    resourceName: string
+    type: 'MOBILE' | 'DESKTOP' | 'TABLET' | 'CONNECTED_TV' | 'OTHER'
+    bidModifier: number
+  }>
+}> {
+  assertCustomerResourceName(campaignResourceName, customerId, 'campaigns')
+  const [campaignId] = resourceIds(campaignResourceName)
+  const parent = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT campaign.resource_name
+FROM campaign
+WHERE campaign.id = ${campaignId}`
+  })
+  const parentRow = parent.rows[0]
+  const campaign = parentRow && typeof parentRow === 'object'
+    ? (parentRow as Record<string, unknown>).campaign
+    : undefined
+  const parsedCampaign = z.object({ resourceName: z.literal(campaignResourceName) }).safeParse(campaign)
+  if (!parsedCampaign.success) throw new Error('The referenced campaign was not found')
+
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 100,
+    query: `SELECT campaign_criterion.resource_name,
+  campaign_criterion.bid_modifier,
+  campaign_criterion.device.type
+FROM campaign_criterion
+WHERE campaign.id = ${campaignId}
+  AND campaign_criterion.type = 'DEVICE'`
+  })
+  if (result.more > 0) throw new Error('Google Ads campaign device state exceeds the safe read limit')
+
+  const devices: Array<{
+    resourceName: string
+    type: 'MOBILE' | 'DESKTOP' | 'TABLET' | 'CONNECTED_TV' | 'OTHER'
+    bidModifier: number
+  }> = []
+  const seen = new Set<string>()
+  for (const row of result.rows) {
+    if (!row || typeof row !== 'object') continue
+    const parsed = DeviceCriterionStateSchema.safeParse((row as Record<string, unknown>).campaignCriterion)
+    if (!parsed.success) throw new Error('Google Ads returned invalid campaign device state')
+    assertCustomerResourceName(parsed.data.resourceName, customerId, 'campaignCriteria', true)
+    const [criterionCampaignId] = resourceIds(parsed.data.resourceName)
+    if (criterionCampaignId !== campaignId) {
+      throw new Error('Google Ads returned a device criterion outside the selected campaign')
+    }
+    if (seen.has(parsed.data.device.type)) throw new Error('Google Ads returned duplicate campaign device criteria')
+    seen.add(parsed.data.device.type)
+    devices.push({
+      resourceName: parsed.data.resourceName,
+      type: parsed.data.device.type,
+      bidModifier: parsed.data.bidModifier
+    })
+  }
+  devices.sort((left, right) => left.type.localeCompare(right.type))
+  return { campaignResourceName, devices }
+}
+
 export async function loadSearchGoogleAdsCurrentState(
   context: Omit<BuildGoogleAdsActionContext, 'currentState'>,
   auth: GoogleAdsAuth,
@@ -992,6 +1069,18 @@ export async function loadSearchGoogleAdsCurrentState(
       resolved
     )
   }
+  if (context.input.operation === 'set_devices') {
+    const args = z.object({ campaignResourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation,
+      context.input.arguments
+    ))
+    return loadCampaignDevices(
+      context.customerId,
+      args.campaignResourceName,
+      auth,
+      resolved
+    )
+  }
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }
 
@@ -1121,6 +1210,15 @@ export async function loadSearchGoogleAdsPlanState(
   if (plan.operation === 'set_ad_schedule') {
     const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)
     return loadCampaignAdSchedules(
+      plan.customerId,
+      desired.campaignResourceName,
+      auth,
+      resolved
+    )
+  }
+  if (plan.operation === 'set_devices') {
+    const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)
+    return loadCampaignDevices(
       plan.customerId,
       desired.campaignResourceName,
       auth,

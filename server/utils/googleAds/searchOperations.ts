@@ -140,6 +140,22 @@ function sortSchedules(schedules: AdSchedule[]): AdSchedule[] {
     || left.endMinute - right.endMinute
   ))
 }
+const DeviceTypeSchema = z.enum(['MOBILE', 'DESKTOP', 'TABLET', 'CONNECTED_TV', 'OTHER'])
+const BidModifierSchema = z.number().finite().refine(
+  value => value === 0 || (value >= 0.1 && value <= 10),
+  { message: 'Device bid modifier must be 0 or between 0.1 and 10' }
+)
+const SetDevicesArgumentsSchema = z.strictObject({
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  devices: z.array(z.strictObject({
+    type: DeviceTypeSchema,
+    bidModifier: BidModifierSchema
+  })).min(1).max(5)
+}).superRefine((value, refinement) => {
+  if (new Set(value.devices.map(device => device.type)).size !== value.devices.length) {
+    refinement.addIssue({ code: 'custom', message: 'Each device type may be specified only once' })
+  }
+})
 
 const STATUS_OPERATIONS = {
   pause_campaign: { resourceType: 'campaign', segment: 'campaigns', service: 'campaigns', status: 'PAUSED' },
@@ -178,7 +194,8 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'set_locations',
       'set_location_match_mode',
       'set_languages',
-      'set_ad_schedule'
+      'set_ad_schedule',
+      'set_devices'
     ].includes(operation)
 }
 
@@ -260,6 +277,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_location_match_mode') return SetLocationMatchModeArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_languages') return SetLanguagesArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_ad_schedule') return SetAdScheduleArgumentsSchema.parse(argumentsValue)
+  if (operation === 'set_devices') return SetDevicesArgumentsSchema.parse(argumentsValue)
   throw new Error(`Unsupported Search Google Ads operation: ${operation}`)
 }
 
@@ -693,6 +711,56 @@ function buildAdScheduleAction(context: BuildGoogleAdsActionContext): BuiltGoogl
   }
 }
 
+function buildDeviceAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'device') throw new Error('Device targeting requires resource type device')
+  const args = SetDevicesArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.campaignResourceName, context.customerId, 'campaigns')
+  const current = z.object({
+    campaignResourceName: z.literal(args.campaignResourceName),
+    devices: z.array(z.object({
+      resourceName: z.string(),
+      type: DeviceTypeSchema,
+      bidModifier: BidModifierSchema
+    }))
+  }).parse(context.currentState)
+  const currentByType = new Map(current.devices.map(device => [device.type, device]))
+  const requestedByType = new Map(args.devices.map(device => [device.type, device.bidModifier]))
+  const operations: Array<{ update: { resourceName: string, bidModifier: number }, updateMask: string }> = []
+  for (const requested of args.devices) {
+    const existing = currentByType.get(requested.type)
+    if (!existing) throw new Error(`Google Ads campaign has no ${requested.type} device criterion`)
+    assertResourceName(existing.resourceName, context.customerId, 'campaignCriteria')
+    const campaignId = args.campaignResourceName.slice(args.campaignResourceName.lastIndexOf('/') + 1)
+    if (!existing.resourceName.includes(`/campaignCriteria/${campaignId}~`)) {
+      throw new Error('Campaign device criterion does not belong to the selected campaign')
+    }
+    if (existing.bidModifier !== requested.bidModifier) {
+      operations.push({
+        update: { resourceName: existing.resourceName, bidModifier: requested.bidModifier },
+        updateMask: 'bid_modifier'
+      })
+    }
+  }
+  if (operations.length === 0) throw new Error('Campaign device bid modifiers already match the requested values')
+
+  const desiredDevices = current.devices
+    .map(device => ({
+      ...device,
+      bidModifier: requestedByType.get(device.type) ?? device.bidModifier
+    }))
+    .sort((left, right) => left.type.localeCompare(right.type))
+  return {
+    resourceName: args.campaignResourceName,
+    desiredState: { campaignResourceName: args.campaignResourceName, devices: desiredDevices },
+    providerOperations: [{
+      service: 'campaignCriteria',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -711,5 +779,6 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'set_location_match_mode') return buildLocationMatchModeAction(context)
   if (context.input.operation === 'set_languages') return buildLanguageAction(context)
   if (context.input.operation === 'set_ad_schedule') return buildAdScheduleAction(context)
+  if (context.input.operation === 'set_devices') return buildDeviceAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }

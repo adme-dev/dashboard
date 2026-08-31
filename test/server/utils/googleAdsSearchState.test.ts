@@ -374,6 +374,48 @@ describe('Search Google Ads current-state loader', () => {
     expect(query.mock.calls[1]?.[0]).toMatchObject({ maxRows: 10_000 })
     expect(query.mock.calls[1]?.[0].query).toContain('campaign_criterion.type = \'AD_SCHEDULE\'')
   })
+
+  it('loads tenant-bound campaign device criteria and bid modifiers', async () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ campaign: { resourceName: campaign } }], more: 0 })
+      .mockResolvedValueOnce({
+        rows: [
+          { campaignCriterion: {
+            resourceName: 'customers/1234567890/campaignCriteria/60~31',
+            bidModifier: 1.2,
+            device: { type: 'DESKTOP' }
+          } },
+          { campaignCriterion: {
+            resourceName: 'customers/1234567890/campaignCriteria/60~30',
+            bidModifier: 0,
+            device: { type: 'MOBILE' }
+          } }
+        ],
+        more: 0
+      })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('set_devices', {
+      campaignResourceName: campaign,
+      devices: [{ type: 'MOBILE', bidModifier: 1 }]
+    }), auth, { query })).resolves.toEqual({
+      campaignResourceName: campaign,
+      devices: [
+        {
+          resourceName: 'customers/1234567890/campaignCriteria/60~31',
+          type: 'DESKTOP',
+          bidModifier: 1.2
+        },
+        {
+          resourceName: 'customers/1234567890/campaignCriteria/60~30',
+          type: 'MOBILE',
+          bidModifier: 0
+        }
+      ]
+    })
+    expect(query.mock.calls[1]?.[0]).toMatchObject({ maxRows: 100 })
+    expect(query.mock.calls[1]?.[0].query).toContain('campaign_criterion.type = \'DEVICE\'')
+  })
 })
 
 describe('Search Google Ads readback verification', () => {

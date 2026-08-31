@@ -22,6 +22,7 @@ export const GOOGLE_ADS_PLAN_SET_LOCATIONS_TOOL = 'google_ads_plan_set_locations
 export const GOOGLE_ADS_PLAN_SET_LOCATION_MATCH_MODE_TOOL = 'google_ads_plan_set_location_match_mode'
 export const GOOGLE_ADS_PLAN_SET_LANGUAGES_TOOL = 'google_ads_plan_set_languages'
 export const GOOGLE_ADS_PLAN_SET_AD_SCHEDULE_TOOL = 'google_ads_plan_set_ad_schedule'
+export const GOOGLE_ADS_PLAN_SET_DEVICES_TOOL = 'google_ads_plan_set_devices'
 
 const CommonSchema = {
   clientId: z.string().uuid(),
@@ -162,6 +163,23 @@ const SetAdScheduleSchema = z.strictObject({
     }
   }
 })
+const DeviceTypeSchema = z.enum(['MOBILE', 'DESKTOP', 'TABLET', 'CONNECTED_TV', 'OTHER'])
+const BidModifierSchema = z.number().finite().refine(
+  value => value === 0 || (value >= 0.1 && value <= 10),
+  { message: 'Device bid modifier must be 0 or between 0.1 and 10' }
+)
+const SetDevicesSchema = z.strictObject({
+  ...CommonSchema,
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  devices: z.array(z.strictObject({
+    type: DeviceTypeSchema,
+    bidModifier: BidModifierSchema
+  })).min(1).max(5)
+}).superRefine((value, refinement) => {
+  if (new Set(value.devices.map(device => device.type)).size !== value.devices.length) {
+    refinement.addIssue({ code: 'custom', message: 'Each device type may be specified only once' })
+  }
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -241,6 +259,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_SET_AD_SCHEDULE_TOOL,
     'Plan an atomic campaign ad schedule replacement using non-overlapping quarter-hour windows.',
     SetAdScheduleSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_SET_DEVICES_TOOL,
+    'Plan device bid modifiers for existing campaign device criteria. Use 0 to opt out or 0.1 through 10 for bid adjustment.',
+    SetDevicesSchema
   )
 ]
 
@@ -526,6 +549,22 @@ export async function executeGoogleAdsSearchPlanningTool(
         arguments: {
           campaignResourceName: args.campaignResourceName,
           schedules: args.schedules
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_SET_DEVICES_TOOL) {
+      const args = SetDevicesSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'set_devices',
+        resourceType: 'device',
+        arguments: {
+          campaignResourceName: args.campaignResourceName,
+          devices: args.devices
         }
       }
     } else {

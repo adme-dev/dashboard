@@ -31,7 +31,8 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_set_locations',
       'google_ads_plan_set_location_match_mode',
       'google_ads_plan_set_languages',
-      'google_ads_plan_set_ad_schedule'
+      'google_ads_plan_set_ad_schedule',
+      'google_ads_plan_set_devices'
     ])
     const serialized = JSON.stringify(googleAdsSearchPlanningTools)
     expect(serialized).not.toMatch(/"(?:query|operations|url|accessToken|developerToken)"/)
@@ -245,6 +246,25 @@ describe('Google Ads Search MCP planning descriptors', () => {
         schedules: [{
           dayOfWeek: 'MONDAY', startHour: 9, startMinute: 0, endHour: 17, endMinute: 0
         }]
+      }
+    },
+    {
+      tool: 'google_ads_plan_set_devices',
+      args: {
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        devices: [
+          { type: 'MOBILE', bidModifier: 0 },
+          { type: 'DESKTOP', bidModifier: 1.2 }
+        ]
+      },
+      operation: 'set_devices',
+      resourceType: 'device',
+      expectedArguments: {
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        devices: [
+          { type: 'MOBILE', bidModifier: 0 },
+          { type: 'DESKTOP', bidModifier: 1.2 }
+        ]
       }
     }
   ])('maps $tool to a typed proposal-only plan', async ({
