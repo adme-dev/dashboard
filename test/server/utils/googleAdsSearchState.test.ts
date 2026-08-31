@@ -144,6 +144,28 @@ describe('Search Google Ads current-state loader', () => {
       budgetResourceName: 'customers/1234567890/campaignBudgets/50'
     }), auth, { query })).rejects.toThrow('referenced campaign budget was not found')
   })
+
+  it('checks ad group names within a live parent campaign before planning creation', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [], more: 0 })
+      .mockResolvedValueOnce({
+        rows: [{ campaign: { resourceName: 'customers/1234567890/campaigns/60' } }],
+        more: 0
+      })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('create_ad_group', {
+      name: 'New Vehicles',
+      campaignResourceName: 'customers/1234567890/campaigns/60',
+      cpcBid: 3.5
+    }), auth, { query })).resolves.toEqual({
+      exists: false,
+      campaignResourceName: 'customers/1234567890/campaigns/60'
+    })
+    expect(query).toHaveBeenCalledTimes(2)
+    expect(query.mock.calls[0]?.[0].query).toContain('ad_group.name = \'New Vehicles\'')
+    expect(query.mock.calls[0]?.[0].query).toContain('campaign.id = 60')
+    expect(query.mock.calls[1]?.[0].query).toContain('campaign.id = 60')
+  })
 })
 
 describe('Search Google Ads readback verification', () => {
@@ -298,5 +320,49 @@ describe('Search Google Ads persisted-plan state loading', () => {
       status: 'PAUSED'
     })
     expect(query.mock.calls[0]?.[0].query).toContain('campaign.id = 60')
+  })
+
+  it('reads back a created ad group with its forced paused status and bid', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ adGroup: {
+        resourceName: 'customers/1234567890/adGroups/70',
+        name: 'New Vehicles',
+        campaign: 'customers/1234567890/campaigns/60',
+        type: 'SEARCH_STANDARD',
+        status: 'PAUSED',
+        cpcBidMicros: '3500000'
+      } }],
+      more: 0
+    })
+    const plan = {
+      operation: 'create_ad_group',
+      resourceType: 'ad_group',
+      resourceName: null,
+      customerId: '1234567890',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      connectionId: '22222222-2222-4222-8222-222222222222',
+      actorId: '33333333-3333-4333-8333-333333333333',
+      source: 'mcp',
+      executionMode: 'proposal',
+      idempotencyKey: 'ad-group-1',
+      desiredState: {
+        name: 'New Vehicles',
+        campaign: 'customers/1234567890/campaigns/60',
+        type: 'SEARCH_STANDARD',
+        status: 'PAUSED',
+        cpcBidMicros: '3500000'
+      },
+      providerOperations: [{ service: 'adGroups' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [{ resourceName: 'customers/1234567890/adGroups/70' }]
+    })).resolves.toMatchObject({
+      resourceName: 'customers/1234567890/adGroups/70',
+      campaign: 'customers/1234567890/campaigns/60',
+      status: 'PAUSED',
+      cpcBidMicros: '3500000'
+    })
+    expect(query.mock.calls[0]?.[0].query).toContain('ad_group.id = 70')
   })
 })

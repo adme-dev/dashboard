@@ -55,6 +55,14 @@ const CampaignStateSchema = z.object({
   startDateTime: z.string().optional(),
   endDateTime: z.string().optional()
 })
+const AdGroupStateSchema = z.object({
+  resourceName: z.string(),
+  name: z.string(),
+  campaign: z.string(),
+  type: z.string(),
+  status: z.string(),
+  cpcBidMicros: z.union([z.string(), z.number()]).transform(String).optional()
+})
 
 const STATUS_READS = {
   pause_campaign: { from: 'campaign', select: 'campaign.resource_name, campaign.status', key: 'campaign' },
@@ -228,6 +236,76 @@ WHERE campaign.id = ${id}`
   return CampaignStateSchema.parse(campaign)
 }
 
+async function loadCreateAdGroupCurrentState(
+  customerId: string,
+  name: string,
+  campaignResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<{ exists: false, campaignResourceName: string }> {
+  assertCustomerResourceName(campaignResourceName, customerId, 'campaigns')
+  const [campaignId] = resourceIds(campaignResourceName)
+  const duplicate = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT ad_group.resource_name
+FROM ad_group
+WHERE ad_group.name = '${escapeGaqlString(name)}'
+  AND campaign.id = ${campaignId}`
+  })
+  if (duplicate.rows.length > 0 || duplicate.more > 0) {
+    throw new Error(`A Google Ads ad group named "${name}" already exists in this campaign`)
+  }
+
+  const parent = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT campaign.resource_name
+FROM campaign
+WHERE campaign.id = ${campaignId}`
+  })
+  const first = parent.rows[0]
+  const campaign = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).campaign
+    : undefined
+  const parsed = z.object({ resourceName: z.string() }).safeParse(campaign)
+  if (!parsed.success || parsed.data.resourceName !== campaignResourceName) {
+    throw new Error('The referenced campaign was not found')
+  }
+  return { exists: false, campaignResourceName }
+}
+
+async function loadAdGroupByResourceName(
+  customerId: string,
+  resourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<z.infer<typeof AdGroupStateSchema>> {
+  assertCustomerResourceName(resourceName, customerId, 'adGroups')
+  const [id] = resourceIds(resourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT ad_group.resource_name,
+  ad_group.name,
+  ad_group.campaign,
+  ad_group.type,
+  ad_group.status,
+  ad_group.cpc_bid_micros
+FROM ad_group
+WHERE ad_group.id = ${id}`
+  })
+  const first = result.rows[0]
+  const adGroup = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).adGroup
+    : undefined
+  if (!adGroup) throw new Error('Google Ads ad group was not found after mutation')
+  return AdGroupStateSchema.parse(adGroup)
+}
+
 function mutationResourceName(
   mutation: GoogleAdsMutateResult,
   service: string
@@ -240,7 +318,8 @@ function mutationResourceName(
   if (typeof record.resourceName === 'string') return record.resourceName
   const singular = {
     campaignBudgets: 'campaignBudget',
-    campaigns: 'campaign'
+    campaigns: 'campaign',
+    adGroups: 'adGroup'
   }[service] ?? ''
   const nested = singular ? record[singular] : undefined
   if (nested && typeof nested === 'object'
@@ -375,6 +454,22 @@ export async function loadSearchGoogleAdsCurrentState(
       resolved
     )
   }
+  if (context.input.operation === 'create_ad_group') {
+    const args = z.object({
+      name: z.string(),
+      campaignResourceName: z.string()
+    }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation,
+      context.input.arguments
+    ))
+    return loadCreateAdGroupCurrentState(
+      context.customerId,
+      args.name,
+      args.campaignResourceName,
+      auth,
+      resolved
+    )
+  }
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }
 
@@ -414,6 +509,27 @@ export async function loadSearchGoogleAdsPlanState(
       plan.customerId,
       desired.name,
       desired.campaignBudget,
+      auth,
+      resolved
+    )
+  }
+  if (plan.operation === 'create_ad_group') {
+    if (mutation) {
+      return loadAdGroupByResourceName(
+        plan.customerId,
+        mutationResourceName(mutation, 'adGroups'),
+        auth,
+        resolved
+      )
+    }
+    const desired = z.object({
+      name: z.string(),
+      campaign: z.string()
+    }).parse(plan.desiredState)
+    return loadCreateAdGroupCurrentState(
+      plan.customerId,
+      desired.name,
+      desired.campaign,
       auth,
       resolved
     )
