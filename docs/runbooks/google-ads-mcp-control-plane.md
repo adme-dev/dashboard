@@ -81,6 +81,14 @@ desired field matches. These tools never replay a mutation. Create and immutable
 replacement plans currently fail closed when the provider-assigned replacement ID is
 not present in the immutable plan.
 
+Google Ads API v25 does not expose a remove operation for the underlying `Asset`
+resource. XeroFlow therefore blocks `remove_asset` at policy resolution. Use
+`google_ads_plan_archive_asset_link` to pause an account, campaign, or ad-group link
+reversibly (the default), or `google_ads_plan_detach_asset` for an explicitly approved
+permanent removal of that association. The immutable asset remains in the Google Ads
+account and can be reused. See Google's [Asset creation and usage documentation](https://developers.google.com/google-ads/api/docs/assets/working-with-assets)
+and the [v25 AssetOperation contract](https://developers.google.com/google-ads/api/reference/rpc/v25/AssetOperation).
+
 Terminal success is `verified` or, where explicitly allowed, `partially_verified`.
 `provider_rejected`, `verification_failed`, `recovery_required`, and `cancelled`
 need operator review. An ambiguous provider timeout is not retried blindly; the

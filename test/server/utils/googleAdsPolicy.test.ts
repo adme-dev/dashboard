@@ -187,6 +187,18 @@ describe('resolveGoogleAdsPolicy', () => {
     })).toMatchObject({ allowed: false, code: 'owner_or_admin_required' })
   })
 
+  it('blocks removal of an immutable provider asset and directs callers to detach its link', () => {
+    expect(resolveGoogleAdsPolicy({
+      ...base,
+      operation: 'remove_asset'
+    })).toEqual({
+      allowed: false,
+      riskTier: 'blocked',
+      executionMode: 'blocked',
+      code: 'provider_operation_unsupported'
+    })
+  })
+
   it('allows account policy to raise but never lower a risk tier', () => {
     expect(resolveGoogleAdsPolicy({
       ...base,

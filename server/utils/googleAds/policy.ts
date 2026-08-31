@@ -87,7 +87,12 @@ const DESTRUCTIVE_OPERATIONS = new Set<GoogleAdsOperationType>([
   'remove_negative_keyword',
   'archive_custom_audience',
   'archive_custom_conversion_goal',
-  'remove_conversion_action',
+  'remove_conversion_action'
+])
+
+// AssetOperation has no remove operation in Google Ads API v25. The serving
+// relationship must be paused or removed through its typed asset-link resource.
+const PROVIDER_UNSUPPORTED_OPERATIONS = new Set<GoogleAdsOperationType>([
   'remove_asset'
 ])
 
@@ -138,6 +143,9 @@ export function resolveGoogleAdsPolicy(input: ResolveGoogleAdsPolicyInput): Goog
   if (!input.hasWriteScope) return blocked('insufficient_scope')
   if (!input.hasMediaPermission) return blocked('media_permission_required')
   if (!input.accountPolicy.enabled) return blocked('account_policy_disabled')
+  if (PROVIDER_UNSUPPORTED_OPERATIONS.has(input.operation)) {
+    return blocked('provider_operation_unsupported')
+  }
 
   const floor = maximumRisk(hardRiskFloor(input.operation), input.actionRiskTier)
   const actionClass = AUTOMATIC_ACTION_CLASSES[input.operation]
