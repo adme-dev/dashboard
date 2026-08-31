@@ -20,6 +20,8 @@ import type { GoogleAdsInventoryKind } from '~~/server/utils/googleAds/inventory
 
 export const GOOGLE_ADS_VALIDATE_PLAN_TOOL = 'google_ads_validate_action_plan'
 export const GOOGLE_ADS_GET_STATUS_TOOL = 'google_ads_get_action_status'
+export const GOOGLE_ADS_GET_DRIFT_TOOL = 'google_ads_get_drift'
+export const GOOGLE_ADS_REVERIFY_RESOURCE_TOOL = 'google_ads_reverify_resource'
 export const GOOGLE_ADS_LIST_RECOMMENDATIONS_TOOL = 'google_ads_list_recommendations'
 export const GOOGLE_ADS_LIST_CAMPAIGNS_TOOL = 'google_ads_list_campaigns'
 export const GOOGLE_ADS_LIST_AD_GROUPS_TOOL = 'google_ads_list_ad_groups'
@@ -167,6 +169,10 @@ export const googleAdsReadTools: McpToolManifest[] = [
   descriptor(
     GOOGLE_ADS_GET_STATUS_TOOL,
     'Get the safe lifecycle status of a server-issued Google Ads action plan. Returns no credentials or raw provider payloads.'
+  ),
+  descriptor(
+    GOOGLE_ADS_GET_DRIFT_TOOL,
+    'Read the current provider state for an existing resource and compare it with the immutable desired state in a server-issued action plan. This never replays a mutation.'
   )
 ]
 
@@ -181,6 +187,10 @@ export const googleAdsWriteTools: McpToolManifest[] = [
     GOOGLE_ADS_RUN_PAUSE_POLICY_TOOL,
     'Evaluate fresh provider metrics for one allowlisted entity and pause it only when every active account-policy threshold, cap, cooldown, and manual-override guard passes.',
     RunPausePolicyParams
+  ),
+  descriptor(
+    GOOGLE_ADS_REVERIFY_RESOURCE_TOOL,
+    'Re-read an existing resource for a verification-failed, recovery-required, or partially verified action plan. The plan becomes verified only when the desired state matches; no provider mutation is replayed.'
   ),
   descriptor(
     GOOGLE_ADS_PROPOSE_ACTION_TOOL,
@@ -208,6 +218,7 @@ export function isGoogleAdsWriteToolName(name: string): boolean {
   return name === GOOGLE_ADS_PROPOSE_ACTION_TOOL
     || name === GOOGLE_ADS_RUN_SEARCH_TERM_POLICY_TOOL
     || name === GOOGLE_ADS_RUN_PAUSE_POLICY_TOOL
+    || name === GOOGLE_ADS_REVERIFY_RESOURCE_TOOL
     || isGoogleAdsSearchPlanningTool(name)
 }
 
@@ -251,6 +262,8 @@ export interface GoogleAdsMcpToolDependencies {
   executeAutomatic(plan: GoogleAdsActionPlan, context: ToolContext): Promise<unknown>
   runSearchTermPolicy(input: z.infer<typeof RunSearchTermPolicyParams>, context: ToolContext): Promise<unknown>
   runPausePolicy(input: z.infer<typeof RunPausePolicyParams>, context: ToolContext): Promise<unknown>
+  inspectDrift(plan: GoogleAdsActionPlan, context: ToolContext): Promise<unknown>
+  reverifyResource(plan: GoogleAdsActionPlan, context: ToolContext): Promise<unknown>
 }
 
 export type GoogleAdsMcpToolOutcome
@@ -344,6 +357,12 @@ export async function executeGoogleAdsTool(
 
     if (name === GOOGLE_ADS_GET_STATUS_TOOL) {
       return { ok: true, data: await dependencies.getStatus(plan, context) }
+    }
+    if (name === GOOGLE_ADS_GET_DRIFT_TOOL) {
+      return { ok: true, data: await dependencies.inspectDrift(plan, context) }
+    }
+    if (name === GOOGLE_ADS_REVERIFY_RESOURCE_TOOL) {
+      return { ok: true, data: await dependencies.reverifyResource(plan, context) }
     }
     if (name === GOOGLE_ADS_VALIDATE_PLAN_TOOL) {
       const validation = await dependencies.validatePlan(plan, context)

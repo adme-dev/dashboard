@@ -74,7 +74,9 @@ function dependencies(plan = actionPlan()) {
     proposePlan: vi.fn().mockResolvedValue({ proposalId: 'proposal-12345' }),
     executeAutomatic: vi.fn().mockResolvedValue({ ok: true, status: 'verified' }),
     runSearchTermPolicy: vi.fn().mockResolvedValue({ executed: false, reason: 'no_candidates' }),
-    runPausePolicy: vi.fn().mockResolvedValue({ executed: false, reason: 'threshold_not_met' })
+    runPausePolicy: vi.fn().mockResolvedValue({ executed: false, reason: 'threshold_not_met' }),
+    inspectDrift: vi.fn().mockResolvedValue({ supported: true, matchesDesiredState: true }),
+    reverifyResource: vi.fn().mockResolvedValue({ supported: true, reconciled: true })
   }
 }
 
@@ -219,6 +221,39 @@ describe('Google Ads MCP execution gates', () => {
       deps
     )).resolves.toMatchObject({ ok: false, code: 'disabled' })
     expect(deps.loadPlan).not.toHaveBeenCalled()
+  })
+
+  it('inspects drift as a read and reverifies only through the write gate', async () => {
+    const recoverable = actionPlan({ status: 'recovery_required' })
+    const deps = dependencies(recoverable)
+
+    await expect(executeGoogleAdsTool(
+      'google_ads_get_drift',
+      { actionPlanId: PLAN_ID },
+      context,
+      { ...off, read: true },
+      deps
+    )).resolves.toMatchObject({
+      ok: true,
+      data: { supported: true, matchesDesiredState: true }
+    })
+    expect(deps.inspectDrift).toHaveBeenCalledWith(recoverable, context)
+
+    await expect(executeGoogleAdsTool(
+      'google_ads_reverify_resource',
+      { actionPlanId: PLAN_ID },
+      context,
+      { ...off, read: true },
+      deps
+    )).resolves.toMatchObject({ ok: false, code: 'disabled' })
+    await expect(executeGoogleAdsTool(
+      'google_ads_reverify_resource',
+      { actionPlanId: PLAN_ID },
+      context,
+      { ...off, write: true },
+      deps
+    )).resolves.toMatchObject({ ok: true, data: { reconciled: true } })
+    expect(deps.reverifyResource).toHaveBeenCalledWith(recoverable, context)
   })
 
   it('requires write before persisting a proposal', async () => {

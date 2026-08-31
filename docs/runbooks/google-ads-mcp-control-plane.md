@@ -73,6 +73,14 @@ Ads operations. A normal human-approved change follows this sequence:
    validates again, writes once, and performs a typed provider read-back.
 6. Poll `google_ads_get_action_status` until it reaches a terminal state.
 
+Use `google_ads_get_drift` to compare an existing provider resource with the
+immutable desired state in its action plan. For `verification_failed`,
+`recovery_required`, or `partially_verified` plans, `google_ads_reverify_resource`
+performs the same read-back and may reconcile the plan to `verified` only when every
+desired field matches. These tools never replay a mutation. Create and immutable-ad
+replacement plans currently fail closed when the provider-assigned replacement ID is
+not present in the immutable plan.
+
 Terminal success is `verified` or, where explicitly allowed, `partially_verified`.
 `provider_rejected`, `verification_failed`, `recovery_required`, and `cancelled`
 need operator review. An ambiguous provider timeout is not retried blindly; the

@@ -23,6 +23,10 @@ import {
   runGoogleAdsSearchTermPolicy
 } from '~~/server/utils/googleAds/automation'
 import {
+  inspectGoogleAdsActionPlanDrift,
+  reverifyGoogleAdsActionPlan
+} from '~~/server/utils/googleAds/reverification'
+import {
   GOOGLE_ADS_PENDING_ACTION,
   type GoogleAdsConfirmDependencies,
   type GoogleAdsMcpFlags,
@@ -222,7 +226,13 @@ export function buildGoogleAdsMcpToolDependencies(
     }, {
       actorRole: context.userRole,
       hasWriteScope: true
-    }, flags)
+    }, flags),
+    inspectDrift: (plan, context) => inspectGoogleAdsActionPlanDrift(
+      plan, context.userId
+    ),
+    reverifyResource: (plan, context) => reverifyGoogleAdsActionPlan(
+      plan, context.userId
+    )
   }
 }
 
