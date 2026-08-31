@@ -42,6 +42,7 @@ export const GOOGLE_ADS_PLAN_CREATE_ASSET_TOOL = 'google_ads_plan_create_asset'
 export const GOOGLE_ADS_PLAN_ATTACH_ASSET_TOOL = 'google_ads_plan_attach_asset'
 export const GOOGLE_ADS_PLAN_ARCHIVE_ASSET_LINK_TOOL = 'google_ads_plan_archive_asset_link'
 export const GOOGLE_ADS_PLAN_DETACH_ASSET_TOOL = 'google_ads_plan_detach_asset'
+export const GOOGLE_ADS_PLAN_CREATE_ASSET_GROUP_TOOL = 'google_ads_plan_create_asset_group'
 export const GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_create_custom_audience'
 export const GOOGLE_ADS_PLAN_UPDATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_update_custom_audience'
 export const GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_archive_custom_audience'
@@ -524,6 +525,35 @@ const DetachAssetSchema = z.strictObject({
   scope: AssetLinkScopeSchema,
   resourceName: z.string().trim().min(1).max(1_000)
 })
+const PmaxAssetFieldTypeSchema = z.enum([
+  'HEADLINE', 'LONG_HEADLINE', 'DESCRIPTION', 'MARKETING_IMAGE',
+  'SQUARE_MARKETING_IMAGE', 'BUSINESS_NAME', 'LOGO'
+])
+const CreateAssetGroupSchema = z.strictObject({
+  ...CommonSchema,
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(128),
+  finalUrls: z.array(HttpsAssetUrlSchema).min(1).max(10),
+  finalMobileUrls: z.array(HttpsAssetUrlSchema).max(10).default([]),
+  path1: z.string().trim().min(1).max(15).optional(),
+  path2: z.string().trim().min(1).max(15).optional(),
+  assets: z.array(z.strictObject({
+    fieldType: PmaxAssetFieldTypeSchema,
+    assetResourceName: z.string().trim().min(1).max(1_000)
+  })).max(71)
+}).superRefine((value, refinement) => {
+  if (value.path2 !== undefined && value.path1 === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'Asset-group path2 requires path1' })
+  }
+  if (new Set(value.finalUrls).size !== value.finalUrls.length
+    || new Set(value.finalMobileUrls).size !== value.finalMobileUrls.length) {
+    refinement.addIssue({ code: 'custom', message: 'Asset-group final URLs must be unique' })
+  }
+  const keys = value.assets.map(asset => `${asset.fieldType}:${asset.assetResourceName}`)
+  if (new Set(keys).size !== keys.length) {
+    refinement.addIssue({ code: 'custom', message: 'Asset-group links must be unique' })
+  }
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -703,6 +733,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_DETACH_ASSET_TOOL,
     'Plan explicit removal of an account, campaign, or ad-group asset association. The underlying immutable asset is retained and can be reattached.',
     DetachAssetSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_CREATE_ASSET_GROUP_TOOL,
+    'Plan an atomic, paused Performance Max asset group. Standard campaigns require a complete minimum asset bundle; retail campaigns may start without advertiser assets.',
+    CreateAssetGroupSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL,
@@ -1355,6 +1390,27 @@ export async function executeGoogleAdsSearchPlanningTool(
         operation: 'detach_asset',
         resourceType: 'asset_link',
         arguments: { scope: args.scope, resourceName: args.resourceName }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_CREATE_ASSET_GROUP_TOOL) {
+      const args = CreateAssetGroupSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'create_asset_group',
+        resourceType: 'asset_group',
+        arguments: {
+          campaignResourceName: args.campaignResourceName,
+          name: args.name,
+          finalUrls: args.finalUrls,
+          ...(args.finalMobileUrls.length > 0 ? { finalMobileUrls: args.finalMobileUrls } : {}),
+          ...(args.path1 ? { path1: args.path1 } : {}),
+          ...(args.path2 ? { path2: args.path2 } : {}),
+          assets: args.assets
+        }
       }
     } else if (name === GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL) {
       const args = CreateCustomAudienceSchema.parse(rawArgs)

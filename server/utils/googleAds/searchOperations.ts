@@ -349,6 +349,53 @@ const AssetLinkDispositionArgumentsSchema = z.strictObject({
   scope: AssetLinkScopeSchema,
   resourceName: z.string().trim().min(1).max(1_000)
 })
+const PmaxAssetFieldTypeSchema = z.enum([
+  'HEADLINE', 'LONG_HEADLINE', 'DESCRIPTION', 'MARKETING_IMAGE',
+  'SQUARE_MARKETING_IMAGE', 'BUSINESS_NAME', 'LOGO'
+])
+const PmaxAssetLinkSchema = z.strictObject({
+  fieldType: PmaxAssetFieldTypeSchema,
+  assetResourceName: z.string().trim().min(1).max(1_000)
+})
+const CreateAssetGroupArgumentsSchema = z.strictObject({
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(128),
+  finalUrls: z.array(HttpsAssetUrlSchema).min(1).max(10),
+  finalMobileUrls: z.array(HttpsAssetUrlSchema).max(10).default([]),
+  path1: z.string().trim().min(1).max(15).optional(),
+  path2: z.string().trim().min(1).max(15).optional(),
+  assets: z.array(PmaxAssetLinkSchema).max(71)
+}).superRefine((value, refinement) => {
+  if (value.path2 !== undefined && value.path1 === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'Asset-group path2 requires path1' })
+  }
+  if (new Set(value.finalUrls).size !== value.finalUrls.length
+    || new Set(value.finalMobileUrls).size !== value.finalMobileUrls.length) {
+    refinement.addIssue({ code: 'custom', message: 'Asset-group final URLs must be unique' })
+  }
+  const keys = value.assets.map(asset => `${asset.fieldType}:${asset.assetResourceName}`)
+  if (new Set(keys).size !== keys.length) {
+    refinement.addIssue({ code: 'custom', message: 'Asset-group links must be unique' })
+  }
+})
+const PmaxAssetStateSchema = z.object({
+  resourceName: z.string(),
+  type: z.enum(['TEXT', 'IMAGE']),
+  text: z.string().optional(),
+  fileSize: z.string().optional(),
+  widthPixels: z.string().optional(),
+  heightPixels: z.string().optional()
+})
+const CreateAssetGroupCurrentStateSchema = z.object({
+  campaign: z.object({
+    resourceName: z.string(),
+    advertisingChannelType: z.string(),
+    brandGuidelinesEnabled: z.boolean(),
+    merchantId: z.string().nullable()
+  }),
+  nameAvailable: z.boolean(),
+  assets: z.array(PmaxAssetStateSchema)
+})
 const AssetLinkStateSchema = z.object({
   resourceName: z.string(),
   scope: AssetLinkScopeSchema,
@@ -553,6 +600,7 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'attach_asset',
       'archive_asset_link',
       'detach_asset',
+      'create_asset_group',
       'set_campaign_conversion_goals',
       'set_conversion_goal',
       'set_customer_goal_biddability',
@@ -660,6 +708,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'archive_asset_link' || operation === 'detach_asset') {
     return AssetLinkDispositionArgumentsSchema.parse(argumentsValue)
   }
+  if (operation === 'create_asset_group') return CreateAssetGroupArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_goal') return SetCampaignGoalConfigArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_customer_goal_biddability') return SetCustomerGoalBiddabilityArgumentsSchema.parse(argumentsValue)
@@ -2200,6 +2249,128 @@ function buildAssetLinkDispositionAction(
   }
 }
 
+const PMAX_ASSET_LIMITS: Record<z.infer<typeof PmaxAssetFieldTypeSchema>, {
+  type: 'TEXT' | 'IMAGE'
+  min: number
+  max: number
+  maxTextLength?: number
+}> = {
+  HEADLINE: { type: 'TEXT', min: 3, max: 15, maxTextLength: 30 },
+  LONG_HEADLINE: { type: 'TEXT', min: 1, max: 5, maxTextLength: 90 },
+  DESCRIPTION: { type: 'TEXT', min: 2, max: 5, maxTextLength: 90 },
+  MARKETING_IMAGE: { type: 'IMAGE', min: 1, max: 20 },
+  SQUARE_MARKETING_IMAGE: { type: 'IMAGE', min: 1, max: 20 },
+  BUSINESS_NAME: { type: 'TEXT', min: 1, max: 1, maxTextLength: 25 },
+  LOGO: { type: 'IMAGE', min: 1, max: 5 }
+}
+
+function sortPmaxAssetLinks(
+  assets: z.infer<typeof PmaxAssetLinkSchema>[]
+): z.infer<typeof PmaxAssetLinkSchema>[] {
+  return [...assets].sort((left, right) => (
+    left.fieldType.localeCompare(right.fieldType)
+    || left.assetResourceName.localeCompare(right.assetResourceName)
+  ))
+}
+
+function buildCreateAssetGroupAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'asset_group') {
+    throw new Error('Asset-group creation requires resource type asset_group')
+  }
+  const args = CreateAssetGroupArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.campaignResourceName, context.customerId, 'campaigns')
+  for (const link of args.assets) assertResourceName(link.assetResourceName, context.customerId, 'assets')
+  const current = CreateAssetGroupCurrentStateSchema.parse(context.currentState)
+  if (current.campaign.resourceName !== args.campaignResourceName) {
+    throw new Error('Asset-group campaign state does not match the requested campaign')
+  }
+  if (current.campaign.advertisingChannelType !== 'PERFORMANCE_MAX') {
+    throw new Error('Asset groups can only be created for Performance Max campaigns')
+  }
+  if (!current.nameAvailable) throw new Error('An asset group with this name already exists in the campaign')
+
+  const assetsByResourceName = new Map(current.assets.map(asset => [asset.resourceName, asset]))
+  for (const link of args.assets) {
+    const asset = assetsByResourceName.get(link.assetResourceName)
+    if (!asset) throw new Error('A requested Performance Max asset was not found')
+    const limit = PMAX_ASSET_LIMITS[link.fieldType]
+    if (asset.type !== limit.type) {
+      throw new Error(`Asset type does not match ${link.fieldType}`)
+    }
+    if (limit.maxTextLength !== undefined && asset.text !== undefined && asset.text.length > limit.maxTextLength) {
+      throw new Error(`${link.fieldType} text exceeds ${limit.maxTextLength} characters`)
+    }
+  }
+
+  const counts = Object.fromEntries(
+    PmaxAssetFieldTypeSchema.options.map(fieldType => [
+      fieldType, args.assets.filter(asset => asset.fieldType === fieldType).length
+    ])
+  ) as Record<z.infer<typeof PmaxAssetFieldTypeSchema>, number>
+  for (const fieldType of PmaxAssetFieldTypeSchema.options) {
+    const { max } = PMAX_ASSET_LIMITS[fieldType]
+    if (counts[fieldType] > max) throw new Error(`Asset groups permit at most ${max} ${fieldType} assets`)
+  }
+
+  const retailWithoutAssets = current.campaign.merchantId !== null && args.assets.length === 0
+  if (!retailWithoutAssets) {
+    const required = current.campaign.brandGuidelinesEnabled
+      ? PmaxAssetFieldTypeSchema.options.filter(type => type !== 'BUSINESS_NAME' && type !== 'LOGO')
+      : PmaxAssetFieldTypeSchema.options
+    if (current.campaign.brandGuidelinesEnabled
+      && (counts.BUSINESS_NAME > 0 || counts.LOGO > 0)) {
+      throw new Error('Brand-guideline campaigns require business name and logo assets at campaign level')
+    }
+    for (const fieldType of required) {
+      const { min } = PMAX_ASSET_LIMITS[fieldType]
+      if (counts[fieldType] < min) {
+        throw new Error(`Asset group requires at least ${min} ${fieldType} asset${min === 1 ? '' : 's'}`)
+      }
+    }
+  }
+
+  const assets = sortPmaxAssetLinks(args.assets)
+  const temporaryResourceName = `customers/${context.customerId}/assetGroups/-1`
+  const create = {
+    resourceName: temporaryResourceName,
+    campaign: args.campaignResourceName,
+    name: args.name,
+    finalUrls: args.finalUrls,
+    ...(args.finalMobileUrls.length > 0 ? { finalMobileUrls: args.finalMobileUrls } : {}),
+    status: 'PAUSED',
+    ...(args.path1 ? { path1: args.path1 } : {}),
+    ...(args.path2 ? { path2: args.path2 } : {})
+  }
+  // Standard PMax groups and their minimum links must share one atomic GoogleAdsService.Mutate request.
+  // Source: https://developers.google.com/google-ads/api/performance-max/structure-requests
+  return {
+    resourceName: null,
+    desiredState: {
+      campaign: args.campaignResourceName,
+      name: args.name,
+      finalUrls: args.finalUrls,
+      finalMobileUrls: args.finalMobileUrls,
+      ...(args.path1 ? { path1: args.path1 } : {}),
+      ...(args.path2 ? { path2: args.path2 } : {}),
+      status: 'PAUSED',
+      assets
+    },
+    providerOperations: [{
+      service: 'googleAds',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        { mutate: { assetGroupOperation: { create } } },
+        ...assets.map(link => ({ mutate: { assetGroupAssetOperation: { create: {
+          assetGroup: temporaryResourceName,
+          asset: link.assetResourceName,
+          fieldType: link.fieldType
+        } } } }))
+      ]
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -2242,5 +2413,6 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'attach_asset') return buildAttachAssetAction(context)
   if (context.input.operation === 'archive_asset_link') return buildAssetLinkDispositionAction(context, 'archive')
   if (context.input.operation === 'detach_asset') return buildAssetLinkDispositionAction(context, 'detach')
+  if (context.input.operation === 'create_asset_group') return buildCreateAssetGroupAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }

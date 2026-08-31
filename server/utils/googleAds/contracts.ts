@@ -147,7 +147,8 @@ const JsonObjectSchema = z.record(z.string(), z.unknown())
 const ProviderOperationSchema = z.union([
   z.strictObject({ create: JsonObjectSchema }),
   z.strictObject({ update: JsonObjectSchema, updateMask: z.string().trim().min(1).max(2_000) }),
-  z.strictObject({ remove: z.string().trim().min(1).max(1_000) })
+  z.strictObject({ remove: z.string().trim().min(1).max(1_000) }),
+  z.strictObject({ mutate: JsonObjectSchema })
 ])
 
 export const GoogleAdsProviderMutationSchema = z.strictObject({

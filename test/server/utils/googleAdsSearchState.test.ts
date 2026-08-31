@@ -112,6 +112,66 @@ describe('Search Google Ads current-state loader', () => {
     expect(query).not.toHaveBeenCalled()
   })
 
+  it('prevalidates a Performance Max campaign, unique asset-group name, and every linked asset', async () => {
+    const campaignResourceName = 'customers/1234567890/campaigns/60'
+    const assetResourceNames = [
+      'customers/1234567890/assets/7001',
+      'customers/1234567890/assets/7002'
+    ]
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{ campaign: {
+          resourceName: campaignResourceName,
+          advertisingChannelType: 'PERFORMANCE_MAX',
+          brandGuidelinesEnabled: true,
+          shoppingSetting: {}
+        } }],
+        more: 0
+      })
+      .mockResolvedValueOnce({ rows: [], more: 0 })
+      .mockResolvedValueOnce({
+        rows: [
+          { asset: { resourceName: assetResourceNames[0], type: 'TEXT', textAsset: { text: 'GAC SUV' } } },
+          { asset: { resourceName: assetResourceNames[1], type: 'IMAGE', imageAsset: {
+            fileSize: '204800', fullSize: { widthPixels: '1200', heightPixels: '628' }
+          } } }
+        ],
+        more: 0
+      })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('create_asset_group', {
+      campaignResourceName,
+      name: 'SUV range',
+      finalUrls: ['https://example.com/suv'],
+      assets: [
+        { fieldType: 'HEADLINE', assetResourceName: assetResourceNames[0] },
+        { fieldType: 'MARKETING_IMAGE', assetResourceName: assetResourceNames[1] }
+      ]
+    }), auth, { query })).resolves.toEqual({
+      campaign: {
+        resourceName: campaignResourceName,
+        advertisingChannelType: 'PERFORMANCE_MAX',
+        brandGuidelinesEnabled: true,
+        merchantId: null
+      },
+      nameAvailable: true,
+      assets: [
+        { resourceName: assetResourceNames[0], type: 'TEXT', text: 'GAC SUV' },
+        {
+          resourceName: assetResourceNames[1],
+          type: 'IMAGE',
+          fileSize: '204800',
+          widthPixels: '1200',
+          heightPixels: '628'
+        }
+      ]
+    })
+    expect(query).toHaveBeenCalledTimes(3)
+    expect(query.mock.calls[0]?.[0].query).toContain('campaign.brand_guidelines_enabled')
+    expect(query.mock.calls[1]?.[0].query).toContain('asset_group.name = \'SUV range\'')
+    expect(query.mock.calls[2]?.[0].query).toContain('asset.resource_name IN')
+  })
+
   it('prevalidates an asset, campaign, and existing link before attachment', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({
@@ -1393,6 +1453,61 @@ describe('Search Google Ads persisted-plan state loading', () => {
       callAsset: { countryCode: 'AU', phoneNumber: '(03) 9999 0000' }
     })
     expect(query.mock.calls[0]?.[0].query).toContain('asset.id = 9201')
+  })
+
+  it('uses a GoogleAdsService mutate result to verify a created Performance Max asset group', async () => {
+    const resourceName = 'customers/1234567890/assetGroups/7001'
+    const campaignResourceName = 'customers/1234567890/campaigns/60'
+    const assetResourceName = 'customers/1234567890/assets/7001'
+    const query = vi.fn().mockResolvedValue({
+      rows: [{
+        assetGroup: {
+          resourceName,
+          campaign: campaignResourceName,
+          name: 'SUV range',
+          finalUrls: ['https://example.com/suv'],
+          finalMobileUrls: [],
+          path1: 'suv',
+          status: 'PAUSED'
+        },
+        assetGroupAsset: {
+          asset: assetResourceName,
+          fieldType: 'HEADLINE',
+          status: 'ENABLED'
+        }
+      }],
+      more: 0
+    })
+    const plan = {
+      operation: 'create_asset_group',
+      resourceType: 'asset_group',
+      resourceName: null,
+      customerId: '1234567890',
+      desiredState: {
+        campaign: campaignResourceName,
+        name: 'SUV range',
+        finalUrls: ['https://example.com/suv'],
+        finalMobileUrls: [],
+        path1: 'suv',
+        status: 'PAUSED',
+        assets: [{ fieldType: 'HEADLINE', assetResourceName }]
+      },
+      providerOperations: [{ service: 'googleAds' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [{ assetGroupResult: { resourceName } }]
+    })).resolves.toEqual({
+      resourceName,
+      campaign: campaignResourceName,
+      name: 'SUV range',
+      finalUrls: ['https://example.com/suv'],
+      finalMobileUrls: [],
+      path1: 'suv',
+      status: 'PAUSED',
+      assets: [{ fieldType: 'HEADLINE', assetResourceName }]
+    })
+    expect(query.mock.calls[0]?.[0].query).toContain('asset_group.id = 7001')
   })
 
   it('reads back reversible asset-link archive and explicit detachment states', async () => {

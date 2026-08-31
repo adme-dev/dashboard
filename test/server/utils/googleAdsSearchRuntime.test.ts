@@ -305,6 +305,51 @@ describe('Search Google Ads governed execution runtime', () => {
     } as GoogleAdsActionPlan)).toBe(true)
   })
 
+  it('activates only the typed heterogeneous bundle used to create a Performance Max asset group', () => {
+    const resourceName = 'customers/1234567890/assetGroups/-1'
+    const valid = {
+      operation: 'create_asset_group',
+      customerId: '1234567890',
+      desiredState: {
+        campaign: 'customers/1234567890/campaigns/60',
+        assets: [{
+          fieldType: 'HEADLINE',
+          assetResourceName: 'customers/1234567890/assets/7001'
+        }]
+      },
+      providerOperations: [{
+        service: 'googleAds',
+        operations: [
+          { mutate: { assetGroupOperation: { create: {
+            resourceName,
+            campaign: 'customers/1234567890/campaigns/60',
+            status: 'PAUSED'
+          } } } },
+          { mutate: { assetGroupAssetOperation: { create: {
+            assetGroup: resourceName,
+            asset: 'customers/1234567890/assets/7001',
+            fieldType: 'HEADLINE'
+          } } } }
+        ]
+      }]
+    } as GoogleAdsActionPlan
+    expect(isExecutableSearchGoogleAdsPlan(valid)).toBe(true)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...valid,
+      providerOperations: [{
+        service: 'googleAds',
+        operations: [{ mutate: { campaignOperation: { remove: 'customers/1234567890/campaigns/60' } } }]
+      }]
+    } as GoogleAdsActionPlan)).toBe(false)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...valid,
+      desiredState: {
+        campaign: 'customers/9999999999/campaigns/60',
+        assets: []
+      }
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
   it.each([
     ['customer', 'customerAssets'],
     ['campaign', 'campaignAssets'],

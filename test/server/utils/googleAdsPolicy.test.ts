@@ -81,6 +81,7 @@ describe('resolveGoogleAdsPolicy', () => {
     ['archive_conversion_action', 'rich_confirm'],
     ['create_asset', 'rich_confirm'],
     ['attach_asset', 'rich_confirm'],
+    ['create_asset_group', 'rich_confirm'],
     ['remove_campaign', 'destructive_confirm'],
     ['remove_conversion_action', 'destructive_confirm'],
     ['archive_custom_conversion_goal', 'destructive_confirm'],

@@ -1670,4 +1670,129 @@ describe('Search Google Ads construction operations', () => {
       status: 'ABSENT'
     }))).toThrow('does not match')
   })
+
+  it('creates a paused standard Performance Max asset group and required links atomically', () => {
+    const campaignResourceName = 'customers/1234567890/campaigns/60'
+    const links = [
+      ['HEADLINE', '7001'], ['HEADLINE', '7002'], ['HEADLINE', '7003'],
+      ['LONG_HEADLINE', '7004'], ['DESCRIPTION', '7005'], ['DESCRIPTION', '7006'],
+      ['MARKETING_IMAGE', '7007'], ['SQUARE_MARKETING_IMAGE', '7008']
+    ].map(([fieldType, id]) => ({
+      fieldType,
+      assetResourceName: `customers/1234567890/assets/${id}`
+    }))
+    const current = {
+      campaign: {
+        resourceName: campaignResourceName,
+        advertisingChannelType: 'PERFORMANCE_MAX',
+        brandGuidelinesEnabled: true,
+        merchantId: null
+      },
+      nameAvailable: true,
+      assets: links.map(link => ({
+        resourceName: link.assetResourceName,
+        type: ['MARKETING_IMAGE', 'SQUARE_MARKETING_IMAGE'].includes(link.fieldType) ? 'IMAGE' : 'TEXT'
+      }))
+    }
+    const sortedLinks = [...links].sort((left, right) => (
+      left.fieldType.localeCompare(right.fieldType)
+      || left.assetResourceName.localeCompare(right.assetResourceName)
+    ))
+
+    const built = buildSearchGoogleAdsAction(context('create_asset_group', 'asset_group', {
+      campaignResourceName,
+      name: 'SUV range',
+      finalUrls: ['https://example.com/suv'],
+      path1: 'suv',
+      assets: links
+    }, current))
+
+    expect(built.resourceName).toBeNull()
+    expect(built.desiredState).toEqual({
+      campaign: campaignResourceName,
+      name: 'SUV range',
+      finalUrls: ['https://example.com/suv'],
+      finalMobileUrls: [],
+      path1: 'suv',
+      status: 'PAUSED',
+      assets: sortedLinks
+    })
+    expect(built.providerOperations).toHaveLength(1)
+    expect(built.providerOperations[0]).toMatchObject({
+      service: 'googleAds',
+      atomicity: 'interdependent',
+      partialFailure: false
+    })
+    expect(built.providerOperations[0]?.operations[0]).toEqual({ mutate: {
+      assetGroupOperation: { create: {
+        resourceName: 'customers/1234567890/assetGroups/-1',
+        campaign: campaignResourceName,
+        name: 'SUV range',
+        finalUrls: ['https://example.com/suv'],
+        status: 'PAUSED',
+        path1: 'suv'
+      } }
+    } })
+    expect(built.providerOperations[0]?.operations.slice(1)).toEqual(sortedLinks.map(link => ({ mutate: {
+      assetGroupAssetOperation: { create: {
+        assetGroup: 'customers/1234567890/assetGroups/-1',
+        asset: link.assetResourceName,
+        fieldType: link.fieldType
+      } }
+    } })))
+  })
+
+  it('allows a retail Performance Max asset group with no advertiser assets', () => {
+    const campaignResourceName = 'customers/1234567890/campaigns/60'
+    const built = buildSearchGoogleAdsAction(context('create_asset_group', 'asset_group', {
+      campaignResourceName,
+      name: 'All products',
+      finalUrls: ['https://example.com/shop'],
+      assets: []
+    }, {
+      campaign: {
+        resourceName: campaignResourceName,
+        advertisingChannelType: 'PERFORMANCE_MAX',
+        brandGuidelinesEnabled: true,
+        merchantId: '12345'
+      },
+      nameAvailable: true,
+      assets: []
+    }))
+    expect(built.providerOperations[0]?.operations).toHaveLength(1)
+  })
+
+  it('rejects invalid or incomplete Performance Max asset-group bundles', () => {
+    const campaignResourceName = 'customers/1234567890/campaigns/60'
+    const baseState = {
+      campaign: {
+        resourceName: campaignResourceName,
+        advertisingChannelType: 'PERFORMANCE_MAX',
+        brandGuidelinesEnabled: true,
+        merchantId: null
+      },
+      nameAvailable: true,
+      assets: [{ resourceName: 'customers/1234567890/assets/7001', type: 'TEXT' }]
+    }
+    expect(() => buildSearchGoogleAdsAction(context('create_asset_group', 'asset_group', {
+      campaignResourceName,
+      name: 'Incomplete',
+      finalUrls: ['https://example.com'],
+      assets: [{ fieldType: 'HEADLINE', assetResourceName: 'customers/1234567890/assets/7001' }]
+    }, baseState))).toThrow('at least 3 HEADLINE')
+    expect(() => buildSearchGoogleAdsAction(context('create_asset_group', 'asset_group', {
+      campaignResourceName,
+      name: 'Wrong asset type',
+      finalUrls: ['https://example.com'],
+      assets: [
+        { fieldType: 'MARKETING_IMAGE', assetResourceName: 'customers/1234567890/assets/7001' }
+      ]
+    }, baseState))).toThrow('does not match')
+    expect(() => parseSearchGoogleAdsArguments('create_asset_group', {
+      campaignResourceName,
+      name: 'Unsafe URL',
+      finalUrls: ['http://example.com'],
+      assets: []
+    })).toThrow()
+  })
 })

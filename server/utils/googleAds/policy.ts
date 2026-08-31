@@ -65,6 +65,7 @@ const RICH_CONFIRM_OPERATIONS = new Set<GoogleAdsOperationType>([
   'set_search_themes',
   'create_asset',
   'attach_asset',
+  'create_asset_group',
   'set_conversion_goal',
   'set_customer_goal_biddability'
 ])

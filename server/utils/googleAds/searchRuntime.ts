@@ -352,8 +352,60 @@ const EXECUTABLE_SEARCH_SERVICES = {
   create_asset: ['assets'],
   attach_asset: ['customerAssets', 'campaignAssets', 'adGroupAssets'],
   archive_asset_link: ['customerAssets', 'campaignAssets', 'adGroupAssets'],
-  detach_asset: ['customerAssets', 'campaignAssets', 'adGroupAssets']
+  detach_asset: ['customerAssets', 'campaignAssets', 'adGroupAssets'],
+  create_asset_group: ['googleAds']
 } as const
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function hasOnlyKey(value: Record<string, unknown>, key: string): boolean {
+  return Object.keys(value).length === 1 && Object.hasOwn(value, key)
+}
+
+function isTypedAssetGroupCreateBundle(plan: GoogleAdsActionPlan): boolean {
+  const desired = z.object({
+    campaign: z.string().regex(/^customers\/\d+\/campaigns\/\d+$/),
+    assets: z.array(z.object({
+      fieldType: z.enum([
+        'HEADLINE', 'LONG_HEADLINE', 'DESCRIPTION', 'MARKETING_IMAGE',
+        'SQUARE_MARKETING_IMAGE', 'BUSINESS_NAME', 'LOGO'
+      ]),
+      assetResourceName: z.string().regex(/^customers\/\d+\/assets\/\d+$/)
+    }))
+  }).safeParse(plan.desiredState)
+  if (!desired.success || plan.providerOperations.length !== 1) return false
+  if (!desired.data.campaign.startsWith(`customers/${plan.customerId}/campaigns/`)) return false
+  const mutation = plan.providerOperations[0]
+  if (!mutation || mutation.service !== 'googleAds'
+    || mutation.operations.length !== desired.data.assets.length + 1) return false
+  const customerPrefix = desired.data.campaign.slice(0, desired.data.campaign.indexOf('/campaigns/'))
+  if (!desired.data.assets.every(asset => asset.assetResourceName.startsWith(`${customerPrefix}/assets/`))) return false
+  const temporaryResourceName = `${customerPrefix}/assetGroups/-1`
+
+  const first = mutation.operations[0]
+  if (!first || !('mutate' in first) || !isRecord(first.mutate)
+    || !hasOnlyKey(first.mutate, 'assetGroupOperation')) return false
+  const assetGroupOperation = first.mutate.assetGroupOperation
+  if (!isRecord(assetGroupOperation) || !hasOnlyKey(assetGroupOperation, 'create')
+    || !isRecord(assetGroupOperation.create)) return false
+  if (assetGroupOperation.create.resourceName !== temporaryResourceName
+    || assetGroupOperation.create.campaign !== desired.data.campaign
+    || assetGroupOperation.create.status !== 'PAUSED') return false
+
+  return desired.data.assets.every((asset, index) => {
+    const operation = mutation.operations[index + 1]
+    if (!operation || !('mutate' in operation) || !isRecord(operation.mutate)
+      || !hasOnlyKey(operation.mutate, 'assetGroupAssetOperation')) return false
+    const assetOperation = operation.mutate.assetGroupAssetOperation
+    if (!isRecord(assetOperation) || !hasOnlyKey(assetOperation, 'create')
+      || !isRecord(assetOperation.create)) return false
+    return assetOperation.create.assetGroup === temporaryResourceName
+      && assetOperation.create.asset === asset.assetResourceName
+      && assetOperation.create.fieldType === asset.fieldType
+  })
+}
 
 export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): boolean {
   if (!isSearchGoogleAdsOperation(plan.operation) || plan.providerOperations.length === 0) return false
@@ -362,6 +414,7 @@ export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): bool
   ] as readonly string[] | undefined
   if (!services) return false
   const requested = plan.providerOperations.map(mutation => mutation.service)
+  if (plan.operation === 'create_asset_group') return isTypedAssetGroupCreateBundle(plan)
   if (plan.operation === 'attach_asset'
     || plan.operation === 'archive_asset_link'
     || plan.operation === 'detach_asset') {

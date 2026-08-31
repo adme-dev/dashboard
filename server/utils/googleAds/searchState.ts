@@ -119,6 +119,44 @@ const ProviderAssetLinkSchema = z.object({
   status: z.enum(['ENABLED', 'PAUSED', 'REMOVED']),
   source: z.string().optional()
 })
+const PmaxCampaignStateSchema = z.object({
+  resourceName: z.string(),
+  advertisingChannelType: z.string(),
+  brandGuidelinesEnabled: z.boolean(),
+  shoppingSetting: z.object({
+    merchantId: z.union([z.string(), z.number()]).transform(String).optional()
+  }).optional()
+})
+const PmaxAssetLibraryStateSchema = z.object({
+  resourceName: z.string(),
+  type: z.enum(['TEXT', 'IMAGE']),
+  textAsset: z.object({ text: z.string() }).optional(),
+  imageAsset: z.object({
+    fileSize: z.union([z.string(), z.number()]).transform(String).optional(),
+    fullSize: z.object({
+      widthPixels: z.union([z.string(), z.number()]).transform(String).optional(),
+      heightPixels: z.union([z.string(), z.number()]).transform(String).optional()
+    }).optional()
+  }).optional()
+})
+const AssetGroupStateSchema = z.object({
+  resourceName: z.string(),
+  campaign: z.string(),
+  name: z.string(),
+  finalUrls: z.array(z.string()),
+  finalMobileUrls: z.array(z.string()).default([]),
+  path1: z.string().optional(),
+  path2: z.string().optional(),
+  status: z.enum(['ENABLED', 'PAUSED', 'REMOVED'])
+})
+const AssetGroupAssetStateSchema = z.object({
+  asset: z.string(),
+  fieldType: z.enum([
+    'HEADLINE', 'LONG_HEADLINE', 'DESCRIPTION', 'MARKETING_IMAGE',
+    'SQUARE_MARKETING_IMAGE', 'BUSINESS_NAME', 'LOGO'
+  ]),
+  status: z.string().optional()
+})
 const AdScheduleStateSchema = z.object({
   dayOfWeek: z.enum([
     'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'
@@ -595,6 +633,13 @@ function mutationResourceName(
   }
   const record = first as Record<string, unknown>
   if (typeof record.resourceName === 'string') return record.resourceName
+  if (service === 'googleAds') {
+    const result = record.assetGroupResult
+    if (result && typeof result === 'object'
+      && typeof (result as Record<string, unknown>).resourceName === 'string') {
+      return (result as Record<string, unknown>).resourceName as string
+    }
+  }
   const singular = {
     campaignBudgets: 'campaignBudget',
     campaigns: 'campaign',
@@ -650,6 +695,174 @@ WHERE asset.id = ${assetId}`
   const parsed = AssetStateSchema.parse(asset)
   assertCustomerResourceName(parsed.resourceName, customerId, 'assets')
   return parsed
+}
+
+async function loadCreateAssetGroupCurrentState(
+  customerId: string,
+  args: {
+    campaignResourceName: string
+    name: string
+    assets: Array<{ assetResourceName: string }>
+  },
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<unknown> {
+  assertCustomerResourceName(args.campaignResourceName, customerId, 'campaigns')
+  const [campaignId] = resourceIds(args.campaignResourceName)
+  const campaignResult = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT campaign.resource_name,
+  campaign.advertising_channel_type,
+  campaign.brand_guidelines_enabled,
+  campaign.shopping_setting.merchant_id
+FROM campaign
+WHERE campaign.id = ${campaignId}`
+  })
+  const campaignRow = campaignResult.rows[0]
+  const campaignValue = campaignRow && typeof campaignRow === 'object'
+    ? (campaignRow as Record<string, unknown>).campaign
+    : undefined
+  if (!campaignValue) throw new Error('The requested Google Ads campaign was not found')
+  const campaign = PmaxCampaignStateSchema.parse(campaignValue)
+  assertCustomerResourceName(campaign.resourceName, customerId, 'campaigns')
+  if (campaign.advertisingChannelType !== 'PERFORMANCE_MAX') {
+    throw new Error('Asset groups can only be created for Performance Max campaigns')
+  }
+
+  const nameResult = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT asset_group.resource_name
+FROM asset_group
+WHERE asset_group.campaign = '${escapeGaqlString(args.campaignResourceName)}'
+  AND asset_group.name = '${escapeGaqlString(args.name)}'`
+  })
+
+  const requestedNames = [...new Set(args.assets.map(asset => asset.assetResourceName))].sort()
+  for (const resourceName of requestedNames) assertCustomerResourceName(resourceName, customerId, 'assets')
+  const assets = requestedNames.length === 0
+    ? []
+    : await (async () => {
+        const result = await dependencies.query({
+          customerId,
+          auth,
+          maxRows: requestedNames.length,
+          query: `SELECT asset.resource_name,
+  asset.type,
+  asset.text_asset.text,
+  asset.image_asset.file_size,
+  asset.image_asset.full_size.width_pixels,
+  asset.image_asset.full_size.height_pixels
+FROM asset
+WHERE asset.resource_name IN (${requestedNames.map(name => `'${escapeGaqlString(name)}'`).join(', ')})`
+        })
+        const byName = new Map<string, z.infer<typeof PmaxAssetLibraryStateSchema>>()
+        for (const row of result.rows) {
+          const value = row && typeof row === 'object' ? (row as Record<string, unknown>).asset : undefined
+          if (!value) continue
+          const parsed = PmaxAssetLibraryStateSchema.parse(value)
+          assertCustomerResourceName(parsed.resourceName, customerId, 'assets')
+          byName.set(parsed.resourceName, parsed)
+        }
+        return requestedNames.map((resourceName) => {
+          const asset = byName.get(resourceName)
+          if (!asset) throw new Error('A requested Performance Max asset was not found')
+          return {
+            resourceName,
+            type: asset.type,
+            ...(asset.textAsset ? { text: asset.textAsset.text } : {}),
+            ...(asset.imageAsset?.fileSize ? { fileSize: asset.imageAsset.fileSize } : {}),
+            ...(asset.imageAsset?.fullSize?.widthPixels
+              ? { widthPixels: asset.imageAsset.fullSize.widthPixels }
+              : {}),
+            ...(asset.imageAsset?.fullSize?.heightPixels
+              ? { heightPixels: asset.imageAsset.fullSize.heightPixels }
+              : {})
+          }
+        })
+      })()
+
+  return {
+    campaign: {
+      resourceName: campaign.resourceName,
+      advertisingChannelType: campaign.advertisingChannelType,
+      brandGuidelinesEnabled: campaign.brandGuidelinesEnabled,
+      merchantId: campaign.shoppingSetting?.merchantId ?? null
+    },
+    nameAvailable: nameResult.rows.length === 0 && nameResult.more === 0,
+    assets
+  }
+}
+
+async function loadAssetGroup(
+  customerId: string,
+  resourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<unknown> {
+  assertCustomerResourceName(resourceName, customerId, 'assetGroups')
+  const [assetGroupId] = resourceIds(resourceName)
+  const groupResult = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT asset_group.resource_name,
+  asset_group.campaign,
+  asset_group.name,
+  asset_group.final_urls,
+  asset_group.final_mobile_urls,
+  asset_group.path1,
+  asset_group.path2,
+  asset_group.status
+FROM asset_group
+WHERE asset_group.id = ${assetGroupId}`
+  })
+  const groupRow = groupResult.rows[0]
+  const groupValue = groupRow && typeof groupRow === 'object'
+    ? (groupRow as Record<string, unknown>).assetGroup
+    : undefined
+  if (!groupValue) throw new Error('Google Ads asset group was not found after mutation')
+  const group = AssetGroupStateSchema.parse(groupValue)
+  assertCustomerResourceName(group.resourceName, customerId, 'assetGroups')
+  assertCustomerResourceName(group.campaign, customerId, 'campaigns')
+
+  const linkResult = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 100,
+    query: `SELECT asset_group_asset.asset,
+  asset_group_asset.field_type,
+  asset_group_asset.status
+FROM asset_group_asset
+WHERE asset_group.id = ${assetGroupId}
+  AND asset_group_asset.status != 'REMOVED'`
+  })
+  const assets = linkResult.rows.map((row) => {
+    const value = row && typeof row === 'object'
+      ? (row as Record<string, unknown>).assetGroupAsset
+      : undefined
+    if (!value) throw new Error('Google Ads returned an invalid asset-group link')
+    const parsed = AssetGroupAssetStateSchema.parse(value)
+    assertCustomerResourceName(parsed.asset, customerId, 'assets')
+    return { fieldType: parsed.fieldType, assetResourceName: parsed.asset }
+  }).sort((left, right) => (
+    left.fieldType.localeCompare(right.fieldType)
+    || left.assetResourceName.localeCompare(right.assetResourceName)
+  ))
+  return {
+    resourceName: group.resourceName,
+    campaign: group.campaign,
+    name: group.name,
+    finalUrls: group.finalUrls,
+    finalMobileUrls: group.finalMobileUrls,
+    ...(group.path1 ? { path1: group.path1 } : {}),
+    ...(group.path2 ? { path2: group.path2 } : {}),
+    status: group.status,
+    assets
+  }
 }
 
 const ASSET_LINK_READS = {
@@ -1899,6 +2112,14 @@ export async function loadSearchGoogleAdsCurrentState(
       context.customerId, args.scope, args.resourceName, auth, resolved
     )
   }
+  if (context.input.operation === 'create_asset_group') {
+    const args = z.object({
+      campaignResourceName: z.string(),
+      name: z.string(),
+      assets: z.array(z.object({ assetResourceName: z.string() }))
+    }).parse(parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments))
+    return loadCreateAssetGroupCurrentState(context.customerId, args, auth, resolved)
+  }
   if (context.input.operation === 'update_budget') {
     const args = z.object({ resourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation,
@@ -2179,6 +2400,26 @@ export async function loadSearchGoogleAdsPlanState(
     return loadAsset(
       plan.customerId,
       mutationResourceName(mutation, 'assets'),
+      auth,
+      resolved
+    )
+  }
+  if (plan.operation === 'create_asset_group') {
+    if (!mutation) {
+      const desired = z.object({
+        campaign: z.string(),
+        name: z.string(),
+        assets: z.array(z.object({ assetResourceName: z.string() }))
+      }).parse(plan.desiredState)
+      return loadCreateAssetGroupCurrentState(plan.customerId, {
+        campaignResourceName: desired.campaign,
+        name: desired.name,
+        assets: desired.assets
+      }, auth, resolved)
+    }
+    return loadAssetGroup(
+      plan.customerId,
+      mutationResourceName(mutation, 'googleAds'),
       auth,
       resolved
     )

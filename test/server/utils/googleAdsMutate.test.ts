@@ -4,14 +4,14 @@ import { mutateGoogleAds } from '~~/server/utils/googleAds/mutate'
 const auth = {
   accessToken: 'access',
   developerToken: 'developer',
-  loginCustomerId: '999-999-9999',
+  loginCustomerId: '999-999-9999'
 }
 
 describe('mutateGoogleAds', () => {
   it('sends a validate-only mutation through an allowlisted service', async () => {
     const request = vi.fn().mockResolvedValue({
       data: { results: [] },
-      requestId: 'request-1',
+      requestId: 'request-1'
     })
 
     const result = await mutateGoogleAds({
@@ -20,7 +20,7 @@ describe('mutateGoogleAds', () => {
       auth,
       validateOnly: true,
       atomicity: 'interdependent',
-      operations: [{ create: { name: 'Draft', status: 'PAUSED' } }],
+      operations: [{ create: { name: 'Draft', status: 'PAUSED' } }]
     }, { request })
 
     expect(request).toHaveBeenCalledWith({
@@ -31,15 +31,15 @@ describe('mutateGoogleAds', () => {
         operations: [{ create: { name: 'Draft', status: 'PAUSED' } }],
         partialFailure: false,
         validateOnly: true,
-        responseContentType: 'MUTABLE_RESOURCE',
+        responseContentType: 'MUTABLE_RESOURCE'
       },
       retries: 0,
-      write: true,
+      write: true
     })
     expect(result).toEqual({
       results: [],
       partialFailureError: undefined,
-      requestId: 'request-1',
+      requestId: 'request-1'
     })
   })
 
@@ -47,7 +47,7 @@ describe('mutateGoogleAds', () => {
     const partialFailureError = { code: 3, message: 'One operation failed' }
     const request = vi.fn().mockResolvedValue({
       data: { results: [{ resourceName: 'customers/1234567890/campaigns/1' }], partialFailureError },
-      requestId: 'request-2',
+      requestId: 'request-2'
     })
 
     await expect(mutateGoogleAds({
@@ -57,11 +57,11 @@ describe('mutateGoogleAds', () => {
       validateOnly: false,
       atomicity: 'independent',
       partialFailure: true,
-      operations: [{ update: { resourceName: 'customers/1234567890/campaigns/1', status: 'PAUSED' }, updateMask: 'status' }],
+      operations: [{ update: { resourceName: 'customers/1234567890/campaigns/1', status: 'PAUSED' }, updateMask: 'status' }]
     }, { request })).resolves.toEqual({
       results: [{ resourceName: 'customers/1234567890/campaigns/1' }],
       partialFailureError,
-      requestId: 'request-2',
+      requestId: 'request-2'
     })
   })
 
@@ -106,6 +106,61 @@ describe('mutateGoogleAds', () => {
     }))
   })
 
+  it('routes heterogeneous Performance Max operations through GoogleAdsService.Mutate', async () => {
+    const request = vi.fn().mockResolvedValue({ data: { mutateOperationResponses: [] } })
+    await mutateGoogleAds({
+      customerId: '1234567890',
+      service: 'googleAds',
+      auth,
+      validateOnly: true,
+      atomicity: 'interdependent',
+      operations: [
+        { mutate: { assetGroupOperation: { create: {
+          resourceName: 'customers/1234567890/assetGroups/-1',
+          campaign: 'customers/1234567890/campaigns/60',
+          name: 'SUVs',
+          finalUrls: ['https://example.com/suv'],
+          status: 'PAUSED'
+        } } } },
+        { mutate: { assetGroupAssetOperation: { create: {
+          assetGroup: 'customers/1234567890/assetGroups/-1',
+          asset: 'customers/1234567890/assets/7001',
+          fieldType: 'HEADLINE'
+        } } } }
+      ]
+    }, { request })
+
+    expect(request).toHaveBeenCalledWith({
+      path: '/customers/1234567890/googleAds:mutate',
+      method: 'POST',
+      auth,
+      body: {
+        mutateOperations: [
+          { assetGroupOperation: { create: expect.objectContaining({ name: 'SUVs' }) } },
+          { assetGroupAssetOperation: { create: expect.objectContaining({ fieldType: 'HEADLINE' }) } }
+        ],
+        partialFailure: false,
+        validateOnly: true,
+        responseContentType: 'MUTABLE_RESOURCE'
+      },
+      retries: 0,
+      write: true
+    })
+  })
+
+  it('rejects bulk mutate envelopes on typed mutation services', async () => {
+    const request = vi.fn()
+    await expect(mutateGoogleAds({
+      customerId: '1234567890',
+      service: 'campaigns',
+      auth,
+      validateOnly: true,
+      atomicity: 'interdependent',
+      operations: [{ mutate: { campaignOperation: { create: { name: 'Draft' } } } }]
+    }, { request })).rejects.toThrow('Invalid Google Ads mutation operations')
+    expect(request).not.toHaveBeenCalled()
+  })
+
   it('rejects partial failure for interdependent operations', async () => {
     const request = vi.fn()
 
@@ -116,7 +171,7 @@ describe('mutateGoogleAds', () => {
       validateOnly: false,
       atomicity: 'interdependent',
       partialFailure: true,
-      operations: [{ update: { resourceName: 'customers/1234567890/campaigns/1', status: 'PAUSED' }, updateMask: 'status' }],
+      operations: [{ update: { resourceName: 'customers/1234567890/campaigns/1', status: 'PAUSED' }, updateMask: 'status' }]
     }, { request })).rejects.toThrow('Partial failure is only allowed for independent operations')
     expect(request).not.toHaveBeenCalled()
   })
@@ -130,7 +185,7 @@ describe('mutateGoogleAds', () => {
       auth,
       validateOnly: true,
       atomicity: 'independent',
-      operations: [{ create: { name: 'Draft' } }],
+      operations: [{ create: { name: 'Draft' } }]
     }, { request })).rejects.toThrow('Unsupported Google Ads mutation service')
     expect(request).not.toHaveBeenCalled()
   })
@@ -138,7 +193,7 @@ describe('mutateGoogleAds', () => {
   it.each([
     [[]],
     [[{ create: { name: 'A' }, remove: 'customers/1234567890/campaigns/1' }]],
-    [[{ update: { resourceName: 'customers/1234567890/campaigns/1' } }]],
+    [[{ update: { resourceName: 'customers/1234567890/campaigns/1' } }]]
   ])('rejects an invalid operation batch: %j', async (operations) => {
     const request = vi.fn()
 
@@ -148,7 +203,7 @@ describe('mutateGoogleAds', () => {
       auth,
       validateOnly: true,
       atomicity: 'independent',
-      operations: operations as never,
+      operations: operations as never
     }, { request })).rejects.toThrow('Invalid Google Ads mutation operations')
     expect(request).not.toHaveBeenCalled()
   })

@@ -1,10 +1,11 @@
 import {
   googleAdsRequest,
   type GoogleAdsAuth,
-  type GoogleAdsRequestOptions,
+  type GoogleAdsRequestOptions
 } from '~~/server/utils/googleAds/api'
 
 export const GOOGLE_ADS_MUTATION_SERVICES = [
+  'googleAds',
   'campaignBudgets',
   'campaigns',
   'adGroups',
@@ -30,17 +31,18 @@ export const GOOGLE_ADS_MUTATION_SERVICES = [
   'conversionGoalCampaignConfigs',
   'biddingStrategies',
   'audiences',
-  'customAudiences',
+  'customAudiences'
 ] as const
 
 export type GoogleAdsServiceName = typeof GOOGLE_ADS_MUTATION_SERVICES[number]
 
 type GoogleAdsResource = Record<string, unknown>
 
-export type GoogleAdsOperation =
-  | { create: GoogleAdsResource, update?: never, updateMask?: never, remove?: never }
-  | { create?: never, update: GoogleAdsResource, updateMask: string, remove?: never }
-  | { create?: never, update?: never, updateMask?: never, remove: string }
+export type GoogleAdsOperation
+  = | { create: GoogleAdsResource, update?: never, updateMask?: never, remove?: never }
+    | { create?: never, update: GoogleAdsResource, updateMask: string, remove?: never }
+    | { create?: never, update?: never, updateMask?: never, remove: string }
+    | { create?: never, update?: never, updateMask?: never, remove?: never, mutate: GoogleAdsResource }
 
 export interface MutateGoogleAdsInput {
   customerId: string
@@ -60,12 +62,12 @@ export interface GoogleAdsMutateResult {
 
 export interface GoogleAdsMutateDeps {
   request: (
-    options: GoogleAdsRequestOptions<Record<string, unknown>>,
+    options: GoogleAdsRequestOptions<Record<string, unknown>>
   ) => Promise<{ data: unknown, requestId?: string }>
 }
 
 const SERVICE_SET = new Set<string>(GOOGLE_ADS_MUTATION_SERVICES)
-const OPERATION_KEYS = new Set(['create', 'update', 'updateMask', 'remove'])
+const OPERATION_KEYS = new Set(['create', 'update', 'updateMask', 'remove', 'mutate'])
 
 function cleanCustomerId(value: string): string {
   const cleaned = value.replace(/-/g, '')
@@ -86,7 +88,8 @@ function isValidOperation(value: unknown): value is GoogleAdsOperation {
   const hasCreate = Object.hasOwn(value, 'create')
   const hasUpdate = Object.hasOwn(value, 'update')
   const hasRemove = Object.hasOwn(value, 'remove')
-  if (Number(hasCreate) + Number(hasUpdate) + Number(hasRemove) !== 1) return false
+  const hasMutate = Object.hasOwn(value, 'mutate')
+  if (Number(hasCreate) + Number(hasUpdate) + Number(hasRemove) + Number(hasMutate) !== 1) return false
 
   if (hasCreate) {
     return isResource(value.create) && !Object.hasOwn(value, 'updateMask')
@@ -96,6 +99,7 @@ function isValidOperation(value: unknown): value is GoogleAdsOperation {
       && typeof value.updateMask === 'string'
       && value.updateMask.trim().length > 0
   }
+  if (hasMutate) return isResource(value.mutate) && !Object.hasOwn(value, 'updateMask')
   return typeof value.remove === 'string'
     && value.remove.trim().length > 0
     && !Object.hasOwn(value, 'updateMask')
@@ -112,32 +116,40 @@ function validateOperations(operations: unknown): asserts operations is GoogleAd
 
 function normalizeMutationResponse(
   data: unknown,
-  requestId?: string,
+  requestId?: string
 ): GoogleAdsMutateResult {
   if (!isResource(data)) throw new Error('Invalid Google Ads mutation response')
-  const results = data.results === undefined ? [] : data.results
+  const results = data.results === undefined
+    ? data.mutateOperationResponses === undefined ? [] : data.mutateOperationResponses
+    : data.results
   if (!Array.isArray(results)) throw new Error('Invalid Google Ads mutation response')
 
   return {
     results,
     partialFailureError: data.partialFailureError,
-    requestId,
+    requestId
   }
 }
 
 const defaultDeps: GoogleAdsMutateDeps = {
-  request: options => googleAdsRequest(options),
+  request: options => googleAdsRequest(options)
 }
 
 export async function mutateGoogleAds(
   input: MutateGoogleAdsInput,
-  deps: Partial<GoogleAdsMutateDeps> = {},
+  deps: Partial<GoogleAdsMutateDeps> = {}
 ): Promise<GoogleAdsMutateResult> {
   const customerId = cleanCustomerId(input.customerId)
   if (!SERVICE_SET.has(input.service)) {
     throw new Error('Unsupported Google Ads mutation service')
   }
   validateOperations(input.operations)
+
+  const bulkMutate = input.service === 'googleAds'
+  const hasBulkEnvelopes = input.operations.some(operation => 'mutate' in operation)
+  if (bulkMutate !== hasBulkEnvelopes || (bulkMutate && input.operations.some(operation => !('mutate' in operation)))) {
+    throw new Error('Invalid Google Ads mutation operations')
+  }
 
   const partialFailure = input.partialFailure ?? false
   if (partialFailure && input.atomicity !== 'independent') {
@@ -150,13 +162,15 @@ export async function mutateGoogleAds(
     method: 'POST',
     auth: input.auth,
     body: {
-      operations: input.operations,
+      ...(bulkMutate
+        ? { mutateOperations: input.operations.map(operation => ('mutate' in operation ? operation.mutate : operation)) }
+        : { operations: input.operations }),
       partialFailure,
       validateOnly: input.validateOnly,
-      responseContentType: 'MUTABLE_RESOURCE',
+      responseContentType: 'MUTABLE_RESOURCE'
     },
     retries: 0,
-    write: true,
+    write: true
   })
 
   return normalizeMutationResponse(response.data, response.requestId)
