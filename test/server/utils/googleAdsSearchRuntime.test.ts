@@ -389,6 +389,51 @@ describe('Search Google Ads governed execution runtime', () => {
     } as GoogleAdsActionPlan)).toBe(false)
   })
 
+  it('accepts only the exact tenant-bound asset-group membership replacement', () => {
+    const assetGroupResourceName = 'customers/1234567890/assetGroups/7001'
+    const plan = {
+      operation: 'manage_asset_group_assets',
+      customerId: '1234567890',
+      currentState: {
+        assetGroup: {
+          resourceName: assetGroupResourceName,
+          assets: [{
+            fieldType: 'HEADLINE', assetResourceName: 'customers/1234567890/assets/7003'
+          }]
+        }
+      },
+      desiredState: {
+        assetGroupResourceName,
+        assets: [{
+          fieldType: 'HEADLINE', assetResourceName: 'customers/1234567890/assets/7013'
+        }]
+      },
+      providerOperations: [{
+        service: 'assetGroupAssets',
+        operations: [
+          { create: {
+            assetGroup: assetGroupResourceName,
+            asset: 'customers/1234567890/assets/7013',
+            fieldType: 'HEADLINE'
+          } },
+          { remove: 'customers/1234567890/assetGroupAssets/7001~7003~HEADLINE' }
+        ]
+      }]
+    } as GoogleAdsActionPlan
+    expect(isExecutableSearchGoogleAdsPlan(plan)).toBe(true)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      providerOperations: [{ service: 'assets' }]
+    } as GoogleAdsActionPlan)).toBe(false)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      providerOperations: [{
+        service: 'assetGroupAssets',
+        operations: [{ remove: 'customers/9999999999/assetGroupAssets/7001~7003~HEADLINE' }]
+      }]
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
   it.each([
     ['customer', 'customerAssets'],
     ['campaign', 'campaignAssets'],

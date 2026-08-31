@@ -217,6 +217,50 @@ describe('Search Google Ads current-state loader', () => {
     }), auth, { query: duplicateQuery })).rejects.toThrow('already exists')
   })
 
+  it('loads existing membership, campaign rules, and requested asset types before replacement', async () => {
+    const assetGroupResourceName = 'customers/1234567890/assetGroups/7001'
+    const campaignResourceName = 'customers/1234567890/campaigns/60'
+    const assetResourceName = 'customers/1234567890/assets/7013'
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ assetGroup: {
+        resourceName: assetGroupResourceName,
+        campaign: campaignResourceName,
+        name: 'SUV range',
+        finalUrls: ['https://example.com/suv'],
+        finalMobileUrls: [],
+        status: 'PAUSED'
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ assetGroupAsset: {
+        asset: 'customers/1234567890/assets/7003', fieldType: 'HEADLINE', status: 'ENABLED'
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ campaign: {
+        resourceName: campaignResourceName,
+        advertisingChannelType: 'PERFORMANCE_MAX',
+        brandGuidelinesEnabled: true,
+        shoppingSetting: {}
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ assetGroup: { resourceName: assetGroupResourceName } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ asset: {
+        resourceName: assetResourceName, type: 'TEXT', textAsset: { text: 'New GAC SUV' }
+      } }], more: 0 })
+    await expect(loadSearchGoogleAdsCurrentState(context('manage_asset_group_assets', {
+      assetGroupResourceName,
+      assets: [{ fieldType: 'HEADLINE', assetResourceName }]
+    }), auth, { query })).resolves.toEqual({
+      assetGroup: {
+        resourceName: assetGroupResourceName,
+        campaign: campaignResourceName,
+        status: 'PAUSED',
+        assets: [{
+          fieldType: 'HEADLINE', assetResourceName: 'customers/1234567890/assets/7003'
+        }]
+      },
+      campaign: { brandGuidelinesEnabled: true, merchantId: null },
+      assets: [{ resourceName: assetResourceName, type: 'TEXT', text: 'New GAC SUV' }]
+    })
+    expect(query).toHaveBeenCalledTimes(5)
+  })
+
   it('prevalidates an asset, campaign, and existing link before attachment', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({
@@ -1553,6 +1597,37 @@ describe('Search Google Ads persisted-plan state loading', () => {
       assets: [{ fieldType: 'HEADLINE', assetResourceName }]
     })
     expect(query.mock.calls[0]?.[0].query).toContain('asset_group.id = 7001')
+  })
+
+  it('re-reads exact Performance Max asset-group membership after replacement', async () => {
+    const assetGroupResourceName = 'customers/1234567890/assetGroups/7001'
+    const assetResourceName = 'customers/1234567890/assets/7013'
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ assetGroup: {
+        resourceName: assetGroupResourceName,
+        campaign: 'customers/1234567890/campaigns/60',
+        name: 'SUV range',
+        finalUrls: ['https://example.com/suv'],
+        finalMobileUrls: [],
+        status: 'PAUSED'
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ assetGroupAsset: {
+        asset: assetResourceName, fieldType: 'HEADLINE', status: 'ENABLED'
+      } }], more: 0 })
+    const plan = {
+      operation: 'manage_asset_group_assets',
+      customerId: '1234567890',
+      desiredState: {
+        assetGroupResourceName,
+        assets: [{ fieldType: 'HEADLINE', assetResourceName }]
+      }
+    } as GoogleAdsActionPlan
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [{ resourceName: `customers/1234567890/assetGroupAssets/7001~7013~HEADLINE` }]
+    })).resolves.toEqual({
+      assetGroupResourceName,
+      assets: [{ fieldType: 'HEADLINE', assetResourceName }]
+    })
   })
 
   it('reads back reversible asset-link archive and explicit detachment states', async () => {

@@ -1867,4 +1867,71 @@ describe('Search Google Ads construction operations', () => {
       resourceName, status: 'PAUSED'
     }, { ...current, status: 'REMOVED' }))).toThrow('removed')
   })
+
+  it('atomically replaces Performance Max asset-group membership', () => {
+    const assetGroupResourceName = 'customers/1234567890/assetGroups/7001'
+    const links = [
+      ['HEADLINE', '7001'], ['HEADLINE', '7002'], ['HEADLINE', '7003'],
+      ['LONG_HEADLINE', '7004'], ['DESCRIPTION', '7005'], ['DESCRIPTION', '7006'],
+      ['MARKETING_IMAGE', '7007'], ['SQUARE_MARKETING_IMAGE', '7008']
+    ].map(([fieldType, id]) => ({
+      fieldType,
+      assetResourceName: `customers/1234567890/assets/${id}`
+    }))
+    const desired = links.map(link => link.assetResourceName.endsWith('/7003')
+      ? { ...link, assetResourceName: 'customers/1234567890/assets/7013' }
+      : link)
+    const current = {
+      assetGroup: {
+        resourceName: assetGroupResourceName,
+        campaign: 'customers/1234567890/campaigns/60',
+        status: 'PAUSED',
+        assets: links
+      },
+      campaign: { brandGuidelinesEnabled: true, merchantId: null },
+      assets: desired.map(link => ({
+        resourceName: link.assetResourceName,
+        type: ['MARKETING_IMAGE', 'SQUARE_MARKETING_IMAGE'].includes(link.fieldType) ? 'IMAGE' : 'TEXT'
+      }))
+    }
+    const built = buildSearchGoogleAdsAction(context('manage_asset_group_assets', 'asset_group', {
+      assetGroupResourceName,
+      assets: desired
+    }, current))
+    expect(built.resourceName).toBe(assetGroupResourceName)
+    expect(built.desiredState).toEqual({ assetGroupResourceName, assets: expect.any(Array) })
+    expect(built.providerOperations).toEqual([{
+      service: 'assetGroupAssets',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        { create: {
+          assetGroup: assetGroupResourceName,
+          asset: 'customers/1234567890/assets/7013',
+          fieldType: 'HEADLINE'
+        } },
+        { remove: 'customers/1234567890/assetGroupAssets/7001~7003~HEADLINE' }
+      ]
+    }])
+  })
+
+  it('rejects incomplete and unchanged Performance Max membership replacements', () => {
+    const assetGroupResourceName = 'customers/1234567890/assetGroups/7001'
+    const current = {
+      assetGroup: {
+        resourceName: assetGroupResourceName,
+        campaign: 'customers/1234567890/campaigns/60',
+        status: 'PAUSED',
+        assets: []
+      },
+      campaign: { brandGuidelinesEnabled: true, merchantId: null },
+      assets: []
+    }
+    expect(() => buildSearchGoogleAdsAction(context('manage_asset_group_assets', 'asset_group', {
+      assetGroupResourceName, assets: []
+    }, current))).toThrow('at least 3 HEADLINE')
+    expect(() => buildSearchGoogleAdsAction(context('manage_asset_group_assets', 'asset_group', {
+      assetGroupResourceName, assets: []
+    }, { ...current, campaign: { ...current.campaign, merchantId: '12345' } }))).toThrow('already match')
+  })
 })

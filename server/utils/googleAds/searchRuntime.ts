@@ -354,7 +354,8 @@ const EXECUTABLE_SEARCH_SERVICES = {
   archive_asset_link: ['customerAssets', 'campaignAssets', 'adGroupAssets'],
   detach_asset: ['customerAssets', 'campaignAssets', 'adGroupAssets'],
   create_asset_group: ['googleAds'],
-  update_asset_group: ['assetGroups']
+  update_asset_group: ['assetGroups'],
+  manage_asset_group_assets: ['assetGroupAssets']
 } as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -454,6 +455,59 @@ function isTypedAssetGroupUpdate(plan: GoogleAdsActionPlan): boolean {
   })
 }
 
+const RuntimePmaxAssetLinkSchema = z.object({
+  fieldType: z.enum([
+    'HEADLINE', 'LONG_HEADLINE', 'DESCRIPTION', 'MARKETING_IMAGE',
+    'SQUARE_MARKETING_IMAGE', 'BUSINESS_NAME', 'LOGO', 'PORTRAIT_MARKETING_IMAGE',
+    'LANDSCAPE_LOGO', 'YOUTUBE_VIDEO', 'CALL_TO_ACTION_SELECTION', 'MEDIA_BUNDLE'
+  ]),
+  assetResourceName: z.string()
+})
+
+function runtimeAssetLinkKey(link: z.infer<typeof RuntimePmaxAssetLinkSchema>): string {
+  return `${link.fieldType}:${link.assetResourceName}`
+}
+
+function isTypedAssetGroupMembership(plan: GoogleAdsActionPlan): boolean {
+  const desired = z.object({
+    assetGroupResourceName: z.string(),
+    assets: z.array(RuntimePmaxAssetLinkSchema)
+  }).safeParse(plan.desiredState)
+  const current = z.object({
+    assetGroup: z.object({
+      resourceName: z.string(),
+      assets: z.array(RuntimePmaxAssetLinkSchema)
+    })
+  }).safeParse(plan.currentState)
+  if (!desired.success || !current.success || plan.providerOperations.length !== 1) return false
+  const customerPrefix = `customers/${plan.customerId}`
+  const groupMatch = desired.data.assetGroupResourceName.match(/^customers\/(\d+)\/assetGroups\/(\d+)$/)
+  if (!groupMatch || groupMatch[1] !== plan.customerId
+    || current.data.assetGroup.resourceName !== desired.data.assetGroupResourceName) return false
+  const allLinks = [...desired.data.assets, ...current.data.assetGroup.assets]
+  if (!allLinks.every(link => link.assetResourceName.startsWith(`${customerPrefix}/assets/`))) return false
+  const desiredKeys = new Set(desired.data.assets.map(runtimeAssetLinkKey))
+  const currentKeys = new Set(current.data.assetGroup.assets.map(runtimeAssetLinkKey))
+  const creates = desired.data.assets
+    .filter(link => !currentKeys.has(runtimeAssetLinkKey(link)))
+    .sort((left, right) => runtimeAssetLinkKey(left).localeCompare(runtimeAssetLinkKey(right)))
+    .map(link => ({ create: {
+      assetGroup: desired.data.assetGroupResourceName,
+      asset: link.assetResourceName,
+      fieldType: link.fieldType
+    } }))
+  const removes = current.data.assetGroup.assets
+    .filter(link => !desiredKeys.has(runtimeAssetLinkKey(link)))
+    .sort((left, right) => runtimeAssetLinkKey(left).localeCompare(runtimeAssetLinkKey(right)))
+    .map((link) => {
+      const assetId = link.assetResourceName.slice(link.assetResourceName.lastIndexOf('/') + 1)
+      return { remove: `${customerPrefix}/assetGroupAssets/${groupMatch[2]}~${assetId}~${link.fieldType}` }
+    })
+  const mutation = plan.providerOperations[0]
+  return Boolean(mutation && mutation.service === 'assetGroupAssets'
+    && equalJson(mutation.operations, [...creates, ...removes]))
+}
+
 export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): boolean {
   if (!isSearchGoogleAdsOperation(plan.operation) || plan.providerOperations.length === 0) return false
   const services = EXECUTABLE_SEARCH_SERVICES[
@@ -463,6 +517,7 @@ export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): bool
   const requested = plan.providerOperations.map(mutation => mutation.service)
   if (plan.operation === 'create_asset_group') return isTypedAssetGroupCreateBundle(plan)
   if (plan.operation === 'update_asset_group') return isTypedAssetGroupUpdate(plan)
+  if (plan.operation === 'manage_asset_group_assets') return isTypedAssetGroupMembership(plan)
   if (plan.operation === 'attach_asset'
     || plan.operation === 'archive_asset_link'
     || plan.operation === 'detach_asset') {
