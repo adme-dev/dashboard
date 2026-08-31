@@ -3,6 +3,8 @@ import { z } from 'zod'
 const ScopedId = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
 const Digest = z.string().regex(/^[a-f0-9]{64}$/)
 
+export const PageStudioControlIdSchema = ScopedId
+
 export const PageStudioControlScopeSchema = z.object({
   clientId: z.string().uuid(),
   siteId: z.string().uuid(),
