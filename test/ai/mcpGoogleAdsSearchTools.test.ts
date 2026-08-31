@@ -29,7 +29,8 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_create_responsive_search_ad',
       'google_ads_plan_add_keywords',
       'google_ads_plan_set_locations',
-      'google_ads_plan_set_location_match_mode'
+      'google_ads_plan_set_location_match_mode',
+      'google_ads_plan_set_languages'
     ])
     const serialized = JSON.stringify(googleAdsSearchPlanningTools)
     expect(serialized).not.toMatch(/"(?:query|operations|url|accessToken|developerToken)"/)
@@ -213,6 +214,19 @@ describe('Google Ads Search MCP planning descriptors', () => {
       expectedArguments: {
         campaignResourceName: 'customers/1234567890/campaigns/60',
         positiveGeoTargetType: 'PRESENCE'
+      }
+    },
+    {
+      tool: 'google_ads_plan_set_languages',
+      args: {
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        languageConstantIds: ['1000', '1001']
+      },
+      operation: 'set_languages',
+      resourceType: 'language',
+      expectedArguments: {
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        languageConstantIds: ['1000', '1001']
       }
     }
   ])('maps $tool to a typed proposal-only plan', async ({

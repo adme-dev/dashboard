@@ -302,6 +302,41 @@ describe('Search Google Ads current-state loader', () => {
     }))
     expect(query.mock.calls[0]?.[0].query).toContain('campaign.id = 60')
   })
+
+  it('loads a bounded sorted campaign language set after validating its parent', async () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ campaign: { resourceName: campaign } }], more: 0 })
+      .mockResolvedValueOnce({
+        rows: [
+          { campaignCriterion: {
+            resourceName: 'customers/1234567890/campaignCriteria/60~11',
+            negative: false,
+            language: { languageConstant: 'languageConstants/1001' }
+          } },
+          { campaignCriterion: {
+            resourceName: 'customers/1234567890/campaignCriteria/60~10',
+            negative: false,
+            language: { languageConstant: 'languageConstants/1000' }
+          } }
+        ],
+        more: 0
+      })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('set_languages', {
+      campaignResourceName: campaign,
+      languageConstantIds: ['1000']
+    }), auth, { query })).resolves.toEqual({
+      campaignResourceName: campaign,
+      languageIds: ['1000', '1001'],
+      criteria: {
+        1000: 'customers/1234567890/campaignCriteria/60~10',
+        1001: 'customers/1234567890/campaignCriteria/60~11'
+      }
+    })
+    expect(query.mock.calls[1]?.[0]).toMatchObject({ maxRows: 10_000 })
+    expect(query.mock.calls[1]?.[0].query).toContain('campaign_criterion.type = \'LANGUAGE\'')
+  })
 })
 
 describe('Search Google Ads readback verification', () => {

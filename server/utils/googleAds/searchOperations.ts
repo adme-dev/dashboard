@@ -67,6 +67,10 @@ const SetLocationMatchModeArgumentsSchema = z.strictObject({
   campaignResourceName: z.string().trim().min(1).max(1_000),
   positiveGeoTargetType: z.enum(['PRESENCE', 'PRESENCE_OR_INTEREST'])
 })
+const SetLanguagesArgumentsSchema = z.strictObject({
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  languageConstantIds: z.array(z.string().regex(/^\d{1,20}$/)).min(1).max(1_000)
+})
 
 const STATUS_OPERATIONS = {
   pause_campaign: { resourceType: 'campaign', segment: 'campaigns', service: 'campaigns', status: 'PAUSED' },
@@ -103,7 +107,8 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'create_ad',
       'add_keywords',
       'set_locations',
-      'set_location_match_mode'
+      'set_location_match_mode',
+      'set_languages'
     ].includes(operation)
 }
 
@@ -183,6 +188,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'add_keywords') return PositiveKeywordArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_locations') return SetLocationsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_location_match_mode') return SetLocationMatchModeArgumentsSchema.parse(argumentsValue)
+  if (operation === 'set_languages') return SetLanguagesArgumentsSchema.parse(argumentsValue)
   throw new Error(`Unsupported Search Google Ads operation: ${operation}`)
 }
 
@@ -496,6 +502,63 @@ function buildLocationMatchModeAction(context: BuildGoogleAdsActionContext): Bui
   }
 }
 
+function buildLanguageAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'language') throw new Error('Language targeting requires resource type language')
+  const args = SetLanguagesArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.campaignResourceName, context.customerId, 'campaigns')
+  const current = z.object({
+    campaignResourceName: z.literal(args.campaignResourceName),
+    languageIds: z.array(z.string().regex(/^\d{1,20}$/)),
+    criteria: z.record(z.string().regex(/^\d{1,20}$/), z.string())
+  }).parse(context.currentState)
+  const desiredIds = [...new Set(args.languageConstantIds)]
+    .sort((left, right) => left.localeCompare(right, 'en', { numeric: true }))
+  const desiredSet = new Set(desiredIds)
+  const currentSet = new Set(current.languageIds)
+  const additions = desiredIds.filter(id => !currentSet.has(id))
+  const removals = current.languageIds.filter(id => !desiredSet.has(id))
+  if (additions.length === 0 && removals.length === 0) {
+    throw new Error('Campaign language targeting already matches the requested set')
+  }
+
+  const campaignId = args.campaignResourceName.slice(args.campaignResourceName.lastIndexOf('/') + 1)
+  const retainedCriteria: Record<string, string> = {}
+  for (const id of desiredIds) {
+    const resourceName = current.criteria[id]
+    if (resourceName) retainedCriteria[id] = resourceName
+  }
+  const removeOperations = removals.map((id) => {
+    const resourceName = current.criteria[id]
+    if (!resourceName) throw new Error('Current campaign language criterion has no provider resource')
+    assertResourceName(resourceName, context.customerId, 'campaignCriteria')
+    if (!resourceName.includes(`/campaignCriteria/${campaignId}~`)) {
+      throw new Error('Campaign language criterion does not belong to the selected campaign')
+    }
+    return { remove: resourceName } as const
+  })
+  return {
+    resourceName: args.campaignResourceName,
+    desiredState: {
+      campaignResourceName: args.campaignResourceName,
+      languageIds: desiredIds,
+      criteria: retainedCriteria
+    },
+    providerOperations: [{
+      service: 'campaignCriteria',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        ...additions.map(id => ({ create: {
+          campaign: args.campaignResourceName,
+          negative: false,
+          language: { languageConstant: `languageConstants/${id}` }
+        } })),
+        ...removeOperations
+      ]
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -512,5 +575,6 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'add_keywords') return buildPositiveKeywordAction(context)
   if (context.input.operation === 'set_locations') return buildLocationAction(context)
   if (context.input.operation === 'set_location_match_mode') return buildLocationMatchModeAction(context)
+  if (context.input.operation === 'set_languages') return buildLanguageAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }

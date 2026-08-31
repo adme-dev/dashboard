@@ -20,6 +20,7 @@ export const GOOGLE_ADS_PLAN_CREATE_RSA_TOOL = 'google_ads_plan_create_responsiv
 export const GOOGLE_ADS_PLAN_ADD_KEYWORDS_TOOL = 'google_ads_plan_add_keywords'
 export const GOOGLE_ADS_PLAN_SET_LOCATIONS_TOOL = 'google_ads_plan_set_locations'
 export const GOOGLE_ADS_PLAN_SET_LOCATION_MATCH_MODE_TOOL = 'google_ads_plan_set_location_match_mode'
+export const GOOGLE_ADS_PLAN_SET_LANGUAGES_TOOL = 'google_ads_plan_set_languages'
 
 const CommonSchema = {
   clientId: z.string().uuid(),
@@ -113,6 +114,11 @@ const SetLocationMatchModeSchema = z.strictObject({
   campaignResourceName: z.string().trim().min(1).max(1_000),
   positiveGeoTargetType: z.enum(['PRESENCE', 'PRESENCE_OR_INTEREST'])
 })
+const SetLanguagesSchema = z.strictObject({
+  ...CommonSchema,
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  languageConstantIds: z.array(z.string().regex(/^\d{1,20}$/)).min(1).max(1_000)
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -182,6 +188,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_SET_LOCATION_MATCH_MODE_TOOL,
     'Plan the positive campaign geo-target mode. Use PRESENCE for presence-only targeting or PRESENCE_OR_INTEREST for Google\'s broader default.',
     SetLocationMatchModeSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_SET_LANGUAGES_TOOL,
+    'Plan an atomic replacement of campaign languages using Google language constant IDs.',
+    SetLanguagesSchema
   )
 ]
 
@@ -435,6 +446,22 @@ export async function executeGoogleAdsSearchPlanningTool(
         arguments: {
           campaignResourceName: args.campaignResourceName,
           positiveGeoTargetType: args.positiveGeoTargetType
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_SET_LANGUAGES_TOOL) {
+      const args = SetLanguagesSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'set_languages',
+        resourceType: 'language',
+        arguments: {
+          campaignResourceName: args.campaignResourceName,
+          languageConstantIds: args.languageConstantIds
         }
       }
     } else {

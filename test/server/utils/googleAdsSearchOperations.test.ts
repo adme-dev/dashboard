@@ -447,6 +447,42 @@ describe('Search Google Ads construction operations', () => {
     ))).toThrow('already matches')
   })
 
+  it('replaces campaign languages atomically', () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const built = buildSearchGoogleAdsAction(context(
+      'set_languages',
+      'language',
+      { campaignResourceName: campaign, languageConstantIds: ['1000', '1002'] },
+      {
+        campaignResourceName: campaign,
+        languageIds: ['1000', '1001'],
+        criteria: {
+          1000: 'customers/1234567890/campaignCriteria/60~10',
+          1001: 'customers/1234567890/campaignCriteria/60~11'
+        }
+      }
+    ))
+
+    expect(built.desiredState).toEqual({
+      campaignResourceName: campaign,
+      languageIds: ['1000', '1002'],
+      criteria: { 1000: 'customers/1234567890/campaignCriteria/60~10' }
+    })
+    expect(built.providerOperations).toEqual([{
+      service: 'campaignCriteria',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        { create: {
+          campaign,
+          negative: false,
+          language: { languageConstant: 'languageConstants/1002' }
+        } },
+        { remove: 'customers/1234567890/campaignCriteria/60~11' }
+      ]
+    }])
+  })
+
   it('rejects unsafe URLs and campaigns that attempt to start enabled', () => {
     expect(() => buildSearchGoogleAdsAction(context(
       'create_ad',
