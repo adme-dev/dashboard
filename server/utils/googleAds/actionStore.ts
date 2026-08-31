@@ -293,6 +293,13 @@ export async function claimGoogleAdsActionPlan(
   const clientId = UuidSchema.parse(input.clientId)
   const actorId = UuidSchema.parse(input.actorId)
   const expectedStatus = ExpectedStatusSchema.parse(input.expectedStatus)
+  if (expectedStatus === 'planned') {
+    const automatic = await dependencies.queryOne<Record<string, unknown>>(`
+      SELECT ${PLAN_COLUMNS}
+      FROM claim_google_ads_automatic_plan($1, $2, $3)
+    `, [id, clientId, actorId])
+    return automatic ? parsePlan(automatic) : null
+  }
   const row = await dependencies.queryOne<Record<string, unknown>>(`
     UPDATE google_ads_action_plans
     SET status = 'executing', claimed_at = NOW()

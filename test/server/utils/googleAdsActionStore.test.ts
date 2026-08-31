@@ -157,6 +157,22 @@ describe('Google Ads action store', () => {
     expect(params).toEqual([PLAN_ID, CLIENT_ID, ACTOR_ID, 'approved'])
   })
 
+  it('claims automatic plans through the serialized daily-quota function', async () => {
+    const executing = makePlan({ status: 'executing' })
+    const queryOne = vi.fn().mockResolvedValue(executing)
+
+    await expect(claimGoogleAdsActionPlan({
+      id: PLAN_ID,
+      clientId: CLIENT_ID,
+      actorId: ACTOR_ID,
+      expectedStatus: 'planned'
+    }, { queryOne })).resolves.toEqual(executing)
+
+    const [sql, params] = queryOne.mock.calls[0]!
+    expect(sql).toContain('claim_google_ads_automatic_plan($1, $2, $3)')
+    expect(params).toEqual([PLAN_ID, CLIENT_ID, ACTOR_ID])
+  })
+
   it('inserts events through a tenant-scoped plan selection', async () => {
     const queryOne = vi.fn().mockResolvedValue({
       id: '55555555-5555-4555-8555-555555555555',

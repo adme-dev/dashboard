@@ -76,16 +76,6 @@ interface LoadAutomationPolicyInput {
   actionClass: GoogleAdsAutomaticActionClass
 }
 
-interface AutomationPolicyRow {
-  id: string
-  actionClass: string
-  policyVersion: string
-  enabled: boolean
-  conditions: unknown
-  maxDailyActions: number | null
-  actionsToday: number
-}
-
 const AutomationPolicyRowSchema = z.object({
   id: z.string().uuid(),
   actionClass: z.enum(['negative_keywords', 'pause', 'recommendation_dismissal', 'asset_detachment']),
@@ -96,10 +86,19 @@ const AutomationPolicyRowSchema = z.object({
   actionsToday: z.number().int().nonnegative()
 }).required()
 
+interface LoadGoogleAdsAutomationPolicyDependencies {
+  queryOne(sql: string, params: unknown[]): Promise<unknown>
+}
+
+const defaultLoadAutomationPolicyDependencies: LoadGoogleAdsAutomationPolicyDependencies = {
+  queryOne
+}
+
 export async function loadGoogleAdsAutomationPolicy(
-  input: LoadAutomationPolicyInput
+  input: LoadAutomationPolicyInput,
+  dependencies: LoadGoogleAdsAutomationPolicyDependencies = defaultLoadAutomationPolicyDependencies
 ): Promise<GoogleAdsAutomationPolicyGrant | null> {
-  const row = await queryOne<AutomationPolicyRow>(`
+  const rawRow = await dependencies.queryOne(`
     SELECT
       p.id,
       p.action_class AS "actionClass",
@@ -109,10 +108,25 @@ export async function loadGoogleAdsAutomationPolicy(
       p.max_daily_actions AS "maxDailyActions",
       COALESCE((
         SELECT COUNT(*)::int
-        FROM google_ads_action_plans ap
-        WHERE ap.grant_id = p.id::text
-          AND ap.status IN ('verified', 'partially_verified')
-          AND ap.completed_at >= date_trunc('day', NOW())
+        FROM (
+          SELECT reservation.plan_id
+          FROM google_ads_automation_quota_reservations reservation
+          WHERE reservation.grant_id = p.id
+            AND reservation.quota_day = (NOW() AT TIME ZONE 'UTC')::date
+          UNION
+          SELECT plan.id
+          FROM google_ads_action_plans plan
+          WHERE plan.grant_id = p.id::text
+            AND plan.status IN ('verified', 'partially_verified')
+            AND plan.completed_at >= (
+              (NOW() AT TIME ZONE 'UTC')::date AT TIME ZONE 'UTC'
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM google_ads_automation_quota_reservations existing
+              WHERE existing.plan_id = plan.id
+            )
+        ) used_actions
       ), 0)::int AS "actionsToday"
     FROM google_ads_automation_policies p
     WHERE p.client_id = $1
@@ -125,8 +139,8 @@ export async function loadGoogleAdsAutomationPolicy(
     ORDER BY p.version DESC
     LIMIT 1
   `, [input.clientId, input.connectionId, input.customerId, input.actionClass])
-  return row
-    ? AutomationPolicyRowSchema.parse(row) as GoogleAdsAutomationPolicyGrant
+  return rawRow
+    ? AutomationPolicyRowSchema.parse(rawRow) as GoogleAdsAutomationPolicyGrant
     : null
 }
 

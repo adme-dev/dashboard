@@ -4,6 +4,7 @@ import { hashGoogleAdsValue } from '~~/server/utils/googleAds/actionPlanner'
 import {
   executeSearchGoogleAdsControlAction,
   isExecutableSearchGoogleAdsPlan,
+  loadGoogleAdsAutomationPolicy,
   planSearchGoogleAdsControlAction,
   validateSearchGoogleAdsControlPlan,
   type GoogleAdsControlAuthority
@@ -51,6 +52,31 @@ function dependencies(overrides: Record<string, unknown> = {}) {
 }
 
 describe('Search Google Ads governed planning runtime', () => {
+  it('counts UTC-day quota reservations when loading an automation grant', async () => {
+    const queryOne = vi.fn().mockResolvedValue({
+      id: '55555555-5555-4555-8555-555555555555',
+      actionClass: 'pause',
+      policyVersion: 'pause-v2',
+      enabled: true,
+      conditions: {},
+      maxDailyActions: 10,
+      actionsToday: 4
+    })
+
+    await expect(loadGoogleAdsAutomationPolicy({
+      clientId: CLIENT_ID,
+      connectionId: CONNECTION_ID,
+      customerId: '1234567890',
+      actionClass: 'pause'
+    }, { queryOne })).resolves.toMatchObject({ actionsToday: 4 })
+
+    const [sql, params] = queryOne.mock.calls[0]!
+    expect(sql).toContain('google_ads_automation_quota_reservations')
+    expect(sql).toContain('AT TIME ZONE \'UTC\'')
+    expect(sql).toContain('NOT EXISTS')
+    expect(params).toEqual([CLIENT_ID, CONNECTION_ID, '1234567890', 'pause'])
+  })
+
   it.each([
     ['manage_custom_audience', 'customAudiences'],
     ['archive_custom_audience', 'customAudiences'],
@@ -130,6 +156,36 @@ describe('Search Google Ads governed planning runtime', () => {
       riskTier: 'automatic',
       executionMode: 'automatic',
       status: 'planned'
+    })
+  })
+
+  it('fails closed when the automatic-action daily quota is exhausted', async () => {
+    const deps = dependencies({
+      loadAutomationPolicy: vi.fn().mockResolvedValue({
+        id: '55555555-5555-4555-8555-555555555555',
+        actionClass: 'pause',
+        policyVersion: 'pause-v2',
+        enabled: true,
+        conditions: {},
+        maxDailyActions: 10,
+        actionsToday: 10
+      })
+    })
+
+    await expect(planSearchGoogleAdsControlAction({
+      clientId: CLIENT_ID,
+      connectionId: CONNECTION_ID,
+      actorId: ACTOR_ID,
+      source: 'automation',
+      operation: 'pause_campaign',
+      resourceType: 'campaign',
+      requestedMode: 'automatic',
+      arguments: { resourceName: 'customers/1234567890/campaigns/10' },
+      idempotencyKey: 'quota-exhausted-pause-campaign-10'
+    }, authority, flags, deps)).resolves.toMatchObject({
+      status: 'cancelled',
+      executionMode: 'blocked',
+      policyDecision: { allowed: false }
     })
   })
 
