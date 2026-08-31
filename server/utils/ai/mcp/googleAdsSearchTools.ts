@@ -34,6 +34,7 @@ export const GOOGLE_ADS_PLAN_CREATE_CONVERSION_ACTION_TOOL = 'google_ads_plan_cr
 export const GOOGLE_ADS_PLAN_UPDATE_CONVERSION_ACTION_TOOL = 'google_ads_plan_update_conversion_action'
 export const GOOGLE_ADS_PLAN_ARCHIVE_CONVERSION_ACTION_TOOL = 'google_ads_plan_archive_conversion_action'
 export const GOOGLE_ADS_PLAN_REMOVE_CONVERSION_ACTION_TOOL = 'google_ads_plan_remove_conversion_action'
+export const GOOGLE_ADS_PLAN_CREATE_CUSTOM_CONVERSION_GOAL_TOOL = 'google_ads_plan_create_custom_conversion_goal'
 export const GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_create_custom_audience'
 export const GOOGLE_ADS_PLAN_UPDATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_update_custom_audience'
 export const GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_archive_custom_audience'
@@ -410,6 +411,15 @@ const ConversionActionDispositionSchema = z.strictObject({
   ...CommonSchema,
   resourceName: z.string().trim().min(1).max(1_000)
 })
+const CreateCustomConversionGoalSchema = z.strictObject({
+  ...CommonSchema,
+  name: z.string().trim().min(1).max(255),
+  conversionActionResourceNames: z.array(z.string().trim().min(1).max(1_000)).min(1).max(100)
+}).superRefine((value, refinement) => {
+  if (new Set(value.conversionActionResourceNames).size !== value.conversionActionResourceNames.length) {
+    refinement.addIssue({ code: 'custom', message: 'Custom conversion-goal actions must be unique' })
+  }
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -549,6 +559,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_REMOVE_CONVERSION_ACTION_TOOL,
     'Plan permanent provider removal of a conversion action. This requires the destructive feature gate and owner/admin confirmation.',
     ConversionActionDispositionSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_CREATE_CUSTOM_CONVERSION_GOAL_TOOL,
+    'Plan a typed custom conversion goal using a bounded, unique set of conversion actions owned by the selected conversion customer.',
+    CreateCustomConversionGoalSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL,
@@ -1036,6 +1051,22 @@ export async function executeGoogleAdsSearchPlanningTool(
           : 'remove_conversion_action',
         resourceType: 'conversion_action',
         arguments: { resourceName: args.resourceName }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_CREATE_CUSTOM_CONVERSION_GOAL_TOOL) {
+      const args = CreateCustomConversionGoalSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'create_custom_conversion_goal',
+        resourceType: 'custom_conversion_goal',
+        arguments: {
+          name: args.name,
+          conversionActionResourceNames: args.conversionActionResourceNames
+        }
       }
     } else if (name === GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL) {
       const args = CreateCustomAudienceSchema.parse(rawArgs)

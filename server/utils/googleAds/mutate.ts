@@ -26,6 +26,7 @@ export const GOOGLE_ADS_MUTATION_SERVICES = [
   'conversionActions',
   'campaignConversionGoals',
   'customerConversionGoals',
+  'customConversionGoals',
   'biddingStrategies',
   'audiences',
   'customAudiences',

@@ -65,6 +65,27 @@ describe('mutateGoogleAds', () => {
     })
   })
 
+  it('routes custom conversion goals through the v25 typed mutation service', async () => {
+    const request = vi.fn().mockResolvedValue({ data: { results: [] } })
+    await mutateGoogleAds({
+      customerId: '1234567890',
+      service: 'customConversionGoals',
+      auth,
+      validateOnly: true,
+      atomicity: 'interdependent',
+      operations: [{ create: {
+        name: 'Qualified dealer leads',
+        status: 'ENABLED',
+        conversionActions: ['customers/1234567890/conversionActions/9001']
+      } }]
+    }, { request })
+
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({
+      path: '/customers/1234567890/customConversionGoals:mutate',
+      write: true
+    }))
+  })
+
   it('rejects partial failure for interdependent operations', async () => {
     const request = vi.fn()
 

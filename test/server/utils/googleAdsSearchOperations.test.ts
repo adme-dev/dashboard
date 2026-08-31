@@ -1006,6 +1006,50 @@ describe('Search Google Ads construction operations', () => {
     ))).toThrow('already removed')
   })
 
+  it('creates a typed custom conversion goal from a unique tenant-bound action set', () => {
+    const first = 'customers/1234567890/conversionActions/9001'
+    const second = 'customers/1234567890/conversionActions/9002'
+    expect(buildSearchGoogleAdsAction(context(
+      'create_custom_conversion_goal',
+      'custom_conversion_goal',
+      { name: 'Qualified dealer leads', conversionActionResourceNames: [second, first] },
+      { exists: false }
+    ))).toEqual({
+      resourceName: null,
+      desiredState: {
+        name: 'Qualified dealer leads',
+        status: 'ENABLED',
+        conversionActions: [first, second]
+      },
+      providerOperations: [{
+        service: 'customConversionGoals',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ create: {
+          name: 'Qualified dealer leads',
+          status: 'ENABLED',
+          conversionActions: [first, second]
+        } }]
+      }]
+    })
+  })
+
+  it('rejects duplicate, empty, and cross-tenant custom conversion-goal action sets', () => {
+    const resourceName = 'customers/1234567890/conversionActions/9001'
+    expect(() => parseSearchGoogleAdsArguments('create_custom_conversion_goal', {
+      name: 'Qualified dealer leads', conversionActionResourceNames: []
+    })).toThrow()
+    expect(() => parseSearchGoogleAdsArguments('create_custom_conversion_goal', {
+      name: 'Qualified dealer leads', conversionActionResourceNames: [resourceName, resourceName]
+    })).toThrow('must be unique')
+    expect(() => buildSearchGoogleAdsAction(context(
+      'create_custom_conversion_goal', 'custom_conversion_goal', {
+        name: 'Qualified dealer leads',
+        conversionActionResourceNames: ['customers/9999999999/conversionActions/9001']
+      }, { exists: false }
+    ))).toThrow('selected Google Ads customer')
+  })
+
   it('creates a typed custom audience with every supported member type', () => {
     const built = buildSearchGoogleAdsAction(context(
       'manage_custom_audience',

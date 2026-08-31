@@ -40,6 +40,7 @@ export const GoogleAdsResourceTypeSchema = z.enum([
   'listing_group',
   'conversion_action',
   'conversion_goal',
+  'custom_conversion_goal',
   'recommendation'
 ])
 export type GoogleAdsResourceType = z.infer<typeof GoogleAdsResourceTypeSchema>
@@ -105,6 +106,7 @@ export const GoogleAdsOperationTypeSchema = z.enum([
   'update_conversion_action',
   'archive_conversion_action',
   'remove_conversion_action',
+  'create_custom_conversion_goal',
   'set_conversion_primary_state',
   'set_campaign_conversion_goals',
   'set_conversion_goal',

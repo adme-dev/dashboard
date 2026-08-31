@@ -356,6 +356,14 @@ const UpdateConversionActionArgumentsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'At least one mutable conversion-action field is required' })
   }
 })
+const CreateCustomConversionGoalArgumentsSchema = z.strictObject({
+  name: z.string().trim().min(1).max(255),
+  conversionActionResourceNames: z.array(z.string().trim().min(1).max(1_000)).min(1).max(100)
+}).superRefine((value, refinement) => {
+  if (new Set(value.conversionActionResourceNames).size !== value.conversionActionResourceNames.length) {
+    refinement.addIssue({ code: 'custom', message: 'Custom conversion-goal actions must be unique' })
+  }
+})
 const MutableConversionActionStateSchema = z.object({
   resourceName: z.string(),
   name: z.string(),
@@ -445,7 +453,8 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'create_conversion_action',
       'update_conversion_action',
       'archive_conversion_action',
-      'remove_conversion_action'
+      'remove_conversion_action',
+      'create_custom_conversion_goal'
     ].includes(operation)
 }
 
@@ -544,6 +553,9 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'update_conversion_action') return UpdateConversionActionArgumentsSchema.parse(argumentsValue)
   if (operation === 'archive_conversion_action' || operation === 'remove_conversion_action') {
     return ResourceNameArgumentsSchema.parse(argumentsValue)
+  }
+  if (operation === 'create_custom_conversion_goal') {
+    return CreateCustomConversionGoalArgumentsSchema.parse(argumentsValue)
   }
   throw new Error(`Unsupported Search Google Ads operation: ${operation}`)
 }
@@ -1486,6 +1498,36 @@ function buildConversionActionDisposition(
   }
 }
 
+function buildCreateCustomConversionGoal(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'custom_conversion_goal') {
+    throw new Error('Custom conversion-goal creation requires resource type custom_conversion_goal')
+  }
+  const args = CreateCustomConversionGoalArgumentsSchema.parse(context.input.arguments)
+  z.object({ exists: z.literal(false) }).parse(context.currentState)
+  const conversionActions = [...args.conversionActionResourceNames]
+    .sort((left, right) => left.localeCompare(right))
+  for (const resourceName of conversionActions) {
+    assertResourceName(resourceName, context.customerId, 'conversionActions')
+  }
+  // v25 custom goals are created in the conversion customer with a typed action list.
+  // https://developers.google.com/google-ads/api/reference/rpc/v25/CustomConversionGoal
+  const desiredState = {
+    name: args.name,
+    status: 'ENABLED',
+    conversionActions
+  }
+  return {
+    resourceName: null,
+    desiredState,
+    providerOperations: [{
+      service: 'customConversionGoals',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ create: desiredState }]
+    }]
+  }
+}
+
 function normalizeCustomAudienceMembers(
   members: z.infer<typeof CustomAudienceMembersSchema>
 ): z.infer<typeof CustomAudienceMembersSchema> {
@@ -1716,6 +1758,7 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'update_conversion_action') return buildUpdateConversionAction(context)
   if (context.input.operation === 'archive_conversion_action') return buildConversionActionDisposition(context, 'archive')
   if (context.input.operation === 'remove_conversion_action') return buildConversionActionDisposition(context, 'remove')
+  if (context.input.operation === 'create_custom_conversion_goal') return buildCreateCustomConversionGoal(context)
   if (context.input.operation === 'manage_custom_audience') return buildManageCustomAudienceAction(context)
   if (context.input.operation === 'archive_custom_audience') return buildArchiveCustomAudienceAction(context)
   if (context.input.operation === 'set_pmax_signals') return buildPmaxAudienceSignalsAction(context)

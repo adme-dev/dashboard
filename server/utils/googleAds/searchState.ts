@@ -148,6 +148,12 @@ const ConversionActionStateSchema = z.object({
   clickThroughLookbackWindowDays: z.union([z.string(), z.number()]).transform(String).optional(),
   viewThroughLookbackWindowDays: z.union([z.string(), z.number()]).transform(String).optional()
 })
+const CustomConversionGoalStateSchema = z.object({
+  resourceName: z.string(),
+  name: z.string().trim().min(1).max(255),
+  status: z.enum(['ENABLED', 'REMOVED']),
+  conversionActions: z.array(z.string())
+})
 const ProviderCustomAudienceMemberSchema = z.object({
   memberType: z.enum(['KEYWORD', 'URL', 'APP', 'PLACE_CATEGORY']),
   keyword: z.string().optional(),
@@ -553,6 +559,7 @@ function mutationResourceName(
     adGroups: 'adGroup',
     adGroupAds: 'adGroupAd',
     conversionActions: 'conversionAction',
+    customConversionGoals: 'customConversionGoal',
     customAudiences: 'customAudience'
   }[service] ?? ''
   const nested = singular ? record[singular] : undefined
@@ -1374,6 +1381,63 @@ WHERE conversion_action.name = '${escapeGaqlString(name)}'`
   return { exists: false }
 }
 
+async function loadCustomConversionGoal(
+  customerId: string,
+  resourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<z.infer<typeof CustomConversionGoalStateSchema>> {
+  assertCustomerResourceName(resourceName, customerId, 'customConversionGoals')
+  const [goalId] = resourceIds(resourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT custom_conversion_goal.resource_name,
+  custom_conversion_goal.name,
+  custom_conversion_goal.status,
+  custom_conversion_goal.conversion_actions
+FROM custom_conversion_goal
+WHERE custom_conversion_goal.id = ${goalId}`
+  })
+  const first = result.rows[0]
+  const raw = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).customConversionGoal
+    : undefined
+  const parsed = CustomConversionGoalStateSchema.safeParse(raw)
+  if (!parsed.success || parsed.data.resourceName !== resourceName || result.more > 0) {
+    throw new Error('Google Ads custom conversion goal was not found')
+  }
+  for (const actionResourceName of parsed.data.conversionActions) {
+    assertCustomerResourceName(actionResourceName, customerId, 'conversionActions')
+  }
+  return {
+    ...parsed.data,
+    conversionActions: [...parsed.data.conversionActions].sort((left, right) => left.localeCompare(right))
+  }
+}
+
+async function assertCustomConversionGoalNameAvailable(
+  customerId: string,
+  name: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<{ exists: false }> {
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT custom_conversion_goal.resource_name
+FROM custom_conversion_goal
+WHERE custom_conversion_goal.name = '${escapeGaqlString(name)}'
+  AND custom_conversion_goal.status != REMOVED`
+  })
+  if (result.rows.length > 0 || result.more > 0) {
+    throw new Error(`A Google Ads custom conversion goal named "${name}" already exists`)
+  }
+  return { exists: false }
+}
+
 async function loadCustomAudience(
   customerId: string,
   resourceName: string,
@@ -1758,6 +1822,12 @@ export async function loadSearchGoogleAdsCurrentState(
     ))
     return assertConversionActionNameAvailable(context.customerId, args.name, auth, resolved)
   }
+  if (context.input.operation === 'create_custom_conversion_goal') {
+    const args = z.object({ name: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation, context.input.arguments
+    ))
+    return assertCustomConversionGoalNameAvailable(context.customerId, args.name, auth, resolved)
+  }
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }
 
@@ -1807,6 +1877,18 @@ export async function loadSearchGoogleAdsPlanState(
     }
     const desired = z.object({ name: z.string() }).parse(plan.desiredState)
     return assertConversionActionNameAvailable(plan.customerId, desired.name, auth, resolved)
+  }
+  if (plan.operation === 'create_custom_conversion_goal') {
+    if (mutation) {
+      return loadCustomConversionGoal(
+        plan.customerId,
+        mutationResourceName(mutation, 'customConversionGoals'),
+        auth,
+        resolved
+      )
+    }
+    const desired = z.object({ name: z.string() }).parse(plan.desiredState)
+    return assertCustomConversionGoalNameAvailable(plan.customerId, desired.name, auth, resolved)
   }
   if (plan.operation === 'create_budget') {
     if (mutation) {

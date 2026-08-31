@@ -637,6 +637,18 @@ describe('Search Google Ads current-state loader', () => {
     }))
   })
 
+  it('checks custom conversion-goal names before planning creation', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [], more: 0 })
+    await expect(loadSearchGoogleAdsCurrentState(context('create_custom_conversion_goal', {
+      name: 'Qualified dealer leads',
+      conversionActionResourceNames: ['customers/1234567890/conversionActions/9001']
+    }), auth, { query })).resolves.toEqual({ exists: false })
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({
+      maxRows: 1,
+      query: expect.stringContaining('custom_conversion_goal.name = \'Qualified dealer leads\'')
+    }))
+  })
+
   it('loads and normalizes a tenant-bound custom audience before updating it', async () => {
     const resourceName = 'customers/1234567890/customAudiences/8001'
     const query = vi.fn().mockResolvedValue({
@@ -1208,6 +1220,39 @@ describe('Search Google Ads persisted-plan state loading', () => {
       results: [{ conversionAction: { resourceName } }]
     })).resolves.toMatchObject({ resourceName, name: 'Finance enquiry', primaryForGoal: true })
     expect(query.mock.calls[0]?.[0].query).toContain('conversion_action.id = 9001')
+  })
+
+  it('uses the provider result to read back a created custom conversion goal', async () => {
+    const resourceName = 'customers/1234567890/customConversionGoals/9101'
+    const conversionAction = 'customers/1234567890/conversionActions/9001'
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ customConversionGoal: {
+        resourceName,
+        name: 'Qualified dealer leads',
+        status: 'ENABLED',
+        conversionActions: [conversionAction]
+      } }],
+      more: 0
+    })
+    const plan = {
+      operation: 'create_custom_conversion_goal',
+      resourceType: 'custom_conversion_goal',
+      resourceName: null,
+      customerId: '1234567890',
+      desiredState: {
+        name: 'Qualified dealer leads', status: 'ENABLED', conversionActions: [conversionAction]
+      },
+      providerOperations: [{ service: 'customConversionGoals' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [{ customConversionGoal: { resourceName } }]
+    })).resolves.toEqual({
+      resourceName,
+      name: 'Qualified dealer leads',
+      status: 'ENABLED',
+      conversionActions: [conversionAction]
+    })
   })
 
   it('uses a nested provider result to read back a created custom audience', async () => {
