@@ -3,6 +3,7 @@ import type { GoogleAdsActionPlan } from '~~/server/utils/googleAds/contracts'
 import { hashGoogleAdsValue } from '~~/server/utils/googleAds/actionPlanner'
 import {
   executeSearchGoogleAdsControlAction,
+  isExecutableSearchGoogleAdsPlan,
   planSearchGoogleAdsControlAction,
   validateSearchGoogleAdsControlPlan,
   type GoogleAdsControlAuthority
@@ -187,6 +188,122 @@ describe('Search Google Ads governed planning runtime', () => {
 })
 
 describe('Search Google Ads governed execution runtime', () => {
+  it.each([
+    ['create_budget', 'campaignBudgets'],
+    ['update_budget', 'campaignBudgets'],
+    ['create_campaign', 'campaigns'],
+    ['create_ad_group', 'adGroups'],
+    ['create_ad', 'adGroupAds'],
+    ['add_keywords', 'adGroupCriteria']
+  ] as const)('activates governed execution for %s', (operation, service) => {
+    expect(isExecutableSearchGoogleAdsPlan({
+      operation,
+      providerOperations: [{ service }]
+    } as GoogleAdsActionPlan)).toBe(true)
+  })
+
+  it('rejects a persisted Search plan whose provider service does not match its typed operation', () => {
+    expect(isExecutableSearchGoogleAdsPlan({
+      operation: 'create_campaign',
+      providerOperations: [{ service: 'campaignBudgets' }]
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
+  it('uses the provider mutation resource to verify a created campaign', async () => {
+    const currentState = {
+      exists: false,
+      campaignBudgetResourceName: 'customers/1234567890/campaignBudgets/50'
+    }
+    const desiredState = {
+      name: 'Northern Search',
+      status: 'PAUSED',
+      advertisingChannelType: 'SEARCH',
+      campaignBudget: 'customers/1234567890/campaignBudgets/50',
+      manualCpc: {},
+      networkSettings: {
+        targetGoogleSearch: true,
+        targetSearchNetwork: true,
+        targetPartnerSearchNetwork: false,
+        targetContentNetwork: false
+      },
+      containsEuPoliticalAdvertising: 'DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING'
+    }
+    const plan = {
+      id: '44444444-4444-4444-8444-444444444444',
+      clientId: CLIENT_ID,
+      connectionId: CONNECTION_ID,
+      customerId: '1234567890',
+      actorId: ACTOR_ID,
+      source: 'mcp',
+      toolName: 'google_ads.create_campaign',
+      resourceType: 'campaign',
+      resourceName: null,
+      operation: 'create_campaign',
+      currentState,
+      desiredState,
+      currentStateFingerprint: hashGoogleAdsValue(currentState),
+      diff: [],
+      providerOperations: [{
+        service: 'campaigns',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ create: desiredState }]
+      }],
+      riskTier: 'confirm',
+      executionMode: 'proposal',
+      policyVersion: 'google-ads-v1',
+      policyDecision: { allowed: true, riskTier: 'confirm', executionMode: 'proposal' },
+      requestHash: 'b'.repeat(64),
+      idempotencyKey: 'create-campaign-60',
+      status: 'approved',
+      expiresAt: '2026-09-01T00:00:00.000Z',
+      createdAt: '2026-08-31T00:00:00.000Z'
+    } as GoogleAdsActionPlan
+    const liveMutation = {
+      results: [{ campaign: { resourceName: 'customers/1234567890/campaigns/60' } }],
+      requestId: 'live-create-request'
+    }
+    const loadPlanState = vi.fn()
+      .mockResolvedValueOnce(currentState)
+      .mockResolvedValueOnce({
+        resourceName: 'customers/1234567890/campaigns/60',
+        ...desiredState
+      })
+    const mutate = vi.fn()
+      .mockResolvedValueOnce({ results: [], requestId: 'validate-create-request' })
+      .mockResolvedValueOnce(liveMutation)
+
+    await expect(executeSearchGoogleAdsControlAction(plan, authority, flags, {
+      resolveSession: vi.fn().mockResolvedValue({
+        connection: {
+          clientId: CLIENT_ID,
+          connectionId: CONNECTION_ID,
+          customerId: '1234567890',
+          platform: 'google',
+          status: 'active'
+        },
+        auth: { accessToken: 'access', developerToken: 'developer' }
+      }),
+      loadPlan: vi.fn().mockResolvedValue(plan),
+      loadPlanState,
+      loadAutomationPolicy: vi.fn().mockResolvedValue(null),
+      mutate,
+      claim: vi.fn().mockResolvedValue(plan),
+      event: vi.fn().mockResolvedValue(undefined),
+      complete: vi.fn().mockResolvedValue(plan)
+    })).resolves.toMatchObject({
+      ok: true,
+      status: 'verified',
+      providerRequestId: 'live-create-request'
+    })
+    expect(loadPlanState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ operation: 'create_campaign' }),
+      expect.objectContaining({ accessToken: 'access' }),
+      {},
+      liveMutation
+    )
+  })
+
   it('validates, mutates once, and verifies a confirmed Search plan', async () => {
     const plan = {
       id: '44444444-4444-4444-8444-444444444444',

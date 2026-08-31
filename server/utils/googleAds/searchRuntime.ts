@@ -285,17 +285,37 @@ const defaultExecutionDependencies: SearchGoogleAdsExecutionDependencies = {
   complete: completeGoogleAdsActionPlan
 }
 
+const EXECUTABLE_SEARCH_SERVICES = {
+  pause_campaign: ['campaigns'],
+  archive_campaign: ['campaigns'],
+  enable_campaign: ['campaigns'],
+  set_campaign_status: ['campaigns'],
+  pause_ad_group: ['adGroups'],
+  archive_ad_group: ['adGroups'],
+  enable_ad_group: ['adGroups'],
+  set_ad_group_status: ['adGroups'],
+  pause_ad: ['adGroupAds'],
+  archive_ad: ['adGroupAds'],
+  enable_ad: ['adGroupAds'],
+  update_ad_status: ['adGroupAds'],
+  pause_keyword: ['adGroupCriteria'],
+  enable_keyword: ['adGroupCriteria'],
+  set_keyword_status: ['adGroupCriteria'],
+  add_negative_keywords: ['campaignCriteria', 'adGroupCriteria'],
+  create_budget: ['campaignBudgets'],
+  update_budget: ['campaignBudgets'],
+  create_campaign: ['campaigns'],
+  create_ad_group: ['adGroups'],
+  create_ad: ['adGroupAds'],
+  add_keywords: ['adGroupCriteria']
+} as const
+
 export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): boolean {
-  const activeOperation = [
-    'pause_campaign', 'archive_campaign', 'enable_campaign', 'set_campaign_status',
-    'pause_ad_group', 'archive_ad_group', 'enable_ad_group', 'set_ad_group_status',
-    'pause_ad', 'archive_ad', 'enable_ad', 'update_ad_status',
-    'pause_keyword', 'enable_keyword', 'set_keyword_status',
-    'add_negative_keywords'
-  ].includes(plan.operation)
-  return isSearchGoogleAdsOperation(plan.operation)
-    && activeOperation
-    && plan.providerOperations.length === 1
+  if (!isSearchGoogleAdsOperation(plan.operation) || plan.providerOperations.length !== 1) return false
+  const services = EXECUTABLE_SEARCH_SERVICES[
+    plan.operation as keyof typeof EXECUTABLE_SEARCH_SERVICES
+  ] as readonly string[] | undefined
+  return services?.includes(plan.providerOperations[0]?.service ?? '') ?? false
 }
 
 export async function validateSearchGoogleAdsControlPlan(
