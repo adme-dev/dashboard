@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+  activatePageStudioRelease: vi.fn(),
   getPageStudioBuildPointer: vi.fn(),
   getPageStudioReleasePointer: vi.fn(),
   requirePageStudioMachineAuth: vi.fn()
 }))
 
 vi.mock('~~/server/utils/pageStudio/publishing', () => ({
+  activatePageStudioRelease: (...args: unknown[]) => mocks.activatePageStudioRelease(...args),
   getPageStudioBuildPointer: (...args: unknown[]) => mocks.getPageStudioBuildPointer(...args),
   getPageStudioReleasePointer: (...args: unknown[]) => mocks.getPageStudioReleasePointer(...args),
   PageStudioPublishingError: class PageStudioPublishingError extends Error {}
@@ -29,6 +31,8 @@ vi.mock('~~/server/utils/pageStudio/http', () => ({
 
 type TestEvent = {
   context: Record<string, unknown>
+  body?: unknown
+  headers?: Record<string, string>
   params?: Record<string, string>
   query?: Record<string, unknown>
   responseStatus?: number
@@ -38,13 +42,17 @@ const testGlobal = globalThis as typeof globalThis & {
   createError: (input: Record<string, unknown>) => Error & Record<string, unknown>
   eventHandler: <T>(handler: T) => T
   getQuery: (event: TestEvent) => Record<string, unknown>
+  getHeader: (event: TestEvent, key: string) => string | undefined
   getRouterParam: (event: TestEvent, key: string) => string | undefined
+  readBody: (event: TestEvent) => Promise<unknown>
   setResponseStatus: (event: TestEvent, status: number) => void
 }
 testGlobal.createError = input => Object.assign(new Error(String(input.statusMessage)), input)
 testGlobal.eventHandler = handler => handler
 testGlobal.getQuery = event => event.query ?? {}
+testGlobal.getHeader = (event, key) => event.headers?.[key.toLowerCase()]
 testGlobal.getRouterParam = (event, key) => event.params?.[key]
+testGlobal.readBody = async event => event.body
 testGlobal.setResponseStatus = (event, status) => {
   event.responseStatus = status
 }
@@ -70,6 +78,11 @@ describe('Page Studio publishing catalog endpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requirePageStudioMachineAuth.mockReturnValue({ service: 'page-studio' })
+    mocks.activatePageStudioRelease.mockResolvedValue({
+      ...pointer,
+      environment: 'staging',
+      releaseId
+    })
     mocks.getPageStudioBuildPointer.mockResolvedValue(pointer)
     mocks.getPageStudioReleasePointer.mockResolvedValue({
       ...pointer,
@@ -126,5 +139,56 @@ describe('Page Studio publishing catalog endpoints', () => {
     })
     expect(event.responseStatus).toBe(400)
     expect(mocks.getPageStudioBuildPointer).not.toHaveBeenCalled()
+  })
+
+  it('machine-authenticates and validates an activation plus its idempotency header', async () => {
+    const { default: handler } = await import(
+      '~~/server/routes/internal/page-studio/releases/activate.post'
+    )
+    const body = {
+      actorId: 'user_publisher',
+      buildId,
+      environment: 'staging',
+      expectedActiveReleaseId: null,
+      hostname: 'SITE.STAGING.PAGES.XEROFLOW.COM',
+      scope
+    }
+    const event: TestEvent = {
+      body,
+      context: {},
+      headers: { 'idempotency-key': 'publish_01HXYZ' }
+    }
+
+    await expect(handler(event as never)).resolves.toMatchObject({ releaseId })
+    expect(mocks.requirePageStudioMachineAuth).toHaveBeenCalledWith(event)
+    expect(mocks.activatePageStudioRelease).toHaveBeenCalledWith({
+      ...body,
+      hostname: body.hostname.toLowerCase(),
+      idempotencyKey: 'publish_01HXYZ'
+    })
+  })
+
+  it('rejects invalid activation input before opening the publishing transaction', async () => {
+    const { default: handler } = await import(
+      '~~/server/routes/internal/page-studio/releases/activate.post'
+    )
+    const event: TestEvent = {
+      body: {
+        actorId: 'user_publisher',
+        buildId,
+        environment: 'preview',
+        expectedActiveReleaseId: null,
+        hostname: 'localhost',
+        scope
+      },
+      context: {},
+      headers: { 'idempotency-key': 'contains spaces' }
+    }
+
+    await expect(handler(event as never)).resolves.toEqual({
+      error: { code: 'INVALID_INPUT', message: 'Invalid release activation' }
+    })
+    expect(event.responseStatus).toBe(400)
+    expect(mocks.activatePageStudioRelease).not.toHaveBeenCalled()
   })
 })

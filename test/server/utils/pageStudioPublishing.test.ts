@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  activatePageStudioRelease,
   getPageStudioBuildPointer,
-  getPageStudioReleasePointer
+  getPageStudioReleasePointer,
+  type PageStudioPublishingQueryClient
 } from '~~/server/utils/pageStudio/publishing'
 
 const scope = {
@@ -20,6 +22,32 @@ const buildRow = {
   manifest_digest: 'b'.repeat(64),
   manifest_key: `${artifactPrefix}/release-manifest.json`,
   version_digest: digest
+}
+
+const actorId = '44444444-4444-4444-8444-444444444444'
+const releaseId = '33333333-3333-4333-8333-333333333333'
+const hostname = 'site.staging.pages.xeroflow.com'
+
+function database(respond: (sql: string, params: unknown[]) => unknown[]) {
+  const query = vi.fn(async (sql: string, params: unknown[] = []) => ({ rows: respond(sql, params) }))
+  const client = { query } as PageStudioPublishingQueryClient
+  const runTransaction = vi.fn(async <T>(
+    callback: (db: PageStudioPublishingQueryClient) => Promise<T>
+  ) => callback(client))
+  return { query, runTransaction }
+}
+
+function activation(overrides: Record<string, unknown> = {}) {
+  return {
+    actorId,
+    buildId,
+    environment: 'staging' as const,
+    expectedActiveReleaseId: null,
+    hostname,
+    idempotencyKey: 'publish_01HXYZ',
+    scope,
+    ...overrides
+  }
 }
 
 describe('Page Studio publishing catalog', () => {
@@ -74,5 +102,171 @@ describe('Page Studio publishing catalog', () => {
       code: 'RELEASE_RECORD_INVALID',
       statusCode: 500
     })
+  })
+})
+
+describe('Page Studio atomic release activation', () => {
+  it('locks the scoped site and pointer, creates one release, advances state, and audits before commit', async () => {
+    const db = database((sql) => {
+      if (sql.includes('FROM page_studio_sites') && sql.includes('FOR UPDATE')) {
+        return [{ id: scope.siteId }]
+      }
+      if (sql.includes('idempotency_key') && sql.includes('FROM page_studio_releases')) return []
+      if (sql.includes('FROM page_studio_release_pointers')) return []
+      if (sql.includes('FROM page_studio_builds') && sql.includes('latest_review_decision')) {
+        return [{
+          ...buildRow,
+          latest_review_decision: 'approved',
+          version_id: '55555555-5555-4555-8555-555555555555',
+          version_status: 'approved'
+        }]
+      }
+      if (sql.includes('INSERT INTO page_studio_releases')) return [{ release_id: releaseId }]
+      return []
+    })
+
+    await expect(activatePageStudioRelease(activation(), {
+      runTransaction: db.runTransaction
+    })).resolves.toEqual({
+      artifactPrefix,
+      buildId,
+      environment: 'staging',
+      manifestDigest: buildRow.manifest_digest,
+      manifestKey: buildRow.manifest_key,
+      releaseId,
+      scope,
+      versionDigest: digest
+    })
+
+    const statements = db.query.mock.calls.map(([sql]) => String(sql))
+    const releaseInsert = statements.findIndex(sql => sql.includes('INSERT INTO page_studio_releases'))
+    const pointerWrite = statements.findIndex(sql =>
+      sql.includes('page_studio_release_pointers') && /^\s*(?:INSERT|UPDATE)/.test(sql)
+    )
+    const auditWrite = statements.findIndex(sql => sql.includes('INSERT INTO page_studio_audit_events'))
+    expect(releaseInsert).toBeGreaterThanOrEqual(0)
+    expect(pointerWrite).toBeGreaterThan(releaseInsert)
+    expect(auditWrite).toBeGreaterThan(pointerWrite)
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('release.activated'),
+      expect.arrayContaining([scope.tenantId, scope.clientId, scope.siteId, actorId, releaseId])
+    )
+  })
+
+  it('rejects a stale expected release before validating or mutating the build', async () => {
+    const activeReleaseId = '66666666-6666-4666-8666-666666666666'
+    const db = database((sql) => {
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('idempotency_key') && sql.includes('FROM page_studio_releases')) return []
+      if (sql.includes('FROM page_studio_release_pointers')) {
+        return [{ active_release_id: activeReleaseId }]
+      }
+      return []
+    })
+
+    await expect(activatePageStudioRelease(activation(), {
+      runTransaction: db.runTransaction
+    })).rejects.toMatchObject({ code: 'RELEASE_POINTER_CONFLICT', statusCode: 409 })
+    expect(db.query.mock.calls.some(([sql]) => String(sql).includes('FROM page_studio_builds')))
+      .toBe(false)
+    expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO page_studio_releases')))
+      .toBe(false)
+  })
+
+  it('serializes hostname claims and rejects a pointer owned by another scope', async () => {
+    const activeReleaseId = '66666666-6666-4666-8666-666666666666'
+    const db = database((sql) => {
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('idempotency_key') && sql.includes('FROM page_studio_releases')) return []
+      if (sql.includes('FROM page_studio_release_pointers')) {
+        return [{
+          active_release_id: activeReleaseId,
+          client_id: '77777777-7777-4777-8777-777777777777',
+          site_id: '88888888-8888-4888-8888-888888888888',
+          tenant_id: 'tenant-other'
+        }]
+      }
+      return []
+    })
+
+    await expect(activatePageStudioRelease(activation({
+      expectedActiveReleaseId: activeReleaseId
+    }), { runTransaction: db.runTransaction })).rejects.toMatchObject({
+      code: 'RELEASE_POINTER_CONFLICT',
+      statusCode: 409
+    })
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('pg_advisory_xact_lock'),
+      [`page-studio-release:staging:${hostname}`]
+    )
+    expect(db.query.mock.calls.some(([sql]) => String(sql).includes('FROM page_studio_builds')))
+      .toBe(false)
+  })
+
+  it('requires the same digest to remain approved and the build to remain succeeded', async () => {
+    for (const buildRows of [[], [{
+      ...buildRow,
+      latest_review_decision: 'rejected',
+      version_id: '55555555-5555-4555-8555-555555555555',
+      version_status: 'rejected'
+    }]]) {
+      const db = database((sql) => {
+        if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+        if (sql.includes('idempotency_key') && sql.includes('FROM page_studio_releases')) return []
+        if (sql.includes('FROM page_studio_release_pointers')) return []
+        if (sql.includes('FROM page_studio_builds')) return buildRows
+        return []
+      })
+
+      await expect(activatePageStudioRelease(activation(), {
+        runTransaction: db.runTransaction
+      })).rejects.toMatchObject({ code: 'BUILD_NOT_PUBLISHABLE', statusCode: 422 })
+      expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO page_studio_releases')))
+        .toBe(false)
+    }
+  })
+
+  it('returns the immutable release for an exact idempotency replay without moving the pointer', async () => {
+    const db = database((sql) => {
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('idempotency_key') && sql.includes('FROM page_studio_releases')) {
+        return [{
+          ...buildRow,
+          actor_id: actorId,
+          environment: 'staging',
+          normalized_hostname: hostname,
+          release_id: releaseId
+        }]
+      }
+      return []
+    })
+
+    await expect(activatePageStudioRelease(activation(), {
+      runTransaction: db.runTransaction
+    })).resolves.toMatchObject({ releaseId })
+    expect(db.query.mock.calls.some(([sql]) => String(sql).includes('FROM page_studio_release_pointers')))
+      .toBe(false)
+    expect(db.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO page_studio_releases')))
+      .toBe(false)
+  })
+
+  it('conflicts when an idempotency key is replayed with changed activation input', async () => {
+    const db = database((sql) => {
+      if (sql.includes('FROM page_studio_sites')) return [{ id: scope.siteId }]
+      if (sql.includes('idempotency_key') && sql.includes('FROM page_studio_releases')) {
+        return [{
+          ...buildRow,
+          actor_id: actorId,
+          environment: 'production',
+          normalized_hostname: hostname,
+          release_id: releaseId
+        }]
+      }
+      return []
+    })
+
+    await expect(activatePageStudioRelease(activation(), {
+      runTransaction: db.runTransaction
+    })).rejects.toMatchObject({ code: 'RELEASE_IDEMPOTENCY_CONFLICT', statusCode: 409 })
   })
 })
