@@ -38,6 +38,11 @@ import {
   googleAdsMcpFlagsFromEnv
 } from '~~/server/utils/ai/mcp/googleAdsServer'
 import {
+  executeGoogleAdsSearchPlanningTool,
+  googleAdsSearchPlanningTools,
+  isGoogleAdsSearchPlanningTool
+} from '~~/server/utils/ai/mcp/googleAdsSearchTools'
+import {
   resolveProposeAction, executeWriteConfirm, MCP_CONFIRM_TOOL, type ClaimedProposal,
   isFinancialAction, MCP_FINANCIAL_ACTIONS, MCP_FINANCIAL_RICH_CONFIRM
 } from '~~/server/utils/ai/mcp/writeTools'
@@ -93,6 +98,7 @@ export default defineEventHandler(async (event) => {
     ...generationTools.map(t => t.name).filter(n => !['get_generation_status', 'list_creative_models', ...inspectionNames].includes(n)),
     'propose_video_generation', 'create_video_project', 'propose_banner_render',
     GOOGLE_ADS_PROPOSE_ACTION_TOOL,
+    ...googleAdsSearchPlanningTools.map(tool => tool.name),
     ...MCP_FINANCIAL_ACTIONS
   ]
   const isInspection = inspectionNames.includes(toolName)
@@ -179,6 +185,8 @@ export default defineEventHandler(async (event) => {
   const isFinancialPropose = isFinancialAction(toolName) // propose_budget_change etc.
   const googleAdsFlags = googleAdsMcpFlagsFromEnv()
   const isGoogleAdsTool = isGoogleAdsToolName(toolName)
+  const isGoogleAdsPropose = toolName === GOOGLE_ADS_PROPOSE_ACTION_TOOL
+  const isGoogleAdsSearchPlan = isGoogleAdsSearchPlanningTool(toolName)
 
   // CRITICAL-B: OAuth write-scope enforcement. Scope comes only from the verified signed claim. When
   // MCP_REQUIRE_WRITE_SCOPE is on, any WRITE-class tool (propose_*/confirm_action/generation/banner/
@@ -248,17 +256,25 @@ export default defineEventHandler(async (event) => {
         (args as { ack?: unknown }).ack === true,
         googleContext,
         googleAdsFlags,
-        buildGoogleAdsConfirmDependencies()
+        buildGoogleAdsConfirmDependencies(googleAdsFlags)
       )
     })
   } else if (isGoogleAdsTool) {
-    outcome = await executeGoogleAdsTool(
-      toolName,
-      args,
-      ctx,
-      googleAdsFlags,
-      buildGoogleAdsMcpToolDependencies()
-    )
+    outcome = isGoogleAdsSearchPlan
+      ? await executeGoogleAdsSearchPlanningTool(
+          toolName,
+          args,
+          ctx,
+          googleAdsFlags,
+          !requireWriteScope || hasWriteScope(grantedScopes)
+        )
+      : await executeGoogleAdsTool(
+          toolName,
+          args,
+          ctx,
+          googleAdsFlags,
+          buildGoogleAdsMcpToolDependencies(googleAdsFlags)
+        )
   } else if (writeAction) {
     // 2c propose: run the SAME registry propose-handler (resolution + persists a source='mcp' pending
     // row); returns { proposalId, resolved }. Gated by the write flag + the role's RBAC ceiling.
@@ -339,7 +355,7 @@ export default defineEventHandler(async (event) => {
   // real risk_tier, and distinguish a successful PROPOSE ('proposed' — nothing executed) from a CONFIRM
   // ('executed'). Fail-safe: a logging error never fails the call.
   const isProposeCall = !!writeAction || !!videoProposeAction || !!bannerProposeAction
-    || isFinancialPropose || isGoogleAdsPropose
+    || isFinancialPropose || isGoogleAdsPropose || isGoogleAdsSearchPlan
   // pending_id only on success (real, existing row id) to avoid dangling references on failed attempts.
   const auditPendingId = !outcome.ok
     ? null
@@ -351,7 +367,7 @@ export default defineEventHandler(async (event) => {
   const isMoneyMover = (MCP_FINANCIAL_RICH_CONFIRM as readonly string[]).includes(toolName)
   const auditRiskTier = isMoneyMover
     ? 'rich_confirm'
-    : (isFinancialPropose || isGoogleAdsPropose || !!writeAction || isConfirm)
+    : (isFinancialPropose || isGoogleAdsPropose || isGoogleAdsSearchPlan || !!writeAction || isConfirm)
         ? 'confirm'
         : 'auto'
   const auditOutcome = !outcome.ok ? 'failed' : (isProposeCall ? 'proposed' : 'executed')

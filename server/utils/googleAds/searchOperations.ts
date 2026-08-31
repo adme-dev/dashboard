@@ -45,6 +45,10 @@ function isStatusOperation(operation: GoogleAdsOperationType): operation is Stat
   return Object.hasOwn(STATUS_OPERATIONS, operation)
 }
 
+export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): boolean {
+  return isStatusOperation(operation) || operation === 'add_negative_keywords'
+}
+
 function resourcePattern(customerId: string, segment: string): RegExp {
   const suffix = segment === 'adGroupAds' || segment === 'adGroupCriteria'
     ? '\\d+~\\d+'

@@ -7,6 +7,10 @@ import {
 } from '~~/server/utils/googleAds/contracts'
 import type { McpToolManifest } from './project'
 import {
+  googleAdsSearchPlanningTools,
+  isGoogleAdsSearchPlanningTool
+} from './googleAdsSearchTools'
+import {
   MCP_CONFIRM_TOOL,
   type ClaimedProposal,
   type WriteConfirmOutcome
@@ -41,6 +45,7 @@ export const googleAdsReadTools: McpToolManifest[] = [
 ]
 
 export const googleAdsWriteTools: McpToolManifest[] = [
+  ...googleAdsSearchPlanningTools,
   descriptor(
     GOOGLE_ADS_PROPOSE_ACTION_TOOL,
     'Submit a server-issued Google Ads action plan for governed execution. Proposal plans return a proposalId for confirm_action; policy-approved automatic plans run only when automation is enabled.'
@@ -64,7 +69,7 @@ export function isGoogleAdsToolName(name: string): boolean {
 }
 
 export function isGoogleAdsWriteToolName(name: string): boolean {
-  return name === GOOGLE_ADS_PROPOSE_ACTION_TOOL
+  return name === GOOGLE_ADS_PROPOSE_ACTION_TOOL || isGoogleAdsSearchPlanningTool(name)
 }
 
 export function projectGoogleAdsTools(role: string, flags: GoogleAdsMcpFlags): McpToolManifest[] {

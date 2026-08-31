@@ -2,14 +2,14 @@ import {
   GoogleAdsPolicyDecisionSchema,
   type GoogleAdsOperationType,
   type GoogleAdsPolicyDecision,
-  type GoogleAdsRiskTier,
+  type GoogleAdsRiskTier
 } from '~~/server/utils/googleAds/contracts'
 
-export type GoogleAdsAutomaticActionClass =
-  | 'negative_keywords'
-  | 'pause'
-  | 'recommendation_dismissal'
-  | 'asset_detachment'
+export type GoogleAdsAutomaticActionClass
+  = | 'negative_keywords'
+    | 'pause'
+    | 'recommendation_dismissal'
+    | 'asset_detachment'
 
 export interface GoogleAdsAccountPolicyInput {
   enabled: boolean
@@ -36,7 +36,7 @@ const RISK_ORDER: Record<Exclude<GoogleAdsRiskTier, 'read' | 'blocked'>, number>
   automatic: 0,
   confirm: 1,
   rich_confirm: 2,
-  destructive_confirm: 3,
+  destructive_confirm: 3
 }
 
 const RICH_CONFIRM_OPERATIONS = new Set<GoogleAdsOperationType>([
@@ -57,7 +57,7 @@ const RICH_CONFIRM_OPERATIONS = new Set<GoogleAdsOperationType>([
   'set_conversion_primary_state',
   'set_campaign_conversion_goals',
   'set_conversion_goal',
-  'set_customer_goal_biddability',
+  'set_customer_goal_biddability'
 ])
 
 const DESTRUCTIVE_OPERATIONS = new Set<GoogleAdsOperationType>([
@@ -66,7 +66,7 @@ const DESTRUCTIVE_OPERATIONS = new Set<GoogleAdsOperationType>([
   'remove_ad',
   'remove_keyword',
   'remove_negative_keyword',
-  'remove_asset',
+  'remove_asset'
 ])
 
 const AUTOMATIC_ACTION_CLASSES: Partial<Record<GoogleAdsOperationType, GoogleAdsAutomaticActionClass>> = {
@@ -78,7 +78,13 @@ const AUTOMATIC_ACTION_CLASSES: Partial<Record<GoogleAdsOperationType, GoogleAds
   dismiss_recommendation: 'recommendation_dismissal',
   detach_asset: 'asset_detachment',
   run_search_term_policy: 'negative_keywords',
-  run_pause_policy: 'pause',
+  run_pause_policy: 'pause'
+}
+
+export function googleAdsAutomaticActionClassForOperation(
+  operation: GoogleAdsOperationType
+): GoogleAdsAutomaticActionClass | undefined {
+  return AUTOMATIC_ACTION_CLASSES[operation]
 }
 
 function blocked(code: string): GoogleAdsPolicyDecision {
@@ -86,13 +92,13 @@ function blocked(code: string): GoogleAdsPolicyDecision {
     allowed: false,
     riskTier: 'blocked',
     executionMode: 'blocked',
-    code,
+    code
   })
 }
 
 function maximumRisk(
   left: Exclude<GoogleAdsRiskTier, 'read' | 'blocked'>,
-  right?: Exclude<GoogleAdsRiskTier, 'read' | 'blocked'>,
+  right?: Exclude<GoogleAdsRiskTier, 'read' | 'blocked'>
 ): Exclude<GoogleAdsRiskTier, 'read' | 'blocked'> {
   if (!right) return left
   return RISK_ORDER[right] > RISK_ORDER[left] ? right : left
@@ -137,6 +143,6 @@ export function resolveGoogleAdsPolicy(input: ResolveGoogleAdsPolicyInput): Goog
   return GoogleAdsPolicyDecisionSchema.parse({
     allowed: true,
     riskTier,
-    executionMode: riskTier === 'automatic' ? 'automatic' : 'proposal',
+    executionMode: riskTier === 'automatic' ? 'automatic' : 'proposal'
   })
 }

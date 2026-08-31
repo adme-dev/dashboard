@@ -1,7 +1,10 @@
 import { z } from 'zod'
 import type { BuildGoogleAdsActionContext } from '~~/server/utils/googleAds/actionPlanner'
 import { diffGoogleAdsStates } from '~~/server/utils/googleAds/actionPlanner'
-import type { GoogleAdsVerificationDiff } from '~~/server/utils/googleAds/contracts'
+import type {
+  GoogleAdsActionPlan,
+  GoogleAdsVerificationDiff
+} from '~~/server/utils/googleAds/contracts'
 import type { GoogleAdsAuth } from '~~/server/utils/googleAds/api'
 import {
   executeGoogleAdsQuery,
@@ -164,6 +167,45 @@ export async function loadSearchGoogleAdsCurrentState(
     return loadNegativeKeywords(context, auth, resolved)
   }
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
+}
+
+export async function loadSearchGoogleAdsPlanState(
+  plan: GoogleAdsActionPlan,
+  auth: GoogleAdsAuth,
+  dependencies: Partial<SearchStateDependencies> = {}
+): Promise<unknown> {
+  if (!plan.resourceName) throw new Error('Search Google Ads plan has no resource name')
+  const negative = plan.operation === 'add_negative_keywords'
+  const service = plan.providerOperations[0]?.service
+  const argumentsValue = negative
+    ? {
+        scope: service === 'campaignCriteria' ? 'campaign' as const : 'ad_group' as const,
+        parentResourceName: plan.resourceName,
+        keywords: [{ text: '__state_probe__', matchType: 'EXACT' as const }]
+      }
+    : { resourceName: plan.resourceName }
+
+  return loadSearchGoogleAdsCurrentState({
+    input: {
+      clientId: plan.clientId,
+      connectionId: plan.connectionId,
+      actorId: plan.actorId,
+      source: plan.source,
+      operation: plan.operation,
+      resourceType: plan.resourceType,
+      requestedMode: plan.executionMode === 'automatic' ? 'automatic' : 'proposal',
+      arguments: argumentsValue,
+      idempotencyKey: plan.idempotencyKey
+    },
+    connection: {
+      clientId: plan.clientId,
+      connectionId: plan.connectionId,
+      customerId: plan.customerId,
+      platform: 'google',
+      status: 'active'
+    },
+    customerId: plan.customerId
+  }, auth, dependencies)
 }
 
 function normalizeVerificationState(value: unknown): unknown {

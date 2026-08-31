@@ -8,6 +8,11 @@ import {
 } from '~~/server/utils/googleAds/actionStore'
 import type { GoogleAdsActionPlan } from '~~/server/utils/googleAds/contracts'
 import {
+  executeSearchGoogleAdsControlAction,
+  isExecutableSearchGoogleAdsPlan,
+  validateSearchGoogleAdsControlPlan
+} from '~~/server/utils/googleAds/searchRuntime'
+import {
   GOOGLE_ADS_PENDING_ACTION,
   type GoogleAdsConfirmDependencies,
   type GoogleAdsMcpFlags,
@@ -106,11 +111,15 @@ function foundationValidation(plan: GoogleAdsActionPlan): Record<string, unknown
   }
 }
 
-export function buildGoogleAdsMcpToolDependencies(): GoogleAdsMcpToolDependencies {
+export function buildGoogleAdsMcpToolDependencies(
+  flags: GoogleAdsMcpFlags = googleAdsMcpFlagsFromEnv()
+): GoogleAdsMcpToolDependencies {
   return {
     loadPlan: (actionPlanId, actorId) => getGoogleAdsActionPlanForActor(actionPlanId, actorId),
     getStatus: async plan => actionStatus(plan),
-    validatePlan: async plan => foundationValidation(plan),
+    validatePlan: plan => isExecutableSearchGoogleAdsPlan(plan)
+      ? validateSearchGoogleAdsControlPlan(plan)
+      : Promise.resolve(foundationValidation(plan)),
     proposePlan: (plan, context) => persistGoogleAdsMcpProposal(plan, context, {
       insertPending: insertPendingAction,
       linkApproval: (candidate, approvalId) => linkGoogleAdsActionApproval({
@@ -129,28 +138,28 @@ export function buildGoogleAdsMcpToolDependencies(): GoogleAdsMcpToolDependencie
         })
       }
     }),
-    // Campaign-family execution adapters are registered by the typed tool plans. Until then the
-    // independently dormant automation flag fails closed instead of guessing at provider state.
-    executeAutomatic: async () => {
-      throw new Error('No active typed Google Ads execution adapter')
-    }
+    executeAutomatic: (plan, context) => executeSearchGoogleAdsControlAction(plan, {
+      actorRole: context.userRole,
+      hasWriteScope: true
+    }, flags)
   }
 }
 
-export function buildGoogleAdsConfirmDependencies(): GoogleAdsConfirmDependencies {
+export function buildGoogleAdsConfirmDependencies(
+  flags: GoogleAdsMcpFlags = googleAdsMcpFlagsFromEnv()
+): GoogleAdsConfirmDependencies {
   return {
     loadPlan: (actionPlanId, actorId) => getGoogleAdsActionPlanForActor(actionPlanId, actorId),
-    // Foundation exposes no campaign-family action creators, so confirmation remains fail-closed
-    // until a typed execution adapter exists for the plan operation.
-    canExecutePlan: () => false,
+    canExecutePlan: isExecutableSearchGoogleAdsPlan,
     approvePlan: (plan, approvalId) => approveGoogleAdsActionPlan({
       id: plan.id,
       clientId: plan.clientId,
       actorId: plan.actorId,
       approvalId
     }),
-    executeConfirmed: async () => {
-      throw new Error('No active typed Google Ads execution adapter')
-    }
+    executeConfirmed: (plan, context) => executeSearchGoogleAdsControlAction(plan, {
+      actorRole: context.userRole,
+      hasWriteScope: true
+    }, flags)
   }
 }

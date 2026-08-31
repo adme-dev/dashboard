@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { BuildGoogleAdsActionContext } from '~~/server/utils/googleAds/actionPlanner'
 import {
+  loadSearchGoogleAdsPlanState,
   loadSearchGoogleAdsCurrentState,
   verifySearchGoogleAdsState
 } from '~~/server/utils/googleAds/searchState'
+import type { GoogleAdsActionPlan } from '~~/server/utils/googleAds/contracts'
 
 const auth = { accessToken: 'access', developerToken: 'developer', loginCustomerId: '9999999999' }
 
@@ -113,5 +115,27 @@ describe('Search Google Ads readback verification', () => {
       ok: false,
       diffs: [{ field: 'status', expected: 'PAUSED', actual: 'ENABLED' }]
     })
+  })
+})
+
+describe('Search Google Ads persisted-plan state loading', () => {
+  it('reconstructs a negative-keyword read only from immutable plan fields', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [], more: 0 })
+    const plan = {
+      operation: 'add_negative_keywords',
+      resourceType: 'negative_keyword',
+      resourceName: 'customers/1234567890/campaigns/10',
+      customerId: '1234567890',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      connectionId: '22222222-2222-4222-8222-222222222222',
+      actorId: '33333333-3333-4333-8333-333333333333',
+      source: 'mcp',
+      requestedMode: 'proposal',
+      idempotencyKey: 'negative-1',
+      providerOperations: [{ service: 'campaignCriteria' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query })).resolves.toEqual({ criteria: [] })
+    expect(query.mock.calls[0]?.[0].query).toContain('FROM campaign_criterion')
   })
 })
