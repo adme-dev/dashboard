@@ -46,6 +46,7 @@ const RICH_CONFIRM_OPERATIONS = new Set<GoogleAdsOperationType>([
   'update_ad_group',
   'update_keyword',
   'replace_ad',
+  'manage_shared_negative_set',
   'create_bidding_strategy',
   'update_bidding',
   'set_campaign_status',

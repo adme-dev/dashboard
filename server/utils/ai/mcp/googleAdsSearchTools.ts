@@ -15,6 +15,7 @@ export const GOOGLE_ADS_PLAN_REMOVE_TOOL = 'google_ads_plan_remove'
 export const GOOGLE_ADS_PLAN_ENABLE_TOOL = 'google_ads_plan_enable'
 export const GOOGLE_ADS_PLAN_NEGATIVE_KEYWORDS_TOOL = 'google_ads_plan_add_negative_keywords'
 export const GOOGLE_ADS_PLAN_REMOVE_NEGATIVE_KEYWORD_TOOL = 'google_ads_plan_remove_negative_keyword'
+export const GOOGLE_ADS_PLAN_MANAGE_SHARED_NEGATIVE_SET_TOOL = 'google_ads_plan_manage_shared_negative_set'
 export const GOOGLE_ADS_PLAN_CREATE_BUDGET_TOOL = 'google_ads_plan_create_budget'
 export const GOOGLE_ADS_PLAN_UPDATE_BUDGET_TOOL = 'google_ads_plan_update_budget'
 export const GOOGLE_ADS_PLAN_CREATE_SEARCH_CAMPAIGN_TOOL = 'google_ads_plan_create_search_campaign'
@@ -111,6 +112,23 @@ const RemoveNegativeKeywordSchema = z.strictObject({
 const KeywordSchema = z.strictObject({
   text: z.string().trim().min(1).max(80),
   matchType: z.enum(['EXACT', 'PHRASE', 'BROAD'])
+})
+const ManageSharedNegativeSetSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000).optional(),
+  name: z.string().trim().min(1).max(255),
+  keywords: z.array(KeywordSchema).min(1).max(1_000),
+  campaignResourceNames: z.array(z.string().trim().min(1).max(1_000)).max(1_000)
+}).superRefine((value, refinement) => {
+  const keywordKeys = value.keywords.map(keyword => (
+    `${keyword.matchType}:${keyword.text.trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-AU')}`
+  ))
+  if (new Set(keywordKeys).size !== keywordKeys.length) {
+    refinement.addIssue({ code: 'custom', message: 'Shared negative keywords must be unique' })
+  }
+  if (new Set(value.campaignResourceNames).size !== value.campaignResourceNames.length) {
+    refinement.addIssue({ code: 'custom', message: 'Shared-set campaigns must be unique' })
+  }
 })
 const CreateBudgetSchema = z.strictObject({
   ...CommonSchema,
@@ -802,6 +820,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     RemoveNegativeKeywordSchema
   ),
   manifest(
+    GOOGLE_ADS_PLAN_MANAGE_SHARED_NEGATIVE_SET_TOOL,
+    'Plan creation or exact replacement of a shared campaign negative-keyword set. Keyword and campaign-link changes are atomic and require elevated approval.',
+    ManageSharedNegativeSetSchema
+  ),
+  manifest(
     GOOGLE_ADS_PLAN_CREATE_BUDGET_TOOL,
     'Plan a standard Google Ads campaign budget from a daily currency amount. Money changes require elevated approval.',
     CreateBudgetSchema
@@ -1195,6 +1218,24 @@ export async function executeGoogleAdsSearchPlanningTool(
           scope: args.scope,
           resourceName: args.resourceName,
           reason: args.reason
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_MANAGE_SHARED_NEGATIVE_SET_TOOL) {
+      const args = ManageSharedNegativeSetSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'manage_shared_negative_set',
+        resourceType: 'shared_negative_set',
+        arguments: {
+          ...(args.resourceName ? { resourceName: args.resourceName } : {}),
+          name: args.name,
+          keywords: args.keywords,
+          campaignResourceNames: args.campaignResourceNames
         }
       }
     } else if (name === GOOGLE_ADS_PLAN_CREATE_BUDGET_TOOL) {

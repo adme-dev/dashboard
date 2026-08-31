@@ -10,7 +10,7 @@ tokens, and unrestricted GAQL or mutate requests remain server-side.
 The control plane currently covers typed QA inventories plus governed Search and
 Performance Max operations for budgets, portfolio bidding strategies, campaigns,
 ad groups, responsive search ads, keywords, negative keywords, targeting,
-audiences, assets and asset groups,
+shared negative-keyword sets, audiences, assets and asset groups,
 listing groups, conversion actions and goals, and recommendations. Offline
 conversion uploads are outside this release because they contain customer event
 data rather than campaign configuration.
@@ -91,6 +91,13 @@ Responsive search ads are immutable creative resources. Use
 pause the original in one atomic `adGroupAds` mutation. The flow never deletes the
 original and verifies both ads as paused before the plan succeeds.
 
+Shared campaign negatives use `google_ads_plan_manage_shared_negative_set`.
+Creation writes the shared set, its negative keyword criteria, and every campaign
+attachment in one v25 bulk mutation. Updates are exact desired-state replacements:
+XeroFlow preserves unchanged provider rows, adds and removes only the keyword and
+campaign-link differences, never removes the shared set itself, and verifies the
+complete set after Google assigns IDs to new rows.
+
 ## Safe Archive and Removal Semantics
 
 The default delete behavior is reversible:
@@ -159,4 +166,5 @@ typecheck output with the baseline and reject any new diagnostic in changed file
 - [REST mutate requests](https://developers.google.com/google-ads/api/rest/common/mutate)
 - [Portfolio bidding strategies](https://developers.google.com/google-ads/api/docs/campaigns/bidding/assign-strategies)
 - [Bidding strategy v25 fields](https://developers.google.com/google-ads/api/fields/v25/bidding_strategy)
+- [Shared negative-keyword sets](https://developers.google.com/google-ads/api/docs/targeting/shared-sets)
 - [Conversion goals overview](https://developers.google.com/google-ads/api/docs/conversions/goals/overview)
