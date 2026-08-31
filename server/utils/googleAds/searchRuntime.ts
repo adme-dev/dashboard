@@ -171,7 +171,16 @@ const NegativeAutomationConditionsSchema = z.strictObject({
   maxKeywordsPerAction: z.number().int().min(1).max(100).optional(),
   allowedMatchTypes: z.array(z.enum(['EXACT', 'PHRASE', 'BROAD'])).min(1).max(3).optional(),
   allowedScopes: z.array(z.enum(['campaign', 'ad_group'])).min(1).max(2).optional(),
-  resourceNames: z.array(z.string().min(1).max(1_000)).min(1).max(1_000).optional()
+  resourceNames: z.array(z.string().min(1).max(1_000)).min(1).max(1_000).optional(),
+  protectedTerms: z.array(z.string().trim().min(1).max(80)).max(1_000).optional(),
+  minImpressions: z.number().int().min(0).optional(),
+  minClicks: z.number().int().min(0).optional(),
+  minSpendMicros: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  maxConversions: z.number().finite().min(0).optional(),
+  negativeMatchType: z.enum(['EXACT', 'PHRASE', 'BROAD']).optional(),
+  maxAdditionsPerRun: z.number().int().min(1).max(100).optional(),
+  lookbackDays: z.number().int().min(1).max(90).optional(),
+  cooldownHours: z.number().int().min(1).max(24 * 90).optional()
 })
 const NegativeAutomationArgumentsSchema = z.object({
   scope: z.enum(['campaign', 'ad_group']),
@@ -183,7 +192,13 @@ const NegativeAutomationArgumentsSchema = z.object({
 })
 const PauseAutomationConditionsSchema = z.strictObject({
   allowedResourceTypes: z.array(z.enum(['campaign', 'ad_group', 'ad', 'keyword'])).min(1).max(4).optional(),
-  resourceNames: z.array(z.string().min(1).max(1_000)).min(1).max(1_000).optional()
+  resourceNames: z.array(z.string().min(1).max(1_000)).min(1).max(1_000).optional(),
+  minImpressions: z.number().int().min(0).optional(),
+  minClicks: z.number().int().min(0).optional(),
+  minSpendMicros: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  maxConversions: z.number().finite().min(0).optional(),
+  lookbackDays: z.number().int().min(1).max(90).optional(),
+  cooldownHours: z.number().int().min(1).max(24 * 90).optional()
 })
 const PauseAutomationArgumentsSchema = z.object({ resourceName: z.string() })
 const AssetDetachmentConditionsSchema = z.strictObject({
@@ -211,6 +226,26 @@ function automationConditionsAllow(
     if (conditions.data.allowedScopes && !conditions.data.allowedScopes.includes(args.data.scope)) return false
     if (conditions.data.resourceNames
       && !conditions.data.resourceNames.includes(args.data.parentResourceName)) return false
+    const evidenceBound = conditions.data.minImpressions !== undefined
+      || conditions.data.minClicks !== undefined
+      || conditions.data.minSpendMicros !== undefined
+      || conditions.data.maxConversions !== undefined
+      || conditions.data.lookbackDays !== undefined
+      || conditions.data.cooldownHours !== undefined
+    if (evidenceBound && input.source !== 'automation') return false
+    if (conditions.data.maxAdditionsPerRun !== undefined
+      && args.data.keywords.length > conditions.data.maxAdditionsPerRun) return false
+    if (conditions.data.negativeMatchType !== undefined
+      && args.data.keywords.some(keyword => keyword.matchType !== conditions.data.negativeMatchType)) return false
+    if (conditions.data.protectedTerms) {
+      const protectedTerms = conditions.data.protectedTerms.map(term => (
+        ` ${term.trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-AU')} `
+      ))
+      if (args.data.keywords.some((keyword) => {
+        const term = ` ${keyword.text.trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-AU')} `
+        return protectedTerms.some(protectedTerm => term.includes(protectedTerm))
+      })) return false
+    }
     return true
   }
   if (grant.actionClass === 'pause') {
@@ -220,6 +255,13 @@ function automationConditionsAllow(
     if (conditions.data.allowedResourceTypes
       && !conditions.data.allowedResourceTypes.includes(input.resourceType as never)) return false
     if (conditions.data.resourceNames && !conditions.data.resourceNames.includes(args.data.resourceName)) return false
+    const evidenceBound = conditions.data.minImpressions !== undefined
+      || conditions.data.minClicks !== undefined
+      || conditions.data.minSpendMicros !== undefined
+      || conditions.data.maxConversions !== undefined
+      || conditions.data.lookbackDays !== undefined
+      || conditions.data.cooldownHours !== undefined
+    if (evidenceBound && input.source !== 'automation') return false
     return true
   }
   if (grant.actionClass === 'asset_detachment') {

@@ -736,6 +736,66 @@ describe('Search Google Ads governed planning runtime', () => {
     })
   })
 
+  it('requires server-owned automation evidence for threshold-bound grants', async () => {
+    const parentResourceName = 'customers/1234567890/campaigns/10'
+    const deps = dependencies({
+      loadCurrent: vi.fn().mockResolvedValue({ criteria: [] }),
+      loadAutomationPolicy: vi.fn().mockResolvedValue({
+        id: '55555555-5555-4555-8555-555555555555',
+        actionClass: 'negative_keywords',
+        policyVersion: 'negative-evidence-v1',
+        enabled: true,
+        conditions: {
+          maxKeywordsPerAction: 5,
+          allowedMatchTypes: ['EXACT'],
+          allowedScopes: ['campaign'],
+          resourceNames: [parentResourceName],
+          protectedTerms: ['GAC'],
+          minImpressions: 100,
+          minClicks: 5,
+          minSpendMicros: 1000000,
+          maxConversions: 0,
+          negativeMatchType: 'EXACT',
+          maxAdditionsPerRun: 5,
+          lookbackDays: 30,
+          cooldownHours: 24
+        },
+        maxDailyActions: 20,
+        actionsToday: 0
+      })
+    })
+    const input = {
+      clientId: CLIENT_ID,
+      connectionId: CONNECTION_ID,
+      actorId: ACTOR_ID,
+      operation: 'add_negative_keywords' as const,
+      resourceType: 'negative_keyword' as const,
+      requestedMode: 'automatic' as const,
+      arguments: {
+        scope: 'campaign',
+        parentResourceName,
+        keywords: [{ text: 'cheap suv', matchType: 'EXACT' }]
+      },
+      idempotencyKey: 'threshold-bound-negative-10'
+    }
+
+    await expect(planSearchGoogleAdsControlAction({
+      ...input,
+      source: 'mcp'
+    }, authority, flags, deps)).resolves.toMatchObject({
+      status: 'cancelled',
+      executionMode: 'blocked'
+    })
+    await expect(planSearchGoogleAdsControlAction({
+      ...input,
+      source: 'automation',
+      idempotencyKey: 'threshold-bound-negative-10-runner'
+    }, authority, flags, deps)).resolves.toMatchObject({
+      status: 'planned',
+      executionMode: 'automatic'
+    })
+  })
+
   it('bounds automatic asset-link archive by scope and resource allowlists', async () => {
     const resourceName = 'customers/1234567890/campaignAssets/60~9201~CALL'
     const deps = dependencies({
