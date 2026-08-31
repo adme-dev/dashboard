@@ -7,6 +7,7 @@ const devVarsExample = readFileSync(new URL('../../.dev.vars.example', import.me
 const setupGuide = readFileSync(new URL('../../ENV_SETUP_GUIDE.md', import.meta.url), 'utf8')
 const toolsEndpoint = readFileSync(new URL('../../server/api/internal/mcp/tools.post.ts', import.meta.url), 'utf8')
 const callEndpoint = readFileSync(new URL('../../server/api/internal/mcp/call.post.ts', import.meta.url), 'utf8')
+const registry = readFileSync(new URL('../../server/utils/ai/mcp/registry.ts', import.meta.url), 'utf8')
 
 const flags = [
   'GOOGLE_ADS_MCP_READ_ENABLED',
@@ -32,7 +33,9 @@ describe('Google Ads MCP flags', () => {
   })
 
   it('projects and routes Google tools through the existing authenticated MCP endpoints', () => {
-    expect(toolsEndpoint).toContain('projectGoogleAdsTools')
+    expect(toolsEndpoint).toContain('projectRegisteredMcpTools')
+    expect(registry).toContain('projectGoogleAdsMcpSuite')
+    expect(registry).toContain('projectGoogleAdsTools')
     expect(toolsEndpoint).toContain('GOOGLE_ADS_MCP_READ_ENABLED')
     expect(toolsEndpoint).toContain('GOOGLE_ADS_MCP_WRITE_ENABLED')
     expect(callEndpoint).toContain('executeGoogleAdsTool')

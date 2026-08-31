@@ -27,7 +27,7 @@ import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
 // Deterministic RBAC: 'admin' has every permission; 'viewer' is read-only with none.
 // (filterToolsForUser + project.ts both call into this module.)
-vi.mock('~~/server/utils/permissions', async (importOriginal) => ({
+vi.mock('~~/server/utils/permissions', async importOriginal => ({
   ...await importOriginal<typeof import('~~/server/utils/permissions')>(),
   roleHasPermission: (role: string) => role === 'admin',
   isReadOnlyRole: (role: string) => role === 'viewer'
@@ -123,7 +123,9 @@ describe('authoritative registered MCP suite projection', () => {
       'list_banner_projects',
       'propose_banner_render',
       'list_gtm_connections',
-      'publish_gtm_change_set'
+      'publish_gtm_change_set',
+      'google_ads_list_campaigns',
+      'google_ads_plan_create_search_campaign'
     ]))
   })
 
@@ -191,9 +193,9 @@ describe('authoritative registered MCP suite projection', () => {
     const manifests = projectGodModeTools(ownerContext)
     const executions = resolveGodModeMcpExecutions(ownerContext)
 
-    expect(manifests).toHaveLength(95)
-    expect(executions).toHaveLength(95)
-    expect(new Set(executions.map(execution => execution.name)).size).toBe(95)
+    expect(manifests).toHaveLength(executions.length)
+    expect(manifests).toHaveLength(164)
+    expect(new Set(executions.map(execution => execution.name)).size).toBe(executions.length)
     expect(manifests.map(manifest => manifest.name)).toContain('list_video_source_assets')
     expect(manifests.map(manifest => manifest.name)).toContain('propose_promote_creative_asset')
     expect(resolveGodModeMcpExecution(ownerContext, 'list_video_source_assets')).toMatchObject({
@@ -287,6 +289,44 @@ describe('authoritative registered MCP suite projection', () => {
     expect(names).not.toContain('create_task')
     expect(names).not.toContain('generate_voiceover')
     expect(names).not.toContain('propose_create_task')
+  })
+
+  it('projects Google Ads controls only when their suite flags and signed write scope allow them', () => {
+    const disabled = projectRegisteredMcpTools({
+      ...context,
+      role: 'admin',
+      scopes: ['mcp:read', 'mcp:write']
+    }).map(tool => tool.name)
+    const enabled = projectRegisteredMcpTools({
+      ...context,
+      role: 'admin',
+      scopes: ['mcp:read', 'mcp:write'],
+      suiteFlags: {
+        ...context.suiteFlags,
+        googleAdsRead: true,
+        googleAdsWrite: true,
+        googleAdsAutomation: false,
+        googleAdsDestructive: false
+      }
+    }).map(tool => tool.name)
+    const readScoped = projectRegisteredMcpTools({
+      ...context,
+      role: 'admin',
+      scopes: ['mcp:read'],
+      suiteFlags: {
+        ...context.suiteFlags,
+        googleAdsRead: true,
+        googleAdsWrite: true
+      }
+    }).map(tool => tool.name)
+
+    expect(disabled).not.toContain('google_ads_list_campaigns')
+    expect(enabled).toContain('google_ads_list_campaigns')
+    expect(enabled).toContain('google_ads_plan_create_search_campaign')
+    expect(enabled).toContain('confirm_action')
+    expect(readScoped).toContain('google_ads_list_campaigns')
+    expect(readScoped).not.toContain('google_ads_plan_create_search_campaign')
+    expect(readScoped).not.toContain('confirm_action')
   })
 
   it('advertises remember to ordinary callers only when the signed write scope is present', () => {

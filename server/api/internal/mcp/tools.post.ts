@@ -75,7 +75,11 @@ export default defineEventHandler(async (event) => {
       video: process.env.MCP_VIDEO_TOOLS_ENABLED === 'true',
       videoGeneration: process.env.MCP_VIDEO_GEN_ENABLED === 'true',
       banners: process.env.MCP_BANNER_TOOLS_ENABLED === 'true',
-      feeds: process.env.MCP_FEED_TOOLS_ENABLED === 'true'
+      feeds: process.env.MCP_FEED_TOOLS_ENABLED === 'true',
+      googleAdsRead: process.env.GOOGLE_ADS_MCP_READ_ENABLED === 'true',
+      googleAdsWrite: process.env.GOOGLE_ADS_MCP_WRITE_ENABLED === 'true',
+      googleAdsAutomation: process.env.GOOGLE_ADS_MCP_AUTOMATION_ENABLED === 'true',
+      googleAdsDestructive: process.env.GOOGLE_ADS_MCP_DESTRUCTIVE_ENABLED === 'true'
     }
   }
   if (isActiveGodModeAuthority(authority, userId)) {

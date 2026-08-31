@@ -12,7 +12,7 @@ describe('getCampaignAdAssets — X-1a declared cap', () => {
     ofetchMock
       .mockResolvedValueOnce([{ results: Array.from({ length: 12 }, (_, i) => adRow(i)) }])
       .mockResolvedValueOnce([{ results: [] }])
-    const assets = await getCampaignAdAssets('123', 'tok', 'dev', '999')
+    const assets = await getCampaignAdAssets('1234567890', 'tok', 'dev', '9999999999')
     expect(assets).toHaveLength(12)
     expect(assets.truncated).toBe(false)
     expect(assets.cap).toBe(GOOGLE_AD_ASSETS_CAP)
@@ -24,16 +24,22 @@ describe('getCampaignAdAssets — X-1a declared cap', () => {
     ofetchMock
       .mockResolvedValueOnce([{ results: Array.from({ length: GOOGLE_AD_ASSETS_CAP + 1 }, (_, i) => adRow(i)) }])
       .mockResolvedValueOnce([{ results: [] }])
-    const assets = await getCampaignAdAssets('123', 'tok', 'dev', '999')
+    const assets = await getCampaignAdAssets('1234567890', 'tok', 'dev', '9999999999')
     expect(assets).toHaveLength(GOOGLE_AD_ASSETS_CAP)
     expect(assets.truncated).toBe(true)
     expect(assets.total).toBe(GOOGLE_AD_ASSETS_CAP + 1)
   })
 
   it('throws on an API failure instead of returning an empty list that looks like "no creatives"', async () => {
-    ofetchMock.mockImplementationOnce(async () => { throw new Error('403 Forbidden') })
+    ofetchMock.mockImplementationOnce(async () => {
+      throw new Error('403 Forbidden')
+    })
     let thrown: unknown = null
-    try { await getCampaignAdAssets('123', 'tok', 'dev', '999') } catch (err) { thrown = err }
+    try {
+      await getCampaignAdAssets('1234567890', 'tok', 'dev', '9999999999')
+    } catch (err) {
+      thrown = err
+    }
     expect(String(thrown)).toMatch(/403/)
   })
 })

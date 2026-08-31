@@ -32,6 +32,11 @@ import {
 import { projectBannerMcpSuite, projectBannerTools, resolveBannerMcpExecutions } from './bannerTools'
 import { projectFeedMcpSuite, projectFeedTools, resolveFeedMcpExecutions } from './feedTools'
 import { projectGtmMcpSuite, projectGtmTools, resolveGtmMcpExecutions } from './gtmTools'
+import {
+  projectGoogleAdsMcpSuite,
+  resolveGoogleAdsMcpExecutions
+} from './googleAdsRegistryTools'
+import { projectGoogleAdsTools } from './googleAdsTools'
 
 export interface RegisteredMcpSuite {
   key: string
@@ -94,6 +99,12 @@ const suiteDefinitions: RegisteredMcpSuite[] = [
     project: projectGtmMcpSuite,
     executions: resolveGtmMcpExecutions,
     sourceProjectors: [projectGtmTools]
+  },
+  {
+    key: 'google-ads',
+    project: projectGoogleAdsMcpSuite,
+    executions: resolveGoogleAdsMcpExecutions,
+    sourceProjectors: [projectGoogleAdsTools]
   }
 ]
 

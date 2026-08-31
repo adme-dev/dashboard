@@ -63,6 +63,10 @@ export interface McpSuiteFlags {
   videoGeneration: boolean
   banners: boolean
   feeds: boolean
+  googleAdsRead?: boolean
+  googleAdsWrite?: boolean
+  googleAdsAutomation?: boolean
+  googleAdsDestructive?: boolean
 }
 
 /**

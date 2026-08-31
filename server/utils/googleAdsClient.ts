@@ -181,6 +181,19 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function redactGoogleAdsDiagnostic(value: unknown): string {
+  let serialized: string
+  try {
+    serialized = JSON.stringify(value) ?? String(value)
+  } catch {
+    serialized = '[unserializable Google Ads diagnostic]'
+  }
+  return serialized
+    .replace(/customers\/\d+/gi, 'customers/[REDACTED]')
+    .replace(/\b\d{8,}\b/g, '[REDACTED]')
+    .slice(0, 500)
+}
+
 // ============================================
 // GAQL Query Helper
 // ============================================
@@ -196,17 +209,40 @@ export async function gaqlQuery(
   loginCustomerId?: string,
   retries = 3
 ): Promise<any[]> {
-  const result = await executeGoogleAdsQuery({
-    customerId,
-    query,
-    auth: {
-      accessToken: token,
-      developerToken,
-      loginCustomerId,
-    },
-    retries,
-  })
-  return result.rows
+  try {
+    const result = await executeGoogleAdsQuery({
+      customerId,
+      query,
+      auth: {
+        accessToken: token,
+        developerToken,
+        loginCustomerId
+      },
+      retries,
+      preserveProviderErrors: true
+    })
+    return result.rows
+  } catch (error: unknown) {
+    const providerError = isObjectRecord(error) ? error : {}
+    const status = typeof providerError.status === 'number'
+      ? providerError.status
+      : typeof providerError.statusCode === 'number'
+        ? providerError.statusCode
+        : undefined
+    if ((status === 400 || status === 403) && providerError.data) {
+      const data = providerError.data
+      const dataRecord = isObjectRecord(data) ? data : {}
+      const envelope = isObjectRecord(dataRecord.error) ? dataRecord.error : {}
+      const details = Array.isArray(envelope.details) ? envelope.details : []
+      const firstDetail = details.length && isObjectRecord(details[0]) ? details[0] : {}
+      const errors = Array.isArray(firstDetail.errors) ? firstDetail.errors : []
+      console.error(
+        `[GoogleAds] GAQL ${status} diagnostic (customer [REDACTED]):`,
+        redactGoogleAdsDiagnostic(errors[0] ?? data)
+      )
+    }
+    throw error
+  }
 }
 
 // ============================================

@@ -16,13 +16,13 @@ describe('getGoogleAiMaxRows', () => {
       .mockResolvedValueOnce([{ results: campaignRows }])
       .mockResolvedValueOnce([{ results: adGroupRows }])
 
-    const result = await getGoogleAiMaxRows('123', 'access-token', 'developer-token', '999')
+    const result = await getGoogleAiMaxRows('1234567890', 'access-token', 'developer-token', '9999999999')
 
     expect(result).toEqual({ campaignRows, adGroupRows })
     expect(ofetchMock).toHaveBeenCalledTimes(2)
 
     const campaignRequest = ofetchMock.mock.calls[0][1]
-    expect(campaignRequest.headers['login-customer-id']).toBe('999')
+    expect(campaignRequest.headers['login-customer-id']).toBe('9999999999')
     expect(campaignRequest.body.query).toContain('campaign.keyword_match_type')
     expect(campaignRequest.body.query).toContain('campaign.ai_max_setting.enable_ai_max')
     expect(campaignRequest.body.query).toContain('campaign.ai_max_setting.bundling_required')

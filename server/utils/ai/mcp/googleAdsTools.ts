@@ -7,6 +7,7 @@ import {
 } from '~~/server/utils/googleAds/contracts'
 import type { McpToolManifest } from './project'
 import {
+  getGoogleAdsSearchPlanningToolSchema,
   googleAdsSearchPlanningTools,
   isGoogleAdsSearchPlanningTool
 } from './googleAdsSearchTools'
@@ -220,6 +221,23 @@ export function isGoogleAdsWriteToolName(name: string): boolean {
     || name === GOOGLE_ADS_RUN_PAUSE_POLICY_TOOL
     || name === GOOGLE_ADS_REVERIFY_RESOURCE_TOOL
     || isGoogleAdsSearchPlanningTool(name)
+}
+
+export function getGoogleAdsToolSchema(name: string): z.ZodType | null {
+  const planningSchema = getGoogleAdsSearchPlanningToolSchema(name)
+  if (planningSchema) return planningSchema
+  if (inventoryTools[name]) return inventoryTools[name].schema
+  if (name === GOOGLE_ADS_LIST_RECOMMENDATIONS_TOOL) return ListRecommendationsParams
+  if (name === GOOGLE_ADS_RUN_SEARCH_TERM_POLICY_TOOL) return RunSearchTermPolicyParams
+  if (name === GOOGLE_ADS_RUN_PAUSE_POLICY_TOOL) return RunPausePolicyParams
+  if ([
+    GOOGLE_ADS_VALIDATE_PLAN_TOOL,
+    GOOGLE_ADS_GET_STATUS_TOOL,
+    GOOGLE_ADS_GET_DRIFT_TOOL,
+    GOOGLE_ADS_REVERIFY_RESOURCE_TOOL,
+    GOOGLE_ADS_PROPOSE_ACTION_TOOL
+  ].includes(name)) return ActionPlanParams
+  return null
 }
 
 export function projectGoogleAdsTools(role: string, flags: GoogleAdsMcpFlags): McpToolManifest[] {

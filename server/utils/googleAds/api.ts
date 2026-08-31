@@ -15,6 +15,8 @@ export interface GoogleAdsRequestOptions<TBody extends Record<string, unknown> =
   body?: TBody
   retries?: number
   write?: boolean
+  /** Compatibility-only escape hatch for legacy callers that must rethrow the exact provider error. */
+  normalizeErrors?: boolean
 }
 
 export interface GoogleAdsTransportOptions {
@@ -107,7 +109,7 @@ export async function googleAdsRequest<TData, TBody extends Record<string, unkno
     } catch (error) {
       const normalized = normalizeGoogleAdsError(error)
       const canRetry = !options.write && normalized.retryable && attempt < retries
-      if (!canRetry) throw normalized
+      if (!canRetry) throw options.normalizeErrors === false ? error : normalized
       await sleep(250 * (2 ** attempt))
     }
   }

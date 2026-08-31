@@ -19,6 +19,8 @@ import {
   type ClaimedProposal
 } from './writeTools'
 import { persistMcpProposalResult, replayExecutedMcpProposal } from './proposalReplay'
+import { dispatchGoogleAdsConfirm } from './googleAdsTools'
+import { buildGoogleAdsConfirmDependencies } from './googleAdsServer'
 
 /**
  * Active-owner confirmation over the existing MCP pending-action protocol. The outer resolved-tool
@@ -79,6 +81,25 @@ export async function executeOwnerMcpConfirm(
         row.resolved_payload as BannerRenderPendingPayload,
         bannerCtx,
         { ...buildBannerConfirmDeps(), execution }
+      )
+    },
+    googleAdsDispatch: async (row, googleAdsCtx) => {
+      const flags = { read: true, write: true, automation: true, destructive: true }
+      const dependencies = buildGoogleAdsConfirmDependencies(flags)
+      return await dispatchGoogleAdsConfirm(
+        row,
+        proposalId,
+        typeof args === 'object' && args !== null && 'ack' in args
+        && (args as { ack?: unknown }).ack === true,
+        googleAdsCtx,
+        flags,
+        {
+          ...dependencies,
+          executeConfirmed: async (plan, context) => {
+            await execution?.markDispatched()
+            return await dependencies.executeConfirmed(plan, context)
+          }
+        }
       )
     }
   })

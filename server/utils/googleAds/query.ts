@@ -10,6 +10,7 @@ export interface ExecuteGoogleAdsQueryInput {
   auth: GoogleAdsAuth
   maxRows?: number
   retries?: number
+  preserveProviderErrors?: boolean
 }
 
 export interface GoogleAdsQueryResult<T> {
@@ -91,6 +92,7 @@ export async function executeGoogleAdsQuery<T = Record<string, unknown>>(
     auth: input.auth,
     body: { query: boundedQuery },
     write: false,
+    ...(input.preserveProviderErrors ? { normalizeErrors: false } : {}),
     ...(input.retries === undefined ? {} : { retries: input.retries })
   })
   const rows = flattenStreamRows<T>(response.data)

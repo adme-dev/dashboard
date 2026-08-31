@@ -780,7 +780,10 @@ const DismissRecommendationSchema = RecommendationSchema.extend({
   requestedMode: z.enum(['proposal', 'automatic']).default('proposal')
 })
 
+const googleAdsSearchPlanningSchemas = new Map<string, z.ZodType>()
+
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
+  googleAdsSearchPlanningSchemas.set(name, schema)
   return {
     name,
     description,
@@ -1065,6 +1068,10 @@ const TOOL_NAMES = new Set(googleAdsSearchPlanningTools.map(tool => tool.name))
 
 export function isGoogleAdsSearchPlanningTool(name: string): boolean {
   return TOOL_NAMES.has(name)
+}
+
+export function getGoogleAdsSearchPlanningToolSchema(name: string): z.ZodType | null {
+  return googleAdsSearchPlanningSchemas.get(name) ?? null
 }
 
 const ENTITY_RESOURCE_TYPES = {
