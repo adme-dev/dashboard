@@ -170,6 +170,26 @@ type CustomAudienceMember = {
 type CustomAudienceState = Omit<z.infer<typeof ProviderCustomAudienceStateSchema>, 'members'> & {
   members: CustomAudienceMember[]
 }
+const AssetGroupSignalStateSchema = z.object({
+  resourceName: z.string(),
+  assetGroup: z.string(),
+  audience: z.object({ audience: z.string() }).optional(),
+  searchTheme: z.object({ text: z.string().trim().min(1).max(80) }).optional(),
+  approvalStatus: z.enum([
+    'APPROVED', 'DISAPPROVED', 'LIMITED', 'UNDER_REVIEW', 'UNKNOWN', 'UNSPECIFIED'
+  ]).optional(),
+  disapprovalReasons: z.array(z.string()).optional()
+})
+type PmaxSignalState = {
+  assetGroupResourceName: string
+  audienceSignals: Array<{ resourceName: string, audienceResourceName: string }>
+  searchThemes: Array<{
+    resourceName: string
+    text: string
+    approvalStatus?: z.infer<typeof AssetGroupSignalStateSchema>['approvalStatus']
+    disapprovalReasons: string[]
+  }>
+}
 const ConversionGoalCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -1413,6 +1433,88 @@ WHERE custom_audience.name = '${escapeGaqlString(name)}'
   return { exists: false }
 }
 
+async function loadPmaxAssetGroupSignals(
+  customerId: string,
+  assetGroupResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<PmaxSignalState> {
+  assertCustomerResourceName(assetGroupResourceName, customerId, 'assetGroups')
+  const [assetGroupId] = resourceIds(assetGroupResourceName)
+  const assetGroupResult = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT asset_group.resource_name,
+  asset_group.campaign,
+  campaign.advertising_channel_type
+FROM asset_group
+WHERE asset_group.id = ${assetGroupId}`
+  })
+  const first = assetGroupResult.rows[0]
+  const assetGroupRow = z.object({
+    assetGroup: z.object({
+      resourceName: z.string(),
+      campaign: z.string()
+    }),
+    campaign: z.object({ advertisingChannelType: z.string() })
+  }).safeParse(first)
+  if (!assetGroupRow.success
+    || assetGroupRow.data.assetGroup.resourceName !== assetGroupResourceName
+    || assetGroupResult.more > 0) {
+    throw new Error('Google Ads asset group was not found')
+  }
+  assertCustomerResourceName(assetGroupRow.data.assetGroup.campaign, customerId, 'campaigns')
+  if (assetGroupRow.data.campaign.advertisingChannelType !== 'PERFORMANCE_MAX') {
+    throw new Error('The selected asset group does not belong to a Performance Max campaign')
+  }
+
+  const signalResult = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 10_000,
+    query: `SELECT asset_group_signal.resource_name,
+  asset_group_signal.asset_group,
+  asset_group_signal.audience.audience,
+  asset_group_signal.search_theme.text,
+  asset_group_signal.approval_status,
+  asset_group_signal.disapproval_reasons
+FROM asset_group_signal
+WHERE asset_group_signal.asset_group = '${escapeGaqlString(assetGroupResourceName)}'`
+  })
+  if (signalResult.more > 0) throw new Error('Google Ads asset-group signals exceeded the safe read limit')
+
+  const audienceSignals: PmaxSignalState['audienceSignals'] = []
+  const searchThemes: PmaxSignalState['searchThemes'] = []
+  for (const row of signalResult.rows) {
+    const raw = row && typeof row === 'object'
+      ? (row as Record<string, unknown>).assetGroupSignal
+      : undefined
+    const signal = AssetGroupSignalStateSchema.safeParse(raw)
+    if (!signal.success || signal.data.assetGroup !== assetGroupResourceName) {
+      throw new Error('Google Ads returned an invalid asset-group signal')
+    }
+    assertCustomerResourceName(signal.data.resourceName, customerId, 'assetGroupSignals', true)
+    if (signal.data.audience) {
+      assertCustomerResourceName(signal.data.audience.audience, customerId, 'audiences')
+      audienceSignals.push({
+        resourceName: signal.data.resourceName,
+        audienceResourceName: signal.data.audience.audience
+      })
+    } else if (signal.data.searchTheme) {
+      searchThemes.push({
+        resourceName: signal.data.resourceName,
+        text: signal.data.searchTheme.text.trim().replace(/\s+/g, ' '),
+        ...(signal.data.approvalStatus ? { approvalStatus: signal.data.approvalStatus } : {}),
+        disapprovalReasons: signal.data.disapprovalReasons ?? []
+      })
+    }
+  }
+  audienceSignals.sort((left, right) => left.audienceResourceName.localeCompare(right.audienceResourceName))
+  searchThemes.sort((left, right) => left.text.localeCompare(right.text, 'en-AU'))
+  return { assetGroupResourceName, audienceSignals, searchThemes }
+}
+
 export async function loadSearchGoogleAdsCurrentState(
   context: Omit<BuildGoogleAdsActionContext, 'currentState'>,
   auth: GoogleAdsAuth,
@@ -1610,6 +1712,17 @@ export async function loadSearchGoogleAdsCurrentState(
     ))
     return loadCustomAudience(context.customerId, args.resourceName, auth, resolved)
   }
+  if (context.input.operation === 'set_pmax_signals' || context.input.operation === 'set_search_themes') {
+    const args = z.object({ assetGroupResourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation, context.input.arguments
+    ))
+    const state = await loadPmaxAssetGroupSignals(
+      context.customerId, args.assetGroupResourceName, auth, resolved
+    )
+    return context.input.operation === 'set_pmax_signals'
+      ? { assetGroupResourceName: state.assetGroupResourceName, audienceSignals: state.audienceSignals }
+      : { assetGroupResourceName: state.assetGroupResourceName, searchThemes: state.searchThemes }
+  }
   if (context.input.operation === 'set_campaign_conversion_goals') {
     const args = z.object({ campaignResourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation, context.input.arguments
@@ -1669,6 +1782,15 @@ export async function loadSearchGoogleAdsPlanState(
   if (plan.operation === 'archive_custom_audience') {
     if (!plan.resourceName) throw new Error('Custom-audience archive plan has no resource name')
     return loadCustomAudience(plan.customerId, plan.resourceName, auth, resolved)
+  }
+  if (plan.operation === 'set_pmax_signals' || plan.operation === 'set_search_themes') {
+    const desired = z.object({ assetGroupResourceName: z.string() }).parse(plan.desiredState)
+    const state = await loadPmaxAssetGroupSignals(
+      plan.customerId, desired.assetGroupResourceName, auth, resolved
+    )
+    return plan.operation === 'set_pmax_signals'
+      ? { assetGroupResourceName: state.assetGroupResourceName, audienceSignals: state.audienceSignals }
+      : { assetGroupResourceName: state.assetGroupResourceName, searchThemes: state.searchThemes }
   }
   if (plan.operation === 'create_conversion_action') {
     if (mutation) {

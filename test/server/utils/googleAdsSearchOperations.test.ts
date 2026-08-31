@@ -1112,6 +1112,98 @@ describe('Search Google Ads construction operations', () => {
     ))).toThrow('Custom audience already matches the requested values')
   })
 
+  it('atomically replaces Performance Max audience signals without touching other signal types', () => {
+    const assetGroup = 'customers/1234567890/assetGroups/7001'
+    const oldAudienceSignal = 'customers/1234567890/assetGroupSignals/7001~8101'
+    const oldAudience = 'customers/1234567890/audiences/9001'
+    const newAudience = 'customers/1234567890/audiences/9002'
+    const built = buildSearchGoogleAdsAction(context(
+      'set_pmax_signals',
+      'audience',
+      { assetGroupResourceName: assetGroup, audienceResourceNames: [newAudience] },
+      {
+        assetGroupResourceName: assetGroup,
+        audienceSignals: [{ resourceName: oldAudienceSignal, audienceResourceName: oldAudience }]
+      }
+    ))
+
+    expect(built).toEqual({
+      resourceName: assetGroup,
+      desiredState: {
+        assetGroupResourceName: assetGroup,
+        audienceSignals: [{ audienceResourceName: newAudience }]
+      },
+      providerOperations: [{
+        service: 'assetGroupSignals',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [
+          { create: { assetGroup, audience: { audience: newAudience } } },
+          { remove: oldAudienceSignal }
+        ]
+      }]
+    })
+  })
+
+  it('normalizes and atomically replaces Performance Max search themes', () => {
+    const assetGroup = 'customers/1234567890/assetGroups/7001'
+    const oldSignal = 'customers/1234567890/assetGroupSignals/7001~8201'
+    const built = buildSearchGoogleAdsAction(context(
+      'set_search_themes',
+      'search_theme',
+      { assetGroupResourceName: assetGroup, themes: ['  GAC   SUV ', 'New vehicles'] },
+      {
+        assetGroupResourceName: assetGroup,
+        searchThemes: [{ resourceName: oldSignal, text: 'Old vehicles', approvalStatus: 'APPROVED' }]
+      }
+    ))
+
+    expect(built).toEqual({
+      resourceName: assetGroup,
+      desiredState: {
+        assetGroupResourceName: assetGroup,
+        searchThemes: [{ text: 'GAC SUV' }, { text: 'New vehicles' }]
+      },
+      providerOperations: [{
+        service: 'assetGroupSignals',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [
+          { create: { assetGroup, searchTheme: { text: 'GAC SUV' } } },
+          { create: { assetGroup, searchTheme: { text: 'New vehicles' } } },
+          { remove: oldSignal }
+        ]
+      }]
+    })
+  })
+
+  it('rejects duplicate, oversized, cross-tenant, and unchanged Performance Max signals', () => {
+    const assetGroup = 'customers/1234567890/assetGroups/7001'
+    expect(() => parseSearchGoogleAdsArguments('set_search_themes', {
+      assetGroupResourceName: assetGroup,
+      themes: ['GAC SUV', 'gac   suv']
+    })).toThrow('Search themes must be unique')
+    expect(() => parseSearchGoogleAdsArguments('set_search_themes', {
+      assetGroupResourceName: assetGroup,
+      themes: Array.from({ length: 26 }, (_, index) => `theme ${index}`)
+    })).toThrow()
+    expect(() => buildSearchGoogleAdsAction(context(
+      'set_pmax_signals',
+      'audience',
+      {
+        assetGroupResourceName: assetGroup,
+        audienceResourceNames: ['customers/9999999999/audiences/9002']
+      },
+      { assetGroupResourceName: assetGroup, audienceSignals: [] }
+    ))).toThrow('selected Google Ads customer')
+    expect(() => buildSearchGoogleAdsAction(context(
+      'set_search_themes',
+      'search_theme',
+      { assetGroupResourceName: assetGroup, themes: ['GAC SUV'] },
+      { assetGroupResourceName: assetGroup, searchThemes: [{ text: 'gac suv' }] }
+    ))).toThrow('Search themes already match the requested values')
+  })
+
   it('rejects unsafe URLs and campaigns that attempt to start enabled', () => {
     expect(() => buildSearchGoogleAdsAction(context(
       'create_ad',

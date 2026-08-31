@@ -272,6 +272,27 @@ const ManageCustomAudienceArgumentsSchema = z.union([
   CreateCustomAudienceArgumentsSchema,
   UpdateCustomAudienceArgumentsSchema
 ])
+const SetPmaxSignalsArgumentsSchema = z.strictObject({
+  assetGroupResourceName: z.string().trim().min(1).max(1_000),
+  audienceResourceNames: z.array(z.string().trim().min(1).max(1_000)).max(500)
+}).superRefine((value, refinement) => {
+  if (new Set(value.audienceResourceNames).size !== value.audienceResourceNames.length) {
+    refinement.addIssue({ code: 'custom', message: 'Performance Max audience signals must be unique' })
+  }
+})
+const SearchThemeTextSchema = z.string().trim().min(1).max(80).refine(
+  value => value.replace(/\s+/g, ' ').split(' ').length <= 10,
+  { message: 'Search themes may contain at most 10 words' }
+)
+const SetSearchThemesArgumentsSchema = z.strictObject({
+  assetGroupResourceName: z.string().trim().min(1).max(1_000),
+  themes: z.array(SearchThemeTextSchema).max(25)
+}).superRefine((value, refinement) => {
+  const keys = value.themes.map(theme => theme.replace(/\s+/g, ' ').toLocaleLowerCase('en-AU'))
+  if (new Set(keys).size !== keys.length) {
+    refinement.addIssue({ code: 'custom', message: 'Search themes must be unique' })
+  }
+})
 const ConversionCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -356,6 +377,20 @@ const MutableCustomAudienceStateSchema = z.object({
   type: z.enum(['AUTO', 'SEARCH', 'INTEREST', 'PURCHASE_INTENT']),
   members: z.array(CustomAudienceMemberSchema)
 })
+const PmaxAudienceSignalStateSchema = z.object({
+  assetGroupResourceName: z.string(),
+  audienceSignals: z.array(z.object({
+    resourceName: z.string().optional(),
+    audienceResourceName: z.string()
+  }))
+})
+const PmaxSearchThemeStateSchema = z.object({
+  assetGroupResourceName: z.string(),
+  searchThemes: z.array(z.object({
+    resourceName: z.string().optional(),
+    text: z.string()
+  }))
+})
 
 const STATUS_OPERATIONS = {
   pause_campaign: { resourceType: 'campaign', segment: 'campaigns', service: 'campaigns', status: 'PAUSED' },
@@ -402,6 +437,8 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'set_audience_associations',
       'manage_custom_audience',
       'archive_custom_audience',
+      'set_pmax_signals',
+      'set_search_themes',
       'set_campaign_conversion_goals',
       'set_customer_goal_biddability',
       'set_conversion_primary_state',
@@ -414,6 +451,7 @@ function resourcePattern(customerId: string, segment: string): RegExp {
   const suffix = segment === 'adGroupAds'
     || segment === 'adGroupCriteria'
     || segment === 'campaignCriteria'
+    || segment === 'assetGroupSignals'
     ? '\\d+~\\d+'
     : '\\d+'
   return new RegExp(`^customers/${customerId}/${segment}/${suffix}$`)
@@ -495,6 +533,8 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_audience_associations') return SetAudienceAssociationsArgumentsSchema.parse(argumentsValue)
   if (operation === 'manage_custom_audience') return ManageCustomAudienceArgumentsSchema.parse(argumentsValue)
   if (operation === 'archive_custom_audience') return ResourceNameArgumentsSchema.parse(argumentsValue)
+  if (operation === 'set_pmax_signals') return SetPmaxSignalsArgumentsSchema.parse(argumentsValue)
+  if (operation === 'set_search_themes') return SetSearchThemesArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_customer_goal_biddability') return SetCustomerGoalBiddabilityArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_primary_state') return SetConversionPrimaryStateArgumentsSchema.parse(argumentsValue)
@@ -1505,6 +1545,103 @@ function buildArchiveCustomAudienceAction(context: BuildGoogleAdsActionContext):
   }
 }
 
+function buildPmaxAudienceSignalsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'audience') {
+    throw new Error('Performance Max audience signals require resource type audience')
+  }
+  const args = SetPmaxSignalsArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.assetGroupResourceName, context.customerId, 'assetGroups')
+  for (const audienceResourceName of args.audienceResourceNames) {
+    assertResourceName(audienceResourceName, context.customerId, 'audiences')
+  }
+  const current = PmaxAudienceSignalStateSchema.parse(context.currentState)
+  if (current.assetGroupResourceName !== args.assetGroupResourceName) {
+    throw new Error('Performance Max signal state does not match the selected asset group')
+  }
+  const desiredNames = [...args.audienceResourceNames].sort((left, right) => left.localeCompare(right))
+  const desiredSet = new Set(desiredNames)
+  const currentSet = new Set(current.audienceSignals.map(signal => signal.audienceResourceName))
+  const operations: Array<{ create: Record<string, unknown> } | { remove: string }> = []
+  for (const audienceResourceName of desiredNames) {
+    if (!currentSet.has(audienceResourceName)) {
+      operations.push({ create: {
+        assetGroup: args.assetGroupResourceName,
+        audience: { audience: audienceResourceName }
+      } })
+    }
+  }
+  for (const signal of current.audienceSignals) {
+    if (desiredSet.has(signal.audienceResourceName)) continue
+    if (!signal.resourceName) throw new Error('Existing Performance Max audience signal has no resource name')
+    assertResourceName(signal.resourceName, context.customerId, 'assetGroupSignals')
+    operations.push({ remove: signal.resourceName })
+  }
+  if (operations.length === 0) throw new Error('Performance Max audience signals already match the requested values')
+  return {
+    resourceName: args.assetGroupResourceName,
+    desiredState: {
+      assetGroupResourceName: args.assetGroupResourceName,
+      audienceSignals: desiredNames.map(audienceResourceName => ({ audienceResourceName }))
+    },
+    providerOperations: [{
+      service: 'assetGroupSignals',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations
+    }]
+  }
+}
+
+function normalizeSearchThemeText(value: string): string {
+  return value.trim().replace(/\s+/g, ' ')
+}
+
+function searchThemeKey(value: string): string {
+  return normalizeSearchThemeText(value).toLocaleLowerCase('en-AU')
+}
+
+function buildPmaxSearchThemesAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'search_theme') {
+    throw new Error('Performance Max search themes require resource type search_theme')
+  }
+  const args = SetSearchThemesArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.assetGroupResourceName, context.customerId, 'assetGroups')
+  const current = PmaxSearchThemeStateSchema.parse(context.currentState)
+  if (current.assetGroupResourceName !== args.assetGroupResourceName) {
+    throw new Error('Performance Max search-theme state does not match the selected asset group')
+  }
+  const themes = args.themes.map(normalizeSearchThemeText)
+    .sort((left, right) => left.localeCompare(right, 'en-AU'))
+  const desiredKeys = new Set(themes.map(searchThemeKey))
+  const currentKeys = new Set(current.searchThemes.map(signal => searchThemeKey(signal.text)))
+  const operations: Array<{ create: Record<string, unknown> } | { remove: string }> = []
+  for (const text of themes) {
+    if (!currentKeys.has(searchThemeKey(text))) {
+      operations.push({ create: { assetGroup: args.assetGroupResourceName, searchTheme: { text } } })
+    }
+  }
+  for (const signal of current.searchThemes) {
+    if (desiredKeys.has(searchThemeKey(signal.text))) continue
+    if (!signal.resourceName) throw new Error('Existing Performance Max search theme has no resource name')
+    assertResourceName(signal.resourceName, context.customerId, 'assetGroupSignals')
+    operations.push({ remove: signal.resourceName })
+  }
+  if (operations.length === 0) throw new Error('Search themes already match the requested values')
+  return {
+    resourceName: args.assetGroupResourceName,
+    desiredState: {
+      assetGroupResourceName: args.assetGroupResourceName,
+      searchThemes: themes.map(text => ({ text }))
+    },
+    providerOperations: [{
+      service: 'assetGroupSignals',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -1535,5 +1672,7 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'update_conversion_action') return buildUpdateConversionAction(context)
   if (context.input.operation === 'manage_custom_audience') return buildManageCustomAudienceAction(context)
   if (context.input.operation === 'archive_custom_audience') return buildArchiveCustomAudienceAction(context)
+  if (context.input.operation === 'set_pmax_signals') return buildPmaxAudienceSignalsAction(context)
+  if (context.input.operation === 'set_search_themes') return buildPmaxSearchThemesAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }

@@ -53,7 +53,9 @@ function dependencies(overrides: Record<string, unknown> = {}) {
 describe('Search Google Ads governed planning runtime', () => {
   it.each([
     ['manage_custom_audience', 'customAudiences'],
-    ['archive_custom_audience', 'customAudiences']
+    ['archive_custom_audience', 'customAudiences'],
+    ['set_pmax_signals', 'assetGroupSignals'],
+    ['set_search_themes', 'assetGroupSignals']
   ] as const)('allows governed %s plans only through %s', (operation, service) => {
     expect(isExecutableSearchGoogleAdsPlan({
       operation,

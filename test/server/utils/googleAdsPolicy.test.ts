@@ -73,6 +73,8 @@ describe('resolveGoogleAdsPolicy', () => {
     ['update_bidding', 'rich_confirm'],
     ['enable_campaign', 'rich_confirm'],
     ['manage_custom_audience', 'rich_confirm'],
+    ['set_pmax_signals', 'rich_confirm'],
+    ['set_search_themes', 'rich_confirm'],
     ['set_conversion_goal', 'rich_confirm'],
     ['remove_campaign', 'destructive_confirm'],
     ['archive_custom_audience', 'destructive_confirm']

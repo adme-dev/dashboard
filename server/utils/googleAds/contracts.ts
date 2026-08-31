@@ -33,6 +33,7 @@ export const GoogleAdsResourceTypeSchema = z.enum([
   'content_exclusion',
   'audience',
   'custom_audience',
+  'search_theme',
   'asset',
   'asset_link',
   'asset_group',

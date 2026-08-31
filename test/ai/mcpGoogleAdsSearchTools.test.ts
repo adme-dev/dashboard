@@ -44,7 +44,9 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_update_conversion_action',
       'google_ads_plan_create_custom_audience',
       'google_ads_plan_update_custom_audience',
-      'google_ads_plan_archive_custom_audience'
+      'google_ads_plan_archive_custom_audience',
+      'google_ads_plan_set_pmax_audience_signals',
+      'google_ads_plan_set_pmax_search_themes'
     ])
     const serialized = JSON.stringify(googleAdsSearchPlanningTools)
     expect(serialized).not.toMatch(/"(?:query|operations|url|accessToken|developerToken)"/)
@@ -466,6 +468,32 @@ describe('Google Ads Search MCP planning descriptors', () => {
       operation: 'archive_custom_audience',
       resourceType: 'custom_audience',
       expectedArguments: { resourceName: 'customers/1234567890/customAudiences/8001' }
+    },
+    {
+      tool: 'google_ads_plan_set_pmax_audience_signals',
+      args: {
+        assetGroupResourceName: 'customers/1234567890/assetGroups/7001',
+        audienceResourceNames: ['customers/1234567890/audiences/9001']
+      },
+      operation: 'set_pmax_signals',
+      resourceType: 'audience',
+      expectedArguments: {
+        assetGroupResourceName: 'customers/1234567890/assetGroups/7001',
+        audienceResourceNames: ['customers/1234567890/audiences/9001']
+      }
+    },
+    {
+      tool: 'google_ads_plan_set_pmax_search_themes',
+      args: {
+        assetGroupResourceName: 'customers/1234567890/assetGroups/7001',
+        themes: ['GAC SUV', 'New vehicles']
+      },
+      operation: 'set_search_themes',
+      resourceType: 'search_theme',
+      expectedArguments: {
+        assetGroupResourceName: 'customers/1234567890/assetGroups/7001',
+        themes: ['GAC SUV', 'New vehicles']
+      }
     }
   ])('maps $tool to a typed proposal-only plan', async ({
     tool,

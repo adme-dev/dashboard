@@ -35,6 +35,8 @@ export const GOOGLE_ADS_PLAN_UPDATE_CONVERSION_ACTION_TOOL = 'google_ads_plan_up
 export const GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_create_custom_audience'
 export const GOOGLE_ADS_PLAN_UPDATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_update_custom_audience'
 export const GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_archive_custom_audience'
+export const GOOGLE_ADS_PLAN_SET_PMAX_AUDIENCE_SIGNALS_TOOL = 'google_ads_plan_set_pmax_audience_signals'
+export const GOOGLE_ADS_PLAN_SET_PMAX_SEARCH_THEMES_TOOL = 'google_ads_plan_set_pmax_search_themes'
 
 const CommonSchema = {
   clientId: z.string().uuid(),
@@ -311,6 +313,29 @@ const ArchiveCustomAudienceSchema = z.strictObject({
   ...CommonSchema,
   resourceName: z.string().trim().min(1).max(1_000)
 })
+const SetPmaxAudienceSignalsSchema = z.strictObject({
+  ...CommonSchema,
+  assetGroupResourceName: z.string().trim().min(1).max(1_000),
+  audienceResourceNames: z.array(z.string().trim().min(1).max(1_000)).max(500)
+}).superRefine((value, refinement) => {
+  if (new Set(value.audienceResourceNames).size !== value.audienceResourceNames.length) {
+    refinement.addIssue({ code: 'custom', message: 'Performance Max audience signals must be unique' })
+  }
+})
+const SearchThemeTextSchema = z.string().trim().min(1).max(80).refine(
+  value => value.replace(/\s+/g, ' ').split(' ').length <= 10,
+  { message: 'Search themes may contain at most 10 words' }
+)
+const SetPmaxSearchThemesSchema = z.strictObject({
+  ...CommonSchema,
+  assetGroupResourceName: z.string().trim().min(1).max(1_000),
+  themes: z.array(SearchThemeTextSchema).max(25)
+}).superRefine((value, refinement) => {
+  const keys = value.themes.map(theme => theme.replace(/\s+/g, ' ').toLocaleLowerCase('en-AU'))
+  if (new Set(keys).size !== keys.length) {
+    refinement.addIssue({ code: 'custom', message: 'Search themes must be unique' })
+  }
+})
 const ConversionCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -523,6 +548,16 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_AUDIENCE_TOOL,
     'Plan archiving a custom audience. Google implements archive as removal and reports REMOVED, so owner/admin destructive confirmation is required.',
     ArchiveCustomAudienceSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_SET_PMAX_AUDIENCE_SIGNALS_TOOL,
+    'Plan an exact replacement of Audience hints for one Performance Max asset group. Other signal types are preserved and the change requires elevated approval.',
+    SetPmaxAudienceSignalsSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_SET_PMAX_SEARCH_THEMES_TOOL,
+    'Plan an exact replacement of up to 25 unique Search themes for one Performance Max asset group. Audience and other signal types are preserved.',
+    SetPmaxSearchThemesSchema
   )
 ]
 
@@ -1019,6 +1054,38 @@ export async function executeGoogleAdsSearchPlanningTool(
         operation: 'archive_custom_audience',
         resourceType: 'custom_audience',
         arguments: { resourceName: args.resourceName }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_SET_PMAX_AUDIENCE_SIGNALS_TOOL) {
+      const args = SetPmaxAudienceSignalsSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'set_pmax_signals',
+        resourceType: 'audience',
+        arguments: {
+          assetGroupResourceName: args.assetGroupResourceName,
+          audienceResourceNames: args.audienceResourceNames
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_SET_PMAX_SEARCH_THEMES_TOOL) {
+      const args = SetPmaxSearchThemesSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'set_search_themes',
+        resourceType: 'search_theme',
+        arguments: {
+          assetGroupResourceName: args.assetGroupResourceName,
+          themes: args.themes
+        }
       }
     } else {
       throw new Error('Unsupported Google Ads Search planning tool')

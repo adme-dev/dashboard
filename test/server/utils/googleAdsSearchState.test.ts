@@ -686,6 +686,100 @@ describe('Search Google Ads current-state loader', () => {
       members: [{ type: 'KEYWORD', value: 'GAC' }]
     }), auth, { query })).rejects.toThrow('already exists')
   })
+
+  it('loads only the requested Performance Max audience-signal set', async () => {
+    const assetGroup = 'customers/1234567890/assetGroups/7001'
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{
+          assetGroup: { resourceName: assetGroup, campaign: 'customers/1234567890/campaigns/6001' },
+          campaign: { advertisingChannelType: 'PERFORMANCE_MAX' }
+        }],
+        more: 0
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          { assetGroupSignal: {
+            resourceName: 'customers/1234567890/assetGroupSignals/7001~8101',
+            assetGroup,
+            audience: { audience: 'customers/1234567890/audiences/9001' }
+          } },
+          { assetGroupSignal: {
+            resourceName: 'customers/1234567890/assetGroupSignals/7001~8201',
+            assetGroup,
+            searchTheme: { text: 'GAC SUV' },
+            approvalStatus: 'APPROVED',
+            disapprovalReasons: []
+          } },
+          { assetGroupSignal: {
+            resourceName: 'customers/1234567890/assetGroupSignals/7001~8301',
+            assetGroup
+          } }
+        ],
+        more: 0
+      })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('set_pmax_signals', {
+      assetGroupResourceName: assetGroup,
+      audienceResourceNames: []
+    }), auth, { query })).resolves.toEqual({
+      assetGroupResourceName: assetGroup,
+      audienceSignals: [{
+        resourceName: 'customers/1234567890/assetGroupSignals/7001~8101',
+        audienceResourceName: 'customers/1234567890/audiences/9001'
+      }]
+    })
+    expect(query.mock.calls[0]?.[0].query).toContain('asset_group.id = 7001')
+    expect(query.mock.calls[1]?.[0]).toMatchObject({ maxRows: 10_000 })
+  })
+
+  it('loads search-theme review details and rejects non-Performance-Max asset groups', async () => {
+    const assetGroup = 'customers/1234567890/assetGroups/7001'
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{
+          assetGroup: { resourceName: assetGroup, campaign: 'customers/1234567890/campaigns/6001' },
+          campaign: { advertisingChannelType: 'PERFORMANCE_MAX' }
+        }],
+        more: 0
+      })
+      .mockResolvedValueOnce({
+        rows: [{ assetGroupSignal: {
+          resourceName: 'customers/1234567890/assetGroupSignals/7001~8201',
+          assetGroup,
+          searchTheme: { text: 'GAC SUV' },
+          approvalStatus: 'LIMITED',
+          disapprovalReasons: ['Low search volume']
+        } }],
+        more: 0
+      })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('set_search_themes', {
+      assetGroupResourceName: assetGroup,
+      themes: []
+    }), auth, { query })).resolves.toEqual({
+      assetGroupResourceName: assetGroup,
+      searchThemes: [{
+        resourceName: 'customers/1234567890/assetGroupSignals/7001~8201',
+        text: 'GAC SUV',
+        approvalStatus: 'LIMITED',
+        disapprovalReasons: ['Low search volume']
+      }]
+    })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('set_search_themes', {
+      assetGroupResourceName: assetGroup,
+      themes: []
+    }), auth, {
+      query: vi.fn().mockResolvedValue({
+        rows: [{
+          assetGroup: { resourceName: assetGroup, campaign: 'customers/1234567890/campaigns/6001' },
+          campaign: { advertisingChannelType: 'SEARCH' }
+        }],
+        more: 0
+      })
+    })).rejects.toThrow('Performance Max')
+  })
 })
 
 describe('Search Google Ads readback verification', () => {
@@ -1157,6 +1251,47 @@ describe('Search Google Ads persisted-plan state loading', () => {
 
     await expect(loadSearchGoogleAdsPlanState(plan, auth, { query })).resolves.toMatchObject({
       resourceName, status: 'REMOVED'
+    })
+  })
+
+  it('re-reads an exact Performance Max search-theme set after mutation', async () => {
+    const assetGroupResourceName = 'customers/1234567890/assetGroups/7001'
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{
+          assetGroup: {
+            resourceName: assetGroupResourceName,
+            campaign: 'customers/1234567890/campaigns/6001'
+          },
+          campaign: { advertisingChannelType: 'PERFORMANCE_MAX' }
+        }],
+        more: 0
+      })
+      .mockResolvedValueOnce({
+        rows: [{ assetGroupSignal: {
+          resourceName: 'customers/1234567890/assetGroupSignals/7001~8202',
+          assetGroup: assetGroupResourceName,
+          searchTheme: { text: 'GAC SUV' },
+          approvalStatus: 'UNDER_REVIEW',
+          disapprovalReasons: []
+        } }],
+        more: 0
+      })
+    const plan = {
+      operation: 'set_search_themes',
+      resourceType: 'search_theme',
+      resourceName: assetGroupResourceName,
+      customerId: '1234567890',
+      desiredState: {
+        assetGroupResourceName,
+        searchThemes: [{ text: 'GAC SUV' }]
+      },
+      providerOperations: [{ service: 'assetGroupSignals' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query })).resolves.toMatchObject({
+      assetGroupResourceName,
+      searchThemes: [{ text: 'GAC SUV', approvalStatus: 'UNDER_REVIEW' }]
     })
   })
 })
