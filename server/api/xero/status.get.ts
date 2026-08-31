@@ -1,4 +1,5 @@
-import { getOrgToken, getActiveOrgToken, getOrgTenant } from '../../utils/tokenStore'
+import { getSelectedTenant } from '~~/server/utils/session'
+import { getOrgToken, getActiveOrgToken, getOrgTenant } from '~~/server/utils/tokenStore'
 
 export default eventHandler(async (event) => {
   try {
@@ -14,11 +15,12 @@ export default eventHandler(async (event) => {
       }
     }
 
-    const tenant = await getOrgTenant(event)
+    const selectedTenantId = connected ? await getSelectedTenant(event) : undefined
+    const tenant = selectedTenantId ? await getOrgTenant(event) : undefined
     return {
       connected,
-      selectedTenantId: tenant?.tenantId || null,
-      selectedTenantName: tenant?.tenantName || null
+      selectedTenantId: selectedTenantId || null,
+      selectedTenantName: tenant && tenant.tenantId === selectedTenantId ? tenant.tenantName : null
     }
   } catch (error: any) {
     if (error?.message?.includes('does not exist') || error?.message?.includes('relation')) {
