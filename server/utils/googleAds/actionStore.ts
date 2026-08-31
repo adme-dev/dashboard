@@ -410,3 +410,34 @@ export async function completeGoogleAdsActionPlan(
   `, [id, clientId, status, providerRequestId, verificationSummary, resultMetadata])
   return row ? parsePlan(row) : null
 }
+
+export interface ReconcileGoogleAdsActionPlanVerificationInput {
+  id: string
+  clientId: string
+  actorId: string
+  verificationSummary: unknown
+}
+
+export async function reconcileGoogleAdsActionPlanVerification(
+  input: ReconcileGoogleAdsActionPlanVerificationInput,
+  dependencies: GoogleAdsActionStoreDependencies = defaultDependencies
+): Promise<GoogleAdsActionPlan | null> {
+  const id = UuidSchema.parse(input.id)
+  const clientId = UuidSchema.parse(input.clientId)
+  const actorId = UuidSchema.parse(input.actorId)
+  const verificationSummary = serializeEvidence(input.verificationSummary, 'Verification summary')
+  const row = await dependencies.queryOne<Record<string, unknown>>(`
+    UPDATE google_ads_action_plans
+    SET status = 'verified',
+        verification_summary = $4::jsonb,
+        result_metadata = COALESCE(result_metadata, '{}'::jsonb)
+          || jsonb_build_object('reverificationPhase', 'manual_reverification'),
+        completed_at = NOW()
+    WHERE id = $1
+      AND client_id = $2
+      AND actor_id = $3
+      AND status IN ('verification_failed', 'recovery_required', 'partially_verified')
+    RETURNING ${PLAN_COLUMNS}
+  `, [id, clientId, actorId, verificationSummary])
+  return row ? parsePlan(row) : null
+}

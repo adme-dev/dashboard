@@ -8,7 +8,8 @@ import {
   createGoogleAdsActionPlan,
   getGoogleAdsActionPlan,
   getGoogleAdsActionPlanForActor,
-  linkGoogleAdsActionApproval
+  linkGoogleAdsActionApproval,
+  reconcileGoogleAdsActionPlanVerification
 } from '~~/server/utils/googleAds/actionStore'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
@@ -252,5 +253,22 @@ describe('Google Ads action store', () => {
     expect(sql).toContain('status = \'executing\'')
     expect(sql).toContain('verification_summary')
     expect(sql).toContain('provider_request_id')
+  })
+
+  it('reconciles only a terminal plan that previously required verification', async () => {
+    const verified = makePlan({ status: 'verified', verificationSummary: { ok: true, diffs: [] } })
+    const queryOne = vi.fn().mockResolvedValue(verified)
+
+    await expect(reconcileGoogleAdsActionPlanVerification({
+      id: PLAN_ID,
+      clientId: CLIENT_ID,
+      actorId: ACTOR_ID,
+      verificationSummary: { ok: true, diffs: [] }
+    }, { queryOne })).resolves.toEqual(verified)
+
+    const [sql, params] = queryOne.mock.calls[0]!
+    expect(sql).toContain('status IN (\'verification_failed\', \'recovery_required\', \'partially_verified\')')
+    expect(sql).toContain('SET status = \'verified\'')
+    expect(params?.slice(0, 3)).toEqual([PLAN_ID, CLIENT_ID, ACTOR_ID])
   })
 })
