@@ -139,6 +139,21 @@ npx wrangler pages secret delete DATABASE_URL --env production
 - [ ] `XERO_CLIENT_SECRET` - If using Xero integration
 - [ ] `GTM_GOOGLE_CLIENT_ID` / `GTM_GOOGLE_CLIENT_SECRET` - Dedicated business-owned Google Tag Manager OAuth client
 
+### Google Ads MCP control plane
+
+The Google Ads MCP controls are four independent, false-by-default server flags:
+
+```bash
+GOOGLE_ADS_MCP_READ_ENABLED=false
+GOOGLE_ADS_MCP_WRITE_ENABLED=false
+GOOGLE_ADS_MCP_AUTOMATION_ENABLED=false
+GOOGLE_ADS_MCP_DESTRUCTIVE_ENABLED=false
+```
+
+Enable read-only access first. Write access still uses tenant-bound action plans and approvals.
+Automation applies only to policy-approved safe actions such as negative keywords or pauses.
+`GOOGLE_ADS_MCP_DESTRUCTIVE_ENABLED` permits irreversible provider removal and should normally stay off.
+
 ---
 
 ## 🛠️ Troubleshooting

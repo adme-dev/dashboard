@@ -53,7 +53,7 @@ export const MCP_FINANCIAL_ACTIONS = [
   'propose_expense_approval',
   'propose_quote',
   'propose_expense_classify',
-  'propose_budget_alert',
+  'propose_budget_alert'
 ] as const
 
 /** Money-movers that require ack:true at the MCP boundary (independent of executor riskTier). */
@@ -61,7 +61,7 @@ export const MCP_FINANCIAL_RICH_CONFIRM = [
   'propose_budget_change',
   'propose_bulk_set_campaign_budgets',
   'propose_eom_generate',
-  'propose_expense_approval',
+  'propose_expense_approval'
 ] as const
 
 export function isFinancialAction(name: string): boolean {
@@ -274,6 +274,8 @@ export interface ConfirmDeps {
   /** Optional (feed round): handle feed confirm-tier tool_names; receives the boundary ack so the
    *  P-2 always-confirm carve-in can refuse without ack:true under ANY authority. Null falls through. */
   feedDispatch?: (row: ClaimedProposal, ctx: ToolContext, ack: boolean) => Promise<WriteConfirmOutcome | null>
+  /** Optional Google Ads control-plane confirmation. Returns null for non-Google pending rows. */
+  googleAdsDispatch?: (row: ClaimedProposal, ctx: ToolContext) => Promise<WriteConfirmOutcome | null>
   /** Optional: restore a just-claimed row to 'proposed' when a PRE-execution gate rejects (ack/permission),
    *  so the proposal isn't burned and the user can retry (e.g. with ack:true). Never called after execution. */
   revertClaim?: (proposalId: string, userId: string) => Promise<void>
@@ -353,6 +355,17 @@ export async function executeWriteConfirm(args: unknown, ctx: ToolContext, deps:
     if (fo) {
       if (!fo.ok && fo.code === 'confirm_required') return await rejectAndRevert(fo)
       return await persistSuccess(fo)
+    }
+  }
+
+  if (deps.googleAdsDispatch) {
+    const googleOutcome = await deps.googleAdsDispatch(row, ctx)
+    if (googleOutcome) {
+      if ('code' in googleOutcome
+        && (googleOutcome.code === 'confirm_required' || googleOutcome.code === 'forbidden')) {
+        return await rejectAndRevert(googleOutcome)
+      }
+      return await persistSuccess(googleOutcome)
     }
   }
 

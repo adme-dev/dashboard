@@ -2,10 +2,13 @@ import { describe, expect, it, vi } from 'vitest'
 import type { GoogleAdsActionPlan } from '~~/server/utils/googleAds/contracts'
 import {
   appendGoogleAdsActionEvent,
+  approveGoogleAdsActionPlan,
   claimGoogleAdsActionPlan,
   completeGoogleAdsActionPlan,
   createGoogleAdsActionPlan,
-  getGoogleAdsActionPlan
+  getGoogleAdsActionPlan,
+  getGoogleAdsActionPlanForActor,
+  linkGoogleAdsActionApproval
 } from '~~/server/utils/googleAds/actionStore'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
@@ -86,6 +89,40 @@ describe('Google Ads action store', () => {
 
     expect(queryOne.mock.calls[0]?.[0]).toContain('WHERE id = $1 AND client_id = $2')
     expect(queryOne.mock.calls[0]?.[1]).toEqual([PLAN_ID, CLIENT_ID])
+  })
+
+  it('loads an MCP plan only through its bound actor', async () => {
+    const queryOne = vi.fn().mockResolvedValue(makePlan())
+
+    await getGoogleAdsActionPlanForActor(PLAN_ID, ACTOR_ID, { queryOne })
+
+    expect(queryOne.mock.calls[0]?.[0]).toContain('WHERE id = $1 AND actor_id = $2')
+    expect(queryOne.mock.calls[0]?.[1]).toEqual([PLAN_ID, ACTOR_ID])
+  })
+
+  it('links and approves only the actor-owned pending plan', async () => {
+    const approvalId = '77777777-7777-4777-8777-777777777777'
+    const queryOne = vi.fn()
+      .mockResolvedValueOnce(makePlan({ approvalId }))
+      .mockResolvedValueOnce(makePlan({ approvalId, status: 'approved' }))
+
+    await linkGoogleAdsActionApproval({
+      id: PLAN_ID,
+      clientId: CLIENT_ID,
+      actorId: ACTOR_ID,
+      approvalId
+    }, { queryOne })
+    await approveGoogleAdsActionPlan({
+      id: PLAN_ID,
+      clientId: CLIENT_ID,
+      actorId: ACTOR_ID,
+      approvalId
+    }, { queryOne })
+
+    expect(queryOne.mock.calls[0]?.[0]).toContain('status = \'pending_approval\'')
+    expect(queryOne.mock.calls[0]?.[0]).toContain('approval_id IS NULL OR approval_id = $4')
+    expect(queryOne.mock.calls[1]?.[0]).toContain('SET status = \'approved\'')
+    expect(queryOne.mock.calls[1]?.[0]).toContain('approval_id = $4')
   })
 
   it('normalizes PostgreSQL timestamp strings at the repository boundary', async () => {

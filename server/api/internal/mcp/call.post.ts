@@ -27,6 +27,17 @@ import {
   MCP_INSPECTION_RATE_WINDOW_MIN,
 } from '~~/server/utils/ai/mcp/rateLimit'
 import {
+  dispatchGoogleAdsConfirm,
+  executeGoogleAdsTool,
+  GOOGLE_ADS_PROPOSE_ACTION_TOOL,
+  isGoogleAdsToolName
+} from '~~/server/utils/ai/mcp/googleAdsTools'
+import {
+  buildGoogleAdsConfirmDependencies,
+  buildGoogleAdsMcpToolDependencies,
+  googleAdsMcpFlagsFromEnv
+} from '~~/server/utils/ai/mcp/googleAdsServer'
+import {
   resolveProposeAction, executeWriteConfirm, MCP_CONFIRM_TOOL, type ClaimedProposal,
   isFinancialAction, MCP_FINANCIAL_ACTIONS, MCP_FINANCIAL_RICH_CONFIRM
 } from '~~/server/utils/ai/mcp/writeTools'
@@ -81,6 +92,7 @@ export default defineEventHandler(async (event) => {
   const generationNames = [
     ...generationTools.map(t => t.name).filter(n => !['get_generation_status', 'list_creative_models', ...inspectionNames].includes(n)),
     'propose_video_generation', 'create_video_project', 'propose_banner_render',
+    GOOGLE_ADS_PROPOSE_ACTION_TOOL,
     ...MCP_FINANCIAL_ACTIONS
   ]
   const isInspection = inspectionNames.includes(toolName)
@@ -165,6 +177,8 @@ export default defineEventHandler(async (event) => {
   // Financial suite (Phase D4): propose_* names routed when MCP_FINANCIAL_TOOLS_ENABLED is on.
   const financialEnabled = process.env.MCP_FINANCIAL_TOOLS_ENABLED === 'true'
   const isFinancialPropose = isFinancialAction(toolName) // propose_budget_change etc.
+  const googleAdsFlags = googleAdsMcpFlagsFromEnv()
+  const isGoogleAdsTool = isGoogleAdsToolName(toolName)
 
   // CRITICAL-B: OAuth write-scope enforcement. Scope comes only from the verified signed claim. When
   // MCP_REQUIRE_WRITE_SCOPE is on, any WRITE-class tool (propose_*/confirm_action/generation/banner/
@@ -193,7 +207,7 @@ export default defineEventHandler(async (event) => {
     // writeEnabled). The idempotencyKey is derived from the proposalId so a double-confirm can't double-bill.
     const videoConfirmDeps = buildVideoConfirmDeps()
     outcome = await executeWriteConfirm(args, ctx, {
-      enabled: writeEnabled || videoGenEnabled || bannerEnabled || financialEnabled,
+      enabled: writeEnabled || videoGenEnabled || bannerEnabled || financialEnabled || googleAdsFlags.write,
       writeEnabled,
       financialEnabled,
       getExecutor,
@@ -207,11 +221,13 @@ export default defineEventHandler(async (event) => {
       persistResult: persistMcpProposalResult,
       // Restore a just-claimed row to 'proposed' when a PRE-execution gate (ack/permission) rejects, so a
       // money-mover proposal isn't burned and the caller can retry with ack:true. Scoped to our own claim.
-      revertClaim: async (proposalId, uid) => { await execute(
-        `UPDATE ai_pending_actions SET status='proposed', confirmed_by=NULL, executed_at=NULL
+      revertClaim: async (proposalId, uid) => {
+        await execute(
+          `UPDATE ai_pending_actions SET status='proposed', confirmed_by=NULL, executed_at=NULL
           WHERE id = $1 AND user_id = $2 AND status='executed' AND source='mcp'`,
-        [proposalId, uid]
-      ).catch(() => {}) },
+          [proposalId, uid]
+        ).catch(() => {})
+      },
       videoDispatch: async (row, vctx) => {
         const pid = String((args as { proposalId?: unknown }).proposalId ?? '')
         const payload = row.tool_name === 'video_generation'
@@ -225,8 +241,24 @@ export default defineEventHandler(async (event) => {
       bannerDispatch: async (row, bctx) => {
         if (row.tool_name !== 'banner_render') return null
         return dispatchBannerConfirm(row.resolved_payload as BannerRenderPendingPayload, bctx, buildBannerConfirmDeps())
-      }
+      },
+      googleAdsDispatch: (row, googleContext) => dispatchGoogleAdsConfirm(
+        row,
+        String((args as { proposalId?: unknown }).proposalId ?? ''),
+        (args as { ack?: unknown }).ack === true,
+        googleContext,
+        googleAdsFlags,
+        buildGoogleAdsConfirmDependencies()
+      )
     })
+  } else if (isGoogleAdsTool) {
+    outcome = await executeGoogleAdsTool(
+      toolName,
+      args,
+      ctx,
+      googleAdsFlags,
+      buildGoogleAdsMcpToolDependencies()
+    )
   } else if (writeAction) {
     // 2c propose: run the SAME registry propose-handler (resolution + persists a source='mcp' pending
     // row); returns { proposalId, resolved }. Gated by the write flag + the role's RBAC ceiling.
@@ -306,7 +338,8 @@ export default defineEventHandler(async (event) => {
   // a money-mover can be traced: link the proposal (pending_id), stamp confirmed_by on confirms, record a
   // real risk_tier, and distinguish a successful PROPOSE ('proposed' — nothing executed) from a CONFIRM
   // ('executed'). Fail-safe: a logging error never fails the call.
-  const isProposeCall = !!writeAction || !!videoProposeAction || !!bannerProposeAction || isFinancialPropose
+  const isProposeCall = !!writeAction || !!videoProposeAction || !!bannerProposeAction
+    || isFinancialPropose || isGoogleAdsPropose
   // pending_id only on success (real, existing row id) to avoid dangling references on failed attempts.
   const auditPendingId = !outcome.ok
     ? null
@@ -316,9 +349,11 @@ export default defineEventHandler(async (event) => {
         ? ((outcome.data as { proposalId?: string } | undefined)?.proposalId ?? null)
         : null
   const isMoneyMover = (MCP_FINANCIAL_RICH_CONFIRM as readonly string[]).includes(toolName)
-  const auditRiskTier = isMoneyMover ? 'rich_confirm'
-    : (isFinancialPropose || !!writeAction || isConfirm) ? 'confirm'
-      : 'auto'
+  const auditRiskTier = isMoneyMover
+    ? 'rich_confirm'
+    : (isFinancialPropose || isGoogleAdsPropose || !!writeAction || isConfirm)
+        ? 'confirm'
+        : 'auto'
   const auditOutcome = !outcome.ok ? 'failed' : (isProposeCall ? 'proposed' : 'executed')
   await execute(
     `INSERT INTO ai_action_audit (pending_id, user_id, confirmed_by, tool_name, risk_tier, client_scope, payload, result_ref, outcome)

@@ -210,6 +210,74 @@ export async function getGoogleAdsActionPlan(
   return row ? parsePlan(row) : null
 }
 
+export async function getGoogleAdsActionPlanForActor(
+  id: string,
+  actorId: string,
+  dependencies: GoogleAdsActionStoreDependencies = defaultDependencies
+): Promise<GoogleAdsActionPlan | null> {
+  const planId = UuidSchema.parse(id)
+  const ownerId = UuidSchema.parse(actorId)
+  const row = await dependencies.queryOne<Record<string, unknown>>(`
+    SELECT ${PLAN_COLUMNS}
+    FROM google_ads_action_plans
+    WHERE id = $1 AND actor_id = $2
+  `, [planId, ownerId])
+  return row ? parsePlan(row) : null
+}
+
+export interface GoogleAdsActionApprovalInput {
+  id: string
+  clientId: string
+  actorId: string
+  approvalId: string
+}
+
+function parseApprovalInput(input: GoogleAdsActionApprovalInput): GoogleAdsActionApprovalInput {
+  return {
+    id: UuidSchema.parse(input.id),
+    clientId: UuidSchema.parse(input.clientId),
+    actorId: UuidSchema.parse(input.actorId),
+    approvalId: UuidSchema.parse(input.approvalId)
+  }
+}
+
+export async function linkGoogleAdsActionApproval(
+  rawInput: GoogleAdsActionApprovalInput,
+  dependencies: GoogleAdsActionStoreDependencies = defaultDependencies
+): Promise<GoogleAdsActionPlan | null> {
+  const input = parseApprovalInput(rawInput)
+  const row = await dependencies.queryOne<Record<string, unknown>>(`
+    UPDATE google_ads_action_plans
+    SET approval_id = $4
+    WHERE id = $1
+      AND client_id = $2
+      AND actor_id = $3
+      AND status = 'pending_approval'
+      AND (approval_id IS NULL OR approval_id = $4)
+    RETURNING ${PLAN_COLUMNS}
+  `, [input.id, input.clientId, input.actorId, input.approvalId])
+  return row ? parsePlan(row) : null
+}
+
+export async function approveGoogleAdsActionPlan(
+  rawInput: GoogleAdsActionApprovalInput,
+  dependencies: GoogleAdsActionStoreDependencies = defaultDependencies
+): Promise<GoogleAdsActionPlan | null> {
+  const input = parseApprovalInput(rawInput)
+  const row = await dependencies.queryOne<Record<string, unknown>>(`
+    UPDATE google_ads_action_plans
+    SET status = 'approved'
+    WHERE id = $1
+      AND client_id = $2
+      AND actor_id = $3
+      AND approval_id = $4
+      AND status = 'pending_approval'
+      AND expires_at > NOW()
+    RETURNING ${PLAN_COLUMNS}
+  `, [input.id, input.clientId, input.actorId, input.approvalId])
+  return row ? parsePlan(row) : null
+}
+
 export interface ClaimGoogleAdsActionPlanInput {
   id: string
   clientId: string
