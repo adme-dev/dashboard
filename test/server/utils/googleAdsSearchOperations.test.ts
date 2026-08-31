@@ -253,6 +253,106 @@ describe('Search Google Ads construction operations', () => {
     }])
   })
 
+  it('updates only selected mutable campaign fields with an exact field mask', () => {
+    const resourceName = 'customers/1234567890/campaigns/10'
+    const currentState = {
+      resourceName,
+      name: 'Northern Search',
+      status: 'PAUSED',
+      advertisingChannelType: 'SEARCH',
+      campaignBudget: 'customers/1234567890/campaignBudgets/50',
+      manualCpc: {},
+      networkSettings: {
+        targetGoogleSearch: true,
+        targetSearchNetwork: true,
+        targetPartnerSearchNetwork: false,
+        targetContentNetwork: false
+      },
+      containsEuPoliticalAdvertising: 'DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING'
+    }
+    const built = buildSearchGoogleAdsAction(context(
+      'update_campaign',
+      'campaign',
+      {
+        resourceName,
+        name: 'Northern GAC Search',
+        includeSearchPartners: true,
+        endDateTime: '2026-09-26 23:59:59'
+      },
+      currentState
+    ))
+
+    expect(built.desiredState).toMatchObject({
+      ...currentState,
+      name: 'Northern GAC Search',
+      networkSettings: expect.objectContaining({ targetPartnerSearchNetwork: true }),
+      endDateTime: '2026-09-26 23:59:59'
+    })
+    expect(built.providerOperations[0]?.operations).toEqual([{
+      update: {
+        resourceName,
+        name: 'Northern GAC Search',
+        networkSettings: { targetPartnerSearchNetwork: true },
+        endDateTime: '2026-09-26 23:59:59'
+      },
+      updateMask: 'name,network_settings.target_partner_search_network,end_date_time'
+    }])
+  })
+
+  it('updates an ad-group name and CPC bid with an exact field mask', () => {
+    const resourceName = 'customers/1234567890/adGroups/20'
+    const built = buildSearchGoogleAdsAction(context(
+      'update_ad_group',
+      'ad_group',
+      { resourceName, name: 'GAC SUV', cpcBid: 2.5 },
+      {
+        resourceName,
+        name: 'SUV',
+        campaign: 'customers/1234567890/campaigns/10',
+        type: 'SEARCH_STANDARD',
+        status: 'PAUSED',
+        cpcBidMicros: '1500000'
+      }
+    ))
+
+    expect(built.providerOperations[0]?.operations).toEqual([{
+      update: { resourceName, name: 'GAC SUV', cpcBidMicros: '2500000' },
+      updateMask: 'name,cpc_bid_micros'
+    }])
+  })
+
+  it('updates keyword bid and final URL without changing immutable keyword text', () => {
+    const resourceName = 'customers/1234567890/adGroupCriteria/20~40'
+    const built = buildSearchGoogleAdsAction(context(
+      'update_keyword',
+      'keyword',
+      { resourceName, cpcBid: 3, finalUrl: 'https://example.com/gac' },
+      {
+        resourceName,
+        adGroup: 'customers/1234567890/adGroups/20',
+        status: 'PAUSED',
+        negative: false,
+        keyword: { text: 'gac suv', matchType: 'PHRASE' },
+        cpcBidMicros: '2000000',
+        finalUrls: ['https://example.com/old']
+      }
+    ))
+
+    expect(built.providerOperations[0]?.operations).toEqual([{
+      update: {
+        resourceName,
+        cpcBidMicros: '3000000',
+        finalUrls: ['https://example.com/gac']
+      },
+      updateMask: 'cpc_bid_micros,final_urls'
+    }])
+    expect(built.desiredState).toMatchObject({
+      keyword: { text: 'gac suv', matchType: 'PHRASE' },
+      cpcBidMicros: '3000000',
+      finalUrls: ['https://example.com/gac']
+    })
+  })
+
   it('creates Search campaigns paused with no Display expansion', () => {
     const built = buildSearchGoogleAdsAction(context(
       'create_campaign',

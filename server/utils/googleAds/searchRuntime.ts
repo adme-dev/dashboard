@@ -349,9 +349,12 @@ const EXECUTABLE_SEARCH_SERVICES = {
   create_budget: ['campaignBudgets'],
   update_budget: ['campaignBudgets'],
   create_campaign: ['campaigns'],
+  update_campaign: ['campaigns'],
   create_ad_group: ['adGroups'],
+  update_ad_group: ['adGroups'],
   create_ad: ['adGroupAds'],
   add_keywords: ['adGroupCriteria'],
+  update_keyword: ['adGroupCriteria'],
   set_locations: ['campaignCriteria'],
   set_location_match_mode: ['campaigns'],
   set_languages: ['campaignCriteria'],
@@ -603,6 +606,81 @@ function isTypedRecommendationMutation(plan: GoogleAdsActionPlan): boolean {
     && equalJson(mutation.operations, [{ recommendation: { resourceName: current.data.resourceName } }]))
 }
 
+const MUTABLE_ENTITY_UPDATE_FIELDS = {
+  update_campaign: {
+    service: 'campaigns',
+    segment: 'campaigns',
+    composite: false,
+    fields: {
+      'name': ['name'],
+      'campaign_budget': ['campaignBudget'],
+      'network_settings.target_partner_search_network': ['networkSettings', 'targetPartnerSearchNetwork'],
+      'start_date_time': ['startDateTime'],
+      'end_date_time': ['endDateTime']
+    }
+  },
+  update_ad_group: {
+    service: 'adGroups',
+    segment: 'adGroups',
+    composite: false,
+    fields: {
+      name: ['name'],
+      cpc_bid_micros: ['cpcBidMicros']
+    }
+  },
+  update_keyword: {
+    service: 'adGroupCriteria',
+    segment: 'adGroupCriteria',
+    composite: true,
+    fields: {
+      cpc_bid_micros: ['cpcBidMicros'],
+      final_urls: ['finalUrls']
+    }
+  }
+} as const
+
+function pathValue(value: unknown, path: readonly string[]): unknown {
+  let current = value
+  for (const part of path) {
+    if (!isRecord(current) || !Object.hasOwn(current, part)) return undefined
+    current = current[part]
+  }
+  return current
+}
+
+function isTypedMutableEntityUpdate(plan: GoogleAdsActionPlan): boolean {
+  const config = MUTABLE_ENTITY_UPDATE_FIELDS[
+    plan.operation as keyof typeof MUTABLE_ENTITY_UPDATE_FIELDS
+  ]
+  if (!config || !plan.resourceName || plan.providerOperations.length !== 1
+    || !isRecord(plan.currentState) || !isRecord(plan.desiredState)) return false
+  const leaf = config.composite ? '\\d+~\\d+' : '\\d+'
+  if (!new RegExp(`^customers/${plan.customerId}/${config.segment}/${leaf}$`).test(plan.resourceName)) return false
+  const mutation = plan.providerOperations[0]
+  if (!mutation || mutation.service !== config.service || mutation.operations.length !== 1) return false
+  const operation = mutation.operations[0]
+  if (!operation || !('update' in operation) || !isRecord(operation.update)
+    || operation.update.resourceName !== plan.resourceName) return false
+  const masks = operation.updateMask.split(',').map(mask => mask.trim()).filter(Boolean)
+  if (masks.length === 0 || new Set(masks).size !== masks.length
+    || masks.some(mask => !Object.hasOwn(config.fields, mask))) return false
+  const allowedTopLevelKeys = new Set(['resourceName'])
+  for (const mask of masks) {
+    const path = (config.fields as Record<string, readonly string[]>)[mask]
+    if (!path) return false
+    allowedTopLevelKeys.add(path[0]!)
+    const updated = pathValue(operation.update, path)
+    const desired = pathValue(plan.desiredState, path)
+    const current = pathValue(plan.currentState, path)
+    if (updated === undefined || !equalJson(updated, desired) || equalJson(current, desired)) return false
+    if (path.length > 1) {
+      const nested = operation.update[path[0]!]
+      if (!isRecord(nested) || Object.keys(nested).length !== 1 || !Object.hasOwn(nested, path[1]!)) return false
+    }
+  }
+  return Object.keys(operation.update).every(key => allowedTopLevelKeys.has(key))
+}
+
 export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): boolean {
   if (!isSearchGoogleAdsOperation(plan.operation) || plan.providerOperations.length === 0) return false
   const services = EXECUTABLE_SEARCH_SERVICES[
@@ -616,6 +694,9 @@ export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): bool
   if (plan.operation === 'manage_listing_groups') return isTypedListingGroupReplacement(plan)
   if (plan.operation === 'apply_recommendation'
     || plan.operation === 'dismiss_recommendation') return isTypedRecommendationMutation(plan)
+  if (plan.operation === 'update_campaign'
+    || plan.operation === 'update_ad_group'
+    || plan.operation === 'update_keyword') return isTypedMutableEntityUpdate(plan)
   if (plan.operation === 'attach_asset'
     || plan.operation === 'archive_asset_link'
     || plan.operation === 'detach_asset') {

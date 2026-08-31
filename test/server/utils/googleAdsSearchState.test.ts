@@ -58,6 +58,71 @@ describe('Search Google Ads current-state loader', () => {
     expect(query.mock.calls[0]?.[0].query).not.toContain('customers/1234567890/campaigns/10')
   })
 
+  it('loads complete campaign state before a mutable campaign update', async () => {
+    const resourceName = 'customers/1234567890/campaigns/10'
+    const campaign = {
+      resourceName,
+      name: 'Northern Search',
+      status: 'PAUSED',
+      advertisingChannelType: 'SEARCH',
+      campaignBudget: 'customers/1234567890/campaignBudgets/50',
+      manualCpc: {},
+      networkSettings: {
+        targetGoogleSearch: true,
+        targetSearchNetwork: true,
+        targetPartnerSearchNetwork: false,
+        targetContentNetwork: false
+      },
+      containsEuPoliticalAdvertising: 'DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING'
+    }
+    const query = vi.fn().mockResolvedValue({ rows: [{ campaign }], more: 0 })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('update_campaign', {
+      resourceName,
+      name: 'Northern GAC Search'
+    }), auth, { query })).resolves.toEqual(campaign)
+    expect(query.mock.calls[0]?.[0].query).toContain('campaign.network_settings.target_partner_search_network')
+  })
+
+  it('loads complete ad-group state before a mutable ad-group update', async () => {
+    const resourceName = 'customers/1234567890/adGroups/20'
+    const adGroup = {
+      resourceName,
+      name: 'SUV',
+      campaign: 'customers/1234567890/campaigns/10',
+      type: 'SEARCH_STANDARD',
+      status: 'PAUSED',
+      cpcBidMicros: '1500000'
+    }
+    const query = vi.fn().mockResolvedValue({ rows: [{ adGroup }], more: 0 })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('update_ad_group', {
+      resourceName,
+      cpcBid: 2.5
+    }), auth, { query })).resolves.toEqual(adGroup)
+    expect(query.mock.calls[0]?.[0].query).toContain('ad_group.cpc_bid_micros')
+  })
+
+  it('loads one positive keyword before a mutable keyword update', async () => {
+    const resourceName = 'customers/1234567890/adGroupCriteria/20~40'
+    const adGroupCriterion = {
+      resourceName,
+      adGroup: 'customers/1234567890/adGroups/20',
+      status: 'PAUSED',
+      negative: false,
+      keyword: { text: 'gac suv', matchType: 'PHRASE' },
+      cpcBidMicros: '2000000',
+      finalUrls: ['https://example.com/old']
+    }
+    const query = vi.fn().mockResolvedValue({ rows: [{ adGroupCriterion }], more: 0 })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('update_keyword', {
+      resourceName,
+      finalUrl: 'https://example.com/gac'
+    }), auth, { query })).resolves.toEqual(adGroupCriterion)
+    expect(query.mock.calls[0]?.[0].query).toContain('ad_group_criterion.final_urls')
+  })
+
   it('loads and normalizes existing campaign negatives with a hard row cap', async () => {
     const query = vi.fn().mockResolvedValue({
       rows: [

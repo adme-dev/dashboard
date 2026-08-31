@@ -26,9 +26,12 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_create_budget',
       'google_ads_plan_update_budget',
       'google_ads_plan_create_search_campaign',
+      'google_ads_plan_update_campaign',
       'google_ads_plan_create_ad_group',
+      'google_ads_plan_update_ad_group',
       'google_ads_plan_create_responsive_search_ad',
       'google_ads_plan_add_keywords',
+      'google_ads_plan_update_keyword',
       'google_ads_plan_set_locations',
       'google_ads_plan_set_location_match_mode',
       'google_ads_plan_set_languages',
@@ -169,6 +172,59 @@ describe('Google Ads Search MCP planning descriptors', () => {
         reason
       }
     }), expect.any(Object), { ...flags, destructive: true })
+  })
+
+  it.each([
+    {
+      tool: 'google_ads_plan_update_campaign',
+      operation: 'update_campaign',
+      resourceType: 'campaign',
+      args: {
+        resourceName: 'customers/1234567890/campaigns/10',
+        name: 'Northern GAC Search',
+        includeSearchPartners: false
+      }
+    },
+    {
+      tool: 'google_ads_plan_update_ad_group',
+      operation: 'update_ad_group',
+      resourceType: 'ad_group',
+      args: { resourceName: 'customers/1234567890/adGroups/20', cpcBid: 2.5 }
+    },
+    {
+      tool: 'google_ads_plan_update_keyword',
+      operation: 'update_keyword',
+      resourceType: 'keyword',
+      args: {
+        resourceName: 'customers/1234567890/adGroupCriteria/20~40',
+        finalUrl: 'https://example.com/gac'
+      }
+    }
+  ])('maps $tool into a typed rich-confirm update plan', async ({
+    tool, operation, resourceType, args
+  }) => {
+    const plan = vi.fn().mockResolvedValue({
+      id: '22222222-2222-4222-8222-222222222222',
+      operation,
+      resourceType,
+      resourceName: args.resourceName,
+      riskTier: 'rich_confirm',
+      executionMode: 'proposal',
+      policyDecision: { allowed: true },
+      status: 'pending_approval',
+      diff: []
+    })
+    await expect(executeGoogleAdsSearchPlanningTool(tool, {
+      clientId: '33333333-3333-4333-8333-333333333333',
+      connectionId: '44444444-4444-4444-8444-444444444444',
+      idempotencyKey: `${operation}-1`,
+      ...args
+    }, context, flags, true, { plan })).resolves.toMatchObject({ ok: true })
+    expect(plan).toHaveBeenCalledWith(expect.objectContaining({
+      operation,
+      resourceType,
+      arguments: args
+    }), expect.any(Object), flags)
   })
 
   it.each([

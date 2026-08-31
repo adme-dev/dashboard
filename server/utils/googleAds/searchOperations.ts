@@ -46,14 +46,46 @@ const CreateCampaignArgumentsSchema = z.strictObject({
   startDateTime: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/).optional(),
   endDateTime: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/).optional()
 })
+const UpdateCampaignArgumentsSchema = z.strictObject({
+  resourceName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(255).optional(),
+  budgetResourceName: z.string().trim().min(1).max(1_000).optional(),
+  includeSearchPartners: z.boolean().optional(),
+  startDateTime: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/).optional(),
+  endDateTime: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/).optional()
+}).superRefine((value, refinement) => {
+  if (value.name === undefined && value.budgetResourceName === undefined
+    && value.includeSearchPartners === undefined && value.startDateTime === undefined
+    && value.endDateTime === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'At least one mutable campaign field is required' })
+  }
+})
 const CreateAdGroupArgumentsSchema = z.strictObject({
   name: z.string().trim().min(1).max(255),
   campaignResourceName: z.string().trim().min(1).max(1_000),
   cpcBid: z.number().finite().positive().max(1_000_000).optional()
 })
+const UpdateAdGroupArgumentsSchema = z.strictObject({
+  resourceName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(255).optional(),
+  cpcBid: z.number().finite().positive().max(1_000_000).optional()
+}).superRefine((value, refinement) => {
+  if (value.name === undefined && value.cpcBid === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'At least one mutable ad-group field is required' })
+  }
+})
 const PositiveKeywordArgumentsSchema = z.strictObject({
   adGroupResourceName: z.string().trim().min(1).max(1_000),
   keywords: z.array(NegativeKeywordSchema).min(1).max(100)
+})
+const UpdateKeywordArgumentsSchema = z.strictObject({
+  resourceName: z.string().trim().min(1).max(1_000),
+  cpcBid: z.number().finite().positive().max(1_000_000).optional(),
+  finalUrl: z.string().url().refine(value => value.startsWith('https://')).optional()
+}).superRefine((value, refinement) => {
+  if (value.cpcBid === undefined && value.finalUrl === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'At least one mutable keyword field is required' })
+  }
 })
 const CreateResponsiveSearchAdArgumentsSchema = z.strictObject({
   adGroupResourceName: z.string().trim().min(1).max(1_000),
@@ -692,9 +724,12 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'create_budget',
       'update_budget',
       'create_campaign',
+      'update_campaign',
       'create_ad_group',
+      'update_ad_group',
       'create_ad',
       'add_keywords',
+      'update_keyword',
       'set_locations',
       'set_location_match_mode',
       'set_languages',
@@ -805,9 +840,12 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'create_budget') return CreateBudgetArgumentsSchema.parse(argumentsValue)
   if (operation === 'update_budget') return UpdateBudgetArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_campaign') return CreateCampaignArgumentsSchema.parse(argumentsValue)
+  if (operation === 'update_campaign') return UpdateCampaignArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_ad_group') return CreateAdGroupArgumentsSchema.parse(argumentsValue)
+  if (operation === 'update_ad_group') return UpdateAdGroupArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_ad') return CreateResponsiveSearchAdArgumentsSchema.parse(argumentsValue)
   if (operation === 'add_keywords') return PositiveKeywordArgumentsSchema.parse(argumentsValue)
+  if (operation === 'update_keyword') return UpdateKeywordArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_locations') return SetLocationsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_location_match_mode') return SetLocationMatchModeArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_languages') return SetLanguagesArgumentsSchema.parse(argumentsValue)
@@ -1022,6 +1060,70 @@ function buildCreateCampaignAction(context: BuildGoogleAdsActionContext): BuiltG
   })
 }
 
+function buildUpdateCampaignAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'campaign') throw new Error('Campaign update requires resource type campaign')
+  const args = UpdateCampaignArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.resourceName, context.customerId, 'campaigns')
+  if (args.budgetResourceName) assertResourceName(args.budgetResourceName, context.customerId, 'campaignBudgets')
+  const current = z.object({
+    resourceName: z.literal(args.resourceName),
+    name: z.string(),
+    status: z.string(),
+    advertisingChannelType: z.string(),
+    campaignBudget: z.string(),
+    manualCpc: z.record(z.string(), z.unknown()),
+    networkSettings: z.object({
+      targetGoogleSearch: z.boolean(),
+      targetSearchNetwork: z.boolean(),
+      targetPartnerSearchNetwork: z.boolean(),
+      targetContentNetwork: z.boolean()
+    }),
+    containsEuPoliticalAdvertising: z.string(),
+    startDateTime: z.string().optional(),
+    endDateTime: z.string().optional()
+  }).parse(context.currentState)
+  const update: Record<string, unknown> = { resourceName: args.resourceName }
+  const mask: string[] = []
+  const desired = { ...current, networkSettings: { ...current.networkSettings } }
+  if (args.name !== undefined && args.name !== current.name) {
+    update.name = args.name
+    desired.name = args.name
+    mask.push('name')
+  }
+  if (args.budgetResourceName !== undefined && args.budgetResourceName !== current.campaignBudget) {
+    update.campaignBudget = args.budgetResourceName
+    desired.campaignBudget = args.budgetResourceName
+    mask.push('campaign_budget')
+  }
+  if (args.includeSearchPartners !== undefined
+    && args.includeSearchPartners !== current.networkSettings.targetPartnerSearchNetwork) {
+    update.networkSettings = { targetPartnerSearchNetwork: args.includeSearchPartners }
+    desired.networkSettings.targetPartnerSearchNetwork = args.includeSearchPartners
+    mask.push('network_settings.target_partner_search_network')
+  }
+  if (args.startDateTime !== undefined && args.startDateTime !== current.startDateTime) {
+    update.startDateTime = args.startDateTime
+    desired.startDateTime = args.startDateTime
+    mask.push('start_date_time')
+  }
+  if (args.endDateTime !== undefined && args.endDateTime !== current.endDateTime) {
+    update.endDateTime = args.endDateTime
+    desired.endDateTime = args.endDateTime
+    mask.push('end_date_time')
+  }
+  if (mask.length === 0) throw new Error('The campaign already matches the requested mutable fields')
+  return {
+    resourceName: args.resourceName,
+    desiredState: desired,
+    providerOperations: [{
+      service: 'campaigns',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ update, updateMask: mask.join(',') }]
+    }]
+  }
+}
+
 function buildCreateAdGroupAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (context.input.resourceType !== 'ad_group') throw new Error('Ad group creation requires resource type ad_group')
   const args = CreateAdGroupArgumentsSchema.parse(context.input.arguments)
@@ -1033,6 +1135,45 @@ function buildCreateAdGroupAction(context: BuildGoogleAdsActionContext): BuiltGo
     status: 'PAUSED',
     ...(args.cpcBid === undefined ? {} : { cpcBidMicros: amountMicros(args.cpcBid) })
   })
+}
+
+function buildUpdateAdGroupAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'ad_group') throw new Error('Ad-group update requires resource type ad_group')
+  const args = UpdateAdGroupArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.resourceName, context.customerId, 'adGroups')
+  const current = z.object({
+    resourceName: z.literal(args.resourceName),
+    name: z.string(),
+    campaign: z.string(),
+    type: z.string(),
+    status: z.string(),
+    cpcBidMicros: z.string().optional()
+  }).parse(context.currentState)
+  const update: Record<string, unknown> = { resourceName: args.resourceName }
+  const mask: string[] = []
+  const desired = { ...current }
+  if (args.name !== undefined && args.name !== current.name) {
+    update.name = args.name
+    desired.name = args.name
+    mask.push('name')
+  }
+  const cpcBidMicros = args.cpcBid === undefined ? undefined : amountMicros(args.cpcBid)
+  if (cpcBidMicros !== undefined && cpcBidMicros !== current.cpcBidMicros) {
+    update.cpcBidMicros = cpcBidMicros
+    desired.cpcBidMicros = cpcBidMicros
+    mask.push('cpc_bid_micros')
+  }
+  if (mask.length === 0) throw new Error('The ad group already matches the requested mutable fields')
+  return {
+    resourceName: args.resourceName,
+    desiredState: desired,
+    providerOperations: [{
+      service: 'adGroups',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ update, updateMask: mask.join(',') }]
+    }]
+  }
 }
 
 function buildCreateResponsiveSearchAdAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
@@ -1093,6 +1234,46 @@ function buildPositiveKeywordAction(context: BuildGoogleAdsActionContext): Built
         negative: false,
         keyword
       } }))
+    }]
+  }
+}
+
+function buildUpdateKeywordAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'keyword') throw new Error('Keyword update requires resource type keyword')
+  const args = UpdateKeywordArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.resourceName, context.customerId, 'adGroupCriteria')
+  const current = z.object({
+    resourceName: z.literal(args.resourceName),
+    adGroup: z.string(),
+    status: z.string(),
+    negative: z.literal(false),
+    keyword: z.object({ text: z.string(), matchType: z.enum(['EXACT', 'PHRASE', 'BROAD']) }),
+    cpcBidMicros: z.string().optional(),
+    finalUrls: z.array(z.string()).default([])
+  }).parse(context.currentState)
+  const update: Record<string, unknown> = { resourceName: args.resourceName }
+  const mask: string[] = []
+  const desired = { ...current }
+  const cpcBidMicros = args.cpcBid === undefined ? undefined : amountMicros(args.cpcBid)
+  if (cpcBidMicros !== undefined && cpcBidMicros !== current.cpcBidMicros) {
+    update.cpcBidMicros = cpcBidMicros
+    desired.cpcBidMicros = cpcBidMicros
+    mask.push('cpc_bid_micros')
+  }
+  if (args.finalUrl !== undefined && (current.finalUrls.length !== 1 || current.finalUrls[0] !== args.finalUrl)) {
+    update.finalUrls = [args.finalUrl]
+    desired.finalUrls = [args.finalUrl]
+    mask.push('final_urls')
+  }
+  if (mask.length === 0) throw new Error('The keyword already matches the requested mutable fields')
+  return {
+    resourceName: args.resourceName,
+    desiredState: desired,
+    providerOperations: [{
+      service: 'adGroupCriteria',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ update, updateMask: mask.join(',') }]
     }]
   }
 }
@@ -2746,9 +2927,12 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
     return buildBudgetAction(context)
   }
   if (context.input.operation === 'create_campaign') return buildCreateCampaignAction(context)
+  if (context.input.operation === 'update_campaign') return buildUpdateCampaignAction(context)
   if (context.input.operation === 'create_ad_group') return buildCreateAdGroupAction(context)
+  if (context.input.operation === 'update_ad_group') return buildUpdateAdGroupAction(context)
   if (context.input.operation === 'create_ad') return buildCreateResponsiveSearchAdAction(context)
   if (context.input.operation === 'add_keywords') return buildPositiveKeywordAction(context)
+  if (context.input.operation === 'update_keyword') return buildUpdateKeywordAction(context)
   if (context.input.operation === 'set_locations') return buildLocationAction(context)
   if (context.input.operation === 'set_location_match_mode') return buildLocationMatchModeAction(context)
   if (context.input.operation === 'set_languages') return buildLanguageAction(context)

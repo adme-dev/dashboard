@@ -17,9 +17,12 @@ export const GOOGLE_ADS_PLAN_NEGATIVE_KEYWORDS_TOOL = 'google_ads_plan_add_negat
 export const GOOGLE_ADS_PLAN_CREATE_BUDGET_TOOL = 'google_ads_plan_create_budget'
 export const GOOGLE_ADS_PLAN_UPDATE_BUDGET_TOOL = 'google_ads_plan_update_budget'
 export const GOOGLE_ADS_PLAN_CREATE_SEARCH_CAMPAIGN_TOOL = 'google_ads_plan_create_search_campaign'
+export const GOOGLE_ADS_PLAN_UPDATE_CAMPAIGN_TOOL = 'google_ads_plan_update_campaign'
 export const GOOGLE_ADS_PLAN_CREATE_AD_GROUP_TOOL = 'google_ads_plan_create_ad_group'
+export const GOOGLE_ADS_PLAN_UPDATE_AD_GROUP_TOOL = 'google_ads_plan_update_ad_group'
 export const GOOGLE_ADS_PLAN_CREATE_RSA_TOOL = 'google_ads_plan_create_responsive_search_ad'
 export const GOOGLE_ADS_PLAN_ADD_KEYWORDS_TOOL = 'google_ads_plan_add_keywords'
+export const GOOGLE_ADS_PLAN_UPDATE_KEYWORD_TOOL = 'google_ads_plan_update_keyword'
 export const GOOGLE_ADS_PLAN_SET_LOCATIONS_TOOL = 'google_ads_plan_set_locations'
 export const GOOGLE_ADS_PLAN_SET_LOCATION_MATCH_MODE_TOOL = 'google_ads_plan_set_location_match_mode'
 export const GOOGLE_ADS_PLAN_SET_LANGUAGES_TOOL = 'google_ads_plan_set_languages'
@@ -118,11 +121,36 @@ const CreateSearchCampaignSchema = z.strictObject({
   startDateTime: CampaignDateTimeSchema.optional(),
   endDateTime: CampaignDateTimeSchema.optional()
 })
+const UpdateCampaignSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(255).optional(),
+  budgetResourceName: z.string().trim().min(1).max(1_000).optional(),
+  includeSearchPartners: z.boolean().optional(),
+  startDateTime: CampaignDateTimeSchema.optional(),
+  endDateTime: CampaignDateTimeSchema.optional()
+}).superRefine((value, refinement) => {
+  if (value.name === undefined && value.budgetResourceName === undefined
+    && value.includeSearchPartners === undefined && value.startDateTime === undefined
+    && value.endDateTime === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'At least one mutable campaign field is required' })
+  }
+})
 const CreateAdGroupSchema = z.strictObject({
   ...CommonSchema,
   name: z.string().trim().min(1).max(255),
   campaignResourceName: z.string().trim().min(1).max(1_000),
   cpcBid: z.number().finite().positive().max(1_000_000).optional()
+})
+const UpdateAdGroupSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(255).optional(),
+  cpcBid: z.number().finite().positive().max(1_000_000).optional()
+}).superRefine((value, refinement) => {
+  if (value.name === undefined && value.cpcBid === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'At least one mutable ad-group field is required' })
+  }
 })
 const CreateResponsiveSearchAdSchema = z.strictObject({
   ...CommonSchema,
@@ -144,6 +172,16 @@ const AddKeywordsSchema = z.strictObject({
   ...CommonSchema,
   adGroupResourceName: z.string().trim().min(1).max(1_000),
   keywords: z.array(KeywordSchema).min(1).max(100)
+})
+const UpdateKeywordSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000),
+  cpcBid: z.number().finite().positive().max(1_000_000).optional(),
+  finalUrl: z.string().url().refine(value => value.startsWith('https://')).optional()
+}).superRefine((value, refinement) => {
+  if (value.cpcBid === undefined && value.finalUrl === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'At least one mutable keyword field is required' })
+  }
 })
 const SetLocationsSchema = z.strictObject({
   ...CommonSchema,
@@ -678,9 +716,19 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     CreateSearchCampaignSchema
   ),
   manifest(
+    GOOGLE_ADS_PLAN_UPDATE_CAMPAIGN_TOOL,
+    'Plan an exact update to mutable campaign identity, budget assignment, Search partner setting, or serving dates. The campaign remains in its current status.',
+    UpdateCampaignSchema
+  ),
+  manifest(
     GOOGLE_ADS_PLAN_CREATE_AD_GROUP_TOOL,
     'Plan a standard Search ad group under an existing campaign. New ad groups are always created paused.',
     CreateAdGroupSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_UPDATE_AD_GROUP_TOOL,
+    'Plan an exact update to an ad-group name or CPC bid. Bid changes require elevated approval and preserve the current status.',
+    UpdateAdGroupSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_CREATE_RSA_TOOL,
@@ -691,6 +739,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_ADD_KEYWORDS_TOOL,
     'Plan typed positive keywords for an existing ad group. Existing terms are deduplicated and new keywords are always created paused.',
     AddKeywordsSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_UPDATE_KEYWORD_TOOL,
+    'Plan an exact CPC bid or HTTPS final-URL update for one positive keyword. Keyword text and match type are immutable and are never rewritten.',
+    UpdateKeywordSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_SET_LOCATIONS_TOOL,
@@ -1056,6 +1109,26 @@ export async function executeGoogleAdsSearchPlanningTool(
           ...(args.endDateTime ? { endDateTime: args.endDateTime } : {})
         }
       }
+    } else if (name === GOOGLE_ADS_PLAN_UPDATE_CAMPAIGN_TOOL) {
+      const args = UpdateCampaignSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'update_campaign',
+        resourceType: 'campaign',
+        arguments: {
+          resourceName: args.resourceName,
+          ...(args.name === undefined ? {} : { name: args.name }),
+          ...(args.budgetResourceName === undefined ? {} : { budgetResourceName: args.budgetResourceName }),
+          ...(args.includeSearchPartners === undefined ? {} : { includeSearchPartners: args.includeSearchPartners }),
+          ...(args.startDateTime === undefined ? {} : { startDateTime: args.startDateTime }),
+          ...(args.endDateTime === undefined ? {} : { endDateTime: args.endDateTime })
+        }
+      }
     } else if (name === GOOGLE_ADS_PLAN_CREATE_AD_GROUP_TOOL) {
       const args = CreateAdGroupSchema.parse(rawArgs)
       plannerInput = {
@@ -1070,6 +1143,23 @@ export async function executeGoogleAdsSearchPlanningTool(
         arguments: {
           name: args.name,
           campaignResourceName: args.campaignResourceName,
+          ...(args.cpcBid === undefined ? {} : { cpcBid: args.cpcBid })
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_UPDATE_AD_GROUP_TOOL) {
+      const args = UpdateAdGroupSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'update_ad_group',
+        resourceType: 'ad_group',
+        arguments: {
+          resourceName: args.resourceName,
+          ...(args.name === undefined ? {} : { name: args.name }),
           ...(args.cpcBid === undefined ? {} : { cpcBid: args.cpcBid })
         }
       }
@@ -1107,6 +1197,23 @@ export async function executeGoogleAdsSearchPlanningTool(
         arguments: {
           adGroupResourceName: args.adGroupResourceName,
           keywords: args.keywords
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_UPDATE_KEYWORD_TOOL) {
+      const args = UpdateKeywordSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'update_keyword',
+        resourceType: 'keyword',
+        arguments: {
+          resourceName: args.resourceName,
+          ...(args.cpcBid === undefined ? {} : { cpcBid: args.cpcBid }),
+          ...(args.finalUrl === undefined ? {} : { finalUrl: args.finalUrl })
         }
       }
     } else if (name === GOOGLE_ADS_PLAN_SET_LOCATIONS_TOOL) {

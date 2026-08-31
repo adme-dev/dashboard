@@ -69,6 +69,9 @@ describe('resolveGoogleAdsPolicy', () => {
   it.each([
     ['create_budget', 'rich_confirm'],
     ['update_budget', 'rich_confirm'],
+    ['update_campaign', 'rich_confirm'],
+    ['update_ad_group', 'rich_confirm'],
+    ['update_keyword', 'rich_confirm'],
     ['create_bidding_strategy', 'rich_confirm'],
     ['update_bidding', 'rich_confirm'],
     ['enable_campaign', 'rich_confirm'],

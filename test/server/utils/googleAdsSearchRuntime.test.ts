@@ -109,6 +109,75 @@ describe('Search Google Ads governed planning runtime', () => {
     } as GoogleAdsActionPlan)).toBe(false)
   })
 
+  it('allows only the typed mutable campaign fields through campaign updates', () => {
+    const resourceName = 'customers/1234567890/campaigns/10'
+    const basePlan = {
+      customerId: '1234567890',
+      operation: 'update_campaign',
+      resourceName,
+      currentState: { resourceName, name: 'Old' },
+      desiredState: { resourceName, name: 'New' },
+      providerOperations: [{
+        service: 'campaigns',
+        operations: [{ update: { resourceName, name: 'New' }, updateMask: 'name' }]
+      }]
+    } as GoogleAdsActionPlan
+    expect(isExecutableSearchGoogleAdsPlan(basePlan)).toBe(true)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...basePlan,
+      desiredState: { resourceName, advertisingChannelType: 'VIDEO' },
+      providerOperations: [{
+        service: 'campaigns',
+        operations: [{
+          update: { resourceName, advertisingChannelType: 'VIDEO' },
+          updateMask: 'advertising_channel_type'
+        }]
+      }]
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
+  it.each([
+    {
+      operation: 'update_ad_group',
+      service: 'adGroups',
+      segment: 'adGroups',
+      resourceName: 'customers/1234567890/adGroups/20',
+      field: 'cpcBidMicros',
+      mask: 'cpc_bid_micros',
+      before: '1000000',
+      after: '2000000'
+    },
+    {
+      operation: 'update_keyword',
+      service: 'adGroupCriteria',
+      segment: 'adGroupCriteria',
+      resourceName: 'customers/1234567890/adGroupCriteria/20~40',
+      field: 'finalUrls',
+      mask: 'final_urls',
+      before: ['https://example.com/old'],
+      after: ['https://example.com/new']
+    }
+  ] as const)('allows only typed fields through $operation', ({
+    operation, service, resourceName, field, mask, before, after
+  }) => {
+    const plan = {
+      customerId: '1234567890',
+      operation,
+      resourceName,
+      currentState: { resourceName, [field]: before },
+      desiredState: { resourceName, [field]: after },
+      providerOperations: [{
+        service,
+        operations: [{ update: { resourceName, [field]: after }, updateMask: mask }]
+      }]
+    } as GoogleAdsActionPlan
+    expect(isExecutableSearchGoogleAdsPlan(plan)).toBe(true)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      providerOperations: [{ service: 'assets', operations: plan.providerOperations[0]!.operations }]
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
   it('plans a manual pause as a confirmation without requiring an automation grant', async () => {
     const deps = dependencies()
     const plan = await planSearchGoogleAdsControlAction({

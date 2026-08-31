@@ -41,6 +41,18 @@ const PositiveCriterionSchema = z.object({
   negative: z.literal(false),
   status: z.enum(['ENABLED', 'PAUSED'])
 })
+const MutableKeywordStateSchema = z.object({
+  resourceName: z.string(),
+  adGroup: z.string(),
+  status: z.enum(['ENABLED', 'PAUSED', 'REMOVED']),
+  negative: z.literal(false),
+  keyword: z.object({
+    text: z.string(),
+    matchType: z.enum(['EXACT', 'PHRASE', 'BROAD'])
+  }),
+  cpcBidMicros: z.union([z.string(), z.number()]).transform(String).optional(),
+  finalUrls: z.array(z.string()).default([])
+})
 const BudgetStateSchema = z.object({
   resourceName: z.string(),
   name: z.string(),
@@ -589,6 +601,40 @@ WHERE ad_group.id = ${id}`
     : undefined
   if (!adGroup) throw new Error('Google Ads ad group was not found after mutation')
   return AdGroupStateSchema.parse(adGroup)
+}
+
+async function loadKeywordByResourceName(
+  customerId: string,
+  resourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<z.infer<typeof MutableKeywordStateSchema>> {
+  assertCustomerResourceName(resourceName, customerId, 'adGroupCriteria', true)
+  const [adGroupId, criterionId] = resourceIds(resourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT ad_group_criterion.resource_name,
+  ad_group_criterion.ad_group,
+  ad_group_criterion.status,
+  ad_group_criterion.negative,
+  ad_group_criterion.keyword.text,
+  ad_group_criterion.keyword.match_type,
+  ad_group_criterion.cpc_bid_micros,
+  ad_group_criterion.final_urls
+FROM keyword_view
+WHERE ad_group.id = ${adGroupId}
+  AND ad_group_criterion.criterion_id = ${criterionId}`
+  })
+  const first = result.rows[0]
+  const keyword = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).adGroupCriterion
+    : undefined
+  if (!keyword) throw new Error('Google Ads keyword was not found after mutation')
+  const parsed = MutableKeywordStateSchema.parse(keyword)
+  if (parsed.resourceName !== resourceName) throw new Error('Google Ads returned a different keyword')
+  return parsed
 }
 
 async function loadCreateAdCurrentState(
@@ -2426,6 +2472,27 @@ export async function loadSearchGoogleAdsCurrentState(
       resolved
     )
   }
+  if (context.input.operation === 'update_campaign') {
+    const args = z.object({ resourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation,
+      context.input.arguments
+    ))
+    return loadCampaignByResourceName(context.customerId, args.resourceName, auth, resolved)
+  }
+  if (context.input.operation === 'update_ad_group') {
+    const args = z.object({ resourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation,
+      context.input.arguments
+    ))
+    return loadAdGroupByResourceName(context.customerId, args.resourceName, auth, resolved)
+  }
+  if (context.input.operation === 'update_keyword') {
+    const args = z.object({ resourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation,
+      context.input.arguments
+    ))
+    return loadKeywordByResourceName(context.customerId, args.resourceName, auth, resolved)
+  }
   if (context.input.operation === 'create_campaign') {
     const args = z.object({
       name: z.string(),
@@ -2858,6 +2925,18 @@ export async function loadSearchGoogleAdsPlanState(
       auth,
       resolved
     )
+  }
+  if (plan.operation === 'update_campaign') {
+    if (!plan.resourceName) throw new Error('Campaign update plan has no resource name')
+    return loadCampaignByResourceName(plan.customerId, plan.resourceName, auth, resolved)
+  }
+  if (plan.operation === 'update_ad_group') {
+    if (!plan.resourceName) throw new Error('Ad-group update plan has no resource name')
+    return loadAdGroupByResourceName(plan.customerId, plan.resourceName, auth, resolved)
+  }
+  if (plan.operation === 'update_keyword') {
+    if (!plan.resourceName) throw new Error('Keyword update plan has no resource name')
+    return loadKeywordByResourceName(plan.customerId, plan.resourceName, auth, resolved)
   }
   if (plan.operation === 'create_campaign') {
     if (mutation) {

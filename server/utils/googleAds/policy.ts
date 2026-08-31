@@ -42,6 +42,9 @@ const RISK_ORDER: Record<Exclude<GoogleAdsRiskTier, 'read' | 'blocked'>, number>
 const RICH_CONFIRM_OPERATIONS = new Set<GoogleAdsOperationType>([
   'create_budget',
   'update_budget',
+  'update_campaign',
+  'update_ad_group',
+  'update_keyword',
   'create_bidding_strategy',
   'update_bidding',
   'set_campaign_status',
