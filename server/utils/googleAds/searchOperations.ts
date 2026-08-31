@@ -182,6 +182,18 @@ const SetConversionPrimaryStateArgumentsSchema = z.strictObject({
   resourceName: z.string().trim().min(1).max(1_000),
   primaryForGoal: z.boolean()
 })
+const CreateConversionActionArgumentsSchema = z.strictObject({
+  name: z.string().trim().min(1).max(255),
+  type: z.enum(['WEBPAGE', 'UPLOAD_CLICKS', 'UPLOAD_CALLS', 'WEBSITE_CALL']),
+  category: ConversionCategorySchema,
+  countingType: z.enum(['ONE_PER_CLICK', 'MANY_PER_CLICK']),
+  clickThroughLookbackWindowDays: z.number().int().min(1).max(90).default(30),
+  viewThroughLookbackWindowDays: z.number().int().min(1).max(30).optional()
+}).superRefine((value, refinement) => {
+  if (value.type !== 'WEBPAGE' && value.viewThroughLookbackWindowDays !== undefined) {
+    refinement.addIssue({ code: 'custom', message: 'View-through windows are supported only for WEBPAGE conversion actions' })
+  }
+})
 
 const STATUS_OPERATIONS = {
   pause_campaign: { resourceType: 'campaign', segment: 'campaigns', service: 'campaigns', status: 'PAUSED' },
@@ -223,7 +235,8 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'set_ad_schedule',
       'set_devices',
       'set_campaign_conversion_goals',
-      'set_conversion_primary_state'
+      'set_conversion_primary_state',
+      'create_conversion_action'
     ].includes(operation)
 }
 
@@ -308,6 +321,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_devices') return SetDevicesArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_primary_state') return SetConversionPrimaryStateArgumentsSchema.parse(argumentsValue)
+  if (operation === 'create_conversion_action') return CreateConversionActionArgumentsSchema.parse(argumentsValue)
   throw new Error(`Unsupported Search Google Ads operation: ${operation}`)
 }
 
@@ -876,6 +890,38 @@ function buildConversionPrimaryStateAction(context: BuildGoogleAdsActionContext)
   }
 }
 
+function buildCreateConversionAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'conversion_action') {
+    throw new Error('Conversion action creation requires resource type conversion_action')
+  }
+  const args = CreateConversionActionArgumentsSchema.parse(context.input.arguments)
+  const current = z.object({ exists: z.literal(false) }).parse(context.currentState)
+  void current
+  const viewThroughLookbackWindowDays = args.viewThroughLookbackWindowDays
+    ?? (args.type === 'WEBPAGE' ? 1 : undefined)
+  const desiredState = {
+    name: args.name,
+    type: args.type,
+    category: args.category,
+    status: 'ENABLED',
+    countingType: args.countingType,
+    clickThroughLookbackWindowDays: String(args.clickThroughLookbackWindowDays),
+    ...(viewThroughLookbackWindowDays === undefined
+      ? {}
+      : { viewThroughLookbackWindowDays: String(viewThroughLookbackWindowDays) })
+  }
+  return {
+    resourceName: null,
+    desiredState,
+    providerOperations: [{
+      service: 'conversionActions',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ create: desiredState }]
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -897,5 +943,6 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'set_devices') return buildDeviceAction(context)
   if (context.input.operation === 'set_campaign_conversion_goals') return buildCampaignConversionGoalAction(context)
   if (context.input.operation === 'set_conversion_primary_state') return buildConversionPrimaryStateAction(context)
+  if (context.input.operation === 'create_conversion_action') return buildCreateConversionAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }

@@ -25,6 +25,7 @@ export const GOOGLE_ADS_PLAN_SET_AD_SCHEDULE_TOOL = 'google_ads_plan_set_ad_sche
 export const GOOGLE_ADS_PLAN_SET_DEVICES_TOOL = 'google_ads_plan_set_devices'
 export const GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL = 'google_ads_plan_set_campaign_conversion_goals'
 export const GOOGLE_ADS_PLAN_SET_CONVERSION_PRIMARY_STATE_TOOL = 'google_ads_plan_set_conversion_primary_state'
+export const GOOGLE_ADS_PLAN_CREATE_CONVERSION_ACTION_TOOL = 'google_ads_plan_create_conversion_action'
 
 const CommonSchema = {
   clientId: z.string().uuid(),
@@ -210,6 +211,19 @@ const SetConversionPrimaryStateSchema = z.strictObject({
   resourceName: z.string().trim().min(1).max(1_000),
   primaryForGoal: z.boolean()
 })
+const CreateConversionActionSchema = z.strictObject({
+  ...CommonSchema,
+  name: z.string().trim().min(1).max(255),
+  type: z.enum(['WEBPAGE', 'UPLOAD_CLICKS', 'UPLOAD_CALLS', 'WEBSITE_CALL']),
+  category: ConversionCategorySchema,
+  countingType: z.enum(['ONE_PER_CLICK', 'MANY_PER_CLICK']),
+  clickThroughLookbackWindowDays: z.number().int().min(1).max(90).default(30),
+  viewThroughLookbackWindowDays: z.number().int().min(1).max(30).optional()
+}).superRefine((value, refinement) => {
+  if (value.type !== 'WEBPAGE' && value.viewThroughLookbackWindowDays !== undefined) {
+    refinement.addIssue({ code: 'custom', message: 'View-through windows are supported only for WEBPAGE conversion actions' })
+  }
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -304,6 +318,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_SET_CONVERSION_PRIMARY_STATE_TOOL,
     'Plan whether one conversion action is primary or secondary for bidding. False makes it secondary and non-biddable outside custom goals.',
     SetConversionPrimaryStateSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_CREATE_CONVERSION_ACTION_TOOL,
+    'Plan a typed Google Ads conversion action. Google creates actions primary by default; use the primary-state tool after creation to make one secondary.',
+    CreateConversionActionSchema
   )
 ]
 
@@ -632,6 +651,28 @@ export async function executeGoogleAdsSearchPlanningTool(
         operation: 'set_conversion_primary_state',
         resourceType: 'conversion_action',
         arguments: { resourceName: args.resourceName, primaryForGoal: args.primaryForGoal }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_CREATE_CONVERSION_ACTION_TOOL) {
+      const args = CreateConversionActionSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'create_conversion_action',
+        resourceType: 'conversion_action',
+        arguments: {
+          name: args.name,
+          type: args.type,
+          category: args.category,
+          countingType: args.countingType,
+          clickThroughLookbackWindowDays: args.clickThroughLookbackWindowDays,
+          ...(args.viewThroughLookbackWindowDays === undefined
+            ? {}
+            : { viewThroughLookbackWindowDays: args.viewThroughLookbackWindowDays })
+        }
       }
     } else {
       throw new Error('Unsupported Google Ads Search planning tool')

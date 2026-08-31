@@ -675,6 +675,49 @@ describe('Search Google Ads construction operations', () => {
     })
   })
 
+  it('creates a typed conversion action with an explicit attribution window', () => {
+    const built = buildSearchGoogleAdsAction(context(
+      'create_conversion_action',
+      'conversion_action',
+      {
+        name: 'Finance enquiry',
+        type: 'WEBPAGE',
+        category: 'SUBMIT_LEAD_FORM',
+        countingType: 'ONE_PER_CLICK',
+        clickThroughLookbackWindowDays: 30,
+        viewThroughLookbackWindowDays: 1
+      },
+      { exists: false }
+    ))
+
+    expect(built).toEqual({
+      resourceName: null,
+      desiredState: {
+        name: 'Finance enquiry',
+        type: 'WEBPAGE',
+        category: 'SUBMIT_LEAD_FORM',
+        status: 'ENABLED',
+        countingType: 'ONE_PER_CLICK',
+        clickThroughLookbackWindowDays: '30',
+        viewThroughLookbackWindowDays: '1'
+      },
+      providerOperations: [{
+        service: 'conversionActions',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ create: {
+          name: 'Finance enquiry',
+          type: 'WEBPAGE',
+          category: 'SUBMIT_LEAD_FORM',
+          status: 'ENABLED',
+          countingType: 'ONE_PER_CLICK',
+          clickThroughLookbackWindowDays: '30',
+          viewThroughLookbackWindowDays: '1'
+        } }]
+      }]
+    })
+  })
+
   it('rejects unsafe URLs and campaigns that attempt to start enabled', () => {
     expect(() => buildSearchGoogleAdsAction(context(
       'create_ad',

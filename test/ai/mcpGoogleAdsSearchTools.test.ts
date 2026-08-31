@@ -34,7 +34,8 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_set_ad_schedule',
       'google_ads_plan_set_devices',
       'google_ads_plan_set_campaign_conversion_goals',
-      'google_ads_plan_set_conversion_primary_state'
+      'google_ads_plan_set_conversion_primary_state',
+      'google_ads_plan_create_conversion_action'
     ])
     const serialized = JSON.stringify(googleAdsSearchPlanningTools)
     expect(serialized).not.toMatch(/"(?:query|operations|url|accessToken|developerToken)"/)
@@ -299,6 +300,27 @@ describe('Google Ads Search MCP planning descriptors', () => {
       expectedArguments: {
         resourceName: 'customers/1234567890/conversionActions/9001',
         primaryForGoal: false
+      }
+    },
+    {
+      tool: 'google_ads_plan_create_conversion_action',
+      args: {
+        name: 'Finance enquiry',
+        type: 'WEBPAGE',
+        category: 'SUBMIT_LEAD_FORM',
+        countingType: 'ONE_PER_CLICK',
+        clickThroughLookbackWindowDays: 30,
+        viewThroughLookbackWindowDays: 1
+      },
+      operation: 'create_conversion_action',
+      resourceType: 'conversion_action',
+      expectedArguments: {
+        name: 'Finance enquiry',
+        type: 'WEBPAGE',
+        category: 'SUBMIT_LEAD_FORM',
+        countingType: 'ONE_PER_CLICK',
+        clickThroughLookbackWindowDays: 30,
+        viewThroughLookbackWindowDays: 1
       }
     }
   ])('maps $tool to a typed proposal-only plan', async ({

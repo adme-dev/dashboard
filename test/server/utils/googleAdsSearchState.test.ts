@@ -476,6 +476,20 @@ describe('Search Google Ads current-state loader', () => {
       query: expect.stringContaining('conversion_action.id = 9001')
     }))
   })
+
+  it('checks conversion-action names before planning creation', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [], more: 0 })
+    await expect(loadSearchGoogleAdsCurrentState(context('create_conversion_action', {
+      name: 'Finance enquiry',
+      type: 'WEBPAGE',
+      category: 'SUBMIT_LEAD_FORM',
+      countingType: 'ONE_PER_CLICK'
+    }), auth, { query })).resolves.toEqual({ exists: false })
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({
+      maxRows: 1,
+      query: expect.stringContaining('conversion_action.name = \'Finance enquiry\'')
+    }))
+  })
 })
 
 describe('Search Google Ads readback verification', () => {
@@ -840,5 +854,46 @@ describe('Search Google Ads persisted-plan state loading', () => {
     } as GoogleAdsActionPlan
 
     await expect(loadSearchGoogleAdsPlanState(plan, auth, { query })).resolves.toEqual(plan.desiredState)
+  })
+
+  it('uses the provider result to read back a created conversion action', async () => {
+    const resourceName = 'customers/1234567890/conversionActions/9001'
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ conversionAction: {
+        resourceName,
+        name: 'Finance enquiry',
+        status: 'ENABLED',
+        type: 'WEBPAGE',
+        category: 'SUBMIT_LEAD_FORM',
+        origin: 'WEBSITE',
+        primaryForGoal: true,
+        includeInConversionsMetric: true,
+        countingType: 'ONE_PER_CLICK',
+        clickThroughLookbackWindowDays: '30',
+        viewThroughLookbackWindowDays: '1'
+      } }],
+      more: 0
+    })
+    const plan = {
+      operation: 'create_conversion_action',
+      resourceType: 'conversion_action',
+      resourceName: null,
+      customerId: '1234567890',
+      desiredState: {
+        name: 'Finance enquiry',
+        status: 'ENABLED',
+        type: 'WEBPAGE',
+        category: 'SUBMIT_LEAD_FORM',
+        countingType: 'ONE_PER_CLICK',
+        clickThroughLookbackWindowDays: '30',
+        viewThroughLookbackWindowDays: '1'
+      },
+      providerOperations: [{ service: 'conversionActions' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [{ conversionAction: { resourceName } }]
+    })).resolves.toMatchObject({ resourceName, name: 'Finance enquiry', primaryForGoal: true })
+    expect(query.mock.calls[0]?.[0].query).toContain('conversion_action.id = 9001')
   })
 })

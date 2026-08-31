@@ -131,7 +131,10 @@ const ConversionActionStateSchema = z.object({
   category: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
   origin: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
   primaryForGoal: z.boolean(),
-  includeInConversionsMetric: z.boolean()
+  includeInConversionsMetric: z.boolean(),
+  countingType: z.string().regex(/^[A-Z][A-Z0-9_]*$/).optional(),
+  clickThroughLookbackWindowDays: z.union([z.string(), z.number()]).transform(String).optional(),
+  viewThroughLookbackWindowDays: z.union([z.string(), z.number()]).transform(String).optional()
 })
 
 function normalizeAdSchedule(value: z.infer<typeof AdScheduleStateSchema>): NormalizedAdSchedule {
@@ -466,7 +469,8 @@ function mutationResourceName(
     campaignBudgets: 'campaignBudget',
     campaigns: 'campaign',
     adGroups: 'adGroup',
-    adGroupAds: 'adGroupAd'
+    adGroupAds: 'adGroupAd',
+    conversionActions: 'conversionAction'
   }[service] ?? ''
   const nested = singular ? record[singular] : undefined
   if (nested && typeof nested === 'object'
@@ -1007,7 +1011,10 @@ async function loadConversionAction(
   conversion_action.category,
   conversion_action.origin,
   conversion_action.primary_for_goal,
-  conversion_action.include_in_conversions_metric
+  conversion_action.include_in_conversions_metric,
+  conversion_action.counting_type,
+  conversion_action.click_through_lookback_window_days,
+  conversion_action.view_through_lookback_window_days
 FROM conversion_action
 WHERE conversion_action.id = ${conversionActionId}`
   })
@@ -1020,6 +1027,26 @@ WHERE conversion_action.id = ${conversionActionId}`
     throw new Error('Google Ads conversion action was not found')
   }
   return parsed.data
+}
+
+async function assertConversionActionNameAvailable(
+  customerId: string,
+  name: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<{ exists: false }> {
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT conversion_action.resource_name
+FROM conversion_action
+WHERE conversion_action.name = '${escapeGaqlString(name)}'`
+  })
+  if (result.rows.length > 0 || result.more > 0) {
+    throw new Error(`A Google Ads conversion action named "${name}" already exists`)
+  }
+  return { exists: false }
 }
 
 export async function loadSearchGoogleAdsCurrentState(
@@ -1185,6 +1212,12 @@ export async function loadSearchGoogleAdsCurrentState(
     ))
     return loadConversionAction(context.customerId, args.resourceName, auth, resolved)
   }
+  if (context.input.operation === 'create_conversion_action') {
+    const args = z.object({ name: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation, context.input.arguments
+    ))
+    return assertConversionActionNameAvailable(context.customerId, args.name, auth, resolved)
+  }
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }
 
@@ -1195,6 +1228,18 @@ export async function loadSearchGoogleAdsPlanState(
   mutation?: GoogleAdsMutateResult
 ): Promise<unknown> {
   const resolved = { ...defaultDependencies, ...dependencies }
+  if (plan.operation === 'create_conversion_action') {
+    if (mutation) {
+      return loadConversionAction(
+        plan.customerId,
+        mutationResourceName(mutation, 'conversionActions'),
+        auth,
+        resolved
+      )
+    }
+    const desired = z.object({ name: z.string() }).parse(plan.desiredState)
+    return assertConversionActionNameAvailable(plan.customerId, desired.name, auth, resolved)
+  }
   if (plan.operation === 'create_budget') {
     if (mutation) {
       return loadBudgetByResourceName(
