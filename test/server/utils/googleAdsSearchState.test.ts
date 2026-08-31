@@ -172,6 +172,51 @@ describe('Search Google Ads current-state loader', () => {
     expect(query.mock.calls[2]?.[0].query).toContain('asset.resource_name IN')
   })
 
+  it('loads complete asset-group state and rejects a duplicate rename before planning an update', async () => {
+    const resourceName = 'customers/1234567890/assetGroups/7001'
+    const campaignResourceName = 'customers/1234567890/campaigns/60'
+    const groupResult = {
+      rows: [{ assetGroup: {
+        resourceName,
+        campaign: campaignResourceName,
+        name: 'SUV range',
+        finalUrls: ['https://example.com/suv'],
+        finalMobileUrls: [],
+        status: 'ENABLED'
+      } }],
+      more: 0
+    }
+    const query = vi.fn()
+      .mockResolvedValueOnce(groupResult)
+      .mockResolvedValueOnce({ rows: [], more: 0 })
+      .mockResolvedValueOnce({ rows: [], more: 0 })
+    await expect(loadSearchGoogleAdsCurrentState(context('update_asset_group', {
+      resourceName,
+      name: 'SUV offers'
+    }), auth, { query })).resolves.toEqual({
+      resourceName,
+      campaign: campaignResourceName,
+      name: 'SUV range',
+      finalUrls: ['https://example.com/suv'],
+      finalMobileUrls: [],
+      status: 'ENABLED',
+      assets: []
+    })
+    expect(query.mock.calls[2]?.[0].query).toContain('asset_group.name = \'SUV offers\'')
+
+    const duplicateQuery = vi.fn()
+      .mockResolvedValueOnce(groupResult)
+      .mockResolvedValueOnce({ rows: [], more: 0 })
+      .mockResolvedValueOnce({
+        rows: [{ assetGroup: { resourceName: 'customers/1234567890/assetGroups/7002' } }],
+        more: 0
+      })
+    await expect(loadSearchGoogleAdsCurrentState(context('update_asset_group', {
+      resourceName,
+      name: 'SUV offers'
+    }), auth, { query: duplicateQuery })).rejects.toThrow('already exists')
+  })
+
   it('prevalidates an asset, campaign, and existing link before attachment', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({

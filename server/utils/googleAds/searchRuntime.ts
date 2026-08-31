@@ -353,7 +353,8 @@ const EXECUTABLE_SEARCH_SERVICES = {
   attach_asset: ['customerAssets', 'campaignAssets', 'adGroupAssets'],
   archive_asset_link: ['customerAssets', 'campaignAssets', 'adGroupAssets'],
   detach_asset: ['customerAssets', 'campaignAssets', 'adGroupAssets'],
-  create_asset_group: ['googleAds']
+  create_asset_group: ['googleAds'],
+  update_asset_group: ['assetGroups']
 } as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -370,7 +371,8 @@ function isTypedAssetGroupCreateBundle(plan: GoogleAdsActionPlan): boolean {
     assets: z.array(z.object({
       fieldType: z.enum([
         'HEADLINE', 'LONG_HEADLINE', 'DESCRIPTION', 'MARKETING_IMAGE',
-        'SQUARE_MARKETING_IMAGE', 'BUSINESS_NAME', 'LOGO'
+        'SQUARE_MARKETING_IMAGE', 'BUSINESS_NAME', 'LOGO', 'PORTRAIT_MARKETING_IMAGE',
+        'LANDSCAPE_LOGO', 'YOUTUBE_VIDEO', 'CALL_TO_ACTION_SELECTION', 'MEDIA_BUNDLE'
       ]),
       assetResourceName: z.string().regex(/^customers\/\d+\/assets\/\d+$/)
     }))
@@ -407,6 +409,51 @@ function isTypedAssetGroupCreateBundle(plan: GoogleAdsActionPlan): boolean {
   })
 }
 
+const ASSET_GROUP_UPDATE_FIELDS = {
+  name: 'name',
+  final_urls: 'finalUrls',
+  final_mobile_urls: 'finalMobileUrls',
+  path1: 'path1',
+  path2: 'path2',
+  status: 'status'
+} as const
+
+function equalJson(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
+function isTypedAssetGroupUpdate(plan: GoogleAdsActionPlan): boolean {
+  const desired = z.object({
+    resourceName: z.string(),
+    name: z.string(),
+    finalUrls: z.array(z.string()),
+    finalMobileUrls: z.array(z.string()),
+    path1: z.string().optional(),
+    path2: z.string().optional(),
+    status: z.enum(['ENABLED', 'PAUSED'])
+  }).safeParse(plan.desiredState)
+  if (!desired.success
+    || desired.data.resourceName.match(/^customers\/(\d+)\/assetGroups\/\d+$/)?.[1] !== plan.customerId
+    || plan.providerOperations.length !== 1) return false
+  const mutation = plan.providerOperations[0]
+  if (!mutation || mutation.service !== 'assetGroups' || mutation.operations.length !== 1) return false
+  const operation = mutation.operations[0]
+  if (!operation || !('update' in operation) || !isRecord(operation.update)
+    || operation.update.resourceName !== desired.data.resourceName) return false
+  const mask = operation.updateMask.split(',').map(field => field.trim()).filter(Boolean)
+  if (mask.length === 0 || new Set(mask).size !== mask.length
+    || mask.some(field => !Object.hasOwn(ASSET_GROUP_UPDATE_FIELDS, field))) return false
+  const allowedUpdateKeys = new Set([
+    'resourceName',
+    ...mask.map(field => ASSET_GROUP_UPDATE_FIELDS[field as keyof typeof ASSET_GROUP_UPDATE_FIELDS])
+  ])
+  if (Object.keys(operation.update).some(key => !allowedUpdateKeys.has(key))) return false
+  return mask.every((field) => {
+    const key = ASSET_GROUP_UPDATE_FIELDS[field as keyof typeof ASSET_GROUP_UPDATE_FIELDS]
+    return equalJson(operation.update[key], desired.data[key])
+  })
+}
+
 export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): boolean {
   if (!isSearchGoogleAdsOperation(plan.operation) || plan.providerOperations.length === 0) return false
   const services = EXECUTABLE_SEARCH_SERVICES[
@@ -415,6 +462,7 @@ export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): bool
   if (!services) return false
   const requested = plan.providerOperations.map(mutation => mutation.service)
   if (plan.operation === 'create_asset_group') return isTypedAssetGroupCreateBundle(plan)
+  if (plan.operation === 'update_asset_group') return isTypedAssetGroupUpdate(plan)
   if (plan.operation === 'attach_asset'
     || plan.operation === 'archive_asset_link'
     || plan.operation === 'detach_asset') {

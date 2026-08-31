@@ -53,6 +53,7 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_archive_asset_link',
       'google_ads_plan_detach_asset',
       'google_ads_plan_create_asset_group',
+      'google_ads_plan_update_asset_group',
       'google_ads_plan_create_custom_audience',
       'google_ads_plan_update_custom_audience',
       'google_ads_plan_archive_custom_audience',
@@ -591,6 +592,25 @@ describe('Google Ads Search MCP planning descriptors', () => {
         assets: [
           { fieldType: 'HEADLINE', assetResourceName: 'customers/1234567890/assets/7001' }
         ]
+      }
+    },
+    {
+      tool: 'google_ads_plan_update_asset_group',
+      args: {
+        resourceName: 'customers/1234567890/assetGroups/7001',
+        name: 'Paused SUV range',
+        finalMobileUrls: [],
+        path1: null,
+        status: 'PAUSED'
+      },
+      operation: 'update_asset_group',
+      resourceType: 'asset_group',
+      expectedArguments: {
+        resourceName: 'customers/1234567890/assetGroups/7001',
+        name: 'Paused SUV range',
+        finalMobileUrls: [],
+        path1: null,
+        status: 'PAUSED'
       }
     },
     {

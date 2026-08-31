@@ -1795,4 +1795,76 @@ describe('Search Google Ads construction operations', () => {
       assets: []
     })).toThrow()
   })
+
+  it('updates mutable asset-group fields while using PAUSED as the safe archive state', () => {
+    const resourceName = 'customers/1234567890/assetGroups/7001'
+    const current = {
+      resourceName,
+      campaign: 'customers/1234567890/campaigns/60',
+      name: 'SUV range',
+      finalUrls: ['https://example.com/suv'],
+      finalMobileUrls: ['https://m.example.com/suv'],
+      path1: 'suv',
+      status: 'ENABLED',
+      assets: [
+        { fieldType: 'HEADLINE', assetResourceName: 'customers/1234567890/assets/7001' },
+        { fieldType: 'YOUTUBE_VIDEO', assetResourceName: 'customers/1234567890/assets/7099' }
+      ]
+    }
+    const built = buildSearchGoogleAdsAction(context('update_asset_group', 'asset_group', {
+      resourceName,
+      name: 'Paused SUV range',
+      finalMobileUrls: [],
+      path1: null,
+      status: 'PAUSED'
+    }, current))
+    expect(built).toEqual({
+      resourceName,
+      desiredState: {
+        resourceName,
+        campaign: 'customers/1234567890/campaigns/60',
+        name: 'Paused SUV range',
+        finalUrls: ['https://example.com/suv'],
+        finalMobileUrls: [],
+        status: 'PAUSED',
+        assets: current.assets
+      },
+      providerOperations: [{
+        service: 'assetGroups',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{
+          update: {
+            resourceName,
+            name: 'Paused SUV range',
+            finalMobileUrls: [],
+            status: 'PAUSED'
+          },
+          updateMask: 'name,final_mobile_urls,path1,status'
+        }]
+      }]
+    })
+  })
+
+  it('rejects invalid, removed, or unchanged asset-group updates', () => {
+    const resourceName = 'customers/1234567890/assetGroups/7001'
+    const current = {
+      resourceName,
+      campaign: 'customers/1234567890/campaigns/60',
+      name: 'SUV range',
+      finalUrls: ['https://example.com/suv'],
+      finalMobileUrls: [],
+      status: 'PAUSED',
+      assets: []
+    }
+    expect(() => buildSearchGoogleAdsAction(context('update_asset_group', 'asset_group', {
+      resourceName, name: 'SUV range'
+    }, current))).toThrow('already match')
+    expect(() => buildSearchGoogleAdsAction(context('update_asset_group', 'asset_group', {
+      resourceName, path2: 'offers'
+    }, current))).toThrow('path2 requires path1')
+    expect(() => buildSearchGoogleAdsAction(context('update_asset_group', 'asset_group', {
+      resourceName, status: 'PAUSED'
+    }, { ...current, status: 'REMOVED' }))).toThrow('removed')
+  })
 })

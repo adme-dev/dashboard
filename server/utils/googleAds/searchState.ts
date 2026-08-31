@@ -129,7 +129,7 @@ const PmaxCampaignStateSchema = z.object({
 })
 const PmaxAssetLibraryStateSchema = z.object({
   resourceName: z.string(),
-  type: z.enum(['TEXT', 'IMAGE']),
+  type: z.enum(['TEXT', 'IMAGE', 'YOUTUBE_VIDEO', 'CALL_TO_ACTION', 'MEDIA_BUNDLE']),
   textAsset: z.object({ text: z.string() }).optional(),
   imageAsset: z.object({
     fileSize: z.union([z.string(), z.number()]).transform(String).optional(),
@@ -153,7 +153,8 @@ const AssetGroupAssetStateSchema = z.object({
   asset: z.string(),
   fieldType: z.enum([
     'HEADLINE', 'LONG_HEADLINE', 'DESCRIPTION', 'MARKETING_IMAGE',
-    'SQUARE_MARKETING_IMAGE', 'BUSINESS_NAME', 'LOGO'
+    'SQUARE_MARKETING_IMAGE', 'BUSINESS_NAME', 'LOGO', 'PORTRAIT_MARKETING_IMAGE',
+    'LANDSCAPE_LOGO', 'YOUTUBE_VIDEO', 'CALL_TO_ACTION_SELECTION', 'MEDIA_BUNDLE'
   ]),
   status: z.string().optional()
 })
@@ -863,6 +864,40 @@ WHERE asset_group.id = ${assetGroupId}
     status: group.status,
     assets
   }
+}
+
+async function assertAssetGroupNameAvailable(
+  customerId: string,
+  campaignResourceName: string,
+  name: string,
+  excludedResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<void> {
+  assertCustomerResourceName(campaignResourceName, customerId, 'campaigns')
+  assertCustomerResourceName(excludedResourceName, customerId, 'assetGroups')
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 2,
+    query: `SELECT asset_group.resource_name
+FROM asset_group
+WHERE asset_group.campaign = '${escapeGaqlString(campaignResourceName)}'
+  AND asset_group.name = '${escapeGaqlString(name)}'`
+  })
+  for (const row of result.rows) {
+    const value = row && typeof row === 'object'
+      ? (row as Record<string, unknown>).assetGroup
+      : undefined
+    const resourceName = value && typeof value === 'object'
+      ? (value as Record<string, unknown>).resourceName
+      : undefined
+    if (typeof resourceName === 'string' && resourceName !== excludedResourceName) {
+      assertCustomerResourceName(resourceName, customerId, 'assetGroups')
+      throw new Error(`An asset group named "${name}" already exists in the campaign`)
+    }
+  }
+  if (result.more > 0) throw new Error(`An asset group named "${name}" already exists in the campaign`)
 }
 
 const ASSET_LINK_READS = {
@@ -2120,6 +2155,20 @@ export async function loadSearchGoogleAdsCurrentState(
     }).parse(parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments))
     return loadCreateAssetGroupCurrentState(context.customerId, args, auth, resolved)
   }
+  if (context.input.operation === 'update_asset_group') {
+    const args = z.object({
+      resourceName: z.string(),
+      name: z.string().optional()
+    }).parse(parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments))
+    const current = await loadAssetGroup(context.customerId, args.resourceName, auth, resolved)
+    const parsed = AssetGroupStateSchema.extend({ assets: z.array(z.unknown()) }).parse(current)
+    if (args.name !== undefined && args.name !== parsed.name) {
+      await assertAssetGroupNameAvailable(
+        context.customerId, parsed.campaign, args.name, args.resourceName, auth, resolved
+      )
+    }
+    return current
+  }
   if (context.input.operation === 'update_budget') {
     const args = z.object({ resourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation,
@@ -2423,6 +2472,10 @@ export async function loadSearchGoogleAdsPlanState(
       auth,
       resolved
     )
+  }
+  if (plan.operation === 'update_asset_group') {
+    if (!plan.resourceName) throw new Error('Asset-group update plan has no resource name')
+    return loadAssetGroup(plan.customerId, plan.resourceName, auth, resolved)
   }
   if (plan.operation === 'attach_asset' || plan.operation === 'archive_asset_link' || plan.operation === 'detach_asset') {
     const desired = AssetLinkStateSchema.parse(plan.desiredState)

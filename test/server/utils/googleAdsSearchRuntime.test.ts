@@ -350,6 +350,45 @@ describe('Search Google Ads governed execution runtime', () => {
     } as GoogleAdsActionPlan)).toBe(false)
   })
 
+  it('activates only a bounded asset-group update and rejects provider removal', () => {
+    const resourceName = 'customers/1234567890/assetGroups/7001'
+    const valid = {
+      operation: 'update_asset_group',
+      customerId: '1234567890',
+      desiredState: {
+        resourceName,
+        campaign: 'customers/1234567890/campaigns/60',
+        name: 'Paused SUV range',
+        finalUrls: ['https://example.com/suv'],
+        finalMobileUrls: [],
+        status: 'PAUSED',
+        assets: []
+      },
+      providerOperations: [{
+        service: 'assetGroups',
+        operations: [{
+          update: { resourceName, name: 'Paused SUV range', status: 'PAUSED' },
+          updateMask: 'name,path1,status'
+        }]
+      }]
+    } as GoogleAdsActionPlan
+    expect(isExecutableSearchGoogleAdsPlan(valid)).toBe(true)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...valid,
+      providerOperations: [{ service: 'assetGroups', operations: [{ remove: resourceName }] }]
+    } as GoogleAdsActionPlan)).toBe(false)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...valid,
+      providerOperations: [{
+        service: 'assetGroups',
+        operations: [{
+          update: { resourceName, campaign: 'customers/9999999999/campaigns/90' },
+          updateMask: 'campaign'
+        }]
+      }]
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
   it.each([
     ['customer', 'customerAssets'],
     ['campaign', 'campaignAssets'],

@@ -43,6 +43,7 @@ export const GOOGLE_ADS_PLAN_ATTACH_ASSET_TOOL = 'google_ads_plan_attach_asset'
 export const GOOGLE_ADS_PLAN_ARCHIVE_ASSET_LINK_TOOL = 'google_ads_plan_archive_asset_link'
 export const GOOGLE_ADS_PLAN_DETACH_ASSET_TOOL = 'google_ads_plan_detach_asset'
 export const GOOGLE_ADS_PLAN_CREATE_ASSET_GROUP_TOOL = 'google_ads_plan_create_asset_group'
+export const GOOGLE_ADS_PLAN_UPDATE_ASSET_GROUP_TOOL = 'google_ads_plan_update_asset_group'
 export const GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_create_custom_audience'
 export const GOOGLE_ADS_PLAN_UPDATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_update_custom_audience'
 export const GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_archive_custom_audience'
@@ -527,7 +528,8 @@ const DetachAssetSchema = z.strictObject({
 })
 const PmaxAssetFieldTypeSchema = z.enum([
   'HEADLINE', 'LONG_HEADLINE', 'DESCRIPTION', 'MARKETING_IMAGE',
-  'SQUARE_MARKETING_IMAGE', 'BUSINESS_NAME', 'LOGO'
+  'SQUARE_MARKETING_IMAGE', 'BUSINESS_NAME', 'LOGO', 'PORTRAIT_MARKETING_IMAGE',
+  'LANDSCAPE_LOGO', 'YOUTUBE_VIDEO', 'CALL_TO_ACTION_SELECTION', 'MEDIA_BUNDLE'
 ])
 const CreateAssetGroupSchema = z.strictObject({
   ...CommonSchema,
@@ -540,7 +542,7 @@ const CreateAssetGroupSchema = z.strictObject({
   assets: z.array(z.strictObject({
     fieldType: PmaxAssetFieldTypeSchema,
     assetResourceName: z.string().trim().min(1).max(1_000)
-  })).max(71)
+  })).max(128)
 }).superRefine((value, refinement) => {
   if (value.path2 !== undefined && value.path1 === undefined) {
     refinement.addIssue({ code: 'custom', message: 'Asset-group path2 requires path1' })
@@ -552,6 +554,32 @@ const CreateAssetGroupSchema = z.strictObject({
   const keys = value.assets.map(asset => `${asset.fieldType}:${asset.assetResourceName}`)
   if (new Set(keys).size !== keys.length) {
     refinement.addIssue({ code: 'custom', message: 'Asset-group links must be unique' })
+  }
+})
+const NullableAssetGroupPathSchema = z.union([
+  z.string().trim().min(1).max(15),
+  z.null()
+])
+const UpdateAssetGroupSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(128).optional(),
+  finalUrls: z.array(HttpsAssetUrlSchema).min(1).max(10).optional(),
+  finalMobileUrls: z.array(HttpsAssetUrlSchema).max(10).optional(),
+  path1: NullableAssetGroupPathSchema.optional(),
+  path2: NullableAssetGroupPathSchema.optional(),
+  status: z.enum(['ENABLED', 'PAUSED']).optional()
+}).superRefine((value, refinement) => {
+  if (value.name === undefined && value.finalUrls === undefined
+    && value.finalMobileUrls === undefined && value.path1 === undefined
+    && value.path2 === undefined && value.status === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'At least one mutable asset-group field is required' })
+  }
+  if (value.finalUrls && new Set(value.finalUrls).size !== value.finalUrls.length) {
+    refinement.addIssue({ code: 'custom', message: 'Asset-group final URLs must be unique' })
+  }
+  if (value.finalMobileUrls && new Set(value.finalMobileUrls).size !== value.finalMobileUrls.length) {
+    refinement.addIssue({ code: 'custom', message: 'Asset-group final mobile URLs must be unique' })
   }
 })
 
@@ -738,6 +766,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_CREATE_ASSET_GROUP_TOOL,
     'Plan an atomic, paused Performance Max asset group. Standard campaigns require a complete minimum asset bundle; retail campaigns may start without advertiser assets.',
     CreateAssetGroupSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_UPDATE_ASSET_GROUP_TOOL,
+    'Plan an exact update to mutable Performance Max asset-group fields. Set status to PAUSED for the reversible archive default or ENABLED to resume serving.',
+    UpdateAssetGroupSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL,
@@ -1410,6 +1443,27 @@ export async function executeGoogleAdsSearchPlanningTool(
           ...(args.path1 ? { path1: args.path1 } : {}),
           ...(args.path2 ? { path2: args.path2 } : {}),
           assets: args.assets
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_UPDATE_ASSET_GROUP_TOOL) {
+      const args = UpdateAssetGroupSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'update_asset_group',
+        resourceType: 'asset_group',
+        arguments: {
+          resourceName: args.resourceName,
+          ...(args.name === undefined ? {} : { name: args.name }),
+          ...(args.finalUrls === undefined ? {} : { finalUrls: args.finalUrls }),
+          ...(args.finalMobileUrls === undefined ? {} : { finalMobileUrls: args.finalMobileUrls }),
+          ...(args.path1 === undefined ? {} : { path1: args.path1 }),
+          ...(args.path2 === undefined ? {} : { path2: args.path2 }),
+          ...(args.status === undefined ? {} : { status: args.status })
         }
       }
     } else if (name === GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL) {

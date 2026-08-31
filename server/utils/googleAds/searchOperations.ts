@@ -351,7 +351,8 @@ const AssetLinkDispositionArgumentsSchema = z.strictObject({
 })
 const PmaxAssetFieldTypeSchema = z.enum([
   'HEADLINE', 'LONG_HEADLINE', 'DESCRIPTION', 'MARKETING_IMAGE',
-  'SQUARE_MARKETING_IMAGE', 'BUSINESS_NAME', 'LOGO'
+  'SQUARE_MARKETING_IMAGE', 'BUSINESS_NAME', 'LOGO', 'PORTRAIT_MARKETING_IMAGE',
+  'LANDSCAPE_LOGO', 'YOUTUBE_VIDEO', 'CALL_TO_ACTION_SELECTION', 'MEDIA_BUNDLE'
 ])
 const PmaxAssetLinkSchema = z.strictObject({
   fieldType: PmaxAssetFieldTypeSchema,
@@ -364,7 +365,7 @@ const CreateAssetGroupArgumentsSchema = z.strictObject({
   finalMobileUrls: z.array(HttpsAssetUrlSchema).max(10).default([]),
   path1: z.string().trim().min(1).max(15).optional(),
   path2: z.string().trim().min(1).max(15).optional(),
-  assets: z.array(PmaxAssetLinkSchema).max(71)
+  assets: z.array(PmaxAssetLinkSchema).max(128)
 }).superRefine((value, refinement) => {
   if (value.path2 !== undefined && value.path1 === undefined) {
     refinement.addIssue({ code: 'custom', message: 'Asset-group path2 requires path1' })
@@ -378,9 +379,34 @@ const CreateAssetGroupArgumentsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Asset-group links must be unique' })
   }
 })
+const NullableAssetGroupPathSchema = z.union([
+  z.string().trim().min(1).max(15),
+  z.null()
+])
+const UpdateAssetGroupArgumentsSchema = z.strictObject({
+  resourceName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(128).optional(),
+  finalUrls: z.array(HttpsAssetUrlSchema).min(1).max(10).optional(),
+  finalMobileUrls: z.array(HttpsAssetUrlSchema).max(10).optional(),
+  path1: NullableAssetGroupPathSchema.optional(),
+  path2: NullableAssetGroupPathSchema.optional(),
+  status: z.enum(['ENABLED', 'PAUSED']).optional()
+}).superRefine((value, refinement) => {
+  if (value.name === undefined && value.finalUrls === undefined
+    && value.finalMobileUrls === undefined && value.path1 === undefined
+    && value.path2 === undefined && value.status === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'At least one mutable asset-group field is required' })
+  }
+  if (value.finalUrls && new Set(value.finalUrls).size !== value.finalUrls.length) {
+    refinement.addIssue({ code: 'custom', message: 'Asset-group final URLs must be unique' })
+  }
+  if (value.finalMobileUrls && new Set(value.finalMobileUrls).size !== value.finalMobileUrls.length) {
+    refinement.addIssue({ code: 'custom', message: 'Asset-group final mobile URLs must be unique' })
+  }
+})
 const PmaxAssetStateSchema = z.object({
   resourceName: z.string(),
-  type: z.enum(['TEXT', 'IMAGE']),
+  type: z.enum(['TEXT', 'IMAGE', 'YOUTUBE_VIDEO', 'CALL_TO_ACTION', 'MEDIA_BUNDLE']),
   text: z.string().optional(),
   fileSize: z.string().optional(),
   widthPixels: z.string().optional(),
@@ -395,6 +421,17 @@ const CreateAssetGroupCurrentStateSchema = z.object({
   }),
   nameAvailable: z.boolean(),
   assets: z.array(PmaxAssetStateSchema)
+})
+const MutableAssetGroupStateSchema = z.object({
+  resourceName: z.string(),
+  campaign: z.string(),
+  name: z.string(),
+  finalUrls: z.array(z.string()),
+  finalMobileUrls: z.array(z.string()),
+  path1: z.string().optional(),
+  path2: z.string().optional(),
+  status: z.enum(['ENABLED', 'PAUSED', 'REMOVED']),
+  assets: z.array(PmaxAssetLinkSchema)
 })
 const AssetLinkStateSchema = z.object({
   resourceName: z.string(),
@@ -601,6 +638,7 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'archive_asset_link',
       'detach_asset',
       'create_asset_group',
+      'update_asset_group',
       'set_campaign_conversion_goals',
       'set_conversion_goal',
       'set_customer_goal_biddability',
@@ -709,6 +747,7 @@ export function parseSearchGoogleAdsArguments(
     return AssetLinkDispositionArgumentsSchema.parse(argumentsValue)
   }
   if (operation === 'create_asset_group') return CreateAssetGroupArgumentsSchema.parse(argumentsValue)
+  if (operation === 'update_asset_group') return UpdateAssetGroupArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_goal') return SetCampaignGoalConfigArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_customer_goal_biddability') return SetCustomerGoalBiddabilityArgumentsSchema.parse(argumentsValue)
@@ -2250,7 +2289,7 @@ function buildAssetLinkDispositionAction(
 }
 
 const PMAX_ASSET_LIMITS: Record<z.infer<typeof PmaxAssetFieldTypeSchema>, {
-  type: 'TEXT' | 'IMAGE'
+  type: 'TEXT' | 'IMAGE' | 'YOUTUBE_VIDEO' | 'CALL_TO_ACTION' | 'MEDIA_BUNDLE'
   min: number
   max: number
   maxTextLength?: number
@@ -2261,7 +2300,12 @@ const PMAX_ASSET_LIMITS: Record<z.infer<typeof PmaxAssetFieldTypeSchema>, {
   MARKETING_IMAGE: { type: 'IMAGE', min: 1, max: 20 },
   SQUARE_MARKETING_IMAGE: { type: 'IMAGE', min: 1, max: 20 },
   BUSINESS_NAME: { type: 'TEXT', min: 1, max: 1, maxTextLength: 25 },
-  LOGO: { type: 'IMAGE', min: 1, max: 5 }
+  LOGO: { type: 'IMAGE', min: 1, max: 5 },
+  PORTRAIT_MARKETING_IMAGE: { type: 'IMAGE', min: 0, max: 20 },
+  LANDSCAPE_LOGO: { type: 'IMAGE', min: 0, max: 20 },
+  YOUTUBE_VIDEO: { type: 'YOUTUBE_VIDEO', min: 0, max: 15 },
+  CALL_TO_ACTION_SELECTION: { type: 'CALL_TO_ACTION', min: 0, max: 1 },
+  MEDIA_BUNDLE: { type: 'MEDIA_BUNDLE', min: 0, max: 1 }
 }
 
 function sortPmaxAssetLinks(
@@ -2314,14 +2358,13 @@ function buildCreateAssetGroupAction(context: BuildGoogleAdsActionContext): Buil
 
   const retailWithoutAssets = current.campaign.merchantId !== null && args.assets.length === 0
   if (!retailWithoutAssets) {
-    const required = current.campaign.brandGuidelinesEnabled
-      ? PmaxAssetFieldTypeSchema.options.filter(type => type !== 'BUSINESS_NAME' && type !== 'LOGO')
-      : PmaxAssetFieldTypeSchema.options
+    const required = ['HEADLINE', 'LONG_HEADLINE', 'DESCRIPTION', 'MARKETING_IMAGE', 'SQUARE_MARKETING_IMAGE'] as const
+    const brandRequired = current.campaign.brandGuidelinesEnabled ? [] : ['BUSINESS_NAME', 'LOGO'] as const
     if (current.campaign.brandGuidelinesEnabled
-      && (counts.BUSINESS_NAME > 0 || counts.LOGO > 0)) {
+      && (counts.BUSINESS_NAME > 0 || counts.LOGO > 0 || counts.LANDSCAPE_LOGO > 0)) {
       throw new Error('Brand-guideline campaigns require business name and logo assets at campaign level')
     }
-    for (const fieldType of required) {
+    for (const fieldType of [...required, ...brandRequired]) {
       const { min } = PMAX_ASSET_LIMITS[fieldType]
       if (counts[fieldType] < min) {
         throw new Error(`Asset group requires at least ${min} ${fieldType} asset${min === 1 ? '' : 's'}`)
@@ -2371,6 +2414,83 @@ function buildCreateAssetGroupAction(context: BuildGoogleAdsActionContext): Buil
   }
 }
 
+function equalStringArrays(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
+function buildUpdateAssetGroupAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'asset_group') {
+    throw new Error('Asset-group updates require resource type asset_group')
+  }
+  const args = UpdateAssetGroupArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.resourceName, context.customerId, 'assetGroups')
+  const current = MutableAssetGroupStateSchema.parse(context.currentState)
+  if (current.resourceName !== args.resourceName) {
+    throw new Error('Asset-group state does not match the requested resource')
+  }
+  assertResourceName(current.campaign, context.customerId, 'campaigns')
+  if (current.status === 'REMOVED') throw new Error('A removed asset group cannot be updated')
+
+  const desiredName = args.name ?? current.name
+  const desiredFinalUrls = args.finalUrls ?? current.finalUrls
+  const desiredFinalMobileUrls = args.finalMobileUrls ?? current.finalMobileUrls
+  const desiredPath1 = args.path1 === undefined ? current.path1 : args.path1 ?? undefined
+  const desiredPath2 = args.path2 === undefined ? current.path2 : args.path2 ?? undefined
+  const desiredStatus = args.status ?? current.status
+  if (desiredPath2 !== undefined && desiredPath1 === undefined) {
+    throw new Error('Asset-group path2 requires path1')
+  }
+
+  const update: Record<string, unknown> = { resourceName: args.resourceName }
+  const updateMask: string[] = []
+  if (desiredName !== current.name) {
+    update.name = desiredName
+    updateMask.push('name')
+  }
+  if (!equalStringArrays(desiredFinalUrls, current.finalUrls)) {
+    update.finalUrls = desiredFinalUrls
+    updateMask.push('final_urls')
+  }
+  if (!equalStringArrays(desiredFinalMobileUrls, current.finalMobileUrls)) {
+    update.finalMobileUrls = desiredFinalMobileUrls
+    updateMask.push('final_mobile_urls')
+  }
+  if (desiredPath1 !== current.path1) {
+    if (desiredPath1 !== undefined) update.path1 = desiredPath1
+    updateMask.push('path1')
+  }
+  if (desiredPath2 !== current.path2) {
+    if (desiredPath2 !== undefined) update.path2 = desiredPath2
+    updateMask.push('path2')
+  }
+  if (desiredStatus !== current.status) {
+    update.status = desiredStatus
+    updateMask.push('status')
+  }
+  if (updateMask.length === 0) throw new Error('Asset-group fields already match the requested values')
+
+  return {
+    resourceName: args.resourceName,
+    desiredState: {
+      resourceName: current.resourceName,
+      campaign: current.campaign,
+      name: desiredName,
+      finalUrls: desiredFinalUrls,
+      finalMobileUrls: desiredFinalMobileUrls,
+      ...(desiredPath1 ? { path1: desiredPath1 } : {}),
+      ...(desiredPath2 ? { path2: desiredPath2 } : {}),
+      status: desiredStatus,
+      assets: current.assets
+    },
+    providerOperations: [{
+      service: 'assetGroups',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ update, updateMask: updateMask.join(',') }]
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -2414,5 +2534,6 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'archive_asset_link') return buildAssetLinkDispositionAction(context, 'archive')
   if (context.input.operation === 'detach_asset') return buildAssetLinkDispositionAction(context, 'detach')
   if (context.input.operation === 'create_asset_group') return buildCreateAssetGroupAction(context)
+  if (context.input.operation === 'update_asset_group') return buildUpdateAssetGroupAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }
