@@ -332,7 +332,8 @@ const EXECUTABLE_SEARCH_SERVICES = {
   remove_conversion_action: ['conversionActions'],
   create_custom_conversion_goal: ['customConversionGoals'],
   update_custom_conversion_goal: ['customConversionGoals'],
-  archive_custom_conversion_goal: ['customConversionGoals']
+  archive_custom_conversion_goal: ['customConversionGoals'],
+  create_asset: ['assets']
 } as const
 
 export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): boolean {

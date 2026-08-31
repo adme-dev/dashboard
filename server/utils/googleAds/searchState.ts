@@ -83,6 +83,22 @@ const AdGroupAdStateSchema = z.object({
     })
   })
 })
+const AssetStateSchema = z.object({
+  resourceName: z.string(),
+  name: z.string().optional(),
+  type: z.enum(['CALL', 'SITELINK', 'CALLOUT', 'STRUCTURED_SNIPPET']),
+  source: z.string(),
+  finalUrls: z.array(z.string()).default([]),
+  finalMobileUrls: z.array(z.string()).default([]),
+  callAsset: z.object({ countryCode: z.string(), phoneNumber: z.string() }).optional(),
+  sitelinkAsset: z.object({
+    linkText: z.string(),
+    description1: z.string().optional(),
+    description2: z.string().optional()
+  }).optional(),
+  calloutAsset: z.object({ calloutText: z.string() }).optional(),
+  structuredSnippetAsset: z.object({ header: z.string(), values: z.array(z.string()) }).optional()
+})
 const AdScheduleStateSchema = z.object({
   dayOfWeek: z.enum([
     'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'
@@ -566,7 +582,8 @@ function mutationResourceName(
     adGroupAds: 'adGroupAd',
     conversionActions: 'conversionAction',
     customConversionGoals: 'customConversionGoal',
-    customAudiences: 'customAudience'
+    customAudiences: 'customAudience',
+    assets: 'asset'
   }[service] ?? ''
   const nested = singular ? record[singular] : undefined
   if (nested && typeof nested === 'object'
@@ -574,6 +591,45 @@ function mutationResourceName(
     return (nested as Record<string, unknown>).resourceName as string
   }
   throw new Error('Google Ads mutation did not return a created resource name')
+}
+
+async function loadAsset(
+  customerId: string,
+  resourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<z.infer<typeof AssetStateSchema>> {
+  assertCustomerResourceName(resourceName, customerId, 'assets')
+  const [assetId] = resourceIds(resourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT asset.resource_name,
+  asset.name,
+  asset.type,
+  asset.source,
+  asset.final_urls,
+  asset.final_mobile_urls,
+  asset.call_asset.country_code,
+  asset.call_asset.phone_number,
+  asset.sitelink_asset.link_text,
+  asset.sitelink_asset.description1,
+  asset.sitelink_asset.description2,
+  asset.callout_asset.callout_text,
+  asset.structured_snippet_asset.header,
+  asset.structured_snippet_asset.values
+FROM asset
+WHERE asset.id = ${assetId}`
+  })
+  const first = result.rows[0]
+  const asset = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).asset
+    : undefined
+  if (!asset) throw new Error('Google Ads asset was not found after mutation')
+  const parsed = AssetStateSchema.parse(asset)
+  assertCustomerResourceName(parsed.resourceName, customerId, 'assets')
+  return parsed
 }
 
 function statusWhere(from: string, ids: number[]): string {
@@ -1652,6 +1708,10 @@ export async function loadSearchGoogleAdsCurrentState(
     ))
     return assertBudgetNameAvailable(context.customerId, args.name, auth, resolved)
   }
+  if (context.input.operation === 'create_asset') {
+    parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments)
+    return { exists: false }
+  }
   if (context.input.operation === 'update_budget') {
     const args = z.object({ resourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation,
@@ -1927,6 +1987,15 @@ export async function loadSearchGoogleAdsPlanState(
   mutation?: GoogleAdsMutateResult
 ): Promise<unknown> {
   const resolved = { ...defaultDependencies, ...dependencies }
+  if (plan.operation === 'create_asset') {
+    if (!mutation) return { exists: false }
+    return loadAsset(
+      plan.customerId,
+      mutationResourceName(mutation, 'assets'),
+      auth,
+      resolved
+    )
+  }
   if (plan.operation === 'manage_custom_audience') {
     if (plan.resourceName) {
       return loadCustomAudience(plan.customerId, plan.resourceName, auth, resolved)

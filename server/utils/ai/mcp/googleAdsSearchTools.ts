@@ -38,6 +38,7 @@ export const GOOGLE_ADS_PLAN_REMOVE_CONVERSION_ACTION_TOOL = 'google_ads_plan_re
 export const GOOGLE_ADS_PLAN_CREATE_CUSTOM_CONVERSION_GOAL_TOOL = 'google_ads_plan_create_custom_conversion_goal'
 export const GOOGLE_ADS_PLAN_UPDATE_CUSTOM_CONVERSION_GOAL_TOOL = 'google_ads_plan_update_custom_conversion_goal'
 export const GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_CONVERSION_GOAL_TOOL = 'google_ads_plan_archive_custom_conversion_goal'
+export const GOOGLE_ADS_PLAN_CREATE_ASSET_TOOL = 'google_ads_plan_create_asset'
 export const GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_create_custom_audience'
 export const GOOGLE_ADS_PLAN_UPDATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_update_custom_audience'
 export const GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_archive_custom_audience'
@@ -454,6 +455,52 @@ const ArchiveCustomConversionGoalSchema = z.strictObject({
   ...CommonSchema,
   resourceName: z.string().trim().min(1).max(1_000)
 })
+const AssetNameSchema = z.string().trim().min(1).max(255).optional()
+const HttpsAssetUrlSchema = z.string().url().refine(value => value.startsWith('https://'))
+const StructuredSnippetHeaderSchema = z.enum([
+  'Brands', 'Amenities', 'Styles', 'Types', 'Destinations', 'Services', 'Courses',
+  'Neighbourhoods', 'Shows', 'Insurance coverage', 'Degree programmes', 'Featured hotels', 'Models'
+])
+const CreateAssetSchema = z.discriminatedUnion('type', [
+  z.strictObject({
+    ...CommonSchema,
+    type: z.literal('CALL'),
+    name: AssetNameSchema,
+    countryCode: z.string().trim().regex(/^[A-Za-z]{2}$/),
+    phoneNumber: z.string().trim().min(3).max(30)
+  }),
+  z.strictObject({
+    ...CommonSchema,
+    type: z.literal('SITELINK'),
+    name: AssetNameSchema,
+    linkText: z.string().trim().min(1).max(25),
+    description1: z.string().trim().min(1).max(35).optional(),
+    description2: z.string().trim().min(1).max(35).optional(),
+    finalUrl: HttpsAssetUrlSchema,
+    finalMobileUrl: HttpsAssetUrlSchema.optional()
+  }),
+  z.strictObject({
+    ...CommonSchema,
+    type: z.literal('CALLOUT'),
+    name: AssetNameSchema,
+    calloutText: z.string().trim().min(1).max(25)
+  }),
+  z.strictObject({
+    ...CommonSchema,
+    type: z.literal('STRUCTURED_SNIPPET'),
+    name: AssetNameSchema,
+    header: StructuredSnippetHeaderSchema,
+    values: z.array(z.string().trim().min(1).max(25)).min(3).max(10)
+  })
+]).superRefine((value, refinement) => {
+  if (value.type === 'SITELINK' && (value.description1 === undefined) !== (value.description2 === undefined)) {
+    refinement.addIssue({ code: 'custom', message: 'Sitelink descriptions must be supplied together' })
+  }
+  if (value.type === 'STRUCTURED_SNIPPET'
+    && new Set(value.values.map(item => item.toLocaleLowerCase('en-AU'))).size !== value.values.length) {
+    refinement.addIssue({ code: 'custom', message: 'Structured-snippet values must be unique' })
+  }
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -613,6 +660,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_CONVERSION_GOAL_TOOL,
     'Plan archiving a custom conversion goal. Google reports only ENABLED or REMOVED, so owner/admin destructive confirmation is required.',
     ArchiveCustomConversionGoalSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_CREATE_ASSET_TOOL,
+    'Plan an immutable typed call, sitelink, callout, or Australian-English structured-snippet asset. Creation does not make the asset serve; attach it separately after approval.',
+    CreateAssetSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL,
@@ -1167,6 +1219,60 @@ export async function executeGoogleAdsSearchPlanningTool(
         operation: 'archive_custom_conversion_goal',
         resourceType: 'custom_conversion_goal',
         arguments: { resourceName: args.resourceName }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_CREATE_ASSET_TOOL) {
+      const args = CreateAssetSchema.parse(rawArgs)
+      const common = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp' as const,
+        requestedMode: 'proposal' as const,
+        operation: 'create_asset' as const,
+        resourceType: 'asset' as const
+      }
+      if (args.type === 'CALL') {
+        plannerInput = {
+          ...common,
+          arguments: {
+            type: args.type,
+            ...(args.name ? { name: args.name } : {}),
+            countryCode: args.countryCode,
+            phoneNumber: args.phoneNumber
+          }
+        }
+      } else if (args.type === 'SITELINK') {
+        plannerInput = {
+          ...common,
+          arguments: {
+            type: args.type,
+            ...(args.name ? { name: args.name } : {}),
+            linkText: args.linkText,
+            ...(args.description1 ? { description1: args.description1, description2: args.description2 } : {}),
+            finalUrl: args.finalUrl,
+            ...(args.finalMobileUrl ? { finalMobileUrl: args.finalMobileUrl } : {})
+          }
+        }
+      } else if (args.type === 'CALLOUT') {
+        plannerInput = {
+          ...common,
+          arguments: {
+            type: args.type,
+            ...(args.name ? { name: args.name } : {}),
+            calloutText: args.calloutText
+          }
+        }
+      } else {
+        plannerInput = {
+          ...common,
+          arguments: {
+            type: args.type,
+            ...(args.name ? { name: args.name } : {}),
+            header: args.header,
+            values: args.values
+          }
+        }
       }
     } else if (name === GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL) {
       const args = CreateCustomAudienceSchema.parse(rawArgs)

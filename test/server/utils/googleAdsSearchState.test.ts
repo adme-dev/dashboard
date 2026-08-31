@@ -102,6 +102,16 @@ describe('Search Google Ads current-state loader', () => {
     expect(query.mock.calls[0]?.[0].query).toContain('campaign_budget.name = \'Northern Search Budget\'')
   })
 
+  it('plans immutable asset creation without provider-side duplicate guessing', async () => {
+    const query = vi.fn()
+    await expect(loadSearchGoogleAdsCurrentState(context('create_asset', {
+      type: 'CALL',
+      countryCode: 'AU',
+      phoneNumber: '(03) 9999 0000'
+    }), auth, { query })).resolves.toEqual({ exists: false })
+    expect(query).not.toHaveBeenCalled()
+  })
+
   it('refuses to plan a duplicate named budget', async () => {
     await expect(loadSearchGoogleAdsCurrentState(context('create_budget', {
       name: 'Northern Search Budget',
@@ -1307,6 +1317,45 @@ describe('Search Google Ads persisted-plan state loading', () => {
       status: 'ENABLED',
       conversionActions: [conversionAction]
     })
+  })
+
+  it('uses the provider result to read back a created call asset', async () => {
+    const resourceName = 'customers/1234567890/assets/9201'
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ asset: {
+        resourceName,
+        name: 'Northern GAC calls',
+        type: 'CALL',
+        source: 'ADVERTISER',
+        finalUrls: [],
+        finalMobileUrls: [],
+        callAsset: { countryCode: 'AU', phoneNumber: '(03) 9999 0000' }
+      } }],
+      more: 0
+    })
+    const plan = {
+      operation: 'create_asset',
+      resourceType: 'asset',
+      resourceName: null,
+      customerId: '1234567890',
+      desiredState: {
+        type: 'CALL',
+        name: 'Northern GAC calls',
+        callAsset: { countryCode: 'AU', phoneNumber: '(03) 9999 0000' }
+      },
+      providerOperations: [{ service: 'assets' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [{ asset: { resourceName } }]
+    })).resolves.toMatchObject({
+      resourceName,
+      name: 'Northern GAC calls',
+      type: 'CALL',
+      source: 'ADVERTISER',
+      callAsset: { countryCode: 'AU', phoneNumber: '(03) 9999 0000' }
+    })
+    expect(query.mock.calls[0]?.[0].query).toContain('asset.id = 9201')
   })
 
   it('uses a nested provider result to read back a created custom audience', async () => {

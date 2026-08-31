@@ -232,7 +232,8 @@ describe('Search Google Ads governed execution runtime', () => {
     ['remove_conversion_action', 'conversionActions'],
     ['create_custom_conversion_goal', 'customConversionGoals'],
     ['update_custom_conversion_goal', 'customConversionGoals'],
-    ['archive_custom_conversion_goal', 'customConversionGoals']
+    ['archive_custom_conversion_goal', 'customConversionGoals'],
+    ['create_asset', 'assets']
   ] as const)('activates governed execution for %s', (operation, service) => {
     expect(isExecutableSearchGoogleAdsPlan({
       operation,

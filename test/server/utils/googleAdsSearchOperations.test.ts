@@ -1483,4 +1483,87 @@ describe('Search Google Ads construction operations', () => {
       status: 'ENABLED'
     })).toThrow()
   })
+
+  it('creates immutable typed call, sitelink, callout, and structured-snippet assets', () => {
+    expect(buildSearchGoogleAdsAction(context(
+      'create_asset',
+      'asset',
+      {
+        type: 'CALL',
+        name: 'Northern GAC calls',
+        countryCode: 'au',
+        phoneNumber: '(03) 9999 0000'
+      },
+      { exists: false }
+    ))).toEqual({
+      resourceName: null,
+      desiredState: {
+        type: 'CALL',
+        name: 'Northern GAC calls',
+        callAsset: { countryCode: 'AU', phoneNumber: '(03) 9999 0000' }
+      },
+      providerOperations: [{
+        service: 'assets',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{
+          create: {
+            name: 'Northern GAC calls',
+            callAsset: { countryCode: 'AU', phoneNumber: '(03) 9999 0000' }
+          }
+        }]
+      }]
+    })
+
+    expect(buildSearchGoogleAdsAction(context(
+      'create_asset',
+      'asset',
+      {
+        type: 'SITELINK',
+        linkText: 'Book a test drive',
+        description1: 'Drive a new GAC today',
+        description2: 'Choose your preferred model',
+        finalUrl: 'https://example.com/test-drive'
+      },
+      { exists: false }
+    )).desiredState).toEqual({
+      type: 'SITELINK',
+      finalUrls: ['https://example.com/test-drive'],
+      finalMobileUrls: [],
+      sitelinkAsset: {
+        linkText: 'Book a test drive',
+        description1: 'Drive a new GAC today',
+        description2: 'Choose your preferred model'
+      }
+    })
+
+    expect(buildSearchGoogleAdsAction(context(
+      'create_asset', 'asset', { type: 'CALLOUT', calloutText: 'Available now' }, { exists: false }
+    )).desiredState).toEqual({ type: 'CALLOUT', calloutAsset: { calloutText: 'Available now' } })
+
+    expect(buildSearchGoogleAdsAction(context(
+      'create_asset',
+      'asset',
+      { type: 'STRUCTURED_SNIPPET', header: 'Models', values: ['Aion V', 'Emkoo', 'GS3 Emzoom'] },
+      { exists: false }
+    )).desiredState).toEqual({
+      type: 'STRUCTURED_SNIPPET',
+      structuredSnippetAsset: { header: 'Models', values: ['Aion V', 'Emkoo', 'GS3 Emzoom'] }
+    })
+  })
+
+  it('rejects invalid extension-asset shapes before mutation planning', () => {
+    expect(() => parseSearchGoogleAdsArguments('create_asset', {
+      type: 'SITELINK', linkText: 'Test drive', description1: 'Only one description', finalUrl: 'https://example.com'
+    })).toThrow('Sitelink descriptions must be supplied together')
+    expect(() => parseSearchGoogleAdsArguments('create_asset', {
+      type: 'CALLOUT', calloutText: 'x'.repeat(26)
+    })).toThrow()
+    expect(() => parseSearchGoogleAdsArguments('create_asset', {
+      type: 'STRUCTURED_SNIPPET', header: 'Models', values: ['A', 'B']
+    })).toThrow()
+    expect(() => parseSearchGoogleAdsArguments('create_asset', {
+      type: 'CALL', countryCode: 'AUS', phoneNumber: '03 9999 0000'
+    })).toThrow()
+  })
 })

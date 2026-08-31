@@ -48,6 +48,7 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_create_custom_conversion_goal',
       'google_ads_plan_update_custom_conversion_goal',
       'google_ads_plan_archive_custom_conversion_goal',
+      'google_ads_plan_create_asset',
       'google_ads_plan_create_custom_audience',
       'google_ads_plan_update_custom_audience',
       'google_ads_plan_archive_custom_audience',
@@ -503,6 +504,23 @@ describe('Google Ads Search MCP planning descriptors', () => {
       operation: 'archive_custom_conversion_goal',
       resourceType: 'custom_conversion_goal',
       expectedArguments: { resourceName: 'customers/1234567890/customConversionGoals/9101' }
+    },
+    {
+      tool: 'google_ads_plan_create_asset',
+      args: {
+        type: 'CALL',
+        name: 'Northern GAC calls',
+        countryCode: 'au',
+        phoneNumber: '(03) 9999 0000'
+      },
+      operation: 'create_asset',
+      resourceType: 'asset',
+      expectedArguments: {
+        type: 'CALL',
+        name: 'Northern GAC calls',
+        countryCode: 'au',
+        phoneNumber: '(03) 9999 0000'
+      }
     },
     {
       tool: 'google_ads_plan_create_custom_audience',

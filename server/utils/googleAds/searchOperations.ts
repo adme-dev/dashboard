@@ -293,6 +293,50 @@ const SetSearchThemesArgumentsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Search themes must be unique' })
   }
 })
+const AssetNameSchema = z.string().trim().min(1).max(255).optional()
+const HttpsAssetUrlSchema = z.string().url().refine(value => value.startsWith('https://'), {
+  message: 'Asset final URLs must use HTTPS'
+})
+const StructuredSnippetHeaderSchema = z.enum([
+  'Brands', 'Amenities', 'Styles', 'Types', 'Destinations', 'Services', 'Courses',
+  'Neighbourhoods', 'Shows', 'Insurance coverage', 'Degree programmes', 'Featured hotels', 'Models'
+])
+const CreateAssetArgumentsSchema = z.discriminatedUnion('type', [
+  z.strictObject({
+    type: z.literal('CALL'),
+    name: AssetNameSchema,
+    countryCode: z.string().trim().regex(/^[A-Za-z]{2}$/),
+    phoneNumber: z.string().trim().min(3).max(30)
+  }),
+  z.strictObject({
+    type: z.literal('SITELINK'),
+    name: AssetNameSchema,
+    linkText: z.string().trim().min(1).max(25),
+    description1: z.string().trim().min(1).max(35).optional(),
+    description2: z.string().trim().min(1).max(35).optional(),
+    finalUrl: HttpsAssetUrlSchema,
+    finalMobileUrl: HttpsAssetUrlSchema.optional()
+  }),
+  z.strictObject({
+    type: z.literal('CALLOUT'),
+    name: AssetNameSchema,
+    calloutText: z.string().trim().min(1).max(25)
+  }),
+  z.strictObject({
+    type: z.literal('STRUCTURED_SNIPPET'),
+    name: AssetNameSchema,
+    header: StructuredSnippetHeaderSchema,
+    values: z.array(z.string().trim().min(1).max(25)).min(3).max(10)
+  })
+]).superRefine((value, refinement) => {
+  if (value.type === 'SITELINK' && (value.description1 === undefined) !== (value.description2 === undefined)) {
+    refinement.addIssue({ code: 'custom', message: 'Sitelink descriptions must be supplied together' })
+  }
+  if (value.type === 'STRUCTURED_SNIPPET'
+    && new Set(value.values.map(item => item.toLocaleLowerCase('en-AU'))).size !== value.values.length) {
+    refinement.addIssue({ code: 'custom', message: 'Structured-snippet values must be unique' })
+  }
+})
 const ConversionCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -484,6 +528,7 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'archive_custom_audience',
       'set_pmax_signals',
       'set_search_themes',
+      'create_asset',
       'set_campaign_conversion_goals',
       'set_conversion_goal',
       'set_customer_goal_biddability',
@@ -586,6 +631,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'archive_custom_audience') return ResourceNameArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_pmax_signals') return SetPmaxSignalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_search_themes') return SetSearchThemesArgumentsSchema.parse(argumentsValue)
+  if (operation === 'create_asset') return CreateAssetArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_goal') return SetCampaignGoalConfigArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_customer_goal_biddability') return SetCustomerGoalBiddabilityArgumentsSchema.parse(argumentsValue)
@@ -1899,6 +1945,70 @@ function buildPmaxSearchThemesAction(context: BuildGoogleAdsActionContext): Buil
   }
 }
 
+function buildCreateAssetAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'asset') {
+    throw new Error('Asset creation requires resource type asset')
+  }
+  const args = CreateAssetArgumentsSchema.parse(context.input.arguments)
+  z.object({ exists: z.literal(false) }).parse(context.currentState)
+
+  let create: Record<string, unknown>
+  let desiredState: Record<string, unknown>
+  if (args.type === 'CALL') {
+    const callAsset = {
+      countryCode: args.countryCode.toUpperCase(),
+      phoneNumber: args.phoneNumber
+    }
+    create = { ...(args.name ? { name: args.name } : {}), callAsset }
+    desiredState = { type: args.type, ...(args.name ? { name: args.name } : {}), callAsset }
+  } else if (args.type === 'SITELINK') {
+    const sitelinkAsset = {
+      linkText: args.linkText,
+      ...(args.description1 ? { description1: args.description1, description2: args.description2 } : {})
+    }
+    const finalUrls = [args.finalUrl]
+    const finalMobileUrls = args.finalMobileUrl ? [args.finalMobileUrl] : []
+    create = {
+      ...(args.name ? { name: args.name } : {}),
+      finalUrls,
+      ...(finalMobileUrls.length > 0 ? { finalMobileUrls } : {}),
+      sitelinkAsset
+    }
+    desiredState = {
+      type: args.type,
+      ...(args.name ? { name: args.name } : {}),
+      finalUrls,
+      finalMobileUrls,
+      sitelinkAsset
+    }
+  } else if (args.type === 'CALLOUT') {
+    const calloutAsset = { calloutText: args.calloutText }
+    create = { ...(args.name ? { name: args.name } : {}), calloutAsset }
+    desiredState = { type: args.type, ...(args.name ? { name: args.name } : {}), calloutAsset }
+  } else {
+    const structuredSnippetAsset = { header: args.header, values: args.values }
+    create = { ...(args.name ? { name: args.name } : {}), structuredSnippetAsset }
+    desiredState = {
+      type: args.type,
+      ...(args.name ? { name: args.name } : {}),
+      structuredSnippetAsset
+    }
+  }
+
+  // AssetService creates immutable assets. Serving is governed separately through link resources.
+  // Source: https://developers.google.com/google-ads/api/docs/assets/working-with-assets#create_an_asset
+  return {
+    resourceName: null,
+    desiredState,
+    providerOperations: [{
+      service: 'assets',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ create }]
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -1937,5 +2047,6 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'archive_custom_audience') return buildArchiveCustomAudienceAction(context)
   if (context.input.operation === 'set_pmax_signals') return buildPmaxAudienceSignalsAction(context)
   if (context.input.operation === 'set_search_themes') return buildPmaxSearchThemesAction(context)
+  if (context.input.operation === 'create_asset') return buildCreateAssetAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }
