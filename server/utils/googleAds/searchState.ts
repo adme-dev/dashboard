@@ -38,6 +38,23 @@ const BudgetStateSchema = z.object({
   deliveryMethod: z.string(),
   explicitlyShared: z.boolean()
 })
+const CampaignStateSchema = z.object({
+  resourceName: z.string(),
+  name: z.string(),
+  status: z.string(),
+  advertisingChannelType: z.string(),
+  campaignBudget: z.string(),
+  manualCpc: z.record(z.string(), z.unknown()),
+  networkSettings: z.object({
+    targetGoogleSearch: z.boolean(),
+    targetSearchNetwork: z.boolean(),
+    targetPartnerSearchNetwork: z.boolean(),
+    targetContentNetwork: z.boolean()
+  }),
+  containsEuPoliticalAdvertising: z.string(),
+  startDateTime: z.string().optional(),
+  endDateTime: z.string().optional()
+})
 
 const STATUS_READS = {
   pause_campaign: { from: 'campaign', select: 'campaign.resource_name, campaign.status', key: 'campaign' },
@@ -135,6 +152,82 @@ WHERE campaign_budget.id = ${id}`
   return BudgetStateSchema.parse(budget)
 }
 
+async function loadCreateCampaignCurrentState(
+  customerId: string,
+  name: string,
+  budgetResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<{ exists: false, campaignBudgetResourceName: string }> {
+  assertCustomerResourceName(budgetResourceName, customerId, 'campaignBudgets')
+  const duplicate = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT campaign.resource_name
+FROM campaign
+WHERE campaign.name = '${escapeGaqlString(name)}'`
+  })
+  if (duplicate.rows.length > 0 || duplicate.more > 0) {
+    throw new Error(`A Google Ads campaign named "${name}" already exists`)
+  }
+
+  const [budgetId] = resourceIds(budgetResourceName)
+  const budget = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT campaign_budget.resource_name
+FROM campaign_budget
+WHERE campaign_budget.id = ${budgetId}`
+  })
+  const first = budget.rows[0]
+  const resource = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).campaignBudget
+    : undefined
+  const parsed = z.object({ resourceName: z.string() }).safeParse(resource)
+  if (!parsed.success || parsed.data.resourceName !== budgetResourceName) {
+    throw new Error('The referenced campaign budget was not found')
+  }
+  return { exists: false, campaignBudgetResourceName: budgetResourceName }
+}
+
+async function loadCampaignByResourceName(
+  customerId: string,
+  resourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<z.infer<typeof CampaignStateSchema>> {
+  assertCustomerResourceName(resourceName, customerId, 'campaigns')
+  const [id] = resourceIds(resourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT campaign.resource_name,
+  campaign.name,
+  campaign.status,
+  campaign.advertising_channel_type,
+  campaign.campaign_budget,
+  campaign.manual_cpc,
+  campaign.network_settings.target_google_search,
+  campaign.network_settings.target_search_network,
+  campaign.network_settings.target_partner_search_network,
+  campaign.network_settings.target_content_network,
+  campaign.contains_eu_political_advertising,
+  campaign.start_date_time,
+  campaign.end_date_time
+FROM campaign
+WHERE campaign.id = ${id}`
+  })
+  const first = result.rows[0]
+  const campaign = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).campaign
+    : undefined
+  if (!campaign) throw new Error('Google Ads campaign was not found after mutation')
+  return CampaignStateSchema.parse(campaign)
+}
+
 function mutationResourceName(
   mutation: GoogleAdsMutateResult,
   service: string
@@ -145,7 +238,10 @@ function mutationResourceName(
   }
   const record = first as Record<string, unknown>
   if (typeof record.resourceName === 'string') return record.resourceName
-  const singular = service === 'campaignBudgets' ? 'campaignBudget' : ''
+  const singular = {
+    campaignBudgets: 'campaignBudget',
+    campaigns: 'campaign'
+  }[service] ?? ''
   const nested = singular ? record[singular] : undefined
   if (nested && typeof nested === 'object'
     && typeof (nested as Record<string, unknown>).resourceName === 'string') {
@@ -263,6 +359,22 @@ export async function loadSearchGoogleAdsCurrentState(
     ))
     return assertBudgetNameAvailable(context.customerId, args.name, auth, resolved)
   }
+  if (context.input.operation === 'create_campaign') {
+    const args = z.object({
+      name: z.string(),
+      budgetResourceName: z.string()
+    }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation,
+      context.input.arguments
+    ))
+    return loadCreateCampaignCurrentState(
+      context.customerId,
+      args.name,
+      args.budgetResourceName,
+      auth,
+      resolved
+    )
+  }
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }
 
@@ -284,6 +396,27 @@ export async function loadSearchGoogleAdsPlanState(
     }
     const desired = z.object({ name: z.string() }).parse(plan.desiredState)
     return assertBudgetNameAvailable(plan.customerId, desired.name, auth, resolved)
+  }
+  if (plan.operation === 'create_campaign') {
+    if (mutation) {
+      return loadCampaignByResourceName(
+        plan.customerId,
+        mutationResourceName(mutation, 'campaigns'),
+        auth,
+        resolved
+      )
+    }
+    const desired = z.object({
+      name: z.string(),
+      campaignBudget: z.string()
+    }).parse(plan.desiredState)
+    return loadCreateCampaignCurrentState(
+      plan.customerId,
+      desired.name,
+      desired.campaignBudget,
+      auth,
+      resolved
+    )
   }
   if (!plan.resourceName) throw new Error('Search Google Ads plan has no resource name')
   const negative = plan.operation === 'add_negative_keywords'

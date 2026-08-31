@@ -113,6 +113,37 @@ describe('Search Google Ads current-state loader', () => {
       })
     })).rejects.toThrow('already exists')
   })
+
+  it('checks campaign names and the referenced budget before planning creation', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [], more: 0 })
+      .mockResolvedValueOnce({
+        rows: [{ campaignBudget: { resourceName: 'customers/1234567890/campaignBudgets/50' } }],
+        more: 0
+      })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('create_campaign', {
+      name: 'Northern Search',
+      budgetResourceName: 'customers/1234567890/campaignBudgets/50'
+    }), auth, { query })).resolves.toEqual({
+      exists: false,
+      campaignBudgetResourceName: 'customers/1234567890/campaignBudgets/50'
+    })
+    expect(query).toHaveBeenCalledTimes(2)
+    expect(query.mock.calls[0]?.[0].query).toContain('campaign.name = \'Northern Search\'')
+    expect(query.mock.calls[1]?.[0].query).toContain('campaign_budget.id = 50')
+  })
+
+  it('refuses campaign creation when the referenced budget is missing', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [], more: 0 })
+      .mockResolvedValueOnce({ rows: [], more: 0 })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('create_campaign', {
+      name: 'Northern Search',
+      budgetResourceName: 'customers/1234567890/campaignBudgets/50'
+    }), auth, { query })).rejects.toThrow('referenced campaign budget was not found')
+  })
 })
 
 describe('Search Google Ads readback verification', () => {
@@ -210,5 +241,62 @@ describe('Search Google Ads persisted-plan state loading', () => {
       amountMicros: '40000000'
     })
     expect(query.mock.calls[0]?.[0].query).toContain('campaign_budget.id = 50')
+  })
+
+  it('uses a nested provider mutation result to read back a created Search campaign', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ campaign: {
+        resourceName: 'customers/1234567890/campaigns/60',
+        name: 'Northern Search',
+        status: 'PAUSED',
+        advertisingChannelType: 'SEARCH',
+        campaignBudget: 'customers/1234567890/campaignBudgets/50',
+        manualCpc: {},
+        networkSettings: {
+          targetGoogleSearch: true,
+          targetSearchNetwork: true,
+          targetPartnerSearchNetwork: false,
+          targetContentNetwork: false
+        },
+        containsEuPoliticalAdvertising: 'DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING'
+      } }],
+      more: 0
+    })
+    const plan = {
+      operation: 'create_campaign',
+      resourceType: 'campaign',
+      resourceName: null,
+      customerId: '1234567890',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      connectionId: '22222222-2222-4222-8222-222222222222',
+      actorId: '33333333-3333-4333-8333-333333333333',
+      source: 'mcp',
+      executionMode: 'proposal',
+      idempotencyKey: 'campaign-1',
+      desiredState: {
+        name: 'Northern Search',
+        status: 'PAUSED',
+        advertisingChannelType: 'SEARCH',
+        campaignBudget: 'customers/1234567890/campaignBudgets/50',
+        manualCpc: {},
+        networkSettings: {
+          targetGoogleSearch: true,
+          targetSearchNetwork: true,
+          targetPartnerSearchNetwork: false,
+          targetContentNetwork: false
+        },
+        containsEuPoliticalAdvertising: 'DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING'
+      },
+      providerOperations: [{ service: 'campaigns' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [{ campaign: { resourceName: 'customers/1234567890/campaigns/60' } }]
+    })).resolves.toMatchObject({
+      resourceName: 'customers/1234567890/campaigns/60',
+      campaignBudget: 'customers/1234567890/campaignBudgets/50',
+      status: 'PAUSED'
+    })
+    expect(query.mock.calls[0]?.[0].query).toContain('campaign.id = 60')
   })
 })
