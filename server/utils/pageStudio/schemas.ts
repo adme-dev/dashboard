@@ -28,3 +28,25 @@ export const PageStudioBuildBody = z.object({
   }).strict()).max(100),
   manifest: z.record(z.string(), z.unknown())
 }).strict()
+
+const PageStudioScopedId = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
+const PageStudioReleaseEnvironment = z.enum(['staging', 'production'])
+const PageStudioReleaseHostname = z.string()
+  .trim()
+  .toLowerCase()
+  .max(253)
+  .regex(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/)
+
+export const PageStudioReleaseActivationBody = z.object({
+  buildId: PageStudioScopedId,
+  environment: PageStudioReleaseEnvironment,
+  expectedActiveReleaseId: PageStudioScopedId.nullable(),
+  hostname: PageStudioReleaseHostname
+}).strict()
+
+export const PageStudioReleaseRollbackBody = z.object({
+  environment: PageStudioReleaseEnvironment,
+  expectedActiveReleaseId: PageStudioScopedId,
+  hostname: PageStudioReleaseHostname,
+  targetReleaseId: PageStudioScopedId
+}).strict()

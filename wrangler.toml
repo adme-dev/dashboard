@@ -301,6 +301,9 @@ CRM_SEARCH_RELEASE_ENVIRONMENT = "production"
 [[env.preview.services]]
 binding = "PAGE_STUDIO_BUILD"
 service = "xeroflow-page-studio-build-staging"
+[[env.preview.services]]
+binding = "PAGE_STUDIO_DELIVERY"
+service = "xeroflow-page-studio-delivery-staging"
 
 [[env.preview.queues.producers]]
 binding = "CRM_SEARCH_INDEX_QUEUE"
@@ -347,6 +350,7 @@ NUXT_SEND_ENABLED = "false"
 NUXT_PUBLIC_SEND_ENABLED = "false"
 NUXT_PUBLIC_SEND_PUBLIC_ENABLED = "false"
 CRM_SEARCH_RELEASE_ENVIRONMENT = "preview"
+PAGE_STUDIO_RELEASE_ENVIRONMENT = "staging"
 
 # ============================================
 # Scheduled Triggers

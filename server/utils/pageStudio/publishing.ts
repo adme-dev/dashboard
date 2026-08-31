@@ -1,3 +1,5 @@
+import type { H3Event } from 'h3'
+
 import { queryOne, transaction } from '~~/server/utils/db'
 
 export interface PageStudioPublishingScope {
@@ -46,6 +48,11 @@ export interface PageStudioRollbackReleaseInput {
   idempotencyKey: string
   scope: PageStudioPublishingScope
   targetReleaseId: string
+}
+
+export interface PageStudioDeliveryWorker {
+  publish(input: PageStudioActivateReleaseInput): Promise<PageStudioReleasePointer>
+  rollback(input: PageStudioRollbackReleaseInput): Promise<PageStudioReleasePointer>
 }
 
 interface BuildPointerRow {
@@ -100,6 +107,7 @@ export class PageStudioPublishingError extends Error {
       | 'RELEASE_IDEMPOTENCY_CONFLICT'
       | 'RELEASE_POINTER_CONFLICT'
       | 'RELEASE_RECORD_INVALID'
+      | 'RELEASE_WORKER_UNAVAILABLE'
       | 'ROLLBACK_TARGET_INVALID',
     readonly statusCode: number,
     message: string
@@ -107,6 +115,31 @@ export class PageStudioPublishingError extends Error {
     super(message)
     this.name = 'PageStudioPublishingError'
   }
+}
+
+export function resolvePageStudioDeliveryWorker(
+  event: H3Event,
+  environment: 'staging' | 'production'
+): PageStudioDeliveryWorker {
+  const env = (event.context as {
+    cloudflare?: { env?: Record<string, unknown> }
+  }).cloudflare?.env
+  const binding = env?.PAGE_STUDIO_DELIVERY
+  const configuredEnvironment = env?.PAGE_STUDIO_RELEASE_ENVIRONMENT
+  if (
+    configuredEnvironment !== environment
+    || !binding
+    || typeof binding !== 'object'
+    || typeof (binding as PageStudioDeliveryWorker).publish !== 'function'
+    || typeof (binding as PageStudioDeliveryWorker).rollback !== 'function'
+  ) {
+    throw publishingError(
+      'RELEASE_WORKER_UNAVAILABLE',
+      503,
+      'Page Studio release worker is unavailable for this environment'
+    )
+  }
+  return binding as PageStudioDeliveryWorker
 }
 
 function publishingError(

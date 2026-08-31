@@ -4,6 +4,7 @@ import {
   activatePageStudioRelease,
   getPageStudioBuildPointer,
   getPageStudioReleasePointer,
+  resolvePageStudioDeliveryWorker,
   rollbackPageStudioRelease,
   type PageStudioPublishingQueryClient
 } from '~~/server/utils/pageStudio/publishing'
@@ -65,6 +66,23 @@ function rollback(overrides: Record<string, unknown> = {}) {
 }
 
 describe('Page Studio publishing catalog', () => {
+  it('requires a private Delivery binding pinned to the requested release environment', () => {
+    const worker = { publish: vi.fn(), rollback: vi.fn() }
+    const event = {
+      context: {
+        cloudflare: {
+          env: {
+            PAGE_STUDIO_DELIVERY: worker,
+            PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging'
+          }
+        }
+      }
+    }
+    expect(resolvePageStudioDeliveryWorker(event as never, 'staging')).toBe(worker)
+    expect(() => resolvePageStudioDeliveryWorker(event as never, 'production'))
+      .toThrow(expect.objectContaining({ code: 'RELEASE_WORKER_UNAVAILABLE', statusCode: 503 }))
+  })
+
   it('returns an environment-neutral immutable build pointer in the exact scope', async () => {
     const queryOne = vi.fn().mockResolvedValue(buildRow)
 
