@@ -189,6 +189,40 @@ describe('Search Google Ads governed planning runtime', () => {
     })
   })
 
+  it('records the operator reason on destructive-plan audit evidence', async () => {
+    const resourceName = 'customers/1234567890/conversionActions/9001'
+    const reason = 'Duplicate conversion action retired after measurement QA.'
+    const deps = dependencies({
+      loadCurrent: vi.fn().mockResolvedValue({
+        resourceName,
+        name: 'Duplicate finance enquiry',
+        status: 'ENABLED',
+        type: 'WEBPAGE',
+        category: 'SUBMIT_LEAD_FORM',
+        origin: 'WEBSITE',
+        primaryForGoal: false,
+        includeInConversionsMetric: false
+      })
+    })
+
+    await planSearchGoogleAdsControlAction({
+      clientId: CLIENT_ID,
+      connectionId: CONNECTION_ID,
+      actorId: ACTOR_ID,
+      source: 'mcp',
+      operation: 'remove_conversion_action',
+      resourceType: 'conversion_action',
+      requestedMode: 'proposal',
+      arguments: { resourceName, reason },
+      idempotencyKey: 'remove-duplicate-conversion-action-9001'
+    }, { actorRole: 'owner', hasWriteScope: true }, { ...flags, destructive: true }, deps)
+
+    expect(deps.event).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'planned',
+      metadata: expect.objectContaining({ reason })
+    }))
+  })
+
   it('persists a blocked automatic plan when no matching grant exists', async () => {
     const deps = dependencies({
       loadCurrent: vi.fn().mockResolvedValue({ criteria: [] })

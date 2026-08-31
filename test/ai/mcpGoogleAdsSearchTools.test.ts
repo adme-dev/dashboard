@@ -468,10 +468,16 @@ describe('Google Ads Search MCP planning descriptors', () => {
     },
     {
       tool: 'google_ads_plan_remove_conversion_action',
-      args: { resourceName: 'customers/1234567890/conversionActions/9001' },
+      args: {
+        resourceName: 'customers/1234567890/conversionActions/9001',
+        reason: 'Duplicate conversion action retired after measurement QA.'
+      },
       operation: 'remove_conversion_action',
       resourceType: 'conversion_action',
-      expectedArguments: { resourceName: 'customers/1234567890/conversionActions/9001' }
+      expectedArguments: {
+        resourceName: 'customers/1234567890/conversionActions/9001',
+        reason: 'Duplicate conversion action retired after measurement QA.'
+      }
     },
     {
       tool: 'google_ads_plan_create_custom_conversion_goal',
@@ -509,10 +515,16 @@ describe('Google Ads Search MCP planning descriptors', () => {
     },
     {
       tool: 'google_ads_plan_archive_custom_conversion_goal',
-      args: { resourceName: 'customers/1234567890/customConversionGoals/9101' },
+      args: {
+        resourceName: 'customers/1234567890/customConversionGoals/9101',
+        reason: 'Obsolete custom goal replaced by the approved dealership lead goal.'
+      },
       operation: 'archive_custom_conversion_goal',
       resourceType: 'custom_conversion_goal',
-      expectedArguments: { resourceName: 'customers/1234567890/customConversionGoals/9101' }
+      expectedArguments: {
+        resourceName: 'customers/1234567890/customConversionGoals/9101',
+        reason: 'Obsolete custom goal replaced by the approved dealership lead goal.'
+      }
     },
     {
       tool: 'google_ads_plan_create_asset',
@@ -723,10 +735,16 @@ describe('Google Ads Search MCP planning descriptors', () => {
     },
     {
       tool: 'google_ads_plan_archive_custom_audience',
-      args: { resourceName: 'customers/1234567890/customAudiences/8001' },
+      args: {
+        resourceName: 'customers/1234567890/customAudiences/8001',
+        reason: 'Audience is no longer approved for dealership campaign use.'
+      },
       operation: 'archive_custom_audience',
       resourceType: 'custom_audience',
-      expectedArguments: { resourceName: 'customers/1234567890/customAudiences/8001' }
+      expectedArguments: {
+        resourceName: 'customers/1234567890/customAudiences/8001',
+        reason: 'Audience is no longer approved for dealership campaign use.'
+      }
     },
     {
       tool: 'google_ads_plan_set_pmax_audience_signals',
@@ -831,6 +849,24 @@ describe('Google Ads Search MCP planning descriptors', () => {
         clientId: '33333333-3333-4333-8333-333333333333',
         connectionId: '44444444-4444-4444-8444-444444444444',
         idempotencyKey: 'empty-conversion-update',
+        resourceName: 'customers/1234567890/conversionActions/9001'
+      },
+      context,
+      flags,
+      true,
+      { plan }
+    )).resolves.toMatchObject({ ok: false, code: 'bad_args' })
+    expect(plan).not.toHaveBeenCalled()
+  })
+
+  it('requires an operator reason for provider-removal plans', async () => {
+    const plan = vi.fn()
+    await expect(executeGoogleAdsSearchPlanningTool(
+      'google_ads_plan_remove_conversion_action',
+      {
+        clientId: '33333333-3333-4333-8333-333333333333',
+        connectionId: '44444444-4444-4444-8444-444444444444',
+        idempotencyKey: 'remove-without-reason',
         resourceName: 'customers/1234567890/conversionActions/9001'
       },
       context,

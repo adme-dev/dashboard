@@ -60,6 +60,7 @@ const CommonSchema = {
   connectionId: z.string().uuid(),
   idempotencyKey: z.string().trim().min(1).max(255)
 }
+const OperatorReasonSchema = z.string().trim().min(10).max(1_000)
 const EntityTypeSchema = z.enum(['campaign', 'ad_group', 'ad', 'keyword'])
 const PausableEntitySchema = z.strictObject({
   ...CommonSchema,
@@ -328,7 +329,8 @@ const UpdateCustomAudienceSchema = z.strictObject({
 })
 const ArchiveCustomAudienceSchema = z.strictObject({
   ...CommonSchema,
-  resourceName: z.string().trim().min(1).max(1_000)
+  resourceName: z.string().trim().min(1).max(1_000),
+  reason: OperatorReasonSchema
 })
 const SetPmaxAudienceSignalsSchema = z.strictObject({
   ...CommonSchema,
@@ -438,6 +440,11 @@ const ConversionActionDispositionSchema = z.strictObject({
   ...CommonSchema,
   resourceName: z.string().trim().min(1).max(1_000)
 })
+const RemoveConversionActionSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000),
+  reason: OperatorReasonSchema
+})
 const CreateCustomConversionGoalSchema = z.strictObject({
   ...CommonSchema,
   name: z.string().trim().min(1).max(255),
@@ -463,7 +470,8 @@ const UpdateCustomConversionGoalSchema = z.strictObject({
 })
 const ArchiveCustomConversionGoalSchema = z.strictObject({
   ...CommonSchema,
-  resourceName: z.string().trim().min(1).max(1_000)
+  resourceName: z.string().trim().min(1).max(1_000),
+  reason: OperatorReasonSchema
 })
 const AssetNameSchema = z.string().trim().min(1).max(255).optional()
 const HttpsAssetUrlSchema = z.string().url().refine(value => value.startsWith('https://'))
@@ -754,8 +762,8 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
   ),
   manifest(
     GOOGLE_ADS_PLAN_REMOVE_CONVERSION_ACTION_TOOL,
-    'Plan permanent provider removal of a conversion action. This requires the destructive feature gate and owner/admin confirmation.',
-    ConversionActionDispositionSchema
+    'Plan permanent provider removal of a conversion action with a required operator reason. This requires the destructive feature gate and owner/admin confirmation.',
+    RemoveConversionActionSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_CREATE_CUSTOM_CONVERSION_GOAL_TOOL,
@@ -769,7 +777,7 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
   ),
   manifest(
     GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_CONVERSION_GOAL_TOOL,
-    'Plan archiving a custom conversion goal. Google reports only ENABLED or REMOVED, so owner/admin destructive confirmation is required.',
+    'Plan archiving a custom conversion goal with a required operator reason. Google reports only ENABLED or REMOVED, so owner/admin destructive confirmation is required.',
     ArchiveCustomConversionGoalSchema
   ),
   manifest(
@@ -834,7 +842,7 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
   ),
   manifest(
     GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_AUDIENCE_TOOL,
-    'Plan archiving a custom audience. Google implements archive as removal and reports REMOVED, so owner/admin destructive confirmation is required.',
+    'Plan archiving a custom audience with a required operator reason. Google implements archive as removal and reports REMOVED, so owner/admin destructive confirmation is required.',
     ArchiveCustomAudienceSchema
   ),
   manifest(
@@ -1310,10 +1318,7 @@ export async function executeGoogleAdsSearchPlanningTool(
             : { viewThroughLookbackWindowDays: args.viewThroughLookbackWindowDays })
         }
       }
-    } else if (
-      name === GOOGLE_ADS_PLAN_ARCHIVE_CONVERSION_ACTION_TOOL
-      || name === GOOGLE_ADS_PLAN_REMOVE_CONVERSION_ACTION_TOOL
-    ) {
+    } else if (name === GOOGLE_ADS_PLAN_ARCHIVE_CONVERSION_ACTION_TOOL) {
       const args = ConversionActionDispositionSchema.parse(rawArgs)
       plannerInput = {
         clientId: args.clientId,
@@ -1322,11 +1327,22 @@ export async function executeGoogleAdsSearchPlanningTool(
         actorId: context.userId,
         source: 'mcp',
         requestedMode: 'proposal',
-        operation: name === GOOGLE_ADS_PLAN_ARCHIVE_CONVERSION_ACTION_TOOL
-          ? 'archive_conversion_action'
-          : 'remove_conversion_action',
+        operation: 'archive_conversion_action',
         resourceType: 'conversion_action',
         arguments: { resourceName: args.resourceName }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_REMOVE_CONVERSION_ACTION_TOOL) {
+      const args = RemoveConversionActionSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'remove_conversion_action',
+        resourceType: 'conversion_action',
+        arguments: { resourceName: args.resourceName, reason: args.reason }
       }
     } else if (name === GOOGLE_ADS_PLAN_CREATE_CUSTOM_CONVERSION_GOAL_TOOL) {
       const args = CreateCustomConversionGoalSchema.parse(rawArgs)
@@ -1374,7 +1390,7 @@ export async function executeGoogleAdsSearchPlanningTool(
         requestedMode: 'proposal',
         operation: 'archive_custom_conversion_goal',
         resourceType: 'custom_conversion_goal',
-        arguments: { resourceName: args.resourceName }
+        arguments: { resourceName: args.resourceName, reason: args.reason }
       }
     } else if (name === GOOGLE_ADS_PLAN_CREATE_ASSET_TOOL) {
       const args = CreateAssetSchema.parse(rawArgs)
@@ -1624,7 +1640,7 @@ export async function executeGoogleAdsSearchPlanningTool(
         requestedMode: 'proposal',
         operation: 'archive_custom_audience',
         resourceType: 'custom_audience',
-        arguments: { resourceName: args.resourceName }
+        arguments: { resourceName: args.resourceName, reason: args.reason }
       }
     } else if (name === GOOGLE_ADS_PLAN_SET_PMAX_AUDIENCE_SIGNALS_TOOL) {
       const args = SetPmaxAudienceSignalsSchema.parse(rawArgs)

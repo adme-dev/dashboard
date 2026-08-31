@@ -1054,7 +1054,10 @@ describe('Search Google Ads construction operations', () => {
     })
 
     expect(buildSearchGoogleAdsAction(context(
-      'remove_conversion_action', 'conversion_action', { resourceName }, current
+      'remove_conversion_action', 'conversion_action', {
+        resourceName,
+        reason: 'Duplicate conversion action retired after measurement QA.'
+      }, current
     ))).toMatchObject({
       resourceName,
       desiredState: { resourceName, status: 'REMOVED' },
@@ -1077,7 +1080,10 @@ describe('Search Google Ads construction operations', () => {
       'archive_conversion_action', 'conversion_action', { resourceName }, { ...state, status: 'HIDDEN' }
     ))).toThrow('already archived')
     expect(() => buildSearchGoogleAdsAction(context(
-      'remove_conversion_action', 'conversion_action', { resourceName }, { ...state, status: 'REMOVED' }
+      'remove_conversion_action', 'conversion_action', {
+        resourceName,
+        reason: 'Duplicate conversion action retired after measurement QA.'
+      }, { ...state, status: 'REMOVED' }
     ))).toThrow('already removed')
   })
 
@@ -1166,7 +1172,10 @@ describe('Search Google Ads construction operations', () => {
   it('archives custom conversion goals through provider removal', () => {
     const resourceName = 'customers/1234567890/customConversionGoals/9101'
     const built = buildSearchGoogleAdsAction(context(
-      'archive_custom_conversion_goal', 'custom_conversion_goal', { resourceName }, {
+      'archive_custom_conversion_goal', 'custom_conversion_goal', {
+        resourceName,
+        reason: 'Obsolete goal replaced by an approved custom goal.'
+      }, {
         resourceName,
         name: 'Qualified dealer leads',
         status: 'ENABLED',
@@ -1199,7 +1208,10 @@ describe('Search Google Ads construction operations', () => {
       }, state
     ))).toThrow('already matches')
     expect(() => buildSearchGoogleAdsAction(context(
-      'archive_custom_conversion_goal', 'custom_conversion_goal', { resourceName }, {
+      'archive_custom_conversion_goal', 'custom_conversion_goal', {
+        resourceName,
+        reason: 'Obsolete goal replaced by an approved custom goal.'
+      }, {
         ...state, status: 'REMOVED'
       }
     ))).toThrow('already archived')
@@ -1315,7 +1327,10 @@ describe('Search Google Ads construction operations', () => {
     const built = buildSearchGoogleAdsAction(context(
       'archive_custom_audience',
       'custom_audience',
-      { resourceName },
+      {
+        resourceName,
+        reason: 'Audience is no longer approved for dealership campaign use.'
+      },
       {
         resourceName,
         name: 'Northern GAC intent',

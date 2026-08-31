@@ -16,6 +16,10 @@ const ResourceNameArgumentsSchema = z.strictObject({
   resourceName: z.string().trim().min(1).max(1_000),
   status: z.enum(['ENABLED', 'PAUSED']).optional()
 })
+const DestructiveResourceNameArgumentsSchema = z.strictObject({
+  resourceName: z.string().trim().min(1).max(1_000),
+  reason: z.string().trim().min(10).max(1_000)
+})
 
 const NegativeKeywordSchema = z.strictObject({
   text: z.string().trim().min(1).max(80),
@@ -800,7 +804,9 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_content_exclusions') return SetContentExclusionsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_audience_associations') return SetAudienceAssociationsArgumentsSchema.parse(argumentsValue)
   if (operation === 'manage_custom_audience') return ManageCustomAudienceArgumentsSchema.parse(argumentsValue)
-  if (operation === 'archive_custom_audience') return ResourceNameArgumentsSchema.parse(argumentsValue)
+  if (operation === 'archive_custom_audience') {
+    return DestructiveResourceNameArgumentsSchema.parse(argumentsValue)
+  }
   if (operation === 'set_pmax_signals') return SetPmaxSignalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_search_themes') return SetSearchThemesArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_asset') return CreateAssetArgumentsSchema.parse(argumentsValue)
@@ -821,8 +827,9 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_conversion_primary_state') return SetConversionPrimaryStateArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_conversion_action') return CreateConversionActionArgumentsSchema.parse(argumentsValue)
   if (operation === 'update_conversion_action') return UpdateConversionActionArgumentsSchema.parse(argumentsValue)
-  if (operation === 'archive_conversion_action' || operation === 'remove_conversion_action') {
-    return ResourceNameArgumentsSchema.parse(argumentsValue)
+  if (operation === 'archive_conversion_action') return ResourceNameArgumentsSchema.parse(argumentsValue)
+  if (operation === 'remove_conversion_action') {
+    return DestructiveResourceNameArgumentsSchema.parse(argumentsValue)
   }
   if (operation === 'create_custom_conversion_goal') {
     return CreateCustomConversionGoalArgumentsSchema.parse(argumentsValue)
@@ -831,7 +838,7 @@ export function parseSearchGoogleAdsArguments(
     return UpdateCustomConversionGoalArgumentsSchema.parse(argumentsValue)
   }
   if (operation === 'archive_custom_conversion_goal') {
-    return ResourceNameArgumentsSchema.parse(argumentsValue)
+    return DestructiveResourceNameArgumentsSchema.parse(argumentsValue)
   }
   throw new Error(`Unsupported Search Google Ads operation: ${operation}`)
 }
@@ -1788,7 +1795,9 @@ function buildConversionActionDisposition(
   if (context.input.resourceType !== 'conversion_action') {
     throw new Error('Conversion action disposition requires resource type conversion_action')
   }
-  const args = ResourceNameArgumentsSchema.parse(context.input.arguments)
+  const args = disposition === 'remove'
+    ? DestructiveResourceNameArgumentsSchema.parse(context.input.arguments)
+    : ResourceNameArgumentsSchema.parse(context.input.arguments)
   assertResourceName(args.resourceName, context.customerId, 'conversionActions')
   const current = MutableConversionActionStateSchema.parse(context.currentState)
   if (current.resourceName !== args.resourceName) {
@@ -1907,7 +1916,7 @@ function buildArchiveCustomConversionGoal(context: BuildGoogleAdsActionContext):
   if (context.input.resourceType !== 'custom_conversion_goal') {
     throw new Error('Custom conversion-goal archive requires resource type custom_conversion_goal')
   }
-  const args = ResourceNameArgumentsSchema.parse(context.input.arguments)
+  const args = DestructiveResourceNameArgumentsSchema.parse(context.input.arguments)
   assertResourceName(args.resourceName, context.customerId, 'customConversionGoals')
   const current = MutableCustomConversionGoalStateSchema.parse(context.currentState)
   if (current.resourceName !== args.resourceName) {
@@ -2014,7 +2023,7 @@ function buildArchiveCustomAudienceAction(context: BuildGoogleAdsActionContext):
   if (context.input.resourceType !== 'custom_audience') {
     throw new Error('Custom-audience archive requires resource type custom_audience')
   }
-  const args = ResourceNameArgumentsSchema.parse(context.input.arguments)
+  const args = DestructiveResourceNameArgumentsSchema.parse(context.input.arguments)
   assertResourceName(args.resourceName, context.customerId, 'customAudiences')
   const current = MutableCustomAudienceStateSchema.parse(context.currentState)
   if (current.resourceName !== args.resourceName) throw new Error('Custom-audience state does not match the selected resource')

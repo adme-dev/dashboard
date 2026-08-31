@@ -293,7 +293,11 @@ export async function planSearchGoogleAdsControlAction(
       riskTier: plan.riskTier,
       executionMode: plan.executionMode,
       policyVersion: plan.policyVersion,
-      policyCode: plan.policyDecision.code ?? null
+      policyCode: plan.policyDecision.code ?? null,
+      ...(input.arguments && typeof input.arguments === 'object'
+        && typeof (input.arguments as { reason?: unknown }).reason === 'string'
+        ? { reason: (input.arguments as { reason: string }).reason }
+        : {})
     }
   })
   return plan

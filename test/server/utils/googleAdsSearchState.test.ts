@@ -844,8 +844,11 @@ describe('Search Google Ads current-state loader', () => {
         } }],
         more: 0
       })
+      const args = operation === 'remove_conversion_action'
+        ? { resourceName, reason: 'Duplicate conversion action retired after measurement QA.' }
+        : { resourceName }
       await expect(loadSearchGoogleAdsCurrentState(
-        context(operation, { resourceName }), auth, { query }
+        context(operation, args), auth, { query }
       )).resolves.toMatchObject({ resourceName, status: 'ENABLED' })
     }
   )
@@ -892,7 +895,7 @@ describe('Search Google Ads current-state loader', () => {
       })
       const args = operation === 'update_custom_conversion_goal'
         ? { resourceName, name: 'Sales-qualified dealer leads' }
-        : { resourceName }
+        : { resourceName, reason: 'Obsolete goal replaced by an approved custom goal.' }
       await expect(loadSearchGoogleAdsCurrentState(
         context(operation, args), auth, { query }
       )).resolves.toMatchObject({ resourceName, status: 'ENABLED' })
