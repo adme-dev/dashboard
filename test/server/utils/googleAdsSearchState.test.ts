@@ -509,6 +509,25 @@ describe('Search Google Ads current-state loader', () => {
     })
   })
 
+  it('loads tenant-bound campaign placement exclusions', async () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ campaign: { resourceName: campaign } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ campaignCriterion: {
+        resourceName: 'customers/1234567890/campaignCriteria/60~450',
+        campaign,
+        negative: true,
+        placement: { url: 'https://example.com/excluded' }
+      } }], more: 0 })
+    await expect(loadSearchGoogleAdsCurrentState(context('set_placements', {
+      scope: 'campaign', parentResourceName: campaign, urls: []
+    }), auth, { query })).resolves.toMatchObject({
+      scope: 'campaign',
+      parentResourceName: campaign,
+      placements: [{ url: 'https://example.com/excluded' }]
+    })
+  })
+
   it('loads a tenant-bound conversion action for primary-state changes', async () => {
     const resourceName = 'customers/1234567890/conversionActions/9001'
     const query = vi.fn().mockResolvedValue({

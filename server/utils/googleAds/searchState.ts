@@ -1011,6 +1011,59 @@ WHERE ad_group.id = ${adGroupId}
   return { adGroupResourceName, criteria }
 }
 
+async function loadPlacementExclusions(
+  customerId: string,
+  scope: 'campaign' | 'ad_group',
+  parentResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<{ scope: 'campaign' | 'ad_group', parentResourceName: string, placements: Array<Record<string, unknown>> }> {
+  const parentSegment = scope === 'campaign' ? 'campaigns' : 'adGroups'
+  const criterionSegment = scope === 'campaign' ? 'campaignCriteria' : 'adGroupCriteria'
+  const resource = scope === 'campaign' ? 'campaign' : 'ad_group'
+  const responseKey = scope === 'campaign' ? 'campaignCriterion' : 'adGroupCriterion'
+  const parentKey = scope === 'campaign' ? 'campaign' : 'adGroup'
+  assertCustomerResourceName(parentResourceName, customerId, parentSegment)
+  const [parentId] = resourceIds(parentResourceName)
+  const parent = await dependencies.query({
+    customerId, auth, maxRows: 1,
+    query: `SELECT ${resource}.resource_name FROM ${resource} WHERE ${resource}.id = ${parentId}`
+  })
+  const parentValue = parent.rows[0] && typeof parent.rows[0] === 'object'
+    ? (parent.rows[0] as Record<string, unknown>)[scope === 'campaign' ? 'campaign' : 'adGroup']
+    : undefined
+  if (!z.object({ resourceName: z.literal(parentResourceName) }).safeParse(parentValue).success) {
+    throw new Error(`The referenced ${scope === 'campaign' ? 'campaign' : 'ad group'} was not found`)
+  }
+  const prefix = scope === 'campaign' ? 'campaign_criterion' : 'ad_group_criterion'
+  const result = await dependencies.query({
+    customerId, auth, maxRows: 1_000,
+    query: `SELECT ${prefix}.resource_name,
+  ${prefix}.${resource},
+  ${prefix}.negative,
+  ${prefix}.placement.url
+FROM ${prefix}
+WHERE ${resource}.id = ${parentId}
+  AND ${prefix}.type = 'PLACEMENT'
+  AND ${prefix}.negative = TRUE`
+  })
+  if (result.more > 0) throw new Error('Google Ads placement state exceeds the safe read limit')
+  const placements = result.rows.map((row) => {
+    const raw = row && typeof row === 'object' ? (row as Record<string, unknown>)[responseKey] : undefined
+    const parsed = z.object({
+      resourceName: z.string(),
+      [parentKey]: z.literal(parentResourceName),
+      negative: z.literal(true),
+      placement: z.object({ url: z.string().trim().min(1).max(250) })
+    }).parse(raw)
+    assertCustomerResourceName(parsed.resourceName, customerId, criterionSegment, true)
+    const [criterionParentId] = resourceIds(parsed.resourceName)
+    if (criterionParentId !== parentId) throw new Error('Google Ads returned a placement outside the selected parent')
+    return { resourceName: parsed.resourceName, url: parsed.placement.url }
+  }).sort((left, right) => left.url.localeCompare(right.url))
+  return { scope, parentResourceName, placements }
+}
+
 async function loadCampaignConversionGoals(
   customerId: string,
   campaignResourceName: string,
@@ -1302,6 +1355,12 @@ export async function loadSearchGoogleAdsCurrentState(
     ))
     return loadAdGroupDemographics(context.customerId, args.adGroupResourceName, auth, resolved)
   }
+  if (context.input.operation === 'set_placements') {
+    const args = z.object({
+      scope: z.enum(['campaign', 'ad_group']), parentResourceName: z.string()
+    }).parse(parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments))
+    return loadPlacementExclusions(context.customerId, args.scope, args.parentResourceName, auth, resolved)
+  }
   if (context.input.operation === 'set_campaign_conversion_goals') {
     const args = z.object({ campaignResourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation, context.input.arguments
@@ -1492,6 +1551,12 @@ export async function loadSearchGoogleAdsPlanState(
   if (plan.operation === 'set_demographics') {
     const desired = z.object({ adGroupResourceName: z.string() }).parse(plan.desiredState)
     return loadAdGroupDemographics(plan.customerId, desired.adGroupResourceName, auth, resolved)
+  }
+  if (plan.operation === 'set_placements') {
+    const desired = z.object({
+      scope: z.enum(['campaign', 'ad_group']), parentResourceName: z.string()
+    }).parse(plan.desiredState)
+    return loadPlacementExclusions(plan.customerId, desired.scope, desired.parentResourceName, auth, resolved)
   }
   if (plan.operation === 'set_campaign_conversion_goals') {
     const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)

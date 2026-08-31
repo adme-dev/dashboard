@@ -314,6 +314,7 @@ const EXECUTABLE_SEARCH_SERVICES = {
   set_ad_schedule: ['campaignCriteria'],
   set_devices: ['campaignCriteria'],
   set_demographics: ['adGroupCriteria'],
+  set_placements: ['campaignCriteria', 'adGroupCriteria'],
   set_campaign_conversion_goals: ['campaignConversionGoals'],
   set_customer_goal_biddability: ['customerConversionGoals'],
   set_conversion_primary_state: ['conversionActions'],

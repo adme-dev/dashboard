@@ -34,6 +34,7 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_set_ad_schedule',
       'google_ads_plan_set_devices',
       'google_ads_plan_set_demographics',
+      'google_ads_plan_set_placements',
       'google_ads_plan_set_campaign_conversion_goals',
       'google_ads_plan_set_customer_goal_biddability',
       'google_ads_plan_set_conversion_primary_state',
@@ -290,6 +291,21 @@ describe('Google Ads Search MCP planning descriptors', () => {
           { dimension: 'GENDER', type: 'MALE', excluded: false },
           { dimension: 'AGE_RANGE', type: 'AGE_RANGE_18_24', excluded: true }
         ]
+      }
+    },
+    {
+      tool: 'google_ads_plan_set_placements',
+      args: {
+        scope: 'campaign',
+        parentResourceName: 'customers/1234567890/campaigns/60',
+        urls: ['https://example.com/excluded']
+      },
+      operation: 'set_placements',
+      resourceType: 'placement',
+      expectedArguments: {
+        scope: 'campaign',
+        parentResourceName: 'customers/1234567890/campaigns/60',
+        urls: ['https://example.com/excluded']
       }
     },
     {

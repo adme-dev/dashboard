@@ -699,6 +699,26 @@ describe('Search Google Ads construction operations', () => {
     }])
   })
 
+  it('atomically replaces campaign placement exclusions', () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const oldCriterion = 'customers/1234567890/campaignCriteria/60~450'
+    const built = buildSearchGoogleAdsAction(context(
+      'set_placements',
+      'placement',
+      { scope: 'campaign', parentResourceName: campaign, urls: ['https://example.com/new'] },
+      { scope: 'campaign', parentResourceName: campaign, placements: [{ resourceName: oldCriterion, url: 'https://example.com/old' }] }
+    ))
+    expect(built.providerOperations).toEqual([{
+      service: 'campaignCriteria',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        { create: { campaign, negative: true, placement: { url: 'https://example.com/new' } } },
+        { remove: oldCriterion }
+      ]
+    }])
+  })
+
   it('sets a conversion action to secondary with an exact update mask', () => {
     const resourceName = 'customers/1234567890/conversionActions/9001'
     const current = {

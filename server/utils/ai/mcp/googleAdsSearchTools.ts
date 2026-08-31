@@ -24,6 +24,7 @@ export const GOOGLE_ADS_PLAN_SET_LANGUAGES_TOOL = 'google_ads_plan_set_languages
 export const GOOGLE_ADS_PLAN_SET_AD_SCHEDULE_TOOL = 'google_ads_plan_set_ad_schedule'
 export const GOOGLE_ADS_PLAN_SET_DEVICES_TOOL = 'google_ads_plan_set_devices'
 export const GOOGLE_ADS_PLAN_SET_DEMOGRAPHICS_TOOL = 'google_ads_plan_set_demographics'
+export const GOOGLE_ADS_PLAN_SET_PLACEMENTS_TOOL = 'google_ads_plan_set_placements'
 export const GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL = 'google_ads_plan_set_campaign_conversion_goals'
 export const GOOGLE_ADS_PLAN_SET_CUSTOMER_GOAL_BIDDABILITY_TOOL = 'google_ads_plan_set_customer_goal_biddability'
 export const GOOGLE_ADS_PLAN_SET_CONVERSION_PRIMARY_STATE_TOOL = 'google_ads_plan_set_conversion_primary_state'
@@ -205,6 +206,20 @@ const SetDemographicsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Each demographic criterion may be specified only once' })
   }
 })
+const PlacementUrlSchema = z.string().trim().min(1).max(250).url().refine((value) => {
+  const protocol = new URL(value).protocol
+  return protocol === 'http:' || protocol === 'https:'
+}, { message: 'Placement URLs must use HTTP or HTTPS' })
+const SetPlacementsSchema = z.strictObject({
+  ...CommonSchema,
+  scope: z.enum(['campaign', 'ad_group']),
+  parentResourceName: z.string().trim().min(1).max(1_000),
+  urls: z.array(PlacementUrlSchema).max(1_000)
+}).superRefine((value, refinement) => {
+  if (new Set(value.urls).size !== value.urls.length) {
+    refinement.addIssue({ code: 'custom', message: 'Placement URLs must be unique' })
+  }
+})
 const ConversionCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -362,6 +377,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_SET_DEMOGRAPHICS_TOOL,
     'Plan an atomic replacement of explicit ad-group age-range and gender targeting or exclusions.',
     SetDemographicsSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_SET_PLACEMENTS_TOOL,
+    'Plan an atomic replacement of campaign or ad-group placement URL exclusions. Google Ads v25 does not support positive Placement criteria.',
+    SetPlacementsSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL,
@@ -702,6 +722,19 @@ export async function executeGoogleAdsSearchPlanningTool(
         operation: 'set_demographics',
         resourceType: 'demographic',
         arguments: { adGroupResourceName: args.adGroupResourceName, criteria: args.criteria }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_SET_PLACEMENTS_TOOL) {
+      const args = SetPlacementsSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'set_placements',
+        resourceType: 'placement',
+        arguments: { scope: args.scope, parentResourceName: args.parentResourceName, urls: args.urls }
       }
     } else if (name === GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL) {
       const args = SetCampaignConversionGoalsSchema.parse(rawArgs)

@@ -174,6 +174,19 @@ const SetDemographicsArgumentsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Each demographic criterion may be specified only once' })
   }
 })
+const PlacementUrlSchema = z.string().trim().min(1).max(250).url().refine((value) => {
+  const protocol = new URL(value).protocol
+  return protocol === 'http:' || protocol === 'https:'
+}, { message: 'Placement URLs must use HTTP or HTTPS' })
+const SetPlacementsArgumentsSchema = z.strictObject({
+  scope: z.enum(['campaign', 'ad_group']),
+  parentResourceName: z.string().trim().min(1).max(1_000),
+  urls: z.array(PlacementUrlSchema).max(1_000)
+}).superRefine((value, refinement) => {
+  if (new Set(value.urls).size !== value.urls.length) {
+    refinement.addIssue({ code: 'custom', message: 'Placement URLs must be unique' })
+  }
+})
 const ConversionCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -291,6 +304,7 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'set_ad_schedule',
       'set_devices',
       'set_demographics',
+      'set_placements',
       'set_campaign_conversion_goals',
       'set_customer_goal_biddability',
       'set_conversion_primary_state',
@@ -379,6 +393,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_ad_schedule') return SetAdScheduleArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_devices') return SetDevicesArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_demographics') return SetDemographicsArgumentsSchema.parse(argumentsValue)
+  if (operation === 'set_placements') return SetPlacementsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_customer_goal_biddability') return SetCustomerGoalBiddabilityArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_primary_state') return SetConversionPrimaryStateArgumentsSchema.parse(argumentsValue)
@@ -931,6 +946,56 @@ function buildDemographicAction(context: BuildGoogleAdsActionContext): BuiltGoog
   }
 }
 
+function buildPlacementAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'placement') throw new Error('Placement targeting requires resource type placement')
+  const args = SetPlacementsArgumentsSchema.parse(context.input.arguments)
+  const parentSegment = args.scope === 'campaign' ? 'campaigns' : 'adGroups'
+  const criterionSegment = args.scope === 'campaign' ? 'campaignCriteria' : 'adGroupCriteria'
+  const service = args.scope === 'campaign' ? 'campaignCriteria' : 'adGroupCriteria'
+  const parentField = args.scope === 'campaign' ? 'campaign' : 'adGroup'
+  assertResourceName(args.parentResourceName, context.customerId, parentSegment)
+  const current = z.object({
+    scope: z.literal(args.scope),
+    parentResourceName: z.literal(args.parentResourceName),
+    placements: z.array(z.object({ resourceName: z.string(), url: PlacementUrlSchema }))
+  }).parse(context.currentState)
+  const desiredUrls = [...args.urls].sort((left, right) => left.localeCompare(right))
+  const desiredSet = new Set(desiredUrls)
+  const currentByUrl = new Map(current.placements.map(placement => [placement.url, placement]))
+  const additions = desiredUrls.filter(url => !currentByUrl.has(url))
+  const removals = current.placements.filter(placement => !desiredSet.has(placement.url))
+  if (additions.length === 0 && removals.length === 0) {
+    throw new Error('Placement exclusions already match the requested set')
+  }
+  const parentId = args.parentResourceName.slice(args.parentResourceName.lastIndexOf('/') + 1)
+  const removalOperations = removals.map((placement) => {
+    assertResourceName(placement.resourceName, context.customerId, criterionSegment)
+    if (!placement.resourceName.includes(`/${criterionSegment}/${parentId}~`)) {
+      throw new Error('Placement criterion does not belong to the selected parent')
+    }
+    return { remove: placement.resourceName } as const
+  })
+  const desiredPlacements = desiredUrls.map(url => currentByUrl.get(url) ?? { url })
+  return {
+    resourceName: args.parentResourceName,
+    desiredState: { scope: args.scope, parentResourceName: args.parentResourceName, placements: desiredPlacements },
+    providerOperations: [{
+      service,
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        ...additions.map(url => ({ create: {
+          [parentField]: args.parentResourceName,
+          negative: true,
+          ...(args.scope === 'ad_group' ? { status: 'ENABLED' } : {}),
+          placement: { url }
+        } })),
+        ...removalOperations
+      ]
+    }]
+  }
+}
+
 function buildCampaignConversionGoalAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (context.input.resourceType !== 'conversion_goal') throw new Error('Campaign goals require resource type conversion_goal')
   const args = SetCampaignConversionGoalsArgumentsSchema.parse(context.input.arguments)
@@ -1130,6 +1195,7 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'set_ad_schedule') return buildAdScheduleAction(context)
   if (context.input.operation === 'set_devices') return buildDeviceAction(context)
   if (context.input.operation === 'set_demographics') return buildDemographicAction(context)
+  if (context.input.operation === 'set_placements') return buildPlacementAction(context)
   if (context.input.operation === 'set_campaign_conversion_goals') return buildCampaignConversionGoalAction(context)
   if (context.input.operation === 'set_customer_goal_biddability') return buildCustomerGoalBiddabilityAction(context)
   if (context.input.operation === 'set_conversion_primary_state') return buildConversionPrimaryStateAction(context)
