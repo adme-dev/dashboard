@@ -648,6 +648,81 @@ describe('Search Google Ads construction operations', () => {
     ))).toThrow('Campaign conversion goal was not found')
   })
 
+  it.each([
+    {
+      mode: 'CUSTOMER_DEFAULTS',
+      args: {},
+      current: { goalConfigLevel: 'CAMPAIGN', customConversionGoal: 'customers/1234567890/customConversionGoals/9101' },
+      update: { goalConfigLevel: 'CUSTOMER' },
+      desired: { goalConfigLevel: 'CUSTOMER', customConversionGoal: '' },
+      updateMask: 'goal_config_level'
+    },
+    {
+      mode: 'CAMPAIGN_GOALS',
+      args: {},
+      current: { goalConfigLevel: 'CAMPAIGN', customConversionGoal: 'customers/1234567890/customConversionGoals/9101' },
+      update: { customConversionGoal: '' },
+      desired: { goalConfigLevel: 'CAMPAIGN', customConversionGoal: '' },
+      updateMask: 'custom_conversion_goal'
+    },
+    {
+      mode: 'CUSTOM_GOAL',
+      args: { customConversionGoalResourceName: 'customers/1234567890/customConversionGoals/9102' },
+      current: { goalConfigLevel: 'CUSTOMER' },
+      update: {
+        goalConfigLevel: 'CAMPAIGN',
+        customConversionGoal: 'customers/1234567890/customConversionGoals/9102'
+      },
+      desired: {
+        goalConfigLevel: 'CAMPAIGN',
+        customConversionGoal: 'customers/1234567890/customConversionGoals/9102'
+      },
+      updateMask: 'goal_config_level,custom_conversion_goal'
+    }
+  ] as const)('sets campaign goal configuration mode $mode', ({ mode, args, current, update, desired, updateMask }) => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const resourceName = 'customers/1234567890/conversionGoalCampaignConfigs/60'
+    const built = buildSearchGoogleAdsAction(context(
+      'set_conversion_goal', 'conversion_goal', { campaignResourceName: campaign, mode, ...args }, {
+        resourceName, campaignResourceName: campaign, ...current
+      }
+    ))
+    expect(built).toEqual({
+      resourceName,
+      desiredState: { resourceName, campaignResourceName: campaign, ...desired },
+      providerOperations: [{
+        service: 'conversionGoalCampaignConfigs',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ update: { resourceName, ...update }, updateMask }]
+      }]
+    })
+  })
+
+  it('enforces custom-goal mode arguments, tenant binding, and no-op rejection', () => {
+    const campaignResourceName = 'customers/1234567890/campaigns/60'
+    const resourceName = 'customers/1234567890/conversionGoalCampaignConfigs/60'
+    expect(() => parseSearchGoogleAdsArguments('set_conversion_goal', {
+      campaignResourceName, mode: 'CUSTOM_GOAL'
+    })).toThrow('requires a custom conversion goal')
+    expect(() => parseSearchGoogleAdsArguments('set_conversion_goal', {
+      campaignResourceName,
+      mode: 'CUSTOMER_DEFAULTS',
+      customConversionGoalResourceName: 'customers/1234567890/customConversionGoals/9101'
+    })).toThrow('only valid in CUSTOM_GOAL mode')
+    expect(() => buildSearchGoogleAdsAction(context(
+      'set_conversion_goal', 'conversion_goal', {
+        campaignResourceName,
+        mode: 'CUSTOM_GOAL',
+        customConversionGoalResourceName: 'customers/9999999999/customConversionGoals/9101'
+      }, { resourceName, campaignResourceName, goalConfigLevel: 'CUSTOMER' }
+    ))).toThrow('selected Google Ads customer')
+    expect(() => buildSearchGoogleAdsAction(context(
+      'set_conversion_goal', 'conversion_goal', { campaignResourceName, mode: 'CUSTOMER_DEFAULTS' },
+      { resourceName, campaignResourceName, goalConfigLevel: 'CUSTOMER' }
+    ))).toThrow('already matches')
+  })
+
   it('sets customer conversion-goal biddability with an exact update mask', () => {
     const resourceName = 'customers/1234567890/customerConversionGoals/REQUEST_QUOTE~WEBSITE'
     const built = buildSearchGoogleAdsAction(context(

@@ -448,6 +448,37 @@ describe('Search Google Ads current-state loader', () => {
     expect(query.mock.calls[1]?.[0].query).toContain('campaign_conversion_goal.campaign')
   })
 
+  it('loads the campaign goal config and validates a requested custom goal', async () => {
+    const campaignResourceName = 'customers/1234567890/campaigns/60'
+    const customGoal = 'customers/1234567890/customConversionGoals/9101'
+    const conversionAction = 'customers/1234567890/conversionActions/9001'
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ conversionGoalCampaignConfig: {
+        resourceName: 'customers/1234567890/conversionGoalCampaignConfigs/60',
+        campaign: campaignResourceName,
+        goalConfigLevel: 'CUSTOMER'
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ customConversionGoal: {
+        resourceName: customGoal,
+        name: 'Qualified dealer leads',
+        status: 'ENABLED',
+        conversionActions: [conversionAction]
+      } }], more: 0 })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('set_conversion_goal', {
+      campaignResourceName,
+      mode: 'CUSTOM_GOAL',
+      customConversionGoalResourceName: customGoal
+    }), auth, { query })).resolves.toEqual({
+      resourceName: 'customers/1234567890/conversionGoalCampaignConfigs/60',
+      campaignResourceName,
+      goalConfigLevel: 'CUSTOMER',
+      customConversionGoal: ''
+    })
+    expect(query.mock.calls[0]?.[0].query).toContain('conversion_goal_campaign_config.campaign')
+    expect(query.mock.calls[1]?.[0].query).toContain('custom_conversion_goal.id = 9101')
+  })
+
   it('loads one tenant-bound customer conversion goal by category and origin', async () => {
     const resourceName = 'customers/1234567890/customerConversionGoals/REQUEST_QUOTE~WEBSITE'
     const query = vi.fn().mockResolvedValue({

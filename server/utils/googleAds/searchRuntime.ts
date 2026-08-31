@@ -323,6 +323,7 @@ const EXECUTABLE_SEARCH_SERVICES = {
   set_pmax_signals: ['assetGroupSignals'],
   set_search_themes: ['assetGroupSignals'],
   set_campaign_conversion_goals: ['campaignConversionGoals'],
+  set_conversion_goal: ['conversionGoalCampaignConfigs'],
   set_customer_goal_biddability: ['customerConversionGoals'],
   set_conversion_primary_state: ['conversionActions'],
   create_conversion_action: ['conversionActions'],

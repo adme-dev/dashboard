@@ -38,6 +38,7 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_set_content_exclusions',
       'google_ads_plan_set_audience_associations',
       'google_ads_plan_set_campaign_conversion_goals',
+      'google_ads_plan_set_campaign_goal_config',
       'google_ads_plan_set_customer_goal_biddability',
       'google_ads_plan_set_conversion_primary_state',
       'google_ads_plan_create_conversion_action',
@@ -365,6 +366,21 @@ describe('Google Ads Search MCP planning descriptors', () => {
           { category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: true },
           { category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: false }
         ]
+      }
+    },
+    {
+      tool: 'google_ads_plan_set_campaign_goal_config',
+      args: {
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        mode: 'CUSTOM_GOAL',
+        customConversionGoalResourceName: 'customers/1234567890/customConversionGoals/9101'
+      },
+      operation: 'set_conversion_goal',
+      resourceType: 'conversion_goal',
+      expectedArguments: {
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        mode: 'CUSTOM_GOAL',
+        customConversionGoalResourceName: 'customers/1234567890/customConversionGoals/9101'
       }
     },
     {

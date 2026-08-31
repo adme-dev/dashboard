@@ -148,6 +148,12 @@ const ConversionActionStateSchema = z.object({
   clickThroughLookbackWindowDays: z.union([z.string(), z.number()]).transform(String).optional(),
   viewThroughLookbackWindowDays: z.union([z.string(), z.number()]).transform(String).optional()
 })
+const CampaignGoalConfigStateSchema = z.object({
+  resourceName: z.string(),
+  campaign: z.string(),
+  goalConfigLevel: z.enum(['CUSTOMER', 'CAMPAIGN']),
+  customConversionGoal: z.string().optional()
+})
 const CustomConversionGoalStateSchema = z.object({
   resourceName: z.string(),
   name: z.string().trim().min(1).max(255),
@@ -1288,6 +1294,48 @@ WHERE campaign.id = ${campaignId}`
   return { campaignResourceName, goals }
 }
 
+async function loadCampaignGoalConfig(
+  customerId: string,
+  campaignResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<Record<string, unknown>> {
+  assertCustomerResourceName(campaignResourceName, customerId, 'campaigns')
+  const [campaignId] = resourceIds(campaignResourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT conversion_goal_campaign_config.resource_name,
+  conversion_goal_campaign_config.campaign,
+  conversion_goal_campaign_config.goal_config_level,
+  conversion_goal_campaign_config.custom_conversion_goal
+FROM conversion_goal_campaign_config
+WHERE campaign.id = ${campaignId}`
+  })
+  const first = result.rows[0]
+  const raw = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).conversionGoalCampaignConfig
+    : undefined
+  const parsed = CampaignGoalConfigStateSchema.safeParse(raw)
+  const expectedResourceName = `customers/${customerId}/conversionGoalCampaignConfigs/${campaignId}`
+  if (!parsed.success
+    || parsed.data.resourceName !== expectedResourceName
+    || parsed.data.campaign !== campaignResourceName
+    || result.more > 0) {
+    throw new Error('Google Ads campaign goal configuration was not found')
+  }
+  if (parsed.data.customConversionGoal) {
+    assertCustomerResourceName(parsed.data.customConversionGoal, customerId, 'customConversionGoals')
+  }
+  return {
+    resourceName: parsed.data.resourceName,
+    campaignResourceName: parsed.data.campaign,
+    goalConfigLevel: parsed.data.goalConfigLevel,
+    customConversionGoal: parsed.data.customConversionGoal ?? ''
+  }
+}
+
 async function loadCustomerConversionGoal(
   customerId: string,
   category: z.infer<typeof ConversionGoalCategorySchema>,
@@ -1799,6 +1847,23 @@ export async function loadSearchGoogleAdsCurrentState(
     ))
     return loadCampaignConversionGoals(context.customerId, args.campaignResourceName, auth, resolved)
   }
+  if (context.input.operation === 'set_conversion_goal') {
+    const args = z.object({
+      campaignResourceName: z.string(),
+      mode: z.enum(['CUSTOMER_DEFAULTS', 'CAMPAIGN_GOALS', 'CUSTOM_GOAL']),
+      customConversionGoalResourceName: z.string().optional()
+    }).parse(parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments))
+    const current = await loadCampaignGoalConfig(
+      context.customerId, args.campaignResourceName, auth, resolved
+    )
+    if (args.mode === 'CUSTOM_GOAL') {
+      const customGoal = await loadCustomConversionGoal(
+        context.customerId, args.customConversionGoalResourceName!, auth, resolved
+      )
+      if (customGoal.status !== 'ENABLED') throw new Error('The requested custom conversion goal is not enabled')
+    }
+    return current
+  }
   if (context.input.operation === 'set_customer_goal_biddability') {
     const args = z.object({
       category: ConversionGoalCategorySchema,
@@ -2073,6 +2138,10 @@ export async function loadSearchGoogleAdsPlanState(
   if (plan.operation === 'set_campaign_conversion_goals') {
     const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)
     return loadCampaignConversionGoals(plan.customerId, desired.campaignResourceName, auth, resolved)
+  }
+  if (plan.operation === 'set_conversion_goal') {
+    const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)
+    return loadCampaignGoalConfig(plan.customerId, desired.campaignResourceName, auth, resolved)
   }
   if (plan.operation === 'set_customer_goal_biddability') {
     const desired = z.object({

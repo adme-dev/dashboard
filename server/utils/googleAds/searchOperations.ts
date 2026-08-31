@@ -315,6 +315,18 @@ const SetCampaignConversionGoalsArgumentsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Each campaign conversion goal may be specified only once' })
   }
 })
+const SetCampaignGoalConfigArgumentsSchema = z.strictObject({
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  mode: z.enum(['CUSTOMER_DEFAULTS', 'CAMPAIGN_GOALS', 'CUSTOM_GOAL']),
+  customConversionGoalResourceName: z.string().trim().min(1).max(1_000).optional()
+}).superRefine((value, refinement) => {
+  if (value.mode === 'CUSTOM_GOAL' && value.customConversionGoalResourceName === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'CUSTOM_GOAL mode requires a custom conversion goal' })
+  }
+  if (value.mode !== 'CUSTOM_GOAL' && value.customConversionGoalResourceName !== undefined) {
+    refinement.addIssue({ code: 'custom', message: 'A custom conversion goal is only valid in CUSTOM_GOAL mode' })
+  }
+})
 const SetCustomerGoalBiddabilityArgumentsSchema = z.strictObject({
   category: ConversionCategorySchema,
   origin: ConversionOriginSchema,
@@ -396,6 +408,12 @@ const MutableCustomConversionGoalStateSchema = z.object({
   status: z.enum(['ENABLED', 'REMOVED']),
   conversionActions: z.array(z.string())
 })
+const CampaignGoalConfigStateSchema = z.object({
+  resourceName: z.string(),
+  campaignResourceName: z.string(),
+  goalConfigLevel: z.enum(['CUSTOMER', 'CAMPAIGN']),
+  customConversionGoal: z.string().optional()
+})
 const MutableCustomAudienceStateSchema = z.object({
   resourceName: z.string(),
   name: z.string(),
@@ -467,6 +485,7 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'set_pmax_signals',
       'set_search_themes',
       'set_campaign_conversion_goals',
+      'set_conversion_goal',
       'set_customer_goal_biddability',
       'set_conversion_primary_state',
       'create_conversion_action',
@@ -568,6 +587,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_pmax_signals') return SetPmaxSignalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_search_themes') return SetSearchThemesArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
+  if (operation === 'set_conversion_goal') return SetCampaignGoalConfigArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_customer_goal_biddability') return SetCustomerGoalBiddabilityArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_primary_state') return SetConversionPrimaryStateArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_conversion_action') return CreateConversionActionArgumentsSchema.parse(argumentsValue)
@@ -1350,6 +1370,60 @@ function buildCampaignConversionGoalAction(context: BuildGoogleAdsActionContext)
   }
 }
 
+function buildCampaignGoalConfigAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'conversion_goal') {
+    throw new Error('Campaign goal configuration requires resource type conversion_goal')
+  }
+  const args = SetCampaignGoalConfigArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.campaignResourceName, context.customerId, 'campaigns')
+  const current = CampaignGoalConfigStateSchema.parse(context.currentState)
+  const campaignId = args.campaignResourceName.slice(args.campaignResourceName.lastIndexOf('/') + 1)
+  const resourceName = `customers/${context.customerId}/conversionGoalCampaignConfigs/${campaignId}`
+  if (current.resourceName !== resourceName || current.campaignResourceName !== args.campaignResourceName) {
+    throw new Error('Campaign goal configuration does not match the selected campaign')
+  }
+  const update: Record<string, unknown> = { resourceName }
+  const targetLevel = args.mode === 'CUSTOMER_DEFAULTS' ? 'CUSTOMER' : 'CAMPAIGN'
+  const targetCustomGoal = args.mode === 'CUSTOM_GOAL' ? args.customConversionGoalResourceName! : ''
+  const desiredState: Record<string, unknown> = {
+    resourceName,
+    campaignResourceName: args.campaignResourceName,
+    goalConfigLevel: targetLevel,
+    customConversionGoal: targetCustomGoal
+  }
+  const masks: string[] = []
+  if (current.goalConfigLevel !== targetLevel) {
+    update.goalConfigLevel = targetLevel
+    masks.push('goal_config_level')
+  }
+  if (args.mode === 'CAMPAIGN_GOALS') {
+    if (current.customConversionGoal) {
+      update.customConversionGoal = ''
+      masks.push('custom_conversion_goal')
+    }
+  } else if (args.mode === 'CUSTOM_GOAL') {
+    const customGoal = args.customConversionGoalResourceName!
+    assertResourceName(customGoal, context.customerId, 'customConversionGoals')
+    if (current.customConversionGoal !== customGoal) {
+      update.customConversionGoal = customGoal
+      masks.push('custom_conversion_goal')
+    }
+  }
+  if (masks.length === 0) throw new Error('Campaign goal configuration already matches the requested mode')
+  // v25 goal configs are provider-created and updated through exact field masks.
+  // https://developers.google.com/google-ads/api/reference/rpc/v25/ConversionGoalCampaignConfigOperation
+  return {
+    resourceName,
+    desiredState,
+    providerOperations: [{
+      service: 'conversionGoalCampaignConfigs',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ update, updateMask: masks.join(',') }]
+    }]
+  }
+}
+
 function buildCustomerGoalBiddabilityAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (context.input.resourceType !== 'conversion_goal') {
     throw new Error('Customer goals require resource type conversion_goal')
@@ -1849,6 +1923,7 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'set_content_exclusions') return buildContentExclusionAction(context)
   if (context.input.operation === 'set_audience_associations') return buildAudienceAssociationAction(context)
   if (context.input.operation === 'set_campaign_conversion_goals') return buildCampaignConversionGoalAction(context)
+  if (context.input.operation === 'set_conversion_goal') return buildCampaignGoalConfigAction(context)
   if (context.input.operation === 'set_customer_goal_biddability') return buildCustomerGoalBiddabilityAction(context)
   if (context.input.operation === 'set_conversion_primary_state') return buildConversionPrimaryStateAction(context)
   if (context.input.operation === 'create_conversion_action') return buildCreateConversionAction(context)
