@@ -19,6 +19,10 @@ import {
   validateSearchGoogleAdsControlPlan
 } from '~~/server/utils/googleAds/searchRuntime'
 import {
+  runGoogleAdsPausePolicy,
+  runGoogleAdsSearchTermPolicy
+} from '~~/server/utils/googleAds/automation'
+import {
   GOOGLE_ADS_PENDING_ACTION,
   type GoogleAdsConfirmDependencies,
   type GoogleAdsMcpFlags,
@@ -202,6 +206,20 @@ export function buildGoogleAdsMcpToolDependencies(
       }
     }),
     executeAutomatic: (plan, context) => executeSearchGoogleAdsControlAction(plan, {
+      actorRole: context.userRole,
+      hasWriteScope: true
+    }, flags),
+    runSearchTermPolicy: (input, context) => runGoogleAdsSearchTermPolicy({
+      ...input,
+      actorId: context.userId
+    }, {
+      actorRole: context.userRole,
+      hasWriteScope: true
+    }, flags),
+    runPausePolicy: (input, context) => runGoogleAdsPausePolicy({
+      ...input,
+      actorId: context.userId
+    }, {
       actorRole: context.userRole,
       hasWriteScope: true
     }, flags)

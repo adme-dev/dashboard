@@ -129,6 +129,17 @@ consumes its reservation even if Google rejects the request, which prevents rapi
 failure retries from bypassing the cap. A model can propose a policy change but
 cannot edit or activate its own authority.
 
+`google_ads_run_search_term_policy` reads a fresh bounded `search_term_view`
+window, aggregates duplicate terms across ad groups, excludes terms already targeted
+or excluded, rejects protected phrases and positive-keyword conflicts, and creates an
+automatic negative-keyword plan only when every impressions, clicks, spend, and
+maximum-conversions threshold passes. `google_ads_run_pause_policy` performs the same
+fresh-metrics check for one explicitly allowlisted campaign, ad group, ad, or keyword;
+it can only move an enabled entity to paused. Both runners stop before a provider read
+when the daily cap, cooldown, or recent manual-override window blocks the action, and
+record the policy version, data window, thresholds, and metric snapshot in append-only
+action evidence.
+
 ## Staged Rollout
 
 1. Confirm migrations `338_google_ads_mcp_action_control.sql` and

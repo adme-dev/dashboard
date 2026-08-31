@@ -29,10 +29,24 @@ export const GOOGLE_ADS_LIST_TARGETING_TOOL = 'google_ads_list_targeting'
 export const GOOGLE_ADS_LIST_ASSETS_TOOL = 'google_ads_list_assets'
 export const GOOGLE_ADS_LIST_CONVERSION_ACTIONS_TOOL = 'google_ads_list_conversion_actions'
 export const GOOGLE_ADS_PROPOSE_ACTION_TOOL = 'propose_google_ads_action'
+export const GOOGLE_ADS_RUN_SEARCH_TERM_POLICY_TOOL = 'google_ads_run_search_term_policy'
+export const GOOGLE_ADS_RUN_PAUSE_POLICY_TOOL = 'google_ads_run_pause_policy'
 export const GOOGLE_ADS_PENDING_ACTION = 'google_ads_action'
 
 const ActionPlanParams = z.strictObject({
   actionPlanId: z.string().uuid()
+})
+const RunSearchTermPolicyParams = z.strictObject({
+  clientId: z.string().uuid(),
+  connectionId: z.string().uuid(),
+  scope: z.enum(['campaign', 'ad_group']),
+  parentResourceName: z.string().trim().min(1).max(1_000)
+})
+const RunPausePolicyParams = z.strictObject({
+  clientId: z.string().uuid(),
+  connectionId: z.string().uuid(),
+  entityType: z.enum(['campaign', 'ad_group', 'ad', 'keyword']),
+  resourceName: z.string().trim().min(1).max(1_000)
 })
 const ListRecommendationsParams = z.strictObject({
   clientId: z.string().uuid(),
@@ -159,6 +173,16 @@ export const googleAdsReadTools: McpToolManifest[] = [
 export const googleAdsWriteTools: McpToolManifest[] = [
   ...googleAdsSearchPlanningTools,
   descriptor(
+    GOOGLE_ADS_RUN_SEARCH_TERM_POLICY_TOOL,
+    'Evaluate fresh Google search-term metrics against the active account policy and automatically add only qualified, unprotected negative keywords within policy caps and cooldowns.',
+    RunSearchTermPolicyParams
+  ),
+  descriptor(
+    GOOGLE_ADS_RUN_PAUSE_POLICY_TOOL,
+    'Evaluate fresh provider metrics for one allowlisted entity and pause it only when every active account-policy threshold, cap, cooldown, and manual-override guard passes.',
+    RunPausePolicyParams
+  ),
+  descriptor(
     GOOGLE_ADS_PROPOSE_ACTION_TOOL,
     'Submit a server-issued Google Ads action plan for governed execution. Proposal plans return a proposalId for confirm_action; policy-approved automatic plans run only when automation is enabled.'
   )
@@ -181,7 +205,10 @@ export function isGoogleAdsToolName(name: string): boolean {
 }
 
 export function isGoogleAdsWriteToolName(name: string): boolean {
-  return name === GOOGLE_ADS_PROPOSE_ACTION_TOOL || isGoogleAdsSearchPlanningTool(name)
+  return name === GOOGLE_ADS_PROPOSE_ACTION_TOOL
+    || name === GOOGLE_ADS_RUN_SEARCH_TERM_POLICY_TOOL
+    || name === GOOGLE_ADS_RUN_PAUSE_POLICY_TOOL
+    || isGoogleAdsSearchPlanningTool(name)
 }
 
 export function projectGoogleAdsTools(role: string, flags: GoogleAdsMcpFlags): McpToolManifest[] {
@@ -222,6 +249,8 @@ export interface GoogleAdsMcpToolDependencies {
   ): Promise<void>
   proposePlan(plan: GoogleAdsActionPlan, context: ToolContext): Promise<{ proposalId: string }>
   executeAutomatic(plan: GoogleAdsActionPlan, context: ToolContext): Promise<unknown>
+  runSearchTermPolicy(input: z.infer<typeof RunSearchTermPolicyParams>, context: ToolContext): Promise<unknown>
+  runPausePolicy(input: z.infer<typeof RunPausePolicyParams>, context: ToolContext): Promise<unknown>
 }
 
 export type GoogleAdsMcpToolOutcome
@@ -276,6 +305,29 @@ export async function executeGoogleAdsTool(
       return { ok: true, data: await dependencies.listRecommendations(listArgs.data, context) }
     } catch {
       return { ok: false, error: 'Google Ads recommendation read failed.', code: 'handler_error' }
+    }
+  }
+
+  if (name === GOOGLE_ADS_RUN_SEARCH_TERM_POLICY_TOOL || name === GOOGLE_ADS_RUN_PAUSE_POLICY_TOOL) {
+    if (!flags.automation) {
+      return { ok: false, error: 'Google Ads automatic actions are not enabled.', code: 'automation_disabled' }
+    }
+    const schema = name === GOOGLE_ADS_RUN_SEARCH_TERM_POLICY_TOOL
+      ? RunSearchTermPolicyParams
+      : RunPausePolicyParams
+    const runnerArgs = schema.safeParse(args)
+    if (!runnerArgs.success) return { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
+    try {
+      const data = name === GOOGLE_ADS_RUN_SEARCH_TERM_POLICY_TOOL
+        ? await dependencies.runSearchTermPolicy(
+            RunSearchTermPolicyParams.parse(runnerArgs.data), context
+          )
+        : await dependencies.runPausePolicy(
+            RunPausePolicyParams.parse(runnerArgs.data), context
+          )
+      return { ok: true, data }
+    } catch {
+      return { ok: false, error: 'Google Ads policy automation failed.', code: 'handler_error' }
     }
   }
 

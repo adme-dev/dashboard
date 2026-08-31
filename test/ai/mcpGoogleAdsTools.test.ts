@@ -72,7 +72,9 @@ function dependencies(plan = actionPlan()) {
     listRecommendations: vi.fn().mockResolvedValue({ recommendations: [] }),
     listInventory: vi.fn().mockResolvedValue({ items: [] }),
     proposePlan: vi.fn().mockResolvedValue({ proposalId: 'proposal-12345' }),
-    executeAutomatic: vi.fn().mockResolvedValue({ ok: true, status: 'verified' })
+    executeAutomatic: vi.fn().mockResolvedValue({ ok: true, status: 'verified' }),
+    runSearchTermPolicy: vi.fn().mockResolvedValue({ executed: false, reason: 'no_candidates' }),
+    runPausePolicy: vi.fn().mockResolvedValue({ executed: false, reason: 'threshold_not_met' })
   }
 }
 
@@ -299,6 +301,37 @@ describe('Google Ads MCP execution gates', () => {
       deps
     )).resolves.toMatchObject({ ok: true })
     expect(deps.executeAutomatic).toHaveBeenCalledWith(automatic, context)
+  })
+
+  it('runs policy automation only when both write and automation are enabled', async () => {
+    const deps = dependencies()
+    const args = {
+      clientId: CLIENT_ID,
+      connectionId: CONNECTION_ID,
+      scope: 'campaign',
+      parentResourceName: 'customers/1234567890/campaigns/10'
+    }
+
+    await expect(executeGoogleAdsTool(
+      'google_ads_run_search_term_policy',
+      args,
+      context,
+      { ...off, write: true },
+      deps
+    )).resolves.toMatchObject({ ok: false, code: 'automation_disabled' })
+    expect(deps.runSearchTermPolicy).not.toHaveBeenCalled()
+
+    await expect(executeGoogleAdsTool(
+      'google_ads_run_search_term_policy',
+      args,
+      context,
+      { ...off, write: true, automation: true },
+      deps
+    )).resolves.toMatchObject({
+      ok: true,
+      data: { executed: false, reason: 'no_candidates' }
+    })
+    expect(deps.runSearchTermPolicy).toHaveBeenCalledWith(args, context)
   })
 
   it('requires destructive as well as write for provider removal', async () => {
