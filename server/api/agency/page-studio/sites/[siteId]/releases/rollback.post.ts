@@ -1,7 +1,12 @@
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
 import { PageStudioIdempotencyKeySchema } from '~~/server/utils/pageStudio/controlSchemas'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
-import { resolvePageStudioDeliveryWorker } from '~~/server/utils/pageStudio/publishing'
+import {
+  getPageStudioReleasePointer,
+  PageStudioPublishingError,
+  resolvePageStudioDeliveryWorker,
+  rollbackPageStudioRelease
+} from '~~/server/utils/pageStudio/publishing'
 import {
   PageStudioReleaseRollbackBody,
   PageStudioSiteId
@@ -20,12 +25,22 @@ export default eventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Invalid Page Studio rollback' })
     }
     const clientId = await resolveAgencyPageStudioSiteClient(tenantId, siteId.data)
+    const scope = { tenantId, clientId, siteId: siteId.data }
+    const target = await getPageStudioReleasePointer(scope, body.data.targetReleaseId)
+    if (!target) {
+      throw new PageStudioPublishingError(
+        'ROLLBACK_TARGET_INVALID',
+        422,
+        'The Page Studio rollback target is not valid for this release pointer'
+      )
+    }
     const worker = resolvePageStudioDeliveryWorker(event, body.data.environment)
-    const release = await worker.rollback({
+    await worker.verifyRelease(target)
+    const release = await rollbackPageStudioRelease({
       actorId: user.id,
       ...body.data,
       idempotencyKey: idempotencyKey.data,
-      scope: { tenantId, clientId, siteId: siteId.data }
+      scope
     })
     return { release }
   } catch (error) {

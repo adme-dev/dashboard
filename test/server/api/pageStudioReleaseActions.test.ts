@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+  activatePageStudioRelease: vi.fn(),
+  getPageStudioBuildPointer: vi.fn(),
+  getPageStudioReleasePointer: vi.fn(),
   requireAgencyPageStudioAccess: vi.fn(),
   resolveAgencyPageStudioSiteClient: vi.fn(),
-  resolvePageStudioDeliveryWorker: vi.fn()
+  resolvePageStudioDeliveryWorker: vi.fn(),
+  rollbackPageStudioRelease: vi.fn()
 }))
 vi.mock('~~/server/utils/pageStudio/access', () => ({
   requireAgencyPageStudioAccess: (...args: unknown[]) => mocks.requireAgencyPageStudioAccess(...args)
@@ -13,7 +17,11 @@ vi.mock('~~/server/utils/pageStudio/versions', () => ({
   PageStudioVersionError: class PageStudioVersionError extends Error {}
 }))
 vi.mock('~~/server/utils/pageStudio/publishing', () => ({
+  activatePageStudioRelease: (...args: unknown[]) => mocks.activatePageStudioRelease(...args),
+  getPageStudioBuildPointer: (...args: unknown[]) => mocks.getPageStudioBuildPointer(...args),
+  getPageStudioReleasePointer: (...args: unknown[]) => mocks.getPageStudioReleasePointer(...args),
   resolvePageStudioDeliveryWorker: (...args: unknown[]) => mocks.resolvePageStudioDeliveryWorker(...args),
+  rollbackPageStudioRelease: (...args: unknown[]) => mocks.rollbackPageStudioRelease(...args),
   PageStudioPublishingError: class PageStudioPublishingError extends Error {}
 }))
 vi.mock('~~/server/utils/pageStudio/http', () => ({
@@ -45,7 +53,24 @@ const actorId = '33333333-3333-4333-8333-333333333333'
 const activeReleaseId = '44444444-4444-4444-8444-444444444444'
 const targetReleaseId = '55555555-5555-4555-8555-555555555555'
 const hostname = 'site.staging.pages.xeroflow.com'
-const worker = { publish: vi.fn(), rollback: vi.fn() }
+const digest = 'a'.repeat(64)
+const buildId = `build_${digest.slice(0, 32)}`
+const scope = { tenantId: 'tenant-alpha', clientId, siteId }
+const artifactPrefix = `tenants/${scope.tenantId}/clients/${clientId}/sites/${siteId}/builds/${digest}`
+const buildPointer = {
+  artifactPrefix,
+  buildId,
+  manifestDigest: 'b'.repeat(64),
+  manifestKey: `${artifactPrefix}/release-manifest.json`,
+  scope,
+  versionDigest: digest
+}
+const releasePointer = {
+  ...buildPointer,
+  environment: 'staging' as const,
+  releaseId: targetReleaseId
+}
+const worker = { verifyBuild: vi.fn(), verifyRelease: vi.fn() }
 
 describe('Page Studio agency release actions', () => {
   beforeEach(() => {
@@ -55,16 +80,20 @@ describe('Page Studio agency release actions', () => {
     })
     mocks.resolveAgencyPageStudioSiteClient.mockResolvedValue(clientId)
     mocks.resolvePageStudioDeliveryWorker.mockReturnValue(worker)
-    worker.publish.mockResolvedValue({ releaseId: targetReleaseId })
-    worker.rollback.mockResolvedValue({ releaseId: targetReleaseId })
+    mocks.getPageStudioBuildPointer.mockResolvedValue(buildPointer)
+    mocks.getPageStudioReleasePointer.mockResolvedValue(releasePointer)
+    mocks.activatePageStudioRelease.mockResolvedValue(releasePointer)
+    mocks.rollbackPageStudioRelease.mockResolvedValue(releasePointer)
+    worker.verifyBuild.mockResolvedValue(buildPointer)
+    worker.verifyRelease.mockResolvedValue(releasePointer)
   })
 
-  it('publishes through the environment-pinned private Delivery Worker', async () => {
+  it('verifies the immutable build in Delivery before activating it locally without a control-plane callback', async () => {
     const { default: handler } = await import(
       '~~/server/api/agency/page-studio/sites/[siteId]/releases/activate.post'
     )
     const body = {
-      buildId: `build_${'a'.repeat(32)}`,
+      buildId,
       environment: 'staging',
       expectedActiveReleaseId: null,
       hostname
@@ -73,18 +102,20 @@ describe('Page Studio agency release actions', () => {
       body, context: {}, headers: { 'idempotency-key': 'publish_01HXYZ' }, params: { siteId }
     }
 
-    await expect(handler(event as never)).resolves.toEqual({ release: { releaseId: targetReleaseId } })
+    await expect(handler(event as never)).resolves.toEqual({ release: releasePointer })
     expect(mocks.requireAgencyPageStudioAccess).toHaveBeenCalledWith(event, 'PAGE_STUDIO_PUBLISH')
     expect(mocks.resolvePageStudioDeliveryWorker).toHaveBeenCalledWith(event, 'staging')
-    expect(worker.publish).toHaveBeenCalledWith({
+    expect(mocks.getPageStudioBuildPointer).toHaveBeenCalledWith(scope, buildId)
+    expect(worker.verifyBuild).toHaveBeenCalledWith(buildPointer)
+    expect(mocks.activatePageStudioRelease).toHaveBeenCalledWith({
       actorId,
       ...body,
       idempotencyKey: 'publish_01HXYZ',
-      scope: { tenantId: 'tenant-alpha', clientId, siteId }
+      scope
     })
   })
 
-  it('rolls back through Delivery artifact verification without accepting caller scope', async () => {
+  it('verifies the immutable target release in Delivery before rolling back locally', async () => {
     const { default: handler } = await import(
       '~~/server/api/agency/page-studio/sites/[siteId]/releases/rollback.post'
     )
@@ -98,12 +129,14 @@ describe('Page Studio agency release actions', () => {
       body, context: {}, headers: { 'idempotency-key': 'rollback_01HXYZ' }, params: { siteId }
     }
 
-    await expect(handler(event as never)).resolves.toEqual({ release: { releaseId: targetReleaseId } })
-    expect(worker.rollback).toHaveBeenCalledWith({
+    await expect(handler(event as never)).resolves.toEqual({ release: releasePointer })
+    expect(mocks.getPageStudioReleasePointer).toHaveBeenCalledWith(scope, targetReleaseId)
+    expect(worker.verifyRelease).toHaveBeenCalledWith(releasePointer)
+    expect(mocks.rollbackPageStudioRelease).toHaveBeenCalledWith({
       actorId,
       ...body,
       idempotencyKey: 'rollback_01HXYZ',
-      scope: { tenantId: 'tenant-alpha', clientId, siteId }
+      scope
     })
   })
 })

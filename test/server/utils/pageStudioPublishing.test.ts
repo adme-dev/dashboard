@@ -67,7 +67,7 @@ function rollback(overrides: Record<string, unknown> = {}) {
 
 describe('Page Studio publishing catalog', () => {
   it('requires a private Delivery binding pinned to the requested release environment', () => {
-    const worker = { publish: vi.fn(), rollback: vi.fn() }
+    const worker = { verifyBuild: vi.fn(), verifyRelease: vi.fn() }
     const event = {
       context: {
         cloudflare: {

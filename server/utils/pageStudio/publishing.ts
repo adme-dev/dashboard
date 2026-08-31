@@ -51,8 +51,8 @@ export interface PageStudioRollbackReleaseInput {
 }
 
 export interface PageStudioDeliveryWorker {
-  publish(input: PageStudioActivateReleaseInput): Promise<PageStudioReleasePointer>
-  rollback(input: PageStudioRollbackReleaseInput): Promise<PageStudioReleasePointer>
+  verifyBuild(pointer: PageStudioBuildPointer): Promise<PageStudioBuildPointer>
+  verifyRelease(pointer: PageStudioReleasePointer): Promise<PageStudioReleasePointer>
 }
 
 interface BuildPointerRow {
@@ -130,8 +130,8 @@ export function resolvePageStudioDeliveryWorker(
     configuredEnvironment !== environment
     || !binding
     || typeof binding !== 'object'
-    || typeof (binding as PageStudioDeliveryWorker).publish !== 'function'
-    || typeof (binding as PageStudioDeliveryWorker).rollback !== 'function'
+    || typeof (binding as PageStudioDeliveryWorker).verifyBuild !== 'function'
+    || typeof (binding as PageStudioDeliveryWorker).verifyRelease !== 'function'
   ) {
     throw publishingError(
       'RELEASE_WORKER_UNAVAILABLE',

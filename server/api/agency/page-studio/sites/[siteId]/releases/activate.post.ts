@@ -1,7 +1,12 @@
 import { requireAgencyPageStudioAccess } from '~~/server/utils/pageStudio/access'
 import { PageStudioIdempotencyKeySchema } from '~~/server/utils/pageStudio/controlSchemas'
 import { pageStudioHttpError } from '~~/server/utils/pageStudio/http'
-import { resolvePageStudioDeliveryWorker } from '~~/server/utils/pageStudio/publishing'
+import {
+  activatePageStudioRelease,
+  getPageStudioBuildPointer,
+  PageStudioPublishingError,
+  resolvePageStudioDeliveryWorker
+} from '~~/server/utils/pageStudio/publishing'
 import {
   PageStudioReleaseActivationBody,
   PageStudioSiteId
@@ -20,13 +25,23 @@ export default eventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Invalid Page Studio activation' })
     }
     const clientId = await resolveAgencyPageStudioSiteClient(tenantId, siteId.data)
+    const scope = { tenantId, clientId, siteId: siteId.data }
+    const build = await getPageStudioBuildPointer(scope, body.data.buildId)
+    if (!build) {
+      throw new PageStudioPublishingError(
+        'BUILD_NOT_PUBLISHABLE',
+        422,
+        'Page Studio build is not approved and publishable'
+      )
+    }
     const worker = resolvePageStudioDeliveryWorker(event, body.data.environment)
-    const release = await worker.publish({
+    await worker.verifyBuild(build)
+    const release = await activatePageStudioRelease({
       actorId: user.id,
       ...body.data,
       expectedActiveReleaseId: body.data.expectedActiveReleaseId ?? null,
       idempotencyKey: idempotencyKey.data,
-      scope: { tenantId, clientId, siteId: siteId.data }
+      scope
     })
     return { release }
   } catch (error) {
