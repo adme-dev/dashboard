@@ -478,6 +478,37 @@ describe('Search Google Ads current-state loader', () => {
     expect(query.mock.calls[0]?.[0].query).toContain(`customer_conversion_goal.origin = 'WEBSITE'`)
   })
 
+  it('loads explicit ad-group age and gender criteria', async () => {
+    const adGroup = 'customers/1234567890/adGroups/20'
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ adGroup: { resourceName: adGroup } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [
+        { adGroupCriterion: {
+          resourceName: 'customers/1234567890/adGroupCriteria/20~300',
+          adGroup,
+          negative: false,
+          gender: { type: 'MALE' }
+        } },
+        { adGroupCriterion: {
+          resourceName: 'customers/1234567890/adGroupCriteria/20~301',
+          adGroup,
+          negative: true,
+          ageRange: { type: 'AGE_RANGE_18_24' }
+        } }
+      ], more: 0 })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('set_demographics', {
+      adGroupResourceName: adGroup,
+      criteria: []
+    }), auth, { query })).resolves.toMatchObject({
+      adGroupResourceName: adGroup,
+      criteria: [
+        { dimension: 'AGE_RANGE', type: 'AGE_RANGE_18_24', excluded: true },
+        { dimension: 'GENDER', type: 'MALE', excluded: false }
+      ]
+    })
+  })
+
   it('loads a tenant-bound conversion action for primary-state changes', async () => {
     const resourceName = 'customers/1234567890/conversionActions/9001'
     const query = vi.fn().mockResolvedValue({

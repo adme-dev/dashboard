@@ -666,6 +666,39 @@ describe('Search Google Ads construction operations', () => {
     ))).toThrow('Customer conversion goal already matches the requested biddability')
   })
 
+  it('atomically replaces explicit ad-group demographic criteria', () => {
+    const adGroup = 'customers/1234567890/adGroups/20'
+    const male = 'customers/1234567890/adGroupCriteria/20~300'
+    const age = 'customers/1234567890/adGroupCriteria/20~301'
+    const built = buildSearchGoogleAdsAction(context(
+      'set_demographics',
+      'demographic',
+      {
+        adGroupResourceName: adGroup,
+        criteria: [
+          { dimension: 'GENDER', type: 'MALE', excluded: false },
+          { dimension: 'AGE_RANGE', type: 'AGE_RANGE_18_24', excluded: true }
+        ]
+      },
+      {
+        adGroupResourceName: adGroup,
+        criteria: [
+          { resourceName: male, dimension: 'GENDER', type: 'MALE', excluded: false },
+          { resourceName: age, dimension: 'AGE_RANGE', type: 'AGE_RANGE_18_24', excluded: false }
+        ]
+      }
+    ))
+    expect(built.providerOperations).toEqual([{
+      service: 'adGroupCriteria',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        { remove: age },
+        { create: { adGroup, negative: true, status: 'ENABLED', ageRange: { type: 'AGE_RANGE_18_24' } } }
+      ]
+    }])
+  })
+
   it('sets a conversion action to secondary with an exact update mask', () => {
     const resourceName = 'customers/1234567890/conversionActions/9001'
     const current = {

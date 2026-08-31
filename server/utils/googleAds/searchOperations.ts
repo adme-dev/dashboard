@@ -156,6 +156,24 @@ const SetDevicesArgumentsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Each device type may be specified only once' })
   }
 })
+const AgeRangeTypeSchema = z.enum([
+  'AGE_RANGE_18_24', 'AGE_RANGE_25_34', 'AGE_RANGE_35_44', 'AGE_RANGE_45_54',
+  'AGE_RANGE_55_64', 'AGE_RANGE_65_UP', 'AGE_RANGE_UNDETERMINED'
+])
+const GenderTypeSchema = z.enum(['FEMALE', 'MALE', 'UNDETERMINED'])
+const DemographicCriterionSchema = z.discriminatedUnion('dimension', [
+  z.strictObject({ dimension: z.literal('AGE_RANGE'), type: AgeRangeTypeSchema, excluded: z.boolean() }),
+  z.strictObject({ dimension: z.literal('GENDER'), type: GenderTypeSchema, excluded: z.boolean() })
+])
+const SetDemographicsArgumentsSchema = z.strictObject({
+  adGroupResourceName: z.string().trim().min(1).max(1_000),
+  criteria: z.array(DemographicCriterionSchema).max(20)
+}).superRefine((value, refinement) => {
+  const keys = value.criteria.map(criterion => `${criterion.dimension}:${criterion.type}`)
+  if (new Set(keys).size !== keys.length) {
+    refinement.addIssue({ code: 'custom', message: 'Each demographic criterion may be specified only once' })
+  }
+})
 const ConversionCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -272,6 +290,7 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'set_languages',
       'set_ad_schedule',
       'set_devices',
+      'set_demographics',
       'set_campaign_conversion_goals',
       'set_customer_goal_biddability',
       'set_conversion_primary_state',
@@ -359,6 +378,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_languages') return SetLanguagesArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_ad_schedule') return SetAdScheduleArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_devices') return SetDevicesArgumentsSchema.parse(argumentsValue)
+  if (operation === 'set_demographics') return SetDemographicsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_customer_goal_biddability') return SetCustomerGoalBiddabilityArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_primary_state') return SetConversionPrimaryStateArgumentsSchema.parse(argumentsValue)
@@ -847,6 +867,70 @@ function buildDeviceAction(context: BuildGoogleAdsActionContext): BuiltGoogleAds
   }
 }
 
+function buildDemographicAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'demographic') {
+    throw new Error('Demographic targeting requires resource type demographic')
+  }
+  const args = SetDemographicsArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.adGroupResourceName, context.customerId, 'adGroups')
+  const CurrentCriterion = z.object({
+    resourceName: z.string(),
+    dimension: z.enum(['AGE_RANGE', 'GENDER']),
+    type: z.string(),
+    excluded: z.boolean()
+  })
+  const current = z.object({
+    adGroupResourceName: z.literal(args.adGroupResourceName),
+    criteria: z.array(CurrentCriterion)
+  }).parse(context.currentState)
+  const baseKey = (criterion: { dimension: string, type: string }) => `${criterion.dimension}:${criterion.type}`
+  const currentByKey = new Map(current.criteria.map(criterion => [baseKey(criterion), criterion]))
+  const requestedByKey = new Map(args.criteria.map(criterion => [baseKey(criterion), criterion]))
+  const additions = args.criteria.filter((criterion) => {
+    const existing = currentByKey.get(baseKey(criterion))
+    return !existing || existing.excluded !== criterion.excluded
+  })
+  const removals = current.criteria.filter((criterion) => {
+    const requested = requestedByKey.get(baseKey(criterion))
+    return !requested || requested.excluded !== criterion.excluded
+  })
+  if (additions.length === 0 && removals.length === 0) {
+    throw new Error('Ad-group demographic criteria already match the requested set')
+  }
+  const adGroupId = args.adGroupResourceName.slice(args.adGroupResourceName.lastIndexOf('/') + 1)
+  const removalOperations = removals.map((criterion) => {
+    assertResourceName(criterion.resourceName, context.customerId, 'adGroupCriteria')
+    if (!criterion.resourceName.includes(`/adGroupCriteria/${adGroupId}~`)) {
+      throw new Error('Demographic criterion does not belong to the selected ad group')
+    }
+    return { remove: criterion.resourceName } as const
+  })
+  const desiredCriteria = args.criteria.map((criterion) => {
+    const existing = currentByKey.get(baseKey(criterion))
+    return existing?.excluded === criterion.excluded ? existing : criterion
+  }).sort((left, right) => baseKey(left).localeCompare(baseKey(right)))
+  return {
+    resourceName: args.adGroupResourceName,
+    desiredState: { adGroupResourceName: args.adGroupResourceName, criteria: desiredCriteria },
+    providerOperations: [{
+      service: 'adGroupCriteria',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        ...removalOperations,
+        ...additions.map(criterion => ({ create: {
+          adGroup: args.adGroupResourceName,
+          negative: criterion.excluded,
+          status: 'ENABLED',
+          ...(criterion.dimension === 'AGE_RANGE'
+            ? { ageRange: { type: criterion.type } }
+            : { gender: { type: criterion.type } })
+        } }))
+      ]
+    }]
+  }
+}
+
 function buildCampaignConversionGoalAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (context.input.resourceType !== 'conversion_goal') throw new Error('Campaign goals require resource type conversion_goal')
   const args = SetCampaignConversionGoalsArgumentsSchema.parse(context.input.arguments)
@@ -1045,6 +1129,7 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'set_languages') return buildLanguageAction(context)
   if (context.input.operation === 'set_ad_schedule') return buildAdScheduleAction(context)
   if (context.input.operation === 'set_devices') return buildDeviceAction(context)
+  if (context.input.operation === 'set_demographics') return buildDemographicAction(context)
   if (context.input.operation === 'set_campaign_conversion_goals') return buildCampaignConversionGoalAction(context)
   if (context.input.operation === 'set_customer_goal_biddability') return buildCustomerGoalBiddabilityAction(context)
   if (context.input.operation === 'set_conversion_primary_state') return buildConversionPrimaryStateAction(context)

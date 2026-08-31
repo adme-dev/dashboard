@@ -123,6 +123,11 @@ const DeviceCriterionStateSchema = z.object({
     type: z.enum(['MOBILE', 'DESKTOP', 'TABLET', 'CONNECTED_TV', 'OTHER'])
   })
 })
+const AgeRangeTypeSchema = z.enum([
+  'AGE_RANGE_18_24', 'AGE_RANGE_25_34', 'AGE_RANGE_35_44', 'AGE_RANGE_45_54',
+  'AGE_RANGE_55_64', 'AGE_RANGE_65_UP', 'AGE_RANGE_UNDETERMINED'
+])
+const GenderTypeSchema = z.enum(['FEMALE', 'MALE', 'UNDETERMINED'])
 const ConversionActionStateSchema = z.object({
   resourceName: z.string(),
   name: z.string().trim().min(1).max(255),
@@ -953,6 +958,59 @@ WHERE campaign.id = ${campaignId}
   return { campaignResourceName, devices }
 }
 
+async function loadAdGroupDemographics(
+  customerId: string,
+  adGroupResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<{ adGroupResourceName: string, criteria: Array<Record<string, unknown>> }> {
+  assertCustomerResourceName(adGroupResourceName, customerId, 'adGroups')
+  const [adGroupId] = resourceIds(adGroupResourceName)
+  const parent = await dependencies.query({
+    customerId, auth, maxRows: 1,
+    query: `SELECT ad_group.resource_name FROM ad_group WHERE ad_group.id = ${adGroupId}`
+  })
+  const adGroup = parent.rows[0] && typeof parent.rows[0] === 'object'
+    ? (parent.rows[0] as Record<string, unknown>).adGroup
+    : undefined
+  if (!z.object({ resourceName: z.literal(adGroupResourceName) }).safeParse(adGroup).success) {
+    throw new Error('The referenced ad group was not found')
+  }
+  const result = await dependencies.query({
+    customerId, auth, maxRows: 100,
+    query: `SELECT ad_group_criterion.resource_name,
+  ad_group_criterion.ad_group,
+  ad_group_criterion.negative,
+  ad_group_criterion.age_range.type,
+  ad_group_criterion.gender.type
+FROM ad_group_criterion
+WHERE ad_group.id = ${adGroupId}
+  AND ad_group_criterion.type IN ('AGE_RANGE', 'GENDER')`
+  })
+  if (result.more > 0) throw new Error('Google Ads demographic state exceeds the safe read limit')
+  const criteria = result.rows.map((row) => {
+    const criterion = row && typeof row === 'object'
+      ? (row as Record<string, unknown>).adGroupCriterion
+      : undefined
+    const base = z.object({
+      resourceName: z.string(),
+      adGroup: z.literal(adGroupResourceName),
+      negative: z.boolean(),
+      ageRange: z.object({ type: AgeRangeTypeSchema }).optional(),
+      gender: z.object({ type: GenderTypeSchema }).optional()
+    }).parse(criterion)
+    assertCustomerResourceName(base.resourceName, customerId, 'adGroupCriteria', true)
+    const [criterionAdGroupId] = resourceIds(base.resourceName)
+    if (criterionAdGroupId !== adGroupId || Boolean(base.ageRange) === Boolean(base.gender)) {
+      throw new Error('Google Ads returned invalid demographic criteria for the selected ad group')
+    }
+    return base.ageRange
+      ? { resourceName: base.resourceName, dimension: 'AGE_RANGE', type: base.ageRange.type, excluded: base.negative }
+      : { resourceName: base.resourceName, dimension: 'GENDER', type: base.gender!.type, excluded: base.negative }
+  }).sort((left, right) => `${left.dimension}:${left.type}`.localeCompare(`${right.dimension}:${right.type}`))
+  return { adGroupResourceName, criteria }
+}
+
 async function loadCampaignConversionGoals(
   customerId: string,
   campaignResourceName: string,
@@ -1238,6 +1296,12 @@ export async function loadSearchGoogleAdsCurrentState(
       resolved
     )
   }
+  if (context.input.operation === 'set_demographics') {
+    const args = z.object({ adGroupResourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation, context.input.arguments
+    ))
+    return loadAdGroupDemographics(context.customerId, args.adGroupResourceName, auth, resolved)
+  }
   if (context.input.operation === 'set_campaign_conversion_goals') {
     const args = z.object({ campaignResourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation, context.input.arguments
@@ -1424,6 +1488,10 @@ export async function loadSearchGoogleAdsPlanState(
       auth,
       resolved
     )
+  }
+  if (plan.operation === 'set_demographics') {
+    const desired = z.object({ adGroupResourceName: z.string() }).parse(plan.desiredState)
+    return loadAdGroupDemographics(plan.customerId, desired.adGroupResourceName, auth, resolved)
   }
   if (plan.operation === 'set_campaign_conversion_goals') {
     const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)

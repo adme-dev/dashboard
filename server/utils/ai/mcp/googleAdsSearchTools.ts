@@ -23,6 +23,7 @@ export const GOOGLE_ADS_PLAN_SET_LOCATION_MATCH_MODE_TOOL = 'google_ads_plan_set
 export const GOOGLE_ADS_PLAN_SET_LANGUAGES_TOOL = 'google_ads_plan_set_languages'
 export const GOOGLE_ADS_PLAN_SET_AD_SCHEDULE_TOOL = 'google_ads_plan_set_ad_schedule'
 export const GOOGLE_ADS_PLAN_SET_DEVICES_TOOL = 'google_ads_plan_set_devices'
+export const GOOGLE_ADS_PLAN_SET_DEMOGRAPHICS_TOOL = 'google_ads_plan_set_demographics'
 export const GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL = 'google_ads_plan_set_campaign_conversion_goals'
 export const GOOGLE_ADS_PLAN_SET_CUSTOMER_GOAL_BIDDABILITY_TOOL = 'google_ads_plan_set_customer_goal_biddability'
 export const GOOGLE_ADS_PLAN_SET_CONVERSION_PRIMARY_STATE_TOOL = 'google_ads_plan_set_conversion_primary_state'
@@ -185,6 +186,25 @@ const SetDevicesSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Each device type may be specified only once' })
   }
 })
+const AgeRangeTypeSchema = z.enum([
+  'AGE_RANGE_18_24', 'AGE_RANGE_25_34', 'AGE_RANGE_35_44', 'AGE_RANGE_45_54',
+  'AGE_RANGE_55_64', 'AGE_RANGE_65_UP', 'AGE_RANGE_UNDETERMINED'
+])
+const GenderTypeSchema = z.enum(['FEMALE', 'MALE', 'UNDETERMINED'])
+const DemographicCriterionSchema = z.discriminatedUnion('dimension', [
+  z.strictObject({ dimension: z.literal('AGE_RANGE'), type: AgeRangeTypeSchema, excluded: z.boolean() }),
+  z.strictObject({ dimension: z.literal('GENDER'), type: GenderTypeSchema, excluded: z.boolean() })
+])
+const SetDemographicsSchema = z.strictObject({
+  ...CommonSchema,
+  adGroupResourceName: z.string().trim().min(1).max(1_000),
+  criteria: z.array(DemographicCriterionSchema).max(20)
+}).superRefine((value, refinement) => {
+  const keys = value.criteria.map(criterion => `${criterion.dimension}:${criterion.type}`)
+  if (new Set(keys).size !== keys.length) {
+    refinement.addIssue({ code: 'custom', message: 'Each demographic criterion may be specified only once' })
+  }
+})
 const ConversionCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -337,6 +357,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_SET_DEVICES_TOOL,
     'Plan device bid modifiers for existing campaign device criteria. Use 0 to opt out or 0.1 through 10 for bid adjustment.',
     SetDevicesSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_SET_DEMOGRAPHICS_TOOL,
+    'Plan an atomic replacement of explicit ad-group age-range and gender targeting or exclusions.',
+    SetDemographicsSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL,
@@ -664,6 +689,19 @@ export async function executeGoogleAdsSearchPlanningTool(
           campaignResourceName: args.campaignResourceName,
           devices: args.devices
         }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_SET_DEMOGRAPHICS_TOOL) {
+      const args = SetDemographicsSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'set_demographics',
+        resourceType: 'demographic',
+        arguments: { adGroupResourceName: args.adGroupResourceName, criteria: args.criteria }
       }
     } else if (name === GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL) {
       const args = SetCampaignConversionGoalsSchema.parse(rawArgs)

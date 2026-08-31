@@ -33,6 +33,7 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_set_languages',
       'google_ads_plan_set_ad_schedule',
       'google_ads_plan_set_devices',
+      'google_ads_plan_set_demographics',
       'google_ads_plan_set_campaign_conversion_goals',
       'google_ads_plan_set_customer_goal_biddability',
       'google_ads_plan_set_conversion_primary_state',
@@ -269,6 +270,25 @@ describe('Google Ads Search MCP planning descriptors', () => {
         devices: [
           { type: 'MOBILE', bidModifier: 0 },
           { type: 'DESKTOP', bidModifier: 1.2 }
+        ]
+      }
+    },
+    {
+      tool: 'google_ads_plan_set_demographics',
+      args: {
+        adGroupResourceName: 'customers/1234567890/adGroups/20',
+        criteria: [
+          { dimension: 'GENDER', type: 'MALE', excluded: false },
+          { dimension: 'AGE_RANGE', type: 'AGE_RANGE_18_24', excluded: true }
+        ]
+      },
+      operation: 'set_demographics',
+      resourceType: 'demographic',
+      expectedArguments: {
+        adGroupResourceName: 'customers/1234567890/adGroups/20',
+        criteria: [
+          { dimension: 'GENDER', type: 'MALE', excluded: false },
+          { dimension: 'AGE_RANGE', type: 'AGE_RANGE_18_24', excluded: true }
         ]
       }
     },
