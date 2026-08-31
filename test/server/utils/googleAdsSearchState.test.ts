@@ -114,6 +114,28 @@ describe('Search Google Ads current-state loader', () => {
     })).rejects.toThrow('already exists')
   })
 
+  it('loads the governed budget fields before planning a budget update', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ campaignBudget: {
+        resourceName: 'customers/1234567890/campaignBudgets/50',
+        name: 'Northern Search Budget',
+        amountMicros: '40000000',
+        deliveryMethod: 'STANDARD',
+        explicitlyShared: false
+      } }],
+      more: 0
+    })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('update_budget', {
+      resourceName: 'customers/1234567890/campaignBudgets/50',
+      dailyAmount: 55
+    }), auth, { query })).resolves.toMatchObject({
+      resourceName: 'customers/1234567890/campaignBudgets/50',
+      amountMicros: '40000000'
+    })
+    expect(query.mock.calls[0]?.[0].query).toContain('campaign_budget.id = 50')
+  })
+
   it('checks campaign names and the referenced budget before planning creation', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [], more: 0 })
@@ -527,5 +549,40 @@ describe('Search Google Ads persisted-plan state loading', () => {
       results: [{ resourceName: 'customers/1234567890/adGroupCriteria/70~90' }]
     })).resolves.toEqual(plan.desiredState)
     expect(query).toHaveBeenCalledTimes(2)
+  })
+
+  it('re-reads an updated budget from its immutable plan resource', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ campaignBudget: {
+        resourceName: 'customers/1234567890/campaignBudgets/50',
+        name: 'Northern Search Budget',
+        amountMicros: '55000000',
+        deliveryMethod: 'STANDARD',
+        explicitlyShared: false
+      } }],
+      more: 0
+    })
+    const plan = {
+      operation: 'update_budget',
+      resourceType: 'budget',
+      resourceName: 'customers/1234567890/campaignBudgets/50',
+      customerId: '1234567890',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      connectionId: '22222222-2222-4222-8222-222222222222',
+      actorId: '33333333-3333-4333-8333-333333333333',
+      source: 'mcp',
+      executionMode: 'proposal',
+      idempotencyKey: 'budget-update-1',
+      desiredState: {
+        resourceName: 'customers/1234567890/campaignBudgets/50',
+        name: 'Northern Search Budget',
+        amountMicros: '55000000',
+        deliveryMethod: 'STANDARD',
+        explicitlyShared: false
+      },
+      providerOperations: [{ service: 'campaignBudgets' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query })).resolves.toEqual(plan.desiredState)
   })
 })

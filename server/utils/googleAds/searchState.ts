@@ -581,6 +581,18 @@ export async function loadSearchGoogleAdsCurrentState(
     ))
     return assertBudgetNameAvailable(context.customerId, args.name, auth, resolved)
   }
+  if (context.input.operation === 'update_budget') {
+    const args = z.object({ resourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation,
+      context.input.arguments
+    ))
+    return loadBudgetByResourceName(
+      context.customerId,
+      args.resourceName,
+      auth,
+      resolved
+    )
+  }
   if (context.input.operation === 'create_campaign') {
     const args = z.object({
       name: z.string(),
@@ -662,6 +674,15 @@ export async function loadSearchGoogleAdsPlanState(
     }
     const desired = z.object({ name: z.string() }).parse(plan.desiredState)
     return assertBudgetNameAvailable(plan.customerId, desired.name, auth, resolved)
+  }
+  if (plan.operation === 'update_budget') {
+    if (!plan.resourceName) throw new Error('Budget update plan has no resource name')
+    return loadBudgetByResourceName(
+      plan.customerId,
+      plan.resourceName,
+      auth,
+      resolved
+    )
   }
   if (plan.operation === 'create_campaign') {
     if (mutation) {

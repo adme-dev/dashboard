@@ -192,6 +192,34 @@ describe('Search Google Ads construction operations', () => {
     })
   })
 
+  it('updates only the daily budget amount while preserving read-back state', () => {
+    const resourceName = 'customers/1234567890/campaignBudgets/50'
+    const built = buildSearchGoogleAdsAction(context(
+      'update_budget',
+      'budget',
+      { resourceName, dailyAmount: 55 },
+      {
+        resourceName,
+        name: 'Northern Search Budget',
+        amountMicros: '40000000',
+        deliveryMethod: 'STANDARD',
+        explicitlyShared: false
+      }
+    ))
+
+    expect(built.desiredState).toEqual({
+      resourceName,
+      name: 'Northern Search Budget',
+      amountMicros: '55000000',
+      deliveryMethod: 'STANDARD',
+      explicitlyShared: false
+    })
+    expect(built.providerOperations[0]?.operations).toEqual([{
+      update: { resourceName, amountMicros: '55000000' },
+      updateMask: 'amount_micros'
+    }])
+  })
+
   it('creates Search campaigns paused with no Display expansion', () => {
     const built = buildSearchGoogleAdsAction(context(
       'create_campaign',
