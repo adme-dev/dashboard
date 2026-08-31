@@ -55,6 +55,7 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_create_asset_group',
       'google_ads_plan_update_asset_group',
       'google_ads_plan_set_asset_group_assets',
+      'google_ads_plan_set_listing_groups',
       'google_ads_plan_create_custom_audience',
       'google_ads_plan_update_custom_audience',
       'google_ads_plan_archive_custom_audience',
@@ -631,6 +632,39 @@ describe('Google Ads Search MCP planning descriptors', () => {
           fieldType: 'HEADLINE',
           assetResourceName: 'customers/1234567890/assets/7001'
         }]
+      }
+    },
+    {
+      tool: 'google_ads_plan_set_listing_groups',
+      args: {
+        assetGroupResourceName: 'customers/1234567890/assetGroups/7001',
+        nodes: [
+          { key: 'root', type: 'SUBDIVISION' },
+          {
+            key: 'new', parentKey: 'root', type: 'UNIT_INCLUDED',
+            dimension: { kind: 'PRODUCT_CONDITION', value: 'NEW' }
+          },
+          {
+            key: 'other', parentKey: 'root', type: 'UNIT_EXCLUDED',
+            dimension: { kind: 'PRODUCT_CONDITION', other: true }
+          }
+        ]
+      },
+      operation: 'manage_listing_groups',
+      resourceType: 'listing_group',
+      expectedArguments: {
+        assetGroupResourceName: 'customers/1234567890/assetGroups/7001',
+        nodes: [
+          { key: 'root', type: 'SUBDIVISION' },
+          {
+            key: 'new', parentKey: 'root', type: 'UNIT_INCLUDED',
+            dimension: { kind: 'PRODUCT_CONDITION', value: 'NEW' }
+          },
+          {
+            key: 'other', parentKey: 'root', type: 'UNIT_EXCLUDED',
+            dimension: { kind: 'PRODUCT_CONDITION', other: true }
+          }
+        ]
       }
     },
     {

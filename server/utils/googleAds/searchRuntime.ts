@@ -19,6 +19,11 @@ import {
 } from '~~/server/utils/googleAds/actionStore'
 import type { GoogleAdsActionPlan } from '~~/server/utils/googleAds/contracts'
 import {
+  buildListingGroupProviderOperations,
+  ExistingListingGroupFilterSchema,
+  SemanticListingGroupNodeSchema
+} from '~~/server/utils/googleAds/listingGroups'
+import {
   googleAdsAutomaticActionClassForOperation,
   resolveGoogleAdsPolicy,
   type GoogleAdsAutomaticActionClass
@@ -355,7 +360,8 @@ const EXECUTABLE_SEARCH_SERVICES = {
   detach_asset: ['customerAssets', 'campaignAssets', 'adGroupAssets'],
   create_asset_group: ['googleAds'],
   update_asset_group: ['assetGroups'],
-  manage_asset_group_assets: ['assetGroupAssets']
+  manage_asset_group_assets: ['assetGroupAssets'],
+  manage_listing_groups: ['googleAds']
 } as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -508,6 +514,35 @@ function isTypedAssetGroupMembership(plan: GoogleAdsActionPlan): boolean {
     && equalJson(mutation.operations, [...creates, ...removes]))
 }
 
+function isTypedListingGroupReplacement(plan: GoogleAdsActionPlan): boolean {
+  const desired = z.object({
+    assetGroupResourceName: z.string(),
+    nodes: z.array(SemanticListingGroupNodeSchema).min(1).max(1_000)
+  }).safeParse(plan.desiredState)
+  const current = z.object({
+    assetGroup: z.object({ resourceName: z.string() }),
+    filters: z.array(ExistingListingGroupFilterSchema)
+  }).safeParse(plan.currentState)
+  if (!desired.success || !current.success || plan.providerOperations.length !== 1
+    || current.data.assetGroup.resourceName !== desired.data.assetGroupResourceName) return false
+  let expected
+  try {
+    expected = buildListingGroupProviderOperations({
+      customerId: plan.customerId,
+      assetGroupResourceName: desired.data.assetGroupResourceName,
+      desiredNodes: desired.data.nodes,
+      existingFilters: current.data.filters
+    })
+  } catch {
+    return false
+  }
+  const mutation = plan.providerOperations[0]
+  return Boolean(mutation && mutation.service === 'googleAds'
+    && mutation.atomicity === 'interdependent'
+    && mutation.partialFailure === false
+    && equalJson(mutation.operations, expected))
+}
+
 export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): boolean {
   if (!isSearchGoogleAdsOperation(plan.operation) || plan.providerOperations.length === 0) return false
   const services = EXECUTABLE_SEARCH_SERVICES[
@@ -518,6 +553,7 @@ export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): bool
   if (plan.operation === 'create_asset_group') return isTypedAssetGroupCreateBundle(plan)
   if (plan.operation === 'update_asset_group') return isTypedAssetGroupUpdate(plan)
   if (plan.operation === 'manage_asset_group_assets') return isTypedAssetGroupMembership(plan)
+  if (plan.operation === 'manage_listing_groups') return isTypedListingGroupReplacement(plan)
   if (plan.operation === 'attach_asset'
     || plan.operation === 'archive_asset_link'
     || plan.operation === 'detach_asset') {

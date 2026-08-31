@@ -434,6 +434,46 @@ describe('Search Google Ads governed execution runtime', () => {
     } as GoogleAdsActionPlan)).toBe(false)
   })
 
+  it('accepts only the exact tenant-bound listing-group tree replacement', () => {
+    const assetGroupResourceName = 'customers/1234567890/assetGroups/7001'
+    const root = 'customers/1234567890/assetGroupListingGroupFilters/7001~-1'
+    const plan = {
+      operation: 'manage_listing_groups',
+      customerId: '1234567890',
+      currentState: {
+        assetGroup: { resourceName: assetGroupResourceName },
+        filters: []
+      },
+      desiredState: {
+        assetGroupResourceName,
+        nodes: [{ path: [], type: 'UNIT_INCLUDED' }]
+      },
+      providerOperations: [{
+        service: 'googleAds',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ mutate: { assetGroupListingGroupFilterOperation: { create: {
+          resourceName: root,
+          assetGroup: assetGroupResourceName,
+          type: 'UNIT_INCLUDED',
+          listingSource: 'SHOPPING'
+        } } } }]
+      }]
+    } as GoogleAdsActionPlan
+    expect(isExecutableSearchGoogleAdsPlan(plan)).toBe(true)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      providerOperations: [{ service: 'assetGroupListingGroupFilters', operations: [] }]
+    } as GoogleAdsActionPlan)).toBe(false)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      providerOperations: [{
+        service: 'googleAds',
+        operations: [{ mutate: { campaignOperation: { remove: assetGroupResourceName } } }]
+      }]
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
   it.each([
     ['customer', 'customerAssets'],
     ['campaign', 'campaignAssets'],

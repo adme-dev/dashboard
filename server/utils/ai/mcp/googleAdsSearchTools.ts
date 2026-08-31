@@ -7,6 +7,7 @@ import {
   planSearchGoogleAdsControlAction,
   type GoogleAdsControlFlags
 } from '~~/server/utils/googleAds/searchRuntime'
+import { ListingGroupNodesInputSchema } from '~~/server/utils/googleAds/listingGroups'
 
 export const GOOGLE_ADS_PLAN_PAUSE_TOOL = 'google_ads_plan_pause'
 export const GOOGLE_ADS_PLAN_ARCHIVE_TOOL = 'google_ads_plan_archive'
@@ -45,6 +46,7 @@ export const GOOGLE_ADS_PLAN_DETACH_ASSET_TOOL = 'google_ads_plan_detach_asset'
 export const GOOGLE_ADS_PLAN_CREATE_ASSET_GROUP_TOOL = 'google_ads_plan_create_asset_group'
 export const GOOGLE_ADS_PLAN_UPDATE_ASSET_GROUP_TOOL = 'google_ads_plan_update_asset_group'
 export const GOOGLE_ADS_PLAN_SET_ASSET_GROUP_ASSETS_TOOL = 'google_ads_plan_set_asset_group_assets'
+export const GOOGLE_ADS_PLAN_SET_LISTING_GROUPS_TOOL = 'google_ads_plan_set_listing_groups'
 export const GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_create_custom_audience'
 export const GOOGLE_ADS_PLAN_UPDATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_update_custom_audience'
 export const GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_archive_custom_audience'
@@ -596,6 +598,11 @@ const SetAssetGroupAssetsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Asset-group links must be unique' })
   }
 })
+const SetListingGroupsSchema = z.strictObject({
+  ...CommonSchema,
+  assetGroupResourceName: z.string().trim().min(1).max(1_000),
+  nodes: ListingGroupNodesInputSchema
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -790,6 +797,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_SET_ASSET_GROUP_ASSETS_TOOL,
     'Plan an atomic exact replacement of Performance Max asset-group membership. Minimum asset requirements and brand-guideline placement are validated before proposal.',
     SetAssetGroupAssetsSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_SET_LISTING_GROUPS_TOOL,
+    'Plan an atomic exact replacement of a Performance Max retail product listing-group tree. Subdivisions require one explicit branch and exactly one Other branch.',
+    SetListingGroupsSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL,
@@ -1499,6 +1511,22 @@ export async function executeGoogleAdsSearchPlanningTool(
         arguments: {
           assetGroupResourceName: args.assetGroupResourceName,
           assets: args.assets
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_SET_LISTING_GROUPS_TOOL) {
+      const args = SetListingGroupsSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'manage_listing_groups',
+        resourceType: 'listing_group',
+        arguments: {
+          assetGroupResourceName: args.assetGroupResourceName,
+          nodes: args.nodes
         }
       }
     } else if (name === GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL) {

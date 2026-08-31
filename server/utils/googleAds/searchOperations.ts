@@ -4,6 +4,13 @@ import type {
   BuiltGoogleAdsAction
 } from '~~/server/utils/googleAds/actionPlanner'
 import type { GoogleAdsOperationType } from '~~/server/utils/googleAds/contracts'
+import {
+  buildListingGroupProviderOperations,
+  ExistingListingGroupFilterSchema,
+  ListingGroupNodesInputSchema,
+  normalizeExistingListingGroupFilters,
+  validateAndNormalizeListingGroupNodes
+} from '~~/server/utils/googleAds/listingGroups'
 
 const ResourceNameArgumentsSchema = z.strictObject({
   resourceName: z.string().trim().min(1).max(1_000),
@@ -413,6 +420,10 @@ const SetAssetGroupAssetsArgumentsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Asset-group links must be unique' })
   }
 })
+const SetListingGroupsArgumentsSchema = z.strictObject({
+  assetGroupResourceName: z.string().trim().min(1).max(1_000),
+  nodes: ListingGroupNodesInputSchema
+})
 const PmaxAssetStateSchema = z.object({
   resourceName: z.string(),
   type: z.enum(['TEXT', 'IMAGE', 'YOUTUBE_VIDEO', 'CALL_TO_ACTION', 'MEDIA_BUNDLE']),
@@ -454,6 +465,18 @@ const AssetGroupMembershipCurrentStateSchema = z.object({
     merchantId: z.string().nullable()
   }),
   assets: z.array(PmaxAssetStateSchema)
+})
+const ListingGroupCurrentStateSchema = z.object({
+  assetGroup: z.object({
+    resourceName: z.string(),
+    campaign: z.string(),
+    status: z.enum(['ENABLED', 'PAUSED', 'REMOVED'])
+  }),
+  campaign: z.object({
+    advertisingChannelType: z.string(),
+    merchantId: z.string().nullable()
+  }),
+  filters: z.array(ExistingListingGroupFilterSchema)
 })
 const AssetLinkStateSchema = z.object({
   resourceName: z.string(),
@@ -662,6 +685,7 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'create_asset_group',
       'update_asset_group',
       'manage_asset_group_assets',
+      'manage_listing_groups',
       'set_campaign_conversion_goals',
       'set_conversion_goal',
       'set_customer_goal_biddability',
@@ -772,6 +796,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'create_asset_group') return CreateAssetGroupArgumentsSchema.parse(argumentsValue)
   if (operation === 'update_asset_group') return UpdateAssetGroupArgumentsSchema.parse(argumentsValue)
   if (operation === 'manage_asset_group_assets') return SetAssetGroupAssetsArgumentsSchema.parse(argumentsValue)
+  if (operation === 'manage_listing_groups') return SetListingGroupsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_goal') return SetCampaignGoalConfigArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_customer_goal_biddability') return SetCustomerGoalBiddabilityArgumentsSchema.parse(argumentsValue)
@@ -2576,6 +2601,43 @@ function buildAssetGroupMembershipAction(context: BuildGoogleAdsActionContext): 
   }
 }
 
+function buildListingGroupAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'listing_group') {
+    throw new Error('Listing-group replacement requires resource type listing_group')
+  }
+  const args = SetListingGroupsArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.assetGroupResourceName, context.customerId, 'assetGroups')
+  const current = ListingGroupCurrentStateSchema.parse(context.currentState)
+  if (current.assetGroup.resourceName !== args.assetGroupResourceName) {
+    throw new Error('Listing-group state does not match the requested asset group')
+  }
+  assertResourceName(current.assetGroup.campaign, context.customerId, 'campaigns')
+  if (current.assetGroup.status === 'REMOVED') throw new Error('A removed asset group cannot be updated')
+  if (current.campaign.advertisingChannelType !== 'PERFORMANCE_MAX' || !current.campaign.merchantId) {
+    throw new Error('Listing groups are available only for Performance Max retail campaigns')
+  }
+  const desiredNodes = validateAndNormalizeListingGroupNodes(args.nodes)
+  const currentNodes = normalizeExistingListingGroupFilters(current.filters)
+  if (JSON.stringify(currentNodes) === JSON.stringify(desiredNodes)) {
+    throw new Error('The retail listing-group tree already matches the requested tree')
+  }
+  return {
+    resourceName: args.assetGroupResourceName,
+    desiredState: { assetGroupResourceName: args.assetGroupResourceName, nodes: desiredNodes },
+    providerOperations: [{
+      service: 'googleAds',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: buildListingGroupProviderOperations({
+        customerId: context.customerId,
+        assetGroupResourceName: args.assetGroupResourceName,
+        desiredNodes,
+        existingFilters: current.filters
+      })
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -2621,5 +2683,6 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'create_asset_group') return buildCreateAssetGroupAction(context)
   if (context.input.operation === 'update_asset_group') return buildUpdateAssetGroupAction(context)
   if (context.input.operation === 'manage_asset_group_assets') return buildAssetGroupMembershipAction(context)
+  if (context.input.operation === 'manage_listing_groups') return buildListingGroupAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }

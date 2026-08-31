@@ -1934,4 +1934,120 @@ describe('Search Google Ads construction operations', () => {
       assetGroupResourceName, assets: []
     }, { ...current, campaign: { ...current.campaign, merchantId: '12345' } }))).toThrow('already match')
   })
+
+  it('atomically replaces a complete retail listing-group tree', () => {
+    const assetGroupResourceName = 'customers/1234567890/assetGroups/7001'
+    const current = {
+      assetGroup: {
+        resourceName: assetGroupResourceName,
+        campaign: 'customers/1234567890/campaigns/60',
+        status: 'PAUSED'
+      },
+      campaign: { advertisingChannelType: 'PERFORMANCE_MAX', merchantId: '12345' },
+      filters: [{
+        resourceName: 'customers/1234567890/assetGroupListingGroupFilters/7001~11',
+        assetGroup: assetGroupResourceName,
+        type: 'UNIT_INCLUDED',
+        listingSource: 'SHOPPING'
+      }]
+    }
+    const built = buildSearchGoogleAdsAction(context('manage_listing_groups', 'listing_group', {
+      assetGroupResourceName,
+      nodes: [
+        { key: 'root', type: 'SUBDIVISION' },
+        {
+          key: 'new', parentKey: 'root', type: 'UNIT_INCLUDED',
+          dimension: { kind: 'PRODUCT_CONDITION', value: 'NEW' }
+        },
+        {
+          key: 'other', parentKey: 'root', type: 'UNIT_EXCLUDED',
+          dimension: { kind: 'PRODUCT_CONDITION', other: true }
+        }
+      ]
+    }, current))
+
+    expect(built.resourceName).toBe(assetGroupResourceName)
+    expect(built.desiredState).toEqual({
+      assetGroupResourceName,
+      nodes: [
+        { path: [], type: 'SUBDIVISION' },
+        {
+          path: [{ kind: 'PRODUCT_CONDITION', value: 'NEW' }],
+          type: 'UNIT_INCLUDED'
+        },
+        {
+          path: [{ kind: 'PRODUCT_CONDITION', other: true }],
+          type: 'UNIT_EXCLUDED'
+        }
+      ]
+    })
+    expect(built.providerOperations).toEqual([{
+      service: 'googleAds',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        { mutate: { assetGroupListingGroupFilterOperation: {
+          remove: 'customers/1234567890/assetGroupListingGroupFilters/7001~11'
+        } } },
+        { mutate: { assetGroupListingGroupFilterOperation: { create: {
+          resourceName: 'customers/1234567890/assetGroupListingGroupFilters/7001~-1',
+          assetGroup: assetGroupResourceName,
+          type: 'SUBDIVISION',
+          listingSource: 'SHOPPING'
+        } } } },
+        { mutate: { assetGroupListingGroupFilterOperation: { create: {
+          resourceName: 'customers/1234567890/assetGroupListingGroupFilters/7001~-2',
+          assetGroup: assetGroupResourceName,
+          parentListingGroupFilter: 'customers/1234567890/assetGroupListingGroupFilters/7001~-1',
+          type: 'UNIT_INCLUDED',
+          listingSource: 'SHOPPING',
+          caseValue: { productCondition: { condition: 'NEW' } }
+        } } } },
+        { mutate: { assetGroupListingGroupFilterOperation: { create: {
+          resourceName: 'customers/1234567890/assetGroupListingGroupFilters/7001~-3',
+          assetGroup: assetGroupResourceName,
+          parentListingGroupFilter: 'customers/1234567890/assetGroupListingGroupFilters/7001~-1',
+          type: 'UNIT_EXCLUDED',
+          listingSource: 'SHOPPING',
+          caseValue: { productCondition: {} }
+        } } } }
+      ]
+    }])
+  })
+
+  it('rejects malformed, incomplete, non-retail, and unchanged listing-group trees', () => {
+    const assetGroupResourceName = 'customers/1234567890/assetGroups/7001'
+    const base = {
+      assetGroup: {
+        resourceName: assetGroupResourceName,
+        campaign: 'customers/1234567890/campaigns/60',
+        status: 'PAUSED'
+      },
+      campaign: { advertisingChannelType: 'PERFORMANCE_MAX', merchantId: '12345' },
+      filters: []
+    }
+    const withoutOther = [
+      { key: 'root', type: 'SUBDIVISION' },
+      {
+        key: 'new', parentKey: 'root', type: 'UNIT_INCLUDED',
+        dimension: { kind: 'PRODUCT_CONDITION', value: 'NEW' }
+      }
+    ]
+    expect(() => buildSearchGoogleAdsAction(context('manage_listing_groups', 'listing_group', {
+      assetGroupResourceName, nodes: withoutOther
+    }, base))).toThrow('Other')
+    expect(() => buildSearchGoogleAdsAction(context('manage_listing_groups', 'listing_group', {
+      assetGroupResourceName,
+      nodes: [{ key: 'root', type: 'UNIT_INCLUDED' }]
+    }, { ...base, campaign: { ...base.campaign, merchantId: null } }))).toThrow('retail')
+    expect(() => buildSearchGoogleAdsAction(context('manage_listing_groups', 'listing_group', {
+      assetGroupResourceName,
+      nodes: [{ key: 'root', type: 'UNIT_INCLUDED' }]
+    }, { ...base, filters: [{
+      resourceName: 'customers/1234567890/assetGroupListingGroupFilters/7001~11',
+      assetGroup: assetGroupResourceName,
+      type: 'UNIT_INCLUDED',
+      listingSource: 'SHOPPING'
+    }] }))).toThrow('already matches')
+  })
 })

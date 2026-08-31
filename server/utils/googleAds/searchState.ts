@@ -12,6 +12,10 @@ import {
   type ExecuteGoogleAdsQueryInput
 } from '~~/server/utils/googleAds/query'
 import { parseSearchGoogleAdsArguments } from '~~/server/utils/googleAds/searchOperations'
+import {
+  ExistingListingGroupFilterSchema,
+  normalizeExistingListingGroupFilters
+} from '~~/server/utils/googleAds/listingGroups'
 
 interface SearchStateDependencies {
   query(input: ExecuteGoogleAdsQueryInput): Promise<{ rows: unknown[], more: number }>
@@ -944,6 +948,93 @@ async function loadAssetGroupMembershipState(
     },
     campaign: validation.campaign,
     assets: validation.assets
+  }
+}
+
+async function loadListingGroupFilters(
+  customerId: string,
+  assetGroupResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<z.infer<typeof ExistingListingGroupFilterSchema>[]> {
+  assertCustomerResourceName(assetGroupResourceName, customerId, 'assetGroups')
+  const [assetGroupId] = resourceIds(assetGroupResourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1_000,
+    query: `SELECT asset_group_listing_group_filter.resource_name,
+  asset_group_listing_group_filter.asset_group,
+  asset_group_listing_group_filter.parent_listing_group_filter,
+  asset_group_listing_group_filter.type,
+  asset_group_listing_group_filter.listing_source,
+  asset_group_listing_group_filter.case_value.product_brand.value,
+  asset_group_listing_group_filter.case_value.product_category.level,
+  asset_group_listing_group_filter.case_value.product_category.category_id,
+  asset_group_listing_group_filter.case_value.product_channel.channel,
+  asset_group_listing_group_filter.case_value.product_condition.condition,
+  asset_group_listing_group_filter.case_value.product_custom_attribute.index,
+  asset_group_listing_group_filter.case_value.product_custom_attribute.value,
+  asset_group_listing_group_filter.case_value.product_item_id.value,
+  asset_group_listing_group_filter.case_value.product_type.level,
+  asset_group_listing_group_filter.case_value.product_type.value
+FROM asset_group_listing_group_filter
+WHERE asset_group.id = ${assetGroupId}`
+  })
+  if (result.more > 0) throw new Error('The listing-group tree exceeds the supported 1,000-node safety limit')
+  return result.rows.map((row) => {
+    const value = row && typeof row === 'object'
+      ? (row as Record<string, unknown>).assetGroupListingGroupFilter
+      : undefined
+    if (!value) throw new Error('Google Ads returned an invalid listing-group filter')
+    const parsed = ExistingListingGroupFilterSchema.parse(value)
+    assertCustomerResourceName(parsed.assetGroup, customerId, 'assetGroups')
+    if (parsed.assetGroup !== assetGroupResourceName) {
+      throw new Error('Google Ads returned a listing group for a different asset group')
+    }
+    if (!new RegExp(`^customers/${customerId}/assetGroupListingGroupFilters/${assetGroupId}~\\d+$`).test(parsed.resourceName)) {
+      throw new Error('Google Ads returned a cross-customer listing-group resource')
+    }
+    if (parsed.parentListingGroupFilter
+      && !new RegExp(`^customers/${customerId}/assetGroupListingGroupFilters/${assetGroupId}~\\d+$`).test(parsed.parentListingGroupFilter)) {
+      throw new Error('Google Ads returned a cross-customer listing-group parent')
+    }
+    return parsed
+  })
+}
+
+async function loadListingGroupState(
+  customerId: string,
+  assetGroupResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<unknown> {
+  const assetGroup = z.object({
+    resourceName: z.string(),
+    campaign: z.string(),
+    name: z.string(),
+    status: z.enum(['ENABLED', 'PAUSED', 'REMOVED'])
+  }).parse(await loadAssetGroup(customerId, assetGroupResourceName, auth, dependencies))
+  const validation = z.object({
+    campaign: z.object({
+      advertisingChannelType: z.string(),
+      merchantId: z.string().nullable()
+    })
+  }).parse(await loadCreateAssetGroupCurrentState(customerId, {
+    campaignResourceName: assetGroup.campaign,
+    name: assetGroup.name,
+    assets: []
+  }, auth, dependencies))
+  return {
+    assetGroup: {
+      resourceName: assetGroup.resourceName,
+      campaign: assetGroup.campaign,
+      status: assetGroup.status
+    },
+    campaign: validation.campaign,
+    filters: await loadListingGroupFilters(
+      customerId, assetGroupResourceName, auth, dependencies
+    )
   }
 }
 
@@ -2225,6 +2316,14 @@ export async function loadSearchGoogleAdsCurrentState(
       context.customerId, args.assetGroupResourceName, args.assets, auth, resolved
     )
   }
+  if (context.input.operation === 'manage_listing_groups') {
+    const args = z.object({ assetGroupResourceName: z.string() }).parse(
+      parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments)
+    )
+    return loadListingGroupState(
+      context.customerId, args.assetGroupResourceName, auth, resolved
+    )
+  }
   if (context.input.operation === 'update_budget') {
     const args = z.object({ resourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation,
@@ -2553,6 +2652,21 @@ export async function loadSearchGoogleAdsPlanState(
       plan.customerId, desired.assetGroupResourceName, auth, resolved
     ))
     return { assetGroupResourceName: state.resourceName, assets: state.assets }
+  }
+  if (plan.operation === 'manage_listing_groups') {
+    const desired = z.object({ assetGroupResourceName: z.string() }).parse(plan.desiredState)
+    if (!mutation) {
+      return loadListingGroupState(
+        plan.customerId, desired.assetGroupResourceName, auth, resolved
+      )
+    }
+    const filters = await loadListingGroupFilters(
+      plan.customerId, desired.assetGroupResourceName, auth, resolved
+    )
+    return {
+      assetGroupResourceName: desired.assetGroupResourceName,
+      nodes: normalizeExistingListingGroupFilters(filters)
+    }
   }
   if (plan.operation === 'attach_asset' || plan.operation === 'archive_asset_link' || plan.operation === 'detach_asset') {
     const desired = AssetLinkStateSchema.parse(plan.desiredState)

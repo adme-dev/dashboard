@@ -1630,6 +1630,68 @@ describe('Search Google Ads persisted-plan state loading', () => {
     })
   })
 
+  it('loads and semantically re-reads a retail listing-group tree', async () => {
+    const assetGroupResourceName = 'customers/1234567890/assetGroups/7001'
+    const campaignResourceName = 'customers/1234567890/campaigns/60'
+    const root = 'customers/1234567890/assetGroupListingGroupFilters/7001~11'
+    const child = 'customers/1234567890/assetGroupListingGroupFilters/7001~12'
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ assetGroup: {
+        resourceName: assetGroupResourceName,
+        campaign: campaignResourceName,
+        name: 'All products', finalUrls: ['https://example.com'], finalMobileUrls: [], status: 'PAUSED'
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ campaign: {
+        resourceName: campaignResourceName,
+        advertisingChannelType: 'PERFORMANCE_MAX',
+        brandGuidelinesEnabled: true,
+        shoppingSetting: { merchantId: '12345' }
+      } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [], more: 0 })
+      .mockResolvedValueOnce({ rows: [
+        { assetGroupListingGroupFilter: {
+          resourceName: root, assetGroup: assetGroupResourceName,
+          type: 'SUBDIVISION', listingSource: 'SHOPPING'
+        } },
+        { assetGroupListingGroupFilter: {
+          resourceName: child, assetGroup: assetGroupResourceName,
+          parentListingGroupFilter: root, type: 'UNIT_INCLUDED', listingSource: 'SHOPPING',
+          caseValue: { productBrand: { value: 'GAC' } }
+        } }
+      ], more: 0 })
+
+    const state = await loadSearchGoogleAdsCurrentState(context('manage_listing_groups', {
+      assetGroupResourceName,
+      nodes: [{ key: 'root', type: 'UNIT_INCLUDED' }]
+    }), auth, { query })
+    expect(state).toMatchObject({
+      assetGroup: { resourceName: assetGroupResourceName },
+      campaign: { merchantId: '12345' },
+      filters: [
+        { resourceName: root, type: 'SUBDIVISION' },
+        { resourceName: child, parentListingGroupFilter: root, type: 'UNIT_INCLUDED' }
+      ]
+    })
+    expect(query.mock.calls.at(-1)?.[0].query).toContain('asset_group_listing_group_filter.case_value.product_brand.value')
+
+    const readback = vi.fn().mockResolvedValue({
+      rows: [{ assetGroupListingGroupFilter: {
+        resourceName: root, assetGroup: assetGroupResourceName,
+        type: 'UNIT_INCLUDED', listingSource: 'SHOPPING'
+      } }],
+      more: 0
+    })
+    await expect(loadSearchGoogleAdsPlanState({
+      operation: 'manage_listing_groups',
+      customerId: '1234567890',
+      desiredState: { assetGroupResourceName, nodes: [{ path: [], type: 'UNIT_INCLUDED' }] }
+    } as GoogleAdsActionPlan, auth, { query: readback }, { results: [] })).resolves.toEqual({
+      assetGroupResourceName,
+      nodes: [{ path: [], type: 'UNIT_INCLUDED' }]
+    })
+  })
+
   it('reads back reversible asset-link archive and explicit detachment states', async () => {
     const resourceName = 'customers/1234567890/campaignAssets/60~9201~CALL'
     const common = {
