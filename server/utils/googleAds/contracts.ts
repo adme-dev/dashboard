@@ -88,6 +88,7 @@ export const GoogleAdsOperationTypeSchema = z.enum([
   'set_content_exclusions',
   'set_audience_associations',
   'manage_custom_audience',
+  'archive_custom_audience',
   'set_pmax_signals',
   'set_search_themes',
   'create_asset',

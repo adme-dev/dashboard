@@ -318,6 +318,8 @@ const EXECUTABLE_SEARCH_SERVICES = {
   set_placements: ['campaignCriteria', 'adGroupCriteria'],
   set_content_exclusions: ['campaignCriteria'],
   set_audience_associations: ['adGroups', 'adGroupCriteria'],
+  manage_custom_audience: ['customAudiences'],
+  archive_custom_audience: ['customAudiences'],
   set_campaign_conversion_goals: ['campaignConversionGoals'],
   set_customer_goal_biddability: ['customerConversionGoals'],
   set_conversion_primary_state: ['conversionActions'],

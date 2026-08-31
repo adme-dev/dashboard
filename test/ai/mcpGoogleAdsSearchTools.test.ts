@@ -41,7 +41,10 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_set_customer_goal_biddability',
       'google_ads_plan_set_conversion_primary_state',
       'google_ads_plan_create_conversion_action',
-      'google_ads_plan_update_conversion_action'
+      'google_ads_plan_update_conversion_action',
+      'google_ads_plan_create_custom_audience',
+      'google_ads_plan_update_custom_audience',
+      'google_ads_plan_archive_custom_audience'
     ])
     const serialized = JSON.stringify(googleAdsSearchPlanningTools)
     expect(serialized).not.toMatch(/"(?:query|operations|url|accessToken|developerToken)"/)
@@ -422,6 +425,47 @@ describe('Google Ads Search MCP planning descriptors', () => {
         category: 'QUALIFIED_LEAD',
         status: 'HIDDEN'
       }
+    },
+    {
+      tool: 'google_ads_plan_create_custom_audience',
+      args: {
+        name: 'Northern GAC intent',
+        description: 'People researching GAC vehicles',
+        type: 'SEARCH',
+        members: [{ type: 'KEYWORD', value: 'GAC SUV' }]
+      },
+      operation: 'manage_custom_audience',
+      resourceType: 'custom_audience',
+      expectedArguments: {
+        action: 'create',
+        name: 'Northern GAC intent',
+        description: 'People researching GAC vehicles',
+        type: 'SEARCH',
+        members: [{ type: 'KEYWORD', value: 'GAC SUV' }]
+      }
+    },
+    {
+      tool: 'google_ads_plan_update_custom_audience',
+      args: {
+        resourceName: 'customers/1234567890/customAudiences/8001',
+        description: 'Updated intent audience',
+        members: [{ type: 'URL', value: 'https://example.com/gac' }]
+      },
+      operation: 'manage_custom_audience',
+      resourceType: 'custom_audience',
+      expectedArguments: {
+        action: 'update',
+        resourceName: 'customers/1234567890/customAudiences/8001',
+        description: 'Updated intent audience',
+        members: [{ type: 'URL', value: 'https://example.com/gac' }]
+      }
+    },
+    {
+      tool: 'google_ads_plan_archive_custom_audience',
+      args: { resourceName: 'customers/1234567890/customAudiences/8001' },
+      operation: 'archive_custom_audience',
+      resourceType: 'custom_audience',
+      expectedArguments: { resourceName: 'customers/1234567890/customAudiences/8001' }
     }
   ])('maps $tool to a typed proposal-only plan', async ({
     tool,

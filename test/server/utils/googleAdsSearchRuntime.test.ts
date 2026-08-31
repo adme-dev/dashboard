@@ -51,6 +51,20 @@ function dependencies(overrides: Record<string, unknown> = {}) {
 }
 
 describe('Search Google Ads governed planning runtime', () => {
+  it.each([
+    ['manage_custom_audience', 'customAudiences'],
+    ['archive_custom_audience', 'customAudiences']
+  ] as const)('allows governed %s plans only through %s', (operation, service) => {
+    expect(isExecutableSearchGoogleAdsPlan({
+      operation,
+      providerOperations: [{ service, operations: [{ create: {} }] }]
+    } as GoogleAdsActionPlan)).toBe(true)
+    expect(isExecutableSearchGoogleAdsPlan({
+      operation,
+      providerOperations: [{ service: 'campaigns', operations: [{ create: {} }] }]
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
   it('plans a manual pause as a confirmation without requiring an automation grant', async () => {
     const deps = dependencies()
     const plan = await planSearchGoogleAdsControlAction({

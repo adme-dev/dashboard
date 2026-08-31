@@ -57,6 +57,7 @@ const RICH_CONFIRM_OPERATIONS = new Set<GoogleAdsOperationType>([
   'set_conversion_primary_state',
   'set_campaign_conversion_goals',
   'set_audience_associations',
+  'manage_custom_audience',
   'set_conversion_goal',
   'set_customer_goal_biddability'
 ])
@@ -67,6 +68,7 @@ const DESTRUCTIVE_OPERATIONS = new Set<GoogleAdsOperationType>([
   'remove_ad',
   'remove_keyword',
   'remove_negative_keyword',
+  'archive_custom_audience',
   'remove_asset'
 ])
 

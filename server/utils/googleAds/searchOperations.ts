@@ -211,6 +211,67 @@ const SetAudienceAssociationsArgumentsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Audience resource names must be unique' })
   }
 })
+const CustomAudienceMemberTypeSchema = z.enum(['KEYWORD', 'URL', 'APP', 'PLACE_CATEGORY'])
+const CustomAudienceMemberSchema = z.strictObject({
+  type: CustomAudienceMemberTypeSchema,
+  value: z.string().trim().min(1).max(2_048)
+}).superRefine((member, refinement) => {
+  if (member.type === 'KEYWORD') {
+    if (member.value.length > 80 || member.value.split(/\s+/u).length > 10) {
+      refinement.addIssue({ code: 'custom', message: 'Custom-audience keywords may contain at most 10 words and 80 characters' })
+    }
+    return
+  }
+  if (member.type === 'URL') {
+    try {
+      const protocol = new URL(member.value).protocol
+      if (protocol !== 'http:' && protocol !== 'https:') throw new Error('unsupported protocol')
+    } catch {
+      refinement.addIssue({ code: 'custom', message: 'Custom-audience URLs must be valid HTTP or HTTPS URLs' })
+    }
+    return
+  }
+  if (member.type === 'APP' && (
+    member.value.length > 255
+    || !/^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+$/.test(member.value)
+  )) {
+    refinement.addIssue({ code: 'custom', message: 'Custom-audience apps must be Android package names' })
+  }
+  if (member.type === 'PLACE_CATEGORY' && !/^\d{1,20}$/.test(member.value)) {
+    refinement.addIssue({ code: 'custom', message: 'Custom-audience place categories must be numeric IDs' })
+  }
+})
+const CustomAudienceMembersSchema = z.array(CustomAudienceMemberSchema).min(1).max(1_000)
+  .superRefine((members, refinement) => {
+    const keys = members.map(member => `${member.type}:${member.value}`)
+    if (new Set(keys).size !== keys.length) {
+      refinement.addIssue({ code: 'custom', message: 'Custom-audience members must be unique' })
+    }
+  })
+const CreateCustomAudienceArgumentsSchema = z.strictObject({
+  action: z.literal('create'),
+  name: z.string().trim().min(1).max(255),
+  description: z.string().trim().max(10_000).default(''),
+  type: z.enum(['AUTO', 'SEARCH']),
+  members: CustomAudienceMembersSchema
+})
+const UpdateCustomAudienceArgumentsSchema = z.strictObject({
+  action: z.literal('update'),
+  resourceName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(255).optional(),
+  description: z.string().trim().max(10_000).optional(),
+  type: z.enum(['AUTO', 'SEARCH']).optional(),
+  members: CustomAudienceMembersSchema.optional()
+}).superRefine((value, refinement) => {
+  if (value.name === undefined && value.description === undefined
+    && value.type === undefined && value.members === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'At least one mutable custom-audience field is required' })
+  }
+})
+const ManageCustomAudienceArgumentsSchema = z.union([
+  CreateCustomAudienceArgumentsSchema,
+  UpdateCustomAudienceArgumentsSchema
+])
 const ConversionCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -287,6 +348,14 @@ const MutableConversionActionStateSchema = z.object({
   clickThroughLookbackWindowDays: z.string().optional(),
   viewThroughLookbackWindowDays: z.string().optional()
 })
+const MutableCustomAudienceStateSchema = z.object({
+  resourceName: z.string(),
+  name: z.string(),
+  description: z.string(),
+  status: z.enum(['ENABLED', 'REMOVED']),
+  type: z.enum(['AUTO', 'SEARCH', 'INTEREST', 'PURCHASE_INTENT']),
+  members: z.array(CustomAudienceMemberSchema)
+})
 
 const STATUS_OPERATIONS = {
   pause_campaign: { resourceType: 'campaign', segment: 'campaigns', service: 'campaigns', status: 'PAUSED' },
@@ -331,6 +400,8 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'set_placements',
       'set_content_exclusions',
       'set_audience_associations',
+      'manage_custom_audience',
+      'archive_custom_audience',
       'set_campaign_conversion_goals',
       'set_customer_goal_biddability',
       'set_conversion_primary_state',
@@ -422,6 +493,8 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_placements') return SetPlacementsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_content_exclusions') return SetContentExclusionsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_audience_associations') return SetAudienceAssociationsArgumentsSchema.parse(argumentsValue)
+  if (operation === 'manage_custom_audience') return ManageCustomAudienceArgumentsSchema.parse(argumentsValue)
+  if (operation === 'archive_custom_audience') return ResourceNameArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_customer_goal_biddability') return SetCustomerGoalBiddabilityArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_primary_state') return SetConversionPrimaryStateArgumentsSchema.parse(argumentsValue)
@@ -1329,6 +1402,109 @@ function buildUpdateConversionAction(context: BuildGoogleAdsActionContext): Buil
   }
 }
 
+function normalizeCustomAudienceMembers(
+  members: z.infer<typeof CustomAudienceMembersSchema>
+): z.infer<typeof CustomAudienceMembersSchema> {
+  return [...members].sort((left, right) => {
+    const typeOrder = left.type.localeCompare(right.type, 'en-AU')
+    return typeOrder || left.value.localeCompare(right.value, 'en-AU')
+  })
+}
+
+function customAudienceProviderMembers(members: z.infer<typeof CustomAudienceMembersSchema>) {
+  return normalizeCustomAudienceMembers(members).map((member) => {
+    if (member.type === 'KEYWORD') return { memberType: member.type, keyword: member.value }
+    if (member.type === 'URL') return { memberType: member.type, url: member.value }
+    if (member.type === 'APP') return { memberType: member.type, app: member.value }
+    return { memberType: member.type, placeCategory: member.value }
+  })
+}
+
+function buildManageCustomAudienceAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'custom_audience') {
+    throw new Error('Custom-audience management requires resource type custom_audience')
+  }
+  const args = ManageCustomAudienceArgumentsSchema.parse(context.input.arguments)
+  if (args.action === 'create') {
+    z.object({ exists: z.literal(false) }).parse(context.currentState)
+    const members = normalizeCustomAudienceMembers(args.members)
+    const create = {
+      name: args.name,
+      description: args.description,
+      type: args.type,
+      members: customAudienceProviderMembers(members)
+    }
+    return {
+      resourceName: null,
+      desiredState: { ...create, status: 'ENABLED', members },
+      providerOperations: [{
+        service: 'customAudiences',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ create }]
+      }]
+    }
+  }
+
+  assertResourceName(args.resourceName, context.customerId, 'customAudiences')
+  const current = MutableCustomAudienceStateSchema.parse(context.currentState)
+  if (current.resourceName !== args.resourceName) throw new Error('Custom-audience state does not match the selected resource')
+  if (current.status === 'REMOVED') throw new Error('Removed custom audiences cannot be updated')
+  const update: Record<string, unknown> = { resourceName: args.resourceName }
+  const desiredState: Record<string, unknown> = { resourceName: args.resourceName }
+  const masks: string[] = []
+  const add = (field: string, value: unknown, currentValue: unknown) => {
+    if (value === undefined || value === currentValue) return
+    update[field] = value
+    desiredState[field] = value
+    masks.push(field)
+  }
+  add('name', args.name, current.name)
+  add('description', args.description, current.description)
+  add('type', args.type, current.type)
+  if (args.members !== undefined) {
+    const members = normalizeCustomAudienceMembers(args.members)
+    const currentMembers = normalizeCustomAudienceMembers(current.members)
+    if (JSON.stringify(members) !== JSON.stringify(currentMembers)) {
+      update.members = customAudienceProviderMembers(members)
+      desiredState.members = members
+      masks.push('members')
+    }
+  }
+  if (masks.length === 0) throw new Error('Custom audience already matches the requested values')
+  return {
+    resourceName: args.resourceName,
+    desiredState,
+    providerOperations: [{
+      service: 'customAudiences',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ update, updateMask: masks.join(',') }]
+    }]
+  }
+}
+
+function buildArchiveCustomAudienceAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'custom_audience') {
+    throw new Error('Custom-audience archive requires resource type custom_audience')
+  }
+  const args = ResourceNameArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.resourceName, context.customerId, 'customAudiences')
+  const current = MutableCustomAudienceStateSchema.parse(context.currentState)
+  if (current.resourceName !== args.resourceName) throw new Error('Custom-audience state does not match the selected resource')
+  if (current.status === 'REMOVED') throw new Error('Custom audience is already archived')
+  return {
+    resourceName: args.resourceName,
+    desiredState: { resourceName: args.resourceName, status: 'REMOVED' },
+    providerOperations: [{
+      service: 'customAudiences',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ remove: args.resourceName }]
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -1357,5 +1533,7 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'set_conversion_primary_state') return buildConversionPrimaryStateAction(context)
   if (context.input.operation === 'create_conversion_action') return buildCreateConversionAction(context)
   if (context.input.operation === 'update_conversion_action') return buildUpdateConversionAction(context)
+  if (context.input.operation === 'manage_custom_audience') return buildManageCustomAudienceAction(context)
+  if (context.input.operation === 'archive_custom_audience') return buildArchiveCustomAudienceAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }

@@ -944,6 +944,174 @@ describe('Search Google Ads construction operations', () => {
     ))).toThrow('View-through windows are supported only for WEBPAGE conversion actions')
   })
 
+  it('creates a typed custom audience with every supported member type', () => {
+    const built = buildSearchGoogleAdsAction(context(
+      'manage_custom_audience',
+      'custom_audience',
+      {
+        action: 'create',
+        name: 'Northern GAC intent',
+        description: 'People researching GAC vehicles',
+        type: 'SEARCH',
+        members: [
+          { type: 'KEYWORD', value: 'GAC SUV' },
+          { type: 'URL', value: 'https://example.com/gac' },
+          { type: 'APP', value: 'au.com.example.gac' },
+          { type: 'PLACE_CATEGORY', value: '1001' }
+        ]
+      },
+      { exists: false }
+    ))
+
+    expect(built).toEqual({
+      resourceName: null,
+      desiredState: {
+        name: 'Northern GAC intent',
+        description: 'People researching GAC vehicles',
+        type: 'SEARCH',
+        status: 'ENABLED',
+        members: [
+          { type: 'APP', value: 'au.com.example.gac' },
+          { type: 'KEYWORD', value: 'GAC SUV' },
+          { type: 'PLACE_CATEGORY', value: '1001' },
+          { type: 'URL', value: 'https://example.com/gac' }
+        ]
+      },
+      providerOperations: [{
+        service: 'customAudiences',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ create: {
+          name: 'Northern GAC intent',
+          description: 'People researching GAC vehicles',
+          type: 'SEARCH',
+          members: [
+            { memberType: 'APP', app: 'au.com.example.gac' },
+            { memberType: 'KEYWORD', keyword: 'GAC SUV' },
+            { memberType: 'PLACE_CATEGORY', placeCategory: '1001' },
+            { memberType: 'URL', url: 'https://example.com/gac' }
+          ]
+        } }]
+      }]
+    })
+  })
+
+  it('updates only changed custom-audience fields and replaces members exactly', () => {
+    const resourceName = 'customers/1234567890/customAudiences/8001'
+    const built = buildSearchGoogleAdsAction(context(
+      'manage_custom_audience',
+      'custom_audience',
+      {
+        action: 'update',
+        resourceName,
+        description: 'Updated intent audience',
+        members: [
+          { type: 'URL', value: 'https://example.com/new' },
+          { type: 'KEYWORD', value: 'new GAC' }
+        ]
+      },
+      {
+        resourceName,
+        name: 'Northern GAC intent',
+        description: 'Old description',
+        type: 'SEARCH',
+        status: 'ENABLED',
+        members: [{ type: 'KEYWORD', value: 'old GAC' }]
+      }
+    ))
+
+    expect(built).toEqual({
+      resourceName,
+      desiredState: {
+        resourceName,
+        description: 'Updated intent audience',
+        members: [
+          { type: 'KEYWORD', value: 'new GAC' },
+          { type: 'URL', value: 'https://example.com/new' }
+        ]
+      },
+      providerOperations: [{
+        service: 'customAudiences',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{
+          update: {
+            resourceName,
+            description: 'Updated intent audience',
+            members: [
+              { memberType: 'KEYWORD', keyword: 'new GAC' },
+              { memberType: 'URL', url: 'https://example.com/new' }
+            ]
+          },
+          updateMask: 'description,members'
+        }]
+      }]
+    })
+  })
+
+  it('archives a custom audience through provider removal with REMOVED readback intent', () => {
+    const resourceName = 'customers/1234567890/customAudiences/8001'
+    const built = buildSearchGoogleAdsAction(context(
+      'archive_custom_audience',
+      'custom_audience',
+      { resourceName },
+      {
+        resourceName,
+        name: 'Northern GAC intent',
+        description: '',
+        type: 'AUTO',
+        status: 'ENABLED',
+        members: [{ type: 'KEYWORD', value: 'GAC' }]
+      }
+    ))
+
+    expect(built).toEqual({
+      resourceName,
+      desiredState: { resourceName, status: 'REMOVED' },
+      providerOperations: [{
+        service: 'customAudiences',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ remove: resourceName }]
+      }]
+    })
+  })
+
+  it('rejects duplicate, malformed, empty, and unchanged custom-audience mutations', () => {
+    const resourceName = 'customers/1234567890/customAudiences/8001'
+    expect(() => parseSearchGoogleAdsArguments('manage_custom_audience', {
+      action: 'create',
+      name: 'Invalid audience',
+      type: 'AUTO',
+      members: [
+        { type: 'KEYWORD', value: 'GAC' },
+        { type: 'KEYWORD', value: 'GAC' }
+      ]
+    })).toThrow('Custom-audience members must be unique')
+    expect(() => parseSearchGoogleAdsArguments('manage_custom_audience', {
+      action: 'create',
+      name: 'Invalid audience',
+      type: 'AUTO',
+      members: [{ type: 'URL', value: 'javascript:alert(1)' }]
+    })).toThrow()
+    expect(() => parseSearchGoogleAdsArguments('manage_custom_audience', {
+      action: 'update', resourceName
+    })).toThrow('At least one mutable custom-audience field is required')
+    expect(() => buildSearchGoogleAdsAction(context(
+      'manage_custom_audience',
+      'custom_audience',
+      { action: 'update', resourceName, name: 'Northern GAC intent' },
+      {
+        resourceName,
+        name: 'Northern GAC intent',
+        description: '',
+        type: 'SEARCH',
+        status: 'ENABLED',
+        members: [{ type: 'KEYWORD', value: 'GAC' }]
+      }
+    ))).toThrow('Custom audience already matches the requested values')
+  })
+
   it('rejects unsafe URLs and campaigns that attempt to start enabled', () => {
     expect(() => buildSearchGoogleAdsAction(context(
       'create_ad',

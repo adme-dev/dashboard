@@ -613,6 +613,79 @@ describe('Search Google Ads current-state loader', () => {
       query: expect.stringContaining('conversion_action.name = \'Finance enquiry\'')
     }))
   })
+
+  it('loads and normalizes a tenant-bound custom audience before updating it', async () => {
+    const resourceName = 'customers/1234567890/customAudiences/8001'
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ customAudience: {
+        resourceName,
+        name: 'Northern GAC intent',
+        description: 'People researching GAC vehicles',
+        status: 'ENABLED',
+        type: 'SEARCH',
+        members: [
+          { memberType: 'URL', url: 'https://example.com/gac' },
+          { memberType: 'KEYWORD', keyword: 'GAC SUV' },
+          { memberType: 'PLACE_CATEGORY', placeCategory: '1001' },
+          { memberType: 'APP', app: 'au.com.example.gac' }
+        ]
+      } }],
+      more: 0
+    })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('manage_custom_audience', {
+      action: 'update',
+      resourceName,
+      description: 'Updated intent audience'
+    }), auth, { query })).resolves.toEqual({
+      resourceName,
+      name: 'Northern GAC intent',
+      description: 'People researching GAC vehicles',
+      status: 'ENABLED',
+      type: 'SEARCH',
+      members: [
+        { type: 'APP', value: 'au.com.example.gac' },
+        { type: 'KEYWORD', value: 'GAC SUV' },
+        { type: 'PLACE_CATEGORY', value: '1001' },
+        { type: 'URL', value: 'https://example.com/gac' }
+      ]
+    })
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({
+      maxRows: 1,
+      query: expect.stringContaining('custom_audience.id = 8001')
+    }))
+  })
+
+  it('rejects a duplicate custom-audience name before planning creation', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ customAudience: {
+        resourceName: 'customers/1234567890/customAudiences/8001'
+      } }],
+      more: 0
+    })
+    await expect(loadSearchGoogleAdsCurrentState(context('manage_custom_audience', {
+      action: 'create',
+      name: 'Northern GAC intent',
+      type: 'AUTO',
+      members: [{ type: 'KEYWORD', value: 'GAC' }]
+    }), auth, { query })).rejects.toThrow('already exists')
+    expect(query.mock.calls[0]?.[0].query).toContain(
+      'custom_audience.name = \'Northern GAC intent\''
+    )
+  })
+
+  it('fails closed when a custom-audience name lookup returns an untrusted row shape', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ customAudience: { resourceName: 8001 } }],
+      more: 0
+    })
+    await expect(loadSearchGoogleAdsCurrentState(context('manage_custom_audience', {
+      action: 'create',
+      name: 'Northern GAC intent',
+      type: 'AUTO',
+      members: [{ type: 'KEYWORD', value: 'GAC' }]
+    }), auth, { query })).rejects.toThrow('already exists')
+  })
 })
 
 describe('Search Google Ads readback verification', () => {
@@ -1018,5 +1091,72 @@ describe('Search Google Ads persisted-plan state loading', () => {
       results: [{ conversionAction: { resourceName } }]
     })).resolves.toMatchObject({ resourceName, name: 'Finance enquiry', primaryForGoal: true })
     expect(query.mock.calls[0]?.[0].query).toContain('conversion_action.id = 9001')
+  })
+
+  it('uses a nested provider result to read back a created custom audience', async () => {
+    const resourceName = 'customers/1234567890/customAudiences/8001'
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ customAudience: {
+        resourceName,
+        name: 'Northern GAC intent',
+        description: '',
+        status: 'ENABLED',
+        type: 'AUTO',
+        members: [{ memberType: 'KEYWORD', keyword: 'GAC' }]
+      } }],
+      more: 0
+    })
+    const plan = {
+      operation: 'manage_custom_audience',
+      resourceType: 'custom_audience',
+      resourceName: null,
+      customerId: '1234567890',
+      desiredState: {
+        name: 'Northern GAC intent',
+        description: '',
+        status: 'ENABLED',
+        type: 'AUTO',
+        members: [{ type: 'KEYWORD', value: 'GAC' }]
+      },
+      providerOperations: [{ service: 'customAudiences' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [{ customAudience: { resourceName } }]
+    })).resolves.toEqual({
+      resourceName,
+      name: 'Northern GAC intent',
+      description: '',
+      status: 'ENABLED',
+      type: 'AUTO',
+      members: [{ type: 'KEYWORD', value: 'GAC' }]
+    })
+  })
+
+  it('reads back REMOVED status after custom-audience archive', async () => {
+    const resourceName = 'customers/1234567890/customAudiences/8001'
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ customAudience: {
+        resourceName,
+        name: 'Northern GAC intent',
+        description: '',
+        status: 'REMOVED',
+        type: 'AUTO',
+        members: [{ memberType: 'KEYWORD', keyword: 'GAC' }]
+      } }],
+      more: 0
+    })
+    const plan = {
+      operation: 'archive_custom_audience',
+      resourceType: 'custom_audience',
+      resourceName,
+      customerId: '1234567890',
+      desiredState: { resourceName, status: 'REMOVED' },
+      providerOperations: [{ service: 'customAudiences' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query })).resolves.toMatchObject({
+      resourceName, status: 'REMOVED'
+    })
   })
 })

@@ -32,6 +32,9 @@ export const GOOGLE_ADS_PLAN_SET_CUSTOMER_GOAL_BIDDABILITY_TOOL = 'google_ads_pl
 export const GOOGLE_ADS_PLAN_SET_CONVERSION_PRIMARY_STATE_TOOL = 'google_ads_plan_set_conversion_primary_state'
 export const GOOGLE_ADS_PLAN_CREATE_CONVERSION_ACTION_TOOL = 'google_ads_plan_create_conversion_action'
 export const GOOGLE_ADS_PLAN_UPDATE_CONVERSION_ACTION_TOOL = 'google_ads_plan_update_conversion_action'
+export const GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_create_custom_audience'
+export const GOOGLE_ADS_PLAN_UPDATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_update_custom_audience'
+export const GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_archive_custom_audience'
 
 const CommonSchema = {
   clientId: z.string().uuid(),
@@ -248,6 +251,66 @@ const SetAudienceAssociationsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Audience resource names must be unique' })
   }
 })
+const CustomAudienceMemberSchema = z.strictObject({
+  type: z.enum(['KEYWORD', 'URL', 'APP', 'PLACE_CATEGORY']),
+  value: z.string().trim().min(1).max(2_048)
+}).superRefine((member, refinement) => {
+  if (member.type === 'KEYWORD') {
+    if (member.value.length > 80 || member.value.split(/\s+/u).length > 10) {
+      refinement.addIssue({ code: 'custom', message: 'Custom-audience keywords may contain at most 10 words and 80 characters' })
+    }
+    return
+  }
+  if (member.type === 'URL') {
+    try {
+      const protocol = new URL(member.value).protocol
+      if (protocol !== 'http:' && protocol !== 'https:') throw new Error('unsupported protocol')
+    } catch {
+      refinement.addIssue({ code: 'custom', message: 'Custom-audience URLs must be valid HTTP or HTTPS URLs' })
+    }
+    return
+  }
+  if (member.type === 'APP' && (
+    member.value.length > 255
+    || !/^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+$/.test(member.value)
+  )) {
+    refinement.addIssue({ code: 'custom', message: 'Custom-audience apps must be Android package names' })
+  }
+  if (member.type === 'PLACE_CATEGORY' && !/^\d{1,20}$/.test(member.value)) {
+    refinement.addIssue({ code: 'custom', message: 'Custom-audience place categories must be numeric IDs' })
+  }
+})
+const CustomAudienceMembersSchema = z.array(CustomAudienceMemberSchema).min(1).max(1_000)
+  .superRefine((members, refinement) => {
+    const keys = members.map(member => `${member.type}:${member.value}`)
+    if (new Set(keys).size !== keys.length) {
+      refinement.addIssue({ code: 'custom', message: 'Custom-audience members must be unique' })
+    }
+  })
+const CreateCustomAudienceSchema = z.strictObject({
+  ...CommonSchema,
+  name: z.string().trim().min(1).max(255),
+  description: z.string().trim().max(10_000).default(''),
+  type: z.enum(['AUTO', 'SEARCH']),
+  members: CustomAudienceMembersSchema
+})
+const UpdateCustomAudienceSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(255).optional(),
+  description: z.string().trim().max(10_000).optional(),
+  type: z.enum(['AUTO', 'SEARCH']).optional(),
+  members: CustomAudienceMembersSchema.optional()
+}).superRefine((value, refinement) => {
+  if (value.name === undefined && value.description === undefined
+    && value.type === undefined && value.members === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'At least one mutable custom-audience field is required' })
+  }
+})
+const ArchiveCustomAudienceSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000)
+})
 const ConversionCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -445,6 +508,21 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_UPDATE_CONVERSION_ACTION_TOOL,
     'Plan an update to mutable conversion-action fields. Type is immutable and removal is intentionally not exposed by this tool.',
     UpdateConversionActionSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL,
+    'Plan a typed custom audience using bounded keyword, HTTP(S) URL, Android app, or place-category members. New audiences require elevated approval.',
+    CreateCustomAudienceSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_UPDATE_CUSTOM_AUDIENCE_TOOL,
+    'Plan a typed custom-audience update. Providing members replaces the complete member list and is verified after mutation.',
+    UpdateCustomAudienceSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_AUDIENCE_TOOL,
+    'Plan archiving a custom audience. Google implements archive as removal and reports REMOVED, so owner/admin destructive confirmation is required.',
+    ArchiveCustomAudienceSchema
   )
 ]
 
@@ -889,6 +967,58 @@ export async function executeGoogleAdsSearchPlanningTool(
             ? {}
             : { viewThroughLookbackWindowDays: args.viewThroughLookbackWindowDays })
         }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL) {
+      const args = CreateCustomAudienceSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'manage_custom_audience',
+        resourceType: 'custom_audience',
+        arguments: {
+          action: 'create',
+          name: args.name,
+          description: args.description,
+          type: args.type,
+          members: args.members
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_UPDATE_CUSTOM_AUDIENCE_TOOL) {
+      const args = UpdateCustomAudienceSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'manage_custom_audience',
+        resourceType: 'custom_audience',
+        arguments: {
+          action: 'update',
+          resourceName: args.resourceName,
+          ...(args.name === undefined ? {} : { name: args.name }),
+          ...(args.description === undefined ? {} : { description: args.description }),
+          ...(args.type === undefined ? {} : { type: args.type }),
+          ...(args.members === undefined ? {} : { members: args.members })
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_AUDIENCE_TOOL) {
+      const args = ArchiveCustomAudienceSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'archive_custom_audience',
+        resourceType: 'custom_audience',
+        arguments: { resourceName: args.resourceName }
       }
     } else {
       throw new Error('Unsupported Google Ads Search planning tool')

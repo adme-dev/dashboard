@@ -148,6 +148,28 @@ const ConversionActionStateSchema = z.object({
   clickThroughLookbackWindowDays: z.union([z.string(), z.number()]).transform(String).optional(),
   viewThroughLookbackWindowDays: z.union([z.string(), z.number()]).transform(String).optional()
 })
+const ProviderCustomAudienceMemberSchema = z.object({
+  memberType: z.enum(['KEYWORD', 'URL', 'APP', 'PLACE_CATEGORY']),
+  keyword: z.string().optional(),
+  url: z.string().optional(),
+  app: z.string().optional(),
+  placeCategory: z.union([z.string(), z.number()]).transform(String).optional()
+})
+const ProviderCustomAudienceStateSchema = z.object({
+  resourceName: z.string(),
+  name: z.string(),
+  description: z.string(),
+  status: z.enum(['ENABLED', 'REMOVED']),
+  type: z.enum(['AUTO', 'SEARCH', 'INTEREST', 'PURCHASE_INTENT']),
+  members: z.array(ProviderCustomAudienceMemberSchema)
+})
+type CustomAudienceMember = {
+  type: z.infer<typeof ProviderCustomAudienceMemberSchema>['memberType']
+  value: string
+}
+type CustomAudienceState = Omit<z.infer<typeof ProviderCustomAudienceStateSchema>, 'members'> & {
+  members: CustomAudienceMember[]
+}
 const ConversionGoalCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -171,6 +193,25 @@ function normalizeAdSchedule(value: z.infer<typeof AdScheduleStateSchema>): Norm
 function adScheduleKey(schedule: NormalizedAdSchedule): string {
   const pad = (value: number) => String(value).padStart(2, '0')
   return `${schedule.dayOfWeek}:${pad(schedule.startHour)}:${pad(schedule.startMinute)}-${pad(schedule.endHour)}:${pad(schedule.endMinute)}`
+}
+
+function normalizeCustomAudienceMembers(
+  members: z.infer<typeof ProviderCustomAudienceMemberSchema>[]
+): CustomAudienceMember[] {
+  return members.map((member) => {
+    const value = member.memberType === 'KEYWORD'
+      ? member.keyword
+      : member.memberType === 'URL'
+        ? member.url
+        : member.memberType === 'APP'
+          ? member.app
+          : member.placeCategory
+    if (!value) throw new Error(`Google Ads returned an invalid ${member.memberType} custom-audience member`)
+    return { type: member.memberType, value }
+  }).sort((left, right) => {
+    const typeOrder = left.type.localeCompare(right.type, 'en-AU')
+    return typeOrder || left.value.localeCompare(right.value, 'en-AU')
+  })
 }
 
 const STATUS_READS = {
@@ -491,7 +532,8 @@ function mutationResourceName(
     campaigns: 'campaign',
     adGroups: 'adGroup',
     adGroupAds: 'adGroupAd',
-    conversionActions: 'conversionAction'
+    conversionActions: 'conversionAction',
+    customAudiences: 'customAudience'
   }[service] ?? ''
   const nested = singular ? record[singular] : undefined
   if (nested && typeof nested === 'object'
@@ -1312,6 +1354,65 @@ WHERE conversion_action.name = '${escapeGaqlString(name)}'`
   return { exists: false }
 }
 
+async function loadCustomAudience(
+  customerId: string,
+  resourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<CustomAudienceState> {
+  assertCustomerResourceName(resourceName, customerId, 'customAudiences')
+  const [customAudienceId] = resourceIds(resourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT custom_audience.resource_name,
+  custom_audience.name,
+  custom_audience.description,
+  custom_audience.status,
+  custom_audience.type,
+  custom_audience.members
+FROM custom_audience
+WHERE custom_audience.id = ${customAudienceId}`
+  })
+  const first = result.rows[0]
+  const raw = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).customAudience
+    : undefined
+  const parsed = ProviderCustomAudienceStateSchema.safeParse(raw)
+  if (!parsed.success || parsed.data.resourceName !== resourceName || result.more > 0) {
+    throw new Error('Google Ads custom audience was not found')
+  }
+  return { ...parsed.data, members: normalizeCustomAudienceMembers(parsed.data.members) }
+}
+
+async function assertCustomAudienceNameAvailable(
+  customerId: string,
+  name: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies,
+  allowedResourceName?: string
+): Promise<{ exists: false }> {
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT custom_audience.resource_name
+FROM custom_audience
+WHERE custom_audience.name = '${escapeGaqlString(name)}'
+  AND custom_audience.status != REMOVED`
+  })
+  const first = result.rows[0]
+  const parsed = z.object({ resourceName: z.string() }).safeParse(
+    first && typeof first === 'object' ? (first as Record<string, unknown>).customAudience : undefined
+  )
+  if (result.more > 0 || (result.rows.length > 0
+    && (!parsed.success || parsed.data.resourceName !== allowedResourceName))) {
+    throw new Error(`A Google Ads custom audience named "${name}" already exists`)
+  }
+  return { exists: false }
+}
+
 export async function loadSearchGoogleAdsCurrentState(
   context: Omit<BuildGoogleAdsActionContext, 'currentState'>,
   auth: GoogleAdsAuth,
@@ -1487,6 +1588,28 @@ export async function loadSearchGoogleAdsCurrentState(
     ))
     return loadAdGroupAudienceAssociations(context.customerId, args.adGroupResourceName, auth, resolved)
   }
+  if (context.input.operation === 'manage_custom_audience') {
+    const args = z.union([
+      z.object({ action: z.literal('create'), name: z.string() }),
+      z.object({ action: z.literal('update'), resourceName: z.string(), name: z.string().optional() })
+    ]).parse(parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments))
+    if (args.action === 'create') {
+      return assertCustomAudienceNameAvailable(context.customerId, args.name, auth, resolved)
+    }
+    const current = await loadCustomAudience(context.customerId, args.resourceName, auth, resolved)
+    if (args.name !== undefined && args.name !== current.name) {
+      await assertCustomAudienceNameAvailable(
+        context.customerId, args.name, auth, resolved, args.resourceName
+      )
+    }
+    return current
+  }
+  if (context.input.operation === 'archive_custom_audience') {
+    const args = StatusArgumentsSchema.parse(parseSearchGoogleAdsArguments(
+      context.input.operation, context.input.arguments
+    ))
+    return loadCustomAudience(context.customerId, args.resourceName, auth, resolved)
+  }
   if (context.input.operation === 'set_campaign_conversion_goals') {
     const args = z.object({ campaignResourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation, context.input.arguments
@@ -1528,6 +1651,25 @@ export async function loadSearchGoogleAdsPlanState(
   mutation?: GoogleAdsMutateResult
 ): Promise<unknown> {
   const resolved = { ...defaultDependencies, ...dependencies }
+  if (plan.operation === 'manage_custom_audience') {
+    if (plan.resourceName) {
+      return loadCustomAudience(plan.customerId, plan.resourceName, auth, resolved)
+    }
+    if (mutation) {
+      return loadCustomAudience(
+        plan.customerId,
+        mutationResourceName(mutation, 'customAudiences'),
+        auth,
+        resolved
+      )
+    }
+    const desired = z.object({ name: z.string() }).parse(plan.desiredState)
+    return assertCustomAudienceNameAvailable(plan.customerId, desired.name, auth, resolved)
+  }
+  if (plan.operation === 'archive_custom_audience') {
+    if (!plan.resourceName) throw new Error('Custom-audience archive plan has no resource name')
+    return loadCustomAudience(plan.customerId, plan.resourceName, auth, resolved)
+  }
   if (plan.operation === 'create_conversion_action') {
     if (mutation) {
       return loadConversionAction(

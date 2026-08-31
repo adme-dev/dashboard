@@ -73,6 +73,18 @@ function dependencies(plan = actionPlan()) {
   }
 }
 
+function schemaPropertyNames(value: unknown): string[] {
+  if (!value || typeof value !== 'object') return []
+  const record = value as Record<string, unknown>
+  const own = record.properties && typeof record.properties === 'object'
+    ? Object.keys(record.properties as Record<string, unknown>)
+    : []
+  return [
+    ...own,
+    ...Object.values(record).flatMap(schemaPropertyNames)
+  ]
+}
+
 const context: ToolContext = {
   userId: ACTOR_ID,
   userRole: 'media_buyer',
@@ -122,7 +134,9 @@ describe('Google Ads MCP tool projection', () => {
     })
     expect(tools.map(tool => tool.name)).not.toContain('google_ads_gaql')
     expect(tools.map(tool => tool.name)).not.toContain('google_ads_mutate')
-    expect(JSON.stringify(tools.map(tool => tool.inputSchema))).not.toMatch(/"(?:url|query)"/i)
+    const propertyNames = tools.flatMap(tool => schemaPropertyNames(tool.inputSchema))
+    expect(propertyNames).not.toContain('url')
+    expect(propertyNames).not.toContain('query')
     expect(isGoogleAdsToolName('google_ads_gaql')).toBe(false)
   })
 })

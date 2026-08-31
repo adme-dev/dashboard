@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   GoogleAdsActionPlanSchema,
   GoogleAdsOperationTypeSchema,
-  GoogleAdsResourceTypeSchema,
+  GoogleAdsResourceTypeSchema
 } from '~~/server/utils/googleAds/contracts'
 import { resolveGoogleAdsPolicy } from '~~/server/utils/googleAds/policy'
 
@@ -15,12 +15,13 @@ const base = {
   automationEnabled: true,
   destructiveEnabled: true,
   requestedMode: 'automatic' as const,
-  accountPolicy: { enabled: true },
+  accountPolicy: { enabled: true }
 }
 
 describe('Google Ads action contracts', () => {
   it('catalogues control-plane operations and resources as closed enums', () => {
     expect(GoogleAdsOperationTypeSchema.parse('add_negative_keywords')).toBe('add_negative_keywords')
+    expect(GoogleAdsOperationTypeSchema.parse('archive_custom_audience')).toBe('archive_custom_audience')
     expect(GoogleAdsOperationTypeSchema.safeParse('raw_mutate').success).toBe(false)
     expect(GoogleAdsResourceTypeSchema.parse('conversion_goal')).toBe('conversion_goal')
     expect(GoogleAdsResourceTypeSchema.safeParse('arbitrary_http').success).toBe(false)
@@ -46,7 +47,7 @@ describe('Google Ads action contracts', () => {
         service: 'adGroupCriteria',
         atomicity: 'independent',
         partialFailure: true,
-        operations: [{ create: { negative: true, keyword: { text: 'free', matchType: 'EXACT' } } }],
+        operations: [{ create: { negative: true, keyword: { text: 'free', matchType: 'EXACT' } } }]
       }],
       riskTier: 'automatic',
       executionMode: 'automatic',
@@ -56,7 +57,7 @@ describe('Google Ads action contracts', () => {
       idempotencyKey: 'negative:123:free',
       status: 'planned',
       expiresAt: '2026-09-01T00:00:00.000Z',
-      createdAt: '2026-08-31T00:00:00.000Z',
+      createdAt: '2026-08-31T00:00:00.000Z'
     })
 
     expect(parsed.clientId).toBe('82c2993e-5250-4733-9220-000000000002')
@@ -71,13 +72,15 @@ describe('resolveGoogleAdsPolicy', () => {
     ['create_bidding_strategy', 'rich_confirm'],
     ['update_bidding', 'rich_confirm'],
     ['enable_campaign', 'rich_confirm'],
+    ['manage_custom_audience', 'rich_confirm'],
     ['set_conversion_goal', 'rich_confirm'],
     ['remove_campaign', 'destructive_confirm'],
+    ['archive_custom_audience', 'destructive_confirm']
   ] as const)('%s cannot be lowered below %s', (operation, riskTier) => {
     expect(resolveGoogleAdsPolicy({
       ...base,
       operation,
-      accountPolicy: { enabled: true, minimumRiskTier: 'automatic' },
+      accountPolicy: { enabled: true, minimumRiskTier: 'automatic' }
     })).toMatchObject({ allowed: true, riskTier, executionMode: 'proposal' })
   })
 
@@ -87,11 +90,11 @@ describe('resolveGoogleAdsPolicy', () => {
       operation: 'add_negative_keywords',
       actorRole: 'media_buyer',
       hasElevatedPermission: false,
-      accountPolicy: { enabled: true, actionClass: 'negative_keywords' },
+      accountPolicy: { enabled: true, actionClass: 'negative_keywords' }
     })).toEqual({
       allowed: true,
       riskTier: 'automatic',
-      executionMode: 'automatic',
+      executionMode: 'automatic'
     })
   })
 
@@ -101,11 +104,11 @@ describe('resolveGoogleAdsPolicy', () => {
       operation: 'pause_campaign',
       actorRole: 'media_buyer',
       hasElevatedPermission: false,
-      accountPolicy: { enabled: true, actionClass: 'negative_keywords' },
+      accountPolicy: { enabled: true, actionClass: 'negative_keywords' }
     })).toEqual({
       allowed: true,
       riskTier: 'confirm',
-      executionMode: 'proposal',
+      executionMode: 'proposal'
     })
   })
 
@@ -113,17 +116,17 @@ describe('resolveGoogleAdsPolicy', () => {
     [{ globalWriteEnabled: false }, 'writes_disabled'],
     [{ hasWriteScope: false }, 'insufficient_scope'],
     [{ hasMediaPermission: false }, 'media_permission_required'],
-    [{ accountPolicy: { enabled: false } }, 'account_policy_disabled'],
+    [{ accountPolicy: { enabled: false } }, 'account_policy_disabled']
   ] as const)('blocks writes before planning when %j', (override, code) => {
     expect(resolveGoogleAdsPolicy({
       ...base,
       operation: 'pause_campaign',
-      ...override,
+      ...override
     })).toEqual({
       allowed: false,
       riskTier: 'blocked',
       executionMode: 'blocked',
-      code,
+      code
     })
   })
 
@@ -132,7 +135,7 @@ describe('resolveGoogleAdsPolicy', () => {
       ...base,
       operation: 'update_budget',
       actorRole: 'media_buyer',
-      hasElevatedPermission: false,
+      hasElevatedPermission: false
     })).toMatchObject({ allowed: false, code: 'elevated_permission_required' })
   })
 
@@ -140,14 +143,14 @@ describe('resolveGoogleAdsPolicy', () => {
     expect(resolveGoogleAdsPolicy({
       ...base,
       operation: 'remove_campaign',
-      destructiveEnabled: false,
+      destructiveEnabled: false
     })).toMatchObject({ allowed: false, code: 'destructive_actions_disabled' })
 
     expect(resolveGoogleAdsPolicy({
       ...base,
       operation: 'remove_campaign',
       actorRole: 'lead',
-      hasElevatedPermission: true,
+      hasElevatedPermission: true
     })).toMatchObject({ allowed: false, code: 'owner_or_admin_required' })
   })
 
@@ -155,7 +158,7 @@ describe('resolveGoogleAdsPolicy', () => {
     expect(resolveGoogleAdsPolicy({
       ...base,
       operation: 'pause_campaign',
-      accountPolicy: { enabled: true, minimumRiskTier: 'rich_confirm' },
+      accountPolicy: { enabled: true, minimumRiskTier: 'rich_confirm' }
     })).toMatchObject({ allowed: true, riskTier: 'rich_confirm', executionMode: 'proposal' })
   })
 
@@ -164,20 +167,20 @@ describe('resolveGoogleAdsPolicy', () => {
       ...base,
       operation: 'apply_recommendation',
       actionRiskTier: 'rich_confirm',
-      accountPolicy: { enabled: true, minimumRiskTier: 'automatic' },
+      accountPolicy: { enabled: true, minimumRiskTier: 'automatic' }
     })).toMatchObject({ allowed: true, riskTier: 'rich_confirm', executionMode: 'proposal' })
   })
 
   it.each([
     ['run_search_term_policy', 'negative_keywords'],
-    ['run_pause_policy', 'pause'],
+    ['run_pause_policy', 'pause']
   ] as const)('allows an opted-in %s automation run', (operation, actionClass) => {
     expect(resolveGoogleAdsPolicy({
       ...base,
       operation,
       actorRole: 'media_buyer',
       hasElevatedPermission: false,
-      accountPolicy: { enabled: true, actionClass },
+      accountPolicy: { enabled: true, actionClass }
     })).toMatchObject({ allowed: true, riskTier: 'automatic', executionMode: 'automatic' })
   })
 })
