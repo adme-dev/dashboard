@@ -24,6 +24,7 @@ export const GOOGLE_ADS_PLAN_UPDATE_BIDDING_STRATEGY_TOOL = 'google_ads_plan_upd
 export const GOOGLE_ADS_PLAN_CREATE_AD_GROUP_TOOL = 'google_ads_plan_create_ad_group'
 export const GOOGLE_ADS_PLAN_UPDATE_AD_GROUP_TOOL = 'google_ads_plan_update_ad_group'
 export const GOOGLE_ADS_PLAN_CREATE_RSA_TOOL = 'google_ads_plan_create_responsive_search_ad'
+export const GOOGLE_ADS_PLAN_REPLACE_RSA_TOOL = 'google_ads_plan_replace_responsive_search_ad'
 export const GOOGLE_ADS_PLAN_ADD_KEYWORDS_TOOL = 'google_ads_plan_add_keywords'
 export const GOOGLE_ADS_PLAN_UPDATE_KEYWORD_TOOL = 'google_ads_plan_update_keyword'
 export const GOOGLE_ADS_PLAN_SET_LOCATIONS_TOOL = 'google_ads_plan_set_locations'
@@ -234,6 +235,22 @@ const UpdateAdGroupSchema = z.strictObject({
 const CreateResponsiveSearchAdSchema = z.strictObject({
   ...CommonSchema,
   adGroupResourceName: z.string().trim().min(1).max(1_000),
+  finalUrl: z.string().url().refine(value => value.startsWith('https://')),
+  headlines: z.array(z.string().trim().min(1).max(30)).min(3).max(15),
+  descriptions: z.array(z.string().trim().min(1).max(90)).min(2).max(4),
+  path1: z.string().trim().min(1).max(15).optional(),
+  path2: z.string().trim().min(1).max(15).optional()
+}).superRefine((value, refinement) => {
+  if (new Set(value.headlines.map(text => text.toLocaleLowerCase('en-AU'))).size !== value.headlines.length) {
+    refinement.addIssue({ code: 'custom', message: 'Responsive search ad headlines must be unique' })
+  }
+  if (new Set(value.descriptions.map(text => text.toLocaleLowerCase('en-AU'))).size !== value.descriptions.length) {
+    refinement.addIssue({ code: 'custom', message: 'Responsive search ad descriptions must be unique' })
+  }
+})
+const ReplaceResponsiveSearchAdSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000),
   finalUrl: z.string().url().refine(value => value.startsWith('https://')),
   headlines: z.array(z.string().trim().min(1).max(30)).min(3).max(15),
   descriptions: z.array(z.string().trim().min(1).max(90)).min(2).max(4),
@@ -830,6 +847,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     CreateResponsiveSearchAdSchema
   ),
   manifest(
+    GOOGLE_ADS_PLAN_REPLACE_RSA_TOOL,
+    'Plan an immutable responsive-search-ad replacement. The new ad is created paused and the original is paused atomically; neither ad is removed.',
+    ReplaceResponsiveSearchAdSchema
+  ),
+  manifest(
     GOOGLE_ADS_PLAN_ADD_KEYWORDS_TOOL,
     'Plan typed positive keywords for an existing ad group. Existing terms are deduplicated and new keywords are always created paused.',
     AddKeywordsSchema
@@ -1324,6 +1346,26 @@ export async function executeGoogleAdsSearchPlanningTool(
         resourceType: 'ad',
         arguments: {
           adGroupResourceName: args.adGroupResourceName,
+          finalUrl: args.finalUrl,
+          headlines: args.headlines,
+          descriptions: args.descriptions,
+          ...(args.path1 ? { path1: args.path1 } : {}),
+          ...(args.path2 ? { path2: args.path2 } : {})
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_REPLACE_RSA_TOOL) {
+      const args = ReplaceResponsiveSearchAdSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'replace_ad',
+        resourceType: 'ad',
+        arguments: {
+          resourceName: args.resourceName,
           finalUrl: args.finalUrl,
           headlines: args.headlines,
           descriptions: args.descriptions,

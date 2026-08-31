@@ -33,6 +33,7 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_create_ad_group',
       'google_ads_plan_update_ad_group',
       'google_ads_plan_create_responsive_search_ad',
+      'google_ads_plan_replace_responsive_search_ad',
       'google_ads_plan_add_keywords',
       'google_ads_plan_update_keyword',
       'google_ads_plan_set_locations',
@@ -359,6 +360,23 @@ describe('Google Ads Search MCP planning descriptors', () => {
         descriptions: ['Discover the latest GAC range.', 'Enquire with Northern GAC today.'],
         path1: 'vehicles',
         path2: 'new'
+      }
+    },
+    {
+      tool: 'google_ads_plan_replace_responsive_search_ad',
+      args: {
+        resourceName: 'customers/1234567890/adGroupAds/70~80',
+        finalUrl: 'https://northerngac.com.au/vehicles/new',
+        headlines: ['New Northern GAC', 'Explore GAC Vehicles', 'Book Your Test Drive'],
+        descriptions: ['Discover the newest GAC range.', 'Enquire with our GAC team today.']
+      },
+      operation: 'replace_ad',
+      resourceType: 'ad',
+      expectedArguments: {
+        resourceName: 'customers/1234567890/adGroupAds/70~80',
+        finalUrl: 'https://northerngac.com.au/vehicles/new',
+        headlines: ['New Northern GAC', 'Explore GAC Vehicles', 'Book Your Test Drive'],
+        descriptions: ['Discover the newest GAC range.', 'Enquire with our GAC team today.']
       }
     },
     {

@@ -86,6 +86,11 @@ current strategy type first and permits only fields valid for that immutable typ
 Assigning the resulting portfolio resource to a campaign is a separate campaign
 update and therefore produces its own diff and approval.
 
+Responsive search ads are immutable creative resources. Use
+`google_ads_plan_replace_responsive_search_ad` to create a paused replacement and
+pause the original in one atomic `adGroupAds` mutation. The flow never deletes the
+original and verifies both ads as paused before the plan succeeds.
+
 ## Safe Archive and Removal Semantics
 
 The default delete behavior is reversible:

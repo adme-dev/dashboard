@@ -356,6 +356,7 @@ const EXECUTABLE_SEARCH_SERVICES = {
   create_ad_group: ['adGroups'],
   update_ad_group: ['adGroups'],
   create_ad: ['adGroupAds'],
+  replace_ad: ['adGroupAds'],
   add_keywords: ['adGroupCriteria'],
   update_keyword: ['adGroupCriteria'],
   set_locations: ['campaignCriteria'],
@@ -783,6 +784,65 @@ function isTypedBiddingStrategyMutation(plan: GoogleAdsActionPlan): boolean {
     && hasValidRuntimeBidLimits(plan.desiredState[scheme])
 }
 
+const RuntimeResponsiveSearchAdSchema = z.strictObject({
+  finalUrls: z.array(z.string().url().refine(value => value.startsWith('https://'))).length(1),
+  responsiveSearchAd: z.strictObject({
+    headlines: z.array(z.strictObject({ text: z.string().trim().min(1).max(30) })).min(3).max(15),
+    descriptions: z.array(z.strictObject({ text: z.string().trim().min(1).max(90) })).min(2).max(4),
+    path1: z.string().trim().min(1).max(15).optional(),
+    path2: z.string().trim().min(1).max(15).optional()
+  })
+})
+const RuntimeOriginalAdSchema = z.strictObject({
+  resourceName: z.string(),
+  adGroup: z.string(),
+  status: z.enum(['ENABLED', 'PAUSED']),
+  ad: RuntimeResponsiveSearchAdSchema
+})
+const RuntimeReplacementAdSchema = z.strictObject({
+  adGroup: z.string(),
+  status: z.literal('PAUSED'),
+  ad: RuntimeResponsiveSearchAdSchema
+})
+
+function hasUniqueRuntimeRsaAssets(ad: z.infer<typeof RuntimeResponsiveSearchAdSchema>): boolean {
+  const headlines = ad.responsiveSearchAd.headlines.map(asset => asset.text.toLocaleLowerCase('en-AU'))
+  const descriptions = ad.responsiveSearchAd.descriptions.map(asset => asset.text.toLocaleLowerCase('en-AU'))
+  return new Set(headlines).size === headlines.length
+    && new Set(descriptions).size === descriptions.length
+}
+
+function isTypedResponsiveSearchAdReplacement(plan: GoogleAdsActionPlan): boolean {
+  const current = z.strictObject({ original: RuntimeOriginalAdSchema }).safeParse(plan.currentState)
+  const desired = z.strictObject({
+    original: RuntimeOriginalAdSchema,
+    replacement: RuntimeReplacementAdSchema
+  }).safeParse(plan.desiredState)
+  if (!current.success || !desired.success || !plan.resourceName
+    || current.data.original.resourceName !== plan.resourceName
+    || current.data.original.adGroup !== desired.data.replacement.adGroup
+    || !new RegExp(`^customers/${plan.customerId}/adGroupAds/\\d+~\\d+$`).test(plan.resourceName)
+    || !new RegExp(`^customers/${plan.customerId}/adGroups/\\d+$`).test(current.data.original.adGroup)
+    || !equalJson(desired.data.original, { ...current.data.original, status: 'PAUSED' })
+    || equalJson(current.data.original.ad, desired.data.replacement.ad)
+    || !hasUniqueRuntimeRsaAssets(desired.data.replacement.ad)
+    || plan.providerOperations.length !== 1) return false
+  const mutation = plan.providerOperations[0]
+  if (!mutation || mutation.service !== 'adGroupAds'
+    || mutation.atomicity !== 'interdependent'
+    || mutation.partialFailure !== false) return false
+  const operations = [
+    { create: desired.data.replacement },
+    ...(current.data.original.status === 'PAUSED'
+      ? []
+      : [{
+          update: { resourceName: plan.resourceName, status: 'PAUSED' },
+          updateMask: 'status'
+        }])
+  ]
+  return equalJson(mutation.operations, operations)
+}
+
 const MUTABLE_ENTITY_UPDATE_FIELDS = {
   update_campaign: {
     service: 'campaigns',
@@ -896,6 +956,7 @@ export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): bool
     || plan.operation === 'dismiss_recommendation') return isTypedRecommendationMutation(plan)
   if (plan.operation === 'create_bidding_strategy'
     || plan.operation === 'update_bidding') return isTypedBiddingStrategyMutation(plan)
+  if (plan.operation === 'replace_ad') return isTypedResponsiveSearchAdReplacement(plan)
   if (plan.operation === 'update_campaign'
     || plan.operation === 'update_ad_group'
     || plan.operation === 'update_keyword') return isTypedMutableEntityUpdate(plan)

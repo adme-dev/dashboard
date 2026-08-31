@@ -216,6 +216,35 @@ const CreateResponsiveSearchAdArgumentsSchema = z.strictObject({
     context.addIssue({ code: 'custom', message: 'Responsive search ad descriptions must be unique' })
   }
 })
+const ReplaceResponsiveSearchAdArgumentsSchema = z.strictObject({
+  resourceName: z.string().trim().min(1).max(1_000),
+  finalUrl: z.string().url().refine(value => value.startsWith('https://')),
+  headlines: z.array(z.string().trim().min(1).max(30)).min(3).max(15),
+  descriptions: z.array(z.string().trim().min(1).max(90)).min(2).max(4),
+  path1: z.string().trim().min(1).max(15).optional(),
+  path2: z.string().trim().min(1).max(15).optional()
+}).superRefine((value, context) => {
+  if (new Set(value.headlines.map(text => text.toLocaleLowerCase('en-AU'))).size !== value.headlines.length) {
+    context.addIssue({ code: 'custom', message: 'Responsive search ad headlines must be unique' })
+  }
+  if (new Set(value.descriptions.map(text => text.toLocaleLowerCase('en-AU'))).size !== value.descriptions.length) {
+    context.addIssue({ code: 'custom', message: 'Responsive search ad descriptions must be unique' })
+  }
+})
+const ResponsiveSearchAdStateSchema = z.object({
+  resourceName: z.string(),
+  adGroup: z.string(),
+  status: z.enum(['ENABLED', 'PAUSED']),
+  ad: z.object({
+    finalUrls: z.array(z.string()),
+    responsiveSearchAd: z.object({
+      headlines: z.array(z.object({ text: z.string() })),
+      descriptions: z.array(z.object({ text: z.string() })),
+      path1: z.string().optional(),
+      path2: z.string().optional()
+    })
+  })
+})
 const SetLocationsArgumentsSchema = z.strictObject({
   campaignResourceName: z.string().trim().min(1).max(1_000),
   geoTargetConstantIds: z.array(z.string().regex(/^\d{1,20}$/)).min(1).max(1_000)
@@ -845,6 +874,7 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'create_ad_group',
       'update_ad_group',
       'create_ad',
+      'replace_ad',
       'add_keywords',
       'update_keyword',
       'set_locations',
@@ -966,6 +996,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'create_ad_group') return CreateAdGroupArgumentsSchema.parse(argumentsValue)
   if (operation === 'update_ad_group') return UpdateAdGroupArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_ad') return CreateResponsiveSearchAdArgumentsSchema.parse(argumentsValue)
+  if (operation === 'replace_ad') return ReplaceResponsiveSearchAdArgumentsSchema.parse(argumentsValue)
   if (operation === 'add_keywords') return PositiveKeywordArgumentsSchema.parse(argumentsValue)
   if (operation === 'update_keyword') return UpdateKeywordArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_locations') return SetLocationsArgumentsSchema.parse(argumentsValue)
@@ -1524,6 +1555,47 @@ function buildCreateResponsiveSearchAdAction(context: BuildGoogleAdsActionContex
     }
   }
   return createAction('adGroupAds', desiredState, args.adGroupResourceName)
+}
+
+function buildReplaceResponsiveSearchAdAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'ad') throw new Error('Ad replacement requires resource type ad')
+  const args = ReplaceResponsiveSearchAdArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.resourceName, context.customerId, 'adGroupAds')
+  const current = z.object({ original: ResponsiveSearchAdStateSchema }).parse(context.currentState).original
+  if (current.resourceName !== args.resourceName) throw new Error('Original ad state does not match the request')
+  assertResourceName(current.adGroup, context.customerId, 'adGroups')
+  const replacement = {
+    adGroup: current.adGroup,
+    status: 'PAUSED' as const,
+    ad: {
+      finalUrls: [args.finalUrl],
+      responsiveSearchAd: {
+        headlines: args.headlines.map(text => ({ text })),
+        descriptions: args.descriptions.map(text => ({ text })),
+        ...(args.path1 ? { path1: args.path1 } : {}),
+        ...(args.path2 ? { path2: args.path2 } : {})
+      }
+    }
+  }
+  if (JSON.stringify(current.ad) === JSON.stringify(replacement.ad)) {
+    throw new Error('The replacement responsive search ad must change the creative or final URL')
+  }
+  const original = { ...current, status: 'PAUSED' as const }
+  return {
+    resourceName: args.resourceName,
+    desiredState: { original, replacement },
+    providerOperations: [{
+      service: 'adGroupAds',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        { create: replacement },
+        ...(current.status === 'PAUSED'
+          ? []
+          : [{ update: { resourceName: args.resourceName, status: 'PAUSED' }, updateMask: 'status' }])
+      ]
+    }]
+  }
 }
 
 function buildPositiveKeywordAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
@@ -3266,6 +3338,7 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'create_ad_group') return buildCreateAdGroupAction(context)
   if (context.input.operation === 'update_ad_group') return buildUpdateAdGroupAction(context)
   if (context.input.operation === 'create_ad') return buildCreateResponsiveSearchAdAction(context)
+  if (context.input.operation === 'replace_ad') return buildReplaceResponsiveSearchAdAction(context)
   if (context.input.operation === 'add_keywords') return buildPositiveKeywordAction(context)
   if (context.input.operation === 'update_keyword') return buildUpdateKeywordAction(context)
   if (context.input.operation === 'set_locations') return buildLocationAction(context)

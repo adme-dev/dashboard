@@ -670,6 +670,88 @@ describe('Search Google Ads construction operations', () => {
     })
   })
 
+  it('atomically creates a paused RSA replacement and pauses the original ad', () => {
+    const resourceName = 'customers/1234567890/adGroupAds/20~30'
+    const adGroup = 'customers/1234567890/adGroups/20'
+    const original = {
+      resourceName,
+      adGroup,
+      status: 'ENABLED',
+      ad: {
+        finalUrls: ['https://example.com/old'],
+        responsiveSearchAd: {
+          headlines: [{ text: 'Old One' }, { text: 'Old Two' }, { text: 'Old Three' }],
+          descriptions: [{ text: 'Old description one.' }, { text: 'Old description two.' }]
+        }
+      }
+    }
+    const built = buildSearchGoogleAdsAction(context(
+      'replace_ad',
+      'ad',
+      {
+        resourceName,
+        finalUrl: 'https://example.com/new',
+        headlines: ['New One', 'New Two', 'New Three'],
+        descriptions: ['New description one.', 'New description two.']
+      },
+      { original }
+    ))
+    const replacement = {
+      adGroup,
+      status: 'PAUSED',
+      ad: {
+        finalUrls: ['https://example.com/new'],
+        responsiveSearchAd: {
+          headlines: [{ text: 'New One' }, { text: 'New Two' }, { text: 'New Three' }],
+          descriptions: [{ text: 'New description one.' }, { text: 'New description two.' }]
+        }
+      }
+    }
+
+    expect(built).toEqual({
+      resourceName,
+      desiredState: { original: { ...original, status: 'PAUSED' }, replacement },
+      providerOperations: [{
+        service: 'adGroupAds',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [
+          { create: replacement },
+          { update: { resourceName, status: 'PAUSED' }, updateMask: 'status' }
+        ]
+      }]
+    })
+  })
+
+  it('does not send a redundant status update when replacing an already-paused RSA', () => {
+    const resourceName = 'customers/1234567890/adGroupAds/20~30'
+    const adGroup = 'customers/1234567890/adGroups/20'
+    const built = buildSearchGoogleAdsAction(context(
+      'replace_ad',
+      'ad',
+      {
+        resourceName,
+        finalUrl: 'https://example.com/new',
+        headlines: ['New One', 'New Two', 'New Three'],
+        descriptions: ['New description one.', 'New description two.']
+      },
+      { original: {
+        resourceName,
+        adGroup,
+        status: 'PAUSED',
+        ad: {
+          finalUrls: ['https://example.com/old'],
+          responsiveSearchAd: {
+            headlines: [{ text: 'Old One' }, { text: 'Old Two' }, { text: 'Old Three' }],
+            descriptions: [{ text: 'Old description one.' }, { text: 'Old description two.' }]
+          }
+        }
+      } }
+    ))
+    expect(built.providerOperations[0]?.operations).toHaveLength(1)
+    expect(built.providerOperations[0]?.operations[0]).toHaveProperty('create')
+  })
+
   it('replaces campaign locations atomically without an empty-first mutation', () => {
     const campaign = 'customers/1234567890/campaigns/60'
     const built = buildSearchGoogleAdsAction(context(

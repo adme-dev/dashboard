@@ -2735,6 +2735,17 @@ export async function loadSearchGoogleAdsCurrentState(
       resolved
     )
   }
+  if (context.input.operation === 'replace_ad') {
+    const args = z.object({ resourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation,
+      context.input.arguments
+    ))
+    return {
+      original: await loadAdGroupAdByResourceName(
+        context.customerId, args.resourceName, auth, resolved
+      )
+    }
+  }
   if (context.input.operation === 'add_keywords') {
     const args = z.object({
       adGroupResourceName: z.string()
@@ -3208,6 +3219,21 @@ export async function loadSearchGoogleAdsPlanState(
       auth,
       resolved
     )
+  }
+  if (plan.operation === 'replace_ad') {
+    if (!plan.resourceName) throw new Error('Ad replacement plan has no original resource name')
+    const original = await loadAdGroupAdByResourceName(
+      plan.customerId, plan.resourceName, auth, resolved
+    )
+    if (!mutation) return { original }
+    const replacementResourceName = mutationResourceName(mutation, 'adGroupAds')
+    if (replacementResourceName === plan.resourceName) {
+      throw new Error('Google Ads returned the original ad as its replacement')
+    }
+    const replacement = await loadAdGroupAdByResourceName(
+      plan.customerId, replacementResourceName, auth, resolved
+    )
+    return { original, replacement }
   }
   if (plan.operation === 'add_keywords') {
     const desired = z.object({ adGroupResourceName: z.string() }).parse(plan.desiredState)

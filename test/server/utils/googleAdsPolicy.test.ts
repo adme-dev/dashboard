@@ -72,6 +72,7 @@ describe('resolveGoogleAdsPolicy', () => {
     ['update_campaign', 'rich_confirm'],
     ['update_ad_group', 'rich_confirm'],
     ['update_keyword', 'rich_confirm'],
+    ['replace_ad', 'rich_confirm'],
     ['create_bidding_strategy', 'rich_confirm'],
     ['update_bidding', 'rich_confirm'],
     ['enable_campaign', 'rich_confirm'],

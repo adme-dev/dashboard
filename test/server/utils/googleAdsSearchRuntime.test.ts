@@ -268,6 +268,69 @@ describe('Search Google Ads governed planning runtime', () => {
     } as GoogleAdsActionPlan)).toBe(false)
   })
 
+  it('allows only an atomic paused RSA replacement with a paused original', () => {
+    const resourceName = 'customers/1234567890/adGroupAds/20~30'
+    const adGroup = 'customers/1234567890/adGroups/20'
+    const original = {
+      resourceName,
+      adGroup,
+      status: 'ENABLED',
+      ad: {
+        finalUrls: ['https://example.com/old'],
+        responsiveSearchAd: {
+          headlines: [{ text: 'Old One' }, { text: 'Old Two' }, { text: 'Old Three' }],
+          descriptions: [{ text: 'Old description one.' }, { text: 'Old description two.' }]
+        }
+      }
+    }
+    const replacement = {
+      adGroup,
+      status: 'PAUSED',
+      ad: {
+        finalUrls: ['https://example.com/new'],
+        responsiveSearchAd: {
+          headlines: [{ text: 'New One' }, { text: 'New Two' }, { text: 'New Three' }],
+          descriptions: [{ text: 'New description one.' }, { text: 'New description two.' }]
+        }
+      }
+    }
+    const plan = {
+      customerId: '1234567890',
+      operation: 'replace_ad',
+      resourceName,
+      currentState: { original },
+      desiredState: { original: { ...original, status: 'PAUSED' }, replacement },
+      providerOperations: [{
+        service: 'adGroupAds',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [
+          { create: replacement },
+          { update: { resourceName, status: 'PAUSED' }, updateMask: 'status' }
+        ]
+      }]
+    } as GoogleAdsActionPlan
+    expect(isExecutableSearchGoogleAdsPlan(plan)).toBe(true)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      desiredState: { original: { ...original, status: 'PAUSED' }, replacement: { ...replacement, status: 'ENABLED' } },
+      providerOperations: [{
+        ...plan.providerOperations[0]!,
+        operations: [
+          { create: { ...replacement, status: 'ENABLED' } },
+          { update: { resourceName, status: 'PAUSED' }, updateMask: 'status' }
+        ]
+      }]
+    } as GoogleAdsActionPlan)).toBe(false)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      providerOperations: [{
+        ...plan.providerOperations[0]!,
+        operations: [{ create: replacement }, { remove: resourceName }]
+      }]
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
   it.each([
     {
       operation: 'update_ad_group',

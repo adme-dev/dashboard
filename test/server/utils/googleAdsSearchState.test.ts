@@ -578,6 +578,31 @@ describe('Search Google Ads current-state loader', () => {
     expect(query.mock.calls[0]?.[0].query).toContain('ad_group.id = 70')
   })
 
+  it('loads the complete original RSA before planning an immutable replacement', async () => {
+    const resourceName = 'customers/1234567890/adGroupAds/70~80'
+    const original = {
+      resourceName,
+      adGroup: 'customers/1234567890/adGroups/70',
+      status: 'ENABLED',
+      ad: {
+        finalUrls: ['https://northerngac.com.au/old'],
+        responsiveSearchAd: {
+          headlines: [{ text: 'Old One' }, { text: 'Old Two' }, { text: 'Old Three' }],
+          descriptions: [{ text: 'Old description one.' }, { text: 'Old description two.' }]
+        }
+      }
+    }
+    const query = vi.fn().mockResolvedValue({ rows: [{ adGroupAd: original }], more: 0 })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('replace_ad', {
+      resourceName,
+      finalUrl: 'https://northerngac.com.au/new',
+      headlines: ['New One', 'New Two', 'New Three'],
+      descriptions: ['New description one.', 'New description two.']
+    }), auth, { query })).resolves.toEqual({ original })
+    expect(query.mock.calls[0]?.[0].query).toContain('ad_group_ad.ad.id = 80')
+  })
+
   it('loads and normalizes existing positive keywords from a live ad group', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({
@@ -1553,6 +1578,69 @@ describe('Search Google Ads persisted-plan state loading', () => {
     })
     expect(query.mock.calls[0]?.[0].query).toContain('ad_group.id = 70')
     expect(query.mock.calls[0]?.[0].query).toContain('ad_group_ad.ad.id = 80')
+  })
+
+  it('reads back both paused ads after an immutable RSA replacement', async () => {
+    const originalResourceName = 'customers/1234567890/adGroupAds/70~80'
+    const replacementResourceName = 'customers/1234567890/adGroupAds/70~81'
+    const adGroup = 'customers/1234567890/adGroups/70'
+    const original = {
+      resourceName: originalResourceName,
+      adGroup,
+      status: 'PAUSED',
+      ad: {
+        finalUrls: ['https://northerngac.com.au/old'],
+        responsiveSearchAd: {
+          headlines: [{ text: 'Old One' }, { text: 'Old Two' }, { text: 'Old Three' }],
+          descriptions: [{ text: 'Old description one.' }, { text: 'Old description two.' }]
+        }
+      }
+    }
+    const replacement = {
+      resourceName: replacementResourceName,
+      adGroup,
+      status: 'PAUSED',
+      ad: {
+        finalUrls: ['https://northerngac.com.au/new'],
+        responsiveSearchAd: {
+          headlines: [{ text: 'New One' }, { text: 'New Two' }, { text: 'New Three' }],
+          descriptions: [{ text: 'New description one.' }, { text: 'New description two.' }]
+        }
+      }
+    }
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ adGroupAd: original }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ adGroupAd: replacement }], more: 0 })
+    const plan = {
+      operation: 'replace_ad',
+      resourceType: 'ad',
+      resourceName: originalResourceName,
+      customerId: '1234567890',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      connectionId: '22222222-2222-4222-8222-222222222222',
+      actorId: '33333333-3333-4333-8333-333333333333',
+      source: 'mcp',
+      executionMode: 'proposal',
+      idempotencyKey: 'replace-rsa-1',
+      desiredState: {
+        original,
+        replacement: {
+          adGroup,
+          status: 'PAUSED',
+          ad: replacement.ad
+        }
+      },
+      providerOperations: [{ service: 'adGroupAds' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [
+        { adGroupAd: { resourceName: replacementResourceName } },
+        { adGroupAd: { resourceName: originalResourceName } }
+      ]
+    })).resolves.toEqual({ original, replacement })
+    expect(query.mock.calls[0]?.[0].query).toContain('ad_group_ad.ad.id = 80')
+    expect(query.mock.calls[1]?.[0].query).toContain('ad_group_ad.ad.id = 81')
   })
 
   it('re-queries the complete positive keyword set after mutation', async () => {
