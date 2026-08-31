@@ -235,6 +235,79 @@ describe('Search Google Ads current-state loader', () => {
     })).resolves.toEqual(desiredState)
   })
 
+  it('prevalidates a new shared negative set name and every campaign', async () => {
+    const campaign10 = 'customers/1234567890/campaigns/10'
+    const campaign11 = 'customers/1234567890/campaigns/11'
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [], more: 0 })
+      .mockResolvedValueOnce({
+        rows: [
+          { campaign: { resourceName: campaign10, status: 'ENABLED' } },
+          { campaign: { resourceName: campaign11, status: 'PAUSED' } }
+        ],
+        more: 0
+      })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('manage_shared_negative_set', {
+      name: 'National exclusions',
+      keywords: [{ text: 'free', matchType: 'BROAD' }],
+      campaignResourceNames: [campaign10, campaign11]
+    }), auth, { query })).resolves.toEqual({ exists: false })
+
+    expect(query.mock.calls[0]?.[0].query).toContain('shared_set.name = \'National exclusions\'')
+    expect(query.mock.calls[1]?.[0].query).toContain('campaign.resource_name IN')
+  })
+
+  it('loads an existing shared negative set with removable criterion and link resources', async () => {
+    const resourceName = 'customers/1234567890/sharedSets/90'
+    const campaign = 'customers/1234567890/campaigns/10'
+    const criterionResourceName = 'customers/1234567890/sharedCriteria/90~1'
+    const linkResourceName = 'customers/1234567890/campaignSharedSets/10~90'
+    const sharedSet = {
+      resourceName,
+      name: 'National exclusions',
+      type: 'NEGATIVE_KEYWORDS',
+      status: 'ENABLED'
+    }
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ sharedSet }], more: 0 })
+      .mockResolvedValueOnce({
+        rows: [{ sharedCriterion: {
+          resourceName: criterionResourceName,
+          sharedSet: resourceName,
+          negative: true,
+          keyword: { text: ' free ', matchType: 'BROAD' }
+        } }],
+        more: 0
+      })
+      .mockResolvedValueOnce({
+        rows: [{ campaignSharedSet: {
+          resourceName: linkResourceName,
+          campaign,
+          sharedSet: resourceName,
+          status: 'ENABLED'
+        } }],
+        more: 0
+      })
+      .mockResolvedValueOnce({
+        rows: [{ campaign: { resourceName: campaign, status: 'ENABLED' } }],
+        more: 0
+      })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('manage_shared_negative_set', {
+      resourceName,
+      name: 'National exclusions',
+      keywords: [{ text: 'free', matchType: 'BROAD' }],
+      campaignResourceNames: [campaign]
+    }), auth, { query })).resolves.toEqual({
+      sharedSet,
+      keywords: [{ text: 'free', matchType: 'BROAD' }],
+      campaignResourceNames: [campaign],
+      criterionResources: { 'BROAD:free': criterionResourceName },
+      campaignLinkResources: { [campaign]: linkResourceName }
+    })
+  })
+
   it('fails closed when a status resource cannot be found', async () => {
     await expect(loadSearchGoogleAdsCurrentState(
       context('pause_campaign', { resourceName: 'customers/1234567890/campaigns/10' }),
@@ -1305,9 +1378,92 @@ describe('Search Google Ads readback verification', () => {
       }
     )).toEqual({ ok: true, diffs: [] })
   })
+
+  it('ignores provider-assigned shared criterion and campaign-link IDs during verification', () => {
+    const resourceName = 'customers/1234567890/sharedSets/90'
+    const campaign = 'customers/1234567890/campaigns/10'
+    expect(verifySearchGoogleAdsState(
+      {
+        sharedSet: { name: 'National exclusions', type: 'NEGATIVE_KEYWORDS' },
+        keywords: [{ text: 'free', matchType: 'BROAD' }],
+        campaignResourceNames: [campaign],
+        criterionResources: {},
+        campaignLinkResources: {}
+      },
+      {
+        sharedSet: {
+          resourceName,
+          name: 'National exclusions',
+          type: 'NEGATIVE_KEYWORDS',
+          status: 'ENABLED'
+        },
+        keywords: [{ text: 'free', matchType: 'BROAD' }],
+        campaignResourceNames: [campaign],
+        criterionResources: {
+          'BROAD:free': 'customers/1234567890/sharedCriteria/90~1'
+        },
+        campaignLinkResources: {
+          [campaign]: 'customers/1234567890/campaignSharedSets/10~90'
+        }
+      }
+    )).toEqual({ ok: true, diffs: [] })
+  })
 })
 
 describe('Search Google Ads persisted-plan state loading', () => {
+  it('uses the bulk mutation shared-set result for exact post-mutation readback', async () => {
+    const resourceName = 'customers/1234567890/sharedSets/90'
+    const campaign = 'customers/1234567890/campaigns/10'
+    const sharedSet = {
+      resourceName,
+      name: 'National exclusions',
+      type: 'NEGATIVE_KEYWORDS',
+      status: 'ENABLED'
+    }
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ sharedSet }], more: 0 })
+      .mockResolvedValueOnce({
+        rows: [{ sharedCriterion: {
+          resourceName: 'customers/1234567890/sharedCriteria/90~1',
+          sharedSet: resourceName,
+          negative: true,
+          keyword: { text: 'free', matchType: 'BROAD' }
+        } }],
+        more: 0
+      })
+      .mockResolvedValueOnce({
+        rows: [{ campaignSharedSet: {
+          resourceName: 'customers/1234567890/campaignSharedSets/10~90',
+          campaign,
+          sharedSet: resourceName,
+          status: 'ENABLED'
+        } }],
+        more: 0
+      })
+    const plan = {
+      operation: 'manage_shared_negative_set',
+      resourceType: 'shared_negative_set',
+      resourceName: null,
+      customerId: '1234567890',
+      desiredState: {
+        sharedSet: { name: 'National exclusions', type: 'NEGATIVE_KEYWORDS' },
+        keywords: [{ text: 'free', matchType: 'BROAD' }],
+        campaignResourceNames: [campaign],
+        criterionResources: {},
+        campaignLinkResources: {}
+      },
+      providerOperations: [{ service: 'googleAds' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [{ sharedSetResult: { resourceName } }]
+    })).resolves.toMatchObject({
+      sharedSet,
+      keywords: [{ text: 'free', matchType: 'BROAD' }],
+      campaignResourceNames: [campaign]
+    })
+  })
+
   it('reconstructs a negative-keyword read only from immutable plan fields', async () => {
     const query = vi.fn().mockResolvedValue({ rows: [], more: 0 })
     const plan = {

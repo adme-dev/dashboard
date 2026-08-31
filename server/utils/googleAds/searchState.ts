@@ -63,6 +63,34 @@ const MutableNegativeKeywordStateSchema = z.object({
   }),
   removed: z.boolean()
 })
+const SharedSetProviderSchema = z.object({
+  resourceName: z.string(),
+  name: z.string(),
+  type: z.literal('NEGATIVE_KEYWORDS'),
+  status: z.literal('ENABLED')
+})
+const SharedCriterionProviderSchema = z.object({
+  resourceName: z.string(),
+  sharedSet: z.string(),
+  negative: z.literal(true),
+  keyword: z.object({
+    text: z.string(),
+    matchType: z.enum(['EXACT', 'PHRASE', 'BROAD'])
+  })
+})
+const CampaignSharedSetProviderSchema = z.object({
+  resourceName: z.string(),
+  campaign: z.string(),
+  sharedSet: z.string(),
+  status: z.literal('ENABLED')
+})
+const SharedNegativeSetStateSchema = z.object({
+  sharedSet: SharedSetProviderSchema,
+  keywords: z.array(CriterionSchema.omit({ negative: true })),
+  campaignResourceNames: z.array(z.string()),
+  criterionResources: z.record(z.string(), z.string()),
+  campaignLinkResources: z.record(z.string(), z.string())
+})
 const BudgetStateSchema = z.object({
   resourceName: z.string(),
   name: z.string(),
@@ -801,6 +829,183 @@ WHERE ${parent}.id = ${parentId}
   return { ...parsed, scope, removed: false }
 }
 
+function sharedKeywordKey(keyword: { text: string, matchType: string }): string {
+  return `${keyword.matchType}:${keyword.text.toLocaleLowerCase('en-AU')}`
+}
+
+async function assertSharedNegativeSetNameAvailable(
+  customerId: string,
+  name: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies,
+  excludeResourceName?: string
+): Promise<void> {
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT shared_set.resource_name,
+  shared_set.type,
+  shared_set.status
+FROM shared_set
+WHERE shared_set.name = '${escapeGaqlString(name)}'
+  AND shared_set.type = 'NEGATIVE_KEYWORDS'
+  AND shared_set.status != 'REMOVED'`
+  })
+  const first = result.rows[0]
+  const value = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).sharedSet
+    : undefined
+  if (result.more > 0) {
+    throw new Error(`A Google Ads shared negative-keyword set named "${name}" already exists`)
+  }
+  if (value === undefined) return
+  const parsed = z.object({
+    resourceName: z.string(),
+    type: z.literal('NEGATIVE_KEYWORDS'),
+    status: z.literal('ENABLED')
+  }).parse(value)
+  if (parsed.resourceName !== excludeResourceName) {
+    throw new Error(`A Google Ads shared negative-keyword set named "${name}" already exists`)
+  }
+}
+
+async function assertCampaignResourcesExist(
+  customerId: string,
+  campaignResourceNames: string[],
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<void> {
+  if (campaignResourceNames.length === 0) return
+  for (const resourceName of campaignResourceNames) {
+    assertCustomerResourceName(resourceName, customerId, 'campaigns')
+  }
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: campaignResourceNames.length,
+    query: `SELECT campaign.resource_name,
+  campaign.status
+FROM campaign
+WHERE campaign.resource_name IN (${campaignResourceNames
+  .map(resourceName => `'${escapeGaqlString(resourceName)}'`).join(', ')})
+  AND campaign.status != 'REMOVED'`
+  })
+  if (result.more > 0) throw new Error('Google Ads returned too many campaign rows')
+  const found = new Set(result.rows.map((row) => {
+    const campaign = row && typeof row === 'object'
+      ? (row as Record<string, unknown>).campaign
+      : undefined
+    return z.object({
+      resourceName: z.string(),
+      status: z.enum(['ENABLED', 'PAUSED'])
+    }).parse(campaign).resourceName
+  }))
+  if (campaignResourceNames.some(resourceName => !found.has(resourceName))) {
+    throw new Error('One or more referenced Google Ads campaigns were not found')
+  }
+}
+
+async function loadSharedNegativeSetState(
+  customerId: string,
+  resourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<z.infer<typeof SharedNegativeSetStateSchema>> {
+  assertCustomerResourceName(resourceName, customerId, 'sharedSets')
+  const [sharedSetId] = resourceIds(resourceName)
+  const sharedSetResult = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT shared_set.resource_name,
+  shared_set.name,
+  shared_set.type,
+  shared_set.status
+FROM shared_set
+WHERE shared_set.id = ${sharedSetId}`
+  })
+  const sharedSetRow = sharedSetResult.rows[0]
+  const sharedSet = SharedSetProviderSchema.parse(sharedSetRow && typeof sharedSetRow === 'object'
+    ? (sharedSetRow as Record<string, unknown>).sharedSet
+    : undefined)
+  if (sharedSet.resourceName !== resourceName || sharedSetResult.more > 0) {
+    throw new Error('Google Ads returned a different shared negative-keyword set')
+  }
+
+  const criterionResult = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1_001,
+    query: `SELECT shared_criterion.resource_name,
+  shared_criterion.shared_set,
+  shared_criterion.negative,
+  shared_criterion.keyword.text,
+  shared_criterion.keyword.match_type
+FROM shared_criterion
+WHERE shared_criterion.shared_set = '${escapeGaqlString(resourceName)}'`
+  })
+  if (criterionResult.more > 0 || criterionResult.rows.length > 1_000) {
+    throw new Error('Google Ads shared negative keywords exceeded the safe read limit')
+  }
+  const keywords: Array<{ text: string, matchType: 'EXACT' | 'PHRASE' | 'BROAD' }> = []
+  const criterionResources: Record<string, string> = {}
+  for (const row of criterionResult.rows) {
+    const criterion = SharedCriterionProviderSchema.parse(row && typeof row === 'object'
+      ? (row as Record<string, unknown>).sharedCriterion
+      : undefined)
+    assertCustomerResourceName(criterion.resourceName, customerId, 'sharedCriteria', true)
+    if (criterion.sharedSet !== resourceName) {
+      throw new Error('Google Ads returned a shared criterion from another set')
+    }
+    const keyword = {
+      ...criterion.keyword,
+      text: criterion.keyword.text.trim().replace(/\s+/g, ' ')
+    }
+    const key = sharedKeywordKey(keyword)
+    if (criterionResources[key]) throw new Error('Google Ads returned duplicate shared negative keywords')
+    keywords.push(keyword)
+    criterionResources[key] = criterion.resourceName
+  }
+  keywords.sort((left, right) => left.text.toLocaleLowerCase('en-AU')
+    .localeCompare(right.text.toLocaleLowerCase('en-AU')) || left.matchType.localeCompare(right.matchType))
+
+  const linkResult = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1_001,
+    query: `SELECT campaign_shared_set.resource_name,
+  campaign_shared_set.campaign,
+  campaign_shared_set.shared_set,
+  campaign_shared_set.status
+FROM campaign_shared_set
+WHERE campaign_shared_set.shared_set = '${escapeGaqlString(resourceName)}'`
+  })
+  if (linkResult.more > 0 || linkResult.rows.length > 1_000) {
+    throw new Error('Google Ads shared-set campaign links exceeded the safe read limit')
+  }
+  const campaignLinkResources: Record<string, string> = {}
+  for (const row of linkResult.rows) {
+    const link = CampaignSharedSetProviderSchema.parse(row && typeof row === 'object'
+      ? (row as Record<string, unknown>).campaignSharedSet
+      : undefined)
+    assertCustomerResourceName(link.resourceName, customerId, 'campaignSharedSets', true)
+    assertCustomerResourceName(link.campaign, customerId, 'campaigns')
+    if (link.sharedSet !== resourceName || campaignLinkResources[link.campaign]) {
+      throw new Error('Google Ads returned an invalid shared-set campaign link')
+    }
+    campaignLinkResources[link.campaign] = link.resourceName
+  }
+  const campaignResourceNames = Object.keys(campaignLinkResources).sort()
+  return SharedNegativeSetStateSchema.parse({
+    sharedSet,
+    keywords,
+    campaignResourceNames,
+    criterionResources,
+    campaignLinkResources
+  })
+}
+
 async function loadCreateAdCurrentState(
   customerId: string,
   adGroupResourceName: string,
@@ -871,10 +1076,12 @@ function mutationResourceName(
   const record = first as Record<string, unknown>
   if (typeof record.resourceName === 'string') return record.resourceName
   if (service === 'googleAds') {
-    const result = record.assetGroupResult
-    if (result && typeof result === 'object'
-      && typeof (result as Record<string, unknown>).resourceName === 'string') {
-      return (result as Record<string, unknown>).resourceName as string
+    for (const key of ['assetGroupResult', 'sharedSetResult']) {
+      const result = record[key]
+      if (result && typeof result === 'object'
+        && typeof (result as Record<string, unknown>).resourceName === 'string') {
+        return (result as Record<string, unknown>).resourceName as string
+      }
     }
   }
   const singular = {
@@ -2541,6 +2748,34 @@ export async function loadSearchGoogleAdsCurrentState(
       context.customerId, args.scope, args.resourceName, auth, resolved
     )
   }
+  if (context.input.operation === 'manage_shared_negative_set') {
+    const args = z.object({
+      resourceName: z.string().optional(),
+      name: z.string(),
+      campaignResourceNames: z.array(z.string())
+    }).parse(parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments))
+    if (!args.resourceName) {
+      await assertSharedNegativeSetNameAvailable(
+        context.customerId, args.name, auth, resolved
+      )
+      await assertCampaignResourcesExist(
+        context.customerId, args.campaignResourceNames, auth, resolved
+      )
+      return { exists: false }
+    }
+    const current = await loadSharedNegativeSetState(
+      context.customerId, args.resourceName, auth, resolved
+    )
+    if (args.name !== current.sharedSet.name) {
+      await assertSharedNegativeSetNameAvailable(
+        context.customerId, args.name, auth, resolved, args.resourceName
+      )
+    }
+    await assertCampaignResourcesExist(
+      context.customerId, args.campaignResourceNames, auth, resolved
+    )
+    return current
+  }
   if (context.input.operation === 'create_bidding_strategy') {
     const args = z.object({ name: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation,
@@ -2963,6 +3198,45 @@ export async function loadSearchGoogleAdsPlanState(
   mutation?: GoogleAdsMutateResult
 ): Promise<unknown> {
   const resolved = { ...defaultDependencies, ...dependencies }
+  if (plan.operation === 'manage_shared_negative_set') {
+    const desired = z.object({
+      sharedSet: z.object({ name: z.string() }),
+      campaignResourceNames: z.array(z.string())
+    }).parse(plan.desiredState)
+    if (mutation && !plan.resourceName) {
+      return loadSharedNegativeSetState(
+        plan.customerId,
+        mutationResourceName(mutation, 'googleAds'),
+        auth,
+        resolved
+      )
+    }
+    if (!plan.resourceName) {
+      await assertSharedNegativeSetNameAvailable(
+        plan.customerId, desired.sharedSet.name, auth, resolved
+      )
+      await assertCampaignResourcesExist(
+        plan.customerId, desired.campaignResourceNames, auth, resolved
+      )
+      return { exists: false }
+    }
+    const current = await loadSharedNegativeSetState(
+      plan.customerId, plan.resourceName, auth, resolved
+    )
+    if (desired.sharedSet.name !== current.sharedSet.name) {
+      await assertSharedNegativeSetNameAvailable(
+        plan.customerId,
+        desired.sharedSet.name,
+        auth,
+        resolved,
+        plan.resourceName
+      )
+    }
+    await assertCampaignResourcesExist(
+      plan.customerId, desired.campaignResourceNames, auth, resolved
+    )
+    return current
+  }
   if (plan.operation === 'create_bidding_strategy') {
     if (mutation) {
       return loadBiddingStrategyByResourceName(
