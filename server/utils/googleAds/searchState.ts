@@ -53,6 +53,16 @@ const MutableKeywordStateSchema = z.object({
   cpcBidMicros: z.union([z.string(), z.number()]).transform(String).optional(),
   finalUrls: z.array(z.string()).default([])
 })
+const MutableNegativeKeywordStateSchema = z.object({
+  resourceName: z.string(),
+  scope: z.enum(['campaign', 'ad_group']),
+  negative: z.literal(true),
+  keyword: z.object({
+    text: z.string(),
+    matchType: z.enum(['EXACT', 'PHRASE', 'BROAD'])
+  }),
+  removed: z.boolean()
+})
 const BudgetStateSchema = z.object({
   resourceName: z.string(),
   name: z.string(),
@@ -635,6 +645,51 @@ WHERE ad_group.id = ${adGroupId}
   const parsed = MutableKeywordStateSchema.parse(keyword)
   if (parsed.resourceName !== resourceName) throw new Error('Google Ads returned a different keyword')
   return parsed
+}
+
+async function loadNegativeKeywordByResourceName(
+  customerId: string,
+  scope: 'campaign' | 'ad_group',
+  resourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies,
+  missingState?: z.infer<typeof MutableNegativeKeywordStateSchema>
+): Promise<z.infer<typeof MutableNegativeKeywordStateSchema>> {
+  const segment = scope === 'campaign' ? 'campaignCriteria' : 'adGroupCriteria'
+  assertCustomerResourceName(resourceName, customerId, segment, true)
+  const [parentId, criterionId] = resourceIds(resourceName)
+  const resource = scope === 'campaign' ? 'campaign_criterion' : 'ad_group_criterion'
+  const rowKey = scope === 'campaign' ? 'campaignCriterion' : 'adGroupCriterion'
+  const parent = scope === 'campaign' ? 'campaign' : 'ad_group'
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT ${resource}.resource_name,
+  ${resource}.negative,
+  ${resource}.keyword.text,
+  ${resource}.keyword.match_type
+FROM ${resource}
+WHERE ${parent}.id = ${parentId}
+  AND ${resource}.criterion_id = ${criterionId}`
+  })
+  const first = result.rows[0]
+  const keyword = first && typeof first === 'object'
+    ? (first as Record<string, unknown>)[rowKey]
+    : undefined
+  if (!keyword) {
+    if (missingState) return missingState
+    throw new Error('Google Ads negative keyword was not found')
+  }
+  const parsed = z.object({
+    resourceName: z.literal(resourceName),
+    negative: z.literal(true),
+    keyword: z.object({
+      text: z.string(),
+      matchType: z.enum(['EXACT', 'PHRASE', 'BROAD'])
+    })
+  }).parse(keyword)
+  return { ...parsed, scope, removed: false }
 }
 
 async function loadCreateAdCurrentState(
@@ -2367,6 +2422,15 @@ export async function loadSearchGoogleAdsCurrentState(
   if (context.input.operation === 'add_negative_keywords') {
     return loadNegativeKeywords(context, auth, resolved)
   }
+  if (context.input.operation === 'remove_negative_keyword') {
+    const args = z.object({
+      scope: z.enum(['campaign', 'ad_group']),
+      resourceName: z.string()
+    }).parse(parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments))
+    return loadNegativeKeywordByResourceName(
+      context.customerId, args.scope, args.resourceName, auth, resolved
+    )
+  }
   if (context.input.operation === 'create_budget') {
     const args = z.object({ name: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation,
@@ -3128,6 +3192,22 @@ export async function loadSearchGoogleAdsPlanState(
       },
       customerId: plan.customerId
     }, auth, resolved, mutation ? { resourceName: plan.resourceName, status: 'REMOVED' } : undefined)
+  }
+  if (plan.operation === 'remove_negative_keyword') {
+    if (!plan.resourceName) throw new Error('Negative-keyword removal plan has no resource name')
+    const desired = MutableNegativeKeywordStateSchema.parse(plan.desiredState)
+    const service = desired.scope === 'campaign' ? 'campaignCriteria' : 'adGroupCriteria'
+    if (mutation && mutationResourceName(mutation, service) !== plan.resourceName) {
+      throw new Error('Google Ads returned a different removed negative keyword')
+    }
+    return loadNegativeKeywordByResourceName(
+      plan.customerId,
+      desired.scope,
+      plan.resourceName,
+      auth,
+      resolved,
+      mutation ? desired : undefined
+    )
   }
   if (!plan.resourceName) throw new Error('Search Google Ads plan has no resource name')
   const negative = plan.operation === 'add_negative_keywords'

@@ -149,6 +149,54 @@ describe('Search Google Ads current-state loader', () => {
     }))
   })
 
+  it('loads and verifies permanent removal of one campaign negative keyword', async () => {
+    const resourceName = 'customers/1234567890/campaignCriteria/10~41'
+    const args = {
+      scope: 'campaign',
+      resourceName,
+      reason: 'Incorrect negative confirmed during search-term QA.'
+    }
+    const current = {
+      resourceName,
+      scope: 'campaign',
+      negative: true,
+      keyword: { text: 'gac suv', matchType: 'PHRASE' },
+      removed: false
+    }
+    const query = vi.fn().mockResolvedValueOnce({
+      rows: [{ campaignCriterion: {
+        resourceName,
+        negative: true,
+        keyword: current.keyword
+      } }],
+      more: 0
+    })
+
+    await expect(loadSearchGoogleAdsCurrentState(
+      context('remove_negative_keyword', args), auth, { query }
+    )).resolves.toEqual(current)
+
+    const desiredState = { ...current, removed: true }
+    const plan = {
+      operation: 'remove_negative_keyword',
+      resourceType: 'negative_keyword',
+      resourceName,
+      desiredState,
+      providerOperations: [{ service: 'campaignCriteria' }],
+      customerId: '1234567890',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      connectionId: '22222222-2222-4222-8222-222222222222',
+      actorId: '33333333-3333-4333-8333-333333333333',
+      source: 'mcp',
+      executionMode: 'proposal',
+      idempotencyKey: 'remove-negative-41'
+    } as GoogleAdsActionPlan
+    query.mockResolvedValueOnce({ rows: [], more: 0 })
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [{ resourceName }], requestId: 'remove-negative-request'
+    })).resolves.toEqual(desiredState)
+  })
+
   it('fails closed when a status resource cannot be found', async () => {
     await expect(loadSearchGoogleAdsCurrentState(
       context('pause_campaign', { resourceName: 'customers/1234567890/campaigns/10' }),

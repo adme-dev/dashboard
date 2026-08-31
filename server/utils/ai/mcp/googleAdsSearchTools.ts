@@ -14,6 +14,7 @@ export const GOOGLE_ADS_PLAN_ARCHIVE_TOOL = 'google_ads_plan_archive'
 export const GOOGLE_ADS_PLAN_REMOVE_TOOL = 'google_ads_plan_remove'
 export const GOOGLE_ADS_PLAN_ENABLE_TOOL = 'google_ads_plan_enable'
 export const GOOGLE_ADS_PLAN_NEGATIVE_KEYWORDS_TOOL = 'google_ads_plan_add_negative_keywords'
+export const GOOGLE_ADS_PLAN_REMOVE_NEGATIVE_KEYWORD_TOOL = 'google_ads_plan_remove_negative_keyword'
 export const GOOGLE_ADS_PLAN_CREATE_BUDGET_TOOL = 'google_ads_plan_create_budget'
 export const GOOGLE_ADS_PLAN_UPDATE_BUDGET_TOOL = 'google_ads_plan_update_budget'
 export const GOOGLE_ADS_PLAN_CREATE_SEARCH_CAMPAIGN_TOOL = 'google_ads_plan_create_search_campaign'
@@ -97,6 +98,12 @@ const NegativeKeywordsSchema = z.strictObject({
     matchType: z.enum(['EXACT', 'PHRASE', 'BROAD'])
   })).min(1).max(100),
   requestedMode: z.enum(['proposal', 'automatic']).default('proposal')
+})
+const RemoveNegativeKeywordSchema = z.strictObject({
+  ...CommonSchema,
+  scope: z.enum(['campaign', 'ad_group']),
+  resourceName: z.string().trim().min(1).max(1_000),
+  reason: OperatorReasonSchema
 })
 const KeywordSchema = z.strictObject({
   text: z.string().trim().min(1).max(80),
@@ -701,6 +708,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     NegativeKeywordsSchema
   ),
   manifest(
+    GOOGLE_ADS_PLAN_REMOVE_NEGATIVE_KEYWORD_TOOL,
+    'Plan permanent removal of one campaign or ad-group negative keyword with a required operator reason. This is destructive and is never automatic.',
+    RemoveNegativeKeywordSchema
+  ),
+  manifest(
     GOOGLE_ADS_PLAN_CREATE_BUDGET_TOOL,
     'Plan a standard Google Ads campaign budget from a daily currency amount. Money changes require elevated approval.',
     CreateBudgetSchema
@@ -1062,6 +1074,23 @@ export async function executeGoogleAdsSearchPlanningTool(
           scope: args.scope,
           parentResourceName: args.parentResourceName,
           keywords: args.keywords
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_REMOVE_NEGATIVE_KEYWORD_TOOL) {
+      const args = RemoveNegativeKeywordSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'remove_negative_keyword',
+        resourceType: 'negative_keyword',
+        arguments: {
+          scope: args.scope,
+          resourceName: args.resourceName,
+          reason: args.reason
         }
       }
     } else if (name === GOOGLE_ADS_PLAN_CREATE_BUDGET_TOOL) {

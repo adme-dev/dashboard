@@ -193,6 +193,47 @@ describe('Search Google Ads negative keyword operations', () => {
       operations: [{ remove: 'customers/1234567890/campaignCriteria/1' }]
     })).toThrow()
   })
+
+  it.each([
+    ['campaign', 'campaignCriteria', 'customers/1234567890/campaignCriteria/10~41'],
+    ['ad_group', 'adGroupCriteria', 'customers/1234567890/adGroupCriteria/20~41']
+  ] as const)('permanently removes one typed %s negative keyword with a reason', (
+    scope, service, resourceName
+  ) => {
+    const built = buildSearchGoogleAdsAction(context(
+      'remove_negative_keyword',
+      'negative_keyword',
+      {
+        scope,
+        resourceName,
+        reason: 'Incorrect negative confirmed during search-term QA.'
+      },
+      {
+        resourceName,
+        scope,
+        negative: true,
+        keyword: { text: 'gac suv', matchType: 'PHRASE' },
+        removed: false
+      }
+    ))
+
+    expect(built).toEqual({
+      resourceName,
+      desiredState: {
+        resourceName,
+        scope,
+        negative: true,
+        keyword: { text: 'gac suv', matchType: 'PHRASE' },
+        removed: true
+      },
+      providerOperations: [{
+        service,
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ remove: resourceName }]
+      }]
+    })
+  })
 })
 
 describe('Search Google Ads construction operations', () => {

@@ -31,6 +31,11 @@ const NegativeKeywordArgumentsSchema = z.strictObject({
   parentResourceName: z.string().trim().min(1).max(1_000),
   keywords: z.array(NegativeKeywordSchema).min(1).max(100)
 })
+const RemoveNegativeKeywordArgumentsSchema = z.strictObject({
+  scope: z.enum(['campaign', 'ad_group']),
+  resourceName: z.string().trim().min(1).max(1_000),
+  reason: z.string().trim().min(10).max(1_000)
+})
 const CreateBudgetArgumentsSchema = z.strictObject({
   name: z.string().trim().min(1).max(255),
   dailyAmount: z.number().finite().positive().max(1_000_000)
@@ -721,6 +726,7 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
     || isRemoveOperation(operation)
     || [
       'add_negative_keywords',
+      'remove_negative_keyword',
       'create_budget',
       'update_budget',
       'create_campaign',
@@ -837,6 +843,9 @@ export function parseSearchGoogleAdsArguments(
   if (isStatusOperation(operation)) return ResourceNameArgumentsSchema.parse(argumentsValue)
   if (isRemoveOperation(operation)) return DestructiveResourceNameArgumentsSchema.parse(argumentsValue)
   if (operation === 'add_negative_keywords') return NegativeKeywordArgumentsSchema.parse(argumentsValue)
+  if (operation === 'remove_negative_keyword') {
+    return RemoveNegativeKeywordArgumentsSchema.parse(argumentsValue)
+  }
   if (operation === 'create_budget') return CreateBudgetArgumentsSchema.parse(argumentsValue)
   if (operation === 'update_budget') return UpdateBudgetArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_campaign') return CreateCampaignArgumentsSchema.parse(argumentsValue)
@@ -978,6 +987,36 @@ function buildNegativeKeywordAction(context: BuildGoogleAdsActionContext): Built
           keyword: { text: keyword.text, matchType: keyword.matchType }
         }
       }))
+    }]
+  }
+}
+
+function buildRemoveNegativeKeywordAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'negative_keyword') {
+    throw new Error('Negative keyword removal requires resource type negative_keyword')
+  }
+  const args = RemoveNegativeKeywordArgumentsSchema.parse(context.input.arguments)
+  const segment = args.scope === 'campaign' ? 'campaignCriteria' : 'adGroupCriteria'
+  const service = args.scope === 'campaign' ? 'campaignCriteria' : 'adGroupCriteria'
+  assertResourceName(args.resourceName, context.customerId, segment)
+  const current = z.object({
+    resourceName: z.literal(args.resourceName),
+    scope: z.literal(args.scope),
+    negative: z.literal(true),
+    keyword: z.object({
+      text: z.string(),
+      matchType: z.enum(['EXACT', 'PHRASE', 'BROAD'])
+    }),
+    removed: z.literal(false)
+  }).parse(context.currentState)
+  return {
+    resourceName: args.resourceName,
+    desiredState: { ...current, removed: true },
+    providerOperations: [{
+      service,
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ remove: args.resourceName }]
     }]
   }
 }
@@ -2922,6 +2961,9 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   }
   if (context.input.operation === 'add_negative_keywords') {
     return buildNegativeKeywordAction(context)
+  }
+  if (context.input.operation === 'remove_negative_keyword') {
+    return buildRemoveNegativeKeywordAction(context)
   }
   if (context.input.operation === 'create_budget' || context.input.operation === 'update_budget') {
     return buildBudgetAction(context)

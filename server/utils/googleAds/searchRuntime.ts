@@ -346,6 +346,7 @@ const EXECUTABLE_SEARCH_SERVICES = {
   remove_ad: ['adGroupAds'],
   remove_keyword: ['adGroupCriteria'],
   add_negative_keywords: ['campaignCriteria', 'adGroupCriteria'],
+  remove_negative_keyword: ['campaignCriteria', 'adGroupCriteria'],
   create_budget: ['campaignBudgets'],
   update_budget: ['campaignBudgets'],
   create_campaign: ['campaigns'],
@@ -681,6 +682,29 @@ function isTypedMutableEntityUpdate(plan: GoogleAdsActionPlan): boolean {
   return Object.keys(operation.update).every(key => allowedTopLevelKeys.has(key))
 }
 
+function isTypedNegativeKeywordRemoval(plan: GoogleAdsActionPlan): boolean {
+  const stateSchema = z.object({
+    resourceName: z.string(),
+    scope: z.enum(['campaign', 'ad_group']),
+    negative: z.literal(true),
+    keyword: z.object({ text: z.string(), matchType: z.enum(['EXACT', 'PHRASE', 'BROAD']) }),
+    removed: z.boolean()
+  })
+  const current = stateSchema.safeParse(plan.currentState)
+  const desired = stateSchema.safeParse(plan.desiredState)
+  if (!current.success || !desired.success || current.data.removed || !desired.data.removed
+    || !plan.resourceName || current.data.resourceName !== plan.resourceName
+    || !equalJson(desired.data, { ...current.data, removed: true })
+    || plan.providerOperations.length !== 1) return false
+  const segment = current.data.scope === 'campaign' ? 'campaignCriteria' : 'adGroupCriteria'
+  const service = current.data.scope === 'campaign' ? 'campaignCriteria' : 'adGroupCriteria'
+  if (!new RegExp(`^customers/${plan.customerId}/${segment}/\\d+~\\d+$`).test(plan.resourceName)) return false
+  const mutation = plan.providerOperations[0]
+  return Boolean(mutation && mutation.service === service
+    && mutation.operations.length === 1
+    && equalJson(mutation.operations[0], { remove: plan.resourceName }))
+}
+
 export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): boolean {
   if (!isSearchGoogleAdsOperation(plan.operation) || plan.providerOperations.length === 0) return false
   const services = EXECUTABLE_SEARCH_SERVICES[
@@ -697,6 +721,7 @@ export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): bool
   if (plan.operation === 'update_campaign'
     || plan.operation === 'update_ad_group'
     || plan.operation === 'update_keyword') return isTypedMutableEntityUpdate(plan)
+  if (plan.operation === 'remove_negative_keyword') return isTypedNegativeKeywordRemoval(plan)
   if (plan.operation === 'attach_asset'
     || plan.operation === 'archive_asset_link'
     || plan.operation === 'detach_asset') {

@@ -109,6 +109,34 @@ describe('Search Google Ads governed planning runtime', () => {
     } as GoogleAdsActionPlan)).toBe(false)
   })
 
+  it.each([
+    ['campaign', 'campaignCriteria', 'customers/1234567890/campaignCriteria/10~41'],
+    ['ad_group', 'adGroupCriteria', 'customers/1234567890/adGroupCriteria/20~41']
+  ] as const)('allows typed %s negative-keyword removal only through %s', (
+    scope, service, resourceName
+  ) => {
+    const state = {
+      resourceName,
+      scope,
+      negative: true,
+      keyword: { text: 'gac suv', matchType: 'PHRASE' },
+      removed: false
+    }
+    const plan = {
+      customerId: '1234567890',
+      operation: 'remove_negative_keyword',
+      resourceName,
+      currentState: state,
+      desiredState: { ...state, removed: true },
+      providerOperations: [{ service, operations: [{ remove: resourceName }] }]
+    } as GoogleAdsActionPlan
+    expect(isExecutableSearchGoogleAdsPlan(plan)).toBe(true)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      providerOperations: [{ service: 'campaigns', operations: [{ remove: resourceName }] }]
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
   it('allows only the typed mutable campaign fields through campaign updates', () => {
     const resourceName = 'customers/1234567890/campaigns/10'
     const basePlan = {
