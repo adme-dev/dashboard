@@ -166,6 +166,23 @@ describe('Search Google Ads current-state loader', () => {
     expect(query.mock.calls[0]?.[0].query).toContain('campaign.id = 60')
     expect(query.mock.calls[1]?.[0].query).toContain('campaign.id = 60')
   })
+
+  it('requires a live parent ad group before planning a responsive search ad', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ adGroup: { resourceName: 'customers/1234567890/adGroups/70' } }],
+      more: 0
+    })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('create_ad', {
+      adGroupResourceName: 'customers/1234567890/adGroups/70',
+      finalUrl: 'https://northerngac.com.au/vehicles',
+      headlines: ['Northern GAC', 'Explore New Vehicles', 'Book a Test Drive'],
+      descriptions: ['Discover the latest GAC range.', 'Enquire with Northern GAC today.']
+    }), auth, { query })).resolves.toEqual({
+      adGroupResourceName: 'customers/1234567890/adGroups/70'
+    })
+    expect(query.mock.calls[0]?.[0].query).toContain('ad_group.id = 70')
+  })
 })
 
 describe('Search Google Ads readback verification', () => {
@@ -364,5 +381,75 @@ describe('Search Google Ads persisted-plan state loading', () => {
       cpcBidMicros: '3500000'
     })
     expect(query.mock.calls[0]?.[0].query).toContain('ad_group.id = 70')
+  })
+
+  it('reads back all governed fields of a created responsive search ad', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ adGroupAd: {
+        resourceName: 'customers/1234567890/adGroupAds/70~80',
+        adGroup: 'customers/1234567890/adGroups/70',
+        status: 'PAUSED',
+        ad: {
+          finalUrls: ['https://northerngac.com.au/vehicles'],
+          responsiveSearchAd: {
+            headlines: [
+              { text: 'Northern GAC' },
+              { text: 'Explore New Vehicles' },
+              { text: 'Book a Test Drive' }
+            ],
+            descriptions: [
+              { text: 'Discover the latest GAC range.' },
+              { text: 'Enquire with Northern GAC today.' }
+            ],
+            path1: 'vehicles',
+            path2: 'new'
+          }
+        }
+      } }],
+      more: 0
+    })
+    const plan = {
+      operation: 'create_ad',
+      resourceType: 'ad',
+      resourceName: 'customers/1234567890/adGroups/70',
+      customerId: '1234567890',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      connectionId: '22222222-2222-4222-8222-222222222222',
+      actorId: '33333333-3333-4333-8333-333333333333',
+      source: 'mcp',
+      executionMode: 'proposal',
+      idempotencyKey: 'rsa-1',
+      desiredState: {
+        adGroup: 'customers/1234567890/adGroups/70',
+        status: 'PAUSED',
+        ad: {
+          finalUrls: ['https://northerngac.com.au/vehicles'],
+          responsiveSearchAd: {
+            headlines: [
+              { text: 'Northern GAC' },
+              { text: 'Explore New Vehicles' },
+              { text: 'Book a Test Drive' }
+            ],
+            descriptions: [
+              { text: 'Discover the latest GAC range.' },
+              { text: 'Enquire with Northern GAC today.' }
+            ],
+            path1: 'vehicles',
+            path2: 'new'
+          }
+        }
+      },
+      providerOperations: [{ service: 'adGroupAds' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [{ adGroupAd: { resourceName: 'customers/1234567890/adGroupAds/70~80' } }]
+    })).resolves.toMatchObject({
+      resourceName: 'customers/1234567890/adGroupAds/70~80',
+      adGroup: 'customers/1234567890/adGroups/70',
+      status: 'PAUSED'
+    })
+    expect(query.mock.calls[0]?.[0].query).toContain('ad_group.id = 70')
+    expect(query.mock.calls[0]?.[0].query).toContain('ad_group_ad.ad.id = 80')
   })
 })

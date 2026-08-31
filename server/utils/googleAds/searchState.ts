@@ -63,6 +63,20 @@ const AdGroupStateSchema = z.object({
   status: z.string(),
   cpcBidMicros: z.union([z.string(), z.number()]).transform(String).optional()
 })
+const AdGroupAdStateSchema = z.object({
+  resourceName: z.string(),
+  adGroup: z.string(),
+  status: z.string(),
+  ad: z.object({
+    finalUrls: z.array(z.string()),
+    responsiveSearchAd: z.object({
+      headlines: z.array(z.object({ text: z.string() })),
+      descriptions: z.array(z.object({ text: z.string() })),
+      path1: z.string().optional(),
+      path2: z.string().optional()
+    })
+  })
+})
 
 const STATUS_READS = {
   pause_campaign: { from: 'campaign', select: 'campaign.resource_name, campaign.status', key: 'campaign' },
@@ -104,9 +118,11 @@ function escapeGaqlString(value: string): string {
 function assertCustomerResourceName(
   resourceName: string,
   customerId: string,
-  segment: string
+  segment: string,
+  composite = false
 ): void {
-  const pattern = new RegExp(`^customers/${customerId}/${segment}/\\d+$`)
+  const leaf = composite ? '\\d+~\\d+' : '\\d+'
+  const pattern = new RegExp(`^customers/${customerId}/${segment}/${leaf}$`)
   if (!pattern.test(resourceName)) {
     throw new Error('Google Ads returned a resource outside the selected customer')
   }
@@ -306,6 +322,65 @@ WHERE ad_group.id = ${id}`
   return AdGroupStateSchema.parse(adGroup)
 }
 
+async function loadCreateAdCurrentState(
+  customerId: string,
+  adGroupResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<{ adGroupResourceName: string }> {
+  assertCustomerResourceName(adGroupResourceName, customerId, 'adGroups')
+  const [adGroupId] = resourceIds(adGroupResourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT ad_group.resource_name
+FROM ad_group
+WHERE ad_group.id = ${adGroupId}`
+  })
+  const first = result.rows[0]
+  const adGroup = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).adGroup
+    : undefined
+  const parsed = z.object({ resourceName: z.string() }).safeParse(adGroup)
+  if (!parsed.success || parsed.data.resourceName !== adGroupResourceName) {
+    throw new Error('The referenced ad group was not found')
+  }
+  return { adGroupResourceName }
+}
+
+async function loadAdGroupAdByResourceName(
+  customerId: string,
+  resourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<z.infer<typeof AdGroupAdStateSchema>> {
+  assertCustomerResourceName(resourceName, customerId, 'adGroupAds', true)
+  const [adGroupId, adId] = resourceIds(resourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT ad_group_ad.resource_name,
+  ad_group_ad.ad_group,
+  ad_group_ad.status,
+  ad_group_ad.ad.final_urls,
+  ad_group_ad.ad.responsive_search_ad.headlines,
+  ad_group_ad.ad.responsive_search_ad.descriptions,
+  ad_group_ad.ad.responsive_search_ad.path1,
+  ad_group_ad.ad.responsive_search_ad.path2
+FROM ad_group_ad
+WHERE ad_group.id = ${adGroupId}
+  AND ad_group_ad.ad.id = ${adId}`
+  })
+  const first = result.rows[0]
+  const adGroupAd = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).adGroupAd
+    : undefined
+  if (!adGroupAd) throw new Error('Google Ads responsive search ad was not found after mutation')
+  return AdGroupAdStateSchema.parse(adGroupAd)
+}
+
 function mutationResourceName(
   mutation: GoogleAdsMutateResult,
   service: string
@@ -319,7 +394,8 @@ function mutationResourceName(
   const singular = {
     campaignBudgets: 'campaignBudget',
     campaigns: 'campaign',
-    adGroups: 'adGroup'
+    adGroups: 'adGroup',
+    adGroupAds: 'adGroupAd'
   }[service] ?? ''
   const nested = singular ? record[singular] : undefined
   if (nested && typeof nested === 'object'
@@ -470,6 +546,20 @@ export async function loadSearchGoogleAdsCurrentState(
       resolved
     )
   }
+  if (context.input.operation === 'create_ad') {
+    const args = z.object({
+      adGroupResourceName: z.string()
+    }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation,
+      context.input.arguments
+    ))
+    return loadCreateAdCurrentState(
+      context.customerId,
+      args.adGroupResourceName,
+      auth,
+      resolved
+    )
+  }
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }
 
@@ -530,6 +620,23 @@ export async function loadSearchGoogleAdsPlanState(
       plan.customerId,
       desired.name,
       desired.campaign,
+      auth,
+      resolved
+    )
+  }
+  if (plan.operation === 'create_ad') {
+    if (mutation) {
+      return loadAdGroupAdByResourceName(
+        plan.customerId,
+        mutationResourceName(mutation, 'adGroupAds'),
+        auth,
+        resolved
+      )
+    }
+    const desired = z.object({ adGroup: z.string() }).parse(plan.desiredState)
+    return loadCreateAdCurrentState(
+      plan.customerId,
+      desired.adGroup,
       auth,
       resolved
     )
