@@ -83,6 +83,54 @@ const AdGroupAdStateSchema = z.object({
     })
   })
 })
+const AdScheduleStateSchema = z.object({
+  dayOfWeek: z.enum([
+    'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'
+  ]),
+  startHour: z.union([z.string(), z.number()]).transform(Number).pipe(z.number().int().min(0).max(23)),
+  startMinute: z.enum(['ZERO', 'FIFTEEN', 'THIRTY', 'FORTY_FIVE']),
+  endHour: z.union([z.string(), z.number()]).transform(Number).pipe(z.number().int().min(0).max(24)),
+  endMinute: z.enum(['ZERO', 'FIFTEEN', 'THIRTY', 'FORTY_FIVE'])
+})
+
+type NormalizedAdSchedule = {
+  dayOfWeek: z.infer<typeof AdScheduleStateSchema>['dayOfWeek']
+  startHour: number
+  startMinute: 0 | 15 | 30 | 45
+  endHour: number
+  endMinute: 0 | 15 | 30 | 45
+}
+
+const AD_SCHEDULE_DAY_ORDER: Record<NormalizedAdSchedule['dayOfWeek'], number> = {
+  MONDAY: 0,
+  TUESDAY: 1,
+  WEDNESDAY: 2,
+  THURSDAY: 3,
+  FRIDAY: 4,
+  SATURDAY: 5,
+  SUNDAY: 6
+}
+const AD_SCHEDULE_MINUTES = {
+  ZERO: 0,
+  FIFTEEN: 15,
+  THIRTY: 30,
+  FORTY_FIVE: 45
+} as const
+
+function normalizeAdSchedule(value: z.infer<typeof AdScheduleStateSchema>): NormalizedAdSchedule {
+  return {
+    dayOfWeek: value.dayOfWeek,
+    startHour: value.startHour,
+    startMinute: AD_SCHEDULE_MINUTES[value.startMinute],
+    endHour: value.endHour,
+    endMinute: AD_SCHEDULE_MINUTES[value.endMinute]
+  }
+}
+
+function adScheduleKey(schedule: NormalizedAdSchedule): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${schedule.dayOfWeek}:${pad(schedule.startHour)}:${pad(schedule.startMinute)}-${pad(schedule.endHour)}:${pad(schedule.endMinute)}`
+}
 
 const STATUS_READS = {
   pause_campaign: { from: 'campaign', select: 'campaign.resource_name, campaign.status', key: 'campaign' },
@@ -731,6 +779,80 @@ WHERE campaign.id = ${campaignId}
   return { campaignResourceName, languageIds, criteria }
 }
 
+async function loadCampaignAdSchedules(
+  customerId: string,
+  campaignResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<{
+  campaignResourceName: string
+  schedules: NormalizedAdSchedule[]
+  criteria: Record<string, string>
+}> {
+  assertCustomerResourceName(campaignResourceName, customerId, 'campaigns')
+  const [campaignId] = resourceIds(campaignResourceName)
+  const parent = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT campaign.resource_name
+FROM campaign
+WHERE campaign.id = ${campaignId}`
+  })
+  const parentRow = parent.rows[0]
+  const campaign = parentRow && typeof parentRow === 'object'
+    ? (parentRow as Record<string, unknown>).campaign
+    : undefined
+  const parsedCampaign = z.object({ resourceName: z.literal(campaignResourceName) }).safeParse(campaign)
+  if (!parsedCampaign.success) throw new Error('The referenced campaign was not found')
+
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 10_000,
+    query: `SELECT campaign_criterion.resource_name,
+  campaign_criterion.negative,
+  campaign_criterion.ad_schedule.day_of_week,
+  campaign_criterion.ad_schedule.start_hour,
+  campaign_criterion.ad_schedule.start_minute,
+  campaign_criterion.ad_schedule.end_hour,
+  campaign_criterion.ad_schedule.end_minute
+FROM campaign_criterion
+WHERE campaign.id = ${campaignId}
+  AND campaign_criterion.type = 'AD_SCHEDULE'
+  AND campaign_criterion.negative = FALSE`
+  })
+  if (result.more > 0) throw new Error('Google Ads campaign ad schedule state exceeds the safe read limit')
+
+  const criteria: Record<string, string> = {}
+  const schedules: NormalizedAdSchedule[] = []
+  for (const row of result.rows) {
+    if (!row || typeof row !== 'object') continue
+    const parsed = z.object({
+      resourceName: z.string(),
+      negative: z.literal(false),
+      adSchedule: AdScheduleStateSchema
+    }).safeParse((row as Record<string, unknown>).campaignCriterion)
+    if (!parsed.success) throw new Error('Google Ads returned invalid campaign ad schedule state')
+    assertCustomerResourceName(parsed.data.resourceName, customerId, 'campaignCriteria', true)
+    const [criterionCampaignId] = resourceIds(parsed.data.resourceName)
+    if (criterionCampaignId !== campaignId) {
+      throw new Error('Google Ads returned an ad schedule outside the selected campaign')
+    }
+    const schedule = normalizeAdSchedule(parsed.data.adSchedule)
+    schedules.push(schedule)
+    criteria[adScheduleKey(schedule)] = parsed.data.resourceName
+  }
+  schedules.sort((left, right) => (
+    AD_SCHEDULE_DAY_ORDER[left.dayOfWeek] - AD_SCHEDULE_DAY_ORDER[right.dayOfWeek]
+    || left.startHour - right.startHour
+    || left.startMinute - right.startMinute
+    || left.endHour - right.endHour
+    || left.endMinute - right.endMinute
+  ))
+  return { campaignResourceName, schedules, criteria }
+}
+
 export async function loadSearchGoogleAdsCurrentState(
   context: Omit<BuildGoogleAdsActionContext, 'currentState'>,
   auth: GoogleAdsAuth,
@@ -858,6 +980,18 @@ export async function loadSearchGoogleAdsCurrentState(
       resolved
     )
   }
+  if (context.input.operation === 'set_ad_schedule') {
+    const args = z.object({ campaignResourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation,
+      context.input.arguments
+    ))
+    return loadCampaignAdSchedules(
+      context.customerId,
+      args.campaignResourceName,
+      auth,
+      resolved
+    )
+  }
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }
 
@@ -978,6 +1112,15 @@ export async function loadSearchGoogleAdsPlanState(
   if (plan.operation === 'set_languages') {
     const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)
     return loadCampaignLanguages(
+      plan.customerId,
+      desired.campaignResourceName,
+      auth,
+      resolved
+    )
+  }
+  if (plan.operation === 'set_ad_schedule') {
+    const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)
+    return loadCampaignAdSchedules(
       plan.customerId,
       desired.campaignResourceName,
       auth,

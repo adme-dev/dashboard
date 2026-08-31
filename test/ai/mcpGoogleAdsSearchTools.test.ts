@@ -30,7 +30,8 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_add_keywords',
       'google_ads_plan_set_locations',
       'google_ads_plan_set_location_match_mode',
-      'google_ads_plan_set_languages'
+      'google_ads_plan_set_languages',
+      'google_ads_plan_set_ad_schedule'
     ])
     const serialized = JSON.stringify(googleAdsSearchPlanningTools)
     expect(serialized).not.toMatch(/"(?:query|operations|url|accessToken|developerToken)"/)
@@ -228,6 +229,23 @@ describe('Google Ads Search MCP planning descriptors', () => {
         campaignResourceName: 'customers/1234567890/campaigns/60',
         languageConstantIds: ['1000', '1001']
       }
+    },
+    {
+      tool: 'google_ads_plan_set_ad_schedule',
+      args: {
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        schedules: [{
+          dayOfWeek: 'MONDAY', startHour: 9, startMinute: 0, endHour: 17, endMinute: 0
+        }]
+      },
+      operation: 'set_ad_schedule',
+      resourceType: 'ad_schedule',
+      expectedArguments: {
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        schedules: [{
+          dayOfWeek: 'MONDAY', startHour: 9, startMinute: 0, endHour: 17, endMinute: 0
+        }]
+      }
     }
   ])('maps $tool to a typed proposal-only plan', async ({
     tool,
@@ -272,6 +290,28 @@ describe('Google Ads Search MCP planning descriptors', () => {
       true,
       { plan }
     )).resolves.toMatchObject({ ok: false, code: 'disabled' })
+    expect(plan).not.toHaveBeenCalled()
+  })
+
+  it('rejects overlapping ad schedules before creating a plan', async () => {
+    const plan = vi.fn()
+    await expect(executeGoogleAdsSearchPlanningTool(
+      'google_ads_plan_set_ad_schedule',
+      {
+        clientId: '33333333-3333-4333-8333-333333333333',
+        connectionId: '44444444-4444-4444-8444-444444444444',
+        idempotencyKey: 'overlapping-schedule',
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        schedules: [
+          { dayOfWeek: 'MONDAY', startHour: 9, startMinute: 0, endHour: 12, endMinute: 0 },
+          { dayOfWeek: 'MONDAY', startHour: 11, startMinute: 45, endHour: 13, endMinute: 0 }
+        ]
+      },
+      context,
+      flags,
+      true,
+      { plan }
+    )).resolves.toMatchObject({ ok: false, code: 'bad_args' })
     expect(plan).not.toHaveBeenCalled()
   })
 

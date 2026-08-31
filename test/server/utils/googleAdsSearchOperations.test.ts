@@ -483,6 +483,76 @@ describe('Search Google Ads construction operations', () => {
     }])
   })
 
+  it('replaces campaign ad schedules atomically using quarter-hour boundaries', () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const monday = {
+      dayOfWeek: 'MONDAY' as const,
+      startHour: 9,
+      startMinute: 0 as const,
+      endHour: 17,
+      endMinute: 0 as const
+    }
+    const saturday = {
+      dayOfWeek: 'SATURDAY' as const,
+      startHour: 9,
+      startMinute: 30 as const,
+      endHour: 13,
+      endMinute: 0 as const
+    }
+    const built = buildSearchGoogleAdsAction(context(
+      'set_ad_schedule',
+      'ad_schedule',
+      { campaignResourceName: campaign, schedules: [monday, saturday] },
+      {
+        campaignResourceName: campaign,
+        schedules: [monday, {
+          dayOfWeek: 'FRIDAY', startHour: 9, startMinute: 0, endHour: 17, endMinute: 0
+        }],
+        criteria: {
+          'MONDAY:09:00-17:00': 'customers/1234567890/campaignCriteria/60~20',
+          'FRIDAY:09:00-17:00': 'customers/1234567890/campaignCriteria/60~21'
+        }
+      }
+    ))
+
+    expect(built.desiredState).toEqual({
+      campaignResourceName: campaign,
+      schedules: [monday, saturday],
+      criteria: {
+        'MONDAY:09:00-17:00': 'customers/1234567890/campaignCriteria/60~20'
+      }
+    })
+    expect(built.providerOperations).toEqual([{
+      service: 'campaignCriteria',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        { create: {
+          campaign,
+          negative: false,
+          adSchedule: {
+            dayOfWeek: 'SATURDAY',
+            startHour: 9,
+            startMinute: 'THIRTY',
+            endHour: 13,
+            endMinute: 'ZERO'
+          }
+        } },
+        { remove: 'customers/1234567890/campaignCriteria/60~21' }
+      ]
+    }])
+  })
+
+  it('rejects overlapping campaign ad schedules', () => {
+    expect(() => parseSearchGoogleAdsArguments('set_ad_schedule', {
+      campaignResourceName: 'customers/1234567890/campaigns/60',
+      schedules: [
+        { dayOfWeek: 'MONDAY', startHour: 9, startMinute: 0, endHour: 12, endMinute: 0 },
+        { dayOfWeek: 'MONDAY', startHour: 11, startMinute: 45, endHour: 13, endMinute: 0 }
+      ]
+    })).toThrow()
+  })
+
   it('rejects unsafe URLs and campaigns that attempt to start enabled', () => {
     expect(() => buildSearchGoogleAdsAction(context(
       'create_ad',

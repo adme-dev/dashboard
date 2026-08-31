@@ -337,6 +337,43 @@ describe('Search Google Ads current-state loader', () => {
     expect(query.mock.calls[1]?.[0]).toMatchObject({ maxRows: 10_000 })
     expect(query.mock.calls[1]?.[0].query).toContain('campaign_criterion.type = \'LANGUAGE\'')
   })
+
+  it('loads and normalizes the bounded campaign ad schedule set', async () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ campaign: { resourceName: campaign } }], more: 0 })
+      .mockResolvedValueOnce({
+        rows: [{ campaignCriterion: {
+          resourceName: 'customers/1234567890/campaignCriteria/60~20',
+          negative: false,
+          adSchedule: {
+            dayOfWeek: 'MONDAY',
+            startHour: 9,
+            startMinute: 'ZERO',
+            endHour: 17,
+            endMinute: 'THIRTY'
+          }
+        } }],
+        more: 0
+      })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('set_ad_schedule', {
+      campaignResourceName: campaign,
+      schedules: [{
+        dayOfWeek: 'MONDAY', startHour: 9, startMinute: 0, endHour: 17, endMinute: 30
+      }]
+    }), auth, { query })).resolves.toEqual({
+      campaignResourceName: campaign,
+      schedules: [{
+        dayOfWeek: 'MONDAY', startHour: 9, startMinute: 0, endHour: 17, endMinute: 30
+      }],
+      criteria: {
+        'MONDAY:09:00-17:30': 'customers/1234567890/campaignCriteria/60~20'
+      }
+    })
+    expect(query.mock.calls[1]?.[0]).toMatchObject({ maxRows: 10_000 })
+    expect(query.mock.calls[1]?.[0].query).toContain('campaign_criterion.type = \'AD_SCHEDULE\'')
+  })
 })
 
 describe('Search Google Ads readback verification', () => {

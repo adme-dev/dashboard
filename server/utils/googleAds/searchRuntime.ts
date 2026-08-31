@@ -310,7 +310,8 @@ const EXECUTABLE_SEARCH_SERVICES = {
   add_keywords: ['adGroupCriteria'],
   set_locations: ['campaignCriteria'],
   set_location_match_mode: ['campaigns'],
-  set_languages: ['campaignCriteria']
+  set_languages: ['campaignCriteria'],
+  set_ad_schedule: ['campaignCriteria']
 } as const
 
 export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): boolean {

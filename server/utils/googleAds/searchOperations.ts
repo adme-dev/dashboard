@@ -71,6 +71,75 @@ const SetLanguagesArgumentsSchema = z.strictObject({
   campaignResourceName: z.string().trim().min(1).max(1_000),
   languageConstantIds: z.array(z.string().regex(/^\d{1,20}$/)).min(1).max(1_000)
 })
+const DayOfWeekSchema = z.enum([
+  'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'
+])
+const QuarterHourSchema = z.union([z.literal(0), z.literal(15), z.literal(30), z.literal(45)])
+const AdScheduleSchema = z.strictObject({
+  dayOfWeek: DayOfWeekSchema,
+  startHour: z.number().int().min(0).max(23),
+  startMinute: QuarterHourSchema,
+  endHour: z.number().int().min(0).max(24),
+  endMinute: QuarterHourSchema
+})
+const SetAdScheduleArgumentsSchema = z.strictObject({
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  schedules: z.array(AdScheduleSchema).min(1).max(42)
+}).superRefine((value, refinement) => {
+  const byDay = new Map<string, Array<{ start: number, end: number }>>()
+  for (const schedule of value.schedules) {
+    const start = schedule.startHour * 60 + schedule.startMinute
+    const end = schedule.endHour * 60 + schedule.endMinute
+    if (schedule.endHour === 24 && schedule.endMinute !== 0) {
+      refinement.addIssue({ code: 'custom', message: 'An ad schedule ending at hour 24 must end at minute 0' })
+    }
+    if (end <= start) {
+      refinement.addIssue({ code: 'custom', message: 'Each ad schedule must end after it starts' })
+    }
+    const entries = byDay.get(schedule.dayOfWeek) ?? []
+    entries.push({ start, end })
+    byDay.set(schedule.dayOfWeek, entries)
+  }
+  for (const entries of byDay.values()) {
+    entries.sort((left, right) => left.start - right.start)
+    if (entries.length > 6) {
+      refinement.addIssue({ code: 'custom', message: 'Google Ads permits at most six ad schedules per day' })
+    }
+    for (let index = 1; index < entries.length; index += 1) {
+      if (entries[index]!.start < entries[index - 1]!.end) {
+        refinement.addIssue({ code: 'custom', message: 'Campaign ad schedules must not overlap' })
+      }
+    }
+  }
+})
+
+type AdSchedule = z.infer<typeof AdScheduleSchema>
+
+const DAY_ORDER: Record<AdSchedule['dayOfWeek'], number> = {
+  MONDAY: 0,
+  TUESDAY: 1,
+  WEDNESDAY: 2,
+  THURSDAY: 3,
+  FRIDAY: 4,
+  SATURDAY: 5,
+  SUNDAY: 6
+}
+const MINUTE_ENUM = { 0: 'ZERO', 15: 'FIFTEEN', 30: 'THIRTY', 45: 'FORTY_FIVE' } as const
+
+function scheduleKey(schedule: AdSchedule): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${schedule.dayOfWeek}:${pad(schedule.startHour)}:${pad(schedule.startMinute)}-${pad(schedule.endHour)}:${pad(schedule.endMinute)}`
+}
+
+function sortSchedules(schedules: AdSchedule[]): AdSchedule[] {
+  return [...schedules].sort((left, right) => (
+    DAY_ORDER[left.dayOfWeek] - DAY_ORDER[right.dayOfWeek]
+    || left.startHour - right.startHour
+    || left.startMinute - right.startMinute
+    || left.endHour - right.endHour
+    || left.endMinute - right.endMinute
+  ))
+}
 
 const STATUS_OPERATIONS = {
   pause_campaign: { resourceType: 'campaign', segment: 'campaigns', service: 'campaigns', status: 'PAUSED' },
@@ -108,7 +177,8 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'add_keywords',
       'set_locations',
       'set_location_match_mode',
-      'set_languages'
+      'set_languages',
+      'set_ad_schedule'
     ].includes(operation)
 }
 
@@ -189,6 +259,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_locations') return SetLocationsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_location_match_mode') return SetLocationMatchModeArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_languages') return SetLanguagesArgumentsSchema.parse(argumentsValue)
+  if (operation === 'set_ad_schedule') return SetAdScheduleArgumentsSchema.parse(argumentsValue)
   throw new Error(`Unsupported Search Google Ads operation: ${operation}`)
 }
 
@@ -559,6 +630,69 @@ function buildLanguageAction(context: BuildGoogleAdsActionContext): BuiltGoogleA
   }
 }
 
+function buildAdScheduleAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'ad_schedule') throw new Error('Ad scheduling requires resource type ad_schedule')
+  const args = SetAdScheduleArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.campaignResourceName, context.customerId, 'campaigns')
+  const current = z.object({
+    campaignResourceName: z.literal(args.campaignResourceName),
+    schedules: z.array(AdScheduleSchema),
+    criteria: z.record(z.string(), z.string())
+  }).parse(context.currentState)
+  const desiredSchedules = sortSchedules(args.schedules)
+  const currentByKey = new Map(current.schedules.map(schedule => [scheduleKey(schedule), schedule]))
+  const desiredByKey = new Map(desiredSchedules.map(schedule => [scheduleKey(schedule), schedule]))
+  const additions = desiredSchedules.filter(schedule => !currentByKey.has(scheduleKey(schedule)))
+  const removals = current.schedules.filter(schedule => !desiredByKey.has(scheduleKey(schedule)))
+  if (additions.length === 0 && removals.length === 0) {
+    throw new Error('Campaign ad schedule already matches the requested set')
+  }
+
+  const campaignId = args.campaignResourceName.slice(args.campaignResourceName.lastIndexOf('/') + 1)
+  const retainedCriteria: Record<string, string> = {}
+  for (const schedule of desiredSchedules) {
+    const key = scheduleKey(schedule)
+    const resourceName = current.criteria[key]
+    if (resourceName) retainedCriteria[key] = resourceName
+  }
+  const removeOperations = removals.map((schedule) => {
+    const resourceName = current.criteria[scheduleKey(schedule)]
+    if (!resourceName) throw new Error('Current campaign ad schedule has no provider resource')
+    assertResourceName(resourceName, context.customerId, 'campaignCriteria')
+    if (!resourceName.includes(`/campaignCriteria/${campaignId}~`)) {
+      throw new Error('Campaign ad schedule does not belong to the selected campaign')
+    }
+    return { remove: resourceName } as const
+  })
+  return {
+    resourceName: args.campaignResourceName,
+    desiredState: {
+      campaignResourceName: args.campaignResourceName,
+      schedules: desiredSchedules,
+      criteria: retainedCriteria
+    },
+    providerOperations: [{
+      service: 'campaignCriteria',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        ...additions.map(schedule => ({ create: {
+          campaign: args.campaignResourceName,
+          negative: false,
+          adSchedule: {
+            dayOfWeek: schedule.dayOfWeek,
+            startHour: schedule.startHour,
+            startMinute: MINUTE_ENUM[schedule.startMinute],
+            endHour: schedule.endHour,
+            endMinute: MINUTE_ENUM[schedule.endMinute]
+          }
+        } })),
+        ...removeOperations
+      ]
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -576,5 +710,6 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'set_locations') return buildLocationAction(context)
   if (context.input.operation === 'set_location_match_mode') return buildLocationMatchModeAction(context)
   if (context.input.operation === 'set_languages') return buildLanguageAction(context)
+  if (context.input.operation === 'set_ad_schedule') return buildAdScheduleAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }

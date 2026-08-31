@@ -21,6 +21,7 @@ export const GOOGLE_ADS_PLAN_ADD_KEYWORDS_TOOL = 'google_ads_plan_add_keywords'
 export const GOOGLE_ADS_PLAN_SET_LOCATIONS_TOOL = 'google_ads_plan_set_locations'
 export const GOOGLE_ADS_PLAN_SET_LOCATION_MATCH_MODE_TOOL = 'google_ads_plan_set_location_match_mode'
 export const GOOGLE_ADS_PLAN_SET_LANGUAGES_TOOL = 'google_ads_plan_set_languages'
+export const GOOGLE_ADS_PLAN_SET_AD_SCHEDULE_TOOL = 'google_ads_plan_set_ad_schedule'
 
 const CommonSchema = {
   clientId: z.string().uuid(),
@@ -119,6 +120,48 @@ const SetLanguagesSchema = z.strictObject({
   campaignResourceName: z.string().trim().min(1).max(1_000),
   languageConstantIds: z.array(z.string().regex(/^\d{1,20}$/)).min(1).max(1_000)
 })
+const DayOfWeekSchema = z.enum([
+  'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'
+])
+const QuarterHourSchema = z.union([z.literal(0), z.literal(15), z.literal(30), z.literal(45)])
+const AdScheduleSchema = z.strictObject({
+  dayOfWeek: DayOfWeekSchema,
+  startHour: z.number().int().min(0).max(23),
+  startMinute: QuarterHourSchema,
+  endHour: z.number().int().min(0).max(24),
+  endMinute: QuarterHourSchema
+})
+const SetAdScheduleSchema = z.strictObject({
+  ...CommonSchema,
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  schedules: z.array(AdScheduleSchema).min(1).max(42)
+}).superRefine((value, refinement) => {
+  const byDay = new Map<string, Array<{ start: number, end: number }>>()
+  for (const schedule of value.schedules) {
+    const start = schedule.startHour * 60 + schedule.startMinute
+    const end = schedule.endHour * 60 + schedule.endMinute
+    if (schedule.endHour === 24 && schedule.endMinute !== 0) {
+      refinement.addIssue({ code: 'custom', message: 'An ad schedule ending at hour 24 must end at minute 0' })
+    }
+    if (end <= start) {
+      refinement.addIssue({ code: 'custom', message: 'Each ad schedule must end after it starts' })
+    }
+    const entries = byDay.get(schedule.dayOfWeek) ?? []
+    entries.push({ start, end })
+    byDay.set(schedule.dayOfWeek, entries)
+  }
+  for (const entries of byDay.values()) {
+    entries.sort((left, right) => left.start - right.start)
+    if (entries.length > 6) {
+      refinement.addIssue({ code: 'custom', message: 'Google Ads permits at most six ad schedules per day' })
+    }
+    for (let index = 1; index < entries.length; index += 1) {
+      if (entries[index]!.start < entries[index - 1]!.end) {
+        refinement.addIssue({ code: 'custom', message: 'Campaign ad schedules must not overlap' })
+      }
+    }
+  }
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -193,6 +236,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_SET_LANGUAGES_TOOL,
     'Plan an atomic replacement of campaign languages using Google language constant IDs.',
     SetLanguagesSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_SET_AD_SCHEDULE_TOOL,
+    'Plan an atomic campaign ad schedule replacement using non-overlapping quarter-hour windows.',
+    SetAdScheduleSchema
   )
 ]
 
@@ -462,6 +510,22 @@ export async function executeGoogleAdsSearchPlanningTool(
         arguments: {
           campaignResourceName: args.campaignResourceName,
           languageConstantIds: args.languageConstantIds
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_SET_AD_SCHEDULE_TOOL) {
+      const args = SetAdScheduleSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'set_ad_schedule',
+        resourceType: 'ad_schedule',
+        arguments: {
+          campaignResourceName: args.campaignResourceName,
+          schedules: args.schedules
         }
       }
     } else {
