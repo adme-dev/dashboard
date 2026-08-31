@@ -69,7 +69,20 @@ function unpackResponse<T>(response: unknown): { data: T, requestId?: string } {
 }
 
 const defaultDeps: GoogleAdsRequestDeps = {
-  fetch: (url, options) => ofetch.raw(url, options),
+  fetch: async (url, options) => {
+    let requestId: string | undefined
+    const data = await ofetch(url, {
+      ...options,
+      retry: 0,
+      onResponse: ({ response }) => {
+        requestId = response.headers.get('request-id') ?? undefined
+      },
+    })
+    return {
+      _data: data,
+      headers: requestId ? { 'request-id': requestId } : undefined,
+    }
+  },
   sleep: milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
 }
 

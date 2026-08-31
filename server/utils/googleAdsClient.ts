@@ -17,6 +17,7 @@ import {
   sanitizeDiagnosticText,
   type PolicyIssue,
 } from '~~/server/utils/adDiagnostics'
+import { executeGoogleAdsQuery } from '~~/server/utils/googleAds/query'
 import { GOOGLE_ADS_BASE_URL } from '~~/server/utils/googleAds/version'
 
 const GOOGLE_ADS_BASE = GOOGLE_ADS_BASE_URL
@@ -180,19 +181,6 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-function redactGoogleAdsDiagnostic(value: unknown): string {
-  let serialized: string
-  try {
-    serialized = JSON.stringify(value) ?? String(value)
-  } catch {
-    serialized = '[unserializable Google Ads diagnostic]'
-  }
-  return serialized
-    .replace(/customers\/\d+/gi, 'customers/[REDACTED]')
-    .replace(/\b\d{8,}\b/g, '[REDACTED]')
-    .slice(0, 500)
-}
-
 // ============================================
 // GAQL Query Helper
 // ============================================
@@ -208,66 +196,17 @@ export async function gaqlQuery(
   loginCustomerId?: string,
   retries = 3
 ): Promise<any[]> {
-  const cleanCustomerId = customerId.replace(/-/g, '')
-
-  const headers: Record<string, string> = {
-    'Authorization': `Bearer ${token}`,
-    'developer-token': developerToken,
-    'Content-Type': 'application/json'
-  }
-  if (loginCustomerId) {
-    headers['login-customer-id'] = loginCustomerId.replace(/-/g, '')
-  }
-
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const response = await ofetch<any[]>(
-        `${GOOGLE_ADS_BASE}/customers/${cleanCustomerId}/googleAds:searchStream`,
-        {
-          method: 'POST',
-          headers,
-          body: { query }
-        }
-      )
-
-      // searchStream returns an array of result batches
-      const results: any[] = []
-      if (Array.isArray(response)) {
-        for (const batch of response) {
-          if (batch.results) {
-            results.push(...batch.results)
-          }
-        }
-      }
-      return results
-    } catch (err: any) {
-      const status = err?.status || err?.statusCode
-      // Log detailed GAQL error info for debugging 4xx (bad query, permission
-      // denied, disabled customer, dev-token/login-customer-id problems). The
-      // GoogleAdsFailure errorCode in the body is what distinguishes them.
-      if ((status === 400 || status === 403) && err.data) {
-        const details = err.data?.error?.details?.[0]?.errors?.[0]
-        if (details) {
-          console.error(
-            `[GoogleAds] GAQL ${status} detail (customer [REDACTED]):`,
-            redactGoogleAdsDiagnostic(details)
-          )
-        } else {
-          console.error(
-            `[GoogleAds] GAQL ${status} body (customer [REDACTED]):`,
-            redactGoogleAdsDiagnostic(err.data)
-          )
-        }
-      }
-      if ((status === 429 || status === 500 || status === 503) && attempt < retries) {
-        const delay = Math.pow(2, attempt + 1) * 1000
-        await new Promise(resolve => setTimeout(resolve, delay))
-        continue
-      }
-      throw err
-    }
-  }
-  throw new Error('Google Ads API: max retries exceeded')
+  const result = await executeGoogleAdsQuery({
+    customerId,
+    query,
+    auth: {
+      accessToken: token,
+      developerToken,
+      loginCustomerId,
+    },
+    retries,
+  })
+  return result.rows
 }
 
 // ============================================
