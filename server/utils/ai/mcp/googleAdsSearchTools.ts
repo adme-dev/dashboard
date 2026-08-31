@@ -25,6 +25,7 @@ export const GOOGLE_ADS_PLAN_SET_AD_SCHEDULE_TOOL = 'google_ads_plan_set_ad_sche
 export const GOOGLE_ADS_PLAN_SET_DEVICES_TOOL = 'google_ads_plan_set_devices'
 export const GOOGLE_ADS_PLAN_SET_DEMOGRAPHICS_TOOL = 'google_ads_plan_set_demographics'
 export const GOOGLE_ADS_PLAN_SET_PLACEMENTS_TOOL = 'google_ads_plan_set_placements'
+export const GOOGLE_ADS_PLAN_SET_CONTENT_EXCLUSIONS_TOOL = 'google_ads_plan_set_content_exclusions'
 export const GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL = 'google_ads_plan_set_campaign_conversion_goals'
 export const GOOGLE_ADS_PLAN_SET_CUSTOMER_GOAL_BIDDABILITY_TOOL = 'google_ads_plan_set_customer_goal_biddability'
 export const GOOGLE_ADS_PLAN_SET_CONVERSION_PRIMARY_STATE_TOOL = 'google_ads_plan_set_conversion_primary_state'
@@ -220,6 +221,22 @@ const SetPlacementsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Placement URLs must be unique' })
   }
 })
+const ContentLabelTypeSchema = z.enum([
+  'BELOW_THE_FOLD', 'BRAND_SUITABILITY_CONTENT_FOR_FAMILIES', 'BRAND_SUITABILITY_GAMES_FIGHTING',
+  'BRAND_SUITABILITY_GAMES_MATURE', 'BRAND_SUITABILITY_HEALTH_SENSITIVE',
+  'BRAND_SUITABILITY_HEALTH_SOURCE_UNDETERMINED', 'LIVE_STREAMING_VIDEO', 'PARKED_DOMAIN',
+  'PROFANITY', 'SEXUALLY_SUGGESTIVE', 'SOCIAL_ISSUES', 'TRAGEDY', 'VIDEO', 'VIDEO_NOT_YET_RATED',
+  'VIDEO_RATING_DV_G', 'VIDEO_RATING_DV_MA', 'VIDEO_RATING_DV_PG', 'VIDEO_RATING_DV_T'
+])
+const SetContentExclusionsSchema = z.strictObject({
+  ...CommonSchema,
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  labels: z.array(ContentLabelTypeSchema).max(18)
+}).superRefine((value, refinement) => {
+  if (new Set(value.labels).size !== value.labels.length) {
+    refinement.addIssue({ code: 'custom', message: 'Content-exclusion labels must be unique' })
+  }
+})
 const ConversionCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -382,6 +399,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_SET_PLACEMENTS_TOOL,
     'Plan an atomic replacement of campaign or ad-group placement URL exclusions. Google Ads v25 does not support positive Placement criteria.',
     SetPlacementsSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_SET_CONTENT_EXCLUSIONS_TOOL,
+    'Plan an atomic replacement of campaign-level Google Ads v25 content-label exclusions.',
+    SetContentExclusionsSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL,
@@ -735,6 +757,19 @@ export async function executeGoogleAdsSearchPlanningTool(
         operation: 'set_placements',
         resourceType: 'placement',
         arguments: { scope: args.scope, parentResourceName: args.parentResourceName, urls: args.urls }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_SET_CONTENT_EXCLUSIONS_TOOL) {
+      const args = SetContentExclusionsSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'set_content_exclusions',
+        resourceType: 'content_exclusion',
+        arguments: { campaignResourceName: args.campaignResourceName, labels: args.labels }
       }
     } else if (name === GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL) {
       const args = SetCampaignConversionGoalsSchema.parse(rawArgs)

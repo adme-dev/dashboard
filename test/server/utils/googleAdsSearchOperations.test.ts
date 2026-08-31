@@ -719,6 +719,23 @@ describe('Search Google Ads construction operations', () => {
     }])
   })
 
+  it('atomically replaces campaign content-label exclusions', () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const oldCriterion = 'customers/1234567890/campaignCriteria/60~500'
+    const built = buildSearchGoogleAdsAction(context(
+      'set_content_exclusions',
+      'content_exclusion',
+      { campaignResourceName: campaign, labels: ['PROFANITY', 'TRAGEDY'] },
+      { campaignResourceName: campaign, labels: [{ resourceName: oldCriterion, type: 'PROFANITY' }] }
+    ))
+    expect(built.providerOperations).toEqual([{
+      service: 'campaignCriteria',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ create: { campaign, negative: true, contentLabel: { type: 'TRAGEDY' } } }]
+    }])
+  })
+
   it('sets a conversion action to secondary with an exact update mask', () => {
     const resourceName = 'customers/1234567890/conversionActions/9001'
     const current = {

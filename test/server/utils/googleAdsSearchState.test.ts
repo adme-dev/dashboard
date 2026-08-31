@@ -528,6 +528,24 @@ describe('Search Google Ads current-state loader', () => {
     })
   })
 
+  it('loads campaign content-label exclusions', async () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ campaign: { resourceName: campaign } }], more: 0 })
+      .mockResolvedValueOnce({ rows: [{ campaignCriterion: {
+        resourceName: 'customers/1234567890/campaignCriteria/60~500',
+        campaign,
+        negative: true,
+        contentLabel: { type: 'PROFANITY' }
+      } }], more: 0 })
+    await expect(loadSearchGoogleAdsCurrentState(context('set_content_exclusions', {
+      campaignResourceName: campaign, labels: []
+    }), auth, { query })).resolves.toMatchObject({
+      campaignResourceName: campaign,
+      labels: [{ type: 'PROFANITY' }]
+    })
+  })
+
   it('loads a tenant-bound conversion action for primary-state changes', async () => {
     const resourceName = 'customers/1234567890/conversionActions/9001'
     const query = vi.fn().mockResolvedValue({

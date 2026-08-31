@@ -128,6 +128,13 @@ const AgeRangeTypeSchema = z.enum([
   'AGE_RANGE_55_64', 'AGE_RANGE_65_UP', 'AGE_RANGE_UNDETERMINED'
 ])
 const GenderTypeSchema = z.enum(['FEMALE', 'MALE', 'UNDETERMINED'])
+const ContentLabelTypeSchema = z.enum([
+  'BELOW_THE_FOLD', 'BRAND_SUITABILITY_CONTENT_FOR_FAMILIES', 'BRAND_SUITABILITY_GAMES_FIGHTING',
+  'BRAND_SUITABILITY_GAMES_MATURE', 'BRAND_SUITABILITY_HEALTH_SENSITIVE',
+  'BRAND_SUITABILITY_HEALTH_SOURCE_UNDETERMINED', 'LIVE_STREAMING_VIDEO', 'PARKED_DOMAIN',
+  'PROFANITY', 'SEXUALLY_SUGGESTIVE', 'SOCIAL_ISSUES', 'TRAGEDY', 'VIDEO', 'VIDEO_NOT_YET_RATED',
+  'VIDEO_RATING_DV_G', 'VIDEO_RATING_DV_MA', 'VIDEO_RATING_DV_PG', 'VIDEO_RATING_DV_T'
+])
 const ConversionActionStateSchema = z.object({
   resourceName: z.string(),
   name: z.string().trim().min(1).max(255),
@@ -1064,6 +1071,50 @@ WHERE ${resource}.id = ${parentId}
   return { scope, parentResourceName, placements }
 }
 
+async function loadCampaignContentExclusions(
+  customerId: string,
+  campaignResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<{ campaignResourceName: string, labels: Array<Record<string, unknown>> }> {
+  assertCustomerResourceName(campaignResourceName, customerId, 'campaigns')
+  const [campaignId] = resourceIds(campaignResourceName)
+  const parent = await dependencies.query({
+    customerId, auth, maxRows: 1,
+    query: `SELECT campaign.resource_name FROM campaign WHERE campaign.id = ${campaignId}`
+  })
+  const campaign = parent.rows[0] && typeof parent.rows[0] === 'object'
+    ? (parent.rows[0] as Record<string, unknown>).campaign
+    : undefined
+  if (!z.object({ resourceName: z.literal(campaignResourceName) }).safeParse(campaign).success) {
+    throw new Error('The referenced campaign was not found')
+  }
+  const result = await dependencies.query({
+    customerId, auth, maxRows: 100,
+    query: `SELECT campaign_criterion.resource_name,
+  campaign_criterion.campaign,
+  campaign_criterion.negative,
+  campaign_criterion.content_label.type
+FROM campaign_criterion
+WHERE campaign.id = ${campaignId}
+  AND campaign_criterion.type = 'CONTENT_LABEL'
+  AND campaign_criterion.negative = TRUE`
+  })
+  if (result.more > 0) throw new Error('Google Ads content-exclusion state exceeds the safe read limit')
+  const labels = result.rows.map((row) => {
+    const raw = row && typeof row === 'object' ? (row as Record<string, unknown>).campaignCriterion : undefined
+    const parsed = z.object({
+      resourceName: z.string(), campaign: z.literal(campaignResourceName), negative: z.literal(true),
+      contentLabel: z.object({ type: ContentLabelTypeSchema })
+    }).parse(raw)
+    assertCustomerResourceName(parsed.resourceName, customerId, 'campaignCriteria', true)
+    const [criterionCampaignId] = resourceIds(parsed.resourceName)
+    if (criterionCampaignId !== campaignId) throw new Error('Google Ads returned a content label outside the selected campaign')
+    return { resourceName: parsed.resourceName, type: parsed.contentLabel.type }
+  }).sort((left, right) => left.type.localeCompare(right.type))
+  return { campaignResourceName, labels }
+}
+
 async function loadCampaignConversionGoals(
   customerId: string,
   campaignResourceName: string,
@@ -1361,6 +1412,12 @@ export async function loadSearchGoogleAdsCurrentState(
     }).parse(parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments))
     return loadPlacementExclusions(context.customerId, args.scope, args.parentResourceName, auth, resolved)
   }
+  if (context.input.operation === 'set_content_exclusions') {
+    const args = z.object({ campaignResourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation, context.input.arguments
+    ))
+    return loadCampaignContentExclusions(context.customerId, args.campaignResourceName, auth, resolved)
+  }
   if (context.input.operation === 'set_campaign_conversion_goals') {
     const args = z.object({ campaignResourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation, context.input.arguments
@@ -1557,6 +1614,10 @@ export async function loadSearchGoogleAdsPlanState(
       scope: z.enum(['campaign', 'ad_group']), parentResourceName: z.string()
     }).parse(plan.desiredState)
     return loadPlacementExclusions(plan.customerId, desired.scope, desired.parentResourceName, auth, resolved)
+  }
+  if (plan.operation === 'set_content_exclusions') {
+    const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)
+    return loadCampaignContentExclusions(plan.customerId, desired.campaignResourceName, auth, resolved)
   }
   if (plan.operation === 'set_campaign_conversion_goals') {
     const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)

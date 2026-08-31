@@ -35,6 +35,7 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_set_devices',
       'google_ads_plan_set_demographics',
       'google_ads_plan_set_placements',
+      'google_ads_plan_set_content_exclusions',
       'google_ads_plan_set_campaign_conversion_goals',
       'google_ads_plan_set_customer_goal_biddability',
       'google_ads_plan_set_conversion_primary_state',
@@ -306,6 +307,19 @@ describe('Google Ads Search MCP planning descriptors', () => {
         scope: 'campaign',
         parentResourceName: 'customers/1234567890/campaigns/60',
         urls: ['https://example.com/excluded']
+      }
+    },
+    {
+      tool: 'google_ads_plan_set_content_exclusions',
+      args: {
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        labels: ['PROFANITY', 'TRAGEDY']
+      },
+      operation: 'set_content_exclusions',
+      resourceType: 'content_exclusion',
+      expectedArguments: {
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        labels: ['PROFANITY', 'TRAGEDY']
       }
     },
     {

@@ -203,6 +203,7 @@ describe('Search Google Ads governed execution runtime', () => {
     ['set_demographics', 'adGroupCriteria'],
     ['set_placements', 'campaignCriteria'],
     ['set_placements', 'adGroupCriteria'],
+    ['set_content_exclusions', 'campaignCriteria'],
     ['set_campaign_conversion_goals', 'campaignConversionGoals'],
     ['set_customer_goal_biddability', 'customerConversionGoals'],
     ['set_conversion_primary_state', 'conversionActions'],

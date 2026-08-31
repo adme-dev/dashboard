@@ -187,6 +187,21 @@ const SetPlacementsArgumentsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Placement URLs must be unique' })
   }
 })
+const ContentLabelTypeSchema = z.enum([
+  'BELOW_THE_FOLD', 'BRAND_SUITABILITY_CONTENT_FOR_FAMILIES', 'BRAND_SUITABILITY_GAMES_FIGHTING',
+  'BRAND_SUITABILITY_GAMES_MATURE', 'BRAND_SUITABILITY_HEALTH_SENSITIVE',
+  'BRAND_SUITABILITY_HEALTH_SOURCE_UNDETERMINED', 'LIVE_STREAMING_VIDEO', 'PARKED_DOMAIN',
+  'PROFANITY', 'SEXUALLY_SUGGESTIVE', 'SOCIAL_ISSUES', 'TRAGEDY', 'VIDEO', 'VIDEO_NOT_YET_RATED',
+  'VIDEO_RATING_DV_G', 'VIDEO_RATING_DV_MA', 'VIDEO_RATING_DV_PG', 'VIDEO_RATING_DV_T'
+])
+const SetContentExclusionsArgumentsSchema = z.strictObject({
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  labels: z.array(ContentLabelTypeSchema).max(18)
+}).superRefine((value, refinement) => {
+  if (new Set(value.labels).size !== value.labels.length) {
+    refinement.addIssue({ code: 'custom', message: 'Content-exclusion labels must be unique' })
+  }
+})
 const ConversionCategorySchema = z.enum([
   'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
   'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
@@ -305,6 +320,7 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'set_devices',
       'set_demographics',
       'set_placements',
+      'set_content_exclusions',
       'set_campaign_conversion_goals',
       'set_customer_goal_biddability',
       'set_conversion_primary_state',
@@ -394,6 +410,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_devices') return SetDevicesArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_demographics') return SetDemographicsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_placements') return SetPlacementsArgumentsSchema.parse(argumentsValue)
+  if (operation === 'set_content_exclusions') return SetContentExclusionsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_customer_goal_biddability') return SetCustomerGoalBiddabilityArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_primary_state') return SetConversionPrimaryStateArgumentsSchema.parse(argumentsValue)
@@ -996,6 +1013,54 @@ function buildPlacementAction(context: BuildGoogleAdsActionContext): BuiltGoogle
   }
 }
 
+function buildContentExclusionAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'content_exclusion') {
+    throw new Error('Content exclusions require resource type content_exclusion')
+  }
+  const args = SetContentExclusionsArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.campaignResourceName, context.customerId, 'campaigns')
+  const current = z.object({
+    campaignResourceName: z.literal(args.campaignResourceName),
+    labels: z.array(z.object({ resourceName: z.string(), type: ContentLabelTypeSchema }))
+  }).parse(context.currentState)
+  const desiredTypes = [...args.labels].sort((left, right) => left.localeCompare(right))
+  const desiredSet = new Set(desiredTypes)
+  const currentByType = new Map(current.labels.map(label => [label.type, label]))
+  const additions = desiredTypes.filter(type => !currentByType.has(type))
+  const removals = current.labels.filter(label => !desiredSet.has(label.type))
+  if (additions.length === 0 && removals.length === 0) {
+    throw new Error('Campaign content exclusions already match the requested set')
+  }
+  const campaignId = args.campaignResourceName.slice(args.campaignResourceName.lastIndexOf('/') + 1)
+  const removalOperations = removals.map((label) => {
+    assertResourceName(label.resourceName, context.customerId, 'campaignCriteria')
+    if (!label.resourceName.includes(`/campaignCriteria/${campaignId}~`)) {
+      throw new Error('Content-label criterion does not belong to the selected campaign')
+    }
+    return { remove: label.resourceName } as const
+  })
+  return {
+    resourceName: args.campaignResourceName,
+    desiredState: {
+      campaignResourceName: args.campaignResourceName,
+      labels: desiredTypes.map(type => currentByType.get(type) ?? { type })
+    },
+    providerOperations: [{
+      service: 'campaignCriteria',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        ...additions.map(type => ({ create: {
+          campaign: args.campaignResourceName,
+          negative: true,
+          contentLabel: { type }
+        } })),
+        ...removalOperations
+      ]
+    }]
+  }
+}
+
 function buildCampaignConversionGoalAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (context.input.resourceType !== 'conversion_goal') throw new Error('Campaign goals require resource type conversion_goal')
   const args = SetCampaignConversionGoalsArgumentsSchema.parse(context.input.arguments)
@@ -1196,6 +1261,7 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'set_devices') return buildDeviceAction(context)
   if (context.input.operation === 'set_demographics') return buildDemographicAction(context)
   if (context.input.operation === 'set_placements') return buildPlacementAction(context)
+  if (context.input.operation === 'set_content_exclusions') return buildContentExclusionAction(context)
   if (context.input.operation === 'set_campaign_conversion_goals') return buildCampaignConversionGoalAction(context)
   if (context.input.operation === 'set_customer_goal_biddability') return buildCustomerGoalBiddabilityAction(context)
   if (context.input.operation === 'set_conversion_primary_state') return buildConversionPrimaryStateAction(context)
