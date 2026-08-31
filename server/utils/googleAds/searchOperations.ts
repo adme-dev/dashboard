@@ -1280,32 +1280,24 @@ function buildCampaignConversionGoalAction(context: BuildGoogleAdsActionContext)
   const key = (goal: { category: string, origin: string }) => `${goal.category}:${goal.origin}`
   const requested = new Map(args.goals.map(goal => [key(goal), goal]))
   const currentByKey = new Map(current.goals.map(goal => [key(goal), goal]))
-  const operations: Array<
-    | { update: Record<string, unknown>, updateMask: string }
-    | { create: Record<string, unknown> }
-  > = []
+  const operations: Array<{ update: Record<string, unknown>, updateMask: string }> = []
   for (const goal of args.goals) {
     const existing = currentByKey.get(key(goal))
-    if (existing?.resourceName) {
-      const campaignId = args.campaignResourceName.slice(args.campaignResourceName.lastIndexOf('/') + 1)
-      const expected = `customers/${context.customerId}/campaignConversionGoals/${campaignId}~${goal.category}~${goal.origin}`
-      if (existing.resourceName !== expected) throw new Error('Campaign conversion goal does not belong to the selected campaign')
-      if (existing.biddable !== goal.biddable) {
-        operations.push({ update: { resourceName: existing.resourceName, biddable: goal.biddable }, updateMask: 'biddable' })
-      }
-    } else {
-      operations.push({ create: {
-        campaign: args.campaignResourceName,
-        category: goal.category,
-        origin: goal.origin,
-        biddable: goal.biddable
-      } })
+    if (!existing?.resourceName) {
+      // Google creates campaign conversion goals; v25 exposes update only.
+      // https://developers.google.com/google-ads/api/docs/conversions/goals/overview#goal_management_overview
+      throw new Error(`Campaign conversion goal was not found for ${goal.category}:${goal.origin}`)
+    }
+    const campaignId = args.campaignResourceName.slice(args.campaignResourceName.lastIndexOf('/') + 1)
+    const expected = `customers/${context.customerId}/campaignConversionGoals/${campaignId}~${goal.category}~${goal.origin}`
+    if (existing.resourceName !== expected) throw new Error('Campaign conversion goal does not belong to the selected campaign')
+    if (existing.biddable !== goal.biddable) {
+      operations.push({ update: { resourceName: existing.resourceName, biddable: goal.biddable }, updateMask: 'biddable' })
     }
   }
   if (operations.length === 0) throw new Error('Campaign conversion goals already match the requested values')
   const desiredGoals = [
-    ...current.goals.map(goal => requested.has(key(goal)) ? { ...goal, biddable: requested.get(key(goal))!.biddable } : goal),
-    ...args.goals.filter(goal => !currentByKey.has(key(goal)))
+    ...current.goals.map(goal => requested.has(key(goal)) ? { ...goal, biddable: requested.get(key(goal))!.biddable } : goal)
   ].sort((left, right) => key(left).localeCompare(key(right)))
   return {
     resourceName: args.campaignResourceName,

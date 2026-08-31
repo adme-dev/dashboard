@@ -594,9 +594,10 @@ describe('Search Google Ads construction operations', () => {
     }])
   })
 
-  it('creates and updates typed campaign conversion goals in one governed request', () => {
+  it('updates existing typed campaign conversion goals in one governed request', () => {
     const campaign = 'customers/1234567890/campaigns/60'
     const requestQuote = 'customers/1234567890/campaignConversionGoals/60~REQUEST_QUOTE~WEBSITE'
+    const submitLeadForm = 'customers/1234567890/campaignConversionGoals/60~SUBMIT_LEAD_FORM~WEBSITE'
     const built = buildSearchGoogleAdsAction(context(
       'set_campaign_conversion_goals',
       'conversion_goal',
@@ -610,7 +611,8 @@ describe('Search Google Ads construction operations', () => {
       {
         campaignResourceName: campaign,
         goals: [
-          { resourceName: requestQuote, category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: false }
+          { resourceName: requestQuote, category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: false },
+          { resourceName: submitLeadForm, category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: true }
         ]
       }
     ))
@@ -619,7 +621,7 @@ describe('Search Google Ads construction operations', () => {
       campaignResourceName: campaign,
       goals: [
         { resourceName: requestQuote, category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: true },
-        { category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: false }
+        { resourceName: submitLeadForm, category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: false }
       ]
     })
     expect(built.providerOperations).toEqual([{
@@ -628,14 +630,22 @@ describe('Search Google Ads construction operations', () => {
       partialFailure: false,
       operations: [
         { update: { resourceName: requestQuote, biddable: true }, updateMask: 'biddable' },
-        { create: {
-          campaign,
-          category: 'SUBMIT_LEAD_FORM',
-          origin: 'WEBSITE',
-          biddable: false
-        } }
+        { update: { resourceName: submitLeadForm, biddable: false }, updateMask: 'biddable' }
       ]
     }])
+  })
+
+  it('rejects campaign-goal combinations Google has not created', () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    expect(() => buildSearchGoogleAdsAction(context(
+      'set_campaign_conversion_goals',
+      'conversion_goal',
+      {
+        campaignResourceName: campaign,
+        goals: [{ category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: false }]
+      },
+      { campaignResourceName: campaign, goals: [] }
+    ))).toThrow('Campaign conversion goal was not found')
   })
 
   it('sets customer conversion-goal biddability with an exact update mask', () => {
