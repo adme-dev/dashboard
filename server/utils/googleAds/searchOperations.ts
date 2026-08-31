@@ -65,6 +65,115 @@ const UpdateCampaignArgumentsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'At least one mutable campaign field is required' })
   }
 })
+const BiddingStrategyTypeSchema = z.enum([
+  'TARGET_CPA',
+  'TARGET_ROAS',
+  'TARGET_SPEND',
+  'TARGET_IMPRESSION_SHARE',
+  'MAXIMIZE_CONVERSIONS',
+  'MAXIMIZE_CONVERSION_VALUE'
+])
+const BiddingAmountSchema = z.number().finite().positive().max(1_000_000)
+const TargetRoasSchema = z.number().finite().min(0.01).max(1_000)
+const BidLimitsSchema = {
+  cpcBidCeiling: BiddingAmountSchema.optional(),
+  cpcBidFloor: BiddingAmountSchema.optional()
+}
+function validateBidLimits(
+  value: { cpcBidCeiling?: number, cpcBidFloor?: number },
+  refinement: z.RefinementCtx
+): void {
+  if (value.cpcBidCeiling !== undefined && value.cpcBidFloor !== undefined
+    && value.cpcBidFloor > value.cpcBidCeiling) {
+    refinement.addIssue({ code: 'custom', message: 'CPC bid floor must not exceed the CPC bid ceiling' })
+  }
+}
+const CreateBiddingStrategyDefinitionSchema = z.discriminatedUnion('type', [
+  z.strictObject({
+    type: z.literal('TARGET_CPA'),
+    targetCpa: BiddingAmountSchema,
+    ...BidLimitsSchema
+  }).superRefine(validateBidLimits),
+  z.strictObject({
+    type: z.literal('TARGET_ROAS'),
+    targetRoas: TargetRoasSchema,
+    ...BidLimitsSchema
+  }).superRefine(validateBidLimits),
+  z.strictObject({
+    type: z.literal('TARGET_SPEND'),
+    cpcBidCeiling: BiddingAmountSchema.optional()
+  }),
+  z.strictObject({
+    type: z.literal('TARGET_IMPRESSION_SHARE'),
+    location: z.enum(['ANYWHERE_ON_PAGE', 'TOP_OF_PAGE', 'ABSOLUTE_TOP_OF_PAGE']),
+    targetImpressionSharePercent: z.number().finite().min(1).max(100),
+    cpcBidCeiling: BiddingAmountSchema
+  }),
+  z.strictObject({
+    type: z.literal('MAXIMIZE_CONVERSIONS'),
+    targetCpa: BiddingAmountSchema.optional(),
+    ...BidLimitsSchema
+  }).superRefine(validateBidLimits),
+  z.strictObject({
+    type: z.literal('MAXIMIZE_CONVERSION_VALUE'),
+    targetRoas: TargetRoasSchema.optional(),
+    ...BidLimitsSchema
+  }).superRefine(validateBidLimits)
+])
+const CreateBiddingStrategyArgumentsSchema = z.strictObject({
+  name: z.string().trim().min(1).max(255),
+  strategy: CreateBiddingStrategyDefinitionSchema
+})
+const UpdateBiddingStrategyArgumentsSchema = z.strictObject({
+  resourceName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(255).optional(),
+  targetCpa: BiddingAmountSchema.optional(),
+  targetRoas: TargetRoasSchema.optional(),
+  cpcBidCeiling: BiddingAmountSchema.optional(),
+  cpcBidFloor: BiddingAmountSchema.optional(),
+  location: z.enum(['ANYWHERE_ON_PAGE', 'TOP_OF_PAGE', 'ABSOLUTE_TOP_OF_PAGE']).optional(),
+  targetImpressionSharePercent: z.number().finite().min(1).max(100).optional()
+}).superRefine((value, refinement) => {
+  validateBidLimits(value, refinement)
+  if (value.name === undefined && value.targetCpa === undefined && value.targetRoas === undefined
+    && value.cpcBidCeiling === undefined && value.cpcBidFloor === undefined
+    && value.location === undefined && value.targetImpressionSharePercent === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'At least one mutable bidding-strategy field is required' })
+  }
+})
+const BiddingMicrosSchema = z.union([z.string(), z.number()]).transform(String).optional()
+const BiddingStrategyStateSchema = z.object({
+  resourceName: z.string(),
+  name: z.string(),
+  status: z.string(),
+  type: BiddingStrategyTypeSchema,
+  targetCpa: z.object({
+    targetCpaMicros: BiddingMicrosSchema,
+    cpcBidCeilingMicros: BiddingMicrosSchema,
+    cpcBidFloorMicros: BiddingMicrosSchema
+  }).optional(),
+  targetRoas: z.object({
+    targetRoas: TargetRoasSchema.optional(),
+    cpcBidCeilingMicros: BiddingMicrosSchema,
+    cpcBidFloorMicros: BiddingMicrosSchema
+  }).optional(),
+  targetSpend: z.object({ cpcBidCeilingMicros: BiddingMicrosSchema }).optional(),
+  targetImpressionShare: z.object({
+    location: z.enum(['ANYWHERE_ON_PAGE', 'TOP_OF_PAGE', 'ABSOLUTE_TOP_OF_PAGE']),
+    locationFractionMicros: BiddingMicrosSchema,
+    cpcBidCeilingMicros: BiddingMicrosSchema
+  }).optional(),
+  maximizeConversions: z.object({
+    targetCpaMicros: BiddingMicrosSchema,
+    cpcBidCeilingMicros: BiddingMicrosSchema,
+    cpcBidFloorMicros: BiddingMicrosSchema
+  }).optional(),
+  maximizeConversionValue: z.object({
+    targetRoas: TargetRoasSchema.optional(),
+    cpcBidCeilingMicros: BiddingMicrosSchema,
+    cpcBidFloorMicros: BiddingMicrosSchema
+  }).optional()
+})
 const CreateAdGroupArgumentsSchema = z.strictObject({
   name: z.string().trim().min(1).max(255),
   campaignResourceName: z.string().trim().min(1).max(1_000),
@@ -731,6 +840,8 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'update_budget',
       'create_campaign',
       'update_campaign',
+      'create_bidding_strategy',
+      'update_bidding',
       'create_ad_group',
       'update_ad_group',
       'create_ad',
@@ -850,6 +961,8 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'update_budget') return UpdateBudgetArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_campaign') return CreateCampaignArgumentsSchema.parse(argumentsValue)
   if (operation === 'update_campaign') return UpdateCampaignArgumentsSchema.parse(argumentsValue)
+  if (operation === 'create_bidding_strategy') return CreateBiddingStrategyArgumentsSchema.parse(argumentsValue)
+  if (operation === 'update_bidding') return UpdateBiddingStrategyArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_ad_group') return CreateAdGroupArgumentsSchema.parse(argumentsValue)
   if (operation === 'update_ad_group') return UpdateAdGroupArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_ad') return CreateResponsiveSearchAdArgumentsSchema.parse(argumentsValue)
@@ -1028,7 +1141,7 @@ function amountMicros(value: number): string {
 }
 
 function createAction(
-  service: 'campaignBudgets' | 'campaigns' | 'adGroups' | 'adGroupAds',
+  service: 'campaignBudgets' | 'campaigns' | 'biddingStrategies' | 'adGroups' | 'adGroupAds',
   desiredState: Record<string, unknown>,
   resourceName: string | null = null
 ): BuiltGoogleAdsAction {
@@ -1040,6 +1153,184 @@ function createAction(
       atomicity: 'interdependent',
       partialFailure: false,
       operations: [{ create: desiredState }]
+    }]
+  }
+}
+
+function biddingStrategyScheme(
+  strategy: z.infer<typeof CreateBiddingStrategyDefinitionSchema>
+): Record<string, unknown> {
+  const cpcBidCeiling = 'cpcBidCeiling' in strategy ? strategy.cpcBidCeiling : undefined
+  const cpcBidFloor = 'cpcBidFloor' in strategy ? strategy.cpcBidFloor : undefined
+  const bidLimits = {
+    ...(cpcBidCeiling === undefined
+      ? {}
+      : { cpcBidCeilingMicros: amountMicros(cpcBidCeiling) }),
+    ...(cpcBidFloor === undefined
+      ? {}
+      : { cpcBidFloorMicros: amountMicros(cpcBidFloor) })
+  }
+  if (strategy.type === 'TARGET_CPA') {
+    return { targetCpa: { targetCpaMicros: amountMicros(strategy.targetCpa), ...bidLimits } }
+  }
+  if (strategy.type === 'TARGET_ROAS') {
+    return { targetRoas: { targetRoas: strategy.targetRoas, ...bidLimits } }
+  }
+  if (strategy.type === 'TARGET_SPEND') {
+    return {
+      targetSpend: {
+        ...(strategy.cpcBidCeiling === undefined
+          ? {}
+          : { cpcBidCeilingMicros: amountMicros(strategy.cpcBidCeiling) })
+      }
+    }
+  }
+  if (strategy.type === 'TARGET_IMPRESSION_SHARE') {
+    return {
+      targetImpressionShare: {
+        location: strategy.location,
+        locationFractionMicros: String(Math.round(strategy.targetImpressionSharePercent * 10_000)),
+        cpcBidCeilingMicros: amountMicros(strategy.cpcBidCeiling)
+      }
+    }
+  }
+  if (strategy.type === 'MAXIMIZE_CONVERSIONS') {
+    return {
+      maximizeConversions: {
+        ...(strategy.targetCpa === undefined ? {} : { targetCpaMicros: amountMicros(strategy.targetCpa) }),
+        ...bidLimits
+      }
+    }
+  }
+  return {
+    maximizeConversionValue: {
+      ...(strategy.targetRoas === undefined ? {} : { targetRoas: strategy.targetRoas }),
+      ...bidLimits
+    }
+  }
+}
+
+function buildCreateBiddingStrategyAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'bidding_strategy') {
+    throw new Error('Bidding-strategy creation requires resource type bidding_strategy')
+  }
+  const args = CreateBiddingStrategyArgumentsSchema.parse(context.input.arguments)
+  const desired = { name: args.name, ...biddingStrategyScheme(args.strategy) }
+  return createAction('biddingStrategies', desired)
+}
+
+const BIDDING_UPDATE_CONFIG: Record<z.infer<typeof BiddingStrategyTypeSchema>, {
+  scheme: string
+  target?: 'targetCpa' | 'targetRoas'
+  targetField?: 'targetCpaMicros' | 'targetRoas'
+}> = {
+  TARGET_CPA: { scheme: 'targetCpa', target: 'targetCpa', targetField: 'targetCpaMicros' },
+  TARGET_ROAS: { scheme: 'targetRoas', target: 'targetRoas', targetField: 'targetRoas' },
+  TARGET_SPEND: { scheme: 'targetSpend' },
+  TARGET_IMPRESSION_SHARE: { scheme: 'targetImpressionShare' },
+  MAXIMIZE_CONVERSIONS: {
+    scheme: 'maximizeConversions', target: 'targetCpa', targetField: 'targetCpaMicros'
+  },
+  MAXIMIZE_CONVERSION_VALUE: {
+    scheme: 'maximizeConversionValue', target: 'targetRoas', targetField: 'targetRoas'
+  }
+}
+
+function snakeCase(value: string): string {
+  return value.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)
+}
+
+function buildUpdateBiddingStrategyAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'bidding_strategy') {
+    throw new Error('Bidding-strategy update requires resource type bidding_strategy')
+  }
+  const args = UpdateBiddingStrategyArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.resourceName, context.customerId, 'biddingStrategies')
+  const current = BiddingStrategyStateSchema.parse(context.currentState)
+  if (current.resourceName !== args.resourceName) throw new Error('Bidding-strategy state does not match the request')
+  const config = BIDDING_UPDATE_CONFIG[current.type]
+  const desired = structuredClone(current) as Record<string, unknown>
+  const update: Record<string, unknown> = { resourceName: args.resourceName }
+  const mask: string[] = []
+  if (args.name !== undefined && args.name !== current.name) {
+    desired.name = args.name
+    update.name = args.name
+    mask.push('name')
+  }
+
+  const nestedCurrent = ((current as Record<string, unknown>)[config.scheme] ?? {}) as Record<string, unknown>
+  const nestedDesired = { ...nestedCurrent }
+  const nestedUpdate: Record<string, unknown> = {}
+  const addNested = (inputKey: keyof typeof args, field: string, providerMask: string, convert?: (value: number) => unknown) => {
+    const value = args[inputKey]
+    if (value === undefined || typeof value !== 'number') return
+    const normalized = convert ? convert(value) : value
+    if (nestedCurrent[field] === normalized) return
+    nestedDesired[field] = normalized
+    nestedUpdate[field] = normalized
+    mask.push(`${providerMask}`)
+  }
+  if (args.targetCpa !== undefined) {
+    if (config.target !== 'targetCpa' || !config.targetField) {
+      throw new Error(`${current.type} does not support targetCpa updates`)
+    }
+    addNested('targetCpa', config.targetField, `${snakeCase(config.scheme)}.${snakeCase(config.targetField)}`, amountMicros)
+  }
+  if (args.targetRoas !== undefined) {
+    if (config.target !== 'targetRoas' || !config.targetField) {
+      throw new Error(`${current.type} does not support targetRoas updates`)
+    }
+    addNested('targetRoas', config.targetField, `${snakeCase(config.scheme)}.${snakeCase(config.targetField)}`)
+  }
+  if (args.cpcBidCeiling !== undefined) {
+    addNested('cpcBidCeiling', 'cpcBidCeilingMicros', `${snakeCase(config.scheme)}.cpc_bid_ceiling_micros`, amountMicros)
+  }
+  if (args.cpcBidFloor !== undefined) {
+    if (current.type === 'TARGET_SPEND' || current.type === 'TARGET_IMPRESSION_SHARE') {
+      throw new Error(`${current.type} does not support CPC bid-floor updates`)
+    }
+    addNested('cpcBidFloor', 'cpcBidFloorMicros', `${snakeCase(config.scheme)}.cpc_bid_floor_micros`, amountMicros)
+  }
+  if (args.location !== undefined) {
+    if (current.type !== 'TARGET_IMPRESSION_SHARE') {
+      throw new Error(`${current.type} does not support impression-share location updates`)
+    }
+    if (nestedCurrent.location !== args.location) {
+      nestedDesired.location = args.location
+      nestedUpdate.location = args.location
+      mask.push('target_impression_share.location')
+    }
+  }
+  if (args.targetImpressionSharePercent !== undefined) {
+    if (current.type !== 'TARGET_IMPRESSION_SHARE') {
+      throw new Error(`${current.type} does not support impression-share percentage updates`)
+    }
+    addNested(
+      'targetImpressionSharePercent',
+      'locationFractionMicros',
+      'target_impression_share.location_fraction_micros',
+      value => String(Math.round(value * 10_000))
+    )
+  }
+  const finalFloor = nestedDesired.cpcBidFloorMicros
+  const finalCeiling = nestedDesired.cpcBidCeilingMicros
+  if (typeof finalFloor === 'string' && typeof finalCeiling === 'string'
+    && BigInt(finalFloor) > BigInt(finalCeiling)) {
+    throw new Error('CPC bid floor must not exceed the CPC bid ceiling')
+  }
+  if (Object.keys(nestedUpdate).length > 0) {
+    desired[config.scheme] = nestedDesired
+    update[config.scheme] = nestedUpdate
+  }
+  if (mask.length === 0) throw new Error('The bidding strategy already matches the requested mutable fields')
+  return {
+    resourceName: args.resourceName,
+    desiredState: desired,
+    providerOperations: [{
+      service: 'biddingStrategies',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ update, updateMask: mask.join(',') }]
     }]
   }
 }
@@ -2970,6 +3261,8 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   }
   if (context.input.operation === 'create_campaign') return buildCreateCampaignAction(context)
   if (context.input.operation === 'update_campaign') return buildUpdateCampaignAction(context)
+  if (context.input.operation === 'create_bidding_strategy') return buildCreateBiddingStrategyAction(context)
+  if (context.input.operation === 'update_bidding') return buildUpdateBiddingStrategyAction(context)
   if (context.input.operation === 'create_ad_group') return buildCreateAdGroupAction(context)
   if (context.input.operation === 'update_ad_group') return buildUpdateAdGroupAction(context)
   if (context.input.operation === 'create_ad') return buildCreateResponsiveSearchAdAction(context)

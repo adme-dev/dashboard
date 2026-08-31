@@ -28,6 +28,8 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_update_budget',
       'google_ads_plan_create_search_campaign',
       'google_ads_plan_update_campaign',
+      'google_ads_plan_create_bidding_strategy',
+      'google_ads_plan_update_bidding_strategy',
       'google_ads_plan_create_ad_group',
       'google_ads_plan_update_ad_group',
       'google_ads_plan_create_responsive_search_ad',
@@ -229,6 +231,16 @@ describe('Google Ads Search MCP planning descriptors', () => {
       args: { resourceName: 'customers/1234567890/adGroups/20', cpcBid: 2.5 }
     },
     {
+      tool: 'google_ads_plan_update_bidding_strategy',
+      operation: 'update_bidding',
+      resourceType: 'bidding_strategy',
+      args: {
+        resourceName: 'customers/1234567890/biddingStrategies/70',
+        targetCpa: 45,
+        cpcBidCeiling: 8
+      }
+    },
+    {
       tool: 'google_ads_plan_update_keyword',
       operation: 'update_keyword',
       resourceType: 'keyword',
@@ -298,6 +310,19 @@ describe('Google Ads Search MCP planning descriptors', () => {
         name: 'Northern Search',
         budgetResourceName: 'customers/1234567890/campaignBudgets/50',
         includeSearchPartners: false
+      }
+    },
+    {
+      tool: 'google_ads_plan_create_bidding_strategy',
+      args: {
+        name: 'Northern CPA',
+        strategy: { type: 'TARGET_CPA', targetCpa: 45, cpcBidCeiling: 8 }
+      },
+      operation: 'create_bidding_strategy',
+      resourceType: 'bidding_strategy',
+      expectedArguments: {
+        name: 'Northern CPA',
+        strategy: { type: 'TARGET_CPA', targetCpa: 45, cpcBidCeiling: 8 }
       }
     },
     {

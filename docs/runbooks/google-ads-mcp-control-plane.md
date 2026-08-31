@@ -8,8 +8,9 @@ not install or proxy Google's official MCP server. Google credentials, developer
 tokens, and unrestricted GAQL or mutate requests remain server-side.
 
 The control plane currently covers typed QA inventories plus governed Search and
-Performance Max operations for budgets, campaigns, ad groups, responsive search
-ads, keywords, negative keywords, targeting, audiences, assets and asset groups,
+Performance Max operations for budgets, portfolio bidding strategies, campaigns,
+ad groups, responsive search ads, keywords, negative keywords, targeting,
+audiences, assets and asset groups,
 listing groups, conversion actions and goals, and recommendations. Offline
 conversion uploads are outside this release because they contain customer event
 data rather than campaign configuration.
@@ -77,6 +78,14 @@ Terminal success is `verified` or, where explicitly allowed, `partially_verified
 need operator review. An ambiguous provider timeout is not retried blindly; the
 saved request identity and provider state must be reconciled first.
 
+Portfolio bidding uses `google_ads_plan_create_bidding_strategy` and
+`google_ads_plan_update_bidding_strategy`. Creation supports one v25 scheme per
+strategy: Target CPA, Target ROAS, Target Spend, Target Impression Share,
+Maximize Conversions, or Maximize Conversion Value. Update reads the provider's
+current strategy type first and permits only fields valid for that immutable type.
+Assigning the resulting portfolio resource to a campaign is a separate campaign
+update and therefore produces its own diff and approval.
+
 ## Safe Archive and Removal Semantics
 
 The default delete behavior is reversible:
@@ -143,4 +152,6 @@ typecheck output with the baseline and reject any new diagnostic in changed file
 - [Google Ads API release notes](https://developers.google.com/google-ads/api/docs/release-notes)
 - [Google Ads API sunset dates](https://developers.google.com/google-ads/api/docs/sunset-dates)
 - [REST mutate requests](https://developers.google.com/google-ads/api/rest/common/mutate)
+- [Portfolio bidding strategies](https://developers.google.com/google-ads/api/docs/campaigns/bidding/assign-strategies)
+- [Bidding strategy v25 fields](https://developers.google.com/google-ads/api/fields/v25/bidding_strategy)
 - [Conversion goals overview](https://developers.google.com/google-ads/api/docs/conversions/goals/overview)

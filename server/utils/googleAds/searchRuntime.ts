@@ -351,6 +351,8 @@ const EXECUTABLE_SEARCH_SERVICES = {
   update_budget: ['campaignBudgets'],
   create_campaign: ['campaigns'],
   update_campaign: ['campaigns'],
+  create_bidding_strategy: ['biddingStrategies'],
+  update_bidding: ['biddingStrategies'],
   create_ad_group: ['adGroups'],
   update_ad_group: ['adGroups'],
   create_ad: ['adGroupAds'],
@@ -607,6 +609,180 @@ function isTypedRecommendationMutation(plan: GoogleAdsActionPlan): boolean {
     && equalJson(mutation.operations, [{ recommendation: { resourceName: current.data.resourceName } }]))
 }
 
+const RuntimeMicrosSchema = z.string().regex(/^\d+$/).refine(value => BigInt(value) > 0n)
+const RuntimeRoasSchema = z.number().finite().min(0.01).max(1_000)
+const RuntimeBidLimitsSchema = {
+  cpcBidCeilingMicros: RuntimeMicrosSchema.optional(),
+  cpcBidFloorMicros: RuntimeMicrosSchema.optional()
+}
+const RuntimeBiddingStrategyCreateSchema = z.union([
+  z.strictObject({
+    name: z.string().trim().min(1).max(255),
+    targetCpa: z.strictObject({ targetCpaMicros: RuntimeMicrosSchema, ...RuntimeBidLimitsSchema })
+  }),
+  z.strictObject({
+    name: z.string().trim().min(1).max(255),
+    targetRoas: z.strictObject({ targetRoas: RuntimeRoasSchema, ...RuntimeBidLimitsSchema })
+  }),
+  z.strictObject({
+    name: z.string().trim().min(1).max(255),
+    targetSpend: z.strictObject({ cpcBidCeilingMicros: RuntimeMicrosSchema.optional() })
+  }),
+  z.strictObject({
+    name: z.string().trim().min(1).max(255),
+    targetImpressionShare: z.strictObject({
+      location: z.enum(['ANYWHERE_ON_PAGE', 'TOP_OF_PAGE', 'ABSOLUTE_TOP_OF_PAGE']),
+      locationFractionMicros: RuntimeMicrosSchema.refine(value => BigInt(value) <= 1_000_000n),
+      cpcBidCeilingMicros: RuntimeMicrosSchema
+    })
+  }),
+  z.strictObject({
+    name: z.string().trim().min(1).max(255),
+    maximizeConversions: z.strictObject({
+      targetCpaMicros: RuntimeMicrosSchema.optional(),
+      ...RuntimeBidLimitsSchema
+    })
+  }),
+  z.strictObject({
+    name: z.string().trim().min(1).max(255),
+    maximizeConversionValue: z.strictObject({
+      targetRoas: RuntimeRoasSchema.optional(),
+      ...RuntimeBidLimitsSchema
+    })
+  })
+])
+
+const BIDDING_STRATEGY_SCHEME_BY_TYPE = {
+  TARGET_CPA: 'targetCpa',
+  TARGET_ROAS: 'targetRoas',
+  TARGET_SPEND: 'targetSpend',
+  TARGET_IMPRESSION_SHARE: 'targetImpressionShare',
+  MAXIMIZE_CONVERSIONS: 'maximizeConversions',
+  MAXIMIZE_CONVERSION_VALUE: 'maximizeConversionValue'
+} as const
+type RuntimeBiddingStrategyType = keyof typeof BIDDING_STRATEGY_SCHEME_BY_TYPE
+
+const BIDDING_STRATEGY_UPDATE_FIELDS: Record<RuntimeBiddingStrategyType, Record<string, readonly string[]>> = {
+  TARGET_CPA: {
+    'name': ['name'],
+    'target_cpa.target_cpa_micros': ['targetCpa', 'targetCpaMicros'],
+    'target_cpa.cpc_bid_ceiling_micros': ['targetCpa', 'cpcBidCeilingMicros'],
+    'target_cpa.cpc_bid_floor_micros': ['targetCpa', 'cpcBidFloorMicros']
+  },
+  TARGET_ROAS: {
+    'name': ['name'],
+    'target_roas.target_roas': ['targetRoas', 'targetRoas'],
+    'target_roas.cpc_bid_ceiling_micros': ['targetRoas', 'cpcBidCeilingMicros'],
+    'target_roas.cpc_bid_floor_micros': ['targetRoas', 'cpcBidFloorMicros']
+  },
+  TARGET_SPEND: {
+    'name': ['name'],
+    'target_spend.cpc_bid_ceiling_micros': ['targetSpend', 'cpcBidCeilingMicros']
+  },
+  TARGET_IMPRESSION_SHARE: {
+    'name': ['name'],
+    'target_impression_share.location': ['targetImpressionShare', 'location'],
+    'target_impression_share.location_fraction_micros': ['targetImpressionShare', 'locationFractionMicros'],
+    'target_impression_share.cpc_bid_ceiling_micros': ['targetImpressionShare', 'cpcBidCeilingMicros']
+  },
+  MAXIMIZE_CONVERSIONS: {
+    'name': ['name'],
+    'maximize_conversions.target_cpa_micros': ['maximizeConversions', 'targetCpaMicros'],
+    'maximize_conversions.cpc_bid_ceiling_micros': ['maximizeConversions', 'cpcBidCeilingMicros'],
+    'maximize_conversions.cpc_bid_floor_micros': ['maximizeConversions', 'cpcBidFloorMicros']
+  },
+  MAXIMIZE_CONVERSION_VALUE: {
+    'name': ['name'],
+    'maximize_conversion_value.target_roas': ['maximizeConversionValue', 'targetRoas'],
+    'maximize_conversion_value.cpc_bid_ceiling_micros': ['maximizeConversionValue', 'cpcBidCeilingMicros'],
+    'maximize_conversion_value.cpc_bid_floor_micros': ['maximizeConversionValue', 'cpcBidFloorMicros']
+  }
+}
+
+function hasValidRuntimeBidLimits(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  const floor = value.cpcBidFloorMicros
+  const ceiling = value.cpcBidCeilingMicros
+  return !(typeof floor === 'string' && typeof ceiling === 'string'
+    && BigInt(floor) > BigInt(ceiling))
+}
+
+function setPathValue(target: Record<string, unknown>, path: readonly string[], value: unknown): boolean {
+  if (path.length === 1) {
+    target[path[0]!] = value
+    return true
+  }
+  const parent = target[path[0]!]
+  if (!isRecord(parent)) return false
+  parent[path[1]!] = value
+  return true
+}
+
+function isTypedBiddingStrategyMutation(plan: GoogleAdsActionPlan): boolean {
+  if (plan.providerOperations.length !== 1) return false
+  const mutation = plan.providerOperations[0]
+  if (!mutation || mutation.service !== 'biddingStrategies'
+    || mutation.atomicity !== 'interdependent'
+    || mutation.partialFailure !== false
+    || mutation.operations.length !== 1) return false
+  const operation = mutation.operations[0]
+  if (!operation) return false
+  if (plan.operation === 'create_bidding_strategy') {
+    const desired = RuntimeBiddingStrategyCreateSchema.safeParse(plan.desiredState)
+    const scheme = desired.success
+      ? Object.keys(BIDDING_STRATEGY_SCHEME_BY_TYPE)
+          .map(type => BIDDING_STRATEGY_SCHEME_BY_TYPE[type as RuntimeBiddingStrategyType])
+          .find(key => Object.hasOwn(desired.data, key))
+      : undefined
+    return desired.success
+      && Boolean(scheme && hasValidRuntimeBidLimits(
+        (desired.data as Record<string, unknown>)[scheme!]
+      ))
+      && plan.resourceName === null
+      && equalJson(plan.currentState, { exists: false })
+      && 'create' in operation
+      && equalJson(operation.create, desired.data)
+  }
+  if (plan.operation !== 'update_bidding' || !plan.resourceName
+    || !new RegExp(`^customers/${plan.customerId}/biddingStrategies/\\d+$`).test(plan.resourceName)
+    || !isRecord(plan.currentState) || !isRecord(plan.desiredState)
+    || !('update' in operation) || !isRecord(operation.update)
+    || operation.update.resourceName !== plan.resourceName) return false
+  const type = plan.currentState.type
+  if (typeof type !== 'string' || !Object.hasOwn(BIDDING_STRATEGY_SCHEME_BY_TYPE, type)
+    || plan.desiredState.type !== type
+    || plan.currentState.resourceName !== plan.resourceName
+    || plan.desiredState.resourceName !== plan.resourceName) return false
+  const fields = BIDDING_STRATEGY_UPDATE_FIELDS[type as RuntimeBiddingStrategyType]
+  const scheme = BIDDING_STRATEGY_SCHEME_BY_TYPE[type as RuntimeBiddingStrategyType]
+  const masks = operation.updateMask.split(',').map(mask => mask.trim()).filter(Boolean)
+  if (masks.length === 0 || new Set(masks).size !== masks.length
+    || masks.some(mask => !Object.hasOwn(fields, mask))) return false
+  const allowedTopLevel = new Set(['resourceName'])
+  const expectedDesired = structuredClone(plan.currentState)
+  for (const mask of masks) {
+    const path = fields[mask]
+    if (!path) return false
+    allowedTopLevel.add(path[0]!)
+    const updated = pathValue(operation.update, path)
+    const current = pathValue(plan.currentState, path)
+    if (updated === undefined || equalJson(updated, current)
+      || !setPathValue(expectedDesired, path, updated)) return false
+    if (path.length > 1) {
+      const nested = operation.update[path[0]!]
+      if (!isRecord(nested)) return false
+      const permittedNested = masks
+        .map(candidate => fields[candidate])
+        .filter(candidate => candidate?.[0] === path[0])
+        .map(candidate => candidate![1]!)
+      if (Object.keys(nested).some(key => !permittedNested.includes(key))) return false
+    }
+  }
+  return Object.keys(operation.update).every(key => allowedTopLevel.has(key))
+    && equalJson(plan.desiredState, expectedDesired)
+    && hasValidRuntimeBidLimits(plan.desiredState[scheme])
+}
+
 const MUTABLE_ENTITY_UPDATE_FIELDS = {
   update_campaign: {
     service: 'campaigns',
@@ -718,6 +894,8 @@ export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): bool
   if (plan.operation === 'manage_listing_groups') return isTypedListingGroupReplacement(plan)
   if (plan.operation === 'apply_recommendation'
     || plan.operation === 'dismiss_recommendation') return isTypedRecommendationMutation(plan)
+  if (plan.operation === 'create_bidding_strategy'
+    || plan.operation === 'update_bidding') return isTypedBiddingStrategyMutation(plan)
   if (plan.operation === 'update_campaign'
     || plan.operation === 'update_ad_group'
     || plan.operation === 'update_keyword') return isTypedMutableEntityUpdate(plan)

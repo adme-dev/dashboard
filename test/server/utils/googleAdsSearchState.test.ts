@@ -84,6 +84,44 @@ describe('Search Google Ads current-state loader', () => {
     expect(query.mock.calls[0]?.[0].query).toContain('campaign.network_settings.target_partner_search_network')
   })
 
+  it('prevalidates a unique portfolio bidding-strategy name', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [], more: 0 })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('create_bidding_strategy', {
+      name: 'Northern Portfolio',
+      strategy: { type: 'TARGET_CPA', targetCpa: 45 }
+    }), auth, { query })).resolves.toEqual({ exists: false })
+
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({
+      customerId: '1234567890',
+      maxRows: 1,
+      query: expect.stringContaining('bidding_strategy.name = \'Northern Portfolio\'')
+    }))
+  })
+
+  it('loads the complete immutable-type portfolio state before a bidding update', async () => {
+    const resourceName = 'customers/1234567890/biddingStrategies/70'
+    const biddingStrategy = {
+      resourceName,
+      name: 'Northern CPA',
+      status: 'ENABLED',
+      type: 'TARGET_CPA',
+      targetCpa: {
+        targetCpaMicros: '40000000',
+        cpcBidCeilingMicros: '7000000',
+        cpcBidFloorMicros: '1000000'
+      }
+    }
+    const query = vi.fn().mockResolvedValue({ rows: [{ biddingStrategy }], more: 0 })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('update_bidding', {
+      resourceName,
+      targetCpa: 45
+    }), auth, { query })).resolves.toEqual(biddingStrategy)
+    expect(query.mock.calls[0]?.[0].query).toContain('bidding_strategy.maximize_conversion_value.target_roas')
+    expect(query.mock.calls[0]?.[0].query).toContain('bidding_strategy.id = 70')
+  })
+
   it('loads complete ad-group state before a mutable ad-group update', async () => {
     const resourceName = 'customers/1234567890/adGroups/20'
     const adGroup = {
@@ -1303,6 +1341,47 @@ describe('Search Google Ads persisted-plan state loading', () => {
       amountMicros: '40000000'
     })
     expect(query.mock.calls[0]?.[0].query).toContain('campaign_budget.id = 50')
+  })
+
+  it('reads back the typed portfolio strategy returned by creation', async () => {
+    const resourceName = 'customers/1234567890/biddingStrategies/70'
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ biddingStrategy: {
+        resourceName,
+        name: 'Northern CPA',
+        status: 'ENABLED',
+        type: 'TARGET_CPA',
+        targetCpa: { targetCpaMicros: '45000000' }
+      } }],
+      more: 0
+    })
+    const plan = {
+      operation: 'create_bidding_strategy',
+      resourceType: 'bidding_strategy',
+      resourceName: null,
+      customerId: '1234567890',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      connectionId: '22222222-2222-4222-8222-222222222222',
+      actorId: '33333333-3333-4333-8333-333333333333',
+      source: 'mcp',
+      executionMode: 'proposal',
+      idempotencyKey: 'bidding-1',
+      desiredState: {
+        name: 'Northern CPA',
+        targetCpa: { targetCpaMicros: '45000000' }
+      },
+      providerOperations: [{ service: 'biddingStrategies' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [{ biddingStrategy: { resourceName } }]
+    })).resolves.toMatchObject({
+      resourceName,
+      name: 'Northern CPA',
+      type: 'TARGET_CPA',
+      targetCpa: { targetCpaMicros: '45000000' }
+    })
+    expect(query.mock.calls[0]?.[0].query).toContain('bidding_strategy.id = 70')
   })
 
   it('uses a nested provider mutation result to read back a created Search campaign', async () => {

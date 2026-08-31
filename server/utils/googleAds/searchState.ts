@@ -70,6 +70,46 @@ const BudgetStateSchema = z.object({
   deliveryMethod: z.string(),
   explicitlyShared: z.boolean()
 })
+const BiddingMicrosSchema = z.union([z.string(), z.number()]).transform(String).optional()
+const BiddingStrategyStateSchema = z.object({
+  resourceName: z.string(),
+  name: z.string(),
+  status: z.string(),
+  type: z.enum([
+    'TARGET_CPA',
+    'TARGET_ROAS',
+    'TARGET_SPEND',
+    'TARGET_IMPRESSION_SHARE',
+    'MAXIMIZE_CONVERSIONS',
+    'MAXIMIZE_CONVERSION_VALUE'
+  ]),
+  targetCpa: z.object({
+    targetCpaMicros: BiddingMicrosSchema,
+    cpcBidCeilingMicros: BiddingMicrosSchema,
+    cpcBidFloorMicros: BiddingMicrosSchema
+  }).optional(),
+  targetRoas: z.object({
+    targetRoas: z.number().finite().optional(),
+    cpcBidCeilingMicros: BiddingMicrosSchema,
+    cpcBidFloorMicros: BiddingMicrosSchema
+  }).optional(),
+  targetSpend: z.object({ cpcBidCeilingMicros: BiddingMicrosSchema }).optional(),
+  targetImpressionShare: z.object({
+    location: z.enum(['ANYWHERE_ON_PAGE', 'TOP_OF_PAGE', 'ABSOLUTE_TOP_OF_PAGE']),
+    locationFractionMicros: BiddingMicrosSchema,
+    cpcBidCeilingMicros: BiddingMicrosSchema
+  }).optional(),
+  maximizeConversions: z.object({
+    targetCpaMicros: BiddingMicrosSchema,
+    cpcBidCeilingMicros: BiddingMicrosSchema,
+    cpcBidFloorMicros: BiddingMicrosSchema
+  }).optional(),
+  maximizeConversionValue: z.object({
+    targetRoas: z.number().finite().optional(),
+    cpcBidCeilingMicros: BiddingMicrosSchema,
+    cpcBidFloorMicros: BiddingMicrosSchema
+  }).optional()
+})
 const CampaignStateSchema = z.object({
   resourceName: z.string(),
   name: z.string(),
@@ -467,6 +507,75 @@ WHERE campaign_budget.id = ${id}`
   return BudgetStateSchema.parse(budget)
 }
 
+async function assertBiddingStrategyNameAvailable(
+  customerId: string,
+  name: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies,
+  excludeResourceName?: string
+): Promise<{ exists: false }> {
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT bidding_strategy.resource_name
+FROM bidding_strategy
+WHERE bidding_strategy.name = '${escapeGaqlString(name)}'`
+  })
+  const first = result.rows[0]
+  const biddingStrategy = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).biddingStrategy
+    : undefined
+  const existing = z.object({ resourceName: z.string() }).safeParse(biddingStrategy)
+  if (result.more > 0 || (existing.success && existing.data.resourceName !== excludeResourceName)) {
+    throw new Error(`A Google Ads bidding strategy named "${name}" already exists`)
+  }
+  return { exists: false }
+}
+
+async function loadBiddingStrategyByResourceName(
+  customerId: string,
+  resourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<z.infer<typeof BiddingStrategyStateSchema>> {
+  assertCustomerResourceName(resourceName, customerId, 'biddingStrategies')
+  const [id] = resourceIds(resourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT bidding_strategy.resource_name,
+  bidding_strategy.name,
+  bidding_strategy.status,
+  bidding_strategy.type,
+  bidding_strategy.target_cpa.target_cpa_micros,
+  bidding_strategy.target_cpa.cpc_bid_ceiling_micros,
+  bidding_strategy.target_cpa.cpc_bid_floor_micros,
+  bidding_strategy.target_roas.target_roas,
+  bidding_strategy.target_roas.cpc_bid_ceiling_micros,
+  bidding_strategy.target_roas.cpc_bid_floor_micros,
+  bidding_strategy.target_spend.cpc_bid_ceiling_micros,
+  bidding_strategy.target_impression_share.location,
+  bidding_strategy.target_impression_share.location_fraction_micros,
+  bidding_strategy.target_impression_share.cpc_bid_ceiling_micros,
+  bidding_strategy.maximize_conversions.target_cpa_micros,
+  bidding_strategy.maximize_conversions.cpc_bid_ceiling_micros,
+  bidding_strategy.maximize_conversions.cpc_bid_floor_micros,
+  bidding_strategy.maximize_conversion_value.target_roas,
+  bidding_strategy.maximize_conversion_value.cpc_bid_ceiling_micros,
+  bidding_strategy.maximize_conversion_value.cpc_bid_floor_micros
+FROM bidding_strategy
+WHERE bidding_strategy.id = ${id}`
+  })
+  const first = result.rows[0]
+  const biddingStrategy = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).biddingStrategy
+    : undefined
+  if (!biddingStrategy) throw new Error('Google Ads bidding strategy was not found after mutation')
+  return BiddingStrategyStateSchema.parse(biddingStrategy)
+}
+
 async function loadCreateCampaignCurrentState(
   customerId: string,
   name: string,
@@ -776,6 +885,7 @@ function mutationResourceName(
     conversionActions: 'conversionAction',
     customConversionGoals: 'customConversionGoal',
     customAudiences: 'customAudience',
+    biddingStrategies: 'biddingStrategy',
     assets: 'asset'
   }[service] ?? ''
   const nested = singular ? record[singular] : undefined
@@ -2431,6 +2541,28 @@ export async function loadSearchGoogleAdsCurrentState(
       context.customerId, args.scope, args.resourceName, auth, resolved
     )
   }
+  if (context.input.operation === 'create_bidding_strategy') {
+    const args = z.object({ name: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation,
+      context.input.arguments
+    ))
+    return assertBiddingStrategyNameAvailable(context.customerId, args.name, auth, resolved)
+  }
+  if (context.input.operation === 'update_bidding') {
+    const args = z.object({
+      resourceName: z.string(),
+      name: z.string().optional()
+    }).parse(parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments))
+    const current = await loadBiddingStrategyByResourceName(
+      context.customerId, args.resourceName, auth, resolved
+    )
+    if (args.name !== undefined && args.name !== current.name) {
+      await assertBiddingStrategyNameAvailable(
+        context.customerId, args.name, auth, resolved, args.resourceName
+      )
+    }
+    return current
+  }
   if (context.input.operation === 'create_budget') {
     const args = z.object({ name: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation,
@@ -2820,6 +2952,22 @@ export async function loadSearchGoogleAdsPlanState(
   mutation?: GoogleAdsMutateResult
 ): Promise<unknown> {
   const resolved = { ...defaultDependencies, ...dependencies }
+  if (plan.operation === 'create_bidding_strategy') {
+    if (mutation) {
+      return loadBiddingStrategyByResourceName(
+        plan.customerId,
+        mutationResourceName(mutation, 'biddingStrategies'),
+        auth,
+        resolved
+      )
+    }
+    const desired = z.object({ name: z.string() }).parse(plan.desiredState)
+    return assertBiddingStrategyNameAvailable(plan.customerId, desired.name, auth, resolved)
+  }
+  if (plan.operation === 'update_bidding') {
+    if (!plan.resourceName) throw new Error('Bidding-strategy update plan has no resource name')
+    return loadBiddingStrategyByResourceName(plan.customerId, plan.resourceName, auth, resolved)
+  }
   if (plan.operation === 'create_asset') {
     if (!mutation) return { exists: false }
     return loadAsset(

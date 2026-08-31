@@ -237,6 +237,142 @@ describe('Search Google Ads negative keyword operations', () => {
 })
 
 describe('Search Google Ads construction operations', () => {
+  it.each([
+    [
+      { type: 'TARGET_CPA', targetCpa: 45, cpcBidCeiling: 8, cpcBidFloor: 1.5 },
+      { targetCpa: { targetCpaMicros: '45000000', cpcBidCeilingMicros: '8000000', cpcBidFloorMicros: '1500000' } }
+    ],
+    [
+      { type: 'TARGET_ROAS', targetRoas: 4.5, cpcBidCeiling: 12 },
+      { targetRoas: { targetRoas: 4.5, cpcBidCeilingMicros: '12000000' } }
+    ],
+    [
+      { type: 'TARGET_SPEND', cpcBidCeiling: 5 },
+      { targetSpend: { cpcBidCeilingMicros: '5000000' } }
+    ],
+    [
+      {
+        type: 'TARGET_IMPRESSION_SHARE',
+        location: 'ABSOLUTE_TOP_OF_PAGE',
+        targetImpressionSharePercent: 65,
+        cpcBidCeiling: 7
+      },
+      {
+        targetImpressionShare: {
+          location: 'ABSOLUTE_TOP_OF_PAGE',
+          locationFractionMicros: '650000',
+          cpcBidCeilingMicros: '7000000'
+        }
+      }
+    ],
+    [
+      { type: 'MAXIMIZE_CONVERSIONS', targetCpa: 38 },
+      { maximizeConversions: { targetCpaMicros: '38000000' } }
+    ],
+    [
+      { type: 'MAXIMIZE_CONVERSION_VALUE', targetRoas: 5.25, cpcBidFloor: 0.8 },
+      { maximizeConversionValue: { targetRoas: 5.25, cpcBidFloorMicros: '800000' } }
+    ]
+  ] as const)('creates one typed unassigned portfolio strategy', (
+    strategy, scheme
+  ) => {
+    const built = buildSearchGoogleAdsAction(context(
+      'create_bidding_strategy',
+      'bidding_strategy',
+      { name: 'Northern Portfolio', strategy },
+      { exists: false }
+    ))
+
+    expect(built).toEqual({
+      resourceName: null,
+      desiredState: { name: 'Northern Portfolio', ...scheme },
+      providerOperations: [{
+        service: 'biddingStrategies',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ create: { name: 'Northern Portfolio', ...scheme } }]
+      }]
+    })
+  })
+
+  it('updates only fields valid for the existing portfolio strategy type', () => {
+    const resourceName = 'customers/1234567890/biddingStrategies/70'
+    const currentState = {
+      resourceName,
+      name: 'Northern CPA',
+      status: 'ENABLED',
+      type: 'TARGET_CPA',
+      targetCpa: {
+        targetCpaMicros: '40000000',
+        cpcBidCeilingMicros: '7000000',
+        cpcBidFloorMicros: '1000000'
+      }
+    }
+    const built = buildSearchGoogleAdsAction(context(
+      'update_bidding',
+      'bidding_strategy',
+      { resourceName, name: 'Northern CPA v2', targetCpa: 45, cpcBidCeiling: 8 },
+      currentState
+    ))
+
+    expect(built.desiredState).toEqual({
+      ...currentState,
+      name: 'Northern CPA v2',
+      targetCpa: {
+        ...currentState.targetCpa,
+        targetCpaMicros: '45000000',
+        cpcBidCeilingMicros: '8000000'
+      }
+    })
+    expect(built.providerOperations[0]?.operations).toEqual([{
+      update: {
+        resourceName,
+        name: 'Northern CPA v2',
+        targetCpa: {
+          targetCpaMicros: '45000000',
+          cpcBidCeilingMicros: '8000000'
+        }
+      },
+      updateMask: 'name,target_cpa.target_cpa_micros,target_cpa.cpc_bid_ceiling_micros'
+    }])
+  })
+
+  it('rejects changing a portfolio strategy through fields belonging to another immutable type', () => {
+    const resourceName = 'customers/1234567890/biddingStrategies/70'
+    expect(() => buildSearchGoogleAdsAction(context(
+      'update_bidding',
+      'bidding_strategy',
+      { resourceName, targetRoas: 4 },
+      {
+        resourceName,
+        name: 'Northern CPA',
+        status: 'ENABLED',
+        type: 'TARGET_CPA',
+        targetCpa: { targetCpaMicros: '40000000' }
+      }
+    ))).toThrow('TARGET_CPA')
+  })
+
+  it('rejects a bid-floor update that would exceed the existing portfolio ceiling', () => {
+    const resourceName = 'customers/1234567890/biddingStrategies/70'
+    expect(() => buildSearchGoogleAdsAction(context(
+      'update_bidding',
+      'bidding_strategy',
+      { resourceName, cpcBidFloor: 9 },
+      {
+        resourceName,
+        name: 'Northern CPA',
+        status: 'ENABLED',
+        type: 'TARGET_CPA',
+        targetCpa: {
+          targetCpaMicros: '40000000',
+          cpcBidCeilingMicros: '8000000',
+          cpcBidFloorMicros: '1000000'
+        }
+      }
+    ))).toThrow('must not exceed')
+  })
+
   it('creates a standard campaign budget from a human daily amount', () => {
     const built = buildSearchGoogleAdsAction(context(
       'create_budget',

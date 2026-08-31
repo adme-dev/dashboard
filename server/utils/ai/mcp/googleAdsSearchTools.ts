@@ -19,6 +19,8 @@ export const GOOGLE_ADS_PLAN_CREATE_BUDGET_TOOL = 'google_ads_plan_create_budget
 export const GOOGLE_ADS_PLAN_UPDATE_BUDGET_TOOL = 'google_ads_plan_update_budget'
 export const GOOGLE_ADS_PLAN_CREATE_SEARCH_CAMPAIGN_TOOL = 'google_ads_plan_create_search_campaign'
 export const GOOGLE_ADS_PLAN_UPDATE_CAMPAIGN_TOOL = 'google_ads_plan_update_campaign'
+export const GOOGLE_ADS_PLAN_CREATE_BIDDING_STRATEGY_TOOL = 'google_ads_plan_create_bidding_strategy'
+export const GOOGLE_ADS_PLAN_UPDATE_BIDDING_STRATEGY_TOOL = 'google_ads_plan_update_bidding_strategy'
 export const GOOGLE_ADS_PLAN_CREATE_AD_GROUP_TOOL = 'google_ads_plan_create_ad_group'
 export const GOOGLE_ADS_PLAN_UPDATE_AD_GROUP_TOOL = 'google_ads_plan_update_ad_group'
 export const GOOGLE_ADS_PLAN_CREATE_RSA_TOOL = 'google_ads_plan_create_responsive_search_ad'
@@ -141,6 +143,76 @@ const UpdateCampaignSchema = z.strictObject({
     && value.includeSearchPartners === undefined && value.startDateTime === undefined
     && value.endDateTime === undefined) {
     refinement.addIssue({ code: 'custom', message: 'At least one mutable campaign field is required' })
+  }
+})
+const BiddingAmountSchema = z.number().finite().positive().max(1_000_000)
+const BiddingRoasSchema = z.number().finite().min(0.01).max(1_000)
+const BiddingLimitsShape = {
+  cpcBidCeiling: BiddingAmountSchema.optional(),
+  cpcBidFloor: BiddingAmountSchema.optional()
+}
+function validateBiddingLimits(
+  value: { cpcBidCeiling?: number, cpcBidFloor?: number },
+  refinement: z.RefinementCtx
+): void {
+  if (value.cpcBidCeiling !== undefined && value.cpcBidFloor !== undefined
+    && value.cpcBidFloor > value.cpcBidCeiling) {
+    refinement.addIssue({ code: 'custom', message: 'CPC bid floor must not exceed the CPC bid ceiling' })
+  }
+}
+const PortfolioStrategySchema = z.discriminatedUnion('type', [
+  z.strictObject({
+    type: z.literal('TARGET_CPA'),
+    targetCpa: BiddingAmountSchema,
+    ...BiddingLimitsShape
+  }).superRefine(validateBiddingLimits),
+  z.strictObject({
+    type: z.literal('TARGET_ROAS'),
+    targetRoas: BiddingRoasSchema,
+    ...BiddingLimitsShape
+  }).superRefine(validateBiddingLimits),
+  z.strictObject({
+    type: z.literal('TARGET_SPEND'),
+    cpcBidCeiling: BiddingAmountSchema.optional()
+  }),
+  z.strictObject({
+    type: z.literal('TARGET_IMPRESSION_SHARE'),
+    location: z.enum(['ANYWHERE_ON_PAGE', 'TOP_OF_PAGE', 'ABSOLUTE_TOP_OF_PAGE']),
+    targetImpressionSharePercent: z.number().finite().min(1).max(100),
+    cpcBidCeiling: BiddingAmountSchema
+  }),
+  z.strictObject({
+    type: z.literal('MAXIMIZE_CONVERSIONS'),
+    targetCpa: BiddingAmountSchema.optional(),
+    ...BiddingLimitsShape
+  }).superRefine(validateBiddingLimits),
+  z.strictObject({
+    type: z.literal('MAXIMIZE_CONVERSION_VALUE'),
+    targetRoas: BiddingRoasSchema.optional(),
+    ...BiddingLimitsShape
+  }).superRefine(validateBiddingLimits)
+])
+const CreateBiddingStrategySchema = z.strictObject({
+  ...CommonSchema,
+  name: z.string().trim().min(1).max(255),
+  strategy: PortfolioStrategySchema
+})
+const UpdateBiddingStrategySchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(255).optional(),
+  targetCpa: BiddingAmountSchema.optional(),
+  targetRoas: BiddingRoasSchema.optional(),
+  cpcBidCeiling: BiddingAmountSchema.optional(),
+  cpcBidFloor: BiddingAmountSchema.optional(),
+  location: z.enum(['ANYWHERE_ON_PAGE', 'TOP_OF_PAGE', 'ABSOLUTE_TOP_OF_PAGE']).optional(),
+  targetImpressionSharePercent: z.number().finite().min(1).max(100).optional()
+}).superRefine((value, refinement) => {
+  validateBiddingLimits(value, refinement)
+  if (value.name === undefined && value.targetCpa === undefined && value.targetRoas === undefined
+    && value.cpcBidCeiling === undefined && value.cpcBidFloor === undefined
+    && value.location === undefined && value.targetImpressionSharePercent === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'At least one mutable bidding-strategy field is required' })
   }
 })
 const CreateAdGroupSchema = z.strictObject({
@@ -733,6 +805,16 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     UpdateCampaignSchema
   ),
   manifest(
+    GOOGLE_ADS_PLAN_CREATE_BIDDING_STRATEGY_TOOL,
+    'Plan one uniquely named portfolio bidding strategy using a typed v25 scheme. The strategy is not assigned to a campaign by this action.',
+    CreateBiddingStrategySchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_UPDATE_BIDDING_STRATEGY_TOOL,
+    'Plan exact target, bid-limit, placement, or name changes for one portfolio strategy. Its strategy type is immutable and cannot be changed in place.',
+    UpdateBiddingStrategySchema
+  ),
+  manifest(
     GOOGLE_ADS_PLAN_CREATE_AD_GROUP_TOOL,
     'Plan a standard Search ad group under an existing campaign. New ad groups are always created paused.',
     CreateAdGroupSchema
@@ -1156,6 +1238,43 @@ export async function executeGoogleAdsSearchPlanningTool(
           ...(args.includeSearchPartners === undefined ? {} : { includeSearchPartners: args.includeSearchPartners }),
           ...(args.startDateTime === undefined ? {} : { startDateTime: args.startDateTime }),
           ...(args.endDateTime === undefined ? {} : { endDateTime: args.endDateTime })
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_CREATE_BIDDING_STRATEGY_TOOL) {
+      const args = CreateBiddingStrategySchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'create_bidding_strategy',
+        resourceType: 'bidding_strategy',
+        arguments: { name: args.name, strategy: args.strategy }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_UPDATE_BIDDING_STRATEGY_TOOL) {
+      const args = UpdateBiddingStrategySchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'update_bidding',
+        resourceType: 'bidding_strategy',
+        arguments: {
+          resourceName: args.resourceName,
+          ...(args.name === undefined ? {} : { name: args.name }),
+          ...(args.targetCpa === undefined ? {} : { targetCpa: args.targetCpa }),
+          ...(args.targetRoas === undefined ? {} : { targetRoas: args.targetRoas }),
+          ...(args.cpcBidCeiling === undefined ? {} : { cpcBidCeiling: args.cpcBidCeiling }),
+          ...(args.cpcBidFloor === undefined ? {} : { cpcBidFloor: args.cpcBidFloor }),
+          ...(args.location === undefined ? {} : { location: args.location }),
+          ...(args.targetImpressionSharePercent === undefined
+            ? {}
+            : { targetImpressionSharePercent: args.targetImpressionSharePercent })
         }
       }
     } else if (name === GOOGLE_ADS_PLAN_CREATE_AD_GROUP_TOOL) {

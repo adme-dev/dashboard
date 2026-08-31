@@ -164,6 +164,110 @@ describe('Search Google Ads governed planning runtime', () => {
     } as GoogleAdsActionPlan)).toBe(false)
   })
 
+  it('allows only a typed single-scheme portfolio bidding-strategy creation', () => {
+    const desiredState = {
+      name: 'Northern CPA',
+      targetCpa: {
+        targetCpaMicros: '45000000',
+        cpcBidCeilingMicros: '8000000'
+      }
+    }
+    const plan = {
+      customerId: '1234567890',
+      operation: 'create_bidding_strategy',
+      resourceName: null,
+      currentState: { exists: false },
+      desiredState,
+      providerOperations: [{
+        service: 'biddingStrategies',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ create: desiredState }]
+      }]
+    } as GoogleAdsActionPlan
+    expect(isExecutableSearchGoogleAdsPlan(plan)).toBe(true)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      desiredState: { ...desiredState, targetRoas: { targetRoas: 4 } },
+      providerOperations: [{
+        service: 'biddingStrategies',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ create: { ...desiredState, targetRoas: { targetRoas: 4 } } }]
+      }]
+    } as GoogleAdsActionPlan)).toBe(false)
+    const unsafeDesired = {
+      name: 'Northern CPA',
+      targetCpa: {
+        targetCpaMicros: '45000000',
+        cpcBidCeilingMicros: '8000000',
+        cpcBidFloorMicros: '9000000'
+      }
+    }
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      desiredState: unsafeDesired,
+      providerOperations: [{
+        service: 'biddingStrategies',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ create: unsafeDesired }]
+      }]
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
+  it('rejects bidding updates that tamper with immutable type or unmasked fields', () => {
+    const resourceName = 'customers/1234567890/biddingStrategies/70'
+    const currentState = {
+      resourceName,
+      name: 'Northern CPA',
+      status: 'ENABLED',
+      type: 'TARGET_CPA',
+      targetCpa: { targetCpaMicros: '40000000', cpcBidCeilingMicros: '7000000' }
+    }
+    const desiredState = {
+      ...currentState,
+      targetCpa: { ...currentState.targetCpa, targetCpaMicros: '45000000' }
+    }
+    const plan = {
+      customerId: '1234567890',
+      operation: 'update_bidding',
+      resourceName,
+      currentState,
+      desiredState,
+      providerOperations: [{
+        service: 'biddingStrategies',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{
+          update: { resourceName, targetCpa: { targetCpaMicros: '45000000' } },
+          updateMask: 'target_cpa.target_cpa_micros'
+        }]
+      }]
+    } as GoogleAdsActionPlan
+    expect(isExecutableSearchGoogleAdsPlan(plan)).toBe(true)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      desiredState: { ...desiredState, type: 'TARGET_ROAS' }
+    } as GoogleAdsActionPlan)).toBe(false)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      providerOperations: [{
+        service: 'biddingStrategies',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{
+          update: {
+            resourceName,
+            targetCpa: { targetCpaMicros: '45000000' },
+            status: 'REMOVED'
+          },
+          updateMask: 'target_cpa.target_cpa_micros'
+        }]
+      }]
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
   it.each([
     {
       operation: 'update_ad_group',
