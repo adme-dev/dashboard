@@ -1,5 +1,6 @@
 import type { H3Event } from 'h3'
-import { getOrgTenant, setOrgTenant } from './tokenStore'
+import { fetchXeroTenants } from '~~/server/utils/xeroClient'
+import { getActiveOrgToken, getOrgTenant, setOrgTenant } from '~~/server/utils/tokenStore'
 
 export function getOrCreateSessionId(event: H3Event): string {
   let sid = getCookie(event, 'sid')
@@ -40,6 +41,7 @@ export async function setSelectedTenant(event: H3Event, tenantId: string, tenant
  * Preference order:
  *   1. `xero_tenant_id` cookie (fast path, set by callback / select-tenant)
  *   2. Org-level tenant stored in KV / `xero_org_connection` DB table
+ *   3. The sole organisation returned by Xero, persisted for future requests
  *
  * The org-level fallback is critical: the Xero connection is shared across
  * all team members, but only the user who completed OAuth has the cookie.
@@ -51,7 +53,24 @@ export async function getSelectedTenant(event: H3Event): Promise<string | undefi
   if (cookieTenant) return cookieTenant
 
   const orgTenant = await getOrgTenant(event)
-  return orgTenant?.tenantId
+  if (orgTenant) return orgTenant.tenantId
+
+  try {
+    const token = await getActiveOrgToken(event, { minTtlMs: 0 })
+    if (!token.access_token) return undefined
+
+    const tenants = await fetchXeroTenants(token.access_token)
+    const tenant = tenants.length === 1 ? tenants[0] : undefined
+    if (tenant) {
+      await setSelectedTenant(event, tenant.tenantId, tenant.tenantName)
+      return tenant.tenantId
+    }
+  } catch {
+    // Missing/expired Xero connection or a transient upstream failure. Callers
+    // retain the existing "no organization selected" behavior and can retry.
+  }
+
+  return undefined
 }
 
 /**

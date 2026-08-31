@@ -1,10 +1,9 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { createXeroClient } from '~~/server/utils/xeroClient'
+import { xeroFetch } from '~~/server/utils/xeroClient'
 import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { queryRows } from '~~/server/utils/db'
 import { getAccountMonthlySpend } from '~~/server/utils/metaClient'
-import { cachedFetch } from '~~/server/utils/kv'
 import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
 
 /**
@@ -78,6 +77,33 @@ interface BankChargeTransaction {
   contact?: string
 }
 
+interface XeroBankAccount {
+  accountID?: string
+  name?: string
+  type?: string
+  bankAccountType?: string
+}
+
+interface XeroBankTransaction {
+  bankTransactionID?: string
+  date?: string
+  total?: number
+  reference?: string
+  description?: string
+  contact?: { name?: string }
+  type?: string
+}
+
+interface NormalizedBankTransaction {
+  bankTransactionID: string
+  date: string
+  total: number
+  reference?: string
+  description?: string
+  contact?: { name?: string }
+  type?: string
+}
+
 function identifyPlatform(description: string, contactName?: string): string | null {
   const searchText = `${description} ${contactName || ''}`
   for (const rule of PLATFORM_PATTERNS) {
@@ -127,10 +153,11 @@ export default eventHandler(async (event) => {
     return { period, byPlatform: {}, total: 0, unmatchedTotal: 0, unmatched: [], connected: false }
   }
 
-  if (!token || !tenantId) {
+  if (!token?.access_token || !tenantId) {
     return { period, byPlatform: {}, total: 0, unmatchedTotal: 0, unmatched: [], connected: false }
   }
   const scopedTenantId = tenantId
+  const accessToken = token.access_token
 
   // Bank Charged is an expensive, rate-limit-prone live Xero crawl (it's what
   // trips the 'concurrent' 429s). Cache the computed result per tenant+period in
@@ -152,46 +179,37 @@ export default eventHandler(async (event) => {
     } catch { /* cache miss / parse error → compute fresh below */ }
   }
 
-  const client = await createXeroClient({ tokenSet: token, event })
-
   // Date range for the month
   const startDate = new Date(Date.UTC(year, month - 1, 1))
   const lastDay = new Date(year, month, 0).getDate()
   const endDate = new Date(Date.UTC(year, month - 1, lastDay))
 
-  // Fetch BANK + CREDITCARD account lists in parallel so we don't burn the
-  // handler budget on two sequential 25s deadlines from dedupedXeroCall.
-  const [bankResponse, ccResponse] = await Promise.all([
-    dedupedXeroCall(
-      `bank-charges-bank:${tenantId}`,
-      'bank-charges-bank',
-      async () => {
-        const { body } = await client.accountingApi.getAccounts(tenantId, undefined, 'Type=="BANK"', 'Name ASC')
-        return body
-      }
-    ).catch(err => {
-      console.warn('[BankCharges] bank account list failed:', err)
-      return null
+  // Xero classifies both bank and credit-card accounts as Type=BANK;
+  // BankAccountType distinguishes BANK, CREDITCARD and PAYPAL. Use the direct
+  // fetch helper because xero-node's axios transport can stall on CF Pages.
+  let accountListFailed = false
+  const accountParams = new URLSearchParams({
+    where: 'Type=="BANK"',
+    order: 'Name ASC',
+  })
+  const bankResponse = await dedupedXeroCall(
+    `bank-charges-bank:${tenantId}`,
+    'bank-charges-bank',
+    () => xeroFetch<{ accounts?: XeroBankAccount[] }>({
+      accessToken,
+      tenantId,
+      path: `Accounts?${accountParams.toString()}`,
+      timeoutMs: Math.max(1_000, Math.min(12_000, remaining() - 3_000)),
     }),
-    dedupedXeroCall(
-      `bank-charges-cc:${tenantId}`,
-      'bank-charges-cc',
-      async () => {
-        const { body } = await client.accountingApi.getAccounts(tenantId, undefined, 'Type=="CREDITCARD"', 'Name ASC')
-        return body
-      }
-    ).catch(err => {
-      console.warn('[BankCharges] credit card account list failed:', err)
-      return null
-    }),
-  ])
-  const bankAccounts = [
-    ...(bankResponse?.accounts || []),
-    ...(ccResponse?.accounts || []),
-  ]
+  ).catch(err => {
+    accountListFailed = true
+    console.warn('[BankCharges] bank account list failed:', err)
+    return null
+  })
+  const bankAccounts = bankResponse?.accounts || []
 
   // Fetch transactions per account, parallelized with the remaining wall-time
-  // budget. Each dedupedXeroCall has its own 25s deadline; we layer the
+  // budget. Each Xero fetch has its own 12s deadline; we layer the
   // handler budget on top so even slow per-account calls can't push the
   // handler past CF Pages' 30s cap.
   // Xero caps in-flight requests at 5 per tenant (429 with
@@ -200,16 +218,9 @@ export default eventHandler(async (event) => {
   // headroom; dedupedXeroCall's 429 backoff absorbs any residual collision.
   const CONCURRENCY = 4
   let budgetExhausted = remaining() <= 1_000  // already over → mark partial, skip transaction loop
+  let transactionFetchFailed = false
 
-  const allTransactions: Array<{
-    bankTransactionID: string
-    date: string
-    total: number
-    reference?: string
-    description?: string
-    contact?: { name?: string }
-    type?: string
-  }> = []
+  const allTransactions: NormalizedBankTransaction[] = []
 
   const accountQueue = [...bankAccounts]
 
@@ -221,23 +232,26 @@ export default eventHandler(async (event) => {
         return
       }
       const account = accountQueue.shift()
-        if (!account) return
-        try {
-          const txBody = await dedupedXeroCall(
+      if (!account?.accountID) {
+        transactionFetchFailed = true
+        continue
+      }
+      try {
+        const transactionParams = new URLSearchParams({
+          where: `BankAccount.AccountID==Guid("${account.accountID}")&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(endDate)}`,
+          order: 'Date ASC',
+          page: '1',
+          pageSize: '500',
+        })
+        const txBody = await dedupedXeroCall(
           `bank-charges-tx:${scopedTenantId}:${account.accountID}`,
           'bank-charges-tx',
-          async () => {
-            const { body } = await client.accountingApi.getBankTransactions(
-              scopedTenantId,
-              undefined,
-              `BankAccount.AccountID==Guid("${account.accountID}")&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(endDate)}`,
-              'Date ASC',
-              1,
-              undefined,
-              500
-            )
-            return body
-          }
+          () => xeroFetch<{ bankTransactions?: XeroBankTransaction[] }>({
+            accessToken,
+            tenantId: scopedTenantId,
+            path: `BankTransactions?${transactionParams.toString()}`,
+            timeoutMs: Math.max(1_000, Math.min(12_000, remaining() - 3_000)),
+          }),
         )
 
         const txns = txBody?.bankTransactions || []
@@ -245,19 +259,20 @@ export default eventHandler(async (event) => {
         for (const tx of txns) {
           const amount = Number(tx.total) || 0
           // Bank transactions: negative = outflow, or type == 'SPEND'
-          if (amount < 0 || (tx as any).type === 'SPEND') {
+          if (amount < 0 || tx.type === 'SPEND') {
             allTransactions.push({
               bankTransactionID: tx.bankTransactionID || '',
               date: ensureDateString(new Date(tx.date || '')),
               total: Math.abs(amount),
               reference: tx.reference,
-              description: (tx as any).description,
+              description: tx.description,
               contact: tx.contact,
-              type: (tx as any).type,
+              type: tx.type,
             })
           }
         }
       } catch (err) {
+        transactionFetchFailed = true
         console.warn(`[BankCharges] Failed to fetch transactions for ${account.name}:`, err)
       }
     }
@@ -356,14 +371,14 @@ export default eventHandler(async (event) => {
     unmatched: unmatched.slice(0, 20),
     metaBilling,
     connected: true,
-    partial: budgetExhausted,
+    partial: budgetExhausted || accountListFailed || transactionFetchFailed,
     accountsScanned: bankAccounts.length - accountQueue.length,
     accountsTotal: bankAccounts.length,
   }
 
   // Cache only complete results — a partial (truncated) total would otherwise be
   // served stale for hours.
-  if (cache && !budgetExhausted) {
+  if (cache && !result.partial) {
     try {
       await cache.put(cacheKey, JSON.stringify(result), { expirationTtl: BANK_CHARGES_TTL_SECONDS })
     } catch { /* non-fatal — just means the next load recomputes */ }
