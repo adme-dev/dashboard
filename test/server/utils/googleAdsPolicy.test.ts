@@ -76,7 +76,9 @@ describe('resolveGoogleAdsPolicy', () => {
     ['set_pmax_signals', 'rich_confirm'],
     ['set_search_themes', 'rich_confirm'],
     ['set_conversion_goal', 'rich_confirm'],
+    ['archive_conversion_action', 'rich_confirm'],
     ['remove_campaign', 'destructive_confirm'],
+    ['remove_conversion_action', 'destructive_confirm'],
     ['archive_custom_audience', 'destructive_confirm']
   ] as const)('%s cannot be lowered below %s', (operation, riskTier) => {
     expect(resolveGoogleAdsPolicy({

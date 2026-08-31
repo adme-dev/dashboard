@@ -32,6 +32,8 @@ export const GOOGLE_ADS_PLAN_SET_CUSTOMER_GOAL_BIDDABILITY_TOOL = 'google_ads_pl
 export const GOOGLE_ADS_PLAN_SET_CONVERSION_PRIMARY_STATE_TOOL = 'google_ads_plan_set_conversion_primary_state'
 export const GOOGLE_ADS_PLAN_CREATE_CONVERSION_ACTION_TOOL = 'google_ads_plan_create_conversion_action'
 export const GOOGLE_ADS_PLAN_UPDATE_CONVERSION_ACTION_TOOL = 'google_ads_plan_update_conversion_action'
+export const GOOGLE_ADS_PLAN_ARCHIVE_CONVERSION_ACTION_TOOL = 'google_ads_plan_archive_conversion_action'
+export const GOOGLE_ADS_PLAN_REMOVE_CONVERSION_ACTION_TOOL = 'google_ads_plan_remove_conversion_action'
 export const GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_create_custom_audience'
 export const GOOGLE_ADS_PLAN_UPDATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_update_custom_audience'
 export const GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_archive_custom_audience'
@@ -404,6 +406,10 @@ const UpdateConversionActionSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'At least one mutable conversion-action field is required' })
   }
 })
+const ConversionActionDispositionSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000)
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -533,6 +539,16 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_UPDATE_CONVERSION_ACTION_TOOL,
     'Plan an update to mutable conversion-action fields. Type is immutable and removal is intentionally not exposed by this tool.',
     UpdateConversionActionSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_ARCHIVE_CONVERSION_ACTION_TOOL,
+    'Plan the safe default for retiring a conversion action by setting it to HIDDEN. This stops recording and hides the action without provider removal.',
+    ConversionActionDispositionSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_REMOVE_CONVERSION_ACTION_TOOL,
+    'Plan permanent provider removal of a conversion action. This requires the destructive feature gate and owner/admin confirmation.',
+    ConversionActionDispositionSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL,
@@ -1002,6 +1018,24 @@ export async function executeGoogleAdsSearchPlanningTool(
             ? {}
             : { viewThroughLookbackWindowDays: args.viewThroughLookbackWindowDays })
         }
+      }
+    } else if (
+      name === GOOGLE_ADS_PLAN_ARCHIVE_CONVERSION_ACTION_TOOL
+      || name === GOOGLE_ADS_PLAN_REMOVE_CONVERSION_ACTION_TOOL
+    ) {
+      const args = ConversionActionDispositionSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: name === GOOGLE_ADS_PLAN_ARCHIVE_CONVERSION_ACTION_TOOL
+          ? 'archive_conversion_action'
+          : 'remove_conversion_action',
+        resourceType: 'conversion_action',
+        arguments: { resourceName: args.resourceName }
       }
     } else if (name === GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL) {
       const args = CreateCustomAudienceSchema.parse(rawArgs)

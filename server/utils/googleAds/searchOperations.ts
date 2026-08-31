@@ -443,7 +443,9 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'set_customer_goal_biddability',
       'set_conversion_primary_state',
       'create_conversion_action',
-      'update_conversion_action'
+      'update_conversion_action',
+      'archive_conversion_action',
+      'remove_conversion_action'
     ].includes(operation)
 }
 
@@ -540,6 +542,9 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_conversion_primary_state') return SetConversionPrimaryStateArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_conversion_action') return CreateConversionActionArgumentsSchema.parse(argumentsValue)
   if (operation === 'update_conversion_action') return UpdateConversionActionArgumentsSchema.parse(argumentsValue)
+  if (operation === 'archive_conversion_action' || operation === 'remove_conversion_action') {
+    return ResourceNameArgumentsSchema.parse(argumentsValue)
+  }
   throw new Error(`Unsupported Search Google Ads operation: ${operation}`)
 }
 
@@ -1434,6 +1439,53 @@ function buildUpdateConversionAction(context: BuildGoogleAdsActionContext): Buil
   }
 }
 
+function buildConversionActionDisposition(
+  context: BuildGoogleAdsActionContext,
+  disposition: 'archive' | 'remove'
+): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'conversion_action') {
+    throw new Error('Conversion action disposition requires resource type conversion_action')
+  }
+  const args = ResourceNameArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.resourceName, context.customerId, 'conversionActions')
+  const current = MutableConversionActionStateSchema.parse(context.currentState)
+  if (current.resourceName !== args.resourceName) {
+    throw new Error('Conversion action state does not match the selected resource')
+  }
+  if (disposition === 'archive') {
+    if (current.status === 'HIDDEN') throw new Error('Conversion action is already archived')
+    if (current.status === 'REMOVED') throw new Error('A removed conversion action cannot be archived')
+    // HIDDEN is the safe, reversible-by-update default; remove is exposed separately.
+    // https://developers.google.com/google-ads/api/reference/rpc/v25/ConversionActionStatusEnum.ConversionActionStatus
+    return {
+      resourceName: args.resourceName,
+      desiredState: { resourceName: args.resourceName, status: 'HIDDEN' },
+      providerOperations: [{
+        service: 'conversionActions',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{
+          update: { resourceName: args.resourceName, status: 'HIDDEN' },
+          updateMask: 'status'
+        }]
+      }]
+    }
+  }
+  if (current.status === 'REMOVED') throw new Error('Conversion action is already removed')
+  // v25 supports provider removal, but policy requires owner/admin destructive confirmation.
+  // https://developers.google.com/google-ads/api/reference/rpc/v25/ConversionActionOperation
+  return {
+    resourceName: args.resourceName,
+    desiredState: { resourceName: args.resourceName, status: 'REMOVED' },
+    providerOperations: [{
+      service: 'conversionActions',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ remove: args.resourceName }]
+    }]
+  }
+}
+
 function normalizeCustomAudienceMembers(
   members: z.infer<typeof CustomAudienceMembersSchema>
 ): z.infer<typeof CustomAudienceMembersSchema> {
@@ -1662,6 +1714,8 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'set_conversion_primary_state') return buildConversionPrimaryStateAction(context)
   if (context.input.operation === 'create_conversion_action') return buildCreateConversionAction(context)
   if (context.input.operation === 'update_conversion_action') return buildUpdateConversionAction(context)
+  if (context.input.operation === 'archive_conversion_action') return buildConversionActionDisposition(context, 'archive')
+  if (context.input.operation === 'remove_conversion_action') return buildConversionActionDisposition(context, 'remove')
   if (context.input.operation === 'manage_custom_audience') return buildManageCustomAudienceAction(context)
   if (context.input.operation === 'archive_custom_audience') return buildArchiveCustomAudienceAction(context)
   if (context.input.operation === 'set_pmax_signals') return buildPmaxAudienceSignalsAction(context)

@@ -954,6 +954,58 @@ describe('Search Google Ads construction operations', () => {
     ))).toThrow('View-through windows are supported only for WEBPAGE conversion actions')
   })
 
+  it('archives a conversion action as HIDDEN by default and reserves removal for an explicit operation', () => {
+    const resourceName = 'customers/1234567890/conversionActions/9001'
+    const current = {
+      resourceName,
+      name: 'Finance enquiry',
+      status: 'ENABLED',
+      type: 'WEBPAGE',
+      category: 'SUBMIT_LEAD_FORM',
+      origin: 'WEBSITE',
+      primaryForGoal: false,
+      includeInConversionsMetric: false
+    }
+
+    expect(buildSearchGoogleAdsAction(context(
+      'archive_conversion_action', 'conversion_action', { resourceName }, current
+    ))).toMatchObject({
+      resourceName,
+      desiredState: { resourceName, status: 'HIDDEN' },
+      providerOperations: [{
+        service: 'conversionActions',
+        operations: [{ update: { resourceName, status: 'HIDDEN' }, updateMask: 'status' }]
+      }]
+    })
+
+    expect(buildSearchGoogleAdsAction(context(
+      'remove_conversion_action', 'conversion_action', { resourceName }, current
+    ))).toMatchObject({
+      resourceName,
+      desiredState: { resourceName, status: 'REMOVED' },
+      providerOperations: [{ service: 'conversionActions', operations: [{ remove: resourceName }] }]
+    })
+  })
+
+  it('rejects conversion-action archive and removal when already in the requested terminal state', () => {
+    const resourceName = 'customers/1234567890/conversionActions/9001'
+    const state = {
+      resourceName,
+      name: 'Finance enquiry',
+      type: 'WEBPAGE',
+      category: 'SUBMIT_LEAD_FORM',
+      origin: 'WEBSITE',
+      primaryForGoal: false,
+      includeInConversionsMetric: false
+    }
+    expect(() => buildSearchGoogleAdsAction(context(
+      'archive_conversion_action', 'conversion_action', { resourceName }, { ...state, status: 'HIDDEN' }
+    ))).toThrow('already archived')
+    expect(() => buildSearchGoogleAdsAction(context(
+      'remove_conversion_action', 'conversion_action', { resourceName }, { ...state, status: 'REMOVED' }
+    ))).toThrow('already removed')
+  })
+
   it('creates a typed custom audience with every supported member type', () => {
     const built = buildSearchGoogleAdsAction(context(
       'manage_custom_audience',

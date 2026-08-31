@@ -42,6 +42,8 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_set_conversion_primary_state',
       'google_ads_plan_create_conversion_action',
       'google_ads_plan_update_conversion_action',
+      'google_ads_plan_archive_conversion_action',
+      'google_ads_plan_remove_conversion_action',
       'google_ads_plan_create_custom_audience',
       'google_ads_plan_update_custom_audience',
       'google_ads_plan_archive_custom_audience',
@@ -427,6 +429,20 @@ describe('Google Ads Search MCP planning descriptors', () => {
         category: 'QUALIFIED_LEAD',
         status: 'HIDDEN'
       }
+    },
+    {
+      tool: 'google_ads_plan_archive_conversion_action',
+      args: { resourceName: 'customers/1234567890/conversionActions/9001' },
+      operation: 'archive_conversion_action',
+      resourceType: 'conversion_action',
+      expectedArguments: { resourceName: 'customers/1234567890/conversionActions/9001' }
+    },
+    {
+      tool: 'google_ads_plan_remove_conversion_action',
+      args: { resourceName: 'customers/1234567890/conversionActions/9001' },
+      operation: 'remove_conversion_action',
+      resourceType: 'conversion_action',
+      expectedArguments: { resourceName: 'customers/1234567890/conversionActions/9001' }
     },
     {
       tool: 'google_ads_plan_create_custom_audience',

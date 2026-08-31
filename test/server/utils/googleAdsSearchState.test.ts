@@ -600,6 +600,29 @@ describe('Search Google Ads current-state loader', () => {
     }))
   })
 
+  it.each(['archive_conversion_action', 'remove_conversion_action'] as const)(
+    'loads a tenant-bound conversion action before %s',
+    async (operation) => {
+      const resourceName = 'customers/1234567890/conversionActions/9001'
+      const query = vi.fn().mockResolvedValue({
+        rows: [{ conversionAction: {
+          resourceName,
+          name: 'Finance enquiry',
+          status: 'ENABLED',
+          type: 'WEBPAGE',
+          category: 'SUBMIT_LEAD_FORM',
+          origin: 'WEBSITE',
+          primaryForGoal: false,
+          includeInConversionsMetric: false
+        } }],
+        more: 0
+      })
+      await expect(loadSearchGoogleAdsCurrentState(
+        context(operation, { resourceName }), auth, { query }
+      )).resolves.toMatchObject({ resourceName, status: 'ENABLED' })
+    }
+  )
+
   it('checks conversion-action names before planning creation', async () => {
     const query = vi.fn().mockResolvedValue({ rows: [], more: 0 })
     await expect(loadSearchGoogleAdsCurrentState(context('create_conversion_action', {
