@@ -348,17 +348,21 @@ const STATUS_READS = {
   archive_campaign: { from: 'campaign', select: 'campaign.resource_name, campaign.status', key: 'campaign' },
   enable_campaign: { from: 'campaign', select: 'campaign.resource_name, campaign.status', key: 'campaign' },
   set_campaign_status: { from: 'campaign', select: 'campaign.resource_name, campaign.status', key: 'campaign' },
+  remove_campaign: { from: 'campaign', select: 'campaign.resource_name, campaign.status', key: 'campaign' },
   pause_ad_group: { from: 'ad_group', select: 'ad_group.resource_name, ad_group.status', key: 'adGroup' },
   archive_ad_group: { from: 'ad_group', select: 'ad_group.resource_name, ad_group.status', key: 'adGroup' },
   enable_ad_group: { from: 'ad_group', select: 'ad_group.resource_name, ad_group.status', key: 'adGroup' },
   set_ad_group_status: { from: 'ad_group', select: 'ad_group.resource_name, ad_group.status', key: 'adGroup' },
+  remove_ad_group: { from: 'ad_group', select: 'ad_group.resource_name, ad_group.status', key: 'adGroup' },
   pause_ad: { from: 'ad_group_ad', select: 'ad_group_ad.resource_name, ad_group_ad.status', key: 'adGroupAd' },
   archive_ad: { from: 'ad_group_ad', select: 'ad_group_ad.resource_name, ad_group_ad.status', key: 'adGroupAd' },
   enable_ad: { from: 'ad_group_ad', select: 'ad_group_ad.resource_name, ad_group_ad.status', key: 'adGroupAd' },
   update_ad_status: { from: 'ad_group_ad', select: 'ad_group_ad.resource_name, ad_group_ad.status', key: 'adGroupAd' },
+  remove_ad: { from: 'ad_group_ad', select: 'ad_group_ad.resource_name, ad_group_ad.status', key: 'adGroupAd' },
   pause_keyword: { from: 'keyword_view', select: 'ad_group_criterion.resource_name, ad_group_criterion.status', key: 'adGroupCriterion' },
   enable_keyword: { from: 'keyword_view', select: 'ad_group_criterion.resource_name, ad_group_criterion.status', key: 'adGroupCriterion' },
-  set_keyword_status: { from: 'keyword_view', select: 'ad_group_criterion.resource_name, ad_group_criterion.status', key: 'adGroupCriterion' }
+  set_keyword_status: { from: 'keyword_view', select: 'ad_group_criterion.resource_name, ad_group_criterion.status', key: 'adGroupCriterion' },
+  remove_keyword: { from: 'keyword_view', select: 'ad_group_criterion.resource_name, ad_group_criterion.status', key: 'adGroupCriterion' }
 } as const
 
 type StatusReadOperation = keyof typeof STATUS_READS
@@ -1256,7 +1260,8 @@ function statusWhere(from: string, ids: number[]): string {
 async function loadStatus(
   context: Omit<BuildGoogleAdsActionContext, 'currentState'>,
   auth: GoogleAdsAuth,
-  dependencies: SearchStateDependencies
+  dependencies: SearchStateDependencies,
+  missingState?: { resourceName: string, status: 'REMOVED' }
 ): Promise<Record<string, unknown>> {
   if (!isStatusReadOperation(context.input.operation)) throw new Error('Unsupported Search status operation')
   const config = STATUS_READS[context.input.operation]
@@ -1272,6 +1277,7 @@ async function loadStatus(
   })
   const first = result.rows[0]
   if (!first || typeof first !== 'object' || !(config.key in first)) {
+    if (missingState) return missingState
     throw new Error('Google Ads status resource was not found')
   }
   const resource = (first as Record<string, unknown>)[config.key]
@@ -3010,6 +3016,39 @@ export async function loadSearchGoogleAdsPlanState(
   ) {
     if (!plan.resourceName) throw new Error('Conversion action plan has no resource name')
     return loadConversionAction(plan.customerId, plan.resourceName, auth, resolved)
+  }
+  if (
+    plan.operation === 'remove_campaign'
+    || plan.operation === 'remove_ad_group'
+    || plan.operation === 'remove_ad'
+    || plan.operation === 'remove_keyword'
+  ) {
+    if (!plan.resourceName) throw new Error('Removal plan has no resource name')
+    const service = plan.providerOperations[0]?.service
+    if (mutation && (!service || mutationResourceName(mutation, service) !== plan.resourceName)) {
+      throw new Error('Google Ads returned a different removed resource')
+    }
+    return loadStatus({
+      input: {
+        clientId: plan.clientId,
+        connectionId: plan.connectionId,
+        actorId: plan.actorId,
+        source: plan.source,
+        operation: plan.operation,
+        resourceType: plan.resourceType,
+        requestedMode: 'proposal',
+        arguments: { resourceName: plan.resourceName, reason: 'Read-back verification only' },
+        idempotencyKey: plan.idempotencyKey
+      },
+      connection: {
+        clientId: plan.clientId,
+        connectionId: plan.connectionId,
+        customerId: plan.customerId,
+        platform: 'google',
+        status: 'active'
+      },
+      customerId: plan.customerId
+    }, auth, resolved, mutation ? { resourceName: plan.resourceName, status: 'REMOVED' } : undefined)
   }
   if (!plan.resourceName) throw new Error('Search Google Ads plan has no resource name')
   const negative = plan.operation === 'add_negative_keywords'

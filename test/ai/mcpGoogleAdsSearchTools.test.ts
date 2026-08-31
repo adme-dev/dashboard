@@ -20,6 +20,7 @@ describe('Google Ads Search MCP planning descriptors', () => {
     expect(googleAdsSearchPlanningTools.map(tool => tool.name)).toEqual([
       'google_ads_plan_pause',
       'google_ads_plan_archive',
+      'google_ads_plan_remove',
       'google_ads_plan_enable',
       'google_ads_plan_add_negative_keywords',
       'google_ads_plan_create_budget',
@@ -135,6 +136,39 @@ describe('Google Ads Search MCP planning descriptors', () => {
 
     expect(plan.mock.calls[0]?.[0].operation).toBe('archive_ad')
     expect(plan.mock.calls[0]?.[0].operation).not.toBe('remove_ad')
+  })
+
+  it('maps permanent removal with its operator reason into a destructive plan', async () => {
+    const reason = 'Duplicate campaign confirmed during campaign QA.'
+    const plan = vi.fn().mockResolvedValue({
+      id: '22222222-2222-4222-8222-222222222222',
+      operation: 'remove_campaign',
+      resourceType: 'campaign',
+      resourceName: 'customers/1234567890/campaigns/10',
+      riskTier: 'destructive_confirm',
+      executionMode: 'proposal',
+      policyDecision: { allowed: true },
+      status: 'pending_approval',
+      diff: []
+    })
+
+    await expect(executeGoogleAdsSearchPlanningTool('google_ads_plan_remove', {
+      clientId: '33333333-3333-4333-8333-333333333333',
+      connectionId: '44444444-4444-4444-8444-444444444444',
+      entityType: 'campaign',
+      resourceName: 'customers/1234567890/campaigns/10',
+      reason,
+      idempotencyKey: 'remove-campaign-10'
+    }, context, { ...flags, destructive: true }, true, { plan })).resolves.toMatchObject({ ok: true })
+
+    expect(plan).toHaveBeenCalledWith(expect.objectContaining({
+      operation: 'remove_campaign',
+      resourceType: 'campaign',
+      arguments: {
+        resourceName: 'customers/1234567890/campaigns/10',
+        reason
+      }
+    }), expect.any(Object), { ...flags, destructive: true })
   })
 
   it.each([
@@ -868,6 +902,22 @@ describe('Google Ads Search MCP planning descriptors', () => {
         connectionId: '44444444-4444-4444-8444-444444444444',
         idempotencyKey: 'remove-without-reason',
         resourceName: 'customers/1234567890/conversionActions/9001'
+      },
+      context,
+      flags,
+      true,
+      { plan }
+    )).resolves.toMatchObject({ ok: false, code: 'bad_args' })
+    expect(plan).not.toHaveBeenCalled()
+
+    await expect(executeGoogleAdsSearchPlanningTool(
+      'google_ads_plan_remove',
+      {
+        clientId: '33333333-3333-4333-8333-333333333333',
+        connectionId: '44444444-4444-4444-8444-444444444444',
+        idempotencyKey: 'remove-campaign-without-reason',
+        entityType: 'campaign',
+        resourceName: 'customers/1234567890/campaigns/10'
       },
       context,
       flags,

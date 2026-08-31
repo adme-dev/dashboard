@@ -666,14 +666,27 @@ const STATUS_OPERATIONS = {
   set_keyword_status: { resourceType: 'keyword', segment: 'adGroupCriteria', service: 'adGroupCriteria' }
 } as const
 
+const REMOVE_OPERATIONS = {
+  remove_campaign: { resourceType: 'campaign', segment: 'campaigns', service: 'campaigns' },
+  remove_ad_group: { resourceType: 'ad_group', segment: 'adGroups', service: 'adGroups' },
+  remove_ad: { resourceType: 'ad', segment: 'adGroupAds', service: 'adGroupAds' },
+  remove_keyword: { resourceType: 'keyword', segment: 'adGroupCriteria', service: 'adGroupCriteria' }
+} as const
+
 type StatusOperation = keyof typeof STATUS_OPERATIONS
+type RemoveOperation = keyof typeof REMOVE_OPERATIONS
 
 function isStatusOperation(operation: GoogleAdsOperationType): operation is StatusOperation {
   return Object.hasOwn(STATUS_OPERATIONS, operation)
 }
 
+function isRemoveOperation(operation: GoogleAdsOperationType): operation is RemoveOperation {
+  return Object.hasOwn(REMOVE_OPERATIONS, operation)
+}
+
 export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): boolean {
   return isStatusOperation(operation)
+    || isRemoveOperation(operation)
     || [
       'add_negative_keywords',
       'create_budget',
@@ -787,6 +800,7 @@ export function parseSearchGoogleAdsArguments(
   argumentsValue: unknown
 ): unknown {
   if (isStatusOperation(operation)) return ResourceNameArgumentsSchema.parse(argumentsValue)
+  if (isRemoveOperation(operation)) return DestructiveResourceNameArgumentsSchema.parse(argumentsValue)
   if (operation === 'add_negative_keywords') return NegativeKeywordArgumentsSchema.parse(argumentsValue)
   if (operation === 'create_budget') return CreateBudgetArgumentsSchema.parse(argumentsValue)
   if (operation === 'update_budget') return UpdateBudgetArgumentsSchema.parse(argumentsValue)
@@ -864,6 +878,26 @@ function buildStatusAction(context: BuildGoogleAdsActionContext, operation: Stat
         update: { resourceName: args.resourceName, status },
         updateMask: 'status'
       }]
+    }]
+  }
+}
+
+function buildRemoveAction(context: BuildGoogleAdsActionContext, operation: RemoveOperation): BuiltGoogleAdsAction {
+  const config = REMOVE_OPERATIONS[operation]
+  if (context.input.resourceType !== config.resourceType) {
+    throw new Error(`Operation ${operation} requires resource type ${config.resourceType}`)
+  }
+  const args = DestructiveResourceNameArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.resourceName, context.customerId, config.segment)
+
+  return {
+    resourceName: args.resourceName,
+    desiredState: { resourceName: args.resourceName, status: 'REMOVED' },
+    providerOperations: [{
+      service: config.service,
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ remove: args.resourceName }]
     }]
   }
 }
@@ -2701,6 +2735,9 @@ function buildRecommendationAction(
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
+  }
+  if (isRemoveOperation(context.input.operation)) {
+    return buildRemoveAction(context, context.input.operation)
   }
   if (context.input.operation === 'add_negative_keywords') {
     return buildNegativeKeywordAction(context)

@@ -92,6 +92,31 @@ describe('Search Google Ads current-state loader', () => {
     )).rejects.toThrow('was not found')
   })
 
+  it('treats a missing status row as verified removal only after a remove mutation', async () => {
+    const resourceName = 'customers/1234567890/campaigns/10'
+    const plan = {
+      operation: 'remove_campaign',
+      resourceType: 'campaign',
+      resourceName,
+      desiredState: { resourceName, status: 'REMOVED' },
+      providerOperations: [{ service: 'campaigns' }],
+      customerId: '1234567890',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      connectionId: '22222222-2222-4222-8222-222222222222',
+      actorId: '33333333-3333-4333-8333-333333333333',
+      source: 'mcp',
+      executionMode: 'proposal',
+      idempotencyKey: 'remove-campaign-10'
+    } as GoogleAdsActionPlan
+    const query = vi.fn().mockResolvedValue({ rows: [], more: 0 })
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [{ resourceName }], requestId: 'request-remove-10'
+    })).resolves.toEqual({ resourceName, status: 'REMOVED' })
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query })).rejects.toThrow('was not found')
+  })
+
   it('checks budget names before planning creation', async () => {
     const query = vi.fn().mockResolvedValue({ rows: [], more: 0 })
     await expect(loadSearchGoogleAdsCurrentState(context('create_budget', {

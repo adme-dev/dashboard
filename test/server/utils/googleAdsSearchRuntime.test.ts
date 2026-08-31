@@ -93,6 +93,22 @@ describe('Search Google Ads governed planning runtime', () => {
     } as GoogleAdsActionPlan)).toBe(false)
   })
 
+  it.each([
+    ['remove_campaign', 'campaigns'],
+    ['remove_ad_group', 'adGroups'],
+    ['remove_ad', 'adGroupAds'],
+    ['remove_keyword', 'adGroupCriteria']
+  ] as const)('allows typed %s plans only through %s', (operation, service) => {
+    expect(isExecutableSearchGoogleAdsPlan({
+      operation,
+      providerOperations: [{ service, operations: [{ remove: 'resource' }] }]
+    } as GoogleAdsActionPlan)).toBe(true)
+    expect(isExecutableSearchGoogleAdsPlan({
+      operation,
+      providerOperations: [{ service: 'campaignBudgets', operations: [{ remove: 'resource' }] }]
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
   it('plans a manual pause as a confirmation without requiring an automation grant', async () => {
     const deps = dependencies()
     const plan = await planSearchGoogleAdsControlAction({

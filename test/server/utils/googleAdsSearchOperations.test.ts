@@ -89,6 +89,39 @@ describe('Search Google Ads status operations', () => {
     ))
     expect(built.providerOperations[0]?.operations[0]).not.toHaveProperty('remove')
   })
+
+  it.each([
+    ['remove_campaign', 'campaign', 'campaigns', 'customers/1234567890/campaigns/10'],
+    ['remove_ad_group', 'ad_group', 'adGroups', 'customers/1234567890/adGroups/20'],
+    ['remove_ad', 'ad', 'adGroupAds', 'customers/1234567890/adGroupAds/20~30'],
+    ['remove_keyword', 'keyword', 'adGroupCriteria', 'customers/1234567890/adGroupCriteria/20~40']
+  ] as const)('builds %s as a typed irreversible provider removal', (
+    operation, resourceType, service, resourceName
+  ) => {
+    const built = buildSearchGoogleAdsAction(context(
+      operation,
+      resourceType,
+      { resourceName, reason: 'Duplicate entity confirmed during campaign QA.' },
+      { resourceName, status: 'PAUSED' }
+    ))
+
+    expect(built).toEqual({
+      resourceName,
+      desiredState: { resourceName, status: 'REMOVED' },
+      providerOperations: [{
+        service,
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ remove: resourceName }]
+      }]
+    })
+  })
+
+  it('requires a reason before parsing a permanent entity removal', () => {
+    expect(() => parseSearchGoogleAdsArguments('remove_campaign', {
+      resourceName: 'customers/1234567890/campaigns/10'
+    })).toThrow()
+  })
 })
 
 describe('Search Google Ads negative keyword operations', () => {

@@ -11,6 +11,7 @@ import { ListingGroupNodesInputSchema } from '~~/server/utils/googleAds/listingG
 
 export const GOOGLE_ADS_PLAN_PAUSE_TOOL = 'google_ads_plan_pause'
 export const GOOGLE_ADS_PLAN_ARCHIVE_TOOL = 'google_ads_plan_archive'
+export const GOOGLE_ADS_PLAN_REMOVE_TOOL = 'google_ads_plan_remove'
 export const GOOGLE_ADS_PLAN_ENABLE_TOOL = 'google_ads_plan_enable'
 export const GOOGLE_ADS_PLAN_NEGATIVE_KEYWORDS_TOOL = 'google_ads_plan_add_negative_keywords'
 export const GOOGLE_ADS_PLAN_CREATE_BUDGET_TOOL = 'google_ads_plan_create_budget'
@@ -72,6 +73,12 @@ const ArchivableEntitySchema = z.strictObject({
   ...CommonSchema,
   entityType: z.enum(['campaign', 'ad_group', 'ad']),
   resourceName: z.string().trim().min(1).max(1_000)
+})
+const RemoveEntitySchema = z.strictObject({
+  ...CommonSchema,
+  entityType: EntityTypeSchema,
+  resourceName: z.string().trim().min(1).max(1_000),
+  reason: OperatorReasonSchema
 })
 const EnableEntitySchema = z.strictObject({
   ...CommonSchema,
@@ -641,6 +648,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     ArchivableEntitySchema
   ),
   manifest(
+    GOOGLE_ADS_PLAN_REMOVE_TOOL,
+    'Plan permanent Google Ads removal of one campaign, ad group, ad, or keyword with a required operator reason. Use pause or archive for the safe reversible default.',
+    RemoveEntitySchema
+  ),
+  manifest(
     GOOGLE_ADS_PLAN_ENABLE_TOOL,
     'Plan enabling one campaign, ad group, ad, or keyword. Activation is a higher-risk approval action.',
     EnableEntitySchema
@@ -883,6 +895,13 @@ const ARCHIVE_OPERATIONS = {
   ad: 'archive_ad'
 } as const
 
+const REMOVE_OPERATIONS = {
+  campaign: 'remove_campaign',
+  ad_group: 'remove_ad_group',
+  ad: 'remove_ad',
+  keyword: 'remove_keyword'
+} as const
+
 const ENABLE_OPERATIONS = {
   campaign: 'enable_campaign',
   ad_group: 'enable_ad_group',
@@ -948,6 +967,19 @@ export async function executeGoogleAdsSearchPlanningTool(
         operation: ARCHIVE_OPERATIONS[args.entityType],
         resourceType: ENTITY_RESOURCE_TYPES[args.entityType],
         arguments: { resourceName: args.resourceName }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_REMOVE_TOOL) {
+      const args = RemoveEntitySchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp' as const,
+        requestedMode: 'proposal' as const,
+        operation: REMOVE_OPERATIONS[args.entityType],
+        resourceType: ENTITY_RESOURCE_TYPES[args.entityType],
+        arguments: { resourceName: args.resourceName, reason: args.reason }
       }
     } else if (name === GOOGLE_ADS_PLAN_ENABLE_TOOL) {
       const args = EnableEntitySchema.parse(rawArgs)
