@@ -63,6 +63,10 @@ const SetLocationsArgumentsSchema = z.strictObject({
   campaignResourceName: z.string().trim().min(1).max(1_000),
   geoTargetConstantIds: z.array(z.string().regex(/^\d{1,20}$/)).min(1).max(1_000)
 })
+const SetLocationMatchModeArgumentsSchema = z.strictObject({
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  positiveGeoTargetType: z.enum(['PRESENCE', 'PRESENCE_OR_INTEREST'])
+})
 
 const STATUS_OPERATIONS = {
   pause_campaign: { resourceType: 'campaign', segment: 'campaigns', service: 'campaigns', status: 'PAUSED' },
@@ -98,7 +102,8 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'create_ad_group',
       'create_ad',
       'add_keywords',
-      'set_locations'
+      'set_locations',
+      'set_location_match_mode'
     ].includes(operation)
 }
 
@@ -177,6 +182,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'create_ad') return CreateResponsiveSearchAdArgumentsSchema.parse(argumentsValue)
   if (operation === 'add_keywords') return PositiveKeywordArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_locations') return SetLocationsArgumentsSchema.parse(argumentsValue)
+  if (operation === 'set_location_match_mode') return SetLocationMatchModeArgumentsSchema.parse(argumentsValue)
   throw new Error(`Unsupported Search Google Ads operation: ${operation}`)
 }
 
@@ -457,6 +463,39 @@ function buildLocationAction(context: BuildGoogleAdsActionContext): BuiltGoogleA
   }
 }
 
+function buildLocationMatchModeAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'location') throw new Error('Location match mode requires resource type location')
+  const args = SetLocationMatchModeArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.campaignResourceName, context.customerId, 'campaigns')
+  const current = z.object({
+    campaignResourceName: z.literal(args.campaignResourceName),
+    positiveGeoTargetType: z.enum(['PRESENCE', 'PRESENCE_OR_INTEREST'])
+  }).parse(context.currentState)
+  if (current.positiveGeoTargetType === args.positiveGeoTargetType) {
+    throw new Error('Campaign location match mode already matches the requested value')
+  }
+  const desiredState = {
+    campaignResourceName: args.campaignResourceName,
+    positiveGeoTargetType: args.positiveGeoTargetType
+  }
+  return {
+    resourceName: args.campaignResourceName,
+    desiredState,
+    providerOperations: [{
+      service: 'campaigns',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{
+        update: {
+          resourceName: args.campaignResourceName,
+          geoTargetTypeSetting: { positiveGeoTargetType: args.positiveGeoTargetType }
+        },
+        updateMask: 'geo_target_type_setting.positive_geo_target_type'
+      }]
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -472,5 +511,6 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'create_ad') return buildCreateResponsiveSearchAdAction(context)
   if (context.input.operation === 'add_keywords') return buildPositiveKeywordAction(context)
   if (context.input.operation === 'set_locations') return buildLocationAction(context)
+  if (context.input.operation === 'set_location_match_mode') return buildLocationMatchModeAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }

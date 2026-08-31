@@ -629,6 +629,43 @@ WHERE campaign.id = ${campaignId}
   return { campaignResourceName, locationIds, criteria }
 }
 
+async function loadCampaignLocationMatchMode(
+  customerId: string,
+  campaignResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<{
+  campaignResourceName: string
+  positiveGeoTargetType: 'PRESENCE' | 'PRESENCE_OR_INTEREST'
+}> {
+  assertCustomerResourceName(campaignResourceName, customerId, 'campaigns')
+  const [campaignId] = resourceIds(campaignResourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT campaign.resource_name,
+  campaign.geo_target_type_setting.positive_geo_target_type
+FROM campaign
+WHERE campaign.id = ${campaignId}`
+  })
+  const first = result.rows[0]
+  const campaign = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).campaign
+    : undefined
+  const parsed = z.object({
+    resourceName: z.literal(campaignResourceName),
+    geoTargetTypeSetting: z.object({
+      positiveGeoTargetType: z.enum(['PRESENCE', 'PRESENCE_OR_INTEREST'])
+    })
+  }).safeParse(campaign)
+  if (!parsed.success) throw new Error('Google Ads campaign location match mode was not found')
+  return {
+    campaignResourceName,
+    positiveGeoTargetType: parsed.data.geoTargetTypeSetting.positiveGeoTargetType
+  }
+}
+
 export async function loadSearchGoogleAdsCurrentState(
   context: Omit<BuildGoogleAdsActionContext, 'currentState'>,
   auth: GoogleAdsAuth,
@@ -726,6 +763,18 @@ export async function loadSearchGoogleAdsCurrentState(
       context.input.arguments
     ))
     return loadCampaignLocations(
+      context.customerId,
+      args.campaignResourceName,
+      auth,
+      resolved
+    )
+  }
+  if (context.input.operation === 'set_location_match_mode') {
+    const args = z.object({ campaignResourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation,
+      context.input.arguments
+    ))
+    return loadCampaignLocationMatchMode(
       context.customerId,
       args.campaignResourceName,
       auth,
@@ -834,6 +883,15 @@ export async function loadSearchGoogleAdsPlanState(
   if (plan.operation === 'set_locations') {
     const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)
     return loadCampaignLocations(
+      plan.customerId,
+      desired.campaignResourceName,
+      auth,
+      resolved
+    )
+  }
+  if (plan.operation === 'set_location_match_mode') {
+    const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)
+    return loadCampaignLocationMatchMode(
       plan.customerId,
       desired.campaignResourceName,
       auth,

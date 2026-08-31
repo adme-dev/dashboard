@@ -278,6 +278,30 @@ describe('Search Google Ads current-state loader', () => {
     expect(query.mock.calls[1]?.[0]).toMatchObject({ maxRows: 10_000 })
     expect(query.mock.calls[1]?.[0].query).toContain('campaign_criterion.type = \'LOCATION\'')
   })
+
+  it('loads the current campaign positive geo-target mode with a bounded read', async () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ campaign: {
+        resourceName: campaign,
+        geoTargetTypeSetting: { positiveGeoTargetType: 'PRESENCE_OR_INTEREST' }
+      } }],
+      more: 0
+    })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('set_location_match_mode', {
+      campaignResourceName: campaign,
+      positiveGeoTargetType: 'PRESENCE'
+    }), auth, { query })).resolves.toEqual({
+      campaignResourceName: campaign,
+      positiveGeoTargetType: 'PRESENCE_OR_INTEREST'
+    })
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({
+      maxRows: 1,
+      query: expect.stringContaining('campaign.geo_target_type_setting.positive_geo_target_type')
+    }))
+    expect(query.mock.calls[0]?.[0].query).toContain('campaign.id = 60')
+  })
 })
 
 describe('Search Google Ads readback verification', () => {
@@ -618,6 +642,27 @@ describe('Search Google Ads persisted-plan state loading', () => {
         explicitlyShared: false
       },
       providerOperations: [{ service: 'campaignBudgets' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query })).resolves.toEqual(plan.desiredState)
+  })
+
+  it('re-reads campaign location match mode from immutable desired state', async () => {
+    const campaignResourceName = 'customers/1234567890/campaigns/60'
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ campaign: {
+        resourceName: campaignResourceName,
+        geoTargetTypeSetting: { positiveGeoTargetType: 'PRESENCE' }
+      } }],
+      more: 0
+    })
+    const plan = {
+      operation: 'set_location_match_mode',
+      resourceType: 'location',
+      resourceName: campaignResourceName,
+      customerId: '1234567890',
+      desiredState: { campaignResourceName, positiveGeoTargetType: 'PRESENCE' },
+      providerOperations: [{ service: 'campaigns' }]
     } as GoogleAdsActionPlan
 
     await expect(loadSearchGoogleAdsPlanState(plan, auth, { query })).resolves.toEqual(plan.desiredState)

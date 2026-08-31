@@ -401,6 +401,52 @@ describe('Search Google Ads construction operations', () => {
     }])
   })
 
+  it('sets presence-only campaign targeting without changing the location set', () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const built = buildSearchGoogleAdsAction(context(
+      'set_location_match_mode',
+      'location',
+      {
+        campaignResourceName: campaign,
+        positiveGeoTargetType: 'PRESENCE'
+      },
+      {
+        campaignResourceName: campaign,
+        positiveGeoTargetType: 'PRESENCE_OR_INTEREST'
+      }
+    ))
+
+    expect(built).toEqual({
+      resourceName: campaign,
+      desiredState: {
+        campaignResourceName: campaign,
+        positiveGeoTargetType: 'PRESENCE'
+      },
+      providerOperations: [{
+        service: 'campaigns',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{
+          update: {
+            resourceName: campaign,
+            geoTargetTypeSetting: { positiveGeoTargetType: 'PRESENCE' }
+          },
+          updateMask: 'geo_target_type_setting.positive_geo_target_type'
+        }]
+      }]
+    })
+  })
+
+  it('rejects a no-op location match mode plan', () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    expect(() => buildSearchGoogleAdsAction(context(
+      'set_location_match_mode',
+      'location',
+      { campaignResourceName: campaign, positiveGeoTargetType: 'PRESENCE' },
+      { campaignResourceName: campaign, positiveGeoTargetType: 'PRESENCE' }
+    ))).toThrow('already matches')
+  })
+
   it('rejects unsafe URLs and campaigns that attempt to start enabled', () => {
     expect(() => buildSearchGoogleAdsAction(context(
       'create_ad',

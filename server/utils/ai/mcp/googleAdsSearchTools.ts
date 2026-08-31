@@ -19,6 +19,7 @@ export const GOOGLE_ADS_PLAN_CREATE_AD_GROUP_TOOL = 'google_ads_plan_create_ad_g
 export const GOOGLE_ADS_PLAN_CREATE_RSA_TOOL = 'google_ads_plan_create_responsive_search_ad'
 export const GOOGLE_ADS_PLAN_ADD_KEYWORDS_TOOL = 'google_ads_plan_add_keywords'
 export const GOOGLE_ADS_PLAN_SET_LOCATIONS_TOOL = 'google_ads_plan_set_locations'
+export const GOOGLE_ADS_PLAN_SET_LOCATION_MATCH_MODE_TOOL = 'google_ads_plan_set_location_match_mode'
 
 const CommonSchema = {
   clientId: z.string().uuid(),
@@ -107,6 +108,11 @@ const SetLocationsSchema = z.strictObject({
   campaignResourceName: z.string().trim().min(1).max(1_000),
   geoTargetConstantIds: z.array(z.string().regex(/^\d{1,20}$/)).min(1).max(1_000)
 })
+const SetLocationMatchModeSchema = z.strictObject({
+  ...CommonSchema,
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  positiveGeoTargetType: z.enum(['PRESENCE', 'PRESENCE_OR_INTEREST'])
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -171,6 +177,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_SET_LOCATIONS_TOOL,
     'Plan an atomic replacement of positive campaign locations using Google geo-target constant IDs. The campaign is never cleared before replacements validate.',
     SetLocationsSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_SET_LOCATION_MATCH_MODE_TOOL,
+    'Plan the positive campaign geo-target mode. Use PRESENCE for presence-only targeting or PRESENCE_OR_INTEREST for Google\'s broader default.',
+    SetLocationMatchModeSchema
   )
 ]
 
@@ -408,6 +419,22 @@ export async function executeGoogleAdsSearchPlanningTool(
         arguments: {
           campaignResourceName: args.campaignResourceName,
           geoTargetConstantIds: args.geoTargetConstantIds
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_SET_LOCATION_MATCH_MODE_TOOL) {
+      const args = SetLocationMatchModeSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'set_location_match_mode',
+        resourceType: 'location',
+        arguments: {
+          campaignResourceName: args.campaignResourceName,
+          positiveGeoTargetType: args.positiveGeoTargetType
         }
       }
     } else {
