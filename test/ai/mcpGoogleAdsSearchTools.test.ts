@@ -21,7 +21,13 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_pause',
       'google_ads_plan_archive',
       'google_ads_plan_enable',
-      'google_ads_plan_add_negative_keywords'
+      'google_ads_plan_add_negative_keywords',
+      'google_ads_plan_create_budget',
+      'google_ads_plan_update_budget',
+      'google_ads_plan_create_search_campaign',
+      'google_ads_plan_create_ad_group',
+      'google_ads_plan_create_responsive_search_ad',
+      'google_ads_plan_add_keywords'
     ])
     const serialized = JSON.stringify(googleAdsSearchPlanningTools)
     expect(serialized).not.toMatch(/"(?:query|operations|url|accessToken|developerToken)"/)
@@ -94,6 +100,124 @@ describe('Google Ads Search MCP planning descriptors', () => {
 
     expect(plan.mock.calls[0]?.[0].operation).toBe('archive_ad')
     expect(plan.mock.calls[0]?.[0].operation).not.toBe('remove_ad')
+  })
+
+  it.each([
+    {
+      tool: 'google_ads_plan_create_budget',
+      args: { name: 'Northern Search Budget', dailyAmount: 40 },
+      operation: 'create_budget',
+      resourceType: 'budget',
+      expectedArguments: { name: 'Northern Search Budget', dailyAmount: 40 }
+    },
+    {
+      tool: 'google_ads_plan_update_budget',
+      args: {
+        resourceName: 'customers/1234567890/campaignBudgets/50',
+        dailyAmount: 55
+      },
+      operation: 'update_budget',
+      resourceType: 'budget',
+      expectedArguments: {
+        resourceName: 'customers/1234567890/campaignBudgets/50',
+        dailyAmount: 55
+      }
+    },
+    {
+      tool: 'google_ads_plan_create_search_campaign',
+      args: {
+        name: 'Northern Search',
+        budgetResourceName: 'customers/1234567890/campaignBudgets/50',
+        includeSearchPartners: false
+      },
+      operation: 'create_campaign',
+      resourceType: 'campaign',
+      expectedArguments: {
+        name: 'Northern Search',
+        budgetResourceName: 'customers/1234567890/campaignBudgets/50',
+        includeSearchPartners: false
+      }
+    },
+    {
+      tool: 'google_ads_plan_create_ad_group',
+      args: {
+        name: 'New Vehicles',
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        cpcBid: 3.5
+      },
+      operation: 'create_ad_group',
+      resourceType: 'ad_group',
+      expectedArguments: {
+        name: 'New Vehicles',
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        cpcBid: 3.5
+      }
+    },
+    {
+      tool: 'google_ads_plan_create_responsive_search_ad',
+      args: {
+        adGroupResourceName: 'customers/1234567890/adGroups/70',
+        finalUrl: 'https://northerngac.com.au/vehicles',
+        headlines: ['Northern GAC', 'Explore New Vehicles', 'Book a Test Drive'],
+        descriptions: ['Discover the latest GAC range.', 'Enquire with Northern GAC today.'],
+        path1: 'vehicles',
+        path2: 'new'
+      },
+      operation: 'create_ad',
+      resourceType: 'ad',
+      expectedArguments: {
+        adGroupResourceName: 'customers/1234567890/adGroups/70',
+        finalUrl: 'https://northerngac.com.au/vehicles',
+        headlines: ['Northern GAC', 'Explore New Vehicles', 'Book a Test Drive'],
+        descriptions: ['Discover the latest GAC range.', 'Enquire with Northern GAC today.'],
+        path1: 'vehicles',
+        path2: 'new'
+      }
+    },
+    {
+      tool: 'google_ads_plan_add_keywords',
+      args: {
+        adGroupResourceName: 'customers/1234567890/adGroups/70',
+        keywords: [{ text: 'new vehicles', matchType: 'PHRASE' }]
+      },
+      operation: 'add_keywords',
+      resourceType: 'keyword',
+      expectedArguments: {
+        adGroupResourceName: 'customers/1234567890/adGroups/70',
+        keywords: [{ text: 'new vehicles', matchType: 'PHRASE' }]
+      }
+    }
+  ])('maps $tool to a typed proposal-only plan', async ({
+    tool,
+    args,
+    operation,
+    resourceType,
+    expectedArguments
+  }) => {
+    const plan = vi.fn().mockResolvedValue({
+      id: '22222222-2222-4222-8222-222222222222',
+      operation,
+      resourceType,
+      resourceName: null,
+      riskTier: 'confirm',
+      executionMode: 'proposal',
+      policyDecision: { allowed: true },
+      status: 'pending_approval',
+      diff: []
+    })
+
+    await expect(executeGoogleAdsSearchPlanningTool(tool, {
+      clientId: '33333333-3333-4333-8333-333333333333',
+      connectionId: '44444444-4444-4444-8444-444444444444',
+      idempotencyKey: `${operation}-1`,
+      ...args
+    }, context, flags, true, { plan })).resolves.toMatchObject({ ok: true })
+    expect(plan).toHaveBeenCalledWith(expect.objectContaining({
+      operation,
+      resourceType,
+      requestedMode: 'proposal',
+      arguments: expectedArguments
+    }), expect.any(Object), flags)
   })
 
   it('requires write enablement before creating a plan', async () => {

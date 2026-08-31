@@ -12,6 +12,12 @@ export const GOOGLE_ADS_PLAN_PAUSE_TOOL = 'google_ads_plan_pause'
 export const GOOGLE_ADS_PLAN_ARCHIVE_TOOL = 'google_ads_plan_archive'
 export const GOOGLE_ADS_PLAN_ENABLE_TOOL = 'google_ads_plan_enable'
 export const GOOGLE_ADS_PLAN_NEGATIVE_KEYWORDS_TOOL = 'google_ads_plan_add_negative_keywords'
+export const GOOGLE_ADS_PLAN_CREATE_BUDGET_TOOL = 'google_ads_plan_create_budget'
+export const GOOGLE_ADS_PLAN_UPDATE_BUDGET_TOOL = 'google_ads_plan_update_budget'
+export const GOOGLE_ADS_PLAN_CREATE_SEARCH_CAMPAIGN_TOOL = 'google_ads_plan_create_search_campaign'
+export const GOOGLE_ADS_PLAN_CREATE_AD_GROUP_TOOL = 'google_ads_plan_create_ad_group'
+export const GOOGLE_ADS_PLAN_CREATE_RSA_TOOL = 'google_ads_plan_create_responsive_search_ad'
+export const GOOGLE_ADS_PLAN_ADD_KEYWORDS_TOOL = 'google_ads_plan_add_keywords'
 
 const CommonSchema = {
   clientId: z.string().uuid(),
@@ -45,6 +51,56 @@ const NegativeKeywordsSchema = z.strictObject({
   })).min(1).max(100),
   requestedMode: z.enum(['proposal', 'automatic']).default('proposal')
 })
+const KeywordSchema = z.strictObject({
+  text: z.string().trim().min(1).max(80),
+  matchType: z.enum(['EXACT', 'PHRASE', 'BROAD'])
+})
+const CreateBudgetSchema = z.strictObject({
+  ...CommonSchema,
+  name: z.string().trim().min(1).max(255),
+  dailyAmount: z.number().finite().positive().max(1_000_000)
+})
+const UpdateBudgetSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000),
+  dailyAmount: z.number().finite().positive().max(1_000_000)
+})
+const CampaignDateTimeSchema = z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
+const CreateSearchCampaignSchema = z.strictObject({
+  ...CommonSchema,
+  name: z.string().trim().min(1).max(255),
+  budgetResourceName: z.string().trim().min(1).max(1_000),
+  includeSearchPartners: z.boolean().default(false),
+  startDateTime: CampaignDateTimeSchema.optional(),
+  endDateTime: CampaignDateTimeSchema.optional()
+})
+const CreateAdGroupSchema = z.strictObject({
+  ...CommonSchema,
+  name: z.string().trim().min(1).max(255),
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  cpcBid: z.number().finite().positive().max(1_000_000).optional()
+})
+const CreateResponsiveSearchAdSchema = z.strictObject({
+  ...CommonSchema,
+  adGroupResourceName: z.string().trim().min(1).max(1_000),
+  finalUrl: z.string().url().refine(value => value.startsWith('https://')),
+  headlines: z.array(z.string().trim().min(1).max(30)).min(3).max(15),
+  descriptions: z.array(z.string().trim().min(1).max(90)).min(2).max(4),
+  path1: z.string().trim().min(1).max(15).optional(),
+  path2: z.string().trim().min(1).max(15).optional()
+}).superRefine((value, refinement) => {
+  if (new Set(value.headlines.map(text => text.toLocaleLowerCase('en-AU'))).size !== value.headlines.length) {
+    refinement.addIssue({ code: 'custom', message: 'Responsive search ad headlines must be unique' })
+  }
+  if (new Set(value.descriptions.map(text => text.toLocaleLowerCase('en-AU'))).size !== value.descriptions.length) {
+    refinement.addIssue({ code: 'custom', message: 'Responsive search ad descriptions must be unique' })
+  }
+})
+const AddKeywordsSchema = z.strictObject({
+  ...CommonSchema,
+  adGroupResourceName: z.string().trim().min(1).max(1_000),
+  keywords: z.array(KeywordSchema).min(1).max(100)
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -74,6 +130,36 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_NEGATIVE_KEYWORDS_TOOL,
     'Plan typed campaign or ad-group negative keywords. Terms are normalized and deduplicated; automatic mode requires a bounded account policy.',
     NegativeKeywordsSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_CREATE_BUDGET_TOOL,
+    'Plan a standard Google Ads campaign budget from a daily currency amount. Money changes require elevated approval.',
+    CreateBudgetSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_UPDATE_BUDGET_TOOL,
+    'Plan a daily amount update for one existing Google Ads campaign budget. Money changes require elevated approval.',
+    UpdateBudgetSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_CREATE_SEARCH_CAMPAIGN_TOOL,
+    'Plan a Search campaign attached to an existing budget. New campaigns are always created paused with Display expansion disabled.',
+    CreateSearchCampaignSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_CREATE_AD_GROUP_TOOL,
+    'Plan a standard Search ad group under an existing campaign. New ad groups are always created paused.',
+    CreateAdGroupSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_CREATE_RSA_TOOL,
+    'Plan a responsive search ad with typed headlines, descriptions, paths, and an HTTPS final URL. New ads are always created paused.',
+    CreateResponsiveSearchAdSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_ADD_KEYWORDS_TOOL,
+    'Plan typed positive keywords for an existing ad group. Existing terms are deduplicated and new keywords are always created paused.',
+    AddKeywordsSchema
   )
 ]
 
@@ -182,7 +268,7 @@ export async function executeGoogleAdsSearchPlanningTool(
         resourceType: ENTITY_RESOURCE_TYPES[args.entityType],
         arguments: { resourceName: args.resourceName }
       }
-    } else {
+    } else if (name === GOOGLE_ADS_PLAN_NEGATIVE_KEYWORDS_TOOL) {
       const args = NegativeKeywordsSchema.parse(rawArgs)
       plannerInput = {
         clientId: args.clientId,
@@ -199,6 +285,106 @@ export async function executeGoogleAdsSearchPlanningTool(
           keywords: args.keywords
         }
       }
+    } else if (name === GOOGLE_ADS_PLAN_CREATE_BUDGET_TOOL) {
+      const args = CreateBudgetSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'create_budget',
+        resourceType: 'budget',
+        arguments: { name: args.name, dailyAmount: args.dailyAmount }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_UPDATE_BUDGET_TOOL) {
+      const args = UpdateBudgetSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'update_budget',
+        resourceType: 'budget',
+        arguments: { resourceName: args.resourceName, dailyAmount: args.dailyAmount }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_CREATE_SEARCH_CAMPAIGN_TOOL) {
+      const args = CreateSearchCampaignSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'create_campaign',
+        resourceType: 'campaign',
+        arguments: {
+          name: args.name,
+          budgetResourceName: args.budgetResourceName,
+          includeSearchPartners: args.includeSearchPartners,
+          ...(args.startDateTime ? { startDateTime: args.startDateTime } : {}),
+          ...(args.endDateTime ? { endDateTime: args.endDateTime } : {})
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_CREATE_AD_GROUP_TOOL) {
+      const args = CreateAdGroupSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'create_ad_group',
+        resourceType: 'ad_group',
+        arguments: {
+          name: args.name,
+          campaignResourceName: args.campaignResourceName,
+          ...(args.cpcBid === undefined ? {} : { cpcBid: args.cpcBid })
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_CREATE_RSA_TOOL) {
+      const args = CreateResponsiveSearchAdSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'create_ad',
+        resourceType: 'ad',
+        arguments: {
+          adGroupResourceName: args.adGroupResourceName,
+          finalUrl: args.finalUrl,
+          headlines: args.headlines,
+          descriptions: args.descriptions,
+          ...(args.path1 ? { path1: args.path1 } : {}),
+          ...(args.path2 ? { path2: args.path2 } : {})
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_ADD_KEYWORDS_TOOL) {
+      const args = AddKeywordsSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'add_keywords',
+        resourceType: 'keyword',
+        arguments: {
+          adGroupResourceName: args.adGroupResourceName,
+          keywords: args.keywords
+        }
+      }
+    } else {
+      throw new Error('Unsupported Google Ads Search planning tool')
     }
     const plan = await dependencies.plan(plannerInput, {
       actorRole: context.userRole,
