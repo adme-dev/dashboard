@@ -45,6 +45,8 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_archive_conversion_action',
       'google_ads_plan_remove_conversion_action',
       'google_ads_plan_create_custom_conversion_goal',
+      'google_ads_plan_update_custom_conversion_goal',
+      'google_ads_plan_archive_custom_conversion_goal',
       'google_ads_plan_create_custom_audience',
       'google_ads_plan_update_custom_audience',
       'google_ads_plan_archive_custom_audience',
@@ -463,6 +465,28 @@ describe('Google Ads Search MCP planning descriptors', () => {
           'customers/1234567890/conversionActions/9002'
         ]
       }
+    },
+    {
+      tool: 'google_ads_plan_update_custom_conversion_goal',
+      args: {
+        resourceName: 'customers/1234567890/customConversionGoals/9101',
+        name: 'Sales-qualified dealer leads',
+        conversionActionResourceNames: ['customers/1234567890/conversionActions/9002']
+      },
+      operation: 'update_custom_conversion_goal',
+      resourceType: 'custom_conversion_goal',
+      expectedArguments: {
+        resourceName: 'customers/1234567890/customConversionGoals/9101',
+        name: 'Sales-qualified dealer leads',
+        conversionActionResourceNames: ['customers/1234567890/conversionActions/9002']
+      }
+    },
+    {
+      tool: 'google_ads_plan_archive_custom_conversion_goal',
+      args: { resourceName: 'customers/1234567890/customConversionGoals/9101' },
+      operation: 'archive_custom_conversion_goal',
+      resourceType: 'custom_conversion_goal',
+      expectedArguments: { resourceName: 'customers/1234567890/customConversionGoals/9101' }
     },
     {
       tool: 'google_ads_plan_create_custom_audience',

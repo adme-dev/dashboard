@@ -1050,6 +1050,86 @@ describe('Search Google Ads construction operations', () => {
     ))).toThrow('selected Google Ads customer')
   })
 
+  it('updates only requested custom conversion-goal fields with an exact mask', () => {
+    const resourceName = 'customers/1234567890/customConversionGoals/9101'
+    const oldAction = 'customers/1234567890/conversionActions/9001'
+    const newAction = 'customers/1234567890/conversionActions/9002'
+    expect(buildSearchGoogleAdsAction(context(
+      'update_custom_conversion_goal', 'custom_conversion_goal', {
+        resourceName,
+        name: 'Sales-qualified dealer leads',
+        conversionActionResourceNames: [newAction]
+      }, {
+        resourceName,
+        name: 'Qualified dealer leads',
+        status: 'ENABLED',
+        conversionActions: [oldAction]
+      }
+    ))).toEqual({
+      resourceName,
+      desiredState: {
+        resourceName,
+        name: 'Sales-qualified dealer leads',
+        conversionActions: [newAction]
+      },
+      providerOperations: [{
+        service: 'customConversionGoals',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{
+          update: {
+            resourceName,
+            name: 'Sales-qualified dealer leads',
+            conversionActions: [newAction]
+          },
+          updateMask: 'name,conversion_actions'
+        }]
+      }]
+    })
+  })
+
+  it('archives custom conversion goals through provider removal', () => {
+    const resourceName = 'customers/1234567890/customConversionGoals/9101'
+    const built = buildSearchGoogleAdsAction(context(
+      'archive_custom_conversion_goal', 'custom_conversion_goal', { resourceName }, {
+        resourceName,
+        name: 'Qualified dealer leads',
+        status: 'ENABLED',
+        conversionActions: ['customers/1234567890/conversionActions/9001']
+      }
+    ))
+    expect(built).toEqual({
+      resourceName,
+      desiredState: { resourceName, status: 'REMOVED' },
+      providerOperations: [{
+        service: 'customConversionGoals',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ remove: resourceName }]
+      }]
+    })
+  })
+
+  it('rejects empty, unchanged, or removed custom conversion-goal updates', () => {
+    const resourceName = 'customers/1234567890/customConversionGoals/9101'
+    const action = 'customers/1234567890/conversionActions/9001'
+    const state = {
+      resourceName, name: 'Qualified dealer leads', status: 'ENABLED', conversionActions: [action]
+    }
+    expect(() => parseSearchGoogleAdsArguments('update_custom_conversion_goal', { resourceName }))
+      .toThrow('At least one mutable custom conversion-goal field is required')
+    expect(() => buildSearchGoogleAdsAction(context(
+      'update_custom_conversion_goal', 'custom_conversion_goal', {
+        resourceName, conversionActionResourceNames: [action]
+      }, state
+    ))).toThrow('already matches')
+    expect(() => buildSearchGoogleAdsAction(context(
+      'archive_custom_conversion_goal', 'custom_conversion_goal', { resourceName }, {
+        ...state, status: 'REMOVED'
+      }
+    ))).toThrow('already archived')
+  })
+
   it('creates a typed custom audience with every supported member type', () => {
     const built = buildSearchGoogleAdsAction(context(
       'manage_custom_audience',

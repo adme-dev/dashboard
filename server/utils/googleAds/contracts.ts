@@ -107,6 +107,8 @@ export const GoogleAdsOperationTypeSchema = z.enum([
   'archive_conversion_action',
   'remove_conversion_action',
   'create_custom_conversion_goal',
+  'update_custom_conversion_goal',
+  'archive_custom_conversion_goal',
   'set_conversion_primary_state',
   'set_campaign_conversion_goals',
   'set_conversion_goal',

@@ -649,6 +649,29 @@ describe('Search Google Ads current-state loader', () => {
     }))
   })
 
+  it.each(['update_custom_conversion_goal', 'archive_custom_conversion_goal'] as const)(
+    'loads a tenant-bound custom conversion goal before %s',
+    async (operation) => {
+      const resourceName = 'customers/1234567890/customConversionGoals/9101'
+      const conversionAction = 'customers/1234567890/conversionActions/9001'
+      const query = vi.fn().mockResolvedValue({
+        rows: [{ customConversionGoal: {
+          resourceName,
+          name: 'Qualified dealer leads',
+          status: 'ENABLED',
+          conversionActions: [conversionAction]
+        } }],
+        more: 0
+      })
+      const args = operation === 'update_custom_conversion_goal'
+        ? { resourceName, name: 'Sales-qualified dealer leads' }
+        : { resourceName }
+      await expect(loadSearchGoogleAdsCurrentState(
+        context(operation, args), auth, { query }
+      )).resolves.toMatchObject({ resourceName, status: 'ENABLED' })
+    }
+  )
+
   it('loads and normalizes a tenant-bound custom audience before updating it', async () => {
     const resourceName = 'customers/1234567890/customAudiences/8001'
     const query = vi.fn().mockResolvedValue({

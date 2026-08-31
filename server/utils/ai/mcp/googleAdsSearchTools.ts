@@ -35,6 +35,8 @@ export const GOOGLE_ADS_PLAN_UPDATE_CONVERSION_ACTION_TOOL = 'google_ads_plan_up
 export const GOOGLE_ADS_PLAN_ARCHIVE_CONVERSION_ACTION_TOOL = 'google_ads_plan_archive_conversion_action'
 export const GOOGLE_ADS_PLAN_REMOVE_CONVERSION_ACTION_TOOL = 'google_ads_plan_remove_conversion_action'
 export const GOOGLE_ADS_PLAN_CREATE_CUSTOM_CONVERSION_GOAL_TOOL = 'google_ads_plan_create_custom_conversion_goal'
+export const GOOGLE_ADS_PLAN_UPDATE_CUSTOM_CONVERSION_GOAL_TOOL = 'google_ads_plan_update_custom_conversion_goal'
+export const GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_CONVERSION_GOAL_TOOL = 'google_ads_plan_archive_custom_conversion_goal'
 export const GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_create_custom_audience'
 export const GOOGLE_ADS_PLAN_UPDATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_update_custom_audience'
 export const GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_archive_custom_audience'
@@ -420,6 +422,24 @@ const CreateCustomConversionGoalSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Custom conversion-goal actions must be unique' })
   }
 })
+const UpdateCustomConversionGoalSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000),
+  name: z.string().trim().min(1).max(255).optional(),
+  conversionActionResourceNames: z.array(z.string().trim().min(1).max(1_000)).min(1).max(100).optional()
+}).superRefine((value, refinement) => {
+  if (value.name === undefined && value.conversionActionResourceNames === undefined) {
+    refinement.addIssue({ code: 'custom', message: 'At least one mutable custom conversion-goal field is required' })
+  }
+  if (value.conversionActionResourceNames
+    && new Set(value.conversionActionResourceNames).size !== value.conversionActionResourceNames.length) {
+    refinement.addIssue({ code: 'custom', message: 'Custom conversion-goal actions must be unique' })
+  }
+})
+const ArchiveCustomConversionGoalSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000)
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -564,6 +584,16 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_CREATE_CUSTOM_CONVERSION_GOAL_TOOL,
     'Plan a typed custom conversion goal using a bounded, unique set of conversion actions owned by the selected conversion customer.',
     CreateCustomConversionGoalSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_UPDATE_CUSTOM_CONVERSION_GOAL_TOOL,
+    'Plan an exact typed update to a custom conversion goal. Supplying conversion actions replaces the complete action list.',
+    UpdateCustomConversionGoalSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_CONVERSION_GOAL_TOOL,
+    'Plan archiving a custom conversion goal. Google reports only ENABLED or REMOVED, so owner/admin destructive confirmation is required.',
+    ArchiveCustomConversionGoalSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL,
@@ -1067,6 +1097,38 @@ export async function executeGoogleAdsSearchPlanningTool(
           name: args.name,
           conversionActionResourceNames: args.conversionActionResourceNames
         }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_UPDATE_CUSTOM_CONVERSION_GOAL_TOOL) {
+      const args = UpdateCustomConversionGoalSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'update_custom_conversion_goal',
+        resourceType: 'custom_conversion_goal',
+        arguments: {
+          resourceName: args.resourceName,
+          ...(args.name === undefined ? {} : { name: args.name }),
+          ...(args.conversionActionResourceNames === undefined
+            ? {}
+            : { conversionActionResourceNames: args.conversionActionResourceNames })
+        }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_CONVERSION_GOAL_TOOL) {
+      const args = ArchiveCustomConversionGoalSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'archive_custom_conversion_goal',
+        resourceType: 'custom_conversion_goal',
+        arguments: { resourceName: args.resourceName }
       }
     } else if (name === GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL) {
       const args = CreateCustomAudienceSchema.parse(rawArgs)

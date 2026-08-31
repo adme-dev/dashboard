@@ -1421,7 +1421,8 @@ async function assertCustomConversionGoalNameAvailable(
   customerId: string,
   name: string,
   auth: GoogleAdsAuth,
-  dependencies: SearchStateDependencies
+  dependencies: SearchStateDependencies,
+  allowedResourceName?: string
 ): Promise<{ exists: false }> {
   const result = await dependencies.query({
     customerId,
@@ -1432,7 +1433,12 @@ FROM custom_conversion_goal
 WHERE custom_conversion_goal.name = '${escapeGaqlString(name)}'
   AND custom_conversion_goal.status != REMOVED`
   })
-  if (result.rows.length > 0 || result.more > 0) {
+  const first = result.rows[0]
+  const parsed = z.object({ resourceName: z.string() }).safeParse(
+    first && typeof first === 'object' ? (first as Record<string, unknown>).customConversionGoal : undefined
+  )
+  if (result.more > 0 || (result.rows.length > 0
+    && (!parsed.success || parsed.data.resourceName !== allowedResourceName))) {
     throw new Error(`A Google Ads custom conversion goal named "${name}" already exists`)
   }
   return { exists: false }
@@ -1828,6 +1834,24 @@ export async function loadSearchGoogleAdsCurrentState(
     ))
     return assertCustomConversionGoalNameAvailable(context.customerId, args.name, auth, resolved)
   }
+  if (context.input.operation === 'update_custom_conversion_goal') {
+    const args = z.object({ resourceName: z.string(), name: z.string().optional() }).parse(
+      parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments)
+    )
+    const current = await loadCustomConversionGoal(context.customerId, args.resourceName, auth, resolved)
+    if (args.name !== undefined && args.name !== current.name) {
+      await assertCustomConversionGoalNameAvailable(
+        context.customerId, args.name, auth, resolved, args.resourceName
+      )
+    }
+    return current
+  }
+  if (context.input.operation === 'archive_custom_conversion_goal') {
+    const args = z.object({ resourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation, context.input.arguments
+    ))
+    return loadCustomConversionGoal(context.customerId, args.resourceName, auth, resolved)
+  }
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }
 
@@ -1889,6 +1913,10 @@ export async function loadSearchGoogleAdsPlanState(
     }
     const desired = z.object({ name: z.string() }).parse(plan.desiredState)
     return assertCustomConversionGoalNameAvailable(plan.customerId, desired.name, auth, resolved)
+  }
+  if (plan.operation === 'update_custom_conversion_goal' || plan.operation === 'archive_custom_conversion_goal') {
+    if (!plan.resourceName) throw new Error('Custom conversion-goal plan has no resource name')
+    return loadCustomConversionGoal(plan.customerId, plan.resourceName, auth, resolved)
   }
   if (plan.operation === 'create_budget') {
     if (mutation) {
