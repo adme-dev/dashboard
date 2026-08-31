@@ -234,6 +234,157 @@ describe('Search Google Ads negative keyword operations', () => {
       }]
     })
   })
+
+  it('creates a shared negative-keyword set and campaign links atomically', () => {
+    const campaign10 = 'customers/1234567890/campaigns/10'
+    const campaign11 = 'customers/1234567890/campaigns/11'
+    const temporarySet = 'customers/1234567890/sharedSets/-1'
+    const built = buildSearchGoogleAdsAction(context(
+      'manage_shared_negative_set',
+      'shared_negative_set',
+      {
+        name: 'National exclusions',
+        keywords: [
+          { text: ' free ', matchType: 'BROAD' },
+          { text: 'jobs', matchType: 'PHRASE' }
+        ],
+        campaignResourceNames: [campaign11, campaign10]
+      },
+      { exists: false }
+    ))
+
+    expect(built.resourceName).toBeNull()
+    expect(built.desiredState).toEqual({
+      sharedSet: { name: 'National exclusions', type: 'NEGATIVE_KEYWORDS' },
+      keywords: [
+        { text: 'free', matchType: 'BROAD' },
+        { text: 'jobs', matchType: 'PHRASE' }
+      ],
+      campaignResourceNames: [campaign10, campaign11],
+      criterionResources: {},
+      campaignLinkResources: {}
+    })
+    expect(built.providerOperations).toEqual([{
+      service: 'googleAds',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        { mutate: { sharedSetOperation: { create: {
+          resourceName: temporarySet,
+          name: 'National exclusions',
+          type: 'NEGATIVE_KEYWORDS'
+        } } } },
+        { mutate: { sharedCriterionOperation: { create: {
+          sharedSet: temporarySet,
+          negative: true,
+          keyword: { text: 'free', matchType: 'BROAD' }
+        } } } },
+        { mutate: { sharedCriterionOperation: { create: {
+          sharedSet: temporarySet,
+          negative: true,
+          keyword: { text: 'jobs', matchType: 'PHRASE' }
+        } } } },
+        { mutate: { campaignSharedSetOperation: { create: {
+          campaign: campaign10,
+          sharedSet: temporarySet
+        } } } },
+        { mutate: { campaignSharedSetOperation: { create: {
+          campaign: campaign11,
+          sharedSet: temporarySet
+        } } } }
+      ]
+    }])
+  })
+
+  it('rejects shared-set creation that exceeds the Google bulk-mutate operation cap', () => {
+    expect(() => buildSearchGoogleAdsAction(context(
+      'manage_shared_negative_set',
+      'shared_negative_set',
+      {
+        name: 'Oversized exclusions',
+        keywords: Array.from({ length: 999 }, (_, index) => ({
+          text: `excluded term ${index}`,
+          matchType: 'BROAD'
+        })),
+        campaignResourceNames: ['customers/1234567890/campaigns/10']
+      },
+      { exists: false }
+    ))).toThrow('at most 1,000 provider operations')
+  })
+
+  it('replaces an existing shared negative set by exact keyword and campaign diff', () => {
+    const resourceName = 'customers/1234567890/sharedSets/90'
+    const campaign10 = 'customers/1234567890/campaigns/10'
+    const campaign11 = 'customers/1234567890/campaigns/11'
+    const campaign12 = 'customers/1234567890/campaigns/12'
+    const currentState = {
+      sharedSet: { resourceName, name: 'Old exclusions', type: 'NEGATIVE_KEYWORDS', status: 'ENABLED' },
+      keywords: [
+        { text: 'free', matchType: 'BROAD' },
+        { text: 'jobs', matchType: 'PHRASE' }
+      ],
+      campaignResourceNames: [campaign10, campaign11],
+      criterionResources: {
+        'BROAD:free': 'customers/1234567890/sharedCriteria/90~1',
+        'PHRASE:jobs': 'customers/1234567890/sharedCriteria/90~2'
+      },
+      campaignLinkResources: {
+        [campaign10]: 'customers/1234567890/campaignSharedSets/10~90',
+        [campaign11]: 'customers/1234567890/campaignSharedSets/11~90'
+      }
+    }
+    const built = buildSearchGoogleAdsAction(context(
+      'manage_shared_negative_set',
+      'shared_negative_set',
+      {
+        resourceName,
+        name: 'National exclusions',
+        keywords: [
+          { text: 'free', matchType: 'BROAD' },
+          { text: 'careers', matchType: 'EXACT' }
+        ],
+        campaignResourceNames: [campaign10, campaign12]
+      },
+      currentState
+    ))
+
+    expect(built.providerOperations[0]?.service).toBe('googleAds')
+    expect(built.providerOperations[0]?.operations).toEqual([
+      { mutate: { sharedSetOperation: { update: {
+        resourceName,
+        name: 'National exclusions'
+      }, updateMask: 'name' } } },
+      { mutate: { sharedCriterionOperation: {
+        remove: 'customers/1234567890/sharedCriteria/90~2'
+      } } },
+      { mutate: { sharedCriterionOperation: { create: {
+        sharedSet: resourceName,
+        negative: true,
+        keyword: { text: 'careers', matchType: 'EXACT' }
+      } } } },
+      { mutate: { campaignSharedSetOperation: {
+        remove: 'customers/1234567890/campaignSharedSets/11~90'
+      } } },
+      { mutate: { campaignSharedSetOperation: { create: {
+        campaign: campaign12,
+        sharedSet: resourceName
+      } } } }
+    ])
+    expect(built.desiredState).toMatchObject({
+      sharedSet: { resourceName, name: 'National exclusions' },
+      keywords: [
+        { text: 'careers', matchType: 'EXACT' },
+        { text: 'free', matchType: 'BROAD' }
+      ],
+      campaignResourceNames: [campaign10, campaign12],
+      criterionResources: {
+        'BROAD:free': 'customers/1234567890/sharedCriteria/90~1'
+      },
+      campaignLinkResources: {
+        [campaign10]: 'customers/1234567890/campaignSharedSets/10~90'
+      }
+    })
+  })
 })
 
 describe('Search Google Ads construction operations', () => {

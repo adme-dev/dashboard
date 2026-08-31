@@ -36,6 +36,34 @@ const RemoveNegativeKeywordArgumentsSchema = z.strictObject({
   resourceName: z.string().trim().min(1).max(1_000),
   reason: z.string().trim().min(10).max(1_000)
 })
+const ManageSharedNegativeSetArgumentsSchema = z.strictObject({
+  resourceName: z.string().trim().min(1).max(1_000).optional(),
+  name: z.string().trim().min(1).max(255),
+  keywords: z.array(NegativeKeywordSchema).min(1).max(1_000),
+  campaignResourceNames: z.array(z.string().trim().min(1).max(1_000)).max(1_000)
+}).superRefine((value, refinement) => {
+  const keywords = value.keywords.map(keyword => (
+    `${keyword.matchType}:${normalizeKeywordText(keyword.text).toLocaleLowerCase('en-AU')}`
+  ))
+  if (new Set(keywords).size !== keywords.length) {
+    refinement.addIssue({ code: 'custom', message: 'Shared negative keywords must be unique' })
+  }
+  if (new Set(value.campaignResourceNames).size !== value.campaignResourceNames.length) {
+    refinement.addIssue({ code: 'custom', message: 'Shared-set campaigns must be unique' })
+  }
+})
+const SharedNegativeSetStateSchema = z.object({
+  sharedSet: z.object({
+    resourceName: z.string(),
+    name: z.string(),
+    type: z.literal('NEGATIVE_KEYWORDS'),
+    status: z.literal('ENABLED')
+  }),
+  keywords: z.array(NegativeKeywordSchema),
+  campaignResourceNames: z.array(z.string()),
+  criterionResources: z.record(z.string(), z.string()),
+  campaignLinkResources: z.record(z.string(), z.string())
+})
 const CreateBudgetArgumentsSchema = z.strictObject({
   name: z.string().trim().min(1).max(255),
   dailyAmount: z.number().finite().positive().max(1_000_000)
@@ -865,6 +893,7 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
     || [
       'add_negative_keywords',
       'remove_negative_keyword',
+      'manage_shared_negative_set',
       'create_budget',
       'update_budget',
       'create_campaign',
@@ -918,6 +947,8 @@ function resourcePattern(customerId: string, segment: string): RegExp {
   const suffix = segment === 'adGroupAds'
     || segment === 'adGroupCriteria'
     || segment === 'campaignCriteria'
+    || segment === 'sharedCriteria'
+    || segment === 'campaignSharedSets'
     || segment === 'assetGroupSignals'
     ? '\\d+~\\d+'
     : segment === 'recommendations' ? '[A-Za-z0-9_-]+' : '\\d+'
@@ -986,6 +1017,9 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'add_negative_keywords') return NegativeKeywordArgumentsSchema.parse(argumentsValue)
   if (operation === 'remove_negative_keyword') {
     return RemoveNegativeKeywordArgumentsSchema.parse(argumentsValue)
+  }
+  if (operation === 'manage_shared_negative_set') {
+    return ManageSharedNegativeSetArgumentsSchema.parse(argumentsValue)
   }
   if (operation === 'create_budget') return CreateBudgetArgumentsSchema.parse(argumentsValue)
   if (operation === 'update_budget') return UpdateBudgetArgumentsSchema.parse(argumentsValue)
@@ -1161,6 +1195,133 @@ function buildRemoveNegativeKeywordAction(context: BuildGoogleAdsActionContext):
       atomicity: 'interdependent',
       partialFailure: false,
       operations: [{ remove: args.resourceName }]
+    }]
+  }
+}
+
+function sharedKeywordSort(
+  left: z.infer<typeof NegativeKeywordSchema>,
+  right: z.infer<typeof NegativeKeywordSchema>
+): number {
+  return left.text.toLocaleLowerCase('en-AU').localeCompare(right.text.toLocaleLowerCase('en-AU'))
+    || left.matchType.localeCompare(right.matchType)
+}
+
+function buildSharedNegativeSetAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'shared_negative_set') {
+    throw new Error('Shared negative-set management requires resource type shared_negative_set')
+  }
+  const args = ManageSharedNegativeSetArgumentsSchema.parse(context.input.arguments)
+  const keywords = args.keywords
+    .map(keyword => ({ ...keyword, text: normalizeKeywordText(keyword.text) }))
+    .sort(sharedKeywordSort)
+  const campaigns = [...args.campaignResourceNames].sort()
+  campaigns.forEach(resourceName => assertResourceName(resourceName, context.customerId, 'campaigns'))
+  const temporaryResourceName = `customers/${context.customerId}/sharedSets/-1`
+  if (!args.resourceName) {
+    if (keywords.length + campaigns.length + 1 > 1_000) {
+      throw new Error('A shared negative-set creation may contain at most 1,000 provider operations')
+    }
+    const sharedSet = { name: args.name, type: 'NEGATIVE_KEYWORDS' as const }
+    return {
+      resourceName: null,
+      desiredState: {
+        sharedSet,
+        keywords,
+        campaignResourceNames: campaigns,
+        criterionResources: {},
+        campaignLinkResources: {}
+      },
+      providerOperations: [{
+        service: 'googleAds',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [
+          { mutate: { sharedSetOperation: { create: {
+            resourceName: temporaryResourceName,
+            ...sharedSet
+          } } } },
+          ...keywords.map(keyword => ({ mutate: { sharedCriterionOperation: { create: {
+            sharedSet: temporaryResourceName,
+            negative: true,
+            keyword
+          } } } })),
+          ...campaigns.map(campaign => ({ mutate: { campaignSharedSetOperation: { create: {
+            campaign,
+            sharedSet: temporaryResourceName
+          } } } }))
+        ]
+      }]
+    }
+  }
+
+  assertResourceName(args.resourceName, context.customerId, 'sharedSets')
+  const current = SharedNegativeSetStateSchema.parse(context.currentState)
+  if (current.sharedSet.resourceName !== args.resourceName) {
+    throw new Error('Shared negative-set state does not match the request')
+  }
+  const desiredKeywordKeys = new Set(keywords.map(keywordKey))
+  const currentKeywordKeys = new Set(current.keywords.map(keywordKey))
+  const desiredCampaigns = new Set(campaigns)
+  const currentCampaigns = new Set(current.campaignResourceNames)
+  const operations: Array<{ mutate: Record<string, unknown> }> = []
+  if (args.name !== current.sharedSet.name) {
+    operations.push({ mutate: { sharedSetOperation: {
+      update: { resourceName: args.resourceName, name: args.name },
+      updateMask: 'name'
+    } } })
+  }
+  const removedKeywordKeys = [...currentKeywordKeys].filter(key => !desiredKeywordKeys.has(key)).sort()
+  for (const key of removedKeywordKeys) {
+    const resourceName = current.criterionResources[key]
+    if (!resourceName) throw new Error('A shared negative keyword has no removable provider resource')
+    assertResourceName(resourceName, context.customerId, 'sharedCriteria')
+    operations.push({ mutate: { sharedCriterionOperation: { remove: resourceName } } })
+  }
+  for (const keyword of keywords.filter(item => !currentKeywordKeys.has(keywordKey(item)))) {
+    operations.push({ mutate: { sharedCriterionOperation: { create: {
+      sharedSet: args.resourceName,
+      negative: true,
+      keyword
+    } } } })
+  }
+  const removedCampaigns = [...currentCampaigns].filter(campaign => !desiredCampaigns.has(campaign)).sort()
+  for (const campaign of removedCampaigns) {
+    const resourceName = current.campaignLinkResources[campaign]
+    if (!resourceName) throw new Error('A shared-set campaign link has no removable provider resource')
+    assertResourceName(resourceName, context.customerId, 'campaignSharedSets')
+    operations.push({ mutate: { campaignSharedSetOperation: { remove: resourceName } } })
+  }
+  for (const campaign of campaigns.filter(item => !currentCampaigns.has(item))) {
+    operations.push({ mutate: { campaignSharedSetOperation: { create: {
+      campaign,
+      sharedSet: args.resourceName
+    } } } })
+  }
+  if (operations.length === 0) throw new Error('The shared negative set already matches the requested state')
+  if (operations.length > 1_000) {
+    throw new Error('A shared negative-set update may contain at most 1,000 provider operations')
+  }
+  const criterionResources = Object.fromEntries(
+    Object.entries(current.criterionResources).filter(([key]) => desiredKeywordKeys.has(key))
+  )
+  const campaignLinkResources = Object.fromEntries(
+    Object.entries(current.campaignLinkResources).filter(([campaign]) => desiredCampaigns.has(campaign))
+  )
+  return {
+    resourceName: args.resourceName,
+    desiredState: {
+      sharedSet: { ...current.sharedSet, name: args.name },
+      keywords,
+      campaignResourceNames: campaigns,
+      criterionResources,
+      campaignLinkResources
+    },
+    providerOperations: [{
+      service: 'googleAds',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations
     }]
   }
 }
@@ -3327,6 +3488,9 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   }
   if (context.input.operation === 'remove_negative_keyword') {
     return buildRemoveNegativeKeywordAction(context)
+  }
+  if (context.input.operation === 'manage_shared_negative_set') {
+    return buildSharedNegativeSetAction(context)
   }
   if (context.input.operation === 'create_budget' || context.input.operation === 'update_budget') {
     return buildBudgetAction(context)
