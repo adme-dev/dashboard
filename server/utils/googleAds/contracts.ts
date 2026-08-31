@@ -7,7 +7,7 @@ export const GoogleAdsRiskTierSchema = z.enum([
   'confirm',
   'rich_confirm',
   'destructive_confirm',
-  'blocked',
+  'blocked'
 ])
 export type GoogleAdsRiskTier = z.infer<typeof GoogleAdsRiskTierSchema>
 
@@ -39,7 +39,7 @@ export const GoogleAdsResourceTypeSchema = z.enum([
   'listing_group',
   'conversion_action',
   'conversion_goal',
-  'recommendation',
+  'recommendation'
 ])
 export type GoogleAdsResourceType = z.infer<typeof GoogleAdsResourceTypeSchema>
 
@@ -109,7 +109,7 @@ export const GoogleAdsOperationTypeSchema = z.enum([
   'dismiss_recommendation',
   'run_search_term_policy',
   'run_pause_policy',
-  'reverify_resource',
+  'reverify_resource'
 ])
 export type GoogleAdsOperationType = z.infer<typeof GoogleAdsOperationTypeSchema>
 
@@ -117,21 +117,21 @@ export const GoogleAdsPolicyDecisionSchema = z.strictObject({
   allowed: z.boolean(),
   riskTier: GoogleAdsRiskTierSchema,
   executionMode: GoogleAdsExecutionModeSchema,
-  code: z.string().min(1).max(100).optional(),
+  code: z.string().min(1).max(100).optional()
 })
 export type GoogleAdsPolicyDecision = z.infer<typeof GoogleAdsPolicyDecisionSchema>
 
 export const GoogleAdsVerificationDiffSchema = z.strictObject({
   field: z.string().min(1).max(500),
   expected: z.unknown(),
-  actual: z.unknown(),
+  actual: z.unknown()
 })
 export type GoogleAdsVerificationDiff = z.infer<typeof GoogleAdsVerificationDiffSchema>
 
 export const GoogleAdsStateDiffSchema = z.strictObject({
   field: z.string().min(1).max(500),
   before: z.unknown(),
-  after: z.unknown(),
+  after: z.unknown()
 })
 export type GoogleAdsStateDiff = z.infer<typeof GoogleAdsStateDiffSchema>
 
@@ -139,14 +139,14 @@ const JsonObjectSchema = z.record(z.string(), z.unknown())
 const ProviderOperationSchema = z.union([
   z.strictObject({ create: JsonObjectSchema }),
   z.strictObject({ update: JsonObjectSchema, updateMask: z.string().trim().min(1).max(2_000) }),
-  z.strictObject({ remove: z.string().trim().min(1).max(1_000) }),
+  z.strictObject({ remove: z.string().trim().min(1).max(1_000) })
 ])
 
 export const GoogleAdsProviderMutationSchema = z.strictObject({
   service: z.enum(GOOGLE_ADS_MUTATION_SERVICES),
   atomicity: z.enum(['independent', 'interdependent']),
   partialFailure: z.boolean().default(false),
-  operations: z.array(ProviderOperationSchema).min(1).max(1_000),
+  operations: z.array(ProviderOperationSchema).min(1).max(1_000)
 })
 export type GoogleAdsProviderMutation = z.infer<typeof GoogleAdsProviderMutationSchema>
 
@@ -161,7 +161,7 @@ export const GoogleAdsActionStatusSchema = z.enum([
   'verification_failed',
   'recovery_required',
   'cancelled',
-  'expired',
+  'expired'
 ])
 export type GoogleAdsActionStatus = z.infer<typeof GoogleAdsActionStatusSchema>
 
@@ -190,8 +190,11 @@ export const GoogleAdsActionPlanSchema = z.strictObject({
   idempotencyKey: z.string().min(1).max(255),
   status: GoogleAdsActionStatusSchema,
   approvalId: z.string().uuid().nullable().optional(),
+  providerRequestId: z.string().min(1).max(255).nullable().optional(),
+  verificationSummary: z.unknown().nullable().optional(),
+  resultMetadata: z.unknown().nullable().optional(),
   expiresAt: z.string().datetime({ offset: true }),
   createdAt: z.string().datetime({ offset: true }),
-  updatedAt: z.string().datetime({ offset: true }).optional(),
+  updatedAt: z.string().datetime({ offset: true }).optional()
 })
 export type GoogleAdsActionPlan = z.infer<typeof GoogleAdsActionPlanSchema>
