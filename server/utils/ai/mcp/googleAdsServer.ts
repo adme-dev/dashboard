@@ -113,6 +113,22 @@ function foundationValidation(plan: GoogleAdsActionPlan): Record<string, unknown
   }
 }
 
+function validationAuditMetadata(validation: unknown): Record<string, unknown> {
+  const record = validation && typeof validation === 'object'
+    ? validation as Record<string, unknown>
+    : {}
+  return {
+    valid: record.valid === true,
+    code: typeof record.code === 'string' ? record.code : null,
+    providerValidation: typeof record.providerValidation === 'string'
+      ? record.providerValidation
+      : null,
+    providerRequestId: typeof record.providerRequestId === 'string'
+      ? record.providerRequestId
+      : null
+  }
+}
+
 export function buildGoogleAdsMcpToolDependencies(
   flags: GoogleAdsMcpFlags = googleAdsMcpFlagsFromEnv()
 ): GoogleAdsMcpToolDependencies {
@@ -135,6 +151,15 @@ export function buildGoogleAdsMcpToolDependencies(
     validatePlan: plan => isExecutableSearchGoogleAdsPlan(plan)
       ? validateSearchGoogleAdsControlPlan(plan)
       : Promise.resolve(foundationValidation(plan)),
+    recordValidation: async (plan, validation) => {
+      await appendGoogleAdsActionEvent({
+        planId: plan.id,
+        clientId: plan.clientId,
+        actorId: plan.actorId,
+        eventType: 'preflight_validated',
+        metadata: validationAuditMetadata(validation)
+      })
+    },
     proposePlan: (plan, context) => persistGoogleAdsMcpProposal(plan, context, {
       insertPending: insertPendingAction,
       linkApproval: (candidate, approvalId) => linkGoogleAdsActionApproval({

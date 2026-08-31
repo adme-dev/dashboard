@@ -113,13 +113,23 @@ export interface GoogleAdsMcpToolDependencies {
   loadPlan(actionPlanId: string, actorId: string): Promise<GoogleAdsActionPlan | null>
   getStatus(plan: GoogleAdsActionPlan, context: ToolContext): Promise<unknown>
   validatePlan(plan: GoogleAdsActionPlan, context: ToolContext): Promise<unknown>
+  recordValidation(
+    plan: GoogleAdsActionPlan,
+    validation: unknown,
+    context: ToolContext
+  ): Promise<void>
   proposePlan(plan: GoogleAdsActionPlan, context: ToolContext): Promise<{ proposalId: string }>
   executeAutomatic(plan: GoogleAdsActionPlan, context: ToolContext): Promise<unknown>
 }
 
 export type GoogleAdsMcpToolOutcome
   = | { ok: true, data: unknown }
-    | { ok: false, error: string, code: 'not_found' | 'forbidden' | 'disabled' | 'bad_args' | 'blocked' | 'automation_disabled' | 'destructive_disabled' | 'invalid_state' | 'handler_error' }
+    | { ok: false, error: string, code: 'not_found' | 'forbidden' | 'disabled' | 'bad_args' | 'blocked' | 'automation_disabled' | 'destructive_disabled' | 'invalid_state' | 'validation_failed' | 'handler_error' }
+
+function validationPassed(validation: unknown): boolean {
+  return Boolean(validation && typeof validation === 'object'
+    && (validation as { valid?: unknown }).valid === true)
+}
 
 export async function executeGoogleAdsTool(
   name: string,
@@ -168,7 +178,9 @@ export async function executeGoogleAdsTool(
       return { ok: true, data: await dependencies.getStatus(plan, context) }
     }
     if (name === GOOGLE_ADS_VALIDATE_PLAN_TOOL) {
-      return { ok: true, data: await dependencies.validatePlan(plan, context) }
+      const validation = await dependencies.validatePlan(plan, context)
+      await dependencies.recordValidation(plan, validation, context)
+      return { ok: true, data: validation }
     }
     if (!plan.policyDecision.allowed || plan.executionMode === 'blocked') {
       return { ok: false, error: 'This action plan is blocked by policy.', code: 'blocked' }
@@ -197,6 +209,15 @@ export async function executeGoogleAdsTool(
 
     if (plan.status !== 'pending_approval') {
       return { ok: false, error: 'This proposal is no longer awaiting approval.', code: 'invalid_state' }
+    }
+    const validation = await dependencies.validatePlan(plan, context)
+    await dependencies.recordValidation(plan, validation, context)
+    if (!validationPassed(validation)) {
+      return {
+        ok: false,
+        error: 'Google Ads preflight validation did not pass. Create a fresh action plan before proposing it.',
+        code: 'validation_failed'
+      }
     }
     return { ok: true, data: await dependencies.proposePlan(plan, context) }
   } catch {

@@ -68,6 +68,7 @@ function dependencies(plan = actionPlan()) {
     loadPlan: vi.fn().mockResolvedValue(plan),
     getStatus: vi.fn().mockResolvedValue({ id: plan.id, status: plan.status }),
     validatePlan: vi.fn().mockResolvedValue({ valid: true, diffs: [] }),
+    recordValidation: vi.fn().mockResolvedValue(undefined),
     listRecommendations: vi.fn().mockResolvedValue({ recommendations: [] }),
     proposePlan: vi.fn().mockResolvedValue({ proposalId: 'proposal-12345' }),
     executeAutomatic: vi.fn().mockResolvedValue({ ok: true, status: 'verified' })
@@ -184,6 +185,47 @@ describe('Google Ads MCP execution gates', () => {
       { ...off, read: true },
       deps
     )).resolves.toMatchObject({ ok: false, code: 'disabled' })
+    expect(deps.proposePlan).not.toHaveBeenCalled()
+  })
+
+  it('validates and audits the exact plan before persisting a proposal', async () => {
+    const deps = dependencies()
+
+    await expect(executeGoogleAdsTool(
+      'propose_google_ads_action',
+      { actionPlanId: PLAN_ID },
+      context,
+      { ...off, write: true },
+      deps
+    )).resolves.toMatchObject({ ok: true })
+
+    expect(deps.validatePlan).toHaveBeenCalledWith(expect.objectContaining({ id: PLAN_ID }), context)
+    expect(deps.recordValidation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: PLAN_ID }),
+      expect.objectContaining({ valid: true }),
+      context
+    )
+    expect(deps.validatePlan).toHaveBeenCalledBefore(deps.proposePlan)
+    expect(deps.recordValidation).toHaveBeenCalledBefore(deps.proposePlan)
+  })
+
+  it('does not persist a proposal when provider preflight validation fails', async () => {
+    const deps = dependencies()
+    deps.validatePlan.mockResolvedValueOnce({
+      valid: false,
+      code: 'stale_plan',
+      providerValidation: 'validate_only'
+    })
+
+    await expect(executeGoogleAdsTool(
+      'propose_google_ads_action',
+      { actionPlanId: PLAN_ID },
+      context,
+      { ...off, write: true },
+      deps
+    )).resolves.toMatchObject({ ok: false, code: 'validation_failed' })
+
+    expect(deps.recordValidation).toHaveBeenCalled()
     expect(deps.proposePlan).not.toHaveBeenCalled()
   })
 
