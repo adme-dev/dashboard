@@ -1,7 +1,7 @@
 import {
   googleAdsRequest,
   type GoogleAdsAuth,
-  type GoogleAdsRequestOptions,
+  type GoogleAdsRequestOptions
 } from '~~/server/utils/googleAds/api'
 
 export interface ExecuteGoogleAdsQueryInput {
@@ -20,7 +20,7 @@ export interface GoogleAdsQueryResult<T> {
 
 export interface GoogleAdsQueryDeps {
   request: (
-    options: GoogleAdsRequestOptions<Record<string, unknown>>,
+    options: GoogleAdsRequestOptions<Record<string, unknown>>
   ) => Promise<{ data: unknown, requestId?: string }>
 }
 
@@ -67,12 +67,12 @@ function boundProviderQuery(query: string, maxRows: number): string {
 }
 
 const defaultDeps: GoogleAdsQueryDeps = {
-  request: options => googleAdsRequest(options),
+  request: options => googleAdsRequest(options)
 }
 
 export async function executeGoogleAdsQuery<T = Record<string, unknown>>(
   input: ExecuteGoogleAdsQueryInput,
-  deps: Partial<GoogleAdsQueryDeps> = {},
+  deps: Partial<GoogleAdsQueryDeps> = {}
 ): Promise<GoogleAdsQueryResult<T>> {
   const customerId = cleanCustomerId(input.customerId)
   const query = input.query.trim()
@@ -91,13 +91,13 @@ export async function executeGoogleAdsQuery<T = Record<string, unknown>>(
     auth: input.auth,
     body: { query: boundedQuery },
     write: false,
-    ...(input.retries === undefined ? {} : { retries: input.retries }),
+    ...(input.retries === undefined ? {} : { retries: input.retries })
   })
   const rows = flattenStreamRows<T>(response.data)
 
   return {
     rows: rows.slice(0, maxRows),
     more: Math.max(0, rows.length - maxRows),
-    requestId: response.requestId,
+    requestId: response.requestId
   }
 }

@@ -8,29 +8,29 @@ describe('executeGoogleAdsQuery', () => {
     const request = vi.fn().mockResolvedValue({
       data: [
         { results: [{ id: 1 }, { id: 2 }] },
-        { results: [{ id: 3 }] },
+        { results: [{ id: 3 }] }
       ],
-      requestId: 'request-1',
+      requestId: 'request-1'
     })
 
     const result = await executeGoogleAdsQuery({
       customerId: '123-456-7890',
       query: 'SELECT customer.id FROM customer',
       auth,
-      maxRows: 2,
+      maxRows: 2
     }, { request })
 
     expect(result).toEqual({
       rows: [{ id: 1 }, { id: 2 }],
       more: 1,
-      requestId: 'request-1',
+      requestId: 'request-1'
     })
     expect(request).toHaveBeenCalledWith({
       path: '/customers/1234567890/googleAds:searchStream',
       method: 'POST',
       auth,
       body: { query: 'SELECT customer.id FROM customer\nLIMIT 3' },
-      write: false,
+      write: false
     })
   })
 
@@ -40,7 +40,7 @@ describe('executeGoogleAdsQuery', () => {
     await expect(executeGoogleAdsQuery({
       customerId: '123 OR 1=1',
       query: 'SELECT customer.id FROM customer',
-      auth,
+      auth
     }, { request })).rejects.toThrow('Invalid Google Ads customer ID')
     expect(request).not.toHaveBeenCalled()
   })
@@ -51,7 +51,7 @@ describe('executeGoogleAdsQuery', () => {
     await expect(executeGoogleAdsQuery({
       customerId: '1234567890',
       query: '   ',
-      auth,
+      auth
     }, { request })).rejects.toThrow('Google Ads query is required')
     expect(request).not.toHaveBeenCalled()
   })
@@ -59,7 +59,7 @@ describe('executeGoogleAdsQuery', () => {
   it.each([
     ['SELECT customer.id FROM customer', 'SELECT customer.id FROM customer\nLIMIT 3'],
     ['SELECT customer.id FROM customer LIMIT 1', 'SELECT customer.id FROM customer LIMIT 1'],
-    ['SELECT customer.id FROM customer LIMIT 500', 'SELECT customer.id FROM customer LIMIT 3'],
+    ['SELECT customer.id FROM customer LIMIT 500', 'SELECT customer.id FROM customer LIMIT 3']
   ])('bounds the provider query before sending it: %s', async (query, expectedQuery) => {
     const request = vi.fn().mockResolvedValue({ data: [], requestId: undefined })
 
@@ -67,11 +67,11 @@ describe('executeGoogleAdsQuery', () => {
       customerId: '1234567890',
       query,
       auth,
-      maxRows: 2,
+      maxRows: 2
     }, { request })
 
     expect(request).toHaveBeenCalledWith(expect.objectContaining({
-      body: { query: expectedQuery },
+      body: { query: expectedQuery }
     }))
   })
 
@@ -79,14 +79,14 @@ describe('executeGoogleAdsQuery', () => {
     const providerRows = Array.from({ length: 10_001 }, (_, id) => ({ id }))
     const request = vi.fn().mockResolvedValue({
       data: [{ results: providerRows }],
-      requestId: undefined,
+      requestId: undefined
     })
 
     const result = await executeGoogleAdsQuery({
       customerId: '1234567890',
       query: 'SELECT customer.id FROM customer',
       auth,
-      maxRows: 50_000,
+      maxRows: 50_000
     }, { request })
 
     expect(result.rows).toHaveLength(10_000)
@@ -96,19 +96,19 @@ describe('executeGoogleAdsQuery', () => {
   it('uses the safe default when maxRows is not finite', async () => {
     const request = vi.fn().mockResolvedValue({
       data: [{ results: [{ id: 1 }] }],
-      requestId: undefined,
+      requestId: undefined
     })
 
     const result = await executeGoogleAdsQuery({
       customerId: '1234567890',
       query: 'SELECT customer.id FROM customer',
       auth,
-      maxRows: Number.NaN,
+      maxRows: Number.NaN
     }, { request })
 
     expect(result.rows).toEqual([{ id: 1 }])
     expect(request).toHaveBeenCalledWith(expect.objectContaining({
-      body: { query: 'SELECT customer.id FROM customer\nLIMIT 1001' },
+      body: { query: 'SELECT customer.id FROM customer\nLIMIT 1001' }
     }))
   })
 })

@@ -6,7 +6,7 @@ describe('googleAdsClient OAuth', () => {
     const url = new URL(getGoogleAuthUrl(
       'client-id',
       'https://example.com/api/agency/social/google/callback',
-      'state-token',
+      'state-token'
     ))
 
     expect(url.searchParams.get('scope')).toBe(GOOGLE_ADS_OAUTH_SCOPES.join(' '))

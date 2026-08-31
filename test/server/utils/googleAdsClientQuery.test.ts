@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { gaqlQuery } from '~~/server/utils/googleAdsClient'
+
 const ofetchMock = vi.fn()
 vi.mock('ofetch', () => ({
-  ofetch: (...args: unknown[]) => ofetchMock(...args),
+  ofetch: (...args: unknown[]) => ofetchMock(...args)
 }))
-
-import { gaqlQuery } from '~~/server/utils/googleAdsClient'
 
 beforeEach(() => ofetchMock.mockReset())
 
@@ -20,7 +20,7 @@ describe('gaqlQuery compatibility adapter', () => {
       'developer',
       'SELECT customer.id FROM customer',
       '098-765-4321',
-      0,
+      0
     )
 
     expect(result).toHaveLength(1_000)

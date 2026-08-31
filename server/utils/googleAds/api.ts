@@ -42,9 +42,9 @@ export function buildGoogleAdsHeaders(auth: GoogleAdsAuth): Record<string, strin
   }
 
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${auth.accessToken}`,
+    'Authorization': `Bearer ${auth.accessToken}`,
     'developer-token': auth.developerToken,
-    'Content-Type': 'application/json',
+    'Content-Type': 'application/json'
   }
   if (auth.loginCustomerId) {
     headers['login-customer-id'] = cleanManagerCustomerId(auth.loginCustomerId)
@@ -76,19 +76,19 @@ const defaultDeps: GoogleAdsRequestDeps = {
       retry: 0,
       onResponse: ({ response }) => {
         requestId = response.headers.get('request-id') ?? undefined
-      },
+      }
     })
     return {
       _data: data,
-      headers: requestId ? { 'request-id': requestId } : undefined,
+      headers: requestId ? { 'request-id': requestId } : undefined
     }
   },
-  sleep: milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
+  sleep: milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 }
 
 export async function googleAdsRequest<TData, TBody extends Record<string, unknown> = Record<string, unknown>>(
   options: GoogleAdsRequestOptions<TBody>,
-  deps: Partial<GoogleAdsRequestDeps> = {},
+  deps: Partial<GoogleAdsRequestDeps> = {}
 ): Promise<{ data: TData, requestId?: string }> {
   const url = googleAdsApiUrl(options.path)
   const headers = buildGoogleAdsHeaders(options.auth)
@@ -101,7 +101,7 @@ export async function googleAdsRequest<TData, TBody extends Record<string, unkno
       const response = await fetch(url, {
         method: options.method,
         headers,
-        ...(options.body === undefined ? {} : { body: options.body }),
+        ...(options.body === undefined ? {} : { body: options.body })
       })
       return unpackResponse<TData>(response)
     } catch (error) {

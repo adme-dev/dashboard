@@ -1,12 +1,12 @@
-export type GoogleAdsErrorCategory =
-  | 'auth'
-  | 'permission'
-  | 'validation'
-  | 'policy'
-  | 'quota'
-  | 'conflict'
-  | 'provider'
-  | 'unknown'
+export type GoogleAdsErrorCategory
+  = | 'auth'
+    | 'permission'
+    | 'validation'
+    | 'policy'
+    | 'quota'
+    | 'conflict'
+    | 'provider'
+    | 'unknown'
 
 export interface GoogleAdsActionErrorInput {
   code: string
@@ -141,7 +141,7 @@ function locationFrom(providerError: UnknownRecord): {
 
   return {
     operationIndex,
-    fieldPath: segments.length ? segments.join('.') : undefined,
+    fieldPath: segments.length ? segments.join('.') : undefined
   }
 }
 
@@ -162,7 +162,7 @@ export function normalizeGoogleAdsError(error: unknown): GoogleAdsActionError {
     retryable,
     requestId: requestIdFrom(record),
     safeMessage: safeMessageFor(category),
-    ...location,
+    ...location
   })
 }
 

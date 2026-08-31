@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   GoogleAdsActionError,
   isGoogleAdsRetryable,
-  normalizeGoogleAdsError,
+  normalizeGoogleAdsError
 } from '~~/server/utils/googleAds/errors'
 
 describe('normalizeGoogleAdsError', () => {
@@ -21,13 +21,13 @@ describe('normalizeGoogleAdsError', () => {
                   { fieldName: 'operations', index: 2 },
                   { fieldName: 'create' },
                   { fieldName: 'campaign' },
-                  { fieldName: 'name' },
-                ],
-              },
-            }],
-          }],
-        },
-      },
+                  { fieldName: 'name' }
+                ]
+              }
+            }]
+          }]
+        }
+      }
     })
 
     expect(normalized).toMatchObject({
@@ -37,7 +37,7 @@ describe('normalizeGoogleAdsError', () => {
       operationIndex: 2,
       fieldPath: 'operations[2].create.campaign.name',
       requestId: 'req-1',
-      safeMessage: 'Google Ads rejected the requested fields.',
+      safeMessage: 'Google Ads rejected the requested fields.'
     })
   })
 
@@ -48,15 +48,15 @@ describe('normalizeGoogleAdsError', () => {
       data: {
         access_token: 'secret-access-token',
         developer_token: 'secret-developer-token',
-        error: { message: 'denied: secret-access-token' },
-      },
+        error: { message: 'denied: secret-access-token' }
+      }
     })
 
     expect(normalized).toMatchObject({
       code: 'AUTHENTICATION_ERROR',
       category: 'auth',
       retryable: false,
-      safeMessage: 'Google Ads authentication failed.',
+      safeMessage: 'Google Ads authentication failed.'
     })
     expect(JSON.stringify(normalized)).not.toContain('secret-access-token')
     expect(JSON.stringify(normalized)).not.toContain('secret-developer-token')
@@ -66,7 +66,7 @@ describe('normalizeGoogleAdsError', () => {
     [403, 'PERMISSION_DENIED', 'permission', false],
     [409, 'CONFLICT', 'conflict', false],
     [429, 'RESOURCE_EXHAUSTED', 'quota', true],
-    [503, 'UNAVAILABLE', 'provider', true],
+    [503, 'UNAVAILABLE', 'provider', true]
   ] as const)('maps HTTP %s to a stable %s error', (status, code, category, retryable) => {
     expect(normalizeGoogleAdsError({ status })).toMatchObject({ code, category, retryable })
   })
@@ -76,7 +76,7 @@ describe('normalizeGoogleAdsError', () => {
       code: 'UNAVAILABLE',
       category: 'provider',
       retryable: true,
-      safeMessage: 'Google Ads is temporarily unavailable.',
+      safeMessage: 'Google Ads is temporarily unavailable.'
     })
 
     expect(normalizeGoogleAdsError(error)).toBe(error)

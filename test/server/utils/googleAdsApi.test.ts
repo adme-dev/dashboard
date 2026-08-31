@@ -1,22 +1,22 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   buildGoogleAdsHeaders,
-  googleAdsRequest,
+  googleAdsRequest
 } from '~~/server/utils/googleAds/api'
 
 const auth = {
   accessToken: 'access',
   developerToken: 'developer',
-  loginCustomerId: '123-456-7890',
+  loginCustomerId: '123-456-7890'
 }
 
 describe('buildGoogleAdsHeaders', () => {
   it('normalizes the manager customer ID and includes required credentials', () => {
     expect(buildGoogleAdsHeaders(auth)).toEqual({
-      Authorization: 'Bearer access',
+      'Authorization': 'Bearer access',
       'developer-token': 'developer',
       'login-customer-id': '1234567890',
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/json'
     })
   })
 
@@ -33,7 +33,7 @@ describe('googleAdsRequest', () => {
     const result = await googleAdsRequest({
       path: '/customers:listAccessibleCustomers',
       method: 'GET',
-      auth,
+      auth
     }, { fetch, sleep: vi.fn() })
 
     expect(fetch).toHaveBeenCalledWith(
@@ -41,11 +41,11 @@ describe('googleAdsRequest', () => {
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({
-          Authorization: 'Bearer access',
+          'Authorization': 'Bearer access',
           'developer-token': 'developer',
-          'login-customer-id': '1234567890',
-        }),
-      }),
+          'login-customer-id': '1234567890'
+        })
+      })
     )
     expect(result).toEqual({ data: { ok: true }, requestId: undefined })
     expect(JSON.stringify(result)).not.toContain('access')
@@ -55,7 +55,7 @@ describe('googleAdsRequest', () => {
   it('returns a request ID from a raw ofetch response', async () => {
     const fetch = vi.fn().mockResolvedValue({
       _data: { results: [] },
-      headers: new Headers({ 'request-id': 'req-25' }),
+      headers: new Headers({ 'request-id': 'req-25' })
     })
 
     await expect(googleAdsRequest({ path: '/x', method: 'GET', auth }, { fetch, sleep: vi.fn() }))
@@ -86,11 +86,11 @@ describe('googleAdsRequest', () => {
       auth,
       body: {},
       retries: 3,
-      write: true,
+      write: true
     }, { fetch, sleep })).rejects.toMatchObject({
       code: 'UNAVAILABLE',
       category: 'provider',
-      retryable: true,
+      retryable: true
     })
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(sleep).not.toHaveBeenCalled()
