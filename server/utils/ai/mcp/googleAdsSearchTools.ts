@@ -47,6 +47,8 @@ export const GOOGLE_ADS_PLAN_CREATE_ASSET_GROUP_TOOL = 'google_ads_plan_create_a
 export const GOOGLE_ADS_PLAN_UPDATE_ASSET_GROUP_TOOL = 'google_ads_plan_update_asset_group'
 export const GOOGLE_ADS_PLAN_SET_ASSET_GROUP_ASSETS_TOOL = 'google_ads_plan_set_asset_group_assets'
 export const GOOGLE_ADS_PLAN_SET_LISTING_GROUPS_TOOL = 'google_ads_plan_set_listing_groups'
+export const GOOGLE_ADS_PLAN_APPLY_RECOMMENDATION_TOOL = 'google_ads_plan_apply_recommendation'
+export const GOOGLE_ADS_PLAN_DISMISS_RECOMMENDATION_TOOL = 'google_ads_plan_dismiss_recommendation'
 export const GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_create_custom_audience'
 export const GOOGLE_ADS_PLAN_UPDATE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_update_custom_audience'
 export const GOOGLE_ADS_PLAN_ARCHIVE_CUSTOM_AUDIENCE_TOOL = 'google_ads_plan_archive_custom_audience'
@@ -603,6 +605,13 @@ const SetListingGroupsSchema = z.strictObject({
   assetGroupResourceName: z.string().trim().min(1).max(1_000),
   nodes: ListingGroupNodesInputSchema
 })
+const RecommendationSchema = z.strictObject({
+  ...CommonSchema,
+  resourceName: z.string().trim().min(1).max(1_000)
+})
+const DismissRecommendationSchema = RecommendationSchema.extend({
+  requestedMode: z.enum(['proposal', 'automatic']).default('proposal')
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -802,6 +811,16 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_SET_LISTING_GROUPS_TOOL,
     'Plan an atomic exact replacement of a Performance Max retail product listing-group tree. Subdivisions require one explicit branch and exactly one Other branch.',
     SetListingGroupsSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_APPLY_RECOMMENDATION_TOOL,
+    'Plan applying one live Google Ads recommendation using its provider-recommended defaults. The exact recommendation is re-read before an elevated approval write.',
+    RecommendationSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_DISMISS_RECOMMENDATION_TOOL,
+    'Plan dismissing one live Google Ads recommendation. Policy-limited automatic mode requires an active recommendation-dismissal grant.',
+    DismissRecommendationSchema
   ),
   manifest(
     GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL,
@@ -1528,6 +1547,32 @@ export async function executeGoogleAdsSearchPlanningTool(
           assetGroupResourceName: args.assetGroupResourceName,
           nodes: args.nodes
         }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_APPLY_RECOMMENDATION_TOOL) {
+      const args = RecommendationSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'apply_recommendation',
+        resourceType: 'recommendation',
+        arguments: { resourceName: args.resourceName }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_DISMISS_RECOMMENDATION_TOOL) {
+      const args = DismissRecommendationSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: args.requestedMode,
+        operation: 'dismiss_recommendation',
+        resourceType: 'recommendation',
+        arguments: { resourceName: args.resourceName }
       }
     } else if (name === GOOGLE_ADS_PLAN_CREATE_CUSTOM_AUDIENCE_TOOL) {
       const args = CreateCustomAudienceSchema.parse(rawArgs)

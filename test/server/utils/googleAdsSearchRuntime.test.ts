@@ -475,6 +475,54 @@ describe('Search Google Ads governed execution runtime', () => {
   })
 
   it.each([
+    ['apply_recommendation', 'recommendationsApply', 'APPLIED'],
+    ['dismiss_recommendation', 'recommendationsDismiss', 'DISMISSED']
+  ] as const)('accepts only exact %s recommendation envelopes', (operation, service, disposition) => {
+    const resourceName = 'customers/1234567890/recommendations/abc-1'
+    const currentState = { resourceName, type: 'KEYWORD', dismissed: false, campaigns: [] }
+    const plan = {
+      operation,
+      customerId: '1234567890',
+      resourceName,
+      currentState,
+      desiredState: {
+        ...currentState,
+        dismissed: operation === 'dismiss_recommendation',
+        disposition
+      },
+      providerOperations: [{
+        service,
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ recommendation: { resourceName } }]
+      }]
+    } as GoogleAdsActionPlan
+    expect(isExecutableSearchGoogleAdsPlan(plan)).toBe(true)
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      providerOperations: [{
+        ...plan.providerOperations[0],
+        operations: [{ recommendation: {
+          resourceName: 'customers/9999999999/recommendations/abc-1'
+        } }]
+      }]
+    } as GoogleAdsActionPlan)).toBe(false)
+    const crossCustomerState = {
+      ...currentState,
+      campaign: 'customers/9999999999/campaigns/60'
+    }
+    expect(isExecutableSearchGoogleAdsPlan({
+      ...plan,
+      currentState: crossCustomerState,
+      desiredState: {
+        ...crossCustomerState,
+        dismissed: operation === 'dismiss_recommendation',
+        disposition
+      }
+    } as GoogleAdsActionPlan)).toBe(false)
+  })
+
+  it.each([
     ['customer', 'customerAssets'],
     ['campaign', 'campaignAssets'],
     ['ad_group', 'adGroupAssets']

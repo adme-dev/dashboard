@@ -148,6 +148,51 @@ describe('mutateGoogleAds', () => {
     })
   })
 
+  it.each([
+    ['recommendationsApply', '/customers/1234567890/recommendations:apply'],
+    ['recommendationsDismiss', '/customers/1234567890/recommendations:dismiss']
+  ] as const)('routes %s through the dedicated recommendation endpoint', async (service, path) => {
+    const request = vi.fn().mockResolvedValue({
+      data: { results: [{ resourceName: 'customers/1234567890/recommendations/abc-1' }] },
+      requestId: 'request-rec'
+    })
+    const input = {
+      customerId: '1234567890',
+      service,
+      auth,
+      validateOnly: false,
+      atomicity: 'interdependent' as const,
+      operations: [{ recommendation: { resourceName: 'customers/1234567890/recommendations/abc-1' } }]
+    }
+    await expect(mutateGoogleAds(input, { request })).resolves.toMatchObject({ requestId: 'request-rec' })
+    expect(request).toHaveBeenCalledWith({
+      path,
+      method: 'POST',
+      auth,
+      body: {
+        operations: [{ resourceName: 'customers/1234567890/recommendations/abc-1' }],
+        partialFailure: false
+      },
+      retries: 0,
+      write: true
+    })
+  })
+
+  it('performs local-only validation for recommendation endpoints', async () => {
+    const request = vi.fn()
+    await expect(mutateGoogleAds({
+      customerId: '1234567890',
+      service: 'recommendationsDismiss',
+      auth,
+      validateOnly: true,
+      atomicity: 'interdependent',
+      operations: [{ recommendation: {
+        resourceName: 'customers/1234567890/recommendations/abc-1'
+      } }]
+    }, { request })).resolves.toEqual({ results: [] })
+    expect(request).not.toHaveBeenCalled()
+  })
+
   it('rejects bulk mutate envelopes on typed mutation services', async () => {
     const request = vi.fn()
     await expect(mutateGoogleAds({

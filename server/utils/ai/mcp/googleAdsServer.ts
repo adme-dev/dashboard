@@ -7,6 +7,8 @@ import {
   linkGoogleAdsActionApproval
 } from '~~/server/utils/googleAds/actionStore'
 import type { GoogleAdsActionPlan } from '~~/server/utils/googleAds/contracts'
+import { resolveGoogleAdsControlSession } from '~~/server/utils/googleAds/controlSession'
+import { listGoogleAdsRecommendations } from '~~/server/utils/googleAds/recommendations'
 import {
   executeSearchGoogleAdsControlAction,
   isExecutableSearchGoogleAdsPlan,
@@ -115,6 +117,19 @@ export function buildGoogleAdsMcpToolDependencies(
   flags: GoogleAdsMcpFlags = googleAdsMcpFlagsFromEnv()
 ): GoogleAdsMcpToolDependencies {
   return {
+    listRecommendations: async (input) => {
+      const session = await resolveGoogleAdsControlSession({
+        clientId: input.clientId,
+        connectionId: input.connectionId
+      })
+      return listGoogleAdsRecommendations({
+        customerId: session.connection.customerId,
+        auth: session.auth,
+        maxResults: input.maxResults,
+        types: input.types,
+        includeDismissed: input.includeDismissed
+      })
+    },
     loadPlan: (actionPlanId, actorId) => getGoogleAdsActionPlanForActor(actionPlanId, actorId),
     getStatus: async plan => actionStatus(plan),
     validatePlan: plan => isExecutableSearchGoogleAdsPlan(plan)

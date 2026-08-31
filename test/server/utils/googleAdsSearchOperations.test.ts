@@ -2050,4 +2050,46 @@ describe('Search Google Ads construction operations', () => {
       listingSource: 'SHOPPING'
     }] }))).toThrow('already matches')
   })
+
+  it.each([
+    ['apply_recommendation', 'recommendationsApply', 'APPLIED'],
+    ['dismiss_recommendation', 'recommendationsDismiss', 'DISMISSED']
+  ] as const)('builds a governed %s operation from the exact live recommendation', (operation, service, disposition) => {
+    const resourceName = 'customers/1234567890/recommendations/abc-1'
+    const current = {
+      resourceName,
+      type: 'CAMPAIGN_BUDGET',
+      dismissed: false,
+      campaigns: ['customers/1234567890/campaigns/60'],
+      campaignBudget: 'customers/1234567890/campaignBudgets/70',
+      recommendedBudgetAmountMicros: '24000000'
+    }
+    expect(buildSearchGoogleAdsAction(context(operation, 'recommendation', {
+      resourceName
+    }, current))).toEqual({
+      resourceName,
+      desiredState: {
+        ...current,
+        dismissed: operation === 'dismiss_recommendation',
+        disposition
+      },
+      providerOperations: [{
+        service,
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ recommendation: { resourceName } }]
+      }]
+    })
+  })
+
+  it('rejects cross-customer, missing, and already-dismissed recommendations', () => {
+    const resourceName = 'customers/1234567890/recommendations/abc-1'
+    const current = { resourceName, type: 'KEYWORD', dismissed: false, campaigns: [] }
+    expect(() => buildSearchGoogleAdsAction(context('apply_recommendation', 'recommendation', {
+      resourceName: 'customers/9999999999/recommendations/abc-1'
+    }, current))).toThrow('selected Google Ads customer')
+    expect(() => buildSearchGoogleAdsAction(context('dismiss_recommendation', 'recommendation', {
+      resourceName
+    }, { ...current, dismissed: true }))).toThrow('already dismissed')
+  })
 })

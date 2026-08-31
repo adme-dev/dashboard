@@ -1692,6 +1692,45 @@ describe('Search Google Ads persisted-plan state loading', () => {
     })
   })
 
+  it('loads a typed recommendation and verifies apply by provider-confirmed disappearance', async () => {
+    const resourceName = 'customers/1234567890/recommendations/abc-1'
+    const row = { recommendation: {
+      resourceName,
+      type: 'CAMPAIGN_BUDGET',
+      dismissed: false,
+      campaigns: ['customers/1234567890/campaigns/60'],
+      campaignBudget: 'customers/1234567890/campaignBudgets/70',
+      campaignBudgetRecommendation: { recommendedBudgetAmountMicros: '24000000' }
+    } }
+    const query = vi.fn().mockResolvedValue({ rows: [row], more: 0 })
+    await expect(loadSearchGoogleAdsCurrentState(context('apply_recommendation', {
+      resourceName
+    }), auth, { query })).resolves.toEqual({
+      resourceName,
+      type: 'CAMPAIGN_BUDGET',
+      dismissed: false,
+      campaigns: ['customers/1234567890/campaigns/60'],
+      campaignBudget: 'customers/1234567890/campaignBudgets/70',
+      recommendedBudgetAmountMicros: '24000000'
+    })
+    expect(query.mock.calls[0]?.[0].query).toContain('recommendation.resource_name = \'customers/1234567890/recommendations/abc-1\'')
+
+    const desiredState = {
+      resourceName, type: 'CAMPAIGN_BUDGET', dismissed: false,
+      campaigns: ['customers/1234567890/campaigns/60'],
+      campaignBudget: 'customers/1234567890/campaignBudgets/70',
+      recommendedBudgetAmountMicros: '24000000', disposition: 'APPLIED'
+    }
+    await expect(loadSearchGoogleAdsPlanState({
+      operation: 'apply_recommendation',
+      customerId: '1234567890',
+      resourceName,
+      desiredState
+    } as GoogleAdsActionPlan, auth, {
+      query: vi.fn().mockResolvedValue({ rows: [], more: 0 })
+    }, { results: [{ resourceName }] })).resolves.toEqual(desiredState)
+  })
+
   it('reads back reversible asset-link archive and explicit detachment states', async () => {
     const resourceName = 'customers/1234567890/campaignAssets/60~9201~CALL'
     const common = {

@@ -31,7 +31,9 @@ export const GOOGLE_ADS_MUTATION_SERVICES = [
   'conversionGoalCampaignConfigs',
   'biddingStrategies',
   'audiences',
-  'customAudiences'
+  'customAudiences',
+  'recommendationsApply',
+  'recommendationsDismiss'
 ] as const
 
 export type GoogleAdsServiceName = typeof GOOGLE_ADS_MUTATION_SERVICES[number]
@@ -43,6 +45,7 @@ export type GoogleAdsOperation
     | { create?: never, update: GoogleAdsResource, updateMask: string, remove?: never }
     | { create?: never, update?: never, updateMask?: never, remove: string }
     | { create?: never, update?: never, updateMask?: never, remove?: never, mutate: GoogleAdsResource }
+    | { create?: never, update?: never, updateMask?: never, remove?: never, mutate?: never, recommendation: GoogleAdsResource }
 
 export interface MutateGoogleAdsInput {
   customerId: string
@@ -67,7 +70,7 @@ export interface GoogleAdsMutateDeps {
 }
 
 const SERVICE_SET = new Set<string>(GOOGLE_ADS_MUTATION_SERVICES)
-const OPERATION_KEYS = new Set(['create', 'update', 'updateMask', 'remove', 'mutate'])
+const OPERATION_KEYS = new Set(['create', 'update', 'updateMask', 'remove', 'mutate', 'recommendation'])
 
 function cleanCustomerId(value: string): string {
   const cleaned = value.replace(/-/g, '')
@@ -89,7 +92,8 @@ function isValidOperation(value: unknown): value is GoogleAdsOperation {
   const hasUpdate = Object.hasOwn(value, 'update')
   const hasRemove = Object.hasOwn(value, 'remove')
   const hasMutate = Object.hasOwn(value, 'mutate')
-  if (Number(hasCreate) + Number(hasUpdate) + Number(hasRemove) + Number(hasMutate) !== 1) return false
+  const hasRecommendation = Object.hasOwn(value, 'recommendation')
+  if (Number(hasCreate) + Number(hasUpdate) + Number(hasRemove) + Number(hasMutate) + Number(hasRecommendation) !== 1) return false
 
   if (hasCreate) {
     return isResource(value.create) && !Object.hasOwn(value, 'updateMask')
@@ -100,6 +104,7 @@ function isValidOperation(value: unknown): value is GoogleAdsOperation {
       && value.updateMask.trim().length > 0
   }
   if (hasMutate) return isResource(value.mutate) && !Object.hasOwn(value, 'updateMask')
+  if (hasRecommendation) return isResource(value.recommendation) && !Object.hasOwn(value, 'updateMask')
   return typeof value.remove === 'string'
     && value.remove.trim().length > 0
     && !Object.hasOwn(value, 'updateMask')
@@ -146,8 +151,14 @@ export async function mutateGoogleAds(
   validateOperations(input.operations)
 
   const bulkMutate = input.service === 'googleAds'
+  const recommendationMutation = input.service === 'recommendationsApply'
+    || input.service === 'recommendationsDismiss'
   const hasBulkEnvelopes = input.operations.some(operation => 'mutate' in operation)
-  if (bulkMutate !== hasBulkEnvelopes || (bulkMutate && input.operations.some(operation => !('mutate' in operation)))) {
+  const hasRecommendationEnvelopes = input.operations.some(operation => 'recommendation' in operation)
+  if (bulkMutate !== hasBulkEnvelopes
+    || recommendationMutation !== hasRecommendationEnvelopes
+    || (bulkMutate && input.operations.some(operation => !('mutate' in operation)))
+    || (recommendationMutation && input.operations.some(operation => !('recommendation' in operation)))) {
     throw new Error('Invalid Google Ads mutation operations')
   }
 
@@ -156,18 +167,43 @@ export async function mutateGoogleAds(
     throw new Error('Partial failure is only allowed for independent operations')
   }
 
+  if (recommendationMutation && input.validateOnly) return { results: [] }
+
   const request = deps.request ?? defaultDeps.request
+  let operationBody: Record<string, unknown>
+  if (recommendationMutation) {
+    operationBody = {
+      operations: input.operations.map((operation) => {
+        if ('recommendation' in operation) return operation.recommendation
+        throw new Error('Invalid Google Ads recommendation operation')
+      })
+    }
+  } else if (bulkMutate) {
+    operationBody = {
+      mutateOperations: input.operations.map((operation) => {
+        if ('mutate' in operation) return operation.mutate
+        throw new Error('Invalid Google Ads bulk mutation operation')
+      })
+    }
+  } else {
+    operationBody = { operations: input.operations }
+  }
+  const validationBody = recommendationMutation
+    ? {}
+    : {
+        validateOnly: input.validateOnly,
+        responseContentType: 'MUTABLE_RESOURCE'
+      }
   const response = await request({
-    path: `/customers/${customerId}/${input.service}:mutate`,
+    path: recommendationMutation
+      ? `/customers/${customerId}/recommendations:${input.service === 'recommendationsApply' ? 'apply' : 'dismiss'}`
+      : `/customers/${customerId}/${input.service}:mutate`,
     method: 'POST',
     auth: input.auth,
     body: {
-      ...(bulkMutate
-        ? { mutateOperations: input.operations.map(operation => ('mutate' in operation ? operation.mutate : operation)) }
-        : { operations: input.operations }),
+      ...operationBody,
       partialFailure,
-      validateOnly: input.validateOnly,
-      responseContentType: 'MUTABLE_RESOURCE'
+      ...validationBody
     },
     retries: 0,
     write: true

@@ -424,6 +424,9 @@ const SetListingGroupsArgumentsSchema = z.strictObject({
   assetGroupResourceName: z.string().trim().min(1).max(1_000),
   nodes: ListingGroupNodesInputSchema
 })
+const RecommendationArgumentsSchema = z.strictObject({
+  resourceName: z.string().trim().min(1).max(1_000)
+})
 const PmaxAssetStateSchema = z.object({
   resourceName: z.string(),
   type: z.enum(['TEXT', 'IMAGE', 'YOUTUBE_VIDEO', 'CALL_TO_ACTION', 'MEDIA_BUNDLE']),
@@ -477,6 +480,16 @@ const ListingGroupCurrentStateSchema = z.object({
     merchantId: z.string().nullable()
   }),
   filters: z.array(ExistingListingGroupFilterSchema)
+})
+const RecommendationStateSchema = z.object({
+  resourceName: z.string(),
+  type: z.string().min(1),
+  dismissed: z.boolean(),
+  campaign: z.string().optional(),
+  campaigns: z.array(z.string()),
+  adGroup: z.string().optional(),
+  campaignBudget: z.string().optional(),
+  recommendedBudgetAmountMicros: z.string().optional()
 })
 const AssetLinkStateSchema = z.object({
   resourceName: z.string(),
@@ -686,6 +699,8 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'update_asset_group',
       'manage_asset_group_assets',
       'manage_listing_groups',
+      'apply_recommendation',
+      'dismiss_recommendation',
       'set_campaign_conversion_goals',
       'set_conversion_goal',
       'set_customer_goal_biddability',
@@ -706,7 +721,7 @@ function resourcePattern(customerId: string, segment: string): RegExp {
     || segment === 'campaignCriteria'
     || segment === 'assetGroupSignals'
     ? '\\d+~\\d+'
-    : '\\d+'
+    : segment === 'recommendations' ? '[A-Za-z0-9_-]+' : '\\d+'
   return new RegExp(`^customers/${customerId}/${segment}/${suffix}$`)
 }
 
@@ -797,6 +812,9 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'update_asset_group') return UpdateAssetGroupArgumentsSchema.parse(argumentsValue)
   if (operation === 'manage_asset_group_assets') return SetAssetGroupAssetsArgumentsSchema.parse(argumentsValue)
   if (operation === 'manage_listing_groups') return SetListingGroupsArgumentsSchema.parse(argumentsValue)
+  if (operation === 'apply_recommendation' || operation === 'dismiss_recommendation') {
+    return RecommendationArgumentsSchema.parse(argumentsValue)
+  }
   if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_conversion_goal') return SetCampaignGoalConfigArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_customer_goal_biddability') return SetCustomerGoalBiddabilityArgumentsSchema.parse(argumentsValue)
@@ -2638,6 +2656,39 @@ function buildListingGroupAction(context: BuildGoogleAdsActionContext): BuiltGoo
   }
 }
 
+function buildRecommendationAction(
+  context: BuildGoogleAdsActionContext,
+  disposition: 'APPLIED' | 'DISMISSED'
+): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'recommendation') {
+    throw new Error('Recommendation mutation requires resource type recommendation')
+  }
+  const args = RecommendationArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.resourceName, context.customerId, 'recommendations')
+  const current = RecommendationStateSchema.parse(context.currentState)
+  if (current.resourceName !== args.resourceName) throw new Error('Recommendation state does not match the request')
+  if (current.dismissed) throw new Error('The Google Ads recommendation is already dismissed')
+  const targets = [current.campaign, current.adGroup, current.campaignBudget, ...current.campaigns]
+    .filter((value): value is string => Boolean(value))
+  if (targets.some(resourceName => !resourceName.startsWith(`customers/${context.customerId}/`))) {
+    throw new Error('Recommendation targets another Google Ads customer')
+  }
+  return {
+    resourceName: args.resourceName,
+    desiredState: {
+      ...current,
+      dismissed: disposition === 'DISMISSED',
+      disposition
+    },
+    providerOperations: [{
+      service: disposition === 'APPLIED' ? 'recommendationsApply' : 'recommendationsDismiss',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ recommendation: { resourceName: args.resourceName } }]
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -2684,5 +2735,7 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'update_asset_group') return buildUpdateAssetGroupAction(context)
   if (context.input.operation === 'manage_asset_group_assets') return buildAssetGroupMembershipAction(context)
   if (context.input.operation === 'manage_listing_groups') return buildListingGroupAction(context)
+  if (context.input.operation === 'apply_recommendation') return buildRecommendationAction(context, 'APPLIED')
+  if (context.input.operation === 'dismiss_recommendation') return buildRecommendationAction(context, 'DISMISSED')
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }

@@ -162,6 +162,24 @@ const AssetGroupAssetStateSchema = z.object({
   ]),
   status: z.string().optional()
 })
+const RecommendationProviderStateSchema = z.object({
+  resourceName: z.string(),
+  type: z.string().min(1),
+  dismissed: z.boolean().default(false),
+  campaign: z.string().optional(),
+  campaigns: z.array(z.string()).default([]),
+  adGroup: z.string().optional(),
+  campaignBudget: z.string().optional(),
+  campaignBudgetRecommendation: z.object({
+    recommendedBudgetAmountMicros: z.union([z.string(), z.number()]).transform(String).optional()
+  }).optional(),
+  forecastingCampaignBudgetRecommendation: z.object({
+    recommendedBudgetAmountMicros: z.union([z.string(), z.number()]).transform(String).optional()
+  }).optional(),
+  marginalRoiCampaignBudgetRecommendation: z.object({
+    recommendedBudgetAmountMicros: z.union([z.string(), z.number()]).transform(String).optional()
+  }).optional()
+})
 const AdScheduleStateSchema = z.object({
   dayOfWeek: z.enum([
     'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'
@@ -1035,6 +1053,65 @@ async function loadListingGroupState(
     filters: await loadListingGroupFilters(
       customerId, assetGroupResourceName, auth, dependencies
     )
+  }
+}
+
+async function loadRecommendation(
+  customerId: string,
+  resourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies,
+  allowMissing = false
+): Promise<Record<string, unknown> | null> {
+  if (!new RegExp(`^customers/${customerId}/recommendations/[A-Za-z0-9_-]+$`).test(resourceName)) {
+    throw new Error('Recommendation does not belong to the selected Google Ads customer')
+  }
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT recommendation.resource_name,
+  recommendation.type,
+  recommendation.dismissed,
+  recommendation.campaign,
+  recommendation.campaigns,
+  recommendation.ad_group,
+  recommendation.campaign_budget,
+  recommendation.campaign_budget_recommendation,
+  recommendation.forecasting_campaign_budget_recommendation,
+  recommendation.marginal_roi_campaign_budget_recommendation
+FROM recommendation
+WHERE recommendation.resource_name = '${escapeGaqlString(resourceName)}'`
+  })
+  const row = result.rows[0]
+  const value = row && typeof row === 'object'
+    ? (row as Record<string, unknown>).recommendation
+    : undefined
+  if (!value) {
+    if (allowMissing) return null
+    throw new Error('The Google Ads recommendation is no longer available')
+  }
+  const parsed = RecommendationProviderStateSchema.parse(value)
+  if (parsed.resourceName !== resourceName) throw new Error('Google Ads returned a different recommendation')
+  const targets = [parsed.campaign, parsed.adGroup, parsed.campaignBudget, ...parsed.campaigns]
+    .filter((target): target is string => Boolean(target))
+  if (targets.some(target => !target.startsWith(`customers/${customerId}/`))) {
+    throw new Error('Google Ads returned a cross-customer recommendation target')
+  }
+  const recommendation = parsed.campaignBudgetRecommendation
+    ?? parsed.forecastingCampaignBudgetRecommendation
+    ?? parsed.marginalRoiCampaignBudgetRecommendation
+  return {
+    resourceName: parsed.resourceName,
+    type: parsed.type,
+    dismissed: parsed.dismissed,
+    ...(parsed.campaign ? { campaign: parsed.campaign } : {}),
+    campaigns: parsed.campaigns,
+    ...(parsed.adGroup ? { adGroup: parsed.adGroup } : {}),
+    ...(parsed.campaignBudget ? { campaignBudget: parsed.campaignBudget } : {}),
+    ...(recommendation?.recommendedBudgetAmountMicros
+      ? { recommendedBudgetAmountMicros: recommendation.recommendedBudgetAmountMicros }
+      : {})
   }
 }
 
@@ -2324,6 +2401,13 @@ export async function loadSearchGoogleAdsCurrentState(
       context.customerId, args.assetGroupResourceName, auth, resolved
     )
   }
+  if (context.input.operation === 'apply_recommendation'
+    || context.input.operation === 'dismiss_recommendation') {
+    const args = z.object({ resourceName: z.string() }).parse(
+      parseSearchGoogleAdsArguments(context.input.operation, context.input.arguments)
+    )
+    return loadRecommendation(context.customerId, args.resourceName, auth, resolved)
+  }
   if (context.input.operation === 'update_budget') {
     const args = z.object({ resourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
       context.input.operation,
@@ -2666,6 +2750,23 @@ export async function loadSearchGoogleAdsPlanState(
     return {
       assetGroupResourceName: desired.assetGroupResourceName,
       nodes: normalizeExistingListingGroupFilters(filters)
+    }
+  }
+  if (plan.operation === 'apply_recommendation' || plan.operation === 'dismiss_recommendation') {
+    if (!plan.resourceName) throw new Error('Recommendation plan has no resource name')
+    if (!mutation) return loadRecommendation(plan.customerId, plan.resourceName, auth, resolved)
+    if (mutationResourceName(mutation, plan.operation === 'apply_recommendation'
+      ? 'recommendationsApply'
+      : 'recommendationsDismiss') !== plan.resourceName) {
+      throw new Error('Google Ads returned a different recommendation mutation result')
+    }
+    const state = await loadRecommendation(
+      plan.customerId, plan.resourceName, auth, resolved, true
+    )
+    if (!state) return plan.desiredState
+    return {
+      ...state,
+      disposition: state.dismissed === true ? 'DISMISSED' : 'AVAILABLE'
     }
   }
   if (plan.operation === 'attach_asset' || plan.operation === 'archive_asset_link' || plan.operation === 'detach_asset') {

@@ -56,6 +56,8 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_update_asset_group',
       'google_ads_plan_set_asset_group_assets',
       'google_ads_plan_set_listing_groups',
+      'google_ads_plan_apply_recommendation',
+      'google_ads_plan_dismiss_recommendation',
       'google_ads_plan_create_custom_audience',
       'google_ads_plan_update_custom_audience',
       'google_ads_plan_archive_custom_audience',
@@ -668,6 +670,24 @@ describe('Google Ads Search MCP planning descriptors', () => {
       }
     },
     {
+      tool: 'google_ads_plan_apply_recommendation',
+      args: { resourceName: 'customers/1234567890/recommendations/abc-1' },
+      operation: 'apply_recommendation',
+      resourceType: 'recommendation',
+      expectedArguments: { resourceName: 'customers/1234567890/recommendations/abc-1' }
+    },
+    {
+      tool: 'google_ads_plan_dismiss_recommendation',
+      args: {
+        resourceName: 'customers/1234567890/recommendations/abc-1',
+        requestedMode: 'automatic'
+      },
+      operation: 'dismiss_recommendation',
+      resourceType: 'recommendation',
+      expectedArguments: { resourceName: 'customers/1234567890/recommendations/abc-1' },
+      expectedRequestedMode: 'automatic'
+    },
+    {
       tool: 'google_ads_plan_create_custom_audience',
       args: {
         name: 'Northern GAC intent',
@@ -739,7 +759,8 @@ describe('Google Ads Search MCP planning descriptors', () => {
     args,
     operation,
     resourceType,
-    expectedArguments
+    expectedArguments,
+    expectedRequestedMode = 'proposal'
   }) => {
     const plan = vi.fn().mockResolvedValue({
       id: '22222222-2222-4222-8222-222222222222',
@@ -762,7 +783,7 @@ describe('Google Ads Search MCP planning descriptors', () => {
     expect(plan).toHaveBeenCalledWith(expect.objectContaining({
       operation,
       resourceType,
-      requestedMode: 'proposal',
+      requestedMode: expectedRequestedMode,
       arguments: expectedArguments
     }), expect.any(Object), flags)
   })

@@ -361,7 +361,9 @@ const EXECUTABLE_SEARCH_SERVICES = {
   create_asset_group: ['googleAds'],
   update_asset_group: ['assetGroups'],
   manage_asset_group_assets: ['assetGroupAssets'],
-  manage_listing_groups: ['googleAds']
+  manage_listing_groups: ['googleAds'],
+  apply_recommendation: ['recommendationsApply'],
+  dismiss_recommendation: ['recommendationsDismiss']
 } as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -543,6 +545,42 @@ function isTypedListingGroupReplacement(plan: GoogleAdsActionPlan): boolean {
     && equalJson(mutation.operations, expected))
 }
 
+function isTypedRecommendationMutation(plan: GoogleAdsActionPlan): boolean {
+  const stateSchema = z.object({
+    resourceName: z.string(),
+    type: z.string().min(1),
+    dismissed: z.boolean(),
+    campaign: z.string().optional(),
+    campaigns: z.array(z.string()),
+    adGroup: z.string().optional(),
+    campaignBudget: z.string().optional(),
+    recommendedBudgetAmountMicros: z.string().optional()
+  })
+  const current = stateSchema.safeParse(plan.currentState)
+  if (!current.success || current.data.dismissed || plan.providerOperations.length !== 1) return false
+  const match = current.data.resourceName.match(/^customers\/(\d+)\/recommendations\/[A-Za-z0-9_-]+$/)
+  if (!match || match[1] !== plan.customerId || plan.resourceName !== current.data.resourceName) return false
+  const targets = [
+    current.data.campaign,
+    current.data.adGroup,
+    current.data.campaignBudget,
+    ...current.data.campaigns
+  ].filter((target): target is string => Boolean(target))
+  if (targets.some(target => !target.startsWith(`customers/${plan.customerId}/`))) return false
+  const disposition = plan.operation === 'apply_recommendation' ? 'APPLIED' : 'DISMISSED'
+  if (!equalJson(plan.desiredState, {
+    ...current.data,
+    dismissed: disposition === 'DISMISSED',
+    disposition
+  })) return false
+  const mutation = plan.providerOperations[0]
+  const service = disposition === 'APPLIED' ? 'recommendationsApply' : 'recommendationsDismiss'
+  return Boolean(mutation && mutation.service === service
+    && mutation.atomicity === 'interdependent'
+    && mutation.partialFailure === false
+    && equalJson(mutation.operations, [{ recommendation: { resourceName: current.data.resourceName } }]))
+}
+
 export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): boolean {
   if (!isSearchGoogleAdsOperation(plan.operation) || plan.providerOperations.length === 0) return false
   const services = EXECUTABLE_SEARCH_SERVICES[
@@ -554,6 +592,8 @@ export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): bool
   if (plan.operation === 'update_asset_group') return isTypedAssetGroupUpdate(plan)
   if (plan.operation === 'manage_asset_group_assets') return isTypedAssetGroupMembership(plan)
   if (plan.operation === 'manage_listing_groups') return isTypedListingGroupReplacement(plan)
+  if (plan.operation === 'apply_recommendation'
+    || plan.operation === 'dismiss_recommendation') return isTypedRecommendationMutation(plan)
   if (plan.operation === 'attach_asset'
     || plan.operation === 'archive_asset_link'
     || plan.operation === 'detach_asset') {

@@ -15,25 +15,40 @@ import {
   type ClaimedProposal,
   type WriteConfirmOutcome
 } from './writeTools'
+import { GoogleAdsRecommendationTypeSchema } from '~~/server/utils/googleAds/recommendations'
 
 export const GOOGLE_ADS_VALIDATE_PLAN_TOOL = 'google_ads_validate_action_plan'
 export const GOOGLE_ADS_GET_STATUS_TOOL = 'google_ads_get_action_status'
+export const GOOGLE_ADS_LIST_RECOMMENDATIONS_TOOL = 'google_ads_list_recommendations'
 export const GOOGLE_ADS_PROPOSE_ACTION_TOOL = 'propose_google_ads_action'
 export const GOOGLE_ADS_PENDING_ACTION = 'google_ads_action'
 
 const ActionPlanParams = z.strictObject({
   actionPlanId: z.string().uuid()
 })
+const ListRecommendationsParams = z.strictObject({
+  clientId: z.string().uuid(),
+  connectionId: z.string().uuid(),
+  maxResults: z.number().int().min(1).max(100).default(50),
+  types: z.array(GoogleAdsRecommendationTypeSchema).max(50).default([]),
+  includeDismissed: z.boolean().default(false)
+})
+export type ListGoogleAdsRecommendationsToolInput = z.infer<typeof ListRecommendationsParams>
 
-function descriptor(name: string, description: string): McpToolManifest {
+function descriptor(name: string, description: string, schema: z.ZodType = ActionPlanParams): McpToolManifest {
   return {
     name,
     description,
-    inputSchema: z.toJSONSchema(ActionPlanParams) as Record<string, unknown>
+    inputSchema: z.toJSONSchema(schema) as Record<string, unknown>
   }
 }
 
 export const googleAdsReadTools: McpToolManifest[] = [
+  descriptor(
+    GOOGLE_ADS_LIST_RECOMMENDATIONS_TOOL,
+    'List a bounded, typed Google Ads recommendation inventory with optimization score. Optional type filters are enum-like values; no raw GAQL is accepted.',
+    ListRecommendationsParams
+  ),
   descriptor(
     GOOGLE_ADS_VALIDATE_PLAN_TOOL,
     'Validate a server-issued Google Ads action plan without applying the change. Requires the plan ID returned by a typed Google Ads tool.'
@@ -91,6 +106,10 @@ export function projectGoogleAdsTools(role: string, flags: GoogleAdsMcpFlags): M
 }
 
 export interface GoogleAdsMcpToolDependencies {
+  listRecommendations(
+    input: ListGoogleAdsRecommendationsToolInput,
+    context: ToolContext
+  ): Promise<unknown>
   loadPlan(actionPlanId: string, actorId: string): Promise<GoogleAdsActionPlan | null>
   getStatus(plan: GoogleAdsActionPlan, context: ToolContext): Promise<unknown>
   validatePlan(plan: GoogleAdsActionPlan, context: ToolContext): Promise<unknown>
@@ -122,6 +141,16 @@ export async function executeGoogleAdsTool(
   }
   if (!isWrite && !flags.read) {
     return { ok: false, error: 'Google Ads read tools are not enabled over MCP.', code: 'disabled' }
+  }
+
+  if (name === GOOGLE_ADS_LIST_RECOMMENDATIONS_TOOL) {
+    const listArgs = ListRecommendationsParams.safeParse(args)
+    if (!listArgs.success) return { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
+    try {
+      return { ok: true, data: await dependencies.listRecommendations(listArgs.data, context) }
+    } catch {
+      return { ok: false, error: 'Google Ads recommendation read failed.', code: 'handler_error' }
+    }
   }
 
   const parsed = ActionPlanParams.safeParse(args)

@@ -68,6 +68,7 @@ function dependencies(plan = actionPlan()) {
     loadPlan: vi.fn().mockResolvedValue(plan),
     getStatus: vi.fn().mockResolvedValue({ id: plan.id, status: plan.status }),
     validatePlan: vi.fn().mockResolvedValue({ valid: true, diffs: [] }),
+    listRecommendations: vi.fn().mockResolvedValue({ recommendations: [] }),
     proposePlan: vi.fn().mockResolvedValue({ proposalId: 'proposal-12345' }),
     executeAutomatic: vi.fn().mockResolvedValue({ ok: true, status: 'verified' })
   }
@@ -95,6 +96,24 @@ const context: ToolContext = {
 describe('Google Ads MCP tool projection', () => {
   it('projects no tools when all four flags are false', () => {
     expect(projectGoogleAdsTools('owner', off)).toEqual([])
+  })
+
+  it('lists recommendations through a typed read-only dependency', async () => {
+    const listRecommendations = vi.fn().mockResolvedValue({
+      customerId: '1234567890', optimizationScore: 0.82, recommendations: []
+    })
+    const result = await executeGoogleAdsTool('google_ads_list_recommendations', {
+      clientId: '11111111-1111-4111-8111-111111111111',
+      connectionId: '22222222-2222-4222-8222-222222222222',
+      maxResults: 25,
+      types: ['CAMPAIGN_BUDGET']
+    }, context, { ...off, read: true }, { ...dependencies(), listRecommendations })
+    expect(result).toMatchObject({ ok: true, data: { optimizationScore: 0.82 } })
+    expect(listRecommendations).toHaveBeenCalledWith(expect.objectContaining({
+      maxResults: 25,
+      types: ['CAMPAIGN_BUDGET'],
+      includeDismissed: false
+    }), context)
   })
 
   it('projects read tools only for MEDIA_BUYING roles when read is enabled', () => {
