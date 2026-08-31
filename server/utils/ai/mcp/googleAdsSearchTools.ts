@@ -23,6 +23,7 @@ export const GOOGLE_ADS_PLAN_SET_LOCATION_MATCH_MODE_TOOL = 'google_ads_plan_set
 export const GOOGLE_ADS_PLAN_SET_LANGUAGES_TOOL = 'google_ads_plan_set_languages'
 export const GOOGLE_ADS_PLAN_SET_AD_SCHEDULE_TOOL = 'google_ads_plan_set_ad_schedule'
 export const GOOGLE_ADS_PLAN_SET_DEVICES_TOOL = 'google_ads_plan_set_devices'
+export const GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL = 'google_ads_plan_set_campaign_conversion_goals'
 
 const CommonSchema = {
   clientId: z.string().uuid(),
@@ -180,6 +181,29 @@ const SetDevicesSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Each device type may be specified only once' })
   }
 })
+const ConversionCategorySchema = z.enum([
+  'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
+  'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
+  'PHONE_CALL_LEAD', 'PURCHASE', 'QUALIFIED_LEAD', 'REQUEST_QUOTE', 'SIGNUP', 'STORE_SALE',
+  'STORE_VISIT', 'SUBMIT_LEAD_FORM', 'SUBSCRIBE_PAID', 'YOUTUBE_FOLLOW_ON_VIEWS'
+])
+const ConversionOriginSchema = z.enum([
+  'APP', 'CALL_FROM_ADS', 'GOOGLE_HOSTED', 'LOCAL_SERVICES_ADS', 'STORE', 'WEBSITE', 'YOUTUBE_HOSTED'
+])
+const SetCampaignConversionGoalsSchema = z.strictObject({
+  ...CommonSchema,
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  goals: z.array(z.strictObject({
+    category: ConversionCategorySchema,
+    origin: ConversionOriginSchema,
+    biddable: z.boolean()
+  })).min(1).max(200)
+}).superRefine((value, refinement) => {
+  const keys = value.goals.map(goal => `${goal.category}:${goal.origin}`)
+  if (new Set(keys).size !== keys.length) {
+    refinement.addIssue({ code: 'custom', message: 'Each campaign conversion goal may be specified only once' })
+  }
+})
 
 function manifest(name: string, description: string, schema: z.ZodType): McpToolManifest {
   return {
@@ -264,6 +288,11 @@ export const googleAdsSearchPlanningTools: McpToolManifest[] = [
     GOOGLE_ADS_PLAN_SET_DEVICES_TOOL,
     'Plan device bid modifiers for existing campaign device criteria. Use 0 to opt out or 0.1 through 10 for bid adjustment.',
     SetDevicesSchema
+  ),
+  manifest(
+    GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL,
+    'Plan campaign conversion-goal biddability by typed conversion category and origin. Explicit false values prevent campaign bidding on that goal.',
+    SetCampaignConversionGoalsSchema
   )
 ]
 
@@ -566,6 +595,19 @@ export async function executeGoogleAdsSearchPlanningTool(
           campaignResourceName: args.campaignResourceName,
           devices: args.devices
         }
+      }
+    } else if (name === GOOGLE_ADS_PLAN_SET_CAMPAIGN_CONVERSION_GOALS_TOOL) {
+      const args = SetCampaignConversionGoalsSchema.parse(rawArgs)
+      plannerInput = {
+        clientId: args.clientId,
+        connectionId: args.connectionId,
+        idempotencyKey: args.idempotencyKey,
+        actorId: context.userId,
+        source: 'mcp',
+        requestedMode: 'proposal',
+        operation: 'set_campaign_conversion_goals',
+        resourceType: 'conversion_goal',
+        arguments: { campaignResourceName: args.campaignResourceName, goals: args.goals }
       }
     } else {
       throw new Error('Unsupported Google Ads Search planning tool')

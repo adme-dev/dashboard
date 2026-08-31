@@ -416,6 +416,37 @@ describe('Search Google Ads current-state loader', () => {
     expect(query.mock.calls[1]?.[0]).toMatchObject({ maxRows: 100 })
     expect(query.mock.calls[1]?.[0].query).toContain('campaign_criterion.type = \'DEVICE\'')
   })
+
+  it('loads typed campaign conversion goals by campaign ID', async () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ campaign: { resourceName: campaign } }], more: 0 })
+      .mockResolvedValueOnce({
+        rows: [{ campaignConversionGoal: {
+          resourceName: 'customers/1234567890/campaignConversionGoals/60~REQUEST_QUOTE~WEBSITE',
+          campaign,
+          category: 'REQUEST_QUOTE',
+          origin: 'WEBSITE',
+          biddable: false
+        } }],
+        more: 0
+      })
+
+    await expect(loadSearchGoogleAdsCurrentState(context('set_campaign_conversion_goals', {
+      campaignResourceName: campaign,
+      goals: [{ category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: true }]
+    }), auth, { query })).resolves.toEqual({
+      campaignResourceName: campaign,
+      goals: [{
+        resourceName: 'customers/1234567890/campaignConversionGoals/60~REQUEST_QUOTE~WEBSITE',
+        category: 'REQUEST_QUOTE',
+        origin: 'WEBSITE',
+        biddable: false
+      }]
+    })
+    expect(query.mock.calls[1]?.[0]).toMatchObject({ maxRows: 1_000 })
+    expect(query.mock.calls[1]?.[0].query).toContain('campaign_conversion_goal.campaign')
+  })
 })
 
 describe('Search Google Ads readback verification', () => {

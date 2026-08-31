@@ -156,6 +156,28 @@ const SetDevicesArgumentsSchema = z.strictObject({
     refinement.addIssue({ code: 'custom', message: 'Each device type may be specified only once' })
   }
 })
+const ConversionCategorySchema = z.enum([
+  'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
+  'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
+  'PHONE_CALL_LEAD', 'PURCHASE', 'QUALIFIED_LEAD', 'REQUEST_QUOTE', 'SIGNUP', 'STORE_SALE',
+  'STORE_VISIT', 'SUBMIT_LEAD_FORM', 'SUBSCRIBE_PAID', 'YOUTUBE_FOLLOW_ON_VIEWS'
+])
+const ConversionOriginSchema = z.enum([
+  'APP', 'CALL_FROM_ADS', 'GOOGLE_HOSTED', 'LOCAL_SERVICES_ADS', 'STORE', 'WEBSITE', 'YOUTUBE_HOSTED'
+])
+const SetCampaignConversionGoalsArgumentsSchema = z.strictObject({
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  goals: z.array(z.strictObject({
+    category: ConversionCategorySchema,
+    origin: ConversionOriginSchema,
+    biddable: z.boolean()
+  })).min(1).max(200)
+}).superRefine((value, refinement) => {
+  const keys = value.goals.map(goal => `${goal.category}:${goal.origin}`)
+  if (new Set(keys).size !== keys.length) {
+    refinement.addIssue({ code: 'custom', message: 'Each campaign conversion goal may be specified only once' })
+  }
+})
 
 const STATUS_OPERATIONS = {
   pause_campaign: { resourceType: 'campaign', segment: 'campaigns', service: 'campaigns', status: 'PAUSED' },
@@ -195,7 +217,8 @@ export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): b
       'set_location_match_mode',
       'set_languages',
       'set_ad_schedule',
-      'set_devices'
+      'set_devices',
+      'set_campaign_conversion_goals'
     ].includes(operation)
 }
 
@@ -278,6 +301,7 @@ export function parseSearchGoogleAdsArguments(
   if (operation === 'set_languages') return SetLanguagesArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_ad_schedule') return SetAdScheduleArgumentsSchema.parse(argumentsValue)
   if (operation === 'set_devices') return SetDevicesArgumentsSchema.parse(argumentsValue)
+  if (operation === 'set_campaign_conversion_goals') return SetCampaignConversionGoalsArgumentsSchema.parse(argumentsValue)
   throw new Error(`Unsupported Search Google Ads operation: ${operation}`)
 }
 
@@ -761,6 +785,57 @@ function buildDeviceAction(context: BuildGoogleAdsActionContext): BuiltGoogleAds
   }
 }
 
+function buildCampaignConversionGoalAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'conversion_goal') throw new Error('Campaign goals require resource type conversion_goal')
+  const args = SetCampaignConversionGoalsArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.campaignResourceName, context.customerId, 'campaigns')
+  const GoalSchema = z.object({
+    resourceName: z.string().optional(),
+    category: ConversionCategorySchema,
+    origin: ConversionOriginSchema,
+    biddable: z.boolean()
+  })
+  const current = z.object({
+    campaignResourceName: z.literal(args.campaignResourceName),
+    goals: z.array(GoalSchema)
+  }).parse(context.currentState)
+  const key = (goal: { category: string, origin: string }) => `${goal.category}:${goal.origin}`
+  const requested = new Map(args.goals.map(goal => [key(goal), goal]))
+  const currentByKey = new Map(current.goals.map(goal => [key(goal), goal]))
+  const operations: Array<
+    | { update: Record<string, unknown>, updateMask: string }
+    | { create: Record<string, unknown> }
+  > = []
+  for (const goal of args.goals) {
+    const existing = currentByKey.get(key(goal))
+    if (existing?.resourceName) {
+      const campaignId = args.campaignResourceName.slice(args.campaignResourceName.lastIndexOf('/') + 1)
+      const expected = `customers/${context.customerId}/campaignConversionGoals/${campaignId}~${goal.category}~${goal.origin}`
+      if (existing.resourceName !== expected) throw new Error('Campaign conversion goal does not belong to the selected campaign')
+      if (existing.biddable !== goal.biddable) {
+        operations.push({ update: { resourceName: existing.resourceName, biddable: goal.biddable }, updateMask: 'biddable' })
+      }
+    } else {
+      operations.push({ create: {
+        campaign: args.campaignResourceName,
+        category: goal.category,
+        origin: goal.origin,
+        biddable: goal.biddable
+      } })
+    }
+  }
+  if (operations.length === 0) throw new Error('Campaign conversion goals already match the requested values')
+  const desiredGoals = [
+    ...current.goals.map(goal => requested.has(key(goal)) ? { ...goal, biddable: requested.get(key(goal))!.biddable } : goal),
+    ...args.goals.filter(goal => !currentByKey.has(key(goal)))
+  ].sort((left, right) => key(left).localeCompare(key(right)))
+  return {
+    resourceName: args.campaignResourceName,
+    desiredState: { campaignResourceName: args.campaignResourceName, goals: desiredGoals },
+    providerOperations: [{ service: 'campaignConversionGoals', atomicity: 'interdependent', partialFailure: false, operations }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -780,5 +855,6 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'set_languages') return buildLanguageAction(context)
   if (context.input.operation === 'set_ad_schedule') return buildAdScheduleAction(context)
   if (context.input.operation === 'set_devices') return buildDeviceAction(context)
+  if (context.input.operation === 'set_campaign_conversion_goals') return buildCampaignConversionGoalAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }

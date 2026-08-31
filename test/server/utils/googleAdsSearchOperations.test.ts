@@ -594,6 +594,50 @@ describe('Search Google Ads construction operations', () => {
     }])
   })
 
+  it('creates and updates typed campaign conversion goals in one governed request', () => {
+    const campaign = 'customers/1234567890/campaigns/60'
+    const requestQuote = 'customers/1234567890/campaignConversionGoals/60~REQUEST_QUOTE~WEBSITE'
+    const built = buildSearchGoogleAdsAction(context(
+      'set_campaign_conversion_goals',
+      'conversion_goal',
+      {
+        campaignResourceName: campaign,
+        goals: [
+          { category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: true },
+          { category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: false }
+        ]
+      },
+      {
+        campaignResourceName: campaign,
+        goals: [
+          { resourceName: requestQuote, category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: false }
+        ]
+      }
+    ))
+
+    expect(built.desiredState).toEqual({
+      campaignResourceName: campaign,
+      goals: [
+        { resourceName: requestQuote, category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: true },
+        { category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: false }
+      ]
+    })
+    expect(built.providerOperations).toEqual([{
+      service: 'campaignConversionGoals',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [
+        { update: { resourceName: requestQuote, biddable: true }, updateMask: 'biddable' },
+        { create: {
+          campaign,
+          category: 'SUBMIT_LEAD_FORM',
+          origin: 'WEBSITE',
+          biddable: false
+        } }
+      ]
+    }])
+  })
+
   it('rejects unsafe URLs and campaigns that attempt to start enabled', () => {
     expect(() => buildSearchGoogleAdsAction(context(
       'create_ad',

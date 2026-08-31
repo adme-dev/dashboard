@@ -32,7 +32,8 @@ describe('Google Ads Search MCP planning descriptors', () => {
       'google_ads_plan_set_location_match_mode',
       'google_ads_plan_set_languages',
       'google_ads_plan_set_ad_schedule',
-      'google_ads_plan_set_devices'
+      'google_ads_plan_set_devices',
+      'google_ads_plan_set_campaign_conversion_goals'
     ])
     const serialized = JSON.stringify(googleAdsSearchPlanningTools)
     expect(serialized).not.toMatch(/"(?:query|operations|url|accessToken|developerToken)"/)
@@ -264,6 +265,25 @@ describe('Google Ads Search MCP planning descriptors', () => {
         devices: [
           { type: 'MOBILE', bidModifier: 0 },
           { type: 'DESKTOP', bidModifier: 1.2 }
+        ]
+      }
+    },
+    {
+      tool: 'google_ads_plan_set_campaign_conversion_goals',
+      args: {
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        goals: [
+          { category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: true },
+          { category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: false }
+        ]
+      },
+      operation: 'set_campaign_conversion_goals',
+      resourceType: 'conversion_goal',
+      expectedArguments: {
+        campaignResourceName: 'customers/1234567890/campaigns/60',
+        goals: [
+          { category: 'REQUEST_QUOTE', origin: 'WEBSITE', biddable: true },
+          { category: 'SUBMIT_LEAD_FORM', origin: 'WEBSITE', biddable: false }
         ]
       }
     }

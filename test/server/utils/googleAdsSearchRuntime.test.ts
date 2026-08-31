@@ -199,7 +199,8 @@ describe('Search Google Ads governed execution runtime', () => {
     ['set_location_match_mode', 'campaigns'],
     ['set_languages', 'campaignCriteria'],
     ['set_ad_schedule', 'campaignCriteria'],
-    ['set_devices', 'campaignCriteria']
+    ['set_devices', 'campaignCriteria'],
+    ['set_campaign_conversion_goals', 'campaignConversionGoals']
   ] as const)('activates governed execution for %s', (operation, service) => {
     expect(isExecutableSearchGoogleAdsPlan({
       operation,

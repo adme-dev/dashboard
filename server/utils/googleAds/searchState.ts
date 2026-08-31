@@ -930,6 +930,54 @@ WHERE campaign.id = ${campaignId}
   return { campaignResourceName, devices }
 }
 
+async function loadCampaignConversionGoals(
+  customerId: string,
+  campaignResourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<{ campaignResourceName: string, goals: Array<Record<string, unknown>> }> {
+  assertCustomerResourceName(campaignResourceName, customerId, 'campaigns')
+  const [campaignId] = resourceIds(campaignResourceName)
+  const parent = await dependencies.query({
+    customerId, auth, maxRows: 1,
+    query: `SELECT campaign.resource_name FROM campaign WHERE campaign.id = ${campaignId}`
+  })
+  const campaign = parent.rows[0] && typeof parent.rows[0] === 'object'
+    ? (parent.rows[0] as Record<string, unknown>).campaign
+    : undefined
+  if (!z.object({ resourceName: z.literal(campaignResourceName) }).safeParse(campaign).success) {
+    throw new Error('The referenced campaign was not found')
+  }
+  const result = await dependencies.query({
+    customerId, auth, maxRows: 1_000,
+    query: `SELECT campaign_conversion_goal.resource_name,
+  campaign_conversion_goal.campaign,
+  campaign_conversion_goal.category,
+  campaign_conversion_goal.origin,
+  campaign_conversion_goal.biddable
+FROM campaign_conversion_goal
+WHERE campaign.id = ${campaignId}`
+  })
+  if (result.more > 0) throw new Error('Google Ads campaign conversion-goal state exceeds the safe read limit')
+  const Category = z.enum([
+    'ADD_TO_CART', 'BEGIN_CHECKOUT', 'BOOK_APPOINTMENT', 'CONTACT', 'CONVERTED_LEAD', 'DEFAULT',
+    'DOWNLOAD', 'ENGAGEMENT', 'GET_DIRECTIONS', 'IMPORTED_LEAD', 'OUTBOUND_CLICK', 'PAGE_VIEW',
+    'PHONE_CALL_LEAD', 'PURCHASE', 'QUALIFIED_LEAD', 'REQUEST_QUOTE', 'SIGNUP', 'STORE_SALE',
+    'STORE_VISIT', 'SUBMIT_LEAD_FORM', 'SUBSCRIBE_PAID', 'YOUTUBE_FOLLOW_ON_VIEWS'
+  ])
+  const Origin = z.enum(['APP', 'CALL_FROM_ADS', 'GOOGLE_HOSTED', 'LOCAL_SERVICES_ADS', 'STORE', 'WEBSITE', 'YOUTUBE_HOSTED'])
+  const goals = result.rows.map((row) => {
+    const parsed = z.object({
+      resourceName: z.string(), campaign: z.literal(campaignResourceName),
+      category: Category, origin: Origin, biddable: z.boolean()
+    }).parse(row && typeof row === 'object' ? (row as Record<string, unknown>).campaignConversionGoal : undefined)
+    const expected = `customers/${customerId}/campaignConversionGoals/${campaignId}~${parsed.category}~${parsed.origin}`
+    if (parsed.resourceName !== expected) throw new Error('Google Ads returned a conversion goal outside the selected campaign')
+    return { resourceName: parsed.resourceName, category: parsed.category, origin: parsed.origin, biddable: parsed.biddable }
+  }).sort((left, right) => `${left.category}:${left.origin}`.localeCompare(`${right.category}:${right.origin}`))
+  return { campaignResourceName, goals }
+}
+
 export async function loadSearchGoogleAdsCurrentState(
   context: Omit<BuildGoogleAdsActionContext, 'currentState'>,
   auth: GoogleAdsAuth,
@@ -1081,6 +1129,12 @@ export async function loadSearchGoogleAdsCurrentState(
       resolved
     )
   }
+  if (context.input.operation === 'set_campaign_conversion_goals') {
+    const args = z.object({ campaignResourceName: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation, context.input.arguments
+    ))
+    return loadCampaignConversionGoals(context.customerId, args.campaignResourceName, auth, resolved)
+  }
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }
 
@@ -1224,6 +1278,10 @@ export async function loadSearchGoogleAdsPlanState(
       auth,
       resolved
     )
+  }
+  if (plan.operation === 'set_campaign_conversion_goals') {
+    const desired = z.object({ campaignResourceName: z.string() }).parse(plan.desiredState)
+    return loadCampaignConversionGoals(plan.customerId, desired.campaignResourceName, auth, resolved)
   }
   if (!plan.resourceName) throw new Error('Search Google Ads plan has no resource name')
   const negative = plan.operation === 'add_negative_keywords'
