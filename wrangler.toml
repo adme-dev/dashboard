@@ -295,6 +295,13 @@ CRM_SEARCH_RELEASE_ENVIRONMENT = "production"
 
 [env.preview]
 
+# Page Studio staging services are private WorkerEntrypoint bindings. Production
+# bindings remain deliberately absent until the standalone production workers
+# and customer-routing acceptance gates are complete.
+[[env.preview.services]]
+binding = "PAGE_STUDIO_BUILD"
+service = "xeroflow-page-studio-build-staging"
+
 [[env.preview.queues.producers]]
 binding = "CRM_SEARCH_INDEX_QUEUE"
 queue = "agency-crm-search-index-preview"
