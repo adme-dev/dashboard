@@ -1,9 +1,11 @@
 # Google Ads MCP Control Plane
 
 **Date:** 2026-08-31
-**Status:** Approved design; implementation planning pending
+**Status:** Core control plane implemented behind default-off flags; staged rollout and campaign-family expansion pending
 **Product:** XeroFlow Agency Dashboard
 **Owner:** Agency media operations
+
+**Operator runbook:** [Google Ads MCP control plane](../../runbooks/google-ads-mcp-control-plane.md)
 
 ## Purpose
 
