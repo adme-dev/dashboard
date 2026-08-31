@@ -161,3 +161,158 @@ describe('Search Google Ads negative keyword operations', () => {
     })).toThrow()
   })
 })
+
+describe('Search Google Ads construction operations', () => {
+  it('creates a standard campaign budget from a human daily amount', () => {
+    const built = buildSearchGoogleAdsAction(context(
+      'create_budget',
+      'budget',
+      { name: 'Northern Search Budget', dailyAmount: 40 },
+      { exists: false }
+    ))
+    expect(built).toEqual({
+      resourceName: null,
+      desiredState: {
+        name: 'Northern Search Budget',
+        amountMicros: '40000000',
+        deliveryMethod: 'STANDARD',
+        explicitlyShared: false
+      },
+      providerOperations: [{
+        service: 'campaignBudgets',
+        atomicity: 'interdependent',
+        partialFailure: false,
+        operations: [{ create: {
+          name: 'Northern Search Budget',
+          amountMicros: '40000000',
+          deliveryMethod: 'STANDARD',
+          explicitlyShared: false
+        } }]
+      }]
+    })
+  })
+
+  it('creates Search campaigns paused with no Display expansion', () => {
+    const built = buildSearchGoogleAdsAction(context(
+      'create_campaign',
+      'campaign',
+      {
+        name: 'Northern GAC Search',
+        budgetResourceName: 'customers/1234567890/campaignBudgets/50',
+        includeSearchPartners: false
+      },
+      { exists: false }
+    ))
+    expect(built.providerOperations[0]).toMatchObject({
+      service: 'campaigns',
+      operations: [{ create: {
+        name: 'Northern GAC Search',
+        status: 'PAUSED',
+        advertisingChannelType: 'SEARCH',
+        campaignBudget: 'customers/1234567890/campaignBudgets/50',
+        manualCpc: {},
+        networkSettings: {
+          targetGoogleSearch: true,
+          targetSearchNetwork: true,
+          targetPartnerSearchNetwork: false,
+          targetContentNetwork: false
+        },
+        containsEuPoliticalAdvertising: 'DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING'
+      } }]
+    })
+    expect((built.desiredState as { status: string }).status).toBe('PAUSED')
+  })
+
+  it('creates ad groups and positive keywords paused', () => {
+    const campaign = 'customers/1234567890/campaigns/10'
+    const adGroup = 'customers/1234567890/adGroups/20'
+    const builtAdGroup = buildSearchGoogleAdsAction(context(
+      'create_ad_group',
+      'ad_group',
+      { name: 'SUV Models', campaignResourceName: campaign, cpcBid: 3.5 },
+      { exists: false }
+    ))
+    expect(builtAdGroup.providerOperations[0]?.operations[0]).toEqual({ create: {
+      name: 'SUV Models',
+      campaign,
+      type: 'SEARCH_STANDARD',
+      status: 'PAUSED',
+      cpcBidMicros: '3500000'
+    } })
+
+    const builtKeywords = buildSearchGoogleAdsAction(context(
+      'add_keywords',
+      'keyword',
+      {
+        adGroupResourceName: adGroup,
+        keywords: [{ text: 'new suv', matchType: 'PHRASE' }]
+      },
+      { criteria: [] }
+    ))
+    expect(builtKeywords.providerOperations[0]?.operations[0]).toEqual({ create: {
+      adGroup,
+      status: 'PAUSED',
+      negative: false,
+      keyword: { text: 'new suv', matchType: 'PHRASE' }
+    } })
+  })
+
+  it('creates responsive search ads paused with typed text assets', () => {
+    const adGroup = 'customers/1234567890/adGroups/20'
+    const built = buildSearchGoogleAdsAction(context(
+      'create_ad',
+      'ad',
+      {
+        adGroupResourceName: adGroup,
+        finalUrl: 'https://example.com/suv',
+        headlines: ['Explore New SUVs', 'Book a Test Drive', 'Northern Motors'],
+        descriptions: ['Browse the latest SUV range today.', 'Enquire online with Northern Motors.'],
+        path1: 'new',
+        path2: 'suv'
+      },
+      { exists: false }
+    ))
+    expect(built.providerOperations[0]).toMatchObject({
+      service: 'adGroupAds',
+      operations: [{ create: {
+        adGroup,
+        status: 'PAUSED',
+        ad: {
+          finalUrls: ['https://example.com/suv'],
+          responsiveSearchAd: {
+            headlines: [
+              { text: 'Explore New SUVs' },
+              { text: 'Book a Test Drive' },
+              { text: 'Northern Motors' }
+            ],
+            descriptions: [
+              { text: 'Browse the latest SUV range today.' },
+              { text: 'Enquire online with Northern Motors.' }
+            ],
+            path1: 'new',
+            path2: 'suv'
+          }
+        }
+      } }]
+    })
+  })
+
+  it('rejects unsafe URLs and campaigns that attempt to start enabled', () => {
+    expect(() => buildSearchGoogleAdsAction(context(
+      'create_ad',
+      'ad',
+      {
+        adGroupResourceName: 'customers/1234567890/adGroups/20',
+        finalUrl: 'javascript:alert(1)',
+        headlines: ['One', 'Two', 'Three'],
+        descriptions: ['First', 'Second']
+      },
+      { exists: false }
+    ))).toThrow()
+    expect(() => parseSearchGoogleAdsArguments('create_campaign', {
+      name: 'Unsafe Campaign',
+      budgetResourceName: 'customers/1234567890/campaignBudgets/50',
+      status: 'ENABLED'
+    })).toThrow()
+  })
+})

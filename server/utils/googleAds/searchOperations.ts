@@ -20,6 +20,45 @@ const NegativeKeywordArgumentsSchema = z.strictObject({
   parentResourceName: z.string().trim().min(1).max(1_000),
   keywords: z.array(NegativeKeywordSchema).min(1).max(100)
 })
+const CreateBudgetArgumentsSchema = z.strictObject({
+  name: z.string().trim().min(1).max(255),
+  dailyAmount: z.number().finite().positive().max(1_000_000)
+})
+const UpdateBudgetArgumentsSchema = z.strictObject({
+  resourceName: z.string().trim().min(1).max(1_000),
+  dailyAmount: z.number().finite().positive().max(1_000_000)
+})
+const CreateCampaignArgumentsSchema = z.strictObject({
+  name: z.string().trim().min(1).max(255),
+  budgetResourceName: z.string().trim().min(1).max(1_000),
+  includeSearchPartners: z.boolean().default(false),
+  startDateTime: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/).optional(),
+  endDateTime: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/).optional()
+})
+const CreateAdGroupArgumentsSchema = z.strictObject({
+  name: z.string().trim().min(1).max(255),
+  campaignResourceName: z.string().trim().min(1).max(1_000),
+  cpcBid: z.number().finite().positive().max(1_000_000).optional()
+})
+const PositiveKeywordArgumentsSchema = z.strictObject({
+  adGroupResourceName: z.string().trim().min(1).max(1_000),
+  keywords: z.array(NegativeKeywordSchema).min(1).max(100)
+})
+const CreateResponsiveSearchAdArgumentsSchema = z.strictObject({
+  adGroupResourceName: z.string().trim().min(1).max(1_000),
+  finalUrl: z.string().url().refine(value => value.startsWith('https://')),
+  headlines: z.array(z.string().trim().min(1).max(30)).min(3).max(15),
+  descriptions: z.array(z.string().trim().min(1).max(90)).min(2).max(4),
+  path1: z.string().trim().min(1).max(15).optional(),
+  path2: z.string().trim().min(1).max(15).optional()
+}).superRefine((value, context) => {
+  if (new Set(value.headlines.map(text => text.toLocaleLowerCase('en-AU'))).size !== value.headlines.length) {
+    context.addIssue({ code: 'custom', message: 'Responsive search ad headlines must be unique' })
+  }
+  if (new Set(value.descriptions.map(text => text.toLocaleLowerCase('en-AU'))).size !== value.descriptions.length) {
+    context.addIssue({ code: 'custom', message: 'Responsive search ad descriptions must be unique' })
+  }
+})
 
 const STATUS_OPERATIONS = {
   pause_campaign: { resourceType: 'campaign', segment: 'campaigns', service: 'campaigns', status: 'PAUSED' },
@@ -46,7 +85,16 @@ function isStatusOperation(operation: GoogleAdsOperationType): operation is Stat
 }
 
 export function isSearchGoogleAdsOperation(operation: GoogleAdsOperationType): boolean {
-  return isStatusOperation(operation) || operation === 'add_negative_keywords'
+  return isStatusOperation(operation)
+    || [
+      'add_negative_keywords',
+      'create_budget',
+      'update_budget',
+      'create_campaign',
+      'create_ad_group',
+      'create_ad',
+      'add_keywords'
+    ].includes(operation)
 }
 
 function resourcePattern(customerId: string, segment: string): RegExp {
@@ -90,6 +138,12 @@ export function parseSearchGoogleAdsArguments(
 ): unknown {
   if (isStatusOperation(operation)) return ResourceNameArgumentsSchema.parse(argumentsValue)
   if (operation === 'add_negative_keywords') return NegativeKeywordArgumentsSchema.parse(argumentsValue)
+  if (operation === 'create_budget') return CreateBudgetArgumentsSchema.parse(argumentsValue)
+  if (operation === 'update_budget') return UpdateBudgetArgumentsSchema.parse(argumentsValue)
+  if (operation === 'create_campaign') return CreateCampaignArgumentsSchema.parse(argumentsValue)
+  if (operation === 'create_ad_group') return CreateAdGroupArgumentsSchema.parse(argumentsValue)
+  if (operation === 'create_ad') return CreateResponsiveSearchAdArgumentsSchema.parse(argumentsValue)
+  if (operation === 'add_keywords') return PositiveKeywordArgumentsSchema.parse(argumentsValue)
   throw new Error(`Unsupported Search Google Ads operation: ${operation}`)
 }
 
@@ -160,6 +214,148 @@ function buildNegativeKeywordAction(context: BuildGoogleAdsActionContext): Built
   }
 }
 
+function amountMicros(value: number): string {
+  const micros = Math.round(value * 1_000_000)
+  if (!Number.isSafeInteger(micros) || micros <= 0) throw new Error('Google Ads amount is outside the safe range')
+  return String(micros)
+}
+
+function createAction(
+  service: 'campaignBudgets' | 'campaigns' | 'adGroups' | 'adGroupAds',
+  desiredState: Record<string, unknown>,
+  resourceName: string | null = null
+): BuiltGoogleAdsAction {
+  return {
+    resourceName,
+    desiredState,
+    providerOperations: [{
+      service,
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{ create: desiredState }]
+    }]
+  }
+}
+
+function buildBudgetAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'budget') throw new Error('Budget operation requires resource type budget')
+  if (context.input.operation === 'create_budget') {
+    const args = CreateBudgetArgumentsSchema.parse(context.input.arguments)
+    return createAction('campaignBudgets', {
+      name: args.name,
+      amountMicros: amountMicros(args.dailyAmount),
+      deliveryMethod: 'STANDARD',
+      explicitlyShared: false
+    })
+  }
+  const args = UpdateBudgetArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.resourceName, context.customerId, 'campaignBudgets')
+  const desiredState = {
+    ...(context.currentState && typeof context.currentState === 'object' ? context.currentState : {}),
+    resourceName: args.resourceName,
+    amountMicros: amountMicros(args.dailyAmount)
+  }
+  return {
+    resourceName: args.resourceName,
+    desiredState,
+    providerOperations: [{
+      service: 'campaignBudgets',
+      atomicity: 'interdependent',
+      partialFailure: false,
+      operations: [{
+        update: { resourceName: args.resourceName, amountMicros: amountMicros(args.dailyAmount) },
+        updateMask: 'amount_micros'
+      }]
+    }]
+  }
+}
+
+function buildCreateCampaignAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'campaign') throw new Error('Campaign creation requires resource type campaign')
+  const args = CreateCampaignArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.budgetResourceName, context.customerId, 'campaignBudgets')
+  return createAction('campaigns', {
+    name: args.name,
+    status: 'PAUSED',
+    advertisingChannelType: 'SEARCH',
+    campaignBudget: args.budgetResourceName,
+    manualCpc: {},
+    networkSettings: {
+      targetGoogleSearch: true,
+      targetSearchNetwork: true,
+      targetPartnerSearchNetwork: args.includeSearchPartners,
+      targetContentNetwork: false
+    },
+    containsEuPoliticalAdvertising: 'DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING',
+    ...(args.startDateTime ? { startDateTime: args.startDateTime } : {}),
+    ...(args.endDateTime ? { endDateTime: args.endDateTime } : {})
+  })
+}
+
+function buildCreateAdGroupAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'ad_group') throw new Error('Ad group creation requires resource type ad_group')
+  const args = CreateAdGroupArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.campaignResourceName, context.customerId, 'campaigns')
+  return createAction('adGroups', {
+    name: args.name,
+    campaign: args.campaignResourceName,
+    type: 'SEARCH_STANDARD',
+    status: 'PAUSED',
+    ...(args.cpcBid === undefined ? {} : { cpcBidMicros: amountMicros(args.cpcBid) })
+  })
+}
+
+function buildCreateResponsiveSearchAdAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'ad') throw new Error('Ad creation requires resource type ad')
+  const args = CreateResponsiveSearchAdArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.adGroupResourceName, context.customerId, 'adGroups')
+  const desiredState = {
+    adGroup: args.adGroupResourceName,
+    status: 'PAUSED',
+    ad: {
+      finalUrls: [args.finalUrl],
+      responsiveSearchAd: {
+        headlines: args.headlines.map(text => ({ text })),
+        descriptions: args.descriptions.map(text => ({ text })),
+        ...(args.path1 ? { path1: args.path1 } : {}),
+        ...(args.path2 ? { path2: args.path2 } : {})
+      }
+    }
+  }
+  return createAction('adGroupAds', desiredState, args.adGroupResourceName)
+}
+
+function buildPositiveKeywordAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
+  if (context.input.resourceType !== 'keyword') throw new Error('Keyword creation requires resource type keyword')
+  const args = PositiveKeywordArgumentsSchema.parse(context.input.arguments)
+  assertResourceName(args.adGroupResourceName, context.customerId, 'adGroups')
+  const seen = new Set<string>()
+  const additions = args.keywords.flatMap((keyword) => {
+    const normalized = { text: normalizeKeywordText(keyword.text), matchType: keyword.matchType }
+    const key = keywordKey(normalized)
+    if (seen.has(key)) return []
+    seen.add(key)
+    return [normalized]
+  })
+  return {
+    resourceName: args.adGroupResourceName,
+    desiredState: {
+      criteria: additions.map(keyword => ({ ...keyword, negative: false, status: 'PAUSED' }))
+    },
+    providerOperations: [{
+      service: 'adGroupCriteria',
+      atomicity: 'independent',
+      partialFailure: additions.length > 1,
+      operations: additions.map(keyword => ({ create: {
+        adGroup: args.adGroupResourceName,
+        status: 'PAUSED',
+        negative: false,
+        keyword
+      } }))
+    }]
+  }
+}
+
 export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext): BuiltGoogleAdsAction {
   if (isStatusOperation(context.input.operation)) {
     return buildStatusAction(context, context.input.operation)
@@ -167,5 +363,12 @@ export function buildSearchGoogleAdsAction(context: BuildGoogleAdsActionContext)
   if (context.input.operation === 'add_negative_keywords') {
     return buildNegativeKeywordAction(context)
   }
+  if (context.input.operation === 'create_budget' || context.input.operation === 'update_budget') {
+    return buildBudgetAction(context)
+  }
+  if (context.input.operation === 'create_campaign') return buildCreateCampaignAction(context)
+  if (context.input.operation === 'create_ad_group') return buildCreateAdGroupAction(context)
+  if (context.input.operation === 'create_ad') return buildCreateResponsiveSearchAdAction(context)
+  if (context.input.operation === 'add_keywords') return buildPositiveKeywordAction(context)
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }

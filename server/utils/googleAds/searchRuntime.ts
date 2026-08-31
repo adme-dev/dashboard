@@ -284,7 +284,15 @@ const defaultExecutionDependencies: SearchGoogleAdsExecutionDependencies = {
 }
 
 export function isExecutableSearchGoogleAdsPlan(plan: GoogleAdsActionPlan): boolean {
+  const activeOperation = [
+    'pause_campaign', 'archive_campaign', 'enable_campaign', 'set_campaign_status',
+    'pause_ad_group', 'archive_ad_group', 'enable_ad_group', 'set_ad_group_status',
+    'pause_ad', 'archive_ad', 'enable_ad', 'update_ad_status',
+    'pause_keyword', 'enable_keyword', 'set_keyword_status',
+    'add_negative_keywords'
+  ].includes(plan.operation)
   return isSearchGoogleAdsOperation(plan.operation)
+    && activeOperation
     && plan.providerOperations.length === 1
 }
 
