@@ -53,7 +53,10 @@ export interface GoogleAdsActionExecutorDependencies {
   claim(plan: GoogleAdsActionPlan, expectedStatus: 'planned' | 'approved'): Promise<boolean>
   validate(plan: GoogleAdsActionPlan): Promise<GoogleAdsMutateResult>
   mutate(plan: GoogleAdsActionPlan): Promise<GoogleAdsMutateResult>
-  verify(plan: GoogleAdsActionPlan): Promise<{ ok: boolean, diffs: GoogleAdsVerificationDiff[] }>
+  verify(
+    plan: GoogleAdsActionPlan,
+    mutation: GoogleAdsMutateResult
+  ): Promise<{ ok: boolean, diffs: GoogleAdsVerificationDiff[] }>
   event(input: GoogleAdsExecutionEventInput): Promise<void>
   complete(input: CompleteGoogleAdsExecutionInput): Promise<void>
 }
@@ -266,7 +269,7 @@ export async function executeGoogleAdsAction(
 
     let verification: { ok: boolean, diffs: GoogleAdsVerificationDiff[] }
     try {
-      verification = VerificationResultSchema.parse(await dependencies.verify(plan))
+      verification = VerificationResultSchema.parse(await dependencies.verify(plan, mutation))
     } catch {
       await recordCompletion(dependencies, plan, {
         status: 'recovery_required',

@@ -91,6 +91,28 @@ describe('Search Google Ads current-state loader', () => {
       { query: vi.fn().mockResolvedValue({ rows: [], more: 0 }) }
     )).rejects.toThrow('was not found')
   })
+
+  it('checks budget names before planning creation', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [], more: 0 })
+    await expect(loadSearchGoogleAdsCurrentState(context('create_budget', {
+      name: 'Northern Search Budget',
+      dailyAmount: 40
+    }), auth, { query })).resolves.toEqual({ exists: false })
+    expect(query.mock.calls[0]?.[0]).toMatchObject({ maxRows: 1 })
+    expect(query.mock.calls[0]?.[0].query).toContain('campaign_budget.name = \'Northern Search Budget\'')
+  })
+
+  it('refuses to plan a duplicate named budget', async () => {
+    await expect(loadSearchGoogleAdsCurrentState(context('create_budget', {
+      name: 'Northern Search Budget',
+      dailyAmount: 40
+    }), auth, {
+      query: vi.fn().mockResolvedValue({
+        rows: [{ campaignBudget: { resourceName: 'customers/1234567890/campaignBudgets/50' } }],
+        more: 0
+      })
+    })).rejects.toThrow('already exists')
+  })
 })
 
 describe('Search Google Ads readback verification', () => {
@@ -116,6 +138,17 @@ describe('Search Google Ads readback verification', () => {
       diffs: [{ field: 'status', expected: 'PAUSED', actual: 'ENABLED' }]
     })
   })
+
+  it('ignores provider-assigned identifiers while verifying expected create fields', () => {
+    expect(verifySearchGoogleAdsState(
+      { name: 'Northern Search Budget', amountMicros: '40000000' },
+      {
+        resourceName: 'customers/1234567890/campaignBudgets/50',
+        name: 'Northern Search Budget',
+        amountMicros: '40000000'
+      }
+    )).toEqual({ ok: true, diffs: [] })
+  })
 })
 
 describe('Search Google Ads persisted-plan state loading', () => {
@@ -137,5 +170,45 @@ describe('Search Google Ads persisted-plan state loading', () => {
 
     await expect(loadSearchGoogleAdsPlanState(plan, auth, { query })).resolves.toEqual({ criteria: [] })
     expect(query.mock.calls[0]?.[0].query).toContain('FROM campaign_criterion')
+  })
+
+  it('uses the provider mutation resource name to read back a created budget', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ campaignBudget: {
+        resourceName: 'customers/1234567890/campaignBudgets/50',
+        name: 'Northern Search Budget',
+        amountMicros: '40000000',
+        deliveryMethod: 'STANDARD',
+        explicitlyShared: false
+      } }],
+      more: 0
+    })
+    const plan = {
+      operation: 'create_budget',
+      resourceType: 'budget',
+      resourceName: null,
+      customerId: '1234567890',
+      clientId: '11111111-1111-4111-8111-111111111111',
+      connectionId: '22222222-2222-4222-8222-222222222222',
+      actorId: '33333333-3333-4333-8333-333333333333',
+      source: 'mcp',
+      executionMode: 'proposal',
+      idempotencyKey: 'budget-1',
+      desiredState: {
+        name: 'Northern Search Budget',
+        amountMicros: '40000000',
+        deliveryMethod: 'STANDARD',
+        explicitlyShared: false
+      },
+      providerOperations: [{ service: 'campaignBudgets' }]
+    } as GoogleAdsActionPlan
+
+    await expect(loadSearchGoogleAdsPlanState(plan, auth, { query }, {
+      results: [{ resourceName: 'customers/1234567890/campaignBudgets/50' }]
+    })).resolves.toMatchObject({
+      resourceName: 'customers/1234567890/campaignBudgets/50',
+      amountMicros: '40000000'
+    })
+    expect(query.mock.calls[0]?.[0].query).toContain('campaign_budget.id = 50')
   })
 })

@@ -88,7 +88,7 @@ const AutomationPolicyRowSchema = z.object({
   conditions: z.record(z.string(), z.unknown()),
   maxDailyActions: z.number().int().positive().nullable(),
   actionsToday: z.number().int().nonnegative()
-})
+}).required()
 
 export async function loadGoogleAdsAutomationPolicy(
   input: LoadAutomationPolicyInput
@@ -119,7 +119,9 @@ export async function loadGoogleAdsAutomationPolicy(
     ORDER BY p.version DESC
     LIMIT 1
   `, [input.clientId, input.connectionId, input.customerId, input.actionClass])
-  return row ? AutomationPolicyRowSchema.parse(row) : null
+  return row
+    ? AutomationPolicyRowSchema.parse(row) as GoogleAdsAutomationPolicyGrant
+    : null
 }
 
 export interface SearchGoogleAdsPlanningDependencies {
@@ -416,8 +418,8 @@ export async function executeSearchGoogleAdsControlAction(
     })),
     validate: () => runMutation(true),
     mutate: () => runMutation(false),
-    verify: async (candidate) => {
-      const actual = await dependencies.loadPlanState(candidate, session.auth)
+    verify: async (candidate, mutationResult) => {
+      const actual = await dependencies.loadPlanState(candidate, session.auth, {}, mutationResult)
       return verifySearchGoogleAdsState(candidate.desiredState, actual)
     },
     event: async (input) => {

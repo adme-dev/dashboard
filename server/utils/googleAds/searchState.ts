@@ -6,6 +6,7 @@ import type {
   GoogleAdsVerificationDiff
 } from '~~/server/utils/googleAds/contracts'
 import type { GoogleAdsAuth } from '~~/server/utils/googleAds/api'
+import type { GoogleAdsMutateResult } from '~~/server/utils/googleAds/mutate'
 import {
   executeGoogleAdsQuery,
   type ExecuteGoogleAdsQueryInput
@@ -29,6 +30,13 @@ const CriterionSchema = z.object({
   text: z.string(),
   matchType: z.enum(['EXACT', 'PHRASE', 'BROAD']),
   negative: z.literal(true)
+})
+const BudgetStateSchema = z.object({
+  resourceName: z.string(),
+  name: z.string(),
+  amountMicros: z.union([z.string(), z.number()]).transform(String),
+  deliveryMethod: z.string(),
+  explicitlyShared: z.boolean()
 })
 
 const STATUS_READS = {
@@ -62,6 +70,88 @@ function resourceIds(resourceName: string): number[] {
     throw new Error('Invalid Google Ads resource name')
   }
   return parts.map(Number)
+}
+
+function escapeGaqlString(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, '\\\'')
+}
+
+function assertCustomerResourceName(
+  resourceName: string,
+  customerId: string,
+  segment: string
+): void {
+  const pattern = new RegExp(`^customers/${customerId}/${segment}/\\d+$`)
+  if (!pattern.test(resourceName)) {
+    throw new Error('Google Ads returned a resource outside the selected customer')
+  }
+}
+
+async function assertBudgetNameAvailable(
+  customerId: string,
+  name: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<{ exists: false }> {
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT campaign_budget.resource_name
+FROM campaign_budget
+WHERE campaign_budget.name = '${escapeGaqlString(name)}'`
+  })
+  if (result.rows.length > 0 || result.more > 0) {
+    throw new Error(`A Google Ads campaign budget named "${name}" already exists`)
+  }
+  return { exists: false }
+}
+
+async function loadBudgetByResourceName(
+  customerId: string,
+  resourceName: string,
+  auth: GoogleAdsAuth,
+  dependencies: SearchStateDependencies
+): Promise<z.infer<typeof BudgetStateSchema>> {
+  assertCustomerResourceName(resourceName, customerId, 'campaignBudgets')
+  const [id] = resourceIds(resourceName)
+  const result = await dependencies.query({
+    customerId,
+    auth,
+    maxRows: 1,
+    query: `SELECT campaign_budget.resource_name,
+  campaign_budget.name,
+  campaign_budget.amount_micros,
+  campaign_budget.delivery_method,
+  campaign_budget.explicitly_shared
+FROM campaign_budget
+WHERE campaign_budget.id = ${id}`
+  })
+  const first = result.rows[0]
+  const budget = first && typeof first === 'object'
+    ? (first as Record<string, unknown>).campaignBudget
+    : undefined
+  if (!budget) throw new Error('Google Ads campaign budget was not found after mutation')
+  return BudgetStateSchema.parse(budget)
+}
+
+function mutationResourceName(
+  mutation: GoogleAdsMutateResult,
+  service: string
+): string {
+  const first = mutation.results[0]
+  if (!first || typeof first !== 'object') {
+    throw new Error('Google Ads mutation did not return a created resource')
+  }
+  const record = first as Record<string, unknown>
+  if (typeof record.resourceName === 'string') return record.resourceName
+  const singular = service === 'campaignBudgets' ? 'campaignBudget' : ''
+  const nested = singular ? record[singular] : undefined
+  if (nested && typeof nested === 'object'
+    && typeof (nested as Record<string, unknown>).resourceName === 'string') {
+    return (nested as Record<string, unknown>).resourceName as string
+  }
+  throw new Error('Google Ads mutation did not return a created resource name')
 }
 
 function statusWhere(from: string, ids: number[]): string {
@@ -166,14 +256,35 @@ export async function loadSearchGoogleAdsCurrentState(
   if (context.input.operation === 'add_negative_keywords') {
     return loadNegativeKeywords(context, auth, resolved)
   }
+  if (context.input.operation === 'create_budget') {
+    const args = z.object({ name: z.string() }).parse(parseSearchGoogleAdsArguments(
+      context.input.operation,
+      context.input.arguments
+    ))
+    return assertBudgetNameAvailable(context.customerId, args.name, auth, resolved)
+  }
   throw new Error(`Unsupported Search Google Ads operation: ${context.input.operation}`)
 }
 
 export async function loadSearchGoogleAdsPlanState(
   plan: GoogleAdsActionPlan,
   auth: GoogleAdsAuth,
-  dependencies: Partial<SearchStateDependencies> = {}
+  dependencies: Partial<SearchStateDependencies> = {},
+  mutation?: GoogleAdsMutateResult
 ): Promise<unknown> {
+  const resolved = { ...defaultDependencies, ...dependencies }
+  if (plan.operation === 'create_budget') {
+    if (mutation) {
+      return loadBudgetByResourceName(
+        plan.customerId,
+        mutationResourceName(mutation, 'campaignBudgets'),
+        auth,
+        resolved
+      )
+    }
+    const desired = z.object({ name: z.string() }).parse(plan.desiredState)
+    return assertBudgetNameAvailable(plan.customerId, desired.name, auth, resolved)
+  }
   if (!plan.resourceName) throw new Error('Search Google Ads plan has no resource name')
   const negative = plan.operation === 'add_negative_keywords'
   const service = plan.providerOperations[0]?.service
@@ -220,13 +331,39 @@ function normalizeVerificationState(value: unknown): unknown {
   }
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function projectActualToExpected(expected: unknown, actual: unknown): unknown {
+  if (isPlainObject(expected) && isPlainObject(actual)) {
+    const projected: Record<string, unknown> = {}
+    for (const key of Object.keys(expected)) {
+      if (Object.hasOwn(actual, key)) {
+        projected[key] = projectActualToExpected(expected[key], actual[key])
+      }
+    }
+    return projected
+  }
+  if (Array.isArray(expected) && Array.isArray(actual)) {
+    return actual.map((value, index) => (
+      index < expected.length ? projectActualToExpected(expected[index], value) : value
+    ))
+  }
+  return actual
+}
+
 export function verifySearchGoogleAdsState(
   expected: unknown,
   actual: unknown
 ): { ok: boolean, diffs: GoogleAdsVerificationDiff[] } {
+  const normalizedExpected = normalizeVerificationState(expected)
+  const normalizedActual = normalizeVerificationState(actual)
   const differences = diffGoogleAdsStates(
-    normalizeVerificationState(expected),
-    normalizeVerificationState(actual)
+    normalizedExpected,
+    projectActualToExpected(normalizedExpected, normalizedActual)
   )
   const diffs = differences.map(diff => ({
     field: diff.field,

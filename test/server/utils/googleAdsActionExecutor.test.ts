@@ -177,6 +177,10 @@ describe('Google Ads action executor', () => {
         providerRequestId: 'provider-request-1'
       }))
     expect(deps.verify).toHaveBeenCalledAfter(deps.mutate)
+    expect(deps.verify).toHaveBeenCalledWith(
+      expect.objectContaining({ id: PLAN_ID }),
+      { results: [{}], requestId: 'provider-request-1' }
+    )
     expect(deps.complete).toHaveBeenCalledWith(expect.objectContaining({
       status: 'verified',
       verificationSummary: { ok: true, diffs: [] }
